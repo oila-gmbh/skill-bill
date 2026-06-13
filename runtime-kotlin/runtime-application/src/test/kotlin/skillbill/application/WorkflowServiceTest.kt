@@ -1893,3 +1893,76 @@ internal class InMemoryWorkflowStates : WorkflowStateRepository {
     taskRuntime.values.toList().take(limit)
   override fun latestFeatureTaskRuntimeWorkflow(): WorkflowStateRecord? = taskRuntime.values.lastOrNull()
 }
+
+class DecompositionDiskBootstrapTest {
+  @Test
+  fun `continueDecomposedParentByIssueKey bootstraps from disk when no DB parent row exists`() {
+    val repoRoot = Files.createTempDirectory("skillbill-disk-bootstrap")
+    val manifestPath = repoRoot.resolve(".feature-specs/SKILL-TEST-feature/decomposition-manifest.yaml")
+    Files.createDirectories(manifestPath.parent)
+    val manifest = DecompositionManifest(
+      issueKey = "SKILL-TEST",
+      featureName = "test-feature",
+      parentSpecPath = ".feature-specs/SKILL-TEST-feature/spec.md",
+      status = "in_progress",
+      executionModel = DecompositionExecutionModel.SAME_BRANCH_COMMIT_PER_SUBTASK,
+      baseBranch = "main",
+      featureBranch = "",
+      currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 1, action = "implement"),
+      subtasks = listOf(
+        DecompositionSubtask(
+          id = 1,
+          name = "first-subtask",
+          specPath = ".feature-specs/SKILL-TEST-feature/spec_subtask_1.md",
+          status = "pending",
+        ),
+      ),
+    )
+    Files.writeString(
+      manifestPath,
+      encodeDecompositionManifestYaml(manifest, testDecompositionManifestValidator, TestDecompositionManifestFileStore),
+    )
+    val workflows = InMemoryWorkflowStates()
+    val db = FakeDatabaseSessionFactory(workflows)
+    val continuation = DecompositionWorkflowContinuation(
+      engine = testWorkflowEngine,
+      gitOperations = NoopWorkflowGitOperations,
+      validator = testDecompositionManifestValidator,
+      fileStore = TestDecompositionManifestFileStore,
+      repoRootProvider = { repoRoot },
+    )
+
+    val result = db.transaction<ContinuationStepResult>(null) { unitOfWork ->
+      continuation.continueDecomposedParentByIssueKey("SKILL-TEST", unitOfWork)
+    }
+
+    assertFalse(
+      result.result is WorkflowContinueResult.UnknownWorkflow,
+      "Expected disk bootstrap to resolve the manifest; got UnknownWorkflow instead",
+    )
+    assertTrue(
+      workflows.listFeatureImplementWorkflows(Int.MAX_VALUE).size >= 2,
+      "Expected parent bootstrap row and child subtask row in DB",
+    )
+  }
+
+  @Test
+  fun `continueDecomposedParentByIssueKey returns UnknownWorkflow when disk has no manifest for issue key`() {
+    val repoRoot = Files.createTempDirectory("skillbill-disk-bootstrap-miss")
+    val workflows = InMemoryWorkflowStates()
+    val db = FakeDatabaseSessionFactory(workflows)
+    val continuation = DecompositionWorkflowContinuation(
+      engine = testWorkflowEngine,
+      gitOperations = NoopWorkflowGitOperations,
+      validator = testDecompositionManifestValidator,
+      fileStore = TestDecompositionManifestFileStore,
+      repoRootProvider = { repoRoot },
+    )
+
+    val result = db.transaction<ContinuationStepResult>(null) { unitOfWork ->
+      continuation.continueDecomposedParentByIssueKey("SKILL-MISSING", unitOfWork)
+    }
+
+    assertIs<WorkflowContinueResult.UnknownWorkflow>(result.result)
+  }
+}

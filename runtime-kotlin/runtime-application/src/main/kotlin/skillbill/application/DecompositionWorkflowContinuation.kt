@@ -1,3 +1,5 @@
+@file:Suppress("TooManyFunctions")
+
 package skillbill.application
 
 import skillbill.application.model.GoalContinuationOutcome
@@ -13,22 +15,31 @@ import skillbill.workflow.model.DecompositionContinuationSelection
 import skillbill.workflow.model.DecompositionManifest
 import skillbill.workflow.model.WorkflowStateSnapshot
 import skillbill.workflow.model.WorkflowUpdateInput
+import java.nio.file.Path
 
 internal class DecompositionWorkflowContinuation(
   private val engine: WorkflowEngine,
   private val gitOperations: WorkflowGitOperations,
   private val validator: DecompositionManifestValidator,
   private val fileStore: DecompositionManifestFileStore = UnavailableDecompositionManifestFileStore,
+  private val repoRootProvider: () -> Path = ::repoRoot,
 ) {
   fun continueDecomposedParentByIssueKey(
     issueKey: String,
     unitOfWork: UnitOfWork,
     requestedSubtaskId: Int? = null,
   ): ContinuationStepResult {
-    val parentRecord = unitOfWork.workflowStates
+    var parentRecord = unitOfWork.workflowStates
       .findDecomposedParentWorkflow(issueKey, validator)
       ?.toSnapshot()
-    val manifest = parentRecord?.decompositionRuntime(validator)
+    var manifest = parentRecord?.decompositionRuntime(validator)
+    if (parentRecord == null || manifest == null) {
+      val diskManifest = findProjectedManifestByIssueKey(issueKey)
+      if (diskManifest != null) {
+        parentRecord = bootstrapParentWorkflowFromManifest(diskManifest, unitOfWork)
+        manifest = parentRecord.decompositionRuntime(validator)
+      }
+    }
     val result = if (parentRecord == null || manifest == null) {
       ContinuationStepResult(
         WorkflowContinueResult.UnknownWorkflow(
@@ -40,6 +51,64 @@ internal class DecompositionWorkflowContinuation(
       continueManifest(parentRecord, manifest, unitOfWork, requestedSubtaskId)
     }
     return result
+  }
+
+  private fun findProjectedManifestByIssueKey(issueKey: String): DecompositionManifest? = try {
+    val root = repoRootProvider()
+    fileStore.findDecompositionManifestFiles(root)
+      .asSequence()
+      .sortedBy { it.toString() }
+      .filter { path ->
+        runCatching { root.relativize(path).toString() }.getOrElse { path.toString() }.contains(issueKey)
+      }
+      .mapNotNull { path -> loadManifestOrNull(path, validator, fileStore) }
+      .filter { it.issueKey == issueKey }
+      .toList()
+      .let { candidates ->
+        val active = candidates.filter { it.isActiveGoalRuntime() }
+        if (active.size > 1) error("Ambiguous decomposition manifests for '$issueKey'")
+        active.firstOrNull() ?: candidates.firstOrNull()
+      }
+  } catch (_: Exception) {
+    null
+  }
+
+  private fun bootstrapParentWorkflowFromManifest(
+    manifest: DecompositionManifest,
+    unitOfWork: UnitOfWork,
+  ): WorkflowStateSnapshot {
+    val workflowId = generateWorkflowId(WorkflowFamily.IMPLEMENT.definition.workflowIdPrefix)
+    val opened = engine.openRecord(
+      WorkflowFamily.IMPLEMENT.definition,
+      workflowId,
+      WorkflowFamily.IMPLEMENT.definition.defaultSessionPrefix,
+      "plan",
+    )
+    val imported = engine.updateRecord(
+      WorkflowFamily.IMPLEMENT.definition,
+      opened,
+      WorkflowUpdateInput(
+        workflowStatus = "abandoned",
+        currentStepId = "plan",
+        stepUpdates = listOf(
+          mapOf("step_id" to "assess", "status" to "completed", "attempt_count" to 1),
+          mapOf("step_id" to "create_branch", "status" to "completed", "attempt_count" to 1),
+          mapOf("step_id" to "preplan", "status" to "completed", "attempt_count" to 1),
+          mapOf("step_id" to "plan", "status" to "completed", "attempt_count" to 1),
+        ),
+        artifactsPatch = mapOf(
+          "plan" to mapOf("mode" to "decompose"),
+          DECOMPOSITION_RUNTIME_ARTIFACT_KEY to encodeDecompositionManifestMap(
+            manifest,
+            validator,
+            DECOMPOSITION_RUNTIME_ARTIFACT_KEY,
+          ),
+        ),
+        sessionId = opened.sessionId.orEmpty(),
+      ),
+    )
+    WorkflowFamily.IMPLEMENT.save(unitOfWork.workflowStates, imported)
+    return WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, workflowId) ?: imported
   }
 
   private fun continueManifest(
@@ -144,10 +213,10 @@ internal class DecompositionWorkflowContinuation(
     }
     var errorResult: WorkflowContinueResult? = null
     if (branchPlan.branch.isNotBlank()) {
-      val checkout = gitOperations.checkoutBranch(repoRoot(), branchPlan.branch, branchPlan.baseBranch)
+      val checkout = gitOperations.checkoutBranch(repoRootProvider(), branchPlan.branch, branchPlan.baseBranch)
       errorResult = checkout.takeUnless { it.ok }?.let { blockedBranchStartResult(it.error) }
       if (errorResult == null && branchPlan.validateBase) {
-        errorResult = gitOperations.validateBranchBase(repoRoot(), branchPlan.branch, branchPlan.baseBranch)
+        errorResult = gitOperations.validateBranchBase(repoRootProvider(), branchPlan.branch, branchPlan.baseBranch)
           .takeUnless { it.ok }
           ?.let { blockedBranchStartResult(it.error) }
       }
@@ -264,14 +333,15 @@ internal class DecompositionWorkflowContinuation(
   ): CommitAdvanceResult {
     val branch = manifest.branchForSubtask(subtaskId)
     val checkout = if (branch.isNotBlank()) {
-      gitOperations.checkoutBranch(repoRoot(), branch, manifest.baseForSubtask(subtaskId))
+      gitOperations.checkoutBranch(repoRootProvider(), branch, manifest.baseForSubtask(subtaskId))
     } else {
       null
     }
     return if (checkout?.ok == false) {
       CommitAdvanceResult(manifest, checkout.error.ifBlank { "Git branch checkout failed." })
     } else {
-      val commit = gitOperations.createCommit(repoRoot(), "${manifest.issueKey} subtask $subtaskId: $subtaskName")
+      val commitMessage = "${manifest.issueKey} subtask $subtaskId: $subtaskName"
+      val commit = gitOperations.createCommit(repoRootProvider(), commitMessage)
       if (commit.ok) {
         CommitAdvanceResult(manifest.withCommittedSubtask(subtaskId, commit.value))
       } else {

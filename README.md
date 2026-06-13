@@ -1,4 +1,4 @@
-![Skill Bill — governed AI-agent skill platform](docs/assets/skill-bill-readme-hero.svg)
+![Skill Bill — turn your AI coding agent into a disciplined engineering team](docs/assets/skill-bill-readme-hero.svg)
 
 # Skill Bill
 
@@ -6,13 +6,13 @@
 ![Latest release](https://img.shields.io/github/v/release/Sermilion/skill-bill?include_prereleases&sort=semver)
 ![Validate agent configs](https://img.shields.io/github/actions/workflow/status/Sermilion/skill-bill/validate-agent-configs.yml?branch=main&label=validate)
 
-One source of truth for your AI coding skills — authored once, installed across multiple coding agents (verified end-to-end on Claude Code and Codex), with the validation and durable workflow state to keep them from rotting.
+**Skill Bill brings a level of determinism to where determinism doesn't exist.** AI coding agents are powerful but non-deterministic — different every run, no guarantees. Skill Bill turns yours into a disciplined engineering team: hand it a spec and it plans, implements, runs stack-specialist review, audits against the spec, and gates quality — all the way to a merge-ready PR, across whichever agents you use.
 
 ![Skill Bill demo — a /bill-feature-task run that is interrupted mid-flight, then resumes from durable workflow state and finishes](docs/assets/skill-bill-demo.gif)
 
 > A `/bill-feature-task` run from spec to merge-ready: each phase starts and finishes, then the run is interrupted mid-flight — for any reason (usage limit, crash, lost connection) — and resumes from durable workflow state to complete, nothing lost. The demo is generated, not hand-recorded ([`docs/assets/generate_demo_gif.py`](docs/assets/generate_demo_gif.py)), so it never goes stale.
 
-**Who it's for:** developers and teams running one or more coding agents who want skills that survive crashes and context limits and stay in sync across agents. Probably overkill if you use a single agent on a single stack and never hit a usage limit. Pre-1.0 and solo-maintained — see the [Roadmap](docs/ROADMAP.md).
+**Who it's for:** developers and teams who want their AI agent to implement whole features with the rigor of a real engineering process — planned, reviewed, audited, and quality-gated — instead of one-off code they have to babysit and re-review. Probably overkill if you only want quick single-file completions. Pre-1.0 and solo-maintained — see the [Roadmap](docs/ROADMAP.md).
 
 ## Quickstart (≈60 seconds)
 
@@ -46,15 +46,16 @@ Two install paths, two sets of prerequisites:
 
 Skill Bill looks like a lot of machinery, and it is — but the path you actually run is one command: `./install.sh`. Everything documented below the fold (the capability deep-dive, architecture, contracts) is optional reading, not setup you have to perform.
 
-**The product is the framework, not the prompts.** Skill Bill does not ship "the right way to do code review." It ships everything *around* the prompt that turns one author's prompt into something a 200-person engineering org can rely on. A working Kotlin/KMP reference pack is included so you can see a fully-wired example end-to-end — use it as-is, fork it, delete it, or replace it entirely. The reference packs are replaceable; you are expected to author your own packs for your own stack, conventions, and review style.
+**The skills are the brain, not a starter kit.** Skill Bill is opinionated: its built-in skill set *is* the engineering judgment — how the system plans, reviews, audits, and gates quality. You don't bring your own prompts to fill an empty framework; you get a system that already knows how to take a feature from spec to PR. You tune it to your stack and conventions by overriding the built-in skills (and adding your own where you genuinely need to). The Kotlin/KMP packs ship as fully-wired stack intelligence — tune them, extend them, or add a pack for your stack — but they are load-bearing, not throwaway examples.
 
 ---
 
-Skill Bill is the runtime, governance, and operations layer for AI-agent skills. You bring your own prompts; Skill Bill handles install across every coding agent your team uses, routing per platform, durable workflow state, decomposition of oversized work, structured telemetry through a self-hostable proxy, drift protection, project-level customization, and a desktop UI to manage all of it.
+Under that one command is a full system: a durable runtime that owns each feature run, a fleet of specialist subagents, governed contracts that fail loudly on drift, automatic decomposition of oversized work, structured telemetry through a self-hostable proxy, per-project tuning, cross-agent install, and a desktop UI to manage it all. You wire none of it — it is the machinery that makes the agent's work repeatable instead of improvised.
 
 What Skill Bill gives you:
 
-- one source of truth for every coding agent your team uses — verified end-to-end on Claude Code and Codex; install configs are also generated for Copilot, OpenCode, and Junie ([agent support tiers](#agent-support))
+- a feature implemented end-to-end from a spec — planning, implementation, stack-specialist review, completeness audit, and quality gates, to a merge-ready PR
+- the same governed skill set installed across every agent you use — verified end-to-end on Claude Code and Codex ([agent support tiers](#agent-support))
 - a governed contract that fails loudly when skills drift instead of silently going stale
 - durable, resumable workflow state so long-running multi-phase skills survive crashes and context compaction
 - automatic decomposition of oversized work into resumable subtasks the runtime tracks for you
@@ -65,22 +66,11 @@ What Skill Bill gives you:
 
 ## Why it exists
 
-Most prompt or skill repos degrade over time:
+AI coding agents are non-deterministic. The same prompt produces different work each run — sometimes it reviews thoroughly, sometimes it skims; sometimes it follows your conventions, sometimes it invents new ones; sometimes it finishes the feature, sometimes it wanders off. That is fine for a quick completion and a real problem for shipping a feature you have to stand behind.
 
-- names drift
-- overlapping skills appear
-- stack-specific behavior leaks into generic prompts
-- different agents get different copies
+Skill Bill brings a level of determinism to that chaos: a fixed, governed engineering process the agent runs **every** time — planned, implemented, reviewed by stack specialists, audited against the spec, quality-gated — backed by contracts that fail loudly instead of drifting silently. Same rigor, every run, on every agent.
 
-Skill Bill treats skills more like software:
-
-- stable base capabilities
-- platform-specific overrides behind routers
-- shared contracts instead of prompt folklore
-- loud-fail validation instead of silent fallback
-- one repo synced across multiple coding agents
-
-**Why not just drop skill files in `~/.claude/skills/`?** You can — until you want those same skills on a second agent, a multi-phase run that survives a crash or a usage limit, or a guarantee that a half-renamed skill fails loudly instead of silently going stale. A folder of skill files gives you the prompt. Skill Bill adds the three things a folder can't: **durable, resumable workflow state**, a **loud-fail governance contract**, and **one source synced across every agent**. That gap is the whole reason it exists.
+**Why not just drop skill files in `~/.claude/skills/`?** Because a folder of skill files is just prompts handed to a non-deterministic agent — you are back to "sometimes it reviews, sometimes it doesn't." Skill Bill is the system that runs a curated skill set as a governed process: a durable runtime that owns the run, specialist subagents, contracts that fail loudly on drift, and the same skill set working across every agent. The skills are the brain; the runtime is the body that makes them reliable.
 
 ## What you get
 
@@ -437,7 +427,7 @@ and provider-native artifacts remain install/render output rather than source.
 
 ## Reference pack
 
-Skill Bill ships a complete Kotlin/KMP pack as a working example of how to author against the framework. Use it directly if it fits your stack; otherwise treat it as the spec for what authoring your own pack looks like. Everything in this section is replaceable — none of it is load-bearing for Skill Bill itself.
+Skill Bill ships complete Kotlin/KMP packs — the stack-specific intelligence that lets the system review and check your code like someone who actually knows that stack. Use them directly if they fit, tune them to your conventions, or add a pack for your stack. The stack pack adapts the system to your code; the core feature pipeline works regardless of which one is active.
 
 **Daily entry points (in the reference pack):**
 
