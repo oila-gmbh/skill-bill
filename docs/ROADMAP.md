@@ -1,436 +1,139 @@
 # Skill Bill Roadmap
 
-## Why this document exists
+## What Skill Bill is
 
-Skill Bill can look deceptively simple because most of the repository is Markdown rather than application code. But the project is not just a prompt collection. It is a framework for governed AI-agent behavior: a portable layer of routing, orchestration, review depth, safety rules, authoring contracts, and cross-agent installation for AI-assisted engineering.
+Skill Bill can look like a pile of prompt files from the outside. It is not: the repository is now mostly application code — a layered Kotlin runtime (CLI, MCP server, durable workflow state, telemetry, install primitives, and a desktop app) sits behind the authored skills and turns them into an enforced engineering process.
 
-The product is that framework. The skills and platform packs shipped in this repo are reference examples — real, validated, ready to use, and meant to be forked or replaced. The governance model is what a team adopts; the packs are what they start from. The flagship bundled workflow is `bill-feature-task`; it proves the framework by composing planning, implementation, review, validation, history, PR description, workflow state, telemetry, platform packs, add-ons, and native subagents into one governed feature-delivery path.
+**The product is not any one of those pieces. It is what they produce together:**
 
-Without that distinction, the project drifts into "more skills, more stacks, more prompts" instead of becoming meaningfully more reliable or more useful to teams.
+> Your AI coding agent ships whole features with engineering rigor — spec to a PR you'd actually merge — the same way every run, on whatever agent you use.
 
-This roadmap exists to keep the bigger picture visible while the repository grows.
+The skills, the runtime, the contracts, the platform packs, the installer, and the telemetry loop are all load-bearing parts of delivering that outcome. None of them is "the product" on its own, and none is a disposable example. Debating "is it the framework or the skills" is a category error — they are both means to the outcome above.
+
+Skill Bill is pre-1.0 and solo-maintained. This roadmap exists to keep that outcome in focus as the codebase grows, so the project gets *more dependable*, not just *bigger*.
 
 ## North star
 
-**Make AI-assisted engineering feel like a reliable team capability, not a bag of prompts.**
+**Make AI-assisted feature work feel like a reliable team capability, not a bag of prompts.**
 
-In practical terms, that means a team should be able to adopt `/bill-feature-task` as a governed spec-to-PR workflow, use `/bill-code-review` and `/bill-code-check` as reusable phases or standalone entry points, and trust:
+A team should be able to run `/bill-feature-task` as a governed spec-to-PR workflow — and use `/bill-code-review`, `/bill-code-check`, and `/bill-feature-verify` as standalone phases — and trust:
 
 - what behavior they will get
-- how scope will be interpreted
-- how depth will be chosen
-- what review guarantees and failure modes exist
-- how platform-specific behavior stays consistent with shared entry points
+- how scope is interpreted and how review depth is chosen
+- what is guaranteed versus best-effort, and how failures surface
+- that platform-specific behavior stays consistent with the shared entry points
+- that a run survives interruption and resumes from durable state instead of chat history
 
-The long-term goal is not only broader stack coverage. The goal is to become the policy and orchestration layer that makes AI behavior portable, governed, and dependable across agents and teams.
+## The pieces, and why none is "the product"
 
-## Product thesis
+Each part earns its place by making the outcome more reliable. Remove any one and the outcome degrades:
 
-Skill Bill is most valuable when it behaves like infrastructure rather than a prompt dump. The framework is the product — the shell+content contract, the scaffolder, the validator, the cross-agent installer, the manifest-driven discovery. Shipped skills are reference examples that prove the framework works; they are not the product boundary.
+- **Curated skills** encode the engineering judgment — how to plan, review, audit, and gate. They are tuned and dogfooded, not throwaway demos.
+- **The Kotlin runtime** owns each run: durable workflow state, resume/continue, the goal loop, decomposition, telemetry, and cross-agent install.
+- **Contracts and the validator** fail the build when skills drift, so the judgment can't silently rot.
+- **Platform packs** carry stack-specific depth behind generic routers, so the base layer stays clean.
+- **The telemetry loop** turns real usage into evidence and fixes.
 
-The current bundled workflow hierarchy is intentional:
+Forking or replacing skills is a supported **escape hatch and extension point** — author a pack for your stack, override a skill per repo — but it is not the pitch. The pitch is that the shipped, tuned system already knows how to take a feature from spec to PR.
 
-- `bill-feature-task` is the flagship bundled workflow.
-- `bill-code-review`, `bill-code-check`, `bill-pr-description`, `bill-boundary-history`, platform packs, add-ons, native agents, workflow state, and telemetry are reusable subsystems inside the flagship workflow.
-- Every bundled skill remains replaceable. Teams can delete the shipped skills and keep the framework for their own governed workflows.
+## Moats, honestly
 
-The clearest structural moat is **cross-agent portability**. Individual pieces of Skill Bill — governed taxonomy, validator-backed rules, skill scaffolders — exist in adjacent projects or could plausibly be bundled by a first-party agent vendor. The piece a first-party vendor structurally cannot bundle is one source of truth synced across competing coding agents. That is the piece to protect.
+It is worth being precise, because the easy claims are wrong.
 
-The repository should continue to optimize for:
+- **Cross-agent portability is a property, not a moat.** Rendering one source into several agent formats is replicable in a sprint. It is genuinely useful; it does not defend anything.
+- **The runtime and the curated judgment are barriers to entry, not moats.** They cost a competitor months to reproduce — a head start, not a wall. Nothing structural stops someone spending the months.
+- **The telemetry → analysis → fix loop is the one candidate that compounds** — real usage produces data a competitor without users cannot have, and the loop turns that data into improvements. But it is **latent**: no adoption means no telemetry means no loop. It only becomes a moat after people use it.
 
-- **stable user-facing entry points** instead of proliferating ad hoc commands
-- **platform depth behind the router** instead of stack-specific sprawl leaking into the base layer
-- **validator-backed rules** instead of tribal knowledge
-- **portable behavior across agents** instead of one runtime getting all the quality
-- **explicit contracts** instead of implicit prompt folklore
-- **predictable failure handling** instead of silent fallback or "best effort" ambiguity
-- **framework separable from examples** so teams can fork, replace, or ignore shipped packs without touching governance
+**Honest position:** pre-1.0 and solo, Skill Bill does not have a moat today. It has a head start and one latent moat that switches on with adoption. The strategic job is to **reach enough real usage to turn the telemetry loop on before the head start stops being enough.** Everything below serves that.
 
-## What success looks like
+## Where it stands today
 
-Skill Bill is succeeding when most of the following are true:
+Strong:
 
-1. Teams can install it once and get consistent behavior across supported agents.
-2. Shared entry points stay stable even as platform depth grows behind them.
-3. Reviews are high-signal, scope-faithful, and understandable enough to influence merge decisions.
-4. Feature workflows reliably move from spec to implementation to validation with clear contracts at each step.
-5. Project-specific customization is possible without degrading the shared taxonomy.
-6. New skills and edits are constrained by tests and validators, not only maintainer judgment.
-7. Teams start treating Skill Bill as part of engineering process, not as an experimental side tool.
-8. **Non-maintainers author and ship platform packs.** The scaffolder and contract are usable by people who have never read the maintainer's mind. External platform packs are early proof; the next bar is repeatability.
-9. **At least one lighthouse team uses it in production.** Early friend/colleague usage is a strong signal; one concrete before/after from a real engineering org does more to validate the project than any amount of internal polish.
+- a flagship `bill-feature-task` workflow composing planning, implementation, routed review, completeness audit, quality gates, history, and PR handoff
+- durable, resumable workflow state for `bill-feature-task` and `bill-feature-verify`
+- a foreground `skill-bill goal` runtime that decomposes oversized work and runs subtasks from durable state
+- stack-aware routing for review and quality-check, with layered shared + platform-specific contracts
+- validator-backed contracts that catch many forms of repository drift
+- a one-command install across multiple agents, plus CLI, MCP, and a Compose Desktop app
+- docs split into landing-page, getting-started, and team-rollout concerns
+
+Still early:
+
+- reliability under real-world runtime behavior across different agents and repos
+- evidence: review quality, repeat usage, recovery rate, and external usefulness are barely measured
+- org-level rollout and override strategy beyond maintainer intuition
+- repeatable external authoring of new packs without maintainer context
+- process routing beyond stack detection (work-type awareness)
 
 ## Recent milestones
 
-- **Workflow contract pilot (shipped):** Added `orchestration/workflow-contract/PLAYBOOK.md` to define when a top-level command becomes a workflow, what durable state and artifacts it owns, and how child telemetry rolls up into one parent lifecycle. `bill-feature-task` is the first pilot; leaf skills remain standalone and reusable.
-- **SKILL-14 (shipped):** Piloted the shell + content architectural split on `bill-code-review`. The shell at `skills/bill-code-review/` is now platform-independent and owns routing, telemetry, output structure, and contract enforcement; platform-specific reviewer content lives under `platform-packs/<platform>/` and is discovered through the versioned contract at `orchestration/shell-content-contract/PLAYBOOK.md`.
-- **SKILL-15 and follow-ons (shipped):** The new-skill scaffolder, auto-installer, and terminal-first authoring loop now exist as real product surface. Governed skill creation, editing, rendering, validation, add-on creation, and install primitives are available through `skill-bill`, with contract-backed tests and rollback behavior.
-- **Shell/content split follow-through (shipped):** The shell + content architecture now covers the stable core surfaces that matter most: `bill-code-review`, `bill-code-check`, `bill-feature-task`, and `bill-feature-verify`. The repo is now much closer to one consistent governed model instead of mixed prompt layouts.
-- **Workflow runtime and resume surfaces (shipped):** Durable workflow state, resume, continue, local stats, and matching MCP tools now exist for both `bill-feature-task` and `bill-feature-verify`, so long-running orchestrators no longer depend only on chat history.
-- **Operator docs split (shipped):** The documentation surface is now split into a shorter `README.md`, a primary `docs/getting-started.md`, and a team-focused `docs/getting-started-for-teams.md`, which is a healthier structure for adoption than a single overloaded README.
-- **Early external adoption signal (observed):** Multiple external users have used Skill Bill for real work, `bill-feature-task` has emerged as the strongest day-to-day workflow, `bill-code-review` is the strongest standalone phase, and non-maintainers have created platform packs for themselves.
-- **Next architectural move:** Separate framework from reference packs even more aggressively so adoption, forking, and adding maintained packs stay distinct from the governance system itself.
+- **One-command install (shipped):** `curl … | bash` fetches a checksum-verified prebuilt runtime — no clone, no JDK, no Gradle — with tag-driven releases (v0.2.0+).
+- **Goal runtime + decomposition (shipped):** planning can switch into decomposition, write schema-validated subtask specs and a manifest, and the foreground `skill-bill goal` runtime resumes by issue key from durable state.
+- **Prose-goal subtask isolation (shipped):** each subtask runs in a dedicated Level-1 agent with a fresh context budget instead of accumulating the whole goal's context inline.
+- **Durable workflow state + resume (shipped):** open/update/continue/show surfaces and matching MCP tools for `bill-feature-task` and `bill-feature-verify`, so long runs no longer depend on chat history.
+- **Shell + content architecture (shipped):** the platform-independent shell owns routing, telemetry, and contract enforcement; platform-specific content lives in packs discovered through a versioned contract. Covers the stable core surfaces.
+- **Desktop app (shipped):** a Compose Desktop client over the same runtime services as the CLI.
+- **Early external signal (observed):** non-maintainers have authored platform packs; `bill-feature-task` is the strongest daily workflow and `bill-code-review` the strongest standalone phase.
 
-## Current position
+## Priorities
 
-Today, Skill Bill is strongest in these areas:
-
-- a flagship `bill-feature-task` workflow that composes the rest of the system into a practical feature-delivery path
-- governed naming and package taxonomy
-- portable installation across multiple agent environments
-- stack-aware routing for code review and quality-check flows
-- layered review orchestration with shared and platform-specific contracts
-- validation coverage that prevents many forms of repository drift
-- local operator surfaces: CLI, MCP, workflow state, telemetry, and governed authoring
-- documentation structure that now distinguishes landing-page, getting-started, and team-rollout concerns
-
-Today, Skill Bill is still relatively early in these areas:
-
-- reliability under real-world runtime behavior across different agents and repos
-- organization-level rollout and override strategy beyond maintainer intuition
-- measurement of review quality, repeat usage, and external usefulness
-- repeatable external authoring validation for new packs and governed extensions
-- deeper process routing beyond stack detection
-- broader team adoption patterns and stronger lighthouse-team evidence
-
-## Strategic priorities
-
-The roadmap below is ordered by importance, not by date.
+Ordered by importance, not date.
 
 ### 1. Reliability first
 
-The first responsibility of a governed AI workflow repo is to behave predictably.
-
-This means continuing to reduce:
+The reported behavior must match what actually happened. Keep reducing:
 
 - scope drift between staged, unstaged, PR, and file-based review modes
-- orchestration noise such as background-agent bookkeeping failures
-- workflow-resume ambiguity when a long-running parent command loses step state
-- review-mode ambiguity such as unclear inline vs delegated behavior
-- false confidence caused by unsupported or partially supported execution paths
-- hidden fallbacks that make output look stronger than the actual guarantees
+- workflow-resume ambiguity when a long run loses step state
+- false confidence from unsupported or partially supported execution paths
+- hidden fallbacks that make output look stronger than the real guarantees
 
-Key outcome:
+### 2. Make the core workflows genuinely strong
 
-**A user should be able to trust that the reported behavior matches what actually happened.**
+Deepening the main flows beats adding stacks. Focus on `bill-feature-task`, `bill-code-review`, `bill-feature-verify`, `bill-code-check`, and `bill-pr-description`: review signal quality, output consistency across agents, completeness checks against acceptance criteria, and PR handoff quality. A small set of stable commands should cover a meaningful share of real engineering work without feeling shallow or flaky.
 
-### 2. Make existing workflows truly strong
+### 3. Reach adoption and switch the telemetry loop on
 
-Adding new languages is useful, but deepening the main workflows matters more.
+This is the moat strategy made concrete. Get the system into enough real use that the telemetry → analysis → fix loop runs on real data, not maintainer intuition:
 
-The highest-leverage flows today are:
+- lower onboarding friction for non-maintainers
+- one lighthouse team using the core flows in normal work for several weeks
+- a repeatable external-authoring path (scaffolder + docs + validator, no maintainer mind-reading)
+- structured evaluation of one external fork's first week beats any internal polish
 
-- `/bill-feature-task`
-- `/bill-code-review`
-- `/bill-feature-verify`
-- `/bill-code-check`
-- `/bill-pr-description`
+### 4. Deepen governance
 
-The next phase of maturity is making `bill-feature-task` feel complete and dependable enough for daily team use, while keeping its component skills strong as standalone entry points.
+Turn the taxonomy bias into a fuller operating model: stronger validation of routing/orchestration contracts, clearer rules for overrides/versioning/migration/deprecation, explicit guaranteed-vs-best-effort boundaries, and clearer rules for how packs may diverge. Maintainers should evolve the repo without eroding consistency.
 
-That means improving:
+### 5. Measure honestly
 
-- signal quality of reviews
-- consistency of outputs across agents
-- risk classification and prioritization
-- completeness checks against specs and acceptance criteria
-- end-to-end handoff quality into PRs and team review process
+A governed system needs evidence. Favor outcome- and reliability-signals over vanity counts:
 
-Key outcome:
+- recovery rate (interrupted runs that resume and finish) — the real KPI, not single-pass completion
+- review usefulness on the shipped packs (now a primary signal, since they are dogfooded, not demos)
+- cross-agent parity — comparable output on each supported agent
+- authoring success rate and fork health for external packs
+- contract-drift catches vs. misses
 
-**A small set of stable commands should cover a meaningful portion of normal engineering work without feeling shallow or flaky.**
+### 6. Expand from stack routing to process routing (later)
 
-### 3. Deepen governance
-
-Skill Bill already has a strong taxonomy bias. The next step is turning that into a fuller operating model.
-
-This includes:
-
-- stronger validation of routing and orchestration contracts
-- clearer portability boundaries between runtime-facing skill files and maintainer playbooks
-- better rules for overrides, versioning, migration, and deprecation
-- explicit support for what is guaranteed vs best effort
-- clearer contracts for how stack-specific packages are allowed to diverge
-
-Key outcome:
-
-**Maintainers should be able to evolve the repository without slowly eroding consistency.**
-
-### 4. Support team and org adoption
-
-The project becomes meaningfully more valuable when teams can adopt it as process infrastructure.
-
-That requires more than good skill text. It requires:
-
-- team-friendly documentation
-- rollout guidance
-- conventions for repository-local overrides
-- clear guidance for when to trust, verify, or escalate outputs
-- easier onboarding for EMs, tech leads, and senior ICs
-- patterns for introducing Skill Bill into code review, feature work, and quality gates
-
-Key outcome:
-
-**Teams should be able to operationalize Skill Bill without each team inventing its own model from scratch.**
-
-### 5. Turn early external authoring into a repeatable path
-
-The framework is only complete if someone other than the maintainer can use it successfully. Platform packs created outside the bundled reference set show that the model can work. The next job is making that success repeatable without maintainer context.
-
-The highest-value validation now is:
-
-- can a non-maintainer author or extend a platform pack using the scaffolder, docs, and validator?
-- can a team install the system and keep using it for several weeks?
-- do the current stable entry points hold up under normal engineering usage rather than maintainer demos?
-- does the author understand that bundled skills are optional references and the framework remains useful with entirely team-owned workflows?
-
-Key outcome:
-
-**Skill Bill should convert early external authoring and usage into a repeatable onboarding path before it spends much more energy on breadth.**
-
-### 6. Add measurement and feedback loops
-
-A governed framework needs evidence, not only intuition. Because the shipped skills are reference examples rather than the product, measurement should favor framework-level signals over per-skill output quality.
-
-The signals that most influence where to invest:
-
-- **authoring success rate** — can someone land a new pack using only the scaffolder and the validator, without reading maintainer source?
-- **fork health** — do external forks diverge in breaking ways, or extend cleanly?
-- **contract drift** — how often does a validator catch something vs. let drift through?
-- **cross-agent parity** — do the same commands produce comparable output on each supported agent?
-- **team adoption and repeated use** — once installed, does it stick or get abandoned?
-- **review usefulness on the reference packs** — kept as a secondary signal, not the primary one, because the shipped packs are demos, not the product.
-
-This does not need to begin as heavy analytics. Even structured manual evaluation of one external fork's first week is more informative than any amount of internal intuition.
-
-Key outcome:
-
-**The project should learn from real authoring and adoption patterns, not only from its maintainer's instincts.**
-
-### 7. Expand from stack routing to process routing
-
-Right now, Skill Bill is strong at answering:
-
-- what stack is this?
-- which specialist review layers should run?
-
-Its next level is being able to answer:
-
-- what kind of change is this?
-- what process should apply?
-
-Examples:
-
-- migration or schema change
-- risky auth/session change
-- rollout or feature-flag change
-- incident fix
-- refactor with behavior-preservation expectations
-- design-heavy UI work
-- reliability-sensitive infra change
-
-This is a major strategic shift because it moves Skill Bill from stack-aware prompting to workflow-aware engineering policy.
-
-Key outcome:
-
-**Routing should eventually reflect both technical stack and work type.**
-
-### 8. Build reusable organizational memory
-
-One of the most promising directions for Skill Bill is encoding engineering judgment once and reusing it everywhere.
-
-That includes:
-
-- architecture rules
-- review heuristics
-- rollout practices
-- security expectations
-- testing standards
-- change-management norms
-- boundary history and feature history
-
-The goal is not just to ship prompts. The goal is to make team knowledge durable and portable across agent runtimes.
-
-Key outcome:
-
-**Skill Bill should become a reusable container for engineering standards, not only a skill catalog.**
-
-## Roadmap themes
-
-The next set of improvements should cluster around a few durable themes.
-
-### Theme A: Execution reliability
-
-Focus:
-
-- explicit scope contracts
-- deterministic execution mode selection
-- safer delegated worker tracking
-- clearer unsupported-runtime behavior
-- less noisy failure handling
-
-Examples of work:
-
-- tighten orchestration rules for parent/child delegated reviews
-- add contract tests for common runtime failure patterns
-- require more explicit reporting when guarantees are weakened
-- reduce accidental broadening of review scope
-
-### Theme B: Review quality and trust
-
-Focus:
-
-- higher signal-to-noise
-- better actionability
-- fewer speculative findings
-- more consistent prioritization
-
-Examples of work:
-
-- improve evidence and minimal-fix expectations
-- refine severity guidance
-- add more comparison-based evaluation of review outputs
-- standardize verdict wording so teams can act on it
-
-### Theme C: Workflow completeness
-
-Focus:
-
-- stronger end-to-end feature implementation flow
-- better verification against specs
-- cleaner PR handoff
-- less manual glue between steps
-
-Examples of work:
-
-- improve feature-to-review-to-quality-check sequencing
-- strengthen acceptance-criteria completeness checks
-- improve PR summary generation based on actual branch diff
-- make "done" states more explicit and less optimistic
-
-### Theme D: Team adoption
-
-Focus:
-
-- easier setup
-- clearer documentation
-- better organizational customization
-- practical team rollout patterns
-
-Examples of work:
-
-- pressure-test the new getting-started and team-rollout docs with real users
-- define recommended repo-local override strategy
-- document a minimal process integration model for reviews and PRs
-- make install/update flows friendlier for non-maintainers
-
-### Theme E: Governance and maintainability
-
-Focus:
-
-- preserve taxonomy clarity
-- keep playbooks and runtime-facing files aligned
-- make allowed divergence explicit
-- protect the project from entropy
-
-Examples of work:
-
-- extend validator coverage
-- add more contract tests around routing and sidecar references
-- document deprecation and migration policy for skills
-- formalize what belongs in base vs platform packages
-
-## Suggested sequencing
-
-This is a recommended sequence of emphasis, not a date-based plan.
-
-### Horizon 1: Stabilize the core
-
-Prioritize:
-
-- review reliability
-- scope fidelity
-- execution-mode clarity
-- delegated orchestration correctness
-- stronger tests for existing review flows
-
-This horizon is about making the current system trustworthy enough that adoption does not outpace quality.
-
-### Horizon 2: Make the core workflows excellent
-
-Prioritize:
-
-- stronger review quality
-- stronger feature implementation and verification flows
-- cleaner PR generation
-- better consistency across supported agents
-
-This horizon is about turning the current stable commands into genuinely strong daily tools.
-
-### Horizon 3: Prove external adoption
-
-Prioritize:
-
-- external authoring of at least one new or forked pack
-- one lighthouse team using the core flows in normal work
-- measurement around repeat usage, trust, and usefulness
-- evidence-driven fixes from real rollout friction
-
-This horizon is about validating that the framework works outside the maintainer's own loop.
-
-### Horizon 4: Operationalize for teams
-
-Prioritize:
-
-- team adoption documentation
-- project-specific customization patterns
-- org memory and boundary-history workflows
-- process routing for different change types
-
-This horizon is about moving from "useful to an advanced individual" to "safe and valuable for a team."
-
-### Horizon 5: Expand carefully
-
-Prioritize:
-
-- new platforms only when they fit the governance model
-- new workflows only when they strengthen the stable command surface
-- measurement loops that justify what should be built next
-
-This horizon is about growth without losing coherence.
+Eventually route on *what kind of change this is* (migration, risky auth, rollout, incident fix, behavior-preserving refactor, design-heavy UI, reliability-sensitive infra), not only *what stack*. This moves Skill Bill from stack-aware prompting toward work-type-aware engineering policy. It comes after the core is trustworthy and the loop is running.
 
 ## What not to optimize for
 
-Skill Bill should resist several attractive but dangerous directions:
-
 - adding stacks faster than the current workflows become trustworthy
-- creating many narrow one-off skills without stable base entry points
+- proliferating narrow one-off skills without stable base entry points
 - hiding runtime limitations behind optimistic language
-- overfitting to one agent runtime at the expense of portability
-- turning governance into ceremony that slows down useful improvement
-- treating every user preference as a new top-level capability
+- claiming moats the project does not have
+- overfitting to one agent at the expense of portability
+- turning governance into ceremony that slows useful improvement
 
-## Open questions worth revisiting
+## Open questions
 
-These questions do not need immediate answers, but they should stay visible.
-
-1. How much of Skill Bill should be shared portable contract vs agent-specific runtime behavior?
+1. How much should be shared portable contract vs. agent-specific runtime behavior?
 2. What is the right override model for teams that want local standards without breaking the shared taxonomy?
 3. How should review quality be measured in a lightweight but honest way?
-4. Which workflows should become first-class after review, implementation, verification, and quality-check?
-5. How should Skill Bill communicate levels of confidence and support across different runtimes?
-6. At what point should process routing become a first-class concept in the taxonomy?
-
-## Summary
-
-Skill Bill's future is not primarily about becoming a larger collection of skills.
-
-Its future is about becoming a **reliable, portable, governed engineering behavior layer**:
-
-- stable for users
-- deep behind the router
-- explicit about guarantees
-- adaptable across agents
-- useful enough for teams to operationalize
-
-That is the bigger picture this roadmap is meant to preserve.
+4. Which workflow should become first-class after the current core?
+5. At what point does process routing become a first-class concept?
+6. What is the minimum adoption that makes the telemetry loop genuinely informative?
