@@ -16,13 +16,11 @@
 
 ## Quickstart (≈60 seconds)
 
-The default `./install.sh` path is **prebuilt**: it downloads and checksum-verifies the release runtime artifacts for your OS. No JDK, no Gradle build.
-
 ```bash
-git clone https://github.com/Sermilion/skill-bill.git ~/Development/skill-bill
-cd ~/Development/skill-bill
-./install.sh
+curl -fsSL https://raw.githubusercontent.com/Sermilion/skill-bill/main/install.sh | bash
 ```
+
+Downloads and checksum-verifies the prebuilt runtime for your OS. No clone, no JDK, no Gradle build.
 
 Then confirm it works and try a starter command:
 
@@ -37,14 +35,13 @@ That is the whole happy path. Everything below is optional depth.
 
 ## Prerequisites
 
-Two install paths, two sets of prerequisites:
+Needs only `curl`, `tar`, `unzip`, and either `shasum` or `sha256sum`, plus a supported OS/arch: `macos-arm64`, `macos-x64`, `windows-x64`, or `linux-x64`. **No JDK required.**
 
-- **Prebuilt (default `./install.sh`)** — needs only `curl`, `tar`, `unzip`, and either `shasum` or `sha256sum`, plus a supported OS/arch: `macos-arm64`, `macos-x64`, `windows-x64`, or `linux-x64`. **No JDK required.** Any other host automatically falls back to the from-source path.
-- **From source (`./install.sh --from-source`)** — builds the runtime with Gradle and **requires a JDK**. Use this when you want to build from your checkout, or when your host is not one of the four prebuilt targets (the installer also falls back here automatically).
+**Contributors or unsupported hosts:** clone the repo and run `./install.sh --from-source` (requires a JDK). Any host not in the four prebuilt targets falls back to this automatically.
 
 ## Deep under the hood, trivial to use
 
-Skill Bill looks like a lot of machinery, and it is — but the path you actually run is one command: `./install.sh`. Everything documented below the fold (the capability deep-dive, architecture, contracts) is optional reading, not setup you have to perform.
+Skill Bill looks like a lot of machinery, and it is — but the path you actually run is one `curl` command. Everything documented below the fold (the capability deep-dive, architecture, contracts) is optional reading, not setup you have to perform.
 
 **The skills are the brain, not a starter kit.** Skill Bill is opinionated: its built-in skill set *is* the engineering judgment — how the system plans, reviews, audits, and gates quality. You don't bring your own prompts to fill an empty framework; you get a system that already knows how to take a feature from spec to PR. You tune it to your stack and conventions by overriding the built-in skills (and adding your own where you genuinely need to). The Kotlin/KMP packs ship as fully-wired stack intelligence — tune them, extend them, or add a pack for your stack — but they are load-bearing, not throwaway examples.
 
@@ -247,13 +244,11 @@ This is the governance layer that keeps the other ten features from rotting — 
 
 ## Install details
 
-The default `./install.sh` is the **prebuilt** path: it downloads and checksum-verifies the runtime images from the matching GitHub release, so no JDK and no Gradle build are needed. Pass `--from-source` to build from your checkout with Gradle instead (requires a JDK).
-
 ```bash
-git clone https://github.com/Sermilion/skill-bill.git ~/Development/skill-bill
-cd ~/Development/skill-bill
-./install.sh
+curl -fsSL https://raw.githubusercontent.com/Sermilion/skill-bill/main/install.sh | bash
 ```
+
+Downloads and checksum-verifies the prebuilt runtime for your OS — no clone, no JDK, no Gradle. Pass `--from-source` (after cloning) to build from source instead.
 
 After install:
 

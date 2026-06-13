@@ -136,6 +136,25 @@ jobs:
             runtime-kotlin/runtime-mcp/build/runtime-image/*.zip.sha256
             runtime-kotlin/runtime-desktop/build/compose/binaries/main/*/SkillBill-*
 
+      - name: Bundle skills archive
+        if: matrix.host_token == 'linux-x64'
+        shell: bash
+        run: |
+          archive="skill-bill-skills-${RELEASE_VERSION}.tar.gz"
+          tar -czf "$archive" skills/ platform-packs/ orchestration/ uninstall.sh
+          sha256sum "$archive" > "${archive}.sha256"
+
+      - name: Upload skills bundle
+        if: matrix.host_token == 'linux-x64'
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-assets-skills
+          if-no-files-found: error
+          retention-days: 7
+          path: |
+            skill-bill-skills-*.tar.gz
+            skill-bill-skills-*.tar.gz.sha256
+
   # Phase 2: validation gate + GitHub Release publish. needs: build so the release
   # only happens once every host's artifacts exist. The maintainer validation gate
   # is preserved EXACTLY and runs fail-closed BEFORE any download/attach step.
