@@ -32,6 +32,8 @@ INSTALL_SOURCE="prebuilt"
 RELEASE_TAG="${SKILL_BILL_RELEASE_TAG:-}"
 DESKTOP_APP_ONLY=0
 REUSE_LAST_SELECTION=0
+PREFER_UPSTREAM=0
+CLEAN_INSTALL=0
 RELEASE_REPO="${SKILL_BILL_RELEASE_REPO:-Sermilion/skill-bill}"
 # Offline / test overrides. When SKILL_BILL_RELEASE_DIR is set, assets are copied
 # from that local directory (no network). When SKILL_BILL_RELEASE_BASE_URL is set,
@@ -95,6 +97,14 @@ Options:
                            Desktop app install uses the normal non-interactive
                            default unless --with-desktop-app or --no-desktop-app
                            is provided.
+  --prefer-upstream        When a skill changed both upstream and locally,
+                           overwrite the local copy with the upstream version
+                           instead of keeping local. Useful for non-interactive
+                           installs: curl ... | bash -s -- --prefer-upstream
+  --clean                  Wipe ~/.skill-bill/skills/, ~/.skill-bill/platform-packs/,
+                           and ~/.skill-bill/orchestration/ before staging the
+                           candidate tree. Useful for a clean-slate install. Composable
+                           with --prefer-upstream.
 USAGE
 }
 
@@ -123,6 +133,14 @@ parse_args() {
         ;;
       --reuse-last-selection)
         REUSE_LAST_SELECTION=1
+        shift
+        ;;
+      --prefer-upstream)
+        PREFER_UPSTREAM=1
+        shift
+        ;;
+      --clean)
+        CLEAN_INSTALL=1
         shift
         ;;
       --release)
@@ -422,6 +440,97 @@ list_release_asset_names() {
   # one "name":"<asset>" per asset inside the "assets" array.
   printf '%s' "$json" | grep -o '"name"[[:space:]]*:[[:space:]]*"[^"]*"' \
     | sed -E 's/.*:[[:space:]]*"([^"]*)"/\1/'
+}
+
+# Resolve the skills bundle asset name for the current release.
+# Queries list_release_asset_names (offline or GitHub API) and returns the
+# first filename matching skill-bill-skills-*.tar.gz. Fails loudly when not found.
+resolve_skills_bundle_asset_name() {
+  local names name
+  if ! names="$(list_release_asset_names)"; then
+    err "Failed to list release assets while resolving skills bundle name."
+    return 1
+  fi
+  while IFS= read -r name; do
+    [[ -n "$name" ]] || continue
+    case "$name" in
+      skill-bill-skills-*.tar.gz)
+        printf '%s' "$name"
+        return 0
+        ;;
+    esac
+  done <<< "$names"
+  err "No skill-bill-skills-*.tar.gz asset found in release."
+  return 1
+}
+
+# Bootstrap PLUGIN_DIR from a GitHub release when SKILLS_DIR is absent (headless install).
+# When SKILLS_DIR already exists the local tree wins and this function is a no-op.
+# When it is absent: print an info line, resolve the bundle asset name, fetch and verify
+# the .tar.gz, extract into a subdir of PREBUILT_WORK_DIR, then re-point PLUGIN_DIR,
+# SKILLS_DIR, and PLATFORM_PACKS_DIR to the extracted root.
+bundle_bootstrap_if_needed() {
+  if [[ -d "$SKILLS_DIR" ]]; then
+    return 0
+  fi
+
+  info "SKILLS_DIR not found — fetching skills bundle from release."
+  check_prebuilt_dependencies || return 1
+  init_prebuilt_work_dir
+
+  local asset_name
+  if ! asset_name="$(resolve_skills_bundle_asset_name)"; then
+    err "Cannot proceed without a skills bundle."
+    return 1
+  fi
+
+  local asset_path
+  if ! asset_path="$(fetch_release_asset "$asset_name")"; then
+    err "Failed to fetch skills bundle: $asset_name"
+    return 1
+  fi
+
+  verify_sha256 "$asset_path" || return 1
+
+  local extract_dir
+  extract_dir="$PREBUILT_WORK_DIR/skills-bundle"
+  mkdir -p "$extract_dir"
+  tar -xzf "$asset_path" -C "$extract_dir"
+
+  if [[ -d "$extract_dir/skills" ]]; then
+    PLUGIN_DIR="$extract_dir"
+  else
+    local subdir
+    subdir="$(find "$extract_dir" -mindepth 2 -maxdepth 2 -type d -name skills -print 2>/dev/null | head -n1)"
+    if [[ -n "$subdir" ]]; then
+      PLUGIN_DIR="$(dirname "$subdir")"
+    else
+      err "Skills bundle layout is unrecognised: no skills/ directory found under $extract_dir"
+      return 1
+    fi
+  fi
+  SKILLS_DIR="$PLUGIN_DIR/skills"
+  PLATFORM_PACKS_DIR="$PLUGIN_DIR/platform-packs"
+
+  ok "Skills bundle extracted; PLUGIN_DIR set to: $PLUGIN_DIR"
+}
+
+# Wipe the three skill-state subdirectories when --clean was passed.
+# Runs after bundle_bootstrap_if_needed and before copy_in_authored_source.
+clean_install_state_if_requested() {
+  if [[ "$CLEAN_INSTALL" -ne 1 ]]; then
+    return 0
+  fi
+  if [[ -z "$SKILL_BILL_STATE_DIR" ]]; then
+    err "--clean: SKILL_BILL_STATE_DIR is empty; refusing to wipe."
+    return 1
+  fi
+  info "--clean: wiping prior skill state under $SKILL_BILL_STATE_DIR"
+  rm -rf \
+    "$SKILL_BILL_STATE_DIR/skills" \
+    "$SKILL_BILL_STATE_DIR/platform-packs" \
+    "$SKILL_BILL_STATE_DIR/orchestration"
+  ok "Prior skill state wiped."
 }
 
 # Resolve the prebuilt asset filenames for this host by SUFFIX matching, not by
@@ -840,38 +949,54 @@ reconcile_and_commit_authored_source() {
     for p in $RECONCILE_CONFLICT_PATHS; do
       warn "  conflict: $p"
     done
-    local answer=""
     # TEST-ONLY SEAM: SKILL_BILL_RECONCILE_CONFLICT_CHOICE supplies the conflict decision
     # (y/n) and bypasses ONLY the TTY check, so integration tests can drive the
     # y branch under piped stdin (where [[ ! -t 0 ]] would otherwise abort). When the
-    # env var is UNSET/empty, production behavior is byte-for-byte unchanged: TTY -> prompt,
-    # no-TTY -> abort. Mirrors the SKILL_BILL_SKIP_PREINSTALL_UNINSTALL opt-out style.
+    # env var is UNSET/empty, production behavior is unchanged: TTY -> prompt,
+    # no-TTY -> keep local. Mirrors the SKILL_BILL_SKIP_PREINSTALL_UNINSTALL opt-out style.
     if [[ -n "${SKILL_BILL_RECONCILE_CONFLICT_CHOICE:-}" ]]; then
-      answer="$SKILL_BILL_RECONCILE_CONFLICT_CHOICE"
+      local answer="$SKILL_BILL_RECONCILE_CONFLICT_CHOICE"
       info "Using SKILL_BILL_RECONCILE_CONFLICT_CHOICE=$answer for the conflict decision (test seam)."
+      case "${answer,,}" in
+        yes|y)
+          info "Accepting upstream for conflicting skills; your local edits will be overwritten."
+          accept_conflicts=1
+          ;;
+        *)
+          err "Aborting the whole install at your request; nothing was changed."
+          discard_authored_candidates
+          return 1
+          ;;
+      esac
+    elif [[ "$PREFER_UPSTREAM" -eq 1 ]]; then
+      info "Accepting upstream for conflicting skills (--prefer-upstream); your local edits will be overwritten."
+      accept_conflicts=1
     elif [[ ! -t 0 ]]; then
-      err "Conflicting skills changed both upstream and locally, and no TTY is attached to prompt."
-      err "Aborting the whole install; nothing was changed. Resolve the conflicts under"
-      err "$SKILL_BILL_STATE_DIR/skills and re-run ./install.sh from a terminal to choose."
-      discard_authored_candidates
-      return 1
+      warn "Aborting: no TTY is attached to prompt for conflict resolution. Your local copies were not changed."
+      local p
+      for p in $RECONCILE_CONFLICT_PATHS; do
+        warn "  kept local: $p"
+      done
+      warn "To take the upstream version instead, re-run with --prefer-upstream:"
+      warn "  curl -fsSL https://raw.githubusercontent.com/Sermilion/skill-bill/main/install.sh | bash -s -- --prefer-upstream"
     else
       printf '%s' "Overwrite your local copy with the upstream version for the conflicting skills? [y/n]: "
+      local answer=""
       if ! read -r answer; then
         answer="n"
       fi
+      case "${answer,,}" in
+        yes|y)
+          info "Accepting upstream for conflicting skills; your local edits will be overwritten."
+          accept_conflicts=1
+          ;;
+        *)
+          err "Aborting the whole install at your request; nothing was changed."
+          discard_authored_candidates
+          return 1
+          ;;
+      esac
     fi
-    case "${answer,,}" in
-      yes|y)
-        info "Accepting upstream for conflicting skills; your local edits will be overwritten."
-        accept_conflicts=1
-        ;;
-      *)
-        err "Aborting the whole install at your request; nothing was changed."
-        discard_authored_candidates
-        return 1
-        ;;
-    esac
   fi
 
   # Decision is accept / no-conflict. Place the orchestration tree (shared, non-skill
@@ -2213,6 +2338,8 @@ run_full_install() {
     build_platform_packages
     replay_last_install_selection
   fi
+  bundle_bootstrap_if_needed
+  clean_install_state_if_requested
   run_pre_install_uninstall
   copy_in_authored_source
   install_runtime_distributions

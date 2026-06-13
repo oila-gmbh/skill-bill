@@ -1,5 +1,13 @@
 # .github/workflows — Boundary History
 
+## [2026-06-13] SKILL-82 subtask 1 skills-bundle-step
+Areas: .github/workflows/release.yml
+- Bundle step guarded by `if: matrix.host_token == 'linux-x64'` on the build job; tars skills/, platform-packs/, orchestration/, uninstall.sh into skill-bill-skills-${RELEASE_VERSION}.tar.gz + .sha256 (sha256sum available on ubuntu-latest). reusable
+- Artifact name `release-assets-skills` is auto-covered by publish job's `pattern: release-assets-*` download — any new build-leg artifact named `release-assets-*` is picked up without changing the publish job. reusable
+- `RELEASE_VERSION` is set via `$GITHUB_ENV` in 'Set release version' step; available as env var in subsequent steps on the same runner leg. reusable
+Feature flag: N/A
+Acceptance criteria: 2/4 parent ACs (CI pipeline only; bootstrap in subtask 2, smoke test in subtask 3)
+
 ## [2026-05-29] ci-release-pipeline (SKILL-55 subtask 3)
 Areas: .github/workflows, RELEASING.md, .github/actionlint.yaml
 - `release.yml` now runs a `build` matrix (fail-fast:false) that produces per-OS artifacts on host-matched runners, then a `publish` job (`needs: build`) attaches them. jlink/jpackage cannot cross-compile, so one OS per matching runner.
