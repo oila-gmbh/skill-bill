@@ -24,6 +24,19 @@ class RepoValidationRuntimeTest {
   }
 
   @Test
+  fun `release refs accept bare version tags without v prefix`() {
+    val stable = RepoValidationRuntime.parseReleaseRef("0.2.0")
+    assertEquals("0.2.0", stable.tag)
+    assertEquals("0.2.0", stable.version)
+    assertFalse(stable.prerelease)
+
+    val prerelease = RepoValidationRuntime.parseReleaseRef("refs/tags/1.0.0-rc.1")
+    assertEquals("1.0.0-rc.1", prerelease.tag)
+    assertEquals("1.0.0-rc.1", prerelease.version)
+    assertTrue(prerelease.prerelease)
+  }
+
+  @Test
   fun `release refs reject non semver tags`() {
     val error = kotlin.runCatching {
       RepoValidationRuntime.parseReleaseRef("release-1.0")

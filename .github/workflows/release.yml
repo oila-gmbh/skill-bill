@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - "v*.*.*"
+      - "[0-9]*.*.*"
   # AC6: a maintainer can stage a real, downloadable asset set for subtask 4
   # testing without cutting a tag. The staging_version input names the assets and
   # the (pre)release; see RELEASING.md "Staging a release for downstream testing".
@@ -75,6 +76,15 @@ jobs:
           distribution: temurin
           java-version: "17"
           cache: gradle
+
+      # Derive RELEASE_VERSION from the pushed tag (v0.2.0 → 0.2.0) or the
+      # staging_version input (workflow_dispatch). Gradle reads this env var in
+      # build.gradle.kts so every artifact name embeds the correct version.
+      - name: Set release version
+        shell: bash
+        run: |
+          raw="${{ github.event_name == 'workflow_dispatch' && inputs.staging_version || github.ref_name }}"
+          echo "RELEASE_VERSION=${raw#v}" >> "$GITHUB_ENV"
 
       # Linux desktop installers shell out to native packaging tools: .deb needs
       # dpkg-deb (+ fakeroot), .rpm needs rpmbuild. Without them jpackage fails
