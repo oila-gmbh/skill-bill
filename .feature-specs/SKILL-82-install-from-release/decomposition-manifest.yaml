@@ -21,7 +21,7 @@ subtasks:
   commit_sha: null
   workflow_id: "wfl-20260613-072735-6c8z"
   blocked_reason: null
-  last_resumable_step: "commit_push"
+  last_resumable_step: "finish"
   linear_issue_id: null
   dependencies: []
 - id: 2
@@ -29,7 +29,7 @@ subtasks:
   spec_path: ".feature-specs/SKILL-82-install-from-release/spec_subtask_2_install-bootstrap-and-clean.md"
   status: "complete"
   branch: "feat/SKILL-82-install-from-release"
-  commit_sha: null
+  commit_sha: "426f3812f3fe17691d3dec1cf486f5870030b101"
   workflow_id: "wfl-20260613-074729-z77j"
   blocked_reason: null
   last_resumable_step: "commit_push"
