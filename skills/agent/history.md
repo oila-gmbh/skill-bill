@@ -1,3 +1,15 @@
+## [2026-06-13] prose-goal-subtask-isolation
+Areas: skills/bill-feature-goal, skills/bill-feature-task-prose, skills/bill-feature-task-subtask-runner, scripts
+- Goal orchestrator (bill-feature-goal mode:prose) stays thin: holds only decomposition manifest + per-subtask terminal outcomes; no phase artifacts accumulated
+- Subtask execution delegated to Level-1 Agent-tool spawn (bill-feature-task-subtask-runner) with self-contained briefing; continuation via feature_implement_workflow_continue with suppress_pr=true
+- Terminal outcome verified via feature_implement_workflow_get after each subtask-agent returns; in-session return value is signal only
+- Stop-loudly contract: on subtask failure, orchestrator surfaces subtask ID, blocked_reason, workflow ID, and last_resumable_step; does not advance
+- New native agent entry bill-feature-task-subtask-runner in skills/bill-feature-task-prose/native-agents/agents.yaml (reusable)
+- New skill skills/bill-feature-task-subtask-runner/content.md — Level-1 subtask agent; required by validateAgentConfigs for bill-* references in prose .md files (reusable)
+- 3-level Agent nesting verified via scripts/agent_nesting_smoke_test.sh go/no-go gate (pattern reusable for nesting depth validation)
+Feature flag: N/A
+Acceptance criteria: 10/10 implemented
+
 ## [2026-06-08] decomposition-manifest-schema-in-skills
 Areas: skills/bill-feature-spec, skills/bill-feature-task-prose
 - Added v0.3 manifest YAML template to bill-feature-spec decomposed Output Rules; agents fill it directly from planning subagent RESULT
