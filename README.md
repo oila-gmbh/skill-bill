@@ -14,7 +14,7 @@
 
 **Built with itself.** Skill Bill's own features ship through this pipeline. [#177](https://github.com/Sermilion/skill-bill/pull/177) was planned, implemented, reviewed, and written up by the same process described here — click through and judge the actual output, not a demo.
 
-**Who it's for:** developers and teams who want their AI agent to implement whole features with the rigor of a real engineering process — planned, reviewed, audited, and quality-gated — instead of one-off code they have to babysit and re-review. You still review the final PR; the point is that what reaches you was already planned, reviewed, and checked, not dumped on you raw. Probably overkill if you only want quick single-file completions. Pre-1.0 and solo-maintained — see the [Roadmap](docs/ROADMAP.md).
+**Who it's for:** developers and teams who want their AI agent to implement whole features with the rigor of a real engineering process — planned, reviewed, audited, and quality-gated — instead of one-off code they have to babysit and re-review. You still review the final PR; the point is that what reaches you was already planned, reviewed, and checked, not dumped on you raw. Probably overkill if you only want quick single-file completions. Pre-1.0 and solo-maintained.
 
 ## Quickstart (≈60 seconds)
 
@@ -111,7 +111,6 @@ Skill Bill ships complete Kotlin/KMP packs — the stack-specific intelligence t
 - [Capability Deep-dive](docs/capabilities.md): the full system — one-shot install, durable workflows, platform packs, decomposition, Desktop UI, telemetry, overrides, memory, and governance
 - [Skill Source And Generation Model](docs/skill-source-generation.md): `content.md` vs generated `SKILL.md`, support pointers, install staging, and native-agent generation
 - [Review Telemetry](docs/review-telemetry.md): telemetry contract, learnings, local DB usage, and remote proxy stats
-- [Roadmap](docs/ROADMAP.md): product direction, priorities, and strategic framing
 
 ## License
 

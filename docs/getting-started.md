@@ -496,6 +496,5 @@ scripts/validate_agent_configs
 - [Getting Started for Teams](getting-started-for-teams.md)
 - [Skill Source And Generation Model](skill-source-generation.md)
 - [Review Telemetry](review-telemetry.md)
-- [Roadmap](ROADMAP.md)
 - `orchestration/shell-content-contract/PLAYBOOK.md`
 - `orchestration/workflow-contract/PLAYBOOK.md`
