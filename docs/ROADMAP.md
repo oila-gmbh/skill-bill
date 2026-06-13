@@ -2,7 +2,7 @@
 
 ## What Skill Bill is
 
-Skill Bill can look like a pile of prompt files from the outside. It is not: the repository is now mostly application code — a layered Kotlin runtime (CLI, MCP server, durable workflow state, telemetry, install primitives, and a desktop app) sits behind the authored skills and turns them into an enforced engineering process.
+Skill Bill is a layered Kotlin runtime — CLI, MCP server, durable workflow state, telemetry, install primitives, and a desktop app — working together with a set of authored skills. The runtime makes those skills run as an enforced engineering process rather than prompts an agent can follow or skip.
 
 **The product is not any one of those pieces. It is what they produce together:**
 
