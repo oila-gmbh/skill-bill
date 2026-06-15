@@ -70,7 +70,7 @@ class McpRuntimeTest {
       result,
       "<DB_PATH>" to tempDir.resolve("metrics.db").toAbsolutePath().normalize().toString(),
     )
-    assertEquals("0.1.0", result["version"])
+    assertEquals("0.3.0-SNAPSHOT", result["version"])
     assertEquals(tempDir.resolve("metrics.db").toAbsolutePath().normalize().toString(), result["db_path"])
     assertFalse(result["db_exists"] as Boolean)
     assertEquals(false, result["telemetry_enabled"])

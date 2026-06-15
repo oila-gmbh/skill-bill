@@ -56,6 +56,7 @@ class UpdateCheckService(
   )
 
   private fun updateStatus(installed: Semver, latest: Semver): UpdateCheckStatus = when {
+    installed.isSnapshotBuildOf(latest) -> UpdateCheckStatus.AHEAD_OF_RELEASE
     installed < latest -> UpdateCheckStatus.UPDATE_AVAILABLE
     installed > latest -> UpdateCheckStatus.AHEAD_OF_RELEASE
     else -> UpdateCheckStatus.UP_TO_DATE
@@ -153,6 +154,12 @@ class UpdateCheckService(
     private val HTTP_SUCCESS_RANGE = 200..299
   }
 }
+
+private fun Semver.isSnapshotBuildOf(other: Semver): Boolean = major == other.major &&
+  minor == other.minor &&
+  patch == other.patch &&
+  prerelease.any { it.equals("snapshot", ignoreCase = true) } &&
+  !other.isPrerelease
 
 private fun errorMessage(error: Exception): String =
   error.message.orEmpty().ifBlank { error::class.simpleName.orEmpty() }

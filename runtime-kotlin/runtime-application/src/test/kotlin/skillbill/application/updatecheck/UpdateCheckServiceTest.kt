@@ -19,31 +19,35 @@ import kotlin.test.assertNull
 class UpdateCheckServiceTest {
   @Test
   fun `maps update available up to date and ahead of release`() {
-    val update = service(responseBody = releases("v0.2.0")).check(includePrereleases = false)
+    val update = service(responseBody = releases("v0.4.0")).check(includePrereleases = false)
     assertEquals(UpdateCheckStatus.UPDATE_AVAILABLE, update.status)
-    assertEquals("0.1.0", update.installedVersion)
-    assertEquals("v0.2.0", update.latestVersion)
+    assertEquals("0.3.0-SNAPSHOT", update.installedVersion)
+    assertEquals("v0.4.0", update.latestVersion)
     assertEquals(RECOMMENDED_INSTALL_COMMAND, update.recommendedInstallCommand)
 
-    val upToDate = service(responseBody = releases("v0.1.0")).check(includePrereleases = false)
+    val upToDate = service(responseBody = releases("v0.3.0-SNAPSHOT")).check(includePrereleases = true)
     assertEquals(UpdateCheckStatus.UP_TO_DATE, upToDate.status)
     assertNull(upToDate.recommendedInstallCommand)
 
-    val ahead = service(responseBody = releases("v0.0.9")).check(includePrereleases = false)
+    val sameBaseRelease = service(responseBody = releases("v0.3.0")).check(includePrereleases = false)
+    assertEquals(UpdateCheckStatus.AHEAD_OF_RELEASE, sameBaseRelease.status)
+    assertNull(sameBaseRelease.recommendedInstallCommand)
+
+    val ahead = service(responseBody = releases("v0.2.0")).check(includePrereleases = false)
     assertEquals(UpdateCheckStatus.AHEAD_OF_RELEASE, ahead.status)
   }
 
   @Test
   fun `selects stable releases by default and prereleases when requested`() {
-    val body = releases("v0.2.0-rc.1", "v0.1.0")
+    val body = releases("v0.4.0-rc.1", "v0.3.0")
 
     val stable = service(responseBody = body).check(includePrereleases = false)
-    assertEquals(UpdateCheckStatus.UP_TO_DATE, stable.status)
-    assertEquals("v0.1.0", stable.latestVersion)
+    assertEquals(UpdateCheckStatus.AHEAD_OF_RELEASE, stable.status)
+    assertEquals("v0.3.0", stable.latestVersion)
 
     val prerelease = service(responseBody = body).check(includePrereleases = true)
     assertEquals(UpdateCheckStatus.UPDATE_AVAILABLE, prerelease.status)
-    assertEquals("v0.2.0-rc.1", prerelease.latestVersion)
+    assertEquals("v0.4.0-rc.1", prerelease.latestVersion)
   }
 
   @Test

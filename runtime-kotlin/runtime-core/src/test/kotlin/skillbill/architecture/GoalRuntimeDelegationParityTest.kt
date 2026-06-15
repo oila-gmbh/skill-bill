@@ -25,7 +25,10 @@ class GoalRuntimeDelegationParityTest {
     val normalizedRepo = normalizeGoalSemantics(repoOutput)
     val normalizedInstalled = normalizeGoalSemantics(installedOutput)
     assertEquals(normalizedRepo, normalizedInstalled)
-    assertContains(normalizedRepo, "goal SKILL-901: runtime executable=<runtime> version=0.1.0 build_id=0.1.0")
+    assertContains(
+      normalizedRepo,
+      "goal SKILL-901: runtime executable=<runtime> version=0.3.0-SNAPSHOT build_id=0.3.0-SNAPSHOT",
+    )
     assertContains(
       normalizedRepo,
       "goal SKILL-901: heartbeat subtask=1 step=implement liveness=durable_progress",
@@ -51,7 +54,7 @@ class GoalRuntimeDelegationParityTest {
       |  exit 2
       |fi
       |runtime_executable="${'$'}{SKILL_BILL_RUNTIME_EXECUTABLE:-${'$'}0}"
-      |echo "goal SKILL-901: runtime executable=${'$'}runtime_executable version=0.1.0 build_id=0.1.0"
+      |echo "goal SKILL-901: runtime executable=${'$'}runtime_executable version=0.3.0-SNAPSHOT build_id=0.3.0-SNAPSHOT"
       |echo "goal SKILL-901: heartbeat subtask=1 step=implement liveness=durable_progress"
       |echo "goal SKILL-901: completion confirmed complete=1 pending=0 blocked=0 pr_status=opened"
       |echo "goal: SKILL-901"

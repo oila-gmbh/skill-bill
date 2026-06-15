@@ -14,6 +14,7 @@ object CliRuntime {
       CliRunState().apply {
         stdinText = context.stdinText
         environment = context.environment
+        externalCommandRunner = context.externalCommandRunner
         userHome = context.userHome
         liveStdout = context.liveStdout
         liveStderr = context.liveStderr

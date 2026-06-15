@@ -431,7 +431,7 @@ class McpStdioServerTest {
 
     assertEquals(false, result["isError"])
     assertEquals("text", textContent["type"])
-    assertEquals("0.1.0", payload["version"])
+    assertEquals("0.3.0-SNAPSHOT", payload["version"])
   }
 
   @Test

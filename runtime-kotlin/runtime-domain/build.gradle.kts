@@ -1,6 +1,16 @@
+import org.gradle.language.jvm.tasks.ProcessResources
+
 plugins {
   id("skillbill.jvm-library")
   id("skillbill.quality")
+}
+
+tasks.named<ProcessResources>("processResources") {
+  val skillBillVersion = project.version.toString()
+  inputs.property("skillBillVersion", skillBillVersion)
+  filesMatching("skillbill/version.properties") {
+    expand("skillBillVersion" to skillBillVersion)
+  }
 }
 
 dependencies {

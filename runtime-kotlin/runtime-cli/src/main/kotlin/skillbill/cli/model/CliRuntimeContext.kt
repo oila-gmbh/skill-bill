@@ -1,5 +1,7 @@
 package skillbill.cli.model
 
+import skillbill.cli.core.ExternalCommandRunner
+import skillbill.cli.core.ProcessExternalCommandRunner
 import skillbill.model.RuntimeContext
 import skillbill.ports.agentrun.AgentRunLauncher
 import skillbill.ports.goalrunner.GoalPullRequestPort
@@ -13,6 +15,7 @@ data class CliRuntimeContext(
   val dbPathOverride: String? = null,
   val stdinText: String? = null,
   val environment: Map<String, String> = System.getenv(),
+  val externalCommandRunner: ExternalCommandRunner = ProcessExternalCommandRunner,
   val userHome: Path = Path.of(System.getProperty("user.home")),
   val requester: HttpRequester = UnconfiguredHttpRequester,
   val workflowGitOperations: WorkflowGitOperations = NoopWorkflowGitOperations,

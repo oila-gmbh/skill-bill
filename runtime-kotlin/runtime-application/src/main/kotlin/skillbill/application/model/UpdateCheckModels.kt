@@ -1,7 +1,7 @@
 package skillbill.application.model
 
 const val RECOMMENDED_INSTALL_COMMAND: String =
-  "curl -fsSL https://raw.githubusercontent.com/Sermilion/skill-bill/main/install.sh | bash"
+  "skill-bill update"
 
 enum class UpdateCheckStatus(val wireName: String) {
   UP_TO_DATE("up_to_date"),
