@@ -35,6 +35,8 @@ bash install.sh
 ```bash
 skill-bill version
 skill-bill doctor
+skill-bill update-check
+skill-bill update
 ```
 
 > If `skill-bill` is **not found**, the launcher directory (`~/.local/bin` by default) isn't on your `PATH`. Add it — `export PATH="$HOME/.local/bin:$PATH"` — and put that line in your shell's rc file (`~/.bashrc`, `~/.zshrc`, `~/.config/fish/config.fish`).

@@ -35,6 +35,8 @@ class InstallerShellDelegationTest {
     assertContains(installScript, "--reuse-last-selection")
     assertContains(installScript, "install replay-last-selection")
     assertContains(installScript, "SKILL_BILL_RUNTIME_EXECUTABLE=\"\$RUNTIME_CLI_BIN\"")
+    assertContains(installScript, "exec \"\\\$runtime_cli\" update \"\\\${passthrough[@]}\"")
+    assertFalse(installScript.contains("update_check_status"))
     // The Gradle desktop build is now gated behind --from-source: the helper and the
     // Gradle task must still exist (from-source coverage), but only run when
     // INSTALL_SOURCE=source. The prebuilt path fetches + extracts instead.
@@ -924,13 +926,64 @@ internal object InstallerShellFixtures {
     cliBin.toFile().setExecutable(true)
   }
 
-  // A no-op Gradle wrapper. The prebuilt path never calls it; the auto-fallback
-  // path does, and seedInstallerRuntime already left the build-dir runtime in
-  // place for build_kotlin_runtime_distributions to copy.
+  // A fake Gradle wrapper. The prebuilt path never calls it; the auto-fallback
+  // path does, and build_kotlin_runtime_distributions clears build/install before
+  // invoking installDist, so the fake must recreate runnable application images.
   fun seedFakeGradlew(repoRoot: Path) {
     val gradlew = repoRoot.resolve("runtime-kotlin/gradlew")
     Files.createDirectories(gradlew.parent)
-    Files.writeString(gradlew, "#!/usr/bin/env bash\nexit 0\n")
+    Files.writeString(
+      gradlew,
+      """
+      |#!/usr/bin/env bash
+      |set -euo pipefail
+      |root="${'$'}(cd "${'$'}(dirname "${'$'}0")" && pwd)"
+      |cli_bin="${'$'}root/runtime-cli/build/install/runtime-cli/bin/runtime-cli"
+      |mcp_bin="${'$'}root/runtime-mcp/build/install/runtime-mcp/bin/runtime-mcp"
+      |mkdir -p "${'$'}(dirname "${'$'}cli_bin")" "${'$'}(dirname "${'$'}mcp_bin")"
+      |cat > "${'$'}cli_bin" <<'RUNTIME_CLI'
+      |#!/usr/bin/env bash
+      |set -euo pipefail
+      |{
+      |  echo CALL
+      |  for arg in "${'$'}@"; do
+      |    printf 'ARG\t%s\n' "${'$'}arg"
+      |  done
+      |} >> "${'$'}{SKILL_BILL_TEST_RUNTIME_LOG:?}"
+      |home=""
+      |if [[ "${'$'}{1:-}" == "--home" ]]; then
+      |  home="${'$'}2"
+      |  shift 2
+      |fi
+      |if [[ "${'$'}{1:-}" == "install" && "${'$'}{2:-}" == "agent-path" ]]; then
+      |  printf '%s\n' "${'$'}home/agent-targets/${'$'}3"
+      |  exit 0
+      |fi
+      |if [[ "${'$'}{1:-}" == "install" && "${'$'}{2:-}" == "apply" ]]; then
+      |  exit 0
+      |fi
+      |if [[ "${'$'}{1:-}" == "install" && "${'$'}{2:-}" == "claude-roots" ]]; then
+      |  printf '%s\n' "${'$'}home/.claude"
+      |  exit 0
+      |fi
+      |if [[ "${'$'}{1:-}" == "install" && "${'$'}{2:-}" == "reconcile" ]]; then
+      |  printf 'reconcile_summary: applied=false has_conflicts=false conflict_count=0 baseline_refreshed=false installed_count=0\n'
+      |  exit 0
+      |fi
+      |case "${'$'}{1:-} ${'$'}{2:-}" in
+      |  "install cleanup-agent-target"|"install unlink-codex-agents"|"install unlink-claude-agents"|"install unlink-opencode-agents"|"install unlink-junie-agents"|"install unregister-mcp")
+      |    exit 0
+      |    ;;
+      |esac
+      |exit 2
+      |RUNTIME_CLI
+      |cat > "${'$'}mcp_bin" <<'RUNTIME_MCP'
+      |#!/usr/bin/env bash
+      |exit 0
+      |RUNTIME_MCP
+      |chmod +x "${'$'}cli_bin" "${'$'}mcp_bin"
+      """.trimMargin(),
+    )
     gradlew.toFile().setExecutable(true)
   }
 

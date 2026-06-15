@@ -10,7 +10,7 @@ plugins {
 }
 
 group = "dev.skillbill"
-version = providers.environmentVariable("RELEASE_VERSION").getOrElse("0.1.0-SNAPSHOT")
+version = providers.environmentVariable("RELEASE_VERSION").getOrElse("0.3.0-SNAPSHOT")
 
 subprojects {
   group = rootProject.group

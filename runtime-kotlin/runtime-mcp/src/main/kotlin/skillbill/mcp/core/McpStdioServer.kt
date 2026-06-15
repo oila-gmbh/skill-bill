@@ -2,6 +2,7 @@ package skillbill.mcp.core
 
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import skillbill.SkillBillVersion
 import skillbill.contracts.JsonSupport
 import skillbill.error.ShellContentContractException
 
@@ -36,7 +37,7 @@ object McpStdioServer {
     ),
     "serverInfo" to mapOf(
       "name" to "skill-bill",
-      "version" to "0.1.0",
+      "version" to SkillBillVersion.VALUE,
     ),
   )
 

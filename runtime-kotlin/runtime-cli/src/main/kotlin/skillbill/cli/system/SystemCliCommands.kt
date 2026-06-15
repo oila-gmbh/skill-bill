@@ -13,6 +13,7 @@ import skillbill.application.system.SystemService
 import skillbill.application.updatecheck.UpdateCheckService
 import skillbill.cli.core.CliRunState
 import skillbill.cli.core.DocumentedCliCommand
+import skillbill.cli.core.ExternalCommand
 import skillbill.cli.core.formatOption
 import skillbill.cli.learning.toPayload
 import skillbill.cli.model.CliExecutionResult
@@ -48,6 +49,141 @@ class UpdateCheckCommand(
       state.completeText(result.toText(), result.toPayload(), exitCode = 0)
     }
   }
+}
+
+@Inject
+class UpdateCommand(
+  private val updateCheckService: UpdateCheckService,
+  private val state: CliRunState,
+) : DocumentedCliCommand("update", "Update Skill Bill by running the official installer.") {
+  private val release by option("--release", help = "Install a specific release tag instead of latest stable.")
+  private val withDesktopApp by option("--with-desktop-app", help = "Install the optional desktop app.")
+    .flag(default = false)
+  private val noDesktopApp by option("--no-desktop-app", help = "Skip desktop app installation.")
+    .flag(default = false)
+  private val desktopAppDir by option("--desktop-app-dir", help = "Override the desktop app install directory.")
+  private val preferUpstream by option(
+    "--prefer-upstream",
+    help = "Overwrite local skill conflicts with the upstream version.",
+  ).flag(default = false)
+  private val clean by option(
+    "--clean",
+    help = "Wipe installed skills, platform packs, and orchestration before staging the candidate tree.",
+  ).flag(default = false)
+  private val dryRun by option("--dry-run", help = "Print the installer command without running it.")
+    .flag(default = false)
+  private val format by formatOption()
+
+  override fun run() {
+    require(!(withDesktopApp && noDesktopApp)) {
+      "--with-desktop-app and --no-desktop-app cannot be used together."
+    }
+    val plan = updatePlan()
+    if (dryRun) {
+      state.complete(plan.toPayload("dry_run"), format)
+      return
+    }
+    if (release == null) {
+      val updateCheck = updateCheckService.check(includePrereleases = false)
+      if (updateCheck.status != UpdateCheckStatus.UPDATE_AVAILABLE) {
+        completeSkippedUpdate(updateCheck, plan)
+        return
+      }
+    }
+    val result = runInstaller(plan.command)
+    val payload = plan.toPayload(if (result.exitCode == 0) "completed" else "failed") +
+      ("exit_code" to result.exitCode) +
+      ("installer_output" to result.output)
+    if (format.wireName == "json") {
+      state.complete(payload, format, exitCode = result.exitCode)
+    } else {
+      state.completeText(result.output, payload, exitCode = result.exitCode)
+    }
+  }
+
+  private fun updatePlan(): UpdateCommandPlan {
+    val installerArgs = buildList {
+      add("--reuse-last-selection")
+      release?.let {
+        add("--release")
+        add(it)
+      }
+      if (withDesktopApp) add("--with-desktop-app")
+      if (noDesktopApp) add("--no-desktop-app")
+      desktopAppDir?.let {
+        add("--desktop-app-dir")
+        add(it)
+      }
+      if (preferUpstream) add("--prefer-upstream")
+      if (clean) add("--clean")
+    }
+    val command = buildString {
+      append("curl -fsSL ")
+      append(INSTALL_SCRIPT_URL)
+      append(" | bash -s --")
+      installerArgs.forEach { arg ->
+        append(' ')
+        append(shellQuote(arg))
+      }
+    }
+    return UpdateCommandPlan(command = command, installerArgs = installerArgs)
+  }
+
+  private fun runInstaller(command: String): InstallerRunResult {
+    val environment = state.environment.toMutableMap().apply {
+      put("HOME", state.userHome.toString())
+    }
+    val result = state.externalCommandRunner.run(
+      ExternalCommand(
+        executable = "bash",
+        arguments = listOf("-c", command),
+        environment = environment,
+      ),
+    )
+    return InstallerRunResult(exitCode = result.exitCode, output = result.output)
+  }
+
+  private fun completeSkippedUpdate(updateCheck: UpdateCheckResult, plan: UpdateCommandPlan) {
+    val exitCode = if (updateCheck.status == UpdateCheckStatus.UNKNOWN) 1 else 0
+    val status = if (updateCheck.status == UpdateCheckStatus.UNKNOWN) "check_failed" else "skipped"
+    val payload = plan.toPayload(status) +
+      ("update_check" to updateCheck.toPayload()) +
+      ("reason" to updateSkipReason(updateCheck))
+    if (format.wireName == "json") {
+      state.complete(payload, format, exitCode = exitCode)
+    } else {
+      state.completeText(updateSkipText(updateCheck), payload, exitCode = exitCode)
+    }
+  }
+
+  private fun UpdateCommandPlan.toPayload(status: String): Map<String, Any?> = linkedMapOf(
+    "status" to status,
+    "command" to command,
+    "installer_args" to installerArgs,
+  )
+
+  private data class UpdateCommandPlan(
+    val command: String,
+    val installerArgs: List<String>,
+  )
+
+  private data class InstallerRunResult(
+    val exitCode: Int,
+    val output: String,
+  )
+}
+
+private fun updateSkipReason(updateCheck: UpdateCheckResult): String = when (updateCheck.status) {
+  UpdateCheckStatus.UP_TO_DATE -> "installed version is already the latest release"
+  UpdateCheckStatus.AHEAD_OF_RELEASE -> "installed version is newer than the latest release"
+  UpdateCheckStatus.UNKNOWN -> "could not determine the latest release"
+  UpdateCheckStatus.UPDATE_AVAILABLE -> "update is available"
+}
+
+private fun updateSkipText(updateCheck: UpdateCheckResult): String = buildString {
+  append(updateCheck.toText())
+  appendLine("update_status: ${if (updateCheck.status == UpdateCheckStatus.UNKNOWN) "check_failed" else "skipped"}")
+  appendLine("reason: ${updateSkipReason(updateCheck)}")
 }
 
 @Inject
@@ -127,3 +263,13 @@ private fun UpdateCheckResult.toPayload(): Map<String, Any?> = linkedMapOf(
   "recommended_install_command" to recommendedInstallCommand,
   "reason" to reason,
 )
+
+private const val INSTALL_SCRIPT_URL = "https://raw.githubusercontent.com/Sermilion/skill-bill/main/install.sh"
+
+private val SHELL_SAFE_PATTERN = Regex("[A-Za-z0-9_./:=@%+-]+")
+
+private fun shellQuote(value: String): String = if (SHELL_SAFE_PATTERN.matches(value)) {
+  value
+} else {
+  "'${value.replace("'", "'\"'\"'")}'"
+}

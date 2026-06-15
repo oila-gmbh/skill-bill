@@ -2,6 +2,9 @@ package skillbill.cli
 
 import skillbill.SAMPLE_REVIEW
 import skillbill.cli.core.CliRuntime
+import skillbill.cli.core.ExternalCommand
+import skillbill.cli.core.ExternalCommandResult
+import skillbill.cli.core.ExternalCommandRunner
 import skillbill.cli.model.CliRuntimeContext
 import skillbill.contracts.JsonSupport
 import skillbill.db.core.DatabaseRuntime
@@ -362,12 +365,12 @@ class CliRuntimeTest {
       )
 
     val versionResult = CliRuntime.run(listOf("version", "--format", "json"), context)
-    assertEquals("0.1.0", decodeJsonObject(versionResult.stdout)["version"])
+    assertEquals("0.3.0-SNAPSHOT", decodeJsonObject(versionResult.stdout)["version"])
 
     val doctorResult =
       CliRuntime.run(listOf("--db", dbPath.toString(), "doctor", "--format", "json"), context)
     val doctorPayload = decodeJsonObject(doctorResult.stdout)
-    assertEquals("0.1.0", doctorPayload["version"])
+    assertEquals("0.3.0-SNAPSHOT", doctorPayload["version"])
     assertEquals(dbPath.toAbsolutePath().normalize().toString(), doctorPayload["db_path"])
     assertFalse(doctorPayload["db_exists"] as Boolean)
     assertEquals(true, doctorPayload["telemetry_enabled"])
@@ -706,8 +709,8 @@ class CliRuntimeTest {
 
     assertEquals(0, text.exitCode, text.stdout)
     assertContains(text.stdout, "status: update_available")
-    assertContains(text.stdout, "installed_version: 0.1.0")
-    assertContains(text.stdout, "latest_version: v0.2.0")
+    assertContains(text.stdout, "installed_version: 0.3.0-SNAPSHOT")
+    assertContains(text.stdout, "latest_version: v0.4.0")
     assertContains(text.stdout, "recommended_install_command: $EXPECTED_INSTALL_COMMAND")
 
     val json = CliRuntime.run(listOf("update-check", "--format", "json"), context)
@@ -715,25 +718,168 @@ class CliRuntimeTest {
 
     assertEquals(0, json.exitCode, json.stdout)
     assertEquals("update_available", payload["status"])
-    assertEquals("0.1.0", payload["installed_version"])
-    assertEquals("v0.2.0", payload["latest_version"])
-    assertEquals("https://github.com/Sermilion/skill-bill/releases/tag/v0.2.0", payload["release_url"])
+    assertEquals("0.3.0-SNAPSHOT", payload["installed_version"])
+    assertEquals("v0.4.0", payload["latest_version"])
+    assertEquals("https://github.com/Sermilion/skill-bill/releases/tag/v0.4.0", payload["release_url"])
     assertEquals(2, capturedRequests.size)
     assertEquals("GET", capturedRequests.first()["method"])
     assertEquals("skill-bill-update-check", (capturedRequests.first()["headers"] as Map<*, *>)["User-Agent"])
   }
 
   @Test
+  fun `update dry-run prints installer command with reuse last selection by default`() {
+    val text = CliRuntime.run(listOf("update", "--dry-run"))
+
+    assertEquals(0, text.exitCode, text.stdout)
+    assertContains(text.stdout, "status: dry_run")
+    assertContains(text.stdout, "command: $EXPECTED_UPDATE_COMMAND")
+  }
+
+  @Test
+  fun `update dry-run json includes composed installer args`() {
+    val json = CliRuntime.run(
+      listOf(
+        "update",
+        "--dry-run",
+        "--format",
+        "json",
+        "--release",
+        "v0.2.0",
+        "--prefer-upstream",
+        "--clean",
+        "--no-desktop-app",
+      ),
+    )
+    val payload = decodeJsonObject(json.stdout)
+
+    assertEquals(0, json.exitCode, json.stdout)
+    assertEquals("dry_run", payload["status"])
+    assertEquals(
+      "$EXPECTED_UPDATE_COMMAND --release v0.2.0 --no-desktop-app --prefer-upstream --clean",
+      payload["command"],
+    )
+    assertEquals(
+      listOf("--reuse-last-selection", "--release", "v0.2.0", "--no-desktop-app", "--prefer-upstream", "--clean"),
+      payload["installer_args"],
+    )
+  }
+
+  @Test
+  fun `update dry-run json escapes shell-quoted command arguments`() {
+    val desktopAppDir = "dir\"\\with quote"
+    val json = CliRuntime.run(
+      listOf(
+        "update",
+        "--dry-run",
+        "--format",
+        "json",
+        "--desktop-app-dir",
+        desktopAppDir,
+      ),
+    )
+    val payload = decodeJsonObject(json.stdout)
+
+    assertEquals(0, json.exitCode, json.stdout)
+    assertEquals("dry_run", payload["status"])
+    assertEquals("$EXPECTED_UPDATE_COMMAND --desktop-app-dir 'dir\"\\with quote'", payload["command"])
+    assertEquals(listOf("--reuse-last-selection", "--desktop-app-dir", desktopAppDir), payload["installer_args"])
+  }
+
+  @Test
+  fun `update runs installer with selected home and configured environment`() {
+    val home = Files.createTempDirectory("skillbill-update-home")
+    val runner = CapturingExternalCommandRunner(ExternalCommandResult(exitCode = 0, output = "installer ok\n"))
+    val result = CliRuntime.run(
+      listOf(
+        "--home",
+        home.toString(),
+        "update",
+        "--release",
+        "v0.4.0",
+        "--no-desktop-app",
+        "--format",
+        "json",
+      ),
+      CliRuntimeContext(
+        environment = mapOf("HOME" to "/wrong-home", "PATH" to "/test/bin"),
+        externalCommandRunner = runner,
+      ),
+    )
+    val payload = decodeJsonObject(result.stdout)
+    val command = runner.commands.single()
+
+    assertEquals(0, result.exitCode, result.stdout)
+    assertEquals("completed", payload["status"])
+    assertEquals("installer ok\n", payload["installer_output"])
+    assertEquals("bash", command.executable)
+    assertEquals(
+      listOf("-c", "$EXPECTED_UPDATE_COMMAND --release v0.4.0 --no-desktop-app"),
+      command.arguments,
+    )
+    assertEquals(home.toString(), command.environment["HOME"])
+    assertEquals("/test/bin", command.environment["PATH"])
+  }
+
+  @Test
+  fun `update propagates installer failure exit code and output`() {
+    val capturedRequests = mutableListOf<Map<String, Any?>>()
+    val runner = CapturingExternalCommandRunner(ExternalCommandResult(exitCode = 7, output = "installer failed\n"))
+    val result = CliRuntime.run(
+      listOf("update", "--format", "json"),
+      CliRuntimeContext(
+        requester = updateCheckRequester(capturedRequests),
+        externalCommandRunner = runner,
+      ),
+    )
+    val payload = decodeJsonObject(result.stdout)
+
+    assertEquals(7, result.exitCode, result.stdout)
+    assertEquals("failed", payload["status"])
+    assertEquals(7, payload["exit_code"])
+    assertEquals("installer failed\n", payload["installer_output"])
+  }
+
+  @Test
+  fun `update skips installer when installed version is ahead of latest release`() {
+    val capturedRequests = mutableListOf<Map<String, Any?>>()
+    val runner = CapturingExternalCommandRunner(ExternalCommandResult(exitCode = 0, output = "should not run\n"))
+    val result = CliRuntime.run(
+      listOf("update", "--format", "json"),
+      CliRuntimeContext(
+        requester = updateCheckRequester(capturedRequests, latest = "v0.2.0"),
+        externalCommandRunner = runner,
+      ),
+    )
+    val payload = decodeJsonObject(result.stdout)
+    val updateCheck = payload["update_check"] as Map<*, *>
+
+    assertEquals(0, result.exitCode, result.stdout)
+    assertEquals("skipped", payload["status"])
+    assertEquals("ahead_of_release", updateCheck["status"])
+    assertEquals("installed version is newer than the latest release", payload["reason"])
+    assertTrue(runner.commands.isEmpty(), "installer must not run when local version is ahead")
+    assertEquals(1, capturedRequests.size)
+  }
+
+  @Test
+  fun `update rejects conflicting desktop app options`() {
+    val result = CliRuntime.run(listOf("update", "--dry-run", "--with-desktop-app", "--no-desktop-app"))
+
+    assertEquals(1, result.exitCode)
+    assertContains(result.stdout, "--with-desktop-app and --no-desktop-app cannot be used together")
+  }
+
+  @Test
   fun `update-check includes prereleases and returns unknown with exit zero`() {
     val prerelease = CliRuntime.run(
       listOf("update-check", "--include-prereleases", "--format", "json"),
-      CliRuntimeContext(requester = updateCheckRequester(mutableListOf(), latest = "v0.2.0-rc.1")),
+      CliRuntimeContext(requester = updateCheckRequester(mutableListOf(), latest = "v0.4.0-rc.1")),
     )
     val prereleasePayload = decodeJsonObject(prerelease.stdout)
 
     assertEquals(0, prerelease.exitCode, prerelease.stdout)
     assertEquals("update_available", prereleasePayload["status"])
-    assertEquals("v0.2.0-rc.1", prereleasePayload["latest_version"])
+    assertEquals("v0.4.0-rc.1", prereleasePayload["latest_version"])
 
     val unknown = CliRuntime.run(
       listOf("update-check"),
@@ -758,7 +904,7 @@ class CliRuntimeTest {
       listOf("update-check"),
       CliRuntimeContext(
         userHome = home,
-        requester = updateCheckRequester(mutableListOf(), latest = "v0.1.0"),
+        requester = updateCheckRequester(mutableListOf(), latest = "v0.3.0-SNAPSHOT"),
       ),
     )
 
@@ -1079,7 +1225,7 @@ private fun statsRequester(capturedRequests: MutableList<Map<String, Any?>>): Ht
 
 private fun updateCheckRequester(
   capturedRequests: MutableList<Map<String, Any?>>,
-  latest: String = "v0.2.0",
+  latest: String = "v0.4.0",
 ): HttpRequester = HttpRequester { method, url, _, headers ->
   capturedRequests += mapOf("method" to method, "url" to url, "headers" to headers)
   HttpResponse(
@@ -1096,7 +1242,22 @@ private fun updateCheckRequester(
 }
 
 private const val EXPECTED_INSTALL_COMMAND =
-  "curl -fsSL https://raw.githubusercontent.com/Sermilion/skill-bill/main/install.sh | bash"
+  "skill-bill update"
+
+private const val EXPECTED_UPDATE_COMMAND =
+  "curl -fsSL https://raw.githubusercontent.com/Sermilion/skill-bill/main/install.sh | " +
+    "bash -s -- --reuse-last-selection"
+
+private class CapturingExternalCommandRunner(
+  private val result: ExternalCommandResult,
+) : ExternalCommandRunner {
+  val commands: MutableList<ExternalCommand> = mutableListOf()
+
+  override fun run(command: ExternalCommand): ExternalCommandResult {
+    commands += command
+    return result
+  }
+}
 
 private fun telemetryStatusPayload(dbPath: Path, configPath: Path): Map<String, Any?> {
   val statusContext =

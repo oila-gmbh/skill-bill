@@ -26,9 +26,9 @@ DESKTOP_APP_PREBUILT_SOURCE_PATH=""
 # reconcile conflict the user accepted (overwrote). Surfaced in the install summary.
 RECONCILE_CONFLICT_PATHS=""
 
-# Prebuilt-first install source. Default is to fetch + verify the prebuilt
-# release artifacts; --from-source restores today's Gradle build path.
-INSTALL_SOURCE="prebuilt"
+# Install source. `auto` means a full local checkout installs from source, while a
+# standalone downloaded installer falls back to published prebuilt release assets.
+INSTALL_SOURCE="auto"
 RELEASE_TAG="${SKILL_BILL_RELEASE_TAG:-}"
 DESKTOP_APP_ONLY=0
 REUSE_LAST_SELECTION=0
@@ -76,13 +76,12 @@ Usage: ./install.sh [--from-source] [--release TAG]
                     [--with-desktop-app|--no-desktop-app] [--desktop-app-dir PATH]
                     [--desktop-app-only] [--reuse-last-selection]
 
-By default the installer downloads and checksum-verifies the prebuilt runtime
-images from the matching GitHub release — no JDK and no Gradle build required.
+By default a local checkout builds and installs from source. A standalone
+downloaded installer uses checksum-verified prebuilt release images.
 
 Options:
-  --from-source            Build the runtime (and desktop app) from source with
-                           Gradle instead of fetching prebuilt artifacts. Ignores
-                           --release. Requires a JDK.
+  --from-source            Force building the runtime (and desktop app) from
+                           source with Gradle. Ignores --release. Requires a JDK.
   --release TAG            Install a specific release tag instead of the latest
                            stable release. Ignored with --from-source.
   --with-desktop-app       Install the optional desktop app from the prebuilt
@@ -149,6 +148,9 @@ parse_args() {
           exit 1
         fi
         RELEASE_TAG="$2"
+        if [[ "$INSTALL_SOURCE" == "auto" ]]; then
+          INSTALL_SOURCE="prebuilt"
+        fi
         shift 2
         ;;
       --release=*)
@@ -156,6 +158,9 @@ parse_args() {
         if [[ -z "$(trim_string "$RELEASE_TAG")" ]]; then
           err "--release requires a tag."
           exit 1
+        fi
+        if [[ "$INSTALL_SOURCE" == "auto" ]]; then
+          INSTALL_SOURCE="prebuilt"
         fi
         shift
         ;;
@@ -187,6 +192,28 @@ parse_args() {
     err "--reuse-last-selection cannot be combined with --desktop-app-only."
     err "Run the full installer with --reuse-last-selection, or run --desktop-app-only by itself."
     exit 1
+  fi
+}
+
+local_source_checkout_available() {
+  [[ -d "$SKILLS_DIR" ]] &&
+    [[ -d "$PLATFORM_PACKS_DIR" ]] &&
+    [[ -d "$PLUGIN_DIR/orchestration" ]] &&
+    [[ -x "$RUNTIME_KOTLIN_DIR/gradlew" ]]
+}
+
+resolve_install_source() {
+  if [[ "$INSTALL_SOURCE" != "auto" ]]; then
+    return 0
+  fi
+  if [[ -n "$RELEASE_TAG" || -n "$SKILL_BILL_RELEASE_DIR" || -n "$SKILL_BILL_RELEASE_BASE_URL" ]]; then
+    INSTALL_SOURCE="prebuilt"
+    return 0
+  fi
+  if local_source_checkout_available; then
+    INSTALL_SOURCE="source"
+  else
+    INSTALL_SOURCE="prebuilt"
   fi
 }
 
@@ -800,12 +827,11 @@ install_packaged_runtime_distribution() {
 # SKILL-76 subtask 2: the candidate clone source is staged into a SINGLE candidate
 # REPO ROOT containing skills/ + platform-packs/, so reconcile --upstream-repo-root,
 # --upstream-skills, and --upstream-platform-packs all point at the same staged tree
-# (F-008: support-pointer source and skill source come from one tree). orchestration/
-# is staged as a sibling because it is not skill-keyed.
+# (F-008: support-pointer source and skill source come from one tree).
 SKILL_BILL_CANDIDATE_ROOT="$SKILL_BILL_STATE_DIR/.candidate-source"
 SKILL_BILL_CANDIDATE_SKILLS="$SKILL_BILL_CANDIDATE_ROOT/skills"
 SKILL_BILL_CANDIDATE_PLATFORM_PACKS="$SKILL_BILL_CANDIDATE_ROOT/platform-packs"
-SKILL_BILL_CANDIDATE_ORCHESTRATION="$SKILL_BILL_STATE_DIR/.candidate-orchestration"
+SKILL_BILL_CANDIDATE_ORCHESTRATION="$SKILL_BILL_CANDIDATE_ROOT/orchestration"
 SKILL_BILL_BASELINE_MANIFEST="$SKILL_BILL_STATE_DIR/baseline-manifest.json"
 
 # Stage one source tree into a candidate dir without touching the live target.
@@ -999,12 +1025,11 @@ reconcile_and_commit_authored_source() {
     fi
   fi
 
-  # Decision is accept / no-conflict. Place the orchestration tree (shared, non-skill
-  # source) first, then hand the per-skill file ops to the runtime apply. The runtime is
-  # the SOLE writer of the live skill dirs in BOTH skills/ AND platform-packs/ (and of the
-  # non-skill platform-pack files): keep-local + locally-authored skills are preserved by
-  # construction.
-  adopt_non_skill_source_trees
+  # Decision is accept / no-conflict. Hand the per-skill file ops to the runtime apply
+  # while the candidate remains a complete repo root for support-pointer validation. The
+  # runtime is the SOLE writer of the live skill dirs in BOTH skills/ AND platform-packs/
+  # (and of the non-skill platform-pack files): keep-local + locally-authored skills are
+  # preserved by construction.
   local apply_args=(
     install reconcile --apply
     --repo-root "$SKILL_BILL_STATE_DIR"
@@ -1022,6 +1047,7 @@ reconcile_and_commit_authored_source() {
     discard_authored_candidates
     return 1
   fi
+  adopt_non_skill_source_trees
   # RESERVED SEAM (subtask 2): the baseline manifest lives at
   # "$SKILL_BILL_BASELINE_MANIFEST" and is part of the preserved self-contained source
   # set (uninstall.sh preserve-mode). The runtime apply already refreshed it.
@@ -1105,8 +1131,8 @@ install_prebuilt_runtime_distributions() {
   ok "Kotlin runtime installed from prebuilt release"
 }
 
-# Dispatcher: prebuilt by default, Gradle build on --from-source or when no
-# prebuilt artifact matches this host (auto-fallback with an explicit message).
+# Dispatcher: source builds for local checkouts, prebuilt downloads for release
+# installs, and source fallback when no prebuilt artifact matches this host.
 # Preserves the SKILL_BILL_SKIP_RUNTIME_DISTRIBUTION_BUILD test escape hatch by
 # routing through build_kotlin_runtime_distributions for the source path.
 install_runtime_distributions() {
@@ -1158,6 +1184,9 @@ build_kotlin_runtime_distributions() {
   fi
 
   info "Building packaged Kotlin runtime distributions..."
+  rm -rf \
+    "$RUNTIME_KOTLIN_DIR/runtime-cli/build/install/runtime-cli" \
+    "$RUNTIME_KOTLIN_DIR/runtime-mcp/build/install/runtime-mcp"
   (
     cd "$RUNTIME_KOTLIN_DIR"
     ./gradlew -q :runtime-cli:installDist :runtime-mcp:installDist
@@ -1234,10 +1263,102 @@ install_runtime_launcher() {
   ok "  linked $name → $target"
 }
 
+install_skill_bill_launcher() {
+  local launcher_path="$RUNTIME_LAUNCHER_BIN_DIR/skill-bill"
+  local marker="# skill-bill managed launcher"
+
+  if [[ -e "$launcher_path" && ! -L "$launcher_path" ]]; then
+    if ! grep -qF "$marker" "$launcher_path" 2>/dev/null; then
+      warn "  skipped $launcher_path (exists and is not a Skill Bill managed launcher)"
+      return 0
+    fi
+  fi
+
+  rm -f "$launcher_path"
+  cat > "$launcher_path" <<LAUNCHER
+#!/usr/bin/env bash
+$marker
+set -euo pipefail
+
+runtime_cli="$RUNTIME_CLI_BIN"
+installer_url="https://raw.githubusercontent.com/Sermilion/skill-bill/main/install.sh"
+
+shell_quote() {
+  case "\$1" in
+    (*[!A-Za-z0-9_./:=@%+-]*|'')
+      printf "'%s'" "\$(printf '%s' "\$1" | sed "s/'/'\\\\''/g")"
+      ;;
+    (*)
+      printf '%s' "\$1"
+      ;;
+  esac
+}
+
+if [[ "\${1:-}" == "update" ]]; then
+  shift
+  installer_args=(--reuse-last-selection)
+  dry_run=0
+  format=text
+  release_selected=0
+  passthrough=()
+  while [[ \$# -gt 0 ]]; do
+    case "\$1" in
+      --dry-run)
+        dry_run=1
+        passthrough+=("\$1")
+        shift
+        ;;
+      --format)
+        format="\${2:-text}"
+        passthrough+=("\$1" "\${2:-}")
+        shift 2
+        ;;
+      --format=*)
+        format="\${1#--format=}"
+        passthrough+=("\$1")
+        shift
+        ;;
+      *)
+        if [[ "\$1" == "--release" || "\$1" == --release=* ]]; then
+          release_selected=1
+        fi
+        installer_args+=("\$1")
+        passthrough+=("\$1")
+        shift
+        ;;
+    esac
+  done
+
+  command="curl -fsSL \$installer_url | bash -s --"
+  for arg in "\${installer_args[@]}"; do
+    command+=" \$(shell_quote "\$arg")"
+  done
+
+  if [[ "\$dry_run" -eq 1 ]]; then
+    exec "\$runtime_cli" update "\${passthrough[@]}"
+  fi
+
+  if [[ "\$release_selected" -eq 0 ]]; then
+    check_output="\$("\$runtime_cli" update-check 2>&1)"
+    check_status="\$(printf '%s\n' "\$check_output" | awk -F': ' '/^status:/{print \$2; exit}')"
+    if [[ "\$check_status" != "update_available" ]]; then
+      exec "\$runtime_cli" update "\${passthrough[@]}"
+    fi
+  fi
+
+  exec bash -c "\$command"
+fi
+
+exec "\$runtime_cli" "\$@"
+LAUNCHER
+  chmod +x "$launcher_path"
+  ok "  installed skill-bill launcher → $RUNTIME_CLI_BIN"
+}
+
 install_runtime_launchers() {
   mkdir -p "$RUNTIME_LAUNCHER_BIN_DIR"
   info "Installing runtime launchers to: $RUNTIME_LAUNCHER_BIN_DIR"
-  install_runtime_launcher "skill-bill" "$RUNTIME_CLI_BIN"
+  install_skill_bill_launcher
   install_runtime_launcher "skill-bill-mcp" "$RUNTIME_MCP_BIN"
 
   if path_contains_dir "$RUNTIME_LAUNCHER_BIN_DIR"; then
@@ -2438,6 +2559,7 @@ run_full_install() {
 }
 
 parse_args "$@"
+resolve_install_source
 if [[ "$DESKTOP_APP_ONLY" -eq 1 ]]; then
   run_desktop_only_install
 else

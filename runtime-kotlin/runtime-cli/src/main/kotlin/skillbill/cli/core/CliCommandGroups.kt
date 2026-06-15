@@ -17,6 +17,7 @@ import skillbill.cli.scaffold.ScaffoldTopLevelCommands
 import skillbill.cli.skillremove.RemoveCliCommand
 import skillbill.cli.system.DoctorCliCommand
 import skillbill.cli.system.UpdateCheckCommand
+import skillbill.cli.system.UpdateCommand
 import skillbill.cli.system.VersionCommand
 import skillbill.cli.telemetry.TelemetryCommand
 import skillbill.cli.workflow.WorkflowTopLevelCommands
@@ -49,6 +50,7 @@ class UtilityCliCommandGroup(
   featureTaskRunCommand: FeatureTaskRuntimeRunCommand,
   featureTaskRuntimeDeprecatedRunCommand: FeatureTaskRuntimeDeprecatedRunCommand,
   versionCommand: VersionCommand,
+  updateCommand: UpdateCommand,
   updateCheckCommand: UpdateCheckCommand,
   doctorCommand: DoctorCliCommand,
   removeCommand: RemoveCliCommand,
@@ -62,6 +64,7 @@ class UtilityCliCommandGroup(
       featureTaskRunCommand,
       featureTaskRuntimeDeprecatedRunCommand,
       versionCommand,
+      updateCommand,
       updateCheckCommand,
       doctorCommand,
       removeCommand,
