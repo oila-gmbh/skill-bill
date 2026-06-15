@@ -105,6 +105,29 @@ class InstallStagingTest {
   }
 
   @Test
+  fun `staged skill exposes platform packs from resolved skill directory`() {
+    val fixture = setupFixture()
+
+    val rendered = stageInstalledSkill(fixture.repoRoot, fixture.skillDir, fixture.home)
+
+    val packs = rendered.stagingDir.resolve("platform-packs")
+    val manifest = packs.resolve("sample/platform.yaml")
+    assertTrue(Files.isSymbolicLink(packs), "platform-packs must be present in the staged skill dir")
+    assertTrue(
+      Files.isRegularFile(manifest),
+      "manifest must resolve from the staged skill dir at ${rendered.stagingDir.relativize(manifest)}",
+    )
+    assertEquals(
+      "sample",
+      Files.readString(manifest)
+        .lineSequence()
+        .first { it.startsWith("platform:") }
+        .substringAfter('"')
+        .substringBefore('"'),
+    )
+  }
+
+  @Test
   fun `generated supporting pointers for skills are materialized in staging`() {
     val repoRoot = Files.createTempDirectory("skillbill-install-staging-skill-repo").also(tempDirs::add)
     val home = Files.createTempDirectory("skillbill-install-staging-skill-home").also(tempDirs::add)

@@ -20,6 +20,7 @@ import java.util.logging.Level
 import java.util.logging.Logger
 
 private const val INSTALL_CACHE_KEY_BYTES = 8
+private const val INSTALL_STAGING_RECIPE_VERSION = "install-staging-v3-platform-packs-child-inline-pointers"
 
 private val log: Logger = Logger.getLogger("skillbill.install.InstallStaging")
 
@@ -133,6 +134,8 @@ internal fun computeInstallContentHash(
 ): String {
   val digest = MessageDigest.getInstance("SHA-256")
   val newline = byteArrayOf('\n'.code.toByte())
+  digest.update(INSTALL_STAGING_RECIPE_VERSION.toByteArray(StandardCharsets.UTF_8))
+  digest.update(newline)
   authored.forEach { file ->
     val rel = sourceSkillDir.relativize(file).toString().replace(File.separatorChar, '/')
     digest.update(rel.toByteArray(StandardCharsets.UTF_8))
@@ -238,6 +241,10 @@ private fun buildFreshInstallStaging(inputs: FreshInstallInputs): RenderedSkill 
       tempDir = tempDir,
       pointers = inputs.supportPointers,
     )
+    val packsRoot = inputs.repoRoot.resolve("platform-packs")
+    if (Files.isDirectory(packsRoot)) {
+      Files.createSymbolicLink(tempDir.resolve("platform-packs"), packsRoot)
+    }
     Files.write(
       tempDir.resolve(INSTALL_STAGING_CONTENT_HASH_FILENAME),
       inputs.contentHash.toByteArray(StandardCharsets.UTF_8),
