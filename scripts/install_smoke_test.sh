@@ -243,6 +243,20 @@ run_interactive_install_with_blank_defaults() {
     <<< $'\n\n\n\n'
 }
 
+run_piped_install_with_eof_defaults() {
+  local fake_home="$1"
+  (
+    cd "$REPO_ROOT"
+    env \
+      HOME="$fake_home" \
+      SKILL_BILL_RELEASE_DIR="$RELEASE_DIR" \
+      SKILL_BILL_SKIP_PREINSTALL_UNINSTALL=1 \
+      SKILL_BILL_BIN_DIR="$fake_home/.local/bin" \
+      bash -c 'cat install.sh | bash' \
+      </dev/null
+  )
+}
+
 echo "=== install smoke test ==="
 echo ""
 
@@ -269,7 +283,25 @@ else
 fi
 
 echo ""
-echo "--- scenario 2: base install (AC#1) ---"
+echo "--- scenario 2: piped install EOF defaults ---"
+FAKE_HOME="$(mktemp -d)"
+PIPED_OUTPUT="$(run_piped_install_with_eof_defaults "$FAKE_HOME")"
+pass "piped install with EOF defaults exited 0"
+
+if [[ "$PIPED_OUTPUT" == *"Agents:         copilot, claude, codex, opencode, junie"* ]]; then
+  pass "piped EOF agent selection defaults to all when none detected"
+else
+  fail "piped EOF agent selection summary unexpected"
+fi
+
+if [[ "$PIPED_OUTPUT" == *"Platforms:      base only"* ]]; then
+  pass "piped EOF platform selection defaults to base only"
+else
+  fail "piped EOF platform selection summary unexpected"
+fi
+
+echo ""
+echo "--- scenario 3: base install (AC#1) ---"
 FAKE_HOME="$(mktemp -d)"
 mkdir -p "$FAKE_HOME/.claude"
 seed_selection_json "$FAKE_HOME"
@@ -295,7 +327,7 @@ else
 fi
 
 echo ""
-echo "--- scenario 3: --clean flag (AC#2) ---"
+echo "--- scenario 4: --clean flag (AC#2) ---"
 
 SENTINEL="$FAKE_HOME/.skill-bill/skills/__smoke_extra_file__"
 mkdir -p "$(dirname "$SENTINEL")"
@@ -322,7 +354,7 @@ else
 fi
 
 echo ""
-echo "--- scenario 4: --prefer-upstream conflict (AC#3) ---"
+echo "--- scenario 5: --prefer-upstream conflict (AC#3) ---"
 
 TARGET_SKILL="$FAKE_HOME/.skill-bill/skills/bill-code-review"
 if [[ ! -d "$TARGET_SKILL" ]]; then

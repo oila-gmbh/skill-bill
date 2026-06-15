@@ -1923,7 +1923,9 @@ prompt_for_manual_agent_selection() {
     printf "  %s. all (install to every supported agent)\n" "$option_number"
     info "Choose one or more agents (comma-separated)."
     printf "${CYAN}▸${NC} Enter agents [detected/all]: "
-    read -r input
+    if ! read -r input; then
+      input=""
+    fi
 
     if [[ -z "$(trim_string "$input")" ]]; then
       apply_default_agent_selection
@@ -2100,7 +2102,9 @@ prompt_for_platform_selection() {
     info "Optional platform packs are resolved by the runtime from platform-packs/ manifests."
     info "Choose one or more optional platform numbers (comma-separated). Names still work if you prefer them."
     printf "${CYAN}▸${NC} Enter platforms [base only] (e.g. 1,3 or %s): " "$option_number"
-    read -r input
+    if ! read -r input; then
+      input=""
+    fi
 
     if [[ -z "$(trim_string "$input")" ]]; then
       PLATFORM_SELECTION_MODE="none"
