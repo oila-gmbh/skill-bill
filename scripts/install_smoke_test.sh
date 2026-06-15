@@ -139,6 +139,25 @@ case "$cmd" in
     fi
     ;;
 
+  "install agent-path")
+    agent="${cmd_parts[2]:-}"
+    effective_home="${home_dir:-$HOME}"
+    case "$agent" in
+      copilot)  echo "$effective_home/.copilot/skills" ;;
+      claude)   echo "$effective_home/.claude/skills" ;;
+      codex)
+        if [[ -e "$effective_home/.codex" || -e "$effective_home/.codex/skills" ]]; then
+          echo "$effective_home/.codex/skills"
+        else
+          echo "$effective_home/.agents/skills"
+        fi
+        ;;
+      opencode) echo "$effective_home/.config/opencode/skills" ;;
+      junie)    echo "$effective_home/.junie/skills" ;;
+      *) echo "unknown agent: $agent" >&2; exit 1 ;;
+    esac
+    ;;
+
   "install claude-roots")
     echo "${home_dir:-$HOME}/.claude"
     ;;
@@ -213,6 +232,17 @@ run_install() {
     </dev/null
 }
 
+run_interactive_install_with_blank_defaults() {
+  local fake_home="$1"
+  env \
+    HOME="$fake_home" \
+    SKILL_BILL_RELEASE_DIR="$RELEASE_DIR" \
+    SKILL_BILL_SKIP_PREINSTALL_UNINSTALL=1 \
+    SKILL_BILL_BIN_DIR="$fake_home/.local/bin" \
+    bash "$INSTALL_SH" --no-desktop-app \
+    <<< $'\n\n\n\n'
+}
+
 echo "=== install smoke test ==="
 echo ""
 
@@ -221,7 +251,25 @@ STUB_TMP="$(mktemp)"
 make_stub_runtime_cli "$STUB_TMP"
 setup_release_dir "$TOKEN" "$STUB_TMP"
 
-echo "--- scenario 1: base install (AC#1) ---"
+echo "--- scenario 1: blank interactive defaults ---"
+FAKE_HOME="$(mktemp -d)"
+INTERACTIVE_OUTPUT="$(run_interactive_install_with_blank_defaults "$FAKE_HOME")"
+pass "interactive install with blank defaults exited 0"
+
+if [[ "$INTERACTIVE_OUTPUT" == *"Agents:         copilot, claude, codex, opencode, junie"* ]]; then
+  pass "blank agent selection defaults to all when none detected"
+else
+  fail "blank agent selection summary unexpected"
+fi
+
+if [[ "$INTERACTIVE_OUTPUT" == *"Platforms:      base only"* ]]; then
+  pass "blank platform selection defaults to base only"
+else
+  fail "blank platform selection summary unexpected"
+fi
+
+echo ""
+echo "--- scenario 2: base install (AC#1) ---"
 FAKE_HOME="$(mktemp -d)"
 mkdir -p "$FAKE_HOME/.claude"
 seed_selection_json "$FAKE_HOME"
@@ -247,7 +295,7 @@ else
 fi
 
 echo ""
-echo "--- scenario 2: --clean flag (AC#2) ---"
+echo "--- scenario 3: --clean flag (AC#2) ---"
 
 SENTINEL="$FAKE_HOME/.skill-bill/skills/__smoke_extra_file__"
 mkdir -p "$(dirname "$SENTINEL")"
@@ -274,7 +322,7 @@ else
 fi
 
 echo ""
-echo "--- scenario 3: --prefer-upstream conflict (AC#3) ---"
+echo "--- scenario 4: --prefer-upstream conflict (AC#3) ---"
 
 TARGET_SKILL="$FAKE_HOME/.skill-bill/skills/bill-code-review"
 if [[ ! -d "$TARGET_SKILL" ]]; then

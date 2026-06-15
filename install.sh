@@ -1793,6 +1793,28 @@ add_agent_selection() {
   fi
 }
 
+apply_default_agent_selection() {
+  local detected_output
+  local supported_agent
+
+  detected_output="$(run_runtime_cli install detect-agents 2>/dev/null || true)"
+  if [[ -n "$(trim_string "$detected_output")" ]]; then
+    AGENT_SELECTION_MODE="detected"
+    AGENT_NAMES=()
+    AGENT_PATHS=()
+    info "No agents entered; using detected configured agents."
+    return 0
+  fi
+
+  info "No configured agents detected; defaulting to every supported agent."
+  AGENT_SELECTION_MODE="manual"
+  AGENT_NAMES=()
+  AGENT_PATHS=()
+  for supported_agent in "${SUPPORTED_AGENTS[@]:-}"; do
+    add_agent_selection "$supported_agent"
+  done
+}
+
 resolve_agent_selection() {
   local token="$1"
   local normalized
@@ -1900,12 +1922,12 @@ prompt_for_manual_agent_selection() {
     option_number=$(( ${#SUPPORTED_AGENTS[@]} + 1 ))
     printf "  %s. all (install to every supported agent)\n" "$option_number"
     info "Choose one or more agents (comma-separated)."
-    printf "${CYAN}▸${NC} Enter agents: "
+    printf "${CYAN}▸${NC} Enter agents [detected/all]: "
     read -r input
 
     if [[ -z "$(trim_string "$input")" ]]; then
-      warn "No agents provided. Choose at least one agent."
-      continue
+      apply_default_agent_selection
+      return 0
     fi
 
     AGENT_NAMES=()
@@ -2077,12 +2099,14 @@ prompt_for_platform_selection() {
     info "Base skills are always installed by the runtime plan."
     info "Optional platform packs are resolved by the runtime from platform-packs/ manifests."
     info "Choose one or more optional platform numbers (comma-separated). Names still work if you prefer them."
-    printf "${CYAN}▸${NC} Enter platforms (e.g. 1,3 or %s): " "$option_number"
+    printf "${CYAN}▸${NC} Enter platforms [base only] (e.g. 1,3 or %s): " "$option_number"
     read -r input
 
     if [[ -z "$(trim_string "$input")" ]]; then
-      warn "No platforms provided. Choose a platform, all, or base only."
-      continue
+      PLATFORM_SELECTION_MODE="none"
+      SELECTED_PLATFORM_PACKAGES=()
+      info "No platforms entered; installing base skills only."
+      return 0
     fi
 
     PLATFORM_SELECTION_MODE="selected"
