@@ -494,9 +494,9 @@ class FeatureTaskRuntimeRunnerTest {
   }
 
   @Test
-  fun `resume of a phase with a durable blocked record re-blocks without relaunching`() {
-    // F-002: a phase persisted with a terminal blocked record (the durable marker that survives
-    // ledger pruning) re-blocks on resume without launching the agent again.
+  fun `resume of a non-fix-loop phase with a durable blocked record re-blocks without relaunching`() {
+    // F-002: a non-fix-loop phase persisted with a terminal blocked record (the durable marker
+    // that survives ledger pruning) re-blocks on resume without launching the agent again.
     val harness = runnerHarness(agentAssignment = phasePerAgentAssignment())
     harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), PLAN_OUTPUT)
     harness.seedBlockedPhase("implement", attemptCount = 1, phaseAgent("implement"), "implement gate failed")
@@ -506,6 +506,25 @@ class FeatureTaskRuntimeRunnerTest {
     val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
     assertEquals("implement", blocked.lastIncompletePhase)
     assertTrue(harness.launchedPhaseOrder().none { it == "implement" })
+  }
+
+  @Test
+  fun `resume of a fix-loop phase with a durable blocked record relaunches until the attempt cap`() {
+    val harness = runnerHarness(agentAssignment = phasePerAgentAssignment())
+    harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), PREPLAN_OUTPUT)
+    harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), PLAN_OUTPUT)
+    harness.seedPhase("implement", "completed", 1, phaseAgent("implement"), IMPLEMENT_OUTPUT)
+    harness.seedPhase("review", "completed", 1, phaseAgent("review"), VALID_OUTPUT)
+    harness.seedPhase("audit", "completed", 1, phaseAgent("audit"), VALID_OUTPUT)
+    harness.seedBlockedPhase("validate", attemptCount = 1, phaseAgent("validate"), "validation gate failed")
+
+    val report = harness.runner.run(harness.request())
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertTrue(harness.launchedPhaseOrder().contains("validate"))
+    val validateRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["validate"])
+    assertEquals("completed", validateRecord.status)
+    assertEquals(2, validateRecord.attemptCount)
   }
 
   @Test

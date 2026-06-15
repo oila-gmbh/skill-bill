@@ -30,6 +30,9 @@ import skillbill.cli.core.CliRunState
 import skillbill.cli.core.DocumentedCliCommand
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.InvokingAgentContextResolver
+import skillbill.ports.featurespec.FeatureSpecPathResolverPort
+import skillbill.ports.featurespec.model.FeatureSpecPathResolveInput
+import skillbill.ports.featurespec.model.FeatureSpecPathResolveResult
 import skillbill.ports.taskruntime.FeatureTaskRuntimeRunInvariantsSource
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import java.nio.file.Path
@@ -43,6 +46,7 @@ import kotlin.time.Duration.Companion.minutes
 data class FeatureTaskRuntimeRunDependencies(
   val runner: FeatureTaskRuntimeRunner,
   val runInvariantsSource: FeatureTaskRuntimeRunInvariantsSource,
+  val specPathResolver: FeatureSpecPathResolverPort,
   val state: CliRunState,
 )
 
@@ -134,6 +138,32 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
     state.completeText(runtimeRunText(payload), payload, exitCode = payload.runtimeRunExitCode())
   }
 
+  protected fun resolveSpecPath(
+    deps: FeatureTaskRuntimeRunDependencies,
+    issueKey: String,
+    explicitSpecPath: String?,
+  ): String {
+    val result = deps.specPathResolver.resolve(
+      FeatureSpecPathResolveInput(
+        issueKey = issueKey,
+        explicitSpecPath = explicitSpecPath,
+        repoRoot = repoRoot?.let(Path::of) ?: Path.of("").toAbsolutePath().normalize(),
+      ),
+    )
+    return when (result) {
+      is FeatureSpecPathResolveResult.Explicit -> result.specPath
+      is FeatureSpecPathResolveResult.SingleMatch -> result.specPath
+      is FeatureSpecPathResolveResult.NoMatch -> throw UsageError(
+        "spec_path is required for feature-task run; no .feature-specs match found for '${result.issueKey}' " +
+          "under ${result.specsRoot}.",
+      )
+      is FeatureSpecPathResolveResult.Ambiguous -> throw UsageError(
+        "spec_path is required for feature-task run; multiple .feature-specs matches found for '${result.issueKey}': " +
+          result.matches.joinToString(", "),
+      )
+    }
+  }
+
   private fun parseGoalContinuationContext(): FeatureTaskRuntimeGoalContinuationContext? {
     val supplied = listOf(goalParentIssueKey, goalSubtaskId, goalBranch).count { it != null } +
       if (suppressPr) 1 else 0
@@ -187,7 +217,7 @@ class FeatureTaskRuntimeRunCommand(
       return
     }
     val runIssueKey = issueKey ?: throw UsageError("issue_key is required for feature-task run.")
-    val runSpecPath = specPath ?: throw UsageError("spec_path is required for feature-task run.")
+    val runSpecPath = resolveSpecPath(deps, runIssueKey, specPath)
     executeRuntimeRun(
       deps = deps,
       issueKey = runIssueKey,
@@ -211,13 +241,13 @@ class FeatureTaskRuntimeExplicitRunCommand(
   "Run the feature-task phase loop (explicit form of the parent command's default run).",
 ) {
   private val issueKey by argument(help = "Issue key the run implements.")
-  private val specPath by argument(help = "Path to the governed spec the run implements.")
+  private val specPath by argument(help = "Path to the governed spec the run implements.").optional()
 
   override fun run() {
     executeRuntimeRun(
       deps = deps,
       issueKey = issueKey,
-      specPath = specPath,
+      specPath = resolveSpecPath(deps, issueKey, specPath),
       workflowId = openRuntimeWorkflowId(workflowService, deps.state),
     )
   }
@@ -303,7 +333,7 @@ class FeatureTaskRuntimeDeprecatedRunCommand(
       return
     }
     val runIssueKey = issueKey ?: throw UsageError("issue_key is required for feature-task run.")
-    val runSpecPath = specPath ?: throw UsageError("spec_path is required for feature-task run.")
+    val runSpecPath = resolveSpecPath(deps, runIssueKey, specPath)
     executeRuntimeRun(
       deps = deps,
       issueKey = runIssueKey,
@@ -322,13 +352,13 @@ class FeatureTaskRuntimeDeprecatedExplicitRunCommand(
   "Run the feature-task phase loop (explicit form of the parent command's default run).",
 ) {
   private val issueKey by argument(help = "Issue key the run implements.")
-  private val specPath by argument(help = "Path to the governed spec the run implements.")
+  private val specPath by argument(help = "Path to the governed spec the run implements.").optional()
 
   override fun run() {
     executeRuntimeRun(
       deps = deps,
       issueKey = issueKey,
-      specPath = specPath,
+      specPath = resolveSpecPath(deps, issueKey, specPath),
       workflowId = openRuntimeWorkflowId(workflowService, deps.state),
     )
   }

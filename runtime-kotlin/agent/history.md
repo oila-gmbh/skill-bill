@@ -1,3 +1,13 @@
+## [2026-06-15] SKILL-84 update-check-slash-command
+Areas: runtime-kotlin/runtime-application, runtime-kotlin/runtime-cli, runtime-kotlin/runtime-infra-fs, runtime-kotlin/runtime-core, skills/bill-update-check, skills/bill-feature*
+- Added `skill-bill update-check` backed by the installed runtime version source and GitHub Releases lookup; JSON/text output maps up_to_date, update_available, ahead_of_release, and soft unknown states.
+- `UpdateCheckService`, semver/model types, and HTTP requester seam keep release selection testable; default stable-only selection can opt into prereleases. reusable
+- New governed `skills/bill-update-check/content.md` delegates to the runtime CLI and install planning links `/bill-update-check` through the existing command catalog, with no generated wrappers in source.
+- Feature workflow entry skills and runtime command resolution now support issue-key-only lookup via the single `.feature-specs/<KEY>-*/spec.md` match; ambiguous or missing matches still fail loudly.
+- Known limitation: validation passed, but upstream audit recorded a remaining semver/test-coverage concern for downstream follow-up.
+Feature flag: N/A
+Acceptance criteria: 11/11 implemented per implement phase; audit caveat above
+
 ## [2026-06-12] SKILL-52.4 tier4-records
 Areas: runtime-kotlin/agent, runtime-kotlin/runtime-core, runtime-kotlin/ARCHITECTURE.md, .feature-specs/SKILL-52.4-hexagon-leak-closure-followups
 - Recorded F16/F17 runtime boundary decisions with revisit triggers; retain split runtime-contracts packages for resource-path stability and keep infra-fs unsplit until a real second adapter boundary emerges.

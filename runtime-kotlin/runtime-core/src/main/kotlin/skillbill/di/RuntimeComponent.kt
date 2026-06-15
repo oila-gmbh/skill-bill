@@ -37,6 +37,7 @@ import skillbill.infrastructure.fs.FeatureTaskRuntimePhaseOutputValidatorAdapter
 import skillbill.infrastructure.fs.FileSystemBaselineManifestPersistence
 import skillbill.infrastructure.fs.FileSystemDecompositionManifestFileStore
 import skillbill.infrastructure.fs.FileSystemDiffResolver
+import skillbill.infrastructure.fs.FileSystemFeatureSpecPathResolver
 import skillbill.infrastructure.fs.FileSystemFeatureTaskRuntimeRunInvariantsSource
 import skillbill.infrastructure.fs.FileSystemInstallAgentTargets
 import skillbill.infrastructure.fs.FileSystemInstallApplyExecution
@@ -89,6 +90,7 @@ import skillbill.ports.agentrun.AgentRunLauncher
 import skillbill.ports.config.RepoLocalConfigPort
 import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.diff.DiffResolverPort
+import skillbill.ports.featurespec.FeatureSpecPathResolverPort
 import skillbill.ports.goalrunner.GoalPullRequestPort
 import skillbill.ports.goalrunner.GoalRunnerManifestStore
 import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
@@ -446,6 +448,11 @@ abstract class RuntimeComponent(
 
   @Provides
   @JvmSynthetic
+  internal fun featureSpecPathResolverPort(adapter: FileSystemFeatureSpecPathResolver): FeatureSpecPathResolverPort =
+    adapter
+
+  @Provides
+  @JvmSynthetic
   internal fun goalObservabilityEventValidator(
     adapter: GoalObservabilityEventValidatorAdapter,
   ): GoalObservabilityEventValidator = adapter
@@ -473,6 +480,7 @@ abstract class RuntimeComponent(
   // Exposed as a pre-built object so the CLI consumer need not resolve the infra-fs adapter type,
   // which is not on the CLI module's compile classpath.
   abstract val featureTaskRuntimeRunInvariantsSource: FeatureTaskRuntimeRunInvariantsSource
+  abstract val featureSpecPathResolverPort: FeatureSpecPathResolverPort
   abstract val goalRunner: GoalRunner
   abstract val goalRunnerStatusService: GoalRunnerStatusService
   abstract val installAgentService: InstallAgentService

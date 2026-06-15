@@ -34,7 +34,7 @@ Wait for `bill-feature-spec` to produce governed artifacts under `.feature-specs
 
 For `single_spec` output:
 
-- Run `bill-feature-task` on `.feature-specs/{ISSUE_KEY}-{feature-name}/spec.md` in the current session.
+- Run `bill-feature-task` on `.feature-specs/{ISSUE_KEY}-{feature-name}/spec.md` in the current session. When exactly one governed `.feature-specs/{ISSUE_KEY}-*/spec.md` exists, the issue key alone is enough for the runtime invocation.
 - Do not invoke `bill-feature-goal`.
 - Let `bill-feature-task` own implementation, review, validation, history, and PR description behavior.
 

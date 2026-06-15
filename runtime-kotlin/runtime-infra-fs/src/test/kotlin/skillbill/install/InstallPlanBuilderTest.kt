@@ -70,6 +70,7 @@ class InstallPlanBuilderTest {
     assertEquals(listOf("kotlin"), plan.selectedPlatformSlugs)
     assertEquals(InstallPlanSkillKind.BASE, skillsByName.getValue("bill-code-review").kind)
     assertEquals(InstallPlanSkillKind.BASE, skillsByName.getValue("bill-code-check").kind)
+    assertEquals(InstallPlanSkillKind.BASE, skillsByName.getValue("bill-update-check").kind)
     assertEquals(InstallPlanSkillKind.PLATFORM_PACK, skillsByName.getValue("bill-kotlin-code-review").kind)
     assertEquals(InstallPlanSkillKind.PLATFORM_PACK, skillsByName.getValue("bill-kotlin-code-review-architecture").kind)
     assertEquals(InstallPlanSkillKind.PLATFORM_PACK, skillsByName.getValue("bill-kotlin-code-review-testing").kind)
@@ -97,6 +98,7 @@ class InstallPlanBuilderTest {
     val skillsByName = plan.skills.associateBy { skill -> skill.name }
     assertEquals(InstallPlanSkillKind.BASE, skillsByName.getValue("bill-code-review").kind)
     assertEquals(InstallPlanSkillKind.BASE, skillsByName.getValue("bill-code-check").kind)
+    assertEquals(InstallPlanSkillKind.BASE, skillsByName.getValue("bill-update-check").kind)
     assertEquals(InstallPlanSkillKind.PLATFORM_PACK, skillsByName.getValue("bill-python-code-review").kind)
     assertEquals(InstallPlanSkillKind.PLATFORM_PACK, skillsByName.getValue("bill-python-code-review-security").kind)
     assertEquals(InstallPlanSkillKind.PLATFORM_PACK, skillsByName.getValue("bill-python-code-check").kind)
@@ -540,6 +542,7 @@ class InstallPlanBuilderTest {
     val home = Files.createTempDirectory("skillbill-install-plan-home").also(tempDirs::add)
     seedBaseSkill(repoRoot, "bill-code-review")
     seedBaseSkill(repoRoot, "bill-code-check")
+    seedBaseSkill(repoRoot, "bill-update-check")
     seedPlatformPack(repoRoot, "kotlin", areaNames = listOf("architecture", "testing"))
     seedPlatformPack(repoRoot, "kmp", areaNames = listOf("architecture", "testing"))
     return PlanFixture(repoRoot = repoRoot, home = home)

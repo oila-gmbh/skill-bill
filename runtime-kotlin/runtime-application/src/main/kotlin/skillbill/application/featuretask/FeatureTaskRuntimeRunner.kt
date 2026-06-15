@@ -312,24 +312,30 @@ class FeatureTaskRuntimeRunner(
       request = request,
       specSource = specSource,
     )
-    // Pre-launch blocks: a phase already durably blocked on a prior run (the record survives ledger
-    // pruning, so the budget is never silently reset), or a missing required upstream (never launch
-    // blind). Both resolve to a single block here so the agent is not relaunched.
+    // Pre-launch blocks: a non-retryable phase already durably blocked on a prior run (the record
+    // survives ledger pruning, so the budget is never silently reset), or a missing required
+    // upstream (never launch blind). Retryable fix-loop phases continue into runPhaseAttempts,
+    // which resumes at the next durable attempt and still enforces the bounded budget.
     return preLaunchBlock(run, state, observability) ?: runPhaseAttempts(run, state, observability)
   }
 
   // Returns a blocked outcome when the phase must block before launching, else null. A persisted
-  // blocked record re-blocks at the resumed iteration; a missing upstream blocks at attempt 1.
+  // blocked record re-blocks at the resumed iteration only when that phase is not retryable; a
+  // missing upstream blocks at attempt 1.
   private fun preLaunchBlock(
     run: PhaseRun,
     state: RunState,
     observability: FeatureTaskRuntimeRunObservability,
   ): PhaseOutcome? {
     val persisted = state.persistedBlockedReason(run.phaseId)?.let { persistedReason ->
+      val nextIteration = state.nextIteration(run.phaseId)
+      if (FeatureTaskRuntimeFixLoopPolicy.participatesInFixLoop(run.phaseId)) {
+        return@let null
+      }
       val reason = persistedReason.ifBlank {
         "Phase '${run.phaseId}' is durably blocked from a prior run; the runtime re-blocks rather than relaunching."
       }
-      state.nextIteration(run.phaseId) to reason
+      nextIteration to reason
     }
     val missing = persisted ?: missingUpstream(run.declaration, state.outputs())?.let { missingIds ->
       1 to "Phase '${run.phaseId}' requires upstream output(s) ${missingIds.joinToString()} that are not " +
@@ -576,7 +582,8 @@ class FeatureTaskRuntimeRunner(
     // Phases already persisted with a durable genuine-phase-agent blocked record. Branch-setup-origin
     // blocked records (resolvedAgentId == BRANCH_SETUP_AGENT_ID) are deliberately excluded: branch
     // setup is re-attemptable on resume, so a recoverable branch-setup failure must never short-circuit
-    // a real phase launch once setup succeeds. Genuine per-phase agent blocks still re-block on resume.
+    // a real phase launch once setup succeeds. Genuine non-fix-loop phase-agent blocks still re-block
+    // on resume; fix-loop phase blocks relaunch through the bounded attempt policy.
     private val blockedRecords: MutableMap<String, String> = initialRecords
       .filterValues { it.status == STATUS_BLOCKED && it.resolvedAgentId != BRANCH_SETUP_AGENT_ID }
       .mapValues { (_, record) -> record.blockedReason.orEmpty() }
@@ -600,8 +607,8 @@ class FeatureTaskRuntimeRunner(
 
     fun hasPriorRecord(phaseId: String): Boolean = phaseId in priorRecords
 
-    // The durable per-phase record's blocked reason, when the phase already exhausted its
-    // budget on a prior run, so resume re-blocks immediately instead of relaunching the agent.
+    // The durable per-phase record's blocked reason. The runner decides whether it is retryable;
+    // this map preserves the prior attempt count and reason across resume.
     fun persistedBlockedReason(phaseId: String): String? = blockedRecords[phaseId]
 
     // True when the phase carries a stale branch-setup-origin blocked record from a prior run that

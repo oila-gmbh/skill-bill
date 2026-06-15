@@ -46,6 +46,7 @@ open class InstallApplyTestSupport {
     val home = Files.createTempDirectory("skillbill-install-apply-home").also(tempDirs::add)
     seedBaseSkill(repoRoot, "bill-code-review", nativeAgentName = "bill-code-review-worker")
     seedBaseSkill(repoRoot, "bill-code-check")
+    seedBaseSkill(repoRoot, "bill-update-check")
     seedPlatformPack(repoRoot, "kotlin", nativeAgentName = "bill-kotlin-code-review-worker")
     seedPlatformPack(repoRoot, "kmp", nativeAgentName = "bill-kmp-code-review-worker")
     return ApplyFixture(repoRoot, home)

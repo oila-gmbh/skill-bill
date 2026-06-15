@@ -695,6 +695,78 @@ class CliRuntimeTest {
   }
 
   @Test
+  fun `update-check emits text and json update results through configured requester`() {
+    val capturedRequests = mutableListOf<Map<String, Any?>>()
+    val context = CliRuntimeContext(
+      requester = updateCheckRequester(capturedRequests),
+      userHome = Files.createTempDirectory("skillbill-update-check-home"),
+    )
+
+    val text = CliRuntime.run(listOf("update-check"), context)
+
+    assertEquals(0, text.exitCode, text.stdout)
+    assertContains(text.stdout, "status: update_available")
+    assertContains(text.stdout, "installed_version: 0.1.0")
+    assertContains(text.stdout, "latest_version: v0.2.0")
+    assertContains(text.stdout, "recommended_install_command: $EXPECTED_INSTALL_COMMAND")
+
+    val json = CliRuntime.run(listOf("update-check", "--format", "json"), context)
+    val payload = decodeJsonObject(json.stdout)
+
+    assertEquals(0, json.exitCode, json.stdout)
+    assertEquals("update_available", payload["status"])
+    assertEquals("0.1.0", payload["installed_version"])
+    assertEquals("v0.2.0", payload["latest_version"])
+    assertEquals("https://github.com/Sermilion/skill-bill/releases/tag/v0.2.0", payload["release_url"])
+    assertEquals(2, capturedRequests.size)
+    assertEquals("GET", capturedRequests.first()["method"])
+    assertEquals("skill-bill-update-check", (capturedRequests.first()["headers"] as Map<*, *>)["User-Agent"])
+  }
+
+  @Test
+  fun `update-check includes prereleases and returns unknown with exit zero`() {
+    val prerelease = CliRuntime.run(
+      listOf("update-check", "--include-prereleases", "--format", "json"),
+      CliRuntimeContext(requester = updateCheckRequester(mutableListOf(), latest = "v0.2.0-rc.1")),
+    )
+    val prereleasePayload = decodeJsonObject(prerelease.stdout)
+
+    assertEquals(0, prerelease.exitCode, prerelease.stdout)
+    assertEquals("update_available", prereleasePayload["status"])
+    assertEquals("v0.2.0-rc.1", prereleasePayload["latest_version"])
+
+    val unknown = CliRuntime.run(
+      listOf("update-check"),
+      CliRuntimeContext(requester = HttpRequester { _, _, _, _ -> HttpResponse(429, "") }),
+    )
+
+    assertEquals(0, unknown.exitCode, unknown.stdout)
+    assertContains(unknown.stdout, "status: unknown")
+    assertContains(unknown.stdout, "reason:")
+  }
+
+  @Test
+  fun `update-check is read only for local home and repo paths`() {
+    val tempDir = Files.createTempDirectory("skillbill-update-check-read-only")
+    val home = tempDir.resolve("home")
+    val repo = tempDir.resolve("repo")
+    Files.createDirectories(home)
+    Files.createDirectories(repo)
+    val before = snapshotTree(tempDir)
+
+    val result = CliRuntime.run(
+      listOf("update-check"),
+      CliRuntimeContext(
+        userHome = home,
+        requester = updateCheckRequester(mutableListOf(), latest = "v0.1.0"),
+      ),
+    )
+
+    assertEquals(0, result.exitCode, result.stdout)
+    assertEquals(before, snapshotTree(tempDir))
+  }
+
+  @Test
   fun `goal-stats --format json emits stable payload`() {
     val tempDir = Files.createTempDirectory("skillbill-cli-goal-stats-json")
     val dbPath = tempDir.resolve("metrics.db")
@@ -836,6 +908,14 @@ private fun decodeJsonObject(rawJson: String): Map<String, Any?> {
   val decoded = JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(parsed))
   require(decoded != null) { "Expected decoded JSON object but got: $rawJson" }
   return decoded
+}
+
+private fun snapshotTree(root: Path): List<String> = Files.walk(root).use { stream ->
+  stream
+    .filter { path -> path != root }
+    .map { path -> root.relativize(path).toString() }
+    .sorted()
+    .toList()
 }
 
 private fun goldenJson(fileName: String, vararg replacements: Pair<String, String>): String {
@@ -996,6 +1076,27 @@ private fun statsRequester(capturedRequests: MutableList<Map<String, Any?>>): Ht
         )
     }
   }
+
+private fun updateCheckRequester(
+  capturedRequests: MutableList<Map<String, Any?>>,
+  latest: String = "v0.2.0",
+): HttpRequester = HttpRequester { method, url, _, headers ->
+  capturedRequests += mapOf("method" to method, "url" to url, "headers" to headers)
+  HttpResponse(
+    statusCode = 200,
+    body = """
+        [{
+          "tag_name":"$latest",
+          "prerelease":${latest.contains("-")},
+          "draft":false,
+          "html_url":"https://github.com/Sermilion/skill-bill/releases/tag/$latest"
+        }]
+    """.trimIndent(),
+  )
+}
+
+private const val EXPECTED_INSTALL_COMMAND =
+  "curl -fsSL https://raw.githubusercontent.com/Sermilion/skill-bill/main/install.sh | bash"
 
 private fun telemetryStatusPayload(dbPath: Path, configPath: Path): Map<String, Any?> {
   val statusContext =

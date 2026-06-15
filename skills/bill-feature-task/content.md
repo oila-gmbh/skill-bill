@@ -24,7 +24,7 @@ Gather enough to identify and confirm the run:
 - the mode (from args as `mode:prose` or `mode:runtime`; default to `prose` when absent)
 - the parallel review agent (from args as `parallel-review:<agent>`; absent when not provided)
 
-If the issue key or spec path is missing, stop and ask for it. Do not invent either one.
+If the issue key is missing, stop and ask for it. If the spec path is missing, search `.feature-specs` for exactly one governed `.feature-specs/{ISSUE_KEY}-*/spec.md` match and use it. If there is no match or more than one match, stop and ask for the explicit spec path. Do not invent either value.
 
 Parse the mode and `parallel-review:<agent>` from args before presenting the confirmation gate. If no mode arg is provided, resolve the mode to `prose`.
 
