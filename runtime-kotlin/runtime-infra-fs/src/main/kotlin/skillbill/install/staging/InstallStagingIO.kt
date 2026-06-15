@@ -4,6 +4,7 @@ package skillbill.install.staging
 
 import skillbill.install.model.RenderedSkill
 import skillbill.scaffold.authoring.AuthoringTarget
+import skillbill.scaffold.authoring.normalizeMarkdownLineEndings
 import skillbill.scaffold.authoring.renderWrapper
 import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.model.PointerSpec
@@ -117,7 +118,9 @@ internal fun writeRenderedPointerFiles(
   require(pointerFile.startsWith(tempDir)) {
     "Pointer '${spec.name}' staging path '$pointerFile' escapes staging dir '$tempDir'."
   }
-  val rendered = renderPointer(repoRoot = repoRoot, packRoot = manifest.packRoot, spec = spec)
+  renderPointer(repoRoot = repoRoot, packRoot = manifest.packRoot, spec = spec)
+  val targetFile = repoRoot.toAbsolutePath().normalize().resolve(spec.target).normalize()
+  val rendered = normalizeMarkdownLineEndings(Files.readString(targetFile)).trimEnd() + "\n"
   Files.write(pointerFile, rendered.toByteArray(StandardCharsets.UTF_8))
   pointerFile
 }

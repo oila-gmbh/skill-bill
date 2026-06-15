@@ -89,7 +89,7 @@ class InstallStagingTest {
   }
 
   @Test
-  fun `pointer files are materialized in staging via renderPointer`() {
+  fun `platform pointer files are materialized as installed sidecar content`() {
     val fixture = setupFixture()
 
     val rendered = stageInstalledSkill(fixture.repoRoot, fixture.skillDir, fixture.home)
@@ -97,9 +97,34 @@ class InstallStagingTest {
     fixture.pointerSpecs.forEach { (manifest, spec) ->
       val staged = rendered.stagingDir.resolve(spec.name)
       assertTrue(Files.isRegularFile(staged, LinkOption.NOFOLLOW_LINKS), "missing pointer file ${spec.name}")
-      val expected = renderPointer(repoRoot = fixture.repoRoot, packRoot = manifest.packRoot, spec = spec)
+      renderPointer(repoRoot = fixture.repoRoot, packRoot = manifest.packRoot, spec = spec)
+      val expected = Files.readString(fixture.repoRoot.resolve(spec.target)).trimEnd() + "\n"
       assertEquals(expected, String(Files.readAllBytes(staged), StandardCharsets.UTF_8))
+      assertFalse(Files.readString(staged).contains("../"), "staged pointer ${spec.name} must not dangle")
     }
+  }
+
+  @Test
+  fun `staged skill exposes platform packs from resolved skill directory`() {
+    val fixture = setupFixture()
+
+    val rendered = stageInstalledSkill(fixture.repoRoot, fixture.skillDir, fixture.home)
+
+    val packs = rendered.stagingDir.resolve("platform-packs")
+    val manifest = packs.resolve("sample/platform.yaml")
+    assertTrue(Files.isSymbolicLink(packs), "platform-packs must be present in the staged skill dir")
+    assertTrue(
+      Files.isRegularFile(manifest),
+      "manifest must resolve from the staged skill dir at ${rendered.stagingDir.relativize(manifest)}",
+    )
+    assertEquals(
+      "sample",
+      Files.readString(manifest)
+        .lineSequence()
+        .first { it.startsWith("platform:") }
+        .substringAfter('"')
+        .substringBefore('"'),
+    )
   }
 
   @Test
@@ -149,7 +174,8 @@ class InstallStagingTest {
     fixture.pointerSpecs.forEach { (manifest, spec) ->
       val staged = rendered.stagingDir.resolve(spec.name)
       val reusedStaged = reused.stagingDir.resolve(spec.name)
-      val expected = renderPointer(repoRoot = fixture.repoRoot, packRoot = manifest.packRoot, spec = spec)
+      renderPointer(repoRoot = fixture.repoRoot, packRoot = manifest.packRoot, spec = spec)
+      val expected = Files.readString(fixture.repoRoot.resolve(spec.target)).trimEnd() + "\n"
       assertEquals(expected, String(Files.readAllBytes(staged), StandardCharsets.UTF_8))
       assertEquals(expected, String(Files.readAllBytes(reusedStaged), StandardCharsets.UTF_8))
     }
@@ -326,6 +352,20 @@ class InstallStagingTest {
 
     assertTrue(hashBefore != hashAfterMutation, "hash must change when support pointer target bytes change")
     assertEquals(hashBefore, hashAfterRestore, "hash must stabilise after restoring target bytes")
+  }
+
+  @Test
+  fun `content hash changes when platform pointer target bytes change`() {
+    val fixture = setupFixture()
+    val pointers = applicablePointers(fixture.repoRoot, fixture.skillDir)
+    val authored = authoredFilesFor(fixture.skillDir, pointers)
+    val hashBefore = computeInstallContentHash(fixture.skillDir, authored, pointers)
+    val target = fixture.repoRoot.resolve(pointers.single().second.target)
+
+    Files.writeString(target, "# Review orchestrator\n\nChanged guidance.\n")
+    val hashAfterMutation = computeInstallContentHash(fixture.skillDir, authored, pointers)
+
+    assertTrue(hashBefore != hashAfterMutation, "hash must change when platform pointer target bytes change")
   }
 
   @Test

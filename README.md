@@ -104,6 +104,7 @@ Skill Bill ships complete Kotlin/KMP and PHP packs — the stack-specific intell
 | `/bill-pr-description` | Generate a PR title, description, and QA steps |
 | `/bill-pr-review-fix` | Resolve PR review comments end-to-end with an approval gate and reply automation |
 | `/bill-unit-test-value-check` | Review unit tests for low-value or tautological coverage |
+| `/bill-update-check` | Check the installed Skill Bill version against GitHub releases |
 
 ## Learn more
 

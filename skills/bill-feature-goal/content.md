@@ -43,6 +43,10 @@ Clarify the user's feature goal enough to identify:
 
 If the issue key is missing, stop and ask for it. Do not invent one.
 
+When the caller provides only an issue key, use existing governed artifacts under
+`.feature-specs` when there is a single clear match for that key. Ask for a more
+specific path only when there is no match or the matches are ambiguous.
+
 Classify the goal before decomposing:
 
 - If the goal is small enough for one normal implementation pass, complete it directly in the current agent session. Do not create a decomposition manifest and do not invoke `skill-bill goal`.

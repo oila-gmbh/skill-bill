@@ -47,6 +47,9 @@ internal fun applyInstallPlan(
   val platformManifests = discoverPlatformManifests(plan.installationTargetPaths.platformPacksRoot)
   cleanupExistingSkillBillLinks(plan, platformManifests, failures)
   val appliedSkills = applyPlannedSkills(plan, platformManifests, failures)
+  if (failures.isEmpty()) {
+    materializeAgentPlatformPackViews(plan, platformManifests, appliedSkills, failures)
+  }
   val nativeAgents = if (failures.isEmpty()) {
     applyRepoLocalConfigScaffold(plan, warnings)
     applyNativeAgents(plan, platformManifests, failures)

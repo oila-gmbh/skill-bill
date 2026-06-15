@@ -644,6 +644,97 @@ class CliFeatureTaskRuntimeRuntimeTest {
     )
     assertEquals(ALL_PHASES.size, launcher.requests.size)
   }
+}
+
+class CliFeatureTaskRuntimeSpecLookupTest {
+  @Test
+  fun `feature-task resolves single feature spec match when only issue key is provided`() {
+    val fixture = runtimeFixture()
+    val launcher = RecordingPhaseLauncher()
+
+    val result = CliRuntime.run(
+      listOf(
+        "--db",
+        fixture.dbPath.toString(),
+        "feature-task",
+        "SKILL-650",
+        "--repo-root",
+        fixture.tempDir.toString(),
+        "--agent",
+        "codex",
+      ),
+      fixture.context(launcher),
+    )
+
+    assertEquals(0, result.exitCode, result.stdout)
+    assertContains(result.stdout, "status: complete")
+    assertEquals(ALL_PHASES.size, launcher.requests.size)
+  }
+
+  @Test
+  fun `feature-task explicit run resolves single feature spec match when spec path is omitted`() {
+    val fixture = runtimeFixture()
+    val launcher = RecordingPhaseLauncher()
+
+    val result = CliRuntime.run(
+      listOf(
+        "--db",
+        fixture.dbPath.toString(),
+        "feature-task",
+        "run",
+        "SKILL-650",
+        "--repo-root",
+        fixture.tempDir.toString(),
+        "--agent",
+        "codex",
+      ),
+      fixture.context(launcher),
+    )
+
+    assertEquals(0, result.exitCode, result.stdout)
+    assertContains(result.stdout, "status: complete")
+    assertEquals(ALL_PHASES.size, launcher.requests.size)
+  }
+
+  @Test
+  fun `feature-task key-only lookup reports missing and ambiguous specs`() {
+    val missingFixture = runtimeFixture()
+    val missing = CliRuntime.run(
+      listOf(
+        "--db",
+        missingFixture.dbPath.toString(),
+        "feature-task",
+        "SKILL-999",
+        "--repo-root",
+        missingFixture.tempDir.toString(),
+      ),
+      missingFixture.context(RecordingPhaseLauncher()),
+    )
+
+    assertEquals(1, missing.exitCode)
+    assertContains(missing.stdout, "no .feature-specs match found")
+
+    val ambiguousFixture = runtimeFixture()
+    val secondSpec = ambiguousFixture.tempDir.resolve(".feature-specs/SKILL-650-other/spec.md")
+    Files.createDirectories(secondSpec.parent)
+    Files.writeString(secondSpec, "# second spec\n")
+    val ambiguous = CliRuntime.run(
+      listOf(
+        "--db",
+        ambiguousFixture.dbPath.toString(),
+        "feature-task",
+        "SKILL-650",
+        "--repo-root",
+        ambiguousFixture.tempDir.toString(),
+      ),
+      ambiguousFixture.context(RecordingPhaseLauncher()),
+    )
+
+    assertEquals(1, ambiguous.exitCode)
+    assertContains(ambiguous.stdout, "multiple .feature-specs matches found")
+    assertContains(ambiguous.stdout, "SKILL-650-runtime")
+    assertContains(ambiguous.stdout, "SKILL-650-other")
+  }
 
   @Test
   fun `feature-task-runtime resume re-runs against an existing workflow id without re-launching complete phases`() {
