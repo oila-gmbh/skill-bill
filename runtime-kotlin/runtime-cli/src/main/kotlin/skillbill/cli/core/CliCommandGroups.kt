@@ -16,6 +16,7 @@ import skillbill.cli.review.ReviewTopLevelCommands
 import skillbill.cli.scaffold.ScaffoldTopLevelCommands
 import skillbill.cli.skillremove.RemoveCliCommand
 import skillbill.cli.system.DoctorCliCommand
+import skillbill.cli.system.UninstallCommand
 import skillbill.cli.system.UpdateCheckCommand
 import skillbill.cli.system.UpdateCommand
 import skillbill.cli.system.VersionCommand
@@ -52,6 +53,7 @@ class UtilityCliCommandGroup(
   versionCommand: VersionCommand,
   updateCommand: UpdateCommand,
   updateCheckCommand: UpdateCheckCommand,
+  uninstallCommand: UninstallCommand,
   doctorCommand: DoctorCliCommand,
   removeCommand: RemoveCliCommand,
   codeReviewParallelCommand: CodeReviewParallelCommand,
@@ -66,6 +68,7 @@ class UtilityCliCommandGroup(
       versionCommand,
       updateCommand,
       updateCheckCommand,
+      uninstallCommand,
       doctorCommand,
       removeCommand,
       codeReviewParallelCommand,

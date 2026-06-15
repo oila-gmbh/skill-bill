@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+ORIGINAL_ARGS=("$@")
+INSTALLER_SCRIPT_SOURCE="${BASH_SOURCE[0]:-}"
+INSTALLER_FROM_STDIN=0
+if [[ -z "$INSTALLER_SCRIPT_SOURCE" || ! -f "$INSTALLER_SCRIPT_SOURCE" ]]; then
+  INSTALLER_FROM_STDIN=1
+fi
+
 PLUGIN_DIR="$(cd "$(dirname "$0")" && pwd)"
 SKILLS_DIR="$PLUGIN_DIR/skills"
 PLATFORM_PACKS_DIR="$PLUGIN_DIR/platform-packs"
@@ -215,6 +222,58 @@ resolve_install_source() {
   else
     INSTALL_SOURCE="prebuilt"
   fi
+}
+
+resolve_release_installer_tag() {
+  if [[ -n "$RELEASE_TAG" ]]; then
+    printf '%s' "$RELEASE_TAG"
+    return 0
+  fi
+  local api_url tag
+  api_url="https://api.github.com/repos/$RELEASE_REPO/releases/latest"
+  tag="$(curl -fsSL "$api_url" | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1)"
+  if [[ -z "$tag" ]]; then
+    err "Failed to resolve latest release tag from: $api_url"
+    return 1
+  fi
+  printf '%s' "$tag"
+}
+
+bootstrap_release_installer_if_needed() {
+  if [[ "$INSTALLER_FROM_STDIN" -ne 1 ]]; then
+    return 0
+  fi
+  if [[ "${SKILL_BILL_RELEASE_INSTALLER_BOOTSTRAPPED:-}" == "1" ]]; then
+    return 0
+  fi
+  if [[ -n "$SKILL_BILL_RELEASE_DIR" || -n "$SKILL_BILL_RELEASE_BASE_URL" ]]; then
+    return 0
+  fi
+  if [[ "$INSTALL_SOURCE" == "source" ]]; then
+    return 0
+  fi
+
+  if ! command -v curl >/dev/null 2>&1; then
+    err "curl is required to resolve and fetch the release installer."
+    exit 1
+  fi
+
+  local tag installer_url installer
+  tag="$(resolve_release_installer_tag)" || exit 1
+  installer_url="https://raw.githubusercontent.com/$RELEASE_REPO/$tag/install.sh"
+  info "Standalone installer: using release installer $tag."
+  if ! installer="$(curl -fsSL "$installer_url")"; then
+    err "Failed to fetch release installer: $installer_url"
+    exit 1
+  fi
+
+  local bootstrap_args=("${ORIGINAL_ARGS[@]}")
+  if [[ -z "$RELEASE_TAG" ]]; then
+    bootstrap_args=(--release "$tag" "${ORIGINAL_ARGS[@]}")
+  fi
+
+  export SKILL_BILL_RELEASE_INSTALLER_BOOTSTRAPPED=1
+  exec bash -s -- "${bootstrap_args[@]}" <<<"$installer"
 }
 
 host_path() {
@@ -674,7 +733,7 @@ prompt_for_desktop_app_install() {
   # Non-interactive (no TTY) and reuse mode resolve to the gated default WITHOUT
   # blocking on read. The shared install-selection record owns runtime choices
   # only; explicit --with/--no-desktop-app remains the desktop override.
-  if [[ ! -t 0 || "$REUSE_LAST_SELECTION" -eq 1 ]]; then
+  if ! prompt_input_available || [[ "$REUSE_LAST_SELECTION" -eq 1 ]]; then
     DESKTOP_APP_INSTALL="$default_choice"
     return 0
   fi
@@ -697,7 +756,7 @@ prompt_for_desktop_app_install() {
       printf "  2. skip (default)\n"
     fi
     printf "${CYAN}▸${NC} Enter desktop app choice [${default_hint}]: "
-    if ! read -r input; then
+    if ! read_prompt_input input; then
       input=""
     fi
 
@@ -997,7 +1056,7 @@ reconcile_and_commit_authored_source() {
     elif [[ "$PREFER_UPSTREAM" -eq 1 ]]; then
       info "Accepting upstream for conflicting skills (--prefer-upstream); your local edits will be overwritten."
       accept_conflicts=1
-    elif [[ ! -t 0 ]]; then
+    elif ! prompt_input_available; then
       warn "Aborting: no TTY is attached to prompt for conflict resolution. Your local copies were not changed."
       local p
       for p in $RECONCILE_CONFLICT_PATHS; do
@@ -1008,7 +1067,7 @@ reconcile_and_commit_authored_source() {
     else
       printf '%s' "Overwrite your local copy with the upstream version for the conflicting skills? [y/n]: "
       local answer=""
-      if ! read -r answer; then
+      if ! read_prompt_input answer; then
         answer="n"
       fi
       case "${answer,,}" in
@@ -1765,6 +1824,19 @@ trim_string() {
   printf '%s' "$value"
 }
 
+prompt_input_available() {
+  { : < /dev/tty; } 2>/dev/null
+}
+
+read_prompt_input() {
+  local target_var="$1"
+  if prompt_input_available; then
+    IFS= read -r "$target_var" < /dev/tty
+  else
+    IFS= read -r "$target_var"
+  fi
+}
+
 normalize_platform_token() {
   printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]_/-'
 }
@@ -1880,7 +1952,7 @@ prompt_for_agent_mode() {
     printf "  1. manual - choose one or more supported agents\n"
     printf "  2. detected - let the runtime detect configured agents from your home directory\n"
     printf "${CYAN}▸${NC} Enter agent mode [1]: "
-    if ! read -r input; then
+    if ! read_prompt_input input; then
       input=""
     fi
 
@@ -1923,7 +1995,7 @@ prompt_for_manual_agent_selection() {
     printf "  %s. all (install to every supported agent)\n" "$option_number"
     info "Choose one or more agents (comma-separated)."
     printf "${CYAN}▸${NC} Enter agents [detected/all]: "
-    if ! read -r input; then
+    if ! read_prompt_input input; then
       input=""
     fi
 
@@ -2102,7 +2174,7 @@ prompt_for_platform_selection() {
     info "Optional platform packs are resolved by the runtime from platform-packs/ manifests."
     info "Choose one or more optional platform numbers (comma-separated). Names still work if you prefer them."
     printf "${CYAN}▸${NC} Enter platforms [base only] (e.g. 1,3 or %s): " "$option_number"
-    if ! read -r input; then
+    if ! read_prompt_input input; then
       input=""
     fi
 
@@ -2166,7 +2238,7 @@ prompt_for_telemetry_preference() {
     printf "  2. full - includes finding details, learnings, rejection notes\n"
     printf "  3. off - no telemetry\n"
     printf "${CYAN}▸${NC} Enter telemetry level [1]: "
-    if ! read -r input; then
+    if ! read_prompt_input input; then
       input=""
     fi
 
@@ -2587,6 +2659,7 @@ run_full_install() {
 }
 
 parse_args "$@"
+bootstrap_release_installer_if_needed
 resolve_install_source
 if [[ "$DESKTOP_APP_ONLY" -eq 1 ]]; then
   run_desktop_only_install

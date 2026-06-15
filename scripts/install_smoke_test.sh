@@ -257,6 +257,48 @@ run_piped_install_with_eof_defaults() {
   )
 }
 
+run_piped_bootstrap_latest_release() {
+  local fake_home="$1"
+  local work
+  work="$(mktemp -d)"
+  WORK_TMPDIRS+=("$work")
+  cat >"$work/curl" <<'CURL'
+#!/usr/bin/env bash
+set -euo pipefail
+url="${@: -1}"
+case "$url" in
+  https://api.github.com/repos/Sermilion/skill-bill/releases/latest)
+    printf '{"tag_name":"v9.9.9"}\n'
+    ;;
+  https://raw.githubusercontent.com/Sermilion/skill-bill/v9.9.9/install.sh)
+    cat <<'INSTALLER'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'release_bootstrap=%s\n' "${SKILL_BILL_RELEASE_INSTALLER_BOOTSTRAPPED:-}"
+printf 'release_args:'
+for arg in "$@"; do
+  printf ' [%s]' "$arg"
+done
+printf '\n'
+INSTALLER
+    ;;
+  *)
+    printf 'unexpected curl url: %s\n' "$url" >&2
+    exit 1
+    ;;
+esac
+CURL
+  chmod +x "$work/curl"
+  (
+    cd "$REPO_ROOT"
+    env \
+      HOME="$fake_home" \
+      PATH="$work:$PATH" \
+      bash -c 'cat install.sh | bash -s -- --no-desktop-app' \
+      </dev/null
+  )
+}
+
 echo "=== install smoke test ==="
 echo ""
 
@@ -265,7 +307,26 @@ STUB_TMP="$(mktemp)"
 make_stub_runtime_cli "$STUB_TMP"
 setup_release_dir "$TOKEN" "$STUB_TMP"
 
-echo "--- scenario 1: blank interactive defaults ---"
+echo "--- scenario 1: piped main installer bootstraps latest release installer ---"
+FAKE_HOME="$(mktemp -d)"
+BOOTSTRAP_OUTPUT="$(run_piped_bootstrap_latest_release "$FAKE_HOME")"
+pass "piped main installer bootstrapped latest release installer"
+
+if [[ "$BOOTSTRAP_OUTPUT" == *"Standalone installer: using release installer v9.9.9."* ]]; then
+  pass "bootstrap reports latest release tag"
+else
+  fail "bootstrap did not report latest release tag"
+fi
+
+if [[ "$BOOTSTRAP_OUTPUT" == *"release_bootstrap=1"* &&
+  "$BOOTSTRAP_OUTPUT" == *"release_args: [--release] [v9.9.9] [--no-desktop-app]"* ]]; then
+  pass "release installer receives pinned latest release args"
+else
+  fail "release installer args unexpected: $BOOTSTRAP_OUTPUT"
+fi
+
+echo ""
+echo "--- scenario 2: blank interactive defaults ---"
 FAKE_HOME="$(mktemp -d)"
 INTERACTIVE_OUTPUT="$(run_interactive_install_with_blank_defaults "$FAKE_HOME")"
 pass "interactive install with blank defaults exited 0"
@@ -283,7 +344,7 @@ else
 fi
 
 echo ""
-echo "--- scenario 2: piped install EOF defaults ---"
+echo "--- scenario 3: piped install EOF defaults ---"
 FAKE_HOME="$(mktemp -d)"
 PIPED_OUTPUT="$(run_piped_install_with_eof_defaults "$FAKE_HOME")"
 pass "piped install with EOF defaults exited 0"
@@ -301,7 +362,7 @@ else
 fi
 
 echo ""
-echo "--- scenario 3: base install (AC#1) ---"
+echo "--- scenario 4: base install (AC#1) ---"
 FAKE_HOME="$(mktemp -d)"
 mkdir -p "$FAKE_HOME/.claude"
 seed_selection_json "$FAKE_HOME"
@@ -327,7 +388,7 @@ else
 fi
 
 echo ""
-echo "--- scenario 4: --clean flag (AC#2) ---"
+echo "--- scenario 5: --clean flag (AC#2) ---"
 
 SENTINEL="$FAKE_HOME/.skill-bill/skills/__smoke_extra_file__"
 mkdir -p "$(dirname "$SENTINEL")"
@@ -354,7 +415,7 @@ else
 fi
 
 echo ""
-echo "--- scenario 5: --prefer-upstream conflict (AC#3) ---"
+echo "--- scenario 6: --prefer-upstream conflict (AC#3) ---"
 
 TARGET_SKILL="$FAKE_HOME/.skill-bill/skills/bill-code-review"
 if [[ ! -d "$TARGET_SKILL" ]]; then
