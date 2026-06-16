@@ -118,6 +118,23 @@ class DatabaseMigrationsTest {
   }
 
   @Test
+  fun `ensureDatabase heals columns missing from a fully version-recorded legacy database`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-db-migrations").resolve("legacy-recorded-implement.db")
+    createLegacyFeatureImplementSessionsDatabase(dbPath)
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val columns = tableColumns(connection = connection, tableName = "feature_implement_sessions")
+      connection.createStatement().use { statement ->
+        statement.executeUpdate("INSERT INTO feature_implement_sessions (session_id) VALUES ('fis-defaults')")
+      }
+
+      assertTrue("source" in columns, "source must be healed even when every migration version is already recorded.")
+      assertEquals("production", featureImplementColumnValue(connection, "source"))
+      assertEquals(DatabaseMigrations.migrations.size, migrationRows(connection).size)
+    }
+  }
+
+  @Test
   fun `ensureDatabase migrates legacy feedback event values to current schema`() {
     val dbPath = Files.createTempDirectory("runtime-kotlin-db-migrations").resolve("legacy-feedback-events.db")
     createLegacyFeedbackEventsDatabase(dbPath)
@@ -183,6 +200,35 @@ class DatabaseMigrationsTest {
         statement.setString(2, "bill-kotlin-code-review")
         statement.setString(3, "legacy review")
         statement.executeUpdate()
+      }
+    }
+  }
+
+  private fun createLegacyFeatureImplementSessionsDatabase(dbPath: Path) {
+    DriverManager.getConnection("jdbc:sqlite:$dbPath").use { connection ->
+      connection.createStatement().use { statement ->
+        statement.execute(CREATE_LEGACY_FEATURE_IMPLEMENT_SESSIONS_SQL)
+        statement.execute(
+          """
+          CREATE TABLE schema_migrations (
+            version INTEGER PRIMARY KEY,
+            name TEXT NOT NULL UNIQUE,
+            applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+          )
+          """.trimIndent(),
+        )
+      }
+      connection.prepareStatement(
+        """
+        INSERT INTO schema_migrations (version, name)
+        VALUES (?, ?)
+        """.trimIndent(),
+      ).use { statement ->
+        DatabaseMigrations.migrations.forEach { migration ->
+          statement.setInt(1, migration.version)
+          statement.setString(2, migration.name)
+          statement.executeUpdate()
+        }
       }
     }
   }
@@ -350,6 +396,15 @@ class DatabaseMigrationsTest {
   )
 
   private companion object {
+    const val CREATE_LEGACY_FEATURE_IMPLEMENT_SESSIONS_SQL: String =
+      """
+      CREATE TABLE feature_implement_sessions (
+        session_id TEXT PRIMARY KEY,
+        completion_status TEXT,
+        started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+      """
+
     const val CREATE_LEGACY_REVIEW_RUNS_SQL: String =
       """
       CREATE TABLE review_runs (

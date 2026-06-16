@@ -38,6 +38,7 @@ object DatabaseRuntime {
     }
     DatabaseSchema.createBaseSchema(connection)
     DatabaseMigrations.apply(connection)
+    DatabaseColumnMigrations.apply(connection)
     return connection
   }
 }
