@@ -27,6 +27,7 @@ import skillbill.application.scaffold.ScaffoldService
 import skillbill.application.scaffold.SkillRemoveService
 import skillbill.application.scaffold.UnsupportedScaffoldService
 import skillbill.application.system.SystemService
+import skillbill.application.system.UninstallFileSystemService
 import skillbill.application.telemetry.LifecycleTelemetryService
 import skillbill.application.telemetry.TelemetryLevelMutationService
 import skillbill.application.telemetry.TelemetryService
@@ -65,6 +66,7 @@ import skillbill.infrastructure.fs.FileSystemScaffoldRepoValidation
 import skillbill.infrastructure.fs.FileSystemScaffoldSourceLoader
 import skillbill.infrastructure.fs.FileSystemSkillRemoveFileSystem
 import skillbill.infrastructure.fs.FileSystemSpecScratchStore
+import skillbill.infrastructure.fs.FileSystemUninstallFileSystemGateway
 import skillbill.infrastructure.fs.FileSystemUnsupportedScaffoldGateway
 import skillbill.infrastructure.fs.FileTelemetryConfigStore
 import skillbill.infrastructure.fs.GhGoalPullRequestPort
@@ -121,6 +123,7 @@ import skillbill.ports.scaffold.manifest.ScaffoldManifestPersistencePort
 import skillbill.ports.scaffold.repo.ScaffoldRepoValidationPort
 import skillbill.ports.scaffold.source.ScaffoldSourceLoaderPort
 import skillbill.ports.scaffold.staging.ScaffoldGeneratedStagingPort
+import skillbill.ports.system.UninstallFileSystemGateway
 import skillbill.ports.taskruntime.FeatureTaskRuntimeRunInvariantsSource
 import skillbill.ports.telemetry.TelemetryClient
 import skillbill.ports.telemetry.TelemetryConfigStore
@@ -390,6 +393,11 @@ abstract class RuntimeComponent(
 
   @Provides
   @JvmSynthetic
+  internal fun uninstallFileSystemGateway(gateway: FileSystemUninstallFileSystemGateway): UninstallFileSystemGateway =
+    gateway
+
+  @Provides
+  @JvmSynthetic
   internal fun reviewInputSource(source: FileSystemReviewInputSource): ReviewInputSource = source
 
   @Provides
@@ -499,6 +507,7 @@ abstract class RuntimeComponent(
   abstract val systemService: SystemService
   abstract val telemetryLevelMutator: TelemetryLevelMutator
   abstract val telemetryService: TelemetryService
+  abstract val uninstallFileSystemService: UninstallFileSystemService
   abstract val unsupportedScaffoldService: UnsupportedScaffoldService
   abstract val workflowService: WorkflowService
 }

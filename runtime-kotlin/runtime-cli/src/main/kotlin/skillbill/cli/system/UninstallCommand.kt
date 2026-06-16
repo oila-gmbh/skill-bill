@@ -6,15 +6,14 @@ import me.tatarka.inject.annotations.Inject
 import skillbill.application.scaffold.InstallAgentService
 import skillbill.application.scaffold.McpRegistrationService
 import skillbill.application.scaffold.NativeAgentInstallService
+import skillbill.application.system.UninstallFileSystemService
 import skillbill.cli.core.CliRunState
 import skillbill.cli.core.DocumentedCliCommand
 import skillbill.cli.core.formatOption
 import skillbill.install.model.ClaudeMcpProfileFailure
 import skillbill.ports.install.model.NativeAgentLinkProvider
 import skillbill.ports.install.model.NativeAgentLinkRequest
-import java.nio.file.Files
 import java.nio.file.Path
-import java.util.Comparator
 
 @Inject
 class UninstallCommand(
@@ -22,6 +21,7 @@ class UninstallCommand(
   private val installAgentService: InstallAgentService,
   private val nativeAgentInstallService: NativeAgentInstallService,
   private val mcpRegistrationService: McpRegistrationService,
+  private val uninstallFileSystem: UninstallFileSystemService,
 ) : DocumentedCliCommand("uninstall", "Uninstall Skill Bill from local agents and runtime state.") {
   private val yes by option("--yes", "-y", help = "Skip the interactive confirmation prompt.")
     .flag(default = false)
@@ -67,7 +67,7 @@ class UninstallCommand(
   private fun uninstallPlan(): UninstallPlan {
     val home = state.userHome
     val stateRoot = home.resolve(".skill-bill")
-    val skillNames = installedSkillNames(stateRoot.resolve("installed-skills"))
+    val skillNames = installedSkillNames(uninstallFileSystem, stateRoot.resolve("installed-skills"))
     val legacyNames = legacySkillNames(skillNames)
     val claudeTargets = installAgentService.claudeRoots(home, state.environment).flatMap { root ->
       listOf(root.resolve("skills"), root.resolve("commands"))
@@ -125,7 +125,7 @@ class UninstallCommand(
       }
     }
 
-    if (plan.nativeSourceRoots.any(Files::exists)) {
+    if (plan.nativeSourceRoots.any(uninstallFileSystem::exists)) {
       val request = NativeAgentLinkRequest(
         platformPacksRoot = plan.stateRoot.resolve("platform-packs"),
         skillsRoot = plan.stateRoot.resolve("skills"),
@@ -153,9 +153,11 @@ class UninstallCommand(
         }
     }
 
-    plan.launchers.forEach { launcher -> removeLauncher(launcher, removed, skipped, warnings) }
-    removeDesktop(plan.desktop, removed, skipped, warnings)
-    removeRecursively(plan.stateRoot, removed, warnings)
+    plan.launchers.forEach { launcher ->
+      removeLauncher(uninstallFileSystem, launcher, removed, skipped, warnings)
+    }
+    removeDesktop(uninstallFileSystem, plan.desktop, removed, skipped, warnings)
+    removeRecursively(uninstallFileSystem, plan.stateRoot, removed, warnings)
 
     return UninstallResult(
       status = if (warnings.isEmpty()) "completed" else "completed_with_warnings",
@@ -192,18 +194,12 @@ private val RENAMED_SKILL_PAIRS = listOf(
   "bill-php-code-review-correctness" to "bill-php-code-review-platform-correctness",
 )
 
-private fun installedSkillNames(installedSkillsRoot: Path): List<String> {
-  if (!Files.isDirectory(installedSkillsRoot)) {
-    return emptyList()
-  }
+private fun installedSkillNames(fileSystem: UninstallFileSystemService, installedSkillsRoot: Path): List<String> {
   val names = mutableSetOf<String>()
-  Files.newDirectoryStream(installedSkillsRoot).use { entries ->
-    entries.forEach { entry ->
-      val name = entry.fileName.toString()
-      val match = STAGED_SKILL_DIRECTORY.matchEntire(name)
-      if (match != null && !name.startsWith("native-agents-")) {
-        names += match.groupValues[1]
-      }
+  fileSystem.listImmediateDirectoryNames(installedSkillsRoot).forEach { name ->
+    val match = STAGED_SKILL_DIRECTORY.matchEntire(name)
+    if (match != null && !name.startsWith("native-agents-")) {
+      names += match.groupValues[1]
     }
   }
   return names.sorted()
@@ -223,19 +219,20 @@ private fun legacySkillNames(skillNames: List<String>): List<String> {
 }
 
 private fun removeLauncher(
+  fileSystem: UninstallFileSystemService,
   launcher: LauncherRemoval,
   removed: MutableList<String>,
   skipped: MutableList<String>,
   warnings: MutableList<String>,
 ) {
-  if (!Files.exists(launcher.path) && !Files.isSymbolicLink(launcher.path)) {
+  if (!fileSystem.exists(launcher.path) && !fileSystem.isSymbolicLink(launcher.path)) {
     return
   }
-  if (!Files.isSymbolicLink(launcher.path)) {
+  if (!fileSystem.isSymbolicLink(launcher.path)) {
     skipped += "${launcher.path} (not a symlink)"
     return
   }
-  val target = runCatching { Files.readSymbolicLink(launcher.path) }.getOrElse { error ->
+  val target = runCatching { fileSystem.readSymbolicLink(launcher.path) }.getOrElse { error ->
     warnings += "could not read launcher ${launcher.path}: ${error.message.orEmpty()}"
     return
   }
@@ -243,42 +240,40 @@ private fun removeLauncher(
     skipped += "${launcher.path} (points to $target)"
     return
   }
-  runCatching { Files.deleteIfExists(launcher.path) }
+  runCatching { fileSystem.deleteIfExists(launcher.path) }
     .onSuccess { removed += launcher.path.toString() }
     .onFailure { error -> warnings += "could not remove launcher ${launcher.path}: ${error.message.orEmpty()}" }
 }
 
 private fun removeDesktop(
+  fileSystem: UninstallFileSystemService,
   desktop: DesktopRemoval,
   removed: MutableList<String>,
   skipped: MutableList<String>,
   warnings: MutableList<String>,
 ) {
-  desktop.launcher?.let { removeLauncher(it, removed, skipped, warnings) }
+  desktop.launcher?.let { removeLauncher(fileSystem, it, removed, skipped, warnings) }
   desktop.files.forEach { file ->
-    if (!Files.exists(file)) return@forEach
-    runCatching { Files.deleteIfExists(file) }
+    if (!fileSystem.exists(file)) return@forEach
+    runCatching { fileSystem.deleteIfExists(file) }
       .onSuccess { removed += file.toString() }
       .onFailure { error -> warnings += "could not remove $file: ${error.message.orEmpty()}" }
   }
-  desktop.directories.forEach { directory -> removeRecursively(directory, removed, warnings) }
+  desktop.directories.forEach { directory -> removeRecursively(fileSystem, directory, removed, warnings) }
 }
 
-private fun removeRecursively(path: Path, removed: MutableList<String>, warnings: MutableList<String>) {
-  if (!Files.exists(path) && !Files.isSymbolicLink(path)) {
+private fun removeRecursively(
+  fileSystem: UninstallFileSystemService,
+  path: Path,
+  removed: MutableList<String>,
+  warnings: MutableList<String>,
+) {
+  if (!fileSystem.exists(path) && !fileSystem.isSymbolicLink(path)) {
     return
   }
-  runCatching {
-    Files.walk(path).use { stream ->
-      stream.sorted(Comparator.reverseOrder()).forEach { entry ->
-        if (Files.deleteIfExists(entry)) {
-          removed += entry.toString()
-        }
-      }
-    }
-  }.onFailure { error ->
-    warnings += "could not remove $path: ${error.message.orEmpty()}"
-  }
+  runCatching { fileSystem.removeTree(path) }
+    .onSuccess { entries -> entries.forEach { entry -> removed += entry.toString() } }
+    .onFailure { error -> warnings += "could not remove $path: ${error.message.orEmpty()}" }
 }
 
 private fun desktopPlan(
