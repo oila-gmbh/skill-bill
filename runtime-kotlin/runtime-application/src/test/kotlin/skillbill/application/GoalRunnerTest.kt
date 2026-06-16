@@ -153,6 +153,67 @@ class GoalRunnerTest {
   }
 
   @Test
+  fun `validation quality gate block resumes child once instead of stopping goal`() {
+    val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 1))
+    val outcomes = RecordingOutcomeStore()
+    var launches = 0
+    val launcher = RecordingSubtaskLauncher { request ->
+      val subtaskId = requireNotNull(request.skillRunRequest.subtaskId)
+      launches += 1
+      store.mutate { current -> current.withWorkflowId(subtaskId, "wfl-$subtaskId") }
+      outcomes["wfl-$subtaskId"] = if (launches == 1) {
+        GoalRunnerStoredOutcome(
+          status = GoalRunnerTerminalStatus.BLOCKED,
+          workflowId = "wfl-$subtaskId",
+          blockedReason = "./gradlew check failed during :web:detekt, so the quality gate is not green.",
+          lastResumableStep = "validate",
+          suppressPr = true,
+        )
+      } else {
+        completeOutcome(subtaskId)
+      }
+      launchFacts()
+    }
+    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort())
+
+    val report = runner.run(runRequest())
+
+    assertIs<GoalRunnerRunReport.Completed>(report)
+    assertEquals(listOf(1, 1), launcher.requests.map { it.skillRunRequest.subtaskId })
+    assertEquals("validate", launcher.requests.last().skillRunRequest.goalContinuation?.lastResumableStep)
+    assertEquals("complete", store.manifest.status)
+    assertEquals("complete", store.manifest.subtasks.single().status)
+    assertEquals("sha-1", store.manifest.subtasks.single().commitSha)
+  }
+
+  @Test
+  fun `validation quality gate block stops after the in-run resume also blocks`() {
+    val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 1))
+    val outcomes = RecordingOutcomeStore()
+    val launcher = RecordingSubtaskLauncher { request ->
+      val subtaskId = requireNotNull(request.skillRunRequest.subtaskId)
+      store.mutate { current -> current.withWorkflowId(subtaskId, "wfl-$subtaskId") }
+      outcomes["wfl-$subtaskId"] = GoalRunnerStoredOutcome(
+        status = GoalRunnerTerminalStatus.BLOCKED,
+        workflowId = "wfl-$subtaskId",
+        blockedReason = "Quality gate failed after the attempted fix: ./gradlew check still fails.",
+        lastResumableStep = "validate",
+        suppressPr = true,
+      )
+      launchFacts()
+    }
+    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort())
+
+    val report = runner.run(runRequest())
+
+    val stopped = assertIs<GoalRunnerRunReport.Stopped>(report)
+    assertEquals(GoalRunnerStopReason.BLOCKED, stopped.stop.reason)
+    assertEquals(listOf(1, 1), launcher.requests.map { it.skillRunRequest.subtaskId })
+    assertEquals("blocked", store.manifest.status)
+    assertEquals("blocked", store.manifest.subtasks.single().status)
+  }
+
+  @Test
   fun `resume after stop skips completed subtasks and continues from blocked subtask`() {
     val initial = manifest(subtaskCount = 3)
       .withCompletedSubtask(1, workflowId = "wfl-1", commitSha = "sha-1")
