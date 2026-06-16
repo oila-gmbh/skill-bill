@@ -74,6 +74,7 @@ class GoalRunner(
     var state = manifestStore.loadByIssueKey(request.issueKey, request.dbPathOverride, request.repoRoot)
       ?: return unknownGoal(request.issueKey)
     val attempted = mutableListOf<Int>()
+    val validationQualityRetries = mutableSetOf<Int>()
     val observability = GoalRunnerObservabilityEmitter(outcomeStore, request)
     val ledger = GoalRunnerLedgerRecorder(outcomeStore, request, diagnostics)
     var terminalReport: GoalRunnerRunReport? = preflightPolicyBlockedReport(state, request, ledger)
@@ -94,7 +95,16 @@ class GoalRunner(
               terminalReport = result.report
             }
         is GoalRunnerSelection.Run -> {
-          val result = runSelectedSubtask(state, selection, request, attempted, observability, ledger, telemetryEmitter)
+          val result = runSelectedSubtask(
+            state,
+            selection,
+            request,
+            attempted,
+            observability,
+            ledger,
+            telemetryEmitter,
+            validationQualityRetries,
+          )
           state = result.state
           terminalReport = result.report
         }
@@ -194,6 +204,7 @@ class GoalRunner(
     observability: GoalRunnerObservabilityEmitter,
     ledger: GoalRunnerLedgerRecorder,
     telemetryEmitter: GoalRunnerTelemetryEmitter?,
+    validationQualityRetries: MutableSet<Int>,
   ): GoalRunnerIterationResult {
     val subtaskId = selection.decision.subtask.id
     goalBranchSetupFailure(state, selection, request)?.let { failure ->
@@ -245,6 +256,7 @@ class GoalRunner(
         observability,
         ledger,
         launchReconciliation.diagnostics,
+        validationQualityRetries,
       )
     }
   }
@@ -340,9 +352,9 @@ class GoalRunner(
     observability: GoalRunnerObservabilityEmitter,
     ledger: GoalRunnerLedgerRecorder,
     launchDiagnostics: GoalRunnerLaunchDiagnostics? = null,
+    validationQualityRetries: MutableSet<Int> = mutableSetOf(),
   ): GoalRunnerIterationResult {
-    val knownWorkflowId = reconciled.workflowId
-      ?: state.manifest.subtasks.firstOrNull { it.id == subtaskId }?.workflowId?.takeIf(String::isNotBlank)
+    val knownWorkflowId = state.manifest.knownWorkflowId(subtaskId, reconciled)
     val stoppedOutcome = markChildWorkflowBlockedIfNeeded(reconciled, knownWorkflowId, request)
     knownWorkflowId?.let { workflowId ->
       ledger.recordLedgerEntry(
@@ -362,6 +374,8 @@ class GoalRunner(
       )
     }
     val blocked = state.manifest.withStoppedSubtask(subtaskId, stoppedOutcome, knownWorkflowId)
+    validationQualityRetryIteration(blocked, stoppedOutcome, subtaskId, state, request, validationQualityRetries)
+      ?.let { retry -> return retry }
     val saved = manifestStore.save(state.copy(manifest = blocked), request.dbPathOverride)
     knownWorkflowId?.let { workflowId ->
       observability.record(
@@ -373,15 +387,7 @@ class GoalRunner(
         ),
       )
     }
-    request.eventSink.emit(
-      GoalRunnerRunEvent.SubtaskStopped(
-        issueKey = saved.manifest.issueKey,
-        subtaskId = subtaskId,
-        reason = stoppedOutcome.reason.name.lowercase(),
-        blockedReason = stoppedOutcome.blockedReason,
-        currentStepId = stoppedOutcome.lastResumableStep.takeIf(String::isNotBlank),
-      ),
-    )
+    request.emitStoppedSubtaskEvent(saved.manifest.issueKey, subtaskId, stoppedOutcome)
     return GoalRunnerIterationResult(
       state = saved,
       report = stopped(
@@ -396,6 +402,41 @@ class GoalRunner(
         ),
         workflowId = knownWorkflowId,
         lastResumableStep = stoppedOutcome.lastResumableStep,
+      ),
+    )
+  }
+
+  private fun validationQualityRetryIteration(
+    blocked: DecompositionManifest,
+    stoppedOutcome: GoalRunnerReconciledOutcome.Stop,
+    subtaskId: Int,
+    state: GoalRunnerManifestState,
+    request: GoalRunnerRunRequest,
+    validationQualityRetries: MutableSet<Int>,
+  ): GoalRunnerIterationResult? {
+    if (!stoppedOutcome.isRecoverableValidationQualityBlock() || !validationQualityRetries.add(subtaskId)) {
+      return null
+    }
+    return GoalRunnerIterationResult(
+      state = manifestStore.save(
+        state.copy(manifest = blocked.withValidationQualityRetrySubtask(subtaskId)),
+        request.dbPathOverride,
+      ),
+    )
+  }
+
+  private fun GoalRunnerRunRequest.emitStoppedSubtaskEvent(
+    issueKey: String,
+    subtaskId: Int,
+    stoppedOutcome: GoalRunnerReconciledOutcome.Stop,
+  ) {
+    eventSink.emit(
+      GoalRunnerRunEvent.SubtaskStopped(
+        issueKey = issueKey,
+        subtaskId = subtaskId,
+        reason = stoppedOutcome.reason.name.lowercase(),
+        blockedReason = stoppedOutcome.blockedReason,
+        currentStepId = stoppedOutcome.lastResumableStep.takeIf(String::isNotBlank),
       ),
     )
   }
@@ -976,6 +1017,13 @@ private const val MAX_NO_TERMINAL_OUTCOME_RETRY_ATTEMPTS = 1
 private const val NO_TERMINAL_OUTCOME_RECHECK_ATTEMPTS = 2
 private const val NO_TERMINAL_OUTCOME_RECHECK_DELAY_MILLIS = 200L
 private val PROTECTED_GOAL_BRANCHES: Set<String> = setOf("main", "master", "trunk")
+private val VALIDATION_QUALITY_BLOCK_SIGNALS: Set<String> = setOf(
+  "quality gate",
+  "quality check",
+  "gradlew check",
+  "./gradlew check",
+  "detekt",
+)
 private val CHILD_WORKFLOW_BLOCK_REASONS: Set<GoalRunnerStopReason> = setOf(
   GoalRunnerStopReason.NO_TERMINAL_STORE_OUTCOME,
   GoalRunnerStopReason.TIMEOUT,
@@ -1016,6 +1064,12 @@ private fun String.withStopDiagnostics(
   ).joinToString(", ")
   return if (details.isBlank()) this else "$this [$details]"
 }
+
+private fun GoalRunnerReconciledOutcome.Stop.isRecoverableValidationQualityBlock(): Boolean =
+  reason == GoalRunnerStopReason.BLOCKED &&
+    lastResumableStep == "validate" &&
+    !blockedReason.contains("exhausted the bounded fix loop", ignoreCase = true) &&
+    VALIDATION_QUALITY_BLOCK_SIGNALS.any { signal -> blockedReason.contains(signal, ignoreCase = true) }
 
 private fun supervisionEvent(
   reason: GoalRunnerStopReason,
@@ -1174,6 +1228,9 @@ private fun DecompositionManifest.withAttemptedSubtask(subtaskId: Int): Decompos
   },
 )
 
+private fun DecompositionManifest.knownWorkflowId(subtaskId: Int, outcome: GoalRunnerReconciledOutcome.Stop): String? =
+  outcome.workflowId ?: subtasks.firstOrNull { it.id == subtaskId }?.workflowId?.takeIf(String::isNotBlank)
+
 private fun DecompositionManifest.withCompletedSubtask(
   subtaskId: Int,
   outcome: GoalRunnerReconciledOutcome.Complete,
@@ -1217,6 +1274,18 @@ private fun DecompositionManifest.withStoppedSubtask(
         blockedReason = outcome.blockedReason,
         lastResumableStep = outcome.lastResumableStep,
       )
+    } else {
+      subtask
+    }
+  },
+)
+
+private fun DecompositionManifest.withValidationQualityRetrySubtask(subtaskId: Int): DecompositionManifest = copy(
+  status = "in_progress",
+  currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = subtaskId, action = "resume"),
+  subtasks = subtasks.map { subtask ->
+    if (subtask.id == subtaskId) {
+      subtask.copy(status = "in_progress", blockedReason = null)
     } else {
       subtask
     }
