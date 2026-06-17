@@ -14,9 +14,10 @@ import kotlin.test.assertTrue
  * validated output. The progression gate is enforced by
  * [FeatureTaskRuntimeFixLoopPolicy.decideAfterFailure]: on a schema-gate failure
  * it returns [FeatureTaskRuntimeFixLoopDecision.Block] (never a silent advance)
- * for a non-fix-loop phase immediately, and for a fix-loop phase only after the
- * bounded [FeatureTaskRuntimeFixLoopPolicy.MAX_FIX_LOOP_ITERATIONS] cap. This
- * locks the "invalid output blocks loudly, the run never advances on it" contract.
+ * for a non-fix-loop phase immediately, and for bounded fix-loop phases only
+ * after the [FeatureTaskRuntimeFixLoopPolicy.MAX_FIX_LOOP_ITERATIONS] cap.
+ * Validation is the exception: validation failures are repair work and keep
+ * retrying instead of blocking the task.
  */
 class FeatureTaskRuntimeFixLoopPolicyTest {
   @Test
@@ -42,7 +43,6 @@ class FeatureTaskRuntimeFixLoopPolicyTest {
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN,
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT,
-      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE,
     )
     fixLoopPhases.forEach { phaseId ->
       (1 until FeatureTaskRuntimeFixLoopPolicy.MAX_FIX_LOOP_ITERATIONS).forEach { iteration ->
@@ -65,6 +65,27 @@ class FeatureTaskRuntimeFixLoopPolicyTest {
         "block reason for '$phaseId' must name fix-loop exhaustion",
       )
     }
+  }
+
+  @Test
+  fun `validation fix-loop keeps retrying after the bounded phase cap`() {
+    val retry = assertIs<FeatureTaskRuntimeFixLoopDecision.Retry>(
+      FeatureTaskRuntimeFixLoopPolicy.decideAfterFailure(
+        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE,
+        currentIteration = FeatureTaskRuntimeFixLoopPolicy.MAX_FIX_LOOP_ITERATIONS,
+      ),
+      "validation must keep retrying instead of blocking at the bounded phase cap",
+    )
+
+    assertEquals(FeatureTaskRuntimeFixLoopPolicy.MAX_FIX_LOOP_ITERATIONS + 1, retry.nextIteration)
+    assertEquals(FeatureTaskRuntimeFixLoopPolicy.MAX_FIX_LOOP_ITERATIONS, retry.fixLoopIteration)
+    assertEquals(
+      null,
+      FeatureTaskRuntimeFixLoopPolicy.blockReasonIfBudgetExhausted(
+        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE,
+        iteration = FeatureTaskRuntimeFixLoopPolicy.MAX_FIX_LOOP_ITERATIONS + 1,
+      ),
+    )
   }
 
   @Test

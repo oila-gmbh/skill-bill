@@ -151,8 +151,9 @@ object FeatureTaskRuntimePhasePromptComposer {
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT to
       "Run the encoded completeness audit ceremony and report any acceptance-criterion gaps.",
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE to
-      "Run the repository validation gate relevant to the change and report the pass/fail " +
-      "results.",
+      "Run the repository validation gate relevant to the change. Fix validation findings at " +
+      "their root cause and rerun the gate until it passes; validation findings are repair work, " +
+      "not a reason to block the phase.",
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_WRITE_HISTORY to
       "Invoke bill-boundary-history inline and apply its write/skip rules for the implemented " +
       "runtime change. Emit a produced_outputs object containing history_result with whether " +

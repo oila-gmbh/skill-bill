@@ -282,7 +282,7 @@ Step id: `validate`
 
 Primary artifact: `validation_result`
 
-Spawn a subagent with the quality-check briefing defined in the inline reference sections below under `Quality-check subagent briefing`. The subagent runs `bill-code-check` (which auto-routes to the matching stack quality-check skill), fixes any issues at their root without using suppressions, and must call `quality_check_finished` with `orchestrated=true` itself. The subagent returns: `validation_result`, `routed_skill`, `detected_stack`, `initial_failure_count`, `final_failure_count`, and the `telemetry_payload` returned by `quality_check_finished`.
+Spawn a subagent with the quality-check briefing defined in the inline reference sections below under `Quality-check subagent briefing`. The subagent runs `bill-code-check` (which auto-routes to the matching stack quality-check skill), fixes any issues at their root without using suppressions, and must call `quality_check_finished` with `orchestrated=true` itself. Validation findings are repair work, not a blocking gate: keep fixing and rerunning validation until the result passes, and do not persist `validate` as blocked for fixable findings. The subagent returns: `validation_result`, `routed_skill`, `detected_stack`, `initial_failure_count`, `final_failure_count`, and the `telemetry_payload` returned by `quality_check_finished`.
 
 If `bill-code-check` reports no supported stack for the affected repo, the subagent falls back to the closest existing repo-native validation command.
 
@@ -340,7 +340,7 @@ After the PR is created (or when the workflow ends early due to error or user ab
 - `feature_flag_used`, `feature_flag_pattern` (`simple_conditional`, `di_switch`, `legacy`, or `none`)
 - `files_created`, `files_modified`, `tasks_completed`
 - `review_iterations`, `audit_result` (`all_pass`, `had_gaps`, or `skipped`), `audit_iterations`
-- `validation_result` (`pass`, `fail`, or `skipped`), `boundary_history_written`, `pr_created`
+- `validation_result` (`pass` or `skipped`), `boundary_history_written`, `pr_created`
 - `boundary_history_value`: how useful the boundary history was during pre-planning — `none` means no history existed at pre-read time (so `boundary_history_written=true` paired with `value=none` is a legal combination, e.g. this run created the first entry); `irrelevant` means history was read but nothing applied; `low` means an adjacent entry was grazed but did not shape the plan; `medium` means an entry directly informed pre-planning; `high` means an entry was decisive in shaping the plan. Full anchored rubric lives in the inline reference sections below.
 - `plan_deviation_notes`: brief note if the plan changed during execution (empty if no deviations)
 - `child_steps`: list of `telemetry_payload` dicts collected from child tools invoked with `orchestrated=true` during the session
@@ -961,7 +961,7 @@ Attempt count: {attempt_count}
 Instructions:
 1. If validation_strategy is `bill-code-check`, invoke the `bill-code-check` skill via the Skill tool — DO NOT search the filesystem (no `find`, `grep -r`, etc.) to locate skill files; the Skill tool resolves skills by name. Apply its instructions in the current agent context (do not delegate to another subagent); it auto-routes to the matching stack-specific quality-check skill.
 2. Otherwise, run the provided repo-native command.
-3. Fix any issues at their root cause. Do not use suppressions unless explicitly allowed by project standards.
+3. Fix validation findings at their root cause, rerun validation, and keep iterating until validation passes, like the code-review fix loop handles review findings. Do not mark the step blocked, stop, or return `validation_result: "fail"` for fixable validation findings. Do not use suppressions unless explicitly allowed by project standards.
 4. Call the `quality_check_finished` MCP tool with `orchestrated=true`. Pass all started+finished fields directly (skip `quality_check_started` in orchestrated mode): `routed_skill`, `detected_stack`, `scope_type`, `initial_failure_count`, plus the finished fields.
 5. Capture the `telemetry_payload` returned by `quality_check_finished` verbatim.
 6. Follow the Durable Progress Write Contract in this skill:
@@ -973,7 +973,7 @@ Return exactly one RESULT: block as your final message, containing valid JSON wi
 
 RESULT:
 {
-  "validation_result": "pass|fail|skipped",
+  "validation_result": "pass|skipped",
   "routed_skill": "<skill name or empty>",
   "detected_stack": "<stack or empty>",
   "initial_failure_count": <int>,
@@ -1052,7 +1052,7 @@ For the parsing posture of subagent `RESULT:` blocks (best-effort recovery, sing
 - **Implementation subagent stops early with `stopped_early: true`** — the orchestrator decides: if `plan_deviation_notes` imply a re-plan, respawn the planning subagent with the deviation notes and then a fresh implementation subagent; otherwise, hand to the user.
 - **Code-review fix loop exceeds 3 iterations** — stop, report remaining findings, hand to user. Call `feature_implement_finished` with `completion_status: "abandoned_at_review"`.
 - **Completeness audit loops exceed 2 iterations** — report remaining gaps, let user decide. Call `feature_implement_finished` accordingly.
-- **Quality-check subagent returns `validation_result: "fail"`** — escalate to the user (do not silently commit). If the user abandons, call `feature_implement_finished` with `completion_status: "error"`.
+- **Quality-check subagent cannot run any validation command** — persist `validation_result: "skipped"` with the reason and continue finalization. Do not block the workflow for validation failures that can be fixed in the repository; keep fixing and rerunning validation until it passes.
 - **PR-description subagent fails to create the PR** — report the error, offer to retry. If abandoned, call `feature_implement_finished` with `completion_status: "error"`.
 - **Skill Bill MCP transport closes** — do not treat `Transport closed` as telemetry disabled. First run a lightweight health check such as `feature_implement_workflow_latest`; if the tool path is still closed, call the same Skill Bill tool through the packaged Kotlin `runtime-mcp` stdio binary with a JSON-RPC `tools/call` payload. Use that direct-stdio fallback for owned review telemetry, workflow-state updates, and `feature_implement_finished`. Record the fallback in the current step artifact. If the packaged runtime is unavailable too, report the telemetry failure explicitly and preserve the terminal artifact in the final user summary.
 - **Review telemetry import is rejected** — inspect the import error. If the review text is missing required `bill-code-review` metadata such as `Review run ID: <review-run-id>`, re-run or reformat the review output from the actual review result and retry import once. Do not pass a prose-only review summary to `import_review`.

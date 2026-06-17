@@ -431,8 +431,12 @@ class FeatureTaskRuntimeRunner(
     // diagnosable from the persisted blocked_reason, not only from transient JVM logs.
     return try {
       val outputMap = outputValidator.validateAndReadPhaseOutput(outputText, sourceLabel = run.phaseId)
-      terminalBlockedReasonFrom(outputMap)?.let { reason ->
-        AttemptResult.settled(blockAndPersist(run, iteration, reason, observability))
+      terminalBlockedReasonFrom(run.phaseId, outputMap)?.let { reason ->
+        if (run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE) {
+          AttemptResult.schemaInvalid(reason)
+        } else {
+          AttemptResult.settled(blockAndPersist(run, iteration, reason, observability))
+        }
       } ?: run {
         persistPhase(run, iteration, STATUS_COMPLETED, finished = true, outputArtifact = outputText)
         observability.completed(run.phaseId, run.resolvedAgent.resolvedAgentId, iteration)
@@ -688,7 +692,7 @@ class FeatureTaskRuntimeRunner(
   }
 }
 
-private fun terminalBlockedReasonFrom(outputMap: Map<String, Any?>): String? {
+private fun terminalBlockedReasonFrom(phaseId: String, outputMap: Map<String, Any?>): String? {
   val status = outputMap["status"] as? String
   if (status != PHASE_OUTPUT_STATUS_BLOCKED && status != PHASE_OUTPUT_STATUS_FAILED) {
     return null
@@ -707,7 +711,12 @@ private fun terminalBlockedReasonFrom(outputMap: Map<String, Any?>): String? {
   val detail = (listOf(summary) + blockingReasons)
     .filter(String::isNotBlank)
     .joinToString("; ")
-  return "Phase output reported status '$status'." + detail.takeIf(String::isNotBlank)?.let { " $it" }.orEmpty()
+  val prefix = if (phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE) {
+    "Validation phase reported status '$status'; retrying so the agent can fix failures."
+  } else {
+    "Phase output reported status '$status'."
+  }
+  return prefix + detail.takeIf(String::isNotBlank)?.let { " $it" }.orEmpty()
 }
 
 private fun persistGoalContinuationContext(

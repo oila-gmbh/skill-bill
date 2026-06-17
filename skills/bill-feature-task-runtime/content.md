@@ -84,11 +84,13 @@ conversation as they happen:
 - When the run is executed in the background (for example because it can outlast
   a single foreground shell window), attach a persistent, line-buffered observer
   to the runtime's progress stream — tailing the run's output — filtered to phase
-  starts and completions, schema-gate results, retries, blocked phases, failures,
-  and run completion. Relay each event inline in plain language as it arrives.
+  starts and completions, schema-gate results, retries, blocked phases,
+  non-validation failures, and run completion. Relay each event inline in plain
+  language as it arrives.
 - Surface a blocked or failed gate loudly and immediately; never narrate a
-  blocked run as if it were progressing normally. On completion, report the
-  terminal per-phase summary.
+  blocked run as if it were progressing normally. Validation findings are the
+  exception: the runtime reopens `validate` for repair instead of persisting a
+  blocked phase. On completion, report the terminal per-phase summary.
 
 This is observation only: the agent reports what the runtime emits and never
 re-derives or re-orders the phase loop. The durable workflow state remains
@@ -96,9 +98,11 @@ authoritative over any relayed line.
 
 The runtime owns everything after launch: it opens the durable runtime workflow,
 runs each phase through its own agent, validates each phase output against the
-schema gate, persists per-phase state, and blocks loudly on a failed gate or a
-missing upstream output. Treat the durable workflow state as authoritative over
-any prose.
+schema gate, persists per-phase state, and blocks loudly on a failed
+non-validation gate or a missing upstream output. Validation findings never
+persist `validate` as blocked; they are fed back to the validation agent to fix
+and rerun, the same way code-review findings are fixed before the workflow
+continues. Treat the durable workflow state as authoritative over any prose.
 
 ## Status and Resume
 
