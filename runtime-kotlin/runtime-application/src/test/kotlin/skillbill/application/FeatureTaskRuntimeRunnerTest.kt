@@ -125,6 +125,33 @@ class FeatureTaskRuntimeRunnerTest {
   }
 
   @Test
+  fun `validation phase output block keeps repairing instead of stopping task`() {
+    var validateLaunches = 0
+    val harness = runnerHarness(
+      launcher = RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        if (phaseId == "validate") {
+          validateLaunches += 1
+        }
+        facts(if (phaseId == "validate" && validateLaunches < 3) VALIDATE_BLOCKED_OUTPUT else validJsonOutput(phaseId))
+      },
+      agentAssignment = phasePerAgentAssignment(),
+    )
+
+    val report = harness.runner.run(harness.request())
+
+    val completed = assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertEquals(ALL_PHASES, completed.completedPhaseIds)
+    assertEquals(3, harness.launchedPhaseOrder().count { it == "validate" })
+    assertTrue(
+      harness.events.none { event -> event is FeatureTaskRuntimeRunEvent.PhaseBlocked && event.phaseId == "validate" },
+    )
+    val validateRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["validate"])
+    assertEquals("completed", validateRecord.status)
+    assertEquals(3, validateRecord.attemptCount)
+  }
+
+  @Test
   fun `runtime emits started on open and finished completed from its own per-phase records`() {
     val harness = telemetryRunnerHarness()
 
@@ -2141,6 +2168,19 @@ private val COMMIT_PUSH_BLOCKED_OUTPUT: String = """
         "pushed_status": "not_attempted"
       },
       "blocking_reasons": ["Working tree contains unrelated changes."]
+    }
+  }
+""".trimIndent()
+
+private val VALIDATE_BLOCKED_OUTPUT: String = """
+  {
+    "contract_version": "0.1",
+    "phase_id": "validate",
+    "status": "blocked",
+    "summary": "Validation failed before finalization.",
+    "produced_outputs": {
+      "validation_result": "fail",
+      "blocking_reasons": ["Repository validation still fails."]
     }
   }
 """.trimIndent()

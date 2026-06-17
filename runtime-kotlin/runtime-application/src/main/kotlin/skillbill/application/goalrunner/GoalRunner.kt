@@ -74,7 +74,6 @@ class GoalRunner(
     var state = manifestStore.loadByIssueKey(request.issueKey, request.dbPathOverride, request.repoRoot)
       ?: return unknownGoal(request.issueKey)
     val attempted = mutableListOf<Int>()
-    val validationQualityRetries = mutableSetOf<Int>()
     val observability = GoalRunnerObservabilityEmitter(outcomeStore, request)
     val ledger = GoalRunnerLedgerRecorder(outcomeStore, request, diagnostics)
     var terminalReport: GoalRunnerRunReport? = preflightPolicyBlockedReport(state, request, ledger)
@@ -103,7 +102,6 @@ class GoalRunner(
             observability,
             ledger,
             telemetryEmitter,
-            validationQualityRetries,
           )
           state = result.state
           terminalReport = result.report
@@ -204,7 +202,6 @@ class GoalRunner(
     observability: GoalRunnerObservabilityEmitter,
     ledger: GoalRunnerLedgerRecorder,
     telemetryEmitter: GoalRunnerTelemetryEmitter?,
-    validationQualityRetries: MutableSet<Int>,
   ): GoalRunnerIterationResult {
     val subtaskId = selection.decision.subtask.id
     goalBranchSetupFailure(state, selection, request)?.let { failure ->
@@ -256,7 +253,6 @@ class GoalRunner(
         observability,
         ledger,
         launchReconciliation.diagnostics,
-        validationQualityRetries,
       )
     }
   }
@@ -352,7 +348,6 @@ class GoalRunner(
     observability: GoalRunnerObservabilityEmitter,
     ledger: GoalRunnerLedgerRecorder,
     launchDiagnostics: GoalRunnerLaunchDiagnostics? = null,
-    validationQualityRetries: MutableSet<Int> = mutableSetOf(),
   ): GoalRunnerIterationResult {
     val knownWorkflowId = state.manifest.knownWorkflowId(subtaskId, reconciled)
     val stoppedOutcome = markChildWorkflowBlockedIfNeeded(reconciled, knownWorkflowId, request)
@@ -374,7 +369,7 @@ class GoalRunner(
       )
     }
     val blocked = state.manifest.withStoppedSubtask(subtaskId, stoppedOutcome, knownWorkflowId)
-    validationQualityRetryIteration(blocked, stoppedOutcome, subtaskId, state, request, validationQualityRetries)
+    validationRetryIteration(blocked, stoppedOutcome, subtaskId, state, request)
       ?.let { retry -> return retry }
     val saved = manifestStore.save(state.copy(manifest = blocked), request.dbPathOverride)
     knownWorkflowId?.let { workflowId ->
@@ -406,15 +401,14 @@ class GoalRunner(
     )
   }
 
-  private fun validationQualityRetryIteration(
+  private fun validationRetryIteration(
     blocked: DecompositionManifest,
     stoppedOutcome: GoalRunnerReconciledOutcome.Stop,
     subtaskId: Int,
     state: GoalRunnerManifestState,
     request: GoalRunnerRunRequest,
-    validationQualityRetries: MutableSet<Int>,
   ): GoalRunnerIterationResult? {
-    if (!stoppedOutcome.isRecoverableValidationQualityBlock() || !validationQualityRetries.add(subtaskId)) {
+    if (!stoppedOutcome.isRecoverableValidationBlock()) {
       return null
     }
     return GoalRunnerIterationResult(
@@ -1017,13 +1011,6 @@ private const val MAX_NO_TERMINAL_OUTCOME_RETRY_ATTEMPTS = 1
 private const val NO_TERMINAL_OUTCOME_RECHECK_ATTEMPTS = 2
 private const val NO_TERMINAL_OUTCOME_RECHECK_DELAY_MILLIS = 200L
 private val PROTECTED_GOAL_BRANCHES: Set<String> = setOf("main", "master", "trunk")
-private val VALIDATION_QUALITY_BLOCK_SIGNALS: Set<String> = setOf(
-  "quality gate",
-  "quality check",
-  "gradlew check",
-  "./gradlew check",
-  "detekt",
-)
 private val CHILD_WORKFLOW_BLOCK_REASONS: Set<GoalRunnerStopReason> = setOf(
   GoalRunnerStopReason.NO_TERMINAL_STORE_OUTCOME,
   GoalRunnerStopReason.TIMEOUT,
@@ -1065,11 +1052,9 @@ private fun String.withStopDiagnostics(
   return if (details.isBlank()) this else "$this [$details]"
 }
 
-private fun GoalRunnerReconciledOutcome.Stop.isRecoverableValidationQualityBlock(): Boolean =
-  reason == GoalRunnerStopReason.BLOCKED &&
-    lastResumableStep == "validate" &&
-    !blockedReason.contains("exhausted the bounded fix loop", ignoreCase = true) &&
-    VALIDATION_QUALITY_BLOCK_SIGNALS.any { signal -> blockedReason.contains(signal, ignoreCase = true) }
+private fun GoalRunnerReconciledOutcome.Stop.isRecoverableValidationBlock(): Boolean =
+  reason in setOf(GoalRunnerStopReason.BLOCKED, GoalRunnerStopReason.FAILED) &&
+    lastResumableStep == "validate"
 
 private fun supervisionEvent(
   reason: GoalRunnerStopReason,

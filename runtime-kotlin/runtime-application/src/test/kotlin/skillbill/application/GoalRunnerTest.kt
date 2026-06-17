@@ -9,6 +9,7 @@ import skillbill.application.goalrunner.GoalRunnerLedgerRecorder
 import skillbill.application.goalrunner.GoalRunnerProgressEventEmitter
 import skillbill.application.goalrunner.GoalRunnerStatusService
 import skillbill.application.model.GoalRunnerResetRequest
+import skillbill.application.model.GoalRunnerRunEvent
 import skillbill.application.model.GoalRunnerRunRequest
 import skillbill.application.model.GoalRunnerStatusRequest
 import skillbill.application.workflow.repoRoot
@@ -187,30 +188,41 @@ class GoalRunnerTest {
   }
 
   @Test
-  fun `validation quality gate block stops after the in-run resume also blocks`() {
+  fun `validation findings keep repairing instead of blocking goal`() {
     val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 1))
     val outcomes = RecordingOutcomeStore()
+    var launches = 0
     val launcher = RecordingSubtaskLauncher { request ->
       val subtaskId = requireNotNull(request.skillRunRequest.subtaskId)
+      launches += 1
       store.mutate { current -> current.withWorkflowId(subtaskId, "wfl-$subtaskId") }
-      outcomes["wfl-$subtaskId"] = GoalRunnerStoredOutcome(
-        status = GoalRunnerTerminalStatus.BLOCKED,
-        workflowId = "wfl-$subtaskId",
-        blockedReason = "Quality gate failed after the attempted fix: ./gradlew check still fails.",
-        lastResumableStep = "validate",
-        suppressPr = true,
-      )
+      outcomes["wfl-$subtaskId"] = if (launches < 3) {
+        GoalRunnerStoredOutcome(
+          status = if (launches == 1) GoalRunnerTerminalStatus.FAILED else GoalRunnerTerminalStatus.BLOCKED,
+          workflowId = "wfl-$subtaskId",
+          blockedReason = "Validation findings remain unresolved.",
+          lastResumableStep = "validate",
+          suppressPr = true,
+        )
+      } else {
+        completeOutcome(subtaskId)
+      }
       launchFacts()
     }
     val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort())
+    val events = mutableListOf<GoalRunnerRunEvent>()
 
-    val report = runner.run(runRequest())
+    val report = runner.run(runRequest().copy(eventSink = events::add))
 
-    val stopped = assertIs<GoalRunnerRunReport.Stopped>(report)
-    assertEquals(GoalRunnerStopReason.BLOCKED, stopped.stop.reason)
-    assertEquals(listOf(1, 1), launcher.requests.map { it.skillRunRequest.subtaskId })
-    assertEquals("blocked", store.manifest.status)
-    assertEquals("blocked", store.manifest.subtasks.single().status)
+    assertIs<GoalRunnerRunReport.Completed>(report)
+    assertEquals(listOf(1, 1, 1), launcher.requests.map { it.skillRunRequest.subtaskId })
+    assertEquals(
+      listOf(null, "validate", "validate"),
+      launcher.requests.map { it.skillRunRequest.goalContinuation?.lastResumableStep },
+    )
+    assertTrue(events.none { event -> event is GoalRunnerRunEvent.SubtaskStopped && event.subtaskId == 1 })
+    assertEquals("complete", store.manifest.status)
+    assertEquals("complete", store.manifest.subtasks.single().status)
   }
 
   @Test
