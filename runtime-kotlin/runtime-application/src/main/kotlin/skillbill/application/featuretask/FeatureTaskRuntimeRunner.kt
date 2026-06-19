@@ -11,6 +11,7 @@ import skillbill.application.model.FeatureTaskRuntimeRunReport
 import skillbill.application.model.FeatureTaskRuntimeRunRequest
 import skillbill.application.model.FeatureTaskRuntimeSubtaskOutcome
 import skillbill.application.workflow.repoRoot
+import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
@@ -23,11 +24,16 @@ import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.model.SpecSource
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.taskruntime.FeatureTaskRuntimeTransitionFunction
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeBackwardEdge
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationOutcome
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeNextPhase
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 
 private const val PHASE_OUTPUT_STATUS_BLOCKED = "blocked"
 private const val PHASE_OUTPUT_STATUS_FAILED = "failed"
@@ -39,6 +45,7 @@ private const val PHASE_OUTPUT_STATUS_FAILED = "failed"
  * state, resuming from persisted records and blocking loudly on missing upstreams or failures.
  */
 @Inject
+@Suppress("TooManyFunctions") // single orchestration seam: the bounded-cyclic phase state machine
 class FeatureTaskRuntimeRunner(
   private val subtaskLauncher: GoalRunnerSubtaskLauncher,
   private val recorder: FeatureTaskRuntimePhaseRecorder,
@@ -92,11 +99,7 @@ class FeatureTaskRuntimeRunner(
     val report = runCatching {
       val state = RunState(recorder.loadPhaseRecords(runRequest.workflowId, runRequest.dbPathOverride).orEmpty())
       val loop = RunLoop(runRequest, state, observability, specSource)
-      for (phaseId in phasesFor(runRequest)) {
-        if (loop.advance(phaseId)) {
-          break
-        }
-      }
+      loop.drive()
       loop.report()
     }.onFailure { error ->
       // An exception escaping the loop (recorder write, launcher RuntimeException, validator
@@ -115,6 +118,7 @@ class FeatureTaskRuntimeRunner(
   // body stays a single advance() call. The resolved branch is null until the first file-mutating
   // phase forces setup, which re-attaches the persisted branch on resume (never force-switching) so
   // a re-run never creates a second or divergent branch.
+  @Suppress("TooManyFunctions") // the cohesive single-loop state-machine driver
   private inner class RunLoop(
     private val request: FeatureTaskRuntimeRunRequest,
     private val state: RunState,
@@ -125,10 +129,45 @@ class FeatureTaskRuntimeRunner(
     private var blocked: FeatureTaskRuntimeRunReport.Blocked? = null
     private var decomposed: FeatureTaskRuntimeRunReport.Decomposed? = null
 
-    // Advances one phase: skips already-complete phases, guarantees the feature branch before a
-    // file-mutating phase (preplan/plan may precede setup), then launches the phase.
-    // Returns true when the run is now blocked, decomposed, or the loop must otherwise stop.
-    fun advance(phaseId: String): Boolean {
+    // The forward-only production declaration, truncated to the goal-continuation boundary, or the
+    // test-only synthetic cyclic override. The single orchestration seam consumes this declaration
+    // rather than iterating a fixed list; an edge-free declaration is the strict forward pipeline.
+    private val transitions: FeatureTaskRuntimeTransitionDeclaration =
+      request.transitionsOverride ?: FeatureTaskRuntimeTransitionDeclaration(
+        forwardPhaseIds = phasesFor(request),
+        backwardEdges = FeatureTaskRuntimePhaseWorkflowDefinition.transitions.backwardEdges,
+      )
+
+    // The pending backward-edge re-entry to feed the next phase launch, set when an edge fires:
+    // the driving verdict plus the runtime-minted loop id and per-edge iteration. Null on a forward
+    // launch so the launch is byte-for-byte unchanged.
+    private var pendingReentry: PendingReentry? = null
+
+    // Single orchestration seam: the bounded state-machine driver. It starts at the first forward
+    // phase, settles each phase, then asks the transition function for the next phase from the
+    // declaration (forward by default; a backward edge re-enters an upstream phase up to its
+    // per-edge cap, then blocks loudly). No second loop.
+    fun drive() {
+      var phaseId: String? = transitions.forwardPhaseIds.first()
+      while (phaseId != null) {
+        val settled = advance(phaseId)
+        val completedPhaseId = settled.completedPhaseId
+        phaseId = if (completedPhaseId != null) {
+          nextPhaseAfter(completedPhaseId, requireNotNull(settled.completedVerdict))
+        } else {
+          null
+        }
+      }
+    }
+
+    // Settles one phase: skips already-complete phases, guarantees the feature branch before a
+    // file-mutating phase (preplan/plan may precede setup), then launches the phase. A re-entered
+    // phase whose durable per-edge counter already hit its cap re-blocks before relaunching.
+    private fun advance(phaseId: String): PhaseSettlement {
+      capExhaustedOnResume(phaseId)?.let { reason ->
+        blockAt(phaseId, reason)
+        return PhaseSettlement.stop()
+      }
       // For an already-complete PLAN, re-evaluate the decompose determination on resume before
       // advancing, so a crash after PLAN persisted completed but before the decompose terminal was
       // observed never silently advances to implement (AC2). Idempotent: a recorded terminal is
@@ -149,15 +188,102 @@ class FeatureTaskRuntimeRunner(
         }
       }
       return when {
-        decomposed != null -> true
-        reason != null -> blockAt(phaseId, reason)
-        else -> false
+        decomposed != null -> PhaseSettlement.stop()
+        reason != null -> {
+          blockAt(phaseId, reason)
+          PhaseSettlement.stop()
+        }
+        else -> PhaseSettlement.completed(phaseId, state.verdictFor(phaseId))
       }
+    }
+
+    // Computes the next phase from the transition function. A forward edge advances to the next
+    // forward phase (or terminates with success at the pipeline end). A backward edge increments and
+    // persists its runtime-minted per-edge counter, threads the driving verdict into the re-entered
+    // phase, and re-enters; the same edge at its cap blocks loudly with the loop id, the iteration
+    // count, and the unresolved verdict.
+    private fun nextPhaseAfter(phaseId: String, verdict: FeatureTaskRuntimeVerdict): String? {
+      val edge = matchingBackwardEdge(phaseId, verdict)
+      val transition = FeatureTaskRuntimeTransitionFunction.nextTransition(
+        declaration = transitions,
+        currentPhaseId = phaseId,
+        verdict = verdict,
+        edgeIterationCount = edge?.let { state.edgeIterationCount(it.loopId) } ?: 0,
+      )
+      return when (transition) {
+        is FeatureTaskRuntimeNextPhase.TerminalAdvance -> null
+        is FeatureTaskRuntimeNextPhase.TerminalBlock -> {
+          blockOnCapExhaustion(phaseId, transition)
+          null
+        }
+        is FeatureTaskRuntimeNextPhase.Next -> {
+          transition.loopId?.let { loopId ->
+            recordBackwardEdge(
+              edge = requireNotNull(edge),
+              destinationPhaseId = transition.phaseId,
+              loopId = loopId,
+              edgeIteration = requireNotNull(transition.edgeIteration),
+              verdict = verdict,
+            )
+          }
+          transition.phaseId
+        }
+      }
+    }
+
+    private fun matchingBackwardEdge(
+      phaseId: String,
+      verdict: FeatureTaskRuntimeVerdict,
+    ): FeatureTaskRuntimeBackwardEdge? =
+      transitions.backwardEdges.firstOrNull { it.fromPhaseId == phaseId && it.triggeringVerdict == verdict }
+
+    // A backward edge fired: reopen the forward span from the destination through the source phase so
+    // the loop body re-executes and yields a fresh verdict (not the stale one that drove the edge),
+    // register the runtime-minted per-edge counter and the driving verdict for the re-entered phase,
+    // and append a durable LOOP_EDGE ledger entry. The counter is distinct from attempt_count and
+    // survives resume.
+    private fun recordBackwardEdge(
+      edge: FeatureTaskRuntimeBackwardEdge,
+      destinationPhaseId: String,
+      loopId: String,
+      edgeIteration: Int,
+      verdict: FeatureTaskRuntimeVerdict,
+    ) {
+      val destinationIndex = transitions.forwardPhaseIds.indexOf(destinationPhaseId)
+      val sourceIndex = transitions.forwardPhaseIds.indexOf(edge.fromPhaseId)
+      if (destinationIndex in 0..sourceIndex) {
+        transitions.forwardPhaseIds.subList(destinationIndex, sourceIndex + 1)
+          .forEach(state::reopenForReentry)
+      } else {
+        state.reopenForReentry(destinationPhaseId)
+      }
+      state.recordEdgeIteration(loopId, edgeIteration)
+      pendingReentry = PendingReentry(destinationPhaseId, loopId, edgeIteration, verdict)
+      observability.loopEdge(destinationPhaseId, loopId, edgeIteration, verdict)
+    }
+
+    // Returns a re-block reason when a re-entered phase's durable per-edge counter already reached its
+    // cap on resume, so the runtime re-blocks before relaunching rather than bypassing the cap.
+    private fun capExhaustedOnResume(phaseId: String): String? {
+      val record = state.recordFor(phaseId) ?: return null
+      val loopId = record.loopId
+      val iteration = record.edgeIteration
+      // Once the live machine has advanced this loop, the resume-time snapshot is stale; the live
+      // cap is enforced by the transition function, so do not re-fire the resume-entry guard.
+      if (loopId == null || iteration == null || state.isLoopLiveClaimed(loopId)) {
+        return null
+      }
+      val edge = transitions.backwardEdges.firstOrNull { it.loopId == loopId && it.destinationPhaseId == phaseId }
+      return edge
+        ?.takeIf { iteration >= it.perEdgeCap }
+        ?.let { capExhaustionReason(it.loopId, iteration, it.triggeringVerdict) }
     }
 
     // Runs the phase and records its completed output; returns a blocked reason when it blocks.
     private fun runPhaseFor(phaseId: String): String? {
-      val outcome = runPhase(phaseId, request, state, observability, specSource)
+      val reentry = pendingReentry?.takeIf { it.phaseId == phaseId }
+      pendingReentry = null
+      val outcome = runPhase(phaseId, request, state, observability, specSource, reentry)
       return outcome.blockedReason ?: run {
         val completedOutput = requireNotNull(outcome.completedOutput)
         state.recordCompleted(completedOutput)
@@ -280,7 +406,7 @@ class FeatureTaskRuntimeRunner(
       observability.branchSetupBlocked(phaseId, BRANCH_SETUP_AGENT_ID, reason)
     }
 
-    private fun blockAt(phaseId: String, reason: String): Boolean {
+    private fun blockAt(phaseId: String, reason: String) {
       blocked = FeatureTaskRuntimeRunReport.Blocked(
         issueKey = request.issueKey,
         workflowId = request.workflowId,
@@ -290,16 +416,71 @@ class FeatureTaskRuntimeRunner(
         completedPhaseIds = state.completedPhaseIds(),
         resolvedBranch = resolvedBranch,
       )
-      return true
+    }
+
+    // Cap exhaustion: persist a durable terminal blocked record (carrying the loop id + iteration in
+    // the edge context) and emit the blocked observability/ledger event with the loop id, the
+    // iteration count, and the unresolved verdict in the reason, consistent with every other block
+    // path. Reuses blockAndPersist so the terminal blocked record and observability.blocked agree.
+    private fun blockOnCapExhaustion(phaseId: String, transition: FeatureTaskRuntimeNextPhase.TerminalBlock) {
+      val reason = capExhaustionReason(transition.loopId, transition.edgeIteration, transition.unresolvedVerdict)
+      val run = PhaseRun(
+        phaseId = phaseId,
+        declaration = phaseDeclaration(phaseId, request.runInvariants.featureSize),
+        resolvedAgent = FeatureTaskRuntimeAgentResolver.resolve(
+          phaseId = phaseId,
+          assignment = request.agentAssignment,
+          invokedAgentId = request.invokedAgentId,
+        ),
+        request = request,
+        specSource = specSource,
+      )
+      blockAndPersist(
+        run,
+        state.nextIteration(phaseId),
+        reason,
+        observability,
+        loopId = transition.loopId,
+        edgeIteration = transition.edgeIteration,
+      )
+      blockAt(phaseId, reason)
     }
   }
 
+  // The bounded fix-loop block reason shape, applied to a backward-edge cap: loud, with the loop id,
+  // the exhausted iteration count, and the unresolved verdict.
+  private fun capExhaustionReason(loopId: String, edgeIteration: Int, verdict: FeatureTaskRuntimeVerdict): String =
+    "Backward-edge loop '$loopId' exhausted its per-edge cap after $edgeIteration iteration(s) with the " +
+      "verdict '${verdict.wireValue}' still unresolved; the run blocks rather than re-entering past the cap."
+
+  private sealed interface PhaseSettlement {
+    private data object Stopped : PhaseSettlement
+    private data class Completed(val phaseId: String, val verdict: FeatureTaskRuntimeVerdict) : PhaseSettlement
+
+    val completedPhaseId: String? get() = (this as? Completed)?.phaseId
+    val completedVerdict: FeatureTaskRuntimeVerdict? get() = (this as? Completed)?.verdict
+
+    companion object {
+      fun stop(): PhaseSettlement = Stopped
+      fun completed(phaseId: String, verdict: FeatureTaskRuntimeVerdict): PhaseSettlement = Completed(phaseId, verdict)
+    }
+  }
+
+  private data class PendingReentry(
+    val phaseId: String,
+    val loopId: String,
+    val edgeIteration: Int,
+    val drivingVerdict: FeatureTaskRuntimeVerdict,
+  )
+
+  @Suppress("LongParameterList") // one cohesive launch context; bundling would only hide the seam
   private fun runPhase(
     phaseId: String,
     request: FeatureTaskRuntimeRunRequest,
     state: RunState,
     observability: FeatureTaskRuntimeRunObservability,
     specSource: SpecSource,
+    reentry: PendingReentry?,
   ): PhaseOutcome {
     val run = PhaseRun(
       phaseId = phaseId,
@@ -311,6 +492,7 @@ class FeatureTaskRuntimeRunner(
       ),
       request = request,
       specSource = specSource,
+      reentry = reentry,
     )
     // Pre-launch blocks: a non-retryable phase already durably blocked on a prior run (the record
     // survives ledger pruning, so the budget is never silently reset), or a missing required
@@ -341,7 +523,19 @@ class FeatureTaskRuntimeRunner(
       1 to "Phase '${run.phaseId}' requires upstream output(s) ${missingIds.joinToString()} that are not " +
         "present; the runtime blocks rather than launching the phase blind."
     }
-    return missing?.let { (attemptCount, reason) -> blockAndPersist(run, attemptCount, reason, observability) }
+    return missing?.let { (attemptCount, reason) ->
+      // Re-blocking a durably-blocked re-entered phase preserves the record's loop context so the
+      // per-edge watermark is never dropped across resumes.
+      val durable = state.recordFor(run.phaseId)
+      blockAndPersist(
+        run,
+        attemptCount,
+        reason,
+        observability,
+        loopId = durable?.loopId,
+        edgeIteration = durable?.edgeIteration,
+      )
+    }
   }
 
   private fun runPhaseAttempts(
@@ -381,11 +575,14 @@ class FeatureTaskRuntimeRunner(
 
   // Persists a durable terminal blocked per-phase record (so blocked-ness survives ledger
   // pruning), emits the blocked observability/ledger event, and returns the blocked outcome.
+  @Suppress("LongParameterList") // the optional loop context is additive to the existing block seam
   private fun blockAndPersist(
     run: PhaseRun,
     attemptCount: Int,
     reason: String,
     observability: FeatureTaskRuntimeRunObservability,
+    loopId: String? = null,
+    edgeIteration: Int? = null,
   ): PhaseOutcome {
     recorder.recordPhaseState(
       FeatureTaskRuntimePhaseStateRequest(
@@ -397,12 +594,32 @@ class FeatureTaskRuntimeRunner(
         finished = false,
         outputArtifact = null,
         blockedReason = reason,
+        loopId = loopId,
+        edgeIteration = edgeIteration,
       ),
       run.request.dbPathOverride,
     )
     observability.blocked(run.phaseId, run.resolvedAgent.resolvedAgentId, attemptCount.coerceAtLeast(1), reason)
     return PhaseOutcome.blocked(reason)
   }
+
+  // An in-phase block (infra failure or a non-VALIDATE terminal-status output) on a re-entered phase
+  // must carry the runtime-minted loop context so the terminal blocked record does not overwrite the
+  // running record's loop id/edge iteration. Without it, resume reconstruction seeds edgeIterationByLoop
+  // at 0 and the backward edge would fire perEdgeCap more times after every crash-at-blocked-re-entry.
+  private fun blockAndPersistInPhase(
+    run: PhaseRun,
+    attemptCount: Int,
+    reason: String,
+    observability: FeatureTaskRuntimeRunObservability,
+  ): PhaseOutcome = blockAndPersist(
+    run,
+    attemptCount,
+    reason,
+    observability,
+    loopId = run.reentry?.loopId,
+    edgeIteration = run.reentry?.edgeIteration,
+  )
 
   // Returns SchemaInvalid only on schema-invalid output (caller consults the fix-loop policy).
   // An infrastructure failure must block distinctly rather than be laundered through the schema
@@ -416,7 +633,7 @@ class FeatureTaskRuntimeRunner(
     persistPhase(run, iteration, STATUS_RUNNING, finished = false, outputArtifact = null)
     val launch = launchAndCapture(run, state)
     launch.infraFailureReason?.let { reason ->
-      return AttemptResult.settled(blockAndPersist(run, iteration, reason, observability))
+      return AttemptResult.settled(blockAndPersistInPhase(run, iteration, reason, observability))
     }
     return gateOutput(run, iteration, requireNotNull(launch.capturedStdout), observability)
   }
@@ -435,7 +652,7 @@ class FeatureTaskRuntimeRunner(
         if (run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE) {
           AttemptResult.schemaInvalid(reason)
         } else {
-          AttemptResult.settled(blockAndPersist(run, iteration, reason, observability))
+          AttemptResult.settled(blockAndPersistInPhase(run, iteration, reason, observability))
         }
       } ?: run {
         persistPhase(run, iteration, STATUS_COMPLETED, finished = true, outputArtifact = outputText)
@@ -459,6 +676,10 @@ class FeatureTaskRuntimeRunner(
         resolvedAgentId = run.resolvedAgent.resolvedAgentId,
         finished = finished,
         outputArtifact = outputArtifact,
+        // Stamp the latest backward-edge context onto the record so resume reconstructs loop
+        // position and re-blocks a cap-exhausted edge before relaunching.
+        loopId = run.reentry?.loopId,
+        edgeIteration = run.reentry?.edgeIteration,
       ),
       run.request.dbPathOverride,
     )
@@ -473,6 +694,7 @@ class FeatureTaskRuntimeRunner(
       declaration = run.declaration,
       runInvariants = run.request.runInvariants,
       recordedOutputs = state.outputs(),
+      drivingVerdict = run.reentry?.drivingVerdict,
     )
     val briefing = FeatureTaskRuntimePhaseBriefingAssembler.assemble(handoff)
     recorder.recordPhaseBriefing(run.request.workflowId, briefing, run.request.dbPathOverride)
@@ -514,6 +736,8 @@ class FeatureTaskRuntimeRunner(
     val resolvedAgent: FeatureTaskRuntimeResolvedPhaseAgent,
     val request: FeatureTaskRuntimeRunRequest,
     val specSource: SpecSource,
+    // Set only when this launch is a backward-edge re-entry; null for an ordinary forward launch.
+    val reentry: PendingReentry? = null,
   )
 
   private sealed interface LaunchResult {
@@ -563,7 +787,8 @@ class FeatureTaskRuntimeRunner(
   // triggers a loud missing-upstream block instead of a blind launch. The loaded per-phase
   // records (not just outputs) are retained so the bounded fix loop resumes from the durable
   // attempt count rather than resetting to iteration 1 on resume/crash. Single-threaded.
-  private class RunState(initialRecords: Map<String, FeatureTaskRuntimePhaseRecord>) {
+  @Suppress("TooManyFunctions") // the single in-memory resume/loop state projection
+  private class RunState(private val initialRecords: Map<String, FeatureTaskRuntimePhaseRecord>) {
     // A legacy PLAN completed without its now-required PREPLAN predecessor is invalidated up front so
     // the loop re-runs PLAN rather than honouring a pre-PREPLAN completion.
     private val completed: MutableSet<String> =
@@ -601,7 +826,47 @@ class FeatureTaskRuntimeRunner(
       .keys
       .toMutableSet()
 
+    // The per-edge iteration counter, keyed by loop id, DISTINCT from persistedAttemptCounts. Seeded
+    // from the durable per-phase records' edge context (the resume watermark) so the cap survives
+    // crashes; advanced as the runtime mints each backward-edge re-entry within the live run.
+    private val edgeIterationByLoop: MutableMap<String, Int> = initialRecords.values
+      .mapNotNull { record -> record.loopId?.let { loopId -> record.edgeIteration?.let { loopId to it } } }
+      .groupBy({ it.first }, { it.second })
+      .mapValues { (_, iterations) -> iterations.max() }
+      .toMutableMap()
+
+    // Loops the live run has already advanced this run, so the resume-entry cap guard does not
+    // re-fire against a stale durable snapshot once the live machine owns the loop.
+    private val liveClaimedLoops: MutableSet<String> = mutableSetOf()
+
     fun outputs(): List<FeatureTaskRuntimePhaseOutput> = outputs.toList()
+
+    // The durable per-phase record as loaded at resume (null when none); carries the latest edge
+    // context for the cap-on-resume guard.
+    fun recordFor(phaseId: String): FeatureTaskRuntimePhaseRecord? = initialRecords[phaseId]
+
+    // The current per-edge iteration count for the loop (0 when the edge has not yet fired).
+    fun edgeIterationCount(loopId: String): Int = edgeIterationByLoop[loopId] ?: 0
+
+    // Records the runtime-minted per-edge iteration for the loop and claims it for the live run.
+    fun recordEdgeIteration(loopId: String, edgeIteration: Int) {
+      edgeIterationByLoop[loopId] = edgeIteration
+      liveClaimedLoops += loopId
+    }
+
+    fun isLoopLiveClaimed(loopId: String): Boolean = loopId in liveClaimedLoops
+
+    // A backward edge re-enters the phase: drop its completed marker so the driver relaunches it.
+    // Its prior validated output stays in `outputs` so latest-iteration resolution still works.
+    fun reopenForReentry(phaseId: String) {
+      completed.remove(phaseId)
+    }
+
+    // The verdict the transition function reads, derived from the phase's latest completed output:
+    // a top-level `verdict` wire string when present, else the default ADVANCE for a phase with no
+    // verifying output. Concrete verdict schemas are added in later subtasks.
+    fun verdictFor(phaseId: String): FeatureTaskRuntimeVerdict =
+      outputFor(phaseId)?.let(::verdictFromOutput) ?: FeatureTaskRuntimeVerdict.ADVANCE
 
     // The latest validated output for the phase (highest iteration), or null when none is present.
     fun outputFor(phaseId: String): FeatureTaskRuntimePhaseOutput? =
@@ -820,6 +1085,18 @@ private fun recordToOutput(record: FeatureTaskRuntimePhaseRecord): FeatureTaskRu
       payload = artifact,
     )
   }
+
+// Derives the transition verdict from a phase output: the top-level `verdict` wire string when the
+// phase emits one (the generic seam concrete review/audit verdict schemas plug into in later
+// subtasks), else the default ADVANCE for a phase with no verifying output.
+private fun verdictFromOutput(output: FeatureTaskRuntimePhaseOutput): FeatureTaskRuntimeVerdict {
+  val verdictValue = JsonSupport.parseObjectOrNull(output.payload)
+    ?.let(JsonSupport::jsonElementToValue)
+    ?.let(JsonSupport::anyToStringAnyMap)
+    ?.get("verdict") as? String
+  return verdictValue?.takeIf(String::isNotBlank)?.let(FeatureTaskRuntimeVerdict::fromWire)
+    ?: FeatureTaskRuntimeVerdict.ADVANCE
+}
 
 private fun phaseDeclaration(
   phaseId: String,

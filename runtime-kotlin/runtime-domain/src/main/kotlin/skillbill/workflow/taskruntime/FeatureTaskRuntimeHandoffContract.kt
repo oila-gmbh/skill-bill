@@ -5,6 +5,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseHandoff
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedUpstreamOutputs
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 
 /**
  * Pure, deterministic resolution of the three-layer phase handoff: always-injected
@@ -48,15 +49,22 @@ object FeatureTaskRuntimeHandoffContract {
     return FeatureTaskRuntimeResolvedUpstreamOutputs(resolved)
   }
 
-  /** Assembles the full three-layer handoff for one phase. */
+  /**
+   * Assembles the full three-layer handoff for one phase. [drivingVerdict] is forwarded for a
+   * backward-edge re-entry and defaults to null, preserving the existing forward-launch assembly
+   * byte-for-byte; upstream resolution is unchanged so a re-entered agent never selects its own
+   * inputs.
+   */
   fun assembleHandoff(
     declaration: FeatureTaskRuntimePhaseDeclaration,
     runInvariants: FeatureTaskRuntimeRunInvariants,
     recordedOutputs: List<FeatureTaskRuntimePhaseOutput>,
+    drivingVerdict: FeatureTaskRuntimeVerdict? = null,
   ): FeatureTaskRuntimePhaseHandoff = FeatureTaskRuntimePhaseHandoff(
     phaseId = declaration.phaseId,
     runInvariants = runInvariants,
     upstreamOutputs = resolveUpstreamOutputs(declaration, recordedOutputs),
     derivedContextKeys = declaration.derivedContextKeys,
+    drivingVerdict = drivingVerdict,
   )
 }

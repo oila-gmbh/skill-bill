@@ -16,6 +16,9 @@ data class FeatureTaskRuntimePhaseStateRequest(
   val outputArtifact: String? = null,
   /** Present only on a terminal blocked record so blocked-ness survives ledger pruning. */
   val blockedReason: String? = null,
+  /** Runtime-minted backward-edge context for the resume watermark; never agent-reported. */
+  val loopId: String? = null,
+  val edgeIteration: Int? = null,
 )
 
 /**
@@ -30,4 +33,7 @@ data class FeatureTaskRuntimePhaseLedgerRequest(
   val resolvedAgentId: String? = null,
   val fixLoopIteration: Int? = null,
   val blockedReason: String? = null,
+  /** Runtime-minted backward-edge trail, distinct from attempt_count; never agent-reported. */
+  val loopId: String? = null,
+  val edgeIteration: Int? = null,
 )

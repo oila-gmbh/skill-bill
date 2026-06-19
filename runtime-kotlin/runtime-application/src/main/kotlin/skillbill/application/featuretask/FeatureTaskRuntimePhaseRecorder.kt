@@ -75,6 +75,8 @@ class FeatureTaskRuntimePhaseRecorder(
         resolvedAgentId = request.resolvedAgentId,
         outputArtifact = request.outputArtifact,
         blockedReason = request.blockedReason,
+        loopId = request.loopId,
+        edgeIteration = request.edgeIteration,
       )
       val updatedRecords = LinkedHashMap(existingRecords).apply { put(request.phaseId, phaseRecord) }
       val patch = mapOf(
@@ -149,6 +151,8 @@ class FeatureTaskRuntimePhaseRecorder(
         resolvedAgentId = request.resolvedAgentId,
         fixLoopIteration = request.fixLoopIteration,
         blockedReason = request.blockedReason,
+        loopId = request.loopId,
+        edgeIteration = request.edgeIteration,
       )
       val updatedLedger = appendBoundedHistoryBySequence(
         existing = existingEntries.map { it.toArtifactMap() },

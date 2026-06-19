@@ -147,6 +147,9 @@ data class FeatureTaskRuntimePhaseRecord(
   val resolvedAgentId: String,
   val outputArtifact: String? = null,
   val blockedReason: String? = null,
+  /** Latest backward-edge context for the resume watermark: the loop and per-edge iteration. */
+  val loopId: String? = null,
+  val edgeIteration: Int? = null,
 ) {
   init {
     require(phaseId.isNotBlank()) { "FeatureTaskRuntimePhaseRecord.phaseId must be non-blank." }
@@ -159,6 +162,11 @@ data class FeatureTaskRuntimePhaseRecord(
     require(resolvedAgentId.isNotBlank()) { "FeatureTaskRuntimePhaseRecord.resolvedAgentId must be non-blank." }
     durationMillis?.let { duration ->
       require(duration >= 0) { "FeatureTaskRuntimePhaseRecord.durationMillis must be non-negative, was $duration." }
+    }
+    edgeIteration?.let { iteration ->
+      require(iteration >= 1) {
+        "FeatureTaskRuntimePhaseRecord.edgeIteration must be >= 1 when present, was $iteration."
+      }
     }
   }
 
@@ -175,6 +183,8 @@ data class FeatureTaskRuntimePhaseRecord(
     durationMillis?.let { put("duration_millis", it) }
     outputArtifact?.let { put("output_artifact", it) }
     blockedReason?.let { put("blocked_reason", it) }
+    loopId?.let { put("loop_id", it) }
+    edgeIteration?.let { put("edge_iteration", it) }
   }
 
   companion object {
@@ -194,6 +204,8 @@ data class FeatureTaskRuntimePhaseRecord(
         resolvedAgentId = raw.requireStringField("resolved_agent_id"),
         outputArtifact = raw.optionalStringField("output_artifact"),
         blockedReason = raw.optionalStringField("blocked_reason"),
+        loopId = raw.optionalStringField("loop_id"),
+        edgeIteration = raw.optionalIntField("edge_iteration"),
       )
     }
   }
@@ -205,6 +217,7 @@ enum class FeatureTaskRuntimePhaseLedgerAction(val wireValue: String) {
   RESUME("resume"),
   RETRY("retry"),
   FIX_LOOP_ITERATION("fix_loop_iteration"),
+  LOOP_EDGE("loop_edge"),
   BLOCKED("blocked"),
   COMPLETE("complete"),
   ;
@@ -231,6 +244,9 @@ data class FeatureTaskRuntimePhaseLedgerEntry(
   val resolvedAgentId: String? = null,
   val fixLoopIteration: Int? = null,
   val blockedReason: String? = null,
+  /** Authoritative per-edge trail for a backward-edge re-entry, distinct from [attemptCount]. */
+  val loopId: String? = null,
+  val edgeIteration: Int? = null,
 ) {
   init {
     require(sequenceNumber >= 0) {
@@ -246,6 +262,11 @@ data class FeatureTaskRuntimePhaseLedgerEntry(
         "FeatureTaskRuntimePhaseLedgerEntry.fixLoopIteration must be >= 1 when present, was $iteration."
       }
     }
+    edgeIteration?.let { iteration ->
+      require(iteration >= 1) {
+        "FeatureTaskRuntimePhaseLedgerEntry.edgeIteration must be >= 1 when present, was $iteration."
+      }
+    }
   }
 
   @OpenBoundaryMap("Feature-task-runtime phase ledger entry artifact map at the durable workflow-artifact seam")
@@ -259,6 +280,8 @@ data class FeatureTaskRuntimePhaseLedgerEntry(
     resolvedAgentId?.let { put("resolved_agent_id", it) }
     fixLoopIteration?.let { put("fix_loop_iteration", it) }
     blockedReason?.let { put("blocked_reason", it) }
+    loopId?.let { put("loop_id", it) }
+    edgeIteration?.let { put("edge_iteration", it) }
   }
 
   companion object {
@@ -274,6 +297,8 @@ data class FeatureTaskRuntimePhaseLedgerEntry(
         resolvedAgentId = raw.optionalStringField("resolved_agent_id"),
         fixLoopIteration = raw.optionalIntField("fix_loop_iteration"),
         blockedReason = raw.optionalStringField("blocked_reason"),
+        loopId = raw.optionalStringField("loop_id"),
+        edgeIteration = raw.optionalIntField("edge_iteration"),
       )
   }
 }

@@ -10,29 +10,29 @@ base_branch: "main"
 feature_branch: "feat/SKILL-85-runtime-remediation-loops"
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 1
-  action: "resume"
+  subtask_id: 2
+  action: "start"
 subtasks:
 - id: 1
   name: "resume-and-state-model-integrity"
   spec_path: ".feature-specs/SKILL-85-runtime-remediation-loops/spec_subtask_1_resume-and-state-model-integrity.md"
-  status: "in_progress"
+  status: "complete"
   branch: "feat/SKILL-85-runtime-remediation-loops"
   commit_sha: null
   workflow_id: "wfl-20260618-195824-tazg"
   blocked_reason: null
-  last_resumable_step: "write_history"
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   dependencies: []
 - id: 2
   name: "bounded-cyclic-phase-executor"
   spec_path: ".feature-specs/SKILL-85-runtime-remediation-loops/spec_subtask_2_bounded-cyclic-phase-executor.md"
-  status: "pending"
+  status: "complete"
   branch: "feat/SKILL-85-runtime-remediation-loops"
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wfl-20260619-081710-g3eo"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   dependencies:
   - subtask_id: 1

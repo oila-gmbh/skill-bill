@@ -80,6 +80,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -552,6 +553,162 @@ class FeatureTaskRuntimeRunnerTest {
     val validateRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["validate"])
     assertEquals("completed", validateRecord.status)
     assertEquals(2, validateRecord.attemptCount)
+  }
+
+  // --- Subtask 2: bounded cyclic phase executor (AC10) ---
+
+  @Test
+  fun `non-mutating declared cycle iterates to convergence on a satisfying verdict`() {
+    // plan re-enters preplan once via the backward edge (verdict needs_fix), then converges
+    // (verdict advance) and the run completes; the agent never bypasses the cap.
+    var planLaunches = 0
+    val harness = runnerHarness(
+      agentAssignment = phasePerAgentAssignment(),
+      launcher = RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        if (phaseId == "plan") {
+          planLaunches += 1
+          facts(verdictPlanOutput(if (planLaunches == 1) "needs_fix" else "advance"))
+        } else {
+          facts(validJsonOutput(phaseId))
+        }
+      },
+    )
+
+    val report = harness.runner.run(harness.request(PLAN_FIX_CYCLE))
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    // preplan launched twice (initial + one re-entry); plan launched twice.
+    assertEquals(2, harness.launchedPhaseOrder().count { it == "preplan" })
+    assertEquals(2, planLaunches)
+  }
+
+  @Test
+  fun `cap exhaustion blocks loudly with loop id iteration count and unresolved verdict`() {
+    // plan always reports needs_fix, so the backward edge fires up to its cap and then blocks.
+    val harness = runnerHarness(
+      agentAssignment = phasePerAgentAssignment(),
+      launcher = RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        facts(if (phaseId == "plan") verdictPlanOutput("needs_fix") else validJsonOutput(phaseId))
+      },
+    )
+
+    val report = harness.runner.run(harness.request(PLAN_FIX_CYCLE))
+
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
+    assertEquals("plan", blocked.lastIncompletePhase)
+    assertContains(blocked.blockedReason, "plan-fix")
+    assertContains(blocked.blockedReason, "needs_fix")
+    assertContains(blocked.blockedReason, PLAN_FIX_CAP.toString())
+    // A durable terminal blocked record carries the loop context.
+    val planRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["plan"])
+    assertEquals("blocked", planRecord.status)
+    assertEquals("plan-fix", planRecord.loopId)
+    assertEquals(PLAN_FIX_CAP, planRecord.edgeIteration)
+  }
+
+  @Test
+  fun `per-edge counters increment and persist distinct from attempt count`() {
+    val harness = runnerHarness(
+      agentAssignment = phasePerAgentAssignment(),
+      launcher = RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        facts(if (phaseId == "plan") verdictPlanOutput("needs_fix") else validJsonOutput(phaseId))
+      },
+    )
+
+    harness.runner.run(harness.request(PLAN_FIX_CYCLE))
+
+    // The per-edge LOOP_EDGE ledger entries carry the runtime-minted edge iterations 1..cap, which
+    // are distinct from the re-entered phase's attempt_count.
+    val loopEdges = harness.recorder.loadPhaseLedger(WORKFLOW_ID).orEmpty()
+      .filter { it.action == FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE }
+    assertEquals((1..PLAN_FIX_CAP).toList(), loopEdges.mapNotNull { it.edgeIteration })
+    assertTrue(loopEdges.all { it.loopId == "plan-fix" })
+    // The re-entered preplan record persists the latest edge context, distinct from attempt_count.
+    val preplanRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["preplan"])
+    assertEquals("plan-fix", preplanRecord.loopId)
+    assertEquals(PLAN_FIX_CAP, preplanRecord.edgeIteration)
+    assertNotEquals(
+      preplanRecord.attemptCount,
+      preplanRecord.edgeIteration,
+      "the per-edge iteration must be tracked distinctly from attempt_count",
+    )
+  }
+
+  @Test
+  fun `resume mid-cycle lands on the correct phase and edge iteration`() {
+    // A prior run fired the edge to (cap - 1) and crashed with preplan re-entered. On resume the
+    // edge fires ONCE more, reaching the cap, then blocks loudly. The seeded edge iteration is
+    // load-bearing: had resume reset the watermark to 0, the edge would fire `cap` more times before
+    // blocking instead of exactly one, so this proves resume continued from the durable iteration.
+    val harness = runnerHarness(
+      agentAssignment = phasePerAgentAssignment(),
+      launcher = RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        facts(if (phaseId == "plan") verdictPlanOutput("needs_fix") else validJsonOutput(phaseId))
+      },
+    )
+    harness.seedReentryPhase("preplan", "running", 1, phaseAgent("preplan"), null, "plan-fix", PLAN_FIX_CAP - 1)
+
+    val report = harness.runner.run(harness.request(PLAN_FIX_CYCLE))
+
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
+    assertEquals("plan", blocked.lastIncompletePhase)
+    assertContains(blocked.blockedReason, "plan-fix")
+    assertContains(blocked.blockedReason, PLAN_FIX_CAP.toString())
+    assertContains(blocked.blockedReason, "needs_fix")
+    // The watermark continued from the durable (cap - 1): the resume minted exactly ONE new
+    // backward-edge iteration (the cap), then blocked. Had it reset to 0, the resume would mint
+    // iterations 1..cap (two more fires) before blocking, so this pins the resume to the right
+    // edge iteration, not just the right phase.
+    val resumeEdgeIterations = harness.recorder.loadPhaseLedger(WORKFLOW_ID).orEmpty()
+      .filter { it.action == FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE }
+      .mapNotNull { it.edgeIteration }
+    assertEquals(listOf(PLAN_FIX_CAP), resumeEdgeIterations)
+    val planRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["plan"])
+    assertEquals("blocked", planRecord.status)
+    assertEquals(PLAN_FIX_CAP, planRecord.edgeIteration)
+  }
+
+  @Test
+  fun `cap-exhausted edge re-blocks on resume without relaunching`() {
+    // The re-entered preplan already burned the edge cap on a prior run; on resume the runtime
+    // re-blocks before relaunching, mirroring the same-phase cap-burned-resume guard.
+    val harness = runnerHarness(
+      agentAssignment = phasePerAgentAssignment(),
+      launcher = RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        facts(validJsonOutput(phaseId))
+      },
+    )
+    harness.seedReentryPhase("preplan", "running", 2, phaseAgent("preplan"), null, "plan-fix", PLAN_FIX_CAP)
+
+    val report = harness.runner.run(harness.request(PLAN_FIX_CYCLE))
+
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
+    assertEquals("preplan", blocked.lastIncompletePhase)
+    assertContains(blocked.blockedReason, "plan-fix")
+    assertContains(blocked.blockedReason, PLAN_FIX_CAP.toString())
+    assertContains(blocked.blockedReason, "needs_fix")
+    // The cap-exhausted re-entered phase must not relaunch its agent.
+    assertTrue(harness.launchedPhaseOrder().none { it == "preplan" })
+  }
+
+  @Test
+  fun `edge-free declaration behaves exactly as the current forward pipeline`() {
+    // An override carrying only the production forward pipeline (no backward edges) drives the same
+    // phase order as the default run.
+    val harness = runnerHarness(agentAssignment = phasePerAgentAssignment())
+    val forwardOnly = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration(
+      forwardPhaseIds = ALL_PHASES,
+    )
+
+    val report = harness.runner.run(harness.request(forwardOnly))
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertEquals(ALL_PHASES, harness.launchOrder())
   }
 
   @Test
@@ -1327,6 +1484,50 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
     assertTrue(requireNotNull(planRecord.blockedReason).isNotBlank())
     assertNull(harness.decomposeTerminalRecorder.loadDecomposeTerminal(WORKFLOW_ID))
   }
+
+  @Test
+  fun `a block during a backward-edge re-entry persists the loop context and enforces the cap across the crash`() {
+    // MAJOR 1 (AC4/AC8): a re-entered phase that fires its edge (edge iteration 1) then BLOCKS on an
+    // infra failure must persist the runtime-minted loop context on its terminal blocked record. The
+    // bug overwrote the running record's loop_id/edge_iteration with a context-less blocked record, so
+    // on resume the per-edge watermark reset to 0 and the edge could fire perEdgeCap more times after
+    // every crash-at-blocked-re-entry, bypassing the cap.
+    var preplanLaunches = 0
+    var crashOnReentry = true
+    val harness = runnerHarness(
+      agentAssignment = phasePerAgentAssignment(),
+      launcher = RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        when {
+          phaseId == "preplan" && ++preplanLaunches == 2 && crashOnReentry -> spawnFailedFacts()
+          phaseId == "plan" -> facts(verdictPlanOutput("needs_fix"))
+          else -> facts(validJsonOutput(phaseId))
+        }
+      },
+    )
+
+    // Run 1: preplan -> plan needs_fix fires the edge (iteration 1) -> preplan re-enters and crashes.
+    val firstReport = harness.runner.run(harness.request(PLAN_FIX_CYCLE))
+
+    val firstBlocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(firstReport)
+    assertEquals("preplan", firstBlocked.lastIncompletePhase)
+    // The terminal blocked record retained the loop context — the watermark the bug dropped.
+    val blockedPreplan = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["preplan"])
+    assertEquals("blocked", blockedPreplan.status)
+    assertEquals("plan-fix", blockedPreplan.loopId)
+    assertEquals(1, blockedPreplan.edgeIteration)
+
+    // Run 2 (resume): the crash heals and the cycle continues. The surviving watermark means the
+    // resume mints the NEXT edge iteration (the cap), never restarting at 1, so across both runs the
+    // edge fires exactly 1..cap. Had the blocked record dropped the context, resume would re-mint
+    // iteration 1 and the edge could fire perEdgeCap more times, bypassing the cap.
+    crashOnReentry = false
+    assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request(PLAN_FIX_CYCLE)))
+    val edgeIterations = harness.recorder.loadPhaseLedger(WORKFLOW_ID).orEmpty()
+      .filter { it.action == FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE }
+      .mapNotNull { it.edgeIteration }
+    assertEquals((1..PLAN_FIX_CAP).toList(), edgeIterations, "the edge fired 1..cap across the crash, never restarting")
+  }
 }
 
 // Branch-setup establishment, resume re-attach, loud-fail blocks, durability/visibility, and
@@ -1877,6 +2078,34 @@ private class RunnerHarness(
     )
   }
 
+  // Seeds a durable per-phase record carrying backward-edge loop context (loop id + per-edge
+  // iteration), modelling a prior run that re-entered this phase through a backward edge.
+  @Suppress("LongParameterList") // mirrors the full seeded per-phase record surface
+  fun seedReentryPhase(
+    phaseId: String,
+    status: String,
+    attemptCount: Int,
+    agentId: String,
+    outputArtifact: String?,
+    loopId: String,
+    edgeIteration: Int,
+  ) {
+    recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    recorder.recordPhaseState(
+      skillbill.application.model.FeatureTaskRuntimePhaseStateRequest(
+        workflowId = WORKFLOW_ID,
+        phaseId = phaseId,
+        status = status,
+        attemptCount = attemptCount,
+        resolvedAgentId = agentId,
+        finished = status == "completed",
+        outputArtifact = outputArtifact,
+        loopId = loopId,
+        edgeIteration = edgeIteration,
+      ),
+    )
+  }
+
   // Seeds a durable branch-setup-origin blocked record (keyed to the branch-setup sentinel agent),
   // modelling a prior run that blocked while establishing the feature branch for the phase.
   fun seedBranchSetupBlockedPhase(phaseId: String, blockedReason: String) {
@@ -1896,6 +2125,11 @@ private class RunnerHarness(
   }
 
   fun request(): FeatureTaskRuntimeRunRequest = runRequest
+
+  // Drives the run with a synthetic cyclic transition declaration (the test-only inert seam).
+  fun request(
+    transitionsOverride: skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration,
+  ): FeatureTaskRuntimeRunRequest = runRequest.copy(transitionsOverride = transitionsOverride)
 }
 
 // Mirrors the runner's branch-setup sentinel agent id so tests can seed a branch-setup-origin block.
@@ -2127,6 +2361,36 @@ private val PHASE_LINE = Regex("^Phase: ([a-z_-]+) ", setOf(RegexOption.MULTILIN
 
 private fun phaseIdFromPrompt(prompt: String): String =
   PHASE_LINE.find(prompt)?.groupValues?.get(1) ?: error("Prompt did not contain a phase header: $prompt")
+
+// Subtask 2: a synthetic non-mutating cycle over [preplan, plan] with a backward edge
+// plan --needs_fix--> preplan, bounded by PLAN_FIX_CAP re-entries. Both phases are non-file-mutating
+// so the cycle exercises the executor without entering branch setup.
+private const val PLAN_FIX_CAP = 2
+
+private val PLAN_FIX_CYCLE = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration(
+  forwardPhaseIds = listOf("preplan", "plan"),
+  backwardEdges = listOf(
+    skillbill.workflow.taskruntime.model.FeatureTaskRuntimeBackwardEdge(
+      fromPhaseId = "plan",
+      triggeringVerdict = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict("needs_fix"),
+      destinationPhaseId = "preplan",
+      loopId = "plan-fix",
+      perEdgeCap = PLAN_FIX_CAP,
+    ),
+  ),
+)
+
+// A schema-valid plan output carrying a top-level `verdict` wire string the transition function reads.
+private fun verdictPlanOutput(verdict: String): String = """
+  {
+    "contract_version": "0.1",
+    "phase_id": "plan",
+    "status": "completed",
+    "summary": "Plan produced a validated output.",
+    "verdict": "$verdict",
+    "produced_outputs": {"tasks": ["task-1"]}
+  }
+""".trimIndent()
 
 private fun validJsonOutput(phaseId: String): String = """
   {

@@ -4,6 +4,7 @@ import skillbill.application.model.FeatureTaskRuntimePhaseLedgerRequest
 import skillbill.application.model.FeatureTaskRuntimeRunEvent
 import skillbill.application.model.FeatureTaskRuntimeRunRequest
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 
 /**
  * Per-phase observability and attempt-ledger sink for one run: at each phase boundary it emits a
@@ -137,6 +138,23 @@ internal class FeatureTaskRuntimeRunObservability(
         attemptCount = attemptCount,
         resolvedAgentId = resolvedAgentId,
         blockedReason = blockedReason,
+      ),
+    )
+  }
+
+  // A backward-edge re-entry: appends a durable LOOP_EDGE ledger entry carrying the runtime-minted
+  // loop id and per-edge iteration (distinct from attempt_count) so the loop trail is auditable. The
+  // re-entered phase's own start/complete events still emit on its relaunch.
+  fun loopEdge(phaseId: String, loopId: String, edgeIteration: Int, drivingVerdict: FeatureTaskRuntimeVerdict) {
+    appendLedger(
+      FeatureTaskRuntimePhaseLedgerRequest(
+        workflowId = request.workflowId,
+        action = FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE,
+        phaseId = phaseId,
+        attemptCount = 1,
+        loopId = loopId,
+        edgeIteration = edgeIteration,
+        blockedReason = "driving_verdict=${drivingVerdict.wireValue}",
       ),
     )
   }

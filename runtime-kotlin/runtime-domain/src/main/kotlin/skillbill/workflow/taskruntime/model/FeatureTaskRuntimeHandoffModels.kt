@@ -125,6 +125,12 @@ data class FeatureTaskRuntimePhaseHandoff(
   val runInvariants: FeatureTaskRuntimeRunInvariants,
   val upstreamOutputs: FeatureTaskRuntimeResolvedUpstreamOutputs,
   val derivedContextKeys: List<String>,
+  /**
+   * The driving verdict for a backward-edge re-entry (e.g. the review findings for an
+   * `implement_fix` re-entry); null for an ordinary forward launch. Upstream outputs are still
+   * resolved by the contract, never selected by the re-entered agent.
+   */
+  val drivingVerdict: FeatureTaskRuntimeVerdict? = null,
 )
 
 /**

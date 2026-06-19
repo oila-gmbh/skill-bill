@@ -45,6 +45,7 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
       upstreamOutputsByPhaseId = upstreamOutputs,
       derivedContextKeys = handoff.derivedContextKeys,
       briefingText = briefingText,
+      drivingVerdict = handoff.drivingVerdict?.wireValue,
     )
   }
 
@@ -81,6 +82,7 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
       val invariants = handoff.runInvariants
       appendLine("# Feature-task-runtime phase briefing")
       appendLine("phase: ${handoff.phaseId}")
+      handoff.drivingVerdict?.let { verdict -> appendLine("driving_verdict: ${verdict.wireValue}") }
       appendLine()
       appendLine("## Run invariants (layer 1, unconditional)")
       appendLine("spec_reference: ${invariants.specReference}")

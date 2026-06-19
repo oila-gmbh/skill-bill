@@ -9,6 +9,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePreplanCeremony
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewScope
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
 
 /**
  * The experimental runtime-driven feature-task pipeline definition, fully independent
@@ -115,6 +116,14 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
         derivedContextKeys = if (phaseId in setOf(PHASE_REVIEW, PHASE_PR)) listOf("diff") else emptyList(),
       )
     }
+
+  /**
+   * Forward-only transition topology: the ordered [stepIds] pipeline with an EMPTY backward-edge
+   * set. The edge-free declaration is behaviorally identical to today's strict forward loop; real
+   * backward edges (the remediation loops) are added by later subtasks.
+   */
+  val transitions: FeatureTaskRuntimeTransitionDeclaration =
+    FeatureTaskRuntimeTransitionDeclaration(forwardPhaseIds = definition.stepIds)
 
   fun ceremonyScaling(featureSize: FeatureTaskRuntimeFeatureSize): FeatureTaskRuntimeCeremonyScaling =
     when (featureSize) {
