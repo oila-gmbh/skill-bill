@@ -37,10 +37,13 @@ class FeatureTaskRuntimeLifecycleTelemetry(
     )["session_id"]?.toString().orEmpty()
   }
 
+  @Suppress("LongParameterList") // one cohesive finished-telemetry emission; bundling would only hide it
   fun finished(
     telemetrySessionId: String,
     report: FeatureTaskRuntimeRunReport,
     phaseOutcomes: () -> Map<String, String>,
+    reviewFixIterationCount: () -> Int,
+    auditGapIterationCount: () -> Int,
     dbOverride: String?,
   ) {
     if (telemetrySessionId.isBlank()) {
@@ -56,6 +59,8 @@ class FeatureTaskRuntimeLifecycleTelemetry(
           lastIncompletePhase = (report as? FeatureTaskRuntimeRunReport.Blocked)?.lastIncompletePhase.orEmpty(),
           blockedReason = (report as? FeatureTaskRuntimeRunReport.Blocked)?.blockedReason.orEmpty(),
           resolvedBranch = report.resolvedBranch.orEmpty(),
+          reviewFixIterationCount = runCatching(reviewFixIterationCount).getOrDefault(0),
+          auditGapIterationCount = runCatching(auditGapIterationCount).getOrDefault(0),
         ),
         dbOverride = dbOverride,
       )
@@ -67,7 +72,13 @@ class FeatureTaskRuntimeLifecycleTelemetry(
   // point of failure; completedPhaseIds is sourced from records the runtime durably marked completed.
   // The emission (including resolving phaseOutcomes) is failure-isolated so it can never mask or
   // replace the original run exception, which always remains the one that propagates.
-  fun finishedError(telemetrySessionId: String, phaseOutcomes: () -> Map<String, String>, dbOverride: String?) {
+  fun finishedError(
+    telemetrySessionId: String,
+    phaseOutcomes: () -> Map<String, String>,
+    reviewFixIterationCount: () -> Int,
+    auditGapIterationCount: () -> Int,
+    dbOverride: String?,
+  ) {
     if (telemetrySessionId.isBlank()) {
       return
     }
@@ -90,6 +101,8 @@ class FeatureTaskRuntimeLifecycleTelemetry(
           lastIncompletePhase = outcomes.entries.firstOrNull { it.value != "completed" }?.key.orEmpty(),
           blockedReason = "",
           resolvedBranch = "",
+          reviewFixIterationCount = runCatching(reviewFixIterationCount).getOrDefault(0),
+          auditGapIterationCount = runCatching(auditGapIterationCount).getOrDefault(0),
         ),
         dbOverride = dbOverride,
       )

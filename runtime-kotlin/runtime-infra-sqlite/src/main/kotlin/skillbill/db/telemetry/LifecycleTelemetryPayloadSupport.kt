@@ -68,6 +68,8 @@ fun featureTaskRuntimeFinishedPayload(row: Map<String, Any?>, level: String): Ma
     put("completion_status", row.stringOrEmpty("completion_status"))
     put("completed_phase_ids", JsonSupport.parseArrayOrEmpty(row.stringOrEmpty("completed_phase_ids")))
     put("phase_outcomes", parsePhaseOutcomes(row.stringOrEmpty("phase_outcomes")))
+    put("review_fix_iteration_count", row.intOrZero("review_fix_iteration_count"))
+    put("audit_gap_iteration_count", row.intOrZero("audit_gap_iteration_count"))
     put("duration_seconds", durationSeconds(row))
     if (level == "full") {
       put("last_incomplete_phase", row.stringOrEmpty("last_incomplete_phase"))

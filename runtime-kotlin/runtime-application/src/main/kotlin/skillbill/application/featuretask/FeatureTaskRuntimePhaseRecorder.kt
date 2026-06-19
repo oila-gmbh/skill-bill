@@ -36,6 +36,7 @@ import java.time.Instant
  * clock, never taken from agent-reported values.
  */
 @Inject
+@Suppress("TooManyFunctions") // cohesive durable read/write seam for per-phase records, briefings, and the ledger
 class FeatureTaskRuntimePhaseRecorder(
   private val database: DatabaseSessionFactory,
   private val workflowSnapshotValidator: WorkflowSnapshotValidator,
@@ -75,6 +76,8 @@ class FeatureTaskRuntimePhaseRecorder(
         resolvedAgentId = request.resolvedAgentId,
         outputArtifact = request.outputArtifact,
         blockedReason = request.blockedReason,
+        loopId = request.loopId,
+        edgeIteration = request.edgeIteration,
       )
       val updatedRecords = LinkedHashMap(existingRecords).apply { put(request.phaseId, phaseRecord) }
       val patch = mapOf(
@@ -85,8 +88,46 @@ class FeatureTaskRuntimePhaseRecorder(
         unitOfWork.workflowStates,
         record,
         patch,
-        currentStepId = request.phaseId,
-        workflowStatus = workflowStatusFor(request),
+        WorkflowRowAdvance(
+          currentStepId = request.phaseId,
+          workflowStatus = workflowStatusFor(request),
+          stepUpdates = stepUpdatesFrom(updatedRecords),
+        ),
+      )
+      true
+    }
+
+  /**
+   * Durably drops the backward-edge context (loop_id + edge_iteration) from the named phase records
+   * without otherwise mutating them. Used when a wider backward edge restarts a nested loop: the
+   * nested loop's per-phase watermark is stale for the new outer iteration, so it must be cleared at
+   * the durable source of truth or resume reconstruction would re-import the pre-reset count and deny
+   * the fresh per-iteration budget. Phases without a record (or already context-free) are skipped.
+   * Returns true when the workflow row exists.
+   */
+  fun clearBackwardEdgeContext(workflowId: String, phaseIds: Collection<String>, dbOverride: String? = null): Boolean =
+    database.transaction(dbOverride) { unitOfWork ->
+      val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
+        ?: return@transaction false
+      val existingRecords = phaseRecordsFrom(decodeArtifacts(record.artifactsJson))
+      val cleared = LinkedHashMap(existingRecords)
+      phaseIds.forEach { phaseId ->
+        val previous = existingRecords[phaseId] ?: return@forEach
+        if (previous.loopId == null && previous.edgeIteration == null) {
+          return@forEach
+        }
+        cleared[phaseId] = previous.copy(loopId = null, edgeIteration = null)
+      }
+      if (cleared == existingRecords) {
+        return@transaction true
+      }
+      persistPatch(
+        unitOfWork.workflowStates,
+        record,
+        mapOf(
+          FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY to
+            cleared.mapValues { (_, value) -> value.toArtifactMap() },
+        ),
       )
       true
     }
@@ -146,6 +187,8 @@ class FeatureTaskRuntimePhaseRecorder(
         resolvedAgentId = request.resolvedAgentId,
         fixLoopIteration = request.fixLoopIteration,
         blockedReason = request.blockedReason,
+        loopId = request.loopId,
+        edgeIteration = request.edgeIteration,
       )
       val updatedLedger = appendBoundedHistoryBySequence(
         existing = existingEntries.map { it.toArtifactMap() },
@@ -243,19 +286,18 @@ class FeatureTaskRuntimePhaseRecorder(
     workflowStates: WorkflowStateRepository,
     record: WorkflowStateSnapshot,
     patch: Map<String, Any?>,
-    currentStepId: String = record.currentStepId,
-    workflowStatus: String = record.workflowStatus,
+    advance: WorkflowRowAdvance = WorkflowRowAdvance.keepFrom(record),
   ) {
-    // The per-phase records map is the detailed source of truth; the coarse workflow row is
-    // advanced to agree with it so the generic workflow get/list/latest does not disagree with
-    // FeatureTaskRuntimeStatusService.
+    // The per-phase records map is the detailed source of truth; the coarse workflow row AND the
+    // shared per-step steps[] are advanced to agree with it so the generic workflow
+    // get/list/latest and the resume gate do not disagree with FeatureTaskRuntimeStatusService.
     val updated = engine.updateRecord(
       WorkflowFamily.TASK_RUNTIME.definition,
       record,
       WorkflowUpdateInput(
-        workflowStatus = workflowStatus,
-        currentStepId = currentStepId,
-        stepUpdates = null,
+        workflowStatus = advance.workflowStatus,
+        currentStepId = advance.currentStepId,
+        stepUpdates = advance.stepUpdates,
         artifactsPatch = patch,
         sessionId = record.sessionId.orEmpty(),
       ),
@@ -265,6 +307,47 @@ class FeatureTaskRuntimePhaseRecorder(
 
   private companion object {
     const val STATUS_RUNNING = "running"
+  }
+}
+
+// How the coarse workflow row + shared steps[] advance alongside a per-phase record write. Grouping
+// these together keeps persistPatch a three-argument seam; the default keeps the row untouched for
+// writes (briefings, ledger, resolved branch) that only patch artifacts.
+private data class WorkflowRowAdvance(
+  val currentStepId: String,
+  val workflowStatus: String,
+  val stepUpdates: List<Map<String, Any?>>? = null,
+) {
+  companion object {
+    fun keepFrom(record: WorkflowStateSnapshot): WorkflowRowAdvance =
+      WorkflowRowAdvance(currentStepId = record.currentStepId, workflowStatus = record.workflowStatus)
+  }
+}
+
+// Projects the per-phase records map onto shared per-step step_updates so steps[] tracks records
+// in lockstep: each record's runtime status maps to its step status and carries its attempt count.
+// The engine's mergeStepUpdates preserves definition order and leaves unmentioned steps untouched,
+// so prior completed phases keep their completed step and only the touched phases are rewritten.
+//
+// Phase statuses share the step-status vocabulary (running/completed/blocked): a blocked record
+// stays blocked even when it also carries a finished timestamp; otherwise a finished record is
+// completed. An unrecognized status loud-fails rather than silently producing an out-of-vocabulary
+// step status the engine would reject.
+private fun stepUpdatesFrom(records: Map<String, FeatureTaskRuntimePhaseRecord>): List<Map<String, Any?>> {
+  fun stepStatusFor(record: FeatureTaskRuntimePhaseRecord): String = when {
+    record.status == FEATURE_TASK_RUNTIME_PHASE_STATUS_BLOCKED -> FEATURE_TASK_RUNTIME_PHASE_STATUS_BLOCKED
+    record.finishedAt != null -> "completed"
+    record.status == "running" || record.status == "completed" -> record.status
+    else -> throw InvalidWorkflowStateSchemaError(
+      "Feature-task-runtime phase '${record.phaseId}' has unmappable status '${record.status}' for steps[].",
+    )
+  }
+  return records.values.map { record ->
+    linkedMapOf<String, Any?>(
+      "step_id" to record.phaseId,
+      "status" to stepStatusFor(record),
+      "attempt_count" to record.attemptCount,
+    )
   }
 }
 

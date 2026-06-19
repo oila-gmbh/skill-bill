@@ -113,6 +113,36 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorTest {
   }
 
   @Test
+  fun `review output carrying a top-level verdict and findings passes validation`() {
+    val reviewWithVerdict =
+      """
+      contract_version: "0.1"
+      phase_id: "review"
+      status: "completed"
+      summary: "Reviewed the change and requested fixes."
+      verdict: "changes_requested"
+      produced_outputs:
+        findings:
+          - severity: "blocker"
+            message: "Foo.kt leaks a connection"
+      """.trimIndent()
+    FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(reviewWithVerdict, "review")
+  }
+
+  @Test
+  fun `output omitting the optional verdict still validates`() {
+    FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(wellFormed, "plan")
+  }
+
+  @Test
+  fun `output with a null verdict fails validation`() {
+    val nullVerdict = wellFormed + "\nverdict: null"
+    assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
+      FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(nullVerdict, "plan")
+    }
+  }
+
+  @Test
   fun `output with a null derived_notes fails validation`() {
     val nullNotes = wellFormed + "\nderived_notes: null"
     assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {

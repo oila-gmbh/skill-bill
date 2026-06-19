@@ -21,6 +21,12 @@ interface WorkflowGitOperations {
 
   fun currentBranch(repoRoot: Path): WorkflowGitOperationResult
 
+  // Stages the whole worktree (including untracked files) so a subsequent createCommit snapshots the
+  // full tree. Agents are told never to `git add`, so the checkpoint commit must stage first or it
+  // would run against an empty index and fail. Defaults to a no-op success for non-git adapters that
+  // never commit; the real git adapter overrides it with `git add -A`.
+  fun stageAll(repoRoot: Path): WorkflowGitOperationResult = WorkflowGitOperationResult(status = "ok", value = "")
+
   fun createCommit(repoRoot: Path, message: String): WorkflowGitOperationResult
 
   // Git-measured HEAD commit SHA, used as ground truth instead of an

@@ -185,7 +185,8 @@ class WorkflowEngine(private val schemaValidator: WorkflowSnapshotValidator) {
     }
     val availableArtifacts = snapshot.artifacts.keys.sorted()
     val requiredArtifacts = definition.requiredArtifactsByStep[resumeStepId].orEmpty()
-    val missingArtifacts = requiredArtifacts.filterNot(snapshot.artifacts::containsKey)
+    val missingArtifacts =
+      definition.requiredArtifactPresenceResolver.missingRequiredArtifacts(snapshot, resumeStepId, requiredArtifacts)
     val canResume = resumeMode != "done" && missingArtifacts.isEmpty()
     val nextAction =
       if (resumeMode == "done") {

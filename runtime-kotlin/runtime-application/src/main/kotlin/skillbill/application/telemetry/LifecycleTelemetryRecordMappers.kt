@@ -74,6 +74,8 @@ fun FeatureTaskRuntimeFinishedRequest.toRecord(): FeatureTaskRuntimeFinishedReco
   lastIncompletePhase = lastIncompletePhase,
   blockedReason = blockedReason,
   resolvedBranch = resolvedBranch,
+  reviewFixIterationCount = reviewFixIterationCount,
+  auditGapIterationCount = auditGapIterationCount,
 )
 
 fun QualityCheckStartedRequest.toRecord(sessionId: String): QualityCheckStartedRecord = QualityCheckStartedRecord(

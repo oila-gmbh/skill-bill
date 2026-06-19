@@ -185,6 +185,7 @@ $defs:
           - preplan
           - plan
           - implement
+          - implement_fix
           - review
           - audit
           - validate
@@ -203,6 +204,7 @@ $defs:
                     - preplan
                     - plan
                     - implement
+                    - implement_fix
                     - review
                     - audit
                     - validate

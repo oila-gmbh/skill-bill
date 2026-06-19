@@ -45,6 +45,7 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
       upstreamOutputsByPhaseId = upstreamOutputs,
       derivedContextKeys = handoff.derivedContextKeys,
       briefingText = briefingText,
+      drivingVerdict = handoff.drivingVerdict?.wireValue,
     )
   }
 
@@ -81,6 +82,13 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
       val invariants = handoff.runInvariants
       appendLine("# Feature-task-runtime phase briefing")
       appendLine("phase: ${handoff.phaseId}")
+      handoff.drivingVerdict?.let { verdict -> appendLine("driving_verdict: ${verdict.wireValue}") }
+      // Only rendered on an audit_gap re-entry; a forward launch and a review_fix re-entry both carry
+      // no gap criteria, so their briefings stay byte-for-byte identical.
+      if (handoff.reentryGapCriteria.isNotEmpty()) {
+        appendLine("audit_gaps:")
+        handoff.reentryGapCriteria.forEach { gap -> appendLine("  - $gap") }
+      }
       appendLine()
       appendLine("## Run invariants (layer 1, unconditional)")
       appendLine("spec_reference: ${invariants.specReference}")

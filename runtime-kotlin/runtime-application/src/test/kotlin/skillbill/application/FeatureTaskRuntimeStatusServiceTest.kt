@@ -62,13 +62,11 @@ class FeatureTaskRuntimeStatusServiceTest {
 
     assertEquals("LARGE", projection.featureSize)
     assertEquals(0, projection.completeCount)
-    assertEquals(9, projection.pendingCount)
+    // Ten stepIds including the loop-only implement_fix (SKILL-85 M1).
+    assertEquals(10, projection.pendingCount)
     assertEquals(0, projection.blockedCount)
     assertEquals("preplan", projection.currentPhaseId)
-    assertEquals(
-      listOf("pending", "pending", "pending", "pending", "pending", "pending", "pending", "pending", "pending"),
-      projection.phases.map { it.status },
-    )
+    assertEquals(List(10) { "pending" }, projection.phases.map { it.status })
   }
 
   @Test
@@ -224,6 +222,25 @@ class FeatureTaskRuntimeStatusServiceTest {
     )
 
     assertNull(projection.featureSize)
+  }
+
+  @Test
+  fun `fully forward completed run does not project the loop-only implement_fix as current`() {
+    // SKILL-85 Subtask 4 (F-005/F-006): a clean forward run completes every phase except the loop-only
+    // implement_fix (never launched on a clean run, so permanently pending). currentPhaseId must skip
+    // it rather than report a never-run loop-only phase; with no other incomplete phase it reports none.
+    val harness = statusHarness()
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    listOf("preplan", "plan", "implement", "review", "audit", "validate", "write_history", "commit_push", "pr")
+      .forEach { harness.recordCompleted(it, attemptCount = 1) }
+
+    val projection = requireNotNull(
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+    )
+
+    assertEquals(9, projection.completeCount)
+    assertEquals("pending", projection.phases.single { it.phaseId == "implement_fix" }.status)
+    assertNull(projection.currentPhaseId, "a completed forward run reports no current phase, not implement_fix")
   }
 
   private fun statusHarness(): StatusHarness {
