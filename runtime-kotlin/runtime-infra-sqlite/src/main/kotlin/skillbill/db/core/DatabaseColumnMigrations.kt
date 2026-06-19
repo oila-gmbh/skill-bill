@@ -12,6 +12,22 @@ internal object DatabaseColumnMigrations {
     backfillReviewSessionIds(connection)
     ensureFeatureImplementSessionColumns(connection)
     ensureFeatureVerifySessionColumns(connection)
+    ensureFeatureTaskRuntimeSessionColumns(connection)
+  }
+
+  private fun ensureFeatureTaskRuntimeSessionColumns(connection: Connection) {
+    ensureColumn(
+      connection = connection,
+      tableName = "feature_task_runtime_sessions",
+      columnName = "review_fix_iteration_count",
+      definition = "INTEGER NOT NULL DEFAULT 0",
+    )
+    ensureColumn(
+      connection = connection,
+      tableName = "feature_task_runtime_sessions",
+      columnName = "audit_gap_iteration_count",
+      definition = "INTEGER NOT NULL DEFAULT 0",
+    )
   }
 
   private fun ensureFeatureVerifyWorkflowColumns(connection: Connection) {

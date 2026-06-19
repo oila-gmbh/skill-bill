@@ -24,6 +24,7 @@ object FeatureTaskRuntimePhasePromptComposer {
     return listOf(
       header(issueKey, briefing.phaseId),
       ceremonyDirective(briefing),
+      mutatingPhaseIdempotencyDirective(briefing.phaseId),
       goalContinuationDirective(briefing.phaseId, suppressDecomposition),
       parallelReviewDirective(briefing.phaseId, parallelReviewAgent),
       commitExclusionDirective(briefing.phaseId, issueKey, specSource),
@@ -86,11 +87,44 @@ object FeatureTaskRuntimePhasePromptComposer {
     - "summary": non-empty string describing what this phase did
     - "produced_outputs": object with at least one entry carrying this phase's concrete
       result for downstream phases (for example plan steps, changed files, findings, or
-      validation results)
+      validation results)${mutatingPhaseOutputContractAddendum(phaseId)}
     - "derived_notes": optional; when present, a non-empty string of notes for downstream
       phases
     No other top-level fields are allowed.
   """.trimIndent()
+
+  // Mutating phases must prove they reconciled the tree rather than silently skipping work, so the
+  // runtime can verify the idempotency contract rather than assume it. Emits only for mutating phases;
+  // every other phase's output contract stays byte-for-byte unchanged.
+  private fun mutatingPhaseOutputContractAddendum(phaseId: String): String {
+    if (!FeatureTaskRuntimePhaseWorkflowDefinition.isMutatingPhase(phaseId)) {
+      return ""
+    }
+    return "\n    - produced_outputs MUST include a reconciliation report: a \"reconciled_state\" object\n" +
+      "      (or a \"reconciled_state\" entry) with \"reconciled\": true and concrete evidence that the\n" +
+      "      changed files are at their intended target state. A status of \"completed\" with the\n" +
+      "      reconciliation report missing or \"reconciled\" not true fails the schema gate loudly."
+  }
+
+  // Emitted only for mutating phases (see [FeatureTaskRuntimePhaseWorkflowDefinition.isMutatingPhase]):
+  // implement and implement_fix. The directive is empty for every other phase so their prompts stay
+  // byte-for-byte unchanged.
+  private fun mutatingPhaseIdempotencyDirective(phaseId: String): String {
+    if (!FeatureTaskRuntimePhaseWorkflowDefinition.isMutatingPhase(phaseId)) {
+      return ""
+    }
+    return """
+      ## Mutating-phase idempotency contract
+      You are given intended-state plan inputs (the target the repository should reach) plus the
+      CURRENT working tree, which may already carry some or all of those changes from a prior
+      attempt that was interrupted mid-edit. Converge the tree to the target state; treat any change
+      that is already applied as a no-op and NEVER blindly re-apply it (no duplicated edits, appended
+      blocks, or re-created files). This phase may be re-entered or resumed after a crash, so it must
+      be safe to run again: reconciling to target, not re-applying from scratch. Before finishing,
+      verify every changed file is at its intended state and report that reconciled end-state in
+      produced_outputs (see the reconciliation report in the required output below).
+    """.trimIndent()
+  }
 
   private fun parallelReviewDirective(phaseId: String, parallelReviewAgent: String?): String {
     if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW || parallelReviewAgent.isNullOrBlank()) {
@@ -144,7 +178,15 @@ object FeatureTaskRuntimePhasePromptComposer {
       "the upstream preplan digest as planning context. Do not modify repository files during " +
       "this phase.",
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT to
-      "Execute the upstream plan output: make the repository changes it describes.",
+      "Reconcile the repository to the intended state the upstream plan output describes: make the " +
+      "changes it specifies, treating any already-applied change as a no-op. See the mutating-phase " +
+      "idempotency contract below.",
+    FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX to
+      "Address the carried review Blocker/Major findings on the CURRENT working tree as incremental " +
+      "reconciliation: fix exactly those findings using the review findings, the latest implement " +
+      "output, and the intended state from the briefing. Do NOT re-apply the plan from scratch and do " +
+      "not expand scope beyond the findings. Treat any fix already present as a no-op. See the " +
+      "mutating-phase idempotency contract below.",
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW to
       "Review the implemented changes at the encoded review scope against the acceptance criteria " +
       "and report defects with concrete file references.",

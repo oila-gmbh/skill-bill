@@ -561,11 +561,16 @@ class CliFeatureTaskRuntimeRuntimeTest {
     assertEquals(0, status.exitCode, status.stdout)
     assertContains(status.stdout, "status: ok")
     assertContains(status.stdout, "feature_size: SMALL")
+    // A clean run launches the nine forward phases; the loop-only implement_fix is never launched, so
+    // it stays pending in the durable projection even on a fully forward-completed run (SKILL-85 M1).
     assertContains(status.stdout, "complete: ${ALL_PHASES.size}")
-    assertContains(status.stdout, "pending: 0")
+    assertContains(status.stdout, "pending: 1")
     assertContains(status.stdout, "blocked: 0")
-    assertContains(status.stdout, "current_phase: none")
     assertContains(status.stdout, "phase: id=plan status=completed")
+    assertContains(status.stdout, "phase: id=implement_fix status=pending")
+    // SKILL-85 Subtask 4 (F-005): a fully forward-completed run reports no current phase — the
+    // loop-only implement_fix (still pending) must NOT be projected as the current phase to operators.
+    assertContains(status.stdout, "current_phase: none")
   }
 
   @Test
@@ -585,16 +590,17 @@ class CliFeatureTaskRuntimeRuntimeTest {
   @Test
   fun `feature-task-runtime status reports a blocked phase derived from the ledger`() {
     val fixture = runtimeFixture()
-    // Preplan and plan complete; implement never validates and blocks immediately.
+    // Preplan and plan complete; implement never validates and blocks after the bounded fix loop.
     val launcher = RecordingPhaseLauncher(invalidFromLaunchIndex = 2)
     val run = CliRuntime.run(fixture.runCommand(extra = listOf("--agent", "codex")), fixture.context(launcher))
     assertEquals(1, run.exitCode, run.stdout)
     assertContains(run.stdout, "status: blocked")
     // F-006: the rendered run output names the specific blocked phase and reason. `implement` is a
-    // non-fix-loop phase, so it blocks immediately on invalid output with the matching wording.
+    // fix-loop phase under the mutating-phase idempotency contract, so it exhausts the bounded fix
+    // loop on repeated invalid output before blocking, with the matching wording.
     assertContains(run.stdout, "last_incomplete_phase: implement")
     assertContains(run.stdout, "blocked_reason:")
-    assertContains(run.stdout, "does not participate in a fix loop")
+    assertContains(run.stdout, "exhausted the bounded fix loop")
     val workflowId = run.stdout.lines().single { it.startsWith("workflow_id:") }.substringAfter(":").trim()
 
     val status = CliRuntime.run(
@@ -905,14 +911,35 @@ private class RecordingPhaseLauncher(
       phase_id: "implement"
       """.trimIndent()
 
-    fun validPhaseOutput(phaseId: String): String = """
-      contract_version: "0.1"
-      phase_id: "$phaseId"
-      status: "completed"
-      summary: "Phase produced a validated output."
-      produced_outputs:
-        tasks: ["task-1"]
-    """.trimIndent()
+    fun validPhaseOutput(phaseId: String): String {
+      // A clean review/audit must emit a verification signal (an empty findings/unmet_criteria array
+      // affirms no blocking findings / every criterion met) or the runtime gate blocks it (SKILL-85
+      // Subtask 4 F-003 for review, Subtask 5 AC1 for audit).
+      val producedOutputs = when (phaseId) {
+        "review" -> "findings: []"
+        "audit" -> "unmet_criteria: []"
+        else -> """tasks: ["task-1"]"""
+      }
+      val base =
+        """
+        contract_version: "0.1"
+        phase_id: "$phaseId"
+        status: "completed"
+        summary: "Phase produced a validated output."
+        produced_outputs:
+          $producedOutputs
+        """.trimIndent()
+      if (phaseId != "implement") {
+        return base
+      }
+      val reconciliationReport =
+        """
+          reconciled_state:
+            reconciled: true
+            evidence: "All planned changes are present at their intended state."
+        """.trimIndent().prependIndent("  ")
+      return "$base\n$reconciliationReport"
+    }
 
     val DECOMPOSE_PLAN_OUTPUT: String = """
       {

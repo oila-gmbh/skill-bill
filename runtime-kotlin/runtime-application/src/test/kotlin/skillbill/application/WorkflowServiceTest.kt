@@ -64,6 +64,7 @@ import skillbill.workflow.model.DecompositionManifest
 import skillbill.workflow.model.DecompositionSubtask
 import skillbill.workflow.model.GoalProgressEvent
 import skillbill.workflow.model.GoalProgressEventKind
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -1086,7 +1087,13 @@ class WorkflowGoalRunnerOutcomeStoreTest {
     assertEquals("preplan could not progress", outcome.blockedReason)
     assertEquals("preplan", outcome.lastResumableStep)
   }
+}
 
+// Reconciliation and resume-step alignment behaviour for the goal-runner outcome store: choosing
+// the authoritative terminal sibling, closing or keeping stale running children, and blocking at
+// the recorded current step rather than a stale/first-unfinished step. Split out of
+// WorkflowGoalRunnerOutcomeStoreTest so each class stays under the detekt LargeClass threshold.
+class WorkflowGoalRunnerReconciliationTest {
   @Test
   @Suppress("LongMethod")
   fun `goal runner outcome reconciliation closes stale running child in favor of authoritative terminal workflow`() {
@@ -1344,6 +1351,120 @@ class WorkflowGoalRunnerOutcomeStoreTest {
     assertEquals("blocked", steps.getValue("implement"))
   }
 
+  @Test
+  fun `goal runner blocks prose implement family at recorded current step not first unfinished step`() {
+    // F-001: the prose IMPLEMENT family must keep its historical current-step fallback. With
+    // completed preplan/plan and no running step, the runtime-only firstUnfinishedStepId boundary
+    // is intentionally NOT applied (definitionStepIds is empty for non-runtime families), so the
+    // block resolves to the record's currentStepId and specifically not to implement.
+    val workflows = InMemoryWorkflowStates()
+    val definition = FeatureImplementWorkflowDefinition.definition
+    val opened = testWorkflowEngine.openRecord(definition, "wfl-child", "fis-001", "preplan")
+    val crashed = testWorkflowEngine.updateRecord(
+      definition,
+      opened,
+      skillbill.workflow.model.WorkflowUpdateInput(
+        workflowStatus = "running",
+        currentStepId = "audit",
+        stepUpdates = listOf(
+          mapOf("step_id" to "preplan", "status" to "completed", "attempt_count" to 1),
+          mapOf("step_id" to "plan", "status" to "completed", "attempt_count" to 1),
+        ),
+        artifactsPatch = mapOf(
+          "goal_continuation" to mapOf(
+            "issue_key" to "SKILL-52.1",
+            "subtask_id" to 1,
+            "suppress_pr" to true,
+          ),
+        ),
+        sessionId = "fis-001",
+      ),
+    )
+    workflows.saveFeatureImplementWorkflow(crashed.toRecord())
+    val store = WorkflowGoalRunnerOutcomeStore(
+      database = FakeDatabaseSessionFactory(workflows),
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+    )
+
+    val blockedStep = store.markBlocked("wfl-child", "no terminal outcome", "preplan")
+
+    assertEquals("audit", blockedStep)
+    val saved = requireNotNull(workflows.getFeatureImplementWorkflow("wfl-child")).toSnapshot()
+    assertEquals("audit", saved.currentStepId)
+    val steps = decodeWorkflowStepsForTest(saved.stepsJson)
+    assertEquals("completed", steps.getValue("preplan"))
+    assertEquals("completed", steps.getValue("plan"))
+    assertEquals("blocked", steps.getValue("audit"))
+  }
+
+  @Test
+  fun `goal runner reconciles crashed runtime row without outcome to real last completed phase not preplan`() {
+    // AC5/AC8: a crashed runtime row with completed preplan/plan records, no running step, and no
+    // goal_continuation_outcome must reconcile to its real resume boundary (implement), never
+    // mis-default to preplan.
+    val workflows = InMemoryWorkflowStates()
+    val definition = FeatureTaskRuntimePhaseWorkflowDefinition.definition
+    val opened = testWorkflowEngine.openRecord(definition, "wftr-child", "ftr-001", "preplan")
+    val crashed = testWorkflowEngine.updateRecord(
+      definition,
+      opened,
+      skillbill.workflow.model.WorkflowUpdateInput(
+        workflowStatus = "running",
+        currentStepId = "plan",
+        stepUpdates = listOf(
+          mapOf("step_id" to "preplan", "status" to "completed", "attempt_count" to 1),
+          mapOf("step_id" to "plan", "status" to "completed", "attempt_count" to 1),
+        ),
+        artifactsPatch = mapOf(
+          "goal_continuation" to mapOf(
+            "issue_key" to "SKILL-85",
+            "subtask_id" to 1,
+            "suppress_pr" to true,
+          ),
+          "feature_task_runtime_phase_records" to mapOf(
+            "preplan" to mapOf(
+              "phase_id" to "preplan",
+              "status" to "completed",
+              "attempt_count" to 1,
+              "started_at" to "2026-06-18T10:00:00Z",
+              "finished_at" to "2026-06-18T10:01:00Z",
+              "resolved_agent_id" to "agent-preplan",
+            ),
+            "plan" to mapOf(
+              "phase_id" to "plan",
+              "status" to "completed",
+              "attempt_count" to 1,
+              "started_at" to "2026-06-18T10:02:00Z",
+              "finished_at" to "2026-06-18T10:03:00Z",
+              "resolved_agent_id" to "agent-plan",
+            ),
+          ),
+        ),
+        sessionId = "ftr-001",
+      ),
+    )
+    workflows.saveFeatureTaskRuntimeWorkflow(crashed.toRecord())
+    val store = WorkflowGoalRunnerOutcomeStore(
+      database = FakeDatabaseSessionFactory(workflows),
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+    )
+
+    val blockedStep = store.markBlocked("wftr-child", "no terminal outcome", "preplan")
+
+    assertEquals("implement", blockedStep)
+    val saved = requireNotNull(workflows.getFeatureTaskRuntimeWorkflow("wftr-child")).toSnapshot()
+    assertEquals("implement", saved.currentStepId)
+    val steps = decodeWorkflowStepsForTest(saved.stepsJson)
+    assertEquals("completed", steps.getValue("preplan"))
+    assertEquals("completed", steps.getValue("plan"))
+    assertEquals("blocked", steps.getValue("implement"))
+  }
+}
+
+// Goal-runner progress projection, progress/session/ledger persistence, and subtask resume
+// alignment for the outcome store. Split out of WorkflowGoalRunnerOutcomeStoreTest so each class
+// stays under the detekt LargeClass threshold.
+class WorkflowGoalRunnerProgressStoreTest {
   @Test
   fun `goal runner progress reports finish after terminal step completes despite stale current step`() {
     val workflows = InMemoryWorkflowStates()

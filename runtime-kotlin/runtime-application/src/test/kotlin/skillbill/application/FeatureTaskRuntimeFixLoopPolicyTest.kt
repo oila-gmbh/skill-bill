@@ -21,18 +21,43 @@ import kotlin.test.assertTrue
  */
 class FeatureTaskRuntimeFixLoopPolicyTest {
   @Test
-  fun `the mutating implement phase blocks on first failed output without advancing`() {
-    val decision = FeatureTaskRuntimeFixLoopPolicy.decideAfterFailure(
-      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT,
-      currentIteration = 1,
-    )
+  fun `the mutating implement phase is a bounded fix-loop under the idempotency contract`() {
+    // SKILL-85 Subtask 3 (AC2): implement now participates in the bounded fix loop because the
+    // mutating-phase idempotency contract makes re-entry safe (reconcile-to-target, no double-apply).
+    // It retries to the cap, then blocks loudly with the fix-loop exhaustion reason.
+    (1 until FeatureTaskRuntimeFixLoopPolicy.MAX_FIX_LOOP_ITERATIONS).forEach { iteration ->
+      val retry = assertIs<FeatureTaskRuntimeFixLoopDecision.Retry>(
+        FeatureTaskRuntimeFixLoopPolicy.decideAfterFailure(
+          FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT,
+          currentIteration = iteration,
+        ),
+        "implement must Retry below the cap at iteration $iteration",
+      )
+      assertEquals(iteration + 1, retry.nextIteration)
+      assertEquals(iteration, retry.fixLoopIteration)
+    }
     val blocked = assertIs<FeatureTaskRuntimeFixLoopDecision.Block>(
-      decision,
-      "the mutating implement phase must Block on a failed output, never advance",
+      FeatureTaskRuntimeFixLoopPolicy.decideAfterFailure(
+        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT,
+        currentIteration = FeatureTaskRuntimeFixLoopPolicy.MAX_FIX_LOOP_ITERATIONS,
+      ),
+      "implement must Block once the bounded cap is reached",
     )
     assertTrue(
-      blocked.blockedReason.contains("does not participate in a fix loop"),
-      "block reason for implement must name the no-fix-loop cause",
+      blocked.blockedReason.contains("exhausted the bounded fix loop"),
+      "block reason for implement must name fix-loop exhaustion, not a no-fix-loop fence",
+    )
+  }
+
+  @Test
+  fun `a budget-exhausted implement resume re-blocks rather than relaunching`() {
+    // implement is bounded, so a resume past the cap re-blocks (unlike unbounded validate).
+    assertTrue(
+      FeatureTaskRuntimeFixLoopPolicy.blockReasonIfBudgetExhausted(
+        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT,
+        iteration = FeatureTaskRuntimeFixLoopPolicy.MAX_FIX_LOOP_ITERATIONS + 1,
+      )?.contains("exhausted the bounded fix loop") == true,
+      "a resumed implement past the cap must re-block on the bounded budget",
     )
   }
 

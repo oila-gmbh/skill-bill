@@ -155,9 +155,95 @@ class FeatureTaskRuntimePersistenceModelsTest {
   @Test
   fun `ledger action wire values cover the required event set`() {
     assertEquals(
-      listOf("start", "resume", "retry", "fix_loop_iteration", "blocked", "complete"),
+      listOf("start", "resume", "retry", "fix_loop_iteration", "loop_edge", "blocked", "complete"),
       FeatureTaskRuntimePhaseLedgerAction.entries.map { it.wireValue },
     )
+  }
+
+  @Test
+  fun `per-phase record round trips loop_id and edge_iteration additively`() {
+    val record = FeatureTaskRuntimePhaseRecord(
+      phaseId = "implement",
+      status = "running",
+      attemptCount = 2,
+      startedAt = "2026-06-02T10:00:00Z",
+      resolvedAgentId = "agent-implement-1",
+      loopId = "review-fix",
+      edgeIteration = 2,
+    )
+    val map = record.toArtifactMap()
+    assertEquals("review-fix", map["loop_id"])
+    assertEquals(2, map["edge_iteration"])
+    assertEquals(record, FeatureTaskRuntimePhaseRecord.fromArtifactMap(map))
+  }
+
+  @Test
+  fun `per-phase record omits loop_id and edge_iteration when absent and old maps decode unchanged`() {
+    val record = FeatureTaskRuntimePhaseRecord(
+      phaseId = "plan",
+      status = "running",
+      attemptCount = 1,
+      startedAt = "2026-06-02T10:00:00Z",
+      resolvedAgentId = "agent-plan-1",
+    )
+    val map = record.toArtifactMap()
+    assertNull(map["loop_id"])
+    assertNull(map["edge_iteration"])
+    // An old map predating the loop fields decodes with null loop context.
+    val legacy = mapOf(
+      "phase_id" to "plan",
+      "status" to "running",
+      "attempt_count" to 1,
+      "started_at" to "2026-06-02T10:00:00Z",
+      "resolved_agent_id" to "agent-plan-1",
+    )
+    val decoded = FeatureTaskRuntimePhaseRecord.fromArtifactMap(legacy)
+    assertNull(decoded.loopId)
+    assertNull(decoded.edgeIteration)
+  }
+
+  @Test
+  fun `per-phase record decode loud-fails on edge_iteration below one`() {
+    val malformed = mapOf(
+      "phase_id" to "implement",
+      "status" to "running",
+      "attempt_count" to 1,
+      "started_at" to "2026-06-02T10:00:00Z",
+      "resolved_agent_id" to "agent-implement-1",
+      "loop_id" to "review-fix",
+      "edge_iteration" to 0,
+    )
+    assertFailsWith<IllegalArgumentException> {
+      FeatureTaskRuntimePhaseRecord.fromArtifactMap(malformed)
+    }
+  }
+
+  @Test
+  fun `ledger entry round trips loop_id and edge_iteration additively`() {
+    val entry = FeatureTaskRuntimePhaseLedgerEntry(
+      action = FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE,
+      sequenceNumber = 7,
+      timestamp = "2026-06-02T10:07:00Z",
+      phaseId = "implement",
+      attemptCount = 1,
+      loopId = "review-fix",
+      edgeIteration = 3,
+    )
+    val map = entry.toArtifactMap()
+    assertEquals("review-fix", map["loop_id"])
+    assertEquals(3, map["edge_iteration"])
+    assertEquals(entry, FeatureTaskRuntimePhaseLedgerEntry.fromArtifactMap(map))
+    // An old ledger map without the loop fields decodes unchanged.
+    val legacy = mapOf(
+      "action" to "retry",
+      "sequence_number" to 0,
+      "timestamp" to "2026-06-02T10:00:00Z",
+      "phase_id" to "review",
+      "attempt_count" to 1,
+    )
+    val decoded = FeatureTaskRuntimePhaseLedgerEntry.fromArtifactMap(legacy)
+    assertNull(decoded.loopId)
+    assertNull(decoded.edgeIteration)
   }
 
   @Test

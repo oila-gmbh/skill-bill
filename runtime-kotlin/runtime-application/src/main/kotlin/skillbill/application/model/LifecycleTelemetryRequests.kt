@@ -55,6 +55,14 @@ data class FeatureTaskRuntimeFinishedRequest(
   val lastIncompletePhase: String,
   val blockedReason: String,
   val resolvedBranch: String,
+  // The durable review-fix loop iteration count (the per-edge `review_fix` watermark from the
+  // LOOP_EDGE ledger), so finished telemetry reflects how many review->fix iterations ran (AC6).
+  // Zero when the loop never fired. Runtime-owned, never agent-self-reported.
+  val reviewFixIterationCount: Int = 0,
+  // The durable audit-gap loop iteration count (the per-edge `audit_gap` watermark from the LOOP_EDGE
+  // ledger), so finished telemetry reflects how many audit->plan iterations ran (AC7). Zero when the
+  // loop never fired. Runtime-owned, never agent-self-reported.
+  val auditGapIterationCount: Int = 0,
 )
 
 data class QualityCheckStartedRequest(

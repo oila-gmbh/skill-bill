@@ -1075,13 +1075,6 @@ class GoalRunnerStatusProjectionTest {
     assertEquals(1, status.currentSubtaskId)
     assertEquals("preplan", status.currentStep)
   }
-
-  private fun runRequest(): GoalRunnerRunRequest = GoalRunnerRunRequest(
-    issueKey = "SKILL-56",
-    repoRoot = Path.of("/tmp/skillbill-goal-runner"),
-    invokedAgentId = "claude",
-    dbPathOverride = "/tmp/skillbill-goal-runner/metrics.db",
-  )
 }
 
 class GoalRunnerObservabilityTest {

@@ -55,10 +55,22 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     assertContains(preplanPrompt, "schema-valid produced_outputs")
     assertContains(planPrompt, "Do not modify repository files during this phase.")
     assertContains(planPrompt, "upstream preplan digest")
-    assertContains(implementPrompt, "make the repository changes")
+    assertContains(implementPrompt, "Reconcile the repository to the intended state")
     assertTrue(
       !implementPrompt.contains("Do not modify repository files during this phase."),
       "implement must not carry the plan directive",
+    )
+    // The mutating-phase idempotency directive + reconciliation-report output requirement are emitted
+    // only for mutating phases; non-mutating phases must not carry them.
+    assertContains(implementPrompt, "Mutating-phase idempotency contract")
+    assertContains(implementPrompt, "reconciliation report")
+    assertTrue(
+      !planPrompt.contains("Mutating-phase idempotency contract"),
+      "non-mutating plan phase must not carry the idempotency directive",
+    )
+    assertTrue(
+      !historyPrompt.contains("Mutating-phase idempotency contract"),
+      "non-mutating write_history phase must not carry the idempotency directive",
     )
     assertContains(historyPrompt, "bill-boundary-history")
     assertContains(historyPrompt, "history_result")

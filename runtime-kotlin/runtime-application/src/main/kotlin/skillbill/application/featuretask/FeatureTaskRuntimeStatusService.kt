@@ -53,7 +53,15 @@ class FeatureTaskRuntimeStatusService(
       if (terminalDecomposeRecorded) {
         null
       } else {
-        phases.firstOrNull { it.status != STATUS_COMPLETED }?.phaseId
+        // Skip a loop-only phase (e.g. implement_fix) only while it is still pending: it is
+        // permanently pending on a clean forward run and is reached only as a backward-edge
+        // destination, so reporting a never-run one as current would mislead operators. A loop-only
+        // phase that is actually running or blocked mid-loop still surfaces. A run with no incomplete
+        // non-loop-only phase reports none (a completed run is terminal).
+        phases.firstOrNull {
+          it.status != STATUS_COMPLETED &&
+            !(it.phaseId in LOOP_ONLY_PHASE_IDS && it.status == STATUS_PENDING)
+        }?.phaseId
       },
       resolvedBranch = recorder.loadResolvedBranch(request.workflowId, request.dbPathOverride)?.branch,
       decomposeTerminal = decomposeTerminal?.let {
@@ -111,5 +119,9 @@ class FeatureTaskRuntimeStatusService(
     const val STATUS_COMPLETED = "completed"
     const val STATUS_BLOCKED = "blocked"
     val TERMINAL_PHASE_STATUSES = setOf(STATUS_COMPLETED, STATUS_BLOCKED)
+
+    // Loop-only phases (backward-edge destinations the forward edge skips) are never the current
+    // phase of a forward run; sourced from the workflow definition's transition topology.
+    val LOOP_ONLY_PHASE_IDS: Set<String> = FeatureTaskRuntimePhaseWorkflowDefinition.transitions.loopOnlyPhaseIds
   }
 }

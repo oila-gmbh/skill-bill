@@ -74,6 +74,16 @@ properties:
       (strings, arrays, nested objects all occur), so they are left open; the
       envelope guarantees the field is present, carries at least one entry
       (an empty `{}` blocks the run), and uses only non-empty string keys.
+      Mutating phases (e.g. `implement`) additionally MUST carry a
+      reconciliation report — a `reconciled_state` object (or a `reconciled`
+      entry) with `reconciled` set to true plus evidence that the changed
+      files are at their intended target state — so the runtime can verify
+      (not assume) the mutating-phase idempotency contract: the phase
+      reconciled the working tree to target rather than re-applying or
+      silently skipping. The runtime enforces this per-phase reconciliation
+      check at the gate; it is documented here for authors. This is a
+      description-only clarification and adds no JSON-Schema constraint, so
+      the contract_version is unchanged.
     minProperties: 1
     propertyNames:
       type: string
@@ -82,5 +92,24 @@ properties:
     description: >
       Optional free-text note. Either absent (not set) or a non-empty string;
       `null` is not a valid value.
+    type: string
+    minLength: 1
+  verdict:
+    description: >
+      Optional structured verdict emitted by a verifying phase (e.g. `review`)
+      that the runtime reads to decide whether to advance or take a remediation
+      backward edge. For `review` the values are `approved` (no unresolved
+      Blocker/Major findings) or `changes_requested` (Blocker/Major findings
+      present); the runtime classifies the verdict from the carried review
+      findings, which travel inside `produced_outputs` (e.g. a `findings` array
+      of severity/message entries) and are forwarded into the `implement_fix`
+      handoff. For `audit` the values are `satisfied` (every acceptance criterion
+      met) or `gaps_found` (one or more unmet); the runtime classifies the verdict
+      from the failing criteria, which travel inside `produced_outputs` (an
+      `unmet_criteria` array of message entries) and scope the re-plan/re-implement
+      handoff on the `audit_gap` backward edge. Either absent (not set) or a
+      non-empty string; `null` is not a valid value. This field is additive and
+      optional — existing phase outputs that omit it still validate — so the
+      contract_version is unchanged.
     type: string
     minLength: 1

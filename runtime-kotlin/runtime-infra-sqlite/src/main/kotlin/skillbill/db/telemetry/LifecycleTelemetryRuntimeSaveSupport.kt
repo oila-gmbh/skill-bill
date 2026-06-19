@@ -72,6 +72,8 @@ private fun updateFeatureTaskRuntimeFinished(
       last_incomplete_phase = ?,
       blocked_reason = ?,
       resolved_branch = ?,
+      review_fix_iteration_count = ?,
+      audit_gap_iteration_count = ?,
       finished_at = CURRENT_TIMESTAMP
     WHERE session_id = ?
     """.trimIndent(),
@@ -83,6 +85,8 @@ private fun updateFeatureTaskRuntimeFinished(
       record.lastIncompletePhase,
       record.blockedReason,
       record.resolvedBranch,
+      record.reviewFixIterationCount,
+      record.auditGapIterationCount,
       record.sessionId,
     )
     statement.executeUpdate()
@@ -100,8 +104,8 @@ private fun insertFeatureTaskRuntimeFinished(
     INSERT INTO feature_task_runtime_sessions (
       session_id, completion_status, completed_phase_ids,
       phase_outcomes, last_incomplete_phase, blocked_reason,
-      resolved_branch, finished_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      resolved_branch, review_fix_iteration_count, audit_gap_iteration_count, finished_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
     """.trimIndent(),
   ).use { statement ->
     statement.bind(
@@ -112,6 +116,8 @@ private fun insertFeatureTaskRuntimeFinished(
       record.lastIncompletePhase,
       record.blockedReason,
       record.resolvedBranch,
+      record.reviewFixIterationCount,
+      record.auditGapIterationCount,
     )
     statement.executeUpdate()
   }

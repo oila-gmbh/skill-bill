@@ -125,6 +125,18 @@ data class FeatureTaskRuntimePhaseHandoff(
   val runInvariants: FeatureTaskRuntimeRunInvariants,
   val upstreamOutputs: FeatureTaskRuntimeResolvedUpstreamOutputs,
   val derivedContextKeys: List<String>,
+  /**
+   * The driving verdict for a backward-edge re-entry (e.g. the review findings for an
+   * `implement_fix` re-entry); null for an ordinary forward launch. Upstream outputs are still
+   * resolved by the contract, never selected by the re-entered agent.
+   */
+  val drivingVerdict: FeatureTaskRuntimeVerdict? = null,
+  /**
+   * The failing acceptance criteria scoping an `audit_gap` re-entry (the re-entered `plan` and
+   * `implement` address these gaps rather than redoing settled content); empty for a forward launch
+   * or a non-audit-gap re-entry, preserving the existing forward-launch assembly.
+   */
+  val reentryGapCriteria: List<String> = emptyList(),
 )
 
 /**

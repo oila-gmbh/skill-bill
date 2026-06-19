@@ -1,5 +1,6 @@
 package skillbill.cli
 
+import skillbill.application.model.WorkflowContinueResult
 import skillbill.application.model.WorkflowGetResult
 import skillbill.application.model.WorkflowUpdateResult
 import skillbill.cli.goal.toGoalDiffStatCliMap
@@ -8,12 +9,16 @@ import skillbill.cli.workflow.toCliMap
 import skillbill.contracts.workflow.GoalObservabilityEventSchemaValidator
 import skillbill.error.InvalidGoalObservabilityEventSchemaError
 import skillbill.workflow.GoalObservabilityEventValidator
+import skillbill.workflow.WorkflowEngine
+import skillbill.workflow.WorkflowSnapshotValidator
 import skillbill.workflow.model.GoalObservabilityDiffStat
 import skillbill.workflow.model.GoalObservabilitySelectedDiffHunk
 import skillbill.workflow.model.GoalObservabilitySelectedDiffHunks
 import skillbill.workflow.model.WorkflowSnapshotView
+import skillbill.workflow.model.WorkflowStateSnapshot
 import skillbill.workflow.model.WorkflowStepState
 import skillbill.workflow.model.WorkflowUpdateAcknowledgementView
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -49,6 +54,44 @@ class WorkflowCliResultMappersTest {
     assertTrue(mapped.containsKey("read_only_full_state_command"))
     assertFalse(mapped.containsKey("steps"))
     assertFalse(mapped.containsKey("artifacts"))
+  }
+
+  @Test
+  fun `runtime continue mapper returns honest ok for a recoverable run instead of false missing artifacts error`() {
+    // AC4/AC8 regression: completed preplan/plan records + dead process (no terminal outcome) must
+    // map to an honest reopened/ok continue, never a false "Cannot continue ... missing artifacts".
+    val definition = FeatureTaskRuntimePhaseWorkflowDefinition.definition
+    val engine = WorkflowEngine(NoopWorkflowSnapshotValidator)
+    val record = WorkflowStateSnapshot(
+      workflowId = "wftr-crashed",
+      sessionId = "ftr-001",
+      workflowName = definition.workflowName,
+      contractVersion = definition.contractVersion,
+      workflowStatus = "running",
+      currentStepId = "plan",
+      stepsJson = """[{"step_id":"preplan","status":"completed","attempt_count":1},""" +
+        """{"step_id":"plan","status":"completed","attempt_count":1},""" +
+        """{"step_id":"implement","status":"pending","attempt_count":0}]""",
+      artifactsJson = """{"feature_task_runtime_phase_records":{""" +
+        """"preplan":{"phase_id":"preplan","status":"completed","attempt_count":1,""" +
+        """"started_at":"2026-06-18T10:00:00Z","finished_at":"2026-06-18T10:01:00Z",""" +
+        """"resolved_agent_id":"agent-preplan"},""" +
+        """"plan":{"phase_id":"plan","status":"completed","attempt_count":1,""" +
+        """"started_at":"2026-06-18T10:02:00Z","finished_at":"2026-06-18T10:03:00Z",""" +
+        """"resolved_agent_id":"agent-plan"}}}""",
+      startedAt = "2026-06-18T10:00:00Z",
+      updatedAt = "2026-06-18T10:03:00Z",
+      finishedAt = null,
+      mode = definition.workflowMode,
+    )
+    val decision = engine.continueDecision(definition, record)
+
+    val mapped = WorkflowContinueResult.Standard(dbPath = "/tmp/metrics.db", view = decision.view).toCliMap()
+
+    assertEquals("ok", mapped["status"])
+    assertFalse(mapped.containsKey("error"))
+    assertEquals("implement", mapped["continue_step_id"])
+    assertEquals(emptyList<String>(), mapped["missing_artifacts"])
   }
 
   @Test
@@ -260,4 +303,8 @@ class WorkflowCliResultMappersTest {
         GoalObservabilityEventSchemaValidator.validate(event, sourceLabel)
       }
     }
+
+  private object NoopWorkflowSnapshotValidator : WorkflowSnapshotValidator {
+    override fun validate(snapshot: Map<String, Any?>, slug: String) = Unit
+  }
 }

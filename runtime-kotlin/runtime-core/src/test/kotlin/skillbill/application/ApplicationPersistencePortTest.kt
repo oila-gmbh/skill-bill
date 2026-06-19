@@ -90,12 +90,14 @@ import skillbill.telemetry.model.TelemetrySettings
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 @Suppress("LargeClass") // integration suite spanning learning/review/telemetry/workflow ports
@@ -340,6 +342,138 @@ class ApplicationPersistencePortTest {
     assertEquals(listOf(0, 1), sequences)
     assertEquals(sequences.sorted(), sequences)
     assertEquals(listOf("start", "complete"), ledger.map { it["action"] })
+  }
+
+  @Test
+  fun `task runtime recorder advances shared steps in lockstep with per-phase records`() {
+    val workflowRepository = InMemoryWorkflowStateRepository()
+    val database = FakeDatabaseSessionFactory(workflows = workflowRepository)
+    val service = testWorkflowService(database)
+    val recorder = FeatureTaskRuntimePhaseRecorder(database, WorkflowSnapshotValidatorInfraAdapter())
+
+    val opened = service.open(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-001", dbOverride = null)
+      as WorkflowOpenResult.Ok
+    val workflowId = opened.workflowId
+
+    assertTrue(recorder.recordRuntimePhase(workflowId, "preplan", status = "running", finished = false))
+    assertEquals("running", stepStatusFor(workflowRepository, workflowId, "preplan"))
+    assertRuntimeWorkflowRow(workflowRepository, workflowId, currentStepId = "preplan", workflowStatus = "running")
+
+    assertTrue(recorder.recordRuntimePhase(workflowId, "preplan", status = "completed", finished = true))
+    assertEquals("completed", stepStatusFor(workflowRepository, workflowId, "preplan"))
+
+    assertTrue(recorder.recordRuntimePhase(workflowId, "plan", status = "running", finished = false))
+    assertEquals("running", stepStatusFor(workflowRepository, workflowId, "plan"))
+    // The prior completed phase stays completed in the mid-run snapshot.
+    assertEquals("completed", stepStatusFor(workflowRepository, workflowId, "preplan"))
+    assertRuntimeWorkflowRow(workflowRepository, workflowId, currentStepId = "plan", workflowStatus = "running")
+
+    assertTrue(recorder.recordRuntimePhase(workflowId, "plan", status = "completed", finished = true))
+    assertEquals("completed", stepStatusFor(workflowRepository, workflowId, "plan"))
+
+    assertTrue(
+      recorder.recordRuntimePhase(
+        workflowId,
+        "implement",
+        status = "blocked",
+        finished = false,
+        blockedReason = "needs human",
+      ),
+    )
+    assertEquals("blocked", stepStatusFor(workflowRepository, workflowId, "implement"))
+    assertRuntimeWorkflowRow(workflowRepository, workflowId, currentStepId = "implement", workflowStatus = "blocked")
+    // Untouched downstream phases stay pending.
+    assertEquals("pending", stepStatusFor(workflowRepository, workflowId, "review"))
+  }
+
+  @Test
+  fun `task runtime shared steps agree with the runner record-derived status map across mixed statuses`() {
+    val workflowRepository = InMemoryWorkflowStateRepository()
+    val database = FakeDatabaseSessionFactory(workflows = workflowRepository)
+    val service = testWorkflowService(database)
+    val recorder = FeatureTaskRuntimePhaseRecorder(database, WorkflowSnapshotValidatorInfraAdapter())
+
+    val opened = service.open(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-001", dbOverride = null)
+      as WorkflowOpenResult.Ok
+    val workflowId = opened.workflowId
+
+    recorder.recordRuntimePhase(workflowId, "preplan", status = "running", finished = false)
+    recorder.recordRuntimePhase(workflowId, "preplan", status = "completed", finished = true)
+    recorder.recordRuntimePhase(workflowId, "plan", status = "running", finished = false)
+    recorder.recordRuntimePhase(workflowId, "plan", status = "completed", finished = true)
+    recorder.recordRuntimePhase(workflowId, "implement", status = "running", finished = false)
+    recorder.recordRuntimePhase(
+      workflowId,
+      "review",
+      status = "blocked",
+      finished = false,
+      blockedReason = "needs human",
+    )
+
+    val records = requireNotNull(recorder.loadPhaseRecords(workflowId))
+    val recordDerivedStatuses = records.mapValues { (_, record) -> expectedStepStatusForRecord(record) }
+    val stepStatusByPhaseId = decodeStepsForTest(workflowRepository, workflowId)
+      .filter { (phaseId, _) -> phaseId in records.keys }
+      .toMap()
+    // AC7: the full per-phase status map shared steps[] carries cannot diverge from what the records
+    // imply for ANY status, including the non-completed running/blocked phases.
+    assertEquals(recordDerivedStatuses, stepStatusByPhaseId)
+    assertEquals(
+      mapOf(
+        "preplan" to "completed",
+        "plan" to "completed",
+        "implement" to "running",
+        "review" to "blocked",
+      ),
+      stepStatusByPhaseId,
+    )
+  }
+
+  @Test
+  fun `task runtime shared step keeps blocked status even when the blocked record carries a finished timestamp`() {
+    // F-003: blocked-wins precedence. A blocked record that also carries a non-null finishedAt must
+    // map to a blocked step, never collapse to completed via the finishedAt branch.
+    val workflowRepository = InMemoryWorkflowStateRepository()
+    val database = FakeDatabaseSessionFactory(workflows = workflowRepository)
+    val service = testWorkflowService(database)
+    val recorder = FeatureTaskRuntimePhaseRecorder(database, WorkflowSnapshotValidatorInfraAdapter())
+
+    val opened = service.open(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-001", dbOverride = null)
+      as WorkflowOpenResult.Ok
+    val workflowId = opened.workflowId
+
+    recorder.recordRuntimePhase(
+      workflowId,
+      "implement",
+      status = "blocked",
+      finished = true,
+      blockedReason = "needs human",
+    )
+
+    val record = requireNotNull(recorder.loadPhaseRecords(workflowId))["implement"]
+    assertNotNull(requireNotNull(record).finishedAt)
+    assertEquals("blocked", stepStatusFor(workflowRepository, workflowId, "implement"))
+  }
+
+  @Test
+  fun `task runtime shared step maps a running record with a finished timestamp to completed`() {
+    // F-003: finishedAt-wins precedence. A record whose status is still running but which carries a
+    // non-null finishedAt must map to completed.
+    val workflowRepository = InMemoryWorkflowStateRepository()
+    val database = FakeDatabaseSessionFactory(workflows = workflowRepository)
+    val service = testWorkflowService(database)
+    val recorder = FeatureTaskRuntimePhaseRecorder(database, WorkflowSnapshotValidatorInfraAdapter())
+
+    val opened = service.open(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-001", dbOverride = null)
+      as WorkflowOpenResult.Ok
+    val workflowId = opened.workflowId
+
+    recorder.recordRuntimePhase(workflowId, "preplan", status = "running", finished = true)
+
+    val record = requireNotNull(recorder.loadPhaseRecords(workflowId))["preplan"]
+    assertEquals("running", requireNotNull(record).status)
+    assertNotNull(record.finishedAt)
+    assertEquals("completed", stepStatusFor(workflowRepository, workflowId, "preplan"))
   }
 
   @Test
@@ -1940,6 +2074,59 @@ private fun FeatureTaskRuntimePhaseRecorder.recordPlanPhase(
     outputArtifact = outputArtifact,
   ),
 )
+
+private fun FeatureTaskRuntimePhaseRecorder.recordRuntimePhase(
+  workflowId: String,
+  phaseId: String,
+  status: String,
+  finished: Boolean,
+  blockedReason: String? = null,
+): Boolean = recordPhaseState(
+  FeatureTaskRuntimePhaseStateRequest(
+    workflowId = workflowId,
+    phaseId = phaseId,
+    status = status,
+    attemptCount = 1,
+    resolvedAgentId = "agent-$phaseId-1",
+    finished = finished,
+    blockedReason = blockedReason,
+  ),
+)
+
+// Mirrors the production stepStatusForPhaseRecord precedence so the AC7 status-map assertion proves
+// agreement against an independent derivation rather than re-reading steps[]: blocked wins, then a
+// finished timestamp maps to completed, otherwise the record's own status carries through.
+private fun expectedStepStatusForRecord(record: FeatureTaskRuntimePhaseRecord): String = when {
+  record.status == "blocked" -> "blocked"
+  record.finishedAt != null -> "completed"
+  else -> record.status
+}
+
+private fun decodeStepsForTest(
+  repository: InMemoryWorkflowStateRepository,
+  workflowId: String,
+): List<Pair<String, String>> {
+  val stepsJson = requireNotNull(repository.getFeatureTaskRuntimeWorkflow(workflowId)).stepsJson
+  val element = JsonSupport.json.parseToJsonElement(stepsJson)
+  return (JsonSupport.jsonElementToValue(element) as List<*>).map { raw ->
+    val item = raw as Map<*, *>
+    item["step_id"].toString() to item["status"].toString()
+  }
+}
+
+private fun stepStatusFor(repository: InMemoryWorkflowStateRepository, workflowId: String, stepId: String): String =
+  decodeStepsForTest(repository, workflowId).first { it.first == stepId }.second
+
+private fun assertRuntimeWorkflowRow(
+  repository: InMemoryWorkflowStateRepository,
+  workflowId: String,
+  currentStepId: String,
+  workflowStatus: String,
+) {
+  val row = requireNotNull(repository.getFeatureTaskRuntimeWorkflow(workflowId))
+  assertEquals(currentStepId, row.currentStepId)
+  assertEquals(workflowStatus, row.workflowStatus)
+}
 
 private fun testWorkflowService(
   database: DatabaseSessionFactory,

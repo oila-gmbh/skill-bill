@@ -3,6 +3,7 @@ package skillbill.application.model
 import skillbill.application.decomposition.decompositionManifestPath
 import skillbill.application.decomposition.parentSpecPath
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
 import java.nio.file.Path
 import kotlin.time.Duration
 
@@ -27,6 +28,12 @@ data class FeatureTaskRuntimeRunRequest(
   /** Present only for non-interactive goal-runner continuation children. */
   val goalContinuation: FeatureTaskRuntimeGoalContinuationContext? = null,
   val eventSink: FeatureTaskRuntimeRunEventSink = FeatureTaskRuntimeRunEventSink.NONE,
+  /**
+   * Test-only seam for a synthetic cyclic topology. Null in production, where the runner uses the
+   * forward-only [skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition.transitions]
+   * declaration; inert when null so production behavior is byte-for-byte unchanged.
+   */
+  val transitionsOverride: FeatureTaskRuntimeTransitionDeclaration? = null,
 ) {
   init {
     require(issueKey.isNotBlank()) { "FeatureTaskRuntimeRunRequest.issueKey is required." }

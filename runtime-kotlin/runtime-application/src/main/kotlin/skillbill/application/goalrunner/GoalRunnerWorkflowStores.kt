@@ -726,7 +726,12 @@ class WorkflowGoalRunnerOutcomeStore(
 
   private fun markBlocked(write: GoalRunnerBlockWrite): String {
     val steps = decodeWorkflowSteps(write.record.stepsJson)
-    val stepId = blockedStepId(write.record, steps, write.lastResumableStep)
+    // Family-scoped: only the runtime family reconciles the resume boundary off the truthful
+    // steps[] order (SKILL-85 subtask 1). The prose IMPLEMENT/VERIFY reconciliation keeps its
+    // historical current-step fallback unchanged.
+    val definitionStepIds =
+      if (write.family == WorkflowFamily.TASK_RUNTIME) write.family.definition.stepIds else emptyList()
+    val stepId = blockedStepId(write.record, steps, write.lastResumableStep, definitionStepIds)
     val attemptCount = steps.firstOrNull { it.stepId == stepId }?.attemptCount ?: 1
     val updated = engine.updateRecord(
       write.family.definition,
@@ -1195,17 +1200,33 @@ private fun decodeWorkflowSteps(stepsJson: String): List<WorkflowStepState> {
   }
 }
 
+// Resolves the step a blocked/crashed row should resume from off the truthful steps[] (lockstep
+// with the runtime's per-phase records since SKILL-85 subtask 1). A running step wins; otherwise
+// the first step that is not completed/skipped in definition order is the real resume boundary
+// (e.g. completed preplan/plan with a never-started implement resumes at implement, not preplan).
+// Only when steps[] carries no resumable boundary do we fall back to the coarse current step.
 private fun blockedStepId(
   record: WorkflowStateSnapshot,
   steps: List<WorkflowStepState>,
   requestedStepId: String,
+  definitionStepIds: List<String>,
 ): String = requestedStepId.takeIf { stepId ->
   stepId.isNotBlank() && steps.firstOrNull { step -> step.stepId == stepId }?.status == "running"
 }
   ?: steps.firstOrNull { step -> step.status == "running" }?.stepId
+  ?: firstUnfinishedStepId(steps, definitionStepIds)
   ?: record.currentStepId.takeIf(String::isNotBlank)
   ?: requestedStepId.takeIf(String::isNotBlank)
   ?: "preplan"
+
+// The first definition-ordered step whose truthful status is neither completed nor skipped, i.e.
+// the earliest phase still owing work. Null when every step is terminal-done.
+private fun firstUnfinishedStepId(steps: List<WorkflowStepState>, definitionStepIds: List<String>): String? {
+  val statusByStepId = steps.associate { step -> step.stepId to step.status }
+  return definitionStepIds.firstOrNull { stepId ->
+    statusByStepId[stepId]?.let { status -> status != "completed" && status != "skipped" } ?: true
+  }
+}
 
 private fun Any?.asGoalRunnerIntOrNull(): Int? = when (this) {
   is Int -> this

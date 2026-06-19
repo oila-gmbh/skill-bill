@@ -18,6 +18,8 @@ data class FeatureTaskRuntimePhaseLaunchBriefing(
   val upstreamOutputsByPhaseId: Map<String, String>,
   val derivedContextKeys: List<String>,
   val briefingText: String,
+  /** Wire value of the driving verdict for a backward-edge re-entry; null for a forward launch. */
+  val drivingVerdict: String? = null,
 ) {
   init {
     require(phaseId.isNotBlank()) { "FeatureTaskRuntimePhaseLaunchBriefing.phaseId must be non-blank." }
@@ -44,7 +46,9 @@ data class FeatureTaskRuntimePhaseLaunchBriefing(
     "upstream_outputs_by_phase_id" to LinkedHashMap(upstreamOutputsByPhaseId),
     "derived_context_keys" to derivedContextKeys,
     "briefing_text" to briefingText,
-  )
+  ).let { base ->
+    if (drivingVerdict == null) base else LinkedHashMap(base).apply { put("driving_verdict", drivingVerdict) }
+  }
 
   companion object {
     /** Strict decode of one persisted briefing map; loud-fails on any missing/malformed field. */
@@ -59,6 +63,7 @@ data class FeatureTaskRuntimePhaseLaunchBriefing(
         upstreamOutputsByPhaseId = raw.requireStringMapField("upstream_outputs_by_phase_id"),
         derivedContextKeys = raw.requireStringListField("derived_context_keys"),
         briefingText = raw.requireStringField("briefing_text"),
+        drivingVerdict = raw.optionalStringField("driving_verdict"),
       )
 
     // Single throw seam so each strict decoder stays within the throw-count budget.
@@ -68,6 +73,16 @@ data class FeatureTaskRuntimePhaseLaunchBriefing(
       val value = this[key] ?: schemaError("Feature-task-runtime briefing artifact map is missing field '$key'.")
       return (value as? String)?.takeIf(String::isNotBlank)
         ?: schemaError("Feature-task-runtime briefing artifact field '$key' must decode to a non-blank string.")
+    }
+
+    private fun Map<String, Any?>.optionalStringField(key: String): String? {
+      if (!containsKey(key) || this[key] == null) {
+        return null
+      }
+      return (this[key] as? String)?.takeIf(String::isNotBlank)
+        ?: schemaError(
+          "Feature-task-runtime briefing artifact field '$key' must decode to a non-blank string when present.",
+        )
     }
 
     private fun Map<String, Any?>.requireStringListField(key: String): List<String> {

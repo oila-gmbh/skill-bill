@@ -53,6 +53,38 @@ data class WorkflowContinueDecision(
   val nextAttemptCount: Int,
 )
 
+/**
+ * Resolves which of a resume step's required-upstream artifacts are absent for a given
+ * workflow snapshot. The presence rule is family-specific: most families judge presence by
+ * a top-level artifact key existing in the durable artifacts map ([DEFAULT]), but a family
+ * whose upstream outputs live in a private per-phase store supplies its own resolver so the
+ * generic resume gate reads its authoritative state rather than the top-level key. Pure
+ * domain function: no JDBC/HTTP/Files and no clock/random.
+ */
+fun interface RequiredArtifactPresenceResolver {
+  /**
+   * Returns the subset of [requiredArtifacts] (upstream phase/artifact ids the [resumeStepId]
+   * consumes) that are NOT present for [snapshot], preserving [requiredArtifacts] order.
+   */
+  fun missingRequiredArtifacts(
+    snapshot: WorkflowSnapshotView,
+    resumeStepId: String,
+    requiredArtifacts: List<String>,
+  ): List<String>
+
+  companion object {
+    /**
+     * Top-level-key presence: an upstream id is present iff the durable artifacts map carries
+     * a matching key. Preserves the historical `snapshot.artifacts.containsKey` behavior for
+     * every family that does not override it.
+     */
+    val DEFAULT: RequiredArtifactPresenceResolver =
+      RequiredArtifactPresenceResolver { snapshot, _, requiredArtifacts ->
+        requiredArtifacts.filterNot(snapshot.artifacts::containsKey)
+      }
+  }
+}
+
 data class WorkflowDefinition(
   val skillName: String,
   val workflowName: String,
@@ -73,4 +105,6 @@ data class WorkflowDefinition(
   val openPriorStepsCompleted: Boolean,
   val completedTerminalSummaryArtifact: String,
   val workflowMode: String? = null,
+  val requiredArtifactPresenceResolver: RequiredArtifactPresenceResolver =
+    RequiredArtifactPresenceResolver.DEFAULT,
 )
