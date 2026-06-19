@@ -111,7 +111,7 @@ class VerifyWorkflowInspectionCommands(
 class ImplementWorkflowOpenCommand(
   service: WorkflowService,
   state: CliRunState,
-) : WorkflowOpenCommand("open", service, state, WorkflowFamilyKind.IMPLEMENT)
+) : WorkflowOpenCommand("open", service, state, WorkflowFamilyKind.TASK_PROSE)
 
 @Inject
 class VerifyWorkflowOpenCommand(
@@ -141,7 +141,7 @@ open class WorkflowOpenCommand(
 class ImplementWorkflowUpdateCommand(
   service: WorkflowService,
   state: CliRunState,
-) : WorkflowUpdateCommand("update", service, state, WorkflowFamilyKind.IMPLEMENT)
+) : WorkflowUpdateCommand("update", service, state, WorkflowFamilyKind.TASK_PROSE)
 
 @Inject
 class VerifyWorkflowUpdateCommand(
@@ -183,7 +183,7 @@ open class WorkflowUpdateCommand(
 class ImplementWorkflowShowCommand(
   service: WorkflowService,
   state: CliRunState,
-) : WorkflowGetCommand("show", service, state, WorkflowFamilyKind.IMPLEMENT)
+) : WorkflowGetCommand("show", service, state, WorkflowFamilyKind.TASK_PROSE)
 
 @Inject
 class VerifyWorkflowShowCommand(
@@ -195,7 +195,7 @@ class VerifyWorkflowShowCommand(
 class ImplementWorkflowGetCommand(
   service: WorkflowService,
   state: CliRunState,
-) : WorkflowGetCommand("get", service, state, WorkflowFamilyKind.IMPLEMENT)
+) : WorkflowGetCommand("get", service, state, WorkflowFamilyKind.TASK_PROSE)
 
 @Inject
 class VerifyWorkflowGetCommand(
@@ -230,7 +230,7 @@ open class WorkflowGetCommand(
 class ImplementWorkflowListCommand(
   service: WorkflowService,
   state: CliRunState,
-) : WorkflowListCommand("list", service, state, WorkflowFamilyKind.IMPLEMENT)
+) : WorkflowListCommand("list", service, state, WorkflowFamilyKind.TASK_PROSE)
 
 @Inject
 class VerifyWorkflowListCommand(
@@ -259,7 +259,7 @@ open class WorkflowListCommand(
 class ImplementWorkflowLatestCommand(
   service: WorkflowService,
   state: CliRunState,
-) : WorkflowLatestCommand("latest", service, state, WorkflowFamilyKind.IMPLEMENT)
+) : WorkflowLatestCommand("latest", service, state, WorkflowFamilyKind.TASK_PROSE)
 
 @Inject
 class VerifyWorkflowLatestCommand(
@@ -286,7 +286,7 @@ open class WorkflowLatestCommand(
 class ImplementWorkflowResumeCommand(
   service: WorkflowService,
   state: CliRunState,
-) : WorkflowResumeCommand("resume", service, state, WorkflowFamilyKind.IMPLEMENT)
+) : WorkflowResumeCommand("resume", service, state, WorkflowFamilyKind.TASK_PROSE)
 
 @Inject
 class VerifyWorkflowResumeCommand(
@@ -320,7 +320,7 @@ open class WorkflowResumeCommand(
 class ImplementWorkflowContinueCommand(
   service: WorkflowService,
   state: CliRunState,
-) : WorkflowContinueCommand("continue", service, state, WorkflowFamilyKind.IMPLEMENT)
+) : WorkflowContinueCommand("continue", service, state, WorkflowFamilyKind.TASK_PROSE)
 
 @Inject
 class VerifyWorkflowContinueCommand(

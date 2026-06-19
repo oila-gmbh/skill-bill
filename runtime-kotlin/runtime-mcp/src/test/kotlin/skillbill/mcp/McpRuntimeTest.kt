@@ -547,7 +547,7 @@ class McpRuntimeTest {
     val env = disabledTelemetryEnvironment(tempDir)
     val context = McpRuntimeContext(environment = env, userHome = tempDir)
     val opened = McpWorkflowRuntime.open(
-      WorkflowFamilyKind.IMPLEMENT,
+      WorkflowFamilyKind.TASK_PROSE,
       sessionId = "fis-20260425-mcp",
       context = context,
     )
@@ -558,7 +558,7 @@ class McpRuntimeTest {
 
     val updated =
       McpWorkflowRuntime.update(
-        WorkflowFamilyKind.IMPLEMENT,
+        WorkflowFamilyKind.TASK_PROSE,
         WorkflowUpdateRequest(
           workflowId = workflowId,
           workflowStatus = "blocked",
@@ -568,11 +568,11 @@ class McpRuntimeTest {
         ),
         context,
       )
-    val listed = McpWorkflowRuntime.list(WorkflowFamilyKind.IMPLEMENT, context = context)
-    val latest = McpWorkflowRuntime.latest(WorkflowFamilyKind.IMPLEMENT, context)
-    val got = McpWorkflowRuntime.get(WorkflowFamilyKind.IMPLEMENT, workflowId, context)
-    val resumed = McpWorkflowRuntime.resume(WorkflowFamilyKind.IMPLEMENT, workflowId, context)
-    val continued = McpWorkflowRuntime.continueWorkflow(WorkflowFamilyKind.IMPLEMENT, workflowId, context)
+    val listed = McpWorkflowRuntime.list(WorkflowFamilyKind.TASK_PROSE, context = context)
+    val latest = McpWorkflowRuntime.latest(WorkflowFamilyKind.TASK_PROSE, context)
+    val got = McpWorkflowRuntime.get(WorkflowFamilyKind.TASK_PROSE, workflowId, context)
+    val resumed = McpWorkflowRuntime.resume(WorkflowFamilyKind.TASK_PROSE, workflowId, context)
+    val continued = McpWorkflowRuntime.continueWorkflow(WorkflowFamilyKind.TASK_PROSE, workflowId, context)
     val updatedAt = got["updated_at"].toString()
 
     assertSqliteTimestampShape(updatedAt, "implement updated_at")
@@ -1094,8 +1094,8 @@ private fun recordPrDescriptionLifecycle(context: McpRuntimeContext) {
 private fun assertLifecyclePersistence(connection: Connection) {
   assertEquals(
     mapOf(
-      "skillbill_feature_implement_started" to 1,
-      "skillbill_feature_implement_finished" to 1,
+      "skillbill_feature_task_prose_started" to 1,
+      "skillbill_feature_task_prose_finished" to 1,
       "skillbill_quality_check_started" to 1,
       "skillbill_quality_check_finished" to 1,
       "skillbill_feature_verify_started" to 1,

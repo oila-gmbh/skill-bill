@@ -359,13 +359,13 @@ class ReviewStatsRuntimeTest {
       val pending = outbox.listPending(limit = null)
       assertEquals(
         listOf(
-          "skillbill_feature_implement_started",
-          "skillbill_feature_implement_finished",
-          "skillbill_feature_implement_finished",
+          "skillbill_feature_task_prose_started",
+          "skillbill_feature_task_prose_finished",
+          "skillbill_feature_task_prose_finished",
         ),
         pending.map { it.eventName },
       )
-      val duplicatePayload = telemetryPayloads(pending, "skillbill_feature_implement_finished").last()
+      val duplicatePayload = telemetryPayloads(pending, "skillbill_feature_task_prose_finished").last()
       assertEquals(1, duplicatePayload["duplicate_terminal_finished_events"])
       val stats = ReviewStatsRuntime.featureImplementStats(connection)
       assertEquals(1, stats.duplicateTerminalFinishedEvents)

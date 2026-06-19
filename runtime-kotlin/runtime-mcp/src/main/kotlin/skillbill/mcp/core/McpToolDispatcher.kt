@@ -26,23 +26,40 @@ object McpToolDispatcher {
   private val nativeHandlers: Map<String, McpToolHandler> =
     mapOf(
       "doctor" to { _, context -> McpRuntime.doctor(context) },
+      "feature_task_prose_finished" to ::featureImplementFinished,
+      "feature_task_prose_started" to ::featureImplementStarted,
+      "feature_task_prose_stats" to { _, context -> McpRuntime.featureImplementStats(context) },
+      "feature_task_prose_workflow_continue" to
+        { arguments, context -> workflowContinue(WorkflowFamilyKind.TASK_PROSE, arguments, context) },
+      "feature_task_prose_workflow_get" to
+        { arguments, context -> workflowGet(WorkflowFamilyKind.TASK_PROSE, arguments, context) },
+      "feature_task_prose_workflow_latest" to
+        { _, context -> McpWorkflowRuntime.latest(WorkflowFamilyKind.TASK_PROSE, context) },
+      "feature_task_prose_workflow_list" to
+        { arguments, context -> workflowList(WorkflowFamilyKind.TASK_PROSE, arguments, context) },
+      "feature_task_prose_workflow_open" to
+        { arguments, context -> workflowOpen(WorkflowFamilyKind.TASK_PROSE, arguments, context) },
+      "feature_task_prose_workflow_resume" to
+        { arguments, context -> workflowResume(WorkflowFamilyKind.TASK_PROSE, arguments, context) },
+      "feature_task_prose_workflow_update" to
+        { arguments, context -> workflowUpdate(WorkflowFamilyKind.TASK_PROSE, arguments, context) },
       "feature_implement_finished" to ::featureImplementFinished,
       "feature_implement_started" to ::featureImplementStarted,
       "feature_implement_stats" to { _, context -> McpRuntime.featureImplementStats(context) },
       "feature_implement_workflow_continue" to
-        { arguments, context -> workflowContinue(WorkflowFamilyKind.IMPLEMENT, arguments, context) },
+        { arguments, context -> workflowContinue(WorkflowFamilyKind.TASK_PROSE, arguments, context) },
       "feature_implement_workflow_get" to
-        { arguments, context -> workflowGet(WorkflowFamilyKind.IMPLEMENT, arguments, context) },
+        { arguments, context -> workflowGet(WorkflowFamilyKind.TASK_PROSE, arguments, context) },
       "feature_implement_workflow_latest" to
-        { _, context -> McpWorkflowRuntime.latest(WorkflowFamilyKind.IMPLEMENT, context) },
+        { _, context -> McpWorkflowRuntime.latest(WorkflowFamilyKind.TASK_PROSE, context) },
       "feature_implement_workflow_list" to
-        { arguments, context -> workflowList(WorkflowFamilyKind.IMPLEMENT, arguments, context) },
+        { arguments, context -> workflowList(WorkflowFamilyKind.TASK_PROSE, arguments, context) },
       "feature_implement_workflow_open" to
-        { arguments, context -> workflowOpen(WorkflowFamilyKind.IMPLEMENT, arguments, context) },
+        { arguments, context -> workflowOpen(WorkflowFamilyKind.TASK_PROSE, arguments, context) },
       "feature_implement_workflow_resume" to
-        { arguments, context -> workflowResume(WorkflowFamilyKind.IMPLEMENT, arguments, context) },
+        { arguments, context -> workflowResume(WorkflowFamilyKind.TASK_PROSE, arguments, context) },
       "feature_implement_workflow_update" to
-        { arguments, context -> workflowUpdate(WorkflowFamilyKind.IMPLEMENT, arguments, context) },
+        { arguments, context -> workflowUpdate(WorkflowFamilyKind.TASK_PROSE, arguments, context) },
       "feature_verify_finished" to ::featureVerifyFinished,
       "feature_verify_started" to ::featureVerifyStarted,
       "feature_verify_stats" to { _, context -> McpRuntime.featureVerifyStats(context) },
@@ -60,23 +77,6 @@ object McpToolDispatcher {
         { arguments, context -> workflowResume(WorkflowFamilyKind.VERIFY, arguments, context) },
       "feature_verify_workflow_update" to
         { arguments, context -> workflowUpdate(WorkflowFamilyKind.VERIFY, arguments, context) },
-      "feature_task_finished" to ::featureTaskRuntimeFinished,
-      "feature_task_started" to ::featureTaskRuntimeStarted,
-      "feature_task_stats" to { _, context -> McpRuntime.featureTaskRuntimeStats(context) },
-      "feature_task_workflow_continue" to
-        { arguments, context -> workflowContinue(WorkflowFamilyKind.TASK_RUNTIME, arguments, context) },
-      "feature_task_workflow_get" to
-        { arguments, context -> workflowGet(WorkflowFamilyKind.TASK_RUNTIME, arguments, context) },
-      "feature_task_workflow_latest" to
-        { _, context -> McpWorkflowRuntime.latest(WorkflowFamilyKind.TASK_RUNTIME, context) },
-      "feature_task_workflow_list" to
-        { arguments, context -> workflowList(WorkflowFamilyKind.TASK_RUNTIME, arguments, context) },
-      "feature_task_workflow_open" to
-        { arguments, context -> workflowOpen(WorkflowFamilyKind.TASK_RUNTIME, arguments, context) },
-      "feature_task_workflow_resume" to
-        { arguments, context -> workflowResume(WorkflowFamilyKind.TASK_RUNTIME, arguments, context) },
-      "feature_task_workflow_update" to
-        { arguments, context -> workflowUpdate(WorkflowFamilyKind.TASK_RUNTIME, arguments, context) },
       "feature_task_runtime_finished" to ::featureTaskRuntimeFinished,
       "feature_task_runtime_started" to ::featureTaskRuntimeStarted,
       "feature_task_runtime_stats" to { _, context -> McpRuntime.featureTaskRuntimeStats(context) },
@@ -119,12 +119,29 @@ object McpToolDispatcher {
       "triage_findings" to ::triageFindings,
     )
 
+  internal val legacyToolAliases: Map<String, String> =
+    mapOf(
+      "feature_implement_finished" to "feature_task_prose_finished",
+      "feature_implement_started" to "feature_task_prose_started",
+      "feature_implement_stats" to "feature_task_prose_stats",
+      "feature_implement_workflow_continue" to "feature_task_prose_workflow_continue",
+      "feature_implement_workflow_get" to "feature_task_prose_workflow_get",
+      "feature_implement_workflow_latest" to "feature_task_prose_workflow_latest",
+      "feature_implement_workflow_list" to "feature_task_prose_workflow_list",
+      "feature_implement_workflow_open" to "feature_task_prose_workflow_open",
+      "feature_implement_workflow_resume" to "feature_task_prose_workflow_resume",
+      "feature_implement_workflow_update" to "feature_task_prose_workflow_update",
+    )
+
+  internal fun canonicalToolName(toolName: String): String = legacyToolAliases[toolName] ?: toolName
+
   fun call(
     toolName: String,
     arguments: Map<String, Any?>,
     context: McpRuntimeContext = McpRuntimeContext(),
   ): Map<String, Any?> {
     val handler = nativeHandlers[toolName] ?: error("Unknown MCP tool '$toolName'.")
+    val canonicalName = canonicalToolName(toolName)
     // SKILL-48 Subtask 2d: validate every telemetry envelope at the
     // single parse seam BEFORE the handler builds its typed model.
     // The dispatcher is the one place where the tool name (and
@@ -153,8 +170,8 @@ object McpToolDispatcher {
     // safe; any in-flight production emitter that omits a required key
     // is already breaking its own telemetry contract.
     TelemetryEventSchemaValidator.validate(
-      envelope = telemetryEnvelope(toolName, arguments),
-      eventName = toolName,
+      envelope = telemetryEnvelope(canonicalName, arguments),
+      eventName = canonicalName,
     )
     return handler.invoke(arguments, context)
   }
@@ -226,12 +243,12 @@ internal fun telemetryRemoteStats(arguments: Map<String, Any?>, context: McpRunt
 
 private fun mapRemoteStatsWorkflow(workflow: String): String = when (workflow) {
   "verify" -> "bill-feature-verify"
-  "implement" -> "bill-feature-task"
+  "implement", "bill-feature-task", "feature-task-prose" -> "feature-task-prose"
   "goal" -> "bill-feature-goal"
-  "bill-feature-verify", "bill-feature-task", "feature-task-runtime", "bill-feature-goal" -> workflow
+  "bill-feature-verify", "feature-task-runtime", "bill-feature-goal" -> workflow
   else -> throw IllegalArgumentException(
-    "workflow must be one of: verify, implement, goal, " +
-      "bill-feature-verify, bill-feature-task, feature-task-runtime, bill-feature-goal.",
+    "workflow must be one of: verify, implement, bill-feature-task, goal, " +
+      "bill-feature-verify, feature-task-prose, feature-task-runtime, bill-feature-goal.",
   )
 }
 

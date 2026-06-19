@@ -7,7 +7,7 @@ fun emitFeatureImplementStarted(connection: Connection, sessionId: String, level
   val row = lifecycleRow(connection, "feature_implement_sessions", sessionId) ?: return
   emitOnce(
     LifecycleEmitRequest(connection, row, "feature_implement_sessions", "started_event_emitted_at"),
-    "skillbill_feature_implement_started",
+    "skillbill_feature_task_prose_started",
   ) { featureImplementStartedPayload(row, level) }
 }
 
@@ -19,11 +19,11 @@ fun emitFeatureImplementFinished(
 ) {
   val row = lifecycleRow(connection, "feature_implement_sessions", sessionId) ?: return
   if (duplicateTerminalEvent) {
-    enqueueTelemetry(connection, "skillbill_feature_implement_finished", featureImplementFinishedPayload(row, level))
+    enqueueTelemetry(connection, "skillbill_feature_task_prose_finished", featureImplementFinishedPayload(row, level))
   } else {
     emitOnce(
       LifecycleEmitRequest(connection, row, "feature_implement_sessions", "finished_event_emitted_at"),
-      "skillbill_feature_implement_finished",
+      "skillbill_feature_task_prose_finished",
     ) { featureImplementFinishedPayload(row, level) }
   }
 }

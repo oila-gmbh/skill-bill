@@ -13,30 +13,30 @@ This skill is the first-class prose implementation mode for `bill-feature-task`.
 It persists durable workflow rows as `bill-feature-task` with `mode=prose` in
 the shared feature-task workflow store. It runs in parallel with
 `bill-feature-task-runtime`; it is not a legacy fallback. The
-`feature_implement_*` MCP tool names are compatibility aliases for
+`feature_task_prose_*` MCP tool names are compatibility aliases for
 `bill-feature-task mode=prose` and must not be described as a separate
 authoritative workflow store.
 
 In addition to the top-level telemetry tools, the orchestrator must persist durable workflow state with these MCP tools:
 
-- `feature_implement_workflow_open`
-- `feature_implement_workflow_update`
-- `feature_implement_workflow_get`
+- `feature_task_prose_workflow_open`
+- `feature_task_prose_workflow_update`
+- `feature_task_prose_workflow_get`
 
 Workflow-state rules:
 
 - Open workflow state once, immediately after Step 1 is confirmed.
 - Save both ids:
-  - `session_id` from `feature_implement_started` for telemetry
-  - `workflow_id` from `feature_implement_workflow_open` for durable state
+  - `session_id` from `feature_task_prose_started` for telemetry
+  - `workflow_id` from `feature_task_prose_workflow_open` for durable state
 - Maintain a local `child_steps` list for orchestrated child telemetry exactly as before.
-- After every major phase boundary, call `feature_implement_workflow_update` with:
+- After every major phase boundary, call `feature_task_prose_workflow_update` with:
   - the new `workflow_status`
   - the new `current_step_id`
   - `step_updates` for the steps whose status changed
   - `artifacts_patch` for the structured artifact produced by that phase
-- Workflow state is independent of telemetry settings. Persist it even when `feature_implement_started` or `feature_implement_finished` returns `status: skipped`.
-- `feature_implement_workflow_update` returns a compact acknowledgement by default: status, workflow id/status, current step id, updated step ids, updated artifact keys, db path, and read-only full-state guidance. It does not return the full durable artifact map; use `feature_implement_workflow_get` or `workflow show` for explicit read-only full-state inspection.
+- Workflow state is independent of telemetry settings. Persist it even when `feature_task_prose_started` or `feature_task_prose_finished` returns `status: skipped`.
+- `feature_task_prose_workflow_update` returns a compact acknowledgement by default: status, workflow id/status, current step id, updated step ids, updated artifact keys, db path, and read-only full-state guidance. It does not return the full durable artifact map; use `feature_task_prose_workflow_get` or `workflow show` for explicit read-only full-state inspection.
 - Follow the detailed per-phase briefing contracts in the inline reference sections below. Do not invent prose-only handoffs when a structured artifact exists.
 
 Stable step ids: `assess`, `create_branch`, `preplan`, `plan`, `implement`, `review`, `audit`, `validate`, `write_history`, `commit_push`, `pr_description`, `finish`. Stable artifact names: `assessment`, `branch`, `preplan_digest`, `plan`, `implementation_summary`, `review_result`, `audit_report`, `validation_result`, `history_result`, `commit_push_result`, `pr_result`.
@@ -45,7 +45,7 @@ Phase-to-artifact mapping: Step 1 -> `assessment`; Step 1b -> `branch`; Step 2 -
 
 ## Continuation Mode
 
-When an external caller re-enters this skill using the payload returned by `feature_implement_workflow_continue`, treat that payload as the authoritative continuation contract for the resumed run.
+When an external caller re-enters this skill using the payload returned by `feature_task_prose_workflow_continue`, treat that payload as the authoritative continuation contract for the resumed run.
 
 Continuation-mode rules:
 
@@ -75,7 +75,7 @@ Review and fix-loop reuse (AC5):
 
 ## Goal-Continuation Entry (non-interactive)
 
-External goal runners may invoke `feature_implement_workflow_continue` / `skill-bill workflow continue` with a decomposed parent `issue_key` and, optionally, `subtask_id`. This is a non-interactive entry for exactly one runnable decomposed subtask.
+External goal runners may invoke `feature_task_prose_workflow_continue` / `skill-bill workflow continue` with a decomposed parent `issue_key` and, optionally, `subtask_id`. This is a non-interactive entry for exactly one runnable decomposed subtask.
 
 Goal-continuation rules:
 
@@ -89,7 +89,7 @@ Goal-continuation rules:
 - The structured outcome fields are `issue_key`, `subtask_id`, `status`, `commit_sha`, `workflow_id`, `blocked_reason`, and `last_resumable_step`. Runtime state is authoritative; git-tracked `decomposition-manifest.yaml` projections may omit runtime-only commit SHAs.
 - To explain why a subtask retried, stopped, or blocked, read the append-only attempt ledger (`goal_attempt_ledger`) on the child workflow via read-only `workflow show`; its `action`, `blocked_reason`, `stop_reason`, and `final_reconciled_result` fields are sufficient without scraping any provider session log. Caveat (not a Skill Bill contract): provider-reported total token counts can be dominated by cached input replay, so treat them as a diagnostic signal — Skill Bill optimizes payload size and session behavior, not provider cache accounting. See the workflow-contract playbook (installed as a support pointer beside this skill) for detail.
 - Interactive `bill-feature-task` behavior is unchanged: direct user runs still perform Step 1 confirmation and create a PR in Step 9.
-- The `bill-feature-goal` `mode:prose` orchestrator is the loop driver that enters this worker contract per subtask via `skill-bill workflow continue <issue_key> --subtask-id <id>` / `feature_implement_workflow_continue`.
+- The `bill-feature-goal` `mode:prose` orchestrator is the loop driver that enters this worker contract per subtask via `skill-bill workflow continue <issue_key> --subtask-id <id>` / `feature_task_prose_workflow_continue`.
 
 ## Shared Feature-Spec Preparation Path
 
@@ -209,7 +209,7 @@ If an implementation plan includes testable logic, the final task must be a dedi
 
 The orchestrator presents the plan, then proceeds to implementation — the plan is not a second approval gate.
 
-If the planning subagent returns `mode: "decompose"`, the orchestrator must not proceed to implementation. Persist `plan`, invoke the shared feature-spec preparation path to write/update decomposition artifacts, present the decomposition summary with wording equivalent to: "I split this into N subtasks. Here are the acceptance criteria for each subtask. We should work on the first subtask first because of the dependency reason." Then close the workflow as an intentional planning-stage stop: mark `plan` completed, mark later steps skipped, set workflow status to `abandoned`, keep `current_step_id: "plan"`, call `feature_implement_finished` with `completion_status: "abandoned_at_planning"`, and record `plan_deviation_notes` as `decomposed into N subtasks`. This is a successful scope-governance outcome, not an implementation failure.
+If the planning subagent returns `mode: "decompose"`, the orchestrator must not proceed to implementation. Persist `plan`, invoke the shared feature-spec preparation path to write/update decomposition artifacts, present the decomposition summary with wording equivalent to: "I split this into N subtasks. Here are the acceptance criteria for each subtask. We should work on the first subtask first because of the dependency reason." Then close the workflow as an intentional planning-stage stop: mark `plan` completed, mark later steps skipped, set workflow status to `abandoned`, keep `current_step_id: "plan"`, call `feature_task_prose_finished` with `completion_status: "abandoned_at_planning"`, and record `plan_deviation_notes` as `decomposed into N subtasks`. This is a successful scope-governance outcome, not an implementation failure.
 
 Persist `plan` before advancing to `implement` or before closing on decomposition.
 
@@ -251,8 +251,8 @@ Orchestrated child telemetry:
 - When this workflow invokes `import_review` and `triage_findings` for the review it owns, pass `orchestrated=true` to both tools.
 - Import only complete `bill-code-review` output. The review text passed to `import_review` must include the metadata header lines, especially `Review run ID: <review-run-id>`. If the final review summary lacks those lines, re-run or reformat the review output before importing instead of synthesizing a prose-only review.
 - Collect the `telemetry_payload` returned by `triage_findings` (or by `import_review` when the review has no findings) and append it to the local `child_steps` list.
-- The review will not emit `skillbill_review_finished` on its own — its payload will be embedded in the `skillbill_feature_implement_finished` event instead.
-- Before the first review telemetry call, do a lightweight Skill Bill MCP health check such as `feature_implement_workflow_latest`. If the MCP tool path returns `Transport closed`, call the same Skill Bill MCP tool through the packaged Kotlin `runtime-mcp` stdio binary from the repo (`runtime-kotlin/runtime-mcp/build/install/runtime-mcp/bin/runtime-mcp`) with a JSON-RPC `tools/call` payload and parse the returned text content. Use this direct-stdio fallback for subsequent owned telemetry/workflow calls in the run, and record that fallback in `review_result`.
+- The review will not emit `skillbill_review_finished` on its own — its payload will be embedded in the `skillbill_feature_task_prose_finished` event instead.
+- Before the first review telemetry call, do a lightweight Skill Bill MCP health check such as `feature_task_prose_workflow_latest`. If the MCP tool path returns `Transport closed`, call the same Skill Bill MCP tool through the packaged Kotlin `runtime-mcp` stdio binary from the repo (`runtime-kotlin/runtime-mcp/build/install/runtime-mcp/bin/runtime-mcp`) with a JSON-RPC `tools/call` payload and parse the returned text content. Use this direct-stdio fallback for subsequent owned telemetry/workflow calls in the run, and record that fallback in `review_result`.
 
 Persist `review_result`, then advance to `audit`.
 
@@ -331,9 +331,9 @@ Delete only on terminal success. If the run aborted, blocked, or stopped before 
 
 ## Telemetry: Record Finished
 
-After the PR is created (or when the workflow ends early due to error or user abandonment), call the `feature_implement_finished` MCP tool with:
+After the PR is created (or when the workflow ends early due to error or user abandonment), call the `feature_task_prose_finished` MCP tool with:
 
-- `session_id`: from `feature_implement_started`
+- `session_id`: from `feature_task_prose_started`
 - `completion_status`: `completed` if PR was created, otherwise `abandoned_at_planning`, `abandoned_at_implementation`, `abandoned_at_review`, or `error`
 - `plan_correction_count`: how many times the user corrected the assessment or plan (0 if confirmed without changes)
 - `plan_task_count`, `plan_phase_count`
@@ -347,9 +347,9 @@ After the PR is created (or when the workflow ends early due to error or user ab
 
 For fields not yet reached (early exit), use: 0 for counts, `skipped` for results, false for booleans.
 
-Before terminal workflow-state or telemetry writes, repeat the Skill Bill MCP health check. If the in-session MCP tool path returns `Transport closed`, use the packaged Kotlin `runtime-mcp` direct-stdio fallback for `feature_implement_workflow_update`, `feature_implement_finished`, and any remaining orchestrated child telemetry calls. Workflow state must not be left `running` solely because the session MCP transport died when the packaged runtime is available.
+Before terminal workflow-state or telemetry writes, repeat the Skill Bill MCP health check. If the in-session MCP tool path returns `Transport closed`, use the packaged Kotlin `runtime-mcp` direct-stdio fallback for `feature_task_prose_workflow_update`, `feature_task_prose_finished`, and any remaining orchestrated child telemetry calls. Workflow state must not be left `running` solely because the session MCP transport died when the packaged runtime is available.
 
-Before or immediately after `feature_implement_finished`, call `feature_implement_workflow_update` one final time to:
+Before or immediately after `feature_task_prose_finished`, call `feature_task_prose_workflow_update` one final time to:
 
 - mark `finish` as completed for successful runs
 - set `workflow_status` to `completed`, `abandoned`, or `failed`
@@ -385,23 +385,23 @@ its telemetry session.
 
 The orchestrator must maintain:
 
-- `session_id` — from `feature_implement_started`, used only for telemetry
-- `workflow_id` — from `feature_implement_workflow_open`, used for durable
+- `session_id` — from `feature_task_prose_started`, used only for telemetry
+- `workflow_id` — from `feature_task_prose_workflow_open`, used for durable
   workflow state
 - `child_steps` — local list of orchestrated child telemetry payloads
 
 ### Required workflow tools
 
-- `feature_implement_workflow_open`
-- `feature_implement_workflow_update`
-- `feature_implement_workflow_get`
+- `feature_task_prose_workflow_open`
+- `feature_task_prose_workflow_update`
+- `feature_task_prose_workflow_get`
 
 ### Operational recovery tools
 
 External callers may inspect and reactivate persisted runs through:
 
-- `feature_implement_workflow_resume` — dry-run recovery summary
-- `feature_implement_workflow_continue` — re-open a resumable run and emit a recovered continuation brief.
+- `feature_task_prose_workflow_resume` — dry-run recovery summary
+- `feature_task_prose_workflow_continue` — re-open a resumable run and emit a recovered continuation brief.
   For decomposed parent features, callers may pass the parent issue key
   (for example `SKILL-51`) instead of naming a subtask workflow id; the
   runtime resolves the parent manifest and selects the current subtask.
@@ -462,9 +462,9 @@ has in hand:
 
 Immediately after Step 1 is confirmed:
 
-1. Call `feature_implement_started`.
+1. Call `feature_task_prose_started`.
 2. Save `session_id` even when the tool returns `status: skipped`.
-3. Call `feature_implement_workflow_open` with:
+3. Call `feature_task_prose_workflow_open` with:
    - `session_id`
    - `current_step_id: "assess"`
 4. Save `workflow_id`.
@@ -474,12 +474,12 @@ Immediately after Step 1 is confirmed:
 
 After every major phase boundary:
 
-- call `feature_implement_workflow_update`
+- call `feature_task_prose_workflow_update`
 - set the parent-owned `workflow_status`
 - set the new `current_step_id`
 - pass only the changed steps in `step_updates`
 - merge the new structured artifact through `artifacts_patch`
-- treat the response as a compact acknowledgement only; if a caller needs the complete steps or durable `artifacts` map after the write, call `feature_implement_workflow_get` or `workflow show` explicitly.
+- treat the response as a compact acknowledgement only; if a caller needs the complete steps or durable `artifacts` map after the write, call `feature_task_prose_workflow_get` or `workflow show` explicitly.
 
 When a loop sends work backwards:
 
@@ -512,7 +512,7 @@ just because telemetry is disabled.
 
 ## Continuation Mode Contract
 
-When an external caller invokes `feature_implement_workflow_continue`, the
+When an external caller invokes `feature_task_prose_workflow_continue`, the
 returned payload becomes the supported re-entry contract for
 `bill-feature-task`.
 
@@ -568,7 +568,7 @@ Re-entry rules:
 
 Heavy phases (`preplan`, `plan`, `implement`, `audit`, `validate`,
 `pr_description`) must write durable progress through
-`feature_implement_workflow_update` while work is in flight.
+`feature_task_prose_workflow_update` while work is in flight.
 
 Progress-write rules:
 
@@ -1046,21 +1046,21 @@ LARGE decomposition runs stop after Step 3, persist the decomposition package as
 
 For the parsing posture of subagent `RESULT:` blocks (best-effort recovery, single corrective re-spawn, escalation), see the `RESULT:` block parsing tolerance section below. Treat that section as authoritative for any runtime-level malformed-payload handling referenced below.
 
-- **Pre-planning subagent fails** — report the error and ask the user whether to retry, adjust scope, or abandon. If abandoned, call `feature_implement_finished` with `completion_status: "abandoned_at_planning"`.
+- **Pre-planning subagent fails** — report the error and ask the user whether to retry, adjust scope, or abandon. If abandoned, call `feature_task_prose_finished` with `completion_status: "abandoned_at_planning"`.
 - **Planning subagent returns an invalid plan** (missing fields, no dedicated test task when testable logic exists, etc.) — respawn it once with a corrective briefing that lists the violations. If it still fails, abandon at planning.
-- **Planning subagent returns `mode: "decompose"`** — treat this as a valid terminal planning result. Persist the `plan` artifact, validate and write the parent `decomposition-manifest.yaml`, present the subtask order and acceptance criteria, mark later workflow steps skipped, close workflow state as `abandoned` at `plan`, and call `feature_implement_finished` with `completion_status: "abandoned_at_planning"`.
+- **Planning subagent returns `mode: "decompose"`** — treat this as a valid terminal planning result. Persist the `plan` artifact, validate and write the parent `decomposition-manifest.yaml`, present the subtask order and acceptance criteria, mark later workflow steps skipped, close workflow state as `abandoned` at `plan`, and call `feature_task_prose_finished` with `completion_status: "abandoned_at_planning"`.
 - **Implementation subagent stops early with `stopped_early: true`** — the orchestrator decides: if `plan_deviation_notes` imply a re-plan, respawn the planning subagent with the deviation notes and then a fresh implementation subagent; otherwise, hand to the user.
-- **Code-review fix loop exceeds 3 iterations** — stop, report remaining findings, hand to user. Call `feature_implement_finished` with `completion_status: "abandoned_at_review"`.
-- **Completeness audit loops exceed 2 iterations** — report remaining gaps, let user decide. Call `feature_implement_finished` accordingly.
+- **Code-review fix loop exceeds 3 iterations** — stop, report remaining findings, hand to user. Call `feature_task_prose_finished` with `completion_status: "abandoned_at_review"`.
+- **Completeness audit loops exceed 2 iterations** — report remaining gaps, let user decide. Call `feature_task_prose_finished` accordingly.
 - **Quality-check subagent cannot run any validation command** — persist `validation_result: "skipped"` with the reason and continue finalization. Do not block the workflow for validation failures that can be fixed in the repository; keep fixing and rerunning validation until it passes.
-- **PR-description subagent fails to create the PR** — report the error, offer to retry. If abandoned, call `feature_implement_finished` with `completion_status: "error"`.
-- **Skill Bill MCP transport closes** — do not treat `Transport closed` as telemetry disabled. First run a lightweight health check such as `feature_implement_workflow_latest`; if the tool path is still closed, call the same Skill Bill tool through the packaged Kotlin `runtime-mcp` stdio binary with a JSON-RPC `tools/call` payload. Use that direct-stdio fallback for owned review telemetry, workflow-state updates, and `feature_implement_finished`. Record the fallback in the current step artifact. If the packaged runtime is unavailable too, report the telemetry failure explicitly and preserve the terminal artifact in the final user summary.
+- **PR-description subagent fails to create the PR** — report the error, offer to retry. If abandoned, call `feature_task_prose_finished` with `completion_status: "error"`.
+- **Skill Bill MCP transport closes** — do not treat `Transport closed` as telemetry disabled. First run a lightweight health check such as `feature_task_prose_workflow_latest`; if the tool path is still closed, call the same Skill Bill tool through the packaged Kotlin `runtime-mcp` stdio binary with a JSON-RPC `tools/call` payload. Use that direct-stdio fallback for owned review telemetry, workflow-state updates, and `feature_task_prose_finished`. Record the fallback in the current step artifact. If the packaged runtime is unavailable too, report the telemetry failure explicitly and preserve the terminal artifact in the final user summary.
 - **Review telemetry import is rejected** — inspect the import error. If the review text is missing required `bill-code-review` metadata such as `Review run ID: <review-run-id>`, re-run or reformat the review output from the actual review result and retry import once. Do not pass a prose-only review summary to `import_review`.
 
 In all early-exit cases, close the telemetry session with the appropriate `completion_status` so the run is not orphaned.
 
 In those same early-exit cases, also close the workflow state with
-`feature_implement_workflow_update` so the durable workflow does not remain in
+`feature_task_prose_workflow_update` so the durable workflow does not remain in
 `running`.
 
 ## RESULT Block Parsing Tolerance
@@ -1101,7 +1101,7 @@ When parsing escalates to the user:
 
 - The workflow stays in `running` until the user decides; the failing step keeps `status: "running"` with `attempt_count` incremented.
 - The user may choose to: re-run the failing step, abandon the workflow (`workflow_status: "abandoned"`), or hand-edit the artifact and resume.
-- If the user abandons, call `feature_implement_finished` with an appropriate `completion_status` (typically `error`) and update workflow state to `failed` with the malformed payload preserved in the artifact patch.
+- If the user abandons, call `feature_task_prose_finished` with an appropriate `completion_status` (typically `error`) and update workflow state to `failed` with the malformed payload preserved in the artifact patch.
 
 ## Non-Goals
 

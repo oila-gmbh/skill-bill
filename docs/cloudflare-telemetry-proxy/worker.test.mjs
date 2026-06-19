@@ -1,6 +1,12 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { validateStatsRequest, capabilitiesPayload, transformBatch } from "./worker.js";
+import {
+  validateStatsRequest,
+  capabilitiesPayload,
+  transformBatch,
+  buildImplementStatsQuery,
+  buildImplementSeriesQuery,
+} from "./worker.js";
 
 const VALID_DATE_RANGE = { date_from: "2026-05-01", date_to: "2026-06-01" };
 const INGEST_SCHEMA_ERROR_FRAGMENT = "event_name must be the constant value";
@@ -65,6 +71,26 @@ describe("capabilitiesPayload", () => {
     const caps = capabilitiesPayload({ POSTHOG_API_KEY: "key" });
     assert.deepEqual(caps.supported_workflows, []);
     assert.equal(caps.supports_stats, false);
+  });
+});
+
+describe("prose stats queries union legacy and renamed event names", () => {
+  const RANGE = ["2026-05-01", "2026-06-01"];
+
+  it("stats query reads both the legacy implement and the renamed prose started events", () => {
+    const query = buildImplementStatsQuery(...RANGE);
+    assert.ok(query.includes("skillbill_feature_implement_started"), "legacy started name must count");
+    assert.ok(query.includes("skillbill_feature_task_prose_started"), "renamed started name must count");
+    assert.ok(query.includes("skillbill_feature_implement_finished"), "legacy finished name must count");
+    assert.ok(query.includes("skillbill_feature_task_prose_finished"), "renamed finished name must count");
+  });
+
+  it("series query reads both the legacy implement and the renamed prose events", () => {
+    const query = buildImplementSeriesQuery(...RANGE);
+    assert.ok(query.includes("skillbill_feature_implement_started"), "legacy started name must count");
+    assert.ok(query.includes("skillbill_feature_task_prose_started"), "renamed started name must count");
+    assert.ok(query.includes("skillbill_feature_implement_finished"), "legacy finished name must count");
+    assert.ok(query.includes("skillbill_feature_task_prose_finished"), "renamed finished name must count");
   });
 });
 

@@ -148,7 +148,7 @@ Every telemeterable skill must be usable alone. When invoked directly by a user,
 - `bill-code-check` lifecycle — `skillbill_quality_check_started` + `_finished`
 - `bill-feature-verify` — `skillbill_feature_verify_started` + `_finished`
 - `bill-pr-description` — `skillbill_pr_description_generated`
-- `bill-feature-task` — `skillbill_feature_implement_started` + `_finished`
+- `bill-feature-task` — `skillbill_feature_task_prose_started` + `_finished`
 
 ### The `orchestrated` flag
 
@@ -165,7 +165,7 @@ When the parent's finished event fires, it embeds each collected `telemetry_payl
 
 ```json
 {
-  "event": "skillbill_feature_implement_finished",
+  "event": "skillbill_feature_task_prose_finished",
   "session_id": "fis-20260413-104704-l84r",
   "completion_status": "completed",
   "duration_seconds": 1820,
@@ -219,8 +219,8 @@ If a parent skill forgets to pass `orchestrated=true` to a child, the child emit
 
 | Event | Emitted by | Orchestrated alternative |
 |-------|------------|--------------------------|
-| `skillbill_feature_implement_started` | `bill-feature-task` (Step 1 confirm) | — (top-level only) |
-| `skillbill_feature_implement_finished` | `bill-feature-task` (Step 9 / early exit) | — (top-level only; carries `child_steps`) |
+| `skillbill_feature_task_prose_started` | `bill-feature-task` (Step 1 confirm) | — (top-level only) |
+| `skillbill_feature_task_prose_finished` | `bill-feature-task` (Step 9 / early exit) | — (top-level only; carries `child_steps`) |
 | `skillbill_review_finished` | top-level code-review lifecycle once findings are resolved | `import_review` / `triage_findings` with `orchestrated=true` return payload instead |
 | `skillbill_quality_check_started` | standalone quality-check lifecycle | skipped in orchestrated mode |
 | `skillbill_quality_check_finished` | standalone quality-check lifecycle | `quality_check_finished(orchestrated=true)` returns payload |
@@ -333,12 +333,12 @@ Both levels:
 
 The feature-implement workflow emits two events per session:
 
-- `skillbill_feature_implement_started` — emitted after Step 1 assessment is confirmed by the user
-- `skillbill_feature_implement_finished` — emitted after Step 9 (PR created) or when the workflow ends early
+- `skillbill_feature_task_prose_started` — emitted after Step 1 assessment is confirmed by the user
+- `skillbill_feature_task_prose_finished` — emitted after Step 9 (PR created) or when the workflow ends early
 
 Each feature-implement session uses a `session_id` in the format `fis-YYYYMMDD-HHMMSS-XXXX` (4-char random alphanumeric suffix). The finished event is self-contained — it includes all started fields so each event can be analyzed independently in PostHog.
 
-The MCP server exposes `feature_implement_started` and `feature_implement_finished` as agent tools. The skill instructions tell the agent when to call each tool.
+The MCP server exposes `feature_task_prose_started` and `feature_task_prose_finished` as agent tools. The skill instructions tell the agent when to call each tool.
 
 ### Started event payload
 
@@ -454,12 +454,12 @@ Mirror to local stats:
 
 ### Feature-implement dashboard
 
-Use `skillbill_feature_implement_started` for intake/sizing and `skillbill_feature_implement_finished` for outcome metrics.
+Use `skillbill_feature_task_prose_started` for intake/sizing and `skillbill_feature_task_prose_finished` for outcome metrics.
 
 Recommended tiles:
 
-- `Implement runs started`: count of `skillbill_feature_implement_started`
-- `Implement runs finished`: count of `skillbill_feature_implement_finished`
+- `Implement runs started`: count of `skillbill_feature_task_prose_started`
+- `Implement runs finished`: count of `skillbill_feature_task_prose_finished`
 - `Implement completion rate`: `completion_status = completed` on finished events divided by all finished events
 - `Feature size mix`: breakdown of started events by `feature_size`
 - `Rollout-needed rate`: `rollout_needed = true` on started events divided by all started events
@@ -500,7 +500,7 @@ Local health views use the rows available in the local telemetry database. They 
 Review health combines two review payload sources:
 
 - standalone `skillbill_review_finished` events
-- embedded code-review entries inside `skillbill_feature_implement_finished.child_steps`
+- embedded code-review entries inside `skillbill_feature_task_prose_finished.child_steps`
 
 Do not attempt to de-duplicate standalone and embedded review payloads unless a stable shared key is present. Local stats report `source_counts` for `standalone`, `embedded`, and `malformed`. Rejected findings mean reviewer feedback explicitly rejected or marked a finding false positive. Unresolved findings mean the latest finding outcome is missing or not accepted/rejected.
 
@@ -543,14 +543,14 @@ FROM (
     JSONExtractInt(child_raw, 'unresolved_findings') AS unresolved_findings
   FROM events
   ARRAY JOIN JSONExtractArrayRaw(toString(properties.child_steps)) AS child_raw
-  WHERE event = 'skillbill_feature_implement_finished'
+  WHERE event = 'skillbill_feature_task_prose_finished'
     AND timestamp >= now() - INTERVAL 60 DAY
     AND JSONExtractString(child_raw, 'skill') LIKE '%code-review%'
 )
 GROUP BY source
 ```
 
-`feature_implement_health_last_60_days`:
+`feature_task_prose_health_last_60_days`:
 
 ```sql
 SELECT
@@ -562,7 +562,7 @@ SELECT
   quantile(0.5)(toInt(properties.duration_seconds)) AS median_duration_seconds,
   quantile(0.9)(toInt(properties.duration_seconds)) AS p90_duration_seconds
 FROM events
-WHERE event = 'skillbill_feature_implement_finished'
+WHERE event = 'skillbill_feature_task_prose_finished'
   AND timestamp >= now() - INTERVAL 60 DAY
   AND coalesce(properties.source, 'production') = 'production'
   AND match(toString(properties.session_id), '^fis-[A-Za-z0-9][A-Za-z0-9_-]*$')
@@ -571,7 +571,7 @@ WHERE event = 'skillbill_feature_implement_finished'
 GROUP BY properties.feature_size
 ```
 
-`feature_implement_data_quality_debt_last_60_days`:
+`feature_task_prose_data_quality_debt_last_60_days`:
 
 ```sql
 SELECT
@@ -583,7 +583,7 @@ SELECT
   countIf(coalesce(properties.source, 'production') = 'synthetic' AND toInt(properties.duration_seconds) = 0) AS synthetic_zero_duration_runs,
   countIf(toInt(properties.duration_seconds) >= 86400) AS long_running_duration_runs
 FROM events
-WHERE event = 'skillbill_feature_implement_finished'
+WHERE event = 'skillbill_feature_task_prose_finished'
   AND timestamp >= now() - INTERVAL 60 DAY
 ```
 

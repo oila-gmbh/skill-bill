@@ -23,7 +23,7 @@ and swapped in for the static placeholder
 | 2 | 0:02–0:05 | Show the spec | `bat spec.md` (or open it) revealing a short feature spec with acceptance criteria | "Start with a spec." |
 | 3 | 0:05–0:07 | Invoke the workflow | Type and run `/bill-feature-task spec.md` in the agent | "One command." |
 | 4 | 0:07–0:11 | Phase ladder | Phase lines stream in: assess → branch → pre-plan → plan → implement → review → audit → quality-check (fast-forward the slow gaps) | "Each phase runs in its own subagent." |
-| 5 | 0:11–0:14 | Durable state | A line confirming `feature_implement_workflow_update` at a phase boundary; briefly show `skill-bill workflow latest` | "Durable state — crash anywhere, resume cleanly." |
+| 5 | 0:11–0:14 | Durable state | A line confirming `feature_task_prose_workflow_update` at a phase boundary; briefly show `skill-bill workflow latest` | "Durable state — crash anywhere, resume cleanly." |
 | 6 | 0:14–0:17 | Telemetry tree | Show the parent/child telemetry rollup (e.g. `skill-bill implement-stats`) | "Structured telemetry, parent → child." |
 | 7 | 0:17–0:21 | PR handoff | Generated PR title + description + QA steps printed; "PR ready" line | "Spec → merged-ready PR." |
 | 8 | 0:21–0:24 | Logo rest frame | Fade to the Skill Bill hero mark | "Skill Bill" |

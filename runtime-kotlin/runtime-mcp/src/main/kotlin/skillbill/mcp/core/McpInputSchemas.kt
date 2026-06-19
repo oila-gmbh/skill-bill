@@ -16,8 +16,9 @@ internal val remoteStatsWorkflowSchema: Map<String, Any?> =
     listOf(
       "verify",
       "implement",
-      "bill-feature-verify",
       "bill-feature-task",
+      "bill-feature-verify",
+      "feature-task-prose",
     ),
   )
 

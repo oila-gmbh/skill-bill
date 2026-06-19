@@ -471,8 +471,8 @@ Primary MCP groups:
 
 - review and learning tools: `import_review`, `triage_findings`, `resolve_learnings`, `review_stats`
 - telemetry tools: `telemetry_proxy_capabilities`, `telemetry_remote_stats`
-- workflow stats tools: `feature_implement_stats`, `feature_verify_stats`
-- feature-task workflow tools (the default `mode:prose` in-session path): `feature_implement_started`, `feature_implement_workflow_open`, `feature_implement_workflow_update`, `feature_implement_workflow_list`, `feature_implement_workflow_latest`, `feature_implement_workflow_get`, `feature_implement_workflow_resume`, `feature_implement_workflow_continue`, `feature_implement_finished`
+- workflow stats tools: `feature_task_prose_stats`, `feature_verify_stats`
+- feature-task workflow tools (the default `mode:prose` in-session path): `feature_task_prose_started`, `feature_task_prose_workflow_open`, `feature_task_prose_workflow_update`, `feature_task_prose_workflow_list`, `feature_task_prose_workflow_latest`, `feature_task_prose_workflow_get`, `feature_task_prose_workflow_resume`, `feature_task_prose_workflow_continue`, `feature_task_prose_finished`
 - verify workflow tools: `feature_verify_started`, `feature_verify_workflow_open`, `feature_verify_workflow_update`, `feature_verify_workflow_list`, `feature_verify_workflow_latest`, `feature_verify_workflow_get`, `feature_verify_workflow_resume`, `feature_verify_workflow_continue`, `feature_verify_finished`
 - quality and PR tools: `quality_check_started`, `quality_check_finished`, `pr_description_generated`
 - scaffold tool: `new_skill_scaffold`

@@ -3,6 +3,22 @@ const DEFAULT_POSTHOG_APP_HOST = "https://us.posthog.com";
 const MAX_BATCH_SIZE = 100;
 const CONTRACT_VERSION = "1";
 
+// SKILL-86 (AC7): the prose feature-task lane was renamed from
+// `skillbill_feature_implement_*` to `skillbill_feature_task_prose_*`. The
+// stats/series queries match BOTH names at read time so historical rows
+// emitted under the legacy name keep counting alongside new prose rows.
+const PROSE_STARTED_EVENTS = ["skillbill_feature_implement_started", "skillbill_feature_task_prose_started"];
+const PROSE_FINISHED_EVENTS = ["skillbill_feature_implement_finished", "skillbill_feature_task_prose_finished"];
+const PROSE_EVENTS = [...PROSE_STARTED_EVENTS, ...PROSE_FINISHED_EVENTS];
+
+function eventInList(events) {
+  return `event IN (${events.map((name) => `'${name}'`).join(", ")})`;
+}
+
+const PROSE_STARTED_EVENT_MATCH = eventInList(PROSE_STARTED_EVENTS);
+const PROSE_FINISHED_EVENT_MATCH = eventInList(PROSE_FINISHED_EVENTS);
+const PROSE_EVENT_FILTER = eventInList(PROSE_EVENTS);
+
 function jsonResponse(status, payload) {
   return new Response(JSON.stringify(payload), {
     status,
@@ -300,38 +316,38 @@ function buildImplementStatsQuery(dateFrom, dateToExclusive) {
   const to = escapeSqlLiteral(`${dateToExclusive} 00:00:00`);
   return `
     SELECT
-      uniqExactIf(toString(properties.session_id), event = 'skillbill_feature_implement_started') AS started_runs,
-      uniqExactIf(toString(properties.session_id), event = 'skillbill_feature_implement_finished') AS finished_runs,
-      uniqExactIf(toString(properties.session_id), event = 'skillbill_feature_implement_started' AND toString(properties.feature_size) = 'SMALL') AS feature_size_small,
-      uniqExactIf(toString(properties.session_id), event = 'skillbill_feature_implement_started' AND toString(properties.feature_size) = 'MEDIUM') AS feature_size_medium,
-      uniqExactIf(toString(properties.session_id), event = 'skillbill_feature_implement_started' AND toString(properties.feature_size) = 'LARGE') AS feature_size_large,
-      uniqExactIf(toString(properties.session_id), event = 'skillbill_feature_implement_started' AND lower(toString(properties.rollout_needed)) = 'true') AS rollout_needed_runs,
-      uniqExactIf(toString(properties.session_id), event = 'skillbill_feature_implement_finished' AND lower(toString(properties.feature_flag_used)) = 'true') AS feature_flag_used_runs,
-      uniqExactIf(toString(properties.session_id), event = 'skillbill_feature_implement_finished' AND lower(toString(properties.pr_created)) = 'true') AS pr_created_runs,
-      uniqExactIf(toString(properties.session_id), event = 'skillbill_feature_implement_finished' AND lower(toString(properties.boundary_history_written)) = 'true') AS boundary_history_written_runs,
-      uniqExactIf(toString(properties.session_id), event = 'skillbill_feature_implement_finished' AND toString(properties.audit_result) = 'all_pass') AS audit_result_all_pass,
-      uniqExactIf(toString(properties.session_id), event = 'skillbill_feature_implement_finished' AND toString(properties.audit_result) = 'had_gaps') AS audit_result_had_gaps,
-      uniqExactIf(toString(properties.session_id), event = 'skillbill_feature_implement_finished' AND toString(properties.audit_result) = 'skipped') AS audit_result_skipped,
-      uniqExactIf(toString(properties.session_id), event = 'skillbill_feature_implement_finished' AND toString(properties.validation_result) = 'pass') AS validation_result_pass,
-      uniqExactIf(toString(properties.session_id), event = 'skillbill_feature_implement_finished' AND toString(properties.validation_result) = 'fail') AS validation_result_fail,
-      uniqExactIf(toString(properties.session_id), event = 'skillbill_feature_implement_finished' AND toString(properties.validation_result) = 'skipped') AS validation_result_skipped,
-      uniqExactIf(toString(properties.session_id), event = 'skillbill_feature_implement_finished' AND toString(properties.completion_status) = 'completed') AS completion_status_completed,
-      uniqExactIf(toString(properties.session_id), event = 'skillbill_feature_implement_finished' AND toString(properties.completion_status) = 'abandoned_at_planning') AS completion_status_abandoned_at_planning,
-      uniqExactIf(toString(properties.session_id), event = 'skillbill_feature_implement_finished' AND toString(properties.completion_status) = 'abandoned_at_implementation') AS completion_status_abandoned_at_implementation,
-      uniqExactIf(toString(properties.session_id), event = 'skillbill_feature_implement_finished' AND toString(properties.completion_status) = 'abandoned_at_review') AS completion_status_abandoned_at_review,
-      uniqExactIf(toString(properties.session_id), event = 'skillbill_feature_implement_finished' AND toString(properties.completion_status) = 'error') AS completion_status_error,
-      uniqExactIf(toString(properties.session_id), event = 'skillbill_feature_implement_finished' AND toString(properties.boundary_history_value) = 'none') AS boundary_history_value_none,
-      uniqExactIf(toString(properties.session_id), event = 'skillbill_feature_implement_finished' AND toString(properties.boundary_history_value) = 'irrelevant') AS boundary_history_value_irrelevant,
-      uniqExactIf(toString(properties.session_id), event = 'skillbill_feature_implement_finished' AND toString(properties.boundary_history_value) = 'low') AS boundary_history_value_low,
-      uniqExactIf(toString(properties.session_id), event = 'skillbill_feature_implement_finished' AND toString(properties.boundary_history_value) = 'medium') AS boundary_history_value_medium,
-      uniqExactIf(toString(properties.session_id), event = 'skillbill_feature_implement_finished' AND toString(properties.boundary_history_value) = 'high') AS boundary_history_value_high,
-      avgIf(toFloatOrZero(toString(properties.acceptance_criteria_count)), event = 'skillbill_feature_implement_started') AS average_acceptance_criteria_count,
-      avgIf(toFloatOrZero(toString(properties.spec_word_count)), event = 'skillbill_feature_implement_started') AS average_spec_word_count,
-      avgIf(toFloatOrZero(toString(properties.review_iterations)), event = 'skillbill_feature_implement_finished') AS average_review_iterations,
-      avgIf(toFloatOrZero(toString(properties.audit_iterations)), event = 'skillbill_feature_implement_finished') AS average_audit_iterations,
-      avgIf(toFloatOrZero(toString(properties.duration_seconds)), event = 'skillbill_feature_implement_finished') AS average_duration_seconds
+      uniqExactIf(toString(properties.session_id), ${PROSE_STARTED_EVENT_MATCH}) AS started_runs,
+      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH}) AS finished_runs,
+      uniqExactIf(toString(properties.session_id), ${PROSE_STARTED_EVENT_MATCH} AND toString(properties.feature_size) = 'SMALL') AS feature_size_small,
+      uniqExactIf(toString(properties.session_id), ${PROSE_STARTED_EVENT_MATCH} AND toString(properties.feature_size) = 'MEDIUM') AS feature_size_medium,
+      uniqExactIf(toString(properties.session_id), ${PROSE_STARTED_EVENT_MATCH} AND toString(properties.feature_size) = 'LARGE') AS feature_size_large,
+      uniqExactIf(toString(properties.session_id), ${PROSE_STARTED_EVENT_MATCH} AND lower(toString(properties.rollout_needed)) = 'true') AS rollout_needed_runs,
+      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH} AND lower(toString(properties.feature_flag_used)) = 'true') AS feature_flag_used_runs,
+      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH} AND lower(toString(properties.pr_created)) = 'true') AS pr_created_runs,
+      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH} AND lower(toString(properties.boundary_history_written)) = 'true') AS boundary_history_written_runs,
+      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH} AND toString(properties.audit_result) = 'all_pass') AS audit_result_all_pass,
+      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH} AND toString(properties.audit_result) = 'had_gaps') AS audit_result_had_gaps,
+      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH} AND toString(properties.audit_result) = 'skipped') AS audit_result_skipped,
+      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH} AND toString(properties.validation_result) = 'pass') AS validation_result_pass,
+      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH} AND toString(properties.validation_result) = 'fail') AS validation_result_fail,
+      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH} AND toString(properties.validation_result) = 'skipped') AS validation_result_skipped,
+      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH} AND toString(properties.completion_status) = 'completed') AS completion_status_completed,
+      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH} AND toString(properties.completion_status) = 'abandoned_at_planning') AS completion_status_abandoned_at_planning,
+      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH} AND toString(properties.completion_status) = 'abandoned_at_implementation') AS completion_status_abandoned_at_implementation,
+      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH} AND toString(properties.completion_status) = 'abandoned_at_review') AS completion_status_abandoned_at_review,
+      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH} AND toString(properties.completion_status) = 'error') AS completion_status_error,
+      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH} AND toString(properties.boundary_history_value) = 'none') AS boundary_history_value_none,
+      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH} AND toString(properties.boundary_history_value) = 'irrelevant') AS boundary_history_value_irrelevant,
+      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH} AND toString(properties.boundary_history_value) = 'low') AS boundary_history_value_low,
+      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH} AND toString(properties.boundary_history_value) = 'medium') AS boundary_history_value_medium,
+      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH} AND toString(properties.boundary_history_value) = 'high') AS boundary_history_value_high,
+      avgIf(toFloatOrZero(toString(properties.acceptance_criteria_count)), ${PROSE_STARTED_EVENT_MATCH}) AS average_acceptance_criteria_count,
+      avgIf(toFloatOrZero(toString(properties.spec_word_count)), ${PROSE_STARTED_EVENT_MATCH}) AS average_spec_word_count,
+      avgIf(toFloatOrZero(toString(properties.review_iterations)), ${PROSE_FINISHED_EVENT_MATCH}) AS average_review_iterations,
+      avgIf(toFloatOrZero(toString(properties.audit_iterations)), ${PROSE_FINISHED_EVENT_MATCH}) AS average_audit_iterations,
+      avgIf(toFloatOrZero(toString(properties.duration_seconds)), ${PROSE_FINISHED_EVENT_MATCH}) AS average_duration_seconds
     FROM events
-    WHERE event IN ('skillbill_feature_implement_started', 'skillbill_feature_implement_finished')
+    WHERE ${PROSE_EVENT_FILTER}
       AND timestamp >= toDateTime('${from}')
       AND timestamp < toDateTime('${to}')
   `;
@@ -383,33 +399,33 @@ function buildImplementSeriesQuery(dateFrom, dateToExclusive) {
   return `
     SELECT
       toString(toDate(timestamp)) AS bucket_date,
-      uniqExactIf(toString(properties.session_id), event = 'skillbill_feature_implement_started') AS started_runs,
-      uniqExactIf(toString(properties.session_id), event = 'skillbill_feature_implement_finished') AS finished_runs,
-      uniqExactIf(toString(properties.session_id), event = 'skillbill_feature_implement_started' AND toString(properties.feature_size) = 'SMALL') AS feature_size_small,
-      uniqExactIf(toString(properties.session_id), event = 'skillbill_feature_implement_started' AND toString(properties.feature_size) = 'MEDIUM') AS feature_size_medium,
-      uniqExactIf(toString(properties.session_id), event = 'skillbill_feature_implement_started' AND toString(properties.feature_size) = 'LARGE') AS feature_size_large,
-      uniqExactIf(toString(properties.session_id), event = 'skillbill_feature_implement_started' AND lower(toString(properties.rollout_needed)) = 'true') AS rollout_needed_runs,
-      uniqExactIf(toString(properties.session_id), event = 'skillbill_feature_implement_finished' AND lower(toString(properties.feature_flag_used)) = 'true') AS feature_flag_used_runs,
-      uniqExactIf(toString(properties.session_id), event = 'skillbill_feature_implement_finished' AND lower(toString(properties.pr_created)) = 'true') AS pr_created_runs,
-      uniqExactIf(toString(properties.session_id), event = 'skillbill_feature_implement_finished' AND lower(toString(properties.boundary_history_written)) = 'true') AS boundary_history_written_runs,
-      uniqExactIf(toString(properties.session_id), event = 'skillbill_feature_implement_finished' AND toString(properties.audit_result) = 'all_pass') AS audit_result_all_pass,
-      uniqExactIf(toString(properties.session_id), event = 'skillbill_feature_implement_finished' AND toString(properties.audit_result) = 'had_gaps') AS audit_result_had_gaps,
-      uniqExactIf(toString(properties.session_id), event = 'skillbill_feature_implement_finished' AND toString(properties.audit_result) = 'skipped') AS audit_result_skipped,
-      uniqExactIf(toString(properties.session_id), event = 'skillbill_feature_implement_finished' AND toString(properties.validation_result) = 'pass') AS validation_result_pass,
-      uniqExactIf(toString(properties.session_id), event = 'skillbill_feature_implement_finished' AND toString(properties.validation_result) = 'fail') AS validation_result_fail,
-      uniqExactIf(toString(properties.session_id), event = 'skillbill_feature_implement_finished' AND toString(properties.validation_result) = 'skipped') AS validation_result_skipped,
-      uniqExactIf(toString(properties.session_id), event = 'skillbill_feature_implement_finished' AND toString(properties.completion_status) = 'completed') AS completion_status_completed,
-      uniqExactIf(toString(properties.session_id), event = 'skillbill_feature_implement_finished' AND toString(properties.completion_status) = 'abandoned_at_planning') AS completion_status_abandoned_at_planning,
-      uniqExactIf(toString(properties.session_id), event = 'skillbill_feature_implement_finished' AND toString(properties.completion_status) = 'abandoned_at_implementation') AS completion_status_abandoned_at_implementation,
-      uniqExactIf(toString(properties.session_id), event = 'skillbill_feature_implement_finished' AND toString(properties.completion_status) = 'abandoned_at_review') AS completion_status_abandoned_at_review,
-      uniqExactIf(toString(properties.session_id), event = 'skillbill_feature_implement_finished' AND toString(properties.completion_status) = 'error') AS completion_status_error,
-      uniqExactIf(toString(properties.session_id), event = 'skillbill_feature_implement_finished' AND toString(properties.boundary_history_value) = 'none') AS boundary_history_value_none,
-      uniqExactIf(toString(properties.session_id), event = 'skillbill_feature_implement_finished' AND toString(properties.boundary_history_value) = 'irrelevant') AS boundary_history_value_irrelevant,
-      uniqExactIf(toString(properties.session_id), event = 'skillbill_feature_implement_finished' AND toString(properties.boundary_history_value) = 'low') AS boundary_history_value_low,
-      uniqExactIf(toString(properties.session_id), event = 'skillbill_feature_implement_finished' AND toString(properties.boundary_history_value) = 'medium') AS boundary_history_value_medium,
-      uniqExactIf(toString(properties.session_id), event = 'skillbill_feature_implement_finished' AND toString(properties.boundary_history_value) = 'high') AS boundary_history_value_high
+      uniqExactIf(toString(properties.session_id), ${PROSE_STARTED_EVENT_MATCH}) AS started_runs,
+      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH}) AS finished_runs,
+      uniqExactIf(toString(properties.session_id), ${PROSE_STARTED_EVENT_MATCH} AND toString(properties.feature_size) = 'SMALL') AS feature_size_small,
+      uniqExactIf(toString(properties.session_id), ${PROSE_STARTED_EVENT_MATCH} AND toString(properties.feature_size) = 'MEDIUM') AS feature_size_medium,
+      uniqExactIf(toString(properties.session_id), ${PROSE_STARTED_EVENT_MATCH} AND toString(properties.feature_size) = 'LARGE') AS feature_size_large,
+      uniqExactIf(toString(properties.session_id), ${PROSE_STARTED_EVENT_MATCH} AND lower(toString(properties.rollout_needed)) = 'true') AS rollout_needed_runs,
+      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH} AND lower(toString(properties.feature_flag_used)) = 'true') AS feature_flag_used_runs,
+      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH} AND lower(toString(properties.pr_created)) = 'true') AS pr_created_runs,
+      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH} AND lower(toString(properties.boundary_history_written)) = 'true') AS boundary_history_written_runs,
+      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH} AND toString(properties.audit_result) = 'all_pass') AS audit_result_all_pass,
+      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH} AND toString(properties.audit_result) = 'had_gaps') AS audit_result_had_gaps,
+      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH} AND toString(properties.audit_result) = 'skipped') AS audit_result_skipped,
+      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH} AND toString(properties.validation_result) = 'pass') AS validation_result_pass,
+      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH} AND toString(properties.validation_result) = 'fail') AS validation_result_fail,
+      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH} AND toString(properties.validation_result) = 'skipped') AS validation_result_skipped,
+      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH} AND toString(properties.completion_status) = 'completed') AS completion_status_completed,
+      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH} AND toString(properties.completion_status) = 'abandoned_at_planning') AS completion_status_abandoned_at_planning,
+      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH} AND toString(properties.completion_status) = 'abandoned_at_implementation') AS completion_status_abandoned_at_implementation,
+      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH} AND toString(properties.completion_status) = 'abandoned_at_review') AS completion_status_abandoned_at_review,
+      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH} AND toString(properties.completion_status) = 'error') AS completion_status_error,
+      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH} AND toString(properties.boundary_history_value) = 'none') AS boundary_history_value_none,
+      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH} AND toString(properties.boundary_history_value) = 'irrelevant') AS boundary_history_value_irrelevant,
+      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH} AND toString(properties.boundary_history_value) = 'low') AS boundary_history_value_low,
+      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH} AND toString(properties.boundary_history_value) = 'medium') AS boundary_history_value_medium,
+      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH} AND toString(properties.boundary_history_value) = 'high') AS boundary_history_value_high
     FROM events
-    WHERE event IN ('skillbill_feature_implement_started', 'skillbill_feature_implement_finished')
+    WHERE ${PROSE_EVENT_FILTER}
       AND timestamp >= toDateTime('${from}')
       AND timestamp < toDateTime('${to}')
     GROUP BY bucket_date
@@ -942,4 +958,10 @@ export default {
   },
 };
 
-export { validateStatsRequest, capabilitiesPayload, transformBatch };
+export {
+  validateStatsRequest,
+  capabilitiesPayload,
+  transformBatch,
+  buildImplementStatsQuery,
+  buildImplementSeriesQuery,
+};

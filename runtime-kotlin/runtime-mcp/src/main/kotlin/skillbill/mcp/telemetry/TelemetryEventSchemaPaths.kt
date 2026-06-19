@@ -11,7 +11,7 @@ package skillbill.mcp.telemetry
  * stamps onto every emitted telemetry envelope, so every payload the
  * runtime produces validates clean against the canonical schema.
  */
-const val TELEMETRY_EVENT_CONTRACT_VERSION: String = "1.0.0"
+const val TELEMETRY_EVENT_CONTRACT_VERSION: String = "1.1.0"
 
 /**
  * SKILL-48 Subtask 2d: single source of truth for where the canonical

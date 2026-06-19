@@ -162,13 +162,13 @@ The runtime-facing pilot uses dedicated MCP tools per top-level workflow. The
 first adopter was `bill-feature-task`; `bill-feature-verify` is the second
 adopter and follows the same model with its own state machine and storage:
 
-- `feature_implement_workflow_list`
-- `feature_implement_workflow_latest`
-- `feature_implement_workflow_open`
-- `feature_implement_workflow_update`
-- `feature_implement_workflow_get`
-- `feature_implement_workflow_resume`
-- `feature_implement_workflow_continue`
+- `feature_task_prose_workflow_list`
+- `feature_task_prose_workflow_latest`
+- `feature_task_prose_workflow_open`
+- `feature_task_prose_workflow_update`
+- `feature_task_prose_workflow_get`
+- `feature_task_prose_workflow_resume`
+- `feature_task_prose_workflow_continue`
 - `feature_verify_workflow_list`
 - `feature_verify_workflow_latest`
 - `feature_verify_workflow_open`
@@ -178,7 +178,7 @@ adopter and follows the same model with its own state machine and storage:
 - `feature_verify_workflow_continue`
 
 These tools persist workflow state independently of telemetry settings. The
-existing `feature_implement_started` / `_finished` and
+existing `feature_task_prose_started` / `_finished` and
 `feature_verify_started` / `_finished` tools remain telemetry-owned; they are
 linked to workflow state via `session_id` rather than replaced by it.
 
@@ -190,7 +190,7 @@ steps and durable artifacts; callers that need complete state should use the
 read-only `*_workflow_get` MCP tools or CLI `workflow show` /
 `verify-workflow show`.
 
-`feature_implement_workflow_continue` is the first activation tool in the pilot:
+`feature_task_prose_workflow_continue` is the first activation tool in the pilot:
 it does not execute the workflow itself, but it re-opens resumable state and
 returns a governed compact continuation payload for `bill-feature-task`,
 including the resumed step id, required and available artifact keys, compact
@@ -209,7 +209,7 @@ The CLI exposes the same recovery surface through:
 - `skill-bill verify-workflow resume <workflow-id>`
 - `skill-bill verify-workflow continue <workflow-id>`
 
-For decomposed feature parents, `feature_implement_workflow_continue` also
+For decomposed feature parents, `feature_task_prose_workflow_continue` also
 accepts a parent `issue_key` and optional `subtask_id`. The issue-key path is a
 goal-continuation entry for one subtask: it starts or resumes only the selected
 runnable subtask, derives the subtask contract from persisted artifacts and the

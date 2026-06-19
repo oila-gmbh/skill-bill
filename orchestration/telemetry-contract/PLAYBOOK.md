@@ -17,7 +17,7 @@ Every telemeterable skill must be usable alone. When invoked directly by a user,
 - `bill-code-check` — `skillbill_quality_check_started` + `_finished`
 - `bill-feature-verify` — `skillbill_feature_verify_started` + `_finished`
 - `bill-pr-description` — `skillbill_pr_description_generated`
-- `bill-feature-task` — `skillbill_feature_implement_started` + `_finished`
+- `bill-feature-task` — `skillbill_feature_task_prose_started` + `_finished`
 
 ## The `orchestrated` flag
 
@@ -60,7 +60,7 @@ PR description skills (`bill-pr-description`) use the `pr_description_generated`
 
 ### Feature-implement skills
 
-Feature-implement skills (`bill-feature-task`) use the `feature_implement_started` and `feature_implement_finished` MCP tools. These are always top-level — they are not invoked with `orchestrated=true` by other skills.
+Feature-implement skills (`bill-feature-task`) use the `feature_task_prose_started` and `feature_task_prose_finished` MCP tools. These are always top-level — they are not invoked with `orchestrated=true` by other skills.
 
 ## child_steps aggregation
 

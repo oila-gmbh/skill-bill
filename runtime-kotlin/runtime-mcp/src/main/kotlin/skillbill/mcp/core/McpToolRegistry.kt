@@ -36,16 +36,16 @@ object McpToolRegistry {
   private val toolNames: List<String> =
     listOf(
       "doctor",
-      "feature_implement_finished",
-      "feature_implement_stats",
-      "feature_implement_started",
-      "feature_implement_workflow_get",
-      "feature_implement_workflow_latest",
-      "feature_implement_workflow_list",
-      "feature_implement_workflow_continue",
-      "feature_implement_workflow_open",
-      "feature_implement_workflow_resume",
-      "feature_implement_workflow_update",
+      "feature_task_prose_finished",
+      "feature_task_prose_stats",
+      "feature_task_prose_started",
+      "feature_task_prose_workflow_get",
+      "feature_task_prose_workflow_latest",
+      "feature_task_prose_workflow_list",
+      "feature_task_prose_workflow_continue",
+      "feature_task_prose_workflow_open",
+      "feature_task_prose_workflow_resume",
+      "feature_task_prose_workflow_update",
       "feature_verify_finished",
       "feature_verify_stats",
       "feature_verify_started",
@@ -56,16 +56,6 @@ object McpToolRegistry {
       "feature_verify_workflow_open",
       "feature_verify_workflow_resume",
       "feature_verify_workflow_update",
-      "feature_task_finished",
-      "feature_task_started",
-      "feature_task_stats",
-      "feature_task_workflow_get",
-      "feature_task_workflow_latest",
-      "feature_task_workflow_list",
-      "feature_task_workflow_continue",
-      "feature_task_workflow_open",
-      "feature_task_workflow_resume",
-      "feature_task_workflow_update",
       "feature_task_runtime_finished",
       "feature_task_runtime_started",
       "feature_task_runtime_stats",
@@ -98,27 +88,18 @@ object McpToolRegistry {
   private val descriptions: Map<String, String> =
     mapOf(
       "doctor" to "Check skill-bill installation health.",
-      "feature_implement_finished" to
-        "Record completion of a feature-implement session. Deprecated: prefer the feature_task_* family.",
-      "feature_implement_stats" to
-        "Show aggregate bill-feature-task metrics. Deprecated: prefer the feature_task_* family.",
-      "feature_implement_started" to
-        "Record start of a feature-implement session. Deprecated: prefer the feature_task_* family.",
-      "feature_implement_workflow_continue" to
-        "Continue durable bill-feature-task workflow state. Deprecated: prefer the feature_task_* family.",
-      "feature_implement_workflow_get" to
-        "Fetch read-only full durable bill-feature-task workflow state. Deprecated: prefer the feature_task_* family.",
-      "feature_implement_workflow_latest" to
-        "Fetch the latest bill-feature-task workflow. Deprecated: prefer the feature_task_* family.",
-      "feature_implement_workflow_list" to
-        "List bill-feature-task workflows. Deprecated: prefer the feature_task_* family.",
-      "feature_implement_workflow_open" to
-        "Open durable bill-feature-task workflow state. Deprecated: prefer the feature_task_* family.",
-      "feature_implement_workflow_resume" to
-        "Summarize bill-feature-task workflow resume state. Deprecated: prefer the feature_task_* family.",
-      "feature_implement_workflow_update" to
-        "Update durable bill-feature-task workflow state and return a compact acknowledgement. " +
-        "Deprecated: prefer the feature_task_* family.",
+      "feature_task_prose_finished" to "Record completion of a feature-task prose session.",
+      "feature_task_prose_stats" to "Show aggregate feature-task prose metrics.",
+      "feature_task_prose_started" to "Record start of a feature-task prose session.",
+      "feature_task_prose_workflow_continue" to "Continue durable feature-task prose workflow state.",
+      "feature_task_prose_workflow_get" to
+        "Fetch read-only full durable feature-task prose workflow state.",
+      "feature_task_prose_workflow_latest" to "Fetch the latest feature-task prose workflow.",
+      "feature_task_prose_workflow_list" to "List feature-task prose workflows.",
+      "feature_task_prose_workflow_open" to "Open durable feature-task prose workflow state.",
+      "feature_task_prose_workflow_resume" to "Summarize feature-task prose workflow resume state.",
+      "feature_task_prose_workflow_update" to
+        "Update durable feature-task prose workflow state and return a compact acknowledgement.",
       "feature_verify_finished" to "Record completion of a feature-verify session.",
       "feature_verify_stats" to "Show aggregate bill-feature-verify metrics.",
       "feature_verify_started" to "Record start of a feature-verify session.",
@@ -130,40 +111,20 @@ object McpToolRegistry {
       "feature_verify_workflow_resume" to "Summarize bill-feature-verify workflow resume state.",
       "feature_verify_workflow_update" to
         "Update durable bill-feature-verify workflow state and return a compact acknowledgement.",
-      "feature_task_finished" to "Record completion of a feature-task session.",
-      "feature_task_started" to "Record start of a feature-task session.",
-      "feature_task_stats" to "Show aggregate feature-task metrics.",
-      "feature_task_workflow_continue" to
-        "Continue durable bill-feature-task runtime workflow state.",
-      "feature_task_workflow_get" to
-        "Fetch read-only full durable bill-feature-task runtime workflow state.",
-      "feature_task_workflow_latest" to "Fetch the latest bill-feature-task runtime workflow.",
-      "feature_task_workflow_list" to "List bill-feature-task runtime workflows.",
-      "feature_task_workflow_open" to "Open durable bill-feature-task runtime workflow state.",
-      "feature_task_workflow_resume" to
-        "Summarize bill-feature-task runtime workflow resume state.",
-      "feature_task_workflow_update" to
-        "Update durable bill-feature-task runtime workflow state and return a compact acknowledgement.",
-      "feature_task_runtime_finished" to
-        "Deprecated alias for feature_task_finished. Use feature_task_finished.",
-      "feature_task_runtime_started" to
-        "Deprecated alias for feature_task_started. Use feature_task_started.",
-      "feature_task_runtime_stats" to
-        "Deprecated alias for feature_task_stats. Use feature_task_stats.",
+      "feature_task_runtime_finished" to "Record completion of a feature-task runtime session.",
+      "feature_task_runtime_started" to "Record start of a feature-task runtime session.",
+      "feature_task_runtime_stats" to "Show aggregate feature-task runtime metrics.",
       "feature_task_runtime_workflow_continue" to
-        "Deprecated alias for feature_task_workflow_continue. Use feature_task_workflow_continue.",
+        "Continue durable feature-task runtime workflow state.",
       "feature_task_runtime_workflow_get" to
-        "Deprecated alias for feature_task_workflow_get. Use feature_task_workflow_get.",
-      "feature_task_runtime_workflow_latest" to
-        "Deprecated alias for feature_task_workflow_latest. Use feature_task_workflow_latest.",
-      "feature_task_runtime_workflow_list" to
-        "Deprecated alias for feature_task_workflow_list. Use feature_task_workflow_list.",
-      "feature_task_runtime_workflow_open" to
-        "Deprecated alias for feature_task_workflow_open. Use feature_task_workflow_open.",
+        "Fetch read-only full durable feature-task runtime workflow state.",
+      "feature_task_runtime_workflow_latest" to "Fetch the latest feature-task runtime workflow.",
+      "feature_task_runtime_workflow_list" to "List feature-task runtime workflows.",
+      "feature_task_runtime_workflow_open" to "Open durable feature-task runtime workflow state.",
       "feature_task_runtime_workflow_resume" to
-        "Deprecated alias for feature_task_workflow_resume. Use feature_task_workflow_resume.",
+        "Summarize feature-task runtime workflow resume state.",
       "feature_task_runtime_workflow_update" to
-        "Deprecated alias for feature_task_workflow_update. Use feature_task_workflow_update.",
+        "Update durable feature-task runtime workflow state and return a compact acknowledgement.",
       "goal_stats" to "Show aggregate decomposed-goal runtime metrics.",
       "import_review" to "Import code review output into the local telemetry store.",
       "new_skill_scaffold" to "Scaffold a new skill from a validated payload.",
@@ -186,7 +147,7 @@ object McpToolRegistry {
 
   private val inputSchemas: Map<String, Map<String, Any?>> =
     mapOf(
-      "feature_implement_started" to objectSchema(
+      "feature_task_prose_started" to objectSchema(
         required = listOf(
           "feature_size",
           "acceptance_criteria_count",
@@ -212,7 +173,7 @@ object McpToolRegistry {
           "spec_summary" to stringSchema(),
         ),
       ),
-      "feature_implement_finished" to objectSchema(
+      "feature_task_prose_finished" to objectSchema(
         required = listOf(
           "session_id",
           "completion_status",
@@ -262,19 +223,19 @@ object McpToolRegistry {
           "child_steps" to arraySchema(featureImplementChildStepSchema()),
         ),
       ),
-      "feature_implement_workflow_continue" to objectSchema(
+      "feature_task_prose_workflow_continue" to objectSchema(
         properties = mapOf(
           "workflow_id" to stringSchema(),
           "issue_key" to stringSchema(),
           "subtask_id" to integerSchema,
         ),
       ),
-      "feature_implement_workflow_get" to workflowIdSchema(),
-      "feature_implement_workflow_latest" to emptyObjectSchema,
-      "feature_implement_workflow_list" to workflowListSchema(),
-      "feature_implement_workflow_open" to workflowOpenSchema(),
-      "feature_implement_workflow_resume" to workflowIdSchema(),
-      "feature_implement_workflow_update" to workflowUpdateSchema(
+      "feature_task_prose_workflow_get" to workflowIdSchema(),
+      "feature_task_prose_workflow_latest" to emptyObjectSchema,
+      "feature_task_prose_workflow_list" to workflowListSchema(),
+      "feature_task_prose_workflow_open" to workflowOpenSchema(),
+      "feature_task_prose_workflow_resume" to workflowIdSchema(),
+      "feature_task_prose_workflow_update" to workflowUpdateSchema(
         workflowStatusEnum = listOf("pending", "running", "completed", "failed", "abandoned", "blocked"),
         stepIdEnum = listOf(
           "assess",
@@ -350,49 +311,6 @@ object McpToolRegistry {
           "verdict",
           "finish",
         ),
-      ),
-      "feature_task_started" to objectSchema(
-        required = listOf(
-          "feature_size",
-          "issue_key",
-          "feature_name",
-        ),
-        properties = mapOf(
-          "feature_size" to stringSchema(enum = listOf("SMALL", "MEDIUM", "LARGE")),
-          "issue_key" to stringSchema(),
-          "feature_name" to stringSchema(),
-          "session_id" to stringSchema(),
-        ),
-      ),
-      "feature_task_finished" to objectSchema(
-        required = listOf(
-          "session_id",
-          "completion_status",
-          "completed_phase_ids",
-        ),
-        properties = mapOf(
-          "session_id" to stringSchema(),
-          "completion_status" to stringSchema(
-            enum = listOf("completed", "blocked", "decomposed_at_planning", "error"),
-          ),
-          "completed_phase_ids" to arraySchema(stringSchema()),
-          "phase_outcomes" to freeObjectSchema,
-          "review_fix_iteration_count" to integerSchema,
-          "audit_gap_iteration_count" to integerSchema,
-          "last_incomplete_phase" to stringSchema(),
-          "blocked_reason" to stringSchema(),
-          "resolved_branch" to stringSchema(),
-        ),
-      ),
-      "feature_task_workflow_continue" to workflowIdSchema(),
-      "feature_task_workflow_get" to workflowIdSchema(),
-      "feature_task_workflow_latest" to emptyObjectSchema,
-      "feature_task_workflow_list" to workflowListSchema(),
-      "feature_task_workflow_open" to workflowOpenSchema(),
-      "feature_task_workflow_resume" to workflowIdSchema(),
-      "feature_task_workflow_update" to workflowUpdateSchema(
-        workflowStatusEnum = listOf("pending", "running", "completed", "failed", "abandoned", "blocked"),
-        stepIdEnum = FeatureTaskRuntimePhaseWorkflowDefinition.definition.stepIds,
       ),
       "feature_task_runtime_started" to objectSchema(
         required = listOf(

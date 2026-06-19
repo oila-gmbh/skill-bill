@@ -17,6 +17,7 @@ import skillbill.application.model.WorkflowUpdateRequest
 import skillbill.application.model.WorkflowUpdateResult
 import skillbill.application.workflow.ContinuationStepResult
 import skillbill.application.workflow.DecompositionWorkflowContinuation
+import skillbill.application.workflow.WorkflowFamily
 import skillbill.application.workflow.WorkflowService
 import skillbill.application.workflow.alignSubtaskResumeStep
 import skillbill.application.workflow.decompositionRuntime
@@ -24,6 +25,7 @@ import skillbill.application.workflow.findDecomposedParentWorkflow
 import skillbill.application.workflow.repoRoot
 import skillbill.application.workflow.toRecord
 import skillbill.application.workflow.toSnapshot
+import skillbill.application.workflow.workflowFamily
 import skillbill.error.InvalidGoalObservabilityEventSchemaError
 import skillbill.error.InvalidGoalProgressEventSchemaError
 import skillbill.error.InvalidWorkflowStateSchemaError
@@ -87,7 +89,7 @@ class WorkflowServiceTest {
   @Test
   fun `open returns Ok with dbPath and snapshot`() {
     val service = newService()
-    val result = service.open(WorkflowFamilyKind.IMPLEMENT, sessionId = "fis-001")
+    val result = service.open(WorkflowFamilyKind.TASK_PROSE, sessionId = "fis-001")
     val ok = assertIs<WorkflowOpenResult.Ok>(result)
     assertEquals("running", ok.snapshot.workflowStatus)
     assertEquals("assess", ok.snapshot.currentStepId)
@@ -97,7 +99,7 @@ class WorkflowServiceTest {
   @Test
   fun `open returns Error for invalid step id`() {
     val service = newService()
-    val result = service.open(WorkflowFamilyKind.IMPLEMENT, currentStepId = "not-a-step")
+    val result = service.open(WorkflowFamilyKind.TASK_PROSE, currentStepId = "not-a-step")
     val error = assertIs<WorkflowOpenResult.Error>(result)
     assertTrue(error.error.contains("Invalid current_step_id"))
   }
@@ -108,7 +110,7 @@ class WorkflowServiceTest {
     // Validation-time error: invalid workflow_status string is rejected
     // before the unit of work runs, so the typed error carries no dbPath.
     val result = service.update(
-      WorkflowFamilyKind.IMPLEMENT,
+      WorkflowFamilyKind.TASK_PROSE,
       WorkflowUpdateRequest(
         workflowId = "irrelevant",
         workflowStatus = "not-a-status",
@@ -132,7 +134,7 @@ class WorkflowServiceTest {
     // envelope intentionally omitted `db_path` on this branch, so the
     // typed result must keep dbPath null even though the transaction ran.
     val result = service.update(
-      WorkflowFamilyKind.IMPLEMENT,
+      WorkflowFamilyKind.TASK_PROSE,
       WorkflowUpdateRequest(
         workflowId = "missing",
         workflowStatus = "running",
@@ -153,12 +155,12 @@ class WorkflowServiceTest {
   fun `list returns the opened workflow ids in expected order`() {
     val service = newService()
     val first = assertIs<WorkflowOpenResult.Ok>(
-      service.open(WorkflowFamilyKind.IMPLEMENT, sessionId = "fis-001"),
+      service.open(WorkflowFamilyKind.TASK_PROSE, sessionId = "fis-001"),
     )
     val second = assertIs<WorkflowOpenResult.Ok>(
-      service.open(WorkflowFamilyKind.IMPLEMENT, sessionId = "fis-002"),
+      service.open(WorkflowFamilyKind.TASK_PROSE, sessionId = "fis-002"),
     )
-    val result = service.list(WorkflowFamilyKind.IMPLEMENT)
+    val result = service.list(WorkflowFamilyKind.TASK_PROSE)
     assertEquals(2, result.workflowCount)
     assertEquals(2, result.workflows.size)
     assertEquals(
@@ -170,18 +172,32 @@ class WorkflowServiceTest {
   @Test
   fun `get returns Ok for known workflow`() {
     val service = newService()
-    val opened = assertIs<WorkflowOpenResult.Ok>(service.open(WorkflowFamilyKind.IMPLEMENT, sessionId = "fis-001"))
-    val got = service.get(WorkflowFamilyKind.IMPLEMENT, opened.workflowId)
+    val opened = assertIs<WorkflowOpenResult.Ok>(service.open(WorkflowFamilyKind.TASK_PROSE, sessionId = "fis-001"))
+    val got = service.get(WorkflowFamilyKind.TASK_PROSE, opened.workflowId)
     val ok = assertIs<WorkflowGetResult.Ok>(got)
     assertEquals(opened.workflowId, ok.workflowId)
   }
 
   @Test
+  fun `TASK_PROSE resolves to the persisted IMPLEMENT family so historical rows stay readable`() {
+    assertEquals(WorkflowFamily.IMPLEMENT, WorkflowFamilyKind.TASK_PROSE.workflowFamily())
+
+    val service = newService()
+    val opened = assertIs<WorkflowOpenResult.Ok>(service.open(WorkflowFamilyKind.TASK_PROSE, sessionId = "fis-001"))
+    assertTrue(
+      opened.workflowId.startsWith(WorkflowFamily.IMPLEMENT.definition.workflowIdPrefix),
+      "Workflow opened under TASK_PROSE must persist under the IMPLEMENT id prefix; got ${opened.workflowId}.",
+    )
+    val got = assertIs<WorkflowGetResult.Ok>(service.get(WorkflowFamilyKind.TASK_PROSE, opened.workflowId))
+    assertEquals(opened.workflowId, got.workflowId)
+  }
+
+  @Test
   fun `continueWorkflow with missing artifacts returns Standard with continue_status blocked`() {
     val service = newService()
-    val opened = assertIs<WorkflowOpenResult.Ok>(service.open(WorkflowFamilyKind.IMPLEMENT, sessionId = "fis-001"))
+    val opened = assertIs<WorkflowOpenResult.Ok>(service.open(WorkflowFamilyKind.TASK_PROSE, sessionId = "fis-001"))
     service.update(
-      WorkflowFamilyKind.IMPLEMENT,
+      WorkflowFamilyKind.TASK_PROSE,
       WorkflowUpdateRequest(
         workflowId = opened.workflowId,
         workflowStatus = "blocked",
@@ -192,7 +208,7 @@ class WorkflowServiceTest {
         artifactsPatch = mapOf("preplan_digest" to mapOf("ok" to true)),
       ),
     )
-    val continued = service.continueWorkflow(WorkflowFamilyKind.IMPLEMENT, opened.workflowId)
+    val continued = service.continueWorkflow(WorkflowFamilyKind.TASK_PROSE, opened.workflowId)
     val standard = assertIs<WorkflowContinueResult.Standard>(continued)
     assertEquals("blocked", standard.view.continueStatus)
     assertEquals(listOf("plan"), standard.view.resume.missingArtifacts)
@@ -234,10 +250,10 @@ class WorkflowServiceTest {
       decompositionManifestValidator = testDecompositionManifestValidator,
     )
     assertFailsWith<InvalidWorkflowStateSchemaError> {
-      service.get(WorkflowFamilyKind.IMPLEMENT, "wfl-loud")
+      service.get(WorkflowFamilyKind.TASK_PROSE, "wfl-loud")
     }
     assertFailsWith<InvalidWorkflowStateSchemaError> {
-      service.continueWorkflow(WorkflowFamilyKind.IMPLEMENT, "wfl-loud")
+      service.continueWorkflow(WorkflowFamilyKind.TASK_PROSE, "wfl-loud")
     }
   }
 
@@ -264,7 +280,7 @@ class WorkflowServiceTest {
 
     assertFailsWith<InvalidWorkflowStateSchemaError> {
       service.update(
-        WorkflowFamilyKind.IMPLEMENT,
+        WorkflowFamilyKind.TASK_PROSE,
         WorkflowUpdateRequest(
           workflowId = "wfl-update-loud",
           workflowStatus = "running",
@@ -287,10 +303,10 @@ class WorkflowServiceTest {
       decompositionManifestValidator = testDecompositionManifestValidator,
       goalObservabilityEventValidator = testGoalObservabilityEventValidator,
     )
-    val opened = assertIs<WorkflowOpenResult.Ok>(service.open(WorkflowFamilyKind.IMPLEMENT, sessionId = "fis-001"))
+    val opened = assertIs<WorkflowOpenResult.Ok>(service.open(WorkflowFamilyKind.TASK_PROSE, sessionId = "fis-001"))
 
     val updated = service.update(
-      WorkflowFamilyKind.IMPLEMENT,
+      WorkflowFamilyKind.TASK_PROSE,
       WorkflowUpdateRequest(
         workflowId = opened.workflowId,
         workflowStatus = "running",
@@ -319,7 +335,7 @@ class WorkflowServiceTest {
     val ok = assertIs<WorkflowUpdateResult.Ok>(updated)
     assertProgressEventAcknowledgement(ok)
     val persisted = assertIs<WorkflowGetResult.Ok>(
-      service.get(WorkflowFamilyKind.IMPLEMENT, opened.workflowId),
+      service.get(WorkflowFamilyKind.TASK_PROSE, opened.workflowId),
     )
     assertPersistedProgressEventArtifacts(persisted, opened.workflowId)
   }
@@ -984,9 +1000,9 @@ class WorkflowUpdateAcknowledgementBudgetTest {
     // + read-only full-state guidance — never the full durable artifacts map or
     // the full per-step list.
     val service = newAckBudgetService()
-    val opened = assertIs<WorkflowOpenResult.Ok>(service.open(WorkflowFamilyKind.IMPLEMENT, sessionId = "fis-001"))
+    val opened = assertIs<WorkflowOpenResult.Ok>(service.open(WorkflowFamilyKind.TASK_PROSE, sessionId = "fis-001"))
     val updated = service.update(
-      WorkflowFamilyKind.IMPLEMENT,
+      WorkflowFamilyKind.TASK_PROSE,
       WorkflowUpdateRequest(
         workflowId = opened.workflowId,
         workflowStatus = "running",

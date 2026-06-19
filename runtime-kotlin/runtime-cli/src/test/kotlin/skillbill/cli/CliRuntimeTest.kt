@@ -677,7 +677,7 @@ class CliRuntimeTest {
     val payload = decodeJsonObject(result.stdout)
 
     assertEquals(1, result.exitCode)
-    assertEquals("No feature-implement workflows found.", payload["error"])
+    assertEquals("No feature-task-prose workflows found.", payload["error"])
     assertEquals(tempDir.resolve(".skill-bill/review-metrics.db").toString(), payload["db_path"])
   }
 

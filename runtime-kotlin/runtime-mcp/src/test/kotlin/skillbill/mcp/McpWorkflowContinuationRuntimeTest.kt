@@ -23,15 +23,15 @@ class McpWorkflowContinuationRuntimeTest {
   fun `mcp workflow continue accepts decomposed parent issue key`() {
     val fixture = mcpDecompositionFixture()
     val opened = McpWorkflowRuntime.open(
-      WorkflowFamilyKind.IMPLEMENT,
+      WorkflowFamilyKind.TASK_PROSE,
       sessionId = "fis-mcp-decomp",
       context = fixture.context,
     )
     val workflowId = opened["workflow_id"] as String
 
-    McpWorkflowRuntime.update(WorkflowFamilyKind.IMPLEMENT, fixture.updateRequest(workflowId), fixture.context)
+    McpWorkflowRuntime.update(WorkflowFamilyKind.TASK_PROSE, fixture.updateRequest(workflowId), fixture.context)
     val continued = McpWorkflowRuntime.continueWorkflow(
-      WorkflowFamilyKind.IMPLEMENT,
+      WorkflowFamilyKind.TASK_PROSE,
       "SKILL-51",
       fixture.context,
       subtaskId = 1,
@@ -55,15 +55,15 @@ class McpWorkflowContinuationRuntimeTest {
   fun `mcp workflow continue handler forwards requested decomposed subtask constraint`() {
     val fixture = mcpDecompositionFixture()
     val opened = McpWorkflowRuntime.open(
-      WorkflowFamilyKind.IMPLEMENT,
+      WorkflowFamilyKind.TASK_PROSE,
       sessionId = "fis-mcp-decomp",
       context = fixture.context,
     )
     val workflowId = opened["workflow_id"] as String
 
-    McpWorkflowRuntime.update(WorkflowFamilyKind.IMPLEMENT, fixture.updateRequest(workflowId), fixture.context)
+    McpWorkflowRuntime.update(WorkflowFamilyKind.TASK_PROSE, fixture.updateRequest(workflowId), fixture.context)
     val continued = workflowContinue(
-      WorkflowFamilyKind.IMPLEMENT,
+      WorkflowFamilyKind.TASK_PROSE,
       mapOf("issue_key" to "SKILL-51", "subtask_id" to 2),
       fixture.context,
     )
