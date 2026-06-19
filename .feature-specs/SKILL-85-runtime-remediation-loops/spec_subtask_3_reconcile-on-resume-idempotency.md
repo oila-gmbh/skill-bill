@@ -1,5 +1,5 @@
 ---
-status: Draft
+status: Complete
 ---
 
 # SKILL-85 Subtask 3 - Reconcile-on-Resume Idempotency for Mutating Phases

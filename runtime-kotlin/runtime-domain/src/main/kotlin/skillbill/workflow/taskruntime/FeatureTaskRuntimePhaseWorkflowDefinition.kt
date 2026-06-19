@@ -31,6 +31,15 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
   const val PHASE_COMMIT_PUSH: String = "commit_push"
   const val PHASE_PR: String = "pr"
 
+  // Mutating phases reconcile the working tree to an intended target state. They are the phases the
+  // idempotency contract governs: re-entering or resuming one must converge to target, treating an
+  // already-applied change as a no-op rather than re-applying it. Today only `implement` mutates from
+  // intended-state plan inputs; a future `implement_fix` joins this set, so callers MUST consult this
+  // predicate rather than hardcoding a single phase id.
+  private val MUTATING_PHASES: Set<String> = setOf(PHASE_IMPLEMENT)
+
+  fun isMutatingPhase(phaseId: String): Boolean = phaseId in MUTATING_PHASES
+
   val definition: WorkflowDefinition = WorkflowDefinition(
     skillName = "bill-feature-task",
     workflowName = "bill-feature-task",

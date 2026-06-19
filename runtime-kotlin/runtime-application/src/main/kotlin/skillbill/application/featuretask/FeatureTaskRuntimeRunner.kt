@@ -218,8 +218,17 @@ class FeatureTaskRuntimeRunner(
         }
         is FeatureTaskRuntimeNextPhase.Next -> {
           transition.loopId?.let { loopId ->
+            // Remediation checkpoint: just after a verifier-passing iteration and before a backward
+            // edge re-enters a mutating phase, snapshot the known-clean tree on the feature branch so
+            // a crash mid mutating-phase resumes from a reconcilable boundary. A failed checkpoint
+            // blocks loudly rather than re-entering a mutating phase on a dirty tree.
+            if (reentersMutatingPhase(requireNotNull(edge), transition.phaseId) &&
+              !establishRemediationCheckpoint(phaseId)
+            ) {
+              return null
+            }
             recordBackwardEdge(
-              edge = requireNotNull(edge),
+              edge = edge,
               destinationPhaseId = transition.phaseId,
               loopId = loopId,
               edgeIteration = requireNotNull(transition.edgeIteration),
@@ -229,6 +238,63 @@ class FeatureTaskRuntimeRunner(
           transition.phaseId
         }
       }
+    }
+
+    // True when the span reopened by [edge] (destination through source) contains a mutating phase,
+    // so the upcoming re-entry could resume a mutating phase on a partially-applied tree.
+    private fun reentersMutatingPhase(edge: FeatureTaskRuntimeBackwardEdge, destinationPhaseId: String): Boolean {
+      val destinationIndex = transitions.forwardPhaseIds.indexOf(destinationPhaseId)
+      val sourceIndex = transitions.forwardPhaseIds.indexOf(edge.fromPhaseId)
+      val span = if (destinationIndex in 0..sourceIndex) {
+        transitions.forwardPhaseIds.subList(destinationIndex, sourceIndex + 1)
+      } else {
+        listOf(destinationPhaseId)
+      }
+      return span.any(FeatureTaskRuntimePhaseWorkflowDefinition::isMutatingPhase)
+    }
+
+    // Snapshots a known-clean boundary before re-entering a mutating phase. A no-op when the tree is
+    // already clean or the feature branch is not resolved / is protected (a real run reaches a
+    // mutating-phase backward edge only after branch setup, but guard anyway so we never commit on a
+    // protected/default branch). Reaches git ONLY through phaseGates.gitOperations and never pushes,
+    // so suppress_pr/goal-continuation is honored: the checkpoint commit is the single added durable
+    // boundary, not an early push. Returns true to continue, false after blocking loudly on a failed
+    // worktree read or commit so the run never silently re-enters a mutating phase on a dirty tree.
+    private fun establishRemediationCheckpoint(precedingPhaseId: String): Boolean {
+      val branch = resolvedBranch ?: return true
+      if (FeatureTaskRuntimeBranchSetup.protectedBranchName(branch) != null) {
+        return true
+      }
+      // The protected-branch guard inspects resolvedBranch, but the commit lands on actual HEAD. If
+      // the two disagree (defensive: a real run never reaches here on a different HEAD), skip the
+      // checkpoint so the guard and the commit target stay in agreement — never force-switch or block.
+      val head = phaseGates.gitOperations.currentBranch(request.repoRoot)
+      if (!head.ok || head.value.trim() != branch.trim()) {
+        return true
+      }
+      val status = phaseGates.gitOperations.worktreeStatus(request.repoRoot)
+      return when {
+        !status.ok -> blockCheckpoint(precedingPhaseId, branch, status.error)
+        status.value.isBlank() -> true // clean tree: nothing to checkpoint
+        else -> commitCheckpoint(precedingPhaseId, branch)
+      }
+    }
+
+    // Stages the full tree then commits it as a checkpoint; blocks loudly when staging or the commit
+    // fails. Agents never `git add`, so the dirty tree is unstaged — staging first is what makes the
+    // commit (which has no implicit staging) snapshot the worktree instead of an empty index.
+    private fun commitCheckpoint(precedingPhaseId: String, branch: String): Boolean {
+      val staged = phaseGates.gitOperations.stageAll(request.repoRoot)
+      if (!staged.ok) {
+        return blockCheckpoint(precedingPhaseId, branch, staged.error)
+      }
+      val commit = phaseGates.gitOperations.createCommit(request.repoRoot, remediationCheckpointMessage(branch))
+      return if (commit.ok) true else blockCheckpoint(precedingPhaseId, branch, commit.error)
+    }
+
+    private fun blockCheckpoint(precedingPhaseId: String, branch: String, error: String): Boolean {
+      blockAt(precedingPhaseId, remediationCheckpointBlockedReason(branch, error))
+      return false
     }
 
     private fun matchingBackwardEdge(
@@ -447,6 +513,16 @@ class FeatureTaskRuntimeRunner(
     }
   }
 
+  // The fixed checkpoint commit message; reconciliation checkpoints are bookkeeping commits the
+  // mutating-phase re-entry resumes from, not feature commits.
+  private fun remediationCheckpointMessage(branch: String): String =
+    "chore(skill-bill): remediation checkpoint on '$branch' before mutating-phase re-entry"
+
+  private fun remediationCheckpointBlockedReason(branch: String, error: String): String =
+    "Feature-task-runtime could not establish a remediation checkpoint on the feature branch '$branch' " +
+      "before re-entering a mutating phase" + (if (error.isBlank()) "." else " ($error).") +
+      " Refusing to re-enter a mutating phase on a dirty, non-reconcilable tree."
+
   // The bounded fix-loop block reason shape, applied to a backward-edge cap: loud, with the loop id,
   // the exhausted iteration count, and the unresolved verdict.
   private fun capExhaustionReason(loopId: String, edgeIteration: Int, verdict: FeatureTaskRuntimeVerdict): String =
@@ -548,8 +624,13 @@ class FeatureTaskRuntimeRunner(
     // The resumed iteration may already exceed the bounded budget (e.g. a fix-loop phase that
     // burned the cap on a prior run with no valid artifact). Block before launching rather than
     // relaunching the agent and bypassing the budget across resumes/crashes.
+    // A re-entered phase must carry its loop context onto every block so a crash-at-blocked-re-entry
+    // does not reset the per-edge watermark; blockAndPersistInPhase forwards run.reentry (null and
+    // thus byte-for-byte unchanged on a forward launch). Now that implement is a bounded fix loop,
+    // an exhausted-budget or schema-gate (incl. the reconciliation-gate rejection) block on a
+    // re-entered mutating phase routes through this same loop-context-preserving path.
     FeatureTaskRuntimeFixLoopPolicy.blockReasonIfBudgetExhausted(run.phaseId, iteration)?.let { reason ->
-      return blockAndPersist(run, iteration, reason, observability)
+      return blockAndPersistInPhase(run, iteration, reason, observability)
     }
     observability.started(run.phaseId, agentId, iteration, iteration > 1 || state.hasPriorRecord(run.phaseId))
     var outcome: PhaseOutcome? = null
@@ -562,7 +643,7 @@ class FeatureTaskRuntimeRunner(
             observability.fixLoopIteration(run.phaseId, agentId, decision.nextIteration, decision.fixLoopIteration)
             null
           }
-          is FeatureTaskRuntimeFixLoopDecision.Block -> blockAndPersist(
+          is FeatureTaskRuntimeFixLoopDecision.Block -> blockAndPersistInPhase(
             run,
             iteration,
             withSchemaGateDetail(decision.blockedReason, requireNotNull(attempt.schemaInvalidReason)),
@@ -654,7 +735,11 @@ class FeatureTaskRuntimeRunner(
         } else {
           AttemptResult.settled(blockAndPersistInPhase(run, iteration, reason, observability))
         }
-      } ?: run {
+        // A mutating phase that reports `completed` but omits the reconciliation report has not
+        // proven it reconciled the tree to target; the idempotency contract is verified, not assumed,
+        // so route the silent skip through the SAME loud schema-gate failure path as bad output. The
+        // fix loop then retries and ultimately blocks rather than advancing on an unverified mutation.
+      } ?: mutatingReconciliationGateReason(run.phaseId, outputMap)?.let(AttemptResult::schemaInvalid) ?: run {
         persistPhase(run, iteration, STATUS_COMPLETED, finished = true, outputArtifact = outputText)
         observability.completed(run.phaseId, run.resolvedAgent.resolvedAgentId, iteration)
         AttemptResult.settled(
@@ -937,6 +1022,30 @@ class FeatureTaskRuntimeRunner(
         phases.takeWhile { it != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PR }
       } else {
         phases
+      }
+    }
+
+    // Verifies the mutating-phase idempotency contract from a `completed` output rather than assuming
+    // it: a mutating phase MUST report a reconciliation report (a `reconciled_state` object or
+    // `reconciled` flag set true) in produced_outputs proving it reconciled the tree to target. A
+    // missing or non-true flag returns a loud reason routed through the schema-gate failure path.
+    // Returns null for every non-mutating phase and for a satisfied report. Pure: no IO, no mutation.
+    private fun mutatingReconciliationGateReason(phaseId: String, outputMap: Map<String, Any?>): String? {
+      if (!FeatureTaskRuntimePhaseWorkflowDefinition.isMutatingPhase(phaseId)) {
+        return null
+      }
+      // Reconciliation is proven when produced_outputs carries a `reconciled_state` object whose
+      // `reconciled` is boolean true, or a top-level `reconciled` boolean true.
+      val producedOutputs = outputMap["produced_outputs"] as? Map<*, *>
+      val nestedReconciled = (producedOutputs?.get("reconciled_state") as? Map<*, *>)?.get("reconciled")
+      val reconciled = nestedReconciled == true || producedOutputs?.get("reconciled") == true
+      return if (reconciled) {
+        null
+      } else {
+        "Mutating phase '$phaseId' reported 'completed' without a reconciliation report proving it " +
+          "reconciled the working tree to target: produced_outputs must carry 'reconciled_state' (or a " +
+          "'reconciled' entry) with 'reconciled' set to true. The idempotency contract is verified, not " +
+          "assumed; a silent skip fails the schema gate."
       }
     }
 

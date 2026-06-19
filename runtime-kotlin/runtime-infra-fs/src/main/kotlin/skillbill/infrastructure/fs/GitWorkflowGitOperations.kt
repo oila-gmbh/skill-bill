@@ -63,6 +63,8 @@ class GitWorkflowGitOperations : WorkflowGitOperations {
   override fun currentBranch(repoRoot: Path): WorkflowGitOperationResult =
     runGitCommand(repoRoot, "branch", "--show-current")
 
+  override fun stageAll(repoRoot: Path): WorkflowGitOperationResult = runGitCommand(repoRoot, "add", "-A")
+
   override fun createCommit(repoRoot: Path, message: String): WorkflowGitOperationResult {
     val commit = runGitCommand(repoRoot, "commit", "-m", message)
     return if (commit.ok) runGitCommand(repoRoot, "rev-parse", "HEAD") else commit

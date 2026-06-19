@@ -74,6 +74,16 @@ properties:
       (strings, arrays, nested objects all occur), so they are left open; the
       envelope guarantees the field is present, carries at least one entry
       (an empty `{}` blocks the run), and uses only non-empty string keys.
+      Mutating phases (e.g. `implement`) additionally MUST carry a
+      reconciliation report — a `reconciled_state` object (or a `reconciled`
+      entry) with `reconciled` set to true plus evidence that the changed
+      files are at their intended target state — so the runtime can verify
+      (not assume) the mutating-phase idempotency contract: the phase
+      reconciled the working tree to target rather than re-applying or
+      silently skipping. The runtime enforces this per-phase reconciliation
+      check at the gate; it is documented here for authors. This is a
+      description-only clarification and adds no JSON-Schema constraint, so
+      the contract_version is unchanged.
     minProperties: 1
     propertyNames:
       type: string
