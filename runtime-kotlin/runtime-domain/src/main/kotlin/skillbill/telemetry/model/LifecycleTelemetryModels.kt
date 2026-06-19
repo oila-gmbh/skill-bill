@@ -59,6 +59,9 @@ data class FeatureTaskRuntimeFinishedRecord(
   // The durable review-fix loop iteration count, so finished telemetry reflects the review->fix
   // iteration count (AC6). Zero when the loop never fired.
   val reviewFixIterationCount: Int = 0,
+  // The durable audit-gap loop iteration count, so finished telemetry reflects the audit->plan
+  // iteration count (AC7). Zero when the loop never fired.
+  val auditGapIterationCount: Int = 0,
 )
 
 data class QualityCheckStartedRecord(

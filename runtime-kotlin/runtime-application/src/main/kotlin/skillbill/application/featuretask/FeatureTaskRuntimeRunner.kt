@@ -25,6 +25,8 @@ import skillbill.workflow.model.SpecSource
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeTransitionFunction
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditCriterionGap
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditVerdict
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeBackwardEdge
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationOutcome
@@ -105,6 +107,10 @@ class FeatureTaskRuntimeRunner(
     // Sourced from the runtime's own durable ledger, never agent-self-reported, and resolved lazily
     // inside the telemetry seam's failure isolation so loading it cannot abort or falsely-fail the run.
     val reviewFixIterationCount = { loadReviewFixIterationCount(runRequest) }
+    // The durable audit-gap loop iteration count for the finished telemetry (AC7): the highest
+    // `audit_gap` per-edge watermark from the LOOP_EDGE ledger (0 when the loop never fired), sourced
+    // from the runtime's own ledger and resolved lazily inside the telemetry seam's failure isolation.
+    val auditGapIterationCount = { loadAuditGapIterationCount(runRequest) }
     val transitions = transitionsFor(runRequest)
     val report = runCatching {
       val state = RunState(
@@ -122,6 +128,7 @@ class FeatureTaskRuntimeRunner(
         telemetrySessionId,
         phaseOutcomes,
         reviewFixIterationCount,
+        auditGapIterationCount,
         runRequest.dbPathOverride,
       )
     }.getOrThrow()
@@ -133,19 +140,36 @@ class FeatureTaskRuntimeRunner(
       terminalReport,
       phaseOutcomes,
       reviewFixIterationCount,
+      auditGapIterationCount,
       runRequest.dbPathOverride,
     )
     return terminalReport
   }
 
-  // The highest durable `review_fix` per-edge iteration recorded on the LOOP_EDGE ledger (0 when the
-  // loop never fired): the runtime-owned review->fix iteration count for finished telemetry (AC6).
+  // The highest per-iteration `review_fix` fix count for finished telemetry (AC6), read from the
+  // runtime-owned LOOP_EDGE ledger (0 when the loop never fired). The review_fix counter resets to 1
+  // per audit_gap iteration (AC5), so each ledger segment runs 1..n monotonically before the next
+  // iteration restarts at 1; the max edge_iteration across the ledger is therefore the largest
+  // single-iteration fix count, NOT a cross-iteration sum — it never over-reports a converged run.
   private fun loadReviewFixIterationCount(request: FeatureTaskRuntimeRunRequest): Int =
     recorder.loadPhaseLedger(request.workflowId, request.dbPathOverride)
       .orEmpty()
       .filter {
         it.action == FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE &&
           it.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID
+      }
+      .mapNotNull { it.edgeIteration }
+      .maxOrNull()
+      ?: 0
+
+  // The highest durable `audit_gap` per-edge iteration recorded on the LOOP_EDGE ledger (0 when the
+  // loop never fired): the runtime-owned audit->plan iteration count for finished telemetry (AC7).
+  private fun loadAuditGapIterationCount(request: FeatureTaskRuntimeRunRequest): Int =
+    recorder.loadPhaseLedger(request.workflowId, request.dbPathOverride)
+      .orEmpty()
+      .filter {
+        it.action == FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE &&
+          it.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID
       }
       .mapNotNull { it.edgeIteration }
       .maxOrNull()
@@ -276,16 +300,25 @@ class FeatureTaskRuntimeRunner(
 
     // True when the span reopened by [edge] (destination through source) contains a mutating phase,
     // so the upcoming re-entry could resume a mutating phase on a partially-applied tree.
-    private fun reentersMutatingPhase(edge: FeatureTaskRuntimeBackwardEdge, destinationPhaseId: String): Boolean {
+    private fun reentersMutatingPhase(edge: FeatureTaskRuntimeBackwardEdge, destinationPhaseId: String): Boolean =
+      spanBetween(destinationPhaseId, edge.fromPhaseId).any(FeatureTaskRuntimePhaseWorkflowDefinition::isMutatingPhase)
+
+    // The forward span an edge reopens, destination through source inclusive; falls back to the
+    // destination alone when the indices do not bracket (defensive — a real edge always brackets).
+    private fun spanBetween(destinationPhaseId: String, sourcePhaseId: String): List<String> {
       val destinationIndex = transitions.forwardPhaseIds.indexOf(destinationPhaseId)
-      val sourceIndex = transitions.forwardPhaseIds.indexOf(edge.fromPhaseId)
-      val span = if (destinationIndex in 0..sourceIndex) {
+      val sourceIndex = transitions.forwardPhaseIds.indexOf(sourcePhaseId)
+      return if (destinationIndex in 0..sourceIndex) {
         transitions.forwardPhaseIds.subList(destinationIndex, sourceIndex + 1)
       } else {
         listOf(destinationPhaseId)
       }
-      return span.any(FeatureTaskRuntimePhaseWorkflowDefinition::isMutatingPhase)
     }
+
+    // The reopened span of a nested backward edge (its destination through its source), the set of
+    // phase records whose stale per-edge watermark must be cleared when the nested loop resets.
+    private fun nestedLoopSpan(edge: FeatureTaskRuntimeBackwardEdge): List<String> =
+      spanBetween(edge.destinationPhaseId, edge.fromPhaseId)
 
     // Snapshots a known-clean boundary before re-entering a mutating phase. A no-op when the tree is
     // already clean or the feature branch is not resolved / is protected (a real run reaches a
@@ -349,16 +382,30 @@ class FeatureTaskRuntimeRunner(
       edgeIteration: Int,
       verdict: FeatureTaskRuntimeVerdict,
     ) {
-      val destinationIndex = transitions.forwardPhaseIds.indexOf(destinationPhaseId)
-      val sourceIndex = transitions.forwardPhaseIds.indexOf(edge.fromPhaseId)
-      if (destinationIndex in 0..sourceIndex) {
-        transitions.forwardPhaseIds.subList(destinationIndex, sourceIndex + 1)
-          .forEach(state::reopenForReentry)
-      } else {
-        state.reopenForReentry(destinationPhaseId)
-      }
+      val reopenedSpan = spanBetween(destinationPhaseId, edge.fromPhaseId)
+      reopenedSpan.forEach(state::reopenForReentry)
+      // A wider edge that reopens a span containing a nested loop's source restarts that nested loop:
+      // the re-run is a fresh verification cycle, so the nested per-edge counter (e.g. review_fix when
+      // audit_gap reopens [plan, audit]) resets per outer iteration while this edge's own counter is
+      // independent (AC5). The reset is made DURABLE: the per-phase record edge context is the resume
+      // source of truth, so the nested loop's span records must be stripped of their pre-reset
+      // watermark too — otherwise a crash after the reset (and before the nested span re-runs) would
+      // re-import the pre-reset count on resume and deny the fresh per-iteration budget.
+      transitions.backwardEdges
+        .filter { it.loopId != loopId && it.fromPhaseId in reopenedSpan }
+        .forEach { nested ->
+          state.resetEdgeIteration(nested.loopId)
+          recorder.clearBackwardEdgeContext(request.workflowId, nestedLoopSpan(nested), request.dbPathOverride)
+        }
       state.recordEdgeIteration(loopId, edgeIteration)
-      pendingReentry = PendingReentry(destinationPhaseId, loopId, edgeIteration, verdict)
+      // An audit_gap re-entry scopes the re-plan/re-implement to the failing criteria the source audit
+      // carried; a review_fix re-entry carries none (its findings flow through drivingVerdict).
+      val reentryGapCriteria = if (loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID) {
+        state.unmetAuditCriteria(edge.fromPhaseId)
+      } else {
+        emptyList()
+      }
+      pendingReentry = PendingReentry(destinationPhaseId, loopId, edgeIteration, verdict, reentryGapCriteria)
       observability.loopEdge(destinationPhaseId, loopId, edgeIteration, verdict)
     }
 
@@ -523,12 +570,22 @@ class FeatureTaskRuntimeRunner(
     // iteration count, and the unresolved verdict in the reason, consistent with every other block
     // path. Reuses blockAndPersist so the terminal blocked record and observability.blocked agree.
     private fun blockOnCapExhaustion(phaseId: String, transition: FeatureTaskRuntimeNextPhase.TerminalBlock) {
-      val unresolvedFindings = state.unresolvedReviewFindings(phaseId)
+      val unresolvedFindings = if (transition.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID) {
+        emptyList()
+      } else {
+        state.unresolvedReviewFindings(phaseId)
+      }
+      val unmetCriteria = if (transition.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID) {
+        state.unmetAuditCriteria(phaseId)
+      } else {
+        emptyList()
+      }
       val reason = capExhaustionReason(
         transition.loopId,
         transition.edgeIteration,
         transition.unresolvedVerdict,
         unresolvedFindings,
+        unmetCriteria,
       )
       val run = PhaseRun(
         phaseId = phaseId,
@@ -571,6 +628,7 @@ class FeatureTaskRuntimeRunner(
     edgeIteration: Int,
     verdict: FeatureTaskRuntimeVerdict,
     unresolvedFindings: List<FeatureTaskRuntimeReviewFinding> = emptyList(),
+    unmetCriteria: List<String> = emptyList(),
   ): String {
     val findingsSuffix = if (unresolvedFindings.isEmpty()) {
       ""
@@ -578,9 +636,14 @@ class FeatureTaskRuntimeRunner(
       " Unresolved findings: " +
         unresolvedFindings.joinToString("; ") { "[${it.severity.wireValue}] ${it.message}" } + "."
     }
+    val criteriaSuffix = if (unmetCriteria.isEmpty()) {
+      ""
+    } else {
+      " Unmet criteria: " + unmetCriteria.joinToString("; ") + "."
+    }
     return "Backward-edge loop '$loopId' exhausted its per-edge cap after $edgeIteration iteration(s) with the " +
       "verdict '${verdict.wireValue}' still unresolved; the run blocks rather than re-entering past the cap." +
-      findingsSuffix
+      findingsSuffix + criteriaSuffix
   }
 
   private sealed interface PhaseSettlement {
@@ -601,6 +664,8 @@ class FeatureTaskRuntimeRunner(
     val loopId: String,
     val edgeIteration: Int,
     val drivingVerdict: FeatureTaskRuntimeVerdict,
+    // The failing acceptance criteria scoping an `audit_gap` re-entry; empty for a review_fix re-entry.
+    val reentryGapCriteria: List<String> = emptyList(),
   )
 
   @Suppress("LongParameterList") // one cohesive launch context; bundling would only hide the seam
@@ -804,7 +869,8 @@ class FeatureTaskRuntimeRunner(
         // so the fix loop retries and ultimately blocks rather than silently advancing to audit. An
         // explicit empty findings array or an explicit verdict still legitimately advances.
       } ?: mutatingReconciliationGateReason(run.phaseId, outputMap)?.let(AttemptResult::schemaInvalid)
-        ?: reviewVerificationSignalGateReason(run.phaseId, outputMap)?.let(AttemptResult::schemaInvalid) ?: run {
+        ?: reviewVerificationSignalGateReason(run.phaseId, outputMap)?.let(AttemptResult::schemaInvalid)
+        ?: auditVerificationSignalGateReason(run.phaseId, outputMap)?.let(AttemptResult::schemaInvalid) ?: run {
         persistPhase(run, iteration, STATUS_COMPLETED, finished = true, outputArtifact = outputText)
         observability.completed(run.phaseId, run.resolvedAgent.resolvedAgentId, iteration)
         AttemptResult.settled(
@@ -845,6 +911,7 @@ class FeatureTaskRuntimeRunner(
       runInvariants = run.request.runInvariants,
       recordedOutputs = state.outputs(),
       drivingVerdict = run.reentry?.drivingVerdict,
+      reentryGapCriteria = auditGapCriteriaFor(run, state),
     )
     val briefing = FeatureTaskRuntimePhaseBriefingAssembler.assemble(handoff)
     recorder.recordPhaseBriefing(run.request.workflowId, briefing, run.request.dbPathOverride)
@@ -869,6 +936,28 @@ class FeatureTaskRuntimeRunner(
       ),
     )
     return reconcileLaunch(run.phaseId, outcome)
+  }
+
+  // The failing acceptance criteria scoping an audit_gap re-entry's briefing. The reopened `[plan,
+  // audit]` span re-enters `plan` (carried directly on the pending re-entry) then forward-launches
+  // `implement`; for both, the criteria are the ones the latest audit output recorded, so the
+  // re-implement addresses the same gaps as the re-plan. Empty for every other phase and on a forward
+  // run with no audit output yet, keeping those briefings byte-for-byte unchanged.
+  private fun auditGapCriteriaFor(run: PhaseRun, state: RunState): List<String> {
+    run.reentry
+      ?.takeIf { it.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID }
+      ?.reentryGapCriteria
+      ?.let { return it }
+    val scopedPhases = setOf(
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN,
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT,
+    )
+    val auditGapFired =
+      state.edgeIterationCount(FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID) > 0
+    if (run.phaseId !in scopedPhases || !auditGapFired) {
+      return emptyList()
+    }
+    return state.unmetAuditCriteria(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT)
   }
 
   private fun reconcileLaunch(phaseId: String, outcome: AgentRunLaunchOutcome): LaunchResult = when (outcome) {
@@ -1022,6 +1111,16 @@ class FeatureTaskRuntimeRunner(
       liveClaimedLoops += loopId
     }
 
+    // Clears a nested loop's live per-edge counter so its next fire restarts at iteration 1. Used when a
+    // wider backward edge reopens a span containing the nested loop's source: that re-run is a FRESH
+    // verification cycle, so the nested cap (e.g. review_fix) counts within the new outer iteration, not
+    // across the whole run (AC5 — the review_fix counter resets per audit-gap iteration; the audit_gap
+    // counter is independent and never reset).
+    fun resetEdgeIteration(loopId: String) {
+      edgeIterationByLoop.remove(loopId)
+      liveClaimedLoops.remove(loopId)
+    }
+
     fun isLoopLiveClaimed(loopId: String): Boolean = loopId in liveClaimedLoops
 
     // A backward edge re-enters the phase: drop its completed marker so the driver relaunches it.
@@ -1084,14 +1183,41 @@ class FeatureTaskRuntimeRunner(
       val wireVerdict = (outputObject?.get("verdict") as? String)
         ?.takeIf(String::isNotBlank)
         ?.let(FeatureTaskRuntimeVerdict::fromWire)
-      if (phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW) {
-        val reviewVerdict = reviewVerdictFrom(outputObject)
-        if (reviewVerdict?.unresolvedFindings?.isNotEmpty() == true) {
-          return FeatureTaskRuntimeVerdict.CHANGES_REQUESTED
-        }
-        return wireVerdict ?: reviewVerdict?.verdict ?: FeatureTaskRuntimeVerdict.ADVANCE
+      return when (phaseId) {
+        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW -> reviewClassification(outputObject, wireVerdict)
+        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT -> auditClassification(outputObject, wireVerdict)
+        else -> wireVerdict ?: FeatureTaskRuntimeVerdict.ADVANCE
       }
-      return wireVerdict ?: FeatureTaskRuntimeVerdict.ADVANCE
+    }
+
+    // A review CLASSIFIES from its carried findings so prose alone cannot advance past a Blocker/Major:
+    // any unresolved Blocker/Major forces CHANGES_REQUESTED; otherwise the wire/derived verdict (or
+    // ADVANCE) applies.
+    private fun reviewClassification(
+      outputObject: Map<String, Any?>?,
+      wireVerdict: FeatureTaskRuntimeVerdict?,
+    ): FeatureTaskRuntimeVerdict {
+      val reviewVerdict = reviewVerdictFrom(outputObject)
+      return if (reviewVerdict?.unresolvedFindings?.isNotEmpty() == true) {
+        FeatureTaskRuntimeVerdict.CHANGES_REQUESTED
+      } else {
+        wireVerdict ?: reviewVerdict?.verdict ?: FeatureTaskRuntimeVerdict.ADVANCE
+      }
+    }
+
+    // An audit CLASSIFIES from its unmet criteria so prose alone cannot advance past an unmet
+    // acceptance criterion: any unmet criterion forces GAPS_FOUND; otherwise the wire/derived verdict
+    // (or ADVANCE) applies.
+    private fun auditClassification(
+      outputObject: Map<String, Any?>?,
+      wireVerdict: FeatureTaskRuntimeVerdict?,
+    ): FeatureTaskRuntimeVerdict {
+      val auditVerdict = auditVerdictFrom(outputObject)
+      return if (auditVerdict?.unmetCriteria?.isNotEmpty() == true) {
+        FeatureTaskRuntimeVerdict.GAPS_FOUND
+      } else {
+        wireVerdict ?: auditVerdict?.verdict ?: FeatureTaskRuntimeVerdict.ADVANCE
+      }
     }
 
     // The structured review verdict decoded from a parsed review output's `produced_outputs.findings`
@@ -1119,6 +1245,36 @@ class FeatureTaskRuntimeRunner(
       ?.let(JsonSupport::anyToStringAnyMap)
       ?.let(::reviewVerdictFrom)
       ?.unresolvedFindings
+      .orEmpty()
+
+    // The structured audit verdict decoded from a parsed audit output's
+    // `produced_outputs.unmet_criteria` (or `failing_criteria`) array, each entry a string or a
+    // `{message|criterion}` map. Null when no such array is present, so the caller falls back to the
+    // wire verdict / ADVANCE. The raw map never leaves this seam: it is decoded straight into the
+    // domain gap/verdict types.
+    fun auditVerdictFrom(outputObject: Map<String, Any?>?): FeatureTaskRuntimeAuditVerdict? {
+      val producedOutputs = outputObject?.get("produced_outputs")?.let(JsonSupport::anyToStringAnyMap)
+      val gapsRaw = (producedOutputs?.get("unmet_criteria") ?: producedOutputs?.get("failing_criteria")) as? List<*>
+        ?: return null
+      val gaps = gapsRaw.mapNotNull { entry ->
+        val message = (entry as? String)?.takeIf(String::isNotBlank)
+          ?: JsonSupport.anyToStringAnyMap(entry)?.let { map ->
+            ((map["message"] ?: map["criterion"]) as? String)?.takeIf(String::isNotBlank)
+          }
+          ?: return@mapNotNull null
+        FeatureTaskRuntimeAuditCriterionGap(message)
+      }
+      return FeatureTaskRuntimeAuditVerdict(gaps)
+    }
+
+    // The unmet acceptance-criteria gap messages the phase's latest audit output carries (empty when none).
+    fun unmetAuditCriteria(phaseId: String): List<String> = outputFor(phaseId)
+      ?.let { JsonSupport.parseObjectOrNull(it.payload) }
+      ?.let(JsonSupport::jsonElementToValue)
+      ?.let(JsonSupport::anyToStringAnyMap)
+      ?.let(::auditVerdictFrom)
+      ?.unmetCriteria
+      ?.map { it.message }
       .orEmpty()
 
     // The latest validated output for the phase (highest iteration), or null when none is present.
@@ -1252,6 +1408,32 @@ class FeatureTaskRuntimeRunner(
           "top-level 'verdict' or a 'produced_outputs.findings' array (an explicit empty array affirms no " +
           "blocking findings). A review that emits neither cannot advance past a possible Blocker/Major; " +
           "the schema gate fails rather than silently advancing to audit."
+      }
+    }
+
+    // Verifies the audit phase emitted a verification signal from a `completed` output rather than
+    // assuming silence means the criteria are satisfied: an audit MUST carry EITHER a top-level
+    // `verdict` string OR a `produced_outputs.unmet_criteria` (or `failing_criteria`) array (even an
+    // empty one). An audit reporting NEITHER falls through to ADVANCE in verdictFor, silently advancing
+    // past possibly-unmet acceptance criteria (the inverse of AC1), so route the both-absent case
+    // through the schema-gate failure path. Returns null for every non-audit phase and whenever either
+    // signal is present. Pure: no IO, no mutation.
+    private fun auditVerificationSignalGateReason(phaseId: String, outputMap: Map<String, Any?>): String? {
+      if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT) {
+        return null
+      }
+      val hasVerdict = (outputMap["verdict"] as? String)?.isNotBlank() == true
+      val producedOutputs = outputMap["produced_outputs"] as? Map<*, *>
+      val hasCriteriaArray = listOf("unmet_criteria", "failing_criteria").any { key ->
+        producedOutputs?.containsKey(key) == true && producedOutputs[key] is List<*>
+      }
+      return if (hasVerdict || hasCriteriaArray) {
+        null
+      } else {
+        "Audit phase reported 'completed' without a verification signal: the output must carry either a " +
+          "top-level 'verdict' or a 'produced_outputs.unmet_criteria' array (an explicit empty array affirms " +
+          "every acceptance criterion is met). An audit that emits neither cannot advance past a possibly-unmet " +
+          "criterion; the schema gate fails rather than silently advancing to validate."
       }
     }
 

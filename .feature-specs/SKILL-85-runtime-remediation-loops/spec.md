@@ -1,7 +1,7 @@
 # SKILL-85 - runtime feature-task remediation loops (M1 + M2)
 
 Created: 2026-06-18
-Status: Draft
+Status: Complete
 Issue key: SKILL-85
 Parent: completes SKILL-65 Subtask 3 AC5 (bounded review/audit fix loops, de-scoped at implementation); builds on the promoted runtime feature-task path (SKILL-67) and the goal-runner / workflow-state machinery (SKILL-56/58/61/64)
 
@@ -305,6 +305,33 @@ mutations.
 - Should cap exhaustion on either loop block, or downgrade to a
   surfaced-for-human-review terminal that still records the unresolved findings?
   Prose blocks; surfacing may be friendlier for goal-runner batches.
+
+### Resolutions (feature complete, 2026-06-19)
+
+- M1 verdict: reused the review output schema with an additive structured
+  `verdict` + `findings[]{severity}` block (one review contract). Both fields are
+  optional in `feature-task-runtime-phase-output-schema.yaml`, so no
+  `contract_version` bump.
+- Mutating-phase idempotency: both — the reconcile-on-resume agent contract
+  (prompt directive + the `reconciled_state` reconciliation gate) AND a
+  remediation-checkpoint commit established only when a backward edge reopens a
+  span containing a mutating phase. The checkpoint is commit-only and never
+  pushes, so `suppress_pr` goal subtasks are honored.
+- M2 loopback target: re-enter FULL `plan` (matching prose), gap-scoped via the
+  handoff rather than a new `replan` phase — the failing criteria are threaded
+  into the re-entered plan/implement briefing (`audit_gaps:` block), so settled
+  content is not re-decided without adding a phase.
+- Resume-integrity (Subtask 1): Option B — the generic resume gate resolves
+  per-phase presence from `feature_task_runtime_phase_records` via a domain-owned
+  `RequiredArtifactPresenceResolver`, with no duplicated canonical artifact keys
+  and the prose families left byte-for-byte unchanged.
+- M2 `gaps_found` carries the failing acceptance criteria: yes —
+  `FeatureTaskRuntimeAuditVerdict.unmetCriteria` scopes the re-plan/re-implement
+  handoff to the gaps.
+- Cap exhaustion: blocks loudly (both loops), matching prose — a durable terminal
+  blocked record plus an observability/ledger event carrying the loop id,
+  iteration count, and unresolved verdict/criteria; it never advances on
+  unresolved findings or unmet criteria.
 
 ## Cross-Subtask Invariants
 

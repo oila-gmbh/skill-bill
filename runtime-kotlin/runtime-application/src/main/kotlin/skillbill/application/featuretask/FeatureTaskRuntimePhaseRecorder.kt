@@ -36,6 +36,7 @@ import java.time.Instant
  * clock, never taken from agent-reported values.
  */
 @Inject
+@Suppress("TooManyFunctions") // cohesive durable read/write seam for per-phase records, briefings, and the ledger
 class FeatureTaskRuntimePhaseRecorder(
   private val database: DatabaseSessionFactory,
   private val workflowSnapshotValidator: WorkflowSnapshotValidator,
@@ -91,6 +92,41 @@ class FeatureTaskRuntimePhaseRecorder(
           currentStepId = request.phaseId,
           workflowStatus = workflowStatusFor(request),
           stepUpdates = stepUpdatesFrom(updatedRecords),
+        ),
+      )
+      true
+    }
+
+  /**
+   * Durably drops the backward-edge context (loop_id + edge_iteration) from the named phase records
+   * without otherwise mutating them. Used when a wider backward edge restarts a nested loop: the
+   * nested loop's per-phase watermark is stale for the new outer iteration, so it must be cleared at
+   * the durable source of truth or resume reconstruction would re-import the pre-reset count and deny
+   * the fresh per-iteration budget. Phases without a record (or already context-free) are skipped.
+   * Returns true when the workflow row exists.
+   */
+  fun clearBackwardEdgeContext(workflowId: String, phaseIds: Collection<String>, dbOverride: String? = null): Boolean =
+    database.transaction(dbOverride) { unitOfWork ->
+      val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
+        ?: return@transaction false
+      val existingRecords = phaseRecordsFrom(decodeArtifacts(record.artifactsJson))
+      val cleared = LinkedHashMap(existingRecords)
+      phaseIds.forEach { phaseId ->
+        val previous = existingRecords[phaseId] ?: return@forEach
+        if (previous.loopId == null && previous.edgeIteration == null) {
+          return@forEach
+        }
+        cleared[phaseId] = previous.copy(loopId = null, edgeIteration = null)
+      }
+      if (cleared == existingRecords) {
+        return@transaction true
+      }
+      persistPatch(
+        unitOfWork.workflowStates,
+        record,
+        mapOf(
+          FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY to
+            cleared.mapValues { (_, value) -> value.toArtifactMap() },
         ),
       )
       true

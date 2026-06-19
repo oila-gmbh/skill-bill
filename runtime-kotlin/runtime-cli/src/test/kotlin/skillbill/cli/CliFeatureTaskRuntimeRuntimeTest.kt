@@ -912,9 +912,14 @@ private class RecordingPhaseLauncher(
       """.trimIndent()
 
     fun validPhaseOutput(phaseId: String): String {
-      // A clean review must emit a verification signal (an empty findings array affirms no blocking
-      // findings) or the runtime review gate blocks it (SKILL-85 Subtask 4 F-003).
-      val producedOutputs = if (phaseId == "review") "findings: []" else """tasks: ["task-1"]"""
+      // A clean review/audit must emit a verification signal (an empty findings/unmet_criteria array
+      // affirms no blocking findings / every criterion met) or the runtime gate blocks it (SKILL-85
+      // Subtask 4 F-003 for review, Subtask 5 AC1 for audit).
+      val producedOutputs = when (phaseId) {
+        "review" -> "findings: []"
+        "audit" -> "unmet_criteria: []"
+        else -> """tasks: ["task-1"]"""
+      }
       val base =
         """
         contract_version: "0.1"

@@ -224,6 +224,7 @@ internal object DatabaseSchema {
         blocked_reason TEXT NOT NULL DEFAULT '',
         resolved_branch TEXT NOT NULL DEFAULT '',
         review_fix_iteration_count INTEGER NOT NULL DEFAULT 0,
+        audit_gap_iteration_count INTEGER NOT NULL DEFAULT 0,
         finished_at TEXT,
         finished_event_emitted_at TEXT
       )

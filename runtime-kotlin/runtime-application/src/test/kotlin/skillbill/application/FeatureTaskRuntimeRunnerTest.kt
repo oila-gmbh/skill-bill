@@ -853,6 +853,7 @@ class FeatureTaskRuntimeLifecycleTelemetryRunnerTest {
       SESSION_ID,
       phaseOutcomes = { error("phase load failed") },
       reviewFixIterationCount = { 0 },
+      auditGapIterationCount = { 0 },
       dbOverride = null,
     )
 
@@ -2567,8 +2568,8 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
   }
 }
 
-private const val WORKFLOW_ID = "wftr-20260602-test-0001"
-private const val SESSION_ID = "ftr-test-001"
+internal const val WORKFLOW_ID = "wftr-20260602-test-0001"
+internal const val SESSION_ID = "ftr-test-001"
 private const val ISSUE_KEY = "SKILL-65"
 private const val SPEC_REFERENCE = ".feature-specs/SKILL-65/spec.md"
 
@@ -2577,30 +2578,35 @@ private const val SPEC_REFERENCE = ".feature-specs/SKILL-65/spec.md"
 private const val CONVENTION_SPEC_REFERENCE =
   ".feature-specs/SKILL-65-runtime-feature-task-parity/spec_subtask_1.md"
 private const val EXPECTED_FEATURE_BRANCH = "feat/SKILL-65-runtime-feature-task-parity"
-private const val INVOKED_AGENT = "claude-code"
-private const val VALID_OUTPUT = """{"contract_version":"0.1"}"""
+internal const val INVOKED_AGENT = "claude-code"
+internal const val VALID_OUTPUT = """{"contract_version":"0.1"}"""
 
 // A clean review output carrying an empty findings array (the affirmative "no blocking findings"
 // signal the review gate requires, SKILL-85 Subtask 4 F-003); used by the default phase-aware launcher.
 private const val VALID_REVIEW_OUTPUT = """{"contract_version":"0.1","produced_outputs":{"findings":[]}}"""
+
+// A clean audit output carrying an empty unmet_criteria array (the affirmative "every acceptance
+// criterion is met" signal the audit gate requires, SKILL-85 Subtask 5 AC1); used by the default launcher.
+private const val VALID_AUDIT_OUTPUT =
+  """{"contract_version":"0.1","produced_outputs":{"unmet_criteria":[]}}"""
 private const val PREPLAN_OUTPUT = """{"preplan_digest":"scope-boundaries-risks-rollout"}"""
 private const val PLAN_OUTPUT = """{"plan":"do-the-thing"}"""
-private const val IMPLEMENT_OUTPUT = """{"implement":"done"}"""
+internal const val IMPLEMENT_OUTPUT = """{"implement":"done"}"""
 
-private val ALL_PHASES =
+internal val ALL_PHASES =
   listOf("preplan", "plan", "implement", "review", "audit", "validate", "write_history", "commit_push", "pr")
 private val NON_FILE_MUTATING_PHASES = setOf("preplan", "plan")
 
 // A distinct invoking agent per phase so a captured launch request is
 // phase-attributable from its invokedAgentId.
-private fun phaseAgent(phaseId: String): String = "agent-$phaseId"
+internal fun phaseAgent(phaseId: String): String = "agent-$phaseId"
 
-private fun phasePerAgentAssignment(): FeatureTaskRuntimeAgentAssignment =
+internal fun phasePerAgentAssignment(): FeatureTaskRuntimeAgentAssignment =
   FeatureTaskRuntimeAgentAssignment(perPhaseAgentIds = ALL_PHASES.associateWith(::phaseAgent))
 
 // Bundles the persistence + git collaborators a harness exposes so the harness constructor stays
 // within the parameter budget.
-private class RunnerHarnessIo(
+internal class RunnerHarnessIo(
   val recorder: FeatureTaskRuntimePhaseRecorder,
   val decomposeTerminalRecorder: FeatureTaskRuntimeDecomposeTerminalRecorder,
   val runInvariantsStore: FeatureTaskRuntimeRunInvariantsStore,
@@ -2608,7 +2614,7 @@ private class RunnerHarnessIo(
   val gitOperations: RecordingWorkflowGitOperations,
 )
 
-private class RunnerHarness(
+internal class RunnerHarness(
   val launcher: RuntimeRecordingLauncher,
   val io: RunnerHarnessIo,
   val runner: FeatureTaskRuntimeRunner,
@@ -2740,13 +2746,13 @@ private class RunnerHarness(
 private const val BRANCH_SETUP_AGENT_ID = "branch-setup"
 
 // Bundles the branch-setup-relevant test inputs so runnerHarness stays within the parameter budget.
-private data class BranchSetupTestConfig(
+internal data class BranchSetupTestConfig(
   val gitOperations: RecordingWorkflowGitOperations = RecordingWorkflowGitOperations(),
   val specReference: String = SPEC_REFERENCE,
   val featureSize: FeatureTaskRuntimeFeatureSize = FeatureTaskRuntimeFeatureSize.MEDIUM,
 )
 
-private data class RuntimeHarnessConfig(
+internal data class RuntimeHarnessConfig(
   val branchSetup: BranchSetupTestConfig = BranchSetupTestConfig(),
   val repoRoot: Path = Path.of("/tmp/repo"),
   val environment: Map<String, String> = emptyMap(),
@@ -2798,7 +2804,7 @@ private fun smallRuntimeConfig(): RuntimeHarnessConfig = RuntimeHarnessConfig(
 private fun conventionRuntimeConfig(git: RecordingWorkflowGitOperations): RuntimeHarnessConfig =
   RuntimeHarnessConfig(branchSetup = BranchSetupTestConfig(git, CONVENTION_SPEC_REFERENCE))
 
-private fun runnerHarness(
+internal fun runnerHarness(
   launcher: RuntimeRecordingLauncher = defaultPhaseAwareLauncher(),
   validator: FeatureTaskRuntimePhaseOutputValidator = AlwaysValidValidator,
   agentAssignment: FeatureTaskRuntimeAgentAssignment = FeatureTaskRuntimeAgentAssignment(),
@@ -2864,14 +2870,14 @@ private fun runnerHarness(
   return RunnerHarness(launcher, io, runner, captured, runRequest, specScratchStore)
 }
 
-private class TelemetryRunnerHarness(
+internal class TelemetryRunnerHarness(
   val runner: FeatureTaskRuntimeRunner,
   val lifecycle: RecordingLifecycleTelemetryRepository,
   val request: FeatureTaskRuntimeRunRequest,
   val database: RuntimeFakeDatabaseSessionFactory,
 )
 
-private fun telemetryRunnerHarness(
+internal fun telemetryRunnerHarness(
   launcher: RuntimeRecordingLauncher = RuntimeRecordingLauncher { request -> facts(defaultPhaseOutput(request)) },
   validator: FeatureTaskRuntimePhaseOutputValidator = AlwaysValidValidator,
   runtimeConfig: RuntimeHarnessConfig = RuntimeHarnessConfig(),
@@ -2952,7 +2958,7 @@ private fun testDecompositionPlanner(): FeatureTaskRuntimeDecompositionPlanner =
   ),
 )
 
-private fun facts(stdout: String): AgentRunLaunchOutcome = AgentRunLaunchFacts(
+internal fun facts(stdout: String): AgentRunLaunchOutcome = AgentRunLaunchFacts(
   agent = InstallAgent.CLAUDE,
   exitStatus = 0,
   stdout = stdout,
@@ -2963,26 +2969,29 @@ private fun facts(stdout: String): AgentRunLaunchOutcome = AgentRunLaunchFacts(
 
 private val PHASE_LINE = Regex("^Phase: ([a-z_-]+) ", setOf(RegexOption.MULTILINE))
 
-private fun phaseIdFromPrompt(prompt: String): String =
+internal fun phaseIdFromPrompt(prompt: String): String =
   PHASE_LINE.find(prompt)?.groupValues?.get(1) ?: error("Prompt did not contain a phase header: $prompt")
 
 // The default harness launcher returns a schema-valid, phase-attributed output per phase so a forward
 // run completes. Phase-aware so the implement phase carries the reconciliation report the runtime's
 // mutating-phase gate requires (SKILL-85 Subtask 3); every other phase carries its generic output.
-private fun defaultPhaseAwareLauncher(): RuntimeRecordingLauncher = RuntimeRecordingLauncher { request ->
+internal fun defaultPhaseAwareLauncher(): RuntimeRecordingLauncher = RuntimeRecordingLauncher { request ->
   facts(defaultPhaseOutput(request))
 }
 
 // A schema-valid output for the phase the prompt names. Mutating phases (implement) carry the
 // reconciliation report the runtime gate now requires; every other phase keeps the minimal
 // VALID_OUTPUT so existing recorded-artifact equality assertions are unchanged.
-private fun defaultPhaseOutput(request: GoalRunnerSubtaskLaunchRequest): String {
+internal fun defaultPhaseOutput(request: GoalRunnerSubtaskLaunchRequest): String {
   val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
   return when {
     FeatureTaskRuntimePhaseWorkflowDefinition.isMutatingPhase(phaseId) -> validJsonOutput(phaseId)
     // A clean review must emit a verification signal (an empty findings array affirms no blocking
     // findings) or the review gate blocks (SKILL-85 Subtask 4 F-003).
     phaseId == "review" -> VALID_REVIEW_OUTPUT
+    // A clean audit must likewise emit a verification signal (an empty unmet_criteria array affirms
+    // every acceptance criterion is met) or the audit gate blocks (SKILL-85 Subtask 5 AC1).
+    phaseId == "audit" -> VALID_AUDIT_OUTPUT
     else -> VALID_OUTPUT
   }
 }
@@ -3024,7 +3033,7 @@ private val IMPLEMENT_FIX_CYCLE = skillbill.workflow.taskruntime.model.FeatureTa
 )
 
 // A schema-valid review output carrying a top-level `verdict` wire string the transition function reads.
-private fun verdictReviewOutput(verdict: String): String = """
+internal fun verdictReviewOutput(verdict: String): String = """
   {
     "contract_version": "0.1",
     "phase_id": "review",
@@ -3049,12 +3058,12 @@ private val REVIEW_NO_SIGNAL_OUTPUT: String = """
 
 // SKILL-85 Subtask 4: the unique Blocker-finding message a changes_requested review carries, so a fix
 // briefing and a cap-exhaustion block can be asserted to contain it.
-private const val REVIEW_BLOCKER_MESSAGE = "Foo.kt leaks a connection in the error path"
+internal const val REVIEW_BLOCKER_MESSAGE = "Foo.kt leaks a connection in the error path"
 
 // A schema-valid review output whose findings drive the verdict: a Blocker finding => changes_requested
 // (the runtime classifies from findings, no top-level verdict needed), an empty findings list => the
 // run advances. The findings ride inside produced_outputs the way the runner reads them.
-private fun reviewFindingsOutput(changesRequested: Boolean): String {
+internal fun reviewFindingsOutput(changesRequested: Boolean): String {
   val findings = if (changesRequested) {
     """{"severity": "blocker", "message": "$REVIEW_BLOCKER_MESSAGE"}"""
   } else {
@@ -3112,7 +3121,7 @@ private fun verdictPlanOutput(verdict: String): String = """
   }
 """.trimIndent()
 
-private fun validJsonOutput(phaseId: String): String = """
+internal fun validJsonOutput(phaseId: String): String = """
   {
     "contract_version": "0.1",
     "phase_id": "$phaseId",
@@ -3122,7 +3131,7 @@ private fun validJsonOutput(phaseId: String): String = """
   }
 """.trimIndent()
 
-private fun validProducedOutputs(phaseId: String): String = when (phaseId) {
+internal fun validProducedOutputs(phaseId: String): String = when (phaseId) {
   "commit_push" -> """{"commit_push_result": {"commit_sha": "commit-runtime-1"}}"""
   // Mutating phases must carry the reconciliation report or the runtime's reconciliation gate
   // rejects the output (SKILL-85 Subtask 3). implement_fix is mutating too (SKILL-85 Subtask 4).
@@ -3130,6 +3139,9 @@ private fun validProducedOutputs(phaseId: String): String = when (phaseId) {
   // A clean review must emit a verification signal or the review gate blocks (SKILL-85 Subtask 4):
   // an explicit empty findings array affirms "no blocking findings" and advances.
   "review" -> """{"findings": []}"""
+  // A clean audit must emit a verification signal or the audit gate blocks (SKILL-85 Subtask 5):
+  // an explicit empty unmet_criteria array affirms "every acceptance criterion is met" and advances.
+  "audit" -> """{"unmet_criteria": []}"""
   else -> """{"tasks": ["task-1"]}"""
 }
 
@@ -3339,7 +3351,7 @@ private val WRITER_INVALID_DECOMPOSE_PLAN_OUTPUT: String = """
 """.trimIndent()
 
 // An infrastructure spawn failure (no exit status, empty stdout).
-private fun spawnFailedFacts(): AgentRunLaunchOutcome = AgentRunLaunchFacts(
+internal fun spawnFailedFacts(): AgentRunLaunchOutcome = AgentRunLaunchFacts(
   agent = InstallAgent.CLAUDE,
   exitStatus = null,
   stdout = "",
@@ -3358,7 +3370,7 @@ private fun timedOutFacts(): AgentRunLaunchOutcome = AgentRunLaunchFacts(
   spawnFailed = false,
 )
 
-private class RuntimeRecordingLauncher(
+internal class RuntimeRecordingLauncher(
   private val handler: (GoalRunnerSubtaskLaunchRequest) -> AgentRunLaunchOutcome,
 ) : GoalRunnerSubtaskLauncher {
   val requests = mutableListOf<GoalRunnerSubtaskLaunchRequest>()
@@ -3378,14 +3390,14 @@ private class ThrowingValidator(private val failPhases: Set<String>) : FeatureTa
   }
 }
 
-private object AlwaysValidValidator : FeatureTaskRuntimePhaseOutputValidator {
+internal object AlwaysValidValidator : FeatureTaskRuntimePhaseOutputValidator {
   override fun validatePhaseOutputText(phaseOutputText: String, sourceLabel: String) = Unit
 }
 
 // Records every checkout, with configurable currentBranch/checkoutBranch results. The default
 // currentBranch reports an already-feature branch so existing tests never enter the create path;
 // branch-setup tests override these to drive starts-on-default / cannot-establish / resume cases.
-private class RecordingWorkflowGitOperations(
+internal class RecordingWorkflowGitOperations(
   var currentBranchValue: String = "feat/existing-runtime-branch",
   var currentBranchResult: WorkflowGitOperationResult? = null,
   var checkoutResult: WorkflowGitOperationResult? = null,
@@ -3519,7 +3531,7 @@ private fun FeatureTaskRuntimePhaseRecorder.recordPhaseStateForTest(
   ),
 )
 
-private class RuntimeFakeDatabaseSessionFactory(
+internal class RuntimeFakeDatabaseSessionFactory(
   private val repository: InMemoryRuntimeWorkflowRepository,
   private val lifecycle: LifecycleTelemetryRepository? = null,
 ) : DatabaseSessionFactory {
@@ -3561,7 +3573,7 @@ private object EnabledRuntimeTelemetrySettingsProvider : TelemetrySettingsProvid
 }
 
 @Suppress("TooManyFunctions") // mirrors the full LifecycleTelemetryRepository contract
-private class RecordingLifecycleTelemetryRepository : LifecycleTelemetryRepository {
+internal class RecordingLifecycleTelemetryRepository : LifecycleTelemetryRepository {
   val startedRecords = mutableListOf<FeatureTaskRuntimeStartedRecord>()
   val finishedRecords = mutableListOf<FeatureTaskRuntimeFinishedRecord>()
 
@@ -3606,7 +3618,7 @@ private class RecordingLifecycleTelemetryRepository : LifecycleTelemetryReposito
   override fun goalFinished(record: skillbill.telemetry.model.GoalFinishedRecord, level: String) = error("unused")
 }
 
-private class InMemoryRuntimeWorkflowRepository : WorkflowStateRepository {
+internal class InMemoryRuntimeWorkflowRepository : WorkflowStateRepository {
   private val taskRuntimeRows = linkedMapOf<String, WorkflowStateRecord>()
 
   fun taskRuntimeArtifacts(workflowId: String): Map<String, Any?> {

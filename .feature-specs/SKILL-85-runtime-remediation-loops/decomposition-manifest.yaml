@@ -10,8 +10,8 @@ base_branch: "main"
 feature_branch: "feat/SKILL-85-runtime-remediation-loops"
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 0
-  action: "none"
+  subtask_id: 5
+  action: "start"
 subtasks:
 - id: 1
   name: "resume-and-state-model-integrity"
@@ -78,12 +78,12 @@ subtasks:
 - id: 5
   name: "audit-gap-loopback"
   spec_path: ".feature-specs/SKILL-85-runtime-remediation-loops/spec_subtask_5_audit-gap-loopback.md"
-  status: "pending"
+  status: "in_progress"
   branch: "feat/SKILL-85-runtime-remediation-loops"
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wfl-20260619-113952-3hti"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   dependencies:
   - subtask_id: 1

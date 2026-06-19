@@ -37,11 +37,13 @@ class FeatureTaskRuntimeLifecycleTelemetry(
     )["session_id"]?.toString().orEmpty()
   }
 
+  @Suppress("LongParameterList") // one cohesive finished-telemetry emission; bundling would only hide it
   fun finished(
     telemetrySessionId: String,
     report: FeatureTaskRuntimeRunReport,
     phaseOutcomes: () -> Map<String, String>,
     reviewFixIterationCount: () -> Int,
+    auditGapIterationCount: () -> Int,
     dbOverride: String?,
   ) {
     if (telemetrySessionId.isBlank()) {
@@ -58,6 +60,7 @@ class FeatureTaskRuntimeLifecycleTelemetry(
           blockedReason = (report as? FeatureTaskRuntimeRunReport.Blocked)?.blockedReason.orEmpty(),
           resolvedBranch = report.resolvedBranch.orEmpty(),
           reviewFixIterationCount = runCatching(reviewFixIterationCount).getOrDefault(0),
+          auditGapIterationCount = runCatching(auditGapIterationCount).getOrDefault(0),
         ),
         dbOverride = dbOverride,
       )
@@ -73,6 +76,7 @@ class FeatureTaskRuntimeLifecycleTelemetry(
     telemetrySessionId: String,
     phaseOutcomes: () -> Map<String, String>,
     reviewFixIterationCount: () -> Int,
+    auditGapIterationCount: () -> Int,
     dbOverride: String?,
   ) {
     if (telemetrySessionId.isBlank()) {
@@ -98,6 +102,7 @@ class FeatureTaskRuntimeLifecycleTelemetry(
           blockedReason = "",
           resolvedBranch = "",
           reviewFixIterationCount = runCatching(reviewFixIterationCount).getOrDefault(0),
+          auditGapIterationCount = runCatching(auditGapIterationCount).getOrDefault(0),
         ),
         dbOverride = dbOverride,
       )

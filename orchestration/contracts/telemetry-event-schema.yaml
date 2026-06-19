@@ -1025,6 +1025,8 @@ $defs:
         $ref: "#/$defs/freeObjectShape"
       review_fix_iteration_count:
         type: integer
+      audit_gap_iteration_count:
+        type: integer
       last_incomplete_phase:
         type: string
       blocked_reason:
@@ -1091,6 +1093,8 @@ $defs:
       phase_outcomes:
         $ref: "#/$defs/freeObjectShape"
       review_fix_iteration_count:
+        type: integer
+      audit_gap_iteration_count:
         type: integer
       last_incomplete_phase:
         type: string

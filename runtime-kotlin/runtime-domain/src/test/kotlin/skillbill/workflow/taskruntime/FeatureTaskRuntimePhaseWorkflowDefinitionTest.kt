@@ -143,7 +143,7 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
     assertTrue(def.isMutatingPhase(def.PHASE_IMPLEMENT))
     val transitions = def.transitions
     assertEquals(setOf(def.PHASE_IMPLEMENT_FIX), transitions.loopOnlyPhaseIds)
-    val edge = transitions.backwardEdges.single()
+    val edge = transitions.backwardEdges.single { it.loopId == def.REVIEW_FIX_LOOP_ID }
     assertEquals(def.PHASE_REVIEW, edge.fromPhaseId)
     assertEquals(def.PHASE_IMPLEMENT_FIX, edge.destinationPhaseId)
     assertEquals("review_fix", edge.loopId)
@@ -156,6 +156,26 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
     assertEquals(
       listOf(def.PHASE_PLAN, def.PHASE_IMPLEMENT, def.PHASE_REVIEW),
       dependenciesOf(def.PHASE_IMPLEMENT_FIX),
+    )
+  }
+
+  @Test
+  fun `the audit_gap backward edge reopens the plan-through-audit span on gaps_found capped at 2`() {
+    val def = FeatureTaskRuntimePhaseWorkflowDefinition
+    val transitions = def.transitions
+    assertEquals(2, transitions.backwardEdges.size)
+    val edge = transitions.backwardEdges.single { it.loopId == def.AUDIT_GAP_LOOP_ID }
+    assertEquals(def.PHASE_AUDIT, edge.fromPhaseId)
+    assertEquals(def.PHASE_PLAN, edge.destinationPhaseId)
+    assertEquals("audit_gap", edge.loopId)
+    assertEquals(2, edge.perEdgeCap)
+    assertEquals(FeatureTaskRuntimeVerdict.GAPS_FOUND, edge.triggeringVerdict)
+    // The reopened [plan, audit] span contains the mutating implement phase (re-plan then re-implement).
+    val ids = transitions.forwardPhaseIds
+    assertTrue(ids.indexOf(edge.destinationPhaseId) < ids.indexOf(edge.fromPhaseId))
+    assertTrue(
+      ids.subList(ids.indexOf(edge.destinationPhaseId), ids.indexOf(edge.fromPhaseId) + 1)
+        .any(def::isMutatingPhase),
     )
   }
 

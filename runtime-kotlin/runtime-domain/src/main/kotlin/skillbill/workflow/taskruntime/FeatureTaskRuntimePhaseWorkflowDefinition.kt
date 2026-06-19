@@ -38,6 +38,10 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
   // (the finished-event review-fix iteration count) reference the same loop the backward edge mints.
   const val REVIEW_FIX_LOOP_ID: String = "review_fix"
 
+  // The M2 audit->plan re-plan/re-implement loop id, named once so durable accounting and telemetry
+  // (the finished-event audit-gap iteration count) reference the same loop the backward edge mints.
+  const val AUDIT_GAP_LOOP_ID: String = "audit_gap"
+
   // Mutating phases reconcile the working tree to an intended target state. They are the phases the
   // idempotency contract governs: re-entering or resuming one must converge to target, treating an
   // already-applied change as a no-op rather than re-applying it. `implement` mutates from
@@ -141,12 +145,16 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
     }
 
   /**
-   * Transition topology: the ordered [stepIds] forward pipeline plus the M1 `review_fix` backward
-   * edge. `implement_fix` sits between `implement` and `review` in the pipeline but is loop-only —
-   * the forward edge skips it, so a clean run advances `implement` -> `review` and never launches a
-   * fix. A `review` `changes_requested` verdict reopens the `[implement_fix, review]` span (the
-   * backward destination precedes the source), bounded at 3 review->fix iterations; the first
-   * `approved` verdict advances to `audit`.
+   * Transition topology: the ordered [stepIds] forward pipeline plus the M1 `review_fix` and M2
+   * `audit_gap` backward edges. `implement_fix` sits between `implement` and `review` in the pipeline
+   * but is loop-only — the forward edge skips it, so a clean run advances `implement` -> `review` and
+   * never launches a fix. A `review` `changes_requested` verdict reopens the `[implement_fix, review]`
+   * span (the backward destination precedes the source), bounded at 3 review->fix iterations; the
+   * first `approved` verdict advances to `audit`. An `audit` `gaps_found` verdict reopens the wider
+   * `[plan, audit]` span — which contains the mutating `implement` phase — to re-plan then
+   * re-implement against the failing criteria and re-pass through `review` (incl. its `review_fix`
+   * loop) before re-`audit`, bounded at 2 audit-gap iterations; the first `satisfied` verdict
+   * advances to `validate`.
    */
   val transitions: FeatureTaskRuntimeTransitionDeclaration =
     FeatureTaskRuntimeTransitionDeclaration(
@@ -158,6 +166,13 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
           destinationPhaseId = PHASE_IMPLEMENT_FIX,
           loopId = REVIEW_FIX_LOOP_ID,
           perEdgeCap = 3,
+        ),
+        FeatureTaskRuntimeBackwardEdge(
+          fromPhaseId = PHASE_AUDIT,
+          triggeringVerdict = FeatureTaskRuntimeVerdict.GAPS_FOUND,
+          destinationPhaseId = PHASE_PLAN,
+          loopId = AUDIT_GAP_LOOP_ID,
+          perEdgeCap = 2,
         ),
       ),
       loopOnlyPhaseIds = setOf(PHASE_IMPLEMENT_FIX),

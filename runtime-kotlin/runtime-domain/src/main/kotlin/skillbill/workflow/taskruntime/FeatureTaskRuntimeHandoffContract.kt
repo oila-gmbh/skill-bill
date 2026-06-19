@@ -52,19 +52,21 @@ object FeatureTaskRuntimeHandoffContract {
   /**
    * Assembles the full three-layer handoff for one phase. [drivingVerdict] is forwarded for a
    * backward-edge re-entry and defaults to null, preserving the existing forward-launch assembly
-   * byte-for-byte; upstream resolution is unchanged so a re-entered agent never selects its own
-   * inputs.
+   * byte-for-byte; [reentryGapCriteria] scopes an `audit_gap` re-entry and defaults to empty;
+   * upstream resolution is unchanged so a re-entered agent never selects its own inputs.
    */
   fun assembleHandoff(
     declaration: FeatureTaskRuntimePhaseDeclaration,
     runInvariants: FeatureTaskRuntimeRunInvariants,
     recordedOutputs: List<FeatureTaskRuntimePhaseOutput>,
     drivingVerdict: FeatureTaskRuntimeVerdict? = null,
+    reentryGapCriteria: List<String> = emptyList(),
   ): FeatureTaskRuntimePhaseHandoff = FeatureTaskRuntimePhaseHandoff(
     phaseId = declaration.phaseId,
     runInvariants = runInvariants,
     upstreamOutputs = resolveUpstreamOutputs(declaration, recordedOutputs),
     derivedContextKeys = declaration.derivedContextKeys,
     drivingVerdict = drivingVerdict,
+    reentryGapCriteria = reentryGapCriteria,
   )
 }

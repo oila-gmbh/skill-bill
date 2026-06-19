@@ -132,6 +132,42 @@ cap. Each `implement_fix` launch and re-`review` carries the `review_fix` loop i
 and iteration in the ledger and status output, and finished telemetry reflects
 the review-fix iteration count.
 
+## Audit-gap re-plan/re-implement loop
+
+The runtime closes a second, wider bounded remediation loop around `audit`. The
+`audit` phase emits a structured verdict derived from the acceptance criteria it
+checked: `satisfied` when every criterion is met, or `gaps_found` when one or
+more remain unmet. The runtime evaluates that verdict — prose alone cannot
+advance past an unmet acceptance criterion.
+
+- On `satisfied`, the run advances to `validate`.
+- On `gaps_found`, the runtime takes a backward edge re-entering `plan`, then
+  `implement`, then `review`, then `audit`. The handoff into the re-entered
+  `plan` and `implement` is scoped to the failing criteria the audit carried, so
+  the loop addresses the gaps rather than redoing settled content. This
+  `audit` → `plan` → `implement` → `review` → `audit` cycle is capped at 2
+  audit-gap iterations via a durable per-edge counter. The first `satisfied`
+  verdict in the loop advances the run to `validate`.
+- If the loop exhausts its cap without a `satisfied` verdict, the run blocks
+  loudly rather than advancing: it records a durable terminal blocked phase plus
+  an observability/ledger event carrying the loop id `audit_gap`, the iteration
+  count, and the unmet criteria. It never advances to `validate` on unmet
+  acceptance criteria. Surface this block like any other blocked gate.
+
+The re-entered `implement` is idempotent: it reconciles the working tree toward
+the updated plan without double-applying, and a crash mid-loopback resumes at the
+correct phase and iteration, preserving the `audit_gap` watermark and re-blocking
+a cap-exhausted loop on resume rather than re-entering past the cap.
+
+The two loops compose without double-counting. Each audit-gap iteration re-passes
+through `review` — including its own `review_fix` loop — before re-`audit`, so
+audit-driven changes are themselves reviewed. The `review_fix` counter resets per
+audit-gap iteration (each re-review is a fresh verification), while the
+`audit_gap` counter is independent and accrues across the whole run. Each backward
+edge carries the `audit_gap` loop id and iteration in the ledger and status
+output, and finished telemetry reflects the audit-gap iteration count alongside
+the review-fix count.
+
 ## Status and Resume
 
 Status is read-only and never starts a run:

@@ -86,6 +86,7 @@ internal fun featureTaskRuntimeFinished(arguments: Map<String, Any?>, context: M
       blockedReason = arguments.string("blocked_reason"),
       resolvedBranch = arguments.string("resolved_branch"),
       reviewFixIterationCount = arguments.int("review_fix_iteration_count", 0),
+      auditGapIterationCount = arguments.int("audit_gap_iteration_count", 0),
     ),
     context,
   )

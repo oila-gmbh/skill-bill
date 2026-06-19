@@ -304,4 +304,72 @@ class FeatureTaskRuntimeTransitionFunctionTest {
   fun `review severity fromWire loud-fails on an unknown value`() {
     assertFailsWith<IllegalArgumentException> { FeatureTaskRuntimeReviewSeverity.fromWire("catastrophic") }
   }
+
+  // --- two independent backward edges (review_fix + audit_gap composition) ----------------------
+
+  // A pipeline carrying both the loop-only review_fix edge and a wider audit->plan audit_gap edge, so
+  // each edge routes from its own source on its own verdict with its own per-edge iteration count.
+  private val auditGapEdge = FeatureTaskRuntimeBackwardEdge(
+    fromPhaseId = "audit",
+    triggeringVerdict = FeatureTaskRuntimeVerdict.GAPS_FOUND,
+    destinationPhaseId = "plan",
+    loopId = "audit_gap",
+    perEdgeCap = 2,
+  )
+  private val twoEdgeDeclaration = FeatureTaskRuntimeTransitionDeclaration(
+    forwardPhaseIds = loopPipeline,
+    backwardEdges = listOf(reviewFixEdge, auditGapEdge),
+    loopOnlyPhaseIds = setOf("fix"),
+  )
+
+  @Test
+  fun `each backward edge fires from its own source and iteration without touching the other`() {
+    // review_fix fires from `review` on changes_requested, audit_gap from `audit` on gaps_found; the
+    // iteration count passed for one edge never bleeds into the other (the function reads each per call).
+    val reviewFix = assertIs<FeatureTaskRuntimeNextPhase.Next>(
+      FeatureTaskRuntimeTransitionFunction.nextTransition(
+        declaration = twoEdgeDeclaration,
+        currentPhaseId = "review",
+        verdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
+        edgeIterationCount = 1,
+      ),
+    )
+    assertEquals("fix", reviewFix.phaseId)
+    assertEquals("review_fix", reviewFix.loopId)
+    assertEquals(2, reviewFix.edgeIteration)
+
+    val auditGap = assertIs<FeatureTaskRuntimeNextPhase.Next>(
+      FeatureTaskRuntimeTransitionFunction.nextTransition(
+        declaration = twoEdgeDeclaration,
+        currentPhaseId = "audit",
+        verdict = FeatureTaskRuntimeVerdict.GAPS_FOUND,
+        edgeIterationCount = 0,
+      ),
+    )
+    assertEquals("plan", auditGap.phaseId)
+    assertEquals("audit_gap", auditGap.loopId)
+    assertEquals(1, auditGap.edgeIteration)
+  }
+
+  @Test
+  fun `audit satisfied forwards to the next phase while gaps_found at cap blocks with audit_gap`() {
+    val satisfied = FeatureTaskRuntimeTransitionFunction.nextTransition(
+      declaration = twoEdgeDeclaration,
+      currentPhaseId = "audit",
+      verdict = FeatureTaskRuntimeVerdict.SATISFIED,
+      edgeIterationCount = 1,
+    )
+    assertIs<FeatureTaskRuntimeNextPhase.TerminalAdvance>(satisfied)
+
+    val blocked = FeatureTaskRuntimeTransitionFunction.nextTransition(
+      declaration = twoEdgeDeclaration,
+      currentPhaseId = "audit",
+      verdict = FeatureTaskRuntimeVerdict.GAPS_FOUND,
+      edgeIterationCount = auditGapEdge.perEdgeCap,
+    )
+    val block = assertIs<FeatureTaskRuntimeNextPhase.TerminalBlock>(blocked)
+    assertEquals("audit_gap", block.loopId)
+    assertEquals(auditGapEdge.perEdgeCap, block.edgeIteration)
+    assertEquals(FeatureTaskRuntimeVerdict.GAPS_FOUND, block.unresolvedVerdict)
+  }
 }

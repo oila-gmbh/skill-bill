@@ -33,6 +33,15 @@ data class FeatureTaskRuntimeVerdict(
      */
     val CHANGES_REQUESTED: FeatureTaskRuntimeVerdict = FeatureTaskRuntimeVerdict("changes_requested")
 
+    /** An audit verdict with no unmet acceptance criteria: the run advances past audit to validate. */
+    val SATISFIED: FeatureTaskRuntimeVerdict = FeatureTaskRuntimeVerdict("satisfied")
+
+    /**
+     * An audit verdict carrying unmet acceptance criteria: the run takes the `audit_gap` backward edge
+     * to the `plan` phase to re-plan then re-implement against the failing criteria.
+     */
+    val GAPS_FOUND: FeatureTaskRuntimeVerdict = FeatureTaskRuntimeVerdict("gaps_found")
+
     fun fromWire(value: String): FeatureTaskRuntimeVerdict =
       value.takeIf(String::isNotBlank)?.let(::FeatureTaskRuntimeVerdict)
         ?: throw InvalidWorkflowStateSchemaError(
