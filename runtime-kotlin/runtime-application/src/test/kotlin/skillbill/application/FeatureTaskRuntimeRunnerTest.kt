@@ -113,7 +113,6 @@ class FeatureTaskRuntimeRunnerTest {
     val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
     assertContains(blocked.blockedReason, "was created in 'prose' mode")
     assertContains(blocked.blockedReason, "reset the subtask")
-    // The mode collision is detected before any phase work: no agent is ever launched.
     assertTrue(harness.launcher.requests.isEmpty())
   }
 
@@ -2708,9 +2707,7 @@ internal class RunnerHarness(
     recorder.recordPhaseStateForTest(phaseId, status, attemptCount, agentId, outputArtifact)
   }
 
-  // Seeds a foreign-mode (prose) feature-task row at WORKFLOW_ID, simulating a goal subtask that was
-  // run in prose mode and is now being resumed in runtime mode — the mode-collision the runtime must
-  // refuse cleanly instead of crashing on the mode guard.
+  // Seeds a foreign-mode (prose) row at WORKFLOW_ID for the runtime mode-collision path.
   fun seedProseModeWorkflow() {
     repository.saveFeatureTaskWorkflow(
       WorkflowStateRecord(
@@ -3694,9 +3691,7 @@ internal class RecordingLifecycleTelemetryRepository : LifecycleTelemetryReposit
 internal class InMemoryRuntimeWorkflowRepository : WorkflowStateRepository {
   private val taskRuntimeRows = linkedMapOf<String, WorkflowStateRecord>()
 
-  // Prose feature-task rows live under the feature-implement family (see WorkflowStateRepository's
-  // mode routing). Storing them faithfully lets the mode-agnostic getFeatureTaskWorkflow find a
-  // prose row, mirroring the production SQLite store where both modes share one table.
+  // Prose feature-task rows route through the feature-implement family (see WorkflowStateRepository).
   private val implementRows = linkedMapOf<String, WorkflowStateRecord>()
 
   fun taskRuntimeArtifacts(workflowId: String): Map<String, Any?> {

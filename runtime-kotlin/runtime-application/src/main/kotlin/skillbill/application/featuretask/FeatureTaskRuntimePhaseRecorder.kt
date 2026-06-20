@@ -264,12 +264,7 @@ class FeatureTaskRuntimePhaseRecorder(
       phaseLedgerFrom(decodeArtifacts(record.artifactsJson))
     }
 
-  /**
-   * Reads the persisted mode of an existing feature-task workflow row, mode-agnostically. Unlike
-   * [WorkflowFamily.TASK_RUNTIME.get] (which routes through getFeatureTaskWorkflowAsMode and throws
-   * [InvalidWorkflowStateSchemaError] on a foreign-mode row), this never throws — it lets the caller
-   * decide what to do about a mode mismatch. Null when no row exists.
-   */
+  /** Reads a workflow row's mode without throwing on a foreign mode, unlike [WorkflowFamily.TASK_RUNTIME.get]. */
   fun existingWorkflowMode(workflowId: String, dbOverride: String? = null): FeatureTaskWorkflowMode? =
     database.read(dbOverride) { unitOfWork ->
       unitOfWork.workflowStates.getFeatureTaskWorkflow(workflowId)?.mode

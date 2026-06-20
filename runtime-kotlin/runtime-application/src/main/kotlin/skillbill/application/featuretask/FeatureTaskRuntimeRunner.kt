@@ -67,13 +67,8 @@ class FeatureTaskRuntimeRunner(
   private val specStatusProjector get() = phaseGates.specStatusProjector
   private val specSourceResolver get() = phaseGates.specGate.specSourceResolver
 
-  // A feature-task workflow row is mode-scoped: prose (`wfl-`) and runtime (`wftr-`) persist
-  // different schemas under the same row, so a runtime run cannot resume a workflow created in
-  // prose mode (and vice versa). This happens when a goal subtask is switched from prose to runtime
-  // mid-flight and the runtime resume inherits the prose workflow id. Rather than let the mode guard
-  // (getFeatureTaskWorkflowAsMode) throw uncaught — which exits 1 with no terminal store outcome and
-  // surfaces to the goal supervisor as a cause-agnostic no-terminal-outcome stall — stop loudly with
-  // a durable, actionable Blocked terminal report. We never write to the foreign-mode row.
+  // Refuses a foreign-mode workflow with a durable Blocked report instead of letting the mode guard
+  // (getFeatureTaskWorkflowAsMode) throw uncaught, which would exit 1 with no terminal store outcome.
   private fun foreignModeWorkflowBlock(request: FeatureTaskRuntimeRunRequest): FeatureTaskRuntimeRunReport.Blocked? {
     val existingMode = recorder.existingWorkflowMode(request.workflowId, request.dbPathOverride)
     if (existingMode == null || existingMode == FeatureTaskWorkflowMode.RUNTIME) {

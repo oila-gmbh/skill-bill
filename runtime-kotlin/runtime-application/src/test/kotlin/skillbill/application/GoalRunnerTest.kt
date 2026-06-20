@@ -271,7 +271,6 @@ class GoalRunnerTest {
     assertEquals(1, stopped.stop.subtaskId)
     assertEquals("wfl-1", stopped.stop.workflowId)
     assertContains(stopped.stop.blockedReason, "without a terminal workflow-store outcome")
-    // Clean exit (status 0) is diagnosed specifically, not with a cause-agnostic guess.
     assertContains(stopped.stop.blockedReason, "exited cleanly (status 0)")
     assertContains(stopped.stop.blockedReason, "last_resumable_step")
     assertEquals("blocked", store.manifest.subtasks.single { it.id == 1 }.status)
@@ -719,9 +718,6 @@ class GoalRunnerTest {
   )
 }
 
-// Focused coverage for the no-terminal-outcome diagnosis (kept out of GoalRunnerTest to avoid
-// growing that already-large class). Asserts the reason string reflects the child exit status and
-// carries the captured stderr tail instead of a cause-agnostic guess.
 class GoalRunnerNoTerminalOutcomeDiagnosisTest {
   @Test
   fun `non-zero child exit reports exit status and stderr tail without retry`() {
@@ -746,18 +742,14 @@ class GoalRunnerNoTerminalOutcomeDiagnosisTest {
 
     val stopped = assertIs<GoalRunnerRunReport.Stopped>(report)
     assertEquals(GoalRunnerStopReason.NO_TERMINAL_STORE_OUTCOME, stopped.stop.reason)
-    // A non-zero exit is diagnosed as the child erroring out, with the captured stderr excerpt.
     assertContains(stopped.stop.blockedReason, "exited with status 1")
     assertContains(stopped.stop.blockedReason, "Child stderr (head+tail):")
     assertContains(stopped.stop.blockedReason, "usage limit reached before persisting terminal outcome")
-    // A non-zero exit is not eligible for the no-terminal-outcome retry: exactly one launch.
     assertEquals(1, launcher.requests.size)
   }
 
   @Test
   fun `oversized child stderr keeps exception head and recent tail`() {
-    // A crash stack trace leads with the exception type/message (the diagnostic part) and ends in
-    // framework frames. A plain tail would drop the head; the head+tail excerpt keeps both.
     val head = "java.lang.IllegalStateException: SQLITE_BUSY: database is locked"
     val tail = "at skillbill.cli.core.MainKt.main(Main.kt:12)"
     val stderr = head + "X".repeat(GoalRunnerLaunchFacts.STDERR_EXCERPT_MAX_CHARS * 2) + tail
