@@ -31,7 +31,17 @@ data class GoalRunnerLaunchFacts(
   val spawnFailed: Boolean = false,
   val exitStatus: Int? = null,
   val liveness: GoalRunnerLivenessSnapshot? = null,
-)
+  /**
+   * Bounded tail of the child process stderr (last [STDERR_TAIL_MAX_CHARS] chars). Carried into
+   * the domain so the no-terminal-outcome diagnosis can report the actual failure cause instead
+   * of a cause-agnostic guess. Null when no stderr was captured.
+   */
+  val stderrTail: String? = null,
+) {
+  companion object {
+    const val STDERR_TAIL_MAX_CHARS: Int = 2_000
+  }
+}
 
 /**
  * SKILL-64 Subtask 3 (AC23): documented, testable liveness taxonomy derived

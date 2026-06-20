@@ -270,7 +270,8 @@ class GoalRunnerTest {
     assertEquals(1, stopped.stop.subtaskId)
     assertEquals("wfl-1", stopped.stop.workflowId)
     assertContains(stopped.stop.blockedReason, "without a terminal workflow-store outcome")
-    assertContains(stopped.stop.blockedReason, "cause-agnostic")
+    // Clean exit (status 0) is diagnosed specifically, not with a cause-agnostic guess.
+    assertContains(stopped.stop.blockedReason, "exited cleanly (status 0)")
     assertContains(stopped.stop.blockedReason, "last_resumable_step")
     assertEquals("blocked", store.manifest.subtasks.single { it.id == 1 }.status)
     assertEquals(listOf("wfl-1"), outcomes.blockedWorkflows.map { it.workflowId })
@@ -714,6 +715,49 @@ class GoalRunnerTest {
     repoRoot = repoRoot,
     invokedAgentId = "claude",
     dbPathOverride = null,
+  )
+}
+
+// Focused coverage for the no-terminal-outcome diagnosis (kept out of GoalRunnerTest to avoid
+// growing that already-large class). Asserts the reason string reflects the child exit status and
+// carries the captured stderr tail instead of a cause-agnostic guess.
+class GoalRunnerNoTerminalOutcomeDiagnosisTest {
+  @Test
+  fun `non-zero child exit reports exit status and stderr tail without retry`() {
+    val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 2))
+    val launcher = RecordingSubtaskLauncher { request ->
+      val subtaskId = requireNotNull(request.skillRunRequest.subtaskId)
+      store.mutate { current -> current.withWorkflowId(subtaskId, "wfl-$subtaskId") }
+      AgentRunLaunchFacts(
+        agent = InstallAgent.CLAUDE,
+        exitStatus = 1,
+        stdout = "diagnostic only",
+        stderr = "Error: usage limit reached before persisting terminal outcome",
+        timedOut = false,
+        interrupted = false,
+        spawnFailed = false,
+      )
+    }
+    val outcomes = RecordingOutcomeStore()
+    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort())
+
+    val report = runner.run(runRequest())
+
+    val stopped = assertIs<GoalRunnerRunReport.Stopped>(report)
+    assertEquals(GoalRunnerStopReason.NO_TERMINAL_STORE_OUTCOME, stopped.stop.reason)
+    // A non-zero exit is diagnosed as the child erroring out, with the captured stderr tail.
+    assertContains(stopped.stop.blockedReason, "exited with status 1")
+    assertContains(stopped.stop.blockedReason, "Child stderr tail:")
+    assertContains(stopped.stop.blockedReason, "usage limit reached before persisting terminal outcome")
+    // A non-zero exit is not eligible for the no-terminal-outcome retry: exactly one launch.
+    assertEquals(1, launcher.requests.size)
+  }
+
+  private fun runRequest(): GoalRunnerRunRequest = GoalRunnerRunRequest(
+    issueKey = "SKILL-56",
+    repoRoot = Path.of("/tmp/skillbill-goal-runner"),
+    invokedAgentId = "claude",
+    dbPathOverride = "/tmp/skillbill-goal-runner/metrics.db",
   )
 }
 

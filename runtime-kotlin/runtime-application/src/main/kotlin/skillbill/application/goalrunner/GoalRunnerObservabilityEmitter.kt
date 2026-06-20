@@ -1,6 +1,7 @@
 package skillbill.application.goalrunner
 
 import skillbill.application.model.GoalRunnerRunRequest
+import skillbill.goalrunner.model.GoalRunnerLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.goalrunner.GoalRunnerWorkflowOutcomeStore
@@ -118,13 +119,21 @@ internal class GoalRunnerObservabilityEmitter(
     progress: GoalRunnerWorkflowProgress?,
     facts: AgentRunLaunchFacts,
   ) {
+    // Persist a bounded stderr tail alongside the counts: a char count alone makes a
+    // no-terminal-outcome stall undiagnosable after the fact (the body is the only signal that
+    // distinguishes a crash from a usage limit). The store is local to ~/.skill-bill.
+    val stderrTail = facts.stderr
+      .takeLast(GoalRunnerLaunchFacts.STDERR_TAIL_MAX_CHARS)
+      .takeIf(String::isNotBlank)
+      ?.let { tail -> "; stderr_tail=$tail" }
+      .orEmpty()
     record(
       subject = subject,
       signal = GoalRunnerObservabilitySignal(
         workflowPhase = progress?.currentStepId ?: facts.liveness?.workflowStep ?: "goal_runner_supervision",
         livenessClass = "worker_output_summary",
         activitySummary = "stdout_chars=${facts.stdout.length}; stderr_chars=${facts.stderr.length}; " +
-          "exit_status=${facts.exitStatus ?: "none"}",
+          "exit_status=${facts.exitStatus ?: "none"}$stderrTail",
       ),
     )
   }

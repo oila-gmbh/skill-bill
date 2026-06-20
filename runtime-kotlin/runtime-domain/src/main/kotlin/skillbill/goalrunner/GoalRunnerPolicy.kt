@@ -152,12 +152,7 @@ object GoalRunnerOutcomeReconciler {
     )
     storedOutcome == null -> GoalRunnerReconciledOutcome.Stop(
       reason = GoalRunnerStopReason.NO_TERMINAL_STORE_OUTCOME,
-      blockedReason = "Subtask $subtaskId finished without a terminal workflow-store outcome: the child " +
-        "process returned but its workflow row never reached a terminal state (complete or durably " +
-        "blocked). This is cause-agnostic — possible causes include the child process being terminated " +
-        "mid-run (out-of-memory, crash, or an interrupted/declined resume) or hitting a model/usage limit " +
-        "before persisting. Inspect the child workflow and its transcript to confirm the cause, then " +
-        "resume from last_resumable_step.",
+      blockedReason = noTerminalStoreOutcomeReason(subtaskId, launchFacts),
       workflowId = null,
       commitSha = null,
       lastResumableStep = "preplan",
@@ -221,6 +216,35 @@ object GoalRunnerOutcomeReconciler {
         lastResumableStep = storedOutcome.lastResumableStep.orEmpty().ifBlank { "commit_push" },
       )
     }
+  }
+
+  /**
+   * Builds the no-terminal-outcome diagnosis. The child returned but its workflow row never
+   * reached a terminal state. Rather than a cause-agnostic guess, branch on the captured
+   * [GoalRunnerLaunchFacts.exitStatus] and append the captured stderr tail when present, so the
+   * operator sees the actual failure cause (a non-zero exit means the child errored; a clean exit
+   * means it stopped before the terminal store-write — typically a usage/model limit or a missed
+   * terminal MCP call).
+   */
+  private fun noTerminalStoreOutcomeReason(subtaskId: Int, launchFacts: GoalRunnerLaunchFacts): String {
+    val exitStatus = launchFacts.exitStatus
+    val lead = when {
+      exitStatus != null && exitStatus != 0 ->
+        "Subtask $subtaskId finished without a terminal workflow-store outcome: the child process " +
+          "exited with status $exitStatus before its workflow row reached a terminal state (complete " +
+          "or durably blocked). A non-zero exit means the child errored out rather than stopping cleanly."
+      else ->
+        "Subtask $subtaskId finished without a terminal workflow-store outcome: the child process " +
+          "exited cleanly (status ${exitStatus ?: "unknown"}) but its workflow row never reached a " +
+          "terminal state. A clean exit without a terminal store-write usually means a model/usage " +
+          "limit or a missed terminal MCP call before persisting."
+    }
+    val guidance = " Inspect the child workflow and its transcript to confirm, then resume from last_resumable_step."
+    val stderrDetail = launchFacts.stderrTail
+      ?.takeIf(String::isNotBlank)
+      ?.let { tail -> " Child stderr tail:\n$tail" }
+      .orEmpty()
+    return "$lead$guidance$stderrDetail"
   }
 
   private fun stop(
