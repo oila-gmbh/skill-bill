@@ -392,7 +392,7 @@ internal fun generateWorkflowId(prefix: String): String {
 private fun Int.twoDigits(): String = toString().padStart(2, '0')
 
 internal fun WorkflowFamilyKind.workflowFamily(): WorkflowFamily = when (this) {
-  WorkflowFamilyKind.IMPLEMENT -> WorkflowFamily.IMPLEMENT
+  WorkflowFamilyKind.TASK_PROSE -> WorkflowFamily.IMPLEMENT
   WorkflowFamilyKind.VERIFY -> WorkflowFamily.VERIFY
   WorkflowFamilyKind.TASK_RUNTIME -> WorkflowFamily.TASK_RUNTIME
 }
@@ -401,7 +401,7 @@ internal enum class WorkflowFamily(
   val definition: WorkflowDefinition,
   val humanName: String,
 ) {
-  IMPLEMENT(FeatureImplementWorkflowDefinition.definition, "feature-implement"),
+  IMPLEMENT(FeatureImplementWorkflowDefinition.definition, "feature-task-prose"),
   VERIFY(FeatureVerifyWorkflowDefinition.definition, "feature-verify"),
   TASK_RUNTIME(FeatureTaskRuntimePhaseWorkflowDefinition.definition, "feature-task-runtime"),
   ;

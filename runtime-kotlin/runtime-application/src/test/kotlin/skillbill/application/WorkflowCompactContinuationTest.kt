@@ -28,9 +28,9 @@ class WorkflowCompactContinuationTest {
   @Test
   fun `continueWorkflow compact projection inlines small current-step artifacts`() {
     val service = newService()
-    val opened = assertIs<WorkflowOpenResult.Ok>(service.open(WorkflowFamilyKind.IMPLEMENT, sessionId = "fis-001"))
+    val opened = assertIs<WorkflowOpenResult.Ok>(service.open(WorkflowFamilyKind.TASK_PROSE, sessionId = "fis-001"))
     service.update(
-      WorkflowFamilyKind.IMPLEMENT,
+      WorkflowFamilyKind.TASK_PROSE,
       WorkflowUpdateRequest(
         workflowId = opened.workflowId,
         workflowStatus = "blocked",
@@ -47,7 +47,7 @@ class WorkflowCompactContinuationTest {
     )
 
     val standard = assertIs<WorkflowContinueResult.Standard>(
-      service.continueWorkflow(WorkflowFamilyKind.IMPLEMENT, opened.workflowId),
+      service.continueWorkflow(WorkflowFamilyKind.TASK_PROSE, opened.workflowId),
     )
     val compact = standard.view.compact
 
@@ -80,9 +80,9 @@ class WorkflowCompactContinuationTest {
   @Test
   fun `continueWorkflow compact projection summarizes large current-step artifacts`() {
     val service = newService()
-    val opened = assertIs<WorkflowOpenResult.Ok>(service.open(WorkflowFamilyKind.IMPLEMENT, sessionId = "fis-001"))
+    val opened = assertIs<WorkflowOpenResult.Ok>(service.open(WorkflowFamilyKind.TASK_PROSE, sessionId = "fis-001"))
     service.update(
-      WorkflowFamilyKind.IMPLEMENT,
+      WorkflowFamilyKind.TASK_PROSE,
       WorkflowUpdateRequest(
         workflowId = opened.workflowId,
         workflowStatus = "blocked",
@@ -98,7 +98,7 @@ class WorkflowCompactContinuationTest {
     )
 
     val standard = assertIs<WorkflowContinueResult.Standard>(
-      service.continueWorkflow(WorkflowFamilyKind.IMPLEMENT, opened.workflowId),
+      service.continueWorkflow(WorkflowFamilyKind.TASK_PROSE, opened.workflowId),
     )
     val planSummary = standard.view.compact.currentStepArtifacts.single { it.key == "plan" }
 
@@ -117,12 +117,12 @@ class WorkflowCompactContinuationTest {
   @Test
   fun `compact continuation payload stays under byte ceiling and omits full snapshot for large artifacts`() {
     val service = newService()
-    val opened = assertIs<WorkflowOpenResult.Ok>(service.open(WorkflowFamilyKind.IMPLEMENT, sessionId = "fis-001"))
+    val opened = assertIs<WorkflowOpenResult.Ok>(service.open(WorkflowFamilyKind.TASK_PROSE, sessionId = "fis-001"))
     // Representative LARGE current-step artifact: a multi-KB plan body that a
     // full snapshot would inline verbatim. The compact projection must summarize
     // it instead, so the serialized compact payload stays well under the ceiling.
     service.update(
-      WorkflowFamilyKind.IMPLEMENT,
+      WorkflowFamilyKind.TASK_PROSE,
       WorkflowUpdateRequest(
         workflowId = opened.workflowId,
         workflowStatus = "blocked",
@@ -138,7 +138,7 @@ class WorkflowCompactContinuationTest {
     )
 
     val standard = assertIs<WorkflowContinueResult.Standard>(
-      service.continueWorkflow(WorkflowFamilyKind.IMPLEMENT, opened.workflowId),
+      service.continueWorkflow(WorkflowFamilyKind.TASK_PROSE, opened.workflowId),
     )
     // Two large artifacts (plan + preplan_digest) summed are ~20KB raw; a full
     // snapshot would inline all of it. The compact projection bounds each to a
@@ -169,9 +169,9 @@ class WorkflowCompactContinuationTest {
   @Test
   fun `full continue projection exercises the full shape distinctly from compact`() {
     val service = newService()
-    val opened = assertIs<WorkflowOpenResult.Ok>(service.open(WorkflowFamilyKind.IMPLEMENT, sessionId = "fis-001"))
+    val opened = assertIs<WorkflowOpenResult.Ok>(service.open(WorkflowFamilyKind.TASK_PROSE, sessionId = "fis-001"))
     service.update(
-      WorkflowFamilyKind.IMPLEMENT,
+      WorkflowFamilyKind.TASK_PROSE,
       WorkflowUpdateRequest(
         workflowId = opened.workflowId,
         workflowStatus = "blocked",
@@ -187,7 +187,7 @@ class WorkflowCompactContinuationTest {
     )
 
     val standard = assertIs<WorkflowContinueResult.Standard>(
-      service.continueWorkflow(WorkflowFamilyKind.IMPLEMENT, opened.workflowId),
+      service.continueWorkflow(WorkflowFamilyKind.TASK_PROSE, opened.workflowId),
     )
     // The explicit full/debug continue projection (the read-only show fallback
     // shape) carries the full durable `step_artifacts` map with the large body

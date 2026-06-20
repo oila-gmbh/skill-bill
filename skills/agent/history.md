@@ -1,8 +1,8 @@
 ## [2026-06-13] prose-goal-subtask-isolation
 Areas: skills/bill-feature-goal, skills/bill-feature-task-prose, skills/bill-feature-task-subtask-runner, scripts
 - Goal orchestrator (bill-feature-goal mode:prose) stays thin: holds only decomposition manifest + per-subtask terminal outcomes; no phase artifacts accumulated
-- Subtask execution delegated to Level-1 Agent-tool spawn (bill-feature-task-subtask-runner) with self-contained briefing; continuation via feature_implement_workflow_continue with suppress_pr=true
-- Terminal outcome verified via feature_implement_workflow_get after each subtask-agent returns; in-session return value is signal only
+- Subtask execution delegated to Level-1 Agent-tool spawn (bill-feature-task-subtask-runner) with self-contained briefing; continuation via feature_task_prose_workflow_continue with suppress_pr=true
+- Terminal outcome verified via feature_task_prose_workflow_get after each subtask-agent returns; in-session return value is signal only
 - Stop-loudly contract: on subtask failure, orchestrator surfaces subtask ID, blocked_reason, workflow ID, and last_resumable_step; does not advance
 - New native agent entry bill-feature-task-subtask-runner in skills/bill-feature-task-prose/native-agents/agents.yaml (reusable)
 - New skill skills/bill-feature-task-subtask-runner/content.md — Level-1 subtask agent; required by validateAgentConfigs for bill-* references in prose .md files (reusable)

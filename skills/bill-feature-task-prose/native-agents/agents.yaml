@@ -336,7 +336,7 @@ agents:
       Spec path:   {spec_path}
 
       Goal-continuation contract:
-      1. Call `feature_implement_workflow_continue` (or `skill-bill workflow continue`) with the parent `issue_key` and `subtask_id` above to enter the subtask workflow.
+      1. Call `feature_task_prose_workflow_continue` (or `skill-bill workflow continue`) with the parent `issue_key` and `subtask_id` above to enter the subtask workflow.
       2. Follow the `bill-feature-task-prose ## Goal-Continuation Entry (non-interactive)` rules verbatim:
          - `suppress_pr=true` — do NOT open a PR for this subtask
          - No install flows — do NOT run `./install.sh` or any install command
@@ -347,7 +347,7 @@ agents:
          - No changes to any phase agent or reviewer behavior.
 
       Context discipline:
-      - Do NOT ask for confirmation before starting. Start immediately by calling `feature_implement_workflow_continue`.
+      - Do NOT ask for confirmation before starting. Start immediately by calling `feature_task_prose_workflow_continue`.
       - Do NOT accumulate sibling-subtask artifacts. Your context holds only this subtask's data.
       - Do NOT open a PR. PR suppression is mandatory (`suppress_pr=true`).
       - Start from zero context. Derive all task details from the workflow continuation payload and `{spec_path}` alone.

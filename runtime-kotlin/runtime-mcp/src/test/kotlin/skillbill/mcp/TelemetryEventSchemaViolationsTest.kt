@@ -23,9 +23,9 @@ import kotlin.test.assertFailsWith
  */
 class TelemetryEventSchemaViolationsTest {
 
-  /** Schema-clean envelope for `feature_implement_started`. */
+  /** Schema-clean envelope for `feature_task_prose_started`. */
   private fun validImplementStartedEnvelope(): MutableMap<String, Any?> = linkedMapOf(
-    "event_name" to "feature_implement_started",
+    "event_name" to "feature_task_prose_started",
     "contract_version" to TELEMETRY_EVENT_CONTRACT_VERSION,
     "feature_size" to "SMALL",
     "acceptance_criteria_count" to 1,
@@ -38,9 +38,9 @@ class TelemetryEventSchemaViolationsTest {
     "spec_summary" to "summary",
   )
 
-  /** Schema-clean envelope for `feature_implement_finished`. */
+  /** Schema-clean envelope for `feature_task_prose_finished`. */
   private fun validImplementFinishedEnvelope(): MutableMap<String, Any?> = linkedMapOf(
-    "event_name" to "feature_implement_finished",
+    "event_name" to "feature_task_prose_finished",
     "contract_version" to TELEMETRY_EVENT_CONTRACT_VERSION,
     "session_id" to "fis-1",
     "completion_status" to "completed",
@@ -104,7 +104,7 @@ class TelemetryEventSchemaViolationsTest {
     // Required-property violations may surface at the parent path; the
     // reason MUST name the missing key so callers can pinpoint it.
     assertContains(error.reason.lowercase() + " " + error.fieldPath.lowercase(), "feature_name")
-    assertEquals("feature_implement_started", error.eventName)
+    assertEquals("feature_task_prose_started", error.eventName)
   }
 
   @Test
@@ -116,7 +116,7 @@ class TelemetryEventSchemaViolationsTest {
       TelemetryEventSchemaValidator.validate(envelope)
     }
     assertContains(error.reason.lowercase() + " " + error.fieldPath.lowercase(), "contract_version")
-    assertEquals("feature_implement_started", error.eventName)
+    assertEquals("feature_task_prose_started", error.eventName)
   }
 
   @Test
@@ -128,7 +128,7 @@ class TelemetryEventSchemaViolationsTest {
       TelemetryEventSchemaValidator.validate(envelope)
     }
     assertContains(error.reason, "bogus_extra")
-    assertEquals("feature_implement_started", error.eventName)
+    assertEquals("feature_task_prose_started", error.eventName)
   }
 
   @Test
@@ -142,7 +142,7 @@ class TelemetryEventSchemaViolationsTest {
       TelemetryEventSchemaValidator.validate(envelope)
     }
     assertContains(error.reason.lowercase() + " " + error.fieldPath.lowercase(), "acceptance_criteria_count")
-    assertEquals("feature_implement_started", error.eventName)
+    assertEquals("feature_task_prose_started", error.eventName)
   }
 
   @Test

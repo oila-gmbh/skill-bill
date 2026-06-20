@@ -277,7 +277,7 @@ in its own fresh context and returns a bounded RESULT block.
 Selection semantics follow the runtime DecompositionWorkflowContinuation
 selector: resume the in-progress subtask; else start the first pending subtask
 whose dependencies are complete; else report blocked or all-complete. Resolve the
-`workflow_id` for the next runnable subtask via `feature_implement_workflow_get`
+`workflow_id` for the next runnable subtask via `feature_task_prose_workflow_get`
 or `skill-bill workflow continue` before spawning the Level-1 agent, so the
 Level-1 briefing carries the correct `workflow_id`. When a `subtask_id` is
 supplied by the caller, treat it as a constraint on the next runnable subtask,
@@ -298,7 +298,7 @@ everything else stays in Level-1 context.
 ### Terminal-outcome verification and durable authority
 
 After Level-1 returns, verify the terminal outcome via
-`feature_implement_workflow_get` (or `skill-bill goal status <issue_key>`)
+`feature_task_prose_workflow_get` (or `skill-bill goal status <issue_key>`)
 before advancing to the next subtask. The in-session RESULT block is a signal
 only — durable workflow state is authoritative.
 

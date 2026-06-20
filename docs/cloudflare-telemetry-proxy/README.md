@@ -104,7 +104,7 @@ Use the same filtering rules in PostHog dashboards:
 - health denominators: production telemetry with valid `fis-*` session ids for feature-implement stats
 - excluded rows: `source = test` and `source = synthetic`
 - data-quality debt: malformed session ids, unknown sources, duplicate terminal events, invalid/long-running durations, malformed child steps, and malformed review payloads
-- review health sources: standalone `skillbill_review_finished` plus embedded code-review entries in `skillbill_feature_implement_finished.child_steps`
+- review health sources: standalone `skillbill_review_finished` plus embedded code-review entries in `skillbill_feature_task_prose_finished.child_steps`
 - large-feature guidance: report `LARGE` completion, abandonment, and error separately, and recommend decomposition or earlier blocking when large-feature unhealthy rate is non-zero and at least the overall unhealthy rate
 
 ## Notes

@@ -14,10 +14,7 @@ data class WorkflowUpdateRequest(
 )
 
 enum class WorkflowFamilyKind {
-  IMPLEMENT,
+  TASK_PROSE,
   VERIFY,
-
-  // Experimental runtime-driven feature-task pipeline; distinct storage, never alters
-  // IMPLEMENT/VERIFY.
   TASK_RUNTIME,
 }

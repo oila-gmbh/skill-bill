@@ -191,7 +191,6 @@ private val RENAMED_SKILL_PAIRS = listOf(
   "bill-code-review-composer" to "bill-code-review-parallel",
   "bill-kotlin-code-review-correctness" to "bill-kotlin-code-review-platform-correctness",
   "bill-kmp-code-review-correctness" to "bill-kmp-code-review-platform-correctness",
-  "bill-php-code-review-correctness" to "bill-php-code-review-platform-correctness",
 )
 
 private fun installedSkillNames(fileSystem: UninstallFileSystemService, installedSkillsRoot: Path): List<String> {

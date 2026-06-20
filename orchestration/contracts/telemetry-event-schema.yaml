@@ -71,9 +71,9 @@ properties:
       `McpToolRegistry.toolNames`.
   contract_version:
     type: string
-    const: "1.0.0"
+    const: "1.1.0"
     description: >
-      Pinned to `TELEMETRY_EVENT_CONTRACT_VERSION` (currently "1.0.0").
+      Pinned to `TELEMETRY_EVENT_CONTRACT_VERSION` (currently "1.1.0").
       The parity test `TelemetryEventSchemaContractVersionTest` keeps
       the two in lockstep.
 
@@ -95,16 +95,16 @@ discriminator:
 #   loudly.
 oneOf:
   - $ref: "#/$defs/doctorEvent"
-  - $ref: "#/$defs/featureImplementFinishedEvent"
-  - $ref: "#/$defs/featureImplementStatsEvent"
-  - $ref: "#/$defs/featureImplementStartedEvent"
-  - $ref: "#/$defs/featureImplementWorkflowGetEvent"
-  - $ref: "#/$defs/featureImplementWorkflowLatestEvent"
-  - $ref: "#/$defs/featureImplementWorkflowListEvent"
-  - $ref: "#/$defs/featureImplementWorkflowContinueEvent"
-  - $ref: "#/$defs/featureImplementWorkflowOpenEvent"
-  - $ref: "#/$defs/featureImplementWorkflowResumeEvent"
-  - $ref: "#/$defs/featureImplementWorkflowUpdateEvent"
+  - $ref: "#/$defs/featureTaskProseFinishedEvent"
+  - $ref: "#/$defs/featureTaskProseStatsEvent"
+  - $ref: "#/$defs/featureTaskProseStartedEvent"
+  - $ref: "#/$defs/featureTaskProseWorkflowGetEvent"
+  - $ref: "#/$defs/featureTaskProseWorkflowLatestEvent"
+  - $ref: "#/$defs/featureTaskProseWorkflowListEvent"
+  - $ref: "#/$defs/featureTaskProseWorkflowContinueEvent"
+  - $ref: "#/$defs/featureTaskProseWorkflowOpenEvent"
+  - $ref: "#/$defs/featureTaskProseWorkflowResumeEvent"
+  - $ref: "#/$defs/featureTaskProseWorkflowUpdateEvent"
   - $ref: "#/$defs/featureVerifyFinishedEvent"
   - $ref: "#/$defs/featureVerifyStatsEvent"
   - $ref: "#/$defs/featureVerifyStartedEvent"
@@ -125,16 +125,6 @@ oneOf:
   - $ref: "#/$defs/featureTaskRuntimeStartedEvent"
   - $ref: "#/$defs/featureTaskRuntimeFinishedEvent"
   - $ref: "#/$defs/featureTaskRuntimeStatsEvent"
-  - $ref: "#/$defs/featureTaskWorkflowGetEvent"
-  - $ref: "#/$defs/featureTaskWorkflowLatestEvent"
-  - $ref: "#/$defs/featureTaskWorkflowListEvent"
-  - $ref: "#/$defs/featureTaskWorkflowContinueEvent"
-  - $ref: "#/$defs/featureTaskWorkflowOpenEvent"
-  - $ref: "#/$defs/featureTaskWorkflowResumeEvent"
-  - $ref: "#/$defs/featureTaskWorkflowUpdateEvent"
-  - $ref: "#/$defs/featureTaskStartedEvent"
-  - $ref: "#/$defs/featureTaskFinishedEvent"
-  - $ref: "#/$defs/featureTaskStatsEvent"
   - $ref: "#/$defs/goalStartedEvent"
   - $ref: "#/$defs/goalSubtaskFinishedEvent"
   - $ref: "#/$defs/goalFinishedEvent"
@@ -476,9 +466,9 @@ $defs:
       event_name:
         const: doctor
       contract_version:
-        const: "1.0.0"
+        const: "1.1.0"
 
-  featureImplementStatsEvent:
+  featureTaskProseStatsEvent:
     type: object
     additionalProperties: true
     required:
@@ -486,9 +476,9 @@ $defs:
       - contract_version
     properties:
       event_name:
-        const: feature_implement_stats
+        const: feature_task_prose_stats
       contract_version:
-        const: "1.0.0"
+        const: "1.1.0"
 
   featureVerifyStatsEvent:
     type: object
@@ -500,7 +490,7 @@ $defs:
       event_name:
         const: feature_verify_stats
       contract_version:
-        const: "1.0.0"
+        const: "1.1.0"
 
   featureTaskRuntimeStatsEvent:
     type: object
@@ -512,22 +502,7 @@ $defs:
       event_name:
         const: feature_task_runtime_stats
       contract_version:
-        const: "1.0.0"
-
-  # SKILL-67 Subtask 1 (AC3): canonical feature_task_* stats branch mirroring
-  # featureTaskRuntimeStatsEvent. The runtime feature_task_runtime_stats alias
-  # remains for the removal window.
-  featureTaskStatsEvent:
-    type: object
-    additionalProperties: true
-    required:
-      - event_name
-      - contract_version
-    properties:
-      event_name:
-        const: feature_task_stats
-      contract_version:
-        const: "1.0.0"
+        const: "1.1.0"
 
   readianAuthStatusEvent:
     type: object
@@ -539,7 +514,7 @@ $defs:
       event_name:
         const: readian_auth_status
       contract_version:
-        const: "1.0.0"
+        const: "1.1.0"
 
   reviewStatsEvent:
     type: object
@@ -551,7 +526,7 @@ $defs:
       event_name:
         const: review_stats
       contract_version:
-        const: "1.0.0"
+        const: "1.1.0"
 
   telemetryProxyCapabilitiesEvent:
     type: object
@@ -563,7 +538,7 @@ $defs:
       event_name:
         const: telemetry_proxy_capabilities
       contract_version:
-        const: "1.0.0"
+        const: "1.1.0"
 
   telemetryRemoteStatsEvent:
     type: object
@@ -576,14 +551,15 @@ $defs:
       event_name:
         const: telemetry_remote_stats
       contract_version:
-        const: "1.0.0"
+        const: "1.1.0"
       workflow:
         type: string
         enum:
           - verify
           - implement
-          - bill-feature-verify
           - bill-feature-task
+          - bill-feature-verify
+          - feature-task-prose
           - feature-task-runtime
           - goal
           - bill-feature-goal
@@ -602,7 +578,7 @@ $defs:
 
   # --- Strict branches (mirror `inputSchemas` entries verbatim) ---
 
-  featureImplementStartedEvent:
+  featureTaskProseStartedEvent:
     type: object
     additionalProperties: false
     required:
@@ -619,9 +595,9 @@ $defs:
       - spec_summary
     properties:
       event_name:
-        const: feature_implement_started
+        const: feature_task_prose_started
       contract_version:
-        const: "1.0.0"
+        const: "1.1.0"
       feature_size:
         type: string
         enum:
@@ -662,7 +638,7 @@ $defs:
       spec_summary:
         type: string
 
-  featureImplementFinishedEvent:
+  featureTaskProseFinishedEvent:
     type: object
     additionalProperties: false
     required:
@@ -686,9 +662,9 @@ $defs:
       - plan_deviation_notes
     properties:
       event_name:
-        const: feature_implement_finished
+        const: feature_task_prose_finished
       contract_version:
-        const: "1.0.0"
+        const: "1.1.0"
       session_id:
         type: string
       source:
@@ -765,7 +741,7 @@ $defs:
             - $ref: "#/$defs/qualityCheckChildStep"
             - $ref: "#/$defs/prDescriptionChildStep"
 
-  featureImplementWorkflowContinueEvent:
+  featureTaskProseWorkflowContinueEvent:
     type: object
     additionalProperties: false
     required:
@@ -773,9 +749,9 @@ $defs:
       - contract_version
     properties:
       event_name:
-        const: feature_implement_workflow_continue
+        const: feature_task_prose_workflow_continue
       contract_version:
-        const: "1.0.0"
+        const: "1.1.0"
       workflow_id:
         type: string
       issue_key:
@@ -783,7 +759,7 @@ $defs:
       subtask_id:
         type: integer
 
-  featureImplementWorkflowGetEvent:
+  featureTaskProseWorkflowGetEvent:
     type: object
     additionalProperties: false
     required:
@@ -792,13 +768,13 @@ $defs:
       - workflow_id
     properties:
       event_name:
-        const: feature_implement_workflow_get
+        const: feature_task_prose_workflow_get
       contract_version:
-        const: "1.0.0"
+        const: "1.1.0"
       workflow_id:
         type: string
 
-  featureImplementWorkflowLatestEvent:
+  featureTaskProseWorkflowLatestEvent:
     type: object
     additionalProperties: false
     required:
@@ -806,11 +782,11 @@ $defs:
       - contract_version
     properties:
       event_name:
-        const: feature_implement_workflow_latest
+        const: feature_task_prose_workflow_latest
       contract_version:
-        const: "1.0.0"
+        const: "1.1.0"
 
-  featureImplementWorkflowListEvent:
+  featureTaskProseWorkflowListEvent:
     type: object
     additionalProperties: false
     required:
@@ -818,13 +794,13 @@ $defs:
       - contract_version
     properties:
       event_name:
-        const: feature_implement_workflow_list
+        const: feature_task_prose_workflow_list
       contract_version:
-        const: "1.0.0"
+        const: "1.1.0"
       limit:
         type: integer
 
-  featureImplementWorkflowOpenEvent:
+  featureTaskProseWorkflowOpenEvent:
     type: object
     additionalProperties: false
     required:
@@ -832,15 +808,15 @@ $defs:
       - contract_version
     properties:
       event_name:
-        const: feature_implement_workflow_open
+        const: feature_task_prose_workflow_open
       contract_version:
-        const: "1.0.0"
+        const: "1.1.0"
       session_id:
         type: string
       current_step_id:
         type: string
 
-  featureImplementWorkflowResumeEvent:
+  featureTaskProseWorkflowResumeEvent:
     type: object
     additionalProperties: false
     required:
@@ -849,13 +825,13 @@ $defs:
       - workflow_id
     properties:
       event_name:
-        const: feature_implement_workflow_resume
+        const: feature_task_prose_workflow_resume
       contract_version:
-        const: "1.0.0"
+        const: "1.1.0"
       workflow_id:
         type: string
 
-  featureImplementWorkflowUpdateEvent:
+  featureTaskProseWorkflowUpdateEvent:
     type: object
     additionalProperties: false
     required:
@@ -866,9 +842,9 @@ $defs:
       - current_step_id
     properties:
       event_name:
-        const: feature_implement_workflow_update
+        const: feature_task_prose_workflow_update
       contract_version:
-        const: "1.0.0"
+        const: "1.1.0"
       workflow_id:
         type: string
       workflow_status:
@@ -897,7 +873,7 @@ $defs:
       event_name:
         const: feature_verify_started
       contract_version:
-        const: "1.0.0"
+        const: "1.1.0"
       acceptance_criteria_count:
         type: integer
       rollout_relevant:
@@ -928,7 +904,7 @@ $defs:
       event_name:
         const: feature_verify_finished
       contract_version:
-        const: "1.0.0"
+        const: "1.1.0"
       feature_flag_audit_performed:
         type: boolean
       review_iterations:
@@ -980,7 +956,7 @@ $defs:
       event_name:
         const: feature_task_runtime_started
       contract_version:
-        const: "1.0.0"
+        const: "1.1.0"
       feature_size:
         type: string
         enum:
@@ -1007,76 +983,7 @@ $defs:
       event_name:
         const: feature_task_runtime_finished
       contract_version:
-        const: "1.0.0"
-      session_id:
-        type: string
-      completion_status:
-        type: string
-        enum:
-          - completed
-          - blocked
-          - decomposed_at_planning
-          - error
-      completed_phase_ids:
-        type: array
-        items:
-          type: string
-      phase_outcomes:
-        $ref: "#/$defs/freeObjectShape"
-      review_fix_iteration_count:
-        type: integer
-      audit_gap_iteration_count:
-        type: integer
-      last_incomplete_phase:
-        type: string
-      blocked_reason:
-        type: string
-      resolved_branch:
-        type: string
-
-  # SKILL-67 Subtask 1 (AC3): canonical feature_task_* started/finished branches
-  # mirroring featureTaskRuntimeStartedEvent / featureTaskRuntimeFinishedEvent.
-  featureTaskStartedEvent:
-    type: object
-    additionalProperties: false
-    required:
-      - event_name
-      - contract_version
-      - feature_size
-      - issue_key
-      - feature_name
-    properties:
-      event_name:
-        const: feature_task_started
-      contract_version:
-        const: "1.0.0"
-      feature_size:
-        type: string
-        enum:
-          - SMALL
-          - MEDIUM
-          - LARGE
-      issue_key:
-        type: string
-      feature_name:
-        type: string
-      session_id:
-        type: string
-
-  featureTaskFinishedEvent:
-    type: object
-    additionalProperties: false
-    required:
-      - event_name
-      - contract_version
-      - session_id
-      - completion_status
-      - completed_phase_ids
-    properties:
-      event_name:
-        const: feature_task_finished
-      contract_version:
-        const: "1.0.0"
+        const: "1.1.0"
       session_id:
         type: string
       completion_status:
@@ -1114,7 +1021,7 @@ $defs:
       event_name:
         const: feature_verify_workflow_continue
       contract_version:
-        const: "1.0.0"
+        const: "1.1.0"
       workflow_id:
         type: string
 
@@ -1129,7 +1036,7 @@ $defs:
       event_name:
         const: feature_verify_workflow_get
       contract_version:
-        const: "1.0.0"
+        const: "1.1.0"
       workflow_id:
         type: string
 
@@ -1143,7 +1050,7 @@ $defs:
       event_name:
         const: feature_verify_workflow_latest
       contract_version:
-        const: "1.0.0"
+        const: "1.1.0"
 
   featureVerifyWorkflowListEvent:
     type: object
@@ -1155,7 +1062,7 @@ $defs:
       event_name:
         const: feature_verify_workflow_list
       contract_version:
-        const: "1.0.0"
+        const: "1.1.0"
       limit:
         type: integer
 
@@ -1169,7 +1076,7 @@ $defs:
       event_name:
         const: feature_verify_workflow_open
       contract_version:
-        const: "1.0.0"
+        const: "1.1.0"
       session_id:
         type: string
       current_step_id:
@@ -1186,7 +1093,7 @@ $defs:
       event_name:
         const: feature_verify_workflow_resume
       contract_version:
-        const: "1.0.0"
+        const: "1.1.0"
       workflow_id:
         type: string
 
@@ -1203,7 +1110,7 @@ $defs:
       event_name:
         const: feature_verify_workflow_update
       contract_version:
-        const: "1.0.0"
+        const: "1.1.0"
       workflow_id:
         type: string
       workflow_status:
@@ -1232,7 +1139,7 @@ $defs:
       event_name:
         const: feature_task_runtime_workflow_continue
       contract_version:
-        const: "1.0.0"
+        const: "1.1.0"
       workflow_id:
         type: string
 
@@ -1247,7 +1154,7 @@ $defs:
       event_name:
         const: feature_task_runtime_workflow_get
       contract_version:
-        const: "1.0.0"
+        const: "1.1.0"
       workflow_id:
         type: string
 
@@ -1261,7 +1168,7 @@ $defs:
       event_name:
         const: feature_task_runtime_workflow_latest
       contract_version:
-        const: "1.0.0"
+        const: "1.1.0"
 
   featureTaskRuntimeWorkflowListEvent:
     type: object
@@ -1273,7 +1180,7 @@ $defs:
       event_name:
         const: feature_task_runtime_workflow_list
       contract_version:
-        const: "1.0.0"
+        const: "1.1.0"
       limit:
         type: integer
 
@@ -1287,7 +1194,7 @@ $defs:
       event_name:
         const: feature_task_runtime_workflow_open
       contract_version:
-        const: "1.0.0"
+        const: "1.1.0"
       session_id:
         type: string
       current_step_id:
@@ -1304,7 +1211,7 @@ $defs:
       event_name:
         const: feature_task_runtime_workflow_resume
       contract_version:
-        const: "1.0.0"
+        const: "1.1.0"
       workflow_id:
         type: string
 
@@ -1321,7 +1228,7 @@ $defs:
       event_name:
         const: feature_task_runtime_workflow_update
       contract_version:
-        const: "1.0.0"
+        const: "1.1.0"
       workflow_id:
         type: string
       workflow_status:
@@ -1337,137 +1244,6 @@ $defs:
       session_id:
         type: string
 
-  # SKILL-67 Subtask 1 (AC3): canonical feature_task_* workflow-family branches
-  # mirroring each featureTaskRuntimeWorkflow* branch. The runtime aliases stay
-  # registered for the removal window.
-  featureTaskWorkflowContinueEvent:
-    type: object
-    additionalProperties: false
-    required:
-      - event_name
-      - contract_version
-      - workflow_id
-    properties:
-      event_name:
-        const: feature_task_workflow_continue
-      contract_version:
-        const: "1.0.0"
-      workflow_id:
-        type: string
-
-  featureTaskWorkflowGetEvent:
-    type: object
-    additionalProperties: false
-    required:
-      - event_name
-      - contract_version
-      - workflow_id
-    properties:
-      event_name:
-        const: feature_task_workflow_get
-      contract_version:
-        const: "1.0.0"
-      workflow_id:
-        type: string
-
-  featureTaskWorkflowLatestEvent:
-    type: object
-    additionalProperties: false
-    required:
-      - event_name
-      - contract_version
-    properties:
-      event_name:
-        const: feature_task_workflow_latest
-      contract_version:
-        const: "1.0.0"
-
-  featureTaskWorkflowListEvent:
-    type: object
-    additionalProperties: false
-    required:
-      - event_name
-      - contract_version
-    properties:
-      event_name:
-        const: feature_task_workflow_list
-      contract_version:
-        const: "1.0.0"
-      limit:
-        type: integer
-
-  featureTaskWorkflowOpenEvent:
-    type: object
-    additionalProperties: false
-    required:
-      - event_name
-      - contract_version
-    properties:
-      event_name:
-        const: feature_task_workflow_open
-      contract_version:
-        const: "1.0.0"
-      session_id:
-        type: string
-      current_step_id:
-        type: string
-
-  featureTaskWorkflowResumeEvent:
-    type: object
-    additionalProperties: false
-    required:
-      - event_name
-      - contract_version
-      - workflow_id
-    properties:
-      event_name:
-        const: feature_task_workflow_resume
-      contract_version:
-        const: "1.0.0"
-      workflow_id:
-        type: string
-
-  featureTaskWorkflowUpdateEvent:
-    type: object
-    additionalProperties: false
-    required:
-      - event_name
-      - contract_version
-      - workflow_id
-      - workflow_status
-      - current_step_id
-    properties:
-      event_name:
-        const: feature_task_workflow_update
-      contract_version:
-        const: "1.0.0"
-      workflow_id:
-        type: string
-      workflow_status:
-        $ref: "#/$defs/workflowTaskRuntimeStatusEnum"
-      current_step_id:
-        $ref: "#/$defs/workflowTaskRuntimeStepIdEnum"
-      step_updates:
-        type: array
-        items:
-          $ref: "#/$defs/stepUpdateTaskRuntimeShape"
-      artifacts_patch:
-        $ref: "#/$defs/freeObjectShape"
-      session_id:
-        type: string
-
-  # SKILL-66 Subtask 1: decomposed-goal telemetry family.
-  #
-  # `goalStartedEvent`, `goalSubtaskFinishedEvent`, and
-  # `goalFinishedEvent` are RUNTIME-INTERNAL emission payload contracts:
-  # the `skill-bill goal` runtime emits them as it drives a decomposed
-  # goal, but they are intentionally ABSENT from `McpToolRegistry.toolNames`
-  # (they are not MCP tools). See `x-coherence-checks.goal-telemetry-emission-events`.
-  # `goalStatsEvent` IS a registered tool (`goal_stats`) and mirrors
-  # `McpToolRegistry.inputSchemas["goal_stats"]` (the `goalStatsSchema()`
-  # helper). Integer bounds mirror `stepUpdateTaskRuntimeShape.attempt_count`
-  # (int32); timestamps mirror the goal-observability `timestamp`
-  # convention (ISO-8601 string, minLength 1).
   goalStartedEvent:
     type: object
     additionalProperties: false
@@ -1484,7 +1260,7 @@ $defs:
       event_name:
         const: goal_started
       contract_version:
-        const: "1.0.0"
+        const: "1.1.0"
       issue_key:
         type: string
       feature_name:
@@ -1522,7 +1298,7 @@ $defs:
       event_name:
         const: goal_subtask_finished
       contract_version:
-        const: "1.0.0"
+        const: "1.1.0"
       issue_key:
         type: string
       workflow_id:
@@ -1578,7 +1354,7 @@ $defs:
       event_name:
         const: goal_finished
       contract_version:
-        const: "1.0.0"
+        const: "1.1.0"
       issue_key:
         type: string
       workflow_id:
@@ -1620,7 +1396,7 @@ $defs:
       event_name:
         const: goal_stats
       contract_version:
-        const: "1.0.0"
+        const: "1.1.0"
       since:
         type: string
       date_from:
@@ -1645,7 +1421,7 @@ $defs:
       event_name:
         const: import_review
       contract_version:
-        const: "1.0.0"
+        const: "1.1.0"
       review_text:
         type: string
       orchestrated:
@@ -1662,7 +1438,7 @@ $defs:
       event_name:
         const: new_skill_scaffold
       contract_version:
-        const: "1.0.0"
+        const: "1.1.0"
       payload:
         $ref: "#/$defs/freeObjectShape"
       dry_run:
@@ -1686,7 +1462,7 @@ $defs:
       event_name:
         const: pr_description_generated
       contract_version:
-        const: "1.0.0"
+        const: "1.1.0"
       commit_count:
         type: integer
       files_changed_count:
@@ -1722,7 +1498,7 @@ $defs:
       event_name:
         const: quality_check_finished
       contract_version:
-        const: "1.0.0"
+        const: "1.1.0"
       final_failure_count:
         type: integer
       iterations:
@@ -1770,7 +1546,7 @@ $defs:
       event_name:
         const: quality_check_started
       contract_version:
-        const: "1.0.0"
+        const: "1.1.0"
       routed_skill:
         type: string
       detected_stack:
@@ -1792,7 +1568,7 @@ $defs:
       event_name:
         const: resolve_learnings
       contract_version:
-        const: "1.0.0"
+        const: "1.1.0"
       repo:
         type: string
       skill:
@@ -1812,7 +1588,7 @@ $defs:
       event_name:
         const: triage_findings
       contract_version:
-        const: "1.0.0"
+        const: "1.1.0"
       review_run_id:
         type: string
       decisions:
@@ -1836,7 +1612,7 @@ $defs:
       event_name:
         const: readian_get_article
       contract_version:
-        const: "1.0.0"
+        const: "1.1.0"
       article_id:
         type: string
 
@@ -1851,7 +1627,7 @@ $defs:
       event_name:
         const: readian_get_articles_for_topic_query
       contract_version:
-        const: "1.0.0"
+        const: "1.1.0"
       topic_query:
         type: string
       date:
@@ -1875,7 +1651,7 @@ $defs:
       event_name:
         const: readian_get_spotlight
       contract_version:
-        const: "1.0.0"
+        const: "1.1.0"
       date:
         type: string
       limit:
@@ -1892,7 +1668,7 @@ $defs:
       event_name:
         const: readian_save_candidate
       contract_version:
-        const: "1.0.0"
+        const: "1.1.0"
       candidate_id:
         type: string
       notes:
@@ -1910,7 +1686,7 @@ $defs:
       event_name:
         const: readian_mark_story_status
       contract_version:
-        const: "1.0.0"
+        const: "1.1.0"
       story_id:
         type: string
       status:

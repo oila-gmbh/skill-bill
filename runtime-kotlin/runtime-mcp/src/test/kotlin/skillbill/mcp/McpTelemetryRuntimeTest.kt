@@ -79,7 +79,7 @@ class McpTelemetryRuntimeTest {
   }
 
   @Test
-  fun `telemetry remote stats tool maps implement alias to bill-feature-task`() {
+  fun `telemetry remote stats tool maps implement alias to feature-task-prose`() {
     val tempDir = Files.createTempDirectory("skillbill-mcp-telemetry-implement-alias")
     val configPath = writeMcpTelemetryConfig(tempDir, "off")
     val env =
@@ -104,14 +104,14 @@ class McpTelemetryRuntimeTest {
       )
 
     assertEquals(
-      "{\"workflow\":\"bill-feature-task\",\"date_from\":\"2026-04-01\",\"date_to\":\"2026-04-22\"}",
+      "{\"workflow\":\"feature-task-prose\",\"date_from\":\"2026-04-01\",\"date_to\":\"2026-04-22\"}",
       capturedRequests.last()["body"],
     )
   }
 
   @Test
-  fun `telemetry remote stats tool accepts bill-feature-task canonical passthrough`() {
-    val tempDir = Files.createTempDirectory("skillbill-mcp-telemetry-task-passthrough")
+  fun `telemetry remote stats tool maps bill-feature-task legacy id to feature-task-prose`() {
+    val tempDir = Files.createTempDirectory("skillbill-mcp-telemetry-billtask-alias")
     val configPath = writeMcpTelemetryConfig(tempDir, "off")
     val env =
       mapOf(
@@ -133,7 +133,37 @@ class McpTelemetryRuntimeTest {
       context,
     )
 
-    assertTrue(capturedRequests.last()["body"].toString().contains("\"workflow\":\"bill-feature-task\""))
+    assertEquals(
+      "{\"workflow\":\"feature-task-prose\",\"date_from\":\"2026-04-01\",\"date_to\":\"2026-04-22\"}",
+      capturedRequests.last()["body"],
+    )
+  }
+
+  @Test
+  fun `telemetry remote stats tool accepts feature-task-prose canonical passthrough`() {
+    val tempDir = Files.createTempDirectory("skillbill-mcp-telemetry-task-passthrough")
+    val configPath = writeMcpTelemetryConfig(tempDir, "off")
+    val env =
+      mapOf(
+        CONFIG_ENVIRONMENT_KEY to configPath.toString(),
+        TELEMETRY_PROXY_URL_ENVIRONMENT_KEY to "https://telemetry.example.dev/ingest",
+        TELEMETRY_PROXY_STATS_TOKEN_ENVIRONMENT_KEY to "stats-token-123",
+      )
+    val capturedRequests = mutableListOf<Map<String, Any?>>()
+    val context =
+      McpRuntimeContext(
+        requester = mcpTelemetryRequester(capturedRequests),
+        environment = env,
+        userHome = tempDir,
+      )
+
+    McpToolDispatcher.call(
+      "telemetry_remote_stats",
+      mapOf("workflow" to "feature-task-prose", "date_from" to "2026-04-01", "date_to" to "2026-04-22"),
+      context,
+    )
+
+    assertTrue(capturedRequests.last()["body"].toString().contains("\"workflow\":\"feature-task-prose\""))
   }
 
   @Test
@@ -192,7 +222,7 @@ private fun mcpTelemetryRequester(capturedRequests: MutableList<Map<String, Any?
           {
             "supports_ingest": true,
             "supports_stats": true,
-            "supported_workflows": ["bill-feature-verify", "bill-feature-task"],
+            "supported_workflows": ["bill-feature-verify", "feature-task-prose"],
             "region": "eu"
           }
           """.trimIndent(),
@@ -248,7 +278,7 @@ private fun expectedMcpCapabilitiesPayload(): Map<String, Any?> = linkedMapOf(
   "capabilities_url" to "https://telemetry.example.dev/ingest/capabilities",
   "supports_ingest" to true,
   "supports_stats" to true,
-  "supported_workflows" to listOf("bill-feature-verify", "bill-feature-task"),
+  "supported_workflows" to listOf("bill-feature-verify", "feature-task-prose"),
   "region" to "eu",
 )
 

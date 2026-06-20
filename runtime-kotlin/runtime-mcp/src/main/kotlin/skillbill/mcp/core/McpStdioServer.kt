@@ -152,7 +152,7 @@ private fun mcpToolResult(payload: Map<String, Any?>, isError: Boolean): Map<Str
 private fun validateStrictArguments(params: Map<String, Any?>): String? {
   val toolName = params["name"]?.toString().orEmpty()
   val arguments = JsonSupport.anyToStringAnyMap(params["arguments"]).orEmpty()
-  val schema = McpToolRegistry.toolNamed(toolName)?.inputSchema
+  val schema = McpToolRegistry.toolNamed(McpToolDispatcher.canonicalToolName(toolName))?.inputSchema
   val unknownArguments = schema?.let { unknownProperties(arguments, it, path = "") }.orEmpty()
   return unknownArguments.takeIf { it.isNotEmpty() }?.let {
     "Unknown argument(s) for $toolName: ${it.joinToString(", ")}"
