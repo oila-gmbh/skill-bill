@@ -14,6 +14,7 @@ import skillbill.application.model.GoalRunnerRunRequest
 import skillbill.application.model.GoalRunnerStatusRequest
 import skillbill.application.workflow.repoRoot
 import skillbill.goalrunner.model.GoalAttemptLedgerAction
+import skillbill.goalrunner.model.GoalRunnerLaunchFacts
 import skillbill.goalrunner.model.GoalRunnerRunReport
 import skillbill.goalrunner.model.GoalRunnerStopReason
 import skillbill.goalrunner.model.GoalRunnerStoredOutcome
@@ -745,12 +746,43 @@ class GoalRunnerNoTerminalOutcomeDiagnosisTest {
 
     val stopped = assertIs<GoalRunnerRunReport.Stopped>(report)
     assertEquals(GoalRunnerStopReason.NO_TERMINAL_STORE_OUTCOME, stopped.stop.reason)
-    // A non-zero exit is diagnosed as the child erroring out, with the captured stderr tail.
+    // A non-zero exit is diagnosed as the child erroring out, with the captured stderr excerpt.
     assertContains(stopped.stop.blockedReason, "exited with status 1")
-    assertContains(stopped.stop.blockedReason, "Child stderr tail:")
+    assertContains(stopped.stop.blockedReason, "Child stderr (head+tail):")
     assertContains(stopped.stop.blockedReason, "usage limit reached before persisting terminal outcome")
     // A non-zero exit is not eligible for the no-terminal-outcome retry: exactly one launch.
     assertEquals(1, launcher.requests.size)
+  }
+
+  @Test
+  fun `oversized child stderr keeps exception head and recent tail`() {
+    // A crash stack trace leads with the exception type/message (the diagnostic part) and ends in
+    // framework frames. A plain tail would drop the head; the head+tail excerpt keeps both.
+    val head = "java.lang.IllegalStateException: SQLITE_BUSY: database is locked"
+    val tail = "at skillbill.cli.core.MainKt.main(Main.kt:12)"
+    val stderr = head + "X".repeat(GoalRunnerLaunchFacts.STDERR_EXCERPT_MAX_CHARS * 2) + tail
+    val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 1))
+    val launcher = RecordingSubtaskLauncher { request ->
+      val subtaskId = requireNotNull(request.skillRunRequest.subtaskId)
+      store.mutate { current -> current.withWorkflowId(subtaskId, "wfl-$subtaskId") }
+      AgentRunLaunchFacts(
+        agent = InstallAgent.CLAUDE,
+        exitStatus = 1,
+        stdout = "diagnostic only",
+        stderr = stderr,
+        timedOut = false,
+        interrupted = false,
+        spawnFailed = false,
+      )
+    }
+    val runner = GoalRunner(store, launcher, RecordingOutcomeStore(), RecordingPullRequestPort())
+
+    val report = runner.run(runRequest())
+
+    val stopped = assertIs<GoalRunnerRunReport.Stopped>(report)
+    assertContains(stopped.stop.blockedReason, head)
+    assertContains(stopped.stop.blockedReason, tail)
+    assertContains(stopped.stop.blockedReason, "chars omitted")
   }
 
   private fun runRequest(): GoalRunnerRunRequest = GoalRunnerRunRequest(

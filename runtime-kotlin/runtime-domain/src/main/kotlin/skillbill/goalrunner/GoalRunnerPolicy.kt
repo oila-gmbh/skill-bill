@@ -240,9 +240,9 @@ object GoalRunnerOutcomeReconciler {
           "limit or a missed terminal MCP call before persisting."
     }
     val guidance = " Inspect the child workflow and its transcript to confirm, then resume from last_resumable_step."
-    val stderrDetail = launchFacts.stderrTail
+    val stderrDetail = launchFacts.stderrExcerpt
       ?.takeIf(String::isNotBlank)
-      ?.let { tail -> " Child stderr tail:\n$tail" }
+      ?.let { excerpt -> " Child stderr (head+tail):\n$excerpt" }
       .orEmpty()
     return "$lead$guidance$stderrDetail"
   }

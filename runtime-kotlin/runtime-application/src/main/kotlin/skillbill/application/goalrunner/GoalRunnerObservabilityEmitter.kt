@@ -119,13 +119,11 @@ internal class GoalRunnerObservabilityEmitter(
     progress: GoalRunnerWorkflowProgress?,
     facts: AgentRunLaunchFacts,
   ) {
-    // Persist a bounded stderr tail alongside the counts: a char count alone makes a
+    // Persist a bounded head+tail stderr excerpt alongside the counts: a char count alone makes a
     // no-terminal-outcome stall undiagnosable after the fact (the body is the only signal that
     // distinguishes a crash from a usage limit). The store is local to ~/.skill-bill.
-    val stderrTail = facts.stderr
-      .takeLast(GoalRunnerLaunchFacts.STDERR_TAIL_MAX_CHARS)
-      .takeIf(String::isNotBlank)
-      ?.let { tail -> "; stderr_tail=$tail" }
+    val stderrDetail = stderrExcerpt(facts.stderr, GoalRunnerLaunchFacts.STDERR_EXCERPT_MAX_CHARS)
+      ?.let { excerpt -> "; stderr_excerpt=$excerpt" }
       .orEmpty()
     record(
       subject = subject,
@@ -133,7 +131,7 @@ internal class GoalRunnerObservabilityEmitter(
         workflowPhase = progress?.currentStepId ?: facts.liveness?.workflowStep ?: "goal_runner_supervision",
         livenessClass = "worker_output_summary",
         activitySummary = "stdout_chars=${facts.stdout.length}; stderr_chars=${facts.stderr.length}; " +
-          "exit_status=${facts.exitStatus ?: "none"}$stderrTail",
+          "exit_status=${facts.exitStatus ?: "none"}$stderrDetail",
       ),
     )
   }

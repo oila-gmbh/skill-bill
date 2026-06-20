@@ -1182,7 +1182,7 @@ private fun skillbill.ports.agentrun.model.AgentRunLaunchOutcome.toGoalRunnerLau
       interrupted = interrupted,
       spawnFailed = spawnFailed,
       exitStatus = exitStatus,
-      stderrTail = stderr.takeLast(GoalRunnerLaunchFacts.STDERR_TAIL_MAX_CHARS).takeIf(String::isNotBlank),
+      stderrExcerpt = stderrExcerpt(stderr, GoalRunnerLaunchFacts.STDERR_EXCERPT_MAX_CHARS),
       liveness = liveness?.let { snapshot ->
         GoalRunnerLivenessSnapshot(
           phase = snapshot.phase,
