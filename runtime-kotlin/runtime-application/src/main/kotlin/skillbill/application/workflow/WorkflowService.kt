@@ -400,11 +400,31 @@ internal fun WorkflowFamilyKind.workflowFamily(): WorkflowFamily = when (this) {
 internal enum class WorkflowFamily(
   val definition: WorkflowDefinition,
   val humanName: String,
+  // Loop-only steps sit in the pipeline only as backward-edge destinations (e.g. the runtime's
+  // `implement_fix`), so the forward transition skips them. The resume-boundary scan must skip them
+  // too, or it parks a reconciled row at a loop-only phase its verdict never triggered. Empty for
+  // families with a strict forward pipeline, leaving their boundary resolution unchanged.
+  val loopOnlyStepIds: Set<String> = emptySet(),
 ) {
   IMPLEMENT(FeatureImplementWorkflowDefinition.definition, "feature-task-prose"),
   VERIFY(FeatureVerifyWorkflowDefinition.definition, "feature-verify"),
-  TASK_RUNTIME(FeatureTaskRuntimePhaseWorkflowDefinition.definition, "feature-task-runtime"),
+  TASK_RUNTIME(
+    FeatureTaskRuntimePhaseWorkflowDefinition.definition,
+    "feature-task-runtime",
+    FeatureTaskRuntimePhaseWorkflowDefinition.transitions.loopOnlyPhaseIds,
+  ),
   ;
+
+  init {
+    // Invariant mirrored from FeatureTaskRuntimeTransitionDeclaration: a family's loop-only steps
+    // must be a subset of its own definition. Non-runtime families keep the empty default; this
+    // guards a future family from declaring a loop-only step the definition — and the resume-boundary
+    // scan that filters on it — would never recognize.
+    require(loopOnlyStepIds.all { it in definition.stepIds }) {
+      "WorkflowFamily $humanName declares loop-only steps absent from its definition: " +
+        "${loopOnlyStepIds - definition.stepIds.toSet()}"
+    }
+  }
 
   fun save(repository: WorkflowStateRepository, record: WorkflowStateSnapshot) {
     when (this) {

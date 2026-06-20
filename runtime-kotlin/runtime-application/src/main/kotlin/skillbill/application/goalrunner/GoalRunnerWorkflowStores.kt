@@ -729,8 +729,17 @@ class WorkflowGoalRunnerOutcomeStore(
     // Family-scoped: only the runtime family reconciles the resume boundary off the truthful
     // steps[] order (SKILL-85 subtask 1). The prose IMPLEMENT/VERIFY reconciliation keeps its
     // historical current-step fallback unchanged.
+    // Loop-only steps (e.g. `implement_fix`) are excluded so the boundary scan mirrors the forward
+    // transition, which skips them: otherwise a reconciled row with a clean review parks at
+    // `implement_fix` (the first definition-ordered loop-only step still pending) instead of the
+    // real forward boundary (`audit`). The runtime re-derives the actual phase from durable verdicts
+    // on resume regardless, so this only corrects the advisory boundary, never execution.
     val definitionStepIds =
-      if (write.family == WorkflowFamily.TASK_RUNTIME) write.family.definition.stepIds else emptyList()
+      if (write.family == WorkflowFamily.TASK_RUNTIME) {
+        write.family.definition.stepIds.filterNot { it in write.family.loopOnlyStepIds }
+      } else {
+        emptyList()
+      }
     val stepId = blockedStepId(write.record, steps, write.lastResumableStep, definitionStepIds)
     val attemptCount = steps.firstOrNull { it.stepId == stepId }?.attemptCount ?: 1
     val updated = engine.updateRecord(

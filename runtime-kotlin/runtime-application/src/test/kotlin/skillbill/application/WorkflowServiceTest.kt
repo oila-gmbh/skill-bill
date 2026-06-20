@@ -1475,6 +1475,119 @@ class WorkflowGoalRunnerReconciliationTest {
     assertEquals("completed", steps.getValue("plan"))
     assertEquals("blocked", steps.getValue("implement"))
   }
+
+  @Test
+  fun `goal runner resumes a clean-review runtime row at audit not the loop-only implement_fix`() {
+    // PS-24 regression: implement_fix is loop-only and sits before review in definition order. A
+    // reconciled runtime row whose review completed CLEAN must resume at the real forward boundary
+    // (audit), never park at implement_fix (the first definition-ordered loop-only step still pending),
+    // which a review verdict of APPROVED never triggers. The boundary scan must skip loop-only steps
+    // exactly as the forward transition does.
+    val workflows = InMemoryWorkflowStates()
+    val definition = FeatureTaskRuntimePhaseWorkflowDefinition.definition
+    val opened = testWorkflowEngine.openRecord(definition, "wftr-clean-review", "ftr-002", "preplan")
+    val crashed = testWorkflowEngine.updateRecord(
+      definition,
+      opened,
+      skillbill.workflow.model.WorkflowUpdateInput(
+        workflowStatus = "running",
+        currentStepId = "audit",
+        stepUpdates = listOf(
+          mapOf("step_id" to "preplan", "status" to "completed", "attempt_count" to 1),
+          mapOf("step_id" to "plan", "status" to "completed", "attempt_count" to 1),
+          mapOf("step_id" to "implement", "status" to "completed", "attempt_count" to 1),
+          // implement_fix stays pending (the clean review never triggered the review_fix edge).
+          mapOf("step_id" to "review", "status" to "completed", "attempt_count" to 1),
+        ),
+        artifactsPatch = mapOf(
+          "goal_continuation" to mapOf(
+            "issue_key" to "PS-24",
+            "subtask_id" to 2,
+            "suppress_pr" to true,
+          ),
+        ),
+        sessionId = "ftr-002",
+      ),
+    )
+    workflows.saveFeatureTaskRuntimeWorkflow(crashed.toRecord())
+    val store = WorkflowGoalRunnerOutcomeStore(
+      database = FakeDatabaseSessionFactory(workflows),
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+    )
+
+    val blockedStep = store.markBlocked("wftr-clean-review", "no terminal outcome", "preplan")
+
+    assertEquals("audit", blockedStep)
+    val saved = requireNotNull(workflows.getFeatureTaskRuntimeWorkflow("wftr-clean-review")).toSnapshot()
+    assertEquals("audit", saved.currentStepId)
+    val steps = decodeWorkflowStepsForTest(saved.stepsJson)
+    assertEquals("pending", steps.getValue("implement_fix"))
+    assertEquals("completed", steps.getValue("review"))
+    assertEquals("blocked", steps.getValue("audit"))
+  }
+
+  @Test
+  fun `goal runner resumes a runtime row genuinely parked at the loop-only implement_fix there`() {
+    // PS-24 positive counterpart: filtering loop-only steps out of the boundary scan must not
+    // over-skip a row that is genuinely mid-fix. When a review verdict of CHANGES_REQUESTED took the
+    // review_fix backward edge, implement_fix is the active (running) step, so the running-step
+    // short-circuit in blockedStepId returns it before the loop-only filter is ever consulted.
+    val workflows = InMemoryWorkflowStates()
+    val definition = FeatureTaskRuntimePhaseWorkflowDefinition.definition
+    val opened = testWorkflowEngine.openRecord(definition, "wftr-mid-fix", "ftr-003", "preplan")
+    val crashed = testWorkflowEngine.updateRecord(
+      definition,
+      opened,
+      skillbill.workflow.model.WorkflowUpdateInput(
+        workflowStatus = "running",
+        currentStepId = "implement_fix",
+        stepUpdates = listOf(
+          mapOf("step_id" to "preplan", "status" to "completed", "attempt_count" to 1),
+          mapOf("step_id" to "plan", "status" to "completed", "attempt_count" to 1),
+          mapOf("step_id" to "implement", "status" to "completed", "attempt_count" to 1),
+          // review completed with CHANGES_REQUESTED, taking the review_fix edge back to implement_fix.
+          mapOf("step_id" to "review", "status" to "completed", "attempt_count" to 1),
+          mapOf("step_id" to "implement_fix", "status" to "running", "attempt_count" to 1),
+        ),
+        artifactsPatch = mapOf(
+          "goal_continuation" to mapOf(
+            "issue_key" to "PS-24",
+            "subtask_id" to 3,
+            "suppress_pr" to true,
+          ),
+        ),
+        sessionId = "ftr-003",
+      ),
+    )
+    workflows.saveFeatureTaskRuntimeWorkflow(crashed.toRecord())
+    val store = WorkflowGoalRunnerOutcomeStore(
+      database = FakeDatabaseSessionFactory(workflows),
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+    )
+
+    val blockedStep = store.markBlocked("wftr-mid-fix", "no terminal outcome", "preplan")
+
+    assertEquals("implement_fix", blockedStep)
+    val saved = requireNotNull(workflows.getFeatureTaskRuntimeWorkflow("wftr-mid-fix")).toSnapshot()
+    assertEquals("implement_fix", saved.currentStepId)
+    val steps = decodeWorkflowStepsForTest(saved.stepsJson)
+    assertEquals("completed", steps.getValue("review"))
+    assertEquals("blocked", steps.getValue("implement_fix"))
+  }
+
+  @Test
+  fun `only the runtime family carries loop-only steps so non-runtime boundary scans stay strict`() {
+    // The loop-only filter in the resume-boundary scan is family-scoped. IMPLEMENT and VERIFY run
+    // strict forward pipelines, so their loopOnlyStepIds stay empty and their boundary resolution is
+    // unchanged; only TASK_RUNTIME inherits the runtime definition's loop-only phases.
+    assertEquals(emptySet<String>(), WorkflowFamily.IMPLEMENT.loopOnlyStepIds)
+    assertEquals(emptySet<String>(), WorkflowFamily.VERIFY.loopOnlyStepIds)
+    assertEquals(
+      FeatureTaskRuntimePhaseWorkflowDefinition.transitions.loopOnlyPhaseIds,
+      WorkflowFamily.TASK_RUNTIME.loopOnlyStepIds,
+    )
+    assertEquals(setOf("implement_fix"), WorkflowFamily.TASK_RUNTIME.loopOnlyStepIds)
+  }
 }
 
 // Goal-runner progress projection, progress/session/ledger persistence, and subtask resume
