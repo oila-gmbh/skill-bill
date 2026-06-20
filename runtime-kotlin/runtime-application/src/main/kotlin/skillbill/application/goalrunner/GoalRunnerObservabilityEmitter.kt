@@ -119,9 +119,6 @@ internal class GoalRunnerObservabilityEmitter(
     progress: GoalRunnerWorkflowProgress?,
     facts: AgentRunLaunchFacts,
   ) {
-    // Persist a bounded head+tail stderr excerpt alongside the counts: a char count alone makes a
-    // no-terminal-outcome stall undiagnosable after the fact (the body is the only signal that
-    // distinguishes a crash from a usage limit). The store is local to ~/.skill-bill.
     val stderrDetail = stderrExcerpt(facts.stderr, GoalRunnerLaunchFacts.STDERR_EXCERPT_MAX_CHARS)
       ?.let { excerpt -> "; stderr_excerpt=$excerpt" }
       .orEmpty()

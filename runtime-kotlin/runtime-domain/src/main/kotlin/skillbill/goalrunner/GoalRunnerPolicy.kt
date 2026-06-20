@@ -218,14 +218,6 @@ object GoalRunnerOutcomeReconciler {
     }
   }
 
-  /**
-   * Builds the no-terminal-outcome diagnosis. The child returned but its workflow row never
-   * reached a terminal state. Rather than a cause-agnostic guess, branch on the captured
-   * [GoalRunnerLaunchFacts.exitStatus] and append the captured stderr tail when present, so the
-   * operator sees the actual failure cause (a non-zero exit means the child errored; a clean exit
-   * means it stopped before the terminal store-write — typically a usage/model limit or a missed
-   * terminal MCP call).
-   */
   private fun noTerminalStoreOutcomeReason(subtaskId: Int, launchFacts: GoalRunnerLaunchFacts): String {
     val exitStatus = launchFacts.exitStatus
     val lead = when {

@@ -31,13 +31,6 @@ data class GoalRunnerLaunchFacts(
   val spawnFailed: Boolean = false,
   val exitStatus: Int? = null,
   val liveness: GoalRunnerLivenessSnapshot? = null,
-  /**
-   * Bounded head+tail excerpt of the child process stderr (at most [STDERR_EXCERPT_MAX_CHARS]
-   * chars). Carried into the domain so the no-terminal-outcome diagnosis can report the actual
-   * failure cause instead of a cause-agnostic guess. A head+tail excerpt (rather than a plain
-   * tail) preserves the exception type and message at the top of a crash stack trace — the most
-   * diagnostic part — alongside the most recent output. Null when no stderr was captured.
-   */
   val stderrExcerpt: String? = null,
 ) {
   companion object {
