@@ -177,6 +177,7 @@ agents:
       - After each task, print progress: "✅ [<n>/<total>] <task description>".
       - Follow standards in `CLAUDE.md`, `AGENTS.md`, and any matching `.agents/skill-overrides.md` section.
       - Write production-grade code. Do not introduce deprecated components, APIs, or patterns when a supported alternative exists.
+      - Comments are a last resort, not a habit. Prefer code that explains itself — precise names, smaller functions, better types — over any comment. Never add an inline comment that restates what the code already says; refactor instead. Reserve a KDoc/docstring for genuinely non-obvious intent or contract the code cannot express, and keep it rare. The best comment is the one made unnecessary.
       - Write tests exactly as specified in each task's `tests` field.
       - If a task reveals the plan is wrong, STOP and return with `plan_deviation_notes` populated describing what changed and why; do not try to silently re-plan.
       - Do not skip or combine tasks.
@@ -215,7 +216,9 @@ agents:
       Current branch diff pointer: {branch_or_commit_range}
       
       Test gate is relaxed: write tests only when the finding being fixed requires them (for example, a finding about missing regression coverage or a broken test). Do not treat the standard "write tests if the plan included testable logic" gate as mandatory in fix mode — the plan is not being re-executed here.
-      
+
+      Comments are a last resort, not a habit: make each fix self-evident through naming and structure rather than an explanatory inline comment, and reserve sparse KDoc for genuinely non-obvious intent only.
+
       Return the standard implementation return contract, with `notes_for_review` describing which finding each change addresses.
   - name: bill-feature-task-completeness-audit
     description: "Completeness audit subagent for bill-feature-task: verify every acceptance criterion is satisfied."
