@@ -13,12 +13,14 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
  * never produce schema-valid phase output.
  */
 object FeatureTaskRuntimePhasePromptComposer {
+  @Suppress("LongParameterList") // one cohesive phase-prompt delivery; bundling these would only hide them
   fun compose(
     issueKey: String,
     briefing: FeatureTaskRuntimePhaseLaunchBriefing,
     suppressDecomposition: Boolean = false,
     parallelReviewAgent: String? = null,
     specSource: SpecSource = SpecSource.LOCAL,
+    priorSchemaFailure: String? = null,
   ): String {
     require(issueKey.isNotBlank()) { "issueKey is required to compose a phase prompt." }
     return listOf(
@@ -29,8 +31,28 @@ object FeatureTaskRuntimePhasePromptComposer {
       parallelReviewDirective(briefing.phaseId, parallelReviewAgent),
       commitExclusionDirective(briefing.phaseId, issueKey, specSource),
       briefing.briefingText,
+      retryCorrectionDirective(priorSchemaFailure),
       outputContract(briefing.phaseId),
     ).filter(String::isNotBlank).joinToString(separator = "\n\n")
+  }
+
+  // Emitted only when the prior attempt at this phase failed the schema gate (its reason threaded in by
+  // the runner's fix loop). A schema-gate retry that relaunches the byte-for-byte-identical prompt is a
+  // blind re-roll: the agent never learns why it was rejected and tends to repeat the same miss (e.g. an
+  // audit emitting a prose verdict table instead of the required structured signal). Surfacing the
+  // validator's reason turns each retry into a corrective attempt. Empty on the first attempt, so a
+  // forward launch's prompt stays byte-for-byte unchanged.
+  private fun retryCorrectionDirective(priorSchemaFailure: String?): String {
+    if (priorSchemaFailure.isNullOrBlank()) {
+      return ""
+    }
+    return """
+      ## Previous attempt was REJECTED by the schema gate — correct it now
+      Your previous attempt at this phase did not produce schema-valid output and was rejected. Reason:
+      $priorSchemaFailure
+      Re-read the required-final-output contract below and emit exactly one schema-valid JSON object that
+      carries the missing signal. Do not repeat the same mistake; prose alone does not satisfy the gate.
+    """.trimIndent()
   }
 
   private fun header(issueKey: String, phaseId: String): String {
@@ -87,23 +109,44 @@ object FeatureTaskRuntimePhasePromptComposer {
     - "summary": non-empty string describing what this phase did
     - "produced_outputs": object with at least one entry carrying this phase's concrete
       result for downstream phases (for example plan steps, changed files, findings, or
-      validation results)${mutatingPhaseOutputContractAddendum(phaseId)}
+      validation results)${producedOutputsAddendum(phaseId)}
     - "derived_notes": optional; when present, a non-empty string of notes for downstream
       phases
-    No other top-level fields are allowed.
+    - "verdict": optional top-level string; verifying phases (review, audit) set it to drive the
+      advance-vs-remediation decision — see the verifying-phase signal above
+    No top-level fields other than the ones listed above are allowed.
   """.trimIndent()
 
-  // Mutating phases must prove they reconciled the tree rather than silently skipping work, so the
-  // runtime can verify the idempotency contract rather than assume it. Emits only for mutating phases;
-  // every other phase's output contract stays byte-for-byte unchanged.
-  private fun mutatingPhaseOutputContractAddendum(phaseId: String): String {
-    if (!FeatureTaskRuntimePhaseWorkflowDefinition.isMutatingPhase(phaseId)) {
-      return ""
+  // Phase-specific addendum to the produced_outputs bullet. Mutating phases (implement, implement_fix)
+  // must prove they reconciled the tree to target rather than silently skipping work, so the runtime can
+  // verify the idempotency contract rather than assume it. Verifying phases (review, audit) gate on a
+  // machine-readable signal, not prose: naming the exact field the gate keys on is what prevents a
+  // thorough agent from delivering its verdict as a prose Markdown table the gate cannot read (and then
+  // blocking after a blind retry loop). The two phase sets are disjoint, so at most one branch is ever
+  // non-empty; every other phase returns "" so its output contract stays byte-for-byte unchanged.
+  private fun producedOutputsAddendum(phaseId: String): String {
+    if (FeatureTaskRuntimePhaseWorkflowDefinition.isMutatingPhase(phaseId)) {
+      return "\n    - produced_outputs MUST include a reconciliation report: a \"reconciled_state\" object\n" +
+        "      (or a \"reconciled_state\" entry) with \"reconciled\": true and concrete evidence that the\n" +
+        "      changed files are at their intended target state. A status of \"completed\" with the\n" +
+        "      reconciliation report missing or \"reconciled\" not true fails the schema gate loudly."
     }
-    return "\n    - produced_outputs MUST include a reconciliation report: a \"reconciled_state\" object\n" +
-      "      (or a \"reconciled_state\" entry) with \"reconciled\": true and concrete evidence that the\n" +
-      "      changed files are at their intended target state. A status of \"completed\" with the\n" +
-      "      reconciliation report missing or \"reconciled\" not true fails the schema gate loudly."
+    val findings = FeatureTaskRuntimeVerificationSignalKeys.REVIEW_FINDINGS
+    val unmetCriteria = FeatureTaskRuntimeVerificationSignalKeys.AUDIT_UNMET_CRITERIA
+    val verdict = FeatureTaskRuntimeVerificationSignalKeys.VERDICT
+    return when (phaseId) {
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW ->
+        "\n    - This is a VERIFYING phase: produced_outputs MUST carry a \"$findings\" array (each entry a\n" +
+          "      severity/message object; an explicit empty [] affirms no Blocker/Major findings) AND/OR a\n" +
+          "      top-level \"$verdict\" of \"approved\" or \"changes_requested\". Output carrying NEITHER signal\n" +
+          "      fails the schema gate loudly — a prose summary alone cannot advance the gate."
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT ->
+        "\n    - This is a VERIFYING phase: produced_outputs MUST carry an \"$unmetCriteria\" array (one\n" +
+          "      message per unmet acceptance criterion; an explicit empty [] affirms every criterion is met)\n" +
+          "      AND/OR a top-level \"$verdict\" of \"satisfied\" or \"gaps_found\". Output carrying NEITHER signal\n" +
+          "      fails the schema gate loudly — a prose verdict (e.g. a Markdown table) cannot advance the gate."
+      else -> ""
+    }
   }
 
   // Emitted only for mutating phases (see [FeatureTaskRuntimePhaseWorkflowDefinition.isMutatingPhase]):

@@ -757,13 +757,17 @@ class FeatureTaskRuntimeRunner(
       ?.let { reason -> return blockAndPersistInPhase(run, iteration, reason, observability) }
     observability.started(run.phaseId, agentId, iteration, iteration > 1 || state.hasPriorRecord(run.phaseId))
     var outcome: PhaseOutcome? = null
+    // The prior attempt's schema-gate reason, threaded into the next attempt's prompt so a retry is a
+    // corrective attempt rather than a blind re-roll of the identical prompt (null on the first attempt).
+    var priorSchemaFailure: String? = null
     while (outcome == null) {
-      val attempt = attemptOnce(run, state, iteration, observability)
+      val attempt = attemptOnce(run, state, iteration, observability, priorSchemaFailure)
       val decision = FeatureTaskRuntimeFixLoopPolicy.decideAfterFailure(run.phaseId, iteration - budgetBaseOffset)
       outcome = attempt.settledOutcome
         ?: when (decision) {
           is FeatureTaskRuntimeFixLoopDecision.Retry -> {
             iteration += 1
+            priorSchemaFailure = attempt.schemaInvalidReason
             observability.fixLoopIteration(run.phaseId, agentId, iteration, decision.fixLoopIteration)
             null
           }
@@ -834,9 +838,10 @@ class FeatureTaskRuntimeRunner(
     state: RunState,
     iteration: Int,
     observability: FeatureTaskRuntimeRunObservability,
+    priorSchemaFailure: String?,
   ): AttemptResult {
     persistPhase(run, iteration, STATUS_RUNNING, finished = false, outputArtifact = null)
-    val launch = launchAndCapture(run, state)
+    val launch = launchAndCapture(run, state, priorSchemaFailure)
     launch.infraFailureReason?.let { reason ->
       return AttemptResult.settled(blockAndPersistInPhase(run, iteration, reason, observability))
     }
@@ -905,7 +910,7 @@ class FeatureTaskRuntimeRunner(
   // back, then deliver the same briefing to the agent as the launch prompt: the phase agent
   // only ever sees what the prompt carries, so a persisted-but-undelivered briefing would
   // leave it running the default goal-continuation flow and failing the schema gate.
-  private fun launchAndCapture(run: PhaseRun, state: RunState): LaunchResult {
+  private fun launchAndCapture(run: PhaseRun, state: RunState, priorSchemaFailure: String? = null): LaunchResult {
     val handoff = FeatureTaskRuntimeHandoffContract.assembleHandoff(
       declaration = run.declaration,
       runInvariants = run.request.runInvariants,
@@ -931,6 +936,7 @@ class FeatureTaskRuntimeRunner(
             parallelReviewAgent = run.request.parallelReviewAgent
               ?.takeIf { run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW },
             specSource = run.specSource,
+            priorSchemaFailure = priorSchemaFailure,
           ),
         ),
       ),
@@ -1227,7 +1233,7 @@ class FeatureTaskRuntimeRunner(
     fun reviewVerdictFrom(outputObject: Map<String, Any?>?): FeatureTaskRuntimeReviewVerdict? {
       val findingsRaw = outputObject?.get("produced_outputs")
         ?.let(JsonSupport::anyToStringAnyMap)
-        ?.get("findings") as? List<*>
+        ?.get(FeatureTaskRuntimeVerificationSignalKeys.REVIEW_FINDINGS) as? List<*>
         ?: return null
       val findings = findingsRaw.mapNotNull { entry ->
         val map = JsonSupport.anyToStringAnyMap(entry) ?: return@mapNotNull null
@@ -1254,7 +1260,10 @@ class FeatureTaskRuntimeRunner(
     // domain gap/verdict types.
     fun auditVerdictFrom(outputObject: Map<String, Any?>?): FeatureTaskRuntimeAuditVerdict? {
       val producedOutputs = outputObject?.get("produced_outputs")?.let(JsonSupport::anyToStringAnyMap)
-      val gapsRaw = (producedOutputs?.get("unmet_criteria") ?: producedOutputs?.get("failing_criteria")) as? List<*>
+      val gapsRaw = (
+        producedOutputs?.get(FeatureTaskRuntimeVerificationSignalKeys.AUDIT_UNMET_CRITERIA)
+          ?: producedOutputs?.get(FeatureTaskRuntimeVerificationSignalKeys.AUDIT_FAILING_CRITERIA_ALIAS)
+        ) as? List<*>
         ?: return null
       val gaps = gapsRaw.mapNotNull { entry ->
         val message = (entry as? String)?.takeIf(String::isNotBlank)
@@ -1398,9 +1407,11 @@ class FeatureTaskRuntimeRunner(
       if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW) {
         return null
       }
-      val hasVerdict = (outputMap["verdict"] as? String)?.isNotBlank() == true
+      val hasVerdict = (outputMap[FeatureTaskRuntimeVerificationSignalKeys.VERDICT] as? String)?.isNotBlank() == true
       val producedOutputs = outputMap["produced_outputs"] as? Map<*, *>
-      val hasFindingsArray = producedOutputs?.containsKey("findings") == true && producedOutputs["findings"] is List<*>
+      val findingsKey = FeatureTaskRuntimeVerificationSignalKeys.REVIEW_FINDINGS
+      val hasFindingsArray =
+        producedOutputs?.containsKey(findingsKey) == true && producedOutputs[findingsKey] is List<*>
       return if (hasVerdict || hasFindingsArray) {
         null
       } else {
@@ -1422,9 +1433,12 @@ class FeatureTaskRuntimeRunner(
       if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT) {
         return null
       }
-      val hasVerdict = (outputMap["verdict"] as? String)?.isNotBlank() == true
+      val hasVerdict = (outputMap[FeatureTaskRuntimeVerificationSignalKeys.VERDICT] as? String)?.isNotBlank() == true
       val producedOutputs = outputMap["produced_outputs"] as? Map<*, *>
-      val hasCriteriaArray = listOf("unmet_criteria", "failing_criteria").any { key ->
+      val hasCriteriaArray = listOf(
+        FeatureTaskRuntimeVerificationSignalKeys.AUDIT_UNMET_CRITERIA,
+        FeatureTaskRuntimeVerificationSignalKeys.AUDIT_FAILING_CRITERIA_ALIAS,
+      ).any { key ->
         producedOutputs?.containsKey(key) == true && producedOutputs[key] is List<*>
       }
       return if (hasVerdict || hasCriteriaArray) {

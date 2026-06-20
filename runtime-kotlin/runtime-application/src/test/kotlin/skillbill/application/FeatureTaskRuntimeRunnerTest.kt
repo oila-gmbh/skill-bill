@@ -275,6 +275,42 @@ class FeatureTaskRuntimeRunnerTest {
   }
 
   @Test
+  fun `a schema-gate rejection threads the validator reason into the next attempt's prompt`() {
+    // F-001: the behavioral change lives in the runner's fix loop, not the composer. A regression that
+    // drops priorSchemaFailure (sets null on Retry, or never threads it through attemptOnce ->
+    // launchAndCapture -> compose) leaves every retry a blind re-roll yet keeps the composer-isolated
+    // tests green. Assert the SECOND review launch prompt carries the rejection directive and the prior
+    // reason verbatim, and the FIRST attempt's prompt carries neither (forward launch unchanged).
+    val reason = "Review gate: emit a findings array or a verdict, not prose"
+    var reviewAttempts = 0
+    val harness = runnerHarness(
+      validator = object : FeatureTaskRuntimePhaseOutputValidator {
+        override fun validatePhaseOutputText(phaseOutputText: String, sourceLabel: String) {
+          if (sourceLabel == "review") {
+            reviewAttempts += 1
+            if (reviewAttempts < 2) {
+              throw InvalidFeatureTaskRuntimePhaseOutputSchemaError("review", reason)
+            }
+          }
+        }
+      },
+    )
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
+
+    val reviewPrompts = harness.launcher.requests
+      .map { requireNotNull(it.skillRunRequest.promptOverride) }
+      .filter { phaseIdFromPrompt(it) == "review" }
+    assertEquals(2, reviewPrompts.size, "review launches once per attempt")
+    assertTrue(
+      !reviewPrompts[0].contains("REJECTED by the schema gate"),
+      "the first attempt's prompt carries no correction directive",
+    )
+    assertContains(reviewPrompts[1], "Previous attempt was REJECTED by the schema gate")
+    assertContains(reviewPrompts[1], reason)
+  }
+
+  @Test
   fun `per-phase agent resolution honors override then per-phase then invoked default`() {
     val harness = runnerHarness(
       agentAssignment = FeatureTaskRuntimeAgentAssignment(

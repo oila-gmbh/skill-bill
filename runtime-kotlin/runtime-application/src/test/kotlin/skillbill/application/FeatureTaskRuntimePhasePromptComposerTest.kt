@@ -2,6 +2,7 @@ package skillbill.application
 
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseBriefingAssembler
 import skillbill.application.featuretask.FeatureTaskRuntimePhasePromptComposer
+import skillbill.application.featuretask.FeatureTaskRuntimeVerificationSignalKeys
 import skillbill.workflow.model.SpecSource
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
@@ -170,6 +171,77 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     assertFailsWith<IllegalArgumentException> {
       FeatureTaskRuntimePhasePromptComposer.compose(" ", briefingFor("plan"))
     }
+  }
+
+  @Test
+  fun `verifying phases name the exact structured signal the schema gate keys on`() {
+    val reviewPrompt = FeatureTaskRuntimePhasePromptComposer.compose(ISSUE_KEY, briefingFor("review"))
+    val auditPrompt = FeatureTaskRuntimePhasePromptComposer.compose(ISSUE_KEY, briefingFor("audit"))
+
+    assertContains(reviewPrompt, "VERIFYING phase", false, "review names itself a verifying phase")
+    assertContains(reviewPrompt, "\"findings\" array", false, "review names the findings signal")
+    assertContains(reviewPrompt, "\"approved\" or \"changes_requested\"", false, "review names the verdict values")
+    assertContains(auditPrompt, "VERIFYING phase", false, "audit names itself a verifying phase")
+    assertContains(auditPrompt, "\"unmet_criteria\" array", false, "audit names the unmet_criteria signal")
+    assertContains(auditPrompt, "\"satisfied\" or \"gaps_found\"", false, "audit names the verdict values")
+    assertContains(auditPrompt, "\"verdict\": optional top-level string", false, "top-level verdict is documented")
+  }
+
+  @Test
+  fun `non-verifying phases carry no verifying-signal addendum`() {
+    listOf("preplan", "plan", "implement", "validate", "write_history", "commit_push", "pr").forEach { phaseId ->
+      val prompt = FeatureTaskRuntimePhasePromptComposer.compose(ISSUE_KEY, briefingFor(phaseId))
+      assertTrue(!prompt.contains("VERIFYING phase"), "$phaseId must not carry the verifying-signal addendum")
+    }
+  }
+
+  @Test
+  fun `a prior schema-gate failure is surfaced as a corrective directive on retry`() {
+    // F-003: the retry directive is phase-independent, so cover both verifying phases to guard against a
+    // phase-conditional regression in its placement relative to the verifying-signal addendum.
+    val reason = "Audit phase reported 'completed' without a verification signal"
+
+    listOf("review", "audit").forEach { phaseId ->
+      val firstAttempt = FeatureTaskRuntimePhasePromptComposer.compose(ISSUE_KEY, briefingFor(phaseId))
+      val retry = FeatureTaskRuntimePhasePromptComposer.compose(
+        ISSUE_KEY,
+        briefingFor(phaseId),
+        priorSchemaFailure = reason,
+      )
+
+      assertTrue(!firstAttempt.contains("REJECTED by the schema gate"), "$phaseId first attempt: no correction")
+      assertContains(retry, "Previous attempt was REJECTED by the schema gate", false, "$phaseId retry: rejection")
+      assertContains(retry, reason, false, "$phaseId retry carries the validator's reason verbatim")
+    }
+  }
+
+  @Test
+  fun `a blank prior schema failure yields no correction directive`() {
+    // F-002: retryCorrectionDirective treats null and blank identically (isNullOrBlank). A blank reason
+    // must not emit a no-op "REJECTED" heading with nothing under it.
+    listOf("", "   ", "\n").forEach { blank ->
+      val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
+        ISSUE_KEY,
+        briefingFor("audit"),
+        priorSchemaFailure = blank,
+      )
+      assertTrue(!prompt.contains("REJECTED by the schema gate"), "blank reason '$blank' must produce no correction")
+    }
+  }
+
+  @Test
+  fun `verifying-phase prompts name the exact keys the runtime gate reads`() {
+    // F-004: the gate reads these keys from a phase's output and the prompt instructs the agent to emit
+    // them; both sides bind to FeatureTaskRuntimeVerificationSignalKeys. This fails if the prompt ever
+    // stops naming a key the gate still consumes — the exact prompt/gate drift this feature prevents.
+    val keys = FeatureTaskRuntimeVerificationSignalKeys
+    val reviewPrompt = FeatureTaskRuntimePhasePromptComposer.compose(ISSUE_KEY, briefingFor("review"))
+    val auditPrompt = FeatureTaskRuntimePhasePromptComposer.compose(ISSUE_KEY, briefingFor("audit"))
+
+    assertContains(reviewPrompt, keys.REVIEW_FINDINGS, false, "review names the findings key")
+    assertContains(reviewPrompt, keys.VERDICT, false, "review names the verdict key")
+    assertContains(auditPrompt, keys.AUDIT_UNMET_CRITERIA, false, "audit names the unmet_criteria key")
+    assertContains(auditPrompt, keys.VERDICT, false, "audit names the verdict key")
   }
 }
 
