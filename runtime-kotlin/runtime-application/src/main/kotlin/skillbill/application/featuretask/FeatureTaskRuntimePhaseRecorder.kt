@@ -10,6 +10,7 @@ import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.WorkflowStateRepository
+import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import skillbill.workflow.WorkflowEngine
 import skillbill.workflow.WorkflowSnapshotValidator
 import skillbill.workflow.model.WorkflowStateSnapshot
@@ -261,6 +262,17 @@ class FeatureTaskRuntimePhaseRecorder(
       val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
         ?: return@read null
       phaseLedgerFrom(decodeArtifacts(record.artifactsJson))
+    }
+
+  /**
+   * Reads the persisted mode of an existing feature-task workflow row, mode-agnostically. Unlike
+   * [WorkflowFamily.TASK_RUNTIME.get] (which routes through getFeatureTaskWorkflowAsMode and throws
+   * [InvalidWorkflowStateSchemaError] on a foreign-mode row), this never throws — it lets the caller
+   * decide what to do about a mode mismatch. Null when no row exists.
+   */
+  fun existingWorkflowMode(workflowId: String, dbOverride: String? = null): FeatureTaskWorkflowMode? =
+    database.read(dbOverride) { unitOfWork ->
+      unitOfWork.workflowStates.getFeatureTaskWorkflow(workflowId)?.mode
     }
 
   /**
