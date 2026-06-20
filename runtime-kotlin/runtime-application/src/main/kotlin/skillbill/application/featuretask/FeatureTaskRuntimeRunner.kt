@@ -19,6 +19,7 @@ import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
 import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
+import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.model.SpecSource
@@ -66,7 +67,34 @@ class FeatureTaskRuntimeRunner(
   private val specStatusProjector get() = phaseGates.specStatusProjector
   private val specSourceResolver get() = phaseGates.specGate.specSourceResolver
 
+  // A feature-task workflow row is mode-scoped: prose (`wfl-`) and runtime (`wftr-`) persist
+  // different schemas under the same row, so a runtime run cannot resume a workflow created in
+  // prose mode (and vice versa). This happens when a goal subtask is switched from prose to runtime
+  // mid-flight and the runtime resume inherits the prose workflow id. Rather than let the mode guard
+  // (getFeatureTaskWorkflowAsMode) throw uncaught — which exits 1 with no terminal store outcome and
+  // surfaces to the goal supervisor as a cause-agnostic no-terminal-outcome stall — stop loudly with
+  // a durable, actionable Blocked terminal report. We never write to the foreign-mode row.
+  private fun foreignModeWorkflowBlock(request: FeatureTaskRuntimeRunRequest): FeatureTaskRuntimeRunReport.Blocked? {
+    val existingMode = recorder.existingWorkflowMode(request.workflowId, request.dbPathOverride)
+    if (existingMode == null || existingMode == FeatureTaskWorkflowMode.RUNTIME) {
+      return null
+    }
+    return FeatureTaskRuntimeRunReport.Blocked(
+      issueKey = request.issueKey,
+      workflowId = request.workflowId,
+      featureSize = request.runInvariants.featureSize.name,
+      lastIncompletePhase = FeatureTaskRuntimePhaseWorkflowDefinition.definition.defaultInitialStepId,
+      blockedReason = "Cannot resume workflow '${request.workflowId}' in runtime mode: it was created in " +
+        "'${existingMode.wireValue}' mode. A feature-task workflow is mode-scoped — prose and runtime are " +
+        "not interchangeable. Finish this subtask in '${existingMode.wireValue}' mode, or reset the subtask " +
+        "to start a fresh runtime attempt.",
+      completedPhaseIds = emptyList(),
+      resolvedBranch = null,
+    )
+  }
+
   fun run(request: FeatureTaskRuntimeRunRequest): FeatureTaskRuntimeRunReport {
+    foreignModeWorkflowBlock(request)?.let { return it }
     recorder.ensureWorkflowOpen(request.workflowId, request.sessionId, request.dbPathOverride)
     val durableRunInvariants = runInvariantsStore.resolve(
       workflowId = request.workflowId,

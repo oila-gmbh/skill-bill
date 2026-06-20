@@ -104,6 +104,20 @@ class FeatureTaskRuntimeRunnerTest {
   }
 
   @Test
+  fun `runtime run against a prose-mode workflow blocks with an actionable reason and launches nothing`() {
+    val harness = runnerHarness(agentAssignment = phasePerAgentAssignment())
+    harness.seedProseModeWorkflow()
+
+    val report = harness.runner.run(harness.request())
+
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
+    assertContains(blocked.blockedReason, "was created in 'prose' mode")
+    assertContains(blocked.blockedReason, "reset the subtask")
+    // The mode collision is detected before any phase work: no agent is ever launched.
+    assertTrue(harness.launcher.requests.isEmpty())
+  }
+
+  @Test
   fun `blocked phase output stops the run and does not advance to pr`() {
     val harness = runnerHarness(
       launcher = RuntimeRecordingLauncher { request ->
@@ -2694,6 +2708,29 @@ internal class RunnerHarness(
     recorder.recordPhaseStateForTest(phaseId, status, attemptCount, agentId, outputArtifact)
   }
 
+  // Seeds a foreign-mode (prose) feature-task row at WORKFLOW_ID, simulating a goal subtask that was
+  // run in prose mode and is now being resumed in runtime mode — the mode-collision the runtime must
+  // refuse cleanly instead of crashing on the mode guard.
+  fun seedProseModeWorkflow() {
+    repository.saveFeatureTaskWorkflow(
+      WorkflowStateRecord(
+        workflowId = WORKFLOW_ID,
+        sessionId = SESSION_ID,
+        workflowName = "bill-feature-task",
+        contractVersion = "0.1",
+        workflowStatus = "running",
+        currentStepId = "implement",
+        stepsJson = "[]",
+        artifactsJson = "{}",
+        startedAt = null,
+        updatedAt = null,
+        finishedAt = null,
+        mode = skillbill.ports.persistence.model.FeatureTaskWorkflowMode.PROSE,
+      ),
+      skillbill.ports.persistence.model.FeatureTaskWorkflowMode.PROSE,
+    )
+  }
+
   // Seeds the durable run-scoped resolved branch, simulating a prior run that already established it.
   fun seedResolvedBranch(branch: String, baseBranch: String?, created: Boolean) {
     recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
@@ -3657,6 +3694,11 @@ internal class RecordingLifecycleTelemetryRepository : LifecycleTelemetryReposit
 internal class InMemoryRuntimeWorkflowRepository : WorkflowStateRepository {
   private val taskRuntimeRows = linkedMapOf<String, WorkflowStateRecord>()
 
+  // Prose feature-task rows live under the feature-implement family (see WorkflowStateRepository's
+  // mode routing). Storing them faithfully lets the mode-agnostic getFeatureTaskWorkflow find a
+  // prose row, mirroring the production SQLite store where both modes share one table.
+  private val implementRows = linkedMapOf<String, WorkflowStateRecord>()
+
   fun taskRuntimeArtifacts(workflowId: String): Map<String, Any?> {
     val record = requireNotNull(taskRuntimeRows[workflowId]) { "no runtime row for $workflowId" }
     return skillbill.contracts.JsonSupport.parseObjectOrNull(record.artifactsJson)
@@ -3689,11 +3731,13 @@ internal class InMemoryRuntimeWorkflowRepository : WorkflowStateRepository {
   override fun latestFeatureTaskRuntimeWorkflow(): WorkflowStateRecord? =
     listFeatureTaskRuntimeWorkflows(1).firstOrNull()
 
-  override fun saveFeatureImplementWorkflow(row: WorkflowStateRecord) = Unit
+  override fun saveFeatureImplementWorkflow(row: WorkflowStateRecord) {
+    implementRows[row.workflowId] = row
+  }
 
   override fun saveFeatureVerifyWorkflow(row: WorkflowStateRecord) = Unit
 
-  override fun getFeatureImplementWorkflow(workflowId: String): WorkflowStateRecord? = null
+  override fun getFeatureImplementWorkflow(workflowId: String): WorkflowStateRecord? = implementRows[workflowId]
 
   override fun getFeatureVerifyWorkflow(workflowId: String): WorkflowStateRecord? = null
 
