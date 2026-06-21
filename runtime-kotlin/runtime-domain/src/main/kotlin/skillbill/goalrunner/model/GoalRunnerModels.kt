@@ -250,7 +250,9 @@ object GoalRunnerStatusProjector {
       pendingCount = manifest.subtasks.count { it.status !in setOf("complete", "skipped", "blocked") },
       blockedCount = manifest.subtasks.count { it.status == "blocked" },
       currentSubtaskId = currentSubtask?.id,
-      currentStep = extras.currentStepOverride?.takeIf(String::isNotBlank) ?: currentSubtask?.lastResumableStep,
+      currentStep = extras.currentStepOverride?.takeIf(String::isNotBlank)
+        ?: currentSubtask?.lastResumableStep
+        ?: currentSubtask?.let { s -> if (s.workflowId.isNullOrBlank()) "pending_launch" else "initializing" },
       activeAgent = activeAgent?.takeIf(String::isNotBlank),
       latestLivenessSignal = extras.latestLivenessSignal?.takeIf(String::isNotBlank),
       latestObservabilityEvent = extras.latestObservabilityEvent,

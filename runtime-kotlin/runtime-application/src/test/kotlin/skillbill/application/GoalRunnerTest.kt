@@ -1157,6 +1157,51 @@ class GoalRunnerStatusProjectionTest {
     assertEquals(1, status.currentSubtaskId)
     assertEquals("preplan", status.currentStep)
   }
+
+  @Test
+  fun `status projection shows pending_launch when current subtask is selected but not yet launched`() {
+    val store = InMemoryGoalManifestStore(
+      manifest = manifest(subtaskCount = 2)
+        .copy(
+          status = "in_progress",
+          currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 2, action = "start"),
+          subtasks = listOf(
+            DecompositionSubtask(
+              id = 1,
+              name = "Subtask 1",
+              specPath = ".feature-specs/SKILL-56-goal/spec_subtask_1.md",
+              status = "complete",
+              workflowId = "wfl-1",
+              commitSha = "sha-1",
+              lastResumableStep = "commit_push",
+            ),
+            DecompositionSubtask(
+              id = 2,
+              name = "Subtask 2",
+              specPath = ".feature-specs/SKILL-56-goal/spec_subtask_2.md",
+              status = "pending",
+              workflowId = null,
+              lastResumableStep = null,
+            ),
+          ),
+        ),
+    )
+    val outcomes = RecordingOutcomeStore()
+    outcomes["wfl-1"] = completeOutcome(1)
+    val service = GoalRunnerStatusService(store, outcomes)
+
+    val status = service.status(
+      GoalRunnerStatusRequest(
+        issueKey = "SKILL-56",
+        invokedAgentId = "codex",
+      ),
+    )
+
+    requireNotNull(status)
+    assertEquals(1, status.completeCount)
+    assertEquals(2, status.currentSubtaskId)
+    assertEquals("pending_launch", status.currentStep)
+  }
 }
 
 class GoalRunnerObservabilityTest {
