@@ -89,6 +89,27 @@ class AgentRunGoalContinuationCommandTest {
     )
     assertNull(request.stdinText)
     assertFalse(request.command.any { value -> "bill-feature-task" in value })
+    assertFalse(request.command.contains("--workflow-id"))
+  }
+
+  @Test
+  fun `goal-continuation child with assigned workflow id and no child runs feature-task run with workflow-id`() {
+    val runner = RecordingAgentRunProcessRunner()
+    requireNotNull(headlessAgentRunAdapters(runner)[InstallAgent.CLAUDE]).launch(
+      skillRunRequest(
+        goalContinuation = goalContinuationContext(childWorkflowId = null, assignedWorkflowId = "wfl-assigned"),
+      ),
+    )
+
+    val request = runner.requests.single()
+    assertContains(request.command, "feature-task")
+    assertContains(request.command, "run")
+    assertContains(request.command, "SKILL-56")
+    assertContains(request.command, ".feature-specs/SKILL-56-goal/spec_subtask_2.md")
+    val workflowIdFlagIndex = request.command.indexOf("--workflow-id")
+    assertTrue(workflowIdFlagIndex >= 0)
+    assertEquals("wfl-assigned", request.command[workflowIdFlagIndex + 1])
+    assertFalse(request.command.contains("resume"))
   }
 
   @Test
@@ -137,15 +158,18 @@ class AgentRunGoalContinuationCommandTest {
     goalContinuation = goalContinuation,
   )
 
-  private fun goalContinuationContext(childWorkflowId: String? = null): SkillRunGoalContinuationContext =
-    SkillRunGoalContinuationContext(
-      parentIssueKey = "SKILL-56",
-      subtaskId = 2,
-      goalBranch = "feat/SKILL-56-goal",
-      suppressPr = true,
-      specPath = ".feature-specs/SKILL-56-goal/spec_subtask_2.md",
-      parentWorkflowId = "wfl-parent",
-      lastResumableStep = "implement",
-      childWorkflowId = childWorkflowId,
-    )
+  private fun goalContinuationContext(
+    childWorkflowId: String? = null,
+    assignedWorkflowId: String? = null,
+  ): SkillRunGoalContinuationContext = SkillRunGoalContinuationContext(
+    parentIssueKey = "SKILL-56",
+    subtaskId = 2,
+    goalBranch = "feat/SKILL-56-goal",
+    suppressPr = true,
+    specPath = ".feature-specs/SKILL-56-goal/spec_subtask_2.md",
+    parentWorkflowId = "wfl-parent",
+    lastResumableStep = "implement",
+    childWorkflowId = childWorkflowId,
+    assignedWorkflowId = assignedWorkflowId,
+  )
 }

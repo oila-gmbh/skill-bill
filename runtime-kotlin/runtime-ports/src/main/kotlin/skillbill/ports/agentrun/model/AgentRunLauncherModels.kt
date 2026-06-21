@@ -46,6 +46,7 @@ data class SkillRunGoalContinuationContext(
   val parentWorkflowId: String? = null,
   val lastResumableStep: String? = null,
   val childWorkflowId: String? = null,
+  val assignedWorkflowId: String? = null,
 ) {
   init {
     require(parentIssueKey.isNotBlank()) { "parentIssueKey is required." }
@@ -55,6 +56,7 @@ data class SkillRunGoalContinuationContext(
     parentWorkflowId?.let { require(it.isNotBlank()) { "parentWorkflowId must be non-blank when provided." } }
     lastResumableStep?.let { require(it.isNotBlank()) { "lastResumableStep must be non-blank when provided." } }
     childWorkflowId?.let { require(it.isNotBlank()) { "childWorkflowId must be non-blank when provided." } }
+    assignedWorkflowId?.let { require(it.isNotBlank()) { "assignedWorkflowId must be non-blank when provided." } }
   }
 }
 

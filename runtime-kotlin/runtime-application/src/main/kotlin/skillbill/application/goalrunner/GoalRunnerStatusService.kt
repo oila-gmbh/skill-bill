@@ -17,6 +17,7 @@ import skillbill.install.model.InstallAgent
 import skillbill.ports.goalrunner.GoalRunnerManifestStore
 import skillbill.ports.goalrunner.GoalRunnerWorkflowOutcomeStore
 import skillbill.ports.goalrunner.model.GoalRunnerManifestState
+import skillbill.ports.goalrunner.model.GoalRunnerReconcileGate
 import skillbill.ports.workflow.NoopWorkflowGitOperations
 import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksRequest
@@ -40,7 +41,7 @@ class GoalRunnerStatusService(
         val authoritativeOutcomes = outcomeStore.reconcileAuthoritativeOutcomes(
           issueKey = loadedState.manifest.issueKey,
           activeWorkflowIds = activeWorkflowIds,
-          allowInactiveReconciliation = false,
+          gate = GoalRunnerReconcileGate(allowInactiveReconciliation = false),
           dbPathOverride = request.dbPathOverride,
         )
         val state = persistReconciledManifestIfChanged(loadedState, request, authoritativeOutcomes)
@@ -123,7 +124,7 @@ class GoalRunnerStatusService(
     outcomeStore.reconcileAuthoritativeOutcomes(
       issueKey = loaded.manifest.issueKey,
       activeWorkflowIds = emptySet(),
-      allowInactiveReconciliation = true,
+      gate = GoalRunnerReconcileGate(allowInactiveReconciliation = true),
       dbPathOverride = request.dbPathOverride,
     )
     val latest = manifestStore.loadByIssueKey(request.issueKey, request.dbPathOverride, request.repoRoot) ?: loaded

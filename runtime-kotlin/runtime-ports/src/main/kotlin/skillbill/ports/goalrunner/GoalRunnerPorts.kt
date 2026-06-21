@@ -12,6 +12,7 @@ import skillbill.ports.goalrunner.model.GoalRunnerLedgerSequenceWatermarks
 import skillbill.ports.goalrunner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.model.GoalRunnerObservabilityRecordRequest
 import skillbill.ports.goalrunner.model.GoalRunnerProgressEventRecordRequest
+import skillbill.ports.goalrunner.model.GoalRunnerReconcileGate
 import skillbill.ports.goalrunner.model.GoalRunnerSessionAccountingRecordRequest
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.goalrunner.model.GoalRunnerWorkflowProgress
@@ -68,10 +69,12 @@ interface GoalRunnerWorkflowOutcomeStore : GoalRunnerTerminalOutcomeStore {
   // [repoRoot] is the manifest-workflowId-independent self-heal seam (SKILL-68): when supplied, a
   // complete-without-SHA continuation child recovers its commit SHA from measured HEAD and is
   // durably backfilled. null keeps the read-only, no-measure behavior for pure status/read callers.
+  // [gate] carries the reconciliation-policy knobs (see [GoalRunnerReconcileGate]); SKILL-87's
+  // requireStalenessEvidence lives there so finalize cannot false-kill a still-running subtask.
   fun reconcileAuthoritativeOutcomes(
     issueKey: String,
     activeWorkflowIds: Set<String> = emptySet(),
-    allowInactiveReconciliation: Boolean = true,
+    gate: GoalRunnerReconcileGate = GoalRunnerReconcileGate(),
     repoRoot: Path? = null,
     dbPathOverride: String? = null,
   ): Map<Int, GoalRunnerStoredOutcome>

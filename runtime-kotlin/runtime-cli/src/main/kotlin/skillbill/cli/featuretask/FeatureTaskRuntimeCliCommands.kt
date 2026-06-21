@@ -106,6 +106,14 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
     "--suppress-pr",
     help = "Suppress the runtime PR phase. Required with goal-continuation options.",
   ).flag(default = false)
+  protected val explicitWorkflowId by option(
+    "--workflow-id",
+    help = "Open the run under this exact workflow id instead of minting a new one. Used by the goal " +
+      "driver's open-with-assigned-id path for a first runtime subtask run (distinct from resume).",
+  )
+
+  protected fun resolveRunWorkflowId(workflowService: WorkflowService, state: CliRunState): String =
+    explicitWorkflowId?.takeIf(String::isNotBlank) ?: openRuntimeWorkflowId(workflowService, state)
 
   protected fun executeRuntimeRun(
     deps: FeatureTaskRuntimeRunDependencies,
@@ -222,7 +230,7 @@ class FeatureTaskRuntimeRunCommand(
       deps = deps,
       issueKey = runIssueKey,
       specPath = runSpecPath,
-      workflowId = openRuntimeWorkflowId(workflowService, deps.state),
+      workflowId = resolveRunWorkflowId(workflowService, deps.state),
     )
   }
 }
@@ -248,7 +256,7 @@ class FeatureTaskRuntimeExplicitRunCommand(
       deps = deps,
       issueKey = issueKey,
       specPath = resolveSpecPath(deps, issueKey, specPath),
-      workflowId = openRuntimeWorkflowId(workflowService, deps.state),
+      workflowId = resolveRunWorkflowId(workflowService, deps.state),
     )
   }
 }

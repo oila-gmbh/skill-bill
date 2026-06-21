@@ -159,6 +159,7 @@ internal fun goalContinuationCommand(request: SkillRunRequest, agent: InstallAge
         }
         add("feature-task")
         val childWorkflowId = context.childWorkflowId?.takeIf(String::isNotBlank)
+        val assignedWorkflowId = context.assignedWorkflowId?.takeIf(String::isNotBlank)
         if (childWorkflowId != null) {
           add("resume")
           add(childWorkflowId)
@@ -167,6 +168,10 @@ internal fun goalContinuationCommand(request: SkillRunRequest, agent: InstallAge
         }
         add(request.issueKey)
         add(context.specPath)
+        if (childWorkflowId == null && assignedWorkflowId != null) {
+          add("--workflow-id")
+          add(assignedWorkflowId)
+        }
         add("--goal-parent-issue-key")
         add(context.parentIssueKey)
         add("--goal-subtask-id")

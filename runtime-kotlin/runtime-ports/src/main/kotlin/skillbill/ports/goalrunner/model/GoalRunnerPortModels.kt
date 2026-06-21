@@ -13,6 +13,15 @@ data class GoalRunnerManifestState(
   val manifest: DecompositionManifest,
 )
 
+// Reconciliation-policy knobs for reconcileAuthoritativeOutcomes. Defaults preserve the aggressive
+// set-membership semantics. [requireStalenessEvidence] (SKILL-87) flips the inactive stale-block path
+// to demand positive evidence a candidate is gone, so an empty active set cannot false-kill a live
+// subtask; [allowInactiveReconciliation] still gates whether inactive rows reconcile at all.
+data class GoalRunnerReconcileGate(
+  val allowInactiveReconciliation: Boolean = true,
+  val requireStalenessEvidence: Boolean = false,
+)
+
 data class GoalRunnerSubtaskLaunchRequest(
   val invokedAgentId: String,
   val configuredAgentOverrideId: String?,

@@ -37,6 +37,7 @@ import skillbill.ports.goalrunner.model.GoalRunnerLedgerSequenceWatermarks
 import skillbill.ports.goalrunner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.model.GoalRunnerObservabilityRecordRequest
 import skillbill.ports.goalrunner.model.GoalRunnerProgressEventRecordRequest
+import skillbill.ports.goalrunner.model.GoalRunnerReconcileGate
 import skillbill.ports.goalrunner.model.GoalRunnerSessionAccountingRecordRequest
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.goalrunner.model.GoalRunnerWorkflowProgress
@@ -117,6 +118,9 @@ class GoalRunnerTest {
     assertEquals("complete", store.manifest.status)
     assertEquals("SKILL-56", outcomes.lastReconcileRequest?.issueKey)
     assertEquals(emptySet(), outcomes.lastReconcileRequest?.activeWorkflowIds)
+    // SKILL-87 (AC4): finalize reconciles with the empty active set but demands staleness evidence,
+    // so it can never false-kill a still-running subtask.
+    assertEquals(true, outcomes.lastReconcileRequest?.gate?.requireStalenessEvidence)
   }
 
   @Test
@@ -898,7 +902,16 @@ class GoalRunnerStatusProjectionTest {
     assertEquals("complete", store.manifest.status)
     assertEquals("none", store.manifest.currentSubtaskIntent.action)
     assertEquals("complete", store.manifest.subtasks.single().status)
-    assertEquals(ReconcileRequest("SKILL-56", setOf("wfl-1"), false, null, null), outcomes.lastReconcileRequest)
+    assertEquals(
+      ReconcileRequest(
+        "SKILL-56",
+        setOf("wfl-1"),
+        GoalRunnerReconcileGate(allowInactiveReconciliation = false, requireStalenessEvidence = false),
+        null,
+        null,
+      ),
+      outcomes.lastReconcileRequest,
+    )
   }
 
   @Test
@@ -1334,7 +1347,17 @@ class GoalRunnerObservabilityTest {
     )
 
     requireNotNull(reset)
-    assertEquals(ReconcileRequest("SKILL-56", emptySet(), true, null, null), outcomes.lastReconcileRequest)
+    // AC6: reset keeps the aggressive shape — allowInactiveReconciliation=true and NO staleness gate.
+    assertEquals(
+      ReconcileRequest(
+        "SKILL-56",
+        emptySet(),
+        GoalRunnerReconcileGate(allowInactiveReconciliation = true, requireStalenessEvidence = false),
+        null,
+        null,
+      ),
+      outcomes.lastReconcileRequest,
+    )
     assertEquals("pending", store.manifest.subtasks.single().status)
     assertEquals(null, store.manifest.subtasks.single().workflowId)
     assertEquals(CurrentSubtaskIntent(subtaskId = 1, action = "start"), store.manifest.currentSubtaskIntent)
@@ -1667,6 +1690,35 @@ class GoalRunnerLaunchReconcilerWiringTest {
   }
 
   @Test
+  fun `first-run subtask with pre-assigned id records started and heartbeat through a long quiet phase`() {
+    // SKILL-87 (AC3/AC5): the goal driver pre-assigns and persists the runtime workflow id BEFORE
+    // launch, so resolveWorkflowId is non-blank from the first tick. A long, quiet first phase (no
+    // terminal event yet) must still durably record operation_started AND operation_heartbeat.
+    val store = InMemoryGoalManifestStore(
+      manifest = manifest(subtaskCount = 1).withWorkflowId(subtaskId = 1, workflowId = "wftr-pre-assigned"),
+    )
+    val outcomes = RecordingOutcomeStore()
+    val reconciler = GoalRunnerLaunchReconciler(
+      manifestStore = store,
+      subtaskLauncher = RecordingSubtaskLauncher { launchFacts() },
+      outcomeStore = outcomes,
+    )
+
+    val launchRequest = reconciler.subtaskLaunchRequest("SKILL-56", subtaskId = 1, request = wiringRunRequest())
+    val emitter = launchRequest.skillRunRequest.progressEmitter
+    emitter.emit(supervisorEmission(GoalProgressEventKind.OPERATION_STARTED, processAlive = true))
+    emitter.emit(supervisorEmission(GoalProgressEventKind.OPERATION_HEARTBEAT, processAlive = true))
+
+    val recorded = outcomes.progressEventRecords
+    assertEquals(2, recorded.size, "pre-assigned id must let the quiet first phase record liveness")
+    assertTrue(recorded.all { it.event.workflowId == "wftr-pre-assigned" })
+    assertEquals(
+      listOf(GoalProgressEventKind.OPERATION_STARTED, GoalProgressEventKind.OPERATION_HEARTBEAT),
+      recorded.map { it.event.eventKind },
+    )
+  }
+
+  @Test
   fun `reconciler emitter is a no-op until the child workflow id is resolvable`() {
     // No workflowId on the subtask yet: resolveWorkflowId returns null, so the
     // wired emitter must persist nothing (matching the production no-op-until-known
@@ -1730,12 +1782,11 @@ internal class RecordingOutcomeStore : GoalRunnerWorkflowOutcomeStore {
   override fun reconcileAuthoritativeOutcomes(
     issueKey: String,
     activeWorkflowIds: Set<String>,
-    allowInactiveReconciliation: Boolean,
+    gate: GoalRunnerReconcileGate,
     repoRoot: Path?,
     dbPathOverride: String?,
   ): Map<Int, GoalRunnerStoredOutcome> {
-    lastReconcileRequest =
-      ReconcileRequest(issueKey, activeWorkflowIds, allowInactiveReconciliation, repoRoot, dbPathOverride)
+    lastReconcileRequest = ReconcileRequest(issueKey, activeWorkflowIds, gate, repoRoot, dbPathOverride)
     return authoritativeOutcomesBySubtask.toMap()
   }
 
@@ -1874,7 +1925,7 @@ internal data class RecoveredMissingResultPrefixOutput(
 internal data class ReconcileRequest(
   val issueKey: String,
   val activeWorkflowIds: Set<String>,
-  val allowInactiveReconciliation: Boolean,
+  val gate: GoalRunnerReconcileGate,
   val repoRoot: Path?,
   val dbPathOverride: String?,
 )

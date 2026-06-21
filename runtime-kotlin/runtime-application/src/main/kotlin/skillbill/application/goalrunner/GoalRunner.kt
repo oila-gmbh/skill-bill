@@ -8,6 +8,8 @@ import skillbill.application.decomposition.parentSpecPath
 import skillbill.application.decomposition.resolvedParentSpecPath
 import skillbill.application.model.GoalRunnerRunEvent
 import skillbill.application.model.GoalRunnerRunRequest
+import skillbill.application.workflow.WorkflowFamily
+import skillbill.application.workflow.generateWorkflowId
 import skillbill.application.workflow.repoRoot
 import skillbill.contracts.JsonSupport
 import skillbill.goalrunner.GoalRunnerOutcomeReconciler
@@ -38,6 +40,7 @@ import skillbill.ports.goalrunner.GoalRunnerWorkflowOutcomeStore
 import skillbill.ports.goalrunner.model.GoalPullRequestRequest
 import skillbill.ports.goalrunner.model.GoalPullRequestResult
 import skillbill.ports.goalrunner.model.GoalRunnerManifestState
+import skillbill.ports.goalrunner.model.GoalRunnerReconcileGate
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.goalrunner.model.GoalRunnerWorkflowProgress
 import skillbill.ports.time.NoopRuntimeTimingPort
@@ -53,6 +56,11 @@ import skillbill.workflow.model.DecompositionManifest
 import skillbill.workflow.model.DecompositionSubtask
 import skillbill.workflow.model.SpecSource
 import kotlin.time.Duration.Companion.milliseconds
+
+// SKILL-87: the pre-assigned id substitutes for what the CLI's open(TASK_RUNTIME) would mint, so the
+// prefix must stay in lockstep with the TASK_RUNTIME family's canonical workflow-id prefix ("wftr")
+// rather than a duplicated literal.
+private val RUNTIME_WORKFLOW_ID_PREFIX: String = WorkflowFamily.TASK_RUNTIME.definition.workflowIdPrefix
 
 @Inject
 class GoalRunner(
@@ -207,14 +215,17 @@ class GoalRunner(
     goalBranchSetupFailure(state, selection, request)?.let { failure ->
       return failure
     }
-    val attemptedState = manifestStore.save(
-      state.copy(manifest = state.manifest.withAttemptedSubtask(subtaskId)),
-      request.dbPathOverride,
-    )
+    val prepared = prepareAttemptedLaunch(state, subtaskId, request)
+    val attemptedState = prepared.state
     attempted += subtaskId
     emitSubtaskStarted(attemptedState, subtaskId, selection, request, telemetryEmitter)
     val launchOutcome = subtaskLauncher.launch(
-      reconciler.subtaskLaunchRequest(attemptedState.manifest.issueKey, subtaskId, request),
+      reconciler.subtaskLaunchRequest(
+        attemptedState.manifest.issueKey,
+        subtaskId,
+        request,
+        assignedWorkflowId = prepared.openWithAssignedId,
+      ),
     )
     val launchReconciliation = reconciler.reconcileLaunchOutcome(attemptedState, launchOutcome, subtaskId, request)
     val workerRequestResult = workerRequestHandler.handle(
@@ -255,6 +266,28 @@ class GoalRunner(
         launchReconciliation.diagnostics,
       )
     }
+  }
+
+  // SKILL-87: pre-assign and persist the child workflow id before launch so the supervisor resolves it
+  // from the first tick (and heartbeats fire through a quiet first phase). A subtask that already
+  // carries an id is a resume and keeps it; only a first run flows through open-with-this-id.
+  // Crash window (F-006): if the process dies after this manifest save but before the child durably
+  // creates its workflow_states row, the next run sees the persisted id and routes a `resume <id>`.
+  // That degrades gracefully — ensureWorkflowOpen opens a fresh row at the initial step for an absent
+  // id (foreignModeWorkflowBlock only fires for a real foreign-mode row), so resume-of-absent-id is
+  // equivalent to a fresh open; this fallback is relied upon rather than special-cased.
+  private fun prepareAttemptedLaunch(
+    state: GoalRunnerManifestState,
+    subtaskId: Int,
+    request: GoalRunnerRunRequest,
+  ): PreparedLaunch {
+    val priorWorkflowId = state.manifest.workflowIdFor(subtaskId)
+    val firstRun = priorWorkflowId == null
+    val assignedWorkflowId = priorWorkflowId ?: generateWorkflowId(RUNTIME_WORKFLOW_ID_PREFIX)
+    val attemptedManifest = state.manifest.withAttemptedSubtask(subtaskId)
+      .let { manifest -> if (firstRun) manifest.withWorkflowId(subtaskId, assignedWorkflowId) else manifest }
+    val attemptedState = manifestStore.save(state.copy(manifest = attemptedManifest), request.dbPathOverride)
+    return PreparedLaunch(attemptedState, assignedWorkflowId.takeIf { firstRun })
   }
 
   private fun emitSubtaskStarted(
@@ -518,6 +551,9 @@ class GoalRunner(
     outcomeStore.reconcileAuthoritativeOutcomes(
       issueKey = state.manifest.issueKey,
       activeWorkflowIds = emptySet(),
+      // SKILL-87: with an empty active set, demand positive staleness evidence so finalize cannot
+      // false-kill a subtask that is still live (the prior emptySet reset-only semantics did).
+      gate = GoalRunnerReconcileGate(requireStalenessEvidence = true),
       // SKILL-68: the command-path finalize supplies the repo root so a complete-without-SHA child
       // is healed from measured HEAD and durably backfilled before the goal completes.
       repoRoot = request.repoRoot,
@@ -779,6 +815,8 @@ internal class GoalRunnerLaunchReconciler(
     issueKey: String,
     subtaskId: Int,
     request: GoalRunnerRunRequest,
+    // SKILL-87: non-null only on a first run; routes the child through open-with-this-id, not resume.
+    assignedWorkflowId: String? = null,
   ): GoalRunnerSubtaskLaunchRequest {
     val tickReader = GoalRunnerTickProgressReader(
       manifestStore = manifestStore,
@@ -811,7 +849,7 @@ internal class GoalRunnerLaunchReconciler(
         declaredProgressProbe = declaredProgressProbe(tickReader),
         progressEmitter = progressEmitter,
         outputSink = request.outputSink,
-        goalContinuation = goalContinuationContext(issueKey, subtaskId, request),
+        goalContinuation = goalContinuationContext(issueKey, subtaskId, request, assignedWorkflowId),
       ),
     )
   }
@@ -820,6 +858,7 @@ internal class GoalRunnerLaunchReconciler(
     issueKey: String,
     subtaskId: Int,
     request: GoalRunnerRunRequest,
+    assignedWorkflowId: String?,
   ): SkillRunGoalContinuationContext? {
     val state = manifestStore.loadByIssueKey(issueKey, request.dbPathOverride, request.repoRoot) ?: return null
     val branch = state.manifest.branchPlanFor(subtaskId).branch.takeIf(String::isNotBlank)
@@ -827,6 +866,10 @@ internal class GoalRunnerLaunchReconciler(
     val subtask = state.manifest.subtasks.firstOrNull { it.id == subtaskId }
     val specPath = subtask?.specPath?.takeIf(String::isNotBlank)
     return if (branch != null && subtask != null && specPath != null) {
+      // SKILL-87: a freshly pre-assigned id is an open, not a resume — drop it from childWorkflowId so
+      // the command builder emits `run --workflow-id`; a pre-existing id stays the resume id.
+      val manifestWorkflowId = state.manifest.workflowIdFor(subtaskId)
+      val childWorkflowId = manifestWorkflowId?.takeIf { it != assignedWorkflowId }
       SkillRunGoalContinuationContext(
         parentIssueKey = issueKey,
         subtaskId = subtaskId,
@@ -835,7 +878,8 @@ internal class GoalRunnerLaunchReconciler(
         specPath = specPath,
         parentWorkflowId = state.parentWorkflowId,
         lastResumableStep = subtask.lastResumableStep?.takeIf(String::isNotBlank),
-        childWorkflowId = state.manifest.workflowIdFor(subtaskId),
+        childWorkflowId = childWorkflowId,
+        assignedWorkflowId = assignedWorkflowId?.takeIf { childWorkflowId == null },
       )
     } else {
       null
@@ -978,6 +1022,7 @@ internal class GoalRunnerLaunchReconciler(
     }
     return outcomeStore.reconcileAuthoritativeOutcomes(
       issueKey = state.manifest.issueKey,
+      gate = GoalRunnerReconcileGate(requireStalenessEvidence = false),
       repoRoot = request.repoRoot,
       dbPathOverride = request.dbPathOverride,
     )[subtaskId]
@@ -1214,6 +1259,12 @@ private fun DecompositionManifest.withAttemptedSubtask(subtaskId: Int): Decompos
   },
 )
 
+private fun DecompositionManifest.withWorkflowId(subtaskId: Int, workflowId: String): DecompositionManifest = copy(
+  subtasks = subtasks.map { subtask ->
+    if (subtask.id == subtaskId) subtask.copy(workflowId = workflowId) else subtask
+  },
+)
+
 private fun DecompositionManifest.knownWorkflowId(subtaskId: Int, outcome: GoalRunnerReconciledOutcome.Stop): String? =
   outcome.workflowId ?: subtasks.firstOrNull { it.id == subtaskId }?.workflowId?.takeIf(String::isNotBlank)
 
@@ -1383,6 +1434,13 @@ private fun GoalRunnerStopReason.toLedgerAction(): GoalAttemptLedgerAction = whe
   GoalRunnerStopReason.NO_TERMINAL_STORE_OUTCOME -> GoalAttemptLedgerAction.RETRY
   else -> GoalAttemptLedgerAction.FINAL_RECONCILED_OUTCOME
 }
+
+// SKILL-87: [openWithAssignedId] is the pre-assigned id only on a first run (open-with-this-id), null
+// on a resume where the persisted manifest id is the resume id.
+private data class PreparedLaunch(
+  val state: GoalRunnerManifestState,
+  val openWithAssignedId: String?,
+)
 
 private data class LaunchRecordingContext(
   val workflowId: String,

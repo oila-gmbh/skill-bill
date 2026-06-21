@@ -34,6 +34,7 @@ import skillbill.ports.goalrunner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.model.GoalRunnerObservabilityRecordRequest
 import skillbill.ports.goalrunner.model.GoalRunnerProgressEvent
 import skillbill.ports.goalrunner.model.GoalRunnerProgressEventRecordRequest
+import skillbill.ports.goalrunner.model.GoalRunnerReconcileGate
 import skillbill.ports.goalrunner.model.GoalRunnerSessionAccountingRecordRequest
 import skillbill.ports.goalrunner.model.GoalRunnerWorkflowProgress
 import skillbill.ports.persistence.DatabaseSessionFactory
@@ -63,6 +64,17 @@ import skillbill.workflow.model.WorkflowUpdateInput
 import skillbill.workflow.model.appendBoundedHistoryBySequence
 import skillbill.workflow.model.goalObservabilityLatestEventFromArtifacts
 import java.nio.file.Path
+import java.time.Duration
+import java.time.Instant
+import java.time.LocalDateTime
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
+
+// SKILL-87: under requireStalenessEvidence, a running candidate counts as alive (not stale) when any
+// declared-liveness or snapshot-update signal lands within this window. Generous enough that a long
+// but legitimately quiet first phase is never mistaken for a dead subtask.
+private const val STALENESS_EVIDENCE_WINDOW_MINUTES: Long = 30
+private val STALENESS_EVIDENCE_WINDOW: Duration = Duration.ofMinutes(STALENESS_EVIDENCE_WINDOW_MINUTES)
 
 @Inject
 class WorkflowGoalRunnerManifestStore(
@@ -266,7 +278,7 @@ class WorkflowGoalRunnerOutcomeStore(
   override fun reconcileAuthoritativeOutcomes(
     issueKey: String,
     activeWorkflowIds: Set<String>,
-    allowInactiveReconciliation: Boolean,
+    gate: GoalRunnerReconcileGate,
     repoRoot: Path?,
     dbPathOverride: String?,
   ): Map<Int, GoalRunnerStoredOutcome> = database.transaction(dbPathOverride) { unitOfWork ->
@@ -307,7 +319,15 @@ class WorkflowGoalRunnerOutcomeStore(
         val inactive = candidate.snapshot.workflowId !in activeSet
         val supersededByAuthoritative = authoritative?.status == GoalRunnerTerminalStatus.COMPLETE &&
           authoritative.workflowId != candidate.snapshot.workflowId
-        (allowInactiveReconciliation && inactive) || supersededByAuthoritative
+        // SKILL-87: an empty/partial activeSet must not false-kill a still-running subtask. Under
+        // requireStalenessEvidence, set membership alone is not enough — block only with positive
+        // evidence the candidate is gone (no declared liveness within the staleness window).
+        val staleByInactivity = if (gate.requireStalenessEvidence) {
+          inactive && candidateIsStale(candidate)
+        } else {
+          gate.allowInactiveReconciliation && inactive
+        }
+        staleByInactivity || supersededByAuthoritative
       }
       .forEach { stale ->
         val authoritative = initialAuthoritative[stale.goalContinuation.subtaskId]
@@ -724,6 +744,33 @@ class WorkflowGoalRunnerOutcomeStore(
     }
   }
 
+  // SKILL-87: positive-evidence staleness check for a still-running candidate. Returns true only when
+  // the evidence says the subtask is gone: a terminal own outcome, OR liveness signals that all aged
+  // out of the window. The row's own updatedAt is the always-present backstop — every DB write stamps
+  // updated_at, so a DB-backed candidate's liveness is never empty and an aged-out updatedAt yields
+  // stale (closing the strand-forever path even with no declared/observed event). The declared
+  // progress-event timestamp (firing from tick 1) remains the primary recent-liveness signal. Liveness
+  // is genuinely empty only when updatedAt is absent/unparseable AND no declared/observed event exists;
+  // that no-evidence-at-all case biases to alive as the defensive last resort. Best-effort: a decode
+  // fault never throws and never false-kills.
+  private fun candidateIsStale(candidate: GoalContinuationCandidate): Boolean = runCatching {
+    candidate.outcome?.status?.let { return@runCatching it != GoalRunnerTerminalStatus.COMPLETE }
+    val now = Instant.now()
+    val window = STALENESS_EVIDENCE_WINDOW
+    val liveness = candidateLivenessInstants(candidate)
+    val recent = liveness.any { signal -> Duration.between(signal, now).let { !it.isNegative && it <= window } }
+    liveness.isNotEmpty() && !recent
+  }.getOrDefault(false)
+
+  private fun candidateLivenessInstants(candidate: GoalContinuationCandidate): List<Instant> {
+    val artifacts = decodeArtifacts(candidate.snapshot.artifactsJson)
+    val declared = declaredProgressEventFrom(artifacts)?.timestamp
+    val observed = runCatching {
+      goalObservabilityLatestEventFromArtifacts(artifacts, goalObservabilityEventValidator)?.timestamp
+    }.getOrNull()
+    return listOfNotNull(declared, observed, candidate.snapshot.updatedAt).mapNotNull(::parseInstantOrNull)
+  }
+
   private fun markBlocked(write: GoalRunnerBlockWrite): String {
     val steps = decodeWorkflowSteps(write.record.stepsJson)
     // Family-scoped: only the runtime family reconciles the resume boundary off the truthful
@@ -1045,6 +1092,17 @@ private fun maxHistorySequence(artifacts: Map<String, Any?>, historyKey: String,
   }
   return max
 }
+
+// SKILL-87: accept BOTH ISO-8601 (declared/observed progress-event timestamps) AND the SQLite
+// CURRENT_TIMESTAMP shape "yyyy-MM-dd HH:mm:ss" (space separator, no 'T', no zone) that
+// WorkflowStateStore stamps into updated_at. Instant.parse alone always returns null for the latter,
+// silently dropping the snapshot-update liveness signal. Best-effort: null only when both fail.
+private fun parseInstantOrNull(value: String): Instant? = runCatching { Instant.parse(value) }.getOrNull()
+  ?: runCatching {
+    LocalDateTime.parse(value.trim(), SQLITE_TIMESTAMP_FORMATTER).toInstant(ZoneOffset.UTC)
+  }.getOrNull()
+
+private val SQLITE_TIMESTAMP_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
 
 private fun progressEventFrom(artifacts: Map<String, Any?>): GoalRunnerProgressEvent? =
   (artifacts["progress_event"] as? Map<*, *>)
