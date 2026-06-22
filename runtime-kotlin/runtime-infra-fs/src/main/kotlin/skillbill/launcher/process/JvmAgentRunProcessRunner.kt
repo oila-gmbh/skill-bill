@@ -351,7 +351,8 @@ private class ProcessWaitLoop(
       // configured idle window is still honoured before any kill.
       GoalRunnerLivenessState.IDLE ->
         if (idleTimeoutNanos != null && nowNanos - declaredTracker.lastAdvanceNanos >= idleTimeoutNanos) {
-          val processLiveWithinWindow = request.idlePolicy.extendIdleWindow(lastLiveHeartbeatNanos, idleTimeoutNanos, nowNanos)
+          val processLiveWithinWindow =
+            request.idlePolicy.extendIdleWindow(lastLiveHeartbeatNanos, idleTimeoutNanos, nowNanos)
           if (processLiveWithinWindow) {
             null
           } else {
@@ -375,7 +376,8 @@ private class ProcessWaitLoop(
       val graceActive = fileActivityWindowStartNanos?.let { windowStart ->
         nowNanos - windowStart < fileActivityGraceNanos
       } == true
-      val processLiveWithinWindow = request.idlePolicy.extendIdleWindow(lastLiveHeartbeatNanos, idleTimeoutNanos, nowNanos)
+      val processLiveWithinWindow =
+        request.idlePolicy.extendIdleWindow(lastLiveHeartbeatNanos, idleTimeoutNanos, nowNanos)
       if (graceActive || processLiveWithinWindow) {
         null
       } else {
