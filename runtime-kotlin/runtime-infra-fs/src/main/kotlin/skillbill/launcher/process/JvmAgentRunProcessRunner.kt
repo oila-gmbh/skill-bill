@@ -264,6 +264,7 @@ private class ProcessWaitLoop(
   private val startNanos = System.nanoTime()
   private var lastWorkflowProgressNanos = startNanos
   private var lastStatusHeartbeatNanos = startNanos
+  private var lastLiveHeartbeatNanos = startNanos
   private var lastProgressToken = request.progressProbe.safeProgressToken()
   private var lastActivityToken = request.activityProbe.safeActivityToken()
   private var fileActivityWindowStartNanos: Long? = null
@@ -350,13 +351,18 @@ private class ProcessWaitLoop(
       // configured idle window is still honoured before any kill.
       GoalRunnerLivenessState.IDLE ->
         if (idleTimeoutNanos != null && nowNanos - declaredTracker.lastAdvanceNanos >= idleTimeoutNanos) {
-          ProcessWait(
-            finished = false,
-            progressIdleTimedOut = true,
-            fileActivityGraceExhausted = false,
-            wallClockTimedOut = false,
-            liveness = declaredLiveness("watchdog", "progress_idle_timeout", "killed", decision.state),
-          )
+          val processLiveWithinWindow = request.idlePolicy.extendIdleWindow(lastLiveHeartbeatNanos, idleTimeoutNanos, nowNanos)
+          if (processLiveWithinWindow) {
+            null
+          } else {
+            ProcessWait(
+              finished = false,
+              progressIdleTimedOut = true,
+              fileActivityGraceExhausted = false,
+              wallClockTimedOut = false,
+              liveness = declaredLiveness("watchdog", "progress_idle_timeout", "killed", decision.state),
+            )
+          }
         } else {
           null
         }
@@ -369,7 +375,8 @@ private class ProcessWaitLoop(
       val graceActive = fileActivityWindowStartNanos?.let { windowStart ->
         nowNanos - windowStart < fileActivityGraceNanos
       } == true
-      if (graceActive) {
+      val processLiveWithinWindow = request.idlePolicy.extendIdleWindow(lastLiveHeartbeatNanos, idleTimeoutNanos, nowNanos)
+      if (graceActive || processLiveWithinWindow) {
         null
       } else {
         ProcessWait(
@@ -412,12 +419,15 @@ private class ProcessWaitLoop(
       return
     }
     lastStatusHeartbeatNanos = nowNanos
-    // SKILL-64 Subtask 3 (AC25, AC21, AC22): emit a declared operation_heartbeat
-    // gated to the status-heartbeat cadence (NOT per-250ms tick) carrying the
-    // authoritative process-alive signal, so an "alive but quiet" long op is
-    // provably distinguished from a hung one without the phase agent self-
-    // reporting.
-    lifecycleEmitter.emitHeartbeat(process.isAlive)
+    val alive = process.isAlive
+    lifecycleEmitter.emitHeartbeat(alive)
+    // Track in-memory so idle-wait paths can extend the idle window without a DB
+    // round-trip. SQLite contention from the child MCP server can silently null
+    // out the DB-backed signals; process.isAlive never can.
+    if (alive) lastLiveHeartbeatNanos = nowNanos
+    request.progressProbe.safeProgressLabel()?.takeIf(String::isNotBlank)?.let { label ->
+      lastProgressLabel = label
+    }
     val workflowLabel = lastProgressLabel?.takeIf(String::isNotBlank)
     val activityLabel = lastActivityLabel?.takeIf(String::isNotBlank)
     val details = listOfNotNull(

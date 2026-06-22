@@ -1,6 +1,7 @@
 package skillbill.launcher.agentrun
 
 import skillbill.install.model.InstallAgent
+import skillbill.launcher.process.AgentRunIdlePolicy
 import skillbill.ports.agentrun.model.SkillRunRequest
 import java.nio.file.Path
 import kotlin.time.DurationUnit
@@ -13,6 +14,7 @@ data class AgentRunCommand(
   val environment: Map<String, String> = emptyMap(),
   val inheritEnvironment: Boolean = true,
   val usePtyStdio: Boolean = false,
+  val idlePolicy: AgentRunIdlePolicy = AgentRunIdlePolicy.DB_PROGRESS_ONLY,
 )
 
 interface AgentRunCommandBuilder {
@@ -107,6 +109,7 @@ class OpencodeAgentRunCommandBuilder : AgentRunCommandBuilder {
       timeout = request.timeout,
       environment = goalContinuationEnvironment(request),
       usePtyStdio = true,
+      idlePolicy = AgentRunIdlePolicy.HEARTBEAT_EXTENDED,
     )
 }
 

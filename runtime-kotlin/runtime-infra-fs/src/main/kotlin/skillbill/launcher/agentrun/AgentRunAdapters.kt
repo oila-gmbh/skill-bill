@@ -34,6 +34,7 @@ class ProcessAgentRunAdapter(
         inheritEnvironment = command.inheritEnvironment,
         outputSink = request.outputSink,
         usePtyStdio = command.usePtyStdio,
+        idlePolicy = command.idlePolicy,
       ),
     )
     return AgentRunLaunchFacts(

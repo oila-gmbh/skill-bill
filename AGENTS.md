@@ -144,6 +144,21 @@ For quality-check, register the manifest entry and ship the governed `content.md
 
 For feature-implement or feature-verify overrides, keep the historic `skills/<platform>/` layout until those families are piloted.
 
+## Runtime Agent Behavior
+
+Agent-specific runtime behavior is expressed through injectable strategies, not conditional branching inside the process runner.
+
+The `AgentRunProcessRequest` carries named strategy objects that the process runner calls without knowing which agent is active:
+
+- `progressProbe` — how to read workflow DB token changes
+- `declaredProgressProbe` — how to read declared progress events
+- `activityProbe` — how to detect file-system activity
+- `progressEmitter` — how to write lifecycle events
+- `idlePolicy` — whether a confirmed-alive process heartbeat extends the idle window (`HEARTBEAT_EXTENDED`) or only DB token changes count (`DB_PROGRESS_ONLY`)
+- `usePtyStdio` — whether to use a PTY pair instead of separate stdout/stderr streams
+
+Each `AgentRunCommandBuilder` sets the right combination for its agent. `ProcessWaitLoop` calls the strategies without branching on agent identity. When a new agent needs different behavior, add a named strategy constant and set it in its command builder — do not add if/else inside the runner.
+
 ## Comments Policy
 
 Comments — especially inline ones — are a code smell. They signal that the code itself failed to communicate its intent. Before writing any comment, first ask: can this be expressed better in code through clearer naming, smaller functions, or a refactor? Only add a comment when the *why* is genuinely non-obvious and cannot be encoded in the structure of the code itself (e.g. a non-obvious external constraint, a subtle invariant, or a workaround for a known bug). Never write comments that explain *what* the code does — well-named identifiers already do that.

@@ -30,6 +30,7 @@ data class AgentRunProcessRequest(
   val inheritEnvironment: Boolean = true,
   val outputSink: AgentRunOutputSink = AgentRunOutputSink.NONE,
   val usePtyStdio: Boolean = false,
+  val idlePolicy: AgentRunIdlePolicy = AgentRunIdlePolicy.DB_PROGRESS_ONLY,
 ) {
   init {
     require(command.isNotEmpty()) { "Agent run command is required." }
@@ -55,6 +56,17 @@ fun interface AgentRunActivityProbe {
 
   companion object {
     val NONE: AgentRunActivityProbe = AgentRunActivityProbe { null }
+  }
+}
+
+fun interface AgentRunIdlePolicy {
+  fun extendIdleWindow(lastLiveHeartbeatNanos: Long, idleTimeoutNanos: Long, nowNanos: Long): Boolean
+
+  companion object {
+    val HEARTBEAT_EXTENDED: AgentRunIdlePolicy = AgentRunIdlePolicy { heartbeat, timeout, now ->
+      now - heartbeat < timeout
+    }
+    val DB_PROGRESS_ONLY: AgentRunIdlePolicy = AgentRunIdlePolicy { _, _, _ -> false }
   }
 }
 

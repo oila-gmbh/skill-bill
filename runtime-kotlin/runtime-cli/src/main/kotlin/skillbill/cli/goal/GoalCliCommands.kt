@@ -400,7 +400,14 @@ private class GoalRunPresenter(
       when {
         line.startsWith("skill-bill: workflow progress:") -> handleWorkflowProgressLine(line)
         line.startsWith("skill-bill: file activity observed;") -> lastLivenessClass = GOAL_LIVENESS_FILE_ACTIVITY
-        line.startsWith("skill-bill: status heartbeat") -> emitStructuredHeartbeat()
+        line.startsWith("skill-bill: status heartbeat") -> {
+          // The heartbeat line carries the current workflow label in "; workflow: <label>" —
+          // parse it so activeStepId stays in sync even when workflow progress lines
+          // are missed (e.g. transient null token stopped pollWorkflowProgress).
+          line.substringAfter("; workflow: ", "").takeIf(String::isNotBlank)
+            ?.let { workflowSection -> parseSubtaskAndStepFromLabel(workflowSection) }
+          emitStructuredHeartbeat()
+        }
         !line.startsWith("skill-bill:") -> sawRawChildOutputSinceLastHeartbeat = true
       }
     }
