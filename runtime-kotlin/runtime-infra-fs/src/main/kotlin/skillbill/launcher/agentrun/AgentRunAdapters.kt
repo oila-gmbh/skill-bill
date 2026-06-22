@@ -28,13 +28,12 @@ class ProcessAgentRunAdapter(
         progressIdleTimeout = request.progressIdleTimeout,
         progressProbe = request.progressProbe,
         declaredProgressProbe = request.declaredProgressProbe,
-        // SKILL-64 Subtask 3 (AC21, AC25): thread the supervisor-side declared-
-        // progress emitter into the process-lifecycle wrapper.
         progressEmitter = request.progressEmitter,
         activityProbe = WorktreeActivityProbe(command.workingDirectory),
         environment = command.environment,
         inheritEnvironment = command.inheritEnvironment,
         outputSink = request.outputSink,
+        usePtyStdio = command.usePtyStdio,
       ),
     )
     return AgentRunLaunchFacts(

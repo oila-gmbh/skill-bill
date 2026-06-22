@@ -12,6 +12,7 @@ data class AgentRunCommand(
   val stdinText: String? = null,
   val environment: Map<String, String> = emptyMap(),
   val inheritEnvironment: Boolean = true,
+  val usePtyStdio: Boolean = false,
 )
 
 interface AgentRunCommandBuilder {
@@ -105,6 +106,7 @@ class OpencodeAgentRunCommandBuilder : AgentRunCommandBuilder {
       workingDirectory = request.repoRoot,
       timeout = request.timeout,
       environment = goalContinuationEnvironment(request),
+      usePtyStdio = true,
     )
 }
 

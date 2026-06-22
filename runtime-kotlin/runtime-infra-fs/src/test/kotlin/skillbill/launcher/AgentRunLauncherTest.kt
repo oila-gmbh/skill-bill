@@ -802,3 +802,155 @@ private class SharedDeclaredProgressStore {
 // start — past the 1s operation deadline measured from process start, but leaving
 // only ~0.5s of run, well under that deadline measured from first observation.
 private const val WITHHELD_POLLS = 6
+
+class OpencodeAgentRunCommandBuilderTest {
+  @Test
+  fun `opencode builder emits usePtyStdio=true`() {
+    val runner = RecordingAgentRunProcessRunner()
+    val request = SkillRunRequest(
+      issueKey = "SKILL-88",
+      repoRoot = Path.of("/tmp/skillbill-agent-run"),
+      subtaskId = 1,
+      timeout = 10.seconds,
+      goalContinuation = null,
+    ).copy(promptOverride = "Phase: preplan")
+
+    requireNotNull(headlessAgentRunAdapters(runner)[InstallAgent.OPENCODE]).launch(request)
+
+    val captured = runner.requests.single()
+    assertTrue(captured.usePtyStdio, "opencode must request PTY-backed stdio")
+  }
+
+  @Test
+  fun `claude codex and junie builders emit usePtyStdio=false`() {
+    val runner = RecordingAgentRunProcessRunner()
+    val request = SkillRunRequest(
+      issueKey = "SKILL-88",
+      repoRoot = Path.of("/tmp/skillbill-agent-run"),
+      subtaskId = 1,
+      timeout = 10.seconds,
+      goalContinuation = null,
+    ).copy(promptOverride = "Phase: preplan")
+    val adapters = headlessAgentRunAdapters(runner)
+
+    listOf(InstallAgent.CLAUDE, InstallAgent.CODEX, InstallAgent.JUNIE).forEach { agent ->
+      requireNotNull(adapters[agent]).launch(request)
+    }
+
+    val otherRequests = runner.requests
+    assertTrue(otherRequests.size == 3)
+    otherRequests.forEach { req ->
+      assertFalse(req.usePtyStdio, "non-opencode agent must not request PTY-backed stdio")
+    }
+  }
+
+  @Test
+  fun `process adapter threads usePtyStdio from command into request`() {
+    val runner = RecordingAgentRunProcessRunner()
+    val request = SkillRunRequest(
+      issueKey = "SKILL-88",
+      repoRoot = Path.of("/tmp/skillbill-agent-run"),
+      subtaskId = 1,
+      timeout = 10.seconds,
+      goalContinuation = null,
+    ).copy(promptOverride = "Phase: preplan")
+
+    requireNotNull(headlessAgentRunAdapters(runner)[InstallAgent.OPENCODE]).launch(request)
+    requireNotNull(headlessAgentRunAdapters(runner)[InstallAgent.CLAUDE]).launch(request)
+
+    assertEquals(true, runner.requests[0].usePtyStdio, "opencode adapter must thread usePtyStdio=true")
+    assertEquals(false, runner.requests[1].usePtyStdio, "claude adapter must thread usePtyStdio=false")
+  }
+}
+
+class PtyStdioLaunchTest {
+  private fun assumePtyAvailable() {
+    org.junit.jupiter.api.Assumptions.assumeTrue(
+      java.io.File("/dev/ptmx").exists(),
+      "PTY device /dev/ptmx not available; skipping PTY integration test",
+    )
+  }
+
+  @Test
+  fun `jvm process runner spawns child over pty and captures stdout via outputSink`() {
+    assumePtyAvailable()
+    val events = mutableListOf<Pair<AgentRunOutputStream, String>>()
+    val result = JvmAgentRunProcessRunner().run(
+      AgentRunProcessRequest(
+        command = listOf("sh", "-c", "printf hello-pty"),
+        workingDirectory = Path.of(".").toAbsolutePath().normalize(),
+        timeout = 5.seconds,
+        usePtyStdio = true,
+        outputSink = { stream, text -> synchronized(events) { events += stream to text } },
+      ),
+    )
+
+    assertEquals(0, result.exitStatus)
+    assertContains(result.stdout, "hello-pty")
+    assertTrue(
+      events.any { it.first == AgentRunOutputStream.STDOUT && "hello-pty" in it.second },
+      "outputSink must receive PTY stdout chunk",
+    )
+    assertFalse(result.timedOut)
+    assertFalse(result.spawnFailed)
+  }
+
+  @Test
+  fun `jvm process runner pty path does not false-kill a live child under idle watchdog`() {
+    assumePtyAvailable()
+    val sequence = java.util.concurrent.atomic.AtomicInteger(0)
+    val result = JvmAgentRunProcessRunner().run(
+      AgentRunProcessRequest(
+        command = listOf("sh", "-c", "sleep 0.5"),
+        workingDirectory = Path.of(".").toAbsolutePath().normalize(),
+        timeout = 5.seconds,
+        progressIdleTimeout = 100.milliseconds,
+        operationDeadline = 10.seconds,
+        usePtyStdio = true,
+        declaredProgressProbe = AgentRunDeclaredProgressProbe {
+          val seq = sequence.getAndIncrement()
+          AgentRunDeclaredProgressSnapshot(
+            latestEvent = GoalProgressEvent(
+              eventKind = GoalProgressEventKind.OPERATION_STARTED,
+              workflowId = "wfl-child",
+              workflowPhase = "preplan",
+              processAlive = true,
+              sequenceNumber = seq,
+              timestamp = "2026-06-22T10:0$seq:00Z",
+              operationName = "opencode-preplan",
+              expectedLong = true,
+            ),
+            processAlive = true,
+          )
+        },
+      ),
+    )
+
+    assertFalse(result.timedOut, "PTY-backed live child must not be false-killed by idle watchdog")
+    assertEquals(0, result.exitStatus)
+  }
+
+  @Test
+  fun `jvm process runner pty path captures multiline stdout and forwards to outputSink`() {
+    assumePtyAvailable()
+    val events = mutableListOf<Pair<AgentRunOutputStream, String>>()
+    val result = JvmAgentRunProcessRunner().run(
+      AgentRunProcessRequest(
+        command = listOf("sh", "-c", "printf 'line1\nline2\nline3'"),
+        workingDirectory = Path.of(".").toAbsolutePath().normalize(),
+        timeout = 5.seconds,
+        usePtyStdio = true,
+        outputSink = { stream, text -> synchronized(events) { events += stream to text } },
+      ),
+    )
+
+    assertEquals(0, result.exitStatus)
+    assertContains(result.stdout, "line1")
+    assertContains(result.stdout, "line2")
+    assertContains(result.stdout, "line3")
+    assertTrue(
+      events.any { it.first == AgentRunOutputStream.STDOUT && ("line1" in it.second || "line2" in it.second) },
+      "PTY outputSink must receive STDOUT stream events containing expected output lines",
+    )
+  }
+}

@@ -3748,3 +3748,76 @@ internal class InMemoryRuntimeWorkflowRepository : WorkflowStateRepository {
 
   override fun getFeatureVerifySessionSummary(sessionId: String): FeatureVerifySessionSummary? = null
 }
+
+class InfraFailureReasonStderrSurfacingTest {
+  @Test
+  fun `non-zero exit with non-blank stderr surfaces a bounded stderr excerpt in blocked reason`() {
+    val stderrContent = "Error: something went wrong with the child process"
+    val harness = runnerHarness(
+      launcher = RuntimeRecordingLauncher {
+        AgentRunLaunchFacts(
+          agent = InstallAgent.CLAUDE,
+          exitStatus = 1,
+          stdout = "",
+          stderr = stderrContent,
+          timedOut = false,
+          spawnFailed = false,
+        )
+      },
+    )
+
+    val report = harness.runner.run(harness.request())
+
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
+    assertContains(blocked.blockedReason, "exited with non-zero status 1")
+    assertContains(blocked.blockedReason, stderrContent)
+  }
+
+  @Test
+  fun `non-zero exit with blank stderr and non-blank stdout surfaces stdout excerpt in blocked reason`() {
+    val stdoutContent = "unexpected non-json output from the child"
+    val harness = runnerHarness(
+      launcher = RuntimeRecordingLauncher {
+        AgentRunLaunchFacts(
+          agent = InstallAgent.CLAUDE,
+          exitStatus = 2,
+          stdout = stdoutContent,
+          stderr = "",
+          timedOut = false,
+          spawnFailed = false,
+        )
+      },
+    )
+
+    val report = harness.runner.run(harness.request())
+
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
+    assertContains(blocked.blockedReason, "exited with non-zero status 2")
+    assertContains(blocked.blockedReason, stdoutContent)
+  }
+
+  @Test
+  fun `non-zero exit with both blank stderr and stdout does not append an excerpt to blocked reason`() {
+    val harness = runnerHarness(
+      launcher = RuntimeRecordingLauncher {
+        AgentRunLaunchFacts(
+          agent = InstallAgent.CLAUDE,
+          exitStatus = 1,
+          stdout = "",
+          stderr = "",
+          timedOut = false,
+          spawnFailed = false,
+        )
+      },
+    )
+
+    val report = harness.runner.run(harness.request())
+
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
+    assertContains(blocked.blockedReason, "exited with non-zero status 1")
+    assertFalse(
+      blocked.blockedReason.contains("\n"),
+      "reason must not contain a newline when no output is available: '${blocked.blockedReason}'",
+    )
+  }
+}

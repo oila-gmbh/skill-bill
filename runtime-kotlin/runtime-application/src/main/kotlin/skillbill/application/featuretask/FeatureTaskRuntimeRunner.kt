@@ -1,6 +1,7 @@
 package skillbill.application.featuretask
 
 import me.tatarka.inject.annotations.Inject
+import skillbill.application.goalrunner.stderrExcerpt
 import skillbill.application.model.FeatureTaskRuntimeFixLoopDecision
 import skillbill.application.model.FeatureTaskRuntimeGoalContinuationContext
 import skillbill.application.model.FeatureTaskRuntimePhaseStateRequest
@@ -13,6 +14,7 @@ import skillbill.application.model.FeatureTaskRuntimeSubtaskOutcome
 import skillbill.application.workflow.repoRoot
 import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
+import skillbill.goalrunner.model.GoalRunnerLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.agentrun.model.SkillRunRequest
@@ -1596,8 +1598,12 @@ private fun infraFailureReason(phaseId: String, facts: AgentRunLaunchFacts): Str
     "Feature-task-runtime phase '$phaseId' failed to launch: the agent process could not be spawned."
   facts.timedOut -> "Feature-task-runtime phase '$phaseId' launch timed out before the agent produced an output."
   facts.interrupted -> "Feature-task-runtime phase '$phaseId' launch was interrupted before completion."
-  facts.exitStatus != null && facts.exitStatus != 0 ->
-    "Feature-task-runtime phase '$phaseId' agent exited with non-zero status ${facts.exitStatus}."
+  facts.exitStatus != null && facts.exitStatus != 0 -> {
+    val base = "Feature-task-runtime phase '$phaseId' agent exited with non-zero status ${facts.exitStatus}."
+    val output = facts.stderr.takeIf(String::isNotBlank) ?: facts.stdout.takeIf(String::isNotBlank)
+    val excerpt = output?.let { stderrExcerpt(it, GoalRunnerLaunchFacts.STDERR_EXCERPT_MAX_CHARS) }
+    if (excerpt != null) "$base\n$excerpt" else base
+  }
   else -> null
 }
 

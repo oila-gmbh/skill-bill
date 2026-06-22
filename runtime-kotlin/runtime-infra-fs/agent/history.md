@@ -1,5 +1,18 @@
 # Boundary History — runtime-kotlin/runtime-infra-fs
 
+## [2026-06-22] SKILL-88 opencode-pty-stdio
+Areas: runtime-infra-fs/launcher/process, runtime-infra-fs/launcher/agentrun, runtime-application/featuretask
+- PTY-backed stdio spawn path for opencode: `startPtyProcess()` in `JvmAgentRunProcessRunner` allocates a POSIX master fd via JNA (`PosixCLibrary` / `PosixLib`), builds the child process with `redirectInput/Output/Error(File(slavePath))`, and reads output through `PtyMasterInputStream` → `CappedUtf8Drain`. Fixes Bun-compiled opencode aborting status 1 when its stdout is a JVM pipe
+- `ProcessStart.PtyStarted` seals alongside `Started`/`Failed`; `runStartedProcess()` receives `stdoutStream`, `stderrStream`, `ptyMasterCloseable` params; for PTY: stdoutStream=ptyMasterStream, stderrStream=nullInputStream (PTY master fd merges stdout+stderr)
+- Fd lifecycle: `masterCloseable.close()` called BEFORE stdout/stderr drain joins to send EIO and unblock the drain — ordering is critical
+- `usePtyStdio: Boolean = false` threaded through `AgentRunCommand` → `AgentRunProcessRequest` → `JvmAgentRunProcessRunner`; `OpencodeAgentRunCommandBuilder` sets it true; claude/codex/junie unchanged
+- JNA 5.13.0 added to `runtime-infra-fs/build.gradle.kts` (version in `libs.versions.toml`) — provides `Native.load("c", PosixCLibrary::class.java)` without pty4j (unavailable offline)
+- Linux-only guard: `check(os.name.startsWith("linux"))` is the first call in `startPtyProcess()` — macOS lacks `ptsname_r` and has a different `O_NOCTTY` constant
+- `openMasterFd()` wraps `grantpt`/`unlockpt` in try/catch that closes the fd before rethrowing ISE (prevents fd leak on partial PTY init)
+- `infraFailureReason` in `FeatureTaskRuntimeRunner` now appends a bounded stderr/stdout excerpt (reuses `stderrExcerpt` / `GoalRunnerLaunchFacts.STDERR_EXCERPT_MAX_CHARS`) when a phase agent exits non-zero
+Feature flag: N/A
+Acceptance criteria: 7/7 implemented
+
 ## [2026-06-10] SKILL-76 baseline-reconciliation (subtask 2)
 Areas: runtime-infra-fs/install, runtime-domain/install/model, runtime-ports/install, runtime-application/install, runtime-cli, install.sh
 - Reconcile-on-reinstall is dpkg-conffile semantics over installed skills: per-skill compare of three `computeInstallContentHash` values — upstream(staged candidate) / local(`~/.skill-bill` copy) / baseline(last-copied-in) — yielding one of five outcomes. `classifySkill` (`InstallReconcilePolicy.kt`) is the single classifier; `applyReconciliation` (`InstallReconcileApply.kt`) RE-derives the SAME plan from the same inputs rather than carrying it across the process boundary, so compute and apply can never disagree
