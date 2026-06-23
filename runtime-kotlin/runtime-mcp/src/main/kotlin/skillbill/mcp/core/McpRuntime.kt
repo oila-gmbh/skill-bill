@@ -264,6 +264,7 @@ object McpRuntime {
       "latest_version" to result.latestVersion,
       "recommended_install_command" to result.recommendedInstallCommand,
       "reason" to result.reason,
+      "release_notes" to result.releaseNotes,
     )
   }
 

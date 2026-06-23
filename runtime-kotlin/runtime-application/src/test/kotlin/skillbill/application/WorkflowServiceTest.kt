@@ -505,7 +505,7 @@ class WorkflowServiceTest {
       unrelatedInvalidPath,
       """
       ---
-      contract_version: "0.3"
+      contract_version: "0.4"
       issue_key: "SKILL-55"
       current_subtask_intent:
         subtask_id: 1
@@ -565,7 +565,7 @@ class WorkflowServiceTest {
 
     assertEquals("complete", refreshed?.manifest?.status)
     assertEquals(0, refreshed?.manifest?.currentSubtaskIntent?.subtaskId)
-    assertEquals("none", refreshed?.manifest?.currentSubtaskIntent?.action)
+    assertEquals("complete", refreshed?.manifest?.currentSubtaskIntent?.action)
     assertEquals("complete", refreshed?.manifest?.subtasks?.single()?.status)
     assertEquals("sha-complete", refreshed?.manifest?.subtasks?.single()?.commitSha)
     assertEquals("complete", persisted?.manifest?.status)
@@ -647,7 +647,7 @@ class WorkflowGoalStatusProjectionTest {
 
   private fun saveCompleteGoalParent(workflows: InMemoryWorkflowStates) {
     val manifest = decompositionRuntime(status = "complete").copy(
-      currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 0, action = "none"),
+      currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 0, action = "complete"),
       subtasks = listOf(
         DecompositionSubtask(
           id = 1,
@@ -2083,7 +2083,7 @@ private fun decompositionRuntime(status: String): DecompositionManifest = Decomp
 )
 
 private fun completeDecompositionRuntime(): DecompositionManifest = decompositionRuntime(status = "complete").copy(
-  currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 0, action = "none"),
+  currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 0, action = "complete"),
   subtasks = listOf(
     DecompositionSubtask(
       id = 1,

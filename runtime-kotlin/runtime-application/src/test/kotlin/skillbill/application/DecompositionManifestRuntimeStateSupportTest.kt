@@ -24,7 +24,7 @@ class DecompositionManifestRuntimeStateSupportTest {
     )
 
     assertEquals("complete", statusFromUpdate(update))
-    assertEquals(CurrentSubtaskIntent(subtaskId = 0, action = "none"), intentFor(5, statusFromUpdate(update)))
+    assertEquals(CurrentSubtaskIntent(subtaskId = 0, action = "complete"), intentFor(5, statusFromUpdate(update)))
   }
 
   @Test
@@ -32,7 +32,7 @@ class DecompositionManifestRuntimeStateSupportTest {
     val update = commitPushUpdate(commitPushResult = mapOf("commit_sha" to "commit-sha"))
 
     assertEquals("complete", statusFromUpdate(update))
-    assertEquals(CurrentSubtaskIntent(subtaskId = 0, action = "none"), intentFor(5, statusFromUpdate(update)))
+    assertEquals(CurrentSubtaskIntent(subtaskId = 0, action = "complete"), intentFor(5, statusFromUpdate(update)))
   }
 
   @Test

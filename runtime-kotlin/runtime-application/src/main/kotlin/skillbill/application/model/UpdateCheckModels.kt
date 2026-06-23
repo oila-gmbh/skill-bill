@@ -17,4 +17,5 @@ data class UpdateCheckResult(
   val releaseUrl: String? = null,
   val recommendedInstallCommand: String? = null,
   val reason: String? = null,
+  val releaseNotes: String? = null,
 )

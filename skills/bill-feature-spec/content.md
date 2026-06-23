@@ -144,7 +144,7 @@ For `decomposed`:
 Write the manifest file directly from the template below. Fill every placeholder with values from the planning subagent's decomposition RESULT; do not leave any placeholder literal in the written file.
 
 ```yaml
-contract_version: "0.3"
+contract_version: "0.4"
 issue_key: "ISSUE-KEY"          # string, required
 feature_name: "feature-name"    # string, required
 parent_spec_path: ".feature-specs/ISSUE-KEY-feature-name/spec.md"  # string, required
@@ -154,8 +154,8 @@ base_branch: main                # string, required
 feature_branch: feat/ISSUE-KEY-feature-name  # string|null; non-null for same_branch_commit_per_subtask
 stack_branches: []               # array; empty for same_branch_commit_per_subtask
 current_subtask_intent:
-  subtask_id: 1                  # integer >= 0; 0 when no subtask is active yet (action: none)
-  action: start                  # start | resume | blocked | none
+  subtask_id: 1                  # integer >= 0; 0 when no subtask is active (none or complete)
+  action: start                  # none (initial, nothing started) | start | resume | blocked | complete (all done)
 subtasks:
   - id: 1                        # integer >= 1
     name: "Subtask name"         # string, required

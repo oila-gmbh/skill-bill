@@ -180,6 +180,7 @@ $defs:
           - resume
           - blocked
           - none
+          - complete
 required:
   - contract_version
   - issue_key
@@ -194,7 +195,7 @@ required:
 properties:
   contract_version:
     type: string
-    const: "0.3"
+    const: "0.4"
   issue_key:
     type: string
     minLength: 1

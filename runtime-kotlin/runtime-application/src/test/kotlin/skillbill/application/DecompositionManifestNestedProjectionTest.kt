@@ -61,7 +61,7 @@ class DecompositionManifestNestedProjectionTest {
     Files.writeString(
       malformedManifest,
       """
-      contract_version: "0.3"
+      contract_version: "0.4"
       issue_key: SKILL-52.1
       subtasks: [
       """.trimIndent(),

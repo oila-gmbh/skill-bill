@@ -231,7 +231,7 @@ private fun DecompositionManifest.withDerivedCurrentIntent(): DecompositionManif
     CurrentSubtaskIntent(subtaskId = inProgress.id, action = "resume")
   } ?: firstRunnablePendingSubtask()?.let { pending ->
     CurrentSubtaskIntent(subtaskId = pending.id, action = "start")
-  } ?: CurrentSubtaskIntent(subtaskId = 0, action = "none")
+  } ?: CurrentSubtaskIntent(subtaskId = 0, action = "complete")
   return copy(currentSubtaskIntent = nextIntent)
 }
 
@@ -272,7 +272,7 @@ private fun DecompositionManifest.resetManifest(hard: Boolean): DecompositionMan
 
 private fun restartIntent(subtasks: List<DecompositionSubtask>): CurrentSubtaskIntent {
   if (subtasks.all { it.status in setOf("complete", "skipped") }) {
-    return CurrentSubtaskIntent(subtaskId = 0, action = "none")
+    return CurrentSubtaskIntent(subtaskId = 0, action = "complete")
   }
   val subtasksById = subtasks.associateBy(DecompositionSubtask::id)
   val nextRunnable = subtasks.firstOrNull { subtask ->
@@ -283,7 +283,7 @@ private fun restartIntent(subtasks: List<DecompositionSubtask>): CurrentSubtaskI
   } ?: subtasks.firstOrNull { it.status == "pending" }
   return CurrentSubtaskIntent(
     subtaskId = nextRunnable?.id ?: 0,
-    action = if (nextRunnable == null) "none" else "start",
+    action = if (nextRunnable == null) "complete" else "start",
   )
 }
 

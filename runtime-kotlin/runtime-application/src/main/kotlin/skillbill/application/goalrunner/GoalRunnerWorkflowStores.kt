@@ -253,7 +253,7 @@ private data class SavedManifestProjection(
 )
 
 private fun DecompositionManifest.isCompleteGoalProjection(): Boolean =
-  status == "complete" && currentSubtaskIntent.action == "none" && subtasks.all { subtask ->
+  status == "complete" && currentSubtaskIntent.action == "complete" && subtasks.all { subtask ->
     subtask.status in setOf("complete", "skipped") &&
       (subtask.status == "skipped" || !subtask.commitSha.isNullOrBlank())
   }

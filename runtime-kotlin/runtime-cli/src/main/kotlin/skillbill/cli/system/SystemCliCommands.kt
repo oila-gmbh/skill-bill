@@ -240,6 +240,11 @@ private fun UpdateCheckResult.toText(): String = buildString {
       appendLine("latest_version: $latestVersion")
       appendLine("release_url: $releaseUrl")
       appendLine("recommended_install_command: $recommendedInstallCommand")
+      releaseNotes?.let {
+        appendLine()
+        appendLine("what's new:")
+        appendLine(it)
+      }
     }
     UpdateCheckStatus.AHEAD_OF_RELEASE -> {
       appendLine("status: ahead_of_release")
@@ -262,6 +267,7 @@ private fun UpdateCheckResult.toPayload(): Map<String, Any?> = linkedMapOf(
   "release_url" to releaseUrl,
   "recommended_install_command" to recommendedInstallCommand,
   "reason" to reason,
+  "release_notes" to releaseNotes,
 )
 
 private const val INSTALL_SCRIPT_URL = "https://raw.githubusercontent.com/Sermilion/skill-bill/main/install.sh"

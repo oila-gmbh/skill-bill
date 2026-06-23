@@ -2,6 +2,7 @@ package skillbill.contracts.workflow
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
+import java.security.MessageDigest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -59,6 +60,30 @@ class DecompositionManifestSchemaContractVersionTest {
     )
   }
 
+  @Test
+  fun `schema content hash matches known hash for current contract version — bump version if schema changed`() {
+    val resourceStream = DecompositionManifestSchemaValidator::class.java.classLoader
+      .getResourceAsStream(DecompositionManifestSchemaPaths.CLASSPATH_RESOURCE)
+    assertNotNull(
+      resourceStream,
+      "Schema missing from classpath at '${DecompositionManifestSchemaPaths.CLASSPATH_RESOURCE}'.",
+    )
+    val yamlText = resourceStream.use { it.readBytes().toString(Charsets.UTF_8) }
+    val contentWithoutVersionLine = yamlText.lines()
+      .filter { !it.trimStart().startsWith("const:") }
+      .joinToString("\n")
+    val digest = MessageDigest.getInstance("SHA-256")
+    val hashBytes = digest.digest(contentWithoutVersionLine.toByteArray(Charsets.UTF_8))
+    val actualHash = hashBytes.joinToString("") { "%02x".format(it) }
+    assertEquals(
+      KNOWN_SCHEMA_CONTENT_HASH,
+      actualHash,
+      "Schema content changed without a contract_version bump. " +
+        "If you intentionally changed the schema, bump DECOMPOSITION_MANIFEST_CONTRACT_VERSION " +
+        "and update KNOWN_SCHEMA_CONTENT_HASH in this test to the new hash: $actualHash",
+    )
+  }
+
   private fun classpathSchema(): JsonNode {
     val resourceStream = DecompositionManifestSchemaValidator::class.java.classLoader
       .getResourceAsStream(DecompositionManifestSchemaPaths.CLASSPATH_RESOURCE)
@@ -70,5 +95,10 @@ class DecompositionManifestSchemaContractVersionTest {
     )
     val yamlText = resourceStream.use { it.readBytes().toString(Charsets.UTF_8) }
     return YAMLMapper().readTree(yamlText)
+  }
+
+  private companion object {
+    const val KNOWN_SCHEMA_CONTENT_HASH: String =
+      "1d920a07113621711f9ba0281de7b1624114fc4960cd5904c86df3b0e8feca74"
   }
 }

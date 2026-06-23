@@ -1,3 +1,10 @@
+## [2026-06-23] SKILL-94 release-tooling (bill-release skill)
+Areas: skills/bill-release, runtime-kotlin/runtime-application, runtime-kotlin/runtime-cli, runtime-kotlin/runtime-mcp
+- New governed skill `bill-release` orchestrates the full release process: find prior stable tag via `git tag --sort=-version:refname`, categorize commits into New Features / Bug Fixes / Other using editorial judgment, draft changelog inline for user review, suggest semver bump per RELEASING.md, require explicit confirmation before `git tag` and again before `git push --tags`.
+- Double-gate pattern: step 7 opens with "Ready to create tag vX.Y.Z — shall I proceed?" before running the tag command; step 8 has a separate push gate — two independent user-facing asks for the two irreversible actions. reusable PATTERN: each irreversible git action (tag, push) gets its own confirmation gate; never combine them.
+Feature flag: N/A
+Acceptance criteria: 11/11 implemented
+
 ## [2026-06-23] SKILL-93 update-check-on-bill-feature (bill-feature gate)
 Areas: skills/bill-feature
 - `bill-feature` now calls `mcp__skill-bill__update_check` as the **first** action before any intake or spec-prep work

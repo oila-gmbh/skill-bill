@@ -521,7 +521,7 @@ class GoalRunnerTest {
   fun `same-branch policy guard does not demote already completed goals`() {
     val completeManifest = manifest(subtaskCount = 1)
       .withCompletedSubtask(1, workflowId = "wfl-1", commitSha = "sha-1")
-      .copy(status = "complete", currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 0, action = "none"))
+      .copy(status = "complete", currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 0, action = "complete"))
     val store = InMemoryGoalManifestStore(manifest = completeManifest.copy(featureBranch = "main"))
     val launcher = RecordingSubtaskLauncher { launchFacts() }
     val runner = GoalRunner(
@@ -900,7 +900,7 @@ class GoalRunnerStatusProjectionTest {
     assertEquals(null, status.currentSubtaskId)
     assertEquals(null, status.currentStep)
     assertEquals("complete", store.manifest.status)
-    assertEquals("none", store.manifest.currentSubtaskIntent.action)
+    assertEquals("complete", store.manifest.currentSubtaskIntent.action)
     assertEquals("complete", store.manifest.subtasks.single().status)
     assertEquals(
       ReconcileRequest(
@@ -977,7 +977,7 @@ class GoalRunnerStatusProjectionTest {
     assertEquals(0, status.blockedCount)
     assertEquals(null, status.currentSubtaskId)
     assertEquals("complete", store.manifest.status)
-    assertEquals("none", store.manifest.currentSubtaskIntent.action)
+    assertEquals("complete", store.manifest.currentSubtaskIntent.action)
     val subtask = store.manifest.subtasks.single()
     assertEquals("complete", subtask.status)
     assertEquals("wfl-authoritative", subtask.workflowId)
@@ -988,7 +988,7 @@ class GoalRunnerStatusProjectionTest {
     val completedManifest = manifest(subtaskCount = 1)
       .copy(
         status = "complete",
-        currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 0, action = "none"),
+        currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 0, action = "complete"),
         subtasks = listOf(
           DecompositionSubtask(
             id = 1,
@@ -1026,7 +1026,7 @@ class GoalRunnerStatusProjectionTest {
     assertEquals(null, status.currentSubtaskId)
     assertEquals(null, status.currentStep)
     assertEquals("complete", store.manifest.status)
-    assertEquals("none", store.manifest.currentSubtaskIntent.action)
+    assertEquals("complete", store.manifest.currentSubtaskIntent.action)
     val subtask = store.manifest.subtasks.single()
     assertEquals("complete", subtask.status)
     assertEquals(null, subtask.blockedReason)
@@ -2201,7 +2201,7 @@ private fun DecompositionManifest.withCompletedSubtask(
   commitSha: String,
 ): DecompositionManifest = copy(
   status = if (subtasks.all { it.id == subtaskId || it.status == "complete" }) "complete" else "in_progress",
-  currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 0, action = "none"),
+  currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 0, action = "complete"),
   subtasks = subtasks.map { subtask ->
     if (subtask.id == subtaskId) {
       subtask.copy(

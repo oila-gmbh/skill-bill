@@ -1273,7 +1273,7 @@ private fun DecompositionManifest.withCompletedSubtask(
   outcome: GoalRunnerReconciledOutcome.Complete,
 ): DecompositionManifest {
   val updated = copy(
-    currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 0, action = "none"),
+    currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 0, action = "complete"),
     subtasks = subtasks.map { subtask ->
       if (subtask.id == subtaskId) {
         subtask.copy(

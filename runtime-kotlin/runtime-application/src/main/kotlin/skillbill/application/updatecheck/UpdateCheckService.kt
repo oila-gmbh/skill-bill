@@ -48,6 +48,7 @@ class UpdateCheckService(
     installedVersion = installedVersion,
     latestVersion = latest.tagName,
     releaseUrl = latest.url,
+    releaseNotes = latest.body,
     recommendedInstallCommand = if (status == UpdateCheckStatus.UPDATE_AVAILABLE) {
       RECOMMENDED_INSTALL_COMMAND
     } else {
@@ -133,17 +134,19 @@ class UpdateCheckService(
   private fun candidateFromEntry(entry: Map<String, Any?>, includePrereleases: Boolean): ReleaseCandidate? {
     val tagName = entry["tag_name"] as? String
     val url = entry["html_url"] as? String
+    val body = entry["body"] as? String
     releaseEntryMalformed = releaseEntryMalformed || tagName == null || url == null
     val version = tagName?.let(Semver::parse)
     return version
       ?.takeUnless { !includePrereleases && it.isPrerelease }
-      ?.let { ReleaseCandidate(tagName = tagName, version = it, url = url.orEmpty()) }
+      ?.let { ReleaseCandidate(tagName = tagName, version = it, url = url.orEmpty(), body = body) }
   }
 
   private data class ReleaseCandidate(
     val tagName: String,
     val version: Semver,
     val url: String,
+    val body: String? = null,
   )
 
   companion object {

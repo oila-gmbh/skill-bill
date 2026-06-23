@@ -301,7 +301,7 @@ private fun DecompositionManifest.withCompletedSubtaskState(
   commitSha: String,
 ): DecompositionManifest = copy(
   status = "in_progress",
-  currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 0, action = "none"),
+  currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 0, action = "complete"),
   subtasks = subtasks.map { subtask ->
     if (subtask.id == subtaskId) {
       subtask.copy(

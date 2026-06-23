@@ -1,3 +1,10 @@
+## [2026-06-23] SKILL-94 release-tooling (update-check release notes)
+Areas: runtime-kotlin/runtime-application, runtime-kotlin/runtime-cli, runtime-kotlin/runtime-mcp
+- `UpdateCheckResult.releaseNotes: String?` added as trailing nullable field (default null); `candidateFromEntry` in `UpdateCheckService` extracts `body` from the GitHub Releases API JSON response via `entry["body"] as? String`; null/absent body → `releaseNotes = null`, no visible change to existing output. reusable PATTERN: nullable trailing fields on result data classes are backward-compatible — callers that don't consume the field are unaffected.
+- CLI `toText()` appends a `what's new:` block only when `status == UPDATE_AVAILABLE && releaseNotes != null`; `toPayload()` always includes `release_notes` key (null when absent); MCP `updateCheck()` map mirrors the same `release_notes` key — both surfaces share the same null-passthrough behavior.
+Feature flag: N/A
+Acceptance criteria: 11/11 implemented
+
 ## [2026-06-23] SKILL-92 goal-mode-attribution
 Areas: runtime-kotlin/runtime-domain, runtime-kotlin/runtime-application, runtime-kotlin/runtime-infra-sqlite, runtime-kotlin/runtime-mcp, orchestration/contracts, skills/bill-feature-goal
 - `mode` field added to `GoalStartedRecord/Request` and `GoalFinishedRecord/Request` (values: `prose` | `runtime`); `GoalRunnerTelemetryEmitter` stamps `mode="runtime"` on every runtime goal. reusable

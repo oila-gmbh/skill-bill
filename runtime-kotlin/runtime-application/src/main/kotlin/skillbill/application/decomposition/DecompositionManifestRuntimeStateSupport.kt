@@ -76,7 +76,7 @@ internal fun statusFromUpdate(update: DecompositionManifestRuntimeUpdate): Strin
 
 internal fun intentFor(subtaskId: Int, status: String?): CurrentSubtaskIntent = when (status) {
   "blocked" -> CurrentSubtaskIntent(subtaskId = subtaskId, action = "blocked")
-  "complete", "skipped" -> CurrentSubtaskIntent(subtaskId = 0, action = "none")
+  "complete", "skipped" -> CurrentSubtaskIntent(subtaskId = 0, action = "complete")
   "in_progress" -> CurrentSubtaskIntent(subtaskId = subtaskId, action = "resume")
   else -> CurrentSubtaskIntent(subtaskId = subtaskId, action = "start")
 }
