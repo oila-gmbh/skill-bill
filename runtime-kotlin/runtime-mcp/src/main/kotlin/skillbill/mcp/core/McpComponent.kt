@@ -19,6 +19,7 @@ abstract class McpComponent(
 }
 
 @Inject
+@Suppress("LongParameterList") // DI aggregate: one cohesive bundle for all MCP runtime services
 class McpRuntimeServices(
   val learningService: LearningService,
   val lifecycleTelemetryService: LifecycleTelemetryService,
