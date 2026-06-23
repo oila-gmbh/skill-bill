@@ -99,7 +99,7 @@ class GoalTelemetryEmissionEventParityTest {
   }
 
   @Test
-  fun `representative emission envelopes validate clean including blocked_reason null and string`() {
+  fun `goal_started and goal_finished representative envelopes validate clean`() {
     TelemetryEventSchemaValidator.validate(
       envelope = linkedMapOf(
         "event_name" to "goal_started",
@@ -112,35 +112,6 @@ class GoalTelemetryEmissionEventParityTest {
         "started_at" to "2026-06-04T10:15:30Z",
       ),
       eventName = "goal_started",
-    )
-
-    val subtaskFinishedBase = linkedMapOf<String, Any?>(
-      "event_name" to "goal_subtask_finished",
-      "contract_version" to TELEMETRY_EVENT_CONTRACT_VERSION,
-      "issue_key" to "SKILL-66",
-      "workflow_id" to "wfl-goal-1",
-      "subtask_id" to 1,
-      "subtask_name" to "goal-telemetry-contract-and-schema",
-      "status" to "complete",
-      "started_at" to "2026-06-04T10:15:30Z",
-      "finished_at" to "2026-06-04T10:42:05Z",
-      "duration_ms" to 1_595_000,
-      "attempt_count" to 1,
-    )
-
-    // blocked_reason as null (the `complete` case).
-    TelemetryEventSchemaValidator.validate(
-      envelope = LinkedHashMap(subtaskFinishedBase).apply { put("blocked_reason", null) },
-      eventName = "goal_subtask_finished",
-    )
-
-    // blocked_reason as a string (the `blocked` case).
-    TelemetryEventSchemaValidator.validate(
-      envelope = LinkedHashMap(subtaskFinishedBase).apply {
-        put("status", "blocked")
-        put("blocked_reason", "validation gate failed twice")
-      },
-      eventName = "goal_subtask_finished",
     )
 
     TelemetryEventSchemaValidator.validate(
@@ -158,6 +129,45 @@ class GoalTelemetryEmissionEventParityTest {
         "subtasks_skipped" to 0,
       ),
       eventName = "goal_finished",
+    )
+  }
+
+  @Test
+  fun `goal_subtask_finished envelopes validate clean including blocked_reason and history fields`() {
+    val subtaskFinishedBase = linkedMapOf<String, Any?>(
+      "event_name" to "goal_subtask_finished",
+      "contract_version" to TELEMETRY_EVENT_CONTRACT_VERSION,
+      "issue_key" to "SKILL-66",
+      "workflow_id" to "wfl-goal-1",
+      "subtask_id" to 1,
+      "subtask_name" to "goal-telemetry-contract-and-schema",
+      "status" to "complete",
+      "started_at" to "2026-06-04T10:15:30Z",
+      "finished_at" to "2026-06-04T10:42:05Z",
+      "duration_ms" to 1_595_000,
+      "attempt_count" to 1,
+    )
+
+    TelemetryEventSchemaValidator.validate(
+      envelope = LinkedHashMap(subtaskFinishedBase).apply { put("blocked_reason", null) },
+      eventName = "goal_subtask_finished",
+    )
+
+    TelemetryEventSchemaValidator.validate(
+      envelope = LinkedHashMap(subtaskFinishedBase).apply {
+        put("status", "blocked")
+        put("blocked_reason", "validation gate failed twice")
+      },
+      eventName = "goal_subtask_finished",
+    )
+
+    TelemetryEventSchemaValidator.validate(
+      envelope = LinkedHashMap(subtaskFinishedBase).apply {
+        put("blocked_reason", null)
+        put("boundary_history_value", "high")
+        put("boundary_history_written", true)
+      },
+      eventName = "goal_subtask_finished",
     )
   }
 

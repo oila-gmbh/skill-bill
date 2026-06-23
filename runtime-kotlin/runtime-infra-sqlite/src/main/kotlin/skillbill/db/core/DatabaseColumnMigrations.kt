@@ -23,6 +23,8 @@ internal object DatabaseColumnMigrations {
     if (goalSubtaskEventsExists) {
       ensureColumn(connection, "goal_subtask_events", "finalizing_agent_id", "TEXT")
       ensureColumn(connection, "goal_subtask_events", "participating_agent_ids", "TEXT NOT NULL DEFAULT '[]'")
+      ensureColumn(connection, "goal_subtask_events", "boundary_history_value", "TEXT NOT NULL DEFAULT 'none'")
+      ensureColumn(connection, "goal_subtask_events", "boundary_history_written", "INTEGER NOT NULL DEFAULT 0")
     }
   }
 

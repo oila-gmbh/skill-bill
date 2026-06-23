@@ -68,5 +68,7 @@ fun goalSubtaskFinishedPayload(row: Map<String, Any?>, level: String): Map<Strin
       "participating_agent_ids",
       parseAgentIdArray(row.stringOrEmpty("participating_agent_ids"), row.stringOrEmpty("workflow_id")),
     )
+    put("boundary_history_written", row.booleanFromInt("boundary_history_written"))
+    put("boundary_history_value", row.stringOrEmpty("boundary_history_value").ifBlank { "none" })
   }
 }

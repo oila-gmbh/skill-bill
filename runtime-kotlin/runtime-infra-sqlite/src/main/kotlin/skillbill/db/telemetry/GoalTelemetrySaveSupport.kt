@@ -116,8 +116,8 @@ private fun insertGoalFinished(connection: Connection, record: GoalFinishedRecor
   }
 }
 
-fun saveGoalSubtaskFinished(connection: Connection, record: GoalSubtaskFinishedRecord): Boolean =
-  connection.prepareStatement(
+fun saveGoalSubtaskFinished(connection: Connection, record: GoalSubtaskFinishedRecord): Boolean {
+  val inserted = connection.prepareStatement(
     """
     INSERT INTO goal_subtask_events (
       issue_key, workflow_id, subtask_id, subtask_name, status,
@@ -143,6 +143,38 @@ fun saveGoalSubtaskFinished(connection: Connection, record: GoalSubtaskFinishedR
     )
     statement.executeUpdate() > 0
   }
+  connection.prepareStatement(
+    """
+    UPDATE goal_subtask_events
+    SET
+      boundary_history_value = COALESCE(
+        (SELECT fis.boundary_history_value
+         FROM feature_task_workflows ftw
+         JOIN feature_implement_sessions fis ON fis.session_id = ftw.session_id
+         WHERE ftw.workflow_id = ?),
+        'none'
+      ),
+      boundary_history_written = COALESCE(
+        (SELECT fis.boundary_history_written
+         FROM feature_task_workflows ftw
+         JOIN feature_implement_sessions fis ON fis.session_id = ftw.session_id
+         WHERE ftw.workflow_id = ?),
+        0
+      )
+    WHERE issue_key = ? AND subtask_id = ? AND workflow_id = ?
+    """.trimIndent(),
+  ).use { statement ->
+    statement.bind(
+      record.workflowId,
+      record.workflowId,
+      record.issueKey,
+      record.subtaskId,
+      record.workflowId,
+    )
+    statement.executeUpdate()
+  }
+  return inserted
+}
 
 private fun goalRunSessionExists(connection: Connection, workflowId: String): Boolean =
   connection.prepareStatement("SELECT 1 FROM goal_run_sessions WHERE workflow_id = ?").use { statement ->

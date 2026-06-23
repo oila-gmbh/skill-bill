@@ -259,6 +259,56 @@ class GoalTelemetryStoreTest {
     }
   }
 
+  @Test
+  fun `goal_subtask_finished payload carries boundary_history fields when workflow and session rows exist`() {
+    withConnection { connection ->
+      connection.prepareStatement(
+        "INSERT INTO feature_task_workflows " +
+          "(workflow_id, session_id, mode, contract_version) VALUES (?, ?, 'prose', '1.1.0')",
+      ).use {
+        it.setString(1, "wfl-history")
+        it.setString(2, "fis-history")
+        it.executeUpdate()
+      }
+      connection.prepareStatement(
+        "INSERT INTO feature_implement_sessions " +
+          "(session_id, boundary_history_value, boundary_history_written) VALUES (?, 'high', 1)",
+      ).use {
+        it.setString(1, "fis-history")
+        it.executeUpdate()
+      }
+
+      val store = LifecycleTelemetryStore(connection)
+      store.goalSubtaskFinished(
+        subtask(id = 1, status = "complete", durationMs = 60_000, attempts = 1).copy(workflowId = "wfl-history"),
+        "full",
+      )
+
+      val payload = parsePayload(
+        pendingOutbox(connection).single { it.eventName == "skillbill_goal_subtask_finished" }.payloadJson,
+      )
+      assertEquals("high", payload["boundary_history_value"])
+      assertEquals(true, payload["boundary_history_written"])
+    }
+  }
+
+  @Test
+  fun `goal_subtask_finished payload defaults boundary_history fields when no feature_task_workflows row exists`() {
+    withConnection { connection ->
+      val store = LifecycleTelemetryStore(connection)
+      store.goalSubtaskFinished(
+        subtask(id = 1, status = "complete", durationMs = 60_000, attempts = 1).copy(workflowId = "wfl-unknown"),
+        "full",
+      )
+
+      val payload = parsePayload(
+        pendingOutbox(connection).single { it.eventName == "skillbill_goal_subtask_finished" }.payloadJson,
+      )
+      assertEquals("none", payload["boundary_history_value"])
+      assertEquals(false, payload["boundary_history_written"])
+    }
+  }
+
   private fun seedBlockedRunWithMixedSubtasks(store: LifecycleTelemetryStore) {
     store.goalStarted(startedRecord("wf-1", subtaskTotal = 3, resumed = false), level = "full")
     store.goalSubtaskFinished(subtask(id = 1, status = "complete", durationMs = 60_000, attempts = 1), "full")

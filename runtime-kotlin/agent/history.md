@@ -1,3 +1,12 @@
+## [2026-06-23] SKILL-90 per-subtask history-usefulness telemetry on goal_subtask_finished
+Areas: runtime-kotlin/runtime-infra-sqlite, runtime-kotlin/runtime-mcp, orchestration/contracts
+- Schema: `boundary_history_value` ($ref historySignalEnum `none|irrelevant|low|medium|high`) and `boundary_history_written` (boolean) added as optional properties to `goalSubtaskFinishedEvent`; not in `required[]`; `contract_version` stays `1.1.0` (backward-compatible addition).
+- Two-hop JOIN UPDATE in `saveGoalSubtaskFinished`: after INSERT, UPDATE `goal_subtask_events` via `feature_task_workflows → feature_implement_sessions` to copy the subtask's own implement-run ratings; COALESCE fallbacks handle nullable `boundary_history_written` on legacy rows. reusable PATTERN: pull implement-side ratings onto a goal-layer event without new scoring logic — JOIN on `workflow_id`, no dual-write, no drift.
+- Self-heal: two `ensureColumn` calls inside the `goalSubtaskEventsExists` guard in `DatabaseColumnMigrations` — defaults `'none'`/`0` mean existing subtask rows read as "no history" on upgrade, no data loss. reusable
+- Payload emission in `GoalTelemetryPayloadSupport.goalSubtaskFinishedPayload` inside `if (level == "full")` block, mirroring `LifecycleTelemetryPayloadSupport` pattern.
+Feature flag: N/A
+Acceptance criteria: 7/7 implemented
+
 ## [2026-06-22] SKILL-89 per-subtask agent attribution rollup
 Areas: runtime-kotlin/runtime-application, runtime-kotlin/runtime-domain, runtime-kotlin/runtime-infra-sqlite, runtime-kotlin/runtime-infra-fs, runtime-kotlin/runtime-ports, orchestration/contracts, skills/bill-feature-task-prose
 - Seam A (child→goal rollup): `FeatureTaskRuntimeGoalContinuationOutcome` gains `finalizingAgentId`/`participatingAgentIds` derived from the child's existing phase ledger — first-seen distinct `resolvedAgentId` values, record fallback when the ledger is pruned. Effect-free `agentAttributionFromPhaseState` helper reads ledger+records; no new ledger entries, no agent-identity branching. reusable

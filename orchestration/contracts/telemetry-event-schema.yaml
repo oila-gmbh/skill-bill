@@ -1350,6 +1350,16 @@ $defs:
           Order-stable distinct resolved agents that executed a phase of the subtask. Enables
           per-agent finalized vs handoff-participant aggregation. Additive-optional: legacy
           payloads omit the key.
+      boundary_history_value:
+        $ref: "#/$defs/historySignalEnum"
+        description: >
+          History-usefulness rating the subtask's feature-task run produced for the
+          boundary history.md it read on entry. Additive-optional: legacy payloads omit the key.
+      boundary_history_written:
+        type: boolean
+        description: >
+          Whether the subtask's feature-task run wrote a boundary history.md entry.
+          Additive-optional: legacy payloads omit the key.
 
   goalFinishedEvent:
     type: object
