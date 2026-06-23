@@ -735,6 +735,133 @@ class McpFeatureTaskRuntimeWorkflowTest {
   }
 }
 
+// Kept in its own class so it does not push McpRuntimeTest over the detekt LargeClass threshold.
+class McpTokenEstimationTest {
+  @Test
+  @Suppress("LongMethod")
+  fun `prose token data persists through mcp tool and aggregates in stats`() {
+    val tempDir = Files.createTempDirectory("skillbill-mcp-prose-tokens")
+    val context = McpRuntimeContext(environment = enabledTelemetryEnvironment(tempDir), userHome = tempDir)
+
+    val started = McpToolDispatcher.call(
+      "feature_task_prose_started",
+      mapOf(
+        "feature_size" to "MEDIUM",
+        "acceptance_criteria_count" to 3,
+        "open_questions_count" to 0,
+        "spec_input_types" to listOf("markdown_file"),
+        "spec_word_count" to 200,
+        "rollout_needed" to false,
+        "feature_name" to "token-estimation",
+        "issue_key" to "SKILL-91",
+        "spec_summary" to "Token estimation feature",
+      ),
+      context,
+    )
+    McpToolDispatcher.call(
+      "feature_task_prose_finished",
+      mapOf(
+        "session_id" to started["session_id"] as String,
+        "completion_status" to "completed",
+        "plan_correction_count" to 0,
+        "plan_task_count" to 3,
+        "plan_phase_count" to 1,
+        "feature_flag_used" to false,
+        "files_created" to 1,
+        "files_modified" to 2,
+        "tasks_completed" to 3,
+        "review_iterations" to 1,
+        "audit_result" to "all_pass",
+        "audit_iterations" to 1,
+        "validation_result" to "pass",
+        "boundary_history_written" to true,
+        "pr_created" to false,
+        "plan_deviation_notes" to "",
+        "estimated_phase_tokens" to mapOf(
+          "preplan" to mapOf("estimated_input_tokens" to 1000, "estimated_output_tokens" to 500),
+          "implement" to mapOf("estimated_input_tokens" to 2000, "estimated_output_tokens" to 800),
+        ),
+        "estimated_total_tokens" to 4300,
+      ),
+      context,
+    )
+    val stats = McpToolDispatcher.call("feature_task_prose_stats", emptyMap(), context)
+
+    assertEquals(1, stats["estimated_token_runs_with_value"])
+    assertEquals(4300.0, stats["average_estimated_total_tokens"])
+    val dbPath = tempDir.resolve("metrics.db")
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      assertEquals(
+        1,
+        scalarInt(connection, "SELECT COUNT(*) FROM feature_implement_sessions WHERE estimated_total_tokens = 4300"),
+      )
+      val phaseJson = scalarString(
+        connection,
+        "SELECT estimated_phase_tokens_json FROM feature_implement_sessions LIMIT 1",
+      )
+      assertTrue(phaseJson.isNotEmpty())
+    }
+  }
+
+  @Test
+  fun `runtime token data persists through mcp tool and aggregates in stats`() {
+    val tempDir = Files.createTempDirectory("skillbill-mcp-runtime-tokens")
+    val context = McpRuntimeContext(environment = enabledTelemetryEnvironment(tempDir), userHome = tempDir)
+
+    val started = McpToolDispatcher.call(
+      "feature_task_runtime_started",
+      mapOf(
+        "feature_size" to "MEDIUM",
+        "issue_key" to "SKILL-91",
+        "feature_name" to "token-estimation",
+      ),
+      context,
+    )
+    McpToolDispatcher.call(
+      "feature_task_runtime_finished",
+      mapOf(
+        "session_id" to started["session_id"] as String,
+        "completion_status" to "completed",
+        "completed_phase_ids" to listOf("preplan", "plan", "implement"),
+        "phase_outcomes" to mapOf(
+          "preplan" to "completed",
+          "plan" to "completed",
+          "implement" to "completed",
+        ),
+        "last_incomplete_phase" to "",
+        "blocked_reason" to "",
+        "resolved_branch" to "feat/SKILL-91",
+        "estimated_phase_tokens" to mapOf(
+          "preplan" to mapOf("estimated_input_tokens" to 800, "estimated_output_tokens" to 400),
+          "plan" to mapOf("estimated_input_tokens" to 1200, "estimated_output_tokens" to 600),
+          "implement" to mapOf("estimated_input_tokens" to 3000, "estimated_output_tokens" to 1500),
+        ),
+        "estimated_total_tokens" to 7500,
+      ),
+      context,
+    )
+    val stats = McpToolDispatcher.call("feature_task_runtime_stats", emptyMap(), context)
+
+    assertEquals(1, stats["estimated_token_runs_with_value"])
+    assertEquals(7500.0, stats["average_estimated_total_tokens"])
+    val dbPath = tempDir.resolve("metrics.db")
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      assertEquals(
+        1,
+        scalarInt(
+          connection,
+          "SELECT COUNT(*) FROM feature_task_runtime_sessions WHERE estimated_total_tokens = 7500",
+        ),
+      )
+      val phaseJson = scalarString(
+        connection,
+        "SELECT estimated_phase_tokens_json FROM feature_task_runtime_sessions LIMIT 1",
+      )
+      assertTrue(phaseJson.isNotEmpty())
+    }
+  }
+}
+
 // F-019: a multi-phase records map + multi-entry ledger patch for the task-runtime golden flow.
 private fun taskRuntimePhaseArtifactsPatch(): Map<String, Any?> = mapOf(
   "feature_task_runtime_phase_records" to linkedMapOf(
@@ -1200,6 +1327,8 @@ private fun featureImplementStatsKeys(): Set<String> = setOf(
   "average_files_modified",
   "average_tasks_completed",
   "average_duration_seconds",
+  "estimated_token_runs_with_value",
+  "average_estimated_total_tokens",
   "db_path",
 )
 

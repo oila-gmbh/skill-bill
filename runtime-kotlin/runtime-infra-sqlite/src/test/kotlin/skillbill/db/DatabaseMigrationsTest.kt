@@ -135,6 +135,81 @@ class DatabaseMigrationsTest {
   }
 
   @Test
+  fun `ensureDatabase adds token estimation columns to feature_task_runtime_sessions`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-db-migrations").resolve("legacy-ftr-tokens.db")
+    createLegacyFeatureTaskRuntimeSessionsDatabase(dbPath)
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val columns = tableColumns(connection = connection, tableName = "feature_task_runtime_sessions")
+
+      assertTrue("estimated_phase_tokens_json" in columns, "estimated_phase_tokens_json must be healed.")
+      assertTrue("estimated_total_tokens" in columns, "estimated_total_tokens must be healed.")
+      assertEquals(
+        null,
+        nullableTableColumnValue(
+          connection,
+          "feature_task_runtime_sessions",
+          "session_id",
+          "ftr-pre-91",
+          "estimated_phase_tokens_json",
+        ),
+        "Pre-feature row must read null for estimated_phase_tokens_json.",
+      )
+      assertEquals(
+        null,
+        nullableTableColumnValue(
+          connection,
+          "feature_task_runtime_sessions",
+          "session_id",
+          "ftr-pre-91",
+          "estimated_total_tokens",
+        ),
+        "Pre-feature row must read null for estimated_total_tokens.",
+      )
+    }
+  }
+
+  @Test
+  fun `ensureDatabase adds token estimation columns to feature_implement_sessions`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-db-migrations").resolve("legacy-fis-tokens.db")
+    createLegacyFeatureImplementSessionsDatabase(dbPath)
+    DriverManager.getConnection("jdbc:sqlite:$dbPath").use { connection ->
+      connection.createStatement().use { statement ->
+        statement.executeUpdate("INSERT INTO feature_implement_sessions (session_id) VALUES ('fis-pre-91')")
+      }
+    }
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val columns = tableColumns(connection = connection, tableName = "feature_implement_sessions")
+
+      assertTrue("estimated_phase_tokens_json" in columns, "estimated_phase_tokens_json must be healed.")
+      assertTrue("estimated_total_tokens" in columns, "estimated_total_tokens must be healed.")
+      assertEquals(
+        null,
+        nullableTableColumnValue(
+          connection,
+          "feature_implement_sessions",
+          "session_id",
+          "fis-pre-91",
+          "estimated_phase_tokens_json",
+        ),
+        "Pre-feature row must read null for estimated_phase_tokens_json.",
+      )
+      assertEquals(
+        null,
+        nullableTableColumnValue(
+          connection,
+          "feature_implement_sessions",
+          "session_id",
+          "fis-pre-91",
+          "estimated_total_tokens",
+        ),
+        "Pre-feature row must read null for estimated_total_tokens.",
+      )
+    }
+  }
+
+  @Test
   fun `ensureDatabase heals goal subtask agent attribution columns on a fully version-recorded legacy database`() {
     // SKILL-89: a DB created before the agent-attribution columns existed already records migration
     // version 3, so editing the applied migration body is a silent no-op. The unconditional column
@@ -257,6 +332,33 @@ class DatabaseMigrationsTest {
           statement.setString(2, migration.name)
           statement.executeUpdate()
         }
+      }
+    }
+  }
+
+  private fun createLegacyFeatureTaskRuntimeSessionsDatabase(dbPath: Path) {
+    DriverManager.getConnection("jdbc:sqlite:$dbPath").use { connection ->
+      connection.createStatement().use { statement ->
+        statement.execute(CREATE_LEGACY_FEATURE_TASK_RUNTIME_SESSIONS_SQL)
+        statement.execute(
+          """
+          CREATE TABLE schema_migrations (
+            version INTEGER PRIMARY KEY,
+            name TEXT NOT NULL UNIQUE,
+            applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+          )
+          """.trimIndent(),
+        )
+      }
+      connection.prepareStatement("INSERT INTO schema_migrations (version, name) VALUES (?, ?)").use { statement ->
+        DatabaseMigrations.migrations.forEach { migration ->
+          statement.setInt(1, migration.version)
+          statement.setString(2, migration.name)
+          statement.executeUpdate()
+        }
+      }
+      connection.createStatement().use { statement ->
+        statement.executeUpdate("INSERT INTO feature_task_runtime_sessions (session_id) VALUES ('ftr-pre-91')")
       }
     }
   }
@@ -438,6 +540,22 @@ class DatabaseMigrationsTest {
       }
     }
 
+  private fun nullableTableColumnValue(
+    connection: java.sql.Connection,
+    tableName: String,
+    pkColumnName: String,
+    pkValue: String,
+    columnName: String,
+  ): Any? = connection.prepareStatement(
+    "SELECT $columnName FROM $tableName WHERE $pkColumnName = ?",
+  ).use { statement ->
+    statement.setString(1, pkValue)
+    statement.executeQuery().use { resultSet ->
+      check(resultSet.next()) { "Expected a row with $pkColumnName = '$pkValue' in $tableName." }
+      resultSet.getObject(1)
+    }
+  }
+
   private fun tableColumns(connection: java.sql.Connection, tableName: String): Set<String> =
     connection.createStatement().use { statement ->
       statement.executeQuery("PRAGMA table_info($tableName)").use { resultSet ->
@@ -456,6 +574,26 @@ class DatabaseMigrationsTest {
   )
 
   private companion object {
+    const val CREATE_LEGACY_FEATURE_TASK_RUNTIME_SESSIONS_SQL: String =
+      """
+      CREATE TABLE feature_task_runtime_sessions (
+        session_id TEXT PRIMARY KEY,
+        feature_size TEXT NOT NULL DEFAULT 'MEDIUM',
+        issue_key TEXT NOT NULL DEFAULT '',
+        feature_name TEXT NOT NULL DEFAULT '',
+        started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        completion_status TEXT NOT NULL DEFAULT '',
+        completed_phase_ids TEXT NOT NULL DEFAULT '',
+        phase_outcomes TEXT NOT NULL DEFAULT '',
+        last_incomplete_phase TEXT NOT NULL DEFAULT '',
+        blocked_reason TEXT NOT NULL DEFAULT '',
+        resolved_branch TEXT NOT NULL DEFAULT '',
+        review_fix_iteration_count INTEGER NOT NULL DEFAULT 0,
+        audit_gap_iteration_count INTEGER NOT NULL DEFAULT 0,
+        finished_at TEXT
+      )
+      """
+
     const val CREATE_LEGACY_FEATURE_IMPLEMENT_SESSIONS_SQL: String =
       """
       CREATE TABLE feature_implement_sessions (

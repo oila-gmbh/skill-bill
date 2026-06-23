@@ -9,12 +9,15 @@ import skillbill.application.model.FeatureVerifyStartedRequest
 import skillbill.application.model.PrDescriptionGeneratedRequest
 import skillbill.application.model.QualityCheckFinishedRequest
 import skillbill.application.model.QualityCheckStartedRequest
+import skillbill.contracts.JsonSupport
 import skillbill.mcp.core.McpRuntime
 import skillbill.mcp.core.McpRuntimeContext
 import skillbill.mcp.core.boolean
 import skillbill.mcp.core.int
 import skillbill.mcp.core.map
+import skillbill.mcp.core.optionalInt
 import skillbill.mcp.core.optionalListMap
+import skillbill.mcp.core.optionalMap
 import skillbill.mcp.core.optionalString
 import skillbill.mcp.core.string
 import skillbill.mcp.core.stringList
@@ -60,6 +63,9 @@ internal fun featureImplementFinished(arguments: Map<String, Any?>, context: Mcp
       boundaryHistoryValue = arguments.optionalString("boundary_history_value") ?: "none",
       planDeviationNotes = arguments.string("plan_deviation_notes"),
       childSteps = arguments.optionalListMap("child_steps").orEmpty(),
+      estimatedPhaseTokenBreakdownJson = arguments.optionalMap("estimated_phase_tokens")
+        ?.let { JsonSupport.mapToJsonString(it) },
+      estimatedTotalTokens = arguments.optionalInt("estimated_total_tokens"),
     ),
     context,
   )
@@ -87,6 +93,9 @@ internal fun featureTaskRuntimeFinished(arguments: Map<String, Any?>, context: M
       resolvedBranch = arguments.string("resolved_branch"),
       reviewFixIterationCount = arguments.int("review_fix_iteration_count", 0),
       auditGapIterationCount = arguments.int("audit_gap_iteration_count", 0),
+      estimatedPhaseTokenBreakdownJson = arguments.optionalMap("estimated_phase_tokens")
+        ?.let { JsonSupport.mapToJsonString(it) },
+      estimatedTotalTokens = arguments.optionalInt("estimated_total_tokens"),
     ),
     context,
   )

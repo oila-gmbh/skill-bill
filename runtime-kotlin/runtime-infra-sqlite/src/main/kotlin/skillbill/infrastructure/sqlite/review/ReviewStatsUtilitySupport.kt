@@ -57,3 +57,9 @@ fun Map<String, Any?>.intValue(key: String): Int = when (val value = this[key]) 
 }
 
 fun Map<String, Any?>.stringValue(key: String): String = this[key]?.toString().orEmpty()
+
+fun Map<String, Any?>.nullableIntValue(key: String): Int? = when (val value = this[key]) {
+  is Number -> value.toInt()
+  is String -> value.toIntOrNull()
+  else -> null
+}

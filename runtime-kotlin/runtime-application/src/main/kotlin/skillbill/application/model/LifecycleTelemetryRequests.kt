@@ -38,6 +38,8 @@ data class FeatureImplementFinishedRequest(
   val planDeviationNotes: String,
   @OpenBoundaryMap("Caller-supplied JSON child-step telemetry payload")
   val childSteps: List<Map<String, Any?>>,
+  val estimatedPhaseTokenBreakdownJson: String? = null,
+  val estimatedTotalTokens: Int? = null,
 )
 
 data class FeatureTaskRuntimeStartedRequest(
@@ -63,6 +65,8 @@ data class FeatureTaskRuntimeFinishedRequest(
   // ledger), so finished telemetry reflects how many audit->plan iterations ran (AC7). Zero when the
   // loop never fired. Runtime-owned, never agent-self-reported.
   val auditGapIterationCount: Int = 0,
+  val estimatedPhaseTokenBreakdownJson: String? = null,
+  val estimatedTotalTokens: Int? = null,
 )
 
 data class QualityCheckStartedRequest(

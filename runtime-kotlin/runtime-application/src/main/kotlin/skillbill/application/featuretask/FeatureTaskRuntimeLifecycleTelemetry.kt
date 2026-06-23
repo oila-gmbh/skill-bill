@@ -45,11 +45,13 @@ class FeatureTaskRuntimeLifecycleTelemetry(
     reviewFixIterationCount: () -> Int,
     auditGapIterationCount: () -> Int,
     dbOverride: String?,
+    phaseTokenData: () -> Pair<String?, Int?> = { null to null },
   ) {
     if (telemetrySessionId.isBlank()) {
       return
     }
     isolate("finished", Unit) {
+      val (tokenBreakdownJson, totalTokens) = runCatching(phaseTokenData).getOrDefault(null to null)
       lifecycleTelemetryService.featureTaskRuntimeFinished(
         FeatureTaskRuntimeFinishedRequest(
           sessionId = telemetrySessionId,
@@ -61,6 +63,8 @@ class FeatureTaskRuntimeLifecycleTelemetry(
           resolvedBranch = report.resolvedBranch.orEmpty(),
           reviewFixIterationCount = runCatching(reviewFixIterationCount).getOrDefault(0),
           auditGapIterationCount = runCatching(auditGapIterationCount).getOrDefault(0),
+          estimatedPhaseTokenBreakdownJson = tokenBreakdownJson,
+          estimatedTotalTokens = totalTokens,
         ),
         dbOverride = dbOverride,
       )
@@ -72,12 +76,14 @@ class FeatureTaskRuntimeLifecycleTelemetry(
   // point of failure; completedPhaseIds is sourced from records the runtime durably marked completed.
   // The emission (including resolving phaseOutcomes) is failure-isolated so it can never mask or
   // replace the original run exception, which always remains the one that propagates.
+  @Suppress("LongParameterList") // parallel structure to finished(); bundling would only hide it
   fun finishedError(
     telemetrySessionId: String,
     phaseOutcomes: () -> Map<String, String>,
     reviewFixIterationCount: () -> Int,
     auditGapIterationCount: () -> Int,
     dbOverride: String?,
+    phaseTokenData: () -> Pair<String?, Int?> = { null to null },
   ) {
     if (telemetrySessionId.isBlank()) {
       return
@@ -92,6 +98,7 @@ class FeatureTaskRuntimeLifecycleTelemetry(
           )
         }
         .getOrDefault(emptyMap())
+      val (tokenBreakdownJson, totalTokens) = runCatching(phaseTokenData).getOrDefault(null to null)
       lifecycleTelemetryService.featureTaskRuntimeFinished(
         FeatureTaskRuntimeFinishedRequest(
           sessionId = telemetrySessionId,
@@ -103,6 +110,8 @@ class FeatureTaskRuntimeLifecycleTelemetry(
           resolvedBranch = "",
           reviewFixIterationCount = runCatching(reviewFixIterationCount).getOrDefault(0),
           auditGapIterationCount = runCatching(auditGapIterationCount).getOrDefault(0),
+          estimatedPhaseTokenBreakdownJson = tokenBreakdownJson,
+          estimatedTotalTokens = totalTokens,
         ),
         dbOverride = dbOverride,
       )

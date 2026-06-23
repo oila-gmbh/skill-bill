@@ -153,6 +153,8 @@ private fun FeatureImplementWorkflowStats.toPayload(): Map<String, Any?> = linke
   "average_files_modified" to averageFilesModified,
   "average_tasks_completed" to averageTasksCompleted,
   "average_duration_seconds" to averageDurationSeconds,
+  "estimated_token_runs_with_value" to estimatedTokenRunsWithValue,
+  "average_estimated_total_tokens" to averageEstimatedTotalTokens,
 )
 
 private fun FeatureImplementChildStepCoverageStats.toPayload(): Map<String, Any?> = linkedMapOf(
@@ -211,6 +213,8 @@ private fun FeatureTaskRuntimeWorkflowStats.toPayload(): Map<String, Any?> = lin
   "error_runs" to errorRuns,
   "error_rate" to errorRate,
   "average_completed_phase_count" to averageCompletedPhaseCount,
+  "estimated_token_runs_with_value" to estimatedTokenRunsWithValue,
+  "average_estimated_total_tokens" to averageEstimatedTotalTokens,
 )
 
 private fun GoalWorkflowStats.toPayload(): Map<String, Any?> = linkedMapOf(

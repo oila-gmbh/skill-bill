@@ -41,6 +41,8 @@ internal object DatabaseColumnMigrations {
       columnName = "audit_gap_iteration_count",
       definition = "INTEGER NOT NULL DEFAULT 0",
     )
+    ensureColumn(connection, "feature_task_runtime_sessions", "estimated_phase_tokens_json", "TEXT")
+    ensureColumn(connection, "feature_task_runtime_sessions", "estimated_total_tokens", "INTEGER")
   }
 
   private fun ensureFeatureVerifyWorkflowColumns(connection: Connection) {
@@ -137,6 +139,8 @@ internal object DatabaseColumnMigrations {
       columnName = "duplicate_terminal_finished_events",
       definition = "INTEGER NOT NULL DEFAULT 0",
     )
+    ensureColumn(connection, "feature_implement_sessions", "estimated_phase_tokens_json", "TEXT")
+    ensureColumn(connection, "feature_implement_sessions", "estimated_total_tokens", "INTEGER")
   }
 
   private fun ensureFeatureVerifySessionColumns(connection: Connection) {

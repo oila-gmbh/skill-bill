@@ -56,6 +56,8 @@ fun FeatureImplementFinishedRequest.toRecord(): FeatureImplementFinishedRecord =
   prCreated = prCreated,
   planDeviationNotes = planDeviationNotes,
   childSteps = childSteps,
+  estimatedPhaseTokenBreakdownJson = estimatedPhaseTokenBreakdownJson,
+  estimatedTotalTokens = estimatedTotalTokens,
 )
 
 fun FeatureTaskRuntimeStartedRequest.toRecord(sessionId: String): FeatureTaskRuntimeStartedRecord =
@@ -76,6 +78,8 @@ fun FeatureTaskRuntimeFinishedRequest.toRecord(): FeatureTaskRuntimeFinishedReco
   resolvedBranch = resolvedBranch,
   reviewFixIterationCount = reviewFixIterationCount,
   auditGapIterationCount = auditGapIterationCount,
+  estimatedPhaseTokenBreakdownJson = estimatedPhaseTokenBreakdownJson,
+  estimatedTotalTokens = estimatedTotalTokens,
 )
 
 fun QualityCheckStartedRequest.toRecord(sessionId: String): QualityCheckStartedRecord = QualityCheckStartedRecord(

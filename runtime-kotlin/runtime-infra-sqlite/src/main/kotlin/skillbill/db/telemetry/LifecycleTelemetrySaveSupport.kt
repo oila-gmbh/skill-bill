@@ -169,6 +169,8 @@ private fun updateFeatureImplementFinished(
       pr_created = ?,
       plan_deviation_notes = ?,
       child_steps_json = ?,
+      estimated_phase_tokens_json = ?,
+      estimated_total_tokens = ?,
       finished_at = CURRENT_TIMESTAMP
     WHERE session_id = ?
     """.trimIndent(),
@@ -194,9 +196,9 @@ private fun insertFeatureImplementFinished(
       tasks_completed, review_iterations, audit_result,
       audit_iterations, validation_result, boundary_history_written,
       boundary_history_value, pr_created, plan_deviation_notes,
-      child_steps_json, finished_at
+      child_steps_json, estimated_phase_tokens_json, estimated_total_tokens, finished_at
     ) VALUES (
-      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
       CURRENT_TIMESTAMP
     )
     """.trimIndent(),

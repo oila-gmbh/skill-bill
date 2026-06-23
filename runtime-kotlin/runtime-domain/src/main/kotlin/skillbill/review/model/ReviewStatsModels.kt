@@ -189,6 +189,8 @@ data class FeatureImplementWorkflowStats(
   val averageFilesModified: Double,
   val averageTasksCompleted: Double,
   val averageDurationSeconds: Double,
+  val estimatedTokenRunsWithValue: Int,
+  val averageEstimatedTotalTokens: Double,
 )
 
 data class FeatureTaskRuntimeWorkflowStats(
@@ -207,6 +209,8 @@ data class FeatureTaskRuntimeWorkflowStats(
   val errorRuns: Int,
   val errorRate: Double,
   val averageCompletedPhaseCount: Double,
+  val estimatedTokenRunsWithValue: Int,
+  val averageEstimatedTotalTokens: Double,
 )
 
 data class FeatureVerifyWorkflowStats(

@@ -481,6 +481,52 @@ class ReviewStatsRuntimeTest {
   }
 
   @Test
+  fun `feature task runtime stats excludes null token rows from average and counts only valued rows`() {
+    val (_, connection) = tempDbConnection("feature-task-runtime-token-aggregation")
+    connection.use {
+      connection.createStatement().use { statement ->
+        statement.executeUpdate(
+          """
+          INSERT INTO feature_task_runtime_sessions (session_id, completion_status, finished_at, estimated_total_tokens)
+          VALUES
+            ('ftr-token-null', 'completed', '2026-04-23 10:05:00', NULL),
+            ('ftr-token-100', 'completed', '2026-04-23 10:06:00', 100),
+            ('ftr-token-200', 'completed', '2026-04-23 10:07:00', 200)
+          """.trimIndent(),
+        )
+      }
+
+      val stats = ReviewStatsRuntime.featureTaskRuntimeStats(connection)
+
+      assertEquals(2, stats.estimatedTokenRunsWithValue)
+      assertEquals(150.0, stats.averageEstimatedTotalTokens)
+    }
+  }
+
+  @Test
+  fun `feature implement stats excludes null token rows from average and counts only valued rows`() {
+    val (_, connection) = tempDbConnection("feature-implement-token-aggregation")
+    connection.use {
+      connection.createStatement().use { statement ->
+        statement.executeUpdate(
+          """
+          INSERT INTO feature_implement_sessions (session_id, source, completion_status, started_at, finished_at, estimated_total_tokens)
+          VALUES
+            ('fis-token-null', 'production', 'completed', '2026-04-23 10:00:00', '2026-04-23 10:05:00', NULL),
+            ('fis-token-100', 'production', 'completed', '2026-04-23 10:00:00', '2026-04-23 10:06:00', 100),
+            ('fis-token-200', 'production', 'completed', '2026-04-23 10:00:00', '2026-04-23 10:07:00', 200)
+          """.trimIndent(),
+        )
+      }
+
+      val stats = ReviewStatsRuntime.featureImplementStats(connection)
+
+      assertEquals(2, stats.estimatedTokenRunsWithValue)
+      assertEquals(150.0, stats.averageEstimatedTotalTokens)
+    }
+  }
+
+  @Test
   fun `feature task runtime stats counts blocked and decomposed completion statuses`() {
     val (_, connection) = tempDbConnection("feature-task-runtime-stats")
     connection.use {

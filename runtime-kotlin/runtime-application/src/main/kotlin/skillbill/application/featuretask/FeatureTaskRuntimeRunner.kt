@@ -23,6 +23,7 @@ import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import skillbill.ports.workflow.WorkflowGitOperations
+import skillbill.telemetry.estimation.estimateTokens
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.model.SpecSource
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
@@ -90,6 +91,7 @@ class FeatureTaskRuntimeRunner(
     )
   }
 
+  @Suppress("LongMethod") // single runtime-owned orchestration seam; the token accumulator wiring is additive
   fun run(request: FeatureTaskRuntimeRunRequest): FeatureTaskRuntimeRunReport {
     foreignModeWorkflowBlock(request)?.let { return it }
     recorder.ensureWorkflowOpen(request.workflowId, request.sessionId, request.dbPathOverride)
@@ -137,12 +139,13 @@ class FeatureTaskRuntimeRunner(
     // from the runtime's own ledger and resolved lazily inside the telemetry seam's failure isolation.
     val auditGapIterationCount = { loadAuditGapIterationCount(runRequest) }
     val transitions = transitionsFor(runRequest)
+    val phaseTokenAccumulator: MutableMap<String, Pair<Int, Int>> = mutableMapOf()
     val report = runCatching {
       val state = RunState(
         recorder.loadPhaseRecords(runRequest.workflowId, runRequest.dbPathOverride).orEmpty(),
         transitions,
       )
-      val loop = RunLoop(runRequest, state, observability, specSource, transitions)
+      val loop = RunLoop(runRequest, state, observability, specSource, transitions, phaseTokenAccumulator)
       loop.drive()
       loop.report()
     }.onFailure { error ->
@@ -155,6 +158,7 @@ class FeatureTaskRuntimeRunner(
         reviewFixIterationCount,
         auditGapIterationCount,
         runRequest.dbPathOverride,
+        phaseTokenData = { serializeTokenData(phaseTokenAccumulator) },
       )
     }.getOrThrow()
     val terminalReport =
@@ -167,6 +171,7 @@ class FeatureTaskRuntimeRunner(
       reviewFixIterationCount,
       auditGapIterationCount,
       runRequest.dbPathOverride,
+      phaseTokenData = { serializeTokenData(phaseTokenAccumulator) },
     )
     return terminalReport
   }
@@ -221,6 +226,7 @@ class FeatureTaskRuntimeRunner(
     // Resolved once in run() so RunState reconstructs its per-visit budget baselines from the same
     // topology the driver loops on.
     private val transitions: FeatureTaskRuntimeTransitionDeclaration,
+    private val phaseTokenAccumulator: MutableMap<String, Pair<Int, Int>>,
   ) {
     private var resolvedBranch: String? = null
     private var blocked: FeatureTaskRuntimeRunReport.Blocked? = null
@@ -460,7 +466,7 @@ class FeatureTaskRuntimeRunner(
     private fun runPhaseFor(phaseId: String): String? {
       val reentry = pendingReentry?.takeIf { it.phaseId == phaseId }
       pendingReentry = null
-      val outcome = runPhase(phaseId, request, state, observability, specSource, reentry)
+      val outcome = runPhase(phaseId, request, state, observability, specSource, reentry, phaseTokenAccumulator)
       return outcome.blockedReason ?: run {
         val completedOutput = requireNotNull(outcome.completedOutput)
         state.recordCompleted(completedOutput)
@@ -706,6 +712,7 @@ class FeatureTaskRuntimeRunner(
     observability: FeatureTaskRuntimeRunObservability,
     specSource: SpecSource,
     reentry: PendingReentry?,
+    phaseTokenAccumulator: MutableMap<String, Pair<Int, Int>>? = null,
   ): PhaseOutcome {
     val run = PhaseRun(
       phaseId = phaseId,
@@ -723,7 +730,8 @@ class FeatureTaskRuntimeRunner(
     // survives ledger pruning, so the budget is never silently reset), or a missing required
     // upstream (never launch blind). Retryable fix-loop phases continue into runPhaseAttempts,
     // which resumes at the next durable attempt and still enforces the bounded budget.
-    return preLaunchBlock(run, state, observability) ?: runPhaseAttempts(run, state, observability)
+    return preLaunchBlock(run, state, observability)
+      ?: runPhaseAttempts(run, state, observability, phaseTokenAccumulator)
   }
 
   // Returns a blocked outcome when the phase must block before launching, else null. A persisted
@@ -767,6 +775,7 @@ class FeatureTaskRuntimeRunner(
     run: PhaseRun,
     state: RunState,
     observability: FeatureTaskRuntimeRunObservability,
+    phaseTokenAccumulator: MutableMap<String, Pair<Int, Int>>? = null,
   ): PhaseOutcome {
     val agentId = run.resolvedAgent.resolvedAgentId
     var iteration = state.nextIteration(run.phaseId)
@@ -791,7 +800,7 @@ class FeatureTaskRuntimeRunner(
     // corrective attempt rather than a blind re-roll of the identical prompt (null on the first attempt).
     var priorSchemaFailure: String? = null
     while (outcome == null) {
-      val attempt = attemptOnce(run, state, iteration, observability, priorSchemaFailure)
+      val attempt = attemptOnce(run, state, iteration, observability, priorSchemaFailure, phaseTokenAccumulator)
       val decision = FeatureTaskRuntimeFixLoopPolicy.decideAfterFailure(run.phaseId, iteration - budgetBaseOffset)
       outcome = attempt.settledOutcome
         ?: when (decision) {
@@ -863,15 +872,17 @@ class FeatureTaskRuntimeRunner(
   // Returns SchemaInvalid only on schema-invalid output (caller consults the fix-loop policy).
   // An infrastructure failure must block distinctly rather than be laundered through the schema
   // gate, which would misreport it as bad output and burn the fix-loop budget on doomed retries.
+  @Suppress("LongParameterList") // cohesive single-attempt launch seam; the accumulator is additive
   private fun attemptOnce(
     run: PhaseRun,
     state: RunState,
     iteration: Int,
     observability: FeatureTaskRuntimeRunObservability,
     priorSchemaFailure: String?,
+    phaseTokenAccumulator: MutableMap<String, Pair<Int, Int>>? = null,
   ): AttemptResult {
     persistPhase(run, iteration, STATUS_RUNNING, finished = false, outputArtifact = null)
-    val launch = launchAndCapture(run, state, priorSchemaFailure)
+    val launch = launchAndCapture(run, state, priorSchemaFailure, phaseTokenAccumulator)
     launch.infraFailureReason?.let { reason ->
       return AttemptResult.settled(blockAndPersistInPhase(run, iteration, reason, observability))
     }
@@ -940,7 +951,12 @@ class FeatureTaskRuntimeRunner(
   // back, then deliver the same briefing to the agent as the launch prompt: the phase agent
   // only ever sees what the prompt carries, so a persisted-but-undelivered briefing would
   // leave it running the default goal-continuation flow and failing the schema gate.
-  private fun launchAndCapture(run: PhaseRun, state: RunState, priorSchemaFailure: String? = null): LaunchResult {
+  private fun launchAndCapture(
+    run: PhaseRun,
+    state: RunState,
+    priorSchemaFailure: String? = null,
+    phaseTokenAccumulator: MutableMap<String, Pair<Int, Int>>? = null,
+  ): LaunchResult {
     val handoff = FeatureTaskRuntimeHandoffContract.assembleHandoff(
       declaration = run.declaration,
       runInvariants = run.request.runInvariants,
@@ -971,6 +987,11 @@ class FeatureTaskRuntimeRunner(
         ),
       ),
     )
+    if (outcome is AgentRunLaunchFacts && phaseTokenAccumulator != null) {
+      val inputTokens = estimateTokens(briefing.briefingText)
+      val outputTokens = estimateTokens(outcome.stdout)
+      phaseTokenAccumulator[run.phaseId] = Pair(inputTokens, outputTokens)
+    }
     return reconcileLaunch(run.phaseId, outcome)
   }
 
@@ -1365,6 +1386,15 @@ class FeatureTaskRuntimeRunner(
     const val STATUS_RUNNING = "running"
     const val STATUS_COMPLETED = "completed"
     const val STATUS_BLOCKED = "blocked"
+
+    fun serializeTokenData(accumulator: Map<String, Pair<Int, Int>>): Pair<String?, Int?> {
+      if (accumulator.isEmpty()) return null to null
+      val breakdown = accumulator.mapValues { (_, pair) ->
+        mapOf("estimated_input_tokens" to pair.first, "estimated_output_tokens" to pair.second)
+      }
+      val total = accumulator.values.sumOf { (i, o) -> i + o }
+      return JsonSupport.mapToJsonString(breakdown) to total
+    }
 
     // Branch setup is a distinct pre-implement step with no resolved phase agent; this sentinel
     // attributes its durable blocked record and ledger entry rather than a real agent id.

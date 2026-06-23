@@ -33,6 +33,8 @@ fun featureImplementFinishedValues(
   add(record.prCreated.toSqlInt())
   add(record.planDeviationNotes)
   add(childStepsJson)
+  add(record.estimatedPhaseTokenBreakdownJson)
+  add(record.estimatedTotalTokens)
   if (!includeSessionFirst) {
     add(record.sessionId)
   }

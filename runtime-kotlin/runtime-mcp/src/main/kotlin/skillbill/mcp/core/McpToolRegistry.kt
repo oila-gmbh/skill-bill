@@ -221,6 +221,8 @@ object McpToolRegistry {
           "boundary_history_value" to stringSchema(enum = listOf("none", "irrelevant", "low", "medium", "high")),
           "plan_deviation_notes" to stringSchema(),
           "child_steps" to arraySchema(featureImplementChildStepSchema()),
+          "estimated_phase_tokens" to freeObjectSchema,
+          "estimated_total_tokens" to integerSchema,
         ),
       ),
       "feature_task_prose_workflow_continue" to objectSchema(
@@ -343,6 +345,8 @@ object McpToolRegistry {
           "last_incomplete_phase" to stringSchema(),
           "blocked_reason" to stringSchema(),
           "resolved_branch" to stringSchema(),
+          "estimated_phase_tokens" to freeObjectSchema,
+          "estimated_total_tokens" to integerSchema,
         ),
       ),
       "feature_task_runtime_workflow_continue" to workflowIdSchema(),

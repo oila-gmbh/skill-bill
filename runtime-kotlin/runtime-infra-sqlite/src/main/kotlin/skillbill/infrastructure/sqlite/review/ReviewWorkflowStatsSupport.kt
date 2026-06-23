@@ -34,6 +34,7 @@ fun buildFeatureTaskRuntimeStats(rows: List<Map<String, Any?>>): FeatureTaskRunt
   val decomposedRuns = finishedRows.count { it.stringValue("completion_status") == "decomposed_at_planning" }
   val errorRuns = finishedRows.count { it.stringValue("completion_status") == "error" }
   val completedPhaseCounts = finishedRows.map { parseJsonList(it["completed_phase_ids"]).size }
+  val tokenValues = finishedRows.mapNotNull { it.nullableIntValue("estimated_total_tokens") }
   return FeatureTaskRuntimeWorkflowStats(
     totalRuns = rows.size,
     finishedRuns = finishedRows.size,
@@ -50,6 +51,8 @@ fun buildFeatureTaskRuntimeStats(rows: List<Map<String, Any?>>): FeatureTaskRunt
     errorRuns = errorRuns,
     errorRate = rate(errorRuns, finishedRows.size),
     averageCompletedPhaseCount = average(completedPhaseCounts),
+    estimatedTokenRunsWithValue = tokenValues.size,
+    averageEstimatedTotalTokens = average(tokenValues),
   )
 }
 
@@ -105,10 +108,12 @@ fun buildFeatureVerifyStats(rows: List<Map<String, Any?>>): FeatureVerifyWorkflo
   )
 }
 
+@Suppress("LongMethod") // one cohesive stats builder; extracting helpers would obscure the field-to-stat mapping
 fun buildFeatureImplementStats(rows: List<Map<String, Any?>>): FeatureImplementWorkflowStats {
   val finishedRows = finishedRows(rows)
   val healthStats = buildFeatureImplementHealthStats(rows, finishedRows)
   val averages = buildFeatureImplementAverageStats(rows, finishedRows, healthStats.normalDurations)
+  val tokenValues = finishedRows.mapNotNull { it.nullableIntValue("estimated_total_tokens") }
   return FeatureImplementWorkflowStats(
     totalRuns = rows.size,
     finishedRuns = finishedRows.size,
@@ -160,6 +165,8 @@ fun buildFeatureImplementStats(rows: List<Map<String, Any?>>): FeatureImplementW
     averageFilesModified = averages.filesModified,
     averageTasksCompleted = averages.tasksCompleted,
     averageDurationSeconds = averages.durationSeconds,
+    estimatedTokenRunsWithValue = tokenValues.size,
+    averageEstimatedTotalTokens = average(tokenValues),
   )
 }
 

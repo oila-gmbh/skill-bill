@@ -346,8 +346,14 @@ After the PR is created (or when the workflow ends early due to error or user ab
 - `boundary_history_value`: how useful the boundary history was during pre-planning — `none` means no history existed at pre-read time (so `boundary_history_written=true` paired with `value=none` is a legal combination, e.g. this run created the first entry); `irrelevant` means history was read but nothing applied; `low` means an adjacent entry was grazed but did not shape the plan; `medium` means an entry directly informed pre-planning; `high` means an entry was decisive in shaping the plan. Full anchored rubric lives in the inline reference sections below.
 - `plan_deviation_notes`: brief note if the plan changed during execution (empty if no deviations)
 - `child_steps`: list of `telemetry_payload` dicts collected from child tools invoked with `orchestrated=true` during the session
+- `estimated_phase_tokens`: optional map of `{phase_id: {estimated_input_tokens, estimated_output_tokens}}`. For each subagent phase (preplan, plan, implement, review, audit, pr_description), compute:
+  - `estimated_input_tokens`: `ceil(utf8_byte_count(briefing_text) / 4)`, where `briefing_text` is the full prompt text you sent to the subagent.
+  - `estimated_output_tokens`: `ceil(utf8_byte_count(result_text) / 4)`, where `result_text` is the full text returned by the subagent.
+  - UTF-8 byte count: count bytes, not characters. For example: `hello` (5 ASCII chars) = 5 bytes; `€` (1 char) = 3 bytes; `𝄞` (1 char) = 4 bytes.
+  - Example: a phase with a 2000-byte briefing and an 800-byte result = `ceil(2000/4) + ceil(800/4)` = 500 + 200 = 700 tokens for that phase.
+- `estimated_total_tokens`: sum of all per-phase `estimated_input_tokens` and `estimated_output_tokens` across all phases that ran. Omit if not computable. Never claim billing accuracy — these are heuristic estimates.
 
-For fields not yet reached (early exit), use: 0 for counts, `skipped` for results, false for booleans.
+For fields not yet reached (early exit), use: 0 for counts, `skipped` for results, false for booleans. For fields not yet reached (early exit): omit `estimated_phase_tokens` and `estimated_total_tokens` (or pass null).
 
 Before terminal workflow-state or telemetry writes, repeat the Skill Bill MCP health check. If the in-session MCP tool path returns `Transport closed`, use the packaged Kotlin `runtime-mcp` direct-stdio fallback for `feature_task_prose_workflow_update`, `feature_task_prose_finished`, and any remaining orchestrated child telemetry calls. Workflow state must not be left `running` solely because the session MCP transport died when the packaged runtime is available.
 
