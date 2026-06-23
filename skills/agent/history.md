@@ -1,3 +1,10 @@
+## [2026-06-23] SKILL-92 bill-feature-goal prose lifecycle telemetry wiring
+Areas: skills/bill-feature-goal
+- `bill-feature-goal mode:prose` now emits goal lifecycle telemetry: calls `goal_prose_started` at goal start, `goal_prose_subtask_finished` after each subtask, and `goal_prose_finished` at goal completion/termination.
+- Idempotency is documented in the skill: all three tools are safe to re-call; re-emitting an already-recorded boundary is a no-op.
+Feature flag: N/A
+Acceptance criteria: 1/1 (AC#5) implemented
+
 ## [2026-06-13] prose-goal-subtask-isolation
 Areas: skills/bill-feature-goal, skills/bill-feature-task-prose, skills/bill-feature-task-subtask-runner, scripts
 - Goal orchestrator (bill-feature-goal mode:prose) stays thin: holds only decomposition manifest + per-subtask terminal outcomes; no phase artifacts accumulated

@@ -7,6 +7,9 @@ import skillbill.mcp.lifecycle.featureTaskRuntimeFinished
 import skillbill.mcp.lifecycle.featureTaskRuntimeStarted
 import skillbill.mcp.lifecycle.featureVerifyFinished
 import skillbill.mcp.lifecycle.featureVerifyStarted
+import skillbill.mcp.lifecycle.goalProseFinished
+import skillbill.mcp.lifecycle.goalProseStarted
+import skillbill.mcp.lifecycle.goalProseSubtaskFinished
 import skillbill.mcp.lifecycle.prDescriptionGenerated
 import skillbill.mcp.lifecycle.qualityCheckFinished
 import skillbill.mcp.lifecycle.qualityCheckStarted
@@ -94,6 +97,9 @@ object McpToolDispatcher {
         { arguments, context -> workflowResume(WorkflowFamilyKind.TASK_RUNTIME, arguments, context) },
       "feature_task_runtime_workflow_update" to
         { arguments, context -> workflowUpdate(WorkflowFamilyKind.TASK_RUNTIME, arguments, context) },
+      "goal_prose_finished" to ::goalProseFinished,
+      "goal_prose_started" to ::goalProseStarted,
+      "goal_prose_subtask_finished" to ::goalProseSubtaskFinished,
       "goal_stats" to { _, context -> McpRuntime.goalStats(context) },
       "import_review" to ::importReview,
       "new_skill_scaffold" to ::newSkillScaffold,

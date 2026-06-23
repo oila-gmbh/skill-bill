@@ -109,6 +109,7 @@ class GoalTelemetryStoreTest {
           subtasksComplete = 0,
           subtasksBlocked = 1,
           subtasksSkipped = 0,
+          mode = "runtime",
         ),
         level = "full",
       )
@@ -328,6 +329,7 @@ class GoalTelemetryStoreTest {
         subtasksComplete = 1,
         subtasksBlocked = 1,
         subtasksSkipped = 1,
+        mode = "runtime",
       ),
       level = "full",
     )
@@ -363,6 +365,7 @@ class GoalTelemetryStoreTest {
         subtasksComplete = 1,
         subtasksBlocked = 0,
         subtasksSkipped = 0,
+        mode = "runtime",
       ),
       level = "full",
     )
@@ -373,6 +376,7 @@ class GoalTelemetryStoreTest {
     subtaskTotal: Int,
     resumed: Boolean,
     startedAt: String = "2026-06-04T10:00:00Z",
+    mode: String = "runtime",
   ): GoalStartedRecord = GoalStartedRecord(
     issueKey = "SKILL-66",
     featureName = "goal telemetry",
@@ -380,6 +384,7 @@ class GoalTelemetryStoreTest {
     subtaskTotal = subtaskTotal,
     resumed = resumed,
     startedAt = startedAt,
+    mode = mode,
   )
 
   private fun subtask(

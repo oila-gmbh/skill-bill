@@ -26,6 +26,12 @@ internal object DatabaseColumnMigrations {
       ensureColumn(connection, "goal_subtask_events", "boundary_history_value", "TEXT NOT NULL DEFAULT 'none'")
       ensureColumn(connection, "goal_subtask_events", "boundary_history_written", "INTEGER NOT NULL DEFAULT 0")
     }
+    val goalRunSessionsExists = connection.prepareStatement(
+      "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'goal_run_sessions'",
+    ).use { statement -> statement.executeQuery().use { resultSet -> resultSet.next() } }
+    if (goalRunSessionsExists) {
+      ensureColumn(connection, "goal_run_sessions", "mode", "TEXT NOT NULL DEFAULT 'runtime'")
+    }
   }
 
   private fun ensureFeatureTaskRuntimeSessionColumns(connection: Connection) {

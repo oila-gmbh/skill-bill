@@ -237,6 +237,17 @@ data class FeatureVerifyWorkflowStats(
   val averageDurationSeconds: Double,
 )
 
+data class GoalModeStats(
+  val totalRuns: Int,
+  val finishedRuns: Int,
+  val inProgressRuns: Int,
+  val completedRuns: Int,
+  val completedRate: Double,
+  val blockedRuns: Int,
+  val blockedRate: Double,
+  val averageRunDurationMs: Double,
+)
+
 data class GoalBlockedSubtaskSummary(
   val subtaskId: Int,
   val subtaskName: String,
@@ -278,4 +289,5 @@ data class GoalWorkflowStats(
   val averageAttemptCount: Double,
   val mostRecentRun: GoalRunSummary?,
   val topBlockedSubtasks: List<GoalBlockedSubtaskSummary>,
+  val byMode: Map<String, GoalModeStats> = emptyMap(),
 )
