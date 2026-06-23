@@ -160,6 +160,30 @@ class FileSystemFeatureTaskRuntimeRunInvariantsSourceTest {
     }
   }
 
+  @Test
+  fun `an Agent line under the Status block does not perturb the acceptance-criteria reader`() {
+    // SKILL-89 AC11 reader-safety: the completion-time Agent line lives under ## Status; the reader
+    // keys off ## Acceptance Criteria and must be structurally blind to it.
+    val spec = writeSpec(
+      """
+      # Runtime spec
+
+      ## Status
+
+      - Status: Complete
+      - Agent: claude
+
+      ## Acceptance Criteria
+      1. First criterion.
+      2. Second criterion.
+      """.trimIndent(),
+    )
+
+    val invariants = FileSystemFeatureTaskRuntimeRunInvariantsSource().read(spec)
+
+    assertEquals(listOf("First criterion.", "Second criterion."), invariants.acceptanceCriteria)
+  }
+
   private fun writeSpec(text: String) =
     Files.createTempDirectory("feature-task-runtime-invariants").resolve("spec.md").also { path ->
       Files.writeString(path, text)

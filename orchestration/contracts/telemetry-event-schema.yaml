@@ -1334,6 +1334,22 @@ $defs:
         description: >
           Free-text blocked reason when `status` is `blocked`; `null`
           otherwise. Required key with a nullable value.
+      finalizing_agent_id:
+        type:
+          - string
+          - "null"
+        description: >
+          Resolved agent that finalized the subtask (the terminal COMPLETE/BLOCKED ledger
+          entry); `null` when no agent attribution was rolled up. Additive-optional: legacy
+          payloads omit the key.
+      participating_agent_ids:
+        type: array
+        items:
+          type: string
+        description: >
+          Order-stable distinct resolved agents that executed a phase of the subtask. Enables
+          per-agent finalized vs handoff-participant aggregation. Additive-optional: legacy
+          payloads omit the key.
 
   goalFinishedEvent:
     type: object

@@ -35,6 +35,8 @@ fun DecompositionManifest.toWireMap(): Map<String, Any?> = linkedMapOf(
       "blocked_reason" to subtask.blockedReason,
       "last_resumable_step" to subtask.lastResumableStep,
       "linear_issue_id" to subtask.linearIssueId,
+      "finalizing_agent_id" to subtask.finalizingAgentId,
+      "participating_agent_ids" to subtask.participatingAgentIds,
       "dependencies" to subtask.dependencies.map { dependency ->
         linkedMapOf(
           "subtask_id" to dependency.subtaskId,

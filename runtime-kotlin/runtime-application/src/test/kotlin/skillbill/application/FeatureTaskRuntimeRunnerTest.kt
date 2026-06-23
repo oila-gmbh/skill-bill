@@ -49,6 +49,7 @@ import skillbill.ports.persistence.WorkflowStateRepository
 import skillbill.ports.persistence.model.FeatureImplementSessionSummary
 import skillbill.ports.persistence.model.FeatureVerifySessionSummary
 import skillbill.ports.persistence.model.WorkflowStateRecord
+import skillbill.ports.taskruntime.FeatureTaskRuntimeSpecStatusWriter
 import skillbill.ports.telemetry.TelemetrySettingsProvider
 import skillbill.ports.workflow.NoopWorkflowGitOperations
 import skillbill.ports.workflow.SpecScratchStore
@@ -100,6 +101,36 @@ class FeatureTaskRuntimeRunnerTest {
     assertEquals(
       ALL_PHASES,
       harness.launchOrder(),
+    )
+  }
+
+  @Test
+  fun `single-spec completion reconciles the spec Agent line with the ledger-derived finalizing agent`() {
+    val harness = runnerHarness(agentAssignment = phasePerAgentAssignment())
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
+
+    val write = harness.specStatusWriter.writes.single()
+    assertEquals(SPEC_REFERENCE, write.first.toString())
+    assertEquals(
+      phaseAgent("pr"),
+      write.second,
+      "the Agent line must carry the ledger-derived finalizing agent (the agent that ran the terminal pr phase)",
+    )
+  }
+
+  @Test
+  fun `goal-continuation completion does not reconcile a single-spec Agent line`() {
+    val repoRoot = Files.createTempDirectory("skillbill-runtime-goal-no-spec-line")
+    val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
+      .also { it.headCommitShaValue = "measured-head-sha" }
+    val harness = goalContinuationHarness(repoRoot, git, goalContinuationLauncher(validJsonOutput("commit_push")))
+
+    harness.runner.run(harness.request())
+
+    assertTrue(
+      harness.specStatusWriter.writes.isEmpty(),
+      "a goal-continuation subtask run never stamps the single-spec Agent line",
     )
   }
 
@@ -1215,6 +1246,10 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
     assertEquals("complete", outcome["status"])
     assertEquals("commit-runtime-1", outcome["commit_sha"])
     assertEquals("commit_push", outcome["last_resumable_step"])
+    assertEquals(phaseAgent("commit_push"), outcome["finalizing_agent_id"])
+    @Suppress("UNCHECKED_CAST")
+    val participants = outcome["participating_agent_ids"] as List<String>
+    assertTrue(participants.isNotEmpty(), "goal-continuation outcome must carry a non-empty participating_agent_ids")
     assertEquals("skipped", (artifacts["install_sync_result"] as Map<*, *>)["status"])
   }
 
@@ -1234,6 +1269,28 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
     val outcome = harness.repository.taskRuntimeArtifacts(WORKFLOW_ID)["goal_continuation_outcome"] as Map<*, *>
     assertEquals("complete", outcome["status"])
     assertEquals("commit-runtime-1", outcome["commit_sha"])
+  }
+
+  @Test
+  fun `goal-continuation outcome struct carries finalizingAgentId and participatingAgentIds`() {
+    val repoRoot = Files.createTempDirectory("skillbill-runtime-goal-attribution-struct")
+    val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
+    val harness = goalContinuationHarness(repoRoot, git, goalContinuationLauncher(validJsonOutput("commit_push")))
+
+    val report = harness.runner.run(harness.request())
+
+    val completed = assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    val subtaskOutcome =
+      requireNotNull(completed.subtaskOutcome) { "subtaskOutcome must be present for a goal-continuation run" }
+    assertEquals(
+      phaseAgent("commit_push"),
+      subtaskOutcome.finalizingAgentId,
+      "finalizingAgentId on the outcome struct must be the commit_push phase agent",
+    )
+    assertTrue(
+      subtaskOutcome.participatingAgentIds.isNotEmpty(),
+      "participatingAgentIds on the outcome struct must be non-empty for a completed goal-continuation run",
+    )
   }
 
   @Test
@@ -2661,6 +2718,7 @@ internal class RunnerHarnessIo(
   val runInvariantsStore: FeatureTaskRuntimeRunInvariantsStore,
   val repository: InMemoryRuntimeWorkflowRepository,
   val gitOperations: RecordingWorkflowGitOperations,
+  val specStatusWriter: RecordingSpecStatusWriter,
 )
 
 internal class RunnerHarness(
@@ -2671,6 +2729,7 @@ internal class RunnerHarness(
   private val runRequest: FeatureTaskRuntimeRunRequest,
   val specScratchStore: RecordingSpecScratchStore,
 ) {
+  val specStatusWriter: RecordingSpecStatusWriter get() = io.specStatusWriter
   val recorder: FeatureTaskRuntimePhaseRecorder get() = io.recorder
   val decomposeTerminalRecorder: FeatureTaskRuntimeDecomposeTerminalRecorder get() = io.decomposeTerminalRecorder
   val runInvariantsStore: FeatureTaskRuntimeRunInvariantsStore get() = io.runInvariantsStore
@@ -2840,15 +2899,21 @@ private fun runtimePhaseGates(
   planningStopper: FeatureTaskRuntimePlanningStopper,
   lifecycleTelemetry: FeatureTaskRuntimeLifecycleTelemetry,
   gitOperations: WorkflowGitOperations = NoopWorkflowGitOperations,
-  specScratchStore: SpecScratchStore = RecordingSpecScratchStore(),
+  specGate: FeatureTaskRuntimeSpecGate = testSpecGate(),
 ): FeatureTaskRuntimePhaseGates = FeatureTaskRuntimePhaseGates(
   branchSetupRunner,
   planningStopper,
   lifecycleTelemetry,
   gitOperations,
   FeatureTaskRuntimeSpecStatusProjector(TestDecompositionManifestFileStore),
-  FeatureTaskRuntimeSpecGate(runtimeSpecSourceResolver(), specScratchStore),
+  specGate,
 )
+
+private fun testSpecGate(
+  specScratchStore: SpecScratchStore = RecordingSpecScratchStore(),
+  specStatusWriter: FeatureTaskRuntimeSpecStatusWriter = RecordingSpecStatusWriter(),
+): FeatureTaskRuntimeSpecGate =
+  FeatureTaskRuntimeSpecGate(runtimeSpecSourceResolver(), specScratchStore, specStatusWriter)
 
 private fun disabledRuntimeLifecycleTelemetry(database: DatabaseSessionFactory): FeatureTaskRuntimeLifecycleTelemetry =
   FeatureTaskRuntimeLifecycleTelemetry(
@@ -2874,6 +2939,29 @@ private fun smallRuntimeConfig(): RuntimeHarnessConfig = RuntimeHarnessConfig(
 private fun conventionRuntimeConfig(git: RecordingWorkflowGitOperations): RuntimeHarnessConfig =
   RuntimeHarnessConfig(branchSetup = BranchSetupTestConfig(git, CONVENTION_SPEC_REFERENCE))
 
+private fun runnerHarnessRequest(
+  runtimeConfig: RuntimeHarnessConfig,
+  agentAssignment: FeatureTaskRuntimeAgentAssignment,
+  sink: FeatureTaskRuntimeRunEventSink,
+): FeatureTaskRuntimeRunRequest = FeatureTaskRuntimeRunRequest(
+  issueKey = ISSUE_KEY,
+  workflowId = WORKFLOW_ID,
+  sessionId = SESSION_ID,
+  runInvariants = FeatureTaskRuntimeRunInvariants(
+    specReference = runtimeConfig.branchSetup.specReference,
+    featureSize = runtimeConfig.branchSetup.featureSize,
+    acceptanceCriteria = listOf("AC-1", "AC-2"),
+    mandatesAndOverrides = listOf("mandate-X"),
+  ),
+  invokedAgentId = INVOKED_AGENT,
+  agentAssignment = agentAssignment,
+  environment = runtimeConfig.environment,
+  dbPathOverride = null,
+  repoRoot = runtimeConfig.repoRoot,
+  goalContinuation = runtimeConfig.goalContinuation,
+  eventSink = sink,
+)
+
 internal fun runnerHarness(
   launcher: RuntimeRecordingLauncher = defaultPhaseAwareLauncher(),
   validator: FeatureTaskRuntimePhaseOutputValidator = AlwaysValidValidator,
@@ -2892,6 +2980,7 @@ internal fun runnerHarness(
   val decompositionPlanner =
     if (runtimeConfig.useRealDecompositionPlanner) testDecompositionPlanner() else noOpDecompositionPlanner()
   val planningStopper = FeatureTaskRuntimePlanningStopper(validator, decompositionPlanner, decomposeTerminalRecorder)
+  val specStatusWriter = RecordingSpecStatusWriter()
   val runner = FeatureTaskRuntimeRunner(
     launcher,
     recorder,
@@ -2903,7 +2992,7 @@ internal fun runnerHarness(
       planningStopper,
       disabledRuntimeLifecycleTelemetry(database),
       runtimeConfig.branchSetup.gitOperations,
-      specScratchStore,
+      testSpecGate(specScratchStore, specStatusWriter),
     ),
   )
   // Always capture events; a caller-supplied sink is chained after the capture.
@@ -2912,30 +3001,14 @@ internal fun runnerHarness(
     captured += event
     runtimeConfig.eventSink?.emit(event)
   }
-  val runRequest = FeatureTaskRuntimeRunRequest(
-    issueKey = ISSUE_KEY,
-    workflowId = WORKFLOW_ID,
-    sessionId = SESSION_ID,
-    runInvariants = FeatureTaskRuntimeRunInvariants(
-      specReference = runtimeConfig.branchSetup.specReference,
-      featureSize = runtimeConfig.branchSetup.featureSize,
-      acceptanceCriteria = listOf("AC-1", "AC-2"),
-      mandatesAndOverrides = listOf("mandate-X"),
-    ),
-    invokedAgentId = INVOKED_AGENT,
-    agentAssignment = agentAssignment,
-    environment = runtimeConfig.environment,
-    dbPathOverride = null,
-    repoRoot = runtimeConfig.repoRoot,
-    goalContinuation = runtimeConfig.goalContinuation,
-    eventSink = sink,
-  )
+  val runRequest = runnerHarnessRequest(runtimeConfig, agentAssignment, sink)
   val io = RunnerHarnessIo(
     recorder,
     decomposeTerminalRecorder,
     runInvariantsStore,
     repository,
     runtimeConfig.branchSetup.gitOperations,
+    specStatusWriter,
   )
   return RunnerHarness(launcher, io, runner, captured, runRequest, specScratchStore)
 }

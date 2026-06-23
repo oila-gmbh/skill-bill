@@ -37,6 +37,11 @@ data class FeatureTaskRuntimeStatusProjection(
   val currentPhaseId: String?,
   /** The run's resolved feature branch, or null when branch setup has not run yet. */
   val resolvedBranch: String? = null,
+  /**
+   * The ledger-derived finalizing agent (Seam A rollup), computed even for a single-spec run where
+   * no goal-continuation outcome is persisted. Null when no terminal agent attribution exists yet.
+   */
+  val finalizingAgentId: String? = null,
   val decomposeTerminal: FeatureTaskRuntimeDecomposeTerminalStatus? = null,
 )
 

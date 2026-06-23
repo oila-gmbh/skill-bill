@@ -121,8 +121,9 @@ fun saveGoalSubtaskFinished(connection: Connection, record: GoalSubtaskFinishedR
     """
     INSERT INTO goal_subtask_events (
       issue_key, workflow_id, subtask_id, subtask_name, status,
-      started_at, finished_at, duration_ms, attempt_count, blocked_reason
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      started_at, finished_at, duration_ms, attempt_count, blocked_reason,
+      finalizing_agent_id, participating_agent_ids
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT (issue_key, subtask_id, workflow_id) DO NOTHING
     """.trimIndent(),
   ).use { statement ->
@@ -137,6 +138,8 @@ fun saveGoalSubtaskFinished(connection: Connection, record: GoalSubtaskFinishedR
       record.durationMs,
       record.attemptCount,
       record.blockedReason,
+      record.finalizingAgentId,
+      listJson(record.participatingAgentIds),
     )
     statement.executeUpdate() > 0
   }

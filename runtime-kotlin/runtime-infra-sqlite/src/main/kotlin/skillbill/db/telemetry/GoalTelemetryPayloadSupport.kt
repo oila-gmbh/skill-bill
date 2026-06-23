@@ -1,5 +1,27 @@
 package skillbill.db.telemetry
 
+import skillbill.contracts.JsonSupport
+
+private fun parseAgentIdArray(rawValue: String, workflowId: String): List<Any?> {
+  if (rawValue.isBlank()) return emptyList()
+  val trimmed = rawValue.trim()
+  if (!trimmed.startsWith("[")) {
+    System.err.println(
+      "skillbill telemetry: malformed participating_agent_ids for workflow $workflowId; " +
+        "expected a JSON array, got: $rawValue",
+    )
+    return emptyList()
+  }
+  return JsonSupport.parseArrayOrEmpty(trimmed).also { result ->
+    if (result.isEmpty() && trimmed != "[]") {
+      System.err.println(
+        "skillbill telemetry: failed to parse participating_agent_ids for workflow $workflowId; " +
+          "value: $rawValue",
+      )
+    }
+  }
+}
+
 fun goalStartedPayload(row: Map<String, Any?>, level: String): Map<String, Any?> = linkedMapOf<String, Any?>(
   "workflow_id" to row.stringOrEmpty("workflow_id"),
   "issue_key" to row.stringOrEmpty("issue_key"),
@@ -41,5 +63,10 @@ fun goalSubtaskFinishedPayload(row: Map<String, Any?>, level: String): Map<Strin
   if (level == "full") {
     put("subtask_name", row.stringOrEmpty("subtask_name"))
     put("blocked_reason", row["blocked_reason"]?.toString())
+    put("finalizing_agent_id", row["finalizing_agent_id"]?.toString()?.takeIf(String::isNotBlank))
+    put(
+      "participating_agent_ids",
+      parseAgentIdArray(row.stringOrEmpty("participating_agent_ids"), row.stringOrEmpty("workflow_id")),
+    )
   }
 }

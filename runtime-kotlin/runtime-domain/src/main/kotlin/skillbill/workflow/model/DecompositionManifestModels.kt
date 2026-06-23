@@ -33,6 +33,8 @@ data class DecompositionSubtask(
   val blockedReason: String? = null,
   val lastResumableStep: String? = null,
   val linearIssueId: String? = null,
+  val finalizingAgentId: String? = null,
+  val participatingAgentIds: List<String> = emptyList(),
   val dependencies: List<DecompositionDependency> = emptyList(),
 ) {
   fun hasStarted(): Boolean = status != "pending" ||

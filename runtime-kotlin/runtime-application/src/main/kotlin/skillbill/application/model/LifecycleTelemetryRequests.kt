@@ -140,6 +140,8 @@ data class GoalSubtaskFinishedRequest(
   val durationMs: Long,
   val attemptCount: Int,
   val blockedReason: String?,
+  val finalizingAgentId: String? = null,
+  val participatingAgentIds: List<String> = emptyList(),
 )
 
 data class GoalFinishedRequest(

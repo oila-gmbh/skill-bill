@@ -89,6 +89,83 @@ class DecompositionManifestCodecTest {
   }
 
   @Test
+  fun `codec round-trips per-subtask agent attribution`() {
+    val manifest = validManifest().copy(
+      subtasks = listOf(
+        DecompositionSubtask(
+          id = 1,
+          name = "Foundation",
+          specPath = ".feature-specs/SKILL-89-attribution/spec_subtask_1_foundation.md",
+          status = "complete",
+          finalizingAgentId = "claude",
+          participatingAgentIds = listOf("codex", "claude"),
+        ),
+      ),
+    )
+
+    val decoded = DecompositionManifestCodec.decodeMap(manifest.toWireMap())
+
+    assertEquals(manifest, decoded)
+    assertEquals("claude", decoded.subtasks.single().finalizingAgentId)
+    assertEquals(listOf("codex", "claude"), decoded.subtasks.single().participatingAgentIds)
+  }
+
+  @Test
+  fun `codec loads a legacy manifest without agent attribution fields, defaulting to null and empty`() {
+    // A decomposition-manifest.yaml written before SKILL-89 omits both agent keys entirely.
+    val wireMap = validManifest().toWireMap().toMutableMap()
+
+    @Suppress("UNCHECKED_CAST")
+    val subtasks = (wireMap["subtasks"] as List<Map<String, Any?>>).map { subtask ->
+      subtask.toMutableMap().apply {
+        remove("finalizing_agent_id")
+        remove("participating_agent_ids")
+      }
+    }
+    wireMap["subtasks"] = subtasks
+
+    val decoded = DecompositionManifestCodec.decodeMap(wireMap)
+
+    val subtask = decoded.subtasks.single()
+    assertEquals(null, subtask.finalizingAgentId)
+    assertEquals(emptyList(), subtask.participatingAgentIds)
+    // The legacy manifest round-trips cleanly (re-encode then decode is stable).
+    assertEquals(decoded, DecompositionManifestCodec.decodeMap(decoded.toWireMap()))
+  }
+
+  @Test
+  fun `codec rejects a non-string participating agent element`() {
+    val wireMap = validManifest().toWireMap().toMutableMap()
+
+    @Suppress("UNCHECKED_CAST")
+    val subtasks = (wireMap["subtasks"] as List<Map<String, Any?>>).map { subtask ->
+      subtask.toMutableMap().apply { put("participating_agent_ids", listOf("codex", 7)) }
+    }
+    wireMap["subtasks"] = subtasks
+
+    val error = assertFailsWith<InvalidDecompositionManifestSchemaError> {
+      DecompositionManifestCodec.decodeMap(wireMap, "codec-agent-attribution")
+    }
+    assertContains(error.reason, "participating_agent_ids must be a list of strings")
+  }
+
+  @Test
+  fun `codec rejects a blank-string element in participating_agent_ids`() {
+    val wireMap = validManifest().toWireMap().toMutableMap()
+
+    @Suppress("UNCHECKED_CAST")
+    val subtasks = (wireMap["subtasks"] as List<Map<String, Any?>>).map { subtask ->
+      subtask.toMutableMap().apply { put("participating_agent_ids", listOf("codex", "")) }
+    }
+    wireMap["subtasks"] = subtasks
+
+    val error = assertFailsWith<InvalidDecompositionManifestSchemaError> {
+      DecompositionManifestCodec.decodeMap(wireMap, "codec-blank-agent-element")
+    }
+    assertContains(error.reason, "participating_agent_ids must be a list of non-blank strings")
+  }
+
+  @Test
   fun `manifest exposes next sibling subtask id without schema changes`() {
     val manifest = validManifest().copy(
       subtasks = listOf(

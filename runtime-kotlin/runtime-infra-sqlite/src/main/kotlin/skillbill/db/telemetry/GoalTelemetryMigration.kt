@@ -58,6 +58,8 @@ internal object GoalTelemetryMigration {
       duration_ms INTEGER NOT NULL,
       attempt_count INTEGER NOT NULL,
       blocked_reason TEXT,
+      finalizing_agent_id TEXT,
+      participating_agent_ids TEXT NOT NULL DEFAULT '[]',
       subtask_event_emitted_at TEXT,
       PRIMARY KEY (issue_key, subtask_id, workflow_id)
     )

@@ -92,6 +92,8 @@ data class FeatureTaskRuntimeGoalContinuationOutcome(
   val commitSha: String? = null,
   val blockedReason: String? = null,
   val lastResumableStep: String,
+  val finalizingAgentId: String? = null,
+  val participatingAgentIds: List<String> = emptyList(),
 ) {
   init {
     require(issueKey.isNotBlank()) { "FeatureTaskRuntimeGoalContinuationOutcome.issueKey must be non-blank." }
@@ -110,9 +112,28 @@ data class FeatureTaskRuntimeGoalContinuationOutcome(
     "status" to status,
     "workflow_id" to workflowId,
     "last_resumable_step" to lastResumableStep,
+    "participating_agent_ids" to participatingAgentIds,
   ).apply {
     commitSha?.let { put("commit_sha", it) }
     blockedReason?.let { put("blocked_reason", it) }
+    finalizingAgentId?.let { put("finalizing_agent_id", it) }
+  }
+
+  companion object {
+    /** Strict decode; loud-fails on a missing or malformed required field. New agent fields are additive-optional. */
+    @OpenBoundaryMap("Feature-task-runtime goal-continuation outcome decode from the durable workflow-artifact map")
+    fun fromArtifactMap(raw: Map<String, Any?>): FeatureTaskRuntimeGoalContinuationOutcome =
+      FeatureTaskRuntimeGoalContinuationOutcome(
+        issueKey = raw.requireStringField("issue_key"),
+        subtaskId = raw.requireIntField("subtask_id"),
+        status = raw.requireStringField("status"),
+        workflowId = raw.requireStringField("workflow_id"),
+        commitSha = raw.optionalStringField("commit_sha"),
+        blockedReason = raw.optionalStringField("blocked_reason"),
+        lastResumableStep = raw.requireStringField("last_resumable_step"),
+        finalizingAgentId = raw.optionalStringField("finalizing_agent_id"),
+        participatingAgentIds = raw.optionalStringListField("participating_agent_ids"),
+      )
   }
 }
 
@@ -347,6 +368,22 @@ private fun Map<String, Any?>.optionalIntField(key: String): Int? {
     ?: throw InvalidWorkflowStateSchemaError(
       "Feature-task-runtime artifact field '$key' must decode to an integer when present.",
     )
+}
+
+private fun Map<String, Any?>.optionalStringListField(key: String): List<String> {
+  if (!containsKey(key) || this[key] == null) {
+    return emptyList()
+  }
+  val list = this[key] as? List<*>
+    ?: throw InvalidWorkflowStateSchemaError(
+      "Feature-task-runtime artifact field '$key' must decode to a list of strings when present.",
+    )
+  return list.map { element ->
+    (element as? String)?.takeIf(String::isNotBlank)
+      ?: throw InvalidWorkflowStateSchemaError(
+        "Feature-task-runtime artifact field '$key' must contain only non-blank strings.",
+      )
+  }
 }
 
 private fun Map<String, Any?>.optionalBooleanField(key: String): Boolean? {

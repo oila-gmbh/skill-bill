@@ -6,6 +6,7 @@ import skillbill.application.featuretask.FeatureTaskRuntimeDecomposeTerminalReco
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
 import skillbill.application.featuretask.FeatureTaskRuntimeRunInvariantsStore
 import skillbill.application.featuretask.FeatureTaskRuntimeStatusService
+import skillbill.application.featuretask.agentAttributionFromPhaseState
 import skillbill.application.model.FeatureTaskRuntimePhaseLedgerRequest
 import skillbill.application.model.FeatureTaskRuntimePhaseStateRequest
 import skillbill.application.model.FeatureTaskRuntimeStatusRequest
@@ -22,6 +23,10 @@ import skillbill.ports.persistence.model.WorkflowStateRecord
 import skillbill.workflow.WorkflowSnapshotValidator
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction.BLOCKED
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction.COMPLETE
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction.RESUME
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction.START
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
 import java.nio.file.Path
 import kotlin.test.Test
@@ -243,6 +248,82 @@ class FeatureTaskRuntimeStatusServiceTest {
     assertNull(projection.currentPhaseId, "a completed forward run reports no current phase, not implement_fix")
   }
 
+  @Test
+  fun `attribution rolls up a single-agent run to participating equals finalizer`() {
+    val harness = statusHarness()
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    harness.recordCompleted("implement", attemptCount = 1, resolvedAgentId = "codex")
+    harness.recordLedger(START, "implement", attemptCount = 1, resolvedAgentId = "codex")
+    harness.recordLedger(COMPLETE, "commit_push", attemptCount = 1, resolvedAgentId = "codex")
+
+    val attribution = harness.attribution()
+
+    assertEquals("codex", attribution.finalizingAgentId)
+    assertEquals(listOf("codex"), attribution.participatingAgentIds)
+  }
+
+  @Test
+  fun `attribution rolls up a multi-agent recovery handoff to order-stable participants and resuming finalizer`() {
+    val harness = statusHarness()
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    // codex starts, hits a limit; claude resumes and completes.
+    // A phase record for the completed implement phase carries claude as its resolvedAgentId,
+    // exercising the phase-record sweep path in agentAttributionFromPhaseState.
+    harness.recordLedger(START, "implement", attemptCount = 1, resolvedAgentId = "codex")
+    harness.recordLedger(RESUME, "implement", attemptCount = 2, resolvedAgentId = "claude")
+    harness.recordCompleted("implement", attemptCount = 2, resolvedAgentId = "claude")
+    harness.recordLedger(COMPLETE, "commit_push", attemptCount = 1, resolvedAgentId = "claude")
+
+    val attribution = harness.attribution()
+
+    assertEquals("claude", attribution.finalizingAgentId)
+    // codex contributed via ledger (START); claude contributed via both ledger (RESUME/COMPLETE) and phase record.
+    assertEquals(listOf("codex", "claude"), attribution.participatingAgentIds)
+  }
+
+  @Test
+  fun `attribution finalizer is the terminal blocked ledger entry`() {
+    val harness = statusHarness()
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    harness.recordLedger(START, "implement", attemptCount = 1, resolvedAgentId = "codex")
+    harness.recordLedger(BLOCKED, "review", attemptCount = 3, resolvedAgentId = "claude")
+
+    val attribution = harness.attribution()
+
+    assertEquals("claude", attribution.finalizingAgentId)
+    assertEquals(listOf("codex", "claude"), attribution.participatingAgentIds)
+  }
+
+  @Test
+  fun `attribution falls back to the durable terminal phase record when the ledger terminal entry is pruned`() {
+    // The 200-cap ledger may prune the COMPLETE/BLOCKED entry; the durable blocked record carries the finalizer.
+    val harness = statusHarness()
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    harness.recordBlocked("implement", attemptCount = 3, blockedReason = "exhausted", resolvedAgentId = "claude")
+    // Ledger carries only a non-terminal START (the BLOCKED entry was pruned away).
+    harness.recordLedger(START, "implement", attemptCount = 1, resolvedAgentId = "codex")
+
+    val attribution = harness.attribution()
+
+    assertEquals("claude", attribution.finalizingAgentId)
+    // Participants still include the pruned-ledger record agent via the phase-record sweep.
+    assertEquals(listOf("codex", "claude"), attribution.participatingAgentIds)
+  }
+
+  @Test
+  fun `projection surfaces the ledger-derived finalizing agent even without a goal continuation`() {
+    val harness = statusHarness()
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    harness.recordLedger(START, "implement", attemptCount = 1, resolvedAgentId = "codex")
+    harness.recordLedger(COMPLETE, "commit_push", attemptCount = 1, resolvedAgentId = "claude")
+
+    val projection = requireNotNull(
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+    )
+
+    assertEquals("claude", projection.finalizingAgentId)
+  }
+
   private fun statusHarness(): StatusHarness {
     val repository = StatusInMemoryWorkflowRepository()
     val database = StatusFakeDatabaseSessionFactory(repository)
@@ -263,54 +344,63 @@ class FeatureTaskRuntimeStatusServiceTest {
     val runInvariantsStore: FeatureTaskRuntimeRunInvariantsStore,
     val service: FeatureTaskRuntimeStatusService,
   ) {
-    fun recordRunning(phaseId: String, attemptCount: Int) = recorder.recordPhaseState(
-      FeatureTaskRuntimePhaseStateRequest(
-        workflowId = WORKFLOW_ID,
-        phaseId = phaseId,
-        status = "running",
-        attemptCount = attemptCount,
-        resolvedAgentId = "claude",
-        finished = false,
-        outputArtifact = null,
-      ),
-    )
-
-    fun recordCompleted(phaseId: String, attemptCount: Int) = recorder.recordPhaseState(
-      FeatureTaskRuntimePhaseStateRequest(
-        workflowId = WORKFLOW_ID,
-        phaseId = phaseId,
-        status = "completed",
-        attemptCount = attemptCount,
-        resolvedAgentId = "claude",
-        finished = true,
-        outputArtifact = """{"contract_version":"0.1"}""",
-      ),
-    )
-
-    fun recordBlocked(phaseId: String, attemptCount: Int, blockedReason: String) = recorder.recordPhaseState(
-      FeatureTaskRuntimePhaseStateRequest(
-        workflowId = WORKFLOW_ID,
-        phaseId = phaseId,
-        status = "blocked",
-        attemptCount = attemptCount,
-        resolvedAgentId = "claude",
-        finished = false,
-        outputArtifact = null,
-        blockedReason = blockedReason,
-      ),
-    )
-
-    fun recordLedger(action: FeatureTaskRuntimePhaseLedgerAction, phaseId: String, attemptCount: Int) =
-      recorder.appendLedgerEntry(
-        FeatureTaskRuntimePhaseLedgerRequest(
+    fun recordRunning(phaseId: String, attemptCount: Int, resolvedAgentId: String = "claude") =
+      recorder.recordPhaseState(
+        FeatureTaskRuntimePhaseStateRequest(
           workflowId = WORKFLOW_ID,
-          action = action,
           phaseId = phaseId,
+          status = "running",
           attemptCount = attemptCount,
-          resolvedAgentId = "claude",
-          blockedReason = if (action == FeatureTaskRuntimePhaseLedgerAction.BLOCKED) "fix loop exhausted" else null,
+          resolvedAgentId = resolvedAgentId,
+          finished = false,
+          outputArtifact = null,
         ),
       )
+
+    fun recordCompleted(phaseId: String, attemptCount: Int, resolvedAgentId: String = "claude") =
+      recorder.recordPhaseState(
+        FeatureTaskRuntimePhaseStateRequest(
+          workflowId = WORKFLOW_ID,
+          phaseId = phaseId,
+          status = "completed",
+          attemptCount = attemptCount,
+          resolvedAgentId = resolvedAgentId,
+          finished = true,
+          outputArtifact = """{"contract_version":"0.1"}""",
+        ),
+      )
+
+    fun recordBlocked(phaseId: String, attemptCount: Int, blockedReason: String, resolvedAgentId: String = "claude") =
+      recorder.recordPhaseState(
+        FeatureTaskRuntimePhaseStateRequest(
+          workflowId = WORKFLOW_ID,
+          phaseId = phaseId,
+          status = "blocked",
+          attemptCount = attemptCount,
+          resolvedAgentId = resolvedAgentId,
+          finished = false,
+          outputArtifact = null,
+          blockedReason = blockedReason,
+        ),
+      )
+
+    fun recordLedger(
+      action: FeatureTaskRuntimePhaseLedgerAction,
+      phaseId: String,
+      attemptCount: Int,
+      resolvedAgentId: String = "claude",
+    ) = recorder.appendLedgerEntry(
+      FeatureTaskRuntimePhaseLedgerRequest(
+        workflowId = WORKFLOW_ID,
+        action = action,
+        phaseId = phaseId,
+        attemptCount = attemptCount,
+        resolvedAgentId = resolvedAgentId,
+        blockedReason = if (action == FeatureTaskRuntimePhaseLedgerAction.BLOCKED) "fix loop exhausted" else null,
+      ),
+    )
+
+    fun attribution() = agentAttributionFromPhaseState(recorder, WORKFLOW_ID)
 
     fun recordRunInvariants(featureSize: FeatureTaskRuntimeFeatureSize) {
       runInvariantsStore.resolve(

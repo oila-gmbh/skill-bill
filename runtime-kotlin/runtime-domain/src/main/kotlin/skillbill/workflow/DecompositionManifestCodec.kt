@@ -28,27 +28,7 @@ private fun Map<String, Any?>.toDecompositionManifest(sourceLabel: String): Deco
       ?: invalidDecompositionManifest(sourceLabel, "spec_source '$rawSpecSource' is not supported.")
   }
   val subtasks = listValue("subtasks").mapIndexed { index, raw ->
-    val item = raw.asMap(sourceLabel, "subtasks[$index]")
-    DecompositionSubtask(
-      id = item.intValue("id", sourceLabel),
-      name = item.stringValue("name", sourceLabel),
-      specPath = item.stringValue("spec_path", sourceLabel),
-      status = item.stringValue("status", sourceLabel),
-      branch = item.nullableStringValue("branch", sourceLabel),
-      commitSha = item.nullableStringValue("commit_sha", sourceLabel),
-      workflowId = item.nullableStringValue("workflow_id", sourceLabel),
-      blockedReason = item.nullableStringValue("blocked_reason", sourceLabel),
-      lastResumableStep = item.nullableStringValue("last_resumable_step", sourceLabel),
-      linearIssueId = item.nullableStringValue("linear_issue_id", sourceLabel),
-      dependencies = item.listValue("dependencies").mapIndexed { depIndex, dep ->
-        val dependency = dep.asMap(sourceLabel, "subtasks[$index].dependencies[$depIndex]")
-        DecompositionDependency(
-          subtaskId = dependency.intValue("subtask_id", sourceLabel),
-          optional = dependency.booleanValue("optional", sourceLabel),
-          skipped = dependency.booleanValue("skipped", sourceLabel),
-        )
-      },
-    )
+    raw.asMap(sourceLabel, "subtasks[$index]").toDecompositionSubtask(sourceLabel, index)
   }
   val current = this["current_subtask_intent"].asMap(sourceLabel, "current_subtask_intent")
   return DecompositionManifest(
@@ -74,6 +54,46 @@ private fun Map<String, Any?>.toDecompositionManifest(sourceLabel: String): Deco
       action = current.stringValue("action", sourceLabel),
     ),
     subtasks = subtasks,
+  )
+}
+
+private fun Map<String, Any?>.toDecompositionSubtask(sourceLabel: String, index: Int): DecompositionSubtask {
+  val participatingAgentIds = when (val value = this["participating_agent_ids"]) {
+    null -> emptyList()
+    is List<*> -> value.map { element ->
+      val str = element as? String
+        ?: invalidDecompositionManifest(sourceLabel, "participating_agent_ids must be a list of strings.")
+      str.takeIf(String::isNotBlank)
+        ?: invalidDecompositionManifest(sourceLabel, "participating_agent_ids must be a list of non-blank strings.")
+    }
+    else -> invalidDecompositionManifest(sourceLabel, "participating_agent_ids must be a list of strings or null.")
+  }
+  return DecompositionSubtask(
+    id = intValue("id", sourceLabel),
+    name = stringValue("name", sourceLabel),
+    specPath = stringValue("spec_path", sourceLabel),
+    status = stringValue("status", sourceLabel),
+    branch = nullableStringValue("branch", sourceLabel),
+    commitSha = nullableStringValue("commit_sha", sourceLabel),
+    workflowId = nullableStringValue("workflow_id", sourceLabel),
+    blockedReason = nullableStringValue("blocked_reason", sourceLabel),
+    lastResumableStep = nullableStringValue("last_resumable_step", sourceLabel),
+    linearIssueId = nullableStringValue("linear_issue_id", sourceLabel),
+    finalizingAgentId = when (val raw = this["finalizing_agent_id"]) {
+      null -> null
+      is String -> raw.takeIf(String::isNotBlank)
+        ?: invalidDecompositionManifest(sourceLabel, "finalizing_agent_id must be a non-blank string or null.")
+      else -> invalidDecompositionManifest(sourceLabel, "finalizing_agent_id must be a string or null.")
+    },
+    participatingAgentIds = participatingAgentIds,
+    dependencies = listValue("dependencies").mapIndexed { depIndex, dep ->
+      val dependency = dep.asMap(sourceLabel, "subtasks[$index].dependencies[$depIndex]")
+      DecompositionDependency(
+        subtaskId = dependency.intValue("subtask_id", sourceLabel),
+        optional = dependency.booleanValue("optional", sourceLabel),
+        skipped = dependency.booleanValue("skipped", sourceLabel),
+      )
+    },
   )
 }
 

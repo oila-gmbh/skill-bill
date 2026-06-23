@@ -7,6 +7,11 @@ import skillbill.application.workflow.repoRoot
 import skillbill.contracts.JsonSupport
 import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_STATUS_BLOCKED
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
+
+internal const val BRANCH_SETUP_AGENT_SENTINEL = "branch-setup"
 
 // Capture-at-source for a completed goal-continuation run (SKILL-68). Under suppress_pr the
 // per-subtask commit invariant requires a SHA: take it from the phase payload, else measure git
@@ -60,6 +65,71 @@ internal fun completeSubtaskOutcome(
 internal fun measuredHeadSha(gitOperations: WorkflowGitOperations, request: FeatureTaskRuntimeRunRequest): String? {
   val result = gitOperations.headCommitSha(request.repoRoot)
   return result.value.trim().takeIf { result.ok && it.isNotBlank() }
+}
+
+/**
+ * The agent-attribution rollup derived from the child's existing phase ledger / phase records.
+ * [finalizingAgentId] is the resolved agent of the terminal COMPLETE/BLOCKED action; [participatingAgentIds]
+ * is the order-stable distinct set of resolved agents that actually executed a phase.
+ */
+internal data class SubtaskAgentAttribution(
+  val finalizingAgentId: String?,
+  val participatingAgentIds: List<String>,
+)
+
+// Effect-free rollup over the durable phase ledger + per-phase records. Re-resolves nothing and mints no
+// value: every agent id read here is a resolvedAgentId the runtime already persisted. Participants are
+// first-seen distinct resolved agents walking the ordered ledger, then any phase-record agent the ledger
+// pruning may have dropped. The finalizer is the resolved agent of the last COMPLETE/BLOCKED ledger entry,
+// falling back to the terminal phase record (blocked record, else the last-finished phase) when that ledger
+// entry has been pruned.
+internal fun agentAttributionFromPhaseState(
+  recorder: FeatureTaskRuntimePhaseRecorder,
+  workflowId: String,
+  dbOverride: String? = null,
+): SubtaskAgentAttribution {
+  val ledger = recorder.loadPhaseLedger(workflowId, dbOverride)
+    .orEmpty()
+    .sortedBy { it.sequenceNumber }
+  val records = recorder.loadPhaseRecords(workflowId, dbOverride).orEmpty()
+
+  val participating = LinkedHashSet<String>()
+  ledger.forEach { entry ->
+    entry.resolvedAgentId?.takeIf { it.isNotBlank() && it != BRANCH_SETUP_AGENT_SENTINEL }
+      ?.let(participating::add)
+  }
+  records.values.forEach { record ->
+    record.resolvedAgentId.takeIf { it.isNotBlank() && it != BRANCH_SETUP_AGENT_SENTINEL }
+      ?.let(participating::add)
+  }
+
+  val finalizingFromLedger = ledger.lastOrNull { entry ->
+    (
+      entry.action == FeatureTaskRuntimePhaseLedgerAction.COMPLETE ||
+        entry.action == FeatureTaskRuntimePhaseLedgerAction.BLOCKED
+      ) &&
+      !entry.resolvedAgentId.isNullOrBlank()
+  }?.resolvedAgentId
+  val finalizingAgentId = finalizingFromLedger ?: terminalRecordAgentId(records)
+
+  return SubtaskAgentAttribution(
+    finalizingAgentId = finalizingAgentId,
+    participatingAgentIds = participating.toList(),
+  )
+}
+
+// Fallback finalizer when the terminal ledger entry was pruned: prefer the blocked terminal record with the
+// greatest finishedAt (deterministic on multiple blocked), else the last-finished phase record by the same
+// ordering. Branch-setup-sentinel records are excluded: they carry no real agent id.
+private fun terminalRecordAgentId(records: Map<String, FeatureTaskRuntimePhaseRecord>): String? {
+  val realRecords = records.values.filter { it.resolvedAgentId != BRANCH_SETUP_AGENT_SENTINEL }
+  realRecords.filter { it.status == FEATURE_TASK_RUNTIME_PHASE_STATUS_BLOCKED }
+    .maxByOrNull { it.finishedAt.orEmpty() }
+    ?.let { return it.resolvedAgentId }
+  return realRecords
+    .filter { it.finishedAt != null }
+    .maxByOrNull { it.finishedAt.orEmpty() }
+    ?.resolvedAgentId
 }
 
 internal fun commitShaFromPhaseRecords(

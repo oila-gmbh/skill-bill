@@ -1,5 +1,14 @@
 # Boundary History — runtime-kotlin/runtime-infra-fs
 
+## [2026-06-23] SKILL-89 per-subtask agent attribution — Seam D fs adapter
+Areas: runtime-infra-fs/fs (new `FileSystemFeatureTaskRuntimeSpecStatusWriter`)
+- `FileSystemFeatureTaskRuntimeSpecStatusWriter` implements the new `FeatureTaskRuntimeSpecStatusWriter` port; writes an idempotent `Agent: <id>` line immediately after the `Status:` line under `## Status` in a tracked `spec.md`. Three cases: (1) `## Status` heading absent → no-op; (2) `Agent:` line present → update in place; (3) heading present, no `Agent:` line → insert on the next line.
+- File read/write is line-by-line via `readLines()`/`writeText`; no regex replace — plain index insertion avoids clobbering adjacent heading content. reusable
+- Accepts a null `specPath` gracefully (port contract); wired into `FeatureTaskRuntimeSpecGate.finalizeSingleSpecOnTerminal` where it is called only when `specPath != null`. No loud-fail on a missing spec path — SMALL/no-spec runs are a no-op. reusable
+- The acceptance-criteria reader (`FileSystemFeatureTaskRuntimeRunInvariantsSource`) keys off `## Acceptance Criteria`; `Agent:` lives only under `## Status`, so the two headings never collide.
+Feature flag: N/A
+Acceptance criteria: part of SKILL-89 12/12 — see runtime-kotlin/agent/history.md
+
 ## [2026-06-22] SKILL-88 opencode-pty-stdio
 Areas: runtime-infra-fs/launcher/process, runtime-infra-fs/launcher/agentrun, runtime-application/featuretask
 - PTY-backed stdio spawn path for opencode: `startPtyProcess()` in `JvmAgentRunProcessRunner` allocates a POSIX master fd via JNA (`PosixCLibrary` / `PosixLib`), builds the child process with `redirectInput/Output/Error(File(slavePath))`, and reads output through `PtyMasterInputStream` → `CappedUtf8Drain`. Fixes Bun-compiled opencode aborting status 1 when its stdout is a JVM pipe

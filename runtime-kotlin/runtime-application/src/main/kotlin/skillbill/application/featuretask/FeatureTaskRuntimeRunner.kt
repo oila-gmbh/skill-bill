@@ -159,7 +159,7 @@ class FeatureTaskRuntimeRunner(
     }.getOrThrow()
     val terminalReport =
       persistGoalContinuationOutcome(goalContinuationRecorder, recorder, phaseGates.gitOperations, runRequest, report)
-    phaseGates.specGate.deleteSingleSpecScratchOnTerminalSuccess(runRequest, terminalReport, specSource)
+    phaseGates.specGate.finalizeSingleSpecOnTerminal(runRequest, terminalReport, specSource, ::finalizingAgentId)
     lifecycleTelemetry.finished(
       telemetrySessionId,
       terminalReport,
@@ -199,6 +199,11 @@ class FeatureTaskRuntimeRunner(
       .mapNotNull { it.edgeIteration }
       .maxOrNull()
       ?: 0
+
+  // The Seam A ledger-derived finalizing agent for the single-spec completion-time `Agent:` line; the
+  // spec gate invokes this lazily only when it decides to write (terminal, non-goal-continuation run).
+  private fun finalizingAgentId(request: FeatureTaskRuntimeRunRequest): String? =
+    agentAttributionFromPhaseState(recorder, request.workflowId, request.dbPathOverride).finalizingAgentId
 
   // Drives the ordered phase loop for one run, owning the run-scoped resolved branch so the loop
   // body stays a single advance() call. The resolved branch is null until the first file-mutating
@@ -1548,7 +1553,13 @@ private fun persistGoalContinuationOutcome(
   report: FeatureTaskRuntimeRunReport,
 ): FeatureTaskRuntimeRunReport {
   val context = request.goalContinuation ?: return report
-  val outcome = goalContinuationOutcomeFor(phaseRecorder, gitOperations, request, context, report)
+  val outcome = goalContinuationOutcomeFor(phaseRecorder, gitOperations, request, context, report)?.let { base ->
+    val attribution = agentAttributionFromPhaseState(phaseRecorder, request.workflowId, request.dbPathOverride)
+    base.copy(
+      finalizingAgentId = attribution.finalizingAgentId,
+      participatingAgentIds = attribution.participatingAgentIds,
+    )
+  }
   outcome?.let { terminal ->
     goalContinuationRecorder.recordGoalContinuationState(
       workflowId = request.workflowId,
@@ -1560,6 +1571,8 @@ private fun persistGoalContinuationOutcome(
         commitSha = terminal.commitSha,
         blockedReason = terminal.blockedReason,
         lastResumableStep = terminal.lastResumableStep,
+        finalizingAgentId = terminal.finalizingAgentId,
+        participatingAgentIds = terminal.participatingAgentIds,
       ),
       workflowStatus = if (terminal.status == "complete") "completed" else "blocked",
       dbOverride = request.dbPathOverride,
