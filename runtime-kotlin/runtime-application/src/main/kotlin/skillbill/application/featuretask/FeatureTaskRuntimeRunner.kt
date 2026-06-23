@@ -983,6 +983,7 @@ class FeatureTaskRuntimeRunner(
               ?.takeIf { run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW },
             specSource = run.specSource,
             priorSchemaFailure = priorSchemaFailure,
+            specReference = run.request.runInvariants.specReference,
           ),
         ),
       ),

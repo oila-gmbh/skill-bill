@@ -12,6 +12,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
  * Without this delivery the agent would receive the default goal-continuation prompt and could
  * never produce schema-valid phase output.
  */
+@Suppress("TooManyFunctions") // one cohesive prompt-composition seam; each function is a named directive
 object FeatureTaskRuntimePhasePromptComposer {
   @Suppress("LongParameterList") // one cohesive phase-prompt delivery; bundling these would only hide them
   fun compose(
@@ -21,6 +22,7 @@ object FeatureTaskRuntimePhasePromptComposer {
     parallelReviewAgent: String? = null,
     specSource: SpecSource = SpecSource.LOCAL,
     priorSchemaFailure: String? = null,
+    specReference: String? = null,
   ): String {
     require(issueKey.isNotBlank()) { "issueKey is required to compose a phase prompt." }
     return listOf(
@@ -30,6 +32,7 @@ object FeatureTaskRuntimePhasePromptComposer {
       goalContinuationDirective(briefing.phaseId, suppressDecomposition),
       parallelReviewDirective(briefing.phaseId, parallelReviewAgent),
       commitExclusionDirective(briefing.phaseId, issueKey, specSource),
+      specCommitInclusionDirective(briefing.phaseId, specReference, specSource),
       briefing.briefingText,
       retryCorrectionDirective(priorSchemaFailure),
       outputContract(briefing.phaseId),
@@ -195,6 +198,24 @@ object FeatureTaskRuntimePhasePromptComposer {
       spec, and `decomposition-manifest.yaml`. The committed tree must contain no spec, subtask spec,
       or manifest file. The local spec scratch is deleted on terminal success and rehydrated from
       Linear when a later resume or verify needs it.
+    """.trimIndent()
+  }
+
+  // Emits only for the commit phase of a local-mode run when a spec reference is known: the runtime
+  // updates the spec file with the run's completion status just before launching commit_push, so the
+  // agent must include it in the staged files. Empty for linear mode (spec is excluded from the commit
+  // there) and for all other phases, leaving those prompts byte-for-byte unchanged.
+  private fun specCommitInclusionDirective(phaseId: String, specReference: String?, specSource: SpecSource): String {
+    if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH ||
+      specSource != SpecSource.LOCAL ||
+      specReference.isNullOrBlank()
+    ) {
+      return ""
+    }
+    return """
+      ## Spec file — stage with this commit
+      The runtime updated `$specReference` with the run's completion status just before this
+      phase was launched. Stage it together with the other changed files.
     """.trimIndent()
   }
 

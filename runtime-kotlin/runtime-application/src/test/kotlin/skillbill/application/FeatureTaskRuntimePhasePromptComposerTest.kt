@@ -156,6 +156,61 @@ class FeatureTaskRuntimePhasePromptComposerTest {
   }
 
   @Test
+  fun `local commit_push prompt with specReference includes spec inclusion directive`() {
+    val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor("commit_push"),
+      specSource = SpecSource.LOCAL,
+      specReference = SPEC_REFERENCE,
+    )
+
+    assertContains(prompt, "Spec file — stage with this commit")
+    assertContains(prompt, SPEC_REFERENCE)
+  }
+
+  @Test
+  fun `spec inclusion directive is absent when specReference is null or blank`() {
+    val noRef = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor("commit_push"),
+      specSource = SpecSource.LOCAL,
+    )
+    val blankRef = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor("commit_push"),
+      specSource = SpecSource.LOCAL,
+      specReference = "  ",
+    )
+
+    assertTrue(!noRef.contains("Spec file — stage with this commit"), "null specReference must not emit directive")
+    assertTrue(!blankRef.contains("Spec file — stage with this commit"), "blank specReference must not emit directive")
+  }
+
+  @Test
+  fun `spec inclusion directive is absent in linear mode even with specReference`() {
+    val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor("commit_push"),
+      specSource = SpecSource.LINEAR,
+      specReference = SPEC_REFERENCE,
+    )
+
+    assertTrue(!prompt.contains("Spec file — stage with this commit"), "linear mode must not emit spec inclusion")
+  }
+
+  @Test
+  fun `spec inclusion directive is absent on non-commit phases`() {
+    val implementPrompt = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor("implement"),
+      specSource = SpecSource.LOCAL,
+      specReference = SPEC_REFERENCE,
+    )
+
+    assertTrue(!implementPrompt.contains("Spec file — stage with this commit"))
+  }
+
+  @Test
   fun `linear spec-exclusion is absent on non-commit phases`() {
     val implementPrompt = FeatureTaskRuntimePhasePromptComposer.compose(
       ISSUE_KEY,
