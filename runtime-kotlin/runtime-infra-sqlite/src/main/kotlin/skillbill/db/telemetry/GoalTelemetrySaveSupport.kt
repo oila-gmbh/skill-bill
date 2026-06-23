@@ -14,8 +14,8 @@ fun saveGoalStarted(connection: Connection, record: GoalStartedRecord) {
   connection.prepareStatement(
     """
     INSERT INTO goal_run_sessions (
-      workflow_id, issue_key, feature_name, subtask_total, resumed, started_at
-    ) VALUES (?, ?, ?, ?, ?, ?)
+      workflow_id, issue_key, feature_name, subtask_total, resumed, started_at, mode
+    ) VALUES (?, ?, ?, ?, ?, ?, ?)
     """.trimIndent(),
   ).use { statement ->
     statement.bind(
@@ -25,6 +25,7 @@ fun saveGoalStarted(connection: Connection, record: GoalStartedRecord) {
       record.subtaskTotal,
       record.resumed.toSqlInt(),
       record.startedAt,
+      record.mode,
     )
     statement.executeUpdate()
   }
@@ -38,7 +39,8 @@ private fun updateGoalStarted(connection: Connection, record: GoalStartedRecord)
       feature_name = ?,
       subtask_total = ?,
       resumed = ?,
-      started_at = ?
+      started_at = ?,
+      mode = ?
     WHERE workflow_id = ?
     """.trimIndent(),
   ).use { statement ->
@@ -48,6 +50,7 @@ private fun updateGoalStarted(connection: Connection, record: GoalStartedRecord)
       record.subtaskTotal,
       record.resumed.toSqlInt(),
       record.startedAt,
+      record.mode,
       record.workflowId,
     )
     statement.executeUpdate()
@@ -73,7 +76,8 @@ private fun updateGoalFinished(connection: Connection, record: GoalFinishedRecor
       finished_duration_ms = ?,
       subtasks_complete = ?,
       subtasks_blocked = ?,
-      subtasks_skipped = ?
+      subtasks_skipped = ?,
+      mode = ?
     WHERE workflow_id = ?
     """.trimIndent(),
   ).use { statement ->
@@ -86,6 +90,7 @@ private fun updateGoalFinished(connection: Connection, record: GoalFinishedRecor
       record.subtasksComplete,
       record.subtasksBlocked,
       record.subtasksSkipped,
+      record.mode,
       record.workflowId,
     )
     statement.executeUpdate()
@@ -97,8 +102,8 @@ private fun insertGoalFinished(connection: Connection, record: GoalFinishedRecor
     """
     INSERT INTO goal_run_sessions (
       workflow_id, issue_key, started_at, status, finished_at,
-      finished_duration_ms, subtasks_complete, subtasks_blocked, subtasks_skipped
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      finished_duration_ms, subtasks_complete, subtasks_blocked, subtasks_skipped, mode
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """.trimIndent(),
   ).use { statement ->
     statement.bind(
@@ -111,6 +116,7 @@ private fun insertGoalFinished(connection: Connection, record: GoalFinishedRecor
       record.subtasksComplete,
       record.subtasksBlocked,
       record.subtasksSkipped,
+      record.mode,
     )
     statement.executeUpdate()
   }

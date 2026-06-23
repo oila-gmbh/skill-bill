@@ -15,6 +15,7 @@ import skillbill.review.model.FeatureSizeOutcomeStats
 import skillbill.review.model.FeatureTaskRuntimeWorkflowStats
 import skillbill.review.model.FeatureVerifyWorkflowStats
 import skillbill.review.model.GoalBlockedSubtaskSummary
+import skillbill.review.model.GoalModeStats
 import skillbill.review.model.GoalRunSummary
 import skillbill.review.model.GoalWorkflowStats
 import skillbill.review.model.LargeFeatureHealthStats
@@ -234,6 +235,18 @@ private fun GoalWorkflowStats.toPayload(): Map<String, Any?> = linkedMapOf(
   "average_attempt_count" to averageAttemptCount,
   "top_blocked_subtasks" to topBlockedSubtasks.map(GoalBlockedSubtaskSummary::toPayload),
   "most_recent_run" to mostRecentRun?.toPayload(),
+  "by_mode" to byMode.mapValues { (_, v) -> v.toPayload() },
+)
+
+private fun GoalModeStats.toPayload(): Map<String, Any?> = linkedMapOf(
+  "total_runs" to totalRuns,
+  "finished_runs" to finishedRuns,
+  "in_progress_runs" to inProgressRuns,
+  "completed_runs" to completedRuns,
+  "completed_rate" to completedRate,
+  "blocked_runs" to blockedRuns,
+  "blocked_rate" to blockedRate,
+  "average_run_duration_ms" to averageRunDurationMs,
 )
 
 private fun GoalRunSummary.toPayload(): Map<String, Any?> = linkedMapOf(

@@ -54,6 +54,7 @@ internal class GoalRunnerTelemetryEmitter(
         subtaskTotal = state.manifest.subtasks.size,
         resumed = resumed,
         startedAt = segmentStartedAt,
+        mode = "runtime",
       ),
       dbPathOverride,
     )
@@ -106,6 +107,7 @@ internal class GoalRunnerTelemetryEmitter(
         subtasksComplete = manifest.subtasks.count { it.status == "complete" },
         subtasksBlocked = manifest.subtasks.count { it.status == "blocked" },
         subtasksSkipped = manifest.subtasks.count { it.status == "skipped" },
+        mode = "runtime",
       ),
       dbPathOverride,
     )

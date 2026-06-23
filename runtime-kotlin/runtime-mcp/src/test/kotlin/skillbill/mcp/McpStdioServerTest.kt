@@ -734,6 +734,9 @@ private val expectedToolInventory =
     "feature_task_runtime_workflow_open",
     "feature_task_runtime_workflow_resume",
     "feature_task_runtime_workflow_update",
+    "goal_prose_finished",
+    "goal_prose_started",
+    "goal_prose_subtask_finished",
     "goal_stats",
     "import_review",
     "new_skill_scaffold",
@@ -953,6 +956,7 @@ private fun seedGoalBlockedRun(dbPath: Path, workflowId: String) {
         subtaskTotal = 1,
         resumed = false,
         startedAt = "2026-06-05T10:00:00Z",
+        mode = "runtime",
       ),
       level = "full",
     )
@@ -982,6 +986,7 @@ private fun seedGoalBlockedRun(dbPath: Path, workflowId: String) {
         subtasksComplete = 0,
         subtasksBlocked = 1,
         subtasksSkipped = 0,
+        mode = "runtime",
       ),
       level = "full",
     )

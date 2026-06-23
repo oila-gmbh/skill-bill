@@ -1562,6 +1562,7 @@ private fun goalStartedRequest(): GoalStartedRequest = GoalStartedRequest(
   subtaskTotal = 4,
   resumed = true,
   startedAt = "2026-06-04T10:00:00Z",
+  mode = "runtime",
 )
 
 private fun goalSubtaskFinishedRequest(): GoalSubtaskFinishedRequest = GoalSubtaskFinishedRequest(
@@ -1587,6 +1588,7 @@ private fun goalFinishedRequest(): GoalFinishedRequest = GoalFinishedRequest(
   subtasksComplete = 1,
   subtasksBlocked = 1,
   subtasksSkipped = 0,
+  mode = "runtime",
 )
 
 @Suppress("TooManyFunctions") // mirrors the full LifecycleTelemetryRepository contract

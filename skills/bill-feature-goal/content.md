@@ -274,6 +274,61 @@ flows). The Level-1 agent runs the full phase loop
 (preplan → plan → implement → review → audit → validate → history → commit_push)
 in its own fresh context and returns a bounded RESULT block.
 
+### Prose goal lifecycle telemetry
+
+Before starting the subtask loop, call `goal_prose_started` with the prose
+workflow's `workflow_id` as the stable session key. This is idempotent on resume:
+the server performs an UPDATE if the row already exists, so re-calling on resume
+is a safe no-op.
+
+```
+goal_prose_started:
+  issue_key:     <issue key>
+  feature_name:  <feature name from manifest>
+  workflow_id:   <prose workflow's workflow_id>
+  subtask_total: <total subtask count from manifest>
+  resumed:       <true if any subtasks already have terminal status>
+  started_at:    <current ISO-8601 timestamp>
+```
+
+After each Level-1 agent returns with a terminal status, call
+`goal_prose_subtask_finished`. This uses ON CONFLICT DO NOTHING at the database
+level, so re-calling for an already-recorded subtask is a safe no-op.
+
+```
+goal_prose_subtask_finished:
+  issue_key:     <issue key>
+  workflow_id:   <prose workflow's workflow_id>
+  subtask_id:    <subtask id>
+  subtask_name:  <subtask name>
+  status:        <complete | blocked | skipped>
+  started_at:    <subtask started ISO-8601 timestamp>
+  finished_at:   <subtask finished ISO-8601 timestamp>
+  duration_ms:   <duration in milliseconds>
+  attempt_count: <how many times this subtask was attempted>
+  blocked_reason: <free-text reason if blocked, null otherwise>
+```
+
+At goal completion or termination (clean finish or stop-loudly), call
+`goal_prose_finished`:
+
+```
+goal_prose_finished:
+  issue_key:         <issue key>
+  workflow_id:       <prose workflow's workflow_id>
+  status:            <completed | blocked>
+  started_at:        <goal started ISO-8601 timestamp>
+  finished_at:       <goal finished ISO-8601 timestamp>
+  duration_ms:       <total duration in milliseconds>
+  subtasks_complete: <count of subtasks with status=complete>
+  subtasks_blocked:  <count of subtasks with status=blocked>
+  subtasks_skipped:  <count of subtasks with status=skipped>
+```
+
+These three calls produce a `goal_run_sessions` row with `mode=prose` and the
+corresponding `goal_subtask_events` rows, making prose goal runs directly
+comparable to runtime goal runs in `goal_stats`.
+
 Selection semantics follow the runtime DecompositionWorkflowContinuation
 selector: resume the in-progress subtask; else start the first pending subtask
 whose dependencies are complete; else report blocked or all-complete. Resolve the

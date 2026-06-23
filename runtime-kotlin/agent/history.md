@@ -1,3 +1,14 @@
+## [2026-06-23] SKILL-92 goal-mode-attribution
+Areas: runtime-kotlin/runtime-domain, runtime-kotlin/runtime-application, runtime-kotlin/runtime-infra-sqlite, runtime-kotlin/runtime-mcp, orchestration/contracts, skills/bill-feature-goal
+- `mode` field added to `GoalStartedRecord/Request` and `GoalFinishedRecord/Request` (values: `prose` | `runtime`); `GoalRunnerTelemetryEmitter` stamps `mode="runtime"` on every runtime goal. reusable
+- Self-heal: `ensureGoalRunSessionsColumns()` adds `goal_run_sessions.mode` with `DEFAULT 'runtime'`; legacy null rows attribute to `runtime` automatically — no destructive migration. reusable PATTERN: additive column with a legacy-safe default avoids attribution ambiguity for pre-feature rows.
+- New agent-callable MCP tools: `goal_prose_started`, `goal_prose_subtask_finished`, `goal_prose_finished` — mirror `feature_task_prose_*` lifecycle shape; handlers in `McpLifecycleToolHandlers`, routed in `McpToolDispatcher`. reusable
+- Idempotency: `saveGoalStarted` uses `INSERT OR IGNORE`; `saveGoalFinished` guards before UPDATE — re-emitting the same boundary is a no-op, matching runtime path discipline. reusable PATTERN: goal lifecycle tools are safe to call more than once; callers need not track whether the boundary has been emitted.
+- `GoalWorkflowStats.byMode` breakdown: `GoalModeStats` per-mode aggregation; `buildGoalStats` groups by the `mode` column with `COALESCE(mode, 'runtime')` fallback; `goal_stats` serializes `by_mode` map. reusable PATTERN: stats aggregator and DB column default must agree on the legacy-row fallback value — `'runtime'`, not `'unknown'`.
+- Contract bumped 1.2.0→1.3.0; `goalStartedEvent`/`goalFinishedEvent` gain `mode` enum in `required[]`; `TELEMETRY_EVENT_CONTRACT_VERSION` updated in lockstep (parity test enforces it).
+Feature flag: N/A
+Acceptance criteria: 10/10 implemented
+
 ## [2026-06-23] SKILL-91 telemetry token estimation (runtime + prose)
 Areas: runtime-kotlin/runtime-domain, runtime-kotlin/runtime-application, runtime-kotlin/runtime-infra-sqlite, runtime-kotlin/runtime-mcp, orchestration/contracts, skills/bill-feature-task-prose
 - Single shared estimator: `TokenEstimator.estimateTokens(text)` = `ceil(utf8ByteCount / BYTES_PER_TOKEN)` (named constant `4`) in `runtime-domain`; both runtime and prose paths call it — no inline re-derivation of the heuristic anywhere. reusable

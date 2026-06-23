@@ -14,6 +14,7 @@ fun GoalStartedRequest.toRecord(): GoalStartedRecord = GoalStartedRecord(
   subtaskTotal = subtaskTotal,
   resumed = resumed,
   startedAt = startedAt,
+  mode = mode,
 )
 
 fun GoalSubtaskFinishedRequest.toRecord(): GoalSubtaskFinishedRecord = GoalSubtaskFinishedRecord(
@@ -41,4 +42,5 @@ fun GoalFinishedRequest.toRecord(): GoalFinishedRecord = GoalFinishedRecord(
   subtasksComplete = subtasksComplete,
   subtasksBlocked = subtasksBlocked,
   subtasksSkipped = subtasksSkipped,
+  mode = mode,
 )

@@ -119,6 +119,7 @@ data class GoalStartedRecord(
   val subtaskTotal: Int,
   val resumed: Boolean,
   val startedAt: String,
+  val mode: String,
 )
 
 data class GoalSubtaskFinishedRecord(
@@ -146,4 +147,5 @@ data class GoalFinishedRecord(
   val subtasksComplete: Int,
   val subtasksBlocked: Int,
   val subtasksSkipped: Int,
+  val mode: String,
 )

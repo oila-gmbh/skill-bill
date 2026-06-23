@@ -1,0 +1,129 @@
+package skillbill.application
+
+import skillbill.application.goalrunner.GoalLifecycleTelemetryEmitter
+import skillbill.application.goalrunner.GoalRunner
+import skillbill.application.goalrunner.toRecord
+import skillbill.application.model.GoalFinishedRequest
+import skillbill.application.model.GoalRunnerEventSink
+import skillbill.application.model.GoalStartedRequest
+import skillbill.application.model.GoalSubtaskFinishedRequest
+import skillbill.goalrunner.model.GoalRunnerRunReport
+import java.nio.file.Path
+import java.time.Clock
+import java.time.Instant
+import java.time.ZoneOffset
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertIs
+
+class GoalModeAttributionUnitTest {
+
+  @Test
+  fun `GoalStartedRequest mode field passes through toRecord`() {
+    val request = GoalStartedRequest(
+      issueKey = "SKILL-92",
+      featureName = "test",
+      workflowId = "wf-1",
+      subtaskTotal = 1,
+      resumed = false,
+      startedAt = "2026-06-23T10:00:00Z",
+      mode = "prose",
+    )
+    val record = request.toRecord()
+    assertEquals("prose", record.mode)
+  }
+
+  @Test
+  fun `GoalFinishedRequest mode field passes through toRecord`() {
+    val request = GoalFinishedRequest(
+      issueKey = "SKILL-92",
+      workflowId = "wf-1",
+      status = "completed",
+      startedAt = "2026-06-23T10:00:00Z",
+      finishedAt = "2026-06-23T11:00:00Z",
+      durationMs = 3_600_000,
+      subtasksComplete = 1,
+      subtasksBlocked = 0,
+      subtasksSkipped = 0,
+      mode = "runtime",
+    )
+    val record = request.toRecord()
+    assertEquals("runtime", record.mode)
+  }
+
+  @Test
+  fun `GoalRunnerTelemetryEmitter stamps mode=runtime on goalStarted`() {
+    val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 1))
+    val outcomes = RecordingOutcomeStore()
+    val launcher = completingLauncher(store, outcomes)
+    val telemetry = ModeCapturingTelemetryEmitter()
+    val runner = goalRunner(store, launcher, outcomes, telemetry)
+
+    val report = runner.run(runRequest())
+
+    assertIs<GoalRunnerRunReport.Completed>(report)
+    assertEquals("runtime", telemetry.started.single().mode)
+  }
+
+  @Test
+  fun `GoalRunnerTelemetryEmitter stamps mode=runtime on goalFinished`() {
+    val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 1))
+    val outcomes = RecordingOutcomeStore()
+    val launcher = completingLauncher(store, outcomes)
+    val telemetry = ModeCapturingTelemetryEmitter()
+    val runner = goalRunner(store, launcher, outcomes, telemetry)
+
+    val report = runner.run(runRequest())
+
+    assertIs<GoalRunnerRunReport.Completed>(report)
+    assertEquals("runtime", telemetry.finished.single().mode)
+  }
+
+  private fun goalRunner(
+    store: InMemoryGoalManifestStore,
+    launcher: RecordingSubtaskLauncher,
+    outcomes: RecordingOutcomeStore,
+    telemetry: GoalLifecycleTelemetryEmitter,
+  ): GoalRunner = GoalRunner(
+    manifestStore = store,
+    subtaskLauncher = launcher,
+    outcomeStore = outcomes,
+    pullRequestPort = RecordingPullRequestPort(),
+    telemetry = telemetry,
+    clock = Clock.fixed(Instant.parse("2026-06-23T10:00:00Z"), ZoneOffset.UTC),
+  )
+
+  private fun completingLauncher(
+    store: InMemoryGoalManifestStore,
+    outcomes: RecordingOutcomeStore,
+  ): RecordingSubtaskLauncher = RecordingSubtaskLauncher { request ->
+    val subtaskId = requireNotNull(request.skillRunRequest.subtaskId)
+    store.mutate { current -> current.withWorkflowId(subtaskId, "wfl-$subtaskId") }
+    outcomes["wfl-$subtaskId"] = completeOutcome(subtaskId)
+    launchFacts()
+  }
+
+  private fun runRequest(): skillbill.application.model.GoalRunnerRunRequest =
+    skillbill.application.model.GoalRunnerRunRequest(
+      issueKey = "SKILL-56",
+      repoRoot = Path.of("/tmp/skillbill-goal-runner"),
+      invokedAgentId = "claude",
+      dbPathOverride = "/tmp/skillbill-goal-runner/metrics.db",
+      eventSink = GoalRunnerEventSink {},
+    )
+}
+
+private class ModeCapturingTelemetryEmitter : GoalLifecycleTelemetryEmitter {
+  val started: MutableList<GoalStartedRequest> = mutableListOf()
+  val finished: MutableList<GoalFinishedRequest> = mutableListOf()
+
+  override fun goalStarted(request: GoalStartedRequest, dbOverride: String?) {
+    started += request
+  }
+
+  override fun goalSubtaskFinished(request: GoalSubtaskFinishedRequest, dbOverride: String?) = Unit
+
+  override fun goalFinished(request: GoalFinishedRequest, dbOverride: String?) {
+    finished += request
+  }
+}
