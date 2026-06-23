@@ -754,6 +754,7 @@ private val expectedToolInventory =
     "telemetry_proxy_capabilities",
     "telemetry_remote_stats",
     "triage_findings",
+    "update_check",
   )
 
 private val priorityStrictToolNames =

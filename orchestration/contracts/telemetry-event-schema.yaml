@@ -148,6 +148,7 @@ oneOf:
   - $ref: "#/$defs/telemetryProxyCapabilitiesEvent"
   - $ref: "#/$defs/telemetryRemoteStatsEvent"
   - $ref: "#/$defs/triageFindingsEvent"
+  - $ref: "#/$defs/updateCheckEvent"
 
 $defs:
   # ---------------------------------------------------------------------
@@ -468,6 +469,18 @@ $defs:
     properties:
       event_name:
         const: doctor
+      contract_version:
+        const: "1.3.0"
+
+  updateCheckEvent:
+    type: object
+    additionalProperties: true
+    required:
+      - event_name
+      - contract_version
+    properties:
+      event_name:
+        const: update_check
       contract_version:
         const: "1.3.0"
 

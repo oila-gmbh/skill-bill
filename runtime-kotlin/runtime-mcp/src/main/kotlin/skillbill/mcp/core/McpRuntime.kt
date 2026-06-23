@@ -256,6 +256,17 @@ object McpRuntime {
   fun doctor(context: McpRuntimeContext = McpRuntimeContext()): Map<String, Any?> =
     services(context).systemService.doctor(dbOverride = null).toPayload()
 
+  fun updateCheck(context: McpRuntimeContext = McpRuntimeContext()): Map<String, Any?> {
+    val result = services(context).updateCheckService.check(includePrereleases = false)
+    return mapOf(
+      "status" to result.status.wireName,
+      "installed_version" to result.installedVersion,
+      "latest_version" to result.latestVersion,
+      "recommended_install_command" to result.recommendedInstallCommand,
+      "reason" to result.reason,
+    )
+  }
+
   fun newSkillScaffold(
     payload: Map<String, Any?>,
     dryRun: Boolean = false,
