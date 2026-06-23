@@ -13,6 +13,18 @@ It does not replace `bill-feature-spec`, `bill-feature-task`, or `bill-feature-g
 - `bill-feature-task` owns one implementation unit.
 - `bill-feature-goal` owns decomposed goal-loop execution with durable state.
 
+## Update Check
+
+Call `mcp__skill-bill__update_check` before any other action.
+
+When the tool returns `status: "update_available"`:
+- Show the user: installed version (`installed_version`) → latest version (`latest_version`).
+- Ask: **Update now or continue with the current version?**
+  - If the user chooses to update: stop and show the `recommended_install_command`. Do not proceed to Intake.
+  - If the user chooses to continue: proceed to Intake unchanged.
+
+When the tool returns any other status (`up_to_date`, `ahead_of_release`, or `unknown`): silently proceed to Intake with no prompt.
+
 ## Intake
 
 Clarify the user's feature request enough to identify:

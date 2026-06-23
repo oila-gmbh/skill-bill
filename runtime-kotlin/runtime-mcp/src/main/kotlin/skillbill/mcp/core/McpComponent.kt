@@ -7,6 +7,7 @@ import skillbill.application.review.ReviewService
 import skillbill.application.system.SystemService
 import skillbill.application.telemetry.LifecycleTelemetryService
 import skillbill.application.telemetry.TelemetryService
+import skillbill.application.updatecheck.UpdateCheckService
 import skillbill.application.workflow.WorkflowService
 import skillbill.di.RuntimeComponent
 
@@ -18,6 +19,7 @@ abstract class McpComponent(
 }
 
 @Inject
+@Suppress("LongParameterList") // DI aggregate: one cohesive bundle for all MCP runtime services
 class McpRuntimeServices(
   val learningService: LearningService,
   val lifecycleTelemetryService: LifecycleTelemetryService,
@@ -25,4 +27,5 @@ class McpRuntimeServices(
   val systemService: SystemService,
   val telemetryService: TelemetryService,
   val workflowService: WorkflowService,
+  val updateCheckService: UpdateCheckService,
 )

@@ -123,6 +123,7 @@ object McpToolDispatcher {
       "telemetry_proxy_capabilities" to { _, context -> McpRuntime.telemetryProxyCapabilities(context) },
       "telemetry_remote_stats" to ::telemetryRemoteStats,
       "triage_findings" to ::triageFindings,
+      "update_check" to { _, context -> McpRuntime.updateCheck(context) },
     )
 
   internal val legacyToolAliases: Map<String, String> =

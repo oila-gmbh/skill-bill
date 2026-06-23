@@ -86,6 +86,7 @@ object McpToolRegistry {
       "telemetry_proxy_capabilities",
       "telemetry_remote_stats",
       "triage_findings",
+      "update_check",
     )
 
   private val descriptions: Map<String, String> =
@@ -149,6 +150,7 @@ object McpToolRegistry {
       "telemetry_proxy_capabilities" to "Show configured telemetry proxy capabilities.",
       "telemetry_remote_stats" to "Fetch aggregate org-wide workflow metrics.",
       "triage_findings" to "Record triage decisions for imported review findings.",
+      "update_check" to "Check whether the installed skill-bill runtime is up to date.",
     )
 
   private val inputSchemas: Map<String, Map<String, Any?>> =

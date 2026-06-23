@@ -1,3 +1,11 @@
+## [2026-06-23] SKILL-93 update-check-on-bill-feature (bill-feature gate)
+Areas: skills/bill-feature
+- `bill-feature` now calls `mcp__skill-bill__update_check` as the **first** action before any intake or spec-prep work
+- Gates on `update_available`: surfaces installed vs latest version, asks update-now-or-continue; stops with `recommended_install_command` if user chooses update
+- All other statuses (up-to-date, ahead, unknown) proceed to intake silently — no user prompt (reusable gate pattern for skill entry-point version checks)
+Feature flag: N/A
+Acceptance criteria: 12/12 implemented
+
 ## [2026-06-23] SKILL-92 bill-feature-goal prose lifecycle telemetry wiring
 Areas: skills/bill-feature-goal
 - `bill-feature-goal mode:prose` now emits goal lifecycle telemetry: calls `goal_prose_started` at goal start, `goal_prose_subtask_finished` after each subtask, and `goal_prose_finished` at goal completion/termination.
