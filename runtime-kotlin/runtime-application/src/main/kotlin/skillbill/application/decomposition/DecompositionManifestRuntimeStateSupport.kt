@@ -19,6 +19,13 @@ internal fun DecompositionSubtask.withRuntimeFields(
 ): DecompositionSubtask {
   val artifacts = mergedArtifacts(update)
   val nextStatus = status ?: this.status
+  // On a terminal transition, copy the agent-attribution rollup off the merged goal_continuation_outcome
+  // artifact map (loose-map style, mirroring commitShaFrom); non-terminal updates leave it untouched.
+  val terminalOutcome = (artifacts["goal_continuation_outcome"] as? Map<*, *>)
+    ?.takeIf { nextStatus == "complete" || nextStatus == "blocked" }
+  val rolledParticipants = (terminalOutcome?.get("participating_agent_ids") as? List<*>)
+    ?.mapNotNull { it?.toString()?.takeIf(String::isNotBlank) }
+    .orEmpty()
   return copy(
     status = nextStatus,
     branch = branchName(artifacts["branch"]).ifBlank {
@@ -32,6 +39,9 @@ internal fun DecompositionSubtask.withRuntimeFields(
     commitSha = commitShaFrom(artifacts) ?: commitSha,
     blockedReason = blockedReasonFrom(update, nextStatus) ?: blockedReason.takeUnless { nextStatus != "blocked" },
     lastResumableStep = update.currentStepId.takeIf(String::isNotBlank) ?: lastResumableStep,
+    finalizingAgentId = terminalOutcome?.get("finalizing_agent_id")?.toString()?.takeIf(String::isNotBlank)
+      ?: finalizingAgentId,
+    participatingAgentIds = rolledParticipants.ifEmpty { participatingAgentIds },
   )
 }
 

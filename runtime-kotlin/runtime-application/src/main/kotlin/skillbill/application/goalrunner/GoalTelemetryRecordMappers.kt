@@ -27,6 +27,8 @@ fun GoalSubtaskFinishedRequest.toRecord(): GoalSubtaskFinishedRecord = GoalSubta
   durationMs = durationMs,
   attemptCount = attemptCount,
   blockedReason = blockedReason,
+  finalizingAgentId = finalizingAgentId,
+  participatingAgentIds = participatingAgentIds,
 )
 
 fun GoalFinishedRequest.toRecord(): GoalFinishedRecord = GoalFinishedRecord(

@@ -523,6 +523,8 @@ private fun Map<String, Any?>.withSubtaskOutcome(
         "workflow_id" to outcome.workflowId,
         "blocked_reason" to outcome.blockedReason,
         "last_resumable_step" to outcome.lastResumableStep,
+        "finalizing_agent_id" to outcome.finalizingAgentId,
+        "participating_agent_ids" to outcome.participatingAgentIds,
       ),
     )
   }
@@ -541,22 +543,27 @@ private fun runtimeRunText(payload: Map<String, Any?>): String = buildString {
   appendLine("completed_phases: ${(payload["completed_phases"] as? List<*>).orEmpty().joinToString()}")
   payload["last_incomplete_phase"]?.let { appendLine("last_incomplete_phase: $it") }
   payload["blocked_reason"]?.let { appendLine("blocked_reason: $it") }
-  (payload["subtask_outcome"] as? Map<*, *>)?.let { outcome ->
-    appendLine("subtask_outcome:")
-    appendLine("  issue_key: ${outcome["issue_key"]}")
-    appendLine("  subtask_id: ${outcome["subtask_id"]}")
-    appendLine("  status: ${outcome["status"]}")
-    appendLine("  commit_sha: ${outcome["commit_sha"] ?: "none"}")
-    appendLine("  workflow_id: ${outcome["workflow_id"]}")
-    appendLine("  last_resumable_step: ${outcome["last_resumable_step"]}")
-    outcome["blocked_reason"]?.let { appendLine("  blocked_reason: $it") }
-  }
+  (payload["subtask_outcome"] as? Map<*, *>)?.let { outcome -> appendSubtaskOutcome(outcome) }
   payload["reason"]?.let { appendLine("decomposition_reason: $it") }
   payload["subtask_count"]?.let { appendLine("subtask_count: $it") }
   payload["parent_spec_path"]?.let { appendLine("parent_spec_path: $it") }
   payload["decomposition_manifest_path"]?.let { appendLine("decomposition_manifest_path: $it") }
   (payload["subtask_spec_paths"] as? List<*>).orEmpty().forEach { appendLine("subtask_spec_path: $it") }
   payload["guidance"]?.let { appendLine("guidance: $it") }
+}
+
+private fun StringBuilder.appendSubtaskOutcome(outcome: Map<*, *>) {
+  appendLine("subtask_outcome:")
+  appendLine("  issue_key: ${outcome["issue_key"]}")
+  appendLine("  subtask_id: ${outcome["subtask_id"]}")
+  appendLine("  status: ${outcome["status"]}")
+  appendLine("  commit_sha: ${outcome["commit_sha"] ?: "none"}")
+  appendLine("  workflow_id: ${outcome["workflow_id"]}")
+  appendLine("  last_resumable_step: ${outcome["last_resumable_step"]}")
+  outcome["finalizing_agent_id"]?.let { appendLine("  finalizing_agent_id: $it") }
+  (outcome["participating_agent_ids"] as? List<*>)?.takeIf { it.isNotEmpty() }
+    ?.let { appendLine("  participating_agent_ids: ${it.joinToString()}") }
+  outcome["blocked_reason"]?.let { appendLine("  blocked_reason: $it") }
 }
 
 private fun FeatureTaskRuntimeStatusProjection?.toRuntimeStatusCliMap(workflowId: String): Map<String, Any?> =
@@ -570,6 +577,7 @@ private fun FeatureTaskRuntimeStatusProjection?.toRuntimeStatusCliMap(workflowId
       "blocked_count" to it.blockedCount,
       "current_phase" to it.currentPhaseId,
       "resolved_branch" to it.resolvedBranch,
+      "finalizing_agent_id" to it.finalizingAgentId,
       "decompose_terminal" to it.decomposeTerminal?.let { terminal ->
         linkedMapOf(
           "reason" to terminal.reason,
@@ -591,6 +599,7 @@ private fun FeatureTaskRuntimeStatusProjection?.toRuntimeStatusCliMap(workflowId
     "blocked_count" to 0,
     "current_phase" to null,
     "resolved_branch" to null,
+    "finalizing_agent_id" to null,
     "decompose_terminal" to null,
     "phases" to emptyList<Map<String, Any?>>(),
   )
@@ -614,6 +623,7 @@ private fun runtimeStatusText(payload: Map<String, Any?>): String = buildString 
   appendLine("blocked: ${payload["blocked_count"]}")
   appendLine("current_phase: ${payload["current_phase"] ?: "none"}")
   appendLine("resolved_branch: ${payload["resolved_branch"] ?: "none"}")
+  appendLine("finalizing_agent: ${payload["finalizing_agent_id"] ?: "none"}")
   (payload["decompose_terminal"] as? Map<*, *>)?.let { terminal ->
     appendLine("decomposition_reason: ${terminal["reason"]}")
     appendLine("subtask_count: ${terminal["subtask_count"]}")

@@ -136,6 +136,8 @@ data class FeatureTaskRuntimeSubtaskOutcome(
   val workflowId: String,
   val blockedReason: String?,
   val lastResumableStep: String,
+  val finalizingAgentId: String? = null,
+  val participatingAgentIds: List<String> = emptyList(),
 ) {
   init {
     require(issueKey.isNotBlank()) { "issueKey is required." }

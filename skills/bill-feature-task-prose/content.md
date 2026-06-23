@@ -270,6 +270,8 @@ The subagent returns the audit return contract: `pass: bool`, `per_criterion: [.
 
 If gaps are found: the orchestrator respawns the planning subagent with the gaps, then the implementation subagent, then re-runs code review, then re-spawns the audit subagent. Max 2 audit iterations. When complete, if a tracked `.feature-specs/{ISSUE_KEY}-{feature-name}/spec.md` exists, the orchestrator reconciles it to its final state for ALL sizes (not only MEDIUM/LARGE): set `Status: Complete`, resolve any Open Questions with the decisions taken, and correct anything the implementation changed (for example a corrected flag or argument name). SMALL runs do not create a spec on disk, but when one already exists it must still be reconciled here.
 
+When reconciling that `## Status` block, also write an `Agent:` line recording the resolved invoking agent next to `Status: Complete` — for example `- Agent: claude`. Resolve the agent through the existing governed order, never a re-invented source: `--agent` argument, then the `SKILL_BILL_AGENT` environment variable, then the detected invoking-agent execution context, then the documented last-resort default (`codex`). This line is a completion-reconciliation outcome, never an authored input: write it only here, only when the spec exists on disk (a SMALL run with no spec writes nothing), and keep it idempotent — if an `Agent:` line is already present under `## Status`, update it in place rather than adding a second one. The line lives only under `## Status` and must not perturb the `## Acceptance Criteria` section.
+
 Persist `audit_report`, then advance to `validate`. Loop back to `plan` only when the audit contract requires it.
 
 ## Finalization Sequence (Steps 6b through 9)

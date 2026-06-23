@@ -1,5 +1,6 @@
 package skillbill.db
 
+import skillbill.contracts.JsonSupport
 import skillbill.db.core.DatabaseRuntime
 import skillbill.db.telemetry.LifecycleTelemetryStore
 import skillbill.db.telemetry.TelemetryOutboxStore
@@ -14,6 +15,8 @@ import java.sql.Connection
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertIs
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -203,6 +206,59 @@ class GoalTelemetryStoreTest {
     }
   }
 
+  @Test
+  fun `emitted telemetry aggregates per-agent finalized and recovery-handoff participant counts`() {
+    withConnection { connection ->
+      val store = LifecycleTelemetryStore(connection)
+      // Subtask 1: codex finalizes solo. Subtask 2: codex started, claude resumed + finalized (handoff).
+      store.goalSubtaskFinished(attributedSubtask(1, "codex", listOf("codex")), "full")
+      store.goalSubtaskFinished(attributedSubtask(2, "claude", listOf("codex", "claude")), "full")
+
+      val payloads = pendingOutbox(connection)
+        .filter { it.eventName == "skillbill_goal_subtask_finished" }
+        .map { parsePayload(it.payloadJson) }
+
+      // Assert each full-level payload explicitly contains the attribution keys at the right types.
+      payloads.forEachIndexed { index, payload ->
+        assertNotNull(payload["finalizing_agent_id"], "payload[$index] must contain finalizing_agent_id key")
+        assertIs<String>(payload["finalizing_agent_id"], "payload[$index].finalizing_agent_id must be a String")
+        assertNotNull(payload["participating_agent_ids"], "payload[$index] must contain participating_agent_ids key")
+        assertIs<List<*>>(payload["participating_agent_ids"], "payload[$index].participating_agent_ids must be a List")
+      }
+
+      val finalizedByAgent = payloads.map { assertIs<String>(it["finalizing_agent_id"]) }
+        .groupingBy { it }.eachCount()
+      val handoffParticipantByAgent = payloads.flatMap { payload ->
+        val finalizer = assertIs<String>(payload["finalizing_agent_id"])
+
+        @Suppress("UNCHECKED_CAST")
+        val participants = assertIs<List<String>>(payload["participating_agent_ids"])
+        participants.filter { it != finalizer }
+      }.groupingBy { it }.eachCount()
+
+      assertEquals(mapOf("codex" to 1, "claude" to 1), finalizedByAgent)
+      // codex finalized subtask 1 but only participated (handoff source) in subtask 2.
+      assertEquals(mapOf("codex" to 1), handoffParticipantByAgent)
+    }
+  }
+
+  @Test
+  fun `legacy subtask event without agent attribution is accepted and emits an empty participants array`() {
+    withConnection { connection ->
+      val store = LifecycleTelemetryStore(connection)
+      store.goalSubtaskFinished(subtask(1, "complete", 60_000, 1), "full")
+
+      val payload = parsePayload(
+        pendingOutbox(connection).single { it.eventName == "skillbill_goal_subtask_finished" }.payloadJson,
+      )
+
+      assertNull(payload["finalizing_agent_id"])
+      assertEquals(emptyList<Any?>(), payload["participating_agent_ids"])
+      val stats = ReviewStatsRuntime.goalStats(connection)
+      assertEquals(1, stats.totalSubtaskEvents)
+    }
+  }
+
   private fun seedBlockedRunWithMixedSubtasks(store: LifecycleTelemetryStore) {
     store.goalStarted(startedRecord("wf-1", subtaskTotal = 3, resumed = false), level = "full")
     store.goalSubtaskFinished(subtask(id = 1, status = "complete", durationMs = 60_000, attempts = 1), "full")
@@ -294,6 +350,20 @@ class GoalTelemetryStoreTest {
     attemptCount = attempts,
     blockedReason = blockedReason,
   )
+
+  private fun attributedSubtask(
+    id: Int,
+    finalizingAgentId: String,
+    participatingAgentIds: List<String>,
+  ): GoalSubtaskFinishedRecord = subtask(id, "complete", 60_000, 1).copy(
+    finalizingAgentId = finalizingAgentId,
+    participatingAgentIds = participatingAgentIds,
+  )
+
+  private fun parsePayload(payloadJson: String): Map<String, Any?> {
+    val element = requireNotNull(JsonSupport.parseObjectOrNull(payloadJson))
+    return requireNotNull(JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(element)))
+  }
 
   private fun pendingOutbox(connection: Connection): List<TelemetryOutboxRecord> =
     TelemetryOutboxStore(connection).listPending(limit = null)

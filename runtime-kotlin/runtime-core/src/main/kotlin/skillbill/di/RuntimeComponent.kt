@@ -40,6 +40,7 @@ import skillbill.infrastructure.fs.FileSystemDecompositionManifestFileStore
 import skillbill.infrastructure.fs.FileSystemDiffResolver
 import skillbill.infrastructure.fs.FileSystemFeatureSpecPathResolver
 import skillbill.infrastructure.fs.FileSystemFeatureTaskRuntimeRunInvariantsSource
+import skillbill.infrastructure.fs.FileSystemFeatureTaskRuntimeSpecStatusWriter
 import skillbill.infrastructure.fs.FileSystemInstallAgentTargets
 import skillbill.infrastructure.fs.FileSystemInstallApplyExecution
 import skillbill.infrastructure.fs.FileSystemInstallMcpRegistration
@@ -125,6 +126,7 @@ import skillbill.ports.scaffold.source.ScaffoldSourceLoaderPort
 import skillbill.ports.scaffold.staging.ScaffoldGeneratedStagingPort
 import skillbill.ports.system.UninstallFileSystemGateway
 import skillbill.ports.taskruntime.FeatureTaskRuntimeRunInvariantsSource
+import skillbill.ports.taskruntime.FeatureTaskRuntimeSpecStatusWriter
 import skillbill.ports.telemetry.TelemetryClient
 import skillbill.ports.telemetry.TelemetryConfigStore
 import skillbill.ports.telemetry.TelemetryLevelMutator
@@ -405,6 +407,12 @@ abstract class RuntimeComponent(
   internal fun featureTaskRuntimeRunInvariantsSource(
     adapter: FileSystemFeatureTaskRuntimeRunInvariantsSource,
   ): FeatureTaskRuntimeRunInvariantsSource = adapter
+
+  @Provides
+  @JvmSynthetic
+  internal fun featureTaskRuntimeSpecStatusWriter(
+    adapter: FileSystemFeatureTaskRuntimeSpecStatusWriter,
+  ): FeatureTaskRuntimeSpecStatusWriter = adapter
 
   @Provides
   @JvmSynthetic

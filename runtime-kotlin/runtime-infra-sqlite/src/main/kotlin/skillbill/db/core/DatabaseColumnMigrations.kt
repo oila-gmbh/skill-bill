@@ -13,6 +13,17 @@ internal object DatabaseColumnMigrations {
     ensureFeatureImplementSessionColumns(connection)
     ensureFeatureVerifySessionColumns(connection)
     ensureFeatureTaskRuntimeSessionColumns(connection)
+    // apply() is wired both as gated migration version 1 (which runs before version 3 creates
+    // goal_subtask_events) and unconditionally on every startup. Skip the agent-attribution column
+    // heal until the table exists so the early migration-1 pass is a no-op; the unconditional startup
+    // pass heals it once version 3 has created the table (existing DBs gain the columns there).
+    val goalSubtaskEventsExists = connection.prepareStatement(
+      "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'goal_subtask_events'",
+    ).use { statement -> statement.executeQuery().use { resultSet -> resultSet.next() } }
+    if (goalSubtaskEventsExists) {
+      ensureColumn(connection, "goal_subtask_events", "finalizing_agent_id", "TEXT")
+      ensureColumn(connection, "goal_subtask_events", "participating_agent_ids", "TEXT NOT NULL DEFAULT '[]'")
+    }
   }
 
   private fun ensureFeatureTaskRuntimeSessionColumns(connection: Connection) {

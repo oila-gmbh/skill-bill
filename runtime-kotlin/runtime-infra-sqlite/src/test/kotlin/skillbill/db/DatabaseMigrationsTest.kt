@@ -135,6 +135,34 @@ class DatabaseMigrationsTest {
   }
 
   @Test
+  fun `ensureDatabase heals goal subtask agent attribution columns on a fully version-recorded legacy database`() {
+    // SKILL-89: a DB created before the agent-attribution columns existed already records migration
+    // version 3, so editing the applied migration body is a silent no-op. The unconditional column
+    // ensure must heal the two columns on every startup.
+    val dbPath = Files.createTempDirectory("runtime-kotlin-db-migrations").resolve("legacy-goal-subtask.db")
+    createLegacyGoalSubtaskEventsDatabase(dbPath)
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val columns = tableColumns(connection = connection, tableName = "goal_subtask_events")
+
+      assertTrue("finalizing_agent_id" in columns, "finalizing_agent_id must be healed onto a legacy table.")
+      assertTrue("participating_agent_ids" in columns, "participating_agent_ids must be healed onto a legacy table.")
+      connection.createStatement().use { statement ->
+        statement.executeUpdate(
+          """
+          INSERT INTO goal_subtask_events (
+            issue_key, workflow_id, subtask_id, subtask_name, status,
+            started_at, finished_at, duration_ms, attempt_count
+          ) VALUES ('SKILL-89', 'wf-legacy', 1, 'heal', 'complete', 't0', 't1', 1000, 1)
+          """.trimIndent(),
+        )
+      }
+      assertEquals("[]", goalSubtaskColumnValue(connection, "participating_agent_ids"))
+      assertEquals(DatabaseMigrations.migrations.size, migrationRows(connection).size)
+    }
+  }
+
+  @Test
   fun `ensureDatabase migrates legacy feedback event values to current schema`() {
     val dbPath = Files.createTempDirectory("runtime-kotlin-db-migrations").resolve("legacy-feedback-events.db")
     createLegacyFeedbackEventsDatabase(dbPath)
@@ -224,6 +252,30 @@ class DatabaseMigrationsTest {
         VALUES (?, ?)
         """.trimIndent(),
       ).use { statement ->
+        DatabaseMigrations.migrations.forEach { migration ->
+          statement.setInt(1, migration.version)
+          statement.setString(2, migration.name)
+          statement.executeUpdate()
+        }
+      }
+    }
+  }
+
+  private fun createLegacyGoalSubtaskEventsDatabase(dbPath: Path) {
+    DriverManager.getConnection("jdbc:sqlite:$dbPath").use { connection ->
+      connection.createStatement().use { statement ->
+        statement.execute(CREATE_LEGACY_GOAL_SUBTASK_EVENTS_SQL)
+        statement.execute(
+          """
+          CREATE TABLE schema_migrations (
+            version INTEGER PRIMARY KEY,
+            name TEXT NOT NULL UNIQUE,
+            applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+          )
+          """.trimIndent(),
+        )
+      }
+      connection.prepareStatement("INSERT INTO schema_migrations (version, name) VALUES (?, ?)").use { statement ->
         DatabaseMigrations.migrations.forEach { migration ->
           statement.setInt(1, migration.version)
           statement.setString(2, migration.name)
@@ -378,6 +430,14 @@ class DatabaseMigrationsTest {
     }
   }
 
+  private fun goalSubtaskColumnValue(connection: java.sql.Connection, columnName: String): Any =
+    connection.prepareStatement("SELECT $columnName FROM goal_subtask_events LIMIT 1").use { statement ->
+      statement.executeQuery().use { resultSet ->
+        check(resultSet.next()) { "Expected a seeded goal_subtask_events row." }
+        resultSet.getObject(1)
+      }
+    }
+
   private fun tableColumns(connection: java.sql.Connection, tableName: String): Set<String> =
     connection.createStatement().use { statement ->
       statement.executeQuery("PRAGMA table_info($tableName)").use { resultSet ->
@@ -402,6 +462,24 @@ class DatabaseMigrationsTest {
         session_id TEXT PRIMARY KEY,
         completion_status TEXT,
         started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+      """
+
+    const val CREATE_LEGACY_GOAL_SUBTASK_EVENTS_SQL: String =
+      """
+      CREATE TABLE goal_subtask_events (
+        issue_key TEXT NOT NULL,
+        workflow_id TEXT NOT NULL,
+        subtask_id INTEGER NOT NULL,
+        subtask_name TEXT NOT NULL DEFAULT '',
+        status TEXT NOT NULL,
+        started_at TEXT NOT NULL,
+        finished_at TEXT NOT NULL,
+        duration_ms INTEGER NOT NULL,
+        attempt_count INTEGER NOT NULL,
+        blocked_reason TEXT,
+        subtask_event_emitted_at TEXT,
+        PRIMARY KEY (issue_key, subtask_id, workflow_id)
       )
       """
 

@@ -64,6 +64,11 @@ class FeatureTaskRuntimeStatusService(
         }?.phaseId
       },
       resolvedBranch = recorder.loadResolvedBranch(request.workflowId, request.dbPathOverride)?.branch,
+      finalizingAgentId = agentAttributionFromPhaseState(
+        recorder,
+        request.workflowId,
+        request.dbPathOverride,
+      ).finalizingAgentId,
       decomposeTerminal = decomposeTerminal?.let {
         FeatureTaskRuntimeDecomposeTerminalStatus(
           reason = it.reason,

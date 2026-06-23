@@ -3,6 +3,7 @@ package skillbill.workflow.taskruntime
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.workflow.model.appendBoundedHistoryBySequence
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_LIMIT
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationOutcome
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
@@ -264,6 +265,82 @@ class FeatureTaskRuntimePersistenceModelsTest {
 
     assertFailsWith<InvalidWorkflowStateSchemaError> {
       featureTaskRuntimeRunInvariantsFromArtifactMap(malformed)
+    }
+  }
+
+  @Test
+  fun `goal-continuation outcome round trips agent attribution through its artifact map`() {
+    val outcome = FeatureTaskRuntimeGoalContinuationOutcome(
+      issueKey = "SKILL-89",
+      subtaskId = 4,
+      status = "complete",
+      workflowId = "wf-4",
+      commitSha = "abc123",
+      lastResumableStep = "commit_push",
+      finalizingAgentId = "claude",
+      participatingAgentIds = listOf("codex", "claude"),
+    )
+    val map = outcome.toArtifactMap()
+    assertEquals("claude", map["finalizing_agent_id"])
+    assertEquals(listOf("codex", "claude"), map["participating_agent_ids"])
+    assertEquals(outcome, FeatureTaskRuntimeGoalContinuationOutcome.fromArtifactMap(map))
+  }
+
+  @Test
+  fun `legacy goal-continuation outcome without agent fields decodes to null and empty`() {
+    val legacy = mapOf(
+      "issue_key" to "SKILL-89",
+      "subtask_id" to 2,
+      "status" to "complete",
+      "workflow_id" to "wf-2",
+      "last_resumable_step" to "commit_push",
+    )
+    val decoded = FeatureTaskRuntimeGoalContinuationOutcome.fromArtifactMap(legacy)
+    assertNull(decoded.finalizingAgentId)
+    assertTrue(decoded.participatingAgentIds.isEmpty())
+  }
+
+  @Test
+  fun `goal-continuation outcome omits finalizing agent when null but always emits the participants list`() {
+    val outcome = FeatureTaskRuntimeGoalContinuationOutcome(
+      issueKey = "SKILL-89",
+      subtaskId = 1,
+      status = "complete",
+      workflowId = "wf-1",
+      lastResumableStep = "commit_push",
+    )
+    val map = outcome.toArtifactMap()
+    assertNull(map["finalizing_agent_id"])
+    assertEquals(emptyList<String>(), map["participating_agent_ids"])
+  }
+
+  @Test
+  fun `goal-continuation outcome decode loud-fails on a non-string participant element`() {
+    val malformed = mapOf(
+      "issue_key" to "SKILL-89",
+      "subtask_id" to 3,
+      "status" to "complete",
+      "workflow_id" to "wf-3",
+      "last_resumable_step" to "commit_push",
+      "participating_agent_ids" to listOf("codex", 7),
+    )
+    assertFailsWith<InvalidWorkflowStateSchemaError> {
+      FeatureTaskRuntimeGoalContinuationOutcome.fromArtifactMap(malformed)
+    }
+  }
+
+  @Test
+  fun `goal-continuation outcome decode loud-fails on a non-list participants value`() {
+    val malformed = mapOf(
+      "issue_key" to "SKILL-89",
+      "subtask_id" to 3,
+      "status" to "complete",
+      "workflow_id" to "wf-3",
+      "last_resumable_step" to "commit_push",
+      "participating_agent_ids" to "codex",
+    )
+    assertFailsWith<InvalidWorkflowStateSchemaError> {
+      FeatureTaskRuntimeGoalContinuationOutcome.fromArtifactMap(malformed)
     }
   }
 

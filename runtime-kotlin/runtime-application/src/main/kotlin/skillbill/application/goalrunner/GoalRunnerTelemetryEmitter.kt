@@ -85,6 +85,8 @@ internal class GoalRunnerTelemetryEmitter(
             durationMs = durationMs(startedAt, finishedAtInstant),
             attemptCount = attempted.count { it == subtask.id }.coerceAtLeast(1),
             blockedReason = subtask.blockedReason,
+            finalizingAgentId = subtask.finalizingAgentId,
+            participatingAgentIds = subtask.participatingAgentIds,
           ),
           dbPathOverride,
         )
