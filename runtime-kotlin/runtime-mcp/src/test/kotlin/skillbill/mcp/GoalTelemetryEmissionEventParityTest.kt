@@ -59,6 +59,7 @@ class GoalTelemetryEmissionEventParityTest {
         "subtask_total",
         "resumed",
         "started_at",
+        "mode",
       ),
     )
     assertBranch(
@@ -94,6 +95,7 @@ class GoalTelemetryEmissionEventParityTest {
         "subtasks_complete",
         "subtasks_blocked",
         "subtasks_skipped",
+        "mode",
       ),
     )
   }
@@ -110,6 +112,7 @@ class GoalTelemetryEmissionEventParityTest {
         "subtask_total" to 4,
         "resumed" to false,
         "started_at" to "2026-06-04T10:15:30Z",
+        "mode" to "runtime",
       ),
       eventName = "goal_started",
     )
@@ -127,6 +130,7 @@ class GoalTelemetryEmissionEventParityTest {
         "subtasks_complete" to 3,
         "subtasks_blocked" to 1,
         "subtasks_skipped" to 0,
+        "mode" to "prose",
       ),
       eventName = "goal_finished",
     )

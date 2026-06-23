@@ -1,27 +1,9 @@
 # SKILL-92 Goal Telemetry Mode Attribution and Prose-Goal Emission
 
 ## Status
+- Agent: claude
 
-- Status: Draft
-- Issue: `SKILL-92`
-- Mode: single_spec
-- Purpose: make prose-mode and runtime-mode goal runs distinguishable and both recorded in
-  goal telemetry, by (a) adding a `mode` discriminator to the goal telemetry record/contract
-  and (b) emitting goal-level lifecycle telemetry for `bill-feature-goal mode:prose` runs,
-  which today write nothing at the goal level. Together these let the telemetry loop compare
-  prose vs runtime at the goal level — the only feature-task family that runs autonomously
-  end-to-end, so the comparison is free of the human-pacing confound that distorts
-  single-spec feature-task wall-clock.
-- Scope: a `mode` field on the goal lifecycle requests/records, the `goal_run_sessions`
-  table (additive-optional column via the self-healing path), and the goal lifecycle event
-  contract; the runtime goal emitter stamping `mode=runtime`; a goal-lifecycle emission
-  surface the in-session prose goal orchestrator can call (mirroring the existing
-  `feature_task_prose_*` lifecycle tools) stamping `mode=prose`; the prose goal skill wiring
-  to emit started / per-subtask / finished; and a per-mode breakdown surfaced by `goal_stats`.
-- Non-goal: token estimation (owned by SKILL-91); per-subtask agent attribution (owned by
-  SKILL-89); changing the goal phase loop, decomposition, subtask scheduling, or runtime
-  supervision behavior; any new goal-execution capability — this is purely telemetry
-  attribution and coverage.
+Complete
 
 ## Problem Statement
 

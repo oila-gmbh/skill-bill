@@ -1,6 +1,7 @@
 package skillbill.infrastructure.sqlite.review
 
 import skillbill.review.model.GoalBlockedSubtaskSummary
+import skillbill.review.model.GoalModeStats
 import skillbill.review.model.GoalRunSummary
 import skillbill.review.model.GoalWorkflowStats
 import java.sql.Connection
@@ -28,6 +29,21 @@ fun buildGoalStats(runRows: List<Map<String, Any?>>, subtaskRows: List<Map<Strin
   val completedRuns = finished.count { it.status == "completed" }
   val blockedRuns = finished.count { it.status == "blocked" }
   val mostRecent = runs.maxByOrNull { it.startedAt }
+  val byMode = runs.groupBy { it.mode }.mapValues { (_, modeRuns) ->
+    val modeFinished = modeRuns.filter { it.finishedAt.isNotBlank() }
+    val modeCompleted = modeFinished.count { it.status == "completed" }
+    val modeBlocked = modeFinished.count { it.status == "blocked" }
+    GoalModeStats(
+      totalRuns = modeRuns.size,
+      finishedRuns = modeFinished.size,
+      inProgressRuns = modeRuns.size - modeFinished.size,
+      completedRuns = modeCompleted,
+      completedRate = rate(modeCompleted, modeFinished.size),
+      blockedRuns = modeBlocked,
+      blockedRate = rate(modeBlocked, modeFinished.size),
+      averageRunDurationMs = averageMillis(modeFinished.map { it.durationMs }),
+    )
+  }
   return GoalWorkflowStats(
     totalRuns = runs.size,
     finishedRuns = finished.size,
@@ -67,6 +83,7 @@ fun buildGoalStats(runRows: List<Map<String, Any?>>, subtaskRows: List<Map<Strin
           attemptCount = s.attemptCount,
         )
       },
+    byMode = byMode,
   )
 }
 
@@ -80,6 +97,7 @@ internal data class GoalRunRow(
   val status: String,
   val finishedAt: String,
   val durationMs: Long,
+  val mode: String,
 )
 
 internal data class GoalSubtaskRow(
@@ -111,6 +129,7 @@ private fun parseGoalRunRow(row: Map<String, Any?>): GoalRunRow {
     status = if (finished) row.requireEnum("status", goalFinishedStatuses, identity) else "",
     finishedAt = finishedAtRaw,
     durationMs = if (finished) row.requireNonNegativeLong("finished_duration_ms", identity) else 0L,
+    mode = row.requireNonBlankString("mode", identity),
   )
 }
 

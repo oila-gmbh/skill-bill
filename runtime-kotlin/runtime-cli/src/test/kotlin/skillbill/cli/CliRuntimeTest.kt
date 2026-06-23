@@ -927,6 +927,7 @@ class CliRuntimeTest {
           subtaskTotal = 1,
           resumed = false,
           startedAt = "2026-06-05T10:00:00Z",
+          mode = "runtime",
         ),
         level = "full",
       )
@@ -956,6 +957,7 @@ class CliRuntimeTest {
           subtasksComplete = 0,
           subtasksBlocked = 1,
           subtasksSkipped = 0,
+          mode = "runtime",
         ),
         level = "full",
       )
@@ -991,6 +993,7 @@ class CliRuntimeTest {
           subtaskTotal = 1,
           resumed = false,
           startedAt = "2026-06-05T10:00:00Z",
+          mode = "runtime",
         ),
         level = "full",
       )
@@ -1005,6 +1008,7 @@ class CliRuntimeTest {
           subtasksComplete = 1,
           subtasksBlocked = 0,
           subtasksSkipped = 0,
+          mode = "runtime",
         ),
         level = "full",
       )
