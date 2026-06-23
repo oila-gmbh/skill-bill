@@ -110,14 +110,15 @@ internal object DecompositionManifestCoherenceValidator {
     val intent = manifest["current_subtask_intent"] as? Map<*, *> ?: return
     val intentId = intent["subtask_id"].asExactInt(sourceLabel, "current_subtask_intent.subtask_id")
     val intentAction = intent["action"]?.toString().orEmpty()
-    if (intentAction == "none" && intentId != 0) {
+    val isTerminalAction = intentAction == "none" || intentAction == "complete"
+    if (isTerminalAction && intentId != 0) {
       throw coherenceError(
         sourceLabel,
         "current_subtask_intent.subtask_id",
-        "Intent action none must use subtask_id 0.",
+        "Intent action $intentAction must use subtask_id 0.",
       )
     }
-    if (intentAction != "none" && intentId !in subtaskIds) {
+    if (!isTerminalAction && intentId !in subtaskIds) {
       throw coherenceError(
         sourceLabel,
         "current_subtask_intent.subtask_id",

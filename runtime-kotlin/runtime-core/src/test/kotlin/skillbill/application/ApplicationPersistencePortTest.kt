@@ -785,7 +785,7 @@ class ApplicationPersistencePortTest {
 
     val skippedManifest = loadTestDecompositionManifest(parentSpec.parent.resolve("decomposition-manifest.yaml"))
     assertEquals("skipped", skippedManifest.subtasks.single().status)
-    assertEquals("none", skippedManifest.currentSubtaskIntent.action)
+    assertEquals("complete", skippedManifest.currentSubtaskIntent.action)
     assertEquals("Skipped", statusLine(subtaskSpec))
   }
 
