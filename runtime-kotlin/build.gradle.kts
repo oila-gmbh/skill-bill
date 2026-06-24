@@ -10,7 +10,33 @@ plugins {
 }
 
 group = "dev.skillbill"
-version = providers.environmentVariable("RELEASE_VERSION").getOrElse("0.3.0-SNAPSHOT")
+
+// Release builds set RELEASE_VERSION to the tag (e.g. v0.4.1). Local/dev builds
+// derive the version from the latest reachable git tag, bump the patch, and add
+// a -SNAPSHOT suffix (v0.4.1 -> 0.4.2-SNAPSHOT), so a from-source install reports
+// the current development line instead of a frozen, hand-maintained string. The
+// "0.0.0-SNAPSHOT" fallback only applies when neither a RELEASE_VERSION nor a
+// reachable git tag is available (e.g. a tarball with no .git).
+version = providers.environmentVariable("RELEASE_VERSION").orNull
+  ?.takeIf(String::isNotBlank)
+  ?: gitDevSnapshotVersion()
+  ?: "0.0.0-SNAPSHOT"
+
+fun gitDevSnapshotVersion(): String? {
+  val describe = providers.exec {
+    commandLine("git", "describe", "--tags", "--abbrev=0", "--match", "v[0-9]*")
+    isIgnoreExitValue = true
+  }
+  val tag = try {
+    if (describe.result.get().exitValue != 0) return null
+    describe.standardOutput.asText.get().trim()
+  } catch (_: Exception) {
+    return null
+  }
+  val match = Regex("""^v?(\d+)\.(\d+)\.(\d+)$""").matchEntire(tag) ?: return null
+  val (major, minor, patch) = match.destructured
+  return "$major.$minor.${patch.toInt() + 1}-SNAPSHOT"
+}
 
 subprojects {
   group = rootProject.group

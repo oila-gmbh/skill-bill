@@ -148,7 +148,16 @@ build_kotlin_runtime_distribution() {
 
   local gradlew="$RUNTIME_KOTLIN_DIR/gradlew"
   if [[ ! -x "$gradlew" ]]; then
+    # Release skills bundles ship skills only — no runtime-kotlin source or
+    # Gradle wrapper. The uninstaller only needs a runnable runtime CLI to
+    # unlink agents and unregister MCP servers, so reuse the already-installed
+    # packaged runtime instead of hard-failing when there is nothing to build.
+    if [[ -x "$RUNTIME_CLI_BIN" || -x "$RUNTIME_CLI_BUILD_BIN" ]]; then
+      info "No Gradle wrapper present; reusing the installed runtime CLI for cleanup."
+      return 0
+    fi
     err "Missing Gradle wrapper: $gradlew"
+    err "No installed runtime CLI to fall back on either; cannot run runtime-driven cleanup."
     exit 1
   fi
 

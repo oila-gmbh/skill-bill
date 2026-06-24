@@ -1,6 +1,7 @@
 package skillbill.cli
 
 import skillbill.SAMPLE_REVIEW
+import skillbill.SkillBillVersion
 import skillbill.cli.core.CliRuntime
 import skillbill.cli.core.ExternalCommand
 import skillbill.cli.core.ExternalCommandResult
@@ -71,12 +72,16 @@ class CliRuntimeTest {
 
     val version = CliRuntime.run(listOf("version", "--format", "json"), context)
     assertEquals(0, version.exitCode, version.stdout)
-    assertEquals(goldenJson("cli-version.json"), version.stdout)
+    assertEquals(goldenJson("cli-version.json", "<VERSION>" to INSTALLED_VERSION), version.stdout)
 
     val doctor = CliRuntime.run(listOf("--db", dbPath.toString(), "doctor", "--format", "json"), context)
     assertEquals(0, doctor.exitCode, doctor.stdout)
     assertEquals(
-      goldenJson("cli-doctor.json", "<DB_PATH>" to dbPath.toAbsolutePath().normalize().toString()),
+      goldenJson(
+        "cli-doctor.json",
+        "<DB_PATH>" to dbPath.toAbsolutePath().normalize().toString(),
+        "<VERSION>" to INSTALLED_VERSION,
+      ),
       doctor.stdout,
     )
 
@@ -365,12 +370,12 @@ class CliRuntimeTest {
       )
 
     val versionResult = CliRuntime.run(listOf("version", "--format", "json"), context)
-    assertEquals("0.3.0-SNAPSHOT", decodeJsonObject(versionResult.stdout)["version"])
+    assertEquals(INSTALLED_VERSION, decodeJsonObject(versionResult.stdout)["version"])
 
     val doctorResult =
       CliRuntime.run(listOf("--db", dbPath.toString(), "doctor", "--format", "json"), context)
     val doctorPayload = decodeJsonObject(doctorResult.stdout)
-    assertEquals("0.3.0-SNAPSHOT", doctorPayload["version"])
+    assertEquals(INSTALLED_VERSION, doctorPayload["version"])
     assertEquals(dbPath.toAbsolutePath().normalize().toString(), doctorPayload["db_path"])
     assertFalse(doctorPayload["db_exists"] as Boolean)
     assertEquals(true, doctorPayload["telemetry_enabled"])
@@ -709,8 +714,8 @@ class CliRuntimeTest {
 
     assertEquals(0, text.exitCode, text.stdout)
     assertContains(text.stdout, "status: update_available")
-    assertContains(text.stdout, "installed_version: 0.3.0-SNAPSHOT")
-    assertContains(text.stdout, "latest_version: v0.4.0")
+    assertContains(text.stdout, "installed_version: $INSTALLED_VERSION")
+    assertContains(text.stdout, "latest_version: $NEWER_RELEASE_TAG")
     assertContains(text.stdout, "recommended_install_command: $EXPECTED_INSTALL_COMMAND")
 
     val json = CliRuntime.run(listOf("update-check", "--format", "json"), context)
@@ -718,9 +723,9 @@ class CliRuntimeTest {
 
     assertEquals(0, json.exitCode, json.stdout)
     assertEquals("update_available", payload["status"])
-    assertEquals("0.3.0-SNAPSHOT", payload["installed_version"])
-    assertEquals("v0.4.0", payload["latest_version"])
-    assertEquals("https://github.com/Sermilion/skill-bill/releases/tag/v0.4.0", payload["release_url"])
+    assertEquals(INSTALLED_VERSION, payload["installed_version"])
+    assertEquals(NEWER_RELEASE_TAG, payload["latest_version"])
+    assertEquals("https://github.com/Sermilion/skill-bill/releases/tag/$NEWER_RELEASE_TAG", payload["release_url"])
     assertEquals(2, capturedRequests.size)
     assertEquals("GET", capturedRequests.first()["method"])
     assertEquals("skill-bill-update-check", (capturedRequests.first()["headers"] as Map<*, *>)["User-Agent"])
@@ -873,13 +878,13 @@ class CliRuntimeTest {
   fun `update-check includes prereleases and returns unknown with exit zero`() {
     val prerelease = CliRuntime.run(
       listOf("update-check", "--include-prereleases", "--format", "json"),
-      CliRuntimeContext(requester = updateCheckRequester(mutableListOf(), latest = "v0.4.0-rc.1")),
+      CliRuntimeContext(requester = updateCheckRequester(mutableListOf(), latest = NEWER_PRERELEASE_TAG)),
     )
     val prereleasePayload = decodeJsonObject(prerelease.stdout)
 
     assertEquals(0, prerelease.exitCode, prerelease.stdout)
     assertEquals("update_available", prereleasePayload["status"])
-    assertEquals("v0.4.0-rc.1", prereleasePayload["latest_version"])
+    assertEquals(NEWER_PRERELEASE_TAG, prereleasePayload["latest_version"])
 
     val unknown = CliRuntime.run(
       listOf("update-check"),
@@ -1227,9 +1232,17 @@ private fun statsRequester(capturedRequests: MutableList<Map<String, Any?>>): Ht
     }
   }
 
+// The installed version is git-derived at build time, so tests assert against
+// it and position the mock "latest release" relative to it. A bumped major is
+// always newer than the current dev/snapshot version.
+private val INSTALLED_VERSION = SkillBillVersion.VALUE
+private val NEWER_MAJOR = INSTALLED_VERSION.substringBefore('.').toInt() + 1
+private val NEWER_RELEASE_TAG = "v$NEWER_MAJOR.0.0"
+private val NEWER_PRERELEASE_TAG = "v$NEWER_MAJOR.0.0-rc.1"
+
 private fun updateCheckRequester(
   capturedRequests: MutableList<Map<String, Any?>>,
-  latest: String = "v0.4.0",
+  latest: String = NEWER_RELEASE_TAG,
 ): HttpRequester = HttpRequester { method, url, _, headers ->
   capturedRequests += mapOf("method" to method, "url" to url, "headers" to headers)
   HttpResponse(

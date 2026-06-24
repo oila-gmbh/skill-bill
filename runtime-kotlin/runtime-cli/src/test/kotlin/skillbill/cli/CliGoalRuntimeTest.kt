@@ -1,5 +1,6 @@
 package skillbill.cli
 
+import skillbill.SkillBillVersion
 import skillbill.cli.core.CliRuntime
 import skillbill.cli.model.CliExecutionResult
 import skillbill.cli.model.CliRuntimeContext
@@ -186,7 +187,7 @@ class CliGoalRuntimeTest {
     assertEquals(listOf(1, 2), launcher.requests.map { it.skillRunRequest.subtaskId })
     assertContains(liveStdout.toString(), "goal SKILL-901: subtask 1 start")
     assertContains(liveStdout.toString(), "goal SKILL-901: runtime executable=")
-    assertContains(liveStdout.toString(), "version=0.3.0-SNAPSHOT build_id=0.3.0-SNAPSHOT")
+    assertContains(liveStdout.toString(), "version=${SkillBillVersion.VALUE} build_id=${SkillBillVersion.VALUE}")
     assertContains(liveStdout.toString(), "child-1-stdout")
     assertContains(liveStdout.toString(), "goal SKILL-901: completion confirmed")
     assertContains(liveStderr.toString(), "child-1-stderr")
@@ -305,7 +306,7 @@ class CliGoalRuntimeTest {
         "worker_role=foreground liveness_class=durable_progress sequence_number=1",
     )
     assertContains(liveStdout.toString(), "goal SKILL-901: runtime executable=")
-    assertContains(liveStdout.toString(), "version=0.3.0-SNAPSHOT build_id=0.3.0-SNAPSHOT")
+    assertContains(liveStdout.toString(), "version=${SkillBillVersion.VALUE} build_id=${SkillBillVersion.VALUE}")
     assertEquals(false, liveStdout.toString().contains("child-1-stdout"), liveStdout.toString())
     assertEquals(false, liveStderr.toString().contains("child-1-stderr"), liveStderr.toString())
   }
@@ -547,7 +548,7 @@ class CliGoalRuntimeTest {
 
     assertEquals(0, result.exitCode, result.stdout)
     assertContains(liveStdout.toString(), "goal SKILL-901: runtime executable=")
-    assertContains(liveStdout.toString(), "version=0.3.0-SNAPSHOT build_id=0.3.0-SNAPSHOT")
+    assertContains(liveStdout.toString(), "version=${SkillBillVersion.VALUE} build_id=${SkillBillVersion.VALUE}")
     assertContains(liveStdout.toString(), "goal SKILL-901: subtask 1 start")
     assertEquals(false, liveStdout.toString().contains("child-1-stdout"), liveStdout.toString())
     assertEquals("", liveStderr.toString())

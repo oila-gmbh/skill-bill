@@ -1,6 +1,7 @@
 package skillbill.mcp
 
 import skillbill.SAMPLE_REVIEW
+import skillbill.SkillBillVersion
 import skillbill.application.telemetry.specInputTypes
 import skillbill.contracts.JsonSupport
 import skillbill.db.core.DatabaseRuntime
@@ -458,7 +459,7 @@ class McpStdioServerTest {
 
     assertEquals(false, result["isError"])
     assertEquals("text", textContent["type"])
-    assertEquals("0.3.0-SNAPSHOT", payload["version"])
+    assertEquals(SkillBillVersion.VALUE, payload["version"])
   }
 
   @Test
