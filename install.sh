@@ -2554,12 +2554,12 @@ run_desktop_only_install() {
 }
 
 run_full_install() {
+  bundle_bootstrap_if_needed
   print_install_plan "full"
   if [[ "$REUSE_LAST_SELECTION" -eq 1 ]]; then
     build_platform_packages
     replay_last_install_selection
   fi
-  bundle_bootstrap_if_needed
   clean_install_state_if_requested
   run_pre_install_uninstall
   copy_in_authored_source
