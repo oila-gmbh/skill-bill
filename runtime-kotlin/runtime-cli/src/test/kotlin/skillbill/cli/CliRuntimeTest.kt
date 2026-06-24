@@ -851,7 +851,7 @@ class CliRuntimeTest {
     val result = CliRuntime.run(
       listOf("update", "--format", "json"),
       CliRuntimeContext(
-        requester = updateCheckRequester(capturedRequests, latest = "v0.2.0"),
+        requester = updateCheckRequester(capturedRequests, latest = INSTALLED_BASE_TAG),
         externalCommandRunner = runner,
       ),
     )
@@ -1239,6 +1239,12 @@ private val INSTALLED_VERSION = SkillBillVersion.VALUE
 private val NEWER_MAJOR = INSTALLED_VERSION.substringBefore('.').toInt() + 1
 private val NEWER_RELEASE_TAG = "v$NEWER_MAJOR.0.0"
 private val NEWER_PRERELEASE_TAG = "v$NEWER_MAJOR.0.0-rc.1"
+
+// The stable release matching the installed snapshot's base version. Any
+// X.Y.Z-SNAPSHOT is treated as ahead of release vX.Y.Z, so this yields
+// ahead_of_release for any installed version, including the 0.0.0-SNAPSHOT
+// fallback on a tagless CI checkout.
+private val INSTALLED_BASE_TAG = "v${INSTALLED_VERSION.substringBefore('-')}"
 
 private fun updateCheckRequester(
   capturedRequests: MutableList<Map<String, Any?>>,

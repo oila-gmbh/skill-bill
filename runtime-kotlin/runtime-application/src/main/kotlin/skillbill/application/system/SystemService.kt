@@ -12,14 +12,18 @@ import skillbill.ports.telemetry.TelemetrySettingsProvider
 class SystemService(
   private val database: DatabaseSessionFactory,
   private val settingsProvider: TelemetrySettingsProvider,
+  // Defaults to the build-stamped version; injectable so version-dependent logic
+  // (e.g. update-check) can be unit-tested against a fixed version. kotlin-inject
+  // uses this default because the graph binds no String.
+  private val versionValue: String = SkillBillVersion.VALUE,
 ) {
-  fun version(): VersionContract = VersionContract(version = SkillBillVersion.VALUE)
+  fun version(): VersionContract = VersionContract(version = versionValue)
 
   fun doctor(dbOverride: String?): DoctorContract {
     val dbPath = database.resolveDbPath(dbOverride)
     val settings = telemetrySettingsOrNull(settingsProvider)
     return DoctorContract(
-      version = SkillBillVersion.VALUE,
+      version = versionValue,
       dbPath = dbPath.toString(),
       dbExists = database.databaseExists(dbOverride),
       telemetryEnabled = settings?.enabled ?: false,
