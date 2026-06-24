@@ -3,5 +3,5 @@
   "db_path": "<DB_PATH>",
   "telemetry_enabled": false,
   "telemetry_level": "off",
-  "version": "0.3.0-SNAPSHOT"
+  "version": "<VERSION>"
 }

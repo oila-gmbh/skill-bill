@@ -1,6 +1,7 @@
 package skillbill.mcp
 
 import skillbill.SAMPLE_REVIEW
+import skillbill.SkillBillVersion
 import skillbill.ZERO_FINDING_REVIEW
 import skillbill.application.model.FeatureImplementFinishedRequest
 import skillbill.application.model.FeatureImplementStartedRequest
@@ -69,8 +70,9 @@ class McpRuntimeTest {
       "mcp-doctor.json",
       result,
       "<DB_PATH>" to tempDir.resolve("metrics.db").toAbsolutePath().normalize().toString(),
+      "<VERSION>" to SkillBillVersion.VALUE,
     )
-    assertEquals("0.3.0-SNAPSHOT", result["version"])
+    assertEquals(SkillBillVersion.VALUE, result["version"])
     assertEquals(tempDir.resolve("metrics.db").toAbsolutePath().normalize().toString(), result["db_path"])
     assertFalse(result["db_exists"] as Boolean)
     assertEquals(false, result["telemetry_enabled"])
