@@ -232,12 +232,15 @@ private fun readFeatureTaskRuntimePhaseOutputSchemaText(): String {
 private val FENCED_BLOCK = Regex("```[ \\t]*[A-Za-z0-9_-]*\\r?\\n(.*?)```", RegexOption.DOT_MATCHES_ALL)
 
 // Ordered, de-duplicated candidates to try as the phase-output object: fenced blocks last-first
-// (the final fence is the most likely answer), then a first-`{`-to-last-`}` slice that strips
-// surrounding prose, then the raw text so clean JSON/YAML and genuine failures are unchanged.
+// (the final fence is the most likely answer), then each balanced top-level `{...}` region last-first
+// (recovers the real object when an example object or a brace-bearing prose table precedes it), then a
+// first-`{`-to-last-`}` slice as a structural fallback, then the raw text so clean JSON/YAML and genuine
+// failures are unchanged.
 private fun phaseOutputObjectCandidates(raw: String): List<String> {
   val trimmed = raw.trim()
   return buildList {
     FENCED_BLOCK.findAll(trimmed).map { it.groupValues[1].trim() }.toList().asReversed().forEach(::add)
+    balancedTopLevelObjectSpans(trimmed).asReversed().forEach(::add)
     val open = trimmed.indexOf('{')
     val close = trimmed.lastIndexOf('}')
     if (open in 0 until close) {
@@ -245,6 +248,69 @@ private fun phaseOutputObjectCandidates(raw: String): List<String> {
     }
     add(trimmed)
   }.filter(String::isNotBlank).distinct()
+}
+
+// Each balanced top-level `{...}` region in source order, scanned with JSON string-literal awareness so
+// braces inside quoted values never throw off the depth count. The naive first-`{`-to-last-`}` slice
+// spans across two disjoint objects (an example then the real answer) or across a prose table peppered
+// with braces and parses as neither; isolating each balanced object lets the caller try the final one,
+// which is the agent's real answer, before falling back.
+private fun balancedTopLevelObjectSpans(text: String): List<String> {
+  val scanner = TopLevelObjectScanner(text)
+  return text.indices.mapNotNull(scanner::consume)
+}
+
+// Single-pass scanner emitting each balanced top-level `{...}` substring as it closes. Splitting the
+// string-literal and structural state transitions into their own small steps keeps each branch shallow
+// and the whole walk free of loop jumps.
+private class TopLevelObjectScanner(private val text: String) {
+  private var depth = 0
+  private var start = -1
+  private var inString = false
+  private var escaped = false
+
+  fun consume(index: Int): String? {
+    val ch = text[index]
+    if (inString) {
+      advanceStringState(ch)
+      return null
+    }
+    return advanceStructuralState(ch, index)
+  }
+
+  private fun advanceStringState(ch: Char) {
+    if (escaped) {
+      escaped = false
+      return
+    }
+    when (ch) {
+      '\\' -> escaped = true
+      '"' -> inString = false
+    }
+  }
+
+  private fun advanceStructuralState(ch: Char, index: Int): String? {
+    when (ch) {
+      '"' -> inString = true
+      '{' -> openObject(index)
+      '}' -> return closeObject(index)
+    }
+    return null
+  }
+
+  private fun openObject(index: Int) {
+    if (depth == 0) start = index
+    depth += 1
+  }
+
+  private fun closeObject(index: Int): String? {
+    if (depth == 0) return null
+    depth -= 1
+    if (depth != 0 || start < 0) return null
+    val span = text.substring(start, index + 1)
+    start = -1
+    return span
+  }
 }
 
 fun featureTaskRuntimePhaseOutputDottedFieldPath(instanceLocation: String): String = when {

@@ -34,7 +34,7 @@ object FeatureTaskRuntimePhasePromptComposer {
       commitExclusionDirective(briefing.phaseId, issueKey, specSource),
       specCommitInclusionDirective(briefing.phaseId, specReference, specSource),
       briefing.briefingText,
-      retryCorrectionDirective(priorSchemaFailure),
+      retryCorrectionDirective(briefing.phaseId, priorSchemaFailure),
       outputContract(briefing.phaseId),
     ).filter(String::isNotBlank).joinToString(separator = "\n\n")
   }
@@ -45,17 +45,71 @@ object FeatureTaskRuntimePhasePromptComposer {
   // audit emitting a prose verdict table instead of the required structured signal). Surfacing the
   // validator's reason turns each retry into a corrective attempt. Empty on the first attempt, so a
   // forward launch's prompt stays byte-for-byte unchanged.
-  private fun retryCorrectionDirective(priorSchemaFailure: String?): String {
+  private fun retryCorrectionDirective(phaseId: String, priorSchemaFailure: String?): String {
     if (priorSchemaFailure.isNullOrBlank()) {
       return ""
     }
-    return """
+    val base = """
       ## Previous attempt was REJECTED by the schema gate — correct it now
       Your previous attempt at this phase did not produce schema-valid output and was rejected. Reason:
       $priorSchemaFailure
       Re-read the required-final-output contract below and emit exactly one schema-valid JSON object that
       carries the missing signal. Do not repeat the same mistake; prose alone does not satisfy the gate.
     """.trimIndent()
+    return base + unparseableRootCorrection(phaseId, priorSchemaFailure)
+  }
+
+  // The `<root> must be an object` / malformed-output failures mean the runtime could not extract ANY
+  // JSON object from the response — the agent answered with a prose Markdown table, a bare array, or an
+  // empty body. Echoing that validator reason alone is what lets a verifying phase (audit especially)
+  // burn its whole fix loop re-emitting the same prose: it reads "must be an object" and assumes its
+  // table was the object. This appends the concrete correction — name the likely mistake and hand back a
+  // minimal fill-in skeleton for this phase. Empty for field-level violations, where the reason already
+  // pinpoints the offending field, so those retries stay byte-for-byte unchanged.
+  private fun unparseableRootCorrection(phaseId: String, priorSchemaFailure: String): String {
+    val rootNotParseable = priorSchemaFailure.contains("<root> must be an object") ||
+      priorSchemaFailure.contains("Phase output is malformed")
+    if (!rootNotParseable) {
+      return ""
+    }
+    return "\nThe runtime could NOT parse a single JSON object out of your previous output — you likely " +
+      "answered\nwith prose, a Markdown table, or a JSON array. None of those can advance the gate. Emit " +
+      "exactly ONE\nJSON object as the final thing in your response — no array wrapper and no leading " +
+      "table — matching\nthis skeleton with real values:\n" + retrySkeleton(phaseId)
+  }
+
+  // A minimal, phase-correct object the agent can fill in. Built line-by-line (the optional verdict line
+  // is omitted for non-verifying phases) so the emitted skeleton is always syntactically valid JSON with
+  // no dangling comma, and so verifying phases see the exact verdict and produced_outputs keys the gate
+  // reads back.
+  private fun retrySkeleton(phaseId: String): String = buildList {
+    add("```json")
+    add("{")
+    add("  \"contract_version\": \"${FeatureTaskRuntimePhaseWorkflowDefinition.definition.contractVersion}\",")
+    add("  \"phase_id\": \"$phaseId\",")
+    add("  \"status\": \"completed\",")
+    verdictSkeletonLine(phaseId)?.let(::add)
+    add("  \"summary\": \"<one sentence describing what this phase did>\",")
+    add("  \"produced_outputs\": { ${producedOutputsSkeletonEntry(phaseId)} }")
+    add("}")
+    add("```")
+  }.joinToString(separator = "\n")
+
+  private fun verdictSkeletonLine(phaseId: String): String? {
+    val verdict = FeatureTaskRuntimeVerificationSignalKeys.VERDICT
+    return when (phaseId) {
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT -> "  \"$verdict\": \"satisfied\","
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW -> "  \"$verdict\": \"approved\","
+      else -> null
+    }
+  }
+
+  private fun producedOutputsSkeletonEntry(phaseId: String): String = when (phaseId) {
+    FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT ->
+      "\"${FeatureTaskRuntimeVerificationSignalKeys.AUDIT_UNMET_CRITERIA}\": []"
+    FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW ->
+      "\"${FeatureTaskRuntimeVerificationSignalKeys.REVIEW_FINDINGS}\": []"
+    else -> "\"result\": \"<concrete output for downstream phases>\""
   }
 
   private fun header(issueKey: String, phaseId: String): String {

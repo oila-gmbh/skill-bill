@@ -271,6 +271,63 @@ class FeatureTaskRuntimePhasePromptComposerTest {
   }
 
   @Test
+  fun `an unparseable-root failure appends a phase-correct fill-in skeleton`() {
+    // When the runtime could not parse any JSON object out of the prior output (the audit/review prose
+    // or array case), the retry must do more than echo the reason: name the mistake and hand back a
+    // skeleton carrying this phase's exact verdict and produced_outputs keys.
+    val auditRetry = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor("audit"),
+      priorSchemaFailure = "<root> must be an object.",
+    )
+    val reviewRetry = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor("review"),
+      priorSchemaFailure = "<root> must be an object.",
+    )
+
+    assertContains(auditRetry, "could NOT parse a single JSON object", false, "audit names the parse failure")
+    assertContains(auditRetry, "Markdown table, or a JSON array", false, "audit names the likely mistake")
+    assertContains(auditRetry, "<one sentence describing what this phase did>", false, "audit hands back a skeleton")
+    assertContains(auditRetry, "\"phase_id\": \"audit\"", false, "skeleton pins the phase id")
+    assertContains(auditRetry, "\"verdict\": \"satisfied\"", false, "audit skeleton seeds the audit verdict")
+    assertContains(auditRetry, "\"unmet_criteria\": []", false, "audit skeleton seeds the audit signal key")
+    assertContains(reviewRetry, "\"verdict\": \"approved\"", false, "review skeleton seeds the review verdict")
+    assertContains(reviewRetry, "\"findings\": []", false, "review skeleton seeds the review signal key")
+  }
+
+  @Test
+  fun `a malformed-output failure also appends the fill-in skeleton`() {
+    val retry = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor("audit"),
+      priorSchemaFailure = "Phase output is malformed: unexpected end-of-input",
+    )
+
+    assertContains(retry, "could NOT parse a single JSON object", false, "malformed output triggers the skeleton")
+    assertContains(retry, "<one sentence describing what this phase did>", false, "malformed output hands a skeleton")
+  }
+
+  @Test
+  fun `a field-level violation echoes the reason without the parse-failure skeleton`() {
+    // A reason that already pinpoints an offending field must keep the lean reason-only correction so
+    // those retries stay byte-for-byte unchanged.
+    val retry = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor("audit"),
+      priorSchemaFailure = "summary: must be a non-empty string",
+    )
+
+    assertContains(retry, "Previous attempt was REJECTED by the schema gate", false, "still corrects")
+    assertContains(retry, "summary: must be a non-empty string", false, "still carries the field reason")
+    assertTrue(!retry.contains("could NOT parse a single JSON object"), "no parse-failure block for field errors")
+    assertTrue(
+      !retry.contains("<one sentence describing what this phase did>"),
+      "no skeleton for field-level violations",
+    )
+  }
+
+  @Test
   fun `a blank prior schema failure yields no correction directive`() {
     // F-002: retryCorrectionDirective treats null and blank identically (isNullOrBlank). A blank reason
     // must not emit a no-op "REJECTED" heading with nothing under it.

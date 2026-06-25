@@ -237,6 +237,53 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorTest {
   }
 
   @Test
+  fun `the real object wins over an earlier example object outside any fence`() {
+    val twoObjects =
+      """
+      For reference the shape is:
+      {"contract_version":"0.1","phase_id":"audit","status":"blocked","summary":"example"}
+      Here is the real output:
+      {"contract_version":"0.1","phase_id":"audit","status":"completed",
+       "summary":"every criterion met","verdict":"satisfied",
+       "produced_outputs":{"unmet_criteria":[]}}
+      """.trimIndent()
+    FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(twoObjects, "audit")
+  }
+
+  @Test
+  fun `object trailed by prose containing a stray brace still validates`() {
+    // The naive first-`{`-to-last-`}` slice overshoots to the stray brace in the trailing prose and
+    // parses as neither; the balanced-object scan isolates the genuine object.
+    val withTrailingBrace =
+      """
+      {"contract_version":"0.1","phase_id":"plan","status":"completed",
+       "summary":"ok","produced_outputs":{"tasks":["task-1"]}}
+      Note: the template placeholder } above is intentional.
+      """.trimIndent()
+    FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(withTrailingBrace, "plan")
+  }
+
+  @Test
+  fun `a brace inside a string value does not split the object`() {
+    val braceInString =
+      """{"contract_version":"0.1","phase_id":"plan","status":"completed",""" +
+        """"summary":"handles a literal } brace in a value","produced_outputs":{"tasks":["task-1"]}}"""
+    FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(braceInString, "plan")
+  }
+
+  @Test
+  fun `a top-level json array of criteria still fails validation`() {
+    // A verifying phase that answers with a bare array carries no envelope object; no extraction can
+    // salvage it, so the gate must still fail loudly (the retry directive is what corrects the agent).
+    assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
+      FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(
+        """[{"criterion":"AC-1","met":true},{"criterion":"AC-2","met":false}]""",
+        "audit",
+      )
+    }
+  }
+
+  @Test
   fun `prose with no json object still fails validation`() {
     val proseOnly =
       """
