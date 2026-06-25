@@ -96,6 +96,29 @@ guidance.
 Precedence: matching `.agents/skill-overrides.md` section > `AGENTS.md` >
 built-in defaults.
 
+## Built-in Coding Standards
+
+These are framework defaults that implementation skills follow when writing code
+and review skills enforce when reading it. They sit at the lowest tier of the
+precedence above: a matching `.agents/skill-overrides.md` section or an
+`AGENTS.md` rule may relax or replace any of them.
+
+### Comments
+
+Prefer self-documenting code over comments. Clear names, small functions, and
+precise types carry intent more reliably than prose that drifts out of sync with
+the code it describes.
+
+- Do not write comments that restate **what** the code does. A comment that
+  paraphrases the line beneath it is noise and a maintenance liability.
+- Reach for a clearer name or a smaller function before reaching for a comment.
+- Keep KDoc/docstrings sparing — reserve them for genuinely non-obvious public
+  contracts, not routine description.
+- The one warranted exception is a comment that explains **why, not what**: a
+  decision or non-obvious external constraint the code physically cannot express
+  (e.g. "retry 3x because the upstream returns 503 on cold start"; "do not
+  reorder — the lock must be acquired before the flush"). Keep these.
+
 ## Inputs
 
 Read the current skill's `SKILL.md` frontmatter before execution so project

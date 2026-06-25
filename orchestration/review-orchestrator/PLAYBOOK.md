@@ -14,7 +14,8 @@ Do not reference this repo-relative path directly from installable skills — us
 - Review only changed code in the current PR or unit of work
 - Surface only meaningful issues such as bugs, logic flaws, security risks, regression risks, or architectural breakage
 - Flag newly introduced deprecated APIs or patterns when a supported alternative exists, or when deprecated usage is broad and unjustified
-- Ignore style-only nits, formatting preferences, and naming bikeshedding
+- Flag comments that only restate **what** the code does (paraphrasing adjacent code) as a maintainability finding — this is an explicit contract item, report it at `Minor`. Do not flag comments that explain **why**: a decision or non-obvious constraint the code cannot express is warranted and must be left alone
+- Ignore style-only nits, formatting preferences, and naming bikeshedding — a comment that merely restates the code is a maintainability defect under the rule above, not a style nit
 - Evidence is mandatory: include `file:line` and a short description
 - Include the user-visible or externally observable consequence for each finding
 - Report `Minor` findings, or `Medium`/`Low` confidence findings, only when they tie to an explicit contract violation, user-visible bug, regression risk, quality gate failure, or persisted learning
