@@ -33,6 +33,10 @@ internal fun Project.configureKmpDesktop(extension: KotlinMultiplatformExtension
 
   tasks.withType<Test>().configureEach {
     useJUnitPlatform()
+    // The Claude Code harness exports CLAUDE_CONFIG_DIR; left inherited it leaks a real ~/.claude-*
+    // profile root into install/apply discovery tests and breaks their exact-root assertions. Drop it
+    // so the test JVM never depends on the running developer's ambient Claude profile.
+    environment.remove("CLAUDE_CONFIG_DIR")
     testLogging {
       events("passed", "skipped", "failed")
       exceptionFormat = TestExceptionFormat.FULL
