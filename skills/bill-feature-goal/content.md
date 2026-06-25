@@ -1,15 +1,15 @@
 ---
 name: bill-feature-goal
-description: Use when a decomposed feature goal is ready to run through one confirmation gate. Accepts `mode:prose` (default), which drives an in-session subtask loop, or `mode:runtime`, which drives the foreground `skill-bill goal` runtime, mirroring bill-feature-task's argument convention.
+description: Use when a decomposed feature goal is ready to run through one confirmation gate. Accepts `mode:runtime` (default), which drives the foreground `skill-bill goal` runtime, or `mode:prose`, which drives an in-session subtask loop, mirroring bill-feature-task's argument convention.
 ---
 
 # Feature Goal Content
 
-`bill-feature-goal` is the interactive front door for a feature goal that needs multiple decomposed implementation subtasks. It verifies decomposition readiness, asks for exactly one confirmation before starting any automated loop, and runs the confirmed decomposition in the selected mode: an in-session subtask loop by default (`mode:prose`), or the foreground `skill-bill goal` driver (`mode:runtime`).
+`bill-feature-goal` is the interactive front door for a feature goal that needs multiple decomposed implementation subtasks. It verifies decomposition readiness, asks for exactly one confirmation before starting any automated loop, and runs the confirmed decomposition in the selected mode: the foreground `skill-bill goal` driver by default (`mode:runtime`), or an in-session subtask loop (`mode:prose`).
 
 `bill-feature-goal` is the trigger surface for decomposed-goal orchestration. In
-`mode:prose` (the default) it loops the subtasks in the current agent session; in
-`mode:runtime` it hands off to the durable `skill-bill goal` runtime driver.
+`mode:runtime` (the default) it hands off to the durable `skill-bill goal` runtime
+driver; in `mode:prose` it loops the subtasks in the current agent session.
 
 `bill-feature-goal` does not own spec-writing logic. When decomposition artifacts are
 missing, it must reuse the shared feature-spec preparation path exposed through
@@ -20,13 +20,14 @@ missing, it must reuse the shared feature-spec preparation path exposed through
 `bill-feature-goal` accepts a `mode:` argument, mirroring `bill-feature-task`'s
 convention:
 
-- `mode:prose` (default) drives the in-session subtask loop documented in the
+- `mode:runtime` (default) drives the foreground `skill-bill goal` runtime
+  documented in the sections below. This is the documented default when no
+  `mode:` argument is supplied.
+- `mode:prose` drives the in-session subtask loop documented in the
   `## Mode: Prose Goal Orchestration (in-session loop)` section near the end of
-  this file. This is the documented default when no `mode:` argument is supplied.
-- `mode:runtime` drives the foreground `skill-bill goal` runtime documented in
-  the sections below.
+  this file.
 
-Resolve the mode to `prose` when no `mode:` argument is supplied.
+Resolve the mode to `runtime` when no `mode:` argument is supplied.
 
 Both modes share the same intake, decomposition-readiness checks, and the single
 confirmation gate defined in `## Decomposition Proposal`. They differ only in how
@@ -71,7 +72,7 @@ Then present a concise proposal that includes:
 - two or more ordered subtasks with dependency notes
 - the expected first runnable subtask
 - the agent that will be used for child runs, including any explicit override
-- the resolved mode: show `prose (default)` when the mode was not specified, `prose` when explicitly set, or `runtime` when `mode:runtime` was passed
+- the resolved mode: show `runtime (default)` when the mode was not specified, `runtime` when explicitly set, or `prose` when `mode:prose` was passed
 
 Ask one confirmation question: whether to proceed with this decomposition and start the goal loop in the resolved mode.
 

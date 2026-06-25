@@ -16,11 +16,11 @@ Non-negotiable contracts:
 
 ## Product Intent
 
-`bill-feature-task` is the router entry point for feature-task work: it accepts `mode:prose` (default) or `mode:runtime` and delegates to the appropriate implementation mode. `bill-feature-task-prose` is the first-class prose orchestrator that runs the full phase loop in-session. `bill-feature-task-runtime` is the runtime-backed skill that drives the phase loop through the foreground `skill-bill feature-task` driver with durable workflow state, telemetry, platform packs, add-ons, and native subagents.
+`bill-feature-task` is the router entry point for feature-task work: it accepts `mode:runtime` (default) or `mode:prose` and delegates to the appropriate implementation mode. `bill-feature-task-prose` is the first-class prose orchestrator that runs the full phase loop in-session. `bill-feature-task-runtime` is the runtime-backed skill that drives the phase loop through the foreground `skill-bill feature-task` driver with durable workflow state, telemetry, platform packs, add-ons, and native subagents.
 
 Skill catalog status:
 
-- `bill-feature-task`: router that accepts `mode:prose` (default) or `mode:runtime`, presents one confirmation gate, then delegates.
+- `bill-feature-task`: router that accepts `mode:runtime` (default) or `mode:prose`, presents one confirmation gate, then delegates.
 - `bill-feature-task-prose`: first-class prose orchestrator for end-to-end feature implementation running entirely within the invoking agent session.
 - `bill-feature-task-runtime`: runtime-backed skill that launches the `skill-bill feature-task` foreground driver.
 

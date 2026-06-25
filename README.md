@@ -95,13 +95,13 @@ Skill Bill ships complete Kotlin/KMP packs — the stack-specific intelligence t
 | `/bill-feature` | Primary feature entry point that prepares a spec, then routes to implementation or the goal loop |
 | `/bill-feature-guard` | Add feature-flag rollout safety to an implementation |
 | `/bill-feature-guard-cleanup` | Remove feature flags and legacy code after rollout |
-| `/bill-feature-task` | Router skill: accepts `mode:prose` (default) or `mode:runtime`, delegates to the appropriate implementation mode |
+| `/bill-feature-task` | Router skill: accepts `mode:runtime` (default) or `mode:prose`, delegates to the appropriate implementation mode |
 | `/bill-feature-task-prose` | First-class prose orchestrator for end-to-end feature implementation within the invoking agent session |
 | `/bill-feature-task-runtime` | Runtime-backed trigger that runs a governed spec through the `skill-bill feature-task` phase loop |
 | `/bill-feature-task-subtask-runner` | Level-1 subtask-agent for `bill-feature-goal mode:prose`; spawned via the Agent tool, not invoked directly |
 | `/bill-feature-spec` | Standalone feature-spec preparation (single-spec or decomposed) reused by feature and goal workflows |
 | `/bill-feature-verify` | Verify a PR against a task spec or design doc |
-| `/bill-feature-goal` | Decomposed-goal trigger: `mode:prose` (default) drives an in-session subtask loop, `mode:runtime` drives the durable `skill-bill goal` loop |
+| `/bill-feature-goal` | Decomposed-goal trigger: `mode:runtime` (default) drives the durable `skill-bill goal` loop, `mode:prose` drives an in-session subtask loop |
 | `/bill-pr-description` | Generate a PR title, description, and QA steps |
 | `/bill-pr-review-fix` | Resolve PR review comments end-to-end with an approval gate and reply automation |
 | `/bill-unit-test-value-check` | Review unit tests for low-value or tautological coverage |
