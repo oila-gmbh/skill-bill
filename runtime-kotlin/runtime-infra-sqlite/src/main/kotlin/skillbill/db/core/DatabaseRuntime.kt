@@ -34,6 +34,9 @@ object DatabaseRuntime {
     path.parent?.toAbsolutePath()?.normalize()?.toFile()?.mkdirs()
     val connection = DriverManager.getConnection("jdbc:sqlite:${path.toAbsolutePath().normalize()}")
     connection.createStatement().use { statement ->
+      // busy_timeout before journal_mode so the WAL switch tolerates a concurrent writer on the shared DB.
+      statement.execute("PRAGMA busy_timeout = 5000")
+      statement.execute("PRAGMA journal_mode = WAL")
       statement.execute("PRAGMA foreign_keys = ON")
     }
     DatabaseSchema.createBaseSchema(connection)

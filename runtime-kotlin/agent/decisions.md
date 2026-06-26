@@ -4,6 +4,34 @@ This file records architectural and implementation decisions that span the
 `runtime-kotlin/` boundary. Each entry is dated and explains the trade-off,
 not the implementation detail.
 
+## 2026-06-26 — SQLite runs in WAL with a busy_timeout for concurrent runs
+
+Context: All runtimes share one global SQLite file (`~/.skill-bill/review-metrics.db`),
+and nothing prevents concurrent runs (e.g. two goals for two projects at once).
+`ensureDatabase` previously set only `PRAGMA foreign_keys = ON`, leaving SQLite on
+its rollback-journal default with no busy timeout, so a write that collided with a
+concurrent writer failed immediately with `SQLITE_BUSY` ("database is locked") and
+aborted the operation — there is no DB-level retry/backoff anywhere in the adapter.
+
+Decision: `ensureDatabase` now sets `PRAGMA busy_timeout = 5000` and
+`PRAGMA journal_mode = WAL` (in that order) on every connection, alongside the
+existing `foreign_keys` pragma. busy_timeout makes a blocked writer wait-and-retry
+inside SQLite instead of erroring; WAL lets readers run concurrently with the single
+writer. busy_timeout is set before the journal_mode switch so the WAL transition
+itself tolerates a concurrent writer.
+
+Reason: This is the standard low-risk hardening for a shared local SQLite file and
+closes the only practical sharp edge of concurrent runs without introducing an
+application-level lock or per-project DB files (both rejected: a lock would remove
+the ability to run concurrent goals, per-project files would fork the cross-project
+review-metrics aggregation the single DB enables). WAL is a persistent property of
+the DB file and creates `-wal`/`-shm` sidecars next to the DB — acceptable for a
+local `~/.skill-bill/` database. Re-applying the pragmas per connection is
+idempotent.
+
+Revisit when: the DB is moved off a local filesystem (WAL needs shared-memory
+support), or measured contention shows 5s is the wrong timeout.
+
 ## 2026-06-12 — Retain split `skillbill.contracts.*` package for validator moves
 
 Context: SKILL-52.4 F16 leaves contract DTOs/constants/helpers in
