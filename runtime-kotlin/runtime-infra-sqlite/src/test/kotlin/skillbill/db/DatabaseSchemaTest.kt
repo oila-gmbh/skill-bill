@@ -21,12 +21,28 @@ class DatabaseSchemaTest {
             resultSet.getInt(1)
           }
         }
+      val busyTimeout =
+        connection.createStatement().use { statement ->
+          statement.executeQuery("PRAGMA busy_timeout").use { resultSet ->
+            resultSet.next()
+            resultSet.getInt(1)
+          }
+        }
+      val journalMode =
+        connection.createStatement().use { statement ->
+          statement.executeQuery("PRAGMA journal_mode").use { resultSet ->
+            resultSet.next()
+            resultSet.getString(1)
+          }
+        }
       val tables = sqliteObjects(connection = connection, type = "table")
       val indexes = sqliteObjects(connection = connection, type = "index")
 
       assertTrue(Files.isDirectory(dbPath.parent))
       assertTrue(Files.exists(dbPath))
       assertEquals(1, foreignKeysEnabled)
+      assertEquals(5000, busyTimeout)
+      assertEquals("wal", journalMode.lowercase())
       assertTrue(
         DatabaseSchema.tableNames.all { it in tables },
         "Missing tables: ${DatabaseSchema.tableNames - tables}",
