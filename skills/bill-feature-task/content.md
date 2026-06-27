@@ -21,12 +21,18 @@ Gather enough to identify and confirm the run:
 - the issue key
 - the governed spec path the run implements
 - the agent currently executing this skill
-- the mode (from args as `mode:runtime` or `mode:prose`; default to `runtime` when absent)
+- the mode (from args as `mode:runtime` or `mode:prose`; default to `runtime` when absent — except on opencode, where prose is the implicit default; see the opencode rule below)
 - the parallel review agent (from args as `parallel-review:<agent>`; absent when not provided)
 
 If the issue key is missing, stop and ask for it. If the spec path is missing, search `.feature-specs` for exactly one governed `.feature-specs/{ISSUE_KEY}-*/spec.md` match and use it. If there is no match or more than one match, stop and ask for the explicit spec path. Do not invent either value.
 
 Parse the mode and `parallel-review:<agent>` from args before presenting the confirmation gate. If no mode arg is provided, resolve the mode to `runtime`.
+
+**opencode is prose-only.** When the agent currently executing this skill is opencode, prose is the implicit default and runtime mode is unsupported: its foreground Bash tool is hard-killed at 120s before a phase can finish, and per-phase output cannot be harvested back. So on opencode: with no mode arg, resolve to `prose` (no need to pass `mode:prose`); with an explicit `mode:runtime`, stop and emit the actionable refusal and do NOT delegate to `bill-feature-task-runtime`:
+
+> Runtime mode is not supported on opencode: its foreground Bash tool is hard-killed at 120s before a phase can finish, and per-phase output cannot be harvested back. Use prose instead — run bill-feature-task-prose for a single feature task, or bill-feature-goal mode:prose for a decomposed goal.
+
+This skill gate and the runtime CLI agree: the CLI refuses the same way whenever the resolved runtime agent is opencode by any route.
 
 ## Single Confirmation Gate
 
@@ -45,7 +51,7 @@ Do not launch any downstream skill while the run is unconfirmed. If the user dec
 
 After confirmation, invoke the delegated skill via the Skill tool — do not search the filesystem to locate skill files; the Skill tool resolves skills by name.
 
-When mode is `runtime` or unspecified:
+When mode is `runtime` or unspecified (on opencode the mode resolves to `prose`, or an explicit `mode:runtime` already refused per the opencode rule above, so this runtime branch is never taken on opencode):
 
 - Invoke `bill-feature-task-runtime` via the Skill tool.
 - Forward `--agent`, `--agent-override`, `--phase-agent`, and `parallel-review:<agent>` identically from the args received by this router.

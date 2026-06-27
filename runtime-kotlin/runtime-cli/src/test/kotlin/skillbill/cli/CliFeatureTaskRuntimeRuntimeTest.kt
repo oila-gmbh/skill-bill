@@ -222,7 +222,10 @@ class CliFeatureTaskRuntimeRuntimeTest {
   }
 
   @Test
-  fun `feature-task-runtime run SKILL_BILL_AGENT wins over detected invoking context`() {
+  fun `feature-task-runtime run refuses when the resolved agent is opencode via SKILL_BILL_AGENT`() {
+    // SKILL-95 AC3/AC9: opencode is prose-only. A runtime run whose agent resolves to opencode
+    // (here SKILL_BILL_AGENT over the detected invoking context) must fail fast with the actionable
+    // refusal message, opening no workflow and spawning no phase.
     val fixture = runtimeFixture()
     val launcher = RecordingPhaseLauncher()
 
@@ -231,8 +234,84 @@ class CliFeatureTaskRuntimeRuntimeTest {
       fixture.context(launcher, environment = mapOf("CLAUDECODE" to "1", "SKILL_BILL_AGENT" to "opencode")),
     )
 
-    assertEquals(0, result.exitCode, result.stdout)
-    assertEquals(listOf("opencode"), launcher.requests.map { it.agentId }.distinct())
+    assertEquals(1, result.exitCode, result.stdout)
+    assertContains(result.stdout, "Runtime mode is not supported on opencode")
+    assertContains(result.stdout, "bill-feature-task-prose")
+    assertContains(result.stdout, "bill-feature-goal mode:prose")
+    // No phase is launched and no workflow is opened before the refusal.
+    assertEquals(emptyList(), launcher.requests, result.stdout)
+    assertFalse(result.stdout.contains("workflow_id:"), result.stdout)
+  }
+
+  @Test
+  fun `feature-task-runtime run refuses when the host invoking agent is detected as opencode`() {
+    // SKILL-95 AC3/AC9: implicit resolution must also refuse — when opencode is detected as the
+    // invoking host (no --agent / SKILL_BILL_AGENT), runtime still fails fast with the message.
+    val fixture = runtimeFixture()
+    val launcher = RecordingPhaseLauncher()
+
+    val result = CliRuntime.run(
+      fixture.runCommand(),
+      fixture.context(launcher, environment = mapOf("OPENCODE" to "1")),
+    )
+
+    assertEquals(1, result.exitCode, result.stdout)
+    assertContains(result.stdout, "Runtime mode is not supported on opencode")
+    assertEquals(emptyList(), launcher.requests, result.stdout)
+    assertFalse(result.stdout.contains("workflow_id:"), result.stdout)
+  }
+
+  @Test
+  fun `feature-task-runtime run refuses opencode from agent-override phase-agent and parallel-review routes`() {
+    // SKILL-95 AC5/AC9: opencode reaching a runtime phase by ANY route must refuse at the preflight,
+    // and the predicate is case- and whitespace-insensitive (`OpenCode`, ` opencode `).
+    listOf(
+      listOf("--agent", "codex", "--agent-override", "opencode"),
+      listOf("--agent", "codex", "--phase-agent", "plan=opencode"),
+      listOf("--agent", "codex", "--parallel-review-agent", "opencode"),
+      listOf("--agent", "OpenCode"),
+      listOf("--agent", " opencode "),
+    ).forEach { extra ->
+      val fixture = runtimeFixture()
+      val launcher = RecordingPhaseLauncher()
+
+      val result = CliRuntime.run(
+        fixture.runCommand(extra = extra),
+        fixture.context(launcher),
+      )
+
+      assertEquals(1, result.exitCode, "expected refusal for $extra: ${result.stdout}")
+      assertContains(result.stdout, "Runtime mode is not supported on opencode")
+      assertEquals(emptyList(), launcher.requests, "no phase should spawn for $extra: ${result.stdout}")
+    }
+  }
+
+  @Test
+  fun `feature-task-runtime resume refuses when the resolved agent is opencode`() {
+    // SKILL-95 AC9: the resume entry point — the cross-mode resume hazard — must refuse opencode too,
+    // before touching the durable workflow. Driven directly with a placeholder workflow id since the
+    // preflight fires before any DB read.
+    val fixture = runtimeFixture()
+    val launcher = RecordingPhaseLauncher()
+
+    val result = CliRuntime.run(
+      listOf(
+        "--db",
+        fixture.dbPath.toString(),
+        "feature-task",
+        "resume",
+        "wftr-nonexistent",
+        "SKILL-650",
+        fixture.specPath.toString(),
+        "--agent",
+        "opencode",
+      ),
+      fixture.context(launcher),
+    )
+
+    assertEquals(1, result.exitCode, result.stdout)
+    assertContains(result.stdout, "Runtime mode is not supported on opencode")
+    assertEquals(emptyList(), launcher.requests, result.stdout)
   }
 
   @Test

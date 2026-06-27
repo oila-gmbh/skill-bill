@@ -31,6 +31,22 @@ enum class InstallAgent(
   }
 }
 
+// Single source of truth for agents skill-bill refuses to run in runtime mode. Every layer derives
+// from this set: the CLI preflights, the launcher backstop, and the headless adapter registry, so
+// re-enabling an agent's runtime path is a one-line change here rather than scattered edits that drift.
+val RUNTIME_REFUSED_AGENTS: Set<InstallAgent> = setOf(InstallAgent.OPENCODE)
+
+fun isRuntimeRefusedAgent(agentId: String?): Boolean {
+  if (agentId == null) return false
+  val normalized = agentId.trim().lowercase()
+  return RUNTIME_REFUSED_AGENTS.any { refused -> refused.id == normalized }
+}
+
+const val OPENCODE_RUNTIME_REFUSAL_MESSAGE: String =
+  "Runtime mode is not supported on opencode: its foreground Bash tool is hard-killed at 120s before " +
+    "a phase can finish, and per-phase output cannot be harvested back. Use prose instead — run " +
+    "bill-feature-task-prose for a single feature task, or bill-feature-goal mode:prose for a decomposed goal."
+
 /**
  * SKILL-64 Subtask 3 (AC18): pure, effect-free mapping from an already-read
  * execution-context environment map to the [InstallAgent] that most likely

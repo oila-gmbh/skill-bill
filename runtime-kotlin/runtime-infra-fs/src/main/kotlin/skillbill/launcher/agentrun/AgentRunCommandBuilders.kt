@@ -92,27 +92,6 @@ class CodexAgentRunCommandBuilder : AgentRunCommandBuilder {
     )
 }
 
-class OpencodeAgentRunCommandBuilder : AgentRunCommandBuilder {
-  override val agent: InstallAgent = InstallAgent.OPENCODE
-
-  override fun build(request: SkillRunRequest): AgentRunCommand =
-    goalContinuationCommand(request, agent) ?: AgentRunCommand(
-      command = listOf(
-        "opencode",
-        "run",
-        "--dir",
-        request.repoRoot.toString(),
-        "--dangerously-skip-permissions",
-        launchPrompt(request),
-      ),
-      workingDirectory = request.repoRoot,
-      timeout = request.timeout,
-      environment = goalContinuationEnvironment(request),
-      usePtyStdio = true,
-      idlePolicy = AgentRunIdlePolicy.HEARTBEAT_EXTENDED,
-    )
-}
-
 class JunieAgentRunCommandBuilder : AgentRunCommandBuilder {
   override val agent: InstallAgent = InstallAgent.JUNIE
 

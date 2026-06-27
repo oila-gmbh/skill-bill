@@ -752,6 +752,86 @@ class CliGoalTransitionMonitoringTest {
   }
 }
 
+/**
+ * SKILL-95 (AC4, AC9): opencode is prose-only. Kept in its own class so it does not push the broad
+ * [CliGoalRuntimeTest] over the detekt LargeClass threshold (the file's established convention).
+ */
+class CliGoalOpencodeRefusalTest {
+  @Test
+  fun `goal runtime run refuses when the resolved agent is opencode`() {
+    // A goal runtime run that resolves the agent to opencode must refuse before spawning any child
+    // feature-task subprocess, with the actionable message naming prose.
+    val fixture = goalFixture(subtaskCount = 1)
+    val launcher = GoalFixtureAgentRunLauncher(fixture)
+    val command = listOf(
+      "--db",
+      fixture.dbPath.toString(),
+      "goal",
+      "SKILL-901",
+      "--agent",
+      "opencode",
+      "--repo-root",
+      fixture.tempDir.toString(),
+    )
+
+    val result = CliRuntime.run(command, fixture.context(launcher = launcher))
+
+    assertEquals(1, result.exitCode, result.stdout)
+    assertContains(result.stdout, "Runtime mode is not supported on opencode")
+    assertContains(result.stdout, "bill-feature-task-prose")
+    assertContains(result.stdout, "bill-feature-goal mode:prose")
+    // No opencode child subprocess is spawned.
+    assertEquals(emptyList(), launcher.requests, result.stdout)
+  }
+
+  @Test
+  fun `goal runtime run refuses when the agent override is opencode`() {
+    // The --agent-override route must also refuse before spawning a child.
+    val fixture = goalFixture(subtaskCount = 1)
+    val launcher = GoalFixtureAgentRunLauncher(fixture)
+
+    val result = CliRuntime.run(
+      fixture.goalCommand(extra = listOf("--agent-override", "opencode")),
+      fixture.context(launcher = launcher),
+    )
+
+    assertEquals(1, result.exitCode, result.stdout)
+    assertContains(result.stdout, "Runtime mode is not supported on opencode")
+    assertEquals(emptyList(), launcher.requests, result.stdout)
+  }
+
+  @Test
+  fun `goal runtime run refuses when the host invoking agent is detected as opencode`() {
+    // SKILL-95 AC4: implicit host resolution (no --agent, no SKILL_BILL_AGENT) must refuse identically,
+    // since the goal guard resolves through the same invoking-agent detection as the explicit routes.
+    val fixture = goalFixture(subtaskCount = 1)
+    val launcher = GoalFixtureAgentRunLauncher(fixture)
+    val command = buildList {
+      add("--db")
+      add(fixture.dbPath.toString())
+      add("goal")
+      add("SKILL-901")
+      add("--repo-root")
+      add(fixture.tempDir.toString())
+    }
+
+    val result = CliRuntime.run(
+      command,
+      CliRuntimeContext(
+        userHome = fixture.tempDir,
+        workflowGitOperations = GoalTestWorkflowGitOperations,
+        agentRunLauncher = launcher,
+        goalPullRequestPort = fixture.pullRequests,
+        environment = mapOf("OPENCODE" to "1"),
+      ),
+    )
+
+    assertEquals(1, result.exitCode, result.stdout)
+    assertContains(result.stdout, "Runtime mode is not supported on opencode")
+    assertEquals(emptyList(), launcher.requests, result.stdout)
+  }
+}
+
 private fun startRunningGoalChild(fixture: GoalCliFixture): String = runGoalJson(
   listOf(
     "--db",

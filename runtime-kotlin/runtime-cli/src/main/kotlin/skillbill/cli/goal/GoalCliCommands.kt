@@ -23,6 +23,7 @@ import skillbill.application.model.GoalRunnerStatusRequest
 import skillbill.application.system.RuntimeProvenanceService
 import skillbill.cli.core.CliRunState
 import skillbill.cli.core.DocumentedCliCommand
+import skillbill.cli.core.refuseRuntimeRefusedAgents
 import skillbill.contracts.system.RuntimeProvenanceContract
 import skillbill.goalrunner.model.GoalRunnerRunReport
 import skillbill.goalrunner.model.GoalRunnerStatusProjection
@@ -84,6 +85,10 @@ class GoalRunCommand(
     if (currentContext.invokedSubcommand != null) {
       return
     }
+    // opencode is prose-only: refuse before any child subprocess is spawned, and before the
+    // issue_key check so the actionable refusal wins over a generic argument error (mirrors
+    // feature-task, where the preflight is the first statement in every run body).
+    refuseRuntimeRefusedAgents(listOf(resolveInvokedAgentId(agent, state.environment), agentOverride))
     val runIssueKey = issueKey ?: throw UsageError("issue_key is required for goal run.")
     val presenter = GoalRunPresenter(
       issueKey = runIssueKey,

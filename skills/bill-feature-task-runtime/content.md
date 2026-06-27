@@ -35,6 +35,19 @@ either one. The runtime sources the run-invariants (spec reference, acceptance
 criteria, mandates and overrides) directly from the spec at launch — this skill
 does not parse or restate them.
 
+**opencode is prose-only; refuse before launch.** This skill can be invoked
+directly (bypassing the `bill-feature-task` router), so it must refuse on its own
+when the agent currently executing it is opencode: stop before the Single
+Confirmation Gate and the foreground launch and emit the actionable refusal
+pointing to `bill-feature-task-prose`:
+
+> Runtime mode is not supported on opencode: its foreground Bash tool is hard-killed at 120s before a phase can finish, and per-phase output cannot be harvested back. Use prose instead — run bill-feature-task-prose for a single feature task, or bill-feature-goal mode:prose for a decomposed goal.
+
+Do not launch `skill-bill feature-task` on opencode — the runtime CLI refuses the
+same way whenever the resolved runtime agent is opencode, and runtime mode is
+non-viable there (the 120s foreground kill and the un-harvestable PTY output).
+For a prose run instead, use `bill-feature-task-prose`.
+
 ## Single Confirmation Gate
 
 Present one concise confirmation that includes:

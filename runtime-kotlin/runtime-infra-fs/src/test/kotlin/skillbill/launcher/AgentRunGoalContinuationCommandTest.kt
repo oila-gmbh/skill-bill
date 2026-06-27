@@ -115,11 +115,13 @@ class AgentRunGoalContinuationCommandTest {
   @Test
   fun `every agent goal-continuation child spawns skill-bill feature-task and never the skill`() {
     val runner = RecordingAgentRunProcessRunner()
-    listOf(InstallAgent.CLAUDE, InstallAgent.CODEX, InstallAgent.OPENCODE, InstallAgent.JUNIE).forEach { agent ->
+    // SKILL-95: opencode is prose-only and excluded from the headless runtime adapters, so the
+    // remaining runtime agents (claude, codex, junie) each spawn skill-bill feature-task directly.
+    listOf(InstallAgent.CLAUDE, InstallAgent.CODEX, InstallAgent.JUNIE).forEach { agent ->
       requireNotNull(headlessAgentRunAdapters(runner)[agent]).launch(skillRunRequest())
     }
 
-    assertEquals(4, runner.requests.size)
+    assertEquals(3, runner.requests.size)
     runner.requests.forEach { request ->
       assertEquals(
         listOf("skill-bill", "--db", "/tmp/skillbill-agent-run/metrics.db", "feature-task"),
@@ -132,7 +134,7 @@ class AgentRunGoalContinuationCommandTest {
       assertFalse(request.command.any { value -> "workflow continue" in value })
       assertFalse(request.command.any { value -> "use the" in value.lowercase() && "skill" in value.lowercase() })
     }
-    val perAgent = listOf("claude", "codex", "opencode", "junie")
+    val perAgent = listOf("claude", "codex", "junie")
     runner.requests.forEachIndexed { index, request ->
       assertEquals(perAgent[index], request.command.last())
       assertEquals("--agent", request.command[request.command.size - 2])

@@ -29,6 +29,12 @@ convention:
 
 Resolve the mode to `runtime` when no `mode:` argument is supplied.
 
+**opencode is prose-only.** When the agent currently executing this skill is opencode, prose is the implicit default and runtime mode is unsupported: its foreground Bash tool is hard-killed at 120s before a phase can finish, and per-phase output cannot be harvested back. On opencode: with no mode arg, resolve to `prose` (no need to pass `mode:prose`); with an explicit `mode:runtime`, stop and emit the actionable refusal and do NOT hand off to the `skill-bill goal` runtime:
+
+> Runtime mode is not supported on opencode: its foreground Bash tool is hard-killed at 120s before a phase can finish, and per-phase output cannot be harvested back. Use prose instead — run bill-feature-task-prose for a single feature task, or bill-feature-goal mode:prose for a decomposed goal.
+
+The `skill-bill goal` CLI refuses the same way whenever the resolved runtime agent is opencode (invoked agent or `--agent-override`), so this skill gate and the CLI agree.
+
 Both modes share the same intake, decomposition-readiness checks, and the single
 confirmation gate defined in `## Decomposition Proposal`. They differ only in how
 confirmed subtasks are executed: `mode:runtime` hands off to the foreground

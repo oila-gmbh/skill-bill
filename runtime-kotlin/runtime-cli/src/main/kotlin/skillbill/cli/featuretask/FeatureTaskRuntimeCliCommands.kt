@@ -28,6 +28,7 @@ import skillbill.application.model.WorkflowOpenResult
 import skillbill.application.workflow.WorkflowService
 import skillbill.cli.core.CliRunState
 import skillbill.cli.core.DocumentedCliCommand
+import skillbill.cli.core.refuseRuntimeRefusedAgents
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.InvokingAgentContextResolver
 import skillbill.ports.featurespec.FeatureSpecPathResolverPort
@@ -114,6 +115,21 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
 
   protected fun resolveRunWorkflowId(workflowService: WorkflowService, state: CliRunState): String =
     explicitWorkflowId?.takeIf(String::isNotBlank) ?: openRuntimeWorkflowId(workflowService, state)
+
+  // Refuses before a workflow is opened, a branch resolved, or a phase spawned: opencode is
+  // prose-only because its foreground Bash tool is hard-killed at 120s and per-phase output
+  // cannot be harvested back. Enumerates every route the runtime agent can resolve from and
+  // defers the predicate + message to the shared gate.
+  protected fun refuseUnsupportedRuntimeAgent(environment: Map<String, String>) {
+    refuseRuntimeRefusedAgents(
+      buildList {
+        add(resolveInvokedRuntimeAgentId(agent, environment))
+        agentOverride?.takeIf(String::isNotBlank)?.let { add(it) }
+        addAll(parsePhaseAgents(phaseAgents).values)
+        parallelReviewAgent?.takeIf(String::isNotBlank)?.let { add(it) }
+      },
+    )
+  }
 
   protected fun executeRuntimeRun(
     deps: FeatureTaskRuntimeRunDependencies,
@@ -224,6 +240,7 @@ class FeatureTaskRuntimeRunCommand(
     if (currentContext.invokedSubcommand != null) {
       return
     }
+    refuseUnsupportedRuntimeAgent(deps.state.environment)
     val runIssueKey = issueKey ?: throw UsageError("issue_key is required for feature-task run.")
     val runSpecPath = resolveSpecPath(deps, runIssueKey, specPath)
     executeRuntimeRun(
@@ -252,6 +269,7 @@ class FeatureTaskRuntimeExplicitRunCommand(
   private val specPath by argument(help = "Path to the governed spec the run implements.").optional()
 
   override fun run() {
+    refuseUnsupportedRuntimeAgent(deps.state.environment)
     executeRuntimeRun(
       deps = deps,
       issueKey = issueKey,
@@ -289,6 +307,7 @@ class FeatureTaskRuntimeResumeCommand(
   private val specPath by argument(help = "Path to the governed spec the run implements.")
 
   override fun run() {
+    refuseUnsupportedRuntimeAgent(deps.state.environment)
     executeRuntimeRun(
       deps = deps,
       issueKey = issueKey,
@@ -340,6 +359,7 @@ class FeatureTaskRuntimeDeprecatedRunCommand(
     if (currentContext.invokedSubcommand != null) {
       return
     }
+    refuseUnsupportedRuntimeAgent(deps.state.environment)
     val runIssueKey = issueKey ?: throw UsageError("issue_key is required for feature-task run.")
     val runSpecPath = resolveSpecPath(deps, runIssueKey, specPath)
     executeRuntimeRun(
@@ -363,6 +383,7 @@ class FeatureTaskRuntimeDeprecatedExplicitRunCommand(
   private val specPath by argument(help = "Path to the governed spec the run implements.").optional()
 
   override fun run() {
+    refuseUnsupportedRuntimeAgent(deps.state.environment)
     executeRuntimeRun(
       deps = deps,
       issueKey = issueKey,
@@ -400,6 +421,7 @@ class FeatureTaskRuntimeDeprecatedResumeCommand(
   private val specPath by argument(help = "Path to the governed spec the run implements.")
 
   override fun run() {
+    refuseUnsupportedRuntimeAgent(deps.state.environment)
     executeRuntimeRun(
       deps = deps,
       issueKey = issueKey,

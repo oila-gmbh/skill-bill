@@ -2,7 +2,11 @@ package skillbill.launcher
 
 import skillbill.goalrunner.model.GoalRunnerLivenessState
 import skillbill.install.model.InstallAgent
+import skillbill.install.model.RUNTIME_REFUSED_AGENTS
+import skillbill.launcher.agentrun.AgentRunCommand
+import skillbill.launcher.agentrun.AgentRunCommandBuilder
 import skillbill.launcher.agentrun.FileSystemAgentRunLauncher
+import skillbill.launcher.agentrun.ProcessAgentRunAdapter
 import skillbill.launcher.agentrun.WorktreeActivityProbe
 import skillbill.launcher.agentrun.headlessAgentRunAdapters
 import skillbill.launcher.process.AgentRunActivityProbe
@@ -60,10 +64,12 @@ class AgentRunLauncherTest {
     val runner = RecordingAgentRunProcessRunner()
     val request = skillRunRequest(goalContinuation = null).copy(promptOverride = PHASE_PROMPT)
 
-    requireNotNull(headlessAgentRunAdapters(runner)[InstallAgent.OPENCODE]).launch(request)
+    // SKILL-95: opencode is no longer a runtime adapter; junie is the other argv-delivered agent
+    // (the prompt rides as a trailing argv token, never via stdin).
+    requireNotNull(headlessAgentRunAdapters(runner)[InstallAgent.JUNIE]).launch(request)
 
     val captured = runner.requests.single()
-    assertEquals(listOf("opencode", "run"), captured.command.take(2))
+    assertEquals("junie", captured.command.first())
     assertEquals(PHASE_PROMPT, captured.command.last())
   }
 
@@ -81,6 +87,27 @@ class AgentRunLauncherTest {
     assertIs<UnsupportedAgentRunLaunch>(outcome)
     assertEquals(InstallAgent.COPILOT, outcome.agent)
     assertContains(outcome.reason, "does not have a supported headless")
+  }
+
+  @Test
+  fun `opencode returns the unsupported headless launch outcome with the actionable prose message`() {
+    // SKILL-95 AC5: opencode is prose-only and must not have a runtime launch adapter, so the
+    // launcher yields the unsupported outcome. Unlike a generically-unsupported agent (copilot),
+    // a runtime-refused agent carries the actionable refusal message so the deep path is as legible
+    // as the CLI preflight.
+    val launcher = FileSystemAgentRunLauncher(JvmAgentRunProcessRunner())
+
+    val outcome = launcher.launch(
+      AgentRunLaunchRequest(
+        agentId = "opencode",
+        skillRunRequest = skillRunRequest(),
+      ),
+    )
+
+    assertIs<UnsupportedAgentRunLaunch>(outcome)
+    assertEquals(InstallAgent.OPENCODE, outcome.agent)
+    assertContains(outcome.reason, "Runtime mode is not supported on opencode")
+    assertContains(outcome.reason, "bill-feature-task-prose")
   }
 
   @Test
@@ -610,7 +637,8 @@ class AgentRunLauncherTest {
     // consulted.
     val runner = RecordingAgentRunProcessRunner()
     val adapters = headlessAgentRunAdapters(runner)
-    listOf(InstallAgent.CODEX, InstallAgent.CLAUDE, InstallAgent.OPENCODE, InstallAgent.JUNIE).forEach { agent ->
+    // SKILL-95: opencode is prose-only and excluded from the headless runtime adapters.
+    listOf(InstallAgent.CODEX, InstallAgent.CLAUDE, InstallAgent.JUNIE).forEach { agent ->
       val facts = requireNotNull(adapters[agent]).launch(skillRunRequest())
       assertEquals("/tmp/skillbill-agent-run", facts.childSessionPath, "session path for $agent")
       val sessionId = requireNotNull(facts.childSessionId) { "session id for $agent" }
@@ -803,34 +831,53 @@ private class SharedDeclaredProgressStore {
 // only ~0.5s of run, well under that deadline measured from first observation.
 private const val WITHHELD_POLLS = 6
 
-class OpencodeAgentRunCommandBuilderTest {
+class HeadlessAgentRunAdapterTest {
+  private fun phaseRunRequest(): SkillRunRequest = SkillRunRequest(
+    issueKey = "SKILL-88",
+    repoRoot = Path.of("/tmp/skillbill-agent-run"),
+    subtaskId = 1,
+    timeout = 10.seconds,
+    goalContinuation = null,
+  ).copy(promptOverride = "Phase: preplan")
+
   @Test
-  fun `opencode builder emits usePtyStdio=true`() {
+  fun `opencode is not registered as a headless runtime adapter`() {
+    // SKILL-95 AC5: opencode is prose-only. It must not appear in the headless adapter registry, so
+    // no code path can spawn it for a runtime phase even if a CLI guard is bypassed.
+    val adapters = headlessAgentRunAdapters(RecordingAgentRunProcessRunner())
+
+    // Every runtime-refused agent is absent (the AC), while the known runtime agents stay registered.
+    // Asserting a subset rather than exact-set equality keeps this robust to unrelated future agents.
+    RUNTIME_REFUSED_AGENTS.forEach { refused -> assertFalse(adapters.keys.contains(refused)) }
+    assertTrue(adapters.keys.containsAll(setOf(InstallAgent.CLAUDE, InstallAgent.CODEX, InstallAgent.JUNIE)))
+  }
+
+  @Test
+  fun `process adapter threads usePtyStdio from the built command rather than a constant`() {
+    // After opencode (the only PTY-backed builder) was removed, no real builder sets usePtyStdio=true,
+    // so prove threading directly: a builder requesting PTY stdio must surface usePtyStdio=true in the
+    // process request. Guards against the flag being hardcoded to false.
     val runner = RecordingAgentRunProcessRunner()
-    val request = SkillRunRequest(
-      issueKey = "SKILL-88",
-      repoRoot = Path.of("/tmp/skillbill-agent-run"),
-      subtaskId = 1,
-      timeout = 10.seconds,
-      goalContinuation = null,
-    ).copy(promptOverride = "Phase: preplan")
+    val ptyBuilder = object : AgentRunCommandBuilder {
+      override val agent: InstallAgent = InstallAgent.CLAUDE
+      override fun build(request: SkillRunRequest): AgentRunCommand = AgentRunCommand(
+        command = listOf("true"),
+        workingDirectory = request.repoRoot,
+        timeout = request.timeout,
+        usePtyStdio = true,
+      )
+    }
 
-    requireNotNull(headlessAgentRunAdapters(runner)[InstallAgent.OPENCODE]).launch(request)
+    ProcessAgentRunAdapter(InstallAgent.CLAUDE, ptyBuilder, runner).launch(phaseRunRequest())
 
-    val captured = runner.requests.single()
-    assertTrue(captured.usePtyStdio, "opencode must request PTY-backed stdio")
+    assertEquals(1, runner.requests.size)
+    assertTrue(runner.requests.single().usePtyStdio, "adapter must thread usePtyStdio=true from the builder")
   }
 
   @Test
   fun `claude codex and junie builders emit usePtyStdio=false`() {
     val runner = RecordingAgentRunProcessRunner()
-    val request = SkillRunRequest(
-      issueKey = "SKILL-88",
-      repoRoot = Path.of("/tmp/skillbill-agent-run"),
-      subtaskId = 1,
-      timeout = 10.seconds,
-      goalContinuation = null,
-    ).copy(promptOverride = "Phase: preplan")
+    val request = phaseRunRequest()
     val adapters = headlessAgentRunAdapters(runner)
 
     listOf(InstallAgent.CLAUDE, InstallAgent.CODEX, InstallAgent.JUNIE).forEach { agent ->
@@ -845,21 +892,17 @@ class OpencodeAgentRunCommandBuilderTest {
   }
 
   @Test
-  fun `process adapter threads usePtyStdio from command into request`() {
+  fun `process adapter threads usePtyStdio=false into the process request for supported agents`() {
     val runner = RecordingAgentRunProcessRunner()
-    val request = SkillRunRequest(
-      issueKey = "SKILL-88",
-      repoRoot = Path.of("/tmp/skillbill-agent-run"),
-      subtaskId = 1,
-      timeout = 10.seconds,
-      goalContinuation = null,
-    ).copy(promptOverride = "Phase: preplan")
+    val request = phaseRunRequest()
+    val adapters = headlessAgentRunAdapters(runner)
 
-    requireNotNull(headlessAgentRunAdapters(runner)[InstallAgent.OPENCODE]).launch(request)
-    requireNotNull(headlessAgentRunAdapters(runner)[InstallAgent.CLAUDE]).launch(request)
+    requireNotNull(adapters[InstallAgent.CLAUDE]).launch(request)
+    requireNotNull(adapters[InstallAgent.CODEX]).launch(request)
 
-    assertEquals(true, runner.requests[0].usePtyStdio, "opencode adapter must thread usePtyStdio=true")
-    assertEquals(false, runner.requests[1].usePtyStdio, "claude adapter must thread usePtyStdio=false")
+    runner.requests.forEach { req ->
+      assertEquals(false, req.usePtyStdio, "supported adapter must thread usePtyStdio=false")
+    }
   }
 }
 
