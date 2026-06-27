@@ -1,3 +1,13 @@
+## [2026-06-27] SKILL-95 opencode prose-only (refuse runtime mode)
+Areas: runtime-kotlin/runtime-domain, runtime-kotlin/runtime-cli, runtime-kotlin/runtime-infra-fs, skills/bill-feature-task, skills/bill-feature-goal, skills/bill-feature-task-runtime
+- Shared predicate+message in `InstallModels.kt`: `isOpencodeAgent(agentId)` trims+lowercases vs `InstallAgent.OPENCODE.id`; `OPENCODE_RUNTIME_REFUSAL_MESSAGE` names the supported alternatives (`bill-feature-task-prose` / `bill-feature-goal mode:prose`). reusable PATTERN: one domain-level predicate+message, consumed by every layer, keeps refusal wording from drifting.
+- Feature-task CLI preflight: `refuseUnsupportedRuntimeAgent()` in `FeatureTaskRuntimeCliCommands.kt` aggregates ALL agent routes (invoked/host agent, `--agent`, every `--phase-agent`, `--parallel-review-agent`) and throws `UsageError` first in all 6 run bodies — refuses before opening a workflow, resolving a branch, or spawning a phase. reusable
+- Goal CLI: `GoalRunCommand.run()` refuses invoked-agent and `--agent` override before presenter/child spawn (covers the `--agent opencode` continuation path).
+- Source-level backstop: `OpencodeAgentRunCommandBuilder` deleted and unregistered from `headlessAgentRunAdapters()` — opencode now yields `UnsupportedAgentRunLaunch`, so no code path can spawn opencode for a runtime phase even if a guard is bypassed. reusable PATTERN: de-register the launcher builder as the single spawner chokepoint rather than scattering app-layer guards.
+- Skill router docs: no-mode resolves to prose on opencode; explicit `mode:runtime` refuses at the skill layer quoting the shared message. opencode prose/install/telemetry unchanged; claude/codex/junie/glm runtime unchanged.
+Feature flag: N/A
+Acceptance criteria: 10/10 implemented
+
 ## [2026-06-23] SKILL-94 release-tooling (update-check release notes)
 Areas: runtime-kotlin/runtime-application, runtime-kotlin/runtime-cli, runtime-kotlin/runtime-mcp
 - `UpdateCheckResult.releaseNotes: String?` added as trailing nullable field (default null); `candidateFromEntry` in `UpdateCheckService` extracts `body` from the GitHub Releases API JSON response via `entry["body"] as? String`; null/absent body → `releaseNotes = null`, no visible change to existing output. reusable PATTERN: nullable trailing fields on result data classes are backward-compatible — callers that don't consume the field are unaffected.
