@@ -24,18 +24,24 @@ detection, `SKILL_BILL_AGENT=opencode`, `--agent opencode`, `--phase-agent
 <phase>=opencode`, `--agent-override opencode`, and `--parallel-review-agent
 opencode` on the feature-task CLI, plus the invoked agent and `--agent-override`
 on the goal CLI — failing fast before opening a workflow, resolving a branch, or
-spawning a phase. Enforcement is defense-in-depth over two layers sharing one
-centralized predicate and message (`skillbill.install.model.isOpencodeAgent` +
-`OPENCODE_RUNTIME_REFUSAL_MESSAGE`): (L1) the runtime CLI preflights throw a
-`UsageError` with the actionable message naming both prose alternatives
-(`bill-feature-task-prose` / `bill-feature-goal mode:prose`); (L2) the launcher
-source-disablement — `OpencodeAgentRunCommandBuilder` is removed and opencode is
-intentionally not registered in `headlessAgentRunAdapters`, so
-`FileSystemAgentRunLauncher` yields `UnsupportedAgentRunLaunch` for it (mirroring
-copilot) as an unbypassable backstop even if a CLI guard is bypassed. The
-refusal message is centralized in `runtime-domain` (a plain const is inert data,
-allowed by the 2026-05-24 boundary decision) so both CLI layers emit byte-identical
-wording; the launcher keeps its generic backstop reason.
+spawning a phase. The single source of truth is one domain set,
+`skillbill.install.model.RUNTIME_REFUSED_AGENTS` (`{OPENCODE}`), with the predicate
+`isRuntimeRefusedAgent` and `OPENCODE_RUNTIME_REFUSAL_MESSAGE` derived from it; every
+layer consumes that set so re-enabling an agent's runtime path is a one-line change
+rather than scattered edits that drift. Enforcement is defense-in-depth over two
+layers: (L1) the runtime CLI preflights — feature-task, goal, and
+`code-review-parallel` — all funnel their reachable agent ids through one shared gate
+`skillbill.cli.core.refuseRuntimeRefusedAgents`, which throws a `UsageError` with the
+actionable message naming both prose alternatives (`bill-feature-task-prose` /
+`bill-feature-goal mode:prose`); (L2) the launcher source-disablement —
+`OpencodeAgentRunCommandBuilder` is removed and `headlessAgentRunAdapters` filters out
+`RUNTIME_REFUSED_AGENTS`, so `FileSystemAgentRunLauncher` yields
+`UnsupportedAgentRunLaunch` for opencode (mirroring copilot) as an unbypassable
+backstop even if a CLI guard is bypassed, and that deep path carries the same
+actionable `OPENCODE_RUNTIME_REFUSAL_MESSAGE` (not a generic reason) so it is as
+legible as the preflight. The message is centralized in `runtime-domain` (a plain
+const is inert data, allowed by the 2026-05-24 boundary decision) and consumed by
+both the CLI and the launcher, so every refusal emits byte-identical wording.
 
 Reason: opencode stays fully usable in prose mode, which runs the identical
 governed phase loop in-session with none of the 120s-kill / PTY-harvest problems.
@@ -47,10 +53,11 @@ retained: opencode must stay detectable (to refuse) and installable/scaffoldable
 LAUNCH path is disabled. No app-layer guard is added (`AgentRunService` /
 `FeatureTaskRuntimeRunner` / `GoalRunner` are unguarded) so their
 resolution/recording tests stay green and the launcher backstop remains the single
-spawner chokepoint. As an intended consequence of the global registry removal,
-opencode is also disabled for `bill-code-review-parallel` runtime (a parallel-review
-subprocess hits the same 120s-kill/PTY-harvest wall); it relies on the launcher
-backstop's generic message only.
+spawner chokepoint. `bill-code-review-parallel` runtime is disabled for opencode the
+same way (a parallel-review subprocess hits the same 120s-kill/PTY-harvest wall): its
+command now runs the shared preflight on both resolved lanes, so an opencode lane
+refuses upfront with the actionable message instead of degrading to a silent one-lane
+review.
 
 Non-goals: no change to opencode install/scaffold/MCP, prose orchestration, or
 telemetry (all byte-for-byte unchanged); no change to runtime support for claude,

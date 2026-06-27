@@ -2,7 +2,11 @@ package skillbill.launcher
 
 import skillbill.goalrunner.model.GoalRunnerLivenessState
 import skillbill.install.model.InstallAgent
+import skillbill.install.model.RUNTIME_REFUSED_AGENTS
+import skillbill.launcher.agentrun.AgentRunCommand
+import skillbill.launcher.agentrun.AgentRunCommandBuilder
 import skillbill.launcher.agentrun.FileSystemAgentRunLauncher
+import skillbill.launcher.agentrun.ProcessAgentRunAdapter
 import skillbill.launcher.agentrun.WorktreeActivityProbe
 import skillbill.launcher.agentrun.headlessAgentRunAdapters
 import skillbill.launcher.process.AgentRunActivityProbe
@@ -86,9 +90,11 @@ class AgentRunLauncherTest {
   }
 
   @Test
-  fun `opencode returns the unsupported headless launch outcome`() {
+  fun `opencode returns the unsupported headless launch outcome with the actionable prose message`() {
     // SKILL-95 AC5: opencode is prose-only and must not have a runtime launch adapter, so the
-    // launcher yields the unsupported outcome (mirroring copilot) for opencode by any route.
+    // launcher yields the unsupported outcome. Unlike a generically-unsupported agent (copilot),
+    // a runtime-refused agent carries the actionable refusal message so the deep path is as legible
+    // as the CLI preflight.
     val launcher = FileSystemAgentRunLauncher(JvmAgentRunProcessRunner())
 
     val outcome = launcher.launch(
@@ -100,7 +106,8 @@ class AgentRunLauncherTest {
 
     assertIs<UnsupportedAgentRunLaunch>(outcome)
     assertEquals(InstallAgent.OPENCODE, outcome.agent)
-    assertContains(outcome.reason, "does not have a supported headless")
+    assertContains(outcome.reason, "Runtime mode is not supported on opencode")
+    assertContains(outcome.reason, "bill-feature-task-prose")
   }
 
   @Test
@@ -839,8 +846,32 @@ class HeadlessAgentRunAdapterTest {
     // no code path can spawn it for a runtime phase even if a CLI guard is bypassed.
     val adapters = headlessAgentRunAdapters(RecordingAgentRunProcessRunner())
 
-    assertFalse(adapters.keys.contains(InstallAgent.OPENCODE))
-    assertEquals(setOf(InstallAgent.CLAUDE, InstallAgent.CODEX, InstallAgent.JUNIE), adapters.keys)
+    // Every runtime-refused agent is absent (the AC), while the known runtime agents stay registered.
+    // Asserting a subset rather than exact-set equality keeps this robust to unrelated future agents.
+    RUNTIME_REFUSED_AGENTS.forEach { refused -> assertFalse(adapters.keys.contains(refused)) }
+    assertTrue(adapters.keys.containsAll(setOf(InstallAgent.CLAUDE, InstallAgent.CODEX, InstallAgent.JUNIE)))
+  }
+
+  @Test
+  fun `process adapter threads usePtyStdio from the built command rather than a constant`() {
+    // After opencode (the only PTY-backed builder) was removed, no real builder sets usePtyStdio=true,
+    // so prove threading directly: a builder requesting PTY stdio must surface usePtyStdio=true in the
+    // process request. Guards against the flag being hardcoded to false.
+    val runner = RecordingAgentRunProcessRunner()
+    val ptyBuilder = object : AgentRunCommandBuilder {
+      override val agent: InstallAgent = InstallAgent.CLAUDE
+      override fun build(request: SkillRunRequest): AgentRunCommand = AgentRunCommand(
+        command = listOf("true"),
+        workingDirectory = request.repoRoot,
+        timeout = request.timeout,
+        usePtyStdio = true,
+      )
+    }
+
+    ProcessAgentRunAdapter(InstallAgent.CLAUDE, ptyBuilder, runner).launch(phaseRunRequest())
+
+    assertEquals(1, runner.requests.size)
+    assertTrue(runner.requests.single().usePtyStdio, "adapter must thread usePtyStdio=true from the builder")
   }
 
   @Test

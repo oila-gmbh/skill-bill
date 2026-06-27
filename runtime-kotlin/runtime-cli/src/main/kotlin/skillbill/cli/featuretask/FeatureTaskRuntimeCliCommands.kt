@@ -28,10 +28,9 @@ import skillbill.application.model.WorkflowOpenResult
 import skillbill.application.workflow.WorkflowService
 import skillbill.cli.core.CliRunState
 import skillbill.cli.core.DocumentedCliCommand
+import skillbill.cli.core.refuseRuntimeRefusedAgents
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.InvokingAgentContextResolver
-import skillbill.install.model.OPENCODE_RUNTIME_REFUSAL_MESSAGE
-import skillbill.install.model.isOpencodeAgent
 import skillbill.ports.featurespec.FeatureSpecPathResolverPort
 import skillbill.ports.featurespec.model.FeatureSpecPathResolveInput
 import skillbill.ports.featurespec.model.FeatureSpecPathResolveResult
@@ -119,17 +118,17 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
 
   // Refuses before a workflow is opened, a branch resolved, or a phase spawned: opencode is
   // prose-only because its foreground Bash tool is hard-killed at 120s and per-phase output
-  // cannot be harvested back. Covers every route the runtime agent can resolve from.
+  // cannot be harvested back. Enumerates every route the runtime agent can resolve from and
+  // defers the predicate + message to the shared gate.
   protected fun refuseUnsupportedRuntimeAgent(environment: Map<String, String>) {
-    val candidateAgentIds = buildList {
-      add(resolveInvokedRuntimeAgentId(agent, environment))
-      agentOverride?.takeIf(String::isNotBlank)?.let { add(it) }
-      addAll(parsePhaseAgents(phaseAgents).values)
-      parallelReviewAgent?.takeIf(String::isNotBlank)?.let { add(it) }
-    }
-    if (candidateAgentIds.any { isOpencodeAgent(it) }) {
-      throw UsageError(OPENCODE_RUNTIME_REFUSAL_MESSAGE)
-    }
+    refuseRuntimeRefusedAgents(
+      buildList {
+        add(resolveInvokedRuntimeAgentId(agent, environment))
+        agentOverride?.takeIf(String::isNotBlank)?.let { add(it) }
+        addAll(parsePhaseAgents(phaseAgents).values)
+        parallelReviewAgent?.takeIf(String::isNotBlank)?.let { add(it) }
+      },
+    )
   }
 
   protected fun executeRuntimeRun(

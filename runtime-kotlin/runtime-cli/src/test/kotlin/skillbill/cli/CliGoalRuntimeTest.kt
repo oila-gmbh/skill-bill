@@ -799,6 +799,37 @@ class CliGoalOpencodeRefusalTest {
     assertContains(result.stdout, "Runtime mode is not supported on opencode")
     assertEquals(emptyList(), launcher.requests, result.stdout)
   }
+
+  @Test
+  fun `goal runtime run refuses when the host invoking agent is detected as opencode`() {
+    // SKILL-95 AC4: implicit host resolution (no --agent, no SKILL_BILL_AGENT) must refuse identically,
+    // since the goal guard resolves through the same invoking-agent detection as the explicit routes.
+    val fixture = goalFixture(subtaskCount = 1)
+    val launcher = GoalFixtureAgentRunLauncher(fixture)
+    val command = buildList {
+      add("--db")
+      add(fixture.dbPath.toString())
+      add("goal")
+      add("SKILL-901")
+      add("--repo-root")
+      add(fixture.tempDir.toString())
+    }
+
+    val result = CliRuntime.run(
+      command,
+      CliRuntimeContext(
+        userHome = fixture.tempDir,
+        workflowGitOperations = GoalTestWorkflowGitOperations,
+        agentRunLauncher = launcher,
+        goalPullRequestPort = fixture.pullRequests,
+        environment = mapOf("OPENCODE" to "1"),
+      ),
+    )
+
+    assertEquals(1, result.exitCode, result.stdout)
+    assertContains(result.stdout, "Runtime mode is not supported on opencode")
+    assertEquals(emptyList(), launcher.requests, result.stdout)
+  }
 }
 
 private fun startRunningGoalChild(fixture: GoalCliFixture): String = runGoalJson(

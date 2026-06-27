@@ -224,6 +224,43 @@ class CliCodeReviewParallelRuntimeTest {
   }
 
   @Test
+  fun `code-review-parallel refuses upfront when a resolved lane agent is opencode`() {
+    // SKILL-95: opencode is prose-only. A lane resolving to opencode (agent1 via SKILL_BILL_AGENT, or
+    // agent2 explicitly) must fail fast with the actionable message — not degrade to a one-lane review
+    // — and spawn no lane.
+    val tempDir = createGitRepo()
+    createStagedFile(tempDir)
+    val launcher = RecordingParallelLauncher()
+
+    val viaAgent1 = CliRuntime.run(
+      listOf("code-review-parallel", "--agent2", "claude", "--scope", "staged", "--repo-root", tempDir.toString()),
+      CliRuntimeContext(environment = mapOf("SKILL_BILL_AGENT" to "opencode"), agentRunLauncher = launcher),
+    )
+    assertEquals(1, viaAgent1.exitCode, viaAgent1.stdout)
+    assertContains(viaAgent1.stdout, "Runtime mode is not supported on opencode")
+    assertContains(viaAgent1.stdout, "bill-feature-task-prose")
+
+    val viaAgent2 = CliRuntime.run(
+      listOf(
+        "code-review-parallel",
+        "--agent1",
+        "claude",
+        "--agent2",
+        "opencode",
+        "--scope",
+        "staged",
+        "--repo-root",
+        tempDir.toString(),
+      ),
+      CliRuntimeContext(environment = emptyMap(), agentRunLauncher = launcher),
+    )
+    assertEquals(1, viaAgent2.exitCode, viaAgent2.stdout)
+    assertContains(viaAgent2.stdout, "Runtime mode is not supported on opencode")
+    // Refused before either lane runs.
+    assertEquals(emptyList(), launcher.agentIds, viaAgent2.stdout)
+  }
+
+  @Test
   fun `code-review-parallel defaults agent1 to codex when nothing resolves`() {
     val tempDir = createGitRepo()
     createStagedFile(tempDir)

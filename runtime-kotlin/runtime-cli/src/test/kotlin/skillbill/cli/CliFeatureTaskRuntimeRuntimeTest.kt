@@ -287,6 +287,34 @@ class CliFeatureTaskRuntimeRuntimeTest {
   }
 
   @Test
+  fun `feature-task-runtime resume refuses when the resolved agent is opencode`() {
+    // SKILL-95 AC9: the resume entry point — the cross-mode resume hazard — must refuse opencode too,
+    // before touching the durable workflow. Driven directly with a placeholder workflow id since the
+    // preflight fires before any DB read.
+    val fixture = runtimeFixture()
+    val launcher = RecordingPhaseLauncher()
+
+    val result = CliRuntime.run(
+      listOf(
+        "--db",
+        fixture.dbPath.toString(),
+        "feature-task",
+        "resume",
+        "wftr-nonexistent",
+        "SKILL-650",
+        fixture.specPath.toString(),
+        "--agent",
+        "opencode",
+      ),
+      fixture.context(launcher),
+    )
+
+    assertEquals(1, result.exitCode, result.stdout)
+    assertContains(result.stdout, "Runtime mode is not supported on opencode")
+    assertEquals(emptyList(), launcher.requests, result.stdout)
+  }
+
+  @Test
   fun `feature-task-runtime run falls back to the documented codex default when nothing resolves`() {
     val fixture = runtimeFixture()
     val launcher = RecordingPhaseLauncher()

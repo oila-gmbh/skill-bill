@@ -1,6 +1,7 @@
 package skillbill.launcher.agentrun
 
 import skillbill.install.model.InstallAgent
+import skillbill.install.model.RUNTIME_REFUSED_AGENTS
 import skillbill.launcher.process.AgentRunProcessRequest
 import skillbill.launcher.process.AgentRunProcessRunner
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
@@ -76,10 +77,11 @@ fun headlessAgentRunAdapters(processRunner: AgentRunProcessRunner): Map<InstallA
   // opencode is prose-only and intentionally NOT registered, so the launcher yields
   // UnsupportedAgentRunLaunch for it (mirroring copilot) — no runtime phase can spawn it.
   JunieAgentRunCommandBuilder(),
-).associate { builder ->
-  builder.agent to ProcessAgentRunAdapter(
-    agent = builder.agent,
-    commandBuilder = builder,
-    processRunner = processRunner,
-  )
-}
+).filterNot { builder -> RUNTIME_REFUSED_AGENTS.contains(builder.agent) }
+  .associate { builder ->
+    builder.agent to ProcessAgentRunAdapter(
+      agent = builder.agent,
+      commandBuilder = builder,
+      processRunner = processRunner,
+    )
+  }

@@ -15,6 +15,7 @@ import skillbill.application.model.UsageValidationException
 import skillbill.application.review.ParallelCodeReviewRunner
 import skillbill.cli.core.CliRunState
 import skillbill.cli.core.DocumentedCliCommand
+import skillbill.cli.core.refuseRuntimeRefusedAgents
 import skillbill.cli.model.CliExecutionResult
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.InvokingAgentContextResolver
@@ -61,6 +62,11 @@ class CodeReviewParallelCommand(
       ?: throw UsageError(
         "Option --agent2 is required. Supported agents: ${InstallAgent.supportedIds.joinToString()}.",
       )
+
+    // A lane that resolves to a runtime-refused agent (opencode) would otherwise fall through to the
+    // launcher and fail with a generic message while the other lane still ran — a silently degraded
+    // one-lane review. Refuse upfront with the actionable prose guidance instead.
+    refuseRuntimeRefusedAgents(listOf(resolvedAgent1, resolvedAgent2))
 
     val resolvedScope = when (scope) {
       "staged" -> ParallelReviewScope.STAGED
