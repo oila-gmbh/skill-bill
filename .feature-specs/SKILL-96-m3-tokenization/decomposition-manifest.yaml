@@ -1,0 +1,66 @@
+contract_version: "0.4"
+issue_key: "SKILL-96"
+feature_name: "m3-tokenization"
+parent_spec_path: ".feature-specs/SKILL-96-m3-tokenization/spec.md"
+spec_source: local
+execution_model: same_branch_commit_per_subtask
+base_branch: main
+feature_branch: feat/SKILL-96-m3-tokenization
+stack_branches: []
+current_subtask_intent:
+  subtask_id: 1
+  action: start
+subtasks:
+- id: 1
+  name: "shapes"
+  spec_path: ".feature-specs/SKILL-96-m3-tokenization/spec_subtask_1_shapes.md"
+  status: pending
+  branch: null
+  commit_sha: null
+  workflow_id: null
+  blocked_reason: null
+  last_resumable_step: null
+  linear_issue_id: null
+  dependencies: []
+- id: 2
+  name: "typography"
+  spec_path: ".feature-specs/SKILL-96-m3-tokenization/spec_subtask_2_typography.md"
+  status: pending
+  branch: null
+  commit_sha: null
+  workflow_id: null
+  blocked_reason: null
+  last_resumable_step: null
+  linear_issue_id: null
+  dependencies:
+  - subtask_id: 1
+    optional: false
+    skipped: false
+- id: 3
+  name: "dimensions"
+  spec_path: ".feature-specs/SKILL-96-m3-tokenization/spec_subtask_3_dimensions.md"
+  status: pending
+  branch: null
+  commit_sha: null
+  workflow_id: null
+  blocked_reason: null
+  last_resumable_step: null
+  linear_issue_id: null
+  dependencies:
+  - subtask_id: 2
+    optional: false
+    skipped: false
+- id: 4
+  name: "strings"
+  spec_path: ".feature-specs/SKILL-96-m3-tokenization/spec_subtask_4_strings.md"
+  status: pending
+  branch: null
+  commit_sha: null
+  workflow_id: null
+  blocked_reason: null
+  last_resumable_step: null
+  linear_issue_id: null
+  dependencies:
+  - subtask_id: 3
+    optional: false
+    skipped: false
