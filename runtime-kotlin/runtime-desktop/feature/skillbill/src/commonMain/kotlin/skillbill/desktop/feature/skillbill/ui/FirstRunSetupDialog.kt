@@ -286,7 +286,13 @@ private fun OutcomeStep(state: FirstRunSetupState) {
     FirstRunInstallStatus.WARNING -> SkillBillTheme.semanticTones.warningBanner
     FirstRunInstallStatus.FAILURE -> SkillBillTheme.semanticTones.errorBanner
   }
-  SetupBanner(title = stringResource(outcome.titleRes), message = outcome.status.name.lowercase(), tone = tone)
+  SetupBanner(
+    title = outcome.titleRes?.let {
+      stringResource(it)
+    } ?: outcome.title,
+    message = outcome.status.name.lowercase(),
+    tone = tone,
+  )
   outcome.details.forEach { detail -> DetailRow(detail) }
 }
 

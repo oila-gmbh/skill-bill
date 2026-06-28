@@ -1,11 +1,5 @@
 package skillbill.desktop.core.data.service
 
-import dev.skillbill.designsystem.generated.resources.Res
-import dev.skillbill.designsystem.generated.resources.first_run_install_gateway_failed
-import dev.skillbill.designsystem.generated.resources.first_run_install_plan_unavailable
-import dev.skillbill.designsystem.generated.resources.first_run_setup_completed
-import dev.skillbill.designsystem.generated.resources.first_run_setup_completed_with_warnings
-import dev.skillbill.designsystem.generated.resources.first_run_setup_failed
 import kotlinx.coroutines.CancellationException
 import me.tatarka.inject.annotations.Inject
 import skillbill.desktop.core.common.di.UserScope
@@ -150,7 +144,7 @@ class JvmDesktopFirstRunGateway : DesktopFirstRunGateway {
       ?: return FirstRunApplyResult.Failed(
         FirstRunInstallOutcome(
           status = FirstRunInstallStatus.FAILURE,
-          titleRes = Res.string.first_run_install_plan_unavailable,
+          title = "Install plan is no longer available.",
           details = listOf(
             FirstRunInstallDetail(
               label = "Install",
@@ -174,7 +168,7 @@ class JvmDesktopFirstRunGateway : DesktopFirstRunGateway {
     FirstRunApplyResult.Failed(
       outcome = FirstRunInstallOutcome(
         status = FirstRunInstallStatus.FAILURE,
-        titleRes = Res.string.first_run_install_gateway_failed,
+        title = "Install failed.",
         details = listOf(
           FirstRunInstallDetail(
             label = error::class.simpleName.orEmpty().ifBlank { "Exception" },
@@ -329,10 +323,10 @@ private fun InstallApplyResult.toFirstRunOutcome(): FirstRunInstallOutcome {
   }
   return FirstRunInstallOutcome(
     status = status,
-    titleRes = when (status) {
-      FirstRunInstallStatus.SUCCESS -> Res.string.first_run_setup_completed
-      FirstRunInstallStatus.WARNING -> Res.string.first_run_setup_completed_with_warnings
-      FirstRunInstallStatus.FAILURE -> Res.string.first_run_setup_failed
+    title = when (status) {
+      FirstRunInstallStatus.SUCCESS -> "Setup completed."
+      FirstRunInstallStatus.WARNING -> "Setup completed with warnings."
+      FirstRunInstallStatus.FAILURE -> "Setup failed."
     },
     details = buildList {
       add(

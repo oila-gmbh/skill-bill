@@ -124,7 +124,8 @@ data class FirstRunInstallDetail(
 
 data class FirstRunInstallOutcome(
   val status: FirstRunInstallStatus,
-  val titleRes: StringResource,
+  val title: String = "",
+  val titleRes: StringResource? = null,
   val details: List<FirstRunInstallDetail> = emptyList(),
 )
 

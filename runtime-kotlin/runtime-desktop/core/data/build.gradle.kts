@@ -7,15 +7,11 @@ kotlin {
     commonMain.dependencies {
       implementation(project(":runtime-desktop:core:common"))
       implementation(project(":runtime-desktop:core:database"))
-      implementation(project(":runtime-desktop:core:designsystem"))
       implementation(project(":runtime-desktop:core:domain"))
       implementation(libs.room3.runtime)
     }
 
     jvmMain.dependencies {
-      implementation(
-        "org.jetbrains.compose.components:components-resources:${libs.versions.compose.get()}",
-      )
       // SKILL-52.2 subtask 5: narrowed allow-list pinned by
       // `runtime-core/src/test/kotlin/skillbill/architecture/RuntimeAdapterDependencyAllowlistTest.kt`.
       // runtime-infra-fs was dropped — the desktop data gateways have no
