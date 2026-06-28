@@ -1,5 +1,6 @@
 package skillbill.desktop.feature.skillbill.state
-
+import dev.skillbill.designsystem.generated.resources.Res
+import dev.skillbill.designsystem.generated.resources.first_run_install_planning_failed
 import kotlinx.coroutines.runBlocking
 import skillbill.desktop.core.domain.model.BaselineReviewCompositionEdge
 import skillbill.desktop.core.domain.model.BaselineReviewLayerSuggestion
@@ -16,6 +17,7 @@ import skillbill.desktop.core.domain.model.ScaffoldOutcome
 import skillbill.desktop.core.domain.model.ScaffoldPayload
 import skillbill.desktop.core.domain.model.ScaffoldPlan
 import skillbill.desktop.core.domain.model.ScaffoldRunResult
+import skillbill.desktop.core.domain.model.ScaffoldValidationId
 import skillbill.desktop.core.domain.model.SkillBillBusyOperation
 import skillbill.desktop.core.domain.model.SkillBillTreeItem
 import skillbill.desktop.core.domain.model.TreeItemKind
@@ -686,35 +688,58 @@ class SkillBillViewModelScaffoldTest {
   @Test
   fun `baseline validation blocks invalid layers before dry-run`() = runBlocking {
     val cases = listOf(
-      ScaffoldBaselineLayerForm(platform = "", skill = "bill-kotlin-code-review", mode = "kmp-baseline") to
-        "baseline pack is required",
-      ScaffoldBaselineLayerForm(platform = "missing", skill = "bill-kotlin-code-review", mode = "kmp-baseline") to
-        "is not available or has no declared code-review baseline",
-      ScaffoldBaselineLayerForm(platform = "kotlin", skill = "", mode = "kmp-baseline") to
-        "baseline skill is required",
-      ScaffoldBaselineLayerForm(platform = "kotlin", skill = "missing", mode = "kmp-baseline") to
-        "baseline skill 'missing' is not declared",
-      ScaffoldBaselineLayerForm(platform = "kotlin", skill = "bill-kotlin-code-review", mode = "unsupported") to
-        "mode 'unsupported' is not supported",
-      ScaffoldBaselineLayerForm(
-        platform = "kotlin",
-        skill = "bill-kotlin-code-review",
-        scope = "unsupported",
-        mode = "kmp-baseline",
-      ) to "scope 'unsupported' is not supported",
+      Triple(
+        ScaffoldBaselineLayerForm(platform = "", skill = "bill-kotlin-code-review", mode = "kmp-baseline"),
+        ScaffoldValidationId.BASELINE_PACK_REQUIRED,
+        listOf("1"),
+      ),
+      Triple(
+        ScaffoldBaselineLayerForm(platform = "missing", skill = "bill-kotlin-code-review", mode = "kmp-baseline"),
+        ScaffoldValidationId.BASELINE_PACK_UNAVAILABLE,
+        listOf("1", "missing"),
+      ),
+      Triple(
+        ScaffoldBaselineLayerForm(platform = "kotlin", skill = "", mode = "kmp-baseline"),
+        ScaffoldValidationId.BASELINE_SKILL_REQUIRED,
+        listOf("1"),
+      ),
+      Triple(
+        ScaffoldBaselineLayerForm(platform = "kotlin", skill = "missing", mode = "kmp-baseline"),
+        ScaffoldValidationId.BASELINE_SKILL_UNAVAILABLE,
+        listOf("1", "missing", "kotlin"),
+      ),
+      Triple(
+        ScaffoldBaselineLayerForm(platform = "kotlin", skill = "bill-kotlin-code-review", mode = "unsupported"),
+        ScaffoldValidationId.BASELINE_MODE_UNSUPPORTED,
+        listOf("1", "unsupported", "kotlin", "bill-kotlin-code-review"),
+      ),
+      Triple(
+        ScaffoldBaselineLayerForm(
+          platform = "kotlin",
+          skill = "bill-kotlin-code-review",
+          scope = "unsupported",
+          mode = "kmp-baseline",
+        ),
+        ScaffoldValidationId.BASELINE_SCOPE_UNSUPPORTED,
+        listOf("1", "unsupported", "kotlin", "bill-kotlin-code-review"),
+      ),
     )
 
-    cases.forEach { (layer, expectedMessage) ->
+    cases.forEach { (layer, expectedId, expectedArgs) ->
       val gateway = FakeScaffoldGateway().apply { scriptedCatalog = baselineCatalog() }
       val viewModel = newViewModel(scaffoldGateway = gateway)
       viewModel.selectRepoPath("/repo")
       openWizard(viewModel, ScaffoldKind.PLATFORM_PACK)
       viewModel.updateScaffoldForm { it.copy(platform = "kmp", baselineLayers = listOf(layer)) }
 
-      assertNull(viewModel.beginScaffoldDryRun(), expectedMessage)
+      assertNull(viewModel.beginScaffoldDryRun(), expectedId.name)
       val wizard = assertNotNull(viewModel.state().scaffoldWizard)
       assertNull(wizard.executionResult)
-      assertTrue(wizard.validationErrors.any { it.contains(expectedMessage) }, wizard.validationErrors.toString())
+      val error = assertNotNull(
+        wizard.validationErrors.firstOrNull { it.id == expectedId },
+        wizard.validationErrors.toString(),
+      )
+      assertEquals(expectedArgs, error.args, expectedId.name)
       assertEquals(0, gateway.dryRunCallCount)
     }
   }
@@ -731,7 +756,11 @@ class SkillBillViewModelScaffoldTest {
     assertNull(duplicateViewModel.beginScaffoldDryRun())
     val duplicateWizard = assertNotNull(duplicateViewModel.state().scaffoldWizard)
     assertNull(duplicateWizard.executionResult)
-    assertTrue(duplicateWizard.validationErrors.any { it.contains("duplicate baseline layer") })
+    val duplicateError = assertNotNull(
+      duplicateWizard.validationErrors.firstOrNull { it.id == ScaffoldValidationId.DUPLICATE_BASELINE_LAYER },
+      duplicateWizard.validationErrors.toString(),
+    )
+    assertEquals(listOf("2", "kotlin", "bill-kotlin-code-review"), duplicateError.args)
 
     val cycleGateway = FakeScaffoldGateway().apply {
       scriptedCatalog = baselineCatalog(
@@ -752,12 +781,11 @@ class SkillBillViewModelScaffoldTest {
     assertNull(cycleViewModel.beginScaffoldDryRun())
     val cycleWizard = assertNotNull(cycleViewModel.state().scaffoldWizard)
     assertNull(cycleWizard.executionResult)
-    assertTrue(
-      cycleWizard.validationErrors.any {
-        it.contains("composition cycle")
-      },
+    val cycleError = assertNotNull(
+      cycleWizard.validationErrors.firstOrNull { it.id == ScaffoldValidationId.BASELINE_COMPOSITION_CYCLE },
       cycleWizard.validationErrors.toString(),
     )
+    assertEquals(listOf("1", "android", "kotlin"), cycleError.args)
   }
 
   @Test
@@ -953,7 +981,7 @@ class SkillBillViewModelScaffoldTest {
         applyResult = skillbill.desktop.core.domain.model.FirstRunApplyResult.Failed(
           skillbill.desktop.core.domain.model.FirstRunInstallOutcome(
             status = skillbill.desktop.core.domain.model.FirstRunInstallStatus.FAILURE,
-            title = "not scripted",
+            titleRes = Res.string.first_run_install_planning_failed,
           ),
         ),
       ),

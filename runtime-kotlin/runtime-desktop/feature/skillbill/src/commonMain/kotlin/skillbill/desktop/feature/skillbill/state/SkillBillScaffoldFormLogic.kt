@@ -7,6 +7,8 @@ import skillbill.desktop.core.domain.model.ScaffoldCatalogSnapshot
 import skillbill.desktop.core.domain.model.ScaffoldKind
 import skillbill.desktop.core.domain.model.ScaffoldPayload
 import skillbill.desktop.core.domain.model.ScaffoldRunResult
+import skillbill.desktop.core.domain.model.ScaffoldValidationId
+import skillbill.desktop.core.domain.model.ScaffoldValidationMessage
 import skillbill.desktop.core.domain.model.ScaffoldWizardFormFields
 import skillbill.desktop.core.domain.model.ScaffoldWizardState
 
@@ -64,70 +66,99 @@ internal fun isScaffoldPlanAllowed(wizard: ScaffoldWizardState): Boolean {
   return failure.rollbackComplete
 }
 
-internal fun validateScaffoldWizard(wizard: ScaffoldWizardState): List<String> = buildList {
+internal fun validateScaffoldWizard(wizard: ScaffoldWizardState): List<ScaffoldValidationMessage> = buildList {
   val fields = wizard.formFields
   when (wizard.kind) {
-    ScaffoldKind.HORIZONTAL_SKILL -> if (fields.name.isBlank()) add("Skill name is required.")
+    ScaffoldKind.HORIZONTAL_SKILL -> if (fields.name.isBlank()) {
+      add(ScaffoldValidationMessage(ScaffoldValidationId.SKILL_NAME_REQUIRED))
+    }
     ScaffoldKind.PLATFORM_PACK -> {
-      if (fields.platform.isBlank()) add("Platform slug is required.")
+      if (fields.platform.isBlank()) add(ScaffoldValidationMessage(ScaffoldValidationId.PLATFORM_SLUG_REQUIRED))
       addAll(validateBaselineLayers(wizard))
     }
     ScaffoldKind.PLATFORM_OVERRIDE_PILOTED -> {
-      if (fields.platform.isBlank()) add("Platform is required.")
-      if (fields.family.isBlank()) add("Family is required.")
+      if (fields.platform.isBlank()) add(ScaffoldValidationMessage(ScaffoldValidationId.PLATFORM_REQUIRED))
+      if (fields.family.isBlank()) add(ScaffoldValidationMessage(ScaffoldValidationId.FAMILY_REQUIRED))
     }
     ScaffoldKind.CODE_REVIEW_AREA -> {
-      if (fields.platform.isBlank()) add("Platform is required.")
-      if (fields.area.isBlank()) add("Code-review area is required.")
+      if (fields.platform.isBlank()) add(ScaffoldValidationMessage(ScaffoldValidationId.PLATFORM_REQUIRED))
+      if (fields.area.isBlank()) add(ScaffoldValidationMessage(ScaffoldValidationId.CODE_REVIEW_AREA_REQUIRED))
     }
     ScaffoldKind.ADD_ON -> {
-      if (fields.name.isBlank()) add("Add-on name is required.")
-      if (fields.platform.isBlank()) add("Owning platform pack is required.")
+      if (fields.name.isBlank()) add(ScaffoldValidationMessage(ScaffoldValidationId.ADD_ON_NAME_REQUIRED))
+      if (fields.platform.isBlank()) {
+        add(ScaffoldValidationMessage(ScaffoldValidationId.OWNING_PLATFORM_PACK_REQUIRED))
+      }
     }
   }
 }
 
-private fun validateBaselineLayers(wizard: ScaffoldWizardState): List<String> = buildList {
+private fun validateBaselineLayers(wizard: ScaffoldWizardState): List<ScaffoldValidationMessage> = buildList {
   val newPlatform = wizard.formFields.platform.trim()
   val catalog = wizard.optionCatalog
   val packsBySlug = catalog.baselineReviewPacks.associateBy { it.platform }
   val seen = mutableSetOf<Pair<String, String>>()
 
   wizard.formFields.baselineLayers.forEachIndexed { index, layer ->
-    val label = "Baseline layer ${index + 1}"
+    val layerNumber = (index + 1).toString()
     val platform = layer.platform.trim()
     val skillName = layer.skill.trim()
     if (platform.isBlank()) {
-      add("$label: baseline pack is required.")
+      add(ScaffoldValidationMessage(ScaffoldValidationId.BASELINE_PACK_REQUIRED, listOf(layerNumber)))
       return@forEachIndexed
     }
     val pack = packsBySlug[platform]
     if (pack == null) {
-      add("$label: baseline pack '$platform' is not available or has no declared code-review baseline.")
+      add(ScaffoldValidationMessage(ScaffoldValidationId.BASELINE_PACK_UNAVAILABLE, listOf(layerNumber, platform)))
       return@forEachIndexed
     }
     if (skillName.isBlank()) {
-      add("$label: baseline skill is required.")
+      add(ScaffoldValidationMessage(ScaffoldValidationId.BASELINE_SKILL_REQUIRED, listOf(layerNumber)))
       return@forEachIndexed
     }
     val skill = pack.skills.firstOrNull { it.name == skillName }
     if (skill == null) {
-      add("$label: baseline skill '$skillName' is not declared by pack '$platform'.")
+      add(
+        ScaffoldValidationMessage(
+          ScaffoldValidationId.BASELINE_SKILL_UNAVAILABLE,
+          listOf(layerNumber, skillName, platform),
+        ),
+      )
       return@forEachIndexed
     }
     if (layer.mode !in skill.supportedModes) {
-      add("$label: mode '${layer.mode}' is not supported by '$platform/$skillName'.")
+      add(
+        ScaffoldValidationMessage(
+          ScaffoldValidationId.BASELINE_MODE_UNSUPPORTED,
+          listOf(layerNumber, layer.mode, platform, skillName),
+        ),
+      )
     }
     if (layer.scope !in skill.supportedScopes) {
-      add("$label: scope '${layer.scope}' is not supported by '$platform/$skillName'.")
+      add(
+        ScaffoldValidationMessage(
+          ScaffoldValidationId.BASELINE_SCOPE_UNSUPPORTED,
+          listOf(layerNumber, layer.scope, platform, skillName),
+        ),
+      )
     }
     if (!seen.add(platform to skillName)) {
-      add("$label: duplicate baseline layer '$platform/$skillName'.")
+      add(
+        ScaffoldValidationMessage(
+          ScaffoldValidationId.DUPLICATE_BASELINE_LAYER,
+          listOf(layerNumber, platform, skillName),
+        ),
+      )
     }
     if (newPlatform.isNotBlank() && platform == newPlatform) {
-      add("$label: baseline layer self-references the new platform pack '$newPlatform'.")
+      add(ScaffoldValidationMessage(ScaffoldValidationId.BASELINE_SELF_REFERENCE, listOf(layerNumber, newPlatform)))
     } else if (newPlatform.isNotBlank() && compositionPathExists(catalog, from = platform, to = newPlatform)) {
-      add("$label: adding '$newPlatform -> $platform' would create a code-review composition cycle.")
+      add(
+        ScaffoldValidationMessage(
+          ScaffoldValidationId.BASELINE_COMPOSITION_CYCLE,
+          listOf(layerNumber, newPlatform, platform),
+        ),
+      )
     }
   }
 }

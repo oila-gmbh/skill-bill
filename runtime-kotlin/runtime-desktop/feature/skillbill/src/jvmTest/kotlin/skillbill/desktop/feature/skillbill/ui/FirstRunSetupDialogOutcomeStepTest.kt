@@ -6,6 +6,10 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runComposeUiTest
+import dev.skillbill.designsystem.generated.resources.Res
+import dev.skillbill.designsystem.generated.resources.first_run_install_complete
+import dev.skillbill.designsystem.generated.resources.first_run_install_failed
+import dev.skillbill.designsystem.generated.resources.first_run_installed_with_warnings
 import skillbill.desktop.core.domain.model.FirstRunInstallDetail
 import skillbill.desktop.core.domain.model.FirstRunInstallDetailSeverity
 import skillbill.desktop.core.domain.model.FirstRunInstallOutcome
@@ -26,7 +30,7 @@ class FirstRunSetupDialogOutcomeStepTest {
         state = resultState(
           FirstRunInstallOutcome(
             status = FirstRunInstallStatus.SUCCESS,
-            title = "Install complete",
+            titleRes = Res.string.first_run_install_complete,
             details = listOf(
               FirstRunInstallDetail(
                 label = "Codex",
@@ -55,7 +59,7 @@ class FirstRunSetupDialogOutcomeStepTest {
         state = resultState(
           FirstRunInstallOutcome(
             status = FirstRunInstallStatus.WARNING,
-            title = "Installed with warnings",
+            titleRes = Res.string.first_run_installed_with_warnings,
             details = listOf(
               FirstRunInstallDetail(
                 label = "Windows symlinks",
@@ -87,7 +91,7 @@ class FirstRunSetupDialogOutcomeStepTest {
         state = resultState(
           FirstRunInstallOutcome(
             status = FirstRunInstallStatus.FAILURE,
-            title = "Install failed",
+            titleRes = Res.string.first_run_install_failed,
             details = listOf(
               FirstRunInstallDetail(
                 label = "Claude",

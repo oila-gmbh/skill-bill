@@ -1,3 +1,4 @@
+import dev.skillbill.runtime.buildlogic.composeResourcesDependency
 import dev.skillbill.runtime.buildlogic.configureKmpDesktop
 import dev.skillbill.runtime.buildlogic.libs
 import org.gradle.api.Plugin
@@ -26,6 +27,7 @@ class KmpComposeConventionPlugin : Plugin<Project> {
         add("commonMainImplementation", libs.findLibrary("compose.material3").get())
         add("commonMainImplementation", libs.findLibrary("compose.runtime").get())
         add("commonMainImplementation", libs.findLibrary("compose.ui").get())
+        add("commonMainImplementation", composeResourcesDependency())
         add("commonMainImplementation", libs.findLibrary("kotlinx.coroutines.core").get())
       }
     }

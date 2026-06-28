@@ -1,4 +1,4 @@
-@file:Suppress("FunctionName", "MagicNumber")
+@file:Suppress("FunctionName")
 
 package skillbill.desktop.feature.skillbill.ui
 
@@ -16,10 +16,10 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -34,13 +34,39 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import dev.skillbill.designsystem.generated.resources.Res
+import dev.skillbill.designsystem.generated.resources.accelerator_save
+import dev.skillbill.designsystem.generated.resources.editor_cancel
+import dev.skillbill.designsystem.generated.resources.editor_contract_missing_field
+import dev.skillbill.designsystem.generated.resources.editor_dirty_prompt_choose_directory
+import dev.skillbill.designsystem.generated.resources.editor_dirty_prompt_refresh
+import dev.skillbill.designsystem.generated.resources.editor_dirty_prompt_repo_switch
+import dev.skillbill.designsystem.generated.resources.editor_dirty_prompt_return_installed
+import dev.skillbill.designsystem.generated.resources.editor_dirty_prompt_selection_change
+import dev.skillbill.designsystem.generated.resources.editor_discard
+import dev.skillbill.designsystem.generated.resources.editor_generated_artifact_read_only
+import dev.skillbill.designsystem.generated.resources.editor_modified
+import dev.skillbill.designsystem.generated.resources.editor_no_source_selected
+import dev.skillbill.designsystem.generated.resources.editor_ok
+import dev.skillbill.designsystem.generated.resources.editor_read_only
+import dev.skillbill.designsystem.generated.resources.editor_read_only_browser
+import dev.skillbill.designsystem.generated.resources.editor_revert
+import dev.skillbill.designsystem.generated.resources.editor_save
+import dev.skillbill.designsystem.generated.resources.editor_save_blocked
+import dev.skillbill.designsystem.generated.resources.editor_saved
+import dev.skillbill.designsystem.generated.resources.editor_saving
+import org.jetbrains.compose.resources.stringResource
+import skillbill.desktop.core.designsystem.SkillBillComponentShapes
+import skillbill.desktop.core.designsystem.SkillBillDimens
+import skillbill.desktop.core.designsystem.SkillBillMetrics
 import skillbill.desktop.core.designsystem.SkillBillTheme
+import skillbill.desktop.core.designsystem.SkillBillTypeStyles
 import skillbill.desktop.core.domain.model.DirtyEditorPrompt
 import skillbill.desktop.core.domain.model.DirtyEditorPromptReason
 import skillbill.desktop.core.domain.model.EditorPlaceholder
-import skillbill.desktop.core.domain.model.SkillBillAcceleratorLabels
+
+private const val YAML_COLON_SEPARATOR = ":"
 
 @Composable
 internal fun CodeEditor(
@@ -96,21 +122,19 @@ internal fun CodeEditor(
           value = editor.draftContent ?: editor.content.orEmpty(),
           onValueChange = onDraftChanged,
           enabled = editorInputActive,
-          textStyle = androidx.compose.ui.text.TextStyle(
-            color = if (editorInputActive) codePaneColors.editorText else codePaneColors.editorDisabledText,
-            fontSize = 12.5.sp,
-            fontFamily = FontFamily.Monospace,
+          textStyle = SkillBillTypeStyles.code.copy(
             lineHeight = 20.sp,
+            color = if (editorInputActive) codePaneColors.editorText else codePaneColors.editorDisabledText,
           ),
           cursorBrush = SolidColor(codePaneColors.editorCursor),
           modifier =
           Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .padding(horizontal = SkillBillDimens.pad4xl, vertical = SkillBillDimens.pad2xl),
         )
       }
     } else {
-      val rawText = (editor.content ?: editor.detail).ifBlank { "No source selected" }
+      val rawText = (editor.content ?: editor.detail).ifBlank { stringResource(Res.string.editor_no_source_selected) }
       val lines = rawText.lines()
       ReadOnlyBanner(editor)
       Column(
@@ -135,14 +159,14 @@ private fun SaveErrorDialog(message: String, onDismiss: () -> Unit) {
   AlertDialog(
     onDismissRequest = onDismiss,
     title = {
-      Text(text = "Save blocked", color = dialogTone.content)
+      Text(text = stringResource(Res.string.editor_save_blocked), color = dialogTone.content)
     },
     text = {
       Text(text = message, color = dialogTone.content)
     },
     confirmButton = {
       TextButton(onClick = onDismiss) {
-        Text(text = "OK")
+        Text(text = stringResource(Res.string.editor_ok))
       }
     },
     containerColor = dialogTone.container,
@@ -157,37 +181,42 @@ private fun EditorCommandBar(editor: EditorPlaceholder, onSave: () -> Unit, onRe
     modifier =
     Modifier
       .fillMaxWidth()
-      .height(38.dp)
+      .height(SkillBillMetrics.editorCommandBarHeight)
       .background(SkillBillTheme.frameTokens.raised)
-      .padding(horizontal = 12.dp),
+      .padding(horizontal = SkillBillDimens.pad2xl),
     verticalAlignment = Alignment.CenterVertically,
-    horizontalArrangement = Arrangement.spacedBy(8.dp),
+    horizontalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingLg),
   ) {
     Text(
       text = if (editor.dirty) {
-        "Modified"
+        stringResource(Res.string.editor_modified)
       } else if (editor.editable) {
-        "Saved"
+        stringResource(Res.string.editor_saved)
       } else {
-        "Read-only"
+        stringResource(Res.string.editor_read_only)
       },
       color = if (editor.dirty) SkillBillTheme.frameTokens.primary else SkillBillTheme.frameTokens.muted,
-      fontSize = 11.sp,
-      fontFamily = FontFamily.Monospace,
+      style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
       modifier = Modifier.weight(1f),
       maxLines = 1,
       overflow = TextOverflow.Ellipsis,
     )
     EditorActionButton(
-      label = if (editor.saveInProgress) "Saving..." else "Save",
+      label = if (editor.saveInProgress) {
+        stringResource(
+          Res.string.editor_saving,
+        )
+      } else {
+        stringResource(Res.string.editor_save)
+      },
       marker = "sv",
       enabled = editor.editable && editor.dirty && !editor.saveInProgress,
       primary = editor.dirty,
-      acceleratorLabel = SkillBillAcceleratorLabels.SAVE,
+      acceleratorLabel = stringResource(Res.string.accelerator_save),
       onClick = onSave,
     )
     EditorActionButton(
-      label = "Revert",
+      label = stringResource(Res.string.editor_revert),
       marker = "rv",
       enabled = editor.editable && editor.dirty && !editor.saveInProgress,
       onClick = onRevert,
@@ -215,21 +244,27 @@ private fun EditorActionButton(
     Row(
       modifier =
       Modifier
-        .height(26.dp)
-        .clip(RoundedCornerShape(6.dp))
+        .height(SkillBillDimens.controlHeightSm)
+        .clip(SkillBillComponentShapes.control)
         .border(
-          1.dp,
+          SkillBillDimens.hairline,
           if (enabled) SkillBillTheme.frameTokens.line else SkillBillTheme.frameTokens.panel,
-          RoundedCornerShape(6.dp),
+          SkillBillComponentShapes.control,
         )
-        .background(background, RoundedCornerShape(6.dp))
+        .background(background, SkillBillComponentShapes.control)
         .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
-        .padding(horizontal = 9.dp),
+        .padding(horizontal = SkillBillDimens.space9),
       verticalAlignment = Alignment.CenterVertically,
-      horizontalArrangement = Arrangement.spacedBy(6.dp),
+      horizontalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingMd),
     ) {
       MiniIcon(text = marker, tint = foreground)
-      Text(text = label, color = foreground, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+      Text(
+        text = label,
+        color = foreground,
+        style = MaterialTheme.typography.labelSmall,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+      )
     }
   }
 }
@@ -240,19 +275,22 @@ private fun ReadOnlyBanner(editor: EditorPlaceholder) {
     modifier = Modifier
       .fillMaxWidth()
       .background(SkillBillTheme.frameTokens.raised)
-      .padding(horizontal = 14.dp, vertical = 8.dp),
+      .padding(horizontal = SkillBillDimens.pad3xl, vertical = SkillBillDimens.padLg),
     verticalAlignment = Alignment.CenterVertically,
-    horizontalArrangement = Arrangement.spacedBy(8.dp),
+    horizontalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingLg),
   ) {
     MiniIcon(text = "ro", tint = SkillBillTheme.frameTokens.primary)
     Text(
       text = if (editor.kind == "generated artifact") {
-        editor.readOnlyReason ?: "Generated artifact is ${editor.readOnlyLabel ?: "read-only"}"
+        editor.readOnlyReason ?: stringResource(
+          Res.string.editor_generated_artifact_read_only,
+          editor.readOnlyLabel ?: stringResource(Res.string.editor_read_only),
+        )
       } else {
-        editor.readOnlyReason ?: "Read-only browser"
+        editor.readOnlyReason ?: stringResource(Res.string.editor_read_only_browser)
       },
       color = SkillBillTheme.frameTokens.muted,
-      fontSize = 11.sp,
+      style = MaterialTheme.typography.labelSmall,
       maxLines = 1,
       overflow = TextOverflow.Ellipsis,
     )
@@ -266,18 +304,18 @@ private fun SaveErrorBanner(message: String) {
     modifier =
     Modifier
       .fillMaxWidth()
-      .heightIn(max = 140.dp)
+      .heightIn(max = SkillBillDimens.codeCompletionMaxHeight)
       .background(errorTone.container)
       .verticalScroll(rememberScrollState())
-      .padding(horizontal = 14.dp, vertical = 8.dp),
+      .padding(horizontal = SkillBillDimens.pad3xl, vertical = SkillBillDimens.padLg),
     verticalAlignment = Alignment.Top,
-    horizontalArrangement = Arrangement.spacedBy(8.dp),
+    horizontalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingLg),
   ) {
     MiniIcon(text = "x", tint = errorTone.content)
     Text(
       text = message,
       color = errorTone.content,
-      fontSize = 11.sp,
+      style = MaterialTheme.typography.labelSmall,
       modifier = Modifier.weight(1f),
     )
   }
@@ -287,29 +325,42 @@ private fun SaveErrorBanner(message: String) {
 private fun DirtyEditorPromptBanner(prompt: DirtyEditorPrompt, onDiscard: () -> Unit, onCancel: () -> Unit) {
   val warningTone = SkillBillTheme.semanticTones.warningBanner
   val message = when (prompt.reason) {
-    DirtyEditorPromptReason.SELECTION_CHANGE -> "Discard unsaved edits before changing selection?"
-    DirtyEditorPromptReason.REFRESH -> "Discard unsaved edits before refreshing?"
-    DirtyEditorPromptReason.REPO_SWITCH -> "Discard unsaved edits before switching repositories?"
-    DirtyEditorPromptReason.CHOOSE_DIRECTORY -> "Discard unsaved edits before choosing another repository?"
+    DirtyEditorPromptReason.SELECTION_CHANGE -> stringResource(Res.string.editor_dirty_prompt_selection_change)
+    DirtyEditorPromptReason.REFRESH -> stringResource(Res.string.editor_dirty_prompt_refresh)
+    DirtyEditorPromptReason.REPO_SWITCH -> stringResource(Res.string.editor_dirty_prompt_repo_switch)
+    DirtyEditorPromptReason.CHOOSE_DIRECTORY -> stringResource(Res.string.editor_dirty_prompt_choose_directory)
     DirtyEditorPromptReason.RETURN_TO_INSTALLED_WORKSPACE ->
-      "Discard unsaved edits before opening the installed workspace?"
+      stringResource(Res.string.editor_dirty_prompt_return_installed)
   }
   Row(
-    modifier = Modifier.fillMaxWidth().background(warningTone.container).padding(horizontal = 14.dp, vertical = 8.dp),
+    modifier = Modifier.fillMaxWidth().background(
+      warningTone.container,
+    ).padding(horizontal = SkillBillDimens.pad3xl, vertical = SkillBillDimens.padLg),
     verticalAlignment = Alignment.CenterVertically,
-    horizontalArrangement = Arrangement.spacedBy(8.dp),
+    horizontalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingLg),
   ) {
     MiniIcon(text = "!", tint = warningTone.content)
     Text(
       text = message,
       color = warningTone.content,
-      fontSize = 11.sp,
+      style = MaterialTheme.typography.labelSmall,
       modifier = Modifier.weight(1f),
       maxLines = 1,
       overflow = TextOverflow.Ellipsis,
     )
-    EditorActionButton(label = "Discard", marker = "ds", enabled = true, primary = true, onClick = onDiscard)
-    EditorActionButton(label = "Cancel", marker = "cn", enabled = true, onClick = onCancel)
+    EditorActionButton(
+      label = stringResource(Res.string.editor_discard),
+      marker = "ds",
+      enabled = true,
+      primary = true,
+      onClick = onDiscard,
+    )
+    EditorActionButton(
+      label = stringResource(Res.string.editor_cancel),
+      marker = "cn",
+      enabled = true,
+      onClick = onCancel,
+    )
   }
 }
 
@@ -324,28 +375,36 @@ private fun CodeLine(number: Int, line: String, flagged: Boolean, colors: CodePa
     Text(
       text = number.toString(),
       color = colors.lineNumber,
-      fontSize = 12.sp,
-      fontFamily = FontFamily.Monospace,
+      style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
       modifier =
       Modifier
-        .width(50.dp)
-        .border(BorderStroke(0.dp, SkillBillTheme.frameTokens.transparent))
-        .padding(top = 4.dp, end = 10.dp),
+        .width(SkillBillDimens.lineNumberWidth)
+        .border(BorderStroke(SkillBillDimens.borderNone, SkillBillTheme.frameTokens.transparent))
+        .padding(top = SkillBillDimens.padSm, end = SkillBillDimens.padXl),
       maxLines = 1,
     )
     Row(
-      modifier = Modifier.padding(start = 12.dp, top = 4.dp, bottom = 3.dp, end = 16.dp),
+      modifier = Modifier.padding(
+        start = SkillBillDimens.pad2xl,
+        top = SkillBillDimens.padSm,
+        bottom = SkillBillDimens.space3,
+        end = SkillBillDimens.pad4xl,
+      ),
       verticalAlignment = Alignment.CenterVertically,
     ) {
       SyntaxText(line = line, colors = colors)
       if (flagged) {
         Row(
-          modifier = Modifier.padding(start = 12.dp),
+          modifier = Modifier.padding(start = SkillBillDimens.pad2xl),
           verticalAlignment = Alignment.CenterVertically,
-          horizontalArrangement = Arrangement.spacedBy(4.dp),
+          horizontalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingSm),
         ) {
           MiniIcon(text = "x", tint = SkillBillTheme.frameTokens.status.error)
-          Text(text = "contract: missing field", color = SkillBillTheme.frameTokens.status.error, fontSize = 10.5.sp)
+          Text(
+            text = stringResource(Res.string.editor_contract_missing_field),
+            color = SkillBillTheme.frameTokens.status.error,
+            style = SkillBillTypeStyles.codeCaption,
+          )
         }
       }
     }
@@ -359,30 +418,25 @@ private fun SyntaxText(line: String, colors: CodePaneColors) {
     Text(
       text = line,
       color = colors.yaml.comment,
-      fontSize = 12.5.sp,
-      fontFamily = FontFamily.Monospace,
-      lineHeight = 20.sp,
+      style = SkillBillTypeStyles.code.copy(lineHeight = 20.sp),
       maxLines = 1,
     )
   } else if (keyMatch != null) {
     Row {
-      Text(keyMatch.groupValues[1], color = colors.yaml.scalar, fontSize = 12.5.sp, fontFamily = FontFamily.Monospace)
-      Text(keyMatch.groupValues[2], color = colors.yaml.key, fontSize = 12.5.sp, fontFamily = FontFamily.Monospace)
-      Text(":", color = colors.yaml.marker, fontSize = 12.5.sp, fontFamily = FontFamily.Monospace)
+      Text(keyMatch.groupValues[1], color = colors.yaml.scalar, style = SkillBillTypeStyles.code)
+      Text(keyMatch.groupValues[2], color = colors.yaml.key, style = SkillBillTypeStyles.code)
+      Text(YAML_COLON_SEPARATOR, color = colors.yaml.marker, style = SkillBillTypeStyles.code)
       Text(
         keyMatch.groupValues[3],
         color = colors.yaml.scalar,
-        fontSize = 12.5.sp,
-        fontFamily = FontFamily.Monospace,
+        style = SkillBillTypeStyles.code,
       )
     }
   } else {
     Text(
       text = line,
       color = colors.yaml.scalar,
-      fontSize = 12.5.sp,
-      fontFamily = FontFamily.Monospace,
-      lineHeight = 20.sp,
+      style = SkillBillTypeStyles.code.copy(lineHeight = 20.sp),
       maxLines = 1,
     )
   }

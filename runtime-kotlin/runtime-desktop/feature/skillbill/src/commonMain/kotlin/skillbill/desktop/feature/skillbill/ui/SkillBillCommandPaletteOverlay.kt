@@ -1,4 +1,4 @@
-@file:Suppress("FunctionName", "MagicNumber")
+@file:Suppress("FunctionName")
 
 package skillbill.desktop.feature.skillbill.ui
 
@@ -16,10 +16,10 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -41,11 +41,17 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import dev.skillbill.designsystem.generated.resources.Res
+import dev.skillbill.designsystem.generated.resources.command_palette_kind_command
+import dev.skillbill.designsystem.generated.resources.command_palette_kind_source
+import dev.skillbill.designsystem.generated.resources.command_palette_no_matches
+import dev.skillbill.designsystem.generated.resources.command_palette_search_placeholder
+import org.jetbrains.compose.resources.stringResource
+import skillbill.desktop.core.designsystem.SkillBillComponentShapes
+import skillbill.desktop.core.designsystem.SkillBillDimens
 import skillbill.desktop.core.designsystem.SkillBillTheme
+import skillbill.desktop.core.designsystem.SkillBillTypeStyles
 import skillbill.desktop.core.domain.model.CommandPaletteResult
 import skillbill.desktop.core.domain.model.CommandPaletteResultKind
 import skillbill.desktop.core.domain.model.CommandPaletteState
@@ -75,11 +81,11 @@ internal fun CommandPaletteOverlay(
     )
     Column(
       modifier = modifier
-        .padding(top = 54.dp)
-        .widthIn(min = 520.dp, max = 720.dp)
-        .heightIn(max = 480.dp)
-        .clip(RoundedCornerShape(8.dp))
-        .border(1.dp, SkillBillTheme.frameTokens.line, RoundedCornerShape(8.dp))
+        .padding(top = SkillBillDimens.commandPaletteTopOffset)
+        .widthIn(min = SkillBillDimens.commandPaletteMinWidth, max = SkillBillDimens.commandPaletteMaxWidth)
+        .heightIn(max = SkillBillDimens.commandPaletteMaxHeight)
+        .clip(SkillBillTheme.shapes.medium)
+        .border(SkillBillDimens.hairline, SkillBillTheme.frameTokens.line, SkillBillTheme.shapes.medium)
         .background(SkillBillTheme.frameTokens.panel)
         .onPreviewKeyEvent { event ->
           if (event.type != KeyEventType.KeyDown) {
@@ -116,7 +122,9 @@ internal fun CommandPaletteOverlay(
       CommandPaletteResults(
         palette = palette,
         onExecuteResult = onExecuteResult,
-        modifier = Modifier.fillMaxWidth().heightIn(max = 410.dp).verticalScroll(rememberScrollState()),
+        modifier = Modifier.fillMaxWidth().heightIn(
+          max = SkillBillDimens.commandPaletteListHeight,
+        ).verticalScroll(rememberScrollState()),
       )
     }
   }
@@ -126,17 +134,19 @@ internal fun CommandPaletteOverlay(
 private fun CommandPaletteInput(query: String, onQueryChanged: (String) -> Unit, focusRequester: FocusRequester) {
   val textFieldTokens = SkillBillTheme.textFieldTokens
   Row(
-    modifier = Modifier.fillMaxWidth().height(48.dp).padding(horizontal = 14.dp),
+    modifier = Modifier.fillMaxWidth().height(
+      SkillBillDimens.commandRowHeight,
+    ).padding(horizontal = SkillBillDimens.pad3xl),
     verticalAlignment = Alignment.CenterVertically,
-    horizontalArrangement = Arrangement.spacedBy(10.dp),
+    horizontalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingXl),
   ) {
     MiniIcon(text = "cmd", tint = SkillBillTheme.frameTokens.primary)
     Box(modifier = Modifier.weight(1f)) {
       if (query.isBlank()) {
         Text(
-          text = "Search commands and source items",
+          text = stringResource(Res.string.command_palette_search_placeholder),
           color = textFieldTokens.placeholder,
-          fontSize = 14.sp,
+          style = MaterialTheme.typography.titleSmall,
           maxLines = 1,
           overflow = TextOverflow.Ellipsis,
         )
@@ -145,10 +155,9 @@ private fun CommandPaletteInput(query: String, onQueryChanged: (String) -> Unit,
         value = query,
         onValueChange = onQueryChanged,
         singleLine = true,
-        textStyle = androidx.compose.ui.text.TextStyle(
-          color = textFieldTokens.text,
-          fontSize = 14.sp,
+        textStyle = MaterialTheme.typography.titleSmall.copy(
           fontFamily = FontFamily.Monospace,
+          color = textFieldTokens.text,
         ),
         cursorBrush = SolidColor(textFieldTokens.cursor),
         modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
@@ -163,13 +172,13 @@ private fun CommandPaletteResults(
   onExecuteResult: (CommandPaletteResult) -> Unit,
   modifier: Modifier = Modifier,
 ) {
-  Column(modifier = modifier.padding(vertical = 6.dp)) {
+  Column(modifier = modifier.padding(vertical = SkillBillDimens.padMd)) {
     if (palette.results.isEmpty()) {
       Text(
-        text = "No matching commands",
+        text = stringResource(Res.string.command_palette_no_matches),
         color = SkillBillTheme.frameTokens.subtle,
-        fontSize = 12.sp,
-        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+        style = MaterialTheme.typography.bodySmall,
+        modifier = Modifier.padding(horizontal = SkillBillDimens.pad4xl, vertical = SkillBillDimens.pad2xl),
       )
     }
     palette.results.forEachIndexed { index, result ->
@@ -200,9 +209,9 @@ private fun CommandPaletteResultRow(result: CommandPaletteResult, selected: Bool
   Row(
     modifier = Modifier
       .fillMaxWidth()
-      .heightIn(min = 48.dp)
-      .padding(horizontal = 8.dp, vertical = 2.dp)
-      .clip(RoundedCornerShape(5.dp))
+      .heightIn(min = SkillBillDimens.commandRowHeight)
+      .padding(horizontal = SkillBillDimens.padLg, vertical = SkillBillDimens.padXs)
+      .clip(SkillBillComponentShapes.badge)
       .background(background)
       .semantics {
         this.selected = selected
@@ -212,9 +221,9 @@ private fun CommandPaletteResultRow(result: CommandPaletteResult, selected: Bool
         }
       }
       .clickable(enabled = enabled, role = Role.Button, onClick = onExecute)
-      .padding(horizontal = 10.dp, vertical = 7.dp),
+      .padding(horizontal = SkillBillDimens.padXl, vertical = SkillBillDimens.space7),
     verticalAlignment = Alignment.Top,
-    horizontalArrangement = Arrangement.spacedBy(10.dp),
+    horizontalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingXl),
   ) {
     val markerTint = if (selected && enabled) {
       SkillBillTheme.frameTokens.primary
@@ -223,25 +232,30 @@ private fun CommandPaletteResultRow(result: CommandPaletteResult, selected: Bool
     }
     MiniIcon(text = result.marker, tint = markerTint)
     Column(modifier = Modifier.weight(1f)) {
-      Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+      Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingLg),
+      ) {
+        val titleText = result.titleRes?.let { stringResource(it) } ?: result.title
         Text(
-          text = result.title,
+          text = titleText,
           color = titleColor,
-          fontSize = 13.sp,
-          fontWeight = FontWeight.Medium,
+          style = SkillBillTypeStyles.body13,
           maxLines = 1,
           overflow = TextOverflow.Ellipsis,
           modifier = Modifier.weight(1f),
         )
-        result.acceleratorLabel?.let { acceleratorLabel ->
-          CommandPaletteAcceleratorLabel(acceleratorLabel)
+        result.acceleratorLabelRes?.let { res ->
+          CommandPaletteAcceleratorLabel(stringResource(res))
         }
         CommandPaletteKindLabel(result.kind)
       }
+      val subtitleText = result.subtitleRes?.let { stringResource(it) } ?: result.subtitle
+      val disabledText = result.disabledReasonRes?.let { stringResource(it) }
       Text(
-        text = result.disabledReason ?: result.subtitle,
-        color = if (result.disabledReason == null) subtitleColor else SkillBillTheme.frameTokens.status.warning,
-        fontSize = 11.sp,
+        text = disabledText ?: subtitleText,
+        color = if (result.disabledReasonRes == null) subtitleColor else SkillBillTheme.frameTokens.status.warning,
+        style = MaterialTheme.typography.labelSmall,
         maxLines = 2,
         overflow = TextOverflow.Ellipsis,
       )
@@ -254,23 +268,21 @@ private fun CommandPaletteAcceleratorLabel(label: String) {
   Text(
     text = label,
     color = SkillBillTheme.frameTokens.muted,
-    fontSize = 10.sp,
-    fontFamily = FontFamily.Monospace,
+    style = SkillBillTypeStyles.caption.copy(fontFamily = FontFamily.Monospace),
     maxLines = 1,
   )
 }
 
 @Composable
 private fun CommandPaletteKindLabel(kind: CommandPaletteResultKind) {
-  val label = when (kind) {
-    CommandPaletteResultKind.COMMAND -> "command"
-    CommandPaletteResultKind.TREE_ITEM -> "source"
+  val kindLabel = when (kind) {
+    CommandPaletteResultKind.COMMAND -> stringResource(Res.string.command_palette_kind_command)
+    CommandPaletteResultKind.TREE_ITEM -> stringResource(Res.string.command_palette_kind_source)
   }
   Text(
-    text = label,
+    text = kindLabel,
     color = SkillBillTheme.frameTokens.subtle,
-    fontSize = 10.sp,
-    fontFamily = FontFamily.Monospace,
+    style = SkillBillTypeStyles.caption.copy(fontFamily = FontFamily.Monospace),
     maxLines = 1,
   )
 }

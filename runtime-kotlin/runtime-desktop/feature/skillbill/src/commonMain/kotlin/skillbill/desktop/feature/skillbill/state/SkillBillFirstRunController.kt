@@ -1,5 +1,8 @@
 package skillbill.desktop.feature.skillbill.state
 
+import dev.skillbill.designsystem.generated.resources.Res
+import dev.skillbill.designsystem.generated.resources.first_run_install_did_not_run
+import dev.skillbill.designsystem.generated.resources.first_run_install_planning_failed
 import skillbill.desktop.core.datastore.DesktopFirstRunPreferences
 import skillbill.desktop.core.datastore.DesktopPreferenceStore
 import skillbill.desktop.core.domain.model.FirstRunApplyResult
@@ -187,7 +190,7 @@ internal class SkillBillFirstRunController(
         errorMessage = planResult.message,
         outcome = FirstRunInstallOutcome(
           status = FirstRunInstallStatus.FAILURE,
-          title = "Install planning failed.",
+          titleRes = Res.string.first_run_install_planning_failed,
         ),
       )
       is FirstRunPlanResult.Planned -> {
@@ -196,7 +199,7 @@ internal class SkillBillFirstRunController(
           is FirstRunApplyResult.Failed -> applyResult.outcome
           null -> FirstRunInstallOutcome(
             status = FirstRunInstallStatus.FAILURE,
-            title = "Install did not run.",
+            titleRes = Res.string.first_run_install_did_not_run,
           )
         }
         setup.copy(
@@ -204,7 +207,7 @@ internal class SkillBillFirstRunController(
           busy = false,
           plan = planResult.plan,
           outcome = outcome,
-          errorMessage = outcome.takeIf { it.status == FirstRunInstallStatus.FAILURE }?.title,
+          errorMessage = null,
         )
       }
     }

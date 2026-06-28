@@ -28,7 +28,7 @@ data class ScaffoldWizardState(
   val optionCatalog: ScaffoldCatalogSnapshot = ScaffoldCatalogSnapshot.empty,
   val dryRunPreview: ScaffoldPlan? = null,
   val executionResult: ScaffoldRunResult? = null,
-  val validationErrors: List<String> = emptyList(),
+  val validationErrors: List<ScaffoldValidationMessage> = emptyList(),
   val baselineLayerSuggestion: ScaffoldBaselineLayerForm? = null,
   val baselineLayerSuggestionLabel: String? = null,
   val dirtyRepoWarning: Boolean = false,

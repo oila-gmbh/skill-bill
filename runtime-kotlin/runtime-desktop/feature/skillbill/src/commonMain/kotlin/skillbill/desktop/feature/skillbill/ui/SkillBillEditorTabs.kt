@@ -1,4 +1,4 @@
-@file:Suppress("FunctionName", "MagicNumber")
+@file:Suppress("FunctionName")
 
 package skillbill.desktop.feature.skillbill.ui
 
@@ -22,8 +22,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
@@ -40,12 +39,19 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import dev.skillbill.designsystem.generated.resources.Res
+import dev.skillbill.designsystem.generated.resources.editor_tab_close_cd
 import kotlinx.coroutines.launch
+import org.jetbrains.compose.resources.stringResource
+import skillbill.desktop.core.designsystem.SkillBillComponentShapes
+import skillbill.desktop.core.designsystem.SkillBillDimens
 import skillbill.desktop.core.designsystem.SkillBillTheme
+import skillbill.desktop.core.designsystem.SkillBillTypeStyles
 import skillbill.desktop.core.domain.model.DirtyEditorPrompt
 import skillbill.desktop.core.domain.model.EditorPlaceholder
+
+private const val LONG_TAB_TITLE_THRESHOLD = 28
+private const val MEDIUM_TAB_TITLE_THRESHOLD = 18
 
 @Composable
 internal fun CenterWorkspace(
@@ -110,7 +116,7 @@ private fun EditorTabs(
     modifier =
     Modifier
       .fillMaxWidth()
-      .height(36.dp)
+      .height(SkillBillDimens.editorTabHeight)
       .background(SkillBillTheme.frameTokens.panel)
       .pointerInput(scrollState) {
         awaitPointerEventScope {
@@ -188,7 +194,7 @@ private fun HorizontalScrollIndicator(
   val scrollThumbColor = SkillBillTheme.frameTokens.primary.copy(alpha = 0.72f)
   Box(
     modifier = modifier
-      .height(10.dp)
+      .height(SkillBillDimens.spacingXl)
       .pointerInput(scrollState, maxScrollValue) {
         detectHorizontalDragGestures { change, dragAmount ->
           change.consume()
@@ -201,11 +207,13 @@ private fun HorizontalScrollIndicator(
       },
     contentAlignment = Alignment.BottomStart,
   ) {
-    Canvas(modifier = Modifier.fillMaxWidth().height(4.dp)) {
+    Canvas(modifier = Modifier.fillMaxWidth().height(SkillBillDimens.spacingSm)) {
       val maxScroll = maxScrollValue.toFloat().takeIf { it > 0f } ?: return@Canvas
       val viewportWidth = size.width
       val contentWidth = viewportWidth + maxScroll
-      val thumbWidth = (viewportWidth / contentWidth * viewportWidth).coerceAtLeast(48.dp.toPx())
+      val thumbWidth = (viewportWidth / contentWidth * viewportWidth).coerceAtLeast(
+        SkillBillDimens.scrollThumbMinWidth.toPx(),
+      )
       val thumbLeft = scrollValue / maxScroll * (viewportWidth - thumbWidth)
       drawRect(
         color = scrollTrackColor,
@@ -232,14 +240,14 @@ private fun EditorTab(
   val background = if (active) SkillBillTheme.frameTokens.background else SkillBillTheme.frameTokens.panel
   val textColor = if (active) SkillBillTheme.frameTokens.text else SkillBillTheme.frameTokens.muted
   val tabWidth = when {
-    tab.title.length > 28 -> 230.dp
-    tab.title.length > 18 -> 190.dp
-    else -> 134.dp
+    tab.title.length > LONG_TAB_TITLE_THRESHOLD -> SkillBillDimens.editorTabWidthLong
+    tab.title.length > MEDIUM_TAB_TITLE_THRESHOLD -> SkillBillDimens.editorTabWidthMedium
+    else -> SkillBillDimens.editorTabWidthShort
   }
   Column(
     modifier =
     Modifier
-      .height(36.dp)
+      .height(SkillBillDimens.editorTabHeight)
       .width(tabWidth)
       .background(background)
       .clickable(enabled = !active, role = Role.Tab, onClick = onSelected)
@@ -250,7 +258,7 @@ private fun EditorTab(
     Box(
       modifier = Modifier
         .fillMaxWidth()
-        .height(2.dp)
+        .height(SkillBillDimens.spacingXs)
         .background(
           if (active) SkillBillTheme.frameTokens.primary else SkillBillTheme.frameTokens.transparent,
         ),
@@ -260,43 +268,44 @@ private fun EditorTab(
       Modifier
         .weight(1f)
         .fillMaxWidth()
-        .border(BorderStroke(0.dp, SkillBillTheme.frameTokens.transparent))
-        .padding(horizontal = 10.dp),
+        .border(BorderStroke(SkillBillDimens.borderNone, SkillBillTheme.frameTokens.transparent))
+        .padding(horizontal = SkillBillDimens.padXl),
       verticalAlignment = Alignment.CenterVertically,
-      horizontalArrangement = Arrangement.spacedBy(7.dp),
+      horizontalArrangement = Arrangement.spacedBy(SkillBillDimens.space7),
     ) {
       MiniIcon(text = tab.marker, tint = textColor)
       Text(
         text = tab.title,
         color = textColor,
-        fontSize = 12.sp,
-        fontFamily = FontFamily.Monospace,
+        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
         modifier = Modifier.weight(1f),
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
       )
       if (tab.dirty) {
-        Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(SkillBillTheme.frameTokens.primary))
+        Box(
+          modifier = Modifier.size(SkillBillDimens.spacingMd).clip(SkillBillComponentShapes.pill)
+            .background(SkillBillTheme.frameTokens.primary),
+        )
       }
       if (tab.readOnly) {
         Text(
           text = tab.readOnlyLabel ?: "RO",
           color = SkillBillTheme.frameTokens.subtle,
-          fontSize = 10.sp,
-          fontFamily = FontFamily.Monospace,
+          style = SkillBillTypeStyles.caption.copy(fontFamily = FontFamily.Monospace),
         )
       }
       if (closeEnabled) {
+        val closeCd = stringResource(Res.string.editor_tab_close_cd, tab.title)
         Text(
           text = "x",
           color = if (active) SkillBillTheme.frameTokens.muted else SkillBillTheme.frameTokens.subtle,
-          fontSize = 12.sp,
-          fontFamily = FontFamily.Monospace,
+          style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
           modifier = Modifier
-            .size(18.dp)
-            .clip(RoundedCornerShape(4.dp))
+            .size(SkillBillDimens.iconLg)
+            .clip(SkillBillComponentShapes.previewConsole)
             .clickable(role = Role.Button, onClick = onClosed)
-            .semantics { contentDescription = "Close ${tab.title}" },
+            .semantics { contentDescription = closeCd },
           maxLines = 1,
         )
       }

@@ -5,6 +5,7 @@ import skillbill.desktop.core.domain.model.ScaffoldCatalogSnapshot
 import skillbill.desktop.core.domain.model.ScaffoldKind
 import skillbill.desktop.core.domain.model.ScaffoldOutcome
 import skillbill.desktop.core.domain.model.ScaffoldRunResult
+import skillbill.desktop.core.domain.model.ScaffoldValidationMessage
 import skillbill.desktop.core.domain.model.ScaffoldWizardFormFields
 import skillbill.desktop.core.domain.model.ScaffoldWizardState
 import skillbill.desktop.core.domain.model.SkillBillBusyOperation
@@ -342,12 +343,13 @@ internal class SkillBillScaffoldController(
 
   private fun canStartScaffoldAction(): Boolean = state.busyOperation == null
 
-  private fun failScaffoldFormValidation(current: ScaffoldWizardState, errors: List<String>) = with(state) {
-    scaffoldWizard = current.copy(
-      dryRunPreview = null,
-      validationErrors = errors,
-      executionResult = null,
-    )
-    currentState = createState()
-  }
+  private fun failScaffoldFormValidation(current: ScaffoldWizardState, errors: List<ScaffoldValidationMessage>) =
+    with(state) {
+      scaffoldWizard = current.copy(
+        dryRunPreview = null,
+        validationErrors = errors,
+        executionResult = null,
+      )
+      currentState = createState()
+    }
 }

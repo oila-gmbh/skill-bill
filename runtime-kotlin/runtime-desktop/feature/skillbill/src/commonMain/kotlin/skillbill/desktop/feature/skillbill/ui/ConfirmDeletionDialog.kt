@@ -1,4 +1,4 @@
-@file:Suppress("FunctionName", "MagicNumber", "LongMethod")
+@file:Suppress("FunctionName", "LongMethod")
 
 package skillbill.desktop.feature.skillbill.ui
 
@@ -21,10 +21,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -37,9 +37,49 @@ import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import dev.skillbill.designsystem.generated.resources.Res
+import dev.skillbill.designsystem.generated.resources.confirm_deletion_acknowledge
+import dev.skillbill.designsystem.generated.resources.confirm_deletion_acknowledge_hint
+import dev.skillbill.designsystem.generated.resources.confirm_deletion_acknowledge_partial
+import dev.skillbill.designsystem.generated.resources.confirm_deletion_agent_symlinks
+import dev.skillbill.designsystem.generated.resources.confirm_deletion_busy
+import dev.skillbill.designsystem.generated.resources.confirm_deletion_cancel
+import dev.skillbill.designsystem.generated.resources.confirm_deletion_cd
+import dev.skillbill.designsystem.generated.resources.confirm_deletion_close_cd
+import dev.skillbill.designsystem.generated.resources.confirm_deletion_close_glyph
+import dev.skillbill.designsystem.generated.resources.confirm_deletion_delete
+import dev.skillbill.designsystem.generated.resources.confirm_deletion_deleting
+import dev.skillbill.designsystem.generated.resources.confirm_deletion_edit_remove_addon_refs
+import dev.skillbill.designsystem.generated.resources.confirm_deletion_edit_remove_area_metadata
+import dev.skillbill.designsystem.generated.resources.confirm_deletion_edit_remove_code_review_area
+import dev.skillbill.designsystem.generated.resources.confirm_deletion_edit_remove_files_area_entry
+import dev.skillbill.designsystem.generated.resources.confirm_deletion_edit_remove_files_baseline
+import dev.skillbill.designsystem.generated.resources.confirm_deletion_edit_remove_pointers_key
+import dev.skillbill.designsystem.generated.resources.confirm_deletion_edit_remove_quality_check_file
+import dev.skillbill.designsystem.generated.resources.confirm_deletion_edit_remove_skill_class_pointer
+import dev.skillbill.designsystem.generated.resources.confirm_deletion_failed_partial_title
+import dev.skillbill.designsystem.generated.resources.confirm_deletion_failed_recovery
+import dev.skillbill.designsystem.generated.resources.confirm_deletion_failed_title
+import dev.skillbill.designsystem.generated.resources.confirm_deletion_files_and_dirs
+import dev.skillbill.designsystem.generated.resources.confirm_deletion_header
+import dev.skillbill.designsystem.generated.resources.confirm_deletion_manifest_edits
+import dev.skillbill.designsystem.generated.resources.confirm_deletion_preview_failed
+import dev.skillbill.designsystem.generated.resources.confirm_deletion_provider_claude
+import dev.skillbill.designsystem.generated.resources.confirm_deletion_provider_codex
+import dev.skillbill.designsystem.generated.resources.confirm_deletion_provider_junie
+import dev.skillbill.designsystem.generated.resources.confirm_deletion_provider_opencode
+import dev.skillbill.designsystem.generated.resources.confirm_deletion_readme_decrement_count
+import dev.skillbill.designsystem.generated.resources.confirm_deletion_readme_edits
+import dev.skillbill.designsystem.generated.resources.confirm_deletion_readme_remove_row
+import dev.skillbill.designsystem.generated.resources.confirm_deletion_skills_to_remove
+import dev.skillbill.designsystem.generated.resources.confirm_deletion_state_checked
+import dev.skillbill.designsystem.generated.resources.confirm_deletion_state_unchecked
+import dev.skillbill.designsystem.generated.resources.confirm_deletion_success
+import dev.skillbill.designsystem.generated.resources.confirm_deletion_target_platform_pack
+import org.jetbrains.compose.resources.stringResource
+import skillbill.desktop.core.designsystem.SkillBillComponentShapes
+import skillbill.desktop.core.designsystem.SkillBillDimens
+import skillbill.desktop.core.designsystem.SkillBillMetrics
 import skillbill.desktop.core.designsystem.SkillBillTheme
 import skillbill.desktop.core.designsystem.SkillBillTransparent
 import skillbill.desktop.core.domain.model.ConfirmDeletionState
@@ -71,43 +111,6 @@ data class ConfirmDeletionCallbacks(
   }
 }
 
-/**
- * SKILL-46 follow-up F-601/F-715: every user-facing string in [ConfirmDeletionDialog] lives in one
- * place. There is no `stringResource(R.string.…)` surface in this desktop module yet, so a private
- * object is the simplest centralisation — when a localisation layer lands, only this object needs
- * to migrate. Functions are used for templated strings so callers don't have to recompose the
- * template at the call site.
- */
-private object ConfirmDeletionStrings {
-  const val DIALOG_CONTENT_DESCRIPTION = "Confirm deletion"
-  const val CLOSE_BUTTON_CONTENT_DESCRIPTION = "Close confirm deletion dialog"
-  const val CLOSE_GLYPH = "x"
-  const val PREVIEW_BUSY = "Computing removal cascade..."
-  const val PREVIEW_FAILED = "Preview failed. See banner below."
-  fun headerTitle(label: String): String = "Delete: $label"
-  fun sectionSkillsToRemove(count: Int): String = "Skills to remove ($count)"
-  fun sectionFilesAndDirectories(count: Int): String = "Files and directories ($count)"
-  fun sectionManifestEdits(count: Int): String = "Manifest edits ($count)"
-  fun sectionAgentSymlinks(count: Int): String = "Agent symlinks ($count)"
-  fun sectionReadmeCatalogEdits(count: Int): String = "README catalog edits ($count)"
-  const val FAILED_TITLE = "Removal failed"
-  const val FAILED_PARTIAL_TITLE = "Removal failed — repo may be partially mutated"
-  const val FAILED_RECOVERY = "Run `scripts/validate_agent_configs` from the toolbar and inspect " +
-    "the Console tab to confirm repo state before retrying."
-  const val ACKNOWLEDGE_PARTIAL_MUTATION = "Acknowledge partial mutation"
-  fun successBanner(removedCount: Int): String =
-    "Removal complete — $removedCount paths removed. Running scripts/validate_agent_configs… " +
-      "see the Console tab for results."
-  const val CANCEL = "Cancel"
-  const val DELETE = "Delete"
-  const val DELETING = "Deleting..."
-  const val ACKNOWLEDGE_CHECKBOX_LABEL = "I understand this is irreversible"
-  const val ACKNOWLEDGE_HINT = "Tick the acknowledgment to enable Delete"
-  fun targetLabelPlatformPack(platform: String): String = "platform pack '$platform'"
-}
-
-// F-602: a single shared noop lambda for surface-click swallows so we don't allocate on every
-// recomposition.
 private val NoopClick: () -> Unit = {}
 
 @Composable
@@ -117,11 +120,12 @@ fun ConfirmDeletionDialog(state: ConfirmDeletionState, callbacks: ConfirmDeletio
   val backdropInteraction = remember { MutableInteractionSource() }
   val panelInteraction = remember { MutableInteractionSource() }
   val semanticTones = SkillBillTheme.semanticTones
+  val dialogContentDescription = stringResource(Res.string.confirm_deletion_cd)
   Box(
     modifier = Modifier
       .fillMaxSize()
       .background(semanticTones.scrim)
-      .semantics { contentDescription = ConfirmDeletionStrings.DIALOG_CONTENT_DESCRIPTION }
+      .semantics { contentDescription = dialogContentDescription }
       // Click outside the panel = dismiss. Mirrors ScaffoldWizardDialog backdrop behavior.
       .clickable(
         interactionSource = backdropInteraction,
@@ -133,10 +137,10 @@ fun ConfirmDeletionDialog(state: ConfirmDeletionState, callbacks: ConfirmDeletio
     Column(
       modifier = Modifier
         .align(Alignment.Center)
-        .widthIn(min = 560.dp, max = 760.dp)
-        .heightIn(max = 640.dp)
-        .clip(RoundedCornerShape(8.dp))
-        .border(1.dp, semanticTones.dialog.border, RoundedCornerShape(8.dp))
+        .widthIn(min = SkillBillDimens.dialogMinWidth, max = SkillBillDimens.dialogMaxWidth)
+        .heightIn(max = SkillBillDimens.dialogMaxHeight)
+        .clip(SkillBillTheme.shapes.medium)
+        .border(SkillBillDimens.hairline, semanticTones.dialog.border, SkillBillTheme.shapes.medium)
         .background(semanticTones.dialog.container)
         // Swallow clicks inside the panel so the backdrop click doesn't fire.
         .clickable(
@@ -153,32 +157,31 @@ fun ConfirmDeletionDialog(state: ConfirmDeletionState, callbacks: ConfirmDeletio
           .fillMaxWidth()
           .weight(1f, fill = false)
           .verticalScroll(rememberScrollState())
-          .padding(horizontal = 18.dp, vertical = 14.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+          .padding(horizontal = SkillBillDimens.pad5xl, vertical = SkillBillDimens.pad3xl),
+        verticalArrangement = Arrangement.spacedBy(SkillBillDimens.spacing2xl),
       ) {
         when {
           // F-717: spinner makes "computing" feel like progress, not a hang.
           state.previewBusy -> Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            horizontalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingXl),
           ) {
             CircularProgressIndicator(
-              modifier = Modifier.size(14.dp),
-              strokeWidth = 2.dp,
+              modifier = Modifier.size(SkillBillDimens.iconSm),
+              strokeWidth = SkillBillDimens.spacingXs,
               color = SkillBillTheme.colors.primary,
             )
             Text(
-              text = ConfirmDeletionStrings.PREVIEW_BUSY,
+              text = stringResource(Res.string.confirm_deletion_busy),
               color = SkillBillTheme.colors.onSurfaceVariant,
-              fontSize = 12.sp,
-              fontFamily = FontFamily.Monospace,
+              style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
             )
           }
           state.preview != null -> RemovalDossier(state)
           state.executionResult is DesktopSkillRemovalResult.Failed -> Text(
-            text = ConfirmDeletionStrings.PREVIEW_FAILED,
+            text = stringResource(Res.string.confirm_deletion_preview_failed),
             color = semanticTones.errorBanner.content,
-            fontSize = 12.sp,
+            style = MaterialTheme.typography.bodySmall,
           )
         }
         state.executionResult?.let { result -> ResultBanner(result, callbacks.onAcknowledgeFailure) }
@@ -193,26 +196,28 @@ fun ConfirmDeletionDialog(state: ConfirmDeletionState, callbacks: ConfirmDeletio
 private fun DialogHeader(target: DesktopSkillRemovalTarget, onDismiss: () -> Unit) {
   val colors = SkillBillTheme.colors
   val dialogTone = SkillBillTheme.semanticTones.dialog
+  val closeCd = stringResource(Res.string.confirm_deletion_close_cd)
   Row(
-    modifier = Modifier.fillMaxWidth().height(44.dp).padding(horizontal = 16.dp),
+    modifier = Modifier.fillMaxWidth().height(
+      SkillBillMetrics.dialogHeaderHeight,
+    ).padding(horizontal = SkillBillDimens.pad4xl),
     verticalAlignment = Alignment.CenterVertically,
-    horizontalArrangement = Arrangement.spacedBy(10.dp),
+    horizontalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingXl),
   ) {
     Text(
-      text = ConfirmDeletionStrings.headerTitle(displayLabelFor(target)),
+      text = stringResource(Res.string.confirm_deletion_header, displayLabelFor(target)),
       color = dialogTone.content,
-      fontSize = 14.sp,
-      fontWeight = FontWeight.Medium,
+      style = MaterialTheme.typography.titleSmall,
       modifier = Modifier.weight(1f),
     )
     Text(
-      text = ConfirmDeletionStrings.CLOSE_GLYPH,
+      text = stringResource(Res.string.confirm_deletion_close_glyph),
       color = colors.onSurfaceVariant,
-      fontSize = 14.sp,
+      style = MaterialTheme.typography.titleSmall,
       modifier = Modifier
         .clickable(role = Role.Button, onClick = onDismiss)
-        .padding(horizontal = 6.dp, vertical = 4.dp)
-        .semantics { contentDescription = ConfirmDeletionStrings.CLOSE_BUTTON_CONTENT_DESCRIPTION },
+        .padding(horizontal = SkillBillDimens.padMd, vertical = SkillBillDimens.padSm)
+        .semantics { contentDescription = closeCd },
     )
   }
 }
@@ -220,36 +225,36 @@ private fun DialogHeader(target: DesktopSkillRemovalTarget, onDismiss: () -> Uni
 @Composable
 private fun RemovalDossier(state: ConfirmDeletionState) {
   val preview = state.preview ?: return
-  Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+  Column(verticalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingLg)) {
     if (preview.cascadedSkillNames.isNotEmpty()) {
-      SectionHeader(ConfirmDeletionStrings.sectionSkillsToRemove(preview.cascadedSkillNames.size))
+      SectionHeader(stringResource(Res.string.confirm_deletion_skills_to_remove, preview.cascadedSkillNames.size))
       preview.cascadedSkillNames.forEach { name ->
         DossierLine(name)
       }
     }
     if (preview.filesystemPaths.isNotEmpty()) {
-      SectionHeader(ConfirmDeletionStrings.sectionFilesAndDirectories(preview.filesystemPaths.size))
+      SectionHeader(stringResource(Res.string.confirm_deletion_files_and_dirs, preview.filesystemPaths.size))
       preview.filesystemPaths.forEach { path -> DossierLine(path) }
     }
     if (preview.manifestEdits.isNotEmpty()) {
-      SectionHeader(ConfirmDeletionStrings.sectionManifestEdits(preview.manifestEdits.size))
+      SectionHeader(stringResource(Res.string.confirm_deletion_manifest_edits, preview.manifestEdits.size))
       preview.manifestEdits.forEach { edit ->
-        // F-709: human-readable manifest-edit kind copy instead of enum.name.lowercase().
-        DossierLine("${edit.manifestPath} — ${displayLabelFor(edit.editKind)} (${edit.detail})")
+        val editKindLabel = displayLabelFor(edit.editKind)
+        DossierLine("${edit.manifestPath} — $editKindLabel (${edit.detail})")
       }
     }
     if (preview.agentSymlinkUnlinks.isNotEmpty()) {
-      SectionHeader(ConfirmDeletionStrings.sectionAgentSymlinks(preview.agentSymlinkUnlinks.size))
+      SectionHeader(stringResource(Res.string.confirm_deletion_agent_symlinks, preview.agentSymlinkUnlinks.size))
       preview.agentSymlinkUnlinks.forEach { link ->
-        // F-709: human-readable provider label instead of enum.name.lowercase().
-        DossierLine("[${displayLabelFor(link.provider)}] ${link.path}")
+        val providerLabel = displayLabelFor(link.provider)
+        DossierLine("[$providerLabel] ${link.path}")
       }
     }
     if (preview.readmeCatalogEdits.isNotEmpty()) {
-      SectionHeader(ConfirmDeletionStrings.sectionReadmeCatalogEdits(preview.readmeCatalogEdits.size))
+      SectionHeader(stringResource(Res.string.confirm_deletion_readme_edits, preview.readmeCatalogEdits.size))
       preview.readmeCatalogEdits.forEach { edit ->
-        // F-709: human-readable README edit kind.
-        DossierLine("${edit.readmePath} — ${displayLabelFor(edit.kind)} (${edit.detail})")
+        val editKindLabel = displayLabelFor(edit.kind)
+        DossierLine("${edit.readmePath} — $editKindLabel (${edit.detail})")
       }
     }
   }
@@ -260,9 +265,8 @@ private fun SectionHeader(text: String) {
   Text(
     text = text,
     color = SkillBillTheme.colors.primary,
-    fontSize = 11.sp,
-    fontWeight = FontWeight.Medium,
-    modifier = Modifier.padding(top = 4.dp),
+    style = MaterialTheme.typography.labelSmall,
+    modifier = Modifier.padding(top = SkillBillDimens.padSm),
   )
 }
 
@@ -273,8 +277,7 @@ private fun DossierLine(text: String) {
   Text(
     text = "• $text",
     color = SkillBillTheme.colors.onSurfaceVariant,
-    fontSize = 11.sp,
-    fontFamily = FontFamily.Monospace,
+    style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
     softWrap = false,
     modifier = Modifier
       .fillMaxWidth()
@@ -291,43 +294,42 @@ private fun ResultBanner(result: DesktopSkillRemovalResult, onAcknowledgeFailure
       Column(
         modifier = Modifier
           .fillMaxWidth()
-          .clip(RoundedCornerShape(4.dp))
+          .clip(SkillBillComponentShapes.previewConsole)
           // F-710: red border draws the eye to the highest-severity state.
-          .border(1.dp, tone.border, RoundedCornerShape(4.dp))
+          .border(SkillBillDimens.hairline, tone.border, SkillBillComponentShapes.previewConsole)
           .background(tone.container)
-          .padding(10.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+          .padding(SkillBillDimens.padXl),
+        verticalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingMd),
       ) {
         Text(
           text = if (result.rollbackComplete) {
-            ConfirmDeletionStrings.FAILED_TITLE
+            stringResource(Res.string.confirm_deletion_failed_title)
           } else {
-            ConfirmDeletionStrings.FAILED_PARTIAL_TITLE
+            stringResource(Res.string.confirm_deletion_failed_partial_title)
           },
           color = tone.content,
-          fontSize = 12.sp,
-          fontWeight = FontWeight.Medium,
+          style = MaterialTheme.typography.bodySmall,
         )
         Text(
           text = "${result.exceptionName}: ${result.exceptionMessage}",
           color = colors.onSurfaceVariant,
-          fontSize = 11.sp,
+          style = MaterialTheme.typography.labelSmall,
         )
         if (!result.rollbackComplete) {
           // F-710: recovery instructions so the user knows what to do next.
           Text(
-            text = ConfirmDeletionStrings.FAILED_RECOVERY,
+            text = stringResource(Res.string.confirm_deletion_failed_recovery),
             color = colors.onSurfaceVariant,
-            fontSize = 11.sp,
+            style = MaterialTheme.typography.labelSmall,
           )
         }
         Text(
-          text = ConfirmDeletionStrings.ACKNOWLEDGE_PARTIAL_MUTATION,
+          text = stringResource(Res.string.confirm_deletion_acknowledge_partial),
           color = SkillBillTheme.colors.primary,
-          fontSize = 11.sp,
+          style = MaterialTheme.typography.labelSmall,
           modifier = Modifier
             .clickable(role = Role.Button, onClick = onAcknowledgeFailure)
-            .padding(horizontal = 6.dp, vertical = 4.dp),
+            .padding(horizontal = SkillBillDimens.padMd, vertical = SkillBillDimens.padSm),
         )
       }
     }
@@ -336,15 +338,15 @@ private fun ResultBanner(result: DesktopSkillRemovalResult, onAcknowledgeFailure
       Column(
         modifier = Modifier
           .fillMaxWidth()
-          .clip(RoundedCornerShape(4.dp))
-          .border(1.dp, tone.border, RoundedCornerShape(4.dp))
+          .clip(SkillBillComponentShapes.previewConsole)
+          .border(SkillBillDimens.hairline, tone.border, SkillBillComponentShapes.previewConsole)
           .background(tone.container)
-          .padding(10.dp),
+          .padding(SkillBillDimens.padXl),
       ) {
         Text(
-          text = ConfirmDeletionStrings.successBanner(result.removedPaths.size),
+          text = stringResource(Res.string.confirm_deletion_success, result.removedPaths.size),
           color = tone.content,
-          fontSize = 12.sp,
+          style = MaterialTheme.typography.bodySmall,
         )
       }
     }
@@ -361,20 +363,20 @@ private fun DialogFooter(state: ConfirmDeletionState, callbacks: ConfirmDeletion
   val colors = SkillBillTheme.colors
   val errorTone = SkillBillTheme.semanticTones.errorBanner
   Column(
-    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
-    verticalArrangement = Arrangement.spacedBy(6.dp),
+    modifier = Modifier.fillMaxWidth().padding(horizontal = SkillBillDimens.pad4xl, vertical = SkillBillDimens.pad2xl),
+    verticalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingMd),
   ) {
     Row(
       verticalAlignment = Alignment.CenterVertically,
-      horizontalArrangement = Arrangement.spacedBy(12.dp),
+      horizontalArrangement = Arrangement.spacedBy(SkillBillDimens.spacing2xl),
     ) {
       Text(
-        text = ConfirmDeletionStrings.CANCEL,
+        text = stringResource(Res.string.confirm_deletion_cancel),
         color = colors.onSurfaceVariant,
-        fontSize = 12.sp,
+        style = MaterialTheme.typography.bodySmall,
         modifier = Modifier
           .clickable(role = Role.Button, onClick = callbacks.onDismiss)
-          .padding(horizontal = 10.dp, vertical = 6.dp),
+          .padding(horizontal = SkillBillDimens.padXl, vertical = SkillBillDimens.padMd),
       )
       Spacer(modifier = Modifier.weight(1f))
       AcknowledgmentCheckbox(
@@ -383,13 +385,18 @@ private fun DialogFooter(state: ConfirmDeletionState, callbacks: ConfirmDeletion
         onCheckedChange = callbacks.onAcknowledgedChanged,
       )
       Text(
-        text = if (state.executeBusy) ConfirmDeletionStrings.DELETING else ConfirmDeletionStrings.DELETE,
+        text = if (state.executeBusy) {
+          stringResource(
+            Res.string.confirm_deletion_deleting,
+          )
+        } else {
+          stringResource(Res.string.confirm_deletion_delete)
+        },
         color = if (deleteEnabled) errorTone.content else colors.onSurfaceVariant,
-        fontSize = 12.sp,
-        fontWeight = FontWeight.Medium,
+        style = MaterialTheme.typography.bodySmall,
         modifier = Modifier
           .clickable(enabled = deleteEnabled, role = Role.Button, onClick = callbacks.onConfirmDelete)
-          .padding(horizontal = 10.dp, vertical = 6.dp)
+          .padding(horizontal = SkillBillDimens.padXl, vertical = SkillBillDimens.padMd)
           // F-607: announce the disabled state to screen readers so users with assistive tech
           // understand why a click is being suppressed.
           .semantics { if (!deleteEnabled) disabled() },
@@ -399,10 +406,10 @@ private fun DialogFooter(state: ConfirmDeletionState, callbacks: ConfirmDeletion
     // acknowledgment yet (preview ready + not busy + not locked + not acknowledged).
     if (state.preview != null && !state.acknowledged && !state.executeBusy && !state.partialMutationLocked) {
       Text(
-        text = ConfirmDeletionStrings.ACKNOWLEDGE_HINT,
+        text = stringResource(Res.string.confirm_deletion_acknowledge_hint),
         color = colors.onSurfaceVariant,
-        fontSize = 11.sp,
-        modifier = Modifier.padding(horizontal = 10.dp),
+        style = MaterialTheme.typography.labelSmall,
+        modifier = Modifier.padding(horizontal = SkillBillDimens.padXl),
       )
     }
   }
@@ -414,6 +421,8 @@ private fun AcknowledgmentCheckbox(checked: Boolean, enabled: Boolean, onChecked
   val dialogTone = SkillBillTheme.semanticTones.dialog
   // F-704: switch from manual Row.clickable to Modifier.toggleable so screen readers announce
   // Role.Checkbox and the checked/unchecked state via stateDescription.
+  val checkedDescription = stringResource(Res.string.confirm_deletion_state_checked)
+  val uncheckedDescription = stringResource(Res.string.confirm_deletion_state_unchecked)
   Row(
     modifier = Modifier
       .toggleable(
@@ -423,53 +432,79 @@ private fun AcknowledgmentCheckbox(checked: Boolean, enabled: Boolean, onChecked
         onValueChange = onCheckedChange,
       )
       .semantics {
-        stateDescription = if (checked) "Checked" else "Not checked"
+        stateDescription = if (checked) checkedDescription else uncheckedDescription
       }
-      .padding(horizontal = 6.dp, vertical = 4.dp),
+      .padding(horizontal = SkillBillDimens.padMd, vertical = SkillBillDimens.padSm),
     verticalAlignment = Alignment.CenterVertically,
-    horizontalArrangement = Arrangement.spacedBy(8.dp),
+    horizontalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingLg),
   ) {
     Box(
       modifier = Modifier
         // F-704: 18 dp visible checkbox (was 14) — meets a comfortable touch/keyboard target.
-        .size(18.dp)
-        .border(1.dp, if (enabled) colors.primary else colors.onSurfaceVariant, RoundedCornerShape(2.dp))
+        .size(SkillBillDimens.checkboxSize)
+        .border(
+          SkillBillDimens.hairline,
+          if (enabled) colors.primary else colors.onSurfaceVariant,
+          SkillBillComponentShapes.checkbox,
+        )
         .background(if (checked) colors.primary else SkillBillTransparent),
     )
     Text(
-      text = ConfirmDeletionStrings.ACKNOWLEDGE_CHECKBOX_LABEL,
+      text = stringResource(Res.string.confirm_deletion_acknowledge),
       color = if (enabled) dialogTone.content else colors.onSurfaceVariant,
-      fontSize = 12.sp,
+      style = MaterialTheme.typography.bodySmall,
     )
   }
 }
 
+@Composable
 private fun displayLabelFor(target: DesktopSkillRemovalTarget): String = when (target) {
   is DesktopSkillRemovalTarget.HorizontalSkill -> target.skillName
-  is DesktopSkillRemovalTarget.PlatformPack -> ConfirmDeletionStrings.targetLabelPlatformPack(target.platform)
+  is DesktopSkillRemovalTarget.PlatformPack -> stringResource(
+    Res.string.confirm_deletion_target_platform_pack,
+    target.platform,
+  )
   is DesktopSkillRemovalTarget.AddOn -> target.relativePath
 }
 
-// F-709: human-readable copy for the user-facing enum dossier rows.
+@Composable
 private fun displayLabelFor(kind: DesktopManifestEditKind): String = when (kind) {
-  DesktopManifestEditKind.REMOVE_CODE_REVIEW_AREA -> "remove code-review area"
-  DesktopManifestEditKind.REMOVE_DECLARED_QUALITY_CHECK_FILE -> "remove declared quality-check file"
-  DesktopManifestEditKind.REMOVE_DECLARED_FILES_AREA_ENTRY -> "remove declared-files area entry"
-  DesktopManifestEditKind.REMOVE_AREA_METADATA_ENTRY -> "remove area-metadata entry"
-  DesktopManifestEditKind.REMOVE_DECLARED_FILES_BASELINE -> "remove declared-files baseline"
-  DesktopManifestEditKind.REMOVE_POINTERS_BLOCK_KEY -> "remove pointers block key"
-  DesktopManifestEditKind.REMOVE_ADDON_REFERENCES -> "remove add-on references"
-  DesktopManifestEditKind.REMOVE_SKILL_CLASS_POINTER -> "remove skill-class pointer"
+  DesktopManifestEditKind.REMOVE_CODE_REVIEW_AREA -> stringResource(
+    Res.string.confirm_deletion_edit_remove_code_review_area,
+  )
+  DesktopManifestEditKind.REMOVE_DECLARED_QUALITY_CHECK_FILE -> stringResource(
+    Res.string.confirm_deletion_edit_remove_quality_check_file,
+  )
+  DesktopManifestEditKind.REMOVE_DECLARED_FILES_AREA_ENTRY -> stringResource(
+    Res.string.confirm_deletion_edit_remove_files_area_entry,
+  )
+  DesktopManifestEditKind.REMOVE_AREA_METADATA_ENTRY -> stringResource(
+    Res.string.confirm_deletion_edit_remove_area_metadata,
+  )
+  DesktopManifestEditKind.REMOVE_DECLARED_FILES_BASELINE -> stringResource(
+    Res.string.confirm_deletion_edit_remove_files_baseline,
+  )
+  DesktopManifestEditKind.REMOVE_POINTERS_BLOCK_KEY -> stringResource(
+    Res.string.confirm_deletion_edit_remove_pointers_key,
+  )
+  DesktopManifestEditKind.REMOVE_ADDON_REFERENCES -> stringResource(Res.string.confirm_deletion_edit_remove_addon_refs)
+  DesktopManifestEditKind.REMOVE_SKILL_CLASS_POINTER -> stringResource(
+    Res.string.confirm_deletion_edit_remove_skill_class_pointer,
+  )
 }
 
+@Composable
 private fun displayLabelFor(kind: DesktopReadmeCatalogEditKind): String = when (kind) {
-  DesktopReadmeCatalogEditKind.REMOVE_CATALOG_ROW -> "remove catalog row"
-  DesktopReadmeCatalogEditKind.DECREMENT_SECTION_COUNT -> "decrement section count"
+  DesktopReadmeCatalogEditKind.REMOVE_CATALOG_ROW -> stringResource(Res.string.confirm_deletion_readme_remove_row)
+  DesktopReadmeCatalogEditKind.DECREMENT_SECTION_COUNT -> stringResource(
+    Res.string.confirm_deletion_readme_decrement_count,
+  )
 }
 
+@Composable
 private fun displayLabelFor(provider: DesktopAgentSymlinkProvider): String = when (provider) {
-  DesktopAgentSymlinkProvider.CLAUDE -> "Claude"
-  DesktopAgentSymlinkProvider.CODEX -> "Codex"
-  DesktopAgentSymlinkProvider.OPENCODE -> "OpenCode"
-  DesktopAgentSymlinkProvider.JUNIE -> "Junie"
+  DesktopAgentSymlinkProvider.CLAUDE -> stringResource(Res.string.confirm_deletion_provider_claude)
+  DesktopAgentSymlinkProvider.CODEX -> stringResource(Res.string.confirm_deletion_provider_codex)
+  DesktopAgentSymlinkProvider.OPENCODE -> stringResource(Res.string.confirm_deletion_provider_opencode)
+  DesktopAgentSymlinkProvider.JUNIE -> stringResource(Res.string.confirm_deletion_provider_junie)
 }

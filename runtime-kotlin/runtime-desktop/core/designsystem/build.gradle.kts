@@ -2,6 +2,10 @@ plugins {
   id("skillbill.kmp-compose")
 }
 
+compose.resources {
+  publicResClass = true
+}
+
 kotlin {
   sourceSets {
     jvmTest.dependencies {

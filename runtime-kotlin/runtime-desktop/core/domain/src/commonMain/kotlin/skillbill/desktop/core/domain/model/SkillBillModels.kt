@@ -1,5 +1,7 @@
 package skillbill.desktop.core.domain.model
 
+import org.jetbrains.compose.resources.StringResource
+
 data class RepoSession(
   val repoPath: String,
   val isRecognizedSkillBillRepo: Boolean,
@@ -135,18 +137,20 @@ data class CommandPaletteState(
 
 data class CommandPaletteResult(
   val id: String,
-  val title: String,
-  val subtitle: String,
+  val title: String = "",
+  val subtitle: String = "",
+  val titleRes: StringResource? = null,
+  val subtitleRes: StringResource? = null,
   val marker: String,
   val kind: CommandPaletteResultKind,
   val action: CommandPaletteAction,
   val treeItemId: String? = null,
-  val disabledReason: String? = null,
-  val acceleratorLabel: String? = null,
+  val disabledReasonRes: StringResource? = null,
+  val acceleratorLabelRes: StringResource? = null,
   val rank: Int = 0,
 ) {
   val enabled: Boolean
-    get() = disabledReason == null
+    get() = disabledReasonRes == null
 }
 
 enum class CommandPaletteResultKind {
@@ -163,13 +167,6 @@ enum class CommandPaletteAction {
   NEW_HORIZONTAL_SKILL,
   NEW_PLATFORM_PACK,
   NEW_ADD_ON,
-}
-
-object SkillBillAcceleratorLabels {
-  const val SAVE = "Cmd/Ctrl S"
-  const val REFRESH = "Cmd/Ctrl R"
-  const val REPO_OPEN = "Enter"
-  const val COMMAND_PALETTE = "Cmd/Ctrl K"
 }
 
 data class SkillBillStatusBar(

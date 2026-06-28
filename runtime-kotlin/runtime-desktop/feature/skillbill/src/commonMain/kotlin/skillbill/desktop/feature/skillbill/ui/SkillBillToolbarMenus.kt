@@ -1,4 +1,4 @@
-@file:Suppress("FunctionName", "MagicNumber")
+@file:Suppress("FunctionName")
 
 package skillbill.desktop.feature.skillbill.ui
 
@@ -12,9 +12,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MenuDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -31,11 +31,29 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import dev.skillbill.designsystem.generated.resources.Res
+import dev.skillbill.designsystem.generated.resources.accelerator_command_palette
+import dev.skillbill.designsystem.generated.resources.busy_choosing
+import dev.skillbill.designsystem.generated.resources.busy_deleting
+import dev.skillbill.designsystem.generated.resources.busy_opening
+import dev.skillbill.designsystem.generated.resources.busy_refreshing
+import dev.skillbill.designsystem.generated.resources.busy_saving
+import dev.skillbill.designsystem.generated.resources.busy_scaffolding
+import dev.skillbill.designsystem.generated.resources.busy_setting_up
+import dev.skillbill.designsystem.generated.resources.busy_validating
+import dev.skillbill.designsystem.generated.resources.command_search_placeholder
+import dev.skillbill.designsystem.generated.resources.toolbar_menu_collapsed
+import dev.skillbill.designsystem.generated.resources.toolbar_menu_expanded
+import dev.skillbill.designsystem.generated.resources.toolbar_new_menu
+import dev.skillbill.designsystem.generated.resources.toolbar_new_menu_cd
+import dev.skillbill.designsystem.generated.resources.toolbar_new_menu_wizard_cd
+import org.jetbrains.compose.resources.stringResource
+import skillbill.desktop.core.designsystem.SkillBillComponentShapes
+import skillbill.desktop.core.designsystem.SkillBillDimens
+import skillbill.desktop.core.designsystem.SkillBillMetrics
 import skillbill.desktop.core.designsystem.SkillBillTheme
+import skillbill.desktop.core.designsystem.SkillBillTypeStyles
 import skillbill.desktop.core.domain.model.ScaffoldKind
-import skillbill.desktop.core.domain.model.SkillBillAcceleratorLabels
 import skillbill.desktop.core.domain.model.SkillBillBusyOperation
 
 /**
@@ -59,39 +77,42 @@ internal fun NewScaffoldMenuButton(enabled: Boolean, onOpenScaffoldWizard: (Scaf
   LaunchedEffect(enabled) {
     if (!enabled) menuOpen = false
   }
+  val expandedDescription = stringResource(Res.string.toolbar_menu_expanded)
+  val collapsedDescription = stringResource(Res.string.toolbar_menu_collapsed)
   Box(
     modifier = Modifier.semantics {
-      stateDescription = if (menuOpen) "Expanded" else "Collapsed"
+      stateDescription = if (menuOpen) expandedDescription else collapsedDescription
     },
   ) {
     ToolbarButton(
-      label = "NEW...",
+      label = stringResource(Res.string.toolbar_new_menu),
       marker = "nw",
       enabled = enabled,
       onClick = { menuOpen = true },
-      contentDescription = "Open new scaffold menu",
+      contentDescription = stringResource(Res.string.toolbar_new_menu_cd),
     )
     DropdownMenu(
       expanded = menuOpen,
       onDismissRequest = { menuOpen = false },
       modifier = Modifier
         .background(SkillBillTheme.frameTokens.panel)
-        .border(1.dp, SkillBillTheme.frameTokens.line, RoundedCornerShape(6.dp)),
+        .border(SkillBillDimens.hairline, SkillBillTheme.frameTokens.line, SkillBillComponentShapes.control),
     ) {
       ScaffoldKind.activeCreationValues().forEach { kind ->
+        val wizardCd = stringResource(Res.string.toolbar_new_menu_wizard_cd, kind.displayLabel)
         DropdownMenuItem(
           text = {
             Text(
               text = kind.displayLabel,
               color = SkillBillTheme.frameTokens.text,
-              fontSize = 12.sp,
+              style = MaterialTheme.typography.bodySmall,
               maxLines = 1,
             )
           },
           colors = MenuDefaults.itemColors(textColor = SkillBillTheme.frameTokens.text),
           modifier = Modifier
-            .widthIn(min = 220.dp)
-            .semantics { contentDescription = "Open ${kind.displayLabel} wizard" },
+            .widthIn(min = SkillBillDimens.menuMinWidth)
+            .semantics { contentDescription = wizardCd },
           onClick = {
             menuOpen = false
             onOpenScaffoldWizard(kind)
@@ -105,22 +126,27 @@ internal fun NewScaffoldMenuButton(enabled: Boolean, onOpenScaffoldWizard: (Scaf
 @Composable
 internal fun BusyIndicator(busyOperation: SkillBillBusyOperation) {
   val label = when (busyOperation) {
-    SkillBillBusyOperation.OPEN_REPO -> "Opening..."
-    SkillBillBusyOperation.REFRESH -> "Refreshing..."
-    SkillBillBusyOperation.CHOOSE_DIRECTORY -> "Choosing..."
-    SkillBillBusyOperation.SAVE -> "Saving..."
-    SkillBillBusyOperation.SCAFFOLD -> "Scaffolding..."
-    SkillBillBusyOperation.FIRST_RUN_SETUP -> "Setting up..."
-    SkillBillBusyOperation.DELETE -> "Deleting..."
-    SkillBillBusyOperation.VALIDATE_AGENT_CONFIGS -> "Validating agent configs..."
+    SkillBillBusyOperation.OPEN_REPO -> stringResource(Res.string.busy_opening)
+    SkillBillBusyOperation.REFRESH -> stringResource(Res.string.busy_refreshing)
+    SkillBillBusyOperation.CHOOSE_DIRECTORY -> stringResource(Res.string.busy_choosing)
+    SkillBillBusyOperation.SAVE -> stringResource(Res.string.busy_saving)
+    SkillBillBusyOperation.SCAFFOLD -> stringResource(Res.string.busy_scaffolding)
+    SkillBillBusyOperation.FIRST_RUN_SETUP -> stringResource(Res.string.busy_setting_up)
+    SkillBillBusyOperation.DELETE -> stringResource(Res.string.busy_deleting)
+    SkillBillBusyOperation.VALIDATE_AGENT_CONFIGS -> stringResource(Res.string.busy_validating)
   }
   Row(
-    modifier = Modifier.padding(start = 4.dp),
+    modifier = Modifier.padding(start = SkillBillDimens.padSm),
     verticalAlignment = Alignment.CenterVertically,
-    horizontalArrangement = Arrangement.spacedBy(6.dp),
+    horizontalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingMd),
   ) {
     MiniIcon(text = "..", tint = SkillBillTheme.frameTokens.primary)
-    Text(text = label, color = SkillBillTheme.frameTokens.muted, fontSize = 11.sp, maxLines = 1)
+    Text(
+      text = label,
+      color = SkillBillTheme.frameTokens.muted,
+      style = MaterialTheme.typography.labelSmall,
+      maxLines = 1,
+    )
   }
 }
 
@@ -129,9 +155,9 @@ internal fun ToolbarDivider() {
   Box(
     modifier =
     Modifier
-      .padding(horizontal = 5.dp)
-      .width(1.dp)
-      .height(20.dp)
+      .padding(horizontal = SkillBillDimens.space5)
+      .width(SkillBillDimens.hairline)
+      .height(SkillBillDimens.menuSeparatorHeight)
       .background(SkillBillTheme.frameTokens.line),
   )
 }
@@ -141,29 +167,28 @@ internal fun CommandSearchButton(onClick: () -> Unit) {
   Row(
     modifier =
     Modifier
-      .width(288.dp)
-      .height(28.dp)
-      .border(1.dp, SkillBillTheme.frameTokens.line, RoundedCornerShape(6.dp))
-      .background(SkillBillTheme.frameTokens.raised, RoundedCornerShape(6.dp))
+      .width(SkillBillMetrics.toolbarMenuWidth)
+      .height(SkillBillDimens.controlHeightMd)
+      .border(SkillBillDimens.hairline, SkillBillTheme.frameTokens.line, SkillBillComponentShapes.control)
+      .background(SkillBillTheme.frameTokens.raised, SkillBillComponentShapes.control)
       .clickable(role = Role.Button, onClick = onClick)
-      .padding(horizontal = 9.dp),
+      .padding(horizontal = SkillBillDimens.space9),
     verticalAlignment = Alignment.CenterVertically,
-    horizontalArrangement = Arrangement.spacedBy(8.dp),
+    horizontalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingLg),
   ) {
     MiniIcon(text = "sr", tint = SkillBillTheme.frameTokens.muted)
     Text(
-      text = "Find skill, intent, or command...",
+      text = stringResource(Res.string.command_search_placeholder),
       color = SkillBillTheme.frameTokens.subtle,
-      fontSize = 12.sp,
+      style = MaterialTheme.typography.bodySmall,
       modifier = Modifier.weight(1f),
       maxLines = 1,
       overflow = TextOverflow.Ellipsis,
     )
     Text(
-      text = SkillBillAcceleratorLabels.COMMAND_PALETTE,
+      text = stringResource(Res.string.accelerator_command_palette),
       color = SkillBillTheme.frameTokens.subtle,
-      fontSize = 10.sp,
-      fontFamily = FontFamily.Monospace,
+      style = SkillBillTypeStyles.caption.copy(fontFamily = FontFamily.Monospace),
     )
   }
 }

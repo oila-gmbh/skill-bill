@@ -1,4 +1,4 @@
-@file:Suppress("FunctionName", "MagicNumber")
+@file:Suppress("FunctionName")
 
 package skillbill.desktop.feature.skillbill.ui
 
@@ -16,13 +16,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -33,14 +32,29 @@ import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import dev.skillbill.designsystem.generated.resources.Res
+import dev.skillbill.designsystem.generated.resources.accelerator_refresh
+import dev.skillbill.designsystem.generated.resources.toolbar_back
+import dev.skillbill.designsystem.generated.resources.toolbar_hide_details
+import dev.skillbill.designsystem.generated.resources.toolbar_install
+import dev.skillbill.designsystem.generated.resources.toolbar_open_installed
+import dev.skillbill.designsystem.generated.resources.toolbar_open_installed_cd
+import dev.skillbill.designsystem.generated.resources.toolbar_panel_hidden
+import dev.skillbill.designsystem.generated.resources.toolbar_panel_visible
+import dev.skillbill.designsystem.generated.resources.toolbar_refresh
+import dev.skillbill.designsystem.generated.resources.toolbar_show_details
+import org.jetbrains.compose.resources.stringResource
 import skillbill.desktop.core.designsystem.SkillBillColor
+import skillbill.desktop.core.designsystem.SkillBillComponentShapes
+import skillbill.desktop.core.designsystem.SkillBillDimens
+import skillbill.desktop.core.designsystem.SkillBillMetrics
 import skillbill.desktop.core.designsystem.SkillBillTheme
 import skillbill.desktop.core.domain.model.ScaffoldKind
-import skillbill.desktop.core.domain.model.SkillBillAcceleratorLabels
 import skillbill.desktop.core.domain.model.SkillBillBusyOperation
 import skillbill.desktop.core.domain.model.SkillBillStatusBar
+
+private const val DISABLED_BUTTON_ALPHA = 0.4f
+private const val SIDE_PANEL_WIDTH_RATIO = 0.34f
 
 @Composable
 internal fun WorkspaceToolbar(
@@ -64,34 +78,39 @@ internal fun WorkspaceToolbar(
     modifier =
     Modifier
       .fillMaxWidth()
-      .height(40.dp)
+      .height(SkillBillMetrics.toolbarHeight)
       .background(SkillBillTheme.frameTokens.background)
-      .border(BorderStroke(0.dp, SkillBillTheme.frameTokens.transparent))
-      .padding(horizontal = 12.dp),
+      .border(BorderStroke(SkillBillDimens.borderNone, SkillBillTheme.frameTokens.transparent))
+      .padding(horizontal = SkillBillDimens.pad2xl),
     verticalAlignment = Alignment.CenterVertically,
   ) {
     if (canNavigateBack) {
-      ToolbarButton(label = "Back", marker = "<", enabled = !busy, onClick = onNavigateBack)
-      Spacer(modifier = Modifier.width(8.dp))
+      ToolbarButton(
+        label = stringResource(Res.string.toolbar_back),
+        marker = "<",
+        enabled = !busy,
+        onClick = onNavigateBack,
+      )
+      Spacer(modifier = Modifier.width(SkillBillDimens.spacingLg))
       ToolbarDivider()
     }
     ToolbarButton(
-      label = "Refresh",
+      label = stringResource(Res.string.toolbar_refresh),
       marker = "rf",
       enabled = !busy,
-      acceleratorLabel = SkillBillAcceleratorLabels.REFRESH,
+      acceleratorLabel = stringResource(Res.string.accelerator_refresh),
       onClick = onRefresh,
     )
     ToolbarButton(
-      label = "Install",
+      label = stringResource(Res.string.toolbar_install),
       marker = "in",
       enabled = installSetupEnabled,
       onClick = onInstallSetup,
     )
     ToolbarButton(
-      label = "Open installed",
+      label = stringResource(Res.string.toolbar_open_installed),
       marker = "iw",
-      contentDescription = "Open installed workspace",
+      contentDescription = stringResource(Res.string.toolbar_open_installed_cd),
       enabled = returnToInstalledWorkspaceEnabled,
       onClick = onReturnToInstalledWorkspace,
     )
@@ -109,9 +128,15 @@ internal fun WorkspaceToolbar(
     }
     Spacer(modifier = Modifier.weight(1f))
     CommandSearchButton(onClick = onCommandPaletteOpen)
-    Spacer(modifier = Modifier.width(10.dp))
+    Spacer(modifier = Modifier.width(SkillBillDimens.spacingXl))
     ToolbarSidePanelButton(
-      contentDescription = if (inspectorVisible) "Hide details panel" else "Show details panel",
+      contentDescription = if (inspectorVisible) {
+        stringResource(
+          Res.string.toolbar_hide_details,
+        )
+      } else {
+        stringResource(Res.string.toolbar_show_details)
+      },
       selected = inspectorVisible,
       enabled = !busy,
       onClick = onInspectorVisibilityToggle,
@@ -145,10 +170,11 @@ internal fun ToolbarButton(
     Row(
       modifier =
       Modifier
-        .height(28.dp)
-        .padding(end = 6.dp)
-        .clip(RoundedCornerShape(6.dp))
-        .border(1.dp, border, RoundedCornerShape(6.dp))
+        .height(SkillBillDimens.controlHeightMd)
+        .padding(end = SkillBillDimens.padMd)
+        .alpha(if (enabled) 1f else DISABLED_BUTTON_ALPHA)
+        .clip(SkillBillComponentShapes.control)
+        .border(SkillBillDimens.hairline, border, SkillBillComponentShapes.control)
         .background(background)
         // F-X-901-A: merge child Text/icon semantics into the clickable node so screen readers
         // announce a single actionable element instead of three, and `disabled()` propagates to the
@@ -158,15 +184,15 @@ internal fun ToolbarButton(
           if (!enabled) this.disabled()
         }
         .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
-        .padding(horizontal = 9.dp),
+        .padding(horizontal = SkillBillDimens.space9),
       verticalAlignment = Alignment.CenterVertically,
-      horizontalArrangement = Arrangement.spacedBy(6.dp),
+      horizontalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingMd),
     ) {
       MiniIcon(text = marker, tint = foreground)
       Text(
         text = label,
         color = foreground,
-        fontSize = 12.sp,
+        style = MaterialTheme.typography.bodySmall,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
       )
@@ -188,15 +214,17 @@ private fun ToolbarSidePanelButton(
       else -> SkillBillTheme.frameTokens.text
     }
   val border = if (selected) SkillBillTheme.frameTokens.primary else SkillBillTheme.frameTokens.line
+  val panelVisibleDescription = stringResource(Res.string.toolbar_panel_visible)
+  val panelHiddenDescription = stringResource(Res.string.toolbar_panel_hidden)
   Box(
     modifier = Modifier
-      .size(width = 30.dp, height = 28.dp)
-      .clip(RoundedCornerShape(6.dp))
-      .border(1.dp, border, RoundedCornerShape(6.dp))
+      .size(width = SkillBillDimens.controlHeightLg, height = SkillBillDimens.controlHeightMd)
+      .clip(SkillBillComponentShapes.control)
+      .border(SkillBillDimens.hairline, border, SkillBillComponentShapes.control)
       .background(SkillBillTheme.frameTokens.raised)
       .semantics(mergeDescendants = true) {
         this.contentDescription = contentDescription
-        this.stateDescription = if (selected) "visible" else "hidden"
+        this.stateDescription = if (selected) panelVisibleDescription else panelHiddenDescription
         if (!enabled) this.disabled()
       }
       .clickable(enabled = enabled, role = Role.Button, onClick = onClick),
@@ -208,12 +236,12 @@ private fun ToolbarSidePanelButton(
 
 @Composable
 private fun SidePanelIcon(tint: SkillBillColor, panelVisible: Boolean) {
-  Canvas(modifier = Modifier.size(width = 15.dp, height = 14.dp)) {
-    val strokeWidth = 1.4.dp.toPx()
+  Canvas(modifier = Modifier.size(width = SkillBillDimens.iconMd, height = SkillBillDimens.iconSm)) {
+    val strokeWidth = SkillBillDimens.divider.toPx()
     val cornerInset = strokeWidth / 2f
     val bodyWidth = size.width - strokeWidth
     val bodyHeight = size.height - strokeWidth
-    val panelWidth = bodyWidth * 0.34f
+    val panelWidth = bodyWidth * SIDE_PANEL_WIDTH_RATIO
     drawRect(
       color = tint,
       topLeft = Offset(cornerInset, cornerInset),
@@ -251,23 +279,23 @@ private fun ToolbarStatusItem(label: String, marker: String, primary: Boolean = 
   Row(
     modifier =
     Modifier
-      .height(28.dp)
-      .padding(end = 6.dp)
-      .clip(RoundedCornerShape(6.dp))
-      .border(1.dp, border, RoundedCornerShape(6.dp))
+      .height(SkillBillDimens.controlHeightMd)
+      .padding(end = SkillBillDimens.padMd)
+      .clip(SkillBillComponentShapes.control)
+      .border(SkillBillDimens.hairline, border, SkillBillComponentShapes.control)
       .background(background)
       // F-X-901-G: merge the inner Text/MiniIcon semantics into one node so screen readers
       // announce the chip as a single status string rather than three separate elements.
       .semantics(mergeDescendants = true) { this.contentDescription = label }
-      .padding(horizontal = 9.dp),
+      .padding(horizontal = SkillBillDimens.space9),
     verticalAlignment = Alignment.CenterVertically,
-    horizontalArrangement = Arrangement.spacedBy(6.dp),
+    horizontalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingMd),
   ) {
     MiniIcon(text = marker, tint = foreground)
     Text(
       text = label,
       color = foreground,
-      fontSize = 12.sp,
+      style = MaterialTheme.typography.bodySmall,
       maxLines = 1,
       overflow = TextOverflow.Ellipsis,
     )

@@ -1,5 +1,6 @@
 package skillbill.desktop.feature.skillbill.state
-
+import dev.skillbill.designsystem.generated.resources.Res
+import dev.skillbill.designsystem.generated.resources.first_run_install_planning_failed
 import kotlinx.coroutines.runBlocking
 import skillbill.desktop.core.domain.model.FirstRunAgentOption
 import skillbill.desktop.core.domain.model.FirstRunApplyResult
@@ -43,7 +44,10 @@ class SkillBillViewModelFirstRunHandoffTest {
         discoveryResult = FirstRunDiscoveryResult.Success(handoffDiscovery()),
         planResult = FirstRunPlanResult.Planned(handoffPlan()),
         applyResult = FirstRunApplyResult.Applied(
-          FirstRunInstallOutcome(status = FirstRunInstallStatus.SUCCESS, title = "Setup completed."),
+          FirstRunInstallOutcome(
+            status = FirstRunInstallStatus.SUCCESS,
+            titleRes = Res.string.first_run_install_planning_failed,
+          ),
         ),
       ),
     )
@@ -73,7 +77,10 @@ class SkillBillViewModelFirstRunHandoffTest {
         discoveryResult = FirstRunDiscoveryResult.Success(handoffDiscovery()),
         planResult = FirstRunPlanResult.Planned(handoffPlan()),
         applyResult = FirstRunApplyResult.Failed(
-          FirstRunInstallOutcome(status = FirstRunInstallStatus.FAILURE, title = "Setup failed."),
+          FirstRunInstallOutcome(
+            status = FirstRunInstallStatus.FAILURE,
+            titleRes = Res.string.first_run_install_planning_failed,
+          ),
         ),
       ),
     )
@@ -118,7 +125,10 @@ class SkillBillViewModelFirstRunHandoffTest {
         discoveryResult = FirstRunDiscoveryResult.Success(handoffDiscovery()),
         planResult = FirstRunPlanResult.Planned(handoffPlan()),
         applyResult = FirstRunApplyResult.Applied(
-          FirstRunInstallOutcome(status = FirstRunInstallStatus.SUCCESS, title = "Setup completed."),
+          FirstRunInstallOutcome(
+            status = FirstRunInstallStatus.SUCCESS,
+            titleRes = Res.string.first_run_install_planning_failed,
+          ),
         ),
       ),
       skillTreeService = FakeSkillTreeService(skillTree),
@@ -156,7 +166,10 @@ class SkillBillViewModelFirstRunHandoffTest {
         discoveryResult = FirstRunDiscoveryResult.Success(handoffDiscovery()),
         planResult = FirstRunPlanResult.Planned(handoffPlan()),
         applyResult = FirstRunApplyResult.Applied(
-          FirstRunInstallOutcome(status = FirstRunInstallStatus.SUCCESS, title = "Setup completed."),
+          FirstRunInstallOutcome(
+            status = FirstRunInstallStatus.SUCCESS,
+            titleRes = Res.string.first_run_install_planning_failed,
+          ),
         ),
       ),
     )
@@ -178,7 +191,10 @@ class SkillBillViewModelFirstRunHandoffTest {
         discoveryResult = FirstRunDiscoveryResult.Success(handoffDiscovery()),
         planResult = FirstRunPlanResult.Planned(handoffPlan()),
         applyResult = FirstRunApplyResult.Applied(
-          FirstRunInstallOutcome(status = FirstRunInstallStatus.SUCCESS, title = "Setup completed."),
+          FirstRunInstallOutcome(
+            status = FirstRunInstallStatus.SUCCESS,
+            titleRes = Res.string.first_run_install_planning_failed,
+          ),
         ),
       ),
     )

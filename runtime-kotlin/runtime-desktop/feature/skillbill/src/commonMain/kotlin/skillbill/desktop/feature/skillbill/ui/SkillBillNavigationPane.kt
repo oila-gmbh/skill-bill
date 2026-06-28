@@ -1,4 +1,4 @@
-@file:Suppress("FunctionName", "MagicNumber")
+@file:Suppress("FunctionName")
 
 package skillbill.desktop.feature.skillbill.ui
 
@@ -18,10 +18,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -40,15 +40,24 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import dev.skillbill.designsystem.generated.resources.Res
+import dev.skillbill.designsystem.generated.resources.accelerator_repo_open
+import dev.skillbill.designsystem.generated.resources.nav_choose_repo_dir_cd
+import dev.skillbill.designsystem.generated.resources.nav_contract_policy_label
+import dev.skillbill.designsystem.generated.resources.nav_file_mode
+import dev.skillbill.designsystem.generated.resources.nav_open_repo_tooltip
+import dev.skillbill.designsystem.generated.resources.nav_repo_busy
+import dev.skillbill.designsystem.generated.resources.nav_repo_open
+import dev.skillbill.designsystem.generated.resources.nav_repository
+import org.jetbrains.compose.resources.stringResource
+import skillbill.desktop.core.designsystem.SkillBillComponentShapes
+import skillbill.desktop.core.designsystem.SkillBillDimens
 import skillbill.desktop.core.designsystem.SkillBillTheme
+import skillbill.desktop.core.designsystem.SkillBillTypeStyles
 import skillbill.desktop.core.domain.model.RepoLoadState
 import skillbill.desktop.core.domain.model.RepoLoadStatus
-import skillbill.desktop.core.domain.model.SkillBillAcceleratorLabels
 import skillbill.desktop.core.domain.model.SkillBillBusyOperation
 import skillbill.desktop.core.domain.model.SkillBillTreeItem
 
@@ -126,7 +135,7 @@ internal fun NavigationPane(
           }
         }
         .focusable()
-        .padding(vertical = 6.dp),
+        .padding(vertical = SkillBillDimens.padMd),
     ) {
       if (treeItems.isEmpty()) {
         EmptyTreeMessage(repoStatus)
@@ -146,14 +155,14 @@ internal fun NavigationPane(
         )
       }
       HorizontalDivider(
-        modifier = Modifier.padding(top = 10.dp, bottom = 8.dp),
+        modifier = Modifier.padding(top = SkillBillDimens.spacingXl, bottom = SkillBillDimens.spacingLg),
         color = SkillBillTheme.frameTokens.line,
       )
       // F-X-901: File editability is a workspace-wide status indicator, not an action. Render it
       // as a labeled status row (no clickable, no Role.Button) mirroring StatusItem in the bottom
       // status bar, so accessibility semantics match real behavior.
       RepositoryStatusItem(
-        label = "File mode",
+        label = stringResource(Res.string.nav_file_mode),
         statusText = readOnlyModeLabel,
         marker = fileModeMarker(readOnlyModeLabel),
         enabled = !busy,
@@ -163,16 +172,20 @@ internal fun NavigationPane(
       modifier =
       Modifier
         .fillMaxWidth()
-        .height(35.dp)
-        .border(BorderStroke(0.dp, SkillBillTheme.frameTokens.transparent))
+        .height(SkillBillDimens.navPaneHeaderHeight)
+        .border(BorderStroke(SkillBillDimens.borderNone, SkillBillTheme.frameTokens.transparent))
         .background(SkillBillTheme.frameTokens.sidebar)
-        .padding(horizontal = 12.dp),
+        .padding(horizontal = SkillBillDimens.pad2xl),
       verticalAlignment = Alignment.CenterVertically,
-      horizontalArrangement = Arrangement.spacedBy(6.dp),
+      horizontalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingMd),
     ) {
       MiniIcon(text = "lk", tint = SkillBillTheme.frameTokens.subtle)
-      Text(text = "contract policy:", color = SkillBillTheme.frameTokens.subtle, fontSize = 11.sp)
-      Text(text = policyLabel, color = SkillBillTheme.frameTokens.text, fontSize = 11.sp)
+      Text(
+        text = stringResource(Res.string.nav_contract_policy_label),
+        color = SkillBillTheme.frameTokens.subtle,
+        style = MaterialTheme.typography.labelSmall,
+      )
+      Text(text = policyLabel, color = SkillBillTheme.frameTokens.text, style = MaterialTheme.typography.labelSmall)
     }
   }
 }
@@ -198,41 +211,40 @@ private fun RepositorySelector(
     modifier =
     Modifier
       .fillMaxWidth()
-      .border(BorderStroke(0.dp, SkillBillTheme.frameTokens.transparent))
-      .padding(horizontal = 12.dp, vertical = 10.dp),
+      .border(BorderStroke(SkillBillDimens.borderNone, SkillBillTheme.frameTokens.transparent))
+      .padding(horizontal = SkillBillDimens.pad2xl, vertical = SkillBillDimens.spacingXl),
   ) {
-    LabelText("Repository")
+    LabelText(stringResource(Res.string.nav_repository))
     Row(
       modifier =
       Modifier
         .fillMaxWidth()
-        .height(32.dp)
+        .height(SkillBillDimens.listItemHeight)
         .border(
-          1.dp,
+          SkillBillDimens.hairline,
           when {
             busy -> textFieldTokens.disabledBorder
             repoPathFocused -> textFieldTokens.focusedBorder
             else -> textFieldTokens.border
           },
-          RoundedCornerShape(6.dp),
+          SkillBillComponentShapes.control,
         )
         .background(
           if (busy) textFieldTokens.disabledContainer else textFieldTokens.container,
-          RoundedCornerShape(6.dp),
+          SkillBillComponentShapes.control,
         )
-        .padding(horizontal = 8.dp),
+        .padding(horizontal = SkillBillDimens.padLg),
       verticalAlignment = Alignment.CenterVertically,
-      horizontalArrangement = Arrangement.spacedBy(8.dp),
+      horizontalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingLg),
     ) {
       MiniIcon(text = "db", tint = SkillBillTheme.frameTokens.primary)
       BasicTextField(
         value = repoPath,
         onValueChange = onRepoPathChanged,
         enabled = !busy,
-        textStyle = androidx.compose.ui.text.TextStyle(
-          color = if (busy) textFieldTokens.disabledText else textFieldTokens.text,
-          fontSize = 12.sp,
+        textStyle = MaterialTheme.typography.bodySmall.copy(
           fontFamily = FontFamily.Monospace,
+          color = if (busy) textFieldTokens.disabledText else textFieldTokens.text,
         ),
         singleLine = true,
         cursorBrush = SolidColor(textFieldTokens.cursor),
@@ -252,27 +264,28 @@ private fun RepositorySelector(
           },
       )
       // F-U05 / F-X-501: enlarge hit target and announce intent for the text-as-button actions.
-      AcceleratorTooltip(label = "Open repository at path", acceleratorLabel = SkillBillAcceleratorLabels.REPO_OPEN) {
+      AcceleratorTooltip(
+        label = stringResource(Res.string.nav_open_repo_tooltip),
+        acceleratorLabel = stringResource(Res.string.accelerator_repo_open),
+      ) {
         Text(
-          text = if (busy) "Busy" else "Open",
+          text = if (busy) stringResource(Res.string.nav_repo_busy) else stringResource(Res.string.nav_repo_open),
           color = if (busy) SkillBillTheme.frameTokens.subtle else SkillBillTheme.frameTokens.primary,
-          fontSize = 11.sp,
-          fontWeight = FontWeight.Medium,
+          style = MaterialTheme.typography.labelSmall,
           modifier = Modifier
-            .iconButtonSemantics(description = "Open repository at path")
+            .iconButtonSemantics(description = stringResource(Res.string.nav_open_repo_tooltip))
             .clickable(enabled = !busy, role = Role.Button) { onRepoSelected(repoPath) }
-            .padding(horizontal = 6.dp, vertical = 4.dp),
+            .padding(horizontal = SkillBillDimens.padMd, vertical = SkillBillDimens.padSm),
         )
       }
       Text(
         text = "...",
         color = if (busy) SkillBillTheme.frameTokens.subtle else SkillBillTheme.frameTokens.primary,
-        fontSize = 11.sp,
-        fontWeight = FontWeight.Medium,
+        style = MaterialTheme.typography.labelSmall,
         modifier = Modifier
-          .iconButtonSemantics(description = "Choose repository directory")
+          .iconButtonSemantics(description = stringResource(Res.string.nav_choose_repo_dir_cd))
           .clickable(enabled = !busy, role = Role.Button, onClick = onChooseRepoDirectory)
-          .padding(horizontal = 6.dp, vertical = 4.dp),
+          .padding(horizontal = SkillBillDimens.padMd, vertical = SkillBillDimens.padSm),
       )
     }
     Text(
@@ -282,8 +295,8 @@ private fun RepositorySelector(
       } else {
         SkillBillTheme.frameTokens.subtle
       },
-      fontSize = 10.sp,
-      modifier = Modifier.padding(top = 6.dp),
+      style = SkillBillTypeStyles.caption,
+      modifier = Modifier.padding(top = SkillBillDimens.padMd),
       maxLines = 2,
       overflow = TextOverflow.Ellipsis,
     )
@@ -299,8 +312,8 @@ private fun EmptyTreeMessage(repoStatus: RepoLoadStatus) {
     } else {
       SkillBillTheme.frameTokens.subtle
     },
-    fontSize = 12.sp,
-    modifier = Modifier.padding(12.dp),
+    style = MaterialTheme.typography.bodySmall,
+    modifier = Modifier.padding(SkillBillDimens.pad2xl),
   )
 }
 
@@ -321,7 +334,7 @@ internal fun NavigationPaneResizeHandle(onResize: (Dp) -> Unit) {
   ) {
     Box(
       modifier = Modifier
-        .width(2.dp)
+        .width(SkillBillDimens.spacingXs)
         .fillMaxHeight()
         .background(SkillBillTheme.frameTokens.line),
     )

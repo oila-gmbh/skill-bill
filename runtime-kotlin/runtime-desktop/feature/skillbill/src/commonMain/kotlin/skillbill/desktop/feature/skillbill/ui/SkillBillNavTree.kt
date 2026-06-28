@@ -1,4 +1,4 @@
-@file:Suppress("FunctionName", "MagicNumber")
+@file:Suppress("FunctionName")
 
 package skillbill.desktop.feature.skillbill.ui
 
@@ -18,10 +18,9 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -38,12 +37,23 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import dev.skillbill.designsystem.generated.resources.Res
+import dev.skillbill.designsystem.generated.resources.nav_tree_delete
+import dev.skillbill.designsystem.generated.resources.nav_tree_item_status_cd
+import dev.skillbill.designsystem.generated.resources.nav_tree_toggle_group_cd
+import org.jetbrains.compose.resources.stringResource
+import skillbill.desktop.core.designsystem.SkillBillComponentShapes
+import skillbill.desktop.core.designsystem.SkillBillDimens
+import skillbill.desktop.core.designsystem.SkillBillMetrics
 import skillbill.desktop.core.designsystem.SkillBillTheme
+import skillbill.desktop.core.designsystem.SkillBillTypeStyles
 import skillbill.desktop.core.domain.model.SkillBillTreeItem
+
+private const val TREE_TEXT_ALPHA_DISABLED = 0.42f
+private const val TREE_TEXT_ALPHA_OPEN = 0.96f
+private const val TREE_TEXT_ALPHA_DEFAULT = 0.86f
 
 @Composable
 internal fun NavGroup(
@@ -74,20 +84,21 @@ internal fun NavGroup(
   // `Delete…` item). The menu is rendered at the end of the Row so it anchors to this row's
   // bounds; clicking the item triggers the actual confirmation dialog via `onShowContextMenu`.
   var menuExpanded by remember(group.id) { mutableStateOf(false) }
-  Column(modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)) {
+  val toggleGroupCd = stringResource(Res.string.nav_tree_toggle_group_cd, group.label)
+  Column(modifier = Modifier.padding(horizontal = SkillBillDimens.padSm, vertical = SkillBillDimens.hairline)) {
     Row(
       modifier =
       Modifier
         .fillMaxWidth()
-        .heightIn(min = 27.dp)
-        .padding(start = 2.dp, end = 4.dp)
-        .clip(RoundedCornerShape(3.dp))
+        .heightIn(min = SkillBillDimens.navTreeRowMinHeight)
+        .padding(start = SkillBillDimens.padXs, end = SkillBillDimens.padSm)
+        .clip(SkillBillComponentShapes.chip)
         .background(rowBackground)
         // F-U05 / F-X-501: announce the toggle action so screen readers can distinguish it from
         // sibling rows; selection state stays on the row for tree semantics.
         .semantics {
           this.selected = selected
-          this.contentDescription = "Toggle group ${group.label}"
+          this.contentDescription = toggleGroupCd
           this.role = Role.Button
         }
         .clickable(enabled = enabled, role = Role.Button) { onNodeExpandedToggled(group.id) }
@@ -95,34 +106,33 @@ internal fun NavGroup(
         // right-click → Delete. Generic GROUP nodes ignore the secondary press because the route
         // filters on `kind ∈ {SKILL, PLATFORM_PACK, ADD_ON}`.
         .skillRemoveContextMenuModifier(group, enabled) { menuExpanded = true }
-        .padding(end = 8.dp),
+        .padding(end = SkillBillDimens.padLg),
       verticalAlignment = Alignment.CenterVertically,
-      horizontalArrangement = Arrangement.spacedBy(6.dp),
+      horizontalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingMd),
     ) {
       Box(
         modifier =
         Modifier
-          .width(3.dp)
+          .width(SkillBillDimens.space3)
           .fillMaxHeight()
           .background(if (selected) SkillBillTheme.frameTokens.primary else SkillBillTheme.frameTokens.transparent),
       )
-      Text(text = if (expanded) "v" else ">", color = iconTint, fontSize = 12.sp)
+      Text(text = if (expanded) "v" else ">", color = iconTint, style = MaterialTheme.typography.bodySmall)
       MiniIcon(text = markerFor(group.kind), tint = iconTint)
       Text(
         text = group.label,
         color = textColor,
-        fontSize = 11.sp,
-        fontWeight = FontWeight.Medium,
+        style = MaterialTheme.typography.labelSmall,
         letterSpacing = 0.sp,
         modifier = Modifier.weight(1f),
       )
-      Text(text = group.children.size.toString(), color = iconTint, fontSize = 11.sp)
+      Text(text = group.children.size.toString(), color = iconTint, style = MaterialTheme.typography.labelSmall)
       DropdownMenu(
         expanded = menuExpanded,
         onDismissRequest = { menuExpanded = false },
       ) {
         DropdownMenuItem(
-          text = { Text("Delete…") },
+          text = { Text(stringResource(Res.string.nav_tree_delete)) },
           onClick = {
             menuExpanded = false
             onShowContextMenu(group)
@@ -180,22 +190,23 @@ private fun NavTreeNode(
   val iconTint = if (selected || open) SkillBillTheme.frameTokens.primary else SkillBillTheme.frameTokens.subtle
   val textAlpha =
     when {
-      !enabled -> 0.42f
+      !enabled -> TREE_TEXT_ALPHA_DISABLED
       selected -> 1f
-      open -> 0.96f
-      else -> 0.86f
+      open -> TREE_TEXT_ALPHA_OPEN
+      else -> TREE_TEXT_ALPHA_DEFAULT
     }
+  val rowStateDescription = stringResource(treeRowStateDescriptionRes(open))
   Row(
     modifier =
     Modifier
       .fillMaxWidth()
-      .height(28.dp)
-      .padding(start = 2.dp, end = 4.dp)
-      .clip(RoundedCornerShape(3.dp))
+      .height(SkillBillDimens.controlHeightMd)
+      .padding(start = SkillBillDimens.padXs, end = SkillBillDimens.padSm)
+      .clip(SkillBillComponentShapes.chip)
       .background(rowBackground)
       .semantics {
         this.selected = selected
-        stateDescription = treeRowStateDescription(open)
+        stateDescription = rowStateDescription
       }
       .combinedClickable(
         enabled = enabled,
@@ -224,23 +235,22 @@ private fun NavTreeNode(
     Box(
       modifier =
       Modifier
-        .width(3.dp)
+        .width(SkillBillDimens.space3)
         .fillMaxHeight()
         .background(if (selected) SkillBillTheme.frameTokens.primary else SkillBillTheme.frameTokens.transparent),
     )
-    Spacer(modifier = Modifier.width((22 + depth * 16).dp))
+    Spacer(modifier = Modifier.width(SkillBillMetrics.navTreeBaseIndent + SkillBillMetrics.navTreeDepthStep * depth))
     if (expandable) {
-      Text(text = if (expanded) "v" else ">", color = iconTint, fontSize = 12.sp)
+      Text(text = if (expanded) "v" else ">", color = iconTint, style = MaterialTheme.typography.bodySmall)
     } else {
-      Spacer(modifier = Modifier.width(7.dp))
+      Spacer(modifier = Modifier.width(SkillBillDimens.space7))
     }
     MiniIcon(text = markerFor(node.kind), tint = iconTint)
     Text(
       text = node.label,
       color = SkillBillTheme.frameTokens.text.copy(alpha = textAlpha),
-      fontSize = 12.5.sp,
-      fontFamily = FontFamily.Monospace,
-      modifier = Modifier.padding(start = 8.dp).weight(1f),
+      style = SkillBillTypeStyles.code,
+      modifier = Modifier.padding(start = SkillBillDimens.padLg).weight(1f),
       maxLines = 1,
       overflow = TextOverflow.Ellipsis,
     )
@@ -250,19 +260,18 @@ private fun NavTreeNode(
       Text(
         text = readOnlyLabel,
         color = SkillBillTheme.frameTokens.subtle,
-        fontSize = 10.sp,
-        fontFamily = FontFamily.Monospace,
-        modifier = Modifier.padding(end = 8.dp),
+        style = SkillBillTypeStyles.caption.copy(fontFamily = FontFamily.Monospace),
+        modifier = Modifier.padding(end = SkillBillDimens.padLg),
       )
     }
     StatusDot(level = validationLevelFor(node.status))
-    Spacer(modifier = Modifier.width(8.dp))
+    Spacer(modifier = Modifier.width(SkillBillDimens.spacingLg))
     DropdownMenu(
       expanded = menuExpanded,
       onDismissRequest = { menuExpanded = false },
     ) {
       DropdownMenuItem(
-        text = { Text("Delete…") },
+        text = { Text(stringResource(Res.string.nav_tree_delete)) },
         onClick = {
           menuExpanded = false
           onShowContextMenu(node)
@@ -293,14 +302,14 @@ private fun NavTreeNode(
 @Composable
 private fun OpenEditorTabIndicator(open: Boolean) {
   Box(
-    modifier = Modifier.size(width = 10.dp, height = 10.dp),
+    modifier = Modifier.size(width = SkillBillDimens.spacingXl, height = SkillBillDimens.spacingXl),
     contentAlignment = Alignment.Center,
   ) {
     if (open) {
       Box(
         modifier = Modifier
-          .size(5.dp)
-          .clip(CircleShape)
+          .size(SkillBillDimens.space5)
+          .clip(SkillBillComponentShapes.pill)
           .background(SkillBillTheme.frameTokens.primary),
       )
     }
@@ -320,34 +329,34 @@ internal fun RepositoryStatusItem(label: String, statusText: String, marker: Str
   } else {
     SkillBillTheme.frameTokens.subtle
   }
+  val itemContentDescription = stringResource(Res.string.nav_tree_item_status_cd, label, statusText)
   Row(
     modifier =
     Modifier
       .fillMaxWidth()
-      .height(28.dp)
+      .height(SkillBillDimens.controlHeightMd)
       // F-X-901-H: match the sibling RepositoryAction's outer-padding shape (6dp gutter + 8dp
       // inner) using a single combined modifier instead of two stacked padding calls.
-      .padding(horizontal = 14.dp)
+      .padding(horizontal = SkillBillDimens.pad3xl)
       // F-X-901-G: merge child Text/MiniIcon semantics into one node so screen readers announce
       // "<label>: <status>" once rather than three separate fragments.
       .semantics(mergeDescendants = true) {
-        this.contentDescription = "$label: $statusText"
+        this.contentDescription = itemContentDescription
       },
     verticalAlignment = Alignment.CenterVertically,
-    horizontalArrangement = Arrangement.spacedBy(8.dp),
+    horizontalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingLg),
   ) {
     MiniIcon(text = marker, tint = SkillBillTheme.frameTokens.subtle)
     Text(
       text = label,
       color = contentColor,
-      fontSize = 12.5.sp,
+      style = SkillBillTypeStyles.body125,
       modifier = Modifier.weight(1f),
     )
     Text(
       text = statusText,
       color = SkillBillTheme.frameTokens.status.warning,
-      fontSize = 10.sp,
-      fontFamily = FontFamily.Monospace,
+      style = SkillBillTypeStyles.caption.copy(fontFamily = FontFamily.Monospace),
       maxLines = 1,
     )
   }

@@ -1,4 +1,4 @@
-@file:Suppress("FunctionName", "MagicNumber", "LongMethod")
+@file:Suppress("FunctionName", "LongMethod")
 
 package skillbill.desktop.feature.skillbill.ui
 
@@ -17,9 +17,9 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -28,12 +28,42 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import dev.skillbill.designsystem.generated.resources.Res
+import dev.skillbill.designsystem.generated.resources.first_run_agent_detected
+import dev.skillbill.designsystem.generated.resources.first_run_agent_manual
+import dev.skillbill.designsystem.generated.resources.first_run_back
+import dev.skillbill.designsystem.generated.resources.first_run_base_skills_auto
+import dev.skillbill.designsystem.generated.resources.first_run_cd
+import dev.skillbill.designsystem.generated.resources.first_run_dismiss_cd
+import dev.skillbill.designsystem.generated.resources.first_run_done
+import dev.skillbill.designsystem.generated.resources.first_run_install
+import dev.skillbill.designsystem.generated.resources.first_run_installing
+import dev.skillbill.designsystem.generated.resources.first_run_mcp_register
+import dev.skillbill.designsystem.generated.resources.first_run_mcp_register_detail
+import dev.skillbill.designsystem.generated.resources.first_run_mcp_skip
+import dev.skillbill.designsystem.generated.resources.first_run_mcp_skip_detail
+import dev.skillbill.designsystem.generated.resources.first_run_next
+import dev.skillbill.designsystem.generated.resources.first_run_no_platform_packs
+import dev.skillbill.designsystem.generated.resources.first_run_not_run_yet
+import dev.skillbill.designsystem.generated.resources.first_run_retry
+import dev.skillbill.designsystem.generated.resources.first_run_section_ready
+import dev.skillbill.designsystem.generated.resources.first_run_setup_issue
+import dev.skillbill.designsystem.generated.resources.first_run_step_packs
+import dev.skillbill.designsystem.generated.resources.first_run_step_prefs
+import dev.skillbill.designsystem.generated.resources.first_run_step_result
+import dev.skillbill.designsystem.generated.resources.first_run_summary_agents
+import dev.skillbill.designsystem.generated.resources.first_run_summary_mcp
+import dev.skillbill.designsystem.generated.resources.first_run_summary_none
+import dev.skillbill.designsystem.generated.resources.first_run_summary_platform_packs
+import dev.skillbill.designsystem.generated.resources.first_run_summary_telemetry
+import dev.skillbill.designsystem.generated.resources.first_run_title
+import org.jetbrains.compose.resources.stringResource
+import skillbill.desktop.core.designsystem.SkillBillComponentShapes
+import skillbill.desktop.core.designsystem.SkillBillDimens
 import skillbill.desktop.core.designsystem.SkillBillSurfaceTone
 import skillbill.desktop.core.designsystem.SkillBillTheme
+import skillbill.desktop.core.designsystem.SkillBillTypeStyles
 import skillbill.desktop.core.domain.model.FirstRunInstallDetail
 import skillbill.desktop.core.domain.model.FirstRunInstallDetailSeverity
 import skillbill.desktop.core.domain.model.FirstRunInstallStatus
@@ -56,20 +86,21 @@ data class FirstRunSetupCallbacks(
 @Composable
 fun FirstRunSetupDialog(state: FirstRunSetupState, callbacks: FirstRunSetupCallbacks) {
   val semanticTones = SkillBillTheme.semanticTones
+  val dialogContentDescription = stringResource(Res.string.first_run_cd)
   Box(
     modifier = Modifier
       .fillMaxSize()
       .background(semanticTones.scrim)
-      .semantics { contentDescription = "First-run setup wizard" }
+      .semantics { contentDescription = dialogContentDescription }
       .clickable(enabled = !state.busy, role = Role.Button, onClick = callbacks.onDismiss),
   ) {
     Column(
       modifier = Modifier
         .align(Alignment.Center)
-        .widthIn(min = 620.dp, max = 820.dp)
-        .heightIn(max = 700.dp)
-        .clip(RoundedCornerShape(8.dp))
-        .border(1.dp, semanticTones.dialog.border, RoundedCornerShape(8.dp))
+        .widthIn(min = SkillBillDimens.firstRunDialogMinWidth, max = SkillBillDimens.firstRunDialogMaxWidth)
+        .heightIn(max = SkillBillDimens.firstRunDialogMaxHeight)
+        .clip(SkillBillTheme.shapes.medium)
+        .border(SkillBillDimens.hairline, semanticTones.dialog.border, SkillBillTheme.shapes.medium)
         .background(semanticTones.dialog.container)
         // Block dismiss-on-outside-tap when the user interacts inside the panel.
         .clickable(enabled = false, onClick = {}),
@@ -81,11 +112,15 @@ fun FirstRunSetupDialog(state: FirstRunSetupState, callbacks: FirstRunSetupCallb
           .fillMaxWidth()
           .weight(1f, fill = false)
           .verticalScroll(rememberScrollState())
-          .padding(horizontal = 18.dp, vertical = 14.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+          .padding(horizontal = SkillBillDimens.pad5xl, vertical = SkillBillDimens.pad3xl),
+        verticalArrangement = Arrangement.spacedBy(SkillBillDimens.spacing2xl),
       ) {
         state.errorMessage?.let { message ->
-          SetupBanner(title = "Setup issue", message = message, tone = semanticTones.warningBanner)
+          SetupBanner(
+            title = stringResource(Res.string.first_run_setup_issue),
+            message = message,
+            tone = semanticTones.warningBanner,
+          )
         }
         when (state.step) {
           FirstRunSetupStep.AGENTS -> AgentSelectionStep(state, callbacks)
@@ -108,26 +143,31 @@ private fun SetupHeader(state: FirstRunSetupState, onDismiss: () -> Unit) {
   Row(
     modifier = Modifier
       .fillMaxWidth()
-      .padding(horizontal = 18.dp, vertical = 14.dp),
-    horizontalArrangement = Arrangement.spacedBy(12.dp),
+      .padding(horizontal = SkillBillDimens.pad5xl, vertical = SkillBillDimens.pad3xl),
+    horizontalArrangement = Arrangement.spacedBy(SkillBillDimens.spacing2xl),
     verticalAlignment = Alignment.Top,
   ) {
-    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-      Text(text = "Skill Bill setup", color = dialogTone.content, fontSize = 16.sp, fontWeight = FontWeight.Medium)
-      Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingLg)) {
+      Text(
+        text = stringResource(Res.string.first_run_title),
+        color = dialogTone.content,
+        style = MaterialTheme.typography.bodyLarge,
+      )
+      Row(horizontalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingMd)) {
         FirstRunSetupStep.entries.forEach { step ->
           StepPill(step = step, selected = step == state.step)
         }
       }
     }
+    val dismissContentDescription = stringResource(Res.string.first_run_dismiss_cd)
     Text(
       text = "x",
       color = if (state.busy) colors.onSurfaceVariant.copy(alpha = 0.55f) else colors.onSurfaceVariant,
-      fontSize = 14.sp,
+      style = MaterialTheme.typography.titleSmall,
       modifier = Modifier
-        .semantics { contentDescription = "Dismiss setup wizard" }
+        .semantics { contentDescription = dismissContentDescription }
         .clickable(enabled = !state.busy, role = Role.Button, onClick = onDismiss)
-        .padding(horizontal = 6.dp, vertical = 2.dp),
+        .padding(horizontal = SkillBillDimens.padMd, vertical = SkillBillDimens.padXs),
     )
   }
 }
@@ -139,29 +179,29 @@ private fun StepPill(step: FirstRunSetupStep, selected: Boolean) {
   Text(
     text = step.label(),
     color = if (selected) colors.onPrimary else dialogTone.content,
-    fontSize = 10.sp,
+    style = SkillBillTypeStyles.caption,
     maxLines = 1,
     overflow = TextOverflow.Ellipsis,
     modifier = Modifier
-      .clip(RoundedCornerShape(6.dp))
+      .clip(SkillBillComponentShapes.control)
       .background(if (selected) colors.primary else colors.surfaceVariant)
-      .border(1.dp, dialogTone.border, RoundedCornerShape(6.dp))
-      .padding(horizontal = 8.dp, vertical = 5.dp),
+      .border(SkillBillDimens.hairline, dialogTone.border, SkillBillComponentShapes.control)
+      .padding(horizontal = SkillBillDimens.padLg, vertical = SkillBillDimens.space5),
   )
 }
 
 @Composable
 private fun AgentSelectionStep(state: FirstRunSetupState, callbacks: FirstRunSetupCallbacks) {
-  SectionTitle("Agents")
+  SectionTitle(stringResource(Res.string.first_run_summary_agents))
   state.agentOptions.forEach { option ->
     ToggleRow(
       label = option.displayName,
       selected = option.agentId in state.selectedAgentIds,
       enabled = !state.busy,
       detail = if (option.detected) {
-        "Detected at ${option.detectedPath.orEmpty()}"
+        stringResource(Res.string.first_run_agent_detected, option.detectedPath.orEmpty())
       } else {
-        "Manual selection"
+        stringResource(Res.string.first_run_agent_manual)
       },
       onClick = { callbacks.onAgentSelectionChanged(option.agentId, option.agentId !in state.selectedAgentIds) },
     )
@@ -171,10 +211,18 @@ private fun AgentSelectionStep(state: FirstRunSetupState, callbacks: FirstRunSet
 @Composable
 private fun PlatformPackStep(state: FirstRunSetupState, callbacks: FirstRunSetupCallbacks) {
   val colors = SkillBillTheme.colors
-  SectionTitle("Platform packs")
-  Text(text = "Base skills install automatically.", color = colors.onSurfaceVariant, fontSize = 11.sp)
+  SectionTitle(stringResource(Res.string.first_run_summary_platform_packs))
+  Text(
+    text = stringResource(Res.string.first_run_base_skills_auto),
+    color = colors.onSurfaceVariant,
+    style = MaterialTheme.typography.labelSmall,
+  )
   if (state.platformPacks.isEmpty()) {
-    Text(text = "No platform packs discovered.", color = colors.onSurfaceVariant, fontSize = 12.sp)
+    Text(
+      text = stringResource(Res.string.first_run_no_platform_packs),
+      color = colors.onSurfaceVariant,
+      style = MaterialTheme.typography.bodySmall,
+    )
   } else {
     state.platformPacks.forEach { pack ->
       ToggleRow(
@@ -191,8 +239,8 @@ private fun PlatformPackStep(state: FirstRunSetupState, callbacks: FirstRunSetup
 @Composable
 private fun PreferencesStep(state: FirstRunSetupState, callbacks: FirstRunSetupCallbacks) {
   val colors = SkillBillTheme.colors
-  SectionTitle("Telemetry")
-  Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+  SectionTitle(stringResource(Res.string.first_run_summary_telemetry))
+  Row(horizontalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingLg)) {
     FirstRunTelemetryLevel.entries.forEach { level ->
       SelectPill(
         label = level.id,
@@ -202,38 +250,54 @@ private fun PreferencesStep(state: FirstRunSetupState, callbacks: FirstRunSetupC
       )
     }
   }
-  Spacer(modifier = Modifier.height(4.dp))
-  SectionTitle("MCP")
+  Spacer(modifier = Modifier.height(SkillBillDimens.spacingSm))
+  SectionTitle(stringResource(Res.string.first_run_summary_mcp))
   Text(
     text = if (state.registerMcp) {
-      "Skill Bill MCP server will be registered for selected agents."
+      stringResource(Res.string.first_run_mcp_register_detail)
     } else {
-      "Skill Bill MCP server registration is skipped."
+      stringResource(Res.string.first_run_mcp_skip_detail)
     },
     color = colors.onSurfaceVariant,
-    fontSize = 12.sp,
+    style = MaterialTheme.typography.bodySmall,
   )
 }
 
 @Composable
 private fun ApplyStep(state: FirstRunSetupState) {
-  SectionTitle("Ready")
-  SummaryLine(label = "Agents", value = state.selectedAgentIds.sorted().joinToString(", "))
+  SectionTitle(stringResource(Res.string.first_run_section_ready))
   SummaryLine(
-    label = "Platform packs",
+    label = stringResource(Res.string.first_run_summary_agents),
+    value = state.selectedAgentIds.sorted().joinToString(", "),
+  )
+  SummaryLine(
+    label = stringResource(Res.string.first_run_summary_platform_packs),
     value = state.selectedPlatformSlugs.sorted().joinToString(", ").ifBlank {
-      "none"
+      stringResource(Res.string.first_run_summary_none)
     },
   )
-  SummaryLine(label = "Telemetry", value = state.telemetryLevel.id)
-  SummaryLine(label = "MCP", value = if (state.registerMcp) "register" else "skip")
+  SummaryLine(label = stringResource(Res.string.first_run_summary_telemetry), value = state.telemetryLevel.id)
+  SummaryLine(
+    label = stringResource(Res.string.first_run_summary_mcp),
+    value = if (state.registerMcp) {
+      stringResource(
+        Res.string.first_run_mcp_register,
+      )
+    } else {
+      stringResource(Res.string.first_run_mcp_skip)
+    },
+  )
 }
 
 @Composable
 private fun OutcomeStep(state: FirstRunSetupState) {
   val outcome = state.outcome
   if (outcome == null) {
-    Text(text = "Setup has not run yet.", color = SkillBillTheme.colors.onSurfaceVariant, fontSize = 12.sp)
+    Text(
+      text = stringResource(Res.string.first_run_not_run_yet),
+      color = SkillBillTheme.colors.onSurfaceVariant,
+      style = MaterialTheme.typography.bodySmall,
+    )
     return
   }
   val tone = when (outcome.status) {
@@ -241,7 +305,13 @@ private fun OutcomeStep(state: FirstRunSetupState) {
     FirstRunInstallStatus.WARNING -> SkillBillTheme.semanticTones.warningBanner
     FirstRunInstallStatus.FAILURE -> SkillBillTheme.semanticTones.errorBanner
   }
-  SetupBanner(title = outcome.title, message = outcome.status.name.lowercase(), tone = tone)
+  SetupBanner(
+    title = outcome.titleRes?.let {
+      stringResource(it)
+    } ?: outcome.title,
+    message = outcome.status.name.lowercase(),
+    tone = tone,
+  )
   outcome.details.forEach { detail -> DetailRow(detail) }
 }
 
@@ -250,30 +320,49 @@ private fun SetupFooter(state: FirstRunSetupState, callbacks: FirstRunSetupCallb
   Row(
     modifier = Modifier
       .fillMaxWidth()
-      .padding(horizontal = 18.dp, vertical = 12.dp),
-    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+      .padding(horizontal = SkillBillDimens.pad5xl, vertical = SkillBillDimens.pad2xl),
+    horizontalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingLg, Alignment.End),
     verticalAlignment = Alignment.CenterVertically,
   ) {
     val showBack = state.step != FirstRunSetupStep.AGENTS && state.step != FirstRunSetupStep.RESULT
     if (showBack) {
-      SetupButton(label = "Back", enabled = !state.busy, onClick = callbacks.onBack)
+      SetupButton(label = stringResource(Res.string.first_run_back), enabled = !state.busy, onClick = callbacks.onBack)
     }
     when (state.step) {
       FirstRunSetupStep.AGENTS,
       FirstRunSetupStep.PLATFORM_PACKS,
       FirstRunSetupStep.PREFERENCES,
-      -> SetupButton(label = "Next", enabled = state.canContinue, primary = true, onClick = callbacks.onNext)
+      -> SetupButton(
+        label = stringResource(Res.string.first_run_next),
+        enabled = state.canContinue,
+        primary = true,
+        onClick = callbacks.onNext,
+      )
       FirstRunSetupStep.APPLY -> SetupButton(
-        label = if (state.busy) "Installing..." else "Install",
+        label = if (state.busy) {
+          stringResource(Res.string.first_run_installing)
+        } else {
+          stringResource(Res.string.first_run_install)
+        },
         enabled = state.canContinue,
         primary = true,
         onClick = callbacks.onApply,
       )
       FirstRunSetupStep.RESULT -> {
         if (state.outcome?.status == FirstRunInstallStatus.FAILURE) {
-          SetupButton(label = "Retry", enabled = !state.busy, primary = true, onClick = callbacks.onRetry)
+          SetupButton(
+            label = stringResource(Res.string.first_run_retry),
+            enabled = !state.busy,
+            primary = true,
+            onClick = callbacks.onRetry,
+          )
         } else {
-          SetupButton(label = "Done", enabled = !state.busy, primary = true, onClick = callbacks.onFinish)
+          SetupButton(
+            label = stringResource(Res.string.first_run_done),
+            enabled = !state.busy,
+            primary = true,
+            onClick = callbacks.onFinish,
+          )
         }
       }
     }
@@ -287,25 +376,25 @@ private fun ToggleRow(label: String, selected: Boolean, enabled: Boolean, detail
   Row(
     modifier = Modifier
       .fillMaxWidth()
-      .clip(RoundedCornerShape(6.dp))
-      .border(1.dp, dialogTone.border, RoundedCornerShape(6.dp))
+      .clip(SkillBillComponentShapes.control)
+      .border(SkillBillDimens.hairline, dialogTone.border, SkillBillComponentShapes.control)
       .background(colors.surfaceVariant)
       .clickable(enabled = enabled, role = Role.Checkbox, onClick = onClick)
-      .padding(horizontal = 12.dp, vertical = 9.dp),
-    horizontalArrangement = Arrangement.spacedBy(10.dp),
+      .padding(horizontal = SkillBillDimens.pad2xl, vertical = SkillBillDimens.space9),
+    horizontalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingXl),
     verticalAlignment = Alignment.CenterVertically,
   ) {
     Text(
       text = if (selected) "[x]" else "[ ]",
       color = if (selected) colors.primary else colors.onSurfaceVariant,
-      fontSize = 12.sp,
+      style = MaterialTheme.typography.bodySmall,
     )
-    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-      Text(text = label, color = dialogTone.content, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(SkillBillDimens.space3)) {
+      Text(text = label, color = dialogTone.content, style = MaterialTheme.typography.bodySmall)
       Text(
         text = detail,
         color = colors.onSurfaceVariant,
-        fontSize = 10.sp,
+        style = SkillBillTypeStyles.caption,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
       )
@@ -320,13 +409,13 @@ private fun SelectPill(label: String, selected: Boolean, enabled: Boolean, onCli
   Text(
     text = label,
     color = if (selected) colors.onPrimary else dialogTone.content,
-    fontSize = 12.sp,
+    style = MaterialTheme.typography.bodySmall,
     modifier = Modifier
-      .clip(RoundedCornerShape(6.dp))
+      .clip(SkillBillComponentShapes.control)
       .background(if (selected) colors.primary else colors.surfaceVariant)
-      .border(1.dp, dialogTone.border, RoundedCornerShape(6.dp))
+      .border(SkillBillDimens.hairline, dialogTone.border, SkillBillComponentShapes.control)
       .clickable(enabled = enabled, role = Role.RadioButton, onClick = onClick)
-      .padding(horizontal = 12.dp, vertical = 7.dp),
+      .padding(horizontal = SkillBillDimens.pad2xl, vertical = SkillBillDimens.space7),
   )
 }
 
@@ -341,13 +430,13 @@ private fun SetupButton(label: String, enabled: Boolean, primary: Boolean = fals
       primary -> colors.onPrimary
       else -> dialogTone.content
     },
-    fontSize = 12.sp,
+    style = MaterialTheme.typography.bodySmall,
     modifier = Modifier
-      .clip(RoundedCornerShape(6.dp))
+      .clip(SkillBillComponentShapes.control)
       .background(if (primary && enabled) colors.primary else colors.surfaceVariant)
-      .border(1.dp, dialogTone.border, RoundedCornerShape(6.dp))
+      .border(SkillBillDimens.hairline, dialogTone.border, SkillBillComponentShapes.control)
       .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
-      .padding(horizontal = 12.dp, vertical = 8.dp),
+      .padding(horizontal = SkillBillDimens.pad2xl, vertical = SkillBillDimens.padLg),
   )
 }
 
@@ -356,14 +445,14 @@ private fun SetupBanner(title: String, message: String, tone: SkillBillSurfaceTo
   Column(
     modifier = Modifier
       .fillMaxWidth()
-      .clip(RoundedCornerShape(6.dp))
-      .border(1.dp, tone.border, RoundedCornerShape(6.dp))
+      .clip(SkillBillComponentShapes.control)
+      .border(SkillBillDimens.hairline, tone.border, SkillBillComponentShapes.control)
       .background(tone.container)
-      .padding(horizontal = 12.dp, vertical = 10.dp),
-    verticalArrangement = Arrangement.spacedBy(4.dp),
+      .padding(horizontal = SkillBillDimens.pad2xl, vertical = SkillBillDimens.padXl),
+    verticalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingSm),
   ) {
-    Text(text = title, color = tone.content, fontSize = 12.sp, fontWeight = FontWeight.Medium)
-    Text(text = message, color = tone.content, fontSize = 11.sp)
+    Text(text = title, color = tone.content, style = MaterialTheme.typography.bodySmall)
+    Text(text = message, color = tone.content, style = MaterialTheme.typography.labelSmall)
   }
 }
 
@@ -379,20 +468,27 @@ private fun DetailRow(detail: FirstRunInstallDetail) {
   Column(
     modifier = Modifier
       .fillMaxWidth()
-      .clip(RoundedCornerShape(6.dp))
-      .border(1.dp, semanticTones.dialog.border, RoundedCornerShape(6.dp))
+      .clip(SkillBillComponentShapes.control)
+      .border(SkillBillDimens.hairline, semanticTones.dialog.border, SkillBillComponentShapes.control)
       .background(colors.surfaceVariant)
-      .padding(horizontal = 12.dp, vertical = 9.dp),
-    verticalArrangement = Arrangement.spacedBy(3.dp),
+      .padding(horizontal = SkillBillDimens.pad2xl, vertical = SkillBillDimens.space9),
+    verticalArrangement = Arrangement.spacedBy(SkillBillDimens.space3),
   ) {
-    Text(text = detail.label, color = color, fontSize = 11.sp, fontWeight = FontWeight.Medium)
-    Text(text = detail.message, color = semanticTones.dialog.content, fontSize = 11.sp)
-    detail.path?.let { path -> Text(text = path, color = colors.onSurfaceVariant, fontSize = 10.sp, maxLines = 1) }
+    Text(text = detail.label, color = color, style = MaterialTheme.typography.labelSmall)
+    Text(text = detail.message, color = semanticTones.dialog.content, style = MaterialTheme.typography.labelSmall)
+    detail.path?.let { path ->
+      Text(
+        text = path,
+        color = colors.onSurfaceVariant,
+        style = SkillBillTypeStyles.caption,
+        maxLines = 1,
+      )
+    }
     detail.guidance?.let { guidance ->
       Text(
         text = guidance,
         color = semanticTones.warningBanner.content,
-        fontSize = 10.sp,
+        style = SkillBillTypeStyles.caption,
       )
     }
   }
@@ -403,8 +499,7 @@ private fun SectionTitle(text: String) {
   Text(
     text = text,
     color = SkillBillTheme.semanticTones.dialog.content,
-    fontSize = 12.sp,
-    fontWeight = FontWeight.Medium,
+    style = MaterialTheme.typography.bodySmall,
   )
 }
 
@@ -412,16 +507,17 @@ private fun SectionTitle(text: String) {
 private fun SummaryLine(label: String, value: String) {
   val colors = SkillBillTheme.colors
   val dialogTone = SkillBillTheme.semanticTones.dialog
-  Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-    Text(text = label, color = colors.onSurfaceVariant, fontSize = 11.sp)
-    Text(text = value, color = dialogTone.content, fontSize = 11.sp)
+  Row(horizontalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingLg)) {
+    Text(text = label, color = colors.onSurfaceVariant, style = MaterialTheme.typography.labelSmall)
+    Text(text = value, color = dialogTone.content, style = MaterialTheme.typography.labelSmall)
   }
 }
 
+@Composable
 private fun FirstRunSetupStep.label(): String = when (this) {
-  FirstRunSetupStep.AGENTS -> "Agents"
-  FirstRunSetupStep.PLATFORM_PACKS -> "Packs"
-  FirstRunSetupStep.PREFERENCES -> "Prefs"
-  FirstRunSetupStep.APPLY -> "Install"
-  FirstRunSetupStep.RESULT -> "Result"
+  FirstRunSetupStep.AGENTS -> stringResource(Res.string.first_run_summary_agents)
+  FirstRunSetupStep.PLATFORM_PACKS -> stringResource(Res.string.first_run_step_packs)
+  FirstRunSetupStep.PREFERENCES -> stringResource(Res.string.first_run_step_prefs)
+  FirstRunSetupStep.APPLY -> stringResource(Res.string.first_run_install)
+  FirstRunSetupStep.RESULT -> stringResource(Res.string.first_run_step_result)
 }

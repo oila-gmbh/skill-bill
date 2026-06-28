@@ -1,10 +1,12 @@
 package skillbill.desktop.feature.skillbill.ui
 
+import dev.skillbill.designsystem.generated.resources.Res
+import dev.skillbill.designsystem.generated.resources.accelerator_refresh
+import dev.skillbill.designsystem.generated.resources.accelerator_save
 import skillbill.desktop.core.domain.model.CommandPaletteAction
 import skillbill.desktop.core.domain.model.EditorPlaceholder
 import skillbill.desktop.core.domain.model.RepoLoadState
 import skillbill.desktop.core.domain.model.RepoLoadStatus
-import skillbill.desktop.core.domain.model.SkillBillAcceleratorLabels
 import skillbill.desktop.core.domain.model.SkillBillState
 import skillbill.desktop.feature.skillbill.state.buildCommandPaletteState
 import kotlin.test.Test
@@ -119,15 +121,8 @@ class KeyboardAcceleratorsTest {
       query = "",
       selectedResultIndex = 0,
     )
-    assertEquals(SkillBillAcceleratorLabels.REFRESH, palette.command(CommandPaletteAction.REFRESH).acceleratorLabel)
-    assertEquals(SkillBillAcceleratorLabels.SAVE, palette.command(CommandPaletteAction.SAVE).acceleratorLabel)
-  }
-
-  @Test
-  fun `accelerator labels advertise command and control modifiers`() {
-    assertEquals("Cmd/Ctrl S", SkillBillAcceleratorLabels.SAVE)
-    assertEquals("Cmd/Ctrl R", SkillBillAcceleratorLabels.REFRESH)
-    assertEquals("Cmd/Ctrl K", SkillBillAcceleratorLabels.COMMAND_PALETTE)
+    assertEquals(Res.string.accelerator_refresh, palette.command(CommandPaletteAction.REFRESH).acceleratorLabelRes)
+    assertEquals(Res.string.accelerator_save, palette.command(CommandPaletteAction.SAVE).acceleratorLabelRes)
   }
 
   @Test

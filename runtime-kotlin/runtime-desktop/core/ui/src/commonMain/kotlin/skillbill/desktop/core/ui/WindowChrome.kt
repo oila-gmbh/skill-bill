@@ -1,4 +1,4 @@
-@file:Suppress("FunctionName", "MagicNumber")
+@file:Suppress("FunctionName")
 
 package skillbill.desktop.core.ui
 
@@ -7,7 +7,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
+import skillbill.desktop.core.designsystem.SkillBillDimens
 import skillbill.desktop.core.designsystem.SkillBillTheme
 
 @Composable
@@ -18,7 +18,7 @@ fun SkillBillWindow(content: @Composable () -> Unit) {
     Modifier
       .fillMaxSize()
       .background(SkillBillTheme.colors.background)
-      .border(1.dp, colors.separator),
+      .border(SkillBillDimens.hairline, colors.separator),
   ) {
     content()
   }

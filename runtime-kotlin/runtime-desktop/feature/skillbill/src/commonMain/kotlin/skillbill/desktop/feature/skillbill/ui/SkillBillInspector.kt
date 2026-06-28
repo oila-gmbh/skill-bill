@@ -1,4 +1,4 @@
-@file:Suppress("FunctionName", "MagicNumber")
+@file:Suppress("FunctionName")
 
 package skillbill.desktop.feature.skillbill.ui
 
@@ -20,9 +20,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -37,17 +37,30 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import dev.skillbill.designsystem.generated.resources.Res
+import dev.skillbill.designsystem.generated.resources.inspector_generated_artifacts
+import dev.skillbill.designsystem.generated.resources.inspector_generated_read_only
+import dev.skillbill.designsystem.generated.resources.inspector_metadata
+import dev.skillbill.designsystem.generated.resources.inspector_open_artifact_cd
+import dev.skillbill.designsystem.generated.resources.inspector_repository_validation
+import dev.skillbill.designsystem.generated.resources.nav_tree_row_not_open_cd
+import dev.skillbill.designsystem.generated.resources.nav_tree_row_open_cd
+import org.jetbrains.compose.resources.StringResource
+import org.jetbrains.compose.resources.stringResource
+import skillbill.desktop.core.designsystem.SkillBillComponentShapes
+import skillbill.desktop.core.designsystem.SkillBillDimens
 import skillbill.desktop.core.designsystem.SkillBillMetrics
 import skillbill.desktop.core.designsystem.SkillBillTheme
+import skillbill.desktop.core.designsystem.SkillBillTypeStyles
 import skillbill.desktop.core.designsystem.contentColorFor
 import skillbill.desktop.core.domain.model.EditorPlaceholder
 import skillbill.desktop.core.domain.model.GeneratedArtifactDetail
 import skillbill.desktop.core.domain.model.RepoLoadStatus
 import skillbill.desktop.core.designsystem.SkillBillStatusTone as Tone
+
+private const val GENERATED_LABEL_ALPHA_DISABLED = 0.55f
 
 @Composable
 internal fun InspectorPane(
@@ -62,11 +75,11 @@ internal fun InspectorPane(
       .width(SkillBillMetrics.inspectorPaneWidth)
       .fillMaxHeight()
       .background(SkillBillTheme.frameTokens.background)
-      .border(BorderStroke(0.dp, SkillBillTheme.frameTokens.transparent)),
+      .border(BorderStroke(SkillBillDimens.borderNone, SkillBillTheme.frameTokens.transparent)),
   ) {
     InspectorHeader(editor = editor)
     Column(modifier = Modifier.weight(1f).verticalScroll(rememberScrollState())) {
-      InspectorSection(title = "Metadata", marker = "mt") {
+      InspectorSection(title = stringResource(Res.string.inspector_metadata), marker = "mt") {
         KeyValueRow("name", editor.skillName ?: editor.title)
         KeyValueRow("kind", editor.kind ?: "none")
         KeyValueRow("authored path", editor.authoredPath ?: "-")
@@ -84,7 +97,7 @@ internal fun InspectorPane(
         )
       }
       InspectorSection(
-        title = "Repository validation",
+        title = stringResource(Res.string.inspector_repository_validation),
         marker = "vl",
         badge = repoStatus.issueCount.takeIf { it > 0 }?.toString(),
       ) {
@@ -96,7 +109,7 @@ internal fun InspectorPane(
       }
       val artifactsForInspector: List<GeneratedArtifactDetail> = editor.generatedArtifacts
       InspectorSection(
-        title = "Generated artifacts",
+        title = stringResource(Res.string.inspector_generated_artifacts),
         marker = "gn",
         badge = artifactsForInspector.size.takeIf { it > 0 }?.toString(),
       ) {
@@ -118,15 +131,18 @@ internal fun InspectorPane(
 
 @Composable
 private fun InspectorHeader(editor: EditorPlaceholder) {
-  Column(modifier = Modifier.fillMaxWidth().background(SkillBillTheme.frameTokens.panel).padding(12.dp)) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+  Column(
+    modifier = Modifier.fillMaxWidth().background(SkillBillTheme.frameTokens.panel).padding(SkillBillDimens.pad2xl),
+  ) {
+    Row(
+      verticalAlignment = Alignment.CenterVertically,
+      horizontalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingLg),
+    ) {
       MiniIcon(text = "sk", tint = SkillBillTheme.frameTokens.primary)
       Text(
         text = editor.skillName ?: editor.title,
         color = SkillBillTheme.frameTokens.text,
-        fontSize = 13.sp,
-        fontFamily = FontFamily.Monospace,
-        fontWeight = FontWeight.SemiBold,
+        style = SkillBillTypeStyles.mono13,
         modifier = Modifier.weight(1f),
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
@@ -136,8 +152,8 @@ private fun InspectorHeader(editor: EditorPlaceholder) {
     Text(
       text = editor.kind ?: editor.detail,
       color = SkillBillTheme.frameTokens.muted,
-      fontSize = 11.sp,
-      modifier = Modifier.padding(top = 4.dp),
+      style = MaterialTheme.typography.labelSmall,
+      modifier = Modifier.padding(top = SkillBillDimens.padSm),
     )
   }
 }
@@ -153,18 +169,17 @@ private fun InspectorSection(
     Row(
       modifier = Modifier
         .fillMaxWidth()
-        .height(32.dp)
+        .height(SkillBillDimens.listItemHeight)
         .background(SkillBillTheme.frameTokens.panel)
-        .padding(horizontal = 12.dp),
+        .padding(horizontal = SkillBillDimens.pad2xl),
       verticalAlignment = Alignment.CenterVertically,
-      horizontalArrangement = Arrangement.spacedBy(8.dp),
+      horizontalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingLg),
     ) {
       MiniIcon(text = marker, tint = SkillBillTheme.frameTokens.primary)
       Text(
         text = title,
         color = SkillBillTheme.frameTokens.text,
-        fontSize = 11.sp,
-        fontWeight = FontWeight.SemiBold,
+        style = SkillBillTypeStyles.semiBoldLabel,
         letterSpacing = 0.sp,
         modifier = Modifier.weight(1f),
       )
@@ -172,7 +187,10 @@ private fun InspectorSection(
         Badge(text = badge, tone = Tone.Error)
       }
     }
-    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), content = content)
+    Column(
+      modifier = Modifier.fillMaxWidth().padding(horizontal = SkillBillDimens.pad2xl, vertical = SkillBillDimens.padLg),
+      content = content,
+    )
     HorizontalDivider(color = SkillBillTheme.frameTokens.line)
   }
 }
@@ -180,15 +198,14 @@ private fun InspectorSection(
 @Composable
 private fun KeyValueRow(key: String, value: String, tone: Tone = Tone.Neutral) {
   Row(
-    modifier = Modifier.fillMaxWidth().height(28.dp),
+    modifier = Modifier.fillMaxWidth().height(SkillBillDimens.controlHeightMd),
     verticalAlignment = Alignment.CenterVertically,
   ) {
     LabelText(key, modifier = Modifier.weight(1f))
     Text(
       text = value,
       color = SkillBillTheme.frameTokens.status.contentColorFor(tone),
-      fontSize = 12.sp,
-      fontFamily = FontFamily.Monospace,
+      style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
       maxLines = 1,
       overflow = TextOverflow.Ellipsis,
     )
@@ -209,15 +226,16 @@ private fun GeneratedArtifactRow(
     } else {
       SkillBillTheme.frameTokens.transparent
     }
-  val labelAlpha = if (enabled) 1f else 0.55f
+  val labelAlpha = if (enabled) 1f else GENERATED_LABEL_ALPHA_DISABLED
+  val (artifactDescriptionRes, artifactDescriptionArg) = generatedArtifactRowDescription(artifact)
   Row(
     modifier =
     Modifier
       .fillMaxWidth()
-      .height(28.dp)
-      .clip(RoundedCornerShape(3.dp))
+      .height(SkillBillDimens.controlHeightMd)
+      .clip(SkillBillComponentShapes.chip)
       .background(rowBackground)
-      .iconButtonSemantics(description = generatedArtifactRowContentDescription(artifact))
+      .iconButtonSemantics(description = stringResource(artifactDescriptionRes, artifactDescriptionArg))
       .semantics(mergeDescendants = true) {
         if (!enabled) disabled()
       }
@@ -237,32 +255,30 @@ private fun GeneratedArtifactRow(
     Text(
       text = artifact.path,
       color = SkillBillTheme.frameTokens.subtle.copy(alpha = labelAlpha),
-      fontSize = 10.sp,
-      fontWeight = FontWeight.Medium,
+      style = SkillBillTypeStyles.caption,
       letterSpacing = 0.sp,
       modifier = Modifier.weight(1f),
       maxLines = 1,
       overflow = TextOverflow.Ellipsis,
     )
     Text(
-      text = "read-only",
+      text = stringResource(Res.string.inspector_generated_read_only),
       color = SkillBillTheme.frameTokens.status.contentColorFor(Tone.Warning).copy(alpha = labelAlpha),
-      fontSize = 12.sp,
-      fontFamily = FontFamily.Monospace,
+      style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
       maxLines = 1,
       overflow = TextOverflow.Ellipsis,
     )
   }
 }
 
-internal fun generatedArtifactRowContentDescription(artifact: GeneratedArtifactDetail): String =
-  "Open artifact: ${artifact.path}"
+internal fun generatedArtifactRowDescription(artifact: GeneratedArtifactDetail): Pair<StringResource, String> =
+  Res.string.inspector_open_artifact_cd to artifact.path
+
+internal fun treeRowStateDescriptionRes(open: Boolean): StringResource =
+  if (open) Res.string.nav_tree_row_open_cd else Res.string.nav_tree_row_not_open_cd
 
 internal fun treeSingleClickSwitchesToOpenTab(itemId: String, openEditorTabIds: Set<String>): Boolean =
   itemId in openEditorTabIds
-
-internal fun treeRowStateDescription(open: Boolean): String =
-  if (open) "Open in editor tab" else "Not open in editor tab"
 
 @Composable
 private fun Badge(text: String, tone: Tone) {
@@ -270,13 +286,12 @@ private fun Badge(text: String, tone: Tone) {
   Text(
     text = text,
     color = toneColor,
-    fontSize = 10.sp,
-    fontFamily = FontFamily.Monospace,
+    style = SkillBillTypeStyles.caption.copy(fontFamily = FontFamily.Monospace),
     modifier =
     Modifier
-      .border(1.dp, toneColor.copy(alpha = 0.45f), RoundedCornerShape(4.dp))
-      .background(toneColor.copy(alpha = 0.16f), RoundedCornerShape(4.dp))
-      .padding(horizontal = 6.dp, vertical = 1.dp),
+      .border(SkillBillDimens.hairline, toneColor.copy(alpha = 0.45f), SkillBillComponentShapes.previewConsole)
+      .background(toneColor.copy(alpha = 0.16f), SkillBillComponentShapes.previewConsole)
+      .padding(horizontal = SkillBillDimens.padMd, vertical = SkillBillDimens.hairline),
     maxLines = 1,
   )
 }

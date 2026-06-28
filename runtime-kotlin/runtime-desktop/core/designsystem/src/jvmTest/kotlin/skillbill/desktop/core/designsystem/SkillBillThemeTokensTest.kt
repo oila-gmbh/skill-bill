@@ -1,12 +1,20 @@
 package skillbill.desktop.core.designsystem
 
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.runComposeUiTest
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import kotlin.math.pow
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 @OptIn(ExperimentalTestApi::class)
@@ -62,6 +70,184 @@ class SkillBillThemeTokensTest {
     assertEquals(SkillBillGreen, tokens.frame.status.contentColorFor(SkillBillStatusTone.Success))
     assertEquals(SkillBillAmber, tokens.frame.status.contentColorFor(SkillBillStatusTone.Warning))
     assertEquals(SkillBillRed, tokens.frame.status.contentColorFor(SkillBillStatusTone.Error))
+  }
+
+  @Test
+  fun `SkillBillDimens pins border spacing padding and component sizing primitives`() {
+    assertEquals(0.dp, SkillBillDimens.borderNone)
+    assertEquals(1.dp, SkillBillDimens.hairline)
+    assertEquals(1.4.dp, SkillBillDimens.divider)
+
+    assertEquals(2.dp, SkillBillDimens.spacingXs)
+    assertEquals(4.dp, SkillBillDimens.spacingSm)
+    assertEquals(6.dp, SkillBillDimens.spacingMd)
+    assertEquals(8.dp, SkillBillDimens.spacingLg)
+    assertEquals(10.dp, SkillBillDimens.spacingXl)
+    assertEquals(12.dp, SkillBillDimens.spacing2xl)
+    assertEquals(14.dp, SkillBillDimens.spacing3xl)
+    assertEquals(16.dp, SkillBillDimens.spacing4xl)
+    assertEquals(18.dp, SkillBillDimens.spacing5xl)
+
+    assertEquals(3.dp, SkillBillDimens.space3)
+    assertEquals(5.dp, SkillBillDimens.space5)
+    assertEquals(7.dp, SkillBillDimens.space7)
+    assertEquals(9.dp, SkillBillDimens.space9)
+
+    assertEquals(2.dp, SkillBillDimens.padXs)
+    assertEquals(4.dp, SkillBillDimens.padSm)
+    assertEquals(6.dp, SkillBillDimens.padMd)
+    assertEquals(8.dp, SkillBillDimens.padLg)
+    assertEquals(10.dp, SkillBillDimens.padXl)
+    assertEquals(12.dp, SkillBillDimens.pad2xl)
+    assertEquals(14.dp, SkillBillDimens.pad3xl)
+    assertEquals(16.dp, SkillBillDimens.pad4xl)
+    assertEquals(18.dp, SkillBillDimens.pad5xl)
+
+    assertEquals(26.dp, SkillBillDimens.controlHeightSm)
+    assertEquals(28.dp, SkillBillDimens.controlHeightMd)
+    assertEquals(30.dp, SkillBillDimens.controlHeightLg)
+
+    assertEquals(30.dp, SkillBillDimens.rowHeightSm)
+    assertEquals(38.dp, SkillBillDimens.rowHeightMd)
+    assertEquals(44.dp, SkillBillDimens.rowHeightLg)
+    assertEquals(52.dp, SkillBillDimens.rowHeightXl)
+
+    assertEquals(14.dp, SkillBillDimens.iconSm)
+    assertEquals(15.dp, SkillBillDimens.iconMd)
+    assertEquals(18.dp, SkillBillDimens.iconLg)
+
+    assertEquals(18.dp, SkillBillDimens.checkboxSize)
+    assertEquals(50.dp, SkillBillDimens.lineNumberWidth)
+
+    assertEquals(560.dp, SkillBillDimens.dialogMinWidth)
+    assertEquals(760.dp, SkillBillDimens.dialogMaxWidth)
+    assertEquals(640.dp, SkillBillDimens.dialogMaxHeight)
+    assertEquals(60.dp, SkillBillDimens.footerButtonMinWidth)
+
+    assertEquals(620.dp, SkillBillDimens.firstRunDialogMinWidth)
+    assertEquals(820.dp, SkillBillDimens.firstRunDialogMaxWidth)
+    assertEquals(700.dp, SkillBillDimens.firstRunDialogMaxHeight)
+  }
+
+  @Test
+  fun `SkillBillDimens pins component specific sizing primitives`() {
+    assertEquals(20.dp, SkillBillDimens.menuSeparatorHeight)
+    assertEquals(27.dp, SkillBillDimens.navTreeRowMinHeight)
+    assertEquals(32.dp, SkillBillDimens.listItemHeight)
+    assertEquals(35.dp, SkillBillDimens.navPaneHeaderHeight)
+    assertEquals(36.dp, SkillBillDimens.editorTabHeight)
+    assertEquals(48.dp, SkillBillDimens.commandRowHeight)
+    assertEquals(48.dp, SkillBillDimens.scrollThumbMinWidth)
+
+    assertEquals(134.dp, SkillBillDimens.editorTabWidthShort)
+    assertEquals(190.dp, SkillBillDimens.editorTabWidthMedium)
+    assertEquals(230.dp, SkillBillDimens.editorTabWidthLong)
+
+    assertEquals(140.dp, SkillBillDimens.codeCompletionMaxHeight)
+    assertEquals(24.dp, SkillBillDimens.chipMinHeight)
+    assertEquals(32.dp, SkillBillDimens.chipMinWidth)
+    assertEquals(220.dp, SkillBillDimens.menuMinWidth)
+
+    assertEquals(520.dp, SkillBillDimens.commandPaletteMinWidth)
+    assertEquals(720.dp, SkillBillDimens.commandPaletteMaxWidth)
+    assertEquals(480.dp, SkillBillDimens.commandPaletteMaxHeight)
+    assertEquals(410.dp, SkillBillDimens.commandPaletteListHeight)
+    assertEquals(54.dp, SkillBillDimens.commandPaletteTopOffset)
+  }
+
+  @Test
+  fun `SkillBillMetrics pins structural frame sizes and keeps its original six fields`() {
+    assertEquals(40.dp, SkillBillMetrics.toolbarHeight)
+    assertEquals(260.dp, SkillBillMetrics.treePaneWidth)
+    assertEquals(340.dp, SkillBillMetrics.inspectorPaneWidth)
+    assertEquals(260.dp, SkillBillMetrics.bottomDockHeight)
+    assertEquals(28.dp, SkillBillMetrics.statusPaneHeight)
+    assertEquals(18.dp, SkillBillMetrics.treeIndent)
+
+    assertEquals(38.dp, SkillBillMetrics.editorCommandBarHeight)
+    assertEquals(52.dp, SkillBillMetrics.footerHeight)
+    assertEquals(44.dp, SkillBillMetrics.dialogHeaderHeight)
+
+    assertEquals(220.dp, SkillBillMetrics.navigationPaneMinWidth)
+    assertEquals(540.dp, SkillBillMetrics.navigationPaneMaxWidth)
+    assertEquals(7.dp, SkillBillMetrics.navigationPaneResizeHandleWidth)
+
+    assertEquals(22.dp, SkillBillMetrics.navTreeBaseIndent)
+    assertEquals(16.dp, SkillBillMetrics.navTreeDepthStep)
+
+    assertEquals(288.dp, SkillBillMetrics.toolbarMenuWidth)
+  }
+
+  @Test
+  fun `shape scheme and component shapes pin their design radii`() {
+    assertEquals(RoundedCornerShape(4.dp), SkillBillShapeScheme.extraSmall)
+    assertEquals(RoundedCornerShape(6.dp), SkillBillShapeScheme.small)
+    assertEquals(RoundedCornerShape(8.dp), SkillBillShapeScheme.medium)
+    assertEquals(RoundedCornerShape(12.dp), SkillBillShapeScheme.large)
+    assertEquals(RoundedCornerShape(16.dp), SkillBillShapeScheme.extraLarge)
+
+    assertEquals(SkillBillShapeScheme.extraSmall, SkillBillShapes.extraSmall)
+    assertEquals(SkillBillShapeScheme.small, SkillBillShapes.small)
+    assertEquals(SkillBillShapeScheme.medium, SkillBillShapes.medium)
+    assertEquals(SkillBillShapeScheme.large, SkillBillShapes.large)
+    assertEquals(SkillBillShapeScheme.extraLarge, SkillBillShapes.extraLarge)
+
+    assertEquals(RoundedCornerShape(2.dp), SkillBillComponentShapes.checkbox)
+    assertEquals(RoundedCornerShape(3.dp), SkillBillComponentShapes.chip)
+    assertEquals(RoundedCornerShape(4.dp), SkillBillComponentShapes.previewConsole)
+    assertEquals(RoundedCornerShape(5.dp), SkillBillComponentShapes.badge)
+    assertEquals(RoundedCornerShape(6.dp), SkillBillComponentShapes.control)
+    assertEquals(RoundedCornerShape(8.dp), SkillBillComponentShapes.panel)
+    assertEquals(CircleShape, SkillBillComponentShapes.pill)
+  }
+
+  @Test
+  fun `typography slots and extended type styles pin their design sizes and weights`() {
+    assertEquals(16.sp, SkillBillTypography.bodyLarge.fontSize)
+    assertEquals(FontWeight.Medium, SkillBillTypography.bodyLarge.fontWeight)
+    assertEquals(14.sp, SkillBillTypography.titleSmall.fontSize)
+    assertEquals(FontWeight.Medium, SkillBillTypography.titleSmall.fontWeight)
+    assertEquals(12.sp, SkillBillTypography.bodySmall.fontSize)
+    assertEquals(FontWeight.Medium, SkillBillTypography.bodySmall.fontWeight)
+    assertEquals(11.sp, SkillBillTypography.labelSmall.fontSize)
+    assertEquals(FontWeight.Medium, SkillBillTypography.labelSmall.fontWeight)
+
+    assertEquals(12.5.sp, SkillBillTypeStyles.code.fontSize)
+    assertEquals(FontFamily.Monospace, SkillBillTypeStyles.code.fontFamily)
+    assertEquals(FontWeight.Medium, SkillBillTypeStyles.code.fontWeight)
+    assertEquals(TextUnit.Unspecified, SkillBillTypeStyles.code.lineHeight)
+
+    assertEquals(12.5.sp, SkillBillTypeStyles.body125.fontSize)
+    assertNull(SkillBillTypeStyles.body125.fontFamily)
+    assertEquals(FontWeight.Medium, SkillBillTypeStyles.body125.fontWeight)
+
+    assertEquals(13.sp, SkillBillTypeStyles.body13.fontSize)
+    assertEquals(FontWeight.Medium, SkillBillTypeStyles.body13.fontWeight)
+
+    assertEquals(13.sp, SkillBillTypeStyles.mono13.fontSize)
+    assertEquals(FontFamily.Monospace, SkillBillTypeStyles.mono13.fontFamily)
+    assertEquals(FontWeight.SemiBold, SkillBillTypeStyles.mono13.fontWeight)
+
+    assertEquals(11.sp, SkillBillTypeStyles.semiBoldLabel.fontSize)
+    assertEquals(FontWeight.SemiBold, SkillBillTypeStyles.semiBoldLabel.fontWeight)
+
+    assertEquals(11.sp, SkillBillTypeStyles.monoBadge.fontSize)
+    assertEquals(FontFamily.Monospace, SkillBillTypeStyles.monoBadge.fontFamily)
+    assertEquals(FontWeight.Bold, SkillBillTypeStyles.monoBadge.fontWeight)
+
+    assertEquals(10.sp, SkillBillTypeStyles.caption.fontSize)
+    assertEquals(FontWeight.Medium, SkillBillTypeStyles.caption.fontWeight)
+
+    assertEquals(10.5.sp, SkillBillTypeStyles.codeCaption.fontSize)
+    assertEquals(FontWeight.Medium, SkillBillTypeStyles.codeCaption.fontWeight)
+    assertEquals(TextUnit.Unspecified, SkillBillTypeStyles.codeCaption.lineHeight)
+
+    assertEquals(8.sp, SkillBillTypeStyles.microLabel.fontSize)
+    assertEquals(FontFamily.Monospace, SkillBillTypeStyles.microLabel.fontFamily)
+    assertEquals(FontWeight.Bold, SkillBillTypeStyles.microLabel.fontWeight)
+
+    assertEquals(12.sp, SkillBillTypeStyles.bodySmallNormal.fontSize)
+    assertEquals(FontWeight.Normal, SkillBillTypeStyles.bodySmallNormal.fontWeight)
   }
 
   @Test

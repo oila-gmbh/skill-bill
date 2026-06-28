@@ -1,6 +1,10 @@
 package skillbill.desktop.feature.skillbill.state
-
 import androidx.compose.ui.input.key.Key
+import dev.skillbill.designsystem.generated.resources.Res
+import dev.skillbill.designsystem.generated.resources.command_disabled_invalid_repo
+import dev.skillbill.designsystem.generated.resources.command_disabled_wait_for_save
+import dev.skillbill.designsystem.generated.resources.first_run_install_planning_failed
+import dev.skillbill.designsystem.generated.resources.inspector_open_artifact_cd
 import kotlinx.coroutines.runBlocking
 import skillbill.desktop.core.domain.model.CommandPaletteAction
 import skillbill.desktop.core.domain.model.CommandPaletteResult
@@ -29,7 +33,7 @@ import skillbill.desktop.feature.skillbill.ui.CommandPaletteActions
 import skillbill.desktop.feature.skillbill.ui.executeCommandPaletteResult
 import skillbill.desktop.feature.skillbill.ui.executeGeneratedArtifactSelection
 import skillbill.desktop.feature.skillbill.ui.generatedArtifactRowActivatesForKey
-import skillbill.desktop.feature.skillbill.ui.generatedArtifactRowContentDescription
+import skillbill.desktop.feature.skillbill.ui.generatedArtifactRowDescription
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -762,7 +766,7 @@ class SkillBillViewModelTest {
     val installSetup = state.commandPalette.results.first { it.id == "command.install-setup" }
 
     assertFalse(installSetup.enabled)
-    assertEquals("Open a valid Skill Bill repository first.", installSetup.disabledReason)
+    assertEquals(Res.string.command_disabled_invalid_repo, installSetup.disabledReasonRes)
   }
 
   @Test
@@ -838,7 +842,7 @@ class SkillBillViewModelTest {
     assertTrue(dirty.commandPalette.results.first { it.id == "command.save" }.enabled)
     val saveRequest = viewModel.beginSaveEditor()
     val saveDuringRun = viewModel.state().commandPalette.results.first { it.id == "command.save" }
-    assertEquals("Wait for save to finish.", saveDuringRun.disabledReason)
+    assertEquals(Res.string.command_disabled_wait_for_save, saveDuringRun.disabledReasonRes)
     viewModel.finishSaveEditor(viewModel.runSaveEditor(assertNotNull(saveRequest)))
   }
 
@@ -938,13 +942,20 @@ class SkillBillViewModelTest {
   }
 
   @Test
-  fun `generated artifact row semantics announce artifact path`() {
-    val artifact = GeneratedArtifactDetail("skills/bill-alpha/SKILL.md", "Generated runtime wrapper")
-
-    assertEquals("Open artifact: skills/bill-alpha/SKILL.md", generatedArtifactRowContentDescription(artifact))
+  fun `generated artifact row activates for keyboard activation keys`() {
     assertTrue(generatedArtifactRowActivatesForKey(Key.Enter))
     assertTrue(generatedArtifactRowActivatesForKey(Key.NumPadEnter))
     assertTrue(generatedArtifactRowActivatesForKey(Key.Spacebar))
+  }
+
+  @Test
+  fun `generated artifact row description interpolates artifact path`() {
+    val artifact = GeneratedArtifactDetail("skills/bill-alpha/SKILL.md", "Generated runtime wrapper")
+
+    assertEquals(
+      Res.string.inspector_open_artifact_cd to "skills/bill-alpha/SKILL.md",
+      generatedArtifactRowDescription(artifact),
+    )
   }
 
   @Test
@@ -1167,7 +1178,7 @@ private fun defaultFirstRunGateway(): skillbill.desktop.core.domain.service.Desk
     applyResult = skillbill.desktop.core.domain.model.FirstRunApplyResult.Failed(
       skillbill.desktop.core.domain.model.FirstRunInstallOutcome(
         status = skillbill.desktop.core.domain.model.FirstRunInstallStatus.FAILURE,
-        title = "not scripted",
+        titleRes = Res.string.first_run_install_planning_failed,
       ),
     ),
   )
