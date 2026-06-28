@@ -1,4 +1,4 @@
-@file:Suppress("FunctionName", "MagicNumber")
+@file:Suppress("FunctionName")
 
 package skillbill.desktop.feature.skillbill.ui
 
@@ -22,7 +22,6 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.dp
 import skillbill.desktop.core.designsystem.SkillBillColor
 import skillbill.desktop.core.designsystem.SkillBillMetrics
 import skillbill.desktop.core.designsystem.SkillBillTheme
@@ -34,9 +33,7 @@ import skillbill.desktop.core.domain.model.ScaffoldKind
 import skillbill.desktop.core.domain.model.SkillBillState
 import skillbill.desktop.core.domain.model.SkillBillTreeItem
 
-private val NavigationPaneMinWidth = 220.dp
-private val NavigationPaneMaxWidth = 540.dp
-internal val NavigationPaneResizeHandleWidth = 7.dp
+internal val NavigationPaneResizeHandleWidth = SkillBillMetrics.navigationPaneResizeHandleWidth
 
 internal data class CodePaneColors(
   val background: SkillBillColor,
@@ -63,8 +60,8 @@ internal fun codePaneColors(): CodePaneColors = CodePaneColors(
 internal fun workspacePrimaryControlForeground(): SkillBillColor = SkillBillTheme.frameTokens.onPrimary
 
 private fun Dp.coerceNavigationPaneWidth(): Dp = when {
-  this < NavigationPaneMinWidth -> NavigationPaneMinWidth
-  this > NavigationPaneMaxWidth -> NavigationPaneMaxWidth
+  this < SkillBillMetrics.navigationPaneMinWidth -> SkillBillMetrics.navigationPaneMinWidth
+  this > SkillBillMetrics.navigationPaneMaxWidth -> SkillBillMetrics.navigationPaneMaxWidth
   else -> this
 }
 

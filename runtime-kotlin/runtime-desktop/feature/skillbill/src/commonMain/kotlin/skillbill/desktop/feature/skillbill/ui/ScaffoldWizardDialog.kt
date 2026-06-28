@@ -1,4 +1,4 @@
-@file:Suppress("FunctionName", "MagicNumber", "LongMethod")
+@file:Suppress("FunctionName", "LongMethod")
 
 package skillbill.desktop.feature.skillbill.ui
 
@@ -48,8 +48,9 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import skillbill.desktop.core.designsystem.SkillBillComponentShapes
+import skillbill.desktop.core.designsystem.SkillBillDimens
+import skillbill.desktop.core.designsystem.SkillBillMetrics
 import skillbill.desktop.core.designsystem.SkillBillTheme
 import skillbill.desktop.core.designsystem.SkillBillTypeStyles
 import skillbill.desktop.core.domain.model.BaselineReviewSkillOption
@@ -124,10 +125,10 @@ fun ScaffoldWizardDialog(
     Column(
       modifier = Modifier
         .align(Alignment.Center)
-        .widthIn(min = 560.dp, max = 760.dp)
-        .heightIn(max = 640.dp)
+        .widthIn(min = SkillBillDimens.dialogMinWidth, max = SkillBillDimens.dialogMaxWidth)
+        .heightIn(max = SkillBillDimens.dialogMaxHeight)
         .clip(SkillBillTheme.shapes.medium)
-        .border(1.dp, semanticTones.dialog.border, SkillBillTheme.shapes.medium)
+        .border(SkillBillDimens.hairline, semanticTones.dialog.border, SkillBillTheme.shapes.medium)
         .background(semanticTones.dialog.container)
         // Block dismiss-on-outside-tap when the user clicks inside the panel.
         .pointerInput(Unit) { detectTapGestures { /* consume */ } },
@@ -139,8 +140,8 @@ fun ScaffoldWizardDialog(
           .fillMaxWidth()
           .weight(1f, fill = false)
           .verticalScroll(rememberScrollState())
-          .padding(horizontal = 18.dp, vertical = 14.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+          .padding(horizontal = SkillBillDimens.pad5xl, vertical = SkillBillDimens.pad3xl),
+        verticalArrangement = Arrangement.spacedBy(SkillBillDimens.spacing2xl),
       ) {
         KindPicker(selected = state.kind, onSelect = callbacks.onSelectKind, enabled = !state.busy)
         if (state.dirtyRepoWarning) {
@@ -187,10 +188,10 @@ private fun WizardHeader(kind: ScaffoldKind, onDismiss: () -> Unit) {
   Row(
     modifier = Modifier
       .fillMaxWidth()
-      .height(44.dp)
-      .padding(horizontal = 16.dp),
+      .height(SkillBillMetrics.dialogHeaderHeight)
+      .padding(horizontal = SkillBillDimens.pad4xl),
     verticalAlignment = Alignment.CenterVertically,
-    horizontalArrangement = Arrangement.spacedBy(10.dp),
+    horizontalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingXl),
   ) {
     Text(
       text = "New ${kind.displayLabel}",
@@ -205,7 +206,7 @@ private fun WizardHeader(kind: ScaffoldKind, onDismiss: () -> Unit) {
       modifier = Modifier
         .semantics { contentDescription = "Dismiss scaffold wizard" }
         .clickable(role = Role.Button, onClick = onDismiss)
-        .padding(horizontal = 6.dp, vertical = 2.dp),
+        .padding(horizontal = SkillBillDimens.padMd, vertical = SkillBillDimens.padXs),
     )
   }
 }
@@ -214,9 +215,9 @@ private fun WizardHeader(kind: ScaffoldKind, onDismiss: () -> Unit) {
 private fun KindPicker(selected: ScaffoldKind, onSelect: (ScaffoldKind) -> Unit, enabled: Boolean) {
   val colors = SkillBillTheme.colors
   val dialogTone = SkillBillTheme.semanticTones.dialog
-  Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+  Column(verticalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingMd)) {
     SectionLabel("Wizard kind")
-    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+    Row(horizontalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingMd)) {
       ScaffoldKind.activeCreationValues().forEach { kind ->
         val isSelected = kind == selected
         val backgroundColor = if (isSelected) colors.primary else colors.surfaceVariant
@@ -231,11 +232,11 @@ private fun KindPicker(selected: ScaffoldKind, onSelect: (ScaffoldKind) -> Unit,
           style = MaterialTheme.typography.labelSmall,
           modifier = Modifier
             .clip(SkillBillComponentShapes.control)
-            .border(1.dp, dialogTone.border, SkillBillComponentShapes.control)
+            .border(SkillBillDimens.hairline, dialogTone.border, SkillBillComponentShapes.control)
             .background(backgroundColor)
             .semantics { contentDescription = "Select wizard kind ${kind.displayLabel}" }
             .clickable(enabled = enabled, role = Role.Button) { onSelect(kind) }
-            .padding(horizontal = 10.dp, vertical = 6.dp),
+            .padding(horizontal = SkillBillDimens.padXl, vertical = SkillBillDimens.padMd),
         )
       }
     }
@@ -251,10 +252,10 @@ private fun DirtyRepoWarning(override: Boolean, enabled: Boolean, onOverrideChan
     modifier = Modifier
       .fillMaxWidth()
       .clip(SkillBillComponentShapes.control)
-      .border(1.dp, tone.border, SkillBillComponentShapes.control)
+      .border(SkillBillDimens.hairline, tone.border, SkillBillComponentShapes.control)
       .background(tone.container)
-      .padding(horizontal = 12.dp, vertical = 10.dp),
-    verticalArrangement = Arrangement.spacedBy(6.dp),
+      .padding(horizontal = SkillBillDimens.pad2xl, vertical = SkillBillDimens.padXl),
+    verticalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingMd),
   ) {
     Text(
       text = "Repository has uncommitted non-generated changes",
@@ -269,7 +270,7 @@ private fun DirtyRepoWarning(override: Boolean, enabled: Boolean, onOverrideChan
     )
     Row(
       verticalAlignment = Alignment.CenterVertically,
-      horizontalArrangement = Arrangement.spacedBy(8.dp),
+      horizontalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingLg),
       modifier = Modifier
         .semantics { contentDescription = "Acknowledge dirty repository warning" }
         .clickable(enabled = enabled, role = Role.Checkbox) { onOverrideChanged(!override) },
@@ -423,7 +424,7 @@ private fun WizardForm(state: ScaffoldWizardState, callbacks: ScaffoldWizardCall
 private fun BaselineLayerControls(state: ScaffoldWizardState, callbacks: ScaffoldWizardCallbacks) {
   val fields = state.formFields
   val hasBaselinePacks = state.optionCatalog.baselineReviewPacks.isNotEmpty()
-  Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+  Column(verticalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingLg)) {
     SectionLabel(ScaffoldWizardStrings.BASELINE_SECTION)
     if (fields.baselineLayers.isEmpty()) {
       Text(
@@ -449,7 +450,7 @@ private fun BaselineLayerControls(state: ScaffoldWizardState, callbacks: Scaffol
         style = MaterialTheme.typography.labelSmall,
       )
     }
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    Row(horizontalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingLg)) {
       InlineButton(
         label = ScaffoldWizardStrings.ADD_LAYER,
         enabled = !state.busy && hasBaselinePacks,
@@ -480,11 +481,14 @@ private fun BaselineLayerEditor(
     modifier = Modifier
       .fillMaxWidth()
       .clip(SkillBillComponentShapes.control)
-      .border(1.dp, SkillBillTheme.semanticTones.dialog.border, SkillBillComponentShapes.control)
-      .padding(horizontal = 10.dp, vertical = 8.dp),
-    verticalArrangement = Arrangement.spacedBy(8.dp),
+      .border(SkillBillDimens.hairline, SkillBillTheme.semanticTones.dialog.border, SkillBillComponentShapes.control)
+      .padding(horizontal = SkillBillDimens.padXl, vertical = SkillBillDimens.padLg),
+    verticalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingLg),
   ) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    Row(
+      verticalAlignment = Alignment.CenterVertically,
+      horizontalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingLg),
+    ) {
       Text(
         text = "Layer ${index + 1}",
         color = SkillBillTheme.semanticTones.dialog.content,
@@ -549,7 +553,7 @@ private fun ModeAndScopeRow(
   enabled: Boolean,
   callbacks: ScaffoldWizardCallbacks,
 ) {
-  Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
+  Row(horizontalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingLg), verticalAlignment = Alignment.Top) {
     Box(modifier = Modifier.weight(1f)) {
       PresetPicker(
         label = ScaffoldWizardStrings.MODE,
@@ -584,7 +588,10 @@ private fun ModeAndScopeRow(
 
 @Composable
 private fun RequiredToggle(required: Boolean, enabled: Boolean, onToggle: () -> Unit) {
-  Column(verticalArrangement = Arrangement.spacedBy(4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+  Column(
+    verticalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingSm),
+    horizontalAlignment = Alignment.CenterHorizontally,
+  ) {
     SectionLabel(ScaffoldWizardStrings.REQUIRED)
     Checkbox(
       checked = required,
@@ -618,16 +625,16 @@ private fun TextFieldRow(label: String, value: String, enabled: Boolean, onValue
   }
   val textColor = if (enabled) textFieldTokens.text else textFieldTokens.disabledText
   val containerColor = if (enabled) textFieldTokens.container else textFieldTokens.disabledContainer
-  Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+  Column(verticalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingSm)) {
     SectionLabel(label)
     Box(
       modifier = Modifier
         .fillMaxWidth()
-        .height(30.dp)
+        .height(SkillBillDimens.controlHeightLg)
         .clip(SkillBillComponentShapes.control)
-        .border(1.dp, borderColor, SkillBillComponentShapes.control)
+        .border(SkillBillDimens.hairline, borderColor, SkillBillComponentShapes.control)
         .background(containerColor)
-        .padding(horizontal = 8.dp, vertical = 6.dp)
+        .padding(horizontal = SkillBillDimens.padLg, vertical = SkillBillDimens.padMd)
         .semantics { contentDescription = "$label input" },
     ) {
       BasicTextField(
@@ -668,22 +675,22 @@ private fun PrefixedTextFieldRow(
   val containerColor = if (enabled) textFieldTokens.container else textFieldTokens.disabledContainer
   val focusRequester = remember { FocusRequester() }
   val rowClickInteractionSource = remember { MutableInteractionSource() }
-  Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+  Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingSm)) {
     SectionLabel(label)
     Row(
       verticalAlignment = Alignment.CenterVertically,
-      horizontalArrangement = Arrangement.spacedBy(4.dp),
+      horizontalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingSm),
       modifier = Modifier
         .fillMaxWidth()
-        .height(30.dp)
+        .height(SkillBillDimens.controlHeightLg)
         .clip(SkillBillComponentShapes.control)
-        .border(1.dp, borderColor, SkillBillComponentShapes.control)
+        .border(SkillBillDimens.hairline, borderColor, SkillBillComponentShapes.control)
         .background(containerColor)
         .clickable(
           interactionSource = rowClickInteractionSource,
           indication = null,
         ) { focusRequester.requestFocus() }
-        .padding(horizontal = 8.dp, vertical = 6.dp)
+        .padding(horizontal = SkillBillDimens.padLg, vertical = SkillBillDimens.padMd)
         .semantics(mergeDescendants = true) { contentDescription = "$label, prefix $prefix" },
     ) {
       Text(
@@ -722,7 +729,7 @@ private fun PresetPicker(
 ) {
   val colors = SkillBillTheme.colors
   val dialogTone = SkillBillTheme.semanticTones.dialog
-  Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+  Column(verticalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingSm)) {
     SectionLabel(label)
     if (options.isEmpty()) {
       Text(
@@ -732,7 +739,7 @@ private fun PresetPicker(
       )
     } else {
       Row(
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        horizontalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingMd),
         modifier = Modifier.horizontalScroll(rememberScrollState()),
       ) {
         options.forEach { (value, display) ->
@@ -749,11 +756,11 @@ private fun PresetPicker(
             style = MaterialTheme.typography.labelSmall,
             modifier = Modifier
               .clip(SkillBillComponentShapes.control)
-              .border(1.dp, dialogTone.border, SkillBillComponentShapes.control)
+              .border(SkillBillDimens.hairline, dialogTone.border, SkillBillComponentShapes.control)
               .background(backgroundColor)
               .semantics { contentDescription = "$label option $display" }
               .clickable(enabled = enabled, role = Role.Button) { onSelected(value) }
-              .padding(horizontal = 10.dp, vertical = 6.dp),
+              .padding(horizontal = SkillBillDimens.padXl, vertical = SkillBillDimens.padMd),
           )
         }
       }
@@ -768,10 +775,10 @@ private fun PlanPreview(plan: skillbill.desktop.core.domain.model.ScaffoldPlan) 
     modifier = Modifier
       .fillMaxWidth()
       .clip(SkillBillComponentShapes.control)
-      .border(1.dp, tone.border, SkillBillComponentShapes.control)
+      .border(SkillBillDimens.hairline, tone.border, SkillBillComponentShapes.control)
       .background(tone.container)
-      .padding(horizontal = 12.dp, vertical = 10.dp),
-    verticalArrangement = Arrangement.spacedBy(6.dp),
+      .padding(horizontal = SkillBillDimens.pad2xl, vertical = SkillBillDimens.padXl),
+    verticalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingMd),
   ) {
     Text(
       text = "Dry-run plan",
@@ -792,7 +799,7 @@ private fun ManifestPreviewSection(previews: List<skillbill.desktop.core.domain.
   if (previews.isEmpty()) return
   val colors = SkillBillTheme.colors
   val dialogTone = SkillBillTheme.semanticTones.dialog
-  Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+  Column(verticalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingSm)) {
     Text(
       text = ScaffoldWizardStrings.MANIFEST_EDIT_PREVIEWS,
       color = colors.onSurfaceVariant,
@@ -823,7 +830,7 @@ private fun ManifestPreviewSection(previews: List<skillbill.desktop.core.domain.
             .clip(SkillBillComponentShapes.previewConsole)
             .background(SkillBillTheme.colors.background)
             .horizontalScroll(rememberScrollState())
-            .padding(horizontal = 10.dp, vertical = 8.dp),
+            .padding(horizontal = SkillBillDimens.padXl, vertical = SkillBillDimens.padLg),
         ) {
           Text(
             text = preview.content,
@@ -841,7 +848,7 @@ private fun PreviewSection(label: String, lines: List<String>) {
   if (lines.isEmpty()) return
   val colors = SkillBillTheme.colors
   val dialogTone = SkillBillTheme.semanticTones.dialog
-  Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+  Column(verticalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingXs)) {
     Text(
       text = label,
       color = colors.onSurfaceVariant,
@@ -866,10 +873,10 @@ private fun ValidationBanner(errors: List<String>) {
     modifier = Modifier
       .fillMaxWidth()
       .clip(SkillBillComponentShapes.control)
-      .border(1.dp, tone.border, SkillBillComponentShapes.control)
+      .border(SkillBillDimens.hairline, tone.border, SkillBillComponentShapes.control)
       .background(tone.container)
-      .padding(horizontal = 12.dp, vertical = 10.dp),
-    verticalArrangement = Arrangement.spacedBy(4.dp),
+      .padding(horizontal = SkillBillDimens.pad2xl, vertical = SkillBillDimens.padXl),
+    verticalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingSm),
   ) {
     Text(
       text = ScaffoldWizardStrings.VALIDATION_TITLE,
@@ -902,10 +909,10 @@ private fun SuccessBanner(result: ScaffoldRunResult.Success) {
     modifier = Modifier
       .fillMaxWidth()
       .clip(SkillBillComponentShapes.control)
-      .border(1.dp, tone.border, SkillBillComponentShapes.control)
+      .border(SkillBillDimens.hairline, tone.border, SkillBillComponentShapes.control)
       .background(tone.container)
-      .padding(horizontal = 12.dp, vertical = 10.dp),
-    verticalArrangement = Arrangement.spacedBy(4.dp),
+      .padding(horizontal = SkillBillDimens.pad2xl, vertical = SkillBillDimens.padXl),
+    verticalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingSm),
   ) {
     Text(
       text = "Scaffold succeeded: ${result.result.skillName}",
@@ -939,11 +946,11 @@ private fun FailureConsole(result: ScaffoldRunResult.Failed) {
     modifier = Modifier
       .fillMaxWidth()
       .clip(SkillBillComponentShapes.control)
-      .border(1.dp, tone.border, SkillBillComponentShapes.control)
+      .border(SkillBillDimens.hairline, tone.border, SkillBillComponentShapes.control)
       .background(tone.container)
-      .padding(horizontal = 12.dp, vertical = 10.dp)
+      .padding(horizontal = SkillBillDimens.pad2xl, vertical = SkillBillDimens.padXl)
       .semantics { contentDescription = bannerSemantics },
-    verticalArrangement = Arrangement.spacedBy(4.dp),
+    verticalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingSm),
   ) {
     if (!result.rollbackComplete) {
       // Visible badge + leading glyph so the banner reads as visually distinct without depending
@@ -972,7 +979,7 @@ private fun FailureConsole(result: ScaffoldRunResult.Failed) {
         .clip(SkillBillComponentShapes.previewConsole)
         .background(SkillBillTheme.colors.background)
         .horizontalScroll(rememberScrollState())
-        .padding(horizontal = 10.dp, vertical = 8.dp),
+        .padding(horizontal = SkillBillDimens.padXl, vertical = SkillBillDimens.padLg),
     ) {
       Text(
         text = "${result.exceptionName}: ${result.exceptionMessage}".trim(),
@@ -1003,10 +1010,10 @@ private fun WizardFooter(
   Row(
     modifier = Modifier
       .fillMaxWidth()
-      .height(52.dp)
-      .padding(horizontal = 16.dp),
+      .height(SkillBillMetrics.footerHeight)
+      .padding(horizontal = SkillBillDimens.pad4xl),
     verticalAlignment = Alignment.CenterVertically,
-    horizontalArrangement = Arrangement.spacedBy(8.dp),
+    horizontalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingLg),
   ) {
     Spacer(modifier = Modifier.weight(1f))
     if (state.executionResult is ScaffoldRunResult.Failed) {
@@ -1056,11 +1063,11 @@ private fun InlineButton(label: String, enabled: Boolean, onClick: () -> Unit) {
     style = MaterialTheme.typography.labelSmall,
     modifier = Modifier
       .clip(SkillBillComponentShapes.control)
-      .border(1.dp, dialogTone.border, SkillBillComponentShapes.control)
+      .border(SkillBillDimens.hairline, dialogTone.border, SkillBillComponentShapes.control)
       .background(colors.surfaceVariant)
       .semantics { contentDescription = label }
       .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
-      .padding(horizontal = 10.dp, vertical = 6.dp),
+      .padding(horizontal = SkillBillDimens.padXl, vertical = SkillBillDimens.padMd),
   )
 }
 
@@ -1084,11 +1091,11 @@ private fun FooterButton(label: String, enabled: Boolean, primary: Boolean, onCl
     style = if (primary) MaterialTheme.typography.bodySmall else SkillBillTypeStyles.bodySmallNormal,
     modifier = Modifier
       .clip(SkillBillComponentShapes.control)
-      .border(1.dp, dialogTone.border, SkillBillComponentShapes.control)
+      .border(SkillBillDimens.hairline, dialogTone.border, SkillBillComponentShapes.control)
       .background(background)
       .semantics { contentDescription = label }
       .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
-      .padding(horizontal = 12.dp, vertical = 7.dp)
-      .widthIn(min = 60.dp),
+      .padding(horizontal = SkillBillDimens.pad2xl, vertical = SkillBillDimens.space7)
+      .widthIn(min = SkillBillDimens.footerButtonMinWidth),
   )
 }

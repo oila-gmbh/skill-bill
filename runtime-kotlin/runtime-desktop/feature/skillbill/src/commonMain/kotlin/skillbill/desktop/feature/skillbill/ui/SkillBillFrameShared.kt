@@ -1,4 +1,4 @@
-@file:Suppress("FunctionName", "MagicNumber")
+@file:Suppress("FunctionName")
 
 package skillbill.desktop.feature.skillbill.ui
 
@@ -27,10 +27,10 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import skillbill.desktop.core.designsystem.SkillBillColor
 import skillbill.desktop.core.designsystem.SkillBillComponentShapes
+import skillbill.desktop.core.designsystem.SkillBillDimens
 import skillbill.desktop.core.designsystem.SkillBillTheme
 import skillbill.desktop.core.designsystem.SkillBillTypeStyles
 import skillbill.desktop.core.domain.model.SkillBillStatusBar
@@ -50,8 +50,8 @@ internal fun AcceleratorTooltip(label: String, acceleratorLabel: String?, conten
       Box(
         modifier = Modifier
           .background(SkillBillTheme.frameTokens.raised, SkillBillComponentShapes.previewConsole)
-          .border(1.dp, SkillBillTheme.frameTokens.line, SkillBillComponentShapes.previewConsole)
-          .padding(horizontal = 8.dp, vertical = 6.dp),
+          .border(SkillBillDimens.hairline, SkillBillTheme.frameTokens.line, SkillBillComponentShapes.previewConsole)
+          .padding(horizontal = SkillBillDimens.padLg, vertical = SkillBillDimens.padMd),
       ) {
         Text(
           text = "$label - $acceleratorLabel",
@@ -85,7 +85,7 @@ internal fun StatusDot(level: ValidationLevel?) {
     ValidationLevel.Error -> SkillBillTheme.frameTokens.status.error
     null -> SkillBillTheme.frameTokens.subtle
   }
-  Box(modifier = Modifier.size(7.dp).clip(SkillBillComponentShapes.pill).background(color))
+  Box(modifier = Modifier.size(SkillBillDimens.space7).clip(SkillBillComponentShapes.pill).background(color))
 }
 
 @Composable
@@ -93,7 +93,7 @@ internal fun MiniIcon(text: String, tint: SkillBillColor) {
   Box(
     modifier =
     Modifier
-      .size(16.dp)
+      .size(SkillBillDimens.spacing4xl)
       .clip(SkillBillComponentShapes.chip)
       .background(tint.copy(alpha = 0.12f)),
     contentAlignment = Alignment.Center,
@@ -112,8 +112,8 @@ internal fun MiniIcon(text: String, tint: SkillBillColor) {
 // parameterized contentDescription so screen readers announce the action's intent. Callers still
 // add their own `.clickable(role = Role.Button)` and visual padding (typically 6dp x 4dp).
 internal fun Modifier.iconButtonSemantics(description: String): Modifier = this
-  .heightIn(min = 24.dp)
-  .widthIn(min = 32.dp)
+  .heightIn(min = SkillBillDimens.chipMinHeight)
+  .widthIn(min = SkillBillDimens.chipMinWidth)
   .semantics {
     this.contentDescription = description
     this.role = Role.Button

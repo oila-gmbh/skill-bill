@@ -1,4 +1,4 @@
-@file:Suppress("FunctionName", "MagicNumber", "LongMethod")
+@file:Suppress("FunctionName", "LongMethod")
 
 package skillbill.desktop.feature.skillbill.ui
 
@@ -29,8 +29,8 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import skillbill.desktop.core.designsystem.SkillBillComponentShapes
+import skillbill.desktop.core.designsystem.SkillBillDimens
 import skillbill.desktop.core.designsystem.SkillBillSurfaceTone
 import skillbill.desktop.core.designsystem.SkillBillTheme
 import skillbill.desktop.core.designsystem.SkillBillTypeStyles
@@ -66,10 +66,10 @@ fun FirstRunSetupDialog(state: FirstRunSetupState, callbacks: FirstRunSetupCallb
     Column(
       modifier = Modifier
         .align(Alignment.Center)
-        .widthIn(min = 620.dp, max = 820.dp)
-        .heightIn(max = 700.dp)
+        .widthIn(min = SkillBillDimens.firstRunDialogMinWidth, max = SkillBillDimens.firstRunDialogMaxWidth)
+        .heightIn(max = SkillBillDimens.firstRunDialogMaxHeight)
         .clip(SkillBillTheme.shapes.medium)
-        .border(1.dp, semanticTones.dialog.border, SkillBillTheme.shapes.medium)
+        .border(SkillBillDimens.hairline, semanticTones.dialog.border, SkillBillTheme.shapes.medium)
         .background(semanticTones.dialog.container)
         // Block dismiss-on-outside-tap when the user interacts inside the panel.
         .clickable(enabled = false, onClick = {}),
@@ -81,8 +81,8 @@ fun FirstRunSetupDialog(state: FirstRunSetupState, callbacks: FirstRunSetupCallb
           .fillMaxWidth()
           .weight(1f, fill = false)
           .verticalScroll(rememberScrollState())
-          .padding(horizontal = 18.dp, vertical = 14.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+          .padding(horizontal = SkillBillDimens.pad5xl, vertical = SkillBillDimens.pad3xl),
+        verticalArrangement = Arrangement.spacedBy(SkillBillDimens.spacing2xl),
       ) {
         state.errorMessage?.let { message ->
           SetupBanner(title = "Setup issue", message = message, tone = semanticTones.warningBanner)
@@ -108,13 +108,13 @@ private fun SetupHeader(state: FirstRunSetupState, onDismiss: () -> Unit) {
   Row(
     modifier = Modifier
       .fillMaxWidth()
-      .padding(horizontal = 18.dp, vertical = 14.dp),
-    horizontalArrangement = Arrangement.spacedBy(12.dp),
+      .padding(horizontal = SkillBillDimens.pad5xl, vertical = SkillBillDimens.pad3xl),
+    horizontalArrangement = Arrangement.spacedBy(SkillBillDimens.spacing2xl),
     verticalAlignment = Alignment.Top,
   ) {
-    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingLg)) {
       Text(text = "Skill Bill setup", color = dialogTone.content, style = MaterialTheme.typography.bodyLarge)
-      Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+      Row(horizontalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingMd)) {
         FirstRunSetupStep.entries.forEach { step ->
           StepPill(step = step, selected = step == state.step)
         }
@@ -127,7 +127,7 @@ private fun SetupHeader(state: FirstRunSetupState, onDismiss: () -> Unit) {
       modifier = Modifier
         .semantics { contentDescription = "Dismiss setup wizard" }
         .clickable(enabled = !state.busy, role = Role.Button, onClick = onDismiss)
-        .padding(horizontal = 6.dp, vertical = 2.dp),
+        .padding(horizontal = SkillBillDimens.padMd, vertical = SkillBillDimens.padXs),
     )
   }
 }
@@ -145,8 +145,8 @@ private fun StepPill(step: FirstRunSetupStep, selected: Boolean) {
     modifier = Modifier
       .clip(SkillBillComponentShapes.control)
       .background(if (selected) colors.primary else colors.surfaceVariant)
-      .border(1.dp, dialogTone.border, SkillBillComponentShapes.control)
-      .padding(horizontal = 8.dp, vertical = 5.dp),
+      .border(SkillBillDimens.hairline, dialogTone.border, SkillBillComponentShapes.control)
+      .padding(horizontal = SkillBillDimens.padLg, vertical = SkillBillDimens.space5),
   )
 }
 
@@ -200,7 +200,7 @@ private fun PlatformPackStep(state: FirstRunSetupState, callbacks: FirstRunSetup
 private fun PreferencesStep(state: FirstRunSetupState, callbacks: FirstRunSetupCallbacks) {
   val colors = SkillBillTheme.colors
   SectionTitle("Telemetry")
-  Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+  Row(horizontalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingLg)) {
     FirstRunTelemetryLevel.entries.forEach { level ->
       SelectPill(
         label = level.id,
@@ -210,7 +210,7 @@ private fun PreferencesStep(state: FirstRunSetupState, callbacks: FirstRunSetupC
       )
     }
   }
-  Spacer(modifier = Modifier.height(4.dp))
+  Spacer(modifier = Modifier.height(SkillBillDimens.spacingSm))
   SectionTitle("MCP")
   Text(
     text = if (state.registerMcp) {
@@ -262,8 +262,8 @@ private fun SetupFooter(state: FirstRunSetupState, callbacks: FirstRunSetupCallb
   Row(
     modifier = Modifier
       .fillMaxWidth()
-      .padding(horizontal = 18.dp, vertical = 12.dp),
-    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+      .padding(horizontal = SkillBillDimens.pad5xl, vertical = SkillBillDimens.pad2xl),
+    horizontalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingLg, Alignment.End),
     verticalAlignment = Alignment.CenterVertically,
   ) {
     val showBack = state.step != FirstRunSetupStep.AGENTS && state.step != FirstRunSetupStep.RESULT
@@ -300,11 +300,11 @@ private fun ToggleRow(label: String, selected: Boolean, enabled: Boolean, detail
     modifier = Modifier
       .fillMaxWidth()
       .clip(SkillBillComponentShapes.control)
-      .border(1.dp, dialogTone.border, SkillBillComponentShapes.control)
+      .border(SkillBillDimens.hairline, dialogTone.border, SkillBillComponentShapes.control)
       .background(colors.surfaceVariant)
       .clickable(enabled = enabled, role = Role.Checkbox, onClick = onClick)
-      .padding(horizontal = 12.dp, vertical = 9.dp),
-    horizontalArrangement = Arrangement.spacedBy(10.dp),
+      .padding(horizontal = SkillBillDimens.pad2xl, vertical = SkillBillDimens.space9),
+    horizontalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingXl),
     verticalAlignment = Alignment.CenterVertically,
   ) {
     Text(
@@ -312,7 +312,7 @@ private fun ToggleRow(label: String, selected: Boolean, enabled: Boolean, detail
       color = if (selected) colors.primary else colors.onSurfaceVariant,
       style = MaterialTheme.typography.bodySmall,
     )
-    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(SkillBillDimens.space3)) {
       Text(text = label, color = dialogTone.content, style = MaterialTheme.typography.bodySmall)
       Text(
         text = detail,
@@ -336,9 +336,9 @@ private fun SelectPill(label: String, selected: Boolean, enabled: Boolean, onCli
     modifier = Modifier
       .clip(SkillBillComponentShapes.control)
       .background(if (selected) colors.primary else colors.surfaceVariant)
-      .border(1.dp, dialogTone.border, SkillBillComponentShapes.control)
+      .border(SkillBillDimens.hairline, dialogTone.border, SkillBillComponentShapes.control)
       .clickable(enabled = enabled, role = Role.RadioButton, onClick = onClick)
-      .padding(horizontal = 12.dp, vertical = 7.dp),
+      .padding(horizontal = SkillBillDimens.pad2xl, vertical = SkillBillDimens.space7),
   )
 }
 
@@ -357,9 +357,9 @@ private fun SetupButton(label: String, enabled: Boolean, primary: Boolean = fals
     modifier = Modifier
       .clip(SkillBillComponentShapes.control)
       .background(if (primary && enabled) colors.primary else colors.surfaceVariant)
-      .border(1.dp, dialogTone.border, SkillBillComponentShapes.control)
+      .border(SkillBillDimens.hairline, dialogTone.border, SkillBillComponentShapes.control)
       .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
-      .padding(horizontal = 12.dp, vertical = 8.dp),
+      .padding(horizontal = SkillBillDimens.pad2xl, vertical = SkillBillDimens.padLg),
   )
 }
 
@@ -369,10 +369,10 @@ private fun SetupBanner(title: String, message: String, tone: SkillBillSurfaceTo
     modifier = Modifier
       .fillMaxWidth()
       .clip(SkillBillComponentShapes.control)
-      .border(1.dp, tone.border, SkillBillComponentShapes.control)
+      .border(SkillBillDimens.hairline, tone.border, SkillBillComponentShapes.control)
       .background(tone.container)
-      .padding(horizontal = 12.dp, vertical = 10.dp),
-    verticalArrangement = Arrangement.spacedBy(4.dp),
+      .padding(horizontal = SkillBillDimens.pad2xl, vertical = SkillBillDimens.padXl),
+    verticalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingSm),
   ) {
     Text(text = title, color = tone.content, style = MaterialTheme.typography.bodySmall)
     Text(text = message, color = tone.content, style = MaterialTheme.typography.labelSmall)
@@ -392,10 +392,10 @@ private fun DetailRow(detail: FirstRunInstallDetail) {
     modifier = Modifier
       .fillMaxWidth()
       .clip(SkillBillComponentShapes.control)
-      .border(1.dp, semanticTones.dialog.border, SkillBillComponentShapes.control)
+      .border(SkillBillDimens.hairline, semanticTones.dialog.border, SkillBillComponentShapes.control)
       .background(colors.surfaceVariant)
-      .padding(horizontal = 12.dp, vertical = 9.dp),
-    verticalArrangement = Arrangement.spacedBy(3.dp),
+      .padding(horizontal = SkillBillDimens.pad2xl, vertical = SkillBillDimens.space9),
+    verticalArrangement = Arrangement.spacedBy(SkillBillDimens.space3),
   ) {
     Text(text = detail.label, color = color, style = MaterialTheme.typography.labelSmall)
     Text(text = detail.message, color = semanticTones.dialog.content, style = MaterialTheme.typography.labelSmall)
@@ -430,7 +430,7 @@ private fun SectionTitle(text: String) {
 private fun SummaryLine(label: String, value: String) {
   val colors = SkillBillTheme.colors
   val dialogTone = SkillBillTheme.semanticTones.dialog
-  Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+  Row(horizontalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingLg)) {
     Text(text = label, color = colors.onSurfaceVariant, style = MaterialTheme.typography.labelSmall)
     Text(text = value, color = dialogTone.content, style = MaterialTheme.typography.labelSmall)
   }

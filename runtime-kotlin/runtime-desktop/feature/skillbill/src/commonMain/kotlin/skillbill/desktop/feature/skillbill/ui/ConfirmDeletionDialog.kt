@@ -1,4 +1,4 @@
-@file:Suppress("FunctionName", "MagicNumber", "LongMethod")
+@file:Suppress("FunctionName", "LongMethod")
 
 package skillbill.desktop.feature.skillbill.ui
 
@@ -37,8 +37,9 @@ import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.unit.dp
 import skillbill.desktop.core.designsystem.SkillBillComponentShapes
+import skillbill.desktop.core.designsystem.SkillBillDimens
+import skillbill.desktop.core.designsystem.SkillBillMetrics
 import skillbill.desktop.core.designsystem.SkillBillTheme
 import skillbill.desktop.core.designsystem.SkillBillTransparent
 import skillbill.desktop.core.domain.model.ConfirmDeletionState
@@ -132,10 +133,10 @@ fun ConfirmDeletionDialog(state: ConfirmDeletionState, callbacks: ConfirmDeletio
     Column(
       modifier = Modifier
         .align(Alignment.Center)
-        .widthIn(min = 560.dp, max = 760.dp)
-        .heightIn(max = 640.dp)
+        .widthIn(min = SkillBillDimens.dialogMinWidth, max = SkillBillDimens.dialogMaxWidth)
+        .heightIn(max = SkillBillDimens.dialogMaxHeight)
         .clip(SkillBillTheme.shapes.medium)
-        .border(1.dp, semanticTones.dialog.border, SkillBillTheme.shapes.medium)
+        .border(SkillBillDimens.hairline, semanticTones.dialog.border, SkillBillTheme.shapes.medium)
         .background(semanticTones.dialog.container)
         // Swallow clicks inside the panel so the backdrop click doesn't fire.
         .clickable(
@@ -152,18 +153,18 @@ fun ConfirmDeletionDialog(state: ConfirmDeletionState, callbacks: ConfirmDeletio
           .fillMaxWidth()
           .weight(1f, fill = false)
           .verticalScroll(rememberScrollState())
-          .padding(horizontal = 18.dp, vertical = 14.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+          .padding(horizontal = SkillBillDimens.pad5xl, vertical = SkillBillDimens.pad3xl),
+        verticalArrangement = Arrangement.spacedBy(SkillBillDimens.spacing2xl),
       ) {
         when {
           // F-717: spinner makes "computing" feel like progress, not a hang.
           state.previewBusy -> Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            horizontalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingXl),
           ) {
             CircularProgressIndicator(
-              modifier = Modifier.size(14.dp),
-              strokeWidth = 2.dp,
+              modifier = Modifier.size(SkillBillDimens.iconSm),
+              strokeWidth = SkillBillDimens.spacingXs,
               color = SkillBillTheme.colors.primary,
             )
             Text(
@@ -192,9 +193,11 @@ private fun DialogHeader(target: DesktopSkillRemovalTarget, onDismiss: () -> Uni
   val colors = SkillBillTheme.colors
   val dialogTone = SkillBillTheme.semanticTones.dialog
   Row(
-    modifier = Modifier.fillMaxWidth().height(44.dp).padding(horizontal = 16.dp),
+    modifier = Modifier.fillMaxWidth().height(
+      SkillBillMetrics.dialogHeaderHeight,
+    ).padding(horizontal = SkillBillDimens.pad4xl),
     verticalAlignment = Alignment.CenterVertically,
-    horizontalArrangement = Arrangement.spacedBy(10.dp),
+    horizontalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingXl),
   ) {
     Text(
       text = ConfirmDeletionStrings.headerTitle(displayLabelFor(target)),
@@ -208,7 +211,7 @@ private fun DialogHeader(target: DesktopSkillRemovalTarget, onDismiss: () -> Uni
       style = MaterialTheme.typography.titleSmall,
       modifier = Modifier
         .clickable(role = Role.Button, onClick = onDismiss)
-        .padding(horizontal = 6.dp, vertical = 4.dp)
+        .padding(horizontal = SkillBillDimens.padMd, vertical = SkillBillDimens.padSm)
         .semantics { contentDescription = ConfirmDeletionStrings.CLOSE_BUTTON_CONTENT_DESCRIPTION },
     )
   }
@@ -217,7 +220,7 @@ private fun DialogHeader(target: DesktopSkillRemovalTarget, onDismiss: () -> Uni
 @Composable
 private fun RemovalDossier(state: ConfirmDeletionState) {
   val preview = state.preview ?: return
-  Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+  Column(verticalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingLg)) {
     if (preview.cascadedSkillNames.isNotEmpty()) {
       SectionHeader(ConfirmDeletionStrings.sectionSkillsToRemove(preview.cascadedSkillNames.size))
       preview.cascadedSkillNames.forEach { name ->
@@ -258,7 +261,7 @@ private fun SectionHeader(text: String) {
     text = text,
     color = SkillBillTheme.colors.primary,
     style = MaterialTheme.typography.labelSmall,
-    modifier = Modifier.padding(top = 4.dp),
+    modifier = Modifier.padding(top = SkillBillDimens.padSm),
   )
 }
 
@@ -288,10 +291,10 @@ private fun ResultBanner(result: DesktopSkillRemovalResult, onAcknowledgeFailure
           .fillMaxWidth()
           .clip(SkillBillComponentShapes.previewConsole)
           // F-710: red border draws the eye to the highest-severity state.
-          .border(1.dp, tone.border, SkillBillComponentShapes.previewConsole)
+          .border(SkillBillDimens.hairline, tone.border, SkillBillComponentShapes.previewConsole)
           .background(tone.container)
-          .padding(10.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+          .padding(SkillBillDimens.padXl),
+        verticalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingMd),
       ) {
         Text(
           text = if (result.rollbackComplete) {
@@ -321,7 +324,7 @@ private fun ResultBanner(result: DesktopSkillRemovalResult, onAcknowledgeFailure
           style = MaterialTheme.typography.labelSmall,
           modifier = Modifier
             .clickable(role = Role.Button, onClick = onAcknowledgeFailure)
-            .padding(horizontal = 6.dp, vertical = 4.dp),
+            .padding(horizontal = SkillBillDimens.padMd, vertical = SkillBillDimens.padSm),
         )
       }
     }
@@ -331,9 +334,9 @@ private fun ResultBanner(result: DesktopSkillRemovalResult, onAcknowledgeFailure
         modifier = Modifier
           .fillMaxWidth()
           .clip(SkillBillComponentShapes.previewConsole)
-          .border(1.dp, tone.border, SkillBillComponentShapes.previewConsole)
+          .border(SkillBillDimens.hairline, tone.border, SkillBillComponentShapes.previewConsole)
           .background(tone.container)
-          .padding(10.dp),
+          .padding(SkillBillDimens.padXl),
       ) {
         Text(
           text = ConfirmDeletionStrings.successBanner(result.removedPaths.size),
@@ -355,12 +358,12 @@ private fun DialogFooter(state: ConfirmDeletionState, callbacks: ConfirmDeletion
   val colors = SkillBillTheme.colors
   val errorTone = SkillBillTheme.semanticTones.errorBanner
   Column(
-    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
-    verticalArrangement = Arrangement.spacedBy(6.dp),
+    modifier = Modifier.fillMaxWidth().padding(horizontal = SkillBillDimens.pad4xl, vertical = SkillBillDimens.pad2xl),
+    verticalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingMd),
   ) {
     Row(
       verticalAlignment = Alignment.CenterVertically,
-      horizontalArrangement = Arrangement.spacedBy(12.dp),
+      horizontalArrangement = Arrangement.spacedBy(SkillBillDimens.spacing2xl),
     ) {
       Text(
         text = ConfirmDeletionStrings.CANCEL,
@@ -368,7 +371,7 @@ private fun DialogFooter(state: ConfirmDeletionState, callbacks: ConfirmDeletion
         style = MaterialTheme.typography.bodySmall,
         modifier = Modifier
           .clickable(role = Role.Button, onClick = callbacks.onDismiss)
-          .padding(horizontal = 10.dp, vertical = 6.dp),
+          .padding(horizontal = SkillBillDimens.padXl, vertical = SkillBillDimens.padMd),
       )
       Spacer(modifier = Modifier.weight(1f))
       AcknowledgmentCheckbox(
@@ -382,7 +385,7 @@ private fun DialogFooter(state: ConfirmDeletionState, callbacks: ConfirmDeletion
         style = MaterialTheme.typography.bodySmall,
         modifier = Modifier
           .clickable(enabled = deleteEnabled, role = Role.Button, onClick = callbacks.onConfirmDelete)
-          .padding(horizontal = 10.dp, vertical = 6.dp)
+          .padding(horizontal = SkillBillDimens.padXl, vertical = SkillBillDimens.padMd)
           // F-607: announce the disabled state to screen readers so users with assistive tech
           // understand why a click is being suppressed.
           .semantics { if (!deleteEnabled) disabled() },
@@ -395,7 +398,7 @@ private fun DialogFooter(state: ConfirmDeletionState, callbacks: ConfirmDeletion
         text = ConfirmDeletionStrings.ACKNOWLEDGE_HINT,
         color = colors.onSurfaceVariant,
         style = MaterialTheme.typography.labelSmall,
-        modifier = Modifier.padding(horizontal = 10.dp),
+        modifier = Modifier.padding(horizontal = SkillBillDimens.padXl),
       )
     }
   }
@@ -418,15 +421,19 @@ private fun AcknowledgmentCheckbox(checked: Boolean, enabled: Boolean, onChecked
       .semantics {
         stateDescription = if (checked) "Checked" else "Not checked"
       }
-      .padding(horizontal = 6.dp, vertical = 4.dp),
+      .padding(horizontal = SkillBillDimens.padMd, vertical = SkillBillDimens.padSm),
     verticalAlignment = Alignment.CenterVertically,
-    horizontalArrangement = Arrangement.spacedBy(8.dp),
+    horizontalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingLg),
   ) {
     Box(
       modifier = Modifier
         // F-704: 18 dp visible checkbox (was 14) — meets a comfortable touch/keyboard target.
-        .size(18.dp)
-        .border(1.dp, if (enabled) colors.primary else colors.onSurfaceVariant, SkillBillComponentShapes.checkbox)
+        .size(SkillBillDimens.checkboxSize)
+        .border(
+          SkillBillDimens.hairline,
+          if (enabled) colors.primary else colors.onSurfaceVariant,
+          SkillBillComponentShapes.checkbox,
+        )
         .background(if (checked) colors.primary else SkillBillTransparent),
     )
     Text(

@@ -1,4 +1,4 @@
-@file:Suppress("FunctionName", "MagicNumber")
+@file:Suppress("FunctionName")
 
 package skillbill.desktop.feature.skillbill.ui
 
@@ -31,8 +31,9 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import skillbill.desktop.core.designsystem.SkillBillComponentShapes
+import skillbill.desktop.core.designsystem.SkillBillDimens
+import skillbill.desktop.core.designsystem.SkillBillMetrics
 import skillbill.desktop.core.designsystem.SkillBillTheme
 import skillbill.desktop.core.designsystem.SkillBillTypeStyles
 import skillbill.desktop.core.domain.model.ScaffoldKind
@@ -77,7 +78,7 @@ internal fun NewScaffoldMenuButton(enabled: Boolean, onOpenScaffoldWizard: (Scaf
       onDismissRequest = { menuOpen = false },
       modifier = Modifier
         .background(SkillBillTheme.frameTokens.panel)
-        .border(1.dp, SkillBillTheme.frameTokens.line, SkillBillComponentShapes.control),
+        .border(SkillBillDimens.hairline, SkillBillTheme.frameTokens.line, SkillBillComponentShapes.control),
     ) {
       ScaffoldKind.activeCreationValues().forEach { kind ->
         DropdownMenuItem(
@@ -91,7 +92,7 @@ internal fun NewScaffoldMenuButton(enabled: Boolean, onOpenScaffoldWizard: (Scaf
           },
           colors = MenuDefaults.itemColors(textColor = SkillBillTheme.frameTokens.text),
           modifier = Modifier
-            .widthIn(min = 220.dp)
+            .widthIn(min = SkillBillDimens.menuMinWidth)
             .semantics { contentDescription = "Open ${kind.displayLabel} wizard" },
           onClick = {
             menuOpen = false
@@ -116,9 +117,9 @@ internal fun BusyIndicator(busyOperation: SkillBillBusyOperation) {
     SkillBillBusyOperation.VALIDATE_AGENT_CONFIGS -> "Validating agent configs..."
   }
   Row(
-    modifier = Modifier.padding(start = 4.dp),
+    modifier = Modifier.padding(start = SkillBillDimens.padSm),
     verticalAlignment = Alignment.CenterVertically,
-    horizontalArrangement = Arrangement.spacedBy(6.dp),
+    horizontalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingMd),
   ) {
     MiniIcon(text = "..", tint = SkillBillTheme.frameTokens.primary)
     Text(
@@ -135,9 +136,9 @@ internal fun ToolbarDivider() {
   Box(
     modifier =
     Modifier
-      .padding(horizontal = 5.dp)
-      .width(1.dp)
-      .height(20.dp)
+      .padding(horizontal = SkillBillDimens.space5)
+      .width(SkillBillDimens.hairline)
+      .height(SkillBillDimens.menuSeparatorHeight)
       .background(SkillBillTheme.frameTokens.line),
   )
 }
@@ -147,14 +148,14 @@ internal fun CommandSearchButton(onClick: () -> Unit) {
   Row(
     modifier =
     Modifier
-      .width(288.dp)
-      .height(28.dp)
-      .border(1.dp, SkillBillTheme.frameTokens.line, SkillBillComponentShapes.control)
+      .width(SkillBillMetrics.toolbarMenuWidth)
+      .height(SkillBillDimens.controlHeightMd)
+      .border(SkillBillDimens.hairline, SkillBillTheme.frameTokens.line, SkillBillComponentShapes.control)
       .background(SkillBillTheme.frameTokens.raised, SkillBillComponentShapes.control)
       .clickable(role = Role.Button, onClick = onClick)
-      .padding(horizontal = 9.dp),
+      .padding(horizontal = SkillBillDimens.space9),
     verticalAlignment = Alignment.CenterVertically,
-    horizontalArrangement = Arrangement.spacedBy(8.dp),
+    horizontalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingLg),
   ) {
     MiniIcon(text = "sr", tint = SkillBillTheme.frameTokens.muted)
     Text(

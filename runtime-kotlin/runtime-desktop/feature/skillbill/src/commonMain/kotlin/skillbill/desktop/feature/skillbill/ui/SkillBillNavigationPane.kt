@@ -1,4 +1,4 @@
-@file:Suppress("FunctionName", "MagicNumber")
+@file:Suppress("FunctionName")
 
 package skillbill.desktop.feature.skillbill.ui
 
@@ -42,8 +42,8 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.dp
 import skillbill.desktop.core.designsystem.SkillBillComponentShapes
+import skillbill.desktop.core.designsystem.SkillBillDimens
 import skillbill.desktop.core.designsystem.SkillBillTheme
 import skillbill.desktop.core.designsystem.SkillBillTypeStyles
 import skillbill.desktop.core.domain.model.RepoLoadState
@@ -126,7 +126,7 @@ internal fun NavigationPane(
           }
         }
         .focusable()
-        .padding(vertical = 6.dp),
+        .padding(vertical = SkillBillDimens.padMd),
     ) {
       if (treeItems.isEmpty()) {
         EmptyTreeMessage(repoStatus)
@@ -146,7 +146,7 @@ internal fun NavigationPane(
         )
       }
       HorizontalDivider(
-        modifier = Modifier.padding(top = 10.dp, bottom = 8.dp),
+        modifier = Modifier.padding(top = SkillBillDimens.spacingXl, bottom = SkillBillDimens.spacingLg),
         color = SkillBillTheme.frameTokens.line,
       )
       // F-X-901: File editability is a workspace-wide status indicator, not an action. Render it
@@ -163,12 +163,12 @@ internal fun NavigationPane(
       modifier =
       Modifier
         .fillMaxWidth()
-        .height(35.dp)
-        .border(BorderStroke(0.dp, SkillBillTheme.frameTokens.transparent))
+        .height(SkillBillDimens.navPaneHeaderHeight)
+        .border(BorderStroke(SkillBillDimens.borderNone, SkillBillTheme.frameTokens.transparent))
         .background(SkillBillTheme.frameTokens.sidebar)
-        .padding(horizontal = 12.dp),
+        .padding(horizontal = SkillBillDimens.pad2xl),
       verticalAlignment = Alignment.CenterVertically,
-      horizontalArrangement = Arrangement.spacedBy(6.dp),
+      horizontalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingMd),
     ) {
       MiniIcon(text = "lk", tint = SkillBillTheme.frameTokens.subtle)
       Text(
@@ -202,17 +202,17 @@ private fun RepositorySelector(
     modifier =
     Modifier
       .fillMaxWidth()
-      .border(BorderStroke(0.dp, SkillBillTheme.frameTokens.transparent))
-      .padding(horizontal = 12.dp, vertical = 10.dp),
+      .border(BorderStroke(SkillBillDimens.borderNone, SkillBillTheme.frameTokens.transparent))
+      .padding(horizontal = SkillBillDimens.pad2xl, vertical = SkillBillDimens.spacingXl),
   ) {
     LabelText("Repository")
     Row(
       modifier =
       Modifier
         .fillMaxWidth()
-        .height(32.dp)
+        .height(SkillBillDimens.listItemHeight)
         .border(
-          1.dp,
+          SkillBillDimens.hairline,
           when {
             busy -> textFieldTokens.disabledBorder
             repoPathFocused -> textFieldTokens.focusedBorder
@@ -224,9 +224,9 @@ private fun RepositorySelector(
           if (busy) textFieldTokens.disabledContainer else textFieldTokens.container,
           SkillBillComponentShapes.control,
         )
-        .padding(horizontal = 8.dp),
+        .padding(horizontal = SkillBillDimens.padLg),
       verticalAlignment = Alignment.CenterVertically,
-      horizontalArrangement = Arrangement.spacedBy(8.dp),
+      horizontalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingLg),
     ) {
       MiniIcon(text = "db", tint = SkillBillTheme.frameTokens.primary)
       BasicTextField(
@@ -263,7 +263,7 @@ private fun RepositorySelector(
           modifier = Modifier
             .iconButtonSemantics(description = "Open repository at path")
             .clickable(enabled = !busy, role = Role.Button) { onRepoSelected(repoPath) }
-            .padding(horizontal = 6.dp, vertical = 4.dp),
+            .padding(horizontal = SkillBillDimens.padMd, vertical = SkillBillDimens.padSm),
         )
       }
       Text(
@@ -273,7 +273,7 @@ private fun RepositorySelector(
         modifier = Modifier
           .iconButtonSemantics(description = "Choose repository directory")
           .clickable(enabled = !busy, role = Role.Button, onClick = onChooseRepoDirectory)
-          .padding(horizontal = 6.dp, vertical = 4.dp),
+          .padding(horizontal = SkillBillDimens.padMd, vertical = SkillBillDimens.padSm),
       )
     }
     Text(
@@ -284,7 +284,7 @@ private fun RepositorySelector(
         SkillBillTheme.frameTokens.subtle
       },
       style = SkillBillTypeStyles.caption,
-      modifier = Modifier.padding(top = 6.dp),
+      modifier = Modifier.padding(top = SkillBillDimens.padMd),
       maxLines = 2,
       overflow = TextOverflow.Ellipsis,
     )
@@ -301,7 +301,7 @@ private fun EmptyTreeMessage(repoStatus: RepoLoadStatus) {
       SkillBillTheme.frameTokens.subtle
     },
     style = MaterialTheme.typography.bodySmall,
-    modifier = Modifier.padding(12.dp),
+    modifier = Modifier.padding(SkillBillDimens.pad2xl),
   )
 }
 
@@ -322,7 +322,7 @@ internal fun NavigationPaneResizeHandle(onResize: (Dp) -> Unit) {
   ) {
     Box(
       modifier = Modifier
-        .width(2.dp)
+        .width(SkillBillDimens.spacingXs)
         .fillMaxHeight()
         .background(SkillBillTheme.frameTokens.line),
     )

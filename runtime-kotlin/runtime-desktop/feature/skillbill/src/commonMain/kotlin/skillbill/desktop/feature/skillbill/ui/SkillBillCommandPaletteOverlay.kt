@@ -1,4 +1,4 @@
-@file:Suppress("FunctionName", "MagicNumber")
+@file:Suppress("FunctionName")
 
 package skillbill.desktop.feature.skillbill.ui
 
@@ -42,8 +42,8 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import skillbill.desktop.core.designsystem.SkillBillComponentShapes
+import skillbill.desktop.core.designsystem.SkillBillDimens
 import skillbill.desktop.core.designsystem.SkillBillTheme
 import skillbill.desktop.core.designsystem.SkillBillTypeStyles
 import skillbill.desktop.core.domain.model.CommandPaletteResult
@@ -75,11 +75,11 @@ internal fun CommandPaletteOverlay(
     )
     Column(
       modifier = modifier
-        .padding(top = 54.dp)
-        .widthIn(min = 520.dp, max = 720.dp)
-        .heightIn(max = 480.dp)
+        .padding(top = SkillBillDimens.commandPaletteTopOffset)
+        .widthIn(min = SkillBillDimens.commandPaletteMinWidth, max = SkillBillDimens.commandPaletteMaxWidth)
+        .heightIn(max = SkillBillDimens.commandPaletteMaxHeight)
         .clip(SkillBillTheme.shapes.medium)
-        .border(1.dp, SkillBillTheme.frameTokens.line, SkillBillTheme.shapes.medium)
+        .border(SkillBillDimens.hairline, SkillBillTheme.frameTokens.line, SkillBillTheme.shapes.medium)
         .background(SkillBillTheme.frameTokens.panel)
         .onPreviewKeyEvent { event ->
           if (event.type != KeyEventType.KeyDown) {
@@ -116,7 +116,9 @@ internal fun CommandPaletteOverlay(
       CommandPaletteResults(
         palette = palette,
         onExecuteResult = onExecuteResult,
-        modifier = Modifier.fillMaxWidth().heightIn(max = 410.dp).verticalScroll(rememberScrollState()),
+        modifier = Modifier.fillMaxWidth().heightIn(
+          max = SkillBillDimens.commandPaletteListHeight,
+        ).verticalScroll(rememberScrollState()),
       )
     }
   }
@@ -126,9 +128,11 @@ internal fun CommandPaletteOverlay(
 private fun CommandPaletteInput(query: String, onQueryChanged: (String) -> Unit, focusRequester: FocusRequester) {
   val textFieldTokens = SkillBillTheme.textFieldTokens
   Row(
-    modifier = Modifier.fillMaxWidth().height(48.dp).padding(horizontal = 14.dp),
+    modifier = Modifier.fillMaxWidth().height(
+      SkillBillDimens.commandRowHeight,
+    ).padding(horizontal = SkillBillDimens.pad3xl),
     verticalAlignment = Alignment.CenterVertically,
-    horizontalArrangement = Arrangement.spacedBy(10.dp),
+    horizontalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingXl),
   ) {
     MiniIcon(text = "cmd", tint = SkillBillTheme.frameTokens.primary)
     Box(modifier = Modifier.weight(1f)) {
@@ -162,13 +166,13 @@ private fun CommandPaletteResults(
   onExecuteResult: (CommandPaletteResult) -> Unit,
   modifier: Modifier = Modifier,
 ) {
-  Column(modifier = modifier.padding(vertical = 6.dp)) {
+  Column(modifier = modifier.padding(vertical = SkillBillDimens.padMd)) {
     if (palette.results.isEmpty()) {
       Text(
         text = "No matching commands",
         color = SkillBillTheme.frameTokens.subtle,
         style = MaterialTheme.typography.bodySmall,
-        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+        modifier = Modifier.padding(horizontal = SkillBillDimens.pad4xl, vertical = SkillBillDimens.pad2xl),
       )
     }
     palette.results.forEachIndexed { index, result ->
@@ -199,8 +203,8 @@ private fun CommandPaletteResultRow(result: CommandPaletteResult, selected: Bool
   Row(
     modifier = Modifier
       .fillMaxWidth()
-      .heightIn(min = 48.dp)
-      .padding(horizontal = 8.dp, vertical = 2.dp)
+      .heightIn(min = SkillBillDimens.commandRowHeight)
+      .padding(horizontal = SkillBillDimens.padLg, vertical = SkillBillDimens.padXs)
       .clip(SkillBillComponentShapes.badge)
       .background(background)
       .semantics {
@@ -211,9 +215,9 @@ private fun CommandPaletteResultRow(result: CommandPaletteResult, selected: Bool
         }
       }
       .clickable(enabled = enabled, role = Role.Button, onClick = onExecute)
-      .padding(horizontal = 10.dp, vertical = 7.dp),
+      .padding(horizontal = SkillBillDimens.padXl, vertical = SkillBillDimens.space7),
     verticalAlignment = Alignment.Top,
-    horizontalArrangement = Arrangement.spacedBy(10.dp),
+    horizontalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingXl),
   ) {
     val markerTint = if (selected && enabled) {
       SkillBillTheme.frameTokens.primary
@@ -222,7 +226,10 @@ private fun CommandPaletteResultRow(result: CommandPaletteResult, selected: Bool
     }
     MiniIcon(text = result.marker, tint = markerTint)
     Column(modifier = Modifier.weight(1f)) {
-      Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+      Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingLg),
+      ) {
         Text(
           text = result.title,
           color = titleColor,

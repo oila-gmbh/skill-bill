@@ -1,4 +1,4 @@
-@file:Suppress("FunctionName", "MagicNumber")
+@file:Suppress("FunctionName")
 
 package skillbill.desktop.feature.skillbill.ui
 
@@ -34,9 +34,10 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import skillbill.desktop.core.designsystem.SkillBillComponentShapes
+import skillbill.desktop.core.designsystem.SkillBillDimens
+import skillbill.desktop.core.designsystem.SkillBillMetrics
 import skillbill.desktop.core.designsystem.SkillBillTheme
 import skillbill.desktop.core.designsystem.SkillBillTypeStyles
 import skillbill.desktop.core.domain.model.DirtyEditorPrompt
@@ -106,7 +107,7 @@ internal fun CodeEditor(
           modifier =
           Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .padding(horizontal = SkillBillDimens.pad4xl, vertical = SkillBillDimens.pad2xl),
         )
       }
     } else {
@@ -157,11 +158,11 @@ private fun EditorCommandBar(editor: EditorPlaceholder, onSave: () -> Unit, onRe
     modifier =
     Modifier
       .fillMaxWidth()
-      .height(38.dp)
+      .height(SkillBillMetrics.editorCommandBarHeight)
       .background(SkillBillTheme.frameTokens.raised)
-      .padding(horizontal = 12.dp),
+      .padding(horizontal = SkillBillDimens.pad2xl),
     verticalAlignment = Alignment.CenterVertically,
-    horizontalArrangement = Arrangement.spacedBy(8.dp),
+    horizontalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingLg),
   ) {
     Text(
       text = if (editor.dirty) {
@@ -214,18 +215,18 @@ private fun EditorActionButton(
     Row(
       modifier =
       Modifier
-        .height(26.dp)
+        .height(SkillBillDimens.controlHeightSm)
         .clip(SkillBillComponentShapes.control)
         .border(
-          1.dp,
+          SkillBillDimens.hairline,
           if (enabled) SkillBillTheme.frameTokens.line else SkillBillTheme.frameTokens.panel,
           SkillBillComponentShapes.control,
         )
         .background(background, SkillBillComponentShapes.control)
         .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
-        .padding(horizontal = 9.dp),
+        .padding(horizontal = SkillBillDimens.space9),
       verticalAlignment = Alignment.CenterVertically,
-      horizontalArrangement = Arrangement.spacedBy(6.dp),
+      horizontalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingMd),
     ) {
       MiniIcon(text = marker, tint = foreground)
       Text(
@@ -245,9 +246,9 @@ private fun ReadOnlyBanner(editor: EditorPlaceholder) {
     modifier = Modifier
       .fillMaxWidth()
       .background(SkillBillTheme.frameTokens.raised)
-      .padding(horizontal = 14.dp, vertical = 8.dp),
+      .padding(horizontal = SkillBillDimens.pad3xl, vertical = SkillBillDimens.padLg),
     verticalAlignment = Alignment.CenterVertically,
-    horizontalArrangement = Arrangement.spacedBy(8.dp),
+    horizontalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingLg),
   ) {
     MiniIcon(text = "ro", tint = SkillBillTheme.frameTokens.primary)
     Text(
@@ -271,12 +272,12 @@ private fun SaveErrorBanner(message: String) {
     modifier =
     Modifier
       .fillMaxWidth()
-      .heightIn(max = 140.dp)
+      .heightIn(max = SkillBillDimens.codeCompletionMaxHeight)
       .background(errorTone.container)
       .verticalScroll(rememberScrollState())
-      .padding(horizontal = 14.dp, vertical = 8.dp),
+      .padding(horizontal = SkillBillDimens.pad3xl, vertical = SkillBillDimens.padLg),
     verticalAlignment = Alignment.Top,
-    horizontalArrangement = Arrangement.spacedBy(8.dp),
+    horizontalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingLg),
   ) {
     MiniIcon(text = "x", tint = errorTone.content)
     Text(
@@ -300,9 +301,11 @@ private fun DirtyEditorPromptBanner(prompt: DirtyEditorPrompt, onDiscard: () -> 
       "Discard unsaved edits before opening the installed workspace?"
   }
   Row(
-    modifier = Modifier.fillMaxWidth().background(warningTone.container).padding(horizontal = 14.dp, vertical = 8.dp),
+    modifier = Modifier.fillMaxWidth().background(
+      warningTone.container,
+    ).padding(horizontal = SkillBillDimens.pad3xl, vertical = SkillBillDimens.padLg),
     verticalAlignment = Alignment.CenterVertically,
-    horizontalArrangement = Arrangement.spacedBy(8.dp),
+    horizontalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingLg),
   ) {
     MiniIcon(text = "!", tint = warningTone.content)
     Text(
@@ -332,21 +335,26 @@ private fun CodeLine(number: Int, line: String, flagged: Boolean, colors: CodePa
       style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
       modifier =
       Modifier
-        .width(50.dp)
-        .border(BorderStroke(0.dp, SkillBillTheme.frameTokens.transparent))
-        .padding(top = 4.dp, end = 10.dp),
+        .width(SkillBillDimens.lineNumberWidth)
+        .border(BorderStroke(SkillBillDimens.borderNone, SkillBillTheme.frameTokens.transparent))
+        .padding(top = SkillBillDimens.padSm, end = SkillBillDimens.padXl),
       maxLines = 1,
     )
     Row(
-      modifier = Modifier.padding(start = 12.dp, top = 4.dp, bottom = 3.dp, end = 16.dp),
+      modifier = Modifier.padding(
+        start = SkillBillDimens.pad2xl,
+        top = SkillBillDimens.padSm,
+        bottom = SkillBillDimens.space3,
+        end = SkillBillDimens.pad4xl,
+      ),
       verticalAlignment = Alignment.CenterVertically,
     ) {
       SyntaxText(line = line, colors = colors)
       if (flagged) {
         Row(
-          modifier = Modifier.padding(start = 12.dp),
+          modifier = Modifier.padding(start = SkillBillDimens.pad2xl),
           verticalAlignment = Alignment.CenterVertically,
-          horizontalArrangement = Arrangement.spacedBy(4.dp),
+          horizontalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingSm),
         ) {
           MiniIcon(text = "x", tint = SkillBillTheme.frameTokens.status.error)
           Text(
