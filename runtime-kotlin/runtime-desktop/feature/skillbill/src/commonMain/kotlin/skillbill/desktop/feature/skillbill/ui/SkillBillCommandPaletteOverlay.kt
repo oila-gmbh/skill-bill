@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
@@ -45,6 +44,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import skillbill.desktop.core.designsystem.SkillBillComponentShapes
 import skillbill.desktop.core.designsystem.SkillBillTheme
 import skillbill.desktop.core.domain.model.CommandPaletteResult
 import skillbill.desktop.core.domain.model.CommandPaletteResultKind
@@ -78,8 +78,8 @@ internal fun CommandPaletteOverlay(
         .padding(top = 54.dp)
         .widthIn(min = 520.dp, max = 720.dp)
         .heightIn(max = 480.dp)
-        .clip(RoundedCornerShape(8.dp))
-        .border(1.dp, SkillBillTheme.frameTokens.line, RoundedCornerShape(8.dp))
+        .clip(SkillBillTheme.shapes.medium)
+        .border(1.dp, SkillBillTheme.frameTokens.line, SkillBillTheme.shapes.medium)
         .background(SkillBillTheme.frameTokens.panel)
         .onPreviewKeyEvent { event ->
           if (event.type != KeyEventType.KeyDown) {
@@ -202,7 +202,7 @@ private fun CommandPaletteResultRow(result: CommandPaletteResult, selected: Bool
       .fillMaxWidth()
       .heightIn(min = 48.dp)
       .padding(horizontal = 8.dp, vertical = 2.dp)
-      .clip(RoundedCornerShape(5.dp))
+      .clip(SkillBillComponentShapes.badge)
       .background(background)
       .semantics {
         this.selected = selected

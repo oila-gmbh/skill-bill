@@ -18,8 +18,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Text
@@ -42,6 +40,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import skillbill.desktop.core.designsystem.SkillBillComponentShapes
 import skillbill.desktop.core.designsystem.SkillBillTheme
 import skillbill.desktop.core.domain.model.SkillBillTreeItem
 
@@ -81,7 +80,7 @@ internal fun NavGroup(
         .fillMaxWidth()
         .heightIn(min = 27.dp)
         .padding(start = 2.dp, end = 4.dp)
-        .clip(RoundedCornerShape(3.dp))
+        .clip(SkillBillComponentShapes.chip)
         .background(rowBackground)
         // F-U05 / F-X-501: announce the toggle action so screen readers can distinguish it from
         // sibling rows; selection state stays on the row for tree semantics.
@@ -191,7 +190,7 @@ private fun NavTreeNode(
       .fillMaxWidth()
       .height(28.dp)
       .padding(start = 2.dp, end = 4.dp)
-      .clip(RoundedCornerShape(3.dp))
+      .clip(SkillBillComponentShapes.chip)
       .background(rowBackground)
       .semantics {
         this.selected = selected
@@ -300,7 +299,7 @@ private fun OpenEditorTabIndicator(open: Boolean) {
       Box(
         modifier = Modifier
           .size(5.dp)
-          .clip(CircleShape)
+          .clip(SkillBillComponentShapes.pill)
           .background(SkillBillTheme.frameTokens.primary),
       )
     }

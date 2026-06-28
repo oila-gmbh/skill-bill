@@ -21,7 +21,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Checkbox
@@ -52,6 +51,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import skillbill.desktop.core.designsystem.SkillBillComponentShapes
 import skillbill.desktop.core.designsystem.SkillBillTheme
 import skillbill.desktop.core.domain.model.BaselineReviewSkillOption
 import skillbill.desktop.core.domain.model.ScaffoldBaselineLayerForm
@@ -127,8 +127,8 @@ fun ScaffoldWizardDialog(
         .align(Alignment.Center)
         .widthIn(min = 560.dp, max = 760.dp)
         .heightIn(max = 640.dp)
-        .clip(RoundedCornerShape(8.dp))
-        .border(1.dp, semanticTones.dialog.border, RoundedCornerShape(8.dp))
+        .clip(SkillBillTheme.shapes.medium)
+        .border(1.dp, semanticTones.dialog.border, SkillBillTheme.shapes.medium)
         .background(semanticTones.dialog.container)
         // Block dismiss-on-outside-tap when the user clicks inside the panel.
         .pointerInput(Unit) { detectTapGestures { /* consume */ } },
@@ -232,8 +232,8 @@ private fun KindPicker(selected: ScaffoldKind, onSelect: (ScaffoldKind) -> Unit,
           color = foregroundColor,
           fontSize = 11.sp,
           modifier = Modifier
-            .clip(RoundedCornerShape(6.dp))
-            .border(1.dp, dialogTone.border, RoundedCornerShape(6.dp))
+            .clip(SkillBillComponentShapes.control)
+            .border(1.dp, dialogTone.border, SkillBillComponentShapes.control)
             .background(backgroundColor)
             .semantics { contentDescription = "Select wizard kind ${kind.displayLabel}" }
             .clickable(enabled = enabled, role = Role.Button) { onSelect(kind) }
@@ -252,8 +252,8 @@ private fun DirtyRepoWarning(override: Boolean, enabled: Boolean, onOverrideChan
   Column(
     modifier = Modifier
       .fillMaxWidth()
-      .clip(RoundedCornerShape(6.dp))
-      .border(1.dp, tone.border, RoundedCornerShape(6.dp))
+      .clip(SkillBillComponentShapes.control)
+      .border(1.dp, tone.border, SkillBillComponentShapes.control)
       .background(tone.container)
       .padding(horizontal = 12.dp, vertical = 10.dp),
     verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -479,8 +479,8 @@ private fun BaselineLayerEditor(
   Column(
     modifier = Modifier
       .fillMaxWidth()
-      .clip(RoundedCornerShape(6.dp))
-      .border(1.dp, SkillBillTheme.semanticTones.dialog.border, RoundedCornerShape(6.dp))
+      .clip(SkillBillComponentShapes.control)
+      .border(1.dp, SkillBillTheme.semanticTones.dialog.border, SkillBillComponentShapes.control)
       .padding(horizontal = 10.dp, vertical = 8.dp),
     verticalArrangement = Arrangement.spacedBy(8.dp),
   ) {
@@ -626,8 +626,8 @@ private fun TextFieldRow(label: String, value: String, enabled: Boolean, onValue
       modifier = Modifier
         .fillMaxWidth()
         .height(30.dp)
-        .clip(RoundedCornerShape(6.dp))
-        .border(1.dp, borderColor, RoundedCornerShape(6.dp))
+        .clip(SkillBillComponentShapes.control)
+        .border(1.dp, borderColor, SkillBillComponentShapes.control)
         .background(containerColor)
         .padding(horizontal = 8.dp, vertical = 6.dp)
         .semantics { contentDescription = "$label input" },
@@ -679,8 +679,8 @@ private fun PrefixedTextFieldRow(
       modifier = Modifier
         .fillMaxWidth()
         .height(30.dp)
-        .clip(RoundedCornerShape(6.dp))
-        .border(1.dp, borderColor, RoundedCornerShape(6.dp))
+        .clip(SkillBillComponentShapes.control)
+        .border(1.dp, borderColor, SkillBillComponentShapes.control)
         .background(containerColor)
         .clickable(
           interactionSource = rowClickInteractionSource,
@@ -753,8 +753,8 @@ private fun PresetPicker(
             color = foregroundColor,
             fontSize = 11.sp,
             modifier = Modifier
-              .clip(RoundedCornerShape(6.dp))
-              .border(1.dp, dialogTone.border, RoundedCornerShape(6.dp))
+              .clip(SkillBillComponentShapes.control)
+              .border(1.dp, dialogTone.border, SkillBillComponentShapes.control)
               .background(backgroundColor)
               .semantics { contentDescription = "$label option $display" }
               .clickable(enabled = enabled, role = Role.Button) { onSelected(value) }
@@ -772,8 +772,8 @@ private fun PlanPreview(plan: skillbill.desktop.core.domain.model.ScaffoldPlan) 
   Column(
     modifier = Modifier
       .fillMaxWidth()
-      .clip(RoundedCornerShape(6.dp))
-      .border(1.dp, tone.border, RoundedCornerShape(6.dp))
+      .clip(SkillBillComponentShapes.control)
+      .border(1.dp, tone.border, SkillBillComponentShapes.control)
       .background(tone.container)
       .padding(horizontal = 12.dp, vertical = 10.dp),
     verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -828,7 +828,7 @@ private fun ManifestPreviewSection(previews: List<skillbill.desktop.core.domain.
         Box(
           modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(4.dp))
+            .clip(SkillBillComponentShapes.previewConsole)
             .background(SkillBillTheme.colors.background)
             .horizontalScroll(rememberScrollState())
             .padding(horizontal = 10.dp, vertical = 8.dp),
@@ -876,8 +876,8 @@ private fun ValidationBanner(errors: List<String>) {
   Column(
     modifier = Modifier
       .fillMaxWidth()
-      .clip(RoundedCornerShape(6.dp))
-      .border(1.dp, tone.border, RoundedCornerShape(6.dp))
+      .clip(SkillBillComponentShapes.control)
+      .border(1.dp, tone.border, SkillBillComponentShapes.control)
       .background(tone.container)
       .padding(horizontal = 12.dp, vertical = 10.dp),
     verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -913,8 +913,8 @@ private fun SuccessBanner(result: ScaffoldRunResult.Success) {
   Column(
     modifier = Modifier
       .fillMaxWidth()
-      .clip(RoundedCornerShape(6.dp))
-      .border(1.dp, tone.border, RoundedCornerShape(6.dp))
+      .clip(SkillBillComponentShapes.control)
+      .border(1.dp, tone.border, SkillBillComponentShapes.control)
       .background(tone.container)
       .padding(horizontal = 12.dp, vertical = 10.dp),
     verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -952,8 +952,8 @@ private fun FailureConsole(result: ScaffoldRunResult.Failed) {
   Column(
     modifier = Modifier
       .fillMaxWidth()
-      .clip(RoundedCornerShape(6.dp))
-      .border(1.dp, tone.border, RoundedCornerShape(6.dp))
+      .clip(SkillBillComponentShapes.control)
+      .border(1.dp, tone.border, SkillBillComponentShapes.control)
       .background(tone.container)
       .padding(horizontal = 12.dp, vertical = 10.dp)
       .semantics { contentDescription = bannerSemantics },
@@ -986,7 +986,7 @@ private fun FailureConsole(result: ScaffoldRunResult.Failed) {
     Box(
       modifier = Modifier
         .fillMaxWidth()
-        .clip(RoundedCornerShape(4.dp))
+        .clip(SkillBillComponentShapes.previewConsole)
         .background(SkillBillTheme.colors.background)
         .horizontalScroll(rememberScrollState())
         .padding(horizontal = 10.dp, vertical = 8.dp),
@@ -1073,8 +1073,8 @@ private fun InlineButton(label: String, enabled: Boolean, onClick: () -> Unit) {
     color = if (enabled) dialogTone.content else colors.onSurfaceVariant,
     fontSize = 11.sp,
     modifier = Modifier
-      .clip(RoundedCornerShape(6.dp))
-      .border(1.dp, dialogTone.border, RoundedCornerShape(6.dp))
+      .clip(SkillBillComponentShapes.control)
+      .border(1.dp, dialogTone.border, SkillBillComponentShapes.control)
       .background(colors.surfaceVariant)
       .semantics { contentDescription = label }
       .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
@@ -1102,8 +1102,8 @@ private fun FooterButton(label: String, enabled: Boolean, primary: Boolean, onCl
     fontSize = 12.sp,
     fontWeight = if (primary) FontWeight.Medium else FontWeight.Normal,
     modifier = Modifier
-      .clip(RoundedCornerShape(6.dp))
-      .border(1.dp, dialogTone.border, RoundedCornerShape(6.dp))
+      .clip(SkillBillComponentShapes.control)
+      .border(1.dp, dialogTone.border, SkillBillComponentShapes.control)
       .background(background)
       .semantics { contentDescription = label }
       .clickable(enabled = enabled, role = Role.Button, onClick = onClick)

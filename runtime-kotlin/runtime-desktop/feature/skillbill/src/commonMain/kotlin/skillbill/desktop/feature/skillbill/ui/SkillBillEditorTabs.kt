@@ -22,8 +22,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
@@ -43,6 +41,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
+import skillbill.desktop.core.designsystem.SkillBillComponentShapes
 import skillbill.desktop.core.designsystem.SkillBillTheme
 import skillbill.desktop.core.domain.model.DirtyEditorPrompt
 import skillbill.desktop.core.domain.model.EditorPlaceholder
@@ -276,7 +275,11 @@ private fun EditorTab(
         overflow = TextOverflow.Ellipsis,
       )
       if (tab.dirty) {
-        Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(SkillBillTheme.frameTokens.primary))
+        Box(
+          modifier = Modifier.size(
+            6.dp,
+          ).clip(SkillBillComponentShapes.pill).background(SkillBillTheme.frameTokens.primary),
+        )
       }
       if (tab.readOnly) {
         Text(
@@ -294,7 +297,7 @@ private fun EditorTab(
           fontFamily = FontFamily.Monospace,
           modifier = Modifier
             .size(18.dp)
-            .clip(RoundedCornerShape(4.dp))
+            .clip(SkillBillComponentShapes.previewConsole)
             .clickable(role = Role.Button, onClick = onClosed)
             .semantics { contentDescription = "Close ${tab.title}" },
           maxLines = 1,

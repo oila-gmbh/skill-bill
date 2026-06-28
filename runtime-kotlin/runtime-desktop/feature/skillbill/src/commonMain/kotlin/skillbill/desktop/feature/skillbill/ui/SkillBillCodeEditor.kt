@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -36,6 +35,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import skillbill.desktop.core.designsystem.SkillBillComponentShapes
 import skillbill.desktop.core.designsystem.SkillBillTheme
 import skillbill.desktop.core.domain.model.DirtyEditorPrompt
 import skillbill.desktop.core.domain.model.DirtyEditorPromptReason
@@ -216,13 +216,13 @@ private fun EditorActionButton(
       modifier =
       Modifier
         .height(26.dp)
-        .clip(RoundedCornerShape(6.dp))
+        .clip(SkillBillComponentShapes.control)
         .border(
           1.dp,
           if (enabled) SkillBillTheme.frameTokens.line else SkillBillTheme.frameTokens.panel,
-          RoundedCornerShape(6.dp),
+          SkillBillComponentShapes.control,
         )
-        .background(background, RoundedCornerShape(6.dp))
+        .background(background, SkillBillComponentShapes.control)
         .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
         .padding(horizontal = 9.dp),
       verticalAlignment = Alignment.CenterVertically,

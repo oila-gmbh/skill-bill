@@ -11,8 +11,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -32,6 +30,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import skillbill.desktop.core.designsystem.SkillBillColor
+import skillbill.desktop.core.designsystem.SkillBillComponentShapes
 import skillbill.desktop.core.designsystem.SkillBillTheme
 import skillbill.desktop.core.domain.model.SkillBillStatusBar
 import skillbill.desktop.core.domain.model.SkillBillTreeItem
@@ -49,8 +48,8 @@ internal fun AcceleratorTooltip(label: String, acceleratorLabel: String?, conten
     tooltip = {
       Box(
         modifier = Modifier
-          .background(SkillBillTheme.frameTokens.raised, RoundedCornerShape(4.dp))
-          .border(1.dp, SkillBillTheme.frameTokens.line, RoundedCornerShape(4.dp))
+          .background(SkillBillTheme.frameTokens.raised, SkillBillComponentShapes.previewConsole)
+          .border(1.dp, SkillBillTheme.frameTokens.line, SkillBillComponentShapes.previewConsole)
           .padding(horizontal = 8.dp, vertical = 6.dp),
       ) {
         Text(
@@ -87,7 +86,7 @@ internal fun StatusDot(level: ValidationLevel?) {
     ValidationLevel.Error -> SkillBillTheme.frameTokens.status.error
     null -> SkillBillTheme.frameTokens.subtle
   }
-  Box(modifier = Modifier.size(7.dp).clip(CircleShape).background(color))
+  Box(modifier = Modifier.size(7.dp).clip(SkillBillComponentShapes.pill).background(color))
 }
 
 @Composable
@@ -96,7 +95,7 @@ internal fun MiniIcon(text: String, tint: SkillBillColor) {
     modifier =
     Modifier
       .size(16.dp)
-      .clip(RoundedCornerShape(3.dp))
+      .clip(SkillBillComponentShapes.chip)
       .background(tint.copy(alpha = 0.12f)),
     contentAlignment = Alignment.Center,
   ) {

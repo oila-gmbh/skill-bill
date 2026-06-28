@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MenuDefaults
@@ -33,6 +32,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import skillbill.desktop.core.designsystem.SkillBillComponentShapes
 import skillbill.desktop.core.designsystem.SkillBillTheme
 import skillbill.desktop.core.domain.model.ScaffoldKind
 import skillbill.desktop.core.domain.model.SkillBillAcceleratorLabels
@@ -76,7 +76,7 @@ internal fun NewScaffoldMenuButton(enabled: Boolean, onOpenScaffoldWizard: (Scaf
       onDismissRequest = { menuOpen = false },
       modifier = Modifier
         .background(SkillBillTheme.frameTokens.panel)
-        .border(1.dp, SkillBillTheme.frameTokens.line, RoundedCornerShape(6.dp)),
+        .border(1.dp, SkillBillTheme.frameTokens.line, SkillBillComponentShapes.control),
     ) {
       ScaffoldKind.activeCreationValues().forEach { kind ->
         DropdownMenuItem(
@@ -143,8 +143,8 @@ internal fun CommandSearchButton(onClick: () -> Unit) {
     Modifier
       .width(288.dp)
       .height(28.dp)
-      .border(1.dp, SkillBillTheme.frameTokens.line, RoundedCornerShape(6.dp))
-      .background(SkillBillTheme.frameTokens.raised, RoundedCornerShape(6.dp))
+      .border(1.dp, SkillBillTheme.frameTokens.line, SkillBillComponentShapes.control)
+      .background(SkillBillTheme.frameTokens.raised, SkillBillComponentShapes.control)
       .clickable(role = Role.Button, onClick = onClick)
       .padding(horizontal = 9.dp),
     verticalAlignment = Alignment.CenterVertically,

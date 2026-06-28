@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
@@ -45,6 +44,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import skillbill.desktop.core.designsystem.SkillBillComponentShapes
 import skillbill.desktop.core.designsystem.SkillBillTheme
 import skillbill.desktop.core.domain.model.RepoLoadState
 import skillbill.desktop.core.domain.model.RepoLoadStatus
@@ -214,11 +214,11 @@ private fun RepositorySelector(
             repoPathFocused -> textFieldTokens.focusedBorder
             else -> textFieldTokens.border
           },
-          RoundedCornerShape(6.dp),
+          SkillBillComponentShapes.control,
         )
         .background(
           if (busy) textFieldTokens.disabledContainer else textFieldTokens.container,
-          RoundedCornerShape(6.dp),
+          SkillBillComponentShapes.control,
         )
         .padding(horizontal = 8.dp),
       verticalAlignment = Alignment.CenterVertically,

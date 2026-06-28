@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
@@ -32,6 +31,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import skillbill.desktop.core.designsystem.SkillBillComponentShapes
 import skillbill.desktop.core.designsystem.SkillBillSurfaceTone
 import skillbill.desktop.core.designsystem.SkillBillTheme
 import skillbill.desktop.core.domain.model.FirstRunInstallDetail
@@ -68,8 +68,8 @@ fun FirstRunSetupDialog(state: FirstRunSetupState, callbacks: FirstRunSetupCallb
         .align(Alignment.Center)
         .widthIn(min = 620.dp, max = 820.dp)
         .heightIn(max = 700.dp)
-        .clip(RoundedCornerShape(8.dp))
-        .border(1.dp, semanticTones.dialog.border, RoundedCornerShape(8.dp))
+        .clip(SkillBillTheme.shapes.medium)
+        .border(1.dp, semanticTones.dialog.border, SkillBillTheme.shapes.medium)
         .background(semanticTones.dialog.container)
         // Block dismiss-on-outside-tap when the user interacts inside the panel.
         .clickable(enabled = false, onClick = {}),
@@ -143,9 +143,9 @@ private fun StepPill(step: FirstRunSetupStep, selected: Boolean) {
     maxLines = 1,
     overflow = TextOverflow.Ellipsis,
     modifier = Modifier
-      .clip(RoundedCornerShape(6.dp))
+      .clip(SkillBillComponentShapes.control)
       .background(if (selected) colors.primary else colors.surfaceVariant)
-      .border(1.dp, dialogTone.border, RoundedCornerShape(6.dp))
+      .border(1.dp, dialogTone.border, SkillBillComponentShapes.control)
       .padding(horizontal = 8.dp, vertical = 5.dp),
   )
 }
@@ -287,8 +287,8 @@ private fun ToggleRow(label: String, selected: Boolean, enabled: Boolean, detail
   Row(
     modifier = Modifier
       .fillMaxWidth()
-      .clip(RoundedCornerShape(6.dp))
-      .border(1.dp, dialogTone.border, RoundedCornerShape(6.dp))
+      .clip(SkillBillComponentShapes.control)
+      .border(1.dp, dialogTone.border, SkillBillComponentShapes.control)
       .background(colors.surfaceVariant)
       .clickable(enabled = enabled, role = Role.Checkbox, onClick = onClick)
       .padding(horizontal = 12.dp, vertical = 9.dp),
@@ -322,9 +322,9 @@ private fun SelectPill(label: String, selected: Boolean, enabled: Boolean, onCli
     color = if (selected) colors.onPrimary else dialogTone.content,
     fontSize = 12.sp,
     modifier = Modifier
-      .clip(RoundedCornerShape(6.dp))
+      .clip(SkillBillComponentShapes.control)
       .background(if (selected) colors.primary else colors.surfaceVariant)
-      .border(1.dp, dialogTone.border, RoundedCornerShape(6.dp))
+      .border(1.dp, dialogTone.border, SkillBillComponentShapes.control)
       .clickable(enabled = enabled, role = Role.RadioButton, onClick = onClick)
       .padding(horizontal = 12.dp, vertical = 7.dp),
   )
@@ -343,9 +343,9 @@ private fun SetupButton(label: String, enabled: Boolean, primary: Boolean = fals
     },
     fontSize = 12.sp,
     modifier = Modifier
-      .clip(RoundedCornerShape(6.dp))
+      .clip(SkillBillComponentShapes.control)
       .background(if (primary && enabled) colors.primary else colors.surfaceVariant)
-      .border(1.dp, dialogTone.border, RoundedCornerShape(6.dp))
+      .border(1.dp, dialogTone.border, SkillBillComponentShapes.control)
       .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
       .padding(horizontal = 12.dp, vertical = 8.dp),
   )
@@ -356,8 +356,8 @@ private fun SetupBanner(title: String, message: String, tone: SkillBillSurfaceTo
   Column(
     modifier = Modifier
       .fillMaxWidth()
-      .clip(RoundedCornerShape(6.dp))
-      .border(1.dp, tone.border, RoundedCornerShape(6.dp))
+      .clip(SkillBillComponentShapes.control)
+      .border(1.dp, tone.border, SkillBillComponentShapes.control)
       .background(tone.container)
       .padding(horizontal = 12.dp, vertical = 10.dp),
     verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -379,8 +379,8 @@ private fun DetailRow(detail: FirstRunInstallDetail) {
   Column(
     modifier = Modifier
       .fillMaxWidth()
-      .clip(RoundedCornerShape(6.dp))
-      .border(1.dp, semanticTones.dialog.border, RoundedCornerShape(6.dp))
+      .clip(SkillBillComponentShapes.control)
+      .border(1.dp, semanticTones.dialog.border, SkillBillComponentShapes.control)
       .background(colors.surfaceVariant)
       .padding(horizontal = 12.dp, vertical = 9.dp),
     verticalArrangement = Arrangement.spacedBy(3.dp),

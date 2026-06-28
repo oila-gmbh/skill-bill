@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -37,6 +36,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import skillbill.desktop.core.designsystem.SkillBillColor
+import skillbill.desktop.core.designsystem.SkillBillComponentShapes
 import skillbill.desktop.core.designsystem.SkillBillTheme
 import skillbill.desktop.core.domain.model.ScaffoldKind
 import skillbill.desktop.core.domain.model.SkillBillAcceleratorLabels
@@ -151,8 +151,8 @@ internal fun ToolbarButton(
         .height(28.dp)
         .padding(end = 6.dp)
         .alpha(if (enabled) 1f else DISABLED_BUTTON_ALPHA)
-        .clip(RoundedCornerShape(6.dp))
-        .border(1.dp, border, RoundedCornerShape(6.dp))
+        .clip(SkillBillComponentShapes.control)
+        .border(1.dp, border, SkillBillComponentShapes.control)
         .background(background)
         // F-X-901-A: merge child Text/icon semantics into the clickable node so screen readers
         // announce a single actionable element instead of three, and `disabled()` propagates to the
@@ -195,8 +195,8 @@ private fun ToolbarSidePanelButton(
   Box(
     modifier = Modifier
       .size(width = 30.dp, height = 28.dp)
-      .clip(RoundedCornerShape(6.dp))
-      .border(1.dp, border, RoundedCornerShape(6.dp))
+      .clip(SkillBillComponentShapes.control)
+      .border(1.dp, border, SkillBillComponentShapes.control)
       .background(SkillBillTheme.frameTokens.raised)
       .semantics(mergeDescendants = true) {
         this.contentDescription = contentDescription
@@ -257,8 +257,8 @@ private fun ToolbarStatusItem(label: String, marker: String, primary: Boolean = 
     Modifier
       .height(28.dp)
       .padding(end = 6.dp)
-      .clip(RoundedCornerShape(6.dp))
-      .border(1.dp, border, RoundedCornerShape(6.dp))
+      .clip(SkillBillComponentShapes.control)
+      .border(1.dp, border, SkillBillComponentShapes.control)
       .background(background)
       // F-X-901-G: merge the inner Text/MiniIcon semantics into one node so screen readers
       // announce the chip as a single status string rather than three separate elements.

@@ -1,8 +1,11 @@
 package skillbill.desktop.core.designsystem
 
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.runComposeUiTest
+import androidx.compose.ui.unit.dp
 import kotlin.math.pow
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -62,6 +65,29 @@ class SkillBillThemeTokensTest {
     assertEquals(SkillBillGreen, tokens.frame.status.contentColorFor(SkillBillStatusTone.Success))
     assertEquals(SkillBillAmber, tokens.frame.status.contentColorFor(SkillBillStatusTone.Warning))
     assertEquals(SkillBillRed, tokens.frame.status.contentColorFor(SkillBillStatusTone.Error))
+  }
+
+  @Test
+  fun `shape scheme and component shapes pin their design radii`() {
+    assertEquals(RoundedCornerShape(4.dp), SkillBillShapeScheme.extraSmall)
+    assertEquals(RoundedCornerShape(6.dp), SkillBillShapeScheme.small)
+    assertEquals(RoundedCornerShape(8.dp), SkillBillShapeScheme.medium)
+    assertEquals(RoundedCornerShape(12.dp), SkillBillShapeScheme.large)
+    assertEquals(RoundedCornerShape(16.dp), SkillBillShapeScheme.extraLarge)
+
+    assertEquals(SkillBillShapeScheme.extraSmall, SkillBillShapes.extraSmall)
+    assertEquals(SkillBillShapeScheme.small, SkillBillShapes.small)
+    assertEquals(SkillBillShapeScheme.medium, SkillBillShapes.medium)
+    assertEquals(SkillBillShapeScheme.large, SkillBillShapes.large)
+    assertEquals(SkillBillShapeScheme.extraLarge, SkillBillShapes.extraLarge)
+
+    assertEquals(RoundedCornerShape(2.dp), SkillBillComponentShapes.checkbox)
+    assertEquals(RoundedCornerShape(3.dp), SkillBillComponentShapes.chip)
+    assertEquals(RoundedCornerShape(4.dp), SkillBillComponentShapes.previewConsole)
+    assertEquals(RoundedCornerShape(5.dp), SkillBillComponentShapes.badge)
+    assertEquals(RoundedCornerShape(6.dp), SkillBillComponentShapes.control)
+    assertEquals(RoundedCornerShape(8.dp), SkillBillComponentShapes.panel)
+    assertEquals(CircleShape, SkillBillComponentShapes.pill)
   }
 
   @Test

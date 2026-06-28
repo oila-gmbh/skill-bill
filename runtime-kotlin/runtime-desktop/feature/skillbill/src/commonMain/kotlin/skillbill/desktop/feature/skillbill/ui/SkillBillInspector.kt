@@ -20,7 +20,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
@@ -41,6 +40,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import skillbill.desktop.core.designsystem.SkillBillComponentShapes
 import skillbill.desktop.core.designsystem.SkillBillMetrics
 import skillbill.desktop.core.designsystem.SkillBillTheme
 import skillbill.desktop.core.designsystem.contentColorFor
@@ -215,7 +215,7 @@ private fun GeneratedArtifactRow(
     Modifier
       .fillMaxWidth()
       .height(28.dp)
-      .clip(RoundedCornerShape(3.dp))
+      .clip(SkillBillComponentShapes.chip)
       .background(rowBackground)
       .iconButtonSemantics(description = generatedArtifactRowContentDescription(artifact))
       .semantics(mergeDescendants = true) {
@@ -274,8 +274,8 @@ private fun Badge(text: String, tone: Tone) {
     fontFamily = FontFamily.Monospace,
     modifier =
     Modifier
-      .border(1.dp, toneColor.copy(alpha = 0.45f), RoundedCornerShape(4.dp))
-      .background(toneColor.copy(alpha = 0.16f), RoundedCornerShape(4.dp))
+      .border(1.dp, toneColor.copy(alpha = 0.45f), SkillBillComponentShapes.previewConsole)
+      .background(toneColor.copy(alpha = 0.16f), SkillBillComponentShapes.previewConsole)
       .padding(horizontal = 6.dp, vertical = 1.dp),
     maxLines = 1,
   )

@@ -21,7 +21,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
@@ -40,6 +39,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import skillbill.desktop.core.designsystem.SkillBillComponentShapes
 import skillbill.desktop.core.designsystem.SkillBillTheme
 import skillbill.desktop.core.designsystem.SkillBillTransparent
 import skillbill.desktop.core.domain.model.ConfirmDeletionState
@@ -135,8 +135,8 @@ fun ConfirmDeletionDialog(state: ConfirmDeletionState, callbacks: ConfirmDeletio
         .align(Alignment.Center)
         .widthIn(min = 560.dp, max = 760.dp)
         .heightIn(max = 640.dp)
-        .clip(RoundedCornerShape(8.dp))
-        .border(1.dp, semanticTones.dialog.border, RoundedCornerShape(8.dp))
+        .clip(SkillBillTheme.shapes.medium)
+        .border(1.dp, semanticTones.dialog.border, SkillBillTheme.shapes.medium)
         .background(semanticTones.dialog.container)
         // Swallow clicks inside the panel so the backdrop click doesn't fire.
         .clickable(
@@ -291,9 +291,9 @@ private fun ResultBanner(result: DesktopSkillRemovalResult, onAcknowledgeFailure
       Column(
         modifier = Modifier
           .fillMaxWidth()
-          .clip(RoundedCornerShape(4.dp))
+          .clip(SkillBillComponentShapes.previewConsole)
           // F-710: red border draws the eye to the highest-severity state.
-          .border(1.dp, tone.border, RoundedCornerShape(4.dp))
+          .border(1.dp, tone.border, SkillBillComponentShapes.previewConsole)
           .background(tone.container)
           .padding(10.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -336,8 +336,8 @@ private fun ResultBanner(result: DesktopSkillRemovalResult, onAcknowledgeFailure
       Column(
         modifier = Modifier
           .fillMaxWidth()
-          .clip(RoundedCornerShape(4.dp))
-          .border(1.dp, tone.border, RoundedCornerShape(4.dp))
+          .clip(SkillBillComponentShapes.previewConsole)
+          .border(1.dp, tone.border, SkillBillComponentShapes.previewConsole)
           .background(tone.container)
           .padding(10.dp),
       ) {
@@ -433,7 +433,7 @@ private fun AcknowledgmentCheckbox(checked: Boolean, enabled: Boolean, onChecked
       modifier = Modifier
         // F-704: 18 dp visible checkbox (was 14) — meets a comfortable touch/keyboard target.
         .size(18.dp)
-        .border(1.dp, if (enabled) colors.primary else colors.onSurfaceVariant, RoundedCornerShape(2.dp))
+        .border(1.dp, if (enabled) colors.primary else colors.onSurfaceVariant, SkillBillComponentShapes.checkbox)
         .background(if (checked) colors.primary else SkillBillTransparent),
     )
     Text(
