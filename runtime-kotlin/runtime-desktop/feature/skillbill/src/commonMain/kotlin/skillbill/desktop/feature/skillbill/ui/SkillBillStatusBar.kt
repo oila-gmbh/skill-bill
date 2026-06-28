@@ -1,4 +1,4 @@
-@file:Suppress("FunctionName", "MagicNumber")
+@file:Suppress("FunctionName")
 
 package skillbill.desktop.feature.skillbill.ui
 
@@ -11,12 +11,16 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import dev.skillbill.designsystem.generated.resources.Res
+import dev.skillbill.designsystem.generated.resources.status_targets
+import org.jetbrains.compose.resources.pluralStringResource
+import skillbill.desktop.core.designsystem.SkillBillDimens
+import skillbill.desktop.core.designsystem.SkillBillMetrics
 import skillbill.desktop.core.designsystem.SkillBillTheme
 import skillbill.desktop.core.designsystem.contentColorFor
 import skillbill.desktop.core.domain.model.SkillBillState
@@ -29,15 +33,19 @@ internal fun WorkspaceStatusBar(state: SkillBillState) {
     modifier =
     Modifier
       .fillMaxWidth()
-      .height(28.dp)
+      .height(SkillBillMetrics.statusPaneHeight)
       .background(SkillBillTheme.frameTokens.panel)
-      .padding(horizontal = 12.dp)
+      .padding(horizontal = SkillBillDimens.pad2xl)
       .horizontalScroll(rememberScrollState()),
     verticalAlignment = Alignment.CenterVertically,
-    horizontalArrangement = Arrangement.spacedBy(16.dp),
+    horizontalArrangement = Arrangement.spacedBy(SkillBillDimens.spacing4xl),
   ) {
     StatusItem("rp", state.statusBar.repoPathLabel, Tone.Neutral)
-    StatusItem("tr", "${state.statusBar.targetCount} targets", Tone.Neutral)
+    StatusItem(
+      "tr",
+      pluralStringResource(Res.plurals.status_targets, state.statusBar.targetCount, state.statusBar.targetCount),
+      Tone.Neutral,
+    )
     Spacer(modifier = Modifier.weight(1f))
     StatusItem(
       fileModeMarker(state.statusBar.readOnlyModeLabel),
@@ -56,13 +64,21 @@ private fun fileModeTone(label: String): Tone = when (label) {
 
 @Composable
 private fun StatusItem(marker: String, text: String, tone: Tone) {
-  Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+  Row(
+    verticalAlignment = Alignment.CenterVertically,
+    horizontalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingMd),
+  ) {
     val markerTint = if (tone == Tone.Neutral) {
       SkillBillTheme.frameTokens.primary
     } else {
       SkillBillTheme.frameTokens.status.contentColorFor(tone)
     }
     MiniIcon(text = marker, tint = markerTint)
-    Text(text = text, color = SkillBillTheme.frameTokens.status.contentColorFor(tone), fontSize = 11.sp, maxLines = 1)
+    Text(
+      text = text,
+      color = SkillBillTheme.frameTokens.status.contentColorFor(tone),
+      style = MaterialTheme.typography.labelSmall,
+      maxLines = 1,
+    )
   }
 }

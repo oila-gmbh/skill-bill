@@ -1,5 +1,7 @@
 package skillbill.desktop.feature.skillbill.state
-
+import dev.skillbill.designsystem.generated.resources.Res
+import dev.skillbill.designsystem.generated.resources.first_run_install_planning_failed
+import dev.skillbill.designsystem.generated.resources.first_run_setup_failed
 import kotlinx.coroutines.runBlocking
 import skillbill.desktop.core.datastore.DesktopFirstRunPreferences
 import skillbill.desktop.core.domain.model.FirstRunAgentOption
@@ -45,7 +47,10 @@ class SkillBillViewModelFirstRunTest {
         discoveryResult = FirstRunDiscoveryResult.Success(discovery()),
         planResult = FirstRunPlanResult.Planned(plan()),
         applyResult = FirstRunApplyResult.Applied(
-          FirstRunInstallOutcome(status = FirstRunInstallStatus.SUCCESS, title = "Setup completed."),
+          FirstRunInstallOutcome(
+            status = FirstRunInstallStatus.SUCCESS,
+            titleRes = Res.string.first_run_install_planning_failed,
+          ),
         ),
         existingInstall = true,
       ),
@@ -64,7 +69,7 @@ class SkillBillViewModelFirstRunTest {
       applyResult = FirstRunApplyResult.Applied(
         FirstRunInstallOutcome(
           status = FirstRunInstallStatus.WARNING,
-          title = "Setup completed with warnings.",
+          titleRes = Res.string.first_run_install_planning_failed,
           details = listOf(
             FirstRunInstallDetail(
               label = "Windows symlinks",
@@ -116,7 +121,7 @@ class SkillBillViewModelFirstRunTest {
       applyResult = FirstRunApplyResult.Failed(
         FirstRunInstallOutcome(
           status = FirstRunInstallStatus.FAILURE,
-          title = "Setup failed.",
+          titleRes = Res.string.first_run_setup_failed,
           details = listOf(
             FirstRunInstallDetail(
               label = "MCP codex",
@@ -163,7 +168,10 @@ class SkillBillViewModelFirstRunTest {
         discoveryResult = FirstRunDiscoveryResult.Success(discovery()),
         planResult = FirstRunPlanResult.Planned(plan()),
         applyResult = FirstRunApplyResult.Applied(
-          FirstRunInstallOutcome(status = FirstRunInstallStatus.SUCCESS, title = "Setup completed."),
+          FirstRunInstallOutcome(
+            status = FirstRunInstallStatus.SUCCESS,
+            titleRes = Res.string.first_run_install_planning_failed,
+          ),
         ),
       ),
       preferenceStore = preferences,
@@ -198,7 +206,10 @@ class SkillBillViewModelFirstRunTest {
       ),
       planResult = FirstRunPlanResult.Planned(plan()),
       applyResult = FirstRunApplyResult.Applied(
-        FirstRunInstallOutcome(status = FirstRunInstallStatus.SUCCESS, title = "Setup completed."),
+        FirstRunInstallOutcome(
+          status = FirstRunInstallStatus.SUCCESS,
+          titleRes = Res.string.first_run_install_planning_failed,
+        ),
       ),
       latestReusableSetupRequest = FirstRunSetupRequest(
         selectedAgentIds = setOf("codex"),
@@ -230,7 +241,10 @@ class SkillBillViewModelFirstRunTest {
         discoveryResult = FirstRunDiscoveryResult.Success(discovery()),
         planResult = FirstRunPlanResult.Planned(plan()),
         applyResult = FirstRunApplyResult.Applied(
-          FirstRunInstallOutcome(status = FirstRunInstallStatus.SUCCESS, title = "Setup completed."),
+          FirstRunInstallOutcome(
+            status = FirstRunInstallStatus.SUCCESS,
+            titleRes = Res.string.first_run_install_planning_failed,
+          ),
         ),
       ),
       preferenceStore = FakeDesktopPreferenceStore(),
@@ -249,7 +263,10 @@ class SkillBillViewModelFirstRunTest {
         discoveryResult = FirstRunDiscoveryResult.Success(discovery()),
         planResult = FirstRunPlanResult.Planned(plan()),
         applyResult = FirstRunApplyResult.Applied(
-          FirstRunInstallOutcome(status = FirstRunInstallStatus.SUCCESS, title = "Setup completed."),
+          FirstRunInstallOutcome(
+            status = FirstRunInstallStatus.SUCCESS,
+            titleRes = Res.string.first_run_install_planning_failed,
+          ),
         ),
       ),
       preferenceStore = FakeDesktopPreferenceStore(),

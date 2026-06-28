@@ -6,6 +6,9 @@ kotlin {
   sourceSets {
     commonMain.dependencies {
       implementation(project(":runtime-desktop:core:common"))
+      implementation(
+        "org.jetbrains.compose.components:components-resources:${libs.versions.compose.get()}",
+      )
     }
 
     jvmTest.dependencies {
