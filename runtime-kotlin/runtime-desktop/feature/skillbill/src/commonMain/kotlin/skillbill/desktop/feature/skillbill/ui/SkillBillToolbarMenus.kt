@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MenuDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -31,9 +32,9 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import skillbill.desktop.core.designsystem.SkillBillComponentShapes
 import skillbill.desktop.core.designsystem.SkillBillTheme
+import skillbill.desktop.core.designsystem.SkillBillTypeStyles
 import skillbill.desktop.core.domain.model.ScaffoldKind
 import skillbill.desktop.core.domain.model.SkillBillAcceleratorLabels
 import skillbill.desktop.core.domain.model.SkillBillBusyOperation
@@ -84,7 +85,7 @@ internal fun NewScaffoldMenuButton(enabled: Boolean, onOpenScaffoldWizard: (Scaf
             Text(
               text = kind.displayLabel,
               color = SkillBillTheme.frameTokens.text,
-              fontSize = 12.sp,
+              style = MaterialTheme.typography.bodySmall,
               maxLines = 1,
             )
           },
@@ -120,7 +121,12 @@ internal fun BusyIndicator(busyOperation: SkillBillBusyOperation) {
     horizontalArrangement = Arrangement.spacedBy(6.dp),
   ) {
     MiniIcon(text = "..", tint = SkillBillTheme.frameTokens.primary)
-    Text(text = label, color = SkillBillTheme.frameTokens.muted, fontSize = 11.sp, maxLines = 1)
+    Text(
+      text = label,
+      color = SkillBillTheme.frameTokens.muted,
+      style = MaterialTheme.typography.labelSmall,
+      maxLines = 1,
+    )
   }
 }
 
@@ -154,7 +160,7 @@ internal fun CommandSearchButton(onClick: () -> Unit) {
     Text(
       text = "Find skill, intent, or command...",
       color = SkillBillTheme.frameTokens.subtle,
-      fontSize = 12.sp,
+      style = MaterialTheme.typography.bodySmall,
       modifier = Modifier.weight(1f),
       maxLines = 1,
       overflow = TextOverflow.Ellipsis,
@@ -162,8 +168,7 @@ internal fun CommandSearchButton(onClick: () -> Unit) {
     Text(
       text = SkillBillAcceleratorLabels.COMMAND_PALETTE,
       color = SkillBillTheme.frameTokens.subtle,
-      fontSize = 10.sp,
-      fontFamily = FontFamily.Monospace,
+      style = SkillBillTypeStyles.caption.copy(fontFamily = FontFamily.Monospace),
     )
   }
 }

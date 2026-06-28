@@ -11,12 +11,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import skillbill.desktop.core.designsystem.SkillBillTheme
 import skillbill.desktop.core.designsystem.contentColorFor
 import skillbill.desktop.core.domain.model.SkillBillState
@@ -63,6 +63,11 @@ private fun StatusItem(marker: String, text: String, tone: Tone) {
       SkillBillTheme.frameTokens.status.contentColorFor(tone)
     }
     MiniIcon(text = marker, tint = markerTint)
-    Text(text = text, color = SkillBillTheme.frameTokens.status.contentColorFor(tone), fontSize = 11.sp, maxLines = 1)
+    Text(
+      text = text,
+      color = SkillBillTheme.frameTokens.status.contentColorFor(tone),
+      style = MaterialTheme.typography.labelSmall,
+      maxLines = 1,
+    )
   }
 }

@@ -21,6 +21,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -39,13 +40,12 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import skillbill.desktop.core.designsystem.SkillBillComponentShapes
 import skillbill.desktop.core.designsystem.SkillBillTheme
+import skillbill.desktop.core.designsystem.SkillBillTypeStyles
 import skillbill.desktop.core.domain.model.RepoLoadState
 import skillbill.desktop.core.domain.model.RepoLoadStatus
 import skillbill.desktop.core.domain.model.SkillBillAcceleratorLabels
@@ -171,8 +171,12 @@ internal fun NavigationPane(
       horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
       MiniIcon(text = "lk", tint = SkillBillTheme.frameTokens.subtle)
-      Text(text = "contract policy:", color = SkillBillTheme.frameTokens.subtle, fontSize = 11.sp)
-      Text(text = policyLabel, color = SkillBillTheme.frameTokens.text, fontSize = 11.sp)
+      Text(
+        text = "contract policy:",
+        color = SkillBillTheme.frameTokens.subtle,
+        style = MaterialTheme.typography.labelSmall,
+      )
+      Text(text = policyLabel, color = SkillBillTheme.frameTokens.text, style = MaterialTheme.typography.labelSmall)
     }
   }
 }
@@ -229,10 +233,9 @@ private fun RepositorySelector(
         value = repoPath,
         onValueChange = onRepoPathChanged,
         enabled = !busy,
-        textStyle = androidx.compose.ui.text.TextStyle(
-          color = if (busy) textFieldTokens.disabledText else textFieldTokens.text,
-          fontSize = 12.sp,
+        textStyle = MaterialTheme.typography.bodySmall.copy(
           fontFamily = FontFamily.Monospace,
+          color = if (busy) textFieldTokens.disabledText else textFieldTokens.text,
         ),
         singleLine = true,
         cursorBrush = SolidColor(textFieldTokens.cursor),
@@ -256,8 +259,7 @@ private fun RepositorySelector(
         Text(
           text = if (busy) "Busy" else "Open",
           color = if (busy) SkillBillTheme.frameTokens.subtle else SkillBillTheme.frameTokens.primary,
-          fontSize = 11.sp,
-          fontWeight = FontWeight.Medium,
+          style = MaterialTheme.typography.labelSmall,
           modifier = Modifier
             .iconButtonSemantics(description = "Open repository at path")
             .clickable(enabled = !busy, role = Role.Button) { onRepoSelected(repoPath) }
@@ -267,8 +269,7 @@ private fun RepositorySelector(
       Text(
         text = "...",
         color = if (busy) SkillBillTheme.frameTokens.subtle else SkillBillTheme.frameTokens.primary,
-        fontSize = 11.sp,
-        fontWeight = FontWeight.Medium,
+        style = MaterialTheme.typography.labelSmall,
         modifier = Modifier
           .iconButtonSemantics(description = "Choose repository directory")
           .clickable(enabled = !busy, role = Role.Button, onClick = onChooseRepoDirectory)
@@ -282,7 +283,7 @@ private fun RepositorySelector(
       } else {
         SkillBillTheme.frameTokens.subtle
       },
-      fontSize = 10.sp,
+      style = SkillBillTypeStyles.caption,
       modifier = Modifier.padding(top = 6.dp),
       maxLines = 2,
       overflow = TextOverflow.Ellipsis,
@@ -299,7 +300,7 @@ private fun EmptyTreeMessage(repoStatus: RepoLoadStatus) {
     } else {
       SkillBillTheme.frameTokens.subtle
     },
-    fontSize = 12.sp,
+    style = MaterialTheme.typography.bodySmall,
     modifier = Modifier.padding(12.dp),
   )
 }

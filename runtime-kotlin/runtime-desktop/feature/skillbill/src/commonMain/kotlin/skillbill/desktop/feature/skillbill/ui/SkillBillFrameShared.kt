@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -25,13 +26,13 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import skillbill.desktop.core.designsystem.SkillBillColor
 import skillbill.desktop.core.designsystem.SkillBillComponentShapes
 import skillbill.desktop.core.designsystem.SkillBillTheme
+import skillbill.desktop.core.designsystem.SkillBillTypeStyles
 import skillbill.desktop.core.domain.model.SkillBillStatusBar
 import skillbill.desktop.core.domain.model.SkillBillTreeItem
 import skillbill.desktop.core.domain.model.TreeItemKind
@@ -55,8 +56,7 @@ internal fun AcceleratorTooltip(label: String, acceleratorLabel: String?, conten
         Text(
           text = "$label - $acceleratorLabel",
           color = SkillBillTheme.frameTokens.text,
-          fontSize = 11.sp,
-          fontFamily = FontFamily.Monospace,
+          style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
         )
       }
     },
@@ -69,8 +69,7 @@ internal fun LabelText(text: String, modifier: Modifier = Modifier) {
   Text(
     text = text,
     color = SkillBillTheme.frameTokens.subtle,
-    fontSize = 10.sp,
-    fontWeight = FontWeight.Medium,
+    style = SkillBillTypeStyles.caption,
     letterSpacing = 0.sp,
     modifier = modifier,
     maxLines = 1,
@@ -102,9 +101,7 @@ internal fun MiniIcon(text: String, tint: SkillBillColor) {
     Text(
       text = text.take(2),
       color = tint,
-      fontSize = 8.sp,
-      fontFamily = FontFamily.Monospace,
-      fontWeight = FontWeight.Bold,
+      style = SkillBillTypeStyles.microLabel,
       maxLines = 1,
     )
   }

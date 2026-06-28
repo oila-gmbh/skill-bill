@@ -19,6 +19,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -37,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import skillbill.desktop.core.designsystem.SkillBillComponentShapes
 import skillbill.desktop.core.designsystem.SkillBillTheme
+import skillbill.desktop.core.designsystem.SkillBillTypeStyles
 import skillbill.desktop.core.domain.model.DirtyEditorPrompt
 import skillbill.desktop.core.domain.model.DirtyEditorPromptReason
 import skillbill.desktop.core.domain.model.EditorPlaceholder
@@ -96,11 +98,9 @@ internal fun CodeEditor(
           value = editor.draftContent ?: editor.content.orEmpty(),
           onValueChange = onDraftChanged,
           enabled = editorInputActive,
-          textStyle = androidx.compose.ui.text.TextStyle(
-            color = if (editorInputActive) codePaneColors.editorText else codePaneColors.editorDisabledText,
-            fontSize = 12.5.sp,
-            fontFamily = FontFamily.Monospace,
+          textStyle = SkillBillTypeStyles.code.copy(
             lineHeight = 20.sp,
+            color = if (editorInputActive) codePaneColors.editorText else codePaneColors.editorDisabledText,
           ),
           cursorBrush = SolidColor(codePaneColors.editorCursor),
           modifier =
@@ -172,8 +172,7 @@ private fun EditorCommandBar(editor: EditorPlaceholder, onSave: () -> Unit, onRe
         "Read-only"
       },
       color = if (editor.dirty) SkillBillTheme.frameTokens.primary else SkillBillTheme.frameTokens.muted,
-      fontSize = 11.sp,
-      fontFamily = FontFamily.Monospace,
+      style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
       modifier = Modifier.weight(1f),
       maxLines = 1,
       overflow = TextOverflow.Ellipsis,
@@ -229,7 +228,13 @@ private fun EditorActionButton(
       horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
       MiniIcon(text = marker, tint = foreground)
-      Text(text = label, color = foreground, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+      Text(
+        text = label,
+        color = foreground,
+        style = MaterialTheme.typography.labelSmall,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+      )
     }
   }
 }
@@ -252,7 +257,7 @@ private fun ReadOnlyBanner(editor: EditorPlaceholder) {
         editor.readOnlyReason ?: "Read-only browser"
       },
       color = SkillBillTheme.frameTokens.muted,
-      fontSize = 11.sp,
+      style = MaterialTheme.typography.labelSmall,
       maxLines = 1,
       overflow = TextOverflow.Ellipsis,
     )
@@ -277,7 +282,7 @@ private fun SaveErrorBanner(message: String) {
     Text(
       text = message,
       color = errorTone.content,
-      fontSize = 11.sp,
+      style = MaterialTheme.typography.labelSmall,
       modifier = Modifier.weight(1f),
     )
   }
@@ -303,7 +308,7 @@ private fun DirtyEditorPromptBanner(prompt: DirtyEditorPrompt, onDiscard: () -> 
     Text(
       text = message,
       color = warningTone.content,
-      fontSize = 11.sp,
+      style = MaterialTheme.typography.labelSmall,
       modifier = Modifier.weight(1f),
       maxLines = 1,
       overflow = TextOverflow.Ellipsis,
@@ -324,8 +329,7 @@ private fun CodeLine(number: Int, line: String, flagged: Boolean, colors: CodePa
     Text(
       text = number.toString(),
       color = colors.lineNumber,
-      fontSize = 12.sp,
-      fontFamily = FontFamily.Monospace,
+      style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
       modifier =
       Modifier
         .width(50.dp)
@@ -345,7 +349,11 @@ private fun CodeLine(number: Int, line: String, flagged: Boolean, colors: CodePa
           horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
           MiniIcon(text = "x", tint = SkillBillTheme.frameTokens.status.error)
-          Text(text = "contract: missing field", color = SkillBillTheme.frameTokens.status.error, fontSize = 10.5.sp)
+          Text(
+            text = "contract: missing field",
+            color = SkillBillTheme.frameTokens.status.error,
+            style = SkillBillTypeStyles.codeCaption,
+          )
         }
       }
     }
@@ -359,30 +367,25 @@ private fun SyntaxText(line: String, colors: CodePaneColors) {
     Text(
       text = line,
       color = colors.yaml.comment,
-      fontSize = 12.5.sp,
-      fontFamily = FontFamily.Monospace,
-      lineHeight = 20.sp,
+      style = SkillBillTypeStyles.code.copy(lineHeight = 20.sp),
       maxLines = 1,
     )
   } else if (keyMatch != null) {
     Row {
-      Text(keyMatch.groupValues[1], color = colors.yaml.scalar, fontSize = 12.5.sp, fontFamily = FontFamily.Monospace)
-      Text(keyMatch.groupValues[2], color = colors.yaml.key, fontSize = 12.5.sp, fontFamily = FontFamily.Monospace)
-      Text(":", color = colors.yaml.marker, fontSize = 12.5.sp, fontFamily = FontFamily.Monospace)
+      Text(keyMatch.groupValues[1], color = colors.yaml.scalar, style = SkillBillTypeStyles.code)
+      Text(keyMatch.groupValues[2], color = colors.yaml.key, style = SkillBillTypeStyles.code)
+      Text(":", color = colors.yaml.marker, style = SkillBillTypeStyles.code)
       Text(
         keyMatch.groupValues[3],
         color = colors.yaml.scalar,
-        fontSize = 12.5.sp,
-        fontFamily = FontFamily.Monospace,
+        style = SkillBillTypeStyles.code,
       )
     }
   } else {
     Text(
       text = line,
       color = colors.yaml.scalar,
-      fontSize = 12.5.sp,
-      fontFamily = FontFamily.Monospace,
-      lineHeight = 20.sp,
+      style = SkillBillTypeStyles.code.copy(lineHeight = 20.sp),
       maxLines = 1,
     )
   }

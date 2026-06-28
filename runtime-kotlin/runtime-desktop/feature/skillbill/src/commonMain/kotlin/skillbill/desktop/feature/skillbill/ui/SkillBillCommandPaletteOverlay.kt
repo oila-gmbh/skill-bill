@@ -19,6 +19,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -40,12 +41,11 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import skillbill.desktop.core.designsystem.SkillBillComponentShapes
 import skillbill.desktop.core.designsystem.SkillBillTheme
+import skillbill.desktop.core.designsystem.SkillBillTypeStyles
 import skillbill.desktop.core.domain.model.CommandPaletteResult
 import skillbill.desktop.core.domain.model.CommandPaletteResultKind
 import skillbill.desktop.core.domain.model.CommandPaletteState
@@ -136,7 +136,7 @@ private fun CommandPaletteInput(query: String, onQueryChanged: (String) -> Unit,
         Text(
           text = "Search commands and source items",
           color = textFieldTokens.placeholder,
-          fontSize = 14.sp,
+          style = MaterialTheme.typography.titleSmall,
           maxLines = 1,
           overflow = TextOverflow.Ellipsis,
         )
@@ -145,10 +145,9 @@ private fun CommandPaletteInput(query: String, onQueryChanged: (String) -> Unit,
         value = query,
         onValueChange = onQueryChanged,
         singleLine = true,
-        textStyle = androidx.compose.ui.text.TextStyle(
-          color = textFieldTokens.text,
-          fontSize = 14.sp,
+        textStyle = MaterialTheme.typography.titleSmall.copy(
           fontFamily = FontFamily.Monospace,
+          color = textFieldTokens.text,
         ),
         cursorBrush = SolidColor(textFieldTokens.cursor),
         modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
@@ -168,7 +167,7 @@ private fun CommandPaletteResults(
       Text(
         text = "No matching commands",
         color = SkillBillTheme.frameTokens.subtle,
-        fontSize = 12.sp,
+        style = MaterialTheme.typography.bodySmall,
         modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
       )
     }
@@ -227,8 +226,7 @@ private fun CommandPaletteResultRow(result: CommandPaletteResult, selected: Bool
         Text(
           text = result.title,
           color = titleColor,
-          fontSize = 13.sp,
-          fontWeight = FontWeight.Medium,
+          style = SkillBillTypeStyles.body13,
           maxLines = 1,
           overflow = TextOverflow.Ellipsis,
           modifier = Modifier.weight(1f),
@@ -241,7 +239,7 @@ private fun CommandPaletteResultRow(result: CommandPaletteResult, selected: Bool
       Text(
         text = result.disabledReason ?: result.subtitle,
         color = if (result.disabledReason == null) subtitleColor else SkillBillTheme.frameTokens.status.warning,
-        fontSize = 11.sp,
+        style = MaterialTheme.typography.labelSmall,
         maxLines = 2,
         overflow = TextOverflow.Ellipsis,
       )
@@ -254,8 +252,7 @@ private fun CommandPaletteAcceleratorLabel(label: String) {
   Text(
     text = label,
     color = SkillBillTheme.frameTokens.muted,
-    fontSize = 10.sp,
-    fontFamily = FontFamily.Monospace,
+    style = SkillBillTypeStyles.caption.copy(fontFamily = FontFamily.Monospace),
     maxLines = 1,
   )
 }
@@ -269,8 +266,7 @@ private fun CommandPaletteKindLabel(kind: CommandPaletteResultKind) {
   Text(
     text = label,
     color = SkillBillTheme.frameTokens.subtle,
-    fontSize = 10.sp,
-    fontFamily = FontFamily.Monospace,
+    style = SkillBillTypeStyles.caption.copy(fontFamily = FontFamily.Monospace),
     maxLines = 1,
   )
 }

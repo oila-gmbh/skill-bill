@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -34,7 +35,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import skillbill.desktop.core.designsystem.SkillBillColor
 import skillbill.desktop.core.designsystem.SkillBillComponentShapes
 import skillbill.desktop.core.designsystem.SkillBillTheme
@@ -170,7 +170,7 @@ internal fun ToolbarButton(
       Text(
         text = label,
         color = foreground,
-        fontSize = 12.sp,
+        style = MaterialTheme.typography.bodySmall,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
       )
@@ -271,7 +271,7 @@ private fun ToolbarStatusItem(label: String, marker: String, primary: Boolean = 
     Text(
       text = label,
       color = foreground,
-      fontSize = 12.sp,
+      style = MaterialTheme.typography.bodySmall,
       maxLines = 1,
       overflow = TextOverflow.Ellipsis,
     )

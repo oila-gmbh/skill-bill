@@ -5,11 +5,16 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.runComposeUiTest
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import kotlin.math.pow
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 @OptIn(ExperimentalTestApi::class)
@@ -88,6 +93,55 @@ class SkillBillThemeTokensTest {
     assertEquals(RoundedCornerShape(6.dp), SkillBillComponentShapes.control)
     assertEquals(RoundedCornerShape(8.dp), SkillBillComponentShapes.panel)
     assertEquals(CircleShape, SkillBillComponentShapes.pill)
+  }
+
+  @Test
+  fun `typography slots and extended type styles pin their design sizes and weights`() {
+    assertEquals(16.sp, SkillBillTypography.bodyLarge.fontSize)
+    assertEquals(FontWeight.Medium, SkillBillTypography.bodyLarge.fontWeight)
+    assertEquals(14.sp, SkillBillTypography.titleSmall.fontSize)
+    assertEquals(FontWeight.Medium, SkillBillTypography.titleSmall.fontWeight)
+    assertEquals(12.sp, SkillBillTypography.bodySmall.fontSize)
+    assertEquals(FontWeight.Medium, SkillBillTypography.bodySmall.fontWeight)
+    assertEquals(11.sp, SkillBillTypography.labelSmall.fontSize)
+    assertEquals(FontWeight.Medium, SkillBillTypography.labelSmall.fontWeight)
+
+    assertEquals(12.5.sp, SkillBillTypeStyles.code.fontSize)
+    assertEquals(FontFamily.Monospace, SkillBillTypeStyles.code.fontFamily)
+    assertEquals(FontWeight.Medium, SkillBillTypeStyles.code.fontWeight)
+    assertEquals(TextUnit.Unspecified, SkillBillTypeStyles.code.lineHeight)
+
+    assertEquals(12.5.sp, SkillBillTypeStyles.body125.fontSize)
+    assertNull(SkillBillTypeStyles.body125.fontFamily)
+    assertEquals(FontWeight.Medium, SkillBillTypeStyles.body125.fontWeight)
+
+    assertEquals(13.sp, SkillBillTypeStyles.body13.fontSize)
+    assertEquals(FontWeight.Medium, SkillBillTypeStyles.body13.fontWeight)
+
+    assertEquals(13.sp, SkillBillTypeStyles.mono13.fontSize)
+    assertEquals(FontFamily.Monospace, SkillBillTypeStyles.mono13.fontFamily)
+    assertEquals(FontWeight.SemiBold, SkillBillTypeStyles.mono13.fontWeight)
+
+    assertEquals(11.sp, SkillBillTypeStyles.semiBoldLabel.fontSize)
+    assertEquals(FontWeight.SemiBold, SkillBillTypeStyles.semiBoldLabel.fontWeight)
+
+    assertEquals(11.sp, SkillBillTypeStyles.monoBadge.fontSize)
+    assertEquals(FontFamily.Monospace, SkillBillTypeStyles.monoBadge.fontFamily)
+    assertEquals(FontWeight.Bold, SkillBillTypeStyles.monoBadge.fontWeight)
+
+    assertEquals(10.sp, SkillBillTypeStyles.caption.fontSize)
+    assertEquals(FontWeight.Medium, SkillBillTypeStyles.caption.fontWeight)
+
+    assertEquals(10.5.sp, SkillBillTypeStyles.codeCaption.fontSize)
+    assertEquals(FontWeight.Medium, SkillBillTypeStyles.codeCaption.fontWeight)
+    assertEquals(TextUnit.Unspecified, SkillBillTypeStyles.codeCaption.lineHeight)
+
+    assertEquals(8.sp, SkillBillTypeStyles.microLabel.fontSize)
+    assertEquals(FontFamily.Monospace, SkillBillTypeStyles.microLabel.fontFamily)
+    assertEquals(FontWeight.Bold, SkillBillTypeStyles.microLabel.fontWeight)
+
+    assertEquals(12.sp, SkillBillTypeStyles.bodySmallNormal.fontSize)
+    assertEquals(FontWeight.Normal, SkillBillTypeStyles.bodySmallNormal.fontWeight)
   }
 
   @Test

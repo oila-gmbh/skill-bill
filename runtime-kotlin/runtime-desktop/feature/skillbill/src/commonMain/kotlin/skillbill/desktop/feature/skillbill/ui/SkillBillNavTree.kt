@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -36,12 +37,12 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import skillbill.desktop.core.designsystem.SkillBillComponentShapes
 import skillbill.desktop.core.designsystem.SkillBillTheme
+import skillbill.desktop.core.designsystem.SkillBillTypeStyles
 import skillbill.desktop.core.domain.model.SkillBillTreeItem
 
 @Composable
@@ -105,17 +106,16 @@ internal fun NavGroup(
           .fillMaxHeight()
           .background(if (selected) SkillBillTheme.frameTokens.primary else SkillBillTheme.frameTokens.transparent),
       )
-      Text(text = if (expanded) "v" else ">", color = iconTint, fontSize = 12.sp)
+      Text(text = if (expanded) "v" else ">", color = iconTint, style = MaterialTheme.typography.bodySmall)
       MiniIcon(text = markerFor(group.kind), tint = iconTint)
       Text(
         text = group.label,
         color = textColor,
-        fontSize = 11.sp,
-        fontWeight = FontWeight.Medium,
+        style = MaterialTheme.typography.labelSmall,
         letterSpacing = 0.sp,
         modifier = Modifier.weight(1f),
       )
-      Text(text = group.children.size.toString(), color = iconTint, fontSize = 11.sp)
+      Text(text = group.children.size.toString(), color = iconTint, style = MaterialTheme.typography.labelSmall)
       DropdownMenu(
         expanded = menuExpanded,
         onDismissRequest = { menuExpanded = false },
@@ -229,7 +229,7 @@ private fun NavTreeNode(
     )
     Spacer(modifier = Modifier.width((22 + depth * 16).dp))
     if (expandable) {
-      Text(text = if (expanded) "v" else ">", color = iconTint, fontSize = 12.sp)
+      Text(text = if (expanded) "v" else ">", color = iconTint, style = MaterialTheme.typography.bodySmall)
     } else {
       Spacer(modifier = Modifier.width(7.dp))
     }
@@ -237,8 +237,7 @@ private fun NavTreeNode(
     Text(
       text = node.label,
       color = SkillBillTheme.frameTokens.text.copy(alpha = textAlpha),
-      fontSize = 12.5.sp,
-      fontFamily = FontFamily.Monospace,
+      style = SkillBillTypeStyles.code,
       modifier = Modifier.padding(start = 8.dp).weight(1f),
       maxLines = 1,
       overflow = TextOverflow.Ellipsis,
@@ -249,8 +248,7 @@ private fun NavTreeNode(
       Text(
         text = readOnlyLabel,
         color = SkillBillTheme.frameTokens.subtle,
-        fontSize = 10.sp,
-        fontFamily = FontFamily.Monospace,
+        style = SkillBillTypeStyles.caption.copy(fontFamily = FontFamily.Monospace),
         modifier = Modifier.padding(end = 8.dp),
       )
     }
@@ -339,14 +337,13 @@ internal fun RepositoryStatusItem(label: String, statusText: String, marker: Str
     Text(
       text = label,
       color = contentColor,
-      fontSize = 12.5.sp,
+      style = SkillBillTypeStyles.body125,
       modifier = Modifier.weight(1f),
     )
     Text(
       text = statusText,
       color = SkillBillTheme.frameTokens.status.warning,
-      fontSize = 10.sp,
-      fontFamily = FontFamily.Monospace,
+      style = SkillBillTypeStyles.caption.copy(fontFamily = FontFamily.Monospace),
       maxLines = 1,
     )
   }

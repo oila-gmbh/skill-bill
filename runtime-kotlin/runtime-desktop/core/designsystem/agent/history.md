@@ -1,5 +1,26 @@
 # Runtime desktop design system — history
 
+## [2026-06-28] SKILL-96 m3-tokenization (typography AC4 font-weight fix)
+Areas: runtime-desktop/core/designsystem
+- Fixed the AC4 Medium→Normal regression surfaced at audit: set `fontWeight = FontWeight.Medium` on the five ambient-inheriting `SkillBillTypeStyles` tokens (`code`, `body125`, `body13`, `caption`, `codeCaption`) that previously had a null weight; `SkillBillThemeTokensTest` now asserts Medium on all five instead of `assertNull`.
+- Root cause: passing an explicit `style=` to a Material3 `Text` REPLACES `LocalTextStyle.current` entirely and merges only per-call named params — the ambient (which resolves to `bodyLarge` = Medium) is NOT inherited. A token with `fontWeight = null` therefore resolves to Normal (W400) once it is passed as `style=`, silently regressing the ~28 regular-`Text` sites that previously had no explicit weight and rendered ambient Medium.
+- Reusable: when authoring a `SkillBillTypeStyles` token consumed by `Text(style=…)`, bake the resolved weight (and family) into the token literal — never rely on `bodyLarge`-ambient inheritance through an explicit `style=`. The only token that may keep an explicit Normal is `bodySmallNormal` (12sp, intentionally Normal for the non-primary footer button).
+- Reusable tests: `SkillBillThemeTokensTest` pins the resolved weight of every extended style, so a token-level weight regression now fails the build rather than passing as an ambient-resolution invisible defect.
+Feature flag: N/A
+Acceptance criteria: 6/6 — AC4 font-weight parity restored; `(cd runtime-kotlin && ./gradlew check)` green.
+
+## [2026-06-28] SKILL-96 m3-tokenization (typography subtask)
+Areas: runtime-desktop/core/designsystem, runtime-desktop/feature/skillbill, runtime-desktop/core/ui
+- Added `SkillBillTypeStyles` — a 10-style direct-access `object` (code/body125/body13/mono13/semiBoldLabel/monoBadge/caption/codeCaption/microLabel/bodySmallNormal) in `skillbill.desktop.core.designsystem` beside `SkillBillMetrics`/`SkillBillShape`, holding the non-standard size+weight+family tuples; deliberately NOT routed through the `SkillBillTheme` CompositionLocal facade (matches the `SkillBillMetrics` convention).
+- Retuned `titleSmall` in `SkillBillTypography.kt` from Bold to Medium/14sp; extended `SkillBillThemeTokensTest` to pin `titleSmall`/`bodySmall`/`bodyLarge`/`labelSmall` and all 10 extended styles.
+- Migrated every inline `fontSize =`/`fontWeight =`/`TextStyle(` site across 13 commonMain UI files (feature/skillbill + core/ui) to `MaterialTheme.typography.*` or `SkillBillTypeStyles.*`; the `fontSize =`/`fontWeight =`/`TextStyle(` grep gate is now empty in feature/ and core/ui.
+- Reusable: feature UI must consume `MaterialTheme.typography.*` or `SkillBillTypeStyles.*` instead of inline `fontSize=`/`fontWeight=`/`TextStyle(...)`; the only gate-exempt inline overrides are `.copy(fontFamily = FontFamily.Monospace)`, `.copy(lineHeight = …)`, and `.copy(color = …)`, and `letterSpacing = 0.sp` stays inline where the original deliberately overrode the ambient tracking.
+- Reusable tests: `SkillBillThemeTokensTest` pins the typography slots and all 10 extended styles so future drift is caught by `:runtime-desktop:core:designsystem:jvmTest`.
+- Known limitation: `gradlew check` is blind to composition-level (ambient-resolved) font weight — a green build does NOT prove rendered weights; when editing type tuples, bake size+weight explicitly into `SkillBillTypeStyles` (do not rely on `bodyLarge`-ambient inheritance) or add a compose test that reads the ambient-merged style.
+- Deliberate change: `titleSmall` is now Medium/14sp, so any panel header or M3 component defaulting to `titleSmall` renders Medium rather than Bold — smoke-gaze those when re-theming.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
 ## [2026-06-28] SKILL-96 m3-tokenization (shapes subtask)
 Areas: runtime-desktop/core/designsystem, runtime-desktop/feature/skillbill
 - Added `SkillBillShapeScheme` (5-tier: extraSmall 4dp, small 6dp, medium 8dp, large 12dp, extraLarge 16dp) and `SkillBillComponentShapes` (checkbox 2dp, chip 3dp, previewConsole 4dp, badge 5dp, control 6dp, panel 8dp, pill CircleShape); rebuilt `SkillBillShapes` from the scheme via the material3 5-param `Shapes` ctor.

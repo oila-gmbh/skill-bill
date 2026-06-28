@@ -25,6 +25,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -45,14 +46,12 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.editableText
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import skillbill.desktop.core.designsystem.SkillBillComponentShapes
 import skillbill.desktop.core.designsystem.SkillBillTheme
+import skillbill.desktop.core.designsystem.SkillBillTypeStyles
 import skillbill.desktop.core.domain.model.BaselineReviewSkillOption
 import skillbill.desktop.core.domain.model.ScaffoldBaselineLayerForm
 import skillbill.desktop.core.domain.model.ScaffoldKind
@@ -196,14 +195,13 @@ private fun WizardHeader(kind: ScaffoldKind, onDismiss: () -> Unit) {
     Text(
       text = "New ${kind.displayLabel}",
       color = dialogTone.content,
-      fontSize = 14.sp,
-      fontWeight = FontWeight.Medium,
+      style = MaterialTheme.typography.titleSmall,
       modifier = Modifier.weight(1f),
     )
     Text(
       text = "x",
       color = colors.onSurfaceVariant,
-      fontSize = 14.sp,
+      style = MaterialTheme.typography.titleSmall,
       modifier = Modifier
         .semantics { contentDescription = "Dismiss scaffold wizard" }
         .clickable(role = Role.Button, onClick = onDismiss)
@@ -230,7 +228,7 @@ private fun KindPicker(selected: ScaffoldKind, onSelect: (ScaffoldKind) -> Unit,
         Text(
           text = kind.displayLabel,
           color = foregroundColor,
-          fontSize = 11.sp,
+          style = MaterialTheme.typography.labelSmall,
           modifier = Modifier
             .clip(SkillBillComponentShapes.control)
             .border(1.dp, dialogTone.border, SkillBillComponentShapes.control)
@@ -261,14 +259,13 @@ private fun DirtyRepoWarning(override: Boolean, enabled: Boolean, onOverrideChan
     Text(
       text = "Repository has uncommitted non-generated changes",
       color = tone.content,
-      fontSize = 12.sp,
-      fontWeight = FontWeight.Medium,
+      style = MaterialTheme.typography.bodySmall,
     )
     Text(
       text = "The scaffolder rolls back transactionally on failure, but dirty content may make a " +
         "partial commit ambiguous. Acknowledge to proceed.",
       color = colors.onSurfaceVariant,
-      fontSize = 10.5.sp,
+      style = SkillBillTypeStyles.codeCaption,
     )
     Row(
       verticalAlignment = Alignment.CenterVertically,
@@ -277,8 +274,12 @@ private fun DirtyRepoWarning(override: Boolean, enabled: Boolean, onOverrideChan
         .semantics { contentDescription = "Acknowledge dirty repository warning" }
         .clickable(enabled = enabled, role = Role.Checkbox) { onOverrideChanged(!override) },
     ) {
-      Text(text = if (override) "[x]" else "[ ]", color = tone.content, fontSize = 12.sp)
-      Text(text = "I understand, scaffold anyway", color = dialogTone.content, fontSize = 11.sp)
+      Text(text = if (override) "[x]" else "[ ]", color = tone.content, style = MaterialTheme.typography.bodySmall)
+      Text(
+        text = "I understand, scaffold anyway",
+        color = dialogTone.content,
+        style = MaterialTheme.typography.labelSmall,
+      )
     }
   }
 }
@@ -300,8 +301,7 @@ private fun WizardForm(state: ScaffoldWizardState, callbacks: ScaffoldWizardCall
       Text(
         text = ScaffoldWizardStrings.SKILL_NAME_HELPER,
         color = SkillBillTheme.colors.onSurfaceVariant,
-        fontSize = 11.sp,
-        fontFamily = FontFamily.Monospace,
+        style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
       )
       TextFieldRow(
         label = "Description",
@@ -429,7 +429,7 @@ private fun BaselineLayerControls(state: ScaffoldWizardState, callbacks: Scaffol
       Text(
         text = ScaffoldWizardStrings.NO_BASELINE_LAYERS,
         color = SkillBillTheme.colors.onSurfaceVariant,
-        fontSize = 11.sp,
+        style = MaterialTheme.typography.labelSmall,
       )
     }
     fields.baselineLayers.forEachIndexed { index, layer ->
@@ -446,7 +446,7 @@ private fun BaselineLayerControls(state: ScaffoldWizardState, callbacks: Scaffol
       Text(
         text = ScaffoldWizardStrings.NO_BASELINE_PACKS,
         color = SkillBillTheme.colors.onSurfaceVariant,
-        fontSize = 11.sp,
+        style = MaterialTheme.typography.labelSmall,
       )
     }
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -488,8 +488,7 @@ private fun BaselineLayerEditor(
       Text(
         text = "Layer ${index + 1}",
         color = SkillBillTheme.semanticTones.dialog.content,
-        fontSize = 12.sp,
-        fontWeight = FontWeight.Medium,
+        style = MaterialTheme.typography.bodySmall,
         modifier = Modifier.weight(1f),
       )
       InlineButton(
@@ -603,8 +602,7 @@ private fun SectionLabel(text: String) {
   Text(
     text = text,
     color = SkillBillTheme.colors.onSurfaceVariant,
-    fontSize = 10.5.sp,
-    fontFamily = FontFamily.Monospace,
+    style = SkillBillTypeStyles.codeCaption.copy(fontFamily = FontFamily.Monospace),
   )
 }
 
@@ -637,10 +635,9 @@ private fun TextFieldRow(label: String, value: String, enabled: Boolean, onValue
         onValueChange = onValueChanged,
         enabled = enabled,
         singleLine = true,
-        textStyle = TextStyle(
-          color = textColor,
-          fontSize = 12.sp,
+        textStyle = MaterialTheme.typography.bodySmall.copy(
           fontFamily = FontFamily.Monospace,
+          color = textColor,
         ),
         cursorBrush = SolidColor(textFieldTokens.cursor),
         interactionSource = interactionSource,
@@ -692,18 +689,16 @@ private fun PrefixedTextFieldRow(
       Text(
         text = prefix,
         color = SkillBillTheme.colors.onSurfaceVariant,
-        fontSize = 12.sp,
-        fontFamily = FontFamily.Monospace,
+        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
       )
       BasicTextField(
         value = value,
         onValueChange = { raw -> onValueChanged(raw.removePrefix(prefix)) },
         enabled = enabled,
         singleLine = true,
-        textStyle = TextStyle(
-          color = textColor,
-          fontSize = 12.sp,
+        textStyle = MaterialTheme.typography.bodySmall.copy(
           fontFamily = FontFamily.Monospace,
+          color = textColor,
         ),
         cursorBrush = SolidColor(textFieldTokens.cursor),
         interactionSource = interactionSource,
@@ -733,7 +728,7 @@ private fun PresetPicker(
       Text(
         text = "(no options available)",
         color = colors.onSurfaceVariant,
-        fontSize = 11.sp,
+        style = MaterialTheme.typography.labelSmall,
       )
     } else {
       Row(
@@ -751,7 +746,7 @@ private fun PresetPicker(
           Text(
             text = display,
             color = foregroundColor,
-            fontSize = 11.sp,
+            style = MaterialTheme.typography.labelSmall,
             modifier = Modifier
               .clip(SkillBillComponentShapes.control)
               .border(1.dp, dialogTone.border, SkillBillComponentShapes.control)
@@ -781,8 +776,7 @@ private fun PlanPreview(plan: skillbill.desktop.core.domain.model.ScaffoldPlan) 
     Text(
       text = "Dry-run plan",
       color = tone.content,
-      fontSize = 12.sp,
-      fontWeight = FontWeight.Medium,
+      style = MaterialTheme.typography.bodySmall,
     )
     PreviewSection(label = "Planned files", lines = plan.createdFiles)
     PreviewSection(label = "Manifest edits", lines = plan.manifestEdits)
@@ -802,16 +796,14 @@ private fun ManifestPreviewSection(previews: List<skillbill.desktop.core.domain.
     Text(
       text = ScaffoldWizardStrings.MANIFEST_EDIT_PREVIEWS,
       color = colors.onSurfaceVariant,
-      fontSize = 10.5.sp,
-      fontFamily = FontFamily.Monospace,
+      style = SkillBillTypeStyles.codeCaption.copy(fontFamily = FontFamily.Monospace),
     )
     previews.forEach { preview ->
       var expanded by remember(preview.path) { mutableStateOf(false) }
       Text(
         text = preview.path,
         color = dialogTone.content,
-        fontSize = 11.sp,
-        fontFamily = FontFamily.Monospace,
+        style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
       )
@@ -836,8 +828,7 @@ private fun ManifestPreviewSection(previews: List<skillbill.desktop.core.domain.
           Text(
             text = preview.content,
             color = SkillBillTheme.colors.onBackground,
-            fontSize = 10.5.sp,
-            fontFamily = FontFamily.Monospace,
+            style = SkillBillTypeStyles.codeCaption.copy(fontFamily = FontFamily.Monospace),
           )
         }
       }
@@ -854,15 +845,13 @@ private fun PreviewSection(label: String, lines: List<String>) {
     Text(
       text = label,
       color = colors.onSurfaceVariant,
-      fontSize = 10.5.sp,
-      fontFamily = FontFamily.Monospace,
+      style = SkillBillTypeStyles.codeCaption.copy(fontFamily = FontFamily.Monospace),
     )
     lines.forEach { line ->
       Text(
         text = line,
         color = dialogTone.content,
-        fontSize = 11.sp,
-        fontFamily = FontFamily.Monospace,
+        style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
         maxLines = 2,
         overflow = TextOverflow.Ellipsis,
       )
@@ -885,14 +874,13 @@ private fun ValidationBanner(errors: List<String>) {
     Text(
       text = ScaffoldWizardStrings.VALIDATION_TITLE,
       color = tone.content,
-      fontSize = 12.sp,
-      fontWeight = FontWeight.Medium,
+      style = MaterialTheme.typography.bodySmall,
     )
     errors.forEach { error ->
       Text(
         text = error,
         color = tone.content,
-        fontSize = 11.sp,
+        style = MaterialTheme.typography.labelSmall,
       )
     }
   }
@@ -922,14 +910,12 @@ private fun SuccessBanner(result: ScaffoldRunResult.Success) {
     Text(
       text = "Scaffold succeeded: ${result.result.skillName}",
       color = tone.content,
-      fontSize = 12.sp,
-      fontWeight = FontWeight.Medium,
+      style = MaterialTheme.typography.bodySmall,
     )
     Text(
       text = result.result.skillPath,
       color = SkillBillTheme.semanticTones.dialog.content,
-      fontSize = 11.sp,
-      fontFamily = FontFamily.Monospace,
+      style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
     )
   }
 }
@@ -965,22 +951,19 @@ private fun FailureConsole(result: ScaffoldRunResult.Failed) {
       Text(
         text = "⚠ [REPO PARTIALLY MUTATED]",
         color = tone.content,
-        fontSize = 11.sp,
-        fontWeight = FontWeight.Bold,
-        fontFamily = FontFamily.Monospace,
+        style = SkillBillTypeStyles.monoBadge,
       )
     }
     Text(
       text = if (result.rollbackComplete) "Scaffold failed" else "Scaffold failed - partial mutation",
       color = tone.content,
-      fontSize = 12.sp,
-      fontWeight = FontWeight.Medium,
+      style = MaterialTheme.typography.bodySmall,
     )
     if (!result.rollbackComplete) {
       Text(
         text = "Runtime rollback did not complete. Inspect the repo and revert manually before retrying.",
         color = tone.content,
-        fontSize = 11.sp,
+        style = MaterialTheme.typography.labelSmall,
       )
     }
     Box(
@@ -994,8 +977,7 @@ private fun FailureConsole(result: ScaffoldRunResult.Failed) {
       Text(
         text = "${result.exceptionName}: ${result.exceptionMessage}".trim(),
         color = SkillBillTheme.colors.onBackground,
-        fontSize = 11.sp,
-        fontFamily = FontFamily.Monospace,
+        style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
       )
     }
   }
@@ -1071,7 +1053,7 @@ private fun InlineButton(label: String, enabled: Boolean, onClick: () -> Unit) {
   Text(
     text = label,
     color = if (enabled) dialogTone.content else colors.onSurfaceVariant,
-    fontSize = 11.sp,
+    style = MaterialTheme.typography.labelSmall,
     modifier = Modifier
       .clip(SkillBillComponentShapes.control)
       .border(1.dp, dialogTone.border, SkillBillComponentShapes.control)
@@ -1099,8 +1081,7 @@ private fun FooterButton(label: String, enabled: Boolean, primary: Boolean, onCl
   Text(
     text = label,
     color = foreground,
-    fontSize = 12.sp,
-    fontWeight = if (primary) FontWeight.Medium else FontWeight.Normal,
+    style = if (primary) MaterialTheme.typography.bodySmall else SkillBillTypeStyles.bodySmallNormal,
     modifier = Modifier
       .clip(SkillBillComponentShapes.control)
       .border(1.dp, dialogTone.border, SkillBillComponentShapes.control)

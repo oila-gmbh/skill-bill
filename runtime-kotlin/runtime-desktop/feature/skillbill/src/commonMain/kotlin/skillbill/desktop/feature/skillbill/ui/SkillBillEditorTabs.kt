@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
@@ -39,10 +40,10 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import skillbill.desktop.core.designsystem.SkillBillComponentShapes
 import skillbill.desktop.core.designsystem.SkillBillTheme
+import skillbill.desktop.core.designsystem.SkillBillTypeStyles
 import skillbill.desktop.core.domain.model.DirtyEditorPrompt
 import skillbill.desktop.core.domain.model.EditorPlaceholder
 
@@ -268,8 +269,7 @@ private fun EditorTab(
       Text(
         text = tab.title,
         color = textColor,
-        fontSize = 12.sp,
-        fontFamily = FontFamily.Monospace,
+        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
         modifier = Modifier.weight(1f),
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
@@ -285,16 +285,14 @@ private fun EditorTab(
         Text(
           text = tab.readOnlyLabel ?: "RO",
           color = SkillBillTheme.frameTokens.subtle,
-          fontSize = 10.sp,
-          fontFamily = FontFamily.Monospace,
+          style = SkillBillTypeStyles.caption.copy(fontFamily = FontFamily.Monospace),
         )
       }
       if (closeEnabled) {
         Text(
           text = "x",
           color = if (active) SkillBillTheme.frameTokens.muted else SkillBillTheme.frameTokens.subtle,
-          fontSize = 12.sp,
-          fontFamily = FontFamily.Monospace,
+          style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
           modifier = Modifier
             .size(18.dp)
             .clip(SkillBillComponentShapes.previewConsole)

@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -27,13 +28,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import skillbill.desktop.core.designsystem.SkillBillComponentShapes
 import skillbill.desktop.core.designsystem.SkillBillSurfaceTone
 import skillbill.desktop.core.designsystem.SkillBillTheme
+import skillbill.desktop.core.designsystem.SkillBillTypeStyles
 import skillbill.desktop.core.domain.model.FirstRunInstallDetail
 import skillbill.desktop.core.domain.model.FirstRunInstallDetailSeverity
 import skillbill.desktop.core.domain.model.FirstRunInstallStatus
@@ -113,7 +113,7 @@ private fun SetupHeader(state: FirstRunSetupState, onDismiss: () -> Unit) {
     verticalAlignment = Alignment.Top,
   ) {
     Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-      Text(text = "Skill Bill setup", color = dialogTone.content, fontSize = 16.sp, fontWeight = FontWeight.Medium)
+      Text(text = "Skill Bill setup", color = dialogTone.content, style = MaterialTheme.typography.bodyLarge)
       Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         FirstRunSetupStep.entries.forEach { step ->
           StepPill(step = step, selected = step == state.step)
@@ -123,7 +123,7 @@ private fun SetupHeader(state: FirstRunSetupState, onDismiss: () -> Unit) {
     Text(
       text = "x",
       color = if (state.busy) colors.onSurfaceVariant.copy(alpha = 0.55f) else colors.onSurfaceVariant,
-      fontSize = 14.sp,
+      style = MaterialTheme.typography.titleSmall,
       modifier = Modifier
         .semantics { contentDescription = "Dismiss setup wizard" }
         .clickable(enabled = !state.busy, role = Role.Button, onClick = onDismiss)
@@ -139,7 +139,7 @@ private fun StepPill(step: FirstRunSetupStep, selected: Boolean) {
   Text(
     text = step.label(),
     color = if (selected) colors.onPrimary else dialogTone.content,
-    fontSize = 10.sp,
+    style = SkillBillTypeStyles.caption,
     maxLines = 1,
     overflow = TextOverflow.Ellipsis,
     modifier = Modifier
@@ -172,9 +172,17 @@ private fun AgentSelectionStep(state: FirstRunSetupState, callbacks: FirstRunSet
 private fun PlatformPackStep(state: FirstRunSetupState, callbacks: FirstRunSetupCallbacks) {
   val colors = SkillBillTheme.colors
   SectionTitle("Platform packs")
-  Text(text = "Base skills install automatically.", color = colors.onSurfaceVariant, fontSize = 11.sp)
+  Text(
+    text = "Base skills install automatically.",
+    color = colors.onSurfaceVariant,
+    style = MaterialTheme.typography.labelSmall,
+  )
   if (state.platformPacks.isEmpty()) {
-    Text(text = "No platform packs discovered.", color = colors.onSurfaceVariant, fontSize = 12.sp)
+    Text(
+      text = "No platform packs discovered.",
+      color = colors.onSurfaceVariant,
+      style = MaterialTheme.typography.bodySmall,
+    )
   } else {
     state.platformPacks.forEach { pack ->
       ToggleRow(
@@ -211,7 +219,7 @@ private fun PreferencesStep(state: FirstRunSetupState, callbacks: FirstRunSetupC
       "Skill Bill MCP server registration is skipped."
     },
     color = colors.onSurfaceVariant,
-    fontSize = 12.sp,
+    style = MaterialTheme.typography.bodySmall,
   )
 }
 
@@ -233,7 +241,11 @@ private fun ApplyStep(state: FirstRunSetupState) {
 private fun OutcomeStep(state: FirstRunSetupState) {
   val outcome = state.outcome
   if (outcome == null) {
-    Text(text = "Setup has not run yet.", color = SkillBillTheme.colors.onSurfaceVariant, fontSize = 12.sp)
+    Text(
+      text = "Setup has not run yet.",
+      color = SkillBillTheme.colors.onSurfaceVariant,
+      style = MaterialTheme.typography.bodySmall,
+    )
     return
   }
   val tone = when (outcome.status) {
@@ -298,14 +310,14 @@ private fun ToggleRow(label: String, selected: Boolean, enabled: Boolean, detail
     Text(
       text = if (selected) "[x]" else "[ ]",
       color = if (selected) colors.primary else colors.onSurfaceVariant,
-      fontSize = 12.sp,
+      style = MaterialTheme.typography.bodySmall,
     )
     Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-      Text(text = label, color = dialogTone.content, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+      Text(text = label, color = dialogTone.content, style = MaterialTheme.typography.bodySmall)
       Text(
         text = detail,
         color = colors.onSurfaceVariant,
-        fontSize = 10.sp,
+        style = SkillBillTypeStyles.caption,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
       )
@@ -320,7 +332,7 @@ private fun SelectPill(label: String, selected: Boolean, enabled: Boolean, onCli
   Text(
     text = label,
     color = if (selected) colors.onPrimary else dialogTone.content,
-    fontSize = 12.sp,
+    style = MaterialTheme.typography.bodySmall,
     modifier = Modifier
       .clip(SkillBillComponentShapes.control)
       .background(if (selected) colors.primary else colors.surfaceVariant)
@@ -341,7 +353,7 @@ private fun SetupButton(label: String, enabled: Boolean, primary: Boolean = fals
       primary -> colors.onPrimary
       else -> dialogTone.content
     },
-    fontSize = 12.sp,
+    style = MaterialTheme.typography.bodySmall,
     modifier = Modifier
       .clip(SkillBillComponentShapes.control)
       .background(if (primary && enabled) colors.primary else colors.surfaceVariant)
@@ -362,8 +374,8 @@ private fun SetupBanner(title: String, message: String, tone: SkillBillSurfaceTo
       .padding(horizontal = 12.dp, vertical = 10.dp),
     verticalArrangement = Arrangement.spacedBy(4.dp),
   ) {
-    Text(text = title, color = tone.content, fontSize = 12.sp, fontWeight = FontWeight.Medium)
-    Text(text = message, color = tone.content, fontSize = 11.sp)
+    Text(text = title, color = tone.content, style = MaterialTheme.typography.bodySmall)
+    Text(text = message, color = tone.content, style = MaterialTheme.typography.labelSmall)
   }
 }
 
@@ -385,14 +397,21 @@ private fun DetailRow(detail: FirstRunInstallDetail) {
       .padding(horizontal = 12.dp, vertical = 9.dp),
     verticalArrangement = Arrangement.spacedBy(3.dp),
   ) {
-    Text(text = detail.label, color = color, fontSize = 11.sp, fontWeight = FontWeight.Medium)
-    Text(text = detail.message, color = semanticTones.dialog.content, fontSize = 11.sp)
-    detail.path?.let { path -> Text(text = path, color = colors.onSurfaceVariant, fontSize = 10.sp, maxLines = 1) }
+    Text(text = detail.label, color = color, style = MaterialTheme.typography.labelSmall)
+    Text(text = detail.message, color = semanticTones.dialog.content, style = MaterialTheme.typography.labelSmall)
+    detail.path?.let { path ->
+      Text(
+        text = path,
+        color = colors.onSurfaceVariant,
+        style = SkillBillTypeStyles.caption,
+        maxLines = 1,
+      )
+    }
     detail.guidance?.let { guidance ->
       Text(
         text = guidance,
         color = semanticTones.warningBanner.content,
-        fontSize = 10.sp,
+        style = SkillBillTypeStyles.caption,
       )
     }
   }
@@ -403,8 +422,7 @@ private fun SectionTitle(text: String) {
   Text(
     text = text,
     color = SkillBillTheme.semanticTones.dialog.content,
-    fontSize = 12.sp,
-    fontWeight = FontWeight.Medium,
+    style = MaterialTheme.typography.bodySmall,
   )
 }
 
@@ -413,8 +431,8 @@ private fun SummaryLine(label: String, value: String) {
   val colors = SkillBillTheme.colors
   val dialogTone = SkillBillTheme.semanticTones.dialog
   Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-    Text(text = label, color = colors.onSurfaceVariant, fontSize = 11.sp)
-    Text(text = value, color = dialogTone.content, fontSize = 11.sp)
+    Text(text = label, color = colors.onSurfaceVariant, style = MaterialTheme.typography.labelSmall)
+    Text(text = value, color = dialogTone.content, style = MaterialTheme.typography.labelSmall)
   }
 }
 

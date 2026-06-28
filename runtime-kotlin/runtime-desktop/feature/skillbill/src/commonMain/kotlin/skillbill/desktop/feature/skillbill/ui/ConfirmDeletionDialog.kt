@@ -24,6 +24,7 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -36,9 +37,7 @@ import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import skillbill.desktop.core.designsystem.SkillBillComponentShapes
 import skillbill.desktop.core.designsystem.SkillBillTheme
 import skillbill.desktop.core.designsystem.SkillBillTransparent
@@ -170,15 +169,14 @@ fun ConfirmDeletionDialog(state: ConfirmDeletionState, callbacks: ConfirmDeletio
             Text(
               text = ConfirmDeletionStrings.PREVIEW_BUSY,
               color = SkillBillTheme.colors.onSurfaceVariant,
-              fontSize = 12.sp,
-              fontFamily = FontFamily.Monospace,
+              style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
             )
           }
           state.preview != null -> RemovalDossier(state)
           state.executionResult is DesktopSkillRemovalResult.Failed -> Text(
             text = ConfirmDeletionStrings.PREVIEW_FAILED,
             color = semanticTones.errorBanner.content,
-            fontSize = 12.sp,
+            style = MaterialTheme.typography.bodySmall,
           )
         }
         state.executionResult?.let { result -> ResultBanner(result, callbacks.onAcknowledgeFailure) }
@@ -201,14 +199,13 @@ private fun DialogHeader(target: DesktopSkillRemovalTarget, onDismiss: () -> Uni
     Text(
       text = ConfirmDeletionStrings.headerTitle(displayLabelFor(target)),
       color = dialogTone.content,
-      fontSize = 14.sp,
-      fontWeight = FontWeight.Medium,
+      style = MaterialTheme.typography.titleSmall,
       modifier = Modifier.weight(1f),
     )
     Text(
       text = ConfirmDeletionStrings.CLOSE_GLYPH,
       color = colors.onSurfaceVariant,
-      fontSize = 14.sp,
+      style = MaterialTheme.typography.titleSmall,
       modifier = Modifier
         .clickable(role = Role.Button, onClick = onDismiss)
         .padding(horizontal = 6.dp, vertical = 4.dp)
@@ -260,8 +257,7 @@ private fun SectionHeader(text: String) {
   Text(
     text = text,
     color = SkillBillTheme.colors.primary,
-    fontSize = 11.sp,
-    fontWeight = FontWeight.Medium,
+    style = MaterialTheme.typography.labelSmall,
     modifier = Modifier.padding(top = 4.dp),
   )
 }
@@ -273,8 +269,7 @@ private fun DossierLine(text: String) {
   Text(
     text = "• $text",
     color = SkillBillTheme.colors.onSurfaceVariant,
-    fontSize = 11.sp,
-    fontFamily = FontFamily.Monospace,
+    style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
     softWrap = false,
     modifier = Modifier
       .fillMaxWidth()
@@ -305,26 +300,25 @@ private fun ResultBanner(result: DesktopSkillRemovalResult, onAcknowledgeFailure
             ConfirmDeletionStrings.FAILED_PARTIAL_TITLE
           },
           color = tone.content,
-          fontSize = 12.sp,
-          fontWeight = FontWeight.Medium,
+          style = MaterialTheme.typography.bodySmall,
         )
         Text(
           text = "${result.exceptionName}: ${result.exceptionMessage}",
           color = colors.onSurfaceVariant,
-          fontSize = 11.sp,
+          style = MaterialTheme.typography.labelSmall,
         )
         if (!result.rollbackComplete) {
           // F-710: recovery instructions so the user knows what to do next.
           Text(
             text = ConfirmDeletionStrings.FAILED_RECOVERY,
             color = colors.onSurfaceVariant,
-            fontSize = 11.sp,
+            style = MaterialTheme.typography.labelSmall,
           )
         }
         Text(
           text = ConfirmDeletionStrings.ACKNOWLEDGE_PARTIAL_MUTATION,
           color = SkillBillTheme.colors.primary,
-          fontSize = 11.sp,
+          style = MaterialTheme.typography.labelSmall,
           modifier = Modifier
             .clickable(role = Role.Button, onClick = onAcknowledgeFailure)
             .padding(horizontal = 6.dp, vertical = 4.dp),
@@ -344,7 +338,7 @@ private fun ResultBanner(result: DesktopSkillRemovalResult, onAcknowledgeFailure
         Text(
           text = ConfirmDeletionStrings.successBanner(result.removedPaths.size),
           color = tone.content,
-          fontSize = 12.sp,
+          style = MaterialTheme.typography.bodySmall,
         )
       }
     }
@@ -371,7 +365,7 @@ private fun DialogFooter(state: ConfirmDeletionState, callbacks: ConfirmDeletion
       Text(
         text = ConfirmDeletionStrings.CANCEL,
         color = colors.onSurfaceVariant,
-        fontSize = 12.sp,
+        style = MaterialTheme.typography.bodySmall,
         modifier = Modifier
           .clickable(role = Role.Button, onClick = callbacks.onDismiss)
           .padding(horizontal = 10.dp, vertical = 6.dp),
@@ -385,8 +379,7 @@ private fun DialogFooter(state: ConfirmDeletionState, callbacks: ConfirmDeletion
       Text(
         text = if (state.executeBusy) ConfirmDeletionStrings.DELETING else ConfirmDeletionStrings.DELETE,
         color = if (deleteEnabled) errorTone.content else colors.onSurfaceVariant,
-        fontSize = 12.sp,
-        fontWeight = FontWeight.Medium,
+        style = MaterialTheme.typography.bodySmall,
         modifier = Modifier
           .clickable(enabled = deleteEnabled, role = Role.Button, onClick = callbacks.onConfirmDelete)
           .padding(horizontal = 10.dp, vertical = 6.dp)
@@ -401,7 +394,7 @@ private fun DialogFooter(state: ConfirmDeletionState, callbacks: ConfirmDeletion
       Text(
         text = ConfirmDeletionStrings.ACKNOWLEDGE_HINT,
         color = colors.onSurfaceVariant,
-        fontSize = 11.sp,
+        style = MaterialTheme.typography.labelSmall,
         modifier = Modifier.padding(horizontal = 10.dp),
       )
     }
@@ -439,7 +432,7 @@ private fun AcknowledgmentCheckbox(checked: Boolean, enabled: Boolean, onChecked
     Text(
       text = ConfirmDeletionStrings.ACKNOWLEDGE_CHECKBOX_LABEL,
       color = if (enabled) dialogTone.content else colors.onSurfaceVariant,
-      fontSize = 12.sp,
+      style = MaterialTheme.typography.bodySmall,
     )
   }
 }

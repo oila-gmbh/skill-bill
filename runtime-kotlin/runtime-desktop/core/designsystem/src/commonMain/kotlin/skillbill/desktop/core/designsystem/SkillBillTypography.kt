@@ -15,7 +15,7 @@ val SkillBillTypography = Typography(
   headlineSmall = defaultTypography.headlineSmall.copy(fontWeight = FontWeight.Bold),
   titleLarge = defaultTypography.titleLarge.copy(fontWeight = FontWeight.Bold, fontSize = 20.sp),
   titleMedium = defaultTypography.titleMedium.copy(fontWeight = FontWeight.Bold, fontSize = 18.sp),
-  titleSmall = defaultTypography.titleSmall.copy(fontWeight = FontWeight.Bold),
+  titleSmall = defaultTypography.titleSmall.copy(fontWeight = FontWeight.Medium, fontSize = 14.sp),
   bodyLarge = defaultTypography.bodyLarge.copy(fontWeight = FontWeight.Medium),
   bodyMedium = defaultTypography.bodyMedium.copy(fontWeight = FontWeight.Medium),
   bodySmall = defaultTypography.bodySmall.copy(fontWeight = FontWeight.Medium),

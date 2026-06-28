@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -36,13 +37,13 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import skillbill.desktop.core.designsystem.SkillBillComponentShapes
 import skillbill.desktop.core.designsystem.SkillBillMetrics
 import skillbill.desktop.core.designsystem.SkillBillTheme
+import skillbill.desktop.core.designsystem.SkillBillTypeStyles
 import skillbill.desktop.core.designsystem.contentColorFor
 import skillbill.desktop.core.domain.model.EditorPlaceholder
 import skillbill.desktop.core.domain.model.GeneratedArtifactDetail
@@ -124,9 +125,7 @@ private fun InspectorHeader(editor: EditorPlaceholder) {
       Text(
         text = editor.skillName ?: editor.title,
         color = SkillBillTheme.frameTokens.text,
-        fontSize = 13.sp,
-        fontFamily = FontFamily.Monospace,
-        fontWeight = FontWeight.SemiBold,
+        style = SkillBillTypeStyles.mono13,
         modifier = Modifier.weight(1f),
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
@@ -136,7 +135,7 @@ private fun InspectorHeader(editor: EditorPlaceholder) {
     Text(
       text = editor.kind ?: editor.detail,
       color = SkillBillTheme.frameTokens.muted,
-      fontSize = 11.sp,
+      style = MaterialTheme.typography.labelSmall,
       modifier = Modifier.padding(top = 4.dp),
     )
   }
@@ -163,8 +162,7 @@ private fun InspectorSection(
       Text(
         text = title,
         color = SkillBillTheme.frameTokens.text,
-        fontSize = 11.sp,
-        fontWeight = FontWeight.SemiBold,
+        style = SkillBillTypeStyles.semiBoldLabel,
         letterSpacing = 0.sp,
         modifier = Modifier.weight(1f),
       )
@@ -187,8 +185,7 @@ private fun KeyValueRow(key: String, value: String, tone: Tone = Tone.Neutral) {
     Text(
       text = value,
       color = SkillBillTheme.frameTokens.status.contentColorFor(tone),
-      fontSize = 12.sp,
-      fontFamily = FontFamily.Monospace,
+      style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
       maxLines = 1,
       overflow = TextOverflow.Ellipsis,
     )
@@ -237,8 +234,7 @@ private fun GeneratedArtifactRow(
     Text(
       text = artifact.path,
       color = SkillBillTheme.frameTokens.subtle.copy(alpha = labelAlpha),
-      fontSize = 10.sp,
-      fontWeight = FontWeight.Medium,
+      style = SkillBillTypeStyles.caption,
       letterSpacing = 0.sp,
       modifier = Modifier.weight(1f),
       maxLines = 1,
@@ -247,8 +243,7 @@ private fun GeneratedArtifactRow(
     Text(
       text = "read-only",
       color = SkillBillTheme.frameTokens.status.contentColorFor(Tone.Warning).copy(alpha = labelAlpha),
-      fontSize = 12.sp,
-      fontFamily = FontFamily.Monospace,
+      style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
       maxLines = 1,
       overflow = TextOverflow.Ellipsis,
     )
@@ -270,8 +265,7 @@ private fun Badge(text: String, tone: Tone) {
   Text(
     text = text,
     color = toneColor,
-    fontSize = 10.sp,
-    fontFamily = FontFamily.Monospace,
+    style = SkillBillTypeStyles.caption.copy(fontFamily = FontFamily.Monospace),
     modifier =
     Modifier
       .border(1.dp, toneColor.copy(alpha = 0.45f), SkillBillComponentShapes.previewConsole)
