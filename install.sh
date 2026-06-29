@@ -267,13 +267,13 @@ bootstrap_release_installer_if_needed() {
     exit 1
   fi
 
-  local bootstrap_args=("${ORIGINAL_ARGS[@]}")
+  local bootstrap_args=("${ORIGINAL_ARGS[@]+"${ORIGINAL_ARGS[@]}"}")
   if [[ -z "$RELEASE_TAG" ]]; then
-    bootstrap_args=(--release "$tag" "${ORIGINAL_ARGS[@]}")
+    bootstrap_args=(--release "$tag" "${ORIGINAL_ARGS[@]+"${ORIGINAL_ARGS[@]}"}")
   fi
 
   export SKILL_BILL_RELEASE_INSTALLER_BOOTSTRAPPED=1
-  exec bash -s -- "${bootstrap_args[@]}" <<<"$installer"
+  exec bash -s -- "${bootstrap_args[@]+"${bootstrap_args[@]}"}" <<<"$installer"
 }
 
 host_path() {
@@ -550,17 +550,22 @@ resolve_skills_bundle_asset_name() {
   return 1
 }
 
-# Bootstrap PLUGIN_DIR from a GitHub release when SKILLS_DIR is absent (headless install).
-# When SKILLS_DIR already exists the local tree wins and this function is a no-op.
-# When it is absent: print an info line, resolve the bundle asset name, fetch and verify
-# the .tar.gz, extract into a subdir of PREBUILT_WORK_DIR, then re-point PLUGIN_DIR,
+# Bootstrap PLUGIN_DIR from a GitHub release when no trusted local tree is present.
+# For a non-piped install the local tree wins when SKILLS_DIR exists and this is a no-op.
+# A piped install (INSTALLER_FROM_STDIN=1) cannot trust a CWD-relative skills/ dir, so it
+# always fetches the bundle: print an info line, resolve the bundle asset name, fetch and
+# verify the .tar.gz, extract into a subdir of PREBUILT_WORK_DIR, then re-point PLUGIN_DIR,
 # SKILLS_DIR, and PLATFORM_PACKS_DIR to the extracted root.
 bundle_bootstrap_if_needed() {
-  if [[ -d "$SKILLS_DIR" ]]; then
+  if [[ "$INSTALLER_FROM_STDIN" -ne 1 && -d "$SKILLS_DIR" ]]; then
     return 0
   fi
 
-  info "SKILLS_DIR not found — fetching skills bundle from release."
+  if [[ "$INSTALLER_FROM_STDIN" -eq 1 ]]; then
+    info "Piped install — fetching skills bundle from release."
+  else
+    info "SKILLS_DIR not found — fetching skills bundle from release."
+  fi
   check_prebuilt_dependencies || return 1
   init_prebuilt_work_dir
 
@@ -823,6 +828,10 @@ print_install_plan() {
 run_pre_install_uninstall() {
   if [[ "${SKILL_BILL_SKIP_PREINSTALL_UNINSTALL:-}" == "1" ]]; then
     warn "Skipping pre-install uninstall because SKILL_BILL_SKIP_PREINSTALL_UNINSTALL=1."
+    return 0
+  fi
+  if [[ ! -x "$RUNTIME_CLI_BIN" && ! -d "$SKILL_BILL_STATE_DIR" ]]; then
+    info "No prior Skill Bill install detected; skipping pre-install cleanup."
     return 0
   fi
   local uninstall_script="$PLUGIN_DIR/uninstall.sh"

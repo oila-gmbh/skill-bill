@@ -156,9 +156,8 @@ build_kotlin_runtime_distribution() {
       info "No Gradle wrapper present; reusing the installed runtime CLI for cleanup."
       return 0
     fi
-    err "Missing Gradle wrapper: $gradlew"
-    err "No installed runtime CLI to fall back on either; cannot run runtime-driven cleanup."
-    exit 1
+    warn "No Gradle wrapper and no installed runtime CLI; skipping runtime-driven cleanup."
+    return 0
   fi
 
   info "Building packaged Kotlin CLI runtime distribution..."
@@ -177,6 +176,11 @@ run_runtime_cli() {
   local runtime_cli="$RUNTIME_CLI_BIN"
   if [[ ! -x "$runtime_cli" && -x "$RUNTIME_CLI_BUILD_BIN" ]]; then
     runtime_cli="$RUNTIME_CLI_BUILD_BIN"
+  fi
+  # No runnable runtime CLI means nothing was ever installed via it; callers treat
+  # empty output as "nothing to remove", so no-op instead of aborting under set -e.
+  if [[ ! -x "$RUNTIME_CLI_BIN" && ! -x "$RUNTIME_CLI_BUILD_BIN" ]]; then
+    return 0
   fi
   "$runtime_cli" --home "$HOME" "$@"
 }

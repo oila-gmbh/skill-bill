@@ -1,3 +1,14 @@
+## [2026-06-29] SKILL-97 fresh-install-curl-fixes
+Areas: install.sh, uninstall.sh, scripts/install_smoke_test.sh
+- Piped `curl … | bash` regressions: guard every `ORIGINAL_ARGS`/bootstrap-arg expansion with `${arr[@]+"${arr[@]}"}` so a no-arg piped install doesn't trip `set -u` (install.sh:270/272/276). reusable
+- `bundle_bootstrap_if_needed` early-return now gates on `[[ "$INSTALLER_FROM_STDIN" -ne 1 && -d "$SKILLS_DIR" ]]`: piped installs ALWAYS fetch the release bundle and re-point `PLUGIN_DIR`/`SKILLS_DIR` to the extracted bundle, so a stray `skills/` in the caller's CWD can't make it resolve `uninstall.sh` against CWD. reusable
+- Fresh-machine footprint gate in `run_pre_install_uninstall`: when `! -x $RUNTIME_CLI_BIN && ! -d $SKILL_BILL_STATE_DIR`, return 0 with "No prior Skill Bill install detected" before the `uninstall_script -x` check — never run the bundle's uninstall.sh on a clean box. reusable
+- uninstall.sh made non-fatal when nothing is installed: no-wrapper/no-CLI branch warns + `return 0` (was `err … exit 1`); `run_runtime_cli` no-ops (returns 0) when neither runtime CLI is executable, so the unguarded `unlink-*` helpers don't abort under `set -e`. reusable
+- Smoke fixture must mirror the REAL release bundle: `make_skills_bundle` tars `skills/ platform-packs/ orchestration/ uninstall.sh` (+ .sha256) per release.yml:144 — a skills-only fixture breaks downstream staging. Scenario 7 = piped foreign-dir w/ stray skills/; scenario 8 = fresh-machine footprint gate. reusable
+- Pitfall: install.sh refuses to run with `SKILL_BILL_GOAL_CONTINUATION=1` (set by the feature-task runtime loop); reproduce the green suite locally via `env -u SKILL_BILL_GOAL_CONTINUATION bash scripts/install_smoke_test.sh` (var is unset in CI). reusable
+Feature flag: N/A
+Acceptance criteria: 7/7 implemented
+
 ## [2026-06-13] SKILL-82 subtask 2 install-bootstrap-and-clean
 Areas: install.sh
 - `bundle_bootstrap_if_needed()`: when `SKILLS_DIR` is absent at startup, prints info line, calls `check_prebuilt_dependencies`, resolves the skills bundle asset name via `resolve_skills_bundle_asset_name()` (uses `list_release_asset_names` → respects `SKILL_BILL_RELEASE_DIR` offline seam), fetches + verifies `.tar.gz` via `fetch_release_asset`/`verify_sha256`, extracts to `$PREBUILT_WORK_DIR/skills-bundle`, re-points `PLUGIN_DIR`/`SKILLS_DIR`/`PLATFORM_PACKS_DIR` as plain globals in the parent shell. When `SKILLS_DIR` exists: no-op (local tree wins). reusable

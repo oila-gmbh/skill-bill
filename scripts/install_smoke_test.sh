@@ -200,11 +200,27 @@ PY
   printf '%s' "$sha" >"$out_dir/$zip_name.sha256"
 }
 
+# Build the skills-bundle asset a headless/piped install fetches when it cannot trust a
+# CWD-relative skills/ dir. Mirrors the real release bundle (see .github/workflows/
+# release.yml): tars the repo's top-level skills/, platform-packs/, orchestration/, and
+# uninstall.sh so the extracted root satisfies both install.sh's
+# `[[ -d "$extract_dir/skills" ]]` branch and the downstream orchestration/uninstall
+# staging. Writes a sibling .sha256 in the same form as make_runtime_zip.
+make_skills_bundle() {
+  local out_dir="$1"
+  local bundle_name="skill-bill-skills-0.0.0-smoke.tar.gz"
+  (cd "$REPO_ROOT" && tar -czf "$out_dir/$bundle_name" skills platform-packs orchestration uninstall.sh)
+  local sha
+  sha="$(cd "$out_dir" && sha256sum "$bundle_name" 2>/dev/null || shasum -a 256 "$bundle_name")"
+  printf '%s' "$sha" >"$out_dir/$bundle_name.sha256"
+}
+
 setup_release_dir() {
   local token="$1" stub_src="$2"
   RELEASE_DIR="$(mktemp -d)"
   make_runtime_zip "$token" "runtime-cli" "runtime-cli" "$stub_src" "$RELEASE_DIR"
   make_runtime_zip "$token" "runtime-mcp" "runtime-mcp" "$stub_src" "$RELEASE_DIR"
+  make_skills_bundle "$RELEASE_DIR"
 }
 
 seed_selection_json() {
@@ -450,6 +466,65 @@ if [[ "$AFTER_CONTENT" == "$ORIGINAL_CONTENT" ]]; then
   pass "upstream version restored after --prefer-upstream (local edit overwritten)"
 else
   fail "content not restored after --prefer-upstream; file still contains local edit"
+fi
+
+echo ""
+echo "--- scenario 7: piped install from a foreign dir ignores stray skills/ (AC#2) ---"
+FAKE_HOME="$(mktemp -d)"
+FOREIGN_DIR="$(mktemp -d)"
+WORK_TMPDIRS+=("$FOREIGN_DIR")
+mkdir -p "$FOREIGN_DIR/skills/__stray__"
+printf 'stray local skill\n' >"$FOREIGN_DIR/skills/__stray__/content.md"
+
+FOREIGN_OUTPUT="$(
+  cd "$FOREIGN_DIR"
+  env \
+    HOME="$FAKE_HOME" \
+    SKILL_BILL_RELEASE_DIR="$RELEASE_DIR" \
+    SKILL_BILL_SKIP_PREINSTALL_UNINSTALL=1 \
+    SKILL_BILL_BIN_DIR="$FAKE_HOME/.local/bin" \
+    bash -c 'cat "$1" | bash -s -- --no-desktop-app' _ "$INSTALL_SH" \
+    </dev/null
+)"
+pass "piped install from foreign dir exited 0"
+
+if [[ "$FOREIGN_OUTPUT" == *"Skills bundle extracted; PLUGIN_DIR set to"* ]]; then
+  pass "piped install fetched the skills bundle despite a stray skills/ in CWD"
+else
+  fail "piped install did not fetch the skills bundle: $FOREIGN_OUTPUT"
+fi
+
+BUNDLE_PLUGIN_DIR="$(printf '%s\n' "$FOREIGN_OUTPUT" | sed -n 's/.*Skills bundle extracted; PLUGIN_DIR set to: //p' | tail -n1)"
+if [[ -n "$BUNDLE_PLUGIN_DIR" && "$BUNDLE_PLUGIN_DIR" != "$FOREIGN_DIR" ]]; then
+  pass "PLUGIN_DIR re-pointed away from the foreign CWD"
+else
+  fail "PLUGIN_DIR not re-pointed away from foreign CWD: '$BUNDLE_PLUGIN_DIR'"
+fi
+
+echo ""
+echo "--- scenario 8: fresh machine footprint gate skips pre-install cleanup (AC#3) ---"
+FAKE_HOME="$(mktemp -d)"
+
+GATE_OUTPUT="$(
+  env \
+    HOME="$FAKE_HOME" \
+    SKILL_BILL_RELEASE_DIR="$RELEASE_DIR" \
+    SKILL_BILL_BIN_DIR="$FAKE_HOME/.local/bin" \
+    bash "$INSTALL_SH" --no-desktop-app \
+    <<< $'\n\n\n\n'
+)"
+pass "fresh-machine interactive install exited 0"
+
+if [[ "$GATE_OUTPUT" == *"No prior Skill Bill install detected"* ]]; then
+  pass "footprint gate skipped pre-install cleanup on a fresh machine"
+else
+  fail "footprint gate message not found: $GATE_OUTPUT"
+fi
+
+if [[ "$GATE_OUTPUT" == *"Agents:"* ]]; then
+  pass "fresh-machine install completed end-to-end"
+else
+  fail "fresh-machine install did not complete: $GATE_OUTPUT"
 fi
 
 echo ""
