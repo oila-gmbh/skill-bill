@@ -12,7 +12,6 @@ import androidx.compose.ui.unit.Density
 import skillbill.desktop.app.di.DesktopUserComponentManager
 import skillbill.desktop.app.state.rememberSkillBillDesktopAppState
 import skillbill.desktop.core.designsystem.SkillBillAppTheme
-import skillbill.desktop.core.navigation.SkillBillHomeRoute
 import skillbill.desktop.core.navigation.SkillBillSourceRoute
 import skillbill.desktop.core.ui.SkillBillWindow
 import skillbill.desktop.core.ui.di.LocalUserComponentManager
@@ -35,27 +34,14 @@ fun SkillBillDesktopApp(userComponentManager: DesktopUserComponentManager, conte
     ProvideScreenComponentFactory {
       SkillBillAppTheme {
         SkillBillWindow {
-          when (navigationState.currentRoute) {
-            SkillBillHomeRoute -> SkillBillRoute(
-              selectedSourceId = null,
-              canNavigateBack = navigationState.canGoBack,
-              onNavigateBack = appState.navigator::goBack,
-              onSourceRouteSelected = { sourceId ->
-                appState.navigator.navigate(SkillBillSourceRoute(sourceId))
-              },
-            )
-            is SkillBillSourceRoute -> {
-              val route = navigationState.currentRoute as SkillBillSourceRoute
-              SkillBillRoute(
-                selectedSourceId = route.sourceId,
-                canNavigateBack = navigationState.canGoBack,
-                onNavigateBack = appState.navigator::goBack,
-                onSourceRouteSelected = { sourceId ->
-                  appState.navigator.navigate(SkillBillSourceRoute(sourceId))
-                },
-              )
-            }
-          }
+          SkillBillRoute(
+            selectedSourceId = (navigationState.currentRoute as? SkillBillSourceRoute)?.sourceId,
+            canNavigateBack = navigationState.canGoBack,
+            onNavigateBack = appState.navigator::goBack,
+            onSourceRouteSelected = { sourceId ->
+              appState.navigator.navigate(SkillBillSourceRoute(sourceId))
+            },
+          )
         }
       }
     }
