@@ -80,27 +80,22 @@ Do not include:
 - Commit SHAs or PR numbers (unless the user prefers them)
 - Passive voice or marketing language
 
-### 5. Present the changelog inline
+### 5. Determine the next version
 
-Show the draft changelog to the user. Ask for any edits or corrections before proceeding.
+Apply the required bump type from intake to compute the next version (e.g. `v0.4.0`).
 
-### 6. Determine the next version
+### 6. Present everything and confirm once
 
-Apply the required bump type from intake to compute the next version. Show the resulting version string (e.g. `v0.4.0`) and ask the user to confirm or override before proceeding.
+Show the draft changelog and the computed version string together in a single message, and ask for confirmation exactly once: "Ready to create and push tag vX.Y.Z with the changelog above — proceed? (You can also request edits or override the version.)"
 
-### 7. Create the annotated tag
+Wait for an explicit yes. If the user requests changelog edits or a different version, apply them and re-present, but do not introduce additional confirmation gates beyond what the user's own changes require. Once the user confirms, proceed through tag creation and push without asking again.
 
-Ask the user to confirm before creating the tag: "Ready to create tag vX.Y.Z — shall I proceed?" Wait for an explicit yes before running the tag command.
+### 7. Create and push the tag
+
+After the single confirmation, create the annotated tag and push it (this is irreversible and triggers the release workflow):
 
 ```bash
 git tag -a vX.Y.Z -m "Release vX.Y.Z"
-```
-
-### 8. Push the tag
-
-Confirm with the user before pushing (this is irreversible and triggers the release workflow):
-
-```bash
 git push origin vX.Y.Z
 ```
 
@@ -108,9 +103,10 @@ After pushing, remind the user to watch any CI/CD workflow wired to the tag (e.g
 
 ## Rules
 
-- Never push the tag without explicit user confirmation.
+- Confirm exactly once before creating and pushing the tag — do not re-prompt for the tag creation and the push as separate gates.
+- Never create or push the tag without that explicit user confirmation.
 - Never create the tag if the working tree has uncommitted changes.
-- Never skip the user review of the changelog draft.
+- Never skip the user review of the changelog draft (it is included in the single confirmation).
 - If `git fetch` fails due to network issues, warn the user but let them decide whether to continue.
 - Prerelease tags (`v0.5.0-rc.1`) are valid — the workflow publishes them as GitHub prereleases.
 - The annotated tag message should be exactly `Release vX.Y.Z` — no changelog body in the tag message itself.
