@@ -1403,14 +1403,14 @@ if [[ "\${1:-}" == "update" ]]; then
   done
 
   if [[ "\$dry_run" -eq 1 ]]; then
-    exec "\$runtime_cli" update "\${passthrough[@]}"
+    exec "\$runtime_cli" update "\${passthrough[@]+\${passthrough[@]}}"
   fi
 
   if [[ "\$release_selected" -eq 0 ]]; then
     check_output="\$("\$runtime_cli" update-check 2>&1)"
     check_status="\$(printf '%s\n' "\$check_output" | awk -F': ' '/^status:/{print \$2; exit}')"
     if [[ "\$check_status" != "update_available" ]]; then
-      exec "\$runtime_cli" update "\${passthrough[@]}"
+      exec "\$runtime_cli" update "\${passthrough[@]+\${passthrough[@]}}"
     fi
   fi
 
