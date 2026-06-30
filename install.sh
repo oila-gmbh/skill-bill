@@ -1051,8 +1051,8 @@ reconcile_and_commit_authored_source() {
     if [[ -n "${SKILL_BILL_RECONCILE_CONFLICT_CHOICE:-}" ]]; then
       local answer="$SKILL_BILL_RECONCILE_CONFLICT_CHOICE"
       info "Using SKILL_BILL_RECONCILE_CONFLICT_CHOICE=$answer for the conflict decision (test seam)."
-      case "${answer,,}" in
-        yes|y)
+      case "$answer" in
+        [Yy]|[Yy][Ee][Ss])
           info "Accepting upstream for conflicting skills; your local edits will be overwritten."
           accept_conflicts=1
           ;;
@@ -1079,8 +1079,8 @@ reconcile_and_commit_authored_source() {
       if ! read_prompt_input answer; then
         answer="n"
       fi
-      case "${answer,,}" in
-        yes|y)
+      case "$answer" in
+        [Yy]|[Yy][Ee][Ss])
           info "Accepting upstream for conflicting skills; your local edits will be overwritten."
           accept_conflicts=1
           ;;
