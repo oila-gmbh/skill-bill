@@ -26,6 +26,16 @@ class InstallerShellReconcileTest {
       }
     }
 
+  // The TTY-bypass accept scenario drives install.sh's desktop-install summary, which
+  // defaults differently per OS; it asserts the Linux flow, so it runs on the Linux CI
+  // leg and skips elsewhere.
+  private fun assumeLinuxHost() {
+    org.junit.jupiter.api.Assumptions.assumeTrue(
+      System.getProperty("os.name").lowercase().startsWith("linux"),
+      "installer flow assertions assume Linux host behavior; skipping on ${System.getProperty("os.name")}",
+    )
+  }
+
   @Test
   fun `reinstall with no upstream-local change is idempotent and commits the apply`() {
     // SKILL-76 AC-9: a no-conflict reconcile report drives the runtime per-skill apply to
@@ -105,6 +115,7 @@ class InstallerShellReconcileTest {
 
   @Test
   fun `TTY-bypass accept overwrites the conflicting skill and reports it in the summary (AC-7 accept)`() {
+    assumeLinuxHost()
     // SKILL-76 AC-7 y branch: a both-changed conflict driven through the TEST-ONLY
     // SKILL_BILL_RECONCILE_CONFLICT_CHOICE=y seam must overwrite the live skill with
     // upstream, refresh the baseline, and report the overwritten conflict path in the

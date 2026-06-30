@@ -7,8 +7,12 @@ on:
 
 jobs:
   smoke-test:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # Self-hosted Mac mini for trusted runs (push, same-repo PRs); fork PRs fall
+    # back to a GitHub-hosted runner so untrusted code never executes on the
+    # self-hosted host (this is a public repo). Running under macOS bash 3.2 also
+    # makes this the ideal regression environment for the curl-piped installer.
+    runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork) && fromJSON('["ubuntu-latest"]') || fromJSON('["self-hosted","macmini"]') }}
+    timeout-minutes: 20
 
     steps:
       - name: Check out repository

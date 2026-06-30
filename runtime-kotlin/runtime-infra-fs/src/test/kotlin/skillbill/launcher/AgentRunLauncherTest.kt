@@ -908,6 +908,14 @@ class HeadlessAgentRunAdapterTest {
 
 class PtyStdioLaunchTest {
   private fun assumePtyAvailable() {
+    // PTY-backed stdio is a Linux-only production feature (JvmAgentRunProcessRunner
+    // hard-guards `os.name startsWith "linux"`). macOS ships /dev/ptmx too, so gate
+    // on the OS — not just the device — or these tests run into that guard and the
+    // spawn fails with a null exit status on non-Linux CI hosts.
+    org.junit.jupiter.api.Assumptions.assumeTrue(
+      System.getProperty("os.name").lowercase().startsWith("linux"),
+      "PTY-backed stdio is only supported on Linux; skipping on ${System.getProperty("os.name")}",
+    )
     org.junit.jupiter.api.Assumptions.assumeTrue(
       java.io.File("/dev/ptmx").exists(),
       "PTY device /dev/ptmx not available; skipping PTY integration test",

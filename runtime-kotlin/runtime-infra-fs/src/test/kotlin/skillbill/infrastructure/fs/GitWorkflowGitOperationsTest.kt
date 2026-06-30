@@ -332,6 +332,20 @@ class GitWorkflowGitOperationsTest {
   }
 
   private fun git(repoRoot: Path, vararg args: String): String {
+    val output = runGit(repoRoot, *args)
+    // Persist signing-off into the repo's own config right after init so that BOTH
+    // these helper commits AND the production GitWorkflow commits under test (which
+    // run their own `git commit` in this repo) skip signing. A host global
+    // commit.gpgsign=true would otherwise fail every commit when gpg is absent from
+    // the process environment (common on dev machines and self-hosted CI runners).
+    if (args.firstOrNull() == "init") {
+      runGit(repoRoot, "config", "commit.gpgsign", "false")
+      runGit(repoRoot, "config", "tag.gpgsign", "false")
+    }
+    return output
+  }
+
+  private fun runGit(repoRoot: Path, vararg args: String): String {
     val process = ProcessBuilder(listOf("git", "-C", repoRoot.toString()) + args)
       .redirectErrorStream(true)
       .start()

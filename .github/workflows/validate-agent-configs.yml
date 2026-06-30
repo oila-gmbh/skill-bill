@@ -5,8 +5,33 @@ on:
   push:
 
 jobs:
-  validate:
+  # Compute the runner matrix. Trusted events (push, same-repo PRs) validate on
+  # BOTH hosted ubuntu (full Linux coverage) and the self-hosted Apple Silicon Mac
+  # mini (macOS-native coverage). Fork PRs from a public repo run on ubuntu ONLY,
+  # so untrusted code never executes on the self-hosted host even if a maintainer
+  # approves the run. A static matrix cannot drop a leg conditionally, hence this
+  # setup job.
+  setup:
     runs-on: ubuntu-latest
+    outputs:
+      runners: ${{ steps.pick.outputs.runners }}
+    steps:
+      - id: pick
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" && "${{ github.event.pull_request.head.repo.fork }}" == "true" ]]; then
+            echo 'runners=[["ubuntu-latest"]]' >> "$GITHUB_OUTPUT"
+          else
+            echo 'runners=[["ubuntu-latest"],["self-hosted","macmini"]]' >> "$GITHUB_OUTPUT"
+          fi
+
+  validate:
+    needs: setup
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: ${{ fromJSON(needs.setup.outputs.runners) }}
+    runs-on: ${{ matrix.runner }}
 
     steps:
       - name: Check out repository
@@ -16,6 +41,15 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
+
+      # Pin JDK 17 explicitly: the self-hosted host's default java is newer, and
+      # the project targets 17. setup-java provisions it into the runner tool cache.
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
 
       - name: Run Kotlin runtime checks
         run: (cd runtime-kotlin && ./gradlew check)
