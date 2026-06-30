@@ -29,6 +29,11 @@ DESKTOP_APP_LAUNCHER_PATH=""
 # When the prebuilt path extracts a desktop app payload it records the extracted
 # app tree here; install_desktop_app honors it instead of the Gradle build dir.
 DESKTOP_APP_PREBUILT_SOURCE_PATH=""
+# For Linux .deb/.rpm payloads this records the full extraction root (above the
+# app tree), so install_linux_desktop_entry can locate the packaged icon. The
+# prebuilt source is never RUNTIME_KOTLIN_DIR-relative (the release bundle has
+# no runtime-kotlin checkout), so the icon must come from inside this payload.
+DESKTOP_APP_PREBUILT_PAYLOAD_DIR=""
 # SKILL-76 subtask 2: space-separated skill-relative paths whose both-changed
 # reconcile conflict the user accepted (overwrote). Surfaced in the install summary.
 RECONCILE_CONFLICT_PATHS=""
@@ -1652,6 +1657,9 @@ fetch_and_extract_desktop_app() {
 
   app_path="$(locate_extracted_desktop_app "$payload_dir" "$os")" || return 1
   DESKTOP_APP_PREBUILT_SOURCE_PATH="$app_path"
+  if [[ "$os" == "linux" ]]; then
+    DESKTOP_APP_PREBUILT_PAYLOAD_DIR="$payload_dir"
+  fi
   ok "Desktop app payload extracted"
 }
 
@@ -1725,12 +1733,26 @@ CMD
   ok "  linked desktop launcher → $launcher_path"
 }
 
+# Locate the app icon for the Linux desktop entry. Prebuilt (piped curl) installs
+# never have a runtime-kotlin checkout, so the icon must come from inside the
+# jpackage deb/rpm payload that was already extracted; local/dev installs fall
+# back to the icon next to the Gradle build.
+linux_desktop_icon_src() {
+  if [[ -n "$DESKTOP_APP_PREBUILT_PAYLOAD_DIR" ]]; then
+    find "$DESKTOP_APP_PREBUILT_PAYLOAD_DIR" -type f -iname '*.png' \
+      \( -ipath '*icons*hicolor*apps*' -o -ipath '*/lib/*' \) -print 2>/dev/null | head -n1
+    return 0
+  fi
+  printf '%s' "$RUNTIME_KOTLIN_DIR/runtime-desktop/icons/icon.png"
+}
+
 install_linux_desktop_entry() {
   local app_target="$1"
   local desktop_file="${XDG_DATA_HOME:-$HOME/.local/share}/applications/skillbill.desktop"
   local icon_file="${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor/512x512/apps/skillbill.png"
   local executable="$app_target/bin/$DESKTOP_APP_DEFAULT_NAME"
-  local icon_src="$RUNTIME_KOTLIN_DIR/runtime-desktop/icons/icon.png"
+  local icon_src
+  icon_src="$(linux_desktop_icon_src)"
 
   if [[ ! -x "$executable" ]]; then
     warn "  skipped Linux desktop entry because executable is missing: $executable"
@@ -1738,7 +1760,11 @@ install_linux_desktop_entry() {
   fi
 
   mkdir -p "$(dirname "$desktop_file")" "$(dirname "$icon_file")"
-  cp "$icon_src" "$icon_file"
+  if [[ -n "$icon_src" && -f "$icon_src" ]]; then
+    cp "$icon_src" "$icon_file"
+  else
+    warn "  skipped desktop icon because no packaged icon was found"
+  fi
   cat > "$desktop_file" <<DESKTOP
 [Desktop Entry]
 Type=Application

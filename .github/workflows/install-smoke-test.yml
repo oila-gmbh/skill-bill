@@ -5,6 +5,13 @@ on:
   push:
     branches: [main]
 
+# Collapse a burst of pushes/PR updates on the same ref to a single run: a newer
+# commit cancels the superseded one instead of queueing behind it on the single
+# self-hosted runner.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   smoke-test:
     # Self-hosted Mac mini for trusted runs (push, same-repo PRs); fork PRs fall
