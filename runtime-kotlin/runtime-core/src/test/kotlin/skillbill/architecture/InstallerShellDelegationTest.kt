@@ -49,7 +49,7 @@ class InstallerShellDelegationTest {
     assertContains(installScript, "--reuse-last-selection")
     assertContains(installScript, "install replay-last-selection")
     assertContains(installScript, "SKILL_BILL_RUNTIME_EXECUTABLE=\"\$RUNTIME_CLI_BIN\"")
-    assertContains(installScript, "exec \"\\\$runtime_cli\" update \"\\\${passthrough[@]}\"")
+    assertContains(installScript, "exec \"\\\$runtime_cli\" update \"\\\${passthrough[@]+\\\${passthrough[@]}}\"")
     assertFalse(installScript.contains("update_check_status"))
     // The Gradle desktop build is now gated behind --from-source: the helper and the
     // Gradle task must still exist (from-source coverage), but only run when
