@@ -21,21 +21,23 @@ archive plus its `.sha256` sidecar to the GitHub Release for that tag:
 - desktop installers (`SkillBill-<version>-<os>-<arch>.<ext>`):
   `.dmg` on macOS, `.msi` on Windows, `.deb` + `.rpm` on Linux
 
-The `<os>-<arch>` token is the canonical set `macos-arm64` / `macos-x64` /
-`windows-x64` / `linux-x64`, so downstream installers can resolve the correct
-asset by host. Each artifact ships with a matching `<name>.sha256` file. The
-build toolchain is pinned to JDK 17 (temurin) on every runner.
+The `<os>-<arch>` token is the canonical set `macos-arm64` / `windows-x64` /
+`linux-x64`, so downstream installers can resolve the correct asset by host. Each
+artifact ships with a matching `<name>.sha256` file. The build toolchain is
+pinned to JDK 17 (temurin) on every runner.
 
 Builds run on host-matched runners because jlink and jpackage cannot
-cross-compile: macOS arm64 on `macos-14`, macOS x64 on `macos-15-intel` (the
-current Intel hosted image), Windows x64 on `windows-latest`, Linux x64 on
-`ubuntu-latest`. Installers ship **unsigned for v1** (see
+cross-compile: macOS arm64 on the **self-hosted Apple Silicon Mac mini**
+(label `macmini`), Windows x64 on `windows-latest`, Linux x64 on `ubuntu-latest`.
+Apple Silicon is the only supported macOS target — the Intel (`macos-x64`) leg
+was dropped. Installers ship **unsigned for v1** (see
 `runtime-kotlin/agent/decisions.md`).
 
-> **macOS x64 note.** If the Intel-based hosted runner (`macos-15-intel`) becomes
-> unavailable, drop that matrix leg; the workflow's `fail-fast: false` strategy
-> lets the remaining hosts still publish, and the macOS x64 asset is simply
-> absent for that release rather than silently mislabeled.
+> **Self-hosted macOS leg.** The `macos-arm64` build runs on the self-hosted Mac
+> mini, so it must be online when a release tag is pushed. If it is offline that
+> leg queues until it comes back; the workflow's `fail-fast: false` strategy lets
+> the hosted Windows/Linux legs publish regardless, with the macOS asset filled
+> in once the mini runs.
 
 ## Staging a release for downstream testing
 

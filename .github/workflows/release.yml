@@ -35,28 +35,27 @@ jobs:
   # resolves by host (resolveHostRuntimeToken).
   build:
     name: Build ${{ matrix.host_token }}
-    runs-on: ${{ matrix.runner }}
+    runs-on: ${{ fromJSON(matrix.runner) }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          # macOS arm64 (Apple Silicon hosted runner).
-          - runner: macos-14
+          # macOS arm64 (Apple Silicon) — built natively on the self-hosted Mac
+          # mini. Apple Silicon is the only supported macOS target; the Intel
+          # (macos-x64) leg was dropped. The mini must be online when a release
+          # tag is pushed, or this leg queues until it is (fail-fast:false lets
+          # the hosted legs publish regardless). runner is a JSON array so a
+          # self-hosted label set and the hosted single-label legs share one
+          # `runs-on: ${{ fromJSON(matrix.runner) }}` expression.
+          - runner: '["self-hosted", "macmini"]'
             host_token: macos-arm64
             installer_tasks: ":runtime-desktop:canonicalRenameDmgInstaller"
-          # macOS x64 (Intel hosted runner). GitHub retired the bare macos-13
-          # Intel image; the current Intel hosted label is macos-15-intel. If
-          # GitHub later retires the -intel images too, drop this leg (fail-fast is
-          # off, so the other hosts still publish) and note the gap in the release.
-          - runner: macos-15-intel
-            host_token: macos-x64
-            installer_tasks: ":runtime-desktop:canonicalRenameDmgInstaller"
           # Windows x64.
-          - runner: windows-latest
+          - runner: '["windows-latest"]'
             host_token: windows-x64
             installer_tasks: ":runtime-desktop:canonicalRenameMsiInstaller"
           # Linux x64 (produces both .deb and .rpm).
-          - runner: ubuntu-latest
+          - runner: '["ubuntu-latest"]'
             host_token: linux-x64
             installer_tasks: >-
               :runtime-desktop:canonicalRenameDebInstaller

@@ -1,12 +1,10 @@
 # actionlint configuration.
 #
 # self-hosted-runner.labels registers runner labels that actionlint's bundled
-# runner-label database does not yet know about. "macos-15-intel" is a real,
-# current GitHub-HOSTED runner label (the x64 macOS 15 image that replaced the
-# retired macos-13 Intel host); see actions/runner-images. Without this entry
-# actionlint reports a false-positive "label is unknown" error for the Intel
-# build matrix leg in release.yml. This is not a self-hosted runner — the key is
-# simply actionlint's documented mechanism for teaching it valid labels.
+# runner-label database does not know about. "macmini" is the custom label of the
+# self-hosted Apple Silicon runner that builds the macos-arm64 release leg and
+# runs the main-CI workflows. Without this entry actionlint reports a
+# false-positive "label is unknown" error wherever the label is referenced.
 self-hosted-runner:
   labels:
-    - macos-15-intel
+    - macmini
