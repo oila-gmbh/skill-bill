@@ -9,6 +9,20 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class InstallerShellDelegationTest {
+  // This suite drives install.sh end-to-end and asserts the Linux installer flow
+  // (headless $DISPLAY/$WAYLAND_DISPLAY desktop gating, no-desktop prebuilt/from-source
+  // paths, .deb extraction, the util-linux `script` PTY harness). macOS/Windows
+  // install.sh legitimately diverges (desktop defaults to yes, BSD `script`), so the
+  // suite runs on the Linux CI leg and skips elsewhere; macOS install behavior is
+  // covered by scripts/install_smoke_test.sh.
+  @org.junit.jupiter.api.BeforeEach
+  fun assumeLinuxHost() {
+    org.junit.jupiter.api.Assumptions.assumeTrue(
+      System.getProperty("os.name").lowercase().startsWith("linux"),
+      "installer-shell suite assumes Linux host behavior; skipping on ${System.getProperty("os.name")}",
+    )
+  }
+
   private val runtimeRoot: Path =
     Path.of("").toAbsolutePath().normalize().let { workingDir ->
       if (workingDir.fileName.toString().startsWith("runtime-")) {
