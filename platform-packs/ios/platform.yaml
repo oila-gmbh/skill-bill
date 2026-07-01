@@ -63,6 +63,32 @@ area_metadata:
 
 declared_quality_check_file: "quality-check/bill-ios-code-check/content.md"
 
+addon_usage:
+  code-review/bill-ios-code-review:
+    - slug: offline-first
+      entrypoint: offline-first-review.md
+      companion_pointers:
+        - offline-sync-consistency.md
+        - offline-conflict-resolution.md
+        - offline-background-reliability.md
+  code-review/bill-ios-code-review-persistence:
+    - slug: offline-first
+      entrypoint: offline-first-review.md
+      companion_pointers:
+        - offline-sync-consistency.md
+        - offline-conflict-resolution.md
+  code-review/bill-ios-code-review-reliability:
+    - slug: offline-first
+      entrypoint: offline-first-review.md
+      companion_pointers:
+        - offline-background-reliability.md
+        - offline-sync-consistency.md
+  code-review/bill-ios-code-review-platform-correctness:
+    - slug: offline-first
+      entrypoint: offline-first-review.md
+      companion_pointers:
+        - offline-conflict-resolution.md
+
 # Pointer files are generated into render/install output from this block.
 pointers:
   code-review/bill-ios-code-review:
@@ -80,6 +106,14 @@ pointers:
       target: orchestration/stack-routing/PLAYBOOK.md
     - name: telemetry-contract.md
       target: orchestration/telemetry-contract/PLAYBOOK.md
+    - name: offline-first-review.md
+      target: platform-packs/ios/addons/offline-first-review.md
+    - name: offline-sync-consistency.md
+      target: platform-packs/ios/addons/offline-sync-consistency.md
+    - name: offline-conflict-resolution.md
+      target: platform-packs/ios/addons/offline-conflict-resolution.md
+    - name: offline-background-reliability.md
+      target: platform-packs/ios/addons/offline-background-reliability.md
   code-review/bill-ios-code-review-api-contracts:
     - name: review-orchestrator.md
       target: orchestration/review-orchestrator/PLAYBOOK.md
@@ -108,6 +142,12 @@ pointers:
       target: orchestration/shell-content-contract/shell-ceremony.md
     - name: telemetry-contract.md
       target: orchestration/telemetry-contract/PLAYBOOK.md
+    - name: offline-first-review.md
+      target: platform-packs/ios/addons/offline-first-review.md
+    - name: offline-sync-consistency.md
+      target: platform-packs/ios/addons/offline-sync-consistency.md
+    - name: offline-conflict-resolution.md
+      target: platform-packs/ios/addons/offline-conflict-resolution.md
   code-review/bill-ios-code-review-platform-correctness:
     - name: review-orchestrator.md
       target: orchestration/review-orchestrator/PLAYBOOK.md
@@ -115,6 +155,10 @@ pointers:
       target: orchestration/shell-content-contract/shell-ceremony.md
     - name: telemetry-contract.md
       target: orchestration/telemetry-contract/PLAYBOOK.md
+    - name: offline-first-review.md
+      target: platform-packs/ios/addons/offline-first-review.md
+    - name: offline-conflict-resolution.md
+      target: platform-packs/ios/addons/offline-conflict-resolution.md
   code-review/bill-ios-code-review-reliability:
     - name: review-orchestrator.md
       target: orchestration/review-orchestrator/PLAYBOOK.md
@@ -122,6 +166,12 @@ pointers:
       target: orchestration/shell-content-contract/shell-ceremony.md
     - name: telemetry-contract.md
       target: orchestration/telemetry-contract/PLAYBOOK.md
+    - name: offline-first-review.md
+      target: platform-packs/ios/addons/offline-first-review.md
+    - name: offline-background-reliability.md
+      target: platform-packs/ios/addons/offline-background-reliability.md
+    - name: offline-sync-consistency.md
+      target: platform-packs/ios/addons/offline-sync-consistency.md
   code-review/bill-ios-code-review-security:
     - name: review-orchestrator.md
       target: orchestration/review-orchestrator/PLAYBOOK.md
