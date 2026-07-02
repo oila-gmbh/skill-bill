@@ -822,6 +822,28 @@ print_install_plan() {
   echo ""
 }
 
+# One-time migration: older installs kept config.json inside the wiped
+# ~/.skill-bill/. Move it to the durable XDG location (~/.config/skill-bill/,
+# outside the wipe zone) BEFORE the pre-install uninstall so user settings —
+# external_addon_sources, telemetry choices, install_id — survive every install.
+# Skipped when the user pins a config path via SKILL_BILL_CONFIG_PATH, or when
+# the durable copy already exists (never clobber it).
+migrate_legacy_config_to_durable_path() {
+  if [[ -n "${SKILL_BILL_CONFIG_PATH:-}" ]]; then
+    return 0
+  fi
+  local legacy="$SKILL_BILL_STATE_DIR/config.json"
+  local durable="${XDG_CONFIG_HOME:-$HOME/.config}/skill-bill/config.json"
+  if [[ -f "$legacy" && ! -f "$durable" ]]; then
+    mkdir -p "$(dirname "$durable")"
+    if mv "$legacy" "$durable"; then
+      info "Migrated Skill Bill config to durable location: $durable"
+    else
+      warn "Could not migrate config to $durable; leaving it at $legacy."
+    fi
+  fi
+}
+
 # Every install starts from a clean slate: removes agent symlinks, native
 # subagent symlinks, MCP registrations, runtime launchers, and wipes
 # ~/.skill-bill/ (including the installed-skills staging cache, runtime
@@ -2612,6 +2634,7 @@ run_full_install() {
     replay_last_install_selection
   fi
   clean_install_state_if_requested
+  migrate_legacy_config_to_durable_path
   run_pre_install_uninstall
   copy_in_authored_source
   install_runtime_distributions

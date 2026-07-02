@@ -40,12 +40,36 @@ internal fun resolveTelemetryStateDir(
   expandAndNormalizeTelemetryPath(it, userHome)
 } ?: userHome.resolve(".skill-bill").toAbsolutePath().normalize()
 
+internal const val XDG_CONFIG_HOME_KEY = "XDG_CONFIG_HOME"
+
+/**
+ * Resolution order (read + write share this so the installer and runtime always agree):
+ * 1. [CONFIG_ENVIRONMENT_KEY] explicit override.
+ * 2. The durable XDG config path (`$XDG_CONFIG_HOME/skill-bill/config.json`, default `~/.config/...`)
+ *    when it already exists. This lives OUTSIDE the wiped `~/.skill-bill/`, so it survives installs.
+ * 3. The legacy `~/.skill-bill/config.json` when it exists (backward compatibility for older installs).
+ * 4. Otherwise the durable XDG path — so fresh installs write there by default and never get clobbered.
+ */
 internal fun resolveTelemetryConfigPath(
   environment: Map<String, String> = System.getenv(),
   userHome: Path = Path.of(System.getProperty("user.home")),
-): Path = environment[CONFIG_ENVIRONMENT_KEY]?.takeIf(String::isNotBlank)?.let {
-  expandAndNormalizeTelemetryPath(it, userHome)
-} ?: userHome.resolve(".skill-bill").resolve("config.json").toAbsolutePath().normalize()
+): Path {
+  environment[CONFIG_ENVIRONMENT_KEY]?.takeIf(String::isNotBlank)?.let {
+    return expandAndNormalizeTelemetryPath(it, userHome)
+  }
+  val xdgConfig = xdgTelemetryConfigPath(environment, userHome)
+  if (Files.exists(xdgConfig)) return xdgConfig
+  val legacyConfig = userHome.resolve(".skill-bill").resolve("config.json").toAbsolutePath().normalize()
+  if (Files.exists(legacyConfig)) return legacyConfig
+  return xdgConfig
+}
+
+private fun xdgTelemetryConfigPath(environment: Map<String, String>, userHome: Path): Path {
+  val base = environment[XDG_CONFIG_HOME_KEY]?.takeIf(String::isNotBlank)
+    ?.let { expandAndNormalizeTelemetryPath(it, userHome) }
+    ?: userHome.resolve(".config")
+  return base.resolve("skill-bill").resolve("config.json").toAbsolutePath().normalize()
+}
 
 private fun expandAndNormalizeTelemetryPath(rawPath: String, userHome: Path): Path {
   val normalized =

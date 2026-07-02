@@ -1060,7 +1060,7 @@ private data class SingleCodexGoldenPaths(private val fixture: InstallPlanApplyF
   val codexTargetDir: String = fixture.home.resolve("manual-targets/codex").toString()
   val stagingRoot: String = fixture.home.resolve(".skill-bill/installed-skills").toString()
   val runtimeInstallRoot: String = fixture.home.resolve(".skill-bill/runtime").toString()
-  val telemetryConfigPath: String = fixture.home.resolve(".skill-bill/config.json").toString()
+  val telemetryConfigPath: String = fixture.home.resolve(".config/skill-bill/config.json").toString()
   val codeReviewSourceDir: String = fixture.repoRoot.resolve("skills/bill-code-review").toString()
   val qualityCheckSourceDir: String = fixture.repoRoot.resolve("skills/bill-code-check").toString()
   val codeReviewStagingDir: String = stagingDir("bill-code-review", CODE_REVIEW_GOLDEN_CONTENT_HASH)

@@ -41,7 +41,8 @@ the next install.
 
 Sources are declared in the machine-global config file:
 
-- Default path: `~/.skill-bill/config.json`
+- Default path: `~/.config/skill-bill/config.json` (`$XDG_CONFIG_HOME/skill-bill/config.json`) — a
+  durable location that survives installs (see [Persisting Config Across Installs](#persisting-config-across-installs))
 - Override with the `SKILL_BILL_CONFIG_PATH` environment variable (supports `~` expansion)
 
 Add an `external_addon_sources` array. Each entry is a `{ path, platform }` object:
@@ -64,42 +65,29 @@ left untouched.
 
 ## Persisting Config Across Installs
 
-**A default `./install.sh` (and every update, which is just a re-run) wipes `~/.skill-bill/` as a
-pre-install cleanup step.** It preserves `skills/`, `platform-packs/`, `orchestration/`,
-`baseline-manifest.json`, and durable `*.db` state — but **not `config.json`**. A config left at the
-default `~/.skill-bill/config.json` path therefore loses its `external_addon_sources` on the next
-install.
+`config.json` — including your `external_addon_sources` — lives at the durable path
+**`~/.config/skill-bill/config.json`** (`$XDG_CONFIG_HOME/skill-bill/config.json`) by default. That
+path is **outside** the `~/.skill-bill/` tree that a `./install.sh` (or update) wipes during its
+pre-install cleanup, so your sources survive every install with **no configuration on your part**.
 
-To keep your sources across installs, **relocate the config outside `~/.skill-bill/` and point
-`SKILL_BILL_CONFIG_PATH` at it.** Both the installer and the runtime read this variable, so a clean
-install never touches the file. Export it from your shell profile so every `install.sh` and
-`skill-bill` invocation sees it:
+Resolution order used by both the installer and the runtime:
 
-```bash
-# ~/.bashrc / ~/.zshrc
-export SKILL_BILL_CONFIG_PATH="$HOME/.config/skill-bill/config.json"
-```
+1. `SKILL_BILL_CONFIG_PATH` — explicit override; pin the config anywhere.
+2. `~/.config/skill-bill/config.json` (honoring `$XDG_CONFIG_HOME`) when it exists — the durable default.
+3. `~/.skill-bill/config.json` — legacy fallback for older installs.
 
-```fish
-# ~/.config/fish/config.fish
-set -gx SKILL_BILL_CONFIG_PATH "$HOME/.config/skill-bill/config.json"
-```
-
-Then move your existing config once:
-
-```bash
-mkdir -p ~/.config/skill-bill
-mv ~/.skill-bill/config.json ~/.config/skill-bill/config.json
-```
+New installs write to the durable path (#2). Existing installs are **migrated automatically**: the
+installer moves a legacy `~/.skill-bill/config.json` to the durable path *before* the pre-install
+cleanup, so upgrading never drops your sources. The cleanup still wipes the rest of `~/.skill-bill/`
+(preserving `skills/`, `platform-packs/`, `orchestration/`, `baseline-manifest.json`, and `*.db`
+state), but the config no longer lives there.
 
 Notes:
 
-- The variable must be present in whatever environment runs `install.sh` and `skill-bill`. Shells
-  launched outside your profile fall back to the default path, so run installs from a shell that
-  sources the export.
-- As a one-off alternative, `SKILL_BILL_SKIP_PREINSTALL_UNINSTALL=1 ./install.sh …` skips the wipe
-  and leaves `~/.skill-bill/config.json` in place. That is intended for dev iteration; the
-  relocation above is the durable choice.
+- To keep the config somewhere else, export `SKILL_BILL_CONFIG_PATH` from your shell profile so every
+  `install.sh` and `skill-bill` invocation sees it. Without the override, the durable default applies.
+- As a one-off, `SKILL_BILL_SKIP_PREINSTALL_UNINSTALL=1 ./install.sh …` skips the wipe entirely
+  (intended for dev iteration).
 
 ## Source Directory Layout
 

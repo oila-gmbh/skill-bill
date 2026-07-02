@@ -1,6 +1,7 @@
 package skillbill.install.apply
 
 import skillbill.infrastructure.fs.FileTelemetryConfigStore
+import skillbill.infrastructure.fs.resolveTelemetryConfigPath
 import skillbill.install.model.ClaudeMcpProfileFailure
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.InstallApplyIssue
@@ -26,10 +27,10 @@ internal fun applyTelemetryIntent(
   warnings: MutableList<InstallApplyIssue>,
   telemetryLevelMutator: TelemetryLevelMutator? = null,
 ): InstallTelemetryApplyOutcome {
-  val configPath = plan.request.home.resolve(".skill-bill/config.json").toAbsolutePath().normalize()
+  val environmentContext = EnvironmentContext(environment = emptyMap(), userHome = plan.request.home)
+  val configPath = resolveTelemetryConfigPath(environmentContext.environment, environmentContext.userHome)
   val existedBefore = Files.exists(configPath)
   return runCatching {
-    val environmentContext = EnvironmentContext(environment = emptyMap(), userHome = plan.request.home)
     val clearedEvents =
       applyInstallTelemetryLevel(environmentContext, plan.telemetryLevel.id, telemetryLevelMutator)
     val status =
@@ -149,7 +150,7 @@ internal fun skippedTelemetryOutcome(plan: InstallPlan, message: String): Instal
   InstallTelemetryApplyOutcome(
     level = plan.telemetryLevel,
     status = InstallTelemetryApplyStatus.SKIPPED,
-    configPath = plan.request.home.resolve(".skill-bill/config.json").toAbsolutePath().normalize(),
+    configPath = resolveTelemetryConfigPath(emptyMap(), plan.request.home),
     message = message,
   )
 
