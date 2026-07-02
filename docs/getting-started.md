@@ -102,7 +102,7 @@ Your `config.json` (telemetry choices, `install_id`, and `external_addon_sources
 
 - **Fresh installs** write there by default.
 - **Existing installs** are migrated automatically: the installer moves a legacy `~/.skill-bill/config.json` to the durable path before the pre-install cleanup, so nothing is lost on upgrade.
-- **Custom location**: set `SKILL_BILL_CONFIG_PATH` to pin the config anywhere (this override always wins, for both the installer and the runtime).
+- **Custom location**: set `SKILL_BILL_CONFIG_PATH` to pin the config anywhere (this override always wins, for both the installer and the runtime). If you exported this in an earlier version just to relocate the config to `~/.config/skill-bill/`, you can drop it — the durable default now covers that automatically.
 
 The pre-install cleanup still wipes the rest of `~/.skill-bill/`, preserving `skills/`, `platform-packs/`, `orchestration/`, `baseline-manifest.json`, and durable `*.db` state (goal/workflow stores, `review-metrics.db`). Only the config was ever at risk, and it now lives outside that tree. See [External Addon Sources](external-addons.md#persisting-config-across-installs) for details. For a one-off install that must not wipe any state, `SKILL_BILL_SKIP_PREINSTALL_UNINSTALL=1 ./install.sh …` skips the cleanup entirely (intended for dev iteration).
 

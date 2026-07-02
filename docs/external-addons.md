@@ -86,6 +86,8 @@ Notes:
 
 - To keep the config somewhere else, export `SKILL_BILL_CONFIG_PATH` from your shell profile so every
   `install.sh` and `skill-bill` invocation sees it. Without the override, the durable default applies.
+  If you exported this in an earlier version solely to relocate the config to `~/.config/skill-bill/`,
+  you can remove it now — the durable default is that same path.
 - As a one-off, `SKILL_BILL_SKIP_PREINSTALL_UNINSTALL=1 ./install.sh …` skips the wipe entirely
   (intended for dev iteration).
 
