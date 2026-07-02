@@ -43,7 +43,7 @@ class FileTelemetryConfigStoreTest {
   }
 
   @Test
-  fun `config path defaults to durable XDG location for fresh installs`(@TempDir tempDir: Path) {
+  fun `config path defaults to durable home-relative config dir for fresh installs`(@TempDir tempDir: Path) {
     val resolved = resolveTelemetryConfigPath(emptyMap(), tempDir)
 
     assertEquals(
@@ -53,14 +53,14 @@ class FileTelemetryConfigStoreTest {
   }
 
   @Test
-  fun `config path prefers existing XDG config over legacy`(@TempDir tempDir: Path) {
-    val xdg = tempDir.resolve(".config/skill-bill/config.json")
-    Files.createDirectories(xdg.parent)
-    Files.writeString(xdg, "{}\n")
+  fun `config path prefers existing durable config over legacy`(@TempDir tempDir: Path) {
+    val durable = tempDir.resolve(".config/skill-bill/config.json")
+    Files.createDirectories(durable.parent)
+    Files.writeString(durable, "{}\n")
     Files.createDirectories(tempDir.resolve(".skill-bill"))
     Files.writeString(tempDir.resolve(".skill-bill/config.json"), "{}\n")
 
-    assertEquals(xdg.toAbsolutePath().normalize(), resolveTelemetryConfigPath(emptyMap(), tempDir))
+    assertEquals(durable.toAbsolutePath().normalize(), resolveTelemetryConfigPath(emptyMap(), tempDir))
   }
 
   @Test
@@ -73,12 +73,12 @@ class FileTelemetryConfigStoreTest {
   }
 
   @Test
-  fun `config path honors XDG_CONFIG_HOME override`(@TempDir tempDir: Path) {
-    val xdgHome = tempDir.resolve("custom-xdg")
+  fun `config path ignores XDG_CONFIG_HOME and stays home-relative`(@TempDir tempDir: Path) {
+    val resolved = resolveTelemetryConfigPath(mapOf("XDG_CONFIG_HOME" to "/some/global/xdg"), tempDir)
 
     assertEquals(
-      xdgHome.resolve("skill-bill/config.json").toAbsolutePath().normalize(),
-      resolveTelemetryConfigPath(mapOf(XDG_CONFIG_HOME_KEY to xdgHome.toString()), tempDir),
+      tempDir.resolve(".config/skill-bill/config.json").toAbsolutePath().normalize(),
+      resolved,
     )
   }
 

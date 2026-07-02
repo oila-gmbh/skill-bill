@@ -833,7 +833,7 @@ migrate_legacy_config_to_durable_path() {
     return 0
   fi
   local legacy="$SKILL_BILL_STATE_DIR/config.json"
-  local durable="${XDG_CONFIG_HOME:-$HOME/.config}/skill-bill/config.json"
+  local durable="$HOME/.config/skill-bill/config.json"
   if [[ -f "$legacy" && ! -f "$durable" ]]; then
     mkdir -p "$(dirname "$durable")"
     if mv "$legacy" "$durable"; then

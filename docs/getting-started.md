@@ -98,7 +98,7 @@ Installed skills are symlinks to rendered staging directories under `~/.skill-bi
 
 ### Config That Survives Installs
 
-Your `config.json` (telemetry choices, `install_id`, and `external_addon_sources`) lives at the durable path **`~/.config/skill-bill/config.json`** (`$XDG_CONFIG_HOME/skill-bill/config.json`). That location is **outside** the `~/.skill-bill/` tree that installs wipe, so it survives every `./install.sh` and update automatically — no environment variable required.
+Your `config.json` (telemetry choices, `install_id`, and `external_addon_sources`) lives at the durable path **`~/.config/skill-bill/config.json`**. That location is **outside** the `~/.skill-bill/` tree that installs wipe, so it survives every `./install.sh` and update automatically — no environment variable required.
 
 - **Fresh installs** write there by default.
 - **Existing installs** are migrated automatically: the installer moves a legacy `~/.skill-bill/config.json` to the durable path before the pre-install cleanup, so nothing is lost on upgrade.

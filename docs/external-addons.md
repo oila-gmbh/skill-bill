@@ -41,7 +41,7 @@ the next install.
 
 Sources are declared in the machine-global config file:
 
-- Default path: `~/.config/skill-bill/config.json` (`$XDG_CONFIG_HOME/skill-bill/config.json`) — a
+- Default path: `~/.config/skill-bill/config.json` — a
   durable location that survives installs (see [Persisting Config Across Installs](#persisting-config-across-installs))
 - Override with the `SKILL_BILL_CONFIG_PATH` environment variable (supports `~` expansion)
 
@@ -66,14 +66,14 @@ left untouched.
 ## Persisting Config Across Installs
 
 `config.json` — including your `external_addon_sources` — lives at the durable path
-**`~/.config/skill-bill/config.json`** (`$XDG_CONFIG_HOME/skill-bill/config.json`) by default. That
+**`~/.config/skill-bill/config.json`** by default. That
 path is **outside** the `~/.skill-bill/` tree that a `./install.sh` (or update) wipes during its
 pre-install cleanup, so your sources survive every install with **no configuration on your part**.
 
 Resolution order used by both the installer and the runtime:
 
 1. `SKILL_BILL_CONFIG_PATH` — explicit override; pin the config anywhere.
-2. `~/.config/skill-bill/config.json` (honoring `$XDG_CONFIG_HOME`) when it exists — the durable default.
+2. `~/.config/skill-bill/config.json` when it exists — the durable default.
 3. `~/.skill-bill/config.json` — legacy fallback for older installs.
 
 New installs write to the durable path (#2). Existing installs are **migrated automatically**: the
@@ -161,7 +161,7 @@ Overlay a private `acme` review add-on onto the installed `ios` pack.
          target: acme-review.md
    ```
 
-2. Register it in `~/.skill-bill/config.json`:
+2. Register it in `~/.config/skill-bill/config.json`:
 
    ```json
    {
