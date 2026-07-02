@@ -322,9 +322,9 @@ class JvmDesktopFirstRunGatewayTest {
       val applied = assertIs<FirstRunApplyResult.Applied>(applyResult)
 
       assertEquals(FirstRunInstallStatus.SUCCESS, applied.outcome.status)
-      assertTrue(Files.readString(plannedHome.resolve(".skill-bill/config.json")).contains("\"level\":\"full\""))
+      assertTrue(Files.readString(plannedHome.resolve(".config/skill-bill/config.json")).contains("\"level\":\"full\""))
       assertFalse(
-        Files.exists(processHome.resolve(".skill-bill/config.json")),
+        Files.exists(processHome.resolve(".config/skill-bill/config.json")),
         "default apply must not mutate process user.home",
       )
     } finally {

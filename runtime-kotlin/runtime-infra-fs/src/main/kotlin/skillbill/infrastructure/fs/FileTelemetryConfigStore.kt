@@ -57,18 +57,14 @@ internal fun resolveTelemetryConfigPath(
   environment[CONFIG_ENVIRONMENT_KEY]?.takeIf(String::isNotBlank)?.let {
     return expandAndNormalizeTelemetryPath(it, userHome)
   }
-  val xdgConfig = xdgTelemetryConfigPath(environment, userHome)
+  val xdgBase = environment[XDG_CONFIG_HOME_KEY]?.takeIf(String::isNotBlank)
+    ?.let { expandAndNormalizeTelemetryPath(it, userHome) }
+    ?: userHome.resolve(".config")
+  val xdgConfig = xdgBase.resolve("skill-bill").resolve("config.json").toAbsolutePath().normalize()
   if (Files.exists(xdgConfig)) return xdgConfig
   val legacyConfig = userHome.resolve(".skill-bill").resolve("config.json").toAbsolutePath().normalize()
   if (Files.exists(legacyConfig)) return legacyConfig
   return xdgConfig
-}
-
-private fun xdgTelemetryConfigPath(environment: Map<String, String>, userHome: Path): Path {
-  val base = environment[XDG_CONFIG_HOME_KEY]?.takeIf(String::isNotBlank)
-    ?.let { expandAndNormalizeTelemetryPath(it, userHome) }
-    ?: userHome.resolve(".config")
-  return base.resolve("skill-bill").resolve("config.json").toAbsolutePath().normalize()
 }
 
 private fun expandAndNormalizeTelemetryPath(rawPath: String, userHome: Path): Path {
