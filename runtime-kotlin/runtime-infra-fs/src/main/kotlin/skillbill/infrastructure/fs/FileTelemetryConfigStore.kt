@@ -40,12 +40,29 @@ internal fun resolveTelemetryStateDir(
   expandAndNormalizeTelemetryPath(it, userHome)
 } ?: userHome.resolve(".skill-bill").toAbsolutePath().normalize()
 
+/**
+ * Resolution order (read + write share this so the installer and runtime always agree):
+ * 1. [CONFIG_ENVIRONMENT_KEY] explicit override.
+ * 2. The durable `<home>/.config/skill-bill/config.json` when it exists. This lives OUTSIDE the wiped
+ *    `~/.skill-bill/`, so it survives installs. It is deliberately home-relative (NOT `$XDG_CONFIG_HOME`)
+ *    so a per-target-home install always writes under that home rather than a machine-global config dir.
+ * 3. The legacy `~/.skill-bill/config.json` when it exists (backward compatibility for older installs).
+ * 4. Otherwise the durable path — so fresh installs write there by default and never get clobbered.
+ */
 internal fun resolveTelemetryConfigPath(
   environment: Map<String, String> = System.getenv(),
   userHome: Path = Path.of(System.getProperty("user.home")),
-): Path = environment[CONFIG_ENVIRONMENT_KEY]?.takeIf(String::isNotBlank)?.let {
-  expandAndNormalizeTelemetryPath(it, userHome)
-} ?: userHome.resolve(".skill-bill").resolve("config.json").toAbsolutePath().normalize()
+): Path {
+  environment[CONFIG_ENVIRONMENT_KEY]?.takeIf(String::isNotBlank)?.let {
+    return expandAndNormalizeTelemetryPath(it, userHome)
+  }
+  val durableConfig = userHome.resolve(".config").resolve("skill-bill").resolve("config.json")
+    .toAbsolutePath().normalize()
+  if (Files.exists(durableConfig)) return durableConfig
+  val legacyConfig = userHome.resolve(".skill-bill").resolve("config.json").toAbsolutePath().normalize()
+  if (Files.exists(legacyConfig)) return legacyConfig
+  return durableConfig
+}
 
 private fun expandAndNormalizeTelemetryPath(rawPath: String, userHome: Path): Path {
   val normalized =

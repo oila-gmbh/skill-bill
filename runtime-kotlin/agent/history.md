@@ -1,3 +1,14 @@
+## [2026-07-02] SKILL-99 External Addon Sources
+Areas: runtime-infra-fs/install, runtime-infra-fs/scaffold/platformpack, runtime-application/install, runtime-cli/config+install, runtime-ports/install/addon, runtime-contracts/error, runtime-domain/install/model, runtime-core/di, install.sh, platform-packs/ios
+- Added external addon source overlay: durable, config-driven addons from outside ~/.skill-bill, re-applied unconditionally after reconcile-apply and before staging
+- Two-phase validate-all-then-apply-all in `FileSystemExternalAddonOverlay` (infrastructure.fs): temp-and-swap platform.yaml write, manifest merge before addon file copies, atomic collision-free guarantees
+- `FileExternalAddonSourceConfigStore` is a separate class reusing `FileTelemetryConfigStore` internal helpers (at detekt TooManyFunctions limit — do NOT add methods there)
+- Collision detection covers slug, pointer-name, AND target-basename across provenance (pack-owned vs external, external vs external); fragment field validation (name/slug regex, additionalProperties) and nested-target rejection before merge
+- Port DTOs must live in `.model` sub-package; overlay adapter in `infrastructure.fs` not `scaffold.platformpack` (runtime-core cannot import scaffold — ImplementationOwnershipArchitectureTest). `internal` visibility is module-scoped so cross-package reuse of `parsePointers`/`parseAddonUsage` works via import
+- SKILL-98 private iOS addon migrated out of tree to external source dir + `addon-manifest.yaml`; skip-worktree/`.git/info/exclude`/local wiring removed; reconcile re-adopts upstream yaml each apply but overlay re-merges on top
+Feature flag: N/A
+Acceptance criteria: 9/9 implemented
+
 ## [2026-06-27] SKILL-95 opencode prose-only (refuse runtime mode)
 Areas: runtime-kotlin/runtime-domain, runtime-kotlin/runtime-cli, runtime-kotlin/runtime-infra-fs, skills/bill-feature-task, skills/bill-feature-goal, skills/bill-feature-task-runtime
 - Shared predicate+message in `InstallModels.kt`: `isOpencodeAgent(agentId)` trims+lowercases vs `InstallAgent.OPENCODE.id`; `OPENCODE_RUNTIME_REFUSAL_MESSAGE` names the supported alternatives (`bill-feature-task-prose` / `bill-feature-goal mode:prose`). reusable PATTERN: one domain-level predicate+message, consumed by every layer, keeps refusal wording from drifting.

@@ -24,6 +24,7 @@ import skillbill.cli.core.DocumentedCliCommand
 import skillbill.cli.core.DocumentedNoOpCliCommand
 import skillbill.cli.core.formatOption
 import skillbill.cli.install.InstallApplyCommand
+import skillbill.cli.install.InstallApplyExternalAddonsCommand
 import skillbill.cli.install.InstallClaudeAgentsPathCommand
 import skillbill.cli.install.InstallClaudeRootsCommand
 import skillbill.cli.install.InstallCleanupAgentTargetCommand
@@ -101,6 +102,7 @@ class ScaffoldTopLevelCommands(
 class InstallTopLevelCommands(
   planCommand: InstallPlanCommand,
   applyCommand: InstallApplyCommand,
+  applyExternalAddonsCommand: InstallApplyExternalAddonsCommand,
   reconcileCommand: InstallReconcileCommand,
   replayLastSelectionCommand: InstallReplayLastSelectionCommand,
   agentPathCommand: InstallAgentPathCommand,
@@ -131,6 +133,7 @@ class InstallTopLevelCommands(
       .subcommands(
         planCommand,
         applyCommand,
+        applyExternalAddonsCommand,
         reconcileCommand,
         replayLastSelectionCommand,
         agentPathCommand,

@@ -20,12 +20,13 @@ import java.nio.file.Path
 class ConfigCommand(
   resolveSpecTypeCommand: ConfigResolveSpecTypeCommand,
   resolveParallelAgentCommand: ConfigResolveParallelAgentCommand,
+  resolveExternalAddonsCommand: ConfigResolveExternalAddonsCommand,
 ) : DocumentedNoOpCliCommand(
   "config",
   "Inspect resolved repo-local configuration (.skill-bill/config.yaml).",
 ) {
   init {
-    subcommands(resolveSpecTypeCommand, resolveParallelAgentCommand)
+    subcommands(resolveSpecTypeCommand, resolveParallelAgentCommand, resolveExternalAddonsCommand)
   }
 }
 

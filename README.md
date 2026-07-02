@@ -115,6 +115,7 @@ Skill Bill ships complete Kotlin/KMP and PHP packs — the stack-specific intell
 - [Getting Started for Teams](docs/getting-started-for-teams.md): rollout guidance, customization strategy, and adoption patterns
 - [Capability Deep-dive](docs/capabilities.md): the full system — one-shot install, durable workflows, platform packs, decomposition, Desktop UI, telemetry, overrides, memory, and governance
 - [Skill Source And Generation Model](docs/skill-source-generation.md): `content.md` vs generated `SKILL.md`, support pointers, install staging, and native-agent generation
+- [External Addon Sources](docs/external-addons.md): overlay private or team-specific review add-ons onto an installed pack, kept out of the shared repo
 - [Review Telemetry](docs/review-telemetry.md): telemetry contract, learnings, local DB usage, and remote proxy stats
 
 ## License
