@@ -96,6 +96,24 @@ Using GLM as a model in Claude Code? Skill Bill installs to the Claude Code skil
 
 Installed skills are symlinks to rendered staging directories under `~/.skill-bill/installed-skills/`. Re-run `./install.sh` after changing the checkout so installed agents pick up refreshed `SKILL.md` wrappers, support pointer files, and content hashes.
 
+### Config That Survives Installs
+
+**Every `./install.sh` — including an update, which is just a re-run — wipes `~/.skill-bill/` as a pre-install cleanup step.** It preserves `skills/`, `platform-packs/`, `orchestration/`, `baseline-manifest.json`, and durable `*.db` state (goal/workflow stores, `review-metrics.db`), but **not `config.json`**. So any hand-edited config at the default `~/.skill-bill/config.json` path — most importantly `external_addon_sources`, plus telemetry overrides — is lost on the next install.
+
+If you keep configuration in `config.json`, relocate it outside `~/.skill-bill/` and point `SKILL_BILL_CONFIG_PATH` at the new location. Both the installer and the runtime honor this variable, so a clean install never touches the file. Export it from your shell profile so every `install.sh` and `skill-bill` invocation sees it:
+
+```bash
+# ~/.bashrc / ~/.zshrc
+export SKILL_BILL_CONFIG_PATH="$HOME/.config/skill-bill/config.json"
+```
+
+```fish
+# ~/.config/fish/config.fish
+set -gx SKILL_BILL_CONFIG_PATH "$HOME/.config/skill-bill/config.json"
+```
+
+Then move the existing config once: `mkdir -p ~/.config/skill-bill && mv ~/.skill-bill/config.json ~/.config/skill-bill/config.json`. See [External Addon Sources](external-addons.md#persisting-config-across-installs) for the full rationale. For a one-off install that must not wipe state, `SKILL_BILL_SKIP_PREINSTALL_UNINSTALL=1 ./install.sh …` skips the cleanup entirely (intended for dev iteration).
+
 On Claude, Codex, OpenCode, and Junie, orchestrators that delegate to specialists also install native subagent definitions for supported runtime surfaces. Native subagent sources live as provider-neutral `native-agents/agents.yaml` bundles or standalone `native-agents/<name>.md` files. New and rendered neutral sources include `contract_version: "0.1"`; the parser still accepts older unpinned sources so existing repos can migrate gradually. Install renders those sources into `~/.skill-bill/native-agents/` before linking Claude markdown into `~/.claude/agents/`, Codex TOMLs into `~/.codex/agents/`, OpenCode markdown into `~/.config/opencode/agents/`, and Junie markdown into `~/.junie/agents/`; generated provider files are not checked into the repo. `~/.agents/agents/` is only a Skill Bill compatibility path for Codex homes without a `.codex` root, not the primary documented Codex custom-agent location. Claude and Junie use Markdown/YAML custom-subagent frontmatter, Codex resolves spawn instructions by TOML `name`, and OpenCode resolves by filename-derived agent name and supports manual `@<name>` invocation. Today this covers the `bill-kmp-code-review` specialists, the `bill-kotlin-code-review` specialists, the `bill-php-code-review` specialists, and the `bill-feature-task` workflow phases (pre-planning, planning, implementation, implementation-fix, completeness-audit, quality-check, pr-description). `bill-feature-verify` has no verify-specific native subagents; it delegates review through `bill-code-review` and keeps feature-flag, completeness, and verdict audits inline. Parsing tolerance for `RESULT:` blocks across runtimes is documented inline in `skills/bill-feature-task-prose/content.md`.
 
 ## Runtime Model
@@ -495,6 +513,7 @@ scripts/validate_agent_configs
 ## Reference Docs
 
 - [Getting Started for Teams](getting-started-for-teams.md)
+- [External Addon Sources](external-addons.md)
 - [Skill Source And Generation Model](skill-source-generation.md)
 - [Review Telemetry](review-telemetry.md)
 - `orchestration/shell-content-contract/PLAYBOOK.md`

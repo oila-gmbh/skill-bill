@@ -13,6 +13,7 @@ import skillbill.application.goalrunner.GoalRunner
 import skillbill.application.goalrunner.GoalRunnerStatusService
 import skillbill.application.goalrunner.WorkflowGoalRunnerManifestStore
 import skillbill.application.goalrunner.WorkflowGoalRunnerOutcomeStore
+import skillbill.application.install.ExternalAddonOverlayService
 import skillbill.application.install.InstallService
 import skillbill.application.learning.LearningService
 import skillbill.application.review.ParallelCodeReviewRunner
@@ -35,9 +36,11 @@ import skillbill.application.workflow.WorkflowService
 import skillbill.domain.skillremove.SkillRemoveFileSystem
 import skillbill.infrastructure.fs.DecompositionManifestValidatorAdapter
 import skillbill.infrastructure.fs.FeatureTaskRuntimePhaseOutputValidatorAdapter
+import skillbill.infrastructure.fs.FileExternalAddonSourceConfigStore
 import skillbill.infrastructure.fs.FileSystemBaselineManifestPersistence
 import skillbill.infrastructure.fs.FileSystemDecompositionManifestFileStore
 import skillbill.infrastructure.fs.FileSystemDiffResolver
+import skillbill.infrastructure.fs.FileSystemExternalAddonOverlay
 import skillbill.infrastructure.fs.FileSystemFeatureSpecPathResolver
 import skillbill.infrastructure.fs.FileSystemFeatureTaskRuntimeRunInvariantsSource
 import skillbill.infrastructure.fs.FileSystemFeatureTaskRuntimeSpecStatusWriter
@@ -98,6 +101,8 @@ import skillbill.ports.goalrunner.GoalPullRequestPort
 import skillbill.ports.goalrunner.GoalRunnerManifestStore
 import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.GoalRunnerWorkflowOutcomeStore
+import skillbill.ports.install.addon.ExternalAddonOverlayPort
+import skillbill.ports.install.addon.ExternalAddonSourceConfigPort
 import skillbill.ports.install.agent.InstallAgentTargetPort
 import skillbill.ports.install.apply.InstallApplyExecutionPort
 import skillbill.ports.install.baseline.BaselineManifestPersistencePort
@@ -201,6 +206,16 @@ abstract class RuntimeComponent(
   @Provides
   @JvmSynthetic
   internal fun telemetryConfigStore(store: FileTelemetryConfigStore): TelemetryConfigStore = store
+
+  @Provides
+  @JvmSynthetic
+  internal fun externalAddonSourceConfigPort(
+    store: FileExternalAddonSourceConfigStore,
+  ): ExternalAddonSourceConfigPort = store
+
+  @Provides
+  @JvmSynthetic
+  internal fun externalAddonOverlayPort(adapter: FileSystemExternalAddonOverlay): ExternalAddonOverlayPort = adapter
 
   @Provides
   @JvmSynthetic
@@ -488,6 +503,7 @@ abstract class RuntimeComponent(
   // RepoLocalConfigPort adapter type, which is not on the CLI module's compile classpath.
   abstract val configResolutionService: ConfigResolutionService
   abstract val installService: InstallService
+  abstract val externalAddonOverlayService: ExternalAddonOverlayService
   abstract val agentRunService: AgentRunService
   abstract val featureTaskRuntimePhaseRecorder: FeatureTaskRuntimePhaseRecorder
   abstract val featureTaskRuntimeRunner: FeatureTaskRuntimeRunner

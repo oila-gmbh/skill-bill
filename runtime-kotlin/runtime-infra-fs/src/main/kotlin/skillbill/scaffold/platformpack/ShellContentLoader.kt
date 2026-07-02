@@ -618,7 +618,7 @@ private fun parseOptionalString(manifest: Map<*, *>, slug: String, key: String):
   it as? String ?: throw InvalidManifestSchemaError("Platform pack '$slug': '$key' must be a string when provided.")
 }
 
-private fun parsePointers(manifest: Map<*, *>, slug: String): List<PointerSpec> {
+internal fun parsePointers(manifest: Map<*, *>, slug: String): List<PointerSpec> {
   val raw = manifest["pointers"] ?: return emptyList()
   val pointersMap = raw as? Map<*, *>
     ?: throw InvalidManifestSchemaError(
@@ -659,7 +659,7 @@ private fun parsePointers(manifest: Map<*, *>, slug: String): List<PointerSpec> 
   return collected
 }
 
-private fun parseAddonUsage(
+internal fun parseAddonUsage(
   manifest: Map<*, *>,
   slug: String,
   pointers: List<PointerSpec>,

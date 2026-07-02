@@ -731,7 +731,7 @@ export SKILL_BILL_TELEMETRY_PROXY_STATS_TOKEN="replace-with-your-stats-token"
 export SKILL_BILL_TELEMETRY_LEVEL="full"                   # optional override (off, anonymous, full)
 export SKILL_BILL_TELEMETRY_ENABLED="true"                 # legacy override (maps true→anonymous, false→off)
 export SKILL_BILL_TELEMETRY_BATCH_SIZE="50"                # optional override
-export SKILL_BILL_CONFIG_PATH="$HOME/.skill-bill/config.json"  # optional override
+export SKILL_BILL_CONFIG_PATH="$HOME/.config/skill-bill/config.json"  # relocate config outside ~/.skill-bill so installs/updates don't wipe it
 ```
 
 When telemetry is enabled, the local config stores the generated install id used as the anonymous event `distinct_id`. You can edit `~/.skill-bill/config.json` directly if you want to keep the hosted relay or replace it with your own proxy target, but the supported way to opt out is `skill-bill telemetry disable`.
