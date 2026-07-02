@@ -50,6 +50,7 @@ class InstallerShellDelegationTest {
     assertContains(installScript, "install replay-last-selection")
     assertContains(installScript, "SKILL_BILL_RUNTIME_EXECUTABLE=\"\$RUNTIME_CLI_BIN\"")
     assertContains(installScript, "exec \"\\\$runtime_cli\" update \"\\\${passthrough[@]+\\\${passthrough[@]}}\"")
+    assertExternalAddonOverlayOrdering(installScript)
     assertFalse(installScript.contains("update_check_status"))
     // The Gradle desktop build is now gated behind --from-source: the helper and the
     // Gradle task must still exist (from-source coverage), but only run when
@@ -748,6 +749,24 @@ class InstallerShellDelegationTest {
 // standalone object so InstallerShellDelegationTest stays under detekt's LargeClass
 // threshold (mirroring PrebuiltReleaseStager). These helpers are pure: they only write
 // fixture files under the caller-provided paths and never touch test instance state.
+internal fun assertExternalAddonOverlayOrdering(installScript: String) {
+  val reconcileIdx = installScript.lastIndexOf("reconcile_and_commit_authored_source")
+  val overlayIdx = installScript.lastIndexOf("apply_external_addon_overlay")
+  val applyIdx = installScript.lastIndexOf("apply_runtime_install")
+  assertTrue(reconcileIdx >= 0, "install.sh must call reconcile_and_commit_authored_source")
+  assertTrue(overlayIdx >= 0, "install.sh must call apply_external_addon_overlay")
+  assertTrue(applyIdx >= 0, "install.sh must call apply_runtime_install")
+  assertTrue(
+    reconcileIdx < overlayIdx,
+    "apply_external_addon_overlay must run AFTER reconcile_and_commit_authored_source",
+  )
+  assertTrue(
+    overlayIdx < applyIdx,
+    "apply_external_addon_overlay must run BEFORE apply_runtime_install (the staging install apply)",
+  )
+  assertContains(installScript, "apply-external-addons")
+}
+
 internal object InstallerShellFixtures {
   // SKILL-76 subtask 2: the installer drives `install reconcile` (compute) then
   // `install reconcile --apply`. The fake CLI cannot compute real hashes, so it emits the
@@ -846,6 +865,9 @@ internal object InstallerShellFixtures {
       |if [[ "${'$'}{1:-}" == "install" && "${'$'}{2:-}" == "apply" ]]; then
       |  exit 0
       |fi
+      |if [[ "${'$'}{1:-}" == "install" && "${'$'}{2:-}" == "apply-external-addons" ]]; then
+      |  exit 0
+      |fi
       |if [[ "${'$'}{1:-}" == "install" && "${'$'}{2:-}" == "claude-roots" ]]; then
       |  printf '%s\n' "${'$'}home/.claude"
       |  exit 0
@@ -928,6 +950,9 @@ internal object InstallerShellFixtures {
       |  printf 'reconcile_summary: applied=false has_conflicts=false conflict_count=0 baseline_refreshed=false installed_count=0\n'
       |  exit 0
       |fi
+      |if [[ "${'$'}{1:-}" == "install" && "${'$'}{2:-}" == "apply-external-addons" ]]; then
+      |  exit 0
+      |fi
       |case "${'$'}{1:-} ${'$'}{2:-}" in
       |  "install cleanup-agent-target"|"install unlink-codex-agents"|"install unlink-claude-agents"|"install unlink-opencode-agents"|"install unlink-junie-agents"|"install unregister-mcp")
       |    exit 0
@@ -973,7 +998,7 @@ internal object InstallerShellFixtures {
       |  printf '%s\n' "${'$'}home/agent-targets/${'$'}3"
       |  exit 0
       |fi
-      |if [[ "${'$'}{1:-}" == "install" && "${'$'}{2:-}" == "apply" ]]; then
+      |if [[ "${'$'}{1:-}" == "install" && ( "${'$'}{2:-}" == "apply" || "${'$'}{2:-}" == "apply-external-addons" ) ]]; then
       |  exit 0
       |fi
       |if [[ "${'$'}{1:-}" == "install" && "${'$'}{2:-}" == "claude-roots" ]]; then

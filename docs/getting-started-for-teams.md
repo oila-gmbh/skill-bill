@@ -162,6 +162,7 @@ Use the lightest customization that solves the problem:
 | `AGENTS.md` | Repo-wide facts every skill should know | Project team |
 | `.agents/skill-overrides.md` | Skill-specific preferences and local policy | Project team |
 | Learnings | Repeated false positives or accepted review patterns | Team using review telemetry |
+| [External addon source](external-addons.md) | Private or team-specific add-ons overlaid onto an installed pack, kept out of the shared repo | Team maintainer |
 | Forked platform pack | Durable platform behavior that differs from the reference pack | Platform owner |
 | New platform pack | A materially different stack or review/quality model | Platform owner |
 

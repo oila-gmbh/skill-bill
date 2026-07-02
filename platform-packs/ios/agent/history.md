@@ -38,7 +38,7 @@ Areas: platform-packs/ios, platform-packs/ios/code-review
   with no overlap vs KMP's iosMain/androidMain/commonMain signals.
 - Added `bill-ios-code-review` router + 10 area specialists (architecture,
   performance, platform-correctness, security, testing, api-contracts,
-  persistence, reliability, ui, ux-accessibility) mirroring the PHP pack's
+  persistence, reliability, ui, ux-accessibility) mirroring the established
   router/specialist shape and min-2/max-10 bounds pattern.
 - Reusable: `architecture`/`persistence`/`platform-correctness`/`reliability`
   specialists each add a "Repo-Local Knowledge" section pointing the reviewer

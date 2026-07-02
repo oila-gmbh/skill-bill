@@ -42,6 +42,58 @@ class FileTelemetryConfigStoreTest {
     )
   }
 
+  @Test
+  fun `config path defaults to durable home-relative config dir for fresh installs`(@TempDir tempDir: Path) {
+    val resolved = resolveTelemetryConfigPath(emptyMap(), tempDir)
+
+    assertEquals(
+      tempDir.resolve(".config/skill-bill/config.json").toAbsolutePath().normalize(),
+      resolved,
+    )
+  }
+
+  @Test
+  fun `config path prefers existing durable config over legacy`(@TempDir tempDir: Path) {
+    val durable = tempDir.resolve(".config/skill-bill/config.json")
+    Files.createDirectories(durable.parent)
+    Files.writeString(durable, "{}\n")
+    Files.createDirectories(tempDir.resolve(".skill-bill"))
+    Files.writeString(tempDir.resolve(".skill-bill/config.json"), "{}\n")
+
+    assertEquals(durable.toAbsolutePath().normalize(), resolveTelemetryConfigPath(emptyMap(), tempDir))
+  }
+
+  @Test
+  fun `config path falls back to legacy path when only legacy exists`(@TempDir tempDir: Path) {
+    val legacy = tempDir.resolve(".skill-bill/config.json")
+    Files.createDirectories(legacy.parent)
+    Files.writeString(legacy, "{}\n")
+
+    assertEquals(legacy.toAbsolutePath().normalize(), resolveTelemetryConfigPath(emptyMap(), tempDir))
+  }
+
+  @Test
+  fun `config path ignores XDG_CONFIG_HOME and stays home-relative`(@TempDir tempDir: Path) {
+    val resolved = resolveTelemetryConfigPath(mapOf("XDG_CONFIG_HOME" to "/some/global/xdg"), tempDir)
+
+    assertEquals(
+      tempDir.resolve(".config/skill-bill/config.json").toAbsolutePath().normalize(),
+      resolved,
+    )
+  }
+
+  @Test
+  fun `explicit config env override wins over durable and legacy paths`(@TempDir tempDir: Path) {
+    Files.createDirectories(tempDir.resolve(".config/skill-bill"))
+    Files.writeString(tempDir.resolve(".config/skill-bill/config.json"), "{}\n")
+    val pinned = tempDir.resolve("pinned/config.json")
+
+    assertEquals(
+      pinned.toAbsolutePath().normalize(),
+      resolveTelemetryConfigPath(mapOf(CONFIG_ENVIRONMENT_KEY to pinned.toString()), tempDir),
+    )
+  }
+
   // SKILL-52.3: the random install-id seed moved out of the pure domain into this adapter.
   @Test
   fun `ensure prefers the injected install id env value when none is persisted`(@TempDir tempDir: Path) {

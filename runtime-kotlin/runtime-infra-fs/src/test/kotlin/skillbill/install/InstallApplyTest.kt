@@ -115,9 +115,9 @@ class InstallApplyTest : InstallApplyTestSupport() {
     assertEquals(InstallApplyStatus.SUCCESS, result.status)
     assertEquals(InstallTelemetryLevel.FULL, result.telemetryOutcome.level)
     assertEquals(InstallTelemetryApplyStatus.SUCCESS, result.telemetryOutcome.status)
-    assertEquals(fixture.home.resolve(".skill-bill/config.json"), result.telemetryOutcome.configPath)
+    assertEquals(fixture.home.resolve(".config/skill-bill/config.json"), result.telemetryOutcome.configPath)
     assertEquals("Telemetry level set to 'full'.", result.telemetryOutcome.message)
-    assertTrue(Files.readString(fixture.home.resolve(".skill-bill/config.json")).contains("\"level\":\"full\""))
+    assertTrue(Files.readString(fixture.home.resolve(".config/skill-bill/config.json")).contains("\"level\":\"full\""))
   }
 
   @Test

@@ -822,6 +822,28 @@ print_install_plan() {
   echo ""
 }
 
+# One-time migration: older installs kept config.json inside the wiped
+# ~/.skill-bill/. Move it to the durable XDG location (~/.config/skill-bill/,
+# outside the wipe zone) BEFORE the pre-install uninstall so user settings —
+# external_addon_sources, telemetry choices, install_id — survive every install.
+# Skipped when the user pins a config path via SKILL_BILL_CONFIG_PATH, or when
+# the durable copy already exists (never clobber it).
+migrate_legacy_config_to_durable_path() {
+  if [[ -n "${SKILL_BILL_CONFIG_PATH:-}" ]]; then
+    return 0
+  fi
+  local legacy="$SKILL_BILL_STATE_DIR/config.json"
+  local durable="$HOME/.config/skill-bill/config.json"
+  if [[ -f "$legacy" && ! -f "$durable" ]]; then
+    mkdir -p "$(dirname "$durable")"
+    if mv "$legacy" "$durable"; then
+      info "Migrated Skill Bill config to durable location: $durable"
+    else
+      warn "Could not migrate config to $durable; leaving it at $legacy."
+    fi
+  fi
+}
+
 # Every install starts from a clean slate: removes agent symlinks, native
 # subagent symlinks, MCP registrations, runtime launchers, and wipes
 # ~/.skill-bill/ (including the installed-skills staging cache, runtime
@@ -2462,6 +2484,22 @@ apply_runtime_install() {
   ok "Runtime install apply completed"
 }
 
+apply_external_addon_overlay() {
+  if [[ ! -d "$SKILL_BILL_STATE_DIR/platform-packs" ]]; then
+    return 0
+  fi
+  info "Applying external addon overlay onto installed platform packs."
+  local status=0
+  run_runtime_cli install apply-external-addons \
+    --repo-root "$SKILL_BILL_STATE_DIR" \
+    --platform-packs "$SKILL_BILL_STATE_DIR/platform-packs" || status=$?
+  if [[ "$status" -ne 0 ]]; then
+    err "External addon overlay failed; aborting the install."
+    return "$status"
+  fi
+  ok "External addon overlay completed"
+}
+
 print_claude_roots_summary() {
   local roots root
   roots="$(run_runtime_cli install claude-roots 2>/dev/null)" || return 0
@@ -2596,6 +2634,7 @@ run_full_install() {
     replay_last_install_selection
   fi
   clean_install_state_if_requested
+  migrate_legacy_config_to_durable_path
   run_pre_install_uninstall
   copy_in_authored_source
   install_runtime_distributions
@@ -2635,6 +2674,7 @@ run_full_install() {
   fi
   echo ""
 
+  apply_external_addon_overlay
   apply_runtime_install
   install_desktop_app
 

@@ -19,10 +19,10 @@ Default database path:
 ~/.skill-bill/review-metrics.db
 ```
 
-Default config path:
+Default config path (durable, survives installs):
 
 ```text
-~/.skill-bill/config.json
+~/.config/skill-bill/config.json
 ```
 
 You can override the database path with `--db` or `SKILL_BILL_REVIEW_DB`.
@@ -731,7 +731,7 @@ export SKILL_BILL_TELEMETRY_PROXY_STATS_TOKEN="replace-with-your-stats-token"
 export SKILL_BILL_TELEMETRY_LEVEL="full"                   # optional override (off, anonymous, full)
 export SKILL_BILL_TELEMETRY_ENABLED="true"                 # legacy override (maps true→anonymous, false→off)
 export SKILL_BILL_TELEMETRY_BATCH_SIZE="50"                # optional override
-export SKILL_BILL_CONFIG_PATH="$HOME/.skill-bill/config.json"  # optional override
+export SKILL_BILL_CONFIG_PATH="/custom/path/config.json"  # optional: pin config to a custom path (overrides the durable default)
 ```
 
-When telemetry is enabled, the local config stores the generated install id used as the anonymous event `distinct_id`. You can edit `~/.skill-bill/config.json` directly if you want to keep the hosted relay or replace it with your own proxy target, but the supported way to opt out is `skill-bill telemetry disable`.
+When telemetry is enabled, the local config stores the generated install id used as the anonymous event `distinct_id`. The config lives at the durable `~/.config/skill-bill/config.json` by default, outside the `~/.skill-bill/` tree that installs wipe; you can edit it directly if you want to keep the hosted relay or replace it with your own proxy target, but the supported way to opt out is `skill-bill telemetry disable`.
