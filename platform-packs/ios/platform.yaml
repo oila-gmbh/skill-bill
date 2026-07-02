@@ -1,0 +1,209 @@
+platform: "ios"
+contract_version: "1.1"
+display_name: "iOS"
+
+routing_signals:
+  strong:
+    - ".xcodeproj"
+    - ".xcworkspace"
+    - "import SwiftUI"
+    - "import UIKit"
+    - "iOSApplicationExtension"
+  tie_breakers:
+    - "Package.swift alone is not a strong signal (ambiguous with server-side/macOS-only Swift); only route on it when the repo root also has an .xcodeproj/.xcworkspace."
+    - "A diff touching a local SPM package with no UIKit/SwiftUI import is still iOS-scoped when the repo root contains an .xcodeproj/.xcworkspace that consumes that package."
+    - "Never match on iosMain, androidMain, commonMain, expect/actual — those are KMP shared-source-set markers, not native iOS markers."
+
+declared_code_review_areas:
+  - "api-contracts"
+  - "architecture"
+  - "performance"
+  - "persistence"
+  - "platform-correctness"
+  - "reliability"
+  - "security"
+  - "testing"
+  - "ui"
+  - "ux-accessibility"
+
+declared_files:
+  baseline: "code-review/bill-ios-code-review/content.md"
+  areas:
+    api-contracts: "code-review/bill-ios-code-review-api-contracts/content.md"
+    architecture: "code-review/bill-ios-code-review-architecture/content.md"
+    performance: "code-review/bill-ios-code-review-performance/content.md"
+    persistence: "code-review/bill-ios-code-review-persistence/content.md"
+    platform-correctness: "code-review/bill-ios-code-review-platform-correctness/content.md"
+    reliability: "code-review/bill-ios-code-review-reliability/content.md"
+    security: "code-review/bill-ios-code-review-security/content.md"
+    testing: "code-review/bill-ios-code-review-testing/content.md"
+    ui: "code-review/bill-ios-code-review-ui/content.md"
+    ux-accessibility: "code-review/bill-ios-code-review-ux-accessibility/content.md"
+area_metadata:
+  api-contracts:
+    focus: "API contracts, request validation, and serialization"
+  architecture:
+    focus: "architecture, boundaries, and dependency direction"
+  performance:
+    focus: "performance risks on hot paths, blocking I/O, and resource usage"
+  persistence:
+    focus: "persistence, transactions, migrations, and data consistency"
+  platform-correctness:
+    focus: "lifecycle, concurrency, threading, and logic correctness"
+  reliability:
+    focus: "timeouts, retries, background work, and observability"
+  security:
+    focus: "secrets handling, auth, and sensitive-data exposure"
+  testing:
+    focus: "test coverage quality and regression protection"
+  ui:
+    focus: "UI correctness and framework usage"
+  ux-accessibility:
+    focus: "UX correctness and accessibility"
+
+declared_quality_check_file: "quality-check/bill-ios-code-check/content.md"
+
+addon_usage:
+  code-review/bill-ios-code-review:
+    - slug: offline-first
+      entrypoint: offline-first-review.md
+      companion_pointers:
+        - offline-sync-consistency.md
+        - offline-conflict-resolution.md
+        - offline-background-reliability.md
+  code-review/bill-ios-code-review-persistence:
+    - slug: offline-first
+      entrypoint: offline-first-review.md
+      companion_pointers:
+        - offline-sync-consistency.md
+        - offline-conflict-resolution.md
+  code-review/bill-ios-code-review-reliability:
+    - slug: offline-first
+      entrypoint: offline-first-review.md
+      companion_pointers:
+        - offline-background-reliability.md
+        - offline-sync-consistency.md
+  code-review/bill-ios-code-review-platform-correctness:
+    - slug: offline-first
+      entrypoint: offline-first-review.md
+      companion_pointers:
+        - offline-conflict-resolution.md
+
+# Pointer files are generated into render/install output from this block.
+pointers:
+  code-review/bill-ios-code-review:
+    - name: review-orchestrator.md
+      target: orchestration/review-orchestrator/PLAYBOOK.md
+    - name: review-delegation.md
+      target: orchestration/review-delegation/PLAYBOOK.md
+    - name: review-scope.md
+      target: orchestration/review-scope/PLAYBOOK.md
+    - name: shell-ceremony.md
+      target: orchestration/shell-content-contract/shell-ceremony.md
+    - name: specialist-contract.md
+      target: orchestration/review-orchestrator/specialist-contract.md
+    - name: stack-routing.md
+      target: orchestration/stack-routing/PLAYBOOK.md
+    - name: telemetry-contract.md
+      target: orchestration/telemetry-contract/PLAYBOOK.md
+    - name: offline-first-review.md
+      target: platform-packs/ios/addons/offline-first-review.md
+    - name: offline-sync-consistency.md
+      target: platform-packs/ios/addons/offline-sync-consistency.md
+    - name: offline-conflict-resolution.md
+      target: platform-packs/ios/addons/offline-conflict-resolution.md
+    - name: offline-background-reliability.md
+      target: platform-packs/ios/addons/offline-background-reliability.md
+  code-review/bill-ios-code-review-api-contracts:
+    - name: review-orchestrator.md
+      target: orchestration/review-orchestrator/PLAYBOOK.md
+    - name: shell-ceremony.md
+      target: orchestration/shell-content-contract/shell-ceremony.md
+    - name: telemetry-contract.md
+      target: orchestration/telemetry-contract/PLAYBOOK.md
+  code-review/bill-ios-code-review-architecture:
+    - name: review-orchestrator.md
+      target: orchestration/review-orchestrator/PLAYBOOK.md
+    - name: shell-ceremony.md
+      target: orchestration/shell-content-contract/shell-ceremony.md
+    - name: telemetry-contract.md
+      target: orchestration/telemetry-contract/PLAYBOOK.md
+  code-review/bill-ios-code-review-performance:
+    - name: review-orchestrator.md
+      target: orchestration/review-orchestrator/PLAYBOOK.md
+    - name: shell-ceremony.md
+      target: orchestration/shell-content-contract/shell-ceremony.md
+    - name: telemetry-contract.md
+      target: orchestration/telemetry-contract/PLAYBOOK.md
+  code-review/bill-ios-code-review-persistence:
+    - name: review-orchestrator.md
+      target: orchestration/review-orchestrator/PLAYBOOK.md
+    - name: shell-ceremony.md
+      target: orchestration/shell-content-contract/shell-ceremony.md
+    - name: telemetry-contract.md
+      target: orchestration/telemetry-contract/PLAYBOOK.md
+    - name: offline-first-review.md
+      target: platform-packs/ios/addons/offline-first-review.md
+    - name: offline-sync-consistency.md
+      target: platform-packs/ios/addons/offline-sync-consistency.md
+    - name: offline-conflict-resolution.md
+      target: platform-packs/ios/addons/offline-conflict-resolution.md
+  code-review/bill-ios-code-review-platform-correctness:
+    - name: review-orchestrator.md
+      target: orchestration/review-orchestrator/PLAYBOOK.md
+    - name: shell-ceremony.md
+      target: orchestration/shell-content-contract/shell-ceremony.md
+    - name: telemetry-contract.md
+      target: orchestration/telemetry-contract/PLAYBOOK.md
+    - name: offline-first-review.md
+      target: platform-packs/ios/addons/offline-first-review.md
+    - name: offline-conflict-resolution.md
+      target: platform-packs/ios/addons/offline-conflict-resolution.md
+  code-review/bill-ios-code-review-reliability:
+    - name: review-orchestrator.md
+      target: orchestration/review-orchestrator/PLAYBOOK.md
+    - name: shell-ceremony.md
+      target: orchestration/shell-content-contract/shell-ceremony.md
+    - name: telemetry-contract.md
+      target: orchestration/telemetry-contract/PLAYBOOK.md
+    - name: offline-first-review.md
+      target: platform-packs/ios/addons/offline-first-review.md
+    - name: offline-background-reliability.md
+      target: platform-packs/ios/addons/offline-background-reliability.md
+    - name: offline-sync-consistency.md
+      target: platform-packs/ios/addons/offline-sync-consistency.md
+  code-review/bill-ios-code-review-security:
+    - name: review-orchestrator.md
+      target: orchestration/review-orchestrator/PLAYBOOK.md
+    - name: shell-ceremony.md
+      target: orchestration/shell-content-contract/shell-ceremony.md
+    - name: telemetry-contract.md
+      target: orchestration/telemetry-contract/PLAYBOOK.md
+  code-review/bill-ios-code-review-testing:
+    - name: review-orchestrator.md
+      target: orchestration/review-orchestrator/PLAYBOOK.md
+    - name: shell-ceremony.md
+      target: orchestration/shell-content-contract/shell-ceremony.md
+    - name: telemetry-contract.md
+      target: orchestration/telemetry-contract/PLAYBOOK.md
+  code-review/bill-ios-code-review-ui:
+    - name: review-orchestrator.md
+      target: orchestration/review-orchestrator/PLAYBOOK.md
+    - name: shell-ceremony.md
+      target: orchestration/shell-content-contract/shell-ceremony.md
+    - name: telemetry-contract.md
+      target: orchestration/telemetry-contract/PLAYBOOK.md
+  code-review/bill-ios-code-review-ux-accessibility:
+    - name: review-orchestrator.md
+      target: orchestration/review-orchestrator/PLAYBOOK.md
+    - name: shell-ceremony.md
+      target: orchestration/shell-content-contract/shell-ceremony.md
+    - name: telemetry-contract.md
+      target: orchestration/telemetry-contract/PLAYBOOK.md
+  quality-check/bill-ios-code-check:
+    - name: shell-ceremony.md
+      target: orchestration/shell-content-contract/shell-ceremony.md
+    - name: stack-routing.md
+      target: orchestration/stack-routing/PLAYBOOK.md
+    - name: telemetry-contract.md
+      target: orchestration/telemetry-contract/PLAYBOOK.md

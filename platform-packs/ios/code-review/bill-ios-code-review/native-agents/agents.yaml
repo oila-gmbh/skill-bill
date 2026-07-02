@@ -1,0 +1,32 @@
+contract_version: "0.1"
+agents:
+  - name: bill-ios-code-review-api-contracts
+    description: "Use when reviewing iOS changes for API contracts, request validation, and serialization."
+    compose: governed-content
+  - name: bill-ios-code-review-architecture
+    description: "Use when reviewing iOS changes for architecture, boundaries, and dependency direction."
+    compose: governed-content
+  - name: bill-ios-code-review-performance
+    description: "Use when reviewing iOS changes for performance risks on hot paths, blocking I/O, and resource usage."
+    compose: governed-content
+  - name: bill-ios-code-review-persistence
+    description: "Use when reviewing iOS changes for persistence, transactions, migrations, and data consistency."
+    compose: governed-content
+  - name: bill-ios-code-review-platform-correctness
+    description: "Use when reviewing iOS changes for lifecycle, concurrency, threading, and logic correctness."
+    compose: governed-content
+  - name: bill-ios-code-review-reliability
+    description: "Use when reviewing iOS changes for timeouts, retries, background work, and observability."
+    compose: governed-content
+  - name: bill-ios-code-review-security
+    description: "Use when reviewing iOS changes for secrets handling, auth, and sensitive-data exposure."
+    compose: governed-content
+  - name: bill-ios-code-review-testing
+    description: "Use when reviewing iOS changes for test coverage quality and regression protection."
+    compose: governed-content
+  - name: bill-ios-code-review-ui
+    description: "Use when reviewing iOS changes for UI correctness and framework usage."
+    compose: governed-content
+  - name: bill-ios-code-review-ux-accessibility
+    description: "Use when reviewing iOS changes for UX correctness and accessibility."
+    compose: governed-content

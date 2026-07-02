@@ -7,3 +7,6 @@
 docs/cloudflare-telemetry-proxy/.wrangler/
 _migration_backup/
 /.skill-bill/
+
+# SKILL-98 specs describe a private external app — keep local, not public
+.feature-specs/SKILL-98-ios-platform-pack/
