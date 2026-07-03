@@ -3,6 +3,7 @@ package skillbill.install.nativeagent
 import skillbill.install.model.AgentTarget
 import skillbill.install.plan.CLAUDE_AGENTS_KIND
 import skillbill.install.plan.JUNIE_AGENTS_KIND
+import skillbill.install.plan.ZCODE_AGENTS_KIND
 import skillbill.install.plan.detectCodexAgentsTarget
 import skillbill.install.plan.detectOpencodeAgentsTarget
 import skillbill.nativeagent.composition.nativeAgentCompositionRepoRoot
@@ -35,6 +36,7 @@ data class NativeAgentLinkRequest(
   val overrides: NativeAgentLinkOverrides = NativeAgentLinkOverrides(),
 )
 
+@Suppress("TooManyFunctions") // cohesive facade: one link/unlink pair per native-agent provider
 object InstallNativeAgentOperations {
   fun linkClaudeAgents(request: NativeAgentLinkRequest): NativeAgentLinkOutcome {
     val resolvedHome = request.home ?: Path.of(System.getProperty("user.home"))
@@ -117,6 +119,24 @@ object InstallNativeAgentOperations {
     ) +
       unlinkedFromCache
   }
+
+  fun linkZcodeAgents(request: NativeAgentLinkRequest): NativeAgentLinkOutcome = linkProviderAgents(
+    provider = NativeAgentProvider.Zcode,
+    request = request,
+    detectTarget = { resolvedHome ->
+      val targetPath = NativeAgentProvider.Zcode.homeAgentDirs(resolvedHome).first()
+      if (Files.exists(targetPath) || Files.exists(resolvedHome.resolve(".zcode"))) {
+        AgentTarget(ZCODE_AGENTS_KIND, targetPath)
+      } else {
+        null
+      }
+    },
+  )
+
+  fun unlinkZcodeAgents(request: NativeAgentLinkRequest): List<Path> = unlinkProviderAgents(
+    provider = NativeAgentProvider.Zcode,
+    request = request,
+  )
 
   private fun linkProviderAgents(
     provider: NativeAgentProvider,

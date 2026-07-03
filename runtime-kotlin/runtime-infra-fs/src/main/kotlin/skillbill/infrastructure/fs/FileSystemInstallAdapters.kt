@@ -195,6 +195,7 @@ class FileSystemInstallAgentTargets : InstallAgentTargetPort {
         "claude" -> InstallOperations.claudeAgentsPath(request.home)
         "opencode" -> InstallOperations.opencodeAgentsPath(request.home)
         "junie" -> InstallOperations.junieAgentsPath(request.home)
+        "zcode" -> InstallOperations.zcodeAgentsPath(request.home)
         else -> InstallOperations.agentPath(request.agent, request.home)
       },
     )
@@ -224,6 +225,7 @@ class FileSystemInstallNativeAgentLinks : InstallNativeAgentLinkPort {
       NativeAgentLinkProvider.CODEX -> InstallNativeAgentOperations.linkCodexAgents(fsRequest)
       NativeAgentLinkProvider.OPENCODE -> InstallNativeAgentOperations.linkOpencodeAgents(fsRequest)
       NativeAgentLinkProvider.JUNIE -> InstallNativeAgentOperations.linkJunieAgents(fsRequest)
+      NativeAgentLinkProvider.ZCODE -> InstallNativeAgentOperations.linkZcodeAgents(fsRequest)
     }
     return InstallNativeAgentLinkOperationResult(
       outcome = NativeAgentLinkOutcome(
@@ -243,6 +245,7 @@ class FileSystemInstallNativeAgentLinks : InstallNativeAgentLinkPort {
         NativeAgentLinkProvider.CODEX -> InstallNativeAgentOperations.unlinkCodexAgents(fsRequest)
         NativeAgentLinkProvider.OPENCODE -> InstallNativeAgentOperations.unlinkOpencodeAgents(fsRequest)
         NativeAgentLinkProvider.JUNIE -> InstallNativeAgentOperations.unlinkJunieAgents(fsRequest)
+        NativeAgentLinkProvider.ZCODE -> InstallNativeAgentOperations.unlinkZcodeAgents(fsRequest)
       },
     )
   }

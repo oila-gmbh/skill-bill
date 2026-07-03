@@ -20,6 +20,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 
 /** Public CLI-facing install operations backed by the internal install primitives. */
+@Suppress("TooManyFunctions") // cohesive facade: install lifecycle plus one path resolver per supported agent
 object InstallOperations {
   fun planInstall(request: InstallPlanRequest): InstallPlan = buildInstallPlan(request)
 
@@ -53,6 +54,11 @@ object InstallOperations {
   fun junieAgentsPath(home: Path? = null): Path {
     val resolvedHome = home ?: Path.of(System.getProperty("user.home"))
     return resolvedHome.resolve(".junie/agents")
+  }
+
+  fun zcodeAgentsPath(home: Path? = null): Path {
+    val resolvedHome = home ?: Path.of(System.getProperty("user.home"))
+    return resolvedHome.resolve(".zcode/agents")
   }
 
   fun linkSkill(source: Path, targetDir: Path, agent: String, repoRoot: Path? = null, home: Path? = null): List<Path> {

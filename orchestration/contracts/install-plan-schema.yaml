@@ -57,6 +57,7 @@ $defs:
       - codex
       - opencode
       - junie
+      - zcode
   # Shared enum: agent-target source. Mirrors `InstallAgentTargetSource`
   # — wire form is `name.lowercase()`.
   agentSource:

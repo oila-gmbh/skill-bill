@@ -1,3 +1,13 @@
+## [2026-07-03] SKILL-100 subtask 3 cli-shell-schema
+Areas: install.sh, uninstall.sh, runtime-kotlin/runtime-application (InstallAgentService), runtime-kotlin/runtime-cli (InstallCliCommands, ScaffoldCliCommands), runtime-kotlin/runtime-core (InstallerShellDelegationTest)
+- Completed zcode native-agent CLI/shell/schema wiring on top of subtasks 1-2 (enum/path fan-out, MCP+runtime): added `InstallZcodeAgentsPathCommand`/`InstallLinkZcodeAgentsCommand`/`InstallUnlinkZcodeAgentsCommand` modeled 1:1 on the junie equivalents, registered as `InstallTopLevelCommands` subcommands. reusable
+- `install.sh` `SUPPORTED_AGENTS` array and both help strings now list zcode; `uninstall.sh` gained a `remove_zcode_agent_mds()` block (mirrors junie, removes `~/.zcode/skills`) and the MCP-unregister agent loop now includes zcode.
+- `orchestration/contracts/install-plan-schema.yaml` needed NO edit here — subtask 1 (foundation) already added zcode to the `agentId` enum; verified via grep before touching it. reusable
+- Pitfall for future agent-onboarding subtasks: `InstallerShellDelegationTest.kt`'s three literal command-list fixtures must each list the new agent's `install unlink-<agent>-agents` entry, or the test silently drifts from the real CLI surface. reusable
+- Known pre-existing failure, NOT introduced by this subtask: `InstallerShellDelegationTest > install plan summary is printed before any mutation()` fails identically with this branch's diff fully stashed and on a clean worktree at the merge-base (ce422474) — a fresh-temp-HOME pre-install-cleanup guard mismatch, unrelated to any agent list. Leave it out of scope rather than re-diagnosing it as a zcode regression.
+Feature flag: N/A
+Acceptance criteria: 7/7 implemented
+
 ## [2026-06-29] SKILL-97 fresh-install-curl-fixes
 Areas: install.sh, uninstall.sh, scripts/install_smoke_test.sh
 - Piped `curl … | bash` regressions: guard every `ORIGINAL_ARGS`/bootstrap-arg expansion with `${arr[@]+"${arr[@]}"}` so a no-arg piped install doesn't trip `set -u` (install.sh:270/272/276). reusable

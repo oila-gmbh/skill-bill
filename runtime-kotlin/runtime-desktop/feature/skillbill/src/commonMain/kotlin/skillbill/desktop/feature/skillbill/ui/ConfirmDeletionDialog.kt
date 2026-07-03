@@ -68,6 +68,7 @@ import dev.skillbill.designsystem.generated.resources.confirm_deletion_provider_
 import dev.skillbill.designsystem.generated.resources.confirm_deletion_provider_codex
 import dev.skillbill.designsystem.generated.resources.confirm_deletion_provider_junie
 import dev.skillbill.designsystem.generated.resources.confirm_deletion_provider_opencode
+import dev.skillbill.designsystem.generated.resources.confirm_deletion_provider_zcode
 import dev.skillbill.designsystem.generated.resources.confirm_deletion_readme_decrement_count
 import dev.skillbill.designsystem.generated.resources.confirm_deletion_readme_edits
 import dev.skillbill.designsystem.generated.resources.confirm_deletion_readme_remove_row
@@ -507,4 +508,5 @@ private fun displayLabelFor(provider: DesktopAgentSymlinkProvider): String = whe
   DesktopAgentSymlinkProvider.CODEX -> stringResource(Res.string.confirm_deletion_provider_codex)
   DesktopAgentSymlinkProvider.OPENCODE -> stringResource(Res.string.confirm_deletion_provider_opencode)
   DesktopAgentSymlinkProvider.JUNIE -> stringResource(Res.string.confirm_deletion_provider_junie)
+  DesktopAgentSymlinkProvider.ZCODE -> stringResource(Res.string.confirm_deletion_provider_zcode)
 }

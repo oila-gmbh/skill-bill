@@ -12,11 +12,12 @@ import skillbill.scaffold.model.PlatformManifest
 import java.nio.file.Files
 import java.nio.file.Path
 
-internal val SUPPORTED_AGENTS: List<String> = listOf("copilot", "claude", "codex", "opencode", "junie")
+internal val SUPPORTED_AGENTS: List<String> = listOf("copilot", "claude", "codex", "opencode", "junie", "zcode")
 internal const val CODEX_AGENTS_KIND: String = "codex-agents"
 internal const val CLAUDE_AGENTS_KIND: String = "claude-agents"
 internal const val OPENCODE_AGENTS_KIND: String = "opencode-agents"
 internal const val JUNIE_AGENTS_KIND: String = "junie-agents"
+internal const val ZCODE_AGENTS_KIND: String = "zcode-agents"
 
 internal fun agentPaths(home: Path? = null, environment: Map<String, String> = System.getenv()): Map<String, Path> {
   val resolvedHome = home ?: Path.of(System.getProperty("user.home"))
@@ -25,6 +26,7 @@ internal fun agentPaths(home: Path? = null, environment: Map<String, String> = S
     "claude" to claudeConfigRoot(resolvedHome, environment).resolve("skills"),
     "opencode" to resolvedHome.resolve(".config/opencode/skills"),
     "junie" to resolvedHome.resolve(".junie/skills"),
+    "zcode" to resolvedHome.resolve(".zcode/skills"),
     "codex" to codexPath(resolvedHome),
   )
 }
@@ -155,6 +157,7 @@ private fun agentIsPresent(
     "claude" -> claudeConfigRoots(home, environment)
     "opencode" -> listOf(home.resolve(".config/opencode"))
     "junie" -> listOf(home.resolve(".junie"))
+    "zcode" -> listOf(home.resolve(".zcode"))
     "codex" -> listOf(home.resolve(".codex"), home.resolve(".agents"))
     else -> emptyList()
   }

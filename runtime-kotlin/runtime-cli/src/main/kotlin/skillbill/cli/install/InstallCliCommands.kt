@@ -583,6 +583,16 @@ class InstallJunieAgentsPathCommand(
 }
 
 @Inject
+class InstallZcodeAgentsPathCommand(
+  private val state: CliRunState,
+  private val installAgentService: InstallAgentService,
+) : DocumentedCliCommand("zcode-agents-path", "Print the zcode native subagent markdown directory.") {
+  override fun run() {
+    state.completeText(installAgentService.zcodeAgentsPath(state.userHome).toString(), emptyMap())
+  }
+}
+
+@Inject
 class InstallLinkClaudeAgentsCommand(
   private val state: CliRunState,
   private val nativeAgentInstallService: NativeAgentInstallService,
@@ -793,6 +803,61 @@ class InstallUnlinkJunieAgentsCommand(
     val removed =
       nativeAgentInstallService.unlinkNativeAgents(
         NativeAgentLinkProvider.JUNIE,
+        NativeAgentLinkRequest(
+          platformPacksRoot = Path.of(platformPacks),
+          skillsRoot = skills?.let(Path::of),
+          home = state.userHome,
+          selectedPlatforms = platforms.ifEmpty { null },
+        ),
+      )
+    state.completeText(removed.joinToString("\n"), mapOf("removed" to removed.map(Path::toString)))
+  }
+}
+
+@Inject
+class InstallLinkZcodeAgentsCommand(
+  private val state: CliRunState,
+  private val nativeAgentInstallService: NativeAgentInstallService,
+) : DocumentedCliCommand("link-zcode-agents", "Render and link zcode native subagent markdown from source agents.") {
+  private val platformPacks by option("--platform-packs", help = "platform-packs root.").required()
+  private val skills by option("--skills", help = "skills root.")
+  private val platforms by option("--platform", help = "Selected platform slug to include.").multiple()
+
+  override fun run() {
+    if (state.refuseInstallMutationDuringGoalContinuation("link-zcode-agents")) {
+      return
+    }
+    completeNativeAgentLinkOutcome(
+      state,
+      nativeAgentInstallService.linkNativeAgents(
+        NativeAgentLinkProvider.ZCODE,
+        NativeAgentLinkRequest(
+          platformPacksRoot = Path.of(platformPacks),
+          skillsRoot = skills?.let(Path::of),
+          home = state.userHome,
+          selectedPlatforms = platforms.ifEmpty { null },
+        ),
+      ),
+    )
+  }
+}
+
+@Inject
+class InstallUnlinkZcodeAgentsCommand(
+  private val state: CliRunState,
+  private val nativeAgentInstallService: NativeAgentInstallService,
+) : DocumentedCliCommand("unlink-zcode-agents", "Remove zcode native subagent markdown symlinks.") {
+  private val platformPacks by option("--platform-packs", help = "platform-packs root.").required()
+  private val skills by option("--skills", help = "skills root.")
+  private val platforms by option("--platform", help = "Selected platform slug to include.").multiple()
+
+  override fun run() {
+    if (state.refuseInstallMutationDuringGoalContinuation("unlink-zcode-agents")) {
+      return
+    }
+    val removed =
+      nativeAgentInstallService.unlinkNativeAgents(
+        NativeAgentLinkProvider.ZCODE,
         NativeAgentLinkRequest(
           platformPacksRoot = Path.of(platformPacks),
           skillsRoot = skills?.let(Path::of),

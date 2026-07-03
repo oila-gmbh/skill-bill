@@ -15,6 +15,7 @@ enum class InstallAgent(
   CODEX("codex"),
   OPENCODE("opencode"),
   JUNIE("junie"),
+  ZCODE("zcode"),
   ;
 
   companion object {
@@ -387,6 +388,7 @@ enum class NativeAgentProviderId(
   CODEX("codex"),
   OPENCODE("opencode"),
   JUNIE("junie"),
+  ZCODE("zcode"),
 }
 
 enum class NativeAgentApplyStatus {

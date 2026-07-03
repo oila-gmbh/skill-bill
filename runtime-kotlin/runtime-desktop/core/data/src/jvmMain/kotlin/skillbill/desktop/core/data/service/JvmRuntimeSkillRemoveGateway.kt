@@ -180,6 +180,7 @@ private fun AgentSymlinkUnlink.toDesktop(): DesktopAgentSymlinkUnlink = DesktopA
     AgentSymlinkProvider.CODEX -> DesktopAgentSymlinkProvider.CODEX
     AgentSymlinkProvider.OPENCODE -> DesktopAgentSymlinkProvider.OPENCODE
     AgentSymlinkProvider.JUNIE -> DesktopAgentSymlinkProvider.JUNIE
+    AgentSymlinkProvider.ZCODE -> DesktopAgentSymlinkProvider.ZCODE
   },
   path = path,
 )
