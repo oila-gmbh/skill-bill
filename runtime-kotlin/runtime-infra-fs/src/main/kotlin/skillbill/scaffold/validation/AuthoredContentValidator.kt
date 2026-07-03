@@ -29,6 +29,7 @@ private val GENERATED_SUPPORT_POINTER_FILENAMES: Set<String> =
     "shell-content-contract.md",
     "review-orchestrator.md",
     "telemetry-contract.md",
+    "peak-hours-warner.md",
   )
 
 private val GENERATED_SUPPORT_POINTER_LINK_PATTERN =
