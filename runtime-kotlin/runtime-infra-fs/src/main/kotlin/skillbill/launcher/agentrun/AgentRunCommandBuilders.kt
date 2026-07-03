@@ -116,6 +116,30 @@ class JunieAgentRunCommandBuilder : AgentRunCommandBuilder {
     )
 }
 
+class ZcodeAgentRunCommandBuilder : AgentRunCommandBuilder {
+  override val agent: InstallAgent = InstallAgent.ZCODE
+
+  override fun build(request: SkillRunRequest): AgentRunCommand =
+    goalContinuationCommand(request, agent) ?: AgentRunCommand(
+      command = buildList {
+        add("zcode")
+        add("--prompt")
+        add(launchPrompt(request))
+        // The envelope shape of --json output is unconfirmed against a live zcode session;
+        // revisit parsing once that's verified.
+        add("--json")
+        add("--cwd")
+        add(request.repoRoot.toString())
+        add("--mode")
+        add("yolo")
+        add("--no-color")
+      },
+      workingDirectory = request.repoRoot,
+      timeout = request.timeout,
+      environment = goalContinuationEnvironment(request),
+    )
+}
+
 // A caller-supplied prompt override (e.g. a feature-task-runtime phase briefing) is delivered to
 // the per-agent CLI wholesale; the delivery mechanics (stdin vs argv) stay per-agent. The default
 // goal-continuation path no longer drives an agent at all — see goalContinuationCommand.

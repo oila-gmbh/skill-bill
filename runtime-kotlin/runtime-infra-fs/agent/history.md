@@ -1,5 +1,16 @@
 # Boundary History — runtime-kotlin/runtime-infra-fs
 
+## [2026-07-03] SKILL-100 zcode agent support (subtask 2: native-agent-mcp-runtime)
+Areas: runtime-infra-fs/install/apply, runtime-infra-fs/launcher/agentrun, runtime-infra-fs/launcher/mcp
+- Closed the six exhaustive-`when` sites subtask 1 flagged as won't-compile: `linkZcodeAgents`/`unlinkZcodeAgents` (modeled on Junie) wired into `FileSystemInstallAdapters` link/unlink + a `nativeAgentInstallers` registry entry.
+- New `McpZcodeConfig` reads/writes `~/.zcode/cli/config.json` under a nested `mcp.servers.skill-bill` key — a different on-disk shape than the flat `mcpServers` key every other agent uses; reuses `McpJsonConfig`'s shared read/write/mutable-map helpers. reusable
+- `McpRegistrationOperations.register/unregister/configPathFor` add a ZCODE case; `unregister` drops `servers` then `mcp` only when both go empty, preserving sibling JSON keys at both nesting levels.
+- New `ZcodeAgentRunCommandBuilder` builds `zcode --prompt <p> --json --cwd <dir> --mode yolo --no-color`, inheriting `usePtyStdio=false`/`idlePolicy=DB_PROGRESS_ONLY` defaults (no override needed, unlike opencode's PTY path); registered in `headlessAgentRunAdapters()` and survives `RUNTIME_REFUSED_AGENTS` (only OPENCODE is refused).
+- Known non-blocking gap flagged in-code: the `--json` envelope parser shape is UNCONFIRMED against a live ZCode session — follow-up verification needed before relying on structured output.
+- Tests extended in lockstep: `AgentRunLauncherTest` (adapter-presence + command-shape for ZCODE alongside CLAUDE/CODEX/JUNIE) and `McpRegistrationOperationsTest` ("non-claude agents stay single-target" expected-paths map).
+Feature flag: N/A
+Acceptance criteria: subtask-2 10/10 implemented
+
 ## [2026-07-03] SKILL-100 zcode agent support
 Areas: runtime-infra-fs/install, runtime-infra-fs/nativeagent, runtime-domain/install/model, runtime-desktop/core/domain, orchestration/contracts
 - Adding a new supported agent = fan out across SIX enums, modeled on the adjacent Junie entry (reusable checklist): InstallAgent, NativeAgentProviderId, NativeAgentProvider, NativeAgentLinkProvider, FirstRunSetupAgent (+ its `supportedIds` companion), AgentSymlinkProvider & DesktopAgentSymlinkProvider.

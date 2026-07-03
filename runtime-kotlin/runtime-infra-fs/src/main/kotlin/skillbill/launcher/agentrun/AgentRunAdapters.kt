@@ -77,6 +77,7 @@ fun headlessAgentRunAdapters(processRunner: AgentRunProcessRunner): Map<InstallA
   // opencode is prose-only and intentionally NOT registered, so the launcher yields
   // UnsupportedAgentRunLaunch for it (mirroring copilot) — no runtime phase can spawn it.
   JunieAgentRunCommandBuilder(),
+  ZcodeAgentRunCommandBuilder(),
 ).filterNot { builder -> RUNTIME_REFUSED_AGENTS.contains(builder.agent) }
   .associate { builder ->
     builder.agent to ProcessAgentRunAdapter(
