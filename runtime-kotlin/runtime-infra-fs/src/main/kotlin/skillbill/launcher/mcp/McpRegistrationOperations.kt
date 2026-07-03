@@ -27,6 +27,7 @@ object McpRegistrationOperations {
       InstallAgent.CODEX -> McpTomlConfig.register(agent, configPathFor(installAgent, resolvedHome), command)
       InstallAgent.OPENCODE -> McpOpenCodeConfig.register(agent, configPathFor(installAgent, resolvedHome), command)
       InstallAgent.JUNIE -> McpJsonConfig.register(agent, configPathFor(installAgent, resolvedHome), command)
+      InstallAgent.ZCODE -> McpJsonConfig.register(agent, configPathFor(installAgent, resolvedHome), command)
     }
   }
 
@@ -47,6 +48,7 @@ object McpRegistrationOperations {
       InstallAgent.CODEX -> McpTomlConfig.unregister(agent, configPathFor(installAgent, resolvedHome))
       InstallAgent.OPENCODE -> McpOpenCodeConfig.unregister(agent, configPathFor(installAgent, resolvedHome))
       InstallAgent.JUNIE -> McpJsonConfig.unregister(agent, configPathFor(installAgent, resolvedHome))
+      InstallAgent.ZCODE -> McpJsonConfig.unregister(agent, configPathFor(installAgent, resolvedHome))
     }
   }
 
@@ -56,6 +58,7 @@ object McpRegistrationOperations {
     InstallAgent.CODEX -> home.resolve(".codex/config.toml")
     InstallAgent.OPENCODE -> home.resolve(".config/opencode/opencode.json")
     InstallAgent.JUNIE -> home.resolve(".junie/mcp/mcp.json")
+    InstallAgent.ZCODE -> home.resolve(".zcode/mcp/mcp.json")
   }
 
   private fun claudeProfileConfigPaths(home: Path, environment: Map<String, String>): List<Path> {

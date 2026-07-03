@@ -84,6 +84,7 @@ enum class DesktopAgentSymlinkProvider {
   CODEX,
   OPENCODE,
   JUNIE,
+  ZCODE,
 }
 
 data class DesktopReadmeCatalogEdit(

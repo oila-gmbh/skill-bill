@@ -19,6 +19,7 @@ enum class FirstRunSetupAgent(
   CODEX("codex", "Codex"),
   OPENCODE("opencode", "OpenCode"),
   JUNIE("junie", "Junie"),
+  ZCODE("zcode", "ZCode"),
   ;
 
   companion object {

@@ -9,7 +9,7 @@ class InstallPlanModelTest {
   @Test
   fun `supported install agents are exactly the install contract set`() {
     assertEquals(
-      listOf("copilot", "claude", "codex", "opencode", "junie"),
+      listOf("copilot", "claude", "codex", "opencode", "junie", "zcode"),
       InstallAgent.supportedIds,
     )
   }

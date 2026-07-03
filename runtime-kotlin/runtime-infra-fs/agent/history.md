@@ -1,5 +1,18 @@
 # Boundary History — runtime-kotlin/runtime-infra-fs
 
+## [2026-07-03] SKILL-100 zcode agent support
+Areas: runtime-infra-fs/install, runtime-infra-fs/nativeagent, runtime-domain/install/model, runtime-desktop/core/domain, orchestration/contracts
+- Adding a new supported agent = fan out across SIX enums, modeled on the adjacent Junie entry (reusable checklist): InstallAgent, NativeAgentProviderId, NativeAgentProvider, NativeAgentLinkProvider, FirstRunSetupAgent (+ its `supportedIds` companion), AgentSymlinkProvider & DesktopAgentSymlinkProvider.
+- `NativeAgentProvider.Zcode("zcode-agents","md")` uses `render = renderFrontmatterAgent(mode = null)` and `homeAgentDirs = listOf(home.resolve(".zcode/agents"))` — mode=null (like Junie, unlike Claude).
+- Install-path layer: `SUPPORTED_AGENTS += "zcode"`; `agentPaths` "zcode"→`.zcode/skills`; `agentIsPresent` "zcode"→`listOf(.zcode)`; `agentDirectory` "zcode"→`InstallOperations.zcodeAgentsPath(home)`, backed by new `zcodeAgentsPath(home)=home.resolve(".zcode/agents")`.
+- Deliberate non-changes: `RUNTIME_REFUSED_AGENTS` untouched (only OPENCODE refused); `INVOKING_AGENT_CONTEXT_SIGNALS` left CLAUDE/CODEX/OPENCODE only — zcode has no distinct invoking-context signal yet (Decision C, AC14).
+- Exhaustive-`when` sites that WON'T compile until a ZCODE branch is added: McpRegistrationOperations (register/unregister/configPathFor), SkillRemoveJvmFileSystem.nativeProvider, JvmRuntimeSkillRemoveGateway, ConfirmDeletionDialog.displayLabelFor, FileSystemInstallAdapters NativeAgentLinkProvider link/unlink (+ new Junie-modeled `InstallNativeAgentOperations.link/unlinkZcodeAgents`).
+- detekt `TooManyFunctions` trips on `InstallOperations` and `InstallNativeAgentOperations` once the zcode path resolver + link/unlink pair land — resolve with `@Suppress("TooManyFunctions")` + one-line rationale (established 67-file pattern), not a refactor.
+- Tests extended in lockstep: FirstRunSetupModelsTest (supportedIds contains "zcode"), InstallPlanContractCoverageTest + InstallPlanSchemaValidatesExistingFixturesTest (add `.zcode` fixture-dir literal), and hardcoded provider-COUNT asserts bumped 5→6 (SkillRemoveTest, InstallPlanModelTest).
+- Pre-existing unrelated red: `InstallerShellDelegationTest "install plan summary is printed before any mutation"` fails on the base commit too — not caused by this change.
+Feature flag: N/A
+Acceptance criteria: 14/14 implemented
+
 ## [2026-06-23] SKILL-89 per-subtask agent attribution — Seam D fs adapter
 Areas: runtime-infra-fs/fs (new `FileSystemFeatureTaskRuntimeSpecStatusWriter`)
 - `FileSystemFeatureTaskRuntimeSpecStatusWriter` implements the new `FeatureTaskRuntimeSpecStatusWriter` port; writes an idempotent `Agent: <id>` line immediately after the `Status:` line under `## Status` in a tracked `spec.md`. Three cases: (1) `## Status` heading absent → no-op; (2) `Agent:` line present → update in place; (3) heading present, no `Agent:` line → insert on the next line.
