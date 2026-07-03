@@ -185,6 +185,7 @@
     <string name="confirm_deletion_provider_codex">Codex</string>
     <string name="confirm_deletion_provider_opencode">OpenCode</string>
     <string name="confirm_deletion_provider_junie">Junie</string>
+    <string name="confirm_deletion_provider_zcode">ZCode</string>
 
     <string name="first_run_cd">First-run setup wizard</string>
     <string name="first_run_dismiss_cd">Dismiss setup wizard</string>

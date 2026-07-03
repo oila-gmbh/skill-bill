@@ -98,7 +98,10 @@ internal val ORCHESTRATION_PLAYBOOKS: Map<String, String> =
   )
 
 internal val ORCHESTRATION_SIDECARS: Map<String, String> =
-  mapOf("shell-ceremony" to "orchestration/shell-content-contract/shell-ceremony.md")
+  mapOf(
+    "shell-ceremony" to "orchestration/shell-content-contract/shell-ceremony.md",
+    "peak-hours-warner" to "orchestration/shell-content-contract/peak-hours-warner.md",
+  )
 
 internal fun supportingFileTargets(repoRoot: Path): Map<String, Path> = mapOf(
   "review-scope.md" to repoRoot.resolve(ORCHESTRATION_PLAYBOOKS.getValue("review-scope")),
@@ -109,6 +112,7 @@ internal fun supportingFileTargets(repoRoot: Path): Map<String, Path> = mapOf(
   "telemetry-contract.md" to repoRoot.resolve(ORCHESTRATION_PLAYBOOKS.getValue("telemetry-contract")),
   "shell-content-contract.md" to repoRoot.resolve(ORCHESTRATION_PLAYBOOKS.getValue("shell-content-contract")),
   "shell-ceremony.md" to repoRoot.resolve(ORCHESTRATION_SIDECARS.getValue("shell-ceremony")),
+  "peak-hours-warner.md" to repoRoot.resolve(ORCHESTRATION_SIDECARS.getValue("peak-hours-warner")),
   "android-compose-implementation.md" to repoRoot.resolve(
     "platform-packs/kmp/addons/android-compose-implementation.md",
   ),

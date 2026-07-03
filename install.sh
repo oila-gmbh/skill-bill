@@ -70,7 +70,7 @@ if [[ "${SKILL_BILL_GOAL_CONTINUATION:-}" == "1" ]]; then
   exit 64
 fi
 
-declare -a SUPPORTED_AGENTS=(copilot claude codex opencode junie)
+declare -a SUPPORTED_AGENTS=(copilot claude codex opencode junie zcode)
 declare -a AGENT_NAMES=()
 declare -a AGENT_PATHS=()
 declare -a PLATFORM_PACKAGES=()
@@ -2540,7 +2540,7 @@ print_postinstall_agent_warning() {
   detected="$(run_runtime_cli install detect-agents 2>/dev/null)" || return 0
   [[ -n "$detected" ]] && return 0
   warn "No supported agents were detected — skills are not linked to any agent."
-  warn "  Install a supported agent (claude, codex, copilot, opencode, or junie),"
+  warn "  Install a supported agent (claude, codex, copilot, opencode, junie, or zcode),"
   warn "  then re-run ./install.sh. Choose 'manual' to select your agent explicitly."
 }
 
@@ -2646,7 +2646,7 @@ run_full_install() {
   echo ""
   printf "${CYAN}━━━ Skill Bill Installer ━━━${NC}\n"
   echo ""
-  info "Supported agents: copilot, claude, codex, opencode, junie"
+  info "Supported agents: copilot, claude, codex, opencode, junie, zcode"
   if [[ "$REUSE_LAST_SELECTION" -eq 1 ]]; then
     info "Install behavior: reuse saved choices, then delegate planning and apply to the Kotlin runtime."
   else

@@ -8,7 +8,7 @@ import kotlin.test.assertTrue
 class FirstRunSetupModelsTest {
   @Test
   fun `supported agents and telemetry ids match install contract ids`() {
-    assertEquals(listOf("copilot", "claude", "codex", "opencode", "junie"), FirstRunSetupAgent.supportedIds)
+    assertEquals(listOf("copilot", "claude", "codex", "opencode", "junie", "zcode"), FirstRunSetupAgent.supportedIds)
     assertEquals(listOf("anonymous", "full", "off"), FirstRunTelemetryLevel.entries.map(FirstRunTelemetryLevel::id))
   }
 

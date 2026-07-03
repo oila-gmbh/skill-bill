@@ -1,5 +1,6 @@
 package skillbill.launcher.agentrun
 
+import com.fasterxml.jackson.databind.ObjectMapper
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.RUNTIME_REFUSED_AGENTS
 import skillbill.launcher.process.AgentRunProcessRequest
@@ -41,7 +42,7 @@ class ProcessAgentRunAdapter(
     return AgentRunLaunchFacts(
       agent = agent,
       exitStatus = result.exitStatus,
-      stdout = result.stdout,
+      stdout = normalizeStdout(agent, result.stdout),
       stderr = result.stderr,
       timedOut = result.timedOut,
       interrupted = result.interrupted,
@@ -71,12 +72,24 @@ class ProcessAgentRunAdapter(
     }
 }
 
+private val zcodeStdoutMapper: ObjectMapper by lazy { ObjectMapper() }
+
+private fun normalizeStdout(agent: InstallAgent, stdout: String): String {
+  if (agent != InstallAgent.ZCODE) return stdout
+  val trimmed = stdout.trim()
+  if (!trimmed.startsWith("{")) return stdout
+  return runCatching {
+    zcodeStdoutMapper.readTree(trimmed).get("response")?.takeIf { node -> node.isTextual }?.asText()
+  }.getOrNull() ?: stdout
+}
+
 fun headlessAgentRunAdapters(processRunner: AgentRunProcessRunner): Map<InstallAgent, AgentRunAdapter> = listOf(
   ClaudeAgentRunCommandBuilder(),
   CodexAgentRunCommandBuilder(),
   // opencode is prose-only and intentionally NOT registered, so the launcher yields
   // UnsupportedAgentRunLaunch for it (mirroring copilot) — no runtime phase can spawn it.
   JunieAgentRunCommandBuilder(),
+  ZcodeAgentRunCommandBuilder(),
 ).filterNot { builder -> RUNTIME_REFUSED_AGENTS.contains(builder.agent) }
   .associate { builder ->
     builder.agent to ProcessAgentRunAdapter(

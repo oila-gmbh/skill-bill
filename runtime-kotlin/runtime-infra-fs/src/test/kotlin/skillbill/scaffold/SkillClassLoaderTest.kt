@@ -35,7 +35,9 @@ private val LEGACY_POINTER_GOLDEN: Map<String, Set<String>> = mapOf(
   ),
   "bill-code-check" to setOf("stack-routing.md", "telemetry-contract.md", "shell-ceremony.md"),
   "bill-pr-description" to setOf("shell-ceremony.md", "telemetry-contract.md"),
+  "bill-feature" to setOf("peak-hours-warner.md"),
   "bill-feature-task" to setOf(
+    "peak-hours-warner.md",
     "shell-ceremony.md",
     "telemetry-contract.md",
     "android-compose-implementation.md",
@@ -46,6 +48,9 @@ private val LEGACY_POINTER_GOLDEN: Map<String, Set<String>> = mapOf(
     "android-compose-edge-to-edge.md",
     "android-compose-adaptive-layouts.md",
   ),
+  "bill-feature-task-runtime" to setOf("peak-hours-warner.md"),
+  "bill-feature-task-prose" to setOf("peak-hours-warner.md"),
+  "bill-feature-task-subtask-runner" to setOf("peak-hours-warner.md"),
   "bill-feature-verify" to setOf("shell-ceremony.md", "telemetry-contract.md"),
 )
 

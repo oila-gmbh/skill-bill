@@ -67,7 +67,7 @@ class SkillRemoveTest {
   }
 
   @Test
-  fun `previewRemoval PlatformPack lists paired skills tree and four-provider symlinks`() {
+  fun `previewRemoval PlatformPack lists paired skills tree and per-provider symlinks`() {
     val fs = FakeSkillRemoveFileSystem(
       filesystemPaths = listOf("platform-packs/my-platform", "skills/my-platform"),
       symlinks = AgentSymlinkProvider.values().map { provider ->
@@ -80,7 +80,7 @@ class SkillRemoveTest {
     )
     val preview = SkillRemove(fs).previewRemoval(request).preview
     assertEquals(listOf("platform-packs/my-platform", "skills/my-platform"), preview.filesystemPaths)
-    assertEquals(4, preview.agentSymlinkUnlinks.size)
+    assertEquals(AgentSymlinkProvider.values().size, preview.agentSymlinkUnlinks.size)
     assertEquals(emptyList<String>(), preview.cascadedSkillNames)
   }
 

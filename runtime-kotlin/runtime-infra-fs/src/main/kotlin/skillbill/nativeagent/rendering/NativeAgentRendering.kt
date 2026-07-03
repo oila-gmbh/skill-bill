@@ -27,6 +27,10 @@ enum class NativeAgentProvider(
     override fun render(source: NativeAgentSource): String = renderFrontmatterAgent(source, mode = null)
     override fun homeAgentDirs(home: Path): List<Path> = listOf(home.resolve(".junie/agents"))
   },
+  Zcode("zcode-agents", "md") {
+    override fun render(source: NativeAgentSource): String = renderFrontmatterAgent(source, mode = null)
+    override fun homeAgentDirs(home: Path): List<Path> = listOf(home.resolve(".zcode/agents"))
+  },
   ;
 
   abstract fun render(source: NativeAgentSource): String

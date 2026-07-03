@@ -118,6 +118,10 @@ class InstallerShellDelegationTest {
         "junie",
         "--agent-target",
         "junie=${run.home.resolve("agent-targets/junie")}",
+        "--agent",
+        "zcode",
+        "--agent-target",
+        "zcode=${run.home.resolve("agent-targets/zcode")}",
       ),
       run.applyArgs,
     )
@@ -373,7 +377,10 @@ class InstallerShellDelegationTest {
   fun `install plan summary is printed before any mutation`() {
     // Do NOT set SKILL_BILL_SKIP_PREINSTALL_UNINSTALL: the plan must print before
     // the pre-install uninstall mutates anything.
-    val run = runPrebuiltInstaller(releaseValid = true, options = PrebuiltOptions(skipPreinstallUninstall = false))
+    val run = runPrebuiltInstaller(
+      releaseValid = true,
+      options = PrebuiltOptions(skipPreinstallUninstall = false, seedPriorInstall = true),
+    )
 
     assertEquals(0, run.exitCode, run.output)
     val planIndex = run.output.indexOf("What this installer will change")
@@ -675,6 +682,9 @@ class InstallerShellDelegationTest {
     if (options.skipPreinstallUninstall) {
       builder.environment()["SKILL_BILL_SKIP_PREINSTALL_UNINSTALL"] = "1"
     }
+    if (options.seedPriorInstall) {
+      Files.createDirectories(home.resolve(".skill-bill"))
+    }
     // Headless by default: drop any inherited desktop-session signals.
     builder.environment().remove("DISPLAY")
     builder.environment().remove("WAYLAND_DISPLAY")
@@ -730,18 +740,6 @@ class InstallerShellDelegationTest {
       "desktop-extract assertions require a linux-x64 host with ar/tar",
     )
   }
-
-  private fun parseRuntimeCalls(logPath: Path): List<List<String>> {
-    val calls = mutableListOf<MutableList<String>>()
-    Files.readAllLines(logPath).forEach { line ->
-      if (line == "CALL") {
-        calls.add(mutableListOf())
-      } else if (line.startsWith("ARG\t")) {
-        calls.last().add(line.removePrefix("ARG\t"))
-      }
-    }
-    return calls
-  }
 }
 
 // Cohesive fixture-seeding helpers for the installer/uninstaller shell tests: runtime
@@ -765,6 +763,18 @@ internal fun assertExternalAddonOverlayOrdering(installScript: String) {
     "apply_external_addon_overlay must run BEFORE apply_runtime_install (the staging install apply)",
   )
   assertContains(installScript, "apply-external-addons")
+}
+
+internal fun parseRuntimeCalls(logPath: Path): List<List<String>> {
+  val calls = mutableListOf<MutableList<String>>()
+  Files.readAllLines(logPath).forEach { line ->
+    if (line == "CALL") {
+      calls.add(mutableListOf())
+    } else if (line.startsWith("ARG\t")) {
+      calls.last().add(line.removePrefix("ARG\t"))
+    }
+  }
+  return calls
 }
 
 internal object InstallerShellFixtures {
@@ -876,7 +886,7 @@ internal object InstallerShellFixtures {
       |# Pre-install uninstall (AC6 path) drives the same CLI for cleanup commands;
       |# answer them with empty output + success so the clean slate reset succeeds.
       |case "${'$'}{1:-} ${'$'}{2:-}" in
-      |  "install cleanup-agent-target"|"install unlink-codex-agents"|"install unlink-claude-agents"|"install unlink-opencode-agents"|"install unlink-junie-agents"|"install unregister-mcp")
+      |  "install cleanup-agent-target"|"install unlink-codex-agents"|"install unlink-claude-agents"|"install unlink-opencode-agents"|"install unlink-junie-agents"|"install unlink-zcode-agents"|"install unregister-mcp")
       |    exit 0
       |    ;;
       |esac
@@ -954,7 +964,7 @@ internal object InstallerShellFixtures {
       |  exit 0
       |fi
       |case "${'$'}{1:-} ${'$'}{2:-}" in
-      |  "install cleanup-agent-target"|"install unlink-codex-agents"|"install unlink-claude-agents"|"install unlink-opencode-agents"|"install unlink-junie-agents"|"install unregister-mcp")
+      |  "install cleanup-agent-target"|"install unlink-codex-agents"|"install unlink-claude-agents"|"install unlink-opencode-agents"|"install unlink-junie-agents"|"install unlink-zcode-agents"|"install unregister-mcp")
       |    exit 0
       |    ;;
       |esac
@@ -1010,7 +1020,7 @@ internal object InstallerShellFixtures {
       |  exit 0
       |fi
       |case "${'$'}{1:-} ${'$'}{2:-}" in
-      |  "install cleanup-agent-target"|"install unlink-codex-agents"|"install unlink-claude-agents"|"install unlink-opencode-agents"|"install unlink-junie-agents"|"install unregister-mcp")
+      |  "install cleanup-agent-target"|"install unlink-codex-agents"|"install unlink-claude-agents"|"install unlink-opencode-agents"|"install unlink-junie-agents"|"install unlink-zcode-agents"|"install unregister-mcp")
       |    exit 0
       |    ;;
       |esac
@@ -1103,6 +1113,7 @@ private data class PrebuiltReuse(
 private data class PrebuiltOptions(
   val omitRuntimeAssets: Boolean = false,
   val skipPreinstallUninstall: Boolean = true,
+  val seedPriorInstall: Boolean = false,
   val desktopInput: String = "skip",
   val interactiveTty: Boolean = false,
 )

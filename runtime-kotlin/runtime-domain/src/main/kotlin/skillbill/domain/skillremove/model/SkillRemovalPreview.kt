@@ -82,6 +82,7 @@ enum class AgentSymlinkProvider {
   CODEX,
   OPENCODE,
   JUNIE,
+  ZCODE,
 }
 
 /** A single edit to the root `README.md` catalog. */

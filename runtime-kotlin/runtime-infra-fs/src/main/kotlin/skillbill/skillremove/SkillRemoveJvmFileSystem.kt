@@ -497,6 +497,7 @@ class SkillRemoveJvmFileSystem(
     AgentSymlinkProvider.CODEX -> NativeAgentProvider.Codex
     AgentSymlinkProvider.OPENCODE -> NativeAgentProvider.Opencode
     AgentSymlinkProvider.JUNIE -> NativeAgentProvider.Junie
+    AgentSymlinkProvider.ZCODE -> NativeAgentProvider.Zcode
   }
 
   /**

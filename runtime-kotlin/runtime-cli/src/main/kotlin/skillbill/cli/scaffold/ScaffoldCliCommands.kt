@@ -34,6 +34,7 @@ import skillbill.cli.install.InstallLinkClaudeAgentsCommand
 import skillbill.cli.install.InstallLinkCodexAgentsCommand
 import skillbill.cli.install.InstallLinkJunieAgentsCommand
 import skillbill.cli.install.InstallLinkOpencodeAgentsCommand
+import skillbill.cli.install.InstallLinkZcodeAgentsCommand
 import skillbill.cli.install.InstallOpencodeAgentsPathCommand
 import skillbill.cli.install.InstallPlanCommand
 import skillbill.cli.install.InstallReconcileCommand
@@ -43,7 +44,9 @@ import skillbill.cli.install.InstallUnlinkClaudeAgentsCommand
 import skillbill.cli.install.InstallUnlinkCodexAgentsCommand
 import skillbill.cli.install.InstallUnlinkJunieAgentsCommand
 import skillbill.cli.install.InstallUnlinkOpencodeAgentsCommand
+import skillbill.cli.install.InstallUnlinkZcodeAgentsCommand
 import skillbill.cli.install.InstallUnregisterMcpCommand
+import skillbill.cli.install.InstallZcodeAgentsPathCommand
 import skillbill.cli.install.refuseInstallMutationDuringGoalContinuation
 import skillbill.cli.model.CliExecutionResult
 import skillbill.cli.model.CliFormat
@@ -113,6 +116,7 @@ class InstallTopLevelCommands(
   claudeAgentsPathCommand: InstallClaudeAgentsPathCommand,
   opencodeAgentsPathCommand: InstallOpencodeAgentsPathCommand,
   junieAgentsPathCommand: InstallJunieAgentsPathCommand,
+  zcodeAgentsPathCommand: InstallZcodeAgentsPathCommand,
   cleanupAgentTargetCommand: InstallCleanupAgentTargetCommand,
   linkClaudeAgentsCommand: InstallLinkClaudeAgentsCommand,
   unlinkClaudeAgentsCommand: InstallUnlinkClaudeAgentsCommand,
@@ -122,6 +126,8 @@ class InstallTopLevelCommands(
   unlinkOpencodeAgentsCommand: InstallUnlinkOpencodeAgentsCommand,
   linkJunieAgentsCommand: InstallLinkJunieAgentsCommand,
   unlinkJunieAgentsCommand: InstallUnlinkJunieAgentsCommand,
+  linkZcodeAgentsCommand: InstallLinkZcodeAgentsCommand,
+  unlinkZcodeAgentsCommand: InstallUnlinkZcodeAgentsCommand,
   registerMcpCommand: InstallRegisterMcpCommand,
   unregisterMcpCommand: InstallUnregisterMcpCommand,
 ) {
@@ -144,6 +150,7 @@ class InstallTopLevelCommands(
         claudeAgentsPathCommand,
         opencodeAgentsPathCommand,
         junieAgentsPathCommand,
+        zcodeAgentsPathCommand,
         cleanupAgentTargetCommand,
         linkClaudeAgentsCommand,
         unlinkClaudeAgentsCommand,
@@ -153,6 +160,8 @@ class InstallTopLevelCommands(
         unlinkOpencodeAgentsCommand,
         linkJunieAgentsCommand,
         unlinkJunieAgentsCommand,
+        linkZcodeAgentsCommand,
+        unlinkZcodeAgentsCommand,
         registerMcpCommand,
         unregisterMcpCommand,
       )

@@ -849,7 +849,11 @@ class HeadlessAgentRunAdapterTest {
     // Every runtime-refused agent is absent (the AC), while the known runtime agents stay registered.
     // Asserting a subset rather than exact-set equality keeps this robust to unrelated future agents.
     RUNTIME_REFUSED_AGENTS.forEach { refused -> assertFalse(adapters.keys.contains(refused)) }
-    assertTrue(adapters.keys.containsAll(setOf(InstallAgent.CLAUDE, InstallAgent.CODEX, InstallAgent.JUNIE)))
+    assertTrue(
+      adapters.keys.containsAll(
+        setOf(InstallAgent.CLAUDE, InstallAgent.CODEX, InstallAgent.JUNIE, InstallAgent.ZCODE),
+      ),
+    )
   }
 
   @Test
@@ -875,20 +879,65 @@ class HeadlessAgentRunAdapterTest {
   }
 
   @Test
-  fun `claude codex and junie builders emit usePtyStdio=false`() {
+  fun `claude codex junie and zcode builders emit usePtyStdio=false`() {
     val runner = RecordingAgentRunProcessRunner()
     val request = phaseRunRequest()
     val adapters = headlessAgentRunAdapters(runner)
 
-    listOf(InstallAgent.CLAUDE, InstallAgent.CODEX, InstallAgent.JUNIE).forEach { agent ->
+    listOf(InstallAgent.CLAUDE, InstallAgent.CODEX, InstallAgent.JUNIE, InstallAgent.ZCODE).forEach { agent ->
       requireNotNull(adapters[agent]).launch(request)
     }
 
     val otherRequests = runner.requests
-    assertTrue(otherRequests.size == 3)
+    assertTrue(otherRequests.size == 4)
     otherRequests.forEach { req ->
       assertFalse(req.usePtyStdio, "non-opencode agent must not request PTY-backed stdio")
     }
+  }
+
+  @Test
+  fun `zcode builder emits the expected command shape`() {
+    val runner = RecordingAgentRunProcessRunner()
+    val request = phaseRunRequest()
+    val adapters = headlessAgentRunAdapters(runner)
+
+    requireNotNull(adapters[InstallAgent.ZCODE]).launch(request)
+
+    val command = runner.requests.single().command
+    assertEquals(
+      listOf(
+        "zcode",
+        "--prompt",
+        "Phase: preplan",
+        "--json",
+        "--cwd",
+        request.repoRoot.toString(),
+        "--mode",
+        "yolo",
+        "--no-color",
+      ),
+      command,
+    )
+  }
+
+  @Test
+  fun `zcode launch unwraps json response envelope`() {
+    val runner = RecordingAgentRunProcessRunner(
+      result = AgentRunProcessResult(
+        exitStatus = 0,
+        stdout = """{"sessionId":"sess_test","traceId":"trace_test","response":"phase-output"}""",
+        stderr = "",
+        timedOut = false,
+        interrupted = false,
+        spawnFailed = false,
+      ),
+    )
+    val request = phaseRunRequest()
+    val adapters = headlessAgentRunAdapters(runner)
+
+    val outcome = requireNotNull(adapters[InstallAgent.ZCODE]).launch(request)
+
+    assertEquals("phase-output", outcome.stdout)
   }
 
   @Test
