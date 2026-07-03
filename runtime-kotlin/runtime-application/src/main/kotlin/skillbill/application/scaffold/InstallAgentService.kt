@@ -30,6 +30,8 @@ class InstallAgentService(
 
   fun junieAgentsPath(home: Path? = null): Path = agentDirectory("junie", home)
 
+  fun zcodeAgentsPath(home: Path? = null): Path = agentDirectory("zcode", home)
+
   fun cleanupAgentTarget(
     targetDir: Path,
     skillNames: List<String>,
