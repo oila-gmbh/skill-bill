@@ -154,6 +154,7 @@ case "$cmd" in
         ;;
       opencode) echo "$effective_home/.config/opencode/skills" ;;
       junie)    echo "$effective_home/.junie/skills" ;;
+      zcode)    echo "$effective_home/.zcode/skills" ;;
       *) echo "unknown agent: $agent" >&2; exit 1 ;;
     esac
     ;;
@@ -347,7 +348,7 @@ FAKE_HOME="$(mktemp -d)"
 INTERACTIVE_OUTPUT="$(run_interactive_install_with_blank_defaults "$FAKE_HOME")"
 pass "interactive install with blank defaults exited 0"
 
-if [[ "$INTERACTIVE_OUTPUT" == *"Agents:         copilot, claude, codex, opencode, junie"* ]]; then
+if [[ "$INTERACTIVE_OUTPUT" == *"Agents:         copilot, claude, codex, opencode, junie, zcode"* ]]; then
   pass "blank agent selection defaults to all when none detected"
 else
   fail "blank agent selection summary unexpected"
@@ -365,7 +366,7 @@ FAKE_HOME="$(mktemp -d)"
 PIPED_OUTPUT="$(run_piped_install_with_eof_defaults "$FAKE_HOME")"
 pass "piped install with EOF defaults exited 0"
 
-if [[ "$PIPED_OUTPUT" == *"Agents:         copilot, claude, codex, opencode, junie"* ]]; then
+if [[ "$PIPED_OUTPUT" == *"Agents:         copilot, claude, codex, opencode, junie, zcode"* ]]; then
   pass "piped EOF agent selection defaults to all when none detected"
 else
   fail "piped EOF agent selection summary unexpected"
