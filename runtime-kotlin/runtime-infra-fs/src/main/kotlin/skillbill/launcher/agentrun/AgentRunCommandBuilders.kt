@@ -125,8 +125,6 @@ class ZcodeAgentRunCommandBuilder : AgentRunCommandBuilder {
         add("zcode")
         add("--prompt")
         add(launchPrompt(request))
-        // The envelope shape of --json output is unconfirmed against a live zcode session;
-        // revisit parsing once that's verified.
         add("--json")
         add("--cwd")
         add(request.repoRoot.toString())

@@ -377,7 +377,10 @@ class InstallerShellDelegationTest {
   fun `install plan summary is printed before any mutation`() {
     // Do NOT set SKILL_BILL_SKIP_PREINSTALL_UNINSTALL: the plan must print before
     // the pre-install uninstall mutates anything.
-    val run = runPrebuiltInstaller(releaseValid = true, options = PrebuiltOptions(skipPreinstallUninstall = false))
+    val run = runPrebuiltInstaller(
+      releaseValid = true,
+      options = PrebuiltOptions(skipPreinstallUninstall = false, seedPriorInstall = true),
+    )
 
     assertEquals(0, run.exitCode, run.output)
     val planIndex = run.output.indexOf("What this installer will change")
@@ -678,6 +681,9 @@ class InstallerShellDelegationTest {
     builder.environment().remove("SKILL_BILL_GOAL_CONTINUATION")
     if (options.skipPreinstallUninstall) {
       builder.environment()["SKILL_BILL_SKIP_PREINSTALL_UNINSTALL"] = "1"
+    }
+    if (options.seedPriorInstall) {
+      Files.createDirectories(home.resolve(".skill-bill"))
     }
     // Headless by default: drop any inherited desktop-session signals.
     builder.environment().remove("DISPLAY")
@@ -1107,6 +1113,7 @@ private data class PrebuiltReuse(
 private data class PrebuiltOptions(
   val omitRuntimeAssets: Boolean = false,
   val skipPreinstallUninstall: Boolean = true,
+  val seedPriorInstall: Boolean = false,
   val desktopInput: String = "skip",
   val interactiveTty: Boolean = false,
 )

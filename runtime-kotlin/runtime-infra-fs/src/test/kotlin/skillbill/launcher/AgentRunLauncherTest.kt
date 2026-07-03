@@ -921,6 +921,26 @@ class HeadlessAgentRunAdapterTest {
   }
 
   @Test
+  fun `zcode launch unwraps json response envelope`() {
+    val runner = RecordingAgentRunProcessRunner(
+      result = AgentRunProcessResult(
+        exitStatus = 0,
+        stdout = """{"sessionId":"sess_test","traceId":"trace_test","response":"phase-output"}""",
+        stderr = "",
+        timedOut = false,
+        interrupted = false,
+        spawnFailed = false,
+      ),
+    )
+    val request = phaseRunRequest()
+    val adapters = headlessAgentRunAdapters(runner)
+
+    val outcome = requireNotNull(adapters[InstallAgent.ZCODE]).launch(request)
+
+    assertEquals("phase-output", outcome.stdout)
+  }
+
+  @Test
   fun `process adapter threads usePtyStdio=false into the process request for supported agents`() {
     val runner = RecordingAgentRunProcessRunner()
     val request = phaseRunRequest()
