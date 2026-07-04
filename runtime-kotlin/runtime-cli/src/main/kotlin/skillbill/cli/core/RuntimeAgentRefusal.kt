@@ -1,7 +1,7 @@
 package skillbill.cli.core
 
 import com.github.ajalt.clikt.core.UsageError
-import skillbill.install.model.OPENCODE_RUNTIME_REFUSAL_MESSAGE
+import skillbill.install.model.RUNTIME_REFUSED_AGENT_MESSAGE
 import skillbill.install.model.isRuntimeRefusedAgent
 
 // Shared runtime-refusal gate for every CLI entry point that can resolve a runtime agent
@@ -10,6 +10,6 @@ import skillbill.install.model.isRuntimeRefusedAgent
 // instead of being re-derived per command. Refuses before any workflow, branch, or subprocess.
 fun refuseRuntimeRefusedAgents(candidateAgentIds: List<String?>) {
   if (candidateAgentIds.any(::isRuntimeRefusedAgent)) {
-    throw UsageError(OPENCODE_RUNTIME_REFUSAL_MESSAGE)
+    throw UsageError(RUNTIME_REFUSED_AGENT_MESSAGE)
   }
 }

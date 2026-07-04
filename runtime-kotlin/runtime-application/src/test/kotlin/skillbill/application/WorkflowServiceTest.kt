@@ -5,6 +5,7 @@ import skillbill.application.decomposition.encodeDecompositionManifestMap
 import skillbill.application.decomposition.encodeDecompositionManifestYaml
 import skillbill.application.decomposition.executionModel
 import skillbill.application.decomposition.parentSpecPath
+import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
 import skillbill.application.goalrunner.GoalRunnerStatusService
 import skillbill.application.goalrunner.WorkflowGoalRunnerManifestStore
 import skillbill.application.goalrunner.WorkflowGoalRunnerOutcomeStore
@@ -762,6 +763,7 @@ class WorkflowGoalStatusProjectionTest {
         workflowSnapshotValidator = testWorkflowSnapshotValidator,
         goalObservabilityEventValidator = testGoalObservabilityEventValidator,
       ),
+      phaseRecorder = FeatureTaskRuntimePhaseRecorder(database, testWorkflowSnapshotValidator),
     )
   }
 }
