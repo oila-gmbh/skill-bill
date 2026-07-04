@@ -1,6 +1,6 @@
 ---
 name: bill-feature
-description: "Use as the primary feature entry point: prepare a governed feature spec, then dispatch single-spec work to bill-feature-task or decomposed work to bill-feature-goal."
+description: "Use as the primary feature entry point: prepare a governed feature spec, then dispatch single-spec work to bill-feature-task or decomposed work to bill-feature-goal. Use when user mentions implement feature, build feature, implement spec, run feature-task, feature from design doc, decomposed goal, goal status, or resume goal."
 ---
 
 # Feature Content
@@ -42,24 +42,32 @@ Always invoke `bill-feature-spec` first in the current session. Do not write spe
 
 Wait for `bill-feature-spec` to produce governed artifacts under `.feature-specs/{ISSUE_KEY}-{feature-name}/`. Treat its selected mode as authoritative for dispatch.
 
+## Direct Dispatch When Governed Artifacts Exist
+
+Before running spec preparation, check `.feature-specs/{ISSUE_KEY}-*/` for the issue key:
+
+- If it already contains a governed `spec.md` and **no** `decomposition-manifest.yaml`, skip spec preparation and dispatch straight to the `bill-feature-task.md` sidecar (below) with the issue key and spec path.
+- If it already contains a `decomposition-manifest.yaml`, skip spec preparation and dispatch straight to the `bill-feature-goal.md` sidecar (below) with the issue key.
+- Only invoke `bill-feature-spec` when no governed artifacts exist for the issue key.
+
 ## Dispatch
 
-For `single_spec` output:
+For `single_spec` output (or the direct-dispatch route above when only a `spec.md` exists):
 
-- Run `bill-feature-task` on `.feature-specs/{ISSUE_KEY}-{feature-name}/spec.md` in the current session. When exactly one governed `.feature-specs/{ISSUE_KEY}-*/spec.md` exists, the issue key alone is enough for the runtime invocation.
-- Do not invoke `bill-feature-goal`.
-- Let `bill-feature-task` own implementation, review, validation, history, and PR description behavior.
+- Read the file `bill-feature-task.md` located in this skill's own installed directory (a sibling of this `SKILL.md`) and execute its instructions in the current session with args: `<issue-key> mode:<mode> .feature-specs/{ISSUE_KEY}-{feature-name}/spec.md`. Do not use the Skill tool for this — `bill-feature-task` is an internal skill and is not listed. When exactly one governed `.feature-specs/{ISSUE_KEY}-*/spec.md` exists, the issue key alone is enough.
+- Do not dispatch to the goal sidecar.
+- Let the task sidecar own implementation, review, validation, history, and PR description behavior.
 
-For `decomposed` output:
+For `decomposed` output (or the direct-dispatch route above when a `decomposition-manifest.yaml` exists):
 
-- Invoke `bill-feature-goal` in the current session with the prepared issue key and artifacts.
-- Do not ask an extra confirmation before invoking `bill-feature-goal`; `bill-feature-goal` owns the one confirmation gate before starting `skill-bill goal`.
+- Read the file `bill-feature-goal.md` located in this skill's own installed directory (a sibling of this `SKILL.md`) and execute its instructions in the current session with args: `<issue-key> mode:<mode>`. Do not use the Skill tool for this — `bill-feature-goal` is an internal skill and is not listed.
+- Do not ask an extra confirmation before dispatching to the goal sidecar; the goal sidecar owns the one confirmation gate before starting `skill-bill goal`.
 - Treat `skill-bill goal <issue_key>` as runtime behavior with durable workflow state, not as spec authoring.
 
 If `bill-feature-spec` cannot produce a valid mode or artifacts, stop and surface the failure instead of guessing a route.
 
 ## Status Requests
 
-If the user asks for status on a decomposed feature, route to `bill-feature-goal` status behavior.
+If the user asks for status on a decomposed feature, read the `bill-feature-goal.md` sidecar in this skill's own installed directory and follow its status behavior. Do not use the Skill tool — `bill-feature-goal` is an internal skill.
 
-If the user asks for status on a single-spec feature implementation, use the normal `bill-feature-task` workflow status behavior when a workflow id is available.
+If the user asks for status on a single-spec feature implementation, read the `bill-feature-task.md` sidecar in this skill's own installed directory and follow its workflow status behavior when a workflow id is available. Do not use the Skill tool — `bill-feature-task` is an internal skill.

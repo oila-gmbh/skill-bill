@@ -1,6 +1,6 @@
 # Getting Started
 
-Skill Bill installs governed agent workflows plus a local runtime. The fastest way to understand the product is to run `/bill-feature-task` on a small feature spec: it plans the work, implements it, reviews it, validates it, records history when relevant, and prepares the PR handoff.
+Skill Bill installs governed agent workflows plus a local runtime. The fastest way to understand the product is to run `/bill-feature` on a small feature spec: it prepares the spec, then routes to implementation, which plans the work, implements it, reviews it, validates it, records history when relevant, and prepares the PR handoff.
 
 The runtime is packaged Kotlin: normal `skill-bill` and `skill-bill-mcp` use distribution scripts built by `./install.sh`, not Gradle `run` tasks and not a legacy runtime selector.
 
@@ -10,7 +10,7 @@ Use this guide when you want to install Skill Bill, understand the runtime model
 
 Skill Bill has three operator surfaces:
 
-- installed slash-command workflows such as `/bill-feature-task`, `/bill-code-review`, and `/bill-code-check`
+- installed slash-command workflows such as `/bill-feature`, `/bill-code-review`, and `/bill-code-check`
 - the local `skill-bill` CLI
 - the local `skill-bill-mcp` stdio MCP server
 
@@ -225,12 +225,12 @@ skill-bill telemetry status --format json
 Then try the stable skill entry points in your agent, in this order:
 
 - `/bill-feature-spec` (optional prep-first path for spec-only sessions)
-- `/bill-feature-task`
+- `/bill-feature`
 - `/bill-code-review`
 - `/bill-code-check`
 - `/bill-feature-verify`
 
-Use `/bill-feature-task` first because it exercises the full governed path: feature spec, planning, implementation, routed review, validation, history, and PR handoff. Use `/bill-feature-spec` when you need standalone spec/decomposition preparation before implementation. Use `/bill-code-review` directly when you only need the review phase.
+Use `/bill-feature` first because it exercises the full governed path: feature spec, planning, implementation, routed review, validation, history, and PR handoff. Use `/bill-feature-spec` when you need standalone spec/decomposition preparation before implementation. Use `/bill-code-review` directly when you only need the review phase.
 
 ## Runtime Fallback Boundary
 
@@ -280,7 +280,7 @@ Use strict guarantees for compatibility and safety boundaries. Use model-mediate
 Skill Bill has two layers:
 
 - the governed workflow framework: authoring rules, render/install staging, shell contracts, manifests, validators, CLI/MCP runtime, workflow state, telemetry, and cross-agent installation
-- bundled reference workflows: `bill-feature-task`, `bill-code-review`, `bill-code-check`, `bill-feature-verify`, `bill-pr-description`, and supporting skills
+- bundled reference workflows: `bill-feature`, `bill-code-review`, `bill-code-check`, `bill-feature-verify`, `bill-pr-description`, and supporting skills
 
 The bundled workflows are production-usable defaults, not a lock-in boundary. A team can delete or replace them and still use the framework to build its own governed workflow system.
 

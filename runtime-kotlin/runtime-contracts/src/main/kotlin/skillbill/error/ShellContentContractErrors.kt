@@ -278,6 +278,25 @@ class ContractVersionMismatchError(
   cause: Throwable? = null,
 ) : ShellContentContractException(message, cause)
 
+/**
+ * SKILL-102 subtask 1: surfaced at install-staging time when an authored file
+ * already occupies the would-be sidecar name inside the parent skill's source
+ * directory. Follows the generated-artifact guard pattern
+ * (`skillbill.scaffold.pointer.GeneratedArtifactGuard`); the dedicated subclass
+ * keeps sidecar collision failures distinguishable from declaration failures.
+ */
+class InternalSkillSidecarCollisionError(
+  val parentSkillName: String,
+  val internalSkillName: String,
+  val sidecarRelativePath: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Internal skill '$internalSkillName' cannot be staged as sidecar " +
+    "'$sidecarRelativePath' inside parent '$parentSkillName' skill directory: " +
+    "an authored file already occupies that path. Rename or remove the authored file.",
+  cause,
+)
+
 class MissingContentFileError(
   message: String,
   cause: Throwable? = null,
@@ -309,6 +328,18 @@ class MissingShellCeremonyFileError(
 ) : ShellContentContractException(message, cause)
 
 class InvalidSkillMdShapeError(
+  message: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(message, cause)
+
+/**
+ * SKILL-102 subtask 1: surfaced when an internal-skill classification is invalid. The composed
+ * message names the offending skill, the declared parent, and the rule violated so authors can
+ * pinpoint the regression without re-parsing frontmatter. Mirrors [InvalidSkillMdShapeError];
+ * the dedicated subclass keeps internal-skill classification failures distinguishable from
+ * wrapper-shape failures in logs and tests.
+ */
+class InvalidInternalSkillClassificationError(
   message: String,
   cause: Throwable? = null,
 ) : ShellContentContractException(message, cause)

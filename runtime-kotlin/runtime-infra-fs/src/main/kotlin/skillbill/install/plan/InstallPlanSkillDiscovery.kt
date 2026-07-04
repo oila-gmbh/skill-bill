@@ -2,6 +2,9 @@ package skillbill.install.plan
 
 import skillbill.install.model.InstallPlanSkill
 import skillbill.install.model.InstallPlanSkillKind
+import skillbill.scaffold.authoring.InternalSkillDeclaration
+import skillbill.scaffold.authoring.parseInternalForFrontmatter
+import skillbill.scaffold.authoring.requireValidInternalSkillClassification
 import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.platformpack.discoverPlatformPackManifests
 import skillbill.scaffold.platformpack.loadQualityCheckContent
@@ -41,12 +44,31 @@ internal fun discoverBaseSkills(skillsRoot: Path): List<InstallPlanSkill> {
         name = skillDir.fileName.toString(),
         sourceDir = skillDir.toAbsolutePath().normalize(),
         kind = InstallPlanSkillKind.BASE,
+        internalFor = parseInternalForFrontmatter(skillDir.resolve("content.md")),
       )
     }
   require(baseSkills.isNotEmpty()) {
     "Base skills root '$skillsRoot' does not contain any bill-* skills with content.md."
   }
   return baseSkills
+}
+
+/**
+ * SKILL-102 (PD1): enforce the internal-skill classification rules across the full install-plan
+ * skill set (base + materialized platform-pack skills) once every name is known, via the shared
+ * rule evaluator so the install seam and the authoring/validation seams fail identically.
+ */
+internal fun validateInstallPlanInternalSkills(skills: List<InstallPlanSkill>) {
+  requireValidInternalSkillClassification(
+    skills.map { skill ->
+      InternalSkillDeclaration(
+        skillName = skill.name,
+        contentFile = skill.sourceDir.resolve("content.md"),
+        declaredParent = skill.internalFor,
+        isBaseSkill = skill.kind == InstallPlanSkillKind.BASE,
+      )
+    },
+  )
 }
 
 internal fun platformSkills(manifest: PlatformManifest): List<InstallPlanSkill> {
@@ -65,6 +87,7 @@ internal fun platformSkills(manifest: PlatformManifest): List<InstallPlanSkill> 
         sourceDir = skillDir,
         kind = InstallPlanSkillKind.PLATFORM_PACK,
         platformSlug = manifest.slug,
+        internalFor = parseInternalForFrontmatter(skillDir.resolve("content.md")),
       )
     }
 }

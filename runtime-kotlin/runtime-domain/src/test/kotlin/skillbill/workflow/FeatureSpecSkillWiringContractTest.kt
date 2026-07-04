@@ -14,11 +14,14 @@ class FeatureSpecSkillWiringContractTest {
     assertContains(content, "name: bill-feature")
     assertContains(content, "Always invoke `bill-feature-spec` first")
     assertContains(content, "Treat its selected mode as authoritative for dispatch")
+    assertContains(content, "## Direct Dispatch When Governed Artifacts Exist")
     assertContains(content, "For `single_spec` output")
-    assertContains(content, "Run `bill-feature-task` on `.feature-specs/{ISSUE_KEY}-{feature-name}/spec.md`")
+    // SKILL-102: task and goal execution dispatch by reading the internal-skill sidecars, never
+    // via the Skill tool.
+    assertContains(content, "Read the file `bill-feature-task.md` located in this skill's own installed directory")
     assertContains(content, "For `decomposed` output")
-    assertContains(content, "Invoke `bill-feature-goal` in the current session")
-    assertContains(content, "Do not ask an extra confirmation before invoking `bill-feature-goal`")
+    assertContains(content, "Read the file `bill-feature-goal.md` located in this skill's own installed directory")
+    assertContains(content, "Do not ask an extra confirmation before dispatching to the goal sidecar")
   }
 
   @Test

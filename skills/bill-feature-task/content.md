@@ -1,4 +1,5 @@
 ---
+internal-for: bill-feature
 name: bill-feature-task
 description: Router skill for feature-task implementation. Accepts `mode:runtime` (default) or `mode:prose` in args and delegates to the appropriate skill. Use when user mentions implement feature, build feature, implement spec, run feature-task, or feature from design doc.
 ---
@@ -30,7 +31,7 @@ Parse the mode and `parallel-review:<agent>` from args before presenting the con
 
 **opencode is prose-only.** When the agent currently executing this skill is opencode, prose is the implicit default and runtime mode is unsupported: its foreground Bash tool is hard-killed at 120s before a phase can finish, and per-phase output cannot be harvested back. So on opencode: with no mode arg, resolve to `prose` (no need to pass `mode:prose`); with an explicit `mode:runtime`, stop and emit the actionable refusal and do NOT delegate to `bill-feature-task-runtime`:
 
-> Runtime mode is not supported on opencode: its foreground Bash tool is hard-killed at 120s before a phase can finish, and per-phase output cannot be harvested back. Use prose instead — run bill-feature-task-prose for a single feature task, or bill-feature-goal mode:prose for a decomposed goal.
+> Runtime mode is not supported on opencode: its foreground Bash tool is hard-killed at 120s before a phase can finish, and per-phase output cannot be harvested back. Use prose instead — use bill-feature with mode:prose for a single feature task, or bill-feature with mode:prose for a decomposed goal.
 
 This skill gate and the runtime CLI agree: the CLI refuses the same way whenever the resolved runtime agent is opencode by any route.
 
@@ -49,16 +50,14 @@ Do not launch any downstream skill while the run is unconfirmed. If the user dec
 
 ## Confirmed Handoff
 
-After confirmation, invoke the delegated skill via the Skill tool — do not search the filesystem to locate skill files; the Skill tool resolves skills by name.
+After confirmation, dispatch to the delegated sidecar by reading its file from this skill's own installed directory (a sibling file next to this `SKILL.md`) and executing its instructions in the current session. Do not use the Skill tool for this — `bill-feature-task-runtime` and `bill-feature-task-prose` are internal skills and are not listed.
 
 When mode is `runtime` or unspecified (on opencode the mode resolves to `prose`, or an explicit `mode:runtime` already refused per the opencode rule above, so this runtime branch is never taken on opencode):
 
-- Invoke `bill-feature-task-runtime` via the Skill tool.
-- Forward `--agent`, `--agent-override`, `--phase-agent`, and `parallel-review:<agent>` identically from the args received by this router.
+- Read the file `bill-feature-task-runtime.md` located in this skill's own installed directory (a sibling of this `SKILL.md`) and execute its instructions in the current session. Forward `--agent`, `--agent-override`, `--phase-agent`, and `parallel-review:<agent>` identically from the args received by this router.
 
 When mode is `prose`:
 
-- Invoke `bill-feature-task-prose` via the Skill tool.
-- Forward `--agent`, `--agent-override`, `--phase-agent`, and `parallel-review:<agent>` identically from the args received by this router.
+- Read the file `bill-feature-task-prose.md` located in this skill's own installed directory (a sibling of this `SKILL.md`) and execute its instructions in the current session. Forward `--agent`, `--agent-override`, `--phase-agent`, and `parallel-review:<agent>` identically from the args received by this router.
 
-Do not add a second confirmation gate on top of the delegated skill's own behavior. Delegate immediately after this router's own gate clears. The delegated skill owns its own intake, confirmation, and execution logic.
+Do not add a second confirmation gate on top of the delegated sidecar's own behavior. Delegate immediately after this router's own gate clears. The delegated sidecar owns its own intake, confirmation, and execution logic.

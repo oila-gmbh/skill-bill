@@ -8,9 +8,9 @@
 
 **Hand Skill Bill a spec and get back a merge-ready PR — planned, implemented, stack-specialist-reviewed, audited against the spec, and quality-gated.** AI coding agents are powerful but inconsistent: the same prompt yields different work every run, with no process holding it together. Skill Bill gives yours the structure of a real engineering process and runs it the same way every time, across whichever agents you use.
 
-![Skill Bill demo — a /bill-feature-task run that is interrupted mid-flight, then resumes from durable workflow state and finishes](docs/assets/skill-bill-demo.gif)
+![Skill Bill demo — a /bill-feature run that is interrupted mid-flight, then resumes from durable workflow state and finishes](docs/assets/skill-bill-demo.gif)
 
-> A `/bill-feature-task` run carrying a spec through every phase to a merge-ready PR — and because the run is interrupted mid-flight (usage limit, crash, lost connection) it also shows the part most demos hide: it resumes from durable workflow state and finishes, nothing lost. The demo is generated, not hand-recorded ([`docs/assets/generate_demo_gif.py`](docs/assets/generate_demo_gif.py)), so it never goes stale.
+> A `/bill-feature` run carrying a spec through every phase to a merge-ready PR — and because the run is interrupted mid-flight (usage limit, crash, lost connection) it also shows the part most demos hide: it resumes from durable workflow state and finishes, nothing lost. The demo is generated, not hand-recorded ([`docs/assets/generate_demo_gif.py`](docs/assets/generate_demo_gif.py)), so it never goes stale.
 
 **Built with itself.** Skill Bill's own features ship through this pipeline. [#177](https://github.com/Sermilion/skill-bill/pull/177) was planned, implemented, reviewed, and written up by the same process described here — click through and judge the actual output, not a demo.
 
@@ -71,7 +71,6 @@ Skill Bill ships complete Kotlin/KMP packs — the stack-specific intelligence t
 **Daily entry points:**
 
 - `/bill-feature` prepares the feature spec, then routes to implementation or the goal loop
-- `/bill-feature-task` orchestrates spec-to-PR work and composes the rest of the pack
 - `/bill-feature-spec` prepares governed single-spec or decomposed feature-spec artifacts before implementation
 - `/bill-code-review` routes to the matching platform review stack
 - `/bill-code-check` routes to the matching stack-specific checker
@@ -92,16 +91,11 @@ Skill Bill ships complete Kotlin/KMP packs — the stack-specific intelligence t
 | `/bill-code-check` | Stable quality-check entry point that routes to the matching checker |
 | `/bill-code-review` | Stable code-review entry point that routes to the matching platform pack |
 | `/bill-code-review-parallel` | Run two review agents in parallel on the same diff and merge their findings |
-| `/bill-feature` | Primary feature entry point that prepares a spec, then routes to implementation or the goal loop |
+| `/bill-feature` | Primary feature entry point that prepares a spec, then routes to implementation or the goal loop (dispatches internally to the feature-execution family, which is not listed) |
 | `/bill-feature-guard` | Add feature-flag rollout safety to an implementation |
 | `/bill-feature-guard-cleanup` | Remove feature flags and legacy code after rollout |
-| `/bill-feature-task` | Router skill: accepts `mode:runtime` (default) or `mode:prose`, delegates to the appropriate implementation mode |
-| `/bill-feature-task-prose` | First-class prose orchestrator for end-to-end feature implementation within the invoking agent session |
-| `/bill-feature-task-runtime` | Runtime-backed trigger that runs a governed spec through the `skill-bill feature-task` phase loop |
-| `/bill-feature-task-subtask-runner` | Level-1 subtask-agent for `bill-feature-goal mode:prose`; spawned via the Agent tool, not invoked directly |
 | `/bill-feature-spec` | Standalone feature-spec preparation (single-spec or decomposed) reused by feature and goal workflows |
 | `/bill-feature-verify` | Verify a PR against a task spec or design doc |
-| `/bill-feature-goal` | Decomposed-goal trigger: `mode:runtime` (default) drives the durable `skill-bill goal` loop, `mode:prose` drives an in-session subtask loop |
 | `/bill-pr-description` | Generate a PR title, description, and QA steps |
 | `/bill-pr-review-fix` | Resolve PR review comments end-to-end with an approval gate and reply automation |
 | `/bill-unit-test-value-check` | Review unit tests for low-value or tautological coverage |

@@ -1,4 +1,4 @@
-@file:Suppress("TooManyFunctions", "MaxLineLength")
+@file:Suppress("TooManyFunctions", "MaxLineLength", "LargeClass")
 
 package skillbill.scaffold.runtime
 
@@ -8,6 +8,9 @@ import skillbill.nativeagent.composition.NATIVE_AGENT_SOURCE_DIR
 import skillbill.nativeagent.rendering.NativeAgentProvider
 import skillbill.nativeagent.rendering.discoverRepoNativeAgentSourceEntries
 import skillbill.nativeagent.validation.validateRepoNativeAgents
+import skillbill.scaffold.authoring.InternalSkillDeclaration
+import skillbill.scaffold.authoring.internalSkillClassificationViolations
+import skillbill.scaffold.authoring.parseInternalForFrontmatter
 import skillbill.scaffold.platformpack.loadPlatformManifest
 import skillbill.scaffold.platformpack.loadPlatformPack
 import skillbill.scaffold.pointer.validateGeneratedArtifactGuard
@@ -139,12 +142,15 @@ object RepoValidationRuntime {
     platformSkillFiles.forEach { (skillName, skillFile) ->
       validateInstallableSkill(skillName, skillFile, root, issues, validateSourceSidecars = false)
     }
+    validateInternalSidecarCollisions(skillFiles + platformSkillFiles, issues)
+    validateInternalSkillClassification(skillFiles, platformSkillFiles, issues)
+    validateInternalSidecarReferences(skillFiles, issues)
     validateSkillSourceShape(skillFiles.values, root, issues)
     addonFiles.forEach { addonFile ->
       validateAddonFile(addonFile, root, issues)
     }
 
-    validateReadme(root.resolve("README.md"), skillFiles.keys.toSet(), issues)
+    validateReadme(root.resolve("README.md"), skillFiles.keys.toSet(), internalSkillNames(skillFiles), issues)
     validateSkillReferences(root, skillNames, issues)
     validateSkillOverrides(root.resolve(".agents/skill-overrides.example.md"), skillNames, required = true, issues)
     validateSkillOverrides(root.resolve(".agents/skill-overrides.md"), skillNames, required = false, issues)
@@ -443,7 +449,12 @@ object RepoValidationRuntime {
     }
   }
 
-  private fun validateReadme(readme: Path, skillNames: Set<String>, issues: MutableList<String>) {
+  private fun validateReadme(
+    readme: Path,
+    skillNames: Set<String>,
+    internalSkills: Set<String>,
+    issues: MutableList<String>,
+  ) {
     if (!readme.isRegularFile()) {
       issues += "README.md is missing"
       return
@@ -451,11 +462,23 @@ object RepoValidationRuntime {
     val catalogSkills = Files.readAllLines(readme)
       .mapNotNull { line -> readmeSkillRowPattern.find(line)?.groupValues?.get(1) }
       .toSet()
-    val missing = skillNames - catalogSkills
+    // SKILL-102: internal skills are intentionally absent from the user-facing README catalog
+    // (they are not directly invocable), so they are excluded from the missing-skills check.
+    val missing = (skillNames - internalSkills) - catalogSkills
     if (missing.isNotEmpty()) {
       issues += "README.md catalog is missing skills: ${missing.sorted()}"
     }
   }
+
+  /**
+   * SKILL-102: returns the set of base skill names whose `content.md` declares
+   * `internal-for: <parent>`. Used to exclude internal skills from the README catalog requirement
+   * (they install as sidecars inside a parent and are never listed or user-invocable).
+   */
+  private fun internalSkillNames(skillFiles: Map<String, Path>): Set<String> =
+    skillFiles.entries.mapNotNull { (skillName, contentFile) ->
+      if (parseInternalForFrontmatter(contentFile)?.isNotBlank() == true) skillName else null
+    }.toSet()
 
   private fun validateSkillReferences(root: Path, skillNames: Set<String>, issues: MutableList<String>) {
     val scanRoots = listOf("skills", "platform-packs", "orchestration", ".agents").map(root::resolve)
@@ -593,6 +616,37 @@ object RepoValidationRuntime {
     issues += validateAuthoredContent(contentFile, Files.readString(contentFile))
   }
 
+  /**
+   * SKILL-102 subtask 1 (PD2 collision guard): a parent skill's source directory must not already
+   * author a file whose name equals a would-be internal sidecar (`<child-skill-name>.md`). Mirrors
+   * the staging-time guard in `writeInternalSidecarFiles` so `skill-bill validate` surfaces the
+   * collision before install.
+   */
+  private fun validateInternalSidecarCollisions(skills: Map<String, Path>, issues: MutableList<String>) {
+    val internalByParent = skills.entries
+      .mapNotNull { (skillName, contentFile) ->
+        val declaredParent = parseInternalForFrontmatter(contentFile)?.takeIf(String::isNotBlank)
+        if (declaredParent != null && declaredParent != skillName && declaredParent in skills) {
+          declaredParent to skillName
+        } else {
+          null
+        }
+      }
+      .groupBy({ it.first }, { it.second })
+    internalByParent.forEach { (parentName, children) ->
+      val parentFile = skills[parentName] ?: return@forEach
+      val parentDir = parentFile.parent
+      children.sorted().forEach { childName ->
+        val sidecar = parentDir.resolve("$childName.md")
+        if (Files.isRegularFile(sidecar, LinkOption.NOFOLLOW_LINKS)) {
+          issues += "$parentFile: internal sidecar '$childName.md' for parent '$parentName' " +
+            "collides with an authored file at '$sidecar'; remove the authored file or rename the " +
+            "internal skill."
+        }
+      }
+    }
+  }
+
   private fun validatePortableReviewWording(
     skillName: String,
     text: String,
@@ -710,4 +764,64 @@ object RepoValidationRuntime {
       }
     }
   }
+
+  /**
+   * SKILL-102 (PD1): enforce the internal-skill classification rules at validation time via the
+   * shared rule evaluator, emitting issue strings (rather than throwing) to match the
+   * validateRepo collection pattern.
+   */
+  private fun validateInternalSkillClassification(
+    baseSkillFiles: Map<String, Path>,
+    platformSkillFiles: Map<String, Path>,
+    issues: MutableList<String>,
+  ) {
+    val declarations = baseSkillFiles.entries.map { (skillName, contentFile) ->
+      InternalSkillDeclaration(
+        skillName = skillName,
+        contentFile = contentFile,
+        declaredParent = parseInternalForFrontmatter(contentFile),
+        isBaseSkill = true,
+      )
+    } + platformSkillFiles.entries.map { (skillName, contentFile) ->
+      InternalSkillDeclaration(
+        skillName = skillName,
+        contentFile = contentFile,
+        declaredParent = parseInternalForFrontmatter(contentFile),
+        isBaseSkill = false,
+      )
+    }
+    issues += internalSkillClassificationViolations(declarations)
+  }
+
+  /**
+   * SKILL-102: a `<skill-name>.md` reference inside a skill's content.md is a sidecar file-read
+   * only resolvable when the referenced skill is internal and shares the referencing skill's
+   * effective parent (the referencing skill itself when it is listed). Anything else installs
+   * cleanly but breaks dispatch at session time with a file-not-found, so it fails validate.
+   */
+  private fun validateInternalSidecarReferences(skillFiles: Map<String, Path>, issues: MutableList<String>) {
+    val declaredParents = skillFiles.mapValues { (_, contentFile) ->
+      parseInternalForFrontmatter(contentFile)?.takeIf(String::isNotBlank)
+    }
+    skillFiles.forEach { (skillName, contentFile) ->
+      val effectiveParent = declaredParents[skillName] ?: skillName
+      sidecarReferencePattern.findAll(Files.readString(contentFile)).forEach { match ->
+        val referenced = match.groupValues[1]
+        if (referenced !in skillFiles || referenced == skillName) {
+          return@forEach
+        }
+        val referencedParent = declaredParents[referenced]
+        if (referencedParent == null) {
+          issues += "$contentFile: references sidecar '$referenced.md' but '$referenced' is a listed " +
+            "skill and renders no sidecar; invoke it via the Skill tool or classify it internal."
+        } else if (referencedParent != effectiveParent) {
+          issues += "$contentFile: references sidecar '$referenced.md' but '$referenced' is internal to " +
+            "'$referencedParent', not co-located with '$skillName' (effective parent '$effectiveParent'); " +
+            "the sidecar will not exist in this skill's installed directory."
+        }
+      }
+    }
+  }
+
+  private val sidecarReferencePattern = Regex("`([a-z0-9][a-z0-9-]*)\\.md`")
 }

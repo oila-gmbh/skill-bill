@@ -4,6 +4,45 @@ This file records architectural and implementation decisions that span the
 `runtime-kotlin/` boundary. Each entry is dated and explains the trade-off,
 not the implementation detail.
 
+## 2026-07-04 — internal skills are file-read sidecars; repo paths did not move (SKILL-102)
+
+Context: Five feature-execution skills (`bill-feature-task`, `-runtime`, `-prose`,
+`-subtask-runner`, `bill-feature-goal`) needed to stop appearing in every agent's
+skill list because they are dispatch targets selected by `bill-feature`, not user
+entry points. The install pipeline derived listing from the same `content.md`
+discovery that drives staging, so hiding a skill required a new internal-skill
+classification.
+
+Decision: An internal skill is declared by one optional frontmatter key
+(`internal-for: <parent>`). Install renders its governed content as a
+`<skill-name>.md` sidecar inside the parent's staged directory (no `skills_dir`
+entry, no `SKILL.md` of its own), and the parent invokes it by reading that
+sibling sidecar file and executing it in-session — never via the Skill tool.
+
+Reason: The Skill tool on every supported agent resolves only listed skills;
+there is no invocable-but-hidden state, so the invocation contract for internal
+skills is necessarily a file read. The file-read pattern was already established
+for other sibling sidecars (`shell-ceremony.md`, `compose-guidelines.md`) and is
+more portable across agents than Skill-tool mechanics. Repo source directories
+did not move or rename (PD3) because `WorkflowEngine.CONTINUATION_CONTENT_PATHS`
+and `RepoValidationRuntime` content-marker checks bind to the existing repo
+paths (`skills/bill-feature-task/content.md`,
+`skills/bill-feature-task-prose/content.md`); moving them would have changed
+runtime path bindings, workflow identity, the DB `workflow_name` CHECK
+constraint, and telemetry constants (PD4) for no listing benefit.
+
+Alternatives considered: (1) A separate `config.yaml` visibility switch per
+skill — rejected as a per-skill preference system, the opposite of a repo-level
+authored classification. (2) Moving internal skills' source directories under
+the parent (`skills/bill-feature/bill-feature-task/`) — rejected because it
+breaks runtime path bindings and identity strings (PD3/PD4). (3) Trimming the
+sidecar to a token-light format — rejected by PD6 (behavior parity over token
+savings).
+
+Revisit when: A supported agent gains a first-class invocable-but-hidden skill
+state, or when internal skills need to be surfaced in a maintainer-only listing
+view (the parent spec's deferred open question).
+
 ## 2026-06-27 — opencode is prose-only: runtime mode refuses whenever the resolved agent is opencode
 
 Context: A real run (NEWS-141, workflow `wftr-20260626-193556-a4lk`) proved the

@@ -25,6 +25,7 @@ data class AuthoringTarget(
   val contentFile: Path,
   val codeReviewComposition: CodeReviewComposition? = null,
   val addonUsage: List<GovernedAddonSelection> = emptyList(),
+  val internalFor: String? = null,
 )
 
 object AuthoringOperations {

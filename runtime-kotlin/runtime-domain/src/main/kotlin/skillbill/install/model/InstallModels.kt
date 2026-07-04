@@ -197,6 +197,7 @@ data class InstallPlanSkill(
   val sourceDir: Path,
   val kind: InstallPlanSkillKind,
   val platformSlug: String? = null,
+  val internalFor: String? = null,
 )
 
 data class PlannedPlatformPack(
@@ -271,6 +272,7 @@ data class RenderedSkill(
   val renderedPointerFiles: List<Path>,
   val copiedAuthoredFiles: List<Path>,
   val contentHash: String,
+  val renderedSidecarFiles: List<Path> = emptyList(),
 )
 
 enum class InstallApplyStatus {
@@ -314,6 +316,7 @@ data class InstallSkillStagingOutcome(
   val copiedAuthoredFiles: List<Path> = emptyList(),
   val contentHash: String? = null,
   val issue: InstallApplyIssue? = null,
+  val renderedSidecarFiles: List<Path> = emptyList(),
 )
 
 enum class InstallAgentLinkStatus {

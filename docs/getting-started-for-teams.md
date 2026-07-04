@@ -6,7 +6,7 @@ A team adoption guide for Skill Bill. Use [Getting Started](getting-started.md) 
 
 Skill Bill gives a team governed agent workflows, not just prompt files. There are two useful adoption modes:
 
-- Adopt the bundled flagship workflow: start with `/bill-feature-task`, then use `/bill-code-review`, `/bill-code-check`, and `/bill-feature-verify` as standalone phase entry points when needed.
+- Adopt the bundled flagship workflow: start with `/bill-feature`, then use `/bill-code-review`, `/bill-code-check`, and `/bill-feature-verify` as standalone phase entry points when needed.
 - Adopt the governed workflow platform: fork, replace, or delete bundled skills and author team-owned workflows and platform packs on the same contracts.
 
 The useful adoption unit is:
@@ -24,7 +24,7 @@ The current normal runtime is Kotlin-only. Installed `skill-bill` and `skill-bil
 One maintainer should do this first:
 
 1. Install from the branch or release the team will use.
-2. Run `skill-bill version`, `skill-bill doctor`, and a real `/bill-feature-task` on a small spec.
+2. Run `skill-bill version`, `skill-bill doctor`, and a real `/bill-feature` on a small spec.
 3. Decide which reference packs matter for the team.
 4. Add project guidance in `AGENTS.md` or `.agents/skill-overrides.md`.
 5. Run the validation gate before asking others to install.
@@ -45,12 +45,12 @@ The Gradle command validates the Kotlin runtime for maintainers. It is not how i
 | Command | Use it when | What to expect |
 |---------|-------------|----------------|
 | `/bill-feature-spec` | Preparing specs before implementation starts | Shared single-spec/decomposed preparation artifacts for feature and goal workflows |
-| `/bill-feature-task` | Building from a design doc | Structured plan, implementation, review, audit, validation, history, and PR handoff |
+| `/bill-feature` | Building from a design doc | Prepares the spec (or skips when one exists), then routes to implementation: structured plan, implementation, review, audit, validation, history, and PR handoff |
 | `/bill-code-review` | Reviewing staged changes, a PR, or a commit range | Routed review with summary, risk register, action items, and verdict |
 | `/bill-code-check` | Running repo checks before a PR | Real tool execution through the routed platform quality-check skill |
 | `/bill-feature-verify` | Checking a teammate PR against a spec | Criteria-based verification plus review and validation guidance |
 
-Start with `/bill-feature-task` when introducing Skill Bill to a team, or `/bill-feature-spec` when you want a prep-only session before implementation. The other commands are reusable phases inside that workflow and direct shortcuts when the team only needs one phase. The commands route by dominant stack first, then apply platform-pack behavior and add-ons.
+Start with `/bill-feature` when introducing Skill Bill to a team, or `/bill-feature-spec` when you want a prep-only session before implementation. The other commands are reusable phases inside that workflow and direct shortcuts when the team only needs one phase. The commands route by dominant stack first, then apply platform-pack behavior and add-ons.
 
 ## Runtime Expectations
 
@@ -215,7 +215,7 @@ The Kotlin CLI has an integration test for this flow using temporary directories
 
 Suggested rollout:
 
-1. One maintainer calibrates on a small real feature spec with `/bill-feature-task`.
+1. One maintainer calibrates on a small real feature spec with `/bill-feature`.
 2. Two or three engineers install from the same branch or tag and run feature implementation plus standalone review on live work.
 3. The team triages false positives and adds learnings or overrides.
 4. Platform owners fork, delete, or create skills and packs only when bundled defaults no longer fit.

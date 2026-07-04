@@ -2,12 +2,14 @@
 
 package skillbill.install.plan
 
+import skillbill.error.InvalidInternalSkillClassificationError
 import skillbill.install.model.AgentTarget
 import skillbill.install.model.InstallTransaction
 import skillbill.install.staging.resolveStagedSymlinkTarget
 import skillbill.install.support.claudeConfigRoot
 import skillbill.install.support.claudeConfigRoots
 import skillbill.install.support.claudeSkillTargets
+import skillbill.scaffold.authoring.parseInternalForFrontmatter
 import skillbill.scaffold.model.PlatformManifest
 import java.nio.file.Files
 import java.nio.file.Path
@@ -99,6 +101,16 @@ internal fun installSkill(
   val resolvedSkill = skillPath.toAbsolutePath().normalize()
   if (!Files.isDirectory(resolvedSkill)) {
     throw java.io.FileNotFoundException("Skill directory '$resolvedSkill' does not exist.")
+  }
+  // SKILL-102 (PD2): the plan/apply path filters internal skills out before linking; this direct
+  // per-skill path (CLI `link-skill`) must refuse them too or an internal skill gains a listed
+  // skills_dir entry alongside its sidecar.
+  parseInternalForFrontmatter(resolvedSkill.resolve("content.md"))?.let { declaredParent ->
+    throw InvalidInternalSkillClassificationError(
+      "Skill '${resolvedSkill.fileName}' declares 'internal-for: $declaredParent' and cannot be " +
+        "installed or linked directly: internal skills install as '<skill-name>.md' sidecars inside " +
+        "their parent's installed directory. Install the parent skill instead.",
+    )
   }
   // SKILL-40 subtask 2: content-managed skills install via the per-skill staging cache so the
   // source tree stays read-only. Non-content-managed sources (manual `link-skill` against an ad-hoc

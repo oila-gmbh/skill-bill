@@ -34,6 +34,7 @@ private data class FreshInstallInputs(
   val authored: List<Path>,
   val contentHash: String,
   val finalStagingDir: Path,
+  val internalChildren: List<InternalSidecarTarget>,
 )
 
 internal fun installedSkillsCacheRoot(home: Path): Path =
@@ -84,6 +85,7 @@ internal fun authoredFilesFor(
   sourceSkillDir: Path,
   applicablePointers: List<Pair<PlatformManifest, PointerSpec>>,
   generatedSupportPointers: List<GeneratedSupportPointer> = emptyList(),
+  excludedSidecarNames: Set<String> = emptySet(),
 ): List<Path> {
   val excluded = mutableSetOf<Path>()
   excluded.add(sourceSkillDir.resolve(INSTALL_STAGING_SKILL_FILENAME).toAbsolutePath().normalize())
@@ -94,6 +96,11 @@ internal fun authoredFilesFor(
   }
   generatedSupportPointers.forEach { pointer ->
     excluded.add(sourceSkillDir.resolve(pointer.name).toAbsolutePath().normalize())
+  }
+  // An authored file at a would-be sidecar name must not be copied verbatim (it would race with
+  // the sidecar render); the collision hard-fail lives in writeInternalSidecarFiles.
+  excludedSidecarNames.forEach { sidecarName ->
+    excluded.add(sourceSkillDir.resolve(sidecarName).toAbsolutePath().normalize())
   }
   val resolvedSource = sourceSkillDir.toAbsolutePath().normalize()
   return Files.walk(sourceSkillDir).use { stream ->
@@ -131,6 +138,7 @@ internal fun computeInstallContentHash(
   authored: List<Path>,
   applicablePointers: List<Pair<PlatformManifest, PointerSpec>>,
   generatedSupportPointers: List<GeneratedSupportPointer> = emptyList(),
+  internalChildren: List<InternalSidecarTarget> = emptyList(),
 ): String {
   val digest = MessageDigest.getInstance("SHA-256")
   val newline = byteArrayOf('\n'.code.toByte())
@@ -173,6 +181,21 @@ internal fun computeInstallContentHash(
       digest.update(Files.readAllBytes(pointer.target))
       digest.update(newline)
     }
+  // SKILL-102 (PD2): fold the rendered sidecar wrapper bytes into the parent's content hash so
+  // editing a child's content.md (or the renderer) invalidates the parent's cache entry. The
+  // section is appended ONLY when there is at least one internal child, so repos with no internal
+  // skills produce byte-identical hashes to before this change (criterion 7).
+  if (internalChildren.isNotEmpty()) {
+    digest.update("--internal-sidecars--".toByteArray(StandardCharsets.UTF_8))
+    digest.update(newline)
+    internalChildren
+      .sortedBy { child -> child.skillName }
+      .forEach { child ->
+        digest.update("${child.skillName}.md|".toByteArray(StandardCharsets.UTF_8))
+        digest.update(child.renderedWrapper.toByteArray(StandardCharsets.UTF_8))
+        digest.update(newline)
+      }
+  }
   val hashBytes = digest.digest()
   return hashBytes.take(INSTALL_CACHE_KEY_BYTES).joinToString("") { byte -> "%02x".format(byte) }
 }
@@ -182,6 +205,7 @@ internal fun stageInstalledSkill(
   sourceSkillDir: Path,
   home: Path,
   manifests: List<PlatformManifest>? = null,
+  skillsRoot: Path? = null,
 ): RenderedSkill {
   val resolvedSource = sourceSkillDir.toAbsolutePath().normalize()
   val resolvedRepoRoot = repoRoot.toAbsolutePath().normalize()
@@ -189,12 +213,28 @@ internal fun stageInstalledSkill(
   val target: AuthoringTarget = resolveTarget(resolvedRepoRoot, skillName)
   val pointers = applicablePointers(resolvedRepoRoot, resolvedSource, manifests)
   val generatedSupportPointers = generatedSupportPointersFor(resolvedRepoRoot, resolvedSource, skillName)
-  val authored = authoredFilesFor(resolvedSource, pointers, generatedSupportPointers)
-  val contentHash = computeInstallContentHash(resolvedSource, authored, pointers, generatedSupportPointers)
+  // F-002: internal-child discovery must use the same skills root the plan used (CLI --skills),
+  // or planned and staged hashes diverge and apply fails for any parent with internal children.
+  val resolvedSkillsRoot = (skillsRoot ?: resolvedRepoRoot.resolve("skills")).toAbsolutePath().normalize()
+  val internalChildren = discoverInternalSidecarTargets(resolvedRepoRoot, skillName, resolvedSkillsRoot)
+  val sidecarNames = internalChildren.map { child -> "${child.skillName}.md" }.toSet()
+  val authored = authoredFilesFor(
+    sourceSkillDir = resolvedSource,
+    applicablePointers = pointers,
+    generatedSupportPointers = generatedSupportPointers,
+    excludedSidecarNames = sidecarNames,
+  )
+  val contentHash = computeInstallContentHash(
+    sourceSkillDir = resolvedSource,
+    authored = authored,
+    applicablePointers = pointers,
+    generatedSupportPointers = generatedSupportPointers,
+    internalChildren = internalChildren,
+  )
   val finalStagingDir = installedSkillStagingDir(home, resolvedSource, contentHash)
 
-  // Idempotent reuse: same hash, marker present and intact, SKILL.md present -> reuse existing dir.
-  if (isReusableInstallStaging(finalStagingDir, contentHash)) {
+  // Idempotent reuse: same hash, marker intact, SKILL.md and every expected sidecar present.
+  if (isReusableInstallStaging(finalStagingDir, contentHash, sidecarNames)) {
     log.fine(
       "stageInstalledSkill reuse=true skill=$skillName hash=$contentHash dir=$finalStagingDir",
     )
@@ -204,6 +244,7 @@ internal fun stageInstalledSkill(
       contentHash = contentHash,
       applicablePointers = pointers,
       generatedSupportPointers = generatedSupportPointers,
+      internalSidecarNames = sidecarNames,
     )
   }
   log.fine(
@@ -221,6 +262,7 @@ internal fun stageInstalledSkill(
       authored = authored,
       contentHash = contentHash,
       finalStagingDir = finalStagingDir,
+      internalChildren = internalChildren,
     ),
   )
 }
@@ -241,6 +283,11 @@ private fun buildFreshInstallStaging(inputs: FreshInstallInputs): RenderedSkill 
       tempDir = tempDir,
       pointers = inputs.supportPointers,
     )
+    val sidecarFilesInTemp = writeInternalSidecarFiles(
+      tempDir = tempDir,
+      parentSourceDir = inputs.sourceSkillDir,
+      children = inputs.internalChildren,
+    )
     val packsRoot = inputs.repoRoot.resolve("platform-packs")
     if (Files.isDirectory(packsRoot)) {
       Files.createSymbolicLink(tempDir.resolve("platform-packs"), packsRoot)
@@ -255,6 +302,7 @@ private fun buildFreshInstallStaging(inputs: FreshInstallInputs): RenderedSkill 
     val finalPointerFiles = (pointerFilesInTemp + supportPointerFilesInTemp)
       .map { p -> inputs.finalStagingDir.resolve(tempDir.relativize(p)) }
     val finalCopied = copiedInTemp.map { p -> inputs.finalStagingDir.resolve(tempDir.relativize(p)) }
+    val finalSidecars = sidecarFilesInTemp.map { p -> inputs.finalStagingDir.resolve(tempDir.relativize(p)) }
     // F-013: prune older staging dirs for the same skill slug (different hash). Best-effort only;
     // pruning failures are logged and suppressed so they never mask the successful install.
     pruneStaleStagingDirs(inputs.home, inputs.sourceSkillDir, inputs.contentHash)
@@ -266,6 +314,7 @@ private fun buildFreshInstallStaging(inputs: FreshInstallInputs): RenderedSkill 
       renderedPointerFiles = finalPointerFiles,
       copiedAuthoredFiles = finalCopied,
       contentHash = inputs.contentHash,
+      renderedSidecarFiles = finalSidecars,
     )
   } catch (error: Throwable) {
     // F-007: catch every Throwable so any failure path (render error, IO error, programmer error,
