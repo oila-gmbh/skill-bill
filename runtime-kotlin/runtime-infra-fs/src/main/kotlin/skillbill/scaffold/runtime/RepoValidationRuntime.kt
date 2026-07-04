@@ -1,4 +1,4 @@
-@file:Suppress("TooManyFunctions", "MaxLineLength")
+@file:Suppress("TooManyFunctions", "MaxLineLength", "LargeClass")
 
 package skillbill.scaffold.runtime
 
@@ -139,6 +139,8 @@ object RepoValidationRuntime {
     platformSkillFiles.forEach { (skillName, skillFile) ->
       validateInstallableSkill(skillName, skillFile, root, issues, validateSourceSidecars = false)
     }
+    validateInternalSidecarCollisions(skillFiles + platformSkillFiles, issues)
+    validateInternalSkillClassification(skillFiles + platformSkillFiles, issues)
     validateSkillSourceShape(skillFiles.values, root, issues)
     addonFiles.forEach { addonFile ->
       validateAddonFile(addonFile, root, issues)
@@ -593,6 +595,38 @@ object RepoValidationRuntime {
     issues += validateAuthoredContent(contentFile, Files.readString(contentFile))
   }
 
+  /**
+   * SKILL-102 subtask 1 (PD2 collision guard): a parent skill's source directory must not already
+   * author a file whose name equals a would-be internal sidecar (`<child-skill-name>.md`). Mirrors
+   * the staging-time guard in `writeInternalSidecarFiles` so `skill-bill validate` surfaces the
+   * collision before install.
+   */
+  private fun validateInternalSidecarCollisions(skills: Map<String, Path>, issues: MutableList<String>) {
+    val internalByParent = skills.entries
+      .mapNotNull { (skillName, contentFile) ->
+        val text = Files.readString(contentFile)
+        val declaredParent = parseFrontmatter(text)["internal-for"]?.takeIf(String::isNotBlank)
+        if (declaredParent != null && declaredParent != skillName && declaredParent in skills) {
+          declaredParent to skillName
+        } else {
+          null
+        }
+      }
+      .groupBy({ it.first }, { it.second })
+    internalByParent.forEach { (parentName, children) ->
+      val parentFile = skills[parentName] ?: return@forEach
+      val parentDir = parentFile.parent
+      children.sorted().forEach { childName ->
+        val sidecar = parentDir.resolve("$childName.md")
+        if (Files.isRegularFile(sidecar, LinkOption.NOFOLLOW_LINKS)) {
+          issues += "$parentFile: internal sidecar '$childName.md' for parent '$parentName' " +
+            "collides with an authored file at '$sidecar'; remove the authored file or rename the " +
+            "internal skill."
+        }
+      }
+    }
+  }
+
   private fun validatePortableReviewWording(
     skillName: String,
     text: String,
@@ -707,6 +741,47 @@ object RepoValidationRuntime {
       val text = Files.readString(contentFile)
       orchestrationPathPattern.findAll(text).forEach { match ->
         issues += "${contentFile.relativeTo(root)}: must not reference bare orchestration path '${match.value}'"
+      }
+    }
+  }
+
+  /**
+   * SKILL-102 subtask 1 (PD1): enforce the internal-skill classification rules at validation time.
+   * Mirrors `validateInternalSkillClassification` (authoring) and `validateInstallPlanInternalSkills`
+   * (install plan) so the same loud-fail rules hold wherever the classification is read. Emits
+   * issue strings (rather than throwing) to match the validateRepo collection pattern; each issue
+   * names the offending skill, the declared parent, and the rule violated.
+   */
+  private fun validateInternalSkillClassification(skillFiles: Map<String, Path>, issues: MutableList<String>) {
+    val byName = skillFiles
+    val internalDeclarations = skillFiles.entries.mapNotNull { (skillName, contentFile) ->
+      val text = Files.readString(contentFile)
+      val frontmatter = parseFrontmatter(text)
+      frontmatter["internal-for"]?.let { declaredParent -> Triple(skillName, contentFile, declaredParent) }
+    }
+    internalDeclarations.forEach { (skillName, contentFile, declaredParent) ->
+      val displayPath = contentFile.toString()
+      if (declaredParent.isBlank()) {
+        issues += "$displayPath: internal skill '$skillName' declares parent via 'internal-for:' with an " +
+          "empty value; the value must be the name of another discovered skill."
+        return@forEach
+      }
+      if (declaredParent == skillName) {
+        issues += "$displayPath: internal skill '$skillName' declares parent '$declaredParent' which is " +
+          "the skill itself; an internal skill's parent must be a different discovered skill."
+        return@forEach
+      }
+      val parentFile = byName[declaredParent]
+      if (parentFile == null) {
+        issues += "$displayPath: internal skill '$skillName' declares parent '$declaredParent' which is " +
+          "not a discovered skill."
+        return@forEach
+      }
+      val parentText = Files.readString(parentFile)
+      val parentInternalFor = parseFrontmatter(parentText)["internal-for"]
+      if (parentInternalFor != null) {
+        issues += "$displayPath: internal skill '$skillName' declares parent '$declaredParent' which is " +
+          "itself an internal skill (chained internal-for is not allowed; depth is 1)."
       }
     }
   }

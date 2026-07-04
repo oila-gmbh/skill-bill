@@ -1,7 +1,11 @@
+@file:Suppress("ThrowsCount")
+
 package skillbill.install.plan
 
+import skillbill.error.InvalidInternalSkillClassificationError
 import skillbill.install.model.InstallPlanSkill
 import skillbill.install.model.InstallPlanSkillKind
+import skillbill.scaffold.authoring.parseInternalForFrontmatter
 import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.platformpack.discoverPlatformPackManifests
 import skillbill.scaffold.platformpack.loadQualityCheckContent
@@ -37,16 +41,63 @@ internal fun discoverBaseSkills(skillsRoot: Path): List<InstallPlanSkill> {
   }
   val baseSkills = candidateSkillDirs
     .map { skillDir ->
+      val contentFile = skillDir.resolve("content.md")
       InstallPlanSkill(
         name = skillDir.fileName.toString(),
         sourceDir = skillDir.toAbsolutePath().normalize(),
         kind = InstallPlanSkillKind.BASE,
+        // SKILL-102 subtask 1 (PD1): carry the internal-for classification onto the install plan
+        // so staging can render sidecars and skip agent skills_dir links. Classification rules
+        // are validated once the full skill set is known (see validateInstallPlanInternalSkills).
+        internalFor = parseInternalForFrontmatter(contentFile),
       )
     }
   require(baseSkills.isNotEmpty()) {
     "Base skills root '$skillsRoot' does not contain any bill-* skills with content.md."
   }
   return baseSkills
+}
+
+/**
+ * SKILL-102 subtask 1 (PD1): enforce the internal-skill classification rules across the full
+ * install-plan skill set (base + materialized platform-pack skills) once every name is known.
+ *
+ * Rules mirror [skillbill.scaffold.authoring.validateInternalSkillClassification] so the install
+ * seam and the authoring/validation seam fail identically. Throws
+ * [InvalidInternalSkillClassificationError] on any violation with an actionable message naming
+ * the offending skill, the declared parent, and the rule violated.
+ */
+internal fun validateInstallPlanInternalSkills(skills: List<InstallPlanSkill>) {
+  val byName = skills.associateBy { skill -> skill.name }
+  skills.forEach { skill ->
+    val declaredParent = skill.internalFor ?: return@forEach
+    val contentFile = skill.sourceDir.resolve("content.md")
+    if (declaredParent.isBlank()) {
+      throw InvalidInternalSkillClassificationError(
+        "$contentFile: internal skill '${skill.name}' declares parent via 'internal-for:' with an " +
+          "empty value; the value must be the name of another discovered skill.",
+      )
+    }
+    if (declaredParent == skill.name) {
+      throw InvalidInternalSkillClassificationError(
+        "$contentFile: internal skill '${skill.name}' declares parent '$declaredParent' which is " +
+          "the skill itself; an internal skill's parent must be a different discovered skill.",
+      )
+    }
+    val parent = byName[declaredParent]
+    if (parent == null) {
+      throw InvalidInternalSkillClassificationError(
+        "$contentFile: internal skill '${skill.name}' declares parent '$declaredParent' which is " +
+          "not a discovered skill.",
+      )
+    }
+    if (parent.internalFor != null) {
+      throw InvalidInternalSkillClassificationError(
+        "$contentFile: internal skill '${skill.name}' declares parent '$declaredParent' which is " +
+          "itself an internal skill (chained internal-for is not allowed; depth is 1).",
+      )
+    }
+  }
 }
 
 internal fun platformSkills(manifest: PlatformManifest): List<InstallPlanSkill> {

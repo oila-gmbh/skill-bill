@@ -144,7 +144,11 @@ private fun applyPlannedSkills(
 private fun selectedPlannedSkills(plan: InstallPlan): List<InstallPlanSkill> {
   val selectedPlatformSlugs = plan.selectedPlatformSlugs.toSet()
   return plan.skills.filter { skill ->
-    skill.kind == InstallPlanSkillKind.BASE || skill.platformSlug in selectedPlatformSlugs
+    // SKILL-102 subtask 1 (PD2): internal skills install as sidecars inside their parent's
+    // staged directory and get no standalone staging directory or skills_dir link. They are
+    // still enumerated for native-agent source-root discovery (see selectedNativeAgentSourceRoots).
+    skill.internalFor == null &&
+      (skill.kind == InstallPlanSkillKind.BASE || skill.platformSlug in selectedPlatformSlugs)
   }
 }
 
@@ -176,6 +180,7 @@ private fun RenderedSkill.toStagingOutcome(sourceDir: Path): InstallSkillStaging
   renderedPointerFiles = renderedPointerFiles,
   copiedAuthoredFiles = copiedAuthoredFiles,
   contentHash = contentHash,
+  renderedSidecarFiles = renderedSidecarFiles,
 )
 
 private fun failedStagingOutcome(sourceDir: Path, skillName: String, error: Throwable): InstallSkillStagingOutcome {

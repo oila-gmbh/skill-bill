@@ -1,11 +1,13 @@
-@file:Suppress("TooGenericExceptionCaught")
+@file:Suppress("TooGenericExceptionCaught", "TooManyFunctions", "LongParameterList")
 
 package skillbill.install.staging
 
+import skillbill.error.InternalSkillSidecarCollisionError
 import skillbill.install.model.RenderedSkill
 import skillbill.scaffold.authoring.AuthoringTarget
 import skillbill.scaffold.authoring.normalizeMarkdownLineEndings
 import skillbill.scaffold.authoring.renderWrapper
+import skillbill.scaffold.authoring.resolveTarget
 import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.model.PointerSpec
 import skillbill.scaffold.pointer.renderPointer
@@ -50,6 +52,7 @@ internal fun reuseInstallStaging(
   contentHash: String,
   applicablePointers: List<Pair<PlatformManifest, PointerSpec>>,
   generatedSupportPointers: List<GeneratedSupportPointer> = emptyList(),
+  internalSidecarNames: Set<String> = emptySet(),
 ): RenderedSkill {
   val skillFile = finalStagingDir.resolve(INSTALL_STAGING_SKILL_FILENAME)
   val skillFileNormalized = skillFile.toAbsolutePath().normalize()
@@ -69,11 +72,17 @@ internal fun reuseInstallStaging(
     applicablePointers.map { (_, spec) -> spec.name } +
       generatedSupportPointers.map { pointer -> pointer.name }
     ).map { name -> Path.of(name) }.toSet()
+  val sidecarRelativePaths = internalSidecarNames.map { name -> Path.of(name) }.toSet()
   val authoredCopied = staged.filter { path ->
     val rel = finalRoot.relativize(path.toAbsolutePath().normalize())
-    rel !in pointerRelativePaths && Files.isRegularFile(sourceSkillDir.resolve(rel), LinkOption.NOFOLLOW_LINKS)
+    rel !in pointerRelativePaths && rel !in sidecarRelativePaths &&
+      Files.isRegularFile(sourceSkillDir.resolve(rel), LinkOption.NOFOLLOW_LINKS)
   }
-  val pointerFiles = staged.filter { path -> path !in authoredCopied }
+  val sidecarFiles = staged.filter { path ->
+    val rel = finalRoot.relativize(path.toAbsolutePath().normalize())
+    rel in sidecarRelativePaths
+  }
+  val pointerFiles = staged.filter { path -> path !in authoredCopied && path !in sidecarFiles }
   return RenderedSkill(
     skillName = sourceSkillDir.fileName.toString(),
     sourceSkillDir = sourceSkillDir,
@@ -82,6 +91,7 @@ internal fun reuseInstallStaging(
     renderedPointerFiles = pointerFiles,
     copiedAuthoredFiles = authoredCopied,
     contentHash = contentHash,
+    renderedSidecarFiles = sidecarFiles,
   )
 }
 
@@ -123,6 +133,48 @@ internal fun writeRenderedPointerFiles(
   val rendered = normalizeMarkdownLineEndings(Files.readString(targetFile)).trimEnd() + "\n"
   Files.write(pointerFile, rendered.toByteArray(StandardCharsets.UTF_8))
   pointerFile
+}
+
+/**
+ * SKILL-102 subtask 1 (PD2/PD6): render each internal child's governed wrapper into the parent's
+ * staging directory as `<skill-name>.md`. The wrapper is the same `renderWrapper` output a listed
+ * skill's `SKILL.md` would carry (descriptor, class sections, execution body, ceremony), so
+ * behavior parity holds (PD6). Loud-fails when the parent's source dir already contains an
+ * authored file whose name equals a would-be sidecar name (collision guard, mirroring
+ * GeneratedArtifactGuard's pattern).
+ */
+internal fun writeInternalSidecarFiles(
+  tempDir: Path,
+  parentSourceDir: Path,
+  children: List<InternalSidecarTarget>,
+): List<Path> = children.map { child ->
+  val sidecarName = "${child.skillName}.md"
+  // Collision guard: the parent's source dir must not already author a file at this name.
+  val collision = parentSourceDir.resolve(sidecarName)
+  if (Files.isRegularFile(collision, LinkOption.NOFOLLOW_LINKS)) {
+    throw InternalSkillSidecarCollisionError(
+      parentSkillName = parentSourceDir.fileName.toString(),
+      internalSkillName = child.skillName,
+      sidecarRelativePath = sidecarName,
+    )
+  }
+  val sidecarFile = tempDir.resolve(sidecarName).normalize()
+  require(sidecarFile.startsWith(tempDir)) {
+    "Internal sidecar '$sidecarName' staging path '$sidecarFile' escapes staging dir '$tempDir'."
+  }
+  val rendered = renderInternalSidecarWrapper(child)
+  Files.write(sidecarFile, rendered.toByteArray(StandardCharsets.UTF_8))
+  sidecarFile
+}
+
+/**
+ * Render the governed wrapper for an internal child via the same `renderWrapper` path a listed
+ * skill's `SKILL.md` uses. The child's [AuthoringTarget] is resolved through discovery so the
+ * classification seam (which already validated `internal-for`) stays the single source of truth.
+ */
+internal fun renderInternalSidecarWrapper(child: InternalSidecarTarget): String {
+  val target = resolveTarget(child.repoRoot, child.skillName)
+  return renderWrapper(target)
 }
 
 internal fun promoteInstallStagingDir(tempDir: Path, finalStagingDir: Path) {

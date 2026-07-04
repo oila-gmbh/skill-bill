@@ -7,6 +7,7 @@ import skillbill.install.model.RenderedSkill
 import skillbill.install.staging.applicablePointers
 import skillbill.install.staging.authoredFilesFor
 import skillbill.install.staging.computeInstallContentHash
+import skillbill.install.staging.discoverInternalSidecarTargets
 import skillbill.install.staging.generatedSupportPointersFor
 import skillbill.install.staging.installedSkillStagingDir
 import skillbill.install.staging.installedSkillsCacheRoot
@@ -69,8 +70,23 @@ private fun materializeValidatedPlannedStaging(inputs: PlannedStagingMaterializa
     skillName = skill.name,
     skillsRoot = plan.request.targetPaths.skillsRoot,
   )
-  val authored = authoredFilesFor(inputs.resolvedSource, pointers, supportPointers)
-  val currentHash = computeInstallContentHash(inputs.resolvedSource, authored, pointers, supportPointers)
+  // SKILL-102 subtask 1: discover internal children at apply time too so the planned content
+  // hash (which folded them in) recomputes identically and reuse vs rebuild stays consistent
+  // with the staging pipeline.
+  val internalChildren = discoverInternalSidecarTargets(
+    repoRoot = plan.request.repoRoot,
+    parentSkillName = skill.name,
+    skillsRoot = plan.request.targetPaths.skillsRoot,
+  )
+  val sidecarNames = internalChildren.map { child -> "${child.skillName}.md" }.toSet()
+  val authored = authoredFilesFor(inputs.resolvedSource, pointers, supportPointers, sidecarNames)
+  val currentHash = computeInstallContentHash(
+    sourceSkillDir = inputs.resolvedSource,
+    authored = authored,
+    applicablePointers = pointers,
+    generatedSupportPointers = supportPointers,
+    internalChildren = internalChildren,
+  )
   require(currentHash == intent.contentHash) {
     "Planned staging for '${skill.name}' expected hash '${intent.contentHash}' but current source resolves " +
       "to '$currentHash'. Re-run planInstall before applyInstall."
@@ -82,6 +98,7 @@ private fun materializeValidatedPlannedStaging(inputs: PlannedStagingMaterializa
       contentHash = intent.contentHash,
       applicablePointers = pointers,
       generatedSupportPointers = supportPointers,
+      internalSidecarNames = sidecarNames,
     )
   }
   val staged = stageInstalledSkill(

@@ -694,6 +694,97 @@ class RepoValidationRuntimeTest {
     )
   }
 
+  @Test
+  fun `repo validation accepts a valid internal-for declaration`() {
+    val repoRoot = Files.createTempDirectory("skillbill-valid-internal")
+    createRepoValidationSkillFixture(repoRoot)
+    seedInternalSkill(repoRoot, "bill-feature", null)
+    seedInternalSkill(repoRoot, "bill-feature-task", "bill-feature")
+
+    val report = RepoValidationRuntime.validateRepo(repoRoot)
+
+    val internalIssues = report.issues.filter { it.contains("internal skill") }
+    assertTrue(internalIssues.isEmpty(), "expected no internal-skill issues; got: ${internalIssues.joinToString("\n")}")
+  }
+
+  @Test
+  fun `repo validation rejects internal-for with unknown parent`() {
+    val repoRoot = Files.createTempDirectory("skillbill-unknown-parent")
+    createRepoValidationSkillFixture(repoRoot)
+    seedInternalSkill(repoRoot, "bill-feature-task", "bill-featur")
+
+    val report = RepoValidationRuntime.validateRepo(repoRoot)
+
+    assertTrue(
+      report.issues.any { it.contains("not a discovered skill") && it.contains("bill-feature-task") },
+      report.issues.joinToString("\n"),
+    )
+  }
+
+  @Test
+  fun `repo validation rejects internal-for with self parent`() {
+    val repoRoot = Files.createTempDirectory("skillbill-self-parent")
+    createRepoValidationSkillFixture(repoRoot)
+    seedInternalSkill(repoRoot, "bill-feature-task", "bill-feature-task")
+
+    val report = RepoValidationRuntime.validateRepo(repoRoot)
+
+    assertTrue(
+      report.issues.any { it.contains("skill itself") && it.contains("bill-feature-task") },
+      report.issues.joinToString("\n"),
+    )
+  }
+
+  @Test
+  fun `repo validation rejects chained internal-for`() {
+    val repoRoot = Files.createTempDirectory("skillbill-chained")
+    createRepoValidationSkillFixture(repoRoot)
+    seedInternalSkill(repoRoot, "bill-other", null)
+    seedInternalSkill(repoRoot, "bill-feature", "bill-other")
+    seedInternalSkill(repoRoot, "bill-feature-task", "bill-feature")
+
+    val report = RepoValidationRuntime.validateRepo(repoRoot)
+
+    assertTrue(
+      report.issues.any { it.contains("chained internal-for") && it.contains("bill-feature") },
+      report.issues.joinToString("\n"),
+    )
+  }
+
+  @Test
+  fun `repo validation rejects an authored sidecar collision with the internal name`() {
+    val repoRoot = Files.createTempDirectory("skillbill-collision")
+    createRepoValidationSkillFixture(repoRoot)
+    seedInternalSkill(repoRoot, "bill-feature", null)
+    seedInternalSkill(repoRoot, "bill-feature-task", "bill-feature")
+    Files.writeString(
+      repoRoot.resolve("skills/bill-feature/bill-feature-task.md"),
+      "authored collision\n",
+    )
+
+    val report = RepoValidationRuntime.validateRepo(repoRoot)
+
+    assertTrue(
+      report.issues.any { it.contains("collides") && it.contains("bill-feature-task.md") },
+      report.issues.joinToString("\n"),
+    )
+  }
+
+  private fun seedInternalSkill(repoRoot: java.nio.file.Path, name: String, internalFor: String?) {
+    val skillDir = repoRoot.resolve("skills/$name")
+    Files.createDirectories(skillDir)
+    val frontmatter = buildString {
+      appendLine("---")
+      appendLine("name: $name")
+      appendLine("description: $name skill.")
+      if (internalFor != null) {
+        appendLine("internal-for: $internalFor")
+      }
+      appendLine("---")
+    }
+    Files.writeString(skillDir.resolve("content.md"), frontmatter + "\nAuthored body.\n")
+  }
+
   private fun createRepoValidationSkillFixture(
     repoRoot: java.nio.file.Path,
     skipSidecar: String? = null,

@@ -63,6 +63,7 @@ internal fun discoverTargets(repoRoot: Path): Map<String, AuthoringTarget> {
 
   val skillsRoot = repoRoot.resolve("skills")
   if (!Files.isDirectory(skillsRoot)) {
+    validateInternalSkillClassification(discovered)
     return discovered
   }
   Files.walk(skillsRoot).use { stream ->
@@ -71,6 +72,9 @@ internal fun discoverTargets(repoRoot: Path): Map<String, AuthoringTarget> {
       .sorted()
       .forEach { contentFile -> recordSkillTarget(repoRoot, discovered, contentFile) }
   }
+  // SKILL-102 subtask 1 (PD1): enforce internal-skill classification rules once every name is
+  // known. Throws InvalidInternalSkillClassificationError on any violation.
+  validateInternalSkillClassification(discovered)
   return discovered
 }
 
@@ -140,6 +144,10 @@ private fun recordSkillTarget(repoRoot: Path, discovered: MutableMap<String, Aut
   val displayName =
     platform.takeIf { it.isNotBlank() }?.let(::displayNameFromSlug)
       ?: displayNameFromSlug(skillName.removePrefix("bill-"))
+  // SKILL-102 subtask 1 (PD1): read the optional internal-for frontmatter value. A blank value
+  // is preserved here so validateInternalSkillClassification can fail loudly with a typed error
+  // instead of silently treating the skill as listed.
+  val internalFor = parseInternalForFrontmatter(contentFile)
   discovered[skillName] =
     AuthoringTarget(
       skillName,
@@ -150,6 +158,7 @@ private fun recordSkillTarget(repoRoot: Path, discovered: MutableMap<String, Aut
       inferArea(skillName, family),
       skillFile,
       contentFile,
+      internalFor = internalFor,
     )
 }
 
