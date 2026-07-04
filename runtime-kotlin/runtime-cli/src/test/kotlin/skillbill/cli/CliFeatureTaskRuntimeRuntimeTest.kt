@@ -731,6 +731,102 @@ class CliFeatureTaskRuntimeRuntimeTest {
   }
 }
 
+/**
+ * SKILL-103 (AC4, AC5, AC6): zcode is prose-only for feature-task runtime, mirroring opencode. The
+ * shared RUNTIME_REFUSED_AGENTS gate refuses every resolution route. Kept in its own class to stay
+ * under the detekt LargeClass threshold on the main runtime test class.
+ */
+class CliFeatureTaskRuntimeZcodeRefusalTest {
+  @Test
+  fun `feature-task-runtime run refuses when the resolved agent is zcode via SKILL_BILL_AGENT`() {
+    val fixture = runtimeFixture()
+    val launcher = RecordingPhaseLauncher()
+
+    val result = CliRuntime.run(
+      fixture.runCommand(),
+      fixture.context(launcher, environment = mapOf("CLAUDECODE" to "1", "SKILL_BILL_AGENT" to "zcode")),
+    )
+
+    assertEquals(1, result.exitCode, result.stdout)
+    assertContains(result.stdout, "Runtime mode is not supported on opencode or zcode")
+    assertContains(result.stdout, "bill-feature-task-prose")
+    assertContains(result.stdout, "bill-feature-goal mode:prose")
+    assertEquals(emptyList(), launcher.requests, result.stdout)
+    assertFalse(result.stdout.contains("workflow_id:"), result.stdout)
+  }
+
+  @Test
+  fun `feature-task-runtime run refuses when the host invoking agent is detected as zcode`() {
+    // SKILL-103 AC4: a flag-less invocation from a zcode-marked env resolves the invoking agent to
+    // zcode through the detection chain; the shared refusal gate then refuses before any spawn.
+    val fixture = runtimeFixture()
+    val launcher = RecordingPhaseLauncher()
+
+    val result = CliRuntime.run(
+      fixture.runCommand(),
+      fixture.context(
+        launcher,
+        environment = mapOf("ZCODE_APP_VERSION" to "1.0.0", "ZCODE_BASE_URL" to "https://zcode.example"),
+      ),
+    )
+
+    assertEquals(1, result.exitCode, result.stdout)
+    assertContains(result.stdout, "Runtime mode is not supported on opencode or zcode")
+    assertEquals(emptyList(), launcher.requests, result.stdout)
+    assertFalse(result.stdout.contains("workflow_id:"), result.stdout)
+  }
+
+  @Test
+  fun `feature-task-runtime run refuses zcode from agent-override phase-agent and parallel-review routes`() {
+    // SKILL-103 AC5/AC6: zcode reaching a runtime phase by ANY route must refuse at the preflight,
+    // and the predicate is case- and whitespace-insensitive (`Zcode`, ` zcode `).
+    listOf(
+      listOf("--agent", "codex", "--agent-override", "zcode"),
+      listOf("--agent", "codex", "--phase-agent", "plan=zcode"),
+      listOf("--agent", "codex", "--parallel-review-agent", "zcode"),
+      listOf("--agent", "Zcode"),
+      listOf("--agent", " zcode "),
+    ).forEach { extra ->
+      val fixture = runtimeFixture()
+      val launcher = RecordingPhaseLauncher()
+
+      val result = CliRuntime.run(
+        fixture.runCommand(extra = extra),
+        fixture.context(launcher),
+      )
+
+      assertEquals(1, result.exitCode, "expected refusal for $extra: ${result.stdout}")
+      assertContains(result.stdout, "Runtime mode is not supported on opencode or zcode")
+      assertEquals(emptyList(), launcher.requests, "no phase should spawn for $extra: ${result.stdout}")
+    }
+  }
+
+  @Test
+  fun `feature-task-runtime resume refuses when the resolved agent is zcode`() {
+    val fixture = runtimeFixture()
+    val launcher = RecordingPhaseLauncher()
+
+    val result = CliRuntime.run(
+      listOf(
+        "--db",
+        fixture.dbPath.toString(),
+        "feature-task",
+        "resume",
+        "wftr-nonexistent",
+        "SKILL-650",
+        fixture.specPath.toString(),
+        "--agent",
+        "zcode",
+      ),
+      fixture.context(launcher),
+    )
+
+    assertEquals(1, result.exitCode, result.stdout)
+    assertContains(result.stdout, "Runtime mode is not supported on opencode or zcode")
+    assertEquals(emptyList(), launcher.requests, result.stdout)
+  }
+}
+
 class CliFeatureTaskRuntimeSpecLookupTest {
   @Test
   fun `feature-task resolves single feature spec match when only issue key is provided`() {

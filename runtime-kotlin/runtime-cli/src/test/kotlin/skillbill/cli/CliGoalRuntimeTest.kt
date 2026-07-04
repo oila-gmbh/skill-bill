@@ -440,7 +440,9 @@ class CliGoalRuntimeTest {
     assertEquals(0, status.exitCode, status.stdout)
     assertContains(status.stdout, "current_subtask: 1")
     assertContains(status.stdout, "current_step: implement")
-    assertContains(status.stdout, "active_agent: codex")
+    // SKILL-103 AC1: the prose-mode CLI child carries no persisted agent attribution, so active_agent
+    // is omitted (rendered as none) rather than leaked from the caller's --agent codex.
+    assertContains(status.stdout, "active_agent: none")
     assertContains(status.stdout, "latest_liveness_signal: liveness=durable_progress phase=implement")
     assertContains(status.stdout, "role=phase_subagent sequence=12")
     assertContains(status.stdout, "latest_observability: phase=implement role=phase_subagent")
@@ -579,7 +581,8 @@ class CliGoalRuntimeTest {
     assertContains(status.stdout, "blocked: 1")
     assertContains(status.stdout, "current_subtask: 2")
     assertContains(status.stdout, "current_step: review")
-    assertContains(status.stdout, "active_agent: codex")
+    // SKILL-103 AC1: prose-mode CLI child carries no persisted agent => active_agent omitted.
+    assertContains(status.stdout, "active_agent: none")
   }
 
   @Test
@@ -651,7 +654,9 @@ class CliGoalRuntimeTest {
     assertEquals(0, status.exitCode, status.stdout)
     assertContains(status.stdout, "status: ok")
     assertContains(status.stdout, "current_subtask: 1")
-    assertContains(status.stdout, "active_agent: codex")
+    // SKILL-103 AC1: no child run persisted => active_agent is omitted (rendered as none), never
+    // sourced from the status caller's --agent resolution chain.
+    assertContains(status.stdout, "active_agent: none")
   }
 
   @Test
@@ -828,6 +833,112 @@ class CliGoalOpencodeRefusalTest {
 
     assertEquals(1, result.exitCode, result.stdout)
     assertContains(result.stdout, "Runtime mode is not supported on opencode")
+    assertEquals(emptyList(), launcher.requests, result.stdout)
+  }
+}
+
+/**
+ * SKILL-103 (AC2, AC4, AC5, AC6): zcode mirrors opencode's prose-only runtime refusal shape, and
+ * goal status reports the persisted run agent regardless of the caller's resolution chain. Kept in
+ * its own class to stay under the detekt LargeClass threshold (the file's established convention).
+ */
+class CliGoalZcodeRefusalTest {
+  @Test
+  fun `goal runtime run refuses when the resolved agent is zcode`() {
+    val fixture = goalFixture(subtaskCount = 1)
+    val launcher = GoalFixtureAgentRunLauncher(fixture)
+    val command = listOf(
+      "--db",
+      fixture.dbPath.toString(),
+      "goal",
+      "SKILL-901",
+      "--agent",
+      "zcode",
+      "--repo-root",
+      fixture.tempDir.toString(),
+    )
+
+    val result = CliRuntime.run(command, fixture.context(launcher = launcher))
+
+    assertEquals(1, result.exitCode, result.stdout)
+    assertContains(result.stdout, "Runtime mode is not supported on opencode or zcode")
+    assertContains(result.stdout, "bill-feature-task-prose")
+    assertContains(result.stdout, "bill-feature-goal mode:prose")
+    assertEquals(emptyList(), launcher.requests, result.stdout)
+  }
+
+  @Test
+  fun `goal runtime run refuses when the agent override is zcode`() {
+    val fixture = goalFixture(subtaskCount = 1)
+    val launcher = GoalFixtureAgentRunLauncher(fixture)
+
+    val result = CliRuntime.run(
+      fixture.goalCommand(extra = listOf("--agent-override", "zcode")),
+      fixture.context(launcher = launcher),
+    )
+
+    assertEquals(1, result.exitCode, result.stdout)
+    assertContains(result.stdout, "Runtime mode is not supported on opencode or zcode")
+    assertEquals(emptyList(), launcher.requests, result.stdout)
+  }
+
+  @Test
+  fun `goal runtime run refuses when the host invoking agent is detected as zcode via env`() {
+    // SKILL-103 AC4/AC6: a flag-less invocation from a zcode-marked env resolves the invoking agent
+    // to zcode through the detection chain, and the shared refusal gate refuses before spawning.
+    val fixture = goalFixture(subtaskCount = 1)
+    val launcher = GoalFixtureAgentRunLauncher(fixture)
+    val command = buildList {
+      add("--db")
+      add(fixture.dbPath.toString())
+      add("goal")
+      add("SKILL-901")
+      add("--repo-root")
+      add(fixture.tempDir.toString())
+    }
+
+    val result = CliRuntime.run(
+      command,
+      CliRuntimeContext(
+        userHome = fixture.tempDir,
+        workflowGitOperations = GoalTestWorkflowGitOperations,
+        agentRunLauncher = launcher,
+        goalPullRequestPort = fixture.pullRequests,
+        environment = mapOf("ZCODE_APP_VERSION" to "1.0.0", "ZCODE_BASE_URL" to "https://zcode.example"),
+      ),
+    )
+
+    assertEquals(1, result.exitCode, result.stdout)
+    assertContains(result.stdout, "Runtime mode is not supported on opencode or zcode")
+    assertEquals(emptyList(), launcher.requests, result.stdout)
+  }
+
+  @Test
+  fun `goal runtime run refuses when SKILL_BILL_AGENT resolves to zcode`() {
+    val fixture = goalFixture(subtaskCount = 1)
+    val launcher = GoalFixtureAgentRunLauncher(fixture)
+    val command = buildList {
+      add("--db")
+      add(fixture.dbPath.toString())
+      add("goal")
+      add("SKILL-901")
+      add("--repo-root")
+      add(fixture.tempDir.toString())
+    }
+
+    val result = CliRuntime.run(
+      command,
+      CliRuntimeContext(
+        userHome = fixture.tempDir,
+        workflowGitOperations = GoalTestWorkflowGitOperations,
+        agentRunLauncher = launcher,
+        goalPullRequestPort = fixture.pullRequests,
+        environment = mapOf("CLAUDECODE" to "1", "SKILL_BILL_AGENT" to "zcode"),
+      ),
+    )
+
+    assertEquals(1, result.exitCode, result.stdout)
+    assertContains(result.stdout, "Runtime mode is not supported on opencode or zcode")
     assertEquals(emptyList(), launcher.requests, result.stdout)
   }
 }

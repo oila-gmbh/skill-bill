@@ -91,10 +91,6 @@ class AgentRunLauncherTest {
 
   @Test
   fun `opencode returns the unsupported headless launch outcome with the actionable prose message`() {
-    // SKILL-95 AC5: opencode is prose-only and must not have a runtime launch adapter, so the
-    // launcher yields the unsupported outcome. Unlike a generically-unsupported agent (copilot),
-    // a runtime-refused agent carries the actionable refusal message so the deep path is as legible
-    // as the CLI preflight.
     val launcher = FileSystemAgentRunLauncher(JvmAgentRunProcessRunner())
 
     val outcome = launcher.launch(
@@ -108,6 +104,25 @@ class AgentRunLauncherTest {
     assertEquals(InstallAgent.OPENCODE, outcome.agent)
     assertContains(outcome.reason, "Runtime mode is not supported on opencode")
     assertContains(outcome.reason, "bill-feature-task-prose")
+  }
+
+  @Test
+  fun `zcode returns the unsupported headless launch outcome with the actionable prose message`() {
+    val launcher = FileSystemAgentRunLauncher(JvmAgentRunProcessRunner())
+
+    val outcome = launcher.launch(
+      AgentRunLaunchRequest(
+        agentId = "zcode",
+        skillRunRequest = skillRunRequest(),
+      ),
+    )
+
+    assertIs<UnsupportedAgentRunLaunch>(outcome)
+    assertEquals(InstallAgent.ZCODE, outcome.agent)
+    assertContains(outcome.reason, "Runtime mode is not supported on opencode or zcode")
+    assertContains(outcome.reason, "zcode's foreground runtime exceeds the Bash execution ceiling")
+    assertContains(outcome.reason, "bill-feature-task-prose")
+    assertContains(outcome.reason, "bill-feature-goal mode:prose")
   }
 
   @Test
@@ -842,17 +857,18 @@ class HeadlessAgentRunAdapterTest {
 
   @Test
   fun `opencode is not registered as a headless runtime adapter`() {
-    // SKILL-95 AC5: opencode is prose-only. It must not appear in the headless adapter registry, so
-    // no code path can spawn it for a runtime phase even if a CLI guard is bypassed.
+    // SKILL-95 AC5 / SKILL-103 AC6: opencode and zcode are prose-only. Neither may appear in the
+    // headless adapter registry, so no code path can spawn either for a runtime phase even if a CLI
+    // guard is bypassed.
     val adapters = headlessAgentRunAdapters(RecordingAgentRunProcessRunner())
 
     // Every runtime-refused agent is absent (the AC), while the known runtime agents stay registered.
     // Asserting a subset rather than exact-set equality keeps this robust to unrelated future agents.
     RUNTIME_REFUSED_AGENTS.forEach { refused -> assertFalse(adapters.keys.contains(refused)) }
+    assertFalse(adapters.keys.contains(InstallAgent.OPENCODE), "opencode must not be a headless adapter")
+    assertFalse(adapters.keys.contains(InstallAgent.ZCODE), "zcode must not be a headless adapter")
     assertTrue(
-      adapters.keys.containsAll(
-        setOf(InstallAgent.CLAUDE, InstallAgent.CODEX, InstallAgent.JUNIE, InstallAgent.ZCODE),
-      ),
+      adapters.keys.containsAll(setOf(InstallAgent.CLAUDE, InstallAgent.CODEX, InstallAgent.JUNIE)),
     )
   }
 
@@ -879,65 +895,20 @@ class HeadlessAgentRunAdapterTest {
   }
 
   @Test
-  fun `claude codex junie and zcode builders emit usePtyStdio=false`() {
+  fun `claude codex and junie builders emit usePtyStdio=false`() {
     val runner = RecordingAgentRunProcessRunner()
     val request = phaseRunRequest()
     val adapters = headlessAgentRunAdapters(runner)
 
-    listOf(InstallAgent.CLAUDE, InstallAgent.CODEX, InstallAgent.JUNIE, InstallAgent.ZCODE).forEach { agent ->
+    listOf(InstallAgent.CLAUDE, InstallAgent.CODEX, InstallAgent.JUNIE).forEach { agent ->
       requireNotNull(adapters[agent]).launch(request)
     }
 
     val otherRequests = runner.requests
-    assertTrue(otherRequests.size == 4)
+    assertTrue(otherRequests.size == 3)
     otherRequests.forEach { req ->
       assertFalse(req.usePtyStdio, "non-opencode agent must not request PTY-backed stdio")
     }
-  }
-
-  @Test
-  fun `zcode builder emits the expected command shape`() {
-    val runner = RecordingAgentRunProcessRunner()
-    val request = phaseRunRequest()
-    val adapters = headlessAgentRunAdapters(runner)
-
-    requireNotNull(adapters[InstallAgent.ZCODE]).launch(request)
-
-    val command = runner.requests.single().command
-    assertEquals(
-      listOf(
-        "zcode",
-        "--prompt",
-        "Phase: preplan",
-        "--json",
-        "--cwd",
-        request.repoRoot.toString(),
-        "--mode",
-        "yolo",
-        "--no-color",
-      ),
-      command,
-    )
-  }
-
-  @Test
-  fun `zcode launch unwraps json response envelope`() {
-    val runner = RecordingAgentRunProcessRunner(
-      result = AgentRunProcessResult(
-        exitStatus = 0,
-        stdout = """{"sessionId":"sess_test","traceId":"trace_test","response":"phase-output"}""",
-        stderr = "",
-        timedOut = false,
-        interrupted = false,
-        spawnFailed = false,
-      ),
-    )
-    val request = phaseRunRequest()
-    val adapters = headlessAgentRunAdapters(runner)
-
-    val outcome = requireNotNull(adapters[InstallAgent.ZCODE]).launch(request)
-
-    assertEquals("phase-output", outcome.stdout)
   }
 
   @Test

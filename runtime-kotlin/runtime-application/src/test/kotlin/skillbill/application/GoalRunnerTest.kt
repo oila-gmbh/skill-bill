@@ -2,6 +2,7 @@ package skillbill.application
 
 import skillbill.application.decomposition.parentSpecPath
 import skillbill.application.decomposition.withBlockedSubtask
+import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
 import skillbill.application.goalrunner.GoalRunner
 import skillbill.application.goalrunner.GoalRunnerLaunchReconciler
 import skillbill.application.goalrunner.GoalRunnerLedgerContext
@@ -41,6 +42,16 @@ import skillbill.ports.goalrunner.model.GoalRunnerReconcileGate
 import skillbill.ports.goalrunner.model.GoalRunnerSessionAccountingRecordRequest
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.goalrunner.model.GoalRunnerWorkflowProgress
+import skillbill.ports.persistence.DatabaseSessionFactory
+import skillbill.ports.persistence.LearningRepository
+import skillbill.ports.persistence.LifecycleTelemetryRepository
+import skillbill.ports.persistence.ReviewRepository
+import skillbill.ports.persistence.TelemetryOutboxRepository
+import skillbill.ports.persistence.UnitOfWork
+import skillbill.ports.persistence.WorkflowStateRepository
+import skillbill.ports.persistence.model.FeatureImplementSessionSummary
+import skillbill.ports.persistence.model.FeatureVerifySessionSummary
+import skillbill.ports.persistence.model.WorkflowStateRecord
 import skillbill.ports.time.RuntimeTimingPort
 import skillbill.ports.time.model.RuntimeWaitResult
 import skillbill.ports.workflow.WorkflowGitOperations
@@ -540,41 +551,6 @@ class GoalRunnerTest {
   }
 
   @Test
-  fun `status projection reports counts current step and active agent`() {
-    val store = InMemoryGoalManifestStore(
-      manifest = manifest(subtaskCount = 3)
-        .withCompletedSubtask(1, workflowId = "wfl-1", commitSha = "sha-1")
-        .withBlockedSubtask(2, workflowId = "wfl-2", reason = "needs review"),
-    )
-    val outcomes = RecordingOutcomeStore()
-    outcomes.progresses["wfl-2"] = GoalRunnerWorkflowProgress(
-      workflowId = "wfl-2",
-      workflowStatus = "running",
-      currentStepId = "implement",
-      progressToken = "child-progress-token",
-      latestLivenessSignal = "durable_progress step=implement attempt=1",
-    )
-    val service = GoalRunnerStatusService(store, outcomes)
-
-    val status = service.status(
-      GoalRunnerStatusRequest(
-        issueKey = "SKILL-56",
-        invokedAgentId = "claude",
-        configuredAgentOverrideId = "codex",
-      ),
-    )
-
-    requireNotNull(status)
-    assertEquals(1, status.completeCount)
-    assertEquals(1, status.pendingCount)
-    assertEquals(1, status.blockedCount)
-    assertEquals(2, status.currentSubtaskId)
-    assertEquals("implement", status.currentStep)
-    assertEquals("codex", status.activeAgent)
-    assertEquals("durable_progress step=implement attempt=1", status.latestLivenessSignal)
-  }
-
-  @Test
   fun `decomposed linear run deletes each subtask spec after its commit and the dir after the final pr`() {
     val repoRoot = Files.createTempDirectory("goal-linear-cleanup")
     val specDir = repoRoot.resolve(".feature-specs/SKILL-56-goal")
@@ -855,6 +831,7 @@ class GoalRunnerStatusProjectionTest {
     val service = GoalRunnerStatusService(
       manifestStore = store,
       outcomeStore = outcomes,
+      phaseRecorder = goalTestPhaseRecorder(),
       gitOperations = StatusDiffGitOperations,
     )
 
@@ -884,7 +861,7 @@ class GoalRunnerStatusProjectionTest {
     )
     val outcomes = RecordingOutcomeStore()
     outcomes["wfl-1"] = completeOutcome(1)
-    val service = GoalRunnerStatusService(store, outcomes)
+    val service = GoalRunnerStatusService(store, outcomes, goalTestPhaseRecorder())
 
     val status = service.status(
       GoalRunnerStatusRequest(
@@ -933,7 +910,7 @@ class GoalRunnerStatusProjectionTest {
     val outcomes = RecordingOutcomeStore().apply {
       authoritativeOutcomesBySubtask[1] = completeOutcome(1).copy(workflowId = "wfl-1")
     }
-    val service = GoalRunnerStatusService(store, outcomes)
+    val service = GoalRunnerStatusService(store, outcomes, goalTestPhaseRecorder())
 
     val status = service.status(
       GoalRunnerStatusRequest(
@@ -962,7 +939,7 @@ class GoalRunnerStatusProjectionTest {
     val outcomes = RecordingOutcomeStore().apply {
       authoritativeOutcomesBySubtask[1] = completeOutcome(1).copy(workflowId = "wfl-authoritative")
     }
-    val service = GoalRunnerStatusService(store, outcomes)
+    val service = GoalRunnerStatusService(store, outcomes, goalTestPhaseRecorder())
 
     val status = service.status(
       GoalRunnerStatusRequest(
@@ -1010,7 +987,7 @@ class GoalRunnerStatusProjectionTest {
       lastResumableStep = "review",
       suppressPr = true,
     )
-    val service = GoalRunnerStatusService(store, outcomes)
+    val service = GoalRunnerStatusService(store, outcomes, goalTestPhaseRecorder())
 
     val status = service.status(
       GoalRunnerStatusRequest(
@@ -1069,7 +1046,7 @@ class GoalRunnerStatusProjectionTest {
         lastSnapshotUpdatedAt = "2026-05-30 00:00:00",
       )
     }
-    val service = GoalRunnerStatusService(store, outcomes)
+    val service = GoalRunnerStatusService(store, outcomes, goalTestPhaseRecorder())
 
     val status = service.status(
       GoalRunnerStatusRequest(
@@ -1103,7 +1080,7 @@ class GoalRunnerStatusProjectionTest {
       lastResumableStep = "review",
       suppressPr = true,
     )
-    val service = GoalRunnerStatusService(store, outcomes)
+    val service = GoalRunnerStatusService(store, outcomes, goalTestPhaseRecorder())
 
     val status = service.status(
       GoalRunnerStatusRequest(
@@ -1141,7 +1118,7 @@ class GoalRunnerStatusProjectionTest {
       lastResumableStep = "preplan",
       suppressPr = true,
     )
-    val service = GoalRunnerStatusService(store, outcomes)
+    val service = GoalRunnerStatusService(store, outcomes, goalTestPhaseRecorder())
 
     val status = service.status(
       GoalRunnerStatusRequest(
@@ -1188,7 +1165,7 @@ class GoalRunnerStatusProjectionTest {
     )
     val outcomes = RecordingOutcomeStore()
     outcomes["wfl-1"] = completeOutcome(1)
-    val service = GoalRunnerStatusService(store, outcomes)
+    val service = GoalRunnerStatusService(store, outcomes, goalTestPhaseRecorder())
 
     val status = service.status(
       GoalRunnerStatusRequest(
@@ -1382,7 +1359,7 @@ class GoalRunnerObservabilityTest {
         .withWorkflowId(1, "wfl-active"),
     )
     val outcomes = RecordingOutcomeStore()
-    val service = GoalRunnerStatusService(store, outcomes)
+    val service = GoalRunnerStatusService(store, outcomes, goalTestPhaseRecorder())
 
     val reset = service.reset(
       GoalRunnerResetRequest(
@@ -2195,6 +2172,20 @@ internal fun DecompositionManifest.withWorkflowId(subtaskId: Int, workflowId: St
   },
 )
 
+internal fun DecompositionManifest.withSubtaskAgent(
+  subtaskId: Int,
+  finalizingAgentId: String,
+  participatingAgentIds: List<String> = listOf(finalizingAgentId),
+): DecompositionManifest = copy(
+  subtasks = subtasks.map { subtask ->
+    if (subtask.id == subtaskId) {
+      subtask.copy(finalizingAgentId = finalizingAgentId, participatingAgentIds = participatingAgentIds)
+    } else {
+      subtask
+    }
+  },
+)
+
 private fun DecompositionManifest.withCompletedSubtask(
   subtaskId: Int,
   workflowId: String,
@@ -2236,3 +2227,220 @@ private fun DecompositionManifest.withBlockedSubtask(
     }
   },
 )
+
+// SKILL-103 (AC1, AC2): goal status attribution — active_agent sourced from persisted run state,
+// never from the status caller's resolution chain. Kept in its own class so the broad
+// [GoalRunnerTest] stays under the detekt LargeClass threshold.
+class GoalRunnerStatusAttributionTest {
+  @Test
+  fun `status projection reports counts current step and active agent sourced from persisted run state`() {
+    // The caller passes invokedAgentId=claude and configuredAgentOverrideId=codex, but the current
+    // subtask's recorded finalizing agent is zcode — status must report zcode and ignore both.
+    val blockedWithAgent = manifest(subtaskCount = 3)
+      .withCompletedSubtask(1, workflowId = "wfl-1", commitSha = "sha-1")
+      .withBlockedSubtask(2, workflowId = "wfl-2", reason = "needs review")
+      .withSubtaskAgent(2, finalizingAgentId = "zcode")
+    val store = InMemoryGoalManifestStore(manifest = blockedWithAgent)
+    val outcomes = RecordingOutcomeStore()
+    outcomes.progresses["wfl-2"] = GoalRunnerWorkflowProgress(
+      workflowId = "wfl-2",
+      workflowStatus = "running",
+      currentStepId = "implement",
+      progressToken = "child-progress-token",
+      latestLivenessSignal = "durable_progress step=implement attempt=1",
+    )
+    val service = GoalRunnerStatusService(store, outcomes, goalTestPhaseRecorder())
+
+    val status = service.status(
+      GoalRunnerStatusRequest(
+        issueKey = "SKILL-56",
+        invokedAgentId = "claude",
+        configuredAgentOverrideId = "codex",
+      ),
+    )
+
+    requireNotNull(status)
+    assertEquals(1, status.completeCount)
+    assertEquals(1, status.pendingCount)
+    assertEquals(1, status.blockedCount)
+    assertEquals(2, status.currentSubtaskId)
+    assertEquals("implement", status.currentStep)
+    assertEquals("zcode", status.activeAgent)
+    assertEquals("durable_progress step=implement attempt=1", status.latestLivenessSignal)
+  }
+
+  @Test
+  fun `status projection omits active agent when no agent is persisted for the current subtask`() {
+    // When neither the phase ledger nor the subtask outcome carries an agent, the field is omitted
+    // (null) rather than invented from the caller's resolution chain.
+    val store = InMemoryGoalManifestStore(
+      manifest = manifest(subtaskCount = 1).withBlockedSubtask(1, workflowId = "wfl-1", reason = "needs review"),
+    )
+    val service = GoalRunnerStatusService(store, RecordingOutcomeStore(), goalTestPhaseRecorder())
+
+    val status = service.status(
+      GoalRunnerStatusRequest(
+        issueKey = "SKILL-56",
+        invokedAgentId = "codex",
+        configuredAgentOverrideId = "claude",
+      ),
+    )
+
+    requireNotNull(status)
+    assertEquals(null, status.activeAgent)
+  }
+
+  @Test
+  fun `status projection reports the persisted phase-ledger agent for a runtime child regardless of caller`() {
+    // AC2 regression: a goal run persisted with zcode phase records, queried by a status call whose
+    // own resolution chain would yield codex, reports active_agent: zcode. Source 1 is the current
+    // subtask's active workflow agent from the persisted phase ledger.
+    val harness = GoalStatusPhaseLedgerHarness()
+    val workflowId = "wfl-zcode-child"
+    harness.openRuntimeWorkflow(workflowId)
+    harness.recordCompletedPhase(workflowId, phaseId = "implement", resolvedAgentId = "zcode")
+    val store = InMemoryGoalManifestStore(
+      manifest = manifest(subtaskCount = 1).withBlockedSubtask(1, workflowId = workflowId, reason = "needs review"),
+    )
+    val service = GoalRunnerStatusService(store, RecordingOutcomeStore(), harness.recorder)
+
+    val status = service.status(
+      GoalRunnerStatusRequest(
+        issueKey = "SKILL-56",
+        invokedAgentId = "codex",
+        configuredAgentOverrideId = "codex",
+      ),
+    )
+
+    requireNotNull(status)
+    assertEquals("zcode", status.activeAgent)
+  }
+}
+
+// SKILL-103: GoalRunnerStatusService now resolves the active agent from persisted phase state via
+// FeatureTaskRuntimePhaseRecorder. Goal-runner unit tests don't seed child phase records, so this
+// recorder runs over an empty repository (every read returns null) and attribution falls through to
+// the subtask's recorded finalizing/participating agent — letting status attribution tests assert
+// source 2 without a database.
+private fun goalTestPhaseRecorder(): FeatureTaskRuntimePhaseRecorder =
+  FeatureTaskRuntimePhaseRecorder(GoalTestEmptyDatabase, GoalTestNoopSnapshotValidator)
+
+// Seedable in-memory harness for the AC2 phase-ledger regression: opens a real runtime-mode workflow
+// row and records a finalized phase so GoalRunnerStatusService.resolveActiveAgent reads the agent
+// from the durable phase ledger (source 1) rather than the subtask outcome.
+private class GoalStatusPhaseLedgerHarness {
+  private val repository = GoalStatusSeedableWorkflowStateRepository()
+  private val database = GoalStatusSeedableDatabase(repository)
+  val recorder: FeatureTaskRuntimePhaseRecorder =
+    FeatureTaskRuntimePhaseRecorder(database, GoalTestNoopSnapshotValidator)
+
+  fun openRuntimeWorkflow(workflowId: String) {
+    recorder.ensureWorkflowOpen(workflowId, sessionId = "goal-status-test")
+  }
+
+  fun recordCompletedPhase(workflowId: String, phaseId: String, resolvedAgentId: String) {
+    recorder.recordPhaseState(
+      skillbill.application.model.FeatureTaskRuntimePhaseStateRequest(
+        workflowId = workflowId,
+        phaseId = phaseId,
+        status = "completed",
+        attemptCount = 1,
+        resolvedAgentId = resolvedAgentId,
+        finished = true,
+        outputArtifact = """{"contract_version":"0.1"}""",
+      ),
+    )
+  }
+}
+
+private class GoalStatusSeedableDatabase(
+  private val repository: GoalStatusSeedableWorkflowStateRepository,
+) : DatabaseSessionFactory {
+  private val dbPath = Path.of("/fake/goal-status-phase-ledger.db")
+
+  override fun resolveDbPath(dbOverride: String?): Path = dbPath
+
+  override fun databaseExists(dbOverride: String?): Boolean = true
+
+  override fun <T> read(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unitOfWork())
+
+  override fun <T> transaction(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unitOfWork())
+
+  private fun unitOfWork(): UnitOfWork = object : UnitOfWork {
+    override val dbPath: Path = this@GoalStatusSeedableDatabase.dbPath
+    override val reviews: ReviewRepository get() = error("unused by goal status tests")
+    override val learnings: LearningRepository get() = error("unused by goal status tests")
+    override val lifecycleTelemetry: LifecycleTelemetryRepository get() = error("unused by goal status tests")
+    override val telemetryOutbox: TelemetryOutboxRepository get() = error("unused by goal status tests")
+    override val workflowStates: WorkflowStateRepository = repository
+  }
+}
+
+private class GoalStatusSeedableWorkflowStateRepository : WorkflowStateRepository {
+  private val taskRuntimeRows = linkedMapOf<String, WorkflowStateRecord>()
+
+  override fun saveFeatureTaskRuntimeWorkflow(row: WorkflowStateRecord) {
+    taskRuntimeRows[row.workflowId] = row
+  }
+
+  override fun getFeatureTaskRuntimeWorkflow(workflowId: String): WorkflowStateRecord? = taskRuntimeRows[workflowId]
+
+  override fun listFeatureTaskRuntimeWorkflows(limit: Int): List<WorkflowStateRecord> =
+    taskRuntimeRows.values.toList().asReversed().take(limit)
+
+  override fun latestFeatureTaskRuntimeWorkflow(): WorkflowStateRecord? =
+    listFeatureTaskRuntimeWorkflows(1).firstOrNull()
+
+  override fun saveFeatureImplementWorkflow(row: WorkflowStateRecord) = Unit
+  override fun saveFeatureVerifyWorkflow(row: WorkflowStateRecord) = Unit
+  override fun getFeatureImplementWorkflow(workflowId: String): WorkflowStateRecord? = null
+  override fun getFeatureVerifyWorkflow(workflowId: String): WorkflowStateRecord? = null
+  override fun listFeatureImplementWorkflows(limit: Int): List<WorkflowStateRecord> = emptyList()
+  override fun listFeatureVerifyWorkflows(limit: Int): List<WorkflowStateRecord> = emptyList()
+  override fun latestFeatureImplementWorkflow(): WorkflowStateRecord? = null
+  override fun latestFeatureVerifyWorkflow(): WorkflowStateRecord? = null
+  override fun getFeatureImplementSessionSummary(sessionId: String): FeatureImplementSessionSummary? = null
+  override fun getFeatureVerifySessionSummary(sessionId: String): FeatureVerifySessionSummary? = null
+}
+
+private object GoalTestNoopSnapshotValidator : skillbill.workflow.WorkflowSnapshotValidator {
+  override fun validate(snapshot: Map<String, Any?>, slug: String) = Unit
+}
+
+private object GoalTestEmptyDatabase : DatabaseSessionFactory {
+  private val dbPath = Path.of("/fake/goal-test-metrics.db")
+
+  override fun resolveDbPath(dbOverride: String?): Path = dbPath
+
+  override fun databaseExists(dbOverride: String?): Boolean = true
+
+  override fun <T> read(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unitOfWork())
+
+  override fun <T> transaction(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unitOfWork())
+
+  private fun unitOfWork(): UnitOfWork = object : UnitOfWork {
+    override val dbPath: Path = this@GoalTestEmptyDatabase.dbPath
+    override val reviews: ReviewRepository get() = error("unused by goal status tests")
+    override val learnings: LearningRepository get() = error("unused by goal status tests")
+    override val lifecycleTelemetry: LifecycleTelemetryRepository get() = error("unused by goal status tests")
+    override val telemetryOutbox: TelemetryOutboxRepository get() = error("unused by goal status tests")
+    override val workflowStates: WorkflowStateRepository = GoalTestEmptyWorkflowStateRepository
+  }
+}
+
+private object GoalTestEmptyWorkflowStateRepository : WorkflowStateRepository {
+  override fun saveFeatureImplementWorkflow(row: WorkflowStateRecord) = Unit
+  override fun getFeatureImplementWorkflow(workflowId: String): WorkflowStateRecord? = null
+  override fun listFeatureImplementWorkflows(limit: Int): List<WorkflowStateRecord> = emptyList()
+  override fun latestFeatureImplementWorkflow(): WorkflowStateRecord? = null
+  override fun getFeatureImplementSessionSummary(sessionId: String): FeatureImplementSessionSummary? = null
+  override fun saveFeatureVerifyWorkflow(row: WorkflowStateRecord) = Unit
+  override fun getFeatureVerifyWorkflow(workflowId: String): WorkflowStateRecord? = null
+  override fun listFeatureVerifyWorkflows(limit: Int): List<WorkflowStateRecord> = emptyList()
+  override fun latestFeatureVerifyWorkflow(): WorkflowStateRecord? = null
+  override fun getFeatureVerifySessionSummary(sessionId: String): FeatureVerifySessionSummary? = null
+  override fun saveFeatureTaskRuntimeWorkflow(row: WorkflowStateRecord) = Unit
+  override fun getFeatureTaskRuntimeWorkflow(workflowId: String): WorkflowStateRecord? = null
+  override fun listFeatureTaskRuntimeWorkflows(limit: Int): List<WorkflowStateRecord> = emptyList()
+  override fun latestFeatureTaskRuntimeWorkflow(): WorkflowStateRecord? = null
+}

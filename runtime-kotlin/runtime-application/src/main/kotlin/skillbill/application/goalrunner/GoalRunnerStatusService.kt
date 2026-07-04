@@ -2,6 +2,8 @@ package skillbill.application.goalrunner
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.decomposition.withParentStatus
+import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
+import skillbill.application.featuretask.agentAttributionFromPhaseState
 import skillbill.application.model.GoalRunnerResetRequest
 import skillbill.application.model.GoalRunnerResetResult
 import skillbill.application.model.GoalRunnerResetSnapshot
@@ -13,11 +15,11 @@ import skillbill.goalrunner.model.GoalRunnerStatusProjectionExtras
 import skillbill.goalrunner.model.GoalRunnerStatusProjector
 import skillbill.goalrunner.model.GoalRunnerStoredOutcome
 import skillbill.goalrunner.model.GoalRunnerTerminalStatus
-import skillbill.install.model.InstallAgent
 import skillbill.ports.goalrunner.GoalRunnerManifestStore
 import skillbill.ports.goalrunner.GoalRunnerWorkflowOutcomeStore
 import skillbill.ports.goalrunner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.model.GoalRunnerReconcileGate
+import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import skillbill.ports.workflow.NoopWorkflowGitOperations
 import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksRequest
@@ -29,12 +31,10 @@ import skillbill.workflow.model.DecompositionSubtask
 class GoalRunnerStatusService(
   private val manifestStore: GoalRunnerManifestStore,
   private val outcomeStore: GoalRunnerWorkflowOutcomeStore,
+  private val phaseRecorder: FeatureTaskRuntimePhaseRecorder,
   private val gitOperations: WorkflowGitOperations = NoopWorkflowGitOperations,
 ) {
   fun status(request: GoalRunnerStatusRequest): GoalRunnerStatusProjection? {
-    val effectiveAgent = request.configuredAgentOverrideId
-      ?.let { InstallAgent.fromNormalizedId(it, label = "configuredAgentOverrideId") }
-      ?: InstallAgent.fromNormalizedId(request.invokedAgentId, label = "invokedAgentId")
     return manifestStore.loadByIssueKey(request.issueKey, request.dbPathOverride, request.repoRoot)
       ?.let { loadedState ->
         val activeWorkflowIds = loadedState.manifest.activeWorkflowIds()
@@ -54,7 +54,7 @@ class GoalRunnerStatusService(
           ?.let { workflowId -> outcomeStore.progress(workflowId, request.dbPathOverride) }
         GoalRunnerStatusProjector.project(
           manifest = state.manifest,
-          activeAgent = effectiveAgent.id,
+          activeAgent = resolveActiveAgent(currentSubtask, request.dbPathOverride),
           extras = GoalRunnerStatusProjectionExtras(
             currentStepOverride = progress?.currentStepId,
             latestLivenessSignal = progress?.latestLivenessSignal,
@@ -64,6 +64,26 @@ class GoalRunnerStatusService(
           ),
         )
       }
+  }
+
+  // SKILL-103 AC1: active_agent is sourced solely from persisted run state, never from the status
+  // caller's resolution chain (--agent / SKILL_BILL_AGENT / detected / default). In order: the
+  // current subtask's active workflow agent from the persisted phase ledger; else the subtask's
+  // recorded finalizing/participating agent from the reconciled goal outcome; else null (omit).
+  // The phase ledger is a runtime-mode concept, so a non-runtime child (e.g. a prose workflow) is
+  // skipped rather than crashing the read — attribution then falls through to the subtask outcome.
+  private fun resolveActiveAgent(currentSubtask: DecompositionSubtask?, dbPathOverride: String?): String? {
+    if (currentSubtask == null) return null
+    val workflowId = currentSubtask.workflowId?.takeIf(String::isNotBlank)
+    if (workflowId != null &&
+      phaseRecorder.existingWorkflowMode(workflowId, dbPathOverride) == FeatureTaskWorkflowMode.RUNTIME
+    ) {
+      agentAttributionFromPhaseState(phaseRecorder, workflowId, dbPathOverride).finalizingAgentId
+        ?.takeIf(String::isNotBlank)
+        ?.let { return it }
+    }
+    return currentSubtask.finalizingAgentId?.takeIf(String::isNotBlank)
+      ?: currentSubtask.participatingAgentIds.firstOrNull()?.takeIf(String::isNotBlank)
   }
 
   fun statusRefresh(request: GoalRunnerStatusRequest): GoalRunnerStatusProjection? = status(request)
