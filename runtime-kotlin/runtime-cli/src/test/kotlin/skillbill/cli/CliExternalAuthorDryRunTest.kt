@@ -4,6 +4,7 @@ import skillbill.cli.core.CliOutput
 import skillbill.cli.core.CliRuntime
 import skillbill.cli.model.CliFormat
 import skillbill.cli.model.CliRuntimeContext
+import skillbill.telemetry.CONFIG_ENVIRONMENT_KEY
 import java.nio.file.FileVisitResult
 import java.nio.file.Files
 import java.nio.file.Path
@@ -11,6 +12,7 @@ import java.nio.file.SimpleFileVisitor
 import java.nio.file.StandardCopyOption
 import java.nio.file.attribute.BasicFileAttributes
 import kotlin.test.Test
+import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
@@ -31,6 +33,38 @@ class CliExternalAuthorDryRunTest {
       assertFalse(Files.exists(installedLink))
       assertFalse(Files.exists(fixture.packRoot))
       assertValidationPasses(fixture.repoRoot, fixture.context)
+    } finally {
+      deleteRecursively(fixture.packRoot)
+      deleteRecursively(fixture.tempRoot)
+    }
+  }
+
+  @Test
+  fun `external add-on scaffold registers source in config`() {
+    val fixture = createExternalAuthorDryRunFixture()
+    val configPath = fixture.tempRoot.resolve("config.json")
+    val context = fixture.context.copy(environment = mapOf(CONFIG_ENVIRONMENT_KEY to configPath.toString()))
+    val externalDir = fixture.tempRoot.resolve("external-addons")
+    try {
+      scaffoldPlatformPack(fixture)
+      val result =
+        CliRuntime.run(
+          listOf("new", "--payload", "-", "--format", "json"),
+          context.copy(
+            stdinText = CliOutput.emit(
+              externalAddonPayload(fixture.repoRoot, fixture.platform, externalDir),
+              CliFormat.JSON,
+            ),
+          ),
+        )
+      val resolved =
+        CliRuntime.run(listOf("config", "resolve-external-addons"), context)
+
+      assertEquals(0, result.exitCode, result.stdout)
+      assertEquals("ok", result.payload?.get("status"), result.stdout)
+      assertTrue(Files.isRegularFile(externalDir.resolve("awesome-review.md")))
+      assertTrue(Files.isRegularFile(externalDir.resolve("addon-manifest.yaml")))
+      assertContains(resolved.stdout, "${fixture.platform}\t${externalDir.toAbsolutePath().normalize()}")
     } finally {
       deleteRecursively(fixture.packRoot)
       deleteRecursively(fixture.tempRoot)
@@ -150,6 +184,15 @@ private fun externalPackPayload(repoRoot: Path, platform: String): Map<String, A
     "strong" to listOf("external.toml", "src/external"),
     "tie_breakers" to listOf("Prefer External when fixture markers dominate."),
   ),
+  "repo_root" to repoRoot.toString(),
+)
+
+private fun externalAddonPayload(repoRoot: Path, platform: String, externalDir: Path): Map<String, Any?> = mapOf(
+  "scaffold_payload_version" to "1.0",
+  "kind" to "add-on",
+  "platform" to platform,
+  "name" to "awesome-review",
+  "addon_location_path" to externalDir.toString(),
   "repo_root" to repoRoot.toString(),
 )
 

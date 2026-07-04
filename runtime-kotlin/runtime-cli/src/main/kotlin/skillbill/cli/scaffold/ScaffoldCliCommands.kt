@@ -13,6 +13,7 @@ import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.options.required
 import com.github.ajalt.clikt.parameters.types.choice
 import me.tatarka.inject.annotations.Inject
+import skillbill.application.install.ExternalAddonOverlayService
 import skillbill.application.install.InstallService
 import skillbill.application.scaffold.InstallAgentService
 import skillbill.application.scaffold.ScaffoldCatalogService
@@ -52,7 +53,9 @@ import skillbill.cli.model.CliExecutionResult
 import skillbill.cli.model.CliFormat
 import skillbill.contracts.JsonSupport
 import skillbill.error.SkillBillRuntimeException
+import skillbill.install.model.ExternalAddonSource
 import skillbill.ports.scaffold.model.ScaffoldRenderResult
+import skillbill.scaffold.model.command.ScaffoldCommandRequest
 import skillbill.scaffold.model.command.isRetiredPartialScaffoldCommandKindAlias
 import skillbill.scaffold.model.command.rejectRetiredPartialScaffoldCommandKind
 import java.nio.file.Path
@@ -398,6 +401,7 @@ class NewSkillCommand(
   private val scaffoldService: ScaffoldService,
   private val scaffoldCatalogService: ScaffoldCatalogService,
   private val installAgentService: InstallAgentService,
+  private val externalAddonOverlayService: ExternalAddonOverlayService,
 ) : DocumentedCliCommand("new-skill", "Scaffold a new skill from a short wizard or payload file.") {
   private val payload by option("--payload", help = "Path to a JSON payload file (or '-' for stdin).")
   private val interactive by option(
@@ -426,11 +430,19 @@ class NewSkillCommand(
           scaffoldService,
           scaffoldCatalogService,
           installAgentService,
+          externalAddonOverlayService,
         )
       } else if (interactive || payload == null) {
-        runNativeScaffoldWizard(dryRun, format, state, scaffoldService, scaffoldCatalogService)
+        runNativeScaffoldWizard(
+          dryRun,
+          format,
+          state,
+          scaffoldService,
+          scaffoldCatalogService,
+          externalAddonOverlayService,
+        )
       } else {
-        runNativeScaffoldPayload(payload, dryRun, format, state, scaffoldService)
+        runNativeScaffoldPayload(payload, dryRun, format, state, scaffoldService, externalAddonOverlayService)
       }
   }
 }
@@ -441,6 +453,7 @@ class NewCommand(
   private val scaffoldService: ScaffoldService,
   private val scaffoldCatalogService: ScaffoldCatalogService,
   private val installAgentService: InstallAgentService,
+  private val externalAddonOverlayService: ExternalAddonOverlayService,
 ) : DocumentedCliCommand("new", "Scaffold a new skill from a short wizard or payload file.") {
   private val payload by option("--payload", help = "Path to a JSON payload file (or '-' for stdin).")
   private val interactive by option(
@@ -469,11 +482,19 @@ class NewCommand(
           scaffoldService,
           scaffoldCatalogService,
           installAgentService,
+          externalAddonOverlayService,
         )
       } else if (interactive || payload == null) {
-        runNativeScaffoldWizard(dryRun, format, state, scaffoldService, scaffoldCatalogService)
+        runNativeScaffoldWizard(
+          dryRun,
+          format,
+          state,
+          scaffoldService,
+          scaffoldCatalogService,
+          externalAddonOverlayService,
+        )
       } else {
-        runNativeScaffoldPayload(payload, dryRun, format, state, scaffoldService)
+        runNativeScaffoldPayload(payload, dryRun, format, state, scaffoldService, externalAddonOverlayService)
       }
   }
 }
@@ -526,6 +547,7 @@ class NewAddonCommand(
   private val state: CliRunState,
   private val scaffoldService: ScaffoldService,
   private val unsupportedScaffoldService: UnsupportedScaffoldService,
+  private val externalAddonOverlayService: ExternalAddonOverlayService,
 ) : DocumentedCliCommand(
   "new-addon",
   "Create a governed add-on file inside an existing platform pack or external add-on source.",
@@ -574,6 +596,8 @@ class NewAddonCommand(
           dryRun,
           format,
           scaffoldService,
+          state,
+          externalAddonOverlayService,
         )
       }
   }
@@ -642,6 +666,7 @@ private fun runNativeScaffoldWizard(
   state: CliRunState,
   scaffoldService: ScaffoldService,
   scaffoldCatalogService: ScaffoldCatalogService,
+  externalAddonOverlayService: ExternalAddonOverlayService,
 ): CliExecutionResult {
   val payload =
     try {
@@ -651,7 +676,7 @@ private fun runNativeScaffoldWizard(
     } catch (error: IllegalArgumentException) {
       return errorResult(error.message.orEmpty(), format)
     }
-  return runNativeScaffoldPayload(payload, dryRun, format, scaffoldService)
+  return runNativeScaffoldPayload(payload, dryRun, format, scaffoldService, state, externalAddonOverlayService)
 }
 
 private fun runNativeAssistedScaffoldWizard(
@@ -661,6 +686,7 @@ private fun runNativeAssistedScaffoldWizard(
   scaffoldService: ScaffoldService,
   scaffoldCatalogService: ScaffoldCatalogService,
   installAgentService: InstallAgentService,
+  externalAddonOverlayService: ExternalAddonOverlayService,
 ): CliExecutionResult {
   val payload =
     try {
@@ -670,7 +696,7 @@ private fun runNativeAssistedScaffoldWizard(
     } catch (error: IllegalArgumentException) {
       return errorResult(error.message.orEmpty(), format)
     }
-  return runNativeScaffoldPayload(payload, dryRun, format, scaffoldService)
+  return runNativeScaffoldPayload(payload, dryRun, format, scaffoldService, state, externalAddonOverlayService)
 }
 
 private fun collectAssistedScaffoldWizardPayload(
@@ -943,6 +969,7 @@ private fun runNativeScaffoldPayload(
   format: CliFormat,
   state: CliRunState,
   scaffoldService: ScaffoldService,
+  externalAddonOverlayService: ExternalAddonOverlayService? = null,
   transform: (Map<String, *>) -> Map<String, *> = { it },
 ): CliExecutionResult {
   val payload =
@@ -953,7 +980,7 @@ private fun runNativeScaffoldPayload(
     } catch (error: IllegalArgumentException) {
       return errorResult(error.message.orEmpty(), format)
     }
-  return runNativeScaffoldPayload(payload, dryRun, format, scaffoldService)
+  return runNativeScaffoldPayload(payload, dryRun, format, scaffoldService, state, externalAddonOverlayService)
 }
 
 private fun runNativeScaffoldPayload(
@@ -961,6 +988,8 @@ private fun runNativeScaffoldPayload(
   dryRun: Boolean,
   format: CliFormat,
   scaffoldService: ScaffoldService,
+  state: CliRunState,
+  externalAddonOverlayService: ExternalAddonOverlayService? = null,
 ): CliExecutionResult {
   val sessionId = generateScaffoldSessionId()
   val payloadWithRepoRoot = if ((payload["repo_root"] as? String).isNullOrBlank()) {
@@ -976,7 +1005,9 @@ private fun runNativeScaffoldPayload(
   val result =
     try {
       val request = parseScaffoldCommandRequest(typedPayload)
-      scaffoldService.scaffold(request, dryRun = dryRun)
+      val scaffoldResult = scaffoldService.scaffold(request, dryRun = dryRun)
+      registerExternalAddonSourceAfterSuccess(request, dryRun, state, externalAddonOverlayService)
+      scaffoldResult
     } catch (error: SkillBillRuntimeException) {
       return errorResult(error.message.orEmpty(), format)
     }
@@ -996,6 +1027,23 @@ private fun runNativeScaffoldPayload(
     exitCode = 0,
     stdout = CliOutput.emit(presentation, format),
     payload = presentation,
+  )
+}
+
+private fun registerExternalAddonSourceAfterSuccess(
+  request: ScaffoldCommandRequest,
+  dryRun: Boolean,
+  state: CliRunState,
+  externalAddonOverlayService: ExternalAddonOverlayService?,
+) {
+  if (externalAddonOverlayService == null) return
+  if (dryRun) return
+  val addOn = request as? ScaffoldCommandRequest.AddOn ?: return
+  val sourcePath = addOn.addonLocationPath?.takeIf(String::isNotBlank) ?: return
+  externalAddonOverlayService.registerSource(
+    home = state.userHome,
+    source = ExternalAddonSource(Path.of(sourcePath), addOn.platform),
+    environment = state.environment,
   )
 }
 
