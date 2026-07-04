@@ -282,6 +282,49 @@ class SkillRemoveJvmFileSystemTest {
     assertTrue("android-navigation-implementation" in skillClassManifest, skillClassManifest)
   }
 
+  @Test
+  fun `executeRemoval ExternalAddOn removes source file and external manifest references`() {
+    val repoRoot = seedRepo()
+    val externalDir = Files.createTempDirectory("skillbill-external-addon-remove").also(tempDirs::add)
+    val addon = externalDir.resolve("awesome.md")
+    Files.writeString(addon, "# Awesome\n")
+    Files.writeString(
+      externalDir.resolve("addon-manifest.yaml"),
+      """
+      |addon_usage:
+      |  code-review/bill-kmp-code-review:
+      |    - slug: awesome
+      |      entrypoint: awesome.md
+      |    - slug: navigation
+      |      entrypoint: navigation.md
+      |pointers:
+      |  code-review/bill-kmp-code-review:
+      |    - name: awesome.md
+      |      target: awesome.md
+      |    - name: navigation.md
+      |      target: navigation.md
+      |
+      """.trimMargin(),
+    )
+    val fs = SkillRemoveJvmFileSystem(home = Files.createTempDirectory("home").also(tempDirs::add))
+    val service = skillbill.domain.skillremove.SkillRemove(fs)
+    val request = SkillRemovalRequest(
+      target = SkillRemovalTarget.ExternalAddOn(
+        sourceRootAbsolutePath = externalDir.toString(),
+        platform = "kmp",
+        fileName = "awesome.md",
+      ),
+      repoRootAbsolutePath = repoRoot.toString(),
+    )
+
+    service.executeRemoval(request)
+
+    assertTrue(!Files.exists(addon, LinkOption.NOFOLLOW_LINKS), "external add-on file should be deleted")
+    val manifest = Files.readString(externalDir.resolve("addon-manifest.yaml"))
+    assertTrue("awesome.md" !in manifest, manifest)
+    assertTrue("navigation.md" in manifest, manifest)
+  }
+
   private fun seedRepoWithAddonReferences(): Pair<Path, Path> {
     val repoRoot = seedRepo()
     val addon = repoRoot.resolve("platform-packs/kmp/addons/android-compose-edge-to-edge.md")

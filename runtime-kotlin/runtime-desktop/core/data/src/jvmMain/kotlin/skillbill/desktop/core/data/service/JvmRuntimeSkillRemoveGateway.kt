@@ -132,6 +132,12 @@ private fun DesktopSkillRemovalTarget.toDomainTarget(): SkillRemovalTarget = whe
     SkillRemovalTarget.PlatformPack(platform = platform, allowShipped = allowShipped)
   is DesktopSkillRemovalTarget.AddOn ->
     SkillRemovalTarget.AddOn(relativePath = relativePath)
+  is DesktopSkillRemovalTarget.ExternalAddOn ->
+    SkillRemovalTarget.ExternalAddOn(
+      sourceRootAbsolutePath = sourceRootAbsolutePath,
+      platform = platform,
+      fileName = fileName,
+    )
 }
 
 private fun SkillRemovalResult.toDesktopResult(): DesktopSkillRemovalResult = when (this) {

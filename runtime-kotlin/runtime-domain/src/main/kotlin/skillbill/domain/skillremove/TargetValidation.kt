@@ -22,6 +22,7 @@ import java.nio.file.Paths
  *   `-`, and must consist solely of `[A-Za-z0-9._-]`.
  * - `AddOn.relativePath` must be a relative path, contain no `..` segments, contain no `\\`, and
  *   the normalized resolved absolute path must lie under `<repoRoot>/platform-packs/`.
+ * - `ExternalAddOn` must name a direct markdown child of its registered source directory.
  *
  * Implementation note: validation functions return a problem string (null = valid) and the
  * single public entry throws once. This keeps detekt's ThrowsCount happy without dropping
@@ -36,6 +37,9 @@ internal object TargetValidation {
       is SkillRemovalTarget.HorizontalSkill -> nameProblem(target.skillName, "skillName")
       is SkillRemovalTarget.PlatformPack -> nameProblem(target.platform, "platform")
       is SkillRemovalTarget.AddOn -> addOnPathProblem(target.relativePath, repoRoot)
+      is SkillRemovalTarget.ExternalAddOn ->
+        nameProblem(target.platform, "platform")
+          ?: externalAddOnPathProblem(target.sourceRootAbsolutePath, target.fileName)
     }
     if (problem != null) {
       throw SkillRemovalRefusedException(SkillRemovalRefusalReason.INVALID_TARGET, problem)
@@ -69,6 +73,39 @@ internal object TargetValidation {
       parsed.any { it.toString() == ".." } -> "Invalid add-on path '$relative': '..' segments are not allowed."
       !resolved.startsWith(repoRoot) -> "Invalid add-on path '$relative': resolves outside the repository root."
       !resolved.startsWith(packsRoot) -> "Invalid add-on path '$relative': add-ons must live under 'platform-packs/'."
+      else -> null
+    }
+  }
+
+  private fun externalAddOnPathProblem(sourceRootAbsolutePath: String, fileName: String): String? {
+    if (sourceRootAbsolutePath.isBlank()) return "Invalid external add-on source path: must not be blank."
+    val sourceRoot = try {
+      Paths.get(sourceRootAbsolutePath).toAbsolutePath().normalize()
+    } catch (error: InvalidPathException) {
+      @Suppress("SwallowedException")
+      return "Invalid external add-on source path '$sourceRootAbsolutePath': ${error.message.orEmpty()}"
+    }
+    val sourcePath = Paths.get(sourceRootAbsolutePath)
+    if (!sourcePath.isAbsolute) {
+      return "Invalid external add-on source path '$sourceRootAbsolutePath': must be absolute."
+    }
+    if (fileName.isBlank()) return "Invalid external add-on filename: must not be blank."
+    if (!fileName.endsWith(".md")) return "Invalid external add-on filename '$fileName': must end with '.md'."
+    if (fileName.contains('/') || fileName.contains('\\')) {
+      return "Invalid external add-on filename '$fileName': path separators are not allowed."
+    }
+    val parsedFileName = try {
+      Paths.get(fileName)
+    } catch (error: InvalidPathException) {
+      @Suppress("SwallowedException")
+      return "Invalid external add-on filename '$fileName': ${error.message.orEmpty()}"
+    }
+    val target = sourceRoot.resolve(parsedFileName).normalize()
+    return when {
+      parsedFileName.isAbsolute -> "Invalid external add-on filename '$fileName': absolute paths are not allowed."
+      parsedFileName.any { it.toString() == ".." } ->
+        "Invalid external add-on filename '$fileName': '..' segments are not allowed."
+      target.parent != sourceRoot -> "Invalid external add-on filename '$fileName': must live directly in the source."
       else -> null
     }
   }

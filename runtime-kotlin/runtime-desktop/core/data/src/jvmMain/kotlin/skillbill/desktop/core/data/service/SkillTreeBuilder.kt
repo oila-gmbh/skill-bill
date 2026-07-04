@@ -132,7 +132,13 @@ internal class SkillTreeBuilder(
         val key = AddonKey(platform, slug)
         if (externalAddonKeys.add(key)) {
           val authoredPath = relativePath(root, addon)
+          val externalSourcePath = source.stableSourcePath()
           val id = selectionId(repoToken, "addon-external:$platform:${addon.stableSourcePath()}")
+          val metadata = SkillBillTreeItemMetadata(
+            kind = "add-on",
+            platform = platform,
+            externalSourcePath = externalSourcePath,
+          )
           selections[id] =
             SelectionDetail(
               repoToken = repoToken,
@@ -143,6 +149,7 @@ internal class SkillTreeBuilder(
               status = "authored",
               contentFile = addon,
               editable = true,
+              metadata = metadata,
             )
           addonsByPlatform.getOrPut(platform) { mutableListOf() } += SkillBillTreeItem(
             id = id,
@@ -152,7 +159,7 @@ internal class SkillTreeBuilder(
             status = "authored",
             editable = true,
             external = true,
-            metadata = SkillBillTreeItemMetadata(kind = "add-on", platform = platform),
+            metadata = metadata,
           )
         }
       }
@@ -379,6 +386,8 @@ private fun ExternalAddonSource.topLevelMarkdownFiles(): List<Path> = runCatchin
 }.getOrDefault(emptyList())
 
 private fun Path.stableSourcePath(): String = toAbsolutePath().normalize().toString().replace('\\', '/')
+
+private fun ExternalAddonSource.stableSourcePath(): String = path.stableSourcePath()
 
 private data class NativeAgentTreeLeaf(
   val groupPath: List<String>,

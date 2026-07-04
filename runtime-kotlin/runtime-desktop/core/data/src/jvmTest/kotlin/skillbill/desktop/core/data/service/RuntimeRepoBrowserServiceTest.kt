@@ -237,6 +237,10 @@ class RuntimeRepoBrowserServiceTest {
     assertTrue(externalItem.external)
     assertTrue(externalItem.editable)
     assertEquals(TreeItemKind.ADD_ON, externalItem.kind)
+    assertEquals(
+      externalDir.toAbsolutePath().normalize().toString().replace('\\', '/'),
+      externalItem.metadata?.externalSourcePath,
+    )
     assertTrue(document.editable)
     assertEquals(externalAddon.toString(), document.authoredPath)
     assertTrue(document.text.contains("External guidance."))

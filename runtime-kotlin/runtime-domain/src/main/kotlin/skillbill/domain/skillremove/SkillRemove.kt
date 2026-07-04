@@ -128,7 +128,9 @@ class SkillRemove(
         // gates `kotlin` / `kmp` pre-shells separately so the pack and its pre-shell can't go out
         // of sync from the wrong tree node.
       }
-      is SkillRemovalTarget.AddOn -> Unit
+      is SkillRemovalTarget.AddOn,
+      is SkillRemovalTarget.ExternalAddOn,
+      -> Unit
     }
   }
 
@@ -140,12 +142,15 @@ class SkillRemove(
             .filter { it != target.skillName }
       is SkillRemovalTarget.PlatformPack -> emptyList()
       is SkillRemovalTarget.AddOn -> emptyList()
+      is SkillRemovalTarget.ExternalAddOn -> emptyList()
     }
 
   private fun skillDirRootFor(target: SkillRemovalTarget): String = when (target) {
     is SkillRemovalTarget.HorizontalSkill -> "skills/${target.skillName}"
     is SkillRemovalTarget.PlatformPack -> "platform-packs/${target.platform}"
     is SkillRemovalTarget.AddOn -> target.relativePath
+    is SkillRemovalTarget.ExternalAddOn ->
+      Paths.get(target.sourceRootAbsolutePath).resolve(target.fileName).normalize().toString().replace('\\', '/')
   }
 
   /**

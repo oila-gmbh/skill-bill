@@ -617,7 +617,19 @@ internal fun resolveDeletionTarget(
     }
     skillbill.desktop.core.domain.model.TreeItemKind.ADD_ON -> {
       val path = node.authoredPath ?: return null
-      skillbill.desktop.core.domain.model.DesktopSkillRemovalTarget.AddOn(relativePath = path)
+      if (node.external) {
+        val metadata = node.metadata ?: return null
+        val sourceRoot = metadata.externalSourcePath ?: return null
+        val platform = metadata.platform ?: return null
+        val fileName = path.substringAfterLast('/')
+        skillbill.desktop.core.domain.model.DesktopSkillRemovalTarget.ExternalAddOn(
+          sourceRootAbsolutePath = sourceRoot,
+          platform = platform,
+          fileName = fileName,
+        )
+      } else {
+        skillbill.desktop.core.domain.model.DesktopSkillRemovalTarget.AddOn(relativePath = path)
+      }
     }
     else -> null
   }
@@ -629,4 +641,5 @@ internal fun DesktopSkillRemovalTarget.isBuiltIn(): Boolean = when (this) {
   is DesktopSkillRemovalTarget.PlatformPack ->
     DesktopSkillRemovalTarget.isProtectedPlatformName(platform)
   is DesktopSkillRemovalTarget.AddOn -> false
+  is DesktopSkillRemovalTarget.ExternalAddOn -> false
 }

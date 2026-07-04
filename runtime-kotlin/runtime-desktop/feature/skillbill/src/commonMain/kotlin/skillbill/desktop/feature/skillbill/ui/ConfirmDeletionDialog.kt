@@ -466,6 +466,7 @@ private fun displayLabelFor(target: DesktopSkillRemovalTarget): String = when (t
     target.platform,
   )
   is DesktopSkillRemovalTarget.AddOn -> target.relativePath
+  is DesktopSkillRemovalTarget.ExternalAddOn -> "${target.sourceRootAbsolutePath}/${target.fileName}"
 }
 
 @Composable

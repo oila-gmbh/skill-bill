@@ -79,6 +79,7 @@ data class SkillBillTreeItemMetadata(
   val platform: String? = null,
   val family: String? = null,
   val area: String? = null,
+  val externalSourcePath: String? = null,
 )
 
 data class RepoLoadStatus(

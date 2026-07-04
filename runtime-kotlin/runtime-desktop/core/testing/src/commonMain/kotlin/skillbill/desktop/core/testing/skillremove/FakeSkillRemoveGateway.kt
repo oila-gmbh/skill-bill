@@ -69,5 +69,6 @@ class FakeSkillRemoveGateway : RuntimeSkillRemoveGateway {
     is DesktopSkillRemovalTarget.HorizontalSkill -> TargetKind.HORIZONTAL_SKILL
     is DesktopSkillRemovalTarget.PlatformPack -> TargetKind.PLATFORM_PACK
     is DesktopSkillRemovalTarget.AddOn -> TargetKind.ADDON
+    is DesktopSkillRemovalTarget.ExternalAddOn -> TargetKind.ADDON
   }
 }
