@@ -36,6 +36,9 @@ Use this specialist wherever the project's unidirectional-data-flow pattern (a `
 - Coordinate or unit values conflated between normalized (0–1) and raw/pixel ranges — including omitted axis offsets — produce visibly wrong placement and are a correctness bug, not a rounding detail
 - Inverted, redundant, or always-true/always-false guard and boolean logic makes a conditional behave opposite to its intent or go permanently dead; scrutinize refactored conditionals for this
 - Force-unwrap or `.require()` applied to state that can legitimately be nil at runtime crashes the app instead of gracefully guarding the expected absent-state case
+- `@Observable`-conforming state that a view creates and owns must be held with `@State`, never `let` or a plain stored property; without `@State`, SwiftUI can recreate the instance across a parent redraw and silently discard accumulated state
+- Any iOS 26-only API (Liquid Glass `glassEffect`/`GlassEffectContainer`/`.glass`/`.glassProminent` button styles, or other iOS 26+-only surface) added to a diff must be gated behind `#available(iOS 26, *)` with a working fallback path, unless the project's minimum deployment target is already iOS 26+
+- `.animation(_:value:)` must always specify a `value` argument; the value-less `.animation(_:)` overload is deprecated and animates every state change in scope, not just the one the diff intends to animate
 - For Major or Critical findings, describe the concrete race, stale-state, or main-thread-violation scenario a user or crash report would surface
 
 ## Repo-Local Knowledge
