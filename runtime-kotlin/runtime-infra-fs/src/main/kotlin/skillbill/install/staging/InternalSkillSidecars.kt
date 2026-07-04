@@ -2,32 +2,30 @@
 
 package skillbill.install.staging
 
+import skillbill.scaffold.authoring.discoverTargets
 import skillbill.scaffold.authoring.parseInternalForFrontmatter
+import skillbill.scaffold.authoring.renderWrapper
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
 
 /**
- * SKILL-102 subtask 1 (PD2/PD6): discover the internal skills that declare [parentSkillName] as
- * their parent. Returns one [InternalSidecarTarget] per internal child, sorted by skill name so
- * staging is deterministic. Walks the sibling skill directories under [skillsRoot] (the same root
- * discovery walks) and selects those whose `content.md` carries `internal-for: <parentSkillName>`.
- *
- * The install-plan seam already validated the classification (see validateInstallPlanInternalSkills);
- * this lookup is read-only and trusts that validation. It is independent of the plan so the
- * per-skill staging pipeline can render sidecars without plumbing the full plan through every call.
- *
- * Reads `internal-for` directly via the shared parse seam ([parseInternalForFrontmatter]) rather
- * than re-running full authoring discovery per sibling, so the per-skill staging cost stays linear
- * in the number of sibling skills (not quadratic in repo size).
+ * SKILL-102 (PD2/PD6): one internal child of a parent skill, carrying the rendered governed
+ * wrapper that lands at `<skill-name>.md`. The wrapper is rendered once at discovery time and
+ * shared by hash computation and sidecar writing, so a staging operation runs a single authoring
+ * discovery walk regardless of child count or how many times the hash is recomputed.
  */
 internal data class InternalSidecarTarget(
   val skillName: String,
   val sourceDir: Path,
-  val contentFile: Path,
-  val repoRoot: Path,
+  val renderedWrapper: String,
 )
 
+/**
+ * Discovers the internal skills that declare [parentSkillName] as their parent, sorted by skill
+ * name so staging is deterministic. The install-plan seam already validated the classification;
+ * this lookup is read-only and trusts that validation.
+ */
 internal fun discoverInternalSidecarTargets(
   repoRoot: Path,
   parentSkillName: String,
@@ -36,27 +34,28 @@ internal fun discoverInternalSidecarTargets(
   if (!Files.isDirectory(skillsRoot)) {
     return emptyList()
   }
-  val targets = mutableListOf<InternalSidecarTarget>()
-  Files.list(skillsRoot).use { stream ->
+  val childDirs = Files.list(skillsRoot).use { stream ->
     stream
       .filter { dir -> Files.isDirectory(dir, LinkOption.NOFOLLOW_LINKS) }
       .filter { dir -> dir.fileName.toString() != parentSkillName }
       .sorted(Comparator.comparing { dir -> dir.fileName.toString() })
-      .forEach { dir ->
+      .filter { dir ->
         val contentFile = dir.resolve("content.md")
-        if (!Files.isRegularFile(contentFile, LinkOption.NOFOLLOW_LINKS)) {
-          return@forEach
-        }
-        val internalFor = parseInternalForFrontmatter(contentFile)
-        if (internalFor == parentSkillName) {
-          targets += InternalSidecarTarget(
-            skillName = dir.fileName.toString(),
-            sourceDir = dir.toAbsolutePath().normalize(),
-            contentFile = contentFile.toAbsolutePath().normalize(),
-            repoRoot = repoRoot.toAbsolutePath().normalize(),
-          )
-        }
+        Files.isRegularFile(contentFile, LinkOption.NOFOLLOW_LINKS) &&
+          parseInternalForFrontmatter(contentFile) == parentSkillName
       }
+      .toList()
   }
-  return targets
+  if (childDirs.isEmpty()) {
+    return emptyList()
+  }
+  val discovered = discoverTargets(repoRoot.toAbsolutePath().normalize())
+  return childDirs.map { dir ->
+    val skillName = dir.fileName.toString()
+    InternalSidecarTarget(
+      skillName = skillName,
+      sourceDir = dir.toAbsolutePath().normalize(),
+      renderedWrapper = renderWrapper(discovered.getValue(skillName)),
+    )
+  }
 }

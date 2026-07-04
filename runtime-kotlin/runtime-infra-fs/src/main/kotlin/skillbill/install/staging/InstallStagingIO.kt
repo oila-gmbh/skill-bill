@@ -7,7 +7,6 @@ import skillbill.install.model.RenderedSkill
 import skillbill.scaffold.authoring.AuthoringTarget
 import skillbill.scaffold.authoring.normalizeMarkdownLineEndings
 import skillbill.scaffold.authoring.renderWrapper
-import skillbill.scaffold.authoring.resolveTarget
 import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.model.PointerSpec
 import skillbill.scaffold.pointer.renderPointer
@@ -27,7 +26,11 @@ internal const val INSTALL_STAGING_CONTENT_HASH_FILENAME = ".content-hash"
 
 private val log: Logger = Logger.getLogger("skillbill.install.InstallStagingIO")
 
-internal fun isReusableInstallStaging(finalStagingDir: Path, contentHash: String): Boolean {
+internal fun isReusableInstallStaging(
+  finalStagingDir: Path,
+  contentHash: String,
+  expectedSidecarNames: Set<String> = emptySet(),
+): Boolean {
   if (!Files.isDirectory(finalStagingDir)) {
     return false
   }
@@ -43,7 +46,12 @@ internal fun isReusableInstallStaging(finalStagingDir: Path, contentHash: String
   // would short-circuit the rebuild and we'd hand back an incomplete dir.
   val skillFile = finalStagingDir.resolve(INSTALL_STAGING_SKILL_FILENAME)
   val skillIsFile = Files.isRegularFile(skillFile, LinkOption.NOFOLLOW_LINKS)
-  return markerIsFile && recorded == contentHash && skillIsFile
+  // F-013 (SKILL-102): the same partial-residue rationale applies to internal sidecars — an
+  // externally deleted sidecar would otherwise be reused indefinitely and break parent dispatch.
+  val sidecarsIntact = expectedSidecarNames.all { name ->
+    Files.isRegularFile(finalStagingDir.resolve(name), LinkOption.NOFOLLOW_LINKS)
+  }
+  return markerIsFile && recorded == contentHash && skillIsFile && sidecarsIntact
 }
 
 internal fun reuseInstallStaging(
@@ -136,11 +144,9 @@ internal fun writeRenderedPointerFiles(
 }
 
 /**
- * SKILL-102 subtask 1 (PD2/PD6): render each internal child's governed wrapper into the parent's
- * staging directory as `<skill-name>.md`. The wrapper is the same `renderWrapper` output a listed
- * skill's `SKILL.md` would carry (descriptor, class sections, execution body, ceremony), so
- * behavior parity holds (PD6). Loud-fails when the parent's source dir already contains an
- * authored file whose name equals a would-be sidecar name (collision guard, mirroring
+ * SKILL-102 (PD2/PD6): write each internal child's pre-rendered governed wrapper into the
+ * parent's staging directory as `<skill-name>.md`. Loud-fails when the parent's source dir
+ * already contains an authored file at a would-be sidecar name (collision guard, mirroring
  * GeneratedArtifactGuard's pattern).
  */
 internal fun writeInternalSidecarFiles(
@@ -149,7 +155,6 @@ internal fun writeInternalSidecarFiles(
   children: List<InternalSidecarTarget>,
 ): List<Path> = children.map { child ->
   val sidecarName = "${child.skillName}.md"
-  // Collision guard: the parent's source dir must not already author a file at this name.
   val collision = parentSourceDir.resolve(sidecarName)
   if (Files.isRegularFile(collision, LinkOption.NOFOLLOW_LINKS)) {
     throw InternalSkillSidecarCollisionError(
@@ -162,22 +167,18 @@ internal fun writeInternalSidecarFiles(
   require(sidecarFile.startsWith(tempDir)) {
     "Internal sidecar '$sidecarName' staging path '$sidecarFile' escapes staging dir '$tempDir'."
   }
-  val rendered = renderInternalSidecarWrapper(child)
-  Files.write(sidecarFile, rendered.toByteArray(StandardCharsets.UTF_8))
+  Files.write(sidecarFile, child.renderedWrapper.toByteArray(StandardCharsets.UTF_8))
   sidecarFile
 }
 
-/**
- * Render the governed wrapper for an internal child via the same `renderWrapper` path a listed
- * skill's `SKILL.md` uses. The child's [AuthoringTarget] is resolved through discovery so the
- * classification seam (which already validated `internal-for`) stays the single source of truth.
- */
-internal fun renderInternalSidecarWrapper(child: InternalSidecarTarget): String {
-  val target = resolveTarget(child.repoRoot, child.skillName)
-  return renderWrapper(target)
-}
-
 internal fun promoteInstallStagingDir(tempDir: Path, finalStagingDir: Path) {
+  // A rebuild only reaches promotion when the existing entry failed the reuse check (stale
+  // marker, missing SKILL.md, or a pruned sidecar). ATOMIC_MOVE cannot replace a non-empty
+  // directory (ENOTEMPTY), so stale residue must go through delete-and-move.
+  if (Files.exists(finalStagingDir, LinkOption.NOFOLLOW_LINKS)) {
+    promoteByDeleteAndMove(tempDir, finalStagingDir)
+    return
+  }
   try {
     Files.move(
       tempDir,

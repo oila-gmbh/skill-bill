@@ -36,8 +36,6 @@ internal fun buildInstallPlan(request: InstallPlanRequest): InstallPlan {
   val platformManifests = discoverPlatformManifests(request.targetPaths.platformPacksRoot)
   val policyInput = buildInstallPolicyInput(request, platformManifests)
   val draft = InstallPlanPolicy.buildPlanDraft(policyInput)
-  // SKILL-102 subtask 1 (PD1): enforce internal-skill classification rules across the full
-  // planned skill set (base + materialized platform skills) before staging/linking.
   validateInstallPlanInternalSkills(draft.skills)
   val staging = buildStagingIntent(request, draft.skills, platformManifests)
   val plan = draft.toInstallPlan(staging)
@@ -106,8 +104,6 @@ internal fun enumerateInstallPlanSkills(request: InstallPlanRequest): List<Insta
   requireSupportedAgentContract()
   val platformManifests = discoverPlatformManifests(request.targetPaths.platformPacksRoot)
   val skills = InstallPlanPolicy.buildPlanDraft(buildInstallPolicyInput(request, platformManifests)).skills
-  // SKILL-102 subtask 1: keep the enumeration seam consistent with buildInstallPlan so callers
-  // (e.g. reconcile) see the same classification validation.
   validateInstallPlanInternalSkills(skills)
   return skills
 }
@@ -163,7 +159,9 @@ private fun buildStagingIntent(
   val stagingRoot = installedSkillsCacheRoot(request.home)
   return InstallStagingIntent(
     root = stagingRoot,
-    skillPaths = skills.map { skill ->
+    // F-011 (SKILL-102): internal skills never stage standalone (apply filters them out), so the
+    // plan must not advertise staging intents for them.
+    skillPaths = skills.filter { skill -> skill.internalFor == null }.map { skill ->
       val applicablePointers = applicablePointers(request.repoRoot, skill.sourceDir, platformManifests)
       val supportPointers = generatedSupportPointersFor(
         repoRoot = request.repoRoot,
@@ -172,8 +170,8 @@ private fun buildStagingIntent(
         skillsRoot = request.targetPaths.skillsRoot,
       )
       validatePointerInputs(request.repoRoot, skill.sourceDir, applicablePointers, supportPointers)
-      // SKILL-102 subtask 1: include internal-skill sidecar wrappers in the parent's planned
-      // content hash so plan and apply agree and editing a child invalidates the parent's cache.
+      // Sidecar wrappers fold into the parent's planned content hash so plan and apply agree and
+      // editing a child invalidates the parent's cache.
       val internalChildren = discoverInternalSidecarTargets(
         repoRoot = request.repoRoot,
         parentSkillName = skill.name,

@@ -94,10 +94,67 @@ class InstallPlanInternalSkillDiscoveryTest {
     assertTrue(error.message.orEmpty().contains("bill-feature-task"))
   }
 
-  private fun planSkill(name: String, internalFor: String?): InstallPlanSkill = InstallPlanSkill(
+  @Test
+  fun `validateInstallPlanInternalSkills fails when a platform-pack skill declares internal-for`() {
+    val skills = listOf(
+      planSkill("bill-feature", internalFor = null),
+      planSkill("bill-kotlin-code-review", internalFor = "bill-feature", kind = InstallPlanSkillKind.PLATFORM_PACK),
+    )
+    val error = assertFailsWith<InvalidInternalSkillClassificationError> {
+      validateInstallPlanInternalSkills(skills)
+    }
+    assertTrue(error.message.orEmpty().contains("platform-pack skill"))
+    assertTrue(error.message.orEmpty().contains("bill-kotlin-code-review"))
+  }
+
+  @Test
+  fun `validateInstallPlanInternalSkills fails when the parent is a platform-pack skill`() {
+    val skills = listOf(
+      planSkill("bill-kotlin-code-review", internalFor = null, kind = InstallPlanSkillKind.PLATFORM_PACK),
+      planSkill("bill-feature-task", internalFor = "bill-kotlin-code-review"),
+    )
+    val error = assertFailsWith<InvalidInternalSkillClassificationError> {
+      validateInstallPlanInternalSkills(skills)
+    }
+    assertTrue(error.message.orEmpty().contains("listed base skill"))
+  }
+
+  @Test
+  fun `a blank internal-for value in content md loud-fails through discovery and validation`() {
+    val repoRoot = Files.createTempDirectory("skillbill-plan-blank").also(tempDirs::add)
+    val skillDir = repoRoot.resolve("skills/bill-feature-task")
+    Files.createDirectories(skillDir)
+    Files.writeString(
+      skillDir.resolve("content.md"),
+      """
+      ---
+      name: bill-feature-task
+      description: Internal.
+      internal-for:
+      ---
+
+      Body.
+      """.trimIndent(),
+    )
+
+    val skills = discoverBaseSkills(repoRoot.resolve("skills"))
+    assertEquals("", skills.single().internalFor, "blank value must be preserved, not treated as listed")
+
+    val error = assertFailsWith<InvalidInternalSkillClassificationError> {
+      validateInstallPlanInternalSkills(skills)
+    }
+    assertTrue(error.message.orEmpty().contains("empty value"))
+  }
+
+  private fun planSkill(
+    name: String,
+    internalFor: String?,
+    kind: InstallPlanSkillKind = InstallPlanSkillKind.BASE,
+  ): InstallPlanSkill = InstallPlanSkill(
     name = name,
     sourceDir = Path.of("/repo/skills/$name").toAbsolutePath().normalize(),
-    kind = InstallPlanSkillKind.BASE,
+    kind = kind,
+    platformSlug = if (kind == InstallPlanSkillKind.PLATFORM_PACK) "kotlin" else null,
     internalFor = internalFor,
   )
 

@@ -8,6 +8,9 @@ import skillbill.nativeagent.composition.NATIVE_AGENT_SOURCE_DIR
 import skillbill.nativeagent.rendering.NativeAgentProvider
 import skillbill.nativeagent.rendering.discoverRepoNativeAgentSourceEntries
 import skillbill.nativeagent.validation.validateRepoNativeAgents
+import skillbill.scaffold.authoring.InternalSkillDeclaration
+import skillbill.scaffold.authoring.internalSkillClassificationViolations
+import skillbill.scaffold.authoring.parseInternalForFrontmatter
 import skillbill.scaffold.platformpack.loadPlatformManifest
 import skillbill.scaffold.platformpack.loadPlatformPack
 import skillbill.scaffold.pointer.validateGeneratedArtifactGuard
@@ -140,7 +143,8 @@ object RepoValidationRuntime {
       validateInstallableSkill(skillName, skillFile, root, issues, validateSourceSidecars = false)
     }
     validateInternalSidecarCollisions(skillFiles + platformSkillFiles, issues)
-    validateInternalSkillClassification(skillFiles + platformSkillFiles, issues)
+    validateInternalSkillClassification(skillFiles, platformSkillFiles, issues)
+    validateInternalSidecarReferences(skillFiles, issues)
     validateSkillSourceShape(skillFiles.values, root, issues)
     addonFiles.forEach { addonFile ->
       validateAddonFile(addonFile, root, issues)
@@ -473,8 +477,7 @@ object RepoValidationRuntime {
    */
   private fun internalSkillNames(skillFiles: Map<String, Path>): Set<String> =
     skillFiles.entries.mapNotNull { (skillName, contentFile) ->
-      val frontmatter = parseFrontmatter(Files.readString(contentFile))
-      if (frontmatter["internal-for"]?.isNotBlank() == true) skillName else null
+      if (parseInternalForFrontmatter(contentFile)?.isNotBlank() == true) skillName else null
     }.toSet()
 
   private fun validateSkillReferences(root: Path, skillNames: Set<String>, issues: MutableList<String>) {
@@ -622,8 +625,7 @@ object RepoValidationRuntime {
   private fun validateInternalSidecarCollisions(skills: Map<String, Path>, issues: MutableList<String>) {
     val internalByParent = skills.entries
       .mapNotNull { (skillName, contentFile) ->
-        val text = Files.readString(contentFile)
-        val declaredParent = parseFrontmatter(text)["internal-for"]?.takeIf(String::isNotBlank)
+        val declaredParent = parseInternalForFrontmatter(contentFile)?.takeIf(String::isNotBlank)
         if (declaredParent != null && declaredParent != skillName && declaredParent in skills) {
           declaredParent to skillName
         } else {
@@ -764,43 +766,62 @@ object RepoValidationRuntime {
   }
 
   /**
-   * SKILL-102 subtask 1 (PD1): enforce the internal-skill classification rules at validation time.
-   * Mirrors `validateInternalSkillClassification` (authoring) and `validateInstallPlanInternalSkills`
-   * (install plan) so the same loud-fail rules hold wherever the classification is read. Emits
-   * issue strings (rather than throwing) to match the validateRepo collection pattern; each issue
-   * names the offending skill, the declared parent, and the rule violated.
+   * SKILL-102 (PD1): enforce the internal-skill classification rules at validation time via the
+   * shared rule evaluator, emitting issue strings (rather than throwing) to match the
+   * validateRepo collection pattern.
    */
-  private fun validateInternalSkillClassification(skillFiles: Map<String, Path>, issues: MutableList<String>) {
-    val byName = skillFiles
-    val internalDeclarations = skillFiles.entries.mapNotNull { (skillName, contentFile) ->
-      val text = Files.readString(contentFile)
-      val frontmatter = parseFrontmatter(text)
-      frontmatter["internal-for"]?.let { declaredParent -> Triple(skillName, contentFile, declaredParent) }
+  private fun validateInternalSkillClassification(
+    baseSkillFiles: Map<String, Path>,
+    platformSkillFiles: Map<String, Path>,
+    issues: MutableList<String>,
+  ) {
+    val declarations = baseSkillFiles.entries.map { (skillName, contentFile) ->
+      InternalSkillDeclaration(
+        skillName = skillName,
+        contentFile = contentFile,
+        declaredParent = parseInternalForFrontmatter(contentFile),
+        isBaseSkill = true,
+      )
+    } + platformSkillFiles.entries.map { (skillName, contentFile) ->
+      InternalSkillDeclaration(
+        skillName = skillName,
+        contentFile = contentFile,
+        declaredParent = parseInternalForFrontmatter(contentFile),
+        isBaseSkill = false,
+      )
     }
-    internalDeclarations.forEach { (skillName, contentFile, declaredParent) ->
-      val displayPath = contentFile.toString()
-      if (declaredParent.isBlank()) {
-        issues += "$displayPath: internal skill '$skillName' declares parent via 'internal-for:' with an " +
-          "empty value; the value must be the name of another discovered skill."
-        return@forEach
-      }
-      if (declaredParent == skillName) {
-        issues += "$displayPath: internal skill '$skillName' declares parent '$declaredParent' which is " +
-          "the skill itself; an internal skill's parent must be a different discovered skill."
-        return@forEach
-      }
-      val parentFile = byName[declaredParent]
-      if (parentFile == null) {
-        issues += "$displayPath: internal skill '$skillName' declares parent '$declaredParent' which is " +
-          "not a discovered skill."
-        return@forEach
-      }
-      val parentText = Files.readString(parentFile)
-      val parentInternalFor = parseFrontmatter(parentText)["internal-for"]
-      if (parentInternalFor != null) {
-        issues += "$displayPath: internal skill '$skillName' declares parent '$declaredParent' which is " +
-          "itself an internal skill (chained internal-for is not allowed; depth is 1)."
+    issues += internalSkillClassificationViolations(declarations)
+  }
+
+  /**
+   * SKILL-102: a `<skill-name>.md` reference inside a skill's content.md is a sidecar file-read
+   * only resolvable when the referenced skill is internal and shares the referencing skill's
+   * effective parent (the referencing skill itself when it is listed). Anything else installs
+   * cleanly but breaks dispatch at session time with a file-not-found, so it fails validate.
+   */
+  private fun validateInternalSidecarReferences(skillFiles: Map<String, Path>, issues: MutableList<String>) {
+    val declaredParents = skillFiles.mapValues { (_, contentFile) ->
+      parseInternalForFrontmatter(contentFile)?.takeIf(String::isNotBlank)
+    }
+    skillFiles.forEach { (skillName, contentFile) ->
+      val effectiveParent = declaredParents[skillName] ?: skillName
+      sidecarReferencePattern.findAll(Files.readString(contentFile)).forEach { match ->
+        val referenced = match.groupValues[1]
+        if (referenced !in skillFiles || referenced == skillName) {
+          return@forEach
+        }
+        val referencedParent = declaredParents[referenced]
+        if (referencedParent == null) {
+          issues += "$contentFile: references sidecar '$referenced.md' but '$referenced' is a listed " +
+            "skill and renders no sidecar; invoke it via the Skill tool or classify it internal."
+        } else if (referencedParent != effectiveParent) {
+          issues += "$contentFile: references sidecar '$referenced.md' but '$referenced' is internal to " +
+            "'$referencedParent', not co-located with '$skillName' (effective parent '$effectiveParent'); " +
+            "the sidecar will not exist in this skill's installed directory."
+        }
       }
     }
   }
+
+  private val sidecarReferencePattern = Regex("`([a-z0-9][a-z0-9-]*)\\.md`")
 }

@@ -63,6 +63,41 @@ class InternalSkillClassificationTest {
   }
 
   @Test
+  fun `parseInternalForFrontmatter returns empty string for a blank value`() {
+    val contentFile = writeTempContent(
+      """
+      ---
+      name: bill-feature-task
+      description: Internal.
+      internal-for:
+      ---
+
+      Body.
+      """.trimIndent(),
+    )
+    // An empty string (not null) so downstream classification loud-fails instead of treating the
+    // skill as listed.
+    assertEquals("", parseInternalForFrontmatter(contentFile))
+  }
+
+  @Test
+  fun `parseInternalForFrontmatter takes the first occurrence of a duplicated key`() {
+    val contentFile = writeTempContent(
+      """
+      ---
+      name: bill-feature-task
+      description: Internal.
+      internal-for: bill-feature
+      internal-for: bill-other
+      ---
+
+      Body.
+      """.trimIndent(),
+    )
+    assertEquals("bill-feature", parseInternalForFrontmatter(contentFile))
+  }
+
+  @Test
   fun `classification passes when no skill declares internal-for`() {
     val targets = mapOf(
       "bill-feature" to target("bill-feature", internalFor = null),
@@ -128,10 +163,38 @@ class InternalSkillClassificationTest {
     assertMessageNames(error, "bill-feature-task", "chained internal-for")
   }
 
-  private fun target(skillName: String, internalFor: String?): AuthoringTarget = AuthoringTarget(
+  @Test
+  fun `classification fails when a platform-pack skill declares internal-for`() {
+    val targets = mapOf(
+      "bill-feature" to target("bill-feature", internalFor = null),
+      "bill-kotlin-code-review" to target(
+        "bill-kotlin-code-review",
+        internalFor = "bill-feature",
+        platform = "kotlin",
+      ),
+    )
+    val error = assertFailsWith<InvalidInternalSkillClassificationError> {
+      validateInternalSkillClassification(targets)
+    }
+    assertMessageNames(error, "bill-kotlin-code-review", "platform-pack skill")
+  }
+
+  @Test
+  fun `classification fails when the parent is a platform-pack skill`() {
+    val targets = mapOf(
+      "bill-kotlin-code-review" to target("bill-kotlin-code-review", internalFor = null, platform = "kotlin"),
+      "bill-feature-task" to target("bill-feature-task", internalFor = "bill-kotlin-code-review"),
+    )
+    val error = assertFailsWith<InvalidInternalSkillClassificationError> {
+      validateInternalSkillClassification(targets)
+    }
+    assertMessageNames(error, "bill-feature-task", "listed base skill")
+  }
+
+  private fun target(skillName: String, internalFor: String?, platform: String = ""): AuthoringTarget = AuthoringTarget(
     skillName = skillName,
-    packageName = "base",
-    platform = "",
+    packageName = platform.ifBlank { "base" },
+    platform = platform,
     displayName = skillName,
     family = "",
     area = "",

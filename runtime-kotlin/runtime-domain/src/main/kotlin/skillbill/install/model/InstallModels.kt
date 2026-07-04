@@ -197,10 +197,6 @@ data class InstallPlanSkill(
   val sourceDir: Path,
   val kind: InstallPlanSkillKind,
   val platformSlug: String? = null,
-  // SKILL-102 subtask 1 (PD1): non-null when this skill declares `internal-for: <parent>`.
-  // Install staging renders such skills as `<name>.md` sidecars inside the parent's staged
-  // directory and skips the agent skills_dir link. Validated at discovery time so an invalid
-  // classification aborts the install plan loudly.
   val internalFor: String? = null,
 )
 
@@ -276,8 +272,6 @@ data class RenderedSkill(
   val renderedPointerFiles: List<Path>,
   val copiedAuthoredFiles: List<Path>,
   val contentHash: String,
-  // SKILL-102 subtask 1 (PD2/PD6): rendered `<child-name>.md` sidecars for internal skills that
-  // declare this skill as their parent. Empty for skills with no internal children.
   val renderedSidecarFiles: List<Path> = emptyList(),
 )
 
@@ -322,7 +316,6 @@ data class InstallSkillStagingOutcome(
   val copiedAuthoredFiles: List<Path> = emptyList(),
   val contentHash: String? = null,
   val issue: InstallApplyIssue? = null,
-  // SKILL-102 subtask 1: sidecars rendered for internal skills parented to this skill.
   val renderedSidecarFiles: List<Path> = emptyList(),
 )
 

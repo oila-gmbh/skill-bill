@@ -84,14 +84,109 @@ directory.
 
 The frontmatter also accepts one optional classification key,
 `internal-for: <parent-skill-name>`. Presence classifies the skill as
-**internal**: its governed content installs as a `<skill-name>.md` sidecar
-inside the parent skill's installed directory instead of as a listed
-`SKILL.md` entry, and it is never listed in any agent's `skills_dir`. The
-parent invokes an internal skill by reading the sidecar file (a sibling read)
-and executing it in-session — the Skill tool cannot resolve unlisted skills.
-The authoring/install pipeline loud-fails on an internal skill whose parent is
-missing, unknown, itself internal, or self. See `AGENTS.md` → Internal Skills
-for the full contract and the feature-execution family worked example.
+**internal** — see the Internal Skills section below for the full contract.
+
+## Internal Skills
+
+Most governed skills are **listed**: they install as a `SKILL.md` entry in each
+agent's `skills_dir` and are invocable by users via the Skill tool. A skill can
+instead be classified **internal**: its governed content still installs, but as
+a markdown sidecar inside another (parent) skill's installed directory, and it
+is never listed or directly invocable. Internal skills exist because some
+governed content is a dispatch target selected by a parent router, not a user
+entry point, and listing every dispatch target dilutes trigger-phrase matching
+and misrepresents the product surface.
+
+### Frontmatter contract (PD1)
+
+A skill is internal when its `content.md` frontmatter carries exactly one
+optional key:
+
+```yaml
+internal-for: <parent-skill-name>
+```
+
+Presence of the key makes the skill internal; absence means listed. There are no
+other frontmatter keys, no `config.yaml` switches, and no per-agent overrides
+for this classification. Only base skills under `skills/` may be internal;
+platform-pack skills cannot carry the key. One shared rule evaluator backs the
+authoring seam, the install-plan seam, and `skill-bill validate`, so the same
+declaration fails identically everywhere it is read.
+
+### Parent rules and loud-fail behavior
+
+The pipeline loud-fails with a typed, actionable error
+(`InvalidInternalSkillClassificationError`; the same rules surface as issues at
+`skill-bill validate` time) when an internal skill:
+
+- has a **missing** value — the `internal-for` key is present with no value;
+- declares an **unknown** parent — no discovered skill matches the name;
+- declares a parent that is **itself internal** — chaining is not allowed;
+  depth is 1, so a sidecar cannot host another sidecar;
+- declares **itself** as parent;
+- declares a **platform-pack** parent — the parent must be a listed base skill;
+- is a **platform-pack skill** carrying the key at all.
+
+A separate collision guard (`InternalSkillSidecarCollisionError`) fails staging
+when an authored file in the parent's source directory already occupies a
+would-be sidecar name (e.g. an authored `bill-feature/bill-feature-task.md`);
+`skill-bill validate` surfaces the same collision before install. Validation
+also checks every `` `<skill-name>.md` `` sidecar reference inside a skill's
+content.md: the referenced skill must be internal and share the referencing
+skill's effective parent, or the reference would break at session time with a
+file-not-found.
+
+Direct installs of an internal skill are refused: `skill-bill link-skill`
+against an internal skill's directory fails with the same typed error and
+directs to the parent, so an internal skill can never gain its own
+`skills_dir` entry through a side path.
+
+### Installed layout (PD2 / PD6)
+
+Install renders an internal skill's governed content as a markdown sidecar named
+`<skill-name>.md` (the full skill name, e.g. `bill-feature-task.md`, never an
+abbreviated form) placed at the top level of the parent skill's installed
+directory, next to the parent's `SKILL.md`. The sidecar carries the same
+governed wrapper a listed skill's `SKILL.md` would carry (frontmatter,
+descriptor, class sections, `## Execution` body, ceremony) — behavior parity
+over token savings; there is no trimmed sidecar format. Critically, install
+creates **no `SKILL.md` directory entry** for the internal skill in any agent's
+`skills_dir`: the agent skill list never contains an internal skill, and the
+sidecar's bytes are folded into the parent's content hash so reinstall
+re-renders and idempotency holds. Cache reuse re-verifies that every expected
+sidecar file is present, so an externally pruned sidecar triggers a re-render
+instead of being reused broken.
+
+### File-read invocation contract (PD5)
+
+The Skill tool on every supported agent resolves only listed skills; there is no
+invocable-but-hidden state. A listed parent therefore invokes an internal skill
+by **reading the sidecar file from its own installed directory** (a sibling file
+read) and executing its instructions in the current session, passing the same
+argument conventions as before (`mode:runtime` / `mode:prose`,
+`parallel-review:<agent>`, issue key, spec path). The Skill tool is never used
+to invoke an internal skill. This file-read pattern is already established for
+other sibling sidecars (`shell-ceremony.md`, `compose-guidelines.md`) and is
+more portable across agents than Skill-tool mechanics.
+
+### Worked example: the feature-execution family
+
+The feature-execution family is the canonical worked example. Exactly five
+skills are internal, all with parent `bill-feature`: `bill-feature-task`,
+`bill-feature-task-runtime`, `bill-feature-task-prose`,
+`bill-feature-task-subtask-runner`, and `bill-feature-goal`. After install, the
+agent skill list shows `bill-feature` (and the standalone listed
+`bill-feature-spec`) but none of the five. `bill-feature` dispatches to task and
+goal execution by reading the rendered sidecar files installed inside its own
+directory (`bill-feature-task.md`, `bill-feature-goal.md`) and executing them.
+`bill-feature-spec` stays listed and standalone because it is a different kind
+of skill (spec preparation without implementation), so it is still invoked via
+the Skill tool. Repo source directories for the internal skills do not move or
+rename (PD3): `skills/bill-feature-task/content.md`,
+`skills/bill-feature-task-prose/content.md`, etc. stay exactly where they are;
+only frontmatter and prose inside them change. Workflow identity strings, the DB
+`workflow_name` CHECK constraint, telemetry constants, and MCP tool names are
+byte-for-byte unchanged (PD4) even though the skills are no longer listed.
 
 `content.md` must not contain generated wrapper headings:
 

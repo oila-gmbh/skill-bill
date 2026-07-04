@@ -97,10 +97,8 @@ internal fun authoredFilesFor(
   generatedSupportPointers.forEach { pointer ->
     excluded.add(sourceSkillDir.resolve(pointer.name).toAbsolutePath().normalize())
   }
-  // SKILL-102 subtask 1: a parent's source dir must not also author a file whose name collides
-  // with a would-be internal sidecar (PD2 collision guard). The hard-fail lives in
-  // writeInternalSidecarFiles; here we just ensure such an authored file is NOT also copied
-  // verbatim (which would race with the sidecar render).
+  // An authored file at a would-be sidecar name must not be copied verbatim (it would race with
+  // the sidecar render); the collision hard-fail lives in writeInternalSidecarFiles.
   excludedSidecarNames.forEach { sidecarName ->
     excluded.add(sourceSkillDir.resolve(sidecarName).toAbsolutePath().normalize())
   }
@@ -183,22 +181,18 @@ internal fun computeInstallContentHash(
       digest.update(Files.readAllBytes(pointer.target))
       digest.update(newline)
     }
-  // SKILL-102 subtask 1 (PD2): fold internal-skill sidecar wrappers into the parent's content
-  // hash so editing a child's content.md invalidates the parent's cache entry and re-renders.
-  // The section is appended ONLY when there is at least one internal child, so repos with no
-  // internal skills produce byte-identical hashes (and thus byte-identical staged trees) to
-  // before this change (criterion 7).
+  // SKILL-102 (PD2): fold the rendered sidecar wrapper bytes into the parent's content hash so
+  // editing a child's content.md (or the renderer) invalidates the parent's cache entry. The
+  // section is appended ONLY when there is at least one internal child, so repos with no internal
+  // skills produce byte-identical hashes to before this change (criterion 7).
   if (internalChildren.isNotEmpty()) {
     digest.update("--internal-sidecars--".toByteArray(StandardCharsets.UTF_8))
     digest.update(newline)
     internalChildren
       .sortedBy { child -> child.skillName }
       .forEach { child ->
-        // Hash the rendered wrapper bytes (the same bytes that land at <skill-name>.md), not the
-        // raw content.md, so demotion/frontmatter changes in the renderer also invalidate the cache.
-        val rendered = renderInternalSidecarWrapper(child)
         digest.update("${child.skillName}.md|".toByteArray(StandardCharsets.UTF_8))
-        digest.update(rendered.toByteArray(StandardCharsets.UTF_8))
+        digest.update(child.renderedWrapper.toByteArray(StandardCharsets.UTF_8))
         digest.update(newline)
       }
   }
@@ -211,6 +205,7 @@ internal fun stageInstalledSkill(
   sourceSkillDir: Path,
   home: Path,
   manifests: List<PlatformManifest>? = null,
+  skillsRoot: Path? = null,
 ): RenderedSkill {
   val resolvedSource = sourceSkillDir.toAbsolutePath().normalize()
   val resolvedRepoRoot = repoRoot.toAbsolutePath().normalize()
@@ -218,8 +213,10 @@ internal fun stageInstalledSkill(
   val target: AuthoringTarget = resolveTarget(resolvedRepoRoot, skillName)
   val pointers = applicablePointers(resolvedRepoRoot, resolvedSource, manifests)
   val generatedSupportPointers = generatedSupportPointersFor(resolvedRepoRoot, resolvedSource, skillName)
-  val skillsRoot = resolvedRepoRoot.resolve("skills")
-  val internalChildren = discoverInternalSidecarTargets(resolvedRepoRoot, skillName, skillsRoot)
+  // F-002: internal-child discovery must use the same skills root the plan used (CLI --skills),
+  // or planned and staged hashes diverge and apply fails for any parent with internal children.
+  val resolvedSkillsRoot = (skillsRoot ?: resolvedRepoRoot.resolve("skills")).toAbsolutePath().normalize()
+  val internalChildren = discoverInternalSidecarTargets(resolvedRepoRoot, skillName, resolvedSkillsRoot)
   val sidecarNames = internalChildren.map { child -> "${child.skillName}.md" }.toSet()
   val authored = authoredFilesFor(
     sourceSkillDir = resolvedSource,
@@ -236,8 +233,8 @@ internal fun stageInstalledSkill(
   )
   val finalStagingDir = installedSkillStagingDir(home, resolvedSource, contentHash)
 
-  // Idempotent reuse: same hash, marker present and intact, SKILL.md present -> reuse existing dir.
-  if (isReusableInstallStaging(finalStagingDir, contentHash)) {
+  // Idempotent reuse: same hash, marker intact, SKILL.md and every expected sidecar present.
+  if (isReusableInstallStaging(finalStagingDir, contentHash, sidecarNames)) {
     log.fine(
       "stageInstalledSkill reuse=true skill=$skillName hash=$contentHash dir=$finalStagingDir",
     )

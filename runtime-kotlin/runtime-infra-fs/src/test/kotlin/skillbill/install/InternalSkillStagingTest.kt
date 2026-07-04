@@ -1,13 +1,19 @@
 package skillbill.install
 
 import skillbill.error.InternalSkillSidecarCollisionError
+import skillbill.error.InvalidInternalSkillClassificationError
+import skillbill.install.apply.nativeAgentSourceRoots
+import skillbill.install.apply.standaloneInstallableSkills
 import skillbill.install.model.AgentTarget
+import skillbill.install.model.InstallPlanSkill
+import skillbill.install.model.InstallPlanSkillKind
 import skillbill.install.plan.InstallContext
 import skillbill.install.plan.installSkill
+import skillbill.install.plan.uninstallTargets
 import skillbill.install.staging.discoverInternalSidecarTargets
-import skillbill.install.staging.renderInternalSidecarWrapper
 import skillbill.install.staging.stageInstalledSkill
 import skillbill.install.staging.writeInternalSidecarFiles
+import skillbill.scaffold.authoring.renderWrapper
 import skillbill.scaffold.authoring.resolveTarget
 import skillbill.scaffold.runtime.RepoValidationRuntime
 import skillbill.scaffold.runtime.supportingFileTargets
@@ -20,19 +26,18 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
 /**
- * SKILL-102 subtask 1 (PD2/PD6): internal-skill install staging.
+ * SKILL-102 (PD2/PD6): internal-skill install staging.
  *
- * Covers:
- *  - sidecar staging layout and naming (`<skill-name>.md` at the parent's staging root),
- *  - no standalone staged skill directory for the internal skill,
- *  - collision guard (authored file occupying the sidecar name),
- *  - idempotent reinstall,
- *  - byte-identical staged output when no skill declares internal-for (criterion 7).
- *
- * Fixtures are created inside the tests, not from repo skills.
+ * Covers sidecar staging layout and naming, absence of standalone staging and skills_dir entries
+ * for internal skills, the collision guard, native-agent source-root parity, install/uninstall
+ * idempotency, the content-hash byte-identity pin (criterion 7), custom skills-root threading,
+ * cache-reuse sidecar verification, the direct link-skill refusal, and repo validation of
+ * classification and sidecar references. Fixtures are created inside the tests, not from repo
+ * skills.
  */
 class InternalSkillStagingTest {
   private val tempDirs = mutableListOf<Path>()
@@ -58,8 +63,11 @@ class InternalSkillStagingTest {
     assertTrue(Files.isRegularFile(sidecar, LinkOption.NOFOLLOW_LINKS), "missing sidecar at $sidecar")
     assertTrue(sidecar in rendered.renderedSidecarFiles, "sidecar not reported in renderedSidecarFiles")
     val childTarget = resolveTarget(fixture.repoRoot, fixture.childName)
-    val expectedWrapper = skillbill.scaffold.authoring.renderWrapper(childTarget)
-    assertEquals(expectedWrapper, Files.readString(sidecar), "sidecar must carry the governed wrapper")
+    assertEquals(
+      renderWrapper(childTarget),
+      Files.readString(sidecar),
+      "sidecar must carry the governed wrapper",
+    )
   }
 
   @Test
@@ -117,15 +125,27 @@ class InternalSkillStagingTest {
   }
 
   @Test
-  fun `discoverInternalSidecarTargets returns only children declaring the parent`() {
+  fun `cache reuse re-renders when an expected sidecar was externally deleted`() {
     val fixture = setupParentWithInternalChild()
-    val childContent = Files.readString(fixture.repoRoot.resolve("skills/${fixture.childName}/content.md"))
+
+    val first = stageInstalledSkill(fixture.repoRoot, fixture.parentDir, fixture.home)
+    val sidecar = first.stagingDir.resolve("${fixture.childName}.md")
+    Files.delete(sidecar)
+
+    val second = stageInstalledSkill(fixture.repoRoot, fixture.parentDir, fixture.home)
+    assertEquals(first.contentHash, second.contentHash)
     assertTrue(
-      childContent.contains("internal-for: ${fixture.parentName}"),
-      "fixture child must declare internal-for; got:\n$childContent",
+      Files.isRegularFile(second.stagingDir.resolve("${fixture.childName}.md"), LinkOption.NOFOLLOW_LINKS),
+      "a pruned sidecar must be re-rendered instead of reused broken",
     )
-    val resolvedChild = resolveTarget(fixture.repoRoot, fixture.childName)
-    assertEquals(fixture.parentName, resolvedChild.internalFor, "resolved child must carry internalFor")
+  }
+
+  @Test
+  fun `discoverInternalSidecarTargets excludes listed siblings and children of other parents`() {
+    val fixture = setupParentWithInternalChild()
+    seedSkill(fixture.repoRoot, "bill-listed-sibling", "bill-listed-sibling", "Listed sibling.")
+    seedSkill(fixture.repoRoot, "bill-other", "bill-other", "Another listed parent.")
+    seedInternalChild(fixture.repoRoot, "bill-other-child", "bill-other")
 
     val targets = discoverInternalSidecarTargets(
       repoRoot = fixture.repoRoot,
@@ -133,9 +153,11 @@ class InternalSkillStagingTest {
       skillsRoot = fixture.repoRoot.resolve("skills"),
     )
 
-    assertEquals(1, targets.size, "expected 1 internal child; got ${targets.size}: $targets")
-    val child = targets.single()
-    assertEquals(fixture.childName, child.skillName)
+    assertEquals(
+      listOf(fixture.childName),
+      targets.map { it.skillName },
+      "only children declaring '${fixture.parentName}' may stage into its directory",
+    )
   }
 
   @Test
@@ -156,8 +178,8 @@ class InternalSkillStagingTest {
   @Test
   fun `staged output is byte-identical to a repo without internal-for declarations`() {
     val fixture = setupParentWithInternalChild()
-    // Remove the internal-for declaration so the child becomes listed; re-stage both and compare
-    // the parent's staged output. The parent's staged tree must not contain the sidecar.
+    // Remove the internal-for declaration so the child becomes listed; re-stage and confirm the
+    // parent's staged output carries no sidecar.
     Files.writeString(
       fixture.childDir.resolve("content.md"),
       """
@@ -181,7 +203,65 @@ class InternalSkillStagingTest {
   }
 
   @Test
-  fun `writeInternalSidecarFiles renders the governed wrapper via renderWrapper`() {
+  fun `parent content hash ignores listed siblings and changes only for internal children`() {
+    val (repoRoot, home) = setupRepoBase()
+    val parentDir = seedSkill(repoRoot, "bill-feature", "bill-feature", "Routing parent.")
+
+    val alone = stageInstalledSkill(repoRoot, parentDir, home)
+
+    seedSkill(repoRoot, "bill-feature-task", "bill-feature-task", "Listed sibling.")
+    val withListedSibling = stageInstalledSkill(repoRoot, parentDir, home)
+    assertEquals(
+      alone.contentHash,
+      withListedSibling.contentHash,
+      "a listed sibling must not change the parent's content hash (criterion 7 byte-identity)",
+    )
+    assertTrue(withListedSibling.renderedSidecarFiles.isEmpty())
+
+    seedInternalChild(repoRoot, "bill-feature-task", "bill-feature")
+    val withInternalChild = stageInstalledSkill(repoRoot, parentDir, home)
+    assertNotEquals(
+      alone.contentHash,
+      withInternalChild.contentHash,
+      "classifying the sibling internal must invalidate the parent's cache entry",
+    )
+    assertTrue(
+      Files.isRegularFile(
+        withInternalChild.stagingDir.resolve("bill-feature-task.md"),
+        LinkOption.NOFOLLOW_LINKS,
+      ),
+    )
+  }
+
+  @Test
+  fun `stageInstalledSkill honors an explicit skills root for internal-child discovery`() {
+    val fixture = setupParentWithInternalChild()
+    val defaultRoot = stageInstalledSkill(fixture.repoRoot, fixture.parentDir, fixture.home)
+    val explicitRoot = stageInstalledSkill(
+      fixture.repoRoot,
+      fixture.parentDir,
+      fixture.home,
+      skillsRoot = fixture.repoRoot.resolve("skills"),
+    )
+    assertEquals(defaultRoot.contentHash, explicitRoot.contentHash)
+
+    val emptySkillsRoot = Files.createTempDirectory("skillbill-empty-skills").also(tempDirs::add)
+    val withoutChildren = stageInstalledSkill(
+      fixture.repoRoot,
+      fixture.parentDir,
+      fixture.home,
+      skillsRoot = emptySkillsRoot,
+    )
+    assertNotEquals(
+      defaultRoot.contentHash,
+      withoutChildren.contentHash,
+      "an explicit skills root must drive internal-child discovery instead of repoRoot/skills",
+    )
+    assertTrue(withoutChildren.renderedSidecarFiles.isEmpty())
+  }
+
+  @Test
+  fun `writeInternalSidecarFiles writes the pre-rendered governed wrapper`() {
     val fixture = setupParentWithInternalChild()
     val child = discoverInternalSidecarTargets(
       repoRoot = fixture.repoRoot,
@@ -196,16 +276,41 @@ class InternalSkillStagingTest {
       children = listOf(child),
     )
 
-    assertEquals(1, written.size)
     val sidecar = written.single()
     assertEquals("${fixture.childName}.md", sidecar.fileName.toString())
-    val expected = renderInternalSidecarWrapper(child)
-    assertEquals(expected, Files.readString(sidecar))
+    // Independent expectation: render the wrapper through the authoring seam directly.
+    assertEquals(
+      renderWrapper(resolveTarget(fixture.repoRoot, fixture.childName)),
+      Files.readString(sidecar),
+    )
   }
 
   // ---------------------------------------------------------------------------------------------
-  // Agent-link planning (criterion 4): internal skills get no skills_dir link
+  // Standalone-install and native-agent filters (criteria 4 and 5)
   // ---------------------------------------------------------------------------------------------
+
+  @Test
+  fun `standaloneInstallableSkills excludes internal skills that nativeAgentSourceRoots retains`() {
+    val parent = planSkill("bill-feature", internalFor = null)
+    val child = planSkill("bill-feature-task", internalFor = "bill-feature")
+    val packSkill = planSkill("bill-kotlin-code-review", internalFor = null, platformSlug = "kotlin")
+    val unselectedPackSkill = planSkill("bill-php-code-review", internalFor = null, platformSlug = "php")
+    val skills = listOf(parent, child, packSkill, unselectedPackSkill)
+
+    val standalone = standaloneInstallableSkills(skills, selectedPlatformSlugs = setOf("kotlin"))
+    assertEquals(
+      listOf("bill-feature", "bill-kotlin-code-review"),
+      standalone.map { it.name },
+      "internal skills and unselected pack skills must not stage standalone or link into skills_dir",
+    )
+
+    val sourceRoots = nativeAgentSourceRoots(skills, selectedPlatformSlugs = setOf("kotlin"))
+    assertTrue(
+      child.sourceDir in sourceRoots,
+      "an internal skill's dir must remain a native-agent source root (native-agent parity)",
+    )
+    assertFalse(unselectedPackSkill.sourceDir in sourceRoots)
+  }
 
   @Test
   fun `install links the parent but creates no skills_dir entry for the internal child`() {
@@ -227,21 +332,24 @@ class InternalSkillStagingTest {
     )
   }
 
-  // ---------------------------------------------------------------------------------------------
-  // Native-agent parity (criterion 5)
-  // ---------------------------------------------------------------------------------------------
-
   @Test
-  fun `internal skill with a native-agents dir remains enumerable as a source root`() {
+  fun `installSkill refuses to link an internal skill directly`() {
     val fixture = setupParentWithInternalChild()
-    val nativeDir = fixture.childDir.resolve("native-agents")
-    Files.createDirectories(nativeDir)
-    Files.writeString(nativeDir.resolve("agents.yaml"), "agents: []\n")
+    val agentRoot = fixture.home.resolve("agents")
+    Files.createDirectories(agentRoot)
 
-    // Native-agent discovery keys off sourceDir presence, not classification. The internal child's
-    // source dir is still enumerable, so a native-agents bundle hosted there installs as for a
-    // listed skill.
-    assertTrue(Files.isDirectory(nativeDir, LinkOption.NOFOLLOW_LINKS))
+    val error = assertFailsWith<InvalidInternalSkillClassificationError> {
+      installSkill(
+        skillPath = fixture.childDir,
+        agentTargets = listOf(AgentTarget("test-agent", agentRoot)),
+        context = InstallContext(repoRoot = fixture.repoRoot, home = fixture.home),
+      )
+    }
+    assertTrue(error.message.orEmpty().contains("internal-for: ${fixture.parentName}"))
+    assertFalse(
+      Files.exists(agentRoot.resolve(fixture.childName), LinkOption.NOFOLLOW_LINKS),
+      "refused link must leave no skills_dir entry",
+    )
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -249,35 +357,35 @@ class InternalSkillStagingTest {
   // ---------------------------------------------------------------------------------------------
 
   @Test
-  fun `uninstalling the parent link removes the sidecar reachable path with it`() {
+  fun `uninstallTargets removes the parent link and repeats as a no-op`() {
     val fixture = setupParentWithInternalChild()
     val agentRoot = fixture.home.resolve("agents")
     Files.createDirectories(agentRoot)
-    val agent = AgentTarget("test-agent", agentRoot)
 
     val links = installSkill(
       skillPath = fixture.parentDir,
-      agentTargets = listOf(agent),
+      agentTargets = listOf(AgentTarget("test-agent", agentRoot)),
       context = InstallContext(repoRoot = fixture.repoRoot, home = fixture.home),
     )
     val parentLink = links.single()
     assertTrue(Files.isSymbolicLink(parentLink))
-    // The sidecar lives inside the parent's staged directory. Removing the parent link is the
-    // agent-visible uninstall; the sidecar travels with the parent's staging dir, so no separate
-    // cleanup entry exists for the internal child.
-    Files.deleteIfExists(parentLink)
+
+    val removed = uninstallTargets(links)
+    assertEquals(links, removed)
     assertFalse(Files.exists(parentLink, LinkOption.NOFOLLOW_LINKS))
+
+    val removedAgain = uninstallTargets(links)
+    assertTrue(removedAgain.isEmpty(), "repeat uninstall must be a no-op, got $removedAgain")
   }
 
   // ---------------------------------------------------------------------------------------------
-  // Repo validation (criterion 1, 2, 7)
+  // Repo validation (classification, blank values, sidecar references)
   // ---------------------------------------------------------------------------------------------
 
   @Test
   fun `repo validation rejects unknown internal parent at validate time`() {
     val repoRoot = Files.createTempDirectory("skillbill-internal-validate-unknown").also(tempDirs::add)
     seedSkill(repoRoot, "bill-feature-task", "bill-feature-task", "Internal.")
-    // Author the child to declare a parent that does not exist in this repo slice.
     Files.writeString(
       repoRoot.resolve("skills/bill-feature-task/content.md"),
       """
@@ -301,6 +409,32 @@ class InternalSkillStagingTest {
   }
 
   @Test
+  fun `repo validation rejects a blank internal-for value read from content md`() {
+    val repoRoot = Files.createTempDirectory("skillbill-internal-validate-blank").also(tempDirs::add)
+    seedSkill(repoRoot, "bill-feature-task", "bill-feature-task", "Internal.")
+    Files.writeString(
+      repoRoot.resolve("skills/bill-feature-task/content.md"),
+      """
+      ---
+      name: bill-feature-task
+      description: Internal.
+      internal-for:
+      ---
+
+      Body.
+      """.trimIndent(),
+    )
+
+    val report = RepoValidationRuntime.validateRepo(repoRoot)
+
+    assertFalse(report.passed)
+    assertTrue(
+      report.issues.any { it.contains("empty value") && it.contains("bill-feature-task") },
+      "a blank internal-for must fail loudly, not degrade to listed; issues=${report.issues}",
+    )
+  }
+
+  @Test
   fun `repo validation raises no internal-skill issue for a healthy classification`() {
     val fixture = setupParentWithInternalChild()
 
@@ -315,6 +449,60 @@ class InternalSkillStagingTest {
     )
   }
 
+  @Test
+  fun `repo validation rejects a sidecar reference to another parent's internal child`() {
+    val fixture = setupParentWithInternalChild()
+    seedSkill(
+      fixture.repoRoot,
+      "bill-outsider",
+      "bill-outsider",
+      "Listed skill referencing a foreign sidecar.",
+      body = "Read the file `${fixture.childName}.md` and execute it.",
+    )
+
+    val report = RepoValidationRuntime.validateRepo(fixture.repoRoot)
+
+    assertTrue(
+      report.issues.any { it.contains("bill-outsider") && it.contains("not co-located") },
+      "a sidecar reference outside the parent's directory must fail validate; issues=${report.issues}",
+    )
+  }
+
+  @Test
+  fun `repo validation rejects a sidecar reference to a listed skill`() {
+    val fixture = setupParentWithInternalChild()
+    seedSkill(fixture.repoRoot, "bill-listed", "bill-listed", "Listed skill.")
+    seedSkill(
+      fixture.repoRoot,
+      "bill-referrer",
+      "bill-referrer",
+      "Listed skill referencing a listed skill as a sidecar.",
+      body = "Read the file `bill-listed.md` and execute it.",
+    )
+
+    val report = RepoValidationRuntime.validateRepo(fixture.repoRoot)
+
+    assertTrue(
+      report.issues.any { it.contains("bill-referrer") && it.contains("renders no sidecar") },
+      "referencing a listed skill as a sidecar file must fail validate; issues=${report.issues}",
+    )
+  }
+
+  @Test
+  fun `repo validation accepts the parent referencing its own child sidecar`() {
+    val fixture = setupParentWithInternalChild(
+      parentBody = "Read the file `bill-feature-task.md` located in this skill's installed directory.",
+    )
+
+    val report = RepoValidationRuntime.validateRepo(fixture.repoRoot)
+
+    val referenceIssues = report.issues.filter { it.contains("references sidecar") }
+    assertTrue(
+      referenceIssues.isEmpty(),
+      "the parent's own-child sidecar reference is the supported dispatch contract, got: $referenceIssues",
+    )
+  }
+
   private data class ParentChildFixture(
     val repoRoot: Path,
     val home: Path,
@@ -324,7 +512,7 @@ class InternalSkillStagingTest {
     val childDir: Path,
   )
 
-  private fun setupParentWithInternalChild(): ParentChildFixture {
+  private fun setupRepoBase(): Pair<Path, Path> {
     val repoRoot = Files.createTempDirectory("skillbill-internal-repo").also(tempDirs::add)
     val home = Files.createTempDirectory("skillbill-internal-home").also(tempDirs::add)
     SkillClassFixtures.seedShippedSkillClasses(repoRoot)
@@ -333,6 +521,11 @@ class InternalSkillStagingTest {
     // Seed a minimal valid pack so authoring discovery resolves cleanly.
     seedKmpPlatformPack(repoRoot)
     seedSupportingTargets(repoRoot)
+    return repoRoot to home
+  }
+
+  private fun setupParentWithInternalChild(parentBody: String = "Authored body."): ParentChildFixture {
+    val (repoRoot, home) = setupRepoBase()
     val parentName = "bill-feature"
     val childName = "bill-feature-task"
     val parentDir = seedSkill(
@@ -340,6 +533,7 @@ class InternalSkillStagingTest {
       parentName,
       parentName,
       "Routes feature work and dispatches to internal sidecars.",
+      body = parentBody,
     )
     val childDir = seedInternalChild(repoRoot, childName, parentName)
     return ParentChildFixture(
@@ -351,6 +545,15 @@ class InternalSkillStagingTest {
       childDir = childDir,
     )
   }
+
+  private fun planSkill(name: String, internalFor: String?, platformSlug: String? = null): InstallPlanSkill =
+    InstallPlanSkill(
+      name = name,
+      sourceDir = Path.of("/repo/skills/$name").toAbsolutePath().normalize(),
+      kind = if (platformSlug == null) InstallPlanSkillKind.BASE else InstallPlanSkillKind.PLATFORM_PACK,
+      platformSlug = platformSlug,
+      internalFor = internalFor,
+    )
 
   private fun seedSupportingTargets(repoRoot: Path) {
     // Seed only the orchestration-derived supporting targets. The kmp add-on targets in
@@ -364,7 +567,13 @@ class InternalSkillStagingTest {
     }
   }
 
-  private fun seedSkill(repoRoot: Path, skillName: String, frontmatterName: String, description: String): Path {
+  private fun seedSkill(
+    repoRoot: Path,
+    skillName: String,
+    frontmatterName: String,
+    description: String,
+    body: String = "Authored body.",
+  ): Path {
     val skillDir = repoRoot.resolve("skills/$skillName")
     Files.createDirectories(skillDir)
     Files.writeString(
@@ -375,7 +584,7 @@ class InternalSkillStagingTest {
       description: $description
       ---
 
-      Authored body.
+      $body
       """.trimIndent(),
     )
     return skillDir.toAbsolutePath().normalize()

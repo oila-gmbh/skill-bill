@@ -70,9 +70,8 @@ private fun materializeValidatedPlannedStaging(inputs: PlannedStagingMaterializa
     skillName = skill.name,
     skillsRoot = plan.request.targetPaths.skillsRoot,
   )
-  // SKILL-102 subtask 1: discover internal children at apply time too so the planned content
-  // hash (which folded them in) recomputes identically and reuse vs rebuild stays consistent
-  // with the staging pipeline.
+  // Internal children are re-discovered at apply time so the planned content hash (which folded
+  // them in) recomputes identically and reuse vs rebuild stays consistent with staging.
   val internalChildren = discoverInternalSidecarTargets(
     repoRoot = plan.request.repoRoot,
     parentSkillName = skill.name,
@@ -91,7 +90,7 @@ private fun materializeValidatedPlannedStaging(inputs: PlannedStagingMaterializa
     "Planned staging for '${skill.name}' expected hash '${intent.contentHash}' but current source resolves " +
       "to '$currentHash'. Re-run planInstall before applyInstall."
   }
-  if (isReusableInstallStaging(inputs.expectedStagingDir, intent.contentHash)) {
+  if (isReusableInstallStaging(inputs.expectedStagingDir, intent.contentHash, sidecarNames)) {
     return reuseInstallStaging(
       sourceSkillDir = inputs.resolvedSource,
       finalStagingDir = inputs.expectedStagingDir,
@@ -106,6 +105,7 @@ private fun materializeValidatedPlannedStaging(inputs: PlannedStagingMaterializa
     sourceSkillDir = inputs.resolvedSource,
     home = plan.request.home,
     manifests = inputs.platformManifests,
+    skillsRoot = plan.request.targetPaths.skillsRoot,
   )
   val stagedDir = staged.stagingDir.toAbsolutePath().normalize()
   require(staged.contentHash == intent.contentHash && stagedDir == inputs.expectedStagingDir) {

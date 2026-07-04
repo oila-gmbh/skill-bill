@@ -292,3 +292,37 @@ Runtime flows are indistinguishable from today: `skill-bill feature-task` and
   skills were intentionally removed from the user-facing catalog. The fix
   excludes internal skills from the README catalog requirement and adds a
   regression test.
+- A post-completion feature-verify review (2026-07-04, 20 findings) drove a
+  hardening pass on the same branch:
+  - Enforcement gaps closed: direct `link-skill` now refuses internal skills
+    (PD2 bypass); `stageInstalledSkill` threads the plan's skills root instead
+    of hardcoding `repoRoot/skills` (custom `--skills` broke apply);
+    `internal-for` on a platform-pack skill now loud-fails instead of silently
+    installing listed; an internal skill's parent must be a listed base skill
+    at every seam.
+  - The four classification rules moved into one shared evaluator
+    (`InternalSkillClassification.kt`) consumed by authoring, install-plan,
+    and `skill-bill validate`; every seam reads `internal-for` through the
+    single `parseInternalForFrontmatter` parser (first-occurrence wins).
+  - Sidecar wrappers render once per staging operation and are carried on
+    `InternalSidecarTarget`; staging intents are no longer emitted for
+    internal skills; cache reuse re-verifies sidecar presence; promotion of a
+    rebuild over stale staging residue no longer crashes with
+    `DirectoryNotEmptyException` (pre-existing defect exposed by the new
+    reuse test).
+  - New validate rule: a `` `<skill-name>.md` `` sidecar reference inside a
+    skill's content.md must resolve to an internal skill sharing the
+    referencing skill's effective parent.
+  - Criterion 13 correction: the full internal-skill contract now lives in
+    `docs/skill-source-generation.md`; `AGENTS.md` carries a summary plus
+    pointer because the full section pushed it past agnix's 12,000-char
+    Windsurf limit.
+  - Criterion 12 correction: the skills_dir-absence, native-agent-parity,
+    uninstall-idempotency, and byte-identity tests were tautological
+    (asserting fixture setup or JDK behavior); replaced with behavioral tests
+    against the production filters, the real uninstall primitive, and a
+    content-hash pin.
+  - `FeatureSpecSkillWiringContractTest` still asserted the pre-migration
+    Skill-tool dispatch phrasing; it passed subtask validation only via
+    Gradle's up-to-date cache (the test reads repo markdown at runtime, which
+    is invisible to task inputs). Updated to the sidecar dispatch contract.

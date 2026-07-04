@@ -25,10 +25,6 @@ data class AuthoringTarget(
   val contentFile: Path,
   val codeReviewComposition: CodeReviewComposition? = null,
   val addonUsage: List<GovernedAddonSelection> = emptyList(),
-  // SKILL-102 subtask 1 (PD1): presence of the `internal-for: <parent-skill-name>` frontmatter
-  // key makes a skill internal (it installs as a sidecar inside its parent's staged directory
-  // instead of getting its own skills_dir entry). Null means listed. Validated separately by
-  // `validateInternalSkillClassification` once discovery has enumerated every skill name.
   val internalFor: String? = null,
 )
 
