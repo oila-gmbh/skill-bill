@@ -5,6 +5,7 @@ import skillbill.desktop.core.common.di.UserScope
 import skillbill.desktop.core.data.di.DesktopRuntimeApplicationServices
 import skillbill.desktop.core.domain.model.RepoSession
 import skillbill.desktop.core.domain.service.InstalledWorkspaceBaselineService
+import skillbill.install.model.ExternalAddonSource
 import skillbill.ports.scaffold.source.model.ScaffoldSaveExactContentResult
 import software.amazon.lastmile.kotlin.inject.anvil.SingleIn
 import java.nio.file.Files
@@ -30,6 +31,9 @@ class RepoBrowserStore(
   }
   var baselineModifiedResolver: (Path) -> Set<String> = { root ->
     installedWorkspaceBaselineService.modifiedSkillRelativePaths(root.toString())
+  }
+  var externalAddonSourcesResolver: () -> List<ExternalAddonSource> = {
+    runtimeServices.resolveExternalAddonSources()
   }
 
   internal fun selectionFor(session: RepoSession?, treeItemId: String?): SelectionDetail? {

@@ -256,6 +256,14 @@ private fun NavTreeNode(
     )
     val readOnlyLabel = node.readOnlyLabel ?: "RO".takeIf { !node.editable }
     OpenEditorTabIndicator(open = open)
+    if (node.external) {
+      Text(
+        text = "EXT",
+        color = SkillBillTheme.frameTokens.primary,
+        style = SkillBillTypeStyles.caption.copy(fontFamily = FontFamily.Monospace),
+        modifier = Modifier.padding(end = SkillBillDimens.padLg),
+      )
+    }
     if (readOnlyLabel != null) {
       Text(
         text = readOnlyLabel,

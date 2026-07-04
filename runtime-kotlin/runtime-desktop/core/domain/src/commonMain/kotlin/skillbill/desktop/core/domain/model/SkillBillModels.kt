@@ -59,6 +59,7 @@ data class SkillBillTreeItem(
   val metadata: SkillBillTreeItemMetadata? = null,
   val baselineModified: Boolean = false,
   val children: List<SkillBillTreeItem> = emptyList(),
+  val external: Boolean = false,
 )
 
 enum class TreeItemKind {

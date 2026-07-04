@@ -6,7 +6,10 @@ import skillbill.desktop.core.domain.model.GeneratedArtifactDetail
 import skillbill.desktop.core.domain.model.SkillBillTreeItem
 import skillbill.desktop.core.domain.model.SkillBillTreeItemMetadata
 import skillbill.desktop.core.domain.model.TreeItemKind
+import skillbill.install.model.ExternalAddonSource
 import skillbill.ports.scaffold.model.NativeAgentSourceProjection
+import java.nio.file.Files
+import java.nio.file.LinkOption
 import java.nio.file.Path
 
 internal class SkillTreeBuilder(
@@ -15,11 +18,15 @@ internal class SkillTreeBuilder(
   private val scaffoldService get() = runtimeServices.scaffoldService
   private val repoSourceDiscoveryService get() = runtimeServices.repoSourceDiscoveryService
 
-  fun buildTree(root: Path, baselineModifiedResolver: (Path) -> Set<String>): TreeBuildResult {
+  fun buildTree(
+    root: Path,
+    baselineModifiedResolver: (Path) -> Set<String>,
+    externalAddonSourcesResolver: () -> List<ExternalAddonSource>,
+  ): TreeBuildResult {
     val repoToken = repoToken(root)
     val selections = linkedMapOf<String, SelectionDetail>()
     val authoredSkills = loadAuthoredSkills(root, repoToken, selections, baselineModifiedResolver)
-    val addons = loadAddons(root, repoToken, selections)
+    val addons = loadAddons(root, repoToken, selections, externalAddonSourcesResolver)
     val nativeAgents = loadNativeAgents(root, repoToken, selections)
     val generatedArtifacts = loadGeneratedArtifacts(root, repoToken, selections)
 
@@ -114,10 +121,47 @@ internal class SkillTreeBuilder(
     root: Path,
     repoToken: String,
     selections: MutableMap<String, SelectionDetail>,
+    externalAddonSourcesResolver: () -> List<ExternalAddonSource>,
   ): List<SkillBillTreeItem> {
     val addonsByPlatform = linkedMapOf<String, MutableList<SkillBillTreeItem>>()
+    val externalAddonKeys = linkedSetOf<AddonKey>()
+    runCatching { externalAddonSourcesResolver() }.getOrDefault(emptyList()).forEach { source ->
+      source.topLevelMarkdownFiles().forEach { addon ->
+        val platform = source.platform
+        val slug = addon.fileName.toString().removeSuffix(".md")
+        val key = AddonKey(platform, slug)
+        if (externalAddonKeys.add(key)) {
+          val authoredPath = relativePath(root, addon)
+          val id = selectionId(repoToken, "addon-external:$platform:${addon.stableSourcePath()}")
+          selections[id] =
+            SelectionDetail(
+              repoToken = repoToken,
+              title = addon.fileName.toString(),
+              detail = "External add-on source from ${source.path}.",
+              kind = "add-on",
+              authoredPath = authoredPath,
+              status = "authored",
+              contentFile = addon,
+              editable = true,
+            )
+          addonsByPlatform.getOrPut(platform) { mutableListOf() } += SkillBillTreeItem(
+            id = id,
+            label = slug,
+            kind = TreeItemKind.ADD_ON,
+            authoredPath = authoredPath,
+            status = "authored",
+            editable = true,
+            external = true,
+            metadata = SkillBillTreeItemMetadata(kind = "add-on", platform = platform),
+          )
+        }
+      }
+    }
     repoSourceDiscoveryService.discoverGovernedAddonFiles(root)
       .forEach { addonFile ->
+        if (AddonKey(addonFile.packSlug, addonFile.addonSlug) in externalAddonKeys) {
+          return@forEach
+        }
         val addon = addonFile.addonPath
         val relative = relativePath(root, addon)
         val id = selectionId(repoToken, "addon:$relative")
@@ -318,6 +362,23 @@ internal class SkillTreeBuilder(
       }
   }
 }
+
+private data class AddonKey(
+  val platform: String,
+  val slug: String,
+)
+
+private fun ExternalAddonSource.topLevelMarkdownFiles(): List<Path> = runCatching {
+  Files.list(path).use { paths ->
+    paths
+      .filter { file -> Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS) }
+      .filter { file -> file.fileName.toString().endsWith(".md") }
+      .sorted(Comparator { left, right -> left.fileName.toString().compareTo(right.fileName.toString()) })
+      .toList()
+  }
+}.getOrDefault(emptyList())
+
+private fun Path.stableSourcePath(): String = toAbsolutePath().normalize().toString().replace('\\', '/')
 
 private data class NativeAgentTreeLeaf(
   val groupPath: List<String>,
