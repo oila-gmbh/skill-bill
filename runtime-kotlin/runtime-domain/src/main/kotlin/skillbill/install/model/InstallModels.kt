@@ -35,7 +35,7 @@ enum class InstallAgent(
 // Single source of truth for agents skill-bill refuses to run in runtime mode. Every layer derives
 // from this set: the CLI preflights, the launcher backstop, and the headless adapter registry, so
 // re-enabling an agent's runtime path is a one-line change here rather than scattered edits that drift.
-val RUNTIME_REFUSED_AGENTS: Set<InstallAgent> = setOf(InstallAgent.OPENCODE)
+val RUNTIME_REFUSED_AGENTS: Set<InstallAgent> = setOf(InstallAgent.OPENCODE, InstallAgent.ZCODE)
 
 fun isRuntimeRefusedAgent(agentId: String?): Boolean {
   if (agentId == null) return false
@@ -43,9 +43,16 @@ fun isRuntimeRefusedAgent(agentId: String?): Boolean {
   return RUNTIME_REFUSED_AGENTS.any { refused -> refused.id == normalized }
 }
 
-const val OPENCODE_RUNTIME_REFUSAL_MESSAGE: String =
-  "Runtime mode is not supported on opencode: its foreground Bash tool is hard-killed at 120s before " +
-    "a phase can finish, and per-phase output cannot be harvested back. Use prose instead — run " +
+// Shared, agent-neutral refusal reason. Documents the observed harness failure mode for every
+// refused agent so the CLI preflight, the spawn-boundary backstop, and the governed skill gates
+// all carry the same actionable prose. opencode is hard-killed at the 120s Bash ceiling; zcode's
+// foreground runtime exceeds that ceiling, and a detached zcode child emits no harvestable output
+// before the supervisor kills it as unresponsive. Both redirect to the supported prose path.
+const val RUNTIME_REFUSED_AGENT_MESSAGE: String =
+  "Runtime mode is not supported on opencode or zcode in this harness. opencode's foreground Bash tool " +
+    "is hard-killed at 120s before a phase can finish and per-phase output cannot be harvested back; " +
+    "zcode's foreground runtime exceeds the Bash execution ceiling and a detached zcode child emits no " +
+    "harvestable output before the supervisor kills it as unresponsive. Use prose instead — run " +
     "bill-feature-task-prose for a single feature task, or bill-feature-goal mode:prose for a decomposed goal."
 
 /**
@@ -72,6 +79,7 @@ object InvokingAgentContextResolver {
     InvokingAgentContextSignal(InstallAgent.CLAUDE, listOf("CLAUDECODE", "CLAUDE_CODE", "CLAUDE_CODE_ENTRYPOINT")),
     InvokingAgentContextSignal(InstallAgent.CODEX, listOf("CODEX_SANDBOX", "CODEX_SANDBOX_ENV", "CODEX_HOME")),
     InvokingAgentContextSignal(InstallAgent.OPENCODE, listOf("OPENCODE", "OPENCODE_BIN_PATH", "OPENCODE_CONFIG")),
+    InvokingAgentContextSignal(InstallAgent.ZCODE, listOf("ZCODE_APP_VERSION", "ZCODE_BASE_URL")),
   )
 
   /**

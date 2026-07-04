@@ -36,18 +36,20 @@ either one. The runtime sources the run-invariants (spec reference, acceptance
 criteria, mandates and overrides) directly from the spec at launch — this skill
 does not parse or restate them.
 
-**opencode is prose-only; refuse before launch.** This skill can be invoked
+**opencode and zcode are prose-only; refuse before launch.** This skill can be invoked
 directly (bypassing the `bill-feature-task` router), so it must refuse on its own
-when the agent currently executing it is opencode: stop before the Single
-Confirmation Gate and the foreground launch and emit the actionable refusal
+when the agent currently executing it is opencode or zcode: stop before the Single
+confirmation Gate and the foreground launch and emit the actionable refusal
 pointing to `bill-feature-task-prose`:
 
-> Runtime mode is not supported on opencode: its foreground Bash tool is hard-killed at 120s before a phase can finish, and per-phase output cannot be harvested back. Use prose instead — use bill-feature with mode:prose for a single feature task, or bill-feature with mode:prose for a decomposed goal.
+> Runtime mode is not supported on opencode or zcode in this harness. opencode's foreground Bash tool is hard-killed at 120s before a phase can finish and per-phase output cannot be harvested back; zcode's foreground runtime exceeds the Bash execution ceiling and a detached zcode child emits no harvestable output before the supervisor kills it as unresponsive. Use prose instead — run bill-feature-task-prose for a single feature task, or bill-feature-goal mode:prose for a decomposed goal.
 
-Do not launch `skill-bill feature-task` on opencode — the runtime CLI refuses the
-same way whenever the resolved runtime agent is opencode, and runtime mode is
-non-viable there (the 120s foreground kill and the un-harvestable PTY output).
-For a prose run instead, read the sibling `bill-feature-task-prose.md` sidecar.
+Do not launch `skill-bill feature-task` on opencode or zcode — the runtime CLI refuses the
+same way whenever the resolved runtime agent is opencode or zcode, and runtime mode is
+non-viable for both (opencode's 120s foreground kill and the un-harvestable PTY output;
+zcode's foreground run exceeding the Bash ceiling and detached children killed as
+unresponsive before emitting harvestable output). For a prose run instead, read the
+sibling `bill-feature-task-prose.md` sidecar.
 
 ## Single Confirmation Gate
 
