@@ -98,6 +98,7 @@ sealed class ScaffoldCommandRequest {
     val platform: String,
     val description: String = "",
     val body: String? = null,
+    val addonLocationPath: String? = null,
     /**
      * Optional explicit consumer-skill directory list. When null, the domain falls back to
      * the platform pack's declared addon-consumers (resolved against the on-disk manifest).

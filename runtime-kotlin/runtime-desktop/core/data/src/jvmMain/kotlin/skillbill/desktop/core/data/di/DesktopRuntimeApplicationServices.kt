@@ -56,6 +56,13 @@ class DesktopRuntimeApplicationServices {
   fun resolveExternalAddonSources(): List<ExternalAddonSource> =
     services.externalAddonOverlayService.resolveSources(currentUserHome(), System.getenv())
 
+  fun registerExternalAddonSource(source: ExternalAddonSource): List<ExternalAddonSource> =
+    services.externalAddonOverlayService.registerSource(
+      home = currentUserHome(),
+      source = source,
+      environment = System.getenv(),
+    )
+
   companion object {
     fun forCurrentUserHome(): DesktopRuntimeApplicationServices = DesktopRuntimeApplicationServices()
   }

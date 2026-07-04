@@ -1,6 +1,7 @@
 package skillbill.desktop.feature.skillbill.state
 
 import skillbill.desktop.core.domain.model.BaselineReviewLayerSuggestion
+import skillbill.desktop.core.domain.model.ScaffoldAddOnLocationMode
 import skillbill.desktop.core.domain.model.ScaffoldBaselineLayerForm
 import skillbill.desktop.core.domain.model.ScaffoldBaselineLayerPayload
 import skillbill.desktop.core.domain.model.ScaffoldCatalogSnapshot
@@ -88,6 +89,9 @@ internal fun validateScaffoldWizard(wizard: ScaffoldWizardState): List<ScaffoldV
       if (fields.name.isBlank()) add(ScaffoldValidationMessage(ScaffoldValidationId.ADD_ON_NAME_REQUIRED))
       if (fields.platform.isBlank()) {
         add(ScaffoldValidationMessage(ScaffoldValidationId.OWNING_PLATFORM_PACK_REQUIRED))
+      }
+      if (fields.addonLocationMode == ScaffoldAddOnLocationMode.EXTERNAL && fields.addonLocationPath.isBlank()) {
+        add(ScaffoldValidationMessage(ScaffoldValidationId.ADD_ON_LOCATION_PATH_REQUIRED))
       }
     }
   }
@@ -255,6 +259,8 @@ internal fun buildScaffoldPayload(wizard: ScaffoldWizardState, repoRoot: String?
         name = fields.name.trim(),
         platform = fields.platform.trim(),
         description = fields.description.trim(),
+        addonLocationPath = fields.addonLocationPath.trim()
+          .takeIf { fields.addonLocationMode == ScaffoldAddOnLocationMode.EXTERNAL && it.isNotBlank() },
       )
     }
   }

@@ -63,8 +63,20 @@ data class ScaffoldWizardFormFields(
   val baselineLayers: List<ScaffoldBaselineLayerForm> = emptyList(),
   val subagentSpecialists: List<String> = emptyList(),
   val suppressSubagents: Boolean = false,
+  val addonLocationMode: ScaffoldAddOnLocationMode = ScaffoldAddOnLocationMode.NATIVE,
+  val addonLocationPath: String = "",
   val contentBody: String = "",
 )
+
+enum class ScaffoldAddOnLocationMode(val wireValue: String) {
+  NATIVE("native"),
+  EXTERNAL("external"),
+  ;
+
+  companion object {
+    fun fromWireValue(value: String): ScaffoldAddOnLocationMode? = entries.firstOrNull { it.wireValue == value }
+  }
+}
 
 data class ScaffoldBaselineLayerForm(
   val rowId: Long = 0L,

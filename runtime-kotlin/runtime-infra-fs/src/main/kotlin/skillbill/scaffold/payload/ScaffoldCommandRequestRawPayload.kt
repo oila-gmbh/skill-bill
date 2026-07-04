@@ -100,5 +100,6 @@ private fun ScaffoldCommandRequest.AddOn.appendAddOnFields(base: MutableMap<Stri
   base["platform"] = platform
   if (description.isNotBlank()) base["description"] = description
   body?.let { base["body"] = it }
+  addonLocationPath?.let { base["addon_location_path"] = it }
   consumerSkillDirs?.let { base["consumer_skill_dirs"] = it }
 }

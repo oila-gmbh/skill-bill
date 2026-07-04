@@ -118,6 +118,7 @@ class ScaffoldCommandRequestParserTest {
         "name" to "bill-grill",
         "platform" to "kotlin",
         "body" to "## body",
+        "addon_location_path" to "/tmp/private-addons",
         "consumer_skill_dirs" to listOf("code-review/bill-kotlin-code-review"),
       ),
     )
@@ -126,6 +127,7 @@ class ScaffoldCommandRequestParserTest {
     assertEquals("bill-grill", addon.name)
     assertEquals("kotlin", addon.platform)
     assertEquals("## body", addon.body)
+    assertEquals("/tmp/private-addons", addon.addonLocationPath)
     assertEquals(listOf("code-review/bill-kotlin-code-review"), addon.consumerSkillDirs)
   }
 

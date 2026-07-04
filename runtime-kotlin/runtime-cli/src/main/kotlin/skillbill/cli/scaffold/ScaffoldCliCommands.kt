@@ -526,7 +526,10 @@ class NewAddonCommand(
   private val state: CliRunState,
   private val scaffoldService: ScaffoldService,
   private val unsupportedScaffoldService: UnsupportedScaffoldService,
-) : DocumentedCliCommand("new-addon", "Create a governed add-on file inside an existing platform pack.") {
+) : DocumentedCliCommand(
+  "new-addon",
+  "Create a governed add-on file inside an existing platform pack or external add-on source.",
+) {
   private val platform by option("--platform", help = "Owning platform slug.")
   private val name by option(
     "--name",
@@ -536,6 +539,10 @@ class NewAddonCommand(
   private val bodyFile by option(
     "--body-file",
     help = "Advanced/scripted: markdown file to copy into the add-on (or '-').",
+  )
+  private val addonLocationPath by option(
+    "--addon-location-path",
+    help = "Optional external add-on source directory. When set, writes <name>.md and addon-manifest.yaml there.",
   )
   private val consumerSkillDirs by option(
     "--consumer-skill-dir",
@@ -563,7 +570,7 @@ class NewAddonCommand(
         errorResult("--body and --body-file are mutually exclusive.", format)
       } else {
         runNativeScaffoldPayload(
-          newAddonPayload(platform, name, body, bodyFile, consumerSkillDirs, state),
+          newAddonPayload(platform, name, body, bodyFile, addonLocationPath, consumerSkillDirs, state),
           dryRun,
           format,
           scaffoldService,
@@ -752,6 +759,11 @@ private fun addOnWizardPayload(state: CliRunState): Map<String, Any?> = buildMap
   putScaffoldBase("add-on")
   put("platform", promptRequired(state, "Platform slug"))
   put("name", promptRequired(state, "Add-on name"))
+  when (normalizeAddOnLocationMode(promptDefault(state, "Add-on source (native/external)", "native"))) {
+    "native" -> Unit
+    "external" -> put("addon_location_path", promptRequired(state, "External add-on source path"))
+    else -> error("unreachable")
+  }
   promptOptional(state, "Description").ifNotBlank { description -> put("description", description) }
 }
 
@@ -769,6 +781,12 @@ private fun normalizeWizardKind(value: String): String = when (value.trim().lowe
   } else {
     value
   }
+}
+
+private fun normalizeAddOnLocationMode(value: String): String = when (value.trim().lowercase()) {
+  "1", "native", "pack", "pack-owned" -> "native"
+  "2", "external" -> "external"
+  else -> throw IllegalArgumentException("Unsupported add-on source '$value'. Use native or external.")
 }
 
 private fun promptDefault(state: CliRunState, label: String, default: String): String {
@@ -1107,6 +1125,7 @@ private fun newAddonPayload(
   name: String?,
   body: String?,
   bodyFile: String?,
+  addonLocationPath: String?,
   consumerSkillDirs: List<String>,
   state: CliRunState,
 ): Map<String, Any> = buildMap {
@@ -1116,6 +1135,7 @@ private fun newAddonPayload(
   put("name", name.orEmpty())
   (body ?: bodyFile?.let { path -> readCliTextFile(path, state) })
     ?.let { addonBody -> put("body", addonBody) }
+  addonLocationPath?.takeIf { it.isNotBlank() }?.let { path -> put("addon_location_path", path) }
   if (consumerSkillDirs.isNotEmpty()) {
     put("consumer_skill_dirs", consumerSkillDirs)
   }

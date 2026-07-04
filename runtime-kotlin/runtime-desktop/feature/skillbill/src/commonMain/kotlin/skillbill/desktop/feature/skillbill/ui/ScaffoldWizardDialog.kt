@@ -56,6 +56,12 @@ import dev.skillbill.designsystem.generated.resources.confirm_deletion_state_unc
 import dev.skillbill.designsystem.generated.resources.scaffold_ack_dirty_repo_cd
 import dev.skillbill.designsystem.generated.resources.scaffold_acknowledge_partial_mutation
 import dev.skillbill.designsystem.generated.resources.scaffold_add_layer
+import dev.skillbill.designsystem.generated.resources.scaffold_add_on_location_choose
+import dev.skillbill.designsystem.generated.resources.scaffold_add_on_location_empty
+import dev.skillbill.designsystem.generated.resources.scaffold_add_on_location_external
+import dev.skillbill.designsystem.generated.resources.scaffold_add_on_location_mode
+import dev.skillbill.designsystem.generated.resources.scaffold_add_on_location_native
+import dev.skillbill.designsystem.generated.resources.scaffold_add_on_location_path
 import dev.skillbill.designsystem.generated.resources.scaffold_add_on_name
 import dev.skillbill.designsystem.generated.resources.scaffold_add_suggested_prefix
 import dev.skillbill.designsystem.generated.resources.scaffold_baseline_pack
@@ -72,6 +78,7 @@ import dev.skillbill.designsystem.generated.resources.scaffold_dismiss_cd
 import dev.skillbill.designsystem.generated.resources.scaffold_dismiss_error
 import dev.skillbill.designsystem.generated.resources.scaffold_display_name
 import dev.skillbill.designsystem.generated.resources.scaffold_dry_run_plan
+import dev.skillbill.designsystem.generated.resources.scaffold_error_add_on_location_path_required
 import dev.skillbill.designsystem.generated.resources.scaffold_error_add_on_name_required
 import dev.skillbill.designsystem.generated.resources.scaffold_error_baseline_composition_cycle
 import dev.skillbill.designsystem.generated.resources.scaffold_error_baseline_mode_unsupported
@@ -137,6 +144,7 @@ import skillbill.desktop.core.designsystem.SkillBillMetrics
 import skillbill.desktop.core.designsystem.SkillBillTheme
 import skillbill.desktop.core.designsystem.SkillBillTypeStyles
 import skillbill.desktop.core.domain.model.BaselineReviewSkillOption
+import skillbill.desktop.core.domain.model.ScaffoldAddOnLocationMode
 import skillbill.desktop.core.domain.model.ScaffoldBaselineLayerForm
 import skillbill.desktop.core.domain.model.ScaffoldKind
 import skillbill.desktop.core.domain.model.ScaffoldRunResult
@@ -160,6 +168,7 @@ data class ScaffoldWizardCallbacks(
   val onEditBaselineLayer: (Int, (ScaffoldBaselineLayerForm) -> ScaffoldBaselineLayerForm) -> Unit,
   val onRemoveBaselineLayer: (Int) -> Unit,
   val onDirtyOverrideChanged: (Boolean) -> Unit,
+  val onChooseAddonLocationPath: () -> Unit,
   val onPlan: () -> Unit,
   val onRun: () -> Unit,
   val onAcknowledgeFailure: () -> Unit,
@@ -490,6 +499,76 @@ private fun WizardForm(state: ScaffoldWizardState, callbacks: ScaffoldWizardCall
           callbacks.onFormChanged { it.copy(platform = value) }
         },
       )
+      PresetPicker(
+        label = stringResource(Res.string.scaffold_add_on_location_mode),
+        options = listOf(
+          ScaffoldAddOnLocationMode.NATIVE.wireValue to stringResource(Res.string.scaffold_add_on_location_native),
+          ScaffoldAddOnLocationMode.EXTERNAL.wireValue to stringResource(Res.string.scaffold_add_on_location_external),
+        ),
+        selected = fields.addonLocationMode.wireValue,
+        enabled = !state.busy,
+        onSelected = { value ->
+          val mode = ScaffoldAddOnLocationMode.fromWireValue(value) ?: ScaffoldAddOnLocationMode.NATIVE
+          callbacks.onFormChanged { form ->
+            form.copy(
+              addonLocationMode = mode,
+              addonLocationPath = form.addonLocationPath
+                .takeIf { mode == ScaffoldAddOnLocationMode.EXTERNAL }
+                .orEmpty(),
+            )
+          }
+        },
+      )
+      if (fields.addonLocationMode == ScaffoldAddOnLocationMode.EXTERNAL) {
+        PathSelectorRow(
+          label = stringResource(Res.string.scaffold_add_on_location_path),
+          value = fields.addonLocationPath,
+          emptyLabel = stringResource(Res.string.scaffold_add_on_location_empty),
+          chooseLabel = stringResource(Res.string.scaffold_add_on_location_choose),
+          enabled = !state.busy,
+          onChoose = callbacks.onChooseAddonLocationPath,
+        )
+      }
+    }
+  }
+}
+
+@Composable
+private fun PathSelectorRow(
+  label: String,
+  value: String,
+  emptyLabel: String,
+  chooseLabel: String,
+  enabled: Boolean,
+  onChoose: () -> Unit,
+) {
+  val colors = SkillBillTheme.colors
+  val dialogTone = SkillBillTheme.semanticTones.dialog
+  Column(verticalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingSm)) {
+    SectionLabel(label)
+    Row(
+      modifier = Modifier.fillMaxWidth(),
+      verticalAlignment = Alignment.CenterVertically,
+      horizontalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingMd),
+    ) {
+      Box(
+        modifier = Modifier
+          .weight(1f)
+          .height(SkillBillDimens.controlHeightLg)
+          .clip(SkillBillComponentShapes.control)
+          .border(SkillBillDimens.hairline, dialogTone.border, SkillBillComponentShapes.control)
+          .background(colors.surfaceVariant)
+          .padding(horizontal = SkillBillDimens.padLg, vertical = SkillBillDimens.padMd),
+      ) {
+        Text(
+          text = value.ifBlank { emptyLabel },
+          color = if (value.isBlank()) colors.onSurfaceVariant else dialogTone.content,
+          style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+          maxLines = 1,
+          overflow = TextOverflow.Ellipsis,
+        )
+      }
+      InlineButton(label = chooseLabel, enabled = enabled, onClick = onChoose)
     }
   }
 }
@@ -982,6 +1061,7 @@ private fun scaffoldValidationText(message: ScaffoldValidationMessage): String {
     ScaffoldValidationId.CODE_REVIEW_AREA_REQUIRED -> Res.string.scaffold_error_code_review_area_required
     ScaffoldValidationId.ADD_ON_NAME_REQUIRED -> Res.string.scaffold_error_add_on_name_required
     ScaffoldValidationId.OWNING_PLATFORM_PACK_REQUIRED -> Res.string.scaffold_error_owning_platform_pack_required
+    ScaffoldValidationId.ADD_ON_LOCATION_PATH_REQUIRED -> Res.string.scaffold_error_add_on_location_path_required
     ScaffoldValidationId.BASELINE_PACK_REQUIRED -> Res.string.scaffold_error_baseline_pack_required
     ScaffoldValidationId.BASELINE_PACK_UNAVAILABLE -> Res.string.scaffold_error_baseline_pack_unavailable
     ScaffoldValidationId.BASELINE_SKILL_REQUIRED -> Res.string.scaffold_error_baseline_skill_required

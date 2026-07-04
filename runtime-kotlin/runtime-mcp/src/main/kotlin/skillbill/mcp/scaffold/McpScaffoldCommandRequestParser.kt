@@ -127,6 +127,7 @@ private fun parseAddOn(args: Map<String, Any?>, version: String, repoRoot: Strin
     platform = requireString(args, "platform"),
     description = requireStringOrDefault(args, "description", ""),
     body = optionalString(args, "body"),
+    addonLocationPath = requireOptionalNonBlank(args, "addon_location_path"),
     consumerSkillDirs = if (args.containsKey("consumer_skill_dirs")) {
       parseStringList(args, "consumer_skill_dirs")
     } else {

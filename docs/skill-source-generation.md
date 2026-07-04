@@ -283,16 +283,23 @@ that omit `baseline_layers` remain valid and generate no
 
 For add-ons, the normal wizard creates a skeleton markdown file and registers
 the generated pointer through the owning pack's `platform.yaml` `addon_usage`.
-It does not ask for body text or raw consumer directories. The authoring
-sequence is: create the skeleton, edit
-`platform-packs/<slug>/addons/<name>.md`, then validate/render/install through
-the normal repo checks. Scripted payloads may still provide `body` or
-`consumer_skill_dirs` for deterministic automation. Omitted consumers default
-to the owning pack baseline when one exists, otherwise to the pack's only
-manifest-declared skill directory; packs with no unambiguous default require
-scripted `consumer_skill_dirs` and fail before any add-on file or manifest
-mutation. These fields are advanced inputs and explicit consumers are validated
-before any add-on file or manifest mutation.
+When `addon_location_path` is provided, the wizard instead creates the skeleton
+in that external add-on source directory and creates or updates the source's
+`addon-manifest.yaml`; the owning pack still provides the validated/defaulted
+consumer skill directories. It does not ask for body text or raw consumer
+directories. The authoring sequence is: create the skeleton, edit the generated
+add-on markdown file, then validate/render/install through the normal repo
+checks. The desktop wizard registers external add-on sources in
+`external_addon_sources` after successful creation so the app tree and install
+overlay can discover them; scripted callers that invoke the raw scaffold payload
+directly still need to register the source themselves. Scripted payloads may
+still provide `body` or `consumer_skill_dirs` for deterministic automation.
+Omitted consumers default to the owning pack
+baseline when one exists, otherwise to the pack's only manifest-declared skill
+directory; packs with no unambiguous default require scripted
+`consumer_skill_dirs` and fail before any add-on file or manifest mutation.
+These fields are advanced inputs and explicit consumers are validated before
+any add-on file or manifest mutation.
 Do not hand-author per-skill add-on usage tables in `content.md`.
 
 When `subagent_specialists` are requested for orchestrator scaffolds, the
