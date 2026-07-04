@@ -9,10 +9,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import dev.skillbill.designsystem.generated.resources.Res
+import dev.skillbill.designsystem.generated.resources.scaffold_add_on_location_choose_title
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.jetbrains.compose.resources.stringResource
 import skillbill.desktop.core.domain.model.CommandPaletteResult
 import skillbill.desktop.core.domain.model.DesktopSkillRemovalTarget
 import skillbill.desktop.core.domain.model.DirtyEditorPromptReason
@@ -39,6 +42,7 @@ fun SkillBillRoute(
   var pendingRepoFileChangeKind by remember(viewModel) { mutableStateOf<RepoFileChangeKind?>(null) }
   var pendingRepoFileChangeRefresh by remember(viewModel) { mutableStateOf(false) }
   var repoFileChangePulse by remember(viewModel) { mutableStateOf(0) }
+  val addonLocationChooserTitle = stringResource(Res.string.scaffold_add_on_location_choose_title)
 
   fun runEditorSave() {
     val request = viewModel.beginSaveEditor()
@@ -99,6 +103,17 @@ fun SkillBillRoute(
       if (state.dirtyEditorPrompt == null && state.busyOperation == SkillBillBusyOperation.OPEN_REPO) {
         runRepoLoad(preserveSelection = false, repoPath = state.repoPathText)
       }
+    }
+  }
+
+  fun runChooseAddonLocationPath() {
+    val fields = state.scaffoldWizard?.formFields ?: return
+    val initialPath = fields.addonLocationPath.takeIf { it.isNotBlank() }
+      ?: state.selectedRepoPath
+      ?: state.repoPathText
+    val selectedPath = chooseDirectory(initialPath, title = addonLocationChooserTitle)
+    if (!selectedPath.isNullOrBlank()) {
+      state = viewModel.updateScaffoldForm { it.copy(addonLocationPath = selectedPath) }
     }
   }
 
@@ -504,6 +519,7 @@ fun SkillBillRoute(
       onDirtyOverrideChanged = { override ->
         state = viewModel.setScaffoldDirtyOverride(override)
       },
+      onChooseAddonLocationPath = ::runChooseAddonLocationPath,
       onPlan = ::runScaffoldDryRun,
       onRun = ::runScaffoldExecute,
       onAcknowledgeFailure = {
@@ -601,7 +617,19 @@ internal fun resolveDeletionTarget(
     }
     skillbill.desktop.core.domain.model.TreeItemKind.ADD_ON -> {
       val path = node.authoredPath ?: return null
-      skillbill.desktop.core.domain.model.DesktopSkillRemovalTarget.AddOn(relativePath = path)
+      if (node.external) {
+        val metadata = node.metadata ?: return null
+        val sourceRoot = metadata.externalSourcePath ?: return null
+        val platform = metadata.platform ?: return null
+        val fileName = path.substringAfterLast('/')
+        skillbill.desktop.core.domain.model.DesktopSkillRemovalTarget.ExternalAddOn(
+          sourceRootAbsolutePath = sourceRoot,
+          platform = platform,
+          fileName = fileName,
+        )
+      } else {
+        skillbill.desktop.core.domain.model.DesktopSkillRemovalTarget.AddOn(relativePath = path)
+      }
     }
     else -> null
   }
@@ -613,4 +641,5 @@ internal fun DesktopSkillRemovalTarget.isBuiltIn(): Boolean = when (this) {
   is DesktopSkillRemovalTarget.PlatformPack ->
     DesktopSkillRemovalTarget.isProtectedPlatformName(platform)
   is DesktopSkillRemovalTarget.AddOn -> false
+  is DesktopSkillRemovalTarget.ExternalAddOn -> false
 }

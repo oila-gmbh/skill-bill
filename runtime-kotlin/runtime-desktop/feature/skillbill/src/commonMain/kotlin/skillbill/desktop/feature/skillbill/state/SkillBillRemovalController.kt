@@ -181,6 +181,7 @@ internal class SkillBillRemovalController(
         is DesktopSkillRemovalTarget.PlatformPack ->
           "platform pack '${target.platform}'"
         is DesktopSkillRemovalTarget.AddOn -> target.relativePath
+        is DesktopSkillRemovalTarget.ExternalAddOn -> "${target.sourceRootAbsolutePath}/${target.fileName}"
       }
       partialMutationPostMortem = PartialMutationPostMortem(
         targetLabel = label,

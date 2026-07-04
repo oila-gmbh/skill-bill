@@ -67,6 +67,7 @@ enum class TreeItemKind {
   SKILL,
   PLATFORM_PACK,
   ADD_ON,
+  CONFIG,
   NATIVE_AGENT,
   GENERATED_ARTIFACT,
   PLACEHOLDER,
@@ -79,6 +80,7 @@ data class SkillBillTreeItemMetadata(
   val platform: String? = null,
   val family: String? = null,
   val area: String? = null,
+  val externalSourcePath: String? = null,
 )
 
 data class RepoLoadStatus(

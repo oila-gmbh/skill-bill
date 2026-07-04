@@ -3,7 +3,9 @@ package skillbill.infrastructure.fs
 import org.junit.jupiter.api.io.TempDir
 import skillbill.contracts.JsonSupport
 import skillbill.error.ExternalAddonConfigError
+import skillbill.install.model.ExternalAddonSource
 import skillbill.ports.install.addon.model.ExternalAddonSourceConfigRequest
+import skillbill.ports.install.addon.model.ExternalAddonSourceRegistrationRequest
 import skillbill.telemetry.CONFIG_ENVIRONMENT_KEY
 import java.nio.file.Files
 import java.nio.file.Path
@@ -72,6 +74,41 @@ class FileExternalAddonSourceConfigStoreTest {
   }
 
   @Test
+  fun `register external source creates config and returns registered source`(@TempDir home: Path) {
+    val sourceDir = Files.createDirectories(home.resolve("private/ios"))
+
+    val sources = store.registerExternalAddonSource(
+      registrationRequest(home, configPath(home), ExternalAddonSource(sourceDir, "ios")),
+    ).sources
+
+    assertEquals(listOf(ExternalAddonSource(sourceDir.toAbsolutePath().normalize(), "ios")), sources)
+    val payload = JsonSupport.parseObjectOrNull(Files.readString(configPath(home))).toString()
+    assertTrue("external_addon_sources" in payload)
+    assertEquals(sourceDir, store.readExternalAddonSources(request(home, configPath(home))).sources.single().path)
+  }
+
+  @Test
+  fun `register external source is idempotent and preserves existing config fields`(@TempDir home: Path) {
+    val sourceDir = Files.createDirectories(home.resolve("private/kotlin"))
+    writeConfig(
+      home,
+      mapOf(
+        "install_id" to "stable-id",
+        "external_addon_sources" to listOf(mapOf("path" to sourceDir.toString(), "platform" to "kotlin")),
+      ),
+    )
+
+    val sources = store.registerExternalAddonSource(
+      registrationRequest(home, configPath(home), ExternalAddonSource(sourceDir, "kotlin")),
+    ).sources
+
+    assertEquals(listOf(ExternalAddonSource(sourceDir, "kotlin")), sources)
+    val config = Files.readString(configPath(home))
+    assertEquals(1, Regex("\"platform\":\"kotlin\"").findAll(config).count())
+    assertTrue("\"install_id\":\"stable-id\"" in config)
+  }
+
+  @Test
   fun `malformed json loud-fails`(@TempDir home: Path) {
     Files.createDirectories(home.resolve(".skill-bill"))
     Files.writeString(configPath(home), "{ not valid json")
@@ -124,6 +161,16 @@ class FileExternalAddonSourceConfigStoreTest {
       userHome = home,
       environment = mapOf(CONFIG_ENVIRONMENT_KEY to configPath.toString()),
     )
+
+  private fun registrationRequest(
+    home: Path,
+    configPath: Path,
+    source: ExternalAddonSource,
+  ): ExternalAddonSourceRegistrationRequest = ExternalAddonSourceRegistrationRequest(
+    userHome = home,
+    environment = mapOf(CONFIG_ENVIRONMENT_KEY to configPath.toString()),
+    source = source,
+  )
 
   private fun writeConfig(home: Path, payload: Map<String, Any?>) {
     Files.createDirectories(home.resolve(".skill-bill"))

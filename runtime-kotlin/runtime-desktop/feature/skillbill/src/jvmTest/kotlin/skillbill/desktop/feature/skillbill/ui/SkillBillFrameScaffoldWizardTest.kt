@@ -18,6 +18,7 @@ import skillbill.desktop.core.domain.model.BaselineReviewLayerSuggestion
 import skillbill.desktop.core.domain.model.BaselineReviewPackOption
 import skillbill.desktop.core.domain.model.BaselineReviewSkillOption
 import skillbill.desktop.core.domain.model.ManifestEditPreview
+import skillbill.desktop.core.domain.model.ScaffoldAddOnLocationMode
 import skillbill.desktop.core.domain.model.ScaffoldBaselineLayerForm
 import skillbill.desktop.core.domain.model.ScaffoldCatalogSnapshot
 import skillbill.desktop.core.domain.model.ScaffoldKind
@@ -160,6 +161,8 @@ class SkillBillFrameScaffoldWizardTest {
     assertEquals("", fields.platform)
     assertTrue(fields.baselineLayers.isEmpty())
     assertFalse(fields.suppressSubagents)
+    assertEquals(ScaffoldAddOnLocationMode.NATIVE, fields.addonLocationMode)
+    assertEquals("", fields.addonLocationPath)
   }
 
   @Test
@@ -213,6 +216,7 @@ class SkillBillFrameScaffoldWizardTest {
           onEditBaselineLayer = { _, _ -> },
           onRemoveBaselineLayer = {},
           onDirtyOverrideChanged = {},
+          onChooseAddonLocationPath = {},
           onPlan = {},
           onRun = {},
           onAcknowledgeFailure = {},
@@ -240,6 +244,7 @@ class SkillBillFrameScaffoldWizardTest {
           onEditBaselineLayer = { _, _ -> },
           onRemoveBaselineLayer = {},
           onDirtyOverrideChanged = {},
+          onChooseAddonLocationPath = {},
           onPlan = {},
           onRun = {},
           onAcknowledgeFailure = {},
@@ -250,6 +255,43 @@ class SkillBillFrameScaffoldWizardTest {
 
     assertTrue(onAllNodesWithText("Body").fetchSemanticsNodes().isEmpty())
     assertTrue(onAllNodesWithText("Consumer skill dirs").fetchSemanticsNodes().isEmpty())
+  }
+
+  @OptIn(ExperimentalTestApi::class)
+  @Test
+  fun `add-on wizard shows external directory selector only for external mode`() = runComposeUiTest {
+    var chooseCalls = 0
+    setContent {
+      var dialogState by remember { mutableStateOf(ScaffoldWizardState(kind = ScaffoldKind.ADD_ON)) }
+      ScaffoldWizardDialog(
+        state = dialogState,
+        canStartScaffoldAction = true,
+        callbacks = noOpScaffoldCallbacks().copy(
+          onFormChanged = { transform ->
+            dialogState = dialogState.copy(formFields = transform(dialogState.formFields))
+          },
+          onChooseAddonLocationPath = {
+            chooseCalls += 1
+            dialogState = dialogState.copy(
+              formFields = dialogState.formFields.copy(addonLocationPath = "/private/addons"),
+            )
+          },
+        ),
+      )
+    }
+
+    assertTrue(onAllNodesWithText("External add-on source path").fetchSemanticsNodes().isEmpty())
+
+    onNodeWithText("External").performClick()
+    onNodeWithText("External add-on source path").assertIsDisplayed()
+    onNodeWithText("No directory selected").assertIsDisplayed()
+    onNodeWithText("Choose...").performClick()
+
+    assertEquals(1, chooseCalls)
+    onNodeWithText("/private/addons").assertIsDisplayed()
+
+    onNodeWithText("Native").performClick()
+    assertTrue(onAllNodesWithText("External add-on source path").fetchSemanticsNodes().isEmpty())
   }
 
   @OptIn(ExperimentalTestApi::class)
@@ -321,6 +363,7 @@ class SkillBillFrameScaffoldWizardTest {
             )
           },
           onDirtyOverrideChanged = {},
+          onChooseAddonLocationPath = {},
           onPlan = {},
           onRun = {},
           onAcknowledgeFailure = {},
@@ -400,6 +443,7 @@ class SkillBillFrameScaffoldWizardTest {
           onEditBaselineLayer = { _, _ -> },
           onRemoveBaselineLayer = {},
           onDirtyOverrideChanged = {},
+          onChooseAddonLocationPath = {},
           onPlan = {},
           onRun = {},
           onAcknowledgeFailure = {},
@@ -485,6 +529,7 @@ class SkillBillFrameScaffoldWizardTest {
     onEditBaselineLayer = { _, _ -> },
     onRemoveBaselineLayer = {},
     onDirtyOverrideChanged = {},
+    onChooseAddonLocationPath = {},
     onPlan = {},
     onRun = {},
     onAcknowledgeFailure = {},

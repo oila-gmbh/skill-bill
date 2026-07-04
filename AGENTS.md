@@ -16,15 +16,9 @@ Non-negotiable contracts:
 
 ## Product Intent
 
-`bill-feature-task` is the router entry point for feature-task work: it accepts `mode:runtime` (default) or `mode:prose` and delegates to the appropriate implementation mode. `bill-feature-task-prose` is the first-class prose orchestrator that runs the full phase loop in-session. `bill-feature-task-runtime` is the runtime-backed skill that drives the phase loop through the foreground `skill-bill feature-task` driver with durable workflow state, telemetry, platform packs, add-ons, and native subagents.
+`bill-feature-task` is the feature-task router: it accepts `mode:runtime` (default) or `mode:prose`, presents one confirmation gate, then delegates. `bill-feature-task-prose` runs the full phase loop in-session. `bill-feature-task-runtime` launches the foreground `skill-bill feature-task` driver with durable workflow state, telemetry, platform packs, add-ons, and native subagents.
 
-Skill catalog status:
-
-- `bill-feature-task`: router that accepts `mode:runtime` (default) or `mode:prose`, presents one confirmation gate, then delegates.
-- `bill-feature-task-prose`: first-class prose orchestrator for end-to-end feature implementation running entirely within the invoking agent session.
-- `bill-feature-task-runtime`: runtime-backed skill that launches the `skill-bill feature-task` foreground driver.
-
-Bundled skills and reference packs are useful defaults, not the framework boundary. Teams may delete, fork, or replace bundled workflows while retaining the governed contracts: source shape, generated-output boundaries, manifests, install staging, validators, dynamic discovery, and loud-fail behavior.
+Bundled skills and reference packs are defaults, not the framework boundary. Teams may delete, fork, or replace them while retaining governed source shape, generated-output boundaries, manifests, install staging, validators, dynamic discovery, and loud-fail behavior.
 
 ## Taxonomy
 
@@ -51,7 +45,7 @@ Generated files forbidden in source:
 - generated support pointers such as `shell-ceremony.md`, `telemetry-contract.md`, `stack-routing.md`, review/delegation pointers, and add-on pointers
 - provider-specific `claude-agents/`, `codex-agents/`, `opencode-agents/`, and `junie-agents/` outputs
 
-Native-agent source is provider-neutral and lives under `native-agents/agents.yaml` or `native-agents/<name>.md`. New and rendered native-agent sources include `contract_version`; the parser still accepts older sources that omit it so legacy fixtures can be migrated gradually.
+Native-agent source is provider-neutral and lives under `native-agents/agents.yaml` or `native-agents/<name>.md`. New and rendered sources include `contract_version`; the parser still accepts older sources for gradual fixture migration.
 
 If a skill needs more authored guidance, add H2 sections to `content.md`. Do not add extra organization files such as `patterns.md`, `reference.md`, or `audit-rubrics.md` under `skills/<skill>/`.
 
@@ -61,11 +55,11 @@ Run `./install.sh` after changing source skills, renderer behavior, or support p
 
 Platform packs are the extension surface. Any maintained pack in this repo is valid when it follows the governed contract. Routing and install flows read pack manifests rather than hard-coded platform lists.
 
-The canonical shape for `platform-packs/<slug>/platform.yaml` is `orchestration/contracts/platform-pack-schema.yaml` (Draft 2020-12 YAML-authored JSON Schema). Field additions, type changes, constraints, and enums land in that schema first. `ShellContentLoader.buildPack` loads the schema at runtime and rejects malformed manifests through `InvalidManifestSchemaError`.
+The canonical shape for `platform-packs/<slug>/platform.yaml` is `orchestration/contracts/platform-pack-schema.yaml` (Draft 2020-12 YAML-authored JSON Schema). Field additions, type changes, constraints, and enums land there first. `ShellContentLoader.buildPack` rejects malformed manifests through `InvalidManifestSchemaError`.
 
 The shell contract version is `1.1`. `SHELL_CONTRACT_VERSION` and the schema `contract_version.const` are pinned by `PlatformPackSchemaContractVersionTest`.
 
-Cross-field rules that JSON Schema cannot express live in Kotlin and are documented under `x-coherence-checks`, including slug parity, declared-area parity, pointer uniqueness, baseline composition, and governed add-on usage.
+Cross-field rules JSON Schema cannot express live in Kotlin and are documented under `x-coherence-checks`, including slug parity, declared-area parity, pointer uniqueness, baseline composition, and governed add-on usage.
 
 Per-repo customization:
 
@@ -148,7 +142,7 @@ For feature-implement or feature-verify overrides, keep the historic `skills/<pl
 
 Agent-specific runtime behavior is expressed through injectable strategies, not conditional branching inside the process runner.
 
-The `AgentRunProcessRequest` carries named strategy objects that the process runner calls without knowing which agent is active:
+`AgentRunProcessRequest` carries named strategy objects that the process runner calls without knowing which agent is active:
 
 - `progressProbe` — how to read workflow DB token changes
 - `declaredProgressProbe` — how to read declared progress events

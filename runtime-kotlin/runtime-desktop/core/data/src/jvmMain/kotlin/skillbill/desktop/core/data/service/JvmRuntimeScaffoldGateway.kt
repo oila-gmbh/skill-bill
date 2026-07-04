@@ -20,6 +20,7 @@ import skillbill.desktop.core.domain.model.ScaffoldRunResult
 import skillbill.desktop.core.domain.service.RuntimeScaffoldGateway
 import skillbill.error.ScaffoldRollbackError
 import skillbill.error.SkillBillRuntimeException
+import skillbill.install.model.ExternalAddonSource
 import skillbill.scaffold.model.ScaffoldResult
 import skillbill.scaffold.model.command.ScaffoldCommandRequest
 import software.amazon.lastmile.kotlin.inject.anvil.SingleIn
@@ -63,6 +64,10 @@ class JvmRuntimeScaffoldGateway(
   // drive the gateway without touching the on-disk runtime.
   internal var scaffolder: (ScaffoldCommandRequest, Boolean) -> ScaffoldResult = { request, dryRun ->
     runtimeServices.scaffoldService.scaffold(request, dryRun)
+  }
+
+  internal var externalAddonSourceRegistrar: (ExternalAddonSource) -> Unit = { source ->
+    runtimeServices.registerExternalAddonSource(source)
   }
 
   override suspend fun catalogSnapshot(session: RepoSession?): ScaffoldCatalogSnapshot {
@@ -173,10 +178,12 @@ class JvmRuntimeScaffoldGateway(
   // propagates verbatim. JVM Errors (OOM/StackOverflow/LinkageError) are NOT caught.
   @Suppress("TooGenericExceptionCaught")
   private fun invoke(payload: ScaffoldPayload, dryRun: Boolean): ScaffoldRunResult = try {
-    val result = scaffolder(payload.toCommandRequest(), dryRun)
+    val request = payload.toCommandRequest()
+    val result = scaffolder(request, dryRun)
     if (dryRun) {
       ScaffoldRunResult.Preview(planned = result.toPlan())
     } else {
+      registerExternalAddonSourceAfterSuccess(request)
       ScaffoldRunResult.Success(result = result.toOutcome())
     }
   } catch (cancellation: CancellationException) {
@@ -198,6 +205,12 @@ class JvmRuntimeScaffoldGateway(
       exceptionMessage = error.message.orEmpty(),
       rollbackComplete = false,
     )
+  }
+
+  private fun registerExternalAddonSourceAfterSuccess(request: ScaffoldCommandRequest) {
+    val addOn = request as? ScaffoldCommandRequest.AddOn ?: return
+    val sourcePath = addOn.addonLocationPath?.takeIf(String::isNotBlank) ?: return
+    externalAddonSourceRegistrar(ExternalAddonSource(Path.of(sourcePath), addOn.platform))
   }
 }
 

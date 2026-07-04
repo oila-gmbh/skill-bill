@@ -66,6 +66,18 @@ internal fun appendGovernedAddonManifestRegistration(
   }
 }
 
+internal fun appendExternalAddonManifestRegistration(
+  manifestPath: Path,
+  skillRelativeDirs: List<String>,
+  addonSlug: String,
+) {
+  val original = manifestPath.toFile().readText()
+  val updated = renderExternalAddonManifestRegistration(original, skillRelativeDirs, addonSlug)
+  if (updated != original) {
+    manifestPath.toFile().writeText(updated)
+  }
+}
+
 internal fun renderGovernedAddonManifestRegistration(
   text: String,
   platform: String,
@@ -76,6 +88,18 @@ internal fun renderGovernedAddonManifestRegistration(
   val target = "platform-packs/$platform/addons/$pointerName"
   return skillRelativeDirs.fold(text) { current, skillRelativeDir ->
     val withPointer = appendManifestPointer(current, skillRelativeDir, pointerName, target)
+    appendAddonUsage(withPointer, skillRelativeDir, addonSlug, pointerName)
+  }
+}
+
+internal fun renderExternalAddonManifestRegistration(
+  text: String,
+  skillRelativeDirs: List<String>,
+  addonSlug: String,
+): String {
+  val pointerName = "$addonSlug.md"
+  return skillRelativeDirs.fold(text) { current, skillRelativeDir ->
+    val withPointer = appendManifestPointer(current, skillRelativeDir, pointerName, pointerName)
     appendAddonUsage(withPointer, skillRelativeDir, addonSlug, pointerName)
   }
 }

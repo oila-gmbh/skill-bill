@@ -1,5 +1,8 @@
 package skillbill.desktop.core.data.service
 
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import skillbill.contracts.JsonSupport
 import skillbill.desktop.core.domain.model.AuthoredContentDocument
 import skillbill.desktop.core.domain.model.EditorPlaceholder
 import skillbill.desktop.core.domain.model.GeneratedArtifactDetail
@@ -21,6 +24,13 @@ internal val SkillItemKind = TreeItemKind.SKILL
 internal const val READ_ONLY_LABEL = "RO"
 internal const val AUTHORED_SOURCE_READ_ONLY_REASON =
   "Only governed content.md files and add-ons can be edited in this window."
+internal const val SKILL_BILL_CONFIG_KIND = "skill-bill config"
+internal const val DEFAULT_SKILL_BILL_CONFIG_DOCUMENT = "{\n  \"external_addon_sources\": []\n}\n"
+private val PrettyConfigJson = Json {
+  ignoreUnknownKeys = true
+  explicitNulls = false
+  prettyPrint = true
+}
 
 internal data class RepoBrowserSnapshot(
   val repoRoot: Path? = null,
@@ -56,12 +66,7 @@ internal data class SelectionDetail(
   val metadata: SkillBillTreeItemMetadata? = null,
 ) {
   fun toEditorPlaceholder(): EditorPlaceholder {
-    val readResult =
-      contentOverride
-        ?.let { content -> Result.success(content) }
-        ?: contentFile
-          ?.takeIf { Files.isRegularFile(it, LinkOption.NOFOLLOW_LINKS) }
-          ?.let { file -> runCatching { Files.readString(file) } }
+    val readResult = readContent()
     val content = readResult?.getOrNull()
     val resolvedDetail =
       readResult?.exceptionOrNull()?.message?.let { message ->
@@ -83,12 +88,7 @@ internal data class SelectionDetail(
   }
 
   fun toDocument(treeItemId: String?): AuthoredContentDocument {
-    val content =
-      contentOverride
-        ?.let { rendered -> Result.success(rendered) }
-        ?: contentFile
-          ?.takeIf { Files.isRegularFile(it, LinkOption.NOFOLLOW_LINKS) }
-          ?.let { file -> runCatching { Files.readString(file) } }
+    val content = readContent()
     return AuthoredContentDocument(
       treeItemId = treeItemId,
       title = title,
@@ -104,18 +104,37 @@ internal data class SelectionDetail(
 
   fun canEdit(): Boolean = editable &&
     contentFile != null &&
-    Files.isRegularFile(contentFile, LinkOption.NOFOLLOW_LINKS) &&
     !isInstallCachePath(contentFile) &&
     when {
-      kind == "add-on" -> true
+      kind == SKILL_BILL_CONFIG_KIND ->
+        !Files.exists(contentFile, LinkOption.NOFOLLOW_LINKS) ||
+          Files.isRegularFile(contentFile, LinkOption.NOFOLLOW_LINKS)
+      kind == "add-on" -> Files.isRegularFile(contentFile, LinkOption.NOFOLLOW_LINKS)
       skillName != null && (kind == "horizontal skill" || kind == "platform pack skill") ->
-        isAuthoredContentFile(contentFile)
+        Files.isRegularFile(contentFile, LinkOption.NOFOLLOW_LINKS) &&
+          isAuthoredContentFile(contentFile)
       else -> false
     }
+
+  private fun readContent(): Result<String>? = contentOverride
+    ?.let { content -> Result.success(content) }
+    ?: contentFile
+      ?.let { file ->
+        when {
+          Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS) -> runCatching {
+            val raw = Files.readString(file)
+            if (kind == SKILL_BILL_CONFIG_KIND) raw.prettySkillBillConfigOrRaw() else raw
+          }
+          kind == SKILL_BILL_CONFIG_KIND && !Files.exists(file, LinkOption.NOFOLLOW_LINKS) ->
+            Result.success(DEFAULT_SKILL_BILL_CONFIG_DOCUMENT)
+          else -> null
+        }
+      }
 
   fun readOnlyReasonForDocument(): String = readOnlyReason
     ?: when {
       isInstallCachePath(contentFile) -> "Install cache files are runtime output and cannot be edited here."
+      kind == SKILL_BILL_CONFIG_KIND -> "Skill Bill config must be a regular JSON file."
       kind == "generated artifact" -> detail
       contentFile?.fileName?.toString() == "SKILL.md" ->
         "Generated SKILL.md is runtime output. Edit content.md instead."
@@ -233,3 +252,10 @@ internal fun isInstallCachePath(path: Path?): Boolean = path
   ?.windowed(2)
   ?.any { parts -> parts[0] == ".skill-bill" && parts[1] == "installed-skills" }
   ?: false
+
+internal fun String.prettySkillBillConfigOrNull(): String? {
+  val parsed = JsonSupport.parseObjectOrNull(this) ?: return null
+  return PrettyConfigJson.encodeToString(JsonObject.serializer(), parsed) + "\n"
+}
+
+internal fun String.prettySkillBillConfigOrRaw(): String = prettySkillBillConfigOrNull() ?: this

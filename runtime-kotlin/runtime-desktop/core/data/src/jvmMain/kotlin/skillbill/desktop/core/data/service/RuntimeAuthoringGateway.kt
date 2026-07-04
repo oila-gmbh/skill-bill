@@ -49,10 +49,14 @@ class RuntimeAuthoringGateway(
       val skillName = detail.skillName
       if (skillName != null) {
         store.authoringSaver(root, skillName, body)
+      } else if (detail.kind == SKILL_BILL_CONFIG_KIND) {
+        store.configFileSaver(detail.contentFile ?: error("Editable config selection is missing a source file."), body)
       } else if (detail.kind == "add-on") {
         store.sourceFileSaver(detail.contentFile ?: error("Editable add-on selection is missing a source file."), body)
       } else {
-        error("Only governed content.md files and add-ons can be saved through authoring.")
+        error(
+          "Only governed content.md files and add-ons can be saved through authoring, along with Skill Bill config.",
+        )
       }
       AuthoringSaveResult(
         success = true,

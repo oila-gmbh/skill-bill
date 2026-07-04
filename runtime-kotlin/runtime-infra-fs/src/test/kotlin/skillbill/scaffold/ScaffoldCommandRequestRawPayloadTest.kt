@@ -268,18 +268,20 @@ class ScaffoldCommandRequestRawPayloadTest {
   }
 
   @Test
-  fun `add-on emits body and consumer_skill_dirs when present`() {
+  fun `add-on emits body location path and consumer_skill_dirs when present`() {
     val raw = ScaffoldCommandRequest.AddOn(
       name = "bill-grill",
       platform = "kotlin",
       description = "an addon",
       body = "## body",
+      addonLocationPath = "/tmp/private-addons",
       consumerSkillDirs = listOf("code-review/bill-kotlin-code-review"),
       scaffoldPayloadVersion = "1.0",
     ).toRawScaffoldPayload()
 
     assertEquals("an addon", raw["description"])
     assertEquals("## body", raw["body"])
+    assertEquals("/tmp/private-addons", raw["addon_location_path"])
     assertEquals(listOf("code-review/bill-kotlin-code-review"), raw["consumer_skill_dirs"])
   }
 }

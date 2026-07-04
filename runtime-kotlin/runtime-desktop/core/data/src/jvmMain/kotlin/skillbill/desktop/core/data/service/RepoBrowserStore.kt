@@ -29,11 +29,19 @@ class RepoBrowserStore(
   var sourceFileSaver: (Path, String) -> Unit = { sourceFile, body ->
     Files.writeString(sourceFile, body)
   }
+  var configFileSaver: (Path, String) -> Unit = { configFile, body ->
+    val formattedBody = body.prettySkillBillConfigOrNull() ?: error("Skill Bill config must be a JSON object.")
+    configFile.parent?.let(Files::createDirectories)
+    Files.writeString(configFile, formattedBody)
+  }
   var baselineModifiedResolver: (Path) -> Set<String> = { root ->
     installedWorkspaceBaselineService.modifiedSkillRelativePaths(root.toString())
   }
   var externalAddonSourcesResolver: () -> List<ExternalAddonSource> = {
     runtimeServices.resolveExternalAddonSources()
+  }
+  var skillBillConfigPathResolver: () -> Path = {
+    runtimeServices.skillBillConfigPath()
   }
 
   internal fun selectionFor(session: RepoSession?, treeItemId: String?): SelectionDetail? {

@@ -104,6 +104,8 @@ class SkillRemoveJvmFileSystem(
         Files.isDirectory(root.resolve("platform-packs/${target.platform}"), LinkOption.NOFOLLOW_LINKS)
       is SkillRemovalTarget.AddOn ->
         Files.exists(root.resolve(target.relativePath), LinkOption.NOFOLLOW_LINKS)
+      is SkillRemovalTarget.ExternalAddOn ->
+        Files.exists(externalAddonFile(target), LinkOption.NOFOLLOW_LINKS)
     }
   }
 
@@ -117,6 +119,10 @@ class SkillRemoveJvmFileSystem(
       val absolute = repoRoot(request).resolve(target.relativePath)
       if (Files.exists(absolute, LinkOption.NOFOLLOW_LINKS)) listOf(target.relativePath) else emptyList()
     }
+    is SkillRemovalTarget.ExternalAddOn -> {
+      val absolute = externalAddonFile(target)
+      if (Files.exists(absolute, LinkOption.NOFOLLOW_LINKS)) listOf(absolute.portablePath()) else emptyList()
+    }
   }
 
   override fun planManifestEdits(request: SkillRemovalRequest, cascadedSkillNames: List<String>): List<ManifestEdit> =
@@ -124,6 +130,7 @@ class SkillRemoveJvmFileSystem(
       is SkillRemovalTarget.HorizontalSkill -> horizontalManifestEdits(repoRoot(request), target.skillName)
       is SkillRemovalTarget.PlatformPack -> emptyList() // the manifest itself is deleted with the tree
       is SkillRemovalTarget.AddOn -> addonReferenceEdits(repoRoot(request), target.relativePath)
+      is SkillRemovalTarget.ExternalAddOn -> externalAddonReferenceEdits(target)
     }
 
   override fun planAgentSymlinkUnlinks(
@@ -135,6 +142,7 @@ class SkillRemoveJvmFileSystem(
     is SkillRemovalTarget.PlatformPack ->
       agentUnlinksForPlatform(request, target.platform)
     is SkillRemovalTarget.AddOn -> emptyList()
+    is SkillRemovalTarget.ExternalAddOn -> emptyList()
   }
 
   override fun planReadmeCatalogEdits(request: SkillRemovalRequest): List<ReadmeCatalogEdit> {
@@ -297,10 +305,17 @@ class SkillRemoveJvmFileSystem(
     is SkillRemovalTarget.HorizontalSkill -> "skill:${target.skillName}"
     is SkillRemovalTarget.PlatformPack -> "platform:${target.platform}"
     is SkillRemovalTarget.AddOn -> "addon:${target.relativePath}"
+    is SkillRemovalTarget.ExternalAddOn -> "external-addon:${target.platform}/${target.fileName}"
   }
 
   private fun repoRoot(request: SkillRemovalRequest): Path =
     Path.of(request.repoRootAbsolutePath).toAbsolutePath().normalize()
+
+  private fun externalSourceRoot(target: SkillRemovalTarget.ExternalAddOn): Path =
+    Path.of(target.sourceRootAbsolutePath).toAbsolutePath().normalize()
+
+  private fun externalAddonFile(target: SkillRemovalTarget.ExternalAddOn): Path =
+    externalSourceRoot(target).resolve(target.fileName).normalize()
 
   private fun userHome(request: SkillRemovalRequest): Path =
     request.userHomeAbsolutePath?.let { Path.of(it).toAbsolutePath().normalize() }
@@ -451,6 +466,20 @@ class SkillRemoveJvmFileSystem(
       }
     }
     return edits
+  }
+
+  private fun externalAddonReferenceEdits(target: SkillRemovalTarget.ExternalAddOn): List<ManifestEdit> {
+    val manifest = externalSourceRoot(target).resolve(EXTERNAL_ADDON_MANIFEST_FILE).normalize()
+    if (!Files.isRegularFile(manifest, LinkOption.NOFOLLOW_LINKS)) return emptyList()
+    val text = Files.readString(manifest)
+    if (!text.contains(target.fileName)) return emptyList()
+    return listOf(
+      ManifestEdit(
+        manifest.portablePath(),
+        ManifestEditKind.REMOVE_ADDON_REFERENCES,
+        target.fileName,
+      ),
+    )
   }
 
   private fun isPackAddonPath(parts: List<String>): Boolean = parts.size == ADDON_PATH_SEGMENT_COUNT &&
@@ -655,6 +684,9 @@ class SkillRemoveJvmFileSystem(
     private const val ADDON_PLATFORM_SEGMENT = 1
     private const val ADDON_FOLDER_SEGMENT = 2
     private const val ADDON_FILE_SEGMENT = 3
+    private const val EXTERNAL_ADDON_MANIFEST_FILE = "addon-manifest.yaml"
     private val log: Logger = Logger.getLogger("skillbill.skillremove.SkillRemoveJvmFileSystem")
   }
 }
+
+private fun Path.portablePath(): String = toString().replace('\\', '/')

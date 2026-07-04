@@ -326,6 +326,7 @@ private fun treeMarker(kind: TreeItemKind): String = when (kind) {
   TreeItemKind.SKILL -> "sk"
   TreeItemKind.PLATFORM_PACK -> "pk"
   TreeItemKind.ADD_ON -> "ad"
+  TreeItemKind.CONFIG -> "cfg"
   TreeItemKind.NATIVE_AGENT -> "ag"
   TreeItemKind.GENERATED_ARTIFACT -> "gen"
   TreeItemKind.PLACEHOLDER -> "pl"

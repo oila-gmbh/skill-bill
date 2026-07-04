@@ -182,12 +182,14 @@ class ScaffoldPayloadCommandRequestTest {
       platform = "kotlin",
       description = "grill it",
       body = "## grill",
+      addonLocationPath = "/tmp/private-addons",
     ).toCommandRequest() as ScaffoldCommandRequest.AddOn
 
     assertEquals("bill-grill", request.name)
     assertEquals("kotlin", request.platform)
     assertEquals("grill it", request.description)
     assertEquals("## grill", request.body)
+    assertEquals("/tmp/private-addons", request.addonLocationPath)
   }
 
   @Test

@@ -157,6 +157,56 @@ class RuntimeRepoBrowserServiceTest {
   }
 
   @Test
+  fun `skill bill config appears first under add-ons and opens editable default when missing`() {
+    val repo = seedRepo("config-tree-row")
+    val configPath = Files.createTempDirectory("skillbill-desktop-config").resolve("config.json")
+    val service = RuntimeRepoBrowserService()
+    service.skillBillConfigPathResolver = { configPath }
+
+    val session = service.open(repo.toString())
+    val addonGroup = service.treeFor(session).single { it.kind == TreeItemKind.GROUP && it.label == "Add-ons" }
+    val configItem = addonGroup.children.first()
+    val document = service.loadDocument(session, configItem.id)
+
+    assertEquals(TreeItemKind.CONFIG, configItem.kind)
+    assertEquals("Skill Bill config", configItem.label)
+    assertEquals(configPath.toString(), configItem.authoredPath)
+    assertTrue(configItem.editable)
+    assertTrue(document.editable)
+    assertEquals("skill-bill config", document.kind)
+    assertEquals("{\n  \"external_addon_sources\": []\n}\n", document.text)
+    assertFalse(Files.exists(configPath))
+  }
+
+  @Test
+  fun `skill bill config saves valid json object and rejects malformed json`() {
+    val repo = seedRepo("config-save")
+    val configPath = Files.createTempDirectory("skillbill-desktop-config-save").resolve("config.json")
+    val compactBody = """{"external_addon_sources":[{"path":"/tmp/addons","platform":"kotlin"}]}"""
+    Files.writeString(configPath, compactBody)
+    val service = RuntimeRepoBrowserService()
+    service.skillBillConfigPathResolver = { configPath }
+    val session = service.open(repo.toString())
+    val configItem = service.treeFor(session)
+      .single { it.kind == TreeItemKind.GROUP && it.label == "Add-ons" }
+      .children
+      .first { it.kind == TreeItemKind.CONFIG }
+
+    val document = service.loadDocument(session, configItem.id)
+    val validBody = """{"external_addon_sources":[{"path":"/tmp/other","platform":"kmp"}]}"""
+    val expectedBody = requireNotNull(validBody.prettySkillBillConfigOrNull())
+    val saveResult = service.saveDocument(session, configItem.id, validBody)
+    val invalidResult = service.saveDocument(session, configItem.id, "{ not json")
+
+    assertEquals(compactBody.prettySkillBillConfigOrNull(), document.text)
+    assertTrue(saveResult.success, saveResult.runtimeErrorMessage.orEmpty())
+    assertEquals(expectedBody, Files.readString(configPath))
+    assertFalse(invalidResult.success)
+    assertTrue(invalidResult.runtimeErrorMessage.orEmpty().contains("Skill Bill config must be a JSON object."))
+    assertEquals(expectedBody, Files.readString(configPath))
+  }
+
+  @Test
   fun `saving governed skill writes exact editor text and reloads saved text`() {
     val repo = seedRepo("authoring-save")
     val service = RuntimeRepoBrowserService()
@@ -237,6 +287,10 @@ class RuntimeRepoBrowserServiceTest {
     assertTrue(externalItem.external)
     assertTrue(externalItem.editable)
     assertEquals(TreeItemKind.ADD_ON, externalItem.kind)
+    assertEquals(
+      externalDir.toAbsolutePath().normalize().toString().replace('\\', '/'),
+      externalItem.metadata?.externalSourcePath,
+    )
     assertTrue(document.editable)
     assertEquals(externalAddon.toString(), document.authoredPath)
     assertTrue(document.text.contains("External guidance."))
