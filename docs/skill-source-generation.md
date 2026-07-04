@@ -88,6 +88,10 @@ The frontmatter also accepts one optional classification key,
 
 ## Internal Skills
 
+This section is the normative contract; for the end-to-end architecture and
+routing walkthrough see
+[internal-skills-architecture.md](internal-skills-architecture.md).
+
 Most governed skills are **listed**: they install as a `SKILL.md` entry in each
 agent's `skills_dir` and are invocable by users via the Skill tool. A skill can
 instead be classified **internal**: its governed content still installs, but as
