@@ -100,6 +100,10 @@ Add-ons are pack-owned files, not standalone skills. Keep them flat in `platform
 
 Declare add-on consumers in the owning pack manifest under `addon_usage`. Do not hand-author per-skill add-on selection tables in `content.md`; the renderer emits governed add-on usage from the manifest. Add-on changes need validator and routing-contract coverage.
 
+## Internal Skills
+
+A base skill declaring `internal-for: <parent-skill-name>` in `content.md` frontmatter installs as a `<skill-name>.md` sidecar inside the parent's installed directory instead of being listed; the parent invokes it by reading that sibling file in-session. Full contract and worked example: `docs/skill-source-generation.md`.
+
 ## Skill Authoring
 
 Use the scaffolder for new skills:

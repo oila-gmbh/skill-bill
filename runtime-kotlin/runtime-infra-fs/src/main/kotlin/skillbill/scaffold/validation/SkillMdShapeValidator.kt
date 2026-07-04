@@ -6,7 +6,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 
 private val FRONTMATTER_PATTERN = Regex("""(?s)\A---\n(.*?)\n---\n""")
-private val ALLOWED_FRONTMATTER_KEYS = setOf("name", "description")
+private val ALLOWED_FRONTMATTER_KEYS = setOf("name", "description", "internal-for")
 private val FENCE_PATTERN = Regex("""^\s*(?:```|~~~)""")
 private val TABLE_PATTERN = Regex("""^\s*\|.*\|\s*$""")
 private val STEP_HEADING_PATTERN = Regex("""^##\s+Step\s+\d+[a-z]?\b""", RegexOption.IGNORE_CASE)

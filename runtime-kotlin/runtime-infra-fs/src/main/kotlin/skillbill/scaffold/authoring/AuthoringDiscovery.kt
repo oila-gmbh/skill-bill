@@ -63,6 +63,7 @@ internal fun discoverTargets(repoRoot: Path): Map<String, AuthoringTarget> {
 
   val skillsRoot = repoRoot.resolve("skills")
   if (!Files.isDirectory(skillsRoot)) {
+    validateInternalSkillClassification(discovered)
     return discovered
   }
   Files.walk(skillsRoot).use { stream ->
@@ -71,6 +72,7 @@ internal fun discoverTargets(repoRoot: Path): Map<String, AuthoringTarget> {
       .sorted()
       .forEach { contentFile -> recordSkillTarget(repoRoot, discovered, contentFile) }
   }
+  validateInternalSkillClassification(discovered)
   return discovered
 }
 
@@ -94,6 +96,7 @@ private fun recordPackTargets(discovered: MutableMap<String, AuthoringTarget>, p
         baselineContent,
         pack.codeReviewComposition,
         pack.addonUsageFor(baselineContent),
+        internalFor = parseInternalForFrontmatter(baselineContent),
       )
   }
   pack.declaredFiles.areas.forEach { (area, declaredFile) ->
@@ -109,6 +112,7 @@ private fun recordPackTargets(discovered: MutableMap<String, AuthoringTarget>, p
         contentFile.resolveSibling("SKILL.md"),
         contentFile,
         addonUsage = pack.addonUsageFor(contentFile),
+        internalFor = parseInternalForFrontmatter(contentFile),
       )
   }
   pack.declaredQualityCheckFile?.let { declaredFile ->
@@ -124,6 +128,7 @@ private fun recordPackTargets(discovered: MutableMap<String, AuthoringTarget>, p
         contentFile.resolveSibling("SKILL.md"),
         contentFile,
         addonUsage = pack.addonUsageFor(contentFile),
+        internalFor = parseInternalForFrontmatter(contentFile),
       )
   }
 }
@@ -140,6 +145,9 @@ private fun recordSkillTarget(repoRoot: Path, discovered: MutableMap<String, Aut
   val displayName =
     platform.takeIf { it.isNotBlank() }?.let(::displayNameFromSlug)
       ?: displayNameFromSlug(skillName.removePrefix("bill-"))
+  // A blank internal-for value is preserved so classification can fail loudly instead of
+  // silently treating the skill as listed.
+  val internalFor = parseInternalForFrontmatter(contentFile)
   discovered[skillName] =
     AuthoringTarget(
       skillName,
@@ -150,6 +158,7 @@ private fun recordSkillTarget(repoRoot: Path, discovered: MutableMap<String, Aut
       inferArea(skillName, family),
       skillFile,
       contentFile,
+      internalFor = internalFor,
     )
 }
 

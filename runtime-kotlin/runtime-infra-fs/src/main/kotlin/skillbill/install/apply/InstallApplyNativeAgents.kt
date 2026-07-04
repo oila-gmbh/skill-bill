@@ -29,7 +29,7 @@ internal fun applyNativeAgents(
     failures = failures,
     installCacheRoot = nativeAgentApplyCacheRoot(plan),
     legacyManagedRoot = nativeAgentLegacyCacheRoot(plan),
-    sourceRoots = selectedNativeAgentSourceRoots(plan),
+    sourceRoots = nativeAgentSourceRoots(plan.skills, plan.selectedPlatformSlugs.toSet()),
     replacementCleanupSourceRoots = allReplacementCleanupNativeAgentSourceRoots(plan, platformManifests),
   )
   return nativeAgentInstallers
@@ -179,12 +179,15 @@ private fun nativeAgentLegacyCacheRoot(plan: InstallPlan): Path = NativeAgentOpe
   skillsRoot = plan.installationTargetPaths.skillsRoot,
 )
 
-private fun selectedNativeAgentSourceRoots(plan: InstallPlan): List<Path> {
-  val selectedPlatformSlugs = plan.selectedPlatformSlugs.toSet()
-  return plan.skills
-    .filter { skill -> skill.platformSlug == null || skill.platformSlug in selectedPlatformSlugs }
-    .map { skill -> skill.sourceDir }
-}
+// Unlike standaloneInstallableSkills, internal skills stay enumerated here: a native-agents
+// bundle hosted in an internal skill's dir installs exactly as it does for a listed skill
+// (native-agent parity). Do not add an internalFor filter.
+internal fun nativeAgentSourceRoots(
+  skills: List<skillbill.install.model.InstallPlanSkill>,
+  selectedPlatformSlugs: Set<String>,
+): List<Path> = skills
+  .filter { skill -> skill.platformSlug == null || skill.platformSlug in selectedPlatformSlugs }
+  .map { skill -> skill.sourceDir }
 
 private fun allReplacementCleanupNativeAgentSourceRoots(
   plan: InstallPlan,

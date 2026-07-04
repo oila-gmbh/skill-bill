@@ -114,7 +114,10 @@ private fun applyPlannedSkills(
   plan: InstallPlan,
   platformManifests: List<PlatformManifest>,
   failures: MutableList<InstallApplyIssue>,
-): List<InstallAppliedSkill> = selectedPlannedSkills(plan).map { skill ->
+): List<InstallAppliedSkill> = standaloneInstallableSkills(
+  plan.skills,
+  plan.selectedPlatformSlugs.toSet(),
+).map { skill ->
   val staging = stagePlannedSkill(
     plan = plan,
     skill = skill,
@@ -141,11 +144,14 @@ private fun applyPlannedSkills(
   )
 }
 
-private fun selectedPlannedSkills(plan: InstallPlan): List<InstallPlanSkill> {
-  val selectedPlatformSlugs = plan.selectedPlatformSlugs.toSet()
-  return plan.skills.filter { skill ->
-    skill.kind == InstallPlanSkillKind.BASE || skill.platformSlug in selectedPlatformSlugs
-  }
+internal fun standaloneInstallableSkills(
+  skills: List<InstallPlanSkill>,
+  selectedPlatformSlugs: Set<String>,
+): List<InstallPlanSkill> = skills.filter { skill ->
+  // Internal skills are excluded here (they stage as sidecars in their parent) but stay
+  // enumerated for native-agent source roots — see nativeAgentSourceRoots.
+  skill.internalFor == null &&
+    (skill.kind == InstallPlanSkillKind.BASE || skill.platformSlug in selectedPlatformSlugs)
 }
 
 private fun stagePlannedSkill(
@@ -176,6 +182,7 @@ private fun RenderedSkill.toStagingOutcome(sourceDir: Path): InstallSkillStaging
   renderedPointerFiles = renderedPointerFiles,
   copiedAuthoredFiles = copiedAuthoredFiles,
   contentHash = contentHash,
+  renderedSidecarFiles = renderedSidecarFiles,
 )
 
 private fun failedStagingOutcome(sourceDir: Path, skillName: String, error: Throwable): InstallSkillStagingOutcome {

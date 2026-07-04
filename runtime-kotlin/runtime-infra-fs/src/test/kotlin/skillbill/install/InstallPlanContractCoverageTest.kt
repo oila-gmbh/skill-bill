@@ -60,7 +60,12 @@ class InstallPlanContractCoverageTest {
     assertEquals(InstallPlanSkillKind.PLATFORM_PACK, plannedSkills.getValue("bill-python-code-review").kind)
     assertEquals(InstallPlanSkillKind.PLATFORM_PACK, plannedSkills.getValue("bill-python-code-review-security").kind)
     assertEquals(InstallPlanSkillKind.PLATFORM_PACK, plannedSkills.getValue("bill-python-code-check").kind)
-    assertEquals(plan.skills.map { skill -> skill.name }, plan.staging.skillPaths.map { path -> path.skillName })
+    // Staging intents cover exactly the skills that stage standalone; internal skills render as
+    // sidecars inside their parent and get no intent of their own.
+    assertEquals(
+      plan.skills.filter { skill -> skill.internalFor == null }.map { skill -> skill.name },
+      plan.staging.skillPaths.map { path -> path.skillName },
+    )
     plan.staging.skillPaths.forEach { intent ->
       assertEquals(plan.staging.root, intent.stagingRoot)
       assertTrue(intent.stagingDir.startsWith(fixture.home.resolve(".skill-bill/installed-skills")))

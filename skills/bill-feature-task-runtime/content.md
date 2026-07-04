@@ -1,4 +1,5 @@
 ---
+internal-for: bill-feature
 name: bill-feature-task-runtime
 description: Use when running a single governed feature spec through the runtime-driven feature-task phase loop via the foreground `skill-bill feature-task` runtime. This is the runtime-backed mode of bill-feature-task. Gathers and confirms the run, presents one confirmation gate, then launches the runtime. Use when user mentions implement feature, build feature, implement spec, run feature-task, or feature from design doc, and the runtime-driven phase loop is preferred over prose in-session orchestration.
 ---
@@ -41,12 +42,12 @@ when the agent currently executing it is opencode: stop before the Single
 Confirmation Gate and the foreground launch and emit the actionable refusal
 pointing to `bill-feature-task-prose`:
 
-> Runtime mode is not supported on opencode: its foreground Bash tool is hard-killed at 120s before a phase can finish, and per-phase output cannot be harvested back. Use prose instead — run bill-feature-task-prose for a single feature task, or bill-feature-goal mode:prose for a decomposed goal.
+> Runtime mode is not supported on opencode: its foreground Bash tool is hard-killed at 120s before a phase can finish, and per-phase output cannot be harvested back. Use prose instead — use bill-feature with mode:prose for a single feature task, or bill-feature with mode:prose for a decomposed goal.
 
 Do not launch `skill-bill feature-task` on opencode — the runtime CLI refuses the
 same way whenever the resolved runtime agent is opencode, and runtime mode is
 non-viable there (the 120s foreground kill and the un-harvestable PTY output).
-For a prose run instead, use `bill-feature-task-prose`.
+For a prose run instead, read the sibling `bill-feature-task-prose.md` sidecar.
 
 ## Single Confirmation Gate
 

@@ -1,7 +1,8 @@
-@file:Suppress("TooGenericExceptionCaught")
+@file:Suppress("TooGenericExceptionCaught", "TooManyFunctions", "LongParameterList")
 
 package skillbill.install.staging
 
+import skillbill.error.InternalSkillSidecarCollisionError
 import skillbill.install.model.RenderedSkill
 import skillbill.scaffold.authoring.AuthoringTarget
 import skillbill.scaffold.authoring.normalizeMarkdownLineEndings
@@ -25,7 +26,11 @@ internal const val INSTALL_STAGING_CONTENT_HASH_FILENAME = ".content-hash"
 
 private val log: Logger = Logger.getLogger("skillbill.install.InstallStagingIO")
 
-internal fun isReusableInstallStaging(finalStagingDir: Path, contentHash: String): Boolean {
+internal fun isReusableInstallStaging(
+  finalStagingDir: Path,
+  contentHash: String,
+  expectedSidecarNames: Set<String> = emptySet(),
+): Boolean {
   if (!Files.isDirectory(finalStagingDir)) {
     return false
   }
@@ -41,7 +46,12 @@ internal fun isReusableInstallStaging(finalStagingDir: Path, contentHash: String
   // would short-circuit the rebuild and we'd hand back an incomplete dir.
   val skillFile = finalStagingDir.resolve(INSTALL_STAGING_SKILL_FILENAME)
   val skillIsFile = Files.isRegularFile(skillFile, LinkOption.NOFOLLOW_LINKS)
-  return markerIsFile && recorded == contentHash && skillIsFile
+  // F-013 (SKILL-102): the same partial-residue rationale applies to internal sidecars — an
+  // externally deleted sidecar would otherwise be reused indefinitely and break parent dispatch.
+  val sidecarsIntact = expectedSidecarNames.all { name ->
+    Files.isRegularFile(finalStagingDir.resolve(name), LinkOption.NOFOLLOW_LINKS)
+  }
+  return markerIsFile && recorded == contentHash && skillIsFile && sidecarsIntact
 }
 
 internal fun reuseInstallStaging(
@@ -50,6 +60,7 @@ internal fun reuseInstallStaging(
   contentHash: String,
   applicablePointers: List<Pair<PlatformManifest, PointerSpec>>,
   generatedSupportPointers: List<GeneratedSupportPointer> = emptyList(),
+  internalSidecarNames: Set<String> = emptySet(),
 ): RenderedSkill {
   val skillFile = finalStagingDir.resolve(INSTALL_STAGING_SKILL_FILENAME)
   val skillFileNormalized = skillFile.toAbsolutePath().normalize()
@@ -69,11 +80,17 @@ internal fun reuseInstallStaging(
     applicablePointers.map { (_, spec) -> spec.name } +
       generatedSupportPointers.map { pointer -> pointer.name }
     ).map { name -> Path.of(name) }.toSet()
+  val sidecarRelativePaths = internalSidecarNames.map { name -> Path.of(name) }.toSet()
   val authoredCopied = staged.filter { path ->
     val rel = finalRoot.relativize(path.toAbsolutePath().normalize())
-    rel !in pointerRelativePaths && Files.isRegularFile(sourceSkillDir.resolve(rel), LinkOption.NOFOLLOW_LINKS)
+    rel !in pointerRelativePaths && rel !in sidecarRelativePaths &&
+      Files.isRegularFile(sourceSkillDir.resolve(rel), LinkOption.NOFOLLOW_LINKS)
   }
-  val pointerFiles = staged.filter { path -> path !in authoredCopied }
+  val sidecarFiles = staged.filter { path ->
+    val rel = finalRoot.relativize(path.toAbsolutePath().normalize())
+    rel in sidecarRelativePaths
+  }
+  val pointerFiles = staged.filter { path -> path !in authoredCopied && path !in sidecarFiles }
   return RenderedSkill(
     skillName = sourceSkillDir.fileName.toString(),
     sourceSkillDir = sourceSkillDir,
@@ -82,6 +99,7 @@ internal fun reuseInstallStaging(
     renderedPointerFiles = pointerFiles,
     copiedAuthoredFiles = authoredCopied,
     contentHash = contentHash,
+    renderedSidecarFiles = sidecarFiles,
   )
 }
 
@@ -125,7 +143,42 @@ internal fun writeRenderedPointerFiles(
   pointerFile
 }
 
+/**
+ * SKILL-102 (PD2/PD6): write each internal child's pre-rendered governed wrapper into the
+ * parent's staging directory as `<skill-name>.md`. Loud-fails when the parent's source dir
+ * already contains an authored file at a would-be sidecar name (collision guard, mirroring
+ * GeneratedArtifactGuard's pattern).
+ */
+internal fun writeInternalSidecarFiles(
+  tempDir: Path,
+  parentSourceDir: Path,
+  children: List<InternalSidecarTarget>,
+): List<Path> = children.map { child ->
+  val sidecarName = "${child.skillName}.md"
+  val collision = parentSourceDir.resolve(sidecarName)
+  if (Files.isRegularFile(collision, LinkOption.NOFOLLOW_LINKS)) {
+    throw InternalSkillSidecarCollisionError(
+      parentSkillName = parentSourceDir.fileName.toString(),
+      internalSkillName = child.skillName,
+      sidecarRelativePath = sidecarName,
+    )
+  }
+  val sidecarFile = tempDir.resolve(sidecarName).normalize()
+  require(sidecarFile.startsWith(tempDir)) {
+    "Internal sidecar '$sidecarName' staging path '$sidecarFile' escapes staging dir '$tempDir'."
+  }
+  Files.write(sidecarFile, child.renderedWrapper.toByteArray(StandardCharsets.UTF_8))
+  sidecarFile
+}
+
 internal fun promoteInstallStagingDir(tempDir: Path, finalStagingDir: Path) {
+  // A rebuild only reaches promotion when the existing entry failed the reuse check (stale
+  // marker, missing SKILL.md, or a pruned sidecar). ATOMIC_MOVE cannot replace a non-empty
+  // directory (ENOTEMPTY), so stale residue must go through delete-and-move.
+  if (Files.exists(finalStagingDir, LinkOption.NOFOLLOW_LINKS)) {
+    promoteByDeleteAndMove(tempDir, finalStagingDir)
+    return
+  }
   try {
     Files.move(
       tempDir,
