@@ -4,6 +4,7 @@ import skillbill.desktop.core.domain.model.RepoLoadState
 import skillbill.desktop.core.domain.model.RepoSession
 import skillbill.desktop.core.domain.model.TreeItemKind
 import skillbill.error.SkillBillRuntimeException
+import skillbill.install.model.ExternalAddonSource
 import java.nio.file.FileSystemException
 import java.nio.file.Files
 import java.nio.file.Path
@@ -215,6 +216,65 @@ class RuntimeRepoBrowserServiceTest {
     assertFalse(nativeAgentResult.success)
     assertTrue(nativeAgentResult.runtimeErrorMessage.orEmpty().contains("Only governed content.md files and add-ons"))
     assertEquals(nativeAgentBefore, Files.readString(repo.resolve("skills/bill-alpha/native-agents/alpha-agent.md")))
+  }
+
+  @Test
+  fun `external add-on appears under platform group and saves to external source`() {
+    val repo = seedRepo("external-addon-visible")
+    val externalDir = Files.createTempDirectory("skillbill-desktop-external-addons")
+    val externalAddon = externalDir.resolve("observability.md")
+    Files.writeString(externalAddon, "# Observability\n\nExternal guidance.\n")
+    val service = RuntimeRepoBrowserService()
+    service.externalAddonSourcesResolver = { listOf(ExternalAddonSource(externalDir, "kotlin")) }
+    val session = service.open(repo.toString())
+
+    val addonGroup = service.treeFor(session).single { it.kind == TreeItemKind.GROUP && it.label == "Add-ons" }
+    val kotlinAddons = addonGroup.children.single { it.kind == TreeItemKind.GROUP && it.label == "kotlin" }
+    val externalItem = kotlinAddons.children.single { it.label == "observability" }
+    val document = service.loadDocument(session, externalItem.id)
+    val saveResult = service.saveDocument(session, externalItem.id, "# Observability\n\nUpdated external guidance.\n")
+
+    assertTrue(externalItem.external)
+    assertTrue(externalItem.editable)
+    assertEquals(TreeItemKind.ADD_ON, externalItem.kind)
+    assertTrue(document.editable)
+    assertEquals(externalAddon.toString(), document.authoredPath)
+    assertTrue(document.text.contains("External guidance."))
+    assertTrue(saveResult.success, saveResult.runtimeErrorMessage.orEmpty())
+    assertTrue(Files.readString(externalAddon).contains("Updated external guidance."))
+  }
+
+  @Test
+  fun `external add-on duplicate drops pack-owned add-on from tree`() {
+    val repo = seedRepo("external-addon-dedup")
+    val externalDir = Files.createTempDirectory("skillbill-desktop-external-addons-dedup")
+    Files.writeString(externalDir.resolve("tracing-otel.md"), "# External tracing\n")
+    val service = RuntimeRepoBrowserService()
+    service.externalAddonSourcesResolver = { listOf(ExternalAddonSource(externalDir, "kotlin")) }
+    val session = service.open(repo.toString())
+
+    val addonGroup = service.treeFor(session).single { it.kind == TreeItemKind.GROUP && it.label == "Add-ons" }
+    val kotlinAddons = addonGroup.children.single { it.kind == TreeItemKind.GROUP && it.label == "kotlin" }
+    val tracingItems = kotlinAddons.children.filter { it.label == "tracing-otel" }
+
+    assertEquals(1, tracingItems.size)
+    assertTrue(tracingItems.single().external)
+  }
+
+  @Test
+  fun `external add-on resolver failure keeps pack-owned tree visible`() {
+    val repo = seedRepo("external-addon-resolver-failure")
+    val service = RuntimeRepoBrowserService()
+    service.externalAddonSourcesResolver = { throw IllegalStateException("bad external config") }
+
+    val session = service.open(repo.toString())
+    val addonGroup = service.treeFor(session).single { it.kind == TreeItemKind.GROUP && it.label == "Add-ons" }
+    val kotlinAddons = addonGroup.children.single { it.kind == TreeItemKind.GROUP && it.label == "kotlin" }
+    val packOwned = kotlinAddons.children.single { it.label == "tracing-otel" }
+
+    assertEquals(RepoLoadState.LOADED, session.loadStatus.state, session.loadStatus.message)
+    assertFalse(packOwned.external)
+    assertTrue(packOwned.editable)
   }
 
   @Test

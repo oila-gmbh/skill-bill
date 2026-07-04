@@ -1,6 +1,7 @@
 package skillbill.desktop.core.data.di
 
 import me.tatarka.inject.annotations.Inject
+import skillbill.application.install.ExternalAddonOverlayService
 import skillbill.application.install.InstallService
 import skillbill.application.scaffold.InstallAgentService
 import skillbill.application.scaffold.RepoSourceDiscoveryService
@@ -11,6 +12,7 @@ import skillbill.application.scaffold.SkillRemoveService
 import skillbill.desktop.core.common.di.UserScope
 import skillbill.di.RuntimeComponent
 import skillbill.di.create
+import skillbill.install.model.ExternalAddonSource
 import skillbill.model.RuntimeContext
 import skillbill.ports.install.baseline.InstalledWorkspaceBaselineStatusPort
 import skillbill.ports.install.selection.InstallSelectionPersistencePort
@@ -51,6 +53,9 @@ class DesktopRuntimeApplicationServices {
   val installedWorkspaceBaselineStatusPort: InstalledWorkspaceBaselineStatusPort
     get() = services.installedWorkspaceBaselineStatusPort
 
+  fun resolveExternalAddonSources(): List<ExternalAddonSource> =
+    services.externalAddonOverlayService.resolveSources(currentUserHome(), System.getenv())
+
   companion object {
     fun forCurrentUserHome(): DesktopRuntimeApplicationServices = DesktopRuntimeApplicationServices()
   }
@@ -82,6 +87,7 @@ private data class DesktopRuntimeApplicationServiceBundle(
   val repoValidationService: RepoValidationService,
   val skillRemoveService: SkillRemoveService,
   val installedWorkspaceBaselineStatusPort: InstalledWorkspaceBaselineStatusPort,
+  val externalAddonOverlayService: ExternalAddonOverlayService,
 )
 
 private fun buildDesktopRuntimeApplicationServices(home: Path): DesktopRuntimeApplicationServiceBundle {
@@ -93,6 +99,7 @@ private fun buildDesktopRuntimeApplicationServices(home: Path): DesktopRuntimeAp
     repoValidationService = component.repoValidationService,
     skillRemoveService = component.skillRemoveService,
     installedWorkspaceBaselineStatusPort = component.installedWorkspaceBaselineStatusPort,
+    externalAddonOverlayService = component.externalAddonOverlayService,
   )
 }
 

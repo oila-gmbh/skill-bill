@@ -9,6 +9,7 @@ import skillbill.desktop.core.domain.model.SkillBillTreeItem
 import skillbill.desktop.core.domain.service.AuthoringGateway
 import skillbill.desktop.core.domain.service.RepoSessionService
 import skillbill.desktop.core.domain.service.SkillTreeService
+import skillbill.install.model.ExternalAddonSource
 import skillbill.ports.scaffold.source.model.ScaffoldSaveExactContentResult
 import java.nio.file.Path
 
@@ -40,6 +41,12 @@ class RuntimeRepoBrowserService(
     get() = store.baselineModifiedResolver
     set(value) {
       store.baselineModifiedResolver = value
+    }
+
+  internal var externalAddonSourcesResolver: () -> List<ExternalAddonSource>
+    get() = store.externalAddonSourcesResolver
+    set(value) {
+      store.externalAddonSourcesResolver = value
     }
 
   override fun open(repoPath: String): RepoSession = repoSessionService.open(repoPath)
