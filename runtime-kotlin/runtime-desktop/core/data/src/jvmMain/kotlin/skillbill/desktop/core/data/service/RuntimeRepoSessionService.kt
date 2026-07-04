@@ -39,7 +39,9 @@ class RuntimeRepoSessionService(
     }
 
     val tree =
-      runCatching { treeBuilder.buildTree(root, store.baselineModifiedResolver) }
+      runCatching {
+        treeBuilder.buildTree(root, store.baselineModifiedResolver, store.externalAddonSourcesResolver)
+      }
         .getOrElse { error ->
           val invalidStatus =
             status.copy(
