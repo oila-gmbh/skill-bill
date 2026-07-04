@@ -130,7 +130,7 @@ For `single_spec`:
 Return the next command as:
 
 ```bash
-Run bill-feature-task on .feature-specs/{ISSUE_KEY}-{feature-name}/spec.md
+Run bill-feature on .feature-specs/{ISSUE_KEY}-{feature-name}/spec.md
 ```
 
 ## decomposed Output Rules
