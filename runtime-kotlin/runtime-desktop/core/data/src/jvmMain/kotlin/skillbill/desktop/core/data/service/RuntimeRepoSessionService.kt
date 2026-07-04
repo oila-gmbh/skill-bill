@@ -40,7 +40,12 @@ class RuntimeRepoSessionService(
 
     val tree =
       runCatching {
-        treeBuilder.buildTree(root, store.baselineModifiedResolver, store.externalAddonSourcesResolver)
+        treeBuilder.buildTree(
+          root,
+          store.baselineModifiedResolver,
+          store.externalAddonSourcesResolver,
+          store.skillBillConfigPathResolver,
+        )
       }
         .getOrElse { error ->
           val invalidStatus =

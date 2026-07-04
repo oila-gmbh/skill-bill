@@ -529,6 +529,7 @@ abstract class RuntimeComponent(
   abstract val scaffoldService: ScaffoldService
   abstract val skillRemoveService: SkillRemoveService
   abstract val systemService: SystemService
+  abstract val telemetryConfigStorePort: TelemetryConfigStore
   abstract val telemetryLevelMutator: TelemetryLevelMutator
   abstract val telemetryService: TelemetryService
   abstract val uninstallFileSystemService: UninstallFileSystemService

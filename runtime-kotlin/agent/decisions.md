@@ -49,7 +49,7 @@ Failing loudly with an actionable message (instead of silently degrading or
 wedging) tells the user exactly which path to take. The host-agent DETECTION
 (`InvokingAgentContextResolver`) and the `InstallAgent` enum are intentionally
 retained: opencode must stay detectable (to refuse) and installable/scaffoldable
-(MCP into `~/.config/opencode`, generated opencode agents); only the runtime
+(MCP into the user-level opencode config directory, generated opencode agents); only the runtime
 LAUNCH path is disabled. No app-layer guard is added (`AgentRunService` /
 `FeatureTaskRuntimeRunner` / `GoalRunner` are unguarded) so their
 resolution/recording tests stay green and the launcher backstop remains the single
@@ -70,7 +70,7 @@ and dropping the preflights becomes viable.
 
 ## 2026-06-26 — SQLite runs in WAL with a busy_timeout for concurrent runs
 
-Context: All runtimes share one global SQLite file (`~/.skill-bill/review-metrics.db`),
+Context: All runtimes share one global review metrics SQLite file in the user skill-bill state directory,
 and nothing prevents concurrent runs (e.g. two goals for two projects at once).
 `ensureDatabase` previously set only `PRAGMA foreign_keys = ON`, leaving SQLite on
 its rollback-journal default with no busy timeout, so a write that collided with a
@@ -90,7 +90,7 @@ application-level lock or per-project DB files (both rejected: a lock would remo
 the ability to run concurrent goals, per-project files would fork the cross-project
 review-metrics aggregation the single DB enables). WAL is a persistent property of
 the DB file and creates `-wal`/`-shm` sidecars next to the DB — acceptable for a
-local `~/.skill-bill/` database. Re-applying the pragmas per connection is
+local user-state database. Re-applying the pragmas per connection is
 idempotent.
 
 Revisit when: the DB is moved off a local filesystem (WAL needs shared-memory

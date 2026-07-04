@@ -6,6 +6,7 @@ import dev.skillbill.designsystem.generated.resources.command_disabled_wait_for_
 import dev.skillbill.designsystem.generated.resources.first_run_install_planning_failed
 import dev.skillbill.designsystem.generated.resources.inspector_open_artifact_cd
 import kotlinx.coroutines.runBlocking
+import skillbill.desktop.core.domain.model.AuthoredContentDocument
 import skillbill.desktop.core.domain.model.CommandPaletteAction
 import skillbill.desktop.core.domain.model.CommandPaletteResult
 import skillbill.desktop.core.domain.model.CommandPaletteResultKind
@@ -114,6 +115,37 @@ class SkillBillViewModelTest {
     assertEquals("after\n", authoringGateway.lastSavedBody)
     assertFalse(saved.editor.dirty)
     assertEquals("after\n", saved.editor.draftContent)
+  }
+
+  @Test
+  fun `saving skill bill config refreshes tree after save`() {
+    val configId = "config"
+    val skillTreeService = FakeSkillTreeService(
+      listOf(
+        SkillBillTreeItem(
+          id = "addons",
+          label = "Add-ons",
+          kind = TreeItemKind.GROUP,
+          children = listOf(
+            SkillBillTreeItem(id = configId, label = "Skill Bill config", kind = TreeItemKind.CONFIG),
+          ),
+        ),
+      ),
+    )
+    val authoringGateway = FakeAuthoringGateway().apply {
+      documentsByTreeItemId[configId] = skillBillConfigDocument(configId, "{\n  \"external_addon_sources\": []\n}\n")
+    }
+    val viewModel = newViewModel(skillTreeService = skillTreeService, authoringGateway = authoringGateway)
+    viewModel.selectRepoPath("/repo")
+    viewModel.selectTreeItem(configId)
+    viewModel.updateEditorDraft("{\n  \"external_addon_sources\": [],\n  \"telemetry\": {}\n}\n")
+
+    val request = viewModel.beginSaveEditor()
+    val saved = viewModel.finishSaveEditor(viewModel.runSaveEditor(assertNotNull(request)))
+
+    assertEquals(2, skillTreeService.refreshCount)
+    assertEquals(configId, saved.selectedTreeItemId)
+    assertFalse(saved.editor.dirty)
   }
 
   @Test
@@ -1295,6 +1327,17 @@ private fun skillTree(vararg ids: String): List<SkillBillTreeItem> = listOf(
     children = ids.map { id -> SkillBillTreeItem(id = id, label = id, kind = TreeItemKind.SKILL) },
   ),
 )
+
+private fun skillBillConfigDocument(treeItemId: String, text: String): AuthoredContentDocument =
+  AuthoredContentDocument(
+    treeItemId = treeItemId,
+    title = "Skill Bill config",
+    skillName = null,
+    kind = "skill-bill config",
+    authoredPath = "/home/tester/.config/skill-bill/config.json",
+    text = text,
+    editable = true,
+  )
 
 private fun generatedArtifactTree(artifactId: String, artifactPath: String): List<SkillBillTreeItem> = listOf(
   SkillBillTreeItem(

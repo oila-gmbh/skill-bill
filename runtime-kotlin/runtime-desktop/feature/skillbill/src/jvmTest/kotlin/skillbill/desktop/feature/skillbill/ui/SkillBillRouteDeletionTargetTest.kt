@@ -1,6 +1,7 @@
 package skillbill.desktop.feature.skillbill.ui
 
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Test
 import skillbill.desktop.core.domain.model.DesktopSkillRemovalTarget
 import skillbill.desktop.core.domain.model.SkillBillTreeItem
@@ -33,5 +34,18 @@ class SkillBillRouteDeletionTargetTest {
       ),
       target,
     )
+  }
+
+  @Test
+  fun `skill bill config row is not a deletion target`() {
+    val node = SkillBillTreeItem(
+      id = "repo:abc|config:skill-bill",
+      label = "Skill Bill config",
+      kind = TreeItemKind.CONFIG,
+      authoredPath = "/home/user/.config/skill-bill/config.json",
+      metadata = SkillBillTreeItemMetadata(kind = "skill-bill config"),
+    )
+
+    assertNull(resolveDeletionTarget(node))
   }
 }

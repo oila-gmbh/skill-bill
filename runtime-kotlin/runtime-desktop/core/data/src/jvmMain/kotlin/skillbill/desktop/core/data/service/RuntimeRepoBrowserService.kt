@@ -49,6 +49,12 @@ class RuntimeRepoBrowserService(
       store.externalAddonSourcesResolver = value
     }
 
+  internal var skillBillConfigPathResolver: () -> Path
+    get() = store.skillBillConfigPathResolver
+    set(value) {
+      store.skillBillConfigPathResolver = value
+    }
+
   override fun open(repoPath: String): RepoSession = repoSessionService.open(repoPath)
 
   override fun treeFor(session: RepoSession?): List<SkillBillTreeItem> = skillTreeService.treeFor(session)
