@@ -100,6 +100,28 @@ class SkillRemoveTest {
   }
 
   @Test
+  fun `previewRemoval ExternalAddOn returns external source dossier`() {
+    val fs = FakeSkillRemoveFileSystem(
+      filesystemPaths = listOf("/external/addons/my-addon.md"),
+    )
+    val request = SkillRemovalRequest(
+      target = SkillRemovalTarget.ExternalAddOn(
+        sourceRootAbsolutePath = "/external/addons",
+        platform = "kmp",
+        fileName = "my-addon.md",
+      ),
+      repoRootAbsolutePath = "/repo",
+    )
+
+    val preview = SkillRemove(fs).previewRemoval(request).preview
+
+    assertEquals(listOf("/external/addons/my-addon.md"), preview.filesystemPaths)
+    assertEquals("/external/addons/my-addon.md", preview.skillDirRoot)
+    assertTrue(preview.manifestEdits.isEmpty())
+    assertTrue(preview.agentSymlinkUnlinks.isEmpty())
+  }
+
+  @Test
   fun `previewRemoval refuses dot-bill-shared horizontal skill`() {
     val fs = FakeSkillRemoveFileSystem()
     val request = SkillRemovalRequest(

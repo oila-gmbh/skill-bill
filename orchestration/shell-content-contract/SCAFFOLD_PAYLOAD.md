@@ -35,7 +35,7 @@ Every payload MUST include:
     baseline `code-review` skill, a default `quality-check` skill,
     and a freshly rendered `platform.yaml`.
   - `"add-on"` — placed at `platform-packs/<platform>/addons/<name>.md` (flat; no
-    sub-directory).
+    sub-directory) unless `addon_location_path` is provided.
 - `name` — the canonical `bill-...` slug for a new horizontal skill. For
   `platform-pack`, the scaffolder derives canonical names when this key is
   omitted; if provided, the value must still match the canonical shape.
@@ -103,6 +103,14 @@ removable.
   or manifest mutation, then registers the new add-on in `platform.yaml` by
   adding generated pointer entries and `addon_usage` entries for these
   consumers.
+- `addon_location_path` — optional path for `add-on`. When omitted, the
+  scaffolder creates a pack-owned add-on under
+  `platform-packs/<platform>/addons/<name>.md` and edits the pack's
+  `platform.yaml`. When provided, the scaffolder creates `<name>.md` in that
+  external add-on source directory and creates or updates
+  `addon-manifest.yaml` there with bare pointer targets. `~` is expanded and
+  relative paths resolve against `repo_root`. The platform pack must still
+  exist so the scaffolder can validate/default `consumer_skill_dirs`.
 - `repo_root` — absolute path override used by tests. Defaults to the
   current working directory.
 - `subagent_specialists` — list of specialist subagent names to scaffold
@@ -247,6 +255,24 @@ validate/render/install checks for the repo. `addon_usage` registration stays in
   "platform": "kmp"
 }
 ```
+
+To create an external add-on source directly, include `addon_location_path`:
+
+```json
+{
+  "scaffold_payload_version": "1.0",
+  "kind": "add-on",
+  "name": "acme-review",
+  "platform": "ios",
+  "addon_location_path": "~/dev/acme-review-addon"
+}
+```
+
+This writes `~/dev/acme-review-addon/acme-review.md` and creates or updates
+`~/dev/acme-review-addon/addon-manifest.yaml`. Desktop callers register that
+directory in `external_addon_sources` after successful execution so the app tree
+and install overlay can discover it. Scripted callers invoking this raw payload
+outside the desktop app must register the source themselves.
 
 ## Loud-Fail Exception Catalog
 

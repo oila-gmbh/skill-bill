@@ -84,6 +84,9 @@ internal class SkillBillEditorController(
       editorDraftText = savedDocument.text
       editorSaveErrorMessage = null
       dirtyEditorPrompt = null
+      if (savedDocument.kind == "skill-bill config") {
+        repoController.openRepo(currentSession?.repoPath ?: repoPathText, preserveSelection = true)
+      }
     } else {
       editorSaveErrorMessage = result.result.runtimeErrorMessage ?: "Save failed."
     }

@@ -157,6 +157,7 @@ sealed class ScaffoldPayload {
     val platform: String,
     val description: String = "",
     val body: String? = null,
+    val addonLocationPath: String? = null,
     override val repoRoot: String? = null,
   ) : ScaffoldPayload() {
     override val kind: ScaffoldKind = ScaffoldKind.ADD_ON
@@ -166,6 +167,7 @@ sealed class ScaffoldPayload {
       target["platform"] = platform
       if (description.isNotBlank()) target["description"] = description
       body?.let { target["body"] = it }
+      addonLocationPath?.let { target["addon_location_path"] = it }
     }
   }
 }

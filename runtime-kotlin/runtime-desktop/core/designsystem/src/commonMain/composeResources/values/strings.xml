@@ -65,7 +65,7 @@
     <string name="command_new_platform_pack">New platform pack</string>
     <string name="command_new_platform_pack_subtitle">Scaffold a new piloted platform pack</string>
     <string name="command_new_add_on">New add-on</string>
-    <string name="command_new_add_on_subtitle">Scaffold a governed add-on under a platform pack</string>
+    <string name="command_new_add_on_subtitle">Scaffold a governed or external add-on</string>
     <string name="command_disabled_no_repo">Open a Skill Bill repository first.</string>
     <string name="command_disabled_invalid_repo">Open a valid Skill Bill repository first.</string>
     <string name="command_disabled_scaffold_wizard_open">Dismiss the current scaffold wizard first.</string>
@@ -97,6 +97,13 @@
     <string name="scaffold_code_review_area">Code-review area</string>
     <string name="scaffold_add_on_name">Add-on name</string>
     <string name="scaffold_owning_platform_pack">Owning platform pack</string>
+    <string name="scaffold_add_on_location_mode">Add-on source</string>
+    <string name="scaffold_add_on_location_native">Native</string>
+    <string name="scaffold_add_on_location_external">External</string>
+    <string name="scaffold_add_on_location_path">External add-on source path</string>
+    <string name="scaffold_add_on_location_choose">Choose...</string>
+    <string name="scaffold_add_on_location_choose_title">Choose External Add-On Source</string>
+    <string name="scaffold_add_on_location_empty">No directory selected</string>
     <string name="scaffold_skill_name">Skill name</string>
     <string name="scaffold_skill_name_helper">Skill name will be prefixed with bill-.</string>
     <string name="scaffold_baseline_section">Baseline review layers</string>
@@ -139,6 +146,7 @@
     <string name="scaffold_error_code_review_area_required">Code-review area is required.</string>
     <string name="scaffold_error_add_on_name_required">Add-on name is required.</string>
     <string name="scaffold_error_owning_platform_pack_required">Owning platform pack is required.</string>
+    <string name="scaffold_error_add_on_location_path_required">External add-on source path is required.</string>
     <string name="scaffold_error_baseline_pack_required">Baseline layer %1$s: baseline pack is required.</string>
     <string name="scaffold_error_baseline_pack_unavailable">Baseline layer %1$s: baseline pack \'%2$s\' is not available or has no declared code-review baseline.</string>
     <string name="scaffold_error_baseline_skill_required">Baseline layer %1$s: baseline skill is required.</string>

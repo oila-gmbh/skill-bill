@@ -33,6 +33,7 @@ class ScaffoldValidationContractTest {
     ScaffoldValidationId.CODE_REVIEW_AREA_REQUIRED -> "scaffold_error_code_review_area_required"
     ScaffoldValidationId.ADD_ON_NAME_REQUIRED -> "scaffold_error_add_on_name_required"
     ScaffoldValidationId.OWNING_PLATFORM_PACK_REQUIRED -> "scaffold_error_owning_platform_pack_required"
+    ScaffoldValidationId.ADD_ON_LOCATION_PATH_REQUIRED -> "scaffold_error_add_on_location_path_required"
     ScaffoldValidationId.BASELINE_PACK_REQUIRED -> "scaffold_error_baseline_pack_required"
     ScaffoldValidationId.BASELINE_PACK_UNAVAILABLE -> "scaffold_error_baseline_pack_unavailable"
     ScaffoldValidationId.BASELINE_SKILL_REQUIRED -> "scaffold_error_baseline_skill_required"
@@ -53,6 +54,7 @@ class ScaffoldValidationContractTest {
     ScaffoldValidationId.CODE_REVIEW_AREA_REQUIRED,
     ScaffoldValidationId.ADD_ON_NAME_REQUIRED,
     ScaffoldValidationId.OWNING_PLATFORM_PACK_REQUIRED,
+    ScaffoldValidationId.ADD_ON_LOCATION_PATH_REQUIRED,
     -> 0
     ScaffoldValidationId.BASELINE_PACK_REQUIRED,
     ScaffoldValidationId.BASELINE_SKILL_REQUIRED,

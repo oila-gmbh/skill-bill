@@ -23,8 +23,10 @@ import skillbill.install.plan.detectAgents
 import skillbill.install.plan.installSkill
 import skillbill.install.plan.uninstallTargets
 import skillbill.scaffold.manifest.appendCodeReviewArea
+import skillbill.scaffold.manifest.appendExternalAddonManifestRegistration
 import skillbill.scaffold.manifest.appendGovernedAddonManifestRegistration
 import skillbill.scaffold.manifest.appendReadmeCatalogRow
+import skillbill.scaffold.manifest.renderExternalAddonManifestRegistration
 import skillbill.scaffold.manifest.renderGovernedAddonManifestRegistration
 import skillbill.scaffold.manifest.renderReadmeCatalogRow
 import skillbill.scaffold.manifest.setDeclaredQualityCheckFile
@@ -126,6 +128,7 @@ internal data class ScaffoldPlan(
   val contentBody: String? = null,
   val addonBody: String? = null,
   val addonConsumerSkillDirs: List<String> = emptyList(),
+  val externalAddonLocationPath: Path? = null,
   val baselineLayers: List<CodeReviewBaselineLayer> = emptyList(),
   val subagentSpecialists: List<String> = emptyList(),
   val subagentDescriptions: Map<String, String> = emptyMap(),
@@ -500,12 +503,14 @@ private fun planAddOn(payload: Map<String, Any?>, repoRoot: Path, adapters: Scaf
     )
   }
   val pack = loadPlatformPack(packRoot)
-  val skillFile = packRoot.resolve("addons").resolve("$name.md")
-  val addOnFile = repoRoot.relativize(skillFile).toString().replace('\\', '/')
+  val externalLocationPath = optionalAddonLocationPath(payload, repoRoot)
+  val addonDir = externalLocationPath ?: packRoot.resolve("addons")
+  val skillFile = addonDir.resolve("$name.md")
+  val addOnFile = displayPath(repoRoot, skillFile)
   return ScaffoldPlan(
     kind = SKILL_KIND_ADD_ON,
     skillName = name,
-    skillPath = packRoot.resolve("addons"),
+    skillPath = addonDir,
     skillFile = skillFile,
     contentFile = null,
     family = "add-on",
@@ -516,6 +521,7 @@ private fun planAddOn(payload: Map<String, Any?>, repoRoot: Path, adapters: Scaf
     description = requireStringOrDefault(payload, "description", ""),
     addonBody = payload["body"] as? String,
     addonConsumerSkillDirs = adapters.resolveAddonConsumerSkillDirs(payload, packRoot, pack),
+    externalAddonLocationPath = externalLocationPath,
   )
 }
 
@@ -687,6 +693,23 @@ private fun applyManifestEdits(txn: ScaffoldTransaction, plan: ScaffoldPlan, rep
     SKILL_KIND_ADD_ON -> {
       if (plan.addonConsumerSkillDirs.isEmpty()) {
         emptyList()
+      } else if (plan.isExternalAddon()) {
+        val manifestPath = plan.externalAddonManifestPath()
+        if (Files.exists(manifestPath)) {
+          snapshotManifest(txn, manifestPath)
+          appendExternalAddonManifestRegistration(
+            manifestPath = manifestPath,
+            skillRelativeDirs = plan.addonConsumerSkillDirs,
+            addonSlug = plan.skillName,
+          )
+        } else {
+          stageFile(
+            txn,
+            manifestPath,
+            renderExternalAddonManifestRegistration("", plan.addonConsumerSkillDirs, plan.skillName),
+          )
+        }
+        listOf(manifestPath)
       } else {
         val manifestPath = repoRoot.resolve("platform-packs").resolve(plan.platform).resolve("platform.yaml")
         snapshotManifest(txn, manifestPath)
@@ -705,7 +728,11 @@ private fun applyManifestEdits(txn: ScaffoldTransaction, plan: ScaffoldPlan, rep
 
 private fun previewCreatedFiles(plan: ScaffoldPlan): List<Path> = when (plan.kind) {
   SKILL_KIND_PLATFORM_PACK -> previewPlatformPackCreatedFiles(plan) + previewSubagentStubFiles(plan)
-  SKILL_KIND_ADD_ON -> listOf(plan.skillFile)
+  SKILL_KIND_ADD_ON -> if (plan.isExternalAddon() && !Files.exists(plan.externalAddonManifestPath())) {
+    listOf(plan.skillFile, plan.externalAddonManifestPath())
+  } else {
+    listOf(plan.skillFile)
+  }
   else -> buildList {
     plan.contentFile?.let(::add)
     addAll(previewSubagentStubFiles(plan))
@@ -716,6 +743,8 @@ private fun previewManifestEdits(plan: ScaffoldPlan, repoRoot: Path): List<Path>
   SKILL_KIND_PLATFORM_PACK -> listOf(plan.manifestPath ?: platformPackManifestPath(repoRoot, plan.platform))
   SKILL_KIND_ADD_ON -> if (plan.addonConsumerSkillDirs.isEmpty()) {
     emptyList()
+  } else if (plan.isExternalAddon()) {
+    listOf(plan.externalAddonManifestPath())
   } else {
     listOf(platformPackManifestPath(repoRoot, plan.platform))
   }
@@ -739,6 +768,16 @@ private fun previewManifestPreviews(plan: ScaffoldPlan, repoRoot: Path): Map<Pat
   SKILL_KIND_ADD_ON -> {
     if (plan.addonConsumerSkillDirs.isEmpty()) {
       emptyMap()
+    } else if (plan.isExternalAddon()) {
+      val manifestPath = plan.externalAddonManifestPath()
+      val current = if (Files.exists(manifestPath)) Files.readString(manifestPath) else ""
+      mapOf(
+        manifestPath to renderExternalAddonManifestRegistration(
+          text = current,
+          skillRelativeDirs = plan.addonConsumerSkillDirs,
+          addonSlug = plan.skillName,
+        ),
+      )
     } else {
       val manifestPath = platformPackManifestPath(repoRoot, plan.platform)
       mapOf(
@@ -832,6 +871,43 @@ private fun canonicalName(payload: Map<String, Any?>, defaultName: String): Stri
     )
     else -> provided
   }
+}
+
+private fun optionalAddonLocationPath(payload: Map<String, Any?>, repoRoot: Path): Path? {
+  if (!payload.containsKey("addon_location_path")) return null
+  val rawPath = payload["addon_location_path"] as? String
+    ?: throw InvalidScaffoldPayloadError(
+      "Scaffold payload field 'addon_location_path' must be a non-empty string when provided.",
+    )
+  if (rawPath.isBlank()) {
+    throw InvalidScaffoldPayloadError(
+      "Scaffold payload field 'addon_location_path' must be a non-empty string when provided.",
+    )
+  }
+  val expanded = when {
+    rawPath == "~" -> System.getProperty("user.home")
+    rawPath.startsWith("~/") -> Path.of(System.getProperty("user.home"))
+      .resolve(rawPath.removePrefix("~/"))
+      .toString()
+    else -> rawPath
+  }
+  val candidate = Path.of(expanded)
+  return if (candidate.isAbsolute) {
+    candidate.normalize()
+  } else {
+    repoRoot.resolve(candidate).normalize()
+  }
+}
+
+private fun displayPath(repoRoot: Path, path: Path): String {
+  val normalizedRoot = repoRoot.toAbsolutePath().normalize()
+  val normalizedPath = path.toAbsolutePath().normalize()
+  val display = if (normalizedPath.startsWith(normalizedRoot)) {
+    normalizedRoot.relativize(normalizedPath)
+  } else {
+    normalizedPath
+  }
+  return display.toString().replace('\\', '/')
 }
 
 private fun defaultPlatformOverrideName(platform: String, family: String): String = if (family == "quality-check") {
@@ -977,6 +1053,11 @@ private fun subagentEmissionNotes(plan: ScaffoldPlan): List<String> {
 }
 
 private fun ScaffoldPlan.shouldEmitSubagents(): Boolean = subagentSpecialists.isNotEmpty() && !subagentsSuppressed
+
+private fun ScaffoldPlan.isExternalAddon(): Boolean = kind == SKILL_KIND_ADD_ON && externalAddonLocationPath != null
+
+private fun ScaffoldPlan.externalAddonManifestPath(): Path = externalAddonLocationPath?.resolve("addon-manifest.yaml")
+  ?: error("External add-on plan is missing addon_location_path.")
 
 private fun rollbackInstallTargets(txn: ScaffoldTransaction, errors: MutableList<String>) {
   try {

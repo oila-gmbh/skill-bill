@@ -22,11 +22,13 @@ internal class SkillTreeBuilder(
     root: Path,
     baselineModifiedResolver: (Path) -> Set<String>,
     externalAddonSourcesResolver: () -> List<ExternalAddonSource>,
+    skillBillConfigPathResolver: () -> Path,
   ): TreeBuildResult {
     val repoToken = repoToken(root)
     val selections = linkedMapOf<String, SelectionDetail>()
     val authoredSkills = loadAuthoredSkills(root, repoToken, selections, baselineModifiedResolver)
-    val addons = loadAddons(root, repoToken, selections, externalAddonSourcesResolver)
+    val addons = listOf(loadAddonConfig(root, repoToken, selections, skillBillConfigPathResolver)) +
+      loadAddons(root, repoToken, selections, externalAddonSourcesResolver)
     val nativeAgents = loadNativeAgents(root, repoToken, selections)
     val generatedArtifacts = loadGeneratedArtifacts(root, repoToken, selections)
 
@@ -38,6 +40,39 @@ internal class SkillTreeBuilder(
       group(selectionId(repoToken, "generated-artifacts"), "Generated Artifacts", generatedArtifacts),
     )
     return TreeBuildResult(items = groups, selections = selections)
+  }
+
+  private fun loadAddonConfig(
+    root: Path,
+    repoToken: String,
+    selections: MutableMap<String, SelectionDetail>,
+    skillBillConfigPathResolver: () -> Path,
+  ): SkillBillTreeItem {
+    val configPath = skillBillConfigPathResolver()
+    val authoredPath = relativePath(root, configPath)
+    val metadata = SkillBillTreeItemMetadata(kind = SKILL_BILL_CONFIG_KIND)
+    val id = selectionId(repoToken, "config:skill-bill")
+    selections[id] =
+      SelectionDetail(
+        repoToken = repoToken,
+        title = "Skill Bill config",
+        detail = "Machine Skill Bill config used for external add-on sources and telemetry.",
+        kind = SKILL_BILL_CONFIG_KIND,
+        authoredPath = authoredPath,
+        status = "config",
+        contentFile = configPath,
+        editable = true,
+        metadata = metadata,
+      )
+    return SkillBillTreeItem(
+      id = id,
+      label = "Skill Bill config",
+      kind = TreeItemKind.CONFIG,
+      authoredPath = authoredPath,
+      status = "config",
+      editable = true,
+      metadata = metadata,
+    )
   }
 
   private fun loadAuthoredSkills(
@@ -132,7 +167,13 @@ internal class SkillTreeBuilder(
         val key = AddonKey(platform, slug)
         if (externalAddonKeys.add(key)) {
           val authoredPath = relativePath(root, addon)
+          val externalSourcePath = source.stableSourcePath()
           val id = selectionId(repoToken, "addon-external:$platform:${addon.stableSourcePath()}")
+          val metadata = SkillBillTreeItemMetadata(
+            kind = "add-on",
+            platform = platform,
+            externalSourcePath = externalSourcePath,
+          )
           selections[id] =
             SelectionDetail(
               repoToken = repoToken,
@@ -143,6 +184,7 @@ internal class SkillTreeBuilder(
               status = "authored",
               contentFile = addon,
               editable = true,
+              metadata = metadata,
             )
           addonsByPlatform.getOrPut(platform) { mutableListOf() } += SkillBillTreeItem(
             id = id,
@@ -152,7 +194,7 @@ internal class SkillTreeBuilder(
             status = "authored",
             editable = true,
             external = true,
-            metadata = SkillBillTreeItemMetadata(kind = "add-on", platform = platform),
+            metadata = metadata,
           )
         }
       }
@@ -379,6 +421,8 @@ private fun ExternalAddonSource.topLevelMarkdownFiles(): List<Path> = runCatchin
 }.getOrDefault(emptyList())
 
 private fun Path.stableSourcePath(): String = toAbsolutePath().normalize().toString().replace('\\', '/')
+
+private fun ExternalAddonSource.stableSourcePath(): String = path.stableSourcePath()
 
 private data class NativeAgentTreeLeaf(
   val groupPath: List<String>,

@@ -10,6 +10,7 @@ import skillbill.desktop.core.domain.model.ManifestEditPreview
 import skillbill.desktop.core.domain.model.RepoLoadState
 import skillbill.desktop.core.domain.model.RepoLoadStatus
 import skillbill.desktop.core.domain.model.RepoSession
+import skillbill.desktop.core.domain.model.ScaffoldAddOnLocationMode
 import skillbill.desktop.core.domain.model.ScaffoldBaselineLayerForm
 import skillbill.desktop.core.domain.model.ScaffoldCatalogSnapshot
 import skillbill.desktop.core.domain.model.ScaffoldKind
@@ -386,6 +387,61 @@ class SkillBillViewModelScaffoldTest {
     assertEquals("add-on", contract["kind"])
     assertFalse("body" in contract)
     assertFalse("consumer_skill_dirs" in contract)
+    assertFalse("addon_location_path" in contract)
+  }
+
+  @Test
+  fun `external add-on wizard requires selected path before dry-run`() = runBlocking {
+    val viewModel = newViewModel()
+    viewModel.selectRepoPath("/repo")
+    openWizard(viewModel, ScaffoldKind.ADD_ON)
+    viewModel.updateScaffoldForm {
+      it.copy(
+        name = "review-helper",
+        platform = "kotlin",
+        addonLocationMode = ScaffoldAddOnLocationMode.EXTERNAL,
+      )
+    }
+
+    assertNull(viewModel.beginScaffoldDryRun())
+    val wizard = assertNotNull(viewModel.state().scaffoldWizard)
+    assertEquals(
+      listOf(ScaffoldValidationId.ADD_ON_LOCATION_PATH_REQUIRED),
+      wizard.validationErrors.map { it.id },
+    )
+  }
+
+  @Test
+  fun `external add-on wizard emits selected path`() = runBlocking {
+    val gateway = FakeScaffoldGateway().apply {
+      scriptDryRun(
+        ScaffoldKind.ADD_ON,
+        ScaffoldRunResult.Preview(
+          planned = ScaffoldPlan(
+            kind = "add-on",
+            skillName = "review-helper",
+            skillPath = "/private/addons",
+          ),
+        ),
+      )
+    }
+    val viewModel = newViewModel(scaffoldGateway = gateway)
+    viewModel.selectRepoPath("/repo")
+    openWizard(viewModel, ScaffoldKind.ADD_ON)
+    viewModel.updateScaffoldForm {
+      it.copy(
+        name = "review-helper",
+        platform = "kotlin",
+        addonLocationMode = ScaffoldAddOnLocationMode.EXTERNAL,
+        addonLocationPath = "/private/addons",
+      )
+    }
+
+    val request = assertNotNull(viewModel.beginScaffoldDryRun())
+    viewModel.runScaffoldDryRun(request)
+
+    val contract = assertNotNull(gateway.lastDryRunPayload).toContractMap()
+    assertEquals("/private/addons", contract["addon_location_path"])
   }
 
   // F-T03: per-kind exhaustive payload map asserted against a golden derived from

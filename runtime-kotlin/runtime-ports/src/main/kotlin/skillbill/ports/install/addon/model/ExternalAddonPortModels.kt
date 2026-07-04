@@ -8,6 +8,12 @@ data class ExternalAddonSourceConfigRequest(
   val environment: Map<String, String> = emptyMap(),
 )
 
+data class ExternalAddonSourceRegistrationRequest(
+  val userHome: Path,
+  val environment: Map<String, String> = emptyMap(),
+  val source: ExternalAddonSource,
+)
+
 data class ExternalAddonSourceConfigResult(
   val sources: List<ExternalAddonSource> = emptyList(),
 )

@@ -340,7 +340,7 @@ Authoring and install:
 | `skill-bill upgrade`                    | Validate governed render output and regenerate native-agent artifacts through runtime guardrails   |
 | `skill-bill new`                        | Scaffold a governed skill or platform pack through deterministic prompts                           |
 | `skill-bill create-and-fill`            | Scaffold and immediately author one content-managed skill                                         |
-| `skill-bill new-addon`                  | Create a pack-owned add-on skeleton, then edit the generated markdown file                        |
+| `skill-bill new-addon`                  | Create a pack-owned or external add-on skeleton, then edit the generated markdown file             |
 | `skill-bill remove`                     | Remove a horizontal skill, platform pack, or governed add-on with cleanup                         |
 | `skill-bill doctor`                     | Show local install and telemetry health                                                           |
 | `skill-bill install agent-path <agent>` | Print an agent install path                                                                       |

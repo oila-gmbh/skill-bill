@@ -10,6 +10,7 @@ import skillbill.desktop.core.domain.model.ScaffoldRunResult
 import skillbill.error.InvalidScaffoldPayloadError
 import skillbill.error.MissingRequiredSectionError
 import skillbill.error.ScaffoldRollbackError
+import skillbill.install.model.ExternalAddonSource
 import skillbill.scaffold.model.ScaffoldResult
 import skillbill.scaffold.model.command.ScaffoldCommandRequest
 import java.nio.file.Files
@@ -88,6 +89,60 @@ class JvmRuntimeScaffoldGatewayTest {
     assertEquals("platform-pack", success.result.kind)
     assertEquals(2, success.result.createdFiles.size)
     assertTrue(success.result.createdFiles.any { it.endsWith("platform.yaml") })
+  }
+
+  @Test
+  fun `execute registers external add-on source after successful scaffold`() = runBlocking {
+    val registered = mutableListOf<ExternalAddonSource>()
+    val gateway = JvmRuntimeScaffoldGateway().apply {
+      scaffolder = { _, _ ->
+        ScaffoldResult(
+          kind = "add-on",
+          skillName = "private-review",
+          skillPath = Path.of("/private/addons"),
+          createdFiles = listOf(Path.of("/private/addons/private-review.md")),
+        )
+      }
+      externalAddonSourceRegistrar = { source -> registered += source }
+    }
+
+    val result = gateway.execute(
+      ScaffoldPayload.AddOn(
+        name = "private-review",
+        platform = "kotlin",
+        addonLocationPath = "/private/addons",
+      ),
+    )
+
+    assertTrue(result is ScaffoldRunResult.Success)
+    assertEquals(listOf(ExternalAddonSource(Path.of("/private/addons"), "kotlin")), registered)
+  }
+
+  @Test
+  fun `dry-run does not register external add-on source`() = runBlocking {
+    val registered = mutableListOf<ExternalAddonSource>()
+    val gateway = JvmRuntimeScaffoldGateway().apply {
+      scaffolder = { _, _ ->
+        ScaffoldResult(
+          kind = "add-on",
+          skillName = "private-review",
+          skillPath = Path.of("/private/addons"),
+          createdFiles = listOf(Path.of("/private/addons/private-review.md")),
+        )
+      }
+      externalAddonSourceRegistrar = { source -> registered += source }
+    }
+
+    val result = gateway.dryRun(
+      ScaffoldPayload.AddOn(
+        name = "private-review",
+        platform = "kotlin",
+        addonLocationPath = "/private/addons",
+      ),
+    )
+
+    assertTrue(result is ScaffoldRunResult.Preview)
+    assertTrue(registered.isEmpty())
   }
 
   // SKILL-52.2 subtask 2: parity asserts the typed `ScaffoldCommandRequest` (not a raw map) is

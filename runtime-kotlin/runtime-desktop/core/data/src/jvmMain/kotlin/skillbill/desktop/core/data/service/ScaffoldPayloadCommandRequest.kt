@@ -56,6 +56,7 @@ internal fun ScaffoldPayload.toCommandRequest(): ScaffoldCommandRequest = when (
     platform = platform,
     description = description,
     body = body,
+    addonLocationPath = addonLocationPath,
     scaffoldPayloadVersion = ScaffoldPayload.SCAFFOLD_PAYLOAD_VERSION,
     repoRoot = repoRoot,
   )

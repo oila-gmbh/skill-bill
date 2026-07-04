@@ -9,6 +9,7 @@ package skillbill.domain.skillremove.model
  * - [PlatformPack] removes the platform-pack tree, the paired pre-shell skills tree, and every
  *   agent symlink owned by either tree (AC4).
  * - [AddOn] removes a single governed add-on `.md` file inside `platform-packs/<platform>/addons/`.
+ * - [ExternalAddOn] removes a single governed add-on `.md` file from a registered external add-on source.
  *
  * The `allowShipped` flag on [HorizontalSkill] and [PlatformPack] honors AC7: the domain service
  * refuses to delete the shipped built-in surfaces (`kotlin`, `kmp`) unless this flag is `true`.
@@ -38,6 +39,12 @@ sealed class SkillRemovalTarget {
    */
   data class AddOn(
     val relativePath: String,
+  ) : SkillRemovalTarget()
+
+  data class ExternalAddOn(
+    val sourceRootAbsolutePath: String,
+    val platform: String,
+    val fileName: String,
   ) : SkillRemovalTarget()
 
   companion object {

@@ -9,6 +9,11 @@ sealed class DesktopSkillRemovalTarget {
   data class HorizontalSkill(val skillName: String, val allowShipped: Boolean = false) : DesktopSkillRemovalTarget()
   data class PlatformPack(val platform: String, val allowShipped: Boolean = false) : DesktopSkillRemovalTarget()
   data class AddOn(val relativePath: String) : DesktopSkillRemovalTarget()
+  data class ExternalAddOn(
+    val sourceRootAbsolutePath: String,
+    val platform: String,
+    val fileName: String,
+  ) : DesktopSkillRemovalTarget()
 
   companion object {
     /**

@@ -3,9 +3,9 @@ package skillbill.desktop.feature.skillbill.ui
 import java.io.File
 import javax.swing.JFileChooser
 
-actual fun chooseRepoDirectory(initialPath: String): String? {
+actual fun chooseDirectory(initialPath: String, title: String): String? {
   val chooser = JFileChooser(initialPath.takeIf(String::isNotBlank)?.let(::File)).apply {
-    dialogTitle = "Open Skill Bill Repository"
+    dialogTitle = title
     fileSelectionMode = JFileChooser.DIRECTORIES_ONLY
     isAcceptAllFileFilterUsed = false
   }

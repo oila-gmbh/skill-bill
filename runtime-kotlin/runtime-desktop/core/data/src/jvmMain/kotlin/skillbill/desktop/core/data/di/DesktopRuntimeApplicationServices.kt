@@ -16,6 +16,7 @@ import skillbill.install.model.ExternalAddonSource
 import skillbill.model.RuntimeContext
 import skillbill.ports.install.baseline.InstalledWorkspaceBaselineStatusPort
 import skillbill.ports.install.selection.InstallSelectionPersistencePort
+import skillbill.ports.telemetry.TelemetryConfigStore
 import skillbill.ports.telemetry.TelemetryLevelMutator
 import software.amazon.lastmile.kotlin.inject.anvil.SingleIn
 import java.nio.file.Path
@@ -56,6 +57,15 @@ class DesktopRuntimeApplicationServices {
   fun resolveExternalAddonSources(): List<ExternalAddonSource> =
     services.externalAddonOverlayService.resolveSources(currentUserHome(), System.getenv())
 
+  fun skillBillConfigPath(): Path = services.telemetryConfigStore.configPath()
+
+  fun registerExternalAddonSource(source: ExternalAddonSource): List<ExternalAddonSource> =
+    services.externalAddonOverlayService.registerSource(
+      home = currentUserHome(),
+      source = source,
+      environment = System.getenv(),
+    )
+
   companion object {
     fun forCurrentUserHome(): DesktopRuntimeApplicationServices = DesktopRuntimeApplicationServices()
   }
@@ -88,6 +98,7 @@ private data class DesktopRuntimeApplicationServiceBundle(
   val skillRemoveService: SkillRemoveService,
   val installedWorkspaceBaselineStatusPort: InstalledWorkspaceBaselineStatusPort,
   val externalAddonOverlayService: ExternalAddonOverlayService,
+  val telemetryConfigStore: TelemetryConfigStore,
 )
 
 private fun buildDesktopRuntimeApplicationServices(home: Path): DesktopRuntimeApplicationServiceBundle {
@@ -100,6 +111,7 @@ private fun buildDesktopRuntimeApplicationServices(home: Path): DesktopRuntimeAp
     skillRemoveService = component.skillRemoveService,
     installedWorkspaceBaselineStatusPort = component.installedWorkspaceBaselineStatusPort,
     externalAddonOverlayService = component.externalAddonOverlayService,
+    telemetryConfigStore = component.telemetryConfigStorePort,
   )
 }
 

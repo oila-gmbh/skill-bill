@@ -90,6 +90,33 @@ class ScaffoldAddonGovernanceTest {
   }
 
   @Test
+  fun `add-on scaffold can write external addon source manifest`() = withIsolatedUserHome {
+    val repo = seedRepo()
+    val externalDir = Files.createTempDirectory("skillbill-scaffold-external-addon")
+    val platformManifestPath = repo.resolve("platform-packs/kotlin/platform.yaml")
+    val beforePlatformManifest = Files.readString(platformManifestPath)
+
+    scaffold(
+      payload(
+        repo,
+        "add-on",
+        "platform" to "kotlin",
+        "name" to "private-review",
+        "addon_location_path" to externalDir.toString(),
+      ),
+    )
+
+    assertEquals(beforePlatformManifest, Files.readString(platformManifestPath))
+    assertContains(Files.readString(externalDir.resolve("private-review.md")), "# private-review")
+    val externalManifest = Files.readString(externalDir.resolve("addon-manifest.yaml"))
+    assertContains(externalManifest, "  code-review/bill-kotlin-code-review:")
+    assertContains(externalManifest, "    - name: \"private-review.md\"")
+    assertContains(externalManifest, "      target: \"private-review.md\"")
+    assertContains(externalManifest, "    - slug: \"private-review\"")
+    assertContains(externalManifest, "      entrypoint: \"private-review.md\"")
+  }
+
+  @Test
   fun `add-on scaffold rejects omitted consumers when pack has no default before mutation`() = withIsolatedUserHome {
     val repo = seedAddonOnlyRepo()
     val beforeTree = snapshotRepoTree(repo)
