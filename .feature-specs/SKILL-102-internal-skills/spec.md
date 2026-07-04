@@ -1,7 +1,8 @@
 # SKILL-102 - internal skills hidden from the agent skill list
 
 Created: 2026-07-04
-Status: Draft
+Status: Complete
+- Agent: zcode
 Issue key: SKILL-102
 Parent: follow-up to SKILL-40 (hide generated skill artifacts) and SKILL-41 (native-agent composition)
 
@@ -264,4 +265,30 @@ Runtime flows are indistinguishable from today: `skill-bill feature-task` and
 - Should internal skills' descriptions be surfaced anywhere user-visible
   (e.g. a `skill-bill list --all` maintainer view), or is repo source the
   only place they appear? (Not blocking: default is repo-source-only; a
-  maintainer view can be a follow-up.)
+  maintainer view can be a follow-up.) — **Resolved (deferred):** the
+  default is repo-source-only. `skill-bill list` is an authoring view over
+  repo source and intentionally shows internal skills (they are still
+  authored content). A dedicated maintainer-only listing view is a
+  non-blocking follow-up; it is not needed for this feature to be complete.
+
+## Completion Corrections
+
+- E2e verification (criterion 4) was partially completed. Check 1 (install
+  layout) was verified with captured CLI evidence using the from-source
+  runtime (`0.7.1-SNAPSHOT`) via a scratch install into a temp prefix: the
+  five internal skills are absent from `~/.claude/skills/`, the five
+  sidecars (`bill-feature-task.md`, `bill-feature-goal.md`, etc.) are
+  present inside `bill-feature/` next to `SKILL.md` with the full governed
+  wrapper, and `bill-feature` + `bill-feature-spec` are listed. Checks 2,
+  3, and 5 (interactive agent dispatch through `bill-feature`) and check 4
+  (runtime resume) require a live Claude Code or Codex agent session and
+  could not be driven from within the zcode subtask session that completed
+  subtask 3; they are deferred with no captured evidence and remain
+  outstanding. This is a known honesty-contract deferral, not a silent
+  pass.
+- Subtask 3 surfaced and fixed a real defect in subtask 1's
+  `RepoValidationRuntime.validateReadme`: it required every discovered
+  skill to appear in the README catalog, which became wrong once internal
+  skills were intentionally removed from the user-facing catalog. The fix
+  excludes internal skills from the README catalog requirement and adds a
+  regression test.

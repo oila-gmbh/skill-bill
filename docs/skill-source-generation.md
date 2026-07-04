@@ -82,6 +82,17 @@ directory.
 - links or cues for generated support pointers that will exist in installed
   staging
 
+The frontmatter also accepts one optional classification key,
+`internal-for: <parent-skill-name>`. Presence classifies the skill as
+**internal**: its governed content installs as a `<skill-name>.md` sidecar
+inside the parent skill's installed directory instead of as a listed
+`SKILL.md` entry, and it is never listed in any agent's `skills_dir`. The
+parent invokes an internal skill by reading the sidecar file (a sibling read)
+and executing it in-session — the Skill tool cannot resolve unlisted skills.
+The authoring/install pipeline loud-fails on an internal skill whose parent is
+missing, unknown, itself internal, or self. See `AGENTS.md` → Internal Skills
+for the full contract and the feature-execution family worked example.
+
 `content.md` must not contain generated wrapper headings:
 
 - `## Descriptor`
@@ -182,6 +193,10 @@ The installed directory is runtime-complete and may contain:
 - generated support pointer files
 - generated platform pointer files
 - copied `native-agents/` source files
+- internal-skill sidecars (`<skill-name>.md`) for any internal skills that
+  declare this skill as their parent via `internal-for`; these are rendered
+  into the parent's staged directory and folded into the parent's content
+  hash, and the internal skills themselves get no `skills_dir` entry
 
 Agent install directories therefore point to staging, not directly to the repo
 source skill directory.

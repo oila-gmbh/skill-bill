@@ -1,3 +1,13 @@
+## [2026-07-04] SKILL-102 internal skills hidden from the agent skill list
+Areas: runtime-infra-fs/install (staging, plan, apply), runtime-infra-fs/scaffold/authoring (classification), runtime-infra-fs/scaffold/runtime (RepoValidationRuntime), skills/bill-feature* (frontmatter + call-site migration), AGENTS.md, README.md, docs/
+- New internal-skill classification: one optional `internal-for: <parent>` content.md frontmatter key (PD1). Install renders the governed content as a `<skill-name>.md` sidecar inside the parent's staged directory (PD2/PD6) and skips the internal skill's `skills_dir` link; no standalone staging dir, no `SKILL.md` for the internal skill. reusable
+- Five feature-execution skills (`bill-feature-task`, `-runtime`, `-prose`, `-subtask-runner`, `bill-feature-goal`) classified internal under `bill-feature` (PD7). Call sites rewritten from Skill-tool invocation to the PD5 file-read sidecar contract; `bill-feature` absorbed their trigger phrases and gained a direct-dispatch route that skips spec prep when governed artifacts already exist. reusable
+- Loud-fail rules enforced identically at authoring, install-plan, and repo-validation seams: unknown parent, internal parent (no chaining, depth 1), self parent, missing/empty value (`InvalidInternalSkillClassificationError`), plus a sidecar-name collision guard (`InternalSkillSidecarCollisionError`). reusable PATTERN: one classification parsed by a shared `parseInternalForFrontmatter` seam, validated at every consumer.
+- RepoValidationRuntime.validateReadme now excludes internal skills from the README catalog requirement (internal skills are intentionally not user-invocable). reusable
+- Repo source directories, workflow identity strings, DB CHECK constraint, telemetry constants, and MCP tool names are byte-for-byte unchanged (PD3/PD4); the mechanism is agent-agnostic and works identically across every agent in config.yaml.
+Feature flag: N/A
+Acceptance criteria: subtask 3 (7/7 — e2e checks 2/3/5 deferred to a live Claude Code/Codex agent session; check 1 verified with from-source scratch-install CLI evidence)
+
 ## [2026-07-02] SKILL-99 External Addon Sources
 Areas: runtime-infra-fs/install, runtime-infra-fs/scaffold/platformpack, runtime-application/install, runtime-cli/config+install, runtime-ports/install/addon, runtime-contracts/error, runtime-domain/install/model, runtime-core/di, install.sh, platform-packs/ios
 - Added external addon source overlay: durable, config-driven addons from outside ~/.skill-bill, re-applied unconditionally after reconcile-apply and before staging

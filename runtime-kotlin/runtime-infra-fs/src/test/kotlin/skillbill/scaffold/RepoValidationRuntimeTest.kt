@@ -770,6 +770,33 @@ class RepoValidationRuntimeTest {
     )
   }
 
+  @Test
+  fun `repo validation does not require internal skills in the README catalog`() {
+    val repoRoot = Files.createTempDirectory("skillbill-readme-internal")
+    createRepoValidationSkillFixture(repoRoot)
+    seedInternalSkill(repoRoot, "bill-feature", null)
+    seedInternalSkill(repoRoot, "bill-feature-task", "bill-feature")
+    // README catalog lists the listed skills but intentionally omits the internal one.
+    Files.writeString(
+      repoRoot.resolve("README.md"),
+      """
+      | Skill | Purpose |
+      |-------|---------|
+      | `/bill-code-review` | Review code |
+      | `/bill-feature` | Feature entry |
+      """.trimIndent() + "\n",
+    )
+
+    val report = RepoValidationRuntime.validateRepo(repoRoot)
+
+    val readmeCatalogIssues = report.issues.filter { it.contains("README.md catalog is missing skills") }
+    val detail = readmeCatalogIssues.joinToString("\n")
+    assertTrue(
+      readmeCatalogIssues.isEmpty(),
+      "internal skills must be excluded from the README catalog requirement; got: $detail",
+    )
+  }
+
   private fun seedInternalSkill(repoRoot: java.nio.file.Path, name: String, internalFor: String?) {
     val skillDir = repoRoot.resolve("skills/$name")
     Files.createDirectories(skillDir)

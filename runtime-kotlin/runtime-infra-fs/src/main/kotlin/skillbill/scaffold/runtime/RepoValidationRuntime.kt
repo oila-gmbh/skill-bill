@@ -146,7 +146,7 @@ object RepoValidationRuntime {
       validateAddonFile(addonFile, root, issues)
     }
 
-    validateReadme(root.resolve("README.md"), skillFiles.keys.toSet(), issues)
+    validateReadme(root.resolve("README.md"), skillFiles.keys.toSet(), internalSkillNames(skillFiles), issues)
     validateSkillReferences(root, skillNames, issues)
     validateSkillOverrides(root.resolve(".agents/skill-overrides.example.md"), skillNames, required = true, issues)
     validateSkillOverrides(root.resolve(".agents/skill-overrides.md"), skillNames, required = false, issues)
@@ -445,7 +445,12 @@ object RepoValidationRuntime {
     }
   }
 
-  private fun validateReadme(readme: Path, skillNames: Set<String>, issues: MutableList<String>) {
+  private fun validateReadme(
+    readme: Path,
+    skillNames: Set<String>,
+    internalSkills: Set<String>,
+    issues: MutableList<String>,
+  ) {
     if (!readme.isRegularFile()) {
       issues += "README.md is missing"
       return
@@ -453,11 +458,24 @@ object RepoValidationRuntime {
     val catalogSkills = Files.readAllLines(readme)
       .mapNotNull { line -> readmeSkillRowPattern.find(line)?.groupValues?.get(1) }
       .toSet()
-    val missing = skillNames - catalogSkills
+    // SKILL-102: internal skills are intentionally absent from the user-facing README catalog
+    // (they are not directly invocable), so they are excluded from the missing-skills check.
+    val missing = (skillNames - internalSkills) - catalogSkills
     if (missing.isNotEmpty()) {
       issues += "README.md catalog is missing skills: ${missing.sorted()}"
     }
   }
+
+  /**
+   * SKILL-102: returns the set of base skill names whose `content.md` declares
+   * `internal-for: <parent>`. Used to exclude internal skills from the README catalog requirement
+   * (they install as sidecars inside a parent and are never listed or user-invocable).
+   */
+  private fun internalSkillNames(skillFiles: Map<String, Path>): Set<String> =
+    skillFiles.entries.mapNotNull { (skillName, contentFile) ->
+      val frontmatter = parseFrontmatter(Files.readString(contentFile))
+      if (frontmatter["internal-for"]?.isNotBlank() == true) skillName else null
+    }.toSet()
 
   private fun validateSkillReferences(root: Path, skillNames: Set<String>, issues: MutableList<String>) {
     val scanRoots = listOf("skills", "platform-packs", "orchestration", ".agents").map(root::resolve)
