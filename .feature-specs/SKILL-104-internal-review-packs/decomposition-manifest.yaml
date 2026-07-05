@@ -4,13 +4,13 @@ issue_key: "SKILL-104"
 feature_name: "internal-review-packs"
 parent_spec_path: ".feature-specs/SKILL-104-internal-review-packs/spec.md"
 spec_source: "local"
-status: "in_progress"
+status: "complete"
 execution_model: "same_branch_commit_per_subtask"
 base_branch: "main"
 feature_branch: "feat/SKILL-104-internal-review-packs"
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 0
+  subtask_id: 3
   action: "complete"
 subtasks:
 - id: 1
@@ -34,7 +34,7 @@ subtasks:
   commit_sha: null
   workflow_id: "wfl-20260705-071348-yu1v"
   blocked_reason: null
-  last_resumable_step: "commit_push"
+  last_resumable_step: "finish"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -45,12 +45,12 @@ subtasks:
 - id: 3
   name: "Docs, surface reconciliation, verification, records"
   spec_path: ".feature-specs/SKILL-104-internal-review-packs/spec_subtask_3_docs-surface-verification.md"
-  status: "pending"
-  branch: null
-  commit_sha: null
-  workflow_id: null
+  status: "complete"
+  branch: "feat/SKILL-104-internal-review-packs"
+  commit_sha: "7fd76a24"
+  workflow_id: "wfl-20260705-073800-oaob"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []

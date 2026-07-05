@@ -1,7 +1,7 @@
 # SKILL-104 - Internal review packs: one listed code-review entry point
 
 Created: 2026-07-05
-Status: Ready
+Status: Complete
 - Agent: claude
 Issue key: SKILL-104
 Parent: none (continues the SKILL-102 internal-skills theme)
@@ -119,6 +119,12 @@ The SKILL-102 mechanism cannot absorb them as-is: it deliberately loud-fails `in
 
 - Should a follow-up issue internal-ize the quality-check pack skills (`bill-*-code-check`) under `bill-code-check` once this lands? (Out of scope here per PD7; expected answer is yes — file it during subtask 3 records if the maintainer agrees.)
 
+**Resolution (subtask 3):** Expected answer confirmed yes. No `gh issue create` authorization was provided to the implementing agent, so the follow-up is recorded as a recommended action in `runtime-kotlin/agent/history.md` (SKILL-104 entry) rather than filed as a tracker issue. The maintainer should file it when convenient.
+
 ## Completion Corrections
 
 (Filled at completion — reconcile any deviations from the pinned decisions here.)
+
+- **Criterion 12 interactive routed review (deferred).** The interactive `/bill-code-review` routed review on Claude Code — exercising specialist spawn and rubric sidecar reads end-to-end — was not drivable from this implementing session (no interactive Claude Code harness available). All four automated install-layout and PD8 plan checks were captured with from-source CLI evidence: all-packs (34 sidecars in `bill-code-review-46700afff027524b/`, zero standalone links for the 34), kotlin-only (9 sidecars in `bill-code-review-8793b8fdc5d85fa7/`, hash variance proves selection-aware hashing), PD8 negative (`MissingBaselinePlatformSelectionError` on KMP-without-Kotlin), PD8 positive (KMP+Kotlin plan succeeds). The interactive check remains outstanding and should be run on a real agent harness.
+- **Validation gate.** `./gradlew check` reports 1 failure in `CliFeatureTaskRuntimeRuntimeTest > feature-task-runtime run requires issue key and spec path()` — the zcode harness env causes the runtime-refusal path to short-circuit before the arg-validation assertion. This is the same pre-existing environmental failure documented in subtasks 1–2; subtask 3 touched no Kotlin source, so it is not a regression. `skill-bill validate` (run against the freshly built from-source runtime), `agnix --strict`, and `scripts/validate_agent_configs` all pass clean.
+- **Packaged `skill-bill` on PATH.** The installed launcher at `~/.local/bin/skill-bill` is a pre-subtask-1 snapshot and still rejects `internal-for` on pack skills; from-source verification used the freshly built `runtime-kotlin/runtime-cli/build/install/runtime-cli/bin/runtime-cli`. A `./install.sh --from-source` (or `skill-bill update` once released) refreshes the packaged launcher.
