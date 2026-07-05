@@ -1,6 +1,7 @@
 ---
 name: quality-check
 description: Fixture quality-check content missing the Fix Strategy section.
+internal-for: bill-code-check
 ---
 
 # quality_check_missing_section-quality-check Content

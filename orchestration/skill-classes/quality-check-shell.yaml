@@ -39,10 +39,11 @@ sections:
       Stack detection and routing are manifest-driven. The shell discovers every `platform-packs/<slug>/platform.yaml`, reads each pack's declared routing signals, and chooses the dominant stack using manifest-declared tie-breakers. The shell does not enumerate platform names inline.
 
       - For the dominant pack, read the optional top-level `declared_quality_check_file` key from the manifest. The runtime authority is `skillbill.scaffold.ShellContentLoader.loadQualityCheckContent` in `runtime-core`.
-      - The routed skill name is the `name:` frontmatter field of the declared quality-check `content.md`. This contract preserves the existing `bill-<slug>-quality-check` user-facing commands.
+      - The routed skill name is the `name:` frontmatter field of the declared quality-check `content.md`. The declared content must also carry `internal-for: bill-code-check`, so the routed checker installs as a sibling `<routed-skill-name>.md` sidecar inside `bill-code-check` rather than as a separately listed skill.
       - Explicit fallback rule: the `kmp` pack intentionally does NOT declare `declared_quality_check_file`. When the dominant pack is `kmp`, route quality-check work to the `kotlin` pack's quality-check skill instead. Any other pack that does not declare the key loud-fails via `MissingContentFileError` — the shell never silently substitutes another pack.
       - If multiple supported stacks appear in one repo, run the matching stack-specific quality checks sequentially, not in parallel, so fixes stay deterministic.
-      - The routed stack-specific skill is the source of truth for build commands, filtering rules, and fix strategy.
+      - Resolve the routed checker by reading the sibling sidecar file `<routed-skill-name>.md` co-located with this skill's `SKILL.md`, then execute those instructions in-session. Do not use the Skill tool for stack-specific quality-check overrides — they are internal skills and are not listed.
+      - The routed stack-specific sidecar is the source of truth for build commands, filtering rules, and fix strategy.
 
       ### Loud-fail contract enforcement
 
@@ -50,17 +51,18 @@ sections:
 
       - `ShellContentContractException(MISSING_CONTENT_FILE)` from `runtime-contracts` — the pack declares `declared_quality_check_file` but the referenced file does not exist, or the caller invoked `loadQualityCheckContent` on a pack whose `declared_quality_check_file` is null without applying the explicit `kmp` → `kotlin` fallback.
       - `ShellContentContractException(MISSING_REQUIRED_SECTION)` from `runtime-contracts` — the declared quality-check content file is missing one of the required H2 sections.
+      - `ShellContentContractException(INVALID_MANIFEST_SCHEMA)` from `runtime-contracts` — the declared quality-check content file is not internal to `bill-code-check`.
 
       The shell never silently substitutes a default checker. A broken pack must be repaired before `/bill-code-check` can complete.
 
   - heading: Delegation Contract
     body: |
-      When routing to another skill, pass along:
+      When routing to another sidecar, pass along:
 
       - the current unit of work and changed files
       - the detected stack and key signals
       - relevant `AGENTS.md` guidance and matching `.agents/skill-overrides.md` sections
-      - the rule that the delegated skill must follow its own rendered runtime instructions as the primary rubric
+      - the rule that the delegated sidecar must follow its own rendered runtime instructions as the primary rubric
 
   - heading: Output Format
     body: |

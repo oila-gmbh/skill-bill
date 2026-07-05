@@ -73,7 +73,7 @@ Skill Bill ships complete Kotlin/KMP and PHP packs — the stack-specific intell
 - `/bill-feature` prepares the feature spec, then routes to implementation or the goal loop
 - `/bill-feature-spec` prepares governed single-spec or decomposed feature-spec artifacts before implementation
 - `/bill-code-review` routes to the matching platform review stack (the stack-specific review skills are internal sidecars, not separately invocable)
-- `/bill-code-check` routes to the matching stack-specific checker
+- `/bill-code-check` routes to the matching stack-specific checker (the stack-specific checker skills are internal sidecars, not separately invocable)
 - `/bill-pr-description` generates PR text and QA steps
 - `/bill-feature-verify` verifies a PR against a spec or design doc
 
@@ -89,7 +89,7 @@ Skill Bill ships complete Kotlin/KMP and PHP packs — the stack-specific intell
 |-------|---------|
 | `/bill-boundary-decisions` | Record architectural and implementation decisions in `agent/decisions.md` |
 | `/bill-boundary-history` | Record reusable feature history in `agent/history.md` |
-| `/bill-code-check` | Stable quality-check entry point that routes to the matching checker |
+| `/bill-code-check` | Stable quality-check entry point that routes to the matching platform checker (stack-specific checker skills install as internal sidecars, not listed commands) |
 | `/bill-code-review` | Stable code-review entry point that routes to the matching platform pack (stack-specific review skills install as internal sidecars, not listed commands) |
 | `/bill-code-review-parallel` | Run two review agents in parallel on the same diff and merge their findings |
 | `/bill-feature` | Primary feature entry point that prepares a spec, then routes to implementation or the goal loop (dispatches internally to the feature-execution family, which is not listed) |

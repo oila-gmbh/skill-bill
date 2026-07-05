@@ -258,7 +258,6 @@ class CliInstallPlanApplyRuntimeTest {
         "bill-code-review",
         "bill-code-check",
         "bill-kotlin-code-review",
-        "bill-kotlin-code-check",
       ),
       targetDir = selectedFixture.home.resolve("manual-targets/codex"),
     )
@@ -276,9 +275,7 @@ class CliInstallPlanApplyRuntimeTest {
         "bill-code-review",
         "bill-code-check",
         "bill-kmp-code-review",
-        "bill-kmp-code-check",
         "bill-kotlin-code-review",
-        "bill-kotlin-code-check",
       ),
       targetDir = allFixture.home.resolve("manual-targets/codex"),
     )
@@ -423,7 +420,7 @@ class CliInstallPlanApplyRuntimeTest {
     assertEquals("base", skills.getValue("bill-code-review")["kind"])
     assertEquals("base", skills.getValue("bill-code-check")["kind"])
     assertEquals("platform_pack", skills.getValue("bill-kotlin-code-review")["kind"])
-    assertEquals("platform_pack", skills.getValue("bill-kotlin-code-check")["kind"])
+    assertFalse("bill-kotlin-code-check" in skills.keys)
   }
 
   private fun assertApplyPlatformSkills(
@@ -784,7 +781,7 @@ private fun seedCliPlatformPack(repoRoot: Path, slug: String) {
   )
   Files.writeString(
     packRoot.resolve("quality-check").resolve(qualityCheckName).resolve("content.md"),
-    cliSkillContent(qualityCheckName),
+    cliSkillContent(qualityCheckName, internalFor = "bill-code-check"),
   )
 }
 
@@ -805,17 +802,17 @@ private fun cliPlatformManifest(slug: String, codeReviewName: String, qualityChe
   |
 """.trimMargin()
 
-private fun cliSkillContent(skillName: String): String = """
-  |---
-  |name: $skillName
-  |description: Test skill.
-  |---
-  |
-  |# $skillName
-  |
-  |Test body.
-  |
-""".trimMargin()
+private fun cliSkillContent(skillName: String, internalFor: String? = null): String = buildString {
+  appendLine("---")
+  appendLine("name: $skillName")
+  appendLine("description: Test skill.")
+  internalFor?.let { parent -> appendLine("internal-for: $parent") }
+  appendLine("---")
+  appendLine()
+  appendLine("# $skillName")
+  appendLine()
+  appendLine("Test body.")
+}
 
 private fun createDetectedAgentHomes(home: Path) {
   Files.createDirectories(home.resolve(".copilot"))

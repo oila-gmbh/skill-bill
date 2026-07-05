@@ -215,9 +215,17 @@ private fun seedRepo(): Path {
     Files.createDirectories(target.parent)
     Files.writeString(target, "# ${target.fileName}\n")
   }
+  seedBaseSkill(repo, "bill-code-check")
   seedKotlinPack(repo)
   seedKmpPack(repo)
   return repo
+}
+
+private fun seedBaseSkill(repo: Path, name: String) {
+  val context = TemplateContext(name, "advisor", "", "", "")
+  val skillDir = repo.resolve("skills/$name")
+  Files.createDirectories(skillDir)
+  Files.writeString(skillDir.resolve("content.md"), renderContentBody(context, inferSkillDescription(context)))
 }
 
 private fun seedKotlinPack(repo: Path) {

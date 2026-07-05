@@ -107,6 +107,7 @@ private fun materializeOnePack(
   }
   val skillDirs = platformSkillDirs(manifest)
   copyPackNonSkillFiles(packRoot, destinationPackRoot, skillDirs)
+  copyInternalQualityCheckSource(packRoot, destinationPackRoot, manifest, internalPlatformSkillDirs)
   skillDirs.forEach { skillDir ->
     if (skillDir in internalPlatformSkillDirs) {
       return@forEach
@@ -121,6 +122,19 @@ private fun materializeOnePack(
     linkPath.parent?.let(Files::createDirectories)
     createOrReplaceManagedSkillSymlink(linkPath, staged)
   }
+}
+
+private fun copyInternalQualityCheckSource(
+  packRoot: Path,
+  destinationPackRoot: Path,
+  manifest: PlatformManifest,
+  internalPlatformSkillDirs: Set<Path>,
+) {
+  val qualityCheckDir = manifest.declaredQualityCheckFile?.toAbsolutePath()?.normalize()?.parent ?: return
+  if (qualityCheckDir !in internalPlatformSkillDirs) {
+    return
+  }
+  copyTree(qualityCheckDir, destinationPackRoot.resolve(packRoot.relativize(qualityCheckDir).toString()).normalize())
 }
 
 private fun platformSkillDirs(manifest: PlatformManifest): Set<Path> = (
@@ -143,6 +157,28 @@ private fun copyPackNonSkillFiles(packRoot: Path, destinationPackRoot: Path, ski
       val destination = destinationPackRoot.resolve(packRoot.relativize(resolvedSource).toString()).normalize()
       require(destination.startsWith(destinationPackRoot)) {
         "Platform pack file '$source' escapes destination pack root '$destinationPackRoot'."
+      }
+      destination.parent?.let(Files::createDirectories)
+      Files.copy(
+        source,
+        destination,
+        StandardCopyOption.REPLACE_EXISTING,
+        StandardCopyOption.COPY_ATTRIBUTES,
+        LinkOption.NOFOLLOW_LINKS,
+      )
+    }
+  }
+}
+
+private fun copyTree(sourceRoot: Path, destinationRoot: Path) {
+  Files.walk(sourceRoot).use { stream ->
+    stream.forEach { source ->
+      if (Files.isDirectory(source, LinkOption.NOFOLLOW_LINKS)) {
+        return@forEach
+      }
+      val destination = destinationRoot.resolve(sourceRoot.relativize(source).toString()).normalize()
+      require(destination.startsWith(destinationRoot)) {
+        "Platform pack file '$source' escapes destination root '$destinationRoot'."
       }
       destination.parent?.let(Files::createDirectories)
       Files.copy(

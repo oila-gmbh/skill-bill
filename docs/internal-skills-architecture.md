@@ -331,12 +331,14 @@ directory contains `SKILL.md` plus 34 sibling sidecars — and no agent
       platform-packs → …                    symlink for pack pointer resolution
 ```
 
-With only the Kotlin pack selected, exactly 9 sidecars stage
+With only the Kotlin pack selected, exactly 9 review sidecars stage
 (`bill-kotlin-code-review.md` plus its 8 specialists); the other 25 contribute
 nothing. With no review packs selected, `bill-code-review` stages
 byte-identically to a repo with no internal pack skills (inertness). `ALL`
-selection stages every opted-in sidecar. The 34 pack quality-check skills are
-**not** part of this family and stay listed.
+selection stages every opted-in review sidecar. SKILL-105 applies the same
+selection-aware sidecar model to quality-check overrides: selected
+`bill-<platform>-code-check` skills stage inside `bill-code-check/` and are not
+listed commands.
 
 ### Baseline co-presence guard (PD8)
 

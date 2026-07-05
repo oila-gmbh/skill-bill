@@ -22,6 +22,7 @@ import skillbill.install.plan.InstallContext
 import skillbill.install.plan.detectAgents
 import skillbill.install.plan.installSkill
 import skillbill.install.plan.uninstallTargets
+import skillbill.scaffold.authoring.parseInternalForFrontmatter
 import skillbill.scaffold.manifest.appendCodeReviewArea
 import skillbill.scaffold.manifest.appendExternalAddonManifestRegistration
 import skillbill.scaffold.manifest.appendGovernedAddonManifestRegistration
@@ -820,7 +821,9 @@ private fun performInstall(
   val installTx = InstallTransaction()
   val installPaths = when (plan.kind) {
     SKILL_KIND_ADD_ON -> emptyList()
-    SKILL_KIND_PLATFORM_PACK -> plan.installPaths
+    SKILL_KIND_PLATFORM_PACK -> plan.installPaths.filterNot { installPath ->
+      parseInternalForFrontmatter(installPath.resolve("content.md")) != null
+    }
     else -> listOf(plan.skillPath)
   }
   // F-015: hoist platform-pack manifest discovery out of the per-skill loop. Walking
@@ -975,7 +978,7 @@ private fun stagePlatformPackSkills(
   stageFile(
     txn,
     qualityCheckSkillPath.resolve("content.md"),
-    renderContentBody(qualityCheckContext, qualityCheckDescription),
+    renderContentBody(qualityCheckContext, qualityCheckDescription, internalFor = "bill-code-check"),
   )
 
   plan.specialistAreas.forEach { area ->

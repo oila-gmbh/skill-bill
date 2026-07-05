@@ -742,6 +742,12 @@ class InternalSkillStagingTest {
     val repoRoot = Files.createTempDirectory("skillbill-internal-repo").also(tempDirs::add)
     val home = Files.createTempDirectory("skillbill-internal-home").also(tempDirs::add)
     SkillClassFixtures.seedShippedSkillClasses(repoRoot)
+    seedSkill(
+      repoRoot,
+      "bill-code-check",
+      "bill-code-check",
+      "Routes quality checks and dispatches to pack sidecars.",
+    )
     // `supportingFileTargets` references `platform-packs/kmp/addons/...`; seeding those addons
     // creates a `kmp` directory, and `discoverTargets` then requires a `platform.yaml` inside it.
     // Seed a minimal valid pack so authoring discovery resolves cleanly.
@@ -919,6 +925,7 @@ class InternalSkillStagingTest {
       |---
       |name: $qualityCheckName
       |description: Test quality-check skill.
+      |internal-for: bill-code-check
       |---
       |Body.
       """.trimMargin(),
@@ -973,6 +980,7 @@ class InternalSkillStagingTest {
       |---
       |name: $qualityCheckName
       |description: Test quality-check skill.
+      |internal-for: bill-code-check
       |---
       |Body.
       """.trimMargin(),
