@@ -17,11 +17,14 @@ import skillbill.error.ScaffoldRollbackError
 import skillbill.error.SkillAlreadyExistsError
 import skillbill.error.UnknownPreShellFamilyError
 import skillbill.error.UnknownSkillKindError
+import skillbill.install.model.InstallPlanSkill
+import skillbill.install.model.InstallPlanSkillKind
 import skillbill.install.model.InstallTransaction
 import skillbill.install.plan.InstallContext
 import skillbill.install.plan.detectAgents
 import skillbill.install.plan.installSkill
 import skillbill.install.plan.uninstallTargets
+import skillbill.scaffold.authoring.parseInternalForFrontmatter
 import skillbill.scaffold.manifest.appendCodeReviewArea
 import skillbill.scaffold.manifest.appendExternalAddonManifestRegistration
 import skillbill.scaffold.manifest.appendGovernedAddonManifestRegistration
@@ -59,32 +62,6 @@ import skillbill.scaffold.payload.validatePayloadVersion as policyValidatePayloa
 import skillbill.scaffold.policy.buildPlatformPackInstallPaths as policyBuildPlatformPackInstallPaths
 import skillbill.scaffold.policy.platformPackNotes as policyPlatformPackNotes
 import skillbill.scaffold.policy.renderPlatformPackManifestContent as policyRenderPlatformPackManifestContent
-
-// SKILL-52.1 subtask 2: skill-kind discriminators, supported-kinds set, orchestrator-kind set,
-// subagent name pattern, and built-in platform-pack preset descriptors all live in
-// `skillbill.scaffold.policy` (runtime-domain) as the single source of truth. This file imports
-// them above. The wizard-facing family taxonomy (`SHELLED_FAMILIES`, `PRE_SHELL_FAMILIES`) and
-// slug->displayName projection (`PLATFORM_PACK_PRESETS`) remain in `ScaffoldSupport.kt` while
-// the desktop wizard catalog delegation lives there.
-//
-// SKILL-52.1 subtask 3 (AC1): IO-coupled validators that previously lived as top-level
-// functions inside this file (`validateBaselineLayerPayloadReferences`, `validateScaffold`,
-// `plannedAuthoringTarget`, `resolveAddonConsumerSkillDirs`, `validateAddonConsumerSkillDir`,
-// `optionalBaselineLayers`) now live on the capability-aligned adapters
-// `FileSystemScaffoldRepoValidation` and `FileSystemScaffoldSourceLoader` under
-// `skillbill.infrastructure.fs`. The orchestrator calls into these adapter instances; the
-// `ImplementationOwnershipArchitectureTest` asserts the function FQN resolves to those
-// adapter classes, not to top-level `skillbill.scaffold`.
-//
-// SKILL-52.1 subtask 3 (F-001): the previous file-static `private val scaffoldRepoValidation`
-// / `scaffoldSourceLoader` singletons coexisted with the DI-bound port instances at runtime
-// (two adapter instances per graph). They are removed. The orchestrator entrypoint
-// `scaffoldWithAdapters(...)` now receives the two adapter instances as explicit parameters;
-// `FileSystemScaffoldOrchestrator` (DI-bound) is the only public caller and threads its
-// kotlin-inject-provided adapters through. This file deliberately does NOT import or
-// reference the `FileSystemScaffoldRepoValidation` / `FileSystemScaffoldSourceLoader`
-// concrete class names; the parameter types below carry that dependency through the
-// orchestrator instead.
 
 private data class ManifestSnapshot(
   val manifestPath: Path,
@@ -818,9 +795,10 @@ private fun performInstall(
 ): Pair<List<Path>, List<String>> {
   val agents = detectAgents()
   val installTx = InstallTransaction()
+  val internalPlatformSkills = internalPlatformInstallSkills(plan)
   val installPaths = when (plan.kind) {
     SKILL_KIND_ADD_ON -> emptyList()
-    SKILL_KIND_PLATFORM_PACK -> plan.installPaths
+    SKILL_KIND_PLATFORM_PACK -> platformPackInstallPaths(plan, repoRoot, internalPlatformSkills)
     else -> listOf(plan.skillPath)
   }
   // F-015: hoist platform-pack manifest discovery out of the per-skill loop. Walking
@@ -829,7 +807,11 @@ private fun performInstall(
   // reuses it.
   val packsRoot = repoRoot.resolve("platform-packs")
   val manifests = if (Files.isDirectory(packsRoot)) discoverPlatformPackManifests(packsRoot) else emptyList()
-  val context = InstallContext(repoRoot = repoRoot, manifests = manifests)
+  val context = InstallContext(
+    repoRoot = repoRoot,
+    manifests = manifests,
+    selectedPackSkills = internalPlatformSkills,
+  )
   val targets =
     installPaths.flatMap { installPath ->
       installSkill(installPath, agents, transaction = installTx, context = context)
@@ -846,6 +828,38 @@ private fun performInstall(
     else -> emptyList()
   }
   return targets to notes
+}
+
+private fun internalPlatformInstallSkills(plan: ScaffoldPlan): List<InstallPlanSkill> {
+  if (plan.kind != SKILL_KIND_PLATFORM_PACK) {
+    return emptyList()
+  }
+  return plan.installPaths.mapNotNull { installPath ->
+    val internalFor = parseInternalForFrontmatter(installPath.resolve("content.md")) ?: return@mapNotNull null
+    InstallPlanSkill(
+      name = installPath.fileName.toString(),
+      sourceDir = installPath.toAbsolutePath().normalize(),
+      kind = InstallPlanSkillKind.PLATFORM_PACK,
+      platformSlug = plan.platform,
+      internalFor = internalFor,
+    )
+  }
+}
+
+private fun platformPackInstallPaths(
+  plan: ScaffoldPlan,
+  repoRoot: Path,
+  internalPlatformSkills: List<InstallPlanSkill>,
+): List<Path> {
+  val internalSkillDirs = internalPlatformSkills.map { skill -> skill.sourceDir }.toSet()
+  val listedPaths = plan.installPaths.filterNot { installPath ->
+    installPath.toAbsolutePath().normalize() in internalSkillDirs
+  }
+  val parentPaths = internalPlatformSkills
+    .mapNotNull(InstallPlanSkill::internalFor)
+    .distinct()
+    .map { parent -> repoRoot.resolve("skills").resolve(parent) }
+  return (listedPaths + parentPaths).distinctBy { path -> path.toAbsolutePath().normalize() }
 }
 
 private fun rollback(txn: ScaffoldTransaction) {
@@ -975,7 +989,7 @@ private fun stagePlatformPackSkills(
   stageFile(
     txn,
     qualityCheckSkillPath.resolve("content.md"),
-    renderContentBody(qualityCheckContext, qualityCheckDescription),
+    renderContentBody(qualityCheckContext, qualityCheckDescription, internalFor = "bill-code-check"),
   )
 
   plan.specialistAreas.forEach { area ->

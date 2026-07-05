@@ -107,6 +107,7 @@ private fun materializeOnePack(
   }
   val skillDirs = platformSkillDirs(manifest)
   copyPackNonSkillFiles(packRoot, destinationPackRoot, skillDirs)
+  copyInternalQualityCheckSource(packRoot, destinationPackRoot, manifest, internalPlatformSkillDirs)
   skillDirs.forEach { skillDir ->
     if (skillDir in internalPlatformSkillDirs) {
       return@forEach
@@ -121,6 +122,38 @@ private fun materializeOnePack(
     linkPath.parent?.let(Files::createDirectories)
     createOrReplaceManagedSkillSymlink(linkPath, staged)
   }
+}
+
+private fun copyInternalQualityCheckSource(
+  packRoot: Path,
+  destinationPackRoot: Path,
+  manifest: PlatformManifest,
+  internalPlatformSkillDirs: Set<Path>,
+) {
+  val sourceContent = manifest.declaredQualityCheckFile ?: return
+  val qualityCheckDir = sourceContent.toAbsolutePath().normalize().parent
+  if (qualityCheckDir !in internalPlatformSkillDirs) {
+    return
+  }
+  require(Files.isRegularFile(sourceContent, LinkOption.NOFOLLOW_LINKS)) {
+    "Platform pack '${manifest.slug}' internal quality-check content '$sourceContent' is not a regular file."
+  }
+  val realPackRoot = packRoot.toRealPath()
+  val realSourceContent = sourceContent.toRealPath()
+  require(realSourceContent.startsWith(realPackRoot)) {
+    "Platform pack '${manifest.slug}' internal quality-check content '$sourceContent' escapes pack root '$packRoot'."
+  }
+  val destinationContent = destinationPackRoot.resolve(packRoot.relativize(sourceContent).toString()).normalize()
+  require(destinationContent.startsWith(destinationPackRoot)) {
+    "Platform pack file '$sourceContent' escapes destination pack root '$destinationPackRoot'."
+  }
+  destinationContent.parent?.let(Files::createDirectories)
+  Files.copy(
+    sourceContent,
+    destinationContent,
+    StandardCopyOption.REPLACE_EXISTING,
+    StandardCopyOption.COPY_ATTRIBUTES,
+  )
 }
 
 private fun platformSkillDirs(manifest: PlatformManifest): Set<Path> = (

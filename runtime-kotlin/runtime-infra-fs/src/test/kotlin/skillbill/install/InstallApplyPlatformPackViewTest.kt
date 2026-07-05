@@ -43,6 +43,32 @@ class InstallApplyPlatformPackViewTest : InstallApplyTestSupport() {
   }
 
   @Test
+  fun `apply copies only declared internal quality check content into platform pack view`() {
+    val fixture = setupApplyFixture()
+    val qualityCheckDir = fixture.repoRoot.resolve("platform-packs/kotlin/quality-check/bill-kotlin-code-check")
+    Files.writeString(qualityCheckDir.resolve("notes.md"), "private implementation notes")
+    Files.createDirectories(fixture.home.resolve(".codex"))
+
+    val plan = InstallOperations.planInstall(
+      fixture.request(
+        selectedPlatforms = setOf("kotlin"),
+        agents = setOf(InstallAgent.CODEX),
+      ),
+    )
+
+    val result = InstallOperations.applyInstall(plan)
+
+    assertEquals(InstallApplyStatus.SUCCESS, result.status)
+    val packQualityCheck = fixture.home
+      .resolve("agent-skill-targets/codex/platform-packs/kotlin/quality-check/bill-kotlin-code-check")
+    assertTrue(Files.isRegularFile(packQualityCheck.resolve("content.md")))
+    assertFalse(
+      Files.exists(packQualityCheck.resolve("notes.md"), LinkOption.NOFOLLOW_LINKS),
+      "platform-pack view must not expose undeclared files from internal skill source directories",
+    )
+  }
+
+  @Test
   fun `apply succeeds when a selected platform pack skill declares internal-for and stages as a sidecar`() {
     val fixture = setupApplyFixture()
     val internalPackSkillDir = fixture.repoRoot.resolve("platform-packs/kotlin/code-review/bill-kotlin-code-review")

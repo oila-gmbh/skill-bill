@@ -235,7 +235,7 @@ class ShellContentLoaderParityTest {
     val qualityContent = qualityRoot.resolve("quality-check").resolve("content.md")
     Files.writeString(
       qualityContent,
-      "---\nname: quality-check\ndescription: Empty quality-check fixture.\n---\n",
+      "---\nname: quality-check\ndescription: Empty quality-check fixture.\ninternal-for: bill-code-check\n---\n",
     )
     val pack = loadPlatformManifest(qualityRoot)
 
@@ -244,6 +244,23 @@ class ShellContentLoaderParityTest {
     }
     assertContains(qualityError.message.orEmpty(), "authored content")
     assertContains(qualityError.message.orEmpty(), "quality-check/content.md")
+  }
+
+  @Test
+  fun `quality check declaration must be internal to bill-code-check`() {
+    val root = copyFixture("code_review_and_quality_check")
+    val contentFile = root.resolve("quality-check").resolve("content.md")
+    Files.writeString(
+      contentFile,
+      Files.readString(contentFile).replace("internal-for: bill-code-check\n", ""),
+    )
+    val pack = loadPlatformManifest(root)
+
+    val error = assertFailsWith<InvalidManifestSchemaError> {
+      loadQualityCheckContent(pack)
+    }
+    assertContains(error.message.orEmpty(), "internal-for: bill-code-check")
+    assertContains(error.message.orEmpty(), "quality-check")
   }
 
   @Test

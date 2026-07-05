@@ -267,9 +267,12 @@ exactly the 9 Kotlin sidecars (`bill-kotlin-code-review.md` plus its 8
 specialists) stage; the other 25 contribute nothing (PD3). The KMP pack declares
 `bill-kotlin-code-review` as a required baseline layer, so selecting KMP without
 Kotlin fails install planning with the typed baseline-co-presence error (PD8).
-The pack quality-check skills (`bill-ios-code-check`, `bill-kotlin-code-check`,
-`bill-php-code-check`) stay listed and are **not** part of this family —
-internal-izing them is a separate follow-up.
+SKILL-105 applies the same platform-pack internal-sidecar mechanism to the
+quality-check family: pack quality-check skills (`bill-ios-code-check`,
+`bill-kotlin-code-check`, `bill-php-code-check`) carry
+`internal-for: bill-code-check`, install as selected-pack sidecars inside
+`bill-code-check/`, and are not listed commands. Their routed skill names remain
+stable identity strings for manifests, routing output, and telemetry.
 
 `content.md` must not contain generated wrapper headings:
 

@@ -135,7 +135,7 @@ open class InstallApplyTestSupport {
       """.trimMargin(),
     )
     Files.writeString(codeReviewDir.resolve("content.md"), content(codeReviewName))
-    Files.writeString(qualityCheckDir.resolve("content.md"), content(qualityCheckName))
+    Files.writeString(qualityCheckDir.resolve("content.md"), content(qualityCheckName, internalFor = "bill-code-check"))
     nativeAgentName?.let { seedNativeAgent(codeReviewDir, it) }
   }
 
@@ -158,15 +158,15 @@ open class InstallApplyTestSupport {
     )
   }
 
-  protected fun content(name: String): String = """
-    |---
-    |name: $name
-    |description: Test skill.
-    |---
-    |
-    |Test body.
-    |
-  """.trimMargin()
+  protected fun content(name: String, internalFor: String? = null): String = buildString {
+    appendLine("---")
+    appendLine("name: $name")
+    appendLine("description: Test skill.")
+    internalFor?.let { parent -> appendLine("internal-for: $parent") }
+    appendLine("---")
+    appendLine()
+    appendLine("Test body.")
+  }
 
   protected companion object {
     val allInstallAgents: Set<InstallAgent> = InstallAgent.entries.toSet()

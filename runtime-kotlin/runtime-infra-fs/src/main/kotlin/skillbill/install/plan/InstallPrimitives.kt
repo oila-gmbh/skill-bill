@@ -4,6 +4,7 @@ package skillbill.install.plan
 
 import skillbill.error.InvalidInternalSkillClassificationError
 import skillbill.install.model.AgentTarget
+import skillbill.install.model.InstallPlanSkill
 import skillbill.install.model.InstallTransaction
 import skillbill.install.staging.resolveStagedSymlinkTarget
 import skillbill.install.support.claudeConfigRoot
@@ -90,6 +91,7 @@ internal data class InstallContext(
   val repoRoot: Path? = null,
   val home: Path = Path.of(System.getProperty("user.home")),
   val manifests: List<PlatformManifest>? = null,
+  val selectedPackSkills: List<InstallPlanSkill> = emptyList(),
 )
 
 internal fun installSkill(
@@ -102,9 +104,6 @@ internal fun installSkill(
   if (!Files.isDirectory(resolvedSkill)) {
     throw java.io.FileNotFoundException("Skill directory '$resolvedSkill' does not exist.")
   }
-  // SKILL-102 (PD2): the plan/apply path filters internal skills out before linking; this direct
-  // per-skill path (CLI `link-skill`) must refuse them too or an internal skill gains a listed
-  // skills_dir entry alongside its sidecar.
   parseInternalForFrontmatter(resolvedSkill.resolve("content.md"))?.let { declaredParent ->
     throw InvalidInternalSkillClassificationError(
       "Skill '${resolvedSkill.fileName}' declares 'internal-for: $declaredParent' and cannot be " +
@@ -112,12 +111,13 @@ internal fun installSkill(
         "their parent's installed directory. Install the parent skill instead.",
     )
   }
-  // SKILL-40 subtask 2: content-managed skills install via the per-skill staging cache so the
-  // source tree stays read-only. Non-content-managed sources (manual `link-skill` against an ad-hoc
-  // directory with no content.md) fall back to the legacy direct symlink for backward compat.
-  // F-015: callers (e.g. ScaffoldService.performInstall) may pass a pre-discovered manifest list
-  // so we don't re-walk platform-packs once per skill in a multi-skill scaffold install.
-  val symlinkTarget = resolveStagedSymlinkTarget(resolvedSkill, context.repoRoot, context.home, context.manifests)
+  val symlinkTarget = resolveStagedSymlinkTarget(
+    resolvedSkill,
+    context.repoRoot,
+    context.home,
+    context.manifests,
+    context.selectedPackSkills,
+  )
   val created = mutableListOf<Path>()
   for (target in agentTargets) {
     Files.createDirectories(target.path)

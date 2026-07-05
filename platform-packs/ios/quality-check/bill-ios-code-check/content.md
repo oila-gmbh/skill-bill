@@ -1,6 +1,7 @@
 ---
 name: bill-ios-code-check
 description: Use when validating iOS changes with the shared quality-check contract.
+internal-for: bill-code-check
 ---
 
 # Quality-Check Content

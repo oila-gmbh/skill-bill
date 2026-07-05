@@ -1,3 +1,5 @@
+@file:Suppress("LargeClass")
+
 package skillbill.install
 
 import skillbill.error.ContractVersionMismatchError
@@ -329,6 +331,15 @@ class InstallPlanBuilderTest {
         "declared_quality_check_file: \"code-review/bill-collapsed-code-review/content.md\"",
       ),
     )
+    val collapsedContent = fixture.repoRoot
+      .resolve("platform-packs/collapsed/code-review/bill-collapsed-code-review/content.md")
+    Files.writeString(
+      collapsedContent,
+      Files.readString(collapsedContent).replace(
+        "description: Test skill.\n",
+        "description: Test skill.\ninternal-for: bill-code-check\n",
+      ),
+    )
 
     val error = assertFailsWith<IllegalArgumentException> {
       InstallOperations.planInstall(
@@ -630,7 +641,7 @@ class InstallPlanBuilderTest {
     }
     Files.writeString(
       packRoot.resolve("quality-check").resolve(qualityCheckName).resolve("content.md"),
-      content(qualityCheckName),
+      content(qualityCheckName, internalFor = "bill-code-check"),
     )
   }
 
@@ -642,17 +653,17 @@ class InstallPlanBuilderTest {
     |      target: $target
   """.trimMargin()
 
-  private fun content(name: String): String = """
-    |---
-    |name: $name
-    |description: Test skill.
-    |---
-    |
-    |# $name
-    |
-    |Test body.
-    |
-  """.trimMargin()
+  private fun content(name: String, internalFor: String? = null): String = buildString {
+    appendLine("---")
+    appendLine("name: $name")
+    appendLine("description: Test skill.")
+    internalFor?.let { parent -> appendLine("internal-for: $parent") }
+    appendLine("---")
+    appendLine()
+    appendLine("# $name")
+    appendLine()
+    appendLine("Test body.")
+  }
 
   private fun seedSkillClass(repoRoot: Path, skillName: String, pointers: List<String>) {
     val classRoot = repoRoot.resolve("orchestration/skill-classes")

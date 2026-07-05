@@ -2,6 +2,7 @@
 
 package skillbill.install.staging
 
+import skillbill.install.model.InstallPlanSkill
 import skillbill.install.model.RenderedSkill
 import skillbill.install.support.writeRenderedSupportPointerFiles
 import skillbill.scaffold.authoring.AuthoringTarget
@@ -347,21 +348,18 @@ internal fun resolveStagedSymlinkTarget(
   repoRoot: Path?,
   home: Path,
   manifests: List<PlatformManifest>? = null,
+  selectedPackSkills: List<InstallPlanSkill> = emptyList(),
 ): Path {
-  // F-008: explicit predicate replaces the prior try/catch on SkillBillRuntimeException.
-  // Outcomes:
-  //  - repoRoot == null  -> legacy source-symlink fallback (manual `link-skill` flow predates the
-  //    staging cache and has no way to inject repoRoot; preserve backward compat verbatim).
-  //  - !isContentManagedSkill -> source-symlink fallback (legacy non-content-managed skill).
-  //  - content-managed + repoRoot -> stage and propagate any genuine error (no swallowing).
-  // Note (deviation from F-008 literal text): the review suggested throwing when content-managed
-  // AND repoRoot == null. That would break the existing `link-skill` CLI flow which is exercised
-  // by CliExternalAuthorDryRunTest. We retain the legacy fallback; the reviewer's primary intent
-  // (kill the try/catch on SkillBillRuntimeException as control flow) is preserved.
   if (repoRoot == null || !isContentManagedSkill(resolvedSkill)) {
     return resolvedSkill
   }
-  return stageInstalledSkill(repoRoot, resolvedSkill, home, manifests).stagingDir.toAbsolutePath().normalize()
+  return stageInstalledSkill(
+    repoRoot,
+    resolvedSkill,
+    home,
+    manifests,
+    selectedPackSkills = selectedPackSkills,
+  ).stagingDir.toAbsolutePath().normalize()
 }
 
 private fun pruneStaleStagingDirs(home: Path, resolvedSource: Path, currentHash: String) {
@@ -371,10 +369,6 @@ private fun pruneStaleStagingDirs(home: Path, resolvedSource: Path, currentHash:
     return
   }
   val currentLeaf = "$slug-$currentHash"
-  // F-016: slugs are not delimiter-bounded (e.g. `bill-kotlin-code-review` is a prefix of
-  // `bill-kotlin-code-review-security`). A naive `startsWith("$slug-")` filter would delete
-  // unrelated skills' staging dirs. Require the suffix after `<slug>-` to be EXACTLY a content
-  // hash: 2 * INSTALL_CACHE_KEY_BYTES lowercase hex chars (matches `computeInstallContentHash`).
   val hashRegex = Regex("^${Regex.escape(slug)}-[0-9a-f]{${INSTALL_CACHE_KEY_BYTES * 2}}$")
   val candidates = try {
     Files.list(cacheRoot).use { stream ->

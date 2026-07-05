@@ -30,14 +30,16 @@ fun buildInstallPlanWireMap(plan: InstallPlan): Map<String, Any?> = mapOf(
     )
   },
   "selected_platforms" to plan.selectedPlatformSlugs,
-  "skills" to plan.skills.map { skill ->
-    mapOf(
-      "name" to skill.name,
-      "kind" to skill.kind.wireName(),
-      "platform" to skill.platformSlug,
-      "source_dir" to skill.sourceDir.toString(),
-    )
-  },
+  "skills" to plan.skills
+    .filter { skill -> skill.internalFor == null }
+    .map { skill ->
+      mapOf(
+        "name" to skill.name,
+        "kind" to skill.kind.wireName(),
+        "platform" to skill.platformSlug,
+        "source_dir" to skill.sourceDir.toString(),
+      )
+    },
   "staging_root" to plan.staging.root.toString(),
   "staging" to plan.staging.skillPaths.map { intent ->
     mapOf(

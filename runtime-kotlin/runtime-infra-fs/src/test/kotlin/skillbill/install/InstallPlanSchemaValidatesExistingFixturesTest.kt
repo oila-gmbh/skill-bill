@@ -177,21 +177,21 @@ class InstallPlanSchemaValidatesExistingFixturesTest {
     }
     Files.writeString(
       packRoot.resolve("quality-check").resolve(qualityCheckName).resolve("content.md"),
-      content(qualityCheckName),
+      content(qualityCheckName, internalFor = "bill-code-check"),
     )
   }
 
-  private fun content(name: String): String = """
-    |---
-    |name: $name
-    |description: Test skill.
-    |---
-    |
-    |# $name
-    |
-    |Test body.
-    |
-  """.trimMargin()
+  private fun content(name: String, internalFor: String? = null): String = buildString {
+    appendLine("---")
+    appendLine("name: $name")
+    appendLine("description: Test skill.")
+    internalFor?.let { parent -> appendLine("internal-for: $parent") }
+    appendLine("---")
+    appendLine()
+    appendLine("# $name")
+    appendLine()
+    appendLine("Test body.")
+  }
 
   private fun windowsSymlinkPreflightCases(): List<WindowsSymlinkPreflight> = listOf(
     WindowsSymlinkPreflight(
