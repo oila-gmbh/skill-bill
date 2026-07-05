@@ -507,6 +507,7 @@ scripts/validate_agent_configs
 ## Reference Docs
 
 - [Getting Started for Teams](getting-started-for-teams.md)
+- [Skill Bill Teams Roadmap](team-control-plane-roadmap.md)
 - [External Addon Sources](external-addons.md)
 - [Skill Source And Generation Model](skill-source-generation.md)
 - [Review Telemetry](review-telemetry.md)

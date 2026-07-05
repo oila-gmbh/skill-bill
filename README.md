@@ -14,7 +14,7 @@
 
 **Built with itself.** Skill Bill's own features ship through this pipeline. [#177](https://github.com/oila-gmbh/skill-bill/pull/177) was planned, implemented, reviewed, and written up by the same process described here — click through and judge the actual output, not a demo.
 
-**Who it's for:** developers and teams who want their AI agent to implement whole features with the rigor of a real engineering process — planned, reviewed, audited, and quality-gated — instead of one-off code they have to babysit and re-review. You still review the final PR; the point is that what reaches you was already planned, reviewed, and checked, not dumped on you raw. Probably overkill if you only want quick single-file completions. Pre-1.0 and solo-maintained.
+**Who it's for:** developers and teams who want their AI agent to implement whole features with the rigor of a real engineering process — planned, reviewed, audited, and quality-gated — instead of one-off code they have to babysit and re-review. That explicitly includes developers raw agents *didn't* work for: if you tried an agent, got inconsistent results, and went back to using AI as a Q&A tool, the missing piece was process, not the model — and packaged process is what this is. Our earliest users split exactly two ways: developers who did no AI-driven feature work before Skill Bill, and heavy agent users who keep choosing it over their own hand-rolled workflows. You still review the final PR; the point is that what reaches you was already planned, reviewed, and checked, not dumped on you raw. Probably overkill if you only want quick single-file completions. Pre-1.0, built and maintained by a small team.
 
 ## Quickstart (≈60 seconds)
 
@@ -55,8 +55,8 @@ Dropping skill files into `~/.claude/skills/` doesn't fix that — they're just 
 
 - the same governed skill set installed across every agent you use — verified end-to-end on Claude Code and Codex
 - a governed contract that fails loudly when skills drift instead of silently going stale
-- durable, resumable workflow state so long-running multi-phase skills survive crashes and context compaction
-- automatic decomposition of oversized work into resumable subtasks the runtime tracks for you
+- durable, resumable workflow state so long-running multi-phase skills survive crashes and context compaction — and resume is agent-independent: a run paused under Claude Code continues under Codex with the same command
+- automatic decomposition of oversized work into resumable subtasks the runtime tracks for you — each subtask runs in a fresh context briefed from curated durable artifacts, so long goals don't degrade no matter how many hours they run
 - structured telemetry through a pluggable proxy you can self-host
 - per-project overrides so the same skill behaves differently per repo without forking
 - per-module memory so institutional knowledge lives next to the code
@@ -109,6 +109,7 @@ Skill Bill ships complete Go, Kotlin/KMP, PHP, and Python packs — the stack-sp
 
 - [Getting Started](docs/getting-started.md): install flow, CLI surfaces, agent support tiers, and MCP tool groups
 - [Getting Started for Teams](docs/getting-started-for-teams.md): rollout guidance, customization strategy, and adoption patterns
+- [Skill Bill Teams Roadmap](docs/team-control-plane-roadmap.md): staged path from team bundle sync to admin editing, telemetry-driven tuning, and hosted org controls
 - [Capability Deep-dive](docs/capabilities.md): the full system — one-shot install, durable workflows, platform packs, decomposition, Desktop UI, telemetry, overrides, memory, and governance
 - [Skill Source And Generation Model](docs/skill-source-generation.md): `content.md` vs generated `SKILL.md`, support pointers, install staging, and native-agent generation
 - [External Addon Sources](docs/external-addons.md): overlay private or team-specific review add-ons onto an installed pack, kept out of the shared repo

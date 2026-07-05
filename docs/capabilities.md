@@ -17,7 +17,7 @@ One slash command that takes a spec or design doc and walks it all the way to a 
 Cross-cutting properties:
 
 - Every heavy phase runs in its own subagent with a self-contained briefing — orchestrator stays small, specialists go deep.
-- Durable workflow state at every phase boundary — crash anywhere and resume cleanly.
+- Durable workflow state at every phase boundary — crash anywhere and resume cleanly, even from a different agent: a runtime-mode run paused under Claude Code continues under Codex with the same `bill-feature <KEY>`.
 - Phase-to-artifact mapping is explicit (`assessment`, `preplan_digest`, `plan`, `implementation_summary`, `review_result`, `audit_report`, `validation_result`, `history_result`, `commit_push_result`, `pr_result`) — every step produces a named, persistable output.
 - Telemetry is mandatory and transport-resilient.
 - Stack-aware via platform packs.
@@ -43,6 +43,7 @@ When planning detects work is too big (rules of thumb: more than 15 atomic tasks
 - **Subtask specs are real artifacts**: planning writes `.feature-specs/{ISSUE_KEY}-{feature-name}/spec_subtask_1_foundation.md`, `_2_runtime-wiring.md`, etc. — each with its own acceptance criteria, non-goals, dependency notes, validation strategy, and the exact `bill-feature-task` prompt to run for it later.
 - **Schema-validated manifest**: a `decomposition-manifest.yaml` is generated and validated against `orchestration/contracts/decomposition-manifest-schema.yaml`, so the plan itself is a contract, not loose prose.
 - **You only need the issue key**: when you come back and say "continue SKILL-51", the runtime resolves the parent manifest, finds the in-progress subtask at its last durable workflow step, and picks up there. If none is in-progress, it starts the first pending subtask whose dependencies are complete. You never have to remember "was I on subtask 2 step 4 or subtask 3 step 1."
+- **Fresh context per subtask, no context rot**: every subtask starts in a fresh session briefed from curated durable artifacts (the subtask spec, boundary `history.md`, recorded decisions) instead of inheriting a long-lived transcript. Long goals do not degrade as hours accumulate, because no context lives long enough to rot — continuity travels through durable state, not through an ever-growing conversation.
 - **Blocked-aware**: if the current path is blocked it stops and tells you why, instead of silently skipping to a later dependent subtask.
 - **Branch strategy is declared, not improvised**: defaults to `same_branch_commit_per_subtask` (one commit per subtask on the parent feature branch); `stacked_branches` is an explicit opt-in where the runtime refuses to advance if the current branch/base does not match the manifest.
 - **Decomposition is a successful outcome, not a failure**: the workflow closes as `abandoned_at_planning` with `plan_deviation_notes: decomposed into N subtasks` — logged as scope governance, not as a crash.
@@ -81,7 +82,7 @@ All of the symlink installs, manifest validation, platform-pack routing, native-
 - **Why this matters for tokens**: each subagent gets a self-contained briefing scoped to its phase/area instead of inheriting the full orchestrator transcript. The orchestrator stays small; specialists go deep on their narrow slice. Better focus and lower cost — the opposite of the usual "more steps = more context bloat" trap.
 - **Transport-resilient telemetry**: a packaged Kotlin `runtime-mcp` stdio fallback ensures a dropped MCP transport does not leave a workflow stuck in `running`.
 
-For decomposed goals, the foreground `skill-bill goal` runtime owns a flat worker model: it selects one runnable subtask, opens or resumes that child workflow, launches one fresh child process, and advances only from durable workflow state. Nested/native subagents inside the child session are useful for focus and debugging, but the reliability contract is the runtime-owned workflow row plus the decomposition projection.
+For decomposed goals, the foreground `skill-bill goal` runtime owns a flat worker model: it selects one runnable subtask, opens or resumes that child workflow, launches one fresh child process, and advances only from durable workflow state. Nested/native subagents inside the child session are useful for focus and debugging, but the reliability contract is the runtime-owned workflow row plus the decomposition projection. Because continuity lives in runtime-owned state rather than in any agent's context, goal execution and resume are agent-independent — the agent that continues a goal does not have to be the agent that started it.
 
 </details>
 
