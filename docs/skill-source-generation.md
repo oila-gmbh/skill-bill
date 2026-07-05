@@ -174,8 +174,8 @@ sidecar hosting another sidecar), and sibling co-location is exactly what a
 router flow needs: the parent's installed directory holds the routed entry
 sidecar and the specialist sidecars it reads as siblings, all resolvable as
 "a file next to this `SKILL.md`" with no per-agent path knowledge. The
-code-review family is the worked example: 45 review-pack skills — five stack
-entries plus their 40 specialists — all carry `internal-for: bill-code-review`
+code-review family is the worked example: 56 review-pack skills — six stack
+entries plus their 50 specialists — all carry `internal-for: bill-code-review`
 and all install as siblings inside `bill-code-review/`. The stack entry skills
 do **not** become parents of their specialists.
 
@@ -251,25 +251,25 @@ byte-for-byte unchanged (PD4) even though the skills are no longer listed.
 
 ### Worked example: the code-review family
 
-The code-review family is the platform-pack worked example. Exactly 45
+The code-review family is the platform-pack worked example. Exactly 56
 review-pack skills are internal — every skill under
-`platform-packs/{ios,kotlin,kmp,php,python}/code-review/`: five stack entry skills
+`platform-packs/{go,ios,kotlin,kmp,php,python}/code-review/`: six stack entry skills
 (`bill-ios-code-review`, `bill-kotlin-code-review`, `bill-kmp-code-review`,
-`bill-php-code-review`, `bill-python-code-review`) plus their 40 area specialists. All 45 carry
+`bill-go-code-review`, `bill-php-code-review`, `bill-python-code-review`) plus their 50 area specialists. All 56 carry
 `internal-for: bill-code-review` and install as siblings inside
-`bill-code-review/`'s staged directory; the five stack entries do **not** become
+`bill-code-review/`'s staged directory; the six stack entries do **not** become
 parents of their specialists (PD2 flatten rule). After install with all packs
 selected, the agent skill list shows `bill-code-review` (plus the listed
-`bill-code-review-parallel` and `bill-code-check`) but none of the 45.
+`bill-code-review-parallel` and `bill-code-check`) but none of the 56.
 `bill-code-review` reads the dominant pack's entry sidecar, which reads its
 specialist rubric sidecars as siblings. With only the Kotlin pack selected,
 exactly the 9 Kotlin sidecars (`bill-kotlin-code-review.md` plus its 8
-specialists) stage; the other 36 contribute nothing (PD3). The KMP pack declares
+specialists) stage; the other 47 contribute nothing (PD3). The KMP pack declares
 `bill-kotlin-code-review` as a required baseline layer, so selecting KMP without
 Kotlin fails install planning with the typed baseline-co-presence error (PD8).
 SKILL-105 applies the same platform-pack internal-sidecar mechanism to the
 quality-check family: pack quality-check skills (`bill-ios-code-check`,
-`bill-kotlin-code-check`, `bill-php-code-check`, `bill-python-code-check`) carry
+`bill-go-code-check`, `bill-kotlin-code-check`, `bill-php-code-check`, `bill-python-code-check`) carry
 `internal-for: bill-code-check`, install as selected-pack sidecars inside
 `bill-code-check/`, and are not listed commands. Their routed skill names remain
 stable identity strings for manifests, routing output, and telemetry.

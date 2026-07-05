@@ -141,7 +141,7 @@ class CliScaffoldRuntimeTest {
       CliRuntime.run(
         listOf("new", "--dry-run", "--format", "json"),
         CliRuntimeContext(
-          stdinText = listOf("2", "go", "Go", "Stuff for Go", ".go, go.mod").joinToString("\n"),
+          stdinText = listOf("2", "zig", "Zig", "Stuff for Zig", ".zig, build.zig").joinToString("\n"),
           userHome = tempDir,
           liveStdout = { liveStdout.append(it) },
         ),
@@ -159,8 +159,8 @@ class CliScaffoldRuntimeTest {
     assertContains(liveStdout.toString(), "dependency coordinates, or language markers")
     assertContains(liveStdout.toString(), "Strong routing signals (comma-separated)")
     assertFalse("Skeleton mode" in liveStdout.toString())
-    assertContains(preview, "- \".go\"")
-    assertContains(preview, "- \"go.mod\"")
+    assertContains(preview, "- \".zig\"")
+    assertContains(preview, "- \"build.zig\"")
   }
 
   @Test
@@ -172,7 +172,7 @@ class CliScaffoldRuntimeTest {
       CliRuntime.run(
         listOf("new", "--assisted", "--dry-run", "--format", "json"),
         CliRuntimeContext(
-          stdinText = listOf("2", "codex", "go").joinToString("\n"),
+          stdinText = listOf("2", "codex", "java").joinToString("\n"),
           userHome = tempDir,
           liveStdout = { liveStdout.append(it) },
         ),
@@ -189,11 +189,11 @@ class CliScaffoldRuntimeTest {
     assertContains(liveStdout.toString(), "Available agents:")
     assertContains(liveStdout.toString(), "codex")
     assertContains(liveStdout.toString(), "Language or platform")
-    assertTrue(payload.stringValue("skill_path").endsWith("/platform-packs/go"))
-    assertContains(preview, "display_name: \"Go\"")
-    assertContains(preview, "- \".go\"")
-    assertContains(preview, "- \"go.mod\"")
-    assertContains(preview, "ui: \"code-review/bill-go-code-review-ui/content.md\"")
+    assertTrue(payload.stringValue("skill_path").endsWith("/platform-packs/java"))
+    assertContains(preview, "display_name: \"Java\"")
+    assertContains(preview, "- \"pom.xml\"")
+    assertContains(preview, "- \"src/main/java\"")
+    assertContains(preview, "ui: \"code-review/bill-java-code-review-ui/content.md\"")
   }
 
   @Test
@@ -204,7 +204,7 @@ class CliScaffoldRuntimeTest {
       CliRuntime.run(
         listOf("new-skill", "--assisted", "--dry-run", "--format", "json"),
         CliRuntimeContext(
-          stdinText = listOf("2", "golang").joinToString("\n"),
+          stdinText = listOf("2", "java").joinToString("\n"),
           userHome = tempDir,
           liveStdout = { liveStdout.append(it) },
         ),
@@ -215,7 +215,7 @@ class CliScaffoldRuntimeTest {
     assertEquals("ok", payload.stringValue("status"))
     assertContains(liveStdout.toString(), "No installed agents detected")
     assertContains(liveStdout.toString(), "Language or platform")
-    assertTrue(payload.stringValue("skill_path").endsWith("/platform-packs/go"))
+    assertTrue(payload.stringValue("skill_path").endsWith("/platform-packs/java"))
   }
 
   @Test

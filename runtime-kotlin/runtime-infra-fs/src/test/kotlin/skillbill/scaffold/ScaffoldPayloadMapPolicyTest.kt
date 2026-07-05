@@ -131,6 +131,17 @@ class ScaffoldPayloadMapPolicyTest {
   }
 
   @Test
+  fun `resolvePlatformPackDefaults resolves go preset defaults`() {
+    val defaults = resolvePlatformPackDefaults(emptyMap(), "go")
+    assertEquals("Go", defaults.displayName)
+    assertEquals(true, defaults.presetUsed)
+    assertTrue(defaults.strongSignals.contains("go.mod"))
+    assertTrue(defaults.strongSignals.contains("*.go"))
+    assertTrue(defaults.tieBreakers.any { it.contains("module/workspace metadata") })
+    assertTrue(defaults.tieBreakers.any { it.contains("generated clients") })
+  }
+
+  @Test
   fun `resolvePlatformPackDefaults loud-fails when no preset and no routing signals are supplied`() {
     assertFailsWith<InvalidScaffoldPayloadError> {
       resolvePlatformPackDefaults(emptyMap(), "no-such-preset")

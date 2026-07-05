@@ -1,0 +1,165 @@
+platform: go
+contract_version: "1.1"
+display_name: Go
+
+routing_signals:
+  strong:
+    - "go.mod"
+    - "go.sum"
+    - "go.work"
+    - "go.work.sum"
+    - ".go"
+    - "*.go"
+    - "Gopkg.toml"
+    - "Gopkg.lock"
+    - "golangci.yml"
+    - ".golangci.yml"
+    - "staticcheck.conf"
+  tie_breakers:
+    - "Prefer Go when module/workspace metadata, Go source files, or Go test files dominate the changed product surface."
+    - "Do not prefer Go for mixed repositories where Go appears only as generated clients, tooling, one-off scripts, or vendored dependencies around another dominant stack."
+    - "Exclude vendor directories, generated protobuf/OpenAPI clients, build outputs, and generated mocks from dominance scoring unless the generator or generated contract is intentionally changed."
+
+declared_code_review_areas:
+  - api-contracts
+  - architecture
+  - performance
+  - persistence
+  - platform-correctness
+  - reliability
+  - security
+  - testing
+  - ui
+  - ux-accessibility
+
+declared_files:
+  baseline: code-review/bill-go-code-review/content.md
+  areas:
+    api-contracts: code-review/bill-go-code-review-api-contracts/content.md
+    architecture: code-review/bill-go-code-review-architecture/content.md
+    performance: code-review/bill-go-code-review-performance/content.md
+    persistence: code-review/bill-go-code-review-persistence/content.md
+    platform-correctness: code-review/bill-go-code-review-platform-correctness/content.md
+    reliability: code-review/bill-go-code-review-reliability/content.md
+    security: code-review/bill-go-code-review-security/content.md
+    testing: code-review/bill-go-code-review-testing/content.md
+    ui: code-review/bill-go-code-review-ui/content.md
+    ux-accessibility: code-review/bill-go-code-review-ux-accessibility/content.md
+area_metadata:
+  api-contracts:
+    focus: "Go API contracts, request validation, serialization, handlers, RPC, and compatibility"
+  architecture:
+    focus: "Go package boundaries, dependency direction, module ownership, and service architecture"
+  performance:
+    focus: "Go performance risks on hot paths, allocations, goroutines, I/O, and resource usage"
+  persistence:
+    focus: "SQL, ORM/query builders, migrations, transactions, locking, and data consistency"
+  platform-correctness:
+    focus: "Go runtime semantics, goroutines, channels, contexts, errors, nil handling, and logic correctness"
+  reliability:
+    focus: "contexts, timeouts, retries, workers, queues, external clients, observability, and degradation"
+  security:
+    focus: "auth/authz, secrets, unsafe parsing, command execution, uploads, templates, and sensitive logs"
+  testing:
+    focus: "Go test quality, table tests, race-sensitive coverage, integration boundaries, and regression proof"
+  ui:
+    focus: "Go-rendered UI, templates, admin surfaces, CLIs with interactive output, and dashboards"
+  ux-accessibility:
+    focus: "server-rendered accessibility, forms, feedback, keyboard flow, and localization-sensitive UX"
+
+declared_quality_check_file: quality-check/bill-go-code-check/content.md
+
+# Pointer files are generated into render/install output from this block.
+pointers:
+  code-review/bill-go-code-review:
+    - name: review-orchestrator.md
+      target: orchestration/review-orchestrator/PLAYBOOK.md
+    - name: review-delegation.md
+      target: orchestration/review-delegation/PLAYBOOK.md
+    - name: review-scope.md
+      target: orchestration/review-scope/PLAYBOOK.md
+    - name: shell-ceremony.md
+      target: orchestration/shell-content-contract/shell-ceremony.md
+    - name: specialist-contract.md
+      target: orchestration/review-orchestrator/specialist-contract.md
+    - name: stack-routing.md
+      target: orchestration/stack-routing/PLAYBOOK.md
+    - name: telemetry-contract.md
+      target: orchestration/telemetry-contract/PLAYBOOK.md
+  code-review/bill-go-code-review-api-contracts:
+    - name: review-orchestrator.md
+      target: orchestration/review-orchestrator/PLAYBOOK.md
+    - name: shell-ceremony.md
+      target: orchestration/shell-content-contract/shell-ceremony.md
+    - name: telemetry-contract.md
+      target: orchestration/telemetry-contract/PLAYBOOK.md
+  code-review/bill-go-code-review-architecture:
+    - name: review-orchestrator.md
+      target: orchestration/review-orchestrator/PLAYBOOK.md
+    - name: shell-ceremony.md
+      target: orchestration/shell-content-contract/shell-ceremony.md
+    - name: telemetry-contract.md
+      target: orchestration/telemetry-contract/PLAYBOOK.md
+  code-review/bill-go-code-review-performance:
+    - name: review-orchestrator.md
+      target: orchestration/review-orchestrator/PLAYBOOK.md
+    - name: shell-ceremony.md
+      target: orchestration/shell-content-contract/shell-ceremony.md
+    - name: telemetry-contract.md
+      target: orchestration/telemetry-contract/PLAYBOOK.md
+  code-review/bill-go-code-review-persistence:
+    - name: review-orchestrator.md
+      target: orchestration/review-orchestrator/PLAYBOOK.md
+    - name: shell-ceremony.md
+      target: orchestration/shell-content-contract/shell-ceremony.md
+    - name: telemetry-contract.md
+      target: orchestration/telemetry-contract/PLAYBOOK.md
+  code-review/bill-go-code-review-platform-correctness:
+    - name: review-orchestrator.md
+      target: orchestration/review-orchestrator/PLAYBOOK.md
+    - name: shell-ceremony.md
+      target: orchestration/shell-content-contract/shell-ceremony.md
+    - name: telemetry-contract.md
+      target: orchestration/telemetry-contract/PLAYBOOK.md
+  code-review/bill-go-code-review-reliability:
+    - name: review-orchestrator.md
+      target: orchestration/review-orchestrator/PLAYBOOK.md
+    - name: shell-ceremony.md
+      target: orchestration/shell-content-contract/shell-ceremony.md
+    - name: telemetry-contract.md
+      target: orchestration/telemetry-contract/PLAYBOOK.md
+  code-review/bill-go-code-review-security:
+    - name: review-orchestrator.md
+      target: orchestration/review-orchestrator/PLAYBOOK.md
+    - name: shell-ceremony.md
+      target: orchestration/shell-content-contract/shell-ceremony.md
+    - name: telemetry-contract.md
+      target: orchestration/telemetry-contract/PLAYBOOK.md
+  code-review/bill-go-code-review-testing:
+    - name: review-orchestrator.md
+      target: orchestration/review-orchestrator/PLAYBOOK.md
+    - name: shell-ceremony.md
+      target: orchestration/shell-content-contract/shell-ceremony.md
+    - name: telemetry-contract.md
+      target: orchestration/telemetry-contract/PLAYBOOK.md
+  code-review/bill-go-code-review-ui:
+    - name: review-orchestrator.md
+      target: orchestration/review-orchestrator/PLAYBOOK.md
+    - name: shell-ceremony.md
+      target: orchestration/shell-content-contract/shell-ceremony.md
+    - name: telemetry-contract.md
+      target: orchestration/telemetry-contract/PLAYBOOK.md
+  code-review/bill-go-code-review-ux-accessibility:
+    - name: review-orchestrator.md
+      target: orchestration/review-orchestrator/PLAYBOOK.md
+    - name: shell-ceremony.md
+      target: orchestration/shell-content-contract/shell-ceremony.md
+    - name: telemetry-contract.md
+      target: orchestration/telemetry-contract/PLAYBOOK.md
+  quality-check/bill-go-code-check:
+    - name: shell-ceremony.md
+      target: orchestration/shell-content-contract/shell-ceremony.md
+    - name: stack-routing.md
+      target: orchestration/stack-routing/PLAYBOOK.md
+    - name: telemetry-contract.md
+      target: orchestration/telemetry-contract/PLAYBOOK.md

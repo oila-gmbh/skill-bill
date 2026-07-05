@@ -133,6 +133,30 @@ val PLATFORM_PACK_PRESET_DESCRIPTORS: Map<String, PlatformPackPreset> =
           "dominance scoring.",
       ),
     ),
+    "go" to PlatformPackPreset(
+      displayName = "Go",
+      strongSignals = listOf(
+        "go.mod",
+        "go.sum",
+        "go.work",
+        "go.work.sum",
+        ".go",
+        "*.go",
+        "Gopkg.toml",
+        "Gopkg.lock",
+        "golangci.yml",
+        ".golangci.yml",
+        "staticcheck.conf",
+      ),
+      tieBreakers = listOf(
+        "Prefer Go when module/workspace metadata, Go source files, or Go test files dominate the " +
+          "changed product surface.",
+        "Do not prefer Go for mixed repositories where Go appears only as generated clients, tooling, " +
+          "one-off scripts, or vendored dependencies around another dominant stack.",
+        "Exclude vendor directories, generated protobuf/OpenAPI clients, build outputs, and generated " +
+          "mocks from dominance scoring unless the generator or generated contract is intentionally changed.",
+      ),
+    ),
   )
 
 /**
