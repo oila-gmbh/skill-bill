@@ -617,7 +617,7 @@ per-segment (distinct `:seg:` ids) and stats group by `issue_key`;
 ## 2026-07-05 — pack skills internalize by flattening into one parent; baseline co-presence is loud-fail (SKILL-104)
 
 Context: SKILL-102's internal-skill mechanism deliberately loud-failed `internal-for` on
-platform-pack skills. The code-review family (34 stack skills across ios/kotlin/kmp/php) needs
+platform-pack skills. The code-review family (34 stack skills across ios/kotlin/kmp/python) needs
 the same hiding treatment, but pack skills are discovered, selected, staged, and hashed through a
 selection-gated pipeline distinct from base skills.
 

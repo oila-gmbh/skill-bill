@@ -109,6 +109,17 @@ class ScaffoldPayloadMapPolicyTest {
   }
 
   @Test
+  fun `resolvePlatformPackDefaults resolves python preset defaults`() {
+    val defaults = resolvePlatformPackDefaults(emptyMap(), "python")
+    assertEquals("Python", defaults.displayName)
+    assertEquals(true, defaults.presetUsed)
+    assertTrue(defaults.strongSignals.contains("pyproject.toml"))
+    assertTrue(defaults.strongSignals.contains("*.py"))
+    assertTrue(defaults.tieBreakers.any { it.contains("generated") })
+    assertTrue(defaults.tieBreakers.any { it.contains("vendored") })
+  }
+
+  @Test
   fun `resolvePlatformPackDefaults loud-fails when no preset and no routing signals are supplied`() {
     assertFailsWith<InvalidScaffoldPayloadError> {
       resolvePlatformPackDefaults(emptyMap(), "no-such-preset")

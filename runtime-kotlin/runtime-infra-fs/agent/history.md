@@ -1,7 +1,7 @@
 # Boundary History — runtime-kotlin/runtime-infra-fs
 
 ## [2026-07-05] SKILL-104 internal review packs (subtask 2: review-pack migration and call-site rewrite)
-Areas: platform-packs/{ios,kotlin,kmp,php}/code-review (34 content.md), orchestration/review-delegation
+Areas: platform-packs/{ios,kotlin,kmp,python}/code-review (34 content.md), orchestration/review-delegation
 - Flattened all 34 review-pack skills to `internal-for: bill-code-review` (PD2): 4 stack entries + 30 specialists, one-line frontmatter addition each, nothing else changed in those blocks.
 - Call-site rewrite to the SKILL-102 sibling-sidecar file-read contract (PD5): `orchestration/review-delegation/PLAYBOOK.md` (Claude line 43, Codex line 53) and the specialist-read lines in `bill-kotlin-code-review` (Step 6) + `bill-kmp-code-review` (Step 4) now read `<name>.md` co-located with `bill-code-review`'s `SKILL.md` with "Do not use the Skill tool — internal skill, not listed". Wording contract copied verbatim from `skills/bill-feature/content.md` / `skills/bill-feature-task/content.md`. reusable
 - Inventory sweep by skill NAME (not phrasing — SKILL-102's post-merge miss lesson): source dirs + a from-source staging install (all packs). Native-agent spawn references (`subagent_type`, `@name`) are PD6 identity strings, left untouched; specialist-selection tables, `routed_skill` contract, telemetry values byte-unchanged (PD4). Copilot delegation line 32 left unchanged (refers to parent-forwarded rendered runtime instructions, not standalone resolution). reusable

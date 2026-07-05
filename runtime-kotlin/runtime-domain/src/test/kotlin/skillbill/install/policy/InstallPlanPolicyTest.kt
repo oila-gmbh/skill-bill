@@ -394,19 +394,19 @@ class InstallPlanPolicyTest {
 
   @Test
   fun `PD8 guard is unaffected by packs without baseline layers`() {
-    val phpPack = platformPack(slug = "php")
+    val pythonPack = platformPack(slug = "python")
     val input = policyInput(
       request = request(
         platformPackSelection = PlatformPackSelection(
           mode = PlatformPackSelectionMode.SELECTED,
-          selectedSlugs = setOf("php"),
+          selectedSlugs = setOf("python"),
         ),
       ),
-      platformPacks = listOf(phpPack, platformPack(slug = "kotlin")),
+      platformPacks = listOf(pythonPack, platformPack(slug = "kotlin")),
     )
 
     val draft = InstallPlanPolicy.buildPlanDraft(input)
-    assertEquals(listOf("php"), draft.selectedPlatformSlugs)
+    assertEquals(listOf("python"), draft.selectedPlatformSlugs)
   }
 
   private fun policyInput(

@@ -13,7 +13,7 @@ External addons are the lightest way to ship an add-on that must stay outside th
 
 Reach for an external addon source when all of these hold:
 
-- The add-on extends an **existing installed pack** (e.g. `ios`, `kotlin`, `php`), not a new stack.
+- The add-on extends an **existing installed pack** (e.g. `ios`, `kotlin`, `python`), not a new stack.
 - The content is **private or team-specific** and should not live in the public repo.
 - You want it applied automatically on install, the same way pack-owned add-ons are.
 

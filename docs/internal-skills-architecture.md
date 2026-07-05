@@ -274,10 +274,10 @@ consumed at three seams:
 ## Part 2 — The code-review family (platform-pack internals, SKILL-104)
 
 The same mechanism, extended to platform-pack skills. The code-review family
-had 34 stack-specific review skills listed to users even though the supported
+had stack-specific review skills listed to users even though the supported
 entry point is `/bill-code-review`, which detects the dominant stack from
 `platform.yaml` routing signals and routes automatically. Hiding them removes
-34 of ~50 listed skills from every agent's skill list and makes the listed
+dozens of listed skills from every agent's skill list and makes the listed
 surface match the actual product surface.
 
 ### What changed in the contract (and what did not)
@@ -287,12 +287,12 @@ Exactly one rule changed (PD1): platform-pack skills may now declare
 blank value, self parent, unknown parent, parent must be a listed base skill
 under `skills/`, no chained `internal-for` (depth is 1). The pack manifest
 (`platform.yaml`) is never consulted for classification; there is no
-manifest-level internality flag. The 34 one-line frontmatter additions are the
+manifest-level internality flag. The review-pack frontmatter additions are the
 only authored source change in the family.
 
 ### Flatten rule (PD2)
 
-All 34 review-pack skills — the four stack entries AND their 30 specialists —
+All review-pack skills — the stack entries AND their specialists —
 declare `internal-for: bill-code-review`. Stack entry skills do **not** become
 parents of their specialists. Nesting (specialists internal to their stack
 entry, entries internal to `bill-code-review`) would require depth-2 sidecars —
@@ -311,8 +311,8 @@ parsed `internalFor`) rather than re-scanning `platform-packs/` independently
 of selection. The parent's content hash folds exactly the selected sidecars.
 
 After a scratch install with all packs selected, `bill-code-review`'s staged
-directory contains `SKILL.md` plus 34 sibling sidecars — and no agent
-`skills_dir` symlink exists for any of the 34:
+directory contains `SKILL.md` plus 45 sibling sidecars — and no agent
+`skills_dir` symlink exists for any of the 45:
 
 ```
 ~/.claude/skills/bill-code-review
@@ -326,11 +326,13 @@ directory contains `SKILL.md` plus 34 sibling sidecars — and no agent
       ... (8 Kotlin specialists total)
       bill-kmp-code-review.md               sidecar: KMP stack entry (selected)
       ... (2 KMP specialists total)
+      bill-python-code-review.md            sidecar: Python stack entry (selected)
+      ... (10 Python specialists total)
       platform-packs → …                    symlink for pack pointer resolution
 ```
 
 With only the Kotlin pack selected, exactly 9 review sidecars stage
-(`bill-kotlin-code-review.md` plus its 8 specialists); the other 13 contribute
+(`bill-kotlin-code-review.md` plus its 8 specialists); the other 25 contribute
 nothing. With no review packs selected, `bill-code-review` stages
 byte-identically to a repo with no internal pack skills (inertness). `ALL`
 selection stages every opted-in review sidecar. SKILL-105 applies the same
@@ -377,14 +379,14 @@ For a KMP diff, the routed entry is `bill-kmp-code-review.md`, which also reads
 `bill-kotlin-code-review.md` as its baseline layer sidecar before its own
 specialists. Delegated review workers (parallel lanes, sub-process reviewers)
 receive rendered runtime instructions and rubric content/paths from the parent
-orchestrator — no worker ever resolves one of the 34 via the Skill tool or a
+orchestrator — no worker ever resolves one of the platform-pack sidecars via the Skill tool or a
 standalone `skills_dir` path (PD5).
 
 ### Selection-shaped variance at a glance
 
 | Selection | Sidecars staged inside `bill-code-review/` |
 |---|---|
-| `ALL` | 34 (4 stack entries + 30 specialists) |
+| `ALL` | 45 (5 stack entries + 40 specialists) |
 | Kotlin only | 9 (`bill-kotlin-code-review.md` + 8 specialists) |
 | KMP only | fails — Kotlin is a required baseline (PD8) |
 | KMP + Kotlin | 12 (3 KMP + 9 Kotlin) |
@@ -398,5 +400,5 @@ standalone `skills_dir` path (PD5).
 | Selection-aware sidecar discovery | `.../install/staging/InternalSkillSidecars.kt` (consults `InstallPlanSkill.sourceDir`) |
 | Baseline co-presence guard | `.../install/plan/InstallPlanPolicy.kt`, `MissingBaselinePlatformSelectionError` in `ShellContentContractErrors.kt` |
 | Pack-internal README catalog exemption | `.../scaffold/runtime/RepoValidationRuntime.kt` (`validateReadme`) |
-| Authored pack source (unchanged paths) | `platform-packs/{ios,kotlin,kmp,php}/code-review/<skill>/content.md` |
+| Authored pack source (unchanged paths) | `platform-packs/{ios,kotlin,kmp,python}/code-review/<skill>/content.md` |
 | Tests | `InternalSkillStagingTest`, `InternalSkillClassificationTest`, `InstallPlanInternalSkillDiscoveryTest`, `MissingBaselinePlatformSelectionTest`, `RepoValidationRuntimeTest` |
