@@ -71,6 +71,7 @@ class InstallPlanBuilderPolicyBoundaryTest {
     val repoRoot = Files.createTempDirectory("skillbill-install-plan-boundary-repo").also(tempDirs::add)
     val home = Files.createTempDirectory("skillbill-install-plan-boundary-home").also(tempDirs::add)
     seedBaseSkill(repoRoot, "bill-code-review")
+    seedBaseSkill(repoRoot, "bill-code-check")
     seedPlatformPack(repoRoot, "kotlin")
     return PlanFixture(repoRoot = repoRoot, home = home)
   }
@@ -112,21 +113,21 @@ class InstallPlanBuilderPolicyBoundaryTest {
     )
     Files.writeString(
       packRoot.resolve("quality-check").resolve(qualityCheckName).resolve("content.md"),
-      content(qualityCheckName),
+      content(qualityCheckName, internalFor = "bill-code-check"),
     )
   }
 
-  private fun content(name: String): String = """
-    |---
-    |name: $name
-    |description: Test skill.
-    |---
-    |
-    |# $name
-    |
-    |Test body.
-    |
-  """.trimMargin()
+  private fun content(name: String, internalFor: String? = null): String = buildString {
+    appendLine("---")
+    appendLine("name: $name")
+    appendLine("description: Test skill.")
+    internalFor?.let { parent -> appendLine("internal-for: $parent") }
+    appendLine("---")
+    appendLine()
+    appendLine("# $name")
+    appendLine()
+    appendLine("Test body.")
+  }
 
   private data class PlanFixture(
     val repoRoot: Path,

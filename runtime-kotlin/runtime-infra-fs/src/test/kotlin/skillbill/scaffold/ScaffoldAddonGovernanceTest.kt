@@ -223,7 +223,7 @@ private fun seedQualityCheckOnlyRepo(): Path {
   val context = TemplateContext("bill-qualityonly-code-check", "quality-check", "qualityonly", "", "Quality Only")
   Files.writeString(
     qualityCheck.resolve("content.md"),
-    renderContentBody(context, inferSkillDescription(context)),
+    renderContentBody(context, inferSkillDescription(context), internalFor = "bill-code-check"),
   )
   return repo
 }

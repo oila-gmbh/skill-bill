@@ -52,28 +52,30 @@ internal fun inferSkillDescription(context: TemplateContext, areaFocus: String =
   }
 }
 
-internal fun renderFrontmatter(skillName: String, description: String): String = buildString {
-  fun scalar(value: String): String {
-    if (value.isEmpty()) {
-      return "\"\""
+internal fun renderFrontmatter(skillName: String, description: String, internalFor: String? = null): String =
+  buildString {
+    fun scalar(value: String): String {
+      if (value.isEmpty()) {
+        return "\"\""
+      }
+      val edgeWhitespace = value.first().isWhitespace() || value.last().isWhitespace()
+      val leadingReserved = value.first() in YAML_RESERVED_LEADING_CHARS
+      val inlineSeparators = value.contains(": ") || value.contains(" #")
+      val inlineReserved = value.any { char -> char in YAML_RESERVED_INLINE_CHARS }
+      val needsQuoting = edgeWhitespace || leadingReserved || inlineSeparators || inlineReserved
+      return if (needsQuoting) {
+        "\"" + value.map { char -> YAML_DOUBLE_QUOTE_ESCAPES[char] ?: char.toString() }.joinToString("") + "\""
+      } else {
+        value
+      }
     }
-    val edgeWhitespace = value.first().isWhitespace() || value.last().isWhitespace()
-    val leadingReserved = value.first() in YAML_RESERVED_LEADING_CHARS
-    val inlineSeparators = value.contains(": ") || value.contains(" #")
-    val inlineReserved = value.any { char -> char in YAML_RESERVED_INLINE_CHARS }
-    val needsQuoting = edgeWhitespace || leadingReserved || inlineSeparators || inlineReserved
-    return if (needsQuoting) {
-      "\"" + value.map { char -> YAML_DOUBLE_QUOTE_ESCAPES[char] ?: char.toString() }.joinToString("") + "\""
-    } else {
-      value
-    }
-  }
 
-  appendLine("---")
-  appendLine("name: ${scalar(skillName)}")
-  appendLine("description: ${scalar(description)}")
-  appendLine("---")
-}
+    appendLine("---")
+    appendLine("name: ${scalar(skillName)}")
+    appendLine("description: ${scalar(description)}")
+    internalFor?.let { parent -> appendLine("internal-for: ${scalar(parent)}") }
+    appendLine("---")
+  }
 
 internal fun renderDescriptorSection(context: TemplateContext, areaFocus: String): String = buildString {
   appendLine("## Descriptor")
@@ -89,7 +91,12 @@ internal fun renderDescriptorSection(context: TemplateContext, areaFocus: String
   appendLine("Description: ${inferSkillDescription(context, areaFocus)}")
 }
 
-internal fun renderContentBody(context: TemplateContext, description: String, contentBody: String? = null): String {
+internal fun renderContentBody(
+  context: TemplateContext,
+  description: String,
+  contentBody: String? = null,
+  internalFor: String? = null,
+): String {
   val resolvedDescription = description.ifBlank { inferSkillDescription(context) }
   // Reject caller-supplied bodies that already carry a YAML frontmatter block. We always render
   // a fresh canonical frontmatter from `context`/`description`, so accepting an inline one would
@@ -106,7 +113,7 @@ internal fun renderContentBody(context: TemplateContext, description: String, co
   }
   val body = contentBody?.trimEnd()?.plus("\n") ?: renderGovernedContentStarter(context, resolvedDescription)
   return buildString {
-    append(renderFrontmatter(context.skillName, resolvedDescription))
+    append(renderFrontmatter(context.skillName, resolvedDescription, internalFor))
     appendLine()
     appendLine("# ${contentTitle(context)}")
     appendLine()

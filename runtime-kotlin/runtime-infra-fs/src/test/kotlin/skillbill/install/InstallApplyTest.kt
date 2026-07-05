@@ -51,14 +51,15 @@ class InstallApplyTest : InstallApplyTestSupport() {
         "bill-code-check",
         "bill-update-check",
         "bill-kotlin-code-review",
-        "bill-kotlin-code-check",
       ),
       skillsByName.keys,
     )
     assertEquals(InstallPlanSkillKind.BASE, skillsByName.getValue("bill-code-review").kind)
+    assertEquals(InstallPlanSkillKind.BASE, skillsByName.getValue("bill-code-check").kind)
     assertEquals(InstallPlanSkillKind.BASE, skillsByName.getValue("bill-update-check").kind)
     assertEquals(InstallPlanSkillKind.PLATFORM_PACK, skillsByName.getValue("bill-kotlin-code-review").kind)
     assertFalse(skillsByName.containsKey("bill-kmp-code-review"), "unselected platform skill was applied")
+    assertFalse(skillsByName.containsKey("bill-kotlin-code-check"), "internal platform quality-check skill was applied")
     result.skills.forEach { skill ->
       assertEquals(InstallSkillStagingStatus.STAGED, skill.staging.status)
       assertStagingUnderHomeCacheAndOutsideSource(fixture, skill.staging.stagingDir, skill.skillName)

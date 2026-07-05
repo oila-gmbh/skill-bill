@@ -23,6 +23,7 @@ import skillbill.scaffold.rendering.defaultAreaFocus
 import skillbill.scaffold.runtime.APPROVED_CODE_REVIEW_AREAS
 import skillbill.scaffold.runtime.CONTENT_BODY_FILENAME
 import skillbill.scaffold.runtime.SHELL_CONTRACT_VERSION
+import skillbill.scaffold.validation.parseSkillFrontmatter
 import skillbill.scaffold.validation.validateAuthoredContent
 import skillbill.scaffold.validation.validateSkillMdShape
 import java.nio.file.Files
@@ -923,6 +924,17 @@ private fun validateGovernedSkill(
   }
   val text = Files.readString(skillPath)
   validateSkillMdShape(skillPath, validateBodyShape = false)
+  // SKILL-105: declared quality-check pack skills are dispatch targets, not user commands.
+  if (family == "quality-check") {
+    val internalFor = parseSkillFrontmatter(text)["internal-for"]
+    if (internalFor != "bill-code-check") {
+      throw InvalidManifestSchemaError(
+        "Platform pack '${pack.slug}': declared content file for slot '$slot' must declare " +
+          "'internal-for: bill-code-check' so stack-specific quality-check overrides install as " +
+          "sidecars of bill-code-check.",
+      )
+    }
+  }
   ensureValidAuthoredContent(pack.slug, skillPath, text)
 }
 

@@ -1,6 +1,7 @@
 ---
 name: bill-kotlin-code-check
 description: Run ./gradlew check and systematically fix all issues without using suppressions. Use when running Gradle checks, fixing lint errors, formatting issues, test failures, or deprecation warnings in Gradle/Kotlin projects. Fixes issues properly at the root cause instead of suppressing them. Use when user mentions gradlew check, Kotlin lint, ktfmt, detekt, or fix Gradle warnings.
+internal-for: bill-code-check
 ---
 
 # Kotlin Quality Check
