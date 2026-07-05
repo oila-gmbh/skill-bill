@@ -71,8 +71,9 @@ class InstallApplyPlatformPackViewTest : InstallApplyTestSupport() {
 
     assertEquals(InstallApplyStatus.SUCCESS, result.status)
     val agentRoot = fixture.home.resolve("agent-skill-targets/codex")
+    val internalPackView = agentRoot.resolve("platform-packs/kotlin/code-review/bill-kotlin-code-review")
     assertFalse(
-      Files.exists(agentRoot.resolve("platform-packs/kotlin/code-review/bill-kotlin-code-review"), LinkOption.NOFOLLOW_LINKS),
+      Files.exists(internalPackView, LinkOption.NOFOLLOW_LINKS),
       "internal pack skill must not materialize a standalone platform-packs symlink",
     )
     assertTrue(
