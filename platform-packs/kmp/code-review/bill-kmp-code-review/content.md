@@ -1,6 +1,7 @@
 ---
 name: bill-kmp-code-review
 description: Use when conducting a thorough Android/KMP PR code review. Preserve mobile review depth by running the manifest-declared baseline review layer first, then add Android/KMP-specific specialists such as UI and UX/accessibility. Produces a structured review with risk register and prioritized action items. Use when user mentions Android review, KMP review, mobile review, or asks to review Android/KMP changes.
+internal-for: bill-code-review
 ---
 
 # Android/KMP PR Review
@@ -84,7 +85,7 @@ This is a lightweight file-level classification (names + imports), not a full re
 ### Step 4: Run KMP specialist reviews
 
 - Run each selected KMP specialist lane against its scoped files.
-- Read each KMP specialist skill file as the primary rubric for that lane.
+- Read each KMP specialist's sibling sidecar file `<specialist-skill-name>.md` co-located with `bill-code-review`'s `SKILL.md` as the primary rubric for that lane. Do not use the Skill tool for specialist skills — they are internal skills and are not listed.
 - Keep findings attributed to each layer before merging and deduplicating them into the final review.
 
 If no KMP-only triggers match but Android/KMP signals are clearly present, keep the baseline review output and state that no extra KMP-only specialist was needed for this scope.

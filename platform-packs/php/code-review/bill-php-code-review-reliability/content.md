@@ -1,6 +1,7 @@
 ---
 name: bill-php-code-review-reliability
 description: Use when reviewing PHP reliability risks including timeouts, retries, queues, schedulers, caches, downstream failures, logging, metrics, and tracing.
+internal-for: bill-code-review
 ---
 
 # Backend Reliability Review Specialist

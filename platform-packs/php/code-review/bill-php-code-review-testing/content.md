@@ -1,6 +1,7 @@
 ---
 name: bill-php-code-review-testing
 description: Use when reviewing PHP test coverage quality, regression protection, brittle tests, weak assertions, and low-value coverage-padding tests.
+internal-for: bill-code-review
 ---
 
 # Testing Review Specialist

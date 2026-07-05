@@ -1,6 +1,7 @@
 ---
 name: bill-php-code-review-ux-accessibility
 description: Use when reviewing PHP product UX and accessibility risks including semantic structure, labels, keyboard behavior, focus management, validation feedback, and localization-sensitive UI copy.
+internal-for: bill-code-review
 ---
 
 # UX & Accessibility Review Specialist

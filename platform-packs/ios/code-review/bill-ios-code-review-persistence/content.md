@@ -1,6 +1,7 @@
 ---
 name: bill-ios-code-review-persistence
 description: Use when reviewing iOS GRDB/SQLite persistence risks including migration safety, schema changes, and offline-sync data consistency.
+internal-for: bill-code-review
 ---
 
 # Persistence Review Specialist

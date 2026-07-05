@@ -1,6 +1,7 @@
 ---
 name: bill-php-code-review-platform-correctness
 description: Use when reviewing PHP correctness risks in business logic, state transitions, retry or replay behavior, edge cases, and runtime safety.
+internal-for: bill-code-review
 ---
 
 # Platform-Correctness Review Specialist

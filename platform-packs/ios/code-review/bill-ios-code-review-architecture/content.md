@@ -1,6 +1,7 @@
 ---
 name: bill-ios-code-review-architecture
 description: Use when reviewing iOS architecture, dependency-injection scopes, composition-root wiring, and SPM package-boundary respect.
+internal-for: bill-code-review
 ---
 
 # Architecture Review Specialist

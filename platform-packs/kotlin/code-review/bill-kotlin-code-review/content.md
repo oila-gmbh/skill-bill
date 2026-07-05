@@ -1,6 +1,7 @@
 ---
 name: bill-kotlin-code-review
 description: Use when conducting a thorough Kotlin PR code review across shared, backend/server, or generic Kotlin code, or when providing the baseline Kotlin review layer for Android/KMP reviews. Select shared Kotlin specialists for architecture, correctness, security, performance, and testing, and add backend-focused specialists for API contracts, persistence, and reliability when server signals are present. Produces a structured review with risk register and prioritized action items. Use when user mentions Kotlin review, review Kotlin PR, Kotlin code review, or asks to review .kt files.
+internal-for: bill-code-review
 ---
 
 # Adaptive Kotlin PR Review
@@ -88,6 +89,6 @@ This is a lightweight file-level classification (names + imports), not a full re
 ### Step 6: Run selected specialist reviews
 
 - Spawn each selected specialist lane against its scoped files.
-- Read each specialist skill file as the primary rubric for that lane.
+- Read each specialist's sibling sidecar file `<specialist-skill-name>.md` co-located with `bill-code-review`'s `SKILL.md` as the primary rubric for that lane. Do not use the Skill tool for specialist skills — they are internal skills and are not listed.
 - Keep findings attributed to each specialist before merging and deduplicating them into the final review.
 - When the selected set is larger than the host runtime can run concurrently, run specialists in deterministic waves and merge all wave outputs before the final review.

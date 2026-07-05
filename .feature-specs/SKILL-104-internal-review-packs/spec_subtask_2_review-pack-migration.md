@@ -1,5 +1,5 @@
 ---
-status: Pending
+status: Complete
 ---
 
 # SKILL-104 Subtask 2 - Review-pack migration and call-site rewrite

@@ -1,6 +1,7 @@
 ---
 name: bill-kotlin-code-review-architecture
 description: Use when reviewing architecture, boundaries, DI scopes, and source-of-truth consistency in Kotlin code. Use when user mentions Kotlin architecture, DI scope, module boundaries, or dependency direction in Kotlin code.
+internal-for: bill-code-review
 ---
 
 # Architecture Review Specialist

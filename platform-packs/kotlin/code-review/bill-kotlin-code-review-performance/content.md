@@ -1,6 +1,7 @@
 ---
 name: bill-kotlin-code-review-performance
 description: Use when reviewing performance risks in Kotlin code, including hot-path work, blocking I/O, latency regressions, and resource waste. Use when user mentions performance, blocking I/O, hot path, memory leak, or latency in Kotlin code.
+internal-for: bill-code-review
 ---
 
 # Performance Review Specialist

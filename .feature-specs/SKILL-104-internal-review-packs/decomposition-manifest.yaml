@@ -29,12 +29,12 @@ subtasks:
 - id: 2
   name: "Review-pack migration and call-site rewrite"
   spec_path: ".feature-specs/SKILL-104-internal-review-packs/spec_subtask_2_review-pack-migration.md"
-  status: "pending"
-  branch: null
+  status: "complete"
+  branch: "feat/SKILL-104-internal-review-packs"
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wfl-20260705-071348-yu1v"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
