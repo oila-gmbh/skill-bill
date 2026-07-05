@@ -725,7 +725,7 @@ class CliRuntimeTest {
     assertEquals("update_available", payload["status"])
     assertEquals(INSTALLED_VERSION, payload["installed_version"])
     assertEquals(NEWER_RELEASE_TAG, payload["latest_version"])
-    assertEquals("https://github.com/Sermilion/skill-bill/releases/tag/$NEWER_RELEASE_TAG", payload["release_url"])
+    assertEquals("https://github.com/oila-gmbh/skill-bill/releases/tag/$NEWER_RELEASE_TAG", payload["release_url"])
     assertEquals(2, capturedRequests.size)
     assertEquals("GET", capturedRequests.first()["method"])
     assertEquals("skill-bill-update-check", (capturedRequests.first()["headers"] as Map<*, *>)["User-Agent"])
@@ -1258,7 +1258,7 @@ private fun updateCheckRequester(
           "tag_name":"$latest",
           "prerelease":${latest.contains("-")},
           "draft":false,
-          "html_url":"https://github.com/Sermilion/skill-bill/releases/tag/$latest"
+          "html_url":"https://github.com/oila-gmbh/skill-bill/releases/tag/$latest"
         }]
     """.trimIndent(),
   )
@@ -1268,7 +1268,7 @@ private const val EXPECTED_INSTALL_COMMAND =
   "skill-bill update"
 
 private const val EXPECTED_UPDATE_COMMAND =
-  "curl -fsSL https://raw.githubusercontent.com/Sermilion/skill-bill/main/install.sh | " +
+  "curl -fsSL https://raw.githubusercontent.com/oila-gmbh/skill-bill/main/install.sh | " +
     "bash -s -- --reuse-last-selection"
 
 private class CapturingExternalCommandRunner(

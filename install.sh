@@ -46,7 +46,7 @@ DESKTOP_APP_ONLY=0
 REUSE_LAST_SELECTION=0
 PREFER_UPSTREAM=0
 CLEAN_INSTALL=0
-RELEASE_REPO="${SKILL_BILL_RELEASE_REPO:-Sermilion/skill-bill}"
+RELEASE_REPO="${SKILL_BILL_RELEASE_REPO:-oila-gmbh/skill-bill}"
 # Offline / test overrides. When SKILL_BILL_RELEASE_DIR is set, assets are copied
 # from that local directory (no network). When SKILL_BILL_RELEASE_BASE_URL is set,
 # curl is pointed at that base URL (supports file://) instead of the GitHub API.
@@ -1099,7 +1099,7 @@ reconcile_and_commit_authored_source() {
         warn "  kept local: $p"
       done
       warn "To take the upstream version instead, re-run with --prefer-upstream:"
-      warn "  curl -fsSL https://raw.githubusercontent.com/Sermilion/skill-bill/main/install.sh | bash -s -- --prefer-upstream"
+      warn "  curl -fsSL https://raw.githubusercontent.com/oila-gmbh/skill-bill/main/install.sh | bash -s -- --prefer-upstream"
     else
       printf '%s' "Overwrite your local copy with the upstream version for the conflicting skills? [y/n]: "
       local answer=""
@@ -1376,7 +1376,7 @@ $marker
 set -euo pipefail
 
 runtime_cli="$RUNTIME_CLI_BIN"
-installer_url="https://raw.githubusercontent.com/Sermilion/skill-bill/main/install.sh"
+installer_url="https://raw.githubusercontent.com/oila-gmbh/skill-bill/main/install.sh"
 
 shell_quote() {
   case "\$1" in

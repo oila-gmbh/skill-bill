@@ -2,9 +2,9 @@
 
 # Skill Bill
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-![Latest release](https://img.shields.io/github/v/release/Sermilion/skill-bill?include_prereleases&sort=semver)
-![Validate agent configs](https://img.shields.io/github/actions/workflow/status/Sermilion/skill-bill/validate-agent-configs.yml?branch=main&label=validate)
+[![License: PolyForm NC + Commercial](https://img.shields.io/badge/License-PolyForm%20NC%20%2B%20Commercial-orange.svg)](LICENSE)
+![Latest release](https://img.shields.io/github/v/release/oila-gmbh/skill-bill?include_prereleases&sort=semver)
+![Validate agent configs](https://img.shields.io/github/actions/workflow/status/oila-gmbh/skill-bill/validate-agent-configs.yml?branch=main&label=validate)
 
 **Hand Skill Bill a spec and get back a merge-ready PR — planned, implemented, stack-specialist-reviewed, audited against the spec, and quality-gated.** AI coding agents are powerful but inconsistent: the same prompt yields different work every run, with no process holding it together. Skill Bill gives yours the structure of a real engineering process and runs it the same way every time, across whichever agents you use.
 
@@ -12,14 +12,14 @@
 
 > A `/bill-feature` run carrying a spec through every phase to a merge-ready PR — and because the run is interrupted mid-flight (usage limit, crash, lost connection) it also shows the part most demos hide: it resumes from durable workflow state and finishes, nothing lost. The demo is generated, not hand-recorded ([`docs/assets/generate_demo_gif.py`](docs/assets/generate_demo_gif.py)), so it never goes stale.
 
-**Built with itself.** Skill Bill's own features ship through this pipeline. [#177](https://github.com/Sermilion/skill-bill/pull/177) was planned, implemented, reviewed, and written up by the same process described here — click through and judge the actual output, not a demo.
+**Built with itself.** Skill Bill's own features ship through this pipeline. [#177](https://github.com/oila-gmbh/skill-bill/pull/177) was planned, implemented, reviewed, and written up by the same process described here — click through and judge the actual output, not a demo.
 
 **Who it's for:** developers and teams who want their AI agent to implement whole features with the rigor of a real engineering process — planned, reviewed, audited, and quality-gated — instead of one-off code they have to babysit and re-review. You still review the final PR; the point is that what reaches you was already planned, reviewed, and checked, not dumped on you raw. Probably overkill if you only want quick single-file completions. Pre-1.0 and solo-maintained.
 
 ## Quickstart (≈60 seconds)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Sermilion/skill-bill/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/oila-gmbh/skill-bill/main/install.sh | bash
 ```
 
 Downloads and checksum-verifies the prebuilt runtime for your OS — no clone, no JDK, no Gradle. Needs only `curl`, `tar`, `unzip`, and either `shasum` or `sha256sum` on `macos-arm64`, `macos-x64`, `windows-x64`, or `linux-x64`.
@@ -27,7 +27,7 @@ Downloads and checksum-verifies the prebuilt runtime for your OS — no clone, n
 Don't pipe a stranger's script straight into your shell? Read it first:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Sermilion/skill-bill/main/install.sh -o install.sh
+curl -fsSL https://raw.githubusercontent.com/oila-gmbh/skill-bill/main/install.sh -o install.sh
 less install.sh   # it's a plain shell script — read it
 bash install.sh
 ```
@@ -116,4 +116,9 @@ Skill Bill ships complete Go, Kotlin/KMP, PHP, and Python packs — the stack-sp
 
 ## License
 
-[MIT](LICENSE)
+Skill Bill is source-available. Personal and noncommercial use is available
+under the [PolyForm Noncommercial License 1.0.0](LICENSE). Commercial use,
+including use by for-profit companies or in revenue-generating work, requires a
+separate commercial license from the copyright holder. The copyright holder may
+separately authorize specific people, companies, customers, and partners to use
+Skill Bill outside the public noncommercial license.

@@ -44,7 +44,7 @@ skill-bill triage --run-id rvw-20260402-001
 skill-bill triage --run-id rvw-20260402-001 --decision "1 fix - keep current terminology" --decision "2 skip - intentional"
 skill-bill triage --run-id rvw-20260402-001 --decision "fix=[1] reject=[2]"
 skill-bill triage --run-id rvw-20260402-001 --decision "all fix"
-skill-bill learnings resolve --repo Sermilion/skill-bill --skill bill-kotlin-code-review --review-session-id rvs-20260402-001
+skill-bill learnings resolve --repo oila-gmbh/skill-bill --skill bill-kotlin-code-review --review-session-id rvs-20260402-001
 skill-bill stats --run-id rvw-20260402-001 --format json
 skill-bill implement-stats --format json
 skill-bill verify-stats --format json
@@ -75,7 +75,7 @@ Learnings are actionable domain-specific knowledge derived from **rejected** rev
 skill-bill triage --run-id rvw-20260402-001 --decision "2 reject - installer wording is intentionally informal"
 
 # Then promote the rejection into a learning:
-skill-bill learnings add --scope repo --scope-key Sermilion/skill-bill --title "Installer wording is intentionally informal" --rule "Do not flag installer prompt wording as inconsistent — the informal tone is a deliberate UX choice for CLI tools." --from-run rvw-20260402-001 --from-finding F-002
+skill-bill learnings add --scope repo --scope-key oila-gmbh/skill-bill --title "Installer wording is intentionally informal" --rule "Do not flag installer prompt wording as inconsistent — the informal tone is a deliberate UX choice for CLI tools." --from-run rvw-20260402-001 --from-finding F-002
 
 # Manage learnings:
 skill-bill learnings list
@@ -92,7 +92,7 @@ Raw finding-outcome history and learnings are stored separately. That means you 
 When you want future reviews to use those learnings explicitly, resolve the active learnings for the current review context:
 
 ```bash
-skill-bill learnings resolve --repo Sermilion/skill-bill --skill bill-kotlin-code-review --review-session-id rvs-20260402-001 --format json
+skill-bill learnings resolve --repo oila-gmbh/skill-bill --skill bill-kotlin-code-review --review-session-id rvs-20260402-001 --format json
 ```
 
 Resolution stays local-first and explicit:

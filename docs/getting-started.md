@@ -27,7 +27,7 @@ Those surfaces use the same governed repo structure:
 ## Install
 
 ```bash
-git clone https://github.com/Sermilion/skill-bill.git ~/Development/skill-bill
+git clone https://github.com/oila-gmbh/skill-bill.git ~/Development/skill-bill
 cd ~/Development/skill-bill
 ./install.sh
 ```

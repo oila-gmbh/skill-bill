@@ -150,7 +150,7 @@ class UpdateCheckService(
   )
 
   companion object {
-    private const val RELEASES_URL = "https://api.github.com/repos/Sermilion/skill-bill/releases"
+    private const val RELEASES_URL = "https://api.github.com/repos/oila-gmbh/skill-bill/releases"
     private const val USER_AGENT = "skill-bill-update-check"
     private const val HTTP_FORBIDDEN = 403
     private const val HTTP_TOO_MANY_REQUESTS = 429

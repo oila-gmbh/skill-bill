@@ -284,10 +284,10 @@ run_piped_bootstrap_latest_release() {
 set -euo pipefail
 url="${@: -1}"
 case "$url" in
-  https://api.github.com/repos/Sermilion/skill-bill/releases/latest)
+  https://api.github.com/repos/oila-gmbh/skill-bill/releases/latest)
     printf '{"tag_name":"v9.9.9"}\n'
     ;;
-  https://raw.githubusercontent.com/Sermilion/skill-bill/v9.9.9/install.sh)
+  https://raw.githubusercontent.com/oila-gmbh/skill-bill/v9.9.9/install.sh)
     cat <<'INSTALLER'
 #!/usr/bin/env bash
 set -euo pipefail

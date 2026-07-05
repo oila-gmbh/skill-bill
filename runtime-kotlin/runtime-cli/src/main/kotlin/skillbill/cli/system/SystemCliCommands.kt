@@ -270,7 +270,7 @@ private fun UpdateCheckResult.toPayload(): Map<String, Any?> = linkedMapOf(
   "release_notes" to releaseNotes,
 )
 
-private const val INSTALL_SCRIPT_URL = "https://raw.githubusercontent.com/Sermilion/skill-bill/main/install.sh"
+private const val INSTALL_SCRIPT_URL = "https://raw.githubusercontent.com/oila-gmbh/skill-bill/main/install.sh"
 
 private val SHELL_SAFE_PATTERN = Regex("[A-Za-z0-9_./:=@%+-]+")
 

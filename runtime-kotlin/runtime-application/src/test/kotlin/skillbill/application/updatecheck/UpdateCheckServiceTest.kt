@@ -72,7 +72,7 @@ class UpdateCheckServiceTest {
     transportContext = TransportContext(
       requester = HttpRequester { method, url, _, headers ->
         assertEquals("GET", method)
-        assertEquals("https://api.github.com/repos/Sermilion/skill-bill/releases", url)
+        assertEquals("https://api.github.com/repos/oila-gmbh/skill-bill/releases", url)
         assertEquals("skill-bill-update-check", headers["User-Agent"])
         HttpResponse(statusCode = statusCode, body = responseBody)
       },
@@ -87,7 +87,7 @@ private fun releases(vararg tags: String): String = tags.joinToString(prefix = "
         "tag_name":"$tag",
         "prerelease":$prerelease,
         "draft":false,
-        "html_url":"https://github.com/Sermilion/skill-bill/releases/tag/$tag"
+        "html_url":"https://github.com/oila-gmbh/skill-bill/releases/tag/$tag"
       }
   """.trimIndent()
 }

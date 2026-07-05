@@ -1,8 +1,16 @@
 # Contributing to Skill Bill
 
 Skill Bill is pre-1.0 and solo-maintained. Contributions are welcome; the
-project is MIT-licensed and actively developed. A few things to know before
+project is source-available and actively developed. A few things to know before
 contributing:
+
+## Licensing
+
+By submitting a contribution, you agree that your contribution is licensed under
+the repository license in `LICENSE`, and you grant Braian Gapur a perpetual,
+worldwide, non-exclusive, royalty-free right to include your contribution in
+commercial licenses for Skill Bill. Do not submit a contribution unless you have
+the right to make that grant.
 
 ## Quality Gate
 
