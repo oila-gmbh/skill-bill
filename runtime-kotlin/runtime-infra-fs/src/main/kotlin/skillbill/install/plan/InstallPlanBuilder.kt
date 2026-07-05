@@ -8,6 +8,7 @@ import skillbill.install.model.InstallAgentTargetSource
 import skillbill.install.model.InstallPlan
 import skillbill.install.model.InstallPlanRequest
 import skillbill.install.model.InstallPlanSkill
+import skillbill.install.model.InstallPlanSkillKind
 import skillbill.install.model.InstallPlatformPackSnapshot
 import skillbill.install.model.InstallPlatformSkillMaterializationRequest
 import skillbill.install.model.InstallPolicyInput
@@ -79,6 +80,7 @@ private fun buildInstallPolicyInput(
         } else {
           emptyList()
         },
+        baselineLayers = manifest.codeReviewComposition?.baselineLayers.orEmpty(),
       )
     },
     detectedAgentTargets = detectAgents(request.home).map { target ->
@@ -139,6 +141,7 @@ internal fun materializeSelectedPlatformSkills(
       } else {
         emptyList()
       },
+      baselineLayers = manifest.codeReviewComposition?.baselineLayers.orEmpty(),
     )
   }
 }
@@ -157,6 +160,12 @@ private fun buildStagingIntent(
   platformManifests: List<PlatformManifest>,
 ): InstallStagingIntent {
   val stagingRoot = installedSkillsCacheRoot(request.home)
+  // SKILL-104 (PD3): selected pack skills are already materialized in `skills` (buildInstallPolicyInput
+  // filters to selected slugs). Pack skills declaring internal-for surface as sidecars of their parent
+  // only when selected, so they thread into per-parent sidecar discovery here.
+  val selectedPackSkills = skills.filter { skill ->
+    skill.kind == InstallPlanSkillKind.PLATFORM_PACK && skill.internalFor != null
+  }
   return InstallStagingIntent(
     root = stagingRoot,
     // F-011 (SKILL-102): internal skills never stage standalone (apply filters them out), so the
@@ -176,6 +185,7 @@ private fun buildStagingIntent(
         repoRoot = request.repoRoot,
         parentSkillName = skill.name,
         skillsRoot = request.targetPaths.skillsRoot,
+        selectedPackSkills = selectedPackSkills,
       )
       val sidecarNames = internalChildren.map { child -> "${child.skillName}.md" }.toSet()
       val authored = authoredFilesFor(skill.sourceDir, applicablePointers, supportPointers, sidecarNames)

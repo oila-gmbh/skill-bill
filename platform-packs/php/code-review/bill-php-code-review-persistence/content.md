@@ -1,6 +1,7 @@
 ---
 name: bill-php-code-review-persistence
 description: Use when reviewing PHP persistence risks including transactions, ORM mappings, query scoping, migrations, concurrency, and data consistency.
+internal-for: bill-code-review
 ---
 
 # Backend Persistence Review Specialist

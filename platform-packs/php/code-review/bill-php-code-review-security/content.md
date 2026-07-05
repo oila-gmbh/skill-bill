@@ -1,6 +1,7 @@
 ---
 name: bill-php-code-review-security
 description: Use when reviewing PHP security risks including auth, authorization, secret handling, sensitive logging, uploads, template rendering, deserialization, and credential exposure.
+internal-for: bill-code-review
 ---
 
 # Security Review Specialist

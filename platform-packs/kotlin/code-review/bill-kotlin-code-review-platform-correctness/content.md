@@ -1,6 +1,7 @@
 ---
 name: bill-kotlin-code-review-platform-correctness
 description: Use when reviewing lifecycle, coroutine, threading, and logic correctness risks in Kotlin code. Use when user mentions coroutine leak, race condition, dispatcher misuse, lifecycle-unsafe collection, or threading bug in Kotlin code.
+internal-for: bill-code-review
 ---
 
 # Platform & Correctness Review Specialist

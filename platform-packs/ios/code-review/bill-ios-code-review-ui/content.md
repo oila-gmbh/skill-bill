@@ -1,6 +1,7 @@
 ---
 name: bill-ios-code-review-ui
 description: Use when reviewing iOS UI correctness for feature views, shared theming/design-system usage, navigation wiring, and snapshot baselines.
+internal-for: bill-code-review
 ---
 
 # UI Review Specialist

@@ -1,6 +1,7 @@
 ---
 name: bill-php-code-review-api-contracts
 description: Use when reviewing PHP backend API contracts, request validation, response serialization, status-code mapping, and backward compatibility.
+internal-for: bill-code-review
 ---
 
 # Backend API & Contract Review Specialist

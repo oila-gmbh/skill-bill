@@ -39,6 +39,7 @@ import kotlin.test.assertTrue
  * classification and sidecar references. Fixtures are created inside the tests, not from repo
  * skills.
  */
+@Suppress("LargeClass") // one cohesive staging-test surface spanning base + pack extension rules
 class InternalSkillStagingTest {
   private val tempDirs = mutableListOf<Path>()
 
@@ -503,6 +504,220 @@ class InternalSkillStagingTest {
     )
   }
 
+  // ---------------------------------------------------------------------------------------------
+  // SKILL-104: pack-aware selection-shaped sidecar staging (PD2/PD3)
+  // ---------------------------------------------------------------------------------------------
+
+  @Test
+  fun `selected pack child stages as a sidecar inside the parent staged directory`() {
+    val fixture = setupParentWithInternalPackChild()
+
+    val rendered = stageInstalledSkill(
+      fixture.repoRoot,
+      fixture.parentDir,
+      fixture.home,
+      selectedPackSkills = listOf(fixture.packChildPlanSkill),
+    )
+
+    val sidecar = rendered.stagingDir.resolve("${fixture.packChildName}.md")
+    assertTrue(Files.isRegularFile(sidecar, LinkOption.NOFOLLOW_LINKS), "missing pack sidecar at $sidecar")
+    assertTrue(sidecar in rendered.renderedSidecarFiles, "pack sidecar not reported in renderedSidecarFiles")
+    val packChildTarget = resolveTarget(fixture.repoRoot, fixture.packChildName)
+    assertEquals(
+      renderWrapper(packChildTarget),
+      Files.readString(sidecar),
+      "pack sidecar must carry the same full governed wrapper a listed pack skill would render",
+    )
+  }
+
+  @Test
+  fun `unselected pack child contributes no sidecar and no hash contribution`() {
+    val fixture = setupParentWithInternalPackChild()
+
+    // No selectedPackSkills passed -> the pack child is unselected -> no sidecar.
+    val unselected = stageInstalledSkill(fixture.repoRoot, fixture.parentDir, fixture.home)
+    assertTrue(unselected.renderedSidecarFiles.isEmpty(), "unselected pack must stage no sidecars")
+    assertFalse(
+      Files.exists(unselected.stagingDir.resolve("${fixture.packChildName}.md"), LinkOption.NOFOLLOW_LINKS),
+      "unselected pack sidecar must not be written",
+    )
+
+    val selected = stageInstalledSkill(
+      fixture.repoRoot,
+      fixture.parentDir,
+      fixture.home,
+      selectedPackSkills = listOf(fixture.packChildPlanSkill),
+    )
+    assertNotEquals(
+      unselected.contentHash,
+      selected.contentHash,
+      "selecting the pack must invalidate the parent's content hash (PD3 selection-aware hashing)",
+    )
+  }
+
+  @Test
+  fun `editing the pack child content invalidates the parent content hash`() {
+    val fixture = setupParentWithInternalPackChild()
+
+    val first = stageInstalledSkill(
+      fixture.repoRoot,
+      fixture.parentDir,
+      fixture.home,
+      selectedPackSkills = listOf(fixture.packChildPlanSkill),
+    )
+
+    Files.writeString(
+      fixture.packChildContentFile,
+      Files.readString(fixture.packChildContentFile) + "\n\n## Additional reviewed section.\n",
+    )
+    val afterEdit = stageInstalledSkill(
+      fixture.repoRoot,
+      fixture.parentDir,
+      fixture.home,
+      selectedPackSkills = listOf(fixture.packChildPlanSkill),
+    )
+    assertNotEquals(
+      first.contentHash,
+      afterEdit.contentHash,
+      "editing the pack child's content.md must invalidate the parent hash",
+    )
+  }
+
+  @Test
+  fun `cache reuse re-renders an externally deleted pack sidecar`() {
+    val fixture = setupParentWithInternalPackChild()
+
+    val first = stageInstalledSkill(
+      fixture.repoRoot,
+      fixture.parentDir,
+      fixture.home,
+      selectedPackSkills = listOf(fixture.packChildPlanSkill),
+    )
+    val sidecar = first.stagingDir.resolve("${fixture.packChildName}.md")
+    Files.delete(sidecar)
+
+    val second = stageInstalledSkill(
+      fixture.repoRoot,
+      fixture.parentDir,
+      fixture.home,
+      selectedPackSkills = listOf(fixture.packChildPlanSkill),
+    )
+    assertEquals(first.contentHash, second.contentHash)
+    assertTrue(
+      Files.isRegularFile(second.stagingDir.resolve("${fixture.packChildName}.md"), LinkOption.NOFOLLOW_LINKS),
+      "a pruned pack sidecar must be re-rendered instead of reused broken",
+    )
+  }
+
+  @Test
+  fun `pack-aware staging is byte-identical to pre-change when no skill opts in`() {
+    // Inertness (criterion 5): with no opted-in repo skill, the parent stages identically whether
+    // or not the pack-aware mechanism is present. Concretely: no sidecar, no hash contribution.
+    val fixture = setupParentWithInternalPackChild()
+
+    // No pack opt-in: the parent stages with no sidecars.
+    val inert = stageInstalledSkill(fixture.repoRoot, fixture.parentDir, fixture.home)
+    assertTrue(inert.renderedSidecarFiles.isEmpty(), "inert staging must carry no sidecars")
+
+    // A second staging with an empty selectedPackSkills list must be byte-identical.
+    val inertExplicitEmpty = stageInstalledSkill(
+      fixture.repoRoot,
+      fixture.parentDir,
+      fixture.home,
+      selectedPackSkills = emptyList(),
+    )
+    assertEquals(
+      inert.contentHash,
+      inertExplicitEmpty.contentHash,
+      "an explicit empty pack-skill list must not change the hash",
+    )
+    assertEquals(inert.stagingDir, inertExplicitEmpty.stagingDir)
+  }
+
+  @Test
+  fun `standaloneInstallableSkills excludes internal pack skills that nativeAgentSourceRoots retains`() {
+    val parent = planSkill("bill-code-review", internalFor = null)
+    val packInternal = planSkill(
+      "bill-kotlin-code-review",
+      internalFor = "bill-code-review",
+      platformSlug = "kotlin",
+    )
+    val skills = listOf(parent, packInternal)
+
+    val standalone = standaloneInstallableSkills(skills, selectedPlatformSlugs = setOf("kotlin"))
+    assertEquals(
+      listOf("bill-code-review"),
+      standalone.map { it.name },
+      "an internal pack skill must not stage standalone or link into skills_dir",
+    )
+
+    // PD6 verify-only: native-agent source roots keep enumerating the internal pack skill.
+    val sourceRoots = nativeAgentSourceRoots(skills, selectedPlatformSlugs = setOf("kotlin"))
+    assertTrue(
+      packInternal.sourceDir in sourceRoots,
+      "an internal pack skill's dir must remain a native-agent source root (PD6 parity)",
+    )
+  }
+
+  @Test
+  fun `installSkill refuses to link an internal pack skill directly`() {
+    val fixture = setupParentWithInternalPackChild()
+    val agentRoot = fixture.home.resolve("agents")
+    Files.createDirectories(agentRoot)
+
+    val error = assertFailsWith<InvalidInternalSkillClassificationError> {
+      installSkill(
+        skillPath = fixture.packChildDir,
+        agentTargets = listOf(AgentTarget("test-agent", agentRoot)),
+        context = InstallContext(repoRoot = fixture.repoRoot, home = fixture.home),
+      )
+    }
+    assertTrue(error.message.orEmpty().contains("internal-for: ${fixture.parentName}"))
+    assertFalse(
+      Files.exists(agentRoot.resolve(fixture.packChildName), LinkOption.NOFOLLOW_LINKS),
+      "refused pack link must leave no skills_dir entry",
+    )
+  }
+
+  @Test
+  fun `repo validation accepts a healthy pack internal child classification`() {
+    val fixture = setupParentWithInternalPackChild()
+
+    val report = RepoValidationRuntime.validateRepo(fixture.repoRoot)
+
+    val internalIssues = report.issues.filter { issue ->
+      issue.contains("internal-for") || issue.contains("internal skill") || issue.contains("platform-pack skill")
+    }
+    assertTrue(
+      internalIssues.isEmpty(),
+      "healthy pack internal classification must raise no internal-skill issue, got: $internalIssues",
+    )
+  }
+
+  @Test
+  fun `repo validation rejects a pack child declaring an unknown parent`() {
+    val fixture = setupParentWithInternalPackChild()
+    Files.writeString(
+      fixture.packChildContentFile,
+      """
+      ---
+      name: ${fixture.packChildName}
+      description: Internal pack.
+      internal-for: bill-no-such-parent
+      ---
+
+      Body.
+      """.trimIndent(),
+    )
+
+    val report = RepoValidationRuntime.validateRepo(fixture.repoRoot)
+
+    assertTrue(
+      report.issues.any { it.contains("not a discovered skill") && it.contains(fixture.packChildName) },
+      "validate must surface the unknown-parent rule for a pack skill; issues=${report.issues}",
+    )
+  }
+
   private data class ParentChildFixture(
     val repoRoot: Path,
     val home: Path,
@@ -510,6 +725,17 @@ class InternalSkillStagingTest {
     val childName: String,
     val parentDir: Path,
     val childDir: Path,
+  )
+
+  private data class ParentWithInternalPackChildFixture(
+    val repoRoot: Path,
+    val home: Path,
+    val parentName: String,
+    val parentDir: Path,
+    val packChildName: String,
+    val packChildDir: Path,
+    val packChildContentFile: Path,
+    val packChildPlanSkill: InstallPlanSkill,
   )
 
   private fun setupRepoBase(): Pair<Path, Path> {
@@ -606,6 +832,97 @@ class InternalSkillStagingTest {
       """.trimIndent(),
     )
     return skillDir.toAbsolutePath().normalize()
+  }
+
+  /**
+   * SKILL-104: seeds a base-skill parent (`bill-code-review`) plus a minimal `kotlin` platform pack
+   * whose code-review baseline skill (`bill-kotlin-code-review`) declares
+   * `internal-for: bill-code-review`. The pack child is opted-in, but the parent's directory does
+   * not carry the sidecar unless the pack is in the selectedPackSkills list.
+   */
+  private fun setupParentWithInternalPackChild(): ParentWithInternalPackChildFixture {
+    val (repoRoot, home) = setupRepoBase()
+    val parentName = "bill-code-review"
+    val parentDir = seedSkill(
+      repoRoot,
+      parentName,
+      parentName,
+      "Routes code review and dispatches to pack sidecars.",
+    )
+
+    val slug = "kotlin"
+    val packChildName = "bill-$slug-code-review"
+    val packRoot = repoRoot.resolve("platform-packs").resolve(slug)
+    val packChildDir = packRoot.resolve("code-review").resolve(packChildName)
+    Files.createDirectories(packChildDir)
+    val packChildContentFile = packChildDir.resolve("content.md")
+    Files.writeString(
+      packChildContentFile,
+      """
+      |---
+      |name: $packChildName
+      |description: Internal pack dispatch target.
+      |internal-for: $parentName
+      |---
+      |
+      |Authored internal pack body.
+      """.trimMargin(),
+    )
+    seedKotlinPlatformPackWithBaseline(repoRoot, slug, packChildName)
+
+    val packChildPlanSkill = InstallPlanSkill(
+      name = packChildName,
+      sourceDir = packChildDir.toAbsolutePath().normalize(),
+      kind = InstallPlanSkillKind.PLATFORM_PACK,
+      platformSlug = slug,
+      internalFor = parentName,
+    )
+    return ParentWithInternalPackChildFixture(
+      repoRoot = repoRoot,
+      home = home,
+      parentName = parentName,
+      parentDir = parentDir.toAbsolutePath().normalize(),
+      packChildName = packChildName,
+      packChildDir = packChildDir.toAbsolutePath().normalize(),
+      packChildContentFile = packChildContentFile.toAbsolutePath().normalize(),
+      packChildPlanSkill = packChildPlanSkill,
+    )
+  }
+
+  private fun seedKotlinPlatformPackWithBaseline(repoRoot: Path, slug: String, codeReviewName: String) {
+    val packRoot = repoRoot.resolve("platform-packs").resolve(slug)
+    Files.createDirectories(packRoot)
+    val qualityCheckName = "bill-$slug-code-check"
+    Files.createDirectories(packRoot.resolve("quality-check").resolve(qualityCheckName))
+    Files.writeString(
+      packRoot.resolve("platform.yaml"),
+      """
+      |platform: "$slug"
+      |contract_version: "1.1"
+      |routing_signals:
+      |  strong:
+      |    - "$slug"
+      |  tie_breakers: []
+      |declared_code_review_areas: []
+      |declared_files:
+      |  baseline: "code-review/$codeReviewName/content.md"
+      |  areas: {}
+      |area_metadata: {}
+      |display_name: "$slug"
+      |declared_quality_check_file: "quality-check/$qualityCheckName/content.md"
+      |
+      """.trimMargin(),
+    )
+    Files.writeString(
+      packRoot.resolve("quality-check").resolve(qualityCheckName).resolve("content.md"),
+      """
+      |---
+      |name: $qualityCheckName
+      |description: Test quality-check skill.
+      |---
+      |Body.
+      """.trimMargin(),
+    )
   }
 
   /**

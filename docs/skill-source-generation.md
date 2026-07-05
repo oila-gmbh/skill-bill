@@ -111,11 +111,15 @@ internal-for: <parent-skill-name>
 ```
 
 Presence of the key makes the skill internal; absence means listed. There are no
-other frontmatter keys, no `config.yaml` switches, and no per-agent overrides
-for this classification. Only base skills under `skills/` may be internal;
-platform-pack skills cannot carry the key. One shared rule evaluator backs the
-authoring seam, the install-plan seam, and `skill-bill validate`, so the same
-declaration fails identically everywhere it is read.
+other frontmatter keys, no `config.yaml` switches, no per-agent overrides, and no
+manifest-level internality flag — the platform pack manifest (`platform.yaml`)
+is never consulted for classification. Both base skills under `skills/` and
+platform-pack skills under `platform-packs/<slug>/` may carry the key; the only
+parent-side restriction is that the parent itself must be a **listed base
+skill** (`skills/<parent>/`), never a platform-pack skill and never another
+internal skill. One shared rule evaluator backs the authoring seam, the
+install-plan seam, and `skill-bill validate`, so the same declaration fails
+identically everywhere it is read.
 
 ### Parent rules and loud-fail behavior
 
@@ -128,8 +132,7 @@ The pipeline loud-fails with a typed, actionable error
 - declares a parent that is **itself internal** — chaining is not allowed;
   depth is 1, so a sidecar cannot host another sidecar;
 - declares **itself** as parent;
-- declares a **platform-pack** parent — the parent must be a listed base skill;
-- is a **platform-pack skill** carrying the key at all.
+- declares a **platform-pack** parent — the parent must be a listed base skill.
 
 A separate collision guard (`InternalSkillSidecarCollisionError`) fails staging
 when an authored file in the parent's source directory already occupies a
@@ -161,6 +164,49 @@ re-renders and idempotency holds. Cache reuse re-verifies that every expected
 sidecar file is present, so an externally pruned sidecar triggers a re-render
 instead of being reused broken.
 
+### Flatten rule for multi-level families (PD2)
+
+When a family has more than one logical level — a router parent, stack entry
+skills, and area specialists — every internal member declares the **same
+parent** rather than chaining through the intermediate level. Depth stays at 1
+(PD1: a sidecar is a file, not a directory; the staging model cannot express a
+sidecar hosting another sidecar), and sibling co-location is exactly what a
+router flow needs: the parent's installed directory holds the routed entry
+sidecar and the specialist sidecars it reads as siblings, all resolvable as
+"a file next to this `SKILL.md`" with no per-agent path knowledge. The
+code-review family is the worked example: 34 review-pack skills — four stack
+entries plus their 30 specialists — all carry `internal-for: bill-code-review`
+and all install as siblings inside `bill-code-review/`. The stack entry skills
+do **not** become parents of their specialists.
+
+### Selection-aware sidecars for platform-pack internals (PD3)
+
+A base-skill internal sidecar stages whenever its parent stages, because base
+skills are always installed. A platform-pack internal sidecar stages **only when
+its pack is selected** (`PlatformPackSelection`: `NONE`/`SELECTED`/`ALL`). The
+staging sidecar discovery consults the install plan's selected pack skills
+(which already carry each skill's `sourceDir` and parsed `internalFor`) rather
+than re-scanning `platform-packs/` independently of selection. The parent's
+content hash folds exactly the selected sidecars, so changing platform selection
+re-stages the parent and cache reuse stays correct. With `NONE` of a parent's
+internal packs selected, the parent stages byte-identically to a repo with no
+internal pack skills — unselected packs contribute no sidecar and no hash
+bytes. `ALL` selection stages every opted-in internal sidecar.
+
+### Baseline co-presence guard (PD8)
+
+A pack manifest may declare required baseline layers
+(`code_review_composition.baseline_layers[].required = true`, resolved as a
+sibling sidecar at review time — see the KMP pack's `bill-kotlin-code-review`
+baseline). Once both layers are internal sidecars, selecting the dependent pack
+without its baseline pack would leave the baseline sidecar missing at review
+time. Install planning therefore loud-fails with a typed error
+(`MissingBaselinePlatformSelectionError`) when the selection includes a pack
+that declares a required baseline layer in an unselected pack. There is no
+silent auto-include — consistent with the shell's never-silently-substitute
+ethos. `ALL` selection is trivially safe because every required baseline is
+selected too.
+
 ### File-read invocation contract (PD5)
 
 The Skill tool on every supported agent resolves only listed skills; there is no
@@ -172,6 +218,17 @@ argument conventions as before (`mode:runtime` / `mode:prose`,
 to invoke an internal skill. This file-read pattern is already established for
 other sibling sidecars (`shell-ceremony.md`, `compose-guidelines.md`) and is
 more portable across agents than Skill-tool mechanics.
+
+The contract extends verbatim to review routing, where the dispatch target is
+itself an internal sidecar. The routed dispatch resolves the dominant pack's
+entry sidecar (e.g. `bill-kotlin-code-review.md`); a stack orchestrator sidecar
+resolves its specialist rubrics as sibling sidecars (e.g.
+`bill-kotlin-code-review-security.md`); and a KMP baseline layer resolves
+`bill-kotlin-code-review.md` as a sibling sidecar. Delegated review workers keep
+receiving rendered runtime instructions and rubric content/paths from the parent
+orchestrator — no worker ever resolves a hidden skill via the Skill tool or a
+standalone `skills_dir` path. Lane-2 parallel reviews keep invoking
+`/bill-code-review`, which remains listed.
 
 ### Worked example: the feature-execution family
 
@@ -191,6 +248,28 @@ rename (PD3): `skills/bill-feature-task/content.md`,
 only frontmatter and prose inside them change. Workflow identity strings, the DB
 `workflow_name` CHECK constraint, telemetry constants, and MCP tool names are
 byte-for-byte unchanged (PD4) even though the skills are no longer listed.
+
+### Worked example: the code-review family
+
+The code-review family is the platform-pack worked example. Exactly 34
+review-pack skills are internal — every skill under
+`platform-packs/{ios,kotlin,kmp,php}/code-review/`: four stack entry skills
+(`bill-ios-code-review`, `bill-kotlin-code-review`, `bill-kmp-code-review`,
+`bill-php-code-review`) plus their 30 area specialists. All 34 carry
+`internal-for: bill-code-review` and install as siblings inside
+`bill-code-review/`'s staged directory; the four stack entries do **not** become
+parents of their specialists (PD2 flatten rule). After install with all packs
+selected, the agent skill list shows `bill-code-review` (plus the listed
+`bill-code-review-parallel` and `bill-code-check`) but none of the 34.
+`bill-code-review` reads the dominant pack's entry sidecar, which reads its
+specialist rubric sidecars as siblings. With only the Kotlin pack selected,
+exactly the 9 Kotlin sidecars (`bill-kotlin-code-review.md` plus its 8
+specialists) stage; the other 25 contribute nothing (PD3). The KMP pack declares
+`bill-kotlin-code-review` as a required baseline layer, so selecting KMP without
+Kotlin fails install planning with the typed baseline-co-presence error (PD8).
+The pack quality-check skills (`bill-ios-code-check`, `bill-kotlin-code-check`,
+`bill-php-code-check`) stay listed and are **not** part of this family —
+internal-izing them is a separate follow-up.
 
 `content.md` must not contain generated wrapper headings:
 

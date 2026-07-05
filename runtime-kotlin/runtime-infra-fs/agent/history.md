@@ -1,5 +1,28 @@
 # Boundary History — runtime-kotlin/runtime-infra-fs
 
+## [2026-07-05] SKILL-104 internal review packs (subtask 2: review-pack migration and call-site rewrite)
+Areas: platform-packs/{ios,kotlin,kmp,php}/code-review (34 content.md), orchestration/review-delegation
+- Flattened all 34 review-pack skills to `internal-for: bill-code-review` (PD2): 4 stack entries + 30 specialists, one-line frontmatter addition each, nothing else changed in those blocks.
+- Call-site rewrite to the SKILL-102 sibling-sidecar file-read contract (PD5): `orchestration/review-delegation/PLAYBOOK.md` (Claude line 43, Codex line 53) and the specialist-read lines in `bill-kotlin-code-review` (Step 6) + `bill-kmp-code-review` (Step 4) now read `<name>.md` co-located with `bill-code-review`'s `SKILL.md` with "Do not use the Skill tool — internal skill, not listed". Wording contract copied verbatim from `skills/bill-feature/content.md` / `skills/bill-feature-task/content.md`. reusable
+- Inventory sweep by skill NAME (not phrasing — SKILL-102's post-merge miss lesson): source dirs + a from-source staging install (all packs). Native-agent spawn references (`subagent_type`, `@name`) are PD6 identity strings, left untouched; specialist-selection tables, `routed_skill` contract, telemetry values byte-unchanged (PD4). Copilot delegation line 32 left unchanged (refers to parent-forwarded rendered runtime instructions, not standalone resolution). reusable
+- KMP baseline composition renderer text UNCHANGED: `renderBaselineLayerLabel` emits `kotlin/bill-kotlin-code-review` as an identity string (`platform/skill`), not a path or Skill-tool call — Step 2.4 criterion 5 says leave identity-only text alone; `PlatformPackCompositionTest` already covers it.
+- Rendered-output sweep confirmed all 34 sidecars co-located in `bill-code-review`'s staged directory alongside `SKILL.md`; no Skill-tool/slash-command/standalone-skills-dir resolution of the 34 in staged wrappers or support pointers.
+- Validation: `skill-bill validate` PASS (0 issues, via rebuilt runtime-cli with subtask-1 mechanism); `agnix --strict` PASS; `scripts/validate_agent_configs` PASS (57 skills, 38 native agents); `./gradlew check` — only the pre-existing `CliFeatureTaskRuntimeRuntimeTest > feature-task-runtime run requires issue key and spec path` failure (environmental zcode prose-only refusal; markdown-only change cannot affect it).
+Feature flag: N/A
+Acceptance criteria: subtask-2 7/7 implemented
+
+## [2026-07-05] SKILL-104 internal review packs (subtask 1: pack-aware internal-skill mechanism)
+Areas: runtime-infra-fs/scaffold/authoring, runtime-infra-fs/install/plan, runtime-infra-fs/install/staging, runtime-infra-fs/install/apply, runtime-infra-fs/scaffold/runtime, runtime-domain/install/policy, runtime-domain/install/model, runtime-contracts/error
+- `InternalSkillClassification.kt` base-skill-only violation removed (PD1); the `isBaseSkill` flag now feeds only the parent-side rule. Every preserved rule keeps its exact message; tests add pack-skill variants for blank/self/unknown/pack-parent/chained.
+- `discoverInternalSidecarTargets` gains a `selectedPackSkills` param (PD3): union of skills-root scan + selected pack skills declaring `internal-for == parent`. Renders through the SAME `discoverTargets`+`renderWrapper` path (full governed wrapper, SKILL-102 PD6 parity). Three callers thread it: `InstallPlanBuilder.buildStagingIntent`, `InstallApplyStaging.materializeValidatedPlannedStaging`, `InstallStaging.stageInstalledSkill`. reusable
+- Inertness: with no opted-in pack skill the new arg is empty and behavior is byte-identical (test + real-repo `skill-bill validate` 0 issues).
+- PD8: new `MissingBaselinePlatformSelectionError` (carries selecting/required slugs + manifest path) + plan-time guard in `InstallPlanPolicy.buildPlanDraft`. ALL selection is trivially safe; packs without baseline layers unaffected.
+- Validate-seam parity: `validateInternalSidecarReferences` and `internalSkillNames` (README exclusion) now scan the union of base+pack skill files; `validateInternalSidecarCollisions` already unioned both.
+- detekt: `InstallPlanPolicy` and `stageInstalledSkill` crossed thresholds (TooManyFunctions / LongParameterList+LongMethod) — resolved with `@Suppress` + one-line rationale (established repo pattern).
+- Pre-existing unrelated red: `CliFeatureTaskRuntimeRuntimeTest "feature-task-runtime run requires issue key and spec path"` fails on the clean tree too (zcode prose-only env refusal precedes the issue_key check) — not caused by this change.
+Feature flag: N/A
+Acceptance criteria: subtask-1 10/10 implemented
+
 ## [2026-07-03] SKILL-100 zcode agent support (subtask 2: native-agent-mcp-runtime)
 Areas: runtime-infra-fs/install/apply, runtime-infra-fs/launcher/agentrun, runtime-infra-fs/launcher/mcp
 - Closed the six exhaustive-`when` sites subtask 1 flagged as won't-compile: `linkZcodeAgents`/`unlinkZcodeAgents` (modeled on Junie) wired into `FileSystemInstallAdapters` link/unlink + a `nativeAgentInstallers` registry entry.

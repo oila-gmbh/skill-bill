@@ -1,6 +1,7 @@
 ---
 name: bill-ios-code-review-testing
 description: Use when reviewing iOS test coverage quality, XCTest/snapshot-testing conventions, and the 1:1 SQL-statement-test cross-reference.
+internal-for: bill-code-review
 ---
 
 # Testing Review Specialist

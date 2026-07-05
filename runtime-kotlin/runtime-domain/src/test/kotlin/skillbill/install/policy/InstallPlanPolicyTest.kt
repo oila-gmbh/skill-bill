@@ -1,6 +1,7 @@
 package skillbill.install.policy
 
 import skillbill.error.InvalidInstallPlanSchemaError
+import skillbill.error.MissingBaselinePlatformSelectionError
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.InstallAgentDefaultTarget
 import skillbill.install.model.InstallAgentSelection
@@ -26,6 +27,9 @@ import skillbill.install.model.RuntimeDistributionInputs
 import skillbill.install.model.WindowsSymlinkDecision
 import skillbill.install.model.WindowsSymlinkPreflight
 import skillbill.install.model.WindowsSymlinkPreflightState
+import skillbill.scaffold.model.CodeReviewBaselineLayer
+import skillbill.scaffold.model.CodeReviewCompositionMode
+import skillbill.scaffold.model.CodeReviewCompositionScope
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertContains
@@ -318,6 +322,93 @@ class InstallPlanPolicyTest {
     assertContains(error.message.orEmpty(), "mcp_registration.runtime_mcp_bin")
   }
 
+  // ---------------------------------------------------------------------------------------------
+  // SKILL-104 (PD8): baseline co-presence guard
+  // ---------------------------------------------------------------------------------------------
+
+  @Test
+  fun `PD8 guard fails when a selected pack declares a required baseline in an unselected pack`() {
+    val kmpPack = platformPack(
+      slug = "kmp",
+      skills = listOf(platformSkill("bill-kmp-code-review", platformSlug = "kmp")),
+      baselineLayers = listOf(baselineLayer(platform = "kotlin", skill = "bill-kotlin-code-review")),
+    )
+    val kotlinPack = platformPack(slug = "kotlin")
+    val input = policyInput(
+      request = request(
+        platformPackSelection = PlatformPackSelection(
+          mode = PlatformPackSelectionMode.SELECTED,
+          selectedSlugs = setOf("kmp"),
+        ),
+      ),
+      platformPacks = listOf(kmpPack, kotlinPack),
+    )
+
+    val error = assertFailsWith<MissingBaselinePlatformSelectionError> { InstallPlanPolicy.buildPlanDraft(input) }
+    assertEquals("kmp", error.selectingSlug)
+    assertEquals("kotlin", error.requiredBaselineSlug)
+    assertContains(error.declaringManifestPath, "platform-packs/kmp/platform.yaml")
+    assertContains(error.message.orEmpty(), "'kotlin' is not in the selection")
+  }
+
+  @Test
+  fun `PD8 guard passes when the required baseline pack is also selected`() {
+    val kmpPack = platformPack(
+      slug = "kmp",
+      skills = listOf(platformSkill("bill-kmp-code-review", platformSlug = "kmp")),
+      baselineLayers = listOf(baselineLayer(platform = "kotlin", skill = "bill-kotlin-code-review")),
+    )
+    val kotlinPack = platformPack(slug = "kotlin")
+    val input = policyInput(
+      request = request(
+        platformPackSelection = PlatformPackSelection(
+          mode = PlatformPackSelectionMode.SELECTED,
+          selectedSlugs = setOf("kmp", "kotlin"),
+        ),
+      ),
+      platformPacks = listOf(kmpPack, kotlinPack),
+    )
+
+    val draft = InstallPlanPolicy.buildPlanDraft(input)
+    assertEquals(listOf("kmp", "kotlin"), draft.selectedPlatformSlugs)
+  }
+
+  @Test
+  fun `PD8 guard passes under ALL selection even when a baseline layer points to another pack`() {
+    val kmpPack = platformPack(
+      slug = "kmp",
+      skills = listOf(platformSkill("bill-kmp-code-review", platformSlug = "kmp")),
+      baselineLayers = listOf(baselineLayer(platform = "kotlin", skill = "bill-kotlin-code-review")),
+    )
+    val kotlinPack = platformPack(slug = "kotlin")
+    val input = policyInput(
+      request = request(
+        platformPackSelection = PlatformPackSelection(mode = PlatformPackSelectionMode.ALL),
+      ),
+      platformPacks = listOf(kmpPack, kotlinPack),
+    )
+
+    val draft = InstallPlanPolicy.buildPlanDraft(input)
+    assertEquals(listOf("kmp", "kotlin"), draft.selectedPlatformSlugs.sorted())
+  }
+
+  @Test
+  fun `PD8 guard is unaffected by packs without baseline layers`() {
+    val phpPack = platformPack(slug = "php")
+    val input = policyInput(
+      request = request(
+        platformPackSelection = PlatformPackSelection(
+          mode = PlatformPackSelectionMode.SELECTED,
+          selectedSlugs = setOf("php"),
+        ),
+      ),
+      platformPacks = listOf(phpPack, platformPack(slug = "kotlin")),
+    )
+
+    val draft = InstallPlanPolicy.buildPlanDraft(input)
+    assertEquals(listOf("php"), draft.selectedPlatformSlugs)
+  }
+
   private fun policyInput(
     request: skillbill.install.model.InstallPlanRequest = request(),
     baseSkills: List<InstallPlanSkill> = listOf(baseSkill("bill-code-review")),
@@ -376,11 +467,22 @@ class InstallPlanPolicyTest {
   private fun platformPack(
     slug: String = "kotlin",
     skills: List<InstallPlanSkill> = listOf(platformSkill("bill-kotlin-code-review", platformSlug = slug)),
+    baselineLayers: List<CodeReviewBaselineLayer> = emptyList(),
   ): InstallPlatformPackSnapshot = InstallPlatformPackSnapshot(
     slug = slug,
     packRoot = path("/repo/platform-packs/$slug"),
     skills = skills,
+    baselineLayers = baselineLayers,
   )
+
+  private fun baselineLayer(platform: String, skill: String, required: Boolean = true): CodeReviewBaselineLayer =
+    CodeReviewBaselineLayer(
+      platform = platform,
+      skill = skill,
+      scope = CodeReviewCompositionScope.SameReviewScope,
+      required = required,
+      mode = CodeReviewCompositionMode.KmpBaseline,
+    )
 
   private fun baseSkill(name: String, sourceDir: Path = path("/repo/skills/$name")): InstallPlanSkill =
     InstallPlanSkill(

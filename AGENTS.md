@@ -102,7 +102,7 @@ Declare add-on consumers in the owning pack manifest under `addon_usage`. Do not
 
 ## Internal Skills
 
-A base skill declaring `internal-for: <parent-skill-name>` in `content.md` frontmatter installs as a `<skill-name>.md` sidecar inside the parent's installed directory instead of being listed; the parent invokes it by reading that sibling file in-session. Full contract and worked example: `docs/skill-source-generation.md`.
+A base or platform-pack skill declaring `internal-for: <parent-skill-name>` in `content.md` frontmatter installs as a `<skill-name>.md` sidecar inside the parent's installed directory instead of being listed; the parent invokes it by reading that sibling file in-session. Full contract and worked examples: `docs/skill-source-generation.md`.
 
 ## Skill Authoring
 

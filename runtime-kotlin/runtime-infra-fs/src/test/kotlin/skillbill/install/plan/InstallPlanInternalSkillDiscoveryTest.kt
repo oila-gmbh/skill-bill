@@ -95,16 +95,35 @@ class InstallPlanInternalSkillDiscoveryTest {
   }
 
   @Test
-  fun `validateInstallPlanInternalSkills fails when a platform-pack skill declares internal-for`() {
+  fun `validateInstallPlanInternalSkills passes for a platform-pack skill internal to a base parent`() {
+    // SKILL-104 (PD1): the base-skill-only restriction is relaxed; a pack skill may now be internal.
     val skills = listOf(
-      planSkill("bill-feature", internalFor = null),
-      planSkill("bill-kotlin-code-review", internalFor = "bill-feature", kind = InstallPlanSkillKind.PLATFORM_PACK),
+      planSkill("bill-code-review", internalFor = null),
+      planSkill("bill-kotlin-code-review", internalFor = "bill-code-review", kind = InstallPlanSkillKind.PLATFORM_PACK),
+    )
+    validateInstallPlanInternalSkills(skills)
+  }
+
+  @Test
+  fun `validateInstallPlanInternalSkills fails when a platform-pack skill declares a pack-skill parent`() {
+    // PD1 preserved rule: a pack skill can never be a parent.
+    val skills = listOf(
+      planSkill(
+        "bill-kotlin-code-review",
+        internalFor = null,
+        kind = InstallPlanSkillKind.PLATFORM_PACK,
+      ),
+      planSkill(
+        "bill-kotlin-code-review-security",
+        internalFor = "bill-kotlin-code-review",
+        kind = InstallPlanSkillKind.PLATFORM_PACK,
+      ),
     )
     val error = assertFailsWith<InvalidInternalSkillClassificationError> {
       validateInstallPlanInternalSkills(skills)
     }
-    assertTrue(error.message.orEmpty().contains("platform-pack skill"))
-    assertTrue(error.message.orEmpty().contains("bill-kotlin-code-review"))
+    assertTrue(error.message.orEmpty().contains("listed base skill"))
+    assertTrue(error.message.orEmpty().contains("bill-kotlin-code-review-security"))
   }
 
   @Test

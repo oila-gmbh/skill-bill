@@ -1,6 +1,7 @@
 ---
 name: bill-php-code-review-ui
 description: Use when reviewing PHP UI correctness and framework usage for Blade, Twig, Livewire, Inertia, Filament, forms, components, and server-rendered interaction state.
+internal-for: bill-code-review
 ---
 
 # UI Review Specialist

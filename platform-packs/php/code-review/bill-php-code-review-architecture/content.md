@@ -1,6 +1,7 @@
 ---
 name: bill-php-code-review-architecture
 description: Use when reviewing PHP architecture, module boundaries, dependency direction, source-of-truth ownership, and framework coupling.
+internal-for: bill-code-review
 ---
 
 # Architecture Review Specialist

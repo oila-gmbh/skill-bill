@@ -1,6 +1,7 @@
 ---
 name: bill-php-code-review-performance
 description: Use when reviewing PHP performance risks including hot paths, repeated database or network work, serialization waste, memory pressure, and throughput regressions.
+internal-for: bill-code-review
 ---
 
 # Performance Review Specialist

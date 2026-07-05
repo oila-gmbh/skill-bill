@@ -344,6 +344,26 @@ class InvalidInternalSkillClassificationError(
   cause: Throwable? = null,
 ) : ShellContentContractException(message, cause)
 
+/**
+ * SKILL-104 (PD8): surfaced at install-plan time when the platform selection includes a pack whose
+ * manifest declares a required `code_review_composition.baseline_layers` entry in an unselected
+ * pack. Selecting the baseline pack (or `ALL`) resolves it; the shell never silently auto-includes
+ * a baseline. Mirrors [ReconciliationConflictError]; the dedicated subclass keeps baseline
+ * co-presence failures distinguishable from declaration and reconciliation failures in logs/tests.
+ */
+class MissingBaselinePlatformSelectionError(
+  val selectingSlug: String,
+  val requiredBaselineSlug: String,
+  val declaringManifestPath: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Platform pack '$selectingSlug' declares a required baseline layer on '$requiredBaselineSlug' " +
+    "(declared in '$declaringManifestPath'), but '$requiredBaselineSlug' is not in the selection. " +
+    "Select '$requiredBaselineSlug' (or use platform mode ALL) so the baseline sidecar is present " +
+    "at review time.",
+  cause,
+)
+
 open class ScaffoldError(
   message: String,
   cause: Throwable? = null,

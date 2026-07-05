@@ -1,6 +1,7 @@
 ---
 name: bill-ios-code-review-performance
 description: Use when reviewing iOS performance risks on hot reducer paths, main-thread work, and image/PDF-heavy processing.
+internal-for: bill-code-review
 ---
 
 # Performance Review Specialist

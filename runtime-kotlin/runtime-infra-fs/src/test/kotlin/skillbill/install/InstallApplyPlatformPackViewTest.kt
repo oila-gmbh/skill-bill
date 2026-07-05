@@ -41,4 +41,44 @@ class InstallApplyPlatformPackViewTest : InstallApplyTestSupport() {
       "unselected pack manifest must not be discoverable",
     )
   }
+
+  @Test
+  fun `apply succeeds when a selected platform pack skill declares internal-for and stages as a sidecar`() {
+    val fixture = setupApplyFixture()
+    val internalPackSkillDir = fixture.repoRoot.resolve("platform-packs/kotlin/code-review/bill-kotlin-code-review")
+    Files.writeString(
+      internalPackSkillDir.resolve("content.md"),
+      """
+      |---
+      |name: bill-kotlin-code-review
+      |description: Internal pack dispatch target.
+      |internal-for: bill-code-review
+      |---
+      |
+      |Authored internal pack body.
+      """.trimMargin(),
+    )
+    Files.createDirectories(fixture.home.resolve(".codex"))
+
+    val plan = InstallOperations.planInstall(
+      fixture.request(
+        selectedPlatforms = setOf("kotlin"),
+        agents = setOf(InstallAgent.CODEX),
+      ),
+    )
+
+    val result = InstallOperations.applyInstall(plan)
+
+    assertEquals(InstallApplyStatus.SUCCESS, result.status)
+    val agentRoot = fixture.home.resolve("agent-skill-targets/codex")
+    val internalPackView = agentRoot.resolve("platform-packs/kotlin/code-review/bill-kotlin-code-review")
+    assertFalse(
+      Files.exists(internalPackView, LinkOption.NOFOLLOW_LINKS),
+      "internal pack skill must not materialize a standalone platform-packs symlink",
+    )
+    assertTrue(
+      Files.isRegularFile(agentRoot.resolve("bill-code-review/bill-kotlin-code-review.md")),
+      "internal pack skill must stage as a sibling sidecar of its parent's installed directory",
+    )
+  }
 }
