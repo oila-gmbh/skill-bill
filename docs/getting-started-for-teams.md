@@ -19,6 +19,12 @@ The useful adoption unit is:
 
 The current normal runtime is Kotlin-only. Installed `skill-bill` and `skill-bill-mcp` launchers point at packaged Kotlin distribution scripts copied by `./install.sh` into `~/.skill-bill/runtime/`. Normal use does not invoke Gradle and does not fall back to a legacy runtime.
 
+For the longer-term team product direction, see
+[Skill Bill Teams Roadmap](team-control-plane-roadmap.md). That roadmap treats
+team bundle sync, admin editing, telemetry-driven tuning, and hosted org
+controls as separate phases so the local governance model can prove itself
+before any SaaS control plane is built.
+
 ## Before Inviting The Team
 
 One maintainer should do this first:
