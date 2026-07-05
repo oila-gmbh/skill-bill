@@ -1,5 +1,8 @@
+@file:Suppress("TooManyFunctions") // single install-plan policy seam: selection, agent, snapshot, and baseline guards
+
 package skillbill.install.policy
 
+import skillbill.error.MissingBaselinePlatformSelectionError
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.InstallAgentSelectionMode
 import skillbill.install.model.InstallAgentTarget
@@ -43,6 +46,7 @@ object InstallPlanPolicy {
     validateRequest(input)
     val agents = resolveAgentTargets(input)
     val selectedPlatformSlugs = selectedPlatformSlugs(input)
+    validateBaselineCoPresence(input, selectedPlatformSlugs)
     val discoveredPlatformPacks = input.platformPacks.map { pack ->
       PlannedPlatformPack(
         slug = pack.slug,
@@ -134,6 +138,36 @@ private fun validateAgentSelection(input: InstallPolicyInput) {
     require(missingTargets.isEmpty()) {
       "Manual agent selection has no explicit or default target path for agent(s): " +
         missingTargets.map(InstallAgent::id).sorted().joinToString(", ") + "."
+    }
+  }
+}
+
+/**
+ * SKILL-104 (PD8): a selected pack whose manifest declares a required `code_review_composition
+ * .baseline_layers` entry in an unselected pack would leave the baseline sidecar absent at review
+ * time. Loud-fail with [MissingBaselinePlatformSelectionError]; the shell never silently
+ * auto-includes a baseline pack. `ALL` selection (every discovered slug selected) is trivially safe.
+ * Packs without baseline layers are unaffected.
+ */
+private fun validateBaselineCoPresence(input: InstallPolicyInput, selectedPlatformSlugs: List<String>) {
+  val selected = selectedPlatformSlugs.toSet()
+  val bySlug = input.platformPacks.associateBy(InstallPlatformPackSnapshot::slug)
+  // ALL selection covers every discovered slug, so any required baseline is in-selection.
+  if (selected.containsAll(bySlug.keys)) {
+    return
+  }
+  bySlug.values.forEach { pack ->
+    if (pack.slug !in selected) {
+      return@forEach
+    }
+    pack.baselineLayers.forEach { layer ->
+      if (layer.required && layer.platform !in selected) {
+        throw MissingBaselinePlatformSelectionError(
+          selectingSlug = pack.slug,
+          requiredBaselineSlug = layer.platform,
+          declaringManifestPath = pack.packRoot.resolve("platform.yaml").toString(),
+        )
+      }
     }
   }
 }

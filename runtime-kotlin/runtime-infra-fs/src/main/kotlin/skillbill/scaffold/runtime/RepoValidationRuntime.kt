@@ -144,13 +144,20 @@ object RepoValidationRuntime {
     }
     validateInternalSidecarCollisions(skillFiles + platformSkillFiles, issues)
     validateInternalSkillClassification(skillFiles, platformSkillFiles, issues)
-    validateInternalSidecarReferences(skillFiles, issues)
+    // SKILL-104 (PD1): sidecar reference validation must scan pack content files too, so a pack
+    // child's `<skill-name>.md` reference resolves across the union of base+pack effective parents.
+    validateInternalSidecarReferences(skillFiles + platformSkillFiles, issues)
     validateSkillSourceShape(skillFiles.values, root, issues)
     addonFiles.forEach { addonFile ->
       validateAddonFile(addonFile, root, issues)
     }
 
-    validateReadme(root.resolve("README.md"), skillFiles.keys.toSet(), internalSkillNames(skillFiles), issues)
+    validateReadme(
+      root.resolve("README.md"),
+      skillFiles.keys.toSet(),
+      internalSkillNames(skillFiles + platformSkillFiles),
+      issues,
+    )
     validateSkillReferences(root, skillNames, issues)
     validateSkillOverrides(root.resolve(".agents/skill-overrides.example.md"), skillNames, required = true, issues)
     validateSkillOverrides(root.resolve(".agents/skill-overrides.md"), skillNames, required = false, issues)
@@ -471,9 +478,10 @@ object RepoValidationRuntime {
   }
 
   /**
-   * SKILL-102: returns the set of base skill names whose `content.md` declares
+   * SKILL-102 / SKILL-104: returns the set of skill names whose `content.md` declares
    * `internal-for: <parent>`. Used to exclude internal skills from the README catalog requirement
-   * (they install as sidecars inside a parent and are never listed or user-invocable).
+   * (they install as sidecars inside a parent and are never listed or user-invocable). Covers both
+   * base and platform-pack skills so internal pack children are also excluded (PD1 extension).
    */
   private fun internalSkillNames(skillFiles: Map<String, Path>): Set<String> =
     skillFiles.entries.mapNotNull { (skillName, contentFile) ->

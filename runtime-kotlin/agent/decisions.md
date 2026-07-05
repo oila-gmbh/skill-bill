@@ -613,3 +613,36 @@ resume" both hold without a stateful cross-segment counter.
 `(issue_key, subtask_id, child workflow_id)`; `goal_started`/`goal_finished` are
 per-segment (distinct `:seg:` ids) and stats group by `issue_key`;
 `attempt_count` is per-segment (1 today).
+
+## 2026-07-05 — pack skills internalize by flattening into one parent; baseline co-presence is loud-fail (SKILL-104)
+
+Context: SKILL-102's internal-skill mechanism deliberately loud-failed `internal-for` on
+platform-pack skills. The code-review family (34 stack skills across ios/kotlin/kmp/php) needs
+the same hiding treatment, but pack skills are discovered, selected, staged, and hashed through a
+selection-gated pipeline distinct from base skills.
+
+Decision: Three Pinned Decisions shape the extension. **PD1** keeps the single shared evaluator
+(`InternalSkillClassification.kt`) and relaxes ONLY the base-skill-only rule — every other rule
+(blank value, self parent, unknown parent, parent must be a listed base skill, depth is 1) is
+byte-for-byte unchanged; the `isBaseSkill` flag now feeds only the parent-side rule. **PD2**
+flattens: all 34 sidecars are siblings inside `bill-code-review`'s staged directory (depth stays
+1; nesting would require a sidecar-hosting-sidecar the staging model cannot express). **PD3**
+makes sidecar discovery selection-aware: `discoverInternalSidecarTargets` accepts the plan's
+selected pack skills and unions them with the skills-root scan, so an unselected pack contributes
+no sidecar and no hash bytes (inertness — a repo with no opted-in pack skill stages
+byte-identically). **PD8** adds a plan-time guard (`MissingBaselinePlatformSelectionError`) that
+loud-fails when a selected pack declares a required `baseline_layers` entry in an unselected
+pack; the shell never silently auto-includes a baseline.
+
+Reason: A `platform.yaml`-level "internal" flag would fork a second classification source and
+desynchronize the three seams (authoring, install-plan, validate); PD1's whole point is one
+evaluator. Selection-aware staging is the only way to honor pack selection (hidden skills from
+unselected packs must not ship) without breaking cache reuse — the parent's content hash folds
+only the selected sidecars, so changing selection re-stages. The PD8 guard is pinned here, not
+deferred, because today's behavior (selecting KMP alone silently installs a review whose baseline
+is absent) becomes load-bearing once the baseline is a sidecar.
+
+Trade-off: Pack sidecar discovery is source-aware (it consults `InstallPlanSkill.sourceDir` from
+the plan, not an independent re-scan of `platform-packs/`), so the three staging seams (plan
+builder, apply, link-skill fallback) each thread the selected pack skills. The link-skill flow
+refuses internal skills upstream and never reaches the pack-sidecar path.

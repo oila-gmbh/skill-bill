@@ -1,5 +1,17 @@
 # Boundary History — runtime-kotlin/runtime-infra-fs
 
+## [2026-07-05] SKILL-104 internal review packs (subtask 1: pack-aware internal-skill mechanism)
+Areas: runtime-infra-fs/scaffold/authoring, runtime-infra-fs/install/plan, runtime-infra-fs/install/staging, runtime-infra-fs/install/apply, runtime-infra-fs/scaffold/runtime, runtime-domain/install/policy, runtime-domain/install/model, runtime-contracts/error
+- `InternalSkillClassification.kt` base-skill-only violation removed (PD1); the `isBaseSkill` flag now feeds only the parent-side rule. Every preserved rule keeps its exact message; tests add pack-skill variants for blank/self/unknown/pack-parent/chained.
+- `discoverInternalSidecarTargets` gains a `selectedPackSkills` param (PD3): union of skills-root scan + selected pack skills declaring `internal-for == parent`. Renders through the SAME `discoverTargets`+`renderWrapper` path (full governed wrapper, SKILL-102 PD6 parity). Three callers thread it: `InstallPlanBuilder.buildStagingIntent`, `InstallApplyStaging.materializeValidatedPlannedStaging`, `InstallStaging.stageInstalledSkill`. reusable
+- Inertness: with no opted-in pack skill the new arg is empty and behavior is byte-identical (test + real-repo `skill-bill validate` 0 issues).
+- PD8: new `MissingBaselinePlatformSelectionError` (carries selecting/required slugs + manifest path) + plan-time guard in `InstallPlanPolicy.buildPlanDraft`. ALL selection is trivially safe; packs without baseline layers unaffected.
+- Validate-seam parity: `validateInternalSidecarReferences` and `internalSkillNames` (README exclusion) now scan the union of base+pack skill files; `validateInternalSidecarCollisions` already unioned both.
+- detekt: `InstallPlanPolicy` and `stageInstalledSkill` crossed thresholds (TooManyFunctions / LongParameterList+LongMethod) — resolved with `@Suppress` + one-line rationale (established repo pattern).
+- Pre-existing unrelated red: `CliFeatureTaskRuntimeRuntimeTest "feature-task-runtime run requires issue key and spec path"` fails on the clean tree too (zcode prose-only env refusal precedes the issue_key check) — not caused by this change.
+Feature flag: N/A
+Acceptance criteria: subtask-1 10/10 implemented
+
 ## [2026-07-03] SKILL-100 zcode agent support (subtask 2: native-agent-mcp-runtime)
 Areas: runtime-infra-fs/install/apply, runtime-infra-fs/launcher/agentrun, runtime-infra-fs/launcher/mcp
 - Closed the six exhaustive-`when` sites subtask 1 flagged as won't-compile: `linkZcodeAgents`/`unlinkZcodeAgents` (modeled on Junie) wired into `FileSystemInstallAdapters` link/unlink + a `nativeAgentInstallers` registry entry.

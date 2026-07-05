@@ -2,6 +2,7 @@
 
 package skillbill.install.staging
 
+import skillbill.install.model.InstallPlanSkill
 import skillbill.scaffold.authoring.discoverTargets
 import skillbill.scaffold.authoring.parseInternalForFrontmatter
 import skillbill.scaffold.authoring.renderWrapper
@@ -25,16 +26,56 @@ internal data class InternalSidecarTarget(
  * Discovers the internal skills that declare [parentSkillName] as their parent, sorted by skill
  * name so staging is deterministic. The install-plan seam already validated the classification;
  * this lookup is read-only and trusts that validation.
+ *
+ * SKILL-104 (PD3): the union of (a) skills-root children with matching `internal-for` (today's
+ * scan) and (b) selected pack skills from the plan whose `internalFor` matches the parent. Pack
+ * children contribute ONLY when their pack is selected, so an unselected pack stages nothing and
+ * contributes no hash bytes (inertness). The same `discoverTargets` + `renderWrapper` path renders
+ * both base and pack children (SKILL-102 PD6 parity: full governed wrapper, no trimmed body).
  */
 internal fun discoverInternalSidecarTargets(
   repoRoot: Path,
   parentSkillName: String,
   skillsRoot: Path,
+  selectedPackSkills: List<InstallPlanSkill> = emptyList(),
 ): List<InternalSidecarTarget> {
+  val baseChildren = discoverBaseSkillSidecarTargets(parentSkillName, skillsRoot)
+  val packChildren = selectedPackSkills
+    .filter { skill -> skill.internalFor == parentSkillName && skill.name != parentSkillName }
+    .sortedBy { skill -> skill.name }
+  if (baseChildren.isEmpty() && packChildren.isEmpty()) {
+    return emptyList()
+  }
+  val discovered = discoverTargets(repoRoot.toAbsolutePath().normalize())
+  val byName = sortedMapOf<String, InternalSidecarTarget>()
+  baseChildren.forEach { (skillName, sourceDir) ->
+    byName[skillName] = InternalSidecarTarget(
+      skillName = skillName,
+      sourceDir = sourceDir,
+      renderedWrapper = renderWrapper(discovered.getValue(skillName)),
+    )
+  }
+  packChildren.forEach { skill ->
+    // A pack child that shares a name with a base child would be a duplicate; the plan's
+    // `requireUniqueSkillNames` already forbids that, so a collision here is a programmer error.
+    require(skill.name !in byName) {
+      "Internal pack skill '${skill.name}' duplicates a base-skill sidecar name for parent " +
+        "'$parentSkillName'."
+    }
+    byName[skill.name] = InternalSidecarTarget(
+      skillName = skill.name,
+      sourceDir = skill.sourceDir,
+      renderedWrapper = renderWrapper(discovered.getValue(skill.name)),
+    )
+  }
+  return byName.values.toList()
+}
+
+private fun discoverBaseSkillSidecarTargets(parentSkillName: String, skillsRoot: Path): List<Pair<String, Path>> {
   if (!Files.isDirectory(skillsRoot)) {
     return emptyList()
   }
-  val childDirs = Files.list(skillsRoot).use { stream ->
+  return Files.list(skillsRoot).use { stream ->
     stream
       .filter { dir -> Files.isDirectory(dir, LinkOption.NOFOLLOW_LINKS) }
       .filter { dir -> dir.fileName.toString() != parentSkillName }
@@ -44,18 +85,7 @@ internal fun discoverInternalSidecarTargets(
         Files.isRegularFile(contentFile, LinkOption.NOFOLLOW_LINKS) &&
           parseInternalForFrontmatter(contentFile) == parentSkillName
       }
+      .map { dir -> dir.fileName.toString() to dir.toAbsolutePath().normalize() }
       .toList()
-  }
-  if (childDirs.isEmpty()) {
-    return emptyList()
-  }
-  val discovered = discoverTargets(repoRoot.toAbsolutePath().normalize())
-  return childDirs.map { dir ->
-    val skillName = dir.fileName.toString()
-    InternalSidecarTarget(
-      skillName = skillName,
-      sourceDir = dir.toAbsolutePath().normalize(),
-      renderedWrapper = renderWrapper(discovered.getValue(skillName)),
-    )
   }
 }
