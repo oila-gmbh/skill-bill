@@ -2,6 +2,7 @@ package skillbill.install.apply
 
 import skillbill.install.model.InstallPlan
 import skillbill.install.model.InstallPlanSkill
+import skillbill.install.model.InstallPlanSkillKind
 import skillbill.install.model.InstallStagingPathIntent
 import skillbill.install.model.RenderedSkill
 import skillbill.install.staging.applicablePointers
@@ -72,10 +73,16 @@ private fun materializeValidatedPlannedStaging(inputs: PlannedStagingMaterializa
   )
   // Internal children are re-discovered at apply time so the planned content hash (which folded
   // them in) recomputes identically and reuse vs rebuild stays consistent with staging.
+  // SKILL-104 (PD3): selected pack skills declaring internal-for surface as sidecars here, mirroring
+  // the plan-time discovery so plan and apply agree on the selection-shaped sidecar set.
+  val selectedPackSkills = plan.skills.filter {
+    it.kind == InstallPlanSkillKind.PLATFORM_PACK && it.internalFor != null
+  }
   val internalChildren = discoverInternalSidecarTargets(
     repoRoot = plan.request.repoRoot,
     parentSkillName = skill.name,
     skillsRoot = plan.request.targetPaths.skillsRoot,
+    selectedPackSkills = selectedPackSkills,
   )
   val sidecarNames = internalChildren.map { child -> "${child.skillName}.md" }.toSet()
   val authored = authoredFilesFor(inputs.resolvedSource, pointers, supportPointers, sidecarNames)
@@ -106,6 +113,7 @@ private fun materializeValidatedPlannedStaging(inputs: PlannedStagingMaterializa
     home = plan.request.home,
     manifests = inputs.platformManifests,
     skillsRoot = plan.request.targetPaths.skillsRoot,
+    selectedPackSkills = selectedPackSkills,
   )
   val stagedDir = staged.stagingDir.toAbsolutePath().normalize()
   require(staged.contentHash == intent.contentHash && stagedDir == inputs.expectedStagingDir) {

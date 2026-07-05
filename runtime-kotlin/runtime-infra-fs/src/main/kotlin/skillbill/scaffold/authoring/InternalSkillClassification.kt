@@ -18,6 +18,11 @@ import java.nio.file.Path
  * install-plan discovery throw the first violation ([requireValidInternalSkillClassification]);
  * `skill-bill validate` collects every violation as an issue string. One implementation so the
  * seams cannot drift apart.
+ *
+ * SKILL-104 (PD1): platform-pack skills may also declare `internal-for`. The base-skill-only
+ * restriction is relaxed; the [InternalSkillDeclaration.isBaseSkill] flag now feeds only the
+ * parent-side rule (a pack skill can never be a parent). Selection-aware staging (PD3) decides
+ * which pack sidecars land in a parent's installed directory.
  */
 internal data class InternalSkillDeclaration(
   val skillName: String,
@@ -32,9 +37,9 @@ internal fun internalSkillClassificationViolations(declarations: Collection<Inte
     val declaredParent = declaration.declaredParent ?: return@mapNotNull null
     val prefix = "${declaration.contentFile}: internal skill '${declaration.skillName}'"
     when {
-      !declaration.isBaseSkill ->
-        "$prefix declares 'internal-for:' but is a platform-pack skill; internal skills are only " +
-          "supported for base skills under skills/."
+      // SKILL-104 (PD1): platform-pack skills may now declare internal-for. The isBaseSkill flag
+      // is no longer a declaration-side violation; it only feeds the parent-side rule below
+      // (a pack skill can never be a parent).
       declaredParent.isBlank() ->
         "$prefix declares parent via 'internal-for:' with an empty value; the value must be the " +
           "name of another discovered skill."

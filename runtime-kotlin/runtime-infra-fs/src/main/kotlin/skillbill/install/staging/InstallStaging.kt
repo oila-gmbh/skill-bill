@@ -200,12 +200,14 @@ internal fun computeInstallContentHash(
   return hashBytes.take(INSTALL_CACHE_KEY_BYTES).joinToString("") { byte -> "%02x".format(byte) }
 }
 
+@Suppress("LongParameterList", "LongMethod") // cohesive staging entry: each parameter is a distinct staging-cache input
 internal fun stageInstalledSkill(
   repoRoot: Path,
   sourceSkillDir: Path,
   home: Path,
   manifests: List<PlatformManifest>? = null,
   skillsRoot: Path? = null,
+  selectedPackSkills: List<skillbill.install.model.InstallPlanSkill> = emptyList(),
 ): RenderedSkill {
   val resolvedSource = sourceSkillDir.toAbsolutePath().normalize()
   val resolvedRepoRoot = repoRoot.toAbsolutePath().normalize()
@@ -216,7 +218,15 @@ internal fun stageInstalledSkill(
   // F-002: internal-child discovery must use the same skills root the plan used (CLI --skills),
   // or planned and staged hashes diverge and apply fails for any parent with internal children.
   val resolvedSkillsRoot = (skillsRoot ?: resolvedRepoRoot.resolve("skills")).toAbsolutePath().normalize()
-  val internalChildren = discoverInternalSidecarTargets(resolvedRepoRoot, skillName, resolvedSkillsRoot)
+  // SKILL-104 (PD3): selected pack skills declaring internal-for surface as sidecars here. The
+  // link-skill flow (resolveStagedSymlinkTarget) refuses internal skills upstream and never reaches
+  // this path with pack children, so the default empty list preserves inertness for that flow.
+  val internalChildren = discoverInternalSidecarTargets(
+    repoRoot = resolvedRepoRoot,
+    parentSkillName = skillName,
+    skillsRoot = resolvedSkillsRoot,
+    selectedPackSkills = selectedPackSkills,
+  )
   val sidecarNames = internalChildren.map { child -> "${child.skillName}.md" }.toSet()
   val authored = authoredFilesFor(
     sourceSkillDir = resolvedSource,

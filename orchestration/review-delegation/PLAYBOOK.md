@@ -40,7 +40,7 @@ Governed add-ons may narrow or enrich delegated review instructions only after t
 
 - Use the `Task` tool / subagent mechanism.
 - Launch one subagent per delegated review skill or specialist review pass.
-- Tell each subagent to read the delegated skill file as the primary rubric and return only meaningful findings.
+- Tell each subagent to read the sibling sidecar file `<delegated-skill-name>.md` co-located with `bill-code-review`'s `SKILL.md` as the primary rubric and return only meaningful findings. Do not use the Skill tool for the delegated review skill — it is an internal skill and is not listed.
 - Tell each delegated worker to return structured review output plus telemetry-relevant metadata to the parent and not to call `import_review` or `triage_findings`.
 - Run eligible delegated passes in parallel and merge the results in the parent review.
 - Do not inline delegated review logic on Claude when Task/subagents are available.
@@ -50,7 +50,7 @@ Governed add-ons may narrow or enrich delegated review instructions only after t
 - Explicitly request subagents.
 - Spawn one subagent per delegated review skill or specialist review pass.
 - Use the same model as the parent thread by default.
-- Tell each subagent to read the delegated skill file and return structured review findings only.
+- Tell each subagent to read the sibling sidecar file `<delegated-skill-name>.md` co-located with `bill-code-review`'s `SKILL.md` and return structured review findings only. Do not use the Skill tool for the delegated review skill — it is an internal skill and is not listed.
 - Tell each delegated worker to return structured review output plus telemetry-relevant metadata to the parent and not to call `import_review` or `triage_findings`.
 - Wait for all subagents and merge their results in the parent review.
 - Do not run delegated review passes inline.

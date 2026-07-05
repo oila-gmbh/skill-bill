@@ -1,6 +1,7 @@
 ---
 name: bill-ios-code-review-api-contracts
 description: Use when reviewing iOS GraphQL/Apollo API-contract risks including generated code drift, cache/field-policy correctness, and schema/codegen alignment.
+internal-for: bill-code-review
 ---
 
 # API Contracts Review Specialist

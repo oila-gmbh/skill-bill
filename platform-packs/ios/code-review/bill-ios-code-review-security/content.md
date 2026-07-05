@@ -1,6 +1,7 @@
 ---
 name: bill-ios-code-review-security
 description: Use when reviewing iOS security risks including Keychain-only token storage, credential logging, and auth/session handling.
+internal-for: bill-code-review
 ---
 
 # Security Review Specialist

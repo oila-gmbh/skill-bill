@@ -1,6 +1,7 @@
 ---
 name: bill-ios-code-review-reliability
 description: Use when reviewing iOS background-sync reliability risks including chained interceptor composition, error-logging discipline, and permission-check completeness.
+internal-for: bill-code-review
 ---
 
 # Reliability Review Specialist

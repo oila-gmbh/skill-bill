@@ -164,19 +164,102 @@ class InternalSkillClassificationTest {
   }
 
   @Test
-  fun `classification fails when a platform-pack skill declares internal-for`() {
+  fun `classification passes when a platform-pack skill declares internal-for on a listed base parent`() {
+    // SKILL-104 (PD1): the base-skill-only restriction is relaxed; a pack skill may now be internal.
     val targets = mapOf(
-      "bill-feature" to target("bill-feature", internalFor = null),
+      "bill-code-review" to target("bill-code-review", internalFor = null),
       "bill-kotlin-code-review" to target(
         "bill-kotlin-code-review",
-        internalFor = "bill-feature",
+        internalFor = "bill-code-review",
+        platform = "kotlin",
+      ),
+    )
+    validateInternalSkillClassification(targets)
+  }
+
+  @Test
+  fun `classification fails when a platform-pack skill declares an empty internal-for value`() {
+    val targets = mapOf(
+      "bill-code-review" to target("bill-code-review", internalFor = null),
+      "bill-kotlin-code-review" to target(
+        "bill-kotlin-code-review",
+        internalFor = "  ",
         platform = "kotlin",
       ),
     )
     val error = assertFailsWith<InvalidInternalSkillClassificationError> {
       validateInternalSkillClassification(targets)
     }
-    assertMessageNames(error, "bill-kotlin-code-review", "platform-pack skill")
+    assertMessageNames(error, "bill-kotlin-code-review", "empty value")
+  }
+
+  @Test
+  fun `classification fails when a platform-pack skill declares itself as parent`() {
+    val targets = mapOf(
+      "bill-kotlin-code-review" to target(
+        "bill-kotlin-code-review",
+        internalFor = "bill-kotlin-code-review",
+        platform = "kotlin",
+      ),
+    )
+    val error = assertFailsWith<InvalidInternalSkillClassificationError> {
+      validateInternalSkillClassification(targets)
+    }
+    assertMessageNames(error, "bill-kotlin-code-review", "skill itself")
+  }
+
+  @Test
+  fun `classification fails when a platform-pack skill declares an unknown parent`() {
+    val targets = mapOf(
+      "bill-kotlin-code-review" to target(
+        "bill-kotlin-code-review",
+        internalFor = "bill-no-such-skill",
+        platform = "kotlin",
+      ),
+    )
+    val error = assertFailsWith<InvalidInternalSkillClassificationError> {
+      validateInternalSkillClassification(targets)
+    }
+    assertMessageNames(error, "bill-kotlin-code-review", "not a discovered skill")
+  }
+
+  @Test
+  fun `classification fails when a platform-pack skill declares a pack-skill parent`() {
+    // PD1 preserved rule: a pack skill can never be a parent.
+    val targets = mapOf(
+      "bill-kotlin-code-review" to target(
+        "bill-kotlin-code-review",
+        internalFor = null,
+        platform = "kotlin",
+      ),
+      "bill-kotlin-code-review-security" to target(
+        "bill-kotlin-code-review-security",
+        internalFor = "bill-kotlin-code-review",
+        platform = "kotlin",
+      ),
+    )
+    val error = assertFailsWith<InvalidInternalSkillClassificationError> {
+      validateInternalSkillClassification(targets)
+    }
+    assertMessageNames(error, "bill-kotlin-code-review-security", "listed base skill")
+  }
+
+  @Test
+  fun `classification fails when a platform-pack skill chains onto an internal base skill`() {
+    // PD1 preserved rule: chained internal-for stays forbidden (depth is 1).
+    val targets = mapOf(
+      "bill-feature" to target("bill-feature", internalFor = null),
+      "bill-feature-task" to target("bill-feature-task", internalFor = "bill-feature"),
+      "bill-kotlin-code-review" to target(
+        "bill-kotlin-code-review",
+        internalFor = "bill-feature-task",
+        platform = "kotlin",
+      ),
+    )
+    val error = assertFailsWith<InvalidInternalSkillClassificationError> {
+      validateInternalSkillClassification(targets)
+    }
+    assertMessageNames(error, "bill-kotlin-code-review", "chained internal-for")
   }
 
   @Test

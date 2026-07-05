@@ -1,13 +1,19 @@
-# Internal Skills and the Feature-Execution Family
+# Internal Skills Architecture
 
-How six skills became one visible entry point: the `internal-for`
+How dispatch-only skills become one visible entry point: the `internal-for`
 classification, the sidecar install mechanism, the file-read dispatch
 contract, and where every piece of prose, runtime, and agent machinery lives.
 This is the architecture companion to the authored contract in
 [skill-source-generation.md](skill-source-generation.md) (Internal Skills
 section), which owns the normative rules.
 
-## The idea in one paragraph
+Two families are worked examples here: the feature-execution family (the
+SKILL-102 origin case, base-skill internals) and the code-review family
+(SKILL-104, the platform-pack extension).
+
+## Part 1 — The feature-execution family (base-skill internals, SKILL-102)
+
+### The idea in one paragraph
 
 Before SKILL-102, the feature-execution family put six entries in every
 agent's skill list, but five of them were dispatch targets that only
@@ -264,3 +270,131 @@ consumed at three seams:
 | Routing prose (the actual dispatch sentences) | `skills/bill-feature/content.md`, `skills/bill-feature-task/content.md` |
 | Authored contract (normative) | `docs/skill-source-generation.md` → Internal Skills |
 | Tests | `InternalSkillStagingTest`, `InternalSkillClassificationTest`, `InstallPlanInternalSkillDiscoveryTest`, `RepoValidationRuntimeTest` |
+
+## Part 2 — The code-review family (platform-pack internals, SKILL-104)
+
+The same mechanism, extended to platform-pack skills. The code-review family
+had 34 stack-specific review skills listed to users even though the supported
+entry point is `/bill-code-review`, which detects the dominant stack from
+`platform.yaml` routing signals and routes automatically. Hiding them removes
+34 of ~50 listed skills from every agent's skill list and makes the listed
+surface match the actual product surface.
+
+### What changed in the contract (and what did not)
+
+Exactly one rule changed (PD1): platform-pack skills may now declare
+`internal-for`. Every other classification rule is byte-for-byte unchanged —
+blank value, self parent, unknown parent, parent must be a listed base skill
+under `skills/`, no chained `internal-for` (depth is 1). The pack manifest
+(`platform.yaml`) is never consulted for classification; there is no
+manifest-level internality flag. The 34 one-line frontmatter additions are the
+only authored source change in the family.
+
+### Flatten rule (PD2)
+
+All 34 review-pack skills — the four stack entries AND their 30 specialists —
+declare `internal-for: bill-code-review`. Stack entry skills do **not** become
+parents of their specialists. Nesting (specialists internal to their stack
+entry, entries internal to `bill-code-review`) would require depth-2 sidecars —
+a sidecar hosting sidecars — which the staging model cannot express (a sidecar
+is a file, not a directory). Flattening keeps depth at 1, and sibling
+co-location is what the review flow wants: the routed entry sidecar and the
+specialist rubrics it reads live in one directory.
+
+### Selection-aware sidecars (PD3) and installed layout
+
+A base-skill internal sidecar stages whenever its parent stages. A
+platform-pack internal sidecar stages only when its pack is selected
+(`PlatformPackSelection`: `NONE`/`SELECTED`/`ALL`). Sidecar discovery consults
+the install plan's selected pack skills (each already carries `sourceDir` and
+parsed `internalFor`) rather than re-scanning `platform-packs/` independently
+of selection. The parent's content hash folds exactly the selected sidecars.
+
+After a scratch install with all packs selected, `bill-code-review`'s staged
+directory contains `SKILL.md` plus 34 sibling sidecars — and no agent
+`skills_dir` symlink exists for any of the 34:
+
+```
+~/.claude/skills/bill-code-review
+  → ~/.skill-bill/installed-skills/bill-code-review-<content-hash>/
+      SKILL.md                              rendered governed wrapper — the listed entry
+      content.md                            authored source, copied verbatim
+      bill-ios-code-review.md               sidecar: iOS stack entry (selected)
+      bill-ios-code-review-api-contracts.md sidecar: iOS specialist
+      ... (10 iOS specialists total)
+      bill-kotlin-code-review.md            sidecar: Kotlin stack entry (selected)
+      ... (8 Kotlin specialists total)
+      bill-kmp-code-review.md               sidecar: KMP stack entry (selected)
+      ... (2 KMP specialists total)
+      platform-packs → …                    symlink for pack pointer resolution
+```
+
+With only the Kotlin pack selected, exactly 9 sidecars stage
+(`bill-kotlin-code-review.md` plus its 8 specialists); the other 13 contribute
+nothing. With no review packs selected, `bill-code-review` stages
+byte-identically to a repo with no internal pack skills (inertness). `ALL`
+selection stages every opted-in sidecar. Pack quality-check skills are **not**
+part of this family and stay listed.
+
+### Baseline co-presence guard (PD8)
+
+The KMP pack declares `bill-kotlin-code-review` as a required baseline layer
+(`platform-packs/kmp/platform.yaml`,
+`code_review_composition.baseline_layers`). The KMP orchestrator reads that
+baseline as a sibling sidecar at review time. Once both are sidecars, selecting
+KMP without Kotlin would leave the baseline sidecar absent. Install planning
+loud-fails with `MissingBaselinePlatformSelectionError` when the selection
+includes a pack declaring a required baseline layer in an unselected pack;
+there is no silent auto-include. `ALL` selection is trivially safe.
+
+### Routing walkthrough
+
+```
+user: "/bill-code-review" on a Kotlin diff
+  │
+  ▼
+bill-code-review                                   [listed]
+  │  reads platform.yaml routing signals from the diff
+  │  (strong signals, then tie-breakers) → dominant pack
+  ▼
+read sibling bill-kotlin-code-review.md            [internal sidecar]
+  │  the routed pack entry sidecar; reads its specialist rubric
+  │  selection table (signal → area) and spawns specialists
+  │
+  ├── read sibling bill-kotlin-code-review-architecture.md   [internal sidecar]
+  ├── read sibling bill-kotlin-code-review-security.md       [internal sidecar]
+  ├── read sibling bill-kotlin-code-review-testing.md        [internal sidecar]
+  └── ... per the signal table
+  │
+  ▼
+  each specialist's rubric executes; findings merge into the
+  review summary, risk register, and verdict
+```
+
+For a KMP diff, the routed entry is `bill-kmp-code-review.md`, which also reads
+`bill-kotlin-code-review.md` as its baseline layer sidecar before its own
+specialists. Delegated review workers (parallel lanes, sub-process reviewers)
+receive rendered runtime instructions and rubric content/paths from the parent
+orchestrator — no worker ever resolves one of the 34 via the Skill tool or a
+standalone `skills_dir` path (PD5).
+
+### Selection-shaped variance at a glance
+
+| Selection | Sidecars staged inside `bill-code-review/` |
+|---|---|
+| `ALL` | 34 (4 stack entries + 30 specialists) |
+| Kotlin only | 9 (`bill-kotlin-code-review.md` + 8 specialists) |
+| KMP only | fails — Kotlin is a required baseline (PD8) |
+| KMP + Kotlin | 12 (3 KMP + 9 Kotlin) |
+| None | 0; `bill-code-review` stages inert (byte-identical to no pack internals) |
+
+### File map additions (platform-pack side)
+
+| Concern | Where |
+|---|---|
+| Relaxed rule (pack skills may carry `internal-for`) | `runtime-kotlin/runtime-infra-fs/.../scaffold/authoring/InternalSkillClassification.kt` |
+| Selection-aware sidecar discovery | `.../install/staging/InternalSkillSidecars.kt` (consults `InstallPlanSkill.sourceDir`) |
+| Baseline co-presence guard | `.../install/plan/InstallPlanPolicy.kt`, `MissingBaselinePlatformSelectionError` in `ShellContentContractErrors.kt` |
+| Pack-internal README catalog exemption | `.../scaffold/runtime/RepoValidationRuntime.kt` (`validateReadme`) |
+| Authored pack source (unchanged paths) | `platform-packs/{ios,kotlin,kmp,php}/code-review/<skill>/content.md` |
+| Tests | `InternalSkillStagingTest`, `InternalSkillClassificationTest`, `InstallPlanInternalSkillDiscoveryTest`, `MissingBaselinePlatformSelectionTest`, `RepoValidationRuntimeTest` |

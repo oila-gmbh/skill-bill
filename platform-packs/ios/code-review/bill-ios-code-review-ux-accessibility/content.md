@@ -1,6 +1,7 @@
 ---
 name: bill-ios-code-review-ux-accessibility
 description: Use when reviewing iOS UX and accessibility risks including localization-string completeness and VoiceOver label coverage.
+internal-for: bill-code-review
 ---
 
 # UX & Accessibility Review Specialist

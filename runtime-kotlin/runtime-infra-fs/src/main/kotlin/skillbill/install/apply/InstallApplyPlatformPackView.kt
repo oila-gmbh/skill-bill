@@ -34,12 +34,16 @@ internal fun materializeAgentPlatformPackViews(
     .filter { skill -> skill.kind == InstallPlanSkillKind.PLATFORM_PACK }
     .filter { skill -> skill.staging.status == InstallSkillStagingStatus.STAGED }
     .associateBy { skill -> skill.sourceDir.toAbsolutePath().normalize() }
+  val internalPlatformSkillDirs = plan.skills
+    .filter { skill -> skill.kind == InstallPlanSkillKind.PLATFORM_PACK && skill.internalFor != null }
+    .map { skill -> skill.sourceDir.toAbsolutePath().normalize() }
+    .toSet()
   plan.agents.forEach { agentTarget ->
     runCatching {
       val root = agentTarget.path.toAbsolutePath().normalize().resolve(PLATFORM_PACKS_DIR)
       replaceManagedPlatformPackView(root)
       selectedManifests.forEach { manifest ->
-        materializeOnePack(root, manifest, stagedPlatformSkills)
+        materializeOnePack(root, manifest, stagedPlatformSkills, internalPlatformSkillDirs)
       }
     }.getOrElse { error ->
       failures.add(
@@ -94,6 +98,7 @@ private fun materializeOnePack(
   agentPacksRoot: Path,
   manifest: PlatformManifest,
   stagedPlatformSkills: Map<Path, InstallAppliedSkill>,
+  internalPlatformSkillDirs: Set<Path>,
 ) {
   val packRoot = manifest.packRoot.toAbsolutePath().normalize()
   val destinationPackRoot = agentPacksRoot.resolve(manifest.slug).normalize()
@@ -103,6 +108,9 @@ private fun materializeOnePack(
   val skillDirs = platformSkillDirs(manifest)
   copyPackNonSkillFiles(packRoot, destinationPackRoot, skillDirs)
   skillDirs.forEach { skillDir ->
+    if (skillDir in internalPlatformSkillDirs) {
+      return@forEach
+    }
     val staged = stagedPlatformSkills[skillDir]?.staging?.stagingDir
       ?: error("Selected platform pack '${manifest.slug}' skill '$skillDir' was not staged.")
     val relative = packRoot.relativize(skillDir).toString()

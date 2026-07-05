@@ -1,6 +1,7 @@
 ---
 name: bill-ios-code-review-platform-correctness
 description: Use when reviewing iOS unidirectional-data-flow correctness, main-thread discipline, Combine effect lifecycles, and reducer purity.
+internal-for: bill-code-review
 ---
 
 # Platform Correctness Review Specialist
