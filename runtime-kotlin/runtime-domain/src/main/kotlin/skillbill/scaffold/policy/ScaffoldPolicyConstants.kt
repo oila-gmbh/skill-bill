@@ -100,6 +100,30 @@ val PLATFORM_PACK_PRESET_DESCRIPTORS: Map<String, PlatformPackPreset> =
       ),
       tieBreakers = listOf("Prefer PHP when Composer metadata or .php source files dominate mixed backend signals."),
     ),
+    "python" to PlatformPackPreset(
+      displayName = "Python",
+      strongSignals = listOf(
+        "pyproject.toml",
+        "requirements.txt",
+        "setup.py",
+        "setup.cfg",
+        "Pipfile",
+        "poetry.lock",
+        "uv.lock",
+        "tox.ini",
+        "pytest.ini",
+        ".py",
+        "*.py",
+      ),
+      tieBreakers = listOf(
+        "Prefer Python when pyproject metadata, dependency lockfiles, or first-party .py source files " +
+          "dominate the changed product surface.",
+        "Do not prefer Python for mixed repositories where Python appears only as tooling, one-off " +
+          "scripts, generated clients, or CI glue around another dominant stack.",
+        "Exclude virtual environments, site-packages, build and dist outputs, generated protobuf or " +
+          "OpenAPI clients, and vendored dependency trees from dominance scoring.",
+      ),
+    ),
   )
 
 /**

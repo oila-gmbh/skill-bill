@@ -66,7 +66,7 @@ Dropping skill files into `~/.claude/skills/` doesn't fix that — they're just 
 
 ## Reference pack
 
-Skill Bill ships complete Kotlin/KMP and PHP packs — the stack-specific intelligence that lets the system review and check your code like someone who actually knows that stack. Use them directly if they fit, tune them to your conventions, or add a pack for your stack.
+Skill Bill ships complete Kotlin/KMP, PHP, and Python packs — the stack-specific intelligence that lets the system review and check your code like someone who actually knows that stack. Use them directly if they fit, tune them to your conventions, or add a pack for your stack.
 
 **Daily entry points:**
 
@@ -82,6 +82,7 @@ Skill Bill ships complete Kotlin/KMP and PHP packs — the stack-specific intell
 - `kotlin` — baseline Kotlin review and quality-check behavior
 - `kmp` — Kotlin baseline plus Android/KMP depth and governed add-ons
 - `php` — PHP backend, service, persistence, API, security, testing, UI, UX/accessibility, and quality-check behavior
+- `python` — Python applications, libraries, CLIs, APIs, persistence, security, testing, UI, UX/accessibility, and quality-check behavior
 
 **Full skill catalog:**
 
