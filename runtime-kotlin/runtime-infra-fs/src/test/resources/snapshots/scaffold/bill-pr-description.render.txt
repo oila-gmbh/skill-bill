@@ -14,7 +14,18 @@ Description: Use for pr description work.
 
 ### How It Works
 
-1. **Determine the comparison base** — use the branch this feature branch was created from when known, otherwise compute the best available merge-base from git context. Never assume `main`.
+1. **Determine the comparison base** — the branch this one was forked from (its *parent*), which is **not necessarily `main`**. Resolve it in this order:
+   - If the caller or user passed an explicit base/merge-base, use that.
+   - Otherwise detect the parent branch:
+     ```
+     git show-branch -a 2>/dev/null \
+       | grep '\*' \
+       | grep -v "$(git branch --show-current)" \
+       | head -n1 \
+       | sed 's/.*\[\([^]~^]*\).*/\1/'
+     ```
+   - If detection fails or returns nothing, fall back to `main`.
+   - Confirm the resolved base with the user if it is ambiguous (e.g. detection and `main` disagree). This `git show-branch` heuristic is fragile — it depends on sibling branches being present and can return the wrong parent — so treat its result as a best guess, not authoritative.
 2. **Gather context** — read the git diff from that merge-base to `HEAD`, along with the commit log and branch name.
 3. **Read project guidelines** — check `CLAUDE.md`, `AGENTS.md`, and the matching `bill-pr-description` section in `.agents/skill-overrides.md` when present.
 4. **Search for a repo-native PR template** — this is mandatory before generating anything. Search ALL standard template locations listed below. Read any template file found. This step must produce either a found template or a confirmed absence.
@@ -83,7 +94,6 @@ This template is a fallback. Use it ONLY when no repo-native PR template was fou
 - Keep it concise — reviewers appreciate brevity.
 - Always search for a repo-native PR template first — never skip the search step.
 - If invoked from `bill-feature-task`, check `.feature-specs/<ISSUE_KEY>-<feature-name>/spec.md` for additional context (this file only exists when bill-feature-task created it).
-- If the caller provides an explicit comparison base or merge-base, use it instead of inferring one.
 
 ### Telemetry
 

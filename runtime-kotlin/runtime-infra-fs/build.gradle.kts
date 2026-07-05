@@ -201,3 +201,9 @@ tasks.named("processTestResources") {
   dependsOn(copyGoalProgressEventSchema)
   dependsOn(copyFeatureTaskRuntimePhaseOutputSchema)
 }
+
+tasks.withType<Test>().configureEach {
+  if (project.hasProperty("update-snapshots")) {
+    systemProperty("update-snapshots", "true")
+  }
+}
