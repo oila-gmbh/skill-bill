@@ -137,10 +137,16 @@ private fun classifySkill(
     return classifyNoBaseline(skillRelativePath, upstreamHash, localHash)
   }
 
-  // Upstream exists and a baseline exists. If the local copy is missing the upstream
-  // is simply (re)adopted: treat absent-local as != baseline only when upstream moved,
-  // else as a no-op keep-local against the baseline.
-  val effectiveLocalHash = localHash ?: baselineHash
+  if (localHash == null) {
+    return SkillReconciliationOutcome.Adopt(
+      skillRelativePath = skillRelativePath,
+      upstreamHash = upstreamHash,
+      localHash = baselineHash,
+      baselineHash = baselineHash,
+    )
+  }
+
+  val effectiveLocalHash = localHash
   val localMatchesBaseline = effectiveLocalHash == baselineHash
   val upstreamMatchesBaseline = upstreamHash == baselineHash
 

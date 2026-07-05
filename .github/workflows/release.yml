@@ -74,7 +74,6 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
-          cache: gradle
 
       # Derive RELEASE_VERSION from the pushed tag (v0.2.0 → 0.2.0) or the
       # staging_version input (workflow_dispatch). Gradle reads this env var in

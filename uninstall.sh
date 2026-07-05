@@ -549,9 +549,12 @@ remove_codex_agents_tomls() {
   # and removes any matching filename in $HOME/.codex/agents and
   # $HOME/.agents/agents. Idempotent.
   local output
-  output="$(run_runtime_cli install unlink-codex-agents \
+  if ! output="$(run_runtime_cli install unlink-codex-agents \
     --platform-packs "$PLATFORM_PACKS_DIR" \
-    --skills "$SKILLS_DIR")"
+    --skills "$SKILLS_DIR")"; then
+    warn "  Codex subagent cleanup failed; continuing uninstall so reinstall can recover."
+    return 0
+  fi
   if [[ -z "$output" ]]; then
     info "  nothing to remove"
     return 0
@@ -568,9 +571,12 @@ remove_claude_agent_mds() {
   # directory (~/.claude/agents plus ~/.claude-<name>/agents and CLAUDE_CONFIG_DIR/agents). The
   # runtime resolver fans the unlink across all roots; install historically never removed these.
   local output
-  output="$(run_runtime_cli install unlink-claude-agents \
+  if ! output="$(run_runtime_cli install unlink-claude-agents \
     --platform-packs "$PLATFORM_PACKS_DIR" \
-    --skills "$SKILLS_DIR")"
+    --skills "$SKILLS_DIR")"; then
+    warn "  Claude subagent cleanup failed; continuing uninstall so reinstall can recover."
+    return 0
+  fi
   if [[ -z "$output" ]]; then
     info "  nothing to remove"
     return 0
@@ -594,9 +600,12 @@ remove_opencode_agent_mds() {
   # platform-packs/<slug>/**/opencode-agents/*.md and removes any matching
   # filename in the OpenCode agents directory. Idempotent.
   local output
-  output="$(run_runtime_cli install unlink-opencode-agents \
+  if ! output="$(run_runtime_cli install unlink-opencode-agents \
     --platform-packs "$PLATFORM_PACKS_DIR" \
-    --skills "$SKILLS_DIR")"
+    --skills "$SKILLS_DIR")"; then
+    warn "  OpenCode subagent cleanup failed; continuing uninstall so reinstall can recover."
+    return 0
+  fi
   if [[ -z "$output" ]]; then
     info "  nothing to remove"
     return 0
@@ -616,9 +625,12 @@ remove_junie_agent_mds() {
   # The source discovery walks governed platform-pack and skill junie-agents/*.md
   # definitions and is independent from other agent setup choices.
   local output
-  output="$(run_runtime_cli install unlink-junie-agents \
+  if ! output="$(run_runtime_cli install unlink-junie-agents \
     --platform-packs "$PLATFORM_PACKS_DIR" \
-    --skills "$SKILLS_DIR")"
+    --skills "$SKILLS_DIR")"; then
+    warn "  Junie subagent cleanup failed; continuing uninstall so reinstall can recover."
+    return 0
+  fi
   if [[ -z "$output" ]]; then
     info "  nothing to remove"
     return 0
@@ -638,9 +650,12 @@ remove_zcode_agent_mds() {
   # The source discovery walks governed platform-pack and skill zcode-agents/*.md
   # definitions and is independent from other agent setup choices.
   local output
-  output="$(run_runtime_cli install unlink-zcode-agents \
+  if ! output="$(run_runtime_cli install unlink-zcode-agents \
     --platform-packs "$PLATFORM_PACKS_DIR" \
-    --skills "$SKILLS_DIR")"
+    --skills "$SKILLS_DIR")"; then
+    warn "  zcode subagent cleanup failed; continuing uninstall so reinstall can recover."
+    return 0
+  fi
   if [[ -z "$output" ]]; then
     info "  nothing to remove"
     return 0

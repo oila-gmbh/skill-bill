@@ -115,6 +115,26 @@ class InstallReconcileTest : InstallApplyTestSupport() {
   }
 
   @Test
+  fun `missing local skill with existing baseline adopts upstream instead of staying deleted`() {
+    val upstream = seedRepo("reconcile-upstream")
+    val local = seedRepo("reconcile-local")
+    val home = home()
+    val baseline = baselineFromUpstream(upstream, local, home)
+
+    Files.walk(local.resolve("skills/bill-code-review")).use { stream ->
+      stream.sorted(Comparator.reverseOrder()).forEach(Files::deleteIfExists)
+    }
+
+    val plan = planWith(upstream, local, home, baseline)
+
+    val adopt = assertIs<SkillReconciliationOutcome.Adopt>(outcomeFor(plan, "skills/bill-code-review"))
+    assertEquals(baseline.hashFor("skills/bill-code-review"), adopt.localHash)
+    assertEquals(baseline.hashFor("skills/bill-code-review"), adopt.baselineHash)
+    assertFalse(plan.hasConflicts)
+    assertEquals(listOf("skills/bill-code-review"), plan.baselineRefreshPaths)
+  }
+
+  @Test
   fun `no baseline with a divergent local copy is a conflict not a silent overwrite`() {
     // Migration window: an existing user has a populated local copy but no baseline yet.
     // When the local copy diverges from upstream the local edit must NOT be silently

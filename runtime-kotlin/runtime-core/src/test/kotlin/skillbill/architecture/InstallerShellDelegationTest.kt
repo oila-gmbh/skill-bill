@@ -194,6 +194,18 @@ class InstallerShellDelegationTest {
   }
 
   @Test
+  fun `pre-install wipe continues when native subagent unlink cleanup fails`() {
+    val fixtures = seedStateDirForWipe(failingNativeUnlinkCommand = "install unlink-claude-agents")
+    val run = runUninstaller(fixtures, preserveSource = true, goalContinuation = false)
+
+    assertEquals(0, run.exitCode, run.output)
+    assertContains(run.output, "Claude subagent cleanup failed; continuing uninstall so reinstall can recover.")
+    assertFalse(Files.exists(fixtures.runtimeBin), "runtime/ must still be cleared after native cleanup failure")
+    assertFalse(Files.exists(fixtures.installedSkill), "installed-skills/ must still be cleared after native cleanup failure")
+    assertTrue(Files.isRegularFile(fixtures.skillContent), "copied source must still be preserved")
+  }
+
+  @Test
   fun `goal continuation exit-64 guard preserves the entire state dir including the active goal db`() {
     // SKILL-76 AC-5 guard: the SKILL_BILL_GOAL_CONTINUATION=1 exit-64 guard is the PRIMARY
     // protection for the active workflow/review-metrics DB — uninstall.sh refuses to run at all,
@@ -568,14 +580,14 @@ class InstallerShellDelegationTest {
   // Seed a populated ~/.skill-bill that mixes the copied-in self-contained source set
   // (skills/, platform-packs/, orchestration/, reserved baseline-manifest.json) with
   // runtime/installed-skills/*.db state that the pre-install wipe must clear.
-  private fun seedStateDirForWipe(): WipeFixtures {
+  private fun seedStateDirForWipe(failingNativeUnlinkCommand: String? = null): WipeFixtures {
     val home = Files.createTempDirectory("skillbill-wipe-home")
     val binDir = Files.createTempDirectory("skillbill-wipe-bin")
     val logPath = Files.createTempFile("skillbill-wipe-runtime", ".log")
     val repoRoot = Files.createTempDirectory("skillbill-wipe-repo")
     Files.writeString(repoRoot.resolve("uninstall.sh"), Files.readString(runtimeRoot.parent.resolve("uninstall.sh")))
     repoRoot.resolve("uninstall.sh").toFile().setExecutable(true)
-    InstallerShellFixtures.seedUninstallerRuntime(repoRoot)
+    InstallerShellFixtures.seedUninstallerRuntime(repoRoot, failingNativeUnlinkCommand)
 
     val stateDir = home.resolve(".skill-bill")
     val skillContent = stateDir.resolve("skills/bill-sample/content.md")
@@ -929,9 +941,20 @@ internal object InstallerShellFixtures {
     Files.writeString(orchestrationDir.resolve("PLAYBOOK.md"), "# Review orchestrator\n")
   }
 
-  fun seedUninstallerRuntime(repoRoot: Path) {
+  fun seedUninstallerRuntime(repoRoot: Path, failingNativeUnlinkCommand: String? = null) {
     val cliBin = repoRoot.resolve("runtime-kotlin/runtime-cli/build/install/runtime-cli/bin/runtime-cli")
     Files.createDirectories(cliBin.parent)
+    val failingNativeUnlinkBlock = if (failingNativeUnlinkCommand == null) {
+      ""
+    } else {
+      """
+      |if [[ "${'$'}{1:-} ${'$'}{2:-}" == "$failingNativeUnlinkCommand" ]]; then
+      |  printf '%s\n' "synthetic native cleanup failure" >&2
+      |  exit 9
+      |fi
+      |
+      """.trimMargin()
+    }
     Files.writeString(
       cliBin,
       """
@@ -963,6 +986,7 @@ internal object InstallerShellFixtures {
       |if [[ "${'$'}{1:-}" == "install" && "${'$'}{2:-}" == "apply-external-addons" ]]; then
       |  exit 0
       |fi
+      |$failingNativeUnlinkBlock
       |case "${'$'}{1:-} ${'$'}{2:-}" in
       |  "install cleanup-agent-target"|"install unlink-codex-agents"|"install unlink-claude-agents"|"install unlink-opencode-agents"|"install unlink-junie-agents"|"install unlink-zcode-agents"|"install unregister-mcp")
       |    exit 0

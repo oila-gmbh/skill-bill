@@ -113,6 +113,25 @@ class InstallReconcileApplyTest : InstallApplyTestSupport() {
   }
 
   @Test
+  fun `adopt restores a missing live skill when baseline exists`() {
+    val upstream = seedRepo("apply-upstream")
+    val local = seedRepo("apply-local")
+    val home = home()
+    val baseline = baselineFromUpstream(upstream, home)
+
+    Files.walk(local.resolve("skills/bill-code-review")).use { stream ->
+      stream.sorted(Comparator.reverseOrder()).forEach(Files::deleteIfExists)
+    }
+
+    val output = applyReconciliation(roots(upstream), roots(local), home, baseline, acceptConflicts = false)
+
+    assertTrue(Files.isRegularFile(reviewContent(local)), "missing live skill must be restored from upstream")
+    assertEquals(content("bill-code-review"), Files.readString(reviewContent(local)))
+    assertTrue(output.installedPaths.contains("skills/bill-code-review"))
+    assertEquals(listOf("skills/bill-code-review"), output.plan.baselineRefreshPaths)
+  }
+
+  @Test
   fun `conflict refuses without accept and changes nothing`() {
     val upstream = seedRepo("apply-upstream")
     val local = seedRepo("apply-local")
