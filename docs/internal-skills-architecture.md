@@ -326,13 +326,15 @@ directory contains `SKILL.md` plus 45 sibling sidecars — and no agent
       ... (8 Kotlin specialists total)
       bill-kmp-code-review.md               sidecar: KMP stack entry (selected)
       ... (2 KMP specialists total)
+      bill-php-code-review.md               sidecar: PHP stack entry (selected)
+      ... (10 PHP specialists total)
       bill-python-code-review.md            sidecar: Python stack entry (selected)
       ... (10 Python specialists total)
       platform-packs → …                    symlink for pack pointer resolution
 ```
 
 With only the Kotlin pack selected, exactly 9 review sidecars stage
-(`bill-kotlin-code-review.md` plus its 8 specialists); the other 25 contribute
+(`bill-kotlin-code-review.md` plus its 8 specialists); the other 36 contribute
 nothing. With no review packs selected, `bill-code-review` stages
 byte-identically to a repo with no internal pack skills (inertness). `ALL`
 selection stages every opted-in review sidecar. SKILL-105 applies the same
@@ -400,5 +402,5 @@ standalone `skills_dir` path (PD5).
 | Selection-aware sidecar discovery | `.../install/staging/InternalSkillSidecars.kt` (consults `InstallPlanSkill.sourceDir`) |
 | Baseline co-presence guard | `.../install/plan/InstallPlanPolicy.kt`, `MissingBaselinePlatformSelectionError` in `ShellContentContractErrors.kt` |
 | Pack-internal README catalog exemption | `.../scaffold/runtime/RepoValidationRuntime.kt` (`validateReadme`) |
-| Authored pack source (unchanged paths) | `platform-packs/{ios,kotlin,kmp,python}/code-review/<skill>/content.md` |
+| Authored pack source (unchanged paths) | `platform-packs/{ios,kotlin,kmp,php,python}/code-review/<skill>/content.md` |
 | Tests | `InternalSkillStagingTest`, `InternalSkillClassificationTest`, `InstallPlanInternalSkillDiscoveryTest`, `MissingBaselinePlatformSelectionTest`, `RepoValidationRuntimeTest` |

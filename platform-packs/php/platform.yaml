@@ -1,0 +1,160 @@
+platform: php
+contract_version: "1.1"
+display_name: PHP
+
+routing_signals:
+  strong:
+    - "composer.json"
+    - "composer.lock"
+    - ".php"
+    - "phpunit.xml"
+    - "phpunit.xml.dist"
+    - "pest.php"
+    - "phpstan.neon"
+    - "psalm.xml"
+  tie_breakers:
+    - "Prefer PHP when Composer metadata or .php source files dominate mixed backend signals."
+
+declared_code_review_areas:
+  - api-contracts
+  - architecture
+  - performance
+  - persistence
+  - platform-correctness
+  - reliability
+  - security
+  - testing
+  - ui
+  - ux-accessibility
+
+declared_files:
+  baseline: code-review/bill-php-code-review/content.md
+  areas:
+    api-contracts: code-review/bill-php-code-review-api-contracts/content.md
+    architecture: code-review/bill-php-code-review-architecture/content.md
+    performance: code-review/bill-php-code-review-performance/content.md
+    persistence: code-review/bill-php-code-review-persistence/content.md
+    platform-correctness: code-review/bill-php-code-review-platform-correctness/content.md
+    reliability: code-review/bill-php-code-review-reliability/content.md
+    security: code-review/bill-php-code-review-security/content.md
+    testing: code-review/bill-php-code-review-testing/content.md
+    ui: code-review/bill-php-code-review-ui/content.md
+    ux-accessibility: code-review/bill-php-code-review-ux-accessibility/content.md
+area_metadata:
+  api-contracts:
+    focus: "API contracts, request validation, and serialization"
+  architecture:
+    focus: "architecture, boundaries, and dependency direction"
+  performance:
+    focus: "performance risks on hot paths, blocking I/O, and resource usage"
+  persistence:
+    focus: "persistence, transactions, migrations, and data consistency"
+  platform-correctness:
+    focus: "lifecycle, concurrency, threading, and logic correctness"
+  reliability:
+    focus: "timeouts, retries, background work, and observability"
+  security:
+    focus: "secrets handling, auth, and sensitive-data exposure"
+  testing:
+    focus: "test coverage quality and regression protection"
+  ui:
+    focus: "UI correctness and framework usage"
+  ux-accessibility:
+    focus: "UX correctness and accessibility"
+
+declared_quality_check_file: quality-check/bill-php-code-check/content.md
+
+# Pointer files are generated into render/install output from this block.
+pointers:
+  code-review/bill-php-code-review:
+    - name: review-orchestrator.md
+      target: orchestration/review-orchestrator/PLAYBOOK.md
+    - name: review-delegation.md
+      target: orchestration/review-delegation/PLAYBOOK.md
+    - name: review-scope.md
+      target: orchestration/review-scope/PLAYBOOK.md
+    - name: shell-ceremony.md
+      target: orchestration/shell-content-contract/shell-ceremony.md
+    - name: specialist-contract.md
+      target: orchestration/review-orchestrator/specialist-contract.md
+    - name: stack-routing.md
+      target: orchestration/stack-routing/PLAYBOOK.md
+    - name: telemetry-contract.md
+      target: orchestration/telemetry-contract/PLAYBOOK.md
+  code-review/bill-php-code-review-api-contracts:
+    - name: review-orchestrator.md
+      target: orchestration/review-orchestrator/PLAYBOOK.md
+    - name: shell-ceremony.md
+      target: orchestration/shell-content-contract/shell-ceremony.md
+    - name: telemetry-contract.md
+      target: orchestration/telemetry-contract/PLAYBOOK.md
+  code-review/bill-php-code-review-architecture:
+    - name: review-orchestrator.md
+      target: orchestration/review-orchestrator/PLAYBOOK.md
+    - name: shell-ceremony.md
+      target: orchestration/shell-content-contract/shell-ceremony.md
+    - name: telemetry-contract.md
+      target: orchestration/telemetry-contract/PLAYBOOK.md
+  code-review/bill-php-code-review-performance:
+    - name: review-orchestrator.md
+      target: orchestration/review-orchestrator/PLAYBOOK.md
+    - name: shell-ceremony.md
+      target: orchestration/shell-content-contract/shell-ceremony.md
+    - name: telemetry-contract.md
+      target: orchestration/telemetry-contract/PLAYBOOK.md
+  code-review/bill-php-code-review-persistence:
+    - name: review-orchestrator.md
+      target: orchestration/review-orchestrator/PLAYBOOK.md
+    - name: shell-ceremony.md
+      target: orchestration/shell-content-contract/shell-ceremony.md
+    - name: telemetry-contract.md
+      target: orchestration/telemetry-contract/PLAYBOOK.md
+  code-review/bill-php-code-review-platform-correctness:
+    - name: review-orchestrator.md
+      target: orchestration/review-orchestrator/PLAYBOOK.md
+    - name: shell-ceremony.md
+      target: orchestration/shell-content-contract/shell-ceremony.md
+    - name: telemetry-contract.md
+      target: orchestration/telemetry-contract/PLAYBOOK.md
+  code-review/bill-php-code-review-reliability:
+    - name: review-orchestrator.md
+      target: orchestration/review-orchestrator/PLAYBOOK.md
+    - name: shell-ceremony.md
+      target: orchestration/shell-content-contract/shell-ceremony.md
+    - name: telemetry-contract.md
+      target: orchestration/telemetry-contract/PLAYBOOK.md
+  code-review/bill-php-code-review-security:
+    - name: review-orchestrator.md
+      target: orchestration/review-orchestrator/PLAYBOOK.md
+    - name: shell-ceremony.md
+      target: orchestration/shell-content-contract/shell-ceremony.md
+    - name: telemetry-contract.md
+      target: orchestration/telemetry-contract/PLAYBOOK.md
+  code-review/bill-php-code-review-testing:
+    - name: review-orchestrator.md
+      target: orchestration/review-orchestrator/PLAYBOOK.md
+    - name: shell-ceremony.md
+      target: orchestration/shell-content-contract/shell-ceremony.md
+    - name: telemetry-contract.md
+      target: orchestration/telemetry-contract/PLAYBOOK.md
+  code-review/bill-php-code-review-ui:
+    - name: review-orchestrator.md
+      target: orchestration/review-orchestrator/PLAYBOOK.md
+    - name: shell-ceremony.md
+      target: orchestration/shell-content-contract/shell-ceremony.md
+    - name: telemetry-contract.md
+      target: orchestration/telemetry-contract/PLAYBOOK.md
+  code-review/bill-php-code-review-ux-accessibility:
+    - name: review-orchestrator.md
+      target: orchestration/review-orchestrator/PLAYBOOK.md
+    - name: shell-ceremony.md
+      target: orchestration/shell-content-contract/shell-ceremony.md
+    - name: telemetry-contract.md
+      target: orchestration/telemetry-contract/PLAYBOOK.md
+  quality-check/bill-php-code-check:
+    - name: shell-ceremony.md
+      target: orchestration/shell-content-contract/shell-ceremony.md
+    - name: stack-routing.md
+      target: orchestration/stack-routing/PLAYBOOK.md
+    - name: telemetry-contract.md
+      target: orchestration/telemetry-contract/PLAYBOOK.md

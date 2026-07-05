@@ -110,6 +110,29 @@ val PLATFORM_PACK_PRESET_DESCRIPTORS: Map<String, PlatformPackPreset> =
           "OpenAPI clients, and vendored dependency trees from dominance scoring.",
       ),
     ),
+    "php" to PlatformPackPreset(
+      displayName = "PHP",
+      strongSignals = listOf(
+        "composer.json",
+        "composer.lock",
+        ".php",
+        "*.php",
+        "phpunit.xml",
+        "phpunit.xml.dist",
+        "pest.php",
+        "phpstan.neon",
+        "phpstan.neon.dist",
+        "psalm.xml",
+        "psalm.xml.dist",
+      ),
+      tieBreakers = listOf(
+        "Prefer PHP when Composer metadata or first-party .php source files dominate mixed backend signals.",
+        "Do not prefer PHP for mixed repositories where PHP appears only as generated code, vendor code, " +
+          "deployment scripts, or tooling around another dominant stack.",
+        "Exclude vendor directories, generated clients, cache/build outputs, and compiled artifacts from " +
+          "dominance scoring.",
+      ),
+    ),
   )
 
 /**

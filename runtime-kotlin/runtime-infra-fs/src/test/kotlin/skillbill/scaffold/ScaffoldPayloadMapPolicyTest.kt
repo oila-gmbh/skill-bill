@@ -120,6 +120,17 @@ class ScaffoldPayloadMapPolicyTest {
   }
 
   @Test
+  fun `resolvePlatformPackDefaults resolves php preset defaults`() {
+    val defaults = resolvePlatformPackDefaults(emptyMap(), "php")
+    assertEquals("PHP", defaults.displayName)
+    assertEquals(true, defaults.presetUsed)
+    assertTrue(defaults.strongSignals.contains("composer.json"))
+    assertTrue(defaults.strongSignals.contains("*.php"))
+    assertTrue(defaults.tieBreakers.any { it.contains("Composer metadata") })
+    assertTrue(defaults.tieBreakers.any { it.contains("vendor") })
+  }
+
+  @Test
   fun `resolvePlatformPackDefaults loud-fails when no preset and no routing signals are supplied`() {
     assertFailsWith<InvalidScaffoldPayloadError> {
       resolvePlatformPackDefaults(emptyMap(), "no-such-preset")
