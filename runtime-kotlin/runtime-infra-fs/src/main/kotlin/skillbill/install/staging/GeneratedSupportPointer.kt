@@ -1,8 +1,8 @@
 package skillbill.install.staging
 
-import skillbill.scaffold.runtime.requiredSupportingFilesForSkill
-import skillbill.scaffold.runtime.requireSupportingFileTarget
 import skillbill.scaffold.model.PlatformManifest
+import skillbill.scaffold.runtime.requireSupportingFileTarget
+import skillbill.scaffold.runtime.requiredSupportingFilesForSkill
 import java.nio.file.Path
 
 internal data class GeneratedSupportPointer(

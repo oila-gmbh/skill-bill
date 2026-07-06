@@ -168,7 +168,11 @@ private fun buildStagingIntent(
   }
   val selectedPlatformSlugs = skills
     .filter { skill -> skill.kind == InstallPlanSkillKind.PLATFORM_PACK }
-    .mapNotNull { skill -> platformManifests.firstOrNull { manifest -> skill.sourceDir.startsWith(manifest.packRoot) }?.slug }
+    .mapNotNull { skill ->
+      platformManifests.firstOrNull { manifest ->
+        skill.sourceDir.startsWith(manifest.packRoot)
+      }?.slug
+    }
     .toSet()
   val selectedPlatformManifests = platformManifests.filter { manifest -> manifest.slug in selectedPlatformSlugs }
   return InstallStagingIntent(

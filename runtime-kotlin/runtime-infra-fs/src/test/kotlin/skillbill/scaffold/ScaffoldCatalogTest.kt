@@ -72,7 +72,7 @@ class ScaffoldCatalogTest {
 
   private fun manifest(slug: String, composition: String = ""): String = buildString {
     appendLine("platform: $slug")
-    appendLine("contract_version: \"1.1\"")
+    appendLine("contract_version: \"1.2\"")
     appendLine("display_name: ${slug.replaceFirstChar { it.uppercase() }}")
     appendLine("routing_signals:")
     appendLine("  strong:")

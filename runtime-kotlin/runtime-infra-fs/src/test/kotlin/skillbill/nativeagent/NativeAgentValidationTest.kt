@@ -640,7 +640,7 @@ class NativeAgentValidationTest {
 
   private fun kmpPointerSidecarManifest(pointersBlock: String): String = listOf(
     "platform: kmp",
-    "contract_version: \"1.1\"",
+    "contract_version: \"1.2\"",
     "routing_signals:",
     "  strong:",
     "    - \"commonMain\"",

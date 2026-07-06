@@ -5,6 +5,7 @@ import skillbill.install.model.AgentTarget
 import skillbill.install.model.RenderedSkill
 import skillbill.install.plan.InstallContext
 import skillbill.install.plan.installSkill
+import skillbill.install.staging.StagedSymlinkTargetInput
 import skillbill.install.staging.applicablePointers
 import skillbill.install.staging.authoredFilesFor
 import skillbill.install.staging.computeInstallContentHash
@@ -407,10 +408,12 @@ class InstallStagingTest {
     val fixture = setupFixture()
 
     val target = resolveStagedSymlinkTarget(
-      resolvedSkill = fixture.skillDir,
-      repoRoot = fixture.repoRoot,
-      home = fixture.home,
-      manifests = fixture.pointerSpecs.map { it.first }.distinct(),
+      StagedSymlinkTargetInput(
+        resolvedSkill = fixture.skillDir,
+        repoRoot = fixture.repoRoot,
+        home = fixture.home,
+        manifests = fixture.pointerSpecs.map { it.first }.distinct(),
+      ),
     ).toAbsolutePath().normalize()
 
     assertTrue(
@@ -443,9 +446,11 @@ class InstallStagingTest {
     assertFalse(isContentManagedSkill(copySkillDir), "fixture must be non-content-managed (no content.md)")
 
     val target = resolveStagedSymlinkTarget(
-      resolvedSkill = copySkillDir,
-      repoRoot = copyRoot,
-      home = home,
+      StagedSymlinkTargetInput(
+        resolvedSkill = copySkillDir,
+        repoRoot = copyRoot,
+        home = home,
+      ),
     ).toAbsolutePath().normalize()
 
     assertEquals(

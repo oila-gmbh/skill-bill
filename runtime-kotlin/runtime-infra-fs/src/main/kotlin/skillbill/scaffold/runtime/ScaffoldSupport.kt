@@ -5,8 +5,8 @@ package skillbill.scaffold.runtime
 import skillbill.error.MissingSupportingFileTargetError
 import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.model.PointerSpec
-import skillbill.scaffold.platformpack.SKILL_CLASSES_DIR
 import skillbill.scaffold.platformpack.FEATURE_TASK_ADDON_CONSUMER
+import skillbill.scaffold.platformpack.SKILL_CLASSES_DIR
 import skillbill.scaffold.platformpack.discoverSkillClasses
 import skillbill.scaffold.platformpack.resolveSkillClass
 import java.nio.file.Files
@@ -140,20 +140,18 @@ internal fun requireSupportingFileTarget(
   fileName: String,
   repoRoot: Path,
   selectedPlatformManifests: List<PlatformManifest> = emptyList(),
-): Path =
-  supportingFileTargets(repoRoot)[fileName]
-    ?: featureAddonPointerSpecsFor(skillName, selectedPlatformManifests)
-      .firstOrNull { spec -> spec.name == fileName }
-      ?.let { spec -> repoRoot.toAbsolutePath().normalize().resolve(spec.target).normalize() }
-    ?: throw MissingSupportingFileTargetError(
+): Path = supportingFileTargets(repoRoot)[fileName]
+  ?: featureAddonPointerSpecsFor(skillName, selectedPlatformManifests)
+    .firstOrNull { spec -> spec.name == fileName }
+    ?.let { spec -> repoRoot.toAbsolutePath().normalize().resolve(spec.target).normalize() }
+  ?: throw MissingSupportingFileTargetError(
     "Runtime supporting file '$fileName' is not registered for '$skillName'.",
   )
 
 internal fun selectedFeatureAddonSupportTargets(
   skillName: String,
   selectedPlatformManifests: List<PlatformManifest>,
-): Map<String, PointerSpec> =
-  featureAddonPointerSpecsFor(skillName, selectedPlatformManifests).associateBy { it.name }
+): Map<String, PointerSpec> = featureAddonPointerSpecsFor(skillName, selectedPlatformManifests).associateBy { it.name }
 
 private fun featureAddonPointerSpecsFor(
   skillName: String,

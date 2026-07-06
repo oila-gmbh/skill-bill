@@ -763,7 +763,7 @@ class RuntimeRepoBrowserServiceTest {
       repo.resolve("orchestration/skill-classes/quality-check-shell.yaml"),
       """
         |class: quality-check-shell
-        |contract_version: "1.1"
+        |contract_version: "1.2"
         |
         |matchers:
         |  - exact: bill-code-check
@@ -785,7 +785,7 @@ class RuntimeRepoBrowserServiceTest {
       packRoot.resolve("platform.yaml"),
       """
         |platform: kotlin
-        |contract_version: "1.1"
+        |contract_version: "1.2"
         |display_name: Kotlin
         |
         |routing_signals:
