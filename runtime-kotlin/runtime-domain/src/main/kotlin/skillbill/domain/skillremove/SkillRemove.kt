@@ -152,10 +152,6 @@ class SkillRemove(
   private inline fun tryExecute(block: () -> SkillRemovalResult): SkillRemovalResult = try {
     block()
   } catch (cancellation: kotlin.coroutines.cancellation.CancellationException) {
-    // stdlib's CancellationException is the contract type the kotlinx coroutine machinery throws.
-    // We re-throw verbatim so coroutine cancellation propagates regardless of whether the caller
-    // is on a coroutine dispatcher (Dispatchers.Default hop in the desktop ViewModel) or a
-    // direct-blocking call from the CLI.
     throw cancellation
   } catch (error: SkillBillRuntimeException) {
     SkillRemovalResult.Failed(
@@ -173,7 +169,5 @@ class SkillRemove(
 
   companion object {
     const val BILL_SHARED_NAME: String = ".bill-shared"
-    val SHIPPED_HORIZONTAL_SKILLS: Set<String> = setOf("kotlin", "kmp")
-    val SHIPPED_PLATFORMS: Set<String> = setOf("kotlin", "kmp")
   }
 }

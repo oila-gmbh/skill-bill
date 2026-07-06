@@ -287,7 +287,8 @@ All exceptions derive from `skillbill.contracts.ShellContentContractException` a
   `code-review-area`, `area`, or `specialist`).
 - `UnknownSkillKindError` — `kind` is not one of the active supported kinds.
 - `UnknownPreShellFamilyError` — pre-shell family not in
-  `PRE_SHELL_FAMILIES`.
+  `PRE_SHELL_FAMILIES`; the retired family spelling `feature-` + `implement`
+  fails with this typed error and names `feature-task` as the replacement.
 - `MissingPlatformPackError` — platform pack (`platform-packs/<slug>/`)
   does not exist; create a conforming `platform.yaml` before retrying.
 - `MissingSupportingFileTargetError` — a file name declared in

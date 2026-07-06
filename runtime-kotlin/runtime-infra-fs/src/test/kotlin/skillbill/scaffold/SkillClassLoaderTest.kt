@@ -7,6 +7,7 @@ import skillbill.scaffold.model.SkillClassManifest
 import skillbill.scaffold.platformpack.SKILL_CLASSES_DIR
 import skillbill.scaffold.platformpack.discoverSkillClasses
 import skillbill.scaffold.platformpack.resolveSkillClass
+import skillbill.scaffold.rendering.renderCeremonySection
 import skillbill.scaffold.runtime.SHELL_CONTRACT_VERSION
 import skillbill.scaffold.runtime.scaffold
 import java.nio.file.Files
@@ -78,6 +79,16 @@ private val LEGACY_PATTERN_GOLDEN: List<Pair<Regex, Set<String>>> = listOf(
 
 private fun goldenPointerSetFor(skillName: String): Set<String>? = LEGACY_POINTER_GOLDEN[skillName]
   ?: LEGACY_PATTERN_GOLDEN.firstOrNull { (pattern, _) -> pattern.matches(skillName) }?.second
+
+private const val FEATURE_TASK_CEREMONY_GOLDEN = """
+## Ceremony
+
+Before launch, follow [peak-hours-warner.md](peak-hours-warner.md).
+
+Follow the shell ceremony in [shell-ceremony.md](shell-ceremony.md).
+
+When telemetry applies, follow [telemetry-contract.md](telemetry-contract.md).
+"""
 
 class SkillClassLoaderTest {
   @Test
@@ -260,10 +271,12 @@ class SkillClassLoaderTest {
   fun `feature task class replaces retired manifest filename`() {
     val repoRoot = currentRepoRootForClassLoader()
     val classes = discoverSkillClasses(repoRoot)
+    val manifest = resolveSkillClass("bill-feature-task", classes)
 
-    assertEquals("feature-task", resolveSkillClass("bill-feature-task", classes)?.classId)
+    assertEquals("feature-task", manifest?.classId)
     assertTrue(Files.isRegularFile(repoRoot.resolve("$SKILL_CLASSES_DIR/feature-task.yaml")))
     assertTrue(!Files.exists(repoRoot.resolve("$SKILL_CLASSES_DIR/feature-" + "implement.yaml")))
+    assertEquals(FEATURE_TASK_CEREMONY_GOLDEN.trimStart(), renderCeremonySection(manifest))
   }
 
   private fun manifest(
