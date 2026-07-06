@@ -209,7 +209,7 @@ class InstallPlanContractCoverageTest {
       packRoot.resolve("platform.yaml"),
       """
       |platform: "$slug"
-      |contract_version: "1.1"
+      |contract_version: "1.2"
       |routing_signals:
       |  strong:
       |    - "$slug"

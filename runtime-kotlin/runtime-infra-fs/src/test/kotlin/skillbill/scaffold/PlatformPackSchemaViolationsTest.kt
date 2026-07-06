@@ -22,7 +22,7 @@ class PlatformPackSchemaViolationsTest {
   @Test
   fun `missing platform field`() {
     val manifest = """
-      contract_version: "1.1"
+      contract_version: "1.2"
       routing_signals:
         strong: [".kt"]
       declared_code_review_areas: []
@@ -42,7 +42,7 @@ class PlatformPackSchemaViolationsTest {
   fun `missing routing_signals strong`() {
     val manifest = """
       platform: scenarioslug
-      contract_version: "1.1"
+      contract_version: "1.2"
       routing_signals: {}
       declared_code_review_areas: []
     """.trimIndent()
@@ -60,7 +60,7 @@ class PlatformPackSchemaViolationsTest {
     // loader must name 'platform' and surface the slug mismatch.
     val manifest = """
       platform: wrong
-      contract_version: "1.1"
+      contract_version: "1.2"
       routing_signals:
         strong: [".kt"]
       declared_code_review_areas: []
@@ -80,7 +80,7 @@ class PlatformPackSchemaViolationsTest {
     // declared_files.baseline is missing.
     val manifest = """
       platform: scenarioslug
-      contract_version: "1.1"
+      contract_version: "1.2"
       routing_signals:
         strong: [".kt"]
       declared_code_review_areas:
@@ -105,7 +105,7 @@ class PlatformPackSchemaViolationsTest {
     // contains a key the pack did not declare.
     val manifest = """
       platform: scenarioslug
-      contract_version: "1.1"
+      contract_version: "1.2"
       routing_signals:
         strong: [".kt"]
       declared_code_review_areas:
@@ -131,7 +131,7 @@ class PlatformPackSchemaViolationsTest {
   fun `declared_code_review_areas with unapproved enum value`() {
     val manifest = """
       platform: scenarioslug
-      contract_version: "1.1"
+      contract_version: "1.2"
       routing_signals:
         strong: [".kt"]
       declared_code_review_areas:
@@ -183,12 +183,29 @@ class PlatformPackSchemaViolationsTest {
   }
 
   @Test
+  fun `manifest still declaring contract_version 1_1 fails loudly`() {
+    val manifest = """
+      platform: scenarioslug
+      contract_version: "1.1"
+      routing_signals:
+        strong: [".kt"]
+      declared_code_review_areas: []
+    """.trimIndent()
+    val error = assertFailsWith<ContractVersionMismatchError> {
+      loadPackFromInMemory("scenarioslug", manifest)
+    }
+    val message = error.message.orEmpty()
+    assertContains(message, "contract_version")
+    assertContains(message, "1.1")
+  }
+
+  @Test
   fun `pointer name without md suffix fails schema rule`() {
     // F-005 (a): pointer name must end with `.md`. Use a name that ONLY violates the suffix
     // rule (no `..`, no path separator) so the assertion can pin the specific rule.
     val manifest = """
       platform: scenarioslug
-      contract_version: "1.1"
+      contract_version: "1.2"
       routing_signals:
         strong: [".kt"]
       declared_code_review_areas: []
@@ -211,7 +228,7 @@ class PlatformPackSchemaViolationsTest {
     // fires; both the validator and the runtime loader reject the name.
     val manifest = """
       platform: scenarioslug
-      contract_version: "1.1"
+      contract_version: "1.2"
       routing_signals:
         strong: [".kt"]
       declared_code_review_areas: []
@@ -236,7 +253,7 @@ class PlatformPackSchemaViolationsTest {
     // `name` so we exercise the runtime-side target check rather than the schema's name rule.
     val manifest = """
       platform: scenarioslug
-      contract_version: "1.1"
+      contract_version: "1.2"
       routing_signals:
         strong: [".kt"]
       declared_code_review_areas: []
@@ -259,7 +276,7 @@ class PlatformPackSchemaViolationsTest {
     // area key that is not in declared_code_review_areas.
     val manifest = """
       platform: scenarioslug
-      contract_version: "1.1"
+      contract_version: "1.2"
       routing_signals:
         strong: [".kt"]
       declared_code_review_areas:
@@ -284,7 +301,7 @@ class PlatformPackSchemaViolationsTest {
     // NOT fire first; the loader must report the missing-area-key bijection violation.
     val manifest = """
       platform: scenarioslug
-      contract_version: "1.1"
+      contract_version: "1.2"
       routing_signals:
         strong: [".kt"]
       declared_code_review_areas:
@@ -309,7 +326,7 @@ class PlatformPackSchemaViolationsTest {
     // pointer entries with identical `name` field; the loader must name the duplicate name.
     val manifest = """
       platform: scenarioslug
-      contract_version: "1.1"
+      contract_version: "1.2"
       routing_signals:
         strong: [".kt"]
       declared_code_review_areas: []
@@ -333,7 +350,7 @@ class PlatformPackSchemaViolationsTest {
   fun `coherence rule addon_usage keys must match declared skill directories`() {
     val manifest = """
       platform: scenarioslug
-      contract_version: "1.1"
+      contract_version: "1.2"
       routing_signals:
         strong: [".kt"]
       declared_code_review_areas: []
@@ -362,7 +379,7 @@ class PlatformPackSchemaViolationsTest {
   fun `coherence rule addon_usage must reference declared pointer under same skill dir`() {
     val manifest = """
       platform: scenarioslug
-      contract_version: "1.1"
+      contract_version: "1.2"
       routing_signals:
         strong: [".kt"]
       declared_code_review_areas: []
@@ -387,7 +404,7 @@ class PlatformPackSchemaViolationsTest {
   fun `coherence rule addon_usage must reference pack-owned addon pointer targets`() {
     val manifest = """
       platform: scenarioslug
-      contract_version: "1.1"
+      contract_version: "1.2"
       routing_signals:
         strong: [".kt"]
       declared_code_review_areas: []
@@ -416,7 +433,7 @@ class PlatformPackSchemaViolationsTest {
   fun `coherence rule addon_usage rejects duplicate slug per skill dir`() {
     val manifest = """
       platform: scenarioslug
-      contract_version: "1.1"
+      contract_version: "1.2"
       routing_signals:
         strong: [".kt"]
       declared_code_review_areas: []
@@ -445,6 +462,105 @@ class PlatformPackSchemaViolationsTest {
   }
 
   @Test
+  fun `feature_addon_usage wrong type fails schema rule`() {
+    val manifest = """
+      platform: scenarioslug
+      contract_version: "1.2"
+      routing_signals:
+        strong: [".kt"]
+      declared_code_review_areas: []
+      feature_addon_usage: "not a mapping"
+    """.trimIndent()
+    val error = assertFailsWith<InvalidManifestSchemaError> {
+      loadPackFromInMemory("scenarioslug", manifest)
+    }
+    assertContains(error.message.orEmpty(), "feature_addon_usage")
+  }
+
+  @Test
+  fun `feature_addon_usage unknown nested key fails schema rule`() {
+    val manifest = """
+      platform: scenarioslug
+      contract_version: "1.2"
+      routing_signals:
+        strong: [".kt"]
+      declared_code_review_areas: []
+      pointers:
+        feature-task:
+          - name: android-compose-implementation.md
+            target: platform-packs/scenarioslug/addons/android-compose-implementation.md
+      feature_addon_usage:
+        feature-task:
+          - slug: android-compose-implementation
+            entrypoint: android-compose-implementation.md
+            unexpected: true
+    """.trimIndent()
+    val error = assertFailsWith<InvalidManifestSchemaError> {
+      loadPackFromInMemory("scenarioslug", manifest)
+    }
+    val message = error.message.orEmpty()
+    assertContains(message, "feature_addon_usage")
+    assertContains(message, "unexpected")
+  }
+
+  @Test
+  fun `feature_addon_usage pointer targeting nonexistent addon file fails loudly`() {
+    val manifest = """
+      platform: scenarioslug
+      contract_version: "1.2"
+      routing_signals:
+        strong: [".kt"]
+      declared_code_review_areas: []
+      pointers:
+        feature-task:
+          - name: android-compose-implementation.md
+            target: platform-packs/scenarioslug/addons/android-compose-implementation.md
+      feature_addon_usage:
+        feature-task:
+          - slug: android-compose-implementation
+            entrypoint: android-compose-implementation.md
+    """.trimIndent()
+    val error = assertFailsWith<InvalidManifestSchemaError> {
+      loadPackFromInMemory("scenarioslug", manifest)
+    }
+    val message = error.message.orEmpty()
+    assertContains(message, "feature_addon_usage")
+    assertContains(message, "android-compose-implementation.md")
+    assertContains(message, "does not exist")
+  }
+
+  @Test
+  fun `feature_addon_usage is typed and excluded from custom fields`() {
+    val manifest = """
+      platform: scenarioslug
+      contract_version: "1.2"
+      routing_signals:
+        strong: [".kt"]
+      declared_code_review_areas: []
+      pointers:
+        feature-task:
+          - name: android-compose-implementation.md
+            target: platform-packs/scenarioslug/addons/android-compose-implementation.md
+      feature_addon_usage:
+        feature-task:
+          - slug: android-compose-implementation
+            entrypoint: android-compose-implementation.md
+      fork_field: "custom"
+    """.trimIndent()
+    val packRoot = newTempPackRoot("scenarioslug", manifest)
+    val addon = packRoot.resolve("addons/android-compose-implementation.md")
+    Files.createDirectories(addon.parent)
+    Files.writeString(addon, "# Android Compose implementation\n")
+
+    val pack = loadPlatformManifest(packRoot)
+
+    assertContains(pack.featureAddonUsage.single().consumer, "feature-task")
+    assertContains(pack.featureAddonUsage.single().addons.single().entrypoint, "android-compose-implementation.md")
+    kotlin.test.assertFalse("feature_addon_usage" in pack.customFields)
+    assertContains(pack.customFields.keys, "fork_field")
+  }
+
+  @Test
   fun `SKILL-48 nested anchored block typo fails loudly`() {
     // Defense-in-depth: a typo *inside* a strict nested anchored block (e.g. mis-spelling
     // `baseline` as `baselin` under `declared_files`) MUST loud-fail with the field path
@@ -453,7 +569,7 @@ class PlatformPackSchemaViolationsTest {
     // false` is what fires here.
     val manifest = """
       platform: scenarioslug
-      contract_version: "1.1"
+      contract_version: "1.2"
       routing_signals:
         strong: [".kt"]
       declared_code_review_areas:
@@ -485,7 +601,7 @@ class PlatformPackSchemaViolationsTest {
     // suggested anchored field.
     val manifest = """
       platform: scenarioslug
-      contract_version: "1.1"
+      contract_version: "1.2"
       routing_signals:
         strong: [".kt"]
       declared_code_review_areas: []
@@ -520,7 +636,7 @@ class PlatformPackSchemaViolationsTest {
 
   private fun newTempPackRoot(slug: String, manifest: String): Path {
     val tempDir = Files.createTempDirectory("skillbill-platform-pack-schema-test-")
-    val packRoot = tempDir.resolve(slug)
+    val packRoot = tempDir.resolve("platform-packs").resolve(slug)
     Files.createDirectories(packRoot)
     Files.writeString(packRoot.resolve("platform.yaml"), manifest)
     return packRoot

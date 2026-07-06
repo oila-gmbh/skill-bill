@@ -36,7 +36,7 @@ class ScaffoldCatalogTest {
       slug = "docs",
       body = """
         platform: docs
-        contract_version: "1.1"
+        contract_version: "1.2"
         display_name: Docs
         routing_signals:
           strong:

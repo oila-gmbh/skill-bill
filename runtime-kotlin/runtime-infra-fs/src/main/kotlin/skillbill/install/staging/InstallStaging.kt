@@ -209,13 +209,20 @@ internal fun stageInstalledSkill(
   manifests: List<PlatformManifest>? = null,
   skillsRoot: Path? = null,
   selectedPackSkills: List<skillbill.install.model.InstallPlanSkill> = emptyList(),
+  selectedPlatformSlugs: Set<String> = emptySet(),
 ): RenderedSkill {
   val resolvedSource = sourceSkillDir.toAbsolutePath().normalize()
   val resolvedRepoRoot = repoRoot.toAbsolutePath().normalize()
   val skillName = resolvedSource.fileName.toString()
   val target: AuthoringTarget = resolveTarget(resolvedRepoRoot, skillName)
+  val selectedManifests = manifests.orEmpty().filter { manifest -> manifest.slug in selectedPlatformSlugs }
   val pointers = applicablePointers(resolvedRepoRoot, resolvedSource, manifests)
-  val generatedSupportPointers = generatedSupportPointersFor(resolvedRepoRoot, resolvedSource, skillName)
+  val generatedSupportPointers = generatedSupportPointersFor(
+    repoRoot = resolvedRepoRoot,
+    sourceSkillDir = resolvedSource,
+    skillName = skillName,
+    selectedPlatformManifests = selectedManifests,
+  )
   // F-002: internal-child discovery must use the same skills root the plan used (CLI --skills),
   // or planned and staged hashes diverge and apply fails for any parent with internal children.
   val resolvedSkillsRoot = (skillsRoot ?: resolvedRepoRoot.resolve("skills")).toAbsolutePath().normalize()
@@ -349,6 +356,7 @@ internal fun resolveStagedSymlinkTarget(
   home: Path,
   manifests: List<PlatformManifest>? = null,
   selectedPackSkills: List<InstallPlanSkill> = emptyList(),
+  selectedPlatformSlugs: Set<String> = emptySet(),
 ): Path {
   if (repoRoot == null || !isContentManagedSkill(resolvedSkill)) {
     return resolvedSkill
@@ -359,6 +367,7 @@ internal fun resolveStagedSymlinkTarget(
     home,
     manifests,
     selectedPackSkills = selectedPackSkills,
+    selectedPlatformSlugs = selectedPlatformSlugs,
   ).stagingDir.toAbsolutePath().normalize()
 }
 

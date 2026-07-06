@@ -13,6 +13,7 @@ import skillbill.scaffold.model.CodeReviewComposition
 import skillbill.scaffold.model.CodeReviewCompositionMode
 import skillbill.scaffold.model.CodeReviewCompositionScope
 import skillbill.scaffold.model.DeclaredFiles
+import skillbill.scaffold.model.FeatureAddonUsage
 import skillbill.scaffold.model.GovernedAddonFile
 import skillbill.scaffold.model.GovernedAddonSelection
 import skillbill.scaffold.model.GovernedAddonUsage
@@ -303,8 +304,15 @@ private fun buildPack(slug: String, packRoot: Path, manifestPath: Path, raw: Any
   val addonUsage = parseAddonUsage(
     manifest = manifest,
     slug = slug,
+    packRoot = packRoot,
     pointers = pointers,
     declaredSkillDirs = declaredSkillRelativeDirs(packRoot, declaredFiles, declaredQualityCheckFile),
+  )
+  val featureAddonUsage = parseFeatureAddonUsage(
+    manifest = manifest,
+    slug = slug,
+    packRoot = packRoot,
+    pointers = pointers,
   )
 
   // SKILL-48 Subtask 3: anchored top-level keys (those the runtime consumes by name) are
@@ -339,6 +347,7 @@ private fun buildPack(slug: String, packRoot: Path, manifestPath: Path, raw: Any
     codeReviewComposition = codeReviewComposition,
     pointers = pointers,
     addonUsage = addonUsage,
+    featureAddonUsage = featureAddonUsage,
     customFields = customFields,
   )
 }
@@ -663,6 +672,7 @@ internal fun parsePointers(manifest: Map<*, *>, slug: String): List<PointerSpec>
 internal fun parseAddonUsage(
   manifest: Map<*, *>,
   slug: String,
+  packRoot: Path,
   pointers: List<PointerSpec>,
   declaredSkillDirs: Set<String>,
 ): List<GovernedAddonUsage> {
@@ -701,6 +711,8 @@ internal fun parseAddonUsage(
     val context = AddonUsageParseContext(
       slug = slug,
       skillRelativeDir = skillRelativeDir,
+      packRoot = packRoot,
+      fieldName = "addon_usage",
       seenSlugs = mutableSetOf(),
       pointersForDir = pointersByDir[skillRelativeDir].orEmpty(),
     )
@@ -711,9 +723,57 @@ internal fun parseAddonUsage(
   }
 }
 
+internal fun parseFeatureAddonUsage(
+  manifest: Map<*, *>,
+  slug: String,
+  packRoot: Path,
+  pointers: List<PointerSpec>,
+): List<FeatureAddonUsage> {
+  val raw = manifest["feature_addon_usage"] ?: return emptyList()
+  val usageMap = raw as? Map<*, *>
+    ?: throw InvalidManifestSchemaError(
+      "Platform pack '$slug': 'feature_addon_usage' must be a mapping of feature-task consumer to add-on entries.",
+    )
+  val pointersByConsumer = pointers.groupBy { spec -> spec.skillRelativeDir }
+  return usageMap.map { (consumerKey, entriesRaw) ->
+    val consumer = consumerKey as? String
+      ?: throw InvalidManifestSchemaError(
+        "Platform pack '$slug': 'feature_addon_usage' keys must be strings (feature-task consumers).",
+      )
+    if (consumer != FEATURE_TASK_ADDON_CONSUMER) {
+      throw InvalidManifestSchemaError(
+        "Platform pack '$slug': 'feature_addon_usage' key '$consumer' must be '$FEATURE_TASK_ADDON_CONSUMER'.",
+      )
+    }
+    val entriesList = entriesRaw as? List<*>
+      ?: throw InvalidManifestSchemaError(
+        "Platform pack '$slug': 'feature_addon_usage[$consumer]' must be a list of add-on entries.",
+      )
+    if (entriesList.isEmpty()) {
+      throw InvalidManifestSchemaError(
+        "Platform pack '$slug': 'feature_addon_usage[$consumer]' must declare at least one add-on entry.",
+      )
+    }
+    val context = AddonUsageParseContext(
+      slug = slug,
+      skillRelativeDir = consumer,
+      packRoot = packRoot,
+      fieldName = "feature_addon_usage",
+      seenSlugs = mutableSetOf(),
+      pointersForDir = pointersByConsumer[consumer].orEmpty(),
+    )
+    val addons = entriesList.mapIndexed { index, entry ->
+      parseAddonUsageEntry(context, index, entry)
+    }
+    FeatureAddonUsage(consumer = consumer, addons = addons)
+  }
+}
+
 private data class AddonUsageParseContext(
   val slug: String,
   val skillRelativeDir: String,
+  val packRoot: Path,
+  val fieldName: String,
   val seenSlugs: MutableSet<String>,
   val pointersForDir: List<PointerSpec>,
 )
@@ -721,14 +781,14 @@ private data class AddonUsageParseContext(
 private fun parseAddonUsageEntry(context: AddonUsageParseContext, index: Int, raw: Any?): GovernedAddonSelection {
   val entry = raw as? Map<*, *>
     ?: throw InvalidManifestSchemaError(
-      "Platform pack '${context.slug}': 'addon_usage[${context.skillRelativeDir}][$index]' must be a mapping.",
+      "Platform pack '${context.slug}': '${context.fieldName}[${context.skillRelativeDir}][$index]' must be a mapping.",
     )
-  val fieldPrefix = "addon_usage[${context.skillRelativeDir}][$index]"
+  val fieldPrefix = "${context.fieldName}[${context.skillRelativeDir}][$index]"
   val addonSlug = requireStringInMap(context.slug, entry, "$fieldPrefix.slug", "slug")
   if (!context.seenSlugs.add(addonSlug)) {
     throw InvalidManifestSchemaError(
       "Platform pack '${context.slug}': duplicate add-on usage slug '$addonSlug' under " +
-        "'${context.skillRelativeDir}'.",
+        "'${context.fieldName}.${context.skillRelativeDir}'.",
     )
   }
   val entrypoint = requireStringInMap(context.slug, entry, "$fieldPrefix.entrypoint", "entrypoint")
@@ -757,17 +817,32 @@ private fun requirePackOwnedAddonPointer(
 ) {
   val pointer = context.pointersForDir.firstOrNull { spec -> spec.name == pointerName }
     ?: throw InvalidManifestSchemaError(
-      "Platform pack '${context.slug}': addon_usage[${context.skillRelativeDir}] entry '$addonSlug' references " +
-        "$field '$pointerName', but pointers[${context.skillRelativeDir}] does not declare that pointer.",
+      "Platform pack '${context.slug}': ${context.fieldName}[${context.skillRelativeDir}] entry '$addonSlug' " +
+        "references $field '$pointerName', but pointers[${context.skillRelativeDir}] does not declare that pointer.",
     )
   val expectedPrefix = "platform-packs/${context.slug}/addons/"
   if (!pointer.target.startsWith(expectedPrefix) || !pointer.target.endsWith(".md")) {
     throw InvalidManifestSchemaError(
-      "Platform pack '${context.slug}': addon_usage[${context.skillRelativeDir}] entry '$addonSlug' " +
+      "Platform pack '${context.slug}': ${context.fieldName}[${context.skillRelativeDir}] entry '$addonSlug' " +
         "references pointer '$pointerName', but its target '${pointer.target}' is not under '$expectedPrefix'.",
     )
   }
+  if (context.fieldName == "feature_addon_usage") {
+    val repoRoot = context.packRoot.parent?.parent
+      ?: throw InvalidManifestSchemaError(
+        "Platform pack '${context.slug}': cannot resolve repo root for ${context.fieldName} pointer '$pointerName'.",
+      )
+    val targetFile = repoRoot.resolve(pointer.target).normalize()
+    if (!Files.isRegularFile(targetFile)) {
+      throw InvalidManifestSchemaError(
+        "Platform pack '${context.slug}': ${context.fieldName}[${context.skillRelativeDir}] entry '$addonSlug' " +
+          "references pointer '$pointerName' target '${pointer.target}', but that add-on file does not exist.",
+      )
+    }
+  }
 }
+
+internal const val FEATURE_TASK_ADDON_CONSUMER: String = "feature-task"
 
 private fun parsePointerEntry(slug: String, skillRelativeDir: String, entry: Map<*, *>): PointerSpec {
   val name = entry["name"] as? String

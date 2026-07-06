@@ -1,5 +1,5 @@
 platform: kmp
-contract_version: "1.1"
+contract_version: "1.2"
 display_name: KMP
 
 routing_signals:
@@ -75,11 +75,43 @@ addon_usage:
     - slug: android-design-system
       entrypoint: android-design-system-review.md
 
+feature_addon_usage:
+  feature-task:
+    - slug: android-compose-implementation
+      entrypoint: android-compose-implementation.md
+    - slug: android-navigation-implementation
+      entrypoint: android-navigation-implementation.md
+    - slug: android-interop-implementation
+      entrypoint: android-interop-implementation.md
+    - slug: android-design-system-implementation
+      entrypoint: android-design-system-implementation.md
+    - slug: android-r8-implementation
+      entrypoint: android-r8-implementation.md
+    - slug: android-compose-edge-to-edge
+      entrypoint: android-compose-edge-to-edge.md
+    - slug: android-compose-adaptive-layouts
+      entrypoint: android-compose-adaptive-layouts.md
+
 # Pointer files (single-line markdown files containing only a relative path) are generated
 # from this block during render/install output. Targets are repo-rooted; the renderer computes
 # the correct ../-prefixed relative path. Never commit pointer files — add or modify entries here
 # and use `skill-bill render` or the install pipeline.
 pointers:
+  feature-task:
+    - name: android-compose-implementation.md
+      target: platform-packs/kmp/addons/android-compose-implementation.md
+    - name: android-navigation-implementation.md
+      target: platform-packs/kmp/addons/android-navigation-implementation.md
+    - name: android-interop-implementation.md
+      target: platform-packs/kmp/addons/android-interop-implementation.md
+    - name: android-design-system-implementation.md
+      target: platform-packs/kmp/addons/android-design-system-implementation.md
+    - name: android-r8-implementation.md
+      target: platform-packs/kmp/addons/android-r8-implementation.md
+    - name: android-compose-edge-to-edge.md
+      target: platform-packs/kmp/addons/android-compose-edge-to-edge.md
+    - name: android-compose-adaptive-layouts.md
+      target: platform-packs/kmp/addons/android-compose-adaptive-layouts.md
   code-review/bill-kmp-code-review:
     - name: review-orchestrator.md
       target: orchestration/review-orchestrator/PLAYBOOK.md

@@ -39,7 +39,7 @@ class GoPlatformPackTest {
 
     assertEquals("go", pack.slug)
     assertEquals("Go", pack.displayName)
-    assertEquals("1.1", pack.contractVersion)
+    assertEquals("1.2", pack.contractVersion)
     assertEquals(
       packRoot.resolve("code-review/bill-go-code-review/content.md"),
       pack.declaredFiles.baseline,

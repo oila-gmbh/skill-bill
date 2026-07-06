@@ -166,6 +166,11 @@ private fun buildStagingIntent(
   val selectedPackSkills = skills.filter { skill ->
     skill.kind == InstallPlanSkillKind.PLATFORM_PACK && skill.internalFor != null
   }
+  val selectedPlatformSlugs = skills
+    .filter { skill -> skill.kind == InstallPlanSkillKind.PLATFORM_PACK }
+    .mapNotNull { skill -> platformManifests.firstOrNull { manifest -> skill.sourceDir.startsWith(manifest.packRoot) }?.slug }
+    .toSet()
+  val selectedPlatformManifests = platformManifests.filter { manifest -> manifest.slug in selectedPlatformSlugs }
   return InstallStagingIntent(
     root = stagingRoot,
     // F-011 (SKILL-102): internal skills never stage standalone (apply filters them out), so the
@@ -177,6 +182,7 @@ private fun buildStagingIntent(
         sourceSkillDir = skill.sourceDir,
         skillName = skill.name,
         skillsRoot = request.targetPaths.skillsRoot,
+        selectedPlatformManifests = selectedPlatformManifests,
       )
       validatePointerInputs(request.repoRoot, skill.sourceDir, applicablePointers, supportPointers)
       // Sidecar wrappers fold into the parent's planned content hash so plan and apply agree and

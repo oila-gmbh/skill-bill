@@ -92,6 +92,7 @@ internal data class InstallContext(
   val home: Path = Path.of(System.getProperty("user.home")),
   val manifests: List<PlatformManifest>? = null,
   val selectedPackSkills: List<InstallPlanSkill> = emptyList(),
+  val selectedPlatformSlugs: Set<String> = emptySet(),
 )
 
 internal fun installSkill(
@@ -117,6 +118,7 @@ internal fun installSkill(
     context.home,
     context.manifests,
     context.selectedPackSkills,
+    context.selectedPlatformSlugs,
   )
   val created = mutableListOf<Path>()
   for (target in agentTargets) {

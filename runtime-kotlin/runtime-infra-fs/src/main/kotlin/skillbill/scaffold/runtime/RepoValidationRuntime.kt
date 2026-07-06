@@ -13,6 +13,7 @@ import skillbill.scaffold.authoring.internalSkillClassificationViolations
 import skillbill.scaffold.authoring.parseInternalForFrontmatter
 import skillbill.scaffold.platformpack.loadPlatformManifest
 import skillbill.scaffold.platformpack.loadPlatformPack
+import skillbill.scaffold.platformpack.resolveSkillClass
 import skillbill.scaffold.pointer.validateGeneratedArtifactGuard
 import skillbill.scaffold.validation.validateAuthoredContent
 import skillbill.scaffold.validation.validateGovernedSkillDrift
@@ -162,6 +163,7 @@ object RepoValidationRuntime {
     validateSkillOverrides(root.resolve(".agents/skill-overrides.example.md"), skillNames, required = true, issues)
     validateSkillOverrides(root.resolve(".agents/skill-overrides.md"), skillNames, required = false, issues)
     validateSupportingTargets(root, skillFiles.keys + platformSkillFiles.keys, issues)
+    validateFeatureAddonDeclarations(root, issues)
     validateWorkflowContracts(root, issues)
     validateOrchestrationPlaybooks(root, issues)
     validateNoInlineTelemetryContractDrift(root, issues)
@@ -553,6 +555,58 @@ object RepoValidationRuntime {
         issues += "supporting file '$fileName' target is missing"
       }
     }
+  }
+
+  private fun validateFeatureAddonDeclarations(root: Path, issues: MutableList<String>) {
+    val staticTargets = supportingFileTargets(root).keys
+    val classes = runCatching { skillbill.scaffold.platformpack.discoverSkillClasses(root) }.getOrDefault(emptyList())
+    val featureClassPointers = resolveSkillClass("bill-feature-task", classes)
+      ?.pointers
+      ?.map { pointer -> "$pointer.md" }
+      .orEmpty()
+      .filter { pointer -> pointer !in staticTargets }
+    featureClassPointers.forEach { pointer ->
+      issues += "orchestration/skill-classes/feature-task.yaml: feature-task support pointer '$pointer' " +
+        "must be declared by a selected platform pack's feature_addon_usage instead of the global skill class."
+    }
+
+    loadFeatureAddonValidationPacks(root).forEach { pack ->
+      val declaredPointers = pack.featureAddonUsage
+        .filter { usage -> usage.consumer == "feature-task" }
+        .flatMap { usage -> usage.addons.flatMap { addon -> listOf(addon.entrypoint) + addon.companionPointers } }
+        .toSet()
+      pack.pointers
+        .filter { pointer ->
+          pointer.skillRelativeDir == "feature-task" &&
+            pointer.target.startsWith("platform-packs/${pack.slug}/addons/") &&
+            pointer.target.endsWith(".md")
+        }
+        .filter { pointer -> pointer.name !in declaredPointers }
+        .forEach { pointer ->
+          issues += "platform-packs/${pack.slug}/platform.yaml: feature-task pointer '${pointer.name}' targets " +
+            "'${pointer.target}' but is missing from feature_addon_usage.feature-task."
+        }
+    }
+  }
+
+  private fun loadFeatureAddonValidationPacks(root: Path): List<skillbill.scaffold.model.PlatformManifest> {
+    val packsRoot = root.resolve("platform-packs")
+    if (!Files.isDirectory(packsRoot)) {
+      return emptyList()
+    }
+    val packs = mutableListOf<skillbill.scaffold.model.PlatformManifest>()
+    Files.list(packsRoot).use { stream ->
+      stream
+        .filter { it.isDirectory() && !it.name.startsWith(".") }
+        .forEach { packRoot ->
+          try {
+            packs += loadPlatformManifest(packRoot)
+          } catch (_: ShellContentContractException) {
+            // Surfaced by validatePlatformPacks.
+          }
+        }
+    }
+    return packs
   }
 
   private fun validateWorkflowContracts(root: Path, issues: MutableList<String>) {

@@ -6,9 +6,11 @@ import skillbill.error.MissingManifestError
 import skillbill.scaffold.model.SkillClassManifest
 import skillbill.scaffold.platformpack.SKILL_CLASSES_DIR
 import skillbill.scaffold.platformpack.discoverSkillClasses
+import skillbill.scaffold.platformpack.loadPlatformManifest
 import skillbill.scaffold.platformpack.resolveSkillClass
 import skillbill.scaffold.rendering.renderCeremonySection
 import skillbill.scaffold.runtime.SHELL_CONTRACT_VERSION
+import skillbill.scaffold.runtime.requiredSupportingFilesForSkill
 import skillbill.scaffold.runtime.scaffold
 import java.nio.file.Files
 import java.nio.file.Path
@@ -41,13 +43,6 @@ private val LEGACY_POINTER_GOLDEN: Map<String, Set<String>> = mapOf(
     "peak-hours-warner.md",
     "shell-ceremony.md",
     "telemetry-contract.md",
-    "android-compose-implementation.md",
-    "android-navigation-implementation.md",
-    "android-interop-implementation.md",
-    "android-design-system-implementation.md",
-    "android-r8-implementation.md",
-    "android-compose-edge-to-edge.md",
-    "android-compose-adaptive-layouts.md",
   ),
   "bill-feature-task-runtime" to setOf("peak-hours-warner.md"),
   "bill-feature-task-prose" to setOf("peak-hours-warner.md"),
@@ -100,7 +95,7 @@ class SkillClassLoaderTest {
       classesDir.resolve("widget-shell.yaml"),
       """
       class: widget-shell
-      contract_version: "1.1"
+      contract_version: "1.2"
       matchers:
         - exact: bill-widget
       pointers:
@@ -121,7 +116,7 @@ class SkillClassLoaderTest {
     assertEquals(1, classes.size)
     val manifest = classes.single()
     assertEquals("widget-shell", manifest.classId)
-    assertEquals("1.1", manifest.contractVersion)
+    assertEquals("1.2", manifest.contractVersion)
     assertEquals(listOf("shell-ceremony", "telemetry-contract"), manifest.pointers)
     assertEquals(1, manifest.sections.size)
     assertEquals("Setup", manifest.sections.single().heading)
@@ -175,7 +170,7 @@ class SkillClassLoaderTest {
       classesDir.resolve("widget-shell.yaml"),
       """
       class: gadget-shell
-      contract_version: "1.1"
+      contract_version: "1.2"
       matchers:
         - exact: bill-widget
       """.trimIndent() + "\n",
@@ -210,7 +205,7 @@ class SkillClassLoaderTest {
       classesDir.resolve("widget-shell.yaml"),
       """
       class: widget-shell
-      contract_version: "1.1"
+      contract_version: "1.2"
       """.trimIndent() + "\n",
     )
     val error = assertFailsWith<InvalidManifestSchemaError> { discoverSkillClasses(repoRoot) }
@@ -253,6 +248,30 @@ class SkillClassLoaderTest {
       }
     }
     assertTrue(mismatches.isEmpty(), "Class manifest pointer set mismatches:\n${mismatches.joinToString("\n")}")
+  }
+
+  @Test
+  fun `kmp feature-task routed support pointers preserve pre-change ordering`() {
+    val repoRoot = currentRepoRootForClassLoader()
+    val kmpManifest = loadPlatformManifest(repoRoot.resolve("platform-packs/kmp"))
+
+    val pointers = requiredSupportingFilesForSkill("bill-feature-task", repoRoot, listOf(kmpManifest))
+
+    assertEquals(
+      listOf(
+        "peak-hours-warner.md",
+        "shell-ceremony.md",
+        "telemetry-contract.md",
+        "android-compose-implementation.md",
+        "android-navigation-implementation.md",
+        "android-interop-implementation.md",
+        "android-design-system-implementation.md",
+        "android-r8-implementation.md",
+        "android-compose-edge-to-edge.md",
+        "android-compose-adaptive-layouts.md",
+      ),
+      pointers,
+    )
   }
 
   @Test

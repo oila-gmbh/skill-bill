@@ -28,7 +28,7 @@ class PlatformPackCustomFieldsRoundTripTest {
     val slug = "scenarioslug"
     val manifest = """
       platform: $slug
-      contract_version: "1.1"
+      contract_version: "1.2"
       routing_signals:
         strong: [".kt"]
       declared_code_review_areas: []
@@ -79,7 +79,7 @@ class PlatformPackCustomFieldsRoundTripTest {
     val slug = "scenarioslug"
     val manifest = """
       platform: $slug
-      contract_version: "1.1"
+      contract_version: "1.2"
       routing_signals:
         strong: [".kt"]
       declared_code_review_areas: []
@@ -102,7 +102,7 @@ class PlatformPackCustomFieldsRoundTripTest {
     val slug = "kmp"
     val manifest = """
       platform: $slug
-      contract_version: "1.1"
+      contract_version: "1.2"
       routing_signals:
         strong: [".kt"]
       declared_code_review_areas: []

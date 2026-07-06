@@ -79,6 +79,41 @@ class RepoValidationRuntimeTest {
   }
 
   @Test
+  fun `repo validation rejects feature addon pointer without manifest usage declaration`() {
+    val repoRoot = Files.createTempDirectory("skillbill-undeclared-feature-addon")
+    createRepoValidationSkillFixture(repoRoot)
+    val packRoot = repoRoot.resolve("platform-packs/kmp")
+    Files.createDirectories(packRoot.resolve("addons"))
+    Files.writeString(packRoot.resolve("addons/android-compose-implementation.md"), "# Android Compose\n")
+    Files.writeString(
+      packRoot.resolve("platform.yaml"),
+      """
+      platform: kmp
+      contract_version: "1.2"
+      routing_signals:
+        strong: ["androidMain"]
+      declared_code_review_areas: []
+      pointers:
+        feature-task:
+          - name: android-compose-implementation.md
+            target: platform-packs/kmp/addons/android-compose-implementation.md
+      """.trimIndent(),
+    )
+
+    val report = RepoValidationRuntime.validateRepo(repoRoot)
+
+    assertFalse(report.passed)
+    assertTrue(
+      report.issues.any {
+        it.contains("platform-packs/kmp/platform.yaml") &&
+          it.contains("feature_addon_usage.feature-task") &&
+          it.contains("android-compose-implementation.md")
+      },
+      report.issues.joinToString("\n"),
+    )
+  }
+
+  @Test
   fun `repo validation does not require generated supporting pointers beside non-platform skills`() {
     val repoRoot = Files.createTempDirectory("skillbill-missing-sidecar")
     createRepoValidationSkillFixture(repoRoot)

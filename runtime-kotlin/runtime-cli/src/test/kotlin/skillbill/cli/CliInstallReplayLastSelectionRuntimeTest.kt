@@ -116,7 +116,7 @@ class CliInstallReplayLastSelectionRuntimeTest {
 
   private fun platformManifest(slug: String, codeReviewName: String, qualityCheckName: String): String = """
     |platform: "$slug"
-    |contract_version: "1.1"
+    |contract_version: "1.2"
     |routing_signals:
     |  strong:
     |    - "$slug"

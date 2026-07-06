@@ -1,5 +1,5 @@
 class: feature-task
-contract_version: "1.1"
+contract_version: "1.2"
 
 matchers:
   - pattern: "^bill-[a-z0-9-]*feature-task$"
@@ -8,13 +8,6 @@ pointers:
   - peak-hours-warner
   - shell-ceremony
   - telemetry-contract
-  - android-compose-implementation
-  - android-navigation-implementation
-  - android-interop-implementation
-  - android-design-system-implementation
-  - android-r8-implementation
-  - android-compose-edge-to-edge
-  - android-compose-adaptive-layouts
 
 ceremony_lines:
   - "Before launch, follow [peak-hours-warner.md](peak-hours-warner.md)."

@@ -1,7 +1,8 @@
 package skillbill.install.staging
 
 import skillbill.scaffold.runtime.requiredSupportingFilesForSkill
-import skillbill.scaffold.runtime.supportingFileTargets
+import skillbill.scaffold.runtime.requireSupportingFileTarget
+import skillbill.scaffold.model.PlatformManifest
 import java.nio.file.Path
 
 internal data class GeneratedSupportPointer(
@@ -14,6 +15,7 @@ internal fun generatedSupportPointersFor(
   sourceSkillDir: Path,
   skillName: String,
   skillsRoot: Path = repoRoot.resolve("skills"),
+  selectedPlatformManifests: List<PlatformManifest> = emptyList(),
 ): List<GeneratedSupportPointer> {
   val root = repoRoot.toAbsolutePath().normalize()
   val resolvedSkillsRoot = skillsRoot.toAbsolutePath().normalize()
@@ -21,9 +23,10 @@ internal fun generatedSupportPointersFor(
   if (!resolvedSource.startsWith(resolvedSkillsRoot)) {
     return emptyList()
   }
-  val targets = supportingFileTargets(root)
-  return requiredSupportingFilesForSkill(skillName, root).mapNotNull { fileName ->
-    val target = targets[fileName]?.toAbsolutePath()?.normalize() ?: return@mapNotNull null
+  return requiredSupportingFilesForSkill(skillName, root, selectedPlatformManifests).mapNotNull { fileName ->
+    val target = requireSupportingFileTarget(skillName, fileName, root, selectedPlatformManifests)
+      .toAbsolutePath()
+      .normalize()
     val sourceSidecar = resolvedSource.resolve(fileName).normalize()
     if (target == sourceSidecar) {
       null
