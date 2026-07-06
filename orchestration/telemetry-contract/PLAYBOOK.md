@@ -58,9 +58,9 @@ PR description skills (`bill-pr-description`) use the `pr_description_generated`
 - **Standalone:** call `pr_description_generated` after the PR description is presented.
 - **Orchestrated:** call `pr_description_generated` with `orchestrated=true`.
 
-### Feature-implement skills
+### Feature-task skills
 
-Feature-implement skills (`bill-feature-task`) use the `feature_task_prose_started` and `feature_task_prose_finished` MCP tools. These are always top-level — they are not invoked with `orchestrated=true` by other skills.
+Feature-task skills (`bill-feature-task`) use the `feature_task_prose_started` and `feature_task_prose_finished` MCP tools. These are always top-level — they are not invoked with `orchestrated=true` by other skills.
 
 ## child_steps aggregation
 

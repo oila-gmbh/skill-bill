@@ -1,3 +1,12 @@
+## [2026-07-06] SKILL-107 subtask 1 stale-surface-retirement
+Areas: orchestration/skill-classes, runtime-kotlin/runtime-infra-fs scaffold, runtime-kotlin/runtime-domain skillremove, runtime-kotlin/runtime-cli, runtime-kotlin/runtime-mcp, runtime-kotlin/runtime-desktop, AGENTS.md, docs
+- Retired the stale `feature-implement` skill-class surface in favor of `feature-task`; keep durable workflow/table aliases only where backward compatibility requires them. reusable
+- Pre-shell scaffold family is now exactly `feature-task` and `feature-verify`; `feature-implement` payloads loud-fail with a typed replacement message instead of silently mapping. reusable
+- Platform-pack removal no longer resolves paired `skills/<platform>` trees; shipped kotlin/kmp packs remain removable extension surfaces without legacy source directories. reusable
+- Golden fixture and docs/prose names moved to feature-task terminology while preserving telemetry/workflow observable behavior and approved compat aliases.
+Feature flag: N/A
+Acceptance criteria: 7/7 implemented
+
 ## [2026-07-05] SKILL-104 internal review packs — code-review family hidden behind /bill-code-review
 Areas: runtime-infra-fs/scaffold/authoring (InternalSkillClassification — relaxed rule), runtime-infra-fs/install (InternalSkillSidecars selection-aware discovery, InstallStaging hash folding, InstallPlanPolicy baseline guard), runtime-domain/install/policy (validateBaselineCoPresence), runtime-contracts/error (MissingBaselinePlatformSelectionError), runtime-infra-fs/scaffold/runtime (RepoValidationRuntime — pack README exemption), platform-packs/{ios,kotlin,kmp,python}/code-review (34x `internal-for: bill-code-review` frontmatter + call-site rewrites to sidecar file-reads), docs/skill-source-generation.md, docs/internal-skills-architecture.md, AGENTS.md, README.md, docs/getting-started*.md, runtime-kotlin/agent/{decisions,history}.md
 - The SKILL-102 `internal-for` mechanism is extended to platform-pack skills (PD1): the single shared evaluator (`InternalSkillClassification.kt`) relaxes ONLY the base-skill-only rule; every other rule (blank, self, unknown parent, parent must be a listed base skill, depth 1) is byte-for-byte unchanged. No manifest-level internality flag — one evaluator, three seams (authoring, install-plan, validate). reusable PATTERN (extend by relaxing the narrowest rule, not by forking).
