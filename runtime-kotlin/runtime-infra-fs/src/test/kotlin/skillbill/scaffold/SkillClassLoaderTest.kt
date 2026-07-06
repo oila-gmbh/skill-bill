@@ -256,6 +256,16 @@ class SkillClassLoaderTest {
     }
   }
 
+  @Test
+  fun `feature task class replaces retired manifest filename`() {
+    val repoRoot = currentRepoRootForClassLoader()
+    val classes = discoverSkillClasses(repoRoot)
+
+    assertEquals("feature-task", resolveSkillClass("bill-feature-task", classes)?.classId)
+    assertTrue(Files.isRegularFile(repoRoot.resolve("$SKILL_CLASSES_DIR/feature-task.yaml")))
+    assertTrue(!Files.exists(repoRoot.resolve("$SKILL_CLASSES_DIR/feature-" + "implement.yaml")))
+  }
+
   private fun manifest(
     classId: String,
     matchers: List<Pair<String, String>>,

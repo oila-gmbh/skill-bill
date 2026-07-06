@@ -9,7 +9,7 @@ import kotlin.test.assertEquals
 
 class FeatureSpecPreparationRuntimeTest {
   @Test
-  fun `feature-spec, feature-implement, and goal wrappers share the same preparation core`() {
+  fun `feature-spec, feature-task, and goal wrappers share the same preparation core`() {
     var invocationCount = 0
     val runtime = FeatureSpecPreparationRuntime { intake ->
       invocationCount += 1

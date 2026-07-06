@@ -6,13 +6,12 @@ package skillbill.domain.skillremove.model
  *
  * - [HorizontalSkill] removes a horizontal skill plus its full platform-pack-override + agent
  *   symlink cascade described in AC3.
- * - [PlatformPack] removes the platform-pack tree, the paired pre-shell skills tree, and every
- *   agent symlink owned by either tree (AC4).
+ * - [PlatformPack] removes the platform-pack tree and every agent symlink owned by it (AC4).
  * - [AddOn] removes a single governed add-on `.md` file inside `platform-packs/<platform>/addons/`.
  * - [ExternalAddOn] removes a single governed add-on `.md` file from a registered external add-on source.
  *
- * The `allowShipped` flag on [HorizontalSkill] and [PlatformPack] honors AC7: the domain service
- * refuses to delete the shipped built-in surfaces (`kotlin`, `kmp`) unless this flag is `true`.
+ * The `allowShipped` flag on [HorizontalSkill] honors AC7: the domain service refuses to delete
+ * shipped `bill-*` product skills unless this flag is `true`.
  */
 sealed class SkillRemovalTarget {
   /**
@@ -26,7 +25,7 @@ sealed class SkillRemovalTarget {
   ) : SkillRemovalTarget()
 
   /**
-   * Remove `platform-packs/<platform>/` and the paired `skills/<platform>/` pre-shell tree.
+   * Remove `platform-packs/<platform>/`.
    */
   data class PlatformPack(
     val platform: String,
@@ -49,12 +48,11 @@ sealed class SkillRemovalTarget {
 
   companion object {
     /**
-     * F-S01 / F-606: the canonical set of built-in surfaces that MUST never be deleted (the
-     * `kotlin` / `kmp` pair are only deletable with `--allow-shipped`, but `.bill-shared` is
-     * unconditionally protected). The desktop right-click filter and the route gate share this
-     * set so the modifier layer and the route layer always agree.
+     * F-S01 / F-606: the canonical built-in surface that MUST never be deleted. The desktop
+     * right-click filter and the route gate share this set so the modifier layer and the route
+     * layer always agree.
      */
-    val BUILT_IN_NAMES: Set<String> = setOf(".bill-shared", "kotlin", "kmp")
+    val BUILT_IN_NAMES: Set<String> = setOf(".bill-shared")
 
     /**
      * SKILL-49: every horizontal skill that begins with the `bill-` prefix is a shipped product
@@ -62,16 +60,13 @@ sealed class SkillRemovalTarget {
      * never opens the Delete affordance on these because `isBuiltInName` returns true; the
      * domain `enforceRefusalPolicy` mirrors the same predicate so even a CLI request without
      * `--allow-shipped` is refused. Maintainer paths that genuinely need to remove a deprecated
-     * `bill-*` skill must pass `allowShipped = true` (same shape as `kotlin` / `kmp`).
+     * `bill-*` skill must pass `allowShipped = true`.
      */
     const val HORIZONTAL_PRODUCT_PREFIX: String = "bill-"
 
     /**
      * SKILL-49: protection for the HORIZONTAL-skill axis (`SkillRemovalTarget.HorizontalSkill`).
-     * Returns `true` for names in [BUILT_IN_NAMES] (so `kotlin` / `kmp` pre-shells stay safe —
-     * removing them as horizontals would orphan the platform pack) and for any `bill-*` product
-     * skill. Users who really want to remove the `kotlin` / `kmp` directories should use the
-     * `PlatformPack` removal axis, which cascades the pre-shell tree cleanly.
+     * Returns `true` for names in [BUILT_IN_NAMES] and for any `bill-*` product skill.
      */
     fun isProtectedHorizontalName(name: String): Boolean =
       name in BUILT_IN_NAMES || name.startsWith(HORIZONTAL_PRODUCT_PREFIX)

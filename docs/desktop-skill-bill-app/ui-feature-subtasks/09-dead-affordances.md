@@ -5,7 +5,7 @@ Status: Complete
 ## Parent Context
 
 This subtask belongs to
-`docs/desktop-skill-bill-app/ui-feature-implementation-specs.md`. It cleans up
+`docs/desktop-skill-bill-app/ui-feature-task-specs.md`. It cleans up
 UI elements that announce themselves as buttons (visual chrome, hover
 affordance, `Role.Button` semantics) but carry an empty or missing `onClick`,
 producing a "looks broken" experience for both pointer and screen-reader users.

@@ -72,7 +72,7 @@ Per-repo customization:
 Product versus extension surface:
 
 - horizontal `bill-*` skills under `skills/bill-*/` are protected product surfaces
-- `skills/kotlin/` and `skills/kmp/` pre-shells are protected on the HorizontalSkill axis because removing them alone would orphan their packs
+- shipped `kotlin` and `kmp` packs are removable; no paired `skills/<platform>/` pre-shell trees exist
 - platform packs under `platform-packs/<slug>/` are user-removable extension surfaces, including shipped `kotlin` and `kmp`
 - `.bill-shared` is protected on every axis
 - maintainers may remove deprecated shipped surfaces only through the CLI `--allow-shipped` path in this repo
@@ -140,7 +140,7 @@ For code review, create the pack root, add a conforming manifest and `content.md
 
 For quality-check, register the manifest entry and ship the governed `content.md`. In the built-in set, `kmp` falls back to `kotlin`.
 
-For feature-implement or feature-verify overrides, keep the historic `skills/<platform>/` layout until those families are piloted.
+For feature-task and feature-verify, keep platform-specific behavior on current horizontal and manifest-driven surfaces; do not add legacy `skills/<platform>/` overrides.
 
 ## Runtime Agent Behavior
 

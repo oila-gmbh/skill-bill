@@ -100,7 +100,7 @@ class DatabaseMigrationsTest {
 
   @Test
   fun `ensureDatabase creates feature implement telemetry health columns with defaults`() {
-    val dbPath = Files.createTempDirectory("runtime-kotlin-db-migrations").resolve("feature-implement-health.db")
+    val dbPath = Files.createTempDirectory("runtime-kotlin-db-migrations").resolve("feature-task-health.db")
 
     DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
       val columns = tableColumns(connection = connection, tableName = "feature_implement_sessions")

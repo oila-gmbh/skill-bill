@@ -5,7 +5,7 @@ Status: Complete
 ## Parent Context
 
 This subtask belongs to
-`docs/desktop-skill-bill-app/ui-feature-implementation-specs.md`. It should land
+`docs/desktop-skill-bill-app/ui-feature-task-specs.md`. It should land
 after save/scaffold/render paths start changing files, and before publishing.
 
 ## UI Entry Points

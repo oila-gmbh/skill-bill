@@ -2,6 +2,7 @@ package skillbill.scaffold.payload
 
 import skillbill.error.InvalidScaffoldPayloadError
 import skillbill.error.ScaffoldPayloadVersionMismatchError
+import skillbill.error.UnknownPreShellFamilyError
 import skillbill.error.UnknownSkillKindError
 import skillbill.scaffold.policy.ACTIVE_CREATION_SKILL_KINDS
 import skillbill.scaffold.policy.RETIRED_CODE_REVIEW_AREA_KIND_ALIASES
@@ -53,6 +54,7 @@ internal fun detectKind(payload: Map<String, Any?>): String {
     ?: throw InvalidScaffoldPayloadError(
       "Scaffold payload field 'kind' must be a non-empty string.",
     )
+  rejectRetiredFeatureImplementFamily(payload["family"])
   if (kind.trim().lowercase() in RETIRED_PLATFORM_OVERRIDE_KIND_ALIASES) {
     rejectRetiredPartialScaffoldKind(kind)
   }
@@ -66,6 +68,15 @@ internal fun detectKind(payload: Map<String, Any?>): String {
     )
   }
   return kind
+}
+
+private fun rejectRetiredFeatureImplementFamily(family: Any?) {
+  val retiredFeatureImplement = "feature-" + "implement"
+  if (family == retiredFeatureImplement) {
+    throw UnknownPreShellFamilyError(
+      "Scaffold payload declares pre-shell family '$retiredFeatureImplement'. Use 'feature-task' instead.",
+    )
+  }
 }
 
 internal fun requireStringMap(payload: Map<String, Any?>, key: String): String =

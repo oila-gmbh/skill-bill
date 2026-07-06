@@ -44,7 +44,7 @@ class SkillBillViewModelScaffoldTest {
     val gateway = FakeScaffoldGateway().apply {
       scriptedCatalog = ScaffoldCatalogSnapshot(
         approvedCodeReviewAreas = listOf("security"),
-        preShellFamilies = listOf("feature-implement"),
+        preShellFamilies = listOf("feature-task"),
         shelledFamilies = listOf("code-review"),
         platformPackPresets = emptyList(),
         pilotedPlatformPacks = emptyList(),

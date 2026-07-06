@@ -422,7 +422,7 @@ class InstallApplyTest : InstallApplyTestSupport() {
   fun `apply ignores native agents outside selected planned skill roots`() {
     val fixture = setupApplyFixture()
     Files.createDirectories(fixture.home.resolve(".codex"))
-    val legacySkillNativeAgents = fixture.repoRoot.resolve("skills/kmp/bill-kmp-legacy/native-agents")
+    val legacySkillNativeAgents = fixture.repoRoot.resolve("unselected-native-agents/bill-kmp-legacy/native-agents")
     Files.createDirectories(legacySkillNativeAgents)
     Files.writeString(
       legacySkillNativeAgents.resolve("bill-kmp-legacy-worker.md"),

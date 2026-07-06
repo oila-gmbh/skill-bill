@@ -284,7 +284,7 @@ class McpStdioServerTest {
     // SKILL-86 (AC2 USER-CONFIRMED): feature_implement_* hidden aliases dispatch to the prose handlers
     // with no behavioral difference (same prose family, same payload validation against the canonical
     // feature_task_prose_* schema).
-    val tempDir = Files.createTempDirectory("skillbill-stdio-feature-implement-alias")
+    val tempDir = Files.createTempDirectory("skillbill-stdio-feature-task-alias")
     val context = McpRuntimeContext(environment = enabledStdioTelemetryEnvironment(tempDir), userHome = tempDir)
 
     val started =

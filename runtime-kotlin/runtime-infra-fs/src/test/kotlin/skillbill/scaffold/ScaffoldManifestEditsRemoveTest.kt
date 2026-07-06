@@ -156,10 +156,10 @@ class ScaffoldManifestEditsRemoveTest {
 
   @Test
   fun `removeSkillClassPointer strips one pointer slug`(@TempDir tempDir: Path) {
-    val manifest = tempDir.resolve("feature-implement.yaml")
+    val manifest = tempDir.resolve("feature-task.yaml")
     manifest.toFile().writeText(
       """
-      class: feature-implement
+      class: feature-task
       pointers:
         - shell-ceremony
         - android-compose-implementation

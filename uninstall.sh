@@ -322,13 +322,10 @@ remove_desktop_app() {
 }
 
 # SKILL-14 + SKILL-16: pure relocations whose skill directory name stays the
-# same (for example, moving
-# skills/kotlin/bill-kotlin-code-check/ to
-# platform-packs/kotlin/quality-check/bill-kotlin-code-check/) do NOT need
-# RENAMED_SKILL_PAIRS entries. The installer's build_skill_names walks both
-# skills/ AND platform-packs/, and the uninstaller removes
-# $agent_dir/<skill_name> symlinks by name — so relocations are discovered
-# automatically. Only use this array when the skill's canonical name changes.
+# same do NOT need RENAMED_SKILL_PAIRS entries. The installer discovers current
+# skills and platform-pack roots, and the uninstaller removes
+# $agent_dir/<skill_name> symlinks by name. Only use this array when the skill's
+# canonical name changes.
 declare -a RENAMED_SKILL_PAIRS=(
   'bill-module-history:bill-boundary-history'
   'bill-code-review-architecture:bill-kotlin-code-review-architecture'

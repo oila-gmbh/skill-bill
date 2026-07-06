@@ -116,7 +116,7 @@ Acceptance criteria: 7/7 implemented per audit; ./gradlew check (detekt, spotles
 
 ## [2026-06-19] SKILL-86 feature-task naming cleanup (prose/runtime tree)
 Areas: runtime-kotlin/runtime-mcp, runtime-kotlin/runtime-application, runtime-kotlin/runtime-infra-sqlite, runtime-kotlin/runtime-domain, runtime-kotlin/runtime-cli, orchestration/contracts, skills, docs
-- Finished the half-done rename so code matches the tree: `WorkflowFamilyKind.IMPLEMENT` -> `TASK_PROSE` (enum CONSTANT only — the internal `WorkflowFamily.IMPLEMENT` symbol, `FeatureImplement*` classes, and the physical `feature_implement_sessions`/`feature_task_workflows` tables stay, so existing DBs read unchanged); prose lane public id `feature-implement` -> `feature-task-prose`. The enum is NOT persisted by `.name()`, so the constant rename is storage-safe — confirmed before touching it.
+- Finished the half-done rename so code matches the tree: `WorkflowFamilyKind.IMPLEMENT` -> `TASK_PROSE` (enum CONSTANT only — the internal `WorkflowFamily.IMPLEMENT` symbol, `FeatureImplement*` classes, and the physical `feature_implement_sessions`/`feature_task_workflows` tables stay, so existing DBs read unchanged); prose lane public id `feature-task` -> `feature-task-prose`. The enum is NOT persisted by `.name()`, so the constant rename is storage-safe — confirmed before touching it.
 - MCP prose family `feature_implement_*` -> `feature_task_prose_*`; bare `feature_task_*` duplicate DELETED; `feature_task_runtime_*` promoted to canonical (descriptions de-deprecated). reusable PATTERN — hidden dispatcher alias: a removed-from-registry tool name can stay callable by keeping it in `McpToolDispatcher.legacyToolAliases` (single shared map) routing to the canonical handler; `validateStrictArguments` and `tools/list` resolve through `canonicalToolName` so the alias keeps the strict gate while being absent from the advertised surface. reusable
 - PITFALL: the dispatcher validates the raw `workflow` arg against the telemetry schema enum BEFORE `mapRemoteStatsWorkflow` runs, so dropping a legacy id (`bill-feature-task`) from the schema enum silently rejects it at the seam even though the `when` still accepted it. Read-aliasing legacy ids (AC7) means keeping them in ALL input sources of truth (schema enum + `McpInputSchemas.remoteStatsWorkflowSchema` + mapper `when`/error), NOT in `remoteStatsWorkflows` which is the POST-map allowlist keyed on the mapped value.
 - Emitted prose events `skillbill_feature_implement_*` -> `skillbill_feature_task_prose_*` (single source: `LifecycleTelemetryEmitSupport`); `TELEMETRY_EVENT_CONTRACT_VERSION` bumped 1.0.0->1.1.0 in lockstep (schema YAML const + `TelemetryEventSchemaPaths.kt`, enforced by `TelemetryEventSchemaContractVersionTest` + bidirectional `TelemetryEventInputSchemaParityTest`). The Cloudflare proxy (`docs/cloudflare-telemetry-proxy/worker.js`) now read-unions old+new event names — REDEPLOY required for remote stats continuity.
@@ -221,7 +221,7 @@ Acceptance criteria: 6/6 implemented
 ## [2026-06-11] SKILL-78 feature-task-mode-workflow-table
 Areas: runtime-kotlin/runtime-ports, runtime-kotlin/runtime-infra-sqlite, runtime-kotlin/runtime-application, runtime-kotlin/runtime-domain, runtime-kotlin/runtime-contracts, orchestration/contracts, skills/bill-feature-task*
 - Feature-task prose and runtime workflows now persist in one `feature_task_workflows` table with `workflow_name=bill-feature-task`, explicit `mode=prose|runtime`, and `implementation_skill` for the selected implementation. reusable
-- `WorkflowService` and repository methods route prose and runtime through the shared mode-aware store; old feature-implement/task-runtime method names remain compatibility aliases only, not separate authoritative families. reusable
+- `WorkflowService` and repository methods route prose and runtime through the shared mode-aware store; old feature-task/task-runtime method names remain compatibility aliases only, not separate authoritative families. reusable
 - Workflow-state validation dispatches by `mode`: prose rows keep prose steps/artifacts, runtime rows keep phase records/ledger/briefings/resolved-branch/goal artifacts, and mode mismatches loud-fail through typed workflow-state errors. reusable
 - SQLite/schema/application/core/MCP/CLI tests and golden payloads were updated around fresh shared-table rows; `feature_verify` persistence remains separate.
 - Known limitation: the upstream audit still reported residual AC5/AC14 lookup/regression-test concerns after implementation; validation gates passed without changing those findings.
@@ -284,7 +284,7 @@ Acceptance criteria: 9/9 implemented (parallel review is additive beyond SKILL-7
 
 ## [2026-06-06] SKILL-69 stats-remote-query-guidance-and-docs
 Areas: runtime-kotlin/runtime-domain, runtime-kotlin/runtime-ports, runtime-kotlin/runtime-application, runtime-kotlin/runtime-infra-sqlite, runtime-kotlin/runtime-cli, runtime-kotlin/runtime-mcp, docs
-- Review stats now aggregate standalone review-finished telemetry plus embedded feature-implement review payloads, with source breakdowns and malformed/excluded payload debt.
+- Review stats now aggregate standalone review-finished telemetry plus embedded feature-task review payloads, with source breakdowns and malformed/excluded payload debt.
 - Feature-implement health stats now report production valid-session rates, deduped terminal metrics, child-step coverage, duration percentiles, and feature-size segmentation. reusable
 - New SQLite support helpers split payload loading, health aggregation, percentiles, child-step stats, and size-health stats to keep stats surfaces composable. reusable
 - CLI/MCP JSON mapping carries the additive health fields through shared application payload contracts; focused runtime, CLI, and MCP tests cover the new shape.
@@ -293,7 +293,7 @@ Areas: runtime-kotlin/runtime-domain, runtime-kotlin/runtime-ports, runtime-kotl
 Feature flag: N/A
 Acceptance criteria: 7/7 implemented per implement phase; audit caveat above
 
-## [2026-06-06] SKILL-69 feature-implement-lifecycle-telemetry-health
+## [2026-06-06] SKILL-69 feature-task-lifecycle-telemetry-health
 Areas: runtime-kotlin/runtime-application, runtime-kotlin/runtime-domain, runtime-kotlin/runtime-infra-sqlite, runtime-kotlin/runtime-mcp, orchestration/contracts
 - Feature-implement lifecycle telemetry now persists source classification so stats can filter synthetic/test runs by default without hard-coded install/session ids.
 - Health stats dedupe terminal finished events by `session_id`, flag duplicate terminal emissions, exclude malformed or blank session ids from rates, and count them as data-quality debt. reusable
@@ -563,7 +563,7 @@ Areas: runtime-kotlin/runtime-domain, runtime-kotlin/runtime-application, runtim
 - `workflow update` now returns a typed compact acknowledgement by default (status, workflow_id, workflow_name, workflow_status, current_step_id, updated_step_ids, updated_artifact_keys, db_path) instead of a full snapshot; `workflow show`/`get` stay the read-only full-state path. reusable
 - The acknowledgement is produced only after `WorkflowEngine.validateUpdate` passes, the transaction saves, and the service re-reads persisted state — never from stdout or an unpersisted projection; loud-fail validation still precedes projection. reusable
 - Domain owns the transport-neutral acknowledgement view (carries `workflow_name`, no presentation fields); CLI/MCP adapters render `read_only_full_state_command`/`db_path` with the resolved `--db` path, mirroring the subtask 1 compact-continue pattern. reusable
-- MCP goldens (`mcp-feature-implement-workflow.json`, `mcp-feature-verify-workflow.json`) deliberately updated to the compact default; added CLI runtime + service + CLI/MCP mapper coverage asserting compact shape and unchanged read-only full-state.
+- MCP goldens (`mcp-feature-task-workflow.json`, `mcp-feature-verify-workflow.json`) deliberately updated to the compact default; added CLI runtime + service + CLI/MCP mapper coverage asserting compact shape and unchanged read-only full-state.
 - Install sync intentionally skipped during goal-continuation after editing skills/bill-feature-task/content.md; refresh local installs outside continuation if generated output needs updating.
 Feature flag: N/A
 Acceptance criteria: 7/7 implemented
@@ -676,7 +676,7 @@ Areas: runtime-kotlin/runtime-application, runtime-kotlin/runtime-ports, runtime
 Feature flag: N/A
 Acceptance criteria: 2/2 implemented (subtask scope)
 
-## [2026-05-30] SKILL-57 subtask 2 feature-implement-phase-heartbeats
+## [2026-05-30] SKILL-57 subtask 2 feature-task-phase-heartbeats
 Areas: skills/bill-feature-task authored workflow contract, runtime-kotlin/runtime-domain continuation definitions, runtime-kotlin/runtime-mcp golden continuation payloads, runtime-kotlin/runtime-infra-fs workflow/launcher tests
 - Added a governed `Durable Progress Write Contract` to `bill-feature-task` and threaded it through heavy phase (`preplan`, `plan`, `implement`, `audit`, `validate`, `pr_description`) subagent briefings with required phase/task/heartbeat/phase-complete write points and explicit `workflow_id`/`step_id`/`attempt_count` context. reusable
 - Progress writes are now explicitly best-effort-but-visible in authored contracts: each heavy phase result includes `progress_write_failures`, and briefings require stopping for orchestrator-level blocking when reliable writes cannot continue. reusable
@@ -725,8 +725,8 @@ Acceptance criteria: 7/7 implemented (subtask scope)
 
 ## [2026-05-29] SKILL-56 subtask 1 headless-continuation-contract
 Areas: runtime-kotlin/runtime-application, runtime-kotlin/runtime-domain, runtime-kotlin/runtime-cli, runtime-kotlin/runtime-mcp, orchestration/contracts, skills/bill-feature-task
-- Added issue-key goal continuation for decomposed feature-implement parents with optional `subtask_id` constraint; domain selector now has a terminal-subtask outcome so retrying a completed requested subtask is idempotent while later work remains. reusable
-- New subtask workflows start at `preplan` with `assessment`/`branch`/`goal_continuation` artifacts already persisted; interactive feature-implement still owns confirmation and PR creation.
+- Added issue-key goal continuation for decomposed feature-task parents with optional `subtask_id` constraint; domain selector now has a terminal-subtask outcome so retrying a completed requested subtask is idempotent while later work remains. reusable
+- New subtask workflows start at `preplan` with `assessment`/`branch`/`goal_continuation` artifacts already persisted; interactive feature-task still owns confirmation and PR creation.
 - Goal-continuation outcomes are typed in application results and mapped to stable CLI/MCP wire fields: `issue_key`, `subtask_id`, `status`, `commit_sha`, `workflow_id`, `blocked_reason`, `last_resumable_step`. reusable
 - PR-suppressed completion treats completed `commit_push` plus nonblank `commit_push_result.commit_sha` as terminal success; missing commit SHA blocks loudly instead of duplicating later commit advancement.
 - MCP `feature_implement_workflow_continue` now accepts strict integer `subtask_id`; telemetry event schema mirrors the registry input schema to keep parity tests green.
@@ -1513,7 +1513,7 @@ Areas: runtime-cli golden fixtures, runtime-mcp golden fixtures, runtime archite
 - Added golden JSON contract coverage for Kotlin-native CLI/MCP surfaces while explicitly deferring Python-backed scaffold/authoring/install and `doctor <subject>` work to 3b.
 - Reusable pattern: normalize dynamic workflow ids/timestamps and scaffold paths only after asserting shape, prefixes, timestamp format, and path suffixes.
 - Strengthened architecture guardrails with source-reference bans for Python bridge markers and runtime-mcp FS/HTTP/SQL dependencies, with only the current `McpScaffoldRuntime` repo-root lookup exception.
-- Added active runtime surface locks for launcher, install, scaffold, feature-implement workflow, and feature-verify workflow; launcher Python fallback entries remain a TODO for 3c.
+- Added active runtime surface locks for launcher, install, scaffold, feature-task workflow, and feature-verify workflow; launcher Python fallback entries remain a TODO for 3c.
 Feature flag: N/A
 Acceptance criteria: 7/7 implemented
 
@@ -1544,7 +1544,7 @@ Acceptance criteria: 5/5 implemented (Python rollback criteria superseded by Kot
 
 ## [2026-04-30] runtime-green-gate-and-python-ownership
 Areas: runtime-application lifecycle validation, telemetry sync, SKILL-27 cutover checklist
-- Split lifecycle telemetry validation into feature-implement, feature-verify, quality-check, and shared validator files so each lifecycle family owns its validation rules and the runtime-application Detekt `TooManyFunctions` gate stays green. reusable
+- Split lifecycle telemetry validation into feature-task, feature-verify, quality-check, and shared validator files so each lifecycle family owns its validation rules and the runtime-application Detekt `TooManyFunctions` gate stays green. reusable
 - Collapsed `TelemetryService.autoSync` into a single guard predicate to satisfy the return-count rule without changing sync behavior.
 - Added the Python retirement ownership inventory to the SKILL-27 cutover checklist, classifying CLI commands, MCP tools, scaffold/authoring commands, install primitives, validation scripts, and release/support scripts before any Python deletion starts.
 Feature flag: N/A
@@ -1558,12 +1558,12 @@ Areas: runtime-mcp tests, lifecycle telemetry fixtures, MCP stdio tests
 Feature flag: N/A
 Acceptance criteria: test telemetry cannot target hosted relay, runtime-mcp check passes
 
-## [2026-04-30] runtime-mcp-feature-implement-lifecycle-schemas
+## [2026-04-30] runtime-mcp-feature-task-lifecycle-schemas
 Areas: runtime-mcp tool registry, MCP stdio tools/list contract, lifecycle telemetry tools
 - Added explicit MCP input schemas for `feature_implement_started` and `feature_implement_finished`; the previous open schema made Codex expose these mandatory lifecycle tools as no-argument tools even though handlers required fields. reusable
 - Locked the regression with an MCP stdio tools/list test that asserts required lifecycle fields such as `feature_size`, `issue_key`, `session_id`, and `completion_status` are advertised.
-- Tightened feature-implement lifecycle validation so missing/defaulted started fields (`spec_input_types=[]`, zero criteria, zero text spec word count, `issue_key_type=none` with an issue key) and impossible completed metrics (`review_iterations=0`, skipped audit/validation) fail instead of emitting low-value events. reusable
-- Operational symptom: a completed SKILL-32 feature-implement run committed successfully but initially missed `skillbill_feature_implement_started` and `skillbill_feature_implement_finished`; the missing pair was backfilled through the Kotlin MCP stdio server as session `fis-20260430-074408-b27m`.
+- Tightened feature-task lifecycle validation so missing/defaulted started fields (`spec_input_types=[]`, zero criteria, zero text spec word count, `issue_key_type=none` with an issue key) and impossible completed metrics (`review_iterations=0`, skipped audit/validation) fail instead of emitting low-value events. reusable
+- Operational symptom: a completed SKILL-32 feature-task run committed successfully but initially missed `skillbill_feature_implement_started` and `skillbill_feature_implement_finished`; the missing pair was backfilled through the Kotlin MCP stdio server as session `fis-20260430-074408-b27m`.
 - Known limit: the backfilled session has `duration_seconds=0` because started/finished were emitted together after the fact; future valid runs must call started at assessment time and finished at finalization time.
 Feature flag: N/A
 Acceptance criteria: MCP lifecycle schemas exposed, incomplete telemetry rejected, focused runtime-mcp check passes, telemetry pair backfilled
@@ -1653,7 +1653,7 @@ Acceptance criteria: 3/3 implemented
 ## [2026-04-25] runtime-placeholder-surface-contracts
 Areas: skillbill.install, skillbill.launcher, skillbill.scaffold, skillbill.workflow.*, skillbill.contracts.surface, runtime smoke tests
 - Replaced empty marker interfaces with reserved runtime surface objects exposing `RuntimeSurfaceContract` metadata.
-- Documented why install, launcher, scaffold, feature-implement workflow, and feature-verify workflow remain placeholder-only.
+- Documented why install, launcher, scaffold, feature-task workflow, and feature-verify workflow remain placeholder-only.
 - Reusable pattern: reserved runtime surfaces must declare owner package, contract version, reserved status, and a concrete placeholder reason before implementation.
 - Runtime smoke coverage now asserts reserved contracts and package boundaries instead of only checking class/package presence.
 Feature flag: N/A

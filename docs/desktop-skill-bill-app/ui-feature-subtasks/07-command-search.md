@@ -5,7 +5,7 @@ Status: Draft
 ## Parent Context
 
 This subtask belongs to
-`docs/desktop-skill-bill-app/ui-feature-implementation-specs.md`. It should run
+`docs/desktop-skill-bill-app/ui-feature-task-specs.md`. It should run
 after the major commands it exposes have real ViewModel handlers.
 
 ## UI Entry Points

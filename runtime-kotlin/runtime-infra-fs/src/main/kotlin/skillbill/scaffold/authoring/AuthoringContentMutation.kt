@@ -80,7 +80,7 @@ internal fun inferFamily(skillName: String): String {
   return when {
     "-code-review-" in skillName || slug.endsWith("code-review") -> "code-review"
     slug.endsWith("quality-check") -> "quality-check"
-    slug.endsWith("feature-task") || slug.endsWith("feature-implement") -> "feature-implement"
+    slug.endsWith("feature-task") -> "feature-task"
     slug.endsWith("feature-verify") -> "feature-verify"
     else -> slug
   }

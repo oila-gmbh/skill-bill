@@ -56,7 +56,7 @@ Platform pack creation always generates the baseline code-review skill, default
 quality-check skill, and every approved code-review specialist. Remove unwanted
 focus areas afterward through governed removal paths.
 
-The wizard must not create feature-implement or feature-verify overrides for a new platform pack.
+The wizard must not create feature-task or feature-verify overrides for a new platform pack.
 
 ## Required Runtime Behavior
 

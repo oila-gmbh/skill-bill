@@ -10,7 +10,7 @@ class FeatureImplementTelemetryValidatorTest {
   fun `finished telemetry rejects malformed session ids`() {
     val error = validateFeatureImplementFinished(validFinishedRequest(sessionId = "bad-session"))
 
-    assertEquals("session_id must be a feature-implement session id.", error)
+    assertEquals("session_id must be a feature-task session id.", error)
   }
 
   @Test

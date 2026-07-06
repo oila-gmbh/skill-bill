@@ -286,7 +286,7 @@ class JvmRuntimeScaffoldGatewayTest {
     assertNotNull(snapshot)
     assertTrue(snapshot.approvedCodeReviewAreas.isNotEmpty())
     assertEquals("1.0", snapshot.scaffoldPayloadVersion)
-    assertTrue(snapshot.preShellFamilies.contains("feature-implement"))
+    assertTrue(snapshot.preShellFamilies.contains("feature-task"))
     assertTrue(snapshot.shelledFamilies.contains("code-review"))
     assertTrue(snapshot.platformPackPresets.any { it.platform == "java" })
     assertTrue(snapshot.pilotedPlatformPacks.isEmpty())

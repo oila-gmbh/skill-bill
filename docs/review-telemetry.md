@@ -331,12 +331,12 @@ Both levels:
 
 ## Feature-implement telemetry
 
-The feature-implement workflow emits two events per session:
+The feature-task workflow emits two events per session:
 
 - `skillbill_feature_task_prose_started` — emitted after Step 1 assessment is confirmed by the user
 - `skillbill_feature_task_prose_finished` — emitted after Step 9 (PR created) or when the workflow ends early
 
-Each feature-implement session uses a `session_id` in the format `fis-YYYYMMDD-HHMMSS-XXXX` (4-char random alphanumeric suffix). The finished event is self-contained — it includes all started fields so each event can be analyzed independently in PostHog.
+Each feature-task session uses a `session_id` in the format `fis-YYYYMMDD-HHMMSS-XXXX` (4-char random alphanumeric suffix). The finished event is self-contained — it includes all started fields so each event can be analyzed independently in PostHog.
 
 The MCP server exposes `feature_task_prose_started` and `feature_task_prose_finished` as agent tools. The skill instructions tell the agent when to call each tool.
 

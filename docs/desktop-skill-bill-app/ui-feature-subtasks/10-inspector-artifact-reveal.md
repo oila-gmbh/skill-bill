@@ -5,7 +5,7 @@ Status: Complete
 ## Parent Context
 
 This subtask belongs to
-`docs/desktop-skill-bill-app/ui-feature-implementation-specs.md`. It closes a
+`docs/desktop-skill-bill-app/ui-feature-task-specs.md`. It closes a
 gap in the Inspector pane: the `Generated artifacts` section lists artifact
 paths as plain `KeyValueRow` entries with no way to navigate to them, even
 though those paths correspond to real tree items.

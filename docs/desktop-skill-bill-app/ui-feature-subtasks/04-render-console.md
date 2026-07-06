@@ -5,7 +5,7 @@ Status: Complete
 ## Parent Context
 
 This subtask belongs to
-`docs/desktop-skill-bill-app/ui-feature-implementation-specs.md`. It should
+`docs/desktop-skill-bill-app/ui-feature-task-specs.md`. It should
 reuse the status, generated-artifact, and console models established by earlier
 subtasks.
 

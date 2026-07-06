@@ -1107,7 +1107,7 @@ private fun assertReviewStatsPayload(dbPath: Path, context: CliRuntimeContext) {
 
 private fun assertFeatureStatsAliases(dbPath: Path, context: CliRuntimeContext) {
   val implementAliasPayload =
-    runJson("--db", dbPath.toString(), "feature-implement-stats", "--format", "json", context = context)
+    runJson("--db", dbPath.toString(), "implement-stats", "--format", "json", context = context)
   val verifyAliasPayload =
     runJson("--db", dbPath.toString(), "feature-verify-stats", "--format", "json", context = context)
 

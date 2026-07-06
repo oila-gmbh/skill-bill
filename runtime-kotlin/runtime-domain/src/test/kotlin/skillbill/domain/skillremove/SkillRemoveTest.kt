@@ -133,25 +133,27 @@ class SkillRemoveTest {
   }
 
   @Test
-  fun `previewRemoval refuses kotlin without allowShipped flag`() {
+  fun `previewRemoval treats kotlin as a normal horizontal skill name after pre-shell pruning`() {
     val fs = FakeSkillRemoveFileSystem()
     val request = SkillRemovalRequest(
       target = SkillRemovalTarget.HorizontalSkill(skillName = "kotlin", allowShipped = false),
       repoRootAbsolutePath = "/repo",
     )
-    val refusal = assertFailsWith<SkillRemovalRefusedException> { SkillRemove(fs).previewRemoval(request) }
-    assertEquals(SkillRemovalRefusalReason.SHIPPED_REQUIRES_ALLOW_SHIPPED, refusal.refusalReason)
+    val preview = SkillRemove(fs).previewRemoval(request).preview
+    assertNotNull(preview)
+    assertEquals(listOf("kotlin"), preview.cascadedSkillNames)
   }
 
   @Test
-  fun `previewRemoval refuses kmp without allowShipped flag`() {
+  fun `previewRemoval treats kmp as a normal horizontal skill name after pre-shell pruning`() {
     val fs = FakeSkillRemoveFileSystem()
     val request = SkillRemovalRequest(
       target = SkillRemovalTarget.HorizontalSkill(skillName = "kmp", allowShipped = false),
       repoRootAbsolutePath = "/repo",
     )
-    val refusal = assertFailsWith<SkillRemovalRefusedException> { SkillRemove(fs).previewRemoval(request) }
-    assertEquals(SkillRemovalRefusalReason.SHIPPED_REQUIRES_ALLOW_SHIPPED, refusal.refusalReason)
+    val preview = SkillRemove(fs).previewRemoval(request).preview
+    assertNotNull(preview)
+    assertEquals(listOf("kmp"), preview.cascadedSkillNames)
   }
 
   @Test
@@ -159,14 +161,14 @@ class SkillRemoveTest {
     // SKILL-49: platform packs are the user-extension surface; shipped first-party packs
     // (`kotlin`, `kmp`) are user-removable from the desktop UI and CLI without `--allow-shipped`.
     // Only `.bill-shared` remains unconditionally protected on the platform axis.
-    val fs = FakeSkillRemoveFileSystem(filesystemPaths = listOf("platform-packs/kotlin", "skills/kotlin"))
+    val fs = FakeSkillRemoveFileSystem(filesystemPaths = listOf("platform-packs/kotlin"))
     val request = SkillRemovalRequest(
       target = SkillRemovalTarget.PlatformPack(platform = "kotlin", allowShipped = false),
       repoRootAbsolutePath = "/repo",
     )
     val preview = SkillRemove(fs).previewRemoval(request).preview
     assertNotNull(preview)
-    assertEquals(listOf("platform-packs/kotlin", "skills/kotlin"), preview.filesystemPaths)
+    assertEquals(listOf("platform-packs/kotlin"), preview.filesystemPaths)
   }
 
   @Test
@@ -185,14 +187,14 @@ class SkillRemoveTest {
 
   @Test
   fun `previewRemoval accepts kotlin when allowShipped is true`() {
-    val fs = FakeSkillRemoveFileSystem(filesystemPaths = listOf("skills/kotlin"))
+    val fs = FakeSkillRemoveFileSystem(filesystemPaths = listOf("skills/custom-kotlin"))
     val request = SkillRemovalRequest(
       target = SkillRemovalTarget.HorizontalSkill(skillName = "kotlin", allowShipped = true),
       repoRootAbsolutePath = "/repo",
     )
     val preview = SkillRemove(fs).previewRemoval(request).preview
     assertNotNull(preview)
-    assertEquals(listOf("skills/kotlin"), preview.filesystemPaths)
+    assertEquals(listOf("skills/custom-kotlin"), preview.filesystemPaths)
   }
 
   @Test

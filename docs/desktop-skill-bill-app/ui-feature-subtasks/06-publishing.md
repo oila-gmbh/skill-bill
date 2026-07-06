@@ -5,7 +5,7 @@ Status: Complete
 ## Parent Context
 
 This subtask belongs to
-`docs/desktop-skill-bill-app/ui-feature-implementation-specs.md`. It depends on
+`docs/desktop-skill-bill-app/ui-feature-task-specs.md`. It depends on
 Subtask 05 for real Git status/diff/staging and should use Subtask 02 validation
 before commit.
 

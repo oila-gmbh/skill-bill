@@ -3,6 +3,7 @@ package skillbill.scaffold
 import skillbill.error.InvalidScaffoldPayloadError
 import skillbill.error.RetiredScaffoldKindError
 import skillbill.error.ScaffoldPayloadVersionMismatchError
+import skillbill.error.UnknownPreShellFamilyError
 import skillbill.error.UnknownSkillKindError
 import skillbill.scaffold.payload.detectKind
 import skillbill.scaffold.payload.optionalSpecialistSubagents
@@ -16,6 +17,7 @@ import skillbill.scaffold.policy.SKILL_KIND_ADD_ON
 import skillbill.scaffold.policy.SKILL_KIND_CODE_REVIEW_AREA
 import skillbill.scaffold.policy.SKILL_KIND_HORIZONTAL
 import skillbill.scaffold.policy.SKILL_KIND_PLATFORM_PACK
+import skillbill.scaffold.runtime.PRE_SHELL_FAMILIES
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -70,6 +72,24 @@ class ScaffoldPayloadMapPolicyTest {
         assertTrue(kind in message, "Got: $message")
         assertTrue("platform-pack" in message, "Got: $message")
       }
+  }
+
+  @Test
+  fun `detectKind rejects retired feature task family name with replacement`() {
+    val retiredFamily = "feature-" + "implement"
+
+    val error = assertFailsWith<UnknownPreShellFamilyError> {
+      detectKind(mapOf("kind" to "platform-override-piloted", "family" to retiredFamily))
+    }
+
+    val message = error.message.orEmpty()
+    assertTrue(retiredFamily in message, "Got: $message")
+    assertTrue("feature-task" in message, "Got: $message")
+  }
+
+  @Test
+  fun `pre shell family taxonomy contains feature task and feature verify only`() {
+    assertEquals(setOf("feature-task", "feature-verify"), PRE_SHELL_FAMILIES)
   }
 
   @Test

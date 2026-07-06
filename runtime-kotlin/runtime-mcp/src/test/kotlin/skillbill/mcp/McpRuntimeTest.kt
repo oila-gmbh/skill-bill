@@ -291,7 +291,7 @@ class McpRuntimeTest {
 
   @Test
   fun `feature implement lifecycle rejects defaulted incomplete telemetry fields`() {
-    val tempDir = Files.createTempDirectory("skillbill-mcp-feature-implement-invalid")
+    val tempDir = Files.createTempDirectory("skillbill-mcp-feature-task-invalid")
     val env = enabledTelemetryEnvironment(tempDir)
     val context = McpRuntimeContext(environment = env, userHome = tempDir)
 
@@ -582,7 +582,7 @@ class McpRuntimeTest {
     assertTrue(updatedAt >= opened["started_at"].toString())
 
     assertGoldenPayload(
-      "mcp-feature-implement-workflow.json",
+      "mcp-feature-task-prose-workflow.json",
       mapOf(
         "open" to opened,
         "update" to updated,

@@ -283,9 +283,14 @@ private fun planPlatformOverridePiloted(payload: Map<String, Any?>, repoRoot: Pa
   val notes = mutableListOf<String>()
   if (!isShelled) {
     if (family !in PRE_SHELL_FAMILIES) {
+      val replacement = if (family == "feature-" + "implement") {
+        " Use 'feature-task' instead."
+      } else {
+        ""
+      }
       throw UnknownPreShellFamilyError(
         "Scaffold payload declares pre-shell family '$family' " +
-          "that is not in the registered set $PRE_SHELL_FAMILIES.",
+          "that is not in the registered set $PRE_SHELL_FAMILIES.$replacement",
       )
     }
     val skillPath = repoRoot.resolve("skills").resolve(platform).resolve(name)
