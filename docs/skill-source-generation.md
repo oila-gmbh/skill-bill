@@ -33,6 +33,8 @@ Allowed files under each `skills/<skill>/` directory:
 
 - `content.md`
 - `native-agents/` when the skill owns provider-neutral native-agent sources
+- explicit authored sidecars only when a documented governed contract allows
+  them
 
 Allowed files under `skills/<skill>/native-agents/`:
 
@@ -63,17 +65,19 @@ Platform packs use their own source layout:
 Platform pack pointer files declared by `platform.yaml` are generated output,
 not source files.
 
-Pack-owned add-ons are consumed through `platform.yaml` `addon_usage`, not
-hand-authored skill prose. The manifest maps a skill-relative directory to the
-add-on entry pointer and optional companion pointers the installed skill may
-open after stack routing. The renderer turns that contract into a generated
-`## Governed Add-Ons` wrapper section, and the loader rejects add-on usage that
-does not reference generated pointers targeting the same pack's `addons/`
-directory.
+Pack-owned add-ons are consumed through manifest-owned declarations, not
+hand-authored skill prose. `addon_usage` maps review/check skill-relative
+directories to add-on entry pointers and optional companion pointers the
+installed skill may open after stack routing. `feature_addon_usage` maps
+feature-task consumers to the same pack-owned add-on model. The renderer turns
+those contracts into generated wrapper sections, and the loader rejects add-on
+usage that does not reference generated pointers targeting the same pack's
+`addons/` directory.
 
 ## `content.md`
 
-`content.md` is the only authored skill body for governed skills. It owns:
+`content.md` is the default authored skill body for governed skills, except
+for documented governed sidecar contracts. It owns:
 
 - YAML frontmatter with `name` and `description`
 - task-specific execution guidance
@@ -346,10 +350,11 @@ If a skill needs a new support file:
 3. Add validator and install-staging coverage.
 4. Do not add the pointer file under `skills/<skill>/`.
 
-If a platform-pack skill needs governed add-ons, declare their generated
-pointer filenames in the pack's `addon_usage` block. Keep add-on selection
-cues and topic indexes in the pack-owned add-on files, not duplicated in
-`content.md`.
+If a platform-pack skill needs governed review/check add-ons, declare their
+generated pointer filenames in the pack's `addon_usage` block. If feature-task
+flows need governed add-ons, declare them in `feature_addon_usage`. Keep add-on
+selection cues and topic indexes in the pack-owned add-on files, not duplicated
+in `content.md`.
 
 ## Install Staging
 
@@ -478,7 +483,7 @@ that omit `baseline_layers` remain valid and generate no
 `code_review_composition` section.
 
 For add-ons, the normal wizard creates a skeleton markdown file and registers
-the generated pointer through the owning pack's `platform.yaml` `addon_usage`.
+the generated pointer through the owning pack's manifest-owned add-on usage.
 When `addon_location_path` is provided, the wizard instead creates the skeleton
 in that external add-on source directory and creates or updates the source's
 `addon-manifest.yaml`; the owning pack still provides the validated/defaulted
@@ -526,12 +531,13 @@ scripts/validate_agent_configs
 
 Key guards:
 
-- source skill directories under `skills/` may contain only `content.md` and
-  optional `native-agents/`
+- source skill directories under `skills/` may contain `content.md`, optional
+  `native-agents/`, and explicit authored sidecars only when a documented
+  governed contract allows them
 - committed generated `SKILL.md` wrappers are rejected
 - committed generated support pointer files are rejected
 - committed provider-specific native-agent artifacts are rejected
-- platform manifests must match shell contract version `1.1`
+- platform manifests must match shell contract version `1.2`
 - manifest-declared files must exist and be valid `content.md`
 - pointer target parity is validated against platform manifests
 - native-agent composition must render self-contained provider output

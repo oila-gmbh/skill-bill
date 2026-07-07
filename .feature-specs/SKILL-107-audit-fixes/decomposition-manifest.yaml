@@ -10,8 +10,8 @@ base_branch: "main"
 feature_branch: "feat/SKILL-107-audit-fixes"
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 5
-  action: "start"
+  subtask_id: 6
+  action: "resume"
 subtasks:
 - id: 1
   name: "Stale-surface retirement"
@@ -71,12 +71,12 @@ subtasks:
 - id: 5
   name: "peak-hours-warner operator config"
   spec_path: ".feature-specs/SKILL-107-audit-fixes/spec_subtask_5_peak-hours-operator-config.md"
-  status: "pending"
+  status: "complete"
   branch: null
   commit_sha: null
-  workflow_id: "wftr-20260707-042341-7l80"
+  workflow_id: "wftr-20260707-053050-q0q0"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -87,7 +87,7 @@ subtasks:
   status: "pending"
   branch: null
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wftr-20260707-054255-kwzr"
   blocked_reason: null
   last_resumable_step: null
   linear_issue_id: null
