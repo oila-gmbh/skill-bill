@@ -2,14 +2,31 @@ package skillbill.infrastructure.sqlite.review
 
 import skillbill.review.normalizePlatformSlug
 
-fun platformSlugFromRoutedSkill(routedSkill: String?): String {
+fun platformSlugFromRoutedSkill(
+  routedSkill: String?,
+  routedSkillPlatformSlugs: Map<String, String> = emptyMap(),
+): String {
   val normalized = normalizePlatformSlug(routedSkill)
-  return when {
-    normalized == "unknown" -> "unknown"
-    normalized.startsWith("bill-kmp-") -> "kmp"
-    normalized.startsWith("bill-kotlin-") -> "kotlin"
-    normalized.startsWith("bill-agent-config-") -> "agent-config"
-    normalized.startsWith("bill-android-") -> "android"
-    else -> "unknown"
+  if (normalized == "unknown") {
+    return "unknown"
   }
+  return normalizedRoutedSkillPlatformSlugs(routedSkillPlatformSlugs)
+    .firstNotNullOfOrNull { (skillName, platformSlug) ->
+      platformSlug.takeIf { normalized == skillName }
+    }
+    ?: "unknown"
 }
+
+private fun normalizedRoutedSkillPlatformSlugs(
+  routedSkillPlatformSlugs: Map<String, String>,
+): List<Pair<String, String>> = routedSkillPlatformSlugs
+  .mapNotNull { (skillName, platformSlug) ->
+    val normalizedSkillName = normalizePlatformSlug(skillName)
+    val normalizedPlatformSlug = normalizePlatformSlug(platformSlug)
+    if (normalizedSkillName == "unknown" || normalizedPlatformSlug == "unknown") {
+      null
+    } else {
+      normalizedSkillName to normalizedPlatformSlug
+    }
+  }
+  .sortedWith(compareByDescending<Pair<String, String>> { it.first.length }.thenBy { it.first })

@@ -95,6 +95,7 @@ class FileSystemExternalAddonOverlay : ExternalAddonOverlayPort {
       parseAddonUsage(
         manifest = rewritten,
         slug = slug,
+        packRoot = installed.packRoot,
         pointers = fragmentPointers,
         declaredSkillDirs = installed.declaredSkillRelativeDirs(),
       )

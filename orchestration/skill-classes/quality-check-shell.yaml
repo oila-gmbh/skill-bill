@@ -1,5 +1,5 @@
 class: quality-check-shell
-contract_version: "1.1"
+contract_version: "1.2"
 
 matchers:
   - exact: bill-code-check
@@ -17,11 +17,11 @@ sections:
       Keep this shell thin:
 
       - detect the dominant stack in the current unit of work via manifest-driven discovery
-      - load the matching platform pack through the shell+content contract and resolve its declared quality-check file through `skillbill.scaffold.ShellContentLoader.loadQualityCheckContent` in `runtime-core`
+      - load the matching platform pack through the shell+content contract and resolve its declared quality-check file through `skillbill.scaffold.platformpack.ShellContentLoader.loadQualityCheckContent` in `runtime-infra-fs`
       - pass through the same scope and relevant context to the routed skill
       - refuse to run when a routed pack declares a quality-check file that does not exist or is missing a required section — never silently fall back
 
-      The shell targets shell contract version `1.1`. Packs that do not declare `declared_quality_check_file` are still contract-compliant; declaring the key opts the pack into quality-check routing.
+      The shell targets shell contract version `1.2`. Packs that do not declare `declared_quality_check_file` are still contract-compliant; declaring the key opts the pack into quality-check routing.
 
   - heading: Setup
     body: |
@@ -38,7 +38,7 @@ sections:
     body: |
       Stack detection and routing are manifest-driven. The shell discovers every `platform-packs/<slug>/platform.yaml`, reads each pack's declared routing signals, and chooses the dominant stack using manifest-declared tie-breakers. The shell does not enumerate platform names inline.
 
-      - For the dominant pack, read the optional top-level `declared_quality_check_file` key from the manifest. The runtime authority is `skillbill.scaffold.ShellContentLoader.loadQualityCheckContent` in `runtime-core`.
+      - For the dominant pack, read the optional top-level `declared_quality_check_file` key from the manifest. The runtime authority is `skillbill.scaffold.platformpack.ShellContentLoader.loadQualityCheckContent` in `runtime-infra-fs`.
       - The routed skill name is the `name:` frontmatter field of the declared quality-check `content.md`. The declared content must also carry `internal-for: bill-code-check`, so the routed checker installs as a sibling `<routed-skill-name>.md` sidecar inside `bill-code-check` rather than as a separately listed skill.
       - Explicit fallback rule: the `kmp` pack intentionally does NOT declare `declared_quality_check_file`. When the dominant pack is `kmp`, route quality-check work to the `kotlin` pack's quality-check skill instead. Any other pack that does not declare the key loud-fails via `MissingContentFileError` — the shell never silently substitutes another pack.
       - If multiple supported stacks appear in one repo, run the matching stack-specific quality checks sequentially, not in parallel, so fixes stay deterministic.

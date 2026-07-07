@@ -31,7 +31,7 @@ It is a tiny CI/CD for the feature itself, not just the code.
 <details>
 <summary><b>3. Native platform overrides via platform packs</b></summary>
 
-Generic skills like `/bill-code-review` and `/bill-code-check` are routing shells. The real work lives in `platform-packs/<lang>/` (today: `go`, `kotlin`, `kmp`, `php`, `python`), with native versions such as `bill-go-code-review`, `bill-kotlin-code-review`, `bill-php-code-review`, and `bill-python-code-review` plus area specialists (`-architecture`, `-security`, `-performance`, `-persistence`, `-api-contracts`, `-reliability`, `-platform-correctness`, `-testing`). KMP layers further on top of Kotlin with `-ui` and `-ux-accessibility` add-ons; Go, PHP, and Python include backend/service review, persistence/API/security/testing lanes, and UI/UX lanes. At runtime the generic entry point reads `routing_signals` from each pack's `platform.yaml` (e.g. `go.mod`, `.go`, `.kt`, `build.gradle.kts`, `composer.json`, `.php`, `pyproject.toml`, `.py`, plus KMP tie-breakers like `androidMain`/`expect/actual`) and hands off to the matching native skill. Adding a new language is purely additive — drop in `platform-packs/<lang>/` and `/bill-code-review` starts routing to it. No edits to the generic skill, no fork.
+Generic skills like `/bill-code-review` and `/bill-code-check` are routing shells. The real work lives in `platform-packs/<lang>/` (today: `go`, `ios`, `kotlin`, `kmp`, `php`, `python`), with native versions such as `bill-go-code-review`, `bill-ios-code-review`, `bill-kotlin-code-review`, `bill-php-code-review`, and `bill-python-code-review` plus area specialists (`-architecture`, `-security`, `-performance`, `-persistence`, `-api-contracts`, `-reliability`, `-platform-correctness`, `-testing`, and UI/UX-accessibility where the pack declares them). KMP layers further on top of Kotlin with Android/KMP depth and add-ons; iOS adds `bill-ios-code-check`, `.xcodeproj`/`.xcworkspace`, SwiftUI/UIKit, lifecycle, concurrency, UI, and accessibility signals; Go, PHP, and Python include backend/service review, persistence/API/security/testing lanes, and UI/UX lanes. At runtime the generic entry point reads `routing_signals` from each pack's `platform.yaml` (e.g. `go.mod`, `.go`, `.xcodeproj`, `.xcworkspace`, `import SwiftUI`, `import UIKit`, `.kt`, `build.gradle.kts`, `composer.json`, `.php`, `pyproject.toml`, `.py`, plus KMP tie-breakers like `androidMain`/`expect/actual`) and hands off to the matching native skill. Adding a new language is purely additive — drop in `platform-packs/<lang>/` and `/bill-code-review` starts routing to it. No edits to the generic skill, no fork.
 
 </details>
 
@@ -87,9 +87,9 @@ For decomposed goals, the foreground `skill-bill goal` runtime owns a flat worke
 </details>
 
 <details>
-<summary><b>7. <code>content.md</code> is the only authored surface; everything else is generated</b></summary>
+<summary><b>7. <code>content.md</code> is the default authored surface; runtime files are generated</b></summary>
 
-A skill author touches exactly one file. Free-form markdown, frontmatter on top, prose body underneath, write it however you want. No JSON, no schema, no boilerplate.
+A skill author usually touches exactly one file. Free-form markdown, frontmatter on top, prose body underneath, write it however you want. Documented governed sidecar contracts are the narrow exception. No JSON, no schema, no boilerplate.
 
 Generated from it (and you never hand-edit):
 
@@ -100,7 +100,7 @@ Generated from it (and you never hand-edit):
 - Skill discovery descriptions derived from the frontmatter `description`.
 - MCP tool exposure for workflow and telemetry, without the author wiring anything.
 
-The author contract is: write the body, declare the description, the rest is the renderer's problem. The validator keeps the generated artifacts from drifting from the manifest. Soft inside, hard shell.
+The author contract is: write the body, declare the description, use documented governed sidecars only where the contract allows them, and leave the rest to the renderer. The validator keeps the generated artifacts from drifting from the manifest. Soft inside, hard shell.
 
 </details>
 

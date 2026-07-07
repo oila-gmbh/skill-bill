@@ -194,8 +194,8 @@ internal fun Modifier.skillRemoveContextMenuModifier(
     }
     else -> null
   }
-  // SKILL-49: axis-specific protection — SKILL nodes hide Delete for shipped pre-shells and
-  // `bill-*` product skills; PLATFORM_PACK nodes only hide Delete for `.bill-shared`.
+  // SKILL-49: axis-specific protection — SKILL nodes hide Delete for `bill-*` product skills;
+  // PLATFORM_PACK nodes only hide Delete for `.bill-shared`.
   val isProtected = identifier != null && when (node.kind) {
     TreeItemKind.SKILL ->
       skillbill.desktop.core.domain.model.DesktopSkillRemovalTarget.isProtectedHorizontalName(identifier)

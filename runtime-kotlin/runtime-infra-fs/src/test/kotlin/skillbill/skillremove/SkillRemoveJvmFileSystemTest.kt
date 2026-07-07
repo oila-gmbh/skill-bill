@@ -221,11 +221,9 @@ class SkillRemoveJvmFileSystemTest {
   }
 
   @Test
-  fun `executeRemoval PlatformPack deletes the platform pack root and paired pre-shell tree`() {
+  fun `executeRemoval PlatformPack deletes only the platform pack root`() {
     val repoRoot = seedRepo()
-    seedSkillDir(repoRoot.resolve("skills/kotlin"))
     val packRoot = repoRoot.resolve("platform-packs/kotlin")
-    val pairedPreShellRoot = repoRoot.resolve("skills/kotlin")
     val otherPackRoot = repoRoot.resolve("platform-packs/kmp")
     val fs = SkillRemoveJvmFileSystem(home = Files.createTempDirectory("home").also(tempDirs::add))
     val service = skillbill.domain.skillremove.SkillRemove(fs)
@@ -237,7 +235,6 @@ class SkillRemoveJvmFileSystemTest {
     service.executeRemoval(request)
 
     assertTrue(!Files.exists(packRoot, LinkOption.NOFOLLOW_LINKS), "platform pack root should be deleted")
-    assertTrue(!Files.exists(pairedPreShellRoot, LinkOption.NOFOLLOW_LINKS), "paired pre-shell tree should be deleted")
     assertTrue(Files.isDirectory(otherPackRoot, LinkOption.NOFOLLOW_LINKS), "unrelated platform pack should remain")
   }
 
@@ -277,7 +274,7 @@ class SkillRemoveJvmFileSystemTest {
     val platformManifest = Files.readString(repoRoot.resolve("platform-packs/kmp/platform.yaml"))
     assertTrue("android-compose-edge-to-edge.md" !in platformManifest, platformManifest)
     assertTrue("android-compose-review.md" in platformManifest, platformManifest)
-    val skillClassManifest = Files.readString(repoRoot.resolve("orchestration/skill-classes/feature-implement.yaml"))
+    val skillClassManifest = Files.readString(repoRoot.resolve("orchestration/skill-classes/feature-task.yaml"))
     assertTrue("android-compose-edge-to-edge" !in skillClassManifest, skillClassManifest)
     assertTrue("android-navigation-implementation" in skillClassManifest, skillClassManifest)
   }
@@ -331,7 +328,7 @@ class SkillRemoveJvmFileSystemTest {
     Files.createDirectories(addon.parent)
     Files.writeString(addon, "# Edge to edge\n")
     Files.createDirectories(repoRoot.resolve("orchestration/skill-classes"))
-    Files.writeString(repoRoot.resolve("orchestration/skill-classes/feature-implement.yaml"), ADDON_SKILL_CLASS_YAML)
+    Files.writeString(repoRoot.resolve("orchestration/skill-classes/feature-task.yaml"), ADDON_SKILL_CLASS_YAML)
     Files.writeString(repoRoot.resolve("platform-packs/kmp/platform.yaml"), KMP_PLATFORM_YAML_WITH_ADDON_REFERENCES)
     return repoRoot to addon
   }
@@ -358,7 +355,7 @@ class SkillRemoveJvmFileSystemTest {
   private companion object {
     private val KOTLIN_PLATFORM_YAML = """
       |platform: kotlin
-      |contract_version: "1.1"
+      |contract_version: "1.2"
       |routing_signals:
       |  strong:
       |    - ".kt"
@@ -387,7 +384,7 @@ class SkillRemoveJvmFileSystemTest {
 
     private val KMP_PLATFORM_YAML = """
       |platform: kmp
-      |contract_version: "1.1"
+      |contract_version: "1.2"
       |routing_signals:
       |  strong:
       |    - "androidMain"
@@ -411,8 +408,8 @@ class SkillRemoveJvmFileSystemTest {
     """.trimMargin()
 
     private val ADDON_SKILL_CLASS_YAML = """
-      |class: feature-implement
-      |contract_version: "1.1"
+      |class: feature-task
+      |contract_version: "1.2"
       |matchers:
       |  - exact: bill-feature-task
       |pointers:
@@ -425,7 +422,7 @@ class SkillRemoveJvmFileSystemTest {
 
     private val KMP_PLATFORM_YAML_WITH_ADDON_REFERENCES = """
       |platform: kmp
-      |contract_version: "1.1"
+      |contract_version: "1.2"
       |routing_signals:
       |  strong:
       |    - "androidMain"

@@ -5,7 +5,7 @@ Status: Draft
 ## Parent Context
 
 This subtask belongs to
-`docs/desktop-skill-bill-app/ui-feature-implementation-specs.md`. The desktop
+`docs/desktop-skill-bill-app/ui-feature-task-specs.md`. The desktop
 app already installs a Material 3 theme at the root, but the feature UI still
 uses parallel local palettes such as `Workspace*`, `ScaffoldDialog*`, and
 `Setup*`. This subtask turns the existing theme wrapper into the single design

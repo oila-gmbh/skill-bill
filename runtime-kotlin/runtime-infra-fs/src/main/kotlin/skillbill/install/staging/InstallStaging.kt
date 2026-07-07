@@ -38,6 +38,15 @@ private data class FreshInstallInputs(
   val internalChildren: List<InternalSidecarTarget>,
 )
 
+internal data class StagedSymlinkTargetInput(
+  val resolvedSkill: Path,
+  val repoRoot: Path?,
+  val home: Path,
+  val manifests: List<PlatformManifest>? = null,
+  val selectedPackSkills: List<InstallPlanSkill> = emptyList(),
+  val selectedPlatformSlugs: Set<String> = emptySet(),
+)
+
 internal fun installedSkillsCacheRoot(home: Path): Path =
   home.toAbsolutePath().normalize().resolve(".skill-bill/installed-skills")
 
@@ -209,13 +218,20 @@ internal fun stageInstalledSkill(
   manifests: List<PlatformManifest>? = null,
   skillsRoot: Path? = null,
   selectedPackSkills: List<skillbill.install.model.InstallPlanSkill> = emptyList(),
+  selectedPlatformSlugs: Set<String> = emptySet(),
 ): RenderedSkill {
   val resolvedSource = sourceSkillDir.toAbsolutePath().normalize()
   val resolvedRepoRoot = repoRoot.toAbsolutePath().normalize()
   val skillName = resolvedSource.fileName.toString()
   val target: AuthoringTarget = resolveTarget(resolvedRepoRoot, skillName)
+  val selectedManifests = manifests.orEmpty().filter { manifest -> manifest.slug in selectedPlatformSlugs }
   val pointers = applicablePointers(resolvedRepoRoot, resolvedSource, manifests)
-  val generatedSupportPointers = generatedSupportPointersFor(resolvedRepoRoot, resolvedSource, skillName)
+  val generatedSupportPointers = generatedSupportPointersFor(
+    repoRoot = resolvedRepoRoot,
+    sourceSkillDir = resolvedSource,
+    skillName = skillName,
+    selectedPlatformManifests = selectedManifests,
+  )
   // F-002: internal-child discovery must use the same skills root the plan used (CLI --skills),
   // or planned and staged hashes diverge and apply fails for any parent with internal children.
   val resolvedSkillsRoot = (skillsRoot ?: resolvedRepoRoot.resolve("skills")).toAbsolutePath().normalize()
@@ -343,22 +359,17 @@ private fun buildFreshInstallStaging(inputs: FreshInstallInputs): RenderedSkill 
   }
 }
 
-internal fun resolveStagedSymlinkTarget(
-  resolvedSkill: Path,
-  repoRoot: Path?,
-  home: Path,
-  manifests: List<PlatformManifest>? = null,
-  selectedPackSkills: List<InstallPlanSkill> = emptyList(),
-): Path {
-  if (repoRoot == null || !isContentManagedSkill(resolvedSkill)) {
-    return resolvedSkill
+internal fun resolveStagedSymlinkTarget(input: StagedSymlinkTargetInput): Path {
+  if (input.repoRoot == null || !isContentManagedSkill(input.resolvedSkill)) {
+    return input.resolvedSkill
   }
   return stageInstalledSkill(
-    repoRoot,
-    resolvedSkill,
-    home,
-    manifests,
-    selectedPackSkills = selectedPackSkills,
+    input.repoRoot,
+    input.resolvedSkill,
+    input.home,
+    input.manifests,
+    selectedPackSkills = input.selectedPackSkills,
+    selectedPlatformSlugs = input.selectedPlatformSlugs,
   ).stagingDir.toAbsolutePath().normalize()
 }
 

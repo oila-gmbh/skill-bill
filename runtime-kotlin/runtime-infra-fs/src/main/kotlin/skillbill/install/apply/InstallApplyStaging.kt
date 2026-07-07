@@ -70,20 +70,10 @@ private fun materializeValidatedPlannedStaging(inputs: PlannedStagingMaterializa
     sourceSkillDir = inputs.resolvedSource,
     skillName = skill.name,
     skillsRoot = plan.request.targetPaths.skillsRoot,
+    selectedPlatformManifests = selectedPlatformManifests(plan, inputs.platformManifests),
   )
-  // Internal children are re-discovered at apply time so the planned content hash (which folded
-  // them in) recomputes identically and reuse vs rebuild stays consistent with staging.
-  // SKILL-104 (PD3): selected pack skills declaring internal-for surface as sidecars here, mirroring
-  // the plan-time discovery so plan and apply agree on the selection-shaped sidecar set.
-  val selectedPackSkills = plan.skills.filter {
-    it.kind == InstallPlanSkillKind.PLATFORM_PACK && it.internalFor != null
-  }
-  val internalChildren = discoverInternalSidecarTargets(
-    repoRoot = plan.request.repoRoot,
-    parentSkillName = skill.name,
-    skillsRoot = plan.request.targetPaths.skillsRoot,
-    selectedPackSkills = selectedPackSkills,
-  )
+  val selectedPackSkills = selectedInternalPackSkills(plan)
+  val internalChildren = internalSidecarTargetsFor(plan, skill, selectedPackSkills)
   val sidecarNames = internalChildren.map { child -> "${child.skillName}.md" }.toSet()
   val authored = authoredFilesFor(inputs.resolvedSource, pointers, supportPointers, sidecarNames)
   val currentHash = computeInstallContentHash(
@@ -114,6 +104,7 @@ private fun materializeValidatedPlannedStaging(inputs: PlannedStagingMaterializa
     manifests = inputs.platformManifests,
     skillsRoot = plan.request.targetPaths.skillsRoot,
     selectedPackSkills = selectedPackSkills,
+    selectedPlatformSlugs = selectedPlatformSlugs(plan, inputs.platformManifests),
   )
   val stagedDir = staged.stagingDir.toAbsolutePath().normalize()
   require(staged.contentHash == intent.contentHash && stagedDir == inputs.expectedStagingDir) {
@@ -122,6 +113,37 @@ private fun materializeValidatedPlannedStaging(inputs: PlannedStagingMaterializa
   }
   return staged
 }
+
+private fun selectedPlatformManifests(
+  plan: InstallPlan,
+  platformManifests: List<PlatformManifest>,
+): List<PlatformManifest> {
+  val selected = selectedPlatformSlugs(plan, platformManifests)
+  return platformManifests.filter { manifest -> manifest.slug in selected }
+}
+
+private fun selectedPlatformSlugs(plan: InstallPlan, platformManifests: List<PlatformManifest>): Set<String> =
+  plan.skills
+    .filter { skill -> skill.kind == InstallPlanSkillKind.PLATFORM_PACK }
+    .mapNotNull { skill ->
+      platformManifests.firstOrNull { manifest -> skill.sourceDir.startsWith(manifest.packRoot) }?.slug
+    }
+    .toSet()
+
+private fun selectedInternalPackSkills(plan: InstallPlan): List<InstallPlanSkill> = plan.skills.filter { skill ->
+  skill.kind == InstallPlanSkillKind.PLATFORM_PACK && skill.internalFor != null
+}
+
+private fun internalSidecarTargetsFor(
+  plan: InstallPlan,
+  skill: InstallPlanSkill,
+  selectedPackSkills: List<InstallPlanSkill>,
+) = discoverInternalSidecarTargets(
+  repoRoot = plan.request.repoRoot,
+  parentSkillName = skill.name,
+  skillsRoot = plan.request.targetPaths.skillsRoot,
+  selectedPackSkills = selectedPackSkills,
+)
 
 private data class PlannedStagingMaterialization(
   val plan: InstallPlan,

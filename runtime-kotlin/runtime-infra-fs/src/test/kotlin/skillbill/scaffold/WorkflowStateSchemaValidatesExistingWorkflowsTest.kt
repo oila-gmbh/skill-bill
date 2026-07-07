@@ -47,7 +47,7 @@ class WorkflowStateSchemaValidatesExistingWorkflowsTest {
   )
 
   @Test
-  fun `every feature-implement step snapshot from the engine validates clean`() {
+  fun `every feature-task step snapshot from the engine validates clean`() {
     validateEverySnapshotPerStep(FeatureImplementWorkflowDefinition.definition)
   }
 
@@ -57,7 +57,7 @@ class WorkflowStateSchemaValidatesExistingWorkflowsTest {
   }
 
   @Test
-  fun `every feature-implement workflow_status snapshot from the engine validates clean`() {
+  fun `every feature-task workflow_status snapshot from the engine validates clean`() {
     validateEveryWorkflowStatus(FeatureImplementWorkflowDefinition.definition)
   }
 

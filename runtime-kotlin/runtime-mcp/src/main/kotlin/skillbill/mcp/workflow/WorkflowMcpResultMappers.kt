@@ -17,7 +17,7 @@ import skillbill.workflow.WorkflowEngine
  * into the wire-shape `LinkedHashMap` payloads consumed by the MCP
  * envelope. Goldens locking this wire shape:
  *
- *  - `runtime-mcp/src/test/resources/golden/mcp-feature-implement-workflow.json`
+ *  - `runtime-mcp/src/test/resources/golden/mcp-feature-task-prose-workflow.json`
  *  - `runtime-mcp/src/test/resources/golden/mcp-feature-verify-workflow.json`
  *
  * Mirror of `runtime-cli/.../WorkflowCliResultMappers.kt`. The MCP and

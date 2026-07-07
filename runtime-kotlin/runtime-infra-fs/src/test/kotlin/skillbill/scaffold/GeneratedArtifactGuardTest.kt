@@ -154,7 +154,7 @@ class GeneratedArtifactGuardTest {
       packRoot.resolve("platform.yaml"),
       """
       platform: $pack
-      contract_version: "1.1"
+      contract_version: "1.2"
 
       routing_signals:
         strong:

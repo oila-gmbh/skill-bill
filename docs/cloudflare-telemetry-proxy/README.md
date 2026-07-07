@@ -96,12 +96,12 @@ skill-bill telemetry stats implement --since 30d --group-by week
 
 ## Health dashboard guidance
 
-The Worker `/stats` route returns compact remote workflow summaries. Rich review-health and feature-implement-health views remain backend-agnostic in the CLI/MCP local stats contract and are documented as PostHog/HogQL dashboard patterns in `../review-telemetry.md`.
+The Worker `/stats` route returns compact remote workflow summaries. Rich review-health and feature-task-health views remain backend-agnostic in the CLI/MCP local stats contract and are documented as PostHog/HogQL dashboard patterns in `../review-telemetry.md`.
 
 Use the same filtering rules in PostHog dashboards:
 
 - choose an explicit health window, commonly the last 60 days
-- health denominators: production telemetry with valid `fis-*` session ids for feature-implement stats
+- health denominators: production telemetry with valid `fis-*` session ids for feature-task stats
 - excluded rows: `source = test` and `source = synthetic`
 - data-quality debt: malformed session ids, unknown sources, duplicate terminal events, invalid/long-running durations, malformed child steps, and malformed review payloads
 - review health sources: standalone `skillbill_review_finished` plus embedded code-review entries in `skillbill_feature_task_prose_finished.child_steps`

@@ -5,7 +5,7 @@ Status: Draft
 ## Parent Context
 
 This subtask belongs to
-`docs/desktop-skill-bill-app/ui-feature-implementation-specs.md`. It is a small
+`docs/desktop-skill-bill-app/ui-feature-task-specs.md`. It is a small
 follow-up to subtask 06 (Commit, Push, and Fork Publishing): the
 post-push `compareUrl` is currently rendered as selectable monospace text, so
 the only way to use it is to manually select and copy the string. The Push

@@ -5,7 +5,7 @@ Status: Complete
 ## Parent Context
 
 This subtask belongs to
-`docs/desktop-skill-bill-app/ui-feature-implementation-specs.md`. It introduces
+`docs/desktop-skill-bill-app/ui-feature-task-specs.md`. It introduces
 the broadest write path and should run after validation, editor dirty-state, and
 Git review are reliable.
 

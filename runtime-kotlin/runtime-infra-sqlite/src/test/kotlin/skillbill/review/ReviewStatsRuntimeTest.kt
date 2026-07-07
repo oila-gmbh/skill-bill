@@ -246,7 +246,7 @@ class ReviewStatsRuntimeTest {
 
   @Test
   fun `feature implement stats separate source health data quality and duration buckets`() {
-    val (_, connection) = tempDbConnection("feature-implement-health-stats")
+    val (_, connection) = tempDbConnection("feature-task-health-stats")
     connection.use {
       insertFeatureImplementSession(connection)
       connection.createStatement().use { statement ->
@@ -297,7 +297,7 @@ class ReviewStatsRuntimeTest {
 
   @Test
   fun `feature implement stats report child step coverage and large feature segmentation`() {
-    val (_, connection) = tempDbConnection("feature-implement-size-health")
+    val (_, connection) = tempDbConnection("feature-task-size-health")
     connection.use {
       seedFeatureImplementSizeHealth(connection)
 
@@ -327,7 +327,7 @@ class ReviewStatsRuntimeTest {
 
   @Test
   fun `feature implement duplicate terminal calls emit updated duplicate accounting`() {
-    val (_, connection) = tempDbConnection("feature-implement-duplicate-terminal")
+    val (_, connection) = tempDbConnection("feature-task-duplicate-terminal")
     connection.use {
       val store = LifecycleTelemetryStore(connection)
       val outbox = TelemetryOutboxStore(connection)
@@ -375,7 +375,7 @@ class ReviewStatsRuntimeTest {
 
   @Test
   fun `feature implement finished preserves started source when finish omits source`() {
-    val (_, connection) = tempDbConnection("feature-implement-source-preserved")
+    val (_, connection) = tempDbConnection("feature-task-source-preserved")
     connection.use {
       val store = LifecycleTelemetryStore(connection)
       store.featureImplementStarted(
@@ -505,7 +505,7 @@ class ReviewStatsRuntimeTest {
 
   @Test
   fun `feature implement stats excludes null token rows from average and counts only valued rows`() {
-    val (_, connection) = tempDbConnection("feature-implement-token-aggregation")
+    val (_, connection) = tempDbConnection("feature-task-token-aggregation")
     connection.use {
       connection.createStatement().use { statement ->
         statement.executeUpdate(

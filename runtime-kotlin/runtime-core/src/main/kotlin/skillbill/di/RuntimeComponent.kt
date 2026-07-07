@@ -59,6 +59,7 @@ import skillbill.infrastructure.fs.FileSystemInstalledWorkspaceBaselineStatus
 import skillbill.infrastructure.fs.FileSystemRepoLocalConfig
 import skillbill.infrastructure.fs.FileSystemRepoSourceDiscoveryGateway
 import skillbill.infrastructure.fs.FileSystemRepoValidationGateway
+import skillbill.infrastructure.fs.FileSystemReviewAttribution
 import skillbill.infrastructure.fs.FileSystemReviewInputSource
 import skillbill.infrastructure.fs.FileSystemReviewRubricAdapter
 import skillbill.infrastructure.fs.FileSystemScaffoldCatalogGateway
@@ -118,6 +119,7 @@ import skillbill.ports.install.reconcile.InstallReconcilePort
 import skillbill.ports.install.selection.InstallSelectionPersistencePort
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.review.ParallelReviewLaneRunner
+import skillbill.ports.review.ReviewAttributionPort
 import skillbill.ports.review.ReviewInputSource
 import skillbill.ports.review.ReviewRubricPort
 import skillbill.ports.scaffold.RepoSourceDiscoveryGateway
@@ -416,6 +418,10 @@ abstract class RuntimeComponent(
   @Provides
   @JvmSynthetic
   internal fun reviewInputSource(source: FileSystemReviewInputSource): ReviewInputSource = source
+
+  @Provides
+  @JvmSynthetic
+  internal fun reviewAttributionPort(adapter: FileSystemReviewAttribution): ReviewAttributionPort = adapter
 
   @Provides
   @JvmSynthetic

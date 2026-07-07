@@ -33,7 +33,7 @@ internal fun inferSkillDescription(context: TemplateContext, areaFocus: String =
     } else {
       "Use when validating changes with the shared quality-check contract."
     }
-    "feature-implement" -> if (label.isNotBlank()) {
+    "feature-task" -> if (label.isNotBlank()) {
       "Use when implementing a feature end-to-end in $label codebases, from design doc to verified code."
     } else {
       "Use when implementing a feature end-to-end from design doc to verified code."

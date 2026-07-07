@@ -5,7 +5,7 @@ Status: Complete
 ## Parent Context
 
 This subtask belongs to
-`docs/desktop-skill-bill-app/ui-feature-implementation-specs.md`. It preserves
+`docs/desktop-skill-bill-app/ui-feature-task-specs.md`. It preserves
 the implemented read-only repo browser and prepares the state model for the
 write, validation, Git, render, and scaffold subtasks that follow.
 

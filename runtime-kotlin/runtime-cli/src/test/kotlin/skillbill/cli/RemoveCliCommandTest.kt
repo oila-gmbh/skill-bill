@@ -167,30 +167,28 @@ class RemoveCliCommandTest {
     assertTrue("--allow-shipped" in error)
     assertTrue("allowShipped" !in error)
     assertTrue("Why this is protected:" in error)
-    assertTrue("bill-* skills and kotlin/kmp pre-shells are shipped product surfaces" in error)
+    assertTrue("bill-* skills are shipped product surfaces" in error)
     assertTrue("skill-bill remove skill:bill-code-review --dry-run --allow-shipped" in error)
     assertTrue("skill-bill remove skill:bill-code-review --allow-shipped" in error)
   }
 
   @Test
-  fun `remove refuses kotlin without --allow-shipped`() {
+  fun `remove treats kotlin as a normal horizontal skill name after pre-shell pruning`() {
     val tempDir = Files.createTempDirectory("skillbill-cli-remove-kotlin")
     val context = CliRuntimeContext(userHome = tempDir)
     val result = CliRuntime.run(
       listOf("remove", "skill:kotlin", "--repo-root", tempDir.toString(), "--dry-run", "--format", "json"),
       context,
     )
-    assertEquals(1, result.exitCode)
+    assertEquals(0, result.exitCode, result.stdout)
   }
 
   @Test
   fun `remove platform kotlin succeeds without --allow-shipped`() {
     // SKILL-49: platform packs are the user-extension surface; shipped first-party packs
-    // (`kotlin`, `kmp`) are user-removable from the CLI without `--allow-shipped`. The `skill:`
-    // axis remains gated (the test below pins that for kotlin).
+    // (`kotlin`, `kmp`) are user-removable from the CLI without `--allow-shipped`.
     val tempDir = Files.createTempDirectory("skillbill-cli-remove-platform-kotlin")
     Files.createDirectories(tempDir.resolve("platform-packs/kotlin"))
-    Files.createDirectories(tempDir.resolve("skills/kotlin"))
     val context = CliRuntimeContext(userHome = tempDir)
     val result = CliRuntime.run(
       listOf(
@@ -213,11 +211,8 @@ class RemoveCliCommandTest {
   fun `remove platform deletes the platform pack folder`() {
     val tempDir = Files.createTempDirectory("skillbill-cli-remove-platform-delete")
     val platformPackRoot = tempDir.resolve("platform-packs/example")
-    val pairedPreShellRoot = tempDir.resolve("skills/example")
     Files.createDirectories(platformPackRoot.resolve("code-review/bill-example-code-review"))
-    Files.createDirectories(pairedPreShellRoot)
     Files.writeString(platformPackRoot.resolve("code-review/bill-example-code-review/content.md"), "# example\n")
-    Files.writeString(pairedPreShellRoot.resolve("content.md"), "# example\n")
     val context = CliRuntimeContext(userHome = tempDir)
 
     val result = CliRuntime.run(
@@ -236,16 +231,11 @@ class RemoveCliCommandTest {
     val payload = decodeJsonObject(result.stdout)
     assertEquals("ok", payload["status"].toString().trim('"'))
     assertTrue(!Files.exists(platformPackRoot, LinkOption.NOFOLLOW_LINKS), "platform pack folder should be deleted")
-    assertTrue(
-      !Files.exists(pairedPreShellRoot, LinkOption.NOFOLLOW_LINKS),
-      "paired pre-shell folder should be deleted",
-    )
   }
 
   @Test
   fun `remove kotlin succeeds when --allow-shipped is passed in dry-run`() {
     val tempDir = Files.createTempDirectory("skillbill-cli-remove-kotlin-allow")
-    Files.createDirectories(tempDir.resolve("skills/kotlin"))
     val context = CliRuntimeContext(userHome = tempDir)
     val result = CliRuntime.run(
       listOf(

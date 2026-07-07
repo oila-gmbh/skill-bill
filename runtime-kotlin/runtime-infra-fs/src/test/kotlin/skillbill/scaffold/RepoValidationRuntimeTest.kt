@@ -79,6 +79,41 @@ class RepoValidationRuntimeTest {
   }
 
   @Test
+  fun `repo validation rejects feature addon pointer without manifest usage declaration`() {
+    val repoRoot = Files.createTempDirectory("skillbill-undeclared-feature-addon")
+    createRepoValidationSkillFixture(repoRoot)
+    val packRoot = repoRoot.resolve("platform-packs/kmp")
+    Files.createDirectories(packRoot.resolve("addons"))
+    Files.writeString(packRoot.resolve("addons/android-compose-implementation.md"), "# Android Compose\n")
+    Files.writeString(
+      packRoot.resolve("platform.yaml"),
+      """
+      platform: kmp
+      contract_version: "1.2"
+      routing_signals:
+        strong: ["androidMain"]
+      declared_code_review_areas: []
+      pointers:
+        feature-task:
+          - name: android-compose-implementation.md
+            target: platform-packs/kmp/addons/android-compose-implementation.md
+      """.trimIndent(),
+    )
+
+    val report = RepoValidationRuntime.validateRepo(repoRoot)
+
+    assertFalse(report.passed)
+    assertTrue(
+      report.issues.any {
+        it.contains("platform-packs/kmp/platform.yaml") &&
+          it.contains("feature_addon_usage.feature-task") &&
+          it.contains("android-compose-implementation.md")
+      },
+      report.issues.joinToString("\n"),
+    )
+  }
+
+  @Test
   fun `repo validation does not require generated supporting pointers beside non-platform skills`() {
     val repoRoot = Files.createTempDirectory("skillbill-missing-sidecar")
     createRepoValidationSkillFixture(repoRoot)
@@ -695,6 +730,60 @@ class RepoValidationRuntimeTest {
   }
 
   @Test
+  fun `repo validation applies portable review wording lint to non kotlin pack baselines from manifests`() {
+    val repoRoot = Files.createTempDirectory("skillbill-portable-review-python")
+    createRepoValidationSkillFixture(repoRoot)
+    seedPlatformReviewPack(
+      repoRoot = repoRoot,
+      slug = "python",
+      body = "Agent to spawn: security reviewer.",
+    )
+
+    val report = RepoValidationRuntime.validateRepo(repoRoot)
+
+    assertTrue(
+      report.issues.any {
+        it.contains("platform-packs/python/code-review/bill-python-code-review/content.md") &&
+          it.contains("must use portable specialist-review wording")
+      },
+      report.issues.joinToString("\n"),
+    )
+  }
+
+  @Test
+  fun `repo validation keeps portable review wording lint for kotlin and kmp manifest baselines`() {
+    val repoRoot = Files.createTempDirectory("skillbill-portable-review-kotlin-kmp")
+    createRepoValidationSkillFixture(repoRoot)
+    seedPlatformReviewPack(
+      repoRoot = repoRoot,
+      slug = "kotlin",
+      body = "Agent to spawn: security reviewer.",
+    )
+    seedPlatformReviewPack(
+      repoRoot = repoRoot,
+      slug = "kmp",
+      body = "sub-agent review lane.",
+    )
+
+    val report = RepoValidationRuntime.validateRepo(repoRoot)
+
+    assertTrue(
+      report.issues.any {
+        it.contains("platform-packs/kotlin/code-review/bill-kotlin-code-review/content.md") &&
+          it.contains("must use portable specialist-review wording")
+      },
+      report.issues.joinToString("\n"),
+    )
+    assertTrue(
+      report.issues.any {
+        it.contains("platform-packs/kmp/code-review/bill-kmp-code-review/content.md") &&
+          it.contains("must not describe review delegation as sub-agents")
+      },
+      report.issues.joinToString("\n"),
+    )
+  }
+
+  @Test
   fun `repo validation accepts a valid internal-for declaration`() {
     val repoRoot = Files.createTempDirectory("skillbill-valid-internal")
     createRepoValidationSkillFixture(repoRoot)
@@ -810,6 +899,42 @@ class RepoValidationRuntimeTest {
       appendLine("---")
     }
     Files.writeString(skillDir.resolve("content.md"), frontmatter + "\nAuthored body.\n")
+  }
+
+  private fun seedPlatformReviewPack(repoRoot: java.nio.file.Path, slug: String, body: String) {
+    val skillName = "bill-$slug-code-review"
+    val contentFile = repoRoot.resolve("platform-packs/$slug/code-review/$skillName/content.md")
+    Files.createDirectories(contentFile.parent)
+    Files.writeString(
+      repoRoot.resolve("platform-packs/$slug/platform.yaml"),
+      """
+      |platform: $slug
+      |contract_version: "1.2"
+      |display_name: $slug
+      |routing_signals:
+      |  strong:
+      |    - $slug
+      |  tie_breakers: []
+      |declared_code_review_areas: []
+      |declared_files:
+      |  baseline: code-review/$skillName/content.md
+      |  areas: {}
+      |area_metadata: {}
+      |
+      """.trimMargin(),
+    )
+    Files.writeString(
+      contentFile,
+      """
+      |---
+      |name: $skillName
+      |description: Review $slug code.
+      |---
+      |
+      |$body
+      |
+      """.trimMargin(),
+    )
   }
 
   private fun createRepoValidationSkillFixture(

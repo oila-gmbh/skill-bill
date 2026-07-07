@@ -112,7 +112,7 @@ class InstallExternalAddonOverlayIntegrationTest : InstallApplyTestSupport() {
       packRoot.resolve("platform.yaml"),
       """
       platform: "ios"
-      contract_version: "1.1"
+      contract_version: "1.2"
       routing_signals:
         strong:
           - ".swift"

@@ -22,7 +22,7 @@ sealed class DesktopSkillRemovalTarget {
      * `skillbill.domain.skillremove.model.SkillRemovalTarget.BUILT_IN_NAMES` — the domain layer
      * enforces the same policy server-side.
      */
-    val BUILT_IN_NAMES: Set<String> = setOf(".bill-shared", "kotlin", "kmp")
+    val BUILT_IN_NAMES: Set<String> = setOf(".bill-shared")
 
     /**
      * SKILL-49: horizontal product skills (`bill-code-review`, `bill-feature-task`, ...) are

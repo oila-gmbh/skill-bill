@@ -5,7 +5,7 @@ Status: Yo you did not implement this yet
 ## Parent Context
 
 This subtask belongs to
-`docs/desktop-skill-bill-app/ui-feature-implementation-specs.md`. It introduces
+`docs/desktop-skill-bill-app/ui-feature-task-specs.md`. It introduces
 the first repo write path, so it should land after Subtask 01 and preferably
 after Subtask 02.
 

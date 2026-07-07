@@ -52,17 +52,20 @@ object ReviewStatsRuntime {
     }
   }
 
+  @Suppress("LongParameterList")
   fun buildReviewFinishedPayload(
     connection: Connection,
     reviewRunId: String,
     reviewSummary: ReviewSummary? = null,
     findingRows: List<FindingOutcomeRow>? = null,
     level: String = "anonymous",
+    routedSkillPlatformSlugs: Map<String, String> = emptyMap(),
   ): ReviewFinishedTelemetry = reviewFinishedPayload(
     connection = connection,
     reviewSummary = reviewSummary ?: ReviewRuntime.fetchReviewSummary(connection, reviewRunId),
     findingRows = findingRows ?: queryLatestFindingOutcomes(connection, reviewRunId),
     level = level,
+    routedSkillPlatformSlugs = routedSkillPlatformSlugs,
   )
 
   fun updateReviewFinishedTelemetryState(
@@ -70,6 +73,7 @@ object ReviewStatsRuntime {
     reviewRunId: String,
     enabled: Boolean? = null,
     level: String? = null,
+    routedSkillPlatformSlugs: Map<String, String> = emptyMap(),
   ): ReviewFinishedTelemetry? {
     val telemetryState = resolveTelemetryState(enabled, level)
     var reviewSummary = ReviewRuntime.fetchReviewSummary(connection, reviewRunId)
@@ -89,6 +93,7 @@ object ReviewStatsRuntime {
           reviewSummary = reviewSummary,
           findingRows = findingRows,
           level = telemetryState.level,
+          routedSkillPlatformSlugs = routedSkillPlatformSlugs,
         )
       finalizeReviewFinishedTelemetry(
         connection = connection,

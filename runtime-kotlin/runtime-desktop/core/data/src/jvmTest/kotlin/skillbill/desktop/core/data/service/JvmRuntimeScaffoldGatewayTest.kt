@@ -286,7 +286,7 @@ class JvmRuntimeScaffoldGatewayTest {
     assertNotNull(snapshot)
     assertTrue(snapshot.approvedCodeReviewAreas.isNotEmpty())
     assertEquals("1.0", snapshot.scaffoldPayloadVersion)
-    assertTrue(snapshot.preShellFamilies.contains("feature-implement"))
+    assertTrue(snapshot.preShellFamilies.contains("feature-task"))
     assertTrue(snapshot.shelledFamilies.contains("code-review"))
     assertTrue(snapshot.platformPackPresets.any { it.platform == "java" })
     assertTrue(snapshot.pilotedPlatformPacks.isEmpty())
@@ -318,7 +318,7 @@ class JvmRuntimeScaffoldGatewayTest {
       packsRoot.resolve("kotlin/platform.yaml"),
       """
       platform: kotlin
-      contract_version: "1.1"
+      contract_version: "1.2"
       display_name: Kotlin
       routing_signals:
         strong:
@@ -335,7 +335,7 @@ class JvmRuntimeScaffoldGatewayTest {
       packsRoot.resolve("docs/platform.yaml"),
       """
       platform: docs
-      contract_version: "1.1"
+      contract_version: "1.2"
       display_name: Docs
       routing_signals:
         strong:

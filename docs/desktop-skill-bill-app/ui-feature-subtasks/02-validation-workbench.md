@@ -5,7 +5,7 @@ Status: Complete
 ## Parent Context
 
 This subtask belongs to
-`docs/desktop-skill-bill-app/ui-feature-implementation-specs.md`. It should be
+`docs/desktop-skill-bill-app/ui-feature-task-specs.md`. It should be
 implemented after Subtask 01 so validation can write into the shared app status
 and dock badge model.
 

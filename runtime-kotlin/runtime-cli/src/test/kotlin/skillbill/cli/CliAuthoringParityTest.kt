@@ -174,6 +174,7 @@ class CliAuthoringParityTest {
     assertEquals(0, dryRun.exitCode, dryRun.stdout)
     assertEquals(expected, normal.stdout)
     assertEquals(normal.stdout, dryRun.stdout)
+    assertRenderSkillNameOption(normal.stdout, skillName, repoRoot, context)
     assertEquals(false, Files.exists(skillFile))
   }
 
@@ -267,6 +268,42 @@ private fun assertWrapperCommandRegenerates(command: String, tempDir: Path, cont
 
   assertEquals(0, payload["regenerated_count"])
   assertEquals(true, payload["validator_ran"])
+}
+
+private fun assertRenderSkillNameOption(
+  expectedOutput: String,
+  skillName: String,
+  repoRoot: Path,
+  context: CliRuntimeContext,
+) {
+  val optionForm =
+    CliRuntime.run(
+      listOf(
+        "render",
+        "--skill-name",
+        skillName,
+        "--repo-root",
+        repoRoot.toString(),
+      ),
+      context,
+    )
+  val duplicateInput =
+    CliRuntime.run(
+      listOf(
+        "render",
+        skillName,
+        "--skill-name",
+        skillName,
+        "--repo-root",
+        repoRoot.toString(),
+      ),
+      context,
+    )
+
+  assertEquals(0, optionForm.exitCode, optionForm.stdout)
+  assertEquals(1, duplicateInput.exitCode, duplicateInput.stdout)
+  assertEquals(expectedOutput, optionForm.stdout)
+  assertContains(duplicateInput.stdout, "either as an argument or with --skill-name, not both")
 }
 
 private fun assertEditBodyFileUpdatesContent(tempDir: Path, context: CliRuntimeContext) {

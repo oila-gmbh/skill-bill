@@ -32,7 +32,6 @@ class SkillBillCommand(
   }
 
   override fun aliases(): Map<String, List<String>> = mapOf(
-    "feature-implement-stats" to listOf("implement-stats"),
     "feature-verify-stats" to listOf("verify-stats"),
     "feature-task-runtime-stats" to listOf("runtime-stats"),
   )

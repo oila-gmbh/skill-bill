@@ -6,6 +6,7 @@ import skillbill.error.InvalidInternalSkillClassificationError
 import skillbill.install.model.AgentTarget
 import skillbill.install.model.InstallPlanSkill
 import skillbill.install.model.InstallTransaction
+import skillbill.install.staging.StagedSymlinkTargetInput
 import skillbill.install.staging.resolveStagedSymlinkTarget
 import skillbill.install.support.claudeConfigRoot
 import skillbill.install.support.claudeConfigRoots
@@ -92,6 +93,7 @@ internal data class InstallContext(
   val home: Path = Path.of(System.getProperty("user.home")),
   val manifests: List<PlatformManifest>? = null,
   val selectedPackSkills: List<InstallPlanSkill> = emptyList(),
+  val selectedPlatformSlugs: Set<String> = emptySet(),
 )
 
 internal fun installSkill(
@@ -112,11 +114,14 @@ internal fun installSkill(
     )
   }
   val symlinkTarget = resolveStagedSymlinkTarget(
-    resolvedSkill,
-    context.repoRoot,
-    context.home,
-    context.manifests,
-    context.selectedPackSkills,
+    StagedSymlinkTargetInput(
+      resolvedSkill = resolvedSkill,
+      repoRoot = context.repoRoot,
+      home = context.home,
+      manifests = context.manifests,
+      selectedPackSkills = context.selectedPackSkills,
+      selectedPlatformSlugs = context.selectedPlatformSlugs,
+    ),
   )
   val created = mutableListOf<Path>()
   for (target in agentTargets) {

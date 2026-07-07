@@ -3764,7 +3764,7 @@ internal class RecordingLifecycleTelemetryRepository : LifecycleTelemetryReposit
 internal class InMemoryRuntimeWorkflowRepository : WorkflowStateRepository {
   private val taskRuntimeRows = linkedMapOf<String, WorkflowStateRecord>()
 
-  // Prose feature-task rows route through the feature-implement family (see WorkflowStateRepository).
+  // Prose feature-task rows route through the legacy prose family store (see WorkflowStateRepository).
   private val implementRows = linkedMapOf<String, WorkflowStateRecord>()
 
   fun taskRuntimeArtifacts(workflowId: String): Map<String, Any?> {

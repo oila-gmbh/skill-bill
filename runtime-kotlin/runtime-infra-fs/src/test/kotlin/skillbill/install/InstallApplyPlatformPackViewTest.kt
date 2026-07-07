@@ -69,6 +69,40 @@ class InstallApplyPlatformPackViewTest : InstallApplyTestSupport() {
   }
 
   @Test
+  fun `apply excludes pack root agent history while preserving pack manifest and addons`() {
+    val fixture = setupApplyFixture()
+    seedPlatformPack(fixture.repoRoot, "ios")
+    seedPlatformPack(fixture.repoRoot, "python")
+    listOf("ios", "python").forEach { slug ->
+      val packRoot = fixture.repoRoot.resolve("platform-packs/$slug")
+      Files.createDirectories(packRoot.resolve("agent"))
+      Files.writeString(packRoot.resolve("agent/history.md"), "$slug history")
+      Files.writeString(packRoot.resolve("agent/decisions.md"), "$slug decisions")
+      Files.createDirectories(packRoot.resolve("addons"))
+      Files.writeString(packRoot.resolve("addons/$slug-addon.md"), "$slug addon")
+    }
+    Files.createDirectories(fixture.home.resolve(".codex"))
+
+    val plan = InstallOperations.planInstall(
+      fixture.request(
+        selectedPlatforms = setOf("ios", "python"),
+        agents = setOf(InstallAgent.CODEX),
+      ),
+    )
+
+    val result = InstallOperations.applyInstall(plan)
+
+    assertEquals(InstallApplyStatus.SUCCESS, result.status)
+    listOf("ios", "python").forEach { slug ->
+      val packView = fixture.home.resolve("agent-skill-targets/codex/platform-packs/$slug")
+      assertFalse(Files.exists(packView.resolve("agent/history.md"), LinkOption.NOFOLLOW_LINKS))
+      assertFalse(Files.exists(packView.resolve("agent/decisions.md"), LinkOption.NOFOLLOW_LINKS))
+      assertTrue(Files.isRegularFile(packView.resolve("platform.yaml")))
+      assertTrue(Files.isRegularFile(packView.resolve("addons/$slug-addon.md")))
+    }
+  }
+
+  @Test
   fun `apply succeeds when a selected platform pack skill declares internal-for and stages as a sidecar`() {
     val fixture = setupApplyFixture()
     val internalPackSkillDir = fixture.repoRoot.resolve("platform-packs/kotlin/code-review/bill-kotlin-code-review")

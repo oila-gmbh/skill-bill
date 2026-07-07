@@ -295,7 +295,7 @@ properties:
   skills:
     type: array
     description: >
-      All skills the plan would install. For platform-pack-sourced
+      All standalone-installable skills. For platform-pack-sourced
       skills, `platform` is the owning pack's slug; for base skills,
       `platform` is null.
     items:

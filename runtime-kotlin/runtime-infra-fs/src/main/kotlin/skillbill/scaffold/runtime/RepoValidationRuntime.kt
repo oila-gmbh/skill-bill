@@ -11,8 +11,10 @@ import skillbill.nativeagent.validation.validateRepoNativeAgents
 import skillbill.scaffold.authoring.InternalSkillDeclaration
 import skillbill.scaffold.authoring.internalSkillClassificationViolations
 import skillbill.scaffold.authoring.parseInternalForFrontmatter
+import skillbill.scaffold.platformpack.declaredCodeReviewSkillNames
 import skillbill.scaffold.platformpack.loadPlatformManifest
 import skillbill.scaffold.platformpack.loadPlatformPack
+import skillbill.scaffold.platformpack.resolveSkillClass
 import skillbill.scaffold.pointer.validateGeneratedArtifactGuard
 import skillbill.scaffold.validation.validateAuthoredContent
 import skillbill.scaffold.validation.validateGovernedSkillDrift
@@ -118,7 +120,6 @@ object RepoValidationRuntime {
     Regex("""\bAgent to spawn\b""") to "must use portable specialist-review wording",
     Regex("""\bAgents spawned\b""") to "must use portable specialist-review summary wording",
   )
-  private val portableReviewSkills = setOf("bill-kotlin-code-review", "bill-kmp-code-review")
   private val inlineTelemetryContractMarkers = listOf(
     "Standalone-first contract",
     "child_steps aggregation",
@@ -134,13 +135,14 @@ object RepoValidationRuntime {
     val skillNames = (skillFiles.keys + platformSkillFiles.keys).toSortedSet()
     val addonFiles = discoverAllAddonFiles(root)
     val platformPacks = validatePlatformPacks(root, issues)
+    val portableReviewSkills = discoverPortableReviewSkills(root)
     val nativeAgentSources = runCatching { discoverRepoNativeAgentSourceEntries(root) }.getOrDefault(emptyList())
 
     skillFiles.forEach { (skillName, skillFile) ->
-      validateInstallableSkill(skillName, skillFile, root, issues, validateSourceSidecars = true)
+      validateInstallableSkill(skillName, skillFile, root, issues, validateSourceSidecars = true, portableReviewSkills)
     }
     platformSkillFiles.forEach { (skillName, skillFile) ->
-      validateInstallableSkill(skillName, skillFile, root, issues, validateSourceSidecars = false)
+      validateInstallableSkill(skillName, skillFile, root, issues, validateSourceSidecars = false, portableReviewSkills)
     }
     validateInternalSidecarCollisions(skillFiles + platformSkillFiles, issues)
     validateInternalSkillClassification(skillFiles, platformSkillFiles, issues)
@@ -162,6 +164,7 @@ object RepoValidationRuntime {
     validateSkillOverrides(root.resolve(".agents/skill-overrides.example.md"), skillNames, required = true, issues)
     validateSkillOverrides(root.resolve(".agents/skill-overrides.md"), skillNames, required = false, issues)
     validateSupportingTargets(root, skillFiles.keys + platformSkillFiles.keys, issues)
+    validateFeatureAddonDeclarations(root, issues)
     validateWorkflowContracts(root, issues)
     validateOrchestrationPlaybooks(root, issues)
     validateNoInlineTelemetryContractDrift(root, issues)
@@ -301,12 +304,32 @@ object RepoValidationRuntime {
     return validCount
   }
 
+  private fun discoverPortableReviewSkills(root: Path): Set<String> {
+    val packsRoot = root.resolve("platform-packs")
+    if (!packsRoot.isDirectory()) {
+      return emptySet()
+    }
+    val reviewSkills = linkedSetOf<String>()
+    Files.list(packsRoot).use { stream ->
+      stream
+        .filter { it.isDirectory() && !it.name.startsWith(".") }
+        .sorted()
+        .forEach { packRoot ->
+          reviewSkills += runCatching { loadPlatformManifest(packRoot).declaredCodeReviewSkillNames() }
+            .getOrDefault(emptySet())
+        }
+    }
+    return reviewSkills
+  }
+
+  @Suppress("LongParameterList")
   private fun validateInstallableSkill(
     skillName: String,
     contentFile: Path,
     root: Path,
     issues: MutableList<String>,
     validateSourceSidecars: Boolean,
+    portableReviewSkills: Set<String>,
   ) {
     val text = Files.readString(contentFile)
     val frontmatter = parseFrontmatter(text)
@@ -333,7 +356,7 @@ object RepoValidationRuntime {
         validateSupportingSidecar(contentFile, fileName, expectedTarget, root, issues)
       }
     }
-    validatePortableReviewWording(skillName, text, contentFile, issues)
+    validatePortableReviewWording(skillName, text, contentFile, issues, portableReviewSkills)
     validateGovernedContentFile(contentFile, issues)
   }
 
@@ -555,6 +578,58 @@ object RepoValidationRuntime {
     }
   }
 
+  private fun validateFeatureAddonDeclarations(root: Path, issues: MutableList<String>) {
+    val staticTargets = supportingFileTargets(root).keys
+    val classes = runCatching { skillbill.scaffold.platformpack.discoverSkillClasses(root) }.getOrDefault(emptyList())
+    val featureClassPointers = resolveSkillClass("bill-feature-task", classes)
+      ?.pointers
+      ?.map { pointer -> "$pointer.md" }
+      .orEmpty()
+      .filter { pointer -> pointer !in staticTargets }
+    featureClassPointers.forEach { pointer ->
+      issues += "orchestration/skill-classes/feature-task.yaml: feature-task support pointer '$pointer' " +
+        "must be declared by a selected platform pack's feature_addon_usage instead of the global skill class."
+    }
+
+    loadFeatureAddonValidationPacks(root).forEach { pack ->
+      val declaredPointers = pack.featureAddonUsage
+        .filter { usage -> usage.consumer == "feature-task" }
+        .flatMap { usage -> usage.addons.flatMap { addon -> listOf(addon.entrypoint) + addon.companionPointers } }
+        .toSet()
+      pack.pointers
+        .filter { pointer ->
+          pointer.skillRelativeDir == "feature-task" &&
+            pointer.target.startsWith("platform-packs/${pack.slug}/addons/") &&
+            pointer.target.endsWith(".md")
+        }
+        .filter { pointer -> pointer.name !in declaredPointers }
+        .forEach { pointer ->
+          issues += "platform-packs/${pack.slug}/platform.yaml: feature-task pointer '${pointer.name}' targets " +
+            "'${pointer.target}' but is missing from feature_addon_usage.feature-task."
+        }
+    }
+  }
+
+  private fun loadFeatureAddonValidationPacks(root: Path): List<skillbill.scaffold.model.PlatformManifest> {
+    val packsRoot = root.resolve("platform-packs")
+    if (!Files.isDirectory(packsRoot)) {
+      return emptyList()
+    }
+    val packs = mutableListOf<skillbill.scaffold.model.PlatformManifest>()
+    Files.list(packsRoot).use { stream ->
+      stream
+        .filter { it.isDirectory() && !it.name.startsWith(".") }
+        .forEach { packRoot ->
+          try {
+            packs += loadPlatformManifest(packRoot)
+          } catch (_: ShellContentContractException) {
+            // Surfaced by validatePlatformPacks.
+          }
+        }
+    }
+    return packs
+  }
+
   private fun validateWorkflowContracts(root: Path, issues: MutableList<String>) {
     val checks = mapOf(
       "skills/bill-feature-task-prose/content.md" to listOf(
@@ -660,6 +735,7 @@ object RepoValidationRuntime {
     text: String,
     skillFile: Path,
     issues: MutableList<String>,
+    portableReviewSkills: Set<String>,
   ) {
     if (skillName !in portableReviewSkills) {
       return

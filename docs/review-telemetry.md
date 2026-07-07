@@ -329,14 +329,14 @@ Both levels:
 |-------|------|-------------|
 | `pr_title` | string | Generated PR title |
 
-## Feature-implement telemetry
+## Feature-task telemetry
 
-The feature-implement workflow emits two events per session:
+The feature-task workflow emits two events per session:
 
 - `skillbill_feature_task_prose_started` — emitted after Step 1 assessment is confirmed by the user
 - `skillbill_feature_task_prose_finished` — emitted after Step 9 (PR created) or when the workflow ends early
 
-Each feature-implement session uses a `session_id` in the format `fis-YYYYMMDD-HHMMSS-XXXX` (4-char random alphanumeric suffix). The finished event is self-contained — it includes all started fields so each event can be analyzed independently in PostHog.
+Each feature-task session uses a `session_id` in the format `fis-YYYYMMDD-HHMMSS-XXXX` (4-char random alphanumeric suffix). The finished event is self-contained — it includes all started fields so each event can be analyzed independently in PostHog.
 
 The MCP server exposes `feature_task_prose_started` and `feature_task_prose_finished` as agent tools. The skill instructions tell the agent when to call each tool.
 
@@ -452,7 +452,7 @@ Mirror to local stats:
 - `average_review_iterations` = average on finished `review_iterations`
 - `average_duration_seconds` = average on finished `duration_seconds`
 
-### Feature-implement dashboard
+### Feature-task dashboard
 
 Use `skillbill_feature_task_prose_started` for intake/sizing and `skillbill_feature_task_prose_finished` for outcome metrics.
 
@@ -504,7 +504,7 @@ Review health combines two review payload sources:
 
 Do not attempt to de-duplicate standalone and embedded review payloads unless a stable shared key is present. Local stats report `source_counts` for `standalone`, `embedded`, and `malformed`. Rejected findings mean reviewer feedback explicitly rejected or marked a finding false positive. Unresolved findings mean the latest finding outcome is missing or not accepted/rejected.
 
-Feature-implement health uses production rows with valid `fis-*` session ids as the denominator. It reports `source_counts`, excluded non-production rows, malformed session ids, unknown sources, duplicate terminal finished calls, invalid durations, synthetic zero-duration runs, long-running durations, and malformed `child_steps` as exclusion or data-quality signals. Duration averages, medians, and p90 values use only normal production durations.
+Feature-task health uses production rows with valid `fis-*` session ids as the denominator. It reports `source_counts`, excluded non-production rows, malformed session ids, unknown sources, duplicate terminal finished calls, invalid durations, synthetic zero-duration runs, long-running durations, and malformed `child_steps` as exclusion or data-quality signals. Duration averages, medians, and p90 values use only normal production durations.
 
 Large-feature health is segmented by `feature_size`. `LARGE` runs report completion, abandonment, error, open-run, and duration summaries separately. The deterministic recommendation threshold is any non-zero unhealthy `LARGE` rate (`>= 0.001`) that is at least the overall unhealthy rate; in that case, dashboards should recommend decomposing large features or blocking earlier before implementation.
 

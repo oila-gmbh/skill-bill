@@ -19,7 +19,7 @@
 # Versioning rule:
 #
 # - `contract_version` is pinned by `SHELL_CONTRACT_VERSION` in
-#   `runtime-kotlin/runtime-core/src/main/kotlin/skillbill/scaffold/ScaffoldSupport.kt`.
+#   `runtime-kotlin/runtime-infra-fs/src/main/kotlin/skillbill/scaffold/runtime/ScaffoldSupport.kt`.
 # - The parity test `PlatformPackSchemaContractVersionTest` fails the build
 #   if they diverge. To bump the contract, edit BOTH constants in the same
 #   change.
@@ -83,10 +83,10 @@ properties:
   contract_version:
     type: string
     minLength: 1
-    const: "1.1"
+    const: "1.2"
     x-runtime-anchored: true
     description: >
-      Pinned to `SHELL_CONTRACT_VERSION` (currently 1.1). The parity test
+      Pinned to `SHELL_CONTRACT_VERSION` (currently 1.2). The parity test
       `PlatformPackSchemaContractVersionTest` keeps the two in lockstep.
       Value mismatches at runtime are surfaced as the dedicated
       `ContractVersionMismatchError` (not generic schema error) so callers
@@ -308,6 +308,46 @@ properties:
       references generated pointer filenames declared under `pointers` for the same skill
       directory; Kotlin coherence checks require those pointers to target
       `platform-packs/<slug>/addons/*.md`.
+  feature_addon_usage:
+    type: object
+    x-runtime-anchored: true
+    propertyNames:
+      type: string
+      enum:
+        - feature-task
+    additionalProperties:
+      type: array
+      minItems: 1
+      items:
+        type: object
+        additionalProperties: false
+        required:
+          - slug
+          - entrypoint
+        properties:
+          slug:
+            type: string
+            minLength: 1
+            pattern: "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$"
+            description: >
+              Stable feature add-on selector reported in `Selected add-ons: ...`.
+          entrypoint:
+            $ref: "#/$defs/pointerFileName"
+            description: >
+              Generated pointer filename to scan first when deciding whether this feature add-on applies.
+          companion_pointers:
+            type: array
+            uniqueItems: true
+            items:
+              $ref: "#/$defs/pointerFileName"
+            description: >
+              Optional generated pointer filenames that may be opened only after the entrypoint
+              selects them through its section index or activation guidance.
+    description: >
+      Optional mapping of feature-task family consumer to governed feature add-on selections.
+      Each entry references generated pointer filenames declared under `pointers` for the same
+      consumer key; Kotlin coherence checks require those pointers to target
+      `platform-packs/<slug>/addons/*.md`.
 
 # ---------------------------------------------------------------------------
 # Coherence checks (enforced in Kotlin)
@@ -365,6 +405,24 @@ x-coherence-checks:
     description: >
       Within a single `addon_usage.<skill-dir>` list, every add-on `slug`
       must be unique. Enforced in `ShellContentLoader.parseAddonUsage`.
+  feature-addon-usage-references-declared-pointers:
+    description: >
+      Every `feature_addon_usage.feature-task[]` entrypoint and companion pointer must
+      reference a `pointers.feature-task[]` entry declared for the same consumer.
+      Enforced in `ShellContentLoader.parseFeatureAddonUsage`.
+  feature-addon-usage-consumer-keys:
+    description: >
+      Every `feature_addon_usage` key must be the supported `feature-task` family consumer.
+      Enforced in `ShellContentLoader.parseFeatureAddonUsage`.
+  feature-addon-usage-targets-pack-owned-addons:
+    description: >
+      Every pointer referenced by `feature_addon_usage` must target an existing markdown file
+      under the same pack's `platform-packs/<slug>/addons/` directory. Enforced in
+      `ShellContentLoader.parseFeatureAddonUsage`.
+  feature-addon-usage-unique-slug-per-consumer:
+    description: >
+      Within a single `feature_addon_usage.<consumer>` list, every add-on `slug`
+      must be unique. Enforced in `ShellContentLoader.parseFeatureAddonUsage`.
   composition-references-resolve:
     description: >
       Every `code_review_composition.baseline_layers[]` entry must reference

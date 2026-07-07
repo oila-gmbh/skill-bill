@@ -5,7 +5,7 @@ Status: Draft
 ## Parent Context
 
 This subtask belongs to
-`docs/desktop-skill-bill-app/ui-feature-implementation-specs.md`. The desktop
+`docs/desktop-skill-bill-app/ui-feature-task-specs.md`. The desktop
 shell currently wires exactly one accelerator (`Ctrl/Cmd+K` and
 `Ctrl/Cmd+P` for the command palette) and otherwise forces pointer use for
 every workspace action. This subtask adds the small set of accelerators that

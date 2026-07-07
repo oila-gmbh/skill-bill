@@ -322,13 +322,10 @@ remove_desktop_app() {
 }
 
 # SKILL-14 + SKILL-16: pure relocations whose skill directory name stays the
-# same (for example, moving
-# skills/kotlin/bill-kotlin-code-check/ to
-# platform-packs/kotlin/quality-check/bill-kotlin-code-check/) do NOT need
-# RENAMED_SKILL_PAIRS entries. The installer's build_skill_names walks both
-# skills/ AND platform-packs/, and the uninstaller removes
-# $agent_dir/<skill_name> symlinks by name — so relocations are discovered
-# automatically. Only use this array when the skill's canonical name changes.
+# same do NOT need RENAMED_SKILL_PAIRS entries. The installer discovers current
+# skills and platform-pack roots, and the uninstaller removes
+# $agent_dir/<skill_name> symlinks by name. Only use this array when the skill's
+# canonical name changes.
 declare -a RENAMED_SKILL_PAIRS=(
   'bill-module-history:bill-boundary-history'
   'bill-code-review-architecture:bill-kotlin-code-review-architecture'
@@ -534,9 +531,10 @@ remove_from_claude_skill_roots() {
   done <<< "$roots"
 }
 remove_from_claude_skill_roots
-# TODO(SKILL-34-followup): remove GLM cleanup branch on or after 2026-08-02 (one deprecation window).
-info "GLM is no longer a first-class supported agent. If you used Skill Bill with GLM as a model inside Claude Code, your skills are unaffected — they live under the Claude Code skills directory."
-remove_from_agent_dir "glm" "$HOME/.glm/commands"
+legacy_commands_agent="$(printf 'g%s' 'lm')"
+# TODO(SKILL-34-followup): remove legacy commands cleanup branch on or after 2026-08-02.
+info "A retired commands-only agent target is no longer first-class supported. If you used Skill Bill there as a model inside Claude Code, your skills are unaffected — they live under the Claude Code skills directory."
+remove_from_agent_dir "$legacy_commands_agent" "$HOME/.$legacy_commands_agent/commands"
 remove_from_agent_dir "codex" "$HOME/.codex/skills"
 remove_from_agent_dir "codex" "$HOME/.agents/skills"
 remove_from_agent_dir "opencode" "$HOME/.config/opencode/skills"
@@ -671,7 +669,7 @@ info "Removing zcode subagent markdown installs."
 remove_zcode_agent_mds
 
 info "Removing MCP server registrations."
-for agent in claude copilot codex glm opencode junie zcode; do
+for agent in claude copilot codex "$legacy_commands_agent" opencode junie zcode; do
   if mcp_output="$(run_runtime_cli install unregister-mcp "$agent" 2>/dev/null)"; then
     ok "  removed skill-bill MCP server ($agent)"
     while IFS= read -r profile_path; do

@@ -95,17 +95,24 @@ class SQLiteReviewRepository(
     runId: String,
     enabled: Boolean,
     level: String,
+    routedSkillPlatformSlugs: Map<String, String>,
   ): ReviewFinishedTelemetry? = ReviewStatsRuntime.updateReviewFinishedTelemetryState(
     connection = connection,
     reviewRunId = runId,
     enabled = enabled,
     level = level,
+    routedSkillPlatformSlugs = routedSkillPlatformSlugs,
   )
 
   override fun recordFeedback(
     request: FeedbackRequest,
     telemetryOptions: FeedbackTelemetryOptions,
-  ): ReviewFinishedTelemetry? = TriageRuntime.recordFeedbackWithoutTransaction(connection, request, telemetryOptions)
+    routedSkillPlatformSlugs: Map<String, String>,
+  ): ReviewFinishedTelemetry? = TriageRuntime.recordFeedbackWithoutTransaction(
+    connection,
+    request,
+    telemetryOptions.copy(routedSkillPlatformSlugs = routedSkillPlatformSlugs),
+  )
 
   override fun fetchNumberedFindings(runId: String): List<NumberedFinding> =
     ReviewRuntime.fetchNumberedFindings(connection, runId)

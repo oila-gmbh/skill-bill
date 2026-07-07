@@ -22,7 +22,7 @@ the generated sibling support pointer instead.
 
 ## Contract Version
 
-The current shell contract version is **`1.1`**.
+The current shell contract version is **`1.2`**.
 
 - The shell pins its target version. Platform packs must declare the same version.
 - Any platform pack whose `contract_version` does not equal the shell's version
@@ -39,7 +39,7 @@ Required top-level fields:
 
 - `platform` — the platform slug. Must match the enclosing directory name.
 - `contract_version` — the shell contract version this pack targets. Must be
-  the string `1.1` today. The loader rejects mismatches.
+  the string `1.2` today. The loader rejects mismatches.
 - `routing_signals` — an object declaring how the router should detect this
   platform. Required sub-fields:
   - `strong` — list of strings. Each entry is a strong signal (a path marker,
@@ -71,7 +71,7 @@ Optional top-level fields:
   quality-check `content.md` file, relative to the platform pack root. When
   present, the shell loader validates the referenced file against the
   quality-check content contract (see below). Omitting the key is valid —
-  the shell contract version stays `1.1` and packs without the key remain
+  the shell contract version stays `1.2` and packs without the key remain
   contract-compliant. Today the `kmp` pack intentionally omits the key; the
   `bill-code-check` shell falls back to the `kotlin` pack for that slug.
 
@@ -108,6 +108,12 @@ reporting, generated wrapper section headings, or required support-pointer
 references. Those stay in generated `SKILL.md` wrappers or shared support files
 so the runtime contract can be upgraded without rewriting authored business
 guidance.
+
+## Delegated Review Support
+
+Opencode delegated review is intentionally unsupported.
+
+Junie delegated review is intentionally unsupported.
 
 ## Governed Add-On Consumption
 
@@ -238,7 +244,7 @@ Loader precedence is authoritative and must stay stable:
 ### Loud-Fail Rules (quality-check)
 
 The `bill-code-check` shell resolves the per-platform quality-check file
-through a dedicated loader (`skillbill.scaffold.ShellContentLoader.loadQualityCheckContent` in `runtime-core`).
+through a dedicated loader (`skillbill.scaffold.platformpack.ShellContentLoader.loadQualityCheckContent` in `runtime-infra-fs`).
 The loader enforces two additional loud-fail rules when a pack declares the
 optional `declared_quality_check_file` key:
 

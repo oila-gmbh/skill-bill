@@ -13,7 +13,7 @@ import java.nio.file.Paths
 /**
  * Domain service that orchestrates skill removal (SKILL-46).
  *
- * Owns the typed refusal policy (`.bill-shared`, `kotlin`, `kmp`) and the preview-then-execute
+ * Owns the typed refusal policy (`.bill-shared` and shipped product skills) and the preview-then-execute
  * lifecycle. All I/O is delegated to the [SkillRemoveFileSystem] port so the unit tests can fake
  * the install primitives in-memory.
  *
@@ -89,8 +89,6 @@ class SkillRemove(
     val repoRoot = Paths.get(request.repoRootAbsolutePath).toAbsolutePath().normalize()
     val target = request.target
     val billSharedSkillRoot = repoRoot.resolve("skills/$BILL_SHARED_NAME").normalize()
-    val kotlinSkillRoot = repoRoot.resolve("skills/kotlin").normalize()
-    val kmpSkillRoot = repoRoot.resolve("skills/kmp").normalize()
     when (target) {
       is SkillRemovalTarget.HorizontalSkill -> {
         val candidate = repoRoot.resolve("skills/${target.skillName}").normalize()
@@ -100,13 +98,7 @@ class SkillRemove(
             "Removal of '$BILL_SHARED_NAME' is not allowed — it is a built-in shared surface.",
           )
         }
-        // SKILL-49: horizontal `bill-*` skills are the product surface (bill-code-review,
-        // bill-feature-task, etc.) and join the shipped-protection set alongside the
-        // `kotlin` / `kmp` pre-shells. Predicate sourced from SkillRemovalTarget so the desktop
-        // mirror (`isBuiltInName`) and the domain refusal agree on the line.
-        val protectedShipped = candidate.startsWith(kotlinSkillRoot) ||
-          candidate.startsWith(kmpSkillRoot) ||
-          target.skillName.startsWith(SkillRemovalTarget.HORIZONTAL_PRODUCT_PREFIX)
+        val protectedShipped = target.skillName.startsWith(SkillRemovalTarget.HORIZONTAL_PRODUCT_PREFIX)
         if (!target.allowShipped && protectedShipped) {
           throw SkillRemovalRefusedException(
             SkillRemovalRefusalReason.SHIPPED_REQUIRES_ALLOW_SHIPPED,
@@ -124,9 +116,7 @@ class SkillRemove(
         }
         // SKILL-49: shipped first-party platform packs (`kotlin`, `kmp`) are user-removable.
         // Platform packs are the user-extension surface; forks may drop packs they do not use.
-        // `--allow-shipped` is no longer required on this axis; the horizontal-skill axis still
-        // gates `kotlin` / `kmp` pre-shells separately so the pack and its pre-shell can't go out
-        // of sync from the wrong tree node.
+        // `--allow-shipped` is no longer required on this axis.
       }
       is SkillRemovalTarget.AddOn,
       is SkillRemovalTarget.ExternalAddOn,
@@ -162,10 +152,6 @@ class SkillRemove(
   private inline fun tryExecute(block: () -> SkillRemovalResult): SkillRemovalResult = try {
     block()
   } catch (cancellation: kotlin.coroutines.cancellation.CancellationException) {
-    // stdlib's CancellationException is the contract type the kotlinx coroutine machinery throws.
-    // We re-throw verbatim so coroutine cancellation propagates regardless of whether the caller
-    // is on a coroutine dispatcher (Dispatchers.Default hop in the desktop ViewModel) or a
-    // direct-blocking call from the CLI.
     throw cancellation
   } catch (error: SkillBillRuntimeException) {
     SkillRemovalResult.Failed(
@@ -183,7 +169,5 @@ class SkillRemove(
 
   companion object {
     const val BILL_SHARED_NAME: String = ".bill-shared"
-    val SHIPPED_HORIZONTAL_SKILLS: Set<String> = setOf("kotlin", "kmp")
-    val SHIPPED_PLATFORMS: Set<String> = setOf("kotlin", "kmp")
   }
 }

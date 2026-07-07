@@ -248,6 +248,7 @@ private fun reconcileSkillHash(
     sourceSkillDir = skill.sourceDir,
     skillName = skill.name,
     skillsRoot = roots.skillsRoot,
+    selectedPlatformManifests = platformManifests,
   )
   val authored = authoredFilesFor(skill.sourceDir, applicablePointers, supportPointers)
   return computeInstallContentHash(skill.sourceDir, authored, applicablePointers, supportPointers)

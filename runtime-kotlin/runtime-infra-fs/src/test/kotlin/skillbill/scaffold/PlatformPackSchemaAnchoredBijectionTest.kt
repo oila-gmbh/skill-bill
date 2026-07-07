@@ -46,6 +46,7 @@ class PlatformPackSchemaAnchoredBijectionTest {
     "code_review_composition",
     "pointers",
     "addon_usage",
+    "feature_addon_usage",
   )
 
   @Test

@@ -54,3 +54,11 @@ Governed add-ons may narrow or enrich delegated review instructions only after t
 - Tell each delegated worker to return structured review output plus telemetry-relevant metadata to the parent and not to call `import_review` or `triage_findings`.
 - Wait for all subagents and merge their results in the parent review.
 - Do not run delegated review passes inline.
+
+## Opencode
+
+Opencode delegated review is intentionally unsupported.
+
+## Junie
+
+Junie delegated review is intentionally unsupported.

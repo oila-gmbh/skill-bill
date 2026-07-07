@@ -33,6 +33,8 @@ Allowed files under each `skills/<skill>/` directory:
 
 - `content.md`
 - `native-agents/` when the skill owns provider-neutral native-agent sources
+- explicit authored sidecars only when a documented governed contract allows
+  them
 
 Allowed files under `skills/<skill>/native-agents/`:
 
@@ -42,9 +44,10 @@ Allowed files under `skills/<skill>/native-agents/`:
 Do not commit these under `skills/`:
 
 - `SKILL.md`
-- `shell-ceremony.md`
-- `telemetry-contract.md`
-- stack-routing, review, delegation, add-on, or Android support pointer files
+- generated support pointer files, including ceremony pointers such as
+  `peak-hours-warner.md` and `shell-ceremony.md`, telemetry pointers such as
+  `telemetry-contract.md`, and stack-routing, review, delegation, add-on, or
+  Android support pointer files
 - provider-specific generated native-agent directories such as
   `claude-agents/`, `codex-agents/`, `opencode-agents/`, or `junie-agents/`
 - extra organization files such as `patterns.md`, `reference.md`, or
@@ -63,17 +66,19 @@ Platform packs use their own source layout:
 Platform pack pointer files declared by `platform.yaml` are generated output,
 not source files.
 
-Pack-owned add-ons are consumed through `platform.yaml` `addon_usage`, not
-hand-authored skill prose. The manifest maps a skill-relative directory to the
-add-on entry pointer and optional companion pointers the installed skill may
-open after stack routing. The renderer turns that contract into a generated
-`## Governed Add-Ons` wrapper section, and the loader rejects add-on usage that
-does not reference generated pointers targeting the same pack's `addons/`
-directory.
+Pack-owned add-ons are consumed through manifest-owned declarations, not
+hand-authored skill prose. `addon_usage` maps review/check skill-relative
+directories to add-on entry pointers and optional companion pointers the
+installed skill may open after stack routing. `feature_addon_usage` maps
+feature-task consumers to the same pack-owned add-on model. The renderer turns
+those contracts into generated wrapper sections, and the loader rejects add-on
+usage that does not reference generated pointers targeting the same pack's
+`addons/` directory.
 
 ## `content.md`
 
-`content.md` is the only authored skill body for governed skills. It owns:
+`content.md` is the default authored skill body for governed skills, except
+for documented governed sidecar contracts. It owns:
 
 - YAML frontmatter with `name` and `description`
 - task-specific execution guidance
@@ -283,9 +288,9 @@ stable identity strings for manifests, routing output, and telemetry.
 Those headings belong to generated `SKILL.md` wrappers.
 
 `content.md` should also avoid copying shared shell ceremony, telemetry, stack
-routing, review orchestration, and delegation contracts inline. Those shared
-contracts live under `orchestration/` and are exposed to installed skills via
-generated support pointers.
+routing, review orchestration, delegation contracts, and ceremony pointer
+instructions inline. Those shared contracts live under `orchestration/` and are
+exposed to installed skills via generated support pointers.
 
 Preferred authoring paths:
 
@@ -322,17 +327,37 @@ Important rules:
 
 ## Generated Support Pointers
 
-Installed skills need local filenames such as `shell-ceremony.md`,
-`telemetry-contract.md`, `stack-routing.md`, `review-orchestrator.md`, and
-pack add-on pointers. These files are generated into installed staging rather
-than committed under `skills/`.
+Installed skills need local filenames such as `peak-hours-warner.md`,
+`shell-ceremony.md`, `telemetry-contract.md`, `stack-routing.md`,
+`review-orchestrator.md`, and pack add-on pointers. These files are generated
+into installed staging rather than committed under source skill directories.
 
-There are two pointer families:
+There are three pointer families:
 
 - Static runtime support pointers for canonical `skills/` entries. Their
   targets are defined by `requiredSupportingFilesForSkill` and
   `supportingFileTargets` in `ScaffoldSupport.kt`.
 - Platform pack manifest pointers declared in each pack's `platform.yaml`.
+- Ceremony pointers declared by skill-class YAML files under
+  `orchestration/skill-classes/*.yaml`.
+
+Skill-class YAML files use `matchers` to select applicable skills. A matcher
+with `exact` applies to one skill name, while a matcher with `pattern` applies
+to skill names matching that regular expression. The `pointers` list names the
+generated sibling pointer files installed with every matching skill, and
+`ceremony_lines` are injected into the rendered `## Ceremony` section. The
+pointer files themselves are install-staging output and must not be committed
+under `skills/` or platform-pack source skill directories.
+
+Worked example: `orchestration/skill-classes/feature-task.yaml` matches
+`^bill-[a-z0-9-]*feature-task$` and injects ceremony lines for
+`peak-hours-warner.md`, `shell-ceremony.md`, and `telemetry-contract.md`.
+`orchestration/skill-classes/feature-launch-warning.yaml` exactly matches
+`bill-feature`, `bill-feature-task-runtime`, `bill-feature-task-prose`, and
+`bill-feature-task-subtask-runner`; it injects the `peak-hours-warner.md`
+ceremony line. `peak-hours-warner.md` is an operator launch warning/config
+pointer, so warning behavior comes from the operator-facing configuration
+surface rather than hard-coded product-specific prose in each skill.
 
 Install staging materializes support pointer files as normalized relative
 pointer text. Targets must be regular files inside the repo and must not point
@@ -344,12 +369,14 @@ If a skill needs a new support file:
    `platform-packs/<slug>/addons/` directory.
 2. Register the support pointer target or manifest pointer.
 3. Add validator and install-staging coverage.
-4. Do not add the pointer file under `skills/<skill>/`.
+4. Do not add the generated pointer file under `skills/<skill>/` or a
+   platform-pack source skill directory.
 
-If a platform-pack skill needs governed add-ons, declare their generated
-pointer filenames in the pack's `addon_usage` block. Keep add-on selection
-cues and topic indexes in the pack-owned add-on files, not duplicated in
-`content.md`.
+If a platform-pack skill needs governed review/check add-ons, declare their
+generated pointer filenames in the pack's `addon_usage` block. If feature-task
+flows need governed add-ons, declare them in `feature_addon_usage`. Keep add-on
+selection cues and topic indexes in the pack-owned add-on files, not duplicated
+in `content.md`.
 
 ## Install Staging
 
@@ -478,7 +505,7 @@ that omit `baseline_layers` remain valid and generate no
 `code_review_composition` section.
 
 For add-ons, the normal wizard creates a skeleton markdown file and registers
-the generated pointer through the owning pack's `platform.yaml` `addon_usage`.
+the generated pointer through the owning pack's manifest-owned add-on usage.
 When `addon_location_path` is provided, the wizard instead creates the skeleton
 in that external add-on source directory and creates or updates the source's
 `addon-manifest.yaml`; the owning pack still provides the validated/defaulted
@@ -526,12 +553,13 @@ scripts/validate_agent_configs
 
 Key guards:
 
-- source skill directories under `skills/` may contain only `content.md` and
-  optional `native-agents/`
+- source skill directories under `skills/` may contain `content.md`, optional
+  `native-agents/`, and explicit authored sidecars only when a documented
+  governed contract allows them
 - committed generated `SKILL.md` wrappers are rejected
 - committed generated support pointer files are rejected
 - committed provider-specific native-agent artifacts are rejected
-- platform manifests must match shell contract version `1.1`
+- platform manifests must match shell contract version `1.2`
 - manifest-declared files must exist and be valid `content.md`
 - pointer target parity is validated against platform manifests
 - native-agent composition must render self-contained provider output

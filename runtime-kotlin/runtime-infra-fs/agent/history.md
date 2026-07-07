@@ -1,5 +1,15 @@
 # Boundary History — runtime-kotlin/runtime-infra-fs
 
+## [2026-07-06] SKILL-107 feature add-on usage schema
+Areas: orchestration/contracts, platform-packs/{go,ios,kotlin,kmp,php,python}, runtime-domain/scaffold, runtime-infra-fs/{scaffold,install,validation}
+- Platform-pack shell contract bumped to 1.2 and `feature_addon_usage` became a manifest-backed, runtime-anchored field; schema/Kotlin parity and 1.1 rejection fixtures must move together. reusable
+- Feature-task Android add-ons moved out of `orchestration/skill-classes/feature-task.yaml` and into the KMP pack manifest, so routed support pointers now compose class ceremony pointers plus selected platform feature add-ons. reusable
+- Loader/validator rule: consuming a feature add-on pointer without a matching `feature_addon_usage.feature-task` declaration, or pointing at a missing add-on file, loud-fails through manifest/schema validation.
+- Install staging now carries selected-platform context into support-pointer generation; keep apply-time and preview-time staging paths aligned when adding future routed pointer families.
+- Known limit: `./install.sh` refused during runtime goal continuation, so post-goal install sync is still needed before relying on the user-level `skill-bill` launcher for contract 1.2 validation.
+Feature flag: N/A
+Acceptance criteria: 7/7 implemented
+
 ## [2026-07-05] SKILL-104 internal review packs (subtask 2: review-pack migration and call-site rewrite)
 Areas: platform-packs/{ios,kotlin,kmp,python}/code-review (34 content.md), orchestration/review-delegation
 - Flattened all 34 review-pack skills to `internal-for: bill-code-review` (PD2): 4 stack entries + 30 specialists, one-line frontmatter addition each, nothing else changed in those blocks.

@@ -164,12 +164,16 @@ private fun platformSkillDirs(manifest: PlatformManifest): Set<Path> = (
   .toSet()
 
 private fun copyPackNonSkillFiles(packRoot: Path, destinationPackRoot: Path, skillDirs: Set<Path>) {
+  val agentDir = packRoot.resolve("agent").toAbsolutePath().normalize()
   Files.walk(packRoot).use { stream ->
     stream.forEach { source ->
       if (Files.isDirectory(source, LinkOption.NOFOLLOW_LINKS)) {
         return@forEach
       }
       val resolvedSource = source.toAbsolutePath().normalize()
+      if (resolvedSource.startsWith(agentDir)) {
+        return@forEach
+      }
       if (skillDirs.any { skillDir -> resolvedSource.startsWith(skillDir) }) {
         return@forEach
       }

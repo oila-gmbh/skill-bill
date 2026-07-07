@@ -13,9 +13,18 @@ interface ReviewRepository : WorkflowStatsRepository {
 
   fun markOrchestrated(runId: String)
 
-  fun updateReviewFinishedTelemetryState(runId: String, enabled: Boolean, level: String): ReviewFinishedTelemetry?
+  fun updateReviewFinishedTelemetryState(
+    runId: String,
+    enabled: Boolean,
+    level: String,
+    routedSkillPlatformSlugs: Map<String, String> = emptyMap(),
+  ): ReviewFinishedTelemetry?
 
-  fun recordFeedback(request: FeedbackRequest, telemetryOptions: FeedbackTelemetryOptions): ReviewFinishedTelemetry?
+  fun recordFeedback(
+    request: FeedbackRequest,
+    telemetryOptions: FeedbackTelemetryOptions,
+    routedSkillPlatformSlugs: Map<String, String> = emptyMap(),
+  ): ReviewFinishedTelemetry?
 
   fun fetchNumberedFindings(runId: String): List<NumberedFinding>
 

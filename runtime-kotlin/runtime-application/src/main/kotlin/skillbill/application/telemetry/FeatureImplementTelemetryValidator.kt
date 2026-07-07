@@ -38,7 +38,7 @@ fun validateFeatureImplementFinished(request: FeatureImplementFinishedRequest): 
 
 private fun validateFeatureImplementSessionId(sessionId: String): String? = when {
   sessionId.isBlank() -> "session_id must not be blank."
-  !sessionId.matches(featureImplementSessionIdPattern) -> "session_id must be a feature-implement session id."
+  !sessionId.matches(featureImplementSessionIdPattern) -> "session_id must be a feature-task session id."
   else -> null
 }
 

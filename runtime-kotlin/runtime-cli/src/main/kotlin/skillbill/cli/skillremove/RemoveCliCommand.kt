@@ -36,10 +36,9 @@ import java.nio.file.Path
  *
  * Flags:
  * - `--dry-run` returns only the preview dossier; nothing on disk is mutated.
- * - `--allow-shipped` is required to remove the built-in `kotlin` / `kmp` *horizontal* pre-shell
- *   surfaces and any `bill-*` product skill (maintainer path). Platform packs — including the
- *   shipped `kotlin` / `kmp` packs — are user-removable without the flag (SKILL-49); only
- *   `.bill-shared` is unconditionally protected on every axis.
+ * - `--allow-shipped` is required to remove any `bill-*` product skill (maintainer path).
+ *   Platform packs — including the shipped `kotlin` / `kmp` packs — are user-removable without
+ *   the flag (SKILL-49); only `.bill-shared` is unconditionally protected on every axis.
  *
  * Exit codes:
  * - `0` — success (or dry-run preview returned).
@@ -67,7 +66,7 @@ class RemoveCliCommand(
     .flag(default = false)
   private val allowShipped by option(
     "--allow-shipped",
-    help = "Allow removal of shipped product surfaces such as bill-* skills and kotlin / kmp pre-shells. " +
+    help = "Allow removal of shipped product surfaces such as bill-* skills. " +
       "'.bill-shared' is never removable.",
   ).flag(default = false)
   private val format by formatOption()
@@ -135,7 +134,7 @@ class RemoveCliCommand(
       $sanitized
 
       Why this is protected:
-        bill-* skills and kotlin/kmp pre-shells are shipped product surfaces.
+        bill-* skills are shipped product surfaces.
         Removing them is a maintainer-only operation because it changes the workflow set installed for every agent.
 
       To preview the maintainer removal:

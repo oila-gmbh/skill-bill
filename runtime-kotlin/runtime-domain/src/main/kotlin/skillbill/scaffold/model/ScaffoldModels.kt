@@ -62,6 +62,11 @@ data class GovernedAddonUsage(
   val addons: List<GovernedAddonSelection>,
 )
 
+data class FeatureAddonUsage(
+  val consumer: String,
+  val addons: List<GovernedAddonSelection>,
+)
+
 data class GovernedAddonSelection(
   val slug: String,
   val entrypoint: String,
@@ -82,6 +87,7 @@ data class PlatformManifest(
   val codeReviewComposition: CodeReviewComposition? = null,
   val pointers: List<PointerSpec> = emptyList(),
   val addonUsage: List<GovernedAddonUsage> = emptyList(),
+  val featureAddonUsage: List<FeatureAddonUsage> = emptyList(),
   /**
    * SKILL-48 Subtask 3: carries every non-anchored top-level field from `platform.yaml`
    * verbatim. Intentionally untyped (`Map<String, Any?>`) so repo authors can add

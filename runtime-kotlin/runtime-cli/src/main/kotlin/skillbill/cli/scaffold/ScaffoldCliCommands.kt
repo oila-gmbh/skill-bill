@@ -3,6 +3,7 @@
 package skillbill.cli.scaffold
 
 import com.github.ajalt.clikt.core.CliktCommand
+import com.github.ajalt.clikt.core.UsageError
 import com.github.ajalt.clikt.core.subcommands
 import com.github.ajalt.clikt.parameters.arguments.argument
 import com.github.ajalt.clikt.parameters.arguments.optional
@@ -276,7 +277,8 @@ class RenderSkillsCommand(
   private val state: CliRunState,
   private val scaffoldService: ScaffoldService,
 ) : DocumentedCliCommand("render", "Render scaffold-managed files to stdout without writing to disk.") {
-  private val skillName by argument(help = "Governed skill name to render.")
+  private val positionalSkillName by argument(help = "Governed skill name to render.").optional()
+  private val optionSkillName by option("--skill-name", help = "Governed skill name to render.")
   private val repoRoot by option(
     "--repo-root",
     help = "Repo root to inspect. Defaults to the current working directory.",
@@ -286,6 +288,14 @@ class RenderSkillsCommand(
     .flag(default = false)
 
   override fun run() {
+    val skillName =
+      when {
+        positionalSkillName != null && optionSkillName != null ->
+          throw UsageError("Provide the skill name either as an argument or with --skill-name, not both.")
+        positionalSkillName != null -> requireNotNull(positionalSkillName)
+        optionSkillName != null -> requireNotNull(optionSkillName)
+        else -> throw UsageError("Provide a skill name as an argument or with --skill-name.")
+      }
     completeRenderText(state, Path.of(repoRoot), skillName, dryRun, scaffoldService)
   }
 }

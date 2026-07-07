@@ -6,8 +6,8 @@ skill-bill is a governed platform for authoring, routing, validating, installing
 
 Non-negotiable contracts:
 
-- Authored governed skill source is `content.md`; generated `SKILL.md` wrappers are runtime/install output.
-- Source skill directories under `skills/<skill>/` contain only `content.md` plus optional `native-agents/`.
+- Authored governed skill source is `content.md`, except for documented governed sidecar contracts; generated `SKILL.md` wrappers are runtime/install output.
+- Source skill directories under `skills/<skill>/` contain `content.md`, optional `native-agents/`, and explicit authored sidecars only when a documented governed contract allows them.
 - Platform behavior lives in manifest-declared platform packs under `platform-packs/<slug>/`.
 - `orchestration/` is the shared source of truth for routing, review, delegation, telemetry, workflow, and shell contracts.
 - Generated support pointer files, provider-specific native-agent outputs, and installed staging artifacts are not committed.
@@ -23,9 +23,9 @@ Bundled skills and reference packs are defaults, not the framework boundary. Tea
 ## Taxonomy
 
 - `skills/`: canonical user-facing skill sources.
-- `skills/<platform>/`: legacy/pre-shell platform overrides for families not yet moved to platform packs.
 - `platform-packs/<platform>/addons/`: flat pack-owned add-ons applied after routing.
 - `platform-packs/<platform>/`: user-owned pack roots for code review and quality-check behavior.
+- `platform-packs/<platform>/agent/`: pack-owned boundary memory; `history.md` and `decisions.md` are tracked in the repo but excluded from installs and generated runtime output.
 - `orchestration/contracts/`: runtime contract schemas.
 
 Naming:
@@ -57,7 +57,7 @@ Platform packs are the extension surface. Any maintained pack in this repo is va
 
 The canonical shape for `platform-packs/<slug>/platform.yaml` is `orchestration/contracts/platform-pack-schema.yaml` (Draft 2020-12 YAML-authored JSON Schema). Field additions, type changes, constraints, and enums land there first. `ShellContentLoader.buildPack` rejects malformed manifests through `InvalidManifestSchemaError`.
 
-The shell contract version is `1.1`. `SHELL_CONTRACT_VERSION` and the schema `contract_version.const` are pinned by `PlatformPackSchemaContractVersionTest`.
+The shell contract version is `1.2`. `SHELL_CONTRACT_VERSION` and the schema `contract_version.const` are pinned by `PlatformPackSchemaContractVersionTest`.
 
 Cross-field rules JSON Schema cannot express live in Kotlin and are documented under `x-coherence-checks`, including slug parity, declared-area parity, pointer uniqueness, baseline composition, and governed add-on usage.
 
@@ -72,7 +72,7 @@ Per-repo customization:
 Product versus extension surface:
 
 - horizontal `bill-*` skills under `skills/bill-*/` are protected product surfaces
-- `skills/kotlin/` and `skills/kmp/` pre-shells are protected on the HorizontalSkill axis because removing them alone would orphan their packs
+- shipped `kotlin` and `kmp` packs are removable; no paired `skills/<platform>/` pre-shell trees exist
 - platform packs under `platform-packs/<slug>/` are user-removable extension surfaces, including shipped `kotlin` and `kmp`
 - `.bill-shared` is protected on every axis
 - maintainers may remove deprecated shipped surfaces only through the CLI `--allow-shipped` path in this repo
@@ -83,7 +83,7 @@ Product versus extension surface:
 
 Every YAML under `orchestration/contracts/` is a runtime contract. New contract YAML follows this recipe:
 
-1. Author Draft 2020-12 JSON Schema in YAML, mirroring `$schema`, `$id`, `title`, `description`, strict `additionalProperties` where applicable, `contract_version` const, and `x-coherence-checks`.
+1. Author Draft 2020-12 JSON Schema in YAML, mirroring `$schema`, `$id`, `title`, `description`, strict `additionalProperties` where applicable, `contract_version` const, and `x-coherence-checks` where applicable.
 2. Add a Kotlin `<contract>_CONTRACT_VERSION` constant equal to the schema const.
 3. Add a parity test using `PlatformPackSchemaContractVersionTest` as the pattern.
 4. Add a typed `Invalid<Contract>SchemaError` extending `ShellContentContractException`.
@@ -98,7 +98,7 @@ Schema introductions and version bumps intentionally loud-fail legacy durable re
 
 Add-ons are pack-owned files, not standalone skills. Keep them flat in `platform-packs/<slug>/addons/`, use lowercase kebab-case names, and resolve them only after dominant-stack routing.
 
-Declare add-on consumers in the owning pack manifest under `addon_usage`. Do not hand-author per-skill add-on selection tables in `content.md`; the renderer emits governed add-on usage from the manifest. Add-on changes need validator and routing-contract coverage.
+Declare review/check add-on consumers in the owning pack manifest under `addon_usage`. Declare feature-task add-on consumers under manifest-owned `feature_addon_usage`. Do not hand-author per-skill add-on selection tables in `content.md`; renderers emit governed add-on usage from manifest-owned declarations. Add-on changes need validator and routing-contract coverage.
 
 ## Internal Skills
 
@@ -124,13 +124,10 @@ For normal authoring use CLI reads and writes:
 Supported scaffold `kind` values:
 
 - `horizontal`: canonical skill under `skills/`
-- `platform-pack`: pack root plus baseline code-review, default quality-check, and optional approved specialists
-- `platform-override-piloted`: skill in the selected pack; for `quality-check`, register `declared_quality_check_file`
-- `platform-override-piloted` for pre-shell families: legacy `skills/<platform>/` location until piloted
-- `code-review-area`: specialist in the selected pack and manifest area registration
+- `platform-pack`: pack root plus baseline code-review, default quality-check, and approved specialists
 - `add-on`: flat add-on file in the selected pack
 
-For `platform-pack`, payloads use either `skeleton_mode=starter|full` or `specialist_areas=[...]`, not both. Pre-shell families are defined in the Kotlin scaffold/runtime contract. Keep payload schema and exception catalog aligned with `orchestration/shell-content-contract/SCAFFOLD_PAYLOAD.md`.
+Keep payload schema and exception catalog aligned with `orchestration/shell-content-contract/SCAFFOLD_PAYLOAD.md`.
 
 The scaffolder is atomic: validator, manifest-write, install, or generated-link failures roll the repo back byte-for-byte.
 
@@ -140,7 +137,7 @@ For code review, create the pack root, add a conforming manifest and `content.md
 
 For quality-check, register the manifest entry and ship the governed `content.md`. In the built-in set, `kmp` falls back to `kotlin`.
 
-For feature-implement or feature-verify overrides, keep the historic `skills/<platform>/` layout until those families are piloted.
+For feature-task and feature-verify, keep platform-specific behavior on current horizontal and manifest-driven surfaces; do not add legacy `skills/<platform>/` overrides.
 
 ## Runtime Agent Behavior
 

@@ -348,9 +348,7 @@ class SkillRemoveJvmFileSystem(
   private fun platformPackCascadePaths(repoRoot: Path, platform: String): List<String> {
     val out = linkedSetOf<String>()
     val pack = repoRoot.resolve("platform-packs/$platform")
-    val pairedSkills = repoRoot.resolve("skills/$platform")
     if (Files.exists(pack, LinkOption.NOFOLLOW_LINKS)) out += "platform-packs/$platform"
-    if (Files.exists(pairedSkills, LinkOption.NOFOLLOW_LINKS)) out += "skills/$platform"
     return out.toList()
   }
 

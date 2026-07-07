@@ -3,6 +3,9 @@
 package skillbill.scaffold.runtime
 
 import skillbill.error.MissingSupportingFileTargetError
+import skillbill.scaffold.model.PlatformManifest
+import skillbill.scaffold.model.PointerSpec
+import skillbill.scaffold.platformpack.FEATURE_TASK_ADDON_CONSUMER
 import skillbill.scaffold.platformpack.SKILL_CLASSES_DIR
 import skillbill.scaffold.platformpack.discoverSkillClasses
 import skillbill.scaffold.platformpack.resolveSkillClass
@@ -36,7 +39,7 @@ internal val APPROVED_CODE_REVIEW_AREAS: Set<String> get() = POLICY_APPROVED_COD
 // F-001: Authoritative source for the pre-shell vs shelled family taxonomy. The desktop wizard's
 // `ScaffoldCatalog` delegates to these so the runtime stays the single source of truth.
 internal val SHELLED_FAMILIES: Set<String> = setOf("code-review", "quality-check")
-internal val PRE_SHELL_FAMILIES: Set<String> = setOf("feature-implement", "feature-verify")
+internal val PRE_SHELL_FAMILIES: Set<String> = setOf("feature-task", "feature-verify")
 
 // F-001: Built-in platform-pack presets keyed by slug. The full descriptors live in the pure-policy
 // table; this projection is the wizard-facing display projection so callers can render a slug ->
@@ -113,23 +116,6 @@ internal fun supportingFileTargets(repoRoot: Path): Map<String, Path> = mapOf(
   "shell-content-contract.md" to repoRoot.resolve(ORCHESTRATION_PLAYBOOKS.getValue("shell-content-contract")),
   "shell-ceremony.md" to repoRoot.resolve(ORCHESTRATION_SIDECARS.getValue("shell-ceremony")),
   "peak-hours-warner.md" to repoRoot.resolve(ORCHESTRATION_SIDECARS.getValue("peak-hours-warner")),
-  "android-compose-implementation.md" to repoRoot.resolve(
-    "platform-packs/kmp/addons/android-compose-implementation.md",
-  ),
-  "android-navigation-implementation.md" to repoRoot.resolve(
-    "platform-packs/kmp/addons/android-navigation-implementation.md",
-  ),
-  "android-interop-implementation.md" to repoRoot.resolve(
-    "platform-packs/kmp/addons/android-interop-implementation.md",
-  ),
-  "android-design-system-implementation.md" to repoRoot.resolve(
-    "platform-packs/kmp/addons/android-design-system-implementation.md",
-  ),
-  "android-r8-implementation.md" to repoRoot.resolve("platform-packs/kmp/addons/android-r8-implementation.md"),
-  "android-compose-edge-to-edge.md" to repoRoot.resolve("platform-packs/kmp/addons/android-compose-edge-to-edge.md"),
-  "android-compose-adaptive-layouts.md" to repoRoot.resolve(
-    "platform-packs/kmp/addons/android-compose-adaptive-layouts.md",
-  ),
 )
 
 /**
@@ -138,16 +124,58 @@ internal fun supportingFileTargets(repoRoot: Path): Map<String, Path> = mapOf(
  * is absent (non-governed test fixtures, ad-hoc repos) or no class matches; production repos
  * always carry the directory and the matched class declares the canonical pointer set.
  */
-internal fun requiredSupportingFilesForSkill(skillName: String, repoRoot: Path): List<String> {
+internal fun requiredSupportingFilesForSkill(
+  skillName: String,
+  repoRoot: Path,
+  selectedPlatformManifests: List<PlatformManifest> = emptyList(),
+): List<String> {
   if (!Files.isDirectory(repoRoot.resolve(SKILL_CLASSES_DIR))) return emptyList()
   val skillClass = resolveSkillClass(skillName, discoverSkillClasses(repoRoot))
-  return skillClass?.pointers?.map { "$it.md" } ?: emptyList()
+  val classPointers = skillClass?.pointers?.map { "$it.md" }.orEmpty()
+  return classPointers + featureAddonPointerSpecsFor(skillName, selectedPlatformManifests).map { it.name }
 }
 
-internal fun requireSupportingFileTarget(skillName: String, fileName: String, repoRoot: Path): Path =
-  supportingFileTargets(repoRoot)[fileName] ?: throw MissingSupportingFileTargetError(
+internal fun requireSupportingFileTarget(
+  skillName: String,
+  fileName: String,
+  repoRoot: Path,
+  selectedPlatformManifests: List<PlatformManifest> = emptyList(),
+): Path = supportingFileTargets(repoRoot)[fileName]
+  ?: featureAddonPointerSpecsFor(skillName, selectedPlatformManifests)
+    .firstOrNull { spec -> spec.name == fileName }
+    ?.let { spec -> repoRoot.toAbsolutePath().normalize().resolve(spec.target).normalize() }
+  ?: throw MissingSupportingFileTargetError(
     "Runtime supporting file '$fileName' is not registered for '$skillName'.",
   )
+
+internal fun selectedFeatureAddonSupportTargets(
+  skillName: String,
+  selectedPlatformManifests: List<PlatformManifest>,
+): Map<String, PointerSpec> = featureAddonPointerSpecsFor(skillName, selectedPlatformManifests).associateBy { it.name }
+
+private fun featureAddonPointerSpecsFor(
+  skillName: String,
+  selectedPlatformManifests: List<PlatformManifest>,
+): List<PointerSpec> {
+  if (skillName != "bill-feature-task") {
+    return emptyList()
+  }
+  val collected = mutableListOf<PointerSpec>()
+  selectedPlatformManifests.forEach { manifest ->
+    val pointersByName = manifest.pointers
+      .filter { spec -> spec.skillRelativeDir == FEATURE_TASK_ADDON_CONSUMER }
+      .associateBy { it.name }
+    manifest.featureAddonUsage
+      .filter { usage -> usage.consumer == FEATURE_TASK_ADDON_CONSUMER }
+      .flatMap { usage ->
+        usage.addons.flatMap { addon -> listOf(addon.entrypoint) + addon.companionPointers }
+      }
+      .forEach { pointerName ->
+        pointersByName[pointerName]?.let(collected::add)
+      }
+  }
+  return collected.distinctBy { spec -> spec.name }
+}
 
 /**
  * Cross-validates the static [supportingFileTargets] map against every pack's `pointers:` block.

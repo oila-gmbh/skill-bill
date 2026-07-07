@@ -19,6 +19,7 @@ fun reviewFinishedPayload(
   reviewSummary: ReviewSummary,
   findingRows: List<FindingOutcomeRow>,
   level: String,
+  routedSkillPlatformSlugs: Map<String, String> = emptyMap(),
 ): ReviewFinishedTelemetry {
   val stats = filterReviewFinishedSummary(summarizeFindingRows(findingRows), level)
   val learningsSection = buildLearningsSection(connection, reviewSummary.reviewSessionId.orEmpty(), level)
@@ -30,7 +31,7 @@ fun reviewFinishedPayload(
     reviewSubskills = parseSpecialistReviews(reviewSummary.specialistReviewsRaw),
     reviewScope = normalizeReviewScope(reviewSummary.detectedScope),
     reviewPlatform = reviewSummary.detectedStack,
-    platformSlug = reviewPlatformSlug(reviewSummary.detectedStack, reviewSummary.routedSkill),
+    platformSlug = reviewPlatformSlug(reviewSummary.detectedStack, reviewSummary.routedSkill, routedSkillPlatformSlugs),
     scopeType = normalizeScopeType(reviewSummary.detectedScope),
     executionMode = reviewSummary.executionMode,
     reviewFinishedAt = reviewSummary.reviewFinishedAt,
@@ -118,12 +119,16 @@ fun parseSpecialistReviews(rawValue: String?): List<String> =
 
 fun normalizeReviewScope(detectedScope: String?): String = detectedScope.orEmpty().substringBefore("(").trim()
 
-fun reviewPlatformSlug(detectedStack: String?, routedSkill: String?): String {
+fun reviewPlatformSlug(
+  detectedStack: String?,
+  routedSkill: String?,
+  routedSkillPlatformSlugs: Map<String, String> = emptyMap(),
+): String {
   val normalizedDetectedStack = normalizePlatformSlug(detectedStack)
   return if (normalizedDetectedStack != "unknown") {
     normalizedDetectedStack
   } else {
-    platformSlugFromRoutedSkill(routedSkill)
+    platformSlugFromRoutedSkill(routedSkill, routedSkillPlatformSlugs)
   }
 }
 
