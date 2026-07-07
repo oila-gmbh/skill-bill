@@ -17,6 +17,7 @@ import skillbill.model.EnvironmentContext
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.ReviewRepository
 import skillbill.ports.persistence.model.ReviewRepositoryStatsSnapshot
+import skillbill.ports.review.ReviewAttributionPort
 import skillbill.ports.review.ReviewInputSource
 import skillbill.ports.telemetry.TelemetrySettingsProvider
 import skillbill.review.ReviewParser
@@ -37,6 +38,7 @@ class ReviewService(
   private val database: DatabaseSessionFactory,
   private val settingsProvider: TelemetrySettingsProvider,
   private val reviewInputSource: ReviewInputSource,
+  private val reviewAttributionPort: ReviewAttributionPort,
 ) {
   fun previewImport(input: String): ReviewPreviewResult {
     val (text) = reviewInputSource.readInput(input, context.stdinText)
@@ -59,6 +61,7 @@ class ReviewService(
           runId = review.reviewRunId,
           enabled = settings?.enabled ?: false,
           level = settings?.level ?: "off",
+          routedSkillPlatformSlugs = reviewAttributionPort.routedSkillPlatformSlugs(),
         )
       }
       review.toImportedReviewResult(dbPath = unitOfWork.dbPath.toString())
@@ -78,6 +81,7 @@ class ReviewService(
         runId = runId,
         enabled = settings?.enabled ?: false,
         level = settings?.level ?: "off",
+        routedSkillPlatformSlugs = reviewAttributionPort.routedSkillPlatformSlugs(),
       )
     }
 
@@ -91,6 +95,7 @@ class ReviewService(
     unitOfWork.reviews.recordFeedback(
       FeedbackRequest(runId, findings, event, note),
       feedbackTelemetryOptions(settingsProvider),
+      routedSkillPlatformSlugs = reviewAttributionPort.routedSkillPlatformSlugs(),
     )
     ReviewFeedbackResult(
       dbPath = unitOfWork.dbPath.toString(),
@@ -119,7 +124,14 @@ class ReviewService(
   } else {
     database.transaction(dbOverride) { unitOfWork ->
       val numberedFindings = unitOfWork.reviews.fetchNumberedFindings(runId)
-      val applied = applyTriageDecisions(settingsProvider, unitOfWork.reviews, runId, numberedFindings, decisions)
+      val applied = applyTriageDecisions(
+        settingsProvider,
+        unitOfWork.reviews,
+        runId,
+        numberedFindings,
+        decisions,
+        reviewAttributionPort.routedSkillPlatformSlugs(),
+      )
       TriageResult(
         kind = TriageResultKind.RECORDED,
         dbPath = unitOfWork.dbPath.toString(),
@@ -146,12 +158,14 @@ class ReviewService(
     goalStatsResult(database, dbOverride, ReviewRepository::goalStats)
 }
 
+@Suppress("LongParameterList")
 private fun applyTriageDecisions(
   settingsProvider: TelemetrySettingsProvider,
   reviewRepository: ReviewRepository,
   runId: String,
   numberedFindings: List<NumberedFinding>,
   decisions: List<String>,
+  routedSkillPlatformSlugs: Map<String, String>,
 ): AppliedTriageDecisions {
   val parsedDecisions = TriageDecisionParser.parseTriageDecisions(decisions, numberedFindings)
   var telemetry: ReviewFinishedTelemetry? = null
@@ -160,6 +174,7 @@ private fun applyTriageDecisions(
       reviewRepository.recordFeedback(
         FeedbackRequest(runId, listOf(decision.findingId), decision.outcomeType, decision.note),
         feedbackTelemetryOptions(settingsProvider),
+        routedSkillPlatformSlugs = routedSkillPlatformSlugs,
       )
     if (returnedTelemetry != null) {
       telemetry = returnedTelemetry

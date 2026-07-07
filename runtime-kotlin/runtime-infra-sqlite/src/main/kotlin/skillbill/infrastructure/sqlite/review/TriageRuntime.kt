@@ -44,6 +44,7 @@ object TriageRuntime {
       reviewRunId = request.reviewRunId,
       enabled = telemetryOptions.enabled ?: false,
       level = telemetryOptions.level ?: "off",
+      routedSkillPlatformSlugs = telemetryOptions.routedSkillPlatformSlugs,
     )
   }
 }

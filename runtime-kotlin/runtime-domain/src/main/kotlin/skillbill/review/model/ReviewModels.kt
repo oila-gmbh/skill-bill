@@ -67,6 +67,7 @@ data class FeedbackRequest(
 data class FeedbackTelemetryOptions(
   val enabled: Boolean? = null,
   val level: String? = null,
+  val routedSkillPlatformSlugs: Map<String, String> = emptyMap(),
 )
 
 data class FindingOutcomeRow(

@@ -49,6 +49,7 @@ import skillbill.ports.persistence.model.LearningResolution
 import skillbill.ports.persistence.model.ReviewRepositoryStatsSnapshot
 import skillbill.ports.persistence.model.TelemetryOutboxRecord
 import skillbill.ports.persistence.model.WorkflowStateRecord
+import skillbill.ports.review.EmptyReviewAttributionPort
 import skillbill.ports.review.ReviewInputSource
 import skillbill.ports.telemetry.TelemetryClient
 import skillbill.ports.telemetry.TelemetryConfigStore
@@ -190,6 +191,7 @@ class ApplicationPersistencePortTest {
         database,
         FakeTelemetrySettingsProvider(enabled = false),
         FakeReviewInputSource,
+        EmptyReviewAttributionPort,
       )
 
     val result =
@@ -1391,6 +1393,7 @@ class ApplicationPersistencePortTest {
       database,
       FakeTelemetrySettingsProvider(enabled = false),
       FakeReviewInputSource,
+      EmptyReviewAttributionPort,
     )
 
     val result: GoalStatsResult = service.goalStats(dbOverride = null)
@@ -1651,11 +1654,13 @@ private class FakeGoalStatsReviewRepository(
     runId: String,
     enabled: Boolean,
     level: String,
+    routedSkillPlatformSlugs: Map<String, String>,
   ): ReviewFinishedTelemetry? = error("Unexpected updateReviewFinishedTelemetryState")
 
   override fun recordFeedback(
     request: FeedbackRequest,
     telemetryOptions: FeedbackTelemetryOptions,
+    routedSkillPlatformSlugs: Map<String, String>,
   ): ReviewFinishedTelemetry? = error("Unexpected recordFeedback")
 
   override fun fetchNumberedFindings(runId: String): List<NumberedFinding> = error("Unexpected fetchNumberedFindings")
@@ -1745,11 +1750,13 @@ private class FakeReviewRepository(
     runId: String,
     enabled: Boolean,
     level: String,
+    routedSkillPlatformSlugs: Map<String, String>,
   ): ReviewFinishedTelemetry? = null
 
   override fun recordFeedback(
     request: FeedbackRequest,
     telemetryOptions: FeedbackTelemetryOptions,
+    routedSkillPlatformSlugs: Map<String, String>,
   ): ReviewFinishedTelemetry? {
     feedbackRequests += request
     return null

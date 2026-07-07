@@ -10,8 +10,8 @@ base_branch: "main"
 feature_branch: "feat/SKILL-107-audit-fixes"
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 2
-  action: "resume"
+  subtask_id: 3
+  action: "start"
 subtasks:
 - id: 1
   name: "Stale-surface retirement"
@@ -29,12 +29,12 @@ subtasks:
 - id: 2
   name: "feature_addon_usage schema field, contract 1.1 to 1.2"
   spec_path: ".feature-specs/SKILL-107-audit-fixes/spec_subtask_2_feature-addon-usage-schema.md"
-  status: "pending"
+  status: "complete"
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260706-193437-e4ij"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -48,7 +48,7 @@ subtasks:
   status: "pending"
   branch: null
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wftr-20260706-200558-plfy"
   blocked_reason: null
   last_resumable_step: null
   linear_issue_id: null

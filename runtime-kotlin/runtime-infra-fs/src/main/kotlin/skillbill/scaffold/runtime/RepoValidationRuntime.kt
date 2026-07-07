@@ -11,6 +11,7 @@ import skillbill.nativeagent.validation.validateRepoNativeAgents
 import skillbill.scaffold.authoring.InternalSkillDeclaration
 import skillbill.scaffold.authoring.internalSkillClassificationViolations
 import skillbill.scaffold.authoring.parseInternalForFrontmatter
+import skillbill.scaffold.platformpack.declaredCodeReviewSkillNames
 import skillbill.scaffold.platformpack.loadPlatformManifest
 import skillbill.scaffold.platformpack.loadPlatformPack
 import skillbill.scaffold.platformpack.resolveSkillClass
@@ -119,7 +120,6 @@ object RepoValidationRuntime {
     Regex("""\bAgent to spawn\b""") to "must use portable specialist-review wording",
     Regex("""\bAgents spawned\b""") to "must use portable specialist-review summary wording",
   )
-  private val portableReviewSkills = setOf("bill-kotlin-code-review", "bill-kmp-code-review")
   private val inlineTelemetryContractMarkers = listOf(
     "Standalone-first contract",
     "child_steps aggregation",
@@ -135,13 +135,14 @@ object RepoValidationRuntime {
     val skillNames = (skillFiles.keys + platformSkillFiles.keys).toSortedSet()
     val addonFiles = discoverAllAddonFiles(root)
     val platformPacks = validatePlatformPacks(root, issues)
+    val portableReviewSkills = discoverPortableReviewSkills(root)
     val nativeAgentSources = runCatching { discoverRepoNativeAgentSourceEntries(root) }.getOrDefault(emptyList())
 
     skillFiles.forEach { (skillName, skillFile) ->
-      validateInstallableSkill(skillName, skillFile, root, issues, validateSourceSidecars = true)
+      validateInstallableSkill(skillName, skillFile, root, issues, validateSourceSidecars = true, portableReviewSkills)
     }
     platformSkillFiles.forEach { (skillName, skillFile) ->
-      validateInstallableSkill(skillName, skillFile, root, issues, validateSourceSidecars = false)
+      validateInstallableSkill(skillName, skillFile, root, issues, validateSourceSidecars = false, portableReviewSkills)
     }
     validateInternalSidecarCollisions(skillFiles + platformSkillFiles, issues)
     validateInternalSkillClassification(skillFiles, platformSkillFiles, issues)
@@ -303,12 +304,32 @@ object RepoValidationRuntime {
     return validCount
   }
 
+  private fun discoverPortableReviewSkills(root: Path): Set<String> {
+    val packsRoot = root.resolve("platform-packs")
+    if (!packsRoot.isDirectory()) {
+      return emptySet()
+    }
+    val reviewSkills = linkedSetOf<String>()
+    Files.list(packsRoot).use { stream ->
+      stream
+        .filter { it.isDirectory() && !it.name.startsWith(".") }
+        .sorted()
+        .forEach { packRoot ->
+          reviewSkills += runCatching { loadPlatformManifest(packRoot).declaredCodeReviewSkillNames() }
+            .getOrDefault(emptySet())
+        }
+    }
+    return reviewSkills
+  }
+
+  @Suppress("LongParameterList")
   private fun validateInstallableSkill(
     skillName: String,
     contentFile: Path,
     root: Path,
     issues: MutableList<String>,
     validateSourceSidecars: Boolean,
+    portableReviewSkills: Set<String>,
   ) {
     val text = Files.readString(contentFile)
     val frontmatter = parseFrontmatter(text)
@@ -335,7 +356,7 @@ object RepoValidationRuntime {
         validateSupportingSidecar(contentFile, fileName, expectedTarget, root, issues)
       }
     }
-    validatePortableReviewWording(skillName, text, contentFile, issues)
+    validatePortableReviewWording(skillName, text, contentFile, issues, portableReviewSkills)
     validateGovernedContentFile(contentFile, issues)
   }
 
@@ -714,6 +735,7 @@ object RepoValidationRuntime {
     text: String,
     skillFile: Path,
     issues: MutableList<String>,
+    portableReviewSkills: Set<String>,
   ) {
     if (skillName !in portableReviewSkills) {
       return

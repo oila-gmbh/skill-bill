@@ -86,6 +86,21 @@ class DatabaseMigrationsTest {
   }
 
   @Test
+  fun `review routed skill column is unconstrained text`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-db-migrations").resolve("review-routed-skill.db")
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val columns = tableColumnTypes(connection = connection, tableName = "review_runs")
+      val schemaSql = reviewRunsSchemaSql(connection)
+
+      assertEquals("TEXT", columns["routed_skill"])
+      assertTrue("routed_skill TEXT" in schemaSql)
+      assertTrue("routed_skill TEXT CHECK" !in schemaSql)
+      assertTrue("routed_skill TEXT NOT NULL CHECK" !in schemaSql)
+    }
+  }
+
+  @Test
   fun `ensureDatabase adds missing finding issue category column with default`() {
     val dbPath = Files.createTempDirectory("runtime-kotlin-db-migrations").resolve("legacy-findings.db")
     createLegacyFeedbackEventsDatabase(dbPath)
@@ -464,6 +479,19 @@ class DatabaseMigrationsTest {
     }
   }
 
+  private fun reviewRunsSchemaSql(connection: java.sql.Connection): String = connection.prepareStatement(
+    """
+      SELECT sql
+      FROM sqlite_master
+      WHERE type = 'table' AND name = 'review_runs'
+    """.trimIndent(),
+  ).use { statement ->
+    statement.executeQuery().use { resultSet ->
+      resultSet.next()
+      resultSet.getString(1)
+    }
+  }
+
   private fun feedbackEventType(connection: java.sql.Connection, reviewRunId: String, findingId: String): String =
     connection.prepareStatement(
       """
@@ -562,6 +590,17 @@ class DatabaseMigrationsTest {
         buildSet {
           while (resultSet.next()) {
             add(resultSet.getString("name"))
+          }
+        }
+      }
+    }
+
+  private fun tableColumnTypes(connection: java.sql.Connection, tableName: String): Map<String, String> =
+    connection.createStatement().use { statement ->
+      statement.executeQuery("PRAGMA table_info($tableName)").use { resultSet ->
+        buildMap {
+          while (resultSet.next()) {
+            put(resultSet.getString("name"), resultSet.getString("type"))
           }
         }
       }
