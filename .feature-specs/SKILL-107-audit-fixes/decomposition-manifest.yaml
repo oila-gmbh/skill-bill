@@ -11,7 +11,7 @@ feature_branch: "feat/SKILL-107-audit-fixes"
 stack_branches: []
 current_subtask_intent:
   subtask_id: 5
-  action: "resume"
+  action: "start"
 subtasks:
 - id: 1
   name: "Stale-surface retirement"
