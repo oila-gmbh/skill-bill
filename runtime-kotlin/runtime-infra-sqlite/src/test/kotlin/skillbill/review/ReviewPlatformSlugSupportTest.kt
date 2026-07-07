@@ -42,6 +42,7 @@ class ReviewPlatformSlugSupportTest {
     assertEquals("unknown", platformSlugFromRoutedSkill(null, manifestMappings))
     assertEquals("unknown", platformSlugFromRoutedSkill("  ", manifestMappings))
     assertEquals("unknown", platformSlugFromRoutedSkill("bill-unrecognized-code-review", manifestMappings))
+    assertEquals("unknown", platformSlugFromRoutedSkill("bill-go-code-review-fake", manifestMappings))
     assertEquals("unknown", platformSlugFromRoutedSkill("bill-agent-config-code-review", manifestMappings))
     assertEquals("unknown", platformSlugFromRoutedSkill("bill-android-code-review", manifestMappings))
   }

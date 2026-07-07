@@ -1,3 +1,12 @@
+## [2026-07-07] SKILL-107 subtask 3 manifest-driven runtime hygiene
+Areas: runtime-kotlin/runtime-core DI, runtime-application/review, runtime-infra-sqlite/review telemetry, runtime-infra-fs/{manifest attribution, repo validation, install apply}, runtime-ports/review
+- Review platform attribution now consumes injected manifest-derived routed-skill mappings; sqlite keeps only exact skill-name lookup plus `"unknown"` fallback, with no pack discovery dependency. reusable
+- Runtime composition owns pack-manifest discovery for review attribution and portable review lint inputs, so new packs extend behavior by manifest declaration rather than editing sqlite or validation allowlists. reusable
+- Review-finished telemetry remains attribution-only: no telemetry schema/version change, and `review_runs.routed_skill` stays unconstrained TEXT.
+- Install pack views skip top-level pack-root `agent/` boundary memory while continuing to copy platform.yaml and flat add-ons.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
 ## [2026-07-06] SKILL-107 subtask 1 stale-surface-retirement
 Areas: orchestration/skill-classes, runtime-kotlin/runtime-infra-fs scaffold, runtime-kotlin/runtime-domain skillremove, runtime-kotlin/runtime-cli, runtime-kotlin/runtime-mcp, runtime-kotlin/runtime-desktop, AGENTS.md, docs
 - Retired the stale `feature-implement` skill-class surface in favor of `feature-task`; keep durable workflow/table aliases only where backward compatibility requires them. reusable

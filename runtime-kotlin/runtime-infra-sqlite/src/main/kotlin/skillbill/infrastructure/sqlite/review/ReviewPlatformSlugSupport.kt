@@ -12,7 +12,7 @@ fun platformSlugFromRoutedSkill(
   }
   return normalizedRoutedSkillPlatformSlugs(routedSkillPlatformSlugs)
     .firstNotNullOfOrNull { (skillName, platformSlug) ->
-      platformSlug.takeIf { normalized == skillName || normalized.startsWith("$skillName-") }
+      platformSlug.takeIf { normalized == skillName }
     }
     ?: "unknown"
 }
