@@ -16,7 +16,6 @@ mirror the existing toolbar / dock buttons.
 - The root frame `onPreviewKeyEvent` that already handles the command
   palette shortcut.
 - The Repository path `BasicTextField` in the Repository selector.
-- The commit message `BasicTextField` in the Changes dock tab.
 
 ## Goal
 
@@ -29,9 +28,6 @@ the "shortcut runs while busy" footgun.
 
 - Repository path field: pressing `Enter` (and `NumPadEnter`) runs the same
   flow as the adjacent open icon, equivalent to `onRepoSelected(repoPath)`.
-- Commit message field: pressing `Cmd/Ctrl+Enter` runs `onCommit` only when
-  `canCommit && !publishingBusy`. Plain `Enter` continues to insert a
-  newline.
 - Global accelerators (frame-level `onPreviewKeyEvent`), gated on
   `canStartRepoScopedAction()` and the same per-action `enabled` predicates
   the toolbar uses:
@@ -39,8 +35,8 @@ the "shortcut runs while busy" footgun.
   - `Cmd/Ctrl+R` → `onRefresh` when no busy operation is in flight.
   - `Cmd/Ctrl+Shift+R` → `onRender` when render is enabled.
   - `Cmd/Ctrl+Shift+V` → `onValidate` when validate is enabled.
-- Every accelerator must respect the existing `busy` / `publishingBusy` /
-  `dirtyEditorPrompt` predicates the equivalent buttons already check.
+- Every accelerator must respect the existing `busy` and `dirtyEditorPrompt`
+  predicates the equivalent buttons already check.
 - Existing palette shortcut behavior must remain unchanged.
 - Discoverability: the toolbar buttons gain a tooltip (existing
   `TooltipArea` pattern already used by the read-only artifact tooltip) that
@@ -60,15 +56,12 @@ the "shortcut runs while busy" footgun.
 - Pressing `Enter` in the repository path field opens the typed repo path
   exactly as clicking the open icon would, including the dirty-editor prompt
   guard.
-- Pressing `Cmd/Ctrl+Enter` in the commit message field commits when
-  `canCommit && !publishingBusy`; pressing it otherwise is a no-op.
-- Plain `Enter` in the commit message field still inserts a newline.
 - `Cmd/Ctrl+S` triggers save only when the editor is editable and dirty.
 - `Cmd/Ctrl+R` and `Cmd/Ctrl+Shift+R` trigger refresh and render only when
   their existing enabled predicates allow it.
 - `Cmd/Ctrl+Shift+V` triggers validate only when validate is enabled.
-- All accelerators are no-ops while `busyOperation != null` or
-  `publishingBusy` is true, matching the toolbar.
+- All accelerators are no-ops while `busyOperation != null`, matching the
+  toolbar.
 - The command palette shortcut still works exactly as before.
 - Toolbar buttons that have an accelerator show that accelerator in their
   tooltip; command palette result rows for the same actions also show it.
@@ -85,13 +78,11 @@ cd runtime-kotlin
 Manual smoke:
 
 1. Type a repo path and press `Enter` — repo opens.
-2. Edit an authored source and press `Cmd+S` — file saves and the
-   Changes tab badge updates.
+2. Edit an authored source and press `Cmd+S` — file saves and the editor state
+   updates.
 3. Press `Cmd+R` — repo refreshes.
 4. Press `Cmd+Shift+R` — render runs when enabled.
 5. Press `Cmd+Shift+V` — validation runs when enabled.
-6. In the commit message field, press `Enter` (newline) then
-   `Cmd+Enter` (commit).
 
 ## Non-Goals
 

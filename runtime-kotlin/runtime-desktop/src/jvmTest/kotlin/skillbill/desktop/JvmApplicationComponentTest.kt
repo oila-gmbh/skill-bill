@@ -17,7 +17,6 @@ class JvmApplicationComponentTest {
       val screenComponent = userComponent.screenComponentFactory.create()
 
       assertNotNull(screenComponent.viewModel)
-      assertNotNull(screenComponent.browserLauncher)
       assertEquals("No source selected", screenComponent.viewModel.state().editor.title)
 
       component.databaseProvider.clearCachedInstances()

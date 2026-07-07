@@ -74,7 +74,6 @@ The scaffold operation must remain atomic. If validation, manifest write, instal
 - Freeform manifest editing.
 - Editing scaffolded generated output.
 - Creating unsupported platform behavior outside approved kinds.
-- Publishing changes to Git.
 
 ## Acceptance Criteria
 

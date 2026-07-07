@@ -28,8 +28,6 @@ commands without inventing a second discovery model.
   - Refresh tree
   - Validate repository
   - Render check selected target
-  - Show changes
-  - Show history
   - Save current editor draft when Subtask 03 exists
 - Selecting a result must route through the same tree-selection handler used by
   mouse selection.
@@ -42,7 +40,7 @@ commands without inventing a second discovery model.
 - Runtime discovery remains owned by repo open/refresh.
 - Commands call the same ViewModel command functions as visible UI actions.
 - No command mutates repo content without an explicit confirmation or existing
-  save/scaffold/publish flow.
+  save/scaffold flow.
 
 ## Acceptance Criteria
 
@@ -50,8 +48,7 @@ commands without inventing a second discovery model.
 - Search results select the same item ids used by the left tree.
 - Running `Refresh` or `Validate` from the palette produces the same state as
   pressing the visible button.
-- Palette results update after repo open, refresh, validation, save, scaffold,
-  and Git status refresh.
+- Palette results update after repo open, refresh, validation, save, and scaffold.
 - Disabled commands explain the missing prerequisite.
 - Keyboard navigation can choose and execute a result.
 

@@ -167,7 +167,7 @@ Manual smoke:
   custom desktop component is more ergonomic.
 - Introducing user-editable themes or a theme settings screen.
 - Localizing strings or changing workflow copy.
-- Changing runtime, scaffold, validation, render, install, or Git behavior.
+- Changing runtime, scaffold, validation, render, or install behavior.
 
 ## Risks
 

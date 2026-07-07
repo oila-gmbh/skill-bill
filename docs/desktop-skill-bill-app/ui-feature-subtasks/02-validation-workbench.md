@@ -78,5 +78,4 @@ Manual smoke:
 
 - Saving editor drafts.
 - Auto-validation after every keystroke.
-- Git commit blocking.
 - Runtime validation rule changes.

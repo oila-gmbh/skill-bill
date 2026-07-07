@@ -4,7 +4,11 @@ Status: Complete for SKILL-45 scope
 
 ## Summary
 
-Skill Bill should ship an optional desktop Skill Bill app for browsing, editing, validating, and publishing governed Skill Bill repo changes. The app is repo-based: the user opens a local `skill-bill` checkout, edits authored source through the existing Skill Bill runtime, validates the repo, then commits and pushes changes through Git.
+Skill Bill should ship an optional desktop Skill Bill app for browsing,
+editing, validating, and scaffolding governed Skill Bill source. The app is
+repo-based: the user opens a local Skill Bill source or installed workspace,
+edits authored source through the existing Skill Bill runtime, and validates
+the result through the same runtime contracts as the CLI and MCP surfaces.
 
 The Skill Bill app must not become a second implementation of Skill Bill governance. It is a graphical client over the same authoring, scaffolding, validation, rendering, install, and manifest-discovery contracts that already power the CLI and MCP surfaces.
 
@@ -14,14 +18,11 @@ Make governed skill and platform-pack authoring approachable without weakening t
 
 The app should help a user:
 
-- open or clone a Skill Bill repository
+- open a Skill Bill source or installed workspace
 - understand the available horizontal skills, platform packs, add-ons, and native agents
 - edit only authored source, especially `content.md`
 - create platform packs, platform overrides, code-review areas, add-ons, and supported native-agent source through the existing scaffolder
 - validate and render with existing runtime behavior
-- inspect Git changes
-- commit and push to the user's fork
-- optionally open a pull request back to the upstream Skill Bill repo
 
 ## Core Principles
 
@@ -29,8 +30,7 @@ The app should help a user:
 - Repo as document. The open local repository is the user's workspace and persistence layer.
 - Source only. The editor exposes authored source files only, not generated wrappers or install output.
 - Loud failure. The UI should surface the same named validation and scaffolding failures the runtime emits.
-- Fork-aware publishing. Users may browse the canonical repo, but pushing contribution changes should go to their fork.
-- Thin UI. The desktop module owns presentation, local app state, and Git UX. Governance stays in runtime modules.
+- Thin UI. The desktop module owns presentation and local app state. Governance stays in runtime modules.
 
 ## Non-Goals
 
@@ -38,13 +38,13 @@ The app should help a user:
 - Do not store skills outside the repository.
 - Do not support editing generated `SKILL.md` wrappers, generated pointer files, provider-specific native-agent outputs, or install cache artifacts.
 - Do not duplicate manifest parsing, routing rules, scaffold payload validation, native-agent rendering, or repo validation in UI code.
-- Do not build a general-purpose Git client beyond the workflows needed to publish Skill Bill changes.
+- Do not provide Git commit, push, fork, compare-URL, or pull-request publishing workflows.
 - Do not add mobile targets in the first release.
 
 ## Target Users
 
 - Maintainers editing bundled skills and platform packs.
-- External contributors creating or improving packs in their own fork.
+- External authors creating or improving packs in a local workspace.
 - Team leads authoring team-owned packs while relying on Skill Bill governance.
 - Agent-skill authors who prefer a visual authoring loop over CLI-only workflows.
 
@@ -56,15 +56,10 @@ The app can operate on:
 
 - the same checkout that launched it
 - another local Skill Bill checkout selected by the user
-- a newly cloned canonical repo
-- a user fork cloned locally
+- an installed Skill Bill workspace
 
-The app must distinguish these remotes when Git actions are shown:
-
-- `upstream`: canonical Skill Bill repository, if configured
-- `origin`: user's writable fork, when publishing changes
-
-If the checkout only points at the canonical repo and the user tries to push, the UI should guide them to configure or create a fork instead of pushing directly upstream.
+Repository state is local authoring state. The desktop app does not own Git
+publishing, fork setup, or pull-request handoff.
 
 ## Information Architecture
 
@@ -116,16 +111,12 @@ The editor must not show generated wrapper content as the primary editing surfac
 
 ### Bottom or Side Drawer
 
-A source-control drawer should show:
+An operations drawer should show:
 
-- current branch
-- changed files
-- staged files
-- selected-file diff
 - validation result
-- commit message input
-- push target
-- pull request target, when available
+- install or render output
+- operation status
+- relevant runtime errors
 
 ## Governed Authoring Operations
 
@@ -171,30 +162,6 @@ focus areas afterward through governed removal paths.
 
 The wizard must run a dry-run plan first when available, show the generated operations, then execute the scaffold operation atomically.
 
-## Git and Fork Workflow
-
-Git support exists to publish repo changes, not to replace command-line Git.
-
-Required workflows:
-
-- detect whether the selected path is a Git repository
-- show branch and dirty state
-- show changed files and diffs
-- stage and unstage files
-- commit with a user-provided message
-- push current branch to `origin`
-- detect missing or non-fork `origin`
-- help configure `origin` as the user's fork and `upstream` as canonical
-
-Optional GitHub workflow:
-
-- detect GitHub remotes
-- open browser to fork creation page
-- create pull request when authenticated support exists
-- open browser to compare URL when API auth is unavailable
-
-The app should never silently rewrite remotes. Remote changes require explicit user confirmation.
-
 ## Validation and Safety
 
 Before save:
@@ -208,17 +175,6 @@ Before scaffold:
 - warn when repo has dirty changes unless the runtime operation can guarantee rollback with dirty state
 - run scaffold dry-run when available
 - execute scaffold through the runtime
-
-Before commit:
-
-- run `skill-bill validate`
-- show changed files
-- warn about generated artifacts under source-controlled paths
-
-Before push:
-
-- verify branch has commits not on push target
-- verify `origin` points to the user's fork or is explicitly accepted by the user
 
 ## Architecture
 
@@ -241,7 +197,7 @@ runtime-kotlin/
       database/            # Room3 database, DAOs, schema exports, JVM SQLite builder
       datastore/           # lightweight desktop preferences
       designsystem/        # Skill Bill Material 3 theme, colors, metrics, reusable UI primitives
-      domain/              # UI/session models and repo/tree/authoring/git contracts
+      domain/              # UI/session models and repo/tree/authoring contracts
       navigation/          # typed routes, back-stack state, and desktop navigator
       testing/             # desktop KMP test fakes
       ui/                  # shared Compose shell primitives
@@ -274,10 +230,7 @@ Recommended internal layers:
 - `AuthoringGateway`: thin adapter over existing Skill Bill authoring operations
 - `ScaffoldGateway`: thin adapter over existing scaffold operations
 - `ValidationGateway`: thin adapter over existing validation operations
-- `GitGateway`: narrow wrapper over Git operations
 - `ProcessGateway`: only for operations that intentionally remain external commands
-
-Git support can start as a wrapper around the local `git` executable. If JGit is added later, the public `GitGateway` contract should stay stable.
 
 ## Data Model
 
@@ -289,7 +242,6 @@ Key UI models:
 - `EditorDocument`: target, saved text, draft text, dirty state, validation state
 - `ValidationReport`: status, issues, raw runtime payload link
 - `ScaffoldDraft`: kind, payload, dry-run result
-- `GitStatus`: branch, remotes, changed files, staged files, ahead/behind
 
 These models should represent runtime results. They should not encode independent validation rules that can drift from runtime behavior.
 
@@ -301,7 +253,6 @@ Runtime and service tests:
 - tree construction matches authoring list and platform manifest discovery
 - editor save calls the shared authoring operation and preserves runtime errors
 - scaffold wizard emits contract-valid payloads
-- GitGateway parses changed files, remotes, and branch state
 
 UI tests:
 
@@ -313,11 +264,9 @@ UI tests:
 
 End-to-end smoke:
 
-- create a temporary fork-like checkout
+- create a temporary local workspace
 - edit a skill
 - validate
-- commit
-- push to a local bare remote
 
 ## Build, Install, and Runtime Bundle
 
@@ -451,7 +400,6 @@ Parent SKILL-45 acceptance criteria are closed as follows:
 
 ## Open Questions
 
-- Should the first release include GitHub API integration, or only compare-URL generation?
 - Should native-agent source editing be first-class in v1, or deferred after `content.md` editing is stable?
 - Should the app run validation automatically after every save, or only on demand with an optional preference?
 - Should the app support multiple repo windows, or one repo session per process?
@@ -465,8 +413,7 @@ The work is decomposed into these specs:
 2. [Repo Browser and Read-Only Tree](iterations/02-repo-browser-readonly-tree.md)
 3. [Content Editor and Validation](iterations/03-content-editor-validation.md)
 4. [Scaffold Wizards](iterations/04-scaffold-wizards.md)
-5. [Git Fork Publishing](iterations/05-git-fork-publishing.md)
-6. [Packaging and Release Polish](iterations/06-packaging-release-polish.md)
+5. [Packaging and Release Polish](iterations/06-packaging-release-polish.md)
 
 ## Completion Checklist
 
@@ -523,26 +470,11 @@ Use this checklist as the lightweight implementation tracker. Keep detailed acce
 - [x] Refresh tree after scaffold.
 - [x] Add scaffold wizard tests.
 
-### Iteration 05: Git Fork Publishing
-
-- [x] Add `GitGateway`.
-- [x] Detect branch, remotes, dirty files, staged files, and ahead/behind state.
-- [x] Show changed-file list.
-- [x] Show selected-file diff.
-- [x] Stage and unstage files.
-- [x] Commit staged files with user message.
-- [x] Push current branch to `origin`.
-- [x] Detect canonical-vs-fork remote risk.
-- [x] Support explicit remote configuration.
-- [x] Generate GitHub compare URL when possible.
-- [x] Add local bare-remote Git smoke test.
-
-### Iteration 06: Packaging and Release Polish
+### Iteration 05: Packaging and Release Polish
 
 - [x] Document source-run command.
 - [x] Add package task documentation.
 - [x] Add first-run repo selection guidance.
-- [x] Document fork setup workflow.
 - [x] Document authored-source-only editing boundary.
 - [x] Add README or getting-started link to the Skill Bill app.
 - [x] Add launch smoke coverage.
@@ -558,5 +490,4 @@ Use this checklist as the lightweight implementation tracker. Keep detailed acce
 - [x] UI does not duplicate manifest, scaffold, routing, validation, or native-agent render rules.
 - [x] Generated wrappers and pointer files are never editable.
 - [x] Scaffold and save failures surface runtime errors clearly.
-- [x] Fork publishing never rewrites remotes without explicit confirmation.
 - [x] Documentation explains that the app is optional and repo-based.

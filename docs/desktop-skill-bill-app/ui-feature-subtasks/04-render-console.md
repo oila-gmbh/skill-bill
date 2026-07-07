@@ -14,7 +14,6 @@ subtasks.
 - Top-toolbar `Render check` button.
 - Bottom dock `Install console` tab.
 - Inspector `Generated artifacts` section.
-- Generated artifact rows in the Changes dock when Subtask 05 exists.
 
 ## Goal
 
@@ -49,7 +48,6 @@ structured progress/output without making generated artifacts editable.
 - Console output shows ordered runtime lines and final status.
 - Generated outputs are listed as read-only artifacts.
 - Runtime failures show exact error text and leave source drafts intact.
-- Git status refreshes after render when Subtask 05 exists.
 
 ## Validation
 
@@ -71,4 +69,3 @@ Manual smoke:
 - Editing generated output.
 - New renderer semantics.
 - Packaging/install distribution.
-- Git commit or push.

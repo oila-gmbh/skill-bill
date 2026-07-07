@@ -56,7 +56,6 @@ governed `content.md` targets while preserving generated artifact protections.
 - Selection changes and refresh while dirty require discard or cancel.
 - Generated `SKILL.md`, generated support pointers, provider-specific native
   output, and install cache files cannot enter editable mode.
-- Git status refreshes after successful save when Subtask 05 exists.
 
 ## Validation
 
@@ -71,7 +70,7 @@ Manual smoke:
 2. Select `bill-code-check`.
 3. Edit its authored `content.md`.
 4. Save.
-5. Confirm Git shows only the expected authored source file changed.
+5. Confirm only the expected authored source file changed on disk.
 6. Attempt to select a generated artifact and confirm it is read-only.
 
 ## Non-Goals
@@ -80,4 +79,3 @@ Manual smoke:
 - Multi-file editing.
 - Native-agent editing.
 - Section-specific editing UI.
-- Git commit and push.

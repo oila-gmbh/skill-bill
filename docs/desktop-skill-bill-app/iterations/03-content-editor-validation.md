@@ -64,7 +64,6 @@ The implementation should call shared services directly where possible. CLI proc
 - Multi-file editing.
 - Native-agent editing.
 - Section-specific editing UI, unless the underlying full-file save is already complete.
-- Git commit and push.
 
 ## Acceptance Criteria
 
@@ -89,7 +88,7 @@ Manual smoke:
 2. Select `bill-code-check`.
 3. Add a small authored line in `content.md`.
 4. Save.
-5. Confirm Git shows only the expected authored source file changed.
+5. Confirm only the expected authored source file changed on disk.
 6. Run validation from the UI.
 
 ## Risks

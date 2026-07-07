@@ -23,7 +23,7 @@ and status surface.
 - Do not duplicate manifest discovery, scaffold payload validation, routing,
   validation, rendering, or native-agent generation rules in UI code.
 - Keep desktop code responsible for presentation, local state, process
-  orchestration, and Git UX only.
+  orchestration, and runtime-backed UI flows.
 - Preserve the existing app shell and evolve it in place.
 
 ## Subtask Specs
@@ -32,15 +32,12 @@ and status surface.
 2. [Repository Validation Workbench](ui-feature-subtasks/02-validation-workbench.md)
 3. [Authored Content Editor](ui-feature-subtasks/03-authored-content-editor.md)
 4. [Render Check and Install Console](ui-feature-subtasks/04-render-console.md)
-5. [Source-Control Changes and History](ui-feature-subtasks/05-changes-history.md)
-6. [Commit, Push, and Fork Publishing](ui-feature-subtasks/06-publishing.md)
-7. [Command Search and Quick Open](ui-feature-subtasks/07-command-search.md)
-8. [Scaffold Entry Points and Wizards](ui-feature-subtasks/08-scaffold-wizards.md)
-9. [Dead and Misleading Affordances](ui-feature-subtasks/09-dead-affordances.md)
-10. [Inspector Generated-Artifact Reveal](ui-feature-subtasks/10-inspector-artifact-reveal.md)
-11. [Open Compare URL in System Browser](ui-feature-subtasks/11-compare-url-browser.md)
-12. [Keyboard Accelerators](ui-feature-subtasks/12-keyboard-accelerators.md)
-13. [Material 3 Theme Adoption](ui-feature-subtasks/13-material3-theme-adoption.md)
+5. [Command Search and Quick Open](ui-feature-subtasks/07-command-search.md)
+6. [Scaffold Entry Points and Wizards](ui-feature-subtasks/08-scaffold-wizards.md)
+7. [Dead and Misleading Affordances](ui-feature-subtasks/09-dead-affordances.md)
+8. [Inspector Generated-Artifact Reveal](ui-feature-subtasks/10-inspector-artifact-reveal.md)
+9. [Keyboard Accelerators](ui-feature-subtasks/12-keyboard-accelerators.md)
+10. [Material 3 Theme Adoption](ui-feature-subtasks/13-material3-theme-adoption.md)
 
 ## UI Feature Map
 
@@ -48,7 +45,6 @@ and status surface.
 | --- | --- | --- |
 | Repository path field and Open action | Implemented for local paths | 01 |
 | Refresh toolbar action | Implemented for explicit reload | 01 |
-| Branch/source-control toolbar label | Partial | 05, 06 |
 | Validate toolbar action | Placeholder | 02 |
 | Render check toolbar action | Placeholder | 04 |
 | Read-only toolbar badge | Implemented as mode indicator | 01, 03 |
@@ -64,10 +60,8 @@ and status surface.
 | Inspector validation issues section | Partial | 02 |
 | Inspector generated artifacts section | Partial | 04 |
 | Bottom Validation dock tab | Partial | 02 |
-| Bottom Changes dock tab | Placeholder | 05 |
-| Bottom History dock tab | Placeholder | 05 |
 | Bottom Install console dock tab | Placeholder | 04 |
-| Bottom status bar | Partial | 01, 02, 03, 05 |
+| Bottom status bar | Partial | 01, 02, 03 |
 | App theme, local palettes, and reusable UI tokens | Partial | 13 |
 
 ## Suggested Implementation Order
@@ -76,24 +70,20 @@ and status surface.
 2. Subtask 02, because validation state drives badges, inspector rows, and save
    safety.
 3. Subtask 03, because editing introduces the first repo write path.
-4. Subtask 05, because users need diff review once writes exist.
-5. Subtask 06, because publishing depends on real Git status and validation.
-6. Subtask 04, because render/check output can reuse the same console and
+4. Subtask 04, because render/check output can reuse the same console and
    generated-artifact read models.
-7. Subtask 07, because command search should call already-real ViewModel
+5. Subtask 07, because command search should call already-real ViewModel
    commands.
-8. Subtask 08, because scaffold creation is the broadest write path and should
-   land after validation, dirty-state, and Git review are reliable.
-9. Subtask 09, because misleading affordances make every later polish pass
+6. Subtask 08, because scaffold creation is the broadest write path and should
+   land after validation and dirty-state handling are reliable.
+7. Subtask 09, because misleading affordances make every later polish pass
    harder to evaluate. Land before any further UI work on the same surfaces.
-10. Subtask 10, because Inspector artifact reveal builds on the same
+8. Subtask 10, because Inspector artifact reveal builds on the same
     dirty-editor selection seam subtasks 02 and 03 already established.
-11. Subtask 11, because the compare URL only exists once publishing
-    (subtask 06) is real.
-12. Subtask 12, because the accelerators wrap callbacks that subtasks 02-06
+9. Subtask 12, because the accelerators wrap callbacks that subtasks 02-04
     already expose and should land after 09 to avoid binding shortcuts to
     dead buttons.
-13. Subtask 13, because the Material 3 theme migration is broad visual
+10. Subtask 13, because the Material 3 theme migration is broad visual
     infrastructure. Land it after the major UI behavior is real so the work can
     stay token-for-token instead of guessing at unfinished surfaces.
 

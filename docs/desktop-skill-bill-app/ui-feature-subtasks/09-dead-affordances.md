@@ -12,8 +12,7 @@ producing a "looks broken" experience for both pointer and screen-reader users.
 
 ## UI Entry Points
 
-- Top toolbar source-control button (the branch label rendered as a
-  `ToolbarButton`).
+- Top toolbar status chip, if it is rendered with button affordance.
 - Top toolbar read-only mode chip (the yellow primary `ToolbarButton`).
 - Left navigation pane `Validation` row (the `RepositoryAction` with the issue
   badge).
@@ -32,10 +31,8 @@ opening a kind picker rather than a single hardcoded wizard variant.
 
 - Audit every call site that uses `.clickable(...)` with `Role.Button` and
   confirm the `onClick` is non-empty and routed to a real route callback.
-- Toolbar source-control button: either route to a real action (jump to
-  `DockTab.Changes`, surface a branch-info popover, or open the configured
-  compare URL) or demote to a non-interactive status label that drops
-  `Role.Button` and `.clickable`.
+- Toolbar status chip: either route to a real action or demote to a
+  non-interactive status label that drops `Role.Button` and `.clickable`.
 - Toolbar read-only mode chip: same treatment; either toggle a documented
   read-only mode or demote to a labeled status pill that drops
   `Role.Button` and `.clickable`.
@@ -66,7 +63,7 @@ opening a kind picker rather than a single hardcoded wizard variant.
 - The sidebar `Validation` row activates the Validation dock tab.
 - The sidebar `Read-only browsing` row is rendered as a labeled status
   indicator, not a button.
-- The toolbar source-control element behaves consistently with its visual
+- The toolbar status element behaves consistently with its visual
   treatment: clickable if it performs an action, label-only otherwise.
 - The toolbar read-only mode element behaves consistently with its visual
   treatment.
@@ -98,6 +95,6 @@ Manual smoke:
 
 ## Non-Goals
 
-- New validation, commit, push, render, or scaffold logic.
+- New validation, render, or scaffold logic.
 - Adding new ViewModel operations beyond wiring existing callbacks.
 - Multi-tab editing or per-row read-only toggles.

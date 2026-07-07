@@ -13,7 +13,7 @@ native-agent render rules.
 
 For this iteration, documentation must preserve the parent-spec boundary: the
 desktop app complements the CLI and runtime, remains optional, operates on a
-local repo checkout, and publishes contribution changes through the user's fork.
+local source or installed workspace, and does not own contribution publishing.
 
 When this iteration is implemented, update the completion checklist in
 `docs/desktop-skill-bill-app/README.md`.
@@ -24,7 +24,8 @@ Make the desktop Skill Bill app easy to launch, document, and validate as an opt
 
 ## User Value
 
-A user can install or run the app from the canonical repo, then use it against their own checkout or fork with clear documentation.
+A user can install or run the app, then use it against a local Skill Bill
+source or installed workspace with clear documentation.
 
 ## Scope
 
@@ -34,9 +35,7 @@ A user can install or run the app from the canonical repo, then use it against t
 - Add docs for:
   - running from source
   - opening an existing checkout
-  - cloning or configuring a fork
   - authoring and validating
-  - committing and pushing
 - Add screenshot or short demo asset only after UI stabilizes.
 - Ensure CI or local validation includes desktop module checks.
 
@@ -55,7 +54,7 @@ Docs should make these boundaries explicit:
 - the app uses the existing Skill Bill runtime
 - users edit authored source only
 - generated artifacts are hidden or read-only
-- pushing contribution changes should go to the user's fork
+- contribution publishing stays outside the desktop app
 
 ## Acceptance Criteria
 

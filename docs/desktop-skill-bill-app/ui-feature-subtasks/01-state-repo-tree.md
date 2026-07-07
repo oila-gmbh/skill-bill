@@ -7,7 +7,7 @@ Status: Complete
 This subtask belongs to
 `docs/desktop-skill-bill-app/ui-feature-task-specs.md`. It preserves
 the implemented read-only repo browser and prepares the state model for the
-write, validation, Git, render, and scaffold subtasks that follow.
+write, validation, render, and scaffold subtasks that follow.
 
 ## UI Entry Points
 
@@ -63,7 +63,7 @@ session and tree state.
 - Expand/collapse state does not reload runtime data or alter selection.
 - Keyboard navigation can move selection through visible nodes.
 - Generated artifacts are never editable and always display `RO` or equivalent.
-- Status bar target counts, repo path, branch label, read-only mode, and policy
+- Status bar target counts, repo path, read-only mode, and policy
   label are not hardcoded placeholder values.
 - Busy operations disable conflicting actions and show progress.
 - No repository files are modified by open, failed open, refresh, or tree
@@ -88,6 +88,5 @@ Manual smoke:
 
 - Editing and saving.
 - Running repo validation.
-- Git staging, commit, or push.
 - Scaffold creation.
 - File watching.

@@ -79,8 +79,7 @@ The exact labels may evolve, but the tree must distinguish platform packs from h
 
 - Editing and saving.
 - Scaffolding new targets.
-- Git diff and commit UI.
-- Pull request creation.
+- Publishing or pull-request handoff.
 
 ## Acceptance Criteria
 
@@ -112,8 +111,8 @@ Manual smoke:
   discovery.
 - The tree shows authored `content.md` targets, pack add-ons, native-agent source
   entries, and any generated artifacts that are present as read-only metadata.
-- The app remains read-only. Editing, scaffolding, Git diff/commit, and PR flows stay
-  deferred to later iterations.
+- The app remains read-only. Editing, scaffolding, and publishing handoff stay
+  outside this iteration.
 
 ## Risks
 

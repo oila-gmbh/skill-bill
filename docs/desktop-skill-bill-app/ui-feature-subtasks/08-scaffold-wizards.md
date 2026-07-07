@@ -6,8 +6,8 @@ Status: Complete
 
 This subtask belongs to
 `docs/desktop-skill-bill-app/ui-feature-task-specs.md`. It introduces
-the broadest write path and should run after validation, editor dirty-state, and
-Git review are reliable.
+the broadest write path and should run after validation and editor dirty-state
+handling are reliable.
 
 ## UI Entry Points
 
@@ -15,7 +15,7 @@ Git review are reliable.
 - Context actions from relevant tree groups.
 - Wizard dialogs or pages.
 - Dry-run operations preview.
-- Post-scaffold tree and Git status refresh.
+- Post-scaffold tree refresh.
 
 ## Goal
 
@@ -36,7 +36,7 @@ governed scaffolder.
 - Run dry-run before apply when available.
 - Show planned file and manifest operations.
 - Execute scaffold through existing runtime behavior.
-- Refresh tree, validation state, and Git status after successful scaffold.
+- Refresh tree and validation state after successful scaffold.
 - Surface scaffold runtime exception names/messages.
 - Warn when the repo is dirty before scaffold unless runtime guarantees safe
   rollback with dirty state.
@@ -81,4 +81,3 @@ Manual smoke:
 - Freeform manifest editing.
 - Editing scaffolded generated output.
 - Unsupported scaffold kinds.
-- Publishing scaffold changes to Git.

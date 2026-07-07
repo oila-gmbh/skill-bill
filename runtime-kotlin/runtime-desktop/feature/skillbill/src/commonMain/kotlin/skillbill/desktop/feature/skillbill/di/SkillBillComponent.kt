@@ -1,6 +1,5 @@
 package skillbill.desktop.feature.skillbill.di
 
-import skillbill.desktop.core.common.browser.BrowserLauncher
 import skillbill.desktop.core.common.di.DispatcherProvider
 import skillbill.desktop.core.common.di.ScreenScope
 import skillbill.desktop.core.common.di.UserScope
@@ -13,7 +12,6 @@ import software.amazon.lastmile.kotlin.inject.anvil.SingleIn
 @ContributesSubcomponent(ScreenScope::class)
 @SingleIn(ScreenScope::class)
 interface SkillBillComponent : ScreenComponent {
-  val browserLauncher: BrowserLauncher
   val dispatcherProvider: DispatcherProvider
   val viewModel: SkillBillViewModel
 

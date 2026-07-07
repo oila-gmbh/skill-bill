@@ -40,7 +40,7 @@ A maintainer can run the Skill Bill app locally and see the stable two-panel app
   - top repo toolbar
   - left tree placeholder
   - right editor placeholder
-  - bottom status/source-control placeholder
+  - bottom status placeholder
 - Add a repo selector control that stores an in-memory path only.
 - Add basic app state classes for selected repo path and selected tree item.
 
@@ -49,7 +49,6 @@ A maintainer can run the Skill Bill app locally and see the stable two-panel app
 - Real Skill Bill repo discovery.
 - Real tree loading.
 - Editing.
-- Git operations.
 - Packaging installers.
 
 ## Architecture Notes
@@ -61,7 +60,6 @@ The UI should be structured around replaceable service interfaces from the start
 - `RepoSessionService`
 - `SkillTreeService`
 - `AuthoringGateway`
-- `GitGateway`
 
 Use in-memory placeholder implementations until real services are introduced.
 
