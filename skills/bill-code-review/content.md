@@ -112,6 +112,8 @@ Invoke `/bill-code-review` as a slash command — it handles all specialist rout
 **If you are `codex`:**
 Spawn one isolated-context subagent per specialist domain below using your native `SpawnAgent` mechanism — the same primitive Codex uses for parallel subagents. Do **not** shell out to `codex exec` subprocesses; the native subagent already gives each specialist its own context window, which is the only isolation this review needs. Run all subagents in parallel from the repo root and wait for them to complete.
 
+Derive specialist domains from the routed platform pack's `declared_code_review_areas` and use that pack's `area_metadata.<area>.focus` text for each specialist. Spawn one isolated-context subagent per declared area. Approved areas are `architecture`, `performance`, `platform-correctness`, `security`, `testing`, `api-contracts`, `persistence`, `reliability`, `ui`, and `ux-accessibility`; include every area declared by the routed pack.
+
 Give each specialist subagent this brief:
 
   You are the <domain> specialist reviewing <scope> in <repo-root>.
@@ -120,15 +122,7 @@ Give each specialist subagent this brief:
   - [F-NNN] Severity | Confidence | file:line | description
   Severity: Blocker, Major, Minor, Nit. Confidence: High, Medium, Low.
 
-Specialist domains and their focus:
-- architecture: layer boundaries, DI scopes, module ownership, dependency direction, source-of-truth consistency
-- platform-correctness: concurrency, threading, coroutines, race conditions, state-machine correctness, business invariants
-- testing: test coverage quality, regression protection, brittle tests, determinism, weak assertions
-- reliability: timeouts, retries, background work, subprocess lifecycle, observability, failure handling
-- performance: hot paths, blocking I/O, memory pressure, redundant computation, resource usage
-- security: secrets handling, subprocess injection, sensitive data exposure, environment inheritance
-
-Run all six subagents, collect their output, concatenate all findings, and emit them as your final output.
+Run all derived specialist subagents, collect their output, concatenate all findings, and emit them as your final output.
 Before emitting, normalise every finding line so it starts with `- [F-NNN]`. If a subagent omitted the leading `- `, prepend it. Do not alter anything else.
 ```
 

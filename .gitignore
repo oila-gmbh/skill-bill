@@ -9,3 +9,51 @@ _migration_backup/
 
 # SKILL-98 specs describe a private external app — keep local, not public
 .feature-specs/SKILL-98-ios-platform-pack/
+
+# Generated governed skill output; source stays in content.md and manifests.
+skills/*/SKILL.md
+platform-packs/*/code-review/*/SKILL.md
+platform-packs/*/quality-check/*/SKILL.md
+
+# Generated support pointer files.
+skills/*/peak-hours-warner.md
+skills/*/shell-ceremony.md
+skills/*/telemetry-contract.md
+skills/*/stack-routing.md
+skills/*/review-scope.md
+skills/*/review-delegation.md
+skills/*/review-orchestrator.md
+skills/*/specialist-contract.md
+skills/*/shell-content-contract.md
+platform-packs/*/code-review/*/peak-hours-warner.md
+platform-packs/*/code-review/*/shell-ceremony.md
+platform-packs/*/code-review/*/telemetry-contract.md
+platform-packs/*/code-review/*/stack-routing.md
+platform-packs/*/code-review/*/review-scope.md
+platform-packs/*/code-review/*/review-delegation.md
+platform-packs/*/code-review/*/review-orchestrator.md
+platform-packs/*/code-review/*/specialist-contract.md
+platform-packs/*/code-review/*/shell-content-contract.md
+platform-packs/*/quality-check/*/peak-hours-warner.md
+platform-packs/*/quality-check/*/shell-ceremony.md
+platform-packs/*/quality-check/*/telemetry-contract.md
+platform-packs/*/quality-check/*/stack-routing.md
+platform-packs/*/quality-check/*/review-scope.md
+platform-packs/*/quality-check/*/review-delegation.md
+platform-packs/*/quality-check/*/review-orchestrator.md
+platform-packs/*/quality-check/*/specialist-contract.md
+platform-packs/*/quality-check/*/shell-content-contract.md
+
+# Provider-specific generated native-agent output.
+skills/*/claude-agents/
+skills/*/codex-agents/
+skills/*/opencode-agents/
+skills/*/junie-agents/
+platform-packs/*/code-review/*/claude-agents/
+platform-packs/*/code-review/*/codex-agents/
+platform-packs/*/code-review/*/opencode-agents/
+platform-packs/*/code-review/*/junie-agents/
+platform-packs/*/quality-check/*/claude-agents/
+platform-packs/*/quality-check/*/codex-agents/
+platform-packs/*/quality-check/*/opencode-agents/
+platform-packs/*/quality-check/*/junie-agents/

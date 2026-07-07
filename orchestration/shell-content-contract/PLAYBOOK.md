@@ -109,6 +109,12 @@ references. Those stay in generated `SKILL.md` wrappers or shared support files
 so the runtime contract can be upgraded without rewriting authored business
 guidance.
 
+## Delegated Review Support
+
+Opencode delegated review is intentionally unsupported.
+
+Junie delegated review is intentionally unsupported.
+
 ## Governed Add-On Consumption
 
 Governed add-ons are pack-owned supporting files under
@@ -238,7 +244,7 @@ Loader precedence is authoritative and must stay stable:
 ### Loud-Fail Rules (quality-check)
 
 The `bill-code-check` shell resolves the per-platform quality-check file
-through a dedicated loader (`skillbill.scaffold.ShellContentLoader.loadQualityCheckContent` in `runtime-core`).
+through a dedicated loader (`skillbill.scaffold.platformpack.ShellContentLoader.loadQualityCheckContent` in `runtime-infra-fs`).
 The loader enforces two additional loud-fail rules when a pack declares the
 optional `declared_quality_check_file` key:
 
