@@ -10,7 +10,7 @@ base_branch: "main"
 feature_branch: "feat/SKILL-107-audit-fixes"
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 4
+  subtask_id: 5
   action: "resume"
 subtasks:
 - id: 1
@@ -21,7 +21,7 @@ subtasks:
   commit_sha: null
   workflow_id: "wftr-20260706-185755-ojmx"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -34,7 +34,7 @@ subtasks:
   commit_sha: null
   workflow_id: "wftr-20260706-193437-e4ij"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -50,7 +50,7 @@ subtasks:
   commit_sha: null
   workflow_id: "wftr-20260706-200558-plfy"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -58,12 +58,12 @@ subtasks:
 - id: 4
   name: "Python code-review native agents"
   spec_path: ".feature-specs/SKILL-107-audit-fixes/spec_subtask_4_python-native-agents.md"
-  status: "pending"
+  status: "complete"
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260707-035426-7833"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -74,7 +74,7 @@ subtasks:
   status: "pending"
   branch: null
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wftr-20260707-042341-7l80"
   blocked_reason: null
   last_resumable_step: null
   linear_issue_id: null

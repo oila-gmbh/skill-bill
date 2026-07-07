@@ -68,7 +68,7 @@ Areas: runtime-kotlin/runtime-domain, runtime-kotlin/runtime-cli, runtime-kotlin
 - Feature-task CLI preflight: `refuseUnsupportedRuntimeAgent()` in `FeatureTaskRuntimeCliCommands.kt` aggregates ALL agent routes (invoked/host agent, `--agent`, every `--phase-agent`, `--parallel-review-agent`) and throws `UsageError` first in all 6 run bodies — refuses before opening a workflow, resolving a branch, or spawning a phase. reusable
 - Goal CLI: `GoalRunCommand.run()` refuses invoked-agent and `--agent` override before presenter/child spawn (covers the `--agent opencode` continuation path).
 - Source-level backstop: `OpencodeAgentRunCommandBuilder` deleted and unregistered from `headlessAgentRunAdapters()` — opencode now yields `UnsupportedAgentRunLaunch`, so no code path can spawn opencode for a runtime phase even if a guard is bypassed. reusable PATTERN: de-register the launcher builder as the single spawner chokepoint rather than scattering app-layer guards.
-- Skill router docs: no-mode resolves to prose on opencode; explicit `mode:runtime` refuses at the skill layer quoting the shared message. opencode prose/install/telemetry unchanged; claude/codex/junie/glm runtime unchanged.
+- Skill router docs: no-mode resolves to prose on opencode; explicit `mode:runtime` refuses at the skill layer quoting the shared message. opencode prose/install/telemetry unchanged; other supported runtimes unchanged.
 Feature flag: N/A
 Acceptance criteria: 10/10 implemented
 
@@ -1250,7 +1250,7 @@ Acceptance criteria: 9/9 implemented
 Areas: runtime-kotlin/runtime-domain install model, runtime-kotlin/runtime-core install apply, runtime-kotlin/runtime-core launcher MCP registration, runtime-kotlin/runtime-application telemetry
 - Shared `InstallOperations.applyInstall` now executes typed telemetry intent through existing anonymous/full/off semantics and returns `InstallTelemetryApplyOutcome` instead of requiring shell-output parsing. reusable
 - Apply executes or skips typed MCP registration intent per supported `InstallAgent`, returns per-agent `McpRegistrationApplyOutcome`, and keeps MCP/telemetry setup failures as structured non-fatal warnings like `install.sh`. reusable
-- Apply side effects use the plan-owned home with an empty environment so ambient telemetry env vars cannot redirect the shared install contract; legacy launcher `glm` support remains outside `InstallAgent.supportedIds`.
+- Apply side effects use the plan-owned home with an empty environment so ambient telemetry env vars cannot redirect the shared install contract; legacy model-only launcher support remains outside `InstallAgent.supportedIds`.
 - Focused tests cover telemetry full/off/success/skip/failure, MCP success/skip/failure, and warning aggregation; CLI command migration and desktop setup UI remain deferred.
 Feature flag: N/A
 Acceptance criteria: 5/5 implemented
@@ -1267,7 +1267,7 @@ Acceptance criteria: 7/7 implemented
 ## [2026-05-16] shared-install-plan-contract-builder
 Areas: runtime-core install plan/build, runtime-domain install model, runtime-core contract/tests
 - SKILL-45 subtask 1 added a pure typed install-plan API (`InstallPlanRequest` -> `InstallPlan`) plus `InstallOperations.planInstall`; it models agent/platform/telemetry/MCP/runtime/target/staging/Windows-preflight intent without applying symlinks, rendering staging output, or registering MCP. reusable
-- Supported install agents are locked to `copilot`, `claude`, `codex`, `opencode`, `junie`; the plan builder asserts runtime primitive drift so legacy GLM cannot re-enter through install planning. reusable
+- Supported install agents are locked to `copilot`, `claude`, `codex`, `opencode`, `junie`; the plan builder asserts runtime primitive drift so a legacy model-only target cannot re-enter through install planning. reusable
 - Platform packs are discovered through governed `discoverPlatformPacks`, not raw manifest loading; bad contract versions, missing declared content, duplicate skill names/manifest slots, escaped declared content paths, and pointer targets escaping through symlinked parents must loud-fail during planning. reusable
 - Base skills must be represented and must fail if the skills root is missing, empty, or contains `bill-*` directories without `content.md`; future apply/staging work must preserve content-hash parity with the plan, especially for custom `skillsRoot` support pointers.
 - Test coverage lives in `InstallPlanBuilderTest` for selected/all/unknown packs, multi-area packs, manual and supplied/detected targets, no home/source mutation, staging root under `~/.skill-bill/installed-skills`, Windows decision/message, pointer target escapes, and base-skill loud-fails.

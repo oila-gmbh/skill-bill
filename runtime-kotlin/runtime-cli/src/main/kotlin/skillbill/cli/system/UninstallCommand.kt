@@ -74,7 +74,6 @@ class UninstallCommand(
     }
     val agentTargets = listOf(
       home.resolve(".copilot/skills"),
-      home.resolve(".glm/commands"),
       home.resolve(".codex/skills"),
       home.resolve(".agents/skills"),
       home.resolve(".config/opencode/skills"),
@@ -89,7 +88,7 @@ class UninstallCommand(
       legacyNames = legacyNames,
       agentTargets = agentTargets.distinct(),
       nativeSourceRoots = listOf(stateRoot.resolve("platform-packs"), stateRoot.resolve("skills")),
-      mcpAgents = listOf("copilot", "claude", "codex", "opencode", "junie", "glm"),
+      mcpAgents = listOf("copilot", "claude", "codex", "opencode", "junie"),
       launchers = listOf(
         LauncherRemoval(binDir.resolve("skill-bill"), stateRuntimeRoot.resolve("runtime-cli/bin/runtime-cli")),
         LauncherRemoval(binDir.resolve("skill-bill-mcp"), stateRuntimeRoot.resolve("runtime-mcp/bin/runtime-mcp")),

@@ -16,9 +16,6 @@ object McpRegistrationOperations {
   ): McpMutationResult {
     val resolvedHome = home ?: Path.of(System.getProperty("user.home"))
     val command = runtimeMcpBin.toAbsolutePath().normalize().toString()
-    if (agent == "glm") {
-      return McpJsonConfig.register(agent, resolvedHome.resolve(".glm/mcp-config.json"), command)
-    }
     return when (val installAgent = InstallAgent.fromId(agent)) {
       InstallAgent.CLAUDE -> claudeFanOut(agent, resolvedHome, environment) { perProfilePath ->
         McpJsonConfig.register(agent, perProfilePath, command)
@@ -37,9 +34,6 @@ object McpRegistrationOperations {
     environment: Map<String, String> = System.getenv(),
   ): McpMutationResult {
     val resolvedHome = home ?: Path.of(System.getProperty("user.home"))
-    if (agent == "glm") {
-      return McpJsonConfig.unregister(agent, resolvedHome.resolve(".glm/mcp-config.json"))
-    }
     return when (val installAgent = InstallAgent.fromId(agent)) {
       InstallAgent.CLAUDE -> claudeFanOut(agent, resolvedHome, environment) { perProfilePath ->
         McpJsonConfig.unregister(agent, perProfilePath)
