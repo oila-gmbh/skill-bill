@@ -8,6 +8,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
+@Suppress("LargeClass")
 class InstallerShellDelegationTest {
   // This suite drives install.sh end-to-end and asserts the Linux installer flow
   // (headless $DISPLAY/$WAYLAND_DISPLAY desktop gating, no-desktop prebuilt/from-source
@@ -201,7 +202,10 @@ class InstallerShellDelegationTest {
     assertEquals(0, run.exitCode, run.output)
     assertContains(run.output, "Claude subagent cleanup failed; continuing uninstall so reinstall can recover.")
     assertFalse(Files.exists(fixtures.runtimeBin), "runtime/ must still be cleared after native cleanup failure")
-    assertFalse(Files.exists(fixtures.installedSkill), "installed-skills/ must still be cleared after native cleanup failure")
+    assertFalse(
+      Files.exists(fixtures.installedSkill),
+      "installed-skills/ must still be cleared after native cleanup failure",
+    )
     assertTrue(Files.isRegularFile(fixtures.skillContent), "copied source must still be preserved")
   }
 
