@@ -22,8 +22,8 @@ describe("validateStatsRequest", () => {
     assert.equal(err, null);
   });
 
-  it("returns clean rejection for bill-feature-implement (unsupported workflow)", () => {
-    const err = validateStatsRequest({ workflow: "bill-feature-implement", ...VALID_DATE_RANGE });
+  it("returns clean rejection for an unknown workflow", () => {
+    const err = validateStatsRequest({ workflow: "bill-unknown-workflow", ...VALID_DATE_RANGE });
     assert.ok(err, "should return an error string");
     assert.match(err, /workflow must be one of/);
     assert.ok(!err.includes(INGEST_SCHEMA_ERROR_FRAGMENT), "must not return the ingest-schema error");

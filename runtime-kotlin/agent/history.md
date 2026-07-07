@@ -9,8 +9,8 @@ Acceptance criteria: 6/6 implemented
 
 ## [2026-07-06] SKILL-107 subtask 1 stale-surface-retirement
 Areas: orchestration/skill-classes, runtime-kotlin/runtime-infra-fs scaffold, runtime-kotlin/runtime-domain skillremove, runtime-kotlin/runtime-cli, runtime-kotlin/runtime-mcp, runtime-kotlin/runtime-desktop, AGENTS.md, docs
-- Retired the stale `feature-implement` skill-class surface in favor of `feature-task`; keep durable workflow/table aliases only where backward compatibility requires them. reusable
-- Pre-shell scaffold family is now exactly `feature-task` and `feature-verify`; `feature-implement` payloads loud-fail with a typed replacement message instead of silently mapping. reusable
+- Retired the stale pre-`feature-task` skill-class surface; keep durable workflow/table aliases only where backward compatibility requires them. reusable
+- Pre-shell scaffold family is now exactly `feature-task` and `feature-verify`; retired-family payloads loud-fail with a typed replacement message instead of silently mapping. reusable
 - Platform-pack removal no longer resolves paired `skills/<platform>` trees; shipped kotlin/kmp packs remain removable extension surfaces without legacy source directories. reusable
 - Golden fixture and docs/prose names moved to feature-task terminology while preserving telemetry/workflow observable behavior and approved compat aliases.
 Feature flag: N/A
@@ -303,7 +303,7 @@ Acceptance criteria: 9/9 implemented (parallel review is additive beyond SKILL-7
 ## [2026-06-06] SKILL-69 stats-remote-query-guidance-and-docs
 Areas: runtime-kotlin/runtime-domain, runtime-kotlin/runtime-ports, runtime-kotlin/runtime-application, runtime-kotlin/runtime-infra-sqlite, runtime-kotlin/runtime-cli, runtime-kotlin/runtime-mcp, docs
 - Review stats now aggregate standalone review-finished telemetry plus embedded feature-task review payloads, with source breakdowns and malformed/excluded payload debt.
-- Feature-implement health stats now report production valid-session rates, deduped terminal metrics, child-step coverage, duration percentiles, and feature-size segmentation. reusable
+- Feature-task health stats now report production valid-session rates, deduped terminal metrics, child-step coverage, duration percentiles, and feature-size segmentation. reusable
 - New SQLite support helpers split payload loading, health aggregation, percentiles, child-step stats, and size-health stats to keep stats surfaces composable. reusable
 - CLI/MCP JSON mapping carries the additive health fields through shared application payload contracts; focused runtime, CLI, and MCP tests cover the new shape.
 - Docs add production-filter defaults, data-quality debt guidance, large-feature health recommendations, and PostHog-ready HogQL query patterns without requiring copied exploratory SQL.
@@ -313,7 +313,7 @@ Acceptance criteria: 7/7 implemented per implement phase; audit caveat above
 
 ## [2026-06-06] SKILL-69 feature-task-lifecycle-telemetry-health
 Areas: runtime-kotlin/runtime-application, runtime-kotlin/runtime-domain, runtime-kotlin/runtime-infra-sqlite, runtime-kotlin/runtime-mcp, orchestration/contracts
-- Feature-implement lifecycle telemetry now persists source classification so stats can filter synthetic/test runs by default without hard-coded install/session ids.
+- Feature-task lifecycle telemetry now persists source classification so stats can filter synthetic/test runs by default without hard-coded install/session ids.
 - Health stats dedupe terminal finished events by `session_id`, flag duplicate terminal emissions, exclude malformed or blank session ids from rates, and count them as data-quality debt. reusable
 - Duration reporting separates normal, synthetic zero-duration, and resumed/long-running buckets; open started-only sessions remain open instead of being counted as failed.
 - Child-step validation enforces canonical non-blank skills and complete review, quality-check, and PR-description payload fields under telemetry-level rules. reusable

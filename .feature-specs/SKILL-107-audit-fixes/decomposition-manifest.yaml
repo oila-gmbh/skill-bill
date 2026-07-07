@@ -4,14 +4,14 @@ issue_key: "SKILL-107"
 feature_name: "audit-fixes"
 parent_spec_path: ".feature-specs/SKILL-107-audit-fixes/spec.md"
 spec_source: "local"
-status: "in_progress"
+status: "complete"
 execution_model: "same_branch_commit_per_subtask"
 base_branch: "main"
 feature_branch: "feat/SKILL-107-audit-fixes"
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 6
-  action: "resume"
+  subtask_id: 0
+  action: "complete"
 subtasks:
 - id: 1
   name: "Stale-surface retirement"
@@ -84,12 +84,12 @@ subtasks:
 - id: 6
   name: "Governance doc reconciliation"
   spec_path: ".feature-specs/SKILL-107-audit-fixes/spec_subtask_6_governance-doc-reconciliation.md"
-  status: "pending"
+  status: "complete"
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260707-054255-kwzr"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -106,12 +106,12 @@ subtasks:
 - id: 7
   name: "Pointer and playbook docs"
   spec_path: ".feature-specs/SKILL-107-audit-fixes/spec_subtask_7_pointer-and-playbook-docs.md"
-  status: "pending"
+  status: "complete"
   branch: null
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wftr-20260707-060013-6yfz"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
