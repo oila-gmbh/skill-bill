@@ -805,6 +805,12 @@ internal object InstallerShellFixtures {
   private val reconcileFakeCliBlock: String =
     """
     |if [[ "${'$'}{1:-}" == "install" && "${'$'}{2:-}" == "reconcile" ]]; then
+    |  fail_once_marker="${'$'}{SKILL_BILL_TEST_RUNTIME_LOG:?}.reconcile-failed-once"
+    |  if [[ "${'$'}{SKILL_BILL_FAKE_RECONCILE_FAIL_ONCE:-}" == "1" && ! -e "${'$'}fail_once_marker" ]]; then
+    |    printf '%s\n' "synthetic reconcile failure" >&2
+    |    touch "${'$'}fail_once_marker"
+    |    exit 9
+    |  fi
     |  applying=0
     |  accept_conflicts=0
     |  if printf '%s ' "${'$'}@" | grep -q -- '--apply'; then applying=1; fi

@@ -235,6 +235,23 @@ class InstallerShellReconcileTest {
     )
   }
 
+  @Test
+  fun `reconcile failure retries once with clean copied source reset`() {
+    val run = runInstallerShellRaw(
+      input = "1\ncopilot\nbase only\noff\nskip\n",
+      conflictPath = null,
+      scenario = ReconcileScenario(reconcileFailOnce = true),
+    )
+
+    assertEquals(0, run.exitCode, run.output)
+    assertContains(run.output, "retrying once with a clean copied-source reset")
+    assertLiveSourcePopulated(run.home)
+    assertFalse(
+      Files.exists(run.home.resolve(".skill-bill/.candidate-source")),
+      "the retry must still reap the staged candidate source after apply",
+    )
+  }
+
   private fun assertLiveSourcePopulated(home: Path) {
     val stateDir = home.resolve(".skill-bill")
     listOf(stateDir.resolve("skills"), stateDir.resolve("platform-packs"), stateDir.resolve("orchestration"))
@@ -268,6 +285,7 @@ class InstallerShellReconcileTest {
     val keepLocalPath: String? = null,
     val conflictChoice: String? = null,
     val mutateUpstream: ((Path) -> Unit)? = null,
+    val reconcileFailOnce: Boolean = false,
   )
 
   // Drive install.sh without asserting success, optionally forcing the fake CLI's reconcile
@@ -310,6 +328,9 @@ class InstallerShellReconcileTest {
         }
         scenario.keepLocalPath?.let { environment()["SKILL_BILL_FAKE_KEEPLOCAL"] = it }
         scenario.conflictChoice?.let { environment()["SKILL_BILL_RECONCILE_CONFLICT_CHOICE"] = it }
+        if (scenario.reconcileFailOnce) {
+          environment()["SKILL_BILL_FAKE_RECONCILE_FAIL_ONCE"] = "1"
+        }
       }
       .start()
     process.outputStream.bufferedWriter().use { writer -> writer.write(input) }

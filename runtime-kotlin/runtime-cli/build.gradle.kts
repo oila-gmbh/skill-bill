@@ -25,6 +25,7 @@ dependencies {
   implementation(libs.clikt)
   implementation(libs.kotlin.inject.runtime)
   implementation(libs.kotlinx.serialization.json)
+  runtimeOnly(libs.slf4j.nop)
   ksp(libs.kotlin.inject.compiler)
   // SKILL-52.2 subtask 5: runtime-infra-fs / runtime-infra-http stay on the
   // test classpath because `RuntimeModuleSmokeTest` and adapter-side smoke tests

@@ -617,6 +617,10 @@ clean_install_state_if_requested() {
   if [[ "$CLEAN_INSTALL" -ne 1 ]]; then
     return 0
   fi
+  clean_install_state
+}
+
+clean_install_state() {
   if [[ -z "$SKILL_BILL_STATE_DIR" ]]; then
     err "--clean: SKILL_BILL_STATE_DIR is empty; refusing to wipe."
     return 1
@@ -625,7 +629,8 @@ clean_install_state_if_requested() {
   rm -rf \
     "$SKILL_BILL_STATE_DIR/skills" \
     "$SKILL_BILL_STATE_DIR/platform-packs" \
-    "$SKILL_BILL_STATE_DIR/orchestration"
+    "$SKILL_BILL_STATE_DIR/orchestration" \
+    "$SKILL_BILL_BASELINE_MANIFEST"
   ok "Prior skill state wiped."
 }
 
@@ -988,6 +993,7 @@ adopt_non_skill_source_trees() {
 # containing spaces survives the trailing-remainder extraction.
 RECONCILE_HAS_CONFLICTS=""
 RECONCILE_CONFLICT_COUNT=""
+RECONCILE_FAILURE_KIND=""
 parse_reconcile_report() {
   local report="$1"
   RECONCILE_HAS_CONFLICTS=""
@@ -1039,6 +1045,7 @@ parse_reconcile_report() {
 # is the sole writer of the live skill dirs.
 reconcile_and_commit_authored_source() {
   local report status accept_conflicts=0
+  RECONCILE_FAILURE_KIND=""
   info "Reconciling staged source against existing copy and baseline manifest..."
   # Compute the per-skill plan against UPSTREAM=candidate, LOCAL=existing copy. The
   # upstream repo root, skills, and platform-packs all come from the one staged
@@ -1051,6 +1058,7 @@ reconcile_and_commit_authored_source() {
     --upstream-skills "$SKILL_BILL_CANDIDATE_SKILLS" \
     --upstream-platform-packs "$SKILL_BILL_CANDIDATE_PLATFORM_PACKS")" || status=$?
   if [[ -n "${status:-}" ]]; then
+    RECONCILE_FAILURE_KIND="compute"
     err "Reconciliation failed; leaving the existing install untouched."
     discard_authored_candidates
     return 1
@@ -1059,6 +1067,7 @@ reconcile_and_commit_authored_source() {
   # FAIL-CLOSED: a missing/unparseable summary line aborts the install rather than
   # treating the absence of conflicts as "no conflicts".
   if ! parse_reconcile_report "$report"; then
+    RECONCILE_FAILURE_KIND="parse"
     err "Could not parse the reconcile machine report; aborting the install. Nothing was changed."
     discard_authored_candidates
     return 1
@@ -1100,6 +1109,9 @@ reconcile_and_commit_authored_source() {
       done
       warn "To take the upstream version instead, re-run with --prefer-upstream:"
       warn "  curl -fsSL https://raw.githubusercontent.com/oila-gmbh/skill-bill/main/install.sh | bash -s -- --prefer-upstream"
+      RECONCILE_FAILURE_KIND="conflict"
+      discard_authored_candidates
+      return 1
     else
       printf '%s' "Overwrite your local copy with the upstream version for the conflicting skills? [y/n]: "
       local answer=""
@@ -1138,6 +1150,7 @@ reconcile_and_commit_authored_source() {
     apply_args+=(--accept-conflicts)
   fi
   if ! run_runtime_cli "${apply_args[@]}" >/dev/null; then
+    RECONCILE_FAILURE_KIND="apply"
     err "Runtime reconcile apply failed; some skills may not have been updated."
     discard_authored_candidates
     return 1
@@ -1148,6 +1161,20 @@ reconcile_and_commit_authored_source() {
   # set (uninstall.sh preserve-mode). The runtime apply already refreshed it.
   discard_authored_candidates
   ok "Authored source reconciled and committed into $SKILL_BILL_STATE_DIR"
+}
+
+reconcile_and_commit_authored_source_with_recovery() {
+  if reconcile_and_commit_authored_source; then
+    return 0
+  fi
+  if [[ "$RECONCILE_FAILURE_KIND" != "compute" ]]; then
+    return 1
+  fi
+  warn "Reconciliation failed against the preserved copied source; retrying once with a clean copied-source reset."
+  warn "Durable workflow and review state DBs are preserved."
+  clean_install_state
+  copy_in_authored_source
+  reconcile_and_commit_authored_source
 }
 
 install_packaged_runtime_distributions() {
@@ -2638,7 +2665,7 @@ run_full_install() {
   run_pre_install_uninstall
   copy_in_authored_source
   install_runtime_distributions
-  reconcile_and_commit_authored_source
+  reconcile_and_commit_authored_source_with_recovery
   if [[ "$REUSE_LAST_SELECTION" -ne 1 ]]; then
     build_platform_packages
   fi
