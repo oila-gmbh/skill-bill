@@ -1880,6 +1880,9 @@ class RuntimeArchitectureTest {
       "skillbill.team.TeamBundleValidator.validate",
       "skillbill.team.TeamBundleValidator.validateYamlText",
       "skillbill.team.model.TeamBundleParser.parse",
+      "skillbill.team.model.TeamExportValidationSummary.toPayload",
+      "skillbill.team.model.TeamExportRegistryDestination.toPayload",
+      "skillbill.team.model.TeamExportResult.toPayload",
       // SKILL-52.3 subtask 4: domain-owned manifest file-store port. The YAML
       // serialization seam accepts the canonical schema-validated wire map and
       // delegates the concrete `YAMLMapper` mechanics to the infra-fs adapter,

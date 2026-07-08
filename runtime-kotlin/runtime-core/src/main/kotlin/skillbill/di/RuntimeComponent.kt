@@ -72,6 +72,7 @@ import skillbill.infrastructure.fs.FileSystemScaffoldRepoValidation
 import skillbill.infrastructure.fs.FileSystemScaffoldSourceLoader
 import skillbill.infrastructure.fs.FileSystemSkillRemoveFileSystem
 import skillbill.infrastructure.fs.FileSystemSpecScratchStore
+import skillbill.infrastructure.fs.FileSystemTeamExportFileGateway
 import skillbill.infrastructure.fs.FileSystemUninstallFileSystemGateway
 import skillbill.infrastructure.fs.FileSystemUnsupportedScaffoldGateway
 import skillbill.infrastructure.fs.FileTelemetryConfigStore
@@ -136,6 +137,7 @@ import skillbill.ports.scaffold.staging.ScaffoldGeneratedStagingPort
 import skillbill.ports.system.UninstallFileSystemGateway
 import skillbill.ports.taskruntime.FeatureTaskRuntimeRunInvariantsSource
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSpecStatusWriter
+import skillbill.ports.team.TeamExportFileGateway
 import skillbill.ports.telemetry.TelemetryClient
 import skillbill.ports.telemetry.TelemetryConfigStore
 import skillbill.ports.telemetry.TelemetryLevelMutator
@@ -147,8 +149,8 @@ import skillbill.ports.workflow.DecompositionManifestFileStore
 import skillbill.ports.workflow.NoopWorkflowGitOperations
 import skillbill.ports.workflow.SpecScratchStore
 import skillbill.ports.workflow.WorkflowGitOperations
-import skillbill.telemetry.settings.DefaultTelemetrySettingsProvider
 import skillbill.team.TeamBundleValidator
+import skillbill.telemetry.settings.DefaultTelemetrySettingsProvider
 import skillbill.workflow.DecompositionManifestValidator
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.GoalObservabilityEventValidator
@@ -416,6 +418,10 @@ abstract class RuntimeComponent(
   @Provides
   @JvmSynthetic
   internal fun teamBundleValidator(adapter: TeamBundleValidatorAdapter): TeamBundleValidator = adapter
+
+  @Provides
+  @JvmSynthetic
+  internal fun teamExportFileGateway(adapter: FileSystemTeamExportFileGateway): TeamExportFileGateway = adapter
 
   @Provides
   @JvmSynthetic

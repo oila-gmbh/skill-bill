@@ -37,7 +37,7 @@ class TeamExportCommand(
   private val repoRoot by option("--repo-root", help = "Repository root to export.").default(".")
   private val version by option("--version", help = "Bundle version.").required()
   private val channel by option("--channel", help = "Bundle channel.")
-    .choice(*TeamBundleChannel.entries.map { it.wireValue }.toTypedArray())
+    .choice("development", "beta", "stable", "preview", "experimental")
     .required()
   private val output by option("--output", help = "Archive path to write.")
   private val registry by option("--registry", help = "Local registry root to publish into.")

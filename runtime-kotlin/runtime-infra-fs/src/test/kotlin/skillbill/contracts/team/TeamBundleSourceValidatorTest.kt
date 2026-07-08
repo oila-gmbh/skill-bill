@@ -29,15 +29,21 @@ class TeamBundleSourceValidatorTest {
   }
 
   @Test
-  fun `absolute source path is rejected`() {
+  fun `absolute in repo source path is canonicalized`() {
     val root = Files.createTempDirectory("team-bundle-source")
     root.resolve("skills/bill-demo").createDirectories()
     val contentPath = root.resolve("skills/bill-demo/content.md")
     contentPath.writeText("---\nname: bill-demo\ndescription: Demo\n---\n# Demo\n\nGuidance.\n")
 
-    val error = assertInvalid(root, "horizontal_skill", contentPath.toAbsolutePath().normalize().toString())
+    val canonical = TeamBundleSourceValidator.validateSources(
+      bundle("horizontal_skill", contentPath.toAbsolutePath().normalize().toString()),
+      root,
+      "bundle.yaml",
+    )
 
-    assertContains(error.reason, "repository-relative")
+    val sources = canonical["sources"] as List<*>
+    val source = sources.single() as Map<*, *>
+    assertEquals("skills/bill-demo/content.md", source["path"])
   }
 
   @Test

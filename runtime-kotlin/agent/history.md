@@ -1,3 +1,12 @@
+## [2026-07-08] SKILL-108 subtask 2 team export CLI and local registry
+Areas: runtime-kotlin/runtime-application/team, runtime-kotlin/runtime-ports/team, runtime-kotlin/runtime-infra-fs/team export, runtime-kotlin/runtime-cli/team, runtime-kotlin/runtime-domain/team
+- Team export now delegates filesystem source collection, deterministic archive creation, checksums, and atomic local-registry writes through a runtime-ports gateway with infra-fs ownership. reusable
+- Platform-pack source collection includes authored sidecar files under code-review and quality-check skill directories while preserving sorted-by-path hashes and metadata/archive parity. reusable
+- Generated wrappers, support pointers, provider-native outputs, workflow DBs, desktop state, staging artifacts, and telemetry outbox paths stay validator-rejected before publishable archive writes.
+- CLI JSON raw-map seams are documented as OpenBoundaryMap entries with architecture parity coverage; new payload maps need annotation, test allow-list, and ARCHITECTURE.md inventory together.
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
 ## [2026-07-07] SKILL-107 subtask 3 manifest-driven runtime hygiene
 Areas: runtime-kotlin/runtime-core DI, runtime-application/review, runtime-infra-sqlite/review telemetry, runtime-infra-fs/{manifest attribution, repo validation, install apply}, runtime-ports/review
 - Review platform attribution now consumes injected manifest-derived routed-skill mappings; sqlite keeps only exact skill-name lookup plus `"unknown"` fallback, with no pack discovery dependency. reusable

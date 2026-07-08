@@ -57,10 +57,8 @@ object TeamBundleSourceValidator {
   }
 
   private fun normalizeRelativeSourcePath(rawPath: String, root: Path, sourceLabel: String, fieldPath: String): Path {
-    if (Path.of(rawPath).isAbsolute) {
-      throw InvalidTeamBundleSchemaError(sourceLabel, fieldPath, "source path must be repository-relative.")
-    }
-    val resolved = root.resolve(rawPath).normalize()
+    val sourcePath = Path.of(rawPath)
+    val resolved = if (sourcePath.isAbsolute) sourcePath.normalize() else root.resolve(sourcePath).normalize()
     if (!resolved.startsWith(root)) {
       throw InvalidTeamBundleSchemaError(sourceLabel, fieldPath, "source path escapes the repository root.")
     }
@@ -187,7 +185,10 @@ object TeamBundleSourceValidator {
     }
   }
 
-  private fun forbiddenEntryReason(relativePath: Path, root: Path): String? {
+  private fun forbiddenEntryReason(relativePath: Path, root: Path): String? =
+    forbiddenGeneratedArtifactReason(relativePath, root) ?: forbiddenStateArtifactReason(relativePath)
+
+  private fun forbiddenGeneratedArtifactReason(relativePath: Path, root: Path): String? {
     val path = relativePath.toString().replace('\\', '/')
     val segments = relativePath.map { it.name }.toList()
     return when {
@@ -201,6 +202,14 @@ object TeamBundleSourceValidator {
         "installed staging content-hash markers are not valid bundle sources."
       segments.any { it in INSTALL_STAGING_SEGMENTS } ->
         "installed staging artifacts are not valid bundle sources."
+      else -> null
+    }
+  }
+
+  private fun forbiddenStateArtifactReason(relativePath: Path): String? {
+    val path = relativePath.toString().replace('\\', '/')
+    val segments = relativePath.map { it.name }.toList()
+    return when {
       segments.any { it in WORKFLOW_STATE_SEGMENTS } || path.endsWith(".db") || path.endsWith(".sqlite") ->
         "workflow database state is not a valid bundle source."
       segments.any { it in DESKTOP_STATE_SEGMENTS } ->

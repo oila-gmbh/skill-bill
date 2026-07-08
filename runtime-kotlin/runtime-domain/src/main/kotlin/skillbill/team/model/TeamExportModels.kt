@@ -1,5 +1,6 @@
 package skillbill.team.model
 
+import skillbill.boundary.OpenBoundaryMap
 import java.nio.file.Path
 
 data class TeamExportRequest(
@@ -32,6 +33,7 @@ data class TeamExportValidationSummary(
   val platformPackCount: Int,
   val nativeAgentCount: Int,
 ) {
+  @OpenBoundaryMap("Team export CLI JSON payload fragment")
   fun toPayload(): Map<String, Any?> = mapOf(
     "status" to status,
     "skill_count" to skillCount,
@@ -47,6 +49,7 @@ data class TeamExportRegistryDestination(
   val version: String,
   val bundleId: String,
 ) {
+  @OpenBoundaryMap("Team export CLI JSON payload fragment")
   fun toPayload(): Map<String, Any?> = mapOf(
     "path" to path.toString(),
     "channel" to channel,
@@ -67,6 +70,7 @@ data class TeamExportResult(
   val registryDestination: TeamExportRegistryDestination? = null,
   val sourceEntryHashes: List<TeamExportSourceEntryHash>,
 ) {
+  @OpenBoundaryMap("Team export CLI JSON payload")
   fun toPayload(): Map<String, Any?> {
     val payload = linkedMapOf<String, Any?>(
       "bundle_path" to bundlePath?.toString(),

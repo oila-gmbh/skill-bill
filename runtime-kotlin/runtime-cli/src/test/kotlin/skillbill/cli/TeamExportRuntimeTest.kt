@@ -8,6 +8,7 @@ import skillbill.application.team.TeamExportService
 import skillbill.cli.core.CliRuntime
 import skillbill.cli.model.CliRuntimeContext
 import skillbill.contracts.JsonSupport
+import skillbill.infrastructure.fs.FileSystemTeamExportFileGateway
 import skillbill.infrastructure.fs.TeamBundleValidatorAdapter
 import skillbill.ports.validation.RepoValidationGateway
 import skillbill.ports.validation.model.ReleaseRefMetadata
@@ -82,13 +83,15 @@ class TeamExportRuntimeTest {
   fun `export rejects invalid governed source before writing publishable archive`() {
     val repo = writeGovernedRepoFixture()
     val output = repo.resolve("dist/bundle.zip")
-    val service = teamExportService(validationReport = RepoValidationReport(
-      issues = listOf("skills/bill-demo/content.md: invalid frontmatter"),
-      skillCount = 1,
-      addonCount = 0,
-      platformPackCount = 0,
-      nativeAgentCount = 0,
-    ))
+    val service = teamExportService(
+      validationReport = RepoValidationReport(
+        issues = listOf("skills/bill-demo/content.md: invalid frontmatter"),
+        skillCount = 1,
+        addonCount = 0,
+        platformPackCount = 0,
+        nativeAgentCount = 0,
+      ),
+    )
 
     val error = assertFailsWith<TeamExportException> {
       service.export(exportRequest(repo, outputPath = output))
@@ -145,6 +148,28 @@ class TeamExportRuntimeTest {
       ),
       (metadata["sources"] as List<*>).map { source -> (source as Map<*, *>)["path"] },
     )
+  }
+
+  @Test
+  fun `export includes authored platform pack sidecar in metadata archive and result hashes`() {
+    val sidecarPath = "platform-packs/kmp/code-review/bill-kmp-code-review-ui/compose-guidelines.md"
+    val sidecarText = "# Compose Guidelines\n\nKeep state hoisted.\n"
+    val repo = writeGovernedRepoFixtureWithPlatformPackSidecar(sidecarText)
+    val output = repo.resolve("dist/bundle.zip")
+    val result = teamExportService().export(exportRequest(repo, outputPath = output))
+    val metadata = readBundleMetadata(output)
+    val metadataSource = (metadata["sources"] as List<*>)
+      .map { source -> source as Map<*, *> }
+      .first { source -> source["path"] == sidecarPath }
+    val expectedHash = sha256(sidecarText.toByteArray(Charsets.UTF_8))
+
+    assertEquals(expectedHash, metadataSource["content_hash"])
+    assertEquals(expectedHash, result.sourceEntryHashes.first { it.path == sidecarPath }.contentHash)
+    ZipFile(output.toFile()).use { zip ->
+      val entry = assertNotNull(zip.getEntry("sources/$sidecarPath"))
+      val archivedSidecar = zip.getInputStream(entry).bufferedReader().use { it.readText() }
+      assertEquals(sidecarText, archivedSidecar)
+    }
   }
 
   @Test
@@ -233,6 +258,34 @@ class TeamExportRuntimeTest {
   }
 
   @Test
+  fun `team export rejects generated platform pack skill wrapper selected by broad source collection`() {
+    val repo = writeGovernedRepoFixtureWithPlatformPackSidecar("# Compose Guidelines\n")
+    repo.resolve("platform-packs/kmp/code-review/bill-kmp-code-review-ui/SKILL.md").writeText("# Generated wrapper\n")
+
+    val result = CliRuntime.run(
+      listOf(
+        "team",
+        "export",
+        "--repo-root",
+        repo.toString(),
+        "--version",
+        "1.2.3",
+        "--channel",
+        "stable",
+        "--dry-run",
+        "--format",
+        "json",
+      ),
+      CliRuntimeContext(),
+    )
+
+    assertEquals(1, result.exitCode)
+    val payload = decodeJsonObject(result.stdout)
+    assertEquals("failed", payload["status"])
+    assertContains(payload["error"].toString(), "committed governed SKILL.md output")
+  }
+
+  @Test
   fun `team export dry run emits stable json keys`() {
     val repo = repositoryRoot()
     val result = CliRuntime.run(
@@ -287,6 +340,7 @@ class TeamExportRuntimeTest {
   ): TeamExportService = TeamExportService(
     RepoValidationService(FakeRepoValidationGateway(validationReport)),
     TeamBundleValidatorAdapter(),
+    FileSystemTeamExportFileGateway(),
     Clock.fixed(Instant.parse("2026-01-01T00:00:00Z"), ZoneOffset.UTC),
   )
 
@@ -328,12 +382,43 @@ class TeamExportRuntimeTest {
     return repo
   }
 
-  private fun readBundleMetadata(path: Path): Map<String, Any?> =
-    ZipFile(path.toFile()).use { zip ->
-      val entry = zip.getEntry("bundle.json")
-      val raw = zip.getInputStream(entry).bufferedReader().use { it.readText() }
-      decodeJsonObject(raw)
-    }
+  private fun writeGovernedRepoFixtureWithPlatformPackSidecar(sidecarText: String): Path {
+    val repo = writeGovernedRepoFixture()
+    val packRoot = repo.resolve("platform-packs/kmp")
+    val skillRoot = packRoot.resolve("code-review/bill-kmp-code-review-ui")
+    skillRoot.createDirectories()
+    packRoot.resolve("platform.yaml").writeText(
+      """
+      platform: kmp
+      contract_version: "1.2"
+      routing_signals:
+        strong:
+          - "commonMain"
+      declared_code_review_areas: []
+      """.trimIndent() + "\n",
+    )
+    skillRoot.resolve("content.md").writeText(
+      """
+      ---
+      name: bill-kmp-code-review-ui
+      description: Review KMP UI.
+      internal-for: bill-code-review
+      ---
+
+      # KMP UI Review
+
+      Read [compose-guidelines.md](compose-guidelines.md).
+      """.trimIndent() + "\n",
+    )
+    skillRoot.resolve("compose-guidelines.md").writeText(sidecarText)
+    return repo
+  }
+
+  private fun readBundleMetadata(path: Path): Map<String, Any?> = ZipFile(path.toFile()).use { zip ->
+    val entry = zip.getEntry("bundle.json")
+    val raw = zip.getInputStream(entry).bufferedReader().use { it.readText() }
+    decodeJsonObject(raw)
+  }
 
   private fun assertBundleChecksumConsistency(
     result: TeamExportResult,
