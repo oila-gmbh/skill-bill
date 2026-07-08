@@ -57,11 +57,10 @@ class TeamExportService(
     val embeddedMetadata = bundleMetadata(request, bundleId, contentHash, metadataChecksum, sources)
     teamBundleValidator.validate(embeddedMetadata, "team-bundle-metadata", repoRoot)
     val archive = archiveBytes(embeddedMetadata, sources, repoRoot)
-    val archiveChecksum = sha256(archive)
 
     val directBundlePath = if (!request.dryRun) {
       outputPath?.toAbsolutePath()?.normalize()?.also {
-        writeDirectBundle(it, archive, embeddedMetadata, archiveChecksum)
+        writeDirectBundle(it, archive, embeddedMetadata, metadataChecksum)
       }
     } else {
       null
@@ -74,7 +73,7 @@ class TeamExportService(
           bundleId = bundleId,
           archive = archive,
           metadata = embeddedMetadata,
-          checksum = archiveChecksum,
+          checksum = metadataChecksum,
         )
       }
     } else {
@@ -87,7 +86,7 @@ class TeamExportService(
       version = request.version,
       channel = request.channel,
       contentHash = contentHash,
-      checksum = archiveChecksum,
+      checksum = metadataChecksum,
       sourceRef = request.sourceRef,
       validationSummary = validation.toSummary(),
       registryDestination = registryDestination,

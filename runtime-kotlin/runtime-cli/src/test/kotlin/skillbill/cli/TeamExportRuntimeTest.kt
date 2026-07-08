@@ -349,7 +349,7 @@ class TeamExportRuntimeTest {
 
     assertEquals(embeddedBundleChecksum, sidecarMetadata["bundle_checksum"])
     assertEquals(embeddedBundleChecksum, bundleVerificationChecksum(bundlePath))
-    assertEquals(result.checksum, sha256(Files.readAllBytes(bundlePath)))
+    assertEquals(embeddedBundleChecksum, result.checksum)
     assertContains(checksumFile, "${result.checksum}  $checksumTarget")
   }
 
