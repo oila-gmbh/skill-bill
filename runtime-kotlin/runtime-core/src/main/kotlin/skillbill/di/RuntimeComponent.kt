@@ -30,6 +30,7 @@ import skillbill.application.scaffold.UnsupportedScaffoldService
 import skillbill.application.system.SystemService
 import skillbill.application.system.UninstallFileSystemService
 import skillbill.application.team.TeamExportService
+import skillbill.application.team.TeamSyncService
 import skillbill.application.telemetry.LifecycleTelemetryService
 import skillbill.application.telemetry.TelemetryLevelMutationService
 import skillbill.application.telemetry.TelemetryService
@@ -73,6 +74,7 @@ import skillbill.infrastructure.fs.FileSystemScaffoldSourceLoader
 import skillbill.infrastructure.fs.FileSystemSkillRemoveFileSystem
 import skillbill.infrastructure.fs.FileSystemSpecScratchStore
 import skillbill.infrastructure.fs.FileSystemTeamExportFileGateway
+import skillbill.infrastructure.fs.FileSystemTeamBundleSyncGateway
 import skillbill.infrastructure.fs.FileSystemUninstallFileSystemGateway
 import skillbill.infrastructure.fs.FileSystemUnsupportedScaffoldGateway
 import skillbill.infrastructure.fs.FileTelemetryConfigStore
@@ -138,6 +140,9 @@ import skillbill.ports.system.UninstallFileSystemGateway
 import skillbill.ports.taskruntime.FeatureTaskRuntimeRunInvariantsSource
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSpecStatusWriter
 import skillbill.ports.team.TeamExportFileGateway
+import skillbill.ports.team.TeamBundleArchiveGateway
+import skillbill.ports.team.TeamBundleRegistryResolver
+import skillbill.ports.team.TeamBundleStatePersistence
 import skillbill.ports.telemetry.TelemetryClient
 import skillbill.ports.telemetry.TelemetryConfigStore
 import skillbill.ports.telemetry.TelemetryLevelMutator
@@ -425,6 +430,18 @@ abstract class RuntimeComponent(
 
   @Provides
   @JvmSynthetic
+  internal fun teamBundleArchiveGateway(adapter: FileSystemTeamBundleSyncGateway): TeamBundleArchiveGateway = adapter
+
+  @Provides
+  @JvmSynthetic
+  internal fun teamBundleRegistryResolver(adapter: FileSystemTeamBundleSyncGateway): TeamBundleRegistryResolver = adapter
+
+  @Provides
+  @JvmSynthetic
+  internal fun teamBundleStatePersistence(adapter: FileSystemTeamBundleSyncGateway): TeamBundleStatePersistence = adapter
+
+  @Provides
+  @JvmSynthetic
   internal fun uninstallFileSystemGateway(gateway: FileSystemUninstallFileSystemGateway): UninstallFileSystemGateway =
     gateway
 
@@ -549,6 +566,7 @@ abstract class RuntimeComponent(
   abstract val skillRemoveService: SkillRemoveService
   abstract val systemService: SystemService
   abstract val teamExportService: TeamExportService
+  abstract val teamSyncService: TeamSyncService
   abstract val telemetryConfigStorePort: TelemetryConfigStore
   abstract val telemetryLevelMutator: TelemetryLevelMutator
   abstract val telemetryService: TelemetryService

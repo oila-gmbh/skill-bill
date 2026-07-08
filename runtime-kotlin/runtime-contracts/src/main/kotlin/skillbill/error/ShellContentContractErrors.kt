@@ -72,6 +72,66 @@ class InvalidTeamBundleSchemaError(
   cause,
 )
 
+class InvalidTeamBundleChecksumError(
+  val path: String,
+  val expected: String,
+  val actual: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Team bundle checksum mismatch for '${path.ifBlank { "<unknown>" }}': expected $expected but computed $actual.",
+  cause,
+)
+
+class TeamBundleContentHashMismatchError(
+  val bundleId: String,
+  val expected: String,
+  val actual: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Team bundle '${bundleId.ifBlank { "<unknown>" }}' content_hash mismatch: expected $expected but computed $actual.",
+  cause,
+)
+
+class InvalidTeamBundleRegistryChannelError(
+  val channel: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Invalid team bundle registry channel '${channel.ifBlank { "<blank>" }}'. Supported registry channels: " +
+    "development, beta, stable.",
+  cause,
+)
+
+class GeneratedTeamBundleArtifactEntryError(
+  val entryName: String,
+  val reason: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Team bundle archive entry '${entryName.ifBlank { "<unknown>" }}' is not a valid governed source: $reason",
+  cause,
+)
+
+class MissingPreviousTeamBundleError(
+  cause: Throwable? = null,
+) : ShellContentContractException("No previous team bundle is recorded for rollback.", cause)
+
+class MissingPreviousTeamBundleSourceError(
+  val path: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Previous team bundle source is missing at '${path.ifBlank { "<unknown>" }}'.",
+  cause,
+)
+
+class TeamBundleSyncInstallFailedError(
+  message: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(message, cause)
+
+class TeamBundleRollbackIncompleteError(
+  message: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(message, cause)
+
 /**
  * SKILL-48 Subtask 2b: surfaced when an `InstallPlan` wire payload fails
  * the canonical `orchestration/contracts/install-plan-schema.yaml` Draft

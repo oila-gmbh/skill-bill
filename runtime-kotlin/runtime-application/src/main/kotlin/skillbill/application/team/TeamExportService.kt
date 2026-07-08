@@ -13,13 +13,15 @@ import skillbill.ports.team.model.TeamExportRegistryPublishRequest
 import skillbill.ports.validation.model.RepoValidationReport
 import skillbill.team.TeamBundleValidator
 import skillbill.team.model.TeamBundleChannel
+import skillbill.team.model.TeamBundleContentHashInput
+import skillbill.team.model.TeamBundleHashing
 import skillbill.team.model.TeamBundlePrivacyLevel
+import skillbill.team.model.TeamBundleSourceHash
 import skillbill.team.model.TeamExportRequest
 import skillbill.team.model.TeamExportResult
 import skillbill.team.model.TeamExportSourceEntryHash
 import skillbill.team.model.TeamExportValidationSummary
 import java.nio.file.Path
-import java.security.MessageDigest
 import java.time.Clock
 
 @Inject
@@ -29,9 +31,6 @@ class TeamExportService(
   private val fileGateway: TeamExportFileGateway,
   private val clock: Clock,
 ) {
-  private val bundleChecksumPlaceholder =
-    "sha256:0000000000000000000000000000000000000000000000000000000000000000"
-
   fun export(request: TeamExportRequest): TeamExportResult {
     val repoRoot = request.repoRoot.toAbsolutePath().normalize()
     val validation = repoValidationService.validateRepo(repoRoot)
@@ -44,7 +43,13 @@ class TeamExportService(
     val outputPath = request.outputPath
       ?: if (request.registryRoot == null) defaultOutputPath(repoRoot, bundleId) else null
     val contentHash = contentHash(request, bundleId, sources)
-    val metadataWithPlaceholder = bundleMetadata(request, bundleId, contentHash, bundleChecksumPlaceholder, sources)
+    val metadataWithPlaceholder = bundleMetadata(
+      request,
+      bundleId,
+      contentHash,
+      TeamBundleHashing.BUNDLE_CHECKSUM_PLACEHOLDER,
+      sources,
+    )
     teamBundleValidator.validate(metadataWithPlaceholder, "team-bundle-metadata", repoRoot)
     val metadataChecksum = bundleVerificationChecksum(metadataWithPlaceholder, sources, repoRoot)
     val embeddedMetadata = bundleMetadata(request, bundleId, contentHash, metadataChecksum, sources)
@@ -168,28 +173,25 @@ class TeamExportService(
     request: TeamExportRequest,
     bundleId: String,
     sources: List<TeamExportCollectedSource>,
-  ): String {
-    val canonical = buildString {
-      appendLine("bundle_id=$bundleId")
-      appendLine("version=${request.version}")
-      appendLine("channel=${request.channel.wireValue}")
-      appendLine("created_at=${request.createdAt}")
-      appendLine("created_by=${request.createdBy}")
-      appendLine("source_repo=${request.sourceRepo}")
-      appendLine("source_ref=${request.sourceRef}")
-      appendLine("source_commit=${request.sourceCommit.orEmpty()}")
-      sources.sortedBy { it.path }.forEach { source ->
-        append(source.path).append('\u0000').append(source.contentHash).append('\n')
-      }
-    }
-    return sha256(canonical.toByteArray(Charsets.UTF_8))
-  }
+  ): String = TeamBundleHashing.contentHash(
+    TeamBundleContentHashInput(
+      bundleId = bundleId,
+      version = request.version,
+      channel = request.channel,
+      createdAt = request.createdAt,
+      createdBy = request.createdBy,
+      sourceRepo = request.sourceRepo,
+      sourceRef = request.sourceRef,
+      sourceCommit = request.sourceCommit,
+      sources = sources.map { source -> TeamBundleSourceHash(source.path, source.contentHash) },
+    ),
+  )
 
   private fun bundleVerificationChecksum(
     metadataWithPlaceholder: Map<String, Any?>,
     sources: List<TeamExportCollectedSource>,
     repoRoot: Path,
-  ): String = sha256(
+  ): String = TeamBundleHashing.sha256(
     gatewayCall {
       fileGateway.archiveBytes(JsonSupport.mapToJsonString(metadataWithPlaceholder), sources, repoRoot)
     },
@@ -204,9 +206,9 @@ class TeamExportService(
     "created_by" to "skill-bill",
     "source_repo" to "local",
     "source_ref" to "HEAD",
-    "content_hash" to sha256(ByteArray(0)),
-    "manifest_hashes" to mapOf("source_index" to sha256(ByteArray(0))),
-    "bundle_checksum" to sha256(ByteArray(0)),
+    "content_hash" to TeamBundleHashing.sha256(ByteArray(0)),
+    "manifest_hashes" to mapOf("source_index" to TeamBundleHashing.sha256(ByteArray(0))),
+    "bundle_checksum" to TeamBundleHashing.sha256(ByteArray(0)),
     "sources" to sources,
     "compatibility" to mapOf("min_skill_bill_version" to "0.1", "shell_contract_version" to "1.2"),
     "telemetry_defaults" to mapOf("enabled" to false, "level" to "anonymous"),
@@ -230,8 +232,3 @@ class TeamExportService(
 }
 
 class TeamExportException(message: String, cause: Throwable? = null) : RuntimeException(message, cause)
-
-private fun sha256(bytes: ByteArray): String {
-  val digest = MessageDigest.getInstance("SHA-256").digest(bytes)
-  return "sha256:" + digest.joinToString("") { "%02x".format(it) }
-}
