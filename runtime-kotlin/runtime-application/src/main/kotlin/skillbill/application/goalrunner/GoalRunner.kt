@@ -143,6 +143,9 @@ class GoalRunner(
     telemetryEmitter?.let { emitter ->
       emitter.emitNewlyTerminalSubtasks(state.manifest, attempted)
       emitter.goalFinished(state.manifest, finalReport)
+      if (finalReport is GoalRunnerRunReport.Completed) {
+        emitter.goalIssueFinished(state.manifest, finalReport)
+      }
     }
   }
 

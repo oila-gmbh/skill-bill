@@ -1,9 +1,11 @@
 package skillbill.application.goalrunner
 
 import skillbill.application.model.GoalFinishedRequest
+import skillbill.application.model.GoalIssueFinishedRequest
 import skillbill.application.model.GoalStartedRequest
 import skillbill.application.model.GoalSubtaskFinishedRequest
 import skillbill.telemetry.model.GoalFinishedRecord
+import skillbill.telemetry.model.GoalIssueFinishedRecord
 import skillbill.telemetry.model.GoalStartedRecord
 import skillbill.telemetry.model.GoalSubtaskFinishedRecord
 
@@ -15,6 +17,7 @@ fun GoalStartedRequest.toRecord(): GoalStartedRecord = GoalStartedRecord(
   resumed = resumed,
   startedAt = startedAt,
   mode = mode,
+  parentWorkflowId = parentWorkflowId,
 )
 
 fun GoalSubtaskFinishedRequest.toRecord(): GoalSubtaskFinishedRecord = GoalSubtaskFinishedRecord(
@@ -42,5 +45,18 @@ fun GoalFinishedRequest.toRecord(): GoalFinishedRecord = GoalFinishedRecord(
   subtasksComplete = subtasksComplete,
   subtasksBlocked = subtasksBlocked,
   subtasksSkipped = subtasksSkipped,
+  mode = mode,
+  stopReason = stopReason,
+  parentWorkflowId = parentWorkflowId,
+)
+
+fun GoalIssueFinishedRequest.toRecord(): GoalIssueFinishedRecord = GoalIssueFinishedRecord(
+  issueKey = issueKey,
+  parentWorkflowId = parentWorkflowId,
+  status = status,
+  subtasksComplete = subtasksComplete,
+  subtasksBlocked = subtasksBlocked,
+  subtasksSkipped = subtasksSkipped,
+  finishedAt = finishedAt,
   mode = mode,
 )

@@ -16,7 +16,7 @@ import kotlin.test.assertTrue
 /**
  * SKILL-66 Subtask 1 (AC4): per-family parity test for the
  * runtime-internal decomposed-goal emission events
- * (`goal_started`, `goal_subtask_finished`, `goal_finished`).
+ * (`goal_started`, `goal_subtask_finished`, `goal_finished`, `goal_issue_finished`).
  *
  * Modeled on `TelemetryTaskRuntimeStepIdEnumParityTest`: the canonical
  * schema carries `$defs/<name>Event` branches for these three payloads
@@ -96,6 +96,28 @@ class GoalTelemetryEmissionEventParityTest {
         "subtasks_blocked",
         "subtasks_skipped",
         "mode",
+        "stop_reason",
+      ),
+    )
+    assertBranch(
+      branchName = "goalIssueFinishedEvent",
+      eventName = "goal_issue_finished",
+      expectedRequired = setOf(
+        "event_name",
+        "contract_version",
+        "issue_key",
+        "parent_workflow_id",
+        "status",
+        "subtasks_complete",
+        "subtasks_blocked",
+        "subtasks_skipped",
+        "total_invocations",
+        "total_blocks",
+        "total_resumes",
+        "first_started_at",
+        "finished_at",
+        "duration_ms",
+        "mode",
       ),
     )
   }
@@ -123,7 +145,7 @@ class GoalTelemetryEmissionEventParityTest {
         "contract_version" to TELEMETRY_EVENT_CONTRACT_VERSION,
         "issue_key" to "SKILL-66",
         "workflow_id" to "wfl-goal-1",
-        "status" to "completed",
+        "status" to "blocked",
         "started_at" to "2026-06-04T10:15:30Z",
         "finished_at" to "2026-06-04T12:01:44Z",
         "duration_ms" to 6_374_000,
@@ -131,8 +153,30 @@ class GoalTelemetryEmissionEventParityTest {
         "subtasks_blocked" to 1,
         "subtasks_skipped" to 0,
         "mode" to "prose",
+        "stop_reason" to "BLOCKED",
       ),
       eventName = "goal_finished",
+    )
+
+    TelemetryEventSchemaValidator.validate(
+      envelope = linkedMapOf(
+        "event_name" to "goal_issue_finished",
+        "contract_version" to TELEMETRY_EVENT_CONTRACT_VERSION,
+        "issue_key" to "SKILL-109",
+        "parent_workflow_id" to "wfl-parent",
+        "status" to "completed",
+        "subtasks_complete" to 3,
+        "subtasks_blocked" to 0,
+        "subtasks_skipped" to 0,
+        "total_invocations" to 3,
+        "total_blocks" to 2,
+        "total_resumes" to 2,
+        "first_started_at" to "2026-06-04T10:15:30Z",
+        "finished_at" to "2026-06-04T12:01:44Z",
+        "duration_ms" to 6_374_000,
+        "mode" to "runtime",
+      ),
+      eventName = "goal_issue_finished",
     )
   }
 
@@ -178,7 +222,7 @@ class GoalTelemetryEmissionEventParityTest {
   @Test
   fun `emission events are not registered MCP tools`() {
     val toolNames = McpToolRegistry.tools.map { it.name }.toSet()
-    listOf("goal_started", "goal_subtask_finished", "goal_finished").forEach { name ->
+    listOf("goal_started", "goal_subtask_finished", "goal_finished", "goal_issue_finished").forEach { name ->
       assertFalse(
         name in toolNames,
         "Emission event '$name' must NOT be a registered MCP tool (runtime-internal only). " +

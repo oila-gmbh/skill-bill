@@ -4,6 +4,7 @@ import skillbill.application.goalrunner.GoalLifecycleTelemetryEmitter
 import skillbill.application.goalrunner.GoalRunner
 import skillbill.application.goalrunner.toRecord
 import skillbill.application.model.GoalFinishedRequest
+import skillbill.application.model.GoalIssueFinishedRequest
 import skillbill.application.model.GoalRunnerEventSink
 import skillbill.application.model.GoalStartedRequest
 import skillbill.application.model.GoalSubtaskFinishedRequest
@@ -126,4 +127,6 @@ private class ModeCapturingTelemetryEmitter : GoalLifecycleTelemetryEmitter {
   override fun goalFinished(request: GoalFinishedRequest, dbOverride: String?) {
     finished += request
   }
+
+  override fun goalIssueFinished(request: GoalIssueFinishedRequest, dbOverride: String?) = Unit
 }

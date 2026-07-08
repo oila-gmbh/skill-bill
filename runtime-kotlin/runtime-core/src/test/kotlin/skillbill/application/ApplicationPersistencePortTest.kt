@@ -78,6 +78,7 @@ import skillbill.telemetry.model.FeatureTaskRuntimeStartedRecord
 import skillbill.telemetry.model.FeatureVerifyFinishedRecord
 import skillbill.telemetry.model.FeatureVerifyStartedRecord
 import skillbill.telemetry.model.GoalFinishedRecord
+import skillbill.telemetry.model.GoalIssueFinishedRecord
 import skillbill.telemetry.model.GoalStartedRecord
 import skillbill.telemetry.model.GoalSubtaskFinishedRecord
 import skillbill.telemetry.model.PrDescriptionGeneratedRecord
@@ -1556,6 +1557,8 @@ private object NoopLifecycleTelemetryRepository : LifecycleTelemetryRepository {
   override fun goalSubtaskFinished(record: GoalSubtaskFinishedRecord, level: String) = Unit
 
   override fun goalFinished(record: GoalFinishedRecord, level: String) = Unit
+
+  override fun goalIssueFinished(record: GoalIssueFinishedRecord, level: String) = Unit
 }
 
 private fun goalStartedRequest(): GoalStartedRequest = GoalStartedRequest(
@@ -1599,6 +1602,7 @@ private class RecordingGoalLifecycleTelemetryRepository : LifecycleTelemetryRepo
   val startedRecords = mutableListOf<GoalStartedRecord>()
   val subtaskRecords = mutableListOf<GoalSubtaskFinishedRecord>()
   val finishedRecords = mutableListOf<GoalFinishedRecord>()
+  val issueFinishedRecords = mutableListOf<GoalIssueFinishedRecord>()
 
   override fun goalStarted(record: GoalStartedRecord, level: String) {
     startedRecords += record
@@ -1610,6 +1614,10 @@ private class RecordingGoalLifecycleTelemetryRepository : LifecycleTelemetryRepo
 
   override fun goalFinished(record: GoalFinishedRecord, level: String) {
     finishedRecords += record
+  }
+
+  override fun goalIssueFinished(record: GoalIssueFinishedRecord, level: String) {
+    issueFinishedRecords += record
   }
 
   override fun featureImplementStarted(record: FeatureImplementStartedRecord, level: String) = error("unused")

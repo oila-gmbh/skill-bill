@@ -18,6 +18,9 @@ internal object DatabaseSchema {
       "feature_task_runtime_sessions",
       "feature_task_workflows",
       "feature_verify_workflows",
+      "goal_run_sessions",
+      "goal_subtask_events",
+      "goal_issue_progress",
     )
 
   val indexNames: Set<String> =
@@ -259,6 +262,64 @@ internal object DatabaseSchema {
         started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
         finished_at TEXT
+      )
+      """.trimIndent(),
+      """
+      CREATE TABLE IF NOT EXISTS goal_run_sessions (
+        workflow_id TEXT PRIMARY KEY,
+        issue_key TEXT NOT NULL,
+        feature_name TEXT NOT NULL DEFAULT '',
+        subtask_total INTEGER NOT NULL DEFAULT 0,
+        resumed INTEGER NOT NULL DEFAULT 0,
+        started_at TEXT NOT NULL DEFAULT '',
+        started_event_emitted_at TEXT,
+        status TEXT,
+        finished_at TEXT,
+        finished_duration_ms INTEGER,
+        subtasks_complete INTEGER,
+        subtasks_blocked INTEGER,
+        subtasks_skipped INTEGER,
+        finished_event_emitted_at TEXT,
+        mode TEXT NOT NULL DEFAULT 'runtime',
+        stop_reason TEXT
+      )
+      """.trimIndent(),
+      """
+      CREATE TABLE IF NOT EXISTS goal_subtask_events (
+        issue_key TEXT NOT NULL,
+        workflow_id TEXT NOT NULL,
+        subtask_id INTEGER NOT NULL,
+        subtask_name TEXT NOT NULL DEFAULT '',
+        status TEXT NOT NULL,
+        started_at TEXT NOT NULL,
+        finished_at TEXT NOT NULL,
+        duration_ms INTEGER NOT NULL,
+        attempt_count INTEGER NOT NULL,
+        blocked_reason TEXT,
+        finalizing_agent_id TEXT,
+        participating_agent_ids TEXT NOT NULL DEFAULT '[]',
+        boundary_history_value TEXT NOT NULL DEFAULT 'none',
+        boundary_history_written INTEGER NOT NULL DEFAULT 0,
+        subtask_event_emitted_at TEXT,
+        PRIMARY KEY (issue_key, subtask_id, workflow_id)
+      )
+      """.trimIndent(),
+      """
+      CREATE TABLE IF NOT EXISTS goal_issue_progress (
+        parent_workflow_id TEXT NOT NULL,
+        issue_key TEXT NOT NULL,
+        total_invocations INTEGER NOT NULL DEFAULT 0,
+        total_blocks INTEGER NOT NULL DEFAULT 0,
+        total_resumes INTEGER NOT NULL DEFAULT 0,
+        first_started_at TEXT,
+        finished_at TEXT,
+        status TEXT,
+        subtasks_complete INTEGER,
+        subtasks_blocked INTEGER,
+        subtasks_skipped INTEGER,
+        mode TEXT NOT NULL DEFAULT 'runtime',
+        finished_event_emitted_at TEXT,
+        PRIMARY KEY (parent_workflow_id, issue_key)
       )
       """.trimIndent(),
       """

@@ -8,6 +8,7 @@ import skillbill.telemetry.model.FeatureTaskRuntimeStartedRecord
 import skillbill.telemetry.model.FeatureVerifyFinishedRecord
 import skillbill.telemetry.model.FeatureVerifyStartedRecord
 import skillbill.telemetry.model.GoalFinishedRecord
+import skillbill.telemetry.model.GoalIssueFinishedRecord
 import skillbill.telemetry.model.GoalStartedRecord
 import skillbill.telemetry.model.GoalSubtaskFinishedRecord
 import skillbill.telemetry.model.PrDescriptionGeneratedRecord
@@ -68,6 +69,16 @@ class LifecycleTelemetryStore(
 
   override fun goalStarted(record: GoalStartedRecord, level: String) {
     saveGoalStarted(connection, record)
+    record.parentWorkflowId?.takeIf(String::isNotBlank)?.let { parentWorkflowId ->
+      recordGoalIssueSegmentStarted(
+        connection = connection,
+        parentWorkflowId = parentWorkflowId,
+        issueKey = record.issueKey,
+        startedAt = record.startedAt,
+        resumed = record.resumed,
+        mode = record.mode,
+      )
+    }
     emitGoalStarted(connection, record.workflowId, level)
   }
 
@@ -78,6 +89,16 @@ class LifecycleTelemetryStore(
 
   override fun goalFinished(record: GoalFinishedRecord, level: String) {
     saveGoalFinished(connection, record)
+    if (record.status != "completed") {
+      record.parentWorkflowId?.takeIf(String::isNotBlank)?.let { parentWorkflowId ->
+        recordGoalIssueBlockedSegment(connection, parentWorkflowId, record.issueKey)
+      }
+    }
     emitGoalFinished(connection, record.workflowId, level)
+  }
+
+  override fun goalIssueFinished(record: GoalIssueFinishedRecord, level: String) {
+    saveGoalIssueFinished(connection, record)
+    emitGoalIssueFinished(connection, record.parentWorkflowId, record.issueKey, level)
   }
 }

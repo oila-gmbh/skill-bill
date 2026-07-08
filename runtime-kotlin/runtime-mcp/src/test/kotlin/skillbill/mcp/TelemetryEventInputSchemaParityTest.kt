@@ -40,8 +40,7 @@ import kotlin.test.fail
 class TelemetryEventInputSchemaParityTest {
 
   /**
-   * SKILL-66 Subtask 1: `goal_started`, `goal_subtask_finished`, and
-   * `goal_finished` are runtime-internal emission payload contracts —
+   * SKILL-66/SKILL-109: goal lifecycle emission payload contracts are
    * they are NOT MCP tools and are intentionally absent from
    * `McpToolRegistry.toolNames`. Their per-event branches exist so
    * the emission payloads are schema-validated, but they are exempt
@@ -50,7 +49,7 @@ class TelemetryEventInputSchemaParityTest {
    * `telemetry-event-schema.yaml`.
    */
   private val runtimeInternalEmissionEvents =
-    setOf("goal_started", "goal_subtask_finished", "goal_finished")
+    setOf("goal_started", "goal_subtask_finished", "goal_finished", "goal_issue_finished")
 
   private val schemaNode: JsonNode by lazy {
     val schemaFile = repoRootFromTest().resolve(TelemetryEventSchemaPaths.REPO_RELATIVE_PATH)

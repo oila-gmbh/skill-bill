@@ -31,6 +31,13 @@ internal object DatabaseColumnMigrations {
     ).use { statement -> statement.executeQuery().use { resultSet -> resultSet.next() } }
     if (goalRunSessionsExists) {
       ensureColumn(connection, "goal_run_sessions", "mode", "TEXT NOT NULL DEFAULT 'runtime'")
+      ensureColumn(connection, "goal_run_sessions", "stop_reason", "TEXT")
+    }
+    val goalIssueProgressExists = connection.prepareStatement(
+      "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'goal_issue_progress'",
+    ).use { statement -> statement.executeQuery().use { resultSet -> resultSet.next() } }
+    if (goalIssueProgressExists) {
+      ensureColumn(connection, "goal_issue_progress", "finished_event_emitted_at", "TEXT")
     }
   }
 

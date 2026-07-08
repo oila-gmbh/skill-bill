@@ -10,6 +10,7 @@ import skillbill.application.model.FeatureTaskRuntimeStartedRequest
 import skillbill.application.model.FeatureVerifyFinishedRequest
 import skillbill.application.model.FeatureVerifyStartedRequest
 import skillbill.application.model.GoalFinishedRequest
+import skillbill.application.model.GoalIssueFinishedRequest
 import skillbill.application.model.GoalStartedRequest
 import skillbill.application.model.GoalSubtaskFinishedRequest
 import skillbill.application.model.PrDescriptionGeneratedRequest
@@ -163,6 +164,14 @@ class LifecycleTelemetryService(
     enabledStandaloneResult(request.workflowId) { settings ->
       database.transaction(dbOverride) { unitOfWork ->
         unitOfWork.lifecycleTelemetry.goalFinished(request.toRecord(), settings.level)
+      }
+    }
+  }
+
+  override fun goalIssueFinished(request: GoalIssueFinishedRequest, dbOverride: String?) {
+    enabledStandaloneResult(request.parentWorkflowId) { settings ->
+      database.transaction(dbOverride) { unitOfWork ->
+        unitOfWork.lifecycleTelemetry.goalIssueFinished(request.toRecord(), settings.level)
       }
     }
   }

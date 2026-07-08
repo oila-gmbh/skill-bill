@@ -3759,6 +3759,9 @@ internal class RecordingLifecycleTelemetryRepository : LifecycleTelemetryReposit
     error("unused")
 
   override fun goalFinished(record: skillbill.telemetry.model.GoalFinishedRecord, level: String) = error("unused")
+
+  override fun goalIssueFinished(record: skillbill.telemetry.model.GoalIssueFinishedRecord, level: String) =
+    error("unused")
 }
 
 internal class InMemoryRuntimeWorkflowRepository : WorkflowStateRepository {

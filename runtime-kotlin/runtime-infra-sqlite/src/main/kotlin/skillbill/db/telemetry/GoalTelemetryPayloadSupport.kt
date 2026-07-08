@@ -1,6 +1,8 @@
 package skillbill.db.telemetry
 
 import skillbill.contracts.JsonSupport
+import java.time.Instant
+import java.time.temporal.ChronoUnit
 
 private fun parseAgentIdArray(rawValue: String, workflowId: String): List<Any?> {
   if (rawValue.isBlank()) return emptyList()
@@ -44,10 +46,31 @@ fun goalFinishedPayload(row: Map<String, Any?>, level: String): Map<String, Any?
   "subtasks_complete" to row.intOrZero("subtasks_complete"),
   "subtasks_blocked" to row.intOrZero("subtasks_blocked"),
   "subtasks_skipped" to row.intOrZero("subtasks_skipped"),
+  "stop_reason" to row["stop_reason"]?.toString(),
 ).apply {
   if (level == "full") {
     put("feature_name", row.stringOrEmpty("feature_name"))
   }
+}
+
+fun goalIssueFinishedPayload(row: Map<String, Any?>, level: String): Map<String, Any?> {
+  val firstStartedAt = row.stringOrEmpty("first_started_at")
+  val finishedAt = row.stringOrEmpty("finished_at")
+  return linkedMapOf<String, Any?>(
+    "parent_workflow_id" to row.stringOrEmpty("parent_workflow_id"),
+    "issue_key" to row.stringOrEmpty("issue_key"),
+    "status" to row.stringOrEmpty("status"),
+    "subtasks_complete" to row.intOrZero("subtasks_complete"),
+    "subtasks_blocked" to row.intOrZero("subtasks_blocked"),
+    "subtasks_skipped" to row.intOrZero("subtasks_skipped"),
+    "total_invocations" to row.intOrZero("total_invocations"),
+    "total_blocks" to row.intOrZero("total_blocks"),
+    "total_resumes" to row.intOrZero("total_resumes"),
+    "first_started_at" to firstStartedAt,
+    "finished_at" to finishedAt,
+    "duration_ms" to durationBetweenMillis(firstStartedAt, finishedAt),
+    "mode" to row.stringOrEmpty("mode"),
+  )
 }
 
 fun goalSubtaskFinishedPayload(row: Map<String, Any?>, level: String): Map<String, Any?> = linkedMapOf<String, Any?>(
@@ -72,3 +95,7 @@ fun goalSubtaskFinishedPayload(row: Map<String, Any?>, level: String): Map<Strin
     put("boundary_history_value", row.stringOrEmpty("boundary_history_value").ifBlank { "none" })
   }
 }
+
+private fun durationBetweenMillis(startedAt: String, finishedAt: String): Long = runCatching {
+  ChronoUnit.MILLIS.between(Instant.parse(startedAt), Instant.parse(finishedAt)).coerceAtLeast(0)
+}.getOrDefault(0)

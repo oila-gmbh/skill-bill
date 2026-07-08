@@ -23,6 +23,9 @@ internal object GoalTelemetryMigration {
     connection.createStatement().use { statement ->
       statement.execute(CREATE_GOAL_SUBTASK_EVENTS_SQL)
     }
+    connection.createStatement().use { statement ->
+      statement.execute(CREATE_GOAL_ISSUE_PROGRESS_SQL)
+    }
   }
 
   private const val CREATE_GOAL_RUN_SESSIONS_SQL: String =
@@ -62,6 +65,26 @@ internal object GoalTelemetryMigration {
       participating_agent_ids TEXT NOT NULL DEFAULT '[]',
       subtask_event_emitted_at TEXT,
       PRIMARY KEY (issue_key, subtask_id, workflow_id)
+    )
+    """
+
+  private const val CREATE_GOAL_ISSUE_PROGRESS_SQL: String =
+    """
+    CREATE TABLE IF NOT EXISTS goal_issue_progress (
+      parent_workflow_id TEXT NOT NULL,
+      issue_key TEXT NOT NULL,
+      total_invocations INTEGER NOT NULL DEFAULT 0,
+      total_blocks INTEGER NOT NULL DEFAULT 0,
+      total_resumes INTEGER NOT NULL DEFAULT 0,
+      first_started_at TEXT,
+      finished_at TEXT,
+      status TEXT,
+      subtasks_complete INTEGER,
+      subtasks_blocked INTEGER,
+      subtasks_skipped INTEGER,
+      mode TEXT NOT NULL DEFAULT 'runtime',
+      finished_event_emitted_at TEXT,
+      PRIMARY KEY (parent_workflow_id, issue_key)
     )
     """
 }

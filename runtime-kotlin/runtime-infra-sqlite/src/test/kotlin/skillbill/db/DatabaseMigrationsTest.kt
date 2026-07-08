@@ -50,9 +50,11 @@ class DatabaseMigrationsTest {
     DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
       val tables = tableColumns(connection = connection, tableName = "goal_run_sessions")
       val subtaskColumns = tableColumns(connection = connection, tableName = "goal_subtask_events")
+      val issueColumns = tableColumns(connection = connection, tableName = "goal_issue_progress")
 
       assertTrue("workflow_id" in tables, "goal_run_sessions should be created with its workflow_id key.")
       assertTrue("subtask_id" in subtaskColumns, "goal_subtask_events should be created with its subtask_id column.")
+      assertTrue("parent_workflow_id" in issueColumns, "goal_issue_progress should be created with its parent key.")
       assertNotNull(
         migrationRows(connection).singleOrNull { row -> row.version == 3 && row.name == "add-goal-telemetry-tables" },
         "Migration version 3 add-goal-telemetry-tables should be recorded.",
@@ -249,6 +251,35 @@ class DatabaseMigrationsTest {
       }
       assertEquals("[]", goalSubtaskColumnValue(connection, "participating_agent_ids"))
       assertEquals(DatabaseMigrations.migrations.size, migrationRows(connection).size)
+    }
+  }
+
+  @Test
+  fun `ensureDatabase creates goal issue progress without altering legacy goal rows`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-db-migrations").resolve("legacy-goal-issue.db")
+    createLegacyGoalSubtaskEventsDatabase(dbPath)
+    DriverManager.getConnection("jdbc:sqlite:$dbPath").use { connection ->
+      connection.createStatement().use { statement ->
+        statement.executeUpdate(
+          """
+          INSERT INTO goal_subtask_events (
+            issue_key, workflow_id, subtask_id, subtask_name, status,
+            started_at, finished_at, duration_ms, attempt_count
+          ) VALUES ('SKILL-109', 'wf-existing', 1, 'implement', 'blocked', 't0', 't1', 1000, 2)
+          """.trimIndent(),
+        )
+      }
+    }
+    val before = DriverManager.getConnection("jdbc:sqlite:$dbPath").use { connection ->
+      legacyGoalSubtaskRows(connection)
+    }
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val columns = tableColumns(connection = connection, tableName = "goal_issue_progress")
+      val after = legacyGoalSubtaskRows(connection)
+
+      assertTrue("parent_workflow_id" in columns, "goal_issue_progress must exist after startup.")
+      assertEquals(before, after, "Adding goal_issue_progress must not rewrite existing subtask rows.")
     }
   }
 
@@ -601,6 +632,32 @@ class DatabaseMigrationsTest {
         buildMap {
           while (resultSet.next()) {
             put(resultSet.getString("name"), resultSet.getString("type"))
+          }
+        }
+      }
+    }
+
+  private fun legacyGoalSubtaskRows(connection: java.sql.Connection): List<Map<String, Any?>> =
+    connection.createStatement().use { statement ->
+      statement.executeQuery(
+        """
+        SELECT issue_key, workflow_id, subtask_id, subtask_name, status,
+               started_at, finished_at, duration_ms, attempt_count, blocked_reason,
+               subtask_event_emitted_at
+        FROM goal_subtask_events
+        ORDER BY issue_key, workflow_id, subtask_id
+        """.trimIndent(),
+      ).use { resultSet ->
+        val metadata = resultSet.metaData
+        buildList {
+          while (resultSet.next()) {
+            add(
+              buildMap {
+                for (index in 1..metadata.columnCount) {
+                  put(metadata.getColumnName(index), resultSet.getObject(index))
+                }
+              },
+            )
           }
         }
       }

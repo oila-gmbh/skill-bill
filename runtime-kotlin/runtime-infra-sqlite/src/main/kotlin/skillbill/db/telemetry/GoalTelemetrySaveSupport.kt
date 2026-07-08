@@ -1,6 +1,7 @@
 package skillbill.db.telemetry
 
 import skillbill.telemetry.model.GoalFinishedRecord
+import skillbill.telemetry.model.GoalIssueFinishedRecord
 import skillbill.telemetry.model.GoalStartedRecord
 import skillbill.telemetry.model.GoalSubtaskFinishedRecord
 import java.sql.Connection
@@ -77,7 +78,8 @@ private fun updateGoalFinished(connection: Connection, record: GoalFinishedRecor
       subtasks_complete = ?,
       subtasks_blocked = ?,
       subtasks_skipped = ?,
-      mode = ?
+      mode = ?,
+      stop_reason = ?
     WHERE workflow_id = ?
     """.trimIndent(),
   ).use { statement ->
@@ -91,6 +93,7 @@ private fun updateGoalFinished(connection: Connection, record: GoalFinishedRecor
       record.subtasksBlocked,
       record.subtasksSkipped,
       record.mode,
+      record.stopReason,
       record.workflowId,
     )
     statement.executeUpdate()
@@ -102,8 +105,8 @@ private fun insertGoalFinished(connection: Connection, record: GoalFinishedRecor
     """
     INSERT INTO goal_run_sessions (
       workflow_id, issue_key, started_at, status, finished_at,
-      finished_duration_ms, subtasks_complete, subtasks_blocked, subtasks_skipped, mode
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      finished_duration_ms, subtasks_complete, subtasks_blocked, subtasks_skipped, mode, stop_reason
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """.trimIndent(),
   ).use { statement ->
     statement.bind(
@@ -116,6 +119,76 @@ private fun insertGoalFinished(connection: Connection, record: GoalFinishedRecor
       record.subtasksComplete,
       record.subtasksBlocked,
       record.subtasksSkipped,
+      record.mode,
+      record.stopReason,
+    )
+    statement.executeUpdate()
+  }
+}
+
+fun recordGoalIssueSegmentStarted(
+  connection: Connection,
+  parentWorkflowId: String,
+  issueKey: String,
+  startedAt: String,
+  resumed: Boolean,
+  mode: String,
+) {
+  connection.prepareStatement(
+    """
+    INSERT INTO goal_issue_progress (
+      parent_workflow_id, issue_key, total_invocations, total_resumes, first_started_at, mode
+    ) VALUES (?, ?, 1, ?, ?, ?)
+    ON CONFLICT(parent_workflow_id, issue_key) DO UPDATE SET
+      total_invocations = goal_issue_progress.total_invocations + 1,
+      total_resumes = goal_issue_progress.total_resumes + excluded.total_resumes,
+      first_started_at = COALESCE(goal_issue_progress.first_started_at, excluded.first_started_at),
+      mode = excluded.mode
+    """.trimIndent(),
+  ).use { statement ->
+    statement.bind(parentWorkflowId, issueKey, resumed.toSqlInt(), startedAt, mode)
+    statement.executeUpdate()
+  }
+}
+
+fun recordGoalIssueBlockedSegment(connection: Connection, parentWorkflowId: String, issueKey: String) {
+  connection.prepareStatement(
+    """
+    UPDATE goal_issue_progress
+    SET total_blocks = total_blocks + 1
+    WHERE parent_workflow_id = ? AND issue_key = ?
+    """.trimIndent(),
+  ).use { statement ->
+    statement.bind(parentWorkflowId, issueKey)
+    statement.executeUpdate()
+  }
+}
+
+fun saveGoalIssueFinished(connection: Connection, record: GoalIssueFinishedRecord) {
+  connection.prepareStatement(
+    """
+    INSERT INTO goal_issue_progress (
+      parent_workflow_id, issue_key, status, subtasks_complete, subtasks_blocked,
+      subtasks_skipped, finished_at, mode
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(parent_workflow_id, issue_key) DO UPDATE SET
+      status = excluded.status,
+      subtasks_complete = excluded.subtasks_complete,
+      subtasks_blocked = excluded.subtasks_blocked,
+      subtasks_skipped = excluded.subtasks_skipped,
+      finished_at = excluded.finished_at,
+      mode = excluded.mode
+    WHERE goal_issue_progress.finished_event_emitted_at IS NULL
+    """.trimIndent(),
+  ).use { statement ->
+    statement.bind(
+      record.parentWorkflowId,
+      record.issueKey,
+      record.status,
+      record.subtasksComplete,
+      record.subtasksBlocked,
+      record.subtasksSkipped,
+      record.finishedAt,
       record.mode,
     )
     statement.executeUpdate()

@@ -132,6 +132,7 @@ data class GoalStartedRequest(
   val resumed: Boolean,
   val startedAt: String,
   val mode: String,
+  val parentWorkflowId: String? = null,
 )
 
 data class GoalSubtaskFinishedRequest(
@@ -159,5 +160,18 @@ data class GoalFinishedRequest(
   val subtasksComplete: Int,
   val subtasksBlocked: Int,
   val subtasksSkipped: Int,
+  val mode: String,
+  val stopReason: String? = null,
+  val parentWorkflowId: String? = null,
+)
+
+data class GoalIssueFinishedRequest(
+  val issueKey: String,
+  val parentWorkflowId: String,
+  val status: String,
+  val subtasksComplete: Int,
+  val subtasksBlocked: Int,
+  val subtasksSkipped: Int,
+  val finishedAt: String,
   val mode: String,
 )

@@ -1973,6 +1973,7 @@ class RuntimeArchitectureTest {
       "skillbill.application.telemetry.LifecycleTelemetryService.goalStarted",
       "skillbill.application.telemetry.LifecycleTelemetryService.goalSubtaskFinished",
       "skillbill.application.telemetry.LifecycleTelemetryService.goalFinished",
+      "skillbill.application.telemetry.LifecycleTelemetryService.goalIssueFinished",
       "skillbill.workflow.WorkflowEngine.continueDecision",
       "skillbill.learnings.learningPayload",
       "skillbill.learnings.learningSummaryPayload",
