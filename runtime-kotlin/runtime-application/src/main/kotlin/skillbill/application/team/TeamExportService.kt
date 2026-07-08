@@ -38,9 +38,6 @@ class TeamExportService(
 ) {
   fun export(request: TeamExportRequest): TeamExportResult {
     val repoRoot = request.repoRoot.toAbsolutePath().normalize()
-    require(request.outputPath != null || request.registryRoot != null || request.dryRun) {
-      "team export requires --output, --registry, or --dry-run."
-    }
     val validation = repoValidationService.validateRepo(repoRoot)
     if (!validation.passed) {
       throw TeamExportException("Repository validation failed: ${validation.issues.joinToString("; ")}")
@@ -48,22 +45,23 @@ class TeamExportService(
 
     val sources = collectSources(repoRoot)
     val bundleId = "team-${request.channel.wireValue}-${request.version}"
+    val outputPath = request.outputPath
+      ?: if (request.registryRoot == null) defaultOutputPath(repoRoot, bundleId) else null
     val contentHash = contentHash(request, bundleId, sources)
     val metadataWithoutChecksum = bundleMetadata(request, bundleId, contentHash, "sha256:pending", sources)
     teamBundleValidator.validate(metadataWithoutChecksum, "team-bundle-metadata", repoRoot)
     val archiveWithoutChecksum = archiveBytes(metadataWithoutChecksum, sources, repoRoot)
-    val checksum = sha256(archiveWithoutChecksum)
-    val metadata = bundleMetadata(request, bundleId, contentHash, checksum, sources)
-    teamBundleValidator.validate(metadata, "team-bundle-metadata", repoRoot)
-    val archive = archiveBytes(metadata, sources, repoRoot)
-    val finalChecksum = sha256(archive)
-    val finalMetadata = bundleMetadata(request, bundleId, contentHash, finalChecksum, sources)
-    teamBundleValidator.validate(finalMetadata, "team-bundle-metadata", repoRoot)
-    val finalArchive = archiveBytes(finalMetadata, sources, repoRoot)
-    val verifiedChecksum = sha256(finalArchive)
+    val embeddedMetadata = bundleMetadata(request, bundleId, contentHash, sha256(archiveWithoutChecksum), sources)
+    teamBundleValidator.validate(embeddedMetadata, "team-bundle-metadata", repoRoot)
+    val archive = archiveBytes(embeddedMetadata, sources, repoRoot)
+    val archiveChecksum = sha256(archive)
+    val sidecarMetadata = bundleMetadata(request, bundleId, contentHash, archiveChecksum, sources)
+    teamBundleValidator.validate(sidecarMetadata, "team-bundle-sidecar-metadata", repoRoot)
 
     val directBundlePath = if (!request.dryRun) {
-      request.outputPath?.toAbsolutePath()?.normalize()?.also { writeArchive(it, finalArchive) }
+      outputPath?.toAbsolutePath()?.normalize()?.also {
+        writeDirectBundle(it, archive, sidecarMetadata, archiveChecksum)
+      }
     } else {
       null
     }
@@ -73,9 +71,9 @@ class TeamExportService(
           registryRoot = it.toAbsolutePath().normalize(),
           request = request,
           bundleId = bundleId,
-          archive = finalArchive,
-          metadata = finalMetadata,
-          checksum = verifiedChecksum,
+          archive = archive,
+          metadata = sidecarMetadata,
+          checksum = archiveChecksum,
         )
       }
     } else {
@@ -88,7 +86,7 @@ class TeamExportService(
       version = request.version,
       channel = request.channel,
       contentHash = contentHash,
-      checksum = verifiedChecksum,
+      checksum = archiveChecksum,
       sourceRef = request.sourceRef,
       validationSummary = validation.toSummary(),
       registryDestination = registryDestination,
@@ -113,6 +111,9 @@ class TeamExportService(
     )
     return candidates.distinctBy { it.path }.sortedBy { it.path }
   }
+
+  private fun defaultOutputPath(repoRoot: Path, bundleId: String): Path =
+    repoRoot.resolve("dist").resolve("$bundleId.zip")
 
   private fun collectSkillSources(repoRoot: Path, candidates: MutableList<CollectedSource>) {
     val skillsRoot = repoRoot.resolve("skills")
@@ -273,12 +274,27 @@ class TeamExportService(
     closeEntry()
   }
 
-  private fun writeArchive(path: Path, bytes: ByteArray) {
+  private fun writeDirectBundle(
+    path: Path,
+    archive: ByteArray,
+    metadata: Map<String, Any?>,
+    checksum: String,
+  ) {
+    writeFileAtomically(path, archive)
+    writeStringAtomically(path.resolveSibling("${path.name}.json"), JsonSupport.mapToJsonString(metadata) + "\n")
+    writeStringAtomically(path.resolveSibling("${path.name}.sha256"), "$checksum  ${path.name}\n")
+  }
+
+  private fun writeStringAtomically(path: Path, content: String) {
+    writeFileAtomically(path, content.toByteArray(Charsets.UTF_8))
+  }
+
+  private fun writeFileAtomically(path: Path, bytes: ByteArray) {
     Files.createDirectories(path.parent ?: Path.of("."))
     val temp = Files.createTempFile(path.parent ?: Path.of("."), ".${path.name}.", ".tmp")
     try {
       Files.write(temp, bytes)
-      moveAtomically(temp, path)
+      moveFileAtomically(temp, path)
     } finally {
       Files.deleteIfExists(temp)
     }
@@ -305,7 +321,7 @@ class TeamExportService(
       if (request.failAfterRegistryTempWrite) {
         throw TeamExportException("Injected registry publish failure.")
       }
-      moveAtomically(tempDir, finalDir)
+      moveDirectoryAtomically(tempDir, finalDir)
       return TeamExportRegistryDestination(finalDir, request.channel.wireValue, request.version, bundleId)
     } catch (error: Exception) {
       deleteRecursively(tempDir)
@@ -313,11 +329,19 @@ class TeamExportService(
     }
   }
 
-  private fun moveAtomically(source: Path, target: Path) {
+  private fun moveFileAtomically(source: Path, target: Path) {
     try {
       Files.move(source, target, StandardCopyOption.ATOMIC_MOVE)
     } catch (_: AtomicMoveNotSupportedException) {
       Files.move(source, target)
+    }
+  }
+
+  private fun moveDirectoryAtomically(source: Path, target: Path) {
+    try {
+      Files.move(source, target, StandardCopyOption.ATOMIC_MOVE)
+    } catch (error: AtomicMoveNotSupportedException) {
+      throw TeamExportException("Atomic registry publish is not supported for $target.", error)
     }
   }
 

@@ -16,6 +16,7 @@ import skillbill.team.model.TeamBundleChannel
 import skillbill.team.model.TeamExportRequest
 import java.nio.file.Files
 import java.nio.file.Path
+import java.security.MessageDigest
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
@@ -43,6 +44,30 @@ class TeamExportRuntimeTest {
     assertEquals(first.sourceEntryHashes, second.sourceEntryHashes)
     assertContentEquals(Files.readAllBytes(first.bundlePath), Files.readAllBytes(second.bundlePath))
     assertTrue(first.sourceEntryHashes.any { it.path == "skills/bill-demo/content.md" })
+  }
+
+  @Test
+  fun `export without explicit output or registry writes default publishable archive`() {
+    val repo = writeGovernedRepoFixture()
+    val result = teamExportService().export(exportRequest(repo))
+
+    val bundlePath = assertNotNull(result.bundlePath)
+    assertEquals(repo.resolve("dist/team-preview-1.2.3.zip"), bundlePath)
+    assertTrue(Files.isRegularFile(bundlePath))
+  }
+
+  @Test
+  fun `direct output writes sidecar metadata and checksum for the archive bytes`() {
+    val repo = writeGovernedRepoFixture()
+    val output = repo.resolve("dist/bundle.zip")
+    val result = teamExportService().export(exportRequest(repo, outputPath = output))
+
+    val checksum = sha256(Files.readAllBytes(output))
+    val sidecarMetadata = decodeJsonObject(Files.readString(output.resolveSibling("bundle.zip.json")))
+
+    assertEquals(checksum, result.checksum)
+    assertEquals(checksum, sidecarMetadata["bundle_checksum"])
+    assertContains(Files.readString(output.resolveSibling("bundle.zip.sha256")), checksum)
   }
 
   @Test
@@ -231,6 +256,11 @@ class TeamExportRuntimeTest {
     val positions = keys.map { key -> raw.indexOf("\"$key\"") }
     assertTrue(positions.all { it >= 0 }, raw)
     assertEquals(positions.sorted(), positions)
+  }
+
+  private fun sha256(bytes: ByteArray): String {
+    val digest = MessageDigest.getInstance("SHA-256").digest(bytes)
+    return "sha256:" + digest.joinToString("") { "%02x".format(it) }
   }
 
   private fun repositoryRoot(): Path {
