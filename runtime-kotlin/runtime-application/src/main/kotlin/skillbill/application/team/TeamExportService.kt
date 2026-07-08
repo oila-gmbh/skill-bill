@@ -57,33 +57,8 @@ class TeamExportService(
     val embeddedMetadataJson = JsonSupport.mapToJsonString(embeddedMetadata)
     val archive = gatewayCall { fileGateway.archiveBytes(embeddedMetadataJson, sources, repoRoot) }
 
-    val directBundlePath = if (!request.dryRun) {
-      outputPath?.toAbsolutePath()?.normalize()?.also {
-        gatewayCall { fileGateway.writeDirectBundle(it, archive, embeddedMetadataJson, metadataChecksum) }
-      }
-    } else {
-      null
-    }
-    val registryDestination = if (!request.dryRun) {
-      request.registryRoot?.let {
-        gatewayCall {
-          fileGateway.publishRegistry(
-            TeamExportRegistryPublishRequest(
-              registryRoot = it.toAbsolutePath().normalize(),
-              channel = request.channel.wireValue,
-              version = request.version,
-              bundleId = bundleId,
-              archive = archive,
-              metadataJson = embeddedMetadataJson,
-              checksum = metadataChecksum,
-              failAfterTempWrite = request.failAfterRegistryTempWrite,
-            ),
-          )
-        }
-      }
-    } else {
-      null
-    }
+    val directBundlePath = writeDirectBundle(request, outputPath, archive, embeddedMetadataJson, metadataChecksum)
+    val registryDestination = publishRegistry(request, bundleId, archive, embeddedMetadataJson, metadataChecksum)
 
     return TeamExportResult(
       bundlePath = directBundlePath ?: registryDestination?.path?.resolve("bundle.zip"),
@@ -116,6 +91,46 @@ class TeamExportService(
 
   private fun defaultOutputPath(repoRoot: Path, bundleId: String): Path =
     repoRoot.resolve("dist").resolve("$bundleId.zip")
+
+  private fun writeDirectBundle(
+    request: TeamExportRequest,
+    outputPath: Path?,
+    archive: ByteArray,
+    metadataJson: String,
+    checksum: String,
+  ): Path? {
+    if (request.dryRun) return null
+    return outputPath?.toAbsolutePath()?.normalize()?.also { path ->
+      gatewayCall { fileGateway.writeDirectBundle(path, archive, metadataJson, checksum) }
+    }
+  }
+
+  private fun publishRegistry(
+    request: TeamExportRequest,
+    bundleId: String,
+    archive: ByteArray,
+    metadataJson: String,
+    checksum: String,
+  ) = if (request.dryRun) {
+    null
+  } else {
+    request.registryRoot?.let { registryRoot ->
+      gatewayCall {
+        fileGateway.publishRegistry(
+          TeamExportRegistryPublishRequest(
+            registryRoot = registryRoot.toAbsolutePath().normalize(),
+            channel = request.channel.wireValue,
+            version = request.version,
+            bundleId = bundleId,
+            archive = archive,
+            metadataJson = metadataJson,
+            checksum = checksum,
+            failAfterTempWrite = request.failAfterRegistryTempWrite,
+          ),
+        )
+      }
+    }
+  }
 
   private fun bundleMetadata(
     request: TeamExportRequest,

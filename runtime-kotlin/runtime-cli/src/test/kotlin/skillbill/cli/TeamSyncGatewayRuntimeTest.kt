@@ -6,10 +6,15 @@ import skillbill.application.install.InstallService
 import skillbill.application.scaffold.RepoValidationService
 import skillbill.application.team.TeamExportService
 import skillbill.application.team.TeamSyncService
-import skillbill.error.InvalidTeamBundleSchemaError
+import skillbill.application.team.TeamSyncServiceDependencies
 import skillbill.error.GeneratedTeamBundleArtifactEntryError
 import skillbill.error.InvalidTeamBundleChecksumError
+import skillbill.error.InvalidTeamBundleSchemaError
+import skillbill.error.TeamBundleRollbackIncompleteError
 import skillbill.error.TeamBundleSyncInstallFailedError
+import skillbill.infrastructure.fs.FileSystemTeamBundleSyncGateway
+import skillbill.infrastructure.fs.FileSystemTeamExportFileGateway
+import skillbill.infrastructure.fs.TeamBundleValidatorAdapter
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.InstallAgentSelection
 import skillbill.install.model.InstallAgentSelectionMode
@@ -41,9 +46,6 @@ import skillbill.install.model.WindowsSymlinkDecision
 import skillbill.install.model.WindowsSymlinkFallbackState
 import skillbill.install.model.WindowsSymlinkPreflight
 import skillbill.install.model.WindowsSymlinkPreflightState
-import skillbill.infrastructure.fs.FileSystemTeamBundleSyncGateway
-import skillbill.infrastructure.fs.FileSystemTeamExportFileGateway
-import skillbill.infrastructure.fs.TeamBundleValidatorAdapter
 import skillbill.ports.install.apply.InstallApplyExecutionPort
 import skillbill.ports.install.apply.model.InstallApplyExecutionRequest
 import skillbill.ports.install.apply.model.InstallApplyExecutionResult
@@ -73,14 +75,15 @@ import skillbill.ports.install.selection.model.ReadLatestSuccessfulInstallSelect
 import skillbill.ports.install.selection.model.WriteLatestSuccessfulInstallSelectionRequest
 import skillbill.ports.install.selection.model.WriteLatestSuccessfulInstallSelectionResult
 import skillbill.ports.team.TeamBundleArchiveGateway
+import skillbill.ports.team.model.TeamBundleCandidate
 import skillbill.ports.team.model.TeamBundleExtractionRequest
 import skillbill.ports.team.model.TeamBundleStateReadRequest
 import skillbill.ports.team.model.TeamRegistryResolveRequest
-import skillbill.ports.team.model.TeamBundleCandidate
 import skillbill.ports.validation.RepoValidationGateway
 import skillbill.ports.validation.model.ReleaseRefMetadata
 import skillbill.ports.validation.model.RepoValidationReport
 import skillbill.team.model.TeamBundleChannel
+import skillbill.team.model.TeamBundleVerificationSummary
 import skillbill.team.model.TeamExportRequest
 import skillbill.team.model.TeamRollbackRequest
 import skillbill.team.model.TeamSyncRequest
@@ -94,8 +97,8 @@ import java.util.zip.CRC32
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
 import java.util.zip.ZipOutputStream
-import kotlin.io.path.deleteIfExists
 import kotlin.io.path.createDirectories
+import kotlin.io.path.deleteIfExists
 import kotlin.io.path.writeText
 import kotlin.test.Test
 import kotlin.test.assertContains
@@ -149,7 +152,9 @@ class TeamSyncGatewayRuntimeTest {
   fun `sync rejects stale bundle contract version before install mutation`() {
     val bundle = exportBundle("1.0.0")
     val stale = bundle.resolveSibling("stale-contract.zip")
-    rewriteBundleJson(bundle, stale) { raw -> raw.replace("\"contract_version\":\"0.1\"", "\"contract_version\":\"9.9\"") }
+    rewriteBundleJson(bundle, stale) { raw ->
+      raw.replace("\"contract_version\":\"0.1\"", "\"contract_version\":\"9.9\"")
+    }
     val service = syncService(SequenceApplyExecutionPort(emptyList()))
 
     assertFailsWith<InvalidTeamBundleSchemaError> {
@@ -211,6 +216,22 @@ class TeamSyncGatewayRuntimeTest {
   }
 
   @Test
+  fun `sync install failure without previous state reports rollback incomplete`() {
+    val bundle = exportBundle("1.0.0")
+    val applyPort = SequenceApplyExecutionPort(listOf(InstallApplyStatus.FAILURE))
+    val service = syncService(applyPort)
+    val home = Files.createTempDirectory("team-sync-home")
+
+    val error = assertFailsWith<TeamBundleRollbackIncompleteError> {
+      service.sync(syncRequest(bundle, home))
+    }
+
+    assertContains(error.message.orEmpty(), "no previous team bundle state")
+    assertEquals(1, applyPort.applyCount)
+    assertEquals(null, gateway.read(TeamBundleStateReadRequest(home)))
+  }
+
+  @Test
   fun `rollback restores previous bundle through sync install path`() {
     val first = exportBundle("1.0.0")
     val second = exportBundle("2.0.0")
@@ -230,11 +251,7 @@ class TeamSyncGatewayRuntimeTest {
     assertEquals(3, applyPort.applyCount)
   }
 
-  private fun exportBundle(
-    version: String,
-    registryRoot: Path? = null,
-    includePlatformPack: Boolean = false,
-  ): Path {
+  private fun exportBundle(version: String, registryRoot: Path? = null, includePlatformPack: Boolean = false): Path {
     val repo = writeGovernedRepoFixture(includePlatformPack)
     val result = teamExportService().export(
       TeamExportRequest(
@@ -297,12 +314,14 @@ class TeamSyncGatewayRuntimeTest {
     applyPort: SequenceApplyExecutionPort,
     archiveGateway: TeamBundleArchiveGateway = gateway,
   ): TeamSyncService = TeamSyncService(
-    archiveGateway = archiveGateway,
-    registryResolver = gateway,
-    statePersistence = gateway,
-    teamBundleValidator = TeamBundleValidatorAdapter(),
-    repoValidationService = RepoValidationService(FakeTeamSyncRepoValidationGateway()),
-    installService = installService(applyPort),
+    dependencies = TeamSyncServiceDependencies(
+      archiveGateway = archiveGateway,
+      registryResolver = gateway,
+      statePersistence = gateway,
+      teamBundleValidator = TeamBundleValidatorAdapter(),
+      repoValidationService = RepoValidationService(FakeTeamSyncRepoValidationGateway()),
+      installService = installService(applyPort),
+    ),
     clock = Clock.fixed(Instant.parse("2026-01-01T00:00:00Z"), ZoneOffset.UTC),
   )
 
@@ -402,6 +421,11 @@ class TeamSyncGatewayRuntimeTest {
 
     override fun extractCandidate(request: TeamBundleExtractionRequest): Path =
       delegate.extractCandidate(request).also(mutate)
+
+    override fun verifyExtractedSources(
+      bundle: skillbill.team.model.TeamBundle,
+      sourceRoot: Path,
+    ): TeamBundleVerificationSummary = delegate.verifyExtractedSources(bundle, sourceRoot)
 
     override fun cacheBundle(source: Path, home: Path, bundleId: String, checksum: String): Path =
       delegate.cacheBundle(source, home, bundleId, checksum)

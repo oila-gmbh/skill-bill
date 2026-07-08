@@ -83,6 +83,22 @@ class TeamBundleSourceValidatorTest {
   }
 
   @Test
+  fun `root support sources required by repo validation are accepted`() {
+    val root = Files.createTempDirectory("team-bundle-source")
+    root.resolve(".agents").createDirectories()
+    root.resolve("README.md").writeText("# Skill Bill\n")
+    root.resolve(".agents/skill-overrides.example.md").writeText("# Overrides\n")
+
+    listOf("README.md", ".agents/skill-overrides.example.md").forEach { path ->
+      TeamBundleSourceValidator.validateSources(
+        bundle("orchestration_contract_or_support", path),
+        root,
+        "bundle.yaml",
+      )
+    }
+  }
+
+  @Test
   fun `provider native output directories are rejected`() {
     val root = Files.createTempDirectory("team-bundle-source")
     root.resolve("skills/bill-demo/claude-agents").createDirectories()

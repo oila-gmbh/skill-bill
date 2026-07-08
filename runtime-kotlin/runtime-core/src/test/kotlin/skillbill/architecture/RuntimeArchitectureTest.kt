@@ -1883,6 +1883,12 @@ class RuntimeArchitectureTest {
       "skillbill.team.model.TeamExportValidationSummary.toPayload",
       "skillbill.team.model.TeamExportRegistryDestination.toPayload",
       "skillbill.team.model.TeamExportResult.toPayload",
+      "skillbill.ports.team.model.TeamBundleCandidate.metadata",
+      "skillbill.team.model.TeamBundleVerificationSummary.toPayload",
+      "skillbill.team.model.InstalledTeamBundleRecord.toPayload",
+      "skillbill.team.model.TeamSyncResult.toPayload",
+      "skillbill.team.model.TeamRollbackResult.toPayload",
+      "skillbill.team.model.TeamStatusResult.toPayload",
       // SKILL-52.3 subtask 4: domain-owned manifest file-store port. The YAML
       // serialization seam accepts the canonical schema-validated wire map and
       // delegates the concrete `YAMLMapper` mechanics to the infra-fs adapter,

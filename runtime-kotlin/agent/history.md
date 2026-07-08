@@ -1,3 +1,12 @@
+## [2026-07-08] SKILL-108 subtask 3 team sync install and rollback
+Areas: runtime-kotlin/runtime-application/team, runtime-kotlin/runtime-ports/team, runtime-kotlin/runtime-infra-fs/team sync+export, runtime-kotlin/runtime-cli/team, runtime-kotlin/runtime-core DI, runtime-kotlin/architecture
+- Team sync now verifies extracted governed source through the TeamBundleArchiveGateway port before mutating, keeping application code out of direct filesystem reads and preserving loud validation failures. reusable
+- Post-apply install failures route through rollback handling; if no previous bundle state exists, sync reports a typed rollback-incomplete error instead of claiming recovery. reusable
+- Team export includes contract schemas, skill-class manifests, support-pointer targets, and root repo-validation support files so scratch sync installs core slash commands through the normal render/install/staging path.
+- Architecture open-boundary inventory and tests cover team sync metadata and CLI payload map seams; new raw-map seams need ARCHITECTURE.md plus parity-test updates together.
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
 ## [2026-07-08] SKILL-108 subtask 2 team export CLI and local registry
 Areas: runtime-kotlin/runtime-application/team, runtime-kotlin/runtime-ports/team, runtime-kotlin/runtime-infra-fs/team export, runtime-kotlin/runtime-cli/team, runtime-kotlin/runtime-domain/team
 - Team export now delegates filesystem source collection, deterministic archive creation, checksums, and atomic local-registry writes through a runtime-ports gateway with infra-fs ownership. reusable

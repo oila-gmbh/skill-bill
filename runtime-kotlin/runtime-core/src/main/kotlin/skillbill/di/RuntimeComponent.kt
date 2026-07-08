@@ -73,8 +73,8 @@ import skillbill.infrastructure.fs.FileSystemScaffoldRepoValidation
 import skillbill.infrastructure.fs.FileSystemScaffoldSourceLoader
 import skillbill.infrastructure.fs.FileSystemSkillRemoveFileSystem
 import skillbill.infrastructure.fs.FileSystemSpecScratchStore
-import skillbill.infrastructure.fs.FileSystemTeamExportFileGateway
 import skillbill.infrastructure.fs.FileSystemTeamBundleSyncGateway
+import skillbill.infrastructure.fs.FileSystemTeamExportFileGateway
 import skillbill.infrastructure.fs.FileSystemUninstallFileSystemGateway
 import skillbill.infrastructure.fs.FileSystemUnsupportedScaffoldGateway
 import skillbill.infrastructure.fs.FileTelemetryConfigStore
@@ -139,10 +139,10 @@ import skillbill.ports.scaffold.staging.ScaffoldGeneratedStagingPort
 import skillbill.ports.system.UninstallFileSystemGateway
 import skillbill.ports.taskruntime.FeatureTaskRuntimeRunInvariantsSource
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSpecStatusWriter
-import skillbill.ports.team.TeamExportFileGateway
 import skillbill.ports.team.TeamBundleArchiveGateway
 import skillbill.ports.team.TeamBundleRegistryResolver
 import skillbill.ports.team.TeamBundleStatePersistence
+import skillbill.ports.team.TeamExportFileGateway
 import skillbill.ports.telemetry.TelemetryClient
 import skillbill.ports.telemetry.TelemetryConfigStore
 import skillbill.ports.telemetry.TelemetryLevelMutator
@@ -434,11 +434,13 @@ abstract class RuntimeComponent(
 
   @Provides
   @JvmSynthetic
-  internal fun teamBundleRegistryResolver(adapter: FileSystemTeamBundleSyncGateway): TeamBundleRegistryResolver = adapter
+  internal fun teamBundleRegistryResolver(adapter: FileSystemTeamBundleSyncGateway): TeamBundleRegistryResolver =
+    adapter
 
   @Provides
   @JvmSynthetic
-  internal fun teamBundleStatePersistence(adapter: FileSystemTeamBundleSyncGateway): TeamBundleStatePersistence = adapter
+  internal fun teamBundleStatePersistence(adapter: FileSystemTeamBundleSyncGateway): TeamBundleStatePersistence =
+    adapter
 
   @Provides
   @JvmSynthetic

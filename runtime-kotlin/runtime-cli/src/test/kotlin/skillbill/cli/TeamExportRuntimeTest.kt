@@ -141,13 +141,68 @@ class TeamExportRuntimeTest {
 
     TeamBundleValidatorAdapter().validate(metadata, "bundle.json", repo)
     assertEquals(result.contentHash, metadata["content_hash"])
-    assertEquals(
-      listOf(
-        "orchestration/contracts/team-bundle-schema.yaml",
-        "skills/bill-demo/content.md",
-      ),
-      (metadata["sources"] as List<*>).map { source -> (source as Map<*, *>)["path"] },
+    val sourcePaths = (metadata["sources"] as List<*>).map { source -> (source as Map<*, *>)["path"] }
+    assertTrue(sourcePaths.contains("orchestration/contracts/team-bundle-schema.yaml"))
+    assertTrue(sourcePaths.contains("skills/bill-demo/content.md"))
+  }
+
+  @Test
+  fun `export collects core orchestration support sources required by rendered slash commands`() {
+    val sourcePaths = FileSystemTeamExportFileGateway().collectSources(repositoryRoot()).map { it.path }
+
+    listOf(
+      "orchestration/review-scope/PLAYBOOK.md",
+      "orchestration/stack-routing/PLAYBOOK.md",
+      "orchestration/review-orchestrator/PLAYBOOK.md",
+      "orchestration/review-orchestrator/specialist-contract.md",
+      "orchestration/review-delegation/PLAYBOOK.md",
+      "orchestration/telemetry-contract/PLAYBOOK.md",
+      "orchestration/shell-content-contract/PLAYBOOK.md",
+      "orchestration/shell-content-contract/shell-ceremony.md",
+      "orchestration/shell-content-contract/peak-hours-warner.md",
+      "orchestration/skill-classes/feature-task.yaml",
+      "orchestration/skill-classes/code-review-shell.yaml",
+      "orchestration/skill-classes/quality-check-shell.yaml",
+      "README.md",
+      ".agents/skill-overrides.example.md",
+    ).forEach { path ->
+      assertTrue(sourcePaths.contains(path), "missing exported source $path")
+    }
+  }
+
+  @Test
+  fun `scratch sync installs exported core slash commands and rolls back`() {
+    val repo = repositoryRoot()
+    val home = Files.createTempDirectory("team-sync-scratch-home")
+    val target = home.resolve("codex-skills")
+    val firstBundle = home.resolve("bundles/team-1.0.0.zip")
+    val secondBundle = home.resolve("bundles/team-2.0.0.zip")
+
+    assertEquals(0, exportBundleFromRepo(repo, firstBundle, "1.0.0").exitCode)
+    assertEquals(0, exportBundleFromRepo(repo, secondBundle, "2.0.0").exitCode)
+
+    val firstSync = runTeamSync(home, target, firstBundle)
+    assertEquals(0, firstSync.exitCode, firstSync.stdout)
+    val secondSync = runTeamSync(home, target, secondBundle)
+    assertEquals(0, secondSync.exitCode, secondSync.stdout)
+
+    listOf("bill-feature", "bill-code-review", "bill-code-check").forEach { skill ->
+      assertTrue(Files.exists(target.resolve(skill)), "missing installed command $skill")
+    }
+
+    val rollback = CliRuntime.run(
+      listOf("--home", home.toString(), "team", "rollback") + teamInstallArgs(target) + listOf("--format", "json"),
+      CliRuntimeContext(userHome = home, environment = emptyMap()),
     )
+    assertEquals(0, rollback.exitCode, rollback.stdout)
+    val payload = decodeJsonObject(rollback.stdout)
+    val restored = payload["restored"] as Map<*, *>
+    val replaced = payload["replaced"] as Map<*, *>
+    assertEquals("1.0.0", restored["version"])
+    assertEquals("2.0.0", replaced["version"])
+    listOf("bill-feature", "bill-code-review", "bill-code-check").forEach { skill ->
+      assertTrue(Files.exists(target.resolve(skill)), "missing restored command $skill")
+    }
   }
 
   @Test
@@ -419,6 +474,54 @@ class TeamExportRuntimeTest {
     val raw = zip.getInputStream(entry).bufferedReader().use { it.readText() }
     decodeJsonObject(raw)
   }
+
+  private fun exportBundleFromRepo(repo: Path, output: Path, version: String) = CliRuntime.run(
+    listOf(
+      "team",
+      "export",
+      "--repo-root",
+      repo.toString(),
+      "--version",
+      version,
+      "--channel",
+      "beta",
+      "--output",
+      output.toString(),
+      "--created-at",
+      "2026-01-01T00:00:00Z",
+      "--created-by",
+      "test",
+      "--source-repo",
+      "local",
+      "--source-ref",
+      "refs/heads/test",
+      "--format",
+      "json",
+    ),
+    CliRuntimeContext(environment = emptyMap()),
+  )
+
+  private fun runTeamSync(home: Path, target: Path, bundle: Path) = CliRuntime.run(
+    listOf("--home", home.toString(), "team", "sync", bundle.toString()) +
+      teamInstallArgs(target) +
+      listOf("--format", "json"),
+    CliRuntimeContext(userHome = home, environment = emptyMap()),
+  )
+
+  private fun teamInstallArgs(target: Path): List<String> = listOf(
+    "--agent-mode",
+    "manual",
+    "--agent",
+    "codex",
+    "--agent-target",
+    "codex=$target",
+    "--platform-mode",
+    "none",
+    "--telemetry",
+    "off",
+    "--mcp",
+    "skip",
+  )
 
   private fun assertBundleChecksumConsistency(
     result: TeamExportResult,

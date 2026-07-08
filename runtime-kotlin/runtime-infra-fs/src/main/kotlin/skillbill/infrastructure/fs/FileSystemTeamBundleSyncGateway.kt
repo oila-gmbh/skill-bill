@@ -8,6 +8,7 @@ import skillbill.contracts.team.TeamBundleSchemaValidator
 import skillbill.error.GeneratedTeamBundleArtifactEntryError
 import skillbill.error.InvalidTeamBundleChecksumError
 import skillbill.error.MissingPreviousTeamBundleSourceError
+import skillbill.error.TeamBundleContentHashMismatchError
 import skillbill.ports.team.TeamBundleArchiveGateway
 import skillbill.ports.team.TeamBundleGatewayException
 import skillbill.ports.team.TeamBundleRegistryResolver
@@ -19,9 +20,12 @@ import skillbill.ports.team.model.TeamBundleStateWriteRequest
 import skillbill.ports.team.model.TeamRegistryResolveRequest
 import skillbill.team.model.InstalledTeamBundleRecord
 import skillbill.team.model.TeamBundle
+import skillbill.team.model.TeamBundleContentHashInput
 import skillbill.team.model.TeamBundleHashing
 import skillbill.team.model.TeamBundleParser
 import skillbill.team.model.TeamBundleSourceEntry
+import skillbill.team.model.TeamBundleSourceHash
+import skillbill.team.model.TeamBundleVerificationSummary
 import skillbill.team.model.TeamSyncSourceKind
 import java.io.ByteArrayOutputStream
 import java.nio.file.AtomicMoveNotSupportedException
@@ -73,7 +77,9 @@ class FileSystemTeamBundleSyncGateway :
       }
       require(seen.contains("bundle.json")) { "Team bundle archive is missing bundle.json." }
       val missing = declaredSourceEntries.keys - seen
-      require(missing.isEmpty()) { "Team bundle archive is missing declared source(s): ${missing.sorted().joinToString(", ")}." }
+      require(missing.isEmpty()) {
+        "Team bundle archive is missing declared source(s): ${missing.sorted().joinToString(", ")}."
+      }
       entries.filterNot(ZipEntry::isDirectory).forEach { entry ->
         val normalized = normalizedEntryName(entry.name)
         if (normalized == "bundle.json") return@forEach
@@ -86,8 +92,46 @@ class FileSystemTeamBundleSyncGateway :
     return root
   }
 
+  override fun verifyExtractedSources(bundle: TeamBundle, sourceRoot: Path): TeamBundleVerificationSummary {
+    bundle.sources.forEach { source ->
+      val actual = TeamBundleHashing.sha256(Files.readAllBytes(sourceRoot.resolve(source.path)))
+      if (actual != source.contentHash) {
+        throw TeamBundleContentHashMismatchError(bundle.metadata.bundleId, source.contentHash, actual)
+      }
+    }
+    bundle.hashes.manifestHashes.forEach { (path, expected) ->
+      val actual = TeamBundleHashing.sha256(Files.readAllBytes(sourceRoot.resolve(path)))
+      if (actual != expected) {
+        throw TeamBundleContentHashMismatchError(bundle.metadata.bundleId, expected, actual)
+      }
+    }
+    val computedContentHash = TeamBundleHashing.contentHash(
+      TeamBundleContentHashInput(
+        bundleId = bundle.metadata.bundleId,
+        version = bundle.metadata.version,
+        channel = bundle.metadata.channel,
+        createdAt = bundle.metadata.createdAt,
+        createdBy = bundle.metadata.createdBy,
+        sourceRepo = bundle.metadata.sourceRepo,
+        sourceRef = bundle.metadata.sourceRef,
+        sourceCommit = bundle.metadata.sourceCommit,
+        sources = bundle.sources.map { source -> TeamBundleSourceHash(source.path, source.contentHash) },
+      ),
+    )
+    if (computedContentHash != bundle.hashes.contentHash) {
+      throw TeamBundleContentHashMismatchError(bundle.metadata.bundleId, bundle.hashes.contentHash, computedContentHash)
+    }
+    return TeamBundleVerificationSummary(
+      checksum = bundle.hashes.bundleChecksum,
+      contentHash = bundle.hashes.contentHash,
+      sourceCount = bundle.sources.size,
+      manifestCount = bundle.hashes.manifestHashes.size,
+      sourceRoot = sourceRoot,
+    )
+  }
+
   override fun cacheBundle(source: Path, home: Path, bundleId: String, checksum: String): Path {
-    val safeChecksum = checksum.removePrefix("sha256:").take(16)
+    val safeChecksum = checksum.removePrefix("sha256:").take(SHORT_HASH_LENGTH)
     val target = stateRoot(home).resolve("bundles").resolve("$bundleId-$safeChecksum.zip")
     Files.createDirectories(target.parent)
     writeFileAtomically(target, Files.readAllBytes(source))
@@ -110,9 +154,11 @@ class FileSystemTeamBundleSyncGateway :
     if (candidates.isEmpty()) {
       throw TeamBundleGatewayException("No valid ${request.channel.wireValue} team bundle found in $channelRoot.")
     }
-    return candidates.maxWith(compareBy<TeamBundleCandidate> { versionKey(it.bundle.metadata.version) }
-      .thenBy { it.bundle.metadata.bundleId }
-      .thenBy { it.archivePath.toString() })
+    return candidates.maxWith(
+      compareBy<TeamBundleCandidate> { versionKey(it.bundle.metadata.version) }
+        .thenBy { it.bundle.metadata.bundleId }
+        .thenBy { it.archivePath.toString() },
+    )
   }
 
   override fun read(request: TeamBundleStateReadRequest): InstalledTeamBundleRecord? {
@@ -128,7 +174,8 @@ class FileSystemTeamBundleSyncGateway :
   }
 
   private fun readMetadata(archivePath: Path): Map<String, Any?> = ZipFile(archivePath.toFile()).use { zip ->
-    val entry = zip.getEntry("bundle.json") ?: throw TeamBundleGatewayException("Team bundle archive is missing bundle.json.")
+    val entry = zip.getEntry("bundle.json")
+      ?: throw TeamBundleGatewayException("Team bundle archive is missing bundle.json.")
     val raw = zip.getInputStream(entry).bufferedReader().use { it.readText() }
     JsonSupport.parseObjectOrNull(raw)
       ?.let { JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(it)) }
@@ -137,7 +184,9 @@ class FileSystemTeamBundleSyncGateway :
 
   private fun verifyArchiveChecksum(archivePath: Path, metadata: Map<String, Any?>, bundle: TeamBundle) {
     val placeholderMetadata = metadata + ("bundle_checksum" to TeamBundleHashing.BUNDLE_CHECKSUM_PLACEHOLDER)
-    val archiveChecksum = TeamBundleHashing.sha256(rebuildArchiveBytes(archivePath, placeholderMetadata, bundle.sources))
+    val archiveChecksum = TeamBundleHashing.sha256(
+      rebuildArchiveBytes(archivePath, placeholderMetadata, bundle.sources),
+    )
     if (archiveChecksum != bundle.hashes.bundleChecksum) {
       throw InvalidTeamBundleChecksumError(archivePath.toString(), bundle.hashes.bundleChecksum, archiveChecksum)
     }
@@ -177,26 +226,26 @@ class FileSystemTeamBundleSyncGateway :
   private fun validateEntryName(normalized: String, declaredSources: Map<String, TeamBundleSourceEntry>) {
     if (normalized == "bundle.json") return
     if (!normalized.startsWith("sources/")) {
-      throw GeneratedTeamBundleArtifactEntryError(normalized, "only bundle.json and declared sources/ entries are allowed.")
+      invalidBundleEntry(normalized, "only bundle.json and declared sources/ entries are allowed.")
     }
     val sourcePath = normalized.removePrefix("sources/")
     if (declaredSources[normalized] == null) {
-      throw GeneratedTeamBundleArtifactEntryError(normalized, "entry is not declared in bundle.json sources.")
+      invalidBundleEntry(normalized, "entry is not declared in bundle.json sources.")
     }
     val segments = sourcePath.split('/')
     when {
       sourcePath.endsWith("/SKILL.md") || sourcePath == "SKILL.md" ->
-        throw GeneratedTeamBundleArtifactEntryError(normalized, "generated governed SKILL.md wrappers are forbidden.")
+        invalidBundleEntry(normalized, "generated governed SKILL.md wrappers are forbidden.")
       segments.any { it in providerNativeOutputDirectories } ->
-        throw GeneratedTeamBundleArtifactEntryError(normalized, "provider-native generated output is forbidden.")
+        invalidBundleEntry(normalized, "provider-native generated output is forbidden.")
       segments.any { it in forbiddenStateOrInstallSegments } ->
-        throw GeneratedTeamBundleArtifactEntryError(normalized, "runtime state and install staging artifacts are forbidden.")
+        invalidBundleEntry(normalized, "runtime state and install staging artifacts are forbidden.")
     }
   }
 
   private fun normalizedEntryName(name: String): String {
     val normalized = Path.of(name).normalize().toString().replace('\\', '/')
-    require(normalized.isNotBlank() && !normalized.startsWith("../") && normalized != ".." && !Path.of(name).isAbsolute) {
+    require(isSafeEntryName(name, normalized)) {
       "Archive entry escapes the bundle root: $name"
     }
     return normalized
@@ -225,7 +274,12 @@ class FileSystemTeamBundleSyncGateway :
   private fun Map<*, *>.requiredString(key: String): String = this[key] as? String
     ?: throw TeamBundleGatewayException("Team bundle state is missing string field '$key'.")
 
-  private val providerNativeOutputDirectories = setOf("claude-agents", "codex-agents", "opencode-agents", "junie-agents")
+  private val providerNativeOutputDirectories = setOf(
+    "claude-agents",
+    "codex-agents",
+    "opencode-agents",
+    "junie-agents",
+  )
   private val forbiddenStateOrInstallSegments = setOf(
     ".skill-bill",
     "staging",
@@ -239,6 +293,17 @@ class FileSystemTeamBundleSyncGateway :
     "outbox",
   )
 }
+
+private const val SHORT_HASH_LENGTH = 16
+private const val VERSION_PADDING_LENGTH = 10
+
+private fun invalidBundleEntry(normalized: String, reason: String): Nothing =
+  throw GeneratedTeamBundleArtifactEntryError(normalized, reason)
+
+private fun isSafeEntryName(name: String, normalized: String): Boolean = normalized.isNotBlank() &&
+  !normalized.startsWith("../") &&
+  normalized != ".." &&
+  !Path.of(name).isAbsolute
 
 private fun ZipOutputStream.putStableEntry(name: String, bytes: ByteArray) {
   val crc = CRC32().apply { update(bytes) }
@@ -282,4 +347,4 @@ private fun deleteRecursively(path: Path) {
 
 private fun versionKey(version: String): String = version
   .split('.', '-', '_')
-  .joinToString(".") { part -> part.toIntOrNull()?.toString()?.padStart(10, '0') ?: part }
+  .joinToString(".") { part -> part.toIntOrNull()?.toString()?.padStart(VERSION_PADDING_LENGTH, '0') ?: part }

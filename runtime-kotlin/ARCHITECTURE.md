@@ -415,6 +415,12 @@ runtime-ports
     - `skillbill.team.model.TeamExportValidationSummary.toPayload`
     - `skillbill.team.model.TeamExportRegistryDestination.toPayload`
     - `skillbill.team.model.TeamExportResult.toPayload`
+    - `skillbill.ports.team.model.TeamBundleCandidate.metadata`
+    - `skillbill.team.model.TeamBundleVerificationSummary.toPayload`
+    - `skillbill.team.model.InstalledTeamBundleRecord.toPayload`
+    - `skillbill.team.model.TeamSyncResult.toPayload`
+    - `skillbill.team.model.TeamRollbackResult.toPayload`
+    - `skillbill.team.model.TeamStatusResult.toPayload`
     - `skillbill.ports.workflow.DecompositionManifestFileStore.encodeManifestYaml`
     - `skillbill.workflow.DecompositionManifestCodec.decodeMap`
     - `skillbill.workflow.toWireMap`
@@ -871,6 +877,12 @@ Categories:
 - `skillbill.team.model.TeamExportValidationSummary.toPayload`
 - `skillbill.team.model.TeamExportRegistryDestination.toPayload`
 - `skillbill.team.model.TeamExportResult.toPayload`
+- `skillbill.ports.team.model.TeamBundleCandidate.metadata`
+- `skillbill.team.model.TeamBundleVerificationSummary.toPayload`
+- `skillbill.team.model.InstalledTeamBundleRecord.toPayload`
+- `skillbill.team.model.TeamSyncResult.toPayload`
+- `skillbill.team.model.TeamRollbackResult.toPayload`
+- `skillbill.team.model.TeamStatusResult.toPayload`
 - `skillbill.ports.workflow.DecompositionManifestFileStore.encodeManifestYaml`
 - `skillbill.application.workflow.WorkflowFamily.sessionSummary`
 - `skillbill.workflow.GoalObservabilityEventValidator.validate`

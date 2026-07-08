@@ -1,11 +1,13 @@
 package skillbill.ports.team.model
 
+import skillbill.boundary.OpenBoundaryMap
 import skillbill.team.model.TeamBundle
 import skillbill.team.model.TeamBundleChannel
 import java.nio.file.Path
 
 data class TeamBundleCandidate(
   val archivePath: Path,
+  @OpenBoundaryMap("Team bundle schema-validated metadata payload")
   val metadata: Map<String, Any?>,
   val bundle: TeamBundle,
   val checksum: String,

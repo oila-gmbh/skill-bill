@@ -5,15 +5,12 @@ import skillbill.application.install.InstallService
 import skillbill.application.scaffold.RepoValidationService
 import skillbill.error.InvalidTeamBundleRegistryChannelError
 import skillbill.error.MissingPreviousTeamBundleError
-import skillbill.error.MissingPreviousTeamBundleSourceError
-import skillbill.error.TeamBundleContentHashMismatchError
 import skillbill.error.TeamBundleRollbackIncompleteError
 import skillbill.error.TeamBundleSyncInstallFailedError
 import skillbill.install.model.InstallApplyStatus
 import skillbill.install.model.InstallPlanRequest
 import skillbill.install.model.InstallationTargetPaths
 import skillbill.ports.team.TeamBundleArchiveGateway
-import skillbill.ports.team.TeamBundleGatewayException
 import skillbill.ports.team.TeamBundleRegistryResolver
 import skillbill.ports.team.TeamBundleStatePersistence
 import skillbill.ports.team.model.TeamBundleCandidate
@@ -25,9 +22,6 @@ import skillbill.team.TeamBundleValidator
 import skillbill.team.model.InstalledTeamBundleRecord
 import skillbill.team.model.TeamBundle
 import skillbill.team.model.TeamBundleChannel
-import skillbill.team.model.TeamBundleContentHashInput
-import skillbill.team.model.TeamBundleHashing
-import skillbill.team.model.TeamBundleSourceHash
 import skillbill.team.model.TeamBundleVerificationSummary
 import skillbill.team.model.TeamRollbackRequest
 import skillbill.team.model.TeamRollbackResult
@@ -36,20 +30,21 @@ import skillbill.team.model.TeamStatusResult
 import skillbill.team.model.TeamSyncRequest
 import skillbill.team.model.TeamSyncResult
 import skillbill.team.model.TeamSyncSourceKind
-import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Clock
 
 @Inject
 class TeamSyncService(
-  private val archiveGateway: TeamBundleArchiveGateway,
-  private val registryResolver: TeamBundleRegistryResolver,
-  private val statePersistence: TeamBundleStatePersistence,
-  private val teamBundleValidator: TeamBundleValidator,
-  private val repoValidationService: RepoValidationService,
-  private val installService: InstallService,
+  private val dependencies: TeamSyncServiceDependencies,
   private val clock: Clock,
 ) {
+  private val archiveGateway = dependencies.archiveGateway
+  private val registryResolver = dependencies.registryResolver
+  private val statePersistence = dependencies.statePersistence
+  private val teamBundleValidator = dependencies.teamBundleValidator
+  private val repoValidationService = dependencies.repoValidationService
+  private val installService = dependencies.installService
+
   fun sync(request: TeamSyncRequest): TeamSyncResult {
     val candidate = resolveCandidate(request)
     val previous = statePersistence.read(TeamBundleStateReadRequest(request.installRequest.home))
@@ -58,21 +53,18 @@ class TeamSyncService(
         candidate = candidate,
         installRequest = request.installRequest,
         previous = previous,
-        sourceKind = if (request.registryRoot == null) TeamSyncSourceKind.BUNDLE_FILE else TeamSyncSourceKind.LOCAL_REGISTRY,
+        sourceKind = request.sourceKind(),
       )
       TeamSyncResult(installed = installed.record, previous = previous, verification = installed.verification)
-    } catch (error: Throwable) {
-      restorePreviousAfterFailure(previous, request.installRequest, error)
+    } catch (error: TeamBundlePostMutationInstallFailure) {
+      restorePreviousAfterFailure(previous, request.installRequest, error.cause ?: error)
     }
   }
 
   fun rollback(request: TeamRollbackRequest): TeamRollbackResult {
     val current = statePersistence.read(TeamBundleStateReadRequest(request.installRequest.home))
-      ?: throw MissingPreviousTeamBundleError()
-    val previous = current.previous ?: throw MissingPreviousTeamBundleError()
-    if (!Files.isRegularFile(previous.archivePath)) {
-      throw MissingPreviousTeamBundleSourceError(previous.archivePath.toString())
-    }
+      ?: missingPreviousTeamBundle()
+    val previous = current.previous ?: missingPreviousTeamBundle()
     val restored = installCandidate(
       candidate = archiveGateway.readBundle(previous.archivePath),
       installRequest = request.installRequest,
@@ -112,17 +104,17 @@ class TeamSyncService(
       TeamBundleExtractionRequest(candidate.archivePath, candidate.bundle, candidateRoot),
     )
     val validatedBundle = teamBundleValidator.validate(candidate.metadata, candidate.archivePath.toString(), sourceRoot)
-    val verification = verifyExtractedSources(validatedBundle, sourceRoot)
+    val verification = archiveGateway.verifyExtractedSources(validatedBundle, sourceRoot)
     val validation = repoValidationService.validateRepo(sourceRoot)
     if (!validation.passed) {
-      throw TeamBundleSyncInstallFailedError("Team bundle source validation failed: ${validation.issues.joinToString("; ")}")
+      failSourceValidation(validation.issues)
     }
     val plan = installService.planInstall(installRequest.forCandidateSource(sourceRoot))
-    val applyResult = installService.applyInstall(plan)
+    val applyResult = runCatching {
+      installService.applyInstall(plan)
+    }.getOrElse(::postMutationFailure)
     if (applyResult.status == InstallApplyStatus.FAILURE) {
-      throw TeamBundleSyncInstallFailedError(
-        "Team bundle install failed: ${applyResult.failures.joinToString("; ") { issue -> issue.message }}",
-      )
+      postMutationApplyFailure(applyResult.failures.joinToString("; ") { issue -> issue.message })
     }
     val cachedArchive = archiveGateway.cacheBundle(
       source = candidate.archivePath,
@@ -154,72 +146,30 @@ class TeamSyncService(
     original: Throwable,
   ): TeamSyncResult {
     if (previous == null) {
-      throw original
+      rollbackIncompleteWithoutPrevious(original)
     }
-    val restored = try {
+    val restored = runCatching {
       installCandidate(
         candidate = archiveGateway.readBundle(previous.archivePath),
         installRequest = installRequest,
         previous = previous.previous,
         sourceKind = TeamSyncSourceKind.ROLLBACK,
       )
-    } catch (restoreError: Throwable) {
-      throw TeamBundleRollbackIncompleteError(
-        "Team bundle sync failed and rollback to ${previous.bundleId} ${previous.version} was incomplete: " +
-          restoreError.message.orEmpty(),
-        restoreError,
-      )
-    }
+    }.getOrElse { restoreError -> rollbackIncomplete(previous, restoreError) }
+    syncFailedAfterRollback(restored, original)
+  }
+
+  private fun syncFailedAfterRollback(restored: InstalledCandidate, original: Throwable): Nothing =
     throw TeamBundleSyncInstallFailedError(
       "Team bundle sync failed; restored previous bundle ${restored.record.bundleId} " +
-        "${restored.record.version} (${restored.record.channel.wireValue}). Original failure: ${original.message.orEmpty()}",
+        "${restored.record.version} (${restored.record.channel.wireValue}). " +
+        "Original failure: ${original.message.orEmpty()}",
       original,
     )
-  }
 
-  private fun verifyExtractedSources(bundle: TeamBundle, sourceRoot: Path): TeamBundleVerificationSummary {
-    bundle.sources.forEach { source ->
-      val path = sourceRoot.resolve(source.path)
-      val actual = TeamBundleHashing.sha256(Files.readAllBytes(path))
-      if (actual != source.contentHash) {
-        throw TeamBundleContentHashMismatchError(bundle.metadata.bundleId, source.contentHash, actual)
-      }
-    }
-    bundle.hashes.manifestHashes.forEach { (path, expected) ->
-      val actual = TeamBundleHashing.sha256(Files.readAllBytes(sourceRoot.resolve(path)))
-      if (actual != expected) {
-        throw TeamBundleContentHashMismatchError(bundle.metadata.bundleId, expected, actual)
-      }
-    }
-    val computedContentHash = TeamBundleHashing.contentHash(
-      TeamBundleContentHashInput(
-        bundleId = bundle.metadata.bundleId,
-        version = bundle.metadata.version,
-        channel = bundle.metadata.channel,
-        createdAt = bundle.metadata.createdAt,
-        createdBy = bundle.metadata.createdBy,
-        sourceRepo = bundle.metadata.sourceRepo,
-        sourceRef = bundle.metadata.sourceRef,
-        sourceCommit = bundle.metadata.sourceCommit,
-        sources = bundle.sources.map { source -> TeamBundleSourceHash(source.path, source.contentHash) },
-      ),
-    )
-    if (computedContentHash != bundle.hashes.contentHash) {
-      throw TeamBundleContentHashMismatchError(bundle.metadata.bundleId, bundle.hashes.contentHash, computedContentHash)
-    }
-    return TeamBundleVerificationSummary(
-      checksum = bundle.hashes.bundleChecksum,
-      contentHash = bundle.hashes.contentHash,
-      sourceCount = bundle.sources.size,
-      manifestCount = bundle.hashes.manifestHashes.size,
-      sourceRoot = sourceRoot,
-    )
-  }
-
-  private fun extractRoot(home: Path, bundle: TeamBundle): Path =
-    home.toAbsolutePath().normalize()
-      .resolve(".skill-bill/team-sync/candidates")
-      .resolve("${bundle.metadata.bundleId}-${bundle.hashes.contentHash.removePrefix("sha256:").take(16)}")
+  private fun extractRoot(home: Path, bundle: TeamBundle): Path = home.toAbsolutePath().normalize()
+    .resolve(".skill-bill/team-sync/candidates")
+    .resolve(candidateDirectoryName(bundle))
 
   private fun InstallPlanRequest.forCandidateSource(sourceRoot: Path): InstallPlanRequest = copy(
     repoRoot = sourceRoot,
@@ -234,10 +184,53 @@ class TeamSyncService(
     val record: InstalledTeamBundleRecord,
     val verification: TeamBundleVerificationSummary,
   )
-
   private val registryChannels = setOf(
     TeamBundleChannel.DEVELOPMENT,
     TeamBundleChannel.BETA,
     TeamBundleChannel.STABLE,
   )
 }
+
+@Inject
+class TeamSyncServiceDependencies(
+  val archiveGateway: TeamBundleArchiveGateway,
+  val registryResolver: TeamBundleRegistryResolver,
+  val statePersistence: TeamBundleStatePersistence,
+  val teamBundleValidator: TeamBundleValidator,
+  val repoValidationService: RepoValidationService,
+  val installService: InstallService,
+)
+
+private const val SHORT_HASH_LENGTH = 16
+
+private fun TeamSyncRequest.sourceKind(): TeamSyncSourceKind =
+  if (registryRoot == null) TeamSyncSourceKind.BUNDLE_FILE else TeamSyncSourceKind.LOCAL_REGISTRY
+
+private fun candidateDirectoryName(bundle: TeamBundle): String =
+  "${bundle.metadata.bundleId}-${bundle.hashes.contentHash.removePrefix("sha256:").take(SHORT_HASH_LENGTH)}"
+
+private fun missingPreviousTeamBundle(): Nothing = throw MissingPreviousTeamBundleError()
+
+private fun failSourceValidation(issues: List<String>): Nothing =
+  throw TeamBundleSyncInstallFailedError("Team bundle source validation failed: ${issues.joinToString("; ")}")
+
+private fun postMutationFailure(error: Throwable): Nothing = throw TeamBundlePostMutationInstallFailure(error)
+
+private fun postMutationApplyFailure(failures: String): Nothing =
+  postMutationFailure(TeamBundleSyncInstallFailedError("Team bundle install failed: $failures"))
+
+private fun rollbackIncompleteWithoutPrevious(original: Throwable): Nothing = throw TeamBundleRollbackIncompleteError(
+  "Team bundle sync failed after install mutation began and no previous team bundle state was available " +
+    "to restore: " +
+    original.message.orEmpty(),
+  original,
+)
+
+private fun rollbackIncomplete(previous: InstalledTeamBundleRecord, restoreError: Throwable): Nothing =
+  throw TeamBundleRollbackIncompleteError(
+    "Team bundle sync failed and rollback to ${previous.bundleId} ${previous.version} was incomplete: " +
+      restoreError.message.orEmpty(),
+    restoreError,
+  )
+
+private class TeamBundlePostMutationInstallFailure(cause: Throwable) : RuntimeException(cause.message, cause)

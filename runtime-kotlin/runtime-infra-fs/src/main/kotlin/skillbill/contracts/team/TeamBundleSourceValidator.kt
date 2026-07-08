@@ -78,7 +78,7 @@ object TeamBundleSourceValidator {
       TeamBundleSourceCategory.ADDON -> path.startsWith("platform-packs/") && path.contains("/addons/")
       TeamBundleSourceCategory.PLATFORM_OVERRIDE -> path.startsWith("platform-packs/") && !path.contains("/addons/")
       TeamBundleSourceCategory.NATIVE_AGENT_SOURCE -> path.contains("/native-agents/")
-      TeamBundleSourceCategory.ORCHESTRATION_CONTRACT_OR_SUPPORT -> path.startsWith("orchestration/")
+      TeamBundleSourceCategory.ORCHESTRATION_CONTRACT_OR_SUPPORT -> isOrchestrationSupportPath(path)
     }
     if (!matches) {
       throw InvalidTeamBundleSchemaError(
@@ -109,6 +109,9 @@ object TeamBundleSourceValidator {
       -> requireExistingSource(relativePath, root, sourceLabel, fieldPath)
     }
   }
+
+  private fun isOrchestrationSupportPath(path: String): Boolean =
+    path.startsWith("orchestration/") || path in ROOT_SUPPORT_SOURCE_PATHS
 
   private fun validatePlatformPackGovernedOrPackSource(
     relativePath: Path,
@@ -284,4 +287,10 @@ object TeamBundleSourceValidator {
   private val DESKTOP_STATE_SEGMENTS = setOf("runtime-desktop-state", "desktop-state", ".desktop", ".compose")
   private val TELEMETRY_OUTBOX_SEGMENTS = setOf("telemetry-outbox", "outbox", "telemetry-outbox.jsonl")
   private val LOCAL_RECENTS_SEGMENTS = setOf("local-recents", "local-recents.json", "recent-repos.json")
+  private val ROOT_SUPPORT_SOURCE_PATHS = setOf(
+    "README.md",
+    ".agents/skill-overrides.example.md",
+    ".agents/skill-overrides.md",
+    ".claude-plugin/plugin.json",
+  )
 }

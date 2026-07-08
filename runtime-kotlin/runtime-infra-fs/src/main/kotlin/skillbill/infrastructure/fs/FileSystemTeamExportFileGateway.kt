@@ -5,6 +5,8 @@ import skillbill.ports.team.TeamExportFileGateway
 import skillbill.ports.team.TeamExportFileGatewayException
 import skillbill.ports.team.model.TeamExportCollectedSource
 import skillbill.ports.team.model.TeamExportRegistryPublishRequest
+import skillbill.scaffold.platformpack.SKILL_CLASSES_DIR
+import skillbill.scaffold.runtime.supportingFileTargets
 import skillbill.team.model.TeamBundleSourceCategory
 import skillbill.team.model.TeamExportRegistryDestination
 import java.io.ByteArrayOutputStream
@@ -28,6 +30,7 @@ class FileSystemTeamExportFileGateway : TeamExportFileGateway {
     collectSkillSources(repoRoot, candidates)
     collectPlatformPackSources(repoRoot, candidates)
     collectOrchestrationSources(repoRoot, candidates)
+    collectRootSupportSources(repoRoot, candidates)
     return candidates.distinctBy { it.path }.sortedBy { it.path }
   }
 
@@ -137,12 +140,17 @@ class FileSystemTeamExportFileGateway : TeamExportFileGateway {
   }
 
   private fun collectOrchestrationSources(repoRoot: Path, candidates: MutableList<TeamExportCollectedSource>) {
-    addIfRegular(
-      repoRoot,
-      candidates,
-      repoRoot.resolve("orchestration/contracts/team-bundle-schema.yaml"),
-      TeamBundleSourceCategory.ORCHESTRATION_CONTRACT_OR_SUPPORT,
-    )
+    collectRegularFiles(repoRoot.resolve("orchestration/contracts")).forEach { path ->
+      addIfRegular(repoRoot, candidates, path, TeamBundleSourceCategory.ORCHESTRATION_CONTRACT_OR_SUPPORT)
+    }
+    collectRegularFiles(repoRoot.resolve(SKILL_CLASSES_DIR)).forEach { path ->
+      addIfRegular(repoRoot, candidates, path, TeamBundleSourceCategory.ORCHESTRATION_CONTRACT_OR_SUPPORT)
+    }
+    supportingFileTargets(repoRoot).values
+      .distinctBy { path -> path.toAbsolutePath().normalize() }
+      .forEach { path ->
+        addIfRegular(repoRoot, candidates, path, TeamBundleSourceCategory.ORCHESTRATION_CONTRACT_OR_SUPPORT)
+      }
   }
 
   private fun addIfRegular(
@@ -159,6 +167,32 @@ class FileSystemTeamExportFileGateway : TeamExportFileGateway {
       contentHash = sha256(Files.readAllBytes(path)),
     )
   }
+}
+
+private fun collectRootSupportSources(repoRoot: Path, candidates: MutableList<TeamExportCollectedSource>) {
+  listOf(
+    repoRoot.resolve("README.md"),
+    repoRoot.resolve(".agents/skill-overrides.example.md"),
+    repoRoot.resolve(".agents/skill-overrides.md"),
+    repoRoot.resolve(".claude-plugin/plugin.json"),
+  ).forEach { path ->
+    addRootSupportSource(repoRoot, candidates, path)
+  }
+}
+
+private fun addRootSupportSource(repoRoot: Path, candidates: MutableList<TeamExportCollectedSource>, path: Path) {
+  if (!Files.isRegularFile(path)) return
+  val relative = path.toAbsolutePath().normalize().relativeTo(repoRoot).toString().replace('\\', '/')
+  candidates += TeamExportCollectedSource(
+    category = TeamBundleSourceCategory.ORCHESTRATION_CONTRACT_OR_SUPPORT,
+    path = relative,
+    contentHash = sha256(Files.readAllBytes(path)),
+  )
+}
+
+private fun collectRegularFiles(root: Path): List<Path> {
+  if (!Files.isDirectory(root)) return emptyList()
+  return Files.walk(root).use { paths -> paths.filter(Files::isRegularFile).toList() }
 }
 
 private fun ZipOutputStream.putStableEntry(name: String, bytes: ByteArray) {
