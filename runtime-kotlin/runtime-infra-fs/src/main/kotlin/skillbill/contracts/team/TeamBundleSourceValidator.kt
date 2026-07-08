@@ -173,7 +173,7 @@ object TeamBundleSourceValidator {
     return when {
       relativePath.name == "SKILL.md" && hasSiblingContent(root.resolve(relativePath)) ->
         "generated governed SKILL.md wrappers are not valid bundle sources."
-      relativePath.name in supportingFileTargets(root).keys ->
+      isGeneratedSupportPointerFile(relativePath, root) ->
         "generated support pointer files are not valid bundle sources."
       segments.any { it in PROVIDER_NATIVE_OUTPUT_DIRECTORIES } ->
         "provider-specific native-agent output is not a valid bundle source."
@@ -191,6 +191,12 @@ object TeamBundleSourceValidator {
 
   private fun hasSiblingContent(path: Path): Boolean =
     Files.isRegularFile(path.resolveSibling("content.md"), LinkOption.NOFOLLOW_LINKS)
+
+  private fun isGeneratedSupportPointerFile(relativePath: Path, root: Path): Boolean {
+    val pointerTarget = supportingFileTargets(root)[relativePath.name] ?: return false
+    val resolved = root.resolve(relativePath).normalize().toAbsolutePath()
+    return resolved != pointerTarget.normalize().toAbsolutePath()
+  }
 
   private val PROVIDER_NATIVE_OUTPUT_DIRECTORIES =
     setOf("claude-agents", "codex-agents", "opencode-agents", "junie-agents")

@@ -51,6 +51,19 @@ class TeamBundleSourceValidatorTest {
   }
 
   @Test
+  fun `canonical orchestration support sources are accepted`() {
+    val root = Files.createTempDirectory("team-bundle-source")
+    root.resolve("orchestration/shell-content-contract").createDirectories()
+    root.resolve("orchestration/shell-content-contract/shell-ceremony.md").writeText("---\nname: shell-ceremony\n---\n")
+
+    TeamBundleSourceValidator.validateSources(
+      bundle("orchestration_contract_or_support", "orchestration/shell-content-contract/shell-ceremony.md"),
+      root,
+      "bundle.yaml",
+    )
+  }
+
+  @Test
   fun `provider native output directories are rejected`() {
     val root = Files.createTempDirectory("team-bundle-source")
     root.resolve("skills/bill-demo/claude-agents").createDirectories()
