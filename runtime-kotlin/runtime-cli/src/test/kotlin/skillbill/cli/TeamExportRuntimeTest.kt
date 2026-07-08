@@ -14,13 +14,18 @@ import skillbill.ports.validation.model.ReleaseRefMetadata
 import skillbill.ports.validation.model.RepoValidationReport
 import skillbill.team.model.TeamBundleChannel
 import skillbill.team.model.TeamExportRequest
+import skillbill.team.model.TeamExportResult
+import java.io.ByteArrayOutputStream
 import java.nio.file.Files
 import java.nio.file.Path
 import java.security.MessageDigest
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
+import java.util.zip.CRC32
+import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
+import java.util.zip.ZipOutputStream
 import kotlin.io.path.createDirectories
 import kotlin.io.path.writeText
 import kotlin.test.Test
@@ -33,6 +38,8 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class TeamExportRuntimeTest {
+  private val bundleChecksumPlaceholder = "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+
   @Test
   fun `export is deterministic for unchanged source and fixed metadata`() {
     val repo = writeGovernedRepoFixture()
@@ -57,17 +64,18 @@ class TeamExportRuntimeTest {
   }
 
   @Test
-  fun `direct output writes sidecar metadata and checksum for the archive bytes`() {
+  fun `direct output writes matching embedded sidecar and checksum metadata`() {
     val repo = writeGovernedRepoFixture()
     val output = repo.resolve("dist/bundle.zip")
     val result = teamExportService().export(exportRequest(repo, outputPath = output))
 
-    val checksum = sha256(Files.readAllBytes(output))
-    val sidecarMetadata = decodeJsonObject(Files.readString(output.resolveSibling("bundle.zip.json")))
-
-    assertEquals(checksum, result.checksum)
-    assertEquals(checksum, sidecarMetadata["bundle_checksum"])
-    assertContains(Files.readString(output.resolveSibling("bundle.zip.sha256")), checksum)
+    assertBundleChecksumConsistency(
+      result = result,
+      bundlePath = output,
+      sidecarPath = output.resolveSibling("bundle.zip.json"),
+      checksumPath = output.resolveSibling("bundle.zip.sha256"),
+      checksumTarget = "bundle.zip",
+    )
   }
 
   @Test
@@ -112,7 +120,13 @@ class TeamExportRuntimeTest {
     val destination = assertNotNull(result.registryDestination)
     assertTrue(Files.isRegularFile(destination.path.resolve("bundle.zip")))
     assertTrue(Files.isRegularFile(destination.path.resolve("bundle.json")))
-    assertContains(Files.readString(destination.path.resolve("checksum.sha256")), result.checksum)
+    assertBundleChecksumConsistency(
+      result = result,
+      bundlePath = destination.path.resolve("bundle.zip"),
+      sidecarPath = destination.path.resolve("bundle.json"),
+      checksumPath = destination.path.resolve("checksum.sha256"),
+      checksumTarget = "bundle.zip",
+    )
   }
 
   @Test
@@ -247,6 +261,51 @@ class TeamExportRuntimeTest {
       decodeJsonObject(raw)
     }
 
+  private fun assertBundleChecksumConsistency(
+    result: TeamExportResult,
+    bundlePath: Path,
+    sidecarPath: Path,
+    checksumPath: Path,
+    checksumTarget: String,
+  ) {
+    val embeddedMetadata = readBundleMetadata(bundlePath)
+    val sidecarMetadata = decodeJsonObject(Files.readString(sidecarPath))
+    val checksumFile = Files.readString(checksumPath)
+
+    assertEquals(result.checksum, embeddedMetadata["bundle_checksum"])
+    assertEquals(result.checksum, sidecarMetadata["bundle_checksum"])
+    assertContains(checksumFile, "${result.checksum}  $checksumTarget")
+    assertEquals(result.checksum, bundleVerificationChecksum(bundlePath))
+  }
+
+  private fun bundleVerificationChecksum(path: Path): String {
+    val archive = archiveProjectionBytes(path)
+    return sha256(archive)
+  }
+
+  private fun archiveProjectionBytes(path: Path): ByteArray {
+    val entries = ZipFile(path.toFile()).use { zip ->
+      zip.entries().asSequence().map { entry ->
+        val bytes = if (entry.name == "bundle.json") {
+          val metadata = decodeJsonObject(zip.getInputStream(entry).bufferedReader().use { it.readText() })
+            .toMutableMap()
+          metadata["bundle_checksum"] = bundleChecksumPlaceholder
+          JsonSupport.mapToJsonString(metadata).toByteArray(Charsets.UTF_8)
+        } else {
+          zip.getInputStream(entry).use { it.readBytes() }
+        }
+        entry.name to bytes
+      }.toList()
+    }
+    val output = ByteArrayOutputStream()
+    ZipOutputStream(output).use { zip ->
+      entries.sortedBy { it.first }.forEach { (name, bytes) ->
+        zip.putStableEntry(name, bytes)
+      }
+    }
+    return output.toByteArray()
+  }
+
   private fun decodeJsonObject(raw: String): Map<String, Any?> {
     val parsed = JsonSupport.parseObjectOrNull(raw) ?: error("invalid JSON: $raw")
     return requireNotNull(JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(parsed)))
@@ -261,6 +320,20 @@ class TeamExportRuntimeTest {
   private fun sha256(bytes: ByteArray): String {
     val digest = MessageDigest.getInstance("SHA-256").digest(bytes)
     return "sha256:" + digest.joinToString("") { "%02x".format(it) }
+  }
+
+  private fun ZipOutputStream.putStableEntry(name: String, bytes: ByteArray) {
+    val crc = CRC32().apply { update(bytes) }
+    val entry = ZipEntry(name).apply {
+      method = ZipEntry.STORED
+      size = bytes.size.toLong()
+      compressedSize = bytes.size.toLong()
+      this.crc = crc.value
+      time = 0L
+    }
+    putNextEntry(entry)
+    write(bytes)
+    closeEntry()
   }
 
   private fun repositoryRoot(): Path {

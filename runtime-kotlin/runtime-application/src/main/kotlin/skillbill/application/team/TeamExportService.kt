@@ -36,6 +36,9 @@ class TeamExportService(
   private val teamBundleValidator: TeamBundleValidator,
   private val clock: Clock,
 ) {
+  private val bundleChecksumPlaceholder =
+    "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+
   fun export(request: TeamExportRequest): TeamExportResult {
     val repoRoot = request.repoRoot.toAbsolutePath().normalize()
     val validation = repoValidationService.validateRepo(repoRoot)
@@ -48,19 +51,16 @@ class TeamExportService(
     val outputPath = request.outputPath
       ?: if (request.registryRoot == null) defaultOutputPath(repoRoot, bundleId) else null
     val contentHash = contentHash(request, bundleId, sources)
-    val metadataWithoutChecksum = bundleMetadata(request, bundleId, contentHash, "sha256:pending", sources)
-    teamBundleValidator.validate(metadataWithoutChecksum, "team-bundle-metadata", repoRoot)
-    val archiveWithoutChecksum = archiveBytes(metadataWithoutChecksum, sources, repoRoot)
-    val embeddedMetadata = bundleMetadata(request, bundleId, contentHash, sha256(archiveWithoutChecksum), sources)
+    val metadataWithPlaceholder = bundleMetadata(request, bundleId, contentHash, bundleChecksumPlaceholder, sources)
+    teamBundleValidator.validate(metadataWithPlaceholder, "team-bundle-metadata", repoRoot)
+    val bundleChecksum = bundleVerificationChecksum(metadataWithPlaceholder, sources, repoRoot)
+    val embeddedMetadata = bundleMetadata(request, bundleId, contentHash, bundleChecksum, sources)
     teamBundleValidator.validate(embeddedMetadata, "team-bundle-metadata", repoRoot)
     val archive = archiveBytes(embeddedMetadata, sources, repoRoot)
-    val archiveChecksum = sha256(archive)
-    val sidecarMetadata = bundleMetadata(request, bundleId, contentHash, archiveChecksum, sources)
-    teamBundleValidator.validate(sidecarMetadata, "team-bundle-sidecar-metadata", repoRoot)
 
     val directBundlePath = if (!request.dryRun) {
       outputPath?.toAbsolutePath()?.normalize()?.also {
-        writeDirectBundle(it, archive, sidecarMetadata, archiveChecksum)
+        writeDirectBundle(it, archive, embeddedMetadata, bundleChecksum)
       }
     } else {
       null
@@ -72,8 +72,8 @@ class TeamExportService(
           request = request,
           bundleId = bundleId,
           archive = archive,
-          metadata = sidecarMetadata,
-          checksum = archiveChecksum,
+          metadata = embeddedMetadata,
+          checksum = bundleChecksum,
         )
       }
     } else {
@@ -86,7 +86,7 @@ class TeamExportService(
       version = request.version,
       channel = request.channel,
       contentHash = contentHash,
-      checksum = archiveChecksum,
+      checksum = bundleChecksum,
       sourceRef = request.sourceRef,
       validationSummary = validation.toSummary(),
       registryDestination = registryDestination,
@@ -259,6 +259,12 @@ class TeamExportService(
     }
     return output.toByteArray()
   }
+
+  private fun bundleVerificationChecksum(
+    metadataWithPlaceholder: Map<String, Any?>,
+    sources: List<CollectedSource>,
+    repoRoot: Path,
+  ): String = sha256(archiveBytes(metadataWithPlaceholder, sources, repoRoot))
 
   private fun ZipOutputStream.putStableEntry(name: String, bytes: ByteArray) {
     val crc = CRC32().apply { update(bytes) }
