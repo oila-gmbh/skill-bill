@@ -29,6 +29,7 @@ import skillbill.application.scaffold.SkillRemoveService
 import skillbill.application.scaffold.UnsupportedScaffoldService
 import skillbill.application.system.SystemService
 import skillbill.application.system.UninstallFileSystemService
+import skillbill.application.team.TeamExportService
 import skillbill.application.telemetry.LifecycleTelemetryService
 import skillbill.application.telemetry.TelemetryLevelMutationService
 import skillbill.application.telemetry.TelemetryService
@@ -82,6 +83,7 @@ import skillbill.infrastructure.fs.InstallPlanWireValidatorAdapter
 import skillbill.infrastructure.fs.JdkParallelReviewLaneRunner
 import skillbill.infrastructure.fs.JdkRuntimeDiagnostics
 import skillbill.infrastructure.fs.JdkRuntimeTimingPort
+import skillbill.infrastructure.fs.TeamBundleValidatorAdapter
 import skillbill.infrastructure.fs.WorkflowSnapshotValidatorInfraAdapter
 import skillbill.infrastructure.http.HttpTelemetryClient
 import skillbill.infrastructure.http.JdkHttpRequester
@@ -146,6 +148,7 @@ import skillbill.ports.workflow.NoopWorkflowGitOperations
 import skillbill.ports.workflow.SpecScratchStore
 import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.telemetry.settings.DefaultTelemetrySettingsProvider
+import skillbill.team.TeamBundleValidator
 import skillbill.workflow.DecompositionManifestValidator
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.GoalObservabilityEventValidator
@@ -412,6 +415,10 @@ abstract class RuntimeComponent(
 
   @Provides
   @JvmSynthetic
+  internal fun teamBundleValidator(adapter: TeamBundleValidatorAdapter): TeamBundleValidator = adapter
+
+  @Provides
+  @JvmSynthetic
   internal fun uninstallFileSystemGateway(gateway: FileSystemUninstallFileSystemGateway): UninstallFileSystemGateway =
     gateway
 
@@ -535,6 +542,7 @@ abstract class RuntimeComponent(
   abstract val scaffoldService: ScaffoldService
   abstract val skillRemoveService: SkillRemoveService
   abstract val systemService: SystemService
+  abstract val teamExportService: TeamExportService
   abstract val telemetryConfigStorePort: TelemetryConfigStore
   abstract val telemetryLevelMutator: TelemetryLevelMutator
   abstract val telemetryService: TelemetryService

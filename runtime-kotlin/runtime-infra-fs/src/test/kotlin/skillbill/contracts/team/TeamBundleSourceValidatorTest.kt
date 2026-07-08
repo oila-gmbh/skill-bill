@@ -29,20 +29,15 @@ class TeamBundleSourceValidatorTest {
   }
 
   @Test
-  fun `absolute in-repo source path is returned as canonical repo relative path`() {
+  fun `absolute source path is rejected`() {
     val root = Files.createTempDirectory("team-bundle-source")
     root.resolve("skills/bill-demo").createDirectories()
     val contentPath = root.resolve("skills/bill-demo/content.md")
     contentPath.writeText("---\nname: bill-demo\ndescription: Demo\n---\n# Demo\n\nGuidance.\n")
 
-    val canonicalBundle = TeamBundleSourceValidator.validateSources(
-      bundle("horizontal_skill", contentPath.toAbsolutePath().normalize().toString()),
-      root,
-      "bundle.yaml",
-    )
+    val error = assertInvalid(root, "horizontal_skill", contentPath.toAbsolutePath().normalize().toString())
 
-    val canonicalSource = (canonicalBundle["sources"] as List<*>).single() as Map<*, *>
-    assertEquals("skills/bill-demo/content.md", canonicalSource["path"])
+    assertContains(error.reason, "repository-relative")
   }
 
   @Test
@@ -123,6 +118,28 @@ class TeamBundleSourceValidatorTest {
     val error = assertInvalid(root, "orchestration_contract_or_support", "desktop-state/window.json")
 
     assertContains(error.reason, "desktop app state")
+  }
+
+  @Test
+  fun `telemetry outbox files are rejected`() {
+    val root = Files.createTempDirectory("team-bundle-source")
+    root.resolve("telemetry-outbox").createDirectories()
+    root.resolve("telemetry-outbox/events.jsonl").writeText("{}")
+
+    val error = assertInvalid(root, "orchestration_contract_or_support", "telemetry-outbox/events.jsonl")
+
+    assertContains(error.reason, "telemetry outbox")
+  }
+
+  @Test
+  fun `desktop local recents paths are rejected`() {
+    val root = Files.createTempDirectory("team-bundle-source")
+    root.resolve("local-recents").createDirectories()
+    root.resolve("local-recents/repos.json").writeText("{}")
+
+    val error = assertInvalid(root, "orchestration_contract_or_support", "local-recents/repos.json")
+
+    assertContains(error.reason, "local-recents")
   }
 
   @Test

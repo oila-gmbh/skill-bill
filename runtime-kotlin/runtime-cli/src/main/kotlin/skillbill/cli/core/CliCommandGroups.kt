@@ -20,6 +20,7 @@ import skillbill.cli.system.UninstallCommand
 import skillbill.cli.system.UpdateCheckCommand
 import skillbill.cli.system.UpdateCommand
 import skillbill.cli.system.VersionCommand
+import skillbill.cli.team.TeamCommand
 import skillbill.cli.telemetry.TelemetryCommand
 import skillbill.cli.workflow.WorkflowTopLevelCommands
 
@@ -59,6 +60,7 @@ class UtilityCliCommandGroup(
   codeReviewParallelCommand: CodeReviewParallelCommand,
   codeReviewMergeCommand: CodeReviewMergeCommand,
   configCommand: ConfigCommand,
+  teamCommand: TeamCommand,
 ) {
   val commands: List<CliktCommand> =
     workflowCommands.commands + repoValidationCommands.commands + listOf(
@@ -74,6 +76,7 @@ class UtilityCliCommandGroup(
       codeReviewParallelCommand,
       codeReviewMergeCommand,
       configCommand,
+      teamCommand,
     )
 }
 

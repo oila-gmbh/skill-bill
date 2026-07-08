@@ -57,6 +57,9 @@ object TeamBundleSourceValidator {
   }
 
   private fun normalizeRelativeSourcePath(rawPath: String, root: Path, sourceLabel: String, fieldPath: String): Path {
+    if (Path.of(rawPath).isAbsolute) {
+      throw InvalidTeamBundleSchemaError(sourceLabel, fieldPath, "source path must be repository-relative.")
+    }
     val resolved = root.resolve(rawPath).normalize()
     if (!resolved.startsWith(root)) {
       throw InvalidTeamBundleSchemaError(sourceLabel, fieldPath, "source path escapes the repository root.")
@@ -202,6 +205,10 @@ object TeamBundleSourceValidator {
         "workflow database state is not a valid bundle source."
       segments.any { it in DESKTOP_STATE_SEGMENTS } ->
         "desktop app state is not a valid bundle source."
+      segments.any { it in TELEMETRY_OUTBOX_SEGMENTS } || path.endsWith("telemetry-outbox.jsonl") ->
+        "telemetry outbox files are not valid bundle sources."
+      segments.any { it in LOCAL_RECENTS_SEGMENTS } ->
+        "desktop local-recents state is not a valid bundle source."
       else -> null
     }
   }
@@ -266,4 +273,6 @@ object TeamBundleSourceValidator {
   private val INSTALL_STAGING_SEGMENTS = setOf(".skill-bill", "staging", "installed", "install-staging")
   private val WORKFLOW_STATE_SEGMENTS = setOf("workflow", "workflows", "workflow-state", "workflow-states")
   private val DESKTOP_STATE_SEGMENTS = setOf("runtime-desktop-state", "desktop-state", ".desktop", ".compose")
+  private val TELEMETRY_OUTBOX_SEGMENTS = setOf("telemetry-outbox", "outbox", "telemetry-outbox.jsonl")
+  private val LOCAL_RECENTS_SEGMENTS = setOf("local-recents", "local-recents.json", "recent-repos.json")
 }
