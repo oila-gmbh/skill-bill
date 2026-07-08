@@ -16,18 +16,24 @@ import kotlin.io.path.name
 import kotlin.io.path.relativeTo
 
 object TeamBundleSourceValidator {
-  fun validateSources(bundle: Map<String, Any?>, repoRoot: Path, sourceLabel: String) {
+  fun validateSources(bundle: Map<String, Any?>, repoRoot: Path, sourceLabel: String): Map<String, Any?> {
     val root = repoRoot.toAbsolutePath().normalize()
     val sources = bundle["sources"] as? List<*>
       ?: throw InvalidTeamBundleSchemaError(sourceLabel, "sources", "sources must be an array.")
-    sources.forEachIndexed { index, raw ->
+    val canonicalSources = sources.mapIndexed { index, raw ->
       val entry = raw as? Map<*, *>
         ?: throw InvalidTeamBundleSchemaError(sourceLabel, "sources[$index]", "source entry must be an object.")
-      validateEntry(entry, index, root, sourceLabel)
+      canonicalizeEntry(entry, index, root, sourceLabel)
     }
+    return bundle + ("sources" to canonicalSources)
   }
 
-  private fun validateEntry(entry: Map<*, *>, index: Int, root: Path, sourceLabel: String) {
+  private fun canonicalizeEntry(
+    entry: Map<*, *>,
+    index: Int,
+    root: Path,
+    sourceLabel: String,
+  ): Map<Any?, Any?> {
     val fieldPath = "sources[$index].path"
     val rawPath = entry["path"] as? String
       ?: throw InvalidTeamBundleSchemaError(sourceLabel, fieldPath, "source entry path must be a string.")
@@ -50,6 +56,7 @@ object TeamBundleSourceValidator {
     }
     validateCategoryParity(category, relativePath, sourceLabel, fieldPath)
     validateCategorySource(category, relativePath, root, sourceLabel, fieldPath)
+    return entry + ("path" to relativePath.toString().replace('\\', '/'))
   }
 
   private fun normalizeRelativeSourcePath(rawPath: String, root: Path, sourceLabel: String, fieldPath: String): Path {

@@ -31,6 +31,22 @@ class TeamBundleValidatorAdapterTest {
   }
 
   @Test
+  fun `public filesystem seam canonicalizes absolute in-repo source paths`() {
+    val root = Files.createTempDirectory("team-bundle-adapter")
+    root.resolve("skills/bill-code-check").createDirectories()
+    val contentPath = root.resolve("skills/bill-code-check/content.md")
+    contentPath.writeText("---\nname: bill-code-check\ndescription: Code check\n---\n# Code Check\n\nGuidance.\n")
+    val yaml = validBundleYaml().replace(
+      "path: skills/bill-code-check/content.md",
+      "path: ${contentPath.toAbsolutePath().normalize()}",
+    )
+
+    val bundle = TeamBundleValidatorAdapter().validateYamlText(yaml, "bundle.yaml", root)
+
+    assertEquals("skills/bill-code-check/content.md", bundle.sources.single().path)
+  }
+
+  @Test
   fun `public filesystem seam rejects generated artifact sources`() {
     val root = Files.createTempDirectory("team-bundle-adapter")
     root.resolve("skills/bill-code-check").createDirectories()

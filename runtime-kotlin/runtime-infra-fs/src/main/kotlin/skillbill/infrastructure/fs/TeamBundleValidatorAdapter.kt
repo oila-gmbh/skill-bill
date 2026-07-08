@@ -12,13 +12,13 @@ import java.nio.file.Path
 class TeamBundleValidatorAdapter : TeamBundleValidator {
   override fun validate(bundle: Map<String, Any?>, sourceLabel: String, repoRoot: Path): TeamBundle {
     TeamBundleSchemaValidator.validate(bundle, sourceLabel)
-    TeamBundleSourceValidator.validateSources(bundle, repoRoot, sourceLabel)
-    return TeamBundleParser.parse(bundle, sourceLabel)
+    val canonicalBundle = TeamBundleSourceValidator.validateSources(bundle, repoRoot, sourceLabel)
+    return TeamBundleParser.parse(canonicalBundle, sourceLabel)
   }
 
   override fun validateYamlText(yamlText: String, sourceLabel: String, repoRoot: Path): TeamBundle {
     val bundle = TeamBundleSchemaValidator.validateYamlText(yamlText, sourceLabel)
-    TeamBundleSourceValidator.validateSources(bundle, repoRoot, sourceLabel)
-    return TeamBundleParser.parse(bundle, sourceLabel)
+    val canonicalBundle = TeamBundleSourceValidator.validateSources(bundle, repoRoot, sourceLabel)
+    return TeamBundleParser.parse(canonicalBundle, sourceLabel)
   }
 }

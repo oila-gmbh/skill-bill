@@ -9,6 +9,7 @@ import kotlin.io.path.createDirectories
 import kotlin.io.path.writeText
 import kotlin.test.Test
 import kotlin.test.assertContains
+import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 
 class TeamBundleSourceValidatorTest {
@@ -25,6 +26,23 @@ class TeamBundleSourceValidatorTest {
       root,
       "bundle.yaml",
     )
+  }
+
+  @Test
+  fun `absolute in-repo source path is returned as canonical repo relative path`() {
+    val root = Files.createTempDirectory("team-bundle-source")
+    root.resolve("skills/bill-demo").createDirectories()
+    val contentPath = root.resolve("skills/bill-demo/content.md")
+    contentPath.writeText("---\nname: bill-demo\ndescription: Demo\n---\n# Demo\n\nGuidance.\n")
+
+    val canonicalBundle = TeamBundleSourceValidator.validateSources(
+      bundle("horizontal_skill", contentPath.toAbsolutePath().normalize().toString()),
+      root,
+      "bundle.yaml",
+    )
+
+    val canonicalSource = (canonicalBundle["sources"] as List<*>).single() as Map<*, *>
+    assertEquals("skills/bill-demo/content.md", canonicalSource["path"])
   }
 
   @Test
