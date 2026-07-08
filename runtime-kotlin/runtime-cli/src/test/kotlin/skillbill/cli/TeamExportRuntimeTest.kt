@@ -271,11 +271,12 @@ class TeamExportRuntimeTest {
     val embeddedMetadata = readBundleMetadata(bundlePath)
     val sidecarMetadata = decodeJsonObject(Files.readString(sidecarPath))
     val checksumFile = Files.readString(checksumPath)
+    val embeddedBundleChecksum = embeddedMetadata["bundle_checksum"]
 
-    assertEquals(result.checksum, embeddedMetadata["bundle_checksum"])
-    assertEquals(result.checksum, sidecarMetadata["bundle_checksum"])
+    assertEquals(embeddedBundleChecksum, sidecarMetadata["bundle_checksum"])
+    assertEquals(embeddedBundleChecksum, bundleVerificationChecksum(bundlePath))
+    assertEquals(result.checksum, sha256(Files.readAllBytes(bundlePath)))
     assertContains(checksumFile, "${result.checksum}  $checksumTarget")
-    assertEquals(result.checksum, bundleVerificationChecksum(bundlePath))
   }
 
   private fun bundleVerificationChecksum(path: Path): String {
