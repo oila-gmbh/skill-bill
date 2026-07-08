@@ -2,6 +2,7 @@ package skillbill.db.core
 
 import java.sql.Connection
 
+@Suppress("TooManyFunctions")
 internal object DatabaseColumnMigrations {
   private val safeIdentifierPattern = Regex("^[a-z_][a-z0-9_]*$")
 
@@ -12,6 +13,20 @@ internal object DatabaseColumnMigrations {
     backfillReviewSessionIds(connection)
     ensureFeatureImplementSessionColumns(connection)
     ensureFeatureVerifySessionColumns(connection)
+    ensureColumn(connection, "quality_check_sessions", "started_at", "TEXT NOT NULL DEFAULT ''")
+    backfillBlankColumn(connection, "quality_check_sessions", "started_at", "CURRENT_TIMESTAMP")
+    ensureColumn(connection, "quality_check_sessions", "started_event_emitted_at", "TEXT")
+    ensureColumn(connection, "quality_check_sessions", "finished_at", "TEXT")
+    ensureColumn(connection, "quality_check_sessions", "finished_event_emitted_at", "TEXT")
+    ensureColumn(connection, "quality_check_sessions", "routed_skill", "TEXT NOT NULL DEFAULT ''")
+    ensureColumn(connection, "quality_check_sessions", "detected_stack", "TEXT NOT NULL DEFAULT ''")
+    ensureColumn(connection, "quality_check_sessions", "scope_type", "TEXT NOT NULL DEFAULT ''")
+    ensureColumn(connection, "quality_check_sessions", "initial_failure_count", "INTEGER NOT NULL DEFAULT 0")
+    ensureColumn(connection, "quality_check_sessions", "final_failure_count", "INTEGER")
+    ensureColumn(connection, "quality_check_sessions", "iterations", "INTEGER")
+    ensureColumn(connection, "quality_check_sessions", "result", "TEXT")
+    ensureColumn(connection, "quality_check_sessions", "failing_check_names", "TEXT NOT NULL DEFAULT ''")
+    ensureColumn(connection, "quality_check_sessions", "unsupported_reason", "TEXT NOT NULL DEFAULT ''")
     ensureFeatureTaskRuntimeSessionColumns(connection)
     // apply() is wired both as gated migration version 1 (which runs before version 3 creates
     // goal_subtask_events) and unconditionally on every startup. Skip the agent-attribution column
@@ -128,12 +143,43 @@ internal object DatabaseColumnMigrations {
   }
 
   private fun ensureFeatureImplementSessionColumns(connection: Connection) {
+    ensureColumn(connection, "feature_implement_sessions", "started_at", "TEXT NOT NULL DEFAULT ''")
+    backfillBlankColumn(connection, "feature_implement_sessions", "started_at", "CURRENT_TIMESTAMP")
+    ensureColumn(connection, "feature_implement_sessions", "started_event_emitted_at", "TEXT")
+    ensureColumn(connection, "feature_implement_sessions", "finished_at", "TEXT")
+    ensureColumn(connection, "feature_implement_sessions", "finished_event_emitted_at", "TEXT")
     ensureColumn(
       connection = connection,
       tableName = "feature_implement_sessions",
       columnName = "source",
       definition = "TEXT NOT NULL DEFAULT 'production'",
     )
+    ensureColumn(connection, "feature_implement_sessions", "issue_key_provided", "INTEGER NOT NULL DEFAULT 0")
+    ensureColumn(connection, "feature_implement_sessions", "issue_key_type", "TEXT NOT NULL DEFAULT 'none'")
+    ensureColumn(connection, "feature_implement_sessions", "spec_input_types", "TEXT NOT NULL DEFAULT ''")
+    ensureColumn(connection, "feature_implement_sessions", "spec_word_count", "INTEGER NOT NULL DEFAULT 0")
+    ensureColumn(connection, "feature_implement_sessions", "feature_size", "TEXT NOT NULL DEFAULT 'SMALL'")
+    ensureColumn(connection, "feature_implement_sessions", "feature_name", "TEXT NOT NULL DEFAULT ''")
+    ensureColumn(connection, "feature_implement_sessions", "rollout_needed", "INTEGER NOT NULL DEFAULT 0")
+    ensureColumn(connection, "feature_implement_sessions", "acceptance_criteria_count", "INTEGER NOT NULL DEFAULT 0")
+    ensureColumn(connection, "feature_implement_sessions", "open_questions_count", "INTEGER NOT NULL DEFAULT 0")
+    ensureColumn(connection, "feature_implement_sessions", "spec_summary", "TEXT NOT NULL DEFAULT ''")
+    ensureColumn(connection, "feature_implement_sessions", "completion_status", "TEXT NOT NULL DEFAULT ''")
+    ensureColumn(connection, "feature_implement_sessions", "plan_correction_count", "INTEGER")
+    ensureColumn(connection, "feature_implement_sessions", "plan_task_count", "INTEGER")
+    ensureColumn(connection, "feature_implement_sessions", "plan_phase_count", "INTEGER")
+    ensureColumn(connection, "feature_implement_sessions", "feature_flag_used", "INTEGER")
+    ensureColumn(connection, "feature_implement_sessions", "feature_flag_pattern", "TEXT")
+    ensureColumn(connection, "feature_implement_sessions", "files_created", "INTEGER")
+    ensureColumn(connection, "feature_implement_sessions", "files_modified", "INTEGER")
+    ensureColumn(connection, "feature_implement_sessions", "tasks_completed", "INTEGER")
+    ensureColumn(connection, "feature_implement_sessions", "review_iterations", "INTEGER")
+    ensureColumn(connection, "feature_implement_sessions", "audit_result", "TEXT")
+    ensureColumn(connection, "feature_implement_sessions", "audit_iterations", "INTEGER")
+    ensureColumn(connection, "feature_implement_sessions", "validation_result", "TEXT")
+    ensureColumn(connection, "feature_implement_sessions", "boundary_history_written", "INTEGER")
+    ensureColumn(connection, "feature_implement_sessions", "pr_created", "INTEGER")
+    ensureColumn(connection, "feature_implement_sessions", "plan_deviation_notes", "TEXT NOT NULL DEFAULT ''")
     ensureColumn(
       connection = connection,
       tableName = "feature_implement_sessions",
@@ -157,6 +203,19 @@ internal object DatabaseColumnMigrations {
   }
 
   private fun ensureFeatureVerifySessionColumns(connection: Connection) {
+    ensureColumn(connection, "feature_verify_sessions", "started_at", "TEXT NOT NULL DEFAULT ''")
+    backfillBlankColumn(connection, "feature_verify_sessions", "started_at", "CURRENT_TIMESTAMP")
+    ensureColumn(connection, "feature_verify_sessions", "started_event_emitted_at", "TEXT")
+    ensureColumn(connection, "feature_verify_sessions", "finished_at", "TEXT")
+    ensureColumn(connection, "feature_verify_sessions", "finished_event_emitted_at", "TEXT")
+    ensureColumn(connection, "feature_verify_sessions", "acceptance_criteria_count", "INTEGER NOT NULL DEFAULT 0")
+    ensureColumn(connection, "feature_verify_sessions", "rollout_relevant", "INTEGER NOT NULL DEFAULT 0")
+    ensureColumn(connection, "feature_verify_sessions", "spec_summary", "TEXT NOT NULL DEFAULT ''")
+    ensureColumn(connection, "feature_verify_sessions", "feature_flag_audit_performed", "INTEGER")
+    ensureColumn(connection, "feature_verify_sessions", "review_iterations", "INTEGER")
+    ensureColumn(connection, "feature_verify_sessions", "audit_result", "TEXT")
+    ensureColumn(connection, "feature_verify_sessions", "completion_status", "TEXT")
+    ensureColumn(connection, "feature_verify_sessions", "gaps_found", "TEXT NOT NULL DEFAULT ''")
     ensureColumn(
       connection = connection,
       tableName = "feature_verify_sessions",
@@ -179,6 +238,20 @@ internal object DatabaseColumnMigrations {
     }
     connection.createStatement().use { statement ->
       statement.execute("ALTER TABLE $tableName ADD COLUMN $columnName $definition")
+    }
+  }
+
+  private fun backfillBlankColumn(connection: Connection, tableName: String, columnName: String, expression: String) {
+    require(tableName.matches(safeIdentifierPattern)) { "Unsafe table name: '$tableName'" }
+    require(columnName.matches(safeIdentifierPattern)) { "Unsafe column name: '$columnName'" }
+    connection.createStatement().use { statement ->
+      statement.execute(
+        """
+        UPDATE $tableName
+        SET $columnName = $expression
+        WHERE $columnName IS NULL OR $columnName = ''
+        """.trimIndent(),
+      )
     }
   }
 

@@ -1,6 +1,7 @@
 ---
 issue_key: SKILL-109
 subtask_id: 1
+status: Complete
 ---
 
 # Subtask 1 — Goal issue-level terminal event + blocked sub-categorization

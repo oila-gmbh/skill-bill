@@ -14,8 +14,8 @@ fun saveFeatureImplementStarted(connection: Connection, record: FeatureImplement
     INSERT INTO feature_implement_sessions (
       session_id, source, issue_key_provided, issue_key_type, spec_input_types,
       spec_word_count, feature_size, feature_name, rollout_needed,
-      acceptance_criteria_count, open_questions_count, spec_summary
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      acceptance_criteria_count, open_questions_count, spec_summary, started_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
     """.trimIndent(),
   ).use { statement ->
     statement.bind(
@@ -54,8 +54,8 @@ fun saveQualityCheckStarted(connection: Connection, record: QualityCheckStartedR
   connection.prepareStatement(
     """
     INSERT INTO quality_check_sessions (
-      session_id, routed_skill, detected_stack, scope_type, initial_failure_count
-    ) VALUES (?, ?, ?, ?, ?)
+      session_id, routed_skill, detected_stack, scope_type, initial_failure_count, started_at
+    ) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
     """.trimIndent(),
   ).use { statement ->
     statement.bind(
@@ -120,8 +120,8 @@ fun saveFeatureVerifyStarted(connection: Connection, record: FeatureVerifyStarte
   connection.prepareStatement(
     """
     INSERT INTO feature_verify_sessions (
-      session_id, acceptance_criteria_count, rollout_relevant, spec_summary
-    ) VALUES (?, ?, ?, ?)
+      session_id, acceptance_criteria_count, rollout_relevant, spec_summary, started_at
+    ) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
     """.trimIndent(),
   ).use { statement ->
     statement.bind(

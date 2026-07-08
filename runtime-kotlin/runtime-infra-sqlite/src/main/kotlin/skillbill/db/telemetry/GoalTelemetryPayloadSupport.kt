@@ -4,6 +4,8 @@ import skillbill.contracts.JsonSupport
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 
+private const val MILLIS_PER_SECOND = 1000L
+
 private fun parseAgentIdArray(rawValue: String, workflowId: String): List<Any?> {
   if (rawValue.isBlank()) return emptyList()
   val trimmed = rawValue.trim()
@@ -42,7 +44,7 @@ fun goalFinishedPayload(row: Map<String, Any?>, level: String): Map<String, Any?
   "status" to row.stringOrEmpty("status"),
   "started_at" to row.stringOrEmpty("started_at"),
   "finished_at" to row.stringOrEmpty("finished_at"),
-  "duration_ms" to row.longOrZero("finished_duration_ms"),
+  "duration_seconds" to secondsFromMillis(row.longOrZero("finished_duration_ms")),
   "subtasks_complete" to row.intOrZero("subtasks_complete"),
   "subtasks_blocked" to row.intOrZero("subtasks_blocked"),
   "subtasks_skipped" to row.intOrZero("subtasks_skipped"),
@@ -68,7 +70,7 @@ fun goalIssueFinishedPayload(row: Map<String, Any?>): Map<String, Any?> {
     "total_resumes" to row.intOrZero("total_resumes"),
     "first_started_at" to firstStartedAt,
     "finished_at" to finishedAt,
-    "duration_ms" to durationBetweenMillis(firstStartedAt, finishedAt),
+    "duration_seconds" to durationBetweenSeconds(firstStartedAt, finishedAt),
     "mode" to row.stringOrEmpty("mode"),
   )
 }
@@ -80,7 +82,7 @@ fun goalSubtaskFinishedPayload(row: Map<String, Any?>, level: String): Map<Strin
   "status" to row.stringOrEmpty("status"),
   "started_at" to row.stringOrEmpty("started_at"),
   "finished_at" to row.stringOrEmpty("finished_at"),
-  "duration_ms" to row.longOrZero("duration_ms"),
+  "duration_seconds" to secondsFromMillis(row.longOrZero("duration_ms")),
   "attempt_count" to row.intOrZero("attempt_count"),
 ).apply {
   if (level == "full") {
@@ -96,6 +98,8 @@ fun goalSubtaskFinishedPayload(row: Map<String, Any?>, level: String): Map<Strin
   }
 }
 
-private fun durationBetweenMillis(startedAt: String, finishedAt: String): Long = runCatching {
-  ChronoUnit.MILLIS.between(Instant.parse(startedAt), Instant.parse(finishedAt)).coerceAtLeast(0)
+private fun secondsFromMillis(durationMs: Long): Long = durationMs.coerceAtLeast(0) / MILLIS_PER_SECOND
+
+private fun durationBetweenSeconds(startedAt: String, finishedAt: String): Long = runCatching {
+  ChronoUnit.SECONDS.between(Instant.parse(startedAt), Instant.parse(finishedAt)).coerceAtLeast(0)
 }.getOrDefault(0)

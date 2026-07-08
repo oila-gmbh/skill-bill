@@ -67,6 +67,7 @@ class GoalTelemetryStoreTest {
       assertEquals(3, mostRecent.subtaskTotal)
 
       assertOutboxEmittedOncePerEvent(connection)
+      assertGoalTerminalDurationPayloadsUseSeconds(connection)
 
       assertEquals(1, stats.topBlockedSubtasks.size)
       val blocked = stats.topBlockedSubtasks.single()
@@ -364,7 +365,8 @@ class GoalTelemetryStoreTest {
       assertEquals(2, payload["total_blocks"])
       assertEquals(2, payload["total_resumes"])
       assertEquals("2026-06-04T10:00:00Z", payload["first_started_at"])
-      assertEquals(1_800_000L, assertIs<Number>(payload["duration_ms"]).toLong())
+      assertEquals(1_800L, assertIs<Number>(payload["duration_seconds"]).toLong())
+      assertTrue("duration_ms" !in payload)
     }
   }
 
@@ -402,6 +404,19 @@ class GoalTelemetryStoreTest {
       outbox.any { it.eventName == "skillbill_goal_subtask_finished" && it.payloadJson.contains("validation failed") },
       "Blocked subtask outbox payload should carry blocked_reason at full level.",
     )
+  }
+
+  private fun assertGoalTerminalDurationPayloadsUseSeconds(connection: Connection) {
+    val payloads = pendingOutbox(connection)
+      .filter { it.eventName in setOf("skillbill_goal_subtask_finished", "skillbill_goal_finished") }
+      .map { parsePayload(it.payloadJson) }
+
+    payloads.forEach { payload ->
+      assertTrue("duration_seconds" in payload)
+      assertTrue("duration_ms" !in payload)
+    }
+    assertEquals(60L, assertIs<Number>(payloads.first { it["subtask_id"] == 1 }["duration_seconds"]).toLong())
+    assertEquals(1_800L, assertIs<Number>(payloads.single { "subtask_id" !in it }["duration_seconds"]).toLong())
   }
 
   private fun finishedRun(

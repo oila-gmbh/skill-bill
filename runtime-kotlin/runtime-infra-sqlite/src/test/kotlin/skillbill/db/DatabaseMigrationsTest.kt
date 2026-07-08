@@ -1,7 +1,10 @@
 package skillbill.db
 
+import skillbill.contracts.JsonSupport
 import skillbill.db.core.DatabaseMigrations
 import skillbill.db.core.DatabaseRuntime
+import skillbill.db.telemetry.LifecycleTelemetryStore
+import skillbill.telemetry.model.FeatureImplementFinishedRecord
 import java.nio.file.Files
 import java.nio.file.Path
 import java.sql.DriverManager
@@ -10,6 +13,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
+@Suppress("LargeClass")
 class DatabaseMigrationsTest {
   @Test
   fun `migration definitions are append-only and deterministic`() {
@@ -148,6 +152,36 @@ class DatabaseMigrationsTest {
       assertTrue("source" in columns, "source must be healed even when every migration version is already recorded.")
       assertEquals("production", featureImplementColumnValue(connection, "source"))
       assertEquals(DatabaseMigrations.migrations.size, migrationRows(connection).size)
+    }
+  }
+
+  @Test
+  fun `ensureDatabase heals legacy lifecycle starts before finished duration telemetry`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-db-migrations").resolve("legacy-lifecycle-starts.db")
+    createLegacyLifecycleSessionsWithoutStartsDatabase(dbPath)
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      assertTrue("started_at" in tableColumns(connection, "feature_implement_sessions"))
+      assertTrue("started_at" in tableColumns(connection, "feature_verify_sessions"))
+      assertTrue("started_at" in tableColumns(connection, "quality_check_sessions"))
+
+      connection.createStatement().use { statement ->
+        statement.executeUpdate(
+          """
+          UPDATE feature_implement_sessions
+          SET started_at = datetime('now', '-5 seconds')
+          WHERE session_id = 'fis-legacy-duration'
+          """.trimIndent(),
+        )
+      }
+
+      LifecycleTelemetryStore(connection).featureImplementFinished(featureImplementFinishedRecord(), level = "full")
+
+      val payload = outboxPayload(connection, "skillbill_feature_task_prose_finished")
+      assertTrue(
+        (payload["duration_seconds"] as Number).toLong() > 0,
+        "Finished feature implement telemetry must compute non-zero duration from the healed started_at.",
+      )
     }
   }
 
@@ -409,6 +443,37 @@ class DatabaseMigrationsTest {
     }
   }
 
+  private fun createLegacyLifecycleSessionsWithoutStartsDatabase(dbPath: Path) {
+    DriverManager.getConnection("jdbc:sqlite:$dbPath").use { connection ->
+      connection.createStatement().use { statement ->
+        statement.execute(CREATE_LEGACY_FEATURE_IMPLEMENT_SESSIONS_WITHOUT_START_SQL)
+        statement.execute(CREATE_LEGACY_FEATURE_VERIFY_SESSIONS_WITHOUT_START_SQL)
+        statement.execute(CREATE_LEGACY_QUALITY_CHECK_SESSIONS_WITHOUT_START_SQL)
+        statement.execute(
+          """
+          CREATE TABLE schema_migrations (
+            version INTEGER PRIMARY KEY,
+            name TEXT NOT NULL UNIQUE,
+            applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+          )
+          """.trimIndent(),
+        )
+      }
+      connection.prepareStatement("INSERT INTO schema_migrations (version, name) VALUES (?, ?)").use { statement ->
+        DatabaseMigrations.migrations.forEach { migration ->
+          statement.setInt(1, migration.version)
+          statement.setString(2, migration.name)
+          statement.executeUpdate()
+        }
+      }
+      connection.createStatement().use { statement ->
+        statement.executeUpdate("INSERT INTO feature_implement_sessions (session_id) VALUES ('fis-legacy-duration')")
+        statement.executeUpdate("INSERT INTO feature_verify_sessions (session_id) VALUES ('fvs-legacy-start')")
+        statement.executeUpdate("INSERT INTO quality_check_sessions (session_id) VALUES ('qcs-legacy-start')")
+      }
+    }
+  }
+
   private fun createLegacyGoalSubtaskEventsDatabase(dbPath: Path) {
     DriverManager.getConnection("jdbc:sqlite:$dbPath").use { connection ->
       connection.createStatement().use { statement ->
@@ -663,6 +728,46 @@ class DatabaseMigrationsTest {
       }
     }
 
+  private fun featureImplementFinishedRecord(): FeatureImplementFinishedRecord = FeatureImplementFinishedRecord(
+    sessionId = "fis-legacy-duration",
+    completionStatus = "completed",
+    planCorrectionCount = 0,
+    planTaskCount = 1,
+    planPhaseCount = 1,
+    featureFlagUsed = false,
+    featureFlagPattern = "none",
+    filesCreated = 0,
+    filesModified = 1,
+    tasksCompleted = 1,
+    reviewIterations = 0,
+    auditResult = "passed",
+    auditIterations = 0,
+    validationResult = "passed",
+    boundaryHistoryWritten = false,
+    boundaryHistoryValue = "none",
+    prCreated = false,
+    planDeviationNotes = "",
+    childSteps = emptyList(),
+  )
+
+  private fun outboxPayload(connection: java.sql.Connection, eventName: String): Map<String, Any?> =
+    connection.prepareStatement(
+      """
+      SELECT payload_json
+      FROM telemetry_outbox
+      WHERE event_name = ?
+      ORDER BY id DESC
+      LIMIT 1
+      """.trimIndent(),
+    ).use { statement ->
+      statement.setString(1, eventName)
+      statement.executeQuery().use { resultSet ->
+        check(resultSet.next()) { "Expected telemetry outbox event '$eventName'." }
+        val element = requireNotNull(JsonSupport.parseObjectOrNull(resultSet.getString("payload_json")))
+        requireNotNull(JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(element)))
+      }
+    }
+
   private data class MigrationRow(
     val version: Int,
     val name: String,
@@ -696,6 +801,28 @@ class DatabaseMigrationsTest {
         session_id TEXT PRIMARY KEY,
         completion_status TEXT,
         started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+      """
+
+    const val CREATE_LEGACY_FEATURE_IMPLEMENT_SESSIONS_WITHOUT_START_SQL: String =
+      """
+      CREATE TABLE feature_implement_sessions (
+        session_id TEXT PRIMARY KEY,
+        completion_status TEXT
+      )
+      """
+
+    const val CREATE_LEGACY_FEATURE_VERIFY_SESSIONS_WITHOUT_START_SQL: String =
+      """
+      CREATE TABLE feature_verify_sessions (
+        session_id TEXT PRIMARY KEY
+      )
+      """
+
+    const val CREATE_LEGACY_QUALITY_CHECK_SESSIONS_WITHOUT_START_SQL: String =
+      """
+      CREATE TABLE quality_check_sessions (
+        session_id TEXT PRIMARY KEY
       )
       """
 

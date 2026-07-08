@@ -1350,7 +1350,7 @@ $defs:
       - status
       - started_at
       - finished_at
-      - duration_ms
+      - duration_seconds
       - attempt_count
       - blocked_reason
     properties:
@@ -1378,7 +1378,7 @@ $defs:
         type: string
         minLength: 1
         description: ISO-8601 timestamp the subtask finished at.
-      duration_ms:
+      duration_seconds:
         type: integer
         minimum: 0
         maximum: 2147483647
@@ -1431,7 +1431,7 @@ $defs:
       - status
       - started_at
       - finished_at
-      - duration_ms
+      - duration_seconds
       - subtasks_complete
       - subtasks_blocked
       - subtasks_skipped
@@ -1456,7 +1456,7 @@ $defs:
         type: string
         minLength: 1
         description: ISO-8601 timestamp the goal run finished at.
-      duration_ms:
+      duration_seconds:
         type: integer
         minimum: 0
         maximum: 2147483647
@@ -1499,7 +1499,7 @@ $defs:
       - total_resumes
       - first_started_at
       - finished_at
-      - duration_ms
+      - duration_seconds
       - mode
     properties:
       event_name:
@@ -1542,7 +1542,7 @@ $defs:
       finished_at:
         type: string
         minLength: 1
-      duration_ms:
+      duration_seconds:
         type: integer
         minimum: 0
         maximum: 2147483647
