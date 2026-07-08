@@ -72,11 +72,13 @@ class LifecycleTelemetryStore(
     record.parentWorkflowId?.takeIf(String::isNotBlank)?.let { parentWorkflowId ->
       recordGoalIssueSegmentStarted(
         connection = connection,
-        parentWorkflowId = parentWorkflowId,
-        issueKey = record.issueKey,
-        startedAt = record.startedAt,
-        resumed = record.resumed,
-        mode = record.mode,
+        segment = GoalIssueSegmentStart(
+          parentWorkflowId = parentWorkflowId,
+          issueKey = record.issueKey,
+          startedAt = record.startedAt,
+          resumed = record.resumed,
+          mode = record.mode,
+        ),
       )
     }
     emitGoalStarted(connection, record.workflowId, level)
@@ -99,6 +101,6 @@ class LifecycleTelemetryStore(
 
   override fun goalIssueFinished(record: GoalIssueFinishedRecord, level: String) {
     saveGoalIssueFinished(connection, record)
-    emitGoalIssueFinished(connection, record.parentWorkflowId, record.issueKey, level)
+    emitGoalIssueFinished(connection, record.parentWorkflowId, record.issueKey)
   }
 }

@@ -126,14 +126,7 @@ private fun insertGoalFinished(connection: Connection, record: GoalFinishedRecor
   }
 }
 
-fun recordGoalIssueSegmentStarted(
-  connection: Connection,
-  parentWorkflowId: String,
-  issueKey: String,
-  startedAt: String,
-  resumed: Boolean,
-  mode: String,
-) {
+fun recordGoalIssueSegmentStarted(connection: Connection, segment: GoalIssueSegmentStart) {
   connection.prepareStatement(
     """
     INSERT INTO goal_issue_progress (
@@ -146,10 +139,24 @@ fun recordGoalIssueSegmentStarted(
       mode = excluded.mode
     """.trimIndent(),
   ).use { statement ->
-    statement.bind(parentWorkflowId, issueKey, resumed.toSqlInt(), startedAt, mode)
+    statement.bind(
+      segment.parentWorkflowId,
+      segment.issueKey,
+      segment.resumed.toSqlInt(),
+      segment.startedAt,
+      segment.mode,
+    )
     statement.executeUpdate()
   }
 }
+
+data class GoalIssueSegmentStart(
+  val parentWorkflowId: String,
+  val issueKey: String,
+  val startedAt: String,
+  val resumed: Boolean,
+  val mode: String,
+)
 
 fun recordGoalIssueBlockedSegment(connection: Connection, parentWorkflowId: String, issueKey: String) {
   connection.prepareStatement(

@@ -2,7 +2,6 @@ package skillbill.db.telemetry
 
 import skillbill.telemetry.model.GoalSubtaskFinishedRecord
 import java.sql.Connection
-import java.sql.ResultSet
 
 fun emitGoalStarted(connection: Connection, workflowId: String, level: String) {
   val row = goalRunSessionRow(connection, workflowId) ?: return
@@ -22,12 +21,12 @@ fun emitGoalFinished(connection: Connection, workflowId: String, level: String) 
   markGoalRunSessionEmitted(connection, "finished_event_emitted_at", workflowId)
 }
 
-fun emitGoalIssueFinished(connection: Connection, parentWorkflowId: String, issueKey: String, level: String) {
+fun emitGoalIssueFinished(connection: Connection, parentWorkflowId: String, issueKey: String) {
   val row = goalIssueProgressRow(connection, parentWorkflowId, issueKey) ?: return
   if (row.stringOrEmpty("finished_event_emitted_at").isNotBlank()) {
     return
   }
-  enqueueTelemetry(connection, "skillbill_goal_issue_finished", goalIssueFinishedPayload(row, level))
+  enqueueTelemetry(connection, "skillbill_goal_issue_finished", goalIssueFinishedPayload(row))
   markGoalIssueProgressEmitted(connection, parentWorkflowId, issueKey)
 }
 
@@ -58,13 +57,16 @@ private fun goalSubtaskEventRow(
   statement.executeQuery().use { resultSet -> if (resultSet.next()) resultSet.toRowMap() else null }
 }
 
-private fun goalIssueProgressRow(connection: Connection, parentWorkflowId: String, issueKey: String): Map<String, Any?>? =
-  connection.prepareStatement(
-    "SELECT * FROM goal_issue_progress WHERE parent_workflow_id = ? AND issue_key = ?",
-  ).use { statement ->
-    statement.bind(parentWorkflowId, issueKey)
-    statement.executeQuery().use { resultSet -> if (resultSet.next()) resultSet.toRowMap() else null }
-  }
+private fun goalIssueProgressRow(
+  connection: Connection,
+  parentWorkflowId: String,
+  issueKey: String,
+): Map<String, Any?>? = connection.prepareStatement(
+  "SELECT * FROM goal_issue_progress WHERE parent_workflow_id = ? AND issue_key = ?",
+).use { statement ->
+  statement.bind(parentWorkflowId, issueKey)
+  statement.executeQuery().use { resultSet -> if (resultSet.next()) resultSet.toRowMap() else null }
+}
 
 private fun markGoalRunSessionEmitted(connection: Connection, columnName: String, workflowId: String) {
   connection.prepareStatement(
@@ -98,14 +100,5 @@ private fun markGoalIssueProgressEmitted(connection: Connection, parentWorkflowI
   ).use { statement ->
     statement.bind(parentWorkflowId, issueKey)
     statement.executeUpdate()
-  }
-}
-
-private fun ResultSet.toRowMap(): Map<String, Any?> {
-  val metadata = metaData
-  return buildMap {
-    for (index in 1..metadata.columnCount) {
-      put(metadata.getColumnName(index), getObject(index))
-    }
   }
 }

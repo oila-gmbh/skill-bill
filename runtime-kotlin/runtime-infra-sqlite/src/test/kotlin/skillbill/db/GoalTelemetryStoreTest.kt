@@ -429,22 +429,19 @@ class GoalTelemetryStoreTest {
     )
   }
 
-  private fun finishedRecord(
-    workflowId: String,
-    status: String,
-    startedAt: String,
-  ): GoalFinishedRecord = GoalFinishedRecord(
-    issueKey = "SKILL-66",
-    workflowId = workflowId,
-    status = status,
-    startedAt = startedAt,
-    finishedAt = "2026-06-04T10:05:00Z",
-    durationMs = 300_000,
-    subtasksComplete = if (status == "completed") 1 else 0,
-    subtasksBlocked = if (status == "blocked") 1 else 0,
-    subtasksSkipped = 0,
-    mode = "runtime",
-  )
+  private fun finishedRecord(workflowId: String, status: String, startedAt: String): GoalFinishedRecord =
+    GoalFinishedRecord(
+      issueKey = "SKILL-66",
+      workflowId = workflowId,
+      status = status,
+      startedAt = startedAt,
+      finishedAt = "2026-06-04T10:05:00Z",
+      durationMs = 300_000,
+      subtasksComplete = if (status == "completed") 1 else 0,
+      subtasksBlocked = if (status == "blocked") 1 else 0,
+      subtasksSkipped = 0,
+      mode = "runtime",
+    )
 
   private fun startedRecord(
     workflowId: String,

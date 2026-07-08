@@ -53,7 +53,7 @@ fun goalFinishedPayload(row: Map<String, Any?>, level: String): Map<String, Any?
   }
 }
 
-fun goalIssueFinishedPayload(row: Map<String, Any?>, level: String): Map<String, Any?> {
+fun goalIssueFinishedPayload(row: Map<String, Any?>): Map<String, Any?> {
   val firstStartedAt = row.stringOrEmpty("first_started_at")
   val finishedAt = row.stringOrEmpty("finished_at")
   return linkedMapOf<String, Any?>(

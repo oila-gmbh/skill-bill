@@ -1,3 +1,12 @@
+## [2026-07-08] SKILL-109 goal issue terminal telemetry
+Areas: runtime-kotlin/runtime-application goal telemetry models, runtime-infra-sqlite telemetry persistence/emission, runtime-mcp telemetry schema parity
+- Added issue-level goal terminal telemetry with exact-once completed emission keyed by the constant goal parent workflow id, backed by additive `goal_issue_progress` state that preserves legacy DB rows. reusable
+- Goal segment telemetry now carries `GoalRunnerStopReason` for non-completed segments; schema parity tests guard both finished-event shape and enum drift. reusable
+- Validation cleanup split sqlite telemetry row mapping into shared support and used typed segment-start values, keeping emit/save surfaces within detekt limits without changing behavior.
+- Known limitation: abandoned issue-level terminal emission is reserved for the later stale-session reconciler subtask.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
 ## [2026-07-07] SKILL-107 subtask 3 manifest-driven runtime hygiene
 Areas: runtime-kotlin/runtime-core DI, runtime-application/review, runtime-infra-sqlite/review telemetry, runtime-infra-fs/{manifest attribution, repo validation, install apply}, runtime-ports/review
 - Review platform attribution now consumes injected manifest-derived routed-skill mappings; sqlite keeps only exact skill-name lookup plus `"unknown"` fallback, with no pack discovery dependency. reusable

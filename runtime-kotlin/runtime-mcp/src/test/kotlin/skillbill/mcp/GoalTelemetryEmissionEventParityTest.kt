@@ -2,6 +2,7 @@ package skillbill.mcp
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
+import skillbill.goalrunner.model.GoalRunnerStopReason
 import skillbill.mcp.core.McpToolRegistry
 import skillbill.mcp.telemetry.TELEMETRY_EVENT_CONTRACT_VERSION
 import skillbill.mcp.telemetry.TelemetryEventSchemaPaths
@@ -47,6 +48,11 @@ class GoalTelemetryEmissionEventParityTest {
 
   @Test
   fun `emission branches exist with strict shape and expected required keys`() {
+    assertGoalSegmentBranches()
+    assertGoalTerminalBranches()
+  }
+
+  private fun assertGoalSegmentBranches() {
     assertBranch(
       branchName = "goalStartedEvent",
       eventName = "goal_started",
@@ -80,6 +86,9 @@ class GoalTelemetryEmissionEventParityTest {
         "blocked_reason",
       ),
     )
+  }
+
+  private fun assertGoalTerminalBranches() {
     assertBranch(
       branchName = "goalFinishedEvent",
       eventName = "goal_finished",
@@ -216,6 +225,23 @@ class GoalTelemetryEmissionEventParityTest {
         put("boundary_history_written", true)
       },
       eventName = "goal_subtask_finished",
+    )
+  }
+
+  @Test
+  fun `goal runner stop reason schema enum matches runtime enum`() {
+    val schemaValues = schemaNode.path("\$defs")
+      .path("goalRunnerStopReasonEnum")
+      .path("enum")
+      .elements()
+      .asSequence()
+      .map { it.asText() }
+      .toSet()
+
+    assertEquals(
+      GoalRunnerStopReason.entries.map { it.name }.toSet(),
+      schemaValues,
+      "goalRunnerStopReasonEnum must accept every runtime GoalRunnerStopReason.",
     )
   }
 
