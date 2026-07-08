@@ -6,6 +6,7 @@ import skillbill.error.InvalidTeamBundleSchemaError
 import skillbill.error.ShellContentContractException
 import skillbill.install.staging.INSTALL_STAGING_CONTENT_HASH_FILENAME
 import skillbill.scaffold.platformpack.loadPlatformPack
+import skillbill.scaffold.platformpack.loadPlatformManifest
 import skillbill.scaffold.runtime.supportingFileTargets
 import skillbill.scaffold.validation.validateAuthoredContent
 import skillbill.team.model.TeamBundleSourceCategory
@@ -106,6 +107,7 @@ object TeamBundleSourceValidator {
       TeamBundleSourceCategory.PLATFORM_OVERRIDE,
       -> validatePlatformPackGovernedOrPackSource(relativePath, root, sourceLabel, fieldPath)
       TeamBundleSourceCategory.ADDON,
+      -> validatePlatformPackSource(relativePath, root, sourceLabel, fieldPath)
       TeamBundleSourceCategory.ORCHESTRATION_CONTRACT_OR_SUPPORT,
       -> requireExistingSource(relativePath, root, sourceLabel, fieldPath)
     }
@@ -212,9 +214,25 @@ object TeamBundleSourceValidator {
     Files.isRegularFile(path.resolveSibling("content.md"), LinkOption.NOFOLLOW_LINKS)
 
   private fun isGeneratedSupportPointerFile(relativePath: Path, root: Path): Boolean {
-    val pointerTarget = supportingFileTargets(root)[relativePath.name] ?: return false
+    val pointerTarget = supportingFileTargets(root)[relativePath.name]
     val resolved = root.resolve(relativePath).normalize().toAbsolutePath()
-    return resolved != pointerTarget.normalize().toAbsolutePath()
+    if (pointerTarget != null && resolved != pointerTarget.normalize().toAbsolutePath()) return true
+    return isGeneratedPlatformPointerFile(relativePath, root)
+  }
+
+  private fun isGeneratedPlatformPointerFile(relativePath: Path, root: Path): Boolean {
+    val segments = relativePath.map { it.name }.toList()
+    if (segments.size < 4 || segments.firstOrNull() != "platform-packs") return false
+    val packRoot = root.resolve("platform-packs").resolve(segments[1])
+    val relativeText = relativePath.toString().replace('\\', '/')
+    val pack = try {
+      loadPlatformManifest(packRoot)
+    } catch (_: ShellContentContractException) {
+      return false
+    }
+    return pack.pointers.any { pointer ->
+      relativeText == "platform-packs/${pack.slug}/${pointer.skillRelativeDir}/${pointer.name}"
+    }
   }
 
   private val PROVIDER_NATIVE_OUTPUT_DIRECTORIES =

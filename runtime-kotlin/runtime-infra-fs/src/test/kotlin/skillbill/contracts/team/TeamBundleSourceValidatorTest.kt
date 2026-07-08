@@ -149,6 +149,46 @@ class TeamBundleSourceValidatorTest {
   }
 
   @Test
+  fun `addon source with malformed platform manifest is rejected through platform validation seam`() {
+    val root = Files.createTempDirectory("team-bundle-source")
+    root.resolve("platform-packs/bad/addons").createDirectories()
+    root.resolve("platform-packs/bad/platform.yaml").writeText("contract_version: \"wrong\"\n")
+    root.resolve("platform-packs/bad/addons/team-addon.md").writeText("addon")
+
+    val error = assertInvalid(root, "addon", "platform-packs/bad/addons/team-addon.md")
+
+    assertContains(error.reason, "Platform pack")
+  }
+
+  @Test
+  fun `manifest declared addon pointer at platform skill location is rejected`() {
+    val root = Files.createTempDirectory("team-bundle-source")
+    writePlatformPackWithAddonPointer(root, "fixture")
+    root.resolve("platform-packs/fixture/code-review/bill-fixture-code-review/offline-first-review.md")
+      .writeText("generated pointer")
+
+    val error = assertInvalid(
+      root,
+      "platform_pack",
+      "platform-packs/fixture/code-review/bill-fixture-code-review/offline-first-review.md",
+    )
+
+    assertContains(error.reason, "generated support pointer")
+  }
+
+  @Test
+  fun `manifest declared addon source under addons is accepted`() {
+    val root = Files.createTempDirectory("team-bundle-source")
+    writePlatformPackWithAddonPointer(root, "fixture")
+
+    TeamBundleSourceValidator.validateSources(
+      bundle("addon", "platform-packs/fixture/addons/offline-first-review.md"),
+      root,
+      "bundle.yaml",
+    )
+  }
+
+  @Test
   fun `platform pack code review source missing governed content is rejected`() {
     val root = Files.createTempDirectory("team-bundle-source")
     writeMinimalPlatformPack(root, "fixture")
@@ -221,6 +261,35 @@ class TeamBundleSourceValidatorTest {
         strong:
           - ".$slug"
       declared_code_review_areas: []
+      """.trimIndent(),
+    )
+  }
+
+  private fun writePlatformPackWithAddonPointer(root: Path, slug: String) {
+    root.resolve("platform-packs/$slug/code-review/bill-$slug-code-review").createDirectories()
+    root.resolve("platform-packs/$slug/addons").createDirectories()
+    root.resolve("platform-packs/$slug/code-review/bill-$slug-code-review/content.md")
+      .writeText("---\nname: bill-$slug-code-review\ndescription: Demo\n---\n# Demo\n\nGuidance.\n")
+    root.resolve("platform-packs/$slug/addons/offline-first-review.md").writeText("addon")
+    root.resolve("platform-packs/$slug/platform.yaml").writeText(
+      """
+      platform: $slug
+      contract_version: "1.2"
+      display_name: Fixture
+      routing_signals:
+        strong:
+          - ".$slug"
+      declared_code_review_areas: []
+      declared_files:
+        baseline: "code-review/bill-$slug-code-review/content.md"
+      addon_usage:
+        code-review/bill-$slug-code-review:
+          - slug: offline-first
+            entrypoint: offline-first-review.md
+      pointers:
+        code-review/bill-$slug-code-review:
+          - name: offline-first-review.md
+            target: platform-packs/$slug/addons/offline-first-review.md
       """.trimIndent(),
     )
   }

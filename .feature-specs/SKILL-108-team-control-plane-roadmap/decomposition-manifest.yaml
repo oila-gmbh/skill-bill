@@ -16,12 +16,12 @@ subtasks:
 - id: 1
   name: "Team bundle contract foundation"
   spec_path: ".feature-specs/SKILL-108-team-control-plane-roadmap/spec_subtask_1_team-bundle-contract-foundation.md"
-  status: "in_progress"
+  status: "pending"
   branch: null
   commit_sha: null
-  workflow_id: "wftr-20260708-054059-7we5"
+  workflow_id: "wftr-20260708-171930-g6jz"
   blocked_reason: null
-  last_resumable_step: "review"
+  last_resumable_step: null
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
