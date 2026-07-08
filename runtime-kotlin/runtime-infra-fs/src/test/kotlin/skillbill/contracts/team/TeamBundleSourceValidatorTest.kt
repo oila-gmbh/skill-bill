@@ -130,6 +130,53 @@ class TeamBundleSourceValidatorTest {
     assertContains(error.reason, "Platform pack")
   }
 
+  @Test
+  fun `platform pack code review source missing governed content is rejected`() {
+    val root = Files.createTempDirectory("team-bundle-source")
+    writeMinimalPlatformPack(root, "fixture")
+    root.resolve("platform-packs/fixture/code-review/bill-fixture-code-review").createDirectories()
+    root.resolve("platform-packs/fixture/code-review/bill-fixture-code-review/notes.md").writeText("notes")
+
+    val error = assertInvalid(
+      root,
+      "platform_pack",
+      "platform-packs/fixture/code-review/bill-fixture-code-review/notes.md",
+    )
+
+    assertContains(error.reason, "missing required content.md")
+  }
+
+  @Test
+  fun `platform pack quality check source missing governed content is rejected`() {
+    val root = Files.createTempDirectory("team-bundle-source")
+    writeMinimalPlatformPack(root, "fixture")
+    root.resolve("platform-packs/fixture/quality-check/bill-fixture-code-check").createDirectories()
+    root.resolve("platform-packs/fixture/quality-check/bill-fixture-code-check/notes.md").writeText("notes")
+
+    val error = assertInvalid(
+      root,
+      "platform_pack",
+      "platform-packs/fixture/quality-check/bill-fixture-code-check/notes.md",
+    )
+
+    assertContains(error.reason, "missing required content.md")
+  }
+
+  @Test
+  fun `platform pack governed source with manifest and content is accepted`() {
+    val root = Files.createTempDirectory("team-bundle-source")
+    writeMinimalPlatformPack(root, "fixture")
+    root.resolve("platform-packs/fixture/code-review/bill-fixture-code-review").createDirectories()
+    root.resolve("platform-packs/fixture/code-review/bill-fixture-code-review/content.md")
+      .writeText("---\nname: bill-fixture-code-review\ndescription: Demo\n---\n# Demo\n\nGuidance.\n")
+
+    TeamBundleSourceValidator.validateSources(
+      bundle("platform_pack", "platform-packs/fixture/code-review/bill-fixture-code-review/content.md"),
+      root,
+      "bundle.yaml",
+    )
+  }
+
   private fun assertInvalid(root: Path, category: String, path: String): InvalidTeamBundleSchemaError =
     assertFailsWith<InvalidTeamBundleSchemaError> {
       TeamBundleSourceValidator.validateSources(bundle(category, path), root, "bundle.yaml")
@@ -144,4 +191,19 @@ class TeamBundleSourceValidatorTest {
       ),
     ),
   )
+
+  private fun writeMinimalPlatformPack(root: Path, slug: String) {
+    root.resolve("platform-packs/$slug").createDirectories()
+    root.resolve("platform-packs/$slug/platform.yaml").writeText(
+      """
+      platform: $slug
+      contract_version: "1.2"
+      display_name: Fixture
+      routing_signals:
+        strong:
+          - ".$slug"
+      declared_code_review_areas: []
+      """.trimIndent(),
+    )
+  }
 }

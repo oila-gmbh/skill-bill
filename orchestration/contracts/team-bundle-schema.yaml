@@ -150,7 +150,6 @@ required:
   - compatibility
   - telemetry_defaults
   - privacy_defaults
-  - team_metadata
   - exclusions
 properties:
   contract_version:

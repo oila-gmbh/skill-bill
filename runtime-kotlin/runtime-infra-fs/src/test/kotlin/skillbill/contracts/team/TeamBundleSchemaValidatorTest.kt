@@ -14,6 +14,26 @@ class TeamBundleSchemaValidatorTest {
     val parsed = TeamBundleSchemaValidator.validateYamlText(validBundleYaml(), "valid.yaml")
 
     assertEquals("team-bundle-foundation", parsed["bundle_id"])
+    assertEquals(null, parsed["team_metadata"])
+  }
+
+  @Test
+  fun `optional team metadata validates when present`() {
+    val parsed = TeamBundleSchemaValidator.validateYamlText(validBundleYaml(includeTeamMetadata = true), "valid.yaml")
+
+    assertEquals(mapOf("team_id" to "platform", "name" to "Platform", "description" to null), parsed["team_metadata"])
+  }
+
+  @Test
+  fun `malformed present team metadata fails`() {
+    val error = assertFailsWith<InvalidTeamBundleSchemaError> {
+      TeamBundleSchemaValidator.validateYamlText(
+        validBundleYaml(teamMetadataLines = listOf("team_metadata:", "  team_id: platform")),
+        "bad-team-metadata.yaml",
+      )
+    }
+
+    assertEquals("team_metadata", error.fieldPath)
   }
 
   @Test
@@ -107,6 +127,8 @@ internal fun validBundleYaml(
   privacyTelemetry: String = "anonymous",
   includeSourceHash: Boolean = true,
   includeSources: Boolean = true,
+  includeTeamMetadata: Boolean = false,
+  teamMetadataLines: List<String>? = null,
   extraTopLevel: String? = null,
   extraPrivacyLine: String? = null,
 ): String {
@@ -153,11 +175,16 @@ internal fun validBundleYaml(
   if (extraPrivacyLine != null) {
     lines += extraPrivacyLine
   }
+  when {
+    teamMetadataLines != null -> lines += teamMetadataLines
+    includeTeamMetadata -> lines += listOf(
+      "team_metadata:",
+      "  team_id: platform",
+      "  name: Platform",
+      "  description: null",
+    )
+  }
   lines += listOf(
-    "team_metadata:",
-    "  team_id: platform",
-    "  name: Platform",
-    "  description: null",
     "exclusions:",
     "  paths: []",
     "  reasons: {}",

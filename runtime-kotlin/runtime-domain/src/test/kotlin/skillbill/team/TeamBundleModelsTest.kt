@@ -1,6 +1,7 @@
 package skillbill.team
 
 import skillbill.contracts.team.TEAM_BUNDLE_CONTRACT_VERSION
+import skillbill.error.InvalidTeamBundleSchemaError
 import skillbill.team.model.TeamBundle
 import skillbill.team.model.TeamBundleChannel
 import skillbill.team.model.TeamBundleCompatibility
@@ -16,6 +17,7 @@ import skillbill.team.model.TeamBundleTeamMetadata
 import skillbill.team.model.TeamBundleTelemetryDefaults
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 
 class TeamBundleModelsTest {
@@ -64,12 +66,12 @@ class TeamBundleModelsTest {
         sourcePaths = TeamBundlePrivacyLevel.ANONYMOUS,
         authorIdentity = TeamBundlePrivacyLevel.OFF,
       ),
-      teamMetadata = TeamBundleTeamMetadata(teamId = "platform", name = "Platform"),
       exclusions = TeamBundleExclusions(paths = emptyList(), reasons = emptyMap()),
     )
 
     assertEquals(TEAM_BUNDLE_CONTRACT_VERSION, bundle.contractVersion)
     assertEquals("team-bundle-foundation", bundle.metadata.bundleId)
+    assertNull(bundle.teamMetadata)
   }
 
   @Test
@@ -104,7 +106,6 @@ class TeamBundleModelsTest {
           "source_paths" to "anonymous",
           "author_identity" to "off",
         ),
-        "team_metadata" to mapOf("team_id" to "platform", "name" to "Platform"),
         "exclusions" to mapOf("paths" to emptyList<String>(), "reasons" to emptyMap<String, String>()),
       ),
       "bundle.yaml",
@@ -113,5 +114,57 @@ class TeamBundleModelsTest {
     assertEquals(TeamBundleChannel.PREVIEW, parsed.metadata.channel)
     assertEquals(TeamBundleSourceCategory.HORIZONTAL_SKILL, parsed.sources.single().category)
     assertEquals(TeamBundlePrivacyLevel.OFF, parsed.privacyDefaults.authorIdentity)
+    assertNull(parsed.teamMetadata)
   }
+
+  @Test
+  fun `parser exposes optional team metadata when present`() {
+    val parsed = TeamBundleParser.parse(
+      minimalBundleMap() + ("team_metadata" to mapOf("team_id" to "platform", "name" to "Platform")),
+      "bundle.yaml",
+    )
+
+    assertEquals(TeamBundleTeamMetadata(teamId = "platform", name = "Platform"), parsed.teamMetadata)
+  }
+
+  @Test
+  fun `parser rejects malformed present team metadata with field path`() {
+    val error = assertFailsWith<InvalidTeamBundleSchemaError> {
+      TeamBundleParser.parse(minimalBundleMap() + ("team_metadata" to mapOf("team_id" to "platform")), "bundle.yaml")
+    }
+
+    assertEquals("team_metadata.name", error.fieldPath)
+  }
+
+  private fun minimalBundleMap(): Map<String, Any?> = mapOf(
+    "contract_version" to TEAM_BUNDLE_CONTRACT_VERSION,
+    "bundle_id" to "team-bundle-foundation",
+    "version" to "1.0.0",
+    "channel" to "preview",
+    "created_at" to "2026-07-08T00:00:00Z",
+    "created_by" to "platform-team",
+    "source_repo" to "skill-bill",
+    "source_ref" to "main",
+    "content_hash" to "sha256:bundle-content",
+    "manifest_hashes" to mapOf("platform-packs/kotlin/platform.yaml" to "sha256:platform"),
+    "bundle_checksum" to "sha256:bundle-checksum",
+    "sources" to listOf(
+      mapOf(
+        "category" to "horizontal_skill",
+        "path" to "skills/bill-code-check/content.md",
+        "content_hash" to "sha256:source",
+      ),
+    ),
+    "compatibility" to mapOf(
+      "min_skill_bill_version" to "0.1.0",
+      "shell_contract_version" to "1.2",
+    ),
+    "telemetry_defaults" to mapOf("enabled" to true, "level" to "anonymous"),
+    "privacy_defaults" to mapOf(
+      "telemetry" to "anonymous",
+      "source_paths" to "anonymous",
+      "author_identity" to "off",
+    ),
+    "exclusions" to mapOf("paths" to emptyList<String>(), "reasons" to emptyMap<String, String>()),
+  )
 }

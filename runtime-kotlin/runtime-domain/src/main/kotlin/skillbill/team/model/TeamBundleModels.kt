@@ -99,6 +99,6 @@ data class TeamBundle(
   val compatibility: TeamBundleCompatibility,
   val telemetryDefaults: TeamBundleTelemetryDefaults,
   val privacyDefaults: TeamBundlePrivacyDefaults,
-  val teamMetadata: TeamBundleTeamMetadata,
+  val teamMetadata: TeamBundleTeamMetadata? = null,
   val exclusions: TeamBundleExclusions,
 )

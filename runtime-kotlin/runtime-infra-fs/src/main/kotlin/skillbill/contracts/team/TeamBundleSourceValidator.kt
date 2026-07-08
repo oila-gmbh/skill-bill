@@ -97,10 +97,22 @@ object TeamBundleSourceValidator {
       -> validateGovernedSkillSource(relativePath, root, sourceLabel, fieldPath)
       TeamBundleSourceCategory.PLATFORM_PACK,
       TeamBundleSourceCategory.PLATFORM_OVERRIDE,
-      -> validatePlatformPackSource(relativePath, root, sourceLabel, fieldPath)
+      -> validatePlatformPackGovernedOrPackSource(relativePath, root, sourceLabel, fieldPath)
       TeamBundleSourceCategory.ADDON,
       TeamBundleSourceCategory.ORCHESTRATION_CONTRACT_OR_SUPPORT,
       -> requireExistingSource(relativePath, root, sourceLabel, fieldPath)
+    }
+  }
+
+  private fun validatePlatformPackGovernedOrPackSource(
+    relativePath: Path,
+    root: Path,
+    sourceLabel: String,
+    fieldPath: String,
+  ) {
+    validatePlatformPackSource(relativePath, root, sourceLabel, fieldPath)
+    if (platformSkillRoot(relativePath, root) != null) {
+      validateGovernedSkillSource(relativePath, root, sourceLabel, fieldPath)
     }
   }
 

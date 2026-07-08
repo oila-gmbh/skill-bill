@@ -32,7 +32,7 @@ object TeamBundleParser {
     compatibility = compatibility(requiredMap(bundle, "compatibility", sourceLabel), sourceLabel),
     telemetryDefaults = telemetryDefaults(requiredMap(bundle, "telemetry_defaults", sourceLabel), sourceLabel),
     privacyDefaults = privacyDefaults(requiredMap(bundle, "privacy_defaults", sourceLabel), sourceLabel),
-    teamMetadata = teamMetadata(requiredMap(bundle, "team_metadata", sourceLabel), sourceLabel),
+    teamMetadata = optionalMap(bundle, "team_metadata", sourceLabel)?.let { teamMetadata(it, sourceLabel) },
     exclusions = exclusions(requiredMap(bundle, "exclusions", sourceLabel), sourceLabel),
   )
 
@@ -116,6 +116,11 @@ object TeamBundleParser {
   private fun requiredMap(raw: Map<*, *>, key: String, sourceLabel: String, parentPath: String? = null): Map<*, *> {
     val fieldPath = fieldPath(parentPath, key)
     return raw[key] as? Map<*, *> ?: invalid(sourceLabel, fieldPath, "must be an object.")
+  }
+
+  private fun optionalMap(raw: Map<*, *>, key: String, sourceLabel: String, parentPath: String? = null): Map<*, *>? {
+    val value = raw[key] ?: return null
+    return value as? Map<*, *> ?: invalid(sourceLabel, fieldPath(parentPath, key), "must be an object or null.")
   }
 
   private fun requiredList(raw: Map<*, *>, key: String, sourceLabel: String, parentPath: String? = null): List<*> {
