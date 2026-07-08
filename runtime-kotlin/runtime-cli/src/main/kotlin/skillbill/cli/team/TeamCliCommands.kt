@@ -15,6 +15,7 @@ import skillbill.cli.core.DocumentedNoOpCliCommand
 import skillbill.cli.core.formatOption
 import skillbill.cli.model.CliFormat
 import skillbill.contracts.JsonSupport
+import skillbill.error.ShellContentContractException
 import skillbill.team.model.TeamBundleChannel
 import skillbill.team.model.TeamExportRequest
 import java.nio.file.Path
@@ -36,7 +37,7 @@ class TeamExportCommand(
   private val repoRoot by option("--repo-root", help = "Repository root to export.").default(".")
   private val version by option("--version", help = "Bundle version.").required()
   private val channel by option("--channel", help = "Bundle channel.")
-    .choice("stable", "preview", "experimental")
+    .choice(*TeamBundleChannel.entries.map { it.wireValue }.toTypedArray())
     .required()
   private val output by option("--output", help = "Archive path to write.")
   private val registry by option("--registry", help = "Local registry root to publish into.")
@@ -71,17 +72,20 @@ class TeamExportCommand(
         state.completeText("Team bundle exported: ${result.bundlePath}\n", payload)
       }
     } catch (error: TeamExportException) {
-      state.completeText(
-        "${error.message}\n",
-        mapOf("status" to "failed", "error" to error.message.orEmpty()),
-        exitCode = 1,
-      )
+      completeFailed(error.message.orEmpty())
+    } catch (error: ShellContentContractException) {
+      completeFailed(error.message.orEmpty())
     } catch (error: IllegalArgumentException) {
-      state.completeText(
-        "${error.message}\n",
-        mapOf("status" to "failed", "error" to error.message.orEmpty()),
-        exitCode = 1,
-      )
+      completeFailed(error.message.orEmpty())
+    }
+  }
+
+  private fun completeFailed(message: String) {
+    val payload = mapOf("status" to "failed", "error" to message)
+    if (format == CliFormat.JSON) {
+      state.complete(payload, format, exitCode = 1)
+    } else {
+      state.completeText("$message\n", payload, exitCode = 1)
     }
   }
 }

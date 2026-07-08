@@ -3,6 +3,8 @@ package skillbill.team.model
 import skillbill.contracts.team.TEAM_BUNDLE_CONTRACT_VERSION
 
 enum class TeamBundleChannel(val wireValue: String) {
+  DEVELOPMENT("development"),
+  BETA("beta"),
   STABLE("stable"),
   PREVIEW("preview"),
   EXPERIMENTAL("experimental"),

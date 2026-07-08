@@ -6,6 +6,7 @@ import skillbill.cli.model.CliExecutionResult
 import skillbill.cli.model.CliRuntimeContext
 import skillbill.di.RuntimeComponent
 import skillbill.di.create
+import skillbill.error.ShellContentContractException
 
 object CliRuntime {
   fun run(arguments: List<String>, context: CliRuntimeContext = CliRuntimeContext()): CliExecutionResult {
@@ -31,6 +32,11 @@ object CliRuntime {
         stdout = rootCommand.getFormattedHelp(error).orEmpty(),
       )
     } catch (error: IllegalArgumentException) {
+      CliExecutionResult(
+        exitCode = 1,
+        stdout = error.message.orEmpty(),
+      )
+    } catch (error: ShellContentContractException) {
       CliExecutionResult(
         exitCode = 1,
         stdout = error.message.orEmpty(),

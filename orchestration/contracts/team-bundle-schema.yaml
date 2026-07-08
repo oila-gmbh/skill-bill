@@ -12,6 +12,8 @@ $defs:
   channel:
     type: string
     enum:
+      - development
+      - beta
       - stable
       - preview
       - experimental

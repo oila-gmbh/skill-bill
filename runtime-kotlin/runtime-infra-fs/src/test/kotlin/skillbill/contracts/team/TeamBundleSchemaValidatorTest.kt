@@ -18,6 +18,15 @@ class TeamBundleSchemaValidatorTest {
   }
 
   @Test
+  fun `development beta and stable channels validate`() {
+    listOf("development", "beta", "stable").forEach { channel ->
+      val parsed = TeamBundleSchemaValidator.validateYamlText(validBundleYaml(channel = channel), "$channel.yaml")
+
+      assertEquals(channel, parsed["channel"])
+    }
+  }
+
+  @Test
   fun `optional team metadata validates when present`() {
     val parsed = TeamBundleSchemaValidator.validateYamlText(validBundleYaml(includeTeamMetadata = true), "valid.yaml")
 

@@ -159,6 +159,80 @@ class TeamExportRuntimeTest {
   }
 
   @Test
+  fun `team export accepts beta channel through cli and schema validation`() {
+    val repo = repositoryRoot()
+    val result = CliRuntime.run(
+      listOf(
+        "team",
+        "export",
+        "--repo-root",
+        repo.toString(),
+        "--version",
+        "1.2.3",
+        "--channel",
+        "beta",
+        "--dry-run",
+        "--created-at",
+        "2026-01-01T00:00:00Z",
+        "--created-by",
+        "test",
+        "--source-repo",
+        "local",
+        "--source-ref",
+        "refs/heads/test",
+        "--format",
+        "json",
+      ),
+      CliRuntimeContext(),
+    )
+
+    assertEquals(0, result.exitCode, result.stdout)
+    val payload = decodeJsonObject(result.stdout)
+    assertEquals("beta", payload["channel"])
+    assertEquals("team-beta-1.2.3", payload["bundle_id"])
+  }
+
+  @Test
+  fun `team export reports generated source rejection as stable json failure`() {
+    val repo = writeGovernedRepoFixture()
+    repo.resolve("platform-packs/demo/addons").createDirectories()
+    repo.resolve("platform-packs/demo/platform.yaml").writeText(
+      """
+      platform: demo
+      contract_version: "1.2"
+      routing_signals:
+        strong:
+          - ".demo"
+      declared_code_review_areas: []
+      """.trimIndent() + "\n",
+    )
+    repo.resolve("platform-packs/demo/addons/content.md").writeText("# Generated addon sibling\n")
+    repo.resolve("platform-packs/demo/addons/SKILL.md").writeText("# Generated wrapper\n")
+
+    val result = CliRuntime.run(
+      listOf(
+        "team",
+        "export",
+        "--repo-root",
+        repo.toString(),
+        "--version",
+        "1.2.3",
+        "--channel",
+        "stable",
+        "--dry-run",
+        "--format",
+        "json",
+      ),
+      CliRuntimeContext(),
+    )
+
+    assertEquals(1, result.exitCode)
+    val payload = decodeJsonObject(result.stdout)
+    assertEquals("failed", payload["status"])
+    assertContains(payload["error"].toString(), "committed governed SKILL.md output")
+  }
+
+  @Test
   fun `team export dry run emits stable json keys`() {
     val repo = repositoryRoot()
     val result = CliRuntime.run(

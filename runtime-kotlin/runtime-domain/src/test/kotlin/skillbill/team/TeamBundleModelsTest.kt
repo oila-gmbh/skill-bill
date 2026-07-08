@@ -23,6 +23,8 @@ import kotlin.test.assertNull
 class TeamBundleModelsTest {
   @Test
   fun `enum wire mappings round trip`() {
+    assertEquals(TeamBundleChannel.DEVELOPMENT, TeamBundleChannel.fromWireValue("development"))
+    assertEquals(TeamBundleChannel.BETA, TeamBundleChannel.fromWireValue("beta"))
     assertEquals(TeamBundleChannel.STABLE, TeamBundleChannel.fromWireValue("stable"))
     assertEquals(TeamBundlePrivacyLevel.ANONYMOUS, TeamBundlePrivacyLevel.fromWireValue("anonymous"))
     assertEquals(TeamBundleSourceCategory.HORIZONTAL_SKILL, TeamBundleSourceCategory.fromWireValue("horizontal_skill"))
