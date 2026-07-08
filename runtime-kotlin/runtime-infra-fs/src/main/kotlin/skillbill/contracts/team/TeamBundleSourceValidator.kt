@@ -5,8 +5,9 @@ package skillbill.contracts.team
 import skillbill.error.InvalidTeamBundleSchemaError
 import skillbill.error.ShellContentContractException
 import skillbill.install.staging.INSTALL_STAGING_CONTENT_HASH_FILENAME
-import skillbill.scaffold.platformpack.loadPlatformPack
+import skillbill.scaffold.platformpack.FEATURE_TASK_ADDON_CONSUMER
 import skillbill.scaffold.platformpack.loadPlatformManifest
+import skillbill.scaffold.platformpack.loadPlatformPack
 import skillbill.scaffold.runtime.supportingFileTargets
 import skillbill.scaffold.validation.validateAuthoredContent
 import skillbill.team.model.TeamBundleSourceCategory
@@ -29,12 +30,7 @@ object TeamBundleSourceValidator {
     return bundle + ("sources" to canonicalSources)
   }
 
-  private fun canonicalizeEntry(
-    entry: Map<*, *>,
-    index: Int,
-    root: Path,
-    sourceLabel: String,
-  ): Map<Any?, Any?> {
+  private fun canonicalizeEntry(entry: Map<*, *>, index: Int, root: Path, sourceLabel: String): Map<Any?, Any?> {
     val fieldPath = "sources[$index].path"
     val rawPath = entry["path"] as? String
       ?: throw InvalidTeamBundleSchemaError(sourceLabel, fieldPath, "source entry path must be a string.")
@@ -217,7 +213,8 @@ object TeamBundleSourceValidator {
     val pointerTarget = supportingFileTargets(root)[relativePath.name]
     val resolved = root.resolve(relativePath).normalize().toAbsolutePath()
     if (pointerTarget != null && resolved != pointerTarget.normalize().toAbsolutePath()) return true
-    return isGeneratedPlatformPointerFile(relativePath, root)
+    return isGeneratedPlatformPointerFile(relativePath, root) ||
+      isGeneratedFeatureTaskAddonPointerFile(relativePath, root)
   }
 
   private fun isGeneratedPlatformPointerFile(relativePath: Path, root: Path): Boolean {
@@ -232,6 +229,35 @@ object TeamBundleSourceValidator {
     }
     return pack.pointers.any { pointer ->
       relativeText == "platform-packs/${pack.slug}/${pointer.skillRelativeDir}/${pointer.name}"
+    }
+  }
+
+  private fun isGeneratedFeatureTaskAddonPointerFile(relativePath: Path, root: Path): Boolean {
+    val relativeText = relativePath.toString().replace('\\', '/')
+    if (relativeText != "skills/bill-feature-task/${relativePath.name}") return false
+    val platformPacksRoot = root.resolve("platform-packs")
+    if (!Files.isDirectory(platformPacksRoot)) return false
+    return Files.list(platformPacksRoot).use { packRoots ->
+      packRoots
+        .filter { packRoot -> Files.isDirectory(packRoot) }
+        .anyMatch { packRoot ->
+          val pack = try {
+            loadPlatformManifest(packRoot)
+          } catch (_: ShellContentContractException) {
+            return@anyMatch false
+          }
+          val featureAddonPointerNames = pack.featureAddonUsage
+            .filter { usage -> usage.consumer == FEATURE_TASK_ADDON_CONSUMER }
+            .flatMap { usage ->
+              usage.addons.flatMap { addon -> listOf(addon.entrypoint) + addon.companionPointers }
+            }
+            .toSet()
+          pack.pointers.any { pointer ->
+            pointer.skillRelativeDir == FEATURE_TASK_ADDON_CONSUMER &&
+              pointer.name == relativePath.name &&
+              pointer.name in featureAddonPointerNames
+          }
+        }
     }
   }
 

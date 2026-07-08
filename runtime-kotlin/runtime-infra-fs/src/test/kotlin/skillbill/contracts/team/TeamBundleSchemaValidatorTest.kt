@@ -147,43 +147,9 @@ internal fun validBundleYaml(
     "  platform-packs/kotlin/platform.yaml: sha256:platform",
     "bundle_checksum: sha256:bundle-checksum",
   )
-  if (includeSources) {
-    lines += listOf(
-      "sources:",
-      "  - category: horizontal_skill",
-      "    path: skills/bill-code-check/content.md",
-    )
-    if (includeSourceHash) {
-      lines += "    content_hash: sha256:source"
-    }
-    lines += "    manifest_hash_key: null"
-  }
-  lines += listOf(
-    "compatibility:",
-    "  min_skill_bill_version: \"0.1.0\"",
-    "  max_skill_bill_version: null",
-    "  shell_contract_version: \"1.2\"",
-    "  platform_pack_contract_version: null",
-    "telemetry_defaults:",
-    "  enabled: true",
-    "  level: anonymous",
-    "privacy_defaults:",
-    "  telemetry: $privacyTelemetry",
-    "  source_paths: anonymous",
-    "  author_identity: \"off\"",
-  )
-  if (extraPrivacyLine != null) {
-    lines += extraPrivacyLine
-  }
-  when {
-    teamMetadataLines != null -> lines += teamMetadataLines
-    includeTeamMetadata -> lines += listOf(
-      "team_metadata:",
-      "  team_id: platform",
-      "  name: Platform",
-      "  description: null",
-    )
-  }
+  lines += sourceLines(includeSources, includeSourceHash)
+  lines += defaultLines(privacyTelemetry, extraPrivacyLine)
+  lines += teamMetadataLines(teamMetadataLines, includeTeamMetadata)
   lines += listOf(
     "exclusions:",
     "  paths: []",
@@ -193,4 +159,53 @@ internal fun validBundleYaml(
     lines += extraTopLevel
   }
   return lines.joinToString("\n")
+}
+
+private fun sourceLines(includeSources: Boolean, includeSourceHash: Boolean): List<String> {
+  if (!includeSources) {
+    return emptyList()
+  }
+
+  return buildList {
+    add("sources:")
+    add("  - category: horizontal_skill")
+    add("    path: skills/bill-code-check/content.md")
+    if (includeSourceHash) {
+      add("    content_hash: sha256:source")
+    }
+    add("    manifest_hash_key: null")
+  }
+}
+
+private fun defaultLines(privacyTelemetry: String, extraPrivacyLine: String?): List<String> = buildList {
+  addAll(
+    listOf(
+      "compatibility:",
+      "  min_skill_bill_version: \"0.1.0\"",
+      "  max_skill_bill_version: null",
+      "  shell_contract_version: \"1.2\"",
+      "  platform_pack_contract_version: null",
+      "telemetry_defaults:",
+      "  enabled: true",
+      "  level: anonymous",
+      "privacy_defaults:",
+      "  telemetry: $privacyTelemetry",
+      "  source_paths: anonymous",
+      "  author_identity: \"off\"",
+    ),
+  )
+  if (extraPrivacyLine != null) {
+    add(extraPrivacyLine)
+  }
+}
+
+private fun teamMetadataLines(teamMetadataLines: List<String>?, includeTeamMetadata: Boolean): List<String> = when {
+  teamMetadataLines != null -> teamMetadataLines
+  includeTeamMetadata -> listOf(
+    "team_metadata:",
+    "  team_id: platform",
+    "  name: Platform",
+    "  description: null",
+  )
+  else -> emptyList()
 }

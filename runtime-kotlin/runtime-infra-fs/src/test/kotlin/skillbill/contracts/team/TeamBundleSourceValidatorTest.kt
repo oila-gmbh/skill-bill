@@ -189,6 +189,36 @@ class TeamBundleSourceValidatorTest {
   }
 
   @Test
+  fun `manifest declared feature task addon pointer at horizontal skill location is rejected`() {
+    val root = Files.createTempDirectory("team-bundle-source")
+    writePlatformPackWithFeatureTaskAddonPointer(root, "fixture")
+    root.resolve("skills/bill-feature-task").createDirectories()
+    root.resolve("skills/bill-feature-task/content.md")
+      .writeText("---\nname: bill-feature-task\ndescription: Demo\n---\n# Demo\n\nGuidance.\n")
+    root.resolve("skills/bill-feature-task/android-compose-implementation.md").writeText("generated pointer")
+
+    val error = assertInvalid(
+      root,
+      "horizontal_skill",
+      "skills/bill-feature-task/android-compose-implementation.md",
+    )
+
+    assertContains(error.reason, "generated support pointer")
+  }
+
+  @Test
+  fun `manifest declared feature task addon source under addons is accepted`() {
+    val root = Files.createTempDirectory("team-bundle-source")
+    writePlatformPackWithFeatureTaskAddonPointer(root, "fixture")
+
+    TeamBundleSourceValidator.validateSources(
+      bundle("addon", "platform-packs/fixture/addons/android-compose-implementation.md"),
+      root,
+      "bundle.yaml",
+    )
+  }
+
+  @Test
   fun `platform pack code review source missing governed content is rejected`() {
     val root = Files.createTempDirectory("team-bundle-source")
     writeMinimalPlatformPack(root, "fixture")
@@ -290,6 +320,30 @@ class TeamBundleSourceValidatorTest {
         code-review/bill-$slug-code-review:
           - name: offline-first-review.md
             target: platform-packs/$slug/addons/offline-first-review.md
+      """.trimIndent(),
+    )
+  }
+
+  private fun writePlatformPackWithFeatureTaskAddonPointer(root: Path, slug: String) {
+    root.resolve("platform-packs/$slug/addons").createDirectories()
+    root.resolve("platform-packs/$slug/addons/android-compose-implementation.md").writeText("addon")
+    root.resolve("platform-packs/$slug/platform.yaml").writeText(
+      """
+      platform: $slug
+      contract_version: "1.2"
+      display_name: Fixture
+      routing_signals:
+        strong:
+          - ".$slug"
+      declared_code_review_areas: []
+      feature_addon_usage:
+        feature-task:
+          - slug: android-compose
+            entrypoint: android-compose-implementation.md
+      pointers:
+        feature-task:
+          - name: android-compose-implementation.md
+            target: platform-packs/$slug/addons/android-compose-implementation.md
       """.trimIndent(),
     )
   }

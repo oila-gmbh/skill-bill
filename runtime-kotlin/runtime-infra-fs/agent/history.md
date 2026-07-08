@@ -1,5 +1,15 @@
 # Boundary History — runtime-kotlin/runtime-infra-fs
 
+## [2026-07-08] SKILL-108 team-bundle contract foundation
+Areas: orchestration/contracts, runtime-domain/team, runtime-infra-fs/contracts/team, runtime-mcp
+- Team-bundle validation treats authored bundle entries as governed source only: `content.md`, platform manifests, pack add-ons, hashes, channel/privacy metadata, and exclusions are parsed through typed contract/domain seams. reusable
+- Generated-artifact rejection now includes manifest-declared feature-task add-on pointers rendered under `skills/bill-feature-task/`; canonical pack-owned add-on source under `platform-packs/<slug>/addons/` remains accepted. reusable
+- Manifest-driven pointer detection reuses platform manifest semantics and ignores malformed manifests only for generated-pointer detection; platform-source validation remains the loud-fail seam for malformed packs.
+- Runtime module smoke-test inventory now includes `skillbill.team`; schema helper cleanup keeps detekt green without changing contract fixtures.
+- Known limit: user-level `skill-bill validate` remains stale until install sync because the installed runtime expects shell contract 1.1 while this repo now uses 1.2.
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
 ## [2026-07-06] SKILL-107 feature add-on usage schema
 Areas: orchestration/contracts, platform-packs/{go,ios,kotlin,kmp,php,python}, runtime-domain/scaffold, runtime-infra-fs/{scaffold,install,validation}
 - Platform-pack shell contract bumped to 1.2 and `feature_addon_usage` became a manifest-backed, runtime-anchored field; schema/Kotlin parity and 1.1 rejection fixtures must move together. reusable
