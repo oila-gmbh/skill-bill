@@ -61,6 +61,17 @@ class InvalidFeatureTaskRuntimePhaseOutputSchemaError(
   cause,
 )
 
+class InvalidTeamBundleSchemaError(
+  val sourceLabel: String,
+  val fieldPath: String,
+  val reason: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Team bundle '${sourceLabel.ifBlank { "<unknown>" }}' fails schema validation at " +
+    "'${fieldPath.ifBlank { "<root>" }}': $reason",
+  cause,
+)
+
 /**
  * SKILL-48 Subtask 2b: surfaced when an `InstallPlan` wire payload fails
  * the canonical `orchestration/contracts/install-plan-schema.yaml` Draft

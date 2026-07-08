@@ -108,6 +108,7 @@ class RuntimeArchitectureDocumentationTest {
         "skillbill.scaffold",
         "skillbill.skillremove",
         "skillbill.telemetry",
+        "skillbill.team",
         "skillbill.workflow",
         "skillbill.workflow.implement",
         "skillbill.workflow.verify",

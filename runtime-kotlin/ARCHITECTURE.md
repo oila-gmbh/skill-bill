@@ -204,6 +204,8 @@ runtime-ports
   normalization, sync orchestration, config mutation rules, lifecycle telemetry
   records, and port-backed runtime surfaces owned by `runtime-application` and
   `runtime-domain`.
+- `skillbill.team` and `skillbill.team.model`: team-bundle validator ports and
+  team-bundle domain models owned by `runtime-domain`.
 - `skillbill.infrastructure.fs`: filesystem gateways for repo validation,
   install, scaffold, native-agent, launcher, telemetry config, git workflow,
   review input loading, decomposition-manifest file storage, and skill-remove
@@ -407,6 +409,8 @@ runtime-ports
     - `skillbill.install.model.InstallPlanWireValidator.validate`
     - `skillbill.workflow.DecompositionManifestValidator.validate`
     - `skillbill.workflow.DecompositionManifestValidator.validateYamlText`
+    - `skillbill.team.TeamBundleValidator.validate`
+    - `skillbill.team.TeamBundleValidator.validateYamlText`
     - `skillbill.ports.workflow.DecompositionManifestFileStore.encodeManifestYaml`
     - `skillbill.workflow.DecompositionManifestCodec.decodeMap`
     - `skillbill.workflow.toWireMap`
@@ -550,6 +554,7 @@ skillbill.review
 skillbill.scaffold
 skillbill.skillremove
 skillbill.telemetry
+skillbill.team
 skillbill.workflow
 skillbill.workflow.implement
 skillbill.workflow.verify
@@ -856,6 +861,8 @@ Categories:
 - `skillbill.install.model.InstallPlanWireValidator.validate`
 - `skillbill.workflow.DecompositionManifestValidator.validate`
 - `skillbill.workflow.DecompositionManifestValidator.validateYamlText`
+- `skillbill.team.TeamBundleValidator.validate`
+- `skillbill.team.TeamBundleValidator.validateYamlText`
 - `skillbill.ports.workflow.DecompositionManifestFileStore.encodeManifestYaml`
 - `skillbill.application.workflow.WorkflowFamily.sessionSummary`
 - `skillbill.workflow.GoalObservabilityEventValidator.validate`

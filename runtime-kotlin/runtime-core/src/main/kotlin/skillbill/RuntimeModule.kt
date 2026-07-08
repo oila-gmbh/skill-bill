@@ -43,6 +43,7 @@ object RuntimeModule {
       "skillbill.model",
       "skillbill.db",
       "skillbill.telemetry",
+      "skillbill.team",
       "skillbill.review",
       "skillbill.learnings",
       "skillbill.ports",

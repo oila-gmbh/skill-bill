@@ -176,6 +176,25 @@ val copyFeatureTaskRuntimePhaseOutputSchema =
     }
   }
 
+val canonicalTeamBundleSchemaPath: String =
+  rootProject.projectDir.parentFile
+    .resolve("orchestration/contracts/team-bundle-schema.yaml")
+    .absolutePath
+
+val copyTeamBundleSchema =
+  tasks.register<Copy>("copyTeamBundleSchema") {
+    val schemaPath = canonicalTeamBundleSchemaPath
+    from(schemaPath)
+    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/contracts"))
+    inputs.file(schemaPath)
+    doFirst {
+      require(File(schemaPath).exists()) {
+        "SKILL-108: canonical team-bundle schema is missing at $schemaPath. " +
+          "Run from the repo root and ensure the schema file exists."
+      }
+    }
+  }
+
 sourceSets.named("main") {
   resources.srcDir(layout.buildDirectory.dir("generated/skillbill-contracts"))
 }
@@ -189,6 +208,7 @@ tasks.named("processResources") {
   dependsOn(copyGoalObservabilityEventSchema)
   dependsOn(copyGoalProgressEventSchema)
   dependsOn(copyFeatureTaskRuntimePhaseOutputSchema)
+  dependsOn(copyTeamBundleSchema)
 }
 
 tasks.named("processTestResources") {
@@ -200,6 +220,7 @@ tasks.named("processTestResources") {
   dependsOn(copyGoalObservabilityEventSchema)
   dependsOn(copyGoalProgressEventSchema)
   dependsOn(copyFeatureTaskRuntimePhaseOutputSchema)
+  dependsOn(copyTeamBundleSchema)
 }
 
 tasks.withType<Test>().configureEach {

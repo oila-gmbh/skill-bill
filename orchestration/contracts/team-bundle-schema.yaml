@@ -1,0 +1,241 @@
+# Team bundle schema (canonical source of truth).
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://skill-bill.dev/contracts/team-bundle-schema.yaml"
+title: "Team bundle envelope"
+description: >
+  Schema for a portable Skill Bill team bundle envelope. The schema owns wire
+  shape, enums, required hash material, and strict object boundaries; repository
+  coherence and generated-artifact rejection are enforced by Kotlin validators.
+type: object
+additionalProperties: false
+$defs:
+  channel:
+    type: string
+    enum:
+      - stable
+      - preview
+      - experimental
+  privacyLevel:
+    type: string
+    enum:
+      - "off"
+      - anonymous
+      - full
+  telemetryDefaults:
+    type: object
+    additionalProperties: false
+    required:
+      - enabled
+      - level
+    properties:
+      enabled:
+        type: boolean
+      level:
+        $ref: "#/$defs/privacyLevel"
+  privacyDefaults:
+    type: object
+    additionalProperties: false
+    required:
+      - telemetry
+      - source_paths
+      - author_identity
+    properties:
+      telemetry:
+        $ref: "#/$defs/privacyLevel"
+      source_paths:
+        $ref: "#/$defs/privacyLevel"
+      author_identity:
+        $ref: "#/$defs/privacyLevel"
+  sourceCategory:
+    type: string
+    enum:
+      - horizontal_skill
+      - platform_pack
+      - addon
+      - platform_override
+      - native_agent_source
+      - orchestration_contract_or_support
+  sourceEntry:
+    type: object
+    additionalProperties: false
+    required:
+      - category
+      - path
+      - content_hash
+    properties:
+      category:
+        $ref: "#/$defs/sourceCategory"
+      path:
+        type: string
+        minLength: 1
+      content_hash:
+        type: string
+        minLength: 1
+      manifest_hash_key:
+        type:
+          - string
+          - "null"
+        minLength: 1
+  compatibility:
+    type: object
+    additionalProperties: false
+    required:
+      - min_skill_bill_version
+      - shell_contract_version
+    properties:
+      min_skill_bill_version:
+        type: string
+        minLength: 1
+      max_skill_bill_version:
+        type:
+          - string
+          - "null"
+        minLength: 1
+      shell_contract_version:
+        type: string
+        minLength: 1
+      platform_pack_contract_version:
+        type:
+          - string
+          - "null"
+        minLength: 1
+  teamMetadata:
+    type: object
+    additionalProperties: false
+    required:
+      - team_id
+      - name
+    properties:
+      team_id:
+        type: string
+        minLength: 1
+      name:
+        type: string
+        minLength: 1
+      description:
+        type:
+          - string
+          - "null"
+        minLength: 1
+  exclusions:
+    type: object
+    additionalProperties: false
+    required:
+      - paths
+      - reasons
+    properties:
+      paths:
+        type: array
+        items:
+          type: string
+          minLength: 1
+      reasons:
+        type: object
+        additionalProperties:
+          type: string
+          minLength: 1
+required:
+  - contract_version
+  - bundle_id
+  - version
+  - channel
+  - created_at
+  - created_by
+  - source_repo
+  - source_ref
+  - content_hash
+  - manifest_hashes
+  - bundle_checksum
+  - sources
+  - compatibility
+  - telemetry_defaults
+  - privacy_defaults
+  - team_metadata
+  - exclusions
+properties:
+  contract_version:
+    type: string
+    const: "0.1"
+  bundle_id:
+    type: string
+    minLength: 1
+  version:
+    type: string
+    minLength: 1
+  channel:
+    $ref: "#/$defs/channel"
+  created_at:
+    type: string
+    minLength: 1
+  created_by:
+    type: string
+    minLength: 1
+  source_repo:
+    type: string
+    minLength: 1
+  source_ref:
+    type: string
+    minLength: 1
+  source_commit:
+    type:
+      - string
+      - "null"
+    minLength: 1
+  content_hash:
+    type: string
+    minLength: 1
+  manifest_hashes:
+    type: object
+    minProperties: 1
+    additionalProperties:
+      type: string
+      minLength: 1
+  bundle_checksum:
+    type: string
+    minLength: 1
+  sources:
+    type: array
+    minItems: 1
+    items:
+      $ref: "#/$defs/sourceEntry"
+  compatibility:
+    $ref: "#/$defs/compatibility"
+  telemetry_defaults:
+    $ref: "#/$defs/telemetryDefaults"
+  privacy_defaults:
+    $ref: "#/$defs/privacyDefaults"
+  team_metadata:
+    $ref: "#/$defs/teamMetadata"
+  exclusions:
+    $ref: "#/$defs/exclusions"
+x-coherence-checks:
+  path-category-parity:
+    description: >
+      Each source entry category must match its repository path family.
+  generated-skill-wrapper-rejection:
+    description: >
+      Source entries must not reference governed SKILL.md wrappers generated from
+      content.md.
+  generated-support-pointer-rejection:
+    description: >
+      Source entries must not reference generated support pointer filenames.
+  provider-native-output-rejection:
+    description: >
+      Provider-specific native-agent output directories such as claude-agents,
+      codex-agents, opencode-agents, and junie-agents are generated output and
+      must be rejected.
+  install-staging-rejection:
+    description: >
+      Installed staging artifacts, staging roots, and .content-hash markers are
+      runtime output and must be rejected.
+  workflow-db-and-desktop-state-rejection:
+    description: >
+      Durable workflow databases and desktop app state paths are local runtime
+      state and must be rejected.
+  governed-source-existence:
+    description: >
+      Governed skill entries must resolve to authored content.md files.
+  platform-manifest-validation:
+    description: >
+      Platform pack entries must be validated through the existing platform.yaml
+      parse and coherence seam.
