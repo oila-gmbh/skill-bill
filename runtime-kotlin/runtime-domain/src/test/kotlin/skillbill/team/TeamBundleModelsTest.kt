@@ -7,6 +7,7 @@ import skillbill.team.model.TeamBundleCompatibility
 import skillbill.team.model.TeamBundleExclusions
 import skillbill.team.model.TeamBundleHashes
 import skillbill.team.model.TeamBundleMetadata
+import skillbill.team.model.TeamBundleParser
 import skillbill.team.model.TeamBundlePrivacyDefaults
 import skillbill.team.model.TeamBundlePrivacyLevel
 import skillbill.team.model.TeamBundleSourceCategory
@@ -69,5 +70,48 @@ class TeamBundleModelsTest {
 
     assertEquals(TEAM_BUNDLE_CONTRACT_VERSION, bundle.contractVersion)
     assertEquals("team-bundle-foundation", bundle.metadata.bundleId)
+  }
+
+  @Test
+  fun `parser exposes validated wire map as typed team bundle`() {
+    val parsed = TeamBundleParser.parse(
+      mapOf(
+        "contract_version" to TEAM_BUNDLE_CONTRACT_VERSION,
+        "bundle_id" to "team-bundle-foundation",
+        "version" to "1.0.0",
+        "channel" to "preview",
+        "created_at" to "2026-07-08T00:00:00Z",
+        "created_by" to "platform-team",
+        "source_repo" to "skill-bill",
+        "source_ref" to "main",
+        "content_hash" to "sha256:bundle-content",
+        "manifest_hashes" to mapOf("platform-packs/kotlin/platform.yaml" to "sha256:platform"),
+        "bundle_checksum" to "sha256:bundle-checksum",
+        "sources" to listOf(
+          mapOf(
+            "category" to "horizontal_skill",
+            "path" to "skills/bill-code-check/content.md",
+            "content_hash" to "sha256:source",
+          ),
+        ),
+        "compatibility" to mapOf(
+          "min_skill_bill_version" to "0.1.0",
+          "shell_contract_version" to "1.2",
+        ),
+        "telemetry_defaults" to mapOf("enabled" to true, "level" to "anonymous"),
+        "privacy_defaults" to mapOf(
+          "telemetry" to "anonymous",
+          "source_paths" to "anonymous",
+          "author_identity" to "off",
+        ),
+        "team_metadata" to mapOf("team_id" to "platform", "name" to "Platform"),
+        "exclusions" to mapOf("paths" to emptyList<String>(), "reasons" to emptyMap<String, String>()),
+      ),
+      "bundle.yaml",
+    )
+
+    assertEquals(TeamBundleChannel.PREVIEW, parsed.metadata.channel)
+    assertEquals(TeamBundleSourceCategory.HORIZONTAL_SKILL, parsed.sources.single().category)
+    assertEquals(TeamBundlePrivacyLevel.OFF, parsed.privacyDefaults.authorIdentity)
   }
 }

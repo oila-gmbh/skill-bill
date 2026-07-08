@@ -411,6 +411,7 @@ runtime-ports
     - `skillbill.workflow.DecompositionManifestValidator.validateYamlText`
     - `skillbill.team.TeamBundleValidator.validate`
     - `skillbill.team.TeamBundleValidator.validateYamlText`
+    - `skillbill.team.model.TeamBundleParser.parse`
     - `skillbill.ports.workflow.DecompositionManifestFileStore.encodeManifestYaml`
     - `skillbill.workflow.DecompositionManifestCodec.decodeMap`
     - `skillbill.workflow.toWireMap`
@@ -863,6 +864,7 @@ Categories:
 - `skillbill.workflow.DecompositionManifestValidator.validateYamlText`
 - `skillbill.team.TeamBundleValidator.validate`
 - `skillbill.team.TeamBundleValidator.validateYamlText`
+- `skillbill.team.model.TeamBundleParser.parse`
 - `skillbill.ports.workflow.DecompositionManifestFileStore.encodeManifestYaml`
 - `skillbill.application.workflow.WorkflowFamily.sessionSummary`
 - `skillbill.workflow.GoalObservabilityEventValidator.validate`
