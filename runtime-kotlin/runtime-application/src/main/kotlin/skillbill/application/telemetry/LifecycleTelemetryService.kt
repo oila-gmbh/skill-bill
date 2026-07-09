@@ -155,8 +155,9 @@ class LifecycleTelemetryService(
 
   override fun goalSubtaskFinished(request: GoalSubtaskFinishedRequest, dbOverride: String?) {
     enabledStandaloneResult(request.workflowId) { settings ->
+      val reconciledRequest = request.reconcileBlockedReason()
       database.transaction(dbOverride) { unitOfWork ->
-        unitOfWork.lifecycleTelemetry.goalSubtaskFinished(request.toRecord(), settings.level)
+        unitOfWork.lifecycleTelemetry.goalSubtaskFinished(reconciledRequest.toRecord(), settings.level)
       }
     }
   }
@@ -214,3 +215,16 @@ private fun FeatureTaskRuntimeFinishedRequest.reconcileBlockedRuntimeFields(): F
 
 private fun Map<String, String>.firstIncompletePhase(): String =
   entries.firstOrNull { it.value != "completed" }?.key?.takeIf(String::isNotBlank) ?: "unknown"
+
+private fun GoalSubtaskFinishedRequest.reconcileBlockedReason(): GoalSubtaskFinishedRequest {
+  if (status != "blocked") {
+    return this
+  }
+  return copy(
+    blockedReason = normalizedBlockedReason(
+      reason = blockedReason,
+      category = "runtime",
+      fallback = "Goal subtask $subtaskId is blocked.",
+    ),
+  )
+}

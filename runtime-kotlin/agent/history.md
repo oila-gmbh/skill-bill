@@ -1,3 +1,12 @@
+## [2026-07-09] SKILL-109 reliable telemetry field population
+Areas: runtime-kotlin/runtime-application telemetry, runtime-kotlin/runtime-mcp stdio telemetry tests
+- Blocked goal-subtask telemetry now normalizes blank reasons in `LifecycleTelemetryService` before persistence, yielding a category-prefixed `runtime:` fallback instead of an empty `blocked_reason`. reusable
+- Stdio MCP coverage drives `goal_prose_subtask_finished` through the real outbox path and asserts the persisted anonymous payload carries the normalized diagnostic field.
+- Pattern: normalize mandatory lifecycle diagnostics at the application telemetry seam, not only in callers or analytics mappers, so every transport inherits the same blocked-outcome contract. reusable
+- Known limitation: this entry reflects the live branch diff for subtask 3; earlier SKILL-109 field-population support was already present outside this phase's observed modified files.
+Feature flag: N/A
+Acceptance criteria: 5/5 implemented
+
 ## [2026-07-08] SKILL-109 goal issue terminal telemetry
 Areas: runtime-kotlin/runtime-application goal telemetry models, runtime-infra-sqlite telemetry persistence/emission, runtime-mcp telemetry schema parity
 - Added issue-level goal terminal telemetry with exact-once completed emission keyed by the constant goal parent workflow id, backed by additive `goal_issue_progress` state that preserves legacy DB rows. reusable
