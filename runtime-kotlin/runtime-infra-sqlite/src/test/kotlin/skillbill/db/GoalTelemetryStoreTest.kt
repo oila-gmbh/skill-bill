@@ -398,6 +398,10 @@ class GoalTelemetryStoreTest {
   private fun assertOutboxEmittedOncePerEvent(connection: Connection) {
     val outbox = pendingOutbox(connection)
     assertEquals(1, outbox.count { it.eventName == "skillbill_goal_started" })
+    assertEquals(
+      "running",
+      parsePayload(outbox.single { it.eventName == "skillbill_goal_started" }.payloadJson)["status"],
+    )
     assertEquals(3, outbox.count { it.eventName == "skillbill_goal_subtask_finished" })
     assertEquals(1, outbox.count { it.eventName == "skillbill_goal_finished" })
     assertTrue(
@@ -471,6 +475,7 @@ class GoalTelemetryStoreTest {
     subtaskTotal = subtaskTotal,
     resumed = resumed,
     startedAt = startedAt,
+    status = "running",
     mode = mode,
   )
 

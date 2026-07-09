@@ -105,6 +105,7 @@ class GoalRunnerTelemetryTest {
     assertEquals(listOf(1, 2), telemetry.subtaskFinished.map { it.subtaskId })
     assertEquals(listOf("complete", "blocked"), telemetry.subtaskFinished.map { it.status })
     val blocked = telemetry.subtaskFinished.single { it.subtaskId == 2 }
+    assertTrue(requireNotNull(blocked.blockedReason).startsWith("runtime:"))
     assertContains(requireNotNull(blocked.blockedReason), "review failed")
 
     val finished = telemetry.finished.single()

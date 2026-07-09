@@ -6,6 +6,7 @@ import skillbill.application.model.FeatureTaskRuntimeRunReport
 import skillbill.application.model.FeatureTaskRuntimeRunRequest
 import skillbill.application.model.FeatureTaskRuntimeStartedRequest
 import skillbill.application.telemetry.LifecycleTelemetryService
+import skillbill.application.telemetry.normalizedBlockedReason
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.diagnostics.RuntimeDiagnostics
 
@@ -51,15 +52,16 @@ class FeatureTaskRuntimeLifecycleTelemetry(
       return
     }
     isolate("finished", Unit) {
+      val outcomes = phaseOutcomes()
       val (tokenBreakdownJson, totalTokens) = runCatching(phaseTokenData).getOrDefault(null to null)
       lifecycleTelemetryService.featureTaskRuntimeFinished(
         FeatureTaskRuntimeFinishedRequest(
           sessionId = telemetrySessionId,
           completionStatus = completionStatusOf(report),
           completedPhaseIds = completedPhaseIdsOf(report),
-          phaseOutcomes = phaseOutcomes(),
-          lastIncompletePhase = (report as? FeatureTaskRuntimeRunReport.Blocked)?.lastIncompletePhase.orEmpty(),
-          blockedReason = (report as? FeatureTaskRuntimeRunReport.Blocked)?.blockedReason.orEmpty(),
+          phaseOutcomes = outcomes,
+          lastIncompletePhase = lastIncompletePhaseOf(report, outcomes),
+          blockedReason = blockedReasonOf(report),
           resolvedBranch = report.resolvedBranch.orEmpty(),
           reviewFixIterationCount = runCatching(reviewFixIterationCount).getOrDefault(0),
           auditGapIterationCount = runCatching(auditGapIterationCount).getOrDefault(0),
@@ -105,8 +107,12 @@ class FeatureTaskRuntimeLifecycleTelemetry(
           completionStatus = "error",
           completedPhaseIds = outcomes.filterValues { it == "completed" }.keys.toList(),
           phaseOutcomes = outcomes,
-          lastIncompletePhase = outcomes.entries.firstOrNull { it.value != "completed" }?.key.orEmpty(),
-          blockedReason = "",
+          lastIncompletePhase = outcomes.firstIncompletePhase(),
+          blockedReason = normalizedBlockedReason(
+            reason = null,
+            category = "runtime",
+            fallback = "Feature-task-runtime finished with an unhandled error.",
+          ),
           resolvedBranch = "",
           reviewFixIterationCount = runCatching(reviewFixIterationCount).getOrDefault(0),
           auditGapIterationCount = runCatching(auditGapIterationCount).getOrDefault(0),
@@ -137,5 +143,27 @@ class FeatureTaskRuntimeLifecycleTelemetry(
     is FeatureTaskRuntimeRunReport.Completed -> report.completedPhaseIds
     is FeatureTaskRuntimeRunReport.Blocked -> report.completedPhaseIds
     is FeatureTaskRuntimeRunReport.Decomposed -> report.completedPhaseIds
+  }
+
+  private fun lastIncompletePhaseOf(
+    report: FeatureTaskRuntimeRunReport,
+    outcomes: Map<String, String>,
+  ): String = when (report) {
+    is FeatureTaskRuntimeRunReport.Completed -> "completed"
+    is FeatureTaskRuntimeRunReport.Decomposed -> "decomposed_at_planning"
+    is FeatureTaskRuntimeRunReport.Blocked ->
+      report.lastIncompletePhase.takeIf(String::isNotBlank) ?: outcomes.firstIncompletePhase()
+  }
+
+  private fun Map<String, String>.firstIncompletePhase(): String =
+    entries.firstOrNull { it.value != "completed" }?.key?.takeIf(String::isNotBlank) ?: "unknown"
+
+  private fun blockedReasonOf(report: FeatureTaskRuntimeRunReport): String = when (report) {
+    is FeatureTaskRuntimeRunReport.Blocked -> normalizedBlockedReason(
+      reason = report.blockedReason,
+      category = "runtime",
+      fallback = "Feature-task-runtime blocked without a specific reason.",
+    )
+    is FeatureTaskRuntimeRunReport.Completed, is FeatureTaskRuntimeRunReport.Decomposed -> ""
   }
 }

@@ -10,8 +10,8 @@ base_branch: "main"
 feature_branch: "feat/SKILL-109-reliable-telemetry"
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 2
-  action: "start"
+  subtask_id: 3
+  action: "resume"
 subtasks:
 - id: 1
   name: "Goal issue-level terminal event + blocked sub-categorization"
@@ -29,12 +29,12 @@ subtasks:
 - id: 2
   name: "Fix duration_seconds + unit consistency"
   spec_path: ".feature-specs/SKILL-109-reliable-telemetry/spec_subtask_2_duration_fix.md"
-  status: "pending"
+  status: "complete"
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260708-201547-xmup"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -46,7 +46,7 @@ subtasks:
   status: "pending"
   branch: null
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wftr-20260709-124852-f4uj"
   blocked_reason: null
   last_resumable_step: null
   linear_issue_id: null

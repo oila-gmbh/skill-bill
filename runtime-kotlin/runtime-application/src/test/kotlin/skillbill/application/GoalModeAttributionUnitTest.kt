@@ -32,6 +32,7 @@ class GoalModeAttributionUnitTest {
     )
     val record = request.toRecord()
     assertEquals("prose", record.mode)
+    assertEquals("running", record.status)
   }
 
   @Test
@@ -64,6 +65,7 @@ class GoalModeAttributionUnitTest {
 
     assertIs<GoalRunnerRunReport.Completed>(report)
     assertEquals("runtime", telemetry.started.single().mode)
+    assertEquals("running", telemetry.started.single().status)
   }
 
   @Test

@@ -1046,8 +1046,16 @@ $defs:
         type: integer
       last_incomplete_phase:
         type: string
+        description: >-
+          First unfinished phase for blocked/error outcomes. Completed outcomes emit
+          `completed`; planning decompositions emit `decomposed_at_planning`.
       blocked_reason:
         type: string
+        description: >-
+          Non-empty category-prefixed reason for blocked/error outcomes. Prefixes are
+          `limit:`, `validation:`, `fix_loop:`, `git:`, `store_lock:`,
+          `needs_human:`, `schema:`, `runtime:`, and `unknown:`. Completed and
+          decomposed outcomes emit an empty string.
       resolved_branch:
         type: string
       estimated_phase_tokens:
@@ -1309,6 +1317,7 @@ $defs:
       - subtask_total
       - resumed
       - started_at
+      - status
       - mode
     properties:
       event_name:
@@ -1331,6 +1340,11 @@ $defs:
         type: string
         minLength: 1
         description: ISO-8601 timestamp the goal run started at.
+      status:
+        type: string
+        enum:
+          - running
+        description: Runtime status at goal-start emission time.
       mode:
         type: string
         enum:
@@ -1391,8 +1405,10 @@ $defs:
           - string
           - "null"
         description: >
-          Free-text blocked reason when `status` is `blocked`; `null`
-          otherwise. Required key with a nullable value.
+          Category-prefixed blocked reason when `status` is `blocked`; `null`
+          otherwise. Required key with a nullable value. Prefixes are `limit:`,
+          `validation:`, `fix_loop:`, `git:`, `store_lock:`, `needs_human:`,
+          `schema:`, `runtime:`, and `unknown:`.
       finalizing_agent_id:
         type:
           - string

@@ -32,6 +32,7 @@ fun goalStartedPayload(row: Map<String, Any?>, level: String): Map<String, Any?>
   "subtask_total" to row.intOrZero("subtask_total"),
   "resumed" to row.booleanFromInt("resumed"),
   "started_at" to row.stringOrEmpty("started_at"),
+  "status" to "running",
 ).apply {
   if (level == "full") {
     put("feature_name", row.stringOrEmpty("feature_name"))

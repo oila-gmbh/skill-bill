@@ -65,6 +65,7 @@ class GoalTelemetryEmissionEventParityTest {
         "subtask_total",
         "resumed",
         "started_at",
+        "status",
         "mode",
       ),
     )
@@ -143,6 +144,7 @@ class GoalTelemetryEmissionEventParityTest {
         "subtask_total" to 4,
         "resumed" to false,
         "started_at" to "2026-06-04T10:15:30Z",
+        "status" to "running",
         "mode" to "runtime",
       ),
       eventName = "goal_started",

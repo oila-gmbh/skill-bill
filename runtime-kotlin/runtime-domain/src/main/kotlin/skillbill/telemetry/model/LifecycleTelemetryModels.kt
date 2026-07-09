@@ -119,6 +119,7 @@ data class GoalStartedRecord(
   val subtaskTotal: Int,
   val resumed: Boolean,
   val startedAt: String,
+  val status: String = "running",
   val mode: String,
   val parentWorkflowId: String? = null,
 )

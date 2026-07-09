@@ -2,8 +2,11 @@ package skillbill.application
 
 import skillbill.application.decomposition.intentFor
 import skillbill.application.decomposition.statusFromUpdate
+import skillbill.application.decomposition.withRuntimeFields
 import skillbill.application.model.DecompositionManifestRuntimeUpdate
 import skillbill.workflow.model.CurrentSubtaskIntent
+import skillbill.workflow.model.DecompositionManifest
+import skillbill.workflow.model.DecompositionSubtask
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -52,6 +55,67 @@ class DecompositionManifestRuntimeStateSupportTest {
     assertEquals(true, error.message?.contains("sha-b"))
   }
 
+  @Test
+  fun `blocked subtask preserves prefixed artifact reason`() {
+    val updated = baseSubtask().withRuntimeFields(
+      manifest = baseManifest(),
+      update = DecompositionManifestRuntimeUpdate(
+        workflowId = "wfl-subtask-5",
+        workflowStatus = "blocked",
+        currentStepId = "validate",
+        artifactsPatch = mapOf("blocked_reason" to "validation: schema gate failed"),
+      ),
+      status = "blocked",
+    )
+
+    assertEquals("validation: schema gate failed", updated.blockedReason)
+  }
+
+  @Test
+  fun `blocked subtask prefixes artifact reason when missing category`() {
+    val updated = baseSubtask().withRuntimeFields(
+      manifest = baseManifest(),
+      update = DecompositionManifestRuntimeUpdate(
+        workflowId = "wfl-subtask-5",
+        workflowStatus = "blocked",
+        currentStepId = "review",
+        artifactsPatch = mapOf("blocked_reason" to "review failed"),
+      ),
+      status = "blocked",
+    )
+
+    assertEquals("runtime: review failed", updated.blockedReason)
+  }
+
+  @Test
+  fun `blocked suppress pr commit failure receives git category prefix`() {
+    val updated = baseSubtask().withRuntimeFields(
+      manifest = baseManifest(),
+      update = commitPushUpdate(),
+      status = "blocked",
+    )
+
+    assertEquals(
+      "git: Goal-continuation commit_push completed without commit_push_result.commit_sha.",
+      updated.blockedReason,
+    )
+  }
+
+  @Test
+  fun `blocked workflow step fallback receives runtime category prefix`() {
+    val updated = baseSubtask().withRuntimeFields(
+      manifest = baseManifest(),
+      update = DecompositionManifestRuntimeUpdate(
+        workflowId = "wfl-subtask-5",
+        workflowStatus = "blocked",
+        currentStepId = "audit",
+      ),
+      status = "blocked",
+    )
+
+    assertEquals("runtime: Workflow step 'audit' is blocked.", updated.blockedReason)
+  }
+
   private fun commitPushUpdate(
     commitPushResult: Map<String, Any?>? = null,
     goalContinuationOutcome: Map<String, Any?>? = null,
@@ -65,5 +129,21 @@ class DecompositionManifestRuntimeStateSupportTest {
       commitPushResult?.let { put("commit_push_result", it) }
       goalContinuationOutcome?.let { put("goal_continuation_outcome", it) }
     },
+  )
+
+  private fun baseManifest(): DecompositionManifest = DecompositionManifest(
+    issueKey = "SKILL-68",
+    featureName = "feature",
+    parentSpecPath = ".feature-specs/SKILL-68/spec.md",
+    baseBranch = "main",
+    featureBranch = "feature/SKILL-68",
+    currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 5, action = "start"),
+    subtasks = listOf(baseSubtask()),
+  )
+
+  private fun baseSubtask(): DecompositionSubtask = DecompositionSubtask(
+    id = 5,
+    name = "subtask",
+    specPath = ".feature-specs/SKILL-68/subtask.md",
   )
 }

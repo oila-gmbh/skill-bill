@@ -16,6 +16,7 @@ fun GoalStartedRequest.toRecord(): GoalStartedRecord = GoalStartedRecord(
   subtaskTotal = subtaskTotal,
   resumed = resumed,
   startedAt = startedAt,
+  status = status,
   mode = mode,
   parentWorkflowId = parentWorkflowId,
 )

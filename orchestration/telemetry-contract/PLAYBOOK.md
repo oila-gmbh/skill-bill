@@ -57,6 +57,20 @@ PR description skills (`bill-pr-description`) use the `pr_description_generated`
 
 - **Standalone:** call `pr_description_generated` after the PR description is presented.
 - **Orchestrated:** call `pr_description_generated` with `orchestrated=true`.
+- For orchestrated PR creation, compare the normalized generated body with the body passed to
+  `gh pr create` or read back from `gh pr view --json body`; set `was_edited_by_user=true` when
+  they differ.
+
+### Runtime blocked fields
+
+Blocked telemetry reasons use a category prefix so analysis can bucket outcomes. Valid prefixes are
+`limit:`, `validation:`, `fix_loop:`, `git:`, `store_lock:`, `needs_human:`, `schema:`, `runtime:`,
+and `unknown:`.
+
+`feature_task_runtime_finished.last_incomplete_phase` is non-empty for blocked and error outcomes.
+Completed outcomes emit `completed`; planning decompositions emit `decomposed_at_planning`.
+
+`goal_started.status` is emitted as `running`.
 
 ### Feature-task skills
 

@@ -856,6 +856,8 @@ class FeatureTaskRuntimeLifecycleTelemetryRunnerTest {
     assertEquals("completed", finished.completionStatus)
     assertEquals(ALL_PHASES, finished.completedPhaseIds)
     assertEquals(ALL_PHASES.associateWith { "completed" }, finished.phaseOutcomes)
+    assertEquals("completed", finished.lastIncompletePhase)
+    assertEquals("", finished.blockedReason)
   }
 
   @Test
@@ -882,7 +884,7 @@ class FeatureTaskRuntimeLifecycleTelemetryRunnerTest {
     val finished = harness.lifecycle.finishedRecords.single()
     assertEquals("blocked", finished.completionStatus)
     assertEquals("preplan", finished.lastIncompletePhase)
-    assertTrue(finished.blockedReason.isNotBlank())
+    assertTrue(finished.blockedReason.startsWith("runtime:"))
   }
 
   @Test
@@ -903,6 +905,8 @@ class FeatureTaskRuntimeLifecycleTelemetryRunnerTest {
     val finished = harness.lifecycle.finishedRecords.single()
     assertEquals("decomposed_at_planning", finished.completionStatus)
     assertEquals(listOf("preplan", "plan"), finished.completedPhaseIds)
+    assertEquals("decomposed_at_planning", finished.lastIncompletePhase)
+    assertEquals("", finished.blockedReason)
   }
 
   @Test
@@ -919,6 +923,8 @@ class FeatureTaskRuntimeLifecycleTelemetryRunnerTest {
     val finished = harness.lifecycle.finishedRecords.single()
     assertEquals("error", finished.completionStatus)
     assertEquals(harness.lifecycle.startedRecords.single().sessionId, finished.sessionId)
+    assertEquals("preplan", finished.lastIncompletePhase)
+    assertTrue(finished.blockedReason.startsWith("runtime:"))
   }
 
   @Test
@@ -942,6 +948,8 @@ class FeatureTaskRuntimeLifecycleTelemetryRunnerTest {
     assertEquals("error", finished.completionStatus)
     assertEquals(emptyMap(), finished.phaseOutcomes)
     assertEquals(emptyList(), finished.completedPhaseIds)
+    assertEquals("unknown", finished.lastIncompletePhase)
+    assertTrue(finished.blockedReason.startsWith("runtime:"))
   }
 }
 

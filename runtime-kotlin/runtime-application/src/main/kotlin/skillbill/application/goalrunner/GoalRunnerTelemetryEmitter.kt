@@ -4,9 +4,11 @@ import skillbill.application.model.GoalFinishedRequest
 import skillbill.application.model.GoalIssueFinishedRequest
 import skillbill.application.model.GoalStartedRequest
 import skillbill.application.model.GoalSubtaskFinishedRequest
+import skillbill.application.telemetry.normalizedBlockedReason
 import skillbill.goalrunner.model.GoalRunnerRunReport
 import skillbill.ports.goalrunner.model.GoalRunnerManifestState
 import skillbill.workflow.model.DecompositionManifest
+import skillbill.workflow.model.DecompositionSubtask
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
@@ -59,6 +61,7 @@ internal class GoalRunnerTelemetryEmitter(
         subtaskTotal = state.manifest.subtasks.size,
         resumed = resumed,
         startedAt = segmentStartedAt,
+        status = "running",
         mode = "runtime",
         parentWorkflowId = state.parentWorkflowId,
       ),
@@ -91,7 +94,7 @@ internal class GoalRunnerTelemetryEmitter(
             finishedAt = finishedAt,
             durationMs = durationMs(startedAt, finishedAtInstant),
             attemptCount = attempted.count { it == subtask.id }.coerceAtLeast(1),
-            blockedReason = subtask.blockedReason,
+            blockedReason = subtask.blockedReasonForTelemetry(),
             finalizingAgentId = subtask.finalizingAgentId,
             participatingAgentIds = subtask.participatingAgentIds,
           ),
@@ -99,6 +102,17 @@ internal class GoalRunnerTelemetryEmitter(
         )
       }
   }
+
+  private fun DecompositionSubtask.blockedReasonForTelemetry(): String? =
+    if (status == "blocked") {
+      normalizedBlockedReason(
+        reason = blockedReason,
+        category = "runtime",
+        fallback = "Goal subtask $id is blocked.",
+      )
+    } else {
+      null
+    }
 
   fun goalFinished(manifest: DecompositionManifest, report: GoalRunnerRunReport) {
     val finishedAtInstant = clock.instant()

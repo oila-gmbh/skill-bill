@@ -313,7 +313,7 @@ agents:
       Instructions:
       1. Invoke `bill-pr-description` via the Skill tool — DO NOT search the filesystem (no `find`, `grep -r`, etc.) to locate skill files; the Skill tool resolves skills by name. Apply its instructions in the current agent context. Respect repo-native PR templates if present (`.github/pull_request_template.md`, `PULL_REQUEST_TEMPLATE.md`, etc.).
       2. Create the PR with `gh pr create` using a HEREDOC for the body.
-      3. Call the `pr_description_generated` MCP tool with `orchestrated=true` once the PR is created.
+      3. Compare the normalized generated body with the actual PR body passed to `gh pr create` or read back with `gh pr view --json body` when available; call the `pr_description_generated` MCP tool with `orchestrated=true` and `was_edited_by_user=true` when those bodies differ once the PR is created.
       4. Capture the `telemetry_payload` returned by `pr_description_generated` verbatim.
 
       Return exactly one RESULT: block as your final message, containing valid JSON with this shape:
