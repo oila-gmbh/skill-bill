@@ -67,8 +67,9 @@ class LifecycleTelemetryService(
     request: FeatureTaskRuntimeFinishedRequest,
     dbOverride: String? = null,
   ): Map<String, Any?> = enabledStandaloneResult(request.sessionId) { settings ->
+    val reconciledRequest = request.reconcileBlockedRuntimeFields()
     database.transaction(dbOverride) { unitOfWork ->
-      unitOfWork.lifecycleTelemetry.featureTaskRuntimeFinished(request.toRecord(), settings.level)
+      unitOfWork.lifecycleTelemetry.featureTaskRuntimeFinished(reconciledRequest.toRecord(), settings.level)
     }
   }
 
@@ -196,3 +197,20 @@ private fun enabledStandaloneResult(
     lifecycleSkippedPayload(sessionId)
   }
 }
+
+private fun FeatureTaskRuntimeFinishedRequest.reconcileBlockedRuntimeFields(): FeatureTaskRuntimeFinishedRequest {
+  if (completionStatus != "blocked") {
+    return this
+  }
+  return copy(
+    lastIncompletePhase = lastIncompletePhase.takeIf(String::isNotBlank) ?: phaseOutcomes.firstIncompletePhase(),
+    blockedReason = normalizedBlockedReason(
+      reason = blockedReason,
+      category = "runtime",
+      fallback = "Feature-task-runtime blocked without a specific reason.",
+    ),
+  )
+}
+
+private fun Map<String, String>.firstIncompletePhase(): String =
+  entries.firstOrNull { it.value != "completed" }?.key?.takeIf(String::isNotBlank) ?: "unknown"
