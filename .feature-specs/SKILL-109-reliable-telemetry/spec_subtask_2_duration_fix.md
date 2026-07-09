@@ -1,6 +1,7 @@
 ---
 issue_key: SKILL-109
 subtask_id: 2
+status: In Progress
 ---
 
 # Subtask 2 — Fix `duration_seconds` + unit consistency

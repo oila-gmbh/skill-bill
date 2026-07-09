@@ -164,16 +164,17 @@ class DatabaseMigrationsTest {
       assertTrue("started_at" in tableColumns(connection, "feature_implement_sessions"))
       assertTrue("started_at" in tableColumns(connection, "feature_verify_sessions"))
       assertTrue("started_at" in tableColumns(connection, "quality_check_sessions"))
-
-      connection.createStatement().use { statement ->
-        statement.executeUpdate(
-          """
-          UPDATE feature_implement_sessions
-          SET started_at = datetime('now', '-5 seconds')
-          WHERE session_id = 'fis-legacy-duration'
-          """.trimIndent(),
-        )
-      }
+      assertEquals(
+        LEGACY_FEATURE_TASK_WORKFLOW_STARTED_AT,
+        tableColumnValue(
+          connection = connection,
+          tableName = "feature_implement_sessions",
+          pkColumnName = "session_id",
+          pkValue = "fis-legacy-duration",
+          columnName = "started_at",
+        ),
+        "Feature implement started_at must be recovered from the matching legacy workflow row.",
+      )
 
       LifecycleTelemetryStore(connection).featureImplementFinished(featureImplementFinishedRecord(), level = "full")
 
@@ -447,6 +448,7 @@ class DatabaseMigrationsTest {
     DriverManager.getConnection("jdbc:sqlite:$dbPath").use { connection ->
       connection.createStatement().use { statement ->
         statement.execute(CREATE_LEGACY_FEATURE_IMPLEMENT_SESSIONS_WITHOUT_START_SQL)
+        statement.execute(CREATE_LEGACY_FEATURE_TASK_WORKFLOWS_SQL)
         statement.execute(CREATE_LEGACY_FEATURE_VERIFY_SESSIONS_WITHOUT_START_SQL)
         statement.execute(CREATE_LEGACY_QUALITY_CHECK_SESSIONS_WITHOUT_START_SQL)
         statement.execute(
@@ -468,6 +470,18 @@ class DatabaseMigrationsTest {
       }
       connection.createStatement().use { statement ->
         statement.executeUpdate("INSERT INTO feature_implement_sessions (session_id) VALUES ('fis-legacy-duration')")
+        statement.executeUpdate(
+          """
+          INSERT INTO feature_task_workflows (
+            workflow_id, session_id, mode, implementation_skill, contract_version,
+            workflow_status, current_step_id, steps_json, artifacts_json, started_at, updated_at
+          ) VALUES (
+            'wf-legacy-duration', 'fis-legacy-duration', 'runtime', 'bill-feature-task-runtime', '0.1',
+            'running', 'implement', '[]', '{}', '$LEGACY_FEATURE_TASK_WORKFLOW_STARTED_AT',
+            '$LEGACY_FEATURE_TASK_WORKFLOW_STARTED_AT'
+          )
+          """.trimIndent(),
+        )
         statement.executeUpdate("INSERT INTO feature_verify_sessions (session_id) VALUES ('fvs-legacy-start')")
         statement.executeUpdate("INSERT INTO quality_check_sessions (session_id) VALUES ('qcs-legacy-start')")
       }
@@ -680,6 +694,22 @@ class DatabaseMigrationsTest {
     }
   }
 
+  private fun tableColumnValue(
+    connection: java.sql.Connection,
+    tableName: String,
+    pkColumnName: String,
+    pkValue: String,
+    columnName: String,
+  ): Any? = connection.prepareStatement(
+    "SELECT $columnName FROM $tableName WHERE $pkColumnName = ?",
+  ).use { statement ->
+    statement.setString(1, pkValue)
+    statement.executeQuery().use { resultSet ->
+      check(resultSet.next()) { "Expected a row with $pkColumnName = '$pkValue' in $tableName." }
+      resultSet.getObject(1)
+    }
+  }
+
   private fun tableColumns(connection: java.sql.Connection, tableName: String): Set<String> =
     connection.createStatement().use { statement ->
       statement.executeQuery("PRAGMA table_info($tableName)").use { resultSet ->
@@ -811,6 +841,27 @@ class DatabaseMigrationsTest {
         completion_status TEXT
       )
       """
+
+    const val CREATE_LEGACY_FEATURE_TASK_WORKFLOWS_SQL: String =
+      """
+      CREATE TABLE feature_task_workflows (
+        workflow_id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL DEFAULT '',
+        workflow_name TEXT NOT NULL DEFAULT 'bill-feature-task',
+        mode TEXT NOT NULL,
+        implementation_skill TEXT NOT NULL DEFAULT '',
+        contract_version TEXT NOT NULL,
+        workflow_status TEXT NOT NULL DEFAULT 'pending',
+        current_step_id TEXT NOT NULL DEFAULT '',
+        steps_json TEXT NOT NULL DEFAULT '',
+        artifacts_json TEXT NOT NULL DEFAULT '',
+        started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        finished_at TEXT
+      )
+      """
+
+    const val LEGACY_FEATURE_TASK_WORKFLOW_STARTED_AT: String = "2026-06-04 10:00:00"
 
     const val CREATE_LEGACY_FEATURE_VERIFY_SESSIONS_WITHOUT_START_SQL: String =
       """

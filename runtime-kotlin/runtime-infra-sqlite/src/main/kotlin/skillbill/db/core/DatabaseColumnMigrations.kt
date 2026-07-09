@@ -144,7 +144,7 @@ internal object DatabaseColumnMigrations {
 
   private fun ensureFeatureImplementSessionColumns(connection: Connection) {
     ensureColumn(connection, "feature_implement_sessions", "started_at", "TEXT NOT NULL DEFAULT ''")
-    backfillBlankColumn(connection, "feature_implement_sessions", "started_at", "CURRENT_TIMESTAMP")
+    backfillFeatureImplementStartedAt(connection)
     ensureColumn(connection, "feature_implement_sessions", "started_event_emitted_at", "TEXT")
     ensureColumn(connection, "feature_implement_sessions", "finished_at", "TEXT")
     ensureColumn(connection, "feature_implement_sessions", "finished_event_emitted_at", "TEXT")
@@ -228,6 +228,29 @@ internal object DatabaseColumnMigrations {
       columnName = "history_helpfulness",
       definition = "TEXT NOT NULL DEFAULT 'none'",
     )
+  }
+
+  private fun backfillFeatureImplementStartedAt(connection: Connection) {
+    connection.createStatement().use { statement ->
+      statement.execute(
+        """
+        UPDATE feature_implement_sessions
+        SET started_at = COALESCE(
+          (
+            SELECT feature_task_workflows.started_at
+            FROM feature_task_workflows
+            WHERE feature_task_workflows.session_id = feature_implement_sessions.session_id
+              AND feature_task_workflows.started_at IS NOT NULL
+              AND feature_task_workflows.started_at != ''
+            ORDER BY feature_task_workflows.started_at
+            LIMIT 1
+          ),
+          CURRENT_TIMESTAMP
+        )
+        WHERE started_at IS NULL OR started_at = ''
+        """.trimIndent(),
+      )
+    }
   }
 
   private fun ensureColumn(connection: Connection, tableName: String, columnName: String, definition: String) {
