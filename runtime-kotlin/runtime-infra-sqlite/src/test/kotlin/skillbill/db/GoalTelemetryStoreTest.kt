@@ -313,6 +313,22 @@ class GoalTelemetryStoreTest {
   }
 
   @Test
+  fun `anonymous goal_subtask_finished payload carries category-prefixed blocked_reason`() {
+    withConnection { connection ->
+      val store = LifecycleTelemetryStore(connection)
+      store.goalSubtaskFinished(
+        subtask(id = 1, status = "blocked", durationMs = 60_000, attempts = 1, blockedReason = "validation: failed"),
+        "anonymous",
+      )
+
+      val payload = parsePayload(
+        pendingOutbox(connection).single { it.eventName == "skillbill_goal_subtask_finished" }.payloadJson,
+      )
+      assertEquals("validation: failed", payload["blocked_reason"])
+    }
+  }
+
+  @Test
   fun `goal issue progress aggregates segments and emits completed issue exactly once`() {
     withConnection { connection ->
       val store = LifecycleTelemetryStore(connection)

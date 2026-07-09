@@ -432,7 +432,7 @@ class ReviewStatsRuntimeTest {
           issueKey = "SKILL-65.1",
           featureName = "lifecycle-telemetry",
         ),
-        level = "full",
+        level = "anonymous",
       )
       store.featureTaskRuntimeFinished(
         FeatureTaskRuntimeFinishedRecord(
@@ -440,11 +440,11 @@ class ReviewStatsRuntimeTest {
           completionStatus = "completed",
           completedPhaseIds = listOf("preplan", "plan", "implement"),
           phaseOutcomes = mapOf("preplan" to "completed", "plan" to "completed", "implement" to "completed"),
-          lastIncompletePhase = "",
+          lastIncompletePhase = "completed",
           blockedReason = "",
           resolvedBranch = "feat/SKILL-65.1",
         ),
-        level = "full",
+        level = "anonymous",
       )
       // A redundant finished call (e.g. a resume) must re-save idempotently and never re-enqueue.
       store.featureTaskRuntimeFinished(
@@ -453,11 +453,11 @@ class ReviewStatsRuntimeTest {
           completionStatus = "completed",
           completedPhaseIds = listOf("preplan", "plan", "implement"),
           phaseOutcomes = mapOf("preplan" to "completed", "plan" to "completed", "implement" to "completed"),
-          lastIncompletePhase = "",
+          lastIncompletePhase = "completed",
           blockedReason = "",
           resolvedBranch = "feat/SKILL-65.1",
         ),
-        level = "full",
+        level = "anonymous",
       )
 
       val pending = outbox.listPending(limit = null)
@@ -469,6 +469,8 @@ class ReviewStatsRuntimeTest {
         pending.single { it.eventName == "skillbill_feature_task_runtime_finished" }.payloadJson,
       )
       assertEquals("completed", finishedPayload?.get("completion_status")?.let { it.toString().trim('"') })
+      assertEquals("completed", finishedPayload?.get("last_incomplete_phase")?.let { it.toString().trim('"') })
+      assertEquals("", finishedPayload?.get("blocked_reason")?.let { it.toString().trim('"') })
 
       val stats = ReviewStatsRuntime.featureTaskRuntimeStats(connection)
       assertEquals(1, stats.totalRuns)
@@ -542,7 +544,7 @@ class ReviewStatsRuntimeTest {
           completedPhaseIds = listOf("preplan"),
           phaseOutcomes = mapOf("preplan" to "completed", "plan" to "blocked"),
           lastIncompletePhase = "plan",
-          blockedReason = "schema gate failed",
+          blockedReason = "schema: gate failed",
           resolvedBranch = "",
         ),
         level = "anonymous",
@@ -557,7 +559,7 @@ class ReviewStatsRuntimeTest {
           completionStatus = "decomposed_at_planning",
           completedPhaseIds = listOf("preplan", "plan"),
           phaseOutcomes = mapOf("preplan" to "completed", "plan" to "completed"),
-          lastIncompletePhase = "",
+          lastIncompletePhase = "decomposed_at_planning",
           blockedReason = "",
           resolvedBranch = "",
         ),
@@ -571,6 +573,17 @@ class ReviewStatsRuntimeTest {
       assertEquals(1, stats.completionStatusCounts["blocked"])
       assertEquals(1, stats.completionStatusCounts["decomposed_at_planning"])
       assertEquals(1, stats.phaseOutcomeCounts["blocked"])
+
+      val payloads = telemetryPayloads(
+        TelemetryOutboxStore(connection).listPending(limit = null),
+        "skillbill_feature_task_runtime_finished",
+      )
+      val blockedPayload = payloads.single { it["session_id"] == "ftr-blocked" }
+      assertEquals("plan", blockedPayload["last_incomplete_phase"])
+      assertEquals("schema: gate failed", blockedPayload["blocked_reason"])
+      val decomposedPayload = payloads.single { it["session_id"] == "ftr-decomposed" }
+      assertEquals("decomposed_at_planning", decomposedPayload["last_incomplete_phase"])
+      assertEquals("", decomposedPayload["blocked_reason"])
     }
   }
 }

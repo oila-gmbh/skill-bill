@@ -85,10 +85,10 @@ fun goalSubtaskFinishedPayload(row: Map<String, Any?>, level: String): Map<Strin
   "finished_at" to row.stringOrEmpty("finished_at"),
   "duration_seconds" to secondsFromMillis(row.longOrZero("duration_ms")),
   "attempt_count" to row.intOrZero("attempt_count"),
+  "blocked_reason" to row["blocked_reason"]?.toString(),
 ).apply {
   if (level == "full") {
     put("subtask_name", row.stringOrEmpty("subtask_name"))
-    put("blocked_reason", row["blocked_reason"]?.toString())
     put("finalizing_agent_id", row["finalizing_agent_id"]?.toString()?.takeIf(String::isNotBlank))
     put(
       "participating_agent_ids",
