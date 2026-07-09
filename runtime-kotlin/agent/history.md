@@ -1,3 +1,12 @@
+## [2026-07-09] SKILL-109 telemetry label normalization
+Areas: runtime-kotlin/runtime-application telemetry, runtime-domain review models, runtime-infra-sqlite telemetry persistence, runtime-mcp lifecycle schemas, orchestration/contracts telemetry schema
+- Review-finished and quality-check telemetry now normalize routed skills and stack/platform labels at runtime boundaries: no `skill-bill:` prefixes, blank routes become `unrouted`/`unknown`, and `review_platform == platform_slug == detected_stack` for clean enums. reusable
+- Descriptive stack fingerprints move to `detected_stack_detail`; kmp-to-kotlin quality-check fallback is structured as `stack="kmp"`, `fallback=true`, and optional `fallback_reason` instead of prose labels.
+- Pattern: preserve legacy/raw persisted rows where possible, then normalize at parse, payload, schema, and MCP ingress seams so emitted telemetry stays contract-clean without destructive migrations. reusable
+- Schema parity and regression coverage lock the new review-finished branch plus required quality-check `fallback` fields across MCP, sqlite, and canonical telemetry contracts.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
 ## [2026-07-09] SKILL-109 reliable telemetry field population
 Areas: runtime-kotlin/runtime-application telemetry, runtime-kotlin/runtime-mcp stdio telemetry tests
 - Blocked goal-subtask telemetry now normalizes blank reasons in `LifecycleTelemetryService` before persistence, yielding a category-prefixed `runtime:` fallback instead of an empty `blocked_reason`. reusable

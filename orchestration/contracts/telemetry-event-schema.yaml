@@ -1948,7 +1948,7 @@ $defs:
         type: string
       routed_skill:
         type: string
-        minLength: 1
+        pattern: "^(unrouted|[a-z0-9][a-z0-9-]*)$"
       review_subskills:
         type: array
         items:
@@ -1957,10 +1957,10 @@ $defs:
         type: string
       review_platform:
         type: string
-        minLength: 1
+        pattern: "^(unknown|[a-z0-9][a-z0-9-]*)$"
       detected_stack:
         type: string
-        minLength: 1
+        pattern: "^(unknown|[a-z0-9][a-z0-9-]*)$"
       detected_stack_detail:
         type: string
       fallback:
@@ -1969,7 +1969,7 @@ $defs:
         type: string
       platform_slug:
         type: string
-        minLength: 1
+        pattern: "^(unknown|[a-z0-9][a-z0-9-]*)$"
       scope_type:
         type: string
       execution_mode:
@@ -2166,6 +2166,13 @@ x-coherence-checks:
       allow-list (`runtimeInternalEmissionEvents`) matching these names
       so the "every schema branch maps to a tool" assertion skips them;
       doc and enforcement stay in lockstep.
+  review-finished-normalized-label-equality:
+    description: >
+      `skillbill_review_finished.review_platform`, `detected_stack`, and
+      `platform_slug` must be equal normalized clean slugs. JSON Schema
+      enforces the clean-slug shape without hard-coding manifest-driven
+      platform-pack slugs; `TelemetryEventSchemaValidator` enforces the
+      cross-field equality after schema validation.
   inputschemas-structural-parity:
     description: >
       For every event with an entry in `McpToolRegistry.inputSchemas`,

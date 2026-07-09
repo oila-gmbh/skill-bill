@@ -86,14 +86,13 @@ internal fun goalStatsSchema(): Map<String, Any?> = objectSchema(
   ),
 )
 
-internal fun stringSchema(enum: List<String> = emptyList(), minLength: Int? = null): Map<String, Any?> =
-  buildMap {
-    put("type", "string")
-    if (enum.isNotEmpty()) {
-      put("enum", enum)
-    }
-    minLength?.let { put("minLength", it) }
+internal fun stringSchema(enum: List<String> = emptyList(), minLength: Int? = null): Map<String, Any?> = buildMap {
+  put("type", "string")
+  if (enum.isNotEmpty()) {
+    put("enum", enum)
   }
+  minLength?.let { put("minLength", it) }
+}
 
 internal fun arraySchema(items: Map<String, Any?>): Map<String, Any?> = mapOf(
   "type" to "array",

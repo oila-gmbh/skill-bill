@@ -10,6 +10,7 @@ class ReviewPlatformSlugSupportTest {
     "bill-go-code-review" to "go",
     "bill-go-code-review-security" to "go",
     "bill-ios-code-review" to "ios",
+    "bill-kmp-code-review" to "kmp",
     "bill-php-code-review" to "php",
     "bill-python-code-review" to "python",
     "bill-ruby-code-review" to "ruby",
@@ -32,6 +33,18 @@ class ReviewPlatformSlugSupportTest {
       reviewPlatformSlug(
         detectedStack = "kotlin",
         routedSkill = "bill-python-code-review",
+        routedSkillPlatformSlugs = manifestMappings,
+      ),
+    )
+  }
+
+  @Test
+  fun `routed skill mapping wins over descriptive detected stack fingerprints`() {
+    assertEquals(
+      "kmp",
+      reviewPlatformSlug(
+        detectedStack = "Kotlin Multiplatform",
+        routedSkill = "bill-kmp-code-review",
         routedSkillPlatformSlugs = manifestMappings,
       ),
     )

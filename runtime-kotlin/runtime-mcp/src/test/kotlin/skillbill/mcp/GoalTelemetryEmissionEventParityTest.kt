@@ -2,6 +2,7 @@ package skillbill.mcp
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
+import skillbill.error.InvalidTelemetryEventSchemaError
 import skillbill.goalrunner.model.GoalRunnerStopReason
 import skillbill.mcp.core.McpToolRegistry
 import skillbill.mcp.telemetry.TELEMETRY_EVENT_CONTRACT_VERSION
@@ -11,6 +12,7 @@ import skillbill.testing.repoRootFromTest
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -267,40 +269,45 @@ class GoalTelemetryEmissionEventParityTest {
   @Test
   fun `review_finished representative envelope validates clean with normalized stack fields`() {
     TelemetryEventSchemaValidator.validate(
-      envelope = linkedMapOf(
-        "event_name" to "skillbill_review_finished",
-        "contract_version" to TELEMETRY_EVENT_CONTRACT_VERSION,
-        "total_findings" to 1,
-        "accepted_findings" to 1,
-        "rejected_findings" to 0,
-        "unresolved_findings" to 0,
-        "accepted_rate" to 1.0,
-        "rejected_rate" to 0.0,
-        "accepted_finding_details" to listOf(
-          linkedMapOf(
-            "severity" to "Major",
-            "message" to "Finding accepted by reviewer.",
-          ),
-        ),
-        "rejected_finding_details" to emptyList<Map<String, Any?>>(),
-        "review_run_id" to "rvw-109",
-        "review_session_id" to "rvs-109",
-        "routed_skill" to "bill-kmp-code-check",
-        "review_subskills" to listOf("testing"),
-        "review_scope" to "branch_diff",
-        "review_platform" to "kmp",
-        "detected_stack" to "kmp",
-        "detected_stack_detail" to "kmp→kotlin fallback",
-        "fallback" to true,
-        "fallback_reason" to "kotlin_quality_check_fallback",
-        "platform_slug" to "kmp",
-        "scope_type" to "branch_diff",
-        "execution_mode" to "runtime",
-        "review_finished_at" to "2026-06-04T12:01:44Z",
-        "learnings" to linkedMapOf("captured" to true),
+      envelope = validReviewFinishedEnvelope(),
+      eventName = "skillbill_review_finished",
+    )
+  }
+
+  @Test
+  fun `review_finished schema accepts clean extension platform slugs`() {
+    TelemetryEventSchemaValidator.validate(
+      envelope = validReviewFinishedEnvelope(
+        "review_platform" to "rust",
+        "detected_stack" to "rust",
+        "platform_slug" to "rust",
       ),
       eventName = "skillbill_review_finished",
     )
+  }
+
+  @Test
+  fun `review_finished schema rejects unnormalized label fields`() {
+    assertFailsWith<InvalidTelemetryEventSchemaError> {
+      TelemetryEventSchemaValidator.validate(
+        envelope = validReviewFinishedEnvelope("routed_skill" to "skill-bill:bill-kotlin-code-review"),
+        eventName = "skillbill_review_finished",
+      )
+    }
+
+    assertFailsWith<InvalidTelemetryEventSchemaError> {
+      TelemetryEventSchemaValidator.validate(
+        envelope = validReviewFinishedEnvelope("review_platform" to "Kotlin Gradle JVM"),
+        eventName = "skillbill_review_finished",
+      )
+    }
+
+    assertFailsWith<InvalidTelemetryEventSchemaError> {
+      TelemetryEventSchemaValidator.validate(
+        envelope = validReviewFinishedEnvelope("detected_stack" to "kotlin"),
+        eventName = "skillbill_review_finished",
+      )
+    }
   }
 
   @Test
@@ -367,4 +374,40 @@ class GoalTelemetryEmissionEventParityTest {
       "Branch '$branchName' required[] does not match the expected emission keyset.",
     )
   }
+
+  private fun validReviewFinishedEnvelope(vararg overrides: Pair<String, Any?>): LinkedHashMap<String, Any?> =
+    linkedMapOf<String, Any?>(
+      "event_name" to "skillbill_review_finished",
+      "contract_version" to TELEMETRY_EVENT_CONTRACT_VERSION,
+      "total_findings" to 1,
+      "accepted_findings" to 1,
+      "rejected_findings" to 0,
+      "unresolved_findings" to 0,
+      "accepted_rate" to 1.0,
+      "rejected_rate" to 0.0,
+      "accepted_finding_details" to listOf(
+        linkedMapOf(
+          "severity" to "Major",
+          "message" to "Finding accepted by reviewer.",
+        ),
+      ),
+      "rejected_finding_details" to emptyList<Map<String, Any?>>(),
+      "review_run_id" to "rvw-109",
+      "review_session_id" to "rvs-109",
+      "routed_skill" to "bill-kmp-code-check",
+      "review_subskills" to listOf("testing"),
+      "review_scope" to "branch_diff",
+      "review_platform" to "kmp",
+      "detected_stack" to "kmp",
+      "detected_stack_detail" to "kmp→kotlin fallback",
+      "fallback" to true,
+      "fallback_reason" to "kotlin_quality_check_fallback",
+      "platform_slug" to "kmp",
+      "scope_type" to "branch_diff",
+      "execution_mode" to "runtime",
+      "review_finished_at" to "2026-06-04T12:01:44Z",
+      "learnings" to linkedMapOf("captured" to true),
+    ).apply {
+      overrides.forEach { (key, value) -> put(key, value) }
+    }
 }

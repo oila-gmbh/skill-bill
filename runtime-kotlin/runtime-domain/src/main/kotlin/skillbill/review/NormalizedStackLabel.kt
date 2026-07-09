@@ -1,11 +1,6 @@
 package skillbill.review
 
-data class NormalizedStackLabel(
-  val stack: String,
-  val detail: String? = null,
-  val fallback: Boolean = false,
-  val fallbackReason: String? = null,
-)
+import skillbill.review.model.NormalizedStackLabel
 
 fun normalizeRoutedSkill(rawValue: String?): String {
   val value = rawValue?.trim().orEmpty()
@@ -40,17 +35,18 @@ fun normalizeStackLabel(rawValue: String?): NormalizedStackLabel {
     .substringBefore("→")
     .substringBefore(" fallback")
     .trim()
-  val slug = slugSource
-    .lowercase()
-    .replace(Regex("[^a-z0-9]+"), "-")
-    .trim('-')
-    .takeIf(String::isNotEmpty)
-    ?: "unknown"
-  val detail = value.takeIf { it.isNotBlank() && normalizeRawSlug(it) != slug }
+  val slug = knownStackSlug(slugSource) ?: "unknown"
+  val detail = value.takeIf { it.isNotBlank() && normalizeTelemetrySlug(it) != slug }
   return NormalizedStackLabel(stack = slug, detail = detail)
 }
 
 fun normalizePlatformSlug(rawValue: String?): String = normalizeStackLabel(rawValue).stack
+
+fun normalizeTelemetrySlug(value: String): String = value
+  .trim()
+  .lowercase()
+  .replace(Regex("[^a-z0-9]+"), "-")
+  .trim('-')
 
 fun normalizeScopeType(rawValue: String?): String {
   val normalized =
@@ -74,8 +70,25 @@ fun normalizeScopeType(rawValue: String?): String {
 
 private fun plausibleSkillSlug(value: String): Boolean = value.matches(Regex("^[a-z0-9][a-z0-9-]*$"))
 
-private fun normalizeRawSlug(value: String): String = value
-  .trim()
-  .lowercase()
-  .replace(Regex("[^a-z0-9]+"), "-")
-  .trim('-')
+private fun knownStackSlug(value: String): String? {
+  val slug = normalizeTelemetrySlug(value).takeIf(String::isNotEmpty) ?: return null
+  val tokens = slug.split("-").toSet()
+  knownPlatformSlugs.firstOrNull { it in tokens }?.let { return it }
+  if (slug.matches(Regex("^[a-z0-9][a-z0-9-]*$")) && value.trim().lowercase() == slug) {
+    return slug
+  }
+  return null
+}
+
+private val knownPlatformSlugs = listOf(
+  "kotlin",
+  "kmp",
+  "ios",
+  "python",
+  "php",
+  "go",
+  "android",
+  "java",
+  "ruby",
+  "docs",
+)

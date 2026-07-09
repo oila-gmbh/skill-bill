@@ -86,7 +86,10 @@ class LifecycleTelemetryService(
           ?.let { lifecycleErrorPayload(sessionId, it) }
           ?: enabledStandaloneResult(sessionId) { settings ->
             database.transaction(null) { unitOfWork ->
-              unitOfWork.lifecycleTelemetry.qualityCheckStarted(normalizedRequest.toRecord(sessionId), settings.level)
+              unitOfWork.lifecycleTelemetry.qualityCheckStarted(
+                normalizedRequest.toRecord(sessionId),
+                settings.level,
+              )
             }
           }
     }
@@ -98,11 +101,15 @@ class LifecycleTelemetryService(
     return validateQualityCheckFinished(normalizedRequest)
       ?.let { lifecycleErrorPayload(normalizedRequest.sessionId, it) }
       ?: when {
-        normalizedRequest.orchestrated -> normalizedRequest.orchestratedPayload(telemetryLevelOrAnonymous(settingsProvider))
+        normalizedRequest.orchestrated ->
+          normalizedRequest.orchestratedPayload(telemetryLevelOrAnonymous(settingsProvider))
         else ->
           enabledStandaloneResult(normalizedRequest.sessionId) { settings ->
             database.transaction(null) { unitOfWork ->
-              unitOfWork.lifecycleTelemetry.qualityCheckFinished(normalizedRequest.toRecord(), settings.level)
+              unitOfWork.lifecycleTelemetry.qualityCheckFinished(
+                normalizedRequest.toRecord(),
+                settings.level,
+              )
             }
           }
       }

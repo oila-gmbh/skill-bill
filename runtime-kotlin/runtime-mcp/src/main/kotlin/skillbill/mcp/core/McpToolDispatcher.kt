@@ -21,8 +21,6 @@ import skillbill.mcp.workflow.workflowList
 import skillbill.mcp.workflow.workflowOpen
 import skillbill.mcp.workflow.workflowResume
 import skillbill.mcp.workflow.workflowUpdate
-import skillbill.review.normalizeRoutedSkill
-import skillbill.review.normalizeStackLabel
 import skillbill.telemetry.model.RemoteStatsRequest
 
 internal typealias McpToolHandler = (Map<String, Any?>, McpRuntimeContext) -> Map<String, Any?>
@@ -219,10 +217,10 @@ object McpToolDispatcher {
     if (toolName != "quality_check_finished") {
       return arguments
     }
-    val stack = normalizeStackLabel(arguments["detected_stack"]?.toString())
+    val stack = normalizeQualityCheckStack(arguments["detected_stack"]?.toString())
     val fallback = arguments["fallback"] == true || stack.fallback
     return arguments.toMutableMap().apply {
-      put("routed_skill", normalizeRoutedSkill(arguments["routed_skill"]?.toString()))
+      put("routed_skill", normalizeQualityCheckRoutedSkill(arguments["routed_skill"]?.toString()))
       put("detected_stack", stack.stack)
       put("fallback", fallback)
       val fallbackReason = arguments["fallback_reason"]?.toString()?.takeIf(String::isNotBlank) ?: stack.fallbackReason
@@ -231,6 +229,43 @@ object McpToolDispatcher {
       }
     }
   }
+}
+
+private class NormalizedQualityCheckStack(
+  val stack: String,
+  val fallback: Boolean,
+  val fallbackReason: String?,
+)
+
+private fun normalizeQualityCheckRoutedSkill(rawValue: String?): String {
+  val value = rawValue?.trim().orEmpty()
+  if (value.isEmpty()) return "unrouted"
+  val withoutNamespace = value.substringAfter(':')
+  return if (
+    withoutNamespace != value &&
+    withoutNamespace.matches(Regex("^[a-z0-9][a-z0-9-]*$")) &&
+    value.substringBefore(':').matches(Regex("^[A-Za-z][A-Za-z0-9_-]*$"))
+  ) {
+    withoutNamespace
+  } else {
+    value
+  }
+}
+
+private fun normalizeQualityCheckStack(rawValue: String?): NormalizedQualityCheckStack {
+  val value = rawValue?.trim().orEmpty()
+  if (value.isEmpty()) {
+    return NormalizedQualityCheckStack(stack = "unknown", fallback = false, fallbackReason = null)
+  }
+  val lower = value.lowercase()
+  if (lower.contains("kmp") && lower.contains("kotlin") && lower.contains("fallback")) {
+    return NormalizedQualityCheckStack(
+      stack = "kmp",
+      fallback = true,
+      fallbackReason = "kotlin_quality_check_fallback",
+    )
+  }
+  return NormalizedQualityCheckStack(stack = value, fallback = false, fallbackReason = null)
 }
 
 internal fun importReview(arguments: Map<String, Any?>, context: McpRuntimeContext): Map<String, Any?> =

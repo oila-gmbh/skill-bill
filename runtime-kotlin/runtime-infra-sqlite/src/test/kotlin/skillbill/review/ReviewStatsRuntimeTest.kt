@@ -183,25 +183,7 @@ class ReviewStatsRuntimeTest {
       assertEquals("Intentional wording", fullRejectedFinding.note)
       val anonymousSerializedPayload = anonymousPayload.toReviewFinishedTelemetryPayload().toPayload()
       val fullSerializedPayload = fullPayload.toReviewFinishedTelemetryPayload().toPayload()
-      val anonymousSerializedRejectedFinding =
-        (anonymousSerializedPayload["rejected_finding_details"] as List<*>).single() as Map<*, *>
-      val fullSerializedRejectedFinding =
-        (fullSerializedPayload["rejected_finding_details"] as List<*>).single() as Map<*, *>
-      assertEquals(false, "description" in anonymousSerializedRejectedFinding)
-      assertEquals(false, "note" in anonymousSerializedRejectedFinding)
-      assertEquals("behavior_correctness", anonymousSerializedRejectedFinding["issue_category"])
-      assertEquals(1, anonymousSerializedPayload["rejected_findings"])
-      assertEquals(0.5, anonymousSerializedPayload["rejected_rate"])
-      assertEquals("kotlin", anonymousSerializedPayload["platform_slug"])
-      assertEquals("kotlin", anonymousSerializedPayload["review_platform"])
-      assertEquals("kotlin", anonymousSerializedPayload["detected_stack"])
-      assertEquals(false, anonymousSerializedPayload["fallback"])
-      assertEquals("unstaged_changes", anonymousSerializedPayload["scope_type"])
-      assertEquals(
-        "Installer prompt wording is inconsistent with the new flow.",
-        fullSerializedRejectedFinding["description"],
-      )
-      assertEquals("Intentional wording", fullSerializedRejectedFinding["note"])
+      assertSerializedReviewFinishedPayloads(anonymousSerializedPayload, fullSerializedPayload)
       val serializedLearnings = anonymousSerializedPayload["learnings"] as Map<*, *>
       assertEquals(1, serializedLearnings["applied_count"])
       assertEquals(listOf("L-001"), serializedLearnings["applied_references"])
@@ -233,71 +215,6 @@ class ReviewStatsRuntimeTest {
       assertEquals("unknown", payload["detected_stack"])
       assertEquals(false, payload["fallback"])
       assertEquals("branch_diff", payload["scope_type"])
-    }
-  }
-
-  @Test
-  fun `review-finished payload normalizes labels and preserves removed stack detail`() {
-    val (_, connection) = tempDbConnection("review-finished-normalized-labels")
-    connection.use {
-      val review = ReviewParser.parseReview(
-        SAMPLE_REVIEW
-          .replace("rvw-20260402-001", "rvw-normalized-labels")
-          .replace("rvs-20260402-001", "rvs-normalized-labels")
-          .replace("Routed to: bill-kotlin-code-review", "Routed to: skill-bill:bill-kotlin-code-review")
-          .replace("Detected stack: kotlin", "Detected stack: kotlin (Gradle JVM)")
-          .trimIndent(),
-      )
-      ReviewRuntime.saveImportedReview(connection, review, sourcePath = null)
-
-      val payload =
-        ReviewStatsRuntime.buildReviewFinishedPayload(
-          connection = connection,
-          reviewRunId = review.reviewRunId,
-          level = "anonymous",
-        ).toReviewFinishedTelemetryPayload().toPayload()
-
-      assertEquals("bill-kotlin-code-review", payload["routed_skill"])
-      assertEquals("kotlin", payload["review_platform"])
-      assertEquals(payload["platform_slug"], payload["review_platform"])
-      assertEquals(payload["platform_slug"], payload["detected_stack"])
-      assertEquals("kotlin (Gradle JVM)", payload["detected_stack_detail"])
-      assertEquals(false, payload["fallback"])
-    }
-  }
-
-  @Test
-  fun `review-finished payload emits structured fallback and nonblank unresolved routing defaults`() {
-    val (_, connection) = tempDbConnection("review-finished-fallback-labels")
-    connection.use {
-      val review = ReviewParser.parseReview(
-        """
-        Review session ID: rvs-fallback-labels
-        Review run ID: rvw-fallback-labels
-        Detected review scope: branch diff
-        Detected stack: kmp→kotlin fallback
-        Execution mode: inline
-
-        ### 2. Risk Register
-        No findings.
-        """.trimIndent(),
-      )
-      ReviewRuntime.saveImportedReview(connection, review, sourcePath = null)
-
-      val payload =
-        ReviewStatsRuntime.buildReviewFinishedPayload(
-          connection = connection,
-          reviewRunId = review.reviewRunId,
-          level = "anonymous",
-        ).toReviewFinishedTelemetryPayload().toPayload()
-
-      assertEquals("unrouted", payload["routed_skill"])
-      assertEquals("kmp", payload["review_platform"])
-      assertEquals("kmp", payload["platform_slug"])
-      assertEquals("kmp", payload["detected_stack"])
-      assertEquals("kmp→kotlin fallback", payload["detected_stack_detail"])
-      assertEquals(true, payload["fallback"])
-      assertEquals("kotlin_quality_check_fallback", payload["fallback_reason"])
     }
   }
 
@@ -695,6 +612,29 @@ private fun telemetryPayloads(
     ?.let(JsonSupport::jsonElementToValue)
     ?.let(JsonSupport::anyToStringAnyMap)
     ?: emptyMap()
+}
+
+private fun assertSerializedReviewFinishedPayloads(
+  anonymousPayload: Map<String, Any?>,
+  fullPayload: Map<String, Any?>,
+) {
+  val anonymousRejectedFinding = (anonymousPayload["rejected_finding_details"] as List<*>).single() as Map<*, *>
+  val fullRejectedFinding = (fullPayload["rejected_finding_details"] as List<*>).single() as Map<*, *>
+  assertEquals(false, "description" in anonymousRejectedFinding)
+  assertEquals(false, "note" in anonymousRejectedFinding)
+  assertEquals("behavior_correctness", anonymousRejectedFinding["issue_category"])
+  assertEquals(1, anonymousPayload["rejected_findings"])
+  assertEquals(0.5, anonymousPayload["rejected_rate"])
+  assertEquals("kotlin", anonymousPayload["platform_slug"])
+  assertEquals("kotlin", anonymousPayload["review_platform"])
+  assertEquals("kotlin", anonymousPayload["detected_stack"])
+  assertEquals(false, anonymousPayload["fallback"])
+  assertEquals("unstaged_changes", anonymousPayload["scope_type"])
+  assertEquals(
+    "Installer prompt wording is inconsistent with the new flow.",
+    fullRejectedFinding["description"],
+  )
+  assertEquals("Intentional wording", fullRejectedFinding["note"])
 }
 
 private fun cacheSkillLearning(connection: java.sql.Connection, reviewRunId: String, reviewSessionId: String) {

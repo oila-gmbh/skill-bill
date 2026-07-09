@@ -11,9 +11,8 @@ import skillbill.review.model.ReviewLearningEntry
 import skillbill.review.model.ReviewLearningsSummary
 import skillbill.review.model.ReviewSummary
 import skillbill.review.normalizeRoutedSkill
-import skillbill.review.normalizeStackLabel
-import skillbill.review.normalizePlatformSlug
 import skillbill.review.normalizeScopeType
+import skillbill.review.normalizeStackLabel
 import java.sql.Connection
 
 fun reviewFinishedPayload(
@@ -132,19 +131,6 @@ fun parseSpecialistReviews(rawValue: String?): List<String> =
   rawValue.orEmpty().split(",").map(String::trim).filter(String::isNotEmpty)
 
 fun normalizeReviewScope(detectedScope: String?): String = detectedScope.orEmpty().substringBefore("(").trim()
-
-fun reviewPlatformSlug(
-  detectedStack: String?,
-  routedSkill: String?,
-  routedSkillPlatformSlugs: Map<String, String> = emptyMap(),
-): String {
-  val normalizedDetectedStack = normalizePlatformSlug(detectedStack)
-  return if (normalizedDetectedStack != "unknown") {
-    normalizedDetectedStack
-  } else {
-    platformSlugFromRoutedSkill(routedSkill, routedSkillPlatformSlugs)
-  }
-}
 
 private fun fetchSessionLearnings(connection: Connection, reviewSessionId: String): Map<String, Any?>? {
   val rawJson =
