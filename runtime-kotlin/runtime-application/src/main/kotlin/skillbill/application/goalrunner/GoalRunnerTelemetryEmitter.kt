@@ -103,16 +103,15 @@ internal class GoalRunnerTelemetryEmitter(
       }
   }
 
-  private fun DecompositionSubtask.blockedReasonForTelemetry(): String? =
-    if (status == "blocked") {
-      normalizedBlockedReason(
-        reason = blockedReason,
-        category = "runtime",
-        fallback = "Goal subtask $id is blocked.",
-      )
-    } else {
-      null
-    }
+  private fun DecompositionSubtask.blockedReasonForTelemetry(): String? = if (status == "blocked") {
+    normalizedBlockedReason(
+      reason = blockedReason,
+      category = "runtime",
+      fallback = "Goal subtask $id is blocked.",
+    )
+  } else {
+    null
+  }
 
   fun goalFinished(manifest: DecompositionManifest, report: GoalRunnerRunReport) {
     val finishedAtInstant = clock.instant()

@@ -122,7 +122,7 @@ fun PrDescriptionGeneratedRequest.toRecord(sessionId: String): PrDescriptionGene
     sessionId = sessionId,
     commitCount = commitCount,
     filesChangedCount = filesChangedCount,
-    wasEditedByUser = wasEditedByUser,
+    wasEditedByUser = wasEditedByUser || prDescriptionWasEditedByUser(generatedDescription, finalPrBody),
     prCreated = prCreated,
     prTitle = prTitle,
   )

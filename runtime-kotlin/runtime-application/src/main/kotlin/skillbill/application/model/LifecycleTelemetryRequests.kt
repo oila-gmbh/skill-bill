@@ -122,6 +122,8 @@ data class PrDescriptionGeneratedRequest(
   val prCreated: Boolean,
   val prTitle: String,
   val orchestrated: Boolean,
+  val generatedDescription: String? = null,
+  val finalPrBody: String? = null,
 )
 
 data class GoalStartedRequest(

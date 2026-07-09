@@ -76,7 +76,7 @@ private fun PrDescriptionGeneratedRequest.prDescriptionPayload(level: String): M
   linkedMapOf<String, Any?>(
     "commit_count" to commitCount,
     "files_changed_count" to filesChangedCount,
-    "was_edited_by_user" to wasEditedByUser,
+    "was_edited_by_user" to (wasEditedByUser || prDescriptionWasEditedByUser(generatedDescription, finalPrBody)),
     "pr_created" to prCreated,
     "skill" to "bill-pr-description",
   ).apply {

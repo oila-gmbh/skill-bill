@@ -780,7 +780,7 @@ class ApplicationPersistencePortTest {
     val blockedManifest = loadTestDecompositionManifest(parentSpec.parent.resolve("decomposition-manifest.yaml"))
     val blockedSubtask = blockedManifest.subtasks.single()
     assertEquals("blocked", blockedSubtask.status)
-    assertEquals("Validation failed.", blockedSubtask.blockedReason)
+    assertEquals("runtime: Validation failed.", blockedSubtask.blockedReason)
     assertEquals("validate", blockedSubtask.lastResumableStep)
     assertEquals("Blocked", statusLine(subtaskSpec))
 
@@ -1033,7 +1033,7 @@ class ApplicationPersistencePortTest {
     assertEquals("blocked", blockedSubtask.status)
     assertEquals(null, blockedSubtask.commitSha)
     assertEquals(
-      "Goal-continuation commit_push completed without commit_push_result.commit_sha.",
+      "git: Goal-continuation commit_push completed without commit_push_result.commit_sha.",
       blockedSubtask.blockedReason,
     )
   }
@@ -1178,7 +1178,7 @@ class ApplicationPersistencePortTest {
     val continued = service.continueWorkflow(WorkflowFamilyKind.TASK_PROSE, "SKILL-51", dbOverride = null)
       as WorkflowContinueResult.DecompositionBlockedSubtask
 
-    assertEquals("Validation failed.", continued.blockedReason)
+    assertEquals("runtime: Validation failed.", continued.blockedReason)
     assertEquals(1, continued.subtaskId)
   }
 

@@ -171,6 +171,8 @@ internal fun prDescriptionGenerated(arguments: Map<String, Any?>, context: McpRu
       prCreated = arguments.boolean("pr_created"),
       prTitle = arguments.string("pr_title"),
       orchestrated = arguments.boolean("orchestrated"),
+      generatedDescription = arguments.optionalString("generated_description"),
+      finalPrBody = arguments.optionalString("final_pr_body"),
     ),
     context,
   )

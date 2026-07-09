@@ -1788,6 +1788,10 @@ $defs:
         type: string
       orchestrated:
         type: boolean
+      generated_description:
+        type: string
+      final_pr_body:
+        type: string
 
   qualityCheckFinishedEvent:
     type: object

@@ -466,6 +466,8 @@ object McpToolRegistry {
           "pr_created" to booleanSchema,
           "pr_title" to stringSchema(),
           "orchestrated" to booleanSchema,
+          "generated_description" to stringSchema(),
+          "final_pr_body" to stringSchema(),
         ),
       ),
       "quality_check_finished" to objectSchema(

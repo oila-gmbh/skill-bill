@@ -145,15 +145,13 @@ class FeatureTaskRuntimeLifecycleTelemetry(
     is FeatureTaskRuntimeRunReport.Decomposed -> report.completedPhaseIds
   }
 
-  private fun lastIncompletePhaseOf(
-    report: FeatureTaskRuntimeRunReport,
-    outcomes: Map<String, String>,
-  ): String = when (report) {
-    is FeatureTaskRuntimeRunReport.Completed -> "completed"
-    is FeatureTaskRuntimeRunReport.Decomposed -> "decomposed_at_planning"
-    is FeatureTaskRuntimeRunReport.Blocked ->
-      report.lastIncompletePhase.takeIf(String::isNotBlank) ?: outcomes.firstIncompletePhase()
-  }
+  private fun lastIncompletePhaseOf(report: FeatureTaskRuntimeRunReport, outcomes: Map<String, String>): String =
+    when (report) {
+      is FeatureTaskRuntimeRunReport.Completed -> "completed"
+      is FeatureTaskRuntimeRunReport.Decomposed -> "decomposed_at_planning"
+      is FeatureTaskRuntimeRunReport.Blocked ->
+        report.lastIncompletePhase.takeIf(String::isNotBlank) ?: outcomes.firstIncompletePhase()
+    }
 
   private fun Map<String, String>.firstIncompletePhase(): String =
     entries.firstOrNull { it.value != "completed" }?.key?.takeIf(String::isNotBlank) ?: "unknown"

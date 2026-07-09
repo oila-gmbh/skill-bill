@@ -101,7 +101,7 @@ This skill emits a single `skillbill_pr_description_generated` event via the `pr
 
 Standalone invocation: after presenting the PR description (and after the user has created the PR, if applicable), call `pr_description_generated` with `commit_count`, `files_changed_count`, `was_edited_by_user` (true if the user requested changes to the generated description), `pr_created` (true if the PR has actually been created), and optional `pr_title`.
 
-Orchestrated invocation (when called from `bill-feature-task` or similar parent that passes `orchestrated=true`): call `pr_description_generated` with `orchestrated=true` and the same fields. The tool returns `{"mode": "orchestrated", "telemetry_payload": {...}}`. Return that payload to the orchestrator — it will embed it in its own finished event.
+Orchestrated invocation (when called from `bill-feature-task` or similar parent that passes `orchestrated=true`): after creating or opening the PR, compare the normalized generated body with the actual PR body passed to `gh pr create` or read back with `gh pr view --json body` when available. Call `pr_description_generated` with `orchestrated=true`, `was_edited_by_user=true` when those bodies differ, and the same fields. The tool returns `{"mode": "orchestrated", "telemetry_payload": {...}}`. Return that payload to the orchestrator — it will embed it in its own finished event.
 
 ## Ceremony
 

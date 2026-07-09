@@ -12,11 +12,7 @@ private val blockedReasonPrefixes = setOf(
   "unknown",
 )
 
-fun normalizedBlockedReason(
-  reason: String?,
-  category: String,
-  fallback: String,
-): String {
+fun normalizedBlockedReason(reason: String?, category: String, fallback: String): String {
   val normalizedCategory = category.takeIf { it in blockedReasonPrefixes } ?: "unknown"
   val trimmedReason = reason?.trim().orEmpty()
   val raw = trimmedReason.ifBlank { fallback.trim().ifBlank { "Blocked without a specific reason." } }

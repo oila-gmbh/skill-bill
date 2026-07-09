@@ -215,7 +215,7 @@ class GoalTelemetryEmissionEventParityTest {
     TelemetryEventSchemaValidator.validate(
       envelope = LinkedHashMap(subtaskFinishedBase).apply {
         put("status", "blocked")
-        put("blocked_reason", "validation gate failed twice")
+        put("blocked_reason", "validation: gate failed twice")
       },
       eventName = "goal_subtask_finished",
     )
