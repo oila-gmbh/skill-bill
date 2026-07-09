@@ -1,3 +1,12 @@
+## [2026-07-09] SKILL-109 reliability contract test
+Areas: runtime-kotlin/runtime-application goal telemetry tests, runtime-kotlin/runtime-mcp telemetry contract tests
+- Issue-level terminal completeness is now asserted through the production GoalRunner telemetry path, proving completed goal runs emit exactly one `skillbill_goal_issue_finished` event with parent workflow, issue key, status, counts, timestamp, and mode. reusable
+- MCP reliability coverage now validates representative issue-finished envelope shape and schema-backed field hygiene separately, avoiding self-fulfilling hand-authored terminal sequences.
+- Pattern: prove behavioral telemetry guarantees at the runtime emitter path, then keep MCP tests focused on schema parity and representative payload validity so contract coverage is not duplicated or synthetic. reusable
+- Existing duplicate-terminal, unresolved-findings, and production-install filtering coverage remains the contract source for those guarantees.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
 ## [2026-07-09] SKILL-109 telemetry label normalization
 Areas: runtime-kotlin/runtime-application telemetry, runtime-domain review models, runtime-infra-sqlite telemetry persistence, runtime-mcp lifecycle schemas, orchestration/contracts telemetry schema
 - Review-finished and quality-check telemetry now normalize routed skills and stack/platform labels at runtime boundaries: no `skill-bill:` prefixes, blank routes become `unrouted`/`unknown`, and `review_platform == platform_slug == detected_stack` for clean enums. reusable

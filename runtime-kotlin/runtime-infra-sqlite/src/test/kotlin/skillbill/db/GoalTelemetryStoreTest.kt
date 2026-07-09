@@ -418,8 +418,16 @@ class GoalTelemetryStoreTest {
       "running",
       parsePayload(outbox.single { it.eventName == "skillbill_goal_started" }.payloadJson)["status"],
     )
+    assertEquals(
+      "runtime",
+      parsePayload(outbox.single { it.eventName == "skillbill_goal_started" }.payloadJson)["mode"],
+    )
     assertEquals(3, outbox.count { it.eventName == "skillbill_goal_subtask_finished" })
     assertEquals(1, outbox.count { it.eventName == "skillbill_goal_finished" })
+    assertEquals(
+      "runtime",
+      parsePayload(outbox.single { it.eventName == "skillbill_goal_finished" }.payloadJson)["mode"],
+    )
     assertTrue(
       outbox.any { it.eventName == "skillbill_goal_subtask_finished" && it.payloadJson.contains("validation failed") },
       "Blocked subtask outbox payload should carry blocked_reason at full level.",

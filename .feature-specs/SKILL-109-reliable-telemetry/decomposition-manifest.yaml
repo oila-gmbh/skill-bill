@@ -4,14 +4,14 @@ issue_key: "SKILL-109"
 feature_name: "reliable-telemetry"
 parent_spec_path: ".feature-specs/SKILL-109-reliable-telemetry/spec.md"
 spec_source: "local"
-status: "in_progress"
+status: "complete"
 execution_model: "same_branch_commit_per_subtask"
 base_branch: "main"
 feature_branch: "feat/SKILL-109-reliable-telemetry"
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 6
-  action: "resume"
+  subtask_id: 0
+  action: "complete"
 subtasks:
 - id: 1
   name: "Goal issue-level terminal event + blocked sub-categorization"
@@ -85,12 +85,12 @@ subtasks:
 - id: 6
   name: "Reliability contract test + hygiene"
   spec_path: ".feature-specs/SKILL-109-reliable-telemetry/spec_subtask_6_contract_test.md"
-  status: "pending"
+  status: "complete"
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260709-153117-fhqy"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []

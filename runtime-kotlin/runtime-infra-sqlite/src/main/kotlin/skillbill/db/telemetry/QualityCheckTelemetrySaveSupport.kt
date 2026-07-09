@@ -25,13 +25,27 @@ fun saveQualityCheckStarted(connection: Connection, record: QualityCheckStartedR
   }
 }
 
-fun saveQualityCheckFinished(connection: Connection, record: QualityCheckFinishedRecord) {
+fun saveQualityCheckFinished(connection: Connection, record: QualityCheckFinishedRecord): Boolean {
   val failingCheckNamesJson = listJson(record.failingCheckNames)
   if (rowExists(connection, "quality_check_sessions", record.sessionId)) {
+    val emitCorrectedTerminal = staleFinishedAlreadyEmitted(
+      connection = connection,
+      tableName = "quality_check_sessions",
+      terminalColumn = "result",
+      sessionId = record.sessionId,
+    )
+    if (terminalEventAlreadyEmitted(connection, "quality_check_sessions", record.sessionId)) {
+      incrementDuplicateTerminalFinishedEvents(connection, "quality_check_sessions", record.sessionId)
+      if (!emitCorrectedTerminal) {
+        return false
+      }
+    }
     updateQualityCheckFinished(connection, record, failingCheckNamesJson)
+    return emitCorrectedTerminal
   } else {
     insertQualityCheckFinished(connection, record, failingCheckNamesJson)
   }
+  return false
 }
 
 private fun updateQualityCheckFinished(
@@ -55,7 +69,7 @@ private fun updateQualityCheckFinished(
       unsupported_reason = ?,
       finished_at = CURRENT_TIMESTAMP
     WHERE session_id = ?
-      AND finished_event_emitted_at IS NULL
+      AND (finished_event_emitted_at IS NULL OR result = 'stale')
     """.trimIndent(),
   ).use { statement ->
     statement.bind(

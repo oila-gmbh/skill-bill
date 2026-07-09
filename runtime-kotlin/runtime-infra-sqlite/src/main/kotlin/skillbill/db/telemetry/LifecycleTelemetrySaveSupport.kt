@@ -38,8 +38,15 @@ fun saveFeatureImplementFinished(connection: Connection, record: FeatureImplemen
   val childStepsJson = listJson(record.childSteps)
   if (rowExists(connection, "feature_implement_sessions", record.sessionId)) {
     if (featureImplementAlreadyFinished(connection, record.sessionId)) {
-      incrementDuplicateFeatureImplementFinished(connection, record.sessionId)
-      return !featureImplementStaleFinishedAlreadyEmitted(connection, record.sessionId)
+      val emitCorrectedTerminal = featureImplementStaleFinishedAlreadyEmitted(connection, record.sessionId)
+      incrementDuplicateTerminalFinishedEvents(connection, "feature_implement_sessions", record.sessionId)
+      if (terminalEventAlreadyEmitted(connection, "feature_implement_sessions", record.sessionId) &&
+        !emitCorrectedTerminal
+      ) {
+        return true
+      }
+      updateFeatureImplementFinished(connection, record, childStepsJson)
+      return emitCorrectedTerminal
     }
     updateFeatureImplementFinished(connection, record, childStepsJson)
   } else {
@@ -66,13 +73,27 @@ fun saveFeatureVerifyStarted(connection: Connection, record: FeatureVerifyStarte
   }
 }
 
-fun saveFeatureVerifyFinished(connection: Connection, record: FeatureVerifyFinishedRecord) {
+fun saveFeatureVerifyFinished(connection: Connection, record: FeatureVerifyFinishedRecord): Boolean {
   val gapsFoundJson = listJson(record.gapsFound)
   if (rowExists(connection, "feature_verify_sessions", record.sessionId)) {
+    val emitCorrectedTerminal = staleFinishedAlreadyEmitted(
+      connection = connection,
+      tableName = "feature_verify_sessions",
+      terminalColumn = "completion_status",
+      sessionId = record.sessionId,
+    )
+    if (terminalEventAlreadyEmitted(connection, "feature_verify_sessions", record.sessionId)) {
+      incrementDuplicateTerminalFinishedEvents(connection, "feature_verify_sessions", record.sessionId)
+      if (!emitCorrectedTerminal) {
+        return false
+      }
+    }
     updateFeatureVerifyFinished(connection, record, gapsFoundJson)
+    return emitCorrectedTerminal
   } else {
     insertFeatureVerifyFinished(connection, record, gapsFoundJson)
   }
+  return false
 }
 
 private fun updateFeatureImplementFinished(
@@ -105,6 +126,7 @@ private fun updateFeatureImplementFinished(
       estimated_total_tokens = ?,
       finished_at = CURRENT_TIMESTAMP
     WHERE session_id = ?
+      AND (finished_event_emitted_at IS NULL OR completion_status = 'stale')
     """.trimIndent(),
   ).use { statement ->
     statement.bind(
@@ -159,7 +181,7 @@ private fun updateFeatureVerifyFinished(
       gaps_found = ?,
       finished_at = CURRENT_TIMESTAMP
     WHERE session_id = ?
-      AND finished_event_emitted_at IS NULL
+      AND (finished_event_emitted_at IS NULL OR completion_status = 'stale')
     """.trimIndent(),
   ).use { statement ->
     statement.bind(

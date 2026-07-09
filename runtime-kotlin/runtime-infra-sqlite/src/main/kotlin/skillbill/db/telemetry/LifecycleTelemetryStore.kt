@@ -39,8 +39,8 @@ class LifecycleTelemetryStore(
   }
 
   override fun featureTaskRuntimeFinished(record: FeatureTaskRuntimeFinishedRecord, level: String) {
-    saveFeatureTaskRuntimeFinished(connection, record)
-    emitFeatureTaskRuntimeFinished(connection, record.sessionId, level)
+    val duplicateTerminalEvent = saveFeatureTaskRuntimeFinished(connection, record)
+    emitFeatureTaskRuntimeFinished(connection, record.sessionId, level, duplicateTerminalEvent)
   }
 
   override fun qualityCheckStarted(record: QualityCheckStartedRecord, level: String) {
@@ -49,8 +49,8 @@ class LifecycleTelemetryStore(
   }
 
   override fun qualityCheckFinished(record: QualityCheckFinishedRecord, level: String) {
-    saveQualityCheckFinished(connection, record)
-    emitQualityCheckFinished(connection, record.sessionId, level)
+    val duplicateTerminalEvent = saveQualityCheckFinished(connection, record)
+    emitQualityCheckFinished(connection, record.sessionId, level, duplicateTerminalEvent)
   }
 
   override fun featureVerifyStarted(record: FeatureVerifyStartedRecord, level: String) {
@@ -59,8 +59,8 @@ class LifecycleTelemetryStore(
   }
 
   override fun featureVerifyFinished(record: FeatureVerifyFinishedRecord, level: String) {
-    saveFeatureVerifyFinished(connection, record)
-    emitFeatureVerifyFinished(connection, record.sessionId, level)
+    val duplicateTerminalEvent = saveFeatureVerifyFinished(connection, record)
+    emitFeatureVerifyFinished(connection, record.sessionId, level, duplicateTerminalEvent)
   }
 
   override fun prDescriptionGenerated(record: PrDescriptionGeneratedRecord, level: String) {

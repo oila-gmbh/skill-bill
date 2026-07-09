@@ -15,10 +15,10 @@ fun featureImplementAlreadyFinished(connection: Connection, sessionId: String): 
   }
 }
 
-fun incrementDuplicateFeatureImplementFinished(connection: Connection, sessionId: String) {
+fun incrementDuplicateTerminalFinishedEvents(connection: Connection, tableName: String, sessionId: String) {
   connection.prepareStatement(
     """
-    UPDATE feature_implement_sessions
+    UPDATE $tableName
     SET duplicate_terminal_finished_events = duplicate_terminal_finished_events + 1
     WHERE session_id = ?
     """.trimIndent(),
@@ -29,17 +29,38 @@ fun incrementDuplicateFeatureImplementFinished(connection: Connection, sessionId
 }
 
 fun featureImplementStaleFinishedAlreadyEmitted(connection: Connection, sessionId: String): Boolean =
+  staleFinishedAlreadyEmitted(connection, "feature_implement_sessions", "completion_status", sessionId)
+
+fun staleFinishedAlreadyEmitted(
+  connection: Connection,
+  tableName: String,
+  terminalColumn: String,
+  sessionId: String,
+): Boolean = connection.prepareStatement(
+  """
+    SELECT $terminalColumn, finished_event_emitted_at
+    FROM $tableName
+    WHERE session_id = ?
+  """.trimIndent(),
+).use { statement ->
+  statement.setString(1, sessionId)
+  statement.executeQuery().use { resultSet ->
+    resultSet.next() &&
+      resultSet.getString(terminalColumn) == "stale" &&
+      !resultSet.getString("finished_event_emitted_at").isNullOrBlank()
+  }
+}
+
+fun terminalEventAlreadyEmitted(connection: Connection, tableName: String, sessionId: String): Boolean =
   connection.prepareStatement(
     """
-    SELECT completion_status, finished_event_emitted_at
-    FROM feature_implement_sessions
+    SELECT finished_event_emitted_at
+    FROM $tableName
     WHERE session_id = ?
     """.trimIndent(),
   ).use { statement ->
     statement.setString(1, sessionId)
     statement.executeQuery().use { resultSet ->
-      resultSet.next() &&
-        resultSet.getString("completion_status") == "stale" &&
-        !resultSet.getString("finished_event_emitted_at").isNullOrBlank()
+      resultSet.next() && !resultSet.getString("finished_event_emitted_at").isNullOrBlank()
     }
   }

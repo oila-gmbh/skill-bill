@@ -24,18 +24,8 @@ class TelemetryReliabilityContractTest {
   }
 
   @Test
-  fun `completed issue-level goal sequences carry exactly one complete issue terminal event`() {
-    val sequence = listOf(
-      RecordedTelemetryEvent("skillbill_goal_started", goalStartedEnvelope()),
-      RecordedTelemetryEvent("skillbill_goal_subtask_finished", goalSubtaskFinishedEnvelope()),
-      RecordedTelemetryEvent("skillbill_goal_finished", goalFinishedEnvelope()),
-      RecordedTelemetryEvent("skillbill_goal_issue_finished", goalIssueFinishedEnvelope()),
-    )
-
-    val issueTerminalEvents = sequence.filter { it.persistedEventName == "skillbill_goal_issue_finished" }
-    assertEquals(1, issueTerminalEvents.size, "Completed issue sequences must emit exactly one issue terminal event.")
-
-    val terminal = issueTerminalEvents.single().envelope
+  fun `representative completed issue terminal telemetry carries complete summary fields`() {
+    val terminal = goalIssueFinishedEnvelope()
     assertEquals("completed", terminal["status"])
     assertPositiveBoundedDuration(terminal)
     listOf(
@@ -48,13 +38,7 @@ class TelemetryReliabilityContractTest {
     )
       .forEach { key -> assertTrue((terminal[key] as? Int) != null, "$key must be present as an integer.") }
     listOf("first_started_at", "finished_at", "mode").forEach { key -> assertNonBlankString(terminal, key) }
-
-    sequence.forEach { recorded ->
-      TelemetryEventSchemaValidator.validate(
-        envelope = recorded.envelope,
-        eventName = recorded.envelope["event_name"] as String,
-      )
-    }
+    TelemetryEventSchemaValidator.validate(envelope = terminal, eventName = terminal["event_name"] as String)
   }
 
   @Test
@@ -122,6 +106,20 @@ class TelemetryReliabilityContractTest {
   }
 
   @Test
+  fun `stale reconciled terminal payloads validate against the canonical schema`() {
+    val staleEnvelopes = listOf(
+      featureTaskProseFinishedEnvelope("completion_status" to "stale"),
+      featureVerifyFinishedEnvelope("completion_status" to "stale"),
+      featureTaskRuntimeFinishedEnvelope("completion_status" to "stale"),
+      qualityCheckFinishedEnvelope().apply { put("result", "stale") },
+    )
+
+    staleEnvelopes.forEach { envelope ->
+      TelemetryEventSchemaValidator.validate(envelope = envelope, eventName = envelope["event_name"] as String)
+    }
+  }
+
+  @Test
   fun `review and feature-task health fields remain explicitly covered`() {
     val reviewFinished = reviewFinishedEnvelope()
     assertEquals(0, reviewFinished["unresolved_findings"])
@@ -155,22 +153,6 @@ class TelemetryReliabilityContractTest {
 
   private fun base(eventName: String): LinkedHashMap<String, Any?> =
     linkedMapOf("event_name" to eventName, "contract_version" to TELEMETRY_EVENT_CONTRACT_VERSION)
-
-  private data class RecordedTelemetryEvent(
-    val persistedEventName: String,
-    val envelope: LinkedHashMap<String, Any?>,
-  )
-
-  private fun goalStartedEnvelope(): LinkedHashMap<String, Any?> = base("goal_started").apply {
-    put("issue_key", "SKILL-109")
-    put("feature_name", "reliable-telemetry")
-    put("workflow_id", "wfl-skill-109")
-    put("subtask_total", 6)
-    put("resumed", false)
-    put("started_at", "2026-07-09T08:00:00Z")
-    put("status", "running")
-    put("mode", "runtime")
-  }
 
   private fun goalSubtaskFinishedEnvelope(vararg overrides: Pair<String, Any?>): LinkedHashMap<String, Any?> =
     base("goal_subtask_finished").apply {
@@ -218,6 +200,51 @@ class TelemetryReliabilityContractTest {
     put("duration_seconds", 1_200)
     put("mode", "runtime")
   }
+
+  private fun featureTaskProseFinishedEnvelope(vararg overrides: Pair<String, Any?>): LinkedHashMap<String, Any?> =
+    base("feature_task_prose_finished").apply {
+      put("session_id", "fis-20260709-080000-a1b2")
+      put("completion_status", "completed")
+      put("plan_correction_count", 0)
+      put("plan_task_count", 3)
+      put("plan_phase_count", 2)
+      put("feature_flag_used", false)
+      put("files_created", 1)
+      put("files_modified", 2)
+      put("tasks_completed", 3)
+      put("review_iterations", 1)
+      put("audit_result", "all_pass")
+      put("audit_iterations", 1)
+      put("validation_result", "pass")
+      put("boundary_history_written", false)
+      put("pr_created", false)
+      put("plan_deviation_notes", "")
+      overrides.forEach { (key, value) -> put(key, value) }
+    }
+
+  private fun featureVerifyFinishedEnvelope(vararg overrides: Pair<String, Any?>): LinkedHashMap<String, Any?> =
+    base("feature_verify_finished").apply {
+      put("session_id", "fvs-20260709-080000-a1b2")
+      put("feature_flag_audit_performed", false)
+      put("review_iterations", 1)
+      put("audit_result", "all_pass")
+      put("completion_status", "completed")
+      put("gaps_found", emptyList<String>())
+      put("orchestrated", false)
+      put("acceptance_criteria_count", 3)
+      put("rollout_relevant", false)
+      put("spec_summary", "SKILL-109 telemetry reliability")
+      put("duration_seconds", 600)
+      overrides.forEach { (key, value) -> put(key, value) }
+    }
+
+  private fun featureTaskRuntimeFinishedEnvelope(vararg overrides: Pair<String, Any?>): LinkedHashMap<String, Any?> =
+    base("feature_task_runtime_finished").apply {
+      put("session_id", "ftr-20260709-080000-a1b2")
+      put("completion_status", "completed")
+      put("completed_phase_ids", listOf("implement", "review"))
+      overrides.forEach { (key, value) -> put(key, value) }
+    }
 
   private fun qualityCheckFinishedEnvelope(): LinkedHashMap<String, Any?> = base("quality_check_finished").apply {
     put("session_id", "qck-20260709-080000-a1b2")

@@ -154,6 +154,7 @@ internal object DatabaseSchema {
         result TEXT,
         failing_check_names TEXT NOT NULL DEFAULT '',
         unsupported_reason TEXT NOT NULL DEFAULT '',
+        duplicate_terminal_finished_events INTEGER NOT NULL DEFAULT 0,
         finished_at TEXT,
         finished_event_emitted_at TEXT
       )
@@ -171,6 +172,7 @@ internal object DatabaseSchema {
         audit_result TEXT,
         completion_status TEXT,
         gaps_found TEXT NOT NULL DEFAULT '',
+        duplicate_terminal_finished_events INTEGER NOT NULL DEFAULT 0,
         finished_at TEXT,
         finished_event_emitted_at TEXT
       )
@@ -230,6 +232,7 @@ internal object DatabaseSchema {
         resolved_branch TEXT NOT NULL DEFAULT '',
         review_fix_iteration_count INTEGER NOT NULL DEFAULT 0,
         audit_gap_iteration_count INTEGER NOT NULL DEFAULT 0,
+        duplicate_terminal_finished_events INTEGER NOT NULL DEFAULT 0,
         finished_at TEXT,
         finished_event_emitted_at TEXT
       )

@@ -712,6 +712,7 @@ $defs:
           - abandoned_at_implementation
           - abandoned_at_review
           - error
+          - stale
       plan_correction_count:
         type: integer
       plan_task_count:
@@ -964,6 +965,7 @@ $defs:
           - abandoned_at_review
           - abandoned_at_audit
           - error
+          - stale
       history_relevance:
         $ref: "#/$defs/historySignalEnum"
       history_helpfulness:
@@ -1035,6 +1037,7 @@ $defs:
           - blocked
           - decomposed_at_planning
           - error
+          - stale
       completed_phase_ids:
         type: array
         items:
@@ -1829,6 +1832,7 @@ $defs:
           - fail
           - skipped
           - unsupported_stack
+          - stale
       session_id:
         type: string
       failing_check_names:

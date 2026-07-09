@@ -29,6 +29,12 @@ internal object DatabaseColumnMigrations {
     ensureColumn(connection, "quality_check_sessions", "result", "TEXT")
     ensureColumn(connection, "quality_check_sessions", "failing_check_names", "TEXT NOT NULL DEFAULT ''")
     ensureColumn(connection, "quality_check_sessions", "unsupported_reason", "TEXT NOT NULL DEFAULT ''")
+    ensureColumn(
+      connection = connection,
+      tableName = "quality_check_sessions",
+      columnName = "duplicate_terminal_finished_events",
+      definition = "INTEGER NOT NULL DEFAULT 0",
+    )
     ensureFeatureTaskRuntimeSessionColumns(connection)
     // apply() is wired both as gated migration version 1 (which runs before version 3 creates
     // goal_subtask_events) and unconditionally on every startup. Skip the agent-attribution column
@@ -75,6 +81,12 @@ internal object DatabaseColumnMigrations {
     )
     ensureColumn(connection, "feature_task_runtime_sessions", "estimated_phase_tokens_json", "TEXT")
     ensureColumn(connection, "feature_task_runtime_sessions", "estimated_total_tokens", "INTEGER")
+    ensureColumn(
+      connection = connection,
+      tableName = "feature_task_runtime_sessions",
+      columnName = "duplicate_terminal_finished_events",
+      definition = "INTEGER NOT NULL DEFAULT 0",
+    )
   }
 
   private fun ensureFeatureVerifyWorkflowColumns(connection: Connection) {
@@ -231,6 +243,12 @@ internal object DatabaseColumnMigrations {
       tableName = "feature_verify_sessions",
       columnName = "history_helpfulness",
       definition = "TEXT NOT NULL DEFAULT 'none'",
+    )
+    ensureColumn(
+      connection = connection,
+      tableName = "feature_verify_sessions",
+      columnName = "duplicate_terminal_finished_events",
+      definition = "INTEGER NOT NULL DEFAULT 0",
     )
   }
 

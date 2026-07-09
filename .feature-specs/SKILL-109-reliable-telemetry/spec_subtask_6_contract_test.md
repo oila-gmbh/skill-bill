@@ -1,6 +1,7 @@
 ---
 issue_key: SKILL-109
 subtask_id: 6
+status: Complete
 ---
 
 # Subtask 6 — Reliability contract test + hygiene

@@ -16,6 +16,7 @@ private data class LifecycleReconciliationTarget(
   val tableName: String,
   val terminalColumn: String,
   val terminalValue: String,
+  val workflowTableName: String? = null,
   val emitFinished: (String) -> Unit,
 )
 
@@ -31,6 +32,7 @@ fun reconcileStaleTelemetrySessions(
       tableName = "feature_implement_sessions",
       terminalColumn = "completion_status",
       terminalValue = "stale",
+      workflowTableName = "feature_task_workflows",
     ) { sessionId -> emitFeatureImplementFinished(connection, sessionId, level) },
     thresholdSeconds = sessionThresholdSeconds,
   )
@@ -40,6 +42,7 @@ fun reconcileStaleTelemetrySessions(
       tableName = "feature_task_runtime_sessions",
       terminalColumn = "completion_status",
       terminalValue = "stale",
+      workflowTableName = "feature_task_workflows",
     ) { sessionId -> emitFeatureTaskRuntimeFinished(connection, sessionId, level) },
     thresholdSeconds = sessionThresholdSeconds,
   )
@@ -49,6 +52,7 @@ fun reconcileStaleTelemetrySessions(
       tableName = "feature_verify_sessions",
       terminalColumn = "completion_status",
       terminalValue = "stale",
+      workflowTableName = "feature_verify_workflows",
     ) { sessionId -> emitFeatureVerifyFinished(connection, sessionId, level) },
     thresholdSeconds = sessionThresholdSeconds,
   )
@@ -82,6 +86,7 @@ fun reconcileStaleFeatureImplementSessions(
     tableName = "feature_implement_sessions",
     terminalColumn = "completion_status",
     terminalValue = "stale",
+    workflowTableName = "feature_task_workflows",
   ) { sessionId -> emitFeatureImplementFinished(connection, sessionId, "anonymous") },
   thresholdSeconds = thresholdSeconds,
 )
@@ -95,6 +100,7 @@ fun reconcileStaleFeatureTaskRuntimeSessions(
     tableName = "feature_task_runtime_sessions",
     terminalColumn = "completion_status",
     terminalValue = "stale",
+    workflowTableName = "feature_task_workflows",
   ) { sessionId -> emitFeatureTaskRuntimeFinished(connection, sessionId, "anonymous") },
   thresholdSeconds = thresholdSeconds,
 )
@@ -104,7 +110,7 @@ private fun reconcileLifecycleTable(
   target: LifecycleReconciliationTarget,
   thresholdSeconds: Long,
 ): Int {
-  val sessionIds = staleSessionIds(connection, target.tableName, thresholdSeconds)
+  val sessionIds = staleSessionIds(connection, target, thresholdSeconds)
   sessionIds.forEach { sessionId ->
     markLifecycleSessionStale(connection, target, sessionId)
     target.emitFinished(sessionId)
@@ -112,18 +118,39 @@ private fun reconcileLifecycleTable(
   return sessionIds.size
 }
 
-private fun staleSessionIds(connection: Connection, tableName: String, thresholdSeconds: Long): List<String> =
-  connection.prepareStatement(
+private fun staleSessionIds(
+  connection: Connection,
+  target: LifecycleReconciliationTarget,
+  thresholdSeconds: Long,
+): List<String> {
+  val workflowActivityGuard = target.workflowTableName?.let { workflowTableName ->
+    """
+      AND NOT EXISTS (
+        SELECT 1
+        FROM $workflowTableName workflow
+        WHERE workflow.session_id = ${target.tableName}.session_id
+          AND workflow.workflow_status NOT IN ('completed', 'failed', 'abandoned')
+          AND datetime(workflow.updated_at) > datetime('now', '-' || ? || ' seconds')
+      )
+    """.trimIndent()
+  }.orEmpty()
+  val parameters = if (target.workflowTableName == null) {
+    listOf(thresholdSeconds)
+  } else {
+    listOf(thresholdSeconds, thresholdSeconds)
+  }
+  return connection.prepareStatement(
     """
     SELECT session_id
-    FROM $tableName
+    FROM ${target.tableName}
     WHERE finished_at IS NULL
       AND finished_event_emitted_at IS NULL
       AND started_at <= datetime('now', '-' || ? || ' seconds')
+      $workflowActivityGuard
     ORDER BY started_at, session_id
     """.trimIndent(),
   ).use { statement ->
-    statement.bind(thresholdSeconds)
+    statement.bind(parameters)
     statement.executeQuery().use { resultSet ->
       buildList {
         while (resultSet.next()) {
@@ -132,6 +159,7 @@ private fun staleSessionIds(connection: Connection, tableName: String, threshold
       }
     }
   }
+}
 
 private fun markLifecycleSessionStale(
   connection: Connection,
@@ -169,13 +197,18 @@ private fun abandonedGoalIssues(connection: Connection, abandonmentDays: Long): 
     FROM goal_issue_progress
     WHERE finished_at IS NULL
       AND finished_event_emitted_at IS NULL
-      AND last_blocked_at IS NOT NULL
-      AND datetime(last_blocked_at) <= datetime('now', '-' || ? || ' days')
-      AND (last_activity_at IS NULL OR datetime(last_activity_at) <= datetime(last_blocked_at))
-    ORDER BY last_blocked_at, parent_workflow_id, issue_key
+      AND COALESCE(last_blocked_at, last_activity_at, first_started_at) IS NOT NULL
+      AND datetime(COALESCE(last_blocked_at, last_activity_at, first_started_at)) <= datetime('now', '-' || ? || ' days')
+      AND (
+        last_blocked_at IS NULL
+        OR last_activity_at IS NULL
+        OR datetime(last_activity_at) <= datetime(last_blocked_at)
+        OR datetime(last_activity_at) <= datetime('now', '-' || ? || ' days')
+      )
+    ORDER BY COALESCE(last_blocked_at, last_activity_at, first_started_at), parent_workflow_id, issue_key
     """.trimIndent(),
   ).use { statement ->
-    statement.bind(abandonmentDays)
+    statement.bind(abandonmentDays, abandonmentDays)
     statement.executeQuery().use { resultSet ->
       buildList {
         while (resultSet.next()) {
@@ -195,10 +228,10 @@ private fun markGoalIssueAbandoned(connection: Connection, goal: GoalIssueIdenti
     """
     UPDATE goal_issue_progress
     SET status = 'abandoned',
-        subtasks_complete = COALESCE(subtasks_complete, 0),
-        subtasks_blocked = COALESCE(subtasks_blocked, total_blocks),
-        subtasks_skipped = COALESCE(subtasks_skipped, 0),
-        finished_at = CURRENT_TIMESTAMP
+        subtasks_complete = COALESCE((${latestSegmentCountSelect("subtasks_complete")}), 0),
+        subtasks_blocked = COALESCE((${latestSegmentCountSelect("subtasks_blocked")}), 0),
+        subtasks_skipped = COALESCE((${latestSegmentCountSelect("subtasks_skipped")}), 0),
+        finished_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
     WHERE parent_workflow_id = ?
       AND issue_key = ?
       AND finished_at IS NULL
@@ -209,6 +242,14 @@ private fun markGoalIssueAbandoned(connection: Connection, goal: GoalIssueIdenti
     statement.executeUpdate()
   }
 }
+
+private fun latestSegmentCountSelect(columnName: String): String =
+  "SELECT segment.$columnName FROM goal_run_sessions segment " +
+    "WHERE segment.issue_key = goal_issue_progress.issue_key " +
+    "AND substr(segment.workflow_id, 1, length(goal_issue_progress.parent_workflow_id) + 5) = " +
+    "goal_issue_progress.parent_workflow_id || ':seg:' " +
+    "AND segment.$columnName IS NOT NULL " +
+    "ORDER BY datetime(segment.started_at) DESC, segment.workflow_id DESC LIMIT 1"
 
 private data class GoalIssueIdentity(
   val parentWorkflowId: String,

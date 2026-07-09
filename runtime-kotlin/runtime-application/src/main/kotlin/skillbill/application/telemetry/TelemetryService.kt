@@ -62,8 +62,15 @@ class TelemetryService(
   fun autoSync(dbOverride: String? = null) {
     val settings = telemetrySettingsOrNull(settingsProvider)
     if (settings == null || !settings.enabled || !database.databaseExists(dbOverride)) return
-    database.transaction(dbOverride) { unitOfWork ->
-      unitOfWork.telemetryReconciliation.reconcileStaleSessions(settings.level)
+    runCatching {
+      database.transaction(dbOverride) { unitOfWork ->
+        unitOfWork.telemetryReconciliation.reconcileStaleSessions(settings.level)
+      }
+    }.onFailure { error ->
+      when (error) {
+        is Exception -> captureException("telemetry_stale_session_reconciliation", error, dbOverride)
+        else -> throw error
+      }
     }
     TelemetrySyncRuntime.autoSyncTelemetry(
       settings,

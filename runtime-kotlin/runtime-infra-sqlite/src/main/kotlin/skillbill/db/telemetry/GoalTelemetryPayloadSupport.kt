@@ -2,7 +2,8 @@ package skillbill.db.telemetry
 
 import skillbill.contracts.JsonSupport
 import java.time.Instant
-import java.time.temporal.ChronoUnit
+import java.time.LocalDateTime
+import java.time.ZoneOffset
 
 private const val MILLIS_PER_SECOND = 1000L
 
@@ -33,6 +34,7 @@ fun goalStartedPayload(row: Map<String, Any?>, level: String): Map<String, Any?>
   "resumed" to row.booleanFromInt("resumed"),
   "started_at" to row.stringOrEmpty("started_at"),
   "status" to "running",
+  "mode" to row.stringOrEmpty("mode").ifBlank { "runtime" },
 ).apply {
   if (level == "full") {
     put("feature_name", row.stringOrEmpty("feature_name"))
@@ -49,6 +51,7 @@ fun goalFinishedPayload(row: Map<String, Any?>, level: String): Map<String, Any?
   "subtasks_complete" to row.intOrZero("subtasks_complete"),
   "subtasks_blocked" to row.intOrZero("subtasks_blocked"),
   "subtasks_skipped" to row.intOrZero("subtasks_skipped"),
+  "mode" to row.stringOrEmpty("mode").ifBlank { "runtime" },
   "stop_reason" to row["stop_reason"]?.toString(),
 ).apply {
   if (level == "full") {
@@ -102,5 +105,13 @@ fun goalSubtaskFinishedPayload(row: Map<String, Any?>, level: String): Map<Strin
 private fun secondsFromMillis(durationMs: Long): Long = durationMs.coerceAtLeast(0) / MILLIS_PER_SECOND
 
 private fun durationBetweenSeconds(startedAt: String, finishedAt: String): Long = runCatching {
-  ChronoUnit.SECONDS.between(Instant.parse(startedAt), Instant.parse(finishedAt)).coerceAtLeast(0)
+  java.time.Duration.between(parseTelemetryTimestamp(startedAt), parseTelemetryTimestamp(finishedAt))
+    .seconds
+    .coerceAtLeast(0)
 }.getOrDefault(0)
+
+private fun parseTelemetryTimestamp(value: String): Instant = runCatching {
+  Instant.parse(value)
+}.getOrElse {
+  LocalDateTime.parse(value.replace(' ', 'T')).toInstant(ZoneOffset.UTC)
+}

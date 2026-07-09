@@ -141,7 +141,7 @@ internal class GoalRunnerTelemetryEmitter(
         issueKey = manifest.issueKey,
         parentWorkflowId = state.parentWorkflowId,
         status = "completed",
-        subtasksComplete = report.subtasksCompleted,
+        subtasksComplete = manifest.subtasks.count { it.status == "complete" },
         subtasksBlocked = report.subtasksBlocked,
         subtasksSkipped = manifest.subtasks.count { it.status == "skipped" },
         finishedAt = clock.instant().toString(),

@@ -769,7 +769,7 @@ class GoalRunner(
     attemptedSubtasks = attempted,
     pullRequestUrl = pullRequestUrl,
     pullRequestStatus = pullRequestStatus,
-    subtasksCompleted = manifest.subtasks.count { it.status == "complete" || it.status == "skipped" },
+    subtasksCompleted = manifest.subtasks.count { it.status == "complete" },
     subtasksPending = manifest.subtasks.count { it.status !in setOf("complete", "skipped", "blocked") },
     subtasksBlocked = manifest.subtasks.count { it.status == "blocked" },
   )
