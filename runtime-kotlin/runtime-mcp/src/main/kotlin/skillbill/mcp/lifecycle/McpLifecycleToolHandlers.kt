@@ -21,6 +21,8 @@ import skillbill.mcp.core.optionalMap
 import skillbill.mcp.core.optionalString
 import skillbill.mcp.core.string
 import skillbill.mcp.core.stringList
+import skillbill.review.normalizeRoutedSkill
+import skillbill.review.normalizeStackLabel
 
 internal fun featureImplementStarted(arguments: Map<String, Any?>, context: McpRuntimeContext): Map<String, Any?> =
   McpRuntime.featureImplementStarted(
@@ -100,20 +102,27 @@ internal fun featureTaskRuntimeFinished(arguments: Map<String, Any?>, context: M
     context,
   )
 
-internal fun qualityCheckStarted(arguments: Map<String, Any?>, context: McpRuntimeContext): Map<String, Any?> =
-  McpRuntime.qualityCheckStarted(
+internal fun qualityCheckStarted(arguments: Map<String, Any?>, context: McpRuntimeContext): Map<String, Any?> {
+  val stack = normalizeStackLabel(arguments.string("detected_stack"))
+  val fallback = arguments.boolean("fallback") || stack.fallback
+  return McpRuntime.qualityCheckStarted(
     QualityCheckStartedRequest(
-      routedSkill = arguments.string("routed_skill"),
-      detectedStack = arguments.string("detected_stack"),
+      routedSkill = normalizeRoutedSkill(arguments.string("routed_skill")),
+      detectedStack = stack.stack,
+      fallback = fallback,
+      fallbackReason = arguments.optionalString("fallback_reason") ?: stack.fallbackReason,
       scopeType = arguments.string("scope_type"),
       initialFailureCount = arguments.int("initial_failure_count", 0),
       orchestrated = arguments.boolean("orchestrated"),
     ),
     context,
   )
+}
 
-internal fun qualityCheckFinished(arguments: Map<String, Any?>, context: McpRuntimeContext): Map<String, Any?> =
-  McpRuntime.qualityCheckFinished(
+internal fun qualityCheckFinished(arguments: Map<String, Any?>, context: McpRuntimeContext): Map<String, Any?> {
+  val stack = normalizeStackLabel(arguments.string("detected_stack"))
+  val fallback = arguments.boolean("fallback") || stack.fallback
+  return McpRuntime.qualityCheckFinished(
     QualityCheckFinishedRequest(
       finalFailureCount = arguments.int("final_failure_count", 0),
       iterations = arguments.int("iterations", 0),
@@ -122,14 +131,17 @@ internal fun qualityCheckFinished(arguments: Map<String, Any?>, context: McpRunt
       failingCheckNames = arguments.stringList("failing_check_names"),
       unsupportedReason = arguments.string("unsupported_reason"),
       orchestrated = arguments.boolean("orchestrated"),
-      routedSkill = arguments.string("routed_skill"),
-      detectedStack = arguments.string("detected_stack"),
+      routedSkill = normalizeRoutedSkill(arguments.string("routed_skill")),
+      detectedStack = stack.stack,
+      fallback = fallback,
+      fallbackReason = arguments.optionalString("fallback_reason") ?: stack.fallbackReason,
       scopeType = arguments.string("scope_type"),
       initialFailureCount = arguments.int("initial_failure_count", 0),
       durationSeconds = arguments.int("duration_seconds", 0),
     ),
     context,
   )
+}
 
 internal fun featureVerifyStarted(arguments: Map<String, Any?>, context: McpRuntimeContext): Map<String, Any?> =
   McpRuntime.featureVerifyStarted(

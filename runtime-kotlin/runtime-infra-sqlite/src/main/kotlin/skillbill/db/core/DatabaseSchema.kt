@@ -143,6 +143,8 @@ internal object DatabaseSchema {
         session_id TEXT PRIMARY KEY,
         routed_skill TEXT NOT NULL DEFAULT '',
         detected_stack TEXT NOT NULL DEFAULT '',
+        fallback INTEGER NOT NULL DEFAULT 0,
+        fallback_reason TEXT,
         scope_type TEXT NOT NULL DEFAULT '',
         initial_failure_count INTEGER NOT NULL DEFAULT 0,
         started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,

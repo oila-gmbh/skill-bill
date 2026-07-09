@@ -1,6 +1,8 @@
 package skillbill.db.telemetry
 
 import skillbill.contracts.JsonSupport
+import skillbill.review.normalizeRoutedSkill
+import skillbill.review.normalizeStackLabel
 import skillbill.telemetry.model.PrDescriptionGeneratedRecord
 
 fun featureImplementStartedPayload(row: Map<String, Any?>, level: String): Map<String, Any?> =
@@ -82,13 +84,23 @@ private fun parsePhaseOutcomes(rawValue: String): Map<String, Any?> = JsonSuppor
   ?.mapValues { (_, value) -> JsonSupport.jsonElementToValue(value) }
   .orEmpty()
 
-fun qualityCheckStartedPayload(row: Map<String, Any?>): Map<String, Any?> = linkedMapOf(
-  "session_id" to row.stringOrEmpty("session_id"),
-  "routed_skill" to row.stringOrEmpty("routed_skill"),
-  "detected_stack" to row.stringOrEmpty("detected_stack"),
-  "scope_type" to row.stringOrEmpty("scope_type"),
-  "initial_failure_count" to row.intOrZero("initial_failure_count"),
-)
+fun qualityCheckStartedPayload(row: Map<String, Any?>): Map<String, Any?> {
+  val normalizedStack = normalizeStackLabel(row.stringOrEmpty("detected_stack"))
+  val fallback = row.booleanFromInt("fallback") || normalizedStack.fallback
+  return linkedMapOf<String, Any?>(
+    "session_id" to row.stringOrEmpty("session_id"),
+    "routed_skill" to normalizeRoutedSkill(row.stringOrEmpty("routed_skill")),
+    "detected_stack" to normalizedStack.stack,
+    "fallback" to fallback,
+    "scope_type" to row.stringOrEmpty("scope_type"),
+    "initial_failure_count" to row.intOrZero("initial_failure_count"),
+  ).apply {
+    val fallbackReason = row.stringOrEmpty("fallback_reason").ifBlank { normalizedStack.fallbackReason.orEmpty() }
+    if (fallback && fallbackReason.isNotBlank()) {
+      put("fallback_reason", fallbackReason)
+    }
+  }
+}
 
 fun qualityCheckFinishedPayload(row: Map<String, Any?>, level: String): Map<String, Any?> =
   qualityCheckStartedPayload(row).toMutableMap().apply {

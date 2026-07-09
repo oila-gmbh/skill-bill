@@ -138,6 +138,7 @@ oneOf:
   - $ref: "#/$defs/prDescriptionGeneratedEvent"
   - $ref: "#/$defs/qualityCheckFinishedEvent"
   - $ref: "#/$defs/qualityCheckStartedEvent"
+  - $ref: "#/$defs/skillbillReviewFinishedEvent"
   - $ref: "#/$defs/readianAuthStatusEvent"
   - $ref: "#/$defs/readianGetArticleEvent"
   - $ref: "#/$defs/readianGetArticlesForTopicQueryEvent"
@@ -1808,6 +1809,7 @@ $defs:
       - orchestrated
       - routed_skill
       - detected_stack
+      - fallback
       - scope_type
       - initial_failure_count
       - duration_seconds
@@ -1841,6 +1843,10 @@ $defs:
         type: string
       detected_stack:
         type: string
+      fallback:
+        type: boolean
+      fallback_reason:
+        type: string
       scope_type:
         $ref: "#/$defs/qualityCheckScopeEnum"
       initial_failure_count:
@@ -1856,6 +1862,7 @@ $defs:
       - contract_version
       - routed_skill
       - detected_stack
+      - fallback
       - scope_type
       - initial_failure_count
       - orchestrated
@@ -1868,12 +1875,108 @@ $defs:
         type: string
       detected_stack:
         type: string
+      fallback:
+        type: boolean
+      fallback_reason:
+        type: string
       scope_type:
         $ref: "#/$defs/qualityCheckScopeEnum"
       initial_failure_count:
         type: integer
       orchestrated:
         type: boolean
+
+  skillbillReviewFinishedEvent:
+    type: object
+    additionalProperties: false
+    required:
+      - event_name
+      - contract_version
+      - total_findings
+      - accepted_findings
+      - rejected_findings
+      - unresolved_findings
+      - accepted_rate
+      - rejected_rate
+      - accepted_finding_details
+      - rejected_finding_details
+      - review_run_id
+      - review_session_id
+      - routed_skill
+      - review_subskills
+      - review_scope
+      - review_platform
+      - detected_stack
+      - fallback
+      - platform_slug
+      - scope_type
+      - execution_mode
+      - review_finished_at
+      - learnings
+    properties:
+      event_name:
+        const: skillbill_review_finished
+      contract_version:
+        const: "1.4.0"
+      total_findings:
+        type: integer
+      accepted_findings:
+        type: integer
+      rejected_findings:
+        type: integer
+      unresolved_findings:
+        type: integer
+      accepted_rate:
+        type: number
+      rejected_rate:
+        type: number
+      accepted_finding_details:
+        type: array
+        items:
+          type: object
+          additionalProperties: true
+      rejected_finding_details:
+        type: array
+        items:
+          type: object
+          additionalProperties: true
+      review_run_id:
+        type: string
+      review_session_id:
+        type: string
+      routed_skill:
+        type: string
+      review_subskills:
+        type: array
+        items:
+          type: string
+      review_scope:
+        type: string
+      review_platform:
+        type: string
+      detected_stack:
+        type: string
+      detected_stack_detail:
+        type: string
+      fallback:
+        type: boolean
+      fallback_reason:
+        type: string
+      platform_slug:
+        type: string
+      scope_type:
+        type: string
+      execution_mode:
+        type:
+          - string
+          - "null"
+      review_finished_at:
+        type:
+          - string
+          - "null"
+      learnings:
+        type: object
+        additionalProperties: true
 
   resolveLearningsEvent:
     type: object
@@ -2046,17 +2149,17 @@ x-coherence-checks:
       the "every branch maps to a tool" direction only.
   goal-telemetry-emission-events:
     description: >
-      `goal_started`, `goal_subtask_finished`, `goal_finished`, and
-      `goal_issue_finished` are
-      RUNTIME-INTERNAL emission payload contracts emitted by the
-      `skill-bill goal` runtime as it drives a decomposed goal. They are
-      intentionally ABSENT from `McpToolRegistry.toolNames` — they are
-      not MCP tools and have no dispatcher handler or input schema. Only
-      `goal_stats` is a registered tool in the decomposed-goal family.
+      `goal_started`, `goal_subtask_finished`, `goal_finished`,
+      `goal_issue_finished`, and `skillbill_review_finished` are
+      RUNTIME-INTERNAL emission payload contracts emitted by runtime
+      lifecycles. They are intentionally ABSENT from
+      `McpToolRegistry.toolNames` — they are not MCP tools and have no
+      dispatcher handler or input schema. Only `goal_stats` is a
+      registered tool in the decomposed-goal family.
       `TelemetryEventInputSchemaParityTest` carries an explicit
-      allow-list (`runtimeInternalEmissionEvents`) matching these four
-      names so the "every schema branch maps to a tool" assertion skips
-      them; doc and enforcement stay in lockstep.
+      allow-list (`runtimeInternalEmissionEvents`) matching these names
+      so the "every schema branch maps to a tool" assertion skips them;
+      doc and enforcement stay in lockstep.
   inputschemas-structural-parity:
     description: >
       For every event with an entry in `McpToolRegistry.inputSchemas`,

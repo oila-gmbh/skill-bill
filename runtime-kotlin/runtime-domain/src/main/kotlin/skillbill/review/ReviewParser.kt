@@ -17,7 +17,7 @@ object ReviewParser {
         text,
         "Review output is missing 'Review session ID: <review-session-id>'.",
       )
-    val routedSkill = extractSummaryValue(text, "routed_skill")
+    val routedSkill = normalizeRoutedSkill(extractSummaryValue(text, "routed_skill"))
     val specialistReviews = extractSpecialistReviews(text)
     return ImportedReview(
       reviewRunId = reviewRunId,

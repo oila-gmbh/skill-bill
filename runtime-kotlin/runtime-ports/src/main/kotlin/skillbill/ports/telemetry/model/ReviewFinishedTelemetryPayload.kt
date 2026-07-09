@@ -20,6 +20,10 @@ private class ReviewFinishedTelemetryPayloadContract(
     put("review_subskills", telemetry.reviewSubskills)
     put("review_scope", telemetry.reviewScope)
     put("review_platform", telemetry.reviewPlatform)
+    put("detected_stack", telemetry.detectedStack)
+    telemetry.detectedStackDetail?.let { put("detected_stack_detail", it) }
+    put("fallback", telemetry.fallback)
+    telemetry.fallbackReason?.let { put("fallback_reason", it) }
     put("platform_slug", telemetry.platformSlug)
     put("scope_type", telemetry.scopeType)
     put("execution_mode", telemetry.executionMode)

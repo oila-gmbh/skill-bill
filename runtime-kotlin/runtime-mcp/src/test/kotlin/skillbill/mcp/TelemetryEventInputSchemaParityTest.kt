@@ -49,7 +49,13 @@ class TelemetryEventInputSchemaParityTest {
    * `telemetry-event-schema.yaml`.
    */
   private val runtimeInternalEmissionEvents =
-    setOf("goal_started", "goal_subtask_finished", "goal_finished", "goal_issue_finished")
+    setOf(
+      "goal_started",
+      "goal_subtask_finished",
+      "goal_finished",
+      "goal_issue_finished",
+      "skillbill_review_finished",
+    )
 
   private val schemaNode: JsonNode by lazy {
     val schemaFile = repoRootFromTest().resolve(TelemetryEventSchemaPaths.REPO_RELATIVE_PATH)

@@ -103,6 +103,7 @@ class McpStdioServerTest {
       "result",
       "routed_skill",
       "detected_stack",
+      "fallback",
       "scope_type",
     )
     assertEquals(
@@ -113,6 +114,7 @@ class McpStdioServerTest {
       listOf("files", "working_tree", "branch_diff", "repo"),
       tools.schemaFor("quality_check_started").properties().enumFor("scope_type"),
     )
+    tools.schemaFor("quality_check_started").assertRequired("routed_skill", "detected_stack", "fallback")
     assertEquals(
       listOf("completed", "abandoned_at_review", "abandoned_at_audit", "error"),
       tools.schemaFor("feature_verify_finished").properties().enumFor("completion_status"),

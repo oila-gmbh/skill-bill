@@ -164,6 +164,18 @@ class DatabaseMigrationsTest {
       assertTrue("started_at" in tableColumns(connection, "feature_implement_sessions"))
       assertTrue("started_at" in tableColumns(connection, "feature_verify_sessions"))
       assertTrue("started_at" in tableColumns(connection, "quality_check_sessions"))
+      assertTrue("fallback" in tableColumns(connection, "quality_check_sessions"))
+      assertTrue("fallback_reason" in tableColumns(connection, "quality_check_sessions"))
+      assertEquals(
+        0,
+        tableColumnValue(
+          connection = connection,
+          tableName = "quality_check_sessions",
+          pkColumnName = "session_id",
+          pkValue = "qcs-legacy-start",
+          columnName = "fallback",
+        ),
+      )
       assertEquals(
         LEGACY_FEATURE_TASK_WORKFLOW_STARTED_AT,
         tableColumnValue(

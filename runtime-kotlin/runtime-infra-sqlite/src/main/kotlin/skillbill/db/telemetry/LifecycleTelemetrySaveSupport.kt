@@ -54,14 +54,16 @@ fun saveQualityCheckStarted(connection: Connection, record: QualityCheckStartedR
   connection.prepareStatement(
     """
     INSERT INTO quality_check_sessions (
-      session_id, routed_skill, detected_stack, scope_type, initial_failure_count, started_at
-    ) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      session_id, routed_skill, detected_stack, fallback, fallback_reason, scope_type, initial_failure_count, started_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
     """.trimIndent(),
   ).use { statement ->
     statement.bind(
       record.sessionId,
       record.routedSkill,
       record.detectedStack,
+      record.fallback.toSqlInt(),
+      record.fallbackReason,
       record.scopeType,
       record.initialFailureCount,
     )

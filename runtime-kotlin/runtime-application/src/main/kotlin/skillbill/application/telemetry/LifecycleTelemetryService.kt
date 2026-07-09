@@ -19,6 +19,8 @@ import skillbill.application.model.QualityCheckStartedRequest
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.telemetry.TelemetrySettingsProvider
+import skillbill.review.normalizeRoutedSkill
+import skillbill.review.normalizeStackLabel
 import skillbill.telemetry.model.TelemetrySettings
 
 @Inject
@@ -76,32 +78,35 @@ class LifecycleTelemetryService(
   @OpenBoundaryMap("Lifecycle telemetry event bag emitted to the MCP/CLI telemetry boundary")
   fun qualityCheckStarted(request: QualityCheckStartedRequest): Map<String, Any?> {
     val sessionId = generateLifecycleSessionId("qck")
+    val normalizedRequest = request.normalizedLabels()
     return when {
-      request.orchestrated -> orchestratedStartedSkippedPayload()
+      normalizedRequest.orchestrated -> orchestratedStartedSkippedPayload()
       else ->
-        validateQualityCheckStarted(request)
+        validateQualityCheckStarted(normalizedRequest)
           ?.let { lifecycleErrorPayload(sessionId, it) }
           ?: enabledStandaloneResult(sessionId) { settings ->
             database.transaction(null) { unitOfWork ->
-              unitOfWork.lifecycleTelemetry.qualityCheckStarted(request.toRecord(sessionId), settings.level)
+              unitOfWork.lifecycleTelemetry.qualityCheckStarted(normalizedRequest.toRecord(sessionId), settings.level)
             }
           }
     }
   }
 
   @OpenBoundaryMap("Lifecycle telemetry event bag emitted to the MCP/CLI telemetry boundary")
-  fun qualityCheckFinished(request: QualityCheckFinishedRequest): Map<String, Any?> =
-    validateQualityCheckFinished(request)
-      ?.let { lifecycleErrorPayload(request.sessionId, it) }
+  fun qualityCheckFinished(request: QualityCheckFinishedRequest): Map<String, Any?> {
+    val normalizedRequest = request.normalizedLabels()
+    return validateQualityCheckFinished(normalizedRequest)
+      ?.let { lifecycleErrorPayload(normalizedRequest.sessionId, it) }
       ?: when {
-        request.orchestrated -> request.orchestratedPayload(telemetryLevelOrAnonymous(settingsProvider))
+        normalizedRequest.orchestrated -> normalizedRequest.orchestratedPayload(telemetryLevelOrAnonymous(settingsProvider))
         else ->
-          enabledStandaloneResult(request.sessionId) { settings ->
+          enabledStandaloneResult(normalizedRequest.sessionId) { settings ->
             database.transaction(null) { unitOfWork ->
-              unitOfWork.lifecycleTelemetry.qualityCheckFinished(request.toRecord(), settings.level)
+              unitOfWork.lifecycleTelemetry.qualityCheckFinished(normalizedRequest.toRecord(), settings.level)
             }
           }
       }
+  }
 
   @OpenBoundaryMap("Lifecycle telemetry event bag emitted to the MCP/CLI telemetry boundary")
   fun featureVerifyStarted(request: FeatureVerifyStartedRequest): Map<String, Any?> {
@@ -215,6 +220,26 @@ private fun FeatureTaskRuntimeFinishedRequest.reconcileBlockedRuntimeFields(): F
 
 private fun Map<String, String>.firstIncompletePhase(): String =
   entries.firstOrNull { it.value != "completed" }?.key?.takeIf(String::isNotBlank) ?: "unknown"
+
+private fun QualityCheckStartedRequest.normalizedLabels(): QualityCheckStartedRequest {
+  val stack = normalizeStackLabel(detectedStack)
+  return copy(
+    routedSkill = normalizeRoutedSkill(routedSkill),
+    detectedStack = stack.stack,
+    fallback = fallback || stack.fallback,
+    fallbackReason = fallbackReason ?: stack.fallbackReason,
+  )
+}
+
+private fun QualityCheckFinishedRequest.normalizedLabels(): QualityCheckFinishedRequest {
+  val stack = normalizeStackLabel(detectedStack)
+  return copy(
+    routedSkill = normalizeRoutedSkill(routedSkill),
+    detectedStack = stack.stack,
+    fallback = fallback || stack.fallback,
+    fallbackReason = fallbackReason ?: stack.fallbackReason,
+  )
+}
 
 private fun GoalSubtaskFinishedRequest.reconcileBlockedReason(): GoalSubtaskFinishedRequest {
   if (status != "blocked") {

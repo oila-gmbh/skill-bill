@@ -72,6 +72,8 @@ data class FeatureTaskRuntimeFinishedRequest(
 data class QualityCheckStartedRequest(
   val routedSkill: String,
   val detectedStack: String,
+  val fallback: Boolean = false,
+  val fallbackReason: String? = null,
   val scopeType: String,
   val initialFailureCount: Int,
   val orchestrated: Boolean,
@@ -87,6 +89,8 @@ data class QualityCheckFinishedRequest(
   val orchestrated: Boolean,
   val routedSkill: String,
   val detectedStack: String,
+  val fallback: Boolean = false,
+  val fallbackReason: String? = null,
   val scopeType: String,
   val initialFailureCount: Int,
   val durationSeconds: Int,

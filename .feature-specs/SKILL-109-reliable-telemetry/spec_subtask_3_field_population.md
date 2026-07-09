@@ -1,6 +1,7 @@
 ---
 issue_key: SKILL-109
 subtask_id: 3
+status: Complete
 ---
 
 # Subtask 3 — Field population (was_edited_by_user, last_incomplete_phase, blocked_reason, goal_started.status)

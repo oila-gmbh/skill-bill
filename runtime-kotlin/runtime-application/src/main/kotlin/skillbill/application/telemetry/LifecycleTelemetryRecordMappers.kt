@@ -86,6 +86,8 @@ fun QualityCheckStartedRequest.toRecord(sessionId: String): QualityCheckStartedR
   sessionId = sessionId,
   routedSkill = routedSkill,
   detectedStack = detectedStack,
+  fallback = fallback,
+  fallbackReason = fallbackReason,
   scopeType = scopeType,
   initialFailureCount = initialFailureCount,
 )

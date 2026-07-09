@@ -20,6 +20,8 @@ internal object DatabaseColumnMigrations {
     ensureColumn(connection, "quality_check_sessions", "finished_event_emitted_at", "TEXT")
     ensureColumn(connection, "quality_check_sessions", "routed_skill", "TEXT NOT NULL DEFAULT ''")
     ensureColumn(connection, "quality_check_sessions", "detected_stack", "TEXT NOT NULL DEFAULT ''")
+    ensureColumn(connection, "quality_check_sessions", "fallback", "INTEGER NOT NULL DEFAULT 0")
+    ensureColumn(connection, "quality_check_sessions", "fallback_reason", "TEXT")
     ensureColumn(connection, "quality_check_sessions", "scope_type", "TEXT NOT NULL DEFAULT ''")
     ensureColumn(connection, "quality_check_sessions", "initial_failure_count", "INTEGER NOT NULL DEFAULT 0")
     ensureColumn(connection, "quality_check_sessions", "final_failure_count", "INTEGER")

@@ -1,12 +1,51 @@
 package skillbill.review
 
-fun normalizePlatformSlug(rawValue: String?): String = rawValue
-  ?.trim()
-  ?.lowercase()
-  ?.replace(Regex("[^a-z0-9]+"), "-")
-  ?.trim('-')
-  ?.takeIf(String::isNotEmpty)
-  ?: "unknown"
+data class NormalizedStackLabel(
+  val stack: String,
+  val detail: String? = null,
+  val fallback: Boolean = false,
+  val fallbackReason: String? = null,
+)
+
+fun normalizeRoutedSkill(rawValue: String?): String {
+  val value = rawValue?.trim().orEmpty()
+  if (value.isEmpty()) return "unrouted"
+  val withoutNamespace = value.substringAfter(':')
+  return if (
+    withoutNamespace != value &&
+    plausibleSkillSlug(withoutNamespace) &&
+    value.substringBefore(':').matches(Regex("^[A-Za-z][A-Za-z0-9_-]*$"))
+  ) {
+    withoutNamespace
+  } else {
+    value
+  }
+}
+
+fun normalizeStackLabel(rawValue: String?): NormalizedStackLabel {
+  val value = rawValue?.trim().orEmpty()
+  if (value.isEmpty()) return NormalizedStackLabel(stack = "unknown")
+  val lower = value.lowercase()
+  if (lower.contains("kmp") && lower.contains("kotlin") && lower.contains("quality-check fallback")) {
+    return NormalizedStackLabel(
+      stack = "kmp",
+      detail = value,
+      fallback = true,
+      fallbackReason = "kotlin_quality_check_fallback",
+    )
+  }
+  val slugSource = value.substringBefore("(").substringBefore("->").substringBefore(" fallback").trim()
+  val slug = slugSource
+    .lowercase()
+    .replace(Regex("[^a-z0-9]+"), "-")
+    .trim('-')
+    .takeIf(String::isNotEmpty)
+    ?: "unknown"
+  val detail = value.takeIf { it.isNotBlank() && normalizeRawSlug(it) != slug }
+  return NormalizedStackLabel(stack = slug, detail = detail)
+}
+
+fun normalizePlatformSlug(rawValue: String?): String = normalizeStackLabel(rawValue).stack
 
 fun normalizeScopeType(rawValue: String?): String {
   val normalized =
@@ -27,3 +66,11 @@ fun normalizeScopeType(rawValue: String?): String {
     else -> normalized
   }
 }
+
+private fun plausibleSkillSlug(value: String): Boolean = value.matches(Regex("^[a-z0-9][a-z0-9-]*$"))
+
+private fun normalizeRawSlug(value: String): String = value
+  .trim()
+  .lowercase()
+  .replace(Regex("[^a-z0-9]+"), "-")
+  .trim('-')

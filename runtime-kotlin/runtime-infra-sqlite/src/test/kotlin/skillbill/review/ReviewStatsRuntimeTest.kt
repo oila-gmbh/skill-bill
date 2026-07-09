@@ -193,6 +193,9 @@ class ReviewStatsRuntimeTest {
       assertEquals(1, anonymousSerializedPayload["rejected_findings"])
       assertEquals(0.5, anonymousSerializedPayload["rejected_rate"])
       assertEquals("kotlin", anonymousSerializedPayload["platform_slug"])
+      assertEquals("kotlin", anonymousSerializedPayload["review_platform"])
+      assertEquals("kotlin", anonymousSerializedPayload["detected_stack"])
+      assertEquals(false, anonymousSerializedPayload["fallback"])
       assertEquals("unstaged_changes", anonymousSerializedPayload["scope_type"])
       assertEquals(
         "Installer prompt wording is inconsistent with the new flow.",
@@ -226,7 +229,75 @@ class ReviewStatsRuntimeTest {
       assertEquals(emptyList<Map<String, Any?>>(), payload["accepted_finding_details"])
       assertEquals(emptyList<Map<String, Any?>>(), payload["rejected_finding_details"])
       assertEquals("unknown", payload["platform_slug"])
+      assertEquals("unknown", payload["review_platform"])
+      assertEquals("unknown", payload["detected_stack"])
+      assertEquals(false, payload["fallback"])
       assertEquals("branch_diff", payload["scope_type"])
+    }
+  }
+
+  @Test
+  fun `review-finished payload normalizes labels and preserves removed stack detail`() {
+    val (_, connection) = tempDbConnection("review-finished-normalized-labels")
+    connection.use {
+      val review = ReviewParser.parseReview(
+        SAMPLE_REVIEW
+          .replace("rvw-20260402-001", "rvw-normalized-labels")
+          .replace("rvs-20260402-001", "rvs-normalized-labels")
+          .replace("Routed to: bill-kotlin-code-review", "Routed to: skill-bill:bill-kotlin-code-review")
+          .replace("Detected stack: kotlin", "Detected stack: kotlin (Gradle JVM)")
+          .trimIndent(),
+      )
+      ReviewRuntime.saveImportedReview(connection, review, sourcePath = null)
+
+      val payload =
+        ReviewStatsRuntime.buildReviewFinishedPayload(
+          connection = connection,
+          reviewRunId = review.reviewRunId,
+          level = "anonymous",
+        ).toReviewFinishedTelemetryPayload().toPayload()
+
+      assertEquals("bill-kotlin-code-review", payload["routed_skill"])
+      assertEquals("kotlin", payload["review_platform"])
+      assertEquals(payload["platform_slug"], payload["review_platform"])
+      assertEquals(payload["platform_slug"], payload["detected_stack"])
+      assertEquals("kotlin (Gradle JVM)", payload["detected_stack_detail"])
+      assertEquals(false, payload["fallback"])
+    }
+  }
+
+  @Test
+  fun `review-finished payload emits structured fallback and nonblank unresolved routing defaults`() {
+    val (_, connection) = tempDbConnection("review-finished-fallback-labels")
+    connection.use {
+      val review = ReviewParser.parseReview(
+        """
+        Review session ID: rvs-fallback-labels
+        Review run ID: rvw-fallback-labels
+        Detected review scope: branch diff
+        Detected stack: kmp -> kotlin quality-check fallback
+        Execution mode: inline
+
+        ### 2. Risk Register
+        No findings.
+        """.trimIndent(),
+      )
+      ReviewRuntime.saveImportedReview(connection, review, sourcePath = null)
+
+      val payload =
+        ReviewStatsRuntime.buildReviewFinishedPayload(
+          connection = connection,
+          reviewRunId = review.reviewRunId,
+          level = "anonymous",
+        ).toReviewFinishedTelemetryPayload().toPayload()
+
+      assertEquals("unrouted", payload["routed_skill"])
+      assertEquals("kmp", payload["review_platform"])
+      assertEquals("kmp", payload["platform_slug"])
+      assertEquals("kmp", payload["detected_stack"])
+      assertEquals("kmp -> kotlin quality-check fallback", payload["detected_stack_detail"])
+      assertEquals(true, payload["fallback"])
+      assertEquals("kotlin_quality_check_fallback", payload["fallback_reason"])
     }
   }
 
