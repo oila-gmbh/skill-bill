@@ -64,6 +64,8 @@ class DatabaseSchemaTest {
         "total_blocks",
         "total_resumes",
         "first_started_at",
+        "last_activity_at",
+        "last_blocked_at",
         "finished_at",
         "status",
         "subtasks_complete",

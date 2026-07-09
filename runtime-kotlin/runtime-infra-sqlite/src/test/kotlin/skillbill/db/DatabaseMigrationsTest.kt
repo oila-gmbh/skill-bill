@@ -59,6 +59,8 @@ class DatabaseMigrationsTest {
       assertTrue("workflow_id" in tables, "goal_run_sessions should be created with its workflow_id key.")
       assertTrue("subtask_id" in subtaskColumns, "goal_subtask_events should be created with its subtask_id column.")
       assertTrue("parent_workflow_id" in issueColumns, "goal_issue_progress should be created with its parent key.")
+      assertTrue("last_activity_at" in issueColumns, "goal_issue_progress should track latest issue activity.")
+      assertTrue("last_blocked_at" in issueColumns, "goal_issue_progress should track latest blocked segment.")
       assertNotNull(
         migrationRows(connection).singleOrNull { row -> row.version == 3 && row.name == "add-goal-telemetry-tables" },
         "Migration version 3 add-goal-telemetry-tables should be recorded.",
@@ -326,6 +328,8 @@ class DatabaseMigrationsTest {
       val after = legacyGoalSubtaskRows(connection)
 
       assertTrue("parent_workflow_id" in columns, "goal_issue_progress must exist after startup.")
+      assertTrue("last_activity_at" in columns, "goal_issue_progress must heal last_activity_at after startup.")
+      assertTrue("last_blocked_at" in columns, "goal_issue_progress must heal last_blocked_at after startup.")
       assertEquals(before, after, "Adding goal_issue_progress must not rewrite existing subtask rows.")
     }
   }

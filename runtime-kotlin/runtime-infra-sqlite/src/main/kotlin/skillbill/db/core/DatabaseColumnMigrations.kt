@@ -55,6 +55,8 @@ internal object DatabaseColumnMigrations {
     ).use { statement -> statement.executeQuery().use { resultSet -> resultSet.next() } }
     if (goalIssueProgressExists) {
       ensureColumn(connection, "goal_issue_progress", "finished_event_emitted_at", "TEXT")
+      ensureColumn(connection, "goal_issue_progress", "last_activity_at", "TEXT")
+      ensureColumn(connection, "goal_issue_progress", "last_blocked_at", "TEXT")
     }
   }
 

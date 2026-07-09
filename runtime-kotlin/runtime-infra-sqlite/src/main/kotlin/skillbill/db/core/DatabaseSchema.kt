@@ -314,6 +314,8 @@ internal object DatabaseSchema {
         total_blocks INTEGER NOT NULL DEFAULT 0,
         total_resumes INTEGER NOT NULL DEFAULT 0,
         first_started_at TEXT,
+        last_activity_at TEXT,
+        last_blocked_at TEXT,
         finished_at TEXT,
         status TEXT,
         subtasks_complete INTEGER,

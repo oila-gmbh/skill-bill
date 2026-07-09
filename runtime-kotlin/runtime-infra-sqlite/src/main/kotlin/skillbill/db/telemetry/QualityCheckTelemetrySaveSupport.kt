@@ -55,6 +55,7 @@ private fun updateQualityCheckFinished(
       unsupported_reason = ?,
       finished_at = CURRENT_TIMESTAMP
     WHERE session_id = ?
+      AND finished_event_emitted_at IS NULL
     """.trimIndent(),
   ).use { statement ->
     statement.bind(

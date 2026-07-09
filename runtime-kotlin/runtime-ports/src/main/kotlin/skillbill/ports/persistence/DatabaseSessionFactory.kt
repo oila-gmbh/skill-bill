@@ -17,6 +17,7 @@ interface UnitOfWork {
   val reviews: ReviewRepository
   val learnings: LearningRepository
   val lifecycleTelemetry: LifecycleTelemetryRepository
+  val telemetryReconciliation: TelemetryReconciliationRepository
   val telemetryOutbox: TelemetryOutboxRepository
   val workflowStates: WorkflowStateRepository
 }

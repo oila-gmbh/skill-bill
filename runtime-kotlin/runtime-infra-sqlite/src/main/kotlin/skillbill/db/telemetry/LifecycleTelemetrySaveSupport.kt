@@ -39,7 +39,7 @@ fun saveFeatureImplementFinished(connection: Connection, record: FeatureImplemen
   if (rowExists(connection, "feature_implement_sessions", record.sessionId)) {
     if (featureImplementAlreadyFinished(connection, record.sessionId)) {
       incrementDuplicateFeatureImplementFinished(connection, record.sessionId)
-      return true
+      return !featureImplementStaleFinishedAlreadyEmitted(connection, record.sessionId)
     }
     updateFeatureImplementFinished(connection, record, childStepsJson)
   } else {
@@ -159,6 +159,7 @@ private fun updateFeatureVerifyFinished(
       gaps_found = ?,
       finished_at = CURRENT_TIMESTAMP
     WHERE session_id = ?
+      AND finished_event_emitted_at IS NULL
     """.trimIndent(),
   ).use { statement ->
     statement.bind(

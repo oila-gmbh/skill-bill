@@ -47,6 +47,7 @@ import skillbill.ports.persistence.LearningRepository
 import skillbill.ports.persistence.LifecycleTelemetryRepository
 import skillbill.ports.persistence.ReviewRepository
 import skillbill.ports.persistence.TelemetryOutboxRepository
+import skillbill.ports.persistence.TelemetryReconciliationRepository
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.persistence.WorkflowStateRepository
 import skillbill.ports.persistence.model.FeatureImplementSessionSummary
@@ -2371,6 +2372,7 @@ private class GoalStatusSeedableDatabase(
     override val reviews: ReviewRepository get() = error("unused by goal status tests")
     override val learnings: LearningRepository get() = error("unused by goal status tests")
     override val lifecycleTelemetry: LifecycleTelemetryRepository get() = error("unused by goal status tests")
+    override val telemetryReconciliation: TelemetryReconciliationRepository get() = error("unused by goal status tests")
     override val telemetryOutbox: TelemetryOutboxRepository get() = error("unused by goal status tests")
     override val workflowStates: WorkflowStateRepository = repository
   }
@@ -2423,6 +2425,7 @@ private object GoalTestEmptyDatabase : DatabaseSessionFactory {
     override val reviews: ReviewRepository get() = error("unused by goal status tests")
     override val learnings: LearningRepository get() = error("unused by goal status tests")
     override val lifecycleTelemetry: LifecycleTelemetryRepository get() = error("unused by goal status tests")
+    override val telemetryReconciliation: TelemetryReconciliationRepository get() = error("unused by goal status tests")
     override val telemetryOutbox: TelemetryOutboxRepository get() = error("unused by goal status tests")
     override val workflowStates: WorkflowStateRepository = GoalTestEmptyWorkflowStateRepository
   }

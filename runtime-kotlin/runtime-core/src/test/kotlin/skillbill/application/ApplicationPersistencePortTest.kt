@@ -40,6 +40,7 @@ import skillbill.ports.persistence.LearningRepository
 import skillbill.ports.persistence.LifecycleTelemetryRepository
 import skillbill.ports.persistence.ReviewRepository
 import skillbill.ports.persistence.TelemetryOutboxRepository
+import skillbill.ports.persistence.TelemetryReconciliationRepository
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.persistence.WorkflowStateRepository
 import skillbill.ports.persistence.WorkflowStatsRepository
@@ -48,6 +49,7 @@ import skillbill.ports.persistence.model.FeatureVerifySessionSummary
 import skillbill.ports.persistence.model.LearningResolution
 import skillbill.ports.persistence.model.ReviewRepositoryStatsSnapshot
 import skillbill.ports.persistence.model.TelemetryOutboxRecord
+import skillbill.ports.persistence.model.TelemetryReconciliationResult
 import skillbill.ports.persistence.model.WorkflowStateRecord
 import skillbill.ports.review.EmptyReviewAttributionPort
 import skillbill.ports.review.ReviewInputSource
@@ -239,6 +241,42 @@ class ApplicationPersistencePortTest {
     assertEquals("synced", result.result.syncStatus)
     assertEquals(listOf(listOf(1L)), client.sentBatchIds)
     assertEquals(0, outboxRepository.pendingCount())
+  }
+
+  @Test
+  fun `telemetry auto sync reconciles stale sessions before listing pending outbox events`() {
+    val outboxRepository =
+      InMemoryTelemetryOutboxRepository(
+        mutableListOf(
+          TelemetryOutboxRecord(
+            id = 1,
+            eventName = "skillbill_feature_verify_finished",
+            payloadJson = """{"name":"ok"}""",
+            createdAt = "2026-04-24 00:00:00",
+            syncedAt = null,
+            lastError = "",
+          ),
+        ),
+      )
+    val reconciliationRepository = RecordingTelemetryReconciliationRepository()
+    val database = FakeDatabaseSessionFactory(
+      telemetryOutbox = outboxRepository,
+      telemetryReconciliation = reconciliationRepository,
+    )
+    val client = FakeTelemetryClient()
+    val service =
+      TelemetryService(
+        database = database,
+        settingsProvider = FakeTelemetrySettingsProvider(enabled = true),
+        configStore = FakeTelemetryConfigStore,
+        telemetryClient = client,
+      )
+
+    service.autoSync(dbOverride = null)
+
+    assertEquals("transaction", database.calls.first())
+    assertEquals(listOf("anonymous"), reconciliationRepository.levels)
+    assertEquals(listOf(listOf(1L)), client.sentBatchIds)
   }
 
   @Test
@@ -1503,6 +1541,7 @@ private class FakeDatabaseSessionFactory(
   private val reviews: ReviewRepository = FakeReviewRepository(),
   private val learnings: LearningRepository = FakeLearningRepository(),
   private val telemetryOutbox: TelemetryOutboxRepository = NoopTelemetryOutboxRepository,
+  private val telemetryReconciliation: TelemetryReconciliationRepository = NoopTelemetryReconciliationRepository,
   private val workflows: WorkflowStateRepository = NoopWorkflowStateRepository,
 ) : DatabaseSessionFactory {
   val calls = mutableListOf<String>()
@@ -1527,8 +1566,24 @@ private class FakeDatabaseSessionFactory(
     override val reviews: ReviewRepository = this@FakeDatabaseSessionFactory.reviews
     override val learnings: LearningRepository = this@FakeDatabaseSessionFactory.learnings
     override val lifecycleTelemetry: LifecycleTelemetryRepository = NoopLifecycleTelemetryRepository
+    override val telemetryReconciliation: TelemetryReconciliationRepository =
+      this@FakeDatabaseSessionFactory.telemetryReconciliation
     override val telemetryOutbox: TelemetryOutboxRepository = this@FakeDatabaseSessionFactory.telemetryOutbox
     override val workflowStates: WorkflowStateRepository = this@FakeDatabaseSessionFactory.workflows
+  }
+}
+
+private object NoopTelemetryReconciliationRepository : TelemetryReconciliationRepository {
+  override fun reconcileStaleSessions(level: String): TelemetryReconciliationResult =
+    TelemetryReconciliationResult.Empty
+}
+
+private class RecordingTelemetryReconciliationRepository : TelemetryReconciliationRepository {
+  val levels = mutableListOf<String>()
+
+  override fun reconcileStaleSessions(level: String): TelemetryReconciliationResult {
+    levels += level
+    return TelemetryReconciliationResult.Empty
   }
 }
 

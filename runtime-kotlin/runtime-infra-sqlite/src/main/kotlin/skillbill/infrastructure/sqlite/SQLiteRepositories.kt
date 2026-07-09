@@ -1,5 +1,6 @@
 package skillbill.infrastructure.sqlite
 
+import skillbill.db.core.reconcileStaleTelemetrySessions
 import skillbill.db.telemetry.LifecycleTelemetryStore
 import skillbill.db.telemetry.TelemetryOutboxStore
 import skillbill.db.workflow.WorkflowStateStore
@@ -20,6 +21,7 @@ import skillbill.ports.persistence.LearningRepository
 import skillbill.ports.persistence.LifecycleTelemetryRepository
 import skillbill.ports.persistence.ReviewRepository
 import skillbill.ports.persistence.TelemetryOutboxRepository
+import skillbill.ports.persistence.TelemetryReconciliationRepository
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.persistence.WorkflowStateRepository
 import skillbill.ports.persistence.WorkflowStatsRepository
@@ -44,8 +46,17 @@ class SQLiteUnitOfWork(
   override val reviews: ReviewRepository = SQLiteReviewRepository(connection)
   override val learnings: LearningRepository = SQLiteLearningRepository(connection)
   override val lifecycleTelemetry: LifecycleTelemetryRepository = LifecycleTelemetryStore(connection)
+  override val telemetryReconciliation: TelemetryReconciliationRepository = SQLiteTelemetryReconciliationRepository(
+    connection,
+  )
   override val telemetryOutbox: TelemetryOutboxRepository = TelemetryOutboxStore(connection)
   override val workflowStates: WorkflowStateRepository = WorkflowStateStore(connection)
+}
+
+class SQLiteTelemetryReconciliationRepository(
+  private val connection: Connection,
+) : TelemetryReconciliationRepository {
+  override fun reconcileStaleSessions(level: String) = reconcileStaleTelemetrySessions(connection, level)
 }
 
 class SQLiteWorkflowStatsRepository(

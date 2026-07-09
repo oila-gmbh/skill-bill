@@ -46,6 +46,7 @@ import skillbill.ports.persistence.LearningRepository
 import skillbill.ports.persistence.LifecycleTelemetryRepository
 import skillbill.ports.persistence.ReviewRepository
 import skillbill.ports.persistence.TelemetryOutboxRepository
+import skillbill.ports.persistence.TelemetryReconciliationRepository
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.persistence.WorkflowStateRepository
 import skillbill.ports.persistence.model.FeatureImplementSessionSummary
@@ -2117,6 +2118,8 @@ internal class FakeDatabaseSessionFactory(
       get() = error("ReviewRepository is not exercised in WorkflowServiceTest.")
     override val lifecycleTelemetry: LifecycleTelemetryRepository
       get() = error("LifecycleTelemetryRepository is not exercised in WorkflowServiceTest.")
+    override val telemetryReconciliation: TelemetryReconciliationRepository
+      get() = error("TelemetryReconciliationRepository is not exercised in WorkflowServiceTest.")
     override val telemetryOutbox: TelemetryOutboxRepository
       get() = error("TelemetryOutboxRepository is not exercised in WorkflowServiceTest.")
   }

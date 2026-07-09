@@ -62,6 +62,9 @@ class TelemetryService(
   fun autoSync(dbOverride: String? = null) {
     val settings = telemetrySettingsOrNull(settingsProvider)
     if (settings == null || !settings.enabled || !database.databaseExists(dbOverride)) return
+    database.transaction(dbOverride) { unitOfWork ->
+      unitOfWork.telemetryReconciliation.reconcileStaleSessions(settings.level)
+    }
     TelemetrySyncRuntime.autoSyncTelemetry(
       settings,
       sessionTelemetryOutboxRepository(database, dbOverride),

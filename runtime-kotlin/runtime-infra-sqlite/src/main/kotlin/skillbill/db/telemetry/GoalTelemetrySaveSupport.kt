@@ -130,12 +130,13 @@ fun recordGoalIssueSegmentStarted(connection: Connection, segment: GoalIssueSegm
   connection.prepareStatement(
     """
     INSERT INTO goal_issue_progress (
-      parent_workflow_id, issue_key, total_invocations, total_resumes, first_started_at, mode
-    ) VALUES (?, ?, 1, ?, ?, ?)
+      parent_workflow_id, issue_key, total_invocations, total_resumes, first_started_at, last_activity_at, mode
+    ) VALUES (?, ?, 1, ?, ?, ?, ?)
     ON CONFLICT(parent_workflow_id, issue_key) DO UPDATE SET
       total_invocations = goal_issue_progress.total_invocations + 1,
       total_resumes = goal_issue_progress.total_resumes + excluded.total_resumes,
       first_started_at = COALESCE(goal_issue_progress.first_started_at, excluded.first_started_at),
+      last_activity_at = excluded.last_activity_at,
       mode = excluded.mode
     """.trimIndent(),
   ).use { statement ->
@@ -143,6 +144,7 @@ fun recordGoalIssueSegmentStarted(connection: Connection, segment: GoalIssueSegm
       segment.parentWorkflowId,
       segment.issueKey,
       segment.resumed.toSqlInt(),
+      segment.startedAt,
       segment.startedAt,
       segment.mode,
     )
@@ -162,7 +164,9 @@ fun recordGoalIssueBlockedSegment(connection: Connection, parentWorkflowId: Stri
   connection.prepareStatement(
     """
     UPDATE goal_issue_progress
-    SET total_blocks = total_blocks + 1
+    SET total_blocks = total_blocks + 1,
+        last_activity_at = CURRENT_TIMESTAMP,
+        last_blocked_at = CURRENT_TIMESTAMP
     WHERE parent_workflow_id = ? AND issue_key = ?
     """.trimIndent(),
   ).use { statement ->
