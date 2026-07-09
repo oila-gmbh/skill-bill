@@ -1,7 +1,7 @@
 ---
 issue_key: SKILL-109
 subtask_id: 4
-status: In Progress
+status: Complete
 ---
 
 # Subtask 4 — Normalize platform/stack labels + `routed_skill` prefix

@@ -4,6 +4,8 @@ import {
   validateStatsRequest,
   capabilitiesPayload,
   transformBatch,
+  buildVerifyStatsQuery,
+  buildVerifySeriesQuery,
   buildImplementStatsQuery,
   buildImplementSeriesQuery,
 } from "./worker.js";
@@ -91,6 +93,24 @@ describe("prose stats queries union legacy and renamed event names", () => {
     assert.ok(query.includes("skillbill_feature_task_prose_started"), "renamed started name must count");
     assert.ok(query.includes("skillbill_feature_implement_finished"), "legacy finished name must count");
     assert.ok(query.includes("skillbill_feature_task_prose_finished"), "renamed finished name must count");
+  });
+});
+
+describe("stats queries default to production installs", () => {
+  const RANGE = ["2026-05-01", "2026-06-01"];
+
+  [
+    ["verify stats", () => buildVerifyStatsQuery(...RANGE)],
+    ["verify series", () => buildVerifySeriesQuery(...RANGE)],
+    ["implement stats", () => buildImplementStatsQuery(...RANGE)],
+    ["implement series", () => buildImplementSeriesQuery(...RANGE)],
+  ].forEach(([name, buildQuery]) => {
+    it(`${name} excludes null blank and test install ids`, () => {
+      const query = buildQuery();
+      assert.ok(query.includes("properties.install_id IS NOT NULL"), "null install ids must be excluded");
+      assert.ok(query.includes("trim(toString(properties.install_id)) != ''"), "blank install ids must be excluded");
+      assert.ok(query.includes("toString(properties.install_id) != 'test-install-id'"), "test install ids must be excluded");
+    });
   });
 });
 

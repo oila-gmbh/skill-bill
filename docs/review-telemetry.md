@@ -413,6 +413,7 @@ Recommended global filters:
 - date ranges: last 7 days, last 30 days, and rolling quarter
 - use started events for intake/adoption charts
 - use finished events for completion, iteration, and duration charts
+- exclude non-production installs by default: require `properties.install_id IS NOT NULL`, `trim(toString(properties.install_id)) != ''`, and `toString(properties.install_id) != 'test-install-id'`
 - do not mix started and finished denominators in one chart unless the chart explicitly describes funnel dropoff
 
 ### Feature-verify dashboard
@@ -536,6 +537,9 @@ FROM (
   FROM events
   WHERE event = 'skillbill_review_finished'
     AND timestamp >= now() - INTERVAL 60 DAY
+    AND properties.install_id IS NOT NULL
+    AND trim(toString(properties.install_id)) != ''
+    AND toString(properties.install_id) != 'test-install-id'
   UNION ALL
   SELECT
     'embedded' AS source,
@@ -547,6 +551,9 @@ FROM (
   ARRAY JOIN JSONExtractArrayRaw(toString(properties.child_steps)) AS child_raw
   WHERE event = 'skillbill_feature_task_prose_finished'
     AND timestamp >= now() - INTERVAL 60 DAY
+    AND properties.install_id IS NOT NULL
+    AND trim(toString(properties.install_id)) != ''
+    AND toString(properties.install_id) != 'test-install-id'
     AND JSONExtractString(child_raw, 'skill') LIKE '%code-review%'
 )
 GROUP BY source
@@ -566,6 +573,9 @@ SELECT
 FROM events
 WHERE event = 'skillbill_feature_task_prose_finished'
   AND timestamp >= now() - INTERVAL 60 DAY
+  AND properties.install_id IS NOT NULL
+  AND trim(toString(properties.install_id)) != ''
+  AND toString(properties.install_id) != 'test-install-id'
   AND coalesce(properties.source, 'production') = 'production'
   AND match(toString(properties.session_id), '^fis-[A-Za-z0-9][A-Za-z0-9_-]*$')
   AND toInt(properties.duration_seconds) > 0
@@ -587,6 +597,9 @@ SELECT
 FROM events
 WHERE event = 'skillbill_feature_task_prose_finished'
   AND timestamp >= now() - INTERVAL 60 DAY
+  AND properties.install_id IS NOT NULL
+  AND trim(toString(properties.install_id)) != ''
+  AND toString(properties.install_id) != 'test-install-id'
 ```
 
 ### Alignment rule
@@ -649,6 +662,7 @@ The client sends that payload to:
 - `<configured telemetry proxy url>/stats`
 
 The proxy owns backend-specific query logic. It may answer from PostHog, ClickHouse, BigQuery, or any other analytics store.
+The bundled PostHog proxy queries apply the same production-install default as dashboards: they exclude null `install_id`, blank `install_id`, and `install_id = 'test-install-id'`.
 
 Normalized remote stats payloads now include:
 

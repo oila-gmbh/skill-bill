@@ -1,6 +1,7 @@
 ---
 issue_key: SKILL-109
 subtask_id: 5
+status: Complete
 ---
 
 # Subtask 5 — Terminal-event completeness (kill session leakage)
