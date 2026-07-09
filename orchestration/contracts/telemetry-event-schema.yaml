@@ -1841,8 +1841,10 @@ $defs:
         type: boolean
       routed_skill:
         type: string
+        minLength: 1
       detected_stack:
         type: string
+        minLength: 1
       fallback:
         type: boolean
       fallback_reason:
@@ -1946,6 +1948,7 @@ $defs:
         type: string
       routed_skill:
         type: string
+        minLength: 1
       review_subskills:
         type: array
         items:
@@ -1954,8 +1957,10 @@ $defs:
         type: string
       review_platform:
         type: string
+        minLength: 1
       detected_stack:
         type: string
+        minLength: 1
       detected_stack_detail:
         type: string
       fallback:
@@ -1964,6 +1969,7 @@ $defs:
         type: string
       platform_slug:
         type: string
+        minLength: 1
       scope_type:
         type: string
       execution_mode:

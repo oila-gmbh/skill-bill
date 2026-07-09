@@ -21,6 +21,8 @@ import skillbill.mcp.workflow.workflowList
 import skillbill.mcp.workflow.workflowOpen
 import skillbill.mcp.workflow.workflowResume
 import skillbill.mcp.workflow.workflowUpdate
+import skillbill.review.normalizeRoutedSkill
+import skillbill.review.normalizeStackLabel
 import skillbill.telemetry.model.RemoteStatsRequest
 
 internal typealias McpToolHandler = (Map<String, Any?>, McpRuntimeContext) -> Map<String, Any?>
@@ -149,6 +151,7 @@ object McpToolDispatcher {
   ): Map<String, Any?> {
     val handler = nativeHandlers[toolName] ?: error("Unknown MCP tool '$toolName'.")
     val canonicalName = canonicalToolName(toolName)
+    val normalizedArguments = normalizeTelemetryEnvelopeArguments(canonicalName, arguments)
     // SKILL-48 Subtask 2d: validate every telemetry envelope at the
     // single parse seam BEFORE the handler builds its typed model.
     // The dispatcher is the one place where the tool name (and
@@ -177,10 +180,10 @@ object McpToolDispatcher {
     // safe; any in-flight production emitter that omits a required key
     // is already breaking its own telemetry contract.
     TelemetryEventSchemaValidator.validate(
-      envelope = telemetryEnvelope(canonicalName, arguments),
+      envelope = telemetryEnvelope(canonicalName, normalizedArguments),
       eventName = canonicalName,
     )
-    return handler.invoke(arguments, context)
+    return handler.invoke(normalizedArguments, context)
   }
 
   /**
@@ -210,6 +213,23 @@ object McpToolDispatcher {
       }
     }
     return envelope
+  }
+
+  private fun normalizeTelemetryEnvelopeArguments(toolName: String, arguments: Map<String, Any?>): Map<String, Any?> {
+    if (toolName != "quality_check_finished") {
+      return arguments
+    }
+    val stack = normalizeStackLabel(arguments["detected_stack"]?.toString())
+    val fallback = arguments["fallback"] == true || stack.fallback
+    return arguments.toMutableMap().apply {
+      put("routed_skill", normalizeRoutedSkill(arguments["routed_skill"]?.toString()))
+      put("detected_stack", stack.stack)
+      put("fallback", fallback)
+      val fallbackReason = arguments["fallback_reason"]?.toString()?.takeIf(String::isNotBlank) ?: stack.fallbackReason
+      if (fallback && !fallbackReason.isNullOrBlank()) {
+        put("fallback_reason", fallbackReason)
+      }
+    }
   }
 }
 

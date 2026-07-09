@@ -77,6 +77,12 @@ fun saveQualityCheckFinished(connection: Connection, record: QualityCheckFinishe
     connection.prepareStatement(
       """
       UPDATE quality_check_sessions SET
+        routed_skill = ?,
+        detected_stack = ?,
+        fallback = ?,
+        fallback_reason = ?,
+        scope_type = ?,
+        initial_failure_count = ?,
         final_failure_count = ?,
         iterations = ?,
         result = ?,
@@ -87,6 +93,12 @@ fun saveQualityCheckFinished(connection: Connection, record: QualityCheckFinishe
       """.trimIndent(),
     ).use { statement ->
       statement.bind(
+        record.routedSkill,
+        record.detectedStack,
+        record.fallback.toSqlInt(),
+        record.fallbackReason,
+        record.scopeType,
+        record.initialFailureCount,
         record.finalFailureCount,
         record.iterations,
         record.result,
@@ -100,13 +112,20 @@ fun saveQualityCheckFinished(connection: Connection, record: QualityCheckFinishe
     connection.prepareStatement(
       """
       INSERT INTO quality_check_sessions (
-        session_id, final_failure_count, iterations, result,
-        failing_check_names, unsupported_reason, finished_at
-      ) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        session_id, routed_skill, detected_stack, fallback, fallback_reason,
+        scope_type, initial_failure_count, final_failure_count, iterations,
+        result, failing_check_names, unsupported_reason, finished_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
       """.trimIndent(),
     ).use { statement ->
       statement.bind(
         record.sessionId,
+        record.routedSkill,
+        record.detectedStack,
+        record.fallback.toSqlInt(),
+        record.fallbackReason,
+        record.scopeType,
+        record.initialFailureCount,
         record.finalFailureCount,
         record.iterations,
         record.result,

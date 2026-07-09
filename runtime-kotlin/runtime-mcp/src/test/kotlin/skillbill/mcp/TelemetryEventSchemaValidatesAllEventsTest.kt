@@ -69,7 +69,13 @@ class TelemetryEventSchemaValidatesAllEventsTest {
     val type = fieldSchema["type"] as? String ?: "object"
     val enum = fieldSchema["enum"] as? List<*>
     return when (type) {
-      "string" -> if (enum != null && enum.isNotEmpty()) enum.first().toString() else ""
+      "string" -> if (enum != null && enum.isNotEmpty()) {
+        enum.first().toString()
+      } else if ((fieldSchema["minLength"] as? Number)?.toInt()?.let { it > 0 } == true) {
+        "x"
+      } else {
+        ""
+      }
       "integer" -> 0
       "number" -> 0
       "boolean" -> false

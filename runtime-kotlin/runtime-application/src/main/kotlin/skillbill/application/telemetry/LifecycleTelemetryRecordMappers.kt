@@ -94,6 +94,12 @@ fun QualityCheckStartedRequest.toRecord(sessionId: String): QualityCheckStartedR
 
 fun QualityCheckFinishedRequest.toRecord(): QualityCheckFinishedRecord = QualityCheckFinishedRecord(
   sessionId = sessionId,
+  routedSkill = routedSkill,
+  detectedStack = detectedStack,
+  fallback = fallback,
+  fallbackReason = fallbackReason,
+  scopeType = scopeType,
+  initialFailureCount = initialFailureCount,
   finalFailureCount = finalFailureCount,
   iterations = iterations,
   result = result,

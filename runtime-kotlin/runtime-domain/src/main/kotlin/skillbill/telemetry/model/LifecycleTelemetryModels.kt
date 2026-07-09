@@ -80,6 +80,12 @@ data class QualityCheckStartedRecord(
 
 data class QualityCheckFinishedRecord(
   val sessionId: String,
+  val routedSkill: String,
+  val detectedStack: String,
+  val fallback: Boolean,
+  val fallbackReason: String?,
+  val scopeType: String,
+  val initialFailureCount: Int,
   val finalFailureCount: Int,
   val iterations: Int,
   val result: String,
