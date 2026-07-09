@@ -304,7 +304,7 @@ class McpRuntimeTest {
         "quality_check_started",
         mapOf(
           "routed_skill" to "skill-bill:bill-kmp-code-check",
-          "detected_stack" to "kmp -> kotlin quality-check fallback",
+          "detected_stack" to "kmp -> kotlin fallback",
           "fallback" to false,
           "scope_type" to "branch_diff",
           "initial_failure_count" to 1,
@@ -324,7 +324,7 @@ class McpRuntimeTest {
         "unsupported_reason" to "",
         "orchestrated" to false,
         "routed_skill" to "skill-bill:bill-kmp-code-check",
-        "detected_stack" to "kmp -> kotlin quality-check fallback",
+        "detected_stack" to "kmp -> kotlin fallback",
         "fallback" to false,
         "scope_type" to "branch_diff",
         "initial_failure_count" to 1,

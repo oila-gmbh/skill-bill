@@ -275,7 +275,7 @@ class ReviewStatsRuntimeTest {
         Review session ID: rvs-fallback-labels
         Review run ID: rvw-fallback-labels
         Detected review scope: branch diff
-        Detected stack: kmp -> kotlin quality-check fallback
+        Detected stack: kmp→kotlin fallback
         Execution mode: inline
 
         ### 2. Risk Register
@@ -295,7 +295,7 @@ class ReviewStatsRuntimeTest {
       assertEquals("kmp", payload["review_platform"])
       assertEquals("kmp", payload["platform_slug"])
       assertEquals("kmp", payload["detected_stack"])
-      assertEquals("kmp -> kotlin quality-check fallback", payload["detected_stack_detail"])
+      assertEquals("kmp→kotlin fallback", payload["detected_stack_detail"])
       assertEquals(true, payload["fallback"])
       assertEquals("kotlin_quality_check_fallback", payload["fallback_reason"])
     }

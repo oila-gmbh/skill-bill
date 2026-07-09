@@ -26,7 +26,7 @@ fun normalizeStackLabel(rawValue: String?): NormalizedStackLabel {
   val value = rawValue?.trim().orEmpty()
   if (value.isEmpty()) return NormalizedStackLabel(stack = "unknown")
   val lower = value.lowercase()
-  if (lower.contains("kmp") && lower.contains("kotlin") && lower.contains("quality-check fallback")) {
+  if (lower.contains("kmp") && lower.contains("kotlin") && lower.contains("fallback")) {
     return NormalizedStackLabel(
       stack = "kmp",
       detail = value,
@@ -34,7 +34,12 @@ fun normalizeStackLabel(rawValue: String?): NormalizedStackLabel {
       fallbackReason = "kotlin_quality_check_fallback",
     )
   }
-  val slugSource = value.substringBefore("(").substringBefore("->").substringBefore(" fallback").trim()
+  val slugSource = value
+    .substringBefore("(")
+    .substringBefore("->")
+    .substringBefore("→")
+    .substringBefore(" fallback")
+    .trim()
   val slug = slugSource
     .lowercase()
     .replace(Regex("[^a-z0-9]+"), "-")
