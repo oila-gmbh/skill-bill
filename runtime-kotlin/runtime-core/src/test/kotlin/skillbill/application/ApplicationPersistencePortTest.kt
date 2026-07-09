@@ -212,7 +212,7 @@ class ApplicationPersistencePortTest {
   }
 
   @Test
-  fun `telemetry sync uses short application sessions around outbox repository ports`() {
+  fun `manual telemetry sync reconciles before using short outbox sessions`() {
     val outboxRepository =
       InMemoryTelemetryOutboxRepository(
         mutableListOf(
@@ -226,7 +226,11 @@ class ApplicationPersistencePortTest {
           ),
         ),
       )
-    val database = FakeDatabaseSessionFactory(telemetryOutbox = outboxRepository)
+    val reconciliationRepository = RecordingTelemetryReconciliationRepository()
+    val database = FakeDatabaseSessionFactory(
+      telemetryOutbox = outboxRepository,
+      telemetryReconciliation = reconciliationRepository,
+    )
     val client = FakeTelemetryClient()
     val service =
       TelemetryService(
@@ -238,7 +242,8 @@ class ApplicationPersistencePortTest {
 
     val result = service.sync(dbOverride = null)
 
-    assertEquals(listOf("read", "read", "transaction", "read", "read"), database.calls)
+    assertEquals(listOf("transaction", "read", "read", "transaction", "read", "read"), database.calls)
+    assertEquals(listOf("anonymous"), reconciliationRepository.levels)
     assertEquals("synced", result.result.syncStatus)
     assertEquals(listOf(listOf(1L)), client.sentBatchIds)
     assertEquals(0, outboxRepository.pendingCount())

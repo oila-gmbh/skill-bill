@@ -34,25 +34,18 @@ fun saveFeatureImplementStarted(connection: Connection, record: FeatureImplement
   }
 }
 
-fun saveFeatureImplementFinished(connection: Connection, record: FeatureImplementFinishedRecord): Boolean {
+fun saveFeatureImplementFinished(connection: Connection, record: FeatureImplementFinishedRecord): TerminalSaveOutcome {
   val childStepsJson = listJson(record.childSteps)
   if (rowExists(connection, "feature_implement_sessions", record.sessionId)) {
-    if (featureImplementAlreadyFinished(connection, record.sessionId)) {
-      val emitCorrectedTerminal = featureImplementStaleFinishedAlreadyEmitted(connection, record.sessionId)
+    if (lifecycleAlreadyFinished(connection, "feature_implement_sessions", record.sessionId)) {
       incrementDuplicateTerminalFinishedEvents(connection, "feature_implement_sessions", record.sessionId)
-      if (terminalEventAlreadyEmitted(connection, "feature_implement_sessions", record.sessionId) &&
-        !emitCorrectedTerminal
-      ) {
-        return true
-      }
-      updateFeatureImplementFinished(connection, record, childStepsJson)
-      return emitCorrectedTerminal
+      return TerminalSaveOutcome.DUPLICATE
     }
     updateFeatureImplementFinished(connection, record, childStepsJson)
   } else {
     insertFeatureImplementFinished(connection, record, childStepsJson)
   }
-  return false
+  return TerminalSaveOutcome.FIRST_TERMINAL
 }
 
 fun saveFeatureVerifyStarted(connection: Connection, record: FeatureVerifyStartedRecord) {
@@ -73,27 +66,18 @@ fun saveFeatureVerifyStarted(connection: Connection, record: FeatureVerifyStarte
   }
 }
 
-fun saveFeatureVerifyFinished(connection: Connection, record: FeatureVerifyFinishedRecord): Boolean {
+fun saveFeatureVerifyFinished(connection: Connection, record: FeatureVerifyFinishedRecord): TerminalSaveOutcome {
   val gapsFoundJson = listJson(record.gapsFound)
   if (rowExists(connection, "feature_verify_sessions", record.sessionId)) {
-    val emitCorrectedTerminal = staleFinishedAlreadyEmitted(
-      connection = connection,
-      tableName = "feature_verify_sessions",
-      terminalColumn = "completion_status",
-      sessionId = record.sessionId,
-    )
-    if (terminalEventAlreadyEmitted(connection, "feature_verify_sessions", record.sessionId)) {
+    if (lifecycleAlreadyFinished(connection, "feature_verify_sessions", record.sessionId)) {
       incrementDuplicateTerminalFinishedEvents(connection, "feature_verify_sessions", record.sessionId)
-      if (!emitCorrectedTerminal) {
-        return false
-      }
+      return TerminalSaveOutcome.DUPLICATE
     }
     updateFeatureVerifyFinished(connection, record, gapsFoundJson)
-    return emitCorrectedTerminal
   } else {
     insertFeatureVerifyFinished(connection, record, gapsFoundJson)
   }
-  return false
+  return TerminalSaveOutcome.FIRST_TERMINAL
 }
 
 private fun updateFeatureImplementFinished(

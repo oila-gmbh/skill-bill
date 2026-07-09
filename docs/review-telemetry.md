@@ -711,6 +711,9 @@ Fresh installs default telemetry to `anonymous`, with a level prompt during `./i
 
 - enabled telemetry (`anonymous` or `full`) can enqueue local telemetry events in SQLite before sync
 - the helper can batch-sync pending events automatically after local writes to the hosted relay, or to a configured custom proxy override
+- automatic sync and manual `skill-bill telemetry sync` both reconcile stale lifecycle rows before flushing the outbox, so CLI-only sessions receive the same terminal-event repair as MCP sessions
+- reconciliation uses a durable cadence independent of upload timing and one globally ordered maximum batch per SQLite transaction; eligible repeated runs drain larger backlogs without holding an unbounded write transaction
+- reconciliation is best-effort: a reconciliation failure is recorded diagnostically and does not prevent the requested telemetry flush
 - if the remote destination is missing or unavailable, local workflows still succeed and the enabled telemetry outbox stays pending
 - `off` telemetry is a no-op: no telemetry config is required, no telemetry events are queued locally, and telemetry payload-building is skipped
 - `skill-bill telemetry disable` removes local telemetry config and clears any queued telemetry events without deleting non-telemetry review data

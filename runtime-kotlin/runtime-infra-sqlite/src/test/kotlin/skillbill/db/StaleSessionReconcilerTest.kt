@@ -6,6 +6,7 @@ import skillbill.db.core.reconcileStaleFeatureImplementSessions
 import skillbill.db.core.reconcileStaleFeatureTaskRuntimeSessions
 import skillbill.db.core.reconcileStaleTelemetrySessions
 import skillbill.db.telemetry.LifecycleTelemetryStore
+import skillbill.ports.persistence.model.TelemetryReconciliationRequest
 import skillbill.telemetry.model.FeatureImplementFinishedRecord
 import skillbill.telemetry.model.FeatureTaskRuntimeFinishedRecord
 import skillbill.telemetry.model.FeatureVerifyFinishedRecord
@@ -20,6 +21,66 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class StaleSessionReconcilerTest {
+  @Test
+  fun `ordinary duplicate finishes enqueue one terminal event for every lifecycle family`() {
+    val dbPath = Files.createTempDirectory("duplicate-lifecycle-finish").resolve("metrics.db")
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      seedStaleLifecycleSessions(connection)
+      val store = LifecycleTelemetryStore(connection)
+
+      repeat(2) {
+        store.featureImplementFinished(featureImplementFinishedRecord("fis-stale"), level = "full")
+        store.featureTaskRuntimeFinished(featureTaskRuntimeFinishedRecord("ftr-stale"), level = "full")
+        store.featureVerifyFinished(featureVerifyFinishedRecord("fvs-stale"), level = "full")
+        store.qualityCheckFinished(qualityCheckFinishedRecord("qcs-stale"), level = "full")
+      }
+
+      assertEquals(1, eventCount(connection, "skillbill_feature_task_prose_finished"))
+      assertEquals(1, eventCount(connection, "skillbill_feature_task_runtime_finished"))
+      assertEquals(1, eventCount(connection, "skillbill_feature_verify_finished"))
+      assertEquals(1, eventCount(connection, "skillbill_quality_check_finished"))
+      listOf(
+        "feature_implement_sessions" to "fis-stale",
+        "feature_task_runtime_sessions" to "ftr-stale",
+        "feature_verify_sessions" to "fvs-stale",
+        "quality_check_sessions" to "qcs-stale",
+      ).forEach { (tableName, sessionId) ->
+        assertEquals(1, columnValue(connection, tableName, sessionId, "duplicate_terminal_finished_events"))
+      }
+    }
+  }
+
+  @Test
+  fun `durable cadence and global batch budget drain backlog across eligible runs`() {
+    val dbPath = Files.createTempDirectory("bounded-reconciliation").resolve("metrics.db")
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      seedStaleLifecycleSessions(connection)
+      val now = Instant.parse("2030-01-01T00:00:00Z")
+      val request = TelemetryReconciliationRequest(
+        level = "full",
+        cadenceSeconds = 300,
+        maximumBatchSize = 2,
+        now = now,
+      )
+
+      assertEquals(2, reconcileStaleTelemetrySessions(connection, request).processedCandidates)
+      assertTrue(reconcileStaleTelemetrySessions(connection, request).skippedByCadence)
+      assertEquals(
+        2,
+        reconcileStaleTelemetrySessions(connection, request.copy(now = now.plusSeconds(301))).processedCandidates,
+      )
+      assertEquals(4, terminalLifecycleEventCount(connection))
+      assertEquals(
+        1,
+        reconcileStaleTelemetrySessions(connection, request.copy(now = now.plusSeconds(602))).processedCandidates,
+      )
+      assertEquals(5, terminalLifecycleEventCount(connection))
+      assertEquals(
+        0,
+        reconcileStaleTelemetrySessions(connection, request.copy(now = now.plusSeconds(903))).processedCandidates,
+      )
+    }
+  }
   @Test
   fun `stale lifecycle sessions are closed and emit exactly one terminal event`() {
     val dbPath = Files.createTempDirectory("stale-reconciler-test").resolve("metrics.db")
@@ -70,20 +131,20 @@ class StaleSessionReconcilerTest {
       store.featureVerifyFinished(featureVerifyFinishedRecord("fvs-stale"), level = "full")
       store.qualityCheckFinished(qualityCheckFinishedRecord("qcs-stale"), level = "full")
 
-      assertEquals(2, eventCount(connection, "skillbill_feature_task_prose_finished"))
-      assertEquals(2, eventCount(connection, "skillbill_feature_task_runtime_finished"))
-      assertEquals(2, eventCount(connection, "skillbill_feature_verify_finished"))
-      assertEquals(2, eventCount(connection, "skillbill_quality_check_finished"))
-      assertEquals("completed", columnValue(connection, "feature_implement_sessions", "fis-stale", "completion_status"))
+      assertEquals(1, eventCount(connection, "skillbill_feature_task_prose_finished"))
+      assertEquals(1, eventCount(connection, "skillbill_feature_task_runtime_finished"))
+      assertEquals(1, eventCount(connection, "skillbill_feature_verify_finished"))
+      assertEquals(1, eventCount(connection, "skillbill_quality_check_finished"))
+      assertEquals("stale", columnValue(connection, "feature_implement_sessions", "fis-stale", "completion_status"))
       assertEquals(
-        "completed",
+        "stale",
         columnValue(connection, "feature_task_runtime_sessions", "ftr-stale", "completion_status"),
       )
-      assertEquals("completed", columnValue(connection, "feature_verify_sessions", "fvs-stale", "completion_status"))
-      assertEquals("pass", columnValue(connection, "quality_check_sessions", "qcs-stale", "result"))
-      assertEquals("completed", payload(connection, "skillbill_feature_task_runtime_finished")["completion_status"])
-      assertEquals("completed", payload(connection, "skillbill_feature_verify_finished")["completion_status"])
-      assertEquals("pass", payload(connection, "skillbill_quality_check_finished")["result"])
+      assertEquals("stale", columnValue(connection, "feature_verify_sessions", "fvs-stale", "completion_status"))
+      assertEquals("stale", columnValue(connection, "quality_check_sessions", "qcs-stale", "result"))
+      assertEquals("stale", payload(connection, "skillbill_feature_task_runtime_finished")["completion_status"])
+      assertEquals("stale", payload(connection, "skillbill_feature_verify_finished")["completion_status"])
+      assertEquals("stale", payload(connection, "skillbill_quality_check_finished")["result"])
       listOf(
         "feature_implement_sessions" to "fis-stale",
         "feature_task_runtime_sessions" to "ftr-stale",
@@ -96,7 +157,7 @@ class StaleSessionReconcilerTest {
           "$tableName.$sessionId must record the duplicate terminal finish",
         )
       }
-      assertEquals("completed", payload(connection, "skillbill_feature_task_prose_finished")["completion_status"])
+      assertEquals("stale", payload(connection, "skillbill_feature_task_prose_finished")["completion_status"])
     }
   }
 
@@ -108,9 +169,9 @@ class StaleSessionReconcilerTest {
 
       val reconciled = reconcileStaleTelemetrySessions(connection, level = "full", goalIssueAbandonmentDays = 14)
 
-      assertEquals(2, reconciled.goalIssueAbandonedSessions)
-      assertEquals(2, reconciled.emittedTerminalEvents)
-      assertEquals(2, eventCount(connection, "skillbill_goal_issue_finished"))
+      assertEquals(1, reconciled.goalIssueAbandonedSessions)
+      assertEquals(1, reconciled.emittedTerminalEvents)
+      assertEquals(1, eventCount(connection, "skillbill_goal_issue_finished"))
       val payload = payload(connection, "skillbill_goal_issue_finished", issueKey = "SKILL-109")
       assertEquals("abandoned", payload["status"])
       assertEquals(1, payload["subtasks_complete"])
@@ -119,18 +180,14 @@ class StaleSessionReconcilerTest {
       assertTrue((payload["duration_seconds"] as Number).toLong() > 0)
       Instant.parse(assertIs<String>(payload["first_started_at"]).also { assertTrue(it.isNotBlank()) })
       Instant.parse(assertIs<String>(payload["finished_at"]).also { assertTrue(it.isNotBlank()) })
-      val startedOnlyPayload = payload(connection, "skillbill_goal_issue_finished", issueKey = "SKILL-111")
-      assertEquals(0, startedOnlyPayload["subtasks_complete"])
-      assertEquals(0, startedOnlyPayload["subtasks_blocked"])
-      assertEquals(0, startedOnlyPayload["subtasks_skipped"])
       assertEquals("abandoned", goalColumnValue(connection, "SKILL-109", "status"))
-      assertEquals("abandoned", goalColumnValue(connection, "SKILL-111", "status"))
+      assertEquals(null, goalColumnValue(connection, "SKILL-111", "status"))
       assertEquals(null, goalColumnValue(connection, "SKILL-110", "status"))
 
       val repeated = reconcileStaleTelemetrySessions(connection, level = "full", goalIssueAbandonmentDays = 14)
 
       assertEquals(0, repeated.goalIssueAbandonedSessions)
-      assertEquals(2, eventCount(connection, "skillbill_goal_issue_finished"))
+      assertEquals(1, eventCount(connection, "skillbill_goal_issue_finished"))
     }
   }
 
@@ -140,11 +197,13 @@ class StaleSessionReconcilerTest {
         """
         INSERT INTO goal_issue_progress (
           parent_workflow_id, issue_key, total_invocations, total_blocks,
-          total_resumes, first_started_at, last_activity_at, last_blocked_at, mode
+          total_resumes, first_started_at, last_activity_at, last_blocked_at,
+          latest_segment_workflow_id, last_blocked_segment_workflow_id, mode
         ) VALUES (
           'goal-parent', 'SKILL-109', 2, 6, 1,
           strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-20 days'),
-          datetime('now', '-20 days'), datetime('now', '-20 days'), 'runtime'
+          datetime('now', '-20 days'), datetime('now', '-20 days'),
+          'goal-parent:seg:2', 'goal-parent:seg:2', 'runtime'
         )
         """.trimIndent(),
       )
@@ -152,10 +211,12 @@ class StaleSessionReconcilerTest {
         """
         INSERT INTO goal_issue_progress (
           parent_workflow_id, issue_key, total_invocations, total_blocks,
-          total_resumes, first_started_at, last_activity_at, last_blocked_at, mode
+          total_resumes, first_started_at, last_activity_at, last_blocked_at,
+          latest_segment_workflow_id, last_blocked_segment_workflow_id, mode
         ) VALUES (
           'goal-parent', 'SKILL-110', 1, 1, 0,
-          datetime('now', '-20 days'), datetime('now', '-1 days'), datetime('now', '-20 days'), 'runtime'
+          datetime('now', '-20 days'), datetime('now', '-1 days'), datetime('now', '-20 days'),
+          'goal-parent:seg:active', 'goal-parent:seg:old-block', 'runtime'
         )
         """.trimIndent(),
       )
@@ -163,10 +224,10 @@ class StaleSessionReconcilerTest {
         """
         INSERT INTO goal_issue_progress (
           parent_workflow_id, issue_key, total_invocations, total_blocks,
-          total_resumes, first_started_at, last_activity_at, mode
+          total_resumes, first_started_at, last_activity_at, latest_segment_workflow_id, mode
         ) VALUES (
           'goal-parent', 'SKILL-111', 1, 0, 0,
-          datetime('now', '-20 days'), datetime('now', '-20 days'), 'runtime'
+          datetime('now', '-20 days'), datetime('now', '-20 days'), 'goal-parent:seg:started-only', 'runtime'
         )
         """.trimIndent(),
       )
@@ -354,6 +415,13 @@ class StaleSessionReconcilerTest {
         resultSet.getInt(1)
       }
     }
+
+  private fun terminalLifecycleEventCount(connection: Connection): Int = listOf(
+    "skillbill_feature_task_prose_finished",
+    "skillbill_feature_task_runtime_finished",
+    "skillbill_feature_verify_finished",
+    "skillbill_quality_check_finished",
+  ).sumOf { eventCount(connection, it) }
 
   private fun columnValue(connection: Connection, tableName: String, sessionId: String, columnName: String): Any? =
     connection.prepareStatement("SELECT $columnName FROM $tableName WHERE session_id = ?").use { statement ->

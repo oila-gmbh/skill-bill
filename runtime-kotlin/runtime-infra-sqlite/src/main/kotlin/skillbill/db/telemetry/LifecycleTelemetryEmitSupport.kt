@@ -15,17 +15,12 @@ fun emitFeatureImplementFinished(
   connection: Connection,
   sessionId: String,
   level: String,
-  duplicateTerminalEvent: Boolean = false,
 ) {
   val row = lifecycleRow(connection, "feature_implement_sessions", sessionId) ?: return
-  if (duplicateTerminalEvent) {
-    enqueueTelemetry(connection, "skillbill_feature_task_prose_finished", featureImplementFinishedPayload(row, level))
-  } else {
-    emitOnce(
-      LifecycleEmitRequest(connection, row, "feature_implement_sessions", "finished_event_emitted_at"),
-      "skillbill_feature_task_prose_finished",
-    ) { featureImplementFinishedPayload(row, level) }
-  }
+  emitOnce(
+    LifecycleEmitRequest(connection, row, "feature_implement_sessions", "finished_event_emitted_at"),
+    "skillbill_feature_task_prose_finished",
+  ) { featureImplementFinishedPayload(row, level) }
 }
 
 fun emitFeatureTaskRuntimeStarted(connection: Connection, sessionId: String, level: String) {
@@ -40,21 +35,12 @@ fun emitFeatureTaskRuntimeFinished(
   connection: Connection,
   sessionId: String,
   level: String,
-  duplicateTerminalEvent: Boolean = false,
 ) {
   val row = lifecycleRow(connection, "feature_task_runtime_sessions", sessionId) ?: return
-  if (duplicateTerminalEvent) {
-    enqueueTelemetry(
-      connection,
-      "skillbill_feature_task_runtime_finished",
-      featureTaskRuntimeFinishedPayload(row, level),
-    )
-  } else {
-    emitOnce(
-      LifecycleEmitRequest(connection, row, "feature_task_runtime_sessions", "finished_event_emitted_at"),
-      "skillbill_feature_task_runtime_finished",
-    ) { featureTaskRuntimeFinishedPayload(row, level) }
-  }
+  emitOnce(
+    LifecycleEmitRequest(connection, row, "feature_task_runtime_sessions", "finished_event_emitted_at"),
+    "skillbill_feature_task_runtime_finished",
+  ) { featureTaskRuntimeFinishedPayload(row, level) }
 }
 
 fun emitQualityCheckStarted(connection: Connection, sessionId: String) {
@@ -69,17 +55,12 @@ fun emitQualityCheckFinished(
   connection: Connection,
   sessionId: String,
   level: String,
-  duplicateTerminalEvent: Boolean = false,
 ) {
   val row = lifecycleRow(connection, "quality_check_sessions", sessionId) ?: return
-  if (duplicateTerminalEvent) {
-    enqueueTelemetry(connection, "skillbill_quality_check_finished", qualityCheckFinishedPayload(row, level))
-  } else {
-    emitOnce(
-      LifecycleEmitRequest(connection, row, "quality_check_sessions", "finished_event_emitted_at"),
-      "skillbill_quality_check_finished",
-    ) { qualityCheckFinishedPayload(row, level) }
-  }
+  emitOnce(
+    LifecycleEmitRequest(connection, row, "quality_check_sessions", "finished_event_emitted_at"),
+    "skillbill_quality_check_finished",
+  ) { qualityCheckFinishedPayload(row, level) }
 }
 
 fun emitFeatureVerifyStarted(connection: Connection, sessionId: String, level: String) {
@@ -94,17 +75,12 @@ fun emitFeatureVerifyFinished(
   connection: Connection,
   sessionId: String,
   level: String,
-  duplicateTerminalEvent: Boolean = false,
 ) {
   val row = lifecycleRow(connection, "feature_verify_sessions", sessionId) ?: return
-  if (duplicateTerminalEvent) {
-    enqueueTelemetry(connection, "skillbill_feature_verify_finished", featureVerifyFinishedPayload(row, level))
-  } else {
-    emitOnce(
-      LifecycleEmitRequest(connection, row, "feature_verify_sessions", "finished_event_emitted_at"),
-      "skillbill_feature_verify_finished",
-    ) { featureVerifyFinishedPayload(row, level) }
-  }
+  emitOnce(
+    LifecycleEmitRequest(connection, row, "feature_verify_sessions", "finished_event_emitted_at"),
+    "skillbill_feature_verify_finished",
+  ) { featureVerifyFinishedPayload(row, level) }
 }
 
 fun enqueueTelemetry(connection: Connection, eventName: String, payload: Map<String, Any?>) {

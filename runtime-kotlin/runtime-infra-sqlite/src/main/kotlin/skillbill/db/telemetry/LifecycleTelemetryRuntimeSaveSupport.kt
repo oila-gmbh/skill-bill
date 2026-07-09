@@ -47,28 +47,22 @@ private fun updateFeatureTaskRuntimeStarted(connection: Connection, record: Feat
   }
 }
 
-fun saveFeatureTaskRuntimeFinished(connection: Connection, record: FeatureTaskRuntimeFinishedRecord): Boolean {
+fun saveFeatureTaskRuntimeFinished(
+  connection: Connection,
+  record: FeatureTaskRuntimeFinishedRecord,
+): TerminalSaveOutcome {
   val completedPhaseIdsJson = listJson(record.completedPhaseIds)
   val phaseOutcomesJson = JsonSupport.mapToJsonString(record.phaseOutcomes)
   if (rowExists(connection, "feature_task_runtime_sessions", record.sessionId)) {
-    val emitCorrectedTerminal = staleFinishedAlreadyEmitted(
-      connection = connection,
-      tableName = "feature_task_runtime_sessions",
-      terminalColumn = "completion_status",
-      sessionId = record.sessionId,
-    )
-    if (terminalEventAlreadyEmitted(connection, "feature_task_runtime_sessions", record.sessionId)) {
+    if (lifecycleAlreadyFinished(connection, "feature_task_runtime_sessions", record.sessionId)) {
       incrementDuplicateTerminalFinishedEvents(connection, "feature_task_runtime_sessions", record.sessionId)
-      if (!emitCorrectedTerminal) {
-        return false
-      }
+      return TerminalSaveOutcome.DUPLICATE
     }
     updateFeatureTaskRuntimeFinished(connection, record, completedPhaseIdsJson, phaseOutcomesJson)
-    return emitCorrectedTerminal
   } else {
     insertFeatureTaskRuntimeFinished(connection, record, completedPhaseIdsJson, phaseOutcomesJson)
   }
-  return false
+  return TerminalSaveOutcome.FIRST_TERMINAL
 }
 
 private fun updateFeatureTaskRuntimeFinished(

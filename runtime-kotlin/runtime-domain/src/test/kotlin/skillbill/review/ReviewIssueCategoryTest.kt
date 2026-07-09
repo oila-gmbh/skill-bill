@@ -54,6 +54,9 @@ class ReviewIssueCategoryTest {
   fun `platform and scope dimensions normalize clean slugs without promoting prose`() {
     assertEquals("agent-config", normalizePlatformSlug("agent-config"))
     assertEquals("kmp", normalizePlatformSlug("KMP"))
+    assertEquals("kmp", normalizePlatformSlug("KMP/Kotlin"))
+    assertEquals("kmp", normalizePlatformSlug("Kotlin Multiplatform (KMP)"))
+    assertEquals("kmp", normalizePlatformSlug("Kotlin multi-platform module"))
     assertEquals("kotlin", normalizePlatformSlug(" kotlin "))
     assertEquals("kotlin", normalizePlatformSlug("backend kotlin"))
     assertEquals("kotlin", normalizePlatformSlug("backend-kotlin"))

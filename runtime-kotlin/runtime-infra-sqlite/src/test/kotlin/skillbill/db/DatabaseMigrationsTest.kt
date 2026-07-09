@@ -330,6 +330,8 @@ class DatabaseMigrationsTest {
       assertTrue("parent_workflow_id" in columns, "goal_issue_progress must exist after startup.")
       assertTrue("last_activity_at" in columns, "goal_issue_progress must heal last_activity_at after startup.")
       assertTrue("last_blocked_at" in columns, "goal_issue_progress must heal last_blocked_at after startup.")
+      assertTrue("latest_segment_workflow_id" in columns)
+      assertTrue("last_blocked_segment_workflow_id" in columns)
       assertEquals(before, after, "Adding goal_issue_progress must not rewrite existing subtask rows.")
     }
   }

@@ -21,6 +21,7 @@ internal object DatabaseSchema {
       "goal_run_sessions",
       "goal_subtask_events",
       "goal_issue_progress",
+      "telemetry_reconciliation_state",
     )
 
   val indexNames: Set<String> =
@@ -29,6 +30,14 @@ internal object DatabaseSchema {
       "idx_learnings_scope",
       "idx_telemetry_outbox_pending",
       "idx_feature_task_workflows_updated",
+      "idx_feature_implement_reconciliation_candidates",
+      "idx_feature_task_runtime_reconciliation_candidates",
+      "idx_feature_verify_reconciliation_candidates",
+      "idx_quality_check_reconciliation_candidates",
+      "idx_feature_task_workflows_reconciliation_activity",
+      "idx_feature_verify_workflows_reconciliation_activity",
+      "idx_goal_issue_reconciliation_candidates",
+      "idx_telemetry_reconciliation_completed",
     )
 
   fun createBaseSchema(connection: Connection) {
@@ -319,6 +328,8 @@ internal object DatabaseSchema {
         first_started_at TEXT,
         last_activity_at TEXT,
         last_blocked_at TEXT,
+        latest_segment_workflow_id TEXT,
+        last_blocked_segment_workflow_id TEXT,
         finished_at TEXT,
         status TEXT,
         subtasks_complete INTEGER,
@@ -327,6 +338,12 @@ internal object DatabaseSchema {
         mode TEXT NOT NULL DEFAULT 'runtime',
         finished_event_emitted_at TEXT,
         PRIMARY KEY (parent_workflow_id, issue_key)
+      )
+      """.trimIndent(),
+      """
+      CREATE TABLE IF NOT EXISTS telemetry_reconciliation_state (
+        state_key TEXT PRIMARY KEY,
+        last_completed_at TEXT NOT NULL
       )
       """.trimIndent(),
       """

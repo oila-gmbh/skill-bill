@@ -29,6 +29,27 @@ import kotlin.test.assertTrue
 
 class GoalRunnerTelemetryTest {
   @Test
+  fun `preflight policy block emits one started and one blocked finished for the same segment`() {
+    val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 1).copy(featureBranch = "main"))
+    val outcomes = RecordingOutcomeStore()
+    val launcher = RecordingSubtaskLauncher { launchFacts() }
+    val telemetry = RecordingGoalLifecycleTelemetryEmitter()
+    val runner = telemetryRunner(store, launcher, outcomes, telemetry)
+
+    val report = runner.run(runRequest())
+
+    assertIs<GoalRunnerRunReport.Stopped>(report)
+    val started = telemetry.started.single()
+    val finished = telemetry.finished.single()
+    assertEquals(started.workflowId, finished.workflowId)
+    assertEquals("wfl-parent", started.parentWorkflowId)
+    assertEquals("wfl-parent", finished.parentWorkflowId)
+    assertEquals("blocked", finished.status)
+    assertEquals("POLICY_BLOCKED", finished.stopReason)
+    assertTrue(launcher.requests.isEmpty())
+  }
+
+  @Test
   fun `clean completed run emits one started two subtask finished one finished and one issue finished`() {
     val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 2))
     val outcomes = RecordingOutcomeStore()

@@ -7,6 +7,8 @@ data class TelemetryReconciliationResult(
   val qualityCheckSessions: Int,
   val goalIssueAbandonedSessions: Int,
   val emittedTerminalEvents: Int,
+  val processedCandidates: Int = emittedTerminalEvents,
+  val skippedByCadence: Boolean = false,
 ) {
   companion object {
     val Empty = TelemetryReconciliationResult(

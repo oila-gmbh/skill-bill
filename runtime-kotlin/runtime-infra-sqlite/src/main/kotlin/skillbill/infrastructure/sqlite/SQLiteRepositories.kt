@@ -27,6 +27,7 @@ import skillbill.ports.persistence.WorkflowStateRepository
 import skillbill.ports.persistence.WorkflowStatsRepository
 import skillbill.ports.persistence.model.LearningResolution
 import skillbill.ports.persistence.model.ReviewRepositoryStatsSnapshot
+import skillbill.ports.persistence.model.TelemetryReconciliationRequest
 import skillbill.review.model.FeatureImplementWorkflowStats
 import skillbill.review.model.FeatureTaskRuntimeWorkflowStats
 import skillbill.review.model.FeatureVerifyWorkflowStats
@@ -57,6 +58,9 @@ class SQLiteTelemetryReconciliationRepository(
   private val connection: Connection,
 ) : TelemetryReconciliationRepository {
   override fun reconcileStaleSessions(level: String) = reconcileStaleTelemetrySessions(connection, level)
+
+  override fun reconcileStaleSessions(request: TelemetryReconciliationRequest) =
+    reconcileStaleTelemetrySessions(connection, request)
 }
 
 class SQLiteWorkflowStatsRepository(

@@ -314,7 +314,7 @@ class ReviewStatsRuntimeTest {
   }
 
   @Test
-  fun `feature implement duplicate terminal calls emit updated duplicate accounting`() {
+  fun `feature implement duplicate terminal calls preserve one terminal event and record diagnostics`() {
     val (_, connection) = tempDbConnection("feature-task-duplicate-terminal")
     connection.use {
       val store = LifecycleTelemetryStore(connection)
@@ -349,12 +349,11 @@ class ReviewStatsRuntimeTest {
         listOf(
           "skillbill_feature_task_prose_started",
           "skillbill_feature_task_prose_finished",
-          "skillbill_feature_task_prose_finished",
         ),
         pending.map { it.eventName },
       )
-      val duplicatePayload = telemetryPayloads(pending, "skillbill_feature_task_prose_finished").last()
-      assertEquals(1, duplicatePayload["duplicate_terminal_finished_events"])
+      val terminalPayload = telemetryPayloads(pending, "skillbill_feature_task_prose_finished").single()
+      assertTrue("duplicate_terminal_finished_events" !in terminalPayload)
       val stats = ReviewStatsRuntime.featureImplementStats(connection)
       assertEquals(1, stats.duplicateTerminalFinishedEvents)
       assertEquals(2, stats.dataQualityDebtRuns)

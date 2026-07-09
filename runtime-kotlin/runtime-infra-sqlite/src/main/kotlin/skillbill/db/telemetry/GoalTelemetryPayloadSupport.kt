@@ -41,7 +41,7 @@ fun goalStartedPayload(row: Map<String, Any?>, level: String): Map<String, Any?>
   }
 }
 
-fun goalFinishedPayload(row: Map<String, Any?>, level: String): Map<String, Any?> = linkedMapOf<String, Any?>(
+fun goalFinishedPayload(row: Map<String, Any?>): Map<String, Any?> = linkedMapOf<String, Any?>(
   "workflow_id" to row.stringOrEmpty("workflow_id"),
   "issue_key" to row.stringOrEmpty("issue_key"),
   "status" to row.stringOrEmpty("status"),
@@ -53,11 +53,7 @@ fun goalFinishedPayload(row: Map<String, Any?>, level: String): Map<String, Any?
   "subtasks_skipped" to row.intOrZero("subtasks_skipped"),
   "mode" to row.stringOrEmpty("mode").ifBlank { "runtime" },
   "stop_reason" to row["stop_reason"]?.toString(),
-).apply {
-  if (level == "full") {
-    put("feature_name", row.stringOrEmpty("feature_name"))
-  }
-}
+)
 
 fun goalIssueFinishedPayload(row: Map<String, Any?>): Map<String, Any?> {
   val firstStartedAt = row.stringOrEmpty("first_started_at")

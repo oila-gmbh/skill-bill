@@ -333,16 +333,16 @@ class GoalTelemetryStoreTest {
     withConnection { connection ->
       val store = LifecycleTelemetryStore(connection)
 
-      store.goalStarted(
+      val firstStart =
         startedRecord("wf-parent:seg:1", subtaskTotal = 1, resumed = false, startedAt = "2026-06-04T10:00:00Z")
-          .copy(parentWorkflowId = "wf-parent"),
-        level = "full",
-      )
-      store.goalFinished(
+          .copy(parentWorkflowId = "wf-parent")
+      val firstFinish =
         finishedRecord("wf-parent:seg:1", status = "blocked", startedAt = "2026-06-04T10:00:00Z")
-          .copy(parentWorkflowId = "wf-parent", stopReason = "BLOCKED"),
-        level = "full",
-      )
+          .copy(parentWorkflowId = "wf-parent", stopReason = "BLOCKED")
+      repeat(2) {
+        store.goalStarted(firstStart, level = "full")
+        store.goalFinished(firstFinish, level = "full")
+      }
       store.goalStarted(
         startedRecord("wf-parent:seg:2", subtaskTotal = 1, resumed = true, startedAt = "2026-06-04T10:10:00Z")
           .copy(parentWorkflowId = "wf-parent"),
@@ -383,6 +383,76 @@ class GoalTelemetryStoreTest {
       assertEquals("2026-06-04T10:00:00Z", payload["first_started_at"])
       assertEquals(1_800L, assertIs<Number>(payload["duration_seconds"]).toLong())
       assertTrue("duration_ms" !in payload)
+    }
+  }
+
+  @Test
+  fun `goal issue completion recovers aggregates from persisted segments when progress is missing`() {
+    withConnection { connection ->
+      val store = LifecycleTelemetryStore(connection)
+      val firstStart = startedRecord(
+        "wf-recover:seg:1",
+        subtaskTotal = 1,
+        resumed = false,
+        startedAt = "2026-06-04T10:00:00Z",
+      ).copy(parentWorkflowId = "wf-recover")
+      val secondStart = startedRecord(
+        "wf-recover:seg:2",
+        subtaskTotal = 1,
+        resumed = true,
+        startedAt = "2026-06-04T10:10:00Z",
+      ).copy(parentWorkflowId = "wf-recover")
+      store.goalStarted(firstStart, "full")
+      store.goalFinished(
+        finishedRecord(firstStart.workflowId, "blocked", firstStart.startedAt)
+          .copy(parentWorkflowId = "wf-recover", stopReason = "POLICY_BLOCKED"),
+        "full",
+      )
+      store.goalStarted(secondStart, "full")
+      connection.createStatement().use { it.executeUpdate("DELETE FROM goal_issue_progress") }
+
+      store.goalIssueFinished(
+        GoalIssueFinishedRecord(
+          issueKey = "SKILL-66",
+          parentWorkflowId = "wf-recover",
+          status = "completed",
+          subtasksComplete = 1,
+          subtasksBlocked = 0,
+          subtasksSkipped = 0,
+          finishedAt = "2026-06-04T10:20:00Z",
+          mode = "runtime",
+        ),
+        "full",
+      )
+
+      val payload = parsePayload(
+        pendingOutbox(connection).single { it.eventName == "skillbill_goal_issue_finished" }.payloadJson,
+      )
+      assertEquals(2, payload["total_invocations"])
+      assertEquals(1, payload["total_resumes"])
+      assertEquals(1, payload["total_blocks"])
+      assertEquals("2026-06-04T10:00:00Z", payload["first_started_at"])
+    }
+  }
+
+  @Test
+  fun `goal issue completion without trustworthy history suppresses terminal emission`() {
+    withConnection { connection ->
+      LifecycleTelemetryStore(connection).goalIssueFinished(
+        GoalIssueFinishedRecord(
+          issueKey = "SKILL-NO-HISTORY",
+          parentWorkflowId = "wf-missing",
+          status = "completed",
+          subtasksComplete = 0,
+          subtasksBlocked = 0,
+          subtasksSkipped = 0,
+          finishedAt = "2026-06-04T10:20:00Z",
+          mode = "runtime",
+        ),
+        "full",
+      )
+
+      assertEquals(0, pendingOutbox(connection).count { it.eventName == "skillbill_goal_issue_finished" })
     }
   }
 

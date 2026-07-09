@@ -66,6 +66,8 @@ class DatabaseSchemaTest {
         "first_started_at",
         "last_activity_at",
         "last_blocked_at",
+        "latest_segment_workflow_id",
+        "last_blocked_segment_workflow_id",
         "finished_at",
         "status",
         "subtasks_complete",

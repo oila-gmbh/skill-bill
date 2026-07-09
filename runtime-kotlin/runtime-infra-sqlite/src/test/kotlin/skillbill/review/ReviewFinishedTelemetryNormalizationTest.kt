@@ -12,6 +12,27 @@ import kotlin.test.assertEquals
 
 class ReviewFinishedTelemetryNormalizationTest {
   @Test
+  fun `mixed Kotlin labels normalize to kmp and retain only their descriptive detail`() {
+    val (_, connection) = tempDbConnection("review-finished-mixed-kmp-label")
+    connection.use {
+      val review = saveReview(
+        connection,
+        SAMPLE_REVIEW
+          .replace("rvw-20260402-001", "rvw-mixed-kmp-label")
+          .replace("rvs-20260402-001", "rvs-mixed-kmp-label")
+          .replace("Detected stack: kotlin", "Detected stack: KMP/Kotlin"),
+      )
+
+      val payload = reviewFinishedPayload(connection, review.reviewRunId)
+
+      assertEquals("kmp", payload["review_platform"])
+      assertEquals("kmp", payload["platform_slug"])
+      assertEquals("kmp", payload["detected_stack"])
+      assertEquals("KMP/Kotlin", payload["detected_stack_detail"])
+    }
+  }
+
+  @Test
   fun `review-finished payload normalizes labels and preserves removed stack detail`() {
     val (_, connection) = tempDbConnection("review-finished-normalized-labels")
     connection.use {
@@ -62,6 +83,43 @@ class ReviewFinishedTelemetryNormalizationTest {
       assertEquals("kmp", payload["platform_slug"])
       assertEquals("kmp", payload["detected_stack"])
       assertEquals("Kotlin Multiplatform", payload["detected_stack_detail"])
+    }
+  }
+
+  @Test
+  fun `manifest routing wins for ambiguous prose while exact clean labels remain authoritative`() {
+    val (_, connection) = tempDbConnection("review-finished-manifest-ambiguity")
+    connection.use {
+      val ambiguous = saveReview(
+        connection,
+        SAMPLE_REVIEW
+          .replace("rvw-20260402-001", "rvw-manifest-ambiguity")
+          .replace("rvs-20260402-001", "rvs-manifest-ambiguity")
+          .replace("Routed to: bill-kotlin-code-review", "Routed to: bill-kmp-code-review")
+          .replace("Detected stack: kotlin", "Detected stack: Kotlin and iOS mixed workspace"),
+      )
+      val ambiguousPayload = reviewFinishedPayload(
+        connection,
+        ambiguous.reviewRunId,
+        mapOf("bill-kmp-code-review" to "kmp"),
+      )
+      assertEquals("kmp", ambiguousPayload["review_platform"])
+      assertEquals("Kotlin and iOS mixed workspace", ambiguousPayload["detected_stack_detail"])
+
+      val clean = saveReview(
+        connection,
+        SAMPLE_REVIEW
+          .replace("rvw-20260402-001", "rvw-clean-conflict")
+          .replace("rvs-20260402-001", "rvs-clean-conflict")
+          .replace("Routed to: bill-kotlin-code-review", "Routed to: bill-kmp-code-review"),
+      )
+      val cleanPayload = reviewFinishedPayload(
+        connection,
+        clean.reviewRunId,
+        mapOf("bill-kmp-code-review" to "kmp"),
+      )
+      assertEquals("kotlin", cleanPayload["review_platform"])
+      assertEquals(null, cleanPayload["detected_stack_detail"])
     }
   }
 

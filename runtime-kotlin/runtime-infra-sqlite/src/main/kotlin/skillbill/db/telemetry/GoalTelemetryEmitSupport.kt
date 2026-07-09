@@ -12,12 +12,12 @@ fun emitGoalStarted(connection: Connection, workflowId: String, level: String) {
   markGoalRunSessionEmitted(connection, "started_event_emitted_at", workflowId)
 }
 
-fun emitGoalFinished(connection: Connection, workflowId: String, level: String) {
+fun emitGoalFinished(connection: Connection, workflowId: String) {
   val row = goalRunSessionRow(connection, workflowId) ?: return
   if (row.stringOrEmpty("finished_event_emitted_at").isNotBlank()) {
     return
   }
-  enqueueTelemetry(connection, "skillbill_goal_finished", goalFinishedPayload(row, level))
+  enqueueTelemetry(connection, "skillbill_goal_finished", goalFinishedPayload(row))
   markGoalRunSessionEmitted(connection, "finished_event_emitted_at", workflowId)
 }
 

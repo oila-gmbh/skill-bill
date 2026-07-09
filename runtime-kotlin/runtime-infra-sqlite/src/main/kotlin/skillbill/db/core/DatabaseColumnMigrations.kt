@@ -63,10 +63,44 @@ internal object DatabaseColumnMigrations {
       ensureColumn(connection, "goal_issue_progress", "finished_event_emitted_at", "TEXT")
       ensureColumn(connection, "goal_issue_progress", "last_activity_at", "TEXT")
       ensureColumn(connection, "goal_issue_progress", "last_blocked_at", "TEXT")
+      ensureColumn(connection, "goal_issue_progress", "latest_segment_workflow_id", "TEXT")
+      ensureColumn(connection, "goal_issue_progress", "last_blocked_segment_workflow_id", "TEXT")
     }
+    ensureReconciliationIndexes(connection)
+  }
+
+  private fun ensureReconciliationIndexes(connection: Connection) {
+    listOf(
+      "CREATE INDEX IF NOT EXISTS idx_feature_implement_reconciliation_candidates " +
+        "ON feature_implement_sessions(started_at, session_id) " +
+        "WHERE finished_at IS NULL AND finished_event_emitted_at IS NULL",
+      "CREATE INDEX IF NOT EXISTS idx_feature_task_runtime_reconciliation_candidates " +
+        "ON feature_task_runtime_sessions(started_at, session_id) " +
+        "WHERE finished_at IS NULL AND finished_event_emitted_at IS NULL",
+      "CREATE INDEX IF NOT EXISTS idx_feature_verify_reconciliation_candidates " +
+        "ON feature_verify_sessions(started_at, session_id) " +
+        "WHERE finished_at IS NULL AND finished_event_emitted_at IS NULL",
+      "CREATE INDEX IF NOT EXISTS idx_quality_check_reconciliation_candidates " +
+        "ON quality_check_sessions(started_at, session_id) " +
+        "WHERE finished_at IS NULL AND finished_event_emitted_at IS NULL",
+      "CREATE INDEX IF NOT EXISTS idx_feature_task_workflows_reconciliation_activity " +
+        "ON feature_task_workflows(session_id, workflow_status, updated_at)",
+      "CREATE INDEX IF NOT EXISTS idx_feature_verify_workflows_reconciliation_activity " +
+        "ON feature_verify_workflows(session_id, workflow_status, updated_at)",
+      "CREATE INDEX IF NOT EXISTS idx_goal_issue_reconciliation_candidates " +
+        "ON goal_issue_progress(last_blocked_at, parent_workflow_id, issue_key) " +
+        "WHERE finished_at IS NULL AND finished_event_emitted_at IS NULL",
+      "CREATE INDEX IF NOT EXISTS idx_telemetry_reconciliation_completed " +
+        "ON telemetry_reconciliation_state(last_completed_at)",
+    ).forEach { sql -> connection.createStatement().use { it.execute(sql) } }
   }
 
   private fun ensureFeatureTaskRuntimeSessionColumns(connection: Connection) {
+    ensureColumn(connection, "feature_task_runtime_sessions", "started_at", "TEXT NOT NULL DEFAULT ''")
+    backfillBlankColumn(connection, "feature_task_runtime_sessions", "started_at", "CURRENT_TIMESTAMP")
+    ensureColumn(connection, "feature_task_runtime_sessions", "started_event_emitted_at", "TEXT")
+    ensureColumn(connection, "feature_task_runtime_sessions", "finished_at", "TEXT")
+    ensureColumn(connection, "feature_task_runtime_sessions", "finished_event_emitted_at", "TEXT")
     ensureColumn(
       connection = connection,
       tableName = "feature_task_runtime_sessions",

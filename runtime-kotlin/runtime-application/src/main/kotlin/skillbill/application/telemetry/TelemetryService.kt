@@ -7,6 +7,7 @@ import skillbill.application.model.TelemetrySyncPayload
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.TelemetryOutboxRepository
 import skillbill.ports.persistence.model.TelemetryOutboxRecord
+import skillbill.ports.persistence.model.TelemetryReconciliationRequest
 import skillbill.ports.telemetry.TelemetryClient
 import skillbill.ports.telemetry.TelemetryConfigStore
 import skillbill.ports.telemetry.TelemetrySettingsProvider
@@ -47,6 +48,7 @@ class TelemetryService(
       if (!settings.enabled) {
         TelemetrySyncRuntime.disabledSync(settings)
       } else {
+        reconcileBeforeSync(settings.level, dbOverride)
         TelemetrySyncRuntime.syncTelemetry(
           settings,
           sessionTelemetryOutboxRepository(database, dbOverride),
@@ -62,16 +64,7 @@ class TelemetryService(
   fun autoSync(dbOverride: String? = null) {
     val settings = telemetrySettingsOrNull(settingsProvider)
     if (settings == null || !settings.enabled || !database.databaseExists(dbOverride)) return
-    runCatching {
-      database.transaction(dbOverride) { unitOfWork ->
-        unitOfWork.telemetryReconciliation.reconcileStaleSessions(settings.level)
-      }
-    }.onFailure { error ->
-      when (error) {
-        is Exception -> captureException("telemetry_stale_session_reconciliation", error, dbOverride)
-        else -> throw error
-      }
-    }
+    reconcileBeforeSync(settings.level, dbOverride)
     TelemetrySyncRuntime.autoSyncTelemetry(
       settings,
       sessionTelemetryOutboxRepository(database, dbOverride),
@@ -107,6 +100,22 @@ class TelemetryService(
     if (!database.databaseExists(dbOverride)) return
     runCatching {
       enqueueRuntimeException(sessionTelemetryOutboxRepository(database, dbOverride), workflowPhase, error)
+    }
+  }
+
+  private fun reconcileBeforeSync(level: String, dbOverride: String?) {
+    if (!database.databaseExists(dbOverride)) return
+    runCatching {
+      database.transaction(dbOverride) { unitOfWork ->
+        unitOfWork.telemetryReconciliation.reconcileStaleSessions(
+          TelemetryReconciliationRequest(level = level),
+        )
+      }
+    }.onFailure { error ->
+      when (error) {
+        is Exception -> captureException("telemetry_stale_session_reconciliation", error, dbOverride)
+        else -> throw error
+      }
     }
   }
 }

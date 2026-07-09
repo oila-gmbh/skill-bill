@@ -25,27 +25,18 @@ fun saveQualityCheckStarted(connection: Connection, record: QualityCheckStartedR
   }
 }
 
-fun saveQualityCheckFinished(connection: Connection, record: QualityCheckFinishedRecord): Boolean {
+fun saveQualityCheckFinished(connection: Connection, record: QualityCheckFinishedRecord): TerminalSaveOutcome {
   val failingCheckNamesJson = listJson(record.failingCheckNames)
   if (rowExists(connection, "quality_check_sessions", record.sessionId)) {
-    val emitCorrectedTerminal = staleFinishedAlreadyEmitted(
-      connection = connection,
-      tableName = "quality_check_sessions",
-      terminalColumn = "result",
-      sessionId = record.sessionId,
-    )
-    if (terminalEventAlreadyEmitted(connection, "quality_check_sessions", record.sessionId)) {
+    if (lifecycleAlreadyFinished(connection, "quality_check_sessions", record.sessionId)) {
       incrementDuplicateTerminalFinishedEvents(connection, "quality_check_sessions", record.sessionId)
-      if (!emitCorrectedTerminal) {
-        return false
-      }
+      return TerminalSaveOutcome.DUPLICATE
     }
     updateQualityCheckFinished(connection, record, failingCheckNamesJson)
-    return emitCorrectedTerminal
   } else {
     insertQualityCheckFinished(connection, record, failingCheckNamesJson)
   }
-  return false
+  return TerminalSaveOutcome.FIRST_TERMINAL
 }
 
 private fun updateQualityCheckFinished(

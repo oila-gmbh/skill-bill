@@ -29,8 +29,9 @@ class LifecycleTelemetryStore(
   }
 
   override fun featureImplementFinished(record: FeatureImplementFinishedRecord, level: String) {
-    val duplicateTerminalEvent = saveFeatureImplementFinished(connection, record)
-    emitFeatureImplementFinished(connection, record.sessionId, level, duplicateTerminalEvent)
+    if (saveFeatureImplementFinished(connection, record) == TerminalSaveOutcome.FIRST_TERMINAL) {
+      emitFeatureImplementFinished(connection, record.sessionId, level)
+    }
   }
 
   override fun featureTaskRuntimeStarted(record: FeatureTaskRuntimeStartedRecord, level: String) {
@@ -39,8 +40,9 @@ class LifecycleTelemetryStore(
   }
 
   override fun featureTaskRuntimeFinished(record: FeatureTaskRuntimeFinishedRecord, level: String) {
-    val duplicateTerminalEvent = saveFeatureTaskRuntimeFinished(connection, record)
-    emitFeatureTaskRuntimeFinished(connection, record.sessionId, level, duplicateTerminalEvent)
+    if (saveFeatureTaskRuntimeFinished(connection, record) == TerminalSaveOutcome.FIRST_TERMINAL) {
+      emitFeatureTaskRuntimeFinished(connection, record.sessionId, level)
+    }
   }
 
   override fun qualityCheckStarted(record: QualityCheckStartedRecord, level: String) {
@@ -49,8 +51,9 @@ class LifecycleTelemetryStore(
   }
 
   override fun qualityCheckFinished(record: QualityCheckFinishedRecord, level: String) {
-    val duplicateTerminalEvent = saveQualityCheckFinished(connection, record)
-    emitQualityCheckFinished(connection, record.sessionId, level, duplicateTerminalEvent)
+    if (saveQualityCheckFinished(connection, record) == TerminalSaveOutcome.FIRST_TERMINAL) {
+      emitQualityCheckFinished(connection, record.sessionId, level)
+    }
   }
 
   override fun featureVerifyStarted(record: FeatureVerifyStartedRecord, level: String) {
@@ -59,8 +62,9 @@ class LifecycleTelemetryStore(
   }
 
   override fun featureVerifyFinished(record: FeatureVerifyFinishedRecord, level: String) {
-    val duplicateTerminalEvent = saveFeatureVerifyFinished(connection, record)
-    emitFeatureVerifyFinished(connection, record.sessionId, level, duplicateTerminalEvent)
+    if (saveFeatureVerifyFinished(connection, record) == TerminalSaveOutcome.FIRST_TERMINAL) {
+      emitFeatureVerifyFinished(connection, record.sessionId, level)
+    }
   }
 
   override fun prDescriptionGenerated(record: PrDescriptionGeneratedRecord, level: String) {
@@ -68,19 +72,21 @@ class LifecycleTelemetryStore(
   }
 
   override fun goalStarted(record: GoalStartedRecord, level: String) {
-    saveGoalStarted(connection, record)
-    record.parentWorkflowId?.takeIf(String::isNotBlank)?.let { parentWorkflowId ->
+    val outcome = saveGoalStarted(connection, record)
+    if (outcome == GoalStartedSaveOutcome.INSERTED) record.parentWorkflowId
+      ?.takeIf(String::isNotBlank)?.let { parentWorkflowId ->
       recordGoalIssueSegmentStarted(
         connection = connection,
         segment = GoalIssueSegmentStart(
           parentWorkflowId = parentWorkflowId,
           issueKey = record.issueKey,
+          workflowId = record.workflowId,
           startedAt = record.startedAt,
           resumed = record.resumed,
           mode = record.mode,
         ),
       )
-    }
+      }
     emitGoalStarted(connection, record.workflowId, level)
   }
 
@@ -90,17 +96,18 @@ class LifecycleTelemetryStore(
   }
 
   override fun goalFinished(record: GoalFinishedRecord, level: String) {
-    saveGoalFinished(connection, record)
-    if (record.status != "completed") {
+    val outcome = saveGoalFinished(connection, record)
+    if (outcome == GoalFinishedSaveOutcome.FIRST_TERMINAL && record.status != "completed") {
       record.parentWorkflowId?.takeIf(String::isNotBlank)?.let { parentWorkflowId ->
-        recordGoalIssueBlockedSegment(connection, parentWorkflowId, record.issueKey)
+        recordGoalIssueBlockedSegment(connection, parentWorkflowId, record.issueKey, record.workflowId)
       }
     }
-    emitGoalFinished(connection, record.workflowId, level)
+    emitGoalFinished(connection, record.workflowId)
   }
 
   override fun goalIssueFinished(record: GoalIssueFinishedRecord, level: String) {
-    saveGoalIssueFinished(connection, record)
-    emitGoalIssueFinished(connection, record.parentWorkflowId, record.issueKey)
+    if (saveGoalIssueFinished(connection, record).persisted) {
+      emitGoalIssueFinished(connection, record.parentWorkflowId, record.issueKey)
+    }
   }
 }

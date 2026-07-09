@@ -84,13 +84,10 @@ class GoalRunner(
     val attempted = mutableListOf<Int>()
     val observability = GoalRunnerObservabilityEmitter(outcomeStore, request)
     val ledger = GoalRunnerLedgerRecorder(outcomeStore, request, diagnostics)
-    var terminalReport: GoalRunnerRunReport? = preflightPolicyBlockedReport(state, request, ledger)
-    val telemetryEmitter = if (terminalReport == null) {
-      request.eventSink.emit(GoalRunnerRunEvent.Started(state.manifest.issueKey))
+    request.eventSink.emit(GoalRunnerRunEvent.Started(state.manifest.issueKey))
+    val telemetryEmitter =
       GoalRunnerTelemetryEmitter(telemetry, clock, state, request.dbPathOverride).also { it.goalStarted() }
-    } else {
-      null
-    }
+    var terminalReport: GoalRunnerRunReport? = preflightPolicyBlockedReport(state, request, ledger)
     while (terminalReport == null) {
       val selection = GoalRunnerPlanner.selectNext(state.manifest)
       when (selection) {
@@ -115,7 +112,7 @@ class GoalRunner(
           terminalReport = result.report
         }
       }
-      telemetryEmitter?.emitNewlyTerminalSubtasks(state.manifest, attempted)
+      telemetryEmitter.emitNewlyTerminalSubtasks(state.manifest, attempted)
     }
     val finalReport = terminalReport
     closeGoalTelemetrySegment(telemetryEmitter, state, finalReport, attempted)
@@ -135,12 +132,12 @@ class GoalRunner(
   }
 
   private fun closeGoalTelemetrySegment(
-    telemetryEmitter: GoalRunnerTelemetryEmitter?,
+    telemetryEmitter: GoalRunnerTelemetryEmitter,
     state: GoalRunnerManifestState,
     finalReport: GoalRunnerRunReport,
     attempted: List<Int>,
   ) {
-    telemetryEmitter?.let { emitter ->
+    telemetryEmitter.let { emitter ->
       emitter.emitNewlyTerminalSubtasks(state.manifest, attempted)
       emitter.goalFinished(state.manifest, finalReport)
       if (finalReport is GoalRunnerRunReport.Completed) {
