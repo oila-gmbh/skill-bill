@@ -24,8 +24,17 @@ class ReviewSkillStructureConformanceTest {
   }
 
   @Test
+  fun `newly scaffolded UI lanes defer adjacent ownership`() {
+    val ui = areaReviewContent("Review UI failures.", "ui")
+    val accessibility = areaReviewContent("Review accessibility failures.", "ux-accessibility")
+
+    assertTrue("Defer accessibility concerns to the ux-accessibility specialist and security concerns to the security specialist." in ui)
+    assertTrue("Defer UI correctness concerns to the ui specialist and security concerns to the security specialist." in accessibility)
+  }
+
+  @Test
   fun `repository pack content uses only the governed severity vocabulary`() {
-    val violations = contentFiles(repoRootFromTest().resolve("platform-packs"))
+    val violations = allContentFiles(repoRootFromTest().resolve("platform-packs"))
       .flatMap(::severityViolations)
 
     assertEquals(emptyList(), violations, violations.joinToString("\n"))
@@ -33,6 +42,9 @@ class ReviewSkillStructureConformanceTest {
 
   @Test
   fun `non-exempt packs satisfy the review skill structure standard`() {
+    val repositoryViolations = structureViolations(repoRootFromTest().resolve("platform-packs"))
+    assertEquals(emptyList(), repositoryViolations, repositoryViolations.joinToString("\n"))
+
     val root = Files.createTempDirectory("review-skill-structure-")
     val pack = root.resolve("platform-packs/fixture")
     Files.createDirectories(pack.resolve("code-review/bill-fixture-code-review-security"))
@@ -93,6 +105,15 @@ class ReviewSkillStructureConformanceTest {
   private fun structureViolations(pack: Path): List<StructureViolation> {
     val exemptions = setOf("go", "ios", "kmp", "kotlin", "php", "python")
     // SKILL-112 subtasks 2-7 remove one pack each; subtask 8 removes this mechanism.
+    if (pack.name == "platform-packs") {
+      return Files.list(pack).use { packDirectories ->
+        packDirectories
+          .filter { Files.isDirectory(it) }
+          .filter { it.name !in exemptions }
+          .toList()
+          .flatMap(::structureViolations)
+      }
+    }
     if (pack.name in exemptions) return emptyList()
 
     return contentFiles(pack).flatMap { file ->
@@ -133,6 +154,11 @@ class ReviewSkillStructureConformanceTest {
   }
 
   private fun contentFiles(root: Path): List<Path> =
+    Files.walk(root.resolve("code-review")).use { paths ->
+      paths.filter { it.fileName.toString() == "content.md" }.toList()
+    }
+
+  private fun allContentFiles(root: Path): List<Path> =
     Files.walk(root).use { paths -> paths.filter { it.fileName.toString() == "content.md" }.toList() }
 
   private data class StructureViolation(val path: Path, val rule: String) {

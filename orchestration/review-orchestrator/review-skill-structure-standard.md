@@ -14,8 +14,9 @@ Every specialist uses these H2 sections in order: `Focus`, `Ignore`,
 `Applicability`, and `Project-Specific Rules`. `Repo-Local Knowledge` may be
 the only trailing optional H2. Rules are grouped by H3. Each specialist states
 concrete API-boundary or failure-mode checks appropriate to its area; `ui` and
-`ux-accessibility` defer concerns owned by the other lane instead of duplicating
-them. Specialists do not invoke sibling specialists. A severity closer says
+`ux-accessibility` explicitly defer concerns owned by the other lane and the
+`security` lane instead of duplicating them. Specialists do not invoke sibling
+specialists. A severity closer says
 `Blocker or Major` and requires a concrete consequence. The only severity
 ratings are `Blocker`, `Major`, and `Minor`.
 
@@ -31,18 +32,27 @@ by preserving attribution before deduplicating overlapping findings.
 `platform.yaml` declares every baseline and specialist `content.md`, the
 approved review areas, routing signals, and generated pointers. It does not
 declare generated source files or use pack prose to override routing contracts.
+Every file-extension routing signal appears in both bare (`.kt`) and glob
+(`*.kt`) forms. When routing signals overlap, tie-breakers state a positive
+dominance rule, a negative disambiguation rule against adjacent packs, and an
+exclusion of generated or vendored files from dominance scoring.
+`area_metadata.focus` is bespoke to the stack and area, not copied boilerplate.
 
 ## Native-Agent Description Pattern
 
-Provider-neutral native-agent sources describe when to use a specialist in one
-specific, stack-and-area sentence. Generated provider outputs are never
+Each provider-neutral specialist description follows this sentence pattern:
+`<Stack> <area> specialist code reviewer. Runs against <lanes>. Returns a Risk
+Register in the F-XXX bullet format.` Generated provider outputs are never
 authored or committed.
 
 ## Quality-Check Skeleton
 
 Every declared quality-check source has `Purpose`, `Execution Steps`, and
-`Fix Strategy` H2 sections. It identifies the scoped files, runs the pack
-entrypoint, fixes scoped failures, and reruns the check.
+`Fix Strategy` H2 sections. It discovers commands from repository build files,
+wrappers, and CI configuration before falling back to defaults; identifies the
+scoped files; runs the pack entrypoint; uses a priority-ordered fix ladder;
+never suppresses failures; reruns targeted checks; and escalates to the full
+suite when the targeted result cannot establish safety.
 
 ## Authored-Sidecar Contract
 
