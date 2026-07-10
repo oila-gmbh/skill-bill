@@ -27,14 +27,14 @@ Use this specialist for Kotlin concurrency, lifecycle, state, retry, and partial
 - Never use `GlobalScope`; require every long-lived scope to have an explicit owner and cancellation strategy.
 - Rethrow `CancellationException` from `catch (Exception)` and from `runCatching` wrappers around suspend calls so cancellation is never converted into ordinary failure.
 - Require `SupervisorJob` when sibling tasks must fail independently; reject a plain `Job` when one child failure would incorrectly cancel unrelated siblings.
-- Permit suspending cleanup in `NonCancellable` only when cleanup must complete after cancellation, and require that cleanup to remain bounded.
+- Require bounded suspending cleanup in `finally` to run with `withContext(NonCancellable)` when it must complete after cancellation; reject unbounded cleanup or ordinary suspending cleanup that cancellation can abort.
 - Reject retry or lifecycle re-entry that duplicates billing, messages, notifications, or other user-visible effects.
 
 ### Synchronization and Flow Semantics
 
 - Reject non-reentrant `Mutex` paths where code holding a mutex calls another path that attempts to acquire the same mutex.
 - Verify atomic statements, locking, version checks, or serialization wherever concurrent mutation must preserve an invariant.
-- Reject `StateFlow` when equality conflation can suppress a required repeated event or state transition.
+- Reject `StateFlow` when equality conflation can suppress a required repeated event or when slow collectors must observe every distinct intermediate transition rather than only the latest state.
 - Reject `SharedFlow` with `replay = 0` when late subscribers must receive an event and no durable delivery mechanism exists.
 
 ### Truthful Outcomes

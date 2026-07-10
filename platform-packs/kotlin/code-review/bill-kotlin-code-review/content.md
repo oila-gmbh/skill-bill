@@ -35,7 +35,8 @@ Always keep the `architecture` and `platform-correctness` specialists as the bas
 - Give architecture all Kotlin-owned changed files; give other specialists only matching files and drop empty lanes.
 - Exclude generated, vendored, build-output, generated serialization/protobuf, and non-stack (non-Kotlin) files from specialist scope and from dominance scoring.
 - Re-check the two-specialist minimum after scoping; if only architecture remains, give all Kotlin-owned files to platform-correctness as the default second lane.
-- Run more than eight selected lanes in deterministic waves while retaining every selected result.
+- Load and execute each selected specialist's governed rubric so every selected lane produces an attributed result.
+- When the selected lanes exceed the runtime's available delegated-worker capacity, run them in deterministic waves while retaining every selected result.
 
 ## Finding Discipline
 

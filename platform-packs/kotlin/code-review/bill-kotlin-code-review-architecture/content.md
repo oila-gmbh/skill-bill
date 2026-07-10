@@ -32,7 +32,9 @@ Use this specialist across Kotlin libraries and services. Treat documented repos
 ### Kotlin Boundaries
 
 - Require blocking or asynchronous contracts to use `suspend` only when suspension is part of the boundary; reject decorative suspend APIs that hide blocking work.
+- Reject `suspend` leaking into domain interfaces when suspension is only an infrastructure or transport concern, because it couples the domain boundary to coroutine execution.
 - Require long-lived background work to receive an injected `CoroutineScope` with an explicit lifecycle instead of constructing hidden global scopes.
+- Reject an injected `CoroutineScope` that crosses the layer or Gradle-module boundary owned by its lifecycle; the owning boundary must launch and cancel its work.
 - Keep implementation details `internal` when cross-module access is not part of the supported API.
 - Enforce Gradle module dependency direction and reject cycles or implementation dependencies that leak across owned boundaries.
 - For Blocker or Major findings, describe the concrete dependency-cycle or ownership-boundary failure scenario.

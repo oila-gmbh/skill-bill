@@ -33,6 +33,6 @@ Use this specialist for Kotlin libraries and services that process untrusted dat
 
 - Require object-level authorization at the trusted security boundary for every requested resource and enforce tenant/account isolation using trusted actor context, never caller-supplied ownership alone.
 - Reject hand-rolled JWT validation that omits signature, algorithm, issuer, audience, expiry, or key-rotation verification.
-- Reject debug bypasses, committed test credentials, relaxed TLS or signature verification, and feature flags that weaken authentication or authorization.
+- Reject temporary debug endpoints, actions, or other debug code; bypass flags; committed test credentials; relaxed TLS or signature verification; and feature flags that weaken authentication or authorization.
 - Never expose secrets, auth headers, session cookies, private keys, sensitive payloads, or internal exception details in code, logs, tests, or responses.
 - For Blocker or Major findings, describe the concrete authorization-bypass or data-exposure scenario.

@@ -26,7 +26,7 @@ Use this specialist for Kotlin libraries and services where execution context, d
 
 - Reject `runBlocking` inside a coroutine or on `Dispatchers.Default`; it blocks worker threads and can starve unrelated coroutine work.
 - Reject blocking JDBC or filesystem I/O outside `Dispatchers.IO` or a repository-owned blocking dispatcher.
-- Do not treat the `Dispatchers.IO` ceiling as an unlimited safety boundary; reject unbounded blocking fan-out that can exhaust threads, connections, or downstream capacity.
+- Account for `Dispatchers.IO`'s default parallelism ceiling of the greater of 64 threads or the available processor count, unless `kotlinx.coroutines.io.parallelism` configures it; reject unbounded blocking fan-out that can exhaust that ceiling, connections, or downstream capacity under load.
 - Verify `flowOn` is placed upstream of the work it should move and require bounded `buffer` or explicit backpressure where producer/consumer rates diverge.
 
 ### Allocation and Data Access

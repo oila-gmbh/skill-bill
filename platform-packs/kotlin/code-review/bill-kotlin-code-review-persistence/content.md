@@ -24,7 +24,7 @@ Use this specialist for Exposed, Spring transactions, Hibernate/JPA, JDBC, R2DBC
 
 ### Transaction and ORM Boundaries
 
-- Reject Exposed transaction work that escapes its thread-bound transaction context, and reject nested or misplaced `newSuspendedTransaction` calls that silently create a second transaction or lose atomicity.
+- Reject suspend calls or dispatcher hops inside Exposed `transaction {}` because its transaction context is thread-bound; use one correctly owned `newSuspendedTransaction` for suspending work, and reject nested or misplaced calls that create a second transaction or lose atomicity.
 - Reject Spring `@Transactional` self-invocation and transactional final or non-open methods when proxy interception will not occur.
 - Reject Hibernate access that can cause `LazyInitializationException`, and reject unintended dirty flushes caused by mutating managed entities during read-oriented work.
 - Do not hold a transaction while performing remote I/O, publishing an event, or dispatching queue work; require after-commit handling or an outbox when ordering matters.

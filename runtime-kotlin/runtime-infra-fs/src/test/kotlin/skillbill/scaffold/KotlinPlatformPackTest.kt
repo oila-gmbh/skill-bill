@@ -16,7 +16,6 @@ import skillbill.install.model.WindowsSymlinkPreflight
 import skillbill.install.model.WindowsSymlinkPreflightState
 import skillbill.install.runtime.InstallOperations
 import skillbill.scaffold.platformpack.loadPlatformPack
-import skillbill.scaffold.policy.APPROVED_CODE_REVIEW_AREAS
 import skillbill.testing.repoRootFromTest
 import java.nio.file.Files
 import kotlin.test.Test
@@ -24,6 +23,17 @@ import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+
+private val KOTLIN_CODE_REVIEW_AREAS = setOf(
+  "api-contracts",
+  "architecture",
+  "performance",
+  "persistence",
+  "platform-correctness",
+  "reliability",
+  "security",
+  "testing",
+)
 
 class KotlinPlatformPackTest {
   @Test
@@ -44,9 +54,9 @@ class KotlinPlatformPackTest {
       packRoot.resolve("quality-check/bill-kotlin-code-check/content.md"),
       pack.declaredQualityCheckFile,
     )
-    assertEquals(APPROVED_CODE_REVIEW_AREAS.sorted(), pack.declaredCodeReviewAreas.sorted())
-    assertEquals(APPROVED_CODE_REVIEW_AREAS, pack.declaredFiles.areas.keys)
-    assertEquals(APPROVED_CODE_REVIEW_AREAS, pack.areaMetadata.keys)
+    assertEquals(KOTLIN_CODE_REVIEW_AREAS.sorted(), pack.declaredCodeReviewAreas.sorted())
+    assertEquals(KOTLIN_CODE_REVIEW_AREAS, pack.declaredFiles.areas.keys)
+    assertEquals(KOTLIN_CODE_REVIEW_AREAS, pack.areaMetadata.keys)
 
     listOf(
       ".kt",
@@ -65,8 +75,8 @@ class KotlinPlatformPackTest {
     assertTrue(pack.routingSignals.tieBreakers.any { it.contains("Kotlin/JVM") && it.contains("dominate") })
     assertTrue(pack.routingSignals.tieBreakers.any { it.contains("adjacent KMP") })
     assertTrue(pack.routingSignals.tieBreakers.any { it.contains("generated and vendored") })
-    assertEquals(8, pack.areaMetadata.values.map { it.focus }.toSet().size)
-    pack.areaMetadata.values.forEach { metadata -> assertContains(metadata.focus, "Kotlin") }
+    assertEquals(8, pack.areaMetadata.values.toSet().size)
+    pack.areaMetadata.values.forEach { focus -> assertContains(focus, "Kotlin") }
   }
 
   @Test
@@ -155,7 +165,7 @@ class KotlinPlatformPackTest {
       InstallPlanSkillKind.PLATFORM_PACK,
       skillsByName.getValue("bill-kotlin-code-check").kind,
     )
-    APPROVED_CODE_REVIEW_AREAS.forEach { area ->
+    KOTLIN_CODE_REVIEW_AREAS.forEach { area ->
       assertEquals(
         InstallPlanSkillKind.PLATFORM_PACK,
         skillsByName.getValue("bill-kotlin-code-review-$area").kind,

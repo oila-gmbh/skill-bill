@@ -26,7 +26,7 @@ Use this specialist for Kotlin HTTP, RPC, DTO, serializer, validation, and publi
 
 - Require explicit client-impact review for drift in kotlinx.serialization `explicitNulls`, `encodeDefaults`, or `ignoreUnknownKeys`; reject changes that silently alter wire shape or compatibility.
 - Verify absent fields are not incorrectly accepted because Kotlin constructor defaults mask required input.
-- Require correctly configured `jackson-module-kotlin` wherever Jackson must preserve Kotlin constructors, nullability, defaults, or data-class semantics.
+- Reject missing or misconfigured `jackson-module-kotlin` when it lets absent or null input be coerced into non-null constructor parameters or Kotlin defaults and delays failure beyond boundary deserialization.
 - Reject enum, date/time, nullability, renamed-field, or default-field drift without versioning, coordinated migration, or a compatibility path.
 
 ### Boundary and Error Semantics

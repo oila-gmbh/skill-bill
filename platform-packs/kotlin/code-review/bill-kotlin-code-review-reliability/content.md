@@ -25,7 +25,7 @@ Use this specialist for Kotlin services, workers, consumers, schedulers, queues,
 ### Isolation and Retry
 
 - Require `SupervisorJob` for long-lived consumers whose sibling partitions or handlers must continue after one child fails.
-- Preserve `TimeoutCancellationException` as cancellation or a timeout category; reject classification as an ordinary retriable business error when that causes duplicate work or defeats structured cancellation.
+- Treat `TimeoutCancellationException` thrown by `withTimeout` as cancellation or a timeout category; reject generic catch blocks that misclassify it as an ordinary retriable business error, cause duplicate work, or defeat structured cancellation.
 - Reject `Thread.sleep` in coroutine retry loops; require cancellable `delay` with bounded attempts, backoff, and jitter for transient failures.
 - Distinguish poison, transient, and permanent failures in retry decisions and telemetry so operators can identify drops, dead letters, and retry storms.
 
