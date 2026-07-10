@@ -5,6 +5,7 @@ import skillbill.nativeagent.composition.renderNativeAgentSource
 import skillbill.scaffold.runtime.RepoValidationRuntime
 import skillbill.scaffold.runtime.requiredSupportingFilesForSkill
 import skillbill.scaffold.runtime.supportingFileTargets
+import skillbill.testing.seedConformingPlatformPack
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -58,6 +59,60 @@ class RepoValidationRuntimeTest {
     assertFalse(report.passed)
     assertTrue(report.issues.any { it.contains("skills/ directory is missing") })
     assertTrue(report.issues.any { it.contains("README.md is missing") })
+  }
+
+  @Test
+  fun `repo validation reports malformed platform review skill structure`() {
+    val repoRoot = Files.createTempDirectory("skillbill-invalid-review-shape")
+    createRepoValidationSkillFixture(repoRoot)
+    seedConformingPlatformPack(repoRoot, "invalid-review-shape")
+    Files.writeString(
+      repoRoot.resolve(
+        "platform-packs/invalid-review-shape/code-review/" +
+          "bill-invalid-review-shape-code-review-architecture/content.md",
+      ),
+      """
+      |---
+      |name: bill-invalid-review-shape-code-review-architecture
+      |description: Malformed architecture specialist fixture.
+      |internal-for: bill-code-review
+      |---
+      |
+      |# Malformed Architecture Specialist
+      |
+      |## Focus
+      |
+      |Missing the governed specialist skeleton.
+      |
+      """.trimMargin(),
+    )
+
+    val report = RepoValidationRuntime.validateRepo(repoRoot)
+
+    assertTrue(report.issues.any { it.contains("specialist H2 sequence") }, report.issues.joinToString("\n"))
+  }
+
+  @Test
+  fun `repo validation reports malformed native agent yaml as a typed platform issue`() {
+    val repoRoot = Files.createTempDirectory("skillbill-invalid-native-agent-yaml")
+    createRepoValidationSkillFixture(repoRoot)
+    seedConformingPlatformPack(repoRoot, "invalid-native-agent-yaml")
+    Files.writeString(
+      repoRoot.resolve(
+        "platform-packs/invalid-native-agent-yaml/code-review/" +
+          "bill-invalid-native-agent-yaml-code-review/native-agents/agents.yaml",
+      ),
+      "agents: [\n",
+    )
+
+    val report = RepoValidationRuntime.validateRepo(repoRoot)
+
+    assertTrue(
+      report.issues.any { issue ->
+        issue.contains("invalid-native-agent-yaml") && issue.contains("invalid native-agent source bundle")
+      },
+      report.issues.joinToString("\n"),
+    )
   }
 
   @Test

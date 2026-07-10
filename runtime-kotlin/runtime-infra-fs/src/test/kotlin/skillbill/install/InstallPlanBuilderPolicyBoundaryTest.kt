@@ -14,6 +14,7 @@ import skillbill.install.model.WindowsSymlinkDecision
 import skillbill.install.model.WindowsSymlinkPreflight
 import skillbill.install.model.WindowsSymlinkPreflightState
 import skillbill.install.runtime.InstallOperations
+import skillbill.testing.seedConformingPlatformPack
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
@@ -83,38 +84,7 @@ class InstallPlanBuilderPolicyBoundaryTest {
   }
 
   private fun seedPlatformPack(repoRoot: Path, slug: String) {
-    val codeReviewName = "bill-$slug-code-review"
-    val qualityCheckName = "bill-$slug-code-check"
-    val packRoot = repoRoot.resolve("platform-packs").resolve(slug)
-    Files.createDirectories(packRoot.resolve("code-review").resolve(codeReviewName))
-    Files.createDirectories(packRoot.resolve("quality-check").resolve(qualityCheckName))
-    Files.writeString(
-      packRoot.resolve("platform.yaml"),
-      """
-      |platform: "$slug"
-      |contract_version: "1.2"
-      |routing_signals:
-      |  strong:
-      |    - "$slug"
-      |  tie_breakers: []
-      |declared_code_review_areas: []
-      |declared_files:
-      |  baseline: "code-review/$codeReviewName/content.md"
-      |  areas: {}
-      |area_metadata: {}
-      |display_name: "$slug"
-      |declared_quality_check_file: "quality-check/$qualityCheckName/content.md"
-      |
-      """.trimMargin(),
-    )
-    Files.writeString(
-      packRoot.resolve("code-review").resolve(codeReviewName).resolve("content.md"),
-      content(codeReviewName),
-    )
-    Files.writeString(
-      packRoot.resolve("quality-check").resolve(qualityCheckName).resolve("content.md"),
-      content(qualityCheckName, internalFor = "bill-code-check"),
-    )
+    seedConformingPlatformPack(repoRoot, slug)
   }
 
   private fun content(name: String, internalFor: String? = null): String = buildString {

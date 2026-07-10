@@ -3,7 +3,7 @@ package skillbill.install
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.InstallApplyStatus
 import skillbill.install.runtime.InstallOperations
-import skillbill.scaffold.platformpack.discoverPlatformPacks
+import skillbill.scaffold.platformpack.loadPlatformManifest
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import kotlin.test.Test
@@ -30,11 +30,10 @@ class InstallApplyPlatformPackViewTest : InstallApplyTestSupport() {
     val packRoot = agentRoot.resolve("platform-packs/kotlin")
     assertTrue(Files.isRegularFile(agentRoot.resolve("platform-packs/.skill-bill-install")))
     assertTrue(Files.isRegularFile(packRoot.resolve("platform.yaml")), "installed pack manifest is missing")
-    assertEquals(listOf("kotlin"), discoverPlatformPacks(agentRoot.resolve("platform-packs")).map { pack -> pack.slug })
-    val flatCodeReview = readSymlinkTarget(agentRoot.resolve("bill-kotlin-code-review"))
-    val nestedCodeReview = readSymlinkTarget(packRoot.resolve("code-review/bill-kotlin-code-review"))
-    assertEquals(flatCodeReview, nestedCodeReview)
-    assertTrue(Files.isRegularFile(packRoot.resolve("code-review/bill-kotlin-code-review/content.md")))
+    assertEquals("kotlin", loadPlatformManifest(packRoot).slug)
+    assertFalse(Files.exists(agentRoot.resolve("bill-kotlin-code-review"), LinkOption.NOFOLLOW_LINKS))
+    assertFalse(Files.exists(packRoot.resolve("code-review/bill-kotlin-code-review"), LinkOption.NOFOLLOW_LINKS))
+    assertTrue(Files.isRegularFile(agentRoot.resolve("bill-code-review/bill-kotlin-code-review.md")))
     assertTrue(Files.isRegularFile(packRoot.resolve("quality-check/bill-kotlin-code-check/content.md")))
     assertFalse(
       Files.exists(agentRoot.resolve("platform-packs/kmp/platform.yaml"), LinkOption.NOFOLLOW_LINKS),
@@ -46,7 +45,7 @@ class InstallApplyPlatformPackViewTest : InstallApplyTestSupport() {
   fun `apply copies only declared internal quality check content into platform pack view`() {
     val fixture = setupApplyFixture()
     val qualityCheckDir = fixture.repoRoot.resolve("platform-packs/kotlin/quality-check/bill-kotlin-code-check")
-    Files.writeString(qualityCheckDir.resolve("notes.md"), "private implementation notes")
+    Files.writeString(qualityCheckDir.resolve("notes.txt"), "private implementation notes")
     Files.createDirectories(fixture.home.resolve(".codex"))
 
     val plan = InstallOperations.planInstall(
@@ -63,7 +62,7 @@ class InstallApplyPlatformPackViewTest : InstallApplyTestSupport() {
       .resolve("agent-skill-targets/codex/platform-packs/kotlin/quality-check/bill-kotlin-code-check")
     assertTrue(Files.isRegularFile(packQualityCheck.resolve("content.md")))
     assertFalse(
-      Files.exists(packQualityCheck.resolve("notes.md"), LinkOption.NOFOLLOW_LINKS),
+      Files.exists(packQualityCheck.resolve("notes.txt"), LinkOption.NOFOLLOW_LINKS),
       "platform-pack view must not expose undeclared files from internal skill source directories",
     )
   }
@@ -105,19 +104,6 @@ class InstallApplyPlatformPackViewTest : InstallApplyTestSupport() {
   @Test
   fun `apply succeeds when a selected platform pack skill declares internal-for and stages as a sidecar`() {
     val fixture = setupApplyFixture()
-    val internalPackSkillDir = fixture.repoRoot.resolve("platform-packs/kotlin/code-review/bill-kotlin-code-review")
-    Files.writeString(
-      internalPackSkillDir.resolve("content.md"),
-      """
-      |---
-      |name: bill-kotlin-code-review
-      |description: Internal pack dispatch target.
-      |internal-for: bill-code-review
-      |---
-      |
-      |Authored internal pack body.
-      """.trimMargin(),
-    )
     Files.createDirectories(fixture.home.resolve(".codex"))
 
     val plan = InstallOperations.planInstall(

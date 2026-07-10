@@ -294,7 +294,7 @@ object RepoValidationRuntime {
         .sorted()
         .forEach { packRoot ->
           try {
-            loadPlatformPack(packRoot)
+            loadPlatformPack(packRoot, enforceGovernedReviewStructure = true)
             validCount += 1
           } catch (error: ShellContentContractException) {
             issues += "platform-packs/${packRoot.name}: ${error.message}"

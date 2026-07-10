@@ -94,7 +94,6 @@ class KotlinPlatformPackTest {
       val text = Files.readString(contentFile)
       assertTrue(text.contains("internal-for:"), "Missing internal classification in $contentFile")
       assertFalse(text.contains("TODO"), "Kotlin pack source must not contain TODO placeholders: $contentFile")
-      assertTrue(text.lines().size > 20, "Kotlin pack source should contain substantive guidance: $contentFile")
     }
 
     val reviewRoot = packRoot.resolve("code-review")

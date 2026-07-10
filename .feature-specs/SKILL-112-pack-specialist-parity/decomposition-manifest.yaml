@@ -4,14 +4,14 @@ issue_key: "SKILL-112"
 feature_name: "pack-specialist-parity"
 parent_spec_path: ".feature-specs/SKILL-112-pack-specialist-parity/spec.md"
 spec_source: "local"
-status: "blocked"
+status: "complete"
 execution_model: "same_branch_commit_per_subtask"
 base_branch: "main"
 feature_branch: "feat/SKILL-112-pack-specialist-parity"
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 7
-  action: "blocked"
+  subtask_id: 0
+  action: "complete"
 subtasks:
 - id: 1
   name: "Code-review skill structure standard"
@@ -109,13 +109,12 @@ subtasks:
 - id: 7
   name: "iOS pack alignment"
   spec_path: ".feature-specs/SKILL-112-pack-specialist-parity/spec_subtask_7_ios_pack_alignment.md"
-  status: "blocked"
+  status: "complete"
   branch: null
   commit_sha: null
-  workflow_id: "wftr-20260710-192724-ygbg"
-  blocked_reason: "Goal status reconciliation closed stale running child 'wftr-20260710-192724-ygbg'\
-    \ for issue 'SKILL-112' subtask 7 in favor of authoritative blocked workflow 'wftr-20260710-185749-duou'."
-  last_resumable_step: "preplan"
+  workflow_id: "wftr-20260710-193028-tfih"
+  blocked_reason: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -126,12 +125,12 @@ subtasks:
 - id: 8
   name: "Conformance gate retirement and final verification"
   spec_path: ".feature-specs/SKILL-112-pack-specialist-parity/spec_subtask_8_conformance_gate.md"
-  status: "pending"
+  status: "complete"
   branch: null
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wftr-20260710-204130-xncc"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []

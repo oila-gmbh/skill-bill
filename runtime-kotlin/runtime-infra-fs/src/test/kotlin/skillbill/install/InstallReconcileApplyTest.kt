@@ -202,8 +202,8 @@ class InstallReconcileApplyTest : InstallApplyTestSupport() {
     val baseline = baselineFromUpstream(upstream, home)
 
     val packPath = "platform-packs/kotlin/code-review/bill-kotlin-code-review/content.md"
-    Files.writeString(upstream.resolve(packPath), content("bill-kotlin-code-review") + "\nUPSTREAM\n")
-    val localBytes = content("bill-kotlin-code-review") + "\nLOCAL\n"
+    Files.writeString(upstream.resolve(packPath), Files.readString(upstream.resolve(packPath)) + "\nUPSTREAM\n")
+    val localBytes = Files.readString(local.resolve(packPath)) + "\nLOCAL\n"
     Files.writeString(local.resolve(packPath), localBytes)
 
     assertFailsWith<ReconciliationApplyRefusedError> {

@@ -10,6 +10,7 @@ import skillbill.scaffold.platformpack.discoverPlatformPackManifests
 import skillbill.scaffold.platformpack.loadQualityCheckContent
 import skillbill.scaffold.platformpack.validatePlatformPack
 import skillbill.scaffold.runtime.SHELL_CONTRACT_VERSION
+import skillbill.scaffold.validation.ReviewSkillStructureValidator
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
@@ -72,14 +73,19 @@ internal fun validateInstallPlanInternalSkills(skills: List<InstallPlanSkill>) {
 }
 
 internal fun platformSkills(manifest: PlatformManifest): List<InstallPlanSkill> {
-  validatePlatformPack(manifest, SHELL_CONTRACT_VERSION)
-  manifest.declaredQualityCheckFile?.let { loadQualityCheckContent(manifest) }
   val contentFiles = listOfNotNull(
     manifest.declaredFiles.baseline,
     manifest.declaredQualityCheckFile,
   ) + manifest.declaredFiles.areas.values
-  return contentFiles
-    .map { contentFile -> platformSkillDir(manifest, contentFile) }
+  val skillDirs = contentFiles.map { contentFile -> platformSkillDir(manifest, contentFile) }
+  val duplicateSkillDir = skillDirs.groupingBy { it }.eachCount().entries.firstOrNull { it.value > 1 }?.key
+  require(duplicateSkillDir == null) {
+    "Platform pack '${manifest.slug}' produces duplicate skill name '${duplicateSkillDir?.fileName}'."
+  }
+  validatePlatformPack(manifest, SHELL_CONTRACT_VERSION)
+  manifest.declaredQualityCheckFile?.let { loadQualityCheckContent(manifest) }
+  ReviewSkillStructureValidator.validate(manifest.packRoot)
+  return skillDirs
     .sortedBy { skillDir -> skillDir.fileName.toString() }
     .map { skillDir ->
       InstallPlanSkill(
@@ -98,6 +104,9 @@ private fun platformSkillDir(manifest: PlatformManifest, contentFile: Path): Pat
   require(resolvedContentFile.startsWith(resolvedPackRoot)) {
     "Platform pack '${manifest.slug}' declared content file '$resolvedContentFile' escapes packRoot " +
       "'$resolvedPackRoot'."
+  }
+  if (!Files.exists(resolvedContentFile, LinkOption.NOFOLLOW_LINKS)) {
+    return resolvedContentFile.parent
   }
   val realPackRoot = manifest.packRoot.toRealPath()
   val realContentFile = contentFile.toRealPath()

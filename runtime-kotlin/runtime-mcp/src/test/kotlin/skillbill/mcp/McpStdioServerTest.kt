@@ -128,6 +128,20 @@ class McpStdioServerTest {
       tools.schemaFor("feature_task_prose_workflow_update").properties().enumFor("workflow_status"),
     )
     assertEquals(
+      listOf(
+        "collect_inputs",
+        "extract_criteria",
+        "gather_diff",
+        "feature_flag_audit",
+        "code_review",
+        "unit_test_value_check",
+        "completeness_audit",
+        "verdict",
+        "finish",
+      ),
+      tools.schemaFor("feature_verify_workflow_update").properties().enumFor("current_step_id"),
+    )
+    assertEquals(
       setOf("workflow_id", "issue_key", "subtask_id"),
       tools.schemaFor("feature_task_prose_workflow_continue").properties().keys,
     )

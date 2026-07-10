@@ -293,9 +293,19 @@ class InternalSkillSidecarCollisionError(
 ) : ShellContentContractException(
   "Internal skill '$internalSkillName' cannot be staged as sidecar " +
     "'$sidecarRelativePath' inside parent '$parentSkillName' skill directory: " +
-    "an authored file already occupies that path. Rename or remove the authored file.",
+    "another staged or authored file already claims that path. Rename or remove the conflicting file.",
   cause,
 )
+
+class InvalidAuthoredSkillSidecarError(
+  message: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(message, cause)
+
+class InvalidReviewSkillStructureError(
+  message: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(message, cause)
 
 class MissingContentFileError(
   message: String,

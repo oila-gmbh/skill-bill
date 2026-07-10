@@ -988,7 +988,7 @@ private fun stagePlatformPackSkills(
   stageFile(
     txn,
     baselineSkillPath.resolve("content.md"),
-    renderContentBody(baselineContext, baselineDescription),
+    renderContentBody(baselineContext, baselineDescription, internalFor = "bill-code-review"),
   )
 
   val qualityCheckContext =
@@ -1020,7 +1020,7 @@ private fun stagePlatformPackArea(
   stageFile(
     txn,
     areaPath.resolve("content.md"),
-    renderContentBody(areaContext, areaDescription),
+    renderContentBody(areaContext, areaDescription, internalFor = "bill-code-review"),
   )
   return emptyList()
 }

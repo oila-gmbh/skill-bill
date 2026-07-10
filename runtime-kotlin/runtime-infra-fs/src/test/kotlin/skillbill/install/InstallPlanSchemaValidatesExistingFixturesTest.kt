@@ -18,6 +18,7 @@ import skillbill.install.model.WindowsSymlinkPreflight
 import skillbill.install.model.WindowsSymlinkPreflightState
 import skillbill.install.model.buildInstallPlanWireMap
 import skillbill.install.runtime.InstallOperations
+import skillbill.testing.seedConformingPlatformPack
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
@@ -136,49 +137,7 @@ class InstallPlanSchemaValidatesExistingFixturesTest {
   }
 
   private fun seedPlatformPack(repoRoot: Path, slug: String, areaNames: List<String>) {
-    val codeReviewName = "bill-$slug-code-review"
-    val qualityCheckName = "bill-$slug-code-check"
-    val packRoot = repoRoot.resolve("platform-packs").resolve(slug)
-    val areaSkillNames = areaNames.associateWith { area -> "bill-$slug-code-review-$area" }
-    val declaredAreas = areaNames.joinToString("") { area -> "\n  - $area" }
-    val declaredAreaFiles = areaSkillNames.entries.joinToString("") { (area, skillName) ->
-      "\n    $area: \"code-review/$skillName/content.md\""
-    }
-    Files.createDirectories(packRoot.resolve("code-review").resolve(codeReviewName))
-    areaSkillNames.values.forEach { skillName ->
-      Files.createDirectories(packRoot.resolve("code-review").resolve(skillName))
-    }
-    Files.createDirectories(packRoot.resolve("quality-check").resolve(qualityCheckName))
-    Files.writeString(
-      packRoot.resolve("platform.yaml"),
-      """
-      |platform: "$slug"
-      |contract_version: "1.2"
-      |routing_signals:
-      |  strong:
-      |    - "$slug"
-      |  tie_breakers: []
-      |declared_code_review_areas:$declaredAreas
-      |declared_files:
-      |  baseline: "code-review/$codeReviewName/content.md"
-      |  areas:$declaredAreaFiles
-      |area_metadata: {}
-      |display_name: "$slug"
-      |declared_quality_check_file: "quality-check/$qualityCheckName/content.md"
-      |
-      """.trimMargin(),
-    )
-    Files.writeString(
-      packRoot.resolve("code-review").resolve(codeReviewName).resolve("content.md"),
-      content(codeReviewName),
-    )
-    areaSkillNames.values.forEach { skillName ->
-      Files.writeString(packRoot.resolve("code-review").resolve(skillName).resolve("content.md"), content(skillName))
-    }
-    Files.writeString(
-      packRoot.resolve("quality-check").resolve(qualityCheckName).resolve("content.md"),
-      content(qualityCheckName, internalFor = "bill-code-check"),
-    )
+    seedConformingPlatformPack(repoRoot, slug, areaNames)
   }
 
   private fun content(name: String, internalFor: String? = null): String = buildString {

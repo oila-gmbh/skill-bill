@@ -185,6 +185,10 @@ class ScaffoldServiceParityTest {
     val manifest = Files.readString(repo.resolve("platform-packs/java/platform.yaml"))
 
     assertEquals("platform-pack", result.kind)
+    assertContains(
+      Files.readString(repo.resolve("platform-packs/java/code-review/bill-java-code-review/content.md")),
+      "internal-for: bill-code-review",
+    )
     APPROVED_CODE_REVIEW_AREAS.sorted().forEach { area ->
       assertTrue(
         Files.isRegularFile(repo.resolve("platform-packs/java/code-review/bill-java-code-review-$area/content.md")),
@@ -195,6 +199,7 @@ class ScaffoldServiceParityTest {
       val specialist = Files.readString(
         repo.resolve("platform-packs/java/code-review/bill-java-code-review-$area/content.md"),
       )
+      assertContains(specialist, "internal-for: bill-code-review")
       assertContains(specialist, canonicalSeverityCloser(area))
     }
     assertComposedSourceBundle(
@@ -698,6 +703,7 @@ private fun seedRepo(): Path {
     Files.writeString(target, "# ${target.fileName}\n")
   }
   seedBaseSkill(repo, "bill-code-check")
+  seedBaseSkill(repo, "bill-code-review")
   seedKotlinPack(repo)
   seedKmpPack(repo)
   return repo

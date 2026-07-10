@@ -20,6 +20,7 @@ class ScaffoldReviewStructureAcceptanceTest {
     scaffold(reviewStructurePayload(repo, "platform-pack", "platform" to "java"))
 
     val pack = repo.resolve("platform-packs/java")
+    assertSpecialistPointers(pack)
     assertBaseline(pack)
     assertQualityCheck(pack)
     assertNativeAgents(pack)
@@ -29,6 +30,7 @@ class ScaffoldReviewStructureAcceptanceTest {
       val content = Files.readString(
         pack.resolve("code-review/bill-java-code-review-$area/content.md"),
       )
+      assertContains(content, "internal-for: bill-code-review")
       assertEquals(
         listOf("Focus", "Ignore", "Applicability", "Project-Specific Rules"),
         content.lineSequence().filter { it.startsWith("## ") }.map { it.removePrefix("## ") }.toList(),
@@ -48,6 +50,7 @@ class ScaffoldReviewStructureAcceptanceTest {
 
   private fun assertBaseline(pack: Path) {
     val content = Files.readString(pack.resolve("code-review/bill-java-code-review/content.md"))
+    assertContains(content, "internal-for: bill-code-review")
     assertEquals(
       listOf("Classification Rules", "Diff-Signal Routing Table", "Mixed Diffs", "Finding Discipline"),
       headings(content),
@@ -66,6 +69,7 @@ class ScaffoldReviewStructureAcceptanceTest {
 
   private fun assertQualityCheck(pack: Path) {
     val content = Files.readString(pack.resolve("quality-check/bill-java-code-check/content.md"))
+    assertContains(content, "internal-for: bill-code-check")
     assertEquals(listOf("Purpose", "Execution Steps", "Fix Strategy"), headings(content))
     assertContains(content, "files in scope")
     assertContains(content, "build files, wrappers, and CI configuration before falling back")
@@ -87,6 +91,28 @@ class ScaffoldReviewStructureAcceptanceTest {
           "Returns a Risk Register in the F-XXX bullet format.",
         description,
       )
+    }
+  }
+
+  private fun assertSpecialistPointers(pack: Path) {
+    val manifest = Yaml().load<Map<String, Any?>>(Files.readString(pack.resolve("platform.yaml")))
+    val pointers = manifest.getValue("pointers") as Map<*, *>
+    val expected = listOf(
+      mapOf(
+        "name" to "review-orchestrator.md",
+        "target" to "orchestration/review-orchestrator/PLAYBOOK.md",
+      ),
+      mapOf(
+        "name" to "shell-ceremony.md",
+        "target" to "orchestration/shell-content-contract/shell-ceremony.md",
+      ),
+      mapOf(
+        "name" to "telemetry-contract.md",
+        "target" to "orchestration/telemetry-contract/PLAYBOOK.md",
+      ),
+    )
+    APPROVED_CODE_REVIEW_AREAS.forEach { area ->
+      assertEquals(expected, pointers["code-review/bill-java-code-review-$area"])
     }
   }
 

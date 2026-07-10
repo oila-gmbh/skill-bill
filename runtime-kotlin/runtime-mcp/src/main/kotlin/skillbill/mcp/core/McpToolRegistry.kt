@@ -318,6 +318,7 @@ object McpToolRegistry {
           "gather_diff",
           "feature_flag_audit",
           "code_review",
+          "unit_test_value_check",
           "completeness_audit",
           "verdict",
           "finish",

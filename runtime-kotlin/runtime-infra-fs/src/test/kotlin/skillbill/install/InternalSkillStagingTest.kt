@@ -1,6 +1,7 @@
 package skillbill.install
 
 import skillbill.error.InternalSkillSidecarCollisionError
+import skillbill.error.InvalidAuthoredSkillSidecarError
 import skillbill.error.InvalidInternalSkillClassificationError
 import skillbill.install.apply.nativeAgentSourceRoots
 import skillbill.install.apply.standaloneInstallableSkills
@@ -10,8 +11,12 @@ import skillbill.install.model.InstallPlanSkillKind
 import skillbill.install.plan.InstallContext
 import skillbill.install.plan.installSkill
 import skillbill.install.plan.uninstallTargets
+import skillbill.install.staging.InternalSidecarCompanion
+import skillbill.install.staging.InternalSidecarTarget
 import skillbill.install.staging.discoverInternalSidecarTargets
+import skillbill.install.staging.promoteInstallStagingDir
 import skillbill.install.staging.stageInstalledSkill
+import skillbill.install.staging.validateInternalSidecarFileNames
 import skillbill.install.staging.writeInternalSidecarFiles
 import skillbill.scaffold.authoring.renderWrapper
 import skillbill.scaffold.authoring.resolveTarget
@@ -529,6 +534,11 @@ class InternalSkillStagingTest {
       Files.readString(sidecar),
       "pack sidecar must carry the same full governed wrapper a listed pack skill would render",
     )
+    listOf("review-orchestrator.md", "specialist-contract.md").forEach { name ->
+      val stagedPointer = rendered.stagingDir.resolve(name)
+      assertTrue(Files.isRegularFile(stagedPointer, LinkOption.NOFOLLOW_LINKS), "missing child pointer $name")
+      assertTrue(stagedPointer in rendered.renderedPointerFiles, "$name must be reported as a rendered pointer")
+    }
   }
 
   @Test
@@ -611,6 +621,28 @@ class InternalSkillStagingTest {
   }
 
   @Test
+  fun `cache reuse re-renders an externally deleted child support pointer`() {
+    val fixture = setupParentWithInternalPackChild()
+    val first = stageInstalledSkill(
+      fixture.repoRoot,
+      fixture.parentDir,
+      fixture.home,
+      selectedPackSkills = listOf(fixture.packChildPlanSkill),
+    )
+    Files.delete(first.stagingDir.resolve("specialist-contract.md"))
+
+    val second = stageInstalledSkill(
+      fixture.repoRoot,
+      fixture.parentDir,
+      fixture.home,
+      selectedPackSkills = listOf(fixture.packChildPlanSkill),
+    )
+
+    assertEquals(first.contentHash, second.contentHash)
+    assertTrue(Files.isRegularFile(second.stagingDir.resolve("specialist-contract.md")))
+  }
+
+  @Test
   fun `selected pack child authored companion installs flat beside its rendered wrapper`() {
     val fixture = setupParentWithInternalPackChild()
     val companionSource = fixture.packChildDir.resolve("compose-guidelines.md")
@@ -669,6 +701,11 @@ class InternalSkillStagingTest {
   fun `authored companion bytes invalidate hash and missing companion is restored`() {
     val fixture = setupParentWithInternalPackChild()
     val companionSource = fixture.packChildDir.resolve("review-guidelines.md")
+    Files.writeString(
+      fixture.packChildContentFile,
+      Files.readString(fixture.packChildContentFile) +
+        "\nRead [review-guidelines.md](review-guidelines.md) for the governed rubric.\n",
+    )
     Files.writeString(companionSource, "first rubric\n")
 
     val first = stageInstalledSkill(
@@ -700,11 +737,22 @@ class InternalSkillStagingTest {
   @Test
   fun `unselected companion is inert and companion collision with wrapper fails loudly`() {
     val fixture = setupParentWithInternalPackChild()
+    Files.writeString(
+      fixture.packChildContentFile,
+      Files.readString(fixture.packChildContentFile) +
+        "\nRead [compose-guidelines.md](compose-guidelines.md) for the governed rubric.\n",
+    )
     Files.writeString(fixture.packChildDir.resolve("compose-guidelines.md"), "rubric\n")
 
     val unselected = stageInstalledSkill(fixture.repoRoot, fixture.parentDir, fixture.home)
     assertFalse(Files.exists(unselected.stagingDir.resolve("compose-guidelines.md")))
 
+    Files.delete(fixture.packChildDir.resolve("compose-guidelines.md"))
+    Files.writeString(
+      fixture.packChildContentFile,
+      Files.readString(fixture.packChildContentFile).substringBefore("\nRead [compose-guidelines.md]") +
+        "\nRead [${fixture.packChildName}.md](${fixture.packChildName}.md) for the governed rubric.\n",
+    )
     Files.writeString(fixture.packChildDir.resolve("${fixture.packChildName}.md"), "collision\n")
     val error = assertFailsWith<InternalSkillSidecarCollisionError> {
       stageInstalledSkill(
@@ -715,6 +763,75 @@ class InternalSkillStagingTest {
       )
     }
     assertEquals("${fixture.packChildName}.md", error.sidecarRelativePath)
+  }
+
+  @Test
+  fun `authored companion must be one linked non-reserved rubric`() {
+    val fixture = setupParentWithInternalPackChild()
+    Files.writeString(fixture.packChildDir.resolve("patterns.md"), "organization notes\n")
+
+    assertFailsWith<InvalidAuthoredSkillSidecarError> {
+      stageInstalledSkill(
+        fixture.repoRoot,
+        fixture.parentDir,
+        fixture.home,
+        selectedPackSkills = listOf(fixture.packChildPlanSkill),
+      )
+    }
+
+    Files.delete(fixture.packChildDir.resolve("patterns.md"))
+    Files.writeString(
+      fixture.packChildContentFile,
+      Files.readString(fixture.packChildContentFile) +
+        "\nRead [Review-Orchestrator.md](Review-Orchestrator.md) for the governed rubric.\n",
+    )
+    Files.writeString(fixture.packChildDir.resolve("Review-Orchestrator.md"), "override\n")
+    assertFailsWith<InvalidAuthoredSkillSidecarError> {
+      stageInstalledSkill(
+        fixture.repoRoot,
+        fixture.parentDir,
+        fixture.home,
+        selectedPackSkills = listOf(fixture.packChildPlanSkill),
+      )
+    }
+  }
+
+  @Test
+  fun `portable collision validation rejects companions claimed by two children`() {
+    val parent = Files.createTempDirectory("skillbill-sidecar-collision-parent").also(tempDirs::add)
+    val first = InternalSidecarTarget(
+      skillName = "bill-first",
+      sourceDir = parent,
+      renderedWrapper = "first",
+      authoredCompanions = listOf(InternalSidecarCompanion("Rubric.md", byteArrayOf(1))),
+    )
+    val second = InternalSidecarTarget(
+      skillName = "bill-second",
+      sourceDir = parent,
+      renderedWrapper = "second",
+      authoredCompanions = listOf(InternalSidecarCompanion("rubric.md", byteArrayOf(2))),
+    )
+
+    val error = assertFailsWith<InternalSkillSidecarCollisionError> {
+      validateInternalSidecarFileNames(parent, listOf(first, second))
+    }
+
+    assertEquals("rubric.md", error.sidecarRelativePath)
+  }
+
+  @Test
+  fun `failed replacement restores the previous staging directory`() {
+    val root = Files.createTempDirectory("skillbill-staging-restore").also(tempDirs::add)
+    val finalDir = root.resolve("bill-feature-hash")
+    Files.createDirectories(finalDir)
+    Files.writeString(finalDir.resolve("SKILL.md"), "healthy\n")
+
+    assertFailsWith<java.io.IOException> {
+      promoteInstallStagingDir(root.resolve("missing-temp"), finalDir)
+    }
+
+    assertEquals("healthy\n", Files.readString(finalDir.resolve("SKILL.md")))
+    assertTrue(Files.list(root).use { paths -> paths.noneMatch { it.fileName.toString().contains(".backup-") } })
   }
 
   @Test
@@ -1024,6 +1141,12 @@ class InternalSkillStagingTest {
       |area_metadata: {}
       |display_name: "$slug"
       |declared_quality_check_file: "quality-check/$qualityCheckName/content.md"
+      |pointers:
+      |  code-review/$codeReviewName:
+      |    - name: review-orchestrator.md
+      |      target: orchestration/review-orchestrator/PLAYBOOK.md
+      |    - name: specialist-contract.md
+      |      target: orchestration/review-orchestrator/specialist-contract.md
       |
       """.trimMargin(),
     )
