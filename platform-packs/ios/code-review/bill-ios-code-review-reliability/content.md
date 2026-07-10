@@ -22,7 +22,7 @@ Review only issues that affect production reliability of background and sync-cri
 
 ## Applicability
 
-Use this specialist for background sync and any interceptor/chain-of-responsibility-style composition that wraps sync operations with cross-cutting stages (e.g. read, write, permission-checking, and utility/logging stages).
+Use this specialist for general iOS background execution using `BGTaskScheduler`, `beginBackgroundTask`, background `URLSession`, relaunch recovery, expiration handling, or work interrupted by termination. Also use it for background sync and any interceptor/chain-of-responsibility-style composition that wraps sync operations with cross-cutting stages (e.g. read, write, permission-checking, and utility/logging stages).
 
 ## Project-Specific Rules
 

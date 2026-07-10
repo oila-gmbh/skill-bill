@@ -23,7 +23,7 @@ Review only high-signal platform-correctness issues.
 
 ## Applicability
 
-Use this specialist wherever the project's unidirectional-data-flow pattern (a `{Feature}Store`/`Action`/`Environment`-shaped store, or equivalent) drives feature state, and wherever Combine (or an equivalent reactive pipeline) issues effects that ultimately mutate state or update the UI.
+Use this specialist for general Swift Concurrency code that uses actors, tasks, continuations, `Sendable`, or actor-isolated state. Also use it wherever the project's unidirectional-data-flow pattern (a `{Feature}Store`/`Action`/`Environment`-shaped store, or equivalent) drives feature state, and wherever Combine (or an equivalent reactive pipeline) issues effects that ultimately mutate state or update the UI.
 
 ## Project-Specific Rules
 

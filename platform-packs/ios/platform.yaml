@@ -5,7 +5,9 @@ display_name: "iOS"
 routing_signals:
   strong:
     - ".xcodeproj"
+    - "*.xcodeproj"
     - ".xcworkspace"
+    - "*.xcworkspace"
     - ".swift"
     - "*.swift"
     - "project.pbxproj"
