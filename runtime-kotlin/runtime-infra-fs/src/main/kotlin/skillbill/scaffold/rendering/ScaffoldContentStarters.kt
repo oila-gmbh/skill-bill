@@ -161,9 +161,14 @@ internal fun baselineReviewContent(summary: String): String = buildString {
   appendLine()
   appendLine("Keep the baseline specialists for the whole review and use lightweight file-level classification.")
   appendLine("Exclude generated, vendored, and non-stack-owned files from every specialist's scope.")
+  appendLine(
+    "When selected specialists exceed worker capacity, run them in deterministic waves " +
+      "and retain every selected specialist result.",
+  )
   appendLine()
   appendLine("## Finding Discipline")
   appendLine()
   appendLine("Calibrate severity and verify each finding's preconditions before reporting it.")
-  appendLine("Keep findings attributed to their specialist lane, then deduplicate overlapping findings.")
+  appendLine("Keep findings attributed to their specialist lane through merge.")
+  appendLine("Deduplicate overlapping findings without losing evidence.")
 }

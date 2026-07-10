@@ -55,8 +55,10 @@ class ScaffoldReviewStructureAcceptanceTest {
     assertContains(content, "Keep the baseline specialists for the whole review")
     assertContains(content, "lightweight file-level classification")
     assertContains(content, "generated, vendored, and non-stack-owned files")
+    assertContains(content, "deterministic waves and retain every selected specialist result")
     assertContains(content, "Calibrate severity and verify each finding's preconditions")
-    assertContains(content, "attributed to their specialist lane, then deduplicate")
+    assertContains(content, "attributed to their specialist lane through merge")
+    assertContains(content, "Deduplicate overlapping findings without losing evidence")
     APPROVED_CODE_REVIEW_AREAS.forEach { area ->
       assertContains(content, "-> `$area` specialist.")
     }

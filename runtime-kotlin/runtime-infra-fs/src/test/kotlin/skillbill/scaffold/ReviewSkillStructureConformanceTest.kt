@@ -127,6 +127,10 @@ class ReviewSkillStructureConformanceTest {
       droppedSelectedResults,
       "selected specialist result retention",
     )
+    assertFindingMergeNegativeFixtures(pack)
+  }
+
+  private fun assertFindingMergeNegativeFixtures(pack: Path) {
     assertContentRuleViolation(
       pack,
       "code-review/bill-fixture-code-review/content.md",
@@ -207,7 +211,7 @@ class ReviewSkillStructureConformanceTest {
 
   internal fun structureViolations(pack: Path): List<StructureViolation> {
     val exemptions = setOf("ios", "python")
-    val qualityCheckExemptions = setOf("php")
+    val qualityCheckExemptions = emptySet<String>()
     // SKILL-112 subtasks 2-7 remove one pack each; subtask 8 removes this mechanism.
     if (pack.name == "platform-packs") {
       return Files.list(pack).use { packDirectories ->
@@ -520,20 +524,6 @@ class ReviewSkillStructureConformanceTest {
     Files.delete(sidecar)
   }
 
-  private fun containsAll(content: String, vararg fragments: String): Boolean =
-    fragments.all { content.contains(it, ignoreCase = true) }
-
-  private fun h2Section(content: String, heading: String): String =
-    content.substringAfter("## $heading", "").substringBefore("\n## ")
-
-  private fun orderedFragments(content: String, vararg fragments: String): Boolean {
-    val normalized = content.lowercase()
-    return fragments.fold(-1) { previousIndex, fragment ->
-      if (previousIndex == Int.MIN_VALUE) return@fold Int.MIN_VALUE
-      normalized.indexOf(fragment.lowercase(), previousIndex + 1).takeIf { it >= 0 } ?: Int.MIN_VALUE
-    } != Int.MIN_VALUE
-  }
-
   private fun hasCanonicalSeverityCloser(file: Path, content: String): Boolean {
     val rules = content.substringAfter("## Project-Specific Rules", "").substringBefore("\n## ")
     val finalRule = rules.lineSequence().map(String::trim).filter { it.startsWith("- ") }.lastOrNull()
@@ -673,19 +663,33 @@ class ReviewSkillStructureConformanceTest {
   internal data class StructureViolation(val path: Path, val rule: String) {
     override fun toString(): String = "$path: $rule"
   }
+}
 
-  private companion object {
-    val allowedSeverities = setOf("Blocker", "Major", "Minor")
-    val generatedSidecarNames = setOf(
-      "review-orchestrator.md",
-      "review-delegation.md",
-      "review-scope.md",
-      "shell-ceremony.md",
-      "specialist-contract.md",
-      "stack-routing.md",
-      "telemetry-contract.md",
-    )
-    val fixtureManifest = """
+private fun containsAll(content: String, vararg fragments: String): Boolean =
+  fragments.all { content.contains(it, ignoreCase = true) }
+
+private fun h2Section(content: String, heading: String): String =
+  content.substringAfter("## $heading", "").substringBefore("\n## ")
+
+private fun orderedFragments(content: String, vararg fragments: String): Boolean {
+  val normalized = content.lowercase()
+  return fragments.fold(-1) { previousIndex, fragment ->
+    if (previousIndex == Int.MIN_VALUE) return@fold Int.MIN_VALUE
+    normalized.indexOf(fragment.lowercase(), previousIndex + 1).takeIf { it >= 0 } ?: Int.MIN_VALUE
+  } != Int.MIN_VALUE
+}
+
+private val allowedSeverities = setOf("Blocker", "Major", "Minor")
+private val generatedSidecarNames = setOf(
+  "review-orchestrator.md",
+  "review-delegation.md",
+  "review-scope.md",
+  "shell-ceremony.md",
+  "specialist-contract.md",
+  "stack-routing.md",
+  "telemetry-contract.md",
+)
+private val fixtureManifest = """
       platform: fixture
       display_name: Fixture
       routing_signals:
@@ -706,8 +710,8 @@ class ReviewSkillStructureConformanceTest {
       pointers:
         code-review/bill-fixture-code-review: []
         code-review/bill-fixture-code-review-security: []
-    """.trimIndent()
-    val fixtureBaseline = """
+""".trimIndent()
+private val fixtureBaseline = """
       ## Classification Rules
 
       If fixture source dominates, select the fixture pack. Otherwise select the adjacent pack.
@@ -726,8 +730,8 @@ class ReviewSkillStructureConformanceTest {
 
       Calibrate severity and verify each precondition. Keep findings attributed through merge.
       Deduplicate overlaps without losing evidence.
-    """.trimIndent()
-    val fixtureSpecialist = """
+""".trimIndent()
+private val fixtureSpecialist = """
       ## Focus
 
       Focus.
@@ -746,13 +750,13 @@ class ReviewSkillStructureConformanceTest {
 
       - Verify `FixtureApi` boundaries and reject failure paths that violate its invariant.
       - For Blocker or Major findings, describe the concrete authorization-bypass or data-exposure scenario.
-    """.trimIndent()
-    val fixtureAgents = """
+""".trimIndent()
+private val fixtureAgents = """
       agents:
         - name: bill-fixture-code-review-security
           description: "Fixture security specialist code reviewer. Runs against Fixture security boundaries for .fixture sources. Returns a Risk Register in the F-XXX bullet format."
-    """.trimIndent()
-    val fixtureQualityCheck = """
+""".trimIndent()
+private val fixtureQualityCheck = """
       ## Purpose
 
       Check fixture changes.
@@ -766,141 +770,139 @@ class ReviewSkillStructureConformanceTest {
 
       Follow the priority-ordered fix ladder and never suppress failures. Re-run targeted checks after fixes.
       Escalate to the full suite when targeted checks cannot establish safety.
-    """.trimIndent()
+""".trimIndent()
 
-    val vagueClassificationBaseline = fixtureBaseline.replace(
-      "If fixture source dominates, select the fixture pack. Otherwise select the adjacent pack.",
-      "Classify the project.",
-    )
-    val misplacedClassificationBaseline = vagueClassificationBaseline.replace(
-      "Calibrate severity and verify each precondition.",
-      "If fixture source dominates, select the fixture pack. Otherwise select the adjacent pack. " +
-        "Calibrate severity and verify each precondition.",
-    )
-    val vagueRoutingBaseline = fixtureBaseline.replace(
-      "- Authentication or sensitive-data changes -> `security` specialist.",
-      "Route code files to the relevant specialist.",
-    )
-    val mixedDiffDropsLanes = fixtureBaseline.replace(
-      "Keep the baseline specialists for the whole review",
-      "Replace the baseline specialists after classification",
-    )
-    val unscopedBaseline = fixtureBaseline.replace("generated, vendored, and non-stack", "irrelevant")
-    val undisciplinedBaseline = fixtureBaseline.replace(
-      "Calibrate severity and verify each precondition.",
-      "Merge the findings.",
-    )
-    val nondeterministicWaveBatching = fixtureBaseline.replace(
-      "run them in deterministic waves",
-      "run them as capacity allows",
-    )
-    val droppedSelectedResults = fixtureBaseline.replace(
-      "retain every selected specialist result",
-      "keep completed results",
-    )
-    val unattributedFindingMerge = fixtureBaseline.replace(
-      "Keep findings attributed through merge.",
-      "Merge findings.",
-    )
-    val lossyFindingDeduplication = fixtureBaseline.replace(
-      "Deduplicate overlaps without losing evidence.",
-      "Deduplicate overlaps.",
-    )
-    val vagueSpecialist = fixtureSpecialist.replace(
-      "Verify `FixtureApi` boundaries and reject failure paths that violate its invariant.",
-      "Consider API topics and general risks.",
-    )
-    val misplacedSpecialistRule = vagueSpecialist.replace(
-      "Focus.",
-      "Verify `FixtureApi` boundaries and reject failure paths that violate its invariant.",
-    )
-    val siblingInvokingSpecialist = fixtureSpecialist.replace(
-      "Verify `FixtureApi` boundaries and reject failure paths that violate its invariant.",
-      "Verify `FixtureApi` boundaries and invoke bill-fixture-code-review-testing for failures.",
-    )
-    val misplacedSeverityCloser = fixtureSpecialist + "\n- End with a noncanonical rule."
-    val wrongAreaSeverityCloser = fixtureSpecialist.replace(
-      canonicalSeverityCloser("security"),
-      canonicalSeverityCloser("persistence"),
-    )
-    val shallowQualityCheck = fixtureQualityCheck.replace(
-      "Discover commands from build files, wrappers, and CI configuration before falling back to defaults.",
-      "Run configured commands.",
-    )
-    val misplacedQualityCheckDiscovery = shallowQualityCheck.replace(
-      "Check fixture changes.",
-      "Discover commands from build files, wrappers, and CI configuration before falling back to defaults.",
-    )
-    val defaultFirstQualityCheck = fixtureQualityCheck.replace(
-      "Discover commands from build files, wrappers, and CI configuration before falling back to defaults.",
-      "Fall back to defaults before checking build files, wrappers, and CI configuration.",
-    )
-    val unscopedQualityCheck = fixtureQualityCheck.replace(
-      "Determine the files in scope.",
-      "Check the repository.",
-    )
-    val noEntrypointQualityCheck = fixtureQualityCheck.replace(
-      "Run the pack's quality-check entrypoint and capture failures.",
-      "Run arbitrary commands.",
-    )
-    val suppressingQualityCheck = fixtureQualityCheck.replace(
-      "Follow the priority-ordered fix ladder and never suppress failures.",
-      "Suppress failures when convenient.",
-    )
-    val noTargetedRerunQualityCheck = fixtureQualityCheck.replace(
-      "Re-run targeted checks after fixes.",
-      "Do not rerun checks.",
-    )
-    val unconditionalFullSuiteQualityCheck = fixtureQualityCheck.replace(
-      "Escalate to the full suite when targeted checks cannot establish safety.",
-      "Always run the full suite.",
-    )
-    val missingDeclaredAreaManifest = fixtureManifest.replace(
-      "declared_code_review_areas: [security]",
-      "declared_code_review_areas: []",
-    )
-    val genericAreaMetadataManifest = fixtureManifest.replace(
-      "Fixture security boundaries for .fixture sources",
-      "Fixture secrets handling, auth, and sensitive-data exposure",
-    )
-    val bareOnlyRoutingManifest = fixtureManifest.replace("[\".fixture\", \"*.fixture\"]", "[\".fixture\"]")
-    val globOnlyRoutingManifest = fixtureManifest.replace("[\".fixture\", \"*.fixture\"]", "[\"*.fixture\"]")
-    val noPositiveDominanceManifest = fixtureManifest.replace(
-      "Prefer Fixture when Fixture source signals dominate the changed product surface.",
-      "Select Fixture for Fixture files.",
-    )
-    val noAdjacentDisambiguationManifest = fixtureManifest.replace(
-      "Do not prefer Fixture when an adjacent pack's declared signals dominate.",
-      "Do not prefer Fixture for ambiguous files.",
-    )
-    val noGeneratedExclusionManifest = fixtureManifest.replace(
-      "Exclude generated and vendored files from dominance scoring.",
-      "Exclude vendored files from dominance scoring.",
-    )
-    val noVendoredExclusionManifest = fixtureManifest.replace(
-      "Exclude generated and vendored files from dominance scoring.",
-      "Exclude generated files from dominance scoring.",
-    )
-    val validSidecar = """
+private val vagueClassificationBaseline = fixtureBaseline.replace(
+  "If fixture source dominates, select the fixture pack. Otherwise select the adjacent pack.",
+  "Classify the project.",
+)
+private val misplacedClassificationBaseline = vagueClassificationBaseline.replace(
+  "Calibrate severity and verify each precondition.",
+  "If fixture source dominates, select the fixture pack. Otherwise select the adjacent pack. " +
+    "Calibrate severity and verify each precondition.",
+)
+private val vagueRoutingBaseline = fixtureBaseline.replace(
+  "- Authentication or sensitive-data changes -> `security` specialist.",
+  "Route code files to the relevant specialist.",
+)
+private val mixedDiffDropsLanes = fixtureBaseline.replace(
+  "Keep the baseline specialists for the whole review",
+  "Replace the baseline specialists after classification",
+)
+private val unscopedBaseline = fixtureBaseline.replace("generated, vendored, and non-stack", "irrelevant")
+private val undisciplinedBaseline = fixtureBaseline.replace(
+  "Calibrate severity and verify each precondition.",
+  "Merge the findings.",
+)
+private val nondeterministicWaveBatching = fixtureBaseline.replace(
+  "run them in deterministic waves",
+  "run them as capacity allows",
+)
+private val droppedSelectedResults = fixtureBaseline.replace(
+  "retain every selected specialist result",
+  "keep completed results",
+)
+private val unattributedFindingMerge = fixtureBaseline.replace(
+  "Keep findings attributed through merge.",
+  "Merge findings.",
+)
+private val lossyFindingDeduplication = fixtureBaseline.replace(
+  "Deduplicate overlaps without losing evidence.",
+  "Deduplicate overlaps.",
+)
+private val vagueSpecialist = fixtureSpecialist.replace(
+  "Verify `FixtureApi` boundaries and reject failure paths that violate its invariant.",
+  "Consider API topics and general risks.",
+)
+private val misplacedSpecialistRule = vagueSpecialist.replace(
+  "Focus.",
+  "Verify `FixtureApi` boundaries and reject failure paths that violate its invariant.",
+)
+private val siblingInvokingSpecialist = fixtureSpecialist.replace(
+  "Verify `FixtureApi` boundaries and reject failure paths that violate its invariant.",
+  "Verify `FixtureApi` boundaries and invoke bill-fixture-code-review-testing for failures.",
+)
+private val misplacedSeverityCloser = fixtureSpecialist + "\n- End with a noncanonical rule."
+private val wrongAreaSeverityCloser = fixtureSpecialist.replace(
+  canonicalSeverityCloser("security"),
+  canonicalSeverityCloser("persistence"),
+)
+private val shallowQualityCheck = fixtureQualityCheck.replace(
+  "Discover commands from build files, wrappers, and CI configuration before falling back to defaults.",
+  "Run configured commands.",
+)
+private val misplacedQualityCheckDiscovery = shallowQualityCheck.replace(
+  "Check fixture changes.",
+  "Discover commands from build files, wrappers, and CI configuration before falling back to defaults.",
+)
+private val defaultFirstQualityCheck = fixtureQualityCheck.replace(
+  "Discover commands from build files, wrappers, and CI configuration before falling back to defaults.",
+  "Fall back to defaults before checking build files, wrappers, and CI configuration.",
+)
+private val unscopedQualityCheck = fixtureQualityCheck.replace(
+  "Determine the files in scope.",
+  "Check the repository.",
+)
+private val noEntrypointQualityCheck = fixtureQualityCheck.replace(
+  "Run the pack's quality-check entrypoint and capture failures.",
+  "Run arbitrary commands.",
+)
+private val suppressingQualityCheck = fixtureQualityCheck.replace(
+  "Follow the priority-ordered fix ladder and never suppress failures.",
+  "Suppress failures when convenient.",
+)
+private val noTargetedRerunQualityCheck = fixtureQualityCheck.replace(
+  "Re-run targeted checks after fixes.",
+  "Do not rerun checks.",
+)
+private val unconditionalFullSuiteQualityCheck = fixtureQualityCheck.replace(
+  "Escalate to the full suite when targeted checks cannot establish safety.",
+  "Always run the full suite.",
+)
+private val missingDeclaredAreaManifest = fixtureManifest.replace(
+  "declared_code_review_areas: [security]",
+  "declared_code_review_areas: []",
+)
+private val genericAreaMetadataManifest = fixtureManifest.replace(
+  "Fixture security boundaries for .fixture sources",
+  "Fixture secrets handling, auth, and sensitive-data exposure",
+)
+private val bareOnlyRoutingManifest = fixtureManifest.replace("[\".fixture\", \"*.fixture\"]", "[\".fixture\"]")
+private val globOnlyRoutingManifest = fixtureManifest.replace("[\".fixture\", \"*.fixture\"]", "[\"*.fixture\"]")
+private val noPositiveDominanceManifest = fixtureManifest.replace(
+  "Prefer Fixture when Fixture source signals dominate the changed product surface.",
+  "Select Fixture for Fixture files.",
+)
+private val noAdjacentDisambiguationManifest = fixtureManifest.replace(
+  "Do not prefer Fixture when an adjacent pack's declared signals dominate.",
+  "Do not prefer Fixture for ambiguous files.",
+)
+private val noGeneratedExclusionManifest = fixtureManifest.replace(
+  "Exclude generated and vendored files from dominance scoring.",
+  "Exclude vendored files from dominance scoring.",
+)
+private val noVendoredExclusionManifest = fixtureManifest.replace(
+  "Exclude generated and vendored files from dominance scoring.",
+  "Exclude generated files from dominance scoring.",
+)
+private val validSidecar = """
       # Security Review Rubric
 
       ## Boundary Rules
 
       Verify `FixtureApi` boundaries and reject invalid authorization states.
-    """.trimIndent()
-    val wrapperSidecar = """
+""".trimIndent()
+private val wrapperSidecar = """
       # Security Review Rubric
 
       ## Descriptor
 
       compose: governed-content
-    """.trimIndent()
-    val organizationSidecar = """
+""".trimIndent()
+private val organizationSidecar = """
       # Team Notes
 
       ## Planning
 
       Remember release dates and ownership.
-    """.trimIndent()
-  }
-}
+""".trimIndent()
