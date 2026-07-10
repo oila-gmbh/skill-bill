@@ -20,6 +20,7 @@ import skillbill.application.model.WorkflowResumeResult
 import skillbill.application.model.WorkflowUpdateRequest
 import skillbill.application.model.WorkflowUpdateResult
 import skillbill.application.review.ReviewService
+import skillbill.application.telemetry.RUNTIME_EXCEPTION_EVENT
 import skillbill.application.telemetry.TelemetryService
 import skillbill.application.telemetry.toRecord
 import skillbill.application.workflow.WorkflowService
@@ -40,6 +41,7 @@ import skillbill.ports.persistence.LearningRepository
 import skillbill.ports.persistence.LifecycleTelemetryRepository
 import skillbill.ports.persistence.ReviewRepository
 import skillbill.ports.persistence.TelemetryOutboxRepository
+import skillbill.ports.persistence.TelemetryReconciliationRepository
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.persistence.WorkflowStateRepository
 import skillbill.ports.persistence.WorkflowStatsRepository
@@ -48,6 +50,8 @@ import skillbill.ports.persistence.model.FeatureVerifySessionSummary
 import skillbill.ports.persistence.model.LearningResolution
 import skillbill.ports.persistence.model.ReviewRepositoryStatsSnapshot
 import skillbill.ports.persistence.model.TelemetryOutboxRecord
+import skillbill.ports.persistence.model.TelemetryReconciliationRequest
+import skillbill.ports.persistence.model.TelemetryReconciliationResult
 import skillbill.ports.persistence.model.WorkflowStateRecord
 import skillbill.ports.review.EmptyReviewAttributionPort
 import skillbill.ports.review.ReviewInputSource
@@ -78,6 +82,7 @@ import skillbill.telemetry.model.FeatureTaskRuntimeStartedRecord
 import skillbill.telemetry.model.FeatureVerifyFinishedRecord
 import skillbill.telemetry.model.FeatureVerifyStartedRecord
 import skillbill.telemetry.model.GoalFinishedRecord
+import skillbill.telemetry.model.GoalIssueFinishedRecord
 import skillbill.telemetry.model.GoalStartedRecord
 import skillbill.telemetry.model.GoalSubtaskFinishedRecord
 import skillbill.telemetry.model.PrDescriptionGeneratedRecord
@@ -208,7 +213,7 @@ class ApplicationPersistencePortTest {
   }
 
   @Test
-  fun `telemetry sync uses short application sessions around outbox repository ports`() {
+  fun `manual telemetry sync reconciles before using short outbox sessions`() {
     val outboxRepository =
       InMemoryTelemetryOutboxRepository(
         mutableListOf(
@@ -222,7 +227,11 @@ class ApplicationPersistencePortTest {
           ),
         ),
       )
-    val database = FakeDatabaseSessionFactory(telemetryOutbox = outboxRepository)
+    val reconciliationRepository = RecordingTelemetryReconciliationRepository()
+    val database = FakeDatabaseSessionFactory(
+      telemetryOutbox = outboxRepository,
+      telemetryReconciliation = reconciliationRepository,
+    )
     val client = FakeTelemetryClient()
     val service =
       TelemetryService(
@@ -234,11 +243,110 @@ class ApplicationPersistencePortTest {
 
     val result = service.sync(dbOverride = null)
 
-    assertEquals(listOf("read", "read", "transaction", "read", "read"), database.calls)
+    assertEquals(listOf("transaction", "read", "read", "transaction", "read", "read"), database.calls)
+    assertEquals(listOf("anonymous"), reconciliationRepository.levels)
     assertEquals("synced", result.result.syncStatus)
     assertEquals(listOf(listOf(1L)), client.sentBatchIds)
     assertEquals(0, outboxRepository.pendingCount())
   }
+
+  @Test
+  fun `telemetry auto sync reconciles stale sessions before listing pending outbox events`() {
+    val outboxRepository =
+      InMemoryTelemetryOutboxRepository(
+        mutableListOf(
+          TelemetryOutboxRecord(
+            id = 1,
+            eventName = "skillbill_feature_verify_finished",
+            payloadJson = """{"name":"ok"}""",
+            createdAt = "2026-04-24 00:00:00",
+            syncedAt = null,
+            lastError = "",
+          ),
+        ),
+      )
+    val reconciliationRepository = RecordingTelemetryReconciliationRepository()
+    val database = FakeDatabaseSessionFactory(
+      telemetryOutbox = outboxRepository,
+      telemetryReconciliation = reconciliationRepository,
+    )
+    val client = FakeTelemetryClient()
+    val service =
+      TelemetryService(
+        database = database,
+        settingsProvider = FakeTelemetrySettingsProvider(enabled = true),
+        configStore = FakeTelemetryConfigStore,
+        telemetryClient = client,
+      )
+
+    service.autoSync(dbOverride = null)
+
+    assertEquals("transaction", database.calls.first())
+    assertEquals(listOf("anonymous"), reconciliationRepository.levels)
+    assertEquals(listOf(listOf(1L)), client.sentBatchIds)
+  }
+
+  @Test
+  fun `telemetry auto sync keeps syncing when stale reconciliation fails`() {
+    val outboxRepository =
+      InMemoryTelemetryOutboxRepository(
+        mutableListOf(
+          TelemetryOutboxRecord(
+            id = 1,
+            eventName = "skillbill_feature_verify_finished",
+            payloadJson = """{"name":"ok"}""",
+            createdAt = "2026-04-24 00:00:00",
+            syncedAt = null,
+            lastError = "",
+          ),
+        ),
+      )
+    val database = FakeDatabaseSessionFactory(
+      telemetryOutbox = outboxRepository,
+      telemetryReconciliation = ThrowingTelemetryReconciliationRepository,
+    )
+    val client = FakeTelemetryClient()
+    val service =
+      TelemetryService(
+        database = database,
+        settingsProvider = FakeTelemetrySettingsProvider(enabled = true),
+        configStore = FakeTelemetryConfigStore,
+        telemetryClient = client,
+      )
+
+    service.autoSync(dbOverride = null)
+
+    assertEquals("transaction", database.calls.first())
+    assertEquals(listOf(RUNTIME_EXCEPTION_EVENT), outboxRepository.enqueuedEventNames)
+    assertEquals(listOf(1L, 2L), client.sentBatchIds.flatten())
+  }
+
+  @Test
+  fun `manual sync forces reconciliation each flush while auto sync keeps the periodic cadence guard`() {
+    val manualReconciliation = RecordingTelemetryReconciliationRepository()
+    telemetrySyncService(manualReconciliation).run {
+      sync(dbOverride = null)
+      sync(dbOverride = null)
+    }
+
+    val autoReconciliation = RecordingTelemetryReconciliationRepository()
+    telemetrySyncService(autoReconciliation).autoSync(dbOverride = null)
+
+    assertEquals(listOf(0L, 0L), manualReconciliation.cadenceSeconds)
+    assertEquals(listOf(100, 100), manualReconciliation.requests.map { it.maximumBatchSize })
+    assertEquals(listOf(300L), autoReconciliation.cadenceSeconds)
+  }
+
+  private fun telemetrySyncService(reconciliation: RecordingTelemetryReconciliationRepository): TelemetryService =
+    TelemetryService(
+      database = FakeDatabaseSessionFactory(
+        telemetryOutbox = InMemoryTelemetryOutboxRepository(),
+        telemetryReconciliation = reconciliation,
+      ),
+      settingsProvider = FakeTelemetrySettingsProvider(enabled = true),
+      configStore = FakeTelemetryConfigStore,
+      telemetryClient = FakeTelemetryClient(),
+    )
 
   @Test
   fun `workflow service owns implement rows list resume and continuation through ports`() {
@@ -779,7 +887,7 @@ class ApplicationPersistencePortTest {
     val blockedManifest = loadTestDecompositionManifest(parentSpec.parent.resolve("decomposition-manifest.yaml"))
     val blockedSubtask = blockedManifest.subtasks.single()
     assertEquals("blocked", blockedSubtask.status)
-    assertEquals("Validation failed.", blockedSubtask.blockedReason)
+    assertEquals("runtime: Validation failed.", blockedSubtask.blockedReason)
     assertEquals("validate", blockedSubtask.lastResumableStep)
     assertEquals("Blocked", statusLine(subtaskSpec))
 
@@ -1032,7 +1140,7 @@ class ApplicationPersistencePortTest {
     assertEquals("blocked", blockedSubtask.status)
     assertEquals(null, blockedSubtask.commitSha)
     assertEquals(
-      "Goal-continuation commit_push completed without commit_push_result.commit_sha.",
+      "git: Goal-continuation commit_push completed without commit_push_result.commit_sha.",
       blockedSubtask.blockedReason,
     )
   }
@@ -1177,7 +1285,7 @@ class ApplicationPersistencePortTest {
     val continued = service.continueWorkflow(WorkflowFamilyKind.TASK_PROSE, "SKILL-51", dbOverride = null)
       as WorkflowContinueResult.DecompositionBlockedSubtask
 
-    assertEquals("Validation failed.", continued.blockedReason)
+    assertEquals("runtime: Validation failed.", continued.blockedReason)
     assertEquals(1, continued.subtaskId)
   }
 
@@ -1502,6 +1610,7 @@ private class FakeDatabaseSessionFactory(
   private val reviews: ReviewRepository = FakeReviewRepository(),
   private val learnings: LearningRepository = FakeLearningRepository(),
   private val telemetryOutbox: TelemetryOutboxRepository = NoopTelemetryOutboxRepository,
+  private val telemetryReconciliation: TelemetryReconciliationRepository = NoopTelemetryReconciliationRepository,
   private val workflows: WorkflowStateRepository = NoopWorkflowStateRepository,
 ) : DatabaseSessionFactory {
   val calls = mutableListOf<String>()
@@ -1526,9 +1635,32 @@ private class FakeDatabaseSessionFactory(
     override val reviews: ReviewRepository = this@FakeDatabaseSessionFactory.reviews
     override val learnings: LearningRepository = this@FakeDatabaseSessionFactory.learnings
     override val lifecycleTelemetry: LifecycleTelemetryRepository = NoopLifecycleTelemetryRepository
+    override val telemetryReconciliation: TelemetryReconciliationRepository =
+      this@FakeDatabaseSessionFactory.telemetryReconciliation
     override val telemetryOutbox: TelemetryOutboxRepository = this@FakeDatabaseSessionFactory.telemetryOutbox
     override val workflowStates: WorkflowStateRepository = this@FakeDatabaseSessionFactory.workflows
   }
+}
+
+private object NoopTelemetryReconciliationRepository : TelemetryReconciliationRepository {
+  override fun reconcileStaleSessions(request: TelemetryReconciliationRequest): TelemetryReconciliationResult =
+    TelemetryReconciliationResult.Empty
+}
+
+private class RecordingTelemetryReconciliationRepository : TelemetryReconciliationRepository {
+  val requests = mutableListOf<TelemetryReconciliationRequest>()
+  val levels: List<String> get() = requests.map(TelemetryReconciliationRequest::level)
+  val cadenceSeconds: List<Long> get() = requests.map(TelemetryReconciliationRequest::cadenceSeconds)
+
+  override fun reconcileStaleSessions(request: TelemetryReconciliationRequest): TelemetryReconciliationResult {
+    requests += request
+    return TelemetryReconciliationResult.Empty
+  }
+}
+
+private object ThrowingTelemetryReconciliationRepository : TelemetryReconciliationRepository {
+  override fun reconcileStaleSessions(request: TelemetryReconciliationRequest): TelemetryReconciliationResult =
+    error("SQLITE_BUSY: database is locked")
 }
 
 @Suppress("TooManyFunctions") // mirrors the full LifecycleTelemetryRepository contract
@@ -1556,6 +1688,8 @@ private object NoopLifecycleTelemetryRepository : LifecycleTelemetryRepository {
   override fun goalSubtaskFinished(record: GoalSubtaskFinishedRecord, level: String) = Unit
 
   override fun goalFinished(record: GoalFinishedRecord, level: String) = Unit
+
+  override fun goalIssueFinished(record: GoalIssueFinishedRecord, level: String) = Unit
 }
 
 private fun goalStartedRequest(): GoalStartedRequest = GoalStartedRequest(
@@ -1599,6 +1733,7 @@ private class RecordingGoalLifecycleTelemetryRepository : LifecycleTelemetryRepo
   val startedRecords = mutableListOf<GoalStartedRecord>()
   val subtaskRecords = mutableListOf<GoalSubtaskFinishedRecord>()
   val finishedRecords = mutableListOf<GoalFinishedRecord>()
+  val issueFinishedRecords = mutableListOf<GoalIssueFinishedRecord>()
 
   override fun goalStarted(record: GoalStartedRecord, level: String) {
     startedRecords += record
@@ -1610,6 +1745,10 @@ private class RecordingGoalLifecycleTelemetryRepository : LifecycleTelemetryRepo
 
   override fun goalFinished(record: GoalFinishedRecord, level: String) {
     finishedRecords += record
+  }
+
+  override fun goalIssueFinished(record: GoalIssueFinishedRecord, level: String) {
+    issueFinishedRecords += record
   }
 
   override fun featureImplementStarted(record: FeatureImplementStartedRecord, level: String) = error("unused")
@@ -1806,7 +1945,21 @@ private object NoopTelemetryOutboxRepository : TelemetryOutboxRepository {
 private class InMemoryTelemetryOutboxRepository(
   private val rows: MutableList<TelemetryOutboxRecord> = mutableListOf(),
 ) : TelemetryOutboxRepository {
-  override fun enqueue(eventName: String, payloadJson: String): Long = error("Unexpected enqueue")
+  val enqueuedEventNames = mutableListOf<String>()
+
+  override fun enqueue(eventName: String, payloadJson: String): Long {
+    val id = (rows.maxOfOrNull { it.id } ?: 0L) + 1
+    enqueuedEventNames += eventName
+    rows += TelemetryOutboxRecord(
+      id = id,
+      eventName = eventName,
+      payloadJson = payloadJson,
+      createdAt = "2026-04-24 00:00:00",
+      syncedAt = null,
+      lastError = "",
+    )
+    return id
+  }
 
   override fun listPending(limit: Int?): List<TelemetryOutboxRecord> =
     rows.filter { it.syncedAt == null }.let { pending ->

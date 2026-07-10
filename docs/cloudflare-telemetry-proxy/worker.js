@@ -18,6 +18,10 @@ function eventInList(events) {
 const PROSE_STARTED_EVENT_MATCH = eventInList(PROSE_STARTED_EVENTS);
 const PROSE_FINISHED_EVENT_MATCH = eventInList(PROSE_FINISHED_EVENTS);
 const PROSE_EVENT_FILTER = eventInList(PROSE_EVENTS);
+const PRODUCTION_INSTALL_FILTER = `
+      AND properties.install_id IS NOT NULL
+      AND trim(toString(properties.install_id)) != ''
+      AND toString(properties.install_id) != 'test-install-id'`;
 
 function jsonResponse(status, payload) {
   return new Response(JSON.stringify(payload), {
@@ -293,6 +297,7 @@ function buildVerifyStatsQuery(dateFrom, dateToExclusive) {
     WHERE event IN ('skillbill_feature_verify_started', 'skillbill_feature_verify_finished')
       AND timestamp >= toDateTime('${from}')
       AND timestamp < toDateTime('${to}')
+${PRODUCTION_INSTALL_FILTER}
   `;
 }
 
@@ -335,6 +340,7 @@ function buildImplementStatsQuery(dateFrom, dateToExclusive) {
     WHERE ${PROSE_EVENT_FILTER}
       AND timestamp >= toDateTime('${from}')
       AND timestamp < toDateTime('${to}')
+${PRODUCTION_INSTALL_FILTER}
   `;
 }
 
@@ -373,6 +379,7 @@ function buildVerifySeriesQuery(dateFrom, dateToExclusive) {
     WHERE event IN ('skillbill_feature_verify_started', 'skillbill_feature_verify_finished')
       AND timestamp >= toDateTime('${from}')
       AND timestamp < toDateTime('${to}')
+${PRODUCTION_INSTALL_FILTER}
     GROUP BY bucket_date
     ORDER BY bucket_date
   `;
@@ -413,6 +420,7 @@ function buildImplementSeriesQuery(dateFrom, dateToExclusive) {
     WHERE ${PROSE_EVENT_FILTER}
       AND timestamp >= toDateTime('${from}')
       AND timestamp < toDateTime('${to}')
+${PRODUCTION_INSTALL_FILTER}
     GROUP BY bucket_date
     ORDER BY bucket_date
   `;
@@ -947,6 +955,8 @@ export {
   validateStatsRequest,
   capabilitiesPayload,
   transformBatch,
+  buildVerifyStatsQuery,
+  buildVerifySeriesQuery,
   buildImplementStatsQuery,
   buildImplementSeriesQuery,
 };

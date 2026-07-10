@@ -1,21 +1,25 @@
 package skillbill.db.telemetry
 
 import skillbill.telemetry.model.GoalFinishedRecord
+import skillbill.telemetry.model.GoalIssueFinishedRecord
 import skillbill.telemetry.model.GoalStartedRecord
 import skillbill.telemetry.model.GoalSubtaskFinishedRecord
 import java.sql.Connection
-import java.sql.ResultSet
+import java.util.logging.Logger
 
-fun saveGoalStarted(connection: Connection, record: GoalStartedRecord) {
-  if (goalRunSessionExists(connection, record.workflowId)) {
-    updateGoalStarted(connection, record)
-    return
-  }
-  connection.prepareStatement(
+enum class GoalStartedSaveOutcome { INSERTED, DUPLICATE }
+
+enum class GoalFinishedSaveOutcome { FIRST_TERMINAL, DUPLICATE }
+
+data class GoalIssueFinishedSaveOutcome(val persisted: Boolean, val suppressionReason: String? = null)
+
+fun saveGoalStarted(connection: Connection, record: GoalStartedRecord): GoalStartedSaveOutcome {
+  val inserted = connection.prepareStatement(
     """
     INSERT INTO goal_run_sessions (
       workflow_id, issue_key, feature_name, subtask_total, resumed, started_at, mode
     ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(workflow_id) DO NOTHING
     """.trimIndent(),
   ).use { statement ->
     statement.bind(
@@ -27,45 +31,25 @@ fun saveGoalStarted(connection: Connection, record: GoalStartedRecord) {
       record.startedAt,
       record.mode,
     )
-    statement.executeUpdate()
+    statement.executeUpdate() > 0
   }
+  return if (inserted) GoalStartedSaveOutcome.INSERTED else GoalStartedSaveOutcome.DUPLICATE
 }
 
-private fun updateGoalStarted(connection: Connection, record: GoalStartedRecord) {
-  connection.prepareStatement(
-    """
-    UPDATE goal_run_sessions SET
-      issue_key = ?,
-      feature_name = ?,
-      subtask_total = ?,
-      resumed = ?,
-      started_at = ?,
-      mode = ?
-    WHERE workflow_id = ?
-    """.trimIndent(),
-  ).use { statement ->
-    statement.bind(
-      record.issueKey,
-      record.featureName,
-      record.subtaskTotal,
-      record.resumed.toSqlInt(),
-      record.startedAt,
-      record.mode,
-      record.workflowId,
-    )
-    statement.executeUpdate()
-  }
-}
-
-fun saveGoalFinished(connection: Connection, record: GoalFinishedRecord) {
+fun saveGoalFinished(connection: Connection, record: GoalFinishedRecord): GoalFinishedSaveOutcome {
   if (goalRunSessionExists(connection, record.workflowId)) {
-    updateGoalFinished(connection, record)
+    return if (updateGoalFinished(connection, record)) {
+      GoalFinishedSaveOutcome.FIRST_TERMINAL
+    } else {
+      GoalFinishedSaveOutcome.DUPLICATE
+    }
   } else {
     insertGoalFinished(connection, record)
+    return GoalFinishedSaveOutcome.FIRST_TERMINAL
   }
 }
 
-private fun updateGoalFinished(connection: Connection, record: GoalFinishedRecord) {
+private fun updateGoalFinished(connection: Connection, record: GoalFinishedRecord): Boolean =
   connection.prepareStatement(
     """
     UPDATE goal_run_sessions SET
@@ -77,8 +61,9 @@ private fun updateGoalFinished(connection: Connection, record: GoalFinishedRecor
       subtasks_complete = ?,
       subtasks_blocked = ?,
       subtasks_skipped = ?,
-      mode = ?
-    WHERE workflow_id = ?
+      mode = ?,
+      stop_reason = ?
+    WHERE workflow_id = ? AND status IS NULL AND finished_at IS NULL
     """.trimIndent(),
   ).use { statement ->
     statement.bind(
@@ -91,19 +76,19 @@ private fun updateGoalFinished(connection: Connection, record: GoalFinishedRecor
       record.subtasksBlocked,
       record.subtasksSkipped,
       record.mode,
+      record.stopReason,
       record.workflowId,
     )
-    statement.executeUpdate()
+    statement.executeUpdate() > 0
   }
-}
 
 private fun insertGoalFinished(connection: Connection, record: GoalFinishedRecord) {
   connection.prepareStatement(
     """
     INSERT INTO goal_run_sessions (
       workflow_id, issue_key, started_at, status, finished_at,
-      finished_duration_ms, subtasks_complete, subtasks_blocked, subtasks_skipped, mode
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      finished_duration_ms, subtasks_complete, subtasks_blocked, subtasks_skipped, mode, stop_reason
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """.trimIndent(),
   ).use { statement ->
     statement.bind(
@@ -117,8 +102,105 @@ private fun insertGoalFinished(connection: Connection, record: GoalFinishedRecor
       record.subtasksBlocked,
       record.subtasksSkipped,
       record.mode,
+      record.stopReason,
     )
     statement.executeUpdate()
+  }
+}
+
+fun recordGoalIssueSegmentStarted(connection: Connection, segment: GoalIssueSegmentStart) {
+  connection.prepareStatement(
+    """
+    INSERT INTO goal_issue_progress (
+      parent_workflow_id, issue_key, total_invocations, total_resumes, first_started_at,
+      last_activity_at, latest_segment_workflow_id, mode
+    ) VALUES (?, ?, 1, ?, ?, ?, ?, ?)
+    ON CONFLICT(parent_workflow_id, issue_key) DO UPDATE SET
+      total_invocations = goal_issue_progress.total_invocations + 1,
+      total_resumes = goal_issue_progress.total_resumes + excluded.total_resumes,
+      first_started_at = COALESCE(goal_issue_progress.first_started_at, excluded.first_started_at),
+      last_activity_at = excluded.last_activity_at,
+      latest_segment_workflow_id = excluded.latest_segment_workflow_id,
+      mode = excluded.mode
+    """.trimIndent(),
+  ).use { statement ->
+    statement.bind(
+      segment.parentWorkflowId,
+      segment.issueKey,
+      segment.resumed.toSqlInt(),
+      segment.startedAt,
+      segment.startedAt,
+      segment.workflowId,
+      segment.mode,
+    )
+    statement.executeUpdate()
+  }
+}
+
+data class GoalIssueSegmentStart(
+  val parentWorkflowId: String,
+  val issueKey: String,
+  val workflowId: String,
+  val startedAt: String,
+  val resumed: Boolean,
+  val mode: String,
+)
+
+fun recordGoalIssueBlockedSegment(
+  connection: Connection,
+  parentWorkflowId: String,
+  issueKey: String,
+  workflowId: String,
+) {
+  connection.prepareStatement(
+    """
+    UPDATE goal_issue_progress
+    SET total_blocks = total_blocks + 1,
+        last_activity_at = CURRENT_TIMESTAMP,
+        last_blocked_at = CURRENT_TIMESTAMP,
+        last_blocked_segment_workflow_id = ?
+    WHERE parent_workflow_id = ? AND issue_key = ?
+    """.trimIndent(),
+  ).use { statement ->
+    statement.bind(workflowId, parentWorkflowId, issueKey)
+    statement.executeUpdate()
+  }
+}
+
+fun saveGoalIssueFinished(connection: Connection, record: GoalIssueFinishedRecord): GoalIssueFinishedSaveOutcome {
+  if (!goalIssueProgressExists(connection, record.parentWorkflowId, record.issueKey)) {
+    val recovered = recoverGoalIssueProgress(connection, record)
+    if (!recovered.persisted) {
+      goalTelemetryLogger.severe(
+        "Suppressed goal_issue_finished for ${record.parentWorkflowId}/${record.issueKey}: " +
+          recovered.suppressionReason,
+      )
+      return recovered
+    }
+  }
+  connection.prepareStatement(
+    """
+    UPDATE goal_issue_progress SET
+      status = ?, subtasks_complete = ?, subtasks_blocked = ?, subtasks_skipped = ?,
+      finished_at = ?, mode = ?
+    WHERE parent_workflow_id = ? AND issue_key = ? AND finished_event_emitted_at IS NULL
+    """.trimIndent(),
+  ).use { statement ->
+    statement.bind(
+      record.status,
+      record.subtasksComplete,
+      record.subtasksBlocked,
+      record.subtasksSkipped,
+      record.finishedAt,
+      record.mode,
+      record.parentWorkflowId,
+      record.issueKey,
+    )
+    val updated = statement.executeUpdate() > 0
+    return GoalIssueFinishedSaveOutcome(
+      persisted = updated,
+      suppressionReason = if (updated) null else "issue terminal event was already emitted",
+    )
   }
 }
 
@@ -185,5 +267,7 @@ fun saveGoalSubtaskFinished(connection: Connection, record: GoalSubtaskFinishedR
 private fun goalRunSessionExists(connection: Connection, workflowId: String): Boolean =
   connection.prepareStatement("SELECT 1 FROM goal_run_sessions WHERE workflow_id = ?").use { statement ->
     statement.bind(workflowId)
-    statement.executeQuery().use(ResultSet::next)
+    statement.executeQuery().use { it.next() }
   }
+
+private val goalTelemetryLogger: Logger = Logger.getLogger("skillbill.telemetry.goal")

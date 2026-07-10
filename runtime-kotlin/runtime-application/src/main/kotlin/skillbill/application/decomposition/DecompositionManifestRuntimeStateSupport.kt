@@ -1,6 +1,7 @@
 package skillbill.application.decomposition
 
 import skillbill.application.model.DecompositionManifestRuntimeUpdate
+import skillbill.application.telemetry.normalizedBlockedReason
 import skillbill.application.workflow.repoRoot
 import skillbill.workflow.model.CurrentSubtaskIntent
 import skillbill.workflow.model.DecompositionExecutionModel
@@ -104,10 +105,24 @@ private fun mergedArtifacts(update: DecompositionManifestRuntimeUpdate): Map<Str
 private fun blockedReasonFrom(update: DecompositionManifestRuntimeUpdate, status: String): String? =
   if (status == "blocked") {
     val artifacts = mergedArtifacts(update)
-    artifacts["blocked_reason"]?.toString()?.takeIf(String::isNotBlank)
-      ?: "Goal-continuation commit_push completed without commit_push_result.commit_sha."
-        .takeIf { prSuppressedCommitStatus(update) == "blocked" }
-      ?: "Workflow step '${update.currentStepId.ifBlank { "unknown" }}' is blocked."
+    val rawReason = artifacts["blocked_reason"]?.toString()?.takeIf(String::isNotBlank)
+    when {
+      rawReason != null -> normalizedBlockedReason(
+        reason = rawReason,
+        category = "runtime",
+        fallback = "Workflow step '${update.currentStepId.ifBlank { "unknown" }}' is blocked.",
+      )
+      prSuppressedCommitStatus(update) == "blocked" -> normalizedBlockedReason(
+        reason = null,
+        category = "git",
+        fallback = "Goal-continuation commit_push completed without commit_push_result.commit_sha.",
+      )
+      else -> normalizedBlockedReason(
+        reason = null,
+        category = "runtime",
+        fallback = "Workflow step '${update.currentStepId.ifBlank { "unknown" }}' is blocked.",
+      )
+    }
   } else {
     null
   }

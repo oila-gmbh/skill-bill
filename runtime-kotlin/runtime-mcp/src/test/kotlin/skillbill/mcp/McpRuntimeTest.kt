@@ -210,6 +210,9 @@ class McpRuntimeTest {
       assertEquals("rvs-20260427-empty", telemetryPayload["review_session_id"])
       assertEquals("bill-kmp-code-review", telemetryPayload["routed_skill"])
       assertEquals("kmp", telemetryPayload["review_platform"])
+      assertEquals("kmp", telemetryPayload["platform_slug"])
+      assertEquals("kmp", telemetryPayload["detected_stack"])
+      assertEquals(false, telemetryPayload["fallback"])
       assertEquals("unstaged changes", telemetryPayload["review_scope"])
       assertEquals("inline", telemetryPayload["execution_mode"])
       assertEquals(0, telemetryPayload["total_findings"])
@@ -862,6 +865,57 @@ class McpTokenEstimationTest {
       assertTrue(phaseJson.isNotEmpty())
     }
   }
+
+  @Test
+  fun `blocked runtime finished mcp telemetry reconciles phase and categorized reason`() {
+    val tempDir = Files.createTempDirectory("skillbill-mcp-runtime-blocked")
+    val context = McpRuntimeContext(environment = enabledTelemetryEnvironment(tempDir), userHome = tempDir)
+
+    val prefixlessSessionId = recordBlockedFeatureTaskRuntimeFinished(
+      context = context,
+      issueKey = "SKILL-109",
+      lastIncompletePhase = "",
+      blockedReason = "review requested changes",
+    )
+    val blankReasonSessionId = recordBlockedFeatureTaskRuntimeFinished(
+      context = context,
+      issueKey = "SKILL-109.1",
+      lastIncompletePhase = "",
+      blockedReason = "",
+    )
+
+    DatabaseRuntime.ensureDatabase(tempDir.resolve("metrics.db")).use { connection ->
+      assertEquals(
+        "review",
+        scalarString(
+          connection,
+          "SELECT last_incomplete_phase FROM feature_task_runtime_sessions " +
+            "WHERE session_id = '$prefixlessSessionId'",
+        ),
+      )
+      assertEquals(
+        "runtime: review requested changes",
+        scalarString(
+          connection,
+          "SELECT blocked_reason FROM feature_task_runtime_sessions WHERE session_id = '$prefixlessSessionId'",
+        ),
+      )
+      assertEquals(
+        "review",
+        scalarString(
+          connection,
+          "SELECT last_incomplete_phase FROM feature_task_runtime_sessions WHERE session_id = '$blankReasonSessionId'",
+        ),
+      )
+      assertEquals(
+        "runtime: Feature-task-runtime blocked without a specific reason.",
+        scalarString(
+          connection,
+          "SELECT blocked_reason FROM feature_task_runtime_sessions WHERE session_id = '$blankReasonSessionId'",
+        ),
+      )
+    }
+  }
 }
 
 // F-019: a multi-phase records map + multi-entry ledger patch for the task-runtime golden flow.
@@ -1142,6 +1196,44 @@ private fun recordFeatureTaskRuntimeLifecycle(context: McpRuntimeContext) {
     ),
     context,
   )
+}
+
+private fun recordBlockedFeatureTaskRuntimeFinished(
+  context: McpRuntimeContext,
+  issueKey: String,
+  lastIncompletePhase: String,
+  blockedReason: String,
+): String {
+  val started =
+    McpToolDispatcher.call(
+      "feature_task_runtime_started",
+      mapOf(
+        "feature_size" to "MEDIUM",
+        "issue_key" to issueKey,
+        "feature_name" to "blocked-runtime-finish",
+      ),
+      context,
+    )
+  val sessionId = started["session_id"] as String
+  McpToolDispatcher.call(
+    "feature_task_runtime_finished",
+    mapOf(
+      "session_id" to sessionId,
+      "completion_status" to "blocked",
+      "completed_phase_ids" to listOf("preplan", "plan", "implement"),
+      "phase_outcomes" to mapOf(
+        "preplan" to "completed",
+        "plan" to "completed",
+        "implement" to "completed",
+        "review" to "blocked",
+      ),
+      "last_incomplete_phase" to lastIncompletePhase,
+      "blocked_reason" to blockedReason,
+      "resolved_branch" to "feat/SKILL-109",
+    ),
+    context,
+  )
+  return sessionId
 }
 
 private fun recordQualityCheckLifecycle(context: McpRuntimeContext) {

@@ -39,6 +39,7 @@ private fun QualityCheckFinishedRequest.qualityCheckPayload(level: String): Map<
   linkedMapOf<String, Any?>(
     "routed_skill" to routedSkill,
     "detected_stack" to detectedStack,
+    "fallback" to fallback,
     "scope_type" to scopeType,
     "initial_failure_count" to initialFailureCount,
     "final_failure_count" to finalFailureCount,
@@ -47,6 +48,9 @@ private fun QualityCheckFinishedRequest.qualityCheckPayload(level: String): Map<
     "duration_seconds" to durationSeconds,
     "skill" to "bill-code-check",
   ).apply {
+    if (fallback && !fallbackReason.isNullOrBlank()) {
+      put("fallback_reason", fallbackReason)
+    }
     if (level == "full") {
       put("failing_check_names", failingCheckNames)
       put("unsupported_reason", unsupportedReason)
@@ -76,7 +80,7 @@ private fun PrDescriptionGeneratedRequest.prDescriptionPayload(level: String): M
   linkedMapOf<String, Any?>(
     "commit_count" to commitCount,
     "files_changed_count" to filesChangedCount,
-    "was_edited_by_user" to wasEditedByUser,
+    "was_edited_by_user" to (wasEditedByUser || prDescriptionWasEditedByUser(generatedDescription, finalPrBody)),
     "pr_created" to prCreated,
     "skill" to "bill-pr-description",
   ).apply {

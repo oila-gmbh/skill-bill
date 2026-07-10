@@ -285,7 +285,7 @@ Step id: `validate`
 
 Primary artifact: `validation_result`
 
-Spawn a subagent with the quality-check briefing defined in the inline reference sections below under `Quality-check subagent briefing`. The subagent runs `bill-code-check` (which auto-routes to the matching stack quality-check skill), fixes any issues at their root without using suppressions, and must call `quality_check_finished` with `orchestrated=true` itself. Validation findings are repair work, not a blocking gate: keep fixing and rerunning validation until the result passes, and do not persist `validate` as blocked for fixable findings. The subagent returns: `validation_result`, `routed_skill`, `detected_stack`, `initial_failure_count`, `final_failure_count`, and the `telemetry_payload` returned by `quality_check_finished`.
+Spawn a subagent with the quality-check briefing defined in the inline reference sections below under `Quality-check subagent briefing`. The subagent runs `bill-code-check` (which auto-routes to the matching stack quality-check skill), fixes any issues at their root without using suppressions, and must call `quality_check_finished` with `orchestrated=true` itself. Validation findings are repair work, not a blocking gate: keep fixing and rerunning validation until the result passes, and do not persist `validate` as blocked for fixable findings. The subagent returns: `validation_result`, `routed_skill`, `detected_stack`, `fallback`, `initial_failure_count`, `final_failure_count`, and the `telemetry_payload` returned by `quality_check_finished`.
 
 If `bill-code-check` reports no supported stack for the affected repo, the subagent falls back to the closest existing repo-native validation command.
 
@@ -971,7 +971,7 @@ Instructions:
 1. If validation_strategy is `bill-code-check`, invoke the `bill-code-check` skill via the Skill tool — DO NOT search the filesystem (no `find`, `grep -r`, etc.) to locate skill files; the Skill tool resolves skills by name. Apply its instructions in the current agent context (do not delegate to another subagent); it auto-routes to the matching stack-specific quality-check skill.
 2. Otherwise, run the provided repo-native command.
 3. Fix validation findings at their root cause, rerun validation, and keep iterating until validation passes, like the code-review fix loop handles review findings. Do not mark the step blocked, stop, or return `validation_result: "fail"` for fixable validation findings. Do not use suppressions unless explicitly allowed by project standards.
-4. Call the `quality_check_finished` MCP tool with `orchestrated=true`. Pass all started+finished fields directly (skip `quality_check_started` in orchestrated mode): `routed_skill`, `detected_stack`, `scope_type`, `initial_failure_count`, plus the finished fields.
+4. Call the `quality_check_finished` MCP tool with `orchestrated=true`. Pass all started+finished fields directly (skip `quality_check_started` in orchestrated mode): `routed_skill`, `detected_stack`, `fallback`, `scope_type`, `initial_failure_count`, plus the finished fields. Include `fallback_reason` when `fallback=true` or a reason is known.
 5. Capture the `telemetry_payload` returned by `quality_check_finished` verbatim.
 6. Follow the Durable Progress Write Contract in this skill:
    - write progress at phase start, command/check start-completion boundaries, heartbeat interval, and phase completion before `RESULT:`
@@ -985,6 +985,8 @@ RESULT:
   "validation_result": "pass|skipped",
   "routed_skill": "<skill name or empty>",
   "detected_stack": "<stack or empty>",
+  "fallback": false,
+  "fallback_reason": "<reason when fallback is true or known, otherwise omit>",
   "initial_failure_count": <int>,
   "final_failure_count": <int>,
   "fixes_applied": "<brief summary>",
@@ -1015,7 +1017,7 @@ Implementation summary (from Step 4):
 Instructions:
 1. Invoke `bill-pr-description` via the Skill tool — DO NOT search the filesystem (no `find`, `grep -r`, etc.) to locate skill files; the Skill tool resolves skills by name. Apply its instructions in the current agent context. Respect repo-native PR templates if present (`.github/pull_request_template.md`, `PULL_REQUEST_TEMPLATE.md`, etc.).
 2. Create the PR with `gh pr create` using a HEREDOC for the body.
-3. Call the `pr_description_generated` MCP tool with `orchestrated=true` once the PR is created.
+3. Compare the normalized generated body with the actual PR body passed to `gh pr create` or read back with `gh pr view --json body` when available; call the `pr_description_generated` MCP tool with `orchestrated=true` and `was_edited_by_user=true` when those bodies differ once the PR is created.
 4. Capture the `telemetry_payload` returned by `pr_description_generated` verbatim.
 5. Follow the Durable Progress Write Contract in this skill:
    - write progress at phase start, draft/create/report boundaries, heartbeat interval, and phase completion before `RESULT:`

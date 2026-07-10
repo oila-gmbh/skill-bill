@@ -71,9 +71,9 @@ properties:
       `McpToolRegistry.toolNames`.
   contract_version:
     type: string
-    const: "1.3.0"
+    const: "1.4.0"
     description: >
-      Pinned to `TELEMETRY_EVENT_CONTRACT_VERSION` (currently "1.3.0").
+      Pinned to `TELEMETRY_EVENT_CONTRACT_VERSION` (currently "1.4.0").
       The parity test `TelemetryEventSchemaContractVersionTest` keeps
       the two in lockstep.
 
@@ -131,12 +131,14 @@ oneOf:
   - $ref: "#/$defs/goalStartedEvent"
   - $ref: "#/$defs/goalSubtaskFinishedEvent"
   - $ref: "#/$defs/goalFinishedEvent"
+  - $ref: "#/$defs/goalIssueFinishedEvent"
   - $ref: "#/$defs/goalStatsEvent"
   - $ref: "#/$defs/importReviewEvent"
   - $ref: "#/$defs/newSkillScaffoldEvent"
   - $ref: "#/$defs/prDescriptionGeneratedEvent"
   - $ref: "#/$defs/qualityCheckFinishedEvent"
   - $ref: "#/$defs/qualityCheckStartedEvent"
+  - $ref: "#/$defs/skillbillReviewFinishedEvent"
   - $ref: "#/$defs/readianAuthStatusEvent"
   - $ref: "#/$defs/readianGetArticleEvent"
   - $ref: "#/$defs/readianGetArticlesForTopicQueryEvent"
@@ -246,6 +248,18 @@ $defs:
     enum:
       - completed
       - blocked
+      - abandoned
+  goalRunnerStopReasonEnum:
+    type: string
+    enum:
+      - FAILED
+      - BLOCKED
+      - POLICY_BLOCKED
+      - INTERRUPTED
+      - TIMEOUT
+      - NO_TERMINAL_STORE_OUTCOME
+      - PULL_REQUEST_FAILED
+      - DEPENDENCIES_BLOCKED
   freeObjectShape:
     type: object
   reviewChildStep:
@@ -470,7 +484,7 @@ $defs:
       event_name:
         const: doctor
       contract_version:
-        const: "1.3.0"
+        const: "1.4.0"
 
   updateCheckEvent:
     type: object
@@ -482,7 +496,7 @@ $defs:
       event_name:
         const: update_check
       contract_version:
-        const: "1.3.0"
+        const: "1.4.0"
 
   featureTaskProseStatsEvent:
     type: object
@@ -494,7 +508,7 @@ $defs:
       event_name:
         const: feature_task_prose_stats
       contract_version:
-        const: "1.3.0"
+        const: "1.4.0"
 
   featureVerifyStatsEvent:
     type: object
@@ -506,7 +520,7 @@ $defs:
       event_name:
         const: feature_verify_stats
       contract_version:
-        const: "1.3.0"
+        const: "1.4.0"
 
   featureTaskRuntimeStatsEvent:
     type: object
@@ -518,7 +532,7 @@ $defs:
       event_name:
         const: feature_task_runtime_stats
       contract_version:
-        const: "1.3.0"
+        const: "1.4.0"
 
   readianAuthStatusEvent:
     type: object
@@ -530,7 +544,7 @@ $defs:
       event_name:
         const: readian_auth_status
       contract_version:
-        const: "1.3.0"
+        const: "1.4.0"
 
   reviewStatsEvent:
     type: object
@@ -542,7 +556,7 @@ $defs:
       event_name:
         const: review_stats
       contract_version:
-        const: "1.3.0"
+        const: "1.4.0"
 
   telemetryProxyCapabilitiesEvent:
     type: object
@@ -554,7 +568,7 @@ $defs:
       event_name:
         const: telemetry_proxy_capabilities
       contract_version:
-        const: "1.3.0"
+        const: "1.4.0"
 
   telemetryRemoteStatsEvent:
     type: object
@@ -567,7 +581,7 @@ $defs:
       event_name:
         const: telemetry_remote_stats
       contract_version:
-        const: "1.3.0"
+        const: "1.4.0"
       workflow:
         type: string
         enum:
@@ -613,7 +627,7 @@ $defs:
       event_name:
         const: feature_task_prose_started
       contract_version:
-        const: "1.3.0"
+        const: "1.4.0"
       feature_size:
         type: string
         enum:
@@ -680,7 +694,7 @@ $defs:
       event_name:
         const: feature_task_prose_finished
       contract_version:
-        const: "1.3.0"
+        const: "1.4.0"
       session_id:
         type: string
       source:
@@ -698,6 +712,7 @@ $defs:
           - abandoned_at_implementation
           - abandoned_at_review
           - error
+          - stale
       plan_correction_count:
         type: integer
       plan_task_count:
@@ -749,6 +764,8 @@ $defs:
           - high
       plan_deviation_notes:
         type: string
+      duration_seconds:
+        type: integer
       child_steps:
         type: array
         items:
@@ -779,7 +796,7 @@ $defs:
       event_name:
         const: feature_task_prose_workflow_continue
       contract_version:
-        const: "1.3.0"
+        const: "1.4.0"
       workflow_id:
         type: string
       issue_key:
@@ -798,7 +815,7 @@ $defs:
       event_name:
         const: feature_task_prose_workflow_get
       contract_version:
-        const: "1.3.0"
+        const: "1.4.0"
       workflow_id:
         type: string
 
@@ -812,7 +829,7 @@ $defs:
       event_name:
         const: feature_task_prose_workflow_latest
       contract_version:
-        const: "1.3.0"
+        const: "1.4.0"
 
   featureTaskProseWorkflowListEvent:
     type: object
@@ -824,7 +841,7 @@ $defs:
       event_name:
         const: feature_task_prose_workflow_list
       contract_version:
-        const: "1.3.0"
+        const: "1.4.0"
       limit:
         type: integer
 
@@ -838,7 +855,7 @@ $defs:
       event_name:
         const: feature_task_prose_workflow_open
       contract_version:
-        const: "1.3.0"
+        const: "1.4.0"
       session_id:
         type: string
       current_step_id:
@@ -855,7 +872,7 @@ $defs:
       event_name:
         const: feature_task_prose_workflow_resume
       contract_version:
-        const: "1.3.0"
+        const: "1.4.0"
       workflow_id:
         type: string
 
@@ -872,7 +889,7 @@ $defs:
       event_name:
         const: feature_task_prose_workflow_update
       contract_version:
-        const: "1.3.0"
+        const: "1.4.0"
       workflow_id:
         type: string
       workflow_status:
@@ -901,7 +918,7 @@ $defs:
       event_name:
         const: feature_verify_started
       contract_version:
-        const: "1.3.0"
+        const: "1.4.0"
       acceptance_criteria_count:
         type: integer
       rollout_relevant:
@@ -932,7 +949,7 @@ $defs:
       event_name:
         const: feature_verify_finished
       contract_version:
-        const: "1.3.0"
+        const: "1.4.0"
       feature_flag_audit_performed:
         type: boolean
       review_iterations:
@@ -950,6 +967,7 @@ $defs:
           - abandoned_at_review
           - abandoned_at_audit
           - error
+          - stale
       history_relevance:
         $ref: "#/$defs/historySignalEnum"
       history_helpfulness:
@@ -984,7 +1002,7 @@ $defs:
       event_name:
         const: feature_task_runtime_started
       contract_version:
-        const: "1.3.0"
+        const: "1.4.0"
       feature_size:
         type: string
         enum:
@@ -1011,7 +1029,7 @@ $defs:
       event_name:
         const: feature_task_runtime_finished
       contract_version:
-        const: "1.3.0"
+        const: "1.4.0"
       session_id:
         type: string
       completion_status:
@@ -1021,6 +1039,7 @@ $defs:
           - blocked
           - decomposed_at_planning
           - error
+          - stale
       completed_phase_ids:
         type: array
         items:
@@ -1033,10 +1052,20 @@ $defs:
         type: integer
       last_incomplete_phase:
         type: string
+        description: >-
+          First unfinished phase for blocked/error outcomes. Completed outcomes emit
+          `completed`; planning decompositions emit `decomposed_at_planning`.
       blocked_reason:
         type: string
+        description: >-
+          Non-empty category-prefixed reason for blocked/error outcomes. Prefixes are
+          `limit:`, `validation:`, `fix_loop:`, `git:`, `store_lock:`,
+          `needs_human:`, `schema:`, `runtime:`, and `unknown:`. Completed and
+          decomposed outcomes emit an empty string.
       resolved_branch:
         type: string
+      duration_seconds:
+        type: integer
       estimated_phase_tokens:
         type: object
         description: >-
@@ -1061,7 +1090,7 @@ $defs:
       event_name:
         const: feature_verify_workflow_continue
       contract_version:
-        const: "1.3.0"
+        const: "1.4.0"
       workflow_id:
         type: string
 
@@ -1076,7 +1105,7 @@ $defs:
       event_name:
         const: feature_verify_workflow_get
       contract_version:
-        const: "1.3.0"
+        const: "1.4.0"
       workflow_id:
         type: string
 
@@ -1090,7 +1119,7 @@ $defs:
       event_name:
         const: feature_verify_workflow_latest
       contract_version:
-        const: "1.3.0"
+        const: "1.4.0"
 
   featureVerifyWorkflowListEvent:
     type: object
@@ -1102,7 +1131,7 @@ $defs:
       event_name:
         const: feature_verify_workflow_list
       contract_version:
-        const: "1.3.0"
+        const: "1.4.0"
       limit:
         type: integer
 
@@ -1116,7 +1145,7 @@ $defs:
       event_name:
         const: feature_verify_workflow_open
       contract_version:
-        const: "1.3.0"
+        const: "1.4.0"
       session_id:
         type: string
       current_step_id:
@@ -1133,7 +1162,7 @@ $defs:
       event_name:
         const: feature_verify_workflow_resume
       contract_version:
-        const: "1.3.0"
+        const: "1.4.0"
       workflow_id:
         type: string
 
@@ -1150,7 +1179,7 @@ $defs:
       event_name:
         const: feature_verify_workflow_update
       contract_version:
-        const: "1.3.0"
+        const: "1.4.0"
       workflow_id:
         type: string
       workflow_status:
@@ -1179,7 +1208,7 @@ $defs:
       event_name:
         const: feature_task_runtime_workflow_continue
       contract_version:
-        const: "1.3.0"
+        const: "1.4.0"
       workflow_id:
         type: string
 
@@ -1194,7 +1223,7 @@ $defs:
       event_name:
         const: feature_task_runtime_workflow_get
       contract_version:
-        const: "1.3.0"
+        const: "1.4.0"
       workflow_id:
         type: string
 
@@ -1208,7 +1237,7 @@ $defs:
       event_name:
         const: feature_task_runtime_workflow_latest
       contract_version:
-        const: "1.3.0"
+        const: "1.4.0"
 
   featureTaskRuntimeWorkflowListEvent:
     type: object
@@ -1220,7 +1249,7 @@ $defs:
       event_name:
         const: feature_task_runtime_workflow_list
       contract_version:
-        const: "1.3.0"
+        const: "1.4.0"
       limit:
         type: integer
 
@@ -1234,7 +1263,7 @@ $defs:
       event_name:
         const: feature_task_runtime_workflow_open
       contract_version:
-        const: "1.3.0"
+        const: "1.4.0"
       session_id:
         type: string
       current_step_id:
@@ -1251,7 +1280,7 @@ $defs:
       event_name:
         const: feature_task_runtime_workflow_resume
       contract_version:
-        const: "1.3.0"
+        const: "1.4.0"
       workflow_id:
         type: string
 
@@ -1268,7 +1297,7 @@ $defs:
       event_name:
         const: feature_task_runtime_workflow_update
       contract_version:
-        const: "1.3.0"
+        const: "1.4.0"
       workflow_id:
         type: string
       workflow_status:
@@ -1296,12 +1325,13 @@ $defs:
       - subtask_total
       - resumed
       - started_at
+      - status
       - mode
     properties:
       event_name:
         const: goal_started
       contract_version:
-        const: "1.3.0"
+        const: "1.4.0"
       issue_key:
         type: string
       feature_name:
@@ -1318,6 +1348,11 @@ $defs:
         type: string
         minLength: 1
         description: ISO-8601 timestamp the goal run started at.
+      status:
+        type: string
+        enum:
+          - running
+        description: Runtime status at goal-start emission time.
       mode:
         type: string
         enum:
@@ -1337,14 +1372,14 @@ $defs:
       - status
       - started_at
       - finished_at
-      - duration_ms
+      - duration_seconds
       - attempt_count
       - blocked_reason
     properties:
       event_name:
         const: goal_subtask_finished
       contract_version:
-        const: "1.3.0"
+        const: "1.4.0"
       issue_key:
         type: string
       workflow_id:
@@ -1365,7 +1400,7 @@ $defs:
         type: string
         minLength: 1
         description: ISO-8601 timestamp the subtask finished at.
-      duration_ms:
+      duration_seconds:
         type: integer
         minimum: 0
         maximum: 2147483647
@@ -1378,8 +1413,10 @@ $defs:
           - string
           - "null"
         description: >
-          Free-text blocked reason when `status` is `blocked`; `null`
-          otherwise. Required key with a nullable value.
+          Category-prefixed blocked reason when `status` is `blocked`; `null`
+          otherwise. Required key with a nullable value. Prefixes are `limit:`,
+          `validation:`, `fix_loop:`, `git:`, `store_lock:`, `needs_human:`,
+          `schema:`, `runtime:`, and `unknown:`.
       finalizing_agent_id:
         type:
           - string
@@ -1418,16 +1455,17 @@ $defs:
       - status
       - started_at
       - finished_at
-      - duration_ms
+      - duration_seconds
       - subtasks_complete
       - subtasks_blocked
       - subtasks_skipped
       - mode
+      - stop_reason
     properties:
       event_name:
         const: goal_finished
       contract_version:
-        const: "1.3.0"
+        const: "1.4.0"
       issue_key:
         type: string
       workflow_id:
@@ -1442,7 +1480,7 @@ $defs:
         type: string
         minLength: 1
         description: ISO-8601 timestamp the goal run finished at.
-      duration_ms:
+      duration_seconds:
         type: integer
         minimum: 0
         maximum: 2147483647
@@ -1455,6 +1493,80 @@ $defs:
         minimum: 0
         maximum: 2147483647
       subtasks_skipped:
+        type: integer
+        minimum: 0
+        maximum: 2147483647
+      mode:
+        type: string
+        enum:
+          - prose
+          - runtime
+      stop_reason:
+        oneOf:
+          - $ref: "#/$defs/goalRunnerStopReasonEnum"
+          - type: "null"
+
+  goalIssueFinishedEvent:
+    type: object
+    additionalProperties: false
+    required:
+      - event_name
+      - contract_version
+      - issue_key
+      - parent_workflow_id
+      - status
+      - subtasks_complete
+      - subtasks_blocked
+      - subtasks_skipped
+      - total_invocations
+      - total_blocks
+      - total_resumes
+      - first_started_at
+      - finished_at
+      - duration_seconds
+      - mode
+    properties:
+      event_name:
+        const: goal_issue_finished
+      contract_version:
+        const: "1.4.0"
+      issue_key:
+        type: string
+      parent_workflow_id:
+        type: string
+      status:
+        $ref: "#/$defs/goalFinishedStatusEnum"
+      subtasks_complete:
+        type: integer
+        minimum: 0
+        maximum: 2147483647
+      subtasks_blocked:
+        type: integer
+        minimum: 0
+        maximum: 2147483647
+      subtasks_skipped:
+        type: integer
+        minimum: 0
+        maximum: 2147483647
+      total_invocations:
+        type: integer
+        minimum: 0
+        maximum: 2147483647
+      total_blocks:
+        type: integer
+        minimum: 0
+        maximum: 2147483647
+      total_resumes:
+        type: integer
+        minimum: 0
+        maximum: 2147483647
+      first_started_at:
+        type: string
+        minLength: 1
+      finished_at:
+        type: string
+        minLength: 1
+      duration_seconds:
         type: integer
         minimum: 0
         maximum: 2147483647
@@ -1480,7 +1592,7 @@ $defs:
       event_name:
         const: goal_prose_started
       contract_version:
-        const: "1.3.0"
+        const: "1.4.0"
       issue_key:
         type: string
       feature_name:
@@ -1515,7 +1627,7 @@ $defs:
       event_name:
         const: goal_prose_subtask_finished
       contract_version:
-        const: "1.3.0"
+        const: "1.4.0"
       issue_key:
         type: string
       workflow_id:
@@ -1567,7 +1679,7 @@ $defs:
       event_name:
         const: goal_prose_finished
       contract_version:
-        const: "1.3.0"
+        const: "1.4.0"
       issue_key:
         type: string
       workflow_id:
@@ -1605,7 +1717,7 @@ $defs:
       event_name:
         const: goal_stats
       contract_version:
-        const: "1.3.0"
+        const: "1.4.0"
       since:
         type: string
       date_from:
@@ -1630,7 +1742,7 @@ $defs:
       event_name:
         const: import_review
       contract_version:
-        const: "1.3.0"
+        const: "1.4.0"
       review_text:
         type: string
       orchestrated:
@@ -1647,7 +1759,7 @@ $defs:
       event_name:
         const: new_skill_scaffold
       contract_version:
-        const: "1.3.0"
+        const: "1.4.0"
       payload:
         $ref: "#/$defs/freeObjectShape"
       dry_run:
@@ -1671,7 +1783,7 @@ $defs:
       event_name:
         const: pr_description_generated
       contract_version:
-        const: "1.3.0"
+        const: "1.4.0"
       commit_count:
         type: integer
       files_changed_count:
@@ -1684,6 +1796,10 @@ $defs:
         type: string
       orchestrated:
         type: boolean
+      generated_description:
+        type: string
+      final_pr_body:
+        type: string
 
   qualityCheckFinishedEvent:
     type: object
@@ -1700,6 +1816,7 @@ $defs:
       - orchestrated
       - routed_skill
       - detected_stack
+      - fallback
       - scope_type
       - initial_failure_count
       - duration_seconds
@@ -1707,7 +1824,7 @@ $defs:
       event_name:
         const: quality_check_finished
       contract_version:
-        const: "1.3.0"
+        const: "1.4.0"
       final_failure_count:
         type: integer
       iterations:
@@ -1719,6 +1836,7 @@ $defs:
           - fail
           - skipped
           - unsupported_stack
+          - stale
       session_id:
         type: string
       failing_check_names:
@@ -1731,7 +1849,13 @@ $defs:
         type: boolean
       routed_skill:
         type: string
+        minLength: 1
       detected_stack:
+        type: string
+        minLength: 1
+      fallback:
+        type: boolean
+      fallback_reason:
         type: string
       scope_type:
         $ref: "#/$defs/qualityCheckScopeEnum"
@@ -1748,6 +1872,7 @@ $defs:
       - contract_version
       - routed_skill
       - detected_stack
+      - fallback
       - scope_type
       - initial_failure_count
       - orchestrated
@@ -1755,10 +1880,14 @@ $defs:
       event_name:
         const: quality_check_started
       contract_version:
-        const: "1.3.0"
+        const: "1.4.0"
       routed_skill:
         type: string
       detected_stack:
+        type: string
+      fallback:
+        type: boolean
+      fallback_reason:
         type: string
       scope_type:
         $ref: "#/$defs/qualityCheckScopeEnum"
@@ -1766,6 +1895,102 @@ $defs:
         type: integer
       orchestrated:
         type: boolean
+
+  skillbillReviewFinishedEvent:
+    type: object
+    additionalProperties: false
+    required:
+      - event_name
+      - contract_version
+      - total_findings
+      - accepted_findings
+      - rejected_findings
+      - unresolved_findings
+      - accepted_rate
+      - rejected_rate
+      - accepted_finding_details
+      - rejected_finding_details
+      - review_run_id
+      - review_session_id
+      - routed_skill
+      - review_subskills
+      - review_scope
+      - review_platform
+      - detected_stack
+      - fallback
+      - platform_slug
+      - scope_type
+      - execution_mode
+      - review_finished_at
+      - learnings
+    properties:
+      event_name:
+        const: skillbill_review_finished
+      contract_version:
+        const: "1.4.0"
+      total_findings:
+        type: integer
+      accepted_findings:
+        type: integer
+      rejected_findings:
+        type: integer
+      unresolved_findings:
+        type: integer
+      accepted_rate:
+        type: number
+      rejected_rate:
+        type: number
+      accepted_finding_details:
+        type: array
+        items:
+          type: object
+          additionalProperties: true
+      rejected_finding_details:
+        type: array
+        items:
+          type: object
+          additionalProperties: true
+      review_run_id:
+        type: string
+      review_session_id:
+        type: string
+      routed_skill:
+        type: string
+        pattern: "^(unrouted|[a-z0-9][a-z0-9-]*)$"
+      review_subskills:
+        type: array
+        items:
+          type: string
+      review_scope:
+        type: string
+      review_platform:
+        type: string
+        pattern: "^(unknown|[a-z0-9][a-z0-9-]*)$"
+      detected_stack:
+        type: string
+        pattern: "^(unknown|[a-z0-9][a-z0-9-]*)$"
+      detected_stack_detail:
+        type: string
+      fallback:
+        type: boolean
+      fallback_reason:
+        type: string
+      platform_slug:
+        type: string
+        pattern: "^(unknown|[a-z0-9][a-z0-9-]*)$"
+      scope_type:
+        type: string
+      execution_mode:
+        type:
+          - string
+          - "null"
+      review_finished_at:
+        type:
+          - string
+          - "null"
+      learnings:
+        type: object
+        additionalProperties: true
 
   resolveLearningsEvent:
     type: object
@@ -1777,7 +2002,7 @@ $defs:
       event_name:
         const: resolve_learnings
       contract_version:
-        const: "1.3.0"
+        const: "1.4.0"
       repo:
         type: string
       skill:
@@ -1797,7 +2022,7 @@ $defs:
       event_name:
         const: triage_findings
       contract_version:
-        const: "1.3.0"
+        const: "1.4.0"
       review_run_id:
         type: string
       decisions:
@@ -1821,7 +2046,7 @@ $defs:
       event_name:
         const: readian_get_article
       contract_version:
-        const: "1.3.0"
+        const: "1.4.0"
       article_id:
         type: string
 
@@ -1836,7 +2061,7 @@ $defs:
       event_name:
         const: readian_get_articles_for_topic_query
       contract_version:
-        const: "1.3.0"
+        const: "1.4.0"
       topic_query:
         type: string
       date:
@@ -1860,7 +2085,7 @@ $defs:
       event_name:
         const: readian_get_spotlight
       contract_version:
-        const: "1.3.0"
+        const: "1.4.0"
       date:
         type: string
       limit:
@@ -1877,7 +2102,7 @@ $defs:
       event_name:
         const: readian_save_candidate
       contract_version:
-        const: "1.3.0"
+        const: "1.4.0"
       candidate_id:
         type: string
       notes:
@@ -1895,7 +2120,7 @@ $defs:
       event_name:
         const: readian_mark_story_status
       contract_version:
-        const: "1.3.0"
+        const: "1.4.0"
       story_id:
         type: string
       status:
@@ -1938,16 +2163,24 @@ x-coherence-checks:
       the "every branch maps to a tool" direction only.
   goal-telemetry-emission-events:
     description: >
-      `goal_started`, `goal_subtask_finished`, and `goal_finished` are
-      RUNTIME-INTERNAL emission payload contracts emitted by the
-      `skill-bill goal` runtime as it drives a decomposed goal. They are
-      intentionally ABSENT from `McpToolRegistry.toolNames` — they are
-      not MCP tools and have no dispatcher handler or input schema. Only
-      `goal_stats` is a registered tool in the decomposed-goal family.
+      `goal_started`, `goal_subtask_finished`, `goal_finished`,
+      `goal_issue_finished`, and `skillbill_review_finished` are
+      RUNTIME-INTERNAL emission payload contracts emitted by runtime
+      lifecycles. They are intentionally ABSENT from
+      `McpToolRegistry.toolNames` — they are not MCP tools and have no
+      dispatcher handler or input schema. Only `goal_stats` is a
+      registered tool in the decomposed-goal family.
       `TelemetryEventInputSchemaParityTest` carries an explicit
-      allow-list (`runtimeInternalEmissionEvents`) matching these three
-      names so the "every schema branch maps to a tool" assertion skips
-      them; doc and enforcement stay in lockstep.
+      allow-list (`runtimeInternalEmissionEvents`) matching these names
+      so the "every schema branch maps to a tool" assertion skips them;
+      doc and enforcement stay in lockstep.
+  review-finished-normalized-label-equality:
+    description: >
+      `skillbill_review_finished.review_platform`, `detected_stack`, and
+      `platform_slug` must be equal normalized clean slugs. JSON Schema
+      enforces the clean-slug shape without hard-coding manifest-driven
+      platform-pack slugs; `TelemetryEventSchemaValidator` enforces the
+      cross-field equality after schema validation.
   inputschemas-structural-parity:
     description: >
       For every event with an entry in `McpToolRegistry.inputSchemas`,

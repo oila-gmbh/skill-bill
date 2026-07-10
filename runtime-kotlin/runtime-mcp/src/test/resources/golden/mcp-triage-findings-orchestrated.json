@@ -49,6 +49,8 @@
     ],
     "review_scope": "unstaged changes",
     "review_platform": "kotlin",
+    "detected_stack": "kotlin",
+    "fallback": false,
     "platform_slug": "kotlin",
     "scope_type": "unstaged_changes",
     "execution_mode": "inline",

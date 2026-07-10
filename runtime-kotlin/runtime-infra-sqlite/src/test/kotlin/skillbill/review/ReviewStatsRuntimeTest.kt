@@ -183,22 +183,7 @@ class ReviewStatsRuntimeTest {
       assertEquals("Intentional wording", fullRejectedFinding.note)
       val anonymousSerializedPayload = anonymousPayload.toReviewFinishedTelemetryPayload().toPayload()
       val fullSerializedPayload = fullPayload.toReviewFinishedTelemetryPayload().toPayload()
-      val anonymousSerializedRejectedFinding =
-        (anonymousSerializedPayload["rejected_finding_details"] as List<*>).single() as Map<*, *>
-      val fullSerializedRejectedFinding =
-        (fullSerializedPayload["rejected_finding_details"] as List<*>).single() as Map<*, *>
-      assertEquals(false, "description" in anonymousSerializedRejectedFinding)
-      assertEquals(false, "note" in anonymousSerializedRejectedFinding)
-      assertEquals("behavior_correctness", anonymousSerializedRejectedFinding["issue_category"])
-      assertEquals(1, anonymousSerializedPayload["rejected_findings"])
-      assertEquals(0.5, anonymousSerializedPayload["rejected_rate"])
-      assertEquals("kotlin", anonymousSerializedPayload["platform_slug"])
-      assertEquals("unstaged_changes", anonymousSerializedPayload["scope_type"])
-      assertEquals(
-        "Installer prompt wording is inconsistent with the new flow.",
-        fullSerializedRejectedFinding["description"],
-      )
-      assertEquals("Intentional wording", fullSerializedRejectedFinding["note"])
+      assertSerializedReviewFinishedPayloads(anonymousSerializedPayload, fullSerializedPayload)
       val serializedLearnings = anonymousSerializedPayload["learnings"] as Map<*, *>
       assertEquals(1, serializedLearnings["applied_count"])
       assertEquals(listOf("L-001"), serializedLearnings["applied_references"])
@@ -226,6 +211,9 @@ class ReviewStatsRuntimeTest {
       assertEquals(emptyList<Map<String, Any?>>(), payload["accepted_finding_details"])
       assertEquals(emptyList<Map<String, Any?>>(), payload["rejected_finding_details"])
       assertEquals("unknown", payload["platform_slug"])
+      assertEquals("unknown", payload["review_platform"])
+      assertEquals("unknown", payload["detected_stack"])
+      assertEquals(false, payload["fallback"])
       assertEquals("branch_diff", payload["scope_type"])
     }
   }
@@ -326,7 +314,7 @@ class ReviewStatsRuntimeTest {
   }
 
   @Test
-  fun `feature implement duplicate terminal calls emit updated duplicate accounting`() {
+  fun `feature implement duplicate terminal calls preserve one terminal event and record diagnostics`() {
     val (_, connection) = tempDbConnection("feature-task-duplicate-terminal")
     connection.use {
       val store = LifecycleTelemetryStore(connection)
@@ -361,12 +349,11 @@ class ReviewStatsRuntimeTest {
         listOf(
           "skillbill_feature_task_prose_started",
           "skillbill_feature_task_prose_finished",
-          "skillbill_feature_task_prose_finished",
         ),
         pending.map { it.eventName },
       )
-      val duplicatePayload = telemetryPayloads(pending, "skillbill_feature_task_prose_finished").last()
-      assertEquals(1, duplicatePayload["duplicate_terminal_finished_events"])
+      val terminalPayload = telemetryPayloads(pending, "skillbill_feature_task_prose_finished").single()
+      assertTrue("duplicate_terminal_finished_events" !in terminalPayload)
       val stats = ReviewStatsRuntime.featureImplementStats(connection)
       assertEquals(1, stats.duplicateTerminalFinishedEvents)
       assertEquals(2, stats.dataQualityDebtRuns)
@@ -432,7 +419,7 @@ class ReviewStatsRuntimeTest {
           issueKey = "SKILL-65.1",
           featureName = "lifecycle-telemetry",
         ),
-        level = "full",
+        level = "anonymous",
       )
       store.featureTaskRuntimeFinished(
         FeatureTaskRuntimeFinishedRecord(
@@ -440,11 +427,11 @@ class ReviewStatsRuntimeTest {
           completionStatus = "completed",
           completedPhaseIds = listOf("preplan", "plan", "implement"),
           phaseOutcomes = mapOf("preplan" to "completed", "plan" to "completed", "implement" to "completed"),
-          lastIncompletePhase = "",
+          lastIncompletePhase = "completed",
           blockedReason = "",
           resolvedBranch = "feat/SKILL-65.1",
         ),
-        level = "full",
+        level = "anonymous",
       )
       // A redundant finished call (e.g. a resume) must re-save idempotently and never re-enqueue.
       store.featureTaskRuntimeFinished(
@@ -453,11 +440,11 @@ class ReviewStatsRuntimeTest {
           completionStatus = "completed",
           completedPhaseIds = listOf("preplan", "plan", "implement"),
           phaseOutcomes = mapOf("preplan" to "completed", "plan" to "completed", "implement" to "completed"),
-          lastIncompletePhase = "",
+          lastIncompletePhase = "completed",
           blockedReason = "",
           resolvedBranch = "feat/SKILL-65.1",
         ),
-        level = "full",
+        level = "anonymous",
       )
 
       val pending = outbox.listPending(limit = null)
@@ -469,6 +456,8 @@ class ReviewStatsRuntimeTest {
         pending.single { it.eventName == "skillbill_feature_task_runtime_finished" }.payloadJson,
       )
       assertEquals("completed", finishedPayload?.get("completion_status")?.let { it.toString().trim('"') })
+      assertEquals("completed", finishedPayload?.get("last_incomplete_phase")?.let { it.toString().trim('"') })
+      assertEquals("", finishedPayload?.get("blocked_reason")?.let { it.toString().trim('"') })
 
       val stats = ReviewStatsRuntime.featureTaskRuntimeStats(connection)
       assertEquals(1, stats.totalRuns)
@@ -542,7 +531,7 @@ class ReviewStatsRuntimeTest {
           completedPhaseIds = listOf("preplan"),
           phaseOutcomes = mapOf("preplan" to "completed", "plan" to "blocked"),
           lastIncompletePhase = "plan",
-          blockedReason = "schema gate failed",
+          blockedReason = "schema: gate failed",
           resolvedBranch = "",
         ),
         level = "anonymous",
@@ -557,7 +546,7 @@ class ReviewStatsRuntimeTest {
           completionStatus = "decomposed_at_planning",
           completedPhaseIds = listOf("preplan", "plan"),
           phaseOutcomes = mapOf("preplan" to "completed", "plan" to "completed"),
-          lastIncompletePhase = "",
+          lastIncompletePhase = "decomposed_at_planning",
           blockedReason = "",
           resolvedBranch = "",
         ),
@@ -571,6 +560,17 @@ class ReviewStatsRuntimeTest {
       assertEquals(1, stats.completionStatusCounts["blocked"])
       assertEquals(1, stats.completionStatusCounts["decomposed_at_planning"])
       assertEquals(1, stats.phaseOutcomeCounts["blocked"])
+
+      val payloads = telemetryPayloads(
+        TelemetryOutboxStore(connection).listPending(limit = null),
+        "skillbill_feature_task_runtime_finished",
+      )
+      val blockedPayload = payloads.single { it["session_id"] == "ftr-blocked" }
+      assertEquals("plan", blockedPayload["last_incomplete_phase"])
+      assertEquals("schema: gate failed", blockedPayload["blocked_reason"])
+      val decomposedPayload = payloads.single { it["session_id"] == "ftr-decomposed" }
+      assertEquals("decomposed_at_planning", decomposedPayload["last_incomplete_phase"])
+      assertEquals("", decomposedPayload["blocked_reason"])
     }
   }
 }
@@ -611,6 +611,29 @@ private fun telemetryPayloads(
     ?.let(JsonSupport::jsonElementToValue)
     ?.let(JsonSupport::anyToStringAnyMap)
     ?: emptyMap()
+}
+
+private fun assertSerializedReviewFinishedPayloads(
+  anonymousPayload: Map<String, Any?>,
+  fullPayload: Map<String, Any?>,
+) {
+  val anonymousRejectedFinding = (anonymousPayload["rejected_finding_details"] as List<*>).single() as Map<*, *>
+  val fullRejectedFinding = (fullPayload["rejected_finding_details"] as List<*>).single() as Map<*, *>
+  assertEquals(false, "description" in anonymousRejectedFinding)
+  assertEquals(false, "note" in anonymousRejectedFinding)
+  assertEquals("behavior_correctness", anonymousRejectedFinding["issue_category"])
+  assertEquals(1, anonymousPayload["rejected_findings"])
+  assertEquals(0.5, anonymousPayload["rejected_rate"])
+  assertEquals("kotlin", anonymousPayload["platform_slug"])
+  assertEquals("kotlin", anonymousPayload["review_platform"])
+  assertEquals("kotlin", anonymousPayload["detected_stack"])
+  assertEquals(false, anonymousPayload["fallback"])
+  assertEquals("unstaged_changes", anonymousPayload["scope_type"])
+  assertEquals(
+    "Installer prompt wording is inconsistent with the new flow.",
+    fullRejectedFinding["description"],
+  )
+  assertEquals("Intentional wording", fullRejectedFinding["note"])
 }
 
 private fun cacheSkillLearning(connection: java.sql.Connection, reviewRunId: String, reviewSessionId: String) {

@@ -44,6 +44,7 @@ import skillbill.ports.persistence.LearningRepository
 import skillbill.ports.persistence.LifecycleTelemetryRepository
 import skillbill.ports.persistence.ReviewRepository
 import skillbill.ports.persistence.TelemetryOutboxRepository
+import skillbill.ports.persistence.TelemetryReconciliationRepository
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.persistence.WorkflowStateRepository
 import skillbill.ports.persistence.model.FeatureImplementSessionSummary
@@ -856,6 +857,8 @@ class FeatureTaskRuntimeLifecycleTelemetryRunnerTest {
     assertEquals("completed", finished.completionStatus)
     assertEquals(ALL_PHASES, finished.completedPhaseIds)
     assertEquals(ALL_PHASES.associateWith { "completed" }, finished.phaseOutcomes)
+    assertEquals("completed", finished.lastIncompletePhase)
+    assertEquals("", finished.blockedReason)
   }
 
   @Test
@@ -882,7 +885,7 @@ class FeatureTaskRuntimeLifecycleTelemetryRunnerTest {
     val finished = harness.lifecycle.finishedRecords.single()
     assertEquals("blocked", finished.completionStatus)
     assertEquals("preplan", finished.lastIncompletePhase)
-    assertTrue(finished.blockedReason.isNotBlank())
+    assertTrue(finished.blockedReason.startsWith("runtime:"))
   }
 
   @Test
@@ -903,6 +906,8 @@ class FeatureTaskRuntimeLifecycleTelemetryRunnerTest {
     val finished = harness.lifecycle.finishedRecords.single()
     assertEquals("decomposed_at_planning", finished.completionStatus)
     assertEquals(listOf("preplan", "plan"), finished.completedPhaseIds)
+    assertEquals("decomposed_at_planning", finished.lastIncompletePhase)
+    assertEquals("", finished.blockedReason)
   }
 
   @Test
@@ -919,6 +924,8 @@ class FeatureTaskRuntimeLifecycleTelemetryRunnerTest {
     val finished = harness.lifecycle.finishedRecords.single()
     assertEquals("error", finished.completionStatus)
     assertEquals(harness.lifecycle.startedRecords.single().sessionId, finished.sessionId)
+    assertEquals("preplan", finished.lastIncompletePhase)
+    assertTrue(finished.blockedReason.startsWith("runtime:"))
   }
 
   @Test
@@ -942,6 +949,8 @@ class FeatureTaskRuntimeLifecycleTelemetryRunnerTest {
     assertEquals("error", finished.completionStatus)
     assertEquals(emptyMap(), finished.phaseOutcomes)
     assertEquals(emptyList(), finished.completedPhaseIds)
+    assertEquals("unknown", finished.lastIncompletePhase)
+    assertTrue(finished.blockedReason.startsWith("runtime:"))
   }
 }
 
@@ -3698,6 +3707,7 @@ internal class RuntimeFakeDatabaseSessionFactory(
     override val learnings: LearningRepository get() = error("unused")
     override val lifecycleTelemetry: LifecycleTelemetryRepository
       get() = lifecycle ?: error("unused")
+    override val telemetryReconciliation: TelemetryReconciliationRepository get() = error("unused")
     override val telemetryOutbox: TelemetryOutboxRepository get() = error("unused")
     override val workflowStates: WorkflowStateRepository = repository
   }
@@ -3759,6 +3769,9 @@ internal class RecordingLifecycleTelemetryRepository : LifecycleTelemetryReposit
     error("unused")
 
   override fun goalFinished(record: skillbill.telemetry.model.GoalFinishedRecord, level: String) = error("unused")
+
+  override fun goalIssueFinished(record: skillbill.telemetry.model.GoalIssueFinishedRecord, level: String) =
+    error("unused")
 }
 
 internal class InMemoryRuntimeWorkflowRepository : WorkflowStateRepository {

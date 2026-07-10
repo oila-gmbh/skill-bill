@@ -468,6 +468,7 @@ runtime-ports
     - `skillbill.application.telemetry.LifecycleTelemetryService.goalStarted`
     - `skillbill.application.telemetry.LifecycleTelemetryService.goalSubtaskFinished`
     - `skillbill.application.telemetry.LifecycleTelemetryService.goalFinished`
+    - `skillbill.application.telemetry.LifecycleTelemetryService.goalIssueFinished`
     - `skillbill.learnings.learningPayload`
     - `skillbill.learnings.learningSummaryPayload`
     - `skillbill.learnings.scopeCounts`
@@ -931,6 +932,7 @@ Categories:
 - `skillbill.application.telemetry.LifecycleTelemetryService.goalStarted`
 - `skillbill.application.telemetry.LifecycleTelemetryService.goalSubtaskFinished`
 - `skillbill.application.telemetry.LifecycleTelemetryService.goalFinished`
+- `skillbill.application.telemetry.LifecycleTelemetryService.goalIssueFinished`
 
 ### private_serializer
 

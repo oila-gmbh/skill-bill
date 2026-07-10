@@ -6,6 +6,7 @@ import skillbill.ports.persistence.LearningRepository
 import skillbill.ports.persistence.LifecycleTelemetryRepository
 import skillbill.ports.persistence.ReviewRepository
 import skillbill.ports.persistence.TelemetryOutboxRepository
+import skillbill.ports.persistence.TelemetryReconciliationRepository
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.persistence.WorkflowStateRepository
 import skillbill.ports.persistence.model.TelemetryOutboxRecord
@@ -76,6 +77,8 @@ private class FakeTelemetryDatabaseSessionFactory(
       get() = error("Unexpected learnings")
     override val lifecycleTelemetry: LifecycleTelemetryRepository
       get() = error("Unexpected lifecycleTelemetry")
+    override val telemetryReconciliation: TelemetryReconciliationRepository
+      get() = error("Unexpected telemetryReconciliation")
     override val telemetryOutbox: TelemetryOutboxRepository = this@FakeTelemetryDatabaseSessionFactory.telemetryOutbox
     override val workflowStates: WorkflowStateRepository
       get() = error("Unexpected workflowStates")

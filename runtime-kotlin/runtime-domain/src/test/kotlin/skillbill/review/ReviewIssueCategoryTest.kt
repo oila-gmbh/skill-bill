@@ -51,14 +51,18 @@ class ReviewIssueCategoryTest {
   }
 
   @Test
-  fun `platform and scope dimensions normalize known and free form labels`() {
+  fun `platform and scope dimensions normalize clean slugs without promoting prose`() {
     assertEquals("agent-config", normalizePlatformSlug("agent-config"))
     assertEquals("kmp", normalizePlatformSlug("KMP"))
+    assertEquals("kmp", normalizePlatformSlug("KMP/Kotlin"))
+    assertEquals("kmp", normalizePlatformSlug("Kotlin Multiplatform (KMP)"))
+    assertEquals("kmp", normalizePlatformSlug("Kotlin multi-platform module"))
     assertEquals("kotlin", normalizePlatformSlug(" kotlin "))
-    assertEquals("backend-kotlin", normalizePlatformSlug("backend kotlin"))
+    assertEquals("kotlin", normalizePlatformSlug("backend kotlin"))
+    assertEquals("kotlin", normalizePlatformSlug("backend-kotlin"))
     assertEquals("android", normalizePlatformSlug("android"))
     assertEquals("unknown", normalizePlatformSlug(null))
-    assertEquals("custom-stack", normalizePlatformSlug("Custom Stack!"))
+    assertEquals("unknown", normalizePlatformSlug("Custom Stack!"))
 
     assertEquals("branch_diff", normalizeScopeType("branch diff (main...HEAD)"))
     assertEquals("branch_diff", normalizeScopeType("branch_diff"))

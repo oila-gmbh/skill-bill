@@ -72,6 +72,8 @@ data class FeatureTaskRuntimeFinishedRequest(
 data class QualityCheckStartedRequest(
   val routedSkill: String,
   val detectedStack: String,
+  val fallback: Boolean = false,
+  val fallbackReason: String? = null,
   val scopeType: String,
   val initialFailureCount: Int,
   val orchestrated: Boolean,
@@ -87,6 +89,8 @@ data class QualityCheckFinishedRequest(
   val orchestrated: Boolean,
   val routedSkill: String,
   val detectedStack: String,
+  val fallback: Boolean = false,
+  val fallbackReason: String? = null,
   val scopeType: String,
   val initialFailureCount: Int,
   val durationSeconds: Int,
@@ -122,6 +126,8 @@ data class PrDescriptionGeneratedRequest(
   val prCreated: Boolean,
   val prTitle: String,
   val orchestrated: Boolean,
+  val generatedDescription: String? = null,
+  val finalPrBody: String? = null,
 )
 
 data class GoalStartedRequest(
@@ -131,7 +137,9 @@ data class GoalStartedRequest(
   val subtaskTotal: Int,
   val resumed: Boolean,
   val startedAt: String,
+  val status: String = "running",
   val mode: String,
+  val parentWorkflowId: String? = null,
 )
 
 data class GoalSubtaskFinishedRequest(
@@ -159,5 +167,18 @@ data class GoalFinishedRequest(
   val subtasksComplete: Int,
   val subtasksBlocked: Int,
   val subtasksSkipped: Int,
+  val mode: String,
+  val stopReason: String? = null,
+  val parentWorkflowId: String? = null,
+)
+
+data class GoalIssueFinishedRequest(
+  val issueKey: String,
+  val parentWorkflowId: String,
+  val status: String,
+  val subtasksComplete: Int,
+  val subtasksBlocked: Int,
+  val subtasksSkipped: Int,
+  val finishedAt: String,
   val mode: String,
 )

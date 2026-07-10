@@ -72,12 +72,20 @@ data class QualityCheckStartedRecord(
   val sessionId: String,
   val routedSkill: String,
   val detectedStack: String,
+  val fallback: Boolean,
+  val fallbackReason: String?,
   val scopeType: String,
   val initialFailureCount: Int,
 )
 
 data class QualityCheckFinishedRecord(
   val sessionId: String,
+  val routedSkill: String,
+  val detectedStack: String,
+  val fallback: Boolean,
+  val fallbackReason: String?,
+  val scopeType: String,
+  val initialFailureCount: Int,
   val finalFailureCount: Int,
   val iterations: Int,
   val result: String,
@@ -119,7 +127,9 @@ data class GoalStartedRecord(
   val subtaskTotal: Int,
   val resumed: Boolean,
   val startedAt: String,
+  val status: String = "running",
   val mode: String,
+  val parentWorkflowId: String? = null,
 )
 
 data class GoalSubtaskFinishedRecord(
@@ -147,5 +157,18 @@ data class GoalFinishedRecord(
   val subtasksComplete: Int,
   val subtasksBlocked: Int,
   val subtasksSkipped: Int,
+  val mode: String,
+  val stopReason: String? = null,
+  val parentWorkflowId: String? = null,
+)
+
+data class GoalIssueFinishedRecord(
+  val issueKey: String,
+  val parentWorkflowId: String,
+  val status: String,
+  val subtasksComplete: Int,
+  val subtasksBlocked: Int,
+  val subtasksSkipped: Int,
+  val finishedAt: String,
   val mode: String,
 )

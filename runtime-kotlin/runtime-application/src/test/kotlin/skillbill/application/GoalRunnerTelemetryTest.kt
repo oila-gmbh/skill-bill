@@ -3,6 +3,7 @@ package skillbill.application
 import skillbill.application.goalrunner.GoalLifecycleTelemetryEmitter
 import skillbill.application.goalrunner.GoalRunner
 import skillbill.application.model.GoalFinishedRequest
+import skillbill.application.model.GoalIssueFinishedRequest
 import skillbill.application.model.GoalRunnerEventSink
 import skillbill.application.model.GoalRunnerRunEvent
 import skillbill.application.model.GoalRunnerRunRequest
@@ -28,7 +29,52 @@ import kotlin.test.assertTrue
 
 class GoalRunnerTelemetryTest {
   @Test
-  fun `clean completed run emits one started two subtask finished and one finished`() {
+  fun `preflight policy block emits one started and one blocked finished for the same segment`() {
+    val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 1).copy(featureBranch = "main"))
+    val outcomes = RecordingOutcomeStore()
+    val launcher = RecordingSubtaskLauncher { launchFacts() }
+    val telemetry = RecordingGoalLifecycleTelemetryEmitter()
+    val runner = telemetryRunner(store, launcher, outcomes, telemetry)
+
+    val report = runner.run(runRequest())
+
+    assertIs<GoalRunnerRunReport.Stopped>(report)
+    val started = telemetry.started.single()
+    val finished = telemetry.finished.single()
+    assertEquals(started.workflowId, finished.workflowId)
+    assertEquals("wfl-parent", started.parentWorkflowId)
+    assertEquals("wfl-parent", finished.parentWorkflowId)
+    assertEquals("blocked", finished.status)
+    assertEquals("POLICY_BLOCKED", finished.stopReason)
+    assertTrue(launcher.requests.isEmpty())
+  }
+
+  @Test
+  fun `preflight policy block contributes exactly one fresh invocation to issue aggregates`() {
+    val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 1).copy(featureBranch = "main"))
+    val outcomes = RecordingOutcomeStore()
+    val launcher = RecordingSubtaskLauncher { launchFacts() }
+    val telemetry = RecordingGoalLifecycleTelemetryEmitter()
+    val runner = telemetryRunner(store, launcher, outcomes, telemetry)
+
+    val report = runner.run(runRequest())
+
+    assertIs<GoalRunnerRunReport.Stopped>(report)
+    val started = telemetry.started.single()
+    assertTrue(!started.resumed)
+    assertEquals("SKILL-56", started.issueKey)
+    assertEquals("wfl-parent", started.parentWorkflowId)
+    val finished = telemetry.finished.single()
+    assertEquals("blocked", finished.status)
+    assertEquals("POLICY_BLOCKED", finished.stopReason)
+    assertEquals("wfl-parent", finished.parentWorkflowId)
+    assertTrue(telemetry.subtaskFinished.isEmpty())
+    assertTrue(telemetry.issueFinished.isEmpty())
+    assertTrue(launcher.requests.isEmpty())
+  }
+
+  @Test
+  fun `clean completed run emits one started two subtask finished one finished and one issue finished`() {
     val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 2))
     val outcomes = RecordingOutcomeStore()
     val launcher = completingLauncher(store, outcomes)
@@ -64,6 +110,21 @@ class GoalRunnerTelemetryTest {
     assertEquals(0, finished.subtasksBlocked)
     assertEquals(0, finished.subtasksSkipped)
     assertEquals(FIXED_INSTANT, finished.startedAt)
+
+    assertEquals(
+      1,
+      telemetry.issueFinished.size,
+      "Completed GoalRunner reports must emit exactly one issue terminal event.",
+    )
+    val issueFinished = telemetry.issueFinished.single()
+    assertEquals("SKILL-56", issueFinished.issueKey)
+    assertEquals("completed", issueFinished.status)
+    assertEquals("wfl-parent", issueFinished.parentWorkflowId)
+    assertEquals(2, issueFinished.subtasksComplete)
+    assertEquals(0, issueFinished.subtasksBlocked)
+    assertEquals(0, issueFinished.subtasksSkipped)
+    assertEquals(FIXED_INSTANT, issueFinished.finishedAt)
+    assertEquals("runtime", issueFinished.mode)
   }
 
   @Test
@@ -99,13 +160,52 @@ class GoalRunnerTelemetryTest {
     assertEquals(listOf(1, 2), telemetry.subtaskFinished.map { it.subtaskId })
     assertEquals(listOf("complete", "blocked"), telemetry.subtaskFinished.map { it.status })
     val blocked = telemetry.subtaskFinished.single { it.subtaskId == 2 }
+    assertTrue(requireNotNull(blocked.blockedReason).startsWith("runtime:"))
     assertContains(requireNotNull(blocked.blockedReason), "review failed")
 
     val finished = telemetry.finished.single()
     assertEquals("blocked", finished.status)
+    assertEquals("FAILED", finished.stopReason)
     assertEquals(1, finished.subtasksComplete)
     assertEquals(1, finished.subtasksBlocked)
     assertEquals(0, finished.subtasksSkipped)
+  }
+
+  @Test
+  fun `blocked segments carry enum stop reasons and completed issue emits once with parent workflow id`() {
+    val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 1))
+    val outcomes = RecordingOutcomeStore()
+    val telemetry = RecordingGoalLifecycleTelemetryEmitter()
+    val blockedLauncher = RecordingSubtaskLauncher { request ->
+      val subtaskId = requireNotNull(request.skillRunRequest.subtaskId)
+      store.mutate { current -> current.withWorkflowId(subtaskId, "wfl-blocked") }
+      outcomes["wfl-blocked"] = GoalRunnerStoredOutcome(
+        status = GoalRunnerTerminalStatus.FAILED,
+        workflowId = "wfl-blocked",
+        blockedReason = "review failed",
+        lastResumableStep = "review",
+        suppressPr = true,
+      )
+      launchFacts()
+    }
+
+    telemetryRunner(store, blockedLauncher, outcomes, telemetry).run(runRequest())
+    store.mutate { current -> current.withBlockedSubtaskState(1, "wfl-blocked", "review failed") }
+    telemetryRunner(store, blockedLauncher, outcomes, telemetry).run(runRequest())
+    outcomes["wfl-blocked"] = completeOutcome(1)
+    telemetryRunner(store, completingLauncher(store, outcomes), outcomes, telemetry).run(runRequest())
+
+    assertEquals(listOf("FAILED", "FAILED"), telemetry.finished.take(2).map { it.stopReason })
+    assertEquals(listOf(false, true, true), telemetry.started.map { it.resumed })
+    assertEquals(
+      1,
+      telemetry.issueFinished.size,
+      "Completing a previously blocked goal must emit one issue terminal event.",
+    )
+    val issueFinished = telemetry.issueFinished.single()
+    assertEquals("completed", issueFinished.status)
+    assertEquals("wfl-parent", issueFinished.parentWorkflowId)
+    assertEquals(1, issueFinished.subtasksComplete)
   }
 
   @Test
@@ -170,6 +270,30 @@ class GoalRunnerTelemetryTest {
     assertEquals("completed", finished.status)
     assertEquals(1, finished.subtasksComplete)
     assertEquals(1, finished.subtasksSkipped)
+  }
+
+  @Test
+  fun `issue finished counts skipped subtasks separately from completed ones`() {
+    val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 5))
+    val outcomes = RecordingOutcomeStore()
+    val launcher = RecordingSubtaskLauncher { request ->
+      val subtaskId = requireNotNull(request.skillRunRequest.subtaskId)
+      store.mutate { current ->
+        current.withWorkflowId(subtaskId, "wfl-$subtaskId").withSkippedSubtaskState(3)
+      }
+      outcomes["wfl-$subtaskId"] = completeOutcome(subtaskId)
+      launchFacts()
+    }
+    val telemetry = RecordingGoalLifecycleTelemetryEmitter()
+    val runner = telemetryRunner(store, launcher, outcomes, telemetry)
+
+    val report = runner.run(runRequest())
+
+    assertIs<GoalRunnerRunReport.Completed>(report)
+    val issueFinished = telemetry.issueFinished.single()
+    assertEquals(4, issueFinished.subtasksComplete)
+    assertEquals(1, issueFinished.subtasksSkipped)
+    assertEquals(0, issueFinished.subtasksBlocked)
   }
 
   @Test
@@ -278,6 +402,7 @@ private class RecordingGoalLifecycleTelemetryEmitter(
   val started: MutableList<GoalStartedRequest> = mutableListOf()
   val subtaskFinished: MutableList<GoalSubtaskFinishedRequest> = mutableListOf()
   val finished: MutableList<GoalFinishedRequest> = mutableListOf()
+  val issueFinished: MutableList<GoalIssueFinishedRequest> = mutableListOf()
 
   override fun goalStarted(request: GoalStartedRequest, dbOverride: String?) {
     if (TelemetryEvent.STARTED in failOn) throw TelemetryWriteFailure(TelemetryEvent.STARTED)
@@ -292,6 +417,10 @@ private class RecordingGoalLifecycleTelemetryEmitter(
   override fun goalFinished(request: GoalFinishedRequest, dbOverride: String?) {
     if (TelemetryEvent.FINISHED in failOn) throw TelemetryWriteFailure(TelemetryEvent.FINISHED)
     finished += request
+  }
+
+  override fun goalIssueFinished(request: GoalIssueFinishedRequest, dbOverride: String?) {
+    issueFinished += request
   }
 }
 

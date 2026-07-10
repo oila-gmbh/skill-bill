@@ -1,11 +1,14 @@
 package skillbill.application.goalrunner
 
 import skillbill.application.model.GoalFinishedRequest
+import skillbill.application.model.GoalIssueFinishedRequest
 import skillbill.application.model.GoalStartedRequest
 import skillbill.application.model.GoalSubtaskFinishedRequest
+import skillbill.application.telemetry.normalizedBlockedReason
 import skillbill.goalrunner.model.GoalRunnerRunReport
 import skillbill.ports.goalrunner.model.GoalRunnerManifestState
 import skillbill.workflow.model.DecompositionManifest
+import skillbill.workflow.model.DecompositionSubtask
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
@@ -17,6 +20,8 @@ interface GoalLifecycleTelemetryEmitter {
 
   fun goalFinished(request: GoalFinishedRequest, dbOverride: String?)
 
+  fun goalIssueFinished(request: GoalIssueFinishedRequest, dbOverride: String?)
+
   companion object {
     val NONE: GoalLifecycleTelemetryEmitter = object : GoalLifecycleTelemetryEmitter {
       override fun goalStarted(request: GoalStartedRequest, dbOverride: String?) = Unit
@@ -24,6 +29,8 @@ interface GoalLifecycleTelemetryEmitter {
       override fun goalSubtaskFinished(request: GoalSubtaskFinishedRequest, dbOverride: String?) = Unit
 
       override fun goalFinished(request: GoalFinishedRequest, dbOverride: String?) = Unit
+
+      override fun goalIssueFinished(request: GoalIssueFinishedRequest, dbOverride: String?) = Unit
     }
   }
 }
@@ -54,7 +61,9 @@ internal class GoalRunnerTelemetryEmitter(
         subtaskTotal = state.manifest.subtasks.size,
         resumed = resumed,
         startedAt = segmentStartedAt,
+        status = "running",
         mode = "runtime",
+        parentWorkflowId = state.parentWorkflowId,
       ),
       dbPathOverride,
     )
@@ -85,7 +94,7 @@ internal class GoalRunnerTelemetryEmitter(
             finishedAt = finishedAt,
             durationMs = durationMs(startedAt, finishedAtInstant),
             attemptCount = attempted.count { it == subtask.id }.coerceAtLeast(1),
-            blockedReason = subtask.blockedReason,
+            blockedReason = subtask.blockedReasonForTelemetry(),
             finalizingAgentId = subtask.finalizingAgentId,
             participatingAgentIds = subtask.participatingAgentIds,
           ),
@@ -94,8 +103,19 @@ internal class GoalRunnerTelemetryEmitter(
       }
   }
 
+  private fun DecompositionSubtask.blockedReasonForTelemetry(): String? = if (status == "blocked") {
+    normalizedBlockedReason(
+      reason = blockedReason,
+      category = "runtime",
+      fallback = "Goal subtask $id is blocked.",
+    )
+  } else {
+    null
+  }
+
   fun goalFinished(manifest: DecompositionManifest, report: GoalRunnerRunReport) {
     val finishedAtInstant = clock.instant()
+    val stopReason = (report as? GoalRunnerRunReport.Stopped)?.stop?.reason?.name
     telemetry.goalFinished(
       GoalFinishedRequest(
         issueKey = manifest.issueKey,
@@ -107,6 +127,24 @@ internal class GoalRunnerTelemetryEmitter(
         subtasksComplete = manifest.subtasks.count { it.status == "complete" },
         subtasksBlocked = manifest.subtasks.count { it.status == "blocked" },
         subtasksSkipped = manifest.subtasks.count { it.status == "skipped" },
+        mode = "runtime",
+        stopReason = stopReason,
+        parentWorkflowId = state.parentWorkflowId,
+      ),
+      dbPathOverride,
+    )
+  }
+
+  fun goalIssueFinished(manifest: DecompositionManifest, report: GoalRunnerRunReport.Completed) {
+    telemetry.goalIssueFinished(
+      GoalIssueFinishedRequest(
+        issueKey = manifest.issueKey,
+        parentWorkflowId = state.parentWorkflowId,
+        status = "completed",
+        subtasksComplete = manifest.subtasks.count { it.status == "complete" },
+        subtasksBlocked = report.subtasksBlocked,
+        subtasksSkipped = manifest.subtasks.count { it.status == "skipped" },
+        finishedAt = clock.instant().toString(),
         mode = "runtime",
       ),
       dbPathOverride,

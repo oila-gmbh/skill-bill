@@ -86,12 +86,20 @@ fun QualityCheckStartedRequest.toRecord(sessionId: String): QualityCheckStartedR
   sessionId = sessionId,
   routedSkill = routedSkill,
   detectedStack = detectedStack,
+  fallback = fallback,
+  fallbackReason = fallbackReason,
   scopeType = scopeType,
   initialFailureCount = initialFailureCount,
 )
 
 fun QualityCheckFinishedRequest.toRecord(): QualityCheckFinishedRecord = QualityCheckFinishedRecord(
   sessionId = sessionId,
+  routedSkill = routedSkill,
+  detectedStack = detectedStack,
+  fallback = fallback,
+  fallbackReason = fallbackReason,
+  scopeType = scopeType,
+  initialFailureCount = initialFailureCount,
   finalFailureCount = finalFailureCount,
   iterations = iterations,
   result = result,
@@ -122,7 +130,7 @@ fun PrDescriptionGeneratedRequest.toRecord(sessionId: String): PrDescriptionGene
     sessionId = sessionId,
     commitCount = commitCount,
     filesChangedCount = filesChangedCount,
-    wasEditedByUser = wasEditedByUser,
+    wasEditedByUser = wasEditedByUser || prDescriptionWasEditedByUser(generatedDescription, finalPrBody),
     prCreated = prCreated,
     prTitle = prTitle,
   )

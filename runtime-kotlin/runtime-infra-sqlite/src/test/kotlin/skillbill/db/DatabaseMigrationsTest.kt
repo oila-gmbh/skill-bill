@@ -1,7 +1,10 @@
 package skillbill.db
 
+import skillbill.contracts.JsonSupport
 import skillbill.db.core.DatabaseMigrations
 import skillbill.db.core.DatabaseRuntime
+import skillbill.db.telemetry.LifecycleTelemetryStore
+import skillbill.telemetry.model.FeatureImplementFinishedRecord
 import java.nio.file.Files
 import java.nio.file.Path
 import java.sql.DriverManager
@@ -10,6 +13,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
+@Suppress("LargeClass")
 class DatabaseMigrationsTest {
   @Test
   fun `migration definitions are append-only and deterministic`() {
@@ -50,9 +54,13 @@ class DatabaseMigrationsTest {
     DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
       val tables = tableColumns(connection = connection, tableName = "goal_run_sessions")
       val subtaskColumns = tableColumns(connection = connection, tableName = "goal_subtask_events")
+      val issueColumns = tableColumns(connection = connection, tableName = "goal_issue_progress")
 
       assertTrue("workflow_id" in tables, "goal_run_sessions should be created with its workflow_id key.")
       assertTrue("subtask_id" in subtaskColumns, "goal_subtask_events should be created with its subtask_id column.")
+      assertTrue("parent_workflow_id" in issueColumns, "goal_issue_progress should be created with its parent key.")
+      assertTrue("last_activity_at" in issueColumns, "goal_issue_progress should track latest issue activity.")
+      assertTrue("last_blocked_at" in issueColumns, "goal_issue_progress should track latest blocked segment.")
       assertNotNull(
         migrationRows(connection).singleOrNull { row -> row.version == 3 && row.name == "add-goal-telemetry-tables" },
         "Migration version 3 add-goal-telemetry-tables should be recorded.",
@@ -146,6 +154,49 @@ class DatabaseMigrationsTest {
       assertTrue("source" in columns, "source must be healed even when every migration version is already recorded.")
       assertEquals("production", featureImplementColumnValue(connection, "source"))
       assertEquals(DatabaseMigrations.migrations.size, migrationRows(connection).size)
+    }
+  }
+
+  @Test
+  fun `ensureDatabase heals legacy lifecycle starts before finished duration telemetry`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-db-migrations").resolve("legacy-lifecycle-starts.db")
+    createLegacyLifecycleSessionsWithoutStartsDatabase(dbPath)
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      assertTrue("started_at" in tableColumns(connection, "feature_implement_sessions"))
+      assertTrue("started_at" in tableColumns(connection, "feature_verify_sessions"))
+      assertTrue("started_at" in tableColumns(connection, "quality_check_sessions"))
+      assertTrue("fallback" in tableColumns(connection, "quality_check_sessions"))
+      assertTrue("fallback_reason" in tableColumns(connection, "quality_check_sessions"))
+      assertEquals(
+        0,
+        tableColumnValue(
+          connection = connection,
+          tableName = "quality_check_sessions",
+          pkColumnName = "session_id",
+          pkValue = "qcs-legacy-start",
+          columnName = "fallback",
+        ),
+      )
+      assertEquals(
+        LEGACY_FEATURE_TASK_WORKFLOW_STARTED_AT,
+        tableColumnValue(
+          connection = connection,
+          tableName = "feature_implement_sessions",
+          pkColumnName = "session_id",
+          pkValue = "fis-legacy-duration",
+          columnName = "started_at",
+        ),
+        "Feature implement started_at must be recovered from the matching legacy workflow row.",
+      )
+
+      LifecycleTelemetryStore(connection).featureImplementFinished(featureImplementFinishedRecord(), level = "full")
+
+      val payload = outboxPayload(connection, "skillbill_feature_task_prose_finished")
+      assertTrue(
+        (payload["duration_seconds"] as Number).toLong() > 0,
+        "Finished feature implement telemetry must compute non-zero duration from the healed started_at.",
+      )
     }
   }
 
@@ -249,6 +300,39 @@ class DatabaseMigrationsTest {
       }
       assertEquals("[]", goalSubtaskColumnValue(connection, "participating_agent_ids"))
       assertEquals(DatabaseMigrations.migrations.size, migrationRows(connection).size)
+    }
+  }
+
+  @Test
+  fun `ensureDatabase creates goal issue progress without altering legacy goal rows`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-db-migrations").resolve("legacy-goal-issue.db")
+    createLegacyGoalSubtaskEventsDatabase(dbPath)
+    DriverManager.getConnection("jdbc:sqlite:$dbPath").use { connection ->
+      connection.createStatement().use { statement ->
+        statement.executeUpdate(
+          """
+          INSERT INTO goal_subtask_events (
+            issue_key, workflow_id, subtask_id, subtask_name, status,
+            started_at, finished_at, duration_ms, attempt_count
+          ) VALUES ('SKILL-109', 'wf-existing', 1, 'implement', 'blocked', 't0', 't1', 1000, 2)
+          """.trimIndent(),
+        )
+      }
+    }
+    val before = DriverManager.getConnection("jdbc:sqlite:$dbPath").use { connection ->
+      legacyGoalSubtaskRows(connection)
+    }
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val columns = tableColumns(connection = connection, tableName = "goal_issue_progress")
+      val after = legacyGoalSubtaskRows(connection)
+
+      assertTrue("parent_workflow_id" in columns, "goal_issue_progress must exist after startup.")
+      assertTrue("last_activity_at" in columns, "goal_issue_progress must heal last_activity_at after startup.")
+      assertTrue("last_blocked_at" in columns, "goal_issue_progress must heal last_blocked_at after startup.")
+      assertTrue("latest_segment_workflow_id" in columns)
+      assertTrue("last_blocked_segment_workflow_id" in columns)
+      assertEquals(before, after, "Adding goal_issue_progress must not rewrite existing subtask rows.")
     }
   }
 
@@ -374,6 +458,50 @@ class DatabaseMigrationsTest {
       }
       connection.createStatement().use { statement ->
         statement.executeUpdate("INSERT INTO feature_task_runtime_sessions (session_id) VALUES ('ftr-pre-91')")
+      }
+    }
+  }
+
+  private fun createLegacyLifecycleSessionsWithoutStartsDatabase(dbPath: Path) {
+    DriverManager.getConnection("jdbc:sqlite:$dbPath").use { connection ->
+      connection.createStatement().use { statement ->
+        statement.execute(CREATE_LEGACY_FEATURE_IMPLEMENT_SESSIONS_WITHOUT_START_SQL)
+        statement.execute(CREATE_LEGACY_FEATURE_TASK_WORKFLOWS_SQL)
+        statement.execute(CREATE_LEGACY_FEATURE_VERIFY_SESSIONS_WITHOUT_START_SQL)
+        statement.execute(CREATE_LEGACY_QUALITY_CHECK_SESSIONS_WITHOUT_START_SQL)
+        statement.execute(
+          """
+          CREATE TABLE schema_migrations (
+            version INTEGER PRIMARY KEY,
+            name TEXT NOT NULL UNIQUE,
+            applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+          )
+          """.trimIndent(),
+        )
+      }
+      connection.prepareStatement("INSERT INTO schema_migrations (version, name) VALUES (?, ?)").use { statement ->
+        DatabaseMigrations.migrations.forEach { migration ->
+          statement.setInt(1, migration.version)
+          statement.setString(2, migration.name)
+          statement.executeUpdate()
+        }
+      }
+      connection.createStatement().use { statement ->
+        statement.executeUpdate("INSERT INTO feature_implement_sessions (session_id) VALUES ('fis-legacy-duration')")
+        statement.executeUpdate(
+          """
+          INSERT INTO feature_task_workflows (
+            workflow_id, session_id, mode, implementation_skill, contract_version,
+            workflow_status, current_step_id, steps_json, artifacts_json, started_at, updated_at
+          ) VALUES (
+            'wf-legacy-duration', 'fis-legacy-duration', 'runtime', 'bill-feature-task-runtime', '0.1',
+            'running', 'implement', '[]', '{}', '$LEGACY_FEATURE_TASK_WORKFLOW_STARTED_AT',
+            '$LEGACY_FEATURE_TASK_WORKFLOW_STARTED_AT'
+          )
+          """.trimIndent(),
+        )
+        statement.executeUpdate("INSERT INTO feature_verify_sessions (session_id) VALUES ('fvs-legacy-start')")
+        statement.executeUpdate("INSERT INTO quality_check_sessions (session_id) VALUES ('qcs-legacy-start')")
       }
     }
   }
@@ -584,6 +712,22 @@ class DatabaseMigrationsTest {
     }
   }
 
+  private fun tableColumnValue(
+    connection: java.sql.Connection,
+    tableName: String,
+    pkColumnName: String,
+    pkValue: String,
+    columnName: String,
+  ): Any? = connection.prepareStatement(
+    "SELECT $columnName FROM $tableName WHERE $pkColumnName = ?",
+  ).use { statement ->
+    statement.setString(1, pkValue)
+    statement.executeQuery().use { resultSet ->
+      check(resultSet.next()) { "Expected a row with $pkColumnName = '$pkValue' in $tableName." }
+      resultSet.getObject(1)
+    }
+  }
+
   private fun tableColumns(connection: java.sql.Connection, tableName: String): Set<String> =
     connection.createStatement().use { statement ->
       statement.executeQuery("PRAGMA table_info($tableName)").use { resultSet ->
@@ -603,6 +747,72 @@ class DatabaseMigrationsTest {
             put(resultSet.getString("name"), resultSet.getString("type"))
           }
         }
+      }
+    }
+
+  private fun legacyGoalSubtaskRows(connection: java.sql.Connection): List<Map<String, Any?>> =
+    connection.createStatement().use { statement ->
+      statement.executeQuery(
+        """
+        SELECT issue_key, workflow_id, subtask_id, subtask_name, status,
+               started_at, finished_at, duration_ms, attempt_count, blocked_reason,
+               subtask_event_emitted_at
+        FROM goal_subtask_events
+        ORDER BY issue_key, workflow_id, subtask_id
+        """.trimIndent(),
+      ).use { resultSet ->
+        val metadata = resultSet.metaData
+        buildList {
+          while (resultSet.next()) {
+            add(
+              buildMap {
+                for (index in 1..metadata.columnCount) {
+                  put(metadata.getColumnName(index), resultSet.getObject(index))
+                }
+              },
+            )
+          }
+        }
+      }
+    }
+
+  private fun featureImplementFinishedRecord(): FeatureImplementFinishedRecord = FeatureImplementFinishedRecord(
+    sessionId = "fis-legacy-duration",
+    completionStatus = "completed",
+    planCorrectionCount = 0,
+    planTaskCount = 1,
+    planPhaseCount = 1,
+    featureFlagUsed = false,
+    featureFlagPattern = "none",
+    filesCreated = 0,
+    filesModified = 1,
+    tasksCompleted = 1,
+    reviewIterations = 0,
+    auditResult = "passed",
+    auditIterations = 0,
+    validationResult = "passed",
+    boundaryHistoryWritten = false,
+    boundaryHistoryValue = "none",
+    prCreated = false,
+    planDeviationNotes = "",
+    childSteps = emptyList(),
+  )
+
+  private fun outboxPayload(connection: java.sql.Connection, eventName: String): Map<String, Any?> =
+    connection.prepareStatement(
+      """
+      SELECT payload_json
+      FROM telemetry_outbox
+      WHERE event_name = ?
+      ORDER BY id DESC
+      LIMIT 1
+      """.trimIndent(),
+    ).use { statement ->
+      statement.setString(1, eventName)
+      statement.executeQuery().use { resultSet ->
+        check(resultSet.next()) { "Expected telemetry outbox event '$eventName'." }
+        val element = requireNotNull(JsonSupport.parseObjectOrNull(resultSet.getString("payload_json")))
+        requireNotNull(JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(element)))
       }
     }
 
@@ -639,6 +849,49 @@ class DatabaseMigrationsTest {
         session_id TEXT PRIMARY KEY,
         completion_status TEXT,
         started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+      """
+
+    const val CREATE_LEGACY_FEATURE_IMPLEMENT_SESSIONS_WITHOUT_START_SQL: String =
+      """
+      CREATE TABLE feature_implement_sessions (
+        session_id TEXT PRIMARY KEY,
+        completion_status TEXT
+      )
+      """
+
+    const val CREATE_LEGACY_FEATURE_TASK_WORKFLOWS_SQL: String =
+      """
+      CREATE TABLE feature_task_workflows (
+        workflow_id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL DEFAULT '',
+        workflow_name TEXT NOT NULL DEFAULT 'bill-feature-task',
+        mode TEXT NOT NULL,
+        implementation_skill TEXT NOT NULL DEFAULT '',
+        contract_version TEXT NOT NULL,
+        workflow_status TEXT NOT NULL DEFAULT 'pending',
+        current_step_id TEXT NOT NULL DEFAULT '',
+        steps_json TEXT NOT NULL DEFAULT '',
+        artifacts_json TEXT NOT NULL DEFAULT '',
+        started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        finished_at TEXT
+      )
+      """
+
+    const val LEGACY_FEATURE_TASK_WORKFLOW_STARTED_AT: String = "2026-06-04 10:00:00"
+
+    const val CREATE_LEGACY_FEATURE_VERIFY_SESSIONS_WITHOUT_START_SQL: String =
+      """
+      CREATE TABLE feature_verify_sessions (
+        session_id TEXT PRIMARY KEY
+      )
+      """
+
+    const val CREATE_LEGACY_QUALITY_CHECK_SESSIONS_WITHOUT_START_SQL: String =
+      """
+      CREATE TABLE quality_check_sessions (
+        session_id TEXT PRIMARY KEY
       )
       """
 

@@ -35,6 +35,13 @@ data class ReviewSummary(
   val orchestratedRun: Boolean,
 )
 
+data class NormalizedStackLabel(
+  val stack: String,
+  val detail: String? = null,
+  val fallback: Boolean = false,
+  val fallbackReason: String? = null,
+)
+
 data class FindingMetadata(
   val findingId: String,
   val severity: String,

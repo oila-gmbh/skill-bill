@@ -103,6 +103,7 @@ class McpStdioServerTest {
       "result",
       "routed_skill",
       "detected_stack",
+      "fallback",
       "scope_type",
     )
     assertEquals(
@@ -113,6 +114,7 @@ class McpStdioServerTest {
       listOf("files", "working_tree", "branch_diff", "repo"),
       tools.schemaFor("quality_check_started").properties().enumFor("scope_type"),
     )
+    tools.schemaFor("quality_check_started").assertRequired("routed_skill", "detected_stack", "fallback")
     assertEquals(
       listOf("completed", "abandoned_at_review", "abandoned_at_audit", "error"),
       tools.schemaFor("feature_verify_finished").properties().enumFor("completion_status"),
@@ -277,6 +279,52 @@ class McpStdioServerTest {
         ),
       )
     assertEquals(true, invalid.fieldMap("result")["isError"], invalid.toString())
+  }
+
+  @Test
+  fun `goal prose blocked subtask with blank reason persists normalized blocked_reason`() {
+    val tempDir = Files.createTempDirectory("skillbill-stdio-goal-subtask-blocked")
+    val context = McpRuntimeContext(environment = enabledStdioTelemetryEnvironment(tempDir), userHome = tempDir)
+
+    val response =
+      decodeResponse(
+        McpStdioServer.handleLine(
+          toolCallRequest(
+            id = 1,
+            name = "goal_prose_subtask_finished",
+            arguments = mapOf(
+              "issue_key" to "SKILL-109",
+              "workflow_id" to "goal-wf-109",
+              "subtask_id" to 3,
+              "subtask_name" to "field population",
+              "status" to "blocked",
+              "started_at" to "2026-07-09T10:00:00Z",
+              "finished_at" to "2026-07-09T10:05:00Z",
+              "duration_ms" to 300_000,
+              "attempt_count" to 1,
+              "blocked_reason" to " ",
+            ),
+          ),
+          context,
+        ),
+      )
+
+    assertEquals(false, response.fieldMap("result")["isError"], response.toString())
+    DatabaseRuntime.ensureDatabase(tempDir.resolve("metrics.db")).use { connection ->
+      connection.createStatement().use { statement ->
+        statement.executeQuery(
+          """
+          SELECT payload_json
+          FROM telemetry_outbox
+          WHERE event_name = 'skillbill_goal_subtask_finished'
+          """.trimIndent(),
+        ).use { resultSet ->
+          assertTrue(resultSet.next())
+          val payload = decodeStdioJsonObject(resultSet.getString("payload_json"))
+          assertEquals("runtime: Goal subtask 3 is blocked.", payload["blocked_reason"])
+        }
+      }
+    }
   }
 
   @Test

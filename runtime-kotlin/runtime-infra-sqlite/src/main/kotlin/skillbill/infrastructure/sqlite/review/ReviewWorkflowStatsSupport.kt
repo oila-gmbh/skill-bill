@@ -8,7 +8,7 @@ import skillbill.review.model.FeatureVerifyWorkflowStats
 import java.sql.Connection
 
 private val featureVerifyCompletionStatuses =
-  listOf("completed", "abandoned_at_review", "abandoned_at_audit", "error")
+  listOf("completed", "abandoned_at_review", "abandoned_at_audit", "error", "stale")
 private val auditResults = listOf("all_pass", "had_gaps", "skipped", "not_reached")
 private val historySignalValues = listOf("none", "irrelevant", "low", "medium", "high")
 private val featureSizes = listOf("SMALL", "MEDIUM", "LARGE")
@@ -24,7 +24,7 @@ private val completionStatuses =
 private val validationResults = listOf("pass", "fail", "skipped", "not_reached")
 private val featureFlagPatterns = listOf("simple_conditional", "di_switch", "legacy", "none")
 private val featureTaskRuntimeCompletionStatuses =
-  listOf("completed", "blocked", "decomposed_at_planning", "error")
+  listOf("completed", "blocked", "decomposed_at_planning", "error", "stale")
 private val featureTaskRuntimePhaseOutcomes = listOf("completed", "blocked", "running")
 
 fun buildFeatureTaskRuntimeStats(rows: List<Map<String, Any?>>): FeatureTaskRuntimeWorkflowStats {

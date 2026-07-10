@@ -15,6 +15,7 @@ import skillbill.ports.persistence.LearningRepository
 import skillbill.ports.persistence.LifecycleTelemetryRepository
 import skillbill.ports.persistence.ReviewRepository
 import skillbill.ports.persistence.TelemetryOutboxRepository
+import skillbill.ports.persistence.TelemetryReconciliationRepository
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.persistence.WorkflowStateRepository
 import skillbill.ports.persistence.model.FeatureImplementSessionSummary
@@ -440,6 +441,7 @@ private class StatusFakeDatabaseSessionFactory(
     override val reviews: ReviewRepository get() = error("unused")
     override val learnings: LearningRepository get() = error("unused")
     override val lifecycleTelemetry: LifecycleTelemetryRepository get() = error("unused")
+    override val telemetryReconciliation: TelemetryReconciliationRepository get() = error("unused")
     override val telemetryOutbox: TelemetryOutboxRepository get() = error("unused")
     override val workflowStates: WorkflowStateRepository = repository
   }

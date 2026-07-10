@@ -60,6 +60,7 @@ object TelemetryEventSchemaValidator {
     val resolvedEventName: String? = eventName ?: (envelope["event_name"] as? String)
     val errors: Set<ValidationMessage> = schema.validate(instance)
     if (errors.isEmpty()) {
+      validateCoherence(envelope, resolvedEventName)
       return
     }
     // F-401 (carried over from 2a/2b): emit a structured WARN log
@@ -162,6 +163,20 @@ object TelemetryEventSchemaValidator {
     { it.instanceLocation?.toString().orEmpty() },
     { it.message.orEmpty() },
   )
+
+  private fun validateCoherence(envelope: Map<String, Any?>, resolvedEventName: String?) {
+    if (resolvedEventName != "skillbill_review_finished") return
+    val platformSlug = envelope["platform_slug"] as? String
+    val reviewPlatform = envelope["review_platform"] as? String
+    val detectedStack = envelope["detected_stack"] as? String
+    if (platformSlug == reviewPlatform && platformSlug == detectedStack) return
+    throw InvalidTelemetryEventSchemaError(
+      fieldPath = "platform_slug",
+      eventName = resolvedEventName,
+      reason = "skillbill_review_finished requires review_platform, detected_stack, and platform_slug to be equal " +
+        "normalized slugs.",
+    )
+  }
 }
 
 internal const val TELEMETRY_EVENT_SCHEMA_CLASSPATH_RESOURCE: String =

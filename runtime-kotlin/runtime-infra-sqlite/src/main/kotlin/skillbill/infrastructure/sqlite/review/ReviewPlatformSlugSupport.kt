@@ -1,12 +1,13 @@
 package skillbill.infrastructure.sqlite.review
 
 import skillbill.review.normalizePlatformSlug
+import skillbill.review.normalizeTelemetrySlug
 
 fun platformSlugFromRoutedSkill(
   routedSkill: String?,
   routedSkillPlatformSlugs: Map<String, String> = emptyMap(),
 ): String {
-  val normalized = normalizePlatformSlug(routedSkill)
+  val normalized = routedSkill?.let(::normalizeTelemetrySlug).orEmpty()
   if (normalized == "unknown") {
     return "unknown"
   }
@@ -17,11 +18,26 @@ fun platformSlugFromRoutedSkill(
     ?: "unknown"
 }
 
+fun reviewPlatformSlug(
+  detectedStack: String?,
+  routedSkill: String?,
+  routedSkillPlatformSlugs: Map<String, String> = emptyMap(),
+): String {
+  val normalizedDetectedStack = normalizePlatformSlug(detectedStack)
+  val routedPlatformSlug = platformSlugFromRoutedSkill(routedSkill, routedSkillPlatformSlugs)
+  return when {
+    routedPlatformSlug != "unknown" && detectedStack.isDescriptiveStackLabel(normalizedDetectedStack) ->
+      routedPlatformSlug
+    normalizedDetectedStack != "unknown" -> normalizedDetectedStack
+    else -> routedPlatformSlug
+  }
+}
+
 private fun normalizedRoutedSkillPlatformSlugs(
   routedSkillPlatformSlugs: Map<String, String>,
 ): List<Pair<String, String>> = routedSkillPlatformSlugs
   .mapNotNull { (skillName, platformSlug) ->
-    val normalizedSkillName = normalizePlatformSlug(skillName)
+    val normalizedSkillName = normalizeTelemetrySlug(skillName)
     val normalizedPlatformSlug = normalizePlatformSlug(platformSlug)
     if (normalizedSkillName == "unknown" || normalizedPlatformSlug == "unknown") {
       null
@@ -30,3 +46,9 @@ private fun normalizedRoutedSkillPlatformSlugs(
     }
   }
   .sortedWith(compareByDescending<Pair<String, String>> { it.first.length }.thenBy { it.first })
+
+private fun String?.isDescriptiveStackLabel(normalizedStack: String): Boolean {
+  if (normalizedStack == "unknown") return false
+  val normalizedRaw = this?.let(::normalizeTelemetrySlug).orEmpty()
+  return normalizedRaw != normalizedStack
+}

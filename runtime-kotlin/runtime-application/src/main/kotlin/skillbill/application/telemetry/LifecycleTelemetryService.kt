@@ -10,6 +10,7 @@ import skillbill.application.model.FeatureTaskRuntimeStartedRequest
 import skillbill.application.model.FeatureVerifyFinishedRequest
 import skillbill.application.model.FeatureVerifyStartedRequest
 import skillbill.application.model.GoalFinishedRequest
+import skillbill.application.model.GoalIssueFinishedRequest
 import skillbill.application.model.GoalStartedRequest
 import skillbill.application.model.GoalSubtaskFinishedRequest
 import skillbill.application.model.PrDescriptionGeneratedRequest
@@ -18,6 +19,8 @@ import skillbill.application.model.QualityCheckStartedRequest
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.telemetry.TelemetrySettingsProvider
+import skillbill.review.normalizeRoutedSkill
+import skillbill.review.normalizeStackLabel
 import skillbill.telemetry.model.TelemetrySettings
 
 @Inject
@@ -66,40 +69,51 @@ class LifecycleTelemetryService(
     request: FeatureTaskRuntimeFinishedRequest,
     dbOverride: String? = null,
   ): Map<String, Any?> = enabledStandaloneResult(request.sessionId) { settings ->
+    val reconciledRequest = request.reconcileBlockedRuntimeFields()
     database.transaction(dbOverride) { unitOfWork ->
-      unitOfWork.lifecycleTelemetry.featureTaskRuntimeFinished(request.toRecord(), settings.level)
+      unitOfWork.lifecycleTelemetry.featureTaskRuntimeFinished(reconciledRequest.toRecord(), settings.level)
     }
   }
 
   @OpenBoundaryMap("Lifecycle telemetry event bag emitted to the MCP/CLI telemetry boundary")
   fun qualityCheckStarted(request: QualityCheckStartedRequest): Map<String, Any?> {
     val sessionId = generateLifecycleSessionId("qck")
+    val normalizedRequest = request.normalizedLabels()
     return when {
-      request.orchestrated -> orchestratedStartedSkippedPayload()
+      normalizedRequest.orchestrated -> orchestratedStartedSkippedPayload()
       else ->
-        validateQualityCheckStarted(request)
+        validateQualityCheckStarted(normalizedRequest)
           ?.let { lifecycleErrorPayload(sessionId, it) }
           ?: enabledStandaloneResult(sessionId) { settings ->
             database.transaction(null) { unitOfWork ->
-              unitOfWork.lifecycleTelemetry.qualityCheckStarted(request.toRecord(sessionId), settings.level)
+              unitOfWork.lifecycleTelemetry.qualityCheckStarted(
+                normalizedRequest.toRecord(sessionId),
+                settings.level,
+              )
             }
           }
     }
   }
 
   @OpenBoundaryMap("Lifecycle telemetry event bag emitted to the MCP/CLI telemetry boundary")
-  fun qualityCheckFinished(request: QualityCheckFinishedRequest): Map<String, Any?> =
-    validateQualityCheckFinished(request)
-      ?.let { lifecycleErrorPayload(request.sessionId, it) }
+  fun qualityCheckFinished(request: QualityCheckFinishedRequest): Map<String, Any?> {
+    val normalizedRequest = request.normalizedLabels()
+    return validateQualityCheckFinished(normalizedRequest)
+      ?.let { lifecycleErrorPayload(normalizedRequest.sessionId, it) }
       ?: when {
-        request.orchestrated -> request.orchestratedPayload(telemetryLevelOrAnonymous(settingsProvider))
+        normalizedRequest.orchestrated ->
+          normalizedRequest.orchestratedPayload(telemetryLevelOrAnonymous(settingsProvider))
         else ->
-          enabledStandaloneResult(request.sessionId) { settings ->
+          enabledStandaloneResult(normalizedRequest.sessionId) { settings ->
             database.transaction(null) { unitOfWork ->
-              unitOfWork.lifecycleTelemetry.qualityCheckFinished(request.toRecord(), settings.level)
+              unitOfWork.lifecycleTelemetry.qualityCheckFinished(
+                normalizedRequest.toRecord(),
+                settings.level,
+              )
             }
           }
       }
+  }
 
   @OpenBoundaryMap("Lifecycle telemetry event bag emitted to the MCP/CLI telemetry boundary")
   fun featureVerifyStarted(request: FeatureVerifyStartedRequest): Map<String, Any?> {
@@ -153,8 +167,9 @@ class LifecycleTelemetryService(
 
   override fun goalSubtaskFinished(request: GoalSubtaskFinishedRequest, dbOverride: String?) {
     enabledStandaloneResult(request.workflowId) { settings ->
+      val reconciledRequest = request.reconcileBlockedReason()
       database.transaction(dbOverride) { unitOfWork ->
-        unitOfWork.lifecycleTelemetry.goalSubtaskFinished(request.toRecord(), settings.level)
+        unitOfWork.lifecycleTelemetry.goalSubtaskFinished(reconciledRequest.toRecord(), settings.level)
       }
     }
   }
@@ -163,6 +178,14 @@ class LifecycleTelemetryService(
     enabledStandaloneResult(request.workflowId) { settings ->
       database.transaction(dbOverride) { unitOfWork ->
         unitOfWork.lifecycleTelemetry.goalFinished(request.toRecord(), settings.level)
+      }
+    }
+  }
+
+  override fun goalIssueFinished(request: GoalIssueFinishedRequest, dbOverride: String?) {
+    enabledStandaloneResult(request.parentWorkflowId) { settings ->
+      database.transaction(dbOverride) { unitOfWork ->
+        unitOfWork.lifecycleTelemetry.goalIssueFinished(request.toRecord(), settings.level)
       }
     }
   }
@@ -186,4 +209,54 @@ private fun enabledStandaloneResult(
   } else {
     lifecycleSkippedPayload(sessionId)
   }
+}
+
+private fun FeatureTaskRuntimeFinishedRequest.reconcileBlockedRuntimeFields(): FeatureTaskRuntimeFinishedRequest {
+  if (completionStatus != "blocked") {
+    return this
+  }
+  return copy(
+    lastIncompletePhase = lastIncompletePhase.takeIf(String::isNotBlank) ?: phaseOutcomes.firstIncompletePhase(),
+    blockedReason = normalizedBlockedReason(
+      reason = blockedReason,
+      category = "runtime",
+      fallback = "Feature-task-runtime blocked without a specific reason.",
+    ),
+  )
+}
+
+private fun Map<String, String>.firstIncompletePhase(): String =
+  entries.firstOrNull { it.value != "completed" }?.key?.takeIf(String::isNotBlank) ?: "unknown"
+
+private fun QualityCheckStartedRequest.normalizedLabels(): QualityCheckStartedRequest {
+  val stack = normalizeStackLabel(detectedStack)
+  return copy(
+    routedSkill = normalizeRoutedSkill(routedSkill),
+    detectedStack = stack.stack,
+    fallback = fallback || stack.fallback,
+    fallbackReason = fallbackReason ?: stack.fallbackReason,
+  )
+}
+
+private fun QualityCheckFinishedRequest.normalizedLabels(): QualityCheckFinishedRequest {
+  val stack = normalizeStackLabel(detectedStack)
+  return copy(
+    routedSkill = normalizeRoutedSkill(routedSkill),
+    detectedStack = stack.stack,
+    fallback = fallback || stack.fallback,
+    fallbackReason = fallbackReason ?: stack.fallbackReason,
+  )
+}
+
+private fun GoalSubtaskFinishedRequest.reconcileBlockedReason(): GoalSubtaskFinishedRequest {
+  if (status != "blocked") {
+    return this
+  }
+  return copy(
+    blockedReason = normalizedBlockedReason(
+      reason = blockedReason,
+      category = "runtime",
+      fallback = "Goal subtask $subtaskId is blocked.",
+    ),
+  )
 }

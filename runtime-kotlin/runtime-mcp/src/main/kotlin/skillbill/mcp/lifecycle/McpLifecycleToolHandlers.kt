@@ -100,20 +100,23 @@ internal fun featureTaskRuntimeFinished(arguments: Map<String, Any?>, context: M
     context,
   )
 
-internal fun qualityCheckStarted(arguments: Map<String, Any?>, context: McpRuntimeContext): Map<String, Any?> =
-  McpRuntime.qualityCheckStarted(
+internal fun qualityCheckStarted(arguments: Map<String, Any?>, context: McpRuntimeContext): Map<String, Any?> {
+  return McpRuntime.qualityCheckStarted(
     QualityCheckStartedRequest(
       routedSkill = arguments.string("routed_skill"),
       detectedStack = arguments.string("detected_stack"),
+      fallback = arguments.boolean("fallback"),
+      fallbackReason = arguments.optionalString("fallback_reason"),
       scopeType = arguments.string("scope_type"),
       initialFailureCount = arguments.int("initial_failure_count", 0),
       orchestrated = arguments.boolean("orchestrated"),
     ),
     context,
   )
+}
 
-internal fun qualityCheckFinished(arguments: Map<String, Any?>, context: McpRuntimeContext): Map<String, Any?> =
-  McpRuntime.qualityCheckFinished(
+internal fun qualityCheckFinished(arguments: Map<String, Any?>, context: McpRuntimeContext): Map<String, Any?> {
+  return McpRuntime.qualityCheckFinished(
     QualityCheckFinishedRequest(
       finalFailureCount = arguments.int("final_failure_count", 0),
       iterations = arguments.int("iterations", 0),
@@ -124,12 +127,15 @@ internal fun qualityCheckFinished(arguments: Map<String, Any?>, context: McpRunt
       orchestrated = arguments.boolean("orchestrated"),
       routedSkill = arguments.string("routed_skill"),
       detectedStack = arguments.string("detected_stack"),
+      fallback = arguments.boolean("fallback"),
+      fallbackReason = arguments.optionalString("fallback_reason"),
       scopeType = arguments.string("scope_type"),
       initialFailureCount = arguments.int("initial_failure_count", 0),
       durationSeconds = arguments.int("duration_seconds", 0),
     ),
     context,
   )
+}
 
 internal fun featureVerifyStarted(arguments: Map<String, Any?>, context: McpRuntimeContext): Map<String, Any?> =
   McpRuntime.featureVerifyStarted(
@@ -171,6 +177,8 @@ internal fun prDescriptionGenerated(arguments: Map<String, Any?>, context: McpRu
       prCreated = arguments.boolean("pr_created"),
       prTitle = arguments.string("pr_title"),
       orchestrated = arguments.boolean("orchestrated"),
+      generatedDescription = arguments.optionalString("generated_description"),
+      finalPrBody = arguments.optionalString("final_pr_body"),
     ),
     context,
   )

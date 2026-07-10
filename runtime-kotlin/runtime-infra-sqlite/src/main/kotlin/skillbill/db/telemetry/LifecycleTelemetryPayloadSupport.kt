@@ -1,6 +1,8 @@
 package skillbill.db.telemetry
 
 import skillbill.contracts.JsonSupport
+import skillbill.review.normalizeRoutedSkill
+import skillbill.review.normalizeStackLabel
 import skillbill.telemetry.model.PrDescriptionGeneratedRecord
 
 fun featureImplementStartedPayload(row: Map<String, Any?>, level: String): Map<String, Any?> =
@@ -26,7 +28,10 @@ fun featureImplementFinishedPayload(row: Map<String, Any?>, level: String): Map<
   val completionStatus = row.stringOrEmpty("completion_status")
   val earlyAbandonment = completionStatus.startsWith("abandoned_at_")
   val gateDefault = if (earlyAbandonment) "not_reached" else "skipped"
-  return featureImplementStartedPayload(row, level).toMutableMap().apply {
+  return linkedMapOf<String, Any?>(
+    "session_id" to row.stringOrEmpty("session_id"),
+    "source" to row.stringOrEmpty("source").ifBlank { "production" },
+  ).apply {
     put("completion_status", completionStatus)
     put("plan_correction_count", row.intOrZero("plan_correction_count"))
     put("plan_task_count", row.intOrZero("plan_task_count"))
@@ -43,9 +48,8 @@ fun featureImplementFinishedPayload(row: Map<String, Any?>, level: String): Map<
     put("boundary_history_written", row.booleanFromInt("boundary_history_written"))
     put("boundary_history_value", row.stringOrEmpty("boundary_history_value").ifBlank { "none" })
     put("pr_created", row.booleanFromInt("pr_created"))
-    put("duration_seconds", durationSeconds(row))
     put("child_steps", JsonSupport.parseArrayOrEmpty(row.stringOrEmpty("child_steps_json")))
-    put("duplicate_terminal_finished_events", row.intOrZero("duplicate_terminal_finished_events"))
+    put("duration_seconds", durationSeconds(row))
     if (level == "full") {
       put("plan_deviation_notes", row.stringOrEmpty("plan_deviation_notes"))
     }
@@ -64,16 +68,16 @@ fun featureTaskRuntimeStartedPayload(row: Map<String, Any?>, level: String): Map
   }
 
 fun featureTaskRuntimeFinishedPayload(row: Map<String, Any?>, level: String): Map<String, Any?> =
-  featureTaskRuntimeStartedPayload(row, level).toMutableMap().apply {
+  linkedMapOf<String, Any?>("session_id" to row.stringOrEmpty("session_id")).apply {
     put("completion_status", row.stringOrEmpty("completion_status"))
     put("completed_phase_ids", JsonSupport.parseArrayOrEmpty(row.stringOrEmpty("completed_phase_ids")))
     put("phase_outcomes", parsePhaseOutcomes(row.stringOrEmpty("phase_outcomes")))
     put("review_fix_iteration_count", row.intOrZero("review_fix_iteration_count"))
     put("audit_gap_iteration_count", row.intOrZero("audit_gap_iteration_count"))
+    put("last_incomplete_phase", row.stringOrEmpty("last_incomplete_phase"))
+    put("blocked_reason", row.stringOrEmpty("blocked_reason"))
     put("duration_seconds", durationSeconds(row))
     if (level == "full") {
-      put("last_incomplete_phase", row.stringOrEmpty("last_incomplete_phase"))
-      put("blocked_reason", row.stringOrEmpty("blocked_reason"))
       put("resolved_branch", row.stringOrEmpty("resolved_branch"))
     }
   }
@@ -82,13 +86,24 @@ private fun parsePhaseOutcomes(rawValue: String): Map<String, Any?> = JsonSuppor
   ?.mapValues { (_, value) -> JsonSupport.jsonElementToValue(value) }
   .orEmpty()
 
-fun qualityCheckStartedPayload(row: Map<String, Any?>): Map<String, Any?> = linkedMapOf(
-  "session_id" to row.stringOrEmpty("session_id"),
-  "routed_skill" to row.stringOrEmpty("routed_skill"),
-  "detected_stack" to row.stringOrEmpty("detected_stack"),
-  "scope_type" to row.stringOrEmpty("scope_type"),
-  "initial_failure_count" to row.intOrZero("initial_failure_count"),
-)
+fun qualityCheckStartedPayload(row: Map<String, Any?>): Map<String, Any?> {
+  val normalizedStack = normalizeStackLabel(row.stringOrEmpty("detected_stack"))
+  val fallback = row.booleanFromInt("fallback") || normalizedStack.fallback
+  return linkedMapOf<String, Any?>(
+    "session_id" to row.stringOrEmpty("session_id"),
+    "routed_skill" to normalizeRoutedSkill(row.stringOrEmpty("routed_skill")),
+    "detected_stack" to normalizedStack.stack,
+    "fallback" to fallback,
+    "scope_type" to row.stringOrEmpty("scope_type"),
+    "initial_failure_count" to row.intOrZero("initial_failure_count"),
+    "orchestrated" to false,
+  ).apply {
+    val fallbackReason = row.stringOrEmpty("fallback_reason").ifBlank { normalizedStack.fallbackReason.orEmpty() }
+    if (fallback && fallbackReason.isNotBlank()) {
+      put("fallback_reason", fallbackReason)
+    }
+  }
+}
 
 fun qualityCheckFinishedPayload(row: Map<String, Any?>, level: String): Map<String, Any?> =
   qualityCheckStartedPayload(row).toMutableMap().apply {
@@ -106,6 +121,7 @@ fun featureVerifyStartedPayload(row: Map<String, Any?>, level: String): Map<Stri
   "session_id" to row.stringOrEmpty("session_id"),
   "acceptance_criteria_count" to row.intOrZero("acceptance_criteria_count"),
   "rollout_relevant" to row.booleanFromInt("rollout_relevant"),
+  "orchestrated" to false,
 ).apply {
   if (level == "full") {
     put("spec_summary", row.stringOrEmpty("spec_summary"))

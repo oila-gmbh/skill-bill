@@ -149,6 +149,7 @@ object McpToolDispatcher {
   ): Map<String, Any?> {
     val handler = nativeHandlers[toolName] ?: error("Unknown MCP tool '$toolName'.")
     val canonicalName = canonicalToolName(toolName)
+    val normalizedArguments = normalizeTelemetryEnvelopeArguments(canonicalName, arguments)
     // SKILL-48 Subtask 2d: validate every telemetry envelope at the
     // single parse seam BEFORE the handler builds its typed model.
     // The dispatcher is the one place where the tool name (and
@@ -177,10 +178,10 @@ object McpToolDispatcher {
     // safe; any in-flight production emitter that omits a required key
     // is already breaking its own telemetry contract.
     TelemetryEventSchemaValidator.validate(
-      envelope = telemetryEnvelope(canonicalName, arguments),
+      envelope = telemetryEnvelope(canonicalName, normalizedArguments),
       eventName = canonicalName,
     )
-    return handler.invoke(arguments, context)
+    return handler.invoke(normalizedArguments, context)
   }
 
   /**
@@ -211,6 +212,60 @@ object McpToolDispatcher {
     }
     return envelope
   }
+
+  private fun normalizeTelemetryEnvelopeArguments(toolName: String, arguments: Map<String, Any?>): Map<String, Any?> {
+    if (toolName != "quality_check_finished") {
+      return arguments
+    }
+    val stack = normalizeQualityCheckStack(arguments["detected_stack"]?.toString())
+    val fallback = arguments["fallback"] == true || stack.fallback
+    return arguments.toMutableMap().apply {
+      put("routed_skill", normalizeQualityCheckRoutedSkill(arguments["routed_skill"]?.toString()))
+      put("detected_stack", stack.stack)
+      put("fallback", fallback)
+      val fallbackReason = arguments["fallback_reason"]?.toString()?.takeIf(String::isNotBlank) ?: stack.fallbackReason
+      if (fallback && !fallbackReason.isNullOrBlank()) {
+        put("fallback_reason", fallbackReason)
+      }
+    }
+  }
+}
+
+private class NormalizedQualityCheckStack(
+  val stack: String,
+  val fallback: Boolean,
+  val fallbackReason: String?,
+)
+
+private fun normalizeQualityCheckRoutedSkill(rawValue: String?): String {
+  val value = rawValue?.trim().orEmpty()
+  if (value.isEmpty()) return "unrouted"
+  val withoutNamespace = value.substringAfter(':')
+  return if (
+    withoutNamespace != value &&
+    withoutNamespace.matches(Regex("^[a-z0-9][a-z0-9-]*$")) &&
+    value.substringBefore(':').matches(Regex("^[A-Za-z][A-Za-z0-9_-]*$"))
+  ) {
+    withoutNamespace
+  } else {
+    value
+  }
+}
+
+private fun normalizeQualityCheckStack(rawValue: String?): NormalizedQualityCheckStack {
+  val value = rawValue?.trim().orEmpty()
+  if (value.isEmpty()) {
+    return NormalizedQualityCheckStack(stack = "unknown", fallback = false, fallbackReason = null)
+  }
+  val lower = value.lowercase()
+  if (lower.contains("kmp") && lower.contains("kotlin") && lower.contains("fallback")) {
+    return NormalizedQualityCheckStack(
+      stack = "kmp",
+      fallback = true,
+      fallbackReason = "kotlin_quality_check_fallback",
+    )
+  }
+  return NormalizedQualityCheckStack(stack = value, fallback = false, fallbackReason = null)
 }
 
 internal fun importReview(arguments: Map<String, Any?>, context: McpRuntimeContext): Map<String, Any?> =

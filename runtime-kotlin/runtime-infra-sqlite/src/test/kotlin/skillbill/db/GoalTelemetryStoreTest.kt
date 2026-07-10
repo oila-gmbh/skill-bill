@@ -8,6 +8,7 @@ import skillbill.infrastructure.sqlite.review.InvalidGoalTelemetryRowError
 import skillbill.infrastructure.sqlite.review.ReviewStatsRuntime
 import skillbill.ports.persistence.model.TelemetryOutboxRecord
 import skillbill.telemetry.model.GoalFinishedRecord
+import skillbill.telemetry.model.GoalIssueFinishedRecord
 import skillbill.telemetry.model.GoalStartedRecord
 import skillbill.telemetry.model.GoalSubtaskFinishedRecord
 import java.nio.file.Files
@@ -66,6 +67,7 @@ class GoalTelemetryStoreTest {
       assertEquals(3, mostRecent.subtaskTotal)
 
       assertOutboxEmittedOncePerEvent(connection)
+      assertGoalTerminalDurationPayloadsUseSeconds(connection)
 
       assertEquals(1, stats.topBlockedSubtasks.size)
       val blocked = stats.topBlockedSubtasks.single()
@@ -310,6 +312,150 @@ class GoalTelemetryStoreTest {
     }
   }
 
+  @Test
+  fun `anonymous goal_subtask_finished payload carries category-prefixed blocked_reason`() {
+    withConnection { connection ->
+      val store = LifecycleTelemetryStore(connection)
+      store.goalSubtaskFinished(
+        subtask(id = 1, status = "blocked", durationMs = 60_000, attempts = 1, blockedReason = "validation: failed"),
+        "anonymous",
+      )
+
+      val payload = parsePayload(
+        pendingOutbox(connection).single { it.eventName == "skillbill_goal_subtask_finished" }.payloadJson,
+      )
+      assertEquals("validation: failed", payload["blocked_reason"])
+    }
+  }
+
+  @Test
+  fun `goal issue progress aggregates segments and emits completed issue exactly once`() {
+    withConnection { connection ->
+      val store = LifecycleTelemetryStore(connection)
+
+      val firstStart =
+        startedRecord("wf-parent:seg:1", subtaskTotal = 1, resumed = false, startedAt = "2026-06-04T10:00:00Z")
+          .copy(parentWorkflowId = "wf-parent")
+      val firstFinish =
+        finishedRecord("wf-parent:seg:1", status = "blocked", startedAt = "2026-06-04T10:00:00Z")
+          .copy(parentWorkflowId = "wf-parent", stopReason = "BLOCKED")
+      repeat(2) {
+        store.goalStarted(firstStart, level = "full")
+        store.goalFinished(firstFinish, level = "full")
+      }
+      store.goalStarted(
+        startedRecord("wf-parent:seg:2", subtaskTotal = 1, resumed = true, startedAt = "2026-06-04T10:10:00Z")
+          .copy(parentWorkflowId = "wf-parent"),
+        level = "full",
+      )
+      store.goalFinished(
+        finishedRecord("wf-parent:seg:2", status = "blocked", startedAt = "2026-06-04T10:10:00Z")
+          .copy(parentWorkflowId = "wf-parent", stopReason = "TIMEOUT"),
+        level = "full",
+      )
+      store.goalStarted(
+        startedRecord("wf-parent:seg:3", subtaskTotal = 1, resumed = true, startedAt = "2026-06-04T10:20:00Z")
+          .copy(parentWorkflowId = "wf-parent"),
+        level = "full",
+      )
+
+      val issueFinished = GoalIssueFinishedRecord(
+        issueKey = "SKILL-66",
+        parentWorkflowId = "wf-parent",
+        status = "completed",
+        subtasksComplete = 1,
+        subtasksBlocked = 0,
+        subtasksSkipped = 0,
+        finishedAt = "2026-06-04T10:30:00Z",
+        mode = "runtime",
+      )
+      store.goalIssueFinished(issueFinished, level = "full")
+      store.goalIssueFinished(issueFinished, level = "full")
+
+      val outbox = pendingOutbox(connection)
+      assertEquals(1, outbox.count { it.eventName == "skillbill_goal_issue_finished" })
+      val payload = parsePayload(outbox.single { it.eventName == "skillbill_goal_issue_finished" }.payloadJson)
+      assertEquals("wf-parent", payload["parent_workflow_id"])
+      assertEquals("completed", payload["status"])
+      assertEquals(3, payload["total_invocations"])
+      assertEquals(2, payload["total_blocks"])
+      assertEquals(2, payload["total_resumes"])
+      assertEquals("2026-06-04T10:00:00Z", payload["first_started_at"])
+      assertEquals(1_800L, assertIs<Number>(payload["duration_seconds"]).toLong())
+      assertTrue("duration_ms" !in payload)
+    }
+  }
+
+  @Test
+  fun `goal issue completion recovers aggregates from persisted segments when progress is missing`() {
+    withConnection { connection ->
+      val store = LifecycleTelemetryStore(connection)
+      val firstStart = startedRecord(
+        "wf-recover:seg:1",
+        subtaskTotal = 1,
+        resumed = false,
+        startedAt = "2026-06-04T10:00:00Z",
+      ).copy(parentWorkflowId = "wf-recover")
+      val secondStart = startedRecord(
+        "wf-recover:seg:2",
+        subtaskTotal = 1,
+        resumed = true,
+        startedAt = "2026-06-04T10:10:00Z",
+      ).copy(parentWorkflowId = "wf-recover")
+      store.goalStarted(firstStart, "full")
+      store.goalFinished(
+        finishedRecord(firstStart.workflowId, "blocked", firstStart.startedAt)
+          .copy(parentWorkflowId = "wf-recover", stopReason = "POLICY_BLOCKED"),
+        "full",
+      )
+      store.goalStarted(secondStart, "full")
+      connection.createStatement().use { it.executeUpdate("DELETE FROM goal_issue_progress") }
+
+      store.goalIssueFinished(
+        GoalIssueFinishedRecord(
+          issueKey = "SKILL-66",
+          parentWorkflowId = "wf-recover",
+          status = "completed",
+          subtasksComplete = 1,
+          subtasksBlocked = 0,
+          subtasksSkipped = 0,
+          finishedAt = "2026-06-04T10:20:00Z",
+          mode = "runtime",
+        ),
+        "full",
+      )
+
+      val payload = parsePayload(
+        pendingOutbox(connection).single { it.eventName == "skillbill_goal_issue_finished" }.payloadJson,
+      )
+      assertEquals(2, payload["total_invocations"])
+      assertEquals(1, payload["total_resumes"])
+      assertEquals(1, payload["total_blocks"])
+      assertEquals("2026-06-04T10:00:00Z", payload["first_started_at"])
+    }
+  }
+
+  @Test
+  fun `goal issue completion without trustworthy history suppresses terminal emission`() {
+    withConnection { connection ->
+      LifecycleTelemetryStore(connection).goalIssueFinished(
+        GoalIssueFinishedRecord(
+          issueKey = "SKILL-NO-HISTORY",
+          parentWorkflowId = "wf-missing",
+          status = "completed",
+          subtasksComplete = 0,
+          subtasksBlocked = 0,
+          subtasksSkipped = 0,
+          finishedAt = "2026-06-04T10:20:00Z",
+          mode = "runtime",
+        ),
+        "full",
+      )
+
+      assertEquals(0, pendingOutbox(connection).count { it.eventName == "skillbill_goal_issue_finished" })
+    }
+  }
+
   private fun seedBlockedRunWithMixedSubtasks(store: LifecycleTelemetryStore) {
     store.goalStarted(startedRecord("wf-1", subtaskTotal = 3, resumed = false), level = "full")
     store.goalSubtaskFinished(subtask(id = 1, status = "complete", durationMs = 60_000, attempts = 1), "full")
@@ -338,12 +484,37 @@ class GoalTelemetryStoreTest {
   private fun assertOutboxEmittedOncePerEvent(connection: Connection) {
     val outbox = pendingOutbox(connection)
     assertEquals(1, outbox.count { it.eventName == "skillbill_goal_started" })
+    assertEquals(
+      "running",
+      parsePayload(outbox.single { it.eventName == "skillbill_goal_started" }.payloadJson)["status"],
+    )
+    assertEquals(
+      "runtime",
+      parsePayload(outbox.single { it.eventName == "skillbill_goal_started" }.payloadJson)["mode"],
+    )
     assertEquals(3, outbox.count { it.eventName == "skillbill_goal_subtask_finished" })
     assertEquals(1, outbox.count { it.eventName == "skillbill_goal_finished" })
+    assertEquals(
+      "runtime",
+      parsePayload(outbox.single { it.eventName == "skillbill_goal_finished" }.payloadJson)["mode"],
+    )
     assertTrue(
       outbox.any { it.eventName == "skillbill_goal_subtask_finished" && it.payloadJson.contains("validation failed") },
       "Blocked subtask outbox payload should carry blocked_reason at full level.",
     )
+  }
+
+  private fun assertGoalTerminalDurationPayloadsUseSeconds(connection: Connection) {
+    val payloads = pendingOutbox(connection)
+      .filter { it.eventName in setOf("skillbill_goal_subtask_finished", "skillbill_goal_finished") }
+      .map { parsePayload(it.payloadJson) }
+
+    payloads.forEach { payload ->
+      assertTrue("duration_seconds" in payload)
+      assertTrue("duration_ms" !in payload)
+    }
+    assertEquals(60L, assertIs<Number>(payloads.first { it["subtask_id"] == 1 }["duration_seconds"]).toLong())
+    assertEquals(1_800L, assertIs<Number>(payloads.single { "subtask_id" !in it }["duration_seconds"]).toLong())
   }
 
   private fun finishedRun(
@@ -371,6 +542,20 @@ class GoalTelemetryStoreTest {
     )
   }
 
+  private fun finishedRecord(workflowId: String, status: String, startedAt: String): GoalFinishedRecord =
+    GoalFinishedRecord(
+      issueKey = "SKILL-66",
+      workflowId = workflowId,
+      status = status,
+      startedAt = startedAt,
+      finishedAt = "2026-06-04T10:05:00Z",
+      durationMs = 300_000,
+      subtasksComplete = if (status == "completed") 1 else 0,
+      subtasksBlocked = if (status == "blocked") 1 else 0,
+      subtasksSkipped = 0,
+      mode = "runtime",
+    )
+
   private fun startedRecord(
     workflowId: String,
     subtaskTotal: Int,
@@ -384,6 +569,7 @@ class GoalTelemetryStoreTest {
     subtaskTotal = subtaskTotal,
     resumed = resumed,
     startedAt = startedAt,
+    status = "running",
     mode = mode,
   )
 

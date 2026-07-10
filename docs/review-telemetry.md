@@ -124,7 +124,7 @@ The telemetry model emits a single event per review lifecycle:
 
 - one `skillbill_review_finished` event when a review lifecycle becomes fully resolved (all findings triaged)
 
-The finished event carries: total/accepted/rejected/unresolved finding counts, accepted/rejected rates, accepted/rejected finding details, a nested `learnings` object, routed skill, original review platform/scope labels, normalized `platform_slug` and `scope_type`, execution mode, specialist reviews, and a distinct canonical `review_session_id` field so related telemetry can be grouped together in PostHog. Finding details always include `issue_category`, `severity`, `confidence`, and `outcome_type`; file locations, descriptions, and rejection notes are included only at `full` level. `unresolved_findings` is the count of findings whose latest outcome is not terminal yet; the finished event is emitted only once that count reaches zero. If a later import materially changes the review and reopens unresolved findings, Skill Bill clears the finish marker and emits a fresh event the next time the review becomes fully resolved.
+The finished event carries: total/accepted/rejected/unresolved finding counts, accepted/rejected rates, accepted/rejected finding details, a nested `learnings` object, normalized routed skill, normalized `review_platform`/`detected_stack`/`platform_slug`, optional `detected_stack_detail`, normalized `scope_type`, execution mode, specialist reviews, fallback metadata, and a distinct canonical `review_session_id` field so related telemetry can be grouped together in PostHog. Finding details always include `issue_category`, `severity`, `confidence`, and `outcome_type`; file locations, descriptions, and rejection notes are included only at `full` level. `unresolved_findings` is the count of findings whose latest outcome is not terminal yet; the finished event is emitted only once that count reaches zero. If a later import materially changes the review and reopens unresolved findings, Skill Bill clears the finish marker and emits a fresh event the next time the review becomes fully resolved.
 
 The review issue category taxonomy is: `behavior_correctness`, `data_persistence`, `concurrency_lifecycle`, `ux_accessibility`, `testing_quality_gate`, `security_privacy`, `docs_contract`, and `other`.
 
@@ -244,8 +244,10 @@ Both `anonymous` and `full`:
 | Field | Type | Description |
 |-------|------|-------------|
 | `session_id` | string | `qck-YYYYMMDD-HHMMSS-XXXX` |
-| `routed_skill` | string | Concrete stack-specific checker delegated to (`bill-kotlin-code-check`; KMP currently falls back to Kotlin quality-check behavior) |
-| `detected_stack` | string | Dominant stack routed for |
+| `routed_skill` | string | Concrete checker delegated to, normalized without namespace prefixes; blank/unresolved routing emits `unrouted` |
+| `detected_stack` | string | Normalized stack slug routed for; blank/unresolved stack emits `unknown` |
+| `fallback` | boolean | Whether routing used a fallback path |
+| `fallback_reason` | string | Optional stable fallback reason, such as `kotlin_quality_check_fallback` |
 | `scope_type` | string | `files`, `working_tree`, `branch_diff`, or `repo` |
 | `initial_failure_count` | integer | Failing checks before the first fix run |
 
@@ -411,6 +413,7 @@ Recommended global filters:
 - date ranges: last 7 days, last 30 days, and rolling quarter
 - use started events for intake/adoption charts
 - use finished events for completion, iteration, and duration charts
+- exclude non-production installs by default: require `properties.install_id IS NOT NULL`, `trim(toString(properties.install_id)) != ''`, and `toString(properties.install_id) != 'test-install-id'`
 - do not mix started and finished denominators in one chart unless the chart explicitly describes funnel dropoff
 
 ### Feature-verify dashboard
@@ -534,6 +537,9 @@ FROM (
   FROM events
   WHERE event = 'skillbill_review_finished'
     AND timestamp >= now() - INTERVAL 60 DAY
+    AND properties.install_id IS NOT NULL
+    AND trim(toString(properties.install_id)) != ''
+    AND toString(properties.install_id) != 'test-install-id'
   UNION ALL
   SELECT
     'embedded' AS source,
@@ -545,6 +551,9 @@ FROM (
   ARRAY JOIN JSONExtractArrayRaw(toString(properties.child_steps)) AS child_raw
   WHERE event = 'skillbill_feature_task_prose_finished'
     AND timestamp >= now() - INTERVAL 60 DAY
+    AND properties.install_id IS NOT NULL
+    AND trim(toString(properties.install_id)) != ''
+    AND toString(properties.install_id) != 'test-install-id'
     AND JSONExtractString(child_raw, 'skill') LIKE '%code-review%'
 )
 GROUP BY source
@@ -564,6 +573,9 @@ SELECT
 FROM events
 WHERE event = 'skillbill_feature_task_prose_finished'
   AND timestamp >= now() - INTERVAL 60 DAY
+  AND properties.install_id IS NOT NULL
+  AND trim(toString(properties.install_id)) != ''
+  AND toString(properties.install_id) != 'test-install-id'
   AND coalesce(properties.source, 'production') = 'production'
   AND match(toString(properties.session_id), '^fis-[A-Za-z0-9][A-Za-z0-9_-]*$')
   AND toInt(properties.duration_seconds) > 0
@@ -585,6 +597,9 @@ SELECT
 FROM events
 WHERE event = 'skillbill_feature_task_prose_finished'
   AND timestamp >= now() - INTERVAL 60 DAY
+  AND properties.install_id IS NOT NULL
+  AND trim(toString(properties.install_id)) != ''
+  AND toString(properties.install_id) != 'test-install-id'
 ```
 
 ### Alignment rule
@@ -647,6 +662,7 @@ The client sends that payload to:
 - `<configured telemetry proxy url>/stats`
 
 The proxy owns backend-specific query logic. It may answer from PostHog, ClickHouse, BigQuery, or any other analytics store.
+The bundled PostHog proxy queries apply the same production-install default as dashboards: they exclude null `install_id`, blank `install_id`, and `install_id = 'test-install-id'`.
 
 Normalized remote stats payloads now include:
 
@@ -695,6 +711,9 @@ Fresh installs default telemetry to `anonymous`, with a level prompt during `./i
 
 - enabled telemetry (`anonymous` or `full`) can enqueue local telemetry events in SQLite before sync
 - the helper can batch-sync pending events automatically after local writes to the hosted relay, or to a configured custom proxy override
+- automatic sync and manual `skill-bill telemetry sync` both reconcile stale lifecycle rows before flushing the outbox, so CLI-only sessions receive the same terminal-event repair as MCP sessions
+- reconciliation uses a durable cadence independent of upload timing and one globally ordered maximum batch per SQLite transaction; eligible repeated runs drain larger backlogs without holding an unbounded write transaction
+- reconciliation is best-effort: a reconciliation failure is recorded diagnostically and does not prevent the requested telemetry flush
 - if the remote destination is missing or unavailable, local workflows still succeed and the enabled telemetry outbox stays pending
 - `off` telemetry is a no-op: no telemetry config is required, no telemetry events are queued locally, and telemetry payload-building is skipped
 - `skill-bill telemetry disable` removes local telemetry config and clears any queued telemetry events without deleting non-telemetry review data

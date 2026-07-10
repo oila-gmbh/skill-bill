@@ -1,3 +1,39 @@
+## [2026-07-09] SKILL-109 reliability contract test
+Areas: runtime-kotlin/runtime-application goal telemetry tests, runtime-kotlin/runtime-mcp telemetry contract tests
+- Issue-level terminal completeness is now asserted through the production GoalRunner telemetry path, proving completed goal runs emit exactly one `skillbill_goal_issue_finished` event with parent workflow, issue key, status, counts, timestamp, and mode. reusable
+- MCP reliability coverage now validates representative issue-finished envelope shape and schema-backed field hygiene separately, avoiding self-fulfilling hand-authored terminal sequences.
+- Pattern: prove behavioral telemetry guarantees at the runtime emitter path, then keep MCP tests focused on schema parity and representative payload validity so contract coverage is not duplicated or synthetic. reusable
+- Existing duplicate-terminal, unresolved-findings, and production-install filtering coverage remains the contract source for those guarantees.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
+## [2026-07-09] SKILL-109 telemetry label normalization
+Areas: runtime-kotlin/runtime-application telemetry, runtime-domain review models, runtime-infra-sqlite telemetry persistence, runtime-mcp lifecycle schemas, orchestration/contracts telemetry schema
+- Review-finished and quality-check telemetry now normalize routed skills and stack/platform labels at runtime boundaries: no `skill-bill:` prefixes, blank routes become `unrouted`/`unknown`, and `review_platform == platform_slug == detected_stack` for clean enums. reusable
+- Descriptive stack fingerprints move to `detected_stack_detail`; kmp-to-kotlin quality-check fallback is structured as `stack="kmp"`, `fallback=true`, and optional `fallback_reason` instead of prose labels.
+- Pattern: preserve legacy/raw persisted rows where possible, then normalize at parse, payload, schema, and MCP ingress seams so emitted telemetry stays contract-clean without destructive migrations. reusable
+- Schema parity and regression coverage lock the new review-finished branch plus required quality-check `fallback` fields across MCP, sqlite, and canonical telemetry contracts.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
+## [2026-07-09] SKILL-109 reliable telemetry field population
+Areas: runtime-kotlin/runtime-application telemetry, runtime-kotlin/runtime-mcp stdio telemetry tests
+- Blocked goal-subtask telemetry now normalizes blank reasons in `LifecycleTelemetryService` before persistence, yielding a category-prefixed `runtime:` fallback instead of an empty `blocked_reason`. reusable
+- Stdio MCP coverage drives `goal_prose_subtask_finished` through the real outbox path and asserts the persisted anonymous payload carries the normalized diagnostic field.
+- Pattern: normalize mandatory lifecycle diagnostics at the application telemetry seam, not only in callers or analytics mappers, so every transport inherits the same blocked-outcome contract. reusable
+- Known limitation: this entry reflects the live branch diff for subtask 3; earlier SKILL-109 field-population support was already present outside this phase's observed modified files.
+Feature flag: N/A
+Acceptance criteria: 5/5 implemented
+
+## [2026-07-08] SKILL-109 goal issue terminal telemetry
+Areas: runtime-kotlin/runtime-application goal telemetry models, runtime-infra-sqlite telemetry persistence/emission, runtime-mcp telemetry schema parity
+- Added issue-level goal terminal telemetry with exact-once completed emission keyed by the constant goal parent workflow id, backed by additive `goal_issue_progress` state that preserves legacy DB rows. reusable
+- Goal segment telemetry now carries `GoalRunnerStopReason` for non-completed segments; schema parity tests guard both finished-event shape and enum drift. reusable
+- Validation cleanup split sqlite telemetry row mapping into shared support and used typed segment-start values, keeping emit/save surfaces within detekt limits without changing behavior.
+- Known limitation: abandoned issue-level terminal emission is reserved for the later stale-session reconciler subtask.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
 ## [2026-07-07] SKILL-107 subtask 3 manifest-driven runtime hygiene
 Areas: runtime-kotlin/runtime-core DI, runtime-application/review, runtime-infra-sqlite/review telemetry, runtime-infra-fs/{manifest attribution, repo validation, install apply}, runtime-ports/review
 - Review platform attribution now consumes injected manifest-derived routed-skill mappings; sqlite keeps only exact skill-name lookup plus `"unknown"` fallback, with no pack discovery dependency. reusable

@@ -4,8 +4,6 @@ import skillbill.telemetry.model.FeatureImplementFinishedRecord
 import skillbill.telemetry.model.FeatureImplementStartedRecord
 import skillbill.telemetry.model.FeatureVerifyFinishedRecord
 import skillbill.telemetry.model.FeatureVerifyStartedRecord
-import skillbill.telemetry.model.QualityCheckFinishedRecord
-import skillbill.telemetry.model.QualityCheckStartedRecord
 import java.sql.Connection
 
 fun saveFeatureImplementStarted(connection: Connection, record: FeatureImplementStartedRecord) {
@@ -14,8 +12,8 @@ fun saveFeatureImplementStarted(connection: Connection, record: FeatureImplement
     INSERT INTO feature_implement_sessions (
       session_id, source, issue_key_provided, issue_key_type, spec_input_types,
       spec_word_count, feature_size, feature_name, rollout_needed,
-      acceptance_criteria_count, open_questions_count, spec_summary
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      acceptance_criteria_count, open_questions_count, spec_summary, started_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
     """.trimIndent(),
   ).use { statement ->
     statement.bind(
@@ -36,92 +34,26 @@ fun saveFeatureImplementStarted(connection: Connection, record: FeatureImplement
   }
 }
 
-fun saveFeatureImplementFinished(connection: Connection, record: FeatureImplementFinishedRecord): Boolean {
+fun saveFeatureImplementFinished(connection: Connection, record: FeatureImplementFinishedRecord): TerminalSaveOutcome {
   val childStepsJson = listJson(record.childSteps)
   if (rowExists(connection, "feature_implement_sessions", record.sessionId)) {
-    if (featureImplementAlreadyFinished(connection, record.sessionId)) {
-      incrementDuplicateFeatureImplementFinished(connection, record.sessionId)
-      return true
+    if (lifecycleAlreadyFinished(connection, "feature_implement_sessions", record.sessionId)) {
+      incrementDuplicateTerminalFinishedEvents(connection, "feature_implement_sessions", record.sessionId)
+      return TerminalSaveOutcome.DUPLICATE
     }
     updateFeatureImplementFinished(connection, record, childStepsJson)
   } else {
     insertFeatureImplementFinished(connection, record, childStepsJson)
   }
-  return false
-}
-
-fun saveQualityCheckStarted(connection: Connection, record: QualityCheckStartedRecord) {
-  connection.prepareStatement(
-    """
-    INSERT INTO quality_check_sessions (
-      session_id, routed_skill, detected_stack, scope_type, initial_failure_count
-    ) VALUES (?, ?, ?, ?, ?)
-    """.trimIndent(),
-  ).use { statement ->
-    statement.bind(
-      record.sessionId,
-      record.routedSkill,
-      record.detectedStack,
-      record.scopeType,
-      record.initialFailureCount,
-    )
-    statement.executeUpdate()
-  }
-}
-
-fun saveQualityCheckFinished(connection: Connection, record: QualityCheckFinishedRecord) {
-  val failingCheckNamesJson = listJson(record.failingCheckNames)
-  if (rowExists(connection, "quality_check_sessions", record.sessionId)) {
-    connection.prepareStatement(
-      """
-      UPDATE quality_check_sessions SET
-        final_failure_count = ?,
-        iterations = ?,
-        result = ?,
-        failing_check_names = ?,
-        unsupported_reason = ?,
-        finished_at = CURRENT_TIMESTAMP
-      WHERE session_id = ?
-      """.trimIndent(),
-    ).use { statement ->
-      statement.bind(
-        record.finalFailureCount,
-        record.iterations,
-        record.result,
-        failingCheckNamesJson,
-        record.unsupportedReason,
-        record.sessionId,
-      )
-      statement.executeUpdate()
-    }
-  } else {
-    connection.prepareStatement(
-      """
-      INSERT INTO quality_check_sessions (
-        session_id, final_failure_count, iterations, result,
-        failing_check_names, unsupported_reason, finished_at
-      ) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-      """.trimIndent(),
-    ).use { statement ->
-      statement.bind(
-        record.sessionId,
-        record.finalFailureCount,
-        record.iterations,
-        record.result,
-        failingCheckNamesJson,
-        record.unsupportedReason,
-      )
-      statement.executeUpdate()
-    }
-  }
+  return TerminalSaveOutcome.FIRST_TERMINAL
 }
 
 fun saveFeatureVerifyStarted(connection: Connection, record: FeatureVerifyStartedRecord) {
   connection.prepareStatement(
     """
     INSERT INTO feature_verify_sessions (
-      session_id, acceptance_criteria_count, rollout_relevant, spec_summary
-    ) VALUES (?, ?, ?, ?)
+      session_id, acceptance_criteria_count, rollout_relevant, spec_summary, started_at
+    ) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
     """.trimIndent(),
   ).use { statement ->
     statement.bind(
@@ -134,13 +66,18 @@ fun saveFeatureVerifyStarted(connection: Connection, record: FeatureVerifyStarte
   }
 }
 
-fun saveFeatureVerifyFinished(connection: Connection, record: FeatureVerifyFinishedRecord) {
+fun saveFeatureVerifyFinished(connection: Connection, record: FeatureVerifyFinishedRecord): TerminalSaveOutcome {
   val gapsFoundJson = listJson(record.gapsFound)
   if (rowExists(connection, "feature_verify_sessions", record.sessionId)) {
+    if (lifecycleAlreadyFinished(connection, "feature_verify_sessions", record.sessionId)) {
+      incrementDuplicateTerminalFinishedEvents(connection, "feature_verify_sessions", record.sessionId)
+      return TerminalSaveOutcome.DUPLICATE
+    }
     updateFeatureVerifyFinished(connection, record, gapsFoundJson)
   } else {
     insertFeatureVerifyFinished(connection, record, gapsFoundJson)
   }
+  return TerminalSaveOutcome.FIRST_TERMINAL
 }
 
 private fun updateFeatureImplementFinished(
@@ -173,6 +110,7 @@ private fun updateFeatureImplementFinished(
       estimated_total_tokens = ?,
       finished_at = CURRENT_TIMESTAMP
     WHERE session_id = ?
+      AND (finished_event_emitted_at IS NULL OR completion_status = 'stale')
     """.trimIndent(),
   ).use { statement ->
     statement.bind(
@@ -227,6 +165,7 @@ private fun updateFeatureVerifyFinished(
       gaps_found = ?,
       finished_at = CURRENT_TIMESTAMP
     WHERE session_id = ?
+      AND (finished_event_emitted_at IS NULL OR completion_status = 'stale')
     """.trimIndent(),
   ).use { statement ->
     statement.bind(

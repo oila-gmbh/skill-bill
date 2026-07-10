@@ -311,7 +311,7 @@ Review and telemetry:
 | `skill-bill implement-stats`  | Show local `bill-feature-task` metrics         |
 | `skill-bill verify-stats`     | Show local `bill-feature-verify` metrics            |
 | `skill-bill telemetry status` | Show telemetry configuration and pending sync state |
-| `skill-bill telemetry sync`   | Flush queued telemetry                              |
+| `skill-bill telemetry sync`   | Reconcile stale sessions, then flush queued telemetry |
 | `skill-bill telemetry capabilities` | Show configured proxy capabilities            |
 | `skill-bill telemetry stats`  | Fetch aggregate remote workflow stats from the proxy |
 

@@ -7,6 +7,7 @@ import skillbill.telemetry.model.FeatureTaskRuntimeStartedRecord
 import skillbill.telemetry.model.FeatureVerifyFinishedRecord
 import skillbill.telemetry.model.FeatureVerifyStartedRecord
 import skillbill.telemetry.model.GoalFinishedRecord
+import skillbill.telemetry.model.GoalIssueFinishedRecord
 import skillbill.telemetry.model.GoalStartedRecord
 import skillbill.telemetry.model.GoalSubtaskFinishedRecord
 import skillbill.telemetry.model.PrDescriptionGeneratedRecord
@@ -41,4 +42,6 @@ interface LifecycleTelemetryRepository {
   fun goalSubtaskFinished(record: GoalSubtaskFinishedRecord, level: String)
 
   fun goalFinished(record: GoalFinishedRecord, level: String)
+
+  fun goalIssueFinished(record: GoalIssueFinishedRecord, level: String)
 }
