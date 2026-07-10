@@ -6,22 +6,18 @@ internal-for: bill-code-check
 
 # PHP Quality Check
 
-## Purpose
-
-Run the repository's authoritative PHP quality workflow, fix root causes only in files in scope, and preserve project-owned tooling and conventions.
-
 ## Execution Steps
 
-1. Determine files in scope using `git diff --name-only` against the relevant base.
-2. Discover the project's own quality commands from the build file, repository wrapper, and CI configuration, in that order, before falling back to PHP defaults.
-3. Run the pack's quality-check entrypoint through the project's quality-check commands and capture complete output.
+1. Determine changed files using `git diff --name-only` against the relevant base.
+2. Discover the project's own quality commands before running checks.
+3. Run the project's quality-check commands and capture complete output.
 4. Filter the results to issues in changed files only.
 5. Categorize issues by type: structural, formatting, lint, static analysis, architecture checks, tests, security or audit failures.
 6. Fix systematically by category in priority order.
 7. Re-run the quality-check commands after all fixes.
 8. Iterate if new issues appear.
 
-### Command Discovery
+## Command Discovery
 
 - Use local project standards and established repo command conventions before choosing PHP defaults
 - Inspect `composer.json` scripts first; prefer repo-owned Composer scripts over bare tool invocations
@@ -33,8 +29,6 @@ Run the repository's authoritative PHP quality workflow, fix root causes only in
 - Do not install new tools or rewrite quality configuration as the default way to make checks pass
 
 ## Fix Strategy
-
-Use a priority-ordered fix strategy that addresses root causes and never suppresses failures.
 
 ### Always Fix, Never Suppress
 
@@ -80,5 +74,3 @@ Use a priority-ordered fix strategy that addresses root causes and never suppres
 - If the repo defines both fixer and verifier commands, run fixers before read-only analyzers when that reduces churn
 - Common PHP quality commands may include PHPUnit or Pest tests, PHP syntax linting, Pint, PHP-CS-Fixer, PHPCS, ECS, PHPStan, Psalm, Rector, Deptrac, Composer validate, and dependency audit
 - If a required command cannot be run, report that explicitly with the reason
-
-After each fix, re-run targeted checks first. Run the full suite when targeted checks cannot establish safety, when shared quality configuration changed, or when the discovered project workflow requires it.

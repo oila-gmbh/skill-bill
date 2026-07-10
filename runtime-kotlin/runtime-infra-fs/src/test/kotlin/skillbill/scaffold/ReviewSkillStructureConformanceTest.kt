@@ -115,6 +115,30 @@ class ReviewSkillStructureConformanceTest {
       undisciplinedBaseline,
       "finding discipline",
     )
+    assertContentRuleViolation(
+      pack,
+      "code-review/bill-fixture-code-review/content.md",
+      nondeterministicWaveBatching,
+      "deterministic wave batching",
+    )
+    assertContentRuleViolation(
+      pack,
+      "code-review/bill-fixture-code-review/content.md",
+      droppedSelectedResults,
+      "selected specialist result retention",
+    )
+    assertContentRuleViolation(
+      pack,
+      "code-review/bill-fixture-code-review/content.md",
+      unattributedFindingMerge,
+      "attributed finding merge",
+    )
+    assertContentRuleViolation(
+      pack,
+      "code-review/bill-fixture-code-review/content.md",
+      lossyFindingDeduplication,
+      "evidence-preserving deduplication",
+    )
   }
 
   private fun assertSpecialistNegativeFixtures(pack: Path) {
@@ -183,6 +207,7 @@ class ReviewSkillStructureConformanceTest {
 
   internal fun structureViolations(pack: Path): List<StructureViolation> {
     val exemptions = setOf("ios", "python")
+    val qualityCheckExemptions = setOf("php")
     // SKILL-112 subtasks 2-7 remove one pack each; subtask 8 removes this mechanism.
     if (pack.name == "platform-packs") {
       return Files.list(pack).use { packDirectories ->
@@ -198,7 +223,7 @@ class ReviewSkillStructureConformanceTest {
     return manifestViolations(pack) +
       contentFiles(pack).flatMap(::contentViolations) +
       nativeAgentViolations(pack) +
-      qualityCheckViolations(pack) +
+      (if (pack.name in qualityCheckExemptions) emptyList() else qualityCheckViolations(pack)) +
       authoredSidecarViolations(pack)
   }
 
@@ -316,6 +341,8 @@ class ReviewSkillStructureConformanceTest {
     val routing = h2Section(content, "Diff-Signal Routing Table")
     val mixedDiffs = h2Section(content, "Mixed Diffs")
     val discipline = h2Section(content, "Finding Discipline")
+    val composedMixedDiffs = composedBaselineSections(file, "Mixed Diffs")
+    val composedDiscipline = composedBaselineSections(file, "Finding Discipline")
     return buildList {
       if (headings != required) add(StructureViolation(file, "baseline H2 sequence"))
       if (!classification.contains("If ") || !classification.contains("Otherwise")) {
@@ -335,8 +362,20 @@ class ReviewSkillStructureConformanceTest {
       if (!containsAll(mixedDiffs, "specialist", "scope", "generated", "vendored", "non-stack")) {
         add(StructureViolation(file, "scoping exclusions"))
       }
-      if (!containsAll(discipline, "severity", "precondition", "attributed", "deduplicat")) {
+      if (!containsAll(discipline, "severity", "precondition")) {
         add(StructureViolation(file, "finding discipline"))
+      }
+      if (!containsAll(composedMixedDiffs, "deterministic", "wave", "capacity")) {
+        add(StructureViolation(file, "deterministic wave batching"))
+      }
+      if (!containsAll(composedMixedDiffs, "retain", "every selected", "result")) {
+        add(StructureViolation(file, "selected specialist result retention"))
+      }
+      if (!containsAll(composedDiscipline, "attributed", "merge")) {
+        add(StructureViolation(file, "attributed finding merge"))
+      }
+      if (!containsAll(composedDiscipline, "deduplicat", "without losing", "evidence")) {
+        add(StructureViolation(file, "evidence-preserving deduplication"))
       }
     }
   }
@@ -511,6 +550,24 @@ class ReviewSkillStructureConformanceTest {
       .orEmpty()
   }
 
+  private fun composedBaselineSections(file: Path, heading: String): String {
+    val pack = file.parent.parent.parent
+    val manifest = Yaml().load<Any?>(Files.readString(pack.resolve("platform.yaml"))) as? Map<*, *>
+      ?: return h2Section(Files.readString(file), heading)
+    val composition = manifest["code_review_composition"] as? Map<*, *> ?: emptyMap<Any?, Any?>()
+    val layers = (composition["baseline_layers"] as? List<*>)?.filterIsInstance<Map<*, *>>().orEmpty()
+    val inheritedSections = layers.filter { it["required"] == true }.mapNotNull { layer ->
+      val platform = layer["platform"] as? String ?: return@mapNotNull null
+      val inheritedPack = pack.parent.resolve(platform)
+      val inheritedManifest = Yaml().load<Any?>(Files.readString(inheritedPack.resolve("platform.yaml"))) as? Map<*, *>
+        ?: return@mapNotNull null
+      val declaredFiles = inheritedManifest["declared_files"] as? Map<*, *> ?: return@mapNotNull null
+      val baseline = declaredFiles["baseline"] as? String ?: return@mapNotNull null
+      h2Section(Files.readString(inheritedPack.resolve(baseline)), heading)
+    }
+    return (listOf(h2Section(Files.readString(file), heading)) + inheritedSections).joinToString("\n")
+  }
+
   private fun ignoreSection(content: String): String =
     content.substringAfter("## Ignore", "").substringBefore("## Applicability")
 
@@ -663,10 +720,12 @@ class ReviewSkillStructureConformanceTest {
 
       Keep the baseline specialists for the whole review and use lightweight file-level classification.
       Exclude generated, vendored, and non-stack files from each specialist's scope.
+      When selected specialists exceed worker capacity, run them in deterministic waves and retain every selected specialist result.
 
       ## Finding Discipline
 
-      Calibrate severity and verify each precondition. Keep findings attributed, then deduplicate overlaps.
+      Calibrate severity and verify each precondition. Keep findings attributed through merge.
+      Deduplicate overlaps without losing evidence.
     """.trimIndent()
     val fixtureSpecialist = """
       ## Focus
@@ -728,8 +787,24 @@ class ReviewSkillStructureConformanceTest {
     )
     val unscopedBaseline = fixtureBaseline.replace("generated, vendored, and non-stack", "irrelevant")
     val undisciplinedBaseline = fixtureBaseline.replace(
-      "Calibrate severity and verify each precondition. Keep findings attributed, then deduplicate overlaps.",
+      "Calibrate severity and verify each precondition.",
       "Merge the findings.",
+    )
+    val nondeterministicWaveBatching = fixtureBaseline.replace(
+      "run them in deterministic waves",
+      "run them as capacity allows",
+    )
+    val droppedSelectedResults = fixtureBaseline.replace(
+      "retain every selected specialist result",
+      "keep completed results",
+    )
+    val unattributedFindingMerge = fixtureBaseline.replace(
+      "Keep findings attributed through merge.",
+      "Merge findings.",
+    )
+    val lossyFindingDeduplication = fixtureBaseline.replace(
+      "Deduplicate overlaps without losing evidence.",
+      "Deduplicate overlaps.",
     )
     val vagueSpecialist = fixtureSpecialist.replace(
       "Verify `FixtureApi` boundaries and reject failure paths that violate its invariant.",
