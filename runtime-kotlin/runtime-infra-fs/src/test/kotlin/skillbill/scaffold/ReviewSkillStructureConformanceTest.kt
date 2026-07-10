@@ -194,6 +194,7 @@ class ReviewSkillStructureConformanceTest {
   private fun assertManifestAndSidecarNegativeFixtures(pack: Path) {
     assertManifestRuleViolation(pack, missingDeclaredAreaManifest, "manifest review area parity")
     assertManifestRuleViolation(pack, genericAreaMetadataManifest, "manifest bespoke area metadata")
+    assertManifestRuleViolation(pack, vagueAreaMetadataManifest, "manifest bespoke area metadata")
     assertManifestRuleViolation(pack, bareOnlyRoutingManifest, "routing bare/glob pair")
     assertManifestRuleViolation(pack, globOnlyRoutingManifest, "routing bare/glob pair")
     assertManifestRuleViolation(pack, noPositiveDominanceManifest, "routing positive pack dominance")
@@ -278,7 +279,8 @@ class ReviewSkillStructureConformanceTest {
     if (focuses.map { it.second }.toSet().size != focuses.size) return false
     return focuses.all { (area, focus) ->
       focus.contains(packLabel, ignoreCase = true) &&
-        !focus.equals("$packLabel ${defaultAreaFocus(area)}", ignoreCase = true)
+        !focus.equals("$packLabel ${defaultAreaFocus(area)}", ignoreCase = true) &&
+        concreteFocusTerms(area, focus, packLabel).size >= MINIMUM_CONCRETE_FOCUS_TERMS
     }
   }
 
@@ -679,7 +681,35 @@ private fun orderedFragments(content: String, vararg fragments: String): Boolean
   } != Int.MIN_VALUE
 }
 
+private fun concreteFocusTerms(area: String, focus: String, packLabel: String): Set<String> {
+  val genericTerms = focusTerms("$packLabel ${area.replace('-', ' ')} ${defaultAreaFocus(area)}") + vagueFocusTerms
+  return focusTerms(focus) - genericTerms
+}
+
+private fun focusTerms(value: String): Set<String> = Regex("[a-z0-9]+")
+  .findAll(value.lowercase())
+  .map(MatchResult::value)
+  .filter { it.length > 2 }
+  .toSet()
+
 private val allowedSeverities = setOf("Blocker", "Major", "Minor")
+private const val MINIMUM_CONCRETE_FOCUS_TERMS = 1
+private val vagueFocusTerms = setOf(
+  "area",
+  "checks",
+  "code",
+  "concerns",
+  "custom",
+  "focus",
+  "general",
+  "generic",
+  "review",
+  "risks",
+  "specialist",
+  "specific",
+  "tailored",
+  "unique",
+)
 private val generatedSidecarNames = setOf(
   "review-orchestrator.md",
   "review-delegation.md",
@@ -866,6 +896,10 @@ private val missingDeclaredAreaManifest = fixtureManifest.replace(
 private val genericAreaMetadataManifest = fixtureManifest.replace(
   "Fixture security boundaries for .fixture sources",
   "Fixture secrets handling, auth, and sensitive-data exposure",
+)
+private val vagueAreaMetadataManifest = fixtureManifest.replace(
+  "Fixture security boundaries for .fixture sources",
+  "Fixture custom security review focus",
 )
 private val bareOnlyRoutingManifest = fixtureManifest.replace("[\".fixture\", \"*.fixture\"]", "[\".fixture\"]")
 private val globOnlyRoutingManifest = fixtureManifest.replace("[\".fixture\", \"*.fixture\"]", "[\"*.fixture\"]")

@@ -78,8 +78,29 @@ class PhpPlatformPackTest {
         it.contains("vendor/") && it.contains("generated clients") && it.contains("dominance scoring")
       },
     )
-    assertEquals(10, pack.areaMetadata.values.toSet().size)
-    pack.areaMetadata.values.forEach { focus -> assertContains(focus, "PHP") }
+    assertPhpAreaMetadata(pack.areaMetadata)
+  }
+
+  private fun assertPhpAreaMetadata(areaMetadata: Map<String, String>) {
+    assertEquals(10, areaMetadata.values.toSet().size)
+    val concreteAreaContexts = mapOf(
+      "api-contracts" to listOf("request validation", "resources and serializers"),
+      "architecture" to listOf("module and layer boundaries", "framework coupling"),
+      "performance" to listOf("N+1 queries", "worker memory"),
+      "persistence" to listOf("ORM and SQL", "tenant scoping"),
+      "platform-correctness" to listOf("coercion and null semantics", "worker lifecycle"),
+      "reliability" to listOf("queues, jobs, schedulers", "downstream failures"),
+      "security" to listOf("signed URLs", "deserialization"),
+      "testing" to listOf("PHPUnit and Pest", "deterministic retries"),
+      "ui" to listOf("Blade, Twig, Livewire", "Filament"),
+      "ux-accessibility" to listOf("server-rendered semantics", "keyboard and focus behavior"),
+    )
+    assertEquals(concreteAreaContexts.keys, areaMetadata.keys)
+    concreteAreaContexts.forEach { (area, expectedContexts) ->
+      val focus = areaMetadata.getValue(area)
+      assertContains(focus, "PHP")
+      expectedContexts.forEach { context -> assertContains(focus, context) }
+    }
   }
 
   @Test
