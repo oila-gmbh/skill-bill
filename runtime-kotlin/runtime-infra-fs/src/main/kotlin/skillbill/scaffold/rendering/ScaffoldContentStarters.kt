@@ -32,10 +32,16 @@ internal fun areaReviewContent(summary: String, area: String): String {
     appendLine("- Style-only preferences, formatting, and naming bikeshedding.")
     when (area) {
       "ui" -> {
-        appendLine("- Defer accessibility concerns to the ux-accessibility specialist and security concerns to the security specialist.")
+        appendLine(
+          "- Defer accessibility concerns to the ux-accessibility specialist " +
+            "and security concerns to the security specialist.",
+        )
       }
       "ux-accessibility" -> {
-        appendLine("- Defer UI correctness concerns to the ui specialist and security concerns to the security specialist.")
+        appendLine(
+          "- Defer UI correctness concerns to the ui specialist " +
+            "and security concerns to the security specialist.",
+        )
       }
     }
     appendLine()

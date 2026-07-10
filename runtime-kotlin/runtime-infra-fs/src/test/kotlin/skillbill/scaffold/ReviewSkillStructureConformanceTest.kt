@@ -28,8 +28,18 @@ class ReviewSkillStructureConformanceTest {
     val ui = areaReviewContent("Review UI failures.", "ui")
     val accessibility = areaReviewContent("Review accessibility failures.", "ux-accessibility")
 
-    assertTrue("Defer accessibility concerns to the ux-accessibility specialist and security concerns to the security specialist." in ui)
-    assertTrue("Defer UI correctness concerns to the ui specialist and security concerns to the security specialist." in accessibility)
+    assertTrue(
+      (
+        "Defer accessibility concerns to the ux-accessibility specialist " +
+          "and security concerns to the security specialist."
+        ) in ui,
+    )
+    assertTrue(
+      (
+        "Defer UI correctness concerns to the ui specialist " +
+          "and security concerns to the security specialist."
+        ) in accessibility,
+    )
   }
 
   @Test
@@ -153,10 +163,9 @@ class ReviewSkillStructureConformanceTest {
     }
   }
 
-  private fun contentFiles(root: Path): List<Path> =
-    Files.walk(root.resolve("code-review")).use { paths ->
-      paths.filter { it.fileName.toString() == "content.md" }.toList()
-    }
+  private fun contentFiles(root: Path): List<Path> = Files.walk(root.resolve("code-review")).use { paths ->
+    paths.filter { it.fileName.toString() == "content.md" }.toList()
+  }
 
   private fun allContentFiles(root: Path): List<Path> =
     Files.walk(root).use { paths -> paths.filter { it.fileName.toString() == "content.md" }.toList() }
