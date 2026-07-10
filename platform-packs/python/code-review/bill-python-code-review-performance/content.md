@@ -32,6 +32,7 @@ Use this specialist for request handlers, serializers, batch jobs, workers, impo
 ### Execution and Resource Use
 
 - Reject synchronous database, network, filesystem, compression, or serialization work on the event loop; require GIL-aware isolation with `asyncio.to_thread`, `run_in_executor`, a process pool, or an owned worker boundary as appropriate.
+- Require cancellation propagation and explicit timeouts for async or remote work; reject paths that can continue consuming event-loop, worker, or dependency capacity after the caller has stopped waiting.
 - Require repeated downstream calls and per-item filesystem operations to batch, cache, or stream when call frequency creates a plausible throughput failure.
 - Require cache stampede protection for concurrently missed hot keys and require long-lived workers to clear request, job, dataframe, or model state that would otherwise accumulate across executions.
 - Reject unbounded list accumulation, full-file JSON/YAML/archive buffering, cache growth, import-time work, or per-item object churn on measured or obviously hot paths.

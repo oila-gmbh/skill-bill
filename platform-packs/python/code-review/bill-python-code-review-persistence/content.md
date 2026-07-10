@@ -25,10 +25,12 @@ Use this specialist for SQLAlchemy, Django ORM, peewee, raw SQL, query builders,
 
 ### Sessions and Transactions
 
-- Verify SQLAlchemy `expire_on_commit` behavior, detached-instance access, relationship lazy loads, and request/session lifetime ownership; reject objects used after their owning session closes.
+- Verify SQLAlchemy `expire_on_commit` behavior, detached-instance access, relationship lazy loads, and request/session lifetime ownership; reject access after the owning session closes only when expired or unloaded state would require that detached session.
 - Account for SQLAlchemy autoflush before queries and require explicit `no_autoflush` or ordering when premature writes can violate an invariant.
+- Reject N+1 access and inefficient query shapes when relationship loading, projection, aggregation, or bounded batching is required to avoid a material query or data-volume failure.
+- Require connections and synchronous or async sessions to close on success, exception, and cancellation paths; preserve framework-managed and test-managed transaction lifecycles instead of committing, rolling back, or closing resources owned by the harness.
 - Verify Django `transaction.atomic` nesting and `on_commit` ordering so external effects occur only after durable success and callbacks observe the intended committed state.
-- Require atomicity, explicit isolation assumptions, idempotent retries, deadlock handling, and appropriate optimistic or pessimistic locking where concurrent writes can lose updates or duplicate state.
+- Require atomicity, explicit isolation assumptions, idempotent retries, deadlock handling, appropriate optimistic or pessimistic locking, and database-enforced unique constraints with conflict handling where concurrent writes can lose updates or create duplicate state.
 
 ### Bulk Writes and Migrations
 

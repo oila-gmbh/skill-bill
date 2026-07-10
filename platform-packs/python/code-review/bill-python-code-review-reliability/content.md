@@ -27,6 +27,7 @@ Use this specialist for `requests`, `httpx`, external clients, Celery, RQ, Arq, 
 
 - Require an explicit connect/read or total timeout on every outbound `requests` and `httpx` call because neither should inherit an assumed safe application default.
 - Require bounded retries with backoff, error classification, idempotency, rate-limit handling, response validation, and backpressure; reject retry storms and unbounded replay.
+- Require circuit breaking for persistent dependency failures when continued calls would amplify an outage; verify the open, probe, and recovery behavior prevents sustained pressure without permanently suppressing recovery.
 - Require after-commit or outbox dispatch when a task or event depends on durable state; reject enqueue-before-commit paths that can expose missing or rolled-back data.
 - Require cache thundering-herd prevention for hot misses and never hold a local or distributed lock across remote I/O because dependency latency can block unrelated work.
 

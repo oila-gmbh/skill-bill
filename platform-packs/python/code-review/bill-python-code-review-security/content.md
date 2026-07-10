@@ -25,9 +25,12 @@ Use this specialist for dependencies, routes, object permissions, tenant boundar
 
 ### Trust Boundaries and Dangerous Execution
 
+- Reject new dependency sources, names, extras, build backends, or scripts that permit dependency confusion, and require lockfile or version-bound changes to preserve reproducible, reviewed package resolution.
 - Reject `eval`, `exec`, or dynamic imports whose expression, module, or attribute is derived from untrusted input; require a fixed allowlist and explicit dispatch boundary.
-- Reject unsafe pickle, YAML, XML/entity, template, markdown/HTML, archive, upload, path, symlink, shell, subprocess, or SSRF handling when attacker input can reach the sink.
-- Require route and object-level authorization, tenant isolation, least-privilege outbound clients, safe temporary-file cleanup, and limits on uploaded size and extracted archive shape.
+- Reject unsafe pickle, YAML, XML/entity, template, markdown/HTML, archive, upload, path, symlink, shell, subprocess, or SSRF handling when attacker input can reach the sink; specifically reject Jinja or Django autoescape bypasses and uploaded-file validation that trusts a client-supplied content type.
+- Require route and object-level authorization, tenant isolation, and explicit delegation scope so confused-deputy paths cannot use the service's authority for an unprivileged caller.
+- Require least-privilege outbound clients, safe temporary-file cleanup, and limits on uploaded size and extracted archive shape.
+- Require subprocess calls to use controlled arguments and a minimal trusted environment plus explicit timeouts and termination cleanup; reject inherited secrets, attacker-controlled environment entries, and indefinitely running children.
 - Reject secrets, tokens, PII, credentials, or tenant data in configuration dumps, exceptions, logs, traces, metrics, fixtures, notebooks, or persisted debug artifacts.
 
 ### Browser, Session, and Framework Features

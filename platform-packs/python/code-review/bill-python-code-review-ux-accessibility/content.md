@@ -33,8 +33,10 @@ Use this specialist for server-rendered templates, Django forms, WTForms, admin 
 
 ### Dynamic Behavior and Copy
 
+- Require modals and dialogs to expose their role, name, initial focus, focus containment, Escape or equivalent dismissal, and focus restoration without trapping users outside the active interaction.
+- Require custom controls to provide native-equivalent keyboard operation and state, and require skip links or equivalent navigation affordances when repeated content would otherwise block efficient keyboard access.
 - Verify focus moves to the new error, heading, dialog, or logical continuation after an HTMX-style swap without trapping or unexpectedly resetting keyboard users.
 - Require dynamic fragments and status changes to expose appropriate screen-reader announcements while using ARIA only when native semantics cannot express the behavior.
 - Reject copy that promises save, delivery, completion, deletion, or other success before the system can guarantee that outcome; require recovery guidance for partial or failed operations.
-- Preserve input, actionable errors, keyboard order, localization-safe pluralization, date/time/number formatting, timezone clarity, and translatable text through error and recovery paths.
+- Preserve input, actionable errors, keyboard order, localization-safe pluralization, date/time/number formatting, timezone clarity, and translatable text through error and recovery paths; reject user-facing text embedded in generated images or reports when it cannot be translated or exposed through an accessible text alternative.
 - For Blocker or Major findings, describe the concrete accessibility or task-completion failure scenario.

@@ -33,7 +33,9 @@ Use this specialist whenever tests, fixtures, framework test clients, database o
 ### Async and Integration Determinism
 
 - Require deterministic tests for retry, idempotency, replay, and duplicate delivery, including assertions that effects occur exactly once under repeated execution.
+- Require time-sensitive tests to freeze or inject the clock with an explicit timezone, and cover cancellation and timeout paths without relying on local-zone assumptions or wall-clock timing.
 - Verify `pytest-asyncio` mode and fixture loop scope match the repository configuration; reject async fixtures or tests that silently skip, bind resources to the wrong loop, or leak tasks across cases.
 - Reject real sleeps, wall-clock races, unordered concurrency assertions, and mocks that bypass the database, client, queue, filesystem, or framework behavior under review.
 - Require integration cleanup for transactions, sessions, external clients, temporary directories, queues, and background tasks on both success and error paths.
+- Recommend `bill-unit-test-value-check` when the diff is test-only or new assertions appear tautological so coverage-only tests receive the dedicated value audit.
 - For Blocker or Major findings, describe the concrete undetected-regression or false-positive test scenario.
