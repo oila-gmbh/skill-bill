@@ -30,7 +30,6 @@ Use this specialist when changed Go behavior or test code affects regression pro
 
 ### Shared Backend Testing
 
-- Require `go test` coverage to expose meaningful behavior regressions or test failures at the boundary where they matter
 - Changed behavior and failure paths should be covered at the layer where regressions would surface first
 - A test only adds value if it would fail on a meaningful regression in business behavior
 - Prefer tests that validate real behavior over tests that only mirror implementation details
