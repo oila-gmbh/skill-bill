@@ -22,6 +22,10 @@ Review only test gaps that create real regression risk.
 - Test style preferences without risk impact
 - Missing tests for trivial mappers, accessors, or glue code with no meaningful behavior
 
+## Applicability
+
+Use this specialist when changed PHP behavior, failure paths, contracts, persistence, retries, UI flows, or test code require credible regression proof.
+
 ## Project-Specific Rules
 
 ### Shared Backend Testing
@@ -62,3 +66,4 @@ Review only test gaps that create real regression risk.
 - Boundary tests should verify persisted side effects or externally visible outcomes, not only response status or mock interactions
 - Server-rendered or component-driven flows should test the user-visible behavior that could regress, not only helper internals
 - Feature-flag, permission-gated, and role-gated paths need explicit tests for both enabled and disabled or forbidden behavior when they change semantics
+- For Blocker or Major findings, describe the concrete undetected-regression or false-positive test scenario.

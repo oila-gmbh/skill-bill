@@ -1,32 +1,32 @@
 contract_version: "0.1"
 agents:
   - name: bill-php-code-review-api-contracts
-    description: "PHP backend API contracts specialist code reviewer. Runs against request validation, response serialization, status-code mapping, error payloads, pagination, idempotency, and backward compatibility. Returns a Risk Register in the F-XXX bullet format."
+    description: "PHP api contracts specialist code reviewer. Runs against PHP API contracts, request validation, resources and serializers, error payloads, and client compatibility. Returns a Risk Register in the F-XXX bullet format."
     compose: governed-content
   - name: bill-php-code-review-architecture
-    description: "PHP architecture specialist code reviewer. Runs against layer boundaries, module ownership, dependency direction, source-of-truth consistency, framework coupling, and boundary-crossing composition. Returns a Risk Register in the F-XXX bullet format."
+    description: "PHP architecture specialist code reviewer. Runs against PHP module and layer boundaries, dependency direction, framework coupling, and cross-boundary composition. Returns a Risk Register in the F-XXX bullet format."
     compose: governed-content
   - name: bill-php-code-review-performance
-    description: "PHP performance specialist code reviewer. Runs against hot paths, N+1 queries, repeated database or network calls, serialization waste, memory pressure, buffering, and throughput regressions. Returns a Risk Register in the F-XXX bullet format."
+    description: "PHP performance specialist code reviewer. Runs against PHP hot paths, N+1 queries, serialization and rendering waste, worker memory, and bounded batch work. Returns a Risk Register in the F-XXX bullet format."
     compose: governed-content
   - name: bill-php-code-review-persistence
-    description: "PHP backend persistence specialist code reviewer. Runs against transaction boundaries, ORM mappings, query scoping, migrations, lost updates, locking, bulk writes, and data consistency. Returns a Risk Register in the F-XXX bullet format."
+    description: "PHP persistence specialist code reviewer. Runs against PHP ORM and SQL boundaries, transactions, locking, migrations, tenant scoping, and data consistency. Returns a Risk Register in the F-XXX bullet format."
     compose: governed-content
   - name: bill-php-code-review-platform-correctness
-    description: "PHP platform and correctness specialist code reviewer. Runs against business-logic correctness, state transitions, retry or replay behavior, edge cases, nullability, runtime safety, and invariant drift. Returns a Risk Register in the F-XXX bullet format."
+    description: "PHP platform correctness specialist code reviewer. Runs against PHP coercion and null semantics, business invariants, state transitions, retries, worker lifecycle, and runtime correctness. Returns a Risk Register in the F-XXX bullet format."
     compose: governed-content
   - name: bill-php-code-review-reliability
-    description: "PHP backend reliability specialist code reviewer. Runs against timeouts, retries, queues, jobs, schedulers, caches, downstream failures, logging, metrics, tracing, and production failure behavior. Returns a Risk Register in the F-XXX bullet format."
+    description: "PHP reliability specialist code reviewer. Runs against PHP queues, jobs, schedulers, caches, timeouts, retries, downstream failures, and observability. Returns a Risk Register in the F-XXX bullet format."
     compose: governed-content
   - name: bill-php-code-review-security
-    description: "PHP security specialist code reviewer. Runs against auth and authorization logic, secret handling, sensitive logging, uploads, signed URLs, template rendering, deserialization, transport or storage assumptions, and credential exposure. Returns a Risk Register in the F-XXX bullet format."
+    description: "PHP security specialist code reviewer. Runs against PHP authentication and authorization, uploads, signed URLs, templates, deserialization, secrets, and sensitive logs. Returns a Risk Register in the F-XXX bullet format."
     compose: governed-content
   - name: bill-php-code-review-testing
-    description: "PHP testing specialist code reviewer. Runs against regression protection, contract tests, deterministic retry and idempotency coverage, brittle tests, weak assertions, and low-value coverage-padding tests. Returns a Risk Register in the F-XXX bullet format."
+    description: "PHP testing specialist code reviewer. Runs against PHPUnit and Pest regression proof, contract and persistence tests, deterministic retries, and assertion quality. Returns a Risk Register in the F-XXX bullet format."
     compose: governed-content
   - name: bill-php-code-review-ui
-    description: "PHP UI specialist code reviewer. Runs against Blade, Twig, Livewire, Inertia, Filament, server-rendered form flows, component ownership, validation rendering, navigation, modal, table, and admin-surface correctness. Returns a Risk Register in the F-XXX bullet format."
+    description: "PHP ui specialist code reviewer. Runs against PHP Blade, Twig, Livewire, Inertia, and Filament rendering, forms, state ownership, and interactive admin correctness. Returns a Risk Register in the F-XXX bullet format."
     compose: governed-content
   - name: bill-php-code-review-ux-accessibility
-    description: "PHP UX and accessibility specialist code reviewer. Runs against semantic structure, accessible names, form labels, keyboard behavior, focus management, validation feedback, localization-sensitive copy, and screen-reader affordances. Returns a Risk Register in the F-XXX bullet format."
+    description: "PHP ux accessibility specialist code reviewer. Runs against PHP server-rendered semantics, labels, keyboard and focus behavior, validation feedback, localization, and accessible task completion. Returns a Risk Register in the F-XXX bullet format."
     compose: governed-content

@@ -20,9 +20,16 @@ Review only UX correctness and accessibility issues that can make the PHP produc
 
 - Pure visual design preference
 - Internal refactors with no user-visible outcome
+- UI implementation correctness that belongs to `bill-php-code-review-ui`
 - Security-only escaping issues that belong to `bill-php-code-review-security`
 
+## Applicability
+
+Use this specialist for changed PHP-rendered interactions where semantics, accessible names, keyboard flow, focus, validation feedback, localization, or assistive-technology behavior can affect task completion.
+
 ## Project-Specific Rules
+
+### PHP Accessible Interaction
 
 - Every interactive control must have an accessible name that matches the intended user action
 - Form inputs need explicit labels, correctly associated help text, and validation errors that are both visible and programmatically associated
@@ -30,8 +37,10 @@ Review only UX correctness and accessibility issues that can make the PHP produc
 - Keyboard users must be able to reach, operate, and dismiss interactive controls, modals, menus, and dialogs
 - Focus should move intentionally after validation failures, modal open or close, and server-driven state changes that replace major content
 - Dynamic server-rendered updates should preserve heading structure, landmarks, and screen-reader comprehension where the framework allows it
+- Preserve valid `aria-*` relationships when PHP-rendered state replaces controls, help text, validation errors, or dialog content
 - Links and buttons must reflect their real behavior; do not use links for destructive state changes when the flow expects a button or form submission
 - Empty, loading, success, and error states should be distinguishable and understandable without hidden context
 - User-facing copy should stay consistent with the actual workflow outcome and should not imply success, permanence, or safety when the backend contract does not guarantee it
 - Localization-sensitive paths should avoid hardcoded English-only assumptions for date, number, currency, directionality, and plural-sensitive messaging when the product supports multiple locales
 - In findings, make the user-visible UX or accessibility consequence explicit
+- For Blocker or Major findings, describe the concrete accessibility or task-completion failure scenario.

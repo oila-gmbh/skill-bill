@@ -24,6 +24,10 @@ Within the PHP package, `platform-correctness` is the package-aligned correctnes
 
 - Style or readability feedback without correctness impact
 
+## Applicability
+
+Use this specialist for changed PHP behavior involving business rules, state transitions, retries, replay, nullability, runtime dispatch, ORM state, or other reachable correctness boundaries.
+
 ## Project-Specific Rules
 
 ### Shared Backend Correctness
@@ -76,3 +80,4 @@ Within the PHP package, `platform-correctness` is the package-aligned correctnes
 - Collection pipelines, nullable chains, and convenience helpers must not hide branch loss or silently swallow incorrect states
 - Date casting, enum casting, and numeric/string coercion must not change business behavior unexpectedly
 - If behavior depends on the current user, current time, locale, or timezone, make that dependency explicit and verify boundary cases
+- For Blocker or Major findings, describe the concrete invalid-state or ordering failure scenario.

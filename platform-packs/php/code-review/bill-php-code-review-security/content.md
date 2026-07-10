@@ -68,3 +68,4 @@ Use this specialist for PHP code at trust boundaries: auth/authz, sessions, inpu
 - Mass-assignment, fill/update helpers, and model hydration must not allow unauthorized field writes
 - Signed URLs, temporary links, reset/invite tokens, and other capability URLs must be validated, scoped, and expire correctly
 - For Blocker or Major findings, describe the abuse or exploit scenario explicitly
+- For Blocker or Major findings, describe the concrete authorization-bypass or data-exposure scenario.

@@ -1,5 +1,6 @@
 package skillbill.scaffold
 
+import org.yaml.snakeyaml.Yaml
 import skillbill.error.InvalidManifestSchemaError
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.InstallAgentSelection
@@ -56,6 +57,7 @@ class PhpPlatformPackTest {
       "composer.json",
       "composer.lock",
       ".php",
+      "*.php",
       "phpunit.xml",
       "phpunit.xml.dist",
       "pest.php",
@@ -64,7 +66,41 @@ class PhpPlatformPackTest {
     ).forEach { marker ->
       assertContains(pack.routingSignals.strong, marker)
     }
-    assertTrue(pack.routingSignals.tieBreakers.any { it.contains("Composer metadata") })
+    assertEquals(3, pack.routingSignals.tieBreakers.size)
+    assertTrue(pack.routingSignals.tieBreakers.any { it.contains("Prefer PHP") && it.contains("dominate") })
+    assertTrue(
+      pack.routingSignals.tieBreakers.any {
+        it.contains("Do not prefer PHP") && it.contains("adjacent") && it.contains("tooling or CI glue")
+      },
+    )
+    assertTrue(
+      pack.routingSignals.tieBreakers.any {
+        it.contains("vendor/") && it.contains("generated clients") && it.contains("dominance scoring")
+      },
+    )
+    assertEquals(10, pack.areaMetadata.values.toSet().size)
+    pack.areaMetadata.values.forEach { focus -> assertContains(focus, "PHP") }
+  }
+
+  @Test
+  fun `php native agents exactly mirror manifest focuses`() {
+    val packRoot = repoRootFromTest().resolve("platform-packs/php")
+    val pack = loadPlatformPack(packRoot)
+    val agentsDocument = Yaml().load<Map<String, Any>>(
+      Files.readString(packRoot.resolve("code-review/bill-php-code-review/native-agents/agents.yaml")),
+    )
+    val agents = (agentsDocument.getValue("agents") as List<*>)
+      .filterIsInstance<Map<*, *>>()
+      .associate { agent -> agent["name"] as String to agent["description"] as String }
+
+    assertEquals(APPROVED_CODE_REVIEW_AREAS.size, agents.size)
+    pack.areaMetadata.forEach { (area, focus) ->
+      assertEquals(
+        "PHP ${area.replace('-', ' ')} specialist code reviewer. " +
+          "Runs against $focus. Returns a Risk Register in the F-XXX bullet format.",
+        agents["bill-php-code-review-$area"],
+      )
+    }
   }
 
   @Test

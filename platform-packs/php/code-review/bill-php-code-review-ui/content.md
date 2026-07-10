@@ -21,8 +21,15 @@ Review only UI correctness and framework-usage issues that can break the rendere
 - Pure visual taste feedback
 - Copy edits without product or UX impact
 - Accessibility-only findings that belong to `bill-php-code-review-ux-accessibility`
+- Security-only escaping, authorization, or data-exposure findings that belong to `bill-php-code-review-security`
+
+## Applicability
+
+Use this specialist for changed PHP-rendered or PHP-driven UI surfaces, including Blade, Twig, Livewire, Inertia, Filament, forms, components, navigation, tables, and interactive admin flows.
 
 ## Project-Specific Rules
+
+### PHP UI Correctness
 
 - Keep business logic out of templates and render hooks unless the project explicitly uses that shape
 - Server-rendered templates should receive already-shaped view data rather than performing hidden cross-module orchestration in the view
@@ -35,3 +42,4 @@ Review only UI correctness and framework-usage issues that can break the rendere
 - Tables, filters, pagination widgets, and bulk-action surfaces must preserve deterministic behavior when multiple filters or selection states are active
 - Server-rendered HTML should degrade gracefully when JavaScript is unavailable unless the product explicitly requires a JS-only interaction model
 - In findings, explain the rendered or interactive behavior a user or operator would actually experience
+- For Blocker or Major findings, describe the concrete user-visible interaction or rendering failure scenario.
