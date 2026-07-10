@@ -21,7 +21,7 @@ import java.util.logging.Level
 import java.util.logging.Logger
 
 private const val INSTALL_CACHE_KEY_BYTES = 8
-private const val INSTALL_STAGING_RECIPE_VERSION = "install-staging-v3-platform-packs-child-inline-pointers"
+private const val INSTALL_STAGING_RECIPE_VERSION = "install-staging-v4-internal-authored-companions"
 
 private val log: Logger = Logger.getLogger("skillbill.install.InstallStaging")
 
@@ -204,6 +204,11 @@ internal fun computeInstallContentHash(
         digest.update("${child.skillName}.md|".toByteArray(StandardCharsets.UTF_8))
         digest.update(child.renderedWrapper.toByteArray(StandardCharsets.UTF_8))
         digest.update(newline)
+        child.authoredCompanions.sortedBy { companion -> companion.name }.forEach { companion ->
+          digest.update("${companion.name}|".toByteArray(StandardCharsets.UTF_8))
+          digest.update(companion.bytes)
+          digest.update(newline)
+        }
       }
   }
   val hashBytes = digest.digest()
@@ -244,7 +249,14 @@ internal fun stageInstalledSkill(
     skillsRoot = resolvedSkillsRoot,
     selectedPackSkills = selectedPackSkills,
   )
-  val sidecarNames = internalChildren.map { child -> "${child.skillName}.md" }.toSet()
+  val sidecarNames = internalSidecarStagingNames(internalChildren)
+  validateInternalSidecarFileNames(
+    parentSourceDir = resolvedSource,
+    children = internalChildren,
+    reservedStagingNames = pointers.map { (_, pointer) -> pointer.name }.toSet() +
+      generatedSupportPointers.map { pointer -> pointer.name } +
+      setOf(INSTALL_STAGING_SKILL_FILENAME, INSTALL_STAGING_CONTENT_HASH_FILENAME),
+  )
   val authored = authoredFilesFor(
     sourceSkillDir = resolvedSource,
     applicablePointers = pointers,

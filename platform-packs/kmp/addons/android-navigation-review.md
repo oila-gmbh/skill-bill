@@ -35,6 +35,9 @@ Select `android-navigation` when the scoped diff includes:
 - Flag modular navigation wiring that leaks host ownership into feature modules.
 - Flag transition overrides that break pop or predictive-back behavior.
 - Flag returned results that can replay after recomposition or restored state.
+- Flag `SavedStateHandle` navigation arguments that are untyped, decoded inconsistently, or read without rejecting missing and malformed values.
+- Flag `popUpTo` boundaries that remove required history and `launchSingleTop` omissions that duplicate an already-current destination.
+- Flag dialog destinations whose result is lost, replayed, or delivered to the wrong back-stack entry after dismissal or restoration.
 
 ## Review boundary
 

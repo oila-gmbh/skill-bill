@@ -4,14 +4,14 @@ issue_key: "SKILL-112"
 feature_name: "pack-specialist-parity"
 parent_spec_path: ".feature-specs/SKILL-112-pack-specialist-parity/spec.md"
 spec_source: "local"
-status: "blocked"
+status: "in_progress"
 execution_model: "same_branch_commit_per_subtask"
 base_branch: "main"
 feature_branch: "feat/SKILL-112-pack-specialist-parity"
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 2
-  action: "blocked"
+  subtask_id: 3
+  action: "start"
 subtasks:
 - id: 1
   name: "Code-review skill structure standard"
@@ -29,51 +29,12 @@ subtasks:
 - id: 2
   name: "Kotlin pack elevation"
   spec_path: ".feature-specs/SKILL-112-pack-specialist-parity/spec_subtask_2_kotlin_pack_elevation.md"
-  status: "blocked"
+  status: "complete"
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260710-102633-cfu2"
-  blocked_reason: "Feature-task-runtime phase 'implement_fix' agent exited with non-zero\
-    \ status 1.\nReading prompt from stdin...\nOpenAI Codex v0.144.1\n--------\nworkdir:\
-    \ /home/sermilion/StudioProjects/skill-bill\nmodel: gpt-5.6-sol\nprovider: openai\n\
-    approval: never\nsandbox: danger-full-access\nreasoning effort: high\nreasoning\
-    \ summaries: none\nsession id: 019f4b9d-823d-7f61-b5cb-df61aa2f6133\n--------\n\
-    user\nYou are executing exactly one phase of the EXPERIMENTAL skill-bill feature-task-runtime\n\
-    loop (preplan -> plan -> implement -> review -> audit -> validate -> write_history\
-    \ -> commit_push -> pr)\nfor issue SKILL-112. The runtime owns the loop; do not\
-    \ run other phases, do not open\nor continue any other skill-bill workflow, and\
-    \ do not call `skill-bill workflow continue`.\n\nPhase: implement_fix (Phase 3b:\
-    \ Implement Fix)\nTask: Address the carried review Blocker/Major findings on the\
-    \ CURRENT working tree as incremental reconciliation: fix exactly those findings\
-    \ using the review findings, the latest implement output, and the intended state\
-    \ from the briefing. Do NOT re-apply the plan from scratch and do not expand scope\
-    \ beyond the findings. Treat any fix already present as a no-op. See the mutating-phase\
-    \ idempotency contract below.\n\n## Runtime ceremony scaling\nfeature_size: MEDIUM\n\
-    preplan_ceremony: full\nreview_scope: branch_diff\naudit_ceremony: full_per_criterion\n\
-    Use the resolved feature size for ceremony expectations; all runtime gates remain\
-    \ mandatory.\nScaling changes scope and verbosity only; it must not skip or weaken\
-    \ review, audit, validation,\nschema, branch, history, commit, or PR ga\n…[24239\
-    \ chars omitted]…\nue fails the schema gate loudly.\n- \"derived_notes\": optional;\
-    \ when present, a non-empty string of notes for downstream\n  phases\n- \"verdict\"\
-    : optional top-level string; verifying phases (review, audit) set it to drive\
-    \ the\n  advance-vs-remediation decision — see the verifying-phase signal above\n\
-    No top-level fields other than the ones listed above are allowed.\n2026-07-10T10:40:42.110957Z\
-    \ ERROR rmcp::transport::worker: worker quit with fatal: Transport channel closed,\
-    \ when AuthRequired(AuthRequiredError { www_authenticate_header: \"Bearer realm=\\\
-    \"OAuth\\\", resource_metadata=\\\"https://mcp.notion.com/.well-known/oauth-protected-resource/mcp\\\
-    \", error=\\\"invalid_token\\\", error_description=\\\"Missing or invalid access\
-    \ token\\\"\" })\n2026-07-10T10:40:42.130411Z ERROR rmcp::transport::worker: worker\
-    \ quit with fatal: Transport channel closed, when AuthRequired(AuthRequiredError\
-    \ { www_authenticate_header: \"Bearer realm=\\\"OAuth\\\", resource_metadata=\\\
-    \"https://mcp.axiom.co/.well-known/oauth-protected-resource/mcp\\\", error=\\\"\
-    invalid_token\\\", error_description=\\\"Missing or invalid access token\\\"\"\
-    \ })\n2026-07-10T10:40:42.577712Z ERROR rmcp::transport::worker: worker quit with\
-    \ fatal: Transport channel closed, when Auth(AuthorizationRequired)\nERROR: You've\
-    \ hit your usage limit. Visit https://chatgpt.com/codex/settings/usage to purchase\
-    \ more credits or try again at 2:40 PM.\nERROR: You've hit your usage limit. Visit\
-    \ https://chatgpt.com/codex/settings/usage to purchase more credits or try again\
-    \ at 2:40 PM.\n"
-  last_resumable_step: "implement_fix"
+  blocked_reason: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -87,7 +48,7 @@ subtasks:
   status: "pending"
   branch: null
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wftr-20260710-140550-yhcp"
   blocked_reason: null
   last_resumable_step: null
   linear_issue_id: null

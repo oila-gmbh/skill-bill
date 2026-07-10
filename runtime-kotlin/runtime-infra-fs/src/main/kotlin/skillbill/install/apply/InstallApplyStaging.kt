@@ -12,6 +12,7 @@ import skillbill.install.staging.discoverInternalSidecarTargets
 import skillbill.install.staging.generatedSupportPointersFor
 import skillbill.install.staging.installedSkillStagingDir
 import skillbill.install.staging.installedSkillsCacheRoot
+import skillbill.install.staging.internalSidecarStagingNames
 import skillbill.install.staging.isReusableInstallStaging
 import skillbill.install.staging.reuseInstallStaging
 import skillbill.install.staging.stageInstalledSkill
@@ -74,7 +75,7 @@ private fun materializeValidatedPlannedStaging(inputs: PlannedStagingMaterializa
   )
   val selectedPackSkills = selectedInternalPackSkills(plan)
   val internalChildren = internalSidecarTargetsFor(plan, skill, selectedPackSkills)
-  val sidecarNames = internalChildren.map { child -> "${child.skillName}.md" }.toSet()
+  val sidecarNames = internalSidecarStagingNames(internalChildren)
   val authored = authoredFilesFor(inputs.resolvedSource, pointers, supportPointers, sidecarNames)
   val currentHash = computeInstallContentHash(
     sourceSkillDir = inputs.resolvedSource,

@@ -2,6 +2,7 @@
 
 package skillbill.install.staging
 
+import skillbill.error.InternalSkillSidecarCollisionError
 import skillbill.install.model.InstallPlanSkill
 import skillbill.scaffold.authoring.discoverTargets
 import skillbill.scaffold.authoring.parseInternalForFrontmatter
@@ -20,7 +21,18 @@ internal data class InternalSidecarTarget(
   val skillName: String,
   val sourceDir: Path,
   val renderedWrapper: String,
+  val authoredCompanions: List<InternalSidecarCompanion>,
 )
+
+internal data class InternalSidecarCompanion(
+  val name: String,
+  val bytes: ByteArray,
+)
+
+internal fun internalSidecarStagingNames(children: List<InternalSidecarTarget>): Set<String> =
+  children.flatMap { child ->
+    listOf("${child.skillName}.md") + child.authoredCompanions.map { companion -> companion.name }
+  }.toSet()
 
 /**
  * Discovers the internal skills that declare [parentSkillName] as their parent, sorted by skill
@@ -53,6 +65,7 @@ internal fun discoverInternalSidecarTargets(
       skillName = skillName,
       sourceDir = sourceDir,
       renderedWrapper = renderWrapper(discovered.getValue(skillName)),
+      authoredCompanions = discoverAuthoredCompanions(sourceDir),
     )
   }
   packChildren.forEach { skill ->
@@ -66,9 +79,52 @@ internal fun discoverInternalSidecarTargets(
       skillName = skill.name,
       sourceDir = skill.sourceDir,
       renderedWrapper = renderWrapper(discovered.getValue(skill.name)),
+      authoredCompanions = discoverAuthoredCompanions(skill.sourceDir),
     )
   }
   return byName.values.toList()
+}
+
+private fun discoverAuthoredCompanions(sourceDir: Path): List<InternalSidecarCompanion> {
+  val normalizedSource = sourceDir.toAbsolutePath().normalize()
+  val realSource = normalizedSource.toRealPath()
+  return Files.list(normalizedSource).use { stream ->
+    stream
+      .filter { path -> Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS) }
+      .filter { path -> path.fileName.toString().endsWith(".md") }
+      .filter { path -> path.fileName.toString() != "content.md" }
+      .sorted(Comparator.comparing { path -> path.fileName.toString() })
+      .map { path ->
+        val normalized = path.toAbsolutePath().normalize()
+        require(normalized.parent == normalizedSource && normalized.toRealPath().startsWith(realSource)) {
+          "Authored companion '$path' escapes internal child source directory '$normalizedSource'."
+        }
+        InternalSidecarCompanion(path.fileName.toString(), Files.readAllBytes(path))
+      }
+      .toList()
+  }
+}
+
+internal fun validateInternalSidecarFileNames(
+  parentSourceDir: Path,
+  children: List<InternalSidecarTarget>,
+  reservedStagingNames: Set<String> = emptySet(),
+) {
+  val claimed = reservedStagingNames.associateWith { "generated staging output" }.toMutableMap()
+  children.sortedBy { child -> child.skillName }.forEach { child ->
+    val names = listOf("${child.skillName}.md") + child.authoredCompanions.map { companion -> companion.name }
+    names.forEach { name ->
+      val priorOwner = claimed.putIfAbsent(name, child.skillName)
+      val parentCollision = Files.isRegularFile(parentSourceDir.resolve(name), LinkOption.NOFOLLOW_LINKS)
+      if (priorOwner != null || parentCollision) {
+        throw InternalSkillSidecarCollisionError(
+          parentSkillName = parentSourceDir.fileName.toString(),
+          internalSkillName = child.skillName,
+          sidecarRelativePath = name,
+        )
+      }
+    }
+  }
 }
 
 private fun discoverBaseSkillSidecarTargets(parentSkillName: String, skillsRoot: Path): List<Pair<String, Path>> {

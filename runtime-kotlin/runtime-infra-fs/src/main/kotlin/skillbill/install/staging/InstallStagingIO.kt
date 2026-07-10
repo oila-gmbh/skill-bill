@@ -2,7 +2,6 @@
 
 package skillbill.install.staging
 
-import skillbill.error.InternalSkillSidecarCollisionError
 import skillbill.install.model.RenderedSkill
 import skillbill.scaffold.authoring.AuthoringTarget
 import skillbill.scaffold.authoring.normalizeMarkdownLineEndings
@@ -153,22 +152,28 @@ internal fun writeInternalSidecarFiles(
   tempDir: Path,
   parentSourceDir: Path,
   children: List<InternalSidecarTarget>,
-): List<Path> = children.map { child ->
-  val sidecarName = "${child.skillName}.md"
-  val collision = parentSourceDir.resolve(sidecarName)
-  if (Files.isRegularFile(collision, LinkOption.NOFOLLOW_LINKS)) {
-    throw InternalSkillSidecarCollisionError(
-      parentSkillName = parentSourceDir.fileName.toString(),
-      internalSkillName = child.skillName,
-      sidecarRelativePath = sidecarName,
+): List<Path> {
+  validateInternalSidecarFileNames(parentSourceDir, children)
+  return children.sortedBy { child -> child.skillName }.flatMap { child ->
+    val wrapper = writeInternalStagingFile(
+      tempDir,
+      "${child.skillName}.md",
+      child.renderedWrapper.toByteArray(StandardCharsets.UTF_8),
     )
+    val companions = child.authoredCompanions.sortedBy { companion -> companion.name }.map { companion ->
+      writeInternalStagingFile(tempDir, companion.name, companion.bytes)
+    }
+    listOf(wrapper) + companions
   }
-  val sidecarFile = tempDir.resolve(sidecarName).normalize()
-  require(sidecarFile.startsWith(tempDir)) {
-    "Internal sidecar '$sidecarName' staging path '$sidecarFile' escapes staging dir '$tempDir'."
+}
+
+private fun writeInternalStagingFile(tempDir: Path, name: String, bytes: ByteArray): Path {
+  val file = tempDir.resolve(name).normalize()
+  require(file.parent == tempDir.toAbsolutePath().normalize()) {
+    "Internal sidecar '$name' staging path '$file' escapes staging dir '$tempDir'."
   }
-  Files.write(sidecarFile, child.renderedWrapper.toByteArray(StandardCharsets.UTF_8))
-  sidecarFile
+  Files.write(file, bytes)
+  return file
 }
 
 internal fun promoteInstallStagingDir(tempDir: Path, finalStagingDir: Path) {

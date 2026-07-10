@@ -17,6 +17,7 @@ import skillbill.scaffold.authoring.renderWrapper
 import skillbill.scaffold.authoring.resolveTarget
 import skillbill.scaffold.runtime.RepoValidationRuntime
 import skillbill.scaffold.runtime.supportingFileTargets
+import skillbill.testing.repoRootFromTest
 import skillbill.testsupport.SkillClassFixtures
 import java.nio.file.Files
 import java.nio.file.LinkOption
@@ -607,6 +608,113 @@ class InternalSkillStagingTest {
       Files.isRegularFile(second.stagingDir.resolve("${fixture.packChildName}.md"), LinkOption.NOFOLLOW_LINKS),
       "a pruned pack sidecar must be re-rendered instead of reused broken",
     )
+  }
+
+  @Test
+  fun `selected pack child authored companion installs flat beside its rendered wrapper`() {
+    val fixture = setupParentWithInternalPackChild()
+    val companionSource = fixture.packChildDir.resolve("compose-guidelines.md")
+    Files.writeString(companionSource, "# Compose Guidelines\n\nRequire target-safe UI behavior.\n")
+    Files.writeString(
+      fixture.packChildContentFile,
+      Files.readString(fixture.packChildContentFile) +
+        "\nRead [compose-guidelines.md](compose-guidelines.md) for the detailed rubric.\n",
+    )
+
+    val rendered = stageInstalledSkill(
+      fixture.repoRoot,
+      fixture.parentDir,
+      fixture.home,
+      selectedPackSkills = listOf(fixture.packChildPlanSkill),
+    )
+
+    val wrapper = rendered.stagingDir.resolve("${fixture.packChildName}.md")
+    val companion = rendered.stagingDir.resolve("compose-guidelines.md")
+    assertTrue(Files.isRegularFile(wrapper, LinkOption.NOFOLLOW_LINKS))
+    assertEquals(Files.readString(companionSource), Files.readString(companion))
+    assertTrue(Files.readString(wrapper).contains("(compose-guidelines.md)"))
+    assertEquals(companion, wrapper.parent.resolve("compose-guidelines.md").normalize())
+  }
+
+  @Test
+  fun `shipped kmp ui wrapper resolves its flat compose guidelines companion`() {
+    val repoRoot = repoRootFromTest()
+    val home = Files.createTempDirectory("skillbill-kmp-companion-home").also(tempDirs::add)
+    val parentDir = repoRoot.resolve("skills/bill-code-review")
+    val uiDir = repoRoot.resolve("platform-packs/kmp/code-review/bill-kmp-code-review-ui")
+    val uiSkill = InstallPlanSkill(
+      name = "bill-kmp-code-review-ui",
+      sourceDir = uiDir,
+      kind = InstallPlanSkillKind.PLATFORM_PACK,
+      platformSlug = "kmp",
+      internalFor = "bill-code-review",
+    )
+
+    val rendered = stageInstalledSkill(
+      repoRoot,
+      parentDir,
+      home,
+      selectedPackSkills = listOf(uiSkill),
+    )
+
+    val wrapper = rendered.stagingDir.resolve("bill-kmp-code-review-ui.md")
+    val companion = rendered.stagingDir.resolve("compose-guidelines.md")
+    assertTrue(Files.isRegularFile(wrapper, LinkOption.NOFOLLOW_LINKS))
+    assertTrue(Files.isRegularFile(companion, LinkOption.NOFOLLOW_LINKS))
+    assertTrue(Files.readString(wrapper).contains("[compose-guidelines.md](compose-guidelines.md)"))
+    assertEquals(companion, wrapper.parent.resolve("compose-guidelines.md"))
+  }
+
+  @Test
+  fun `authored companion bytes invalidate hash and missing companion is restored`() {
+    val fixture = setupParentWithInternalPackChild()
+    val companionSource = fixture.packChildDir.resolve("review-guidelines.md")
+    Files.writeString(companionSource, "first rubric\n")
+
+    val first = stageInstalledSkill(
+      fixture.repoRoot,
+      fixture.parentDir,
+      fixture.home,
+      selectedPackSkills = listOf(fixture.packChildPlanSkill),
+    )
+    Files.writeString(companionSource, "second rubric\n")
+    val changed = stageInstalledSkill(
+      fixture.repoRoot,
+      fixture.parentDir,
+      fixture.home,
+      selectedPackSkills = listOf(fixture.packChildPlanSkill),
+    )
+    assertNotEquals(first.contentHash, changed.contentHash)
+
+    Files.delete(changed.stagingDir.resolve("review-guidelines.md"))
+    val restored = stageInstalledSkill(
+      fixture.repoRoot,
+      fixture.parentDir,
+      fixture.home,
+      selectedPackSkills = listOf(fixture.packChildPlanSkill),
+    )
+    assertEquals(changed.contentHash, restored.contentHash)
+    assertEquals("second rubric\n", Files.readString(restored.stagingDir.resolve("review-guidelines.md")))
+  }
+
+  @Test
+  fun `unselected companion is inert and companion collision with wrapper fails loudly`() {
+    val fixture = setupParentWithInternalPackChild()
+    Files.writeString(fixture.packChildDir.resolve("compose-guidelines.md"), "rubric\n")
+
+    val unselected = stageInstalledSkill(fixture.repoRoot, fixture.parentDir, fixture.home)
+    assertFalse(Files.exists(unselected.stagingDir.resolve("compose-guidelines.md")))
+
+    Files.writeString(fixture.packChildDir.resolve("${fixture.packChildName}.md"), "collision\n")
+    val error = assertFailsWith<InternalSkillSidecarCollisionError> {
+      stageInstalledSkill(
+        fixture.repoRoot,
+        fixture.parentDir,
+        fixture.home,
+        selectedPackSkills = listOf(fixture.packChildPlanSkill),
+      )
+    }
+    assertEquals("${fixture.packChildName}.md", error.sidecarRelativePath)
   }
 
   @Test

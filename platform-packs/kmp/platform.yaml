@@ -4,6 +4,10 @@ display_name: KMP
 
 routing_signals:
   strong:
+    - ".kt"
+    - "*.kt"
+    - ".kts"
+    - "*.kts"
     - 'kotlin("multiplatform")'
     - "org.jetbrains.kotlin.multiplatform"
     - "androidMain"
@@ -13,25 +17,29 @@ routing_signals:
     - "expect"
     - "actual"
   tie_breakers:
-    - "If KMP or Android markers are strong, prefer this pack over generic Kotlin."
-    - "Treat Android-only scope as KMP."
-    - "If mixed with generic Kotlin, prefer this pack because it layers the Kotlin baseline internally."
+    - "If KMP or Android markers dominate, prefer this pack over generic Kotlin."
+    - "Do not prefer this pack when adjacent Kotlin or Android signals dominate without multiplatform source sets."
+    - "Exclude generated and vendored files when deciding routing dominance."
 
 declared_code_review_areas:
+  - platform-correctness
   - ui
   - ux-accessibility
 
 declared_files:
   baseline: code-review/bill-kmp-code-review/content.md
   areas:
+    platform-correctness: code-review/bill-kmp-code-review-platform-correctness/content.md
     ui: code-review/bill-kmp-code-review-ui/content.md
     ux-accessibility: code-review/bill-kmp-code-review-ux-accessibility/content.md
 
 area_metadata:
+  platform-correctness:
+    focus: "KMP expect/actual, source-set, target-runtime, and native-boundary correctness"
   ui:
-    focus: "UI correctness and framework usage"
+    focus: "KMP Compose UI correctness and framework usage"
   ux-accessibility:
-    focus: "UX correctness and accessibility"
+    focus: "KMP user experience, Compose semantics, and accessibility"
 
 code_review_composition:
   baseline_layers:
@@ -160,6 +168,13 @@ pointers:
       target: platform-packs/kmp/addons/android-interop-review.md
     - name: android-navigation-review.md
       target: platform-packs/kmp/addons/android-navigation-review.md
+  code-review/bill-kmp-code-review-platform-correctness:
+    - name: review-orchestrator.md
+      target: orchestration/review-orchestrator/PLAYBOOK.md
+    - name: shell-ceremony.md
+      target: orchestration/shell-content-contract/shell-ceremony.md
+    - name: telemetry-contract.md
+      target: orchestration/telemetry-contract/PLAYBOOK.md
   code-review/bill-kmp-code-review-ux-accessibility:
     - name: review-orchestrator.md
       target: orchestration/review-orchestrator/PLAYBOOK.md

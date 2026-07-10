@@ -1071,8 +1071,8 @@ private data class SingleCodexGoldenPaths(private val fixture: InstallPlanApplyF
     fixture.home.resolve(".skill-bill/installed-skills").resolve("$skillName-$contentHash").toString()
 }
 
-private const val CODE_REVIEW_GOLDEN_CONTENT_HASH = "3cea366171325f4f"
-private const val QUALITY_CHECK_GOLDEN_CONTENT_HASH = "983064702b4f2629"
+private const val CODE_REVIEW_GOLDEN_CONTENT_HASH = "efdb565492ce1696"
+private const val QUALITY_CHECK_GOLDEN_CONTENT_HASH = "f8d3aa4f41103122"
 private const val WINDOWS_SYMLINK_GUIDANCE =
   "On Windows, enable Developer Mode (Settings -> Privacy & security -> For developers) or run the install command " +
     "from an elevated shell so the JVM can create symlinks."

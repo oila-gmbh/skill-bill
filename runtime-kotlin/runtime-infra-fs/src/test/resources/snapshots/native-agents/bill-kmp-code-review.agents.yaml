@@ -1,8 +1,11 @@
 contract_version: "0.1"
 agents:
+  - name: bill-kmp-code-review-platform-correctness
+    description: "KMP platform correctness specialist code reviewer. Runs against KMP expect/actual, source-set, target-runtime, and native-boundary correctness. Returns a Risk Register in the F-XXX bullet format."
+    compose: governed-content
   - name: bill-kmp-code-review-ui
-    description: "KMP/Compose UI specialist code reviewer. Runs against Compose @Composable functions, UI state, Modifier chains, recomposition handling, theming, accessibility, previews, and Android UI add-ons. Returns a Risk Register in the F-XXX bullet format."
+    description: "KMP ui specialist code reviewer. Runs against KMP Compose UI correctness and framework usage. Returns a Risk Register in the F-XXX bullet format."
     compose: governed-content
   - name: bill-kmp-code-review-ux-accessibility
-    description: "KMP UX & accessibility specialist code reviewer. Runs against user-facing UX states, accessibility semantics, screen-reader/keyboard usability, validation feedback, localization, and error/loading/empty state coverage. Returns a Risk Register in the F-XXX bullet format."
+    description: "KMP ux accessibility specialist code reviewer. Runs against KMP user experience, Compose semantics, and accessibility. Returns a Risk Register in the F-XXX bullet format."
     compose: governed-content
