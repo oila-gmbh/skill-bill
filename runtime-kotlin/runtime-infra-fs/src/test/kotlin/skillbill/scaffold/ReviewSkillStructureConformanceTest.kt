@@ -1,6 +1,8 @@
 package skillbill.scaffold
 
 import org.yaml.snakeyaml.Yaml
+import skillbill.scaffold.rendering.canonicalSeverityCloser
+import skillbill.scaffold.rendering.defaultAreaFocus
 import skillbill.testing.repoRootFromTest
 import java.nio.file.Files
 import java.nio.file.Path
@@ -16,6 +18,26 @@ class ReviewSkillStructureConformanceTest {
       .flatMap(::severityViolations)
 
     assertEquals(emptyList(), violations, violations.joinToString("\n"))
+  }
+
+  @Test
+  fun `severity vocabulary is closed in rating contexts without flagging incidental prose`() {
+    val root = Files.createTempDirectory("review-severity-")
+    val contentFile = root.resolve("content.md")
+
+    listOf("Nit", "Critical", "Warning").forEach { rating ->
+      Files.writeString(contentFile, "Severity ratings: Blocker, Major, Minor, $rating\n")
+      assertTrue(severityViolations(contentFile).any { rating in it.rule }, "Expected rejection for $rating")
+
+      Files.writeString(contentFile, "Rate the finding at most $rating when impact is contained.\n")
+      assertTrue(
+        severityViolations(contentFile).any { rating in it.rule },
+        "Expected natural-form rejection for $rating",
+      )
+    }
+
+    Files.writeString(contentFile, "Nit is an abbreviation in unrelated incidental prose.\n")
+    assertEquals(emptyList(), severityViolations(contentFile))
   }
 
   @Test
@@ -50,11 +72,30 @@ class ReviewSkillStructureConformanceTest {
   }
 
   private fun assertSemanticNegativeFixtures(pack: Path) {
+    assertBaselineNegativeFixtures(pack)
+    assertSpecialistNegativeFixtures(pack)
+    assertQualityCheckNegativeFixtures(pack)
+    assertManifestAndSidecarNegativeFixtures(pack)
+  }
+
+  private fun assertBaselineNegativeFixtures(pack: Path) {
     assertContentRuleViolation(
       pack,
       "code-review/bill-fixture-code-review/content.md",
-      vagueBaseline,
+      vagueClassificationBaseline,
       "classification decisions",
+    )
+    assertContentRuleViolation(
+      pack,
+      "code-review/bill-fixture-code-review/content.md",
+      misplacedClassificationBaseline,
+      "classification decisions",
+    )
+    assertContentRuleViolation(
+      pack,
+      "code-review/bill-fixture-code-review/content.md",
+      vagueRoutingBaseline,
+      "signal-to-specialist routing mappings",
     )
     assertContentRuleViolation(
       pack,
@@ -74,10 +115,19 @@ class ReviewSkillStructureConformanceTest {
       undisciplinedBaseline,
       "finding discipline",
     )
+  }
+
+  private fun assertSpecialistNegativeFixtures(pack: Path) {
     assertContentRuleViolation(
       pack,
       "code-review/bill-fixture-code-review-security/content.md",
       vagueSpecialist,
+      "enforceable stack failure modes",
+    )
+    assertContentRuleViolation(
+      pack,
+      "code-review/bill-fixture-code-review-security/content.md",
+      misplacedSpecialistRule,
       "enforceable stack failure modes",
     )
     assertContentRuleViolation(
@@ -92,16 +142,25 @@ class ReviewSkillStructureConformanceTest {
       misplacedSeverityCloser,
       "canonical severity closer",
     )
+    assertContentRuleViolation(
+      pack,
+      "code-review/bill-fixture-code-review-security/content.md",
+      wrongAreaSeverityCloser,
+      "canonical severity closer",
+    )
     assertSpecialistRuleViolation(pack, "ui", fixtureSpecialist, "UI lane deferrals")
     assertSpecialistRuleViolation(pack, "ux-accessibility", fixtureSpecialist, "UX accessibility lane deferrals")
+  }
+
+  private fun assertQualityCheckNegativeFixtures(pack: Path) {
     assertQualityCheckRuleViolation(pack, shallowQualityCheck, "quality-check command discovery")
+    assertQualityCheckRuleViolation(pack, misplacedQualityCheckDiscovery, "quality-check command discovery")
     assertQualityCheckRuleViolation(pack, defaultFirstQualityCheck, "quality-check fallback ordering")
     assertQualityCheckRuleViolation(pack, unscopedQualityCheck, "quality-check scoped files")
     assertQualityCheckRuleViolation(pack, noEntrypointQualityCheck, "quality-check pack entrypoint")
     assertQualityCheckRuleViolation(pack, suppressingQualityCheck, "quality-check fix discipline")
     assertQualityCheckRuleViolation(pack, noTargetedRerunQualityCheck, "quality-check targeted rerun")
     assertQualityCheckRuleViolation(pack, unconditionalFullSuiteQualityCheck, "quality-check escalation")
-    assertManifestAndSidecarNegativeFixtures(pack)
   }
 
   private fun assertManifestAndSidecarNegativeFixtures(pack: Path) {
@@ -109,13 +168,17 @@ class ReviewSkillStructureConformanceTest {
     assertManifestRuleViolation(pack, genericAreaMetadataManifest, "manifest bespoke area metadata")
     assertManifestRuleViolation(pack, bareOnlyRoutingManifest, "routing bare/glob pair")
     assertManifestRuleViolation(pack, globOnlyRoutingManifest, "routing bare/glob pair")
+    assertManifestRuleViolation(pack, noPositiveDominanceManifest, "routing positive pack dominance")
+    assertManifestRuleViolation(pack, noAdjacentDisambiguationManifest, "routing adjacent-pack disambiguation")
+    assertManifestRuleViolation(pack, noGeneratedExclusionManifest, "routing generated and vendored exclusion")
+    assertManifestRuleViolation(pack, noVendoredExclusionManifest, "routing generated and vendored exclusion")
     assertSidecarRuleViolation(pack, "shell-ceremony.md", validSidecar, "reserved generated sidecar name")
     assertSidecarRuleViolation(pack, "review-rubric.md", wrapperSidecar, "wrapper or provider sidecar content")
     assertSidecarRuleViolation(pack, "team-notes.md", organizationSidecar, "specialist rubric sidecar content")
 
     writeConformingFixture(pack)
     Files.delete(pack.resolve("code-review/bill-fixture-code-review/native-agents/agents.yaml"))
-    assertEquals(emptyList(), structureViolations(pack), structureViolations(pack).joinToString("\n"))
+    assertTrue(structureViolations(pack).any { it.rule == "native-agent source bundle" })
   }
 
   internal fun structureViolations(pack: Path): List<StructureViolation> {
@@ -163,7 +226,11 @@ class ReviewSkillStructureConformanceTest {
     val metadata = manifest["area_metadata"] as? Map<*, *> ?: emptyMap<Any?, Any?>()
     val metadataKeys = metadata.keys.map { it.toString() }.toSet()
     val packLabel = (manifest["display_name"] ?: manifest["platform"]).toString()
-    val focuses = metadata.values.mapNotNull { (it as? Map<*, *>)?.get("focus") as? String }
+    val focuses = metadata.mapNotNull { (rawArea, rawMetadata) ->
+      val area = rawArea as? String ?: return@mapNotNull null
+      val focus = (rawMetadata as? Map<*, *>)?.get("focus") as? String ?: return@mapNotNull null
+      area to focus
+    }
     return buildList {
       if (declaredContent != actualContent) {
         add(StructureViolation(manifestFile, "manifest declares every review content file"))
@@ -171,12 +238,18 @@ class ReviewSkillStructureConformanceTest {
       if (declaredAreas != areaKeys || areaKeys != metadataKeys) {
         add(StructureViolation(manifestFile, "manifest review area parity"))
       }
-      if (focuses.size != metadata.size ||
-        focuses.toSet().size != focuses.size ||
-        focuses.any { !it.contains(packLabel, ignoreCase = true) }
-      ) {
+      if (!hasBespokeFocuses(focuses, metadata.size, packLabel)) {
         add(StructureViolation(manifestFile, "manifest bespoke area metadata"))
       }
+    }
+  }
+
+  private fun hasBespokeFocuses(focuses: List<Pair<String, String>>, metadataSize: Int, packLabel: String): Boolean {
+    if (focuses.size != metadataSize) return false
+    if (focuses.map { it.second }.toSet().size != focuses.size) return false
+    return focuses.all { (area, focus) ->
+      focus.contains(packLabel, ignoreCase = true) &&
+        !focus.equals("$packLabel ${defaultAreaFocus(area)}", ignoreCase = true)
     }
   }
 
@@ -189,13 +262,25 @@ class ReviewSkillStructureConformanceTest {
         val counterpart = if (signal.startsWith("*.")) signal.removePrefix("*") else "*$signal"
         if (counterpart !in strongSignals) add(StructureViolation(manifestFile, "routing bare/glob pair"))
       }
-      if (tieBreakers.none { it.contains("Prefer") } || tieBreakers.none { it.contains("Do not prefer") } ||
-        tieBreakers.none { it.contains("Exclude") }
-      ) {
-        add(StructureViolation(manifestFile, "routing tie-breaker conventions"))
+      if (tieBreakers.none(::statesPositivePackDominance)) {
+        add(StructureViolation(manifestFile, "routing positive pack dominance"))
+      }
+      if (tieBreakers.none(::statesAdjacentPackDisambiguation)) {
+        add(StructureViolation(manifestFile, "routing adjacent-pack disambiguation"))
+      }
+      if (!excludesGeneratedAndVendoredFromDominance(tieBreakers)) {
+        add(StructureViolation(manifestFile, "routing generated and vendored exclusion"))
       }
     }
   }
+
+  private fun statesPositivePackDominance(rule: String): Boolean =
+    containsAll(rule, "prefer", "dominat") && !rule.contains("do not prefer", ignoreCase = true)
+
+  private fun statesAdjacentPackDisambiguation(rule: String): Boolean = containsAll(rule, "do not prefer", "adjacent")
+
+  private fun excludesGeneratedAndVendoredFromDominance(rules: List<String>): Boolean =
+    containsAll(rules.joinToString(" "), "exclude", "generated", "vendor", "dominan")
 
   private fun manifestPointerViolations(manifestFile: Path, manifest: Map<*, *>): List<StructureViolation> {
     val declaredFiles = manifest["declared_files"] as? Map<*, *> ?: emptyMap<Any?, Any?>()
@@ -227,20 +312,30 @@ class ReviewSkillStructureConformanceTest {
   private fun baselineViolations(file: Path, headings: List<String>): List<StructureViolation> {
     val required = listOf("Classification Rules", "Diff-Signal Routing Table", "Mixed Diffs", "Finding Discipline")
     val content = Files.readString(file)
+    val classification = h2Section(content, "Classification Rules")
+    val routing = h2Section(content, "Diff-Signal Routing Table")
+    val mixedDiffs = h2Section(content, "Mixed Diffs")
+    val discipline = h2Section(content, "Finding Discipline")
     return buildList {
       if (headings != required) add(StructureViolation(file, "baseline H2 sequence"))
-      if (!content.contains("If ") || !content.contains("Otherwise")) {
+      if (!classification.contains("If ") || !classification.contains("Otherwise")) {
         add(StructureViolation(file, "classification decisions"))
       }
-      if (!Regex("(?is)Mixed Diffs.*keep.*whole review").containsMatchIn(content) ||
-        !containsAll(content, "lightweight", "file-level classification")
+      val declaredAreas = declaredAreasForContent(file)
+      if (declaredAreas.isEmpty() || declaredAreas.any { area ->
+          !Regex("(?m)^- .+ -> `$area` specialist\\.$").containsMatchIn(routing)
+        }
+      ) {
+        add(StructureViolation(file, "signal-to-specialist routing mappings"))
+      }
+      if (!containsAll(mixedDiffs, "keep", "whole review", "lightweight", "file-level classification")
       ) {
         add(StructureViolation(file, "mixed-diff retention"))
       }
-      if (!containsAll(content, "specialist", "scope", "generated", "vendored", "non-stack")) {
+      if (!containsAll(mixedDiffs, "specialist", "scope", "generated", "vendored", "non-stack")) {
         add(StructureViolation(file, "scoping exclusions"))
       }
-      if (!containsAll(content, "severity", "precondition", "attributed", "deduplicat")) {
+      if (!containsAll(discipline, "severity", "precondition", "attributed", "deduplicat")) {
         add(StructureViolation(file, "finding discipline"))
       }
     }
@@ -249,15 +344,16 @@ class ReviewSkillStructureConformanceTest {
   private fun specialistViolations(file: Path, headings: List<String>): List<StructureViolation> {
     val required = listOf("Focus", "Ignore", "Applicability", "Project-Specific Rules")
     val content = Files.readString(file)
+    val projectRules = h2Section(content, "Project-Specific Rules")
     return buildList {
       if (headings != required && headings != required + "Repo-Local Knowledge") {
         add(StructureViolation(file, "specialist H2 sequence"))
       }
-      if (!content.contains("### ")) add(StructureViolation(file, "specialist H3 grouping"))
-      if (!hasCanonicalSeverityCloser(content)) add(StructureViolation(file, "canonical severity closer"))
-      if (!content.contains('`') ||
-        !Regex("(?i)\\b(must|do not|never|require|reject|verify|preserve)\\b").containsMatchIn(content) ||
-        !Regex("(?i)failure|error|invariant|boundary").containsMatchIn(content)
+      if (!projectRules.contains("### ")) add(StructureViolation(file, "specialist H3 grouping"))
+      if (!hasCanonicalSeverityCloser(file, content)) add(StructureViolation(file, "canonical severity closer"))
+      if (!projectRules.contains('`') ||
+        !Regex("(?i)\\b(must|do not|never|require|reject|verify|preserve)\\b").containsMatchIn(projectRules) ||
+        !Regex("(?i)failure|error|invariant|boundary").containsMatchIn(projectRules)
       ) {
         add(StructureViolation(file, "enforceable stack failure modes"))
       }
@@ -274,26 +370,32 @@ class ReviewSkillStructureConformanceTest {
   }
 
   private fun nativeAgentViolations(pack: Path): List<StructureViolation> {
-    val agentsFile = pack.resolve("code-review").let { root ->
-      Files.walk(root).use { paths ->
-        paths.filter { it.endsWith("native-agents/agents.yaml") }.findFirst().orElse(null)
-      }
-    } ?: return emptyList()
+    val manifest = Yaml().load<Any?>(Files.readString(pack.resolve("platform.yaml"))) as? Map<*, *>
+      ?: emptyMap<Any?, Any?>()
+    val baseline = ((manifest["declared_files"] as? Map<*, *>)?.get("baseline") as? String)
+      ?: return emptyList()
+    val agentsFile = pack.resolve(baseline).parent.resolve("native-agents/agents.yaml")
+    if (!Files.isRegularFile(agentsFile)) {
+      return listOf(StructureViolation(agentsFile, "native-agent source bundle"))
+    }
     val agents = (Yaml().load<Any?>(Files.readString(agentsFile)) as? Map<*, *>)?.get("agents") as? List<*>
       ?: return listOf(StructureViolation(agentsFile, "native-agent descriptions"))
-    val pattern = Regex(
-      ".+ [a-z-]+ specialist code reviewer\\. Runs against .+\\. " +
-        "Returns a Risk Register in the F-XXX bullet format\\.",
-    )
     val agentMaps = agents.filterIsInstance<Map<*, *>>()
+    val displayName = (manifest["display_name"] ?: manifest["platform"]).toString()
+    val areaMetadata = manifest["area_metadata"] as? Map<*, *> ?: emptyMap<Any?, Any?>()
+    val expectedDescriptions = areaMetadata.mapNotNull { (rawArea, rawMetadata) ->
+      val area = rawArea as? String ?: return@mapNotNull null
+      val focus = (rawMetadata as? Map<*, *>)?.get("focus") as? String ?: return@mapNotNull null
+      "bill-${pack.name}-code-review-$area" to
+        "$displayName ${area.replace('-', ' ')} specialist code reviewer. " +
+        "Runs against $focus. Returns a Risk Register in the F-XXX bullet format."
+    }.toMap()
     return buildList {
       if (agentMaps.size != agents.size ||
-        agentMaps.any { it["description"] !is String || !pattern.matches(it["description"] as String) }
+        agentMaps.any { agent -> expectedDescriptions[agent["name"]] != agent["description"] }
       ) {
         add(StructureViolation(agentsFile, "native-agent description pattern"))
       }
-      val manifest = Yaml().load<Any?>(Files.readString(pack.resolve("platform.yaml"))) as? Map<*, *>
-        ?: emptyMap<Any?, Any?>()
       val areas = ((manifest["declared_files"] as? Map<*, *>)?.get("areas") as? Map<*, *>)?.keys.orEmpty()
       val expectedNames = areas.map { "bill-${pack.name}-code-review-$it" }.toSet()
       if (agentMaps.map { it["name"] }.toSet() != expectedNames) {
@@ -309,29 +411,31 @@ class ReviewSkillStructureConformanceTest {
     val file = pack.resolve(declared)
     if (!Files.isRegularFile(file)) return listOf(StructureViolation(file, "declared quality-check source"))
     val content = Files.readString(file)
+    val execution = h2Section(content, "Execution Steps")
+    val fixStrategy = h2Section(content, "Fix Strategy")
     return buildList {
       if (headings(file) != listOf("Purpose", "Execution Steps", "Fix Strategy")) {
         add(StructureViolation(file, "quality-check H2 sequence"))
       }
-      if (!containsAll(content, "build file", "wrapper", "CI")) {
+      if (!containsAll(execution, "build file", "wrapper", "CI")) {
         add(StructureViolation(file, "quality-check command discovery"))
       }
-      if (!orderedFragments(content, "build file", "wrapper", "CI configuration", "before falling back")) {
+      if (!orderedFragments(execution, "build file", "wrapper", "CI configuration", "before falling back")) {
         add(StructureViolation(file, "quality-check fallback ordering"))
       }
-      if (!containsAll(content, "files in scope")) {
+      if (!containsAll(execution, "files in scope")) {
         add(StructureViolation(file, "quality-check scoped files"))
       }
-      if (!containsAll(content, "pack's quality-check entrypoint")) {
+      if (!containsAll(execution, "pack's quality-check entrypoint")) {
         add(StructureViolation(file, "quality-check pack entrypoint"))
       }
-      if (!containsAll(content, "priority-ordered", "never suppress")) {
+      if (!containsAll(fixStrategy, "priority-ordered", "never suppress")) {
         add(StructureViolation(file, "quality-check fix discipline"))
       }
-      if (!containsAll(content, "re-run targeted checks")) {
+      if (!containsAll(fixStrategy, "re-run targeted checks")) {
         add(StructureViolation(file, "quality-check targeted rerun"))
       }
-      if (!containsAll(content, "full suite when targeted checks cannot establish safety")) {
+      if (!containsAll(fixStrategy, "full suite when targeted checks cannot establish safety")) {
         add(StructureViolation(file, "quality-check escalation"))
       }
     }
@@ -380,6 +484,9 @@ class ReviewSkillStructureConformanceTest {
   private fun containsAll(content: String, vararg fragments: String): Boolean =
     fragments.all { content.contains(it, ignoreCase = true) }
 
+  private fun h2Section(content: String, heading: String): String =
+    content.substringAfter("## $heading", "").substringBefore("\n## ")
+
   private fun orderedFragments(content: String, vararg fragments: String): Boolean {
     val normalized = content.lowercase()
     return fragments.fold(-1) { previousIndex, fragment ->
@@ -388,10 +495,20 @@ class ReviewSkillStructureConformanceTest {
     } != Int.MIN_VALUE
   }
 
-  private fun hasCanonicalSeverityCloser(content: String): Boolean {
+  private fun hasCanonicalSeverityCloser(file: Path, content: String): Boolean {
     val rules = content.substringAfter("## Project-Specific Rules", "").substringBefore("\n## ")
     val finalRule = rules.lineSequence().map(String::trim).filter { it.startsWith("- ") }.lastOrNull()
-    return finalRule?.matches(Regex("^- For Blocker or Major findings, describe the concrete .+\\.$")) == true
+    val area = file.parent.name.substringAfter("-code-review-", "")
+    return area.isNotEmpty() && finalRule == canonicalSeverityCloser(area)
+  }
+
+  private fun declaredAreasForContent(file: Path): Set<String> {
+    val manifestFile = file.parent.parent.parent.resolve("platform.yaml")
+    val manifest = Yaml().load<Any?>(Files.readString(manifestFile)) as? Map<*, *> ?: return emptySet()
+    return (manifest["declared_code_review_areas"] as? List<*>)
+      ?.filterIsInstance<String>()
+      ?.toSet()
+      .orEmpty()
   }
 
   private fun ignoreSection(content: String): String =
@@ -450,14 +567,27 @@ class ReviewSkillStructureConformanceTest {
 
   private fun severityViolations(file: Path): List<StructureViolation> {
     val content = Files.readString(file)
-    return buildList {
-      if (Regex("(?i)\\bnit\\b").containsMatchIn(content)) {
-        add(StructureViolation(file, "forbidden severity Nit"))
-      }
-      if (Regex("Critical|Major or Critical|Critical or Major|Major or Blocker").containsMatchIn(content)) {
-        add(StructureViolation(file, "off-enum severity vocabulary"))
-      }
+    val ratings = severityRatings(content)
+    return ratings.filter { it !in allowedSeverities }.map { rating ->
+      StructureViolation(file, "off-enum severity rating $rating")
     }
+  }
+
+  private fun severityRatings(content: String): Set<String> = buildSet {
+    Regex("(?m)\\bSeverity (?:ratings?|scale):\\s*([^\\n]+)").findAll(content).forEach { match ->
+      Regex("\\b[A-Z][a-z]+\\b").findAll(match.groupValues[1]).mapTo(this) { it.value }
+    }
+    Regex("(?m)^- For ([A-Z][a-z]+)(?: or ([A-Z][a-z]+))?(?: [a-z-]+)? findings\\b")
+      .findAll(content)
+      .forEach { match -> match.groupValues.drop(1).filter(String::isNotEmpty).forEach(::add) }
+    Regex("(?m)^- \\[F-[^]]+] ([A-Z][a-z]+) \\|").findAll(content).forEach { match ->
+      add(match.groupValues[1])
+    }
+    val ratingContext = "(?:rate|rated|rating|severity|at most|at least|classify|classified as)"
+    val ratingValue = "(Blocker|Major|Minor|Nit|Critical|Warning)"
+    Regex("(?i)\\b$ratingContext\\b[^.\\n:|]{0,40}[:|]?\\s*$ratingValue\\b")
+      .findAll(content)
+      .forEach { match -> add(match.groupValues[1].replaceFirstChar(Char::uppercase)) }
   }
 
   private fun contentFiles(root: Path): List<Path> = Files.walk(root.resolve("code-review")).use { paths ->
@@ -488,6 +618,7 @@ class ReviewSkillStructureConformanceTest {
   }
 
   private companion object {
+    val allowedSeverities = setOf("Blocker", "Major", "Minor")
     val generatedSidecarNames = setOf(
       "review-orchestrator.md",
       "review-delegation.md",
@@ -502,7 +633,10 @@ class ReviewSkillStructureConformanceTest {
       display_name: Fixture
       routing_signals:
         strong: [".fixture", "*.fixture"]
-        tie_breakers: ["Prefer fixture", "Do not prefer adjacent packs", "Exclude generated files"]
+        tie_breakers:
+          - "Prefer Fixture when Fixture source signals dominate the changed product surface."
+          - "Do not prefer Fixture when an adjacent pack's declared signals dominate."
+          - "Exclude generated and vendored files from dominance scoring."
       declared_code_review_areas: [security]
       declared_files:
         baseline: code-review/bill-fixture-code-review/content.md
@@ -510,7 +644,7 @@ class ReviewSkillStructureConformanceTest {
           security: code-review/bill-fixture-code-review-security/content.md
       area_metadata:
         security:
-          focus: Fixture security boundaries
+          focus: Fixture security boundaries for .fixture sources
       declared_quality_check_file: quality-check/bill-fixture-code-check/content.md
       pointers:
         code-review/bill-fixture-code-review: []
@@ -523,7 +657,7 @@ class ReviewSkillStructureConformanceTest {
 
       ## Diff-Signal Routing Table
 
-      Route code files to the relevant specialist.
+      - Authentication or sensitive-data changes -> `security` specialist.
 
       ## Mixed Diffs
 
@@ -552,12 +686,12 @@ class ReviewSkillStructureConformanceTest {
       ### Failure Modes
 
       - Verify `FixtureApi` boundaries and reject failure paths that violate its invariant.
-      - For Blocker or Major findings, describe the concrete consequence explicitly.
+      - For Blocker or Major findings, describe the concrete authorization-bypass or data-exposure scenario.
     """.trimIndent()
     val fixtureAgents = """
       agents:
         - name: bill-fixture-code-review-security
-          description: "Fixture security specialist code reviewer. Runs against security lanes. Returns a Risk Register in the F-XXX bullet format."
+          description: "Fixture security specialist code reviewer. Runs against Fixture security boundaries for .fixture sources. Returns a Risk Register in the F-XXX bullet format."
     """.trimIndent()
     val fixtureQualityCheck = """
       ## Purpose
@@ -575,9 +709,18 @@ class ReviewSkillStructureConformanceTest {
       Escalate to the full suite when targeted checks cannot establish safety.
     """.trimIndent()
 
-    val vagueBaseline = fixtureBaseline.replace(
+    val vagueClassificationBaseline = fixtureBaseline.replace(
       "If fixture source dominates, select the fixture pack. Otherwise select the adjacent pack.",
       "Classify the project.",
+    )
+    val misplacedClassificationBaseline = vagueClassificationBaseline.replace(
+      "Calibrate severity and verify each precondition.",
+      "If fixture source dominates, select the fixture pack. Otherwise select the adjacent pack. " +
+        "Calibrate severity and verify each precondition.",
+    )
+    val vagueRoutingBaseline = fixtureBaseline.replace(
+      "- Authentication or sensitive-data changes -> `security` specialist.",
+      "Route code files to the relevant specialist.",
     )
     val mixedDiffDropsLanes = fixtureBaseline.replace(
       "Keep the baseline specialists for the whole review",
@@ -592,14 +735,26 @@ class ReviewSkillStructureConformanceTest {
       "Verify `FixtureApi` boundaries and reject failure paths that violate its invariant.",
       "Consider API topics and general risks.",
     )
+    val misplacedSpecialistRule = vagueSpecialist.replace(
+      "Focus.",
+      "Verify `FixtureApi` boundaries and reject failure paths that violate its invariant.",
+    )
     val siblingInvokingSpecialist = fixtureSpecialist.replace(
       "Verify `FixtureApi` boundaries and reject failure paths that violate its invariant.",
       "Verify `FixtureApi` boundaries and invoke bill-fixture-code-review-testing for failures.",
     )
     val misplacedSeverityCloser = fixtureSpecialist + "\n- End with a noncanonical rule."
+    val wrongAreaSeverityCloser = fixtureSpecialist.replace(
+      canonicalSeverityCloser("security"),
+      canonicalSeverityCloser("persistence"),
+    )
     val shallowQualityCheck = fixtureQualityCheck.replace(
       "Discover commands from build files, wrappers, and CI configuration before falling back to defaults.",
       "Run configured commands.",
+    )
+    val misplacedQualityCheckDiscovery = shallowQualityCheck.replace(
+      "Check fixture changes.",
+      "Discover commands from build files, wrappers, and CI configuration before falling back to defaults.",
     )
     val defaultFirstQualityCheck = fixtureQualityCheck.replace(
       "Discover commands from build files, wrappers, and CI configuration before falling back to defaults.",
@@ -630,11 +785,27 @@ class ReviewSkillStructureConformanceTest {
       "declared_code_review_areas: []",
     )
     val genericAreaMetadataManifest = fixtureManifest.replace(
-      "Fixture security boundaries",
-      "Generic security boundaries",
+      "Fixture security boundaries for .fixture sources",
+      "Fixture secrets handling, auth, and sensitive-data exposure",
     )
     val bareOnlyRoutingManifest = fixtureManifest.replace("[\".fixture\", \"*.fixture\"]", "[\".fixture\"]")
     val globOnlyRoutingManifest = fixtureManifest.replace("[\".fixture\", \"*.fixture\"]", "[\"*.fixture\"]")
+    val noPositiveDominanceManifest = fixtureManifest.replace(
+      "Prefer Fixture when Fixture source signals dominate the changed product surface.",
+      "Select Fixture for Fixture files.",
+    )
+    val noAdjacentDisambiguationManifest = fixtureManifest.replace(
+      "Do not prefer Fixture when an adjacent pack's declared signals dominate.",
+      "Do not prefer Fixture for ambiguous files.",
+    )
+    val noGeneratedExclusionManifest = fixtureManifest.replace(
+      "Exclude generated and vendored files from dominance scoring.",
+      "Exclude vendored files from dominance scoring.",
+    )
+    val noVendoredExclusionManifest = fixtureManifest.replace(
+      "Exclude generated and vendored files from dominance scoring.",
+      "Exclude generated files from dominance scoring.",
+    )
     val validSidecar = """
       # Security Review Rubric
 

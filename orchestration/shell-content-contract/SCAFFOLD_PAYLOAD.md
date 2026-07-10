@@ -58,7 +58,10 @@ removable.
   does not have a built-in preset. Must be a mapping with a non-empty
   `strong` list and optional `tie_breakers` list. For
   known platforms such as `java`, the scaffolder can infer these
-  defaults.
+  defaults. The scaffolder completes bare/glob extension pairs and appends any
+  missing positive-dominance, adjacent-pack disambiguation, or
+  generated/vendored exclusion rule so the emitted manifest conforms to the
+  review structure standard.
 
 ## Optional Keys
 
@@ -116,25 +119,19 @@ removable.
 - `subagent_specialists` — list of specialist subagent names to scaffold
   alongside an orchestrator skill. Each name must match
   `^[a-z][a-z0-9-]*$`, be non-empty, and unique within the list. Honored
-  ONLY for active orchestrator kinds: `horizontal` and `platform-pack`. For
-  `platform-pack`, stubs are attached to the
-  baseline orchestrator skill (`bill-<platform>-code-review`) only, never
-  to the per-area specialist skills or the quality-check skill. When omitted
-  for `platform-pack`, the scaffolder defaults to one native-agent source per
-  generated code-review specialist area, named after the generated specialist
-  skill (`bill-<platform>-code-review-<area>`) and described with the same
-  per-area review focus as the specialist `content.md`. Supplying this field
-  for `add-on` raises `InvalidScaffoldPayloadError`.
-  Default: `[]` for non-platform-pack orchestrators.
-- `no_subagents` — boolean opt-out. When `true`, the scaffolder skips the
-  default subagent stub emission for an orchestrator kind even when
-  `subagent_specialists` is empty. Setting `no_subagents: true` together
-  with a non-empty `subagent_specialists` raises
-  `InvalidScaffoldPayloadError`. Default: `false`.
+  only for `horizontal`. A `platform-pack` always emits exactly one
+  manifest-derived native-agent source per declared specialist, so supplying
+  `subagent_specialists` for `platform-pack` raises
+  `InvalidScaffoldPayloadError`. Supplying it for `add-on` also raises.
+  Default: `[]`.
+- `no_subagents` — boolean opt-out for `horizontal`. A `platform-pack` cannot
+  opt out of its required manifest-derived specialist bundle, so supplying
+  this field for `platform-pack` raises `InvalidScaffoldPayloadError`.
+  Default: `false`.
 
-When `subagent_specialists` is non-empty, or when platform-pack defaults
-derive specialists from the full generated code-review area set, and subagents are not
-suppressed, the scaffolder emits one provider-neutral source bundle at
+When a horizontal skill declares `subagent_specialists`, or when a platform
+pack derives specialists from the full generated code-review area set, the
+scaffolder emits one provider-neutral source bundle at
 `<orchestrator-skill-dir>/native-agents/agents.yaml` with one entry per specialist.
 Provider-specific Claude markdown, Codex TOML, OpenCode markdown, and Junie markdown are
 self-contained install-cache outputs generated from those logical sources during
@@ -248,8 +245,12 @@ in exactly this order: `Focus`, `Ignore`, `Applicability`, and
 includes this severity closer:
 
 ```text
-For Blocker or Major findings, describe the concrete consequence explicitly.
+For Blocker or Major findings, describe the concrete <area-appropriate consequence> scenario.
 ```
+
+The consequence is canonical for the selected area. For example, `security`
+uses `authorization-bypass or data-exposure`, while `persistence` uses
+`data-loss, consistency, or durability failure`.
 
 The specialist contract limits severity vocabulary to `Blocker`, `Major`, and
 `Minor`. Existing packs can be migrated under the review-skill structure

@@ -169,6 +169,25 @@ class ScaffoldPayloadMapPolicyTest {
   }
 
   @Test
+  fun `resolvePlatformPackDefaults completes custom routing structure requirements`() {
+    val defaults = resolvePlatformPackDefaults(
+      mapOf(
+        "display_name" to "Fixture",
+        "routing_signals" to mapOf(
+          "strong" to listOf(".fixture"),
+          "tie_breakers" to listOf("Use Fixture for fixture modules."),
+        ),
+      ),
+      "fixture",
+    )
+
+    assertEquals(listOf(".fixture", "*.fixture"), defaults.strongSignals)
+    assertTrue(defaults.tieBreakers.any { "Prefer Fixture" in it && "dominate" in it })
+    assertTrue(defaults.tieBreakers.any { "Do not prefer Fixture" in it && "adjacent" in it })
+    assertTrue(defaults.tieBreakers.any { "generated and vendored" in it && "dominance" in it })
+  }
+
+  @Test
   fun `optionalSpecialistSubagents preserves supplied specialist names`() {
     val parsed = optionalSpecialistSubagents(
       mapOf("subagent_specialists" to listOf("ui", "api-contracts")),

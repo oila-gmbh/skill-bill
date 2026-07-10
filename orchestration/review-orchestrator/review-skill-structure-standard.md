@@ -16,16 +16,34 @@ the only trailing optional H2. Rules are grouped by H3. Each specialist states
 concrete API-boundary or failure-mode checks appropriate to its area; `ui` and
 `ux-accessibility` explicitly defer concerns owned by the other lane and the
 `security` lane instead of duplicating them. Specialists do not invoke sibling
-specialists. A severity closer says
-`Blocker or Major` and requires a concrete consequence. The only severity
-ratings are `Blocker`, `Major`, and `Minor`.
+specialists. The final specialist rule uses
+`For Blocker or Major findings, describe the concrete <consequence> scenario.`
+with this canonical area consequence:
+
+| Area | Consequence |
+|---|---|
+| `architecture` | `dependency-cycle or ownership-boundary failure` |
+| `performance` | `latency, memory-pressure, or throughput failure` |
+| `platform-correctness` | `invalid-state or ordering failure` |
+| `security` | `authorization-bypass or data-exposure` |
+| `testing` | `undetected-regression or false-positive test` |
+| `api-contracts` | `compatibility or validation failure` |
+| `persistence` | `data-loss, consistency, or durability failure` |
+| `reliability` | `availability, duplication, or cleanup failure` |
+| `ui` | `user-visible interaction or rendering failure` |
+| `ux-accessibility` | `accessibility or task-completion failure` |
+
+Severity-anchored ratings use the closed enum `Blocker`, `Major`, and `Minor`;
+incidental prose that is not assigning a rating is outside that rule.
 
 ## Baseline Skeleton
 
 Every baseline uses these H2 sections in order: `Classification Rules`,
 `Diff-Signal Routing Table`, `Mixed Diffs`, and `Finding Discipline`.
 Classification names explicit `if` decisions and an `otherwise` outcome. The
-routing table maps file-level diff signals to specialists. Mixed diffs keep the
+routing table maps concrete file-level diff signals to every declared
+specialist. Vague instructions to route to a relevant specialist do not
+conform. Mixed diffs keep the
 baseline specialists for the whole review while using a lightweight file-level
 classification pass for specialist selection. Per-specialist scope excludes
 generated, vendored, and non-stack-owned files. Finding discipline calibrates
@@ -40,15 +58,19 @@ declare generated source files or use pack prose to override routing contracts.
 Every file-extension routing signal appears in both bare (`.kt`) and glob
 (`*.kt`) forms. When routing signals overlap, tie-breakers state a positive
 dominance rule, a negative disambiguation rule against adjacent packs, and an
-exclusion of generated or vendored files from dominance scoring.
-`area_metadata.focus` is bespoke to the stack and area, not copied boilerplate.
+exclusion of generated and vendored files from dominance scoring.
+`area_metadata.focus` is bespoke to the stack and area: it names the display
+label and concrete routing-signal context, and is not merely the display label
+prefixed to the generic area focus.
 
 ## Native-Agent Description Pattern
 
-Each provider-neutral specialist description follows this sentence pattern:
-`<Stack> <area> specialist code reviewer. Runs against <lanes>. Returns a Risk
-Register in the F-XXX bullet format.` Generated provider outputs are never
-authored or committed.
+Each provider-neutral specialist description is derived from `platform.yaml`:
+`<display_name-or-platform> <declared area> specialist code reviewer. Runs
+against <area_metadata.focus>. Returns a Risk Register in the F-XXX bullet
+format.` Every declared specialist has exactly one matching entry. Generated
+provider outputs are never authored or committed. The baseline owns a required
+`native-agents/agents.yaml` source bundle; omission is a conformance failure.
 
 ## Quality-Check Skeleton
 

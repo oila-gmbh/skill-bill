@@ -60,27 +60,82 @@ internal fun areaReviewContent(summary: String, area: String, stackLabel: String
     appendLine()
     appendLine(areaStarterRule(stackLabel, area))
     appendLine("- Keep output format, telemetry, and runtime ceremony in the wrapper or shared sidecars.")
-    appendLine("- For Blocker or Major findings, describe the concrete consequence explicitly.")
+    appendLine(canonicalSeverityCloser(area))
   }
 }
 
 private fun areaStarterRule(stackLabel: String, area: String): String {
   val stack = stackLabel.ifBlank { "Platform" }
-  val (surface, consequence) = when (area) {
-    "architecture" -> "module and dependency APIs" to "a dependency cycle or ownership boundary failure"
-    "performance" -> "hot-path and resource APIs" to "a measurable latency, memory, or throughput failure"
-    "platform-correctness" -> "lifecycle and concurrency APIs" to "an invalid state or ordering failure"
-    "security" -> "authentication and sensitive-data APIs" to "an authorization or data-exposure failure"
-    "testing" -> "test and fixture APIs" to "an undetected regression or false-positive test failure"
-    "api-contracts" -> "request and serialization APIs" to "a compatibility or validation failure"
-    "persistence" -> "transaction and storage APIs" to "a consistency or durability failure"
-    "reliability" -> "timeout and retry APIs" to "an availability, duplication, or cleanup failure"
-    "ui" -> "UI state and rendering APIs" to "an observable interaction or rendering failure"
-    "ux-accessibility" -> "semantics and input APIs" to "an accessibility or task-completion failure"
-    else -> "$area APIs" to "a concrete invariant or boundary failure"
-  }
-  return "- Verify `$stack $surface` preserve their documented invariants; reject $consequence."
+  val rule = reviewAreaRule(area)
+  return "- Verify `$stack ${rule.surface}` preserve their documented invariants; reject ${rule.failure}."
 }
+
+internal fun canonicalSeverityCloser(area: String): String =
+  "- For Blocker or Major findings, describe the concrete ${reviewAreaRule(area).consequenceScenario} scenario."
+
+private fun reviewAreaRule(area: String): ReviewAreaRule = when (area) {
+  "architecture" -> ReviewAreaRule(
+    "module and dependency APIs",
+    "a dependency cycle or ownership boundary failure",
+    "dependency-cycle or ownership-boundary failure",
+  )
+  "performance" -> ReviewAreaRule(
+    "hot-path and resource APIs",
+    "a measurable latency, memory, or throughput failure",
+    "latency, memory-pressure, or throughput failure",
+  )
+  "platform-correctness" -> ReviewAreaRule(
+    "lifecycle and concurrency APIs",
+    "an invalid state or ordering failure",
+    "invalid-state or ordering failure",
+  )
+  "security" -> ReviewAreaRule(
+    "authentication and sensitive-data APIs",
+    "an authorization or data-exposure failure",
+    "authorization-bypass or data-exposure",
+  )
+  "testing" -> ReviewAreaRule(
+    "test and fixture APIs",
+    "an undetected regression or false-positive test failure",
+    "undetected-regression or false-positive test",
+  )
+  "api-contracts" -> ReviewAreaRule(
+    "request and serialization APIs",
+    "a compatibility or validation failure",
+    "compatibility or validation failure",
+  )
+  "persistence" -> ReviewAreaRule(
+    "transaction and storage APIs",
+    "a consistency or durability failure",
+    "data-loss, consistency, or durability failure",
+  )
+  "reliability" -> ReviewAreaRule(
+    "timeout and retry APIs",
+    "an availability, duplication, or cleanup failure",
+    "availability, duplication, or cleanup failure",
+  )
+  "ui" -> ReviewAreaRule(
+    "UI state and rendering APIs",
+    "an observable interaction or rendering failure",
+    "user-visible interaction or rendering failure",
+  )
+  "ux-accessibility" -> ReviewAreaRule(
+    "semantics and input APIs",
+    "an accessibility or task-completion failure",
+    "accessibility or task-completion failure",
+  )
+  else -> ReviewAreaRule(
+    "$area APIs",
+    "a concrete invariant or boundary failure",
+    "invariant or boundary failure",
+  )
+}
+
+private data class ReviewAreaRule(
+  val surface: String,
+  val failure: String,
+  val consequenceScenario: String,
+)
 
 internal fun baselineReviewContent(summary: String): String = buildString {
   appendLine("## Classification Rules")
@@ -91,7 +146,16 @@ internal fun baselineReviewContent(summary: String): String = buildString {
   appendLine()
   appendLine("## Diff-Signal Routing Table")
   appendLine()
-  appendLine("Map changed-file names, extensions, imports, and framework markers to the matching specialists.")
+  appendLine("- Module boundaries, dependency declarations, or ownership crossings -> `architecture` specialist.")
+  appendLine("- Hot paths, blocking calls, allocation sites, or resource use -> `performance` specialist.")
+  appendLine("- Lifecycle, concurrency, state-machine, or runtime API changes -> `platform-correctness` specialist.")
+  appendLine("- Authentication, authorization, untrusted input, secrets, or sensitive data -> `security` specialist.")
+  appendLine("- Tests, fixtures, assertions, or regression coverage -> `testing` specialist.")
+  appendLine("- Requests, responses, serialization, validation, or compatibility -> `api-contracts` specialist.")
+  appendLine("- Transactions, queries, migrations, storage, or consistency -> `persistence` specialist.")
+  appendLine("- Timeouts, retries, background work, cleanup, or observability -> `reliability` specialist.")
+  appendLine("- Rendering, visual state, interaction, or UI framework changes -> `ui` specialist.")
+  appendLine("- Semantics, focus, keyboard input, assistive technology, or task flow -> `ux-accessibility` specialist.")
   appendLine()
   appendLine("## Mixed Diffs")
   appendLine()

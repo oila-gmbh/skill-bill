@@ -1,3 +1,13 @@
+## [2026-07-10] SKILL-112 subtask 1 review skill structure standard
+Areas: orchestration/review-orchestrator, orchestration/shell-content-contract, runtime-kotlin/runtime-infra-fs
+- Established one testable review-pack structure standard covering specialist and baseline skeletons, manifest routing/focus conventions, manifest-derived native-agent descriptions, quality checks, and authored sidecars. reusable
+- Platform-pack scaffolding now completes bare/glob extension pairs and tie-breaker semantics, emits concrete specialist routing plus area-specific `Blocker or Major` consequence closers, and requires exact native-agent specialist coverage. reusable
+- `ReviewSkillStructureConformanceTest` is the reusable enforcement seam for governed H2 structure, closed severity ratings, routing coverage, native-agent coverage, and authored-sidecar constraints; scaffold acceptance/parity tests lock generated shape.
+- Known rollout limit: go, ios, kmp, kotlin, php, and python remain explicitly exempt until SKILL-112 subtasks 2-7 migrate them; subtask 8 removes the exemption mechanism.
+- No contract-version change or generated artifact was introduced; full repository validation passed.
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
 ## [2026-06-06] SKILL-69 review-noise-tuning-and-validation-gate
 Areas: orchestration/review-orchestrator, docs/review-telemetry.md
 - Shared review orchestrator guidance now narrows `Minor` and `Medium`/`Low` confidence findings to explicit contract violations, user-visible bugs, regression risks, quality gate failures, or persisted learnings. reusable

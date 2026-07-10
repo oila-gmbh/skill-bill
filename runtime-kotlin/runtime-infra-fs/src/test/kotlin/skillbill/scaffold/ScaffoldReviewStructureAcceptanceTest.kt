@@ -2,12 +2,15 @@ package skillbill.scaffold
 
 import org.yaml.snakeyaml.Yaml
 import skillbill.scaffold.policy.APPROVED_CODE_REVIEW_AREAS
+import skillbill.scaffold.rendering.canonicalSeverityCloser
+import skillbill.scaffold.rendering.defaultAreaFocus
 import skillbill.scaffold.runtime.scaffold
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 
 class ScaffoldReviewStructureAcceptanceTest {
   @Test
@@ -32,7 +35,12 @@ class ScaffoldReviewStructureAcceptanceTest {
       )
       assertContains(content, "### Review Rules")
       assertContains(content, "Verify `Java")
-      assertContains(content, "For Blocker or Major findings, describe the concrete consequence explicitly.")
+      assertContains(content, canonicalSeverityCloser(area))
+      assertEquals(
+        canonicalSeverityCloser(area),
+        content.lineSequence().filter { it.startsWith("- ") }.last(),
+      )
+      assertRetiredHeadingsAbsent(content)
       if (area == "ui") assertUiDeferrals(content)
       if (area == "ux-accessibility") assertAccessibilityDeferrals(content)
     }
@@ -49,6 +57,9 @@ class ScaffoldReviewStructureAcceptanceTest {
     assertContains(content, "generated, vendored, and non-stack-owned files")
     assertContains(content, "Calibrate severity and verify each finding's preconditions")
     assertContains(content, "attributed to their specialist lane, then deduplicate")
+    APPROVED_CODE_REVIEW_AREAS.forEach { area ->
+      assertContains(content, "-> `$area` specialist.")
+    }
   }
 
   private fun assertQualityCheck(pack: Path) {
@@ -68,9 +79,12 @@ class ScaffoldReviewStructureAcceptanceTest {
     val descriptions = agents.filterIsInstance<Map<*, *>>().associate { it["name"] to it["description"] }
     APPROVED_CODE_REVIEW_AREAS.forEach { area ->
       val description = descriptions["bill-java-code-review-$area"] as String
-      assertContains(description, "Java ${area.replace('-', ' ')} specialist code reviewer.")
-      assertContains(description, "Runs against")
-      assertContains(description, "Returns a Risk Register in the F-XXX bullet format.")
+      assertEquals(
+        "Java ${area.replace('-', ' ')} specialist code reviewer. " +
+          "Runs against Java ${defaultAreaFocus(area)} across pom.xml, build.gradle, src/main/java signals. " +
+          "Returns a Risk Register in the F-XXX bullet format.",
+        description,
+      )
     }
   }
 
@@ -87,5 +101,11 @@ class ScaffoldReviewStructureAcceptanceTest {
   private fun assertAccessibilityDeferrals(content: String) {
     assertContains(content, "Defer UI correctness concerns to the ui specialist")
     assertContains(content, "security concerns to the security specialist")
+  }
+
+  private fun assertRetiredHeadingsAbsent(content: String) {
+    listOf("## Review Guidance", "## Checklist", "## Severity Guidance").forEach { heading ->
+      assertFalse(heading in content, "Retired starter heading remains: $heading")
+    }
   }
 }

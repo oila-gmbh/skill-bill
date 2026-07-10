@@ -16,6 +16,7 @@ import skillbill.scaffold.platformpack.loadPlatformPack
 import skillbill.scaffold.policy.APPROVED_CODE_REVIEW_AREAS
 import skillbill.scaffold.policy.renderPlatformPackManifest
 import skillbill.scaffold.rendering.baselineReviewContent
+import skillbill.scaffold.rendering.canonicalSeverityCloser
 import skillbill.scaffold.rendering.defaultAreaFocus
 import skillbill.scaffold.rendering.inferSkillDescription
 import skillbill.scaffold.rendering.renderContentBody
@@ -162,30 +163,19 @@ class ScaffoldServiceParityTest {
     }
 
   @Test
-  fun `platform pack subagent specialists attach only to baseline orchestrator`() = withIsolatedUserHome {
+  fun `platform pack rejects custom subagent specialists before mutation`() = withIsolatedUserHome {
     val repo = seedRepo()
-    val result =
+    val before = snapshotTree(repo)
+
+    val error = assertFailsWith<InvalidScaffoldPayloadError> {
       scaffold(
         payload(repo, "platform-pack", "platform" to "java") +
           mapOf("subagent_specialists" to listOf("arch", "perf")),
       )
-    val packRoot = repo.resolve("platform-packs").resolve("java")
-    val baseline = packRoot.resolve("code-review/bill-java-code-review")
-    val qualityCheck = packRoot.resolve("quality-check/bill-java-code-check")
+    }
 
-    assertEquals("platform-pack", result.kind)
-    assertSourceBundle(baseline.resolve("native-agents/agents.yaml"), "arch", "perf")
-    assertFalse(Files.exists(baseline.resolve("codex-agents")))
-    assertFalse(Files.exists(baseline.resolve("opencode-agents")))
-    assertFalse(Files.exists(baseline.resolve("junie-agents")))
-    assertFalse(Files.exists(qualityCheck.resolve("codex-agents")))
-    assertFalse(Files.exists(qualityCheck.resolve("opencode-agents")))
-    assertFalse(Files.exists(qualityCheck.resolve("junie-agents")))
-    assertFalse(Files.exists(qualityCheck.resolve("native-agents")))
-    assertFalse("Subagent Spawn Runtime Notes" in Files.readString(baseline.resolve("content.md")))
-    assertContains(renderAuthoringTarget(repo, "bill-java-code-review").stdout, "### Subagent Spawn Runtime Notes")
-    assertNoGeneratedWrapperOrSupportingFiles(baseline, "bill-java-code-review")
-    assertNoGeneratedWrapperOrSupportingFiles(qualityCheck, "bill-java-code-check")
+    assertContains(error.message.orEmpty(), "exactly one manifest-derived native agent")
+    assertEquals(before, snapshotTree(repo))
   }
 
   @Test
@@ -202,13 +192,17 @@ class ScaffoldServiceParityTest {
       )
       assertContains(manifest, "  - \"$area\"")
       assertContains(manifest, "$area: \"code-review/bill-java-code-review-$area/content.md\"")
+      val specialist = Files.readString(
+        repo.resolve("platform-packs/java/code-review/bill-java-code-review-$area/content.md"),
+      )
+      assertContains(specialist, canonicalSeverityCloser(area))
     }
     assertComposedSourceBundle(
       repo.resolve("platform-packs/java/code-review/bill-java-code-review/native-agents/agents.yaml"),
       APPROVED_CODE_REVIEW_AREAS.associate { area ->
         "bill-java-code-review-$area" to
           "Java ${area.replace('-', ' ')} specialist code reviewer. " +
-          "Runs against ${defaultAreaFocus(area)} lanes. " +
+          "Runs against Java ${defaultAreaFocus(area)} across pom.xml, build.gradle, src/main/java signals. " +
           "Returns a Risk Register in the F-XXX bullet format."
       },
     )
@@ -232,25 +226,18 @@ class ScaffoldServiceParityTest {
   }
 
   @Test
-  fun `platform pack no_subagents suppresses default specialist native agents`() = withIsolatedUserHome {
+  fun `platform pack rejects no_subagents before mutation`() = withIsolatedUserHome {
     val repo = seedRepo()
+    val before = snapshotTree(repo)
 
-    scaffold(
-      payload(repo, "platform-pack", "platform" to "java") + mapOf("no_subagents" to true),
-    )
-
-    assertFalse(
-      Files.exists(repo.resolve("platform-packs/java/code-review/bill-java-code-review/native-agents")),
-      "no_subagents=true must opt out of default platform-pack native-agent source generation",
-    )
-    APPROVED_CODE_REVIEW_AREAS.forEach { area ->
-      assertTrue(
-        Files.isRegularFile(repo.resolve("platform-packs/java/code-review/bill-java-code-review-$area/content.md")),
-        "no_subagents must not suppress content.md for $area",
+    val error = assertFailsWith<InvalidScaffoldPayloadError> {
+      scaffold(
+        payload(repo, "platform-pack", "platform" to "java") + mapOf("no_subagents" to true),
       )
     }
-    val pack = loadPlatformPack(repo.resolve("platform-packs/java"))
-    assertEquals(APPROVED_CODE_REVIEW_AREAS.sorted(), pack.declaredCodeReviewAreas.sorted())
+
+    assertContains(error.message.orEmpty(), "exactly one manifest-derived native agent")
+    assertEquals(before, snapshotTree(repo))
   }
 
   @Test

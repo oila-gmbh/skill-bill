@@ -189,7 +189,7 @@ class AgentRunLauncherTest {
         command = listOf("sh", "-c", "printf stdout-line; printf stderr-line >&2"),
         workingDirectory = Path.of(".").toAbsolutePath().normalize(),
         timeout = 3.seconds,
-        outputSink = { stream, text -> events += stream to text },
+        outputSink = { stream, text -> synchronized(events) { events += stream to text } },
       ),
     )
 
