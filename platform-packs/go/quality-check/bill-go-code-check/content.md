@@ -6,18 +6,22 @@ internal-for: bill-code-check
 
 # Go Quality Check
 
+## Purpose
+
+Run the repository's authoritative Go quality workflow, fix root causes only in files in scope, and preserve project-owned tooling and conventions.
+
 ## Execution Steps
 
-1. Determine changed files using `git diff --name-only` against the relevant base.
-2. Discover the project's own quality commands before running checks.
-3. Run the project's quality-check commands and capture complete output.
+1. Determine files in scope using `git diff --name-only` against the relevant base.
+2. Discover the authoritative command from build files, a repository wrapper, and CI configuration before falling back to Go defaults.
+3. Invoke the pack's quality-check entrypoint using the discovered repository command and capture complete output.
 4. Filter the results to issues in changed files only.
 5. Categorize issues by type: structural, formatting, lint, static analysis, architecture checks, tests, security or audit failures.
 6. Fix systematically by category in priority order.
 7. Re-run the quality-check commands after all fixes.
 8. Iterate if new issues appear.
 
-## Command Discovery
+### Command Discovery
 
 - Use local project standards and established repo command conventions before choosing Go defaults
 - Inspect `go.mod`, `go.work`, `Makefile`, `justfile`, task files, CI workflows, and project scripts before choosing commands.
@@ -29,6 +33,10 @@ internal-for: bill-code-check
 - Do not install new tools or rewrite quality configuration as the default way to make checks pass
 
 ## Fix Strategy
+
+Use the priority-ordered fix ladder below and never suppress a failure instead of correcting its root cause.
+
+After each fix, re-run targeted checks first. Run the full suite when targeted checks cannot establish safety.
 
 ### Always Fix, Never Suppress
 

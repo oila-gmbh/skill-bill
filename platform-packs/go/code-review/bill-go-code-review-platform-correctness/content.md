@@ -25,6 +25,10 @@ Within the Go package, `platform-correctness` is the language and runtime correc
 
 - Style or readability feedback without correctness impact
 
+## Applicability
+
+Use this specialist when changed Go code affects business invariants, error flow, nil or zero-value semantics, concurrency, cancellation, retries, replay, or runtime safety.
+
 ## Project-Specific Rules
 
 ### Shared Backend Correctness
@@ -85,3 +89,4 @@ Within the Go package, `platform-correctness` is the language and runtime correc
 - Authorization checks, parameter binding/lookup, and boundary validation must not leave reachable paths with partially authorized or partially validated behavior
 - Date, enum, and numeric/string conversions must not change business behavior unexpectedly
 - If behavior depends on the current user, current time, locale, or timezone, make that dependency explicit and verify boundary cases
+- For Blocker or Major findings, describe the concrete invalid-state or ordering failure scenario.

@@ -27,6 +27,9 @@ Use this specialist for Go backend/service, queue, worker, scheduler, cache, ext
 
 ## Project-Specific Rules
 
+### Review Rules
+
+- Verify `context.Context` timeout and cancellation boundaries fail without leaking work or resources
 - Retries must be bounded and reserved for transient failures; include backoff and jitter where stampedes are possible
 - Circuit breakers, bulkheads, and rate-limiting configuration must have sensible thresholds and avoid infinite blocks, silent drops, or retry storms
 - External calls should have explicit timeout behavior and a clear cancellation story
@@ -42,4 +45,4 @@ Use this specialist for Go backend/service, queue, worker, scheduler, cache, ext
 - Rate limiting, backpressure, and batch sizing should protect downstream systems and avoid retry amplification under load
 - Long-running worker startup, shutdown, and restart paths must initialize and release clients, connections, subscriptions, locks, and process-local state predictably
 - Do not hold locks, open streams, file handles, external leases, connections, or other scarce resource handles across remote I/O or long waits unless the contract explicitly requires it
-- For Blocker or Major findings, describe the production failure scenario such as outage, stuck work, retry storm, stale data, lost observability, or unrecoverable partial failure
+- For Blocker or Major findings, describe the concrete availability, duplication, or cleanup failure scenario.

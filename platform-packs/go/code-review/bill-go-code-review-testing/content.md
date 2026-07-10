@@ -22,10 +22,15 @@ Review only test gaps that create real regression risk.
 - Test style preferences without risk impact
 - Missing tests for trivial mappers, accessors, or glue code with no meaningful behavior
 
+## Applicability
+
+Use this specialist when changed Go behavior or test code affects regression proof, boundary contracts, concurrency, retries, persistence, or failure-path coverage.
+
 ## Project-Specific Rules
 
 ### Shared Backend Testing
 
+- Require `go test` coverage to expose meaningful behavior regressions or test failures at the boundary where they matter
 - Changed behavior and failure paths should be covered at the layer where regressions would surface first
 - A test only adds value if it would fail on a meaningful regression in business behavior
 - Prefer tests that validate real behavior over tests that only mirror implementation details
@@ -62,3 +67,4 @@ Review only test gaps that create real regression risk.
 - Boundary tests should verify persisted side effects or externally visible outcomes, not only response status or mock interactions
 - Server-rendered or component-driven flows should test the user-visible behavior that could regress, not only helper internals
 - Feature-flag, permission-gated, and role-gated paths need explicit tests for both enabled and disabled or forbidden behavior when they change semantics
+- For Blocker or Major findings, describe the concrete undetected-regression or false-positive test scenario.

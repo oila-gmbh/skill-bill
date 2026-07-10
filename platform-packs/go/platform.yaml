@@ -17,7 +17,7 @@ routing_signals:
     - "staticcheck.conf"
   tie_breakers:
     - "Prefer Go when module/workspace metadata, Go source files, or Go test files dominate the changed product surface."
-    - "Do not prefer Go for mixed repositories where Go appears only as generated clients, tooling, one-off scripts, or vendored dependencies around another dominant stack."
+    - "Do not prefer Go for adjacent mixed repositories where Go appears only as generated clients, tooling, one-off scripts, or vendored dependencies around another dominant stack."
     - "Exclude vendor directories, generated protobuf/OpenAPI clients, build outputs, and generated mocks from dominance scoring unless the generator or generated contract is intentionally changed."
 
 declared_code_review_areas:
@@ -53,19 +53,19 @@ area_metadata:
   performance:
     focus: "Go performance risks on hot paths, allocations, goroutines, I/O, and resource usage"
   persistence:
-    focus: "SQL, ORM/query builders, migrations, transactions, locking, and data consistency"
+    focus: "Go SQL, ORM/query builders, migrations, transactions, locking, and data consistency"
   platform-correctness:
     focus: "Go runtime semantics, goroutines, channels, contexts, errors, nil handling, and logic correctness"
   reliability:
-    focus: "contexts, timeouts, retries, workers, queues, external clients, observability, and degradation"
+    focus: "Go contexts, timeouts, retries, workers, queues, external clients, observability, and degradation"
   security:
-    focus: "auth/authz, secrets, unsafe parsing, command execution, uploads, templates, and sensitive logs"
+    focus: "Go auth/authz, secrets, unsafe parsing, command execution, uploads, templates, and sensitive logs"
   testing:
     focus: "Go test quality, table tests, race-sensitive coverage, integration boundaries, and regression proof"
   ui:
     focus: "Go-rendered UI, templates, admin surfaces, CLIs with interactive output, and dashboards"
   ux-accessibility:
-    focus: "server-rendered accessibility, forms, feedback, keyboard flow, and localization-sensitive UX"
+    focus: "Go server-rendered accessibility, forms, feedback, keyboard flow, and localization-sensitive UX"
 
 declared_quality_check_file: quality-check/bill-go-code-check/content.md
 
