@@ -59,10 +59,10 @@ When the diff is large, high-risk, or spans multiple review surfaces, build per-
 
 1. Scan each changed file's path, imports, generated-code markers, Composer metadata, and framework markers for the routing-table signals above.
 2. Map each PHP-owned file to the specialists whose signals it matches.
-3. `bill-php-code-review-architecture` receives all PHP-owned changed files and stays selected for the whole review.
-4. Every other PHP specialist receives only files matching its routing signals.
-5. Drop specialists whose scoped file list is empty after excluding generated, vendored, or non-stack (non-PHP-owned) files.
-6. After scoping, re-check the minimum-2-specialist requirement; if only architecture remains, add `bill-php-code-review-platform-correctness` with all PHP-owned files as the default second.
+3. The baseline `bill-php-code-review-architecture` and `bill-php-code-review-platform-correctness` specialists receive all PHP-owned changed files and stay selected for the whole review.
+4. Every additional PHP specialist receives only files matching its routing signals.
+5. Drop additional specialists whose scoped file list is empty after excluding generated, vendored, or non-stack (non-PHP-owned) files.
+6. After scoping, verify that both baseline specialists remain selected.
 
 This is a lightweight file-level classification, not a full review.
 
