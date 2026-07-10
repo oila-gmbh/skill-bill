@@ -29,6 +29,7 @@ Use this specialist for dependencies, routes, object permissions, tenant boundar
 - Reject `eval`, `exec`, or dynamic imports whose expression, module, or attribute is derived from untrusted input; require a fixed allowlist and explicit dispatch boundary.
 - Reject unsafe pickle, YAML, XML/entity, template, markdown/HTML, archive, upload, path, symlink, shell, subprocess, or SSRF handling when attacker input can reach the sink; specifically reject Jinja or Django autoescape bypasses and uploaded-file validation that trusts a client-supplied content type.
 - Require route and object-level authorization, tenant isolation, and explicit delegation scope so confused-deputy paths cannot use the service's authority for an unprivileged caller.
+- Require authentication credentials and tokens to validate their signature, expiry, issuer, audience, intended use, and revocation state before granting access; reject decoding or parsing that is treated as authentication.
 - Require least-privilege outbound clients, safe temporary-file cleanup, and limits on uploaded size and extracted archive shape.
 - Require subprocess calls to use controlled arguments and a minimal trusted environment plus explicit timeouts and termination cleanup; reject inherited secrets, attacker-controlled environment entries, and indefinitely running children.
 - Reject secrets, tokens, PII, credentials, or tenant data in configuration dumps, exceptions, logs, traces, metrics, fixtures, notebooks, or persisted debug artifacts.

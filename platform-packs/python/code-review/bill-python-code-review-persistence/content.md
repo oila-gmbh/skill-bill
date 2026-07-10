@@ -35,7 +35,7 @@ Use this specialist for SQLAlchemy, Django ORM, peewee, raw SQL, query builders,
 ### Bulk Writes and Migrations
 
 - Verify Django `bulk_create` and `update` intentionally bypass model `save`, signals, validation, and `auto_now`; reject reliance on hooks or timestamps that will never run.
-- Require tenant predicates on every bulk read, update, and delete; reject missing scope with the concrete data-loss or cross-tenant modification consequence.
+- Require a trusted tenant predicate or tenant key on every bulk read and write, including bulk creates or inserts, updates, deletes, and upserts; verify the scope survives batching and conflict-handling paths, and reject missing scope with the concrete data-loss or cross-tenant creation, modification, or deletion consequence.
 - Require reversible Alembic and Django migrations, paired forward and reverse `RunPython` operations, idempotent backfills, safe null/default transitions, and deploy-compatible ordering.
 - Require concurrent or otherwise non-blocking index creation where production table size and database support make a blocking build an availability failure.
 - Preserve serialization, enum/state transitions, outbox/event writes, and cache invalidation across partial failures and cross-store boundaries.

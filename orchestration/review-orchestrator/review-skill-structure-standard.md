@@ -59,15 +59,15 @@ Every file-extension routing signal appears in both bare (`.kt`) and glob
 (`*.kt`) forms. When routing signals overlap, tie-breakers state a positive
 dominance rule, a negative disambiguation rule against adjacent packs, and an
 exclusion of generated and vendored files from dominance scoring.
-`area_metadata.focus` is bespoke to the stack and area: it names the display
-label and concrete routing-signal context, and is not merely the display label
-prefixed to the generic area focus.
+`area_metadata.focus` is bespoke to the stack and area: it names concrete
+routing-signal context and is not merely the generic area focus with or without
+the display label. Concrete bespoke metadata need not repeat the display label.
 
 ## Native-Agent Description Pattern
 
 Each provider-neutral specialist description is derived from `platform.yaml`:
-`<display_name-or-platform> <declared area> specialist code reviewer. Runs
-against <area_metadata.focus>. Returns a Risk Register in the F-XXX bullet
+`{display_name-or-platform} {declared area} specialist code reviewer. Runs
+against {area_metadata.focus}. Returns a Risk Register in the F-XXX bullet
 format.` Every declared specialist has exactly one matching entry. Generated
 provider outputs are never authored or committed. The baseline owns a required
 `native-agents/agents.yaml` source bundle; omission is a conformance failure.

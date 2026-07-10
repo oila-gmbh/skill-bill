@@ -28,8 +28,9 @@ Use this specialist for server-rendered templates, Django forms, WTForms, admin 
 
 - Require headings, landmarks, table headers, form groups, status messages, accessible names, and alt text to convey structure without relying on visual layout alone.
 - Require information, status, validation, and charts not to depend on color alone; preserve text, symbols, patterns, or programmatic state that communicates the same meaning.
-- Require links for navigation and buttons or form submissions for destructive actions; reject destructive links whose semantics, keyboard behavior, or CSRF boundary misrepresents the operation.
-- Require Django `Form` and WTForms fields to associate each label, help text, required state, field error, and error summary with the correct control and focus target.
+- Require rendered text, controls, focus indicators, and meaningful graphical objects or states to preserve sufficient contrast in every interactive state; reject contrast failures that hide content, obscure the available action or state, or block task completion.
+- Require links for navigation and buttons or form submissions for destructive actions; reject destructive links whose semantics or keyboard behavior misrepresents the operation, while deferring request-forgery protection to the `security` specialist.
+- Require Django `Form` and WTForms fields to associate each label, help text, required or optional status, field error, and error summary with the correct control and focus target.
 
 ### Dynamic Behavior and Copy
 

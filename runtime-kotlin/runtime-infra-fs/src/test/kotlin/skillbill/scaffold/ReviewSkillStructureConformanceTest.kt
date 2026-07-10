@@ -192,6 +192,8 @@ class ReviewSkillStructureConformanceTest {
   }
 
   private fun assertManifestAndSidecarNegativeFixtures(pack: Path) {
+    assertManifestRuleAccepted(pack, labelIndependentAreaMetadataManifest, "manifest bespoke area metadata")
+    assertManifestRuleAccepted(pack, dominantStackRoutingManifest, "routing adjacent-pack disambiguation")
     assertManifestRuleViolation(pack, missingDeclaredAreaManifest, "manifest review area parity")
     assertManifestRuleViolation(pack, genericAreaMetadataManifest, "manifest bespoke area metadata")
     assertManifestRuleViolation(pack, vagueAreaMetadataManifest, "manifest bespoke area metadata")
@@ -199,6 +201,7 @@ class ReviewSkillStructureConformanceTest {
     assertManifestRuleViolation(pack, globOnlyRoutingManifest, "routing bare/glob pair")
     assertManifestRuleViolation(pack, noPositiveDominanceManifest, "routing positive pack dominance")
     assertManifestRuleViolation(pack, noAdjacentDisambiguationManifest, "routing adjacent-pack disambiguation")
+    assertManifestRuleViolation(pack, invertedDominanceRoutingManifest, "routing adjacent-pack disambiguation")
     assertManifestRuleViolation(pack, noGeneratedExclusionManifest, "routing generated and vendored exclusion")
     assertManifestRuleViolation(pack, noVendoredExclusionManifest, "routing generated and vendored exclusion")
     assertSidecarRuleViolation(pack, "shell-ceremony.md", validSidecar, "reserved generated sidecar name")
@@ -278,8 +281,7 @@ class ReviewSkillStructureConformanceTest {
     if (focuses.size != metadataSize) return false
     if (focuses.map { it.second }.toSet().size != focuses.size) return false
     return focuses.all { (area, focus) ->
-      focus.contains(packLabel, ignoreCase = true) &&
-        !focus.equals("$packLabel ${defaultAreaFocus(area)}", ignoreCase = true) &&
+      !isDefaultDerivedFocus(area, focus, packLabel) &&
         concreteFocusTerms(area, focus, packLabel).size >= MINIMUM_CONCRETE_FOCUS_TERMS
     }
   }
@@ -304,11 +306,6 @@ class ReviewSkillStructureConformanceTest {
       }
     }
   }
-
-  private fun statesPositivePackDominance(rule: String): Boolean =
-    containsAll(rule, "prefer", "dominat") && !rule.contains("do not prefer", ignoreCase = true)
-
-  private fun statesAdjacentPackDisambiguation(rule: String): Boolean = containsAll(rule, "do not prefer", "adjacent")
 
   private fun excludesGeneratedAndVendoredFromDominance(rules: List<String>): Boolean =
     containsAll(rules.joinToString(" "), "exclude", "generated", "vendor", "dominan")
@@ -513,6 +510,12 @@ class ReviewSkillStructureConformanceTest {
     assertTrue(structureViolations(pack).any { it.rule == rule }, "Expected $rule")
   }
 
+  private fun assertManifestRuleAccepted(pack: Path, manifest: String, rule: String) {
+    writeConformingFixture(pack)
+    Files.writeString(pack.resolve("platform.yaml"), manifest)
+    assertTrue(structureViolations(pack).none { it.rule == rule }, "Unexpected $rule")
+  }
+
   private fun assertSidecarRuleViolation(pack: Path, fileName: String, sidecarContent: String, rule: String) {
     writeConformingFixture(pack)
     val specialist = pack.resolve("code-review/bill-fixture-code-review-security/content.md")
@@ -639,29 +642,6 @@ class ReviewSkillStructureConformanceTest {
       .forEach { match -> add(match.groupValues[1].replaceFirstChar(Char::uppercase)) }
   }
 
-  private fun contentFiles(root: Path): List<Path> = Files.walk(root.resolve("code-review")).use { paths ->
-    paths.filter { it.fileName.toString() == "content.md" }.toList()
-  }
-
-  private fun allContentFiles(root: Path): List<Path> = Files.walk(root).use { paths ->
-    paths.filter { it.fileName.toString() == "content.md" }.toList()
-  }
-
-  private fun headings(file: Path): List<String> = Files.readAllLines(file)
-    .filter { it.startsWith("## ") }
-    .map { it.removePrefix("## ") }
-
-  private fun writeConformingFixture(pack: Path) {
-    Files.createDirectories(pack.resolve("code-review/bill-fixture-code-review-security"))
-    Files.createDirectories(pack.resolve("code-review/bill-fixture-code-review/native-agents"))
-    Files.createDirectories(pack.resolve("quality-check/bill-fixture-code-check"))
-    Files.writeString(pack.resolve("platform.yaml"), fixtureManifest)
-    Files.writeString(pack.resolve("code-review/bill-fixture-code-review-security/content.md"), fixtureSpecialist)
-    Files.writeString(pack.resolve("code-review/bill-fixture-code-review/content.md"), fixtureBaseline)
-    Files.writeString(pack.resolve("code-review/bill-fixture-code-review/native-agents/agents.yaml"), fixtureAgents)
-    Files.writeString(pack.resolve("quality-check/bill-fixture-code-check/content.md"), fixtureQualityCheck)
-  }
-
   internal data class StructureViolation(val path: Path, val rule: String) {
     override fun toString(): String = "$path: $rule"
   }
@@ -669,6 +649,43 @@ class ReviewSkillStructureConformanceTest {
 
 private fun containsAll(content: String, vararg fragments: String): Boolean =
   fragments.all { content.contains(it, ignoreCase = true) }
+
+private fun isDefaultDerivedFocus(area: String, focus: String, packLabel: String): Boolean {
+  val defaultFocus = defaultAreaFocus(area)
+  return focus.equals(defaultFocus, ignoreCase = true) ||
+    focus.equals("$packLabel $defaultFocus", ignoreCase = true)
+}
+
+private fun statesPositivePackDominance(rule: String): Boolean =
+  containsAll(rule, "prefer", "dominat") && !rule.contains("do not prefer", ignoreCase = true)
+
+private fun statesAdjacentPackDisambiguation(rule: String): Boolean = containsAll(rule, "do not prefer") &&
+  (rule.contains("adjacent", ignoreCase = true) || containsAll(rule, "another", "dominant", "stack")) &&
+  !Regex("(?i)\\bdo not prefer\\s+(?:an?\\s+|the\\s+)?(?:adjacent|another\\s+dominant\\s+stack)")
+    .containsMatchIn(rule)
+
+private fun contentFiles(root: Path): List<Path> = Files.walk(root.resolve("code-review")).use { paths ->
+  paths.filter { it.fileName.toString() == "content.md" }.toList()
+}
+
+private fun allContentFiles(root: Path): List<Path> = Files.walk(root).use { paths ->
+  paths.filter { it.fileName.toString() == "content.md" }.toList()
+}
+
+private fun headings(file: Path): List<String> = Files.readAllLines(file)
+  .filter { it.startsWith("## ") }
+  .map { it.removePrefix("## ") }
+
+private fun writeConformingFixture(pack: Path) {
+  Files.createDirectories(pack.resolve("code-review/bill-fixture-code-review-security"))
+  Files.createDirectories(pack.resolve("code-review/bill-fixture-code-review/native-agents"))
+  Files.createDirectories(pack.resolve("quality-check/bill-fixture-code-check"))
+  Files.writeString(pack.resolve("platform.yaml"), fixtureManifest)
+  Files.writeString(pack.resolve("code-review/bill-fixture-code-review-security/content.md"), fixtureSpecialist)
+  Files.writeString(pack.resolve("code-review/bill-fixture-code-review/content.md"), fixtureBaseline)
+  Files.writeString(pack.resolve("code-review/bill-fixture-code-review/native-agents/agents.yaml"), fixtureAgents)
+  Files.writeString(pack.resolve("quality-check/bill-fixture-code-check/content.md"), fixtureQualityCheck)
+}
 
 private fun h2Section(content: String, heading: String): String =
   content.substringAfter("## $heading", "").substringBefore("\n## ")
@@ -897,6 +914,10 @@ private val genericAreaMetadataManifest = fixtureManifest.replace(
   "Fixture security boundaries for .fixture sources",
   "Fixture secrets handling, auth, and sensitive-data exposure",
 )
+private val labelIndependentAreaMetadataManifest = fixtureManifest.replace(
+  "Fixture security boundaries for .fixture sources",
+  "Request signatures and capability token expiry for .fixture sources",
+)
 private val vagueAreaMetadataManifest = fixtureManifest.replace(
   "Fixture security boundaries for .fixture sources",
   "Fixture custom security review focus",
@@ -910,6 +931,14 @@ private val noPositiveDominanceManifest = fixtureManifest.replace(
 private val noAdjacentDisambiguationManifest = fixtureManifest.replace(
   "Do not prefer Fixture when an adjacent pack's declared signals dominate.",
   "Do not prefer Fixture for ambiguous files.",
+)
+private val dominantStackRoutingManifest = fixtureManifest.replace(
+  "Do not prefer Fixture when an adjacent pack's declared signals dominate.",
+  "Do not prefer Fixture when it appears only as tooling around another dominant stack.",
+)
+private val invertedDominanceRoutingManifest = fixtureManifest.replace(
+  "Do not prefer Fixture when an adjacent pack's declared signals dominate.",
+  "Do not prefer another dominant stack when Fixture signals are present.",
 )
 private val noGeneratedExclusionManifest = fixtureManifest.replace(
   "Exclude generated and vendored files from dominance scoring.",
