@@ -80,7 +80,7 @@ Skill Bill ships complete Go, iOS, Kotlin/KMP, PHP, and Python packs — the sta
 **Shipped platform packs:**
 
 - `kotlin` — baseline Kotlin review and quality-check behavior
-- `kmp` — Kotlin baseline plus Android/KMP depth and governed add-ons
+- `kmp` — Kotlin baseline plus Android/KMP depth, platform-correctness review, and governed add-ons
 - `ios` — native iOS review and quality-check behavior via `bill-ios-code-review` and `bill-ios-code-check`, routed from `.xcodeproj`, `.xcworkspace`, SwiftUI/UIKit, lifecycle, concurrency, UI, and accessibility signals
 - `go` — Go services, libraries, CLIs, modules, APIs, persistence, concurrency, security, testing, Go-rendered UI, UX/accessibility, and quality-check behavior
 - `php` — PHP applications, services, Composer projects, APIs, persistence, security, testing, server-rendered UI, UX/accessibility, and quality-check behavior

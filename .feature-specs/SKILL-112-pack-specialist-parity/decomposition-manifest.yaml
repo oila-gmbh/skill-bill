@@ -112,43 +112,10 @@ subtasks:
   status: "blocked"
   branch: null
   commit_sha: null
-  workflow_id: "wftr-20260710-173154-ufao"
-  blocked_reason: "Feature-task-runtime phase 'review' agent exited with non-zero\
-    \ status 1.\nReading prompt from stdin...\nOpenAI Codex v0.144.1\n--------\nworkdir:\
-    \ /home/sermilion/StudioProjects/skill-bill\nmodel: gpt-5.6-sol\nprovider: openai\n\
-    approval: never\nsandbox: danger-full-access\nreasoning effort: medium\nreasoning\
-    \ summaries: none\nsession id: 019f4d1e-cca0-7591-bab1-7a4af733df95\n--------\n\
-    user\nYou are executing exactly one phase of the EXPERIMENTAL skill-bill feature-task-runtime\n\
-    loop (preplan -> plan -> implement -> review -> audit -> validate -> write_history\
-    \ -> commit_push -> pr)\nfor issue SKILL-112. The runtime owns the loop; do not\
-    \ run other phases, do not open\nor continue any other skill-bill workflow, and\
-    \ do not call `skill-bill workflow continue`.\n\nPhase: review (Phase 4: Code\
-    \ Review)\nTask: Review the implemented changes at the encoded review scope against\
-    \ the acceptance criteria and report defects with concrete file references.\n\n\
-    ## Runtime ceremony scaling\nfeature_size: MEDIUM\npreplan_ceremony: full\nreview_scope:\
-    \ branch_diff\naudit_ceremony: full_per_criterion\nApply branch-diff review scope.\
-    \ Keep the review gate real: inspect the implemented change for defects and report\
-    \ concrete file references.\nScaling changes scope and verbosity only; it must\
-    \ not skip or weaken review, audit, validation,\nschema, branch, history, commit,\
-    \ or PR gates.\n\n# Feature-task-runtime phase briefing\nphase: review\n\n## Run\
-    \ invariants (layer 1, unconditional)\nspec_reference: /home/sermilion/StudioProjects/skill-bill/.feature-specs/SKILL-112-pack-specialist-parity/spec_subtask_7_ios_pack\n\
-    …[427199 chars omitted]…\npacks/ios/code-review/bill-ios-code-review-ux-accessibility/content.md:18:ignore:##\
-    \ Ignore\nplatform-packs/ios/code-review/bill-ios-code-review-ux-accessibility/content.md:19:ignore:\n\
-    platform-packs/ios/code-review/bill-ios-code-review-ux-accessibility/content.md:20:ignore:-\
-    \ Pure visual design preference\nplatform-packs/ios/code-review/bill-ios-code-review-ux-accessibility/content.md:21:ignore:-\
-    \ UI framework and rendering correctness findings that belong to `bill-ios-code-review-ui`\n\
-    platform-packs/ios/code-review/bill-ios-code-review-ux-accessibility/content.md:22:ignore:-\
-    \ Security-only findings that belong to `bill-ios-code-review-security`\nplatform-packs/ios/code-review/bill-ios-code-review-ux-accessibility/content.md:23:ignore:\n\
-    platform-packs/ios/code-review/bill-ios-code-review-ux-accessibility/content.md:24:app:##\
-    \ Applicability\nplatform-packs/ios/code-review/bill-ios-code-review-ux-accessibility/content.md:25:app:\n\
-    platform-packs/ios/code-review/bill-ios-code-review-ux-accessibility/content.md:26:app:Use\
-    \ this specialist when changed user-facing code or resources affect VoiceOver\
-    \ semantics, Dynamic Type, keyboard or switch-control flow, validation feedback,\
-    \ localization completeness, or whether a user can complete a task.\nplatform-packs/ios/code-review/bill-ios-code-review-ux-accessibility/content.md:27:app:\n\
-    \ncollab: Wait\nERROR: Selected model is at capacity. Please try a different model.\n\
-    ERROR: Selected model is at capacity. Please try a different model.\ntokens used\n\
-    144,090\n"
-  last_resumable_step: "review"
+  workflow_id: "wftr-20260710-192724-ygbg"
+  blocked_reason: "Goal status reconciliation closed stale running child 'wftr-20260710-192724-ygbg'\
+    \ for issue 'SKILL-112' subtask 7 in favor of authoritative blocked workflow 'wftr-20260710-185749-duou'."
+  last_resumable_step: "preplan"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []

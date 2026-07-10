@@ -41,7 +41,7 @@ class ReviewSkillStructureConformanceTest {
   }
 
   @Test
-  fun `non-exempt packs satisfy the complete review skill structure standard`() {
+  fun `all packs satisfy the complete review skill structure standard`() {
     val repositoryViolations = structureViolations(repoRootFromTest().resolve("platform-packs"))
     assertEquals(emptyList(), repositoryViolations, repositoryViolations.joinToString("\n"))
 
@@ -214,24 +214,19 @@ class ReviewSkillStructureConformanceTest {
   }
 
   internal fun structureViolations(pack: Path): List<StructureViolation> {
-    val exemptions = emptySet<String>()
-    val qualityCheckExemptions = emptySet<String>()
-    // SKILL-112 subtasks 2-7 remove one pack each; subtask 8 removes this mechanism.
     if (pack.name == "platform-packs") {
       return Files.list(pack).use { packDirectories ->
         packDirectories
           .filter { Files.isDirectory(it) }
-          .filter { it.name !in exemptions }
           .toList()
           .flatMap(::structureViolations)
       }
     }
-    if (pack.name in exemptions) return emptyList()
 
     return manifestViolations(pack) +
       contentFiles(pack).flatMap(::contentViolations) +
       nativeAgentViolations(pack) +
-      (if (pack.name in qualityCheckExemptions) emptyList() else qualityCheckViolations(pack)) +
+      qualityCheckViolations(pack) +
       authoredSidecarViolations(pack)
   }
 
