@@ -26,6 +26,15 @@ Use this specialist for background sync and any interceptor/chain-of-responsibil
 
 ## Project-Specific Rules
 
+### Background Execution And Relaunch
+
+- `BGTaskScheduler` identifiers must be registered before submission, permitted by project configuration, and handled with expiration cancellation plus exactly one `setTaskCompleted` outcome
+- `beginBackgroundTask` work must install an expiration handler, end the background task on every completion path, and never keep using expired execution time
+- Background `URLSession` must preserve a stable identifier and delegate ownership, and app relaunch handling must rewire the session plus retain and invoke the system completion handler only after outstanding events finish
+- Long-running synchronization must be termination-safe and resumable or idempotent so interruption cannot duplicate writes, lose progress, or corrupt checkpoint state
+
+### Sync Chains And Failure Visibility
+
 - Background sync chains composed from Read/Write/Permissions/Utility-style stages must run every applicable stage for a given operation; skipping a stage (especially a permission-check stage) to save time is a reliability and correctness risk, not just a performance shortcut
 - Every background sync failure path must produce an error log with enough context (operation, entity, and failure reason) to diagnose the failure after the fact; a swallowed or silently-dropped background sync error is a reliability regression
 - Permission checks in a sync chain must run before the corresponding read/write stage executes, not after or in parallel with it; a permission check that runs too late does not actually prevent the unauthorized operation
@@ -38,7 +47,7 @@ Use this specialist for background sync and any interceptor/chain-of-responsibil
 - Extracting or rewriting a view/component that silently drops previously-present functionality (buttons, fallback labels, forwarded callbacks, wired services) is a regression unless the removal is explicitly flagged as intentional
 - Debug `print`/logging statements or debug-only code paths left in shipped code are a reliability and information-leak risk, not just noise
 - `[weak self]` captured but the closure still reaches `self`/outer state directly instead of through the safely-unwrapped self — or omitted entirely on a long-lived subscription — risks crashes, stale reads, or retain-cycle leaks
-- For Blocker or Major findings, describe the concrete data-loss, unauthorized-access, or silent-failure scenario in production
+- For Blocker or Major findings, describe the concrete availability, duplication, or cleanup failure scenario.
 
 ## Repo-Local Knowledge
 

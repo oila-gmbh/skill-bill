@@ -8,6 +8,11 @@ routing_signals:
     - ".xcworkspace"
     - ".swift"
     - "*.swift"
+    - "project.pbxproj"
+    - "Info.plist"
+    - "Podfile"
+    - ".swiftlint.yml"
+    - "fastlane/Fastfile"
     - "import SwiftUI"
     - "import UIKit"
     - "iOSApplicationExtension"
@@ -15,6 +20,9 @@ routing_signals:
     - "Package.swift alone is not a strong signal (ambiguous with server-side/macOS-only Swift); only route on it when the repo root also has an .xcodeproj/.xcworkspace."
     - "A diff touching a local SPM package with no UIKit/SwiftUI import is still iOS-scoped when the repo root contains an .xcodeproj/.xcworkspace that consumes that package."
     - "Never match on iosMain, androidMain, commonMain, expect/actual — those are KMP shared-source-set markers, not native iOS markers."
+    - "Prefer iOS when native Swift sources, Xcode workspace/project metadata, Apple platform configuration, and iOS framework imports dominate the changed product surface."
+    - "Do not prefer iOS in an adjacent mixed-stack repository when another dominant stack owns the changed product surface and Swift appears only in bridging, tooling, or unrelated support code."
+    - "Exclude generated sources, vendored dependencies, Pods, .build content, and build outputs from dominance scoring unless the generator or vendored contract is intentionally changed."
 
 declared_code_review_areas:
   - "api-contracts"
@@ -43,25 +51,25 @@ declared_files:
     ux-accessibility: "code-review/bill-ios-code-review-ux-accessibility/content.md"
 area_metadata:
   api-contracts:
-    focus: "API contracts, request validation, and serialization"
+    focus: "REST/Codable decoding and Apollo GraphQL schema/cache compatibility"
   architecture:
-    focus: "architecture, boundaries, and dependency direction"
+    focus: "Swift module boundaries, dependency injection, and SPM package ownership"
   performance:
-    focus: "performance risks on hot paths, blocking I/O, and resource usage"
+    focus: "SwiftUI recomputation, ImageIO downsampling, and import-loop memory pressure"
   persistence:
-    focus: "persistence, transactions, migrations, and data consistency"
+    focus: "Core Data and SwiftData context/migration safety plus GRDB transaction consistency"
   platform-correctness:
-    focus: "lifecycle, concurrency, threading, and logic correctness"
+    focus: "Swift actor isolation, Sendable crossings, task cancellation, and iOS lifecycle correctness"
   reliability:
-    focus: "timeouts, retries, background work, and observability"
+    focus: "BGTaskScheduler, background URLSession relaunch recovery, expiration, and interrupted sync"
   security:
-    focus: "secrets handling, auth, and sensitive-data exposure"
+    focus: "Keychain accessibility, ATS exceptions, privacy-safe Logger output, and pasteboard expiry"
   testing:
-    focus: "test coverage quality and regression protection"
+    focus: "XCTest, snapshot intent, reducer behavior, and SQL regression coverage"
   ui:
-    focus: "UI correctness and framework usage"
+    focus: "SwiftUI state ownership, navigation, rendering identity, and deployment-version fallbacks"
   ux-accessibility:
-    focus: "UX correctness and accessibility"
+    focus: "VoiceOver semantics, Dynamic Type, localization completeness, and task completion"
 
 declared_quality_check_file: "quality-check/bill-ios-code-check/content.md"
 

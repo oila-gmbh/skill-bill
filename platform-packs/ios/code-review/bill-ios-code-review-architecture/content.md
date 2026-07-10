@@ -27,6 +27,8 @@ Use this specialist across app targets and local SPM packages when changed code 
 
 ## Project-Specific Rules
 
+### Dependency Ownership And Boundaries
+
 - Dependency injection should use the project's established DI container rather than ad-hoc singletons, global statics, or hidden service locators
 - Respect the container's declared scopes (for example: singleton/app-lifetime, per-flow/session-scoped, and transient/per-use scopes); a dependency registered at one scope must not be resolved or cached in a way that outlives or leaks across that scope
 - New dependencies must be registered through the project's composition-root registration surface (e.g. a `DependencyContainer+Registrations.swift`-style extension), not constructed inline at call sites
@@ -34,6 +36,9 @@ Use this specialist across app targets and local SPM packages when changed code 
 - Local SPM packages must only be consumed through their declared public API; reaching into another package's internal types, or importing implementation details across a package boundary, is an architecture violation
 - A new local SPM package or new cross-package dependency must have a clear, documented reason it does not already fit an existing package boundary
 - New cross-boundary consumers should depend on a `Provider`-style protocol rather than a concrete type, so the composition root remains the single place that wires concrete implementations to their consumers
+
+### Architecture Integrity
+
 - Business workflows and invariants should stay independent of transport, rendering, and persistence details when complexity warrants that separation or the project architecture already requires it
 - Dead or unused code (parameters, variables, functions, properties, imports, whole files) left behind after a refactor should be removed rather than committed as noise that hides an incomplete refactor
 - Duplicated or competing logic (retry wrappers, validation, effects, business rules) copy-pasted across layers or stores invites divergent behavior; extract it into a shared helper rather than maintaining parallel copies
@@ -41,6 +46,7 @@ Use this specialist across app targets and local SPM packages when changed code 
 - UI-adjacent or utility code placed in the wrong module/package layer (UI leaking into a core/light package, or code pushed too low-level) breaks the intended dependency direction and grows the build graph unnecessarily
 - Legacy Combine/callback-based store patterns (cancellables held in state, delay chains) used in place of the current Effect-driven architecture mix thread-safety concerns into the store and should migrate to the established pattern
 - Report architecture issues only when the change creates or worsens concrete risk: maintainability loss, duplicated ownership, unclear scope lifetime, testability loss, or coupling that makes the package graph harder to reason about
+- For Blocker or Major findings, describe the concrete dependency-cycle or ownership-boundary failure scenario.
 
 ## Repo-Local Knowledge
 

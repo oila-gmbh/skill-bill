@@ -4,14 +4,14 @@ issue_key: "SKILL-112"
 feature_name: "pack-specialist-parity"
 parent_spec_path: ".feature-specs/SKILL-112-pack-specialist-parity/spec.md"
 spec_source: "local"
-status: "blocked"
+status: "in_progress"
 execution_model: "same_branch_commit_per_subtask"
 base_branch: "main"
 feature_branch: "feat/SKILL-112-pack-specialist-parity"
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 6
-  action: "blocked"
+  subtask_id: 7
+  action: "resume"
 subtasks:
 - id: 1
   name: "Code-review skill structure standard"
@@ -93,16 +93,12 @@ subtasks:
 - id: 6
   name: "Python pack rebuild"
   spec_path: ".feature-specs/SKILL-112-pack-specialist-parity/spec_subtask_6_python_pack_rebuild.md"
-  status: "blocked"
+  status: "complete"
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260710-163533-07w0"
-  blocked_reason: "Phase output reported status 'blocked'. Rebuilt the Python review\
-    \ baseline and ten specialists, aligned native-agent descriptions, and removed\
-    \ Python from the pack-wide conformance exemption. Completion is blocked because\
-    \ the conformance test also rejects preserved platform-manifest and quality-check\
-    \ content outside the plan's authorized edit surface."
-  last_resumable_step: "implement"
+  blocked_reason: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -113,12 +109,12 @@ subtasks:
 - id: 7
   name: "iOS pack alignment"
   spec_path: ".feature-specs/SKILL-112-pack-specialist-parity/spec_subtask_7_ios_pack_alignment.md"
-  status: "pending"
+  status: "in_progress"
   branch: null
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wftr-20260710-173154-ufao"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "review"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []

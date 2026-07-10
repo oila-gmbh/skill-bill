@@ -1,32 +1,32 @@
 contract_version: "0.1"
 agents:
   - name: bill-ios-code-review-api-contracts
-    description: "Use when reviewing iOS changes for API contracts, request validation, and serialization."
+    description: "iOS api contracts specialist code reviewer. Runs against REST/Codable decoding and Apollo GraphQL schema/cache compatibility. Returns a Risk Register in the F-XXX bullet format."
     compose: governed-content
   - name: bill-ios-code-review-architecture
-    description: "Use when reviewing iOS changes for architecture, boundaries, and dependency direction."
+    description: "iOS architecture specialist code reviewer. Runs against Swift module boundaries, dependency injection, and SPM package ownership. Returns a Risk Register in the F-XXX bullet format."
     compose: governed-content
   - name: bill-ios-code-review-performance
-    description: "Use when reviewing iOS changes for performance risks on hot paths, blocking I/O, and resource usage."
+    description: "iOS performance specialist code reviewer. Runs against SwiftUI recomputation, ImageIO downsampling, and import-loop memory pressure. Returns a Risk Register in the F-XXX bullet format."
     compose: governed-content
   - name: bill-ios-code-review-persistence
-    description: "Use when reviewing iOS changes for persistence, transactions, migrations, and data consistency."
+    description: "iOS persistence specialist code reviewer. Runs against Core Data and SwiftData context/migration safety plus GRDB transaction consistency. Returns a Risk Register in the F-XXX bullet format."
     compose: governed-content
   - name: bill-ios-code-review-platform-correctness
-    description: "Use when reviewing iOS changes for lifecycle, concurrency, threading, and logic correctness."
+    description: "iOS platform correctness specialist code reviewer. Runs against Swift actor isolation, Sendable crossings, task cancellation, and iOS lifecycle correctness. Returns a Risk Register in the F-XXX bullet format."
     compose: governed-content
   - name: bill-ios-code-review-reliability
-    description: "Use when reviewing iOS changes for timeouts, retries, background work, and observability."
+    description: "iOS reliability specialist code reviewer. Runs against BGTaskScheduler, background URLSession relaunch recovery, expiration, and interrupted sync. Returns a Risk Register in the F-XXX bullet format."
     compose: governed-content
   - name: bill-ios-code-review-security
-    description: "Use when reviewing iOS changes for secrets handling, auth, and sensitive-data exposure."
+    description: "iOS security specialist code reviewer. Runs against Keychain accessibility, ATS exceptions, privacy-safe Logger output, and pasteboard expiry. Returns a Risk Register in the F-XXX bullet format."
     compose: governed-content
   - name: bill-ios-code-review-testing
-    description: "Use when reviewing iOS changes for test coverage quality and regression protection."
+    description: "iOS testing specialist code reviewer. Runs against XCTest, snapshot intent, reducer behavior, and SQL regression coverage. Returns a Risk Register in the F-XXX bullet format."
     compose: governed-content
   - name: bill-ios-code-review-ui
-    description: "Use when reviewing iOS changes for UI correctness and framework usage."
+    description: "iOS ui specialist code reviewer. Runs against SwiftUI state ownership, navigation, rendering identity, and deployment-version fallbacks. Returns a Risk Register in the F-XXX bullet format."
     compose: governed-content
   - name: bill-ios-code-review-ux-accessibility
-    description: "Use when reviewing iOS changes for UX correctness and accessibility."
+    description: "iOS ux accessibility specialist code reviewer. Runs against VoiceOver semantics, Dynamic Type, localization completeness, and task completion. Returns a Risk Register in the F-XXX bullet format."
     compose: governed-content

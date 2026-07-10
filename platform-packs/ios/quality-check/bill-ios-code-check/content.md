@@ -13,12 +13,17 @@ Use when validating iOS changes with the shared quality-check contract.
 ## Execution Steps
 
 1. Determine the files in scope for the current unit of work.
-2. Run the platform's quality-check entrypoint and capture the failures.
-3. Fix only the failures that belong to the scoped work unless the contract says otherwise.
-4. Re-run the quality check until the scoped failures are resolved.
+2. Discover build files, repository wrappers, and CI configuration before falling back to direct tool commands. Inspect `Makefile`, `Mintfile`, fastlane lanes, Tuist configuration, CI workflows, and other project-owned entrypoints.
+3. Identify the pack's quality-check entrypoint and prefer the repository-owned command that CI uses.
+4. Discover the Xcode workspace or project, shared schemes, build configuration, destinations, and CI-selected simulator settings. Never invent a scheme or destination.
+5. For an Xcode-backed scope, run the repository entrypoint or an appropriate `xcodebuild build` or `xcodebuild test` command with the discovered workspace-or-project, scheme, configuration, and destination. For an SPM-only scope, run `swift build` and `swift test`.
+6. Discover `.swiftlint.yml`, `.swiftformat`, and other SwiftFormat configuration before running their configured lint or formatting checks.
+7. Capture scoped failures and fix only failures that belong to the current work unless the contract says otherwise.
 
 ## Fix Strategy
 
-- Prefer root-cause fixes over suppressions or TODO comments.
+- Use this priority-ordered fix ladder: build and configuration failures; compile and type errors; behavioral test failures; lint failures; formatting failures.
+- Prefer root-cause fixes and never suppress a scoped failure with inline `swiftlint:disable`, an equivalent suppression, weakened configuration, or a TODO-based bypass.
+- Re-run targeted checks after each fix category. Escalate to the full suite when targeted checks cannot establish safety.
 - Keep changes aligned with the project's existing conventions and build tooling.
-- Call out any blocker that requires a maintainer decision instead of guessing.
+- Escalate missing schemes, genuine tool defects, and policy decisions to maintainers instead of guessing.

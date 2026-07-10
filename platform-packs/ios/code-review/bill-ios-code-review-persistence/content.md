@@ -22,9 +22,18 @@ Review only persistence issues that can corrupt data, break consistency, or crea
 
 ## Applicability
 
-Use this specialist for the local persistence layer: GRDB (or equivalent SQLite wrapper) migrations, schema definitions, statement-level SQL, and code paths that participate in offline-first sync of persisted data.
+Use the Core Data/SwiftData branch for managed models, contexts, stores, and model migrations. Use the GRDB/SQLite branch for migrations, schema definitions, statement-level SQL, transactions, and code paths that participate in offline-first sync of persisted data.
 
 ## Project-Specific Rules
+
+### Core Data And SwiftData
+
+- `NSManagedObjectContext` access must occur through `perform` or `performAndWait` on the context's queue; reject managed-object crossings that violate context isolation
+- Context merge policies must be selected deliberately for the ownership and conflict model; never rely on an accidental default when parent/child or background contexts can update the same records
+- Lightweight Core Data migration must only be used for model changes it can infer safely; require a mapping model or staged/custom migration for transformations, splits, merges, or semantic backfills
+- SwiftData model and `ModelContext` ownership must preserve actor/thread isolation, and schema changes must carry a migration plan that keeps existing stores readable
+
+### GRDB, SQLite, And Offline Sync
 
 - A migration that has already shipped is frozen: never edit an already-applied migration's body to add or change behavior, even to fix a bug — ship a new, additive migration instead
 - Migrations are additive-only; do not drop columns/tables or narrow types in a way that breaks a device that has not yet migrated forward, unless the project has an explicit deprecation/backfill path for that
@@ -33,7 +42,7 @@ Use this specialist for the local persistence layer: GRDB (or equivalent SQLite 
 - A SQL statement assembled by regex/string substitution against another statement's raw text (e.g. stripping a join by pattern-matching the `.sql` file) is fragile: its correctness is coupled to the exact formatting of the source SQL. Flag it, and note that a test which only asserts substring presence/absence does not prove the produced statement is valid runnable SQL
 - Changes that touch deep/offline sync of persisted data must be evaluated for blast radius: what happens to already-synced records, in-flight sync operations, and conflict resolution when this change ships to a device mid-sync
 - Reads and writes that participate in sync must preserve whatever consistency guarantee the existing sync design relies on (e.g. last-write-wins, versioned records, or conflict markers) — do not silently change write semantics for a table that sync depends on
-- For Blocker or Major findings, explain the data-loss, migration-failure, or sync-inconsistency consequence explicitly
+- For Blocker or Major findings, describe the concrete data-loss, consistency, or durability failure scenario.
 
 ## Repo-Local Knowledge
 
