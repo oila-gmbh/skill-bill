@@ -37,17 +37,19 @@ Add other specialists only when the changed files justify them.
 
 ## Diff-Signal Routing Table
 
-- Package layout, module/workspace boundaries, import direction, dependency injection, service boundaries, interface ownership, or framework coupling -> `architecture` specialist.
-- Runtime semantics, nil/interface edge cases, errors, defer/panic/recover behavior, goroutines, channels, context cancellation, or time/date logic -> `platform-correctness` specialist.
-- HTTP handlers, gRPC/protobuf/OpenAPI, request/response DTOs, JSON tags, validation, status codes, or backward compatibility -> `api-contracts` specialist.
-- `database/sql`, sqlc, GORM, Ent, migrations, transactions, locking, connection lifecycle, or idempotent writes -> `persistence` specialist.
-- External clients, queues, workers, schedulers, retries, timeouts, context propagation, observability, degradation, or backpressure -> `reliability` specialist.
-- Auth/authz, secrets, unsafe parsing, path traversal, subprocess/shell usage, SSRF, uploads, templates, or sensitive logs -> `security` specialist.
-- Test files, table tests, fixtures, fakes, golden files, race-sensitive tests, integration boundaries, weak assertions, or missing regression proof -> `testing` specialist.
-- Hot paths, allocations, reflection, goroutine leaks, unbounded buffers, N+1 queries, repeated network/filesystem work, or serialization waste -> `performance` specialist.
-- `html/template`, `text/template`, htmx-style fragments, admin pages, generated reports, terminal UI, or dashboards -> `ui` specialist.
-- Server-rendered semantics, form feedback, keyboard/focus behavior, localization-sensitive copy, or assistive technology affordances -> `ux-accessibility` specialist.
-- Changed tests that look suspiciously weak, tautological, or coverage-padding -> `bill-unit-test-value-check`.
+| Signal in the diff | Specialist review to run |
+|---|---|
+| Package layout, module/workspace boundaries, import direction, dependency injection, service boundaries, interface ownership, framework coupling | `bill-go-code-review-architecture` |
+| Runtime semantics, nil/interface edge cases, errors, defer/panic/recover behavior, goroutines, channels, context cancellation, time/date logic | `bill-go-code-review-platform-correctness` |
+| HTTP handlers, gRPC/protobuf/OpenAPI, request/response DTOs, JSON tags, validation, status codes, backward compatibility | `bill-go-code-review-api-contracts` |
+| `database/sql`, sqlc, GORM, Ent, migrations, transactions, locking, connection lifecycle, idempotent writes | `bill-go-code-review-persistence` |
+| External clients, queues, workers, schedulers, retries, timeouts, context propagation, observability, degradation, backpressure | `bill-go-code-review-reliability` |
+| Auth/authz, secrets, unsafe parsing, path traversal, subprocess/shell usage, SSRF, uploads, templates, sensitive logs | `bill-go-code-review-security` |
+| Test files, table tests, fixtures, fakes, golden files, race-sensitive tests, integration boundaries, weak assertions, missing regression proof | `bill-go-code-review-testing` |
+| Changed tests look suspiciously weak, tautological, or coverage-padding | `bill-unit-test-value-check` |
+| Hot paths, allocations, reflection, goroutine leaks, unbounded buffers, N+1 queries, repeated network/filesystem work, serialization waste | `bill-go-code-review-performance` |
+| `html/template`, `text/template`, htmx-style fragments, admin pages, generated reports, terminal UI, or dashboards | `bill-go-code-review-ui` |
+| Server-rendered semantics, form feedback, keyboard/focus behavior, localization-sensitive copy, assistive technology affordances | `bill-go-code-review-ux-accessibility` |
 
 ## Mixed Diffs
 

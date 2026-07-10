@@ -45,4 +45,5 @@ Use this specialist for Go backend/service, queue, worker, scheduler, cache, ext
 - Rate limiting, backpressure, and batch sizing should protect downstream systems and avoid retry amplification under load
 - Long-running worker startup, shutdown, and restart paths must initialize and release clients, connections, subscriptions, locks, and process-local state predictably
 - Do not hold locks, open streams, file handles, external leases, connections, or other scarce resource handles across remote I/O or long waits unless the contract explicitly requires it
+- For Blocker or Major findings, describe the production failure scenario such as outage, stuck work, retry storm, stale data, lost observability, or unrecoverable partial failure
 - For Blocker or Major findings, describe the concrete availability, duplication, or cleanup failure scenario.

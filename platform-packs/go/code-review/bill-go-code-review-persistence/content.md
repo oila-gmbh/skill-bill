@@ -46,6 +46,8 @@ Use this specialist for backend/server persistence code only: repositories, `dat
 - Migration rollout must consider backfills, dual-read/dual-write windows, and replay or rebuild paths when contracts or projections change
 - ORM or query-helper convenience helpers (`sqlx`, `sqlc`, GORM, Ent, builders) must not hide missing filters, accidental N+1 query/write patterns, implicit hooks, or silent partial updates in persistence-critical paths
 - Check database defaults, casts, enum storage, and timestamp behavior for write/read drift against the intended domain and API contract
+- For Blocker or Major findings, explain the data-loss, stale-write, cross-tenant, migration, or consistency consequence explicitly
+
 ### ORM, SQL, And Query Boundaries
 
 - Eager/lazy loading choices must not create N+1 reads, over-broad hydration, or stale entity assumptions in persistence-critical or hot paths
