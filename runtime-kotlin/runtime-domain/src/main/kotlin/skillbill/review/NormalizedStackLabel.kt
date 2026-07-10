@@ -73,17 +73,19 @@ private fun plausibleSkillSlug(value: String): Boolean = value.matches(Regex("^[
 private fun knownStackSlug(value: String): String? {
   val slug = normalizeTelemetrySlug(value).takeIf(String::isNotEmpty) ?: return null
   val tokens = slug.split("-").toSet()
-  if ("kmp" in tokens || ("kotlin" in tokens && "multiplatform" in tokens) ||
-    ("kotlin" in tokens && "multi" in tokens && "platform" in tokens)
-  ) {
-    return "kmp"
+  val knownPlatformSlug = knownPlatformSlugs.firstOrNull { it in tokens }
+  return when {
+    isKmpSlug(tokens) -> "kmp"
+    knownPlatformSlug != null -> knownPlatformSlug
+    slug.matches(Regex("^[a-z0-9][a-z0-9-]*$")) && value.trim().lowercase() == slug -> slug
+    else -> null
   }
-  knownPlatformSlugs.firstOrNull { it in tokens }?.let { return it }
-  if (slug.matches(Regex("^[a-z0-9][a-z0-9-]*$")) && value.trim().lowercase() == slug) {
-    return slug
-  }
-  return null
 }
+
+private fun isKmpSlug(tokens: Set<String>): Boolean = "kmp" in tokens || isKotlinMultiplatformSlug(tokens)
+
+private fun isKotlinMultiplatformSlug(tokens: Set<String>): Boolean =
+  "kotlin" in tokens && ("multiplatform" in tokens || ("multi" in tokens && "platform" in tokens))
 
 private val knownPlatformSlugs = listOf(
   "kmp",

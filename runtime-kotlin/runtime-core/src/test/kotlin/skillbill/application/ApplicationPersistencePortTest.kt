@@ -50,6 +50,7 @@ import skillbill.ports.persistence.model.FeatureVerifySessionSummary
 import skillbill.ports.persistence.model.LearningResolution
 import skillbill.ports.persistence.model.ReviewRepositoryStatsSnapshot
 import skillbill.ports.persistence.model.TelemetryOutboxRecord
+import skillbill.ports.persistence.model.TelemetryReconciliationRequest
 import skillbill.ports.persistence.model.TelemetryReconciliationResult
 import skillbill.ports.persistence.model.WorkflowStateRecord
 import skillbill.ports.review.EmptyReviewAttributionPort
@@ -319,6 +320,33 @@ class ApplicationPersistencePortTest {
     assertEquals(listOf(RUNTIME_EXCEPTION_EVENT), outboxRepository.enqueuedEventNames)
     assertEquals(listOf(1L, 2L), client.sentBatchIds.flatten())
   }
+
+  @Test
+  fun `manual sync forces reconciliation each flush while auto sync keeps the periodic cadence guard`() {
+    val manualReconciliation = RecordingTelemetryReconciliationRepository()
+    telemetrySyncService(manualReconciliation).run {
+      sync(dbOverride = null)
+      sync(dbOverride = null)
+    }
+
+    val autoReconciliation = RecordingTelemetryReconciliationRepository()
+    telemetrySyncService(autoReconciliation).autoSync(dbOverride = null)
+
+    assertEquals(listOf(0L, 0L), manualReconciliation.cadenceSeconds)
+    assertEquals(listOf(100, 100), manualReconciliation.requests.map { it.maximumBatchSize })
+    assertEquals(listOf(300L), autoReconciliation.cadenceSeconds)
+  }
+
+  private fun telemetrySyncService(reconciliation: RecordingTelemetryReconciliationRepository): TelemetryService =
+    TelemetryService(
+      database = FakeDatabaseSessionFactory(
+        telemetryOutbox = InMemoryTelemetryOutboxRepository(),
+        telemetryReconciliation = reconciliation,
+      ),
+      settingsProvider = FakeTelemetrySettingsProvider(enabled = true),
+      configStore = FakeTelemetryConfigStore,
+      telemetryClient = FakeTelemetryClient(),
+    )
 
   @Test
   fun `workflow service owns implement rows list resume and continuation through ports`() {
@@ -1615,21 +1643,23 @@ private class FakeDatabaseSessionFactory(
 }
 
 private object NoopTelemetryReconciliationRepository : TelemetryReconciliationRepository {
-  override fun reconcileStaleSessions(level: String): TelemetryReconciliationResult =
+  override fun reconcileStaleSessions(request: TelemetryReconciliationRequest): TelemetryReconciliationResult =
     TelemetryReconciliationResult.Empty
 }
 
 private class RecordingTelemetryReconciliationRepository : TelemetryReconciliationRepository {
-  val levels = mutableListOf<String>()
+  val requests = mutableListOf<TelemetryReconciliationRequest>()
+  val levels: List<String> get() = requests.map(TelemetryReconciliationRequest::level)
+  val cadenceSeconds: List<Long> get() = requests.map(TelemetryReconciliationRequest::cadenceSeconds)
 
-  override fun reconcileStaleSessions(level: String): TelemetryReconciliationResult {
-    levels += level
+  override fun reconcileStaleSessions(request: TelemetryReconciliationRequest): TelemetryReconciliationResult {
+    requests += request
     return TelemetryReconciliationResult.Empty
   }
 }
 
 private object ThrowingTelemetryReconciliationRepository : TelemetryReconciliationRepository {
-  override fun reconcileStaleSessions(level: String): TelemetryReconciliationResult =
+  override fun reconcileStaleSessions(request: TelemetryReconciliationRequest): TelemetryReconciliationResult =
     error("SQLITE_BUSY: database is locked")
 }
 

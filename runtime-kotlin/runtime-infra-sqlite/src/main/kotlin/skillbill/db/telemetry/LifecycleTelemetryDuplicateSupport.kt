@@ -2,8 +2,6 @@ package skillbill.db.telemetry
 
 import java.sql.Connection
 
-enum class TerminalSaveOutcome { FIRST_TERMINAL, DUPLICATE }
-
 fun lifecycleAlreadyFinished(connection: Connection, tableName: String, sessionId: String): Boolean =
   connection.prepareStatement("SELECT finished_at FROM $tableName WHERE session_id = ?").use { statement ->
     statement.setString(1, sessionId)

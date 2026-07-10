@@ -49,6 +49,7 @@ fun featureImplementFinishedPayload(row: Map<String, Any?>, level: String): Map<
     put("boundary_history_value", row.stringOrEmpty("boundary_history_value").ifBlank { "none" })
     put("pr_created", row.booleanFromInt("pr_created"))
     put("child_steps", JsonSupport.parseArrayOrEmpty(row.stringOrEmpty("child_steps_json")))
+    put("duration_seconds", durationSeconds(row))
     if (level == "full") {
       put("plan_deviation_notes", row.stringOrEmpty("plan_deviation_notes"))
     }
@@ -75,6 +76,7 @@ fun featureTaskRuntimeFinishedPayload(row: Map<String, Any?>, level: String): Ma
     put("audit_gap_iteration_count", row.intOrZero("audit_gap_iteration_count"))
     put("last_incomplete_phase", row.stringOrEmpty("last_incomplete_phase"))
     put("blocked_reason", row.stringOrEmpty("blocked_reason"))
+    put("duration_seconds", durationSeconds(row))
     if (level == "full") {
       put("resolved_branch", row.stringOrEmpty("resolved_branch"))
     }

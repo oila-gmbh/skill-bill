@@ -7,13 +7,14 @@ import skillbill.db.core.DatabaseRuntime
 import skillbill.db.telemetry.LifecycleTelemetryStore
 import skillbill.error.InvalidTelemetryEventSchemaError
 import skillbill.goalrunner.model.GoalRunnerStopReason
-import skillbill.mcp.telemetry.TelemetryEventSchemaPaths
-import skillbill.mcp.telemetry.TelemetryEventSchemaValidator
-import skillbill.mcp.telemetry.TELEMETRY_EVENT_CONTRACT_VERSION
 import skillbill.infrastructure.sqlite.review.ReviewRuntime
 import skillbill.infrastructure.sqlite.review.ReviewStatsRuntime
+import skillbill.mcp.telemetry.TELEMETRY_EVENT_CONTRACT_VERSION
+import skillbill.mcp.telemetry.TelemetryEventSchemaPaths
+import skillbill.mcp.telemetry.TelemetryEventSchemaValidator
 import skillbill.ports.telemetry.model.toReviewFinishedTelemetryPayload
 import skillbill.review.ReviewParser
+import skillbill.review.normalizeTelemetrySlug
 import skillbill.telemetry.model.FeatureImplementFinishedRecord
 import skillbill.telemetry.model.FeatureImplementStartedRecord
 import skillbill.telemetry.model.FeatureTaskRuntimeFinishedRecord
@@ -66,6 +67,8 @@ class TelemetryReliabilityContractTest {
       goalFinishedEnvelope(),
       goalIssueFinishedEnvelope(),
       qualityCheckFinishedEnvelope(),
+      featureTaskProseFinishedEnvelope(),
+      featureTaskRuntimeFinishedEnvelope(),
     )
 
     durationEnvelopes.forEach { envelope ->
@@ -76,9 +79,15 @@ class TelemetryReliabilityContractTest {
     val routedEnvelopes = listOf(qualityCheckFinishedEnvelope(), reviewFinishedEnvelope())
     routedEnvelopes.forEach { envelope ->
       listOf("routed_skill", "detected_stack").forEach { key -> assertNonBlankString(envelope, key) }
-      envelope["platform_slug"]?.let { assertNonBlankString(envelope, "platform_slug") }
+      assertNormalizedSlug(envelope, "detected_stack")
+      envelope["platform_slug"]?.let { assertNormalizedSlug(envelope, "platform_slug") }
       TelemetryEventSchemaValidator.validate(envelope = envelope, eventName = envelope["event_name"] as String)
     }
+
+    val review = reviewFinishedEnvelope()
+    assertEquals("kmp", review["detected_stack"], "the mixed KMP routing label must be normalized to its slug.")
+    assertEquals("kmp", review["platform_slug"])
+    assertEquals("KMP/Kotlin mixed workspace", review["detected_stack_detail"])
   }
 
   @Test
@@ -127,14 +136,38 @@ class TelemetryReliabilityContractTest {
   @Test
   fun `semantic reliability assertions reject mutations of real emitted payloads`() {
     assertFailsWith<AssertionError> { assertPositiveBoundedDuration(goalFinishedEnvelope("duration_seconds" to 0)) }
-    assertFailsWith<AssertionError> { assertNonBlankString(reviewFinishedEnvelope().apply { put("detected_stack", " ") }, "detected_stack") }
+    assertFailsWith<AssertionError> {
+      assertPositiveBoundedDuration(featureTaskProseFinishedEnvelope("duration_seconds" to 0))
+    }
+    assertFailsWith<AssertionError> {
+      assertPositiveBoundedDuration(featureTaskRuntimeFinishedEnvelope("duration_seconds" to null))
+    }
+    assertFailsWith<AssertionError> {
+      assertNonBlankString(reviewFinishedEnvelope().apply { put("detected_stack", " ") }, "detected_stack")
+    }
+    assertFailsWith<AssertionError> {
+      val unnormalized = reviewFinishedEnvelope().apply { put("detected_stack", "KMP/Kotlin mixed workspace") }
+      assertNormalizedSlug(unnormalized, "detected_stack")
+    }
     assertFailsWith<AssertionError> {
       val incomplete = goalIssueFinishedEnvelope().apply { remove("first_started_at") }
       assertNonBlankString(incomplete, "first_started_at")
     }
     assertFailsWith<AssertionError> {
-      val inaccurate = goalIssueFinishedEnvelope().apply { put("total_invocations", "0") }
-      assertTrue(inaccurate["total_invocations"] is Int, "total_invocations must remain an integer")
+      val inaccurate = goalIssueFinishedEnvelopeWithSegmentStarts(3).apply { put("total_invocations", 9) }
+      assertAccurateInvocationAggregate(inaccurate, expectedSegmentStarts = 3)
+    }
+  }
+
+  @Test
+  fun `aggregate accuracy assertion rejects a total inconsistent with the emitted segment history`() {
+    val segmentStarts = 3
+    assertAccurateInvocationAggregate(goalIssueFinishedEnvelopeWithSegmentStarts(segmentStarts), segmentStarts)
+    assertFailsWith<AssertionError> {
+      assertAccurateInvocationAggregate(
+        goalIssueFinishedEnvelopeWithSegmentStarts(segmentStarts).apply { put("total_invocations", segmentStarts + 4) },
+        segmentStarts,
+      )
     }
   }
 
@@ -176,6 +209,26 @@ class TelemetryReliabilityContractTest {
     val value = envelope[key] as? String
     assertNotNull(value, "$key must be present as a string.")
     assertTrue(value.trim().isNotEmpty(), "$key must not be blank.")
+  }
+
+  private fun assertNormalizedSlug(envelope: Map<String, Any?>, key: String) {
+    val value = envelope[key] as? String
+    assertNotNull(value, "$key must be present as a string.")
+    assertEquals(
+      normalizeTelemetrySlug(value),
+      value,
+      "$key must be emitted as a normalized slug, not a verbatim routing label.",
+    )
+  }
+
+  private fun assertAccurateInvocationAggregate(envelope: Map<String, Any?>, expectedSegmentStarts: Int) {
+    val totalInvocations = envelope["total_invocations"] as? Int
+    assertNotNull(totalInvocations, "total_invocations must be present as an integer.")
+    assertEquals(
+      expectedSegmentStarts,
+      totalInvocations,
+      "total_invocations must equal the number of goal segments recorded for the issue.",
+    )
   }
 
   private fun assertBlockedReason(envelope: Map<String, Any?>) {
@@ -232,51 +285,73 @@ class TelemetryReliabilityContractTest {
       )
     }
 
+  private fun goalIssueFinishedEnvelopeWithSegmentStarts(segmentStarts: Int): LinkedHashMap<String, Any?> =
+    emittedEnvelope("skillbill_goal_issue_finished") { store, _ ->
+      repeat(segmentStarts) { index ->
+        store.goalStarted(
+          goalStartedRecord(parentWorkflowId = "wfl-parent").copy(workflowId = "wfl-parent:seg:$index"),
+          "full",
+        )
+      }
+      store.goalIssueFinished(
+        GoalIssueFinishedRecord(
+          issueKey = "SKILL-109",
+          parentWorkflowId = "wfl-parent",
+          status = "completed",
+          subtasksComplete = 6,
+          subtasksBlocked = 0,
+          subtasksSkipped = 0,
+          finishedAt = "2026-07-09T08:20:00Z",
+          mode = "runtime",
+        ),
+        "full",
+      )
+    }
+
   private fun featureTaskProseFinishedEnvelope(vararg overrides: Pair<String, Any?>): LinkedHashMap<String, Any?> =
-    emittedEnvelope("skillbill_feature_task_prose_finished") { store, _ ->
-      store.featureImplementStarted(
-        FeatureImplementStartedRecord(
-          sessionId = "fis-reliability",
-          issueKeyProvided = true,
-          issueKeyType = "linear",
-          specInputTypes = listOf("markdown_file"),
-          specWordCount = 100,
-          featureSize = "MEDIUM",
-          featureName = "reliability",
-          rolloutNeeded = false,
-          acceptanceCriteriaCount = 3,
-          openQuestionsCount = 0,
-          specSummary = "Telemetry reliability",
-        ),
-        "full",
-      )
-      store.featureImplementFinished(
-        FeatureImplementFinishedRecord(
-          sessionId = "fis-reliability",
-          completionStatus = "completed",
-          planCorrectionCount = 0,
-          planTaskCount = 3,
-          planPhaseCount = 2,
-          featureFlagUsed = false,
-          featureFlagPattern = "none",
-          filesCreated = 1,
-          filesModified = 2,
-          tasksCompleted = 3,
-          reviewIterations = 1,
-          auditResult = "all_pass",
-          auditIterations = 1,
-          validationResult = "pass",
-          boundaryHistoryWritten = false,
-          boundaryHistoryValue = "none",
-          prCreated = false,
-          planDeviationNotes = "",
-          childSteps = emptyList(),
-        ),
-        "full",
-      )
+    emittedEnvelope("skillbill_feature_task_prose_finished") { store, connection ->
+      store.featureImplementStarted(featureImplementStartedRecord(), "full")
+      ageSession(connection, "feature_implement_sessions", "fis-reliability", 480)
+      store.featureImplementFinished(featureImplementFinishedRecord(), "full")
     }.apply {
       overrides.forEach { (key, value) -> put(key, value) }
     }
+
+  private fun featureImplementStartedRecord(): FeatureImplementStartedRecord = FeatureImplementStartedRecord(
+    sessionId = "fis-reliability",
+    issueKeyProvided = true,
+    issueKeyType = "linear",
+    specInputTypes = listOf("markdown_file"),
+    specWordCount = 100,
+    featureSize = "MEDIUM",
+    featureName = "reliability",
+    rolloutNeeded = false,
+    acceptanceCriteriaCount = 3,
+    openQuestionsCount = 0,
+    specSummary = "Telemetry reliability",
+  )
+
+  private fun featureImplementFinishedRecord(): FeatureImplementFinishedRecord = FeatureImplementFinishedRecord(
+    sessionId = "fis-reliability",
+    completionStatus = "completed",
+    planCorrectionCount = 0,
+    planTaskCount = 3,
+    planPhaseCount = 2,
+    featureFlagUsed = false,
+    featureFlagPattern = "none",
+    filesCreated = 1,
+    filesModified = 2,
+    tasksCompleted = 3,
+    reviewIterations = 1,
+    auditResult = "all_pass",
+    auditIterations = 1,
+    validationResult = "pass",
+    boundaryHistoryWritten = false,
+    boundaryHistoryValue = "none",
+    prCreated = false,
+    planDeviationNotes = "",
+    childSteps = emptyList(),
+  )
 
   private fun featureVerifyFinishedEnvelope(vararg overrides: Pair<String, Any?>): LinkedHashMap<String, Any?> =
     emittedEnvelope("skillbill_feature_verify_finished") { store, connection ->
@@ -303,11 +378,12 @@ class TelemetryReliabilityContractTest {
     }
 
   private fun featureTaskRuntimeFinishedEnvelope(vararg overrides: Pair<String, Any?>): LinkedHashMap<String, Any?> =
-    emittedEnvelope("skillbill_feature_task_runtime_finished") { store, _ ->
+    emittedEnvelope("skillbill_feature_task_runtime_finished") { store, connection ->
       store.featureTaskRuntimeStarted(
         FeatureTaskRuntimeStartedRecord("ftr-reliability", "MEDIUM", "SKILL-109", "reliability"),
         "full",
       )
+      ageSession(connection, "feature_task_runtime_sessions", "ftr-reliability", 540)
       store.featureTaskRuntimeFinished(
         FeatureTaskRuntimeFinishedRecord(
           "ftr-reliability",
@@ -406,7 +482,9 @@ class TelemetryReliabilityContractTest {
       }
       val parsed = requireNotNull(JsonSupport.parseObjectOrNull(payloadJson))
       linkedMapOf<String, Any?>().apply {
-        val contractEventName = if (eventName == "skillbill_review_finished") eventName else {
+        val contractEventName = if (eventName == "skillbill_review_finished") {
+          eventName
+        } else {
           eventName.removePrefix("skillbill_")
         }
         put("event_name", contractEventName)
@@ -450,9 +528,19 @@ class TelemetryReliabilityContractTest {
     }
   }
 
-  private fun featureTaskHealthPayload(): LinkedHashMap<String, Any?> = linkedMapOf(
-    "workflow" to "bill-feature-task",
-    "total_runs" to 1,
-    "duplicate_terminal_finished_events" to 1,
-  )
+  private fun featureTaskHealthPayload(): LinkedHashMap<String, Any?> {
+    val dbPath = Files.createTempDirectory("telemetry-reliability-health").resolve("metrics.db")
+    return DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val store = LifecycleTelemetryStore(connection)
+      store.featureImplementStarted(featureImplementStartedRecord(), "full")
+      store.featureImplementFinished(featureImplementFinishedRecord(), "full")
+      store.featureImplementFinished(featureImplementFinishedRecord(), "full")
+      val stats = ReviewStatsRuntime.featureImplementStats(connection)
+      linkedMapOf(
+        "workflow" to "bill-feature-task",
+        "total_runs" to stats.totalRuns,
+        "duplicate_terminal_finished_events" to stats.duplicateTerminalFinishedEvents,
+      )
+    }
+  }
 }

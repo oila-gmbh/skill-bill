@@ -81,6 +81,29 @@ class StaleSessionReconcilerTest {
       )
     }
   }
+
+  @Test
+  fun `zero cadence forces reconciliation on every run while the batch budget stays bounded`() {
+    val dbPath = Files.createTempDirectory("forced-reconciliation").resolve("metrics.db")
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      seedStaleLifecycleSessions(connection)
+      val request = TelemetryReconciliationRequest(level = "full", cadenceSeconds = 0, maximumBatchSize = 2)
+
+      val first = reconcileStaleTelemetrySessions(connection, request)
+      assertEquals(2, first.processedCandidates)
+      assertTrue(!first.skippedByCadence)
+
+      val second = reconcileStaleTelemetrySessions(connection, request)
+      assertEquals(2, second.processedCandidates)
+      assertTrue(!second.skippedByCadence)
+
+      val third = reconcileStaleTelemetrySessions(connection, request)
+      assertEquals(0, third.processedCandidates)
+      assertTrue(!third.skippedByCadence)
+      assertEquals(4, terminalLifecycleEventCount(connection))
+    }
+  }
+
   @Test
   fun `stale lifecycle sessions are closed and emit exactly one terminal event`() {
     val dbPath = Files.createTempDirectory("stale-reconciler-test").resolve("metrics.db")

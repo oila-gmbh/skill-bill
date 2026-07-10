@@ -48,7 +48,7 @@ class TelemetryService(
       if (!settings.enabled) {
         TelemetrySyncRuntime.disabledSync(settings)
       } else {
-        reconcileBeforeSync(settings.level, dbOverride)
+        reconcileBeforeSync(TelemetryReconciliationRequest(level = settings.level, cadenceSeconds = 0L), dbOverride)
         TelemetrySyncRuntime.syncTelemetry(
           settings,
           sessionTelemetryOutboxRepository(database, dbOverride),
@@ -64,7 +64,7 @@ class TelemetryService(
   fun autoSync(dbOverride: String? = null) {
     val settings = telemetrySettingsOrNull(settingsProvider)
     if (settings == null || !settings.enabled || !database.databaseExists(dbOverride)) return
-    reconcileBeforeSync(settings.level, dbOverride)
+    reconcileBeforeSync(TelemetryReconciliationRequest(level = settings.level), dbOverride)
     TelemetrySyncRuntime.autoSyncTelemetry(
       settings,
       sessionTelemetryOutboxRepository(database, dbOverride),
@@ -103,13 +103,11 @@ class TelemetryService(
     }
   }
 
-  private fun reconcileBeforeSync(level: String, dbOverride: String?) {
+  private fun reconcileBeforeSync(request: TelemetryReconciliationRequest, dbOverride: String?) {
     if (!database.databaseExists(dbOverride)) return
     runCatching {
       database.transaction(dbOverride) { unitOfWork ->
-        unitOfWork.telemetryReconciliation.reconcileStaleSessions(
-          TelemetryReconciliationRequest(level = level),
-        )
+        unitOfWork.telemetryReconciliation.reconcileStaleSessions(request)
       }
     }.onFailure { error ->
       when (error) {

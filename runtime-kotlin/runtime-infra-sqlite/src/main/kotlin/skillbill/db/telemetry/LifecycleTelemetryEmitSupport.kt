@@ -11,11 +11,7 @@ fun emitFeatureImplementStarted(connection: Connection, sessionId: String, level
   ) { featureImplementStartedPayload(row, level) }
 }
 
-fun emitFeatureImplementFinished(
-  connection: Connection,
-  sessionId: String,
-  level: String,
-) {
+fun emitFeatureImplementFinished(connection: Connection, sessionId: String, level: String) {
   val row = lifecycleRow(connection, "feature_implement_sessions", sessionId) ?: return
   emitOnce(
     LifecycleEmitRequest(connection, row, "feature_implement_sessions", "finished_event_emitted_at"),
@@ -31,11 +27,7 @@ fun emitFeatureTaskRuntimeStarted(connection: Connection, sessionId: String, lev
   ) { featureTaskRuntimeStartedPayload(row, level) }
 }
 
-fun emitFeatureTaskRuntimeFinished(
-  connection: Connection,
-  sessionId: String,
-  level: String,
-) {
+fun emitFeatureTaskRuntimeFinished(connection: Connection, sessionId: String, level: String) {
   val row = lifecycleRow(connection, "feature_task_runtime_sessions", sessionId) ?: return
   emitOnce(
     LifecycleEmitRequest(connection, row, "feature_task_runtime_sessions", "finished_event_emitted_at"),
@@ -51,11 +43,7 @@ fun emitQualityCheckStarted(connection: Connection, sessionId: String) {
   ) { qualityCheckStartedPayload(row) }
 }
 
-fun emitQualityCheckFinished(
-  connection: Connection,
-  sessionId: String,
-  level: String,
-) {
+fun emitQualityCheckFinished(connection: Connection, sessionId: String, level: String) {
   val row = lifecycleRow(connection, "quality_check_sessions", sessionId) ?: return
   emitOnce(
     LifecycleEmitRequest(connection, row, "quality_check_sessions", "finished_event_emitted_at"),
@@ -71,11 +59,7 @@ fun emitFeatureVerifyStarted(connection: Connection, sessionId: String, level: S
   ) { featureVerifyStartedPayload(row, level) }
 }
 
-fun emitFeatureVerifyFinished(
-  connection: Connection,
-  sessionId: String,
-  level: String,
-) {
+fun emitFeatureVerifyFinished(connection: Connection, sessionId: String, level: String) {
   val row = lifecycleRow(connection, "feature_verify_sessions", sessionId) ?: return
   emitOnce(
     LifecycleEmitRequest(connection, row, "feature_verify_sessions", "finished_event_emitted_at"),

@@ -764,6 +764,8 @@ $defs:
           - high
       plan_deviation_notes:
         type: string
+      duration_seconds:
+        type: integer
       child_steps:
         type: array
         items:
@@ -1062,6 +1064,8 @@ $defs:
           decomposed outcomes emit an empty string.
       resolved_branch:
         type: string
+      duration_seconds:
+        type: integer
       estimated_phase_tokens:
         type: object
         description: >-

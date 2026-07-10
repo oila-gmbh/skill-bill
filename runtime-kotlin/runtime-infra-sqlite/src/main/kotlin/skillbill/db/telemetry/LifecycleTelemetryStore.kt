@@ -73,20 +73,22 @@ class LifecycleTelemetryStore(
 
   override fun goalStarted(record: GoalStartedRecord, level: String) {
     val outcome = saveGoalStarted(connection, record)
-    if (outcome == GoalStartedSaveOutcome.INSERTED) record.parentWorkflowId
-      ?.takeIf(String::isNotBlank)?.let { parentWorkflowId ->
-      recordGoalIssueSegmentStarted(
-        connection = connection,
-        segment = GoalIssueSegmentStart(
-          parentWorkflowId = parentWorkflowId,
-          issueKey = record.issueKey,
-          workflowId = record.workflowId,
-          startedAt = record.startedAt,
-          resumed = record.resumed,
-          mode = record.mode,
-        ),
-      )
-      }
+    if (outcome == GoalStartedSaveOutcome.INSERTED) {
+      record.parentWorkflowId
+        ?.takeIf(String::isNotBlank)?.let { parentWorkflowId ->
+          recordGoalIssueSegmentStarted(
+            connection = connection,
+            segment = GoalIssueSegmentStart(
+              parentWorkflowId = parentWorkflowId,
+              issueKey = record.issueKey,
+              workflowId = record.workflowId,
+              startedAt = record.startedAt,
+              resumed = record.resumed,
+              mode = record.mode,
+            ),
+          )
+        }
+    }
     emitGoalStarted(connection, record.workflowId, level)
   }
 

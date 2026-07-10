@@ -1,3 +1,13 @@
+## [2026-07-10] SKILL-109 Follow-up 1 telemetry reliability remediation
+Areas: runtime-kotlin/runtime-infra-sqlite reconciliation/telemetry, runtime-kotlin/runtime-application telemetry sync, runtime-kotlin/runtime-ports persistence, runtime-kotlin/runtime-domain review labels, orchestration/contracts telemetry schema
+- Goal-issue abandonment is gated to last-segment-blocked candidates (last_blocked_at NOT NULL AND latest_segment_workflow_id = last_blocked_segment_workflow_id); never-blocked or newer-active issues are never abandoned. reusable
+- Reconciliation candidate selection extracted to StaleReconciliationCandidateQuery (single static UNION-ALL CTE, ORDER BY stale_at, LIMIT batch); partial indexes back every candidate predicate; goal-issue progress recovery reconstructs aggregates from goal_run_sessions or suppresses emission loudly (never blank first_started_at). reusable
+- Pattern: manual `skill-bill telemetry sync` forces reconciliation before flush (cadenceSeconds=0, bounded batch) while autoSync keeps the independent 300s cadence guard — backlogs drain across repeated bounded runs. reusable
+- feature-task prose/runtime finished payloads now emit duration_seconds (schema + MCP inputSchema kept in parity, additive, contract_version unchanged); the request-taking TelemetryReconciliationRepository method is now primary so no impl silently reverts to an unbounded transaction.
+- NormalizedStackLabel normalizes mixed KMP/Kotlin labels to kmp; reliability contract tests now assert against real emitted outbox rows with genuine mutation-style negatives (aggregate accuracy, routing normalization).
+Feature flag: N/A
+Acceptance criteria: 18/18 implemented
+
 ## [2026-07-09] SKILL-109 terminal telemetry completeness
 Areas: runtime-kotlin/runtime-infra-sqlite reconciliation/schema, runtime-kotlin/runtime-application telemetry auto-sync, runtime-kotlin/runtime-ports persistence
 - StaleSessionReconciler now runs from TelemetryService.autoSync through a UnitOfWork reconciliation port before outbox sync, making production sync the bounded terminal-event repair trigger. reusable
