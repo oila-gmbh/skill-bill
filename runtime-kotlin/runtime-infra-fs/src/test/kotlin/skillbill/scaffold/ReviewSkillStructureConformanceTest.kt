@@ -211,7 +211,7 @@ class ReviewSkillStructureConformanceTest {
   }
 
   internal fun structureViolations(pack: Path): List<StructureViolation> {
-    val exemptions = setOf("ios", "python")
+    val exemptions = setOf("ios")
     val qualityCheckExemptions = emptySet<String>()
     // SKILL-112 subtasks 2-7 remove one pack each; subtask 8 removes this mechanism.
     if (pack.name == "platform-packs") {

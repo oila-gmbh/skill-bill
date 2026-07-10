@@ -6,18 +6,35 @@ internal-for: bill-code-review
 
 # Python Security Review
 
-Focus on security-sensitive behavior introduced or changed by the diff.
+Review exploitable trust-boundary and sensitive-data failures.
 
-## Review Focus
+## Focus
 
-- Dependencies and supply chain: new packages, loosened version bounds, unpinned lockfile changes, extras, build backends, scripts, and dependency confusion risk.
-- Auth and authorization: route guards, object-level permission checks, tenant isolation, session/token handling, and confused-deputy paths.
-- Secrets: environment reads, config dumps, exception messages, logs, test fixtures, notebooks, and accidental credential persistence.
-- Unsafe parsing and rendering: pickle, yaml loaders, XML/entity handling, template injection, Jinja/Django autoescape bypasses, markdown/HTML sanitization, and unsafe deserialization.
-- Paths, files, and uploads: path traversal, symlink assumptions, temporary-file handling, archive extraction, content-type trust, file size limits, and cleanup.
-- Network and subprocess boundaries: SSRF, shell injection, untrusted command args, environment propagation, timeout gaps, and overly broad outbound clients.
-- Sensitive observability: logs, traces, metrics, and error payloads should not expose tokens, PII, credentials, or tenant data.
+- Supply chain, authentication, authorization, tenant isolation, secrets, parsing, rendering, paths, uploads, SSRF, subprocesses, sessions, and sensitive errors or logs
 
-## Findings Standard
+## Ignore
 
-Report exploitable or policy-relevant risks with the trust boundary, attacker-controlled input, and likely impact. Avoid generic dependency warnings unless the diff creates or worsens the exposure.
+- Generic dependency warnings unless the diff creates or worsens a concrete exposure
+- Hardening preferences without attacker-controlled input, a crossed trust boundary, or policy-relevant impact
+
+## Applicability
+
+Use this specialist for dependencies, routes, object permissions, tenant boundaries, tokens, parsing, templates, files, archives, network clients, subprocesses, browser sessions, forms, model hydration, and webhooks.
+
+## Project-Specific Rules
+
+### Trust Boundaries and Dangerous Execution
+
+- Reject `eval`, `exec`, or dynamic imports whose expression, module, or attribute is derived from untrusted input; require a fixed allowlist and explicit dispatch boundary.
+- Reject unsafe pickle, YAML, XML/entity, template, markdown/HTML, archive, upload, path, symlink, shell, subprocess, or SSRF handling when attacker input can reach the sink.
+- Require route and object-level authorization, tenant isolation, least-privilege outbound clients, safe temporary-file cleanup, and limits on uploaded size and extracted archive shape.
+- Reject secrets, tokens, PII, credentials, or tenant data in configuration dumps, exceptions, logs, traces, metrics, fixtures, notebooks, or persisted debug artifacts.
+
+### Browser, Session, and Framework Features
+
+- Reject Django `DEBUG=True` in deployed settings and exposed stack traces or error payloads that reveal secrets, filesystem paths, source, queries, or tenant data.
+- Require CSRF protection for cookie-authenticated state changes, session rotation after authentication or privilege change to prevent fixation, and explicit expiry for signed or capability URLs.
+- Reject Django `ModelForm` declarations with `fields="__all__"` where newly added model fields can become mass-assignable across the authorization boundary.
+- Require pydantic models to validate untrusted hydration rather than using unchecked construction or raw dictionary assignment that bypasses validators.
+- Require webhook signatures to be verified over the exact raw payload with the documented algorithm, secret, freshness, and replay boundary before parsing or processing.
+- For Blocker or Major findings, describe the concrete authorization-bypass or data-exposure scenario.

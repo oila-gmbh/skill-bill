@@ -6,16 +6,33 @@ internal-for: bill-code-review
 
 # Python Performance Review
 
-Focus on changed code that can add avoidable latency, throughput loss, or memory pressure.
+Review avoidable latency, throughput loss, memory pressure, and resource exhaustion.
 
-## Review Focus
+## Focus
 
-- Hot paths: request handlers, loops over large collections, serializers, CLI batch jobs, workers, imports executed on startup, and per-item object churn.
-- Database and network access: N+1 queries, repeated downstream calls, missing batching, unbounded pagination, inefficient filters, and synchronous I/O in async paths.
-- Filesystem and serialization: repeated reads/writes, large JSON/YAML loads, archive processing, streaming vs buffering, compression, and temporary file usage.
-- Memory behavior: accumulating lists where iterators/streams would work, caching without bounds, pandas/notebook data growth, and long-lived worker state.
-- Async/blocking mismatch: blocking libraries in event loops, inappropriate thread pools, too much concurrency, and missing cancellation or timeout behavior.
+- Hot paths, ORM query shape, repeated I/O, batching, streaming, memory growth, worker state, and async/blocking boundaries
 
-## Findings Standard
+## Ignore
 
-Report performance risks with a plausible input size, call frequency, or operational path. Avoid micro-optimization unless the diff touches a measured or obviously hot path.
+- Micro-optimizations, small allocations, formatting, or style changes without an operator-noticeable latency, memory, throughput, or resource impact
+- Cold paths with bounded inputs unless the diff supplies measurements or a realistic amplification path
+
+## Applicability
+
+Use this specialist for request handlers, serializers, batch jobs, workers, imports, large collections, database/network/filesystem paths, pandas or notebook workloads, and async code.
+
+## Project-Specific Rules
+
+### ORM and Data Shape
+
+- Verify Django `QuerySet` laziness is preserved and reject accidental evaluation, repeated iteration, or serialization-triggered relationship loads that create N+1 queries.
+- Reject `count()` or `exists()` logic that hydrates full rows, and reject hydration-heavy loops when projection, aggregation, batching, or streaming would avoid operator-noticeable cost.
+- Require bounded pagination, batches, caches, queues, temporary buffers, and concurrency for realistic input sizes.
+
+### Execution and Resource Use
+
+- Reject synchronous database, network, filesystem, compression, or serialization work on the event loop; require GIL-aware isolation with `asyncio.to_thread`, `run_in_executor`, a process pool, or an owned worker boundary as appropriate.
+- Require repeated downstream calls and per-item filesystem operations to batch, cache, or stream when call frequency creates a plausible throughput failure.
+- Require cache stampede protection for concurrently missed hot keys and require long-lived workers to clear request, job, dataframe, or model state that would otherwise accumulate across executions.
+- Reject unbounded list accumulation, full-file JSON/YAML/archive buffering, cache growth, import-time work, or per-item object churn on measured or obviously hot paths.
+- For Blocker or Major findings, describe the concrete latency, memory-pressure, or throughput failure scenario.

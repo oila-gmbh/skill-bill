@@ -6,17 +6,34 @@ internal-for: bill-code-review
 
 # Python Testing Review
 
-Focus on whether the changed tests prove the changed behavior.
+Review whether changed tests prove changed behavior and fail for the defect they claim to cover.
 
-## Review Focus
+## Focus
 
-- pytest and unittest structure: test names, arrangement, assertions, fixture scope, parametrization, marks, and isolation between tests.
-- Fixtures and monkeypatching: overbroad fixtures, leaked environment variables, global state, patched imports at the wrong location, and mocks that bypass the behavior under review.
-- Async and time-sensitive tests: event-loop use, task cleanup, sleeps, time freezing, timezone assumptions, retries, and cancellation paths.
-- Integration boundaries: database/session lifecycle, transactions, external clients, filesystem temp dirs, queues, and framework test clients.
-- Assertion value: tests should fail for the defect they claim to cover, not only assert that a function was called or that a response object exists.
-- Regression coverage: changed bug fixes should include the failing case, edge cases for serialization/time/nullability, and negative paths where behavior matters.
+- pytest and unittest structure, fixtures, monkeypatching, parametrization, async and time behavior, integration boundaries, negative paths, and regression value
 
-## Findings Standard
+## Ignore
 
-Flag low-value tests, brittle tests, hidden integration leaks, or missing regression proof. Recommend `bill-unit-test-value-check` when the diff is test-only or the new assertions appear tautological.
+- Test style or arrangement preferences that do not weaken regression detection, isolation, determinism, or contract coverage
+- Missing tests for unreachable behavior or unchanged framework guarantees
+
+## Applicability
+
+Use this specialist whenever tests, fixtures, framework test clients, database or queue harnesses, async behavior, retries, time, filesystem boundaries, or bug-fix regression proof change.
+
+## Project-Specific Rules
+
+### Assertion Value and Contracts
+
+- Apply the unit-test value lens: reject tests that only assert a mock was called, a response exists, a constant equals itself, a stub returns its configured value, or implementation details are reproduced in the expected value without proving observable behavior.
+- Require every meaningful outcome to include negative-path assertions where applicable, including the exact status code and stable error shape rather than only a truthy response or exception type.
+- Require changed bug fixes to reproduce the failing case and cover relevant serialization, time, nullability, permission, cleanup, and partial-failure boundaries.
+- Verify fixture scope, parametrization, marks, environment cleanup, global state, and monkeypatch target ownership preserve isolation between tests.
+
+### Async and Integration Determinism
+
+- Require deterministic tests for retry, idempotency, replay, and duplicate delivery, including assertions that effects occur exactly once under repeated execution.
+- Verify `pytest-asyncio` mode and fixture loop scope match the repository configuration; reject async fixtures or tests that silently skip, bind resources to the wrong loop, or leak tasks across cases.
+- Reject real sleeps, wall-clock races, unordered concurrency assertions, and mocks that bypass the database, client, queue, filesystem, or framework behavior under review.
+- Require integration cleanup for transactions, sessions, external clients, temporary directories, queues, and background tasks on both success and error paths.
+- For Blocker or Major findings, describe the concrete undetected-regression or false-positive test scenario.
