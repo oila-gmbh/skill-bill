@@ -248,7 +248,7 @@ class ReviewSkillStructureConformanceTest {
     if (focuses.size != metadataSize) return false
     if (focuses.map { it.second }.toSet().size != focuses.size) return false
     return focuses.all { (area, focus) ->
-      !focus.equals(defaultAreaFocus(area), ignoreCase = true) &&
+      focus.contains(packLabel, ignoreCase = true) &&
         !focus.equals("$packLabel ${defaultAreaFocus(area)}", ignoreCase = true)
     }
   }
@@ -323,8 +323,7 @@ class ReviewSkillStructureConformanceTest {
       }
       val declaredAreas = declaredAreasForContent(file)
       if (declaredAreas.isEmpty() || declaredAreas.any { area ->
-          !Regex("(?m)^- .+ -> `$area` specialist\\.$").containsMatchIn(routing) &&
-            !routing.contains("`bill-${file.parent.parent.parent.name}-code-review-$area`")
+          !Regex("(?m)^- .+ -> `$area` specialist\\.$").containsMatchIn(routing)
         }
       ) {
         add(StructureViolation(file, "signal-to-specialist routing mappings"))
@@ -383,9 +382,17 @@ class ReviewSkillStructureConformanceTest {
       ?: return listOf(StructureViolation(agentsFile, "native-agent descriptions"))
     val agentMaps = agents.filterIsInstance<Map<*, *>>()
     val displayName = (manifest["display_name"] ?: manifest["platform"]).toString()
+    val areaMetadata = manifest["area_metadata"] as? Map<*, *> ?: emptyMap<Any?, Any?>()
+    val expectedDescriptions = areaMetadata.mapNotNull { (rawArea, rawMetadata) ->
+      val area = rawArea as? String ?: return@mapNotNull null
+      val focus = (rawMetadata as? Map<*, *>)?.get("focus") as? String ?: return@mapNotNull null
+      "bill-${pack.name}-code-review-$area" to
+        "$displayName ${area.replace('-', ' ')} specialist code reviewer. " +
+        "Runs against $focus. Returns a Risk Register in the F-XXX bullet format."
+    }.toMap()
     return buildList {
       if (agentMaps.size != agents.size ||
-        agentMaps.any { agent -> !isGovernedNativeAgentDescription(agent["description"] as? String, displayName) }
+        agentMaps.any { agent -> expectedDescriptions[agent["name"]] != agent["description"] }
       ) {
         add(StructureViolation(agentsFile, "native-agent description pattern"))
       }
@@ -397,12 +404,6 @@ class ReviewSkillStructureConformanceTest {
     }
   }
 
-  private fun isGovernedNativeAgentDescription(description: String?, displayName: String): Boolean =
-    description != null &&
-      description.startsWith("$displayName ", ignoreCase = true) &&
-      description.contains("specialist code reviewer. Runs against ", ignoreCase = true) &&
-      description.endsWith(". Returns a Risk Register in the F-XXX bullet format.")
-
   private fun qualityCheckViolations(pack: Path): List<StructureViolation> {
     val manifest = Yaml().load<Any?>(Files.readString(pack.resolve("platform.yaml"))) as Map<*, *>
     val declared = manifest["declared_quality_check_file"] as? String
@@ -411,43 +412,30 @@ class ReviewSkillStructureConformanceTest {
     if (!Files.isRegularFile(file)) return listOf(StructureViolation(file, "declared quality-check source"))
     val content = Files.readString(file)
     val execution = h2Section(content, "Execution Steps")
-    val discovery = execution + "\n" + h2Section(content, "Command Discovery")
     val fixStrategy = h2Section(content, "Fix Strategy")
     return buildList {
-      if (headings(file) !in listOf(
-          listOf("Purpose", "Execution Steps", "Fix Strategy"),
-          listOf("Execution Steps", "Command Discovery", "Fix Strategy"),
-        )
-      ) {
+      if (headings(file) != listOf("Purpose", "Execution Steps", "Fix Strategy")) {
         add(StructureViolation(file, "quality-check H2 sequence"))
       }
-      if (!containsAny(discovery, "build file", "Makefile", "build.gradle", "pom.xml", "package.json") ||
-        !containsAll(discovery, "wrapper", "CI")
-      ) {
+      if (!containsAll(execution, "build file", "wrapper", "CI")) {
         add(StructureViolation(file, "quality-check command discovery"))
       }
-      if (!Regex("(?i)before (?:falling back|choosing|selecting)").containsMatchIn(discovery)) {
+      if (!orderedFragments(execution, "build file", "wrapper", "CI configuration", "before falling back")) {
         add(StructureViolation(file, "quality-check fallback ordering"))
       }
-      if (!containsAny(execution, "files in scope", "changed files")) {
+      if (!containsAll(execution, "files in scope")) {
         add(StructureViolation(file, "quality-check scoped files"))
       }
-      if (!containsAny(
-          execution,
-          "pack's quality-check entrypoint",
-          "project's quality-check commands",
-          "repository's quality-check command",
-        )
-      ) {
+      if (!containsAll(execution, "pack's quality-check entrypoint")) {
         add(StructureViolation(file, "quality-check pack entrypoint"))
       }
-      if (!containsAll(fixStrategy, "priority", "never", "suppress")) {
+      if (!containsAll(fixStrategy, "priority-ordered", "never suppress")) {
         add(StructureViolation(file, "quality-check fix discipline"))
       }
-      if (!containsAll(execution + "\n" + fixStrategy, "re-run", "after", "fix")) {
+      if (!containsAll(fixStrategy, "re-run targeted checks")) {
         add(StructureViolation(file, "quality-check targeted rerun"))
       }
-      if (Regex("(?i)always run[^.\\n]*full suite").containsMatchIn(fixStrategy)) {
+      if (!containsAll(fixStrategy, "full suite when targeted checks cannot establish safety")) {
         add(StructureViolation(file, "quality-check escalation"))
       }
     }
@@ -496,11 +484,16 @@ class ReviewSkillStructureConformanceTest {
   private fun containsAll(content: String, vararg fragments: String): Boolean =
     fragments.all { content.contains(it, ignoreCase = true) }
 
-  private fun containsAny(content: String, vararg fragments: String): Boolean =
-    fragments.any { content.contains(it, ignoreCase = true) }
-
   private fun h2Section(content: String, heading: String): String =
     content.substringAfter("## $heading", "").substringBefore("\n## ")
+
+  private fun orderedFragments(content: String, vararg fragments: String): Boolean {
+    val normalized = content.lowercase()
+    return fragments.fold(-1) { previousIndex, fragment ->
+      if (previousIndex == Int.MIN_VALUE) return@fold Int.MIN_VALUE
+      normalized.indexOf(fragment.lowercase(), previousIndex + 1).takeIf { it >= 0 } ?: Int.MIN_VALUE
+    } != Int.MIN_VALUE
+  }
 
   private fun hasCanonicalSeverityCloser(file: Path, content: String): Boolean {
     val rules = content.substringAfter("## Project-Specific Rules", "").substringBefore("\n## ")
