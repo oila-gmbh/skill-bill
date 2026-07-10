@@ -32,7 +32,7 @@ Use this specialist for iOS code at trust boundaries: auth/session handling, tok
 - Tokens, passwords, and other credentials must never appear in log output, including debug-only logging that can ship in a release build by accident
 - Do not log full request/response bodies or headers for authenticated endpoints by default; redact or omit auth headers and any field known to carry sensitive user data
 - New network clients must use TLS and must not disable certificate validation, even temporarily, outside of an explicit and reviewed debug-only build configuration
-- ATS exceptions must be justified, restricted to the narrowest necessary domain and capability, and never use a broad arbitrary-loads escape hatch without a reviewed platform requirement
+- ATS exceptions must be justified, restricted to the narrowest necessary domain and capability, and never use a broad arbitrary-loads escape hatch that creates a transport security boundary failure without a reviewed platform requirement
 
 ### Sensitive Output And Sharing
 

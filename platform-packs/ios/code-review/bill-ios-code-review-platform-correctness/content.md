@@ -30,7 +30,8 @@ Use this specialist for general Swift Concurrency code that uses actors, tasks, 
 ### Actor Isolation And Structured Concurrency
 
 - UI-facing mutation must be verified as `@MainActor` isolated or explicitly transferred to the main actor; never assume an arbitrary callback, task, or publisher resumes on the main actor
-- Values crossing task or actor boundaries must be safely `Sendable`, immutable, or actor-isolated; reject unchecked crossings that permit concurrent mutation
+- Values crossing task or actor boundaries must satisfy `Sendable` or remain isolated behind an actor; reject mutable reference types that cross isolation boundaries without synchronization
+- Any `@unchecked Sendable` conformance must document and preserve a concrete thread-safety invariant; immutability asserted only by convention is not a substitute for enforced isolation safety
 - View-lifetime asynchronous work must use structured, cancellable ownership such as `.task` or an explicitly cancelled task handle; never leak unstructured `Task` closures beyond view disappearance
 - After an `await`, revalidate state and identity when actor reentrancy can make the pre-suspension decision stale
 - `withCheckedContinuation` and `withCheckedThrowingContinuation` bridges must resume exactly once on every success, failure, cancellation, and early-return path; reject double-resume and never-resume paths

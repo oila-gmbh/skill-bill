@@ -28,10 +28,11 @@ Use the Core Data/SwiftData branch for managed models, contexts, stores, and mod
 
 ### Core Data And SwiftData
 
-- `NSManagedObjectContext` access must occur through `perform` or `performAndWait` on the context's queue; reject managed-object crossings that violate context isolation
-- Context merge policies must be selected deliberately for the ownership and conflict model; never rely on an accidental default when parent/child or background contexts can update the same records
-- Lightweight Core Data migration must only be used for model changes it can infer safely; require a mapping model or staged/custom migration for transformations, splits, merges, or semantic backfills
-- SwiftData model and `ModelContext` ownership must preserve actor/thread isolation, and schema changes must carry a migration plan that keeps existing stores readable
+- `NSManagedObjectContext` work must execute through `perform` or `performAndWait` on its owning queue, and SwiftData `ModelContext` work must remain on its owning actor; never pass an `NSManagedObject` or `ModelContext` across queues, tasks, or actors
+- Cross a context or isolation boundary with an `NSManagedObjectID` or an explicitly `Sendable` value representation, then refetch in the destination context; reject direct managed-object or context transfer
+- Merge policies and conflict resolution must be selected deliberately for parent, child, view, and background contexts; never rely on an accidental default when multiple contexts can update the same records
+- Core Data lightweight migration and SwiftData automatic migration are valid only for changes the frameworks can safely infer
+- Transformations, renames without metadata, splits, merges, semantic backfills, and other non-inferable changes require `VersionedSchema` with `SchemaMigrationPlan`, or the appropriate Core Data staged/custom migration mechanism, plus evidence that an existing store upgrades successfully
 
 ### GRDB, SQLite, And Offline Sync
 

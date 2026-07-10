@@ -28,7 +28,9 @@ Use this specialist for general iOS background execution using `BGTaskScheduler`
 
 ### Background Execution And Relaunch
 
-- `BGTaskScheduler` identifiers must be registered before submission, permitted by project configuration, and handled with expiration cancellation plus exactly one `setTaskCompleted` outcome
+- `BGTaskScheduler` launch handlers must be registered during application launch before any request is submitted, and every identifier must exactly match the project configuration and permitted identifiers
+- `BGTaskScheduler` submission failures must remain visible and actionable rather than being swallowed, logged without context, or treated as successful scheduling
+- A `BGTask` expiration handler must be installed before work proceeds, cancel all tracked work on expiration, and stop using expired execution time; call `setTaskCompleted` exactly once after the task reaches its actual success or failure outcome
 - `beginBackgroundTask` work must install an expiration handler, end the background task on every completion path, and never keep using expired execution time
 - Background `URLSession` must preserve a stable identifier and delegate ownership, and app relaunch handling must rewire the session plus retain and invoke the system completion handler only after outstanding events finish
 - Long-running synchronization must be termination-safe and resumable or idempotent so interruption cannot duplicate writes, lose progress, or corrupt checkpoint state

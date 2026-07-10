@@ -29,14 +29,14 @@ Use the REST/`Codable` branch for URLSession or other HTTP clients, request/resp
 ### REST And Codable Contracts
 
 - `JSONDecoder` and `JSONEncoder` date, key, and data strategies must remain compatible with the server contract; reject a strategy change that silently changes wire keys or values
-- Required or non-optional `Codable` fields must have an explicit failure or compatibility plan when older, partial, or malformed payloads can omit them; never hide a contract failure behind an unrelated default
-- HTTP clients must map every expected success and failure status deliberately rather than decoding an error body as a success model or treating every non-2xx response identically
+- Missing, null, type-mismatched, or corrupt values for required `Codable` fields must propagate through a controlled request error path; reject force-decoding, crash-producing handling, or unrelated defaults that conceal a wire incompatibility
+- HTTP clients must classify the response status before decoding a success model and map every expected success and failure status deliberately rather than decoding an error body as success or treating every non-2xx response identically
 - Structured server error payloads must be decoded and preserved when mapping transport failures into app errors so actionable status, code, and field-level details are not discarded
 
 ### Apollo And GraphQL Contracts
 
 - Never hand-edit generated API client code (e.g. a generated `API.swift`); any change to server contract behavior must originate from a `.graphql` operation/schema change followed by codegen regeneration
-- Every `.graphql` operation or fragment change must be accompanied by regenerated client code in the same diff; a schema/operation change without a matching codegen diff is a contract-drift risk
+- The repository's codegen command must reproduce committed generated output exactly; require the schema, every changed operation and fragment, and generated client artifacts to be aligned rather than accepting the mere presence of a generated diff
 - Cache and field policies (type policies, merge functions, cache key resolution) must be reviewed whenever a `.graphql` change alters an identifying field, a list field's merge behavior, or a type's cache key
 - Nullability changes in `.graphql` operations must be checked against all call sites that unwrap the generated response type; a field going from non-null to nullable (or vice versa) is a breaking client-side change even though the client compiles
 - Query/mutation naming and fragment reuse should stay consistent with existing operations touching the same types, to avoid duplicate or conflicting cache entries for the same underlying object
