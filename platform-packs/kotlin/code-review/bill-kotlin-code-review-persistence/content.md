@@ -6,31 +6,33 @@ internal-for: bill-code-review
 
 # Backend Persistence Review Specialist
 
-Review only backend persistence issues that can corrupt data, break consistency, or create high-risk operational regressions.
+Review persistence failures that can corrupt, expose, or lose data.
 
 ## Focus
-- Transaction boundaries and atomicity
-- Query correctness and tenant/filter scoping
-- Lost updates, race-prone write patterns, and idempotent persistence behavior
-- Migration/schema compatibility risks
-- ORM/SQL mapping mismatches that break reads or writes
+
+- Transaction ownership, ORM/session behavior, concurrent writes, tenant scope, and durable side-effect ordering
 
 ## Ignore
-- Harmless query-style preferences
-- Micro-optimizations with no correctness or production impact
+
+- Query style preferences without a correctness or production consequence
 
 ## Applicability
 
-Use this specialist for backend/server persistence code routed through the built-in Kotlin pack: repositories, DAOs, SQL, migrations, jOOQ, Exposed, JDBC, Hibernate/JPA, R2DBC, or similar layers.
+Use this specialist for Exposed, Spring transactions, Hibernate/JPA, JDBC, R2DBC, repositories, migrations, and mass writes.
+
 ## Project-Specific Rules
 
-- Do not split one business write across multiple implicit transactions unless partial completion is explicitly intended
-- Avoid load-modify-save patterns that can lose concurrent updates when atomic SQL or version checks are required
-- Repository methods must apply required tenant/account/ownership filters consistently
-- Upserts, deduplication, and unique-constraint behavior should match the intended idempotency contract
-- Migrations must account for existing data, nullability transitions, indexes, and rollout compatibility
-- Connection pools, database sessions, cursors, ResultSets, and Statements must be closed reliably; use `use {}` or the framework equivalent consistently
-- Avoid holding connections across async boundaries or long-running operations where pool exhaustion could occur
-- Do not hold persistence transactions open while waiting on remote I/O
-- Bulk operations should preserve correctness, not just speed; verify partial-failure behavior
-- For Blocker or Major findings, explain the data-loss, stale-write, or consistency consequence explicitly.
+### Transaction and ORM Boundaries
+
+- Reject Exposed transaction work that escapes its thread-bound transaction context, and reject nested or misplaced `newSuspendedTransaction` calls that silently create a second transaction or lose atomicity.
+- Reject Spring `@Transactional` self-invocation and transactional final or non-open methods when proxy interception will not occur.
+- Reject Hibernate access that can cause `LazyInitializationException`, and reject unintended dirty flushes caused by mutating managed entities during read-oriented work.
+- Do not hold a transaction while performing remote I/O, publishing an event, or dispatching queue work; require after-commit handling or an outbox when ordering matters.
+
+### Consistency and Scope
+
+- Require atomic predicates, version checks, locks, or unique constraints for concurrent writes; reject load-modify-save paths that can lose updates.
+- Require tenant, account, ownership, and soft-delete predicates on mass updates and deletes with the same scope enforced by ordinary reads and writes.
+- Verify migrations against existing data, nullability transitions, indexes, and mixed-version rollout.
+- Require bulk operations and retries to define partial-failure and idempotency behavior.
+- For Blocker or Major findings, describe the concrete data-loss, consistency, or durability failure scenario.

@@ -6,30 +6,32 @@ internal-for: bill-code-review
 
 # Backend API & Contract Review Specialist
 
-Review only backend/service API contract issues that can break clients, allow invalid behavior, or create hard-to-debug production regressions.
+Review client-visible compatibility and validation failures.
 
 ## Focus
-- Request validation and boundary enforcement
-- Serialization/deserialization mismatches
-- Backward compatibility of request/response schemas
-- Status-code and error-contract correctness
-- Pagination, filtering, and idempotency semantics on public endpoints
+
+- Serialization configuration, absent/default fields, error contracts, validation, and schema evolution
 
 ## Ignore
-- Pure style feedback
-- Internal refactors that do not change externally observable behavior
+
+- Internal refactors that cannot change externally observable behavior
 
 ## Applicability
 
-Use this specialist for backend/server Kotlin code routed through the built-in Kotlin pack. It is most relevant for Ktor, Spring, Micronaut, Quarkus, http4k, Javalin, gRPC, or similar transport layers.
+Use this specialist for Kotlin HTTP, RPC, DTO, serializer, validation, and public schema boundaries.
+
 ## Project-Specific Rules
 
-- Validate untrusted input at the boundary before business logic depends on it
-- Distinguish absent vs null vs defaulted fields when that changes semantics
-- Do not leak internal/domain/persistence models directly as public API contracts unless that coupling is an explicit, stable decision
-- Breaking contract changes require explicit versioning, coordinated migration, or a compatibility story
-- Error mapping should be stable, intentional, and not collapse distinct client outcomes into the same generic failure
-- Mutating endpoints, commands, and webhook handlers should define idempotency behavior clearly when retries are plausible
-- Pagination and filtering should preserve deterministic ordering and bounded result sizes
-- Serialization defaults must match the compatibility expectations of existing clients
-- In findings, explain the client-visible consequence of the contract break or boundary bug.
+### Serialization Compatibility
+
+- Require explicit client-impact review for drift in kotlinx.serialization `explicitNulls`, `encodeDefaults`, or `ignoreUnknownKeys`; reject changes that silently alter wire shape or compatibility.
+- Verify absent fields are not incorrectly accepted because Kotlin constructor defaults mask required input.
+- Require correctly configured `jackson-module-kotlin` wherever Jackson must preserve Kotlin constructors, nullability, defaults, or data-class semantics.
+- Reject enum, date/time, nullability, renamed-field, or default-field drift without versioning, coordinated migration, or a compatibility path.
+
+### Boundary and Error Semantics
+
+- Validate untrusted input before business logic depends on it and preserve the distinction among absent, null, empty, and defaulted values.
+- Require distinct stable errors for validation, authentication, authorization, and domain failures; reject generic mappings that erase client-actionable meaning.
+- Require deterministic bounded pagination and explicit idempotency semantics for retriable mutations and webhooks.
+- For Blocker or Major findings, describe the concrete compatibility or validation failure scenario.

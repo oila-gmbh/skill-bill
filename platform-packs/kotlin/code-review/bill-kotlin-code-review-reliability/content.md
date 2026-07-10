@@ -6,32 +6,33 @@ internal-for: bill-code-review
 
 # Backend Reliability Review Specialist
 
-Review only backend/service reliability issues that can cause outages, stuck work, runaway retries, or production incidents.
+Review service behavior that can cause outages, stuck work, duplication, or invisible failure.
 
 ## Focus
-- Timeout, retry, and backoff correctness
-- Background jobs, consumers, schedulers, and replay safety
-- Blocking work on request/event-loop threads
-- Cache, queue, and downstream dependency failure behavior
-- Logging/metrics/tracing gaps that hide real failures
+
+- Consumer isolation, timeout classification, retries, replay, durable publication, and failure telemetry
 
 ## Ignore
-- Pure style comments
-- Tiny observability niceties without incident impact
+
+- Tiny observability niceties without incident or operational impact
 
 ## Applicability
 
-Use this specialist for backend/server Kotlin code routed through the built-in Kotlin pack.
+Use this specialist for Kotlin services, workers, consumers, schedulers, queues, caches, and downstream integrations.
+
 ## Project-Specific Rules
 
-- Retries must be bounded and reserved for transient failures; include backoff and jitter where stampedes are possible
-- Circuit breakers, bulkheads, and rate-limiting configuration must have sensible thresholds and avoid infinite blocks, silent drops, or retry storms
-- External calls should have explicit timeout behavior and a clear cancellation story
-- Message consumers and scheduled jobs must be safe under duplicate delivery, replay, or partial failure
-- Acknowledge/commit work only after durable success, not before
-- Avoid blocking request/event-loop threads with slow I/O or heavy CPU work
-- Cache fill, refresh, and invalidation logic must not create obvious thundering-herd or stale-data incidents
-- Degradation and fallback behavior should fail gracefully and make partial availability explicit where clients or operators need to know
-- Logging, metrics, and tracing should include enough contextual identifiers to debug failures without leaking secrets or PII
-- Startup and shutdown hooks must initialize and close long-lived resources predictably
-- For Blocker or Major findings, describe the production failure scenario clearly.
+### Isolation and Retry
+
+- Require `SupervisorJob` for long-lived consumers whose sibling partitions or handlers must continue after one child fails.
+- Preserve `TimeoutCancellationException` as cancellation or a timeout category; reject classification as an ordinary retriable business error when that causes duplicate work or defeats structured cancellation.
+- Reject `Thread.sleep` in coroutine retry loops; require cancellable `delay` with bounded attempts, backoff, and jitter for transient failures.
+- Distinguish poison, transient, and permanent failures in retry decisions and telemetry so operators can identify drops, dead letters, and retry storms.
+
+### Replay and Durable Ordering
+
+- Require replay, rebuild, and republish flows to be bounded, observable, and safe to rerun without duplicating durable or user-visible effects.
+- Acknowledge or commit consumed work only after durable success.
+- Require event publication after commit or through an outbox so events never describe rolled-back state and committed state is not left unpublished.
+- Require explicit timeouts, bounded concurrency, and cleanup for external calls and long-lived resources.
+- For Blocker or Major findings, describe the concrete availability, duplication, or cleanup failure scenario.
