@@ -33,4 +33,4 @@ Use this specialist for shared security risks across Kotlin libraries, app layer
 - Avoid logging raw auth headers, session cookies, full request bodies, or other high-risk payloads without explicit redaction
 - Verify authenticity and integrity checks for new external entry points, signed callbacks, or inter-service trust boundaries
 - Verify that sensitive stored data receives the protection level the contract or platform requires
-- For Major or Blocker findings, describe the abuse or exploit scenario explicitly.
+- For Blocker or Major findings, describe the abuse or exploit scenario explicitly.

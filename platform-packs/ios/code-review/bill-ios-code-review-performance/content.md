@@ -29,4 +29,4 @@ Use this specialist for reducer/store code that runs on frequent state updates, 
 - Reducer logic invoked on every action dispatch must avoid expensive synchronous work (large collection copies, repeated filtering/sorting, synchronous I/O); move expensive computation into an effect off the hot reducer path
 - Image and PDF decoding, downscaling, and rendering must not run synchronously on the main thread for anything larger than trivial thumbnail-sized content
 - Large sync/import loops must avoid O(n²) patterns (e.g. repeated linear scans per item) when a single pass or indexed lookup is available
-- For Major or Critical findings, describe the concrete user-visible stall, dropped-frame, or memory-pressure consequence
+- For Blocker or Major findings, describe the concrete user-visible stall, dropped-frame, or memory-pressure consequence

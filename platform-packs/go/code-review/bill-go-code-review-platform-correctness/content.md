@@ -47,7 +47,7 @@ Within the Go package, `platform-correctness` is the language and runtime correc
 - One-time or prerequisite checks must still run on retry, replay, duplicate delivery, and alternate entry paths unless the contract explicitly permits bypassing them
 - Feature-flag, permission-gated, and role-gated paths must preserve the same core invariants as the primary path unless different behavior is explicitly intended
 - Ground potential edge-case findings in a reachable code path or declared contract by naming the triggering input, state, retry sequence, worker lifecycle, or boundary condition and the violated expected behavior
-- For Critical or Major correctness findings, include a concrete failure scenario that explains how the changed code can produce the wrong outcome
+- For Blocker or Major correctness findings, include a concrete failure scenario that explains how the changed code can produce the wrong outcome
 
 ### Backend/Server-Specific Rules
 

@@ -5,6 +5,7 @@ display_name: Kotlin
 routing_signals:
   strong:
     - ".kt"
+    - "*.kt"
     - "build.gradle.kts"
     - "kotlin/"
   tie_breakers:

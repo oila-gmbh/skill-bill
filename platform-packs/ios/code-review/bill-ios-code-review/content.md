@@ -23,9 +23,9 @@ These rules apply to every specialist lane. They exist to keep precision high �
 - **Get Swift semantics right.** Do not report a finding that depends on a misreading of the language. Common traps:
   - A `do { … }` block **without** a `catch` does not swallow errors — `try` inside it propagates to the enclosing throwing scope. It is only "swallowed" if there is an actual empty/`catch {}` handler.
   - An `enum` with **no associated values**, or whose associated values are all `Equatable`/`Hashable`, gets `Equatable`/`Hashable` synthesized automatically — a nested payload-less enum does not break the outer type's synthesis.
-  - A computed `URL?` (or any optional) that coalesces to a **non-optional** value (`optional ?? nonOptional`) can never be `nil`; a `guard let` on it is dead, but that is a dead-code Nit, not a crash.
-  - `[weak self]`/`[weak store]` on an `ObservedObject`/store that outlives the closure is a robustness/consistency nit, not a leak or crash.
-- **Calibrate severity to demonstrated impact.** Reserve Blocker/Major for a concrete, reachable failure (data loss, crash, wrong result a user or crash report would see). A finding that flags conformance to (or deviation from) an intentional, pervasive house pattern with no demonstrated wrong outcome is at most Minor — and often a Nit. When a rule below says "should," a violation is not automatically Major.
+  - A computed `URL?` (or any optional) that coalesces to a **non-optional** value (`optional ?? nonOptional`) can never be `nil`; a `guard let` on it is dead, but that is a dead-code Minor issue, not a crash.
+  - `[weak self]`/`[weak store]` on an `ObservedObject`/store that outlives the closure is a robustness/consistency Minor issue, not a leak or crash.
+- **Calibrate severity to demonstrated impact.** Reserve Blocker/Major for a concrete, reachable failure (data loss, crash, wrong result a user or crash report would see). A finding that flags conformance to (or deviation from) an intentional, pervasive house pattern with no demonstrated wrong outcome is at most Minor. When a rule below says "should," a violation is not automatically Major.
 
 ## iOS Review Heuristics
 

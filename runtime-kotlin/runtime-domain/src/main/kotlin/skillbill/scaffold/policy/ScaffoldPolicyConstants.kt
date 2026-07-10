@@ -157,6 +157,28 @@ val PLATFORM_PACK_PRESET_DESCRIPTORS: Map<String, PlatformPackPreset> =
           "mocks from dominance scoring unless the generator or generated contract is intentionally changed.",
       ),
     ),
+    "rust" to PlatformPackPreset(
+      displayName = "Rust",
+      strongSignals = listOf(
+        "Cargo.toml",
+        "Cargo.lock",
+        ".rs",
+        "*.rs",
+        "build.rs",
+        "rust-toolchain.toml",
+        "rustfmt.toml",
+        "clippy.toml",
+        "deny.toml",
+        ".cargo/config.toml",
+      ),
+      tieBreakers = listOf(
+        "Prefer Rust when Cargo package/workspace metadata or first-party Rust source files dominate the " +
+          "changed product surface.",
+        "Do not prefer Rust for mixed repositories where Rust appears only as FFI bindings, wasm build " +
+          "artifacts, generated sources, or incidental tooling around another dominant stack.",
+        "Exclude target output, generated sources, and vendored crates or dependency trees from dominance scoring.",
+      ),
+    ),
   )
 
 /**

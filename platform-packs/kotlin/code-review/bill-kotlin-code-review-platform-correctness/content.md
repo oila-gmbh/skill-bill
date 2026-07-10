@@ -46,5 +46,5 @@ Use this specialist for shared Kotlin correctness risks across libraries, app la
 - Partial-success, optimistic update, and rollback paths must not report durable success before the contract's required effect actually happens
 - Retry, recollection, resubscription, or repeated lifecycle entry must not bypass one-time business checks or re-apply one-time user-visible effects unless the contract explicitly permits it
 - Feature-flag, permission-gated, and role-gated paths must preserve the same core invariants as the primary path unless different behavior is explicitly intended
-- For Major or Blocker findings, include a reproducible failure scenario.
+- For Blocker or Major findings, include a reproducible failure scenario.
 - Ground potential edge-case findings in a reachable code path or declared contract by naming the triggering input, state, async event sequence, or lifecycle transition and the violated invariant or expected behavior.

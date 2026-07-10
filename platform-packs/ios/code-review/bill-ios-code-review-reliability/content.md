@@ -38,7 +38,7 @@ Use this specialist for background sync and any interceptor/chain-of-responsibil
 - Extracting or rewriting a view/component that silently drops previously-present functionality (buttons, fallback labels, forwarded callbacks, wired services) is a regression unless the removal is explicitly flagged as intentional
 - Debug `print`/logging statements or debug-only code paths left in shipped code are a reliability and information-leak risk, not just noise
 - `[weak self]` captured but the closure still reaches `self`/outer state directly instead of through the safely-unwrapped self — or omitted entirely on a long-lived subscription — risks crashes, stale reads, or retain-cycle leaks
-- For Major or Critical findings, describe the concrete data-loss, unauthorized-access, or silent-failure scenario in production
+- For Blocker or Major findings, describe the concrete data-loss, unauthorized-access, or silent-failure scenario in production
 
 ## Repo-Local Knowledge
 

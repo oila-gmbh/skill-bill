@@ -6,6 +6,8 @@ routing_signals:
   strong:
     - ".xcodeproj"
     - ".xcworkspace"
+    - ".swift"
+    - "*.swift"
     - "import SwiftUI"
     - "import UIKit"
     - "iOSApplicationExtension"

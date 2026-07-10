@@ -43,7 +43,7 @@ Use this specialist for backend/server persistence code only: repositories, ORM 
 - Migration rollout must consider backfills, dual-read/dual-write windows, and replay or rebuild paths when contracts or projections change
 - ORM convenience methods must not hide missing filters, accidental N+1 query/write patterns, or silent partial updates in persistence-critical paths
 - Check database defaults, casts, enum storage, and timestamp behavior for write/read drift against the intended domain and API contract
-- For Critical or Major findings, explain the data-loss, stale-write, cross-tenant, migration, or consistency consequence explicitly
+- For Blocker or Major findings, explain the data-loss, stale-write, cross-tenant, migration, or consistency consequence explicitly
 
 ### ORM And Query Boundaries
 

@@ -240,6 +240,21 @@ omit `baseline_layers` remain valid and generate no
 }
 ```
 
+### Canonical platform-pack specialist content
+
+New `platform-pack` scaffolds create every specialist with these H2 sections,
+in exactly this order: `Focus`, `Ignore`, `Applicability`, and
+`Project-Specific Rules`. The rules section begins with an H3 grouping and
+includes this severity closer:
+
+```text
+For Blocker or Major findings, describe the concrete consequence explicitly.
+```
+
+The specialist contract limits severity vocabulary to `Blocker`, `Major`, and
+`Minor`. Existing packs can be migrated under the review-skill structure
+standard; this payload contract describes the newly scaffolded shape.
+
 ### Add-on
 
 Normal add-on authoring is a two-step source workflow: create the skeleton,

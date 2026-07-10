@@ -32,4 +32,4 @@ Use this specialist for the GraphQL/Apollo-consuming client surface: `.graphql` 
 - Nullability changes in `.graphql` operations must be checked against all call sites that unwrap the generated response type; a field going from non-null to nullable (or vice versa) is a breaking client-side change even though the client compiles
 - Query/mutation naming and fragment reuse should stay consistent with existing operations touching the same types, to avoid duplicate or conflicting cache entries for the same underlying object
 - Optimistic responses and cache writes for mutations must match the shape codegen will regenerate; hand-shaped optimistic payloads that drift from the real response type are a correctness risk
-- For Major or Critical findings, describe the concrete stale-cache, crash-on-unwrap, or data-integrity consequence
+- For Blocker or Major findings, describe the concrete stale-cache, crash-on-unwrap, or data-integrity consequence

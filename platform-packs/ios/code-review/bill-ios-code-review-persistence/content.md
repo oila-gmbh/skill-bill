@@ -33,7 +33,7 @@ Use this specialist for the local persistence layer: GRDB (or equivalent SQLite 
 - A SQL statement assembled by regex/string substitution against another statement's raw text (e.g. stripping a join by pattern-matching the `.sql` file) is fragile: its correctness is coupled to the exact formatting of the source SQL. Flag it, and note that a test which only asserts substring presence/absence does not prove the produced statement is valid runnable SQL
 - Changes that touch deep/offline sync of persisted data must be evaluated for blast radius: what happens to already-synced records, in-flight sync operations, and conflict resolution when this change ships to a device mid-sync
 - Reads and writes that participate in sync must preserve whatever consistency guarantee the existing sync design relies on (e.g. last-write-wins, versioned records, or conflict markers) — do not silently change write semantics for a table that sync depends on
-- For Major or Critical findings, explain the data-loss, migration-failure, or sync-inconsistency consequence explicitly
+- For Blocker or Major findings, explain the data-loss, migration-failure, or sync-inconsistency consequence explicitly
 
 ## Repo-Local Knowledge
 

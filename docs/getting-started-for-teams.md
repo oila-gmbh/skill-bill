@@ -148,6 +148,7 @@ Start from reference packs when they fit:
 - `go`: Go services, libraries, CLIs, modules, APIs, persistence, concurrency, security, testing, Go-rendered UI, UX/accessibility, and quality-check behavior
 - `php`: PHP applications, services, Composer projects, APIs, persistence, security, testing, server-rendered UI, UX/accessibility, and quality-check behavior
 - `python`: Python applications, libraries, CLIs, APIs, persistence, security, testing, UI, UX/accessibility, and quality-check behavior
+- `rust`: Rust crates, workspaces, services, libraries, CLIs, APIs, async systems, persistence, security, testing, UI, UX/accessibility, and quality-check behavior
 
 Create or fork a pack when team-specific architecture, framework, API, persistence, reliability, UI, or accessibility expectations need their own maintained behavior.
 

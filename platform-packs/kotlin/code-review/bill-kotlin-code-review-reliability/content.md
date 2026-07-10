@@ -34,4 +34,4 @@ Use this specialist for backend/server Kotlin code routed through the built-in K
 - Degradation and fallback behavior should fail gracefully and make partial availability explicit where clients or operators need to know
 - Logging, metrics, and tracing should include enough contextual identifiers to debug failures without leaking secrets or PII
 - Startup and shutdown hooks must initialize and close long-lived resources predictably
-- For Major or Blocker findings, describe the production failure scenario clearly.
+- For Blocker or Major findings, describe the production failure scenario clearly.

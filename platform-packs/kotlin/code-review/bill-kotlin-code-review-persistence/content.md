@@ -33,4 +33,4 @@ Use this specialist for backend/server persistence code routed through the built
 - Avoid holding connections across async boundaries or long-running operations where pool exhaustion could occur
 - Do not hold persistence transactions open while waiting on remote I/O
 - Bulk operations should preserve correctness, not just speed; verify partial-failure behavior
-- For Major or Blocker findings, explain the data-loss, stale-write, or consistency consequence explicitly.
+- For Blocker or Major findings, explain the data-loss, stale-write, or consistency consequence explicitly.
