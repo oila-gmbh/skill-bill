@@ -84,7 +84,11 @@ val PLATFORM_PACK_PRESET_DESCRIPTORS: Map<String, PlatformPackPreset> =
     "java" to PlatformPackPreset(
       displayName = "Java",
       strongSignals = listOf("pom.xml", "build.gradle", "src/main/java"),
-      tieBreakers = listOf("Prefer Java when Maven metadata or Java source markers dominate generic JVM signals."),
+      tieBreakers = listOf(
+        "Prefer Java when Maven metadata or first-party Java source markers dominate generic JVM signals.",
+        "Do not prefer Java when it appears only as generated bindings, build tooling, or an adjacent JVM layer.",
+        "Exclude generated sources, build outputs, and vendored dependencies from dominance scoring.",
+      ),
     ),
     "python" to PlatformPackPreset(
       displayName = "Python",
@@ -155,28 +159,6 @@ val PLATFORM_PACK_PRESET_DESCRIPTORS: Map<String, PlatformPackPreset> =
           "one-off scripts, or vendored dependencies around another dominant stack.",
         "Exclude vendor directories, generated protobuf/OpenAPI clients, build outputs, and generated " +
           "mocks from dominance scoring unless the generator or generated contract is intentionally changed.",
-      ),
-    ),
-    "rust" to PlatformPackPreset(
-      displayName = "Rust",
-      strongSignals = listOf(
-        "Cargo.toml",
-        "Cargo.lock",
-        ".rs",
-        "*.rs",
-        "build.rs",
-        "rust-toolchain.toml",
-        "rustfmt.toml",
-        "clippy.toml",
-        "deny.toml",
-        ".cargo/config.toml",
-      ),
-      tieBreakers = listOf(
-        "Prefer Rust when Cargo package/workspace metadata or first-party Rust source files dominate the " +
-          "changed product surface.",
-        "Do not prefer Rust for mixed repositories where Rust appears only as FFI bindings, wasm build " +
-          "artifacts, generated sources, or incidental tooling around another dominant stack.",
-        "Exclude target output, generated sources, and vendored crates or dependency trees from dominance scoring.",
       ),
     ),
   )

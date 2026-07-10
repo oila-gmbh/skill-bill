@@ -372,7 +372,7 @@ private fun planPlatformPack(
       packRoot.resolve("code-review").resolve(specialistNames.getValue(area))
     }
   val specialistMetadata =
-    selectedAreas.associateWith { area -> defaultAreaFocus(area) }
+    selectedAreas.associateWith { area -> "${defaults.displayName} ${defaultAreaFocus(area)}" }
   val platformPackSubagents = when {
     subagents.suppressed -> emptyList()
     subagents.specialists.isNotEmpty() -> subagents.specialists
@@ -382,10 +382,10 @@ private fun planPlatformPack(
     if (!subagents.suppressed && subagents.specialists.isEmpty()) {
       selectedAreas.associate { area ->
         val name = specialistNames.getValue(area)
-        val description = inferSkillDescription(
-          TemplateContext(name, "code-review", platform, area, defaults.displayName),
-          defaultAreaFocus(area),
-        )
+        val description =
+          "${defaults.displayName} ${area.replace('-', ' ')} specialist code reviewer. " +
+            "Runs against ${defaultAreaFocus(area)} lanes. " +
+            "Returns a Risk Register in the F-XXX bullet format."
         name to description
       }
     } else {

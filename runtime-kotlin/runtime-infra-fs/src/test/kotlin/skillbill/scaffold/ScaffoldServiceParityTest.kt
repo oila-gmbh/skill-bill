@@ -207,7 +207,9 @@ class ScaffoldServiceParityTest {
       repo.resolve("platform-packs/java/code-review/bill-java-code-review/native-agents/agents.yaml"),
       APPROVED_CODE_REVIEW_AREAS.associate { area ->
         "bill-java-code-review-$area" to
-          "Use when reviewing Java changes for ${defaultAreaFocus(area)}."
+          "Java ${area.replace('-', ' ')} specialist code reviewer. " +
+          "Runs against ${defaultAreaFocus(area)} lanes. " +
+          "Returns a Risk Register in the F-XXX bullet format."
       },
     )
     assertDistinctProviderAgents(repo)
@@ -698,6 +700,9 @@ class ScaffoldServiceParityTest {
 private fun payload(repo: Path, kind: String, vararg pairs: Pair<String, Any?>): Map<String, Any?> =
   mapOf("scaffold_payload_version" to "1.0", "kind" to kind, "repo_root" to repo.toString()) + pairs
 
+internal fun reviewStructurePayload(repo: Path, kind: String, vararg pairs: Pair<String, Any?>): Map<String, Any?> =
+  payload(repo, kind, *pairs)
+
 private fun seedRepo(): Path {
   val repo = Files.createTempDirectory("skillbill-scaffold-repo")
   skillbill.testsupport.SkillClassFixtures.seedShippedSkillClasses(repo)
@@ -710,6 +715,8 @@ private fun seedRepo(): Path {
   seedKmpPack(repo)
   return repo
 }
+
+internal fun seedReviewStructureRepo(): Path = seedRepo()
 
 private fun seedBaseSkill(repo: Path, skillName: String) {
   val skillDir = repo.resolve("skills").resolve(skillName)
@@ -855,6 +862,8 @@ private fun withIsolatedUserHome(block: () -> Unit) {
     System.setProperty("user.home", originalHome)
   }
 }
+
+internal fun withReviewStructureUserHome(block: () -> Unit) = withIsolatedUserHome(block)
 
 private fun snapshotTree(root: Path): Map<String, String> {
   if (!Files.exists(root)) {

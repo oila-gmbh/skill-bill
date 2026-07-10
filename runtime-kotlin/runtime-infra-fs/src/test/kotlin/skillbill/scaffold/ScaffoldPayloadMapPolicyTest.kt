@@ -162,20 +162,6 @@ class ScaffoldPayloadMapPolicyTest {
   }
 
   @Test
-  fun `resolvePlatformPackDefaults resolves rust preset defaults`() {
-    val defaults = resolvePlatformPackDefaults(emptyMap(), "rust")
-    assertEquals("Rust", defaults.displayName)
-    assertEquals(true, defaults.presetUsed)
-    assertTrue(defaults.strongSignals.contains("Cargo.toml"))
-    assertTrue(defaults.strongSignals.contains("*.rs"))
-    assertTrue(defaults.strongSignals.contains(".cargo/config.toml"))
-    assertTrue(defaults.tieBreakers.any { it.contains("package/workspace metadata") })
-    assertTrue(defaults.tieBreakers.any { it.contains("FFI bindings") })
-    assertTrue(defaults.tieBreakers.any { it.contains("target output") })
-    assertTrue(defaults.tieBreakers.any { it.contains("vendored crates") })
-  }
-
-  @Test
   fun `resolvePlatformPackDefaults loud-fails when no preset and no routing signals are supplied`() {
     assertFailsWith<InvalidScaffoldPayloadError> {
       resolvePlatformPackDefaults(emptyMap(), "no-such-preset")

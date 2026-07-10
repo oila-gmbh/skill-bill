@@ -51,6 +51,7 @@ fun renderPlatformPackManifest(
   appendDeclaredFiles(lines, baselineContentPath, declaredCodeReviewAreas, declaredAreaFiles)
   appendAreaMetadata(lines, declaredCodeReviewAreas, areaMetadata)
   appendQualityCheckDeclaration(lines, declaredQualityCheckFile)
+  appendPointers(lines, baselineContentPath, declaredCodeReviewAreas, declaredAreaFiles, declaredQualityCheckFile)
   appendBaselineLayers(lines, baselineLayers)
   if (notes != null) {
     lines += ""
@@ -174,5 +175,3 @@ private fun appendBaselineLayers(lines: MutableList<String>, baselineLayers: Lis
     lines += "      mode: ${yamlScalar(layer.mode.wireValue)}"
   }
 }
-
-private fun yamlScalar(value: String): String = "\"${value.replace("\\", "\\\\").replace("\"", "\\\"")}\""

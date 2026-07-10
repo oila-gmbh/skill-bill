@@ -16,12 +16,12 @@ subtasks:
 - id: 1
   name: "Code-review skill structure standard"
   spec_path: ".feature-specs/SKILL-112-pack-specialist-parity/spec_subtask_1_review_skill_structure_standard.md"
-  status: "pending"
+  status: "in_progress"
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260710-074535-vjrm"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "review"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []

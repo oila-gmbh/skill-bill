@@ -66,7 +66,7 @@ Dropping skill files into `~/.claude/skills/` doesn't fix that — they're just 
 
 ## Reference pack
 
-Skill Bill ships complete Go, iOS, Kotlin/KMP, PHP, Python, and Rust packs — the stack-specific intelligence that lets the system review and check your code like someone who actually knows that stack. Use them directly if they fit, tune them to your conventions, or add a pack for your stack.
+Skill Bill ships complete Go, iOS, Kotlin/KMP, PHP, and Python packs — the stack-specific intelligence that lets the system review and check your code like someone who actually knows that stack. Use them directly if they fit, tune them to your conventions, or add a pack for your stack.
 
 **Daily entry points:**
 
@@ -85,7 +85,6 @@ Skill Bill ships complete Go, iOS, Kotlin/KMP, PHP, Python, and Rust packs — t
 - `go` — Go services, libraries, CLIs, modules, APIs, persistence, concurrency, security, testing, Go-rendered UI, UX/accessibility, and quality-check behavior
 - `php` — PHP applications, services, Composer projects, APIs, persistence, security, testing, server-rendered UI, UX/accessibility, and quality-check behavior
 - `python` — Python applications, libraries, CLIs, APIs, persistence, security, testing, UI, UX/accessibility, and quality-check behavior
-- `rust` — Rust crates, workspaces, services, libraries, CLIs, APIs, async systems, persistence, security, testing, UI, UX/accessibility, and quality-check behavior
 
 **Full skill catalog:**
 

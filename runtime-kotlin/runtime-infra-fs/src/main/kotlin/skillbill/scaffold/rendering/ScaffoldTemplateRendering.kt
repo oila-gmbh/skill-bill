@@ -176,7 +176,8 @@ private fun renderGovernedContentStarter(context: TemplateContext, description: 
   val summary = description.ifBlank { inferSkillDescription(context) }
   return when {
     context.family == "quality-check" -> qualityCheckContent(summary)
-    context.family == "code-review" && context.area.isNotBlank() -> areaReviewContent(summary, context.area)
+    context.family == "code-review" && context.area.isNotBlank() ->
+      areaReviewContent(summary, context.area, context.displayName.ifBlank { context.platform })
     else -> baselineReviewContent(summary)
   }
 }

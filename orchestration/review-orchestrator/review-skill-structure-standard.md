@@ -22,10 +22,15 @@ ratings are `Blocker`, `Major`, and `Minor`.
 
 ## Baseline Skeleton
 
-Every baseline names classification rules, supplies a diff-signal routing
-table, defines Mixed Diffs behavior, excludes generated, vendored, and
-non-stack files, and keeps findings disciplined. It merges specialist findings
-by preserving attribution before deduplicating overlapping findings.
+Every baseline uses these H2 sections in order: `Classification Rules`,
+`Diff-Signal Routing Table`, `Mixed Diffs`, and `Finding Discipline`.
+Classification names explicit `if` decisions and an `otherwise` outcome. The
+routing table maps file-level diff signals to specialists. Mixed diffs keep the
+baseline specialists for the whole review while using a lightweight file-level
+classification pass for specialist selection. Per-specialist scope excludes
+generated, vendored, and non-stack-owned files. Finding discipline calibrates
+severity, verifies each finding's preconditions, preserves lane attribution,
+and only then deduplicates overlapping findings.
 
 ## Manifest Conventions
 
