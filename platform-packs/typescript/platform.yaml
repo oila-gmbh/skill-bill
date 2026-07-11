@@ -1,0 +1,169 @@
+platform: typescript
+contract_version: "1.2"
+display_name: TypeScript
+
+routing_signals:
+  strong:
+    - "tsconfig.json"
+    - "tsconfig.*.json"
+    - "*.ts"
+    - "*.tsx"
+    - "*.mts"
+    - "*.cts"
+    - "package.json"
+    - "package-lock.json"
+    - "yarn.lock"
+    - "pnpm-lock.yaml"
+    - "bun.lockb"
+    - "biome.json"
+    - "eslint.config.*"
+    - ".eslintrc*"
+    - "prettier.config.*"
+    - ".prettierrc*"
+  tie_breakers:
+    - "Prefer TypeScript when tsconfig metadata and first-party TypeScript source files dominate the changed product surface; package.json or a lockfile alone is not sufficient."
+    - "Do not prefer TypeScript where it appears only as generated API clients, ambient *.d.ts declarations, or build tooling around another dominant stack."
+    - "Exclude node_modules/, dist/, build and coverage output, generated clients, generated declaration files, and vendored dependency trees from dominance scoring."
+
+declared_code_review_areas:
+  - api-contracts
+  - architecture
+  - performance
+  - persistence
+  - platform-correctness
+  - reliability
+  - security
+  - testing
+  - ui
+  - ux-accessibility
+
+declared_files:
+  baseline: code-review/bill-typescript-code-review/content.md
+  areas:
+    api-contracts: code-review/bill-typescript-code-review-api-contracts/content.md
+    architecture: code-review/bill-typescript-code-review-architecture/content.md
+    performance: code-review/bill-typescript-code-review-performance/content.md
+    persistence: code-review/bill-typescript-code-review-persistence/content.md
+    platform-correctness: code-review/bill-typescript-code-review-platform-correctness/content.md
+    reliability: code-review/bill-typescript-code-review-reliability/content.md
+    security: code-review/bill-typescript-code-review-security/content.md
+    testing: code-review/bill-typescript-code-review-testing/content.md
+    ui: code-review/bill-typescript-code-review-ui/content.md
+    ux-accessibility: code-review/bill-typescript-code-review-ux-accessibility/content.md
+area_metadata:
+  api-contracts:
+    focus: "TypeScript public types, HTTP/RPC, serialization, validation, and compatibility contracts"
+  architecture:
+    focus: "TypeScript package and module boundaries, dependency direction, ownership, and layering"
+  performance:
+    focus: "TypeScript event-loop, allocation, rendering, async scheduling, I/O, and hot-path behavior"
+  persistence:
+    focus: "TypeScript database clients, transactions, schemas, serialization, and durable data consistency"
+  platform-correctness:
+    focus: "TypeScript strictness, narrowing, module semantics, runtime targets, and Node/browser correctness"
+  reliability:
+    focus: "TypeScript promise handling, cancellation, retries, shutdown, observability, and degradation behavior"
+  security:
+    focus: "TypeScript trust boundaries, runtime validation, auth, parsing, secrets, dependencies, and sensitive data"
+  testing:
+    focus: "TypeScript type-check, unit, integration, browser, concurrency, and regression tests"
+  ui:
+    focus: "TypeScript and TSX state, rendering, events, hydration, browser behavior, and interactive output"
+  ux-accessibility:
+    focus: "TypeScript UI semantics, keyboard and focus behavior, feedback, localization, and assistive access"
+
+declared_quality_check_file: quality-check/bill-typescript-code-check/content.md
+
+pointers:
+  code-review/bill-typescript-code-review:
+    - name: review-orchestrator.md
+      target: orchestration/review-orchestrator/PLAYBOOK.md
+    - name: review-delegation.md
+      target: orchestration/review-delegation/PLAYBOOK.md
+    - name: review-scope.md
+      target: orchestration/review-scope/PLAYBOOK.md
+    - name: shell-ceremony.md
+      target: orchestration/shell-content-contract/shell-ceremony.md
+    - name: specialist-contract.md
+      target: orchestration/review-orchestrator/specialist-contract.md
+    - name: stack-routing.md
+      target: orchestration/stack-routing/PLAYBOOK.md
+    - name: telemetry-contract.md
+      target: orchestration/telemetry-contract/PLAYBOOK.md
+  code-review/bill-typescript-code-review-api-contracts:
+    - name: review-orchestrator.md
+      target: orchestration/review-orchestrator/PLAYBOOK.md
+    - name: shell-ceremony.md
+      target: orchestration/shell-content-contract/shell-ceremony.md
+    - name: telemetry-contract.md
+      target: orchestration/telemetry-contract/PLAYBOOK.md
+  code-review/bill-typescript-code-review-architecture:
+    - name: review-orchestrator.md
+      target: orchestration/review-orchestrator/PLAYBOOK.md
+    - name: shell-ceremony.md
+      target: orchestration/shell-content-contract/shell-ceremony.md
+    - name: telemetry-contract.md
+      target: orchestration/telemetry-contract/PLAYBOOK.md
+  code-review/bill-typescript-code-review-performance:
+    - name: review-orchestrator.md
+      target: orchestration/review-orchestrator/PLAYBOOK.md
+    - name: shell-ceremony.md
+      target: orchestration/shell-content-contract/shell-ceremony.md
+    - name: telemetry-contract.md
+      target: orchestration/telemetry-contract/PLAYBOOK.md
+  code-review/bill-typescript-code-review-persistence:
+    - name: review-orchestrator.md
+      target: orchestration/review-orchestrator/PLAYBOOK.md
+    - name: shell-ceremony.md
+      target: orchestration/shell-content-contract/shell-ceremony.md
+    - name: telemetry-contract.md
+      target: orchestration/telemetry-contract/PLAYBOOK.md
+  code-review/bill-typescript-code-review-platform-correctness:
+    - name: review-orchestrator.md
+      target: orchestration/review-orchestrator/PLAYBOOK.md
+    - name: shell-ceremony.md
+      target: orchestration/shell-content-contract/shell-ceremony.md
+    - name: telemetry-contract.md
+      target: orchestration/telemetry-contract/PLAYBOOK.md
+  code-review/bill-typescript-code-review-reliability:
+    - name: review-orchestrator.md
+      target: orchestration/review-orchestrator/PLAYBOOK.md
+    - name: shell-ceremony.md
+      target: orchestration/shell-content-contract/shell-ceremony.md
+    - name: telemetry-contract.md
+      target: orchestration/telemetry-contract/PLAYBOOK.md
+  code-review/bill-typescript-code-review-security:
+    - name: review-orchestrator.md
+      target: orchestration/review-orchestrator/PLAYBOOK.md
+    - name: shell-ceremony.md
+      target: orchestration/shell-content-contract/shell-ceremony.md
+    - name: telemetry-contract.md
+      target: orchestration/telemetry-contract/PLAYBOOK.md
+  code-review/bill-typescript-code-review-testing:
+    - name: review-orchestrator.md
+      target: orchestration/review-orchestrator/PLAYBOOK.md
+    - name: shell-ceremony.md
+      target: orchestration/shell-content-contract/shell-ceremony.md
+    - name: telemetry-contract.md
+      target: orchestration/telemetry-contract/PLAYBOOK.md
+  code-review/bill-typescript-code-review-ui:
+    - name: review-orchestrator.md
+      target: orchestration/review-orchestrator/PLAYBOOK.md
+    - name: shell-ceremony.md
+      target: orchestration/shell-content-contract/shell-ceremony.md
+    - name: telemetry-contract.md
+      target: orchestration/telemetry-contract/PLAYBOOK.md
+  code-review/bill-typescript-code-review-ux-accessibility:
+    - name: review-orchestrator.md
+      target: orchestration/review-orchestrator/PLAYBOOK.md
+    - name: shell-ceremony.md
+      target: orchestration/shell-content-contract/shell-ceremony.md
+    - name: telemetry-contract.md
+      target: orchestration/telemetry-contract/PLAYBOOK.md
+  quality-check/bill-typescript-code-check:
+    - name: shell-ceremony.md
+      target: orchestration/shell-content-contract/shell-ceremony.md
+    - name: stack-routing.md
+      target: orchestration/stack-routing/PLAYBOOK.md
+    - name: telemetry-contract.md
+      target: orchestration/telemetry-contract/PLAYBOOK.md

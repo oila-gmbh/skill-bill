@@ -183,6 +183,35 @@ val PLATFORM_PACK_PRESET_DESCRIPTORS: Map<String, PlatformPackPreset> =
         "Exclude target/ build output and vendored dependency trees from dominance scoring.",
       ),
     ),
+    "typescript" to PlatformPackPreset(
+      displayName = "TypeScript",
+      strongSignals = listOf(
+        "tsconfig.json",
+        "tsconfig.*.json",
+        "*.ts",
+        "*.tsx",
+        "*.mts",
+        "*.cts",
+        "package.json",
+        "package-lock.json",
+        "yarn.lock",
+        "pnpm-lock.yaml",
+        "bun.lockb",
+        "biome.json",
+        "eslint.config.*",
+        ".eslintrc*",
+        "prettier.config.*",
+        ".prettierrc*",
+      ),
+      tieBreakers = listOf(
+        "Prefer TypeScript when tsconfig metadata and first-party TypeScript source files dominate the " +
+          "changed product surface; package.json or a lockfile alone is not sufficient.",
+        "Do not prefer TypeScript where it appears only as generated API clients, ambient declaration files, " +
+          "or build tooling around another dominant stack.",
+        "Exclude node_modules, dist, build and coverage output, generated clients, and generated declaration " +
+          "files from dominance scoring.",
+      ),
+    ),
   )
 
 /**

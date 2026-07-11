@@ -1,0 +1,35 @@
+contract_version: "0.1"
+agents:
+  - name: bill-typescript-code-review
+    description: "TypeScript baseline code reviewer. Reviews the full owned diff before specialist findings are merged. Returns an F-XXX Risk Register."
+    compose: governed-content
+  - name: bill-typescript-code-review-api-contracts
+    description: "TypeScript API contracts reviewer for exported types, runtime schemas, wire formats, and compatibility. Returns an F-XXX Risk Register."
+    compose: governed-content
+  - name: bill-typescript-code-review-architecture
+    description: "TypeScript architecture reviewer for package boundaries, modules, dependencies, and runtime ownership. Returns an F-XXX Risk Register."
+    compose: governed-content
+  - name: bill-typescript-code-review-performance
+    description: "TypeScript performance reviewer for event-loop work, allocation, bundles, rendering, I/O, and hot paths. Returns an F-XXX Risk Register."
+    compose: governed-content
+  - name: bill-typescript-code-review-persistence
+    description: "TypeScript persistence reviewer for transactions, schemas, serialization, migrations, and durable consistency. Returns an F-XXX Risk Register."
+    compose: governed-content
+  - name: bill-typescript-code-review-platform-correctness
+    description: "TypeScript correctness reviewer for strictness, narrowing, modules, emitted JavaScript, and runtime targets. Returns an F-XXX Risk Register."
+    compose: governed-content
+  - name: bill-typescript-code-review-reliability
+    description: "TypeScript reliability reviewer for promises, cancellation, retries, queues, shutdown, and failure behavior. Returns an F-XXX Risk Register."
+    compose: governed-content
+  - name: bill-typescript-code-review-security
+    description: "TypeScript security reviewer for trust boundaries, runtime validation, auth, injection, secrets, and dependencies. Returns an F-XXX Risk Register."
+    compose: governed-content
+  - name: bill-typescript-code-review-testing
+    description: "TypeScript testing reviewer for type checks, runtime regression proof, environments, promises, and weak tests. Returns an F-XXX Risk Register."
+    compose: governed-content
+  - name: bill-typescript-code-review-ui
+    description: "TypeScript UI reviewer for TSX state, events, rendering, hydration, effects, and browser behavior. Returns an F-XXX Risk Register."
+    compose: governed-content
+  - name: bill-typescript-code-review-ux-accessibility
+    description: "TypeScript UX and accessibility reviewer for semantics, keyboard, focus, feedback, localization, and assistive access. Returns an F-XXX Risk Register."
+    compose: governed-content

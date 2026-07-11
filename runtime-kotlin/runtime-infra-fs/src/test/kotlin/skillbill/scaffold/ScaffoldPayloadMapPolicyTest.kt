@@ -175,6 +175,27 @@ class ScaffoldPayloadMapPolicyTest {
   }
 
   @Test
+  fun `resolvePlatformPackDefaults resolves typescript preset defaults`() {
+    val defaults = resolvePlatformPackDefaults(emptyMap(), "typescript")
+    assertEquals("TypeScript", defaults.displayName)
+    assertEquals(true, defaults.presetUsed)
+    listOf(
+      "tsconfig.json",
+      "tsconfig.*.json",
+      "*.ts",
+      "*.tsx",
+      "*.mts",
+      "*.cts",
+      "package.json",
+      "pnpm-lock.yaml",
+      "biome.json",
+    ).forEach { marker -> assertTrue(defaults.strongSignals.contains(marker)) }
+    assertTrue(defaults.tieBreakers.any { it.contains("package.json or a lockfile alone") })
+    assertTrue(defaults.tieBreakers.any { it.contains("generated API clients") })
+    assertTrue(defaults.tieBreakers.any { it.contains("node_modules") })
+  }
+
+  @Test
   fun `resolvePlatformPackDefaults loud-fails when no preset and no routing signals are supplied`() {
     assertFailsWith<InvalidScaffoldPayloadError> {
       resolvePlatformPackDefaults(emptyMap(), "no-such-preset")

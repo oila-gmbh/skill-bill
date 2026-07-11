@@ -149,6 +149,7 @@ Start from reference packs when they fit:
 - `php`: PHP applications, services, Composer projects, APIs, persistence, security, testing, server-rendered UI, UX/accessibility, and quality-check behavior
 - `python`: Python applications, libraries, CLIs, APIs, persistence, security, testing, UI, UX/accessibility, and quality-check behavior
 - `rust`: Rust crates and Cargo workspaces, services, CLIs, async runtimes, FFI, persistence, safety, testing, UI/UX, and quality-check behavior
+- `typescript`: TypeScript applications, libraries, services, Node/browser runtimes, APIs, persistence, async behavior, TSX UI/UX, and package-manager-aware quality-check behavior
 
 Create or fork a pack when team-specific architecture, framework, API, persistence, reliability, UI, or accessibility expectations need their own maintained behavior.
 
