@@ -186,9 +186,58 @@ class PythonPlatformPackTest {
       ),
     )
 
+    val contentByArea = pack.declaredFiles.areas.mapValues { (_, path) -> Files.readString(path) }
     expectedMarkers.forEach { (area, markers) ->
-      val content = Files.readString(pack.declaredFiles.areas.getValue(area))
+      val content = contentByArea.getValue(area)
       markers.forEach { marker -> assertContains(content, marker) }
+    }
+
+    val expectedRuleContracts = mapOf(
+      "api-contracts" to listOf(
+        listOf("generally retriable mutation", "idempotency key", "durable effects", "observable"),
+      ),
+      "performance" to listOf(
+        listOf("per-item", "batching", "measured", "amplification"),
+        listOf("sync_to_async", "thread_sensitive", "synchronous session", "event-loop"),
+        listOf("hot-cache", "bounded capacity", "eviction or TTL", "memory evidence"),
+      ),
+      "persistence" to listOf(
+        listOf("non-overlapping responsibility ownership", "creation", "rollback", "close"),
+        listOf("whole transaction", "roll back", "ambiguous commit outcome", "external effects"),
+        listOf("tenant predicate", "database-per-tenant", "raw SQL", "reused sessions"),
+        listOf("joinedload", "selectinload", "bounded query-count evidence", "result cardinality"),
+      ),
+      "platform-correctness" to listOf(
+        listOf("wall-clock timestamps", "time.monotonic", "timeout calculations", "injectable clock"),
+      ),
+      "reliability" to listOf(
+        listOf("atomic outbox", "transaction.on_commit", "reconciliation", "loses required delivery"),
+        listOf("stop new admissions", "already accepted work", "durably requeued", "observable terminal state"),
+        listOf("durable checkpoint writes", "interruption cleanup", "restart position", "duplicate-safe replay"),
+      ),
+      "security" to listOf(
+        listOf("browser sessions", "session rotation", "SameSite", "fixation"),
+        listOf("capability URLs", "bounded expiry", "resource", "purpose"),
+        listOf("ModelForm", "fields", "model_validate", "model_construct"),
+      ),
+      "testing" to listOf(
+        listOf("framework requests", "transaction retries", "durable effects", "observable"),
+        listOf("wall and monotonic clocks", "deadline boundaries", "persisted timestamps"),
+        listOf("both sides", "durable checkpoint boundary", "before and after", "no skipped effects", "no duplicates"),
+      ),
+      "ux-accessibility" to listOf(
+        listOf("aria-invalid=\"true\"", "control-specific", "aria-describedby", "aria-errormessage"),
+        listOf("role-specific ARIA role", "accessible name", "focus behavior", "keyboard pattern"),
+      ),
+    )
+    expectedRuleContracts.forEach { (area, contracts) ->
+      val rules = contentByArea.getValue(area).lineSequence().filter { line -> line.startsWith("- ") }.toList()
+      contracts.forEach { markers ->
+        assertTrue(
+          rules.any { rule -> markers.all { marker -> rule.contains(marker) } },
+          "Python $area must keep coupled rule contract: ${markers.joinToString()}",
+        )
+      }
     }
 
     val agents = parseNativeAgentBundle(
