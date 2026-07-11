@@ -151,6 +151,24 @@ class PlatformPackSubstanceAuditTest {
   }
 
   @Test
+  fun `missing declared authored content is reported without aborting the audit`() {
+    val root = Files.createTempDirectory("substance-missing-content")
+    seedConformingPlatformPack(root, "valid")
+    seedConformingPlatformPack(root, "broken")
+    val missing = root.resolve("platform-packs/broken/code-review/bill-broken-code-review-architecture/content.md")
+    Files.delete(missing)
+
+    val report = PlatformPackSubstanceAudit.audit(root)
+
+    assertEquals(listOf("valid"), report.packs.map { it.pack })
+    assertTrue(
+      report.auditErrors.single().startsWith(
+        "platform-packs/broken/code-review/bill-broken-code-review-architecture/content.md:",
+      ),
+    )
+  }
+
+  @Test
   fun `audit rejects missing effective review areas independently`() {
     val root = Files.createTempDirectory("substance-under-coverage")
     seedConformingPlatformPack(root, "partial")

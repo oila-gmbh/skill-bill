@@ -124,133 +124,14 @@ class PythonPlatformPackTest {
     val repoRoot = repoRootFromTest()
     val packRoot = repoRoot.resolve("platform-packs/python")
     val pack = loadPlatformPack(packRoot)
-    val expectedMarkers = mapOf(
-      "api-contracts" to listOf(
-        "model_fields_set",
-        "Serializer.is_valid",
-        "StreamingResponse",
-        "generally retriable mutation",
-      ),
-      "architecture" to listOf(
-        "importlib.import_module",
-        "repository-owned settings module",
-        "namespace packages",
-        "[project.scripts]",
-      ),
-      "performance" to listOf(
-        "sync_to_async",
-        "thread_sensitive",
-        "joinedload",
-        "values_list",
-        "ProcessPoolExecutor",
-        "asyncio.Semaphore",
-      ),
-      "persistence" to listOf(
-        "non-overlapping responsibility ownership",
-        "one `AsyncSession` per concurrent task",
-        "QuerySet.select_for_update()",
-        "atomic Django `F()` updates",
-        "database-per-tenant",
-        "cannot be bypassed by raw SQL",
-        "joinedload",
-        "bounded query-count evidence",
-        "values_list",
-        "transaction.on_commit",
-        "CONCURRENTLY",
-      ),
-      "platform-correctness" to listOf(
-        "default_factory",
-        "asyncio.TaskGroup",
-        "task owner that initiated cancellation",
-        "Queue.join",
-        "time.monotonic",
-        "injectable clock",
-      ),
-      "reliability" to listOf(
-        "httpx.Timeout",
-        "repository-owned shared client policy",
-        "explicitly retained tasks",
-        "visibility_timeout",
-        "cancel_futures=True",
-        "durable checkpoint writes",
-        "restart position",
-      ),
-      "security" to listOf(
-        "pickle.loads",
-        "ZipFile.extractall",
-        "shell=True",
-        "SSRF",
-        "exact raw request body",
-        "bounded timestamp freshness window",
-        "reject replayed event identifiers",
-      ),
-      "testing" to listOf(
-        "pytest.raises",
-        "hypothesis",
-        "pytest-asyncio",
-        "threading.Event",
-        "injected wall and monotonic clocks",
-        "durable checkpoint",
-        "duplicate-safe replay",
-      ),
-      "ui" to listOf("ModelAdmin", "st.session_state", "PySide"),
-      "ux-accessibility" to listOf(
-        "aria-invalid=\"true\"",
-        "stable, control-specific",
-        "role-specific ARIA role",
-        "documented keyboard pattern",
-        "aria-live",
-        "ngettext",
-        "Jupyter notebooks",
-      ),
-    )
-
     val contentByArea = pack.declaredFiles.areas.mapValues { (_, path) -> Files.readString(path) }
-    expectedMarkers.forEach { (area, markers) ->
-      val content = contentByArea.getValue(area)
-      markers.forEach { marker -> assertContains(content, marker) }
+    val governedRulesByArea = contentByArea.mapValues { (_, content) -> governedRules(content) }
+    PYTHON_EXPECTED_MARKERS.forEach { (area, markers) ->
+      val rules = governedRulesByArea.getValue(area).joinToString("\n")
+      markers.forEach { marker -> assertContains(rules, marker) }
     }
-
-    val expectedRuleContracts = mapOf(
-      "api-contracts" to listOf(
-        listOf("generally retriable mutation", "idempotency key", "durable effects", "observable"),
-      ),
-      "performance" to listOf(
-        listOf("per-item", "batching", "measured", "amplification"),
-        listOf("sync_to_async", "thread_sensitive", "synchronous session", "event-loop"),
-        listOf("hot-cache", "bounded capacity", "eviction or TTL", "memory evidence"),
-      ),
-      "persistence" to listOf(
-        listOf("non-overlapping responsibility ownership", "creation", "rollback", "close"),
-        listOf("whole transaction", "roll back", "ambiguous commit outcome", "external effects"),
-        listOf("tenant predicate", "database-per-tenant", "raw SQL", "reused sessions"),
-        listOf("joinedload", "selectinload", "bounded query-count evidence", "result cardinality"),
-      ),
-      "platform-correctness" to listOf(
-        listOf("wall-clock timestamps", "time.monotonic", "timeout calculations", "injectable clock"),
-      ),
-      "reliability" to listOf(
-        listOf("atomic outbox", "transaction.on_commit", "reconciliation", "loses required delivery"),
-        listOf("stop new admissions", "already accepted work", "durably requeued", "observable terminal state"),
-        listOf("durable checkpoint writes", "interruption cleanup", "restart position", "duplicate-safe replay"),
-      ),
-      "security" to listOf(
-        listOf("browser sessions", "session rotation", "SameSite", "fixation"),
-        listOf("capability URLs", "bounded expiry", "resource", "purpose"),
-        listOf("ModelForm", "fields", "model_validate", "model_construct"),
-      ),
-      "testing" to listOf(
-        listOf("framework requests", "transaction retries", "durable effects", "observable"),
-        listOf("wall and monotonic clocks", "deadline boundaries", "persisted timestamps"),
-        listOf("both sides", "durable checkpoint boundary", "before and after", "no skipped effects", "no duplicates"),
-      ),
-      "ux-accessibility" to listOf(
-        listOf("aria-invalid=\"true\"", "control-specific", "aria-describedby", "aria-errormessage"),
-        listOf("role-specific ARIA role", "accessible name", "focus behavior", "keyboard pattern"),
-      ),
-    )
-    expectedRuleContracts.forEach { (area, contracts) ->
-      val rules = contentByArea.getValue(area).lineSequence().filter { line -> line.startsWith("- ") }.toList()
+    PYTHON_EXPECTED_RULE_CONTRACTS.forEach { (area, contracts) ->
+      val rules = governedRulesByArea.getValue(area)
       contracts.forEach { markers ->
         assertTrue(
           rules.any { rule -> markers.all { marker -> rule.contains(marker) } },
@@ -403,4 +284,142 @@ class PythonPlatformPackTest {
       }
     }
   }
+
+  private fun governedRules(content: String): List<String> {
+    var governed = false
+    return content.lineSequence().mapNotNull { line ->
+      when {
+        line.startsWith("### ") -> {
+          governed = line.contains("Rules")
+          null
+        }
+        line.startsWith("## ") -> {
+          governed = false
+          null
+        }
+        governed && line.startsWith("- ") -> line
+        else -> null
+      }
+    }.toList()
+  }
 }
+
+private val PYTHON_EXPECTED_MARKERS = mapOf(
+  "api-contracts" to listOf(
+    "model_fields_set",
+    "Serializer.is_valid",
+    "StreamingResponse",
+    "generally retriable mutation",
+  ),
+  "architecture" to listOf(
+    "importlib.import_module",
+    "repository-owned settings module",
+    "namespace packages",
+    "[project.scripts]",
+  ),
+  "performance" to listOf(
+    "sync_to_async",
+    "thread_sensitive",
+    "joinedload",
+    "values_list",
+    "ProcessPoolExecutor",
+    "asyncio.Semaphore",
+  ),
+  "persistence" to listOf(
+    "non-overlapping responsibility ownership",
+    "one `AsyncSession` per concurrent task",
+    "QuerySet.select_for_update()",
+    "atomic Django `F()` updates",
+    "database-per-tenant",
+    "cannot be bypassed by raw SQL",
+    "joinedload",
+    "bounded query-count evidence",
+    "values_list",
+    "transaction.on_commit",
+    "CONCURRENTLY",
+  ),
+  "platform-correctness" to listOf(
+    "default_factory",
+    "asyncio.TaskGroup",
+    "task owner that initiated cancellation",
+    "Queue.join",
+    "time.monotonic",
+    "injectable clock",
+  ),
+  "reliability" to listOf(
+    "httpx.Timeout",
+    "repository-owned shared client policy",
+    "explicitly retained tasks",
+    "visibility_timeout",
+    "cancel_futures=True",
+    "durable checkpoint writes",
+    "restart position",
+  ),
+  "security" to listOf(
+    "pickle.loads",
+    "ZipFile.extractall",
+    "shell=True",
+    "SSRF",
+    "exact raw request body",
+    "bounded timestamp freshness window",
+    "reject replayed event identifiers",
+  ),
+  "testing" to listOf(
+    "pytest.raises",
+    "hypothesis",
+    "pytest-asyncio",
+    "threading.Event",
+    "injected wall and monotonic clocks",
+    "durable checkpoint",
+    "duplicate-safe replay",
+  ),
+  "ui" to listOf("ModelAdmin", "st.session_state", "PySide"),
+  "ux-accessibility" to listOf(
+    "aria-invalid=\"true\"",
+    "stable, control-specific",
+    "role-specific ARIA role",
+    "documented keyboard pattern",
+    "aria-live",
+    "ngettext",
+    "Jupyter notebooks",
+  ),
+)
+
+private val PYTHON_EXPECTED_RULE_CONTRACTS = mapOf(
+  "api-contracts" to listOf(
+    listOf("generally retriable mutation", "idempotency key", "durable effects", "observable"),
+  ),
+  "performance" to listOf(
+    listOf("per-item", "batching", "measured", "amplification"),
+    listOf("sync_to_async", "thread_sensitive", "synchronous session", "event-loop"),
+    listOf("hot-cache", "bounded capacity", "eviction or TTL", "memory evidence"),
+  ),
+  "persistence" to listOf(
+    listOf("non-overlapping responsibility ownership", "creation", "rollback", "close"),
+    listOf("whole transaction", "roll back", "ambiguous commit outcome", "external effects"),
+    listOf("tenant predicate", "database-per-tenant", "raw SQL", "reused sessions"),
+    listOf("joinedload", "selectinload", "bounded query-count evidence", "result cardinality"),
+  ),
+  "platform-correctness" to listOf(
+    listOf("wall-clock timestamps", "time.monotonic", "timeout calculations", "injectable clock"),
+  ),
+  "reliability" to listOf(
+    listOf("atomic outbox", "transaction.on_commit", "reconciliation", "loses required delivery"),
+    listOf("stop new admissions", "already accepted work", "durably requeued", "observable terminal state"),
+    listOf("durable checkpoint writes", "interruption cleanup", "restart position", "duplicate-safe replay"),
+  ),
+  "security" to listOf(
+    listOf("browser sessions", "session rotation", "SameSite", "fixation"),
+    listOf("capability URLs", "bounded expiry", "resource", "purpose"),
+    listOf("ModelForm", "fields", "model_validate", "model_construct"),
+  ),
+  "testing" to listOf(
+    listOf("framework requests", "transaction retries", "durable effects", "observable"),
+    listOf("wall and monotonic clocks", "deadline boundaries", "persisted timestamps"),
+    listOf("both sides", "durable checkpoint boundary", "before and after", "no skipped effects", "no duplicates"),
+  ),
+  "ux-accessibility" to listOf(
+    listOf("aria-invalid=\"true\"", "control-specific", "aria-describedby", "aria-errormessage"),
+    listOf("role-specific ARIA role", "accessible name", "focus behavior", "keyboard pattern"),
+  ),
+)

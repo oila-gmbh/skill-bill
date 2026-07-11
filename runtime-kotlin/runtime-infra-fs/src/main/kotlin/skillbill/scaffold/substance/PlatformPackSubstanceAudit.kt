@@ -105,7 +105,9 @@ data class PlatformPackSubstanceReport(
 object PlatformPackSubstanceAudit {
   fun audit(repoRoot: Path, policy: SubstancePolicy = SubstancePolicy()): PlatformPackSubstanceReport {
     val root = repoRoot.toAbsolutePath().normalize()
-    val (manifests, auditErrors) = discoverManifests(root)
+    val (discoveredManifests, manifestErrors) = discoverManifests(root)
+    val (manifests, contentErrors) = retainManifestsWithReadableDeclaredContent(root, discoveredManifests)
+    val auditErrors = (manifestErrors + contentErrors).sorted()
     val manifestsBySlug = manifests.associateBy { it.slug }
     val effectiveAreas = manifests.associate {
       it.slug to effectiveAreas(it.slug, manifestsBySlug)
@@ -311,6 +313,28 @@ object PlatformPackSubstanceAudit {
     }
     return manifests to errors.sorted()
   }
+
+  private fun retainManifestsWithReadableDeclaredContent(
+    root: Path,
+    manifests: List<PlatformManifest>,
+  ): Pair<List<PlatformManifest>, List<String>> {
+    val errors = mutableListOf<String>()
+    val readable = manifests.filter { pack ->
+      declaredContentPaths(pack).mapNotNull { path ->
+        runCatching { Files.readString(path) }.exceptionOrNull()?.let { error ->
+          val source = path.toAbsolutePath().normalize().relativeTo(root).toString()
+          "$source: declared authored content is missing or unreadable (${error::class.simpleName}: ${error.message})"
+        }
+      }.also(errors::addAll).isEmpty()
+    }
+    return readable to errors.sorted()
+  }
+
+  private fun declaredContentPaths(pack: PlatformManifest): List<Path> = buildList {
+    pack.declaredFiles.baseline?.let(::add)
+    addAll(pack.declaredFiles.areas.values)
+    pack.declaredQualityCheckFile?.let(::add)
+  }.distinct().sortedBy(Path::toString)
 
   private fun authoredFiles(pack: PlatformManifest): List<AuthoredFile> {
     val declared = buildList {
