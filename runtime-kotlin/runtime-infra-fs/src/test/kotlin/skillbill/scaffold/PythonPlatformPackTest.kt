@@ -16,8 +16,11 @@ import skillbill.install.model.WindowsSymlinkDecision
 import skillbill.install.model.WindowsSymlinkPreflight
 import skillbill.install.model.WindowsSymlinkPreflightState
 import skillbill.install.runtime.InstallOperations
+import skillbill.nativeagent.composition.parseNativeAgentBundle
 import skillbill.scaffold.platformpack.loadPlatformPack
 import skillbill.scaffold.policy.APPROVED_CODE_REVIEW_AREAS
+import skillbill.scaffold.substance.Fraction
+import skillbill.scaffold.substance.PlatformPackSubstanceAudit
 import skillbill.testing.repoRootFromTest
 import java.nio.file.Files
 import java.nio.file.Path
@@ -114,6 +117,106 @@ class PythonPlatformPackTest {
         "Python pack source should contain substantive guidance: $contentFile",
       )
     }
+  }
+
+  @Test
+  fun `python specialists expose deep native coverage synchronized with metadata and agents`() {
+    val repoRoot = repoRootFromTest()
+    val packRoot = repoRoot.resolve("platform-packs/python")
+    val pack = loadPlatformPack(packRoot)
+    val expectedMarkers = mapOf(
+      "api-contracts" to listOf("model_fields_set", "Serializer.is_valid", "StreamingResponse"),
+      "architecture" to listOf("importlib.import_module", "namespace packages", "[project.scripts]"),
+      "performance" to listOf("select_related", "ProcessPoolExecutor", "asyncio.Semaphore"),
+      "persistence" to listOf("AsyncSession", "transaction.on_commit", "CONCURRENTLY"),
+      "platform-correctness" to listOf("default_factory", "asyncio.TaskGroup", "Queue.join"),
+      "reliability" to listOf("httpx.Timeout", "visibility_timeout", "cancel_futures=True"),
+      "security" to listOf("pickle.loads", "ZipFile.extractall", "shell=True", "SSRF"),
+      "testing" to listOf("pytest.raises", "hypothesis", "pytest-asyncio", "threading.Event"),
+      "ui" to listOf("ModelAdmin", "st.session_state", "PySide"),
+      "ux-accessibility" to listOf("aria-live", "ngettext", "Jupyter notebooks"),
+    )
+
+    expectedMarkers.forEach { (area, markers) ->
+      val content = Files.readString(pack.declaredFiles.areas.getValue(area))
+      markers.forEach { marker -> assertContains(content, marker) }
+    }
+
+    val agents = parseNativeAgentBundle(
+      packRoot.resolve("code-review/bill-python-code-review/native-agents/agents.yaml"),
+    ).associateBy { agent -> agent.name.removePrefix("bill-python-code-review-") }
+    assertEquals(APPROVED_CODE_REVIEW_AREAS, agents.keys)
+    agents.forEach { (area, agent) ->
+      assertEquals(
+        "${pack.displayName} ${area.replace('-', ' ')} specialist code reviewer. " +
+          "Runs against ${pack.areaMetadata.getValue(area)}. " +
+          "Returns a Risk Register in the F-XXX bullet format.",
+        agent.description,
+      )
+    }
+  }
+
+  @Test
+  fun `python specialists and checker pass completed-pack substance gates`() {
+    val repoRoot = repoRootFromTest()
+    val report = PlatformPackSubstanceAudit.audit(repoRoot)
+    val python = report.packs.single { pack -> pack.pack == "python" }
+
+    assertEquals(APPROVED_CODE_REVIEW_AREAS, python.physicalAreas.toSet())
+    python.specialists.filterNot { specialist -> specialist.inherited }.forEach { specialist ->
+      assertTrue(
+        specialist.substantiveRules >= 10,
+        "Thin Python specialist: ${specialist.area} (${specialist.substantiveRules})",
+      )
+      assertEquals(3, specialist.failureModeClusters, "Missing failure cluster: ${specialist.area}")
+      assertTrue(specialist.concreteEvidenceRules >= 10, "Missing concrete evidence: ${specialist.area}")
+      assertTrue(specialist.placeholders.isEmpty(), "Placeholder in ${specialist.area}")
+    }
+    assertTrue(python.qualityCheckFacets.size >= 7)
+    assertTrue(python.sharedShingles <= Fraction(35, 100), python.sharedShingles.percentage())
+    assertTrue(
+      python.highestCorrespondingSimilarity == null ||
+        python.highestCorrespondingSimilarity.similarity <= Fraction(65, 100),
+    )
+    assertFalse(report.violations.any { violation -> violation.pack == "python" })
+  }
+
+  @Test
+  fun `python quality checker preserves safe ordered repository execution`() {
+    val repoRoot = repoRootFromTest()
+    val content = Files.readString(
+      repoRoot.resolve("platform-packs/python/quality-check/bill-python-code-check/content.md"),
+    )
+    listOf(
+      "uv run --frozen",
+      "poetry run",
+      "pip-tools",
+      "ruff format --check",
+      "ruff check",
+      "mypy",
+      "pyright",
+      "pytest path::test_name",
+      "python -m build",
+      "pip-audit",
+      "python manage.py check",
+      "pre-existing condition",
+      "environmental blocker",
+      "full suite",
+    ).forEach { marker -> assertContains(content, marker) }
+
+    val orderedMarkers = listOf(
+      "Verify environment and metadata integrity first",
+      "Verify formatting without mutation",
+      "Run configured linting",
+      "Run configured typing",
+      "Run targeted `pytest",
+      "Build and inspect distributions",
+      "Run configured dependency and security checks",
+      "run framework and lifecycle validation",
+    )
+    val orderedPositions = orderedMarkers.map { marker -> content.indexOf(marker) }
+    assertTrue(orderedPositions.all { position -> position >= 0 })
+    assertTrue(orderedPositions.zipWithNext().all { (first, second) -> first < second })
   }
 
   @Test

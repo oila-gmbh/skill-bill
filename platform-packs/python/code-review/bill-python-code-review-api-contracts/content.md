@@ -23,17 +23,19 @@ Use this specialist for FastAPI, Django, Flask, Starlette, DRF, WSGI/ASGI handle
 
 ## Project-Specific Rules
 
-### Input and Serialization Semantics
+### Python API Contract Rules
 
-- Require input validation before business logic and intentional status codes with stable documented response shapes.
-- Preserve the distinction among absent, null, empty, and defaulted values; verify pydantic `exclude_unset` and PATCH handlers do not overwrite omitted fields or collapse them into explicit nulls.
-- Reject pydantic v1-to-v2 migration drift in dump methods, aliases, defaults, enum encoding, datetime/timezone formatting, decimal precision, nullable fields, or validation behavior when it changes the wire contract.
-- Verify dataclasses, marshmallow, DRF serializers, OpenAPI generation, dependency injection, middleware, content negotiation, streaming responses, and background-task responses match their framework boundary semantics.
-
-### Compatibility and Errors
-
-- Preserve stable machine-readable validation, authentication, authorization, not-found, conflict, and idempotency error shapes; reject mappings that erase client-actionable distinctions.
-- Require explicit idempotency semantics for retriable mutations and webhooks, including deterministic replay responses.
-- Require deterministic, bounded pagination with a stable ordering and cursor or tie-breaker so concurrent writes cannot duplicate or omit records unpredictably.
-- Reject silent breaks to public signatures, package entry points, CLI arguments, schemas, event payloads, generated documentation, or integrations; include the old-versus-new contract when the diff exposes it.
+- Require runtime validation with pydantic, marshmallow, a DRF serializer, or explicit checks before typed Python input reaches domain work; annotations alone permit invalid contract data and late failures.
+- Verify pydantic `model_fields_set` and `model_dump(exclude_unset=True)` preserve absent, explicit `None`, empty, and defaulted values; collapsing presence semantics can corrupt PATCH state.
+- When pydantic v2 is detected, reject stale `dict`, `parse_obj`, validator, alias, or config assumptions that change `model_dump` output or validation errors; migration drift breaks clients.
+- Require FastAPI body, query, header, and dependency declarations to match generated `openapi.json`; mismatched runtime parsing or documentation causes valid clients to fail.
+- When Django REST Framework is detected, verify `Serializer.is_valid`, partial updates, nested writes, and `validated_data` ownership before `save`; bypasses risk invalid persisted data and incorrect status responses.
+- When Flask is detected, require bounded `request.get_json` parsing and explicit schema validation before using payload fields; permissive parsing can crash handlers or accept invalid contract state.
+- Require stable machine-readable error codes and intentional HTTP status mapping through `HTTPException`, DRF exceptions, or registered Flask handlers; raw exception text breaks retry and recovery behavior.
+- Verify response serialization preserves `Decimal`, `Enum`, UUID, and timezone-aware `datetime` precision and documented aliases; implicit coercion can corrupt wire data.
+- Require `StreamingResponse`, Django `StreamingHttpResponse`, or generator responses to surface validation errors before headers commit and close owned resources on cancellation; late failure or leaks return a misleading success status and exhaust capacity.
+- Require background response work such as FastAPI `BackgroundTasks` to have an observable failure owner and durable inputs; post-response exceptions must not silently lose contract-required effects.
+- Require bounded pagination with a deterministic cursor and unique tie-breaker in `order_by`; concurrent inserts otherwise duplicate or omit client-visible records.
+- Verify webhooks authenticate raw request bytes and use an idempotency key or durable event identifier before effects; reserialization or replay can cause signature failure or duplicate state.
+- Reject incompatible public signatures, CLI entry points, schema fields, enum values, or event payloads without a versioned migration path; mixed-version consumers will fail at the contract boundary.
 - For Blocker or Major findings, describe the concrete compatibility or validation failure scenario.

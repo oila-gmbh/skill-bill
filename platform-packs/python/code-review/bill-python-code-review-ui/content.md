@@ -24,16 +24,22 @@ Use this specialist for Django or Jinja templates, forms, admin pages, HTMX-styl
 
 ## Project-Specific Rules
 
-### State and Interaction
+### Python-Owned UI Rules
 
-- Require a single source of truth for server and client state; reject duplicated form, filter, pagination, selection, or permission state that can render stale or contradictory UI.
-- Require intentional form defaults, preserved input, validation display, navigation after actions, flash and error messages, empty/loading/error states, and permission-aware controls.
-- Require server-rendered actions and navigation to degrade gracefully without JavaScript when the product boundary promises progressive enhancement; reject core tasks available only through an optional script path.
-- Preserve timezone, locale, aggregation, formatting, and route/view consistency so the UI does not misrepresent backend state.
-
-### Rendering and Data Access
-
-- Reject template helpers, inclusion tags, properties, and `context_processors` that execute per-row ORM access or repeated downstream calls and create an N+1 latency failure.
-- Verify template context ownership, static and media references, admin customization, fragments, notebooks, dashboard callbacks, and generated reports render under empty, partial, and error data.
-- Require user-visible state transitions to reflect durable backend outcomes rather than optimistic success that can diverge after a failed request.
+- When Django templates are detected, require each context key and `{% include %}` fragment to have one view or component owner; duplicated state risks stale or contradictory rendering.
+- Verify Django admin `ModelAdmin`, actions, and readonly fields respect object permissions and durable outcomes; optimistic success messages can mislead users after failed mutations.
+- When Flask or Jinja rendering is detected, require `render_template` paths to handle absent, empty, partial, and invalid context data; unchecked values cause broken pages instead of recoverable states.
+- Require Django `Form`, `ModelForm`, or WTForms submissions to preserve entered values and display field plus non-field errors; clearing invalid input forces data loss and blocks recovery.
+- Require loading, empty, error, and partial-data states in Streamlit, Dash, or Panel callbacks through detected primitives such as `st.status`, `dcc.Loading`, or `pn.state`; silent waits and blank output make failures indistinguishable from no data.
+- Verify Streamlit `st.session_state` keys and Dash callback inputs have one lifecycle owner; reruns or callback races can reset user selections and show invalid state.
+- Require Panel, Dash, or notebook data access to batch and cache with an explicit invalidation owner; per-widget queries risk latency failures and stale dashboards.
+- Require notebook widgets and cells to make execution prerequisites and stale results visible through `ipywidgets` state or equivalent metadata; out-of-order execution can present incorrect analysis as current.
+- Verify generated HTML, PDF, or dataframe reports render page breaks, missing values, long labels, and large tables without clipping contract data; layout failures can hide decisions from users.
+- When PySide, PyQt, Tkinter, or Textual is detected, require background work to marshal updates through `Signal`, `after`, or the framework event loop; cross-thread widget mutation causes races and crashes.
+- Require durable action feedback only after database commit or worker acknowledgement, with an error and retry path when delivery fails; premature success creates user-visible contract failure.
+- Verify `gettext`, Babel, timezone conversion, and locale-aware number formatting occur at the presentation boundary; server defaults can display incorrect dates, amounts, and ordering.
+- Require server-rendered navigation and forms to retain a functional non-JavaScript path when the detected product promises progressive enhancement; optional script failure must not block core tasks.
+- Verify Django template fragments preserve `request`, CSRF, and permission context through `{% include %}` or component calls; lost context can render invalid actions and broken forms.
+- Require desktop teardown to disconnect Qt `Signal` handlers or cancel Tk `after` callbacks before widgets close; late callbacks otherwise race destroyed UI state and crash the application.
+- Reject unbounded rows or images passed to Streamlit `st.dataframe`, Dash tables, or notebook display; uncontrolled rendering consumes memory resources and causes performance failure.
 - For Blocker or Major findings, describe the concrete user-visible interaction or rendering failure scenario.

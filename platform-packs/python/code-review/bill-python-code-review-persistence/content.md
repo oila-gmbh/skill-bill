@@ -23,20 +23,21 @@ Use this specialist for SQLAlchemy, Django ORM, peewee, raw SQL, query builders,
 
 ## Project-Specific Rules
 
-### Sessions and Transactions
+### Python Persistence Rules
 
-- Verify SQLAlchemy `expire_on_commit` behavior, detached-instance access, relationship lazy loads, and request/session lifetime ownership; reject access after the owning session closes only when expired or unloaded state would require that detached session.
-- Account for SQLAlchemy autoflush before queries and require explicit `no_autoflush` or ordering when premature writes can violate an invariant.
-- Reject N+1 access and inefficient query shapes when relationship loading, projection, aggregation, or bounded batching is required to avoid a material query or data-volume failure.
-- Require connections and synchronous or async sessions to close on success, exception, and cancellation paths; preserve framework-managed and test-managed transaction lifecycles instead of committing, rolling back, or closing resources owned by the harness.
-- Verify Django `transaction.atomic` nesting and `on_commit` ordering so external effects occur only after durable success and callbacks observe the intended committed state.
-- Require atomicity, explicit isolation assumptions, idempotent retries, deadlock handling, appropriate optimistic or pessimistic locking, and database-enforced unique constraints with conflict handling where concurrent writes can lose updates or create duplicate state.
-
-### Bulk Writes and Migrations
-
-- Verify Django `bulk_create` and `update` intentionally bypass model `save`, signals, validation, and `auto_now`; reject reliance on hooks or timestamps that will never run.
-- Require a trusted tenant predicate or tenant key on every bulk read and write, including bulk creates or inserts, updates, deletes, and upserts; verify the scope survives batching and conflict-handling paths, and reject missing scope with the concrete data-loss or cross-tenant creation, modification, or deletion consequence.
-- Require reversible Alembic and Django migrations, paired forward and reverse `RunPython` operations, idempotent backfills, safe null/default transitions, and deploy-compatible ordering.
-- Require concurrent or otherwise non-blocking index creation where production table size and database support make a blocking build an availability failure.
-- Preserve serialization, enum/state transitions, outbox/event writes, and cache invalidation across partial failures and cross-store boundaries.
+- Require one explicit owner for SQLAlchemy `Session` or `AsyncSession` creation, commit, rollback, and close; split ownership risks partial commits and connection leaks after exceptions.
+- Verify `expire_on_commit` and lazy relationship access before returning ORM objects beyond session scope; detached loads can fail after a response has begun.
+- Account for SQLAlchemy `autoflush` before `select` or relationship queries and require `no_autoflush` only around an intentional invariant; premature writes can trigger invalid constraints.
+- Reject concurrent use of one `AsyncSession` across `asyncio.gather` tasks; session state is mutable and races can corrupt transaction ordering.
+- Require explicit isolation and locking through `with_for_update`, version columns, or database constraints for contested updates; unchecked read-modify-write loses data under concurrency.
+- Require rollback and bounded retry around classified serialization failures or deadlocks; retrying arbitrary `IntegrityError` values can duplicate writes or mask invalid data.
+- When Django is detected, verify nested `transaction.atomic` savepoints and `transaction.on_commit` callbacks preserve durable ordering; external effects before outer commit risk phantom delivery.
+- Verify `bulk_create`, `bulk_update`, and `QuerySet.update` account for bypassed `save`, signals, validation, and `auto_now`; reliance on skipped hooks leaves contract data invalid.
+- Require a trusted tenant predicate on every SQLAlchemy, Django ORM, or raw SQL read and write, including upserts; omitted scoping creates cross-tenant exposure or data loss.
+- Require Alembic or Django migrations to use expand-and-contract ordering and deploy-compatible defaults; incompatible schema transitions break mixed-version application instances.
+- Require `RunPython` or Alembic data migrations and backfills to be resumable, idempotent, bounded, and reversible where possible; interruption otherwise leaves corrupt partial state.
+- Verify production index creation uses the database's non-blocking mechanism such as PostgreSQL `CONCURRENTLY` when table size makes locks unsafe; blocking DDL can cause an availability failure.
+- Require an atomic outbox or equivalent transaction-owned record before publishing events, and versioned cache invalidation after commit; cross-store partial failure causes missing events or stale reads.
+- Verify SQLAlchemy `selectinload` or Django `select_related` usage prevents N+1 access on persisted aggregates; uncontrolled query growth causes latency and resource failure.
+- Require unique constraints and explicit `IntegrityError` conflict mapping for idempotent writes; check-then-insert races can corrupt contract data with duplicates.
 - For Blocker or Major findings, describe the concrete data-loss, consistency, or durability failure scenario.

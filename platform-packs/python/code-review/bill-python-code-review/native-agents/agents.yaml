@@ -1,32 +1,32 @@
 contract_version: "0.1"
 agents:
   - name: bill-python-code-review-api-contracts
-    description: "Python api contracts specialist code reviewer. Runs against Python API contracts, validation, serialization, and compatibility. Returns a Risk Register in the F-XXX bullet format."
+    description: "Python api contracts specialist code reviewer. Runs against Python runtime validation, framework request/response contracts, serialization, and compatibility. Returns a Risk Register in the F-XXX bullet format."
     compose: governed-content
   - name: bill-python-code-review-architecture
-    description: "Python architecture specialist code reviewer. Runs against Python package boundaries, import direction, and dependency ownership. Returns a Risk Register in the F-XXX bullet format."
+    description: "Python architecture specialist code reviewer. Runs against Python imports, package and entry-point ownership, composition roots, and dependency lifetimes. Returns a Risk Register in the F-XXX bullet format."
     compose: governed-content
   - name: bill-python-code-review-performance
-    description: "Python performance specialist code reviewer. Runs against Python performance risks in hot paths, I/O, memory, imports, and async boundaries. Returns a Risk Register in the F-XXX bullet format."
+    description: "Python performance specialist code reviewer. Runs against Python ORM evaluation, I/O, memory, GIL-aware executors, bounded concurrency, and async latency. Returns a Risk Register in the F-XXX bullet format."
     compose: governed-content
   - name: bill-python-code-review-persistence
-    description: "Python persistence specialist code reviewer. Runs against ORM/raw SQL usage, migrations, transactions, sessions, and data consistency. Returns a Risk Register in the F-XXX bullet format."
+    description: "Python persistence specialist code reviewer. Runs against Python ORM sessions, transactions, locking, migrations, tenant scope, and cross-store consistency. Returns a Risk Register in the F-XXX bullet format."
     compose: governed-content
   - name: bill-python-code-review-platform-correctness
-    description: "Python platform correctness specialist code reviewer. Runs against Python runtime semantics, typing edge cases, resources, concurrency, and time logic. Returns a Risk Register in the F-XXX bullet format."
+    description: "Python platform correctness specialist code reviewer. Runs against Python mutation and model semantics, runtime typing, asyncio cancellation, resources, and time logic. Returns a Risk Register in the F-XXX bullet format."
     compose: governed-content
   - name: bill-python-code-review-reliability
-    description: "Python reliability specialist code reviewer. Runs against timeouts, retries, workers, schedulers, external clients, observability, and degradation. Returns a Risk Register in the F-XXX bullet format."
+    description: "Python reliability specialist code reviewer. Runs against Python client timeouts, retries, queues, workers, task shutdown, observability, and degradation. Returns a Risk Register in the F-XXX bullet format."
     compose: governed-content
   - name: bill-python-code-review-security
-    description: "Python security specialist code reviewer. Runs against dependency supply chain, trust boundaries, secrets, unsafe parsing, subprocesses, and sensitive logs. Returns a Risk Register in the F-XXX bullet format."
+    description: "Python security specialist code reviewer. Runs against Python supply chain, authorization, unsafe parsing/rendering/uploads/paths, subprocesses, SSRF, and secrets. Returns a Risk Register in the F-XXX bullet format."
     compose: governed-content
   - name: bill-python-code-review-testing
-    description: "Python testing specialist code reviewer. Runs against pytest/unittest quality, fixtures, parametrization, integration boundaries, and regression proof. Returns a Risk Register in the F-XXX bullet format."
+    description: "Python testing specialist code reviewer. Runs against High-value pytest, property and async evidence, fixtures, concurrency, integration boundaries, and regression proof. Returns a Risk Register in the F-XXX bullet format."
     compose: governed-content
   - name: bill-python-code-review-ui
-    description: "Python ui specialist code reviewer. Runs against Python-rendered UI, templates, admin surfaces, notebooks, and dashboards. Returns a Risk Register in the F-XXX bullet format."
+    description: "Python ui specialist code reviewer. Runs against Python-owned admin, templates, notebooks, reports, dashboards, forms, state, and desktop rendering. Returns a Risk Register in the F-XXX bullet format."
     compose: governed-content
   - name: bill-python-code-review-ux-accessibility
-    description: "Python ux accessibility specialist code reviewer. Runs against server-rendered accessibility, forms, feedback, keyboard flow, and localization-sensitive UX. Returns a Risk Register in the F-XXX bullet format."
+    description: "Python ux accessibility specialist code reviewer. Runs against Python-owned semantics, forms, focus and keyboard flow, feedback, localization, notebooks, and reports. Returns a Risk Register in the F-XXX bullet format."
     compose: governed-content
