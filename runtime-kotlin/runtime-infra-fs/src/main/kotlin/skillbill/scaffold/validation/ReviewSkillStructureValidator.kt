@@ -3,8 +3,11 @@
 package skillbill.scaffold.validation
 
 import org.yaml.snakeyaml.Yaml
+import skillbill.error.InvalidManifestSchemaError
 import skillbill.error.InvalidReviewSkillStructureError
+import skillbill.nativeagent.composition.NATIVE_AGENT_BUNDLE_FILE
 import skillbill.nativeagent.composition.parseNativeAgentBundle
+import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.rendering.canonicalSeverityCloser
 import skillbill.scaffold.rendering.defaultAreaFocus
 import skillbill.scaffold.runtime.APPROVED_CODE_REVIEW_AREAS
@@ -481,4 +484,27 @@ internal object ReviewSkillStructureValidator {
 
 internal data class ReviewSkillStructureViolation(val path: Path, val rule: String) {
   override fun toString(): String = "$path: $rule"
+}
+
+internal fun validateReviewSkillStructure(pack: PlatformManifest) {
+  val baseline = pack.declaredFiles.baseline ?: return
+  val bundle = baseline.parent.resolve("native-agents").resolve(NATIVE_AGENT_BUNDLE_FILE)
+  if (!Files.isRegularFile(bundle)) return
+
+  val actualAgents = parseNativeAgentBundle(bundle)
+  val actualNames = actualAgents.map { it.name }
+  val specialistNames = pack.declaredCodeReviewAreas
+    .map { area -> pack.declaredFiles.areas.getValue(area).parent.fileName.toString() }
+    .toSet()
+  val baselineName = baseline.parent.fileName.toString()
+  val expectedNames = specialistNames + baselineName
+  val actualNameSet = actualNames.toSet()
+  val governedNameSet = actualAgents.filter { it.composition != null }.map { it.name }.toSet()
+  val unknown = governedNameSet - expectedNames
+  if (actualNames.size != actualNameSet.size || unknown.isNotEmpty()) {
+    throw InvalidManifestSchemaError(
+      "Platform pack '${pack.slug}': native-agent bundle may not declare duplicate agents or unknown " +
+        "governed-content agents; unknown=${unknown.sorted()}.",
+    )
+  }
 }

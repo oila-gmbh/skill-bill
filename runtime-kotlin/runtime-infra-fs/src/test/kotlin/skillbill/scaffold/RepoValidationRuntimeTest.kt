@@ -109,7 +109,7 @@ class RepoValidationRuntimeTest {
 
     assertTrue(
       report.issues.any { issue ->
-        issue.contains("invalid-native-agent-yaml") && issue.contains("invalid native-agent source bundle")
+        issue.contains("invalid-native-agent-yaml") && issue.contains("Native agent composition source")
       },
       report.issues.joinToString("\n"),
     )

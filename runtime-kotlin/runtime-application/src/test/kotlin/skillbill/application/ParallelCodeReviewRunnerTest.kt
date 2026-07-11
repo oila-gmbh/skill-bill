@@ -22,7 +22,9 @@ import skillbill.ports.review.model.ParallelReviewLaneRunResult
 import skillbill.ports.scaffold.ScaffoldCatalogGateway
 import skillbill.ports.scaffold.model.PilotedPlatformPackProjection
 import skillbill.scaffold.model.BaselineReviewCatalog
+import skillbill.scaffold.model.DeclaredFiles
 import skillbill.scaffold.model.PlatformManifest
+import skillbill.scaffold.model.RoutingSignals
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -394,6 +396,51 @@ class ParallelCodeReviewRunnerTest {
     assertTrue(launcher.requests.isEmpty(), "lanes must not launch when stack detection fails")
   }
 
+  @Test
+  fun `stack detection matches wildcard configuration signals`() {
+    val launcher = ParallelSubtaskLauncher()
+    val runner = runner(
+      launcher,
+      catalogGateway = stubCatalogGateway(listOf(platformManifest("typescript", listOf("tsconfig.*.json")))),
+      diffResolver = RecordingDiffResolver(default = diffFor("tsconfig.base.json")),
+    )
+
+    runner.run(baseRequest(scope = ParallelReviewScope.STAGED))
+
+    assertTrue(
+      launcher.requests.all { request ->
+        request.skillRunRequest.promptOverride.orEmpty().contains("dominant stack is typescript")
+      },
+    )
+  }
+
+  @Test
+  fun `stack detection excludes generated dependency and build paths`() {
+    val launcher = ParallelSubtaskLauncher()
+    val runner = runner(
+      launcher,
+      catalogGateway = stubCatalogGateway(listOf(platformManifest("typescript", listOf("*.ts", ".ts")))),
+      diffResolver = RecordingDiffResolver(
+        default = listOf(
+          "node_modules/library/index.ts",
+          "dist/app.ts",
+          "build/bundle.ts",
+          "coverage/report.ts",
+          "src/generated/client.ts",
+          "src/api/client.d.ts",
+        ).joinToString("\n", transform = ::diffFor),
+      ),
+    )
+
+    runner.run(baseRequest(scope = ParallelReviewScope.STAGED))
+
+    assertFalse(
+      launcher.requests.any { request ->
+        request.skillRunRequest.promptOverride.orEmpty().contains("dominant stack is typescript")
+      },
+    )
+  }
+
   private fun runner(
     launcher: GoalRunnerSubtaskLauncher,
     catalogGateway: ScaffoldCatalogGateway = noManifestsCatalogGateway,
@@ -547,3 +594,15 @@ private fun throwingCatalogGateway(): ScaffoldCatalogGateway = object : Scaffold
   override fun discoverBaselineReviewCatalog(packsRoot: Path) =
     BaselineReviewCatalog(packs = emptyList(), compositionEdges = emptyList(), layerSuggestions = emptyList())
 }
+
+private fun platformManifest(slug: String, strongSignals: List<String>) = PlatformManifest(
+  slug = slug,
+  packRoot = Path.of("platform-packs/$slug"),
+  contractVersion = "1.2",
+  routingSignals = RoutingSignals(strong = strongSignals, tieBreakers = emptyList()),
+  declaredCodeReviewAreas = emptyList(),
+  declaredFiles = DeclaredFiles(baseline = Path.of("content.md"), areas = emptyMap()),
+  areaMetadata = emptyMap(),
+)
+
+private fun diffFor(path: String): String = "+++ b/$path"

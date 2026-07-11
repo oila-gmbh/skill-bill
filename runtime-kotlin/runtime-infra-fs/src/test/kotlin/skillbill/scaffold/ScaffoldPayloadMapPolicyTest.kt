@@ -21,6 +21,7 @@ import skillbill.scaffold.runtime.PRE_SHELL_FAMILIES
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
@@ -159,6 +160,56 @@ class ScaffoldPayloadMapPolicyTest {
     assertTrue(defaults.strongSignals.contains("*.go"))
     assertTrue(defaults.tieBreakers.any { it.contains("module/workspace metadata") })
     assertTrue(defaults.tieBreakers.any { it.contains("generated clients") })
+  }
+
+  @Test
+  fun `resolvePlatformPackDefaults resolves rust preset defaults`() {
+    val defaults = resolvePlatformPackDefaults(emptyMap(), "rust")
+    assertEquals("Rust", defaults.displayName)
+    assertEquals(true, defaults.presetUsed)
+    assertTrue(defaults.strongSignals.contains("Cargo.toml"))
+    assertTrue(defaults.strongSignals.contains("*.rs"))
+    assertTrue(defaults.strongSignals.contains(".cargo/config.toml"))
+    assertTrue(defaults.tieBreakers.any { it.contains("FFI bindings") })
+    assertTrue(defaults.tieBreakers.any { it.contains("target/") })
+    assertTrue(defaults.tieBreakers.any { it.contains("vendored") })
+  }
+
+  @Test
+  fun `resolvePlatformPackDefaults resolves typescript preset defaults`() {
+    val defaults = resolvePlatformPackDefaults(emptyMap(), "typescript")
+    assertEquals("TypeScript", defaults.displayName)
+    assertEquals(true, defaults.presetUsed)
+    listOf(
+      "tsconfig.json",
+      "tsconfig.*.json",
+      ".ts",
+      "*.ts",
+      ".tsx",
+      "*.tsx",
+      ".mts",
+      "*.mts",
+      ".cts",
+      "*.cts",
+    ).forEach { marker -> assertTrue(defaults.strongSignals.contains(marker)) }
+    listOf(
+      "package.json",
+      "package-lock.json",
+      "yarn.lock",
+      "pnpm-lock.yaml",
+      "bun.lockb",
+      "biome.json",
+      "eslint.config.*",
+      ".eslintrc*",
+      "prettier.config.*",
+      ".prettierrc*",
+    ).forEach { marker -> assertFalse(defaults.strongSignals.contains(marker)) }
+    assertTrue(defaults.tieBreakers.any { it.contains("individually or combined") })
+    assertTrue(defaults.tieBreakers.any { it.contains("without TypeScript ownership") })
+    assertTrue(defaults.tieBreakers.any { it.contains("generated API clients") })
+    assertTrue(defaults.tieBreakers.any { it.contains("ambient declaration files") })
+    assertTrue(defaults.tieBreakers.any { it.contains("node_modules") })
+    assertTrue(defaults.tieBreakers.any { it.contains("generated declaration files") })
   }
 
   @Test

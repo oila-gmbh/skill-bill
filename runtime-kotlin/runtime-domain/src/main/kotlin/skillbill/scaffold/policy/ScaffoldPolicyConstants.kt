@@ -161,6 +161,53 @@ val PLATFORM_PACK_PRESET_DESCRIPTORS: Map<String, PlatformPackPreset> =
           "mocks from dominance scoring unless the generator or generated contract is intentionally changed.",
       ),
     ),
+    "rust" to PlatformPackPreset(
+      displayName = "Rust",
+      strongSignals = listOf(
+        "Cargo.toml",
+        "Cargo.lock",
+        ".rs",
+        "*.rs",
+        "build.rs",
+        "rust-toolchain.toml",
+        "rustfmt.toml",
+        "clippy.toml",
+        "deny.toml",
+        ".cargo/config.toml",
+      ),
+      tieBreakers = listOf(
+        "Prefer Rust when Cargo workspace or package metadata and first-party Rust source files dominate the " +
+          "changed product surface.",
+        "Do not prefer Rust where it appears only as FFI bindings, wasm build tooling or artifacts, generated " +
+          "code, or vendored crates around another dominant stack.",
+        "Exclude target/ build output and vendored dependency trees from dominance scoring.",
+      ),
+    ),
+    "typescript" to PlatformPackPreset(
+      displayName = "TypeScript",
+      strongSignals = listOf(
+        "tsconfig.json",
+        "tsconfig.*.json",
+        ".ts",
+        "*.ts",
+        ".tsx",
+        "*.tsx",
+        ".mts",
+        "*.mts",
+        ".cts",
+        "*.cts",
+      ),
+      tieBreakers = listOf(
+        "Prefer TypeScript only when tsconfig metadata or first-party TypeScript source files dominate the changed " +
+          "product surface. Treat package.json, package-lock.json, yarn.lock, pnpm-lock.yaml, bun.lockb, biome.json, " +
+          "ESLint configuration, and Prettier configuration as contextual metadata only; individually or combined, " +
+          "they are not TypeScript evidence without TypeScript ownership.",
+        "Do not prefer TypeScript where it appears only as generated API clients, ambient declaration files, " +
+          "or build tooling around another dominant stack.",
+        "Exclude node_modules, dist, build and coverage output, generated clients, and generated declaration " +
+          "files from dominance scoring.",
+      ),
+    ),
   )
 
 /**

@@ -1,0 +1,32 @@
+contract_version: "0.1"
+agents:
+  - name: bill-typescript-code-review-api-contracts
+    description: "TypeScript api contracts specialist code reviewer. Runs against TypeScript public types, HTTP/RPC, serialization, validation, and compatibility contracts. Returns a Risk Register in the F-XXX bullet format."
+    compose: governed-content
+  - name: bill-typescript-code-review-architecture
+    description: "TypeScript architecture specialist code reviewer. Runs against TypeScript package and module boundaries, dependency direction, ownership, and layering. Returns a Risk Register in the F-XXX bullet format."
+    compose: governed-content
+  - name: bill-typescript-code-review-performance
+    description: "TypeScript performance specialist code reviewer. Runs against TypeScript event-loop, allocation, rendering, async scheduling, I/O, and hot-path behavior. Returns a Risk Register in the F-XXX bullet format."
+    compose: governed-content
+  - name: bill-typescript-code-review-persistence
+    description: "TypeScript persistence specialist code reviewer. Runs against TypeScript database clients, transactions, schemas, serialization, and durable data consistency. Returns a Risk Register in the F-XXX bullet format."
+    compose: governed-content
+  - name: bill-typescript-code-review-platform-correctness
+    description: "TypeScript platform correctness specialist code reviewer. Runs against TypeScript strictness, narrowing, module semantics, runtime targets, and Node/browser correctness. Returns a Risk Register in the F-XXX bullet format."
+    compose: governed-content
+  - name: bill-typescript-code-review-reliability
+    description: "TypeScript reliability specialist code reviewer. Runs against TypeScript promise handling, cancellation, retries, shutdown, observability, and degradation behavior. Returns a Risk Register in the F-XXX bullet format."
+    compose: governed-content
+  - name: bill-typescript-code-review-security
+    description: "TypeScript security specialist code reviewer. Runs against TypeScript trust boundaries, runtime validation, auth, parsing, secrets, dependencies, and sensitive data. Returns a Risk Register in the F-XXX bullet format."
+    compose: governed-content
+  - name: bill-typescript-code-review-testing
+    description: "TypeScript testing specialist code reviewer. Runs against TypeScript type-check, unit, integration, browser, concurrency, and regression tests. Returns a Risk Register in the F-XXX bullet format."
+    compose: governed-content
+  - name: bill-typescript-code-review-ui
+    description: "TypeScript ui specialist code reviewer. Runs against TypeScript and TSX state, rendering, events, hydration, browser behavior, and interactive output. Returns a Risk Register in the F-XXX bullet format."
+    compose: governed-content
+  - name: bill-typescript-code-review-ux-accessibility
+    description: "TypeScript ux accessibility specialist code reviewer. Runs against TypeScript UI semantics, keyboard and focus behavior, feedback, localization, and assistive access. Returns a Risk Register in the F-XXX bullet format."
+    compose: governed-content

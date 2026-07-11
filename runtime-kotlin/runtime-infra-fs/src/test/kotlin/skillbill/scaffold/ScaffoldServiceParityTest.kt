@@ -161,7 +161,9 @@ class ScaffoldServiceParityTest {
       assertEquals(before, snapshotTree(repo))
       assertFalse(Files.exists(skillDir), "Rejected scaffold left a partial skill directory at $skillDir")
     }
+}
 
+class PlatformPackScaffoldParityTest {
   @Test
   fun `platform pack rejects custom subagent specialists before mutation`() = withIsolatedUserHome {
     val repo = seedRepo()
@@ -244,7 +246,9 @@ class ScaffoldServiceParityTest {
     assertContains(error.message.orEmpty(), "exactly one manifest-derived native agent")
     assertEquals(before, snapshotTree(repo))
   }
+}
 
+class ScaffoldAuthoringParityTest {
   @Test
   fun `code review area scaffold is rejected before mutation`() = withIsolatedUserHome {
     val repo = seedRepo()
@@ -686,6 +690,24 @@ class ScaffoldServiceParityTest {
     assertEquals(before, snapshotTree(repo))
     assertEquals("keep me", Files.readString(unrelated))
     assertFalse(Files.exists(repo.resolve("platform-packs/kotlin/code-review/bill-kotlin-code-review-performance")))
+  }
+}
+
+class PlatformPackNativeAgentScaffoldTest {
+  @Test
+  fun `platform pack rejects an explicit body based canonical agent`() = withIsolatedUserHome {
+    val repo = seedRepo()
+    val before = snapshotTree(repo)
+
+    val error = assertFailsWith<InvalidScaffoldPayloadError> {
+      scaffold(
+        payload(repo, "platform-pack", "platform" to "java") +
+          mapOf("subagent_specialists" to listOf("bill-java-code-review")),
+      )
+    }
+
+    assertContains(error.message.orEmpty(), "exactly one manifest-derived native agent")
+    assertEquals(before, snapshotTree(repo))
   }
 }
 

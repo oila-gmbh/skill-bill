@@ -646,6 +646,9 @@ class RuntimeRepoBrowserServiceTest {
       repo.resolve("platform-packs/kotlin/code-review/bill-kotlin-code-review/native-agents/agents.yaml"),
       """
         |agents:
+        |  - name: bill-kotlin-code-review
+        |    description: Kotlin baseline native agent.
+        |    compose: governed-content
         |  - name: bill-kotlin-code-review-architecture
         |    description: Kotlin architecture native agent.
         |    compose: governed-content
