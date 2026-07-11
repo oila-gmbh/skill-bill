@@ -21,14 +21,19 @@ internal fun renderNativeAgentSourceStub(name: String, parentSkill: String): Str
 internal fun renderNativeAgentBundleStubs(
   names: List<String>,
   descriptions: Map<String, String> = emptyMap(),
+  bodyNames: Set<String> = emptySet(),
 ): String = renderNativeAgentBundle(
   names.map { name ->
     NativeAgentSource(
       name = name,
       description = descriptions[name]
         ?: "TODO: one-line description for the $name specialist subagent. Fill in before shipping.",
-      body = "",
-      composition = NativeAgentCompositionDirective(NativeAgentCompositionKind.GovernedContent),
+      body = if (name in bodyNames) "Review the requested scope and return concrete findings." else "",
+      composition = if (name in bodyNames) {
+        null
+      } else {
+        NativeAgentCompositionDirective(NativeAgentCompositionKind.GovernedContent)
+      },
     )
   },
 )

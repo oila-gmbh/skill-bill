@@ -80,7 +80,7 @@ All of the symlink installs, manifest validation, platform-pack routing, native-
 
 - **Durable state**: `feature_task_prose_workflow_open` mints a `workflow_id`; every phase boundary writes via `feature_task_prose_workflow_update` and gets back a compact acknowledgement, not a full snapshot. If a session dies mid-run, `feature_task_prose_workflow_continue` is the mutating activation path: it re-opens the exact phase and returns a compact continuation payload (resume step, required/available artifact keys, compact current-step artifacts) as the continuation contract — full durable state is fetched only on demand through the read-only `workflow show`. The run survives crashes, compaction, even a host reboot. Same shape exists for `bill-feature-verify` (`feature_verify_workflow_*`).
 - **Native subagents per phase**: pre-planning, planning, implementation, completeness-audit, quality-check, PR-description, and an implementation-fix loop each ship as their own installed agent.
-- **Native subagents per review specialist**: every shipped review specialist with native-agent source is its own subagent too.
+- **Native subagents per review layer**: every shipped platform-pack bundle registers its baseline reviewer and each specialist reviewer as native subagents.
 - **Why this matters for tokens**: each subagent gets a self-contained briefing scoped to its phase/area instead of inheriting the full orchestrator transcript. The orchestrator stays small; specialists go deep on their narrow slice. Better focus and lower cost — the opposite of the usual "more steps = more context bloat" trap.
 - **Transport-resilient telemetry**: a packaged Kotlin `runtime-mcp` stdio fallback ensures a dropped MCP transport does not leave a workflow stuck in `running`.
 

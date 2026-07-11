@@ -1,5 +1,6 @@
 package skillbill.scaffold
 
+import skillbill.error.InvalidManifestSchemaError
 import skillbill.error.InvalidScaffoldPayloadError
 import skillbill.error.MissingRequiredSectionError
 import skillbill.error.RetiredScaffoldKindError
@@ -204,7 +205,9 @@ class ScaffoldServiceParityTest {
     }
     assertComposedSourceBundle(
       repo.resolve("platform-packs/java/code-review/bill-java-code-review/native-agents/agents.yaml"),
-      APPROVED_CODE_REVIEW_AREAS.associate { area ->
+      mapOf(
+        "bill-java-code-review" to "Use when reviewing Java changes across code-review specialists.",
+      ) + APPROVED_CODE_REVIEW_AREAS.associate { area ->
         "bill-java-code-review-$area" to
           "Java ${area.replace('-', ' ')} specialist code reviewer. " +
           "Runs against Java ${defaultAreaFocus(area)} across pom.xml, build.gradle, src/main/java signals. " +

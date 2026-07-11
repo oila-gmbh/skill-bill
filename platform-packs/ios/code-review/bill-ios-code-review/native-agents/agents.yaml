@@ -1,5 +1,8 @@
 contract_version: "0.1"
 agents:
+  - name: bill-ios-code-review
+    description: "iOS baseline code reviewer. Runs the governed baseline review across the full owned diff before specialist findings are merged. Returns a Risk Register in the F-XXX bullet format."
+    compose: governed-content
   - name: bill-ios-code-review-api-contracts
     description: "iOS api contracts specialist code reviewer. Runs against REST/Codable decoding and Apollo GraphQL schema/cache compatibility. Returns a Risk Register in the F-XXX bullet format."
     compose: governed-content

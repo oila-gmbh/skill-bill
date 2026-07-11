@@ -498,18 +498,14 @@ internal fun validateReviewSkillStructure(pack: PlatformManifest) {
     .toSet()
   val baselineName = baseline.parent.fileName.toString()
   val expectedNames = specialistNames + baselineName
-  val declaresReviewContract =
-    pack.slug == "rust" || actualNames.any { it in expectedNames } || actualAgents.size >= specialistNames.size
-  if (!declaresReviewContract) return
-
   val actualNameSet = actualNames.toSet()
   val governedNameSet = actualAgents.filter { it.composition != null }.map { it.name }.toSet()
   val unknown = governedNameSet - expectedNames
-  val missing = specialistNames - actualNameSet
+  val missing = expectedNames - actualNameSet
   if (actualNames.size != actualNameSet.size || unknown.isNotEmpty() || missing.isNotEmpty()) {
     throw InvalidManifestSchemaError(
-      "Platform pack '${pack.slug}': native-agent bundle must declare every review specialist exactly once, " +
-        "may additionally declare baseline '$baselineName', and may not declare unknown governed-content agents; " +
+      "Platform pack '${pack.slug}': native-agent bundle must declare baseline '$baselineName' and every review " +
+        "specialist exactly once, and may not declare unknown governed-content agents; " +
         "missing=${missing.sorted()}, unknown=${unknown.sorted()}.",
     )
   }

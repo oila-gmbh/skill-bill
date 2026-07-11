@@ -1,6 +1,7 @@
 package skillbill.scaffold
 
 import skillbill.error.InvalidManifestSchemaError
+import skillbill.error.InvalidNativeAgentCompositionSchemaError
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.InstallAgentSelection
 import skillbill.install.model.InstallAgentSelectionMode
@@ -144,20 +145,47 @@ class RustPlatformPackTest {
     val bundle = packRoot.resolve("code-review/bill-rust-code-review/native-agents/agents.yaml")
     Files.writeString(
       bundle,
-      Files.readString(bundle).replace(
-        "  - name: bill-rust-code-review\n" +
-          "    description: \"Rust baseline code reviewer. Runs the governed baseline review across the full owned " +
-          "diff before " +
-          "specialist findings are merged. Returns a Risk Register in the F-XXX bullet format.\"\n" +
-          "    compose: governed-content\n",
+      Files.readString(bundle) +
         "  - name: undeclared-rust-reviewer\n" +
           "    description: \"Custom review agent.\"\n" +
           "    body: |-\n" +
           "      Review the diff.\n",
-      ),
     )
 
     assertEquals("rust", loadPlatformPack(packRoot).slug)
+  }
+
+  @Test
+  fun `rust pack rejects missing baseline native agent`() {
+    val repoRoot = repoRootFromTest()
+    val tempRoot = Files.createTempDirectory("skillbill-rust-pack-missing-baseline-")
+    val packRoot = tempRoot.resolve("rust")
+    copyDirectory(repoRoot.resolve("platform-packs/rust"), packRoot)
+    val bundle = packRoot.resolve("code-review/bill-rust-code-review/native-agents/agents.yaml")
+    Files.writeString(
+      bundle,
+      Files.readString(bundle).replace(
+        Regex("(?ms)  - name: bill-rust-code-review\\n.*?(?=  - name:|\\z)"),
+        "",
+      ),
+    )
+
+    val error = assertFailsWith<InvalidManifestSchemaError> { loadPlatformPack(packRoot) }
+    assertContains(error.message.orEmpty(), "missing=[bill-rust-code-review]")
+  }
+
+  @Test
+  fun `rust pack reports malformed native agent yaml as typed contract failure`() {
+    val repoRoot = repoRootFromTest()
+    val tempRoot = Files.createTempDirectory("skillbill-rust-pack-malformed-agent-yaml-")
+    val packRoot = tempRoot.resolve("rust")
+    copyDirectory(repoRoot.resolve("platform-packs/rust"), packRoot)
+    val bundle = packRoot.resolve("code-review/bill-rust-code-review/native-agents/agents.yaml")
+    Files.writeString(bundle, "agents:\n  - name: [unterminated\n")
+
+    val error = assertFailsWith<InvalidNativeAgentCompositionSchemaError> { loadPlatformPack(packRoot) }
+    assertContains(error.sourceLabel, bundle.toString())
+    assertContains(error.reason, "could not parse YAML")
   }
 
   @Test

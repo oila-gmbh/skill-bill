@@ -2,12 +2,28 @@ package skillbill.nativeagent.composition
 
 import org.yaml.snakeyaml.Yaml
 import org.yaml.snakeyaml.error.YAMLException
+import skillbill.error.InvalidNativeAgentCompositionSchemaError
 import skillbill.nativeagent.rendering.YAML_DOUBLE_QUOTE_ESCAPES
 import java.nio.file.Files
 import java.nio.file.Path
 
 fun parseNativeAgentBundle(path: Path): List<NativeAgentSource> {
   val yamlText = Files.readString(path)
+  NativeAgentCompositionSchemaValidator.validate(yamlText, path.toString())
+  return try {
+    parseValidatedNativeAgentBundle(path, yamlText)
+  } catch (error: InvalidNativeAgentCompositionSchemaError) {
+    throw error
+  } catch (error: IllegalArgumentException) {
+    throw InvalidNativeAgentCompositionSchemaError(
+      sourceLabel = path.toString(),
+      reason = error.message.orEmpty().ifBlank { "native agent bundle is invalid" },
+      cause = error,
+    )
+  }
+}
+
+private fun parseValidatedNativeAgentBundle(path: Path, yamlText: String): List<NativeAgentSource> {
   val raw = try {
     Yaml().load<Any?>(yamlText)
   } catch (error: YAMLException) {
@@ -27,14 +43,6 @@ fun parseNativeAgentBundle(path: Path): List<NativeAgentSource> {
   val parsed = agents.mapIndexed { index, entry ->
     parseNativeAgentBundleEntry(path, index, entry)
   }
-  // SKILL-48 Subtask 2c: validate the raw YAML against the canonical
-  // schema as a defense-in-depth backstop AFTER the existing manual
-  // `require` checks. The source-level checks preserve their
-  // caller-friendly error messages (and their existing test contracts)
-  // while the schema layer catches any envelope drift the manual
-  // checks miss. The validator loud-fails via
-  // `InvalidNativeAgentCompositionSchemaError`.
-  NativeAgentCompositionSchemaValidator.validate(yamlText, path.toString())
   return parsed
 }
 

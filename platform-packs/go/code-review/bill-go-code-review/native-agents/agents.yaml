@@ -1,5 +1,8 @@
 contract_version: "0.1"
 agents:
+  - name: bill-go-code-review
+    description: "Go baseline code reviewer. Runs the governed baseline review across the full owned diff before specialist findings are merged. Returns a Risk Register in the F-XXX bullet format."
+    compose: governed-content
   - name: bill-go-code-review-api-contracts
     description: "Go api contracts specialist code reviewer. Runs against Go API contracts, request validation, serialization, handlers, RPC, and compatibility. Returns a Risk Register in the F-XXX bullet format."
     compose: governed-content

@@ -1,5 +1,8 @@
 contract_version: "0.1"
 agents:
+  - name: bill-kotlin-code-review
+    description: "Kotlin baseline code reviewer. Runs the governed baseline review across the full owned diff before specialist findings are merged. Returns a Risk Register in the F-XXX bullet format."
+    compose: governed-content
   - name: bill-kotlin-code-review-api-contracts
     description: "Kotlin api contracts specialist code reviewer. Runs against Kotlin explicitNulls and encodeDefaults compatibility, Jackson module behavior, validation, and stable error contracts. Returns a Risk Register in the F-XXX bullet format."
     compose: governed-content

@@ -1,5 +1,6 @@
 package skillbill.nativeagent
 
+import skillbill.error.InvalidNativeAgentCompositionSchemaError
 import skillbill.nativeagent.composition.NativeAgentCompositionDirective
 import skillbill.nativeagent.composition.NativeAgentCompositionKind
 import skillbill.nativeagent.composition.NativeAgentSource
@@ -106,11 +107,11 @@ class NativeAgentSourceParserTest {
       """.trimIndent() + "\n",
     )
 
-    val error = assertFailsWith<IllegalArgumentException> {
+    val error = assertFailsWith<InvalidNativeAgentCompositionSchemaError> {
       parseNativeAgentBundle(bundlePath)
     }
 
-    assertContains(error.message.orEmpty(), "unsupported native agent bundle entry key 'mode'")
+    assertContains(error.message.orEmpty(), "property 'mode' is not defined")
   }
 
   @Test
@@ -126,11 +127,25 @@ class NativeAgentSourceParserTest {
       """.trimIndent() + "\n",
     )
 
-    val error = assertFailsWith<IllegalArgumentException> {
+    val error = assertFailsWith<InvalidNativeAgentCompositionSchemaError> {
       parseNativeAgentBundle(bundlePath)
     }
 
-    assertContains(error.message.orEmpty(), "native agent body is required")
+    assertContains(error.message.orEmpty(), "required property 'compose' not found")
+  }
+
+  @Test
+  fun `agents yaml reports malformed yaml as typed schema error`() {
+    val dir = Files.createTempDirectory("skillbill-native-agent-bundle-malformed-yaml")
+    val bundlePath = dir.resolve("agents.yaml")
+    Files.writeString(bundlePath, "agents:\n  - name: [unterminated\n")
+
+    val error = assertFailsWith<InvalidNativeAgentCompositionSchemaError> {
+      parseNativeAgentBundle(bundlePath)
+    }
+
+    assertContains(error.sourceLabel, bundlePath.toString())
+    assertContains(error.reason, "could not parse YAML")
   }
 
   @Test

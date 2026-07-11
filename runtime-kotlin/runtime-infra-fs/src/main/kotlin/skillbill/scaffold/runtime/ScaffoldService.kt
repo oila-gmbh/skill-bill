@@ -109,6 +109,7 @@ internal data class ScaffoldPlan(
   val baselineLayers: List<CodeReviewBaselineLayer> = emptyList(),
   val subagentSpecialists: List<String> = emptyList(),
   val subagentDescriptions: Map<String, String> = emptyMap(),
+  val bodyBasedSubagents: Set<String> = emptySet(),
   val subagentsSuppressed: Boolean = false,
 )
 
@@ -537,6 +538,7 @@ private fun createPlatformPack(txn: ScaffoldTransaction, plan: ScaffoldPlan, rep
       orchestratorSkillPath = baselineSkillPath,
       specialists = plan.subagentSpecialists,
       descriptions = plan.subagentDescriptions,
+      bodyNames = plan.bodyBasedSubagents,
     )
   }
   return ScaffoldExecutionResult(
@@ -568,6 +570,7 @@ private fun stageSingleScaffold(txn: ScaffoldTransaction, plan: ScaffoldPlan, re
       orchestratorSkillPath = plan.skillPath,
       specialists = plan.subagentSpecialists,
       descriptions = plan.subagentDescriptions,
+      bodyNames = plan.bodyBasedSubagents,
     )
   }
   return ScaffoldExecutionResult(
@@ -632,9 +635,10 @@ private fun stageSubagentStubs(
   orchestratorSkillPath: Path,
   specialists: List<String>,
   descriptions: Map<String, String>,
+  bodyNames: Set<String>,
 ): List<Path> {
   val sourcePath = orchestratorSkillPath.resolve("native-agents").resolve("agents.yaml")
-  stageFile(txn, sourcePath, renderNativeAgentBundleStubs(specialists, descriptions))
+  stageFile(txn, sourcePath, renderNativeAgentBundleStubs(specialists, descriptions, bodyNames))
   return listOf(sourcePath)
 }
 
