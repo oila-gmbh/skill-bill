@@ -28,7 +28,7 @@ Use this specialist across Python packages, libraries, applications, services, f
 - Require imports in `domain`, `application`, and adapter packages to follow the repository's declared dependency direction; reverse imports risk cycles and make core behavior depend on framework state.
 - Reject module-level database calls, client creation, environment reads, or worker startup during `importlib.import_module`; import-time side effects break test discovery, CLI startup, and packaging tools.
 - Verify `__init__.py`, `__all__`, and re-export changes preserve the documented public package boundary; accidental exports or removals break downstream imports.
-- Require namespace packages configured through `pyproject.toml` to have one clear distribution owner; stray `__init__.py` files or overlapping wheels can shadow modules and load incorrect code.
+- For PEP 420 namespace packages configured through `pyproject.toml`, require each concrete module or subpackage to have one distribution owner and reject overlapping wheel paths; stray `__init__.py` files or duplicate contributors can shadow modules and load incorrect code.
 - Require `main()`, an ASGI/WSGI factory, or the repository's composition root to construct concrete dependencies; hidden singleton construction inside domain modules leaks lifecycle and configuration ownership.
 - Keep detected `fastapi.Request`, Django model, Flask context, Celery task, Click, or Typer types at their owned adapter edge unless the local contract exposes them; framework leakage makes reusable code fail outside that runtime.
 - Require optional imports guarded by declared extras such as `project[postgres]` in `pyproject.toml`; unconditional imports make the base installation crash when optional dependencies are absent.

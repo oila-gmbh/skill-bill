@@ -25,13 +25,13 @@ Use this specialist for `requests`, `httpx`, external clients, Celery, RQ, Arq, 
 
 ### Python Reliability Rules
 
-- Require explicit `requests.Timeout` values or `httpx.Timeout` connect, read, write, and pool limits for every outbound client path; absent limits leak sockets and cause cascading timeouts.
+- Require explicit Requests `timeout=<seconds>` or `timeout=(connect, read)` arguments and `httpx.Timeout` connect, read, write, and pool limits for every outbound client path; absent limits leak sockets and cause cascading timeouts.
 - Verify retries configured through `urllib3.Retry`, `tenacity`, or repository policy classify transient failures, honor `Retry-After`, add jitter, and stop after a bound; indiscriminate replay risks storms and invalid duplicate writes.
 - Require an idempotency key, durable deduplication record, or safe operation contract before retrying mutations; process restarts or client retries can otherwise corrupt state through duplication.
 - Require bounded `asyncio.Queue`, broker prefetch, or worker concurrency to apply backpressure; unbounded intake exhausts memory and turns dependency slowdown into service failure.
 - Verify poison messages have an attempt limit and a dead-letter or quarantine path in Celery, RQ, Arq, or Dramatiq configuration; permanent failures must not loop forever and starve valid work.
 - Require Django `transaction.on_commit` or an atomic outbox before publishing work derived from database state; enqueue-before-commit can expose missing data or lose delivery after rollback.
-- When Celery is detected, verify `acks_late`, task idempotency, and broker `visibility_timeout` agree with maximum runtime; mismatches risk task loss or concurrent redelivery.
+- When Celery is detected, verify `acks_late`, task idempotency, and the active broker's acknowledgement and redelivery controls agree with maximum runtime, using `visibility_timeout` only for transports that support it and applicable AMQP acknowledgement or dead-letter settings otherwise; mismatches risk task loss or concurrent redelivery.
 - Require owned `asyncio.TaskGroup` cancellation and awaited cleanup during partial failure; orphaned tasks can mutate state after the request reports failure.
 - Verify `Executor.shutdown(wait=True, cancel_futures=True)` or equivalent service teardown stops admissions before resources close; leaked executor work delays deploy shutdown and accesses invalid clients.
 - Require graceful worker shutdown to stop producers, drain or explicitly reject queued work, and close `httpx.AsyncClient`, sessions, and file descriptors; reversed lifecycle ordering causes lost jobs and resource leaks.

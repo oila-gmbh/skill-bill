@@ -33,7 +33,7 @@ Use this specialist for request handlers, serializers, batch jobs, workers, impo
 - Reject synchronous `requests`, file I/O, compression, or CPU serialization inside an `asyncio` event loop; blocking work causes request starvation and latency failure.
 - Verify `asyncio.to_thread`, `run_in_executor`, `ThreadPoolExecutor`, or `ProcessPoolExecutor` choice reflects I/O versus GIL-bound CPU cost; the wrong executor causes throughput failure or memory exhaustion.
 - Require `asyncio.Semaphore`, a bounded worker pool, or queue capacity around fan-out calls; unbounded concurrency risks socket exhaustion, dependency overload, and timeout cascades.
-- Require cancellation and timeout ownership for executor and remote work through `asyncio.timeout` or client limits; abandoned operations continue consuming resources after callers fail.
+- Require remote I/O deadlines through `asyncio.timeout` or client limits, and separately require executor work to expose cooperative cancellation or run in a terminable process with its `Future` awaited and executor shutdown owned; cancelling the await alone leaves already-running thread or process work consuming resources after callers fail.
 - Verify hot-cache population uses a lock, lease, or single-flight primitive rather than parallel recomputation; stampedes duplicate load and can break dependency availability.
 - Reject expensive model construction, network calls, dataset loading, or plugin scanning at module import; import-time work slows every process start and can break autoscaling latency targets.
 - Require long-lived Celery, notebook, or service workers to release dataframe, tensor, cache, and request references after each unit; retained state leaks memory until the process is killed.

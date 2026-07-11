@@ -27,12 +27,13 @@ Use this specialist for server-rendered templates, Django forms, WTForms, admin 
 ### Python-Owned Accessibility Rules
 
 - Require Django `Form` and WTForms controls to render associated `label`, help text, required status, and field errors through stable IDs; missing relationships create invalid form semantics for screen readers.
-- Require an error summary linked through `aria-describedby` to invalid controls and move focus after failed submission; missing focus makes rejection errors undiscoverable to keyboard users.
+- Require an error summary whose entries link to invalid control IDs and move focus to that summary after failed submission; missing navigation and focus make rejection errors undiscoverable to keyboard users.
+- Separately require each invalid control to reference its own help and error text through `aria-describedby` or `aria-errormessage`; absent control-level relationships make field failures ambiguous to screen-reader users.
 - Verify Python-rendered templates use `main`, `nav`, headings, table headers, and native button or link semantics before ARIA; generic containers create invalid document structure and navigation failure.
-- Require modal or dialog widgets to expose `role="dialog"` or the detected PyQt/Tk accessibility API, initial focus, Escape behavior, and focus restoration; broken lifecycle can trap focus and fail keyboard access.
+- Require dialog widgets to expose `role="dialog"` plus `aria-labelledby` or `aria-label`, or equivalent detected PyQt/Tk accessibility APIs; when the dialog is modal, also require `aria-modal="true"`, initial focus, modal focus containment, Escape behavior, and focus restoration, because unnamed dialogs or focus escaping into inert background content blocks keyboard and screen-reader use.
 - Require every Python-owned custom control to expose native-equivalent keyboard activation and state through `aria-pressed`, Qt properties, or its framework API; mouse-only widgets create an accessibility failure.
 - Verify dynamic updates use `aria-live`, Dash loading state, Streamlit status, or desktop accessibility notifications only for meaningful changes; silent failures and excessive announcements both prevent task completion.
-- Require focus to move through `autofocus`, an HTMX swap hook, or widget focus API after fragment replacement; unexpected reset creates a keyboard navigation regression and task failure.
+- Preserve the active element after fragment replacement by default, and move focus through an HTMX swap hook or widget focus API only when an intentional context change supplies a documented target; automatic `autofocus` can steal focus and create a keyboard navigation regression.
 - Reject charts, heatmaps, admin badges, and notebook outputs that communicate status only through color; require an `alt` summary, symbols, patterns, or table data or critical contract state is invalidly hidden.
 - Require configured foreground, background, and focus styles to pass the repository's `axe` or contrast check in templates and desktop themes; low contrast can hide controls and cause task failure.
 - Require feedback rendered through Django `messages`, Streamlit status, or desktop notifications to reflect durable backend state and recovery; premature success causes destructive action repetition and data-loss risk.
