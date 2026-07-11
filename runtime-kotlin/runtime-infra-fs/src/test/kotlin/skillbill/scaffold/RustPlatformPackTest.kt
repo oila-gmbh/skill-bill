@@ -109,7 +109,7 @@ class RustPlatformPackTest {
   }
 
   @Test
-  fun `rust pack rejects native agent bundle when every canonical agent is renamed`() {
+  fun `rust pack rejects reduced native agent bundle when every canonical agent is renamed`() {
     val repoRoot = repoRootFromTest()
     val tempRoot = Files.createTempDirectory("skillbill-rust-pack-all-agents-renamed-")
     val packRoot = tempRoot.resolve("rust")
@@ -120,7 +120,13 @@ class RustPlatformPackTest {
     val renamedBundle = canonicalNames.fold(Files.readString(bundle)) { content, name ->
       content.replace("name: $name\n", "name: renamed-$name\n")
     }
-    Files.writeString(bundle, renamedBundle)
+    val reducedRenamedBundle = listOf(
+      "renamed-bill-rust-code-review",
+      "renamed-bill-rust-code-review-security",
+    ).fold(renamedBundle) { content, name ->
+      content.replace(Regex("(?ms)  - name: $name\\n.*?(?=  - name:|\\z)"), "")
+    }
+    Files.writeString(bundle, reducedRenamedBundle)
 
     val error = assertFailsWith<InvalidManifestSchemaError> { loadPlatformPack(packRoot) }
     canonicalNames.forEach { name ->
@@ -130,7 +136,7 @@ class RustPlatformPackTest {
   }
 
   @Test
-  fun `rust pack rejects unknown body based native agent`() {
+  fun `rust pack accepts custom body based native agent`() {
     val repoRoot = repoRootFromTest()
     val tempRoot = Files.createTempDirectory("skillbill-rust-pack-unknown-body-agent-")
     val packRoot = tempRoot.resolve("rust")
@@ -140,7 +146,8 @@ class RustPlatformPackTest {
       bundle,
       Files.readString(bundle).replace(
         "  - name: bill-rust-code-review\n" +
-          "    description: \"Rust baseline code reviewer. Runs the governed baseline review across the full owned diff before " +
+          "    description: \"Rust baseline code reviewer. Runs the governed baseline review across the full owned " +
+          "diff before " +
           "specialist findings are merged. Returns a Risk Register in the F-XXX bullet format.\"\n" +
           "    compose: governed-content\n",
         "  - name: undeclared-rust-reviewer\n" +
@@ -150,8 +157,7 @@ class RustPlatformPackTest {
       ),
     )
 
-    val error = assertFailsWith<InvalidManifestSchemaError> { loadPlatformPack(packRoot) }
-    assertContains(error.message.orEmpty(), "unknown=[undeclared-rust-reviewer]")
+    assertEquals("rust", loadPlatformPack(packRoot).slug)
   }
 
   @Test
