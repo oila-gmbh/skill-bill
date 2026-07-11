@@ -33,7 +33,7 @@ Apply `PDO` rules to direct database access. Apply Doctrine guidance only with `
 - Ensure transaction ownership covers every dependent write and rolls back on `Throwable`; catching only `Exception` causes partial-data loss.
 - Require locking or an atomic predicate for read-modify-write operations using `SELECT ... FOR UPDATE`, version columns, or equivalent; concurrent requests otherwise lose updates.
 - Verify retry logic recognizes driver-specific deadlock or serialization codes and reruns the whole transaction; partial replay can corrupt data.
-- Ensure Doctrine's `EntityManager` is cleared or replaced after rollback and between persistent jobs; a closed or stale unit of work leaks invalid entity state.
+- Require Doctrine's closed `EntityManager` to be replaced or reset after rollback; permit `clear()` only while the manager remains open and its managed state is stale, or later persistent jobs fail writes or leak invalid entity state.
 - Reject Doctrine lazy proxies escaping the request or serialization boundary; later access can fail on a detached entity or trigger unbounded queries.
 - Require deliberate `flush()` placement around aggregate invariants and dispatched work; early flushing creates a consistency failure.
 - Verify Eloquent models protect `fillable` or `guarded` attributes at mass-assignment boundaries; unchecked `create($input)` enables authorization exposure.

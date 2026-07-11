@@ -204,11 +204,29 @@ class PhpPlatformPackTest {
     val packRoot = repoRootFromTest().resolve("platform-packs/php")
     val requiredByArea = mapOf(
       "platform-correctness" to listOf("empty()", "Throwable", "RoadRunner", "Fiber", "autoload.psr-4"),
-      "architecture" to listOf("services.yaml", "EntityManager::wrapInTransaction()", "Connection::transactional()", "dispatch()", "Fiber"),
+      "architecture" to listOf(
+        "services.yaml",
+        "EntityManager::wrapInTransaction()",
+        "Connection::transactional()",
+        "dispatch()",
+        "Fiber",
+      ),
       "api-contracts" to listOf("FormRequest::rules()", "JSON_THROW_ON_ERROR", "PSR-15", "Idempotency-Key"),
-      "persistence" to listOf("PDO::ATTR_ERRMODE", "EntityManager", "fillable", "FOR UPDATE"),
+      "persistence" to listOf(
+        "PDO::ATTR_ERRMODE",
+        "closed `EntityManager`",
+        "permit `clear()` only",
+        "fillable",
+        "FOR UPDATE",
+      ),
       "security" to listOf("unserialize()", "|raw", "finfo", "Process::fromShellCommandline()"),
-      "reliability" to listOf("retry_after", "SIGTERM", "withoutOverlapping()", "error_get_last()"),
+      "reliability" to listOf(
+        "retry_after",
+        "jitter",
+        "SIGTERM",
+        "withoutOverlapping()",
+        "error_get_last()",
+      ),
       "performance" to listOf("LazyCollection", "OPcache", "classmap-authoritative", "memory_limit"),
       "testing" to listOf("tearDown()", "Queue::fake()", "PHPStan", "composer.json"),
       "ui" to listOf("wire:key", "withQueryString()", "419", "Cache::remember()"),
@@ -226,11 +244,40 @@ class PhpPlatformPackTest {
       "phpstan analyse",
       "vendor/bin/phpunit",
       "composer audit",
-      "composer dump-autoload --strict-psr",
+      "composer dump-autoload --optimize --strict-psr",
       "supported PHP version, extension, dependency, and database matrix",
       "configured formatter or style verifier",
       "detected framework validation",
     ).forEach { term -> assertContains(checker, term) }
+  }
+
+  @Test
+  fun `php router and applicability rules cover broad owned surfaces`() {
+    val reviewRoot = repoRootFromTest().resolve("platform-packs/php/code-review")
+    val router = Files.readString(reviewRoot.resolve("bill-php-code-review/content.md"))
+    listOf(
+      "PHP-owned controllers, routes, request DTOs, response resources",
+      "exec()",
+      "system()",
+      "shell_exec()",
+      "Process::fromShellCommandline()",
+      "Laravel Process APIs",
+      "PHP-owned Blade or Twig templates",
+      "even when the diff contains no pre-existing accessibility keywords",
+    ).forEach { term -> assertContains(router, term) }
+
+    val architecture = Files.readString(reviewRoot.resolve("bill-php-code-review-architecture/content.md"))
+    listOf(
+      "root `composer.json` PHP constraint",
+      "CI or deployment runtime",
+      "`composer.lock` records resolved dependencies",
+    ).forEach { term -> assertContains(architecture, term) }
+
+    val security = Files.readString(reviewRoot.resolve("bill-php-code-review-security/content.md"))
+    listOf(
+      "middleware evidence gates middleware controls",
+      "voters, policies, signatures, hashers, sessions, templates, and process APIs",
+    ).forEach { term -> assertContains(security, term) }
   }
 
   @Test

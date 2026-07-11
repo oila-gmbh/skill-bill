@@ -21,7 +21,7 @@ Report exploitable trust-boundary failures with a reachable attacker-controlled 
 
 ## Applicability
 
-Apply framework controls only when Composer dependencies and configured middleware prove ownership. Treat every request, queue message, uploaded file, serialized value, and process argument according to its actual trust source.
+Apply each framework rule only when its relevant Composer package plus source or configuration evidence proves ownership: middleware evidence gates middleware controls, while voters, policies, signatures, hashers, sessions, templates, and process APIs use their own framework evidence. Treat every request, queue message, uploaded file, serialized value, and process argument according to its actual trust source.
 
 ## Project-Specific Rules
 

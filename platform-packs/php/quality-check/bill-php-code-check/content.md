@@ -31,7 +31,7 @@ Execute the repository's authoritative PHP checks, repair only failures belongin
 - Run PHPUnit or Pest through the project bootstrap, such as `composer test`, `vendor/bin/phpunit`, or `vendor/bin/pest`, preserving database, cache, and extension requirements.
 - Run detected framework validation, such as `bin/console lint:container`, `bin/console lint:yaml config`, Laravel route/config tests, or the repository's framework check script.
 - Run dependency security through the owned wrapper or `composer audit`; a reachable advisory remains a reported security failure unless the repository's policy determines otherwise.
-- Verify generated and autoload state with repository commands such as `composer dump-autoload --strict-psr` when namespaces, files, generated containers, proxies, caches, or class maps changed.
+- Verify generated and autoload state with repository commands such as `composer dump-autoload --optimize --strict-psr` when namespaces, files, generated containers, proxies, caches, or class maps changed.
 - Exercise the supported PHP version, extension, dependency, and database matrix through declared CI jobs or local matrix commands when compatibility surfaces changed.
 
 ### Scope and Escalation

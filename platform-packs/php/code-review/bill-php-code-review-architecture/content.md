@@ -43,5 +43,5 @@ Infer the established architecture from `composer.json`, namespaces, service con
 - Require `Fiber` or promise abstractions to stay behind an async-capable boundary selected by repository runtime evidence; leaking suspension into synchronous callers causes blocking and timeout regressions.
 - Ensure `RoadRunner`, `Swoole`, `FrankenPHP`, Horizon, and Messenger worker bootstraps define per-unit reset ownership; request-era singleton assumptions otherwise leak mutable state.
 - Reject catch-all `Throwable` translation in infrastructure when it erases domain or transport failure types; collapsed errors break retry and client-status contracts.
-- Verify shared interfaces use types supported by the `composer.lock` runtime matrix; unsupported union, enum, or readonly syntax causes deployment startup failure.
+- Verify shared interfaces use syntax supported by the root `composer.json` PHP constraint and every declared CI or deployment runtime; `composer.lock` records resolved dependencies rather than the supported runtime matrix, so unsupported union, enum, or readonly syntax can cause deployment startup failure.
 - For Blocker or Major findings, describe the concrete dependency-cycle or ownership-boundary failure scenario.

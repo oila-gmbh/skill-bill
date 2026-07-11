@@ -29,7 +29,7 @@ Use Laravel rules with queue configuration, `ShouldQueue`, or Horizon evidence. 
 
 - Require acknowledgement only after a Laravel job or Messenger handler completes its durable effect; early `ack()` can lose work after a crash.
 - Ensure visibility timeout or `retry_after` exceeds the bounded handler runtime with margin; premature redelivery creates a concurrency failure with duplicate effects.
-- Reject unlimited retries and require bounded exponential backoff for transient `Throwable`; retry storms exhaust workers and downstream resources.
+- Reject unlimited retries and require bounded exponential backoff for transient `Throwable`, with jitter whenever multiple workers can encounter the same failure; synchronized retry storms exhaust workers and repeatedly overload recovering dependencies.
 - Require poison messages to reach a failed transport, dead-letter queue, or terminal `Horizon` state with diagnostics; endless replay causes starvation.
 - Verify non-retryable validation and authorization failures are not wrapped as transient `Throwable`; incorrect retry classification floods the queue.
 - Require a durable outbox or equivalent atomic handoff when downstream delivery is mandatory; commit-before-`dispatch()` and after-commit dispatch both retain a crash window before broker acceptance in which required work can disappear permanently.
