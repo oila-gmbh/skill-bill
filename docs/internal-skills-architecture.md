@@ -311,8 +311,8 @@ parsed `internalFor`) rather than re-scanning `platform-packs/` independently
 of selection. The parent's content hash folds exactly the selected sidecars.
 
 After a scratch install with all packs selected, `bill-code-review`'s staged
-directory contains `SKILL.md` plus 56 sibling sidecars — and no agent
-`skills_dir` symlink exists for any of the 56:
+directory contains `SKILL.md` plus 67 sibling sidecars — and no agent
+`skills_dir` symlink exists for any of the 67:
 
 ```
 ~/.claude/skills/bill-code-review
@@ -336,7 +336,7 @@ directory contains `SKILL.md` plus 56 sibling sidecars — and no agent
 ```
 
 With only the Kotlin pack selected, exactly 9 review sidecars stage
-(`bill-kotlin-code-review.md` plus its 8 specialists); the other 47 contribute
+(`bill-kotlin-code-review.md` plus its 8 specialists); the other 58 contribute
 nothing. With no review packs selected, `bill-code-review` stages
 byte-identically to a repo with no internal pack skills (inertness). `ALL`
 selection stages every opted-in review sidecar. SKILL-105 applies the same
@@ -390,7 +390,7 @@ standalone `skills_dir` path (PD5).
 
 | Selection | Sidecars staged inside `bill-code-review/` |
 |---|---|
-| `ALL` | 56 (6 stack entries + 50 specialists) |
+| `ALL` | 67 (7 stack entries + 60 specialists) |
 | Kotlin only | 9 (`bill-kotlin-code-review.md` + 8 specialists) |
 | KMP only | fails — Kotlin is a required baseline (PD8) |
 | KMP + Kotlin | 12 (3 KMP + 9 Kotlin) |
@@ -404,5 +404,5 @@ standalone `skills_dir` path (PD5).
 | Selection-aware sidecar discovery | `.../install/staging/InternalSkillSidecars.kt` (consults `InstallPlanSkill.sourceDir`) |
 | Baseline co-presence guard | `.../install/plan/InstallPlanPolicy.kt`, `MissingBaselinePlatformSelectionError` in `ShellContentContractErrors.kt` |
 | Pack-internal README catalog exemption | `.../scaffold/runtime/RepoValidationRuntime.kt` (`validateReadme`) |
-| Authored pack source (unchanged paths) | `platform-packs/{go,ios,kotlin,kmp,php,python}/code-review/<skill>/content.md` |
+| Authored pack source (unchanged paths) | `platform-packs/{go,ios,kotlin,kmp,php,python,rust}/code-review/<skill>/content.md` |
 | Tests | `InternalSkillStagingTest`, `InternalSkillClassificationTest`, `InstallPlanInternalSkillDiscoveryTest`, `MissingBaselinePlatformSelectionTest`, `RepoValidationRuntimeTest` |

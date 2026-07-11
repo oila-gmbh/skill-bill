@@ -1,0 +1,35 @@
+contract_version: "0.1"
+agents:
+  - name: bill-rust-code-review
+    description: "Rust baseline code reviewer. Runs the governed baseline review across the full owned diff before specialist findings are merged. Returns a Risk Register in the F-XXX bullet format."
+    compose: governed-content
+  - name: bill-rust-code-review-api-contracts
+    description: "Rust API contracts specialist code reviewer. Runs against trait, serde, wire, FFI, and compatibility contracts. Returns a Risk Register in the F-XXX bullet format."
+    compose: governed-content
+  - name: bill-rust-code-review-architecture
+    description: "Rust architecture specialist code reviewer. Runs against crate boundaries, trait ownership, dependency direction, and Cargo feature topology. Returns a Risk Register in the F-XXX bullet format."
+    compose: governed-content
+  - name: bill-rust-code-review-performance
+    description: "Rust performance specialist code reviewer. Runs against allocation, cloning, locking, async scheduling, I/O, and hot paths. Returns a Risk Register in the F-XXX bullet format."
+    compose: governed-content
+  - name: bill-rust-code-review-persistence
+    description: "Rust persistence specialist code reviewer. Runs against transactions, migrations, locking, durable writes, and data consistency. Returns a Risk Register in the F-XXX bullet format."
+    compose: governed-content
+  - name: bill-rust-code-review-platform-correctness
+    description: "Rust platform and correctness specialist code reviewer. Runs against ownership, borrowing, lifetimes, errors, concurrency, and runtime semantics. Returns a Risk Register in the F-XXX bullet format."
+    compose: governed-content
+  - name: bill-rust-code-review-reliability
+    description: "Rust reliability specialist code reviewer. Runs against cancellation, backpressure, retries, shutdown, and production failure behavior. Returns a Risk Register in the F-XXX bullet format."
+    compose: governed-content
+  - name: bill-rust-code-review-security
+    description: "Rust security specialist code reviewer. Runs against unsafe boundaries, FFI, trust boundaries, secrets, auth, parsing, and dependencies. Returns a Risk Register in the F-XXX bullet format."
+    compose: governed-content
+  - name: bill-rust-code-review-testing
+    description: "Rust testing specialist code reviewer. Runs against regression proof, feature matrices, concurrency, fuzzing, and weak tests. Returns a Risk Register in the F-XXX bullet format."
+    compose: governed-content
+  - name: bill-rust-code-review-ui
+    description: "Rust UI specialist code reviewer. Runs against wasm, server-rendered, desktop GUI, terminal UI, and interactive output behavior. Returns a Risk Register in the F-XXX bullet format."
+    compose: governed-content
+  - name: bill-rust-code-review-ux-accessibility
+    description: "Rust UX and accessibility specialist code reviewer. Runs against semantics, keyboard and focus behavior, feedback, localization, and assistive access. Returns a Risk Register in the F-XXX bullet format."
+    compose: governed-content

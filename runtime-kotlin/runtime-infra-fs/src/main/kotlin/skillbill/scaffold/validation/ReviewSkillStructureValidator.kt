@@ -3,8 +3,11 @@
 package skillbill.scaffold.validation
 
 import org.yaml.snakeyaml.Yaml
+import skillbill.error.InvalidManifestSchemaError
 import skillbill.error.InvalidReviewSkillStructureError
+import skillbill.nativeagent.composition.NATIVE_AGENT_BUNDLE_FILE
 import skillbill.nativeagent.composition.parseNativeAgentBundle
+import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.rendering.canonicalSeverityCloser
 import skillbill.scaffold.rendering.defaultAreaFocus
 import skillbill.scaffold.runtime.APPROVED_CODE_REVIEW_AREAS
@@ -482,3 +485,45 @@ internal object ReviewSkillStructureValidator {
 internal data class ReviewSkillStructureViolation(val path: Path, val rule: String) {
   override fun toString(): String = "$path: $rule"
 }
+
+internal fun validateReviewSkillStructure(pack: PlatformManifest) {
+  val baseline = pack.declaredFiles.baseline ?: return
+  val bundle = baseline.parent.resolve("native-agents").resolve(NATIVE_AGENT_BUNDLE_FILE)
+  if (!Files.isRegularFile(bundle)) return
+
+  val actualAgents = parseNativeAgentBundle(bundle)
+  val actualNames = actualAgents.map { it.name }
+  val specialistNames = pack.declaredCodeReviewAreas
+    .map { area -> pack.declaredFiles.areas.getValue(area).parent.fileName.toString() }
+    .toSet()
+  val baselineName = baseline.parent.fileName.toString()
+  val expectedNames = specialistNames + baselineName
+  if (actualNames.none { it in expectedNames }) return
+
+  val unknown = actualAgents
+    .filter { it.composition != null }
+    .map { it.name }
+    .toSet() - expectedNames
+  val missing = specialistNames - actualNames.toSet()
+  if (actualNames.size != actualNames.toSet().size || unknown.isNotEmpty() || missing.isNotEmpty()) {
+    throw InvalidManifestSchemaError(
+      "Platform pack '${pack.slug}': native-agent bundle must declare every review specialist exactly once, " +
+        "may additionally declare baseline '$baselineName', and may not declare unknown agents; " +
+        "missing=${missing.sorted()}, unknown=${unknown.sorted()}.",
+    )
+  }
+
+  actualAgents.singleOrNull { it.name == baselineName }?.let { baselineAgent ->
+    val expectedDescription = baselineNativeAgentDescription(pack.displayName ?: pack.slug)
+    if (baselineAgent.description != expectedDescription) {
+      throw InvalidManifestSchemaError(
+        "Platform pack '${pack.slug}': baseline native-agent '$baselineName' description must be " +
+          "'$expectedDescription'.",
+      )
+    }
+  }
+}
+
+internal fun baselineNativeAgentDescription(displayName: String): String =
+  "$displayName baseline code reviewer. Runs the governed baseline review across the full owned diff before " +
+    "specialist findings are merged. Returns a Risk Register in the F-XXX bullet format."

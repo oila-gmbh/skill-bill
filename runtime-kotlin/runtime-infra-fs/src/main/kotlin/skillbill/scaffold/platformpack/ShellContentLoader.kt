@@ -26,6 +26,7 @@ import skillbill.scaffold.runtime.CONTENT_BODY_FILENAME
 import skillbill.scaffold.runtime.SHELL_CONTRACT_VERSION
 import skillbill.scaffold.validation.parseSkillFrontmatter
 import skillbill.scaffold.validation.validateAuthoredContent
+import skillbill.scaffold.validation.validateReviewSkillStructure
 import skillbill.scaffold.validation.validateSkillMdShape
 import java.nio.file.Files
 import java.nio.file.Path
@@ -114,6 +115,7 @@ internal fun validatePlatformPack(pack: PlatformManifest, contractVersion: Strin
   pack.declaredCodeReviewAreas.forEach { area ->
     validateGovernedSkill(pack, "areas.$area", declaredAreaFiles.getValue(area), "code-review", area)
   }
+  validateReviewSkillStructure(pack)
 }
 
 internal fun validatePlatformPackCompositions(packs: List<PlatformManifest>) {
