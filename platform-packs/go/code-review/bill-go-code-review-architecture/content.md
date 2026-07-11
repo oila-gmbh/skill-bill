@@ -34,6 +34,7 @@ Apply shared architecture rules to every review. Apply deeper concern-specific c
 
 ### Architectural Precedence
 
+- Verify `go.mod` module and package boundaries preserve ownership invariants; reject dependency-cycle failures
 - Honor coherent local architecture and project-specific standards before applying pack defaults
 - Identify the project's established architecture in the changed area and adjacent modules before reporting architecture findings
 - If the project uses DDD, layered services, hexagonal/onion, modular monolith, CQRS, conventional MVC, or another explicit style, preserve that style consistently across the module, bounded context, or feature area
@@ -96,3 +97,4 @@ Apply shared architecture rules to every review. Apply deeper concern-specific c
 
 - Controllers, routes, RPC handlers, actions, and server-rendered entry points should stay thin: derive context, validate input, call a use case, and map the response
 - Entry points should not become hidden composition roots for cross-module reads, transaction management, or business workflows when the architecture expects dedicated application boundaries
+- For Blocker or Major findings, describe the concrete dependency-cycle or ownership-boundary failure scenario.

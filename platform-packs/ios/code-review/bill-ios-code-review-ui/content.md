@@ -19,8 +19,15 @@ Review only UI correctness and framework-usage issues that can break the rendere
 
 - Pure visual taste feedback
 - Accessibility-only findings that belong to `bill-ios-code-review-ux-accessibility`
+- Security-only findings that belong to `bill-ios-code-review-security`
+
+## Applicability
+
+Use this specialist when changed SwiftUI or UIKit code affects feature views, shared components, rendering identity, navigation, view-owned observable state, snapshots, or deployment-version behavior.
 
 ## Project-Specific Rules
+
+### State, Rendering, And Navigation
 
 - Feature views (e.g. a `{Feature}View.swift`-style SwiftUI view) should compose from the project's shared UI component library and theme module rather than reimplementing styling, spacing, or common components locally
 - Navigation changes (e.g. a `Scene+{Feature}.swift`-style navigation wiring file) must keep the declared navigation graph consistent — no dangling routes, no duplicate destinations for the same scene, no navigation state that can desync from the store driving it
@@ -31,8 +38,10 @@ Review only UI correctness and framework-usage issues that can break the rendere
 - `ForEach` over dynamic content must use stable identity (`Identifiable` conformance or a stable key path), never `.indices` — index-based identity can crash or silently show stale rows when the underlying collection is mutated. An `Identifiable` `id` must also be genuinely unique per element (not derived from a field like a URL or title that can repeat), and every element must render the same number of views from the row builder — a conditional that produces a different view count per row breaks diffing and can misrender or crash
 - In findings, explain the rendered or interactive behavior a user would actually experience
 
-## SwiftUI framework-version correctness
+### SwiftUI Framework-Version Correctness
 
+- For deployment targets before iOS 17, a view-created `ObservableObject` must be owned with `@StateObject`, while an object owned and injected by a parent must use `@ObservedObject`; reject wrappers that recreate owned state or incorrectly claim ownership of injected state
 - A version-gated SwiftUI API used **without** an `if #available` / `@available` guard *and* a working fallback path is a crash or blank render on the OS versions that lack it — flag as a real correctness finding, not a style note. This covers newly introduced APIs the diff adopts (e.g. `glassEffect`/`GlassEffectContainer` and other iOS 26 surfaces, `Chart3D`, the `@Animatable` macro, phase/keyframe animators) against the module's declared deployment target.
 - `.animation(_:)` applied without the `value:` parameter (the deprecated implicit form) re-animates on every surrounding change and is a behavior risk; the fix is `.animation(_:value:)`.
-- Deprecated-but-functional SwiftUI APIs introduced fresh by the diff (`foregroundColor`→`foregroundStyle`, `navigationBarItems`/`navigationBarTitle`→`toolbar`/`navigationTitle`, `alert(isPresented:content:)`→`alert(_:isPresented:actions:)`, `cornerRadius`→`clipShape(.rect(cornerRadius:))`, `edgesIgnoringSafeArea`→`ignoresSafeArea`) are a low-severity consistency nit — report only when the change adds them, never as a Blocker.
+- Deprecated-but-functional SwiftUI APIs introduced fresh by the diff (`foregroundColor`→`foregroundStyle`, `navigationBarItems`/`navigationBarTitle`→`toolbar`/`navigationTitle`, `alert(isPresented:content:)`→`alert(_:isPresented:actions:)`, `cornerRadius`→`clipShape(.rect(cornerRadius:))`, `edgesIgnoringSafeArea`→`ignoresSafeArea`) are a Minor consistency issue — report only when the change adds them, never as a Blocker.
+- For Blocker or Major findings, describe the concrete user-visible interaction or rendering failure scenario.

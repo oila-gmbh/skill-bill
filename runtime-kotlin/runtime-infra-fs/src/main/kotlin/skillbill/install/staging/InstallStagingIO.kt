@@ -2,7 +2,6 @@
 
 package skillbill.install.staging
 
-import skillbill.error.InternalSkillSidecarCollisionError
 import skillbill.install.model.RenderedSkill
 import skillbill.scaffold.authoring.AuthoringTarget
 import skillbill.scaffold.authoring.normalizeMarkdownLineEndings
@@ -18,6 +17,7 @@ import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
+import java.util.UUID
 import java.util.logging.Level
 import java.util.logging.Logger
 
@@ -29,7 +29,7 @@ private val log: Logger = Logger.getLogger("skillbill.install.InstallStagingIO")
 internal fun isReusableInstallStaging(
   finalStagingDir: Path,
   contentHash: String,
-  expectedSidecarNames: Set<String> = emptySet(),
+  expectedStagedNames: Set<String> = emptySet(),
 ): Boolean {
   if (!Files.isDirectory(finalStagingDir)) {
     return false
@@ -48,10 +48,10 @@ internal fun isReusableInstallStaging(
   val skillIsFile = Files.isRegularFile(skillFile, LinkOption.NOFOLLOW_LINKS)
   // F-013 (SKILL-102): the same partial-residue rationale applies to internal sidecars — an
   // externally deleted sidecar would otherwise be reused indefinitely and break parent dispatch.
-  val sidecarsIntact = expectedSidecarNames.all { name ->
+  val stagedFilesIntact = expectedStagedNames.all { name ->
     Files.isRegularFile(finalStagingDir.resolve(name), LinkOption.NOFOLLOW_LINKS)
   }
-  return markerIsFile && recorded == contentHash && skillIsFile && sidecarsIntact
+  return markerIsFile && recorded == contentHash && skillIsFile && stagedFilesIntact
 }
 
 internal fun reuseInstallStaging(
@@ -153,22 +153,28 @@ internal fun writeInternalSidecarFiles(
   tempDir: Path,
   parentSourceDir: Path,
   children: List<InternalSidecarTarget>,
-): List<Path> = children.map { child ->
-  val sidecarName = "${child.skillName}.md"
-  val collision = parentSourceDir.resolve(sidecarName)
-  if (Files.isRegularFile(collision, LinkOption.NOFOLLOW_LINKS)) {
-    throw InternalSkillSidecarCollisionError(
-      parentSkillName = parentSourceDir.fileName.toString(),
-      internalSkillName = child.skillName,
-      sidecarRelativePath = sidecarName,
+): List<Path> {
+  validateInternalSidecarFileNames(parentSourceDir, children)
+  return children.sortedBy { child -> child.skillName }.flatMap { child ->
+    val wrapper = writeInternalStagingFile(
+      tempDir,
+      "${child.skillName}.md",
+      child.renderedWrapper.toByteArray(StandardCharsets.UTF_8),
     )
+    val companions = child.authoredCompanions.sortedBy { companion -> companion.name }.map { companion ->
+      writeInternalStagingFile(tempDir, companion.name, companion.bytes)
+    }
+    listOf(wrapper) + companions
   }
-  val sidecarFile = tempDir.resolve(sidecarName).normalize()
-  require(sidecarFile.startsWith(tempDir)) {
-    "Internal sidecar '$sidecarName' staging path '$sidecarFile' escapes staging dir '$tempDir'."
+}
+
+private fun writeInternalStagingFile(tempDir: Path, name: String, bytes: ByteArray): Path {
+  val file = tempDir.resolve(name).normalize()
+  require(file.parent == tempDir.toAbsolutePath().normalize()) {
+    "Internal sidecar '$name' staging path '$file' escapes staging dir '$tempDir'."
   }
-  Files.write(sidecarFile, child.renderedWrapper.toByteArray(StandardCharsets.UTF_8))
-  sidecarFile
+  Files.write(file, bytes)
+  return file
 }
 
 internal fun promoteInstallStagingDir(tempDir: Path, finalStagingDir: Path) {
@@ -176,7 +182,7 @@ internal fun promoteInstallStagingDir(tempDir: Path, finalStagingDir: Path) {
   // marker, missing SKILL.md, or a pruned sidecar). ATOMIC_MOVE cannot replace a non-empty
   // directory (ENOTEMPTY), so stale residue must go through delete-and-move.
   if (Files.exists(finalStagingDir, LinkOption.NOFOLLOW_LINKS)) {
-    promoteByDeleteAndMove(tempDir, finalStagingDir)
+    promoteByBackupAndMove(tempDir, finalStagingDir)
     return
   }
   try {
@@ -191,39 +197,40 @@ internal fun promoteInstallStagingDir(tempDir: Path, finalStagingDir: Path) {
     // replace. The recovery is intentional and the exception is purely informational here.
     @Suppress("UNUSED_VARIABLE")
     val ignored = error
-    promoteByDeleteAndMove(tempDir, finalStagingDir)
+    Files.move(tempDir, finalStagingDir, StandardCopyOption.REPLACE_EXISTING)
   }
 }
 
-/**
- * F-010 fallback path: when ATOMIC_MOVE is unsupported we have to delete the existing
- * `finalStagingDir` (if any) and then move tempDir over. If that move throws AFTER the delete,
- * we may have wiped the prior good entry and only half-written a new one — clean up the partial
- * `finalStagingDir` before rethrowing so the caller never observes residue. The outer `promoted`
- * flag in `stageInstalledSkill` correctly stays `false` (we never finished promoting).
- */
-private fun promoteByDeleteAndMove(tempDir: Path, finalStagingDir: Path) {
-  if (Files.exists(finalStagingDir, LinkOption.NOFOLLOW_LINKS)) {
-    deleteInstallStagingDirectory(finalStagingDir)
-  }
+private fun promoteByBackupAndMove(tempDir: Path, finalStagingDir: Path) {
+  val backup = finalStagingDir.resolveSibling(".${finalStagingDir.fileName}.backup-${UUID.randomUUID()}")
+  moveWithAtomicFallback(finalStagingDir, backup)
   try {
     Files.move(tempDir, finalStagingDir, StandardCopyOption.REPLACE_EXISTING)
   } catch (error: IOException) {
-    log.log(
-      Level.SEVERE,
-      "promoteByDeleteAndMove failed; cleaning up partial finalStagingDir=$finalStagingDir",
-      error,
-    )
-    suppressedDelete(finalStagingDir)
+    restoreInstallStagingBackup(backup, finalStagingDir, error)
     throw error
   } catch (error: RuntimeException) {
-    log.log(
-      Level.SEVERE,
-      "promoteByDeleteAndMove failed; cleaning up partial finalStagingDir=$finalStagingDir",
-      error,
-    )
-    suppressedDelete(finalStagingDir)
+    restoreInstallStagingBackup(backup, finalStagingDir, error)
     throw error
+  }
+  suppressedDelete(backup)
+}
+
+private fun moveWithAtomicFallback(source: Path, target: Path) {
+  try {
+    Files.move(source, target, StandardCopyOption.ATOMIC_MOVE)
+  } catch (_: AtomicMoveNotSupportedException) {
+    Files.move(source, target)
+  }
+}
+
+private fun restoreInstallStagingBackup(backup: Path, finalStagingDir: Path, primaryError: Throwable) {
+  suppressedDelete(finalStagingDir)
+  try {
+    moveWithAtomicFallback(backup, finalStagingDir)
+  } catch (restoreError: Exception) {
+    primaryError.addSuppressed(restoreError)
+    log.log(Level.SEVERE, "Failed to restore install staging backup '$backup'.", restoreError)
   }
 }
 

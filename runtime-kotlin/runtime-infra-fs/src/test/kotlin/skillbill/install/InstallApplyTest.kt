@@ -50,14 +50,12 @@ class InstallApplyTest : InstallApplyTestSupport() {
         "bill-code-review",
         "bill-code-check",
         "bill-update-check",
-        "bill-kotlin-code-review",
       ),
       skillsByName.keys,
     )
     assertEquals(InstallPlanSkillKind.BASE, skillsByName.getValue("bill-code-review").kind)
     assertEquals(InstallPlanSkillKind.BASE, skillsByName.getValue("bill-code-check").kind)
     assertEquals(InstallPlanSkillKind.BASE, skillsByName.getValue("bill-update-check").kind)
-    assertEquals(InstallPlanSkillKind.PLATFORM_PACK, skillsByName.getValue("bill-kotlin-code-review").kind)
     assertFalse(skillsByName.containsKey("bill-kmp-code-review"), "unselected platform skill was applied")
     assertFalse(skillsByName.containsKey("bill-kotlin-code-check"), "internal platform quality-check skill was applied")
     result.skills.forEach { skill ->
@@ -355,8 +353,7 @@ class InstallApplyTest : InstallApplyTestSupport() {
     val fixture = setupApplyFixture()
     Files.createDirectories(fixture.home.resolve(".codex"))
     Files.writeString(
-      fixture.repoRoot
-        .resolve("platform-packs/kotlin/code-review/bill-kotlin-code-review/native-agents/bill-malformed.md"),
+      fixture.repoRoot.resolve("skills/bill-code-review/native-agents/bill-malformed.md"),
       """
       |---
       |name: bill-malformed
@@ -380,7 +377,7 @@ class InstallApplyTest : InstallApplyTestSupport() {
     assertTrue(
       result.failures.any { failure ->
         failure.kind == InstallApplyIssueKind.STAGING_FAILED &&
-          failure.skillName == "bill-kotlin-code-review" &&
+          failure.skillName == "bill-code-review" &&
           failure.message.contains("native agent description is required")
       },
     )

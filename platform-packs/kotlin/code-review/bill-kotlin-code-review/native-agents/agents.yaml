@@ -1,26 +1,26 @@
 contract_version: "0.1"
 agents:
   - name: bill-kotlin-code-review-api-contracts
-    description: "Kotlin backend API contracts specialist code reviewer. Runs against request validation, serialization, HTTP or RPC contracts, status-code mapping, and backward compatibility. Returns a Risk Register in the F-XXX bullet format."
+    description: "Kotlin api contracts specialist code reviewer. Runs against Kotlin explicitNulls and encodeDefaults compatibility, Jackson module behavior, validation, and stable error contracts. Returns a Risk Register in the F-XXX bullet format."
     compose: governed-content
   - name: bill-kotlin-code-review-architecture
-    description: "Kotlin architecture specialist code reviewer. Runs against architecture, boundaries, DI scopes, module ownership, and source-of-truth consistency. Returns a Risk Register in the F-XXX bullet format."
+    description: "Kotlin architecture specialist code reviewer. Runs against Kotlin use-case and transaction ownership, injected CoroutineScope lifecycles, internal visibility, and Gradle module boundaries. Returns a Risk Register in the F-XXX bullet format."
     compose: governed-content
   - name: bill-kotlin-code-review-performance
-    description: "Kotlin performance specialist code reviewer. Runs against hot-path work, blocking I/O, latency regressions, memory pressure, retry waste, and resource usage. Returns a Risk Register in the F-XXX bullet format."
+    description: "Kotlin performance specialist code reviewer. Runs against Kotlin runBlocking and dispatcher starvation, Flow backpressure, eager collections, and ORM hydration costs. Returns a Risk Register in the F-XXX bullet format."
     compose: governed-content
   - name: bill-kotlin-code-review-persistence
-    description: "Kotlin backend persistence specialist code reviewer. Runs against transaction boundaries, query correctness, migration safety, concurrency, and data-consistency behavior. Returns a Risk Register in the F-XXX bullet format."
+    description: "Kotlin persistence specialist code reviewer. Runs against Kotlin Exposed newSuspendedTransaction boundaries, Spring proxy transactions, Hibernate sessions, and scoped atomic writes. Returns a Risk Register in the F-XXX bullet format."
     compose: governed-content
   - name: bill-kotlin-code-review-platform-correctness
-    description: "Kotlin platform and correctness specialist code reviewer. Runs against lifecycle, coroutine, threading, race-condition, state-machine, and business-invariant risks. Returns a Risk Register in the F-XXX bullet format."
+    description: "Kotlin platform correctness specialist code reviewer. Runs against Kotlin CancellationException propagation, SupervisorJob isolation, Mutex reentrancy, and StateFlow or SharedFlow delivery invariants. Returns a Risk Register in the F-XXX bullet format."
     compose: governed-content
   - name: bill-kotlin-code-review-reliability
-    description: "Kotlin backend reliability specialist code reviewer. Runs against timeouts, retries, background work, queues, caching, observability, and production failure behavior. Returns a Risk Register in the F-XXX bullet format."
+    description: "Kotlin reliability specialist code reviewer. Runs against Kotlin consumer supervision, TimeoutCancellationException classification, bounded replay, outbox ordering, and failure telemetry. Returns a Risk Register in the F-XXX bullet format."
     compose: governed-content
   - name: bill-kotlin-code-review-security
-    description: "Kotlin security specialist code reviewer. Runs against secrets handling, auth/session safety, sensitive-data exposure, and transport or storage security regressions. Returns a Risk Register in the F-XXX bullet format."
+    description: "Kotlin security specialist code reviewer. Runs against Kotlin dangerous input sinks, object authorization, tenant isolation, unsafe deserialization, and JWT verification. Returns a Risk Register in the F-XXX bullet format."
     compose: governed-content
   - name: bill-kotlin-code-review-testing
-    description: "Kotlin testing specialist code reviewer. Runs against test coverage quality, behavior-focused regression protection, brittle tests, and low-value coverage-padding tests. Returns a Risk Register in the F-XXX bullet format."
+    description: "Kotlin testing specialist code reviewer. Runs against Kotlin runTest virtual time, test dispatcher ordering, Flow sequence assertions, and real persistence effects. Returns a Risk Register in the F-XXX bullet format."
     compose: governed-content

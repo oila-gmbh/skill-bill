@@ -26,6 +26,8 @@ Select `android-interop` when the scoped diff includes:
 - Flag Compose/View interop that leaks lifecycle or host concerns into reusable leaf composables.
 - Flag `AndroidView` reuse bugs in lazy containers.
 - Flag raw View construction outside the `AndroidView` factory.
+- Require Fragment- or View-owned `ComposeView` instances to use `setViewCompositionStrategy(DisposeOnViewTreeLifecycleDestroyed)` when the view-tree lifecycle owns disposal.
+- Verify `AndroidView` creates the View only in `factory` and applies changing Compose inputs in `update`; reject factories that rerun side effects or update lambdas that fail to synchronize recomposition.
 - Flag duplicated state ownership across Compose and embedded Views/Fragments.
 - Flag framework callbacks or receivers that are not lifecycle-safe.
 - Flag interop wrappers that have become permanent unowned infrastructure with no clear removal path.

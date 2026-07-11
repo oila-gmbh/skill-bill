@@ -108,7 +108,7 @@ class CliInstallPlanApplyRuntimeTest {
       assertTrue(payload.listOfMaps("platform_packs").all { pack -> pack["selected"] == true })
       assertTrue(payload.listOfMaps("skills").any { skill -> skill["name"] == "bill-code-review" })
       assertTrue(payload.listOfMaps("skills").any { skill -> skill["name"] == "bill-code-check" })
-      assertTrue(payload.listOfMaps("skills").any { skill -> skill["name"] == "bill-kotlin-code-review" })
+      assertFalse(payload.listOfMaps("skills").any { skill -> skill["name"] == "bill-kotlin-code-review" })
     }
   }
 
@@ -257,7 +257,6 @@ class CliInstallPlanApplyRuntimeTest {
       expectedSkillNames = setOf(
         "bill-code-review",
         "bill-code-check",
-        "bill-kotlin-code-review",
       ),
       targetDir = selectedFixture.home.resolve("manual-targets/codex"),
     )
@@ -274,8 +273,6 @@ class CliInstallPlanApplyRuntimeTest {
       expectedSkillNames = setOf(
         "bill-code-review",
         "bill-code-check",
-        "bill-kmp-code-review",
-        "bill-kotlin-code-review",
       ),
       targetDir = allFixture.home.resolve("manual-targets/codex"),
     )
@@ -419,7 +416,8 @@ class CliInstallPlanApplyRuntimeTest {
     val skills = payload.listOfMaps("skills").associateBy { skill -> skill["name"] }
     assertEquals("base", skills.getValue("bill-code-review")["kind"])
     assertEquals("base", skills.getValue("bill-code-check")["kind"])
-    assertEquals("platform_pack", skills.getValue("bill-kotlin-code-review")["kind"])
+    assertFalse("bill-kotlin-code-review" in skills.keys)
+    assertFalse("bill-kotlin-code-review-architecture" in skills.keys)
     assertFalse("bill-kotlin-code-check" in skills.keys)
   }
 
@@ -770,49 +768,132 @@ private fun seedCliBaseSkill(repoRoot: Path, skillName: String) {
 
 private fun seedCliPlatformPack(repoRoot: Path, slug: String) {
   val codeReviewName = "bill-$slug-code-review"
+  val architectureName = "$codeReviewName-architecture"
   val qualityCheckName = "bill-$slug-code-check"
   val packRoot = repoRoot.resolve("platform-packs").resolve(slug)
-  Files.createDirectories(packRoot.resolve("code-review").resolve(codeReviewName))
+  val baselineDir = packRoot.resolve("code-review").resolve(codeReviewName)
+  Files.createDirectories(baselineDir.resolve("native-agents"))
+  Files.createDirectories(packRoot.resolve("code-review").resolve(architectureName))
   Files.createDirectories(packRoot.resolve("quality-check").resolve(qualityCheckName))
   Files.writeString(packRoot.resolve("platform.yaml"), cliPlatformManifest(slug, codeReviewName, qualityCheckName))
   Files.writeString(
-    packRoot.resolve("code-review").resolve(codeReviewName).resolve("content.md"),
-    cliSkillContent(codeReviewName),
+    baselineDir.resolve("content.md"),
+    cliSkillContent(codeReviewName, internalFor = "bill-code-review", body = cliBaselineBody(slug)),
+  )
+  Files.writeString(
+    packRoot.resolve("code-review").resolve(architectureName).resolve("content.md"),
+    cliSkillContent(architectureName, internalFor = "bill-code-review", body = cliArchitectureBody(slug)),
   )
   Files.writeString(
     packRoot.resolve("quality-check").resolve(qualityCheckName).resolve("content.md"),
-    cliSkillContent(qualityCheckName, internalFor = "bill-code-check"),
+    cliSkillContent(qualityCheckName, internalFor = "bill-code-check", body = cliQualityCheckBody(slug)),
   )
+  Files.writeString(baselineDir.resolve("native-agents/agents.yaml"), cliNativeAgents(slug))
 }
 
 private fun cliPlatformManifest(slug: String, codeReviewName: String, qualityCheckName: String): String = """
   |platform: "$slug"
   |contract_version: "1.2"
   |routing_signals:
-  |  strong:
-  |    - "$slug"
-  |  tie_breakers: []
-  |declared_code_review_areas: []
+  |  strong: [".$slug", "*.$slug"]
+  |  tie_breakers:
+  |    - "Prefer $slug when $slug source signals dominate the changed product surface."
+  |    - "Do not prefer $slug when an adjacent pack's declared signals dominate."
+  |    - "Exclude generated and vendored files from dominance scoring."
+  |declared_code_review_areas: [architecture]
   |declared_files:
   |  baseline: "code-review/$codeReviewName/content.md"
-  |  areas: {}
-  |area_metadata: {}
+  |  areas:
+  |    architecture: "code-review/$codeReviewName-architecture/content.md"
+  |area_metadata:
+  |  architecture:
+  |    focus: "$slug architecture boundary APIs and failure modes"
   |display_name: "$slug"
   |declared_quality_check_file: "quality-check/$qualityCheckName/content.md"
+  |pointers:
+  |  code-review/$codeReviewName: []
+  |  code-review/$codeReviewName-architecture: []
   |
 """.trimMargin()
 
-private fun cliSkillContent(skillName: String, internalFor: String? = null): String = buildString {
-  appendLine("---")
-  appendLine("name: $skillName")
-  appendLine("description: Test skill.")
-  internalFor?.let { parent -> appendLine("internal-for: $parent") }
-  appendLine("---")
-  appendLine()
-  appendLine("# $skillName")
-  appendLine()
-  appendLine("Test body.")
-}
+private fun cliSkillContent(skillName: String, internalFor: String? = null, body: String = "Test body."): String =
+  buildString {
+    appendLine("---")
+    appendLine("name: $skillName")
+    appendLine("description: Test skill.")
+    internalFor?.let { parent -> appendLine("internal-for: $parent") }
+    appendLine("---")
+    appendLine()
+    appendLine("# $skillName")
+    appendLine()
+    appendLine(body)
+  }
+
+private fun cliBaselineBody(slug: String): String = """
+  ## Classification Rules
+
+  If $slug source dominates, select the $slug pack. Otherwise select the adjacent pack.
+
+  ## Diff-Signal Routing Table
+
+  - Module boundary changes -> `architecture` specialist.
+
+  ## Mixed Diffs
+
+  Keep the baseline specialists for the whole review and use lightweight file-level classification.
+  Exclude generated, vendored, and non-stack files from each specialist's scope.
+  When selected specialists exceed worker capacity, run them in deterministic waves and retain every selected specialist result.
+
+  ## Finding Discipline
+
+  Calibrate severity and verify each precondition. Keep findings attributed through merge.
+  Deduplicate overlaps without losing evidence.
+""".trimIndent()
+
+private fun cliArchitectureBody(slug: String): String = """
+  ## Focus
+
+  Review $slug architecture boundaries.
+
+  ## Ignore
+
+  Ignore unrelated concerns.
+
+  ## Applicability
+
+  Apply to architecture changes.
+
+  ## Project-Specific Rules
+
+  ### Failure Modes
+
+  - Verify `$slug module APIs` preserve their invariant; reject dependency boundary failure.
+  - For Blocker or Major findings, describe the concrete dependency-cycle or ownership-boundary failure scenario.
+""".trimIndent()
+
+private fun cliQualityCheckBody(slug: String): String = """
+  ## Purpose
+
+  Check $slug changes.
+
+  ## Execution Steps
+
+  Determine the files in scope. Discover commands from build files, wrappers, and CI configuration before falling back to defaults.
+  Run the pack's quality-check entrypoint and capture failures.
+
+  ## Fix Strategy
+
+  Follow the priority-ordered fix ladder and never suppress failures. Re-run targeted checks after fixes.
+  Escalate to the full suite when targeted checks cannot establish safety.
+""".trimIndent()
+
+private fun cliNativeAgents(slug: String): String = """
+  contract_version: "0.1"
+  agents:
+    - name: bill-$slug-code-review-architecture
+      description: "$slug architecture specialist code reviewer. Runs against $slug architecture boundary APIs and failure modes. Returns a Risk Register in the F-XXX bullet format."
+      compose: governed-content
+""".trimIndent()
 
 private fun createDetectedAgentHomes(home: Path) {
   Files.createDirectories(home.resolve(".copilot"))
@@ -1071,8 +1152,8 @@ private data class SingleCodexGoldenPaths(private val fixture: InstallPlanApplyF
     fixture.home.resolve(".skill-bill/installed-skills").resolve("$skillName-$contentHash").toString()
 }
 
-private const val CODE_REVIEW_GOLDEN_CONTENT_HASH = "3cea366171325f4f"
-private const val QUALITY_CHECK_GOLDEN_CONTENT_HASH = "983064702b4f2629"
+private const val CODE_REVIEW_GOLDEN_CONTENT_HASH = "efdb565492ce1696"
+private const val QUALITY_CHECK_GOLDEN_CONTENT_HASH = "f8d3aa4f41103122"
 private const val WINDOWS_SYMLINK_GUIDANCE =
   "On Windows, enable Developer Mode (Settings -> Privacy & security -> For developers) or run the install command " +
     "from an elevated shell so the JVM can create symlinks."

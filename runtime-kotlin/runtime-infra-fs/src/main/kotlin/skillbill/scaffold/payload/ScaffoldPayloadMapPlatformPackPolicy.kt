@@ -33,13 +33,16 @@ internal fun resolvePlatformPackDefaults(payload: Map<String, Any?>, platform: S
   val routing = payload["routing_signals"] as? Map<*, *>
   val strong = routing?.get("strong")?.let { requireStringListPayload(it, "routing_signals.strong") }
   val tieBreakers = routing?.get("tie_breakers")?.let { requireStringListPayload(it, "routing_signals.tie_breakers") }
-  val resolvedStrong = strong ?: preset?.strongSignals.orEmpty()
-  val resolvedTieBreakers = tieBreakers ?: preset?.tieBreakers.orEmpty()
+  val resolvedStrong = completeExtensionPairs(strong ?: preset?.strongSignals.orEmpty())
   enforceRoutingSignalsStrongNonEmpty(resolvedStrong, preset != null, platform)
   val displayName = requireStringOrDefaultMap(
     payload,
     "display_name",
     preset?.displayName ?: displayNameFromSlug(platform),
+  )
+  val resolvedTieBreakers = completeTieBreakerContract(
+    tieBreakers ?: preset?.tieBreakers.orEmpty(),
+    displayName,
   )
   return PlatformPackDefaults(
     displayName = displayName,
@@ -48,6 +51,30 @@ internal fun resolvePlatformPackDefaults(payload: Map<String, Any?>, platform: S
     presetUsed = preset != null && routing == null,
   )
 }
+
+private fun completeExtensionPairs(signals: List<String>): List<String> = buildList {
+  signals.forEach { signal ->
+    add(signal)
+    if (signal.matches(Regex("\\.[A-Za-z0-9]+"))) add("*$signal")
+    if (signal.matches(Regex("\\*\\.[A-Za-z0-9]+"))) add(signal.removePrefix("*"))
+  }
+}.distinct()
+
+private fun completeTieBreakerContract(rules: List<String>, displayName: String): List<String> = buildList {
+  addAll(rules)
+  if (rules.none { containsAll(it, "prefer", "dominat") && !it.contains("do not prefer", ignoreCase = true) }) {
+    add("Prefer $displayName when its declared strong signals dominate the changed product surface.")
+  }
+  if (rules.none { containsAll(it, "do not prefer", "adjacent") }) {
+    add("Do not prefer $displayName when an adjacent pack's declared signals dominate.")
+  }
+  if (!containsAll(rules.joinToString(" "), "exclude", "generated", "vendor", "dominan")) {
+    add("Exclude generated and vendored files from dominance scoring.")
+  }
+}
+
+private fun containsAll(content: String, vararg fragments: String): Boolean =
+  fragments.all { content.contains(it, ignoreCase = true) }
 
 private fun enforceRoutingSignalsStrongNonEmpty(strong: List<String>, hasPreset: Boolean, platform: String) {
   if (strong.isNotEmpty()) return

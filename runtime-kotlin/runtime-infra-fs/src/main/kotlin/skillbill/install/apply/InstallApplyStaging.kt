@@ -5,17 +5,20 @@ import skillbill.install.model.InstallPlanSkill
 import skillbill.install.model.InstallPlanSkillKind
 import skillbill.install.model.InstallStagingPathIntent
 import skillbill.install.model.RenderedSkill
+import skillbill.install.staging.GeneratedSupportPointer
+import skillbill.install.staging.InternalStagingPreparation
 import skillbill.install.staging.applicablePointers
 import skillbill.install.staging.authoredFilesFor
 import skillbill.install.staging.computeInstallContentHash
-import skillbill.install.staging.discoverInternalSidecarTargets
 import skillbill.install.staging.generatedSupportPointersFor
 import skillbill.install.staging.installedSkillStagingDir
 import skillbill.install.staging.installedSkillsCacheRoot
 import skillbill.install.staging.isReusableInstallStaging
+import skillbill.install.staging.prepareInternalStaging
 import skillbill.install.staging.reuseInstallStaging
 import skillbill.install.staging.stageInstalledSkill
 import skillbill.scaffold.model.PlatformManifest
+import skillbill.scaffold.model.PointerSpec
 import java.nio.file.Path
 
 private val plannedContentHashRegex = Regex("[0-9a-f]{16}")
@@ -65,36 +68,31 @@ private fun materializeValidatedPlannedStaging(inputs: PlannedStagingMaterializa
   val skill = inputs.skill
   val intent = inputs.intent
   val pointers = applicablePointers(plan.request.repoRoot, inputs.resolvedSource, inputs.platformManifests)
-  val supportPointers = generatedSupportPointersFor(
-    repoRoot = plan.request.repoRoot,
-    sourceSkillDir = inputs.resolvedSource,
-    skillName = skill.name,
-    skillsRoot = plan.request.targetPaths.skillsRoot,
-    selectedPlatformManifests = selectedPlatformManifests(plan, inputs.platformManifests),
-  )
+  val supportPointers = plannedSupportPointers(inputs)
   val selectedPackSkills = selectedInternalPackSkills(plan)
-  val internalChildren = internalSidecarTargetsFor(plan, skill, selectedPackSkills)
-  val sidecarNames = internalChildren.map { child -> "${child.skillName}.md" }.toSet()
-  val authored = authoredFilesFor(inputs.resolvedSource, pointers, supportPointers, sidecarNames)
+  val internal = plannedInternalStaging(inputs, pointers, supportPointers, selectedPackSkills)
+  val authored = authoredFilesFor(inputs.resolvedSource, pointers, internal.supportPointers, internal.sidecarNames)
   val currentHash = computeInstallContentHash(
     sourceSkillDir = inputs.resolvedSource,
     authored = authored,
     applicablePointers = pointers,
-    generatedSupportPointers = supportPointers,
-    internalChildren = internalChildren,
+    generatedSupportPointers = internal.supportPointers,
+    internalChildren = internal.children,
   )
   require(currentHash == intent.contentHash) {
     "Planned staging for '${skill.name}' expected hash '${intent.contentHash}' but current source resolves " +
       "to '$currentHash'. Re-run planInstall before applyInstall."
   }
-  if (isReusableInstallStaging(inputs.expectedStagingDir, intent.contentHash, sidecarNames)) {
+  val expectedStagedNames = internal.sidecarNames + pointers.map { (_, pointer) -> pointer.name } +
+    internal.supportPointers.map { pointer -> pointer.name }
+  if (isReusableInstallStaging(inputs.expectedStagingDir, intent.contentHash, expectedStagedNames)) {
     return reuseInstallStaging(
       sourceSkillDir = inputs.resolvedSource,
       finalStagingDir = inputs.expectedStagingDir,
       contentHash = intent.contentHash,
       applicablePointers = pointers,
-      generatedSupportPointers = supportPointers,
-      internalSidecarNames = sidecarNames,
+      generatedSupportPointers = internal.supportPointers,
+      internalSidecarNames = internal.sidecarNames,
     )
   }
   val staged = stageInstalledSkill(
@@ -113,6 +111,33 @@ private fun materializeValidatedPlannedStaging(inputs: PlannedStagingMaterializa
   }
   return staged
 }
+
+private fun plannedSupportPointers(inputs: PlannedStagingMaterialization) = generatedSupportPointersFor(
+  repoRoot = inputs.plan.request.repoRoot,
+  sourceSkillDir = inputs.resolvedSource,
+  skillName = inputs.skill.name,
+  skillsRoot = inputs.plan.request.targetPaths.skillsRoot,
+  selectedPlatformManifests = selectedPlatformManifests(inputs.plan, inputs.platformManifests),
+)
+
+private fun plannedInternalStaging(
+  inputs: PlannedStagingMaterialization,
+  pointers: List<Pair<PlatformManifest, PointerSpec>>,
+  supportPointers: List<GeneratedSupportPointer>,
+  selectedPackSkills: List<InstallPlanSkill>,
+) = prepareInternalStaging(
+  InternalStagingPreparation(
+    repoRoot = inputs.plan.request.repoRoot,
+    parentSourceDir = inputs.resolvedSource,
+    parentSkillName = inputs.skill.name,
+    skillsRoot = inputs.plan.request.targetPaths.skillsRoot,
+    selectedPackSkills = selectedPackSkills,
+    platformManifests = inputs.platformManifests,
+    selectedPlatformManifests = selectedPlatformManifests(inputs.plan, inputs.platformManifests),
+    parentSupportPointers = supportPointers,
+    parentPointerNames = pointers.map { (_, pointer) -> pointer.name }.toSet(),
+  ),
+)
 
 private fun selectedPlatformManifests(
   plan: InstallPlan,
@@ -133,17 +158,6 @@ private fun selectedPlatformSlugs(plan: InstallPlan, platformManifests: List<Pla
 private fun selectedInternalPackSkills(plan: InstallPlan): List<InstallPlanSkill> = plan.skills.filter { skill ->
   skill.kind == InstallPlanSkillKind.PLATFORM_PACK && skill.internalFor != null
 }
-
-private fun internalSidecarTargetsFor(
-  plan: InstallPlan,
-  skill: InstallPlanSkill,
-  selectedPackSkills: List<InstallPlanSkill>,
-) = discoverInternalSidecarTargets(
-  repoRoot = plan.request.repoRoot,
-  parentSkillName = skill.name,
-  skillsRoot = plan.request.targetPaths.skillsRoot,
-  selectedPackSkills = selectedPackSkills,
-)
 
 private data class PlannedStagingMaterialization(
   val plan: InstallPlan,

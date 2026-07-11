@@ -1,5 +1,6 @@
 package skillbill.scaffold
 
+import org.yaml.snakeyaml.Yaml
 import skillbill.error.InvalidManifestSchemaError
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.InstallAgentSelection
@@ -56,6 +57,7 @@ class PhpPlatformPackTest {
       "composer.json",
       "composer.lock",
       ".php",
+      "*.php",
       "phpunit.xml",
       "phpunit.xml.dist",
       "pest.php",
@@ -64,7 +66,62 @@ class PhpPlatformPackTest {
     ).forEach { marker ->
       assertContains(pack.routingSignals.strong, marker)
     }
-    assertTrue(pack.routingSignals.tieBreakers.any { it.contains("Composer metadata") })
+    assertEquals(3, pack.routingSignals.tieBreakers.size)
+    assertTrue(pack.routingSignals.tieBreakers.any { it.contains("Prefer PHP") && it.contains("dominate") })
+    assertTrue(
+      pack.routingSignals.tieBreakers.any {
+        it.contains("Do not prefer PHP") && it.contains("adjacent") && it.contains("tooling or CI glue")
+      },
+    )
+    assertTrue(
+      pack.routingSignals.tieBreakers.any {
+        it.contains("vendor/") && it.contains("generated clients") && it.contains("dominance scoring")
+      },
+    )
+    assertPhpAreaMetadata(pack.areaMetadata)
+  }
+
+  private fun assertPhpAreaMetadata(areaMetadata: Map<String, String>) {
+    assertEquals(10, areaMetadata.values.toSet().size)
+    val concreteAreaContexts = mapOf(
+      "api-contracts" to listOf("request validation", "resources and serializers"),
+      "architecture" to listOf("module and layer boundaries", "framework coupling"),
+      "performance" to listOf("N+1 queries", "worker memory"),
+      "persistence" to listOf("ORM and SQL", "tenant scoping"),
+      "platform-correctness" to listOf("coercion and null semantics", "worker lifecycle"),
+      "reliability" to listOf("queues, jobs, schedulers", "downstream failures"),
+      "security" to listOf("signed URLs", "deserialization"),
+      "testing" to listOf("PHPUnit and Pest", "deterministic retries"),
+      "ui" to listOf("Blade, Twig, Livewire", "Filament"),
+      "ux-accessibility" to listOf("server-rendered semantics", "keyboard and focus behavior"),
+    )
+    assertEquals(concreteAreaContexts.keys, areaMetadata.keys)
+    concreteAreaContexts.forEach { (area, expectedContexts) ->
+      val focus = areaMetadata.getValue(area)
+      assertContains(focus, "PHP")
+      expectedContexts.forEach { context -> assertContains(focus, context) }
+    }
+  }
+
+  @Test
+  fun `php native agents exactly mirror manifest focuses`() {
+    val packRoot = repoRootFromTest().resolve("platform-packs/php")
+    val pack = loadPlatformPack(packRoot)
+    val agentsDocument = Yaml().load<Map<String, Any>>(
+      Files.readString(packRoot.resolve("code-review/bill-php-code-review/native-agents/agents.yaml")),
+    )
+    val agents = (agentsDocument.getValue("agents") as List<*>)
+      .filterIsInstance<Map<*, *>>()
+      .associate { agent -> agent["name"] as String to agent["description"] as String }
+
+    assertEquals(APPROVED_CODE_REVIEW_AREAS.size, agents.size)
+    pack.areaMetadata.forEach { (area, focus) ->
+      assertEquals(
+        "PHP ${area.replace('-', ' ')} specialist code reviewer. " +
+          "Runs against $focus. Returns a Risk Register in the F-XXX bullet format.",
+        agents["bill-php-code-review-$area"],
+      )
+    }
   }
 
   @Test

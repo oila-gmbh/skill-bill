@@ -21,7 +21,7 @@ import java.util.logging.Level
 import java.util.logging.Logger
 
 private const val INSTALL_CACHE_KEY_BYTES = 8
-private const val INSTALL_STAGING_RECIPE_VERSION = "install-staging-v3-platform-packs-child-inline-pointers"
+private const val INSTALL_STAGING_RECIPE_VERSION = "install-staging-v4-internal-authored-companions"
 
 private val log: Logger = Logger.getLogger("skillbill.install.InstallStaging")
 
@@ -204,6 +204,11 @@ internal fun computeInstallContentHash(
         digest.update("${child.skillName}.md|".toByteArray(StandardCharsets.UTF_8))
         digest.update(child.renderedWrapper.toByteArray(StandardCharsets.UTF_8))
         digest.update(newline)
+        child.authoredCompanions.sortedBy { companion -> companion.name }.forEach { companion ->
+          digest.update("${companion.name}|".toByteArray(StandardCharsets.UTF_8))
+          digest.update(companion.bytes)
+          digest.update(newline)
+        }
       }
   }
   val hashBytes = digest.digest()
@@ -238,30 +243,38 @@ internal fun stageInstalledSkill(
   // SKILL-104 (PD3): selected pack skills declaring internal-for surface as sidecars here. The
   // link-skill flow (resolveStagedSymlinkTarget) refuses internal skills upstream and never reaches
   // this path with pack children, so the default empty list preserves inertness for that flow.
-  val internalChildren = discoverInternalSidecarTargets(
-    repoRoot = resolvedRepoRoot,
-    parentSkillName = skillName,
-    skillsRoot = resolvedSkillsRoot,
-    selectedPackSkills = selectedPackSkills,
+  val internal = prepareInternalStaging(
+    InternalStagingPreparation(
+      repoRoot = resolvedRepoRoot,
+      parentSourceDir = resolvedSource,
+      parentSkillName = skillName,
+      skillsRoot = resolvedSkillsRoot,
+      selectedPackSkills = selectedPackSkills,
+      platformManifests = manifests,
+      selectedPlatformManifests = selectedManifests,
+      parentSupportPointers = generatedSupportPointers,
+      parentPointerNames = pointers.map { (_, pointer) -> pointer.name }.toSet(),
+    ),
   )
-  val sidecarNames = internalChildren.map { child -> "${child.skillName}.md" }.toSet()
   val authored = authoredFilesFor(
     sourceSkillDir = resolvedSource,
     applicablePointers = pointers,
-    generatedSupportPointers = generatedSupportPointers,
-    excludedSidecarNames = sidecarNames,
+    generatedSupportPointers = internal.supportPointers,
+    excludedSidecarNames = internal.sidecarNames,
   )
   val contentHash = computeInstallContentHash(
     sourceSkillDir = resolvedSource,
     authored = authored,
     applicablePointers = pointers,
-    generatedSupportPointers = generatedSupportPointers,
-    internalChildren = internalChildren,
+    generatedSupportPointers = internal.supportPointers,
+    internalChildren = internal.children,
   )
   val finalStagingDir = installedSkillStagingDir(home, resolvedSource, contentHash)
 
   // Idempotent reuse: same hash, marker intact, SKILL.md and every expected sidecar present.
-  if (isReusableInstallStaging(finalStagingDir, contentHash, sidecarNames)) {
+  val expectedStagedNames = internal.sidecarNames + pointers.map { (_, pointer) -> pointer.name } +
+    internal.supportPointers.map { pointer -> pointer.name }
+  if (isReusableInstallStaging(finalStagingDir, contentHash, expectedStagedNames)) {
     log.fine(
       "stageInstalledSkill reuse=true skill=$skillName hash=$contentHash dir=$finalStagingDir",
     )
@@ -270,8 +283,8 @@ internal fun stageInstalledSkill(
       finalStagingDir = finalStagingDir,
       contentHash = contentHash,
       applicablePointers = pointers,
-      generatedSupportPointers = generatedSupportPointers,
-      internalSidecarNames = sidecarNames,
+      generatedSupportPointers = internal.supportPointers,
+      internalSidecarNames = internal.sidecarNames,
     )
   }
   log.fine(
@@ -285,11 +298,11 @@ internal fun stageInstalledSkill(
       repoRoot = resolvedRepoRoot,
       target = target,
       platformPointers = pointers,
-      supportPointers = generatedSupportPointers,
+      supportPointers = internal.supportPointers,
       authored = authored,
       contentHash = contentHash,
       finalStagingDir = finalStagingDir,
-      internalChildren = internalChildren,
+      internalChildren = internal.children,
     ),
   )
 }

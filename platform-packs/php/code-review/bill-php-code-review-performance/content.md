@@ -35,7 +35,7 @@ Use this specialist for PHP backend/service, worker, batch, queue, API serializa
 ### Shared Backend Performance
 
 - Avoid repeated expensive work in hot paths when inputs are unchanged
-- Watch for N+1 query/call patterns and redundant round-trips
+- Watch for `N+1` query/call patterns and redundant round-trips
 - Retry behavior must not amplify latency, downstream load, or CPU/network waste under failure
 - Large batch processing must avoid unbounded memory growth
 
@@ -65,3 +65,4 @@ Use this specialist for PHP backend/service, worker, batch, queue, API serializa
 - Server-rendered HTML, component rendering, and API/resource serialization paths must not repeatedly compute or re-query the same data without need
 - Serialization and response shaping must not trigger hidden lazy loads or repeated transformation work on large result sets
 - In findings, state the expected production impact such as latency, memory pressure, throughput loss, infrastructure cost, or user-visible slowdown
+- For Blocker or Major findings, describe the concrete latency, memory-pressure, or throughput failure scenario.

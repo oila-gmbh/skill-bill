@@ -27,6 +27,8 @@ Use this specialist for PHP backend/server code only. It is most relevant for HT
 
 ## Project-Specific Rules
 
+### PHP Boundary Contracts
+
 - Validate untrusted input at the boundary before business logic depends on it
 - Distinguish absent vs null vs defaulted fields when that changes semantics
 - Do not leak internal/domain/persistence models directly as public API contracts unless that coupling is an explicit, stable decision
@@ -38,5 +40,6 @@ Use this specialist for PHP backend/server code only. It is most relevant for HT
 - Pagination and filtering should preserve deterministic ordering and bounded result sizes
 - Serialization defaults must match the compatibility expectations of existing clients
 - Check enum, date/time, nullability, and default-field serialization for client-visible drift
-- If the project maintains OpenAPI or equivalent contract docs, check implementation drift against them
+- If the project maintains `OpenAPI` or equivalent contract docs, check implementation drift against them
 - In findings, explain the client-visible consequence of the contract break or boundary bug
+- For Blocker or Major findings, describe the concrete compatibility or validation failure scenario.

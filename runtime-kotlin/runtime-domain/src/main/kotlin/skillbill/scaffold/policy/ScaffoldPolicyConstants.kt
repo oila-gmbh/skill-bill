@@ -84,7 +84,11 @@ val PLATFORM_PACK_PRESET_DESCRIPTORS: Map<String, PlatformPackPreset> =
     "java" to PlatformPackPreset(
       displayName = "Java",
       strongSignals = listOf("pom.xml", "build.gradle", "src/main/java"),
-      tieBreakers = listOf("Prefer Java when Maven metadata or Java source markers dominate generic JVM signals."),
+      tieBreakers = listOf(
+        "Prefer Java when Maven metadata or first-party Java source markers dominate generic JVM signals.",
+        "Do not prefer Java when it appears only as generated bindings, build tooling, or an adjacent JVM layer.",
+        "Exclude generated sources, build outputs, and vendored dependencies from dominance scoring.",
+      ),
     ),
     "python" to PlatformPackPreset(
       displayName = "Python",

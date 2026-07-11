@@ -20,10 +20,18 @@ Review only UX correctness and accessibility issues that can make the Go product
 
 - Pure visual design preference
 - Internal refactors with no user-visible outcome
+- UI framework and rendering-correctness findings that belong to `bill-go-code-review-ui`
 - Security-only escaping issues that belong to `bill-go-code-review-security`
+
+## Applicability
+
+Use this specialist when changed Go UI behavior affects semantic structure, accessible names, keyboard or focus flow, validation feedback, localization, or assistive-technology users.
 
 ## Project-Specific Rules
 
+### Review Rules
+
+- Verify `html/template` interaction boundaries preserve accessibility invariants and expose validation errors
 - Every interactive control must have an accessible name that matches the intended user action
 - Form inputs need explicit labels, correctly associated help text, and validation errors that are both visible and programmatically associated
 - Do not rely on color alone to communicate status, errors, or destructive outcomes
@@ -35,3 +43,4 @@ Review only UX correctness and accessibility issues that can make the Go product
 - User-facing copy should stay consistent with the actual workflow outcome and should not imply success, permanence, or safety when the backend contract does not guarantee it
 - Localization-sensitive paths should avoid hardcoded English-only assumptions for date, number, currency, directionality, and plural-sensitive messaging when the product supports multiple locales
 - In findings, make the user-visible UX or accessibility consequence explicit
+- For Blocker or Major findings, describe the concrete accessibility or task-completion failure scenario.

@@ -4,35 +4,41 @@ description: Use when reviewing UX correctness and accessibility risks, delegati
 internal-for: bill-code-review
 ---
 
-# UX & Accessibility Review Specialist
+# KMP UX & Accessibility Review Specialist
 
-Review only user-impacting UX/accessibility issues.
+Review only user-impacting UX and accessibility failures.
 
 ## Focus
-- Broken/ambiguous UX states and recovery flows
-- Accessibility semantics, labels, focus order, and keyboard/talkback usability
-- Validation/error visibility and actionable feedback
-- Read-only/editable behavior mismatches
-- User-facing inconsistency with product intent
 
-## UI Delegation
-- If KMP UI files are in scope, run `bill-kmp-code-review-ui` and merge relevant findings.
+- Compose semantics, accessible names and roles, announcements, traversal, touch targets, font scaling, and localization-sensitive UX
 
 ## Ignore
-- Pure visual preference debates without usability impact
+
+- UI framework, rendering, preview, navigation, or loading/content/error/empty-state correctness owned by the `ui` specialist
+- Escaping, secrets, or sensitive-data failures owned by the Kotlin `security` baseline specialist
+
+## Applicability
+
+Use this specialist when changed UI affects assistive technology, keyboard or focus behavior, touch interaction, localization, or task completion.
+
 ## Project-Specific Rules
 
-### Localization
-- All user-facing strings must use `stringResource(R.string.xxx)` — no hardcoded strings
-- Never delete existing translations or `strings.xml` files
-- Check for existing matching strings before creating new ones — reuse
-- When removing UI components, verify orphaned string resources are cleaned up
+### Compose Semantics
 
-### Previews
-- Screens and components must have `@Preview` annotations
-- Previews must use the project's theme composable
+- Require `Modifier.semantics` where native semantics are insufficient; verify `mergeDescendants` preserves a coherent accessible control and reject merges that hide required child actions.
+- Use `clearAndSetSemantics` only when replacing descendant meaning is intentional; reject it when it erases an accessible name, state, action, or error.
+- Require decorative images to use `contentDescription = null`; require meaningful images and controls to expose localized accessible names.
+- Require dynamic controls to expose accurate `stateDescription` and `Role`, and require urgent asynchronous updates to use an appropriate `liveRegion` without duplicate announcements.
+- Require structural titles to expose `heading()` and validation failures to expose `error()` so assistive technology can navigate and announce them.
 
-### Error States
-- Screens must handle loading, content, error, and empty states
-- Error messages come from UI (string resources), not ViewModel
-- In findings, make the user-visible accessibility or UX consequence explicit.
+### Traversal, Targets, and Scaling
+
+- Verify `traversalIndex` and `isTraversalGroup` produce a stable logical order; reject focus order that diverges from the task flow.
+- Require `minimumInteractiveComponentSize` or an equivalent 48dp touch target for interactive controls; reject clipped or overlapping targets.
+- Verify layouts survive increased `fontScale` without truncating actionable text, hiding controls, or blocking task completion.
+
+### Localization Boundaries
+
+- On Android targets, require user-facing text to use `stringResource(R.string.xxx)` and preserve needed `strings.xml` translations.
+- In common Compose Multiplatform sources, require `Res.string` with `org.jetbrains.compose.resources.stringResource`; never require Android resource APIs in `commonMain`.
+- For Blocker or Major findings, describe the concrete accessibility or task-completion failure scenario.

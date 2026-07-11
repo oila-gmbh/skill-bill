@@ -25,7 +25,10 @@ class InstallApplyReplacementCleanupTest : InstallApplyTestSupport() {
     )
     InstallOperations.applyInstall(selectedPlatformPlan)
     val targetDir = fixture.home.resolve("agent-skill-targets/codex")
-    assertTrue(Files.isSymbolicLink(targetDir.resolve("bill-kotlin-code-review")))
+    val codeReviewStaging = readSymlinkTarget(targetDir.resolve("bill-code-review"))
+    assertTrue(
+      Files.isRegularFile(codeReviewStaging.resolve("bill-kotlin-code-review.md")),
+    )
     assertFalse(Files.exists(targetDir.resolve("bill-kotlin-code-check"), LinkOption.NOFOLLOW_LINKS))
     assertTrue(
       Files.isRegularFile(readSymlinkTarget(targetDir.resolve("bill-code-check")).resolve("bill-kotlin-code-check.md")),
@@ -45,6 +48,9 @@ class InstallApplyReplacementCleanupTest : InstallApplyTestSupport() {
     assertTrue(Files.isSymbolicLink(targetDir.resolve("bill-code-check")))
     assertFalse(Files.exists(targetDir.resolve("bill-kotlin-code-review"), LinkOption.NOFOLLOW_LINKS))
     assertFalse(Files.exists(targetDir.resolve("bill-kotlin-code-check"), LinkOption.NOFOLLOW_LINKS))
+    assertFalse(
+      Files.exists(targetDir.resolve("bill-code-review/bill-kotlin-code-review.md"), LinkOption.NOFOLLOW_LINKS),
+    )
   }
 
   @Test

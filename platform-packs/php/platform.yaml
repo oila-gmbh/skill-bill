@@ -7,13 +7,16 @@ routing_signals:
     - "composer.json"
     - "composer.lock"
     - ".php"
+    - "*.php"
     - "phpunit.xml"
     - "phpunit.xml.dist"
     - "pest.php"
     - "phpstan.neon"
     - "psalm.xml"
   tie_breakers:
-    - "Prefer PHP when Composer metadata or .php source files dominate mixed backend signals."
+    - "Prefer PHP when Composer metadata, PHP source files, or PHP tests dominate the changed product surface."
+    - "Do not prefer PHP in adjacent mixed-stack repositories when PHP appears only as tooling or CI glue around another dominant stack."
+    - "Exclude vendor/ dependencies, generated clients, and other generated artifacts from dominance scoring."
 
 declared_code_review_areas:
   - api-contracts
@@ -42,25 +45,25 @@ declared_files:
     ux-accessibility: code-review/bill-php-code-review-ux-accessibility/content.md
 area_metadata:
   api-contracts:
-    focus: "API contracts, request validation, and serialization"
+    focus: "PHP API contracts, request validation, resources and serializers, error payloads, and client compatibility"
   architecture:
-    focus: "architecture, boundaries, and dependency direction"
+    focus: "PHP module and layer boundaries, dependency direction, framework coupling, and cross-boundary composition"
   performance:
-    focus: "performance risks on hot paths, blocking I/O, and resource usage"
+    focus: "PHP hot paths, N+1 queries, serialization and rendering waste, worker memory, and bounded batch work"
   persistence:
-    focus: "persistence, transactions, migrations, and data consistency"
+    focus: "PHP ORM and SQL boundaries, transactions, locking, migrations, tenant scoping, and data consistency"
   platform-correctness:
-    focus: "lifecycle, concurrency, threading, and logic correctness"
+    focus: "PHP coercion and null semantics, business invariants, state transitions, retries, worker lifecycle, and runtime correctness"
   reliability:
-    focus: "timeouts, retries, background work, and observability"
+    focus: "PHP queues, jobs, schedulers, caches, timeouts, retries, downstream failures, and observability"
   security:
-    focus: "secrets handling, auth, and sensitive-data exposure"
+    focus: "PHP authentication and authorization, uploads, signed URLs, templates, deserialization, secrets, and sensitive logs"
   testing:
-    focus: "test coverage quality and regression protection"
+    focus: "PHPUnit and Pest regression proof, contract and persistence tests, deterministic retries, and assertion quality"
   ui:
-    focus: "UI correctness and framework usage"
+    focus: "PHP Blade, Twig, Livewire, Inertia, and Filament rendering, forms, state ownership, and interactive admin correctness"
   ux-accessibility:
-    focus: "UX correctness and accessibility"
+    focus: "PHP server-rendered semantics, labels, keyboard and focus behavior, validation feedback, localization, and accessible task completion"
 
 declared_quality_check_file: quality-check/bill-php-code-check/content.md
 

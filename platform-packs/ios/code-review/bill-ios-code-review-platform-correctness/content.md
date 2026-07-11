@@ -23,11 +23,22 @@ Review only high-signal platform-correctness issues.
 
 ## Applicability
 
-Use this specialist wherever the project's unidirectional-data-flow pattern (a `{Feature}Store`/`Action`/`Environment`-shaped store, or equivalent) drives feature state, and wherever Combine (or an equivalent reactive pipeline) issues effects that ultimately mutate state or update the UI.
+Use this specialist for general Swift Concurrency code that uses actors, tasks, continuations, `Sendable`, or actor-isolated state. Also use it wherever the project's unidirectional-data-flow pattern (a `{Feature}Store`/`Action`/`Environment`-shaped store, or equivalent) drives feature state, and wherever Combine (or an equivalent reactive pipeline) issues effects that ultimately mutate state or update the UI.
 
 ## Project-Specific Rules
 
-- Reducers (the `Action`-handling function of a `Store`) should generally stay pure: given the current state and an action, they compute the next state and describe effects to run. But first infer whether this project's `Store` actually enforces reducer purity — some custom (non-TCA) stores deliberately allow synchronous state or view-model mutation inside `reduce`, and when that is the established, pervasive house pattern it is not a defect. Flag in-reduce side effects only when they cause a concrete, reachable problem (an ordering/reentrancy bug, a main-thread violation, unmanaged async work that leaks or races, or real external I/O) — and describe that consequence. A purity deviation that merely conforms to the codebase's intentional pattern with no wrong outcome is at most a Minor/Nit, not a Major "purity violation"
+### Actor Isolation And Structured Concurrency
+
+- UI-facing mutation must be verified as `@MainActor` isolated or explicitly transferred to the main actor; never assume an arbitrary callback, task, or publisher resumes on the main actor
+- Values crossing task or actor boundaries must satisfy `Sendable` or remain isolated behind an actor; reject mutable reference types that cross isolation boundaries without synchronization
+- Any `@unchecked Sendable` conformance must document and preserve a concrete thread-safety invariant; immutability asserted only by convention is not a substitute for enforced isolation safety
+- View-lifetime asynchronous work must use structured, cancellable ownership such as `.task` or an explicitly cancelled task handle; never leak unstructured `Task` closures beyond view disappearance
+- After an `await`, revalidate state and identity when actor reentrancy can make the pre-suspension decision stale
+- `withCheckedContinuation` and `withCheckedThrowingContinuation` bridges must resume exactly once on every success, failure, cancellation, and early-return path; reject double-resume and never-resume paths
+
+### Stores, Effects, And Lifecycle
+
+- Reducers (the `Action`-handling function of a `Store`) should generally stay pure: given the current state and an action, they compute the next state and describe effects to run. But first infer whether this project's `Store` actually enforces reducer purity — some custom (non-TCA) stores deliberately allow synchronous state or view-model mutation inside `reduce`, and when that is the established, pervasive house pattern it is not a defect. Flag in-reduce side effects only when they cause a concrete, reachable problem (an ordering/reentrancy bug, a main-thread violation, unmanaged async work that leaks or races, or real external I/O) — and describe that consequence. A purity deviation that merely conforms to the codebase's intentional pattern with no wrong outcome is at most Minor, not a Major "purity violation"
 - Effects that update state or drive UI must be delivered back to the store on the main thread (e.g. via a `.receive(on: mainScheduler)`-style operator); do not update `@Published`/store state from a background queue or an arbitrary Combine scheduler
 - Every long-running or cancellable effect must be registered under an explicit `cancellableId` (or equivalent effect-identity token); effects without an identity cannot be cancelled and can leak or race with a later effect for the same logical operation
 - Starting a new effect for an id that already has one in flight must explicitly cancel the prior effect first, unless the store intentionally allows concurrent effects for that id
@@ -40,7 +51,7 @@ Use this specialist wherever the project's unidirectional-data-flow pattern (a `
 - `@Observable`-conforming state that a view creates and owns must be held with `@State`, never `let` or a plain stored property; without `@State`, SwiftUI can recreate the instance across a parent redraw and silently discard accumulated state
 - Any iOS 26-only API (Liquid Glass `glassEffect`/`GlassEffectContainer`/`.glass`/`.glassProminent` button styles, or other iOS 26+-only surface) added to a diff must be gated behind `#available(iOS 26, *)` with a working fallback path, unless the project's minimum deployment target is already iOS 26+
 - `.animation(_:value:)` must always specify a `value` argument; the value-less `.animation(_:)` overload is deprecated and animates every state change in scope, not just the one the diff intends to animate
-- For Major or Critical findings, describe the concrete race, stale-state, or main-thread-violation scenario a user or crash report would surface
+- For Blocker or Major findings, describe the concrete invalid-state or ordering failure scenario.
 
 ## Repo-Local Knowledge
 

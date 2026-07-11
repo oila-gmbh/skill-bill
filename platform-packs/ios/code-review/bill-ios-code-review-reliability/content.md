@@ -22,9 +22,20 @@ Review only issues that affect production reliability of background and sync-cri
 
 ## Applicability
 
-Use this specialist for background sync and any interceptor/chain-of-responsibility-style composition that wraps sync operations with cross-cutting stages (e.g. read, write, permission-checking, and utility/logging stages).
+Use this specialist for general iOS background execution using `BGTaskScheduler`, `beginBackgroundTask`, background `URLSession`, relaunch recovery, expiration handling, or work interrupted by termination. Also use it for background sync and any interceptor/chain-of-responsibility-style composition that wraps sync operations with cross-cutting stages (e.g. read, write, permission-checking, and utility/logging stages).
 
 ## Project-Specific Rules
+
+### Background Execution And Relaunch
+
+- `BGTaskScheduler` launch handlers must be registered during application launch before any request is submitted, and every identifier must exactly match the project configuration and permitted identifiers
+- `BGTaskScheduler` submission failures must remain visible and actionable rather than being swallowed, logged without context, or treated as successful scheduling
+- A `BGTask` expiration handler must be installed before work proceeds, cancel all tracked work on expiration, and stop using expired execution time; call `setTaskCompleted` exactly once after the task reaches its actual success or failure outcome
+- `beginBackgroundTask` work must install an expiration handler, end the background task on every completion path, and never keep using expired execution time
+- Background `URLSession` must preserve a stable identifier and delegate ownership, and app relaunch handling must rewire the session plus retain and invoke the system completion handler only after outstanding events finish
+- Long-running synchronization must be termination-safe and resumable or idempotent so interruption cannot duplicate writes, lose progress, or corrupt checkpoint state
+
+### Sync Chains And Failure Visibility
 
 - Background sync chains composed from Read/Write/Permissions/Utility-style stages must run every applicable stage for a given operation; skipping a stage (especially a permission-check stage) to save time is a reliability and correctness risk, not just a performance shortcut
 - Every background sync failure path must produce an error log with enough context (operation, entity, and failure reason) to diagnose the failure after the fact; a swallowed or silently-dropped background sync error is a reliability regression
@@ -38,7 +49,7 @@ Use this specialist for background sync and any interceptor/chain-of-responsibil
 - Extracting or rewriting a view/component that silently drops previously-present functionality (buttons, fallback labels, forwarded callbacks, wired services) is a regression unless the removal is explicitly flagged as intentional
 - Debug `print`/logging statements or debug-only code paths left in shipped code are a reliability and information-leak risk, not just noise
 - `[weak self]` captured but the closure still reaches `self`/outer state directly instead of through the safely-unwrapped self — or omitted entirely on a long-lived subscription — risks crashes, stale reads, or retain-cycle leaks
-- For Major or Critical findings, describe the concrete data-loss, unauthorized-access, or silent-failure scenario in production
+- For Blocker or Major findings, describe the concrete availability, duplication, or cleanup failure scenario.
 
 ## Repo-Local Knowledge
 

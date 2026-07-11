@@ -6,55 +6,43 @@ internal-for: bill-code-review
 
 # Adaptive Python PR Review
 
-You are an experienced Python reviewer conducting a code review.
+Review Python applications, libraries, CLIs, services, APIs, persistence code, packaging, tests, async/concurrency surfaces, framework glue, and Python-rendered UI.
 
-This skill owns the baseline Python review layer. It covers Python application and library changes, CLIs, services, APIs, persistence code, packaging, test infrastructure, async/concurrency surfaces, framework glue, and Python-rendered UI where present.
+## Classification Rules
 
-## Project Guidance
+- If Python product code, packaging, or framework configuration dominates the changed surface, classify the diff as `python`.
+- If multiple strong platform signals coexist, keep Python ownership only for Python product files and project-owned Python automation.
+- If only generated, vendored, virtual-environment, or incidental Python tooling is present, do not classify the product diff as Python.
+- Otherwise classify project-owned `.py` libraries, CLIs, notebooks, and utilities as `python`.
 
-Use the repository's established Python version, package manager, test framework, typing posture, and framework conventions as the consistency target. Flag behavior, maintainability, security, performance, packaging, or testability risks with concrete evidence from the changed files. Do not force one framework's idioms onto another; Django, Flask, FastAPI, Click/Typer, Celery/RQ, notebooks, and library packages each have different boundaries.
+Always keep the `architecture` and `platform-correctness` specialists as the baseline. Add other specialists only when their diff signals apply, and include `testing` whenever tests change materially.
 
-## Python Review Heuristics
+## Diff-Signal Routing Table
 
-Always include:
-
-- `bill-python-code-review-architecture`
-- `bill-python-code-review-platform-correctness`
-
-Add other specialists only when the changed files justify them.
-
-| Signal in the diff | Specialist review to run |
-|---|---|
-| Package/module layout, import direction, dependency injection, service boundaries, framework coupling, library/application seams | `bill-python-code-review-architecture` |
-| Runtime semantics, typing/nullability edge cases, decorators/descriptors, context managers, serialization, async/thread/process behavior, time/date logic | `bill-python-code-review-platform-correctness` |
-| FastAPI/Django/Flask routes, request/response models, schemas, OpenAPI, status codes, validation, serializers, backward compatibility | `bill-python-code-review-api-contracts` |
-| SQLAlchemy, Django ORM, raw SQL, migrations, transactions, locking, connection/session lifecycle, idempotent writes | `bill-python-code-review-persistence` |
-| External clients, queues, workers, scheduled jobs, retries, timeouts, observability, degradation, backpressure | `bill-python-code-review-reliability` |
-| Dependency supply chain, auth/authz, secrets, unsafe deserialization, template injection, path traversal, subprocess/shell usage, SSRF, uploads, sensitive logs | `bill-python-code-review-security` |
-| Test files, fixtures, monkeypatching, parametrization, async/time tests, integration boundaries, weak assertions, missing regression proof | `bill-python-code-review-testing` |
-| Changed tests look suspiciously weak, tautological, or coverage-padding | `bill-unit-test-value-check` |
-| Hot paths, N+1 queries, repeated network/filesystem work, import-time work, memory growth, streaming/batching, async blocking mismatches | `bill-python-code-review-performance` |
-| Django admin, templates, Streamlit/Dash/Panel views, notebooks, generated reports, Python-rendered forms or dashboards | `bill-python-code-review-ui` |
-| Server-rendered semantics, form feedback, keyboard/focus behavior, localization-sensitive copy, assistive technology affordances | `bill-python-code-review-ux-accessibility` |
+- Package layout, import direction, dependency injection, service boundaries, framework coupling, or library/application seams -> `architecture` specialist.
+- Hot paths, N+1 queries, repeated I/O, import-time work, memory growth, streaming, batching, or async blocking -> `performance` specialist.
+- Runtime semantics, typing or nullability, resources, concurrency, serialization, state transitions, retries, or time logic -> `platform-correctness` specialist.
+- Dependency supply chain, auth, secrets, unsafe parsing, templates, paths, subprocesses, SSRF, uploads, or sensitive logs -> `security` specialist.
+- Tests, fixtures, monkeypatching, parametrization, async or time behavior, integration boundaries, or regression proof -> `testing` specialist.
+- Routes, request or response models, schemas, OpenAPI, status codes, validation, serializers, or compatibility -> `api-contracts` specialist.
+- SQLAlchemy, Django ORM, raw SQL, migrations, transactions, locking, sessions, or idempotent writes -> `persistence` specialist.
+- External clients, queues, workers, schedulers, retries, timeouts, observability, degradation, or backpressure -> `reliability` specialist.
+- Django admin, templates, Streamlit, Dash, Panel, notebooks, reports, forms, or dashboards -> `ui` specialist.
+- Server-rendered semantics, form feedback, keyboard or focus behavior, localization-sensitive copy, or assistive technology -> `ux-accessibility` specialist.
 
 ## Mixed Diffs
 
-Review Python product code, tests, packaging, and project-owned automation through this Python pack. In a repository with multiple strong platform signals, let other stack packs own non-Python product files. Do not route a frontend, Kotlin, iOS, or generated-client change through Python only because a Python helper, virtual environment marker, or CI script is nearby.
+- Keep the baseline specialists for the whole review, add only area-relevant lanes, and use lightweight file-level classification from paths, imports, configuration, and framework markers to build each specialist scope.
+- Give architecture all Python-owned changed files; give other specialists only matching files and drop empty lanes.
+- Exclude generated, vendored, build-output, and non-stack files from specialist scope and dominance scoring. Common non-owning paths include `.venv/`, `venv/`, `site-packages/`, `build/`, `dist/`, generated protobuf/OpenAPI clients, and vendored dependency trees.
+- Let other stack packs own non-Python product files; a nearby Python helper, virtual-environment marker, or CI script does not transfer ownership.
+- Re-check the two-specialist minimum after scoping; if only architecture remains, give all Python-owned files to platform-correctness as the default second lane.
+- Load each selected specialist's governed rubric so every selected lane produces an attributed result. When tests appear tautological or coverage-padding, also apply the `bill-unit-test-value-check` lens.
+- When selected specialists exceed delegated-worker capacity, batch them in deterministic waves and retain every selected specialist result.
 
-Ignore generated or vendored Python when determining ownership unless the diff intentionally changes the generator or vendoring policy. Common non-owning paths include `.venv/`, `venv/`, `site-packages/`, `build/`, `dist/`, generated protobuf/OpenAPI clients, and vendored dependency trees.
+## Finding Discipline
 
-## Specialist Selection Bounds
-
-- Minimum 2 specialist reviews: `architecture` plus one other.
-- If no additional triggers match, include `bill-python-code-review-platform-correctness` as the default second specialist.
-- If tests changed materially, include `bill-python-code-review-testing`.
-- Maximum 10 specialist reviews.
-
-When the diff is large, high-risk, or spans multiple stacks, build per-specialist file lists so each review lane stays focused:
-
-1. Scan each changed file's path, imports, config files, and framework markers for the routing-table signals above.
-2. Map each Python-owned file to the specialists whose signals it matches.
-3. `bill-python-code-review-architecture` receives all Python-owned changed files.
-4. Every other Python specialist receives only files matching its routing signals.
-5. Drop specialists whose scoped file list is empty after excluding generated, vendored, or non-Python-owned files.
-6. Re-check the minimum-2-specialist requirement; if only architecture remains, add `bill-python-code-review-platform-correctness` with all Python-owned files as the default second.
+- Calibrate severity to concrete production, operator, or client impact using only the governed severity vocabulary.
+- Verify every triggering precondition and reachable failure path before reporting a finding.
+- Keep findings attributed to their specialist lane through collection and merge.
+- Deduplicate overlapping findings without losing the strongest evidence, consequence, or ownership attribution.

@@ -1,3 +1,17 @@
+## [2026-07-10] SKILL-112 iOS pack alignment
+Areas: platform-packs/ios, platform-packs/ios/code-review, runtime-kotlin/runtime-infra-fs
+- Rebuilt iOS quality checks around discovered project commands, xcodebuild/SPM
+  selection, lint configuration, a priority fix ladder, and targeted-to-full escalation.
+- Generalized review coverage with REST/Codable and Core Data/SwiftData branches,
+  signal-based routing, and generated/vendored exclusions while retaining tuned rules.
+- Added enforceable modern iOS checks for concurrency, background execution,
+  SwiftUI/image/import performance, platform security, and observable-object ownership.
+- Reusable: pack conformance tests now assert manifest and agent metadata, all ten
+  severity closers, failure-mode clusters, routing/scoping, and absence of Nit ratings.
+- No breaking interface changes; app-specific Apollo/GRDB rules remain applicability-gated.
+Feature flag: N/A
+Acceptance criteria: 7/7 implemented
+
 ## [2026-07-01] ios-platform-pack (dry-run-validation)
 Areas: platform-packs/ios/code-review
 - Read-only dry-run of `bill-ios-code-review` vs two real stuck iOS-app PRs:

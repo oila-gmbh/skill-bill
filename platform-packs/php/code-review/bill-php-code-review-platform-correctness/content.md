@@ -24,6 +24,10 @@ Within the PHP package, `platform-correctness` is the package-aligned correctnes
 
 - Style or readability feedback without correctness impact
 
+## Applicability
+
+Use this specialist for changed PHP behavior involving business rules, state transitions, retries, replay, nullability, runtime dispatch, ORM state, or other reachable correctness boundaries.
+
 ## Project-Specific Rules
 
 ### Shared Backend Correctness
@@ -48,7 +52,7 @@ Within the PHP package, `platform-correctness` is the package-aligned correctnes
 - One-time or prerequisite checks must still run on retry, replay, duplicate delivery, and alternate entry paths unless the contract explicitly permits bypassing them
 - Feature-flag, permission-gated, and role-gated paths must preserve the same core invariants as the primary path unless different behavior is explicitly intended
 - Ground potential edge-case findings in a reachable code path or declared contract by naming the triggering input, state, retry sequence, worker lifecycle, or boundary condition and the violated expected behavior
-- For Critical or Major correctness findings, include a concrete failure scenario that explains how the changed code can produce the wrong outcome
+- For Blocker or Major correctness findings, include a concrete failure scenario that explains how the changed code can produce the wrong outcome
 
 ### Backend/Server-Specific Rules
 
@@ -76,3 +80,4 @@ Within the PHP package, `platform-correctness` is the package-aligned correctnes
 - Collection pipelines, nullable chains, and convenience helpers must not hide branch loss or silently swallow incorrect states
 - Date casting, enum casting, and numeric/string coercion must not change business behavior unexpectedly
 - If behavior depends on the current user, current time, locale, or timezone, make that dependency explicit and verify boundary cases
+- For Blocker or Major findings, describe the concrete invalid-state or ordering failure scenario.

@@ -70,7 +70,7 @@ Apply shared architecture rules to every review. Apply deeper concern-specific c
 - When the project uses DDD, layered, hexagonal, onion, or clean-architecture boundaries, domain should not depend on infrastructure or transport details
 - Application/use-case/service code should orchestrate behavior when workflows or invariants are non-trivial; do not hide business workflows inside controllers, request objects, ORM models, templates, or infrastructure listeners when that contradicts the local architecture
 - One business operation should have one clear use-case owner and one clear transaction owner unless the project explicitly models partial success or eventual consistency
-- When the project uses CQRS-style read boundaries, read paths should use explicit query services, read models, projections, or other declared read-side APIs rather than leaking persistence access into higher layers
+- When the project uses `CQRS`-style read boundaries, read paths should use explicit query services, read models, projections, or other declared read-side APIs rather than leaking persistence access into higher layers
 - Cross-module or cross-boundary composition should happen through declared module APIs, application services, or dedicated coordinators, not by reaching directly into another boundary's internals
 - When the project uses ports/adapters, consumers should define thin, explicit contracts and providers should implement them without pulling consumer orchestration logic back into the provider
 
@@ -96,3 +96,4 @@ Apply shared architecture rules to every review. Apply deeper concern-specific c
 
 - Controllers, routes, RPC handlers, actions, and server-rendered entry points should stay thin: derive context, validate input, call a use case, and map the response
 - Entry points should not become hidden composition roots for cross-module reads, transaction management, or business workflows when the architecture expects dedicated application boundaries
+- For Blocker or Major findings, describe the concrete dependency-cycle or ownership-boundary failure scenario.

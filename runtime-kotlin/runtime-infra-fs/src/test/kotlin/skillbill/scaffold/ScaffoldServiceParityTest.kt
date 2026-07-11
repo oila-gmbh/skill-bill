@@ -16,6 +16,7 @@ import skillbill.scaffold.platformpack.loadPlatformPack
 import skillbill.scaffold.policy.APPROVED_CODE_REVIEW_AREAS
 import skillbill.scaffold.policy.renderPlatformPackManifest
 import skillbill.scaffold.rendering.baselineReviewContent
+import skillbill.scaffold.rendering.canonicalSeverityCloser
 import skillbill.scaffold.rendering.defaultAreaFocus
 import skillbill.scaffold.rendering.inferSkillDescription
 import skillbill.scaffold.rendering.renderContentBody
@@ -162,30 +163,19 @@ class ScaffoldServiceParityTest {
     }
 
   @Test
-  fun `platform pack subagent specialists attach only to baseline orchestrator`() = withIsolatedUserHome {
+  fun `platform pack rejects custom subagent specialists before mutation`() = withIsolatedUserHome {
     val repo = seedRepo()
-    val result =
+    val before = snapshotTree(repo)
+
+    val error = assertFailsWith<InvalidScaffoldPayloadError> {
       scaffold(
         payload(repo, "platform-pack", "platform" to "java") +
           mapOf("subagent_specialists" to listOf("arch", "perf")),
       )
-    val packRoot = repo.resolve("platform-packs").resolve("java")
-    val baseline = packRoot.resolve("code-review/bill-java-code-review")
-    val qualityCheck = packRoot.resolve("quality-check/bill-java-code-check")
+    }
 
-    assertEquals("platform-pack", result.kind)
-    assertSourceBundle(baseline.resolve("native-agents/agents.yaml"), "arch", "perf")
-    assertFalse(Files.exists(baseline.resolve("codex-agents")))
-    assertFalse(Files.exists(baseline.resolve("opencode-agents")))
-    assertFalse(Files.exists(baseline.resolve("junie-agents")))
-    assertFalse(Files.exists(qualityCheck.resolve("codex-agents")))
-    assertFalse(Files.exists(qualityCheck.resolve("opencode-agents")))
-    assertFalse(Files.exists(qualityCheck.resolve("junie-agents")))
-    assertFalse(Files.exists(qualityCheck.resolve("native-agents")))
-    assertFalse("Subagent Spawn Runtime Notes" in Files.readString(baseline.resolve("content.md")))
-    assertContains(renderAuthoringTarget(repo, "bill-java-code-review").stdout, "### Subagent Spawn Runtime Notes")
-    assertNoGeneratedWrapperOrSupportingFiles(baseline, "bill-java-code-review")
-    assertNoGeneratedWrapperOrSupportingFiles(qualityCheck, "bill-java-code-check")
+    assertContains(error.message.orEmpty(), "exactly one manifest-derived native agent")
+    assertEquals(before, snapshotTree(repo))
   }
 
   @Test
@@ -195,6 +185,10 @@ class ScaffoldServiceParityTest {
     val manifest = Files.readString(repo.resolve("platform-packs/java/platform.yaml"))
 
     assertEquals("platform-pack", result.kind)
+    assertContains(
+      Files.readString(repo.resolve("platform-packs/java/code-review/bill-java-code-review/content.md")),
+      "internal-for: bill-code-review",
+    )
     APPROVED_CODE_REVIEW_AREAS.sorted().forEach { area ->
       assertTrue(
         Files.isRegularFile(repo.resolve("platform-packs/java/code-review/bill-java-code-review-$area/content.md")),
@@ -202,12 +196,19 @@ class ScaffoldServiceParityTest {
       )
       assertContains(manifest, "  - \"$area\"")
       assertContains(manifest, "$area: \"code-review/bill-java-code-review-$area/content.md\"")
+      val specialist = Files.readString(
+        repo.resolve("platform-packs/java/code-review/bill-java-code-review-$area/content.md"),
+      )
+      assertContains(specialist, "internal-for: bill-code-review")
+      assertContains(specialist, canonicalSeverityCloser(area))
     }
     assertComposedSourceBundle(
       repo.resolve("platform-packs/java/code-review/bill-java-code-review/native-agents/agents.yaml"),
       APPROVED_CODE_REVIEW_AREAS.associate { area ->
         "bill-java-code-review-$area" to
-          "Use when reviewing Java changes for ${defaultAreaFocus(area)}."
+          "Java ${area.replace('-', ' ')} specialist code reviewer. " +
+          "Runs against Java ${defaultAreaFocus(area)} across pom.xml, build.gradle, src/main/java signals. " +
+          "Returns a Risk Register in the F-XXX bullet format."
       },
     )
     assertDistinctProviderAgents(repo)
@@ -230,25 +231,18 @@ class ScaffoldServiceParityTest {
   }
 
   @Test
-  fun `platform pack no_subagents suppresses default specialist native agents`() = withIsolatedUserHome {
+  fun `platform pack rejects no_subagents before mutation`() = withIsolatedUserHome {
     val repo = seedRepo()
+    val before = snapshotTree(repo)
 
-    scaffold(
-      payload(repo, "platform-pack", "platform" to "java") + mapOf("no_subagents" to true),
-    )
-
-    assertFalse(
-      Files.exists(repo.resolve("platform-packs/java/code-review/bill-java-code-review/native-agents")),
-      "no_subagents=true must opt out of default platform-pack native-agent source generation",
-    )
-    APPROVED_CODE_REVIEW_AREAS.forEach { area ->
-      assertTrue(
-        Files.isRegularFile(repo.resolve("platform-packs/java/code-review/bill-java-code-review-$area/content.md")),
-        "no_subagents must not suppress content.md for $area",
+    val error = assertFailsWith<InvalidScaffoldPayloadError> {
+      scaffold(
+        payload(repo, "platform-pack", "platform" to "java") + mapOf("no_subagents" to true),
       )
     }
-    val pack = loadPlatformPack(repo.resolve("platform-packs/java"))
-    assertEquals(APPROVED_CODE_REVIEW_AREAS.sorted(), pack.declaredCodeReviewAreas.sorted())
+
+    assertContains(error.message.orEmpty(), "exactly one manifest-derived native agent")
+    assertEquals(before, snapshotTree(repo))
   }
 
   @Test
@@ -698,6 +692,9 @@ class ScaffoldServiceParityTest {
 private fun payload(repo: Path, kind: String, vararg pairs: Pair<String, Any?>): Map<String, Any?> =
   mapOf("scaffold_payload_version" to "1.0", "kind" to kind, "repo_root" to repo.toString()) + pairs
 
+internal fun reviewStructurePayload(repo: Path, kind: String, vararg pairs: Pair<String, Any?>): Map<String, Any?> =
+  payload(repo, kind, *pairs)
+
 private fun seedRepo(): Path {
   val repo = Files.createTempDirectory("skillbill-scaffold-repo")
   skillbill.testsupport.SkillClassFixtures.seedShippedSkillClasses(repo)
@@ -706,10 +703,13 @@ private fun seedRepo(): Path {
     Files.writeString(target, "# ${target.fileName}\n")
   }
   seedBaseSkill(repo, "bill-code-check")
+  seedBaseSkill(repo, "bill-code-review")
   seedKotlinPack(repo)
   seedKmpPack(repo)
   return repo
 }
+
+internal fun seedReviewStructureRepo(): Path = seedRepo()
 
 private fun seedBaseSkill(repo: Path, skillName: String) {
   val skillDir = repo.resolve("skills").resolve(skillName)
@@ -855,6 +855,8 @@ private fun withIsolatedUserHome(block: () -> Unit) {
     System.setProperty("user.home", originalHome)
   }
 }
+
+internal fun withReviewStructureUserHome(block: () -> Unit) = withIsolatedUserHome(block)
 
 private fun snapshotTree(root: Path): Map<String, String> {
   if (!Files.exists(root)) {

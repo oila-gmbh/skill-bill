@@ -9,42 +9,36 @@ internal-for: bill-code-review
 Review only correctness and runtime-safety issues.
 
 ## Focus
-- Coroutine scoping, cancellation, and dispatcher/thread correctness
-- Race conditions, ordering bugs, and stale-state updates
-- Nullability/edge-case failures and crash paths
-- State-machine and contract handling correctness
-- Business-rule drift in conditionals, reducers, refactors, and retries
-- Violated invariants, missing guards, and wrong branch selection in changed logic
-- Resource ownership and lifecycle safety where relevant
+
+- Coroutine ownership, cancellation, supervision, synchronization, Flow delivery, and business invariants
 
 ## Ignore
-- Style or readability feedback without correctness impact
+
+- Style or readability feedback without a reachable correctness failure
 
 ## Applicability
 
-Use this specialist for shared Kotlin correctness risks across libraries, app layers, and backend services. Favor issues around ownership, concurrency, cancellation, and logic safety that remain meaningful regardless of platform.
+Use this specialist for Kotlin concurrency, lifecycle, state, retry, and partial-effect behavior across libraries and services.
+
 ## Project-Specific Rules
 
-### Shared Kotlin Correctness
-- Never use `GlobalScope`
-- Long-lived coroutine scopes must have an explicit owner and cancellation strategy
-- Shared mutable state must be synchronized, serialized, or replaced with immutable/message-driven flow
-- Cancellation and timeout behavior must be explicit around long-running or external operations
-- Do not introduce silent fallback behavior that hides failures unless the contract explicitly requires it
-- Validate ordering guarantees where multiple async sources can race or overwrite each other
-- Do not introduce deprecated APIs, components, or patterns when a supported alternative exists; if usage is unavoidable, it must be narrowly scoped and explicitly justified
-- Work launched from callbacks, requests, or scheduled entry points must remain tied to an explicit owner or be delegated to a managed background component
-- Flow/state transformations should stay deterministic and make source priority explicit when multiple async inputs can race
-- Concurrent writes need atomic statements, locking, version checks, or another explicit consistency mechanism
-- Do not hold scarce resources (locks, transactions, open streams, file handles) across remote calls or long waits unless the contract explicitly requires it
-- Startup-owned or application-owned scopes must be cancelled cleanly during shutdown or cleanup
+### Coroutine Cancellation and Ownership
 
-### Business Logic / Invariant Checks
-- Guard ordering in `if`/`when`, reducers, and state transitions must preserve business-rule priority and reject invalid states before success paths
-- Refactors, extracted helpers, and shared transformation pipelines must not collapse distinct business cases into the same outcome unless the contract explicitly changed
-- Null, absent, empty, default, and sentinel values must preserve their business meaning across mapping, storage, transport, and UI state
-- Partial-success, optimistic update, and rollback paths must not report durable success before the contract's required effect actually happens
-- Retry, recollection, resubscription, or repeated lifecycle entry must not bypass one-time business checks or re-apply one-time user-visible effects unless the contract explicitly permits it
-- Feature-flag, permission-gated, and role-gated paths must preserve the same core invariants as the primary path unless different behavior is explicitly intended
-- For Major or Blocker findings, include a reproducible failure scenario.
-- Ground potential edge-case findings in a reachable code path or declared contract by naming the triggering input, state, async event sequence, or lifecycle transition and the violated invariant or expected behavior.
+- Never use `GlobalScope`; require every long-lived scope to have an explicit owner and cancellation strategy.
+- Rethrow `CancellationException` from `catch (Exception)` and from `runCatching` wrappers around suspend calls so cancellation is never converted into ordinary failure.
+- Require `SupervisorJob` when sibling tasks must fail independently; reject a plain `Job` when one child failure would incorrectly cancel unrelated siblings.
+- Require bounded suspending cleanup in `finally` to run with `withContext(NonCancellable)` when it must complete after cancellation; reject unbounded cleanup or ordinary suspending cleanup that cancellation can abort.
+- Reject retry or lifecycle re-entry that duplicates billing, messages, notifications, or other user-visible effects.
+
+### Synchronization and Flow Semantics
+
+- Reject non-reentrant `Mutex` paths where code holding a mutex calls another path that attempts to acquire the same mutex.
+- Verify atomic statements, locking, version checks, or serialization wherever concurrent mutation must preserve an invariant.
+- Reject `StateFlow` when equality conflation can suppress a required repeated event or when slow collectors must observe every distinct intermediate transition rather than only the latest state.
+- Reject `SharedFlow` with `replay = 0` when late subscribers must receive an event and no durable delivery mechanism exists.
+
+### Truthful Outcomes
+
+- Require result values to report faults truthfully; never return success after a required operation fails.
+- Require partial effects to be reported explicitly rather than collapsing partial completion into durable success.
+- For Blocker or Major findings, describe the concrete invalid-state or ordering failure scenario.

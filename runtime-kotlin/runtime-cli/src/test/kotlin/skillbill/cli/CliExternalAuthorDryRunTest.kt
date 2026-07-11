@@ -4,6 +4,7 @@ import skillbill.cli.core.CliOutput
 import skillbill.cli.core.CliRuntime
 import skillbill.cli.model.CliFormat
 import skillbill.cli.model.CliRuntimeContext
+import skillbill.error.InvalidInternalSkillClassificationError
 import skillbill.telemetry.CONFIG_ENVIRONMENT_KEY
 import java.nio.file.FileVisitResult
 import java.nio.file.Files
@@ -14,23 +15,23 @@ import java.nio.file.attribute.BasicFileAttributes
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class CliExternalAuthorDryRunTest {
   @Test
-  fun `external author flow scaffolds validates links and removes a temporary platform pack`() {
+  fun `external author flow scaffolds validates refuses direct internal links and removes a temporary platform pack`() {
     val fixture = createExternalAuthorDryRunFixture()
     try {
       val baselineSkill = scaffoldPlatformPack(fixture)
       assertValidationPasses(fixture.repoRoot, fixture.context)
 
-      val installedLink = linkBaselineSkill(fixture, baselineSkill)
+      val refusedLink = refuseDirectBaselineSkillLink(fixture, baselineSkill)
 
-      Files.deleteIfExists(installedLink)
       deleteRecursively(fixture.packRoot)
 
-      assertFalse(Files.exists(installedLink))
+      assertFalse(Files.exists(refusedLink))
       assertFalse(Files.exists(fixture.packRoot))
       assertValidationPasses(fixture.repoRoot, fixture.context)
     } finally {
@@ -150,9 +151,9 @@ private fun scaffoldPlatformPack(fixture: ExternalAuthorDryRunFixture): Path {
   return baselineSkill
 }
 
-private fun linkBaselineSkill(fixture: ExternalAuthorDryRunFixture, baselineSkill: Path): Path {
+private fun refuseDirectBaselineSkillLink(fixture: ExternalAuthorDryRunFixture, baselineSkill: Path): Path {
   val targetDir = fixture.tempRoot.resolve("agent").resolve("skills")
-  val result =
+  val error = assertFailsWith<InvalidInternalSkillClassificationError> {
     CliRuntime.run(
       listOf(
         "install",
@@ -166,11 +167,11 @@ private fun linkBaselineSkill(fixture: ExternalAuthorDryRunFixture, baselineSkil
       ),
       fixture.context,
     )
+  }
   val installedLink = targetDir.resolve("bill-${fixture.platform}-code-review")
 
-  assertEquals(0, result.exitCode, result.stdout)
-  assertTrue(Files.isSymbolicLink(installedLink))
-  assertEquals(baselineSkill.toRealPath(), installedLink.toRealPath())
+  assertContains(error.message.orEmpty(), "internal skills install as '<skill-name>.md' sidecars")
+  assertFalse(Files.exists(installedLink))
   return installedLink
 }
 

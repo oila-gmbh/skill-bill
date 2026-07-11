@@ -41,9 +41,9 @@ Use this specialist for backend/server persistence code only: repositories, ORM 
 - Bulk operations should preserve correctness, not just speed; verify partial-failure behavior
 - Projection or derived-table updates must be concurrency-safe; avoid read-modify-write patterns when atomic SQL/update operations are required
 - Migration rollout must consider backfills, dual-read/dual-write windows, and replay or rebuild paths when contracts or projections change
-- ORM convenience methods must not hide missing filters, accidental N+1 query/write patterns, or silent partial updates in persistence-critical paths
+- `ORM` convenience methods must not hide missing filters, accidental N+1 query/write patterns, or silent partial updates in persistence-critical paths
 - Check database defaults, casts, enum storage, and timestamp behavior for write/read drift against the intended domain and API contract
-- For Critical or Major findings, explain the data-loss, stale-write, cross-tenant, migration, or consistency consequence explicitly
+- For Blocker or Major findings, explain the data-loss, stale-write, cross-tenant, migration, or consistency consequence explicitly
 
 ### ORM And Query Boundaries
 
@@ -53,3 +53,4 @@ Use this specialist for backend/server persistence code only: repositories, ORM 
 - Mass update, delete, restore, and bulk-write paths must carry tenant, account, ownership, soft-delete, and business filters as explicitly as single-row paths
 - Global scopes, default filters, and implicit ORM events are acceptable local patterns only when their authorization, tenant scoping, lifecycle side effects, and transaction ownership remain visible, tested, and hard to bypass where correctness or security depends on them
 - Model/entity events, observers, listeners, and callbacks must not perform cross-boundary business workflows unless the project architecture intentionally routes side effects there
+- For Blocker or Major findings, describe the concrete data-loss, consistency, or durability failure scenario.

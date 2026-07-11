@@ -27,8 +27,7 @@ class InstallExternalAddonOverlayIntegrationTest : InstallApplyTestSupport() {
     val result = InstallOperations.applyInstall(plan)
 
     assertEquals(InstallApplyStatus.SUCCESS, result.status, "apply failures: ${result.failures}")
-    val iosSkill = result.skills.first { it.skillName == "bill-ios-code-review" }
-    val staging = iosSkill.staging
+    val staging = result.skills.first { it.skillName == "bill-code-review" }.staging
     val stagingDir = staging.stagingDir
       ?: error("ios code-review skill was not staged")
     val acmeRendered = staging.renderedPointerFiles.firstOrNull { it.fileName.toString() == "acme-review.md" }
@@ -94,44 +93,33 @@ class InstallExternalAddonOverlayIntegrationTest : InstallApplyTestSupport() {
   }
 
   private fun stagedSkillBody(result: skillbill.install.model.InstallApplyResult, name: String): String {
-    val skill = result.skills.first { it.skillName == name }
-    val stagingDir = skill.staging.stagingDir ?: error("$name was not staged")
-    return Files.readString(stagingDir.resolve("SKILL.md"))
+    val stagingDir = result.skills.first { it.skillName == "bill-code-review" }.staging.stagingDir
+      ?: error("bill-code-review was not staged")
+    return Files.readString(stagingDir.resolve("$name.md"))
   }
 
   private fun setupIosFixture(): ApplyFixture {
     val fixture = setupApplyFixture()
     val repoRoot = fixture.repoRoot
     val packRoot = repoRoot.resolve("platform-packs/ios")
-    val codeReviewDir = packRoot.resolve("code-review/bill-ios-code-review")
-    Files.createDirectories(codeReviewDir)
-    Files.writeString(codeReviewDir.resolve("content.md"), content("bill-ios-code-review"))
+    seedPlatformPack(repoRoot, "ios")
     val addonsDir = Files.createDirectories(packRoot.resolve("addons"))
     Files.writeString(addonsDir.resolve("offline-review.md"), "# offline review body\n")
+    val manifest = packRoot.resolve("platform.yaml")
     Files.writeString(
-      packRoot.resolve("platform.yaml"),
-      """
-      platform: "ios"
-      contract_version: "1.2"
-      routing_signals:
-        strong:
-          - ".swift"
-        tie_breakers: []
-      declared_code_review_areas: []
-      declared_files:
-        baseline: "code-review/bill-ios-code-review/content.md"
-        areas: {}
-      area_metadata: {}
-      display_name: "iOS"
-      addon_usage:
-        code-review/bill-ios-code-review:
-          - slug: offline
-            entrypoint: offline-review.md
-      pointers:
-        code-review/bill-ios-code-review:
-          - name: offline-review.md
-            target: platform-packs/ios/addons/offline-review.md
-      """.trimIndent() + "\n",
+      manifest,
+      Files.readString(manifest).replace(
+        "  code-review/bill-ios-code-review: []",
+        "  code-review/bill-ios-code-review:\n" +
+          "    - name: offline-review.md\n" +
+          "      target: platform-packs/ios/addons/offline-review.md",
+      ) +
+        """
+          addon_usage:
+            code-review/bill-ios-code-review:
+              - slug: offline
+                entrypoint: offline-review.md
+        """.trimIndent() + "\n",
     )
     return fixture
   }

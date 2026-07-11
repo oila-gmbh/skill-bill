@@ -17,13 +17,14 @@ import skillbill.install.model.InstallStagingPathIntent
 import skillbill.install.model.validateInstallPlanWireSnapshot
 import skillbill.install.policy.InstallPlanPolicy
 import skillbill.install.staging.GeneratedSupportPointer
+import skillbill.install.staging.InternalStagingPreparation
 import skillbill.install.staging.applicablePointers
 import skillbill.install.staging.authoredFilesFor
 import skillbill.install.staging.computeInstallContentHash
-import skillbill.install.staging.discoverInternalSidecarTargets
 import skillbill.install.staging.generatedSupportPointersFor
 import skillbill.install.staging.installedSkillStagingDir
 import skillbill.install.staging.installedSkillsCacheRoot
+import skillbill.install.staging.prepareInternalStaging
 import skillbill.install.support.claudeSkillTargets
 import skillbill.ports.install.plan.model.InstallPlanningFacts
 import skillbill.scaffold.model.PlatformManifest
@@ -160,25 +161,13 @@ private fun buildStagingIntent(
   platformManifests: List<PlatformManifest>,
 ): InstallStagingIntent {
   val stagingRoot = installedSkillsCacheRoot(request.home)
-  // SKILL-104 (PD3): selected pack skills are already materialized in `skills` (buildInstallPolicyInput
-  // filters to selected slugs). Pack skills declaring internal-for surface as sidecars of their parent
-  // only when selected, so they thread into per-parent sidecar discovery here.
   val selectedPackSkills = skills.filter { skill ->
     skill.kind == InstallPlanSkillKind.PLATFORM_PACK && skill.internalFor != null
   }
-  val selectedPlatformSlugs = skills
-    .filter { skill -> skill.kind == InstallPlanSkillKind.PLATFORM_PACK }
-    .mapNotNull { skill ->
-      platformManifests.firstOrNull { manifest ->
-        skill.sourceDir.startsWith(manifest.packRoot)
-      }?.slug
-    }
-    .toSet()
+  val selectedPlatformSlugs = selectedPlatformSlugs(skills, platformManifests)
   val selectedPlatformManifests = platformManifests.filter { manifest -> manifest.slug in selectedPlatformSlugs }
   return InstallStagingIntent(
     root = stagingRoot,
-    // F-011 (SKILL-102): internal skills never stage standalone (apply filters them out), so the
-    // plan must not advertise staging intents for them.
     skillPaths = skills.filter { skill -> skill.internalFor == null }.map { skill ->
       val applicablePointers = applicablePointers(request.repoRoot, skill.sourceDir, platformManifests)
       val supportPointers = generatedSupportPointersFor(
@@ -188,23 +177,32 @@ private fun buildStagingIntent(
         skillsRoot = request.targetPaths.skillsRoot,
         selectedPlatformManifests = selectedPlatformManifests,
       )
-      validatePointerInputs(request.repoRoot, skill.sourceDir, applicablePointers, supportPointers)
-      // Sidecar wrappers fold into the parent's planned content hash so plan and apply agree and
-      // editing a child invalidates the parent's cache.
-      val internalChildren = discoverInternalSidecarTargets(
-        repoRoot = request.repoRoot,
-        parentSkillName = skill.name,
-        skillsRoot = request.targetPaths.skillsRoot,
-        selectedPackSkills = selectedPackSkills,
+      val internal = prepareInternalStaging(
+        InternalStagingPreparation(
+          repoRoot = request.repoRoot,
+          parentSourceDir = skill.sourceDir,
+          parentSkillName = skill.name,
+          skillsRoot = request.targetPaths.skillsRoot,
+          selectedPackSkills = selectedPackSkills,
+          platformManifests = platformManifests,
+          selectedPlatformManifests = selectedPlatformManifests,
+          parentSupportPointers = supportPointers,
+          parentPointerNames = applicablePointers.map { (_, pointer) -> pointer.name }.toSet(),
+        ),
       )
-      val sidecarNames = internalChildren.map { child -> "${child.skillName}.md" }.toSet()
-      val authored = authoredFilesFor(skill.sourceDir, applicablePointers, supportPointers, sidecarNames)
+      validatePointerInputs(request.repoRoot, skill.sourceDir, applicablePointers, internal.supportPointers)
+      val authored = authoredFilesFor(
+        skill.sourceDir,
+        applicablePointers,
+        internal.supportPointers,
+        internal.sidecarNames,
+      )
       val contentHash = computeInstallContentHash(
         sourceSkillDir = skill.sourceDir,
         authored = authored,
         applicablePointers = applicablePointers,
-        generatedSupportPointers = supportPointers,
-        internalChildren = internalChildren,
+        generatedSupportPointers = internal.supportPointers,
+        internalChildren = internal.children,
       )
       InstallStagingPathIntent(
         skillName = skill.name,

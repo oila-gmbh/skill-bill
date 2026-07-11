@@ -6,16 +6,34 @@ internal-for: bill-code-review
 
 # Python UI Review
 
-Focus on UI surfaces that are authored, rendered, or orchestrated by Python.
+Review user-visible behavior authored, rendered, or orchestrated by Python.
 
-## Review Focus
+## Focus
 
-- Server-rendered UI: Django/Jinja templates, forms, admin pages, HTMX-style fragments, email templates, and report templates.
-- Python dashboard surfaces: Streamlit, Dash, Panel, notebook outputs, generated HTML/PDF reports, and internal operations dashboards.
-- State and validation: form defaults, validation display, navigation after actions, flash/error messages, pagination/filter state, and permission-aware UI state.
-- Framework behavior: template context ownership, escaping defaults, static/media asset references, admin customization, and route/view consistency.
-- Data presentation: formatting, timezone/locale display, empty states, loading/error states, and avoiding misleading aggregations.
+- Templates, forms, admin flows, HTMX fragments, notebooks, dashboards, reports, state, validation, navigation, and rendering behavior
 
-## Findings Standard
+## Ignore
 
-Report UI behavior bugs, confusing state, broken rendering, missing permission constraints, or mismatches between backend state and what the user sees.
+- Defer accessibility-only findings to the `ux-accessibility` specialist.
+- Defer escaping, injection, and other trust-boundary findings to the `security` specialist.
+- Pure visual taste without a user-visible interaction, rendering, state, or comprehension failure
+
+## Applicability
+
+Use this specialist for Django or Jinja templates, forms, admin pages, HTMX-style fragments, email and report templates, Streamlit, Dash, Panel, notebooks, generated HTML/PDF, and operations dashboards.
+
+## Project-Specific Rules
+
+### State and Interaction
+
+- Require a single source of truth for server and client state; reject duplicated form, filter, pagination, selection, or permission state that can render stale or contradictory UI.
+- Require intentional form defaults, preserved input, validation display, navigation after actions, flash and error messages, empty/loading/error states, and permission-aware controls.
+- Require server-rendered actions and navigation to degrade gracefully without JavaScript when the product boundary promises progressive enhancement; reject core tasks available only through an optional script path.
+- Preserve timezone, locale, aggregation, formatting, and route/view consistency so the UI does not misrepresent backend state.
+
+### Rendering and Data Access
+
+- Reject template helpers, inclusion tags, properties, and `context_processors` that execute per-row ORM access or repeated downstream calls and create an N+1 latency failure.
+- Verify template context ownership, static and media references, admin customization, fragments, notebooks, dashboard callbacks, and generated reports render under empty, partial, and error data.
+- Require user-visible state transitions to reflect durable backend outcomes rather than optimistic success that can diverge after a failed request.
+- For Blocker or Major findings, describe the concrete user-visible interaction or rendering failure scenario.

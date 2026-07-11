@@ -25,6 +25,10 @@ Within the Go package, `platform-correctness` is the language and runtime correc
 
 - Style or readability feedback without correctness impact
 
+## Applicability
+
+Use this specialist when changed Go code affects business invariants, error flow, nil or zero-value semantics, concurrency, cancellation, retries, replay, or runtime safety.
+
 ## Project-Specific Rules
 
 ### Shared Backend Correctness
@@ -47,7 +51,7 @@ Within the Go package, `platform-correctness` is the language and runtime correc
 - One-time or prerequisite checks must still run on retry, replay, duplicate delivery, and alternate entry paths unless the contract explicitly permits bypassing them
 - Feature-flag, permission-gated, and role-gated paths must preserve the same core invariants as the primary path unless different behavior is explicitly intended
 - Ground potential edge-case findings in a reachable code path or declared contract by naming the triggering input, state, retry sequence, worker lifecycle, or boundary condition and the violated expected behavior
-- For Critical or Major correctness findings, include a concrete failure scenario that explains how the changed code can produce the wrong outcome
+- For Blocker or Major correctness findings, include a concrete failure scenario that explains how the changed code can produce the wrong outcome
 
 ### Backend/Server-Specific Rules
 
@@ -85,3 +89,4 @@ Within the Go package, `platform-correctness` is the language and runtime correc
 - Authorization checks, parameter binding/lookup, and boundary validation must not leave reachable paths with partially authorized or partially validated behavior
 - Date, enum, and numeric/string conversions must not change business behavior unexpectedly
 - If behavior depends on the current user, current time, locale, or timezone, make that dependency explicit and verify boundary cases
+- For Blocker or Major findings, describe the concrete invalid-state or ordering failure scenario.

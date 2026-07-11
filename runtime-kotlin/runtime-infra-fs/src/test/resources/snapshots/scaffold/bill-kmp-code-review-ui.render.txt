@@ -28,38 +28,34 @@ Report the final selection as `Selected add-ons: <slug, ...>` and pass the selec
 
 ## Execution
 
-### Compose Review Rubric
+Review only UI state, rendering, framework usage, and interaction correctness.
 
-The canonical KMP UI review command stays `bill-kmp-code-review-ui`. Governed add-ons apply only after the parent review has already routed to `kmp`.
+### Focus
 
-When no governed add-on applies, use the base Compose review rubric by itself.
+- Compose state ownership, recomposition, effects, navigation boundaries, previews, and loading/content/error/empty rendering
+- Android and Compose Multiplatform API selection at the source-set boundary
 
-For review enforcement, read [compose-guidelines.md](compose-guidelines.md) as the Compose review rubric covering:
-state hoisting, signature conventions, recomposition & performance, theming, string resources, composable structure, side effects, navigation, previews, error/loading states, UI element selection, modifier best practices, and ViewModel integration.
+### Ignore
 
-Apply every section from `compose-guidelines.md` as a review checklist when reviewing `@Composable` code. Use the governed add-on only to extend the routed KMP review with transferable Android/Compose concerns; do not treat it as a standalone review command.
+- Accessibility-only findings that belong to the `ux-accessibility` specialist
+- Escaping, secrets, or sensitive-data failures that belong to the Kotlin `security` baseline specialist
 
-### Checklist
+### Applicability
 
-Before considering a composable done, verify:
+Use this specialist for `@Composable` functions, UI state holders, Compose navigation, platform UI interop, previews, and user-visible state transitions.
 
-- [ ] State is hoisted — composable is stateless with a stateful wrapper
-- [ ] `modifier: Modifier = Modifier` on every public/internal composable below screen level
-- [ ] `modifier` applied only to root element
-- [ ] No hardcoded strings — all user-facing text uses `stringResource`
-- [ ] No hardcoded colors, sizes, or spacing — uses theme tokens
-- [ ] Stable types only — uses `@Immutable` / `ImmutableList` / primitives
-- [ ] `collectAsStateWithLifecycle()` for flow collection
-- [ ] `rememberSaveable` for state surviving config changes
-- [ ] `LazyColumn` / `LazyRow` items have `key` and `contentType`
-- [ ] Accessibility: all images/icons have appropriate `contentDescription`
-- [ ] Side effects use correct API (`LaunchedEffect`, `DisposableEffect`, etc.)
-- [ ] No `NavController` in screen composables — navigation via lambdas
-- [ ] Preview annotations: light + dark mode minimum
-- [ ] All states handled: loading, content, error, empty
-- [ ] `Modifier.testTag` on key interactive elements
-- [ ] No unnecessary decomposition — extractions have a reason
-- [ ] File organization: screen → helpers → previews (top to bottom)
+### Project-Specific Rules
+
+#### Governed Compose Rubric
+
+- Read [compose-guidelines.md](compose-guidelines.md); an H2 section is insufficient for the detailed Compose rubric, and this companion is its single source of truth.
+- Enforce every governed H2 rubric section against the applicable target: State Hoisting; Composable Function Signature Conventions; Recomposition & Performance; Theming & Design System; String Resources & Localization; Compose Multiplatform; Composable Structure & Decomposition; Side Effects; Navigation Integration; Preview Annotations; Error Handling & Loading States; Proper UI Elements; Modifier Best Practices; and ViewModel Integration.
+- Do not duplicate that checklist here; require violations to identify the named rubric section, concrete failure precondition, and user-visible or runtime consequence.
+
+#### Add-On Boundaries
+
+- Apply only generated add-ons selected by the baseline routing table, and verify Android-only add-ons are not enforced against `commonMain` or iOS-only code.
+- For Blocker or Major findings, describe the concrete user-visible interaction or rendering failure scenario.
 
 ## Ceremony
 

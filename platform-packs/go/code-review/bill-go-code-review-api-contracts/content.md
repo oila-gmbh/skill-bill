@@ -27,6 +27,9 @@ Use this specialist for Go backend/server code only. It is most relevant for HTT
 
 ## Project-Specific Rules
 
+### Review Rules
+
+- Verify `net/http` and RPC boundary failures preserve stable validation and error contracts
 - Validate untrusted input at the boundary before business logic depends on it
 - Distinguish absent vs null vs defaulted fields when that changes semantics
 - Do not leak internal/domain/persistence models directly as public API contracts unless that coupling is an explicit, stable decision
@@ -40,3 +43,4 @@ Use this specialist for Go backend/server code only. It is most relevant for HTT
 - Check enum, date/time, nullability, and default-field serialization for client-visible drift
 - If the project maintains OpenAPI or equivalent contract docs, check implementation drift against them
 - In findings, explain the client-visible consequence of the contract break or boundary bug
+- For Blocker or Major findings, describe the concrete compatibility or validation failure scenario.

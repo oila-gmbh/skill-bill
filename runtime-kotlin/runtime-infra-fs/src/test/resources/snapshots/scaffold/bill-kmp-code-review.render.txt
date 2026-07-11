@@ -39,99 +39,46 @@ Report the final selection as `Selected add-ons: <slug, ...>` and pass the selec
 
 ## Execution
 
-You are an experienced Android/KMP architect conducting a code review.
+Apply the generated Review Composition baseline before these KMP-specific lanes.
 
-Your job is to preserve Android/KMP review depth without duplicating shared Kotlin review logic. The generated Review Composition section is the source of truth for required baseline layers; apply this authored KMP guidance after those baseline instructions have been handled.
----
+### Classification Rules
 
-### Project Classification
+- If `kotlin("multiplatform")`, `org.jetbrains.kotlin.multiplatform`, `commonMain`, `androidMain`, `iosMain`, or paired `expect`/`actual` declarations dominate, select the KMP pack.
+- If Android markers coexist with KMP source sets, keep the KMP route because it retains the Kotlin baseline and KMP specialists.
+- Otherwise, select the adjacent Kotlin pack when no multiplatform boundary is present.
+- Exclude generated, vendored, and non-stack files from routing dominance.
 
-Inspect both the changed files and repo markers (`build.gradle*`, `settings.gradle*`, `gradle/libs.versions.toml`, `pom.xml`, source set layout, module names, imports).
+### Diff-Signal Routing Table
 
-Classify the review as one of:
-- `kmp`
-- `mixed-kmp`
-- `not-kmp`
+- `expect`/`actual`, `commonMain`, `androidMain`, `iosMain`, source-set dependencies, or target-boundary declarations -> `platform-correctness` specialist.
+- `kotlinx.serialization`, polymorphic registration, `kotlinx-datetime`, timezone behavior, `Dispatchers.Main`, iOS dispatchers, ObjC exports, Skie `Flow`, or suspend cancellation -> `platform-correctness` specialist.
+- `@Composable`, UI state, `Modifier`, `remember`, `LaunchedEffect`, navigation, previews, or loading/content/error/empty states -> `ui` specialist.
+- Compose semantics, labels, focus, TalkBack, keyboard behavior, localization, or touch targets -> `ux-accessibility` specialist.
+- `proguard-rules.pro`, `consumer-rules.pro`, `isMinifyEnabled`, `minifyEnabled`, or R8 configuration -> `platform-correctness` specialist; include the baseline `android-r8` add-on.
+- Navigation graphs, `NavController`, `SavedStateHandle`, `popUpTo`, `launchSingleTop`, or dialog destinations -> `ui` specialist; include the UI `android-navigation` add-on.
 
-#### Additional Backend/Server Signals
+### Mixed Diffs
 
-- `io.ktor.server`, `routing {}`, `Application.module`
-- `spring-boot`, `@RestController`, `@Controller`, `@Service`, `@Repository`, `@Transactional`
-- Micronaut, Quarkus, http4k, Javalin, gRPC server code
-- `application.yml`, `application.yaml`, `application.conf`
-- SQL/ORM/data-access layers: Exposed, jOOQ, Hibernate/JPA, JDBC, R2DBC, Flyway, Liquibase
-- Queues, schedulers, consumers, caches, metrics, tracing, server auth middleware
+- Keep KMP routing for the whole review when strong multiplatform signals coexist with backend, Android, or generic Kotlin files.
+- Use lightweight file-level classification to scope each specialist to matching files without dropping a selected lane.
+- Exclude generated, vendored, and non-stack files from specialist scope unless a generated contract is itself the reviewed artifact.
+- Preserve the manifest-declared Kotlin baseline for the same whole-review scope, then merge and deduplicate attributed findings.
 
-#### Decision Rules
+### Finding Discipline
 
-- If Android/KMP signals are strong, keep the Android/KMP route.
-- If Android/KMP signals are weak or absent, delegate to `bill-kotlin-code-review` and stop instead of pretending mobile-specific coverage exists.
-- If backend/server files are also touched, keep the `kmp` route and rely on the manifest-declared baseline layer so shared Kotlin concerns are still reviewed before this skill adds mobile-specific specialists.
-- When uncertain, prefer the safer route that preserves Android/KMP review depth.
-
-### Layered Review Plan
-
-#### Step 1: Scale review depth
-
-- For small, low-risk Android/KMP diffs, keep the review compact.
-- For larger, mixed, or higher-risk diffs, split the work into focused baseline and specialist passes.
-
-#### Step 2: Confirm the manifest-declared baseline layer
-
-The generated Review Composition section defines the required baseline layer sequence. Treat that section as authoritative for which baseline skill to run, the mode to use, and the context that must be forwarded.
-
-That baseline layer owns:
-- shared Kotlin architecture, correctness, security, performance, and testing review
-- backend/server risk coverage within the Kotlin specialist set when backend signals are present
-- the baseline Kotlin findings that every Android/KMP review should inherit
-
-When invoking the baseline layer:
-- tell it that Android/KMP scope is valid for the manifest-declared baseline mode
-- tell it to keep KMP-only review concerns out of scope
-- pass the same diff source, changed files, and relevant override guidance
-
-#### Step 3: Analyze the diff and select KMP-specific agents
-
-- Preserve Android/KMP specialists for any Android/KMP files even when backend files are changed in the same PR
-- A single PR may spawn both the baseline review and KMP-only specialists, but keep the KMP-specific specialist count at 2 or fewer
-- Pass any selected governed add-ons into the chosen KMP specialist review passes
-
-##### Android/KMP Route
-
-Keep the mobile triggers focused on what the baseline review does not cover:
-
-| Signal in the diff                                                                                               | Specialist review to run                |
-|------------------------------------------------------------------------------------------------------------------|-----------------------------------------|
-| `@Composable` functions, UI state classes, Modifier chains, `remember`, `LaunchedEffect`                         | `bill-kmp-code-review-ui`               |
-| User-facing UI changes, `stringResource`, accessibility attributes, navigation, error states, localization files | `bill-kmp-code-review-ux-accessibility` |
-
-#### Step 3.5: Scope diff per KMP specialist when review depth increases
-
-When the review is split into focused KMP specialist passes, build a per-specialist file list first:
-
-1. Scan each changed file's name and imports for the KMP routing-table signals from Step 3
-2. Map each file to the KMP specialists whose signals it matches
-3. If a specialist's scoped file list is empty, drop it from the selected set
-
-This is a lightweight file-level classification (names + imports), not a full review.
-
-#### Step 4: Run KMP specialist reviews
-
-- Run each selected KMP specialist lane against its scoped files.
-- Read each KMP specialist's sibling sidecar file `<specialist-skill-name>.md` co-located with `bill-code-review`'s `SKILL.md` as the primary rubric for that lane. Do not use the Skill tool for specialist skills — they are internal skills and are not listed.
-- Keep findings attributed to each layer before merging and deduplicating them into the final review.
-
-If no KMP-only triggers match but Android/KMP signals are clearly present, keep the baseline review output and state that no extra KMP-only specialist was needed for this scope.
+- Report only reachable failures with a concrete precondition and observed consequence.
+- Assign severity from impact, keep every finding attributed to its baseline, specialist, or add-on lane, and deduplicate without erasing ownership.
+- Read selected specialist sidecars from the installed `bill-code-review` directory; do not invoke internal specialists through a skill command.
 
 ### Subagent Spawn Runtime Notes
 
-Specialist spawn instructions in this orchestrator are runtime-neutral. Each phrase such as "spawn the `bill-kmp-code-review-ui` subagent" maps to the native subagent surface of the host runtime (parent skill: `bill-kmp-code-review`). The per-runtime paragraphs below are imperative: the orchestrator MUST follow the paragraph that matches the runtime it is running in, including how it collects the subagent's `RESULT:` JSON. Picking a different mechanism (for example, emitting a natural-language "please spawn" message instead of calling the listed tool) causes the workflow to stall because no subagent actually runs and no `RESULT:` is ever returned.
+Specialist spawn instructions in this orchestrator are runtime-neutral. Each phrase such as "spawn the `bill-kmp-code-review-platform-correctness` subagent" maps to the native subagent surface of the host runtime (parent skill: `bill-kmp-code-review`). The per-runtime paragraphs below are imperative: the orchestrator MUST follow the paragraph that matches the runtime it is running in, including how it collects the subagent's `RESULT:` JSON. Picking a different mechanism (for example, emitting a natural-language "please spawn" message instead of calling the listed tool) causes the workflow to stall because no subagent actually runs and no `RESULT:` is ever returned.
 
-**On Claude (Claude Code, Anthropic SDK agents).** The orchestrator MUST invoke the built-in `Agent` tool with `subagent_type` set to the matching specialist name (for example, `subagent_type: "bill-kmp-code-review-ui"` for that role in `bill-kmp-code-review`) and pass the per-phase briefing as the tool's `prompt`. Call the tool in the **foreground** (the default — do NOT pass `run_in_background: true`). The `Agent` tool blocks until the subagent finishes and returns the subagent's final text message as the tool result; the orchestrator parses the `RESULT:` JSON directly from that returned message in the same turn. Do NOT sleep, poll, ping, re-call, or otherwise check on the subagent — Claude's `Agent` tool surfaces completion synchronously and any polling loop is both unnecessary and explicitly discouraged by the tool contract. If the tool returns and the message is missing a `RESULT:` block or contains malformed JSON, fall through to the `RESULT:` block parsing tolerance rules (best-effort recovery, then exactly one corrective re-spawn via another foreground `Agent` call) instead of waiting.
+**On Claude (Claude Code, Anthropic SDK agents).** The orchestrator MUST invoke the built-in `Agent` tool with `subagent_type` set to the matching specialist name (for example, `subagent_type: "bill-kmp-code-review-platform-correctness"` for that role in `bill-kmp-code-review`) and pass the per-phase briefing as the tool's `prompt`. Call the tool in the **foreground** (the default — do NOT pass `run_in_background: true`). The `Agent` tool blocks until the subagent finishes and returns the subagent's final text message as the tool result; the orchestrator parses the `RESULT:` JSON directly from that returned message in the same turn. Do NOT sleep, poll, ping, re-call, or otherwise check on the subagent — Claude's `Agent` tool surfaces completion synchronously and any polling loop is both unnecessary and explicitly discouraged by the tool contract. If the tool returns and the message is missing a `RESULT:` block or contains malformed JSON, fall through to the `RESULT:` block parsing tolerance rules (best-effort recovery, then exactly one corrective re-spawn via another foreground `Agent` call) instead of waiting.
 
 **On Codex.** The spawn is a natural-language directive in the orchestrator's turn. Codex resolves the subagent by `name` against the installed TOML files in the Codex user agents directory (with the legacy Agents agents fallback), respecting `agents.max_threads` and `agents.max_depth`. Because Codex runs subagents asynchronously, the orchestrator MUST poll for completion between turns before consuming the subagent's `RESULT:` block — do not proceed to the next phase until the subagent has visibly finished and its `RESULT:` JSON is available in the conversation.
 
-**On OpenCode.** The spawn resolves by filename-derived `name` against markdown agents installed in the OpenCode user agents directory; operators can also invoke the same specialists manually with `@bill-kmp-code-review-ui`, `@bill-kmp-code-review-ux-accessibility`. Like Codex, OpenCode runs the spawn asynchronously, so the orchestrator MUST wait for the subagent to finish (checking between turns) and only then read its `RESULT:` JSON before advancing.
+**On OpenCode.** The spawn resolves by filename-derived `name` against markdown agents installed in the OpenCode user agents directory; operators can also invoke the same specialists manually with `@bill-kmp-code-review-platform-correctness`, `@bill-kmp-code-review-ui`, `@bill-kmp-code-review-ux-accessibility`. Like Codex, OpenCode runs the spawn asynchronously, so the orchestrator MUST wait for the subagent to finish (checking between turns) and only then read its `RESULT:` JSON before advancing.
 
 OpenCode does not document a different native concurrency cap; keep the conservative limit of 6 or fewer specialists per wave.
 

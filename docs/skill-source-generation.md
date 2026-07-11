@@ -62,9 +62,18 @@ Platform packs use their own source layout:
 - `platform-packs/<slug>/code-review/<skill>/content.md`
 - `platform-packs/<slug>/quality-check/<skill>/content.md` when declared
 - `platform-packs/<slug>/addons/*.md` for pack-owned add-ons
+- one co-located, specialist-owned authored Markdown rubric sidecar when the
+  review-skill structure standard explicitly permits and names it; it belongs
+  to that specialist, is declared by its `content.md`, and is not a generated
+  pointer or a general-purpose organization file
 
 Platform pack pointer files declared by `platform.yaml` are generated output,
 not source files.
+
+The authored-sidecar exception is narrow: do not use it for wrapper ceremony,
+telemetry, routing, provider-native output, or arbitrary `patterns.md`,
+`reference.md`, or `audit-rubrics.md` files. Put ordinary authored guidance in
+`content.md` H2 sections.
 
 Pack-owned add-ons are consumed through manifest-owned declarations, not
 hand-authored skill prose. `addon_usage` maps review/check skill-relative

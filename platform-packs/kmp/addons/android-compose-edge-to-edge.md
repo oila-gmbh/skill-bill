@@ -26,6 +26,8 @@ This guidance mainly adapts the official Android `system/edge-to-edge` skill int
 - For adaptive scaffolds such as `NavigationSuiteScaffold`, apply insets to the inner screen content rather than the scaffold parent itself.
 - When a decorative element needs to match a system bar, prefer inset size modifiers instead of hard-coded dimensions.
 - Verify system-bar legibility as well as geometry. Edge-to-edge is not complete if content reaches the bar but the bar icons or background contrast are wrong.
+- Verify `WindowInsetsControllerCompat.isAppearanceLightStatusBars` matches the actual background luminance when manual icon appearance is used.
+- Verify `SystemBarStyle` light/dark scrims preserve system-bar contrast across theme changes and transparent edge-to-edge content.
 
 ## IME, focus, and scrolling
 

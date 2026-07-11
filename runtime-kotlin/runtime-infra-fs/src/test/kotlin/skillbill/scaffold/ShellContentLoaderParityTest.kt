@@ -2,6 +2,7 @@ package skillbill.scaffold
 
 import skillbill.error.ContractVersionMismatchError
 import skillbill.error.InvalidManifestSchemaError
+import skillbill.error.InvalidReviewSkillStructureError
 import skillbill.error.InvalidSkillMdShapeError
 import skillbill.error.MissingContentFileError
 import skillbill.error.MissingManifestError
@@ -12,6 +13,7 @@ import skillbill.scaffold.platformpack.loadQualityCheckContent
 import skillbill.scaffold.runtime.SHELL_CONTRACT_VERSION
 import skillbill.scaffold.validation.validateSkillMdShape
 import skillbill.testing.repoRootFromTest
+import skillbill.testing.seedConformingPlatformPack
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.name
@@ -24,22 +26,43 @@ import kotlin.test.assertTrue
 class ShellContentLoaderParityTest {
   @Test
   fun `loads valid pack through manifest driven shell contract`() {
-    val pack = loadPlatformPack(fixture("valid_pack"))
+    val repo = Files.createTempDirectory("valid-pack-contract")
+    seedConformingPlatformPack(repo, "valid-pack")
+    val pack = loadPlatformPack(repo.resolve("platform-packs/valid-pack"))
 
-    assertEquals("valid_pack", pack.slug)
+    assertEquals("valid-pack", pack.slug)
     assertEquals(SHELL_CONTRACT_VERSION, pack.contractVersion)
     assertEquals(listOf("architecture"), pack.declaredCodeReviewAreas)
-    assertEquals(listOf(".fixture"), pack.routingSignals.strong)
-    assertEquals("code-review", pack.declaredFiles.baseline?.parent?.name)
+    assertEquals(listOf(".valid-pack", "*.valid-pack"), pack.routingSignals.strong)
+    assertEquals("bill-valid-pack-code-review", pack.declaredFiles.baseline?.parent?.name)
   }
 
   @Test
   fun `loads optional quality check content without fallback`() {
-    val pack = loadPlatformPack(fixture("code_review_and_quality_check"))
+    val repo = Files.createTempDirectory("quality-check-contract")
+    seedConformingPlatformPack(repo, "code-review-and-quality-check")
+    val pack = loadPlatformPack(repo.resolve("platform-packs/code-review-and-quality-check"))
     val contentPath = loadQualityCheckContent(pack)
 
     assertEquals(pack.declaredQualityCheckFile, contentPath)
     assertTrue(Files.isRegularFile(contentPath))
+  }
+
+  @Test
+  fun `loader rejects a malformed specialist through the production conformance contract`() {
+    val repo = Files.createTempDirectory("invalid-review-shape")
+    seedConformingPlatformPack(repo, "invalid-review-shape")
+    val packRoot = repo.resolve("platform-packs/invalid-review-shape")
+    Files.writeString(
+      packRoot.resolve("code-review/bill-invalid-review-shape-code-review-architecture/content.md"),
+      malformedSpecialistContent(),
+    )
+
+    val error = assertFailsWith<InvalidReviewSkillStructureError> {
+      loadPlatformPack(packRoot, enforceGovernedReviewStructure = true)
+    }
+
+    assertContains(error.message.orEmpty(), "specialist H2 sequence")
   }
 
   @Test
@@ -347,11 +370,24 @@ class ShellContentLoaderParityTest {
       |
     """.trimMargin()
     Files.writeString(contentFile, richBody)
-    // Calling the validator directly on the new content.md (frontmatter-only) must not throw.
+    // Calling the shape validator directly remains intentionally independent of governed body conformance.
     validateSkillMdShape(contentFile, validateBodyShape = false)
-    loadPlatformPack(root)
   }
 }
+
+private fun malformedSpecialistContent(): String = """
+  ---
+  name: bill-invalid-review-shape-code-review-architecture
+  description: Malformed architecture specialist fixture.
+  internal-for: bill-code-review
+  ---
+
+  # Malformed Architecture Specialist
+
+  ## Focus
+
+  Missing the governed specialist skeleton.
+""".trimIndent()
 
 private inline fun <reified T : Throwable> assertNamedFailure(fixtureName: String, expectedMessage: String) {
   val error = assertFailsWith<T> {

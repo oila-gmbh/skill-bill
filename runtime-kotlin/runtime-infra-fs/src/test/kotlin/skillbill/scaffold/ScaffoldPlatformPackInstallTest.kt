@@ -15,7 +15,7 @@ import kotlin.test.assertTrue
 
 class ScaffoldPlatformPackInstallTest {
   @Test
-  fun `platform pack scaffold installs internal quality check as bill-code-check sidecar`() = withIsolatedUserHome {
+  fun `platform pack scaffold installs internal skills as parent sidecars`() = withIsolatedUserHome {
     val repo = seedRepo()
     val home = Path.of(System.getProperty("user.home"))
     Files.createDirectories(home.resolve(".codex"))
@@ -32,6 +32,15 @@ class ScaffoldPlatformPackInstallTest {
       Files.isRegularFile(parentTarget.resolve("bill-java-code-check.md")),
       "platform quality-check skill must install as a sidecar of bill-code-check",
     )
+    val reviewParentTarget = readSymlinkTarget(codexSkills.resolve("bill-code-review"))
+    assertTrue(
+      Files.isRegularFile(reviewParentTarget.resolve("bill-java-code-review.md")),
+      "platform review baseline must install as a sidecar of bill-code-review",
+    )
+    assertTrue(
+      Files.isRegularFile(reviewParentTarget.resolve("bill-java-code-review-security.md")),
+      "platform review specialists must install as sidecars of bill-code-review",
+    )
   }
 }
 
@@ -46,6 +55,7 @@ private fun seedRepo(): Path {
     Files.writeString(target, "# ${target.fileName}\n")
   }
   seedBaseSkill(repo, "bill-code-check")
+  seedBaseSkill(repo, "bill-code-review")
   seedKmpPack(repo)
   return repo
 }

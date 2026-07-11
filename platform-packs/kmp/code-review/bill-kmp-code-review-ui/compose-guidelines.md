@@ -2,7 +2,7 @@
 
 ## 1. State Hoisting
 
-Every composable that displays or reacts to state MUST follow the state hoisting pattern:
+Every composable that displays or reacts to state MUST follow the state hoisting pattern. The example below is Android-target-only because it uses Hilt and Android lifecycle collection:
 
 - **Stateless composables** receive state as parameters and emit events via lambdas.
 - **Stateful wrappers** own `remember` / `ViewModel` state and delegate to the stateless version.
@@ -42,8 +42,9 @@ fun LoginFormStateful(
 
 - Hoist state to the **lowest common ancestor** that needs it.
 - Never hoist higher than necessary — don't push everything to the screen level if only a subsection needs it.
-- Use `collectAsStateWithLifecycle()` (not `collectAsState()`) for `Flow` → `State` conversion. It is lifecycle-aware and avoids wasted work when the UI is off-screen.
+- On Android targets, use `collectAsStateWithLifecycle()` (not `collectAsState()`) for `Flow` → `State` conversion. In common code, require it only when `lifecycle-runtime-compose` is available in `commonMain`; otherwise use the lifecycle-aware API supported by the shared architecture.
 - Use `rememberSaveable` instead of `remember` for state that must survive configuration changes (e.g., text field input, scroll position, selected tabs).
+- Keep immediate `TextField` editing state at the UI boundary; reject asynchronous ViewModel round-trips that replace newer keystrokes with stale state and drop characters.
 
 ---
 
@@ -109,7 +110,7 @@ Strong skipping does **not** make unstable types stable. It only adds a referent
 ### Avoid Unnecessary Recomposition
 
 - Wrap expensive computations in `remember(key) { }` with proper keys.
-- Use `derivedStateOf {}` when a state value is computed from other state and changes less frequently than its inputs.
+- Use `remember { derivedStateOf { ... } }` only when the derived value changes less frequently than its observed inputs. Reject unremembered `derivedStateOf`, and reject needless use for direct or cheap transformations that change whenever their inputs do.
 - Use `key(stableId)` inside `LazyColumn` / `LazyRow` items to preserve state across reorders.
 - Never create lambdas or objects inside a composable body without `remember` — they cause child recomposition on every pass.
 - Use `Modifier.clickable` with a remembered lambda or a method reference, not an inline lambda that captures changing state.
@@ -161,9 +162,9 @@ Text(text = title, style = MaterialTheme.typography.titleMedium, color = Materia
 
 ## 5. String Resources & Localization
 
-- **Never hardcode user-facing strings.** Use `stringResource(R.string.xxx)`.
-- Use `pluralStringResource` for quantity strings.
-- Use string formatting with arguments: `stringResource(R.string.greeting, userName)`.
+- **Never hardcode user-facing strings.** On Android targets, use `stringResource(R.string.xxx)`.
+- On Android targets, use `pluralStringResource` for quantity strings.
+- On Android targets, use string formatting with arguments: `stringResource(R.string.greeting, userName)`.
 - Content descriptions for icons and images must always use string resources.
 - Non-user-facing strings (log tags, test data) are exempt.
 
@@ -174,6 +175,19 @@ Text(text = "No results found")
 // ✅
 Text(text = stringResource(R.string.no_results_found))
 ```
+
+The `R.string` example above and `strings.xml` rules are Android-target-only; never require Android resources in `commonMain`.
+
+---
+
+## Compose Multiplatform
+
+- In common Compose sources, require generated `Res.string` resources through `org.jetbrains.compose.resources.stringResource`; reject `R.string` and Android framework resource access in `commonMain`.
+- Keep `ComposeUIViewController` creation at the iOS host boundary and make ownership and disposal explicit; reject common UI code that reaches into UIKit lifecycle state.
+- Require `UIKitView` factory, update, and disposal behavior to keep one source of truth across Compose recomposition and UIKit callbacks.
+- Use `collectAsStateWithLifecycle` in common code only when the selected `lifecycle-runtime-compose` version exposes it from `commonMain`; do not assume Android-only artifact availability.
+- Require multiplatform ViewModel ownership and scoping to be explicit per route or screen. `hiltViewModel()` is Android-target-only and must not leak into common sources.
+- Verify platform UI interop preserves lifecycle, cancellation, and state ownership when the same screen runs on Android and iOS.
 
 ---
 
@@ -221,6 +235,9 @@ Use the correct side-effect handler for each scenario:
 - Never call `suspend` functions directly inside composable body — use `LaunchedEffect`.
 - Be careful with `LaunchedEffect(Unit)` — it only runs once. If you need re-triggering, use a proper key.
 - Use `snapshotFlow { }` to convert Compose state into a `Flow` inside `LaunchedEffect`.
+- Reject background-coroutine writes to Compose snapshot state unless mutation is brought onto an allowed snapshot or UI context with explicit ownership.
+- Use `snapshotFlow { state.value }` for reactive observation inside effects; reject loops or flows that poll `.value` and miss snapshot invalidation semantics.
+- Use `rememberUpdatedState` when a long-lived `LaunchedEffect` or `DisposableEffect` must call the latest lambda or read the latest value without restarting; reject stale captures that invoke obsolete behavior.
 - Avoid side effects in the composable body — they make the function impure and hard to reason about.
 
 ---
@@ -258,7 +275,7 @@ fun ProfileScreen(
 
 ## 9. Preview Annotations
 
-Every public/internal composable MUST have at least one `@Preview`:
+For Android-owned UI, every public/internal composable MUST have at least one AndroidX `@Preview`:
 
 ```kotlin
 @Preview(showBackground = true)
@@ -280,13 +297,13 @@ private fun LoginFormPreview() {
 
 ### Preview Rules
 
-- Wrap previews in your app's theme composable.
-- Provide at least light + dark mode previews.
-- Consider font scale preview: `@Preview(fontScale = 1.5f)`.
+- On Android targets, wrap previews in the app's theme composable and provide at least light and dark variants.
+- On Android targets, consider `@Preview(fontScale = 1.5f)` and use `uiMode = Configuration.UI_MODE_NIGHT_YES` for the dark variant.
 - Preview functions are `private` and named `XxxPreview`.
 - Use realistic but static data — never call a ViewModel or repository.
 - For screens with many states, create multiple previews: `XxxLoadingPreview`, `XxxErrorPreview`, `XxxContentPreview`.
-- Use `@PreviewParameter` with a `PreviewParameterProvider` for combinatorial previews.
+- On Android targets, use `@PreviewParameter` with a `PreviewParameterProvider` for combinatorial previews.
+- In `commonMain` and iOS-owned sources, do not require AndroidX `@Preview`, `Configuration`, or `PreviewParameterProvider`; apply only preview tooling supported by that target and IDE.
 
 ---
 
@@ -352,6 +369,7 @@ Choose the right composable for the job:
 
 - ViewModels expose `StateFlow<UiState>`, not `LiveData`.
 - Use a single `uiState` flow per screen when possible — avoid multiple independent state flows that the UI must combine.
-- Collect state with `collectAsStateWithLifecycle()`.
+- On Android targets, collect state with `collectAsStateWithLifecycle()`. In common sources, verify `lifecycle-runtime-compose` availability before requiring that API.
 - ViewModel events (one-shot): use `Channel` → `Flow` consumed in a `LaunchedEffect`, or use `SnackbarHostState` for messages.
-- Never pass `Context`, `Activity`, or Android framework objects into a ViewModel.
+- On Android targets, never pass `Context`, `Activity`, or Android framework objects into a ViewModel.
+- Keep multiplatform ViewModel construction and route scoping platform-neutral; use `hiltViewModel()` only in Android-owned wrappers.

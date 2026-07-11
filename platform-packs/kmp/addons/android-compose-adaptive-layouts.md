@@ -20,6 +20,8 @@ This guidance adapts the adaptive panes and scene-oriented themes from the offic
 
 ## Implementation guidance
 
+- Use `ListDetailPaneScaffold` with `rememberListDetailPaneScaffoldNavigator` when list-detail navigation needs shared compact and expanded state.
+- Derive adaptive behavior from `WindowSizeClass` breakpoints and an explicit `PaneScaffoldDirective`; reject hard-coded handset/tablet branches that drift from the actual window.
 - Treat adaptive list-detail and pane layouts as navigation/state problems, not just layout reshuffles.
 - Keep selection state, detail-pane state, and top-level navigation state explicit so compact and expanded layouts can share the same underlying model.
 - Avoid baking handset-only assumptions into list/detail flows. Expanded layouts often need both panes active without destroying the compact navigation story.

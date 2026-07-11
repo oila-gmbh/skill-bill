@@ -351,7 +351,7 @@ private fun planPlatformPack(
   adapters: ScaffoldAdapterSeams,
 ): ScaffoldPlan {
   val platform = requireString(payload, "platform")
-  val subagents = policyOptionalSpecialistSubagents(payload, SKILL_KIND_PLATFORM_PACK)
+  rejectPlatformPackSubagentOverrides(payload)
   val defaults = policyResolvePlatformPackDefaults(payload, platform)
   val packRoot = repoRoot.resolve("platform-packs").resolve(platform)
   if (Files.exists(packRoot)) {
@@ -372,25 +372,18 @@ private fun planPlatformPack(
       packRoot.resolve("code-review").resolve(specialistNames.getValue(area))
     }
   val specialistMetadata =
-    selectedAreas.associateWith { area -> defaultAreaFocus(area) }
-  val platformPackSubagents = when {
-    subagents.suppressed -> emptyList()
-    subagents.specialists.isNotEmpty() -> subagents.specialists
-    else -> selectedAreas.map { area -> specialistNames.getValue(area) }
-  }
-  val platformPackSubagentDescriptions =
-    if (!subagents.suppressed && subagents.specialists.isEmpty()) {
-      selectedAreas.associate { area ->
-        val name = specialistNames.getValue(area)
-        val description = inferSkillDescription(
-          TemplateContext(name, "code-review", platform, area, defaults.displayName),
-          defaultAreaFocus(area),
-        )
-        name to description
-      }
-    } else {
-      emptyMap()
+    selectedAreas.associateWith { area ->
+      specialistFocus(defaults.displayName, area, defaults.strongSignals)
     }
+  val platformPackSubagents = selectedAreas.map { area -> specialistNames.getValue(area) }
+  val platformPackSubagentDescriptions = selectedAreas.associate { area ->
+    val name = specialistNames.getValue(area)
+    val description =
+      "${defaults.displayName} ${area.replace('-', ' ')} specialist code reviewer. " +
+        "Runs against ${specialistMetadata.getValue(area)}. " +
+        "Returns a Risk Register in the F-XXX bullet format."
+    name to description
+  }
   val notes = policyPlatformPackNotes(platform, defaults.presetUsed, selectedAreas)
 
   return ScaffoldPlan(
@@ -428,9 +421,20 @@ private fun planPlatformPack(
     baselineLayers = baselineLayers,
     subagentSpecialists = platformPackSubagents,
     subagentDescriptions = platformPackSubagentDescriptions,
-    subagentsSuppressed = subagents.suppressed,
+    subagentsSuppressed = false,
   )
 }
+
+private fun rejectPlatformPackSubagentOverrides(payload: Map<String, Any?>) {
+  val field = listOf("subagent_specialists", "no_subagents").firstOrNull(payload::containsKey) ?: return
+  throw InvalidScaffoldPayloadError(
+    "Scaffold payload field '$field' is not supported for kind 'platform-pack'; " +
+      "the review structure standard requires exactly one manifest-derived native agent per declared specialist.",
+  )
+}
+
+private fun specialistFocus(displayName: String, area: String, routingSignals: List<String>): String =
+  "$displayName ${defaultAreaFocus(area)} across ${routingSignals.joinToString(", ")} signals"
 
 // SKILL-52.1 subtask 3 (AC1): `optionalBaselineLayers`, `validateBaselineLayerPayloadReferences`,
 // and `validateBaselineLayerModeSupport` now live on `FileSystemScaffoldRepoValidation`.
@@ -984,7 +988,7 @@ private fun stagePlatformPackSkills(
   stageFile(
     txn,
     baselineSkillPath.resolve("content.md"),
-    renderContentBody(baselineContext, baselineDescription),
+    renderContentBody(baselineContext, baselineDescription, internalFor = "bill-code-review"),
   )
 
   val qualityCheckContext =
@@ -1016,7 +1020,7 @@ private fun stagePlatformPackArea(
   stageFile(
     txn,
     areaPath.resolve("content.md"),
-    renderContentBody(areaContext, areaDescription),
+    renderContentBody(areaContext, areaDescription, internalFor = "bill-code-review"),
   )
   return emptyList()
 }

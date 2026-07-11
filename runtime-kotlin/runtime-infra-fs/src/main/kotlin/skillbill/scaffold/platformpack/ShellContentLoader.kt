@@ -41,11 +41,14 @@ internal fun loadPlatformManifest(packRoot: Path): PlatformManifest {
   return buildPack(slug, resolvedPackRoot, manifestPath, raw)
 }
 
-internal fun loadPlatformPack(packRoot: Path): PlatformManifest {
+internal fun loadPlatformPack(packRoot: Path, enforceGovernedReviewStructure: Boolean = false): PlatformManifest {
   val pack = loadPlatformManifest(packRoot)
   validatePlatformPackCompositions(loadCompositionClosure(pack))
   validatePlatformPack(pack, SHELL_CONTRACT_VERSION)
   pack.declaredQualityCheckFile?.let { loadQualityCheckContent(pack) }
+  if (enforceGovernedReviewStructure) {
+    skillbill.scaffold.validation.ReviewSkillStructureValidator.validate(pack.packRoot)
+  }
   return pack
 }
 

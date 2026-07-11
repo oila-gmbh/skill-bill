@@ -5,11 +5,19 @@ display_name: Kotlin
 routing_signals:
   strong:
     - ".kt"
+    - "*.kt"
+    - ".kts"
+    - "*.kts"
+    - "build.gradle"
     - "build.gradle.kts"
+    - "settings.gradle.kts"
+    - "gradle/libs.versions.toml"
+    - "detekt.yml"
     - "kotlin/"
   tie_breakers:
-    - "If Android/KMP markers (androidMain, iosMain, AndroidManifest.xml, expect/actual) are present, prefer the KMP pack."
-    - "Otherwise route generic Kotlin/JVM libraries, CLIs, shared utilities, and backend/server Kotlin work to this pack."
+    - "Prefer this Kotlin pack when Kotlin/JVM source and Gradle Kotlin markers dominate the owned diff."
+    - "Do not prefer this pack over the adjacent KMP pack when Android/KMP markers (androidMain, iosMain, AndroidManifest.xml, expect/actual) establish KMP ownership."
+    - "Exclude generated and vendored files from dominance scoring."
 
 declared_code_review_areas:
   - architecture
@@ -35,21 +43,21 @@ declared_files:
 
 area_metadata:
   architecture:
-    focus: "architecture, boundaries, and dependency direction"
+    focus: "Kotlin use-case and transaction ownership, injected CoroutineScope lifecycles, internal visibility, and Gradle module boundaries"
   performance:
-    focus: "performance risks on hot paths, blocking I/O, and resource usage"
+    focus: "Kotlin runBlocking and dispatcher starvation, Flow backpressure, eager collections, and ORM hydration costs"
   platform-correctness:
-    focus: "lifecycle, concurrency, threading, and logic correctness"
+    focus: "Kotlin CancellationException propagation, SupervisorJob isolation, Mutex reentrancy, and StateFlow or SharedFlow delivery invariants"
   security:
-    focus: "secrets handling, auth, and sensitive-data exposure"
+    focus: "Kotlin dangerous input sinks, object authorization, tenant isolation, unsafe deserialization, and JWT verification"
   testing:
-    focus: "test coverage quality and regression protection"
+    focus: "Kotlin runTest virtual time, test dispatcher ordering, Flow sequence assertions, and real persistence effects"
   api-contracts:
-    focus: "API contracts, request validation, and serialization"
+    focus: "Kotlin explicitNulls and encodeDefaults compatibility, Jackson module behavior, validation, and stable error contracts"
   persistence:
-    focus: "persistence, transactions, migrations, and data consistency"
+    focus: "Kotlin Exposed newSuspendedTransaction boundaries, Spring proxy transactions, Hibernate sessions, and scoped atomic writes"
   reliability:
-    focus: "timeouts, retries, background work, and observability"
+    focus: "Kotlin consumer supervision, TimeoutCancellationException classification, bounded replay, outbox ordering, and failure telemetry"
 
 declared_quality_check_file: quality-check/bill-kotlin-code-check/content.md
 

@@ -6,40 +6,33 @@ internal-for: bill-code-review
 
 # Performance Review Specialist
 
-Review only high-impact performance issues.
+Review only measurable user-facing or production-facing performance failures.
 
 ## Focus
-- Main-thread or request-thread blocking
-- Expensive or repeated work in hot paths
-- Inefficient DB/network access patterns (N+1, redundant calls)
-- Retry/backoff inefficiency and battery/network/CPU waste
-- Memory pressure, buffering, or startup/latency regressions users or operators would notice
 
-## Ignore — DO NOT report these
-- Micro-optimizations without measurable user-facing or production-facing impact
-- Style feedback
-- Snapshot record overhead from unconditional `mutableStateOf` writes (equality guard is nice but negligible)
-- Small list allocations on recomposition (e.g., `.filter {}` on <20 items)
-- `SharedTransitionLayout` vs `Crossfade` differences (unless in a scroll/animation hot path)
-- `remember` vs `derivedStateOf` for cheap computations on small collections
-- Single extra object allocation per recomposition or request
+- Blocking work, dispatcher saturation, Flow backpressure, collection cost, database over-fetching, and lazy-load amplification
 
-**Litmus test before reporting:** Would a user or operator ever notice this in production? Does it cause jank, ANR, latency spikes, memory pressure, throughput collapse, or battery drain? If neither, skip it.
+## Ignore
+
+- Micro-optimizations, small allocations, or style changes without evidence of latency, memory, throughput, or resource impact
 
 ## Applicability
 
-Use this specialist for shared Kotlin performance risks across libraries, app layers, and backend services. Favor findings that would matter regardless of platform; leave UI-framework-specific or backend-transport-specific concerns to route-specific specialists.
+Use this specialist for Kotlin libraries and services where execution context, data volume, I/O, or serialization can create observable cost.
+
 ## Project-Specific Rules
 
-### Shared Kotlin Performance
-- Avoid repeated expensive work in hot paths when inputs are unchanged
-- Watch for N+1 query/call patterns and redundant round-trips
-- Keep blocking I/O and heavy CPU work off latency-sensitive threads or tight loops
-- Reuse expensive clients, serializers, parsers, and caches where construction cost is significant
-- Avoid per-item downstream calls inside large loops when batching or prefetching is feasible
-- Bound pagination, batch sizes, queue drains, and in-memory buffering
-- Use bounded retries with backoff and jitter for transient failures
-- Large batch processing must avoid unbounded memory growth
-- Watch for duplicate serialization, repeated auth lookups, or repeated config parsing inside hot paths
-- Flag cache stampede or thundering-herd patterns only when they can realistically spike load or latency
-- In findings, state the expected production impact such as latency, memory pressure, startup cost, throughput loss, or battery drain.
+### Execution and Backpressure
+
+- Reject `runBlocking` inside a coroutine or on `Dispatchers.Default`; it blocks worker threads and can starve unrelated coroutine work.
+- Reject blocking JDBC or filesystem I/O outside `Dispatchers.IO` or a repository-owned blocking dispatcher.
+- Account for `Dispatchers.IO`'s default parallelism ceiling of the greater of 64 threads or the available processor count, unless `kotlinx.coroutines.io.parallelism` configures it; reject unbounded blocking fan-out that can exhaust that ceiling, connections, or downstream capacity under load.
+- Verify `flowOn` is placed upstream of the work it should move and require bounded `buffer` or explicit backpressure where producer/consumer rates diverge.
+
+### Allocation and Data Access
+
+- Prefer `asSequence` or a single-pass operation when a large eager `map`/`filter` chain creates avoidable intermediate collections on a hot path.
+- Reject full-row or full-entity hydration for count, exists, or aggregate operations when the datastore can compute the answer directly.
+- Reject serialization that traverses lazy ORM relationships and triggers N+1 queries or detached-session failures.
+- Require batches, queues, retries, and in-memory buffers to remain bounded under realistic load.
+- For Blocker or Major findings, describe the concrete latency, memory-pressure, or throughput failure scenario.

@@ -216,6 +216,7 @@ private fun seedRepo(): Path {
     Files.writeString(target, "# ${target.fileName}\n")
   }
   seedBaseSkill(repo, "bill-code-check")
+  seedBaseSkill(repo, "bill-code-review")
   seedKotlinPack(repo)
   seedKmpPack(repo)
   return repo

@@ -4,6 +4,7 @@ package skillbill.install
 
 import skillbill.error.ContractVersionMismatchError
 import skillbill.error.InvalidInstallPlanSchemaError
+import skillbill.error.InvalidReviewSkillStructureError
 import skillbill.error.MissingContentFileError
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.InstallAgentSelection
@@ -26,6 +27,7 @@ import skillbill.install.staging.applicablePointers
 import skillbill.install.staging.authoredFilesFor
 import skillbill.install.staging.computeInstallContentHash
 import skillbill.install.staging.generatedSupportPointersFor
+import skillbill.testing.seedConformingPlatformPack
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
@@ -106,6 +108,45 @@ class InstallPlanBuilderTest {
     assertEquals(InstallPlanSkillKind.PLATFORM_PACK, skillsByName.getValue("bill-python-code-check").kind)
     assertFalse(skillsByName.containsKey("bill-kotlin-code-review"))
     assertFalse(skillsByName.containsKey("bill-kmp-code-review"))
+  }
+
+  @Test
+  fun `selected platform planning rejects malformed specialist structure`() {
+    val fixture = setupPlanFixture()
+    seedPlatformPack(fixture.repoRoot, slug = "invalid-review-shape")
+    Files.writeString(
+      fixture.repoRoot.resolve(
+        "platform-packs/invalid-review-shape/code-review/" +
+          "bill-invalid-review-shape-code-review-architecture/content.md",
+      ),
+      """
+      |---
+      |name: bill-invalid-review-shape-code-review-architecture
+      |description: Malformed architecture specialist fixture.
+      |internal-for: bill-code-review
+      |---
+      |
+      |# Malformed Architecture Specialist
+      |
+      |## Focus
+      |
+      |Missing the governed specialist skeleton.
+      |
+      """.trimMargin(),
+    )
+
+    val error = assertFailsWith<InvalidReviewSkillStructureError> {
+      InstallOperations.planInstall(
+        fixture.request(
+          platformPackSelection = PlatformPackSelection(
+            mode = PlatformPackSelectionMode.SELECTED,
+            selectedSlugs = setOf("invalid-review-shape"),
+          ),
+        ),
+      )
+    }
+
+    assertContains(error.message.orEmpty(), "specialist H2 sequence")
   }
 
   @Test
@@ -458,7 +499,7 @@ class InstallPlanBuilderTest {
       )
     }
 
-    assertContains(error.message.orEmpty(), "Pointer 'review-orchestrator.md'")
+    assertContains(error.message.orEmpty(), "review-orchestrator.md")
     assertContains(error.message.orEmpty(), "does not exist")
   }
 
@@ -486,7 +527,7 @@ class InstallPlanBuilderTest {
       )
     }
 
-    assertContains(error.message.orEmpty(), "Pointer 'review-orchestrator.md'")
+    assertContains(error.message.orEmpty(), "review-orchestrator.md")
     assertContains(error.message.orEmpty(), "escapes repoRoot")
   }
 
@@ -589,69 +630,14 @@ class InstallPlanBuilderTest {
     areaNames: List<String> = listOf("architecture"),
     pointerTarget: String? = null,
   ) {
-    val codeReviewName = "bill-$slug-code-review"
-    val packRoot = repoRoot.resolve("platform-packs").resolve(slug)
-    Files.createDirectories(packRoot.resolve("code-review").resolve(codeReviewName))
-    val areaSkillNames = areaNames.associateWith { area -> "bill-$slug-code-review-$area" }
-    val declaredAreas = if (areaNames.isNotEmpty()) {
-      areaNames.joinToString("") { area -> "\n  - $area" }
-    } else {
-      " []"
-    }
-    val declaredAreaFiles = if (areaNames.isNotEmpty()) {
-      areaSkillNames.entries.joinToString("") { (area, skillName) ->
-        "\n    $area: \"code-review/$skillName/content.md\""
-      }
-    } else {
-      " {}"
-    }
-    areaSkillNames.values.forEach { areaSkillName ->
-      Files.createDirectories(packRoot.resolve("code-review").resolve(areaSkillName))
-    }
-    Files.createDirectories(packRoot.resolve("quality-check").resolve(qualityCheckName))
-    Files.writeString(
-      packRoot.resolve("platform.yaml"),
-      """
-      |platform: "$slug"
-      |contract_version: "1.2"
-      |routing_signals:
-      |  strong:
-      |    - "$slug"
-      |  tie_breakers: []
-      |declared_code_review_areas:$declaredAreas
-      |declared_files:
-      |  baseline: "code-review/$codeReviewName/content.md"
-      |  areas:$declaredAreaFiles
-      |area_metadata: {}
-      |display_name: "$slug"
-      |declared_quality_check_file: "quality-check/$qualityCheckName/content.md"
-      |${pointerTarget?.let { target -> pointerBlock(codeReviewName, target) }.orEmpty()}
-      |
-      """.trimMargin(),
-    )
-    Files.writeString(
-      packRoot.resolve("code-review").resolve(codeReviewName).resolve("content.md"),
-      content(codeReviewName),
-    )
-    areaSkillNames.values.forEach { areaSkillName ->
-      Files.writeString(
-        packRoot.resolve("code-review").resolve(areaSkillName).resolve("content.md"),
-        content(areaSkillName),
-      )
-    }
-    Files.writeString(
-      packRoot.resolve("quality-check").resolve(qualityCheckName).resolve("content.md"),
-      content(qualityCheckName, internalFor = "bill-code-check"),
+    seedConformingPlatformPack(
+      repoRoot = repoRoot,
+      slug = slug,
+      qualityCheckName = qualityCheckName,
+      areaNames = areaNames.ifEmpty { listOf("architecture") },
+      baselinePointerTarget = pointerTarget,
     )
   }
-
-  private fun pointerBlock(codeReviewName: String, target: String): String = """
-    |
-    |pointers:
-    |  code-review/$codeReviewName:
-    |    - name: review-orchestrator.md
-    |      target: $target
-  """.trimMargin()
 
   private fun content(name: String, internalFor: String? = null): String = buildString {
     appendLine("---")
