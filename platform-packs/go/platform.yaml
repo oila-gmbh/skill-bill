@@ -47,25 +47,25 @@ declared_files:
     ux-accessibility: code-review/bill-go-code-review-ux-accessibility/content.md
 area_metadata:
   api-contracts:
-    focus: "Go API contracts, request validation, serialization, handlers, RPC, and compatibility"
+    focus: "net/http and applicable RPC request validation, serialization, response ordering, idempotency, and compatibility"
   architecture:
-    focus: "Go package boundaries, dependency direction, module ownership, and service architecture"
+    focus: "Package and module dependency direction, interface ownership, composition roots, component lifecycles, and goroutine scope ownership"
   performance:
-    focus: "Go performance risks on hot paths, allocations, goroutines, I/O, and resource usage"
+    focus: "Measured pprof and benchmark evidence, allocations, retention, lock contention, scheduler pressure, batching, and bounded resources"
   persistence:
-    focus: "Go SQL, ORM/query builders, migrations, transactions, locking, and data consistency"
+    focus: "database/sql row and transaction lifecycles, isolation, locking, pools, migrations, mapping, and applicable data libraries"
   platform-correctness:
-    focus: "Go runtime semantics, goroutines, channels, contexts, errors, nil handling, and logic correctness"
+    focus: "Goroutine exits, channel ownership, contexts, wrapped errors, typed nils, aliasing, defer, panic, races, and deadlocks"
   reliability:
-    focus: "Go contexts, timeouts, retries, workers, queues, external clients, observability, and degradation"
+    focus: "Graceful server and worker shutdown, deadlines, retries, backpressure, client lifecycles, observability, and partial failure"
   security:
-    focus: "Go auth/authz, secrets, unsafe parsing, command execution, uploads, templates, and sensitive logs"
+    focus: "Authentication, authorization, template trust, bounded parsing, paths, processes, SSRF, uploads, secrets, and dependencies"
   testing:
-    focus: "Go test quality, table tests, race-sensitive coverage, integration boundaries, and regression proof"
+    focus: "Behavioral regression proof, subtests, parallel capture, deterministic concurrency and time, race tests, fuzzing, and weak assertions"
   ui:
-    focus: "Go-rendered UI, templates, admin surfaces, CLIs with interactive output, and dashboards"
+    focus: "Go-owned HTML templates and components, forms, fragments, rendering states, interactive CLI and TUI output"
   ux-accessibility:
-    focus: "Go server-rendered accessibility, forms, feedback, keyboard flow, and localization-sensitive UX"
+    focus: "Labels, error association, focus, keyboard flow, semantics, live feedback, localization, and accessible terminal interaction"
 
 declared_quality_check_file: quality-check/bill-go-code-check/content.md
 

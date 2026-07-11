@@ -112,6 +112,63 @@ class GoPlatformPackTest {
   }
 
   @Test
+  fun `go review metadata routing agents and rubrics expose concrete lane responsibilities`() {
+    val repoRoot = repoRootFromTest()
+    val packRoot = repoRoot.resolve("platform-packs/go")
+    val pack = loadPlatformPack(packRoot)
+    val expectedFocusMarkers = mapOf(
+      "api-contracts" to "net/http",
+      "architecture" to "goroutine scope ownership",
+      "performance" to "pprof",
+      "persistence" to "database/sql",
+      "platform-correctness" to "typed nils",
+      "reliability" to "Graceful server and worker shutdown",
+      "security" to "template trust",
+      "testing" to "parallel capture",
+      "ui" to "interactive CLI and TUI",
+      "ux-accessibility" to "error association",
+    )
+
+    expectedFocusMarkers.forEach { (area, marker) ->
+      assertContains(pack.areaMetadata.getValue(area), marker)
+    }
+
+    val baseline = Files.readString(pack.declaredFiles.baseline)
+    listOf(
+      "errors.Is",
+      "http.Server.Shutdown",
+      "Bubble Tea",
+      "color-independent status",
+    ).forEach { marker -> assertContains(baseline, marker) }
+
+    val agentSource = Files.readString(
+      packRoot.resolve("code-review/bill-go-code-review/native-agents/agents.yaml"),
+    )
+    APPROVED_CODE_REVIEW_AREAS.forEach { area ->
+      assertContains(agentSource, "name: bill-go-code-review-$area")
+    }
+    listOf("Request.Context", "goroutine scope ownership", "t.Parallel hazards", "template trust").forEach {
+      marker -> assertContains(agentSource, marker)
+    }
+
+    val rubricMarkers = mapOf(
+      "api-contracts" to "http.MaxBytesReader",
+      "architecture" to "cmd/<name>/main.go",
+      "performance" to "go tool pprof",
+      "persistence" to "sql.ErrNoRows",
+      "platform-correctness" to "close(ch)",
+      "reliability" to "signal.NotifyContext",
+      "security" to "exec.CommandContext",
+      "testing" to "go test -race",
+      "ui" to "term.IsTerminal",
+      "ux-accessibility" to "aria-describedby",
+    )
+    rubricMarkers.forEach { (area, marker) ->
+      assertContains(Files.readString(pack.declaredFiles.areas.getValue(area)), marker)
+    }
+  }
+
+  @Test
   fun `install plan selects real go pack skills from manifests`() {
     val repoRoot = repoRootFromTest()
     val home = Files.createTempDirectory("skillbill-go-install-plan-home-")

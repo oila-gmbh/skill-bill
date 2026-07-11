@@ -1,59 +1,34 @@
 ---
 name: bill-go-code-review-persistence
-description: Use when reviewing Go persistence risks including database/sql, sqlx, sqlc, GORM, Ent, transactions, query scoping, migrations, concurrency, and data consistency.
+description: Use when reviewing Go database/sql lifecycles, queries, transactions, isolation, pools, migrations, mapping, and applicable data libraries.
 internal-for: bill-code-review
 ---
 
-# Backend Persistence Review Specialist
+# Go Persistence Review Specialist
 
-Review only backend persistence issues that can corrupt data, break consistency, or create high-risk operational regressions.
-
-## Focus
-
-- Transaction boundaries and atomicity
-- Query correctness and tenant/filter scoping
-- Lost updates, race-prone write patterns, and idempotent persistence behavior
-- Migration/schema compatibility risks
-- SQL, driver, ORM, and generated-query mapping mismatches that break reads or writes
-
-## Ignore
-
-- Harmless query-style preferences
-- Micro-optimizations with no correctness or production impact
+Own durable-data correctness and database resource lifecycles. Apply library-specific guidance only when repository evidence shows that library is present.
 
 ## Applicability
 
-Use this specialist for backend/server persistence code only: repositories, `database/sql`, sqlx, sqlc, GORM, Ent, SQL, migrations, projections, and similar persistence layers.
+Apply to `database/sql`, migrations, query generation, and repository code. Examine commit, rollback, scan, and cancellation paths alongside the successful query.
 
 ## Project-Specific Rules
 
-### Transaction And Consistency
+### Go Persistence Rules
 
-- Do not split one business write across multiple implicit transactions unless partial completion is explicitly intended
-- Avoid load-modify-save patterns that can lose concurrent updates when atomic SQL or version checks are required
-- Optimistic updates, counters, balances, status transitions, and reservation flows need atomic predicates, version checks, locks, or unique constraints when concurrent requests can collide
-- Repository methods must apply required tenant/account/ownership filters consistently
-- Upserts, deduplication, and unique-constraint behavior should match the intended idempotency contract
-- Migrations must account for existing data, nullability transitions, indexes, and rollout compatibility
-- Rows, statements, result sets, and transactions must be closed or finalized reliably using the driver or helper equivalent; place cleanup close to acquisition so early returns, loops, or branching do not leak `Rows` or leave transactions unresolved
-- `QueryRow`/`Scan` and equivalent helpers must distinguish `ErrNoRows`, partial reads, and decode failures correctly instead of collapsing them into misleading zero-value success
-- Queries and persistence calls should use the correct `context.Context` so deadlines, cancellation, and tracing behave as intended; avoid background-context database calls in request or worker paths
-- After `BeginTx`, cleanup must make rollback-on-error explicit so failed or panicking paths do not leave transaction state ambiguous
-- Avoid holding connections across goroutine boundaries or long-running operations where pool exhaustion could occur
-- Do not hold persistence transactions open across remote I/O, event publishing, queue dispatch, or other work that should happen after commit unless the project explicitly requires it
-- Bulk operations should preserve correctness, not just speed; verify partial-failure behavior
-- Projection or derived-table updates must be concurrency-safe; avoid read-modify-write patterns when atomic SQL/update operations are required
-- Migration rollout must consider backfills, dual-read/dual-write windows, and replay or rebuild paths when contracts or projections change
-- ORM or query-helper convenience helpers (`sqlx`, `sqlc`, GORM, Ent, builders) must not hide missing filters, accidental N+1 query/write patterns, implicit hooks, or silent partial updates in persistence-critical paths
-- Check database defaults, casts, enum storage, and timestamp behavior for write/read drift against the intended domain and API contract
-- For Blocker or Major findings, explain the data-loss, stale-write, cross-tenant, migration, or consistency consequence explicitly
-
-### ORM, SQL, And Query Boundaries
-
-- Eager/lazy loading choices must not create N+1 reads, over-broad hydration, or stale entity assumptions in persistence-critical or hot paths
-- Within transactions and persistence workflows, reused models/entities/query objects must be refreshed, reloaded, or replaced when stale values can change query or write behavior
-- Query builders, ORM scopes, cursors, transactions, and persistence records should not leak across service or module boundaries unless the local architecture explicitly accepts that coupling
-- Mass update, delete, restore, and bulk-write paths must carry tenant, account, ownership, soft-delete, and business filters as explicitly as single-row paths
-- GORM hooks/preloads, Ent eager-loading or transaction clients, sqlc wrappers, and scanner/binder helpers must keep transaction scope, lock semantics, and write ordering explicit
-- Model/entity hooks, observers, listeners, and callbacks must not perform cross-boundary business workflows unless the project architecture intentionally routes side effects there
-- For Blocker or Major findings, describe the concrete data-loss, consistency, or durability failure scenario.
+- Require `db.QueryContext` and `db.ExecContext` to receive the operation context; context-free calls risk runaway queries after request timeout.
+- Ensure every `*sql.Rows` is closed and `rows.Err()` checked after iteration; skipped closure leaks pool connections and skipped errors return incomplete data.
+- Verify each `rows.Scan` destination matches selected column order and nullability; mismatches cause runtime failures or corrupt field mapping.
+- Require `QueryRowContext(...).Scan` errors to distinguish `sql.ErrNoRows`; collapsing absence into server failure breaks repository contracts.
+- Ensure transactions created by `BeginTx` defer `Rollback` until a successful `Commit`; missing rollback leaks connections on early failure.
+- Reject non-transactional multi-statement invariants when partial success is invalid; a mid-sequence error can corrupt durable state.
+- Verify `sql.TxOptions` isolation and read-only settings match the invariant being protected; default isolation may permit lost updates or stale authorization data.
+- Require read-modify-write paths to use a lock, version column, or conditional update; unchecked concurrency risks overwritten data.
+- Ensure dynamic SQL values use placeholders rather than `fmt.Sprintf`; string interpolation permits injection and invalid quoting.
+- Verify pool settings such as `SetMaxOpenConns`, `SetMaxIdleConns`, and `SetConnMaxLifetime` match database limits; bad sizing causes starvation or connection storms.
+- Require migration additions to be compatible with the running old binary during rollout; immediate `NOT NULL` or destructive renames can break live deployments.
+- Ensure backfills are bounded, restartable, and separate from schema locks when data volume is material; monolithic migration work risks operational timeout.
+- Verify domain mapping preserves `sql.NullString`, pointers, or repository-specific nullable types intentionally; lossy conversion corrupts absent-versus-empty data.
+- Require applicable `sqlc` generated query changes to be produced by the repository generator; hand edits will drift and fail the next build.
+- Ensure applicable GORM operations check `Error` and intentional `RowsAffected`; ignored results can report success after failed or missing writes.
+- Verify applicable Ent or sqlx transaction handles are threaded through all repository calls; escaping to the root client breaks atomicity and risks partial data.
