@@ -18,6 +18,7 @@ Use repository benchmarks, production profiles, traces, or a reproducible worklo
 
 - Require a `go test -bench` comparison or production measurement for a claimed hot-path regression; intuition-only rewrites risk needless complexity without latency benefit.
 - Verify CPU claims against `runtime/pprof` or `go tool pprof` call stacks; optimizing outside sampled work fails to improve operator-visible throughput.
+- Require scheduler or blocking claims to be reproduced with `runtime/trace`, `go tool trace`, or block profiles; source inspection alone can misattribute goroutine latency and approve an ineffective regression fix.
 - Require heap investigations to distinguish `alloc_space` from `inuse_space`; confusing allocation churn with retention leads to incorrect memory fixes.
 - Ensure repeated conversions between `string` and `[]byte` are removed only on measured paths; uncontrolled conversions can raise allocation rate and garbage-collection latency.
 - Verify values returned across interfaces do not escape unexpectedly using `go build -gcflags=-m`; avoidable heap escape risks throughput regression under load.
@@ -30,5 +31,5 @@ Use repository benchmarks, production profiles, traces, or a reproducible worklo
 - Verify batching with `time.Timer` and size thresholds flushes on cancellation and low traffic; throughput gains must not cause data loss or unbounded delay.
 - Ensure `encoding/json` reflection or repeated marshaling is not duplicated on a confirmed hot response path; redundant serialization increases CPU and allocation cost.
 - Require database and network loops to batch or parallelize only within dependency limits; uncontrolled concurrency risks pool starvation and timeout cascades.
-- Verify benchmark setup calls `b.ResetTimer` or `b.ReportAllocs` where preparation would distort results; invalid measurements can approve a real performance regression.
+- Verify benchmark setup uses version-appropriate `testing.B` loops and timer controls such as `b.ResetTimer`, `b.StopTimer`, or `b.ReportAllocs` only when setup, allocation evidence, or the repository's Go version requires them; treating their mere absence as a defect creates invalid review findings while distorted measurements can approve a real regression.
 - Reject caching with `sync.Map` when invalidation, cardinality, and ownership are undefined; an unbounded cache leaks memory and serves stale data.

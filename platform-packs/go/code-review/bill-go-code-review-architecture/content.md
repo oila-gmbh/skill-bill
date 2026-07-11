@@ -23,11 +23,11 @@ Apply these rules to changed Go packages, modules, entry points, constructors, i
 - Require executable wiring in `cmd/<name>/main.go` or an equivalent composition root to expose dependency construction; hidden global initialization risks order-dependent startup failures.
 - Verify constructors such as `NewServer` return components whose ownership and required dependencies are explicit; partially initialized values risk nil dereferences after startup.
 - Ensure long-lived components pair `Start` with an owner-visible `Close`, `Stop`, or `Wait`; an orphaned lifecycle leaks goroutines and resources during reload or shutdown.
-- Require every `go` statement that creates component work to remain within that component's documented scope; detached goroutines risk state mutation after their owner has stopped.
+- Require every goroutine-producing component to expose how its `go` statements stop and join within the component's documented scope; detached work risks state mutation after its owner has stopped, but goroutines do not need invented names.
 - Reject package globals guarded only by `init()` when initialization order affects correctness; import-order coupling can break tests and alternate binaries.
-- Verify shared state is owned by one component and reached through a deliberate method or channel contract; duplicate ownership risks races and divergent state.
+- Verify shared state has one component owner and an explicit access contract using confinement, `sync.Mutex`, `sync/atomic`, or channel ownership as the invariant requires; duplicate or mismatched ownership risks races and divergent state.
 - Ensure `context.Context` is passed through operations rather than stored permanently in service structs; retained request context risks stale authorization data and resource leaks.
 - Require transport structs, domain values, and storage records to remain distinct when their validation or serialization contracts differ; shape reuse risks corrupt data and client regressions.
-- Verify cross-package callbacks or `chan T` values declare who sends, receives, and closes them; ambiguous ownership risks deadlock and shutdown crashes.
+- Verify cross-package callbacks or `chan T` values declare send, receive, and termination semantics, including whether closure is part of the protocol and who may perform it; ambiguous ownership risks deadlock and shutdown crashes.
 - Reject business workflows embedded in `http.Handler`, Cobra `RunE`, or template functions when the local architecture has an application layer; duplicated orchestration risks inconsistent authorization and transaction behavior.
 - Require generated clients or models to remain behind an adapter when `// Code generated` surfaces volatile external contracts; direct propagation risks build-wide churn and compatibility failures.

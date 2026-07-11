@@ -16,6 +16,7 @@ import skillbill.install.model.WindowsSymlinkDecision
 import skillbill.install.model.WindowsSymlinkPreflight
 import skillbill.install.model.WindowsSymlinkPreflightState
 import skillbill.install.runtime.InstallOperations
+import skillbill.nativeagent.composition.parseNativeAgentBundle
 import skillbill.scaffold.platformpack.loadPlatformPack
 import skillbill.scaffold.policy.APPROVED_CODE_REVIEW_AREAS
 import skillbill.testing.repoRootFromTest
@@ -117,16 +118,16 @@ class GoPlatformPackTest {
     val packRoot = repoRoot.resolve("platform-packs/go")
     val pack = loadPlatformPack(packRoot)
     val expectedFocusMarkers = mapOf(
-      "api-contracts" to "net/http",
+      "api-contracts" to "JSON/protobuf evolution",
       "architecture" to "goroutine scope ownership",
       "performance" to "pprof",
       "persistence" to "database/sql",
-      "platform-correctness" to "typed nils",
-      "reliability" to "Graceful server and worker shutdown",
-      "security" to "template trust",
+      "platform-correctness" to "protocol-specific channel ownership",
+      "reliability" to "delivery semantics",
+      "security" to "connection-time SSRF",
       "testing" to "parallel capture",
-      "ui" to "interactive CLI and TUI",
-      "ux-accessibility" to "error association",
+      "ui" to "htmx fragment ownership",
+      "ux-accessibility" to "conditional focus restoration",
     )
 
     expectedFocusMarkers.forEach { (area, marker) ->
@@ -141,30 +142,42 @@ class GoPlatformPackTest {
       "color-independent status",
     ).forEach { marker -> assertContains(baseline, marker) }
 
-    val agentSource = Files.readString(
+    val agents = parseNativeAgentBundle(
       packRoot.resolve("code-review/bill-go-code-review/native-agents/agents.yaml"),
+    ).associateBy { agent -> agent.name.removePrefix("bill-go-code-review-") }
+    assertEquals(APPROVED_CODE_REVIEW_AREAS, agents.keys)
+    val agentDescriptionMarkers = mapOf(
+      "api-contracts" to listOf("JSON precision", "schema evolution"),
+      "architecture" to listOf("composition roots", "goroutine scope ownership"),
+      "performance" to listOf("pprof", "lock contention"),
+      "persistence" to listOf("database/sql", "migrations"),
+      "platform-correctness" to listOf("protocol-specific channel closure", "typed nils"),
+      "reliability" to listOf("hijacked connections", "queue delivery and acknowledgement"),
+      "security" to listOf("OAuth/OIDC", "connection-time SSRF"),
+      "testing" to listOf("t.Parallel hazards", "immediate t.Cleanup registration"),
+      "ui" to listOf("htmx target and trigger semantics", "repository-defined view states"),
+      "ux-accessibility" to listOf("accessible names", "conditional post-swap focus restoration"),
     )
-    APPROVED_CODE_REVIEW_AREAS.forEach { area ->
-      assertContains(agentSource, "name: bill-go-code-review-$area")
-    }
-    listOf("Request.Context", "goroutine scope ownership", "t.Parallel hazards", "template trust").forEach {
-      marker -> assertContains(agentSource, marker)
+    agentDescriptionMarkers.forEach { (area, markers) ->
+      val description = agents.getValue(area).description
+      markers.forEach { marker -> assertContains(description, marker) }
     }
 
     val rubricMarkers = mapOf(
-      "api-contracts" to "http.MaxBytesReader",
-      "architecture" to "cmd/<name>/main.go",
-      "performance" to "go tool pprof",
-      "persistence" to "sql.ErrNoRows",
-      "platform-correctness" to "close(ch)",
-      "reliability" to "signal.NotifyContext",
-      "security" to "exec.CommandContext",
-      "testing" to "go test -race",
-      "ui" to "term.IsTerminal",
-      "ux-accessibility" to "aria-describedby",
+      "api-contracts" to listOf("http.MaxBytesReader", "schema evolution", "protobuf presence"),
+      "architecture" to listOf("cmd/<name>/main.go", "goroutines do not need invented names"),
+      "performance" to listOf("go tool pprof", "mere absence as a defect"),
+      "persistence" to listOf("sql.ErrNoRows", "expand-and-contract migrations"),
+      "platform-correctness" to listOf("channels need not always close", "confinement"),
+      "reliability" to listOf("http.Server.Close", "hijacked connections", "at-most-once"),
+      "security" to listOf("OAuth 2.0", "O_NOFOLLOW", "DialContext", "option injection"),
+      "testing" to listOf("go test -race", "immediately after successful resource acquisition"),
+      "ui" to listOf("HX-Retarget", "HX-Trigger", "universal `RenderState`"),
+      "ux-accessibility" to listOf("accessible name", "cannot by itself prevent focus loss"),
     )
-    rubricMarkers.forEach { (area, marker) ->
-      assertContains(Files.readString(pack.declaredFiles.areas.getValue(area)), marker)
+    rubricMarkers.forEach { (area, markers) ->
+      val rubric = Files.readString(pack.declaredFiles.areas.getValue(area))
+      markers.forEach { marker -> assertContains(rubric, marker) }
     }
   }
 

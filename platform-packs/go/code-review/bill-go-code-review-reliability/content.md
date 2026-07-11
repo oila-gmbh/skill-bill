@@ -17,14 +17,17 @@ Apply to servers, workers, queues, scheduled jobs, and outbound clients. Check a
 ### Go Reliability Rules
 
 - Require process cancellation to originate from `signal.NotifyContext` or an equivalent owned signal path; unmanaged signals create a lifecycle failure through abrupt shutdown and lost work.
-- Verify `http.Server.Shutdown` receives a bounded fresh context after serving stops; reusing an already-canceled request context causes a lifecycle failure through incomplete draining.
+- Verify `http.Server.Shutdown` receives a bounded fresh context, its returned error is handled, and timeout paths use `http.Server.Close` when forced termination is the declared fallback; ignored shutdown failures leave listeners or requests alive while the process exits.
+- Require owners of connections taken through `http.Hijacker` to track and close or drain them because `http.Server.Shutdown` does not manage hijacked connections; otherwise deploys leak sessions or hang termination.
 - Ensure errors from `http.Server.Serve` distinguish `http.ErrServerClosed`; treating normal closure as a crash breaks operational health reporting.
-- Require every worker started by `errgroup.WithContext` to return after cancellation and every producer to stop before consumer channels close; wrong ordering risks deadlock or panic.
+- Require every worker started by `errgroup.WithContext` to return after cancellation and every closable producer protocol to coordinate before its owner closes consumer channels; wrong ordering risks deadlock or panic.
 - Verify a `sync.WaitGroup` is incremented before work becomes visible and always decremented; late `Add` or missed `Done` can crash or hang termination.
 - Require outbound `http.Client` use to set request deadlines and reuse a configured `Transport`; default or per-call clients risk indefinite timeouts and connection leaks.
 - Ensure response bodies from `Client.Do` are closed and drained when reuse matters; abandoned `resp.Body` values cause connection-resource failure.
 - Reject retries that ignore `context.Context`, idempotency, exponential backoff, or a finite budget; retry storms amplify partial failures and latency.
 - Require queue and worker admission to use bounded `chan T`, semaphore, or explicit rejection policy; unbounded goroutines cause memory exhaustion and scheduler starvation.
+- Require queue consumers to define acknowledgement timing and at-most-once or at-least-once delivery semantics before `Ack`, `Nack`, or visibility-timeout changes; acknowledging too early loses work while retrying after side effects duplicates data.
+- Verify worker draining stops intake before waiting for in-flight `sync.WaitGroup` work and respects a bounded deadline; reversed lifecycle ordering accepts jobs that cannot finish and causes shutdown timeout or data loss.
 - Verify overload paths return a deliberate `http.StatusServiceUnavailable` or equivalent signal; silently accepting discarded work creates a client contract failure.
 - Ensure periodic work created by `time.NewTicker` calls `Stop` and exits with component cancellation; orphaned tickers and goroutines leak after reload.
 - Require external clients such as `grpc.ClientConn` or `sql.DB` to be shared and closed by their lifecycle owner when applicable; per-request construction risks resource exhaustion.

@@ -1,7 +1,7 @@
 contract_version: "0.1"
 agents:
   - name: bill-go-code-review-api-contracts
-    description: "Go API contracts reviewer for net/http handlers, Request.Context, body limits, JSON, status ordering, idempotency, and applicable RPC or protobuf compatibility. Returns a Risk Register in the F-XXX bullet format."
+    description: "Go API contracts reviewer for net/http handlers, Request.Context, body limits, JSON precision and schema evolution, status ordering, idempotency, and applicable RPC or protobuf compatibility. Returns a Risk Register in the F-XXX bullet format."
     compose: governed-content
   - name: bill-go-code-review-architecture
     description: "Go architecture reviewer for package and module direction, consumer-owned interfaces, composition roots, component lifecycles, and goroutine scope ownership. Returns a Risk Register in the F-XXX bullet format."
@@ -13,20 +13,20 @@ agents:
     description: "Go persistence reviewer for database/sql rows, transactions, isolation, locking, pools, migrations, mapping, and repository-evidenced data libraries. Returns a Risk Register in the F-XXX bullet format."
     compose: governed-content
   - name: bill-go-code-review-platform-correctness
-    description: "Go correctness reviewer for goroutine exits, channel ownership, select, contexts, wrapped errors, typed nils, aliasing, defer, panic, races, and deadlocks. Returns a Risk Register in the F-XXX bullet format."
+    description: "Go correctness reviewer for goroutine exits, protocol-specific channel closure, select, contexts, wrapped errors, typed nils, aliasing, synchronization, defer, panic, races, and deadlocks. Returns a Risk Register in the F-XXX bullet format."
     compose: governed-content
   - name: bill-go-code-review-reliability
-    description: "Go reliability reviewer for graceful server and worker shutdown, deadlines, retries, backpressure, external-client lifecycles, observability, and partial failure. Returns a Risk Register in the F-XXX bullet format."
+    description: "Go reliability reviewer for graceful server and worker shutdown, hijacked connections, queue delivery and acknowledgement, deadlines, retries, backpressure, observability, and partial failure. Returns a Risk Register in the F-XXX bullet format."
     compose: governed-content
   - name: bill-go-code-review-security
-    description: "Go security reviewer for authentication, authorization, template trust, bounded input, paths, subprocesses, SSRF, archives, secrets, and reachable dependencies. Returns a Risk Register in the F-XXX bullet format."
+    description: "Go security reviewer for sessions, OAuth/OIDC, authorization, template trust, bounded input, symlink-safe paths, subprocess option injection, connection-time SSRF, secrets, and reachable dependencies. Returns a Risk Register in the F-XXX bullet format."
     compose: governed-content
   - name: bill-go-code-review-testing
-    description: "Go testing reviewer for behavioral proof, subtests, t.Parallel hazards, deterministic concurrency and time, race runs, fuzzing, cleanup, and weak assertions. Returns a Risk Register in the F-XXX bullet format."
+    description: "Go testing reviewer for behavioral proof, subtests, t.Parallel hazards, deterministic concurrency and time, race runs, fuzzing, immediate t.Cleanup registration, and weak assertions. Returns a Risk Register in the F-XXX bullet format."
     compose: governed-content
   - name: bill-go-code-review-ui
-    description: "Go UI reviewer for HTML templates and components, form and fragment state, rendering failures, and interactive CLI or TUI layout, progress, and redraw. Returns a Risk Register in the F-XXX bullet format."
+    description: "Go UI reviewer for HTML templates and components, forms, htmx target and trigger semantics, repository-defined view states, rendering failures, and interactive CLI or TUI redraw. Returns a Risk Register in the F-XXX bullet format."
     compose: governed-content
   - name: bill-go-code-review-ux-accessibility
-    description: "Go accessibility reviewer for labels, error association, focus, keyboard flow, semantics, live feedback, localization, and readable terminal interaction. Returns a Risk Register in the F-XXX bullet format."
+    description: "Go accessibility reviewer for accessible names, error association, conditional post-swap focus restoration, keyboard flow, semantics, live feedback, localization, and readable terminal interaction. Returns a Risk Register in the F-XXX bullet format."
     compose: governed-content

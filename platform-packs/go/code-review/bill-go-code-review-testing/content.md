@@ -22,7 +22,7 @@ Apply to changed production behavior and `_test.go` files. Prefer the narrowest 
 - Require concurrent code to be exercised by `go test -race` where the target supports it; synchronization bugs otherwise remain invisible until production load.
 - Verify goroutine tests wait through `errgroup.Group`, channels, or explicit joins rather than `time.Sleep`; timing guesses cause flaky timeout regressions.
 - Require clock-sensitive logic to accept an owned clock or timer seam instead of depending directly on `time.Now`; wall-clock tests fail nondeterministically.
-- Ensure resources registered with `t.Cleanup` are acquired before assertions can abort; leaked servers, files, and goroutines can poison later tests.
+- Require `t.Cleanup` or an equivalent cleanup registration immediately after successful resource acquisition and before any assertion or helper can abort; delayed registration leaks servers, files, and goroutines that poison later tests.
 - Reject assertions that only check non-nil, boolean success, call count, or collection length when exact values matter; weak checks allow contract corruption to pass.
 - Require HTTP tests using `httptest.NewRecorder` or `httptest.NewServer` to assert status, headers, body, and side effects relevant to the change; partial assertions miss client regressions.
 - Verify persistence integration tests use the real `database/sql` transaction and constraint behavior when mocks cannot expose locking or rollback failures.

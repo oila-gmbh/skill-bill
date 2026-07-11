@@ -47,7 +47,7 @@ declared_files:
     ux-accessibility: code-review/bill-go-code-review-ux-accessibility/content.md
 area_metadata:
   api-contracts:
-    focus: "net/http and applicable RPC request validation, serialization, response ordering, idempotency, and compatibility"
+    focus: "net/http and applicable RPC validation, cancellation, JSON/protobuf evolution, response ordering, idempotency, and compatibility"
   architecture:
     focus: "Package and module dependency direction, interface ownership, composition roots, component lifecycles, and goroutine scope ownership"
   performance:
@@ -55,17 +55,17 @@ area_metadata:
   persistence:
     focus: "database/sql row and transaction lifecycles, isolation, locking, pools, migrations, mapping, and applicable data libraries"
   platform-correctness:
-    focus: "Goroutine exits, channel ownership, contexts, wrapped errors, typed nils, aliasing, defer, panic, races, and deadlocks"
+    focus: "Goroutine exits, protocol-specific channel ownership, context cancellation, wrapped errors, typed nils, aliasing, synchronization, races, and deadlocks"
   reliability:
-    focus: "Graceful server and worker shutdown, deadlines, retries, backpressure, client lifecycles, observability, and partial failure"
+    focus: "Graceful server, hijacked-connection, worker, and queue shutdown; delivery semantics, deadlines, retries, backpressure, and partial failure"
   security:
-    focus: "Authentication, authorization, template trust, bounded parsing, paths, processes, SSRF, uploads, secrets, and dependencies"
+    focus: "Sessions, OAuth/OIDC, authorization, template trust, bounded parsing, symlink-safe paths, process options, connection-time SSRF, and dependencies"
   testing:
     focus: "Behavioral regression proof, subtests, parallel capture, deterministic concurrency and time, race tests, fuzzing, and weak assertions"
   ui:
-    focus: "Go-owned HTML templates and components, forms, fragments, rendering states, interactive CLI and TUI output"
+    focus: "Go-owned HTML templates and components, forms, htmx fragment ownership, repository-defined view states, interactive CLI and TUI output"
   ux-accessibility:
-    focus: "Labels, error association, focus, keyboard flow, semantics, live feedback, localization, and accessible terminal interaction"
+    focus: "Accessible names, error association, conditional focus restoration, keyboard flow, semantics, live feedback, localization, and terminal interaction"
 
 declared_quality_check_file: quality-check/bill-go-code-check/content.md
 

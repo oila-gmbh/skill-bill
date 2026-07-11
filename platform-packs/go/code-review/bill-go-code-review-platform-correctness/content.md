@@ -17,7 +17,8 @@ Apply these checks wherever changed Go code depends on goroutine exit, channel p
 ### Go Correctness Rules
 
 - Require each goroutine launched with `go func()` to have a reachable exit on cancellation or completion; a missing exit leaks work and can race with teardown.
-- Verify a single declared sender owns `close(ch)` for every `chan T`; receiver-side or repeated closure risks a `close of closed channel` crash.
+- Verify `close(ch)` appears only when closure is part of the channel protocol and is performed by its declared owner; channels need not always close, while receiver closure or uncoordinated producer closure risks `send on closed channel` or `close of closed channel` crashes.
+- Require multiple producers that share a closable `chan T` to coordinate completion through `sync.WaitGroup`, `errgroup.Group`, or one closing owner before closure; racing producers against close causes panics or lost work.
 - Ensure sends on `chan T` cannot outlive the receiver or block forever; an unbounded wait causes deadlock and request starvation.
 - Reject `select` loops whose `default` branch spins without blocking or backoff; scheduler pressure creates latency and CPU performance regressions.
 - Require derived work to propagate `ctx` and observe `ctx.Done()`; replacing it with `context.Background()` loses cancellation and causes timeout leaks.
@@ -30,5 +31,5 @@ Apply these checks wherever changed Go code depends on goroutine exit, channel p
 - Verify range-loop addresses and closures bind the intended iteration value under the repository's `go` directive; incorrect capture breaks state or concurrent subtests.
 - Ensure `defer` arguments and receiver values are evaluated with the intended timing; stale captured data risks incorrect cleanup or error reporting.
 - Reject broad `recover()` that converts programmer panics into success; hidden invariant failures leave invalid state and mask crashes.
-- Require shared memory touched by multiple goroutines to use a channel, `sync.Mutex`, or atomic primitive consistently; mixed synchronization risks a `go test -race` failure.
+- Require shared memory touched by multiple goroutines to use one mechanism appropriate to its contract—confinement, channel ownership, `sync.Mutex`, or `sync/atomic`; unsynchronized or mixed access risks a `go test -race` failure without imposing channels on unrelated state.
 - Verify lock acquisition order is stable across code paths and callbacks do not run under `sync.Mutex` unexpectedly; inverted order risks production deadlock.

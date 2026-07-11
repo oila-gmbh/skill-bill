@@ -24,10 +24,11 @@ Every rule below identifies a concrete rendering or interaction failure.
 - Require form repopulation from validated `r.Form` values to preserve submitted input and field errors; clearing input causes a task failure and breaks interaction state.
 - Verify `r.FormValue` handling for checkbox, radio, and multi-select controls distinguishes absent from false or empty values; incorrect decoding can mutate unintended data.
 - Ensure POST success follows `http.StatusSeeOther` redirect when duplicate refresh submission is unsafe; rendering success directly risks repeated writes.
-- Require fragment responses to preserve the `HX-Target` owner and expected content type; mismatched htmx targets cause a state-ordering failure by replacing the wrong region.
+- Verify fragment handlers interpret the incoming `HX-Target` request header as context only, and use the `HX-Retarget` response header solely when intentionally overriding the client target; confusing the headers replaces the wrong region and corrupts interaction state.
+- Require applicable `HX-Trigger` response headers to name deliberate client events without assuming they restore focus or announce status; missing client handlers leave controls unfocused and feedback silent after a swap.
 - Verify applicable `templ.Component` values receive immutable shaped parameters and propagate render errors; hidden shared state can race and produce incorrect output.
 - Ensure each rendered list item carries a stable `ID` through fragment reordering; unstable identity causes incorrect controls after a state-ordering failure.
-- Require a `RenderState` value to cover empty, loading, success, and failure branches at render boundaries; omitted states produce an invalid blank or misleading screen.
+- Verify the repository's actual view model represents every reachable empty, pending, success, and error branch needed by that surface; inventing a universal `RenderState` hides real state transitions while omitted branches produce a blank or misleading screen.
 - Verify links and form actions use the active router or `url.URL` rather than concatenated strings; stale paths break navigation after route changes.
 - Ensure interactive CLI output detects `term.IsTerminal` or an equivalent capability before cursor control; ANSI sequences corrupt redirected logs and files.
 - Require TUI update logic such as Bubble Tea `Update` to own state transitions and return commands separately; mutation from background goroutines risks races and redraw corruption.
