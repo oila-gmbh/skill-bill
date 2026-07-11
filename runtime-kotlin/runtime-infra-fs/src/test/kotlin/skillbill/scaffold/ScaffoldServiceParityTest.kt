@@ -1,6 +1,5 @@
 package skillbill.scaffold
 
-import skillbill.error.InvalidManifestSchemaError
 import skillbill.error.InvalidScaffoldPayloadError
 import skillbill.error.MissingRequiredSectionError
 import skillbill.error.RetiredScaffoldKindError
@@ -162,7 +161,9 @@ class ScaffoldServiceParityTest {
       assertEquals(before, snapshotTree(repo))
       assertFalse(Files.exists(skillDir), "Rejected scaffold left a partial skill directory at $skillDir")
     }
+}
 
+class PlatformPackScaffoldParityTest {
   @Test
   fun `platform pack rejects custom subagent specialists before mutation`() = withIsolatedUserHome {
     val repo = seedRepo()
@@ -247,7 +248,9 @@ class ScaffoldServiceParityTest {
     assertContains(error.message.orEmpty(), "exactly one manifest-derived native agent")
     assertEquals(before, snapshotTree(repo))
   }
+}
 
+class ScaffoldAuthoringParityTest {
   @Test
   fun `code review area scaffold is rejected before mutation`() = withIsolatedUserHome {
     val repo = seedRepo()
@@ -689,6 +692,24 @@ class ScaffoldServiceParityTest {
     assertEquals(before, snapshotTree(repo))
     assertEquals("keep me", Files.readString(unrelated))
     assertFalse(Files.exists(repo.resolve("platform-packs/kotlin/code-review/bill-kotlin-code-review-performance")))
+  }
+}
+
+class PlatformPackNativeAgentScaffoldTest {
+  @Test
+  fun `platform pack accepts an explicit body based canonical agent`() = withIsolatedUserHome {
+    val repo = seedRepo()
+    scaffold(
+      payload(repo, "platform-pack", "platform" to "java") +
+        mapOf("subagent_specialists" to listOf("bill-java-code-review")),
+    )
+    val packRoot = repo.resolve("platform-packs/java")
+    val bundle = Files.readString(packRoot.resolve("code-review/bill-java-code-review/native-agents/agents.yaml"))
+
+    assertEquals("java", loadPlatformPack(packRoot).slug)
+    assertContains(bundle, "name: bill-java-code-review")
+    assertContains(bundle, "body: |-")
+    assertFalse("compose: governed-content" in bundle)
   }
 }
 

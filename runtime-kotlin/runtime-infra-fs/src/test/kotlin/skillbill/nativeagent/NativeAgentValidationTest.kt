@@ -419,7 +419,6 @@ class NativeAgentValidationTest {
     assertFalse(report.passed)
     val issue = report.issues.single { issue -> "entry 'bill-fixture-unregistered'" in issue }
     assertContains(issue, "agents.yaml entry 'bill-fixture-unregistered'")
-    assertContains(issue, "missing=[bill-fixture-code-review-architecture]")
     assertContains(issue, "unknown=[bill-fixture-unregistered]")
   }
 

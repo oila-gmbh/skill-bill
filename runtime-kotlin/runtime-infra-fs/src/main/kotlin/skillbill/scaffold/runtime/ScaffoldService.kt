@@ -638,7 +638,8 @@ private fun stageSubagentStubs(
   bodyNames: Set<String>,
 ): List<Path> {
   val sourcePath = orchestratorSkillPath.resolve("native-agents").resolve("agents.yaml")
-  stageFile(txn, sourcePath, renderNativeAgentBundleStubs(specialists, descriptions, bodyNames))
+  val parentSkill = orchestratorSkillPath.fileName.toString()
+  stageFile(txn, sourcePath, renderNativeAgentBundleStubs(specialists, descriptions, bodyNames, parentSkill))
   return listOf(sourcePath)
 }
 
@@ -1065,7 +1066,7 @@ private fun subagentEmissionNotes(plan: ScaffoldPlan): List<String> {
     } else {
       plan.skillPath
     }
-  if (plan.kind == SKILL_KIND_PLATFORM_PACK && plan.subagentDescriptions.isNotEmpty()) {
+  if (plan.kind == SKILL_KIND_PLATFORM_PACK && plan.bodyBasedSubagents.isEmpty()) {
     return listOf(
       "Subagent bundle emitted: ${plan.subagentSpecialists.size} entries. " +
         "Native agents compose from the generated code-review content.md files; " +

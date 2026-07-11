@@ -22,13 +22,14 @@ internal fun renderNativeAgentBundleStubs(
   names: List<String>,
   descriptions: Map<String, String> = emptyMap(),
   bodyNames: Set<String> = emptySet(),
+  parentSkill: String = "",
 ): String = renderNativeAgentBundle(
   names.map { name ->
     NativeAgentSource(
       name = name,
       description = descriptions[name]
         ?: "TODO: one-line description for the $name specialist subagent. Fill in before shipping.",
-      body = if (name in bodyNames) "Review the requested scope and return concrete findings." else "",
+      body = if (name in bodyNames) nativeAgentStubBody(name, parentSkill) else "",
       composition = if (name in bodyNames) {
         null
       } else {

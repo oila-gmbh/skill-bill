@@ -135,6 +135,28 @@ class NativeAgentSourceParserTest {
   }
 
   @Test
+  fun `agents yaml reports blank body after schema validation as typed schema error`() {
+    val dir = Files.createTempDirectory("skillbill-native-agent-bundle-blank-body")
+    val bundlePath = dir.resolve("agents.yaml")
+    Files.writeString(
+      bundlePath,
+      """
+      agents:
+        - name: bill-one
+          description: First worker.
+          body: ""
+      """.trimIndent() + "\n",
+    )
+
+    val error = assertFailsWith<InvalidNativeAgentCompositionSchemaError> {
+      parseNativeAgentBundle(bundlePath)
+    }
+
+    assertContains(error.sourceLabel, bundlePath.toString())
+    assertContains(error.reason, "native agent body is required")
+  }
+
+  @Test
   fun `agents yaml reports malformed yaml as typed schema error`() {
     val dir = Files.createTempDirectory("skillbill-native-agent-bundle-malformed-yaml")
     val bundlePath = dir.resolve("agents.yaml")

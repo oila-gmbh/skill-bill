@@ -5,11 +5,15 @@ import skillbill.error.InvalidNativeAgentCompositionSchemaError
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.InstallAgentSelection
 import skillbill.install.model.InstallAgentSelectionMode
+import skillbill.install.model.InstallApplyStatus
+import skillbill.install.model.InstallPlan
 import skillbill.install.model.InstallPlanRequest
 import skillbill.install.model.InstallPlanSkillKind
+import skillbill.install.model.InstallSkillStagingStatus
 import skillbill.install.model.InstallTelemetryLevel
 import skillbill.install.model.InstallationTargetPaths
 import skillbill.install.model.McpRegistrationChoice
+import skillbill.install.model.NativeAgentApplyStatus
 import skillbill.install.model.PlatformPackSelection
 import skillbill.install.model.PlatformPackSelectionMode
 import skillbill.install.model.RuntimeDistributionInputs
@@ -91,7 +95,7 @@ class RustPlatformPackTest {
   }
 
   @Test
-  fun `rust pack rejects missing native agent coverage`() {
+  fun `rust pack loader preserves partial extension bundles`() {
     val repoRoot = repoRootFromTest()
     val tempRoot = Files.createTempDirectory("skillbill-rust-pack-malformed-")
     val packRoot = tempRoot.resolve("rust")
@@ -105,12 +109,11 @@ class RustPlatformPackTest {
       ),
     )
 
-    val error = assertFailsWith<InvalidManifestSchemaError> { loadPlatformPack(packRoot) }
-    assertContains(error.message.orEmpty(), "missing=[bill-rust-code-review-security]")
+    assertEquals("rust", loadPlatformPack(packRoot).slug)
   }
 
   @Test
-  fun `rust pack rejects reduced native agent bundle when every canonical agent is renamed`() {
+  fun `rust pack rejects renamed governed content agents`() {
     val repoRoot = repoRootFromTest()
     val tempRoot = Files.createTempDirectory("skillbill-rust-pack-all-agents-renamed-")
     val packRoot = tempRoot.resolve("rust")
@@ -130,9 +133,7 @@ class RustPlatformPackTest {
     Files.writeString(bundle, reducedRenamedBundle)
 
     val error = assertFailsWith<InvalidManifestSchemaError> { loadPlatformPack(packRoot) }
-    canonicalNames.forEach { name ->
-      if (name != "bill-rust-code-review") assertContains(error.message.orEmpty(), name)
-    }
+    assertContains(error.message.orEmpty(), "unknown=[renamed-bill-rust-code-review-api-contracts")
     assertContains(error.message.orEmpty(), "renamed-bill-rust-code-review")
   }
 
@@ -147,16 +148,16 @@ class RustPlatformPackTest {
       bundle,
       Files.readString(bundle) +
         "  - name: undeclared-rust-reviewer\n" +
-          "    description: \"Custom review agent.\"\n" +
-          "    body: |-\n" +
-          "      Review the diff.\n",
+        "    description: \"Custom review agent.\"\n" +
+        "    body: |-\n" +
+        "      Review the diff.\n",
     )
 
     assertEquals("rust", loadPlatformPack(packRoot).slug)
   }
 
   @Test
-  fun `rust pack rejects missing baseline native agent`() {
+  fun `rust pack loader accepts a specialist-only extension bundle`() {
     val repoRoot = repoRootFromTest()
     val tempRoot = Files.createTempDirectory("skillbill-rust-pack-missing-baseline-")
     val packRoot = tempRoot.resolve("rust")
@@ -170,8 +171,7 @@ class RustPlatformPackTest {
       ),
     )
 
-    val error = assertFailsWith<InvalidManifestSchemaError> { loadPlatformPack(packRoot) }
-    assertContains(error.message.orEmpty(), "missing=[bill-rust-code-review]")
+    assertEquals("rust", loadPlatformPack(packRoot).slug)
   }
 
   @Test
@@ -208,11 +208,28 @@ class RustPlatformPackTest {
   }
 
   @Test
-  fun `install plan discovers and selects only rust pack skills`() {
+  fun `install apply stages selected rust pack skills and native agents`() {
     val repoRoot = repoRootFromTest()
     val home = Files.createTempDirectory("skillbill-rust-install-plan-home-")
+    val plan = rustInstallPlan(repoRoot, home)
+
+    val skillsByName = plan.skills.associateBy { it.name }
+    assertContains(plan.discoveredPlatformPacks.map { it.slug }, "rust")
+    assertEquals(listOf("rust"), plan.selectedPlatformSlugs)
+    assertEquals(InstallPlanSkillKind.PLATFORM_PACK, skillsByName.getValue("bill-rust-code-review").kind)
+    assertEquals(InstallPlanSkillKind.PLATFORM_PACK, skillsByName.getValue("bill-rust-code-check").kind)
+    APPROVED_CODE_REVIEW_AREAS.forEach { area ->
+      assertEquals(InstallPlanSkillKind.PLATFORM_PACK, skillsByName.getValue("bill-rust-code-review-$area").kind)
+    }
+    assertFalse(skillsByName.containsKey("bill-go-code-review"))
+    assertFalse(skillsByName.containsKey("bill-python-code-review"))
+
+    assertRustInstallApplied(plan)
+  }
+
+  private fun rustInstallPlan(repoRoot: Path, home: Path): InstallPlan {
     val runtimeInstallRoot = home.resolve(".skill-bill/runtime")
-    val plan = InstallOperations.planInstall(
+    return InstallOperations.planInstall(
       InstallPlanRequest(
         repoRoot = repoRoot,
         home = home,
@@ -241,17 +258,37 @@ class RustPlatformPackTest {
         ),
       ),
     )
+  }
 
-    val skillsByName = plan.skills.associateBy { it.name }
-    assertContains(plan.discoveredPlatformPacks.map { it.slug }, "rust")
-    assertEquals(listOf("rust"), plan.selectedPlatformSlugs)
-    assertEquals(InstallPlanSkillKind.PLATFORM_PACK, skillsByName.getValue("bill-rust-code-review").kind)
-    assertEquals(InstallPlanSkillKind.PLATFORM_PACK, skillsByName.getValue("bill-rust-code-check").kind)
-    APPROVED_CODE_REVIEW_AREAS.forEach { area ->
-      assertEquals(InstallPlanSkillKind.PLATFORM_PACK, skillsByName.getValue("bill-rust-code-review-$area").kind)
+  private fun assertRustInstallApplied(plan: InstallPlan) {
+    val result = InstallOperations.applyInstall(plan)
+
+    assertEquals(InstallApplyStatus.SUCCESS, result.status, result.failures.joinToString { it.message })
+    assertTrue(result.skills.all { skill -> skill.staging.status == InstallSkillStagingStatus.STAGED })
+    val reviewSidecars = result.skills
+      .single { skill -> skill.skillName == "bill-code-review" }
+      .staging
+      .renderedSidecarFiles
+      .map { path -> path.fileName.toString() }
+      .toSet()
+    val expectedReviewSidecars = APPROVED_CODE_REVIEW_AREAS.map { area ->
+      "bill-rust-code-review-$area.md"
+    }.toSet() + "bill-rust-code-review.md"
+    assertTrue(reviewSidecars.containsAll(expectedReviewSidecars))
+    val checkSidecars = result.skills
+      .single { skill -> skill.skillName == "bill-code-check" }
+      .staging
+      .renderedSidecarFiles
+      .map { path -> path.fileName.toString() }
+      .toSet()
+    assertContains(checkSidecars, "bill-rust-code-check.md")
+    val linkedNativeAgents = result.nativeAgents
+      .filter { nativeAgent -> nativeAgent.status == NativeAgentApplyStatus.LINKED }
+      .mapNotNull { nativeAgent -> nativeAgent.path?.fileName?.toString() }
+      .toSet()
+    expectedReviewSidecars.map { sidecar -> sidecar.removeSuffix(".md") }.forEach { agentName ->
+      assertTrue(linkedNativeAgents.any { artifact -> agentName in artifact }, "Missing native agent $agentName")
     }
-    assertFalse(skillsByName.containsKey("bill-go-code-review"))
-    assertFalse(skillsByName.containsKey("bill-python-code-review"))
   }
 
   private fun copyDirectory(source: Path, target: Path) {

@@ -31,5 +31,5 @@ Apply at every trust boundary and whenever the diff adds or changes unsafe behav
 - Enforce authz on every reachable entry point and derive actor, tenant, and ownership from trusted server state.
 - Do not leak secrets, tokens, personal data, panic payloads, or backtraces through logs or responses.
 - Treat `build.rs`, proc macros, git dependencies, and enabled default features as executable supply-chain inputs.
-- For Critical or Major findings, describe the exploit path and affected asset.
+- For Blocker or Major findings, describe the exploit path and affected asset.
 - Use only the shared Risk Register and canonical severity definitions.

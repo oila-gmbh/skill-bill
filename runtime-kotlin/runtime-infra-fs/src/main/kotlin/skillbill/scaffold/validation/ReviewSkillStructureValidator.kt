@@ -501,12 +501,10 @@ internal fun validateReviewSkillStructure(pack: PlatformManifest) {
   val actualNameSet = actualNames.toSet()
   val governedNameSet = actualAgents.filter { it.composition != null }.map { it.name }.toSet()
   val unknown = governedNameSet - expectedNames
-  val missing = expectedNames - actualNameSet
-  if (actualNames.size != actualNameSet.size || unknown.isNotEmpty() || missing.isNotEmpty()) {
+  if (actualNames.size != actualNameSet.size || unknown.isNotEmpty()) {
     throw InvalidManifestSchemaError(
-      "Platform pack '${pack.slug}': native-agent bundle must declare baseline '$baselineName' and every review " +
-        "specialist exactly once, and may not declare unknown governed-content agents; " +
-        "missing=${missing.sorted()}, unknown=${unknown.sorted()}.",
+      "Platform pack '${pack.slug}': native-agent bundle may not declare duplicate agents or unknown " +
+        "governed-content agents; unknown=${unknown.sorted()}.",
     )
   }
 }
