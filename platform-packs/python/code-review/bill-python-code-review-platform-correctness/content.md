@@ -37,4 +37,5 @@ Use this specialist for Python runtime logic, dataclasses, attrs, pydantic, deco
 - Verify `concurrent.futures.ThreadPoolExecutor` versus `ProcessPoolExecutor` selection matches I/O or GIL-sensitive CPU work, and require owned shutdown because the wrong or leaked executor causes starvation and process hangs.
 - Require `asyncio.Queue.task_done` and `Queue.join` accounting to match every dequeued item, with producers stopped before consumers; mismatches deadlock shutdown or discard queued work.
 - Verify `json`, `Decimal`, `Enum`, and timezone-aware `datetime` serialization preserves precision, identity, and offsets; implicit conversion or naive time can corrupt contract data across DST and replay.
+- Keep wall-clock timestamps separate from elapsed-time deadlines: require timezone-aware wall time for persisted or user-visible events, `time.monotonic` or the event loop's monotonic clock for durations and timeout calculations, and an injectable clock at testable boundaries; wall-clock adjustments otherwise expire work early or extend it indefinitely.
 - For Blocker or Major findings, describe the concrete invalid-state or ordering failure scenario.

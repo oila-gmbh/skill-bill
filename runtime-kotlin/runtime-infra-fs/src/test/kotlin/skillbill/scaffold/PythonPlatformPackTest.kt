@@ -125,16 +125,65 @@ class PythonPlatformPackTest {
     val packRoot = repoRoot.resolve("platform-packs/python")
     val pack = loadPlatformPack(packRoot)
     val expectedMarkers = mapOf(
-      "api-contracts" to listOf("model_fields_set", "Serializer.is_valid", "StreamingResponse"),
+      "api-contracts" to listOf(
+        "model_fields_set",
+        "Serializer.is_valid",
+        "StreamingResponse",
+        "generally retriable mutation",
+      ),
       "architecture" to listOf("importlib.import_module", "namespace packages", "[project.scripts]"),
-      "performance" to listOf("select_related", "ProcessPoolExecutor", "asyncio.Semaphore"),
-      "persistence" to listOf("AsyncSession", "transaction.on_commit", "CONCURRENTLY"),
-      "platform-correctness" to listOf("default_factory", "asyncio.TaskGroup", "Queue.join"),
-      "reliability" to listOf("httpx.Timeout", "visibility_timeout", "cancel_futures=True"),
+      "performance" to listOf(
+        "sync_to_async",
+        "thread_sensitive",
+        "joinedload",
+        "values_list",
+        "ProcessPoolExecutor",
+        "asyncio.Semaphore",
+      ),
+      "persistence" to listOf(
+        "non-overlapping responsibility ownership",
+        "database-per-tenant",
+        "cannot be bypassed by raw SQL",
+        "joinedload",
+        "bounded query-count evidence",
+        "values_list",
+        "transaction.on_commit",
+        "CONCURRENTLY",
+      ),
+      "platform-correctness" to listOf(
+        "default_factory",
+        "asyncio.TaskGroup",
+        "Queue.join",
+        "time.monotonic",
+        "injectable clock",
+      ),
+      "reliability" to listOf(
+        "httpx.Timeout",
+        "visibility_timeout",
+        "cancel_futures=True",
+        "durable checkpoint writes",
+        "restart position",
+      ),
       "security" to listOf("pickle.loads", "ZipFile.extractall", "shell=True", "SSRF"),
-      "testing" to listOf("pytest.raises", "hypothesis", "pytest-asyncio", "threading.Event"),
+      "testing" to listOf(
+        "pytest.raises",
+        "hypothesis",
+        "pytest-asyncio",
+        "threading.Event",
+        "injected wall and monotonic clocks",
+        "durable checkpoint",
+        "duplicate-safe replay",
+      ),
       "ui" to listOf("ModelAdmin", "st.session_state", "PySide"),
-      "ux-accessibility" to listOf("aria-live", "ngettext", "Jupyter notebooks"),
+      "ux-accessibility" to listOf(
+        "aria-invalid=\"true\"",
+        "stable, control-specific",
+        "role-specific ARIA role",
+        "documented keyboard pattern",
+        "aria-live",
+        "ngettext",
+        "Jupyter notebooks",
+      ),
     )
 
     expectedMarkers.forEach { (area, markers) ->
