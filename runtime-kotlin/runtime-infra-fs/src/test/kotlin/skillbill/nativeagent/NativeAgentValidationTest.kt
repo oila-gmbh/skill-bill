@@ -390,7 +390,7 @@ class NativeAgentValidationTest {
   }
 
   @Test
-  fun `bundled platform composition rejects undeclared sibling content fallback`() {
+  fun `bundled platform composition rejects undeclared agent structurally`() {
     val repo = newRepoWithComposedPlatformAgent(
       writeAreaContent = true,
       declaredSourceName = "bill-fixture-unregistered",
@@ -412,7 +412,8 @@ class NativeAgentValidationTest {
     assertFalse(report.passed)
     val issue = report.issues.single()
     assertContains(issue, "agents.yaml entry 'bill-fixture-unregistered'")
-    assertContains(issue, "could not resolve a corresponding content.md")
+    assertContains(issue, "missing=[bill-fixture-code-review-architecture]")
+    assertContains(issue, "unknown=[bill-fixture-unregistered]")
   }
 
   @Test
@@ -494,7 +495,7 @@ class NativeAgentValidationTest {
   }
 
   @Test
-  fun `bundled install output writes one self contained artifact per native agent`() {
+  fun `bundled install output writes a self contained artifact for a declared review agent`() {
     val repo = newRepoWithComposedPlatformAgent(writeAreaContent = true)
     val nativeAgentDir = repo.resolve("platform-packs/fixture/code-review/bill-fixture-code-review/native-agents")
     Files.delete(nativeAgentDir.resolve("bill-fixture-code-review-architecture.md"))
@@ -505,12 +506,6 @@ class NativeAgentValidationTest {
         - name: bill-fixture-code-review-architecture
           description: Architecture worker.
           compose: governed-content
-        - name: bill-fixture-custom
-          description: Custom worker.
-          body: |-
-            # Custom
-
-            Do the custom work.
       """.trimIndent() + "\n",
     )
 
@@ -525,7 +520,7 @@ class NativeAgentValidationTest {
     )
 
     assertEquals(
-      listOf("bill-fixture-code-review-architecture.md", "bill-fixture-custom.md"),
+      listOf("bill-fixture-code-review-architecture.md"),
       result.generatedFiles.map { it.fileName.toString() }.sorted(),
     )
     val composed = Files.readString(result.generatedFiles.first { it.fileName.toString().contains("architecture") })

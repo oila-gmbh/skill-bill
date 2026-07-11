@@ -109,9 +109,55 @@ class RustPlatformPackTest {
   }
 
   @Test
-  fun `rust pack rejects a noncanonical baseline native agent description`() {
+  fun `rust pack rejects native agent bundle when every canonical agent is renamed`() {
     val repoRoot = repoRootFromTest()
-    val tempRoot = Files.createTempDirectory("skillbill-rust-pack-baseline-description-")
+    val tempRoot = Files.createTempDirectory("skillbill-rust-pack-all-agents-renamed-")
+    val packRoot = tempRoot.resolve("rust")
+    copyDirectory(repoRoot.resolve("platform-packs/rust"), packRoot)
+    val bundle = packRoot.resolve("code-review/bill-rust-code-review/native-agents/agents.yaml")
+    val canonicalNames = APPROVED_CODE_REVIEW_AREAS.map { "bill-rust-code-review-$it" } +
+      "bill-rust-code-review"
+    val renamedBundle = canonicalNames.fold(Files.readString(bundle)) { content, name ->
+      content.replace("name: $name\n", "name: renamed-$name\n")
+    }
+    Files.writeString(bundle, renamedBundle)
+
+    val error = assertFailsWith<InvalidManifestSchemaError> { loadPlatformPack(packRoot) }
+    canonicalNames.forEach { name ->
+      if (name != "bill-rust-code-review") assertContains(error.message.orEmpty(), name)
+    }
+    assertContains(error.message.orEmpty(), "renamed-bill-rust-code-review")
+  }
+
+  @Test
+  fun `rust pack rejects unknown body based native agent`() {
+    val repoRoot = repoRootFromTest()
+    val tempRoot = Files.createTempDirectory("skillbill-rust-pack-unknown-body-agent-")
+    val packRoot = tempRoot.resolve("rust")
+    copyDirectory(repoRoot.resolve("platform-packs/rust"), packRoot)
+    val bundle = packRoot.resolve("code-review/bill-rust-code-review/native-agents/agents.yaml")
+    Files.writeString(
+      bundle,
+      Files.readString(bundle).replace(
+        "  - name: bill-rust-code-review\n" +
+          "    description: \"Rust baseline code reviewer. Runs the governed baseline review across the full owned diff before " +
+          "specialist findings are merged. Returns a Risk Register in the F-XXX bullet format.\"\n" +
+          "    compose: governed-content\n",
+        "  - name: undeclared-rust-reviewer\n" +
+          "    description: \"Custom review agent.\"\n" +
+          "    body: |-\n" +
+          "      Review the diff.\n",
+      ),
+    )
+
+    val error = assertFailsWith<InvalidManifestSchemaError> { loadPlatformPack(packRoot) }
+    assertContains(error.message.orEmpty(), "unknown=[undeclared-rust-reviewer]")
+  }
+
+  @Test
+  fun `rust pack accepts a custom baseline native agent description`() {
+    val repoRoot = repoRootFromTest()
+    val tempRoot = Files.createTempDirectory("skillbill-rust-pack-custom-baseline-description-")
     val packRoot = tempRoot.resolve("rust")
     copyDirectory(repoRoot.resolve("platform-packs/rust"), packRoot)
     val bundle = packRoot.resolve("code-review/bill-rust-code-review/native-agents/agents.yaml")
@@ -120,12 +166,11 @@ class RustPlatformPackTest {
       Files.readString(bundle).replace(
         "Rust baseline code reviewer. Runs the governed baseline review across the full owned diff before " +
           "specialist findings are merged. Returns a Risk Register in the F-XXX bullet format.",
-        "Rust reviewer.",
+        "Team-owned Rust baseline reviewer.",
       ),
     )
 
-    val error = assertFailsWith<InvalidManifestSchemaError> { loadPlatformPack(packRoot) }
-    assertContains(error.message.orEmpty(), "baseline native-agent 'bill-rust-code-review' description must be")
+    assertEquals("rust", loadPlatformPack(packRoot).slug)
   }
 
   @Test
