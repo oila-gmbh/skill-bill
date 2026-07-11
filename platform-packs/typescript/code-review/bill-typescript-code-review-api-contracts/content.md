@@ -19,8 +19,15 @@ internal-for: bill-code-review
 - Naming preferences that do not affect compatibility or clarity
 - Requests to expose implementation types solely for caller convenience
 
+## Applicability
+
+Use this specialist when changed TypeScript affects exported types, wire formats, runtime schemas, or compatibility boundaries.
+
 ## Project-Specific Rules
 
+### TypeScript Contract Rules
+
+- Verify `TypeScript request and serialization APIs` preserve their runtime boundary invariants; reject compatibility or validation failure.
 - Treat exported type changes as caller contracts, including inferred return types and changed generic constraints.
 - Do not rely on interfaces or type aliases to validate JSON; parse and validate untrusted values at runtime.
 - Preserve absent, optional, nullable, defaulted, zero, and empty semantics across wire formats.
@@ -29,3 +36,4 @@ internal-for: bill-code-review
 - Preserve stable error classification and machine-readable fields without leaking internal details.
 - Account for plain JavaScript callers that can bypass compile-time constraints.
 - Findings must identify the broken caller, payload, or version-skew scenario.
+- For Blocker or Major findings, describe the concrete compatibility or validation failure scenario.

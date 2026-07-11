@@ -6,9 +6,13 @@ routing_signals:
   strong:
     - "tsconfig.json"
     - "tsconfig.*.json"
+    - ".ts"
     - "*.ts"
+    - ".tsx"
     - "*.tsx"
+    - ".mts"
     - "*.mts"
+    - ".cts"
     - "*.cts"
     - "package.json"
     - "package-lock.json"

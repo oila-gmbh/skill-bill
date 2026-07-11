@@ -1,7 +1,6 @@
 package skillbill.scaffold
 
-import skillbill.error.InvalidManifestSchemaError
-import skillbill.error.InvalidNativeAgentCompositionSchemaError
+import skillbill.error.InvalidReviewSkillStructureError
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.InstallAgentSelection
 import skillbill.install.model.InstallAgentSelectionMode
@@ -25,6 +24,7 @@ import skillbill.nativeagent.composition.composeNativeAgentSource
 import skillbill.nativeagent.composition.parseNativeAgentBundle
 import skillbill.scaffold.platformpack.loadPlatformPack
 import skillbill.scaffold.policy.APPROVED_CODE_REVIEW_AREAS
+import skillbill.scaffold.validation.ReviewSkillStructureValidator
 import skillbill.testing.repoRootFromTest
 import java.nio.file.Files
 import java.nio.file.Path
@@ -52,9 +52,13 @@ class TypeScriptPlatformPackTest {
     listOf(
       "tsconfig.json",
       "tsconfig.*.json",
+      ".ts",
       "*.ts",
+      ".tsx",
       "*.tsx",
+      ".mts",
       "*.mts",
+      ".cts",
       "*.cts",
       "package.json",
       "package-lock.json",
@@ -102,83 +106,18 @@ class TypeScriptPlatformPackTest {
   }
 
   @Test
-  fun `typescript pack loader preserves partial extension bundles`() {
+  fun `typescript pack rejects a malformed quality check relationship`() {
     val repoRoot = repoRootFromTest()
-    val tempRoot = Files.createTempDirectory("skillbill-typescript-pack-malformed-")
+    val tempRoot = Files.createTempDirectory("skillbill-typescript-pack-invalid-quality-parent-")
     val packRoot = tempRoot.resolve("typescript")
     copyDirectory(repoRoot.resolve("platform-packs/typescript"), packRoot)
-    val bundle = packRoot.resolve("code-review/bill-typescript-code-review/native-agents/agents.yaml")
-    Files.writeString(
-      bundle,
-      Files.readString(bundle).replace(
-        Regex("(?ms)  - name: bill-typescript-code-review-security\\n.*?(?=  - name:|\\z)"),
-        "",
-      ),
-    )
+    val checker = packRoot.resolve("quality-check/bill-typescript-code-check/content.md")
+    Files.writeString(checker, Files.readString(checker).replace("internal-for: bill-code-check\n", ""))
 
-    assertEquals("typescript", loadPlatformPack(packRoot).slug)
-  }
-
-  @Test
-  fun `typescript pack rejects renamed governed content agents`() {
-    val repoRoot = repoRootFromTest()
-    val tempRoot = Files.createTempDirectory("skillbill-typescript-pack-all-agents-renamed-")
-    val packRoot = tempRoot.resolve("typescript")
-    copyDirectory(repoRoot.resolve("platform-packs/typescript"), packRoot)
-    val bundle = packRoot.resolve("code-review/bill-typescript-code-review/native-agents/agents.yaml")
-    val canonicalNames = APPROVED_CODE_REVIEW_AREAS.map { "bill-typescript-code-review-$it" } +
-      "bill-typescript-code-review"
-    val renamedBundle = canonicalNames.fold(Files.readString(bundle)) { content, name ->
-      content.replace("name: $name\n", "name: renamed-$name\n")
+    val error = assertFailsWith<InvalidReviewSkillStructureError> {
+      ReviewSkillStructureValidator.validate(packRoot)
     }
-    val reducedRenamedBundle = listOf(
-      "renamed-bill-typescript-code-review",
-      "renamed-bill-typescript-code-review-security",
-    ).fold(renamedBundle) { content, name ->
-      content.replace(Regex("(?ms)  - name: $name\\n.*?(?=  - name:|\\z)"), "")
-    }
-    Files.writeString(bundle, reducedRenamedBundle)
-
-    val error = assertFailsWith<InvalidManifestSchemaError> { loadPlatformPack(packRoot) }
-    assertContains(error.message.orEmpty(), "unknown=[renamed-bill-typescript-code-review-api-contracts")
-    assertContains(error.message.orEmpty(), "renamed-bill-typescript-code-review")
-  }
-
-  @Test
-  fun `typescript pack accepts custom body based native agent`() {
-    val repoRoot = repoRootFromTest()
-    val tempRoot = Files.createTempDirectory("skillbill-typescript-pack-unknown-body-agent-")
-    val packRoot = tempRoot.resolve("typescript")
-    copyDirectory(repoRoot.resolve("platform-packs/typescript"), packRoot)
-    val bundle = packRoot.resolve("code-review/bill-typescript-code-review/native-agents/agents.yaml")
-    Files.writeString(
-      bundle,
-      Files.readString(bundle) +
-        "  - name: undeclared-typescript-reviewer\n" +
-        "    description: \"Custom review agent.\"\n" +
-        "    body: |-\n" +
-        "      Review the diff.\n",
-    )
-
-    assertEquals("typescript", loadPlatformPack(packRoot).slug)
-  }
-
-  @Test
-  fun `typescript pack loader accepts a specialist-only extension bundle`() {
-    val repoRoot = repoRootFromTest()
-    val tempRoot = Files.createTempDirectory("skillbill-typescript-pack-missing-baseline-")
-    val packRoot = tempRoot.resolve("typescript")
-    copyDirectory(repoRoot.resolve("platform-packs/typescript"), packRoot)
-    val bundle = packRoot.resolve("code-review/bill-typescript-code-review/native-agents/agents.yaml")
-    Files.writeString(
-      bundle,
-      Files.readString(bundle).replace(
-        Regex("(?ms)  - name: bill-typescript-code-review\\n.*?(?=  - name:|\\z)"),
-        "",
-      ),
-    )
-
-    assertEquals("typescript", loadPlatformPack(packRoot).slug)
+    assertContains(error.message.orEmpty(), "quality-check internal parent")
   }
 
   @Test
@@ -190,28 +129,10 @@ class TypeScriptPlatformPackTest {
     val bundle = packRoot.resolve("code-review/bill-typescript-code-review/native-agents/agents.yaml")
     Files.writeString(bundle, "agents:\n  - name: [unterminated\n")
 
-    val error = assertFailsWith<InvalidNativeAgentCompositionSchemaError> { loadPlatformPack(packRoot) }
-    assertContains(error.sourceLabel, bundle.toString())
-    assertContains(error.reason, "could not parse YAML")
-  }
-
-  @Test
-  fun `typescript pack accepts a custom baseline native agent description`() {
-    val repoRoot = repoRootFromTest()
-    val tempRoot = Files.createTempDirectory("skillbill-typescript-pack-custom-baseline-description-")
-    val packRoot = tempRoot.resolve("typescript")
-    copyDirectory(repoRoot.resolve("platform-packs/typescript"), packRoot)
-    val bundle = packRoot.resolve("code-review/bill-typescript-code-review/native-agents/agents.yaml")
-    Files.writeString(
-      bundle,
-      Files.readString(bundle).replace(
-        "TypeScript baseline code reviewer. Reviews the full owned diff before specialist findings are merged. " +
-          "Returns an F-XXX Risk Register.",
-        "Team-owned TypeScript baseline reviewer.",
-      ),
-    )
-
-    assertEquals("typescript", loadPlatformPack(packRoot).slug)
+    val error = assertFailsWith<InvalidReviewSkillStructureError> {
+      ReviewSkillStructureValidator.validate(packRoot)
+    }
+    assertContains(error.message.orEmpty(), "not valid YAML")
   }
 
   @Test

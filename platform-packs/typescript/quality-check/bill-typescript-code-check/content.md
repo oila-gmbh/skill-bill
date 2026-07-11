@@ -12,16 +12,16 @@ Validate changed TypeScript with repository-owned scripts, configuration, packag
 
 ## Execution Steps
 
-1. Inspect changed files, `package.json`, lockfiles, `tsconfig*.json`, workspace configuration, CI, and repository scripts before choosing commands.
-2. Select npm from `package-lock.json`, yarn from `yarn.lock`, pnpm from `pnpm-lock.yaml`, or bun from `bun.lockb`; prefer the repository's pinned package-manager declaration when present.
-3. Prefer repository scripts such as `typecheck`, `lint`, `format:check`, and `test` because they preserve project flags and package scope.
-4. Run type-checking with the project command or `tsc --noEmit`; use project references or the configured build mode when the repository requires them.
-5. Run configured lint through ESLint or Biome, then formatting verification through Biome or Prettier check mode.
-6. Run the repository's Vitest or Jest command, targeting the affected package or test set for iteration without replacing the required broader gate.
-7. In workspaces, use the native npm, yarn, pnpm, or bun workspace command. When turbo or nx is configured, use its affected/filter/task graph rather than inventing independent package commands.
-8. Re-run each affected command after fixes and report commands that could not run with the exact command, scope, diagnostic, and missing environment reason.
+1. Determine the files in scope using the relevant diff.
+2. Discover commands from the build file (`package.json` and workspace metadata), repository wrapper, and CI configuration, in that order, before falling back to TypeScript defaults.
+3. Select npm from `package-lock.json`, yarn from `yarn.lock`, pnpm from `pnpm-lock.yaml`, or bun from `bun.lockb`; prefer the repository's pinned package-manager declaration when present.
+4. Run the pack's quality-check entrypoint through repository scripts such as `typecheck`, `lint`, `format:check`, and `test` because they preserve project flags and package scope.
+5. Run type-checking with the project command or `tsc --noEmit`; use project references or the configured build mode when the repository requires them.
+6. Run configured lint through ESLint or Biome, formatting verification through Biome or Prettier check mode, and the repository's Vitest or Jest command.
+7. In workspaces, use npm, yarn, pnpm, or bun workspace commands. When turbo or nx is configured, use its affected/filter/task graph and keep execution to files in scope or their owning packages.
+8. Re-run each affected command after fixes and report unavailable commands with the exact command, scope, diagnostic, and missing environment reason.
 
-## Command Guidance
+### Command Guidance
 
 - npm: `npm run typecheck`, `npm run lint`, `npm test`; use `npm run <script> --workspace <name>` when configured.
 - yarn: `yarn typecheck`, `yarn lint`, `yarn test`; use the repository's workspace or foreach command.
@@ -31,7 +31,10 @@ Validate changed TypeScript with repository-owned scripts, configuration, packag
 
 ## Fix Strategy
 
+- Use a priority-ordered fix strategy and never suppress failures.
 - Fix configuration, module-resolution, generated-source, and type errors before lint, formatting, and tests.
 - Do not introduce `any`, unsafe casts, non-null assertions, ignored diagnostics, disabled rules, or reduced strictness merely to silence a failure.
 - Do not install missing tools or silently substitute a weaker command; report unavailable requirements explicitly.
 - Preserve the original command, package/workspace scope, and full actionable diagnostics in failure reporting.
+- Re-run targeted checks after each fix category.
+- Run the full suite when targeted checks cannot establish safety.

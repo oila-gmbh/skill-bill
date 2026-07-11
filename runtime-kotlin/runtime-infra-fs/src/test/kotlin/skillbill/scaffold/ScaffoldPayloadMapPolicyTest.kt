@@ -182,17 +182,30 @@ class ScaffoldPayloadMapPolicyTest {
     listOf(
       "tsconfig.json",
       "tsconfig.*.json",
+      ".ts",
       "*.ts",
+      ".tsx",
       "*.tsx",
+      ".mts",
       "*.mts",
+      ".cts",
       "*.cts",
       "package.json",
+      "package-lock.json",
+      "yarn.lock",
       "pnpm-lock.yaml",
+      "bun.lockb",
       "biome.json",
+      "eslint.config.*",
+      ".eslintrc*",
+      "prettier.config.*",
+      ".prettierrc*",
     ).forEach { marker -> assertTrue(defaults.strongSignals.contains(marker)) }
     assertTrue(defaults.tieBreakers.any { it.contains("package.json or a lockfile alone") })
     assertTrue(defaults.tieBreakers.any { it.contains("generated API clients") })
+    assertTrue(defaults.tieBreakers.any { it.contains("ambient declaration files") })
     assertTrue(defaults.tieBreakers.any { it.contains("node_modules") })
+    assertTrue(defaults.tieBreakers.any { it.contains("generated declaration files") })
   }
 
   @Test

@@ -19,8 +19,15 @@ internal-for: bill-code-review
 - Observability preferences without an operational decision
 - Hypothetical scale outside documented workloads
 
+## Applicability
+
+Use this specialist when changed TypeScript affects promises, cancellation, retries, queues, shutdown, observability, or external failure handling.
+
 ## Project-Specific Rules
 
+### TypeScript Reliability Rules
+
+- Verify `TypeScript timeout and retry APIs` preserve lifecycle invariants; reject an availability, duplication, or cleanup failure.
 - Flag unawaited or floating promises and async callbacks whose callers cannot observe rejection or completion.
 - Preserve causal errors through `await`, `catch`, promise chains, and framework handlers; do not swallow rejections.
 - Use `AbortSignal` or the repository's cancellation contract consistently and clean up listeners, timers, streams, and resources.
@@ -29,3 +36,4 @@ internal-for: bill-code-review
 - Graceful shutdown must stop intake, settle or abandon work by policy, close resources, and terminate.
 - Distinguish timeout, cancellation, retryable failure, permanent rejection, and programmer error in reporting.
 - Findings must describe the production failure sequence and observable impact.
+- For Blocker or Major findings, describe the concrete availability, duplication, or cleanup failure scenario.

@@ -19,8 +19,15 @@ internal-for: bill-code-review
 - Generic dependency concern without an affected version or reachable surface
 - Speculative threats disconnected from changed trust boundaries
 
+## Applicability
+
+Use this specialist when changed TypeScript affects trust boundaries, authorization, untrusted inputs, secrets, injection sinks, or dependencies.
+
 ## Project-Specific Rules
 
+### TypeScript Security Rules
+
+- Verify `TypeScript authentication and sensitive-data APIs` preserve trust-boundary invariants; reject an authorization or data-exposure failure.
 - Parse external values as `unknown` and validate them before privileged or domain use; compile-time types are not validation.
 - Enforce authorization on every reachable entry point using trusted server-side actor and tenant context.
 - Keep untrusted data out of shell interpretation, unrestricted paths, raw queries, HTML/script sinks, redirects, and dynamic imports.
@@ -28,4 +35,4 @@ internal-for: bill-code-review
 - Do not expose secrets, tokens, personal data, stack traces, or internal errors through logs, responses, or browser bundles.
 - Treat install scripts, build plugins, generators, transitive packages, and changed lockfiles as executable supply-chain inputs.
 - Ensure browser code cannot receive server-only credentials through bundler environment substitution.
-- For Blocker or Major findings, describe the exploit path and affected asset.
+- For Blocker or Major findings, describe the concrete authorization-bypass or data-exposure scenario.

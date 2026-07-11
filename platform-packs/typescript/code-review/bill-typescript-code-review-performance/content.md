@@ -19,8 +19,15 @@ internal-for: bill-code-review
 - Type-level changes that do not alter emitted JavaScript
 - Memoization or concurrency added without a measured need
 
+## Applicability
+
+Use this specialist when changed TypeScript affects event-loop work, resource use, rendering, bundles, I/O, or another measured hot path.
+
 ## Project-Specific Rules
 
+### TypeScript Performance Rules
+
+- Verify `TypeScript hot-path and resource APIs` preserve scale invariants; reject a measurable latency, memory, or throughput failure.
 - Identify the hot path, expected scale, and runtime target before reporting cost.
 - Bound `Promise.all` inputs and worker/task fan-out where input size can grow.
 - Avoid sync filesystem, crypto, compression, or parsing work on latency-sensitive Node request paths.
@@ -29,3 +36,4 @@ internal-for: bill-code-review
 - Confirm type-only imports and server-only dependencies do not inflate browser bundles.
 - In TSX, check unstable props, effects, subscriptions, and state updates for avoidable render loops.
 - Findings must state the scale factor and expected latency, throughput, memory, or bundle impact.
+- For Blocker or Major findings, describe the concrete latency, memory-pressure, or throughput failure scenario.

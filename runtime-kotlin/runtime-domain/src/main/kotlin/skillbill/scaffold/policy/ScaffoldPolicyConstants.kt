@@ -188,9 +188,13 @@ val PLATFORM_PACK_PRESET_DESCRIPTORS: Map<String, PlatformPackPreset> =
       strongSignals = listOf(
         "tsconfig.json",
         "tsconfig.*.json",
+        ".ts",
         "*.ts",
+        ".tsx",
         "*.tsx",
+        ".mts",
         "*.mts",
+        ".cts",
         "*.cts",
         "package.json",
         "package-lock.json",

@@ -19,8 +19,15 @@ internal-for: bill-code-review
 - Tests that merely restate static types or implementation details
 - Snapshot churn without a semantic assertion
 
+## Applicability
+
+Use this specialist when changed TypeScript behavior, types, environments, promises, or boundaries require regression proof.
+
 ## Project-Specific Rules
 
+### TypeScript Testing Rules
+
+- Verify `TypeScript test and fixture APIs` preserve behavioral invariants; reject an undetected regression or false-positive test failure.
 - Require the changed failure mode to fail before the fix and pass after it.
 - Pair compile-time assertions with runtime tests when values cross JSON, JavaScript, database, network, or DOM seams.
 - Assert observable output, state, errors, and side effects rather than only successful resolution.
@@ -29,3 +36,4 @@ internal-for: bill-code-review
 - Test null, undefined, malformed, extra-field, and version-skew inputs where narrowing or validation changed.
 - Run meaningful tests in the actual Node, browser, worker, ESM, or CommonJS environment affected.
 - Findings must name the unprotected regression and why existing coverage would miss it.
+- For Blocker or Major findings, describe the concrete undetected-regression or false-positive test scenario.

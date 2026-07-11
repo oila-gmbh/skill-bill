@@ -19,8 +19,15 @@ internal-for: bill-code-review
 - Unrelated schema redesign
 - ORM-versus-SQL preferences when contracts are satisfied
 
+## Applicability
+
+Use this specialist when changed TypeScript affects database access, schemas, migrations, transactions, or durable serialization.
+
 ## Project-Specific Rules
 
+### TypeScript Persistence Rules
+
+- Verify `TypeScript transaction and storage APIs` preserve consistency invariants; reject a consistency or durability failure.
 - Keep one transaction owner per business operation and await every persistence promise before commit or release.
 - Validate database results when generated or declared types can drift from deployed schema.
 - Preserve the distinction among absent, `undefined`, `null`, database NULL, default, and omitted update fields.
@@ -29,3 +36,4 @@ internal-for: bill-code-review
 - Keep migrations compatible with realistic table sizes and mixed application versions.
 - Serialize date, decimal, bigint, enum, and JSON values explicitly across runtime and driver boundaries.
 - Findings must provide the failing data shape, interleaving, or deployment sequence.
+- For Blocker or Major findings, describe the concrete data-loss, consistency, or durability failure scenario.
