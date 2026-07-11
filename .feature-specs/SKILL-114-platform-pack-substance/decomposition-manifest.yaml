@@ -10,7 +10,7 @@ base_branch: "main"
 feature_branch: "feat/SKILL-114-platform-pack-substance"
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 2
+  subtask_id: 3
   action: "start"
 subtasks:
 - id: 1
@@ -29,12 +29,12 @@ subtasks:
 - id: 2
   name: "Go pack depth"
   spec_path: ".feature-specs/SKILL-114-platform-pack-substance/spec_subtask_2_go_pack_depth.md"
-  status: "pending"
+  status: "complete"
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260711-150116-qdza"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -48,7 +48,7 @@ subtasks:
   status: "pending"
   branch: null
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wftr-20260711-155902-gcp7"
   blocked_reason: null
   last_resumable_step: null
   linear_issue_id: null

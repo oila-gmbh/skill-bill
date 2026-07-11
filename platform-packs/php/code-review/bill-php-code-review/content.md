@@ -34,17 +34,17 @@ Add other specialists only when the changed files justify them.
 
 ## Diff-Signal Routing Table
 
-- Layering changes, module ownership, ports/adapters, query services, read models, projections, outbox, listeners, projectors, boundary-crossing composition -> `architecture` specialist.
-- Conditional logic, state transitions, retry-sensitive logic, time/date logic, nullability, behavior drift in refactors -> `platform-correctness` specialist.
-- Routes/controllers/actions, requests, resources, serializers, status codes, OpenAPI/schema changes, validation/error payloads, server-rendered payload contracts -> `api-contracts` specialist.
-- Repositories, ORM models, SQL, query builders, migrations, locking, transactions, projections, bulk writes -> `persistence` specialist.
-- Jobs, consumers, schedulers, retries, queues, caches, external clients, fallback behavior, logging/metrics/tracing -> `reliability` specialist.
-- Auth/authz, trust-boundary code, secrets, uploads, signed URLs, template rendering, JS or DOM injection risks, deserialization, sensitive logs, workflow or script credential handling -> `security` specialist.
-- Test files changed, contract tests, deterministic retry/idempotency tests, weak/tautological tests, missing regression proof -> `testing` specialist.
+- Composer `autoload.psr-4`, namespaces, service providers, Symfony `services.yaml`, container lifetimes, module APIs, outbox code, generators, or async/Fiber boundaries -> `architecture` specialist.
+- `==` versus `===`, `empty()`, `isset()`, `array_key_exists()`, `match`, `Throwable`, references, decoded arrays, mutable statics, worker resets, or `Fiber` suspension -> `platform-correctness` specialist.
+- Symfony `Request`/Validator/Serializer, Laravel `FormRequest`/`JsonResource`, PSR-7/PSR-15, JSON shapes, enums, dates, status mapping, pagination, webhooks, or idempotency -> `api-contracts` specialist.
+- PDO statements, Doctrine `EntityManager`, Eloquent models/scopes/casts, SQL, transactions, locks, migrations, tenant filters, cursors, or N+1 access -> `persistence` specialist.
+- Laravel queues/Horizon, Symfony Messenger, acknowledgement, retry/backoff, schedulers, cache keys, locks, timeouts, signals, shutdown handlers, or persistent workers -> `reliability` specialist.
+- `unserialize()`, hydration hooks, Blade `{!! !!}`, Twig `|raw`, uploads, paths, Symfony Process, SSRF, policies/voters, CSRF, trusted proxies, secrets, or sensitive logs -> `security` specialist.
+- PHPUnit/Pest tests, data providers, framework kernels, database fixtures, queue/cache fakes, worker isolation, PHPStan/Psalm configuration, or PHP runtime matrices -> `testing` specialist.
 - Changed tests look suspiciously weak, tautological, or coverage-padding -> `bill-unit-test-value-check`.
-- Hot paths, N+1, repeated downstream calls, serialization waste, feed/backfill loops, rendering waste, unbounded buffers or batch work -> `performance` specialist.
-- Blade, Twig, Livewire, Inertia, Filament, form flows, component rendering, server-rendered UI state, interactive admin surfaces -> `ui` specialist.
-- Accessibility semantics, focus management, validation feedback UX, keyboard behavior, localization-sensitive UI copy, screen-reader affordances -> `ux-accessibility` specialist.
+- PDO/ORM query volume, hydration, serializer/template loops, batching, `yield`, streamed responses, OPcache, Composer class maps, cache cardinality, worker memory, or blocking fibers -> `performance` specialist.
+- Blade, Twig, Livewire, Inertia, Filament, Symfony Forms, old input, error bags, component identity, redirects, pagination, or server/client state handoff -> `ui` specialist.
+- Rendered labels/errors, keyboard controls, focus restoration, headings, landmarks, live regions, localization, directionality, or progressive enhancement -> `ux-accessibility` specialist.
 
 ## Mixed Diffs
 

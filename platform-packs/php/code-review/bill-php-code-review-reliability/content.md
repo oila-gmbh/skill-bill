@@ -1,48 +1,47 @@
 ---
 name: bill-php-code-review-reliability
-description: Use when reviewing PHP reliability risks including timeouts, retries, queues, schedulers, caches, downstream failures, logging, metrics, and tracing.
+description: Use when reviewing PHP workers, queues, schedulers, retries, caches, timeouts, shutdown behavior, and production recovery.
 internal-for: bill-code-review
 ---
 
-# Backend Reliability Review Specialist
+# PHP Reliability Review Specialist
 
-Review only backend/service reliability issues that can cause outages, stuck work, runaway retries, or production incidents.
+Review operational behavior under retry, partial failure, long-lived execution, and process termination.
 
 ## Focus
 
-- Timeout, retry, and backoff correctness
-- Background jobs, consumers, schedulers, and replay safety
-- Blocking or heavy work on latency-sensitive request or worker execution paths
-- Cache, queue, and downstream dependency failure behavior
-- Logging, metrics, and tracing gaps that hide real failures
+- Laravel queues or Horizon and Symfony Messenger when detected
+- Persistent workers, schedulers, caches, locks, and downstream timeouts
+- Failure telemetry and recovery
 
 ## Ignore
 
-- Pure style comments
-- Tiny observability niceties without incident impact
+- Queue or framework advice without repository-owned dependencies and configuration
+- Hypothetical scale concerns lacking a reachable failure mode
 
 ## Applicability
 
-Use this specialist for PHP backend/service, queue, worker, scheduler, cache, external-client, and observability changes that can affect availability, incident response, or operational recovery.
+Use Laravel rules with queue configuration, `ShouldQueue`, or Horizon evidence. Use Messenger rules with `symfony/messenger` transports or handlers. Apply persistent-lifetime rules to RoadRunner, Swoole, FrankenPHP, workers, and schedulers actually launched by the repository.
 
 ## Project-Specific Rules
 
-### PHP Operational Resilience
+### PHP Operational Reliability Rules
 
-- Retries must be bounded and reserved for transient failures; include backoff and jitter where stampedes are possible
-- Circuit breakers, bulkheads, and rate-limiting configuration must have sensible thresholds and avoid infinite blocks, silent drops, or retry storms
-- External calls should have explicit timeout behavior and a clear cancellation story
-- Message consumers and scheduled jobs must be safe under duplicate delivery and partial failure
-- Replay, rebuild, and republish flows must be bounded, observable, and safe to run more than once
-- Acknowledge or commit work only after durable success, not before
-- Avoid blocking or heavy work on latency-sensitive request or worker execution paths
-- Queue, event, and notification dispatch that must happen after commit should respect the project's after-commit or `outbox` strategy and must not fire early
-- Cache fill, refresh, and invalidation logic must not create obvious thundering-herd or stale-data incidents
-- Degradation and fallback behavior should fail gracefully and make partial availability explicit where clients or operators need to know
-- Logging, metrics, and tracing should include enough contextual and correlation identifiers to debug failures without leaking secrets or sensitive data
-- Long-running jobs and consumers should emit enough progress/error context to distinguish poison messages, transient failures, and permanent contract/data issues
-- Rate limiting, backpressure, and batch sizing should protect downstream systems and avoid retry amplification under load
-- Long-running worker startup, shutdown, and restart paths must initialize and release clients, connections, subscriptions, locks, and process-local state predictably
-- Do not hold locks, open streams, file handles, external leases, connections, or other scarce resource handles across remote I/O or long waits unless the contract explicitly requires it
-- For Blocker or Major findings, describe the production failure scenario such as outage, stuck work, retry storm, stale data, lost observability, or unrecoverable partial failure
+- Require acknowledgement only after a Laravel job or Messenger handler completes its durable effect; early `ack()` can lose work after a crash.
+- Ensure visibility timeout or `retry_after` exceeds the bounded handler runtime with margin; premature redelivery creates a concurrency failure with duplicate effects.
+- Reject unlimited retries and require bounded exponential backoff for transient `Throwable`; retry storms exhaust workers and downstream resources.
+- Require poison messages to reach a failed transport, dead-letter queue, or terminal `Horizon` state with diagnostics; endless replay causes starvation.
+- Verify non-retryable validation and authorization failures are not wrapped as transient `Throwable`; incorrect retry classification floods the queue.
+- Ensure database commit precedes `dispatch()` or use the repository's after-commit/outbox mechanism; incorrect ordering causes a data failure for consumers.
+- Require idempotency storage keyed by a concrete `job-id` around externally visible effects; process crashes and retries can duplicate actions.
+- Verify `DoctrineClearEntityManagerWorkerSubscriber`, Laravel container flushing, or an equivalent reset clears per-message state; stale workers leak tenant or transaction data.
+- Ensure `SIGTERM` handling stops intake, finishes or safely abandons the current unit, and exits before orchestration grace expires; abrupt shutdown causes acknowledgement loss.
+- Require HTTP, database, process, and lock operations to declare timeouts shorter than the job budget; an unbounded call can block worker replacement.
+- Verify PHP `memory_limit` and worker recycling thresholds handle real payloads without masking growth; unchecked retention ends in fatal crashes.
+- Ensure cache keys encode version, tenant, locale, and authorization dimensions that affect values; collisions serve stale or exposed data.
+- Require distributed locks to have bounded leases and ownership-safe `lock-token` release; deleting another worker's renewed lock creates race failures.
+- Verify Laravel `withoutOverlapping()` or Symfony `Lock` ownership protects scheduler overlap and has a recovery expiry; stuck locks can suppress all future runs.
+- Ensure `register_shutdown_function()` and `error_get_last()` emit fatal context without falsely marking work successful; missing telemetry hides operational loss.
+- Require `Horizon` and `Messenger` worker configuration to match deployed queue names, priorities, and transports; routing drift causes an availability failure.
+- Verify replay tools and manual retry commands preserve correlation and idempotency identifiers; operational recovery can otherwise corrupt state.
 - For Blocker or Major findings, describe the concrete availability, duplication, or cleanup failure scenario.

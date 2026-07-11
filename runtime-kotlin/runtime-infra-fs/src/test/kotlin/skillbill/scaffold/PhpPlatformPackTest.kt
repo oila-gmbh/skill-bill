@@ -19,6 +19,8 @@ import skillbill.install.model.WindowsSymlinkPreflightState
 import skillbill.install.runtime.InstallOperations
 import skillbill.scaffold.platformpack.loadPlatformPack
 import skillbill.scaffold.policy.APPROVED_CODE_REVIEW_AREAS
+import skillbill.scaffold.substance.PlatformPackSubstanceAudit
+import skillbill.scaffold.substance.SubstancePolicy
 import skillbill.testing.repoRootFromTest
 import java.nio.file.Files
 import java.nio.file.Path
@@ -84,16 +86,16 @@ class PhpPlatformPackTest {
   private fun assertPhpAreaMetadata(areaMetadata: Map<String, String>) {
     assertEquals(10, areaMetadata.values.toSet().size)
     val concreteAreaContexts = mapOf(
-      "api-contracts" to listOf("request validation", "resources and serializers"),
-      "architecture" to listOf("module and layer boundaries", "framework coupling"),
-      "performance" to listOf("N+1 queries", "worker memory"),
-      "persistence" to listOf("ORM and SQL", "tenant scoping"),
-      "platform-correctness" to listOf("coercion and null semantics", "worker lifecycle"),
-      "reliability" to listOf("queues, jobs, schedulers", "downstream failures"),
-      "security" to listOf("signed URLs", "deserialization"),
-      "testing" to listOf("PHPUnit and Pest", "deterministic retries"),
-      "ui" to listOf("Blade, Twig, Livewire", "Filament"),
-      "ux-accessibility" to listOf("server-rendered semantics", "keyboard and focus behavior"),
+      "api-contracts" to listOf("Symfony, Laravel, and PSR", "webhooks, idempotency"),
+      "architecture" to listOf("Composer and PSR-4", "worker lifetimes", "fibers"),
+      "performance" to listOf("PDO and ORM", "OPcache", "fiber blocking"),
+      "persistence" to listOf("PDO, Doctrine, and Eloquent", "unit-of-work lifetime"),
+      "platform-correctness" to listOf("coercion, truthiness", "request-versus-worker lifetime"),
+      "reliability" to listOf("Laravel and Messenger", "worker reset", "fatal telemetry"),
+      "security" to listOf("Blade and Twig escaping", "processes, SSRF"),
+      "testing" to listOf("PHPUnit and Pest", "PHPStan and Psalm", "runtime matrices"),
+      "ui" to listOf("Blade, Twig, Livewire", "Symfony Form", "hydration correctness"),
+      "ux-accessibility" to listOf("keyboard and focus behavior", "progressive enhancement"),
     )
     assertEquals(concreteAreaContexts.keys, areaMetadata.keys)
     concreteAreaContexts.forEach { (area, expectedContexts) ->
@@ -166,6 +168,67 @@ class PhpPlatformPackTest {
         "PHP pack source should contain substantive guidance: $contentFile",
       )
     }
+  }
+
+  @Test
+  fun `php specialists and checker meet substantive depth and similarity gates`() {
+    val repoRoot = repoRootFromTest()
+    val report = PlatformPackSubstanceAudit.audit(repoRoot)
+    val php = report.packs.single { metric -> metric.pack == "php" }
+    val policy = SubstancePolicy()
+
+    assertEquals(APPROVED_CODE_REVIEW_AREAS, php.specialists.map { it.area }.toSet())
+    php.specialists.forEach { specialist ->
+      assertTrue(specialist.substantiveRules >= policy.minimumRules, specialist.toString())
+      assertEquals(policy.minimumClusters, specialist.failureModeClusters, specialist.toString())
+      assertTrue(specialist.concreteEvidenceRules >= policy.minimumRules, specialist.toString())
+      assertTrue(specialist.placeholders.isEmpty(), specialist.toString())
+    }
+    assertEquals(policy.minimumQualityFacets, php.qualityCheckFacets.size)
+    assertTrue(php.sharedShingles <= policy.maximumSharedShingles, php.sharedShingles.percentage())
+
+    val phpPairs = report.pairs.filter { pair ->
+      pair.firstFile.startsWith("platform-packs/php/") || pair.secondFile.startsWith("platform-packs/php/")
+    }
+    assertTrue(phpPairs.isNotEmpty())
+    assertTrue(phpPairs.all { it.similarity <= policy.maximumPairSimilarity })
+    assertTrue(
+      phpPairs.any { pair ->
+        pair.firstFile.startsWith("platform-packs/go/") || pair.secondFile.startsWith("platform-packs/go/")
+      },
+    )
+  }
+
+  @Test
+  fun `php content names concrete runtime framework and quality failure modes`() {
+    val packRoot = repoRootFromTest().resolve("platform-packs/php")
+    val requiredByArea = mapOf(
+      "platform-correctness" to listOf("empty()", "Throwable", "RoadRunner", "Fiber", "autoload.psr-4"),
+      "architecture" to listOf("services.yaml", "EntityManager::transactional()", "dispatch()", "Fiber"),
+      "api-contracts" to listOf("FormRequest::rules()", "JSON_THROW_ON_ERROR", "PSR-15", "Idempotency-Key"),
+      "persistence" to listOf("PDO::ATTR_ERRMODE", "EntityManager", "fillable", "FOR UPDATE"),
+      "security" to listOf("unserialize()", "|raw", "finfo", "Process::fromShellCommandline()"),
+      "reliability" to listOf("retry_after", "SIGTERM", "withoutOverlapping()", "error_get_last()"),
+      "performance" to listOf("LazyCollection", "OPcache", "classmap-authoritative", "memory_limit"),
+      "testing" to listOf("tearDown()", "Queue::fake()", "PHPStan", "composer.json"),
+      "ui" to listOf("wire:key", "withQueryString()", "419", "fragment()"),
+      "ux-accessibility" to listOf("aria-describedby", "focus-trap", "aria-live", "dir"),
+    )
+    requiredByArea.forEach { (area, terms) ->
+      val content = Files.readString(packRoot.resolve("code-review/bill-php-code-review-$area/content.md"))
+      terms.forEach { term -> assertContains(content, term) }
+    }
+
+    val checker = Files.readString(packRoot.resolve("quality-check/bill-php-code-check/content.md"))
+    listOf(
+      "composer validate --strict",
+      "php -l",
+      "phpstan analyse",
+      "vendor/bin/phpunit",
+      "composer audit",
+      "composer dump-autoload --strict-psr",
+      "supported PHP version, extension, dependency, and database matrix",
+    ).forEach { term -> assertContains(checker, term) }
   }
 
   @Test

@@ -1,46 +1,49 @@
 ---
 name: bill-php-code-review-ux-accessibility
-description: Use when reviewing PHP product UX and accessibility risks including semantic structure, labels, keyboard behavior, focus management, validation feedback, and localization-sensitive UI copy.
+description: Use when reviewing accessibility and task completion in PHP-rendered forms, templates, and server-driven components.
 internal-for: bill-code-review
 ---
 
-# UX & Accessibility Review Specialist
+# PHP UX and Accessibility Review Specialist
 
-Review only UX correctness and accessibility issues that can make the PHP product harder to understand, harder to operate, or inaccessible to keyboard and assistive-technology users.
+Review whether users can perceive, navigate, understand, and complete PHP-owned interactions.
 
 ## Focus
 
-- Semantic structure, labels, and screen-reader affordances
-- Keyboard navigation, focus order, and focus restoration
-- Validation feedback clarity and error-state discoverability
-- Localization-sensitive UI behavior and user-facing copy regressions
-- Interaction patterns where the UI technically renders but is confusing, misleading, or inaccessible
+- Server-rendered semantics, labels, errors, headings, and landmarks
+- Keyboard and focus behavior in Livewire, Filament, Symfony UX, and comparable components
+- Localization, directionality, live updates, and progressive enhancement
 
 ## Ignore
 
-- Pure visual design preference
-- Internal refactors with no user-visible outcome
-- UI implementation correctness that belongs to `bill-php-code-review-ui`
-- Security-only escaping issues that belong to `bill-php-code-review-security`
+- Visual taste without a task-completion consequence
+- Client surfaces that the PHP repository does not render or configure
+- Defer general `ui` state correctness to that lane and exploit or disclosure findings to `security`.
 
 ## Applicability
 
-Use this specialist for changed PHP-rendered interactions where semantics, accessible names, keyboard flow, focus, validation feedback, localization, or assistive-technology behavior can affect task completion.
+Use template and component checks only when Blade, Twig, Symfony Forms, Livewire, Filament, Inertia, or related PHP source owns the resulting markup or state update.
 
 ## Project-Specific Rules
 
-### PHP Accessible Interaction
+### Accessible PHP Presentation Rules
 
-- Every interactive control must have an accessible name that matches the intended user action
-- Form inputs need explicit labels, correctly associated help text, and validation errors that are both visible and programmatically associated
-- Do not rely on color alone to communicate status, errors, or destructive outcomes
-- Keyboard users must be able to reach, operate, and dismiss interactive controls, modals, menus, and dialogs
-- Focus should move intentionally after validation failures, modal open or close, and server-driven state changes that replace major content
-- Dynamic server-rendered updates should preserve heading structure, landmarks, and screen-reader comprehension where the framework allows it
-- Preserve valid `aria-*` relationships when PHP-rendered state replaces controls, help text, validation errors, or dialog content
-- Links and buttons must reflect their real behavior; do not use links for destructive state changes when the flow expects a button or form submission
-- Empty, loading, success, and error states should be distinguishable and understandable without hidden context
-- User-facing copy should stay consistent with the actual workflow outcome and should not imply success, permanence, or safety when the backend contract does not guarantee it
-- Localization-sensitive paths should avoid hardcoded English-only assumptions for date, number, currency, directionality, and plural-sensitive messaging when the product supports multiple locales
-- In findings, make the user-visible UX or accessibility consequence explicit
+- Require each Symfony Form, Blade, or Twig control to have a programmatic `<label for>` matching its rendered `id`; missing association prevents screen-reader input identification.
+- Ensure validation messages connect through `aria-describedby` and invalid controls expose `aria-invalid`; visual-only errors make form failures inaccessible.
+- Require the server `error-summary` to link to invalid controls and receive focus after a failed submission; otherwise keyboard users cannot locate the failure.
+- Verify first-error focus does not override user intent after background `Livewire` validation; unexpected movement breaks keyboard task order.
+- Ensure `Livewire` or Symfony UX DOM replacement restores focus to the triggering control, dialog, or new target; rerenders can lose focus entirely.
+- Require `button`, disclosure, tab, menu, and Filament actions to be keyboard operable; click-only handlers create a task-completion failure.
+- Verify modal `focus-trap` behavior restores focus on close using the component lifecycle; escaped focus creates an unsafe interaction failure.
+- Ensure heading levels and `<main>`, `<nav>`, and other landmarks survive Blade/Twig layouts; broken structure makes navigation incorrect.
+- Require Livewire status, queue progress, and validation updates to use a restrained `aria-live` region; silent changes create an accessibility failure.
+- Require `aria-busy` during a server-driven operation that delays replacement content; missing operational status creates a timeout-like task failure for assistive users.
+- Reject color-only `required`, error, selected, or success states in rendered markup; users may miss invalid or completed actions.
+- Ensure translated strings from `trans()`, `__()`, or Twig `trans` retain placeholders, plural rules, and names; malformed localization can cause an invalid accessible label.
+- Require `lang` and, for right-to-left locales, `dir` on the rendered document or relevant subtree; absent directionality breaks reading and control order.
+- Verify localized dates, numbers, and validation messages use `app()->getLocale()` in persistent workers; leaked locale state presents incorrect information.
+- Ensure `redirect()` and pagination responses preserve a meaningful page title and focus destination; missing context creates a navigation failure.
+- Require core form submission and error recovery to work without `Livewire`, Turbo, or Symfony UX JavaScript when progressive enhancement is claimed; script failure must not block completion.
+- Verify server/client hydration does not duplicate `id` values, labels, or live regions across Inertia transitions; duplicate semantics create an invalid navigation contract.
+- Ensure `403` or session-expiry errors provide a recoverable path and do not erase entered non-sensitive data; abrupt failure causes preventable task loss.
 - For Blocker or Major findings, describe the concrete accessibility or task-completion failure scenario.

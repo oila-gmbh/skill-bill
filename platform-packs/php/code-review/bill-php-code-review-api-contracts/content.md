@@ -1,45 +1,46 @@
 ---
 name: bill-php-code-review-api-contracts
-description: Use when reviewing PHP backend API contracts, request validation, response serialization, status-code mapping, and backward compatibility.
+description: Use when reviewing PHP request validation, response serialization, protocol semantics, and client compatibility.
 internal-for: bill-code-review
 ---
 
-# Backend API & Contract Review Specialist
+# PHP API Contract Review Specialist
 
-Review only backend/service API contract issues that can break clients, allow invalid behavior, or create hard-to-debug production regressions.
+Review externally observable PHP service contracts and report only reachable client failures.
 
 ## Focus
 
-- Request validation and boundary enforcement
-- Serialization/deserialization mismatches
-- Backward compatibility of request/response schemas
-- Status-code and error-contract correctness
-- Pagination, filtering, and idempotency semantics on public endpoints
+- Request presence, validation, coercion, and authorization boundaries
+- Serialization, errors, status codes, pagination, webhooks, and compatibility
+- Symfony, Laravel, and PSR HTTP contracts when detected
 
 ## Ignore
 
-- Pure style feedback
-- Internal refactors that do not change externally observable behavior
+- Internal refactors with no transport-visible effect
+- Framework-specific advice without owned packages, configuration, or entry points
 
 ## Applicability
 
-Use this specialist for PHP backend/server code only. It is most relevant for HTTP APIs, RPC endpoints, webhook handlers, and public or cross-service contracts.
+Use Symfony rules when `symfony/http-foundation`, Validator, or Serializer is present; Laravel rules require FormRequest or JsonResource evidence; PSR-7 and PSR-15 checks require their interfaces in `composer.json` or source.
 
 ## Project-Specific Rules
 
-### PHP Boundary Contracts
+### PHP API Contract Rules
 
-- Validate untrusted input at the boundary before business logic depends on it
-- Distinguish absent vs null vs defaulted fields when that changes semantics
-- Do not leak internal/domain/persistence models directly as public API contracts unless that coupling is an explicit, stable decision
-- Keep request validation, transport DTO/resource shaping, and domain behavior distinct when the project architecture expects that separation
-- Breaking contract changes require explicit versioning, coordinated migration, or a compatibility story
-- Error mapping should be stable, intentional, and not collapse distinct client outcomes into the same generic failure
-- Ensure validation failures, authentication/authorization failures, and domain/client faults map to stable and distinct API error responses
-- Mutating endpoints, commands, and webhook handlers should define idempotency behavior clearly when retries are plausible
-- Pagination and filtering should preserve deterministic ordering and bounded result sizes
-- Serialization defaults must match the compatibility expectations of existing clients
-- Check enum, date/time, nullability, and default-field serialization for client-visible drift
-- If the project maintains `OpenAPI` or equivalent contract docs, check implementation drift against them
-- In findings, explain the client-visible consequence of the contract break or boundary bug
+- Require `Request::request->has()` or `array_key_exists()` when omitted and explicit `null` mean different operations; truthiness checks can apply an invalid default.
+- Reject direct use of coercive query strings such as `$request->query->get('enabled')` without contract normalization; values like `"false"` can select incorrect behavior.
+- Ensure Symfony `Assert` constraints or Laravel `FormRequest::rules()` run before application mutation; late validation can persist invalid data.
+- Verify Laravel `JsonResource` and Symfony Serializer groups do not expose new entity fields accidentally; implicit serialization creates sensitive-data exposure and client drift.
+- Require `json_decode(..., JSON_THROW_ON_ERROR)` or an equivalent checked failure path; silent `null` decoding can accept malformed payloads as valid input.
+- Ensure `json_encode()` failures and `JsonException` map to a stable server error rather than an empty body; otherwise clients receive an invalid response contract.
+- Verify large identifiers and decimal values retain documented precision across JSON and PHP numeric types; coercion to `float` can corrupt client-visible data.
+- Require backed enums, `DateTimeImmutable`, time zones, and nullable fields to serialize in the established wire format; format drift breaks generated clients.
+- Ensure validation, authentication, authorization, conflict, and domain failures map to distinct documented status codes; collapsing them into `200` or `500` breaks client recovery.
+- Reject pagination without stable ordering and a bounded `limit`; duplicate or missing records make traversal incorrect and create resource risk.
+- Require filter and sort field allowlists before feeding Doctrine or Eloquent builders; unchecked names can expose data or trigger invalid SQL failures.
+- Verify PSR-7 response bodies are rewound or newly constructed before return; a consumed stream produces an unexpectedly empty client response.
+- Ensure PSR-15 middleware either delegates once or returns a response once; double invocation can duplicate state changes and corrupt response ordering.
+- Require webhook signatures to cover the raw request body before decoding and define replay tolerance; verifying normalized JSON can admit forged or replayed events.
+- Ensure mutating endpoints use the repository's `Idempotency-Key` contract when retries are plausible; absent replay storage creates duplicate effects.
+- Reject breaking removal or meaning changes in OpenAPI-backed fields without versioning or migration; existing consumers fail at runtime.
 - For Blocker or Major findings, describe the concrete compatibility or validation failure scenario.
