@@ -1,8 +1,5 @@
 contract_version: "0.1"
 agents:
-  - name: bill-python-code-review
-    description: "Python baseline code reviewer. Runs the governed baseline review across the full owned diff before specialist findings are merged. Returns a Risk Register in the F-XXX bullet format."
-    compose: governed-content
   - name: bill-python-code-review-api-contracts
     description: "Python api contracts specialist code reviewer. Runs against Python API contracts, validation, serialization, and compatibility. Returns a Risk Register in the F-XXX bullet format."
     compose: governed-content

@@ -18,9 +18,18 @@ internal-for: bill-code-review
 - Copy or visual preference without comprehension, access, or task-completion impact
 - Accessibility claims for surfaces outside the Rust-owned diff
 - Framework-specific prescriptions when equivalent accessible behavior exists
+- UI correctness findings that belong to the `ui` specialist
+- Security-only findings that belong to the `security` specialist
+
+## Applicability
+
+Apply when changed Rust UI affects semantics, accessible names, keyboard or focus flow, feedback, localization, or assistive access.
 
 ## Project-Specific Rules
 
+### Rust Accessibility Rules
+
+- Verify `Rust semantics and input APIs` preserve their documented invariants; reject an accessibility or task-completion failure.
 - Every interactive control needs an accessible name and operable keyboard path; custom widgets must reproduce native semantics and states.
 - Move or restore focus intentionally after dialogs, navigation, validation failure, and async completion without stealing it during normal updates.
 - Associate errors with fields and announce material async status through the platform's accessibility mechanism.
@@ -28,3 +37,4 @@ internal-for: bill-code-review
 - Preserve localization keys, placeholders, pluralization, text direction, Unicode width, and expansion across web, desktop, and terminal surfaces.
 - Ensure terminal UI shortcuts, focus, status, and fallback text remain usable without mouse, color, or advanced terminal features.
 - Findings must describe the blocked user task and use only the shared Risk Register and canonical severity definitions.
+- For Blocker or Major findings, describe the concrete accessibility or task-completion failure scenario.

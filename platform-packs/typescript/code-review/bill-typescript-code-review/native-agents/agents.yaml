@@ -1,8 +1,5 @@
 contract_version: "0.1"
 agents:
-  - name: bill-typescript-code-review
-    description: "TypeScript baseline code reviewer. Reviews the full owned diff before specialist findings are merged. Returns an F-XXX Risk Register."
-    compose: governed-content
   - name: bill-typescript-code-review-api-contracts
     description: "TypeScript api contracts specialist code reviewer. Runs against TypeScript public types, HTTP/RPC, serialization, validation, and compatibility contracts. Returns a Risk Register in the F-XXX bullet format."
     compose: governed-content

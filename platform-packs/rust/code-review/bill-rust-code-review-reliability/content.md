@@ -25,6 +25,9 @@ Apply to async tasks, services, workers, queues, schedulers, network clients, ca
 
 ## Project-Specific Rules
 
+### Rust Reliability Rules
+
+- Verify `Rust timeout and retry APIs` preserve their documented invariants; reject an availability, duplication, or cleanup failure.
 - Define what happens when each future is dropped at every `.await` that follows a side effect or state mutation.
 - Bound queues, concurrency, retry attempts, and retained task handles; propagate backpressure instead of hiding overload.
 - Distinguish timeout, cancellation, retryable remote failure, permanent rejection, and internal invariant failure in `Result` contracts.
@@ -32,3 +35,4 @@ Apply to async tasks, services, workers, queues, schedulers, network clients, ca
 - Graceful shutdown must stop intake, drain or abandon by policy, release permits and guards, flush durable state, and terminate.
 - Avoid retry storms with deadlines, jitter, budgets, and idempotency appropriate to the operation.
 - Findings must describe the production failure sequence and use only the shared Risk Register and canonical severities.
+- For Blocker or Major findings, describe the concrete availability, duplication, or cleanup failure scenario.

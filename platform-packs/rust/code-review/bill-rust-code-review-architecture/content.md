@@ -25,6 +25,9 @@ Apply to every first-party Rust diff. Infer the existing workspace architecture 
 
 ## Project-Specific Rules
 
+### Rust Architecture Rules
+
+- Verify `Rust module and dependency APIs` preserve their documented invariants; reject a dependency cycle or ownership boundary failure.
 - Keep stable business rules independent of web, async-runtime, database, UI, and serialization details when the repository establishes that boundary.
 - Put traits where their consumers own the required contract; avoid broad provider-owned traits that leak implementation details or make downstream evolution semver-sensitive.
 - Do not use lifetimes as hidden global coupling. Public borrowed types must have a clear owner and usable lifetime contract.
@@ -33,3 +36,4 @@ Apply to every first-party Rust diff. Infer the existing workspace architecture 
 - Treat proc macros and build scripts as architectural dependencies when they generate APIs or influence compilation.
 - Findings must identify the misplaced responsibility, violated boundary, and concrete maintenance, compatibility, or correctness risk.
 - Use only the shared Risk Register and canonical severity definitions.
+- For Blocker or Major findings, describe the concrete dependency-cycle or ownership-boundary failure scenario.

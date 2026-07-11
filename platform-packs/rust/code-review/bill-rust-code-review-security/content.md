@@ -25,6 +25,9 @@ Apply at every trust boundary and whenever the diff adds or changes unsafe behav
 
 ## Project-Specific Rules
 
+### Rust Security Rules
+
+- Verify `Rust authentication and sensitive-data APIs` preserve their documented invariants; reject an authorization or data-exposure failure.
 - Minimize unsafe blocks and document the external invariant that safe callers can rely on; verify the implementation actually upholds it.
 - Check unsafe `Send`/`Sync` impls, aliasing, provenance, alignment, initialization, drop, unwind, and FFI ownership across all paths.
 - Keep untrusted data out of shell interpretation, unrestricted file paths, raw SQL, HTML/script contexts, and permissive deserializers.
@@ -33,3 +36,4 @@ Apply at every trust boundary and whenever the diff adds or changes unsafe behav
 - Treat `build.rs`, proc macros, git dependencies, and enabled default features as executable supply-chain inputs.
 - For Blocker or Major findings, describe the exploit path and affected asset.
 - Use only the shared Risk Register and canonical severity definitions.
+- For Blocker or Major findings, describe the concrete authorization-bypass or data-exposure scenario.

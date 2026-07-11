@@ -25,6 +25,9 @@ Apply to library APIs, service boundaries, serialized data, messages, plugins, a
 
 ## Project-Specific Rules
 
+### Rust API Contract Rules
+
+- Verify `Rust request and serialization APIs` preserve their documented invariants; reject a compatibility or validation failure.
 - Treat new public trait requirements, generic bounds, lifetime constraints, and non-exhaustive enum changes as caller-impacting contracts.
 - Preserve error classification and stable machine-readable fields while avoiding accidental exposure of internal details.
 - Ensure serde defaults and optional fields distinguish absent, null, zero, and empty values as the external protocol intends.
@@ -32,3 +35,4 @@ Apply to library APIs, service boundaries, serialized data, messages, plugins, a
 - At FFI boundaries, pin ABI, layout, allocation owner, string encoding, nullability, thread rules, and panic/unwind behavior.
 - Require request validation before domain work and map every failure to the intended status or protocol code.
 - Findings must identify the broken caller or payload scenario and use only canonical severities.
+- For Blocker or Major findings, describe the concrete compatibility or validation failure scenario.

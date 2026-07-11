@@ -206,9 +206,7 @@ class PlatformPackScaffoldParityTest {
     }
     assertComposedSourceBundle(
       repo.resolve("platform-packs/java/code-review/bill-java-code-review/native-agents/agents.yaml"),
-      mapOf(
-        "bill-java-code-review" to "Use when reviewing Java changes across code-review specialists.",
-      ) + APPROVED_CODE_REVIEW_AREAS.associate { area ->
+      APPROVED_CODE_REVIEW_AREAS.associate { area ->
         "bill-java-code-review-$area" to
           "Java ${area.replace('-', ' ')} specialist code reviewer. " +
           "Runs against Java ${defaultAreaFocus(area)} across pom.xml, build.gradle, src/main/java signals. " +
@@ -697,19 +695,19 @@ class ScaffoldAuthoringParityTest {
 
 class PlatformPackNativeAgentScaffoldTest {
   @Test
-  fun `platform pack accepts an explicit body based canonical agent`() = withIsolatedUserHome {
+  fun `platform pack rejects an explicit body based canonical agent`() = withIsolatedUserHome {
     val repo = seedRepo()
-    scaffold(
-      payload(repo, "platform-pack", "platform" to "java") +
-        mapOf("subagent_specialists" to listOf("bill-java-code-review")),
-    )
-    val packRoot = repo.resolve("platform-packs/java")
-    val bundle = Files.readString(packRoot.resolve("code-review/bill-java-code-review/native-agents/agents.yaml"))
+    val before = snapshotTree(repo)
 
-    assertEquals("java", loadPlatformPack(packRoot).slug)
-    assertContains(bundle, "name: bill-java-code-review")
-    assertContains(bundle, "body: |-")
-    assertFalse("compose: governed-content" in bundle)
+    val error = assertFailsWith<InvalidScaffoldPayloadError> {
+      scaffold(
+        payload(repo, "platform-pack", "platform" to "java") +
+          mapOf("subagent_specialists" to listOf("bill-java-code-review")),
+      )
+    }
+
+    assertContains(error.message.orEmpty(), "exactly one manifest-derived native agent")
+    assertEquals(before, snapshotTree(repo))
   }
 }
 

@@ -19,8 +19,15 @@ internal-for: bill-code-review
 - Tests that merely restate type-system guarantees or implementation details
 - Calls for exhaustive combinations when a justified representative matrix exists
 
+## Applicability
+
+Apply when changed Rust behavior, contracts, feature combinations, concurrency, or failure paths require regression proof.
+
 ## Project-Specific Rules
 
+### Rust Testing Rules
+
+- Verify `Rust test and fixture APIs` preserve their documented invariants; reject an undetected regression or false-positive test failure.
 - Require the changed failure mode to fail before the fix and pass after it.
 - Assert observable results, durable state, errors, and side effects rather than only successful execution.
 - Avoid real sleeps and scheduler luck; use paused time, barriers, controlled channels, and bounded timeouts where supported.
@@ -29,3 +36,4 @@ internal-for: bill-code-review
 - Use property tests or fuzzing for parsers and invariant-heavy transformations when examples cannot cover the risk surface.
 - Keep fixtures explicit and prevent snapshots from hiding semantic regressions behind bulk updates.
 - Findings must name the unprotected regression and use only the shared Risk Register and canonical severities.
+- For Blocker or Major findings, describe the concrete undetected-regression or false-positive test scenario.

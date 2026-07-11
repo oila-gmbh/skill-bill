@@ -133,8 +133,7 @@ class TypeScriptPlatformPackTest {
     val bundlePath = packRoot.resolve("code-review/bill-typescript-code-review/native-agents/agents.yaml")
     assertContains(Files.readString(bundlePath), "contract_version: \"0.1\"")
     val agents = parseNativeAgentBundle(bundlePath)
-    val expectedNames = APPROVED_CODE_REVIEW_AREAS.map { "bill-typescript-code-review-$it" }.toSet() +
-      "bill-typescript-code-review"
+    val expectedNames = APPROVED_CODE_REVIEW_AREAS.map { "bill-typescript-code-review-$it" }.toSet()
     assertEquals(expectedNames, agents.map { it.name }.toSet())
     agents.forEach { agent ->
       val composed = composeNativeAgentSource(repoRoot, agent)
@@ -334,7 +333,7 @@ class TypeScriptPlatformPackTest {
       .filter { nativeAgent -> nativeAgent.status == NativeAgentApplyStatus.LINKED }
       .mapNotNull { nativeAgent -> nativeAgent.path?.fileName?.toString() }
       .toSet()
-    expectedReviewSidecars.map { sidecar -> sidecar.removeSuffix(".md") }.forEach { agentName ->
+    APPROVED_CODE_REVIEW_AREAS.map { area -> "bill-typescript-code-review-$area" }.forEach { agentName ->
       assertContains(linkedNativeAgents, "$agentName.toml")
     }
   }

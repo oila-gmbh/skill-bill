@@ -25,6 +25,9 @@ Apply when Rust changes read or write durable state, schema, caches used as trut
 
 ## Project-Specific Rules
 
+### Rust Persistence Rules
+
+- Verify `Rust transaction and storage APIs` preserve their documented invariants; reject a consistency or durability failure.
 - Keep one clear transaction owner per business operation and propagate failures without committing partial state.
 - Ensure futures, row streams, and borrowed transaction handles cannot escape their valid connection or transaction lifetime.
 - Check every query for tenant, ownership, soft-delete, and authorization scoping where applicable.
@@ -32,3 +35,4 @@ Apply when Rust changes read or write durable state, schema, caches used as trut
 - Keep migrations compatible with mixed application versions and realistic table sizes; avoid long locks and unbounded backfills.
 - Preserve nullability, enum, time, decimal, and identifier semantics across Rust types and database types.
 - Findings must provide the failing interleaving, data shape, or deployment sequence and use only canonical severities.
+- For Blocker or Major findings, describe the concrete data-loss, consistency, or durability failure scenario.

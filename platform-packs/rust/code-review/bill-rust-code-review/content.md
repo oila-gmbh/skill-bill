@@ -10,6 +10,8 @@ Review Rust changes against the repository's edition, MSRV, Cargo workspace, fea
 
 ## Classification Rules
 
+- If Cargo workspace metadata or first-party Rust source dominates the changed product surface, classify the owned diff as `rust`.
+- Otherwise keep Rust ownership only for first-party Rust files when another stack owns the changed product surface.
 - Always select `bill-rust-code-review-architecture`.
 - Select at least two and at most ten specialists.
 - Use `bill-rust-code-review-platform-correctness` as the default second lane when no narrower signal applies.
@@ -19,23 +21,31 @@ Review Rust changes against the repository's edition, MSRV, Cargo workspace, fea
 
 ## Diff-Signal Routing Table
 
-| Signal in the diff | Specialist review to run |
-|---|---|
-| Crate/workspace layout, dependency direction, trait ownership, public abstractions, Cargo feature topology | `bill-rust-code-review-architecture` |
-| Borrowing, lifetimes, pinning, `Send`/`Sync`, interior mutability, `Result`, `panic!`, `unwrap`/`expect`, tokio/async-std semantics | `bill-rust-code-review-platform-correctness` |
-| Traits, public types, serde shapes, HTTP/RPC, FFI ABI, semver compatibility | `bill-rust-code-review-api-contracts` |
-| SQLx, Diesel, SeaORM, migrations, transactions, locking, durable writes | `bill-rust-code-review-persistence` |
-| Cancellation, backpressure, retries, channels, tasks, timeouts, shutdown, observability | `bill-rust-code-review-reliability` |
-| `unsafe`, FFI, raw memory, auth, secrets, untrusted parsing, process/file/network boundaries, Cargo supply chain | `bill-rust-code-review-security` |
-| Unit, integration, doc, property, fuzz, compile-fail, concurrency, and feature-combination tests | `bill-rust-code-review-testing` |
-| Allocation, cloning, boxing, locking, atomics, serialization, async scheduling, repeated I/O | `bill-rust-code-review-performance` |
-| wasm, server-rendered HTML, desktop GUI, terminal UI, interactive CLI output | `bill-rust-code-review-ui` |
-| Semantics, keyboard/focus flow, accessible names, feedback, localization | `bill-rust-code-review-ux-accessibility` |
+- Crate/workspace layout, dependency direction, trait ownership, public abstractions, or Cargo feature topology -> `architecture` specialist.
+- Allocation, cloning, boxing, locking, atomics, serialization, async scheduling, or repeated I/O -> `performance` specialist.
+- Borrowing, lifetimes, pinning, `Send`/`Sync`, interior mutability, error semantics, or async runtime behavior -> `platform-correctness` specialist.
+- `unsafe`, FFI, raw memory, auth, secrets, untrusted parsing, process/file/network boundaries, or Cargo supply chain -> `security` specialist.
+- Unit, integration, doc, property, fuzz, compile-fail, concurrency, or feature-combination tests -> `testing` specialist.
+- Traits, public types, serde shapes, HTTP/RPC, FFI ABI, or semver compatibility -> `api-contracts` specialist.
+- SQLx, Diesel, SeaORM, migrations, transactions, locking, or durable writes -> `persistence` specialist.
+- Cancellation, backpressure, retries, channels, tasks, timeouts, shutdown, or observability -> `reliability` specialist.
+- Wasm, server-rendered HTML, desktop GUI, terminal UI, or interactive CLI output -> `ui` specialist.
+- Semantics, keyboard/focus flow, accessible names, feedback, or localization -> `ux-accessibility` specialist.
 
 ## Mixed Diffs
 
-Classify each changed file independently. Architecture receives every first-party Rust-owned file; other specialists receive only matching files. Exclude generated sources, vendored crates, `target/`, build artifacts, and non-Rust-owned files. Rust used only for FFI bindings or wasm build support does not make the whole repository Rust-owned. After exclusions, drop empty lanes and restore the minimum by assigning all Rust-owned files to platform-correctness when architecture would otherwise stand alone.
+- Keep baseline specialists for the whole review, add only area-relevant lanes, and use lightweight file-level classification from paths, imports, Cargo metadata, and runtime markers to build each specialist scope.
+- Architecture receives every first-party Rust-owned file; other specialists receive only matching files.
+- Exclude generated, vendored, build-output, and non-stack files from specialist scope and dominance scoring, including `target/`, generated clients, bindings, and vendored crates.
+- Rust used only for FFI bindings or wasm build support does not make the whole repository Rust-owned.
+- After exclusions, drop empty lanes and restore the minimum by assigning all Rust-owned files to platform-correctness when architecture would otherwise stand alone.
+- Load each selected specialist rubric so every selected specialist result is retained and attributed.
+- When selected specialists exceed delegated-worker capacity, batch them in deterministic waves and retain every selected specialist result.
 
 ## Finding Discipline
 
-Report only evidence-backed defects or material risks introduced by the diff. Name the violated Rust, repository, API, or operational contract; explain the concrete failure mode; and propose the smallest compatible correction. Do not report formatting handled by rustfmt, subjective style, speculative micro-optimizations, or `unwrap`/`unsafe` merely by keyword: show the reachable failure or unproven invariant. Use the shared F-XXX Risk Register and canonical severities.
+- Calibrate severity to concrete production, operator, client, or user impact using only the governed severity vocabulary.
+- Verify every triggering precondition and reachable failure path before reporting a finding.
+- Keep findings attributed to their specialist lane through collection and merge.
+- Deduplicate overlapping findings without losing the strongest evidence, consequence, or ownership attribution.
+- Name the violated Rust, repository, API, or operational contract and the concrete failure; do not report rustfmt output, subjective style, speculative micro-optimizations, or `unwrap`/`unsafe` merely by keyword.

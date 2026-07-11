@@ -25,6 +25,9 @@ Apply when changed Rust code affects throughput, latency, memory, startup, binar
 
 ## Project-Specific Rules
 
+### Rust Performance Rules
+
+- Verify `Rust hot-path and resource APIs` preserve their documented invariants; reject a measurable latency, memory, or throughput failure.
 - Flag `.clone()` only when the copied value, frequency, or retained lifetime creates material cost.
 - Watch mutex or read/write guards held across `.await`; require intentional ownership and lock duration.
 - Use `spawn_blocking` or the repository's equivalent for blocking work only with bounded concurrency and shutdown behavior.
@@ -33,3 +36,4 @@ Apply when changed Rust code affects throughput, latency, memory, startup, binar
 - Check feature flags and monomorphization for material build-time or binary-size expansion when that is a product constraint.
 - Findings must state the hot path, scale factor, and expected impact, not merely name an allocation or lock.
 - Use only the shared Risk Register and canonical severity definitions.
+- For Blocker or Major findings, describe the concrete latency, memory-pressure, or throughput failure scenario.

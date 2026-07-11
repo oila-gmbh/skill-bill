@@ -1,8 +1,5 @@
 contract_version: "0.1"
 agents:
-  - name: bill-php-code-review
-    description: "PHP baseline code reviewer. Runs the governed baseline review across the full owned diff before specialist findings are merged. Returns a Risk Register in the F-XXX bullet format."
-    compose: governed-content
   - name: bill-php-code-review-api-contracts
     description: "PHP api contracts specialist code reviewer. Runs against PHP API contracts, request validation, resources and serializers, error payloads, and client compatibility. Returns a Risk Register in the F-XXX bullet format."
     compose: governed-content

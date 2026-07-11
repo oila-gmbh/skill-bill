@@ -85,8 +85,7 @@ class RustPlatformPackTest {
     val bundlePath = packRoot.resolve("code-review/bill-rust-code-review/native-agents/agents.yaml")
     assertContains(Files.readString(bundlePath), "contract_version: \"0.1\"")
     val agents = parseNativeAgentBundle(bundlePath)
-    val expectedNames = APPROVED_CODE_REVIEW_AREAS.map { "bill-rust-code-review-$it" }.toSet() +
-      "bill-rust-code-review"
+    val expectedNames = APPROVED_CODE_REVIEW_AREAS.map { "bill-rust-code-review-$it" }.toSet()
     assertEquals(expectedNames, agents.map { it.name }.toSet())
     agents.forEach { agent ->
       val composed = composeNativeAgentSource(repoRoot, agent)
@@ -286,8 +285,8 @@ class RustPlatformPackTest {
       .filter { nativeAgent -> nativeAgent.status == NativeAgentApplyStatus.LINKED }
       .mapNotNull { nativeAgent -> nativeAgent.path?.fileName?.toString() }
       .toSet()
-    expectedReviewSidecars.map { sidecar -> sidecar.removeSuffix(".md") }.forEach { agentName ->
-      assertTrue(linkedNativeAgents.any { artifact -> agentName in artifact }, "Missing native agent $agentName")
+    APPROVED_CODE_REVIEW_AREAS.map { area -> "bill-rust-code-review-$area" }.forEach { agentName ->
+      assertContains(linkedNativeAgents, "$agentName.toml")
     }
   }
 

@@ -19,8 +19,15 @@ internal-for: bill-code-review
 - `unwrap`, `expect`, `panic!`, or cloning solely by keyword without a reachable failure
 - Idiom preferences that do not change correctness, diagnostics, or maintainability
 
+## Applicability
+
+Apply when changed Rust code affects ownership, borrowing, error behavior, unsafe invariants, concurrency, feature combinations, or runtime semantics.
+
 ## Project-Specific Rules
 
+### Rust Platform Correctness Rules
+
+- Verify `Rust lifecycle and concurrency APIs` preserve their documented invariants; reject an invalid state or ordering failure.
 - Verify borrowed data outlives every task, callback, FFI call, and stored reference under the actual ownership flow.
 - Treat `unsafe` contracts as caller/callee obligations: every dereference, aliasing, alignment, initialization, and lifetime invariant must be established.
 - Preserve error identity and context across `?`, `map_err`, anyhow/eyre reports, and typed domain errors; do not turn recoverable failures into panics.
@@ -29,3 +36,4 @@ internal-for: bill-code-review
 - Confirm runtime handles, timers, channels, and spawn APIs match the selected tokio/async-std configuration and supported targets.
 - Evaluate every supported Cargo feature combination affected by conditional types, impls, or dependencies.
 - Findings must give a reproducible state transition or invariant failure and use only canonical severities.
+- For Blocker or Major findings, describe the concrete invalid-state or ordering failure scenario.
