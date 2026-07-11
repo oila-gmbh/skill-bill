@@ -27,12 +27,16 @@ Apply to async tasks, services, workers, queues, schedulers, network clients, ca
 
 ### Rust Reliability Rules
 
-- Verify `Rust timeout and retry APIs` preserve their documented invariants; reject an availability, duplication, or cleanup failure.
-- Define what happens when each future is dropped at every `.await` that follows a side effect or state mutation.
-- Bound queues, concurrency, retry attempts, and retained task handles; propagate backpressure instead of hiding overload.
-- Distinguish timeout, cancellation, retryable remote failure, permanent rejection, and internal invariant failure in `Result` contracts.
-- Supervise spawned tasks and surface panics or errors; detached tasks require explicit ownership and shutdown semantics.
-- Graceful shutdown must stop intake, drain or abandon by policy, release permits and guards, flush durable state, and terminate.
-- Avoid retry storms with deadlines, jitter, budgets, and idempotency appropriate to the operation.
-- Findings must describe the production failure sequence and use only the shared Risk Register and canonical severities.
+- Require each side effect followed by `.await` to define what dropping the future leaves committed; reject cancellation that exposes partial state or loses required cleanup.
+- Ensure `tokio::time::timeout` distinguishes an elapsed deadline from inner-operation errors and handles the cancelled future safely; flag ambiguous failure classification or leaked work.
+- Require bounded ingress through `tokio::sync::mpsc::channel` or an equivalent capacity policy; reject overload hidden in memory growth, dropped data, or producer starvation.
+- Verify concurrency limits use owned `Semaphore` permits whose release survives errors and cancellation; reject permit leaks that deadlock service progress.
+- Supervise spawned work with `JoinSet`, `TaskTracker`, or retained `JoinHandle` values; reject detached task panics, silent failures, or work that outlives its owner.
+- Require retry policy to classify `Result` errors, cap attempts, apply jittered backoff, and respect an overall deadline; flag retry storms, duplicate writes, or permanent-failure loops.
+- Ensure mutation retries carry an idempotency key or conditional write such as `If-Match`; reject replay that duplicates externally visible state.
+- Verify stream consumers handle `StreamExt::next` termination and lag from `broadcast::Receiver::recv`; reject silent data loss or busy-loop recovery.
+- Require graceful shutdown to cancel intake with `CancellationToken`, close senders, join workers, and flush durable state in dependency order; reject hangs or truncated work.
+- Ensure synchronous destructors do not attempt async cleanup in `Drop`; require an explicit `close().await` contract and flag resource loss when shutdown is skipped.
+- Preserve operational diagnosis through structured `tracing::instrument` fields and error sources without secrets; reject failure paths that cannot identify the affected request or dependency.
+- Verify degraded-mode caches or circuit breakers use `Instant` and bounded staleness; reject wall-clock jumps, indefinite stale data, or recovery races.
 - For Blocker or Major findings, describe the concrete availability, duplication, or cleanup failure scenario.

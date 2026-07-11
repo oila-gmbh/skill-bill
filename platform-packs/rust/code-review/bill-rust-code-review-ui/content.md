@@ -29,12 +29,16 @@ Apply when changed Rust code affects UI state, rendering, events, hydration, ter
 
 ### Rust UI Rules
 
-- Verify `Rust UI state and rendering APIs` preserve their documented invariants; reject an observable interaction or rendering failure.
-- Keep one source of truth for user-visible state and prevent stale async completions from overwriting newer actions.
-- Preserve framework thread-affinity and ownership rules; background tasks must return updates through supported channels.
-- Make loading, disabled, retry, validation, empty, and failure states reachable and recoverable.
-- Escape or safely render untrusted content in HTML, rich text, terminal control sequences, and generated output.
-- Avoid blocking executor or UI threads with filesystem, database, network, or CPU-heavy work.
-- Preserve hydration and server/client state compatibility for wasm or server-rendered surfaces.
-- Findings must give the user-visible failure sequence and use only the shared Risk Register and canonical severities.
+- For wasm surfaces using `wasm_bindgen` or `web_sys`, require event listeners and `Closure` ownership to survive exactly as long as the DOM node; reject leaked handlers or callbacks invoked after state disposal.
+- For Leptos, Yew, or Dioxus hydration, ensure server markup and initial client state are deterministic; flag `hydrate` mismatches that discard input, duplicate events, or break rendering.
+- For server-rendered templates such as `askama::Template`, require escaped user content and stable form state across validation errors; reject script exposure or lost user input.
+- For native GUI code using `egui`, `iced`, or Slint, require state updates on the framework-owned UI thread; reject cross-thread mutation, frozen windows, or lifecycle races.
+- For terminal interfaces using `ratatui` and `crossterm`, require raw mode, alternate-screen, and cursor restoration on success, error, and panic hooks; reject a corrupted terminal session.
+- Require one owner for visible state using `RwSignal`, `UseStateHandle`, or framework messages; flag duplicated caches that render stale or contradictory values.
+- Ensure async responses carry a `CancellationToken`, request generation, or identity check before committing state; reject older completion overwriting a newer user action.
+- Require `Loading`, `Disabled`, `Error`, and empty view states to be reachable and recoverable; flag interactions that silently stall or trap the user.
+- Verify event propagation and default prevention through `web_sys::Event`, GUI messages, or terminal key events; reject double submission, ignored input, or accidental navigation.
+- Require filesystem, network, database, and CPU-heavy work to leave the UI thread through `spawn_local`, framework tasks, or bounded workers as applicable; reject input latency or deadlock.
+- Ensure list and canvas rendering uses `ScrollArea::show_rows` or the detected framework's bounded draw path when workload evidence requires it; flag memory or frame-time regression on documented data sizes.
+- Require shutdown to cancel UI-owned `JoinHandle` tasks, release subscriptions, and persist intended state before window or terminal teardown; reject orphan work or lost updates.
 - For Blocker or Major findings, describe the concrete user-visible interaction or rendering failure scenario.

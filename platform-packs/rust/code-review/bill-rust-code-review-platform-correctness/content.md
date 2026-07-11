@@ -27,13 +27,16 @@ Apply when changed Rust code affects ownership, borrowing, error behavior, unsaf
 
 ### Rust Platform Correctness Rules
 
-- Verify `Rust lifecycle and concurrency APIs` preserve their documented invariants; reject an invalid state or ordering failure.
-- Verify borrowed data outlives every task, callback, FFI call, and stored reference under the actual ownership flow.
-- Treat `unsafe` contracts as caller/callee obligations: every dereference, aliasing, alignment, initialization, and lifetime invariant must be established.
-- Preserve error identity and context across `?`, `map_err`, anyhow/eyre reports, and typed domain errors; do not turn recoverable failures into panics.
-- Permit `unwrap`/`expect` only where the invariant is local, proven, and stable; user input, I/O, configuration, concurrency, and remote data are not proofs.
-- Check async cancellation points for partially applied state, leaked permits, orphan tasks, and guards held across `.await`.
-- Confirm runtime handles, timers, channels, and spawn APIs match the selected tokio/async-std configuration and supported targets.
-- Evaluate every supported Cargo feature combination affected by conditional types, impls, or dependencies.
-- Findings must give a reproducible state transition or invariant failure and use only canonical severities.
+- Verify every borrow and explicit lifetime such as `&'a T` remains tied to its real owner; reject a task, callback, or stored reference that can observe invalid data after the owner is dropped.
+- Require ownership transfers through `Box<T>`, `Arc<T>`, and `Cow<'a, T>` to match mutation and sharing needs; flag cloning or reference cycles that cause stale state or memory leaks.
+- Ensure interior mutability through `Cell<T>`, `RefCell<T>`, `Mutex<T>`, or `RwLock<T>` has a single defensible access protocol; reject reachable borrow panics, poisoned-state loss, races, or deadlocks.
+- Verify every `unsafe` block establishes pointer provenance, alignment, initialization, aliasing, and lifetime obligations before dereference; reject undefined-behavior risk hidden behind a safe function.
+- Require `unsafe impl Send` and `unsafe impl Sync` to prove all reachable fields and callbacks are thread-safe; flag cross-thread access that can race or expose invalid state.
+- Ensure pinned values using `Pin<&mut T>` are never moved unless their type is `Unpin`, and verify projection and self-reference invariants; reject memory-unsafety or corrupted lifecycle ordering.
+- Verify `Drop::drop` order, guard release, and partial initialization for normal returns, `?`, and unwinding; reject resource leaks, double cleanup, or state observed after dependent fields are destroyed.
+- Preserve typed failure identity across `Result<T, E>`, `?`, and `map_err`; reject conversions that turn actionable validation or I/O failures into panics or indistinguishable errors.
+- Require `unwrap`, `expect`, and `panic!` to depend only on a local proven invariant; reject user input, remote data, configuration, concurrency, or filesystem failures that can crash the process.
+- Ensure guards, permits, and borrowed state are not unintentionally retained across `.await`; reject cancellation leaks, lock starvation, or deadlock when another future needs the same resource.
+- Verify `tokio::spawn`, `spawn_local`, and `async_std::task::spawn` satisfy their actual `Send + 'static` and executor-lifecycle contracts; reject orphan work or target-specific build failures.
+- Require affected `cfg` and Cargo feature paths to compile with supported combinations; reject an invalid conditional `impl`, missing dependency, or runtime selection that breaks a documented build.
 - For Blocker or Major findings, describe the concrete invalid-state or ordering failure scenario.

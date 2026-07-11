@@ -4,14 +4,14 @@ issue_key: "SKILL-114"
 feature_name: "platform-pack-substance"
 parent_spec_path: ".feature-specs/SKILL-114-platform-pack-substance/spec.md"
 spec_source: "local"
-status: "blocked"
+status: "in_progress"
 execution_model: "same_branch_commit_per_subtask"
 base_branch: "main"
 feature_branch: "feat/SKILL-114-platform-pack-substance"
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 4
-  action: "blocked"
+  subtask_id: 5
+  action: "start"
 subtasks:
 - id: 1
   name: "Substance standard and audit gate"
@@ -61,30 +61,12 @@ subtasks:
 - id: 4
   name: "Python pack depth"
   spec_path: ".feature-specs/SKILL-114-platform-pack-substance/spec_subtask_4_python_pack_depth.md"
-  status: "blocked"
+  status: "complete"
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260711-172629-5l4g"
-  blocked_reason: "Backward-edge loop 'review_fix' exhausted its per-edge cap after\
-    \ 3 iteration(s) with the verdict 'changes_requested' still unresolved; the run\
-    \ blocks rather than re-entering past the cap. Unresolved findings: [major] platform-packs/python/quality-check/bill-python-code-check/content.md:15\
-    \ — Bare `git diff --name-only` omits staged, committed branch, and untracked\
-    \ files. Consume the caller's exact resolved scope.; [major] platform-packs/python/quality-check/bill-python-code-check/content.md:24\
-    \ — `python -m build` may provision an isolated environment. Require `--no-isolation`\
-    \ or an owned frozen/offline equivalent.; [major] runtime-kotlin/runtime-infra-fs/src/main/kotlin/skillbill/scaffold/substance/PlatformPackSubstanceAudit.kt:113\
-    \ — Missing or unreadable declared content throws during auditing instead of producing\
-    \ typed validation issues.; [major] platform-packs/python/code-review/bill-python-code-review-api-contracts/content.md:33\
-    \ — `request.get_json()` does not bound Flask request size. Require a concrete\
-    \ pre-parse body-size limit.; [major] platform-packs/python/code-review/bill-python-code-review-persistence/content.md:36\
-    \ — Tenant guidance omits trusted tenant-key assignment for inserts and bulk inserts.;\
-    \ [major] platform-packs/python/code-review/bill-python-code-review-ui/content.md:39\
-    \ — The rule conflates durable queue acceptance with worker completion acknowledgement.;\
-    \ [major] platform-packs/python/code-review/bill-python-code-review-ux-accessibility/content.md:33\
-    \ — Focus placement and restoration are required only for modal dialogs, leaving\
-    \ non-modal dialogs inaccessible.; [major] runtime-kotlin/runtime-infra-fs/src/test/kotlin/skillbill/scaffold/PythonPlatformPackTest.kt:208\
-    \ — Marker assertions can pass when required contracts appear outside governed\
-    \ rule sections.."
-  last_resumable_step: "review"
+  blocked_reason: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -98,7 +80,7 @@ subtasks:
   status: "pending"
   branch: null
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wftr-20260711-192911-tbi9"
   blocked_reason: null
   last_resumable_step: null
   linear_issue_id: null
