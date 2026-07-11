@@ -25,7 +25,7 @@ Use this specialist for request handlers, serializers, batch jobs, workers, impo
 
 ### Python Performance Rules
 
-- Verify Django `QuerySet` evaluation through `list`, `len`, truthiness, templates, or serialization occurs once and at the intended boundary; repeated evaluation risks duplicate queries and latency regressions.
+- Verify a Django `QuerySet` is evaluated at the intended boundary and deliberately reused when its result cache is valid; distinguish cached `list`, `len`, and truthiness on the same instance from clones, reconstructed querysets, `iterator`, related-manager calls, and operations such as `count` or `exists` that may issue separate queries, because mistaking those paths can either duplicate database work or add needless count and existence round trips.
 - Reject relationship access loops without detected `select_related` or `prefetch_related` evidence when they create N+1 queries; query growth can exhaust database capacity under normal page sizes.
 - Require SQLAlchemy loaders such as `selectinload`, projections, or aggregates when hydrated graphs exceed the consumed fields; unnecessary model state causes memory and latency failures.
 - Verify counting and existence paths use `QuerySet.count`, `QuerySet.exists`, or SQL aggregates instead of hydrating rows; full materialization risks memory exhaustion on large tables.

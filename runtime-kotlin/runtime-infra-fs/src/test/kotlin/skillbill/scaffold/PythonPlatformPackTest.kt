@@ -188,8 +188,9 @@ class PythonPlatformPackTest {
       repoRoot.resolve("platform-packs/python/quality-check/bill-python-code-check/content.md"),
     )
     listOf(
-      "uv run --frozen",
-      "poetry run",
+      "already-provisioned environment",
+      "uv run --frozen --no-sync",
+      "documented non-syncing invocation is unavailable, report a blocker",
       "pip-tools",
       "ruff format --check",
       "ruff check",
@@ -203,6 +204,7 @@ class PythonPlatformPackTest {
       "environmental blocker",
       "full suite",
     ).forEach { marker -> assertContains(content, marker) }
+    assertFalse(content.contains("`poetry run`"))
 
     val orderedMarkers = listOf(
       "Verify environment and metadata integrity first",
