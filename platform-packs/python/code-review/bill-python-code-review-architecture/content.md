@@ -26,7 +26,7 @@ Use this specialist across Python packages, libraries, applications, services, f
 ### Python Architecture Rules
 
 - Require imports in `domain`, `application`, and adapter packages to follow the repository's declared dependency direction; reverse imports risk cycles and make core behavior depend on framework state.
-- Reject module-level database calls, client creation, environment reads, or worker startup during `importlib.import_module`; import-time side effects break test discovery, CLI startup, and packaging tools.
+- Reject module-level database calls, client creation, environment reads, or worker startup during `importlib.import_module` in reusable or import-probed modules. Permit environment reads in a repository-owned settings module or composition root that explicitly owns configuration loading; misplaced import-time side effects break test discovery, CLI startup, and packaging tools.
 - Verify `__init__.py`, `__all__`, and re-export changes preserve the documented public package boundary; accidental exports or removals break downstream imports.
 - For PEP 420 namespace packages configured through `pyproject.toml`, require each concrete module or subpackage to have one distribution owner and reject overlapping wheel paths; stray `__init__.py` files or duplicate contributors can shadow modules and load incorrect code.
 - Require `main()`, an ASGI/WSGI factory, or the repository's composition root to construct concrete dependencies; hidden singleton construction inside domain modules leaks lifecycle and configuration ownership.
