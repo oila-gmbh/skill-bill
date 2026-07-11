@@ -37,11 +37,11 @@ Apply `PDO` rules to direct database access. Apply Doctrine guidance only with `
 - Reject Doctrine lazy proxies escaping the request or serialization boundary; later access can fail on a detached entity or trigger unbounded queries.
 - Require deliberate `flush()` placement around aggregate invariants and dispatched work; early flushing creates a consistency failure.
 - Verify Eloquent models protect `fillable` or `guarded` attributes at mass-assignment boundaries; unchecked `create($input)` enables authorization exposure.
-- Ensure Eloquent global scopes and Doctrine filters enforce tenant ownership on reads and writes; missing scope creates cross-tenant data leakage.
+- Ensure Eloquent global scopes and Doctrine filters enforce tenant ownership on reads, while every insert and identity-based update proves ownership explicitly and uses database constraints where possible; query filters do not protect all write paths, so relying on them can create cross-tenant mutations.
 - Reject casts, observers, accessors, or model events that hide externally visible writes without transaction ownership; implicit effects produce a retry failure.
 - Require migration ordering and reversible expand/contract compatibility with concurrently deployed application versions defined by repository rollout or deployment policy; use `composer.json` only for PHP runtime and dependency compatibility, or destructive schema changes can break mixed-version live deployments.
 - Verify indexes serve actual Doctrine `QueryBuilder`, Eloquent builder, or SQL predicates and ordering; missing support causes a timeout failure.
-- Ensure relationship loading avoids per-row Doctrine `JOIN FETCH` or Eloquent queries through eager loading or batching; N+1 access creates production timeout failures.
+- Reject per-row access to lazy Doctrine associations or Eloquent relationships; use bounded Doctrine `JOIN FETCH` queries, Eloquent eager loading, or batching where cardinality permits, because repeated lazy loads create production timeout failures.
 - Require cursor and `Generator` consumers to close statements and avoid writes on a connection with an active unbuffered result; leaked resources can block the worker.
 - Verify timestamps, decimals, JSON, and enum mappings match the selected database driver and PHP types; round-trip drift corrupts durable values.
 - For Blocker or Major findings, describe the concrete data-loss, consistency, or durability failure scenario.

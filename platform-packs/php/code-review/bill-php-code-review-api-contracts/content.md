@@ -40,7 +40,7 @@ Gate each framework rule on its concrete surface: HttpFoundation rules require `
 - Require filter and sort field allowlists before feeding Doctrine or Eloquent builders; unchecked names can expose data or trigger invalid SQL failures.
 - Verify PSR-7 response bodies are rewound or newly constructed before return; a consumed stream produces an unexpectedly empty client response.
 - Ensure PSR-15 middleware either delegates once or returns a response once; double invocation can duplicate state changes and corrupt response ordering.
-- Require webhook signatures to cover the raw request body before decoding and define replay tolerance; verifying normalized JSON can admit forged or replayed events.
+- Require webhook verification to follow the provider's documented signing contract and define replay tolerance; when that contract signs raw bytes, preserve and verify the raw request body before decoding, because substituting normalized JSON can admit forged or replayed events.
 - Ensure mutating endpoints use the repository's `Idempotency-Key` contract when retries are plausible; absent replay storage creates duplicate effects.
 - Reject breaking removal or meaning changes in OpenAPI-backed fields without versioning or migration; existing consumers fail at runtime.
 - For Blocker or Major findings, describe the concrete compatibility or validation failure scenario.

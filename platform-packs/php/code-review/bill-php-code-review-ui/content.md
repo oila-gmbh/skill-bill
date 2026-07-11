@@ -28,7 +28,7 @@ Apply each framework rule only when repository packages and changed templates or
 
 ### PHP-Owned UI Correctness Rules
 
-- Require Blade `{{ }}` or Twig autoescape for untrusted values and justify every `{!! !!}` or `|raw`; a misplaced raw boundary creates user-data exposure.
+- Require context-specific encoding for every untrusted Blade or Twig sink, including HTML text, attributes, URLs, JavaScript, and CSS, and justify every `{!! !!}` or `|raw`; default HTML autoescaping in `{{ }}` does not make other contexts safe, so a misplaced boundary creates user-data exposure.
 - Ensure forms repopulate `old()` values or Symfony submitted data without replacing sensitive defaults; incorrect restoration makes users resubmit wrong data.
 - Require validation errors to bind through the exact `error-bag` and attempted form instance; a shared bag can display an invalid message on another form.
 - Verify Symfony Form `handleRequest()` and Laravel request validation distinguish absent, unchecked, and false values; truthiness coercion can save incorrect state.

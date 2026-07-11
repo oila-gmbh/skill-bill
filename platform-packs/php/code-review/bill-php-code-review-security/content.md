@@ -30,13 +30,13 @@ Apply framework controls only when Composer dependencies and configured middlewa
 - Reject `unserialize()` on attacker-controlled bytes even with superficial validation; gadget chains through `__wakeup()` or `__destruct()` can cause code execution.
 - Require hydration of public input into explicit fields rather than arbitrary setters or `__set()` hooks; mass object population can bypass authorization invariants.
 - Ensure Blade `{!! !!}` and Twig `|raw` receive only reviewed safe markup; untrusted content at either escaping boundary creates XSS exposure.
-- Verify upload acceptance uses `finfo`, decoded content, size limits, and a generated storage name rather than `$_FILES['type']`; spoofed MIME data can publish executable files.
-- Require `realpath()` containment or equivalent canonicalization before file reads and writes; lexical path checks permit traversal and sensitive-data exposure.
+- Verify upload acceptance uses `finfo`, decoded content, size limits, an allowlisted format, and a server-selected extension rather than `$_FILES['type']`; store files under generated names in non-executable storage outside the public web root and serve them with safe response headers, or spoofed active content can execute or expose users.
+- For existing-file reads, require `realpath()` containment beneath a trusted root; for new targets, canonicalize and contain the parent and use race-resistant creation or opening when attackers can modify the path tree, because lexical checks, missing-target `realpath()` calls, and check-then-open symlink swaps permit traversal or sensitive-data exposure.
 - Reject shell strings assembled for `exec()`, `system()`, `shell_exec()`, or `Process::fromShellCommandline()`; escaped-looking input can still enable command injection.
 - Ensure Symfony Process argument arrays or Laravel Process APIs separate executable arguments from shell syntax; implicit shell evaluation creates execution risk.
 - Require outbound `HttpClient` or `Http` destinations to enforce scheme, host, resolved-address, redirect, and timeout policy; unchecked URLs enable SSRF and resource exhaustion.
 - Verify authorization through voters, policies, gates, or the repository boundary before object access; route binding alone can leak another tenant's data.
-- Ensure state-changing browser routes use the configured CSRF middleware and do not accept unsafe `GET`; missing tokens permit unauthorized actions.
+- Require framework-specific proof that every cookie-authenticated state-changing endpoint validates CSRF through Laravel middleware, Symfony forms, controller attributes, token-manager checks, or an equivalent owned seam, and reject unsafe `GET`; configuration alone can miss exempt actions and permit unauthorized requests.
 - Require signed Laravel URLs or Symfony URI signatures to bind every security-relevant parameter and expiry; mutable unsigned fields allow privilege escalation.
 - Verify `TrustProxies` or trusted proxy CIDRs cannot be influenced by public clients; forged forwarding headers break secure-cookie and origin decisions.
 - Reject secrets in `config/*.php`, committed `.env`, container parameters, or exception messages; repository or log exposure compromises credentials.

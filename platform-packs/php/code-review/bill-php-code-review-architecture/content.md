@@ -32,7 +32,7 @@ Infer the established architecture from `composer.json`, namespaces, service con
 - Ensure Symfony wiring in `services.yaml` or Laravel bindings in a service provider remain the composition root; runtime service-locator calls hide dependencies and cause container resolution failures.
 - Require container scopes to match execution lifetime; a shared service holding `Request`, tenant, user, or `EntityManager` state can leak data in a persistent worker.
 - Verify HTTP, console, queue, scheduler, and event entry points invoke one application operation rather than reimplementing it; divergent paths create contract and authorization regressions.
-- Ensure one owner controls each transaction opened through `EntityManager::transactional()` or `DB::transaction()`; nested ambiguous ownership can commit partial data or deadlock.
+- Ensure one owner controls each transaction opened through `EntityManager::wrapInTransaction()`, `Connection::transactional()`, or `DB::transaction()`; nested ambiguous ownership can commit partial data or deadlock.
 - Reject persistence entities, Eloquent models, or framework request objects crossing a module boundary when their lifecycle differs; leaked storage state couples consumers and corrupts contracts.
 - Require external systems behind a repository-standard client or port with explicit timeout and failure translation; direct `HttpClient` or `Http` facade calls spread unsafe retry behavior.
 - Verify PSR-4 namespaces express module ownership and are not bypassed by `class_alias()` or ad-hoc includes; hidden aliases create autoload and build failures.

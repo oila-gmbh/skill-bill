@@ -204,7 +204,7 @@ class PhpPlatformPackTest {
     val packRoot = repoRootFromTest().resolve("platform-packs/php")
     val requiredByArea = mapOf(
       "platform-correctness" to listOf("empty()", "Throwable", "RoadRunner", "Fiber", "autoload.psr-4"),
-      "architecture" to listOf("services.yaml", "EntityManager::transactional()", "dispatch()", "Fiber"),
+      "architecture" to listOf("services.yaml", "EntityManager::wrapInTransaction()", "Connection::transactional()", "dispatch()", "Fiber"),
       "api-contracts" to listOf("FormRequest::rules()", "JSON_THROW_ON_ERROR", "PSR-15", "Idempotency-Key"),
       "persistence" to listOf("PDO::ATTR_ERRMODE", "EntityManager", "fillable", "FOR UPDATE"),
       "security" to listOf("unserialize()", "|raw", "finfo", "Process::fromShellCommandline()"),

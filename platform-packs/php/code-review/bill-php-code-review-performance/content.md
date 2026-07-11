@@ -30,7 +30,7 @@ Use framework and tool-specific checks only when Composer packages, configuratio
 - Require repeated PDO lookups to use one prepared `PDOStatement` where semantics permit; reparsing per row causes an operational latency failure.
 - Reject Doctrine lazy association access or Eloquent property traversal inside unbounded loops; N+1 queries cause request timeouts as result size grows.
 - Ensure eager loading selects only needed relations and columns; loading a full object graph can crash PHP before serialization.
-- Require bulk writes to use bounded batches with periodic Doctrine `flush()` and `clear()` or Eloquent chunking; an ever-growing unit of work crashes workers.
+- Require bulk writes to use set-based operations or bounded batches with periodic Doctrine `flush()` and `clear()`; when Eloquent processing mutates the selection predicate, use stable-key `chunkById()` or `lazyById()` instead of offset-based `chunk()`, which can skip records while an ever-growing unit of work can crash workers.
 - Verify cursor, `yield`, `LazyCollection`, or streamed-response paths do not first call `all()` or `toArray()`; accidental materialization creates a memory failure.
 - Reject per-item Symfony Serializer normalization or Laravel Resource expansion when one batched projection suffices; repeated reflection and queries create latency regressions.
 - Ensure Blade or Twig loops do not perform service resolution, authorization queries, or database access per element; render cost creates a request-timeout failure.
