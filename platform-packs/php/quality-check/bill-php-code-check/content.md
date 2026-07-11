@@ -12,7 +12,7 @@ Execute the repository's authoritative PHP checks, repair only failures belongin
 
 ## Execution Steps
 
-1. Determine the requested scope from the branch diff and list changed files before selecting commands.
+1. Preserve the caller-provided branch, commit, staged, unstaged, or file scope and derive the files to inspect from that scope before selecting commands.
 2. Discover the project's own quality commands from the build file, repository wrapper, and CI configuration, in that order, before falling back to PHP defaults.
 3. Inspect owned configuration such as `phpunit.xml`, `pest.php`, `phpstan.neon`, `psalm.xml`, `phpcs.xml`, `.php-cs-fixer.php`, `ecs.php`, `pint.json`, `rector.php`, `deptrac.yaml`, Symfony config, and Laravel bootstrap files.
 4. Prefer the discovered wrapper, Composer script, or container command; use direct `vendor/bin` tools only when repository evidence establishes that convention.

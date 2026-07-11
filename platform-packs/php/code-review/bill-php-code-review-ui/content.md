@@ -41,7 +41,7 @@ Apply each framework rule only when repository packages and changed templates or
 - Ensure `withQueryString()` pagination retains validated filters and deterministic ordering; dropped query state creates an ordering failure with skipped records.
 - Require duplicate-submit protection around non-idempotent `POST` actions using disabled state plus server enforcement; double clicks can create a data failure.
 - Verify CSRF expiry, session expiry, and authorization failures render recoverable UI states; an unhandled `419` or `403` prevents task completion.
-- Ensure cached Blade `fragment()` or Twig fragments vary by tenant, locale, and permission; cache collisions leak or stale-render data.
+- Ensure repository-owned response or application caches such as `Cache::remember()`, response-cache middleware, or Symfony Cache pools vary rendered output by tenant, locale, and permission; cache-key collisions leak or stale-render data.
 - Require server-rendered content to remain usable when `Livewire` or Symfony UX enhancement fails where progressive enhancement is promised; script failure must not erase core actions.
 - Verify template `foreach` loops do not trigger lazy ORM queries or mutate application state; rendering can otherwise cause a resource-timeout failure.
 - For Blocker or Major findings, describe the concrete user-visible interaction or rendering failure scenario.

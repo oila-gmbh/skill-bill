@@ -39,7 +39,7 @@ Apply language rules to changed PHP. Apply worker, framework, extension, or fibe
 - Flag reference-bearing `foreach (&$value)` loops that do not `unset($value)` before reuse; the lingering reference can corrupt the final array element.
 - Verify mutations of copy-on-write arrays and objects are intentional across aliases; assuming identical semantics can leak state or lose a caller-visible update.
 - Require `Generator` consumers to preserve keys, return values, and single-pass behavior where contracts depend on them; eager or repeated traversal can break ordering and exhaust data.
-- Reject blocking database or network calls inside a suspended `Fiber` unless the selected runtime integrates them; blocking the event loop creates starvation and timeout failures.
+- Reject blocking database or network calls inside a running `Fiber` on a cooperative event loop unless the selected runtime provides non-blocking integration; blocking the loop creates starvation and timeout failures.
 - Ensure mutable `static` properties, singletons, and container services are reset between jobs or requests under `RoadRunner`, `Swoole`, or `FrankenPHP`; stale tenant data can leak across executions.
 - Require queue workers and schedulers to clear request, locale, authentication, transaction, and error-handler state after each unit; retained lifecycle state causes cross-job regressions.
 - Verify `composer.json` PHP and extension constraints match syntax and APIs used by the change; an unsupported runtime matrix produces deployment build or startup failure.

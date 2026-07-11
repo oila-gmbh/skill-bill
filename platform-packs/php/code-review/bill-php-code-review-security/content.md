@@ -42,6 +42,8 @@ Apply framework controls only when Composer dependencies and configured middlewa
 - Reject secrets in `config/*.php`, committed `.env`, container parameters, or exception messages; repository or log exposure compromises credentials.
 - Ensure Monolog context, validation dumps, and `Throwable` traces redact tokens, cookies, authorization headers, and personal data; verbose telemetry creates persistent disclosure.
 - Require password verification through `password_verify()` or framework hashers and safe rehash migration; custom comparisons risk credential compromise.
+- Require session identifiers to rotate after authentication or privilege changes and invalidate on logout, credential reset, or account revocation when the application owns sessions; retained identifiers permit fixation or continued unauthorized access.
+- Require reset, invite, verification, and capability tokens to enforce explicit expiry, audience or action scope, revocation, and atomic one-time use when those flows exist; replayable tokens permit account takeover or repeated privileged actions.
 - Verify cache and session keys include tenant/user scope where values are private; key collisions leak authenticated state across principals.
 - Ensure exception pages controlled by `APP_DEBUG` cannot be enabled in a public deployment; stack and environment output creates credential and path exposure.
 - For Blocker or Major findings, describe the concrete authorization-bypass or data-exposure scenario.

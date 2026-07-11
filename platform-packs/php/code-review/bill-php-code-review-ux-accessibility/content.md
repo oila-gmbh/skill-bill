@@ -28,7 +28,7 @@ Use template and component checks only when Blade, Twig, Symfony Forms, Livewire
 
 ### Accessible PHP Presentation Rules
 
-- Require each Symfony Form, Blade, or Twig control to have a programmatic `<label for>` matching its rendered `id`; missing association prevents screen-reader input identification.
+- Require every Symfony Form, Blade, or Twig control to have an appropriate accessible name, preferring a visible associated `<label>` for form fields while accepting wrapping labels, `aria-labelledby`, native button text, or `fieldset` and `legend` where semantically correct; a missing or conflicting name prevents screen-reader identification.
 - Ensure validation messages connect through `aria-describedby` and invalid controls expose `aria-invalid`; visual-only errors make form failures inaccessible.
 - Require the server `error-summary` to link to invalid controls and receive focus after a failed submission; otherwise keyboard users cannot locate the failure.
 - Verify first-error focus does not override user intent after background `Livewire` validation; unexpected movement breaks keyboard task order.
@@ -41,7 +41,7 @@ Use template and component checks only when Blade, Twig, Symfony Forms, Livewire
 - Reject color-only `required`, error, selected, or success states in rendered markup; users may miss invalid or completed actions.
 - Ensure translated strings from `trans()`, `__()`, or Twig `trans` retain placeholders, plural rules, and names; malformed localization can cause an invalid accessible label.
 - Require `lang` and, for right-to-left locales, `dir` on the rendered document or relevant subtree; absent directionality breaks reading and control order.
-- Verify localized dates, numbers, and validation messages use `app()->getLocale()` in persistent workers; leaked locale state presents incorrect information.
+- Require framework-appropriate locale initialization and reset at every request or job boundary, including Laravel `app()->setLocale()` or Symfony request-locale and mutable translator or formatter state when owned; reading an already-leaked locale leaves later users with incorrect dates, numbers, or validation messages.
 - Ensure `redirect()` and pagination responses preserve a meaningful page title and focus destination; missing context creates a navigation failure.
 - Require core form submission and error recovery to work without `Livewire`, Turbo, or Symfony UX JavaScript when progressive enhancement is claimed; script failure must not block completion.
 - Verify server/client hydration does not duplicate `id` values, labels, or live regions across Inertia transitions; duplicate semantics create an invalid navigation contract.

@@ -21,7 +21,7 @@ Review externally observable PHP service contracts and report only reachable cli
 
 ## Applicability
 
-Use Symfony rules when `symfony/http-foundation`, Validator, or Serializer is present; Laravel rules require FormRequest or JsonResource evidence; PSR-7 and PSR-15 checks require their interfaces in `composer.json` or source.
+Gate each framework rule on its concrete surface: HttpFoundation rules require `symfony/http-foundation` request usage, `Assert` rules require `symfony/validator` configuration or source, and Serializer-group rules require `symfony/serializer` mappings or source. Laravel `FormRequest` and `JsonResource` rules each require their own subclass or configuration evidence. PSR-7 and PSR-15 checks require their respective interfaces in `composer.json` or source.
 
 ## Project-Specific Rules
 

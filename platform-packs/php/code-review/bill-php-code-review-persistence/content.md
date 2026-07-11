@@ -39,7 +39,7 @@ Apply `PDO` rules to direct database access. Apply Doctrine guidance only with `
 - Verify Eloquent models protect `fillable` or `guarded` attributes at mass-assignment boundaries; unchecked `create($input)` enables authorization exposure.
 - Ensure Eloquent global scopes and Doctrine filters enforce tenant ownership on reads and writes; missing scope creates cross-tenant data leakage.
 - Reject casts, observers, accessors, or model events that hide externally visible writes without transaction ownership; implicit effects produce a retry failure.
-- Require migration ordering and reversible rollout compatibility with the supported application versions in `composer.json`; destructive schema changes can break live deployments.
+- Require migration ordering and reversible expand/contract compatibility with concurrently deployed application versions defined by repository rollout or deployment policy; use `composer.json` only for PHP runtime and dependency compatibility, or destructive schema changes can break mixed-version live deployments.
 - Verify indexes serve actual Doctrine `QueryBuilder`, Eloquent builder, or SQL predicates and ordering; missing support causes a timeout failure.
 - Ensure relationship loading avoids per-row Doctrine `JOIN FETCH` or Eloquent queries through eager loading or batching; N+1 access creates production timeout failures.
 - Require cursor and `Generator` consumers to close statements and avoid writes on a connection with an active unbuffered result; leaked resources can block the worker.

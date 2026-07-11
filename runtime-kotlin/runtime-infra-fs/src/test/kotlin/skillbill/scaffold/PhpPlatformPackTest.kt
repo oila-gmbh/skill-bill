@@ -211,7 +211,7 @@ class PhpPlatformPackTest {
       "reliability" to listOf("retry_after", "SIGTERM", "withoutOverlapping()", "error_get_last()"),
       "performance" to listOf("LazyCollection", "OPcache", "classmap-authoritative", "memory_limit"),
       "testing" to listOf("tearDown()", "Queue::fake()", "PHPStan", "composer.json"),
-      "ui" to listOf("wire:key", "withQueryString()", "419", "fragment()"),
+      "ui" to listOf("wire:key", "withQueryString()", "419", "Cache::remember()"),
       "ux-accessibility" to listOf("aria-describedby", "focus-trap", "aria-live", "dir"),
     )
     requiredByArea.forEach { (area, terms) ->
@@ -228,6 +228,8 @@ class PhpPlatformPackTest {
       "composer audit",
       "composer dump-autoload --strict-psr",
       "supported PHP version, extension, dependency, and database matrix",
+      "configured formatter or style verifier",
+      "detected framework validation",
     ).forEach { term -> assertContains(checker, term) }
   }
 

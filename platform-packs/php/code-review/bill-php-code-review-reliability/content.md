@@ -33,7 +33,7 @@ Use Laravel rules with queue configuration, `ShouldQueue`, or Horizon evidence. 
 - Require poison messages to reach a failed transport, dead-letter queue, or terminal `Horizon` state with diagnostics; endless replay causes starvation.
 - Verify non-retryable validation and authorization failures are not wrapped as transient `Throwable`; incorrect retry classification floods the queue.
 - Ensure database commit precedes `dispatch()` or use the repository's after-commit/outbox mechanism; incorrect ordering causes a data failure for consumers.
-- Require idempotency storage keyed by a concrete `job-id` around externally visible effects; process crashes and retries can duplicate actions.
+- Require idempotency storage keyed by a stable business-operation identifier carried unchanged through `dispatch()`, transport delivery, retry, and manual replay around externally visible effects; transport job identifiers can change and allow duplicate actions.
 - Verify `DoctrineClearEntityManagerWorkerSubscriber`, Laravel container flushing, or an equivalent reset clears per-message state; stale workers leak tenant or transaction data.
 - Ensure `SIGTERM` handling stops intake, finishes or safely abandons the current unit, and exits before orchestration grace expires; abrupt shutdown causes acknowledgement loss.
 - Require HTTP, database, process, and lock operations to declare timeouts shorter than the job budget; an unbounded call can block worker replacement.

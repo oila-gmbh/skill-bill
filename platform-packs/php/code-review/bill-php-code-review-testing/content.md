@@ -35,7 +35,8 @@ Apply PHPUnit, Pest, Laravel, Symfony, PHPStan, and Psalm rules only when their 
 - Ensure Symfony `KernelTestCase` or Laravel application refreshes do not reuse a contaminated container between tests; stale services can mask worker leaks.
 - Require database tests around `DB::transaction()` to prove commit, rollback, locking, tenant scope, and migration behavior; fake persistence misses data-loss races.
 - Reject fixtures that bypass model `factory()` events, casts, or constraints when those mechanisms are under review; unrealistic rows yield invalid test evidence.
-- Verify `Queue::fake()` and cache fakes assert payload, routing, delay, idempotency, and key scope, then retain an integration test; call counts alone miss contract failures.
+- Verify `Queue::fake()` assertions cover payload, routing, delay, and stable business idempotency identifiers, then retain a transport integration test; call counts alone miss delivery-contract failures.
+- Verify cache fakes assert tenant-aware key scope, `TTL`, tags, and invalidation behavior, then retain a cache integration test; an in-memory fake can hide stale or cross-tenant values.
 - Require a multi-unit process test for `RoadRunner`, Swoole, FrankenPHP, Horizon, or Messenger state reset when supported; one-request tests cannot detect cross-tenant leakage.
 - Ensure retry tests use deterministic `Clock` instances and explicit attempt state; wall-clock sleeps create flaky timeout regressions.
 - Require `RunInSeparateProcess` coverage when code mutates constants, extensions, shutdown handlers, or fatal behavior; in-process tests cannot safely observe those failures.
