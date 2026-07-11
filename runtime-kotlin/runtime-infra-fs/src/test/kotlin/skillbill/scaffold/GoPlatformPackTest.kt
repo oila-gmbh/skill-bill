@@ -135,32 +135,27 @@ class GoPlatformPackTest {
     }
 
     val baseline = Files.readString(pack.declaredFiles.baseline)
-    listOf(
-      "errors.Is",
-      "http.Server.Shutdown",
-      "Bubble Tea",
-      "color-independent status",
-    ).forEach { marker -> assertContains(baseline, marker) }
+    mapOf(
+      "errors.Is" to "platform-correctness",
+      "http.Server.Shutdown" to "reliability",
+      "Bubble Tea" to "ui",
+      "color-independent status" to "ux-accessibility",
+    ).forEach { (signal, area) ->
+      val routingRule = baseline.lines().single { line -> signal in line }
+      assertContains(routingRule, "-> `$area` specialist.")
+    }
 
     val agents = parseNativeAgentBundle(
       packRoot.resolve("code-review/bill-go-code-review/native-agents/agents.yaml"),
     ).associateBy { agent -> agent.name.removePrefix("bill-go-code-review-") }
     assertEquals(APPROVED_CODE_REVIEW_AREAS, agents.keys)
-    val agentDescriptionMarkers = mapOf(
-      "api-contracts" to listOf("JSON precision", "schema evolution"),
-      "architecture" to listOf("composition roots", "goroutine scope ownership"),
-      "performance" to listOf("pprof", "lock contention"),
-      "persistence" to listOf("database/sql", "migrations"),
-      "platform-correctness" to listOf("protocol-specific channel closure", "typed nils"),
-      "reliability" to listOf("hijacked connections", "queue delivery and acknowledgement"),
-      "security" to listOf("OAuth/OIDC", "connection-time SSRF"),
-      "testing" to listOf("t.Parallel hazards", "immediate t.Cleanup registration"),
-      "ui" to listOf("htmx target and trigger semantics", "repository-defined view states"),
-      "ux-accessibility" to listOf("accessible names", "conditional post-swap focus restoration"),
-    )
-    agentDescriptionMarkers.forEach { (area, markers) ->
-      val description = agents.getValue(area).description
-      markers.forEach { marker -> assertContains(description, marker) }
+    agents.forEach { (area, agent) ->
+      assertEquals(
+        "${pack.displayName} ${area.replace('-', ' ')} specialist code reviewer. " +
+          "Runs against ${pack.areaMetadata.getValue(area)}. " +
+          "Returns a Risk Register in the F-XXX bullet format.",
+        agent.description,
+      )
     }
 
     val rubricMarkers = mapOf(

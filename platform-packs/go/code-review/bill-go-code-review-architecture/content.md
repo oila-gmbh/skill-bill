@@ -8,6 +8,16 @@ internal-for: bill-code-review
 
 Own structural placement and ownership decisions. Leave statement-level concurrency semantics to platform correctness and runtime draining or recovery policy to reliability.
 
+## Focus
+
+- Package and module direction, interface ownership, composition roots, and component lifecycles
+- Scope ownership for components that launch goroutines or retain process-wide resources
+
+## Ignore
+
+- Statement-level channel, synchronization, and error semantics owned by platform correctness
+- Runtime drain, retry, and shutdown policy owned by reliability
+
 ## Applicability
 
 Apply these rules to changed Go packages, modules, entry points, constructors, interfaces, and long-lived components. Infer the repository's established shape before proposing a different one.
@@ -31,3 +41,4 @@ Apply these rules to changed Go packages, modules, entry points, constructors, i
 - Verify cross-package callbacks or `chan T` values declare send, receive, and termination semantics, including whether closure is part of the protocol and who may perform it; ambiguous ownership risks deadlock and shutdown crashes.
 - Reject business workflows embedded in `http.Handler`, Cobra `RunE`, or template functions when the local architecture has an application layer; duplicated orchestration risks inconsistent authorization and transaction behavior.
 - Require generated clients or models to remain behind an adapter when `// Code generated` surfaces volatile external contracts; direct propagation risks build-wide churn and compatibility failures.
+- For Blocker or Major findings, describe the concrete dependency-cycle or ownership-boundary failure scenario.

@@ -8,6 +8,16 @@ internal-for: bill-code-review
 
 Own externally observable transport behavior. Leave authentication policy to security and internal workflow placement to architecture.
 
+## Focus
+
+- `net/http`, JSON, RPC, protobuf, validation, status, idempotency, and compatibility contracts
+- Client-visible cancellation, serialization, middleware-ordering, and schema-evolution failures
+
+## Ignore
+
+- Authentication and authorization policy owned by security
+- Internal refactors with no externally observable contract change
+
 ## Applicability
 
 Apply standard-library rules to `net/http` code. Apply router, gRPC, protobuf, or other ecosystem checks only when imports, generated files, or configuration prove that component is in use.
@@ -26,7 +36,7 @@ Apply standard-library rules to `net/http` code. Apply router, gRPC, protobuf, o
 - Verify `json.Decoder.UseNumber`, explicit integer types, or bounded conversion protects identifiers and large numbers when float precision is invalid; silent `float64` rounding corrupts serialized data.
 - Require request and response schema evolution to preserve old readers and writers through optional fields, stable `json` names, and deliberate deprecation; removing or retyping a field breaks mixed-version clients.
 - Require headers to be set before `WriteHeader` or the first `ResponseWriter.Write`; late headers are discarded and produce incorrect content types or caching.
-- Verify each handler writes one deliberate status such as `http.StatusCreated`; implicit or repeated status writes break documented client outcomes.
+- Require `WriteHeader` before the body when the contract needs a non-200 response, and reject repeated status writes; allowing the first `ResponseWriter.Write` to commit the intentional default `http.StatusOK` is valid, while implicit status is a defect only when the documented outcome is not 200.
 - Reject internal error text sent through `http.Error`; unstable details expose implementation data and violate the public error schema.
 - Require mutating endpoints to define retry behavior through an idempotency key or clearly non-idempotent contract; ambiguous retries risk duplicate writes.
 - Ensure pagination applies a bounded limit and deterministic cursor order; unstable ordering causes missing or duplicated data between pages.
@@ -36,3 +46,4 @@ Apply standard-library rules to `net/http` code. Apply router, gRPC, protobuf, o
 - Require applicable gRPC or Connect calls to propagate `context.Context` deadlines, preserve `status.Code` mappings, and keep generated stubs synchronized with `.proto` sources; missing deadlines leak resources and contract drift breaks clients.
 - Ensure applicable chi, Gin, Echo, or Connect middleware preserves route parameters and error mapping; ordering mistakes can bypass validation or return incorrect status.
 - Verify webhook handlers authenticate raw bytes before `json.Unmarshal` when the signature contract requires it; reserialization can reject valid messages or accept unsafe data.
+- For Blocker or Major findings, describe the concrete compatibility or validation failure scenario.

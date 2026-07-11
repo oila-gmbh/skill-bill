@@ -8,6 +8,16 @@ internal-for: bill-code-review
 
 Own durable-data correctness and database resource lifecycles. Apply library-specific guidance only when repository evidence shows that library is present.
 
+## Focus
+
+- `database/sql` query, row, transaction, isolation, locking, pool, mapping, and migration correctness
+- Data-loss, consistency, durability, and mixed-version rollout failures
+
+## Ignore
+
+- Query style preferences without a correctness or availability consequence
+- Library-specific rules when the repository does not use that library
+
 ## Applicability
 
 Apply to `database/sql`, migrations, query generation, and repository code. Examine commit, rollback, scan, and cancellation paths alongside the successful query.
@@ -34,3 +44,4 @@ Apply to `database/sql`, migrations, query generation, and repository code. Exam
 - Require applicable `sqlc` generated query changes to be produced by the repository generator; hand edits will drift and fail the next build.
 - Ensure applicable GORM operations check `Error` and intentional `RowsAffected`; ignored results can report success after failed or missing writes.
 - Verify applicable Ent or sqlx transaction handles are threaded through all repository calls; escaping to the root client breaks atomicity and risks partial data.
+- For Blocker or Major findings, describe the concrete data-loss, consistency, or durability failure scenario.

@@ -8,6 +8,16 @@ internal-for: bill-code-review
 
 Own whether tests can detect the changed behavior failing. Do not reward line coverage, duplicated implementation, or assertions disconnected from externally meaningful outcomes.
 
+## Focus
+
+- Behavioral regression proof, concurrency and race coverage, deterministic time, fuzzing, cleanup, and integration boundaries
+- Tautological, flaky, coverage-padding, or otherwise false-positive tests
+
+## Ignore
+
+- Test style preferences that do not weaken regression detection
+- Missing tests for generated or trivial behavior without a meaningful contract
+
 ## Applicability
 
 Apply to changed production behavior and `_test.go` files. Prefer the narrowest real boundary that proves the contract while keeping concurrency and time deterministic.
@@ -32,3 +42,4 @@ Apply to changed production behavior and `_test.go` files. Prefer the narrowest 
 - Require golden files updated through an intentional `-update` path to be reviewed for semantic changes; blind snapshots can normalize broken output.
 - Verify generated mocks or `go:generate` fixtures do not make expectations tautological; asserting configured return values alone does not prove behavior.
 - Ensure coverage increases from `go test -cover` correspond to branch or contract assertions; execution-only padding can hide an undetected regression.
+- For Blocker or Major findings, describe the concrete undetected-regression or false-positive test scenario.

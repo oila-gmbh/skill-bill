@@ -8,6 +8,16 @@ internal-for: bill-code-review
 
 Own semantics, keyboard flow, feedback, localization, and whether a person can complete the task. UI owns rendering mechanics; security owns trust boundaries.
 
+## Focus
+
+- Accessible names, error association, focus, keyboard flow, semantics, live feedback, localization, and terminal interaction
+- Concrete assistive-technology or task-completion failures in Go-owned interfaces
+
+## Ignore
+
+- Rendering correctness and state ownership findings owned by UI
+- Escaping, authorization, and sensitive-data findings owned by security
+
 ## Applicability
 
 Apply to HTML emitted by Go templates and interactive terminal output. Evaluate server-driven updates and failure recovery with keyboard and assistive-technology use in mind.
@@ -32,3 +42,4 @@ Apply to HTML emitted by Go templates and interactive terminal output. Evaluate 
 - Ensure CLI prompts accept a non-interactive flag or `os.Stdin` path when automation is supported; TTY-only interaction creates an operational timeout failure in pipelines.
 - Require terminal errors and progress states to remain understandable with `NO_COLOR` and redirected output; escape-only or color-only status corrupts operational feedback.
 - Verify TUI `tea.KeyMsg` controls expose a discoverable keyboard help view and preserve a clear focus indicator; hidden bindings cause task failure by making critical actions unreachable.
+- For Blocker or Major findings, describe the concrete accessibility or task-completion failure scenario.

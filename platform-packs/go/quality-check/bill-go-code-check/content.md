@@ -12,10 +12,10 @@ Discover and run the repository's authoritative Go checks, diagnose complete fai
 
 ## Execution Steps
 
-1. Establish scope from `git diff --name-only` and identify the base branch, affected modules, packages, commands, generators, and build targets.
-2. Discover repository wrappers by inspecting `go.mod`, `go.work`, `Makefile`, `justfile`, `Taskfile.yml`, scripts, CI workflows, and tool configuration before choosing defaults.
-3. Record configured Go version, workspace or vendor mode, build tags, target operating systems, code generators, and tools such as staticcheck, golangci-lint, govulncheck, buf, or sqlc.
-4. Run read-only structural checks first: `go env GOWORK`, `go list ./...`, `go mod verify`, repository generation-drift checks, and applicable workspace or vendor verification.
+1. Determine the files in scope from `git diff --name-only` and identify the base branch, affected modules, packages, commands, generators, and build targets.
+2. Discover commands from the build file (`go.mod` or `go.work`), repository wrapper (`Makefile`, `justfile`, `Taskfile.yml`, or scripts), and CI configuration, in that order, before falling back to Go defaults; prefer a repository-owned command whenever it defines the required scope or environment.
+3. Run the pack's quality-check entrypoint through the discovered repository commands, recording the configured Go version, workspace or vendor mode, build tags, target operating systems, code generators, and tools such as staticcheck, golangci-lint, govulncheck, buf, or sqlc.
+4. Run read-only structural checks first. In a single module, run `go list ./...` and `go mod verify` from that module root. In `go.work` mode, use repository wrappers or enumerate the workspace modules from `go work edit -json` and run module-scoped `go list ./...`, `go mod verify`, generation-drift, and vendor checks from each applicable member module instead of assuming the workspace root contains a `go.mod`.
 5. Verify formatting without mutation using `gofmt -l` or the repository formatter check, then run `go vet ./...` and configured `staticcheck ./...` or `golangci-lint run` commands.
 6. Build affected commands or libraries with `go build ./...`, including applicable `-tags`, `GOOS`, `GOARCH`, or cross-compilation targets discovered from CI.
 7. Run targeted tests first with `go test ./path/...`, then expand to `go test ./...`; run `go test -race ./...` on supported host targets or the repository's narrower race suite.
@@ -39,13 +39,15 @@ Discover and run the repository's authoritative Go checks, diagnose complete fai
 
 Use this priority-ordered ladder so structural drift is understood before format churn and cheap checks fail before expensive suites.
 
+Never suppress a failure to make the checker pass; preserve the configured analyzer, test, generation, module, workspace, and target contracts.
+
 1. Repair module, workspace, vendor, package, import, generation, or build-constraint failures that prevent reliable analysis.
 2. Apply formatting only to owned scoped files, then verify `gofmt -l` returns no paths.
 3. Fix `go vet`, staticcheck, and golangci-lint findings at their source without suppressions or weakened configuration.
 4. Repair compilation and target-specific build failures before interpreting downstream test results.
 5. Fix deterministic unit and integration failures, then investigate `go test -race` findings as concurrency correctness defects.
 6. Resolve reachable `govulncheck` findings through compatible dependency or code changes; do not dismiss reachable vulnerabilities solely because no exploit was observed.
-7. Re-run targeted checks, escalate to repository wrappers and the full suite, and inspect `git diff` for unrelated formatter, generator, module, or vendor churn.
+7. Re-run targeted checks after each fix category, and run the full suite when targeted checks cannot establish safety; inspect `git diff` for unrelated formatter, generator, module, or vendor churn.
 
 ### Failure Ownership and Blockers
 
