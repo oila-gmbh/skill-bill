@@ -459,8 +459,14 @@ private val RUST_EXPECTED_MARKERS = mapOf(
 )
 
 private val RUST_EXPECTED_RULE_CONTRACTS = mapOf(
-  "api-contracts" to listOf(listOf("#[serde(rename)]", "payload incompatibility"), listOf("extern \"C\"", "double frees")),
-  "architecture" to listOf(listOf("[features]", "compile_error!"), listOf("Arc<dyn Trait + Send + Sync>", "concurrency contract")),
+  "api-contracts" to listOf(
+    listOf("#[serde(rename)]", "payload incompatibility"),
+    listOf("extern \"C\"", "double frees"),
+  ),
+  "architecture" to listOf(
+    listOf("[features]", "compile_error!"),
+    listOf("Arc<dyn Trait + Send + Sync>", "concurrency contract"),
+  ),
   "performance" to listOf(listOf("spawn_blocking", "shutdown"), listOf("mpsc::channel", "backpressure")),
   "persistence" to listOf(listOf("rollback", "invalid state"), listOf("bounded `LIMIT` batches", "restart data loss")),
   "platform-correctness" to listOf(listOf("unsafe", "provenance", "undefined-behavior"), listOf(".await", "deadlock")),

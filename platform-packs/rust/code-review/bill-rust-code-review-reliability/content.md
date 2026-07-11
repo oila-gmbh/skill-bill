@@ -35,7 +35,7 @@ Apply to async tasks, services, workers, queues, schedulers, network clients, ca
 - Require retry policy to classify `Result` errors, cap attempts, apply jittered backoff, and respect an overall deadline; flag retry storms, duplicate writes, or permanent-failure loops.
 - Ensure mutation retries carry an idempotency key or conditional write such as `If-Match`; reject replay that duplicates externally visible state.
 - Verify stream consumers handle `StreamExt::next` termination and lag from `broadcast::Receiver::recv`; reject silent data loss or busy-loop recovery.
-- Require graceful shutdown to cancel intake with `CancellationToken`, close senders, join workers, and flush durable state in dependency order; reject hangs or truncated work.
+- Require graceful shutdown to cancel intake with `CancellationToken`, close senders, drain and join workers, and flush durable state in dependency order within a repository-owned deadline, then apply an explicit abort or force-close policy and report unfinished work or flush failures; reject indefinite hangs, silent truncation, or dependency-order loss.
 - Ensure synchronous destructors do not attempt async cleanup in `Drop`; require an explicit `close().await` contract and flag resource loss when shutdown is skipped.
 - Preserve operational diagnosis through structured `tracing::instrument` fields and error sources without secrets; reject failure paths that cannot identify the affected request or dependency.
 - Verify degraded-mode caches or circuit breakers use `Instant` and bounded staleness; reject wall-clock jumps, indefinite stale data, or recovery races.

@@ -38,7 +38,7 @@ Apply when changed Rust code affects UI state, rendering, events, hydration, ter
 - Ensure async responses carry a `CancellationToken`, request generation, or identity check before committing state; reject older completion overwriting a newer user action.
 - Require `Loading`, `Disabled`, `Error`, and empty view states to be reachable and recoverable; flag interactions that silently stall or trap the user.
 - Verify event propagation and default prevention through `web_sys::Event`, GUI messages, or terminal key events; reject double submission, ignored input, or accidental navigation.
-- Require filesystem, network, database, and CPU-heavy work to leave the UI thread through `spawn_local`, framework tasks, or bounded workers as applicable; reject input latency or deadlock.
+- Keep non-blocking async I/O responsive through `spawn_local` or framework tasks where applicable, but move blocking or CPU-heavy work to Web Workers on wasm or `spawn_blocking`/bounded workers on native targets; reject UI-thread stalls, input latency, or deadlock.
 - Ensure list and canvas rendering uses `ScrollArea::show_rows` or the detected framework's bounded draw path when workload evidence requires it; flag memory or frame-time regression on documented data sizes.
 - Require shutdown to cancel UI-owned `JoinHandle` tasks, release subscriptions, and persist intended state before window or terminal teardown; reject orphan work or lost updates.
 - For Blocker or Major findings, describe the concrete user-visible interaction or rendering failure scenario.

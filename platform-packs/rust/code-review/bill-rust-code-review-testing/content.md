@@ -27,9 +27,9 @@ Apply when changed Rust behavior, contracts, feature combinations, concurrency, 
 
 ### Rust Testing Rules
 
-- Require a focused `#[test]` or `#[tokio::test]` that fails on the changed behavior before the fix; reject regression coverage that never exercises the failure path.
+- Require focused evidence in the repository's configured harness that fails on the changed behavior before the fix; accept appropriate unit, async, wasm, custom-harness, doctest, workspace test-crate, compile-fail, property, or fuzz coverage, and reject evidence that never exercises the observable failure path.
 - Ensure unit tests assert observable `Result`, state transition, and side effects rather than private call order; flag tautological checks that permit incorrect behavior.
-- Require integration tests under `tests/` when crate boundaries, executable behavior, database clients, or network adapters changed; reject mocks that conceal wire or lifecycle failures.
+- Require repository-appropriate integration evidence when crate boundaries, executable behavior, database clients, or network adapters changed, whether in `tests/`, a workspace test crate, doctests, or a configured harness; reject mocks that conceal wire or lifecycle failures.
 - Verify public examples and doctests with `cargo test --doc` when documentation is executable contract; flag stale code that breaks users copying the documented path.
 - Require compile-pass or `trybuild` compile-fail cases when trait bounds, macros, lifetimes, or feature-gated public types changed; reject untested caller compilation regressions.
 - Use `proptest` or `quickcheck` for parsers and invariant-heavy transformations when configured or justified by changed input risk; flag example-only coverage that misses invalid data classes.

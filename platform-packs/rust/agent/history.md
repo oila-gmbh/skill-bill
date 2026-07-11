@@ -1,5 +1,14 @@
 # Boundary History — platform-packs/rust
 
+## [2026-07-11] SKILL-114 rust-pack-depth
+Areas: platform-packs/rust, orchestration/review-orchestrator, runtime-kotlin/runtime-infra-fs tests
+- Deepened all ten Rust review specialists with mechanism-specific ownership, unsafe/FFI, async, API, persistence, security, testing, interface, and operational failure analysis.
+- Expanded the Rust quality checker from discovered commands through Cargo workspace, format, clippy/check/build/test/doc, feature/target, dependency, bindings, and configured unsafe-analysis paths.
+- Added reusable substance and cross-pack duplication regression contracts for every Rust specialist role, while retaining applicability gates for optional tools and interface families. reusable
+- No breaking contract changes; live install sync remains deferred while the runtime workflow-store guard is active.
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
 ## [2026-07-11] SKILL-110 rust-platform-pack
 Areas: platform-packs/rust, runtime-kotlin/scaffold, runtime-kotlin/native-agent composition, runtime-kotlin/runtime-infra-fs tests, README.md, docs
 - Added the shipped `rust` pack with manifest-driven routing, a baseline review router, ten approved specialists, a default quality check, and provider-neutral native-agent declarations.

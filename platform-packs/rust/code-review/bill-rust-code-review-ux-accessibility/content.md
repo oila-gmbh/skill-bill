@@ -34,7 +34,7 @@ Apply when changed Rust UI affects semantics, accessible names, keyboard or focu
 - For terminal interfaces using `ratatui`, require a linear basic-terminal or plain-text fallback for essential results; reject operational task failure when cursor addressing, color, or mouse input is unavailable.
 - Require every action to be reachable by keyboard events such as `KeyboardEvent` or `crossterm::event::KeyCode`; flag task failure from pointer-only controls or shortcuts that trap input.
 - Ensure focus order follows task order and use `HtmlElement::focus` or the framework equivalent to restore focus after dialogs and navigation; reject lost or stolen focus.
-- Require dialogs, menus, and overlays to contain focus and support `KeyCode::Esc` when the interaction contract permits; flag task failure from keyboard traps or background activation.
+- Require dialogs, menus, and overlays to contain focus and support each surface's equivalent Escape event when the interaction contract permits, using `crossterm::event::KeyCode::Esc` only for terminal interfaces; flag task failure from keyboard traps or background activation.
 - Ensure validation errors are associated through `aria-describedby`, native labels, or framework accessibility nodes; reject fields whose failure cannot be discovered without visual proximity.
 - Require meaningful loading, completion, and error changes to use `aria-live` or an equivalent native accessibility event; flag task failure from silent async state that blocks assistive users.
 - Never encode status only through `Color`, CSS color, animation, hover, or spatial position; require text, symbols, or semantic state and reject information loss.

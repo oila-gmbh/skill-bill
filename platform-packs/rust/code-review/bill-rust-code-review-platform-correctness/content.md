@@ -27,7 +27,7 @@ Apply when changed Rust code affects ownership, borrowing, error behavior, unsaf
 
 ### Rust Platform Correctness Rules
 
-- Verify every borrow and explicit lifetime such as `&'a T` remains tied to its real owner; reject a task, callback, or stored reference that can observe invalid data after the owner is dropped.
+- Treat accepted safe-Rust borrows and drop glue as compiler guarantees; inspect runtime lifetime or destruction hazards only where `*const T`, `*mut T`, `MaybeUninit<T>`, `ManuallyDrop<T>`, erased lifetimes, self-reference, or FFI bypasses those guarantees, and reject a task, callback, or stored pointer that can observe invalid data after its owner is dropped.
 - Require ownership transfers through `Box<T>`, `Arc<T>`, and `Cow<'a, T>` to match mutation and sharing needs; flag cloning or reference cycles that cause stale state or memory leaks.
 - Ensure interior mutability through `Cell<T>`, `RefCell<T>`, `Mutex<T>`, or `RwLock<T>` has a single defensible access protocol; reject reachable borrow panics, poisoned-state loss, races, or deadlocks.
 - Verify every `unsafe` block establishes pointer provenance, alignment, initialization, aliasing, and lifetime obligations before dereference; reject undefined-behavior risk hidden behind a safe function.
