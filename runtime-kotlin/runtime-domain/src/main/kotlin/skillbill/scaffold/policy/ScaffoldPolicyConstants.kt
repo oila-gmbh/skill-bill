@@ -196,20 +196,12 @@ val PLATFORM_PACK_PRESET_DESCRIPTORS: Map<String, PlatformPackPreset> =
         "*.mts",
         ".cts",
         "*.cts",
-        "package.json",
-        "package-lock.json",
-        "yarn.lock",
-        "pnpm-lock.yaml",
-        "bun.lockb",
-        "biome.json",
-        "eslint.config.*",
-        ".eslintrc*",
-        "prettier.config.*",
-        ".prettierrc*",
       ),
       tieBreakers = listOf(
-        "Prefer TypeScript when tsconfig metadata and first-party TypeScript source files dominate the " +
-          "changed product surface; package.json or a lockfile alone is not sufficient.",
+        "Prefer TypeScript only when tsconfig metadata or first-party TypeScript source files dominate the changed " +
+          "product surface. Treat package.json, package-lock.json, yarn.lock, pnpm-lock.yaml, bun.lockb, biome.json, " +
+          "ESLint configuration, and Prettier configuration as contextual metadata only; individually or combined, " +
+          "they are not TypeScript evidence without TypeScript ownership.",
         "Do not prefer TypeScript where it appears only as generated API clients, ambient declaration files, " +
           "or build tooling around another dominant stack.",
         "Exclude node_modules, dist, build and coverage output, generated clients, and generated declaration " +

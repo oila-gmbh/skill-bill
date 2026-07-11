@@ -145,11 +145,12 @@ class ParallelCodeReviewRunner(
     val diffPaths = DIFF_PATH_PATTERN
       .findAll(diffText)
       .map { it.groupValues[1] }
+      .filterNot(RoutingSignalPathMatcher::isIgnored)
       .toList()
 
     val scores = manifests.associateWith { manifest ->
       manifest.routingSignals.strong.sumOf { signal ->
-        diffPaths.count { path -> path.contains(signal, ignoreCase = true) }
+        diffPaths.count { path -> RoutingSignalPathMatcher.matches(path, signal) }
       }
     }
 

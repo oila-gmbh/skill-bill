@@ -1,6 +1,7 @@
 package skillbill.scaffold
 
-import skillbill.error.InvalidReviewSkillStructureError
+import skillbill.error.InvalidManifestSchemaError
+import skillbill.error.InvalidNativeAgentCompositionSchemaError
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.InstallAgentSelection
 import skillbill.install.model.InstallAgentSelectionMode
@@ -24,7 +25,6 @@ import skillbill.nativeagent.composition.composeNativeAgentSource
 import skillbill.nativeagent.composition.parseNativeAgentBundle
 import skillbill.scaffold.platformpack.loadPlatformPack
 import skillbill.scaffold.policy.APPROVED_CODE_REVIEW_AREAS
-import skillbill.scaffold.validation.ReviewSkillStructureValidator
 import skillbill.testing.repoRootFromTest
 import java.nio.file.Files
 import java.nio.file.Path
@@ -60,6 +60,8 @@ class TypeScriptPlatformPackTest {
       "*.mts",
       ".cts",
       "*.cts",
+    ).forEach { marker -> assertContains(pack.routingSignals.strong, marker) }
+    listOf(
       "package.json",
       "package-lock.json",
       "yarn.lock",
@@ -70,12 +72,45 @@ class TypeScriptPlatformPackTest {
       ".eslintrc*",
       "prettier.config.*",
       ".prettierrc*",
-    ).forEach { marker -> assertContains(pack.routingSignals.strong, marker) }
-    assertTrue(pack.routingSignals.tieBreakers.any { it.contains("package.json or a lockfile alone") })
+    ).forEach { marker -> assertFalse(pack.routingSignals.strong.contains(marker)) }
+    assertTrue(pack.routingSignals.tieBreakers.any { it.contains("individually or combined") })
+    assertTrue(pack.routingSignals.tieBreakers.any { it.contains("without TypeScript ownership") })
     assertTrue(pack.routingSignals.tieBreakers.any { it.contains("generated API clients") })
     assertTrue(pack.routingSignals.tieBreakers.any { it.contains("ambient *.d.ts") })
     assertTrue(pack.routingSignals.tieBreakers.any { it.contains("node_modules/") })
     assertTrue(pack.routingSignals.tieBreakers.any { it.contains("generated declaration") })
+  }
+
+  @Test
+  fun `javascript only metadata is not strong typescript routing evidence`() {
+    val pack = loadPlatformPack(repoRootFromTest().resolve("platform-packs/typescript"))
+    val javascriptOnlyMarkers = listOf(
+      "package.json",
+      "package-lock.json",
+      "yarn.lock",
+      "pnpm-lock.yaml",
+      "bun.lockb",
+      "biome.json",
+      "eslint.config.*",
+      ".eslintrc*",
+      "prettier.config.*",
+      ".prettierrc*",
+    )
+
+    assertTrue(pack.routingSignals.strong.none(javascriptOnlyMarkers::contains))
+    val ownershipBoundary = pack.routingSignals.tieBreakers.single { it.contains("contextual metadata only") }
+    listOf(
+      "package.json",
+      "package-lock.json",
+      "yarn.lock",
+      "pnpm-lock.yaml",
+      "bun.lockb",
+      "biome.json",
+      "ESLint configuration",
+      "Prettier configuration",
+    ).forEach { marker -> assertContains(ownershipBoundary, marker) }
+    assertContains(ownershipBoundary, "individually or combined")
+    assertContains(ownershipBoundary, "without TypeScript ownership")
   }
 
   @Test
@@ -90,8 +125,10 @@ class TypeScriptPlatformPackTest {
       val text = Files.readString(contentFile)
       assertContains(text, "internal-for:")
       assertFalse(text.contains("TODO"), "TypeScript pack source must not contain TODO placeholders: $contentFile")
-      assertTrue(text.lines().size > 18, "TypeScript pack source should contain substantive guidance: $contentFile")
     }
+
+    assertTypeScriptReviewContentContract(packRoot)
+    assertTypeScriptQualityCheckContentContract(packRoot)
 
     val bundlePath = packRoot.resolve("code-review/bill-typescript-code-review/native-agents/agents.yaml")
     assertContains(Files.readString(bundlePath), "contract_version: \"0.1\"")
@@ -106,18 +143,83 @@ class TypeScriptPlatformPackTest {
   }
 
   @Test
-  fun `typescript pack rejects a malformed quality check relationship`() {
+  fun `typescript pack loader preserves partial extension bundles`() {
     val repoRoot = repoRootFromTest()
-    val tempRoot = Files.createTempDirectory("skillbill-typescript-pack-invalid-quality-parent-")
+    val tempRoot = Files.createTempDirectory("skillbill-typescript-pack-malformed-")
     val packRoot = tempRoot.resolve("typescript")
     copyDirectory(repoRoot.resolve("platform-packs/typescript"), packRoot)
-    val checker = packRoot.resolve("quality-check/bill-typescript-code-check/content.md")
-    Files.writeString(checker, Files.readString(checker).replace("internal-for: bill-code-check\n", ""))
+    val bundle = packRoot.resolve("code-review/bill-typescript-code-review/native-agents/agents.yaml")
+    Files.writeString(
+      bundle,
+      Files.readString(bundle).replace(
+        Regex("(?ms)  - name: bill-typescript-code-review-security\\n.*?(?=  - name:|\\z)"),
+        "",
+      ),
+    )
 
-    val error = assertFailsWith<InvalidReviewSkillStructureError> {
-      ReviewSkillStructureValidator.validate(packRoot)
+    assertEquals("typescript", loadPlatformPack(packRoot).slug)
+  }
+
+  @Test
+  fun `typescript pack rejects renamed governed content agents`() {
+    val repoRoot = repoRootFromTest()
+    val tempRoot = Files.createTempDirectory("skillbill-typescript-pack-all-agents-renamed-")
+    val packRoot = tempRoot.resolve("typescript")
+    copyDirectory(repoRoot.resolve("platform-packs/typescript"), packRoot)
+    val bundle = packRoot.resolve("code-review/bill-typescript-code-review/native-agents/agents.yaml")
+    val canonicalNames = APPROVED_CODE_REVIEW_AREAS.map { "bill-typescript-code-review-$it" } +
+      "bill-typescript-code-review"
+    val renamedBundle = canonicalNames.fold(Files.readString(bundle)) { content, name ->
+      content.replace("name: $name\n", "name: renamed-$name\n")
     }
-    assertContains(error.message.orEmpty(), "quality-check internal parent")
+    val reducedRenamedBundle = listOf(
+      "renamed-bill-typescript-code-review",
+      "renamed-bill-typescript-code-review-security",
+    ).fold(renamedBundle) { content, name ->
+      content.replace(Regex("(?ms)  - name: $name\\n.*?(?=  - name:|\\z)"), "")
+    }
+    Files.writeString(bundle, reducedRenamedBundle)
+
+    val error = assertFailsWith<InvalidManifestSchemaError> { loadPlatformPack(packRoot) }
+    assertContains(error.message.orEmpty(), "unknown=[renamed-bill-typescript-code-review-api-contracts")
+    assertContains(error.message.orEmpty(), "renamed-bill-typescript-code-review")
+  }
+
+  @Test
+  fun `typescript pack accepts custom body based native agent`() {
+    val repoRoot = repoRootFromTest()
+    val tempRoot = Files.createTempDirectory("skillbill-typescript-pack-unknown-body-agent-")
+    val packRoot = tempRoot.resolve("typescript")
+    copyDirectory(repoRoot.resolve("platform-packs/typescript"), packRoot)
+    val bundle = packRoot.resolve("code-review/bill-typescript-code-review/native-agents/agents.yaml")
+    Files.writeString(
+      bundle,
+      Files.readString(bundle) +
+        "  - name: undeclared-typescript-reviewer\n" +
+        "    description: \"Custom review agent.\"\n" +
+        "    body: |-\n" +
+        "      Review the diff.\n",
+    )
+
+    assertEquals("typescript", loadPlatformPack(packRoot).slug)
+  }
+
+  @Test
+  fun `typescript pack loader accepts a specialist-only extension bundle`() {
+    val repoRoot = repoRootFromTest()
+    val tempRoot = Files.createTempDirectory("skillbill-typescript-pack-missing-baseline-")
+    val packRoot = tempRoot.resolve("typescript")
+    copyDirectory(repoRoot.resolve("platform-packs/typescript"), packRoot)
+    val bundle = packRoot.resolve("code-review/bill-typescript-code-review/native-agents/agents.yaml")
+    Files.writeString(
+      bundle,
+      Files.readString(bundle).replace(
+        Regex("(?ms)  - name: bill-typescript-code-review\\n.*?(?=  - name:|\\z)"),
+        "",
+      ),
+    )
+
+    assertEquals("typescript", loadPlatformPack(packRoot).slug)
   }
 
   @Test
@@ -129,10 +231,28 @@ class TypeScriptPlatformPackTest {
     val bundle = packRoot.resolve("code-review/bill-typescript-code-review/native-agents/agents.yaml")
     Files.writeString(bundle, "agents:\n  - name: [unterminated\n")
 
-    val error = assertFailsWith<InvalidReviewSkillStructureError> {
-      ReviewSkillStructureValidator.validate(packRoot)
-    }
-    assertContains(error.message.orEmpty(), "not valid YAML")
+    val error = assertFailsWith<InvalidNativeAgentCompositionSchemaError> { loadPlatformPack(packRoot) }
+    assertContains(error.sourceLabel, bundle.toString())
+    assertContains(error.reason, "could not parse YAML")
+  }
+
+  @Test
+  fun `typescript pack accepts a custom baseline native agent description`() {
+    val repoRoot = repoRootFromTest()
+    val tempRoot = Files.createTempDirectory("skillbill-typescript-pack-custom-baseline-description-")
+    val packRoot = tempRoot.resolve("typescript")
+    copyDirectory(repoRoot.resolve("platform-packs/typescript"), packRoot)
+    val bundle = packRoot.resolve("code-review/bill-typescript-code-review/native-agents/agents.yaml")
+    Files.writeString(
+      bundle,
+      Files.readString(bundle).replace(
+        "TypeScript baseline code reviewer. Reviews the full owned diff before specialist findings are merged. " +
+          "Returns an F-XXX Risk Register.",
+        "Team-owned TypeScript baseline reviewer.",
+      ),
+    )
+
+    assertEquals("typescript", loadPlatformPack(packRoot).slug)
   }
 
   @Test
@@ -215,8 +335,60 @@ class TypeScriptPlatformPackTest {
       .mapNotNull { nativeAgent -> nativeAgent.path?.fileName?.toString() }
       .toSet()
     expectedReviewSidecars.map { sidecar -> sidecar.removeSuffix(".md") }.forEach { agentName ->
-      assertTrue(linkedNativeAgents.any { artifact -> agentName in artifact }, "Missing native agent $agentName")
+      assertContains(linkedNativeAgents, "$agentName.toml")
     }
+  }
+
+  private fun assertTypeScriptReviewContentContract(packRoot: Path) {
+    val baseline = Files.readString(packRoot.resolve("code-review/bill-typescript-code-review/content.md"))
+    listOf(
+      "Select at least two and at most ten specialists",
+      "## Diff-Signal Routing Table",
+      "## Mixed Diffs",
+      "node_modules/",
+      "Ambient `*.d.ts` declarations",
+    ).forEach { required -> assertContains(baseline, required) }
+
+    val specialistRequirements = mapOf(
+      "bill-typescript-code-review-platform-correctness" to listOf(
+        "`any`, `unknown`, unchecked casts, non-null assertions",
+        "strictness",
+        "Node, browser, worker, edge",
+      ),
+      "bill-typescript-code-review-reliability" to listOf(
+        "unawaited or floating promises",
+        "async callbacks",
+        "races",
+      ),
+      "bill-typescript-code-review-api-contracts" to listOf(
+        "validate untrusted values at runtime",
+        "optional, nullable",
+      ),
+    )
+    specialistRequirements.forEach { (skillName, requirements) ->
+      val content = Files.readString(packRoot.resolve("code-review/$skillName/content.md"))
+      requirements.forEach { required -> assertContains(content, required) }
+    }
+  }
+
+  private fun assertTypeScriptQualityCheckContentContract(packRoot: Path) {
+    val qualityCheck = Files.readString(
+      packRoot.resolve("quality-check/bill-typescript-code-check/content.md"),
+    )
+    listOf(
+      "tsc --noEmit",
+      "ESLint",
+      "Biome",
+      "Prettier",
+      "Vitest",
+      "Jest",
+      "npm",
+      "yarn",
+      "pnpm",
+      "bun",
+      "turbo",
+      "nx",
+    ).forEach { required -> assertContains(qualityCheck, required) }
   }
 
   private fun copyDirectory(source: Path, target: Path) {

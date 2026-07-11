@@ -21,6 +21,7 @@ import skillbill.scaffold.runtime.PRE_SHELL_FAMILIES
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
@@ -190,6 +191,8 @@ class ScaffoldPayloadMapPolicyTest {
       "*.mts",
       ".cts",
       "*.cts",
+    ).forEach { marker -> assertTrue(defaults.strongSignals.contains(marker)) }
+    listOf(
       "package.json",
       "package-lock.json",
       "yarn.lock",
@@ -200,8 +203,9 @@ class ScaffoldPayloadMapPolicyTest {
       ".eslintrc*",
       "prettier.config.*",
       ".prettierrc*",
-    ).forEach { marker -> assertTrue(defaults.strongSignals.contains(marker)) }
-    assertTrue(defaults.tieBreakers.any { it.contains("package.json or a lockfile alone") })
+    ).forEach { marker -> assertFalse(defaults.strongSignals.contains(marker)) }
+    assertTrue(defaults.tieBreakers.any { it.contains("individually or combined") })
+    assertTrue(defaults.tieBreakers.any { it.contains("without TypeScript ownership") })
     assertTrue(defaults.tieBreakers.any { it.contains("generated API clients") })
     assertTrue(defaults.tieBreakers.any { it.contains("ambient declaration files") })
     assertTrue(defaults.tieBreakers.any { it.contains("node_modules") })
