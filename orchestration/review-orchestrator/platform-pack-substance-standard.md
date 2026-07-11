@@ -1,0 +1,88 @@
+# Governed Platform-Pack Substance Standard
+
+Audit contract version: `0.1`
+
+This standard is the maintained-repository substance gate for platform packs. It
+does not change the structural contract accepted by the platform-pack loader.
+Every requirement below is independently measured by the canonical audit used by
+tests and `skill-bill validate`.
+
+## Corpus and effective coverage
+
+The audit discovers every non-hidden `platform-packs/*/platform.yaml` and reads
+only manifest-declared authored `content.md` files plus a specialist-owned Markdown
+sidecar explicitly linked by that content. Generated `SKILL.md` wrappers, generated
+pointer files, resolved shared targets, provider output, add-ons, and boundary
+memory are excluded.
+
+Physical areas are the manifest's local `declared_code_review_areas`. Inherited
+areas are reachable through an acyclic chain of required baseline layers. A layer
+contributes coverage only when its target pack exists, its declared baseline skill
+matches the layer skill, and that target's effective graph supplies the area.
+Optional, missing, mismatched, and cyclic layers supply no required coverage. A
+maintained pack must effectively cover every approved area applicable to its
+declared composition; composition may not claim coverage that the graph cannot
+supply.
+
+## Specialist depth
+
+Each physical specialist must contain at least ten substantive enforceable rules
+and represent all three failure-mode clusters:
+
+1. state, lifecycle, concurrency, or ordering failures;
+2. contract, data, validation, authorization, or security failures;
+3. resource, performance, toolchain, build, or operational failures.
+
+A substantive rule is one Markdown bullet under a governed rule H3. In the same
+bullet it must contain an obligation or prohibition, concrete platform evidence,
+and an explicit failure or observable consequence. Concrete evidence is a
+backticked or command-form named API, language construct, framework, build tool,
+configuration surface, or toolchain command. The pack name alone is not evidence.
+Each represented cluster must contain concrete platform evidence.
+
+The tokens `TODO`, `FIXME`, `TBD`, and `XXX` are forbidden, as are generic
+`mechanism`, `API`, `example`, or `command` placeholders and prose that asks an
+author to fill or replace content. A placeholder-bearing file fails regardless of
+its other metrics.
+
+## Quality-check depth
+
+A maintained pack must declare a quality-check file unless its required composition
+supplies the checker by an explicitly governed fallback. The authored checker must
+cover all seven facets: repository command discovery; concrete tools or commands;
+scoped execution; failure ownership; priority-ordered fixes; targeted reruns with
+full-suite escalation; and explicit blocker reporting. Each facet is reported
+separately so shallow guidance cannot pass by naming a generic check command.
+
+## Deterministic normalization and duplication
+
+Normalization removes YAML frontmatter, applies Unicode NFKC, lowercases with
+`Locale.ROOT`, removes Markdown link destinations while retaining link labels,
+normalizes Markdown syntax, converts punctuation to spaces, and collapses
+whitespace into stable tokens. The current slug, display name, and governed skill
+names become role placeholders, so names alone neither create nor avoid
+similarity. Code and command tokens remain lexical content because they are
+substantive evidence.
+
+The audit builds a set of unique contiguous five-token shingles. Fewer than five
+tokens yields an empty set and zero similarity. A pack's shared-shingle percentage
+is the number of its unique shingles present in any other maintained pack divided
+by its unique shingle count. Corresponding authored rubrics match by manifest role:
+baseline, quality-check, same-area specialist, or explicitly referenced
+specialist-owned sidecar. Pair similarity is symmetric Jaccard intersection over
+union.
+
+Exact rational values are compared before formatting. Reports round half-up to two
+decimal places. Exactly 35% pack-shared shingles and exactly 65% corresponding-pair
+similarity pass; values strictly above those thresholds fail. Pair violations name
+both authored files.
+
+## Temporary baseline acknowledgements
+
+Temporary acknowledgements live in `platform-pack-substance-baseline.yaml`, use
+contract version `0.1`, and record an exact violation identity, measured value,
+target, affected role/file, and one owner among SKILL-114 subtasks 2 through 9.
+Acknowledged violations remain in the complete report but do not block maintained
+validation. Unknown or duplicate identities, value drift in either direction,
+broadened entries, invalid owners, and stale entries fail. There are no wildcard,
+manifest, loader, or permanent suppression mechanisms.

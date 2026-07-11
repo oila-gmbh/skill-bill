@@ -117,4 +117,4 @@ See [orchestration/telemetry-contract/PLAYBOOK.md](../telemetry-contract/PLAYBOO
 
 ## Specialist Contract Subset
 
-Delegated specialist subagents receive `specialist-contract.md` instead of this full file. That file contains only "Shared Contract For Every Specialist" and "Shared Report Structure" — the two sections specialists need. Orchestrator-only sections (Scope, Execution Mode, Learnings, Delegation) are omitted to reduce per-subagent token cost. Keep `specialist-contract.md` in sync when updating those two sections.
+Delegated specialist subagents receive `specialist-contract.md` instead of this full file. That file contains only "Shared Contract For Every Specialist" and "Shared Report Structure" — the two sections specialists need. Orchestrator-only sections (Scope, Execution Mode, Learnings, Delegation) are omitted to reduce per-subagent token cost. Maintainer validation extracts those two canonical sections and enforces exact byte parity after line-ending normalization.
