@@ -409,6 +409,7 @@ private val PYTHON_EXPECTED_RULE_CONTRACTS = mapOf(
     listOf("durable checkpoint writes", "interruption cleanup", "restart position", "duplicate-safe replay"),
   ),
   "security" to listOf(
+    listOf("tenant-owned data", "database-per-tenant", "raw SQL", "reused sessions"),
     listOf("browser sessions", "session rotation", "SameSite", "fixation"),
     listOf("capability URLs", "bounded expiry", "resource", "purpose"),
     listOf("ModelForm", "fields", "model_validate", "model_construct"),
