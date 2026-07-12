@@ -24,7 +24,7 @@ Run only when a Kotlin diff exposes Compose Desktop, Swing, JavaFX, server-rende
 
 - Require meaningful Compose Desktop controls to expose accurate `Modifier.semantics` roles and labels, then verify assistive-technology exposure against the repository's Compose version and supported desktop OS; semantics alone do not prove the platform accessibility bridge is active.
 - Treat Compose Desktop accessibility activation as version- and platform-dependent: require repository evidence for any runtime flag, JVM property, or automatic activation path rather than prescribing one switch across releases.
-- Reject clickable containers without keyboard focus and activation through `focusable` and key handling; mouse-only behavior blocks task completion.
+- Prefer semantic controls or `Modifier.clickable`, `toggleable`, or `selectable`, which already provide focus and keyboard activation; require manual `focusable` and key handling only for low-level gesture implementations, where mouse-only behavior blocks task completion and duplicate handlers can trigger an action twice.
 - Verify focus movement after dialogs, errors, and dynamic content through `FocusRequester`; lost focus can trap keyboard users in invalid state.
 - Require state changes such as progress and validation to expose `stateDescription` or equivalent semantics; silent updates can cause accessibility failure.
 - Verify Swing custom components implement an accurate `AccessibleContext`; absent names, roles, or state can break screen-reader navigation.

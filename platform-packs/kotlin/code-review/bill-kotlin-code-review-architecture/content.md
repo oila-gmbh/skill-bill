@@ -22,7 +22,7 @@ Use for Kotlin libraries, Gradle modules, services, workers, and JVM framework i
 
 ### Architecture Review Rules
 
-- Require each injected `CoroutineScope` to end at its owning service lifecycle; a scope that outlives the owner risks leaked concurrent work and stale state.
+- Require each injected `CoroutineScope` to have an explicit lifecycle owner and cancellation boundary; an application-owned scope may deliberately outlive a shorter-lived consuming service, but an unowned or never-cancelled scope risks leaked concurrent work and stale state.
 - Reject `GlobalScope` and hidden `CoroutineScope(Job())` construction because unowned jobs break shutdown ordering and leak resources.
 - Verify `suspend` appears at I/O or concurrency boundaries such as `Repository.load`; decorative suspension over blocking work causes dispatcher starvation and invalid caller contracts.
 - Require infrastructure adapters around blocking APIs such as `Files.readAllBytes` to switch to an explicitly owned blocking context; the dispatcher may be encapsulated by the adapter rather than injected into every API call, but running on `Dispatchers.Default` can still cause thread starvation.

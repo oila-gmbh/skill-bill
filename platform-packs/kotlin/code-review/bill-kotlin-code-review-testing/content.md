@@ -29,7 +29,7 @@ Use for Kotlin unit, integration, contract, persistence, coroutine, and toolchai
 - Verify finite Flow sequences with bounded Turbine `awaitItem` assertions followed by `awaitComplete`; for `StateFlow`, `SharedFlow`, and other hot streams that normally never complete, assert the bounded items and ordering under test, then explicitly cancel the collector. A single `first()` cannot detect dropped or reordered data, while requiring hot-flow completion creates a hanging or false test contract.
 - Require Spring, Ktor, or DI integration tests when interceptors and serialization boundaries change; unit mocks can miss framework contract failure.
 - Reject persistence tests that assert only repository calls; verify commit, rollback, constraints, and durable rows through `Testcontainers` or an equivalent real boundary.
-- Require serializer round trips for absent, null, default, enum, and time values; happy-path DTO tests can miss data compatibility regression.
+- Require explicit decoding fixtures for absent fields, explicit nulls, constructor defaults, unknown enum values, unknown fields, and time representations; reserve serializer round trips for encode/decode symmetry because an already-constructed object cannot exercise an omitted input.
 - Verify authorization, validation, timeout, duplicate-delivery, and permanent-failure paths separately; one broad exception assertion can hide unsafe behavior.
 - Reject tautological `assertEquals(stub, subject())` tests whose setup dictates the result; they provide no regression detection.
 - Require generated KSP or kapt outputs to be compiled in the tested task; stale fixtures can hide generated-source build failure.

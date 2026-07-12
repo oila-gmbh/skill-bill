@@ -28,7 +28,7 @@ Use when Kotlin execution context, data volume, I/O, or framework behavior can c
 - Verify `flowOn` changes only the upstream flow execution context and leaves downstream operators and collection in the collector context; require it only when evidence shows an upstream producer or operator on the wrong context causes latency regression.
 - Reject unbounded `buffer`, `Channel.UNLIMITED`, or queue accumulation because a fast producer can cause memory failure before backpressure arrives.
 - Verify large `map` and `filter` chains with `async-profiler` or allocation measurements; eager intermediates can create avoidable memory pressure.
-- Require `sequence` or single-pass processing only when `jmh` evidence shows collection allocation affects the hot path; speculative rewrites risk slower behavior.
+- Require `sequence` or single-pass processing only when representative benchmark, profiler, allocation, load-test, or trace evidence shows collection work affects the hot path; speculative rewrites risk slower behavior.
 - Reject `Json.encodeToString` repetition for invariant payloads on a hot path when profiling shows serialization latency and allocation regression.
 - Require ORM projections for count, existence, or summary queries only when traces show full `@Entity` hydration or N+1 access causes a material resource or latency regression; an unmeasured projection rewrite can introduce a different query failure.
 - Verify lazy associations are not traversed during serialization; `Hibernate.initialize` cascades can cause query storms or session failure.
