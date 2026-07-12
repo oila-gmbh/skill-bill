@@ -43,6 +43,14 @@ fun isRuntimeRefusedAgent(agentId: String?): Boolean {
   return RUNTIME_REFUSED_AGENTS.any { refused -> refused.id == normalized }
 }
 
+val MODEL_DIRECTIVE_CAPABLE_AGENTS: Set<InstallAgent> = setOf(InstallAgent.CLAUDE, InstallAgent.CODEX)
+
+fun supportsModelDirective(agentId: String?): Boolean {
+  if (agentId == null) return false
+  val normalized = agentId.trim().lowercase()
+  return MODEL_DIRECTIVE_CAPABLE_AGENTS.any { capable -> capable.id == normalized }
+}
+
 // Shared, agent-neutral refusal reason. Documents the observed harness failure mode for every
 // refused agent so the CLI preflight, the spawn-boundary backstop, and the governed skill gates
 // all carry the same actionable prose. opencode is hard-killed at the 120s Bash ceiling; zcode's

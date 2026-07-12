@@ -2,6 +2,7 @@ package skillbill.application.config
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.workflow.repoRoot
+import skillbill.config.model.ExecutionMatrix
 import skillbill.config.model.RepoLocalConfig
 import skillbill.config.model.RepoLocalConfigResolution
 import skillbill.config.model.SpecType
@@ -19,6 +20,9 @@ import java.nio.file.Path
 class ConfigResolutionService(
   private val repoLocalConfigPort: RepoLocalConfigPort,
 ) {
+  fun resolveExecutionMatrix(repoRoot: Path): ExecutionMatrix? =
+    repoLocalConfigPort.readRepoLocalConfig(ReadRepoLocalConfigRequest(repoRoot)).config.executionMatrix
+
   fun resolveSpecType(repoRoot: Path, explicit: SpecType?): SpecType {
     val config = repoLocalConfigPort.readRepoLocalConfig(ReadRepoLocalConfigRequest(repoRoot)).config
     return RepoLocalConfigResolution.resolve(explicit, config.specType, SpecType.LOCAL)

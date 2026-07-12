@@ -149,6 +149,19 @@ class AgentRunGoalContinuationCommandTest {
     assertContains(runner.requests.single().command, "--suppress-pr")
   }
 
+  @Test
+  fun `goal-continuation wrapper never receives model or effort flags`() {
+    val runner = RecordingAgentRunProcessRunner()
+    requireNotNull(headlessAgentRunAdapters(runner)[InstallAgent.CODEX]).launch(
+      skillRunRequest().copy(modelOverride = "gpt-sol", effortOverride = "high"),
+    )
+
+    val command = runner.requests.single().command
+    assertFalse(command.contains("--model"))
+    assertFalse(command.contains("--effort"))
+    assertFalse(command.any { it.startsWith("model_reasoning_effort=") })
+  }
+
   private fun skillRunRequest(
     goalContinuation: SkillRunGoalContinuationContext? = goalContinuationContext(),
   ): SkillRunRequest = SkillRunRequest(

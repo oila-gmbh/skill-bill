@@ -23,6 +23,20 @@ class AgentRunLauncherModelsTest {
   }
 
   @Test
+  fun `skill run request validates non-blank model and effort overrides`() {
+    SkillRunRequest(
+      issueKey = "SKILL-56",
+      repoRoot = Path.of("."),
+      modelOverride = "gpt-sol",
+      effortOverride = "high",
+    )
+
+    assertFailsWith<IllegalArgumentException> {
+      SkillRunRequest(issueKey = "SKILL-56", repoRoot = Path.of("."), effortOverride = " ")
+    }
+  }
+
+  @Test
   fun `launch facts do not allow terminal process status on timeout or spawn failure`() {
     assertFailsWith<IllegalArgumentException> {
       AgentRunLaunchFacts(

@@ -3,6 +3,7 @@ package skillbill.application.featuretask
 import skillbill.application.model.FeatureTaskRuntimePhaseLedgerRequest
 import skillbill.application.model.FeatureTaskRuntimeRunEvent
 import skillbill.application.model.FeatureTaskRuntimeRunRequest
+import skillbill.config.model.PhaseModelDirective
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 
@@ -53,7 +54,13 @@ internal class FeatureTaskRuntimeRunObservability(
     )
   }
 
-  fun started(phaseId: String, resolvedAgentId: String, attemptCount: Int, resumed: Boolean) {
+  fun started(
+    phaseId: String,
+    resolvedAgentId: String,
+    attemptCount: Int,
+    resumed: Boolean,
+    directive: PhaseModelDirective?,
+  ) {
     request.eventSink.emit(
       FeatureTaskRuntimeRunEvent.PhaseStarted(
         workflowId = request.workflowId,
@@ -61,6 +68,8 @@ internal class FeatureTaskRuntimeRunObservability(
         resolvedAgentId = resolvedAgentId,
         attemptCount = attemptCount,
         resumed = resumed,
+        model = directive?.model,
+        effort = directive?.effort,
       ),
     )
     appendLedger(

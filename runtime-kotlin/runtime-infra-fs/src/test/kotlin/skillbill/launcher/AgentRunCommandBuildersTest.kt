@@ -1,0 +1,147 @@
+package skillbill.launcher
+
+import skillbill.install.model.InstallAgent
+import skillbill.install.model.MODEL_DIRECTIVE_CAPABLE_AGENTS
+import skillbill.launcher.agentrun.ClaudeAgentRunCommandBuilder
+import skillbill.launcher.agentrun.CodexAgentRunCommandBuilder
+import skillbill.launcher.agentrun.JunieAgentRunCommandBuilder
+import skillbill.ports.agentrun.model.SkillRunRequest
+import java.nio.file.Path
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertTrue
+
+class AgentRunCommandBuildersTest {
+  @Test
+  fun `claude renders exact commands for each directive shape`() {
+    val builder = ClaudeAgentRunCommandBuilder()
+
+    assertEquals(
+      listOf(
+        "claude",
+        "--print",
+        "--output-format",
+        "text",
+        "--model",
+        "claude-opus",
+        "--effort",
+        "high",
+        "--dangerously-skip-permissions",
+        "--add-dir",
+        "/tmp/skillbill-agent-run",
+      ),
+      builder.build(request(model = "claude-opus", effort = "high")).command,
+    )
+    assertEquals(
+      listOf(
+        "claude",
+        "--print",
+        "--output-format",
+        "text",
+        "--model",
+        "claude-opus",
+        "--dangerously-skip-permissions",
+        "--add-dir",
+        "/tmp/skillbill-agent-run",
+      ),
+      builder.build(request(model = "claude-opus")).command,
+    )
+    assertEquals(
+      listOf(
+        "claude",
+        "--print",
+        "--output-format",
+        "text",
+        "--dangerously-skip-permissions",
+        "--add-dir",
+        "/tmp/skillbill-agent-run",
+      ),
+      builder.build(request()).command,
+    )
+  }
+
+  @Test
+  fun `codex renders exact commands for each directive shape`() {
+    val builder = CodexAgentRunCommandBuilder()
+
+    assertEquals(
+      listOf(
+        "codex",
+        "exec",
+        "--cd",
+        "/tmp/skillbill-agent-run",
+        "--dangerously-bypass-approvals-and-sandbox",
+        "--config",
+        "shell_environment_policy.inherit=all",
+        "--model",
+        "gpt-sol",
+        "--config",
+        "model_reasoning_effort=xhigh",
+      ),
+      builder.build(request(model = "gpt-sol", effort = "xhigh")).command,
+    )
+    assertEquals(
+      listOf(
+        "codex",
+        "exec",
+        "--cd",
+        "/tmp/skillbill-agent-run",
+        "--dangerously-bypass-approvals-and-sandbox",
+        "--config",
+        "shell_environment_policy.inherit=all",
+        "--model",
+        "gpt-sol",
+      ),
+      builder.build(request(model = "gpt-sol")).command,
+    )
+    assertEquals(
+      listOf(
+        "codex",
+        "exec",
+        "--cd",
+        "/tmp/skillbill-agent-run",
+        "--dangerously-bypass-approvals-and-sandbox",
+        "--config",
+        "shell_environment_policy.inherit=all",
+      ),
+      builder.build(request()).command,
+    )
+  }
+
+  @Test
+  fun `directive capable agents have builders that render their directives`() {
+    val builders = listOf(ClaudeAgentRunCommandBuilder(), CodexAgentRunCommandBuilder())
+
+    assertEquals(MODEL_DIRECTIVE_CAPABLE_AGENTS, builders.map { it.agent }.toSet())
+    builders.forEach { builder ->
+      val command = builder.build(request(model = "model", effort = "high")).command
+      assertTrue(command.contains("--model"))
+      assertTrue(command.any { it == "high" || it == "model_reasoning_effort=high" })
+    }
+  }
+
+  @Test
+  fun `junie rejects model and effort directives`() {
+    assertFailsWith<IllegalArgumentException> {
+      JunieAgentRunCommandBuilder().build(request(model = "model", effort = "high"))
+    }
+  }
+
+  @Test
+  fun `junie accepts a directive free request`() {
+    val command = JunieAgentRunCommandBuilder().build(
+      request(),
+    ).command
+
+    assertEquals(InstallAgent.JUNIE.id, command.first())
+  }
+
+  private fun request(model: String? = null, effort: String? = null): SkillRunRequest = SkillRunRequest(
+    issueKey = "SKILL-113",
+    repoRoot = Path.of("/tmp/skillbill-agent-run"),
+    promptOverride = "Phase: implement",
+    modelOverride = model,
+    effortOverride = effort,
+  )
+}

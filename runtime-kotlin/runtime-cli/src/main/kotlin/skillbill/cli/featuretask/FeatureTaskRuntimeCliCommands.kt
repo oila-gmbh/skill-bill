@@ -12,10 +12,14 @@ import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.types.int
 import com.github.ajalt.clikt.parameters.types.restrictTo
 import me.tatarka.inject.annotations.Inject
+import skillbill.application.config.ConfigResolutionService
+import skillbill.application.featuretask.FeatureTaskRuntimeAgentResolver
+import skillbill.application.featuretask.FeatureTaskRuntimeModelResolver
 import skillbill.application.featuretask.FeatureTaskRuntimeRunner
 import skillbill.application.featuretask.FeatureTaskRuntimeStatusService
 import skillbill.application.model.FeatureTaskRuntimeAgentAssignment
 import skillbill.application.model.FeatureTaskRuntimeGoalContinuationContext
+import skillbill.application.model.FeatureTaskRuntimeModelAssignment
 import skillbill.application.model.FeatureTaskRuntimePhaseStatus
 import skillbill.application.model.FeatureTaskRuntimeRunEvent
 import skillbill.application.model.FeatureTaskRuntimeRunEventSink
@@ -29,6 +33,8 @@ import skillbill.application.workflow.WorkflowService
 import skillbill.cli.core.CliRunState
 import skillbill.cli.core.DocumentedCliCommand
 import skillbill.cli.core.refuseRuntimeRefusedAgents
+import skillbill.cli.core.refuseUnsupportedModelDirectives
+import skillbill.config.model.PhaseModelDirective
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.InvokingAgentContextResolver
 import skillbill.ports.featurespec.FeatureSpecPathResolverPort
@@ -48,6 +54,7 @@ data class FeatureTaskRuntimeRunDependencies(
   val runner: FeatureTaskRuntimeRunner,
   val runInvariantsSource: FeatureTaskRuntimeRunInvariantsSource,
   val specPathResolver: FeatureSpecPathResolverPort,
+  val configResolutionService: ConfigResolutionService,
   val state: CliRunState,
 )
 
@@ -77,6 +84,11 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
   protected val phaseAgents by option(
     "--phase-agent",
     help = "Per-phase agent assignment as phase=agent (e.g. --phase-agent plan=claude). Repeatable.",
+  ).multiple()
+  protected val phaseModels by option(
+    "--phase-model",
+    help = "Per-phase model directive as phase=model or phase=model@effort " +
+      "(e.g. --phase-model plan=claude-opus-4-8@high). Wins over the config execution_matrix. Repeatable.",
   ).multiple()
   protected val goalParentIssueKey by option(
     "--goal-parent-issue-key",
@@ -135,23 +147,22 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
     deps: FeatureTaskRuntimeRunDependencies,
     issueKey: String,
     specPath: String,
-    workflowId: String,
+    workflowId: () -> String,
   ) {
     val state = deps.state
+    val prepared = prepareRuntimeRun(deps)
     val report = deps.runner.run(
       FeatureTaskRuntimeRunRequest(
         issueKey = issueKey,
-        workflowId = workflowId,
+        workflowId = workflowId(),
         sessionId = "${FeatureTaskRuntimePhaseWorkflowDefinition.definition.defaultSessionPrefix}-$issueKey",
         runInvariants = deps.runInvariantsSource.read(Path.of(specPath)),
-        invokedAgentId = resolveInvokedRuntimeAgentId(agent, state.environment),
-        agentAssignment = FeatureTaskRuntimeAgentAssignment(
-          perPhaseAgentIds = parsePhaseAgents(phaseAgents),
-          override = agentOverride?.takeIf(String::isNotBlank),
-        ),
+        invokedAgentId = prepared.invokedAgentId,
+        agentAssignment = prepared.agentAssignment,
+        modelAssignment = prepared.modelAssignment,
         environment = state.environment,
         dbPathOverride = state.dbOverride,
-        repoRoot = repoRoot?.let(Path::of) ?: Path.of("").toAbsolutePath().normalize(),
+        repoRoot = prepared.repoRoot,
         timeout = maxWallClockMinutes?.minutes,
         parallelReviewAgent = parallelReviewAgent?.takeIf(String::isNotBlank),
         goalContinuation = parseGoalContinuationContext(),
@@ -160,6 +171,31 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
     )
     val payload = report.toRuntimeRunCliMap()
     state.completeText(runtimeRunText(payload), payload, exitCode = payload.runtimeRunExitCode())
+  }
+
+  private fun prepareRuntimeRun(deps: FeatureTaskRuntimeRunDependencies): PreparedRuntimeRun {
+    val environment = deps.state.environment
+    refuseUnsupportedRuntimeAgent(environment)
+    val repoRoot = repoRoot?.let(Path::of) ?: Path.of("").toAbsolutePath().normalize()
+    val invokedAgentId = resolveInvokedRuntimeAgentId(agent, environment)
+    val agentAssignment = FeatureTaskRuntimeAgentAssignment(
+      perPhaseAgentIds = parsePhaseAgents(phaseAgents),
+      override = agentOverride?.takeIf(String::isNotBlank),
+    )
+    val modelAssignment = FeatureTaskRuntimeModelAssignment(
+      perPhaseDirectives = parsePhaseModels(phaseModels),
+      matrix = deps.configResolutionService.resolveExecutionMatrix(repoRoot),
+    )
+    val resolvedAgentIds = FeatureTaskRuntimePhaseWorkflowDefinition.definition.stepIds.associateWith { phaseId ->
+      FeatureTaskRuntimeAgentResolver.resolve(phaseId, agentAssignment, invokedAgentId).resolvedAgentId
+    }
+    val directives = resolvedAgentIds.mapNotNull { (phaseId, resolvedAgentId) ->
+      FeatureTaskRuntimeModelResolver.resolve(phaseId, resolvedAgentId, modelAssignment)?.let { directive ->
+        phaseId to directive
+      }
+    }.toMap()
+    refuseUnsupportedModelDirectives(directives, resolvedAgentIds)
+    return PreparedRuntimeRun(repoRoot, invokedAgentId, agentAssignment, modelAssignment)
   }
 
   protected fun resolveSpecPath(
@@ -240,14 +276,13 @@ class FeatureTaskRuntimeRunCommand(
     if (currentContext.invokedSubcommand != null) {
       return
     }
-    refuseUnsupportedRuntimeAgent(deps.state.environment)
     val runIssueKey = issueKey ?: throw UsageError("issue_key is required for feature-task run.")
     val runSpecPath = resolveSpecPath(deps, runIssueKey, specPath)
     executeRuntimeRun(
       deps = deps,
       issueKey = runIssueKey,
       specPath = runSpecPath,
-      workflowId = resolveRunWorkflowId(workflowService, deps.state),
+      workflowId = { resolveRunWorkflowId(workflowService, deps.state) },
     )
   }
 }
@@ -269,12 +304,11 @@ class FeatureTaskRuntimeExplicitRunCommand(
   private val specPath by argument(help = "Path to the governed spec the run implements.").optional()
 
   override fun run() {
-    refuseUnsupportedRuntimeAgent(deps.state.environment)
     executeRuntimeRun(
       deps = deps,
       issueKey = issueKey,
       specPath = resolveSpecPath(deps, issueKey, specPath),
-      workflowId = resolveRunWorkflowId(workflowService, deps.state),
+      workflowId = { resolveRunWorkflowId(workflowService, deps.state) },
     )
   }
 }
@@ -307,12 +341,11 @@ class FeatureTaskRuntimeResumeCommand(
   private val specPath by argument(help = "Path to the governed spec the run implements.")
 
   override fun run() {
-    refuseUnsupportedRuntimeAgent(deps.state.environment)
     executeRuntimeRun(
       deps = deps,
       issueKey = issueKey,
       specPath = specPath,
-      workflowId = workflowId,
+      workflowId = { workflowId },
     )
   }
 }
@@ -359,14 +392,13 @@ class FeatureTaskRuntimeDeprecatedRunCommand(
     if (currentContext.invokedSubcommand != null) {
       return
     }
-    refuseUnsupportedRuntimeAgent(deps.state.environment)
     val runIssueKey = issueKey ?: throw UsageError("issue_key is required for feature-task run.")
     val runSpecPath = resolveSpecPath(deps, runIssueKey, specPath)
     executeRuntimeRun(
       deps = deps,
       issueKey = runIssueKey,
       specPath = runSpecPath,
-      workflowId = openRuntimeWorkflowId(workflowService, deps.state),
+      workflowId = { openRuntimeWorkflowId(workflowService, deps.state) },
     )
   }
 }
@@ -383,12 +415,11 @@ class FeatureTaskRuntimeDeprecatedExplicitRunCommand(
   private val specPath by argument(help = "Path to the governed spec the run implements.").optional()
 
   override fun run() {
-    refuseUnsupportedRuntimeAgent(deps.state.environment)
     executeRuntimeRun(
       deps = deps,
       issueKey = issueKey,
       specPath = resolveSpecPath(deps, issueKey, specPath),
-      workflowId = openRuntimeWorkflowId(workflowService, deps.state),
+      workflowId = { openRuntimeWorkflowId(workflowService, deps.state) },
     )
   }
 }
@@ -421,12 +452,11 @@ class FeatureTaskRuntimeDeprecatedResumeCommand(
   private val specPath by argument(help = "Path to the governed spec the run implements.")
 
   override fun run() {
-    refuseUnsupportedRuntimeAgent(deps.state.environment)
     executeRuntimeRun(
       deps = deps,
       issueKey = issueKey,
       specPath = specPath,
-      workflowId = workflowId,
+      workflowId = { workflowId },
     )
   }
 }
@@ -456,7 +486,10 @@ private fun FeatureTaskRuntimeRunEvent.runtimeProgressLine(): String = when (thi
     "feature-task-runtime $workflowId: branch setup blocked at phase $phaseId: $blockedReason\n"
   is FeatureTaskRuntimeRunEvent.PhaseStarted ->
     "feature-task-runtime $workflowId: phase $phaseId ${if (resumed) "resumed" else "started"} " +
-      "agent=$resolvedAgentId attempt=$attemptCount\n"
+      "agent=$resolvedAgentId attempt=$attemptCount" +
+      model?.let { " model=$it" }.orEmpty() +
+      effort?.let { " effort=$it" }.orEmpty() +
+      "\n"
   is FeatureTaskRuntimeRunEvent.PhaseFixLoopIteration ->
     "feature-task-runtime $workflowId: phase $phaseId fix_loop attempt=$attemptCount iteration=$fixLoopIteration\n"
   is FeatureTaskRuntimeRunEvent.PhaseCompleted ->
@@ -487,6 +520,47 @@ private fun parsePhaseAgents(rawAssignments: List<String>): Map<String, String> 
   }
   return parsed
 }
+
+private fun parsePhaseModels(rawAssignments: List<String>): Map<String, PhaseModelDirective> {
+  val parsed = LinkedHashMap<String, PhaseModelDirective>()
+  rawAssignments.forEach { assignment ->
+    val separatorIndex = assignment.indexOf('=')
+    if (separatorIndex <= 0 || separatorIndex == assignment.length - 1) {
+      invalidPhaseModel(
+        "--phase-model must be phase=model[@effort], e.g. --phase-model plan=claude-opus-4-8@high " +
+          "(got '$assignment').",
+      )
+    }
+    val phaseId = assignment.substring(0, separatorIndex).trim()
+    val modelAndEffort = assignment.substring(separatorIndex + 1).trim()
+    if (phaseId !in FeatureTaskRuntimePhaseWorkflowDefinition.definition.stepIds) {
+      invalidPhaseModel(
+        "--phase-model phase '$phaseId' is not a runtime phase " +
+          "(${FeatureTaskRuntimePhaseWorkflowDefinition.definition.stepIds.joinToString()}).",
+      )
+    }
+    if (modelAndEffort.count { it == '@' } > 1) {
+      invalidPhaseModel("--phase-model allows at most one @ separating model and effort (got '$assignment').")
+    }
+    val effortSeparator = modelAndEffort.indexOf('@')
+    val model = modelAndEffort.substringBefore('@').trim()
+    val effort = if (effortSeparator == -1) null else modelAndEffort.substring(effortSeparator + 1).trim()
+    if (model.isBlank() || effort?.isBlank() == true) {
+      invalidPhaseModel("--phase-model requires non-blank model and effort segments (got '$assignment').")
+    }
+    parsed[phaseId] = PhaseModelDirective(model = model, effort = effort)
+  }
+  return parsed
+}
+
+private fun invalidPhaseModel(message: String): Nothing = throw UsageError(message)
+
+private data class PreparedRuntimeRun(
+  val repoRoot: Path,
+  val invokedAgentId: String,
+  val agentAssignment: FeatureTaskRuntimeAgentAssignment,
+  val modelAssignment: FeatureTaskRuntimeModelAssignment,
+)
 
 private fun resolveInvokedRuntimeAgentId(explicitAgent: String?, environment: Map<String, String>): String =
   explicitAgent?.takeIf(String::isNotBlank)

@@ -1,5 +1,7 @@
 package skillbill.infrastructure.fs
 
+import skillbill.config.model.ExecutionTier
+import skillbill.config.model.PhaseModelDirective
 import skillbill.config.model.RepoLocalConfig
 import skillbill.config.model.SpecType
 import skillbill.error.MalformedRepoLocalConfigError
@@ -120,6 +122,52 @@ class FileSystemRepoLocalConfigTest {
 
     assertEquals(SpecType.LINEAR, config.specType)
     assertEquals(RepoLocalConfig.NO_PARALLEL_AGENT, config.codeReviewParallelAgent)
+  }
+
+  @Test
+  fun `reads execution matrix beside the existing flat config keys`() {
+    val repoRoot = writeConfig(
+      """
+      spec_type: linear
+      execution_matrix:
+        phase_tiers:
+          plan: implementation
+        agents:
+          codex:
+            implementation:
+              model: gpt-terra
+              effort: high
+      """.trimIndent(),
+    )
+
+    val config = adapter.readRepoLocalConfig(ReadRepoLocalConfigRequest(repoRoot)).config
+    val matrix = requireNotNull(config.executionMatrix)
+
+    assertEquals(SpecType.LINEAR, config.specType)
+    assertEquals(ExecutionTier.IMPLEMENTATION, matrix.tierOf("plan"))
+    assertEquals(
+      PhaseModelDirective("gpt-terra", "high"),
+      matrix.directiveFor("codex", "plan"),
+    )
+  }
+
+  @Test
+  fun `malformed execution matrix names the dotted config key`() {
+    val repoRoot = writeConfig(
+      """
+      execution_matrix:
+        agents:
+          claude:
+            reasoning:
+              effort: high
+      """.trimIndent(),
+    )
+
+    val error = assertFailsWith<MalformedRepoLocalConfigError> {
+      adapter.readRepoLocalConfig(ReadRepoLocalConfigRequest(repoRoot))
+    }
+
+    assertEquals("execution_matrix.agents.claude.reasoning.model", error.key)
   }
 
   private fun writeConfig(content: String): Path {
