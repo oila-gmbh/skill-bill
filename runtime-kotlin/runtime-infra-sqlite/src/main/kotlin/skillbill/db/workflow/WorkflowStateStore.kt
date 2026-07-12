@@ -202,7 +202,7 @@ private class FeatureVerifyWorkflowStateStore(
 private fun Connection.upsertWorkflowRow(tableName: String, row: WorkflowStateRecord, defaultContractVersion: String) {
   val startedTimestamp = row.startedAt?.takeIf(String::isNotBlank) ?: Instant.now().toString()
   val stateTimestamp = row.stateEnteredAt?.takeIf(String::isNotBlank) ?: startedTimestamp
-  val transitionTimestamp = row.stateEnteredAt?.takeIf(String::isNotBlank) ?: Instant.now().toString()
+  val transitionTimestamp = Instant.now().toString()
   prepareStatement(
     """
     INSERT INTO $tableName (
@@ -285,7 +285,7 @@ private fun Connection.upsertFeatureTaskWorkflowRow(
 ) {
   val startedTimestamp = row.startedAt?.takeIf(String::isNotBlank) ?: Instant.now().toString()
   val stateTimestamp = row.stateEnteredAt?.takeIf(String::isNotBlank) ?: startedTimestamp
-  val transitionTimestamp = row.stateEnteredAt?.takeIf(String::isNotBlank) ?: Instant.now().toString()
+  val transitionTimestamp = Instant.now().toString()
   prepareStatement(
     """
     INSERT INTO feature_task_workflows (

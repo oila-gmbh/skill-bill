@@ -10,6 +10,7 @@ import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -30,6 +31,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -87,6 +89,7 @@ import dev.skillbill.designsystem.generated.resources.work_field_state_since_cd
 import dev.skillbill.designsystem.generated.resources.work_field_state_since_estimated_cd
 import dev.skillbill.designsystem.generated.resources.work_field_workflow
 import dev.skillbill.designsystem.generated.resources.work_field_workflow_cd
+import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import skillbill.desktop.core.designsystem.SkillBillComponentShapes
 import skillbill.desktop.core.designsystem.SkillBillDimens
@@ -145,57 +148,21 @@ internal fun NavigationPane(
       Modifier
         .weight(1f)
         .verticalScroll(rememberScrollState())
-        .onPreviewKeyEvent { event ->
-          if (busy || event.type != KeyEventType.KeyDown) {
-            false
-          } else {
-            when (event.key) {
-              Key.DirectionDown -> {
-                onMoveSelection(1)
-                true
-              }
-              Key.DirectionUp -> {
-                onMoveSelection(-1)
-                true
-              }
-              Key.DirectionRight -> toggleSelectedNavigationExpansion(
-                treeItems = treeItems,
-                selectedNodeId = selectedNodeId,
-                expandedNodeIds = expandedNodeIds,
-                expand = true,
-                onNodeExpandedToggled = onNodeExpandedToggled,
-              )
-              Key.DirectionLeft -> toggleSelectedNavigationExpansion(
-                treeItems = treeItems,
-                selectedNodeId = selectedNodeId,
-                expandedNodeIds = expandedNodeIds,
-                expand = false,
-                onNodeExpandedToggled = onNodeExpandedToggled,
-              )
-              else -> false
-            }
-          }
-        }
-        .focusable()
         .padding(vertical = SkillBillDimens.padMd),
     ) {
-      if (treeItems.isEmpty()) {
-        EmptyTreeMessage(repoStatus)
-      }
-      treeItems.forEach { group ->
-        NavGroup(
-          group = group,
-          selectedNodeId = selectedNodeId,
-          openEditorTabIds = openEditorTabIds,
-          expandedNodeIds = expandedNodeIds,
-          expanded = group.id in expandedNodeIds,
-          enabled = !busy,
-          onNodeSelected = onNodeSelected,
-          onNodeOpened = onNodeOpened,
-          onNodeExpandedToggled = onNodeExpandedToggled,
-          onShowContextMenu = onShowContextMenu,
-        )
-      }
+      TreeNavigation(
+        treeItems = treeItems,
+        repoStatus = repoStatus,
+        selectedNodeId = selectedNodeId,
+        openEditorTabIds = openEditorTabIds,
+        expandedNodeIds = expandedNodeIds,
+        busy = busy,
+        onNodeSelected = onNodeSelected,
+        onNodeOpened = onNodeOpened,
+        onNodeExpandedToggled = onNodeExpandedToggled,
+        onMoveSelection = onMoveSelection,
+        onShowContextMenu = onShowContextMenu,
+      )
       WorkSection(
         state = workList,
         enabled = workEnabled && !busy,
@@ -234,6 +201,76 @@ internal fun NavigationPane(
         style = MaterialTheme.typography.labelSmall,
       )
       Text(text = policyLabel, color = SkillBillTheme.frameTokens.text, style = MaterialTheme.typography.labelSmall)
+    }
+  }
+}
+
+@Composable
+private fun TreeNavigation(
+  treeItems: List<SkillBillTreeItem>,
+  repoStatus: RepoLoadStatus,
+  selectedNodeId: String?,
+  openEditorTabIds: Set<String>,
+  expandedNodeIds: Set<String>,
+  busy: Boolean,
+  onNodeSelected: (String) -> Unit,
+  onNodeOpened: (String) -> Unit,
+  onNodeExpandedToggled: (String) -> Unit,
+  onMoveSelection: (Int) -> Unit,
+  onShowContextMenu: (SkillBillTreeItem) -> Unit,
+) {
+  Column(
+    modifier = Modifier
+      .fillMaxWidth()
+      .onPreviewKeyEvent { event ->
+        if (busy || event.type != KeyEventType.KeyDown) {
+          false
+        } else {
+          when (event.key) {
+            Key.DirectionDown -> {
+              onMoveSelection(1)
+              true
+            }
+            Key.DirectionUp -> {
+              onMoveSelection(-1)
+              true
+            }
+            Key.DirectionRight -> toggleSelectedNavigationExpansion(
+              treeItems = treeItems,
+              selectedNodeId = selectedNodeId,
+              expandedNodeIds = expandedNodeIds,
+              expand = true,
+              onNodeExpandedToggled = onNodeExpandedToggled,
+            )
+            Key.DirectionLeft -> toggleSelectedNavigationExpansion(
+              treeItems = treeItems,
+              selectedNodeId = selectedNodeId,
+              expandedNodeIds = expandedNodeIds,
+              expand = false,
+              onNodeExpandedToggled = onNodeExpandedToggled,
+            )
+            else -> false
+          }
+        }
+      }
+      .focusable(),
+  ) {
+    if (treeItems.isEmpty()) {
+      EmptyTreeMessage(repoStatus)
+    }
+    treeItems.forEach { group ->
+      NavGroup(
+        group = group,
+        selectedNodeId = selectedNodeId,
+        openEditorTabIds = openEditorTabIds,
+        expandedNodeIds = expandedNodeIds,
+        expanded = group.id in expandedNodeIds,
+        enabled = !busy,
+        onNodeSelected = onNodeSelected,
+        onNodeOpened = onNodeOpened,
+        onNodeExpandedToggled = onNodeExpandedToggled,
+        onShowContextMenu = onShowContextMenu,
+      )
     }
   }
 }
@@ -316,18 +353,42 @@ private fun WorkText(text: String) {
 @Composable
 private fun WorkRows(state: WorkListState) {
   val horizontal = rememberScrollState()
+  val vertical = rememberLazyListState()
+  val scrollScope = rememberCoroutineScope()
   val fields = workFields()
   WorkText(stringResource(Res.string.work_section_loaded, state.items.size))
   Box(
     modifier = Modifier
       .height(SkillBillDimens.navPaneHeaderHeight * 3)
       .horizontalScroll(horizontal)
-      .testTag(WORK_SECTION_VIEWPORT_TAG),
   ) {
     LazyColumn(
+      state = vertical,
       modifier = Modifier
         .width(WORK_SECTION_CONTENT_WIDTH)
         .fillMaxHeight()
+        .focusable()
+        .testTag(WORK_SECTION_VIEWPORT_TAG)
+        .onPreviewKeyEvent { event ->
+          if (event.type != KeyEventType.KeyDown) {
+            false
+          } else {
+            val offset = when (event.key) {
+              Key.DirectionDown -> 1
+              Key.DirectionUp -> -1
+              Key.PageDown -> 8
+              Key.PageUp -> -8
+              else -> 0
+            }
+            if (offset == 0) {
+              false
+            } else {
+              val target = (vertical.firstVisibleItemIndex + offset).coerceIn(0, state.items.size)
+              scrollScope.launch { vertical.scrollToItem(target) }
+              true
+            }
+          }
+        }
         .padding(horizontal = SkillBillDimens.padLg, vertical = SkillBillDimens.padSm),
     ) {
       item(key = "work-field-headers") {

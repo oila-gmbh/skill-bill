@@ -156,7 +156,7 @@ class WorkflowStateStoreTest {
       assertEquals(startedAt, sameStatus.stateEnteredAt)
       assertEquals(false, sameStatus.stateEnteredAtEstimated)
 
-      store.saveFeatureImplementWorkflow(initial.copy(workflowStatus = "blocked", currentStepId = "plan"))
+      store.saveFeatureImplementWorkflow(sameStatus.copy(workflowStatus = "blocked", currentStepId = "plan"))
       val transitioned = assertNotNull(store.getFeatureImplementWorkflow("wfl-state-entry"))
       assertEquals("blocked", transitioned.workflowStatus)
       assertTrue(transitioned.stateEnteredAt != startedAt)
@@ -183,7 +183,7 @@ class WorkflowStateStoreTest {
       val verifySameStatus = assertNotNull(store.getFeatureVerifyWorkflow("wfv-state-entry"))
       assertEquals(startedAt, verifySameStatus.stateEnteredAt)
 
-      store.saveFeatureVerifyWorkflow(verifyInitial.copy(workflowStatus = "completed", currentStepId = "finish"))
+      store.saveFeatureVerifyWorkflow(verifySameStatus.copy(workflowStatus = "completed", currentStepId = "finish"))
       val verifyTransitioned = assertNotNull(store.getFeatureVerifyWorkflow("wfv-state-entry"))
       assertTrue(verifyTransitioned.stateEnteredAt != startedAt)
       assertEquals(false, verifyTransitioned.stateEnteredAtEstimated)

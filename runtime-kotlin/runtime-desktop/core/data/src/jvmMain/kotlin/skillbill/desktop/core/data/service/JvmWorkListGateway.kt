@@ -1,20 +1,28 @@
 package skillbill.desktop.core.data.service
 
 import me.tatarka.inject.annotations.Inject
+import skillbill.application.work.WorkListService
 import skillbill.desktop.core.common.di.UserScope
 import skillbill.desktop.core.data.di.DesktopRuntimeApplicationServices
 import skillbill.desktop.core.domain.model.DesktopWorkItem
+import skillbill.ports.persistence.model.WorkItem
 import skillbill.desktop.core.domain.service.WorkListGateway
 import software.amazon.lastmile.kotlin.inject.anvil.SingleIn
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
-@Inject
 @SingleIn(UserScope::class)
-class JvmWorkListGateway(
-  private val runtimeServices: DesktopRuntimeApplicationServices = DesktopRuntimeApplicationServices.forCurrentUserHome(),
+class JvmWorkListGateway private constructor(
+  private val loadWork: () -> List<WorkItem>,
 ) : WorkListGateway {
-  override fun list(): List<DesktopWorkItem> = runtimeServices.workListService.list().work.map { item ->
+  @Inject
+  constructor(
+    runtimeServices: DesktopRuntimeApplicationServices = DesktopRuntimeApplicationServices.forCurrentUserHome(),
+  ) : this({ runtimeServices.workListService.list().work })
+
+  internal constructor(workListService: WorkListService) : this({ workListService.list().work })
+
+  override fun list(): List<DesktopWorkItem> = loadWork().map { item ->
     DesktopWorkItem(
       issueKey = item.issueKey,
       workflowKind = item.workflowKind.wireValue,

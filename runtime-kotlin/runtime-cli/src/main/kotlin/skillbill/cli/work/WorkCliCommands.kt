@@ -4,6 +4,7 @@ import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.core.subcommands
 import com.github.ajalt.clikt.parameters.options.default
 import com.github.ajalt.clikt.parameters.options.option
+import com.github.ajalt.clikt.parameters.options.validate
 import com.github.ajalt.clikt.parameters.types.int
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.work.WorkListResult
@@ -31,7 +32,9 @@ class WorkListCommand(
   private val state: CliRunState,
 ) : DocumentedCliCommand("list", "List persisted feature-task, feature-verify, and feature-goal work.") {
   private val format by option("--format", help = "Output format.").default("table")
-  private val limit by option("--limit", help = "Maximum number of rows.").int()
+  private val limit by option("--limit", help = "Maximum number of rows.").int().validate {
+    require(it > 0) { "--limit must be a positive integer." }
+  }
 
   override fun run() {
     require(format == "table" || format == "json") { "--format must be one of: table, json." }

@@ -82,11 +82,19 @@ internal object DatabaseColumnMigrations {
         statement.execute(
           """
           UPDATE $tableName
-          SET state_entered_at = COALESCE(
-                NULLIF(finished_at, ''), NULLIF(updated_at, ''), NULLIF(started_at, ''), CURRENT_TIMESTAMP
-              ),
-              state_entered_at_estimated = 1
+          SET state_entered_at = CASE
+                WHEN state_entered_at IS NULL OR state_entered_at = '' THEN COALESCE(
+                  NULLIF(finished_at, ''), NULLIF(updated_at, ''), NULLIF(started_at, ''), CURRENT_TIMESTAMP
+                )
+                ELSE state_entered_at
+              END,
+              state_entered_at_estimated = CASE
+                WHEN state_entered_at IS NULL OR state_entered_at = ''
+                     OR state_entered_at_estimated IS NULL THEN 1
+                ELSE state_entered_at_estimated
+              END
           WHERE state_entered_at IS NULL OR state_entered_at = ''
+             OR state_entered_at_estimated IS NULL
           """.trimIndent(),
         )
       }
@@ -129,13 +137,14 @@ internal object DatabaseColumnMigrations {
         """
         UPDATE feature_task_workflows
         SET issue_key = CASE
-          WHEN json_valid(artifacts_json) THEN json_extract(artifacts_json, '$.goal_continuation.issue_key')
+          WHEN json_valid(artifacts_json) THEN trim(json_extract(artifacts_json, '$.goal_continuation.issue_key'))
           ELSE NULL
         END
         WHERE (issue_key IS NULL OR issue_key = '')
           AND mode = 'runtime'
           AND CASE WHEN json_valid(artifacts_json) THEN
             json_type(artifacts_json, '$.goal_continuation') = 'object'
+            AND json_type(artifacts_json, '$.goal_continuation.issue_key') = 'text'
             AND NULLIF(trim(json_extract(artifacts_json, '$.goal_continuation.issue_key')), '') IS NOT NULL
             AND json_type(artifacts_json, '$.goal_continuation.subtask_id') = 'integer'
             AND json_extract(artifacts_json, '$.goal_continuation.subtask_id') > 0
