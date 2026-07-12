@@ -1,6 +1,6 @@
 ## [2026-07-12] SKILL-113 execution matrix per-phase model and effort tiers
 Areas: runtime-kotlin/runtime-domain config/install, runtime-application feature-task/config, runtime-cli feature-task/core, runtime-infra-fs config/launcher, runtime-ports agent-run
-- Repo-local `execution_matrix` now maps per-agent reasoning/implementation tiers to model and optional effort, with default phase tiers, per-phase overrides, typed dotted-path validation failures, and unchanged behavior when absent. reusable
+- Machine-global `execution_matrix` in `~/.config/skill-bill/config.json` maps per-agent reasoning/implementation tiers to model and optional effort, with default phase tiers, per-phase overrides, typed dotted-path validation failures, and unchanged behavior when absent. reusable
 - Runtime resolves each phase as CLI directive > matrix directive for its resolved agent > none, carries the directive into launch and phase-start telemetry, and preserves goal-continuation wrapper commands without model flags.
 - Pattern: declare CLI capability beside agent support in the domain, reject incompatible resolved phase/directive pairs before workflow or branch work, then retain a command-builder `require` as a defensive backstop. reusable
 - Claude and Codex render effort through their native command forms; Junie deliberately refuses directives, while parallel code-review `--model` behavior remains independent.

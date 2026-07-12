@@ -100,6 +100,8 @@ Installed skills are symlinks to rendered staging directories under `~/.skill-bi
 
 Your `config.json` (telemetry choices, `install_id`, and `external_addon_sources`) lives at the durable path **`~/.config/skill-bill/config.json`**. That location is **outside** the `~/.skill-bill/` tree that installs wipe, so it survives every `./install.sh` and update automatically — no environment variable required.
 
+Feature-task model and effort preferences also belong in this machine-wide JSON file under `execution_matrix`; they apply to every repository you run on this machine.
+
 - **Fresh installs** write there by default.
 - **Existing installs** are migrated automatically: the installer moves a legacy `~/.skill-bill/config.json` to the durable path before the pre-install cleanup, so nothing is lost on upgrade.
 - **Custom location**: set `SKILL_BILL_CONFIG_PATH` to pin the config anywhere (this override always wins, for both the installer and the runtime). If you exported this in an earlier version just to relocate the config to `~/.config/skill-bill/`, you can drop it — the durable default now covers that automatically.

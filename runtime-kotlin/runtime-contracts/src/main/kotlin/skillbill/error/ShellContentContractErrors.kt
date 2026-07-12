@@ -273,6 +273,18 @@ class MalformedRepoLocalConfigError(
   cause,
 )
 
+class MalformedMachineConfigError(
+  val path: String,
+  val key: String,
+  val value: String,
+  val reason: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Machine config at '${path.ifBlank { "<unknown>" }}' is malformed: " +
+    "key '${key.ifBlank { "<root>" }}' value '$value' $reason",
+  cause,
+)
+
 class ContractVersionMismatchError(
   message: String,
   cause: Throwable? = null,

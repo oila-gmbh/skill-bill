@@ -184,7 +184,7 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
     )
     val modelAssignment = FeatureTaskRuntimeModelAssignment(
       perPhaseDirectives = parsePhaseModels(phaseModels),
-      matrix = deps.configResolutionService.resolveExecutionMatrix(repoRoot),
+      matrix = deps.configResolutionService.resolveExecutionMatrix(),
     )
     val resolvedAgentIds = FeatureTaskRuntimePhaseWorkflowDefinition.definition.stepIds.associateWith { phaseId ->
       FeatureTaskRuntimeAgentResolver.resolve(phaseId, agentAssignment, invokedAgentId).resolvedAgentId

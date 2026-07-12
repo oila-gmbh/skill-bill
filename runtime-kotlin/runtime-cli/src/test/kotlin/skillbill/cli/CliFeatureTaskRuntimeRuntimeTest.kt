@@ -2,6 +2,7 @@ package skillbill.cli
 
 import skillbill.cli.core.CliRuntime
 import skillbill.cli.model.CliRuntimeContext
+import skillbill.error.MalformedMachineConfigError
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.AgentRunLauncher
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
@@ -20,6 +21,7 @@ import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -888,19 +890,25 @@ class CliFeatureTaskRuntimeModelDirectiveTest {
   }
 
   @Test
-  fun `feature-task runtime reads phase directives from the repo local execution matrix`() {
+  fun `feature-task runtime reads phase directives from the machine execution matrix`() {
     val fixture = runtimeFixture()
-    val config = fixture.tempDir.resolve(".skill-bill/config.yaml")
+    val config = fixture.tempDir.resolve(".config/skill-bill/config.json")
     Files.createDirectories(config.parent)
     Files.writeString(
       config,
       """
-      execution_matrix:
-        agents:
-          codex:
-            reasoning:
-              model: gpt-sol
-              effort: high
+      {
+        "execution_matrix": {
+          "agents": {
+            "codex": {
+              "reasoning": {
+                "model": "gpt-sol",
+                "effort": "high"
+              }
+            }
+          }
+        }
+      }
       """.trimIndent(),
     )
     val launcher = RecordingPhaseLauncher()
@@ -917,19 +925,60 @@ class CliFeatureTaskRuntimeModelDirectiveTest {
   }
 
   @Test
-  fun `goal continuation re-resolves execution matrix directives for child phase launches`() {
-    val fixture = runtimeFixture(specFileName = "spec_subtask_5_runtime.md")
-    val config = fixture.tempDir.resolve(".skill-bill/config.yaml")
+  fun `feature-task runtime rejects a malformed machine execution matrix`() {
+    val fixture = runtimeFixture()
+    val config = fixture.tempDir.resolve(".config/skill-bill/config.json")
     Files.createDirectories(config.parent)
     Files.writeString(
       config,
       """
-      execution_matrix:
-        agents:
-          codex:
-            reasoning:
-              model: gpt-sol
-              effort: high
+      {
+        "execution_matrix": {
+          "agents": {
+            "codex": {
+              "reasoning": {
+                "effort": "high"
+              }
+            }
+          }
+        }
+      }
+      """.trimIndent(),
+    )
+    val launcher = RecordingPhaseLauncher()
+
+    val error = assertFailsWith<MalformedMachineConfigError> {
+      CliRuntime.run(
+        fixture.runCommand(extra = listOf("--agent", "codex")),
+        fixture.context(launcher),
+      )
+    }
+
+    assertContains(error.message.orEmpty(), "Machine config")
+    assertContains(error.message.orEmpty(), "execution_matrix.agents.codex.reasoning.model")
+    assertEquals(emptyList(), launcher.requests)
+  }
+
+  @Test
+  fun `goal continuation re-resolves execution matrix directives for child phase launches`() {
+    val fixture = runtimeFixture(specFileName = "spec_subtask_5_runtime.md")
+    val config = fixture.tempDir.resolve(".config/skill-bill/config.json")
+    Files.createDirectories(config.parent)
+    Files.writeString(
+      config,
+      """
+      {
+        "execution_matrix": {
+          "agents": {
+            "codex": {
+              "reasoning": {
+                "model": "gpt-sol",
+                "effort": "high"
+              }
+            }
+          }
+        }
+      }
       """.trimIndent(),
     )
     val directLauncher = RecordingPhaseLauncher()

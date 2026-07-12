@@ -41,7 +41,6 @@ enum class RepoLocalConfigKey(
 data class RepoLocalConfig(
   val specType: SpecType,
   val codeReviewParallelAgent: String,
-  val executionMatrix: ExecutionMatrix? = null,
 ) {
   companion object {
     const val NO_PARALLEL_AGENT: String = "none"

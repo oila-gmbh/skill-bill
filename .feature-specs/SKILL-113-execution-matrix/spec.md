@@ -2,7 +2,9 @@
 
 ## Outcome
 
-The feature-task runtime can run its high-leverage phases (plan, code review, completeness audit, quality validation) on a stronger model and its mechanical phases (implement, fix loops, history, commit, PR) on a cheaper one, driven by a declarative `execution_matrix` in the repo-local `.skill-bill/config.yaml`. The matrix is keyed by agent id and named tier, carries `model` and `effort` as separate fields, resolves per phase with the precedence `CLI arg > config > none`, and loud-fails on any combination an agent's command builder cannot honor.
+The feature-task runtime can run its high-leverage phases (plan, code review, completeness audit, quality validation) on a stronger model and its mechanical phases (implement, fix loops, history, commit, PR) on a cheaper one, driven by a declarative `execution_matrix` in the machine-global `~/.config/skill-bill/config.json`. The matrix is keyed by agent id and named tier, carries `model` and `effort` as separate fields, resolves per phase with the precedence `CLI arg > config > none`, and loud-fails on any combination an agent's command builder cannot honor.
+
+> User-directed revision: model and effort preferences apply to the whole machine, not an individual repository. `execution_matrix` shares the durable global JSON config with telemetry and external add-on sources; the prior repo-local `.skill-bill/config.yaml` location is superseded.
 
 Example target config:
 

@@ -3,12 +3,9 @@ package skillbill.infrastructure.fs
 import com.fasterxml.jackson.core.JacksonException
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
 import me.tatarka.inject.annotations.Inject
-import skillbill.config.model.EXECUTION_MATRIX_KEY
-import skillbill.config.model.ExecutionMatrixParse
 import skillbill.config.model.RepoLocalConfig
 import skillbill.config.model.RepoLocalConfigKey
 import skillbill.config.model.parseCodeReviewParallelAgent
-import skillbill.config.model.parseExecutionMatrix
 import skillbill.config.model.parseSpecType
 import skillbill.error.MalformedRepoLocalConfigError
 import skillbill.error.UnreadableRepoLocalConfigError
@@ -39,21 +36,7 @@ class FileSystemRepoLocalConfig : RepoLocalConfigPort {
     codeReviewParallelAgent = parseKnownKey(path, raw, RepoLocalConfigKey.CODE_REVIEW_PARALLEL_AGENT) { value ->
       parseCodeReviewParallelAgent(value)
     } ?: RepoLocalConfig.defaults().codeReviewParallelAgent,
-    executionMatrix = parseExecutionMatrix(path, raw),
   )
-
-  private fun parseExecutionMatrix(path: Path, raw: Map<String, Any?>) = when {
-    !raw.containsKey(EXECUTION_MATRIX_KEY) -> null
-    else -> when (val parsed = parseExecutionMatrix(raw[EXECUTION_MATRIX_KEY])) {
-      is ExecutionMatrixParse.Valid -> parsed.matrix
-      is ExecutionMatrixParse.Invalid -> throw MalformedRepoLocalConfigError(
-        path = path.toString(),
-        key = parsed.keyPath,
-        value = parsed.value,
-        reason = parsed.reason,
-      )
-    }
-  }
 
   private fun <T> parseKnownKey(
     path: Path,
