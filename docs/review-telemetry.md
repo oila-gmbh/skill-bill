@@ -247,7 +247,7 @@ Both `anonymous` and `full`:
 | `routed_skill` | string | Concrete checker delegated to, normalized without namespace prefixes; blank/unresolved routing emits `unrouted` |
 | `detected_stack` | string | Normalized stack slug routed for; blank/unresolved stack emits `unknown` |
 | `fallback` | boolean | Whether routing used a fallback path |
-| `fallback_reason` | string | Optional stable fallback reason, such as `kotlin_quality_check_fallback` |
+| `fallback_reason` | string | Optional stable reason supplied by a route that actually used a fallback |
 | `scope_type` | string | `files`, `working_tree`, `branch_diff`, or `repo` |
 | `initial_failure_count` | integer | Failing checks before the first fix run |
 

@@ -537,22 +537,8 @@ object PlatformPackSubstanceAudit {
     text.lineSequence().any { it.trim() == "## $section" }
   }
 
-  private fun resolveQualityCheck(
-    slug: String,
-    packs: Map<String, PlatformManifest>,
-    visiting: Set<String> = emptySet(),
-  ): Path? {
-    if (slug in visiting) return null
-    val pack = packs[slug] ?: return null
-    pack.declaredQualityCheckFile?.let { return it }
-    return pack.codeReviewComposition?.baselineLayers.orEmpty()
-      .filter { it.required && it.mode.wireValue == "kmp-baseline" }
-      .firstNotNullOfOrNull { layer ->
-        packs[layer.platform]?.takeIf { it.routedSkillName == layer.skill }?.let {
-          resolveQualityCheck(layer.platform, packs, visiting + slug)
-        }
-      }
-  }
+  private fun resolveQualityCheck(slug: String, packs: Map<String, PlatformManifest>): Path? =
+    packs[slug]?.declaredQualityCheckFile
 
   private fun correspondingPairs(files: List<AuthoredFile>): List<SimilarityPair> = files.groupBy {
     roleKey(it)

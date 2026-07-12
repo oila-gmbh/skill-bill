@@ -219,6 +219,35 @@ class PlatformPackSubstanceAuditTest {
   }
 
   @Test
+  fun `composed pack cannot inherit its baseline quality checker`() {
+    val root = Files.createTempDirectory("substance-direct-quality-check")
+    seedConformingPlatformPack(root, "base", APPROVED_CODE_REVIEW_AREAS.toList())
+    seedConformingPlatformPack(root, "overlay", listOf("ui"))
+    appendComposition(root, "overlay", "base")
+    val overlayManifest = root.resolve("platform-packs/overlay/platform.yaml")
+    Files.writeString(
+      overlayManifest,
+      Files.readString(overlayManifest).lineSequence()
+        .filterNot { it.startsWith("declared_quality_check_file:") }
+        .joinToString("\n", postfix = "\n"),
+    )
+
+    val report = PlatformPackSubstanceAudit.audit(
+      root,
+      SubstancePolicy(
+        minimumRules = 0,
+        minimumClusters = 0,
+        minimumQualityFacets = 0,
+        maximumSharedShingles = Fraction(1, 1),
+        maximumPairSimilarity = Fraction(1, 1),
+      ),
+    )
+
+    assertTrue(report.violations.any { it.pack == "overlay" && it.areaOrRole == "quality-check" })
+    assertFalse(report.violations.any { it.pack == "base" && it.areaOrRole == "quality-check" })
+  }
+
+  @Test
   fun `mechanically stripped scaffold prompts cannot pass promotion audit`() {
     val root = Files.createTempDirectory("substance-scaffold-promotion")
     seedConformingPlatformPack(root, "starter", APPROVED_CODE_REVIEW_AREAS.toList())

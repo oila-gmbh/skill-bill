@@ -2,6 +2,7 @@ package skillbill.scaffold
 
 import skillbill.scaffold.platformpack.loadPlatformPack
 import skillbill.scaffold.policy.APPROVED_CODE_REVIEW_AREAS
+import skillbill.scaffold.substance.PlatformPackSubstanceAudit
 import skillbill.testing.repoRootFromTest
 import java.nio.file.Files
 import kotlin.test.Test
@@ -41,15 +42,13 @@ class KmpPlatformPackTest {
   @Test
   fun `kmp effective review coverage is Kotlin baseline with three overriding lanes`() {
     val repoRoot = repoRootFromTest()
-    val kotlin = loadPlatformPack(repoRoot.resolve("platform-packs/kotlin"))
-    val kmp = loadPlatformPack(repoRoot.resolve("platform-packs/kmp"))
-    val effectiveOwners = kotlin.declaredCodeReviewAreas.associateWith { "kotlin" }.toMutableMap()
+    val report = PlatformPackSubstanceAudit.audit(repoRoot)
+    val kmp = report.packs.single { it.pack == "kmp" }
 
-    kmp.declaredCodeReviewAreas.forEach { area -> effectiveOwners[area] = "kmp" }
-
-    assertEquals(APPROVED_CODE_REVIEW_AREAS, effectiveOwners.keys)
-    assertEquals(7, effectiveOwners.values.count { it == "kotlin" })
-    assertEquals(KMP_CODE_REVIEW_AREAS, effectiveOwners.filterValues { it == "kmp" }.keys)
+    assertEquals((APPROVED_CODE_REVIEW_AREAS - KMP_CODE_REVIEW_AREAS).sorted(), kmp.inheritedAreas)
+    assertEquals(KMP_CODE_REVIEW_AREAS.sorted(), kmp.physicalAreas)
+    assertEquals(APPROVED_CODE_REVIEW_AREAS, (kmp.inheritedAreas + kmp.physicalAreas).toSet())
+    assertTrue(report.violations.none { it.pack == "kmp" && it.areaOrRole.startsWith("composition:") })
   }
 
   @Test
@@ -79,9 +78,15 @@ class KmpPlatformPackTest {
     val addOns = Files.list(packRoot.resolve("addons")).use { paths ->
       paths.filter { Files.isRegularFile(it) }.toList()
     }
-    val manifest = Files.readString(packRoot.resolve("platform.yaml"))
+    val addOnNames = addOns.map { it.fileName.toString() }.toSet()
+    val governedSelections = pack.addonUsage.flatMap { usage ->
+      usage.addons.flatMap { selection -> listOf(selection.entrypoint) + selection.companionPointers }
+    } + pack.featureAddonUsage.flatMap { usage ->
+      usage.addons.flatMap { selection -> listOf(selection.entrypoint) + selection.companionPointers }
+    }
 
     assertEquals(12, addOns.size)
+    assertEquals(addOnNames, governedSelections.toSet())
     addOns.forEach { addOn ->
       val content = Files.readString(addOn)
       assertTrue(
@@ -93,7 +98,30 @@ class KmpPlatformPackTest {
           "## Implementation boundary" in content,
         "Missing exclusion boundary in ${addOn.fileName}",
       )
-      assertContains(manifest, "target: platform-packs/kmp/addons/${addOn.fileName}")
+      assertTrue(content.lineSequence().count { it.startsWith("- ") } >= 3, "Thin guidance in ${addOn.fileName}")
+      assertTrue(
+        pack.pointers.any { pointer ->
+          pointer.name == addOn.fileName.toString() &&
+            pointer.target == "platform-packs/kmp/addons/${addOn.fileName}"
+        },
+        "Unreachable governed pointer for ${addOn.fileName}",
+      )
+    }
+    pack.addonUsage.forEach { usage ->
+      val consumerPointers =
+        pack.pointers.filter { it.skillRelativeDir == usage.skillRelativeDir }.map { it.name }.toSet()
+      usage.addons.forEach { selection ->
+        assertTrue(selection.entrypoint in consumerPointers)
+        assertTrue(selection.companionPointers.all { it in consumerPointers })
+      }
+    }
+    pack.featureAddonUsage.forEach { usage ->
+      val consumerPointers =
+        pack.pointers.filter { it.skillRelativeDir == usage.consumer }.map { it.name }.toSet()
+      usage.addons.forEach { selection ->
+        assertTrue(selection.entrypoint in consumerPointers)
+        assertTrue(selection.companionPointers.all { it in consumerPointers })
+      }
     }
   }
 

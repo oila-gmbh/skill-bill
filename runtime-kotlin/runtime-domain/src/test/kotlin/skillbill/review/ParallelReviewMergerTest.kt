@@ -79,6 +79,35 @@ class ParallelReviewMergerTest {
   }
 
   @Test
+  fun `Kotlin baseline and KMP override preserve both lane attributions when deduplicated`() {
+    val baseline = finding(
+      severity = "Minor",
+      confidence = "Medium",
+      location = "Shared.kt:42",
+      description = "Common state mutation can race target lifecycle cancellation",
+    )
+    val override = finding(
+      severity = "Major",
+      confidence = "High",
+      location = "Shared.kt:51",
+      description = "Common state mutation can race target lifecycle cancellation",
+    )
+
+    val result = ParallelReviewMerger.merge(
+      laneResult("bill-kotlin-code-review", baseline),
+      laneResult("bill-kmp-code-review-platform-correctness", override),
+    )
+
+    val merged = result.findings.single()
+    assertEquals(
+      listOf("bill-kotlin-code-review", "bill-kmp-code-review-platform-correctness"),
+      merged.agentIds,
+    )
+    assertEquals(ParallelReviewSeverity.MAJOR, merged.severity)
+    assertEquals("High", merged.confidence)
+  }
+
+  @Test
   fun `partial overlap has coalesced entries before single-lane entries within same severity tier`() {
     val shared = finding(id = "F-001", severity = "Major", location = "Auth.kt:1", description = "Shared issue")
     val onlyLane1 = finding(id = "F-002", severity = "Major", location = "Bar.kt:2", description = "Only in lane1")

@@ -26,7 +26,7 @@ class McpQualityCheckTelemetryNormalizationTest {
     recordBlankQualityCheckFinished(context)
 
     DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
-      assertFallbackPayloads(connection, sessionId)
+      assertDirectKmpPayloads(connection, sessionId)
       assertBlankRoutingPayload(connection)
     }
   }
@@ -57,7 +57,7 @@ private fun recordQualityCheckStarted(context: McpRuntimeContext): Map<String, A
   "quality_check_started",
   mapOf(
     "routed_skill" to "skill-bill:bill-kmp-code-check",
-    "detected_stack" to "kmp -> kotlin fallback",
+    "detected_stack" to "kmp",
     "fallback" to false,
     "scope_type" to "branch_diff",
     "initial_failure_count" to 1,
@@ -78,7 +78,7 @@ private fun recordQualityCheckFinished(context: McpRuntimeContext, sessionId: St
       "unsupported_reason" to "",
       "orchestrated" to false,
       "routed_skill" to "skill-bill:bill-kmp-code-check",
-      "detected_stack" to "kmp -> kotlin fallback",
+      "detected_stack" to "kmp",
       "fallback" to false,
       "scope_type" to "branch_diff",
       "initial_failure_count" to 1,
@@ -110,14 +110,14 @@ private fun recordBlankQualityCheckFinished(context: McpRuntimeContext) {
   )
 }
 
-private fun assertFallbackPayloads(connection: Connection, sessionId: String) {
+private fun assertDirectKmpPayloads(connection: Connection, sessionId: String) {
   val startedPayload = qualityCheckPayload(connection, "skillbill_quality_check_started", sessionId)
   val finishedPayload = qualityCheckPayload(connection, "skillbill_quality_check_finished", sessionId)
   listOf(startedPayload, finishedPayload).forEach { payload ->
     assertEquals("bill-kmp-code-check", payload["routed_skill"])
     assertEquals("kmp", payload["detected_stack"])
-    assertEquals(true, payload["fallback"])
-    assertEquals("kotlin_quality_check_fallback", payload["fallback_reason"])
+    assertEquals(false, payload["fallback"])
+    assertFalse("fallback_reason" in payload)
   }
 }
 
