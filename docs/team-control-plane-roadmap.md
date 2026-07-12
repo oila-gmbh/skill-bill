@@ -183,7 +183,10 @@ Likely paid value:
 - self-hosted or privacy-restricted telemetry options
 
 The project [LICENSE](../LICENSE) governs the pre-1.0 use policy. Its concise
-version matrix is in [Licensing](licensing.md): covered releases allow
+version matrix is in [Licensing](licensing.md): v0.1.0 and v0.1.1 retain their
+shipped terms; v0.1.2 through covered pre-1.0 releases use the custom license;
+the Stable Release Event changes permitted execution; and v1.0.0 requires a
+deliberate successor-license decision. Covered pre-1.0 releases allow
 unmodified lawful use, including commercial use, before the Stable Release
 Event and only personal or unpaid individual open-source contribution use after
 it. This roadmap does not alter that policy or independently grant modification

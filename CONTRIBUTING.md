@@ -5,14 +5,21 @@ things to know before contributing:
 
 ## Licensing
 
-By submitting a contribution, you agree that your contribution is licensed under
-the repository [LICENSE](LICENSE), and you grant Braian Gapur a perpetual,
-worldwide, non-exclusive, royalty-free right to include your contribution in
-separately licensed commercial versions of Skill Bill. Do not submit a
-contribution unless you have the right to make that grant. The project's
-non-authoritative [licensing summary](docs/licensing.md) explains the covered
-version matrix; the `LICENSE` text governs. This is not a CLA or sign-off
-requirement.
+By submitting a contribution, you grant Braian Gapur a perpetual, worldwide,
+non-exclusive, royalty-free, irrevocable right to reproduce, modify, prepare
+derivative works from, incorporate, publish, distribute, sublicense, and
+relicense that contribution as part of public Skill Bill releases and
+separately licensed releases. You represent that you have the authority to
+grant those rights. This contributor grant gives the copyright holder rights in
+your contribution; it does not change the project [LICENSE](LICENSE), which
+governs rights in Skill Bill itself.
+
+The non-authoritative [licensing summary](docs/licensing.md) gives the same
+version matrix as the public release guidance: v0.1.0 and v0.1.1 retain their
+shipped terms; v0.1.2 through covered pre-1.0 releases use the custom project
+license; the Stable Release Event changes permitted execution; and v1.0.0
+requires a deliberate successor-license decision. The root `LICENSE` text
+governs. This is not a CLA or sign-off requirement.
 
 ## Quality Gate
 

@@ -128,20 +128,41 @@ jobs:
       - name: Verify packaged licenses and checksums
         shell: bash
         run: |
-          shopt -s nullglob
+          set -euo pipefail
+          host_token="${{ matrix.host_token }}"
+          desktop_dir="runtime-kotlin/runtime-desktop/build/compose/binaries/main"
           artifacts=(
-            runtime-kotlin/runtime-cli/build/runtime-image/*.zip
-            runtime-kotlin/runtime-mcp/build/runtime-image/*.zip
+            "runtime-kotlin/runtime-cli/build/runtime-image/runtime-cli-${RELEASE_VERSION}-${host_token}.zip"
+            "runtime-kotlin/runtime-mcp/build/runtime-image/runtime-mcp-${RELEASE_VERSION}-${host_token}.zip"
           )
-          for artifact in runtime-kotlin/runtime-desktop/build/compose/binaries/main/*/SkillBill-*; do
-            if [[ "${artifact}" != *.sha256 ]]; then
-              artifacts+=("${artifact}")
-            fi
+          case "${host_token}" in
+            macos-arm64)
+              artifacts+=("${desktop_dir}/dmg/SkillBill-${RELEASE_VERSION}-${host_token}.dmg")
+              ;;
+            windows-x64)
+              artifacts+=("${desktop_dir}/msi/SkillBill-${RELEASE_VERSION}-${host_token}.msi")
+              ;;
+            linux-x64)
+              artifacts+=(
+                "${desktop_dir}/deb/SkillBill-${RELEASE_VERSION}-${host_token}.deb"
+                "${desktop_dir}/rpm/SkillBill-${RELEASE_VERSION}-${host_token}.rpm"
+                "skill-bill-skills-${RELEASE_VERSION}.tar.gz"
+              )
+              ;;
+            *)
+              echo "Unsupported release host token: ${host_token}." >&2
+              exit 1
+              ;;
+          esac
+          for artifact in "${artifacts[@]}"; do
+            [[ -f "${artifact}" ]] || { echo "Missing canonical artifact: ${artifact}." >&2; exit 1; }
+            [[ -f "${artifact}.sha256" ]] || { echo "Missing checksum sidecar: ${artifact}.sha256." >&2; exit 1; }
           done
-          if [[ "${{ matrix.host_token }}" == "linux-x64" ]]; then
-            artifacts+=(skill-bill-skills-*.tar.gz)
-          fi
           scripts/verify_release_artifact_licenses "${artifacts[@]}"
+          mkdir release-assets
+          for artifact in "${artifacts[@]}"; do
+            cp "${artifact}" "${artifact}.sha256" release-assets/
+          done
 
       # AC2/AC5: upload every verified archive + its .sha256 under an artifact
       # named with the canonical host token so the publish job can collect them.
@@ -153,23 +174,7 @@ jobs:
           name: release-assets-${{ matrix.host_token }}
           if-no-files-found: error
           retention-days: 7
-          path: |
-            runtime-kotlin/runtime-cli/build/runtime-image/*.zip
-            runtime-kotlin/runtime-cli/build/runtime-image/*.zip.sha256
-            runtime-kotlin/runtime-mcp/build/runtime-image/*.zip
-            runtime-kotlin/runtime-mcp/build/runtime-image/*.zip.sha256
-            runtime-kotlin/runtime-desktop/build/compose/binaries/main/*/SkillBill-*
-
-      - name: Upload skills bundle
-        if: matrix.host_token == 'linux-x64'
-        uses: actions/upload-artifact@v4
-        with:
-          name: release-assets-skills
-          if-no-files-found: error
-          retention-days: 7
-          path: |
-            skill-bill-skills-*.tar.gz
-            skill-bill-skills-*.tar.gz.sha256
+          path: release-assets/
 
   # Phase 2: validation gate + GitHub Release publish. needs: build so the release
   # only happens once every host's artifacts exist. The maintainer validation gate
@@ -248,10 +253,7 @@ jobs:
           ls -la dist
           echo "Total asset count: $(find dist -type f | wc -l)"
 
-      # AC2/AC3/AC6: publish (or update) the GitHub Release and attach every asset.
-      # Idempotent: if the release already exists we attach assets via `gh release
-      # upload --clobber` instead of failing. Prerelease flag honours release_meta
-      # (tag push) or the always-prerelease staging path (workflow_dispatch).
+      # AC2/AC3/AC6: publish a fresh immutable GitHub Release and attach every verified asset.
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -275,11 +277,8 @@ jobs:
           echo "Publishing ${RELEASE_TAG} with ${#assets[@]} assets (prerelease=${RELEASE_PRERELEASE})."
 
           if gh release view "${RELEASE_TAG}" --repo "${{ github.repository }}" >/dev/null 2>&1; then
-            echo "Release ${RELEASE_TAG} already exists; uploading/updating assets."
-            gh release upload "${RELEASE_TAG}" "${assets[@]}" \
-              --repo "${{ github.repository }}" \
-              --clobber
-            exit 0
+            echo "Release ${RELEASE_TAG} already exists; release assets are immutable. Use a fresh staging version." >&2
+            exit 1
           fi
 
           args=(

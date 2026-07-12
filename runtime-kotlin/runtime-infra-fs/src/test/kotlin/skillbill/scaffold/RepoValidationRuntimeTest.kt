@@ -7,6 +7,7 @@ import skillbill.scaffold.runtime.requiredSupportingFilesForSkill
 import skillbill.scaffold.runtime.supportingFileTargets
 import skillbill.testing.seedConformingPlatformPack
 import java.nio.file.Files
+import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -52,9 +53,10 @@ class RepoValidationRuntimeTest {
   }
 
   @Test
-  fun `release policy preserves historical lines and requires custom policy from v0 1 2`() {
+  fun `release policy preserves historical lines and requires complete custom policy from v0 1 2`() {
     val repoRoot = Files.createTempDirectory("skillbill-release-policy")
 
+    RepoValidationRuntime.validateReleaseRef(repoRoot, "v0.1.0", forcePrerelease = false)
     RepoValidationRuntime.validateReleaseRef(repoRoot, "v0.1.1", forcePrerelease = false)
 
     val missingPolicy = assertFailsWith<IllegalArgumentException> {
@@ -62,19 +64,29 @@ class RepoValidationRuntimeTest {
     }
     assertTrue(missingPolicy.message.orEmpty().contains("LICENSE"))
 
-    writeTransitionalLicense(repoRoot)
-    val coveredRelease = RepoValidationRuntime.validateReleaseRef(repoRoot, "v0.2.0+build.7", forcePrerelease = false)
+    listOf(
+      "identifier-only" to RepoValidationRuntime.PRE_1_LICENSE_IDENTIFIER,
+      "marker-only" to RepoValidationRuntime.TRANSITIONAL_LICENSE_MARKER,
+      "wrong-boundary" to completeTransitionalLicense().replace("v0.1.2", "v0.1.3"),
+      "truncated" to completeTransitionalLicense().substringBefore("9. Termination and cure"),
+    ).forEach { (fixture, license) ->
+      Files.writeString(repoRoot.resolve("LICENSE"), license)
+      val failure = assertFailsWith<IllegalArgumentException> {
+        RepoValidationRuntime.validateReleaseRef(repoRoot, "v0.1.2", forcePrerelease = false)
+      }
+      assertTrue(failure.message.orEmpty().contains("complete current"), fixture)
+    }
 
-    assertEquals(0, coveredRelease.major)
-    assertEquals(2, coveredRelease.minor)
-    assertEquals(0, coveredRelease.patch)
-    assertEquals("build.7", coveredRelease.buildMetadata)
+    Files.writeString(repoRoot.resolve("LICENSE"), completeTransitionalLicense())
+    listOf("v0.1.2", "v0.2.0+build.7", "v0.9.9-rc.1").forEach { ref ->
+      RepoValidationRuntime.validateReleaseRef(repoRoot, ref, forcePrerelease = false)
+    }
   }
 
   @Test
   fun `release policy keeps rc and manual staging non triggering while rejecting stable v1`() {
     val repoRoot = Files.createTempDirectory("skillbill-pre-one-staging")
-    writeTransitionalLicense(repoRoot)
+    Files.writeString(repoRoot.resolve("LICENSE"), completeTransitionalLicense())
 
     val releaseCandidate = RepoValidationRuntime.validateReleaseRef(repoRoot, "v1.0.0-rc.1", forcePrerelease = false)
     val staging = RepoValidationRuntime.validateReleaseRef(repoRoot, "v1.0.0", forcePrerelease = true)
@@ -88,23 +100,55 @@ class RepoValidationRuntimeTest {
   }
 
   @Test
+  fun `v1 release candidates fail closed for a missing or incomplete transitional policy`() {
+    val repoRoot = Files.createTempDirectory("skillbill-v1-rc-policy")
+
+    val missing = assertFailsWith<IllegalArgumentException> {
+      RepoValidationRuntime.validateReleaseRef(repoRoot, "v1.0.0-rc.1", forcePrerelease = false)
+    }
+    Files.writeString(repoRoot.resolve("LICENSE"), RepoValidationRuntime.TRANSITIONAL_LICENSE_MARKER)
+    val incomplete = assertFailsWith<IllegalArgumentException> {
+      RepoValidationRuntime.validateReleaseRef(repoRoot, "v1.0.0-rc.1", forcePrerelease = false)
+    }
+
+    assertTrue(missing.message.orEmpty().contains("complete transitional"))
+    assertTrue(incomplete.message.orEmpty().contains("incomplete transitional"))
+  }
+
+  @Test
+  fun `post one lines including prereleases require a successor policy`() {
+    val repoRoot = Files.createTempDirectory("skillbill-post-one-policy")
+    Files.writeString(repoRoot.resolve("LICENSE"), completeTransitionalLicense())
+
+    listOf("v1.0.1-rc.1", "v1.0.1", "v1.1.0", "v2.0.0+build.7").forEach { ref ->
+      val failure = assertFailsWith<IllegalArgumentException> {
+        RepoValidationRuntime.validateReleaseRef(repoRoot, ref, forcePrerelease = false)
+      }
+      assertTrue(failure.message.orEmpty().contains("cannot publish"), ref)
+    }
+  }
+
+  @Test
   fun `stable post one release accepts a deliberate successor license`() {
     val repoRoot = Files.createTempDirectory("skillbill-successor-license")
-    Files.writeString(repoRoot.resolve("LICENSE"), "Skill Bill Successor License\n")
+    Files.writeString(
+      repoRoot.resolve("LICENSE"),
+      """
+      Skill Bill Successor License
+
+      Historical notice: Skill Bill Pre-1.0 Use License 1.0 applied before v1.0.0.
+      """.trimIndent() + "\n",
+    )
 
     RepoValidationRuntime.validateReleaseRef(repoRoot, "v1.1.0", forcePrerelease = false)
   }
 
-  private fun writeTransitionalLicense(repoRoot: java.nio.file.Path) {
-    Files.writeString(
-      repoRoot.resolve("LICENSE"),
-      """
-      Skill Bill Pre-1.0 Use License 1.0
-      Identifier: LicenseRef-Skill-Bill-Pre-1.0-Use-1.0
-      Prospective Effective Version: v0.1.2
-      """.trimIndent() + "\n",
-    )
-  }
+  private fun completeTransitionalLicense(): String =
+    Files.readString(repositoryRoot().resolve("LICENSE"))
+
+  private fun repositoryRoot(): Path =
+    generateSequence(Path.of("").toAbsolutePath().normalize()) { it.parent }
+      .first { Files.isRegularFile(it.resolve("LICENSE")) }
 
   @Test
   fun `repo validation reports missing governed directories`() {

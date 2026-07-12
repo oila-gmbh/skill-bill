@@ -130,6 +130,7 @@ version matrix is in [Licensing](docs/licensing.md): v0.1.0 and v0.1.1 retain
 their shipped terms; covered v0.1.2 pre-1.0 releases allow unmodified lawful
 use, including commercial use, before the Stable Release Event; afterwards they
 allow only personal use and unpaid individual open-source contribution use. The
-project license never grants modification or redistribution. User-authored
-materials and generated outputs remain the user's, subject to protected Skill
-Bill material and third-party rights.
+`v1.0.0` release requires a deliberate successor-license decision. The project
+license never grants modification or redistribution. User-authored materials and
+generated outputs remain the user's, subject to protected Skill Bill material
+and third-party rights.

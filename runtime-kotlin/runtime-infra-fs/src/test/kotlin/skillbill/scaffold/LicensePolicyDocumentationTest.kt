@@ -3,6 +3,7 @@ package skillbill.scaffold
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -11,8 +12,10 @@ class LicensePolicyDocumentationTest {
     .first { Files.isRegularFile(it.resolve("LICENSE")) }
 
   @Test
-  fun `license and public documentation share the governing pre one matrix`() {
+  fun `license is a complete governing pre one policy rather than a marker document`() {
     val license = read("LICENSE")
+
+    assertTrue(license.startsWith("Skill Bill Pre-1.0 Use License 1.0\n\n"))
     val publicFiles = listOf(
       "README.md",
       "CONTRIBUTING.md",
@@ -22,25 +25,92 @@ class LicensePolicyDocumentationTest {
       "docs/release-license-approval.md",
     ).associateWith(::read)
 
-    assertTrue(license.contains("LicenseRef-Skill-Bill-Pre-1.0-Use-1.0"))
-    assertTrue(license.contains("Prospective Effective Version: v0.1.2"))
-    assertTrue(license.contains("first public, non-draft, non-prerelease"))
-    assertTrue(license.contains("oila-gmbh/skill-bill"))
-    assertTrue(license.contains("does not undo the event"))
-    assertTrue(license.contains("commercial-use permission"))
-    assertTrue(license.contains("Open Source Contribution Use"))
-    assertTrue(license.contains("GitHub's platform-limited rights"))
-    assertTrue(license.contains("Third-Party Software"))
-    assertFalse(license.contains("PolyForm Noncommercial License"))
+    val sections = listOf(
+      "1. Purpose and prospective application",
+      "2. Definitions",
+      "3. Acceptance and ownership",
+      "4. Grant before the Stable Release Event",
+      "5. Automatic change at the Stable Release Event",
+      "6. Restrictions that apply at all times",
+      "7. User Materials and Generated Outputs",
+      "8. Earlier, separate, platform, and third-party rights",
+      "9. Termination and cure",
+      "10. Disclaimer and limitation of liability",
+      "11. General terms",
+    )
+    val clauses = listOf(
+      "Identifier: LicenseRef-Skill-Bill-Pre-1.0-Use-1.0",
+      "Prospective Effective Version: v0.1.2",
+      "commercial use, consulting, managed-service use, and hosted-service use",
+      "first public, non-draft, non-prerelease",
+      "tagged exactly v1.0.0",
+      "does not undo the event",
+      "commercial-use permission in section 4 ends automatically",
+      "Personal Use or Open Source Contribution Use",
+      "grants no right to modify",
+      "redistribute, distribute, publish, mirror, sublicense, sell, lease, transfer, bundle",
+      "Licensees retain all rights in their User Materials and Generated Outputs",
+      "GitHub's platform-limited rights",
+      "For a first material breach",
+      "Covered Software is provided \"AS IS\" and \"AS AVAILABLE.\"",
+      "If any provision of this License is unenforceable",
+    )
+
+    sections.forEach { section -> assertEquals(1, license.split("$section").size - 1, section) }
+    val normalizedWhitespace = license.replace(Regex("\\s+"), " ")
+    clauses.forEach { clause -> assertTrue(normalizedWhitespace.contains(clause), clause) }
+    listOf(
+      "This License is the MIT License",
+      "This License is a PolyForm license",
+      "Covered Software is open source",
+      "Covered Software is free software",
+    ).forEach { claim -> assertFalse(license.contains(claim), claim) }
+
+    assertTrue(license.contains("earlier MIT, PolyForm, or other license"))
+  }
+
+  @Test
+  fun `public policy surfaces retain one governing matrix and an operational contributor grant`() {
+    val publicFiles = listOf(
+      "README.md",
+      "CONTRIBUTING.md",
+      "RELEASING.md",
+      "docs/team-control-plane-roadmap.md",
+      "docs/licensing.md",
+      "docs/release-license-approval.md",
+    ).associateWith(::read)
 
     publicFiles.forEach { (path, text) ->
       assertTrue(text.contains("LICENSE"), "$path must link to the governing LICENSE")
     }
-    assertTrue(publicFiles.getValue("README.md").contains("LicenseRef-Skill-Bill-Pre-1.0-Use-1.0"))
-    assertTrue(publicFiles.getValue("docs/licensing.md").contains("v0.1.0 and v0.1.1"))
-    assertTrue(publicFiles.getValue("docs/licensing.md").contains("v0.1.2"))
-    assertTrue(publicFiles.getValue("docs/licensing.md").contains("unmodified lawful use"))
-    assertTrue(publicFiles.getValue("docs/licensing.md").contains("never grants a right to modify"))
+    listOf("README.md", "CONTRIBUTING.md", "RELEASING.md", "docs/team-control-plane-roadmap.md", "docs/licensing.md")
+      .forEach { path ->
+        val text = publicFiles.getValue(path)
+        assertTrue(text.contains("v0.1.0 and v0.1.1"), path)
+        assertTrue(text.contains("v0.1.2"), path)
+        assertTrue(text.contains("Stable Release Event"), path)
+        assertTrue(text.contains("v1.0.0"), path)
+    }
+    val contribution = publicFiles.getValue("CONTRIBUTING.md")
+    val normalizedContribution = contribution.replace(Regex("\\s+"), " ")
+    listOf(
+      "reproduce",
+      "modify",
+      "prepare derivative works",
+      "incorporate",
+      "publish",
+      "distribute",
+      "sublicense",
+      "relicense",
+    )
+      .forEach { verb -> assertTrue(normalizedContribution.contains(verb), verb) }
+    assertTrue(normalizedContribution.contains("authority to grant"))
+    assertTrue(read("README.md").contains("LicenseRef-Skill-Bill-Pre-1.0-Use-1.0"))
+    assertTrue(read("README.md").contains("License-Skill%20Bill%20Pre--1.0%20Use"))
+    assertTrue(
+      read("runtime-kotlin/runtime-desktop/packaging/arch/PKGBUILD")
+        .contains("custom:Skill-Bill-Pre-1.0-Use-1.0"),
+    )
     assertFalse(publicFiles.values.joinToString("\n").contains("PolyForm Noncommercial License 1.0.0"))
   }
 

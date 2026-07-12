@@ -113,6 +113,36 @@ object RepoValidationRuntime {
   const val PROSPECTIVE_EFFECTIVE_VERSION_MARKER = "Prospective Effective Version: v0.1.2"
   const val TRANSITIONAL_LICENSE_MARKER = "Skill Bill Pre-1.0 Use License 1.0"
 
+  private val transitionalLicenseSections = listOf(
+    "1. Purpose and prospective application",
+    "2. Definitions",
+    "3. Acceptance and ownership",
+    "4. Grant before the Stable Release Event",
+    "5. Automatic change at the Stable Release Event",
+    "6. Restrictions that apply at all times",
+    "7. User Materials and Generated Outputs",
+    "8. Earlier, separate, platform, and third-party rights",
+    "9. Termination and cure",
+    "10. Disclaimer and limitation of liability",
+    "11. General terms",
+  )
+  private val transitionalLicenseClauses = listOf(
+    "non-exclusive, worldwide, royalty-free right to obtain an unmodified copy",
+    "commercial use, consulting, managed-service use, and hosted-service use",
+    "first public, non-draft, non-prerelease",
+    "tagged exactly v1.0.0",
+    "does not undo the event",
+    "commercial-use permission in section 4 ends automatically",
+    "Personal Use or Open Source Contribution Use",
+    "grants no right to modify",
+    "redistribute, distribute, publish, mirror, sublicense, sell, lease, transfer, bundle",
+    "Licensees retain all rights in their User Materials and Generated Outputs",
+    "does not retroactively withdraw or narrow rights arising under an earlier MIT, PolyForm",
+    "For a first material breach",
+    "Covered Software is provided \"AS IS\" and \"AS AVAILABLE.\"",
+    "If any provision of this License is unenforceable",
+  )
+
   private val semverTagPattern =
     Regex(
       "^v?(?<major>0|[1-9]\\d*)\\.(?<minor>0|[1-9]\\d*)\\.(?<patch>0|[1-9]\\d*)" +
@@ -258,16 +288,22 @@ object RepoValidationRuntime {
   private fun validateReleaseLicensePolicy(repoRoot: Path, metadata: ReleaseRefMetadata) {
     when {
       metadata.isHistoricalReleaseLine() -> return
-      metadata.isCoveredPreOneRelease() || metadata.prerelease ->
+      metadata.isCoveredPreOneRelease() ->
         requireTransitionalPolicy(repoRoot.resolve("LICENSE"), metadata)
+      metadata.isNonTriggeringV1Release() ->
+        requireNonTriggeringV1Policy(repoRoot.resolve("LICENSE"), metadata)
       else -> requirePostOneLicenseDecision(repoRoot.resolve("LICENSE"), metadata)
     }
   }
 
-  private fun ReleaseRefMetadata.isHistoricalReleaseLine(): Boolean = major == 0 && minor == 1 && patch <= 1
+  private fun ReleaseRefMetadata.isHistoricalReleaseLine(): Boolean =
+    major == 0 && minor == 1 && patch in 0..1 && !prerelease && buildMetadata == null
 
   private fun ReleaseRefMetadata.isCoveredPreOneRelease(): Boolean =
     major == 0 && (minor > 1 || (minor == 1 && patch >= 2))
+
+  private fun ReleaseRefMetadata.isNonTriggeringV1Release(): Boolean =
+    major == 1 && minor == 0 && patch == 0 && prerelease
 
   private fun requireTransitionalPolicy(licenseFile: Path, metadata: ReleaseRefMetadata) {
     if (!licenseFile.isRegularFile()) {
@@ -275,12 +311,9 @@ object RepoValidationRuntime {
         "Release ${metadata.tag} requires root LICENSE with $PRE_1_LICENSE_IDENTIFIER, but LICENSE is missing.",
       )
     }
-    val licenseText = Files.readString(licenseFile)
-    val missingMarkers = listOf(PRE_1_LICENSE_IDENTIFIER, PROSPECTIVE_EFFECTIVE_VERSION_MARKER)
-      .filterNot(licenseText::contains)
-    if (missingMarkers.isNotEmpty()) {
+    if (!isCurrentTransitionalLicense(Files.readString(licenseFile))) {
       throw ReleaseLicensePolicyError(
-        "Release ${metadata.tag} requires the pre-1.0 license policy markers: ${missingMarkers.joinToString()}.",
+        "Release ${metadata.tag} requires the complete current pre-1.0 license policy.",
       )
     }
   }
@@ -291,11 +324,48 @@ object RepoValidationRuntime {
         "Stable release ${metadata.tag} requires a root LICENSE that records the deliberate v1.0 licensing decision.",
       )
     }
-    if (Files.readString(licenseFile).contains(TRANSITIONAL_LICENSE_MARKER)) {
+    val licenseText = Files.readString(licenseFile)
+    if (isCurrentTransitionalLicense(licenseText) || presentsTransitionalLicenseAsCurrent(licenseText)) {
       throw ReleaseLicensePolicyError(
         "Stable release ${metadata.tag} cannot publish while $TRANSITIONAL_LICENSE_MARKER remains its current license.",
       )
     }
+  }
+
+  private fun requireNonTriggeringV1Policy(licenseFile: Path, metadata: ReleaseRefMetadata) {
+    if (!licenseFile.isRegularFile()) {
+      throw ReleaseLicensePolicyError(
+        "Prerelease ${metadata.tag} requires a complete transitional policy or a deliberate successor license.",
+      )
+    }
+    val licenseText = Files.readString(licenseFile)
+    if (isCurrentTransitionalLicense(licenseText)) return
+    if (presentsTransitionalLicenseAsCurrent(licenseText)) {
+      throw ReleaseLicensePolicyError(
+        "Prerelease ${metadata.tag} cannot use an incomplete transitional license policy.",
+      )
+    }
+  }
+
+  private fun isCurrentTransitionalLicense(licenseText: String): Boolean {
+    val normalized = licenseText.replace("\r\n", "\n").trimEnd()
+    val normalizedWhitespace = normalized.replace(Regex("\\s+"), " ")
+    if (!normalized.startsWith("$TRANSITIONAL_LICENSE_MARKER\n\n")) return false
+    if (!Regex("(?m)^Identifier: ${Regex.escape(PRE_1_LICENSE_IDENTIFIER)}$").containsMatchIn(normalized)) {
+      return false
+    }
+    if (!Regex("(?m)^${Regex.escape(PROSPECTIVE_EFFECTIVE_VERSION_MARKER)}$").containsMatchIn(normalized)) {
+      return false
+    }
+    return transitionalLicenseSections.all { section -> normalized.contains("\n$section\n") } &&
+      transitionalLicenseClauses.all(normalizedWhitespace::contains)
+  }
+
+  private fun presentsTransitionalLicenseAsCurrent(licenseText: String): Boolean {
+    val normalized = licenseText.replace("\r\n", "\n").trimStart()
+    return normalized.startsWith(TRANSITIONAL_LICENSE_MARKER) ||
+      normalized.startsWith("Identifier: $PRE_1_LICENSE_IDENTIFIER") ||
+      normalized.startsWith(PROSPECTIVE_EFFECTIVE_VERSION_MARKER)
   }
 
   fun appendGithubOutput(outputPath: Path, metadata: ReleaseRefMetadata) {

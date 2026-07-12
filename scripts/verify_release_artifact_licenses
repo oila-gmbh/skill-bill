@@ -14,6 +14,29 @@ if [[ "$#" -eq 0 ]]; then
   exit 1
 fi
 
+temporary_dirs=()
+mounted_dirs=()
+
+cleanup_temp_dirs() {
+  local directory mount_dir
+  for mount_dir in "${mounted_dirs[@]}"; do
+    hdiutil detach "${mount_dir}" >/dev/null 2>&1 || true
+  done
+  for directory in "${temporary_dirs[@]}"; do
+    rm -rf "${directory}"
+  done
+}
+
+trap cleanup_temp_dirs EXIT
+
+require_command() {
+  local command_name="$1"
+  if ! command -v "${command_name}" >/dev/null 2>&1; then
+    echo "Required verification tool is unavailable: ${command_name}." >&2
+    exit 1
+  fi
+}
+
 verify_checksum() {
   local artifact="$1"
   local checksum="${artifact}.sha256"
@@ -23,117 +46,115 @@ verify_checksum() {
   fi
   if command -v sha256sum >/dev/null; then
     (cd "$(dirname "${artifact}")" && sha256sum --check "$(basename "${checksum}")")
-  else
+  elif command -v shasum >/dev/null; then
     (cd "$(dirname "${artifact}")" && shasum -a 256 --check "$(basename "${checksum}")")
+  else
+    echo "Required checksum tool is unavailable: sha256sum or shasum." >&2
+    exit 1
   fi
 }
 
 verify_zip() {
   local artifact="$1"
-  local matches=()
-  local entry
-  while IFS= read -r entry; do
-    if cmp -s "${root_license}" <(unzip -p "${artifact}" "${entry}"); then
-      matches+=("${entry}")
-    fi
-  done < <(unzip -Z1 "${artifact}" | awk '/(^|\/)LICENSE$/')
-  if [[ "${#matches[@]}" != "1" ]]; then
-    echo "Expected exactly one root LICENSE copy in ${artifact}, found ${#matches[@]}." >&2
+  require_command unzip
+  mapfile -t entries < <(unzip -Z1 "${artifact}" | awk '/(^|\/)LICENSE$/')
+  if [[ "${#entries[@]}" != "1" ]]; then
+    echo "Expected exactly one LICENSE entry in ${artifact}, found ${#entries[@]}." >&2
+    exit 1
+  fi
+  if ! cmp -s "${root_license}" <(unzip -p "${artifact}" "${entries[0]}"); then
+    echo "LICENSE bytes differ from root LICENSE in ${artifact}." >&2
     exit 1
   fi
 }
 
 verify_tar() {
   local artifact="$1"
-  local matches=()
-  local entry
-  while IFS= read -r entry; do
-    if cmp -s "${root_license}" <(tar -xOzf "${artifact}" "${entry}"); then
-      matches+=("${entry}")
-    fi
-  done < <(tar -tzf "${artifact}" | awk '/(^|\/)LICENSE$/')
-  if [[ "${#matches[@]}" != "1" ]]; then
-    echo "Expected exactly one root LICENSE copy in ${artifact}, found ${#matches[@]}." >&2
+  require_command tar
+  mapfile -t entries < <(tar -tzf "${artifact}" | awk '/(^|\/)LICENSE$/')
+  if [[ "${#entries[@]}" != "1" ]]; then
+    echo "Expected exactly one LICENSE entry in ${artifact}, found ${#entries[@]}." >&2
+    exit 1
+  fi
+  if ! cmp -s "${root_license}" <(tar -xOzf "${artifact}" "${entries[0]}"); then
+    echo "LICENSE bytes differ from root LICENSE in ${artifact}." >&2
     exit 1
   fi
 }
 
 verify_deb() {
   local artifact="$1"
-  local matches=()
-  local entry
-  while IFS= read -r entry; do
-    if cmp -s "${root_license}" <(dpkg-deb --fsys-tarfile "${artifact}" | tar -xO "${entry}"); then
-      matches+=("${entry}")
-    fi
-  done < <(dpkg-deb --fsys-tarfile "${artifact}" | tar -t | awk '/(^|\/)LICENSE$/')
-  if [[ "${#matches[@]}" != "1" ]]; then
-    echo "Expected exactly one root LICENSE copy in ${artifact}, found ${#matches[@]}." >&2
+  require_command dpkg-deb
+  require_command tar
+  mapfile -t entries < <(dpkg-deb --fsys-tarfile "${artifact}" | tar -t | awk '/(^|\/)LICENSE$/')
+  if [[ "${#entries[@]}" != "1" ]]; then
+    echo "Expected exactly one LICENSE entry in ${artifact}, found ${#entries[@]}." >&2
+    exit 1
+  fi
+  if ! cmp -s "${root_license}" <(dpkg-deb --fsys-tarfile "${artifact}" | tar -xO "${entries[0]}"); then
+    echo "LICENSE bytes differ from root LICENSE in ${artifact}." >&2
     exit 1
   fi
 }
 
 verify_rpm() {
   local artifact="$1"
-  local work_dir
+  local work_dir entry
+  require_command rpm2cpio
+  require_command cpio
   artifact="$(cd "$(dirname "${artifact}")" && pwd)/$(basename "${artifact}")"
   work_dir="$(mktemp -d)"
-  trap 'rm -rf "${work_dir}"' EXIT
+  temporary_dirs+=("${work_dir}")
   (cd "${work_dir}" && rpm2cpio "${artifact}" | cpio -idm --quiet)
-  local matches=()
-  local entry
-  while IFS= read -r entry; do
-    if cmp -s "${root_license}" "${work_dir}/${entry}"; then
-      matches+=("${entry}")
-    fi
-  done < <(cd "${work_dir}" && find . -type f -name LICENSE -print | sed 's#^./##')
-  if [[ "${#matches[@]}" != "1" ]]; then
-    echo "Expected exactly one root LICENSE copy in ${artifact}, found ${#matches[@]}." >&2
+  mapfile -t entries < <(cd "${work_dir}" && find . -type f -name LICENSE -print | sed 's#^./##')
+  if [[ "${#entries[@]}" != "1" ]]; then
+    echo "Expected exactly one LICENSE entry in ${artifact}, found ${#entries[@]}." >&2
     exit 1
   fi
-  rm -rf "${work_dir}"
-  trap - EXIT
+  if ! cmp -s "${root_license}" "${work_dir}/${entries[0]}"; then
+    echo "LICENSE bytes differ from root LICENSE in ${artifact}." >&2
+    exit 1
+  fi
 }
 
 verify_dmg() {
   local artifact="$1"
-  local mount_dir
+  local mount_dir entry
+  require_command hdiutil
   mount_dir="$(mktemp -d)"
+  temporary_dirs+=("${mount_dir}")
   hdiutil attach -nobrowse -readonly -mountpoint "${mount_dir}" "${artifact}" >/dev/null
-  local matches=()
-  local entry
-  while IFS= read -r entry; do
-    if cmp -s "${root_license}" "${mount_dir}/${entry}"; then
-      matches+=("${entry}")
-    fi
-  done < <(cd "${mount_dir}" && find . -type f -name LICENSE -print | sed 's#^./##')
-  if [[ "${#matches[@]}" != "1" ]]; then
-    hdiutil detach "${mount_dir}" >/dev/null
-    echo "Expected exactly one root LICENSE copy in ${artifact}, found ${#matches[@]}." >&2
+  mounted_dirs+=("${mount_dir}")
+  mapfile -t entries < <(cd "${mount_dir}" && find . -type f -name LICENSE -print | sed 's#^./##')
+  if [[ "${#entries[@]}" != "1" ]]; then
+    echo "Expected exactly one LICENSE entry in ${artifact}, found ${#entries[@]}." >&2
     exit 1
   fi
-  hdiutil detach "${mount_dir}" >/dev/null
-  rm -rf "${mount_dir}"
+  if ! cmp -s "${root_license}" "${mount_dir}/${entries[0]}"; then
+    echo "LICENSE bytes differ from root LICENSE in ${artifact}." >&2
+    exit 1
+  fi
 }
 
 verify_msi() {
   local artifact="$1"
-  local work_dir
+  local work_dir windows_artifact windows_work_dir
+  require_command cygpath
+  require_command msiexec.exe
   work_dir="$(mktemp -d)"
-  powershell.exe -NoProfile -Command "Start-Process msiexec.exe -Wait -ArgumentList '/a', '${artifact}', '/qn', 'TARGETDIR=${work_dir}'"
-  local matches=()
-  local entry
-  while IFS= read -r entry; do
-    if cmp -s "${root_license}" "${work_dir}/${entry}"; then
-      matches+=("${entry}")
-    fi
-  done < <(find "${work_dir}" -type f -name LICENSE -print | sed "s#^${work_dir}/##")
-  if [[ "${#matches[@]}" != "1" ]]; then
-    rm -rf "${work_dir}"
-    echo "Expected exactly one root LICENSE copy in ${artifact}, found ${#matches[@]}." >&2
+  temporary_dirs+=("${work_dir}")
+  windows_artifact="$(cygpath -aw "${artifact}")"
+  windows_work_dir="$(cygpath -aw "${work_dir}")"
+  msiexec.exe /a "${windows_artifact}" /qn "TARGETDIR=${windows_work_dir}"
+  mapfile -t entries < <(find "${work_dir}" -type f -name LICENSE -print | sed "s#^${work_dir}/##")
+  if [[ "${#entries[@]}" != "1" ]]; then
+    echo "Expected exactly one LICENSE entry in ${artifact}, found ${#entries[@]}." >&2
     exit 1
   fi
-  rm -rf "${work_dir}"
+  if ! cmp -s "${root_license}" "${work_dir}/${entries[0]}"; then
+    echo "LICENSE bytes differ from root LICENSE in ${artifact}." >&2
+    exit 1
+  fi
 }
 
 for artifact in "$@"; do

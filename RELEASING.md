@@ -9,23 +9,23 @@ The release contract is:
 - let the `Release` workflow rerun validation and publish the GitHub Release
 
 The root [LICENSE](LICENSE) governs release licensing. Its non-authoritative
-[version matrix](docs/licensing.md) is deliberately short: v0.1.0/v0.1.1 retain
-their shipped terms; covered releases starting at v0.1.2 permit unmodified
+[version matrix](docs/licensing.md) is deliberately short: v0.1.0 and v0.1.1
+retain their shipped terms; covered releases starting at v0.1.2 permit unmodified
 lawful use, including commercial use, before the Stable Release Event and only
 personal or unpaid individual open-source contribution use after it. The project
 license never grants modification or redistribution.
 
 Pre-release tags such as `v0.5.0-rc.1` are also supported and publish GitHub
 prereleases. v0.1.0 and v0.1.1 are historical exceptions. Starting at v0.1.2,
-the release validator requires the transitional custom-license identifier and
-prospective-version marker. A stable `v1.0.0` or later release is rejected until
-the copyright holder deliberately replaces the transitional current-release
-license. Release candidates and manual staging releases remain prereleases and
-do not make that legal decision.
+the release validator requires the complete transitional custom policy, not
+just its identifier or a marker. A `v1.0.0` release candidate and a forced
+`v1.0.0` staging release remain non-triggering. A stable `v1.0.0`, every later
+release line, and later prereleases are rejected until the copyright holder
+deliberately replaces the transitional current-release license.
 
 The [LICENSE](LICENSE) alone defines the Stable Release Event. A successful
-workflow, an existing GitHub Release object, an idempotent release upload, a
-bare tag, or a local artifact is not proof that the event occurred.
+workflow, an existing GitHub Release object, a bare tag, or a local artifact is
+not proof that the event occurred.
 
 ## What a tag push builds
 
@@ -77,7 +77,10 @@ stable release:
 
 Both paths reuse the same build matrix and the same fail-closed release-policy
 validator as a stable release. The manual path validates `staging_version` and
-then forces its publication metadata to `prerelease=true`.
+then forces its publication metadata to `prerelease=true`. Every staging label
+is immutable evidence for one asset set: the workflow refuses an existing
+release or staging tag instead of replacing assets, so use a fresh prerelease
+label for every new matrix run.
 
 ## Release notes
 

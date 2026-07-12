@@ -14,6 +14,9 @@ short, it is the first public, non-draft, non-prerelease GitHub Release tagged
 prerelease, release candidate, bare tag, branch, local artifact, or fork
 release does not trigger it.
 
+A `v1.0.0` release requires a deliberate successor-license decision. The
+transitional policy is not that successor license.
+
 The project license never grants a right to modify, create derivative works
 from, redistribute, publish, mirror, sublicense, sell, lease, transfer, or
 bundle Skill Bill. Independently authored specifications, skills, platform

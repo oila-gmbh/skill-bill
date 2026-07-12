@@ -18,7 +18,7 @@ class CliRepoValidationRuntimeTest {
     val result = CliRuntime.run(
       listOf(
         "validate-release-ref",
-        "refs/tags/v1.2.3-rc.1",
+        "refs/tags/v0.2.3-rc.1",
         "--repo-root",
         repositoryRoot().toString(),
         "--github-output",
@@ -30,14 +30,14 @@ class CliRepoValidationRuntimeTest {
     )
 
     assertEquals(0, result.exitCode, result.stdout)
-    assertContains(result.stdout, "\"tag\": \"v1.2.3-rc.1\"")
-    assertContains(result.stdout, "\"version\": \"1.2.3-rc.1\"")
+    assertContains(result.stdout, "\"tag\": \"v0.2.3-rc.1\"")
+    assertContains(result.stdout, "\"version\": \"0.2.3-rc.1\"")
     assertContains(result.stdout, "\"prerelease\": true")
     val githubOutput = Files.readString(output)
-    assertContains(githubOutput, "tag=v1.2.3-rc.1")
-    assertContains(githubOutput, "version=1.2.3-rc.1")
+    assertContains(githubOutput, "tag=v0.2.3-rc.1")
+    assertContains(githubOutput, "version=0.2.3-rc.1")
     assertContains(githubOutput, "prerelease=true")
-    assertContains(result.stdout, "\"major\": 1")
+    assertContains(result.stdout, "\"major\": 0")
     assertContains(result.stdout, "\"prerelease_identifier\": \"rc.1\"")
   }
 
