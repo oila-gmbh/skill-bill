@@ -24,6 +24,7 @@ import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import skillbill.ports.workflow.WorkflowGitOperations
+import skillbill.review.CodeReviewExecutionMode
 import skillbill.telemetry.estimation.estimateTokens
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.model.SpecSource
@@ -95,12 +96,35 @@ class FeatureTaskRuntimeRunner(
   @Suppress("LongMethod") // single runtime-owned orchestration seam; the token accumulator wiring is additive
   fun run(request: FeatureTaskRuntimeRunRequest): FeatureTaskRuntimeRunReport {
     foreignModeWorkflowBlock(request)?.let { return it }
+    val persistedRunInvariants = runInvariantsStore.resolve(
+      workflowId = request.workflowId,
+      dbOverride = request.dbPathOverride,
+    )
+    if (persistedRunInvariants != null &&
+      request.requestedCodeReviewMode != null &&
+      persistedRunInvariants.codeReviewMode != request.requestedCodeReviewMode
+    ) {
+      return FeatureTaskRuntimeRunReport.Blocked(
+        issueKey = request.issueKey,
+        workflowId = request.workflowId,
+        featureSize = persistedRunInvariants.featureSize.name,
+        lastIncompletePhase = FeatureTaskRuntimePhaseWorkflowDefinition.definition.defaultInitialStepId,
+        blockedReason = "Cannot change code-review mode on resume: workflow '${request.workflowId}' is pinned to " +
+          "'${persistedRunInvariants.codeReviewMode.wireValue}', not " +
+          "'${request.requestedCodeReviewMode.wireValue}'.",
+        completedPhaseIds = emptyList(),
+        resolvedBranch = null,
+      )
+    }
     recorder.ensureWorkflowOpen(request.workflowId, request.sessionId, request.dbPathOverride, request.issueKey)
+    val proposedRunInvariants = persistedRunInvariants ?: request.runInvariants.copy(
+      codeReviewMode = request.requestedCodeReviewMode ?: CodeReviewExecutionMode.AUTO,
+    )
     val durableRunInvariants = runInvariantsStore.resolve(
       workflowId = request.workflowId,
       dbOverride = request.dbPathOverride,
-      proposed = request.runInvariants,
-    ) ?: request.runInvariants
+      proposed = proposedRunInvariants,
+    ) ?: proposedRunInvariants
     val runRequest = request.copy(runInvariants = durableRunInvariants)
     // Resolve the persisted spec_source stamp once per run (artifact-only, additive — never config).
     // It gates the commit-exclusion directive and terminal-success scratch deletion; local-mode
@@ -1002,6 +1026,7 @@ class FeatureTaskRuntimeRunner(
             suppressDecomposition = isGoalContinuationRun(run.request),
             parallelReviewAgent = run.request.parallelReviewAgent
               ?.takeIf { run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW },
+            codeReviewMode = run.request.runInvariants.codeReviewMode,
             specSource = run.specSource,
             priorSchemaFailure = priorSchemaFailure,
             specReference = run.request.runInvariants.specReference,
@@ -1592,6 +1617,7 @@ private fun persistGoalContinuationContext(
         suppressPr = context.suppressPr,
         goalBranch = context.goalBranch,
         parentWorkflowId = context.parentWorkflowId,
+        codeReviewMode = request.runInvariants.codeReviewMode,
       ),
       dbOverride = request.dbPathOverride,
     )

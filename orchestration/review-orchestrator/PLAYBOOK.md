@@ -36,6 +36,11 @@ Do not reference this repo-relative path directly from installable skills — us
 
 ## Shared Execution Mode Contract
 
+- `bill-code-review` accepts exactly one canonical caller argument: `execution-mode:auto`, `execution-mode:inline`, or `execution-mode:delegated`. Omission is `execution-mode:auto`.
+- Reject malformed, unknown, repeated, or conflicting `execution-mode:` arguments before scope resolution or review launch. The requested mode is review-run metadata and is forwarded unchanged to parallel lanes and review re-runs.
+- `auto` preserves the selection rules below without changing thresholds, routing, risk classification, specialist selection, telemetry, add-ons, or output formatting.
+- `inline` is an assertion, not a preference: evaluate every inline-eligibility rule below first. If any rule is false or unclear, stop with the failed reasons and state that delegated review is required. Do not silently change the request to delegated.
+- `delegated` bypasses automatic inline selection but still performs normal stack routing and specialist selection. Launch the required delegated workers using `review-delegation.md`; if a worker cannot start, stop loudly. Never fall back to inline.
 - Review skills must choose an execution mode of `inline` or `delegated` before running routed review layers or specialist review passes
 - `inline` is allowed only when the review scope is small and low-risk; treat a scope as inline-eligible only when all of the following are true:
   - one routed stack-specific review skill is sufficient

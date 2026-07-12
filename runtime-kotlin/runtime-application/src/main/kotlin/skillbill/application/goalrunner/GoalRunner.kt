@@ -55,6 +55,7 @@ import skillbill.workflow.model.DecompositionExecutionModel
 import skillbill.workflow.model.DecompositionManifest
 import skillbill.workflow.model.DecompositionSubtask
 import skillbill.workflow.model.SpecSource
+import skillbill.review.CodeReviewExecutionMode
 import kotlin.time.Duration.Companion.milliseconds
 
 private val RUNTIME_WORKFLOW_ID_PREFIX: String = WorkflowFamily.TASK_RUNTIME.definition.workflowIdPrefix
@@ -78,19 +79,38 @@ class GoalRunner(
   fun run(request: GoalRunnerRunRequest): GoalRunnerRunReport {
     var state = manifestStore.loadByIssueKey(request.issueKey, request.dbPathOverride, request.repoRoot)
       ?: return unknownGoal(request.issueKey)
+    val persistedReviewMode = manifestStore.reviewMode(state.parentWorkflowId, request.dbPathOverride)
+    if (persistedReviewMode != null && request.codeReviewMode != null && persistedReviewMode != request.codeReviewMode) {
+      return stopped(
+        issueKey = request.issueKey,
+        attempted = emptyList(),
+        subtaskId = 0,
+        reason = GoalRunnerStopReason.BLOCKED,
+        blockedReason = "Cannot change code-review mode on goal resume: parent workflow '${state.parentWorkflowId}' is pinned to " +
+          "'${persistedReviewMode.wireValue}', not '${request.codeReviewMode.wireValue}'.",
+        workflowId = state.parentWorkflowId,
+        lastResumableStep = "preplan",
+      )
+    }
+    val effectiveReviewMode = persistedReviewMode ?: manifestStore.persistReviewMode(
+      parentWorkflowId = state.parentWorkflowId,
+      mode = request.codeReviewMode ?: CodeReviewExecutionMode.AUTO,
+      dbPathOverride = request.dbPathOverride,
+    )
+    val effectiveRequest = request.copy(codeReviewMode = effectiveReviewMode)
     val attempted = mutableListOf<Int>()
-    val observability = GoalRunnerObservabilityEmitter(outcomeStore, request)
-    val ledger = GoalRunnerLedgerRecorder(outcomeStore, request, diagnostics)
-    request.eventSink.emit(GoalRunnerRunEvent.Started(state.manifest.issueKey))
+    val observability = GoalRunnerObservabilityEmitter(outcomeStore, effectiveRequest)
+    val ledger = GoalRunnerLedgerRecorder(outcomeStore, effectiveRequest, diagnostics)
+    effectiveRequest.eventSink.emit(GoalRunnerRunEvent.Started(state.manifest.issueKey))
     val telemetryEmitter =
-      GoalRunnerTelemetryEmitter(telemetry, clock, state, request.dbPathOverride).also { it.goalStarted() }
-    var terminalReport: GoalRunnerRunReport? = preflightPolicyBlockedReport(state, request, ledger)
+      GoalRunnerTelemetryEmitter(telemetry, clock, state, effectiveRequest.dbPathOverride).also { it.goalStarted() }
+    var terminalReport: GoalRunnerRunReport? = preflightPolicyBlockedReport(state, effectiveRequest, ledger)
     while (terminalReport == null) {
       val selection = GoalRunnerPlanner.selectNext(state.manifest)
       when (selection) {
-        is GoalRunnerSelection.Done -> terminalReport = finalizeGoal(state, request, attempted, ledger)
+        is GoalRunnerSelection.Done -> terminalReport = finalizeGoal(state, effectiveRequest, attempted, ledger)
         is GoalRunnerSelection.Blocked ->
-          blockedSelectionIteration(state, selection, request, attempted, observability, ledger)
+          blockedSelectionIteration(state, selection, effectiveRequest, attempted, observability, ledger)
             .also { result ->
               state = result.state
               terminalReport = result.report
@@ -99,7 +119,7 @@ class GoalRunner(
           val result = runSelectedSubtask(
             state,
             selection,
-            request,
+            effectiveRequest,
             attempted,
             observability,
             ledger,
@@ -114,7 +134,7 @@ class GoalRunner(
     val finalReport = terminalReport
     closeGoalTelemetrySegment(telemetryEmitter, state, finalReport, attempted)
     if (finalReport is GoalRunnerRunReport.Completed) {
-      request.eventSink.emit(
+      effectiveRequest.eventSink.emit(
         GoalRunnerRunEvent.Completed(
           issueKey = finalReport.issueKey,
           completedCount = finalReport.subtasksCompleted,
@@ -880,6 +900,7 @@ internal class GoalRunnerLaunchReconciler(
         lastResumableStep = subtask.lastResumableStep?.takeIf(String::isNotBlank),
         childWorkflowId = childWorkflowId,
         assignedWorkflowId = assignedWorkflowId,
+        codeReviewMode = requireNotNull(request.codeReviewMode),
       )
     } else {
       null

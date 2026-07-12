@@ -1,6 +1,7 @@
 package skillbill.application.model
 
 import skillbill.review.model.ParallelReviewMergeResult
+import skillbill.review.CodeReviewExecutionMode
 import java.nio.file.Path
 import kotlin.time.Duration
 
@@ -13,6 +14,7 @@ data class ParallelCodeReviewRequest(
   val scope: ParallelReviewScope,
   val repoRoot: Path,
   val timeout: Duration?,
+  val codeReviewMode: CodeReviewExecutionMode = CodeReviewExecutionMode.AUTO,
 )
 
 data class ParallelCodeReviewResult(

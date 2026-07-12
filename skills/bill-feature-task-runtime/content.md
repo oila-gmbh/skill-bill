@@ -30,6 +30,7 @@ Gather enough to identify and confirm the run:
 - the governed spec path the run implements
 - the agent currently executing this skill
 - the parallel review agent (from args as `parallel-review:<agent>`; absent when not provided)
+- the review selection from `code-review:auto|inline|delegated` (default `auto`)
 
 If the issue key or spec path is missing, stop and ask for it. Do not invent
 either one. The runtime sources the run-invariants (spec reference, acceptance
@@ -57,6 +58,7 @@ Present one concise confirmation that includes:
 
 - the issue key and spec path
 - the agent that will run each phase, including any explicit override
+- the requested code-review selection, showing `auto (default)` when omitted
 
 Ask exactly one confirmation question: whether to proceed and start the
 foreground runtime phase loop.
@@ -76,6 +78,7 @@ skill-bill feature-task run <issue_key> <spec_path> --agent <currently-executing
 ```
 
 Append `--parallel-review-agent <agent>` when `parallel-review:<agent>` was passed to this skill.
+Append `--code-review-mode <auto|inline|delegated>` using the resolved selection.
 
 Always pass `--agent` set to the agent currently running this skill (for example
 `claude` from Claude Code, `codex` from Codex, `opencode` from OpenCode), so the

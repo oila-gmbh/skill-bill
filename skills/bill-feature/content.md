@@ -13,6 +13,16 @@ It does not replace `bill-feature-spec`, `bill-feature-task`, or `bill-feature-g
 - `bill-feature-task` owns one implementation unit.
 - `bill-feature-goal` owns decomposed goal-loop execution with durable state.
 
+## Code-review selection
+
+Accept zero or one `code-review:auto`, `code-review:inline`, or
+`code-review:delegated` argument. Omission resolves to automatic selection.
+Reject a malformed, unknown, repeated, or conflicting `code-review:` argument
+before preparing a spec, presenting confirmation, opening a workflow, or
+launching a child. Carry the resolved value unchanged into the selected task or
+goal sidecar. The one downstream confirmation gate must show the requested
+review policy.
+
 ## Update Check
 
 Call `mcp__skill-bill__update_check` before any other action.
@@ -54,13 +64,13 @@ Before running spec preparation, check `.feature-specs/{ISSUE_KEY}-*/` for the i
 
 For `single_spec` output (or the direct-dispatch route above when only a `spec.md` exists):
 
-- Read the file `bill-feature-task.md` located in this skill's own installed directory (a sibling of this `SKILL.md`) and execute its instructions in the current session with args: `<issue-key> mode:<mode> .feature-specs/{ISSUE_KEY}-{feature-name}/spec.md`. Do not use the Skill tool for this — `bill-feature-task` is an internal skill and is not listed. When exactly one governed `.feature-specs/{ISSUE_KEY}-*/spec.md` exists, the issue key alone is enough.
+- Read the file `bill-feature-task.md` located in this skill's own installed directory (a sibling of this `SKILL.md`) and execute its instructions in the current session with args: `<issue-key> mode:<mode> code-review:<selected-mode> .feature-specs/{ISSUE_KEY}-{feature-name}/spec.md`. Do not use the Skill tool for this — `bill-feature-task` is an internal skill and is not listed. When exactly one governed `.feature-specs/{ISSUE_KEY}-*/spec.md` exists, the issue key alone is enough.
 - Do not dispatch to the goal sidecar.
 - Let the task sidecar own implementation, review, validation, history, and PR description behavior.
 
 For `decomposed` output (or the direct-dispatch route above when a `decomposition-manifest.yaml` exists):
 
-- Read the file `bill-feature-goal.md` located in this skill's own installed directory (a sibling of this `SKILL.md`) and execute its instructions in the current session with args: `<issue-key> mode:<mode>`. Do not use the Skill tool for this — `bill-feature-goal` is an internal skill and is not listed.
+- Read the file `bill-feature-goal.md` located in this skill's own installed directory (a sibling of this `SKILL.md`) and execute its instructions in the current session with args: `<issue-key> mode:<mode> code-review:<selected-mode>`. Do not use the Skill tool for this — `bill-feature-goal` is an internal skill and is not listed.
 - Do not ask an extra confirmation before dispatching to the goal sidecar; the goal sidecar owns the one confirmation gate before starting `skill-bill goal`.
 - Treat `skill-bill goal <issue_key>` as runtime behavior with durable workflow state, not as spec authoring.
 

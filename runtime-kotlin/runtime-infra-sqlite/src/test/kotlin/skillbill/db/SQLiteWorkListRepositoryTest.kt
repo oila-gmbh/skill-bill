@@ -65,6 +65,14 @@ class SQLiteWorkListRepositoryTest {
       "INSERT INTO feature_task_workflows VALUES ('SKILL-117', 'prose', 'wf-since', '2026-05-01T12:00:00Z', 'running', 'invalid', 0)",
       "invalid state_entered_at",
     )
+    assertMalformedWorkListRow(
+      "INSERT INTO goal_issue_progress VALUES ('SKILL-117', ' goal-parent ', '2026-05-01T12:00:00Z', 'running', '2026-05-01T12:00:00Z', 0)",
+      "invalid workflow_id",
+    )
+    assertMalformedWorkListRow(
+      "INSERT INTO goal_issue_progress VALUES ('SKILL-117', 'goal-state', '2026-05-01T12:00:00Z', ' running ', '2026-05-01T12:00:00Z', 0)",
+      "invalid current_state",
+    )
   }
 
   private fun assertMalformedWorkListRow(insert: String, expectedDetail: String) {

@@ -1,6 +1,7 @@
 package skillbill.application.model
 
 import skillbill.ports.agentrun.model.AgentRunOutputSink
+import skillbill.review.CodeReviewExecutionMode
 import skillbill.ports.workflow.model.DEFAULT_SELECTED_DIFF_MAX_BYTES
 import skillbill.ports.workflow.model.DEFAULT_SELECTED_DIFF_MAX_HUNKS
 import skillbill.ports.workflow.model.DEFAULT_SELECTED_DIFF_MAX_LINES
@@ -17,6 +18,8 @@ data class GoalRunnerRunRequest(
   val progressIdleTimeout: Duration? = null,
   val outputSink: AgentRunOutputSink = AgentRunOutputSink.NONE,
   val eventSink: GoalRunnerEventSink = GoalRunnerEventSink.NONE,
+  /** Null means reuse the parent goal's durable mode, or AUTO for a new parent. */
+  val codeReviewMode: CodeReviewExecutionMode? = null,
   val observabilitySequenceStart: Int = DEFAULT_GOAL_OBSERVABILITY_SEQUENCE_START,
 ) {
   init {

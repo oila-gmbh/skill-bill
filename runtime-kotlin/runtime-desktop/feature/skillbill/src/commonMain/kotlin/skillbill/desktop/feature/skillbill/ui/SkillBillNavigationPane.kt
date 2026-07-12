@@ -298,11 +298,11 @@ private fun WorkSection(
         .fillMaxWidth()
         .heightIn(min = SkillBillDimens.workInteractiveMinSize)
         .testTag(WORK_SECTION_TOGGLE_TAG)
+        .clickable(enabled = enabled, role = Role.Button, onClickLabel = toggleDescription, onClick = onToggle)
         .semantics {
           contentDescription = toggleDescription
           stateDescription = expandedDescription
         }
-        .clickable(enabled = enabled, role = Role.Button, onClick = onToggle)
         .padding(horizontal = SkillBillDimens.padLg, vertical = SkillBillDimens.padMd),
       verticalAlignment = Alignment.CenterVertically,
       horizontalArrangement = Arrangement.SpaceBetween,
@@ -327,10 +327,10 @@ private fun WorkSection(
             minHeight = SkillBillDimens.workInteractiveMinSize,
           )
           .testTag(WORK_SECTION_REFRESH_TAG)
-          .semantics { contentDescription = refreshDescription }
-          .clickable(enabled = refreshEnabled, role = Role.Button) {
+          .clickable(enabled = refreshEnabled, role = Role.Button, onClickLabel = refreshDescription) {
             onRefresh()
           }
+          .semantics { contentDescription = refreshDescription }
           .padding(SkillBillDimens.padSm),
         color = if (refreshEnabled) SkillBillTheme.frameTokens.primary else SkillBillTheme.frameTokens.subtle,
         style = MaterialTheme.typography.labelSmall,

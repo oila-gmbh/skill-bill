@@ -2,6 +2,7 @@ package skillbill.desktop.feature.skillbill.ui
 
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -77,6 +78,8 @@ class SkillBillWorkSectionTest {
 
     onNodeWithTag("work-section-toggle").assertIsDisplayed()
     onNodeWithTag("work-section-refresh").assertIsDisplayed()
+    onNodeWithContentDescription("Toggle Work section").assertHasClickAction()
+    onNodeWithContentDescription("Refresh persisted work").assertHasClickAction()
     onNodeWithTag("work-section-status").assertIsDisplayed()
     onNodeWithTag("work-section-list-viewport").assertIsDisplayed()
     onNodeWithContentDescription("Work table. Use left and right arrow keys to inspect all columns.").assertIsDisplayed()

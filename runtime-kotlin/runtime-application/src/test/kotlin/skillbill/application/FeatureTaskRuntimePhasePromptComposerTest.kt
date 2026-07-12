@@ -9,6 +9,7 @@ import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
+import skillbill.review.CodeReviewExecutionMode
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -16,6 +17,20 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 class FeatureTaskRuntimePhasePromptComposerTest {
+  @Test
+  fun `review prompt forwards selected execution mode through a parallel lane`() {
+    val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor("review"),
+      parallelReviewAgent = "claude",
+      codeReviewMode = CodeReviewExecutionMode.DELEGATED,
+    )
+
+    assertContains(prompt, "bill-code-review execution-mode:delegated")
+    assertContains(prompt, "parallel:claude")
+    assertContains(prompt, "must not launch parallel review recursively")
+  }
+
   @Test
   fun `composes header briefing and output contract for every runtime phase`() {
     FeatureTaskRuntimePhaseWorkflowDefinition.definition.stepIds.forEach { phaseId ->

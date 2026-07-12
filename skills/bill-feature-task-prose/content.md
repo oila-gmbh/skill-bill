@@ -62,6 +62,16 @@ Continuation-mode rules:
 
 ## Retry, Resume, and Review Reuse
 
+## Code-review selection
+
+Resolve exactly one optional `code-review:auto|inline|delegated` token before
+the single feature confirmation gate. Omission is `auto`; malformed, unknown,
+repeated, or conflicting values fail before workflow opening. Persist the
+selection with the workflow and reuse it for every review-fix or audit-driven
+re-review. In Step 5 invoke `bill-code-review execution-mode:<selected-mode>`;
+when a parallel lane is configured, pass the same execution mode to both lanes
+without allowing recursive parallel launch.
+
 On retry or resume, durable workflow state is the single source of authority. Avoid re-injecting prior plans, reviews, implementation summaries, or unrelated decomposition artifacts into the resumed run:
 
 - Treat `current_step_artifacts` as the bounded recovered context. Pull only the artifacts the resumed step needs; do not re-paste prior plans, full prior review reports, prior implementation RESULT summaries, or sibling-subtask decomposition artifacts into history.

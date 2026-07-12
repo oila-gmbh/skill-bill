@@ -2,6 +2,7 @@ package skillbill.application.model
 
 import skillbill.application.decomposition.decompositionManifestPath
 import skillbill.application.decomposition.parentSpecPath
+import skillbill.review.CodeReviewExecutionMode
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
 import java.nio.file.Path
@@ -26,6 +27,8 @@ data class FeatureTaskRuntimeRunRequest(
   val timeout: Duration? = null,
   /** When set, the review phase runs `bill-code-review parallel:<agent>` alongside the primary review. */
   val parallelReviewAgent: String? = null,
+  /** Null means use the persisted mode on resume, or AUTO for a new run. */
+  val requestedCodeReviewMode: CodeReviewExecutionMode? = null,
   /** Present only for non-interactive goal-runner continuation children. */
   val goalContinuation: FeatureTaskRuntimeGoalContinuationContext? = null,
   val eventSink: FeatureTaskRuntimeRunEventSink = FeatureTaskRuntimeRunEventSink.NONE,
@@ -52,6 +55,7 @@ data class FeatureTaskRuntimeGoalContinuationContext(
   val suppressPr: Boolean,
   val parentWorkflowId: String? = null,
   val lastResumableStep: String? = null,
+  val codeReviewMode: CodeReviewExecutionMode = CodeReviewExecutionMode.AUTO,
 ) {
   init {
     require(parentIssueKey.isNotBlank()) { "parentIssueKey is required." }

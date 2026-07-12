@@ -4,6 +4,7 @@ import skillbill.contracts.JsonSupport
 import skillbill.db.core.DatabaseColumnMigrations
 import skillbill.db.core.DatabaseMigrations
 import skillbill.db.core.DatabaseRuntime
+import skillbill.db.core.DatabaseSchema
 import skillbill.db.telemetry.GoalTelemetryMigration
 import skillbill.db.worklist.SQLiteWorkListRepository
 import skillbill.error.InvalidWorkListRowError
@@ -12,6 +13,9 @@ import skillbill.telemetry.model.FeatureImplementFinishedRecord
 import java.nio.file.Files
 import java.nio.file.Path
 import java.sql.DriverManager
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -103,6 +107,42 @@ class DatabaseMigrationsTest {
     DatabaseRuntime.ensureDatabase(dbPath).close()
     DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
       assertEquals(DatabaseMigrations.migrations.size, migrationRows(connection).size)
+    }
+  }
+
+  @Test
+  fun `concurrent migration opens serialize applicability checks`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-db-concurrent-migrations").resolve("metrics.db")
+    DriverManager.getConnection("jdbc:sqlite:$dbPath").use { connection ->
+      DatabaseSchema.createBaseSchema(connection)
+    }
+    val ready = CountDownLatch(2)
+    val start = CountDownLatch(1)
+    val executor = Executors.newFixedThreadPool(2)
+
+    try {
+      val opens = (1..2).map {
+        executor.submit {
+          DriverManager.getConnection("jdbc:sqlite:$dbPath").use { connection ->
+            connection.createStatement().use { it.execute("PRAGMA busy_timeout = 5000") }
+            ready.countDown()
+            check(start.await(5, TimeUnit.SECONDS))
+            DatabaseMigrations.apply(connection)
+          }
+        }
+      }
+      assertTrue(ready.await(5, TimeUnit.SECONDS))
+      start.countDown()
+      opens.forEach { it.get(10, TimeUnit.SECONDS) }
+    } finally {
+      executor.shutdownNow()
+    }
+
+    DriverManager.getConnection("jdbc:sqlite:$dbPath").use { connection ->
+      assertEquals(
+        DatabaseMigrations.migrations.map { migration -> migration.version },
+        migrationRows(connection).map { row -> row.version },
+      )
     }
   }
 

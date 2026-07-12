@@ -117,8 +117,12 @@ private fun java.sql.ResultSet.toWorkItem(): WorkItem {
 
 private val validWorkStates = setOf("pending", "running", "blocked", "completed", "failed", "abandoned")
 
-private fun java.sql.ResultSet.required(column: String): String = getString(column)?.trim()?.takeIf(String::isNotEmpty)
-  ?: invalid(getString("workflow_id").orEmpty(), "missing $column")
+private fun java.sql.ResultSet.required(column: String): String {
+  val value = getString(column) ?: invalid(getString("workflow_id").orEmpty(), "missing $column")
+  if (value.isBlank()) invalid(getString("workflow_id").orEmpty(), "missing $column")
+  if (value != value.trim()) invalid(getString("workflow_id").orEmpty(), "invalid $column '$value'")
+  return value
+}
 
 private fun parseInstant(value: String, workflowId: String, column: String): Instant =
   runCatching { Instant.parse(value) }

@@ -31,15 +31,15 @@ internal object DatabaseMigrations {
     ).also(::requireDeterministicMigrations)
 
   fun apply(connection: Connection) {
-    val appliedVersions = appliedMigrationVersions(connection)
-    migrations
-      .filterNot { migration -> migration.version in appliedVersions }
-      .forEach { migration ->
-        connection.inTransaction {
+    connection.inImmediateTransaction {
+      val appliedVersions = appliedMigrationVersions(this)
+      migrations
+        .filterNot { migration -> migration.version in appliedVersions }
+        .forEach { migration ->
           migration.apply(this)
           recordMigration(migration)
         }
-      }
+    }
   }
 
   private fun appliedMigrationVersions(connection: Connection): Set<Int> = connection.prepareStatement(
@@ -106,5 +106,17 @@ internal inline fun <T> Connection.inTransaction(block: Connection.() -> T): T {
     throw error
   } finally {
     autoCommit = previousAutoCommit
+  }
+}
+
+internal inline fun <T> Connection.inImmediateTransaction(block: Connection.() -> T): T {
+  createStatement().use { it.execute("BEGIN IMMEDIATE") }
+  return try {
+    val result = block()
+    createStatement().use { it.execute("COMMIT") }
+    result
+  } catch (error: Throwable) {
+    runCatching { createStatement().use { it.execute("ROLLBACK") } }
+    throw error
   }
 }

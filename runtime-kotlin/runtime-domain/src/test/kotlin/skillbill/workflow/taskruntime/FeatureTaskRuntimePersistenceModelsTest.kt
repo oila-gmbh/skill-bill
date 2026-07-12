@@ -1,6 +1,9 @@
 package skillbill.workflow.taskruntime
 
 import skillbill.error.InvalidWorkflowStateSchemaError
+import skillbill.review.CodeReviewExecutionMode
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
+import skillbill.workflow.taskruntime.model.toArtifactMap
 import skillbill.workflow.model.appendBoundedHistoryBySequence
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_LIMIT
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationOutcome
@@ -261,10 +264,28 @@ class FeatureTaskRuntimePersistenceModelsTest {
       "feature_size" to "HUGE",
       "acceptance_criteria" to listOf("AC-1"),
       "mandates_and_overrides" to emptyList<String>(),
+      "code_review_mode" to "auto",
     )
 
     assertFailsWith<InvalidWorkflowStateSchemaError> {
       featureTaskRuntimeRunInvariantsFromArtifactMap(malformed)
+    }
+  }
+
+  @Test
+  fun `run-invariants persist the selected code-review mode strictly`() {
+    val invariants = FeatureTaskRuntimeRunInvariants(
+      specReference = ".feature-specs/SKILL-119/spec.md",
+      acceptanceCriteria = listOf("AC-1"),
+      mandatesAndOverrides = emptyList(),
+      codeReviewMode = CodeReviewExecutionMode.DELEGATED,
+    )
+    val map = invariants.toArtifactMap()
+
+    assertEquals("delegated", map["code_review_mode"])
+    assertEquals(invariants, featureTaskRuntimeRunInvariantsFromArtifactMap(map))
+    assertFailsWith<InvalidWorkflowStateSchemaError> {
+      featureTaskRuntimeRunInvariantsFromArtifactMap(map + ("code_review_mode" to "DELEGATED"))
     }
   }
 

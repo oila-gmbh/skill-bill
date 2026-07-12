@@ -28,6 +28,7 @@ import skillbill.contracts.system.RuntimeProvenanceContract
 import skillbill.goalrunner.model.GoalRunnerRunReport
 import skillbill.goalrunner.model.GoalRunnerStatusProjection
 import skillbill.install.model.InvokingAgentContextResolver
+import skillbill.review.CodeReviewExecutionMode
 import skillbill.ports.agentrun.model.AgentRunOutputSink
 import skillbill.ports.agentrun.model.AgentRunOutputStream
 import skillbill.ports.workflow.model.DEFAULT_SELECTED_DIFF_MAX_BYTES
@@ -56,6 +57,10 @@ class GoalRunCommand(
     help = "Agent to use for child subtask runs instead of the invoking agent. Wins over --agent and detection.",
   )
   private val repoRoot by option("--repo-root", help = "Repository root for child agent runs.")
+  private val codeReviewMode by option(
+    "--code-review-mode",
+    help = "Review execution mode for every child: auto (default), inline, or delegated.",
+  )
   private val maxWallClockMinutes by option(
     "--max-wall-clock-minutes",
     "--timeout-minutes",
@@ -113,10 +118,19 @@ class GoalRunCommand(
         progressIdleTimeout = progressIdleTimeoutMinutes?.minutes,
         outputSink = presenter.outputSink(includeRawChildOutput = debugChildOutput),
         eventSink = presenter.eventSink(),
+        codeReviewMode = parseCodeReviewMode(codeReviewMode),
       ),
     )
     val payload = report.toGoalRunCliMap()
     state.completeText(goalRunText(payload), payload, exitCode = payload.goalExitCode())
+  }
+}
+
+private fun parseCodeReviewMode(raw: String?): CodeReviewExecutionMode? = raw?.let { value ->
+  try {
+    CodeReviewExecutionMode.fromWire(value)
+  } catch (error: IllegalArgumentException) {
+    throw UsageError(error.message.orEmpty())
   }
 }
 

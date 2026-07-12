@@ -4,6 +4,7 @@ import skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing
 import skillbill.workflow.model.SpecSource
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
+import skillbill.review.CodeReviewExecutionMode
 
 /**
  * Pure composer of the full prompt a feature-task-runtime phase agent receives. The persisted
@@ -20,6 +21,7 @@ object FeatureTaskRuntimePhasePromptComposer {
     briefing: FeatureTaskRuntimePhaseLaunchBriefing,
     suppressDecomposition: Boolean = false,
     parallelReviewAgent: String? = null,
+    codeReviewMode: CodeReviewExecutionMode = CodeReviewExecutionMode.AUTO,
     specSource: SpecSource = SpecSource.LOCAL,
     priorSchemaFailure: String? = null,
     specReference: String? = null,
@@ -30,7 +32,7 @@ object FeatureTaskRuntimePhasePromptComposer {
       ceremonyDirective(briefing),
       mutatingPhaseIdempotencyDirective(briefing.phaseId),
       goalContinuationDirective(briefing.phaseId, suppressDecomposition),
-      parallelReviewDirective(briefing.phaseId, parallelReviewAgent),
+      reviewExecutionDirective(briefing.phaseId, codeReviewMode, parallelReviewAgent),
       commitExclusionDirective(briefing.phaseId, issueKey, specSource),
       specCommitInclusionDirective(briefing.phaseId, specReference, specSource),
       briefing.briefingText,
@@ -226,13 +228,21 @@ object FeatureTaskRuntimePhasePromptComposer {
     """.trimIndent()
   }
 
-  private fun parallelReviewDirective(phaseId: String, parallelReviewAgent: String?): String {
-    if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW || parallelReviewAgent.isNullOrBlank()) {
+  private fun reviewExecutionDirective(
+    phaseId: String,
+    codeReviewMode: CodeReviewExecutionMode,
+    parallelReviewAgent: String?,
+  ): String {
+    if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW) {
       return ""
     }
+    val parallel = parallelReviewAgent?.takeIf(String::isNotBlank)?.let { agent ->
+      " Combine it with `parallel:$agent`; both lanes must receive execution-mode:${codeReviewMode.wireValue} " +
+        "and the second lane must not launch parallel review recursively."
+    }.orEmpty()
     return """
-      ## Parallel review lane
-      Run the review using `bill-code-review parallel:$parallelReviewAgent` so a second lane from $parallelReviewAgent reviews the same diff concurrently. Findings from both lanes are merged with provenance labels.
+      ## Review execution mode
+      Run `bill-code-review execution-mode:${codeReviewMode.wireValue}` for this review and every re-review. AUTO keeps the shared policy's existing selection; INLINE must reject an ineligible scope instead of substituting delegated mode; DELEGATED must use normal routed delegation and fail if workers cannot start.$parallel
     """.trimIndent()
   }
 

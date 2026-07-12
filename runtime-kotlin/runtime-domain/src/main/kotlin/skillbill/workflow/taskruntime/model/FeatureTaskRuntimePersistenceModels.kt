@@ -2,6 +2,7 @@ package skillbill.workflow.taskruntime.model
 
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.error.InvalidWorkflowStateSchemaError
+import skillbill.review.CodeReviewExecutionMode
 import java.math.BigDecimal
 import java.math.BigInteger
 
@@ -66,6 +67,7 @@ data class FeatureTaskRuntimeGoalContinuationArtifact(
   val suppressPr: Boolean,
   val goalBranch: String,
   val parentWorkflowId: String? = null,
+  val codeReviewMode: CodeReviewExecutionMode = CodeReviewExecutionMode.AUTO,
 ) {
   init {
     require(issueKey.isNotBlank()) { "FeatureTaskRuntimeGoalContinuationArtifact.issueKey must be non-blank." }
@@ -79,6 +81,7 @@ data class FeatureTaskRuntimeGoalContinuationArtifact(
     "subtask_id" to subtaskId,
     "suppress_pr" to suppressPr,
     "goal_branch" to goalBranch,
+    "code_review_mode" to codeReviewMode.wireValue,
   ).apply {
     parentWorkflowId?.let { put("parent_workflow_id", it) }
   }

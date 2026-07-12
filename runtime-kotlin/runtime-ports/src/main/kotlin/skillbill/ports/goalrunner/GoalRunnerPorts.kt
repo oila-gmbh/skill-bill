@@ -16,6 +16,7 @@ import skillbill.ports.goalrunner.model.GoalRunnerReconcileGate
 import skillbill.ports.goalrunner.model.GoalRunnerSessionAccountingRecordRequest
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.goalrunner.model.GoalRunnerWorkflowProgress
+import skillbill.review.CodeReviewExecutionMode
 import java.nio.file.Path
 
 interface GoalRunnerManifestStore {
@@ -26,6 +27,14 @@ interface GoalRunnerManifestStore {
   ): GoalRunnerManifestState?
 
   fun save(state: GoalRunnerManifestState, dbPathOverride: String? = null): GoalRunnerManifestState
+
+  fun reviewMode(parentWorkflowId: String, dbPathOverride: String? = null): CodeReviewExecutionMode? = null
+
+  fun persistReviewMode(
+    parentWorkflowId: String,
+    mode: CodeReviewExecutionMode,
+    dbPathOverride: String? = null,
+  ): CodeReviewExecutionMode = mode
 }
 
 // Terminal-outcome resolution split into a strictly read-only query and an explicit

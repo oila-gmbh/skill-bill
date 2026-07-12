@@ -30,6 +30,12 @@ convention:
 
 Resolve the mode to `runtime` when no `mode:` argument is supplied.
 
+Accept at most one `code-review:auto`, `code-review:inline`, or
+`code-review:delegated` token. Omission resolves to `auto`; malformed, unknown,
+duplicate, or conflicting values fail before confirmation or goal launch. The
+selected mode is immutable for the parent and every child: a resume reuses it,
+and an attempted explicit change must fail loudly before launching a subtask.
+
 **opencode and zcode are prose-only.** When the agent currently executing this skill is opencode or zcode, prose is the implicit default and runtime mode is unsupported: opencode's foreground Bash tool is hard-killed at 120s before a phase can finish and per-phase output cannot be harvested back; zcode's foreground runtime exceeds the Bash execution ceiling and a detached zcode child emits no harvestable output before the supervisor kills it as unresponsive. On opencode or zcode: with no mode arg, resolve to `prose` (no need to pass `mode:prose`); with an explicit `mode:runtime`, stop and emit the actionable refusal and do NOT hand off to the `skill-bill goal` runtime:
 
 > Runtime mode is not supported on opencode or zcode in this harness. opencode's foreground Bash tool is hard-killed at 120s before a phase can finish and per-phase output cannot be harvested back; zcode's foreground runtime exceeds the Bash execution ceiling and a detached zcode child emits no harvestable output before the supervisor kills it as unresponsive. Use prose instead — run bill-feature-task-prose for a single feature task, or bill-feature-goal mode:prose for a decomposed goal.
@@ -80,6 +86,7 @@ Then present a concise proposal that includes:
 - the expected first runnable subtask
 - the agent that will be used for child runs, including any explicit override
 - the resolved mode: show `runtime (default)` when the mode was not specified, `runtime` when explicitly set, or `prose` when `mode:prose` was passed
+- the requested code-review selection, showing `auto (default)` when omitted
 
 Ask one confirmation question: whether to proceed with this decomposition and start the goal loop in the resolved mode.
 
@@ -123,6 +130,10 @@ foreground driver directly in the current agent session, always passing
 ```bash
 skill-bill goal <issue_key> --agent <currently-executing-agent>
 ```
+
+Append `--code-review-mode <auto|inline|delegated>` and require the runtime to
+pass it to every child. Parallel review remains a second full lane; both lanes
+receive this mode and neither may recursively launch parallel review.
 
 ### Rehydrate a missing linear-mode spec before launch/resume
 

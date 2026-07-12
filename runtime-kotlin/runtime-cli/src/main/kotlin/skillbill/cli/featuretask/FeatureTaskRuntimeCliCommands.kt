@@ -41,6 +41,7 @@ import skillbill.ports.featurespec.FeatureSpecPathResolverPort
 import skillbill.ports.featurespec.model.FeatureSpecPathResolveInput
 import skillbill.ports.featurespec.model.FeatureSpecPathResolveResult
 import skillbill.ports.taskruntime.FeatureTaskRuntimeRunInvariantsSource
+import skillbill.review.CodeReviewExecutionMode
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import java.nio.file.Path
 import kotlin.time.Duration.Companion.minutes
@@ -115,6 +116,10 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
     help = "Run the review phase with a second parallel agent lane. " +
       "Supported agents: ${InstallAgent.supportedIds.joinToString()}.",
   )
+  protected val codeReviewMode by option(
+    "--code-review-mode",
+    help = "Review execution mode: auto (default), inline, or delegated. A resumed workflow remains pinned to its original mode.",
+  )
   protected val suppressPr by option(
     "--suppress-pr",
     help = "Suppress the runtime PR phase. Required with goal-continuation options.",
@@ -169,6 +174,7 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
         repoRoot = prepared.repoRoot,
         timeout = maxWallClockMinutes?.minutes,
         parallelReviewAgent = parallelReviewAgent?.takeIf(String::isNotBlank),
+        requestedCodeReviewMode = requestedCodeReviewMode(),
         goalContinuation = parseGoalContinuationContext(),
         eventSink = runtimeRunEventSink(state, monitor),
       ),
@@ -245,7 +251,16 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
       suppressPr = true,
       parentWorkflowId = goalParentWorkflowId?.takeIf(String::isNotBlank),
       lastResumableStep = goalLastResumableStep?.takeIf(String::isNotBlank),
+      codeReviewMode = requestedCodeReviewMode() ?: CodeReviewExecutionMode.AUTO,
     )
+  }
+
+  private fun requestedCodeReviewMode(): CodeReviewExecutionMode? = codeReviewMode?.let { raw ->
+    try {
+      CodeReviewExecutionMode.fromWire(raw)
+    } catch (error: IllegalArgumentException) {
+      throw UsageError(error.message.orEmpty())
+    }
   }
 
   private fun goalContinuationMissingFields(): List<String> = buildList {

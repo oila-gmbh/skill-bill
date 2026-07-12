@@ -2,6 +2,7 @@ package skillbill.ports.agentrun.model
 
 import skillbill.goalrunner.model.GoalRunnerLivenessState
 import skillbill.install.model.InstallAgent
+import skillbill.review.CodeReviewExecutionMode
 import skillbill.workflow.model.GoalProgressEvent
 import skillbill.workflow.model.GoalProgressEventKind
 import skillbill.workflow.model.GoalProgressOutcome
@@ -49,6 +50,7 @@ data class SkillRunGoalContinuationContext(
   val lastResumableStep: String? = null,
   val childWorkflowId: String? = null,
   val assignedWorkflowId: String? = null,
+  val codeReviewMode: CodeReviewExecutionMode = CodeReviewExecutionMode.AUTO,
 ) {
   init {
     require(parentIssueKey.isNotBlank()) { "parentIssueKey is required." }

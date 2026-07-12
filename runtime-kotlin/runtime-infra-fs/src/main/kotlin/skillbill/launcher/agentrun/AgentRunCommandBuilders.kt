@@ -35,6 +35,7 @@ internal fun goalContinuationEnvironment(request: SkillRunRequest): Map<String, 
       put("SKILL_BILL_SUPPRESS_PR", context.suppressPr.toString())
       context.parentWorkflowId?.let { put("SKILL_BILL_GOAL_PARENT_WORKFLOW_ID", it) }
       context.lastResumableStep?.let { put("SKILL_BILL_GOAL_LAST_RESUMABLE_STEP", it) }
+      put("SKILL_BILL_CODE_REVIEW_MODE", context.codeReviewMode.wireValue)
     }
   }.orEmpty()
 
@@ -169,6 +170,8 @@ internal fun goalContinuationCommand(request: SkillRunRequest, agent: InstallAge
           add("--goal-last-resumable-step")
           add(step)
         }
+        add("--code-review-mode")
+        add(context.codeReviewMode.wireValue)
         add("--agent")
         add(agent.id)
       },

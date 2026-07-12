@@ -135,6 +135,8 @@ fun recordGoalIssueSegmentStarted(connection: Connection, segment: GoalIssueSegm
         WHEN COALESCE(goal_issue_progress.status, '') != 'running' THEN 0
         ELSE goal_issue_progress.state_entered_at_estimated
       END
+    WHERE goal_issue_progress.finished_at IS NULL
+      AND COALESCE(goal_issue_progress.status, '') NOT IN ('completed', 'failed', 'abandoned')
     """.trimIndent(),
   ).use { statement ->
     statement.bind(

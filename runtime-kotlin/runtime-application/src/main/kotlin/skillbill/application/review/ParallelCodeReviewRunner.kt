@@ -47,7 +47,7 @@ class ParallelCodeReviewRunner(
 
     val diffText = resolveDiff(request)
     val stack = detectStack(diffText, request.repoRoot)
-    val prompt = buildPrompt(stack, diffText)
+    val prompt = buildPrompt(stack, diffText, request.codeReviewMode)
 
     val timeoutSec = request.timeout?.inWholeSeconds ?: (DEFAULT_TIMEOUT_MINUTES * SECONDS_PER_MINUTE)
     val laneRunResult = parallelLaneRunner.runTwoLanes(
@@ -158,12 +158,17 @@ class ParallelCodeReviewRunner(
     return if (best != null && best.value > 0) best.key.slug else null
   }
 
-  private fun buildPrompt(stack: String?, diffText: String): String = buildString {
+  private fun buildPrompt(
+    stack: String?,
+    diffText: String,
+    codeReviewMode: skillbill.review.CodeReviewExecutionMode,
+  ): String = buildString {
     appendLine(
       "You are driving one lane of a parallel code review. Apply all of the following specialist " +
         "review rubrics to the diff below and return a single consolidated Risk Register. " +
         "Do not use parallel mode.",
     )
+    appendLine("Run bill-code-review with execution-mode:${codeReviewMode.wireValue}; do not reinterpret it.")
     appendLine()
     val rubrics = if (stack != null) rubricPort.loadSpecialistRubrics(stack) else emptyList()
     if (rubrics.isNotEmpty()) {
