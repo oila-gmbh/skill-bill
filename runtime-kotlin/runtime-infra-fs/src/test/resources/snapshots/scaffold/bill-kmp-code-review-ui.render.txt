@@ -54,6 +54,13 @@ Use this specialist for `@Composable` functions, UI state holders, Compose navig
 
 #### Add-On Boundaries
 
+- Require common UI state to have one owner and platform hosts to adapt lifecycle delivery without duplicating navigation or effect consumption.
+- Verify `LaunchedEffect`, `DisposableEffect`, and coroutine scopes cancel and restart with equivalent keys on Android activities, iOS view controllers, desktop windows, and browser pages.
+- Keep navigation contracts in common code only where destination identity and restoration semantics are portable; adapt Android back stacks, iOS presentation, desktop multi-window state, and browser URL/history at their host boundaries.
+- Verify rendering and input integration per target: density and insets on Android, UIKit/SwiftUI hosting and disposal on iOS, resize/window/focus behavior on desktop, and DOM canvas, browser lifecycle, and back navigation on web.
+- Require shared resources to use Compose resource accessors and verify target packaging; isolate Android `R`, Apple bundles, desktop classpath resources, and web assets behind target adapters.
+- Require layouts to adapt by available space, input mode, platform conventions, and window class instead of branching only on target names.
+
 - Apply only generated add-ons selected by the baseline routing table, and verify Android-only add-ons are not enforced against `commonMain` or iOS-only code.
 - For Blocker or Major findings, describe the concrete user-visible interaction or rendering failure scenario.
 

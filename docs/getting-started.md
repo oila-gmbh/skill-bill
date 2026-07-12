@@ -293,7 +293,7 @@ The shipped platform packs are reference packs. They are real, validated, ready 
 Reference packs currently shipped:
 
 - `kotlin`: Kotlin baseline review and quality-check behavior
-- `kmp`: Kotlin baseline plus Android/KMP review depth and governed add-ons
+- `kmp`: Kotlin review baseline plus KMP platform, UI, and accessibility depth, governed add-ons, and direct multiplatform quality-check behavior
 - `go`: Go services, libraries, CLIs, modules, APIs, persistence, concurrency, security, testing, Go-rendered UI, UX/accessibility, and quality-check behavior
 - `php`: PHP applications, services, Composer projects, APIs, persistence, security, testing, server-rendered UI, UX/accessibility, and quality-check behavior
 - `python`: Python applications, libraries, CLIs, APIs, persistence, security, testing, UI, UX/accessibility, and quality-check behavior

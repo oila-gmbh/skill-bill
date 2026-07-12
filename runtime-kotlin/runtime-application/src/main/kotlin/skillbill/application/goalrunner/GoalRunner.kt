@@ -57,9 +57,6 @@ import skillbill.workflow.model.DecompositionSubtask
 import skillbill.workflow.model.SpecSource
 import kotlin.time.Duration.Companion.milliseconds
 
-// SKILL-87: the pre-assigned id substitutes for what the CLI's open(TASK_RUNTIME) would mint, so the
-// prefix must stay in lockstep with the TASK_RUNTIME family's canonical workflow-id prefix ("wftr")
-// rather than a duplicated literal.
 private val RUNTIME_WORKFLOW_ID_PREFIX: String = WorkflowFamily.TASK_RUNTIME.definition.workflowIdPrefix
 
 @Inject

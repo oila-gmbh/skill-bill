@@ -1,6 +1,7 @@
 package skillbill.scaffold
 
 import skillbill.scaffold.platformpack.loadPlatformPack
+import skillbill.scaffold.policy.APPROVED_CODE_REVIEW_AREAS
 import skillbill.testing.repoRootFromTest
 import java.nio.file.Files
 import kotlin.test.Test
@@ -23,6 +24,7 @@ class KmpPlatformPackTest {
     assertEquals(KMP_CODE_REVIEW_AREAS, pack.declaredCodeReviewAreas.toSet())
     assertEquals(KMP_CODE_REVIEW_AREAS, pack.declaredFiles.areas.keys)
     assertEquals(KMP_CODE_REVIEW_AREAS, pack.areaMetadata.keys)
+    assertEquals(packRoot.resolve("quality-check/bill-kmp-code-check/content.md"), pack.declaredQualityCheckFile)
     listOf(".kt", "*.kt", ".kts", "*.kts", "commonMain", "androidMain", "iosMain", "expect", "actual")
       .forEach { signal -> assertContains(pack.routingSignals.strong, signal) }
     assertTrue(pack.routingSignals.tieBreakers.any { "dominate" in it && "prefer" in it })
@@ -34,6 +36,65 @@ class KmpPlatformPackTest {
       assertTrue("code-review/bill-kmp-code-review-$area:" in manifest)
     }
     assertTrue("mode: kmp-baseline" in manifest)
+  }
+
+  @Test
+  fun `kmp effective review coverage is Kotlin baseline with three overriding lanes`() {
+    val repoRoot = repoRootFromTest()
+    val kotlin = loadPlatformPack(repoRoot.resolve("platform-packs/kotlin"))
+    val kmp = loadPlatformPack(repoRoot.resolve("platform-packs/kmp"))
+    val effectiveOwners = kotlin.declaredCodeReviewAreas.associateWith { "kotlin" }.toMutableMap()
+
+    kmp.declaredCodeReviewAreas.forEach { area -> effectiveOwners[area] = "kmp" }
+
+    assertEquals(APPROVED_CODE_REVIEW_AREAS, effectiveOwners.keys)
+    assertEquals(7, effectiveOwners.values.count { it == "kotlin" })
+    assertEquals(KMP_CODE_REVIEW_AREAS, effectiveOwners.filterValues { it == "kmp" }.keys)
+  }
+
+  @Test
+  fun `kmp quality checker covers discovered multiplatform and release tasks`() {
+    val checker = Files.readString(
+      repoRootFromTest().resolve("platform-packs/kmp/quality-check/bill-kmp-code-check/content.md"),
+    )
+
+    listOf(
+      "tasks --all",
+      "common metadata",
+      "Android",
+      "Kotlin/Native",
+      "Compose Multiplatform resource",
+      "dependency alignment",
+      "release variants",
+      "XCFramework",
+      "shrinker",
+      "unavailable toolchain",
+    ).forEach { signal -> assertContains(checker, signal) }
+  }
+
+  @Test
+  fun `every KMP add-on declares activation and exclusion boundaries and is reachable`() {
+    val packRoot = repoRootFromTest().resolve("platform-packs/kmp")
+    val pack = loadPlatformPack(packRoot)
+    val addOns = Files.list(packRoot.resolve("addons")).use { paths ->
+      paths.filter { Files.isRegularFile(it) }.toList()
+    }
+    val manifest = Files.readString(packRoot.resolve("platform.yaml"))
+
+    assertEquals(12, addOns.size)
+    addOns.forEach { addOn ->
+      val content = Files.readString(addOn)
+      assertTrue(
+        "## Activation signals" in content || "Read this file when" in content,
+        "Missing positive activation signals in ${addOn.fileName}",
+      )
+      assertTrue(
+        "## Exclusions" in content || "## Boundary" in content || "## Review boundary" in content ||
+          "## Implementation boundary" in content,
+        "Missing exclusion boundary in ${addOn.fileName}",
+      )
+      assertContains(manifest, "target: platform-packs/kmp/addons/${addOn.fileName}")
+    }
   }
 
   @Test

@@ -270,7 +270,7 @@ Calling `load_quality_check_content` on a pack whose
 `MissingContentFileError` rather than silently returning nothing — callers
 must gate the call on `pack.declared_quality_check_file is not None`. The
 shell never silently substitutes a different pack's quality-check file
-except via the explicit `kmp` → `kotlin` fallback noted above.
+and missing manifest-declared quality-check content always fails loudly.
 
 ## Discovery Semantics
 

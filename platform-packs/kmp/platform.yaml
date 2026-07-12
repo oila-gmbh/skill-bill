@@ -33,6 +33,8 @@ declared_files:
     ui: code-review/bill-kmp-code-review-ui/content.md
     ux-accessibility: code-review/bill-kmp-code-review-ux-accessibility/content.md
 
+declared_quality_check_file: quality-check/bill-kmp-code-check/content.md
+
 area_metadata:
   platform-correctness:
     focus: "KMP expect/actual, source-set, target-runtime, and native-boundary correctness"
@@ -82,6 +84,9 @@ addon_usage:
       entrypoint: android-interop-review.md
     - slug: android-design-system
       entrypoint: android-design-system-review.md
+  quality-check/bill-kmp-code-check:
+    - slug: android-r8
+      entrypoint: android-r8-review.md
 
 feature_addon_usage:
   feature-task:
@@ -182,3 +187,10 @@ pointers:
       target: orchestration/shell-content-contract/shell-ceremony.md
     - name: telemetry-contract.md
       target: orchestration/telemetry-contract/PLAYBOOK.md
+  quality-check/bill-kmp-code-check:
+    - name: shell-ceremony.md
+      target: orchestration/shell-content-contract/shell-ceremony.md
+    - name: telemetry-contract.md
+      target: orchestration/telemetry-contract/PLAYBOOK.md
+    - name: android-r8-review.md
+      target: platform-packs/kmp/addons/android-r8-review.md
