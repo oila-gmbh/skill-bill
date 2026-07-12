@@ -27,14 +27,15 @@ internal class SkillTreeBuilder(
     val repoToken = repoToken(root)
     val selections = linkedMapOf<String, SelectionDetail>()
     val authoredSkills = loadAuthoredSkills(root, repoToken, selections, baselineModifiedResolver)
-    val addons = listOf(loadAddonConfig(root, repoToken, selections, skillBillConfigPathResolver)) +
-      loadAddons(root, repoToken, selections, externalAddonSourcesResolver)
+    val configuration = listOf(loadConfiguration(root, repoToken, selections, skillBillConfigPathResolver))
+    val addons = loadAddons(root, repoToken, selections, externalAddonSourcesResolver)
     val nativeAgents = loadNativeAgents(root, repoToken, selections)
     val generatedArtifacts = loadGeneratedArtifacts(root, repoToken, selections)
 
     val groups = listOfNotNull(
       group(selectionId(repoToken, "horizontal-skills"), "Horizontal Skills", authoredSkills.horizontal),
       group(selectionId(repoToken, "platform-pack-skills"), "Platform Packs", authoredSkills.platform),
+      group(selectionId(repoToken, "configuration"), "Configuration", configuration),
       group(selectionId(repoToken, "addons"), "Add-ons", addons),
       group(selectionId(repoToken, "native-agents"), "Native Agents", nativeAgents),
       group(selectionId(repoToken, "generated-artifacts"), "Generated Artifacts", generatedArtifacts),
@@ -42,7 +43,7 @@ internal class SkillTreeBuilder(
     return TreeBuildResult(items = groups, selections = selections)
   }
 
-  private fun loadAddonConfig(
+  private fun loadConfiguration(
     root: Path,
     repoToken: String,
     selections: MutableMap<String, SelectionDetail>,

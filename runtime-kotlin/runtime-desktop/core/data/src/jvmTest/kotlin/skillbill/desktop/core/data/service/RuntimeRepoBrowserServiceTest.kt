@@ -157,15 +157,16 @@ class RuntimeRepoBrowserServiceTest {
   }
 
   @Test
-  fun `skill bill config appears first under add-ons and opens editable default when missing`() {
+  fun `skill bill config appears in standalone configuration and opens editable default when missing`() {
     val repo = seedRepo("config-tree-row")
     val configPath = Files.createTempDirectory("skillbill-desktop-config").resolve("config.json")
     val service = RuntimeRepoBrowserService()
     service.skillBillConfigPathResolver = { configPath }
 
     val session = service.open(repo.toString())
-    val addonGroup = service.treeFor(session).single { it.kind == TreeItemKind.GROUP && it.label == "Add-ons" }
-    val configItem = addonGroup.children.first()
+    val tree = service.treeFor(session)
+    val configurationGroup = tree.single { it.kind == TreeItemKind.GROUP && it.label == "Configuration" }
+    val configItem = configurationGroup.children.single()
     val document = service.loadDocument(session, configItem.id)
 
     assertEquals(TreeItemKind.CONFIG, configItem.kind)
@@ -176,6 +177,9 @@ class RuntimeRepoBrowserServiceTest {
     assertEquals("skill-bill config", document.kind)
     assertEquals("{\n  \"external_addon_sources\": []\n}\n", document.text)
     assertFalse(Files.exists(configPath))
+    assertTrue(tree.single { it.kind == TreeItemKind.GROUP && it.label == "Add-ons" }.children.none {
+      it.kind == TreeItemKind.CONFIG
+    })
   }
 
   @Test
@@ -188,9 +192,9 @@ class RuntimeRepoBrowserServiceTest {
     service.skillBillConfigPathResolver = { configPath }
     val session = service.open(repo.toString())
     val configItem = service.treeFor(session)
-      .single { it.kind == TreeItemKind.GROUP && it.label == "Add-ons" }
+      .single { it.kind == TreeItemKind.GROUP && it.label == "Configuration" }
       .children
-      .first { it.kind == TreeItemKind.CONFIG }
+      .single { it.kind == TreeItemKind.CONFIG }
 
     val document = service.loadDocument(session, configItem.id)
     val validBody = """{"external_addon_sources":[{"path":"/tmp/other","platform":"kmp"}]}"""

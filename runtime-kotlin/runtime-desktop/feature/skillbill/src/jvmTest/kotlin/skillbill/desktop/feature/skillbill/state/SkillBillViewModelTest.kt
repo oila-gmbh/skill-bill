@@ -123,8 +123,8 @@ class SkillBillViewModelTest {
     val skillTreeService = FakeSkillTreeService(
       listOf(
         SkillBillTreeItem(
-          id = "addons",
-          label = "Add-ons",
+          id = "configuration",
+          label = "Configuration",
           kind = TreeItemKind.GROUP,
           children = listOf(
             SkillBillTreeItem(id = configId, label = "Skill Bill config", kind = TreeItemKind.CONFIG),
