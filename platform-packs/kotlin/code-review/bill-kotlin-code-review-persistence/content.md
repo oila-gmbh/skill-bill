@@ -32,7 +32,7 @@ Use when Exposed, Spring, Hibernate, JDBC, R2DBC, migrations, repositories, or b
 - Reject queries and bulk mutations missing trusted tenant and soft-delete predicates; incomplete scope creates cross-account exposure.
 - Require Flyway or Liquibase migrations to handle existing rows and mixed application versions; unsafe `NOT NULL` changes can fail rollout.
 - Verify indexes with `EXPLAIN` for changed high-volume predicates; an unindexed migration can cause latency and resource exhaustion.
-- Require bounded chunking and resume markers for bulk updates; one giant transaction risks lock timeout and unrecoverable partial failure.
+- Require bounded chunking plus either idempotent chunk mutations or an atomic mutation-and-checkpoint commit for resumable bulk updates; a crash after a non-idempotent chunk commits but before its marker advances can replay and corrupt data, while one giant transaction risks lock timeout and unrecoverable partial failure.
 - Reject event publication before commit; prefer a transactional outbox when delivery must survive crashes, and treat an `afterCommit` callback as non-durable unless explicit retry or recovery persists failed publication.
 - Require the detected framework's transaction boundary to preserve concurrent update order: Exposed `transaction` or `newSuspendedTransaction`, Spring proxy-managed transactions, Hibernate sessions, JDBC thread-bound contexts, and R2DBC reactive contexts are not interchangeable, and mixing them risks data loss or invalid state.
 - Verify `@Version` failures trigger bounded conflict handling; ignoring optimistic-lock errors can corrupt data under concurrency.

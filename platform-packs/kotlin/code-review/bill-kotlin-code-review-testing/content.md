@@ -26,7 +26,7 @@ Use for Kotlin unit, integration, contract, persistence, coroutine, and toolchai
 - Require `StandardTestDispatcher` only for deterministic queued scheduling, never as evidence of production thread or event ordering; missing explicit advancement with `runCurrent`, `advanceTimeBy`, or `advanceUntilIdle` risks false-positive ordering tests and concurrency regression.
 - Reject `UnconfinedTestDispatcher` when thread confinement matters; immediate resumption can make an invalid lifecycle test pass.
 - Require explicit cancellation and completion assertions on child `Job` state; `runTest` reports unfinished children as a leak failure, while intentional long-lived helpers belong in `backgroundScope` so the test can cancel them at completion.
-- Verify complete Flow sequences with Turbine `awaitItem` and `awaitComplete`; a single `first()` cannot detect dropped or reordered data.
+- Verify finite Flow sequences with bounded Turbine `awaitItem` assertions followed by `awaitComplete`; for `StateFlow`, `SharedFlow`, and other hot streams that normally never complete, assert the bounded items and ordering under test, then explicitly cancel the collector. A single `first()` cannot detect dropped or reordered data, while requiring hot-flow completion creates a hanging or false test contract.
 - Require Spring, Ktor, or DI integration tests when interceptors and serialization boundaries change; unit mocks can miss framework contract failure.
 - Reject persistence tests that assert only repository calls; verify commit, rollback, constraints, and durable rows through `Testcontainers` or an equivalent real boundary.
 - Require serializer round trips for absent, null, default, enum, and time values; happy-path DTO tests can miss data compatibility regression.

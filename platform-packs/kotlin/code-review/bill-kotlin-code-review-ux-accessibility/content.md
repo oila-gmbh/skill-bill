@@ -12,7 +12,7 @@ internal-for: bill-code-review
 
 ## Ignore
 
-- Android and Compose Multiplatform accessibility, which belongs to KMP; UI rendering and security findings belong to their specialist lanes; ignore subjective polish without task or access failure
+- Android and Compose Multiplatform source-set or target-specific accessibility, which belongs to KMP; standalone Compose Desktop remains Kotlin-owned. UI rendering and security findings belong to their specialist lanes; ignore subjective polish without task or access failure
 
 ## Applicability
 
@@ -42,4 +42,4 @@ Run only when a Kotlin diff exposes Compose Desktop, Swing, JavaFX, server-rende
 - Require bounded terminal redraw work around `SIGWINCH`; unbounded resize processing can exhaust resources and cause latency failure.
 - For Blocker or Major findings, describe the concrete accessibility or task-completion failure scenario.
 
-Android and Compose Multiplatform semantics must route to the KMP UX/accessibility lane, which deterministically augments this retained Kotlin baseline.
+Android and Compose Multiplatform source-set or target-specific semantics must route to the KMP UX/accessibility lane, which deterministically augments this retained Kotlin baseline for standalone Compose Desktop.

@@ -22,7 +22,7 @@ Use when Kotlin execution context, data volume, I/O, or framework behavior can c
 
 ### Performance Review Rules
 
-- Reject `runBlocking` inside suspend code because it consumes a worker and risks dispatcher starvation under concurrent load.
+- Reject `runBlocking` whenever the calling execution context must remain non-blocking, including coroutine workers, `Dispatchers.Default`, and UI dispatchers; this applies even from ordinary callbacks or non-suspend functions because consuming the owned thread risks starvation or a frozen interface under concurrent load.
 - Require blocking JDBC, filesystem, and legacy client boundaries to switch to an infrastructure-owned context such as `Dispatchers.IO` when they are not already governed by a thread-bound transaction; blocking the default pool causes latency failure, while an internal dispatcher hop can break transaction ownership.
 - Verify measured concurrency across dispatcher parallelism, connection pools, queues, and downstream capacity; `Dispatchers.IO.limitedParallelism` can bound one call site but is not a universal substitute for admission control, and excess demand still risks resource exhaustion or timeout.
 - Verify `flowOn` changes only the upstream flow execution context and leaves downstream operators and collection in the collector context; require it only when evidence shows an upstream producer or operator on the wrong context causes latency regression.

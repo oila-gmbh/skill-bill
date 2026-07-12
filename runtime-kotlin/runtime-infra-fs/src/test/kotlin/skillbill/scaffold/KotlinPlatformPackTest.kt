@@ -140,44 +140,72 @@ class KotlinPlatformPackTest {
 
     val architecture = specialistContent(reviewRoot, "architecture")
     assertContains(architecture, "dispatcher may be encapsulated by the adapter")
-    assertContains(architecture, "When Exposed is detected")
+    assertContains(architecture, "infrastructure transaction runner or adapter")
+    assertFalse(architecture.contains("use case owns the atomic boundary and calls `newSuspendedTransaction`"))
     assertFalse(architecture.contains("every blocking API must receive an injected dispatcher"))
 
     val correctness = specialistContent(reviewRoot, "platform-correctness")
     assertContains(correctness, "propagate `CancellationException`")
     assertContains(correctness, "equality-based conflation")
     assertContains(correctness, "For APIs actually published to Java callers")
+    assertContains(correctness, "only while subscribers are active")
+
+    val apiContracts = specialistContent(reviewRoot, "api-contracts")
+    assertContains(apiContracts, "`LocalDate` fields to declare calendar and format semantics while remaining zone-free")
+    assertFalse(apiContracts.contains("`Instant` and `LocalDate` fields to declare format and zone semantics"))
 
     val persistence = specialistContent(reviewRoot, "persistence")
     assertContains(persistence, "do not hop to `Dispatchers.IO` from inside an active thread-bound transaction")
     assertContains(persistence, "transactional outbox")
+    assertContains(persistence, "atomic mutation-and-checkpoint commit")
 
     val reliability = specialistContent(reviewRoot, "reliability")
     assertContains(reliability, "parent or sibling `CancellationException`")
     assertContains(reliability, "broker's drain or rebalance contract")
+    assertContains(reliability, "caller-owned latency and attempt budget")
+    assertContains(reliability, "effective deduplication strategy")
+    assertContains(reliability, "atomic transaction owned by the detected framework")
+    assertContains(reliability, "replay and rebuild jobs to bound concurrency")
+    assertFalse(reliability.contains("Require retries around `HttpClient.request`"))
+    assertFalse(reliability.contains("Require idempotency keys around retried writes"))
+    assertFalse(reliability.contains("share one `@Transactional` boundary"))
 
     val performance = specialistContent(reviewRoot, "performance")
     assertContains(performance, "`flowOn` changes only the upstream flow execution context")
     assertContains(performance, "not a universal substitute")
+    assertContains(performance, "ordinary callbacks or non-suspend functions")
+    assertFalse(performance.contains("Reject `runBlocking` inside suspend code"))
 
     val security = specialistContent(reviewRoot, "security")
     assertContains(security, "does not instantiate arbitrary JVM classes")
     assertContains(security, "canonical resolution")
     assertContains(security, "direct argument-list execution does not perform shell expansion")
+    assertContains(security, "JVM `ObjectInputStream`")
+    assertContains(security, "expiration according to policy")
+    assertContains(security, "both applicable Gradle dependency integrity")
+    assertFalse(security.contains("expiry or not-before"))
+    assertFalse(security.contains("dependency verification or vulnerability checks"))
 
     val testing = specialistContent(reviewRoot, "testing")
     assertContains(testing, "never as evidence of production thread or event ordering")
     assertContains(testing, "`backgroundScope`")
     assertContains(testing, "do not universally require `compileTestKotlin`")
+    assertContains(testing, "other hot streams that normally never complete")
+    assertContains(testing, "explicitly cancel the collector")
 
     val ui = specialistContent(reviewRoot, "ui")
     assertContains(ui, "`DisposableEffect` for acquire/dispose")
     assertContains(ui, "Compose Desktop UI thread")
     assertContains(ui, "only when the current execution is off that thread")
+    assertContains(ui, "standalone Compose Desktop remains Kotlin-owned")
+    assertContains(ui, "targeted rendering, interaction, golden, or UI-harness evidence")
+    assertFalse(ui.contains("Android and Compose Multiplatform behavior"))
 
     val accessibility = specialistContent(reviewRoot, "ux-accessibility")
     assertContains(accessibility, "version- and platform-dependent")
     assertContains(accessibility, "semantics alone do not prove")
+    assertContains(accessibility, "standalone Compose Desktop remains Kotlin-owned")
+    assertFalse(accessibility.contains("Android and Compose Multiplatform accessibility"))
   }
 
   @Test

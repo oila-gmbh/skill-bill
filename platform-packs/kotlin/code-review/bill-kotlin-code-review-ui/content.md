@@ -12,7 +12,7 @@ internal-for: bill-code-review
 
 ## Ignore
 
-- Android and Compose Multiplatform behavior, which belongs to KMP; ux-accessibility and security findings belong to their specialist lanes; ignore visual taste without a user-visible failure
+- Android and Compose Multiplatform source-set or target-specific behavior, which belongs to KMP; standalone Compose Desktop remains Kotlin-owned. ux-accessibility and security findings belong to their specialist lanes; ignore visual taste without a user-visible failure
 
 ## Applicability
 
@@ -35,7 +35,7 @@ Run only when the diff contains Compose Desktop, Swing, JavaFX, server-rendered 
 - Require CLI commands built with `Clikt` or `kotlinx-cli` to separate parsing, state transition, and rendering; mixed partial output can report success after failure.
 - Verify TUI loops handle resize, interrupted reads, redraw recovery, and terminal restoration in `finally`; a crash can leave corrupted rendering or raw terminal state.
 - Require `Window` close handling to cancel owned effects; missing lifecycle cleanup can leak concurrent state and resources.
-- Require `gradle test` or UI harness evidence for rendering changes; unverified toolchain behavior risks build and interaction failure.
+- Require targeted rendering, interaction, golden, or UI-harness evidence for the changed surface; a generic Gradle test run unrelated to that surface cannot establish layout, state, lifecycle, or interaction correctness.
 - For Blocker or Major findings, describe the concrete user-visible interaction or rendering failure scenario.
 
-Android views and Compose Multiplatform target behavior must route to the KMP UI lane; this specialist remains the Kotlin baseline for standalone surfaces.
+Android views and Compose Multiplatform source-set or target-specific behavior must route to the KMP UI lane; standalone Compose Desktop remains in this Kotlin baseline.
