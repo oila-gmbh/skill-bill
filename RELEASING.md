@@ -8,7 +8,37 @@ The release contract is:
 - push the tag to GitHub
 - let the `Release` workflow rerun validation and publish the GitHub Release
 
-Pre-release tags such as `v0.5.0-rc.1` are also supported and publish GitHub prereleases.
+The root [LICENSE](LICENSE) governs release licensing. Its non-authoritative
+[version matrix](docs/licensing.md) is deliberately short: v0.1.0 and v0.1.1
+retain their shipped terms; releases starting with v0.1.2, including v0.1.2
+prereleases distributed with the license, permit lawful use including commercial
+use before the Stable Release Event. At and after the event, personal and
+qualifying open-source-project use remain free while other commercial use
+requires a purchased Commercial License. Documented customization materials may
+be modified for permitted use; public redistribution is not granted.
+
+Pre-release tags such as `v0.5.0-rc.1` are also supported and publish GitHub
+prereleases. Versions preceding v0.1.2 by SemVer precedence, including
+`v0.1.1+rebuild.1`, retain their historical terms. Starting at v0.1.2, the
+release validator requires the complete custom policy, not just its identifier
+or a marker. A `v1.0.0` release candidate remains non-triggering. Stable
+`v1.0.0` and later release lines use the same policy and are rejected until the
+copyright holder approves its exact normalized bytes for stable publication.
+
+Use the [stable-policy approval record](docs/release-successor-license-approval.md)
+before any `v1.0.0` or later release. The record must name the governing license
+identifier and exact normalized SHA-256. This gate prevents placeholder or
+substitute terms from being published as the stable policy.
+
+For the exact stable `v1.0.0` publication, configure the repository secret
+`SKILL_BILL_COPYRIGHT_HOLDER_RELEASE_TOKEN` and variable
+`SKILL_BILL_COPYRIGHT_HOLDER_GITHUB_LOGIN` for Braian Gapur. The workflow
+fails closed unless that token authenticates as the configured holder and the
+release is created by that account.
+
+The [LICENSE](LICENSE) alone defines the Stable Release Event. A successful
+workflow, an existing GitHub Release object, a bare tag, or a local artifact is
+not proof that the event occurred.
 
 ## What a tag push builds
 
@@ -24,7 +54,11 @@ archive plus its `.sha256` sidecar to the GitHub Release for that tag:
 The `<os>-<arch>` token is the canonical set `macos-arm64` / `windows-x64` /
 `linux-x64`, so downstream installers can resolve the correct asset by host. Each
 artifact ships with a matching `<name>.sha256` file. The build toolchain is
-pinned to JDK 17 (temurin) on every runner.
+pinned to JDK 17 (temurin) on every runner. Before upload, each host extracts or
+mounts its native artifacts and compares the included root `LICENSE` bytes; it
+also verifies the adjacent checksum after the licensed artifact is finalized.
+The Linux skills archive includes the root `LICENSE` directly and is checked the
+same way.
 
 Builds run on host-matched runners because jlink and jpackage cannot
 cross-compile: macOS arm64 on the **self-hosted Apple Silicon Mac mini**
@@ -50,12 +84,18 @@ stable release:
    workflow validates the ref, builds every per-OS asset, and publishes a GitHub
    prerelease with all archives + `.sha256` files attached.
 2. **Manual run (`workflow_dispatch`)** — trigger the `Release` workflow from the
-   Actions tab and supply a `staging_version` label (e.g. `v0.5.0-rc.1`). No tag
-   push is required; the workflow builds the same per-OS asset set and publishes a
-   prerelease named from the input, so testers get a real downloadable asset set.
+   Actions tab and supply a SemVer prerelease `staging_version` label (e.g.
+   `v0.5.0-staging.1`). No tag push is required; the workflow rejects a stable
+   version label, builds the same per-OS asset set, and publishes a prerelease
+   named from the input, so testers get a real downloadable asset set.
 
-Both paths reuse the same build matrix and the same fail-closed validation gate as
-a stable release.
+Both paths reuse the same build matrix and the same fail-closed release-policy
+validator as a stable release. Every staging label is immutable evidence for
+one asset set: the workflow refuses an existing release or staging tag instead
+of replacing assets, so use a fresh prerelease label for every new matrix run.
+The workflow creates a draft, uploads and confirms the complete expected asset
+set, then publishes it; a failed upload therefore cannot make a partial stable
+release public.
 
 ## Release notes
 
@@ -123,22 +163,33 @@ under the hood.
    scripts/validate_agent_configs
    ```
 
-3. Pick the next version tag.
-4. Create an annotated tag:
+3. Before creating `v0.1.2`, obtain and record explicit approval of the exact
+   final [LICENSE](LICENSE) text from the copyright holder, Braian Gapur.
+   Automated checks do not replace this approval or external legal review.
+   Use the [pre-1.0 license approval record](docs/release-license-approval.md)
+   to capture the approved `LICENSE` SHA-256 and approval location.
+4. Pick the next canonical `v`-prefixed version tag. For releases from `v0.1.2`
+   through pre-1.0, run
+   `scripts/validate_release_ref v0.x.y`; a staging build must use a SemVer
+   prerelease label such as `v0.x.y-staging.1`. Do not create stable `v1.0.0` or
+   later until the exact governing policy has the completed copyright-holder
+   approval record described above.
+5. Create an annotated tag:
 
    ```bash
    git tag -a v0.x.y -m "Release v0.x.y"
    ```
 
-5. Push the tag:
+6. Push the tag:
 
    ```bash
    git push origin v0.x.y
    ```
 
-6. Confirm the `Release` workflow succeeds and the GitHub Release appears with
+7. Confirm the `Release` workflow succeeds and the GitHub Release appears with
    generated notes and the per-OS runtime-image + desktop-installer assets (each
-   with its `.sha256`) attached.
+   with its `.sha256`) attached. Confirm the published artifacts passed the
+   root-license byte check on their native release-matrix host.
 
 ## Installing from a release
 

@@ -1,149 +1,194 @@
-Skill Bill License
+Skill Bill Use License 1.0
 
+Identifier: LicenseRef-Skill-Bill-Use-1.0
 Copyright (c) 2026 Braian Gapur
+Prospective Effective Version: v0.1.2
 
-Skill Bill is source-available software.
+1. Purpose and prospective application
 
-Noncommercial use is licensed under the PolyForm Noncommercial License 1.0.0
-below.
+This Skill Bill Use License 1.0 (this "License") states the terms on which the
+Copyright Holder makes Covered Software available. This License applies
+prospectively to Skill Bill v0.1.2, prereleases leading to v0.1.2 that are
+distributed with this License, every later release distributed with this
+License, and corresponding source snapshots distributed with this License.
 
-Commercial use is not permitted by this public license. Commercial use includes
-use by a for-profit company, use in a paid product or service, use to provide
-paid consulting or managed services, or any other use intended to generate
-revenue or business advantage. Commercial use requires a separate commercial
-license from the copyright holder.
+This License does not replace, revoke, narrow, or reinterpret any license,
+permission, or other right granted for v0.1.0, v0.1.1, or an earlier revision.
+Those materials remain subject to the terms with which they were received.
 
-The copyright holder may separately authorize specific people, companies,
-customers, and partners to use Skill Bill outside the public noncommercial
-license.
+2. Definitions
 
-Required Notice: Copyright (c) 2026 Braian Gapur. Skill Bill is licensed for
-noncommercial use under the PolyForm Noncommercial License 1.0.0. Commercial
-use requires a separate commercial license from the copyright holder.
+"Commercial License" means a separate written commercial agreement purchased
+from the Copyright Holder that grants commercial rights after the Stable
+Release Event.
 
-# PolyForm Noncommercial License 1.0.0
+"Copyright Holder" means Braian Gapur.
 
-<https://polyformproject.org/licenses/noncommercial/1.0.0>
+"Covered Software" means the Skill Bill software with which this License is
+included or identified, as described in section 1. Covered Software excludes
+Third-Party Software and User Materials.
 
-## Acceptance
+"Customizable Materials" means the governed skills, platform packs, add-ons,
+native-agent definitions, orchestration text, configuration, and templates
+included in Covered Software and intentionally exposed by Skill Bill's
+documented customization surfaces. It does not include executable runtime code.
 
-In order to get any license under these terms, you must agree
-to them as both strict obligations and conditions to all
-your licenses.
+"GitHub Release" means a release object published through GitHub's release
+feature, rather than a branch, commit, local artifact, or bare Git tag.
 
-## Copyright License
+"Licensee" means every natural person or legal entity exercising a permission
+under this License.
 
-The licensor grants you a copyright license for the software
-to do everything you might do with the software that would
-otherwise infringe the licensor's copyright in it for any
-permitted purpose.  However, you may only distribute the
-software according to [Distribution License](#distribution-license)
-and make changes or new works based on the software according
-to [Changes and New Works License](#changes-and-new-works-license).
+"Open Source Project Use" means use solely to create, maintain, test, review,
+document, or contribute to software whose source code is publicly available
+under a license approved by the Open Source Initiative. A natural person or
+legal entity may qualify regardless of employment, compensation, sponsorship,
+or organizational affiliation, provided the use is for that qualifying open
+source project and Covered Software is not incorporated into or distributed
+with the project.
 
-## Distribution License
+"Personal Use" means use by a natural person solely on that person's own
+behalf, not as an employee, contractor, agent, or representative of another
+person or organization and not for compensation, revenue, or business
+advantage.
 
-The licensor grants you an additional copyright license
-to distribute copies of the software.  Your license
-to distribute covers distributing the software with
-changes and new works permitted by [Changes and New Works
-License](#changes-and-new-works-license).
+"Stable Release Event" means the first public, non-draft, non-prerelease
+GitHub Release tagged exactly v1.0.0 that is published by the Copyright Holder
+in the oila-gmbh/skill-bill repository. A draft, a prerelease, a release
+candidate or other prerelease identifier, a bare tag, a branch, a local
+artifact, or a release from a fork or another repository owner is not the
+Stable Release Event. Once the Stable Release Event occurs, its later
+withdrawal, deletion, or change to prerelease status does not undo the event.
 
-## Notices
-
-You must ensure that anyone who gets a copy of any part of
-the software from you also gets a copy of these terms or the
-URL for them above, as well as copies of any plain-text lines
-beginning with `Required Notice:` that the licensor provided
-with the software.  For example:
-
-> Required Notice: Copyright Yoyodyne, Inc. (http://example.com)
-
-## Changes and New Works License
-
-The licensor grants you an additional copyright license to
-make changes and new works based on the software for any
-permitted purpose.
-
-## Patent License
-
-The licensor grants you a patent license for the software that
-covers patent claims the licensor can license, or becomes able
-to license, that you would infringe by using the software.
-
-## Noncommercial Purposes
-
-Any noncommercial purpose is a permitted purpose.
-
-## Personal Uses
-
-Personal use for research, experiment, and testing for
-the benefit of public knowledge, personal study, private
-entertainment, hobby projects, amateur pursuits, or religious
-observance, without any anticipated commercial application, is
-use for a permitted purpose.
-
-## Noncommercial Organizations
-
-Use by any charitable organization, educational institution,
-public research organization, public safety or health organization,
-environmental protection organization, or government institution
-is use for a permitted purpose regardless of the source of
-funding or obligations resulting from the funding.
-
-## Fair Use
-
-You may have "fair use" rights for the software under the
-law. These terms do not limit them.
-
-## No Other Rights
-
-These terms do not allow you to sublicense or transfer any of
-your licenses to anyone else, or prevent the licensor from
-granting licenses to anyone else.  These terms do not imply
-any other licenses.
-
-## Patent Defense
-
-If you make any written claim that the software infringes or
-contributes to infringement of any patent, your patent license
-for the software granted under these terms ends immediately. If
-your company makes such a claim, your patent license ends
-immediately for work on behalf of your company.
-
-## Violations
-
-The first time you are notified in writing that you have
-violated any of these terms, or done anything with the software
-not covered by your licenses, your licenses can nonetheless
-continue if you come into full compliance with these terms,
-and take practical steps to correct past violations, within
-32 days of receiving notice.  Otherwise, all your licenses
-end immediately.
-
-## No Liability
-
-As far as the law allows, the software comes as is, without
-any warranty or condition, and the licensor will not be liable
-to you for any damages arising out of these terms or the use
-or nature of the software, under any kind of legal claim.
-
-## Definitions
-
-The **licensor** is the individual or entity offering these
-terms, and the **software** is the software the licensor makes
-available under these terms.
-
-**You** refers to the individual or entity agreeing to these
+"Third-Party Software" means software, libraries, dependencies, runtimes, or
+other material that is not Covered Software and is supplied under its own
 terms.
 
-**Your company** is any legal entity, sole proprietorship,
-or other kind of organization that you work for, plus all
-organizations that have control over, are under the control of,
-or are under common control with that organization.  **Control**
-means ownership of substantially all the assets of an entity,
-or the power to direct its management and policies by vote,
-contract, or otherwise.  Control can be direct or indirect.
+"User Materials" means independently authored specifications, skills,
+platform packs, add-ons, native-agent definitions, configuration, prompts, and
+similar input material. "Generated Outputs" means code, documents, reports,
+telemetry exports, patches, and other output produced through permitted use.
 
-**Your licenses** are all the licenses granted to you for the
-software under these terms.
+3. Acceptance and ownership
+
+By obtaining, installing, copying, modifying Customizable Materials, or
+executing Covered Software, a Licensee accepts this License. Covered Software
+is licensed, not sold. The Copyright Holder retains all rights not expressly
+granted by this License, including all rights in Covered Software and its
+names, marks, and branding.
+
+4. Grant before the Stable Release Event
+
+Before the Stable Release Event, the Copyright Holder grants every Licensee a
+non-exclusive, worldwide, royalty-free right to obtain Covered Software, make
+the transient, installation, execution, and reasonable backup copies necessary
+to exercise this grant, and install and execute Covered Software for any lawful
+purpose.
+
+The permitted purpose expressly includes internal business use, paid work,
+commercial use, consulting, managed-service use, and hosted-service use,
+provided that the Licensee does not transfer Covered Software or make a copy of
+Covered Software available to a third party except as section 6 permits. This
+grant is free of charge and is not a sale, transfer of ownership, or sublicense.
+
+5. Grant at and after the Stable Release Event
+
+At the Stable Release Event, the commercial-use permission in section 4 ends
+automatically for every Covered Software version. At and after that event, the
+Copyright Holder grants every Licensee a non-exclusive, worldwide, royalty-free
+right to obtain, download, make necessary installation, execution, and
+reasonable backup copies of, install, and execute Covered Software for Personal
+Use or Open Source Project Use.
+
+Any other use at or after the Stable Release Event, including internal business
+use, paid proprietary work, consulting, managed services, revenue-producing use,
+or use for business advantage outside Open Source Project Use, requires a
+Commercial License purchased from the Copyright Holder before that use begins.
+A Licensee whose use no longer qualifies must stop that use and remove active,
+installed, and deployable copies under its control unless and until it obtains a
+Commercial License. One non-executable archival copy may be retained when
+applicable law requires that retention and may not otherwise be used.
+
+Charitable, educational, governmental, and other nonprofit organizational use
+is not automatically Personal Use, but it may qualify as Open Source Project
+Use when it satisfies that definition.
+
+6. Customization permission
+
+For any use permitted under section 4 or 5, a Licensee may copy, modify, adapt,
+and create derivative works from Customizable Materials and may install and use
+those customized materials with Covered Software. A legal entity may provide
+those customized materials internally to its employees and individual
+contractors solely for the entity's own permitted use, provided those people
+receive this License and do not exercise broader rights.
+
+This permission does not allow public distribution, publication, mirroring,
+sublicensing, sale, leasing, or transfer of Customizable Materials, and it does
+not permit modification or reverse engineering of executable runtime code
+except where applicable law cannot be excluded.
+
+7. Restrictions that apply at all times
+
+Except for the customization permission in section 6, this License grants no
+right to modify, translate, adapt, reverse engineer except where applicable law
+cannot be excluded, or prepare derivative works from Covered Software. It
+grants no right to redistribute, distribute, publish, mirror, sublicense, sell,
+lease, transfer, bundle, or otherwise provide Covered Software source or
+binaries to another person.
+
+This License also grants no right to remove or alter copyright, license,
+attribution, or proprietary notices; to represent Covered Software as open
+source or free software; or to use project names, marks, or branding except as
+reasonably necessary to identify Covered Software. The copying rights expressly
+allowed in sections 4 through 6 are the only copying rights granted by this
+License.
+
+8. User Materials and Generated Outputs
+
+Using documented extension and input surfaces is permitted and is not a
+modification of executable runtime code. Licensees retain all rights in their
+User Materials and Generated Outputs and may create, modify, use, license, and
+distribute them, subject to applicable law and third-party rights. This License
+makes no ownership claim over them.
+
+If User Materials or Generated Outputs reproduce a protected portion of
+Covered Software, this License continues to govern that protected portion. The
+Copyright Holder retains all rights in that reproduced Covered Software
+material.
+
+9. Earlier, commercial, platform, and third-party rights
+
+This License does not retroactively withdraw or narrow rights arising under an
+earlier MIT, PolyForm, or other license; applicable law; a Commercial License or
+other separate agreement; GitHub's platform-limited rights for public
+repositories; or a Third-Party Software license. Third-Party Software remains
+subject to its own terms.
+
+10. Termination and cure
+
+The permissions granted by this License terminate automatically if a Licensee
+materially breaches this License. For a first material breach, the permissions
+continue if the Licensee receives written notice, comes fully into compliance,
+and takes reasonable steps to correct the effects of the breach within 30 days
+after receiving that notice. A later material breach terminates the permissions
+immediately. Termination does not affect rights that arose independently of
+this License.
+
+11. Disclaimer and limitation of liability
+
+Covered Software is provided "AS IS" and "AS AVAILABLE." To the maximum extent
+permitted by applicable law, the Copyright Holder disclaims all warranties,
+whether express, implied, statutory, or otherwise, including warranties of
+merchantability, fitness for a particular purpose, title, and noninfringement.
+To the maximum extent permitted by applicable law, the Copyright Holder is not
+liable for any indirect, incidental, special, consequential, exemplary, or
+punitive damages, or for lost profits, revenue, data, goodwill, or business
+interruption, arising from or related to this License or Covered Software.
+
+12. General terms
+
+If any provision of this License is unenforceable, it shall be enforced to the
+maximum extent permitted and the remaining provisions remain in effect. A
+waiver is effective only when in writing and applies only to the specific
+instance waived. This License does not create a partnership, agency, or joint
+venture. Sections that by their nature should survive termination do survive.

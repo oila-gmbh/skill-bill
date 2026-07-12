@@ -12,8 +12,8 @@ on:
     inputs:
       staging_version:
         description: >-
-          Staging version label for a manual run (e.g. v0.4.0-rc.1). Produces a
-          downloadable prerelease asset set without requiring a pushed tag.
+          SemVer prerelease label for a manual run (e.g. v0.4.0-staging.1).
+          Produces a downloadable prerelease asset set without requiring a pushed tag.
         required: true
         type: string
 
@@ -80,8 +80,16 @@ jobs:
       # build.gradle.kts so every artifact name embeds the correct version.
       - name: Set release version
         shell: bash
+        env:
+          STAGING_VERSION: ${{ inputs.staging_version }}
         run: |
-          raw="${{ github.event_name == 'workflow_dispatch' && inputs.staging_version || github.ref_name }}"
+          validation_args=()
+          raw="$GITHUB_REF_NAME"
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            raw="$STAGING_VERSION"
+            validation_args+=(--force-prerelease)
+          fi
+          scripts/validate_release_ref "$raw" "${validation_args[@]}"
           echo "RELEASE_VERSION=${raw#v}" >> "$GITHUB_ENV"
 
       # Linux desktop installers shell out to native packaging tools: .deb needs
@@ -93,6 +101,11 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends fakeroot rpm
+
+      - name: Install MSI inspection tooling
+        if: matrix.host_token == 'windows-x64'
+        shell: bash
+        run: choco install lessmsi --yes --no-progress
 
       # AC1/AC5: self-contained per-OS runtime images for CLI + MCP. runtimeZip is
       # finalizedBy its .sha256 task, so each produces archive + .sha256. Badass
@@ -117,7 +130,69 @@ jobs:
           cd runtime-kotlin
           ./gradlew ${{ matrix.installer_tasks }}
 
-      # AC2/AC5: upload every produced archive + its .sha256 under an artifact
+      - name: Bundle skills archive
+        if: matrix.host_token == 'linux-x64'
+        shell: bash
+        run: |
+          archive="skill-bill-skills-${RELEASE_VERSION}.tar.gz"
+          tar -czf "$archive" LICENSE skills/ platform-packs/ orchestration/ uninstall.sh
+          sha256sum "$archive" > "${archive}.sha256"
+
+      - name: Verify packaged licenses and checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          host_token="${{ matrix.host_token }}"
+          desktop_dir="runtime-kotlin/runtime-desktop/build/compose/binaries/main"
+          artifacts=(
+            "runtime-kotlin/runtime-cli/build/runtime-image/runtime-cli-${RELEASE_VERSION}-${host_token}.zip"
+            "runtime-kotlin/runtime-mcp/build/runtime-image/runtime-mcp-${RELEASE_VERSION}-${host_token}.zip"
+          )
+          case "${host_token}" in
+            macos-arm64)
+              artifacts+=("${desktop_dir}/dmg/SkillBill-${RELEASE_VERSION}-${host_token}.dmg")
+              ;;
+            windows-x64)
+              artifacts+=("${desktop_dir}/msi/SkillBill-${RELEASE_VERSION}-${host_token}.msi")
+              ;;
+            linux-x64)
+              artifacts+=(
+                "${desktop_dir}/deb/SkillBill-${RELEASE_VERSION}-${host_token}.deb"
+                "${desktop_dir}/rpm/SkillBill-${RELEASE_VERSION}-${host_token}.rpm"
+                "skill-bill-skills-${RELEASE_VERSION}.tar.gz"
+              )
+              ;;
+            *)
+              echo "Unsupported release host token: ${host_token}." >&2
+              exit 1
+              ;;
+          esac
+          for artifact in "${artifacts[@]}"; do
+            [[ -f "${artifact}" ]] || { echo "Missing canonical artifact: ${artifact}." >&2; exit 1; }
+            [[ -f "${artifact}.sha256" ]] || { echo "Missing checksum sidecar: ${artifact}.sha256." >&2; exit 1; }
+          done
+          scripts/verify_release_artifact_licenses "${artifacts[@]}"
+          verifier_probe="$(mktemp -d)"
+          cp scripts/verify_release_artifact_licenses "${verifier_probe}/verify_release_artifact_licenses"
+          printf '%s\n' 'intentional license drift probe' > "${verifier_probe}/LICENSE"
+          for artifact in "${artifacts[@]}"; do
+            probe_log="${verifier_probe}/$(basename "${artifact}").log"
+            if "${verifier_probe}/verify_release_artifact_licenses" "${artifact}" >"${probe_log}" 2>&1; then
+              echo "License drift probe unexpectedly accepted ${artifact}." >&2
+              exit 1
+            fi
+            if ! grep -q 'LICENSE bytes differ' "${probe_log}"; then
+              echo "License drift probe failed for an unrelated reason in ${artifact}." >&2
+              cat "${probe_log}" >&2
+              exit 1
+            fi
+          done
+          mkdir release-assets
+          for artifact in "${artifacts[@]}"; do
+            cp "${artifact}" "${artifact}.sha256" release-assets/
+          done
+
+      # AC2/AC5: upload every verified archive + its .sha256 under an artifact
       # named with the canonical host token so the publish job can collect them.
       # The runtime-image zips live under <module>/build/runtime-image/ and the
       # installers under runtime-desktop/build/compose/binaries/main/<format>/.
@@ -127,31 +202,7 @@ jobs:
           name: release-assets-${{ matrix.host_token }}
           if-no-files-found: error
           retention-days: 7
-          path: |
-            runtime-kotlin/runtime-cli/build/runtime-image/*.zip
-            runtime-kotlin/runtime-cli/build/runtime-image/*.zip.sha256
-            runtime-kotlin/runtime-mcp/build/runtime-image/*.zip
-            runtime-kotlin/runtime-mcp/build/runtime-image/*.zip.sha256
-            runtime-kotlin/runtime-desktop/build/compose/binaries/main/*/SkillBill-*
-
-      - name: Bundle skills archive
-        if: matrix.host_token == 'linux-x64'
-        shell: bash
-        run: |
-          archive="skill-bill-skills-${RELEASE_VERSION}.tar.gz"
-          tar -czf "$archive" skills/ platform-packs/ orchestration/ uninstall.sh
-          sha256sum "$archive" > "${archive}.sha256"
-
-      - name: Upload skills bundle
-        if: matrix.host_token == 'linux-x64'
-        uses: actions/upload-artifact@v4
-        with:
-          name: release-assets-skills
-          if-no-files-found: error
-          retention-days: 7
-          path: |
-            skill-bill-skills-*.tar.gz
-            skill-bill-skills-*.tar.gz.sha256
+          path: release-assets/
 
   # Phase 2: validation gate + GitHub Release publish. needs: build so the release
   # only happens once every host's artifacts exist. The maintainer validation gate
@@ -198,10 +249,6 @@ jobs:
       - name: Run repo-native validation
         run: scripts/validate_agent_configs
 
-      # AC3/AC4: derive release metadata. On a tag push we validate the ref and
-      # let validate_release_ref decide prerelease vs stable. On a manual staging
-      # run there is no tag, so we derive metadata from the staging_version input
-      # and ALWAYS publish a prerelease (staging is never a stable release).
       - name: Validate release tag
         id: release_meta
         if: github.event_name != 'workflow_dispatch'
@@ -212,13 +259,9 @@ jobs:
         if: github.event_name == 'workflow_dispatch'
         env:
           STAGING_VERSION: ${{ inputs.staging_version }}
-        run: |
-          # AC6: a manual staging run produces a real downloadable prerelease asset
-          # set without relying on validate_release_ref's tag parsing.
-          {
-            echo "tag=${STAGING_VERSION}"
-            echo "prerelease=true"
-          } >>"$GITHUB_OUTPUT"
+        run: >-
+          scripts/validate_release_ref "$STAGING_VERSION" --force-prerelease
+          --github-output "$GITHUB_OUTPUT"
 
       # AC2/AC5: collect every host's archives + .sha256 into one flat directory.
       # merge-multiple flattens the per-host artifact dirs so every asset lands
@@ -236,13 +279,11 @@ jobs:
           ls -la dist
           echo "Total asset count: $(find dist -type f | wc -l)"
 
-      # AC2/AC3/AC6: publish (or update) the GitHub Release and attach every asset.
-      # Idempotent: if the release already exists we attach assets via `gh release
-      # upload --clobber` instead of failing. Prerelease flag honours release_meta
-      # (tag push) or the always-prerelease staging path (workflow_dispatch).
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
+          HOLDER_RELEASE_TOKEN: ${{ secrets.SKILL_BILL_COPYRIGHT_HOLDER_RELEASE_TOKEN }}
+          HOLDER_GITHUB_LOGIN: ${{ vars.SKILL_BILL_COPYRIGHT_HOLDER_GITHUB_LOGIN }}
           RELEASE_TAG: ${{ steps.release_meta.outputs.tag || steps.staging_meta.outputs.tag }}
           RELEASE_PRERELEASE: ${{ steps.release_meta.outputs.prerelease || steps.staging_meta.outputs.prerelease }}
           IS_STAGING: ${{ github.event_name == 'workflow_dispatch' }}
@@ -254,38 +295,167 @@ jobs:
             exit 1
           fi
 
-          mapfile -t assets < <(find dist -type f | sort)
-          if [[ "${#assets[@]}" -eq 0 ]]; then
-            echo "No assets found under dist/; refusing to publish an empty release." >&2
+          holder_release=false
+          if [[ "${RELEASE_TAG}" == "v1.0.0" && "${RELEASE_PRERELEASE}" != "true" ]]; then
+            if [[ -z "${HOLDER_RELEASE_TOKEN}" || -z "${HOLDER_GITHUB_LOGIN}" ]]; then
+              echo "Stable v1.0.0 publication requires the copyright holder's release token and GitHub login." >&2
+              exit 1
+            fi
+            GH_TOKEN="${HOLDER_RELEASE_TOKEN}"
+            authenticated_login="$(gh api user --jq '.login')"
+            if [[ "${authenticated_login}" != "${HOLDER_GITHUB_LOGIN}" ]]; then
+              echo "Stable v1.0.0 publication token is not authenticated as the configured copyright holder." >&2
+              exit 1
+            fi
+            holder_release=true
+          fi
+
+          expected_commit="${GITHUB_SHA}"
+          if [[ "${IS_STAGING}" != "true" ]]; then
+            expected_commit="$(git ls-remote origin "refs/tags/${RELEASE_TAG}^{}" | awk 'NR == 1 { print $1 }')"
+            if [[ -z "${expected_commit}" ]]; then
+              expected_commit="$(git ls-remote --refs origin "refs/tags/${RELEASE_TAG}" | awk 'NR == 1 { print $1 }')"
+            fi
+            if [[ -z "${expected_commit}" || "${expected_commit}" != "${GITHUB_SHA}" ]]; then
+              echo "Release tag ${RELEASE_TAG} does not peel to the validated commit ${GITHUB_SHA}." >&2
+              exit 1
+            fi
+          fi
+
+          release_version="${RELEASE_TAG#v}"
+          artifact_names=(
+            "runtime-cli-${release_version}-macos-arm64.zip"
+            "runtime-mcp-${release_version}-macos-arm64.zip"
+            "SkillBill-${release_version}-macos-arm64.dmg"
+            "runtime-cli-${release_version}-windows-x64.zip"
+            "runtime-mcp-${release_version}-windows-x64.zip"
+            "SkillBill-${release_version}-windows-x64.msi"
+            "runtime-cli-${release_version}-linux-x64.zip"
+            "runtime-mcp-${release_version}-linux-x64.zip"
+            "SkillBill-${release_version}-linux-x64.deb"
+            "SkillBill-${release_version}-linux-x64.rpm"
+            "skill-bill-skills-${release_version}.tar.gz"
+          )
+          asset_names=()
+          for artifact_name in "${artifact_names[@]}"; do
+            asset_names+=("${artifact_name}" "${artifact_name}.sha256")
+          done
+          for asset_name in "${asset_names[@]}"; do
+            [[ -f "dist/${asset_name}" ]] || { echo "Missing expected release asset: ${asset_name}." >&2; exit 1; }
+          done
+          for downloaded_asset in dist/*; do
+            [[ -f "${downloaded_asset}" ]] || continue
+            downloaded_name="$(basename "${downloaded_asset}")"
+            expected=false
+            for asset_name in "${asset_names[@]}"; do
+              if [[ "${downloaded_name}" == "${asset_name}" ]]; then
+                expected=true
+                break
+              fi
+            done
+            if [[ "${expected}" != "true" ]]; then
+              echo "Unexpected release asset: ${downloaded_name}." >&2
+              exit 1
+            fi
+          done
+          assets=()
+          for asset_name in "${asset_names[@]}"; do
+            assets+=("dist/${asset_name}")
+          done
+
+          release_exists=false
+          release_published=false
+          if gh release view "${RELEASE_TAG}" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            release_exists=true
+          fi
+
+          if [[ "${release_exists}" == "true" ]]; then
+            release_metadata="$(gh release view "${RELEASE_TAG}" --repo "${{ github.repository }}" --json author,isDraft,isPrerelease,targetCommitish,tagName --jq '[.isDraft, .isPrerelease, .targetCommitish, .tagName, .author.login] | @tsv')"
+            IFS=$'\t' read -r existing_draft existing_prerelease existing_target existing_tag existing_author <<< "${release_metadata}"
+            if [[ "${existing_tag}" != "${RELEASE_TAG}" || "${existing_prerelease}" != "${RELEASE_PRERELEASE}" ]]; then
+              echo "Existing draft ${RELEASE_TAG} does not match this validated tag, commit, and prerelease classification." >&2
+              exit 1
+            fi
+            if [[ "${IS_STAGING}" == "true" && "${existing_target}" != "${expected_commit}" ]]; then
+              echo "Existing staging release ${RELEASE_TAG} does not target the validated commit ${expected_commit}." >&2
+              exit 1
+            fi
+            if [[ "${holder_release}" == "true" && "${existing_author}" != "${HOLDER_GITHUB_LOGIN}" ]]; then
+              echo "Stable v1.0.0 release ${RELEASE_TAG} was not created by the configured copyright holder." >&2
+              exit 1
+            fi
+            if [[ "${existing_draft}" != "true" ]]; then
+              release_published=true
+            fi
+          else
+            if [[ "${IS_STAGING}" == "true" ]] && git ls-remote --exit-code --refs origin "refs/tags/${RELEASE_TAG}" >/dev/null 2>&1; then
+              echo "Staging tag ${RELEASE_TAG} already exists without a resumable draft release." >&2
+              exit 1
+            fi
+
+            echo "Creating draft ${RELEASE_TAG} at ${GITHUB_SHA} with ${#assets[@]} verified assets (prerelease=${RELEASE_PRERELEASE})."
+            args=(
+              "${RELEASE_TAG}"
+              --repo "${{ github.repository }}"
+              --title "${RELEASE_TAG}"
+              --generate-notes
+              --target "${GITHUB_SHA}"
+            )
+            if [[ "${IS_STAGING}" != "true" ]]; then
+              args+=(--verify-tag)
+            fi
+            if [[ "${RELEASE_PRERELEASE}" == "true" ]]; then
+              args+=(--prerelease)
+            fi
+            gh release create "${args[@]}" --draft
+          fi
+
+          existing_assets_dir="$(mktemp -d)"
+          trap 'rm -rf "${existing_assets_dir}"' EXIT
+          uploaded_names="$(gh release view "${RELEASE_TAG}" --repo "${{ github.repository }}" --json assets --jq '.assets[].name' | sort)"
+          while IFS= read -r uploaded_name; do
+            [[ -n "${uploaded_name}" ]] || continue
+            expected=false
+            for asset_name in "${asset_names[@]}"; do
+              if [[ "${uploaded_name}" == "${asset_name}" ]]; then
+                expected=true
+                break
+              fi
+            done
+            if [[ "${expected}" != "true" ]]; then
+              echo "Draft release contains an unexpected asset: ${uploaded_name}." >&2
+              exit 1
+            fi
+          done <<< "${uploaded_names}"
+          for asset_name in "${asset_names[@]}"; do
+            if grep -Fxq "${asset_name}" <<< "${uploaded_names}"; then
+              gh release download "${RELEASE_TAG}" --repo "${{ github.repository }}" --pattern "${asset_name}" --dir "${existing_assets_dir}"
+              if ! cmp -s "dist/${asset_name}" "${existing_assets_dir}/${asset_name}"; then
+                echo "Existing draft asset bytes differ from the validated asset: ${asset_name}." >&2
+                exit 1
+              fi
+            else
+              if [[ "${release_published}" == "true" ]]; then
+                echo "Published release is missing expected asset: ${asset_name}." >&2
+                exit 1
+              fi
+              gh release upload "${RELEASE_TAG}" "dist/${asset_name}" --repo "${{ github.repository }}"
+            fi
+          done
+          uploaded_names="$(gh release view "${RELEASE_TAG}" --repo "${{ github.repository }}" --json assets --jq '.assets[].name' | sort)"
+          for asset_name in "${asset_names[@]}"; do
+            if ! grep -Fxq "${asset_name}" <<< "${uploaded_names}"; then
+              echo "Draft release is missing uploaded asset: ${asset_name}." >&2
+              exit 1
+            fi
+          done
+          uploaded_count="$(printf '%s\n' "${uploaded_names}" | sed '/^$/d' | wc -l | tr -d ' ')"
+          if [[ "${uploaded_count}" != "${#asset_names[@]}" ]]; then
+            echo "Draft release contains an unexpected number of assets: ${uploaded_count}." >&2
             exit 1
           fi
-
-          echo "Publishing ${RELEASE_TAG} with ${#assets[@]} assets (prerelease=${RELEASE_PRERELEASE})."
-
-          if gh release view "${RELEASE_TAG}" --repo "${{ github.repository }}" >/dev/null 2>&1; then
-            echo "Release ${RELEASE_TAG} already exists; uploading/updating assets."
-            gh release upload "${RELEASE_TAG}" "${assets[@]}" \
-              --repo "${{ github.repository }}" \
-              --clobber
-            exit 0
+          if [[ "${release_published}" == "true" ]]; then
+            echo "Published release ${RELEASE_TAG} already matches the validated metadata and assets."
+          else
+            gh release edit "${RELEASE_TAG}" --repo "${{ github.repository }}" --draft=false
           fi
-
-          args=(
-            "${RELEASE_TAG}"
-            --repo "${{ github.repository }}"
-            --title "${RELEASE_TAG}"
-            --generate-notes
-          )
-
-          # A pushed tag exists in the repo, so --verify-tag guards against typos.
-          # A staging (workflow_dispatch) run has no pushed tag, so gh creates one
-          # from the current ref; --verify-tag would fail, so omit it there.
-          if [[ "${IS_STAGING}" != "true" ]]; then
-            args+=(--verify-tag)
-          fi
-
-          if [[ "${RELEASE_PRERELEASE}" == "true" ]]; then
-            args+=(--prerelease)
-          fi
-
-          gh release create "${args[@]}" "${assets[@]}"

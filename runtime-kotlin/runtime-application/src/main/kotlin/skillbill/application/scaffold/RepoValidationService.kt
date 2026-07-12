@@ -13,7 +13,8 @@ class RepoValidationService(
 ) {
   fun validateRepo(repoRoot: Path): RepoValidationReport = gateway.validateRepo(repoRoot)
 
-  fun parseReleaseRef(rawRef: String): ReleaseRefMetadata = gateway.parseReleaseRef(rawRef)
+  fun validateReleaseRef(repoRoot: Path, rawRef: String, forcePrerelease: Boolean): ReleaseRefMetadata =
+    gateway.validateReleaseRef(repoRoot, rawRef, forcePrerelease)
 
   fun appendGithubOutput(outputPath: Path, metadata: ReleaseRefMetadata) =
     gateway.appendGithubOutput(outputPath, metadata)

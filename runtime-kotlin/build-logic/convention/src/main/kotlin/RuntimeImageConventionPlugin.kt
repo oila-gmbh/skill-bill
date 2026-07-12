@@ -1,7 +1,9 @@
 import dev.skillbill.runtime.buildlogic.RuntimeImageExtension
+import dev.skillbill.runtime.buildlogic.RuntimeImageLicense
 import dev.skillbill.runtime.buildlogic.writeSha256Sidecar
 import org.beryx.runtime.BaseTask
 import org.beryx.runtime.data.RuntimePluginExtension
+import org.gradle.api.GradleException
 import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.api.provider.Provider
@@ -13,20 +15,8 @@ import org.gradle.kotlin.dsl.getByType
 import org.gradle.kotlin.dsl.register
 import org.gradle.kotlin.dsl.withType
 import java.io.File
+import java.nio.file.Path
 
-/**
- * SKILL-55 subtask 1 (F-004 + F-005 + F-006 + F-008): hoists the previously verbatim-
- * duplicated self-contained runtime-image wiring out of runtime-cli / runtime-mcp into
- * one class-based convention plugin, consistent with the existing skillbill.* plugins.
- *
- * The image is built by the Badass Runtime plugin (org.beryx.runtime, jlink under the
- * hood). The Kotlin apps are non-modular; Badass Runtime wraps the existing
- * `application` installDist distribution, so the image keeps the `bin/<base>` launcher
- * (= applicationName) and `application` + installDist stay intact (AC5).
- *
- * Consuming build scripts apply `id("skillbill.runtime-image")` and set only the
- * varying input — `runtimeImage { imageBaseName.set("runtime-cli") }`.
- */
 class RuntimeImageConventionPlugin : Plugin<Project> {
   private companion object {
     const val LINK_JDK_VERSION = 17
@@ -78,8 +68,10 @@ class RuntimeImageConventionPlugin : Plugin<Project> {
         val baseName = extension.imageBaseName.get()
         val zipName = imageZipName(baseName, project.version.toString(), hostRuntimeToken)
         configureRuntimeImageZip(zipName)
+        val licenseStageTask = registerRuntimeLicenseStaging(baseName)
+        val licenseVerificationTask = registerRuntimeLicenseVerification(baseName, licenseStageTask)
         val sha256Task = registerSha256Task(baseName, zipName)
-        configureRuntimeZipTask(baseName, hostRuntimeToken, sha256Task)
+        configureRuntimeZipTask(baseName, hostRuntimeToken, licenseVerificationTask, sha256Task)
       }
     }
   }
@@ -173,9 +165,55 @@ class RuntimeImageConventionPlugin : Plugin<Project> {
     }
   }
 
+  private fun Project.registerRuntimeLicenseStaging(baseName: String): TaskProvider<*> {
+    val rootLicensePath = rootProject.projectDir.parentFile.resolve("LICENSE").absolutePath
+    val imageLicensePath = layout.buildDirectory.file("image/LICENSE").get().asFile.absolutePath
+    val installLicensePath = layout.buildDirectory.file("install/$baseName/LICENSE").get().asFile.absolutePath
+    return tasks.register("stageRuntimeLicense") {
+      group = "distribution"
+      description = "Stage the repository LICENSE in the $baseName install and runtime images."
+      dependsOn("runtime")
+      inputs.file(rootLicensePath)
+      outputs.files(imageLicensePath, installLicensePath)
+      doLast {
+        val source = Path.of(rootLicensePath)
+        try {
+          RuntimeImageLicense.stage(source, listOf(Path.of(imageLicensePath), Path.of(installLicensePath)))
+        } catch (error: IllegalArgumentException) {
+          throw GradleException(error.message.orEmpty(), error)
+        }
+      }
+    }
+  }
+
+  private fun Project.registerRuntimeLicenseVerification(
+    baseName: String,
+    licenseStageTask: TaskProvider<*>,
+  ): TaskProvider<*> {
+    val rootLicensePath = rootProject.projectDir.parentFile.resolve("LICENSE").absolutePath
+    val imageLicensePath = layout.buildDirectory.file("image/LICENSE").get().asFile.absolutePath
+    val installLicensePath = layout.buildDirectory.file("install/$baseName/LICENSE").get().asFile.absolutePath
+    return tasks.register("verifyRuntimeImageLicense") {
+      group = "verification"
+      description = "Verify $baseName install and runtime images carry the root LICENSE unchanged."
+      dependsOn(licenseStageTask)
+      inputs.file(rootLicensePath)
+      inputs.files(imageLicensePath, installLicensePath)
+      doLast {
+        val source = Path.of(rootLicensePath)
+        listOf(Path.of(imageLicensePath), Path.of(installLicensePath)).forEach { destination ->
+          if (!RuntimeImageLicense.matches(source, destination)) {
+            throw GradleException("Packaged LICENSE differs from repository LICENSE at $destination.")
+          }
+        }
+      }
+    }
+  }
+
   private fun Project.configureRuntimeZipTask(
     baseName: String,
     hostRuntimeToken: String?,
+    licenseVerificationTask: TaskProvider<*>,
     sha256Task: TaskProvider<*>,
   ) {
     // F-008: SINGLE runtimeZip configuration block — description + sha256 finalizer.
@@ -186,6 +224,7 @@ class RuntimeImageConventionPlugin : Plugin<Project> {
       group = "distribution"
       description =
         "Build the self-contained $baseName image and a versioned image zip ($tokenSegment)."
+      dependsOn(licenseVerificationTask)
       finalizedBy(sha256Task)
     }
   }

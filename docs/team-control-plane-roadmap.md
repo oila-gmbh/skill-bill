@@ -182,8 +182,14 @@ Likely paid value:
 - support for onboarding and pack tuning
 - self-hosted or privacy-restricted telemetry options
 
-Individual and noncommercial use can remain free while team/company use requires
-a commercial license.
+The project [LICENSE](../LICENSE) governs releases from v0.1.2. Its concise
+version matrix is in [Licensing](licensing.md): v0.1.0 and v0.1.1 retain their
+shipped terms; releases from v0.1.2 allow lawful use including commercial use
+before the stable `v1.0.0` Stable Release Event; and at and after the event personal and
+qualifying open-source-project use remain free while other commercial use
+requires a purchased Commercial License. Documented customization materials may
+be modified for permitted use, but this roadmap does not independently grant
+public redistribution rights.
 
 ## Discovery Checklist
 

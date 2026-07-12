@@ -1,5 +1,16 @@
 # Boundary History — runtime-kotlin/runtime-infra-fs
 
+## [2026-07-12] SKILL-118 unified use license
+Areas: LICENSE and policy docs, GitHub release workflow, scripts, runtime-kotlin/{build-logic,runtime-application,runtime-cli,runtime-ports,runtime-infra-fs,runtime-desktop}
+- `LicenseRef-Skill-Bill-Use-1.0` governs v0.1.2 prereleases distributed with it, v0.1.2, and later releases: lawful commercial use is free before stable v1.0.0; afterwards personal and qualifying open-source-project use remain free while other commercial use requires a purchased agreement. reusable
+- Documented skills, packs, and orchestration materials may be customized for permitted internal use; executable runtime modification and public redistribution remain outside the public grant.
+- Release refs are canonical `v`-prefixed SemVer. Stable and post-v1 releases require holder approval tied to the exact normalized governing-license hash; placeholders or alternate successor text do not pass. reusable
+- Artifact verification compares staged and packaged license bytes for CLI, MCP, skills, and desktop artifacts; test positive, missing-license, duplicate-path, and byte-drift cases on every host-native extractor. reusable
+- Draft releases target the triggering commit, resume only a matching draft, verify existing asset bytes, upload only missing assets, and publish last; release retries must preserve that order. reusable
+- Known release gate: Braian Gapur must explicitly approve the final root-LICENSE hashes before `v0.1.2` and stable `v1.0.0`; pending records are intentional and must not be filled by automation.
+Feature flag: N/A
+Acceptance criteria: 8/8 review findings fixed; original 12/12 implemented
+
 ## [2026-07-06] SKILL-107 feature add-on usage schema
 Areas: orchestration/contracts, platform-packs/{go,ios,kotlin,kmp,php,python}, runtime-domain/scaffold, runtime-infra-fs/{scaffold,install,validation}
 - Platform-pack shell contract bumped to 1.2 and `feature_addon_usage` became a manifest-backed, runtime-anchored field; schema/Kotlin parity and 1.1 rejection fixtures must move together. reusable

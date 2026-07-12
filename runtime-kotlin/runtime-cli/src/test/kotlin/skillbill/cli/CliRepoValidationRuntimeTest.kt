@@ -18,7 +18,9 @@ class CliRepoValidationRuntimeTest {
     val result = CliRuntime.run(
       listOf(
         "validate-release-ref",
-        "refs/tags/v1.2.3-rc.1",
+        "refs/tags/v0.2.3-rc.1",
+        "--repo-root",
+        repositoryRoot().toString(),
         "--github-output",
         output.toString(),
         "--format",
@@ -28,13 +30,44 @@ class CliRepoValidationRuntimeTest {
     )
 
     assertEquals(0, result.exitCode, result.stdout)
-    assertContains(result.stdout, "\"tag\": \"v1.2.3-rc.1\"")
-    assertContains(result.stdout, "\"version\": \"1.2.3-rc.1\"")
+    assertContains(result.stdout, "\"tag\": \"v0.2.3-rc.1\"")
+    assertContains(result.stdout, "\"version\": \"0.2.3-rc.1\"")
     assertContains(result.stdout, "\"prerelease\": true")
     val githubOutput = Files.readString(output)
-    assertContains(githubOutput, "tag=v1.2.3-rc.1")
-    assertContains(githubOutput, "version=1.2.3-rc.1")
+    assertContains(githubOutput, "tag=v0.2.3-rc.1")
+    assertContains(githubOutput, "version=0.2.3-rc.1")
     assertContains(githubOutput, "prerelease=true")
+    assertContains(result.stdout, "\"major\": 0")
+    assertContains(result.stdout, "\"prerelease_identifier\": \"rc.1\"")
+  }
+
+  @Test
+  fun `validate-release-ref reports release policy errors as json failures`() {
+    val repoRoot = Files.createTempDirectory("skillbill-cli-release-policy")
+    Files.writeString(
+      repoRoot.resolve("LICENSE"),
+      """
+      Skill Bill Use License 1.0
+      Identifier: LicenseRef-Skill-Bill-Use-1.0
+      Prospective Effective Version: v0.1.2
+      """.trimIndent() + "\n",
+    )
+
+    val result = CliRuntime.run(
+      listOf(
+        "validate-release-ref",
+        "v1.0.0",
+        "--repo-root",
+        repoRoot.toString(),
+        "--format",
+        "json",
+      ),
+      CliRuntimeContext(),
+    )
+
+    assertEquals(1, result.exitCode)
+    assertContains(result.stdout, "\"status\": \"failed\"")
+    assertContains(result.stdout, "stable license policy")
   }
 
   @Test
@@ -156,6 +189,9 @@ class CliRepoValidationRuntimeTest {
       """.trimIndent() + "\n",
     )
   }
+
+  private fun repositoryRoot(): Path = generateSequence(Path.of("").toAbsolutePath().normalize()) { it.parent }
+    .first { Files.isRegularFile(it.resolve("LICENSE")) }
 
   private fun writeContent(path: Path, name: String) {
     Files.createDirectories(path.parent)

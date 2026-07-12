@@ -1,11 +1,11 @@
 # Maintainer: Braian Gapur <scatmetal@gmail.com>
 pkgname=skillbill
-pkgver=1.0.0
+pkgver=0.1.2
 pkgrel=1
 pkgdesc="SkillBill desktop runtime (Compose Desktop)"
 arch=('x86_64')
 url="https://github.com/oila-gmbh/skill-bill"
-license=('custom')
+license=('LicenseRef-Skill-Bill-Use-1.0')
 depends=('fontconfig' 'libxext' 'libxrender' 'libxtst' 'libxi')
 options=('!strip' '!debug')
 
@@ -14,6 +14,7 @@ _repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
 _dist_root="${_repo_root}/runtime-kotlin/runtime-desktop/build/compose/binaries/main/app/SkillBill"
 _icon_src="${_repo_root}/runtime-kotlin/runtime-desktop/icons/icon.png"
 _desktop_src="${_repo_root}/runtime-kotlin/runtime-desktop/packaging/arch/skillbill.desktop"
+_license_src="${_repo_root}/LICENSE"
 
 prepare() {
   if [[ ! -d "${_dist_root}" ]]; then
@@ -32,4 +33,5 @@ package() {
 
   install -Dm644 "${_icon_src}" "${pkgdir}/usr/share/icons/hicolor/512x512/apps/skillbill.png"
   install -Dm644 "${_desktop_src}" "${pkgdir}/usr/share/applications/skillbill.desktop"
+  install -Dm644 "${_license_src}" "${pkgdir}/usr/share/licenses/skillbill/LICENSE"
 }

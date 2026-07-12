@@ -1,3 +1,4 @@
+import dev.skillbill.runtime.buildlogic.RuntimeImageLicense
 import dev.skillbill.runtime.buildlogic.resolveHostRuntimeToken
 import dev.skillbill.runtime.buildlogic.toJpackageVersion
 import dev.skillbill.runtime.buildlogic.toMacAppVersion
@@ -68,6 +69,7 @@ abstract class FixRuntimeScriptPermissionsTask : DefaultTask() {
 }
 
 val repoRoot = rootProject.projectDir.parentFile
+val rootLicenseFile = repoRoot.resolve("LICENSE")
 val desktopAppResourcesDir = layout.buildDirectory.dir("generated/desktop-app-resources")
 val runtimeResourceDirName = "skill-bill-runtime"
 val runtimeCliInstallDir =
@@ -117,6 +119,31 @@ val prepareDesktopRuntimeBundle by tasks.registering(Sync::class) {
   }
   from(repoRoot.resolve("orchestration")) {
     into("common/$runtimeResourceDirName/orchestration")
+  }
+  from(rootLicenseFile) {
+    into("common/$runtimeResourceDirName")
+  }
+}
+
+val verifyDesktopLicense by tasks.registering {
+  group = "verification"
+  description = "Verify desktop app resources carry the root LICENSE unchanged."
+  val rootLicensePath = rootLicenseFile.absolutePath
+  val stagedLicensePath =
+    layout.buildDirectory
+      .file("generated/desktop-app-resources/common/$runtimeResourceDirName/LICENSE")
+      .get()
+      .asFile
+      .absolutePath
+  dependsOn(prepareDesktopRuntimeBundle)
+  inputs.file(rootLicensePath)
+  inputs.file(stagedLicensePath)
+  doLast {
+    val rootLicense = Path.of(rootLicensePath)
+    val stagedLicense = Path.of(stagedLicensePath)
+    if (!RuntimeImageLicense.matches(rootLicense, stagedLicense)) {
+      throw GradleException("Desktop app resources do not contain the root LICENSE unchanged.")
+    }
   }
 }
 
@@ -282,6 +309,7 @@ compose.desktop {
 
     nativeDistributions {
       appResourcesRootDir.set(desktopAppResourcesDir)
+      licenseFile.set(rootLicenseFile)
       targetFormats(
         org.jetbrains.compose.desktop.application.dsl.TargetFormat.Dmg,
         org.jetbrains.compose.desktop.application.dsl.TargetFormat.Msi,
@@ -324,7 +352,7 @@ tasks.matching { task ->
     task.name.startsWith("packageDeb") ||
     task.name.startsWith("packageRpm")
 }.configureEach {
-  dependsOn(prepareDesktopRuntimeBundle)
+  dependsOn(verifyDesktopLicense)
 }
 
 tasks.matching { task ->

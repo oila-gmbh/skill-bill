@@ -30,6 +30,7 @@ class DesktopPackagingConfigurationTest {
     val buildFile = desktopBuildFile()
 
     assertContains(buildFile, "prepareDesktopRuntimeBundle")
+    assertContains(buildFile, "verifyDesktopLicense")
     assertContains(buildFile, "appResourcesRootDir.set(desktopAppResourcesDir)")
     assertContains(buildFile, "runtimeResourceDirName = \"skill-bill-runtime\"")
     assertContains(buildFile, "dependsOn(\":runtime-cli:installDist\", \":runtime-mcp:installDist\")")
@@ -41,6 +42,8 @@ class DesktopPackagingConfigurationTest {
     assertContains(buildFile, "repoRoot.resolve(\"skills\")")
     assertContains(buildFile, "repoRoot.resolve(\"platform-packs\")")
     assertContains(buildFile, "repoRoot.resolve(\"orchestration\")")
+    assertContains(buildFile, "rootLicenseFile = repoRoot.resolve(\"LICENSE\")")
+    assertContains(buildFile, "into(\"common/\$runtimeResourceDirName\")")
     assertContains(buildFile, "exclude(\"**/SKILL.md\")")
     assertContains(buildFile, "exclude(\"**/codex-agents/**\")")
   }
@@ -52,7 +55,17 @@ class DesktopPackagingConfigurationTest {
     assertContains(buildFile, "task.name == \"packageDistributionForCurrentOS\"")
     assertContains(buildFile, "task.name == \"prepareAppResources\"")
     assertContains(buildFile, "task.name.startsWith(\"packageRpm\")")
-    assertContains(buildFile, "dependsOn(prepareDesktopRuntimeBundle)")
+    assertContains(buildFile, "dependsOn(verifyDesktopLicense)")
+  }
+
+  @Test
+  fun `native distributions source their license presentation from the root license`() {
+    val buildFile = desktopBuildFile()
+    val packageBuildFile = Files.readString(runtimeRoot.resolve("runtime-desktop/packaging/arch/PKGBUILD"))
+
+    assertContains(buildFile, "licenseFile.set(rootLicenseFile)")
+    assertContains(packageBuildFile, "_license_src=\"\${_repo_root}/LICENSE\"")
+    assertContains(packageBuildFile, "/usr/share/licenses/skillbill/LICENSE")
   }
 
   @Test

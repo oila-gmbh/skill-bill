@@ -18,13 +18,22 @@ class FileSystemRepoValidationGateway : RepoValidationGateway {
   override fun validateRepo(repoRoot: Path): PortRepoValidationReport =
     RepoValidationRuntime.validateRepo(repoRoot).toPortReport()
 
-  override fun parseReleaseRef(rawRef: String): PortReleaseRefMetadata =
-    RepoValidationRuntime.parseReleaseRef(rawRef).toPortMetadata()
+  override fun validateReleaseRef(repoRoot: Path, rawRef: String, forcePrerelease: Boolean): PortReleaseRefMetadata =
+    RepoValidationRuntime.validateReleaseRef(repoRoot, rawRef, forcePrerelease).toPortMetadata()
 
   override fun appendGithubOutput(outputPath: Path, metadata: PortReleaseRefMetadata) =
     RepoValidationRuntime.appendGithubOutput(
       outputPath,
-      ReleaseRefMetadata(tag = metadata.tag, version = metadata.version, prerelease = metadata.prerelease),
+      ReleaseRefMetadata(
+        tag = metadata.tag,
+        version = metadata.version,
+        major = metadata.major,
+        minor = metadata.minor,
+        patch = metadata.patch,
+        prerelease = metadata.prerelease,
+        prereleaseIdentifier = metadata.prereleaseIdentifier,
+        buildMetadata = metadata.buildMetadata,
+      ),
     )
 
   private fun RepoValidationReport.toPortReport(): PortRepoValidationReport = PortRepoValidationReport(
@@ -51,6 +60,14 @@ class FileSystemRepoValidationGateway : RepoValidationGateway {
     RepoValidationIssueSeverity.INFO -> PortRepoValidationIssueSeverity.INFO
   }
 
-  private fun ReleaseRefMetadata.toPortMetadata(): PortReleaseRefMetadata =
-    PortReleaseRefMetadata(tag = tag, version = version, prerelease = prerelease)
+  private fun ReleaseRefMetadata.toPortMetadata(): PortReleaseRefMetadata = PortReleaseRefMetadata(
+    tag = tag,
+    version = version,
+    major = major,
+    minor = minor,
+    patch = patch,
+    prerelease = prerelease,
+    prereleaseIdentifier = prereleaseIdentifier,
+    buildMetadata = buildMetadata,
+  )
 }
