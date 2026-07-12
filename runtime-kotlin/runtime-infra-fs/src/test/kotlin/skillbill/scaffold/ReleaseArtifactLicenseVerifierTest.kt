@@ -53,6 +53,20 @@ class ReleaseArtifactLicenseVerifierTest {
   }
 
   @Test
+  fun `rejects missing and byte-drifted skills tar licenses`() {
+    val fixture = Files.createTempDirectory("skillbill-artifact-verifier")
+    val absent = fixture.resolve("absent.tar.gz")
+    val drifted = fixture.resolve("drifted.tar.gz")
+    writeTar(absent, null)
+    writeTar(drifted, "different license".encodeToByteArray())
+    writeChecksum(absent)
+    writeChecksum(drifted)
+
+    assertFailure(absent, "exactly one canonical LICENSE")
+    assertFailure(drifted, "LICENSE bytes differ")
+  }
+
+  @Test
   fun `permits third party license entries beside the canonical runtime license`() {
     val fixture = Files.createTempDirectory("skillbill-artifact-verifier")
     val artifact = fixture.resolve("runtime.zip")
@@ -76,6 +90,11 @@ class ReleaseArtifactLicenseVerifierTest {
     writeChecksum(artifact)
 
     assertFailure(artifact, "exactly one canonical LICENSE")
+  }
+
+  @Test
+  fun `verifies every desktop installer format with valid absent and byte-drifted licenses`() {
+    listOf("deb", "rpm", "dmg", "msi").forEach(::assertDesktopLicenseVerification)
   }
 
   @Test
@@ -108,15 +127,62 @@ class ReleaseArtifactLicenseVerifierTest {
     assertTrue(result.output.contains(expectedMessage), result.output)
   }
 
+  private fun assertDesktopLicenseVerification(extension: String) {
+    val fixture = Files.createTempDirectory("skillbill-desktop-artifact-verifier")
+    val valid = fixture.resolve("valid.$extension")
+    val absent = fixture.resolve("absent.$extension")
+    val drifted = fixture.resolve("drifted.$extension")
+    listOf(valid, absent, drifted).forEach { artifact ->
+      Files.writeString(artifact, "desktop $extension fixture\n")
+      writeChecksum(artifact)
+    }
+
+    assertEquals(0, runDesktopVerifier(valid, rootLicenseBytes).exitCode)
+    assertDesktopFailure(absent, null, "canonical resources/skill-bill-runtime/LICENSE")
+    assertDesktopFailure(drifted, "different license".encodeToByteArray(), "LICENSE bytes differ")
+  }
+
+  private fun assertDesktopFailure(artifact: Path, license: ByteArray?, expectedMessage: String) {
+    val result = runDesktopVerifier(artifact, license)
+    assertTrue(result.exitCode != 0, result.output)
+    assertTrue(result.output.contains(expectedMessage), result.output)
+  }
+
   private fun runVerifier(vararg artifacts: Path): ProcessResult {
-    val process =
+    return runVerifier(artifacts.toList())
+  }
+
+  private fun runDesktopVerifier(artifact: Path, license: ByteArray?): ProcessResult {
+    val shims = Files.createTempDirectory("skillbill-verifier-shims")
+    val extractionRoot = Files.createTempDirectory("skillbill-desktop-extraction")
+    val extractedLicense = shims.resolve("extracted-LICENSE")
+    if (license != null) {
+      Files.write(extractedLicense, license)
+    }
+    writeDesktopExtractionShims(shims)
+    return runVerifier(
+      listOf(artifact),
+      mapOf(
+        "PATH" to "${shims}:${System.getenv("PATH")}",
+        "SKILLBILL_EXTRACTION_ROOT" to extractionRoot.toString(),
+        "SKILLBILL_DESKTOP_LICENSE_FIXTURE" to if (license == null) "" else extractedLicense.toString(),
+      ),
+    )
+  }
+
+  private fun runVerifier(
+    artifacts: List<Path>,
+    environment: Map<String, String> = emptyMap(),
+  ): ProcessResult {
+    val processBuilder =
       ProcessBuilder(
         listOf("bash", repoRoot.resolve("scripts/verify_release_artifact_licenses").toString()) +
           artifacts.map(Path::toString),
       )
         .directory(repoRoot.toFile())
         .redirectErrorStream(true)
-        .start()
+    processBuilder.environment().putAll(environment)
+    val process = processBuilder.start()
     val output = process.inputStream.bufferedReader().readText()
     return ProcessResult(process.waitFor(), output)
   }
@@ -131,19 +197,52 @@ class ReleaseArtifactLicenseVerifierTest {
     }
   }
 
-  private fun writeTar(artifact: Path, licenseBytes: ByteArray, duplicateLicense: Boolean = false) {
+  private fun writeTar(artifact: Path, licenseBytes: ByteArray?, duplicateLicense: Boolean = false) {
     val source = Files.createTempDirectory("skillbill-artifact-tar-source")
-    Files.write(source.resolve("LICENSE"), licenseBytes)
     Files.writeString(source.resolve("README.md"), "Skill Bill skills archive fixture\n")
+    if (licenseBytes != null) {
+      Files.write(source.resolve("LICENSE"), licenseBytes)
+    }
+    val entries = if (licenseBytes == null) {
+      listOf("README.md")
+    } else {
+      listOf("LICENSE", "README.md") + if (duplicateLicense) listOf("LICENSE") else emptyList()
+    }
     val process =
       ProcessBuilder(
-        listOf("tar", "-czf", artifact.toString(), "-C", source.toString(), "LICENSE", "README.md") +
-          if (duplicateLicense) listOf("LICENSE") else emptyList(),
+        listOf("tar", "-czf", artifact.toString(), "-C", source.toString()) + entries,
       )
         .redirectErrorStream(true)
         .start()
     val output = process.inputStream.bufferedReader().readText()
     assertEquals(0, process.waitFor(), output)
+  }
+
+  private fun writeDesktopExtractionShims(shims: Path) {
+    val noOp = "#!/usr/bin/env bash\nexit 0\n"
+    val extract =
+      """
+      #!/usr/bin/env bash
+      set -euo pipefail
+      if [[ -n "${'$'}{SKILLBILL_DESKTOP_LICENSE_FIXTURE:-}" ]]; then
+        target="${'$'}{SKILLBILL_EXTRACTION_ROOT}/SkillBill/resources/skill-bill-runtime"
+        mkdir -p "${'$'}target"
+        cp "${'$'}SKILLBILL_DESKTOP_LICENSE_FIXTURE" "${'$'}target/LICENSE"
+      fi
+      """.trimIndent() + "\n"
+    writeExecutable(shims.resolve("mktemp"), "#!/usr/bin/env bash\nprintf '%s\\n' \"${'$'}SKILLBILL_EXTRACTION_ROOT\"\n")
+    writeExecutable(shims.resolve("dpkg-deb"), noOp)
+    writeExecutable(shims.resolve("tar"), extract)
+    writeExecutable(shims.resolve("rpm2cpio"), noOp)
+    writeExecutable(shims.resolve("cpio"), extract)
+    writeExecutable(shims.resolve("hdiutil"), extract)
+    writeExecutable(shims.resolve("cygpath"), "#!/usr/bin/env bash\nprintf '%s\\n' \"${'$'}{!#}\"\n")
+    writeExecutable(shims.resolve("msiexec.exe"), extract)
+  }
+
+  private fun writeExecutable(path: Path, contents: String) {
+    Files.writeString(path, contents)
+    assertTrue(path.toFile().setExecutable(true), "Could not mark $path executable")
   }
 
   private fun writeChecksum(artifact: Path) {

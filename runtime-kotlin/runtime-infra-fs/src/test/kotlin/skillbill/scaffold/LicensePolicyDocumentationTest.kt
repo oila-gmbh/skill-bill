@@ -108,10 +108,10 @@ class LicensePolicyDocumentationTest {
     assertTrue(read("README.md").contains("LicenseRef-Skill-Bill-Pre-1.0-Use-1.0"))
     assertTrue(read("README.md").contains("License-Skill%20Bill%20Pre--1.0%20Use"))
     assertTrue(read("docs/licensing.md").contains("Earlier MIT and PolyForm grants"))
-    assertTrue(
-      read("runtime-kotlin/runtime-desktop/packaging/arch/PKGBUILD")
-        .contains("custom:Skill-Bill-Pre-1.0-Use-1.0"),
-    )
+    val archPackage = read("runtime-kotlin/runtime-desktop/packaging/arch/PKGBUILD")
+    assertTrue(archPackage.contains("pkgver=0.1.2"))
+    assertTrue(archPackage.contains("license=('LicenseRef-Skill-Bill-Pre-1.0-Use-1.0')"))
+    assertTrue(read("LICENSE").contains("Prospective Effective Version: v0.1.2"))
     assertFalse(publicFiles.values.joinToString("\n").contains("PolyForm Noncommercial License 1.0.0"))
   }
 

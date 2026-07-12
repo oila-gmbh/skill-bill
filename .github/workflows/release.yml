@@ -273,11 +273,6 @@ jobs:
             exit 1
           fi
 
-          if gh release view "${RELEASE_TAG}" --repo "${{ github.repository }}" >/dev/null 2>&1; then
-            echo "Release ${RELEASE_TAG} already exists; release assets are immutable. Use a fresh staging version." >&2
-            exit 1
-          fi
-
           release_version="${RELEASE_TAG#v}"
           artifact_names=(
             "runtime-cli-${release_version}-macos-arm64.zip"
@@ -319,29 +314,73 @@ jobs:
             assets+=("dist/${asset_name}")
           done
 
-          echo "Creating draft ${RELEASE_TAG} with ${#assets[@]} verified assets (prerelease=${RELEASE_PRERELEASE})."
-
-          args=(
-            "${RELEASE_TAG}"
-            --repo "${{ github.repository }}"
-            --title "${RELEASE_TAG}"
-            --generate-notes
-          )
-
-          # A pushed tag exists in the repo, so --verify-tag guards against typos.
-          # A staging (workflow_dispatch) run has no pushed tag, so gh creates one
-          # from the current ref; --verify-tag would fail, so omit it there.
-          if [[ "${IS_STAGING}" != "true" ]]; then
-            args+=(--verify-tag)
+          release_exists=false
+          if gh release view "${RELEASE_TAG}" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            release_exists=true
           fi
 
-          if [[ "${RELEASE_PRERELEASE}" == "true" ]]; then
-            args+=(--prerelease)
+          if [[ "${release_exists}" == "true" ]]; then
+            release_metadata="$(gh release view "${RELEASE_TAG}" --repo "${{ github.repository }}" --json isDraft,isPrerelease,targetCommitish,tagName --jq '[.isDraft, .isPrerelease, .targetCommitish, .tagName] | @tsv')"
+            IFS=$'\t' read -r existing_draft existing_prerelease existing_target existing_tag <<< "${release_metadata}"
+            if [[ "${existing_draft}" != "true" ]]; then
+              echo "Release ${RELEASE_TAG} is already published and cannot be resumed." >&2
+              exit 1
+            fi
+            if [[ "${existing_tag}" != "${RELEASE_TAG}" || "${existing_target}" != "${GITHUB_SHA}" || "${existing_prerelease}" != "${RELEASE_PRERELEASE}" ]]; then
+              echo "Existing draft ${RELEASE_TAG} does not match this validated tag, commit, and prerelease classification." >&2
+              exit 1
+            fi
+          else
+            if [[ "${IS_STAGING}" == "true" ]] && git ls-remote --exit-code --refs origin "refs/tags/${RELEASE_TAG}" >/dev/null 2>&1; then
+              echo "Staging tag ${RELEASE_TAG} already exists without a resumable draft release." >&2
+              exit 1
+            fi
+
+            echo "Creating draft ${RELEASE_TAG} at ${GITHUB_SHA} with ${#assets[@]} verified assets (prerelease=${RELEASE_PRERELEASE})."
+            args=(
+              "${RELEASE_TAG}"
+              --repo "${{ github.repository }}"
+              --title "${RELEASE_TAG}"
+              --generate-notes
+              --target "${GITHUB_SHA}"
+            )
+            if [[ "${IS_STAGING}" != "true" ]]; then
+              args+=(--verify-tag)
+            fi
+            if [[ "${RELEASE_PRERELEASE}" == "true" ]]; then
+              args+=(--prerelease)
+            fi
+            gh release create "${args[@]}" --draft
           fi
 
-          gh release create "${args[@]}" --draft
-          gh release upload "${RELEASE_TAG}" "${assets[@]}" --repo "${{ github.repository }}"
-
+          existing_assets_dir="$(mktemp -d)"
+          trap 'rm -rf "${existing_assets_dir}"' EXIT
+          uploaded_names="$(gh release view "${RELEASE_TAG}" --repo "${{ github.repository }}" --json assets --jq '.assets[].name' | sort)"
+          while IFS= read -r uploaded_name; do
+            [[ -n "${uploaded_name}" ]] || continue
+            expected=false
+            for asset_name in "${asset_names[@]}"; do
+              if [[ "${uploaded_name}" == "${asset_name}" ]]; then
+                expected=true
+                break
+              fi
+            done
+            if [[ "${expected}" != "true" ]]; then
+              echo "Draft release contains an unexpected asset: ${uploaded_name}." >&2
+              exit 1
+            fi
+          done <<< "${uploaded_names}"
+          for asset_name in "${asset_names[@]}"; do
+            if grep -Fxq "${asset_name}" <<< "${uploaded_names}"; then
+              gh release download "${RELEASE_TAG}" --repo "${{ github.repository }}" --pattern "${asset_name}" --dir "${existing_assets_dir}"
+              if ! cmp -s "dist/${asset_name}" "${existing_assets_dir}/${asset_name}"; then
+                echo "Existing draft asset bytes differ from the validated asset: ${asset_name}." >&2
+                exit 1
+              fi
+            else
+              gh release upload "${RELEASE_TAG}" "dist/${asset_name}" --repo "${{ github.repository }}"
+            fi
+          done
           uploaded_names="$(gh release view "${RELEASE_TAG}" --repo "${{ github.repository }}" --json assets --jq '.assets[].name' | sort)"
           for asset_name in "${asset_names[@]}"; do
             if ! grep -Fxq "${asset_name}" <<< "${uploaded_names}"; then

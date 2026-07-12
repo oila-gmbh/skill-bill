@@ -1,3 +1,4 @@
+import dev.skillbill.runtime.buildlogic.RuntimeImageLicense
 import dev.skillbill.runtime.buildlogic.resolveHostRuntimeToken
 import dev.skillbill.runtime.buildlogic.toJpackageVersion
 import dev.skillbill.runtime.buildlogic.toMacAppVersion
@@ -140,9 +141,7 @@ val verifyDesktopLicense by tasks.registering {
   doLast {
     val rootLicense = Path.of(rootLicensePath)
     val stagedLicense = Path.of(stagedLicensePath)
-    if (!Files.isRegularFile(rootLicense) || !Files.isRegularFile(stagedLicense) ||
-      Files.mismatch(rootLicense, stagedLicense) != -1L
-    ) {
+    if (!RuntimeImageLicense.matches(rootLicense, stagedLicense)) {
       throw GradleException("Desktop app resources do not contain the root LICENSE unchanged.")
     }
   }

@@ -1,11 +1,26 @@
 package dev.skillbill.runtime.buildlogic
 
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.assertThrows
 import org.junit.jupiter.api.Test
 import java.nio.file.Files
 
 class RuntimeImageLicenseTest {
+  @Test
+  fun `refuses to stage an absent repository license`() {
+    val absent = Files.createTempDirectory("skillbill-missing-license").resolve("LICENSE")
+    val staged = Files.createTempDirectory("skillbill-staged-license").resolve("LICENSE")
+
+    val failure = assertThrows<IllegalArgumentException> {
+      RuntimeImageLicense.stage(absent, listOf(staged))
+    }
+
+    assertEquals("Repository LICENSE is missing at $absent.", failure.message)
+    assertFalse(Files.exists(staged))
+  }
+
   @Test
   fun `reports absent staged license`() {
     val root = Files.createTempFile("skillbill-license", ".txt")
