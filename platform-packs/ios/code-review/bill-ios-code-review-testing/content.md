@@ -1,42 +1,46 @@
 ---
 name: bill-ios-code-review-testing
-description: Use when reviewing iOS test coverage quality, XCTest/snapshot-testing conventions, and the 1:1 SQL-statement-test cross-reference.
+description: Use when reviewing iOS XCTest, Swift Testing, UI, snapshot, persistence, and relaunch evidence.
 internal-for: bill-code-review
 ---
 
 # Testing Review Specialist
 
-Review only test-coverage and test-quality issues with real regression-protection impact.
+Review only material gaps or invalid test evidence.
 
 ## Focus
 
-- Missing or weak test coverage for new views, stores, and SQL statements
-- XCTest and snapshot-testing convention consistency
-- 1:1 coverage between hand-written SQL statements and their statement tests
-- Tautological or coverage-padding tests that do not validate real behavior
+- XCTest and detected Swift Testing behavior coverage
+- UI, snapshot, persistence, concurrency, and lifecycle tests
+- Deterministic failure and relaunch evidence
 
 ## Ignore
 
-- Style-only test-naming preferences with no coverage impact
+- Coverage-count demands without meaningful behavior
+- Requiring every testing framework when it is not configured or supported
 
 ## Applicability
 
-Use this specialist wherever test files change, or wherever new views, stores, or SQL statements ship without an accompanying test.
+Use `XCTest` or Swift Testing according to repository configuration, toolchain, and deployment support. Apply snapshot, UI, persistence, and concurrency guidance only when those surfaces are changed.
 
 ## Project-Specific Rules
 
-### Behavioral And Snapshot Coverage
+### Behavioral Test Rules
 
-- New or changed views should have a snapshot test (e.g. via `assertSnapshotsOf` or an equivalent snapshot-testing convention) covering their meaningful visual states, unless the project explicitly excludes that view type
-- New or changed stores/reducers should have XCTest coverage for their action-handling behavior, not just their initial state
-- A `{Statement}SQLStatementTests.swift`-style test per hand-written SQL statement is a recommended convention, not a universal hard rule — verify the repo applies it broadly before treating its absence as a violation (only a subset of statements carry one in practice). Flag a missing statement test as an at-most-Minor coverage gap, reserving higher severity for statements whose correctness is load-bearing; do not frame it as a mandatory "1:1" requirement the change breaks
-- Snapshot baselines committed alongside a UI change must correspond to an intentional, reviewed visual change — a snapshot update with no visible reason in the diff is a red flag worth calling out
+- Async `XCTestCase` methods or Swift Testing `@Test` functions must await observable completion; reject sleeps that race and create flaky failures.
+- Tests of actor-isolated state must use `@MainActor` or the owning actor correctly; reject unsafe crossings that hide concurrency bugs or cause strict-checking failure.
+- Cancellation tests must prove child cleanup and stale-result rejection with a controllable `Clock`; reject tests that only assert task creation and miss lifecycle leaks.
+- Continuation wrappers must test success, failure, cancellation, and duplicate-callback defense; reject missing paths that permit a production crash or timeout.
+- Reducer or observable-state tests must assert state transitions and effects with `XCTAssertEqual` or `#expect`, not merely initializer values; reject tautological tests that miss regression failures.
+- URL loading tests must control `URLProtocol` or an injected `URLSession`; reject live-network tests whose data and latency failures are nondeterministic.
 
-### Test Integrity
+### Platform And Recovery Test Rules
 
-- Flag tests that assert only on mocks calling through to other mocks, or that would pass unchanged if the underlying behavior were broken (tautological or coverage-padding tests)
-- Coverage disabled, weakened, or commented out (removed assertions, `isRecording = true` left on, tautological checks) without a stated justification silently drops regression protection and should be flagged
-- Assertions that have gone stale after a behavior change — asserting a string, parameter, or mock value that no longer matches the implementation — let a test pass without validating the real behavior
-- Flaky UI/E2E coverage that leaves the app in a navigation/state the next step does not expect, or relies on fragile or colliding element identifiers, produces false passes and failures unrelated to the behavior under test
-- Missing tests for new views, stores, or SQL statements should be reported even when the rest of the diff is otherwise low-risk, since these are the project's designated regression-protection surfaces
+- Persistence changes must test an existing on-disk fixture upgrading through `SchemaMigrationPlan`, Core Data, or detected SQLite migrations; reject fresh-store-only evidence that misses data loss.
+- Offline sync tests must cover retry, duplicate delivery, conflict, tombstone, and relaunch state; reject happy-path-only coverage that permits consistency failures.
+- XCUITest flows must use `waitForExistence(timeout:)` on accessibility identifiers rather than sleep; reject timing races that create false failures.
+- Snapshot tests must use intentional `UITraitCollection` device, locale, and Dynamic Type matrices; reject unexplained baseline replacement that hides rendering regression failures.
+- Navigation and presentation tests must use `XCUIApplication().launch()` to verify restoration or relaunch when state is durable; reject in-process-only evidence that misses lifecycle ordering failures.
+- Background-work tests must inject scheduler and expiration boundaries instead of invoking private Apple behavior; reject unbounded waits that cause test-suite timeouts.
+- Performance-sensitive paths must use `measure(metrics:)` or detected benchmark tooling with a stable workload; reject noisy assertions that conceal memory or latency regressions.
 - For Blocker or Major findings, describe the concrete undetected-regression or false-positive test scenario.

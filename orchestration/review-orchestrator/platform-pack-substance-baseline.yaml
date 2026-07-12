@@ -1,26 +1,5 @@
 contract_version: "0.1"
 acknowledgements:
-  - {id: "ios|api-contracts:clusters|platform-packs/ios/code-review/bill-ios-code-review-api-contracts/content.md", measured: "0", target: "3", owner: SKILL-114-9}
-  - {id: "ios|api-contracts:rules|platform-packs/ios/code-review/bill-ios-code-review-api-contracts/content.md", measured: "0", target: ">=10", owner: SKILL-114-9}
-  - {id: "ios|architecture:clusters|platform-packs/ios/code-review/bill-ios-code-review-architecture/content.md", measured: "0", target: "3", owner: SKILL-114-9}
-  - {id: "ios|architecture:rules|platform-packs/ios/code-review/bill-ios-code-review-architecture/content.md", measured: "0", target: ">=10", owner: SKILL-114-9}
-  - {id: "ios|performance:clusters|platform-packs/ios/code-review/bill-ios-code-review-performance/content.md", measured: "0", target: "3", owner: SKILL-114-9}
-  - {id: "ios|performance:rules|platform-packs/ios/code-review/bill-ios-code-review-performance/content.md", measured: "0", target: ">=10", owner: SKILL-114-9}
-  - {id: "ios|persistence:clusters|platform-packs/ios/code-review/bill-ios-code-review-persistence/content.md", measured: "0", target: "3", owner: SKILL-114-9}
-  - {id: "ios|persistence:rules|platform-packs/ios/code-review/bill-ios-code-review-persistence/content.md", measured: "0", target: ">=10", owner: SKILL-114-9}
-  - {id: "ios|platform-correctness:clusters|platform-packs/ios/code-review/bill-ios-code-review-platform-correctness/content.md", measured: "0", target: "3", owner: SKILL-114-9}
-  - {id: "ios|platform-correctness:rules|platform-packs/ios/code-review/bill-ios-code-review-platform-correctness/content.md", measured: "0", target: ">=10", owner: SKILL-114-9}
-  - {id: "ios|quality-check|platform-packs/ios/quality-check/bill-ios-code-check/content.md", measured: "6", target: "7", owner: SKILL-114-9}
-  - {id: "ios|reliability:clusters|platform-packs/ios/code-review/bill-ios-code-review-reliability/content.md", measured: "1", target: "3", owner: SKILL-114-9}
-  - {id: "ios|reliability:rules|platform-packs/ios/code-review/bill-ios-code-review-reliability/content.md", measured: "1", target: ">=10", owner: SKILL-114-9}
-  - {id: "ios|security:clusters|platform-packs/ios/code-review/bill-ios-code-review-security/content.md", measured: "0", target: "3", owner: SKILL-114-9}
-  - {id: "ios|security:rules|platform-packs/ios/code-review/bill-ios-code-review-security/content.md", measured: "0", target: ">=10", owner: SKILL-114-9}
-  - {id: "ios|testing:clusters|platform-packs/ios/code-review/bill-ios-code-review-testing/content.md", measured: "0", target: "3", owner: SKILL-114-9}
-  - {id: "ios|testing:rules|platform-packs/ios/code-review/bill-ios-code-review-testing/content.md", measured: "0", target: ">=10", owner: SKILL-114-9}
-  - {id: "ios|ui:clusters|platform-packs/ios/code-review/bill-ios-code-review-ui/content.md", measured: "1", target: "3", owner: SKILL-114-9}
-  - {id: "ios|ui:rules|platform-packs/ios/code-review/bill-ios-code-review-ui/content.md", measured: "2", target: ">=10", owner: SKILL-114-9}
-  - {id: "ios|ux-accessibility:clusters|platform-packs/ios/code-review/bill-ios-code-review-ux-accessibility/content.md", measured: "0", target: "3", owner: SKILL-114-9}
-  - {id: "ios|ux-accessibility:rules|platform-packs/ios/code-review/bill-ios-code-review-ux-accessibility/content.md", measured: "0", target: ">=10", owner: SKILL-114-9}
   - {id: "kmp|platform-correctness:clusters|platform-packs/kmp/code-review/bill-kmp-code-review-platform-correctness/content.md", measured: "0", target: "3", owner: SKILL-114-8}
   - {id: "kmp|platform-correctness:rules|platform-packs/kmp/code-review/bill-kmp-code-review-platform-correctness/content.md", measured: "0", target: ">=10", owner: SKILL-114-8}
   - {id: "kmp|ui:clusters|platform-packs/kmp/code-review/bill-kmp-code-review-ui/content.md", measured: "0", target: "3", owner: SKILL-114-8}

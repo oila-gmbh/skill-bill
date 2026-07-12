@@ -1,43 +1,48 @@
 ---
 name: bill-ios-code-review-ux-accessibility
-description: Use when reviewing iOS UX and accessibility risks including localization-string completeness and VoiceOver label coverage.
+description: Use when reviewing iOS accessibility, localization, input, and task-completion risks.
 internal-for: bill-code-review
 ---
 
-# UX & Accessibility Review Specialist
+# UX And Accessibility Review Specialist
 
-Review only UX correctness and accessibility issues that can make the app harder to understand, harder to operate, or inaccessible to assistive-technology users.
+Review only concrete accessibility or task-completion failures.
 
 ## Focus
 
-- Localization-string completeness across supported languages
-- VoiceOver and other accessibility-label coverage
-- Validation feedback clarity and error-state discoverability
-- Interaction patterns where the UI technically renders but is confusing or inaccessible
+- Dynamic Type and adaptive layout
+- VoiceOver semantics, focus, keyboard, and feedback
+- Localization and completion across supported OS versions
 
 ## Ignore
 
-- Pure visual design preference
-- UI framework and rendering correctness findings that belong to `bill-ios-code-review-ui`
-- Security-only findings that belong to `bill-ios-code-review-security`
+- Subjective copy or aesthetic preferences without a user-impact contract
+- APIs unavailable to the detected deployment target without considering fallback
+- General rendering and navigation ownership, which belongs to the ui lane
+- Authentication and private-data exposure, which belongs to the security lane
 
 ## Applicability
 
-Use this specialist when changed user-facing code or resources affect VoiceOver semantics, Dynamic Type, keyboard or switch-control flow, validation feedback, localization completeness, or whether a user can complete a task.
+Apply to user-facing SwiftUI and UIKit changes, considering assistive technologies, input methods, locales, device sizes, and deployment-version availability.
 
 ## Project-Specific Rules
 
-### Localization And Semantics
+### Semantics And Adaptation Rules
 
-- New or changed user-facing strings must be added through the project's centralized strings surface (e.g. a `Strings.swift`-style accessor) rather than hardcoded inline, and must have translations present across all supported `.lproj` locales
-- A new string added to one locale without corresponding entries in the other supported locales is a localization-completeness gap, not just a nice-to-have
-- Every new interactive control (button, tappable element, custom control) must have a VoiceOver-accessible label that matches the control's actual action, not a generic or missing label
-- Images and icons that convey meaning (not purely decorative) must have accessibility labels or be explicitly marked decorative so VoiceOver does not announce them incorrectly
-- Focus order for VoiceOver navigation should follow the visual/logical reading order; custom layouts that reorder visual elements must not scramble the accessibility traversal order
+- Text must use Dynamic Type styles such as `.font(.body)` or `UIFontMetrics`; reject fixed sizes that cause layout performance failure, clip content, and prevent task completion at accessibility categories.
+- Layout must reflow rather than truncate essential controls when `dynamicTypeSize` grows; reject fixed heights that hide state or actions.
+- Images and custom controls must provide meaningful `accessibilityLabel` values or be hidden when decorative; reject unlabeled elements that make VoiceOver state invalid.
+- Combined rows must set deliberate `.accessibilityElement(children:)` behavior and reading order; reject duplicated or scrambled announcements that break navigation.
+- Custom actions and gestures must expose `.accessibilityAction` or UIKit equivalents; reject gesture-only behavior that blocks VoiceOver users.
+- State changes requiring attention must use `UIAccessibility.post(notification:argument:)` or SwiftUI accessibility announcements when available; reject silent failures after async work.
 
-### Adaptation And Task Completion
+### Input Localization And Feedback Rules
 
-- Validation errors and status changes must be both visually distinguishable and announced or discoverable via VoiceOver, not conveyed by color alone
-- Dynamic Type and larger accessibility text sizes should not clip, truncate, or overlap critical content in new or changed views
-- In findings, make the user-visible UX or accessibility consequence explicit
+- Modal and navigation transitions must move accessibility focus to the new heading or error; reject stale focus that leaves users interacting with hidden lifecycle state.
+- Forms must set appropriate `textContentType`, submit behavior, and keyboard dismissal; reject focus traps that prevent task completion with hardware or software keyboards.
+- Keyboard shortcuts must not shadow system accessibility commands and must expose discoverable `UIKeyCommand` titles; reject collisions that cause navigation failure.
+- User-facing strings must use `String(localized:)`, string catalogs, or the detected localization system; reject interpolation that creates invalid grammar or untranslated-output failure.
+- Localized layouts must support longer strings and right-to-left direction through `leadingAnchor` and `trailingAnchor`; reject left/right assumptions that cause clipping failure or reverse meaning.
+- Success, warning, selection, and validation state must not rely on color alone; require text, symbol, haptic, or semantic feedback because color-only output creates accessibility failure.
+- Newer accessibility APIs must use `#available` with an equivalent supported-OS fallback; reject feature loss that blocks task completion on the minimum deployment version.
 - For Blocker or Major findings, describe the concrete accessibility or task-completion failure scenario.

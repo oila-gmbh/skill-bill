@@ -4,6 +4,8 @@ import org.yaml.snakeyaml.Yaml
 import skillbill.scaffold.platformpack.loadPlatformPack
 import skillbill.scaffold.policy.APPROVED_CODE_REVIEW_AREAS
 import skillbill.scaffold.rendering.canonicalSeverityCloser
+import skillbill.scaffold.substance.Fraction
+import skillbill.scaffold.substance.PlatformPackSubstanceAudit
 import skillbill.testing.repoRootFromTest
 import java.nio.file.Files
 import kotlin.test.Test
@@ -219,6 +221,59 @@ class IosPlatformPackTest {
         .joinToString("\n")
     }
     assertFalse(Regex("\\bNit\\b").containsMatchIn(iosContent))
+  }
+
+  @Test
+  fun `ios specialists checker duplication and offline add-ons satisfy substance contracts`() {
+    val report = PlatformPackSubstanceAudit.audit(repoRootFromTest())
+    val ios = report.packs.single { metric -> metric.pack == "ios" }
+
+    assertEquals(APPROVED_CODE_REVIEW_AREAS, ios.physicalAreas.toSet())
+    ios.specialists.filterNot { specialist -> specialist.inherited }.forEach { specialist ->
+      assertTrue(specialist.substantiveRules >= 10, "Thin iOS specialist: $specialist")
+      assertEquals(3, specialist.failureModeClusters, "Missing failure cluster: $specialist")
+      assertTrue(specialist.concreteEvidenceRules >= 10, "Missing concrete evidence: $specialist")
+      assertTrue(specialist.placeholders.isEmpty(), "Placeholder in $specialist")
+    }
+    assertEquals(7, ios.qualityCheckFacets.size)
+    assertTrue(ios.sharedShingles <= Fraction(35, 100), ios.sharedShingles.percentage())
+    report.pairs.filter { pair ->
+      pair.firstFile.startsWith("platform-packs/ios/") || pair.secondFile.startsWith("platform-packs/ios/")
+    }.forEach { pair ->
+      assertTrue(pair.similarity <= Fraction(65, 100), "${pair.role}: ${pair.similarity.percentage()}")
+    }
+
+    val pack = loadPlatformPack(packRoot)
+    val expectedAddOns = setOf(
+      "offline-first-review.md",
+      "offline-sync-consistency.md",
+      "offline-conflict-resolution.md",
+      "offline-background-reliability.md",
+    )
+    val reachable = pack.addonUsage.flatMap { usage ->
+      val consumerPointers = pack.pointers
+        .filter { pointer -> pointer.skillRelativeDir == usage.skillRelativeDir }
+        .map { pointer -> pointer.name }
+        .toSet()
+      usage.addons.flatMap { selection ->
+        val selected = listOf(selection.entrypoint) + selection.companionPointers
+        assertTrue(
+          selected.all { pointer -> pointer in consumerPointers },
+          "Unreachable add-on for ${usage.skillRelativeDir}",
+        )
+        selected
+      }
+    }.toSet()
+    assertEquals(expectedAddOns, reachable)
+    assertEquals(
+      setOf(
+        "code-review/bill-ios-code-review",
+        "code-review/bill-ios-code-review-persistence",
+        "code-review/bill-ios-code-review-platform-correctness",
+        "code-review/bill-ios-code-review-reliability",
+      ),
+      pack.addonUsage.map { usage -> usage.skillRelativeDir }.toSet(),
+    )
   }
 
   private fun source(relativePath: String): String = Files.readString(packRoot.resolve(relativePath))

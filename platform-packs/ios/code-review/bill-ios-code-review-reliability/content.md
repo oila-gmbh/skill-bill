@@ -1,56 +1,46 @@
 ---
 name: bill-ios-code-review-reliability
-description: Use when reviewing iOS background-sync reliability risks including chained interceptor composition, error-logging discipline, and permission-check completeness.
+description: Use when reviewing iOS background work, retries, relaunch, and degradation risks.
 internal-for: bill-code-review
 ---
 
 # Reliability Review Specialist
 
-Review only issues that affect production reliability of background and sync-critical work.
+Review only availability, recovery, and cleanup failures.
 
 ## Focus
 
-- Chained-interceptor/chain-of-responsibility composition for background sync (read, write, permission, and utility stages)
-- Mandatory error logging on background sync failures
-- Permission-check completeness before privileged sync operations
-- Retry, backoff, and failure-visibility behavior for background work
+- BGTaskScheduler and background URLSession lifecycle
+- Expiration, retry, idempotency, and relaunch
+- Degradation and operational observability
 
 ## Ignore
 
-- Style preferences in interceptor ordering with no behavioral effect
-- Logging verbosity preferences that do not affect failure visibility
+- Hypothetical availability concerns with no reachable lifecycle
+- Background APIs not enabled or used by the detected target
 
 ## Applicability
 
-Use this specialist for general iOS background execution using `BGTaskScheduler`, `beginBackgroundTask`, background `URLSession`, relaunch recovery, expiration handling, or work interrupted by termination. Also use it for background sync and any interceptor/chain-of-responsibility-style composition that wraps sync operations with cross-cutting stages (e.g. read, write, permission-checking, and utility/logging stages).
+Apply background rules only when capabilities, identifiers, session configuration, or lifecycle hooks are detected. Verify behavior against the deployment target and Apple API availability.
 
 ## Project-Specific Rules
 
-### Background Execution And Relaunch
+### Background Lifecycle Rules
 
-- `BGTaskScheduler` launch handlers must be registered during application launch before any request is submitted, and every identifier must exactly match the project configuration and permitted identifiers
-- `BGTaskScheduler` submission failures must remain visible and actionable rather than being swallowed, logged without context, or treated as successful scheduling
-- A `BGTask` expiration handler must be installed before work proceeds, cancel all tracked work on expiration, and stop using expired execution time; call `setTaskCompleted` exactly once after the task reaches its actual success or failure outcome
-- `beginBackgroundTask` work must install an expiration handler, end the background task on every completion path, and never keep using expired execution time
-- Background `URLSession` must preserve a stable identifier and delegate ownership, and app relaunch handling must rewire the session plus retain and invoke the system completion handler only after outstanding events finish
-- Long-running synchronization must be termination-safe and resumable or idempotent so interruption cannot duplicate writes, lose progress, or corrupt checkpoint state
+- Every `BGTaskScheduler.register` call must be registered during application launch before submission; reject late registration that causes the background task lifecycle to fail.
+- `BGTaskSchedulerPermittedIdentifiers` and submitted `BGTaskRequest.identifier` values must exactly match the project configuration and permitted identifiers; reject drift that makes scheduling fail operationally.
+- `BGTaskScheduler.shared.submit` submission failures must remain visible and actionable through logging and retry policy; never discard the error because background work then silently disappears.
+- A `BGProcessingTask` expiration handler must be installed before work proceeds and cancel all tracked work on expiration; reject cleanup races that leak resources after expiration.
+- Each `BGTask` must call `setTaskCompleted` exactly once through `setTaskCompleted(success:)`; reject missing or duplicate completion that damages future scheduling reliability.
+- `beginBackgroundTask` tokens must end through `endBackgroundTask` on success, failure, cancellation, and expiration; reject leaked assertions that trigger termination.
+- Background `URLSession` configuration identifiers must be stable and uniquely owned in `URLSessionConfiguration.background(withIdentifier:)`; reject collisions that route lifecycle events to incorrect state.
 
-### Sync Chains And Failure Visibility
+### Recovery And Degradation Rules
 
-- Background sync chains composed from Read/Write/Permissions/Utility-style stages must run every applicable stage for a given operation; skipping a stage (especially a permission-check stage) to save time is a reliability and correctness risk, not just a performance shortcut
-- Every background sync failure path must produce an error log with enough context (operation, entity, and failure reason) to diagnose the failure after the fact; a swallowed or silently-dropped background sync error is a reliability regression
-- Permission checks in a sync chain must run before the corresponding read/write stage executes, not after or in parallel with it; a permission check that runs too late does not actually prevent the unauthorized operation
-- New stages added to an existing chain must preserve the chain's existing ordering guarantees unless the change explicitly and visibly redefines that order
-- Retries for background sync operations must be bounded and must not silently retry an operation that has already permanently failed (e.g. due to a permission denial) as if it were a transient failure
-- Utility/cross-cutting stages (logging, metrics, cleanup) must not swallow or mask an error raised by the read/write/permission stage they wrap
-- The swallowed-error rule is not limited to sync chains: on any async path, an error caught and dropped (empty `catch`, mapped to a default, ignored via `_`, or turned into an empty result) rather than logged or propagated to its caller, the UI, or store state is a reliability regression
-- A dependent async action (UI transition, save, reload, navigation) that proceeds before the awaited operation it depends on has actually completed is a race: the follow-up can act on stale or partial data
-- Concurrent or duplicate async operations (overlapping network fetches, store effects, repeated form submissions) that run without cancelling superseded work or guarding against re-entry let a stale response overwrite newer state, or let a rapidly repeated trigger cause duplicate writes, navigations, or sync jobs
-- Extracting or rewriting a view/component that silently drops previously-present functionality (buttons, fallback labels, forwarded callbacks, wired services) is a regression unless the removal is explicitly flagged as intentional
-- Debug `print`/logging statements or debug-only code paths left in shipped code are a reliability and information-leak risk, not just noise
-- `[weak self]` captured but the closure still reaches `self`/outer state directly instead of through the safely-unwrapped self — or omitted entirely on a long-lived subscription — risks crashes, stale reads, or retain-cycle leaks
+- `application(_:handleEventsForBackgroundURLSession:completionHandler:)` must reconnect delegates and invoke the completion handler after event draining; reject relaunch loss that leaves transfers stuck.
+- Retry policy must classify transient failures, honor `Retry-After`, add bounded jitter, and cap attempts; reject retry storms that create resource starvation or timeouts.
+- Retried writes must carry an idempotency key or durable operation identity; reject replay that duplicates remote or local data after relaunch.
+- Background progress must be persisted before suspension in a termination-safe data contract and restored on next launch; reject memory-only state that loses user work when iOS terminates the process.
+- Unsupported capability, offline state, or denied permission must degrade to an explicit foreground path or user-visible state; reject silent availability failure.
+- Reliability paths must emit privacy-safe `Logger` events or configured telemetry for submission, expiration, retry, completion, and data recovery; reject unobservable failures that operators cannot diagnose.
 - For Blocker or Major findings, describe the concrete availability, duplication, or cleanup failure scenario.
-
-## Repo-Local Knowledge
-
-Before finalizing findings, check whether the repo under review ships its own agent-knowledge docs (e.g. `.agents/skills/*/references/*.md` and a root `AGENTS.md`/`CLAUDE.md`). When present, read them and weigh any documented hard-rule violation (e.g. a required error-logging or permission-check-ordering rule for background sync) as a high-confidence finding. This is a read-only lookup local to the repo under review — nothing from these documents is copied into skill-bill's own tree.
