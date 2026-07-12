@@ -9,8 +9,9 @@ tests and `skill-bill validate`.
 
 ## Corpus and effective coverage
 
-The audit discovers every non-hidden `platform-packs/*/platform.yaml` and reads
-only manifest-declared authored `content.md` files plus a specialist-owned Markdown
+The audit enumerates every non-hidden immediate directory under `platform-packs/`;
+a present directory without `platform.yaml` is an audit error. It reads only
+manifest-declared authored `content.md` files plus a specialist-owned Markdown
 sidecar explicitly linked by that content. Generated `SKILL.md` wrappers, generated
 pointer files, resolved shared targets, provider output, add-ons, and boundary
 memory are excluded.
@@ -47,8 +48,8 @@ its other metrics.
 
 ## Quality-check depth
 
-A maintained pack must declare a quality-check file unless its required composition
-supplies the checker by an explicitly governed fallback. The authored checker must
+A maintained pack must declare its own quality-check file. Review composition never
+supplies or substitutes quality behavior. The authored checker must
 cover all seven facets: repository command discovery; concrete tools or commands;
 scoped execution; failure ownership; priority-ordered fixes; targeted reruns with
 full-suite escalation; and explicit blocker reporting. Each facet is reported
@@ -77,12 +78,7 @@ decimal places. Exactly 35% pack-shared shingles and exactly 65% corresponding-p
 similarity pass; values strictly above those thresholds fail. Pair violations name
 both authored files.
 
-## Temporary baseline acknowledgements
+## Enforcement
 
-Temporary acknowledgements live in `platform-pack-substance-baseline.yaml`, use
-contract version `0.1`, and record an exact violation identity, measured value,
-target, affected role/file, and one owner among SKILL-114 subtasks 2 through 9.
-Acknowledged violations remain in the complete report but do not block maintained
-validation. Unknown or duplicate identities, value drift in either direction,
-broadened entries, invalid owners, and stale entries fail. There are no wildcard,
-manifest, loader, or permanent suppression mechanisms.
+Every audit violation blocks maintained validation. The normal substance gate has
+no acknowledgement, baseline, exemption, wildcard, or permanent suppression path.

@@ -10,7 +10,6 @@
 
 package skillbill.scaffold.substance
 
-import org.yaml.snakeyaml.Yaml
 import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.platformpack.loadPlatformManifest
 import skillbill.scaffold.policy.APPROVED_CODE_REVIEW_AREAS
@@ -80,16 +79,12 @@ data class SubstanceViolation(
   val measured: String,
   val target: String,
   val rule: String,
-  val acknowledgedBy: String? = null,
 ) {
   fun format(): String = buildString {
     append("platform pack substance [$id] pack=$pack role=$areaOrRole files=${files.joinToString(",")}")
     append(" measured=$measured required=$target: $rule")
-    acknowledgedBy?.let { append(" (temporary baseline $it)") }
   }
 }
-
-data class BaselineAcknowledgement(val id: String, val measured: String, val target: String, val owner: String)
 
 data class PlatformPackSubstanceReport(
   val contractVersion: String,
@@ -97,10 +92,7 @@ data class PlatformPackSubstanceReport(
   val pairs: List<SimilarityPair>,
   val violations: List<SubstanceViolation>,
   val auditErrors: List<String>,
-  val baselineErrors: List<String>,
-) {
-  val blockingViolations: List<SubstanceViolation> = violations.filter { it.acknowledgedBy == null }
-}
+)
 
 object PlatformPackSubstanceAudit {
   fun audit(repoRoot: Path, policy: SubstancePolicy = SubstancePolicy()): PlatformPackSubstanceReport {
@@ -244,33 +236,14 @@ object PlatformPackSubstanceAudit {
         },
       )
     }
-    val (acknowledgements, parseErrors) = readBaseline(root)
-    val duplicateIds = acknowledgements.groupBy { it.id }.filterValues { it.size > 1 }.keys
-    val rawById = rawViolations.associateBy { it.id }
-    val baselineErrors = parseErrors.toMutableList()
-    duplicateIds.forEach { baselineErrors += "duplicate baseline identity '$it'" }
-    acknowledgements.forEach { baseline ->
-      val violation = rawById[baseline.id]
-      if (violation == null) {
-        baselineErrors += "stale or unknown baseline identity '${baseline.id}'"
-      } else if (violation.measured != baseline.measured || violation.target != baseline.target) {
-        baselineErrors += "baseline '${baseline.id}' drifted: expected ${baseline.measured}/${baseline.target}, measured ${violation.measured}/${violation.target}"
-      }
-    }
-    val valid = acknowledgements.filter { it.id !in duplicateIds }.associateBy { it.id }
-    val violations = rawViolations.map { violation ->
-      val baseline = valid[violation.id]?.takeIf { it.measured == violation.measured && it.target == violation.target }
-      if (baseline == null) violation else violation.copy(acknowledgedBy = baseline.owner)
-    }.sortedBy { it.id }
     return PlatformPackSubstanceReport(
       PLATFORM_PACK_SUBSTANCE_CONTRACT_VERSION,
       metrics.sortedBy {
         it.pack
       },
       pairs,
-      violations,
+      rawViolations.sortedBy { it.id },
       auditErrors,
-      baselineErrors.sorted(),
     )
   }
 
@@ -302,12 +275,16 @@ object PlatformPackSubstanceAudit {
     if (!packsRoot.isDirectory()) return emptyList<PlatformManifest>() to emptyList()
     val errors = mutableListOf<String>()
     val manifests = Files.list(packsRoot).use { stream ->
-      stream.filter {
-        it.isDirectory() && !it.name.startsWith(".") && it.resolve("platform.yaml").isRegularFile()
-      }.sorted().map { packRoot ->
-        runCatching { loadPlatformManifest(packRoot) }.getOrElse { error ->
-          errors += "platform-packs/${packRoot.name}/platform.yaml: ${error.message ?: error::class.simpleName}"
+      stream.filter { it.isDirectory() && !it.name.startsWith(".") }.sorted().map { packRoot ->
+        val manifest = packRoot.resolve("platform.yaml")
+        if (!manifest.isRegularFile()) {
+          errors += "platform-packs/${packRoot.name}/platform.yaml: maintained platform pack manifest is missing"
           null
+        } else {
+          runCatching { loadPlatformManifest(packRoot) }.getOrElse { error ->
+            errors += "platform-packs/${packRoot.name}/platform.yaml: ${error.message ?: error::class.simpleName}"
+            null
+          }
         }
       }.filter { it != null }.map { it!! }.toList()
     }
@@ -589,49 +566,6 @@ object PlatformPackSubstanceAudit {
   ): SubstanceViolation {
     val id = (listOf(pack, role) + files).joinToString("|")
     return SubstanceViolation(id, pack, role, files.sorted(), measured, target, rule)
-  }
-
-  private fun readBaseline(root: Path): Pair<List<BaselineAcknowledgement>, List<String>> {
-    val path = root.resolve("orchestration/review-orchestrator/platform-pack-substance-baseline.yaml")
-    if (!path.isRegularFile()) {
-      return emptyList<BaselineAcknowledgement>() to listOf(
-        "platform pack substance baseline is missing",
-      )
-    }
-    val raw = runCatching {
-      Yaml().load<Any?>(Files.readString(path)) as? Map<*, *>
-    }.getOrNull() ?: return emptyList<BaselineAcknowledgement>() to listOf(
-      "platform pack substance baseline is invalid YAML",
-    )
-    if (raw["contract_version"]?.toString() != PLATFORM_PACK_SUBSTANCE_CONTRACT_VERSION) {
-      return emptyList<BaselineAcknowledgement>() to listOf(
-        "platform pack substance baseline contract_version must be $PLATFORM_PACK_SUBSTANCE_CONTRACT_VERSION",
-      )
-    }
-    val entries = raw["acknowledgements"] as? List<*>
-      ?: return emptyList<BaselineAcknowledgement>() to listOf(
-        "platform pack substance baseline acknowledgements must be a list",
-      )
-    val errors = mutableListOf<String>()
-    val parsed = entries.mapNotNull { value ->
-      val entry = value as? Map<*, *> ?: return@mapNotNull null.also {
-        errors += "baseline acknowledgement must be an object"
-      }
-      val owner = entry["owner"]?.toString().orEmpty()
-      if (!Regex(
-          "SKILL-114-[2-9]",
-        ).matches(owner)
-      ) {
-        errors += "baseline owner '$owner' must be SKILL-114-2 through SKILL-114-9"
-      }
-      BaselineAcknowledgement(
-        entry["id"]?.toString().orEmpty(),
-        entry["measured"]?.toString().orEmpty(),
-        entry["target"]?.toString().orEmpty(),
-        owner,
-      )
-    }
-    return parsed to errors
   }
 
   private fun rolePlaceholder(name: String): String = when {

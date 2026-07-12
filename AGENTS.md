@@ -77,7 +77,7 @@ Product versus extension surface:
 - `.bill-shared` is protected on every axis
 - maintainers may remove deprecated shipped surfaces only through the CLI `--allow-shipped` path in this repo
 
-`kmp` composes its seven-area Kotlin review baseline with KMP-owned platform-correctness, UI, and UX/accessibility lanes. Its quality checks route directly to `bill-kmp-code-check`; quality-check routing never inherits or substitutes the Kotlin checker. `bill-feature-verify` remains pre-shell.
+`kmp` adds platform-correctness, UI, and UX/accessibility to Kotlin's seven review areas. Quality checks route to `bill-kmp-code-check` without Kotlin fallback. `bill-feature-verify` remains pre-shell.
 
 ## Runtime Contract Schemas
 

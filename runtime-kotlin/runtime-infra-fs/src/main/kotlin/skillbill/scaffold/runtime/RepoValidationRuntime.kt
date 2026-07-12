@@ -177,10 +177,7 @@ object RepoValidationRuntime {
     issues += validateGeneratedArtifactGuard(root).issues
     val substanceReport = PlatformPackSubstanceAudit.audit(root)
     issues += substanceReport.auditErrors
-    issues += substanceReport.baselineErrors.map {
-      "orchestration/review-orchestrator/platform-pack-substance-baseline.yaml: $it"
-    }
-    issues += substanceReport.blockingViolations.map { it.format() }
+    issues += substanceReport.violations.map { it.format() }
     validateNoOrchestrationPathsInSkillBodies(root, skillFiles, platformSkillFiles, issues)
 
     return RepoValidationReport(

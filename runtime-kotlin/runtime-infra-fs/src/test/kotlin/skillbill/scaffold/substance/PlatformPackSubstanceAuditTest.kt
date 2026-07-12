@@ -63,7 +63,7 @@ class PlatformPackSubstanceAuditTest {
   }
 
   @Test
-  fun `maintained repository audit is deterministic and exactly baselined`() {
+  fun `maintained repository audit is deterministic and violation free`() {
     val root = repoRootFromTest()
     val first = PlatformPackSubstanceAudit.audit(root)
     val second = PlatformPackSubstanceAudit.audit(root)
@@ -71,46 +71,30 @@ class PlatformPackSubstanceAuditTest {
     assertEquals(PLATFORM_PACK_SUBSTANCE_CONTRACT_VERSION, first.contractVersion)
     assertTrue(first.packs.isNotEmpty())
     assertTrue(first.violations.isEmpty(), first.violations.joinToString("\n") { it.format() })
-    assertTrue(first.baselineErrors.isEmpty(), first.baselineErrors.joinToString("\n"))
-    assertTrue(
-      first.blockingViolations.isEmpty(),
-      first.blockingViolations.joinToString("\n") { violation ->
-        "- id: ${quote(
-          violation.id,
-        )}\n  measured: ${quote(
-          violation.measured,
-        )}\n  target: ${quote(violation.target)}\n  owner: SKILL-114-${owner(violation.pack)}"
-      },
+    assertTrue(first.packs.all { it.qualityCheckFile != null })
+    assertEquals(
+      setOf("go", "ios", "kotlin", "php", "python", "rust", "typescript"),
+      first.packs.filter { it.physicalAreas.toSet() == APPROVED_CODE_REVIEW_AREAS }.map { it.pack }.toSet(),
     )
+    val kmp = first.packs.single { it.pack == "kmp" }
+    assertEquals(3, kmp.physicalAreas.size)
+    assertEquals(7, kmp.inheritedAreas.size)
+    assertEquals(APPROVED_CODE_REVIEW_AREAS, (kmp.physicalAreas + kmp.inheritedAreas).toSet())
   }
 
   @Test
-  fun `empty governed baseline is valid and suppresses no maintained violation`() {
-    val root = repoRootFromTest()
+  fun `visible pack directory without manifest fails loudly while hidden directory is ignored`() {
+    val root = Files.createTempDirectory("substance-missing-manifest")
+    seedConformingPlatformPack(root, "valid")
+    Files.createDirectories(root.resolve("platform-packs/missing"))
+    Files.createDirectories(root.resolve("platform-packs/.hidden"))
+
     val report = PlatformPackSubstanceAudit.audit(root)
 
-    assertTrue(report.baselineErrors.isEmpty(), report.baselineErrors.joinToString("\n"))
-    assertTrue(report.violations.none { it.acknowledgedBy != null })
-    assertEquals(report.violations, report.blockingViolations)
-  }
-
-  @Test
-  fun `missing and malformed governed baselines fail loudly`() {
-    val missingRoot = Files.createTempDirectory("substance-missing-baseline")
-    seedConformingPlatformPack(missingRoot, "alpha")
+    assertEquals(listOf("valid"), report.packs.map { it.pack })
     assertEquals(
-      listOf("platform pack substance baseline is missing"),
-      PlatformPackSubstanceAudit.audit(missingRoot).baselineErrors,
-    )
-
-    val malformedRoot = Files.createTempDirectory("substance-malformed-baseline")
-    seedConformingPlatformPack(malformedRoot, "alpha")
-    val baseline = malformedRoot.resolve("orchestration/review-orchestrator/platform-pack-substance-baseline.yaml")
-    Files.createDirectories(baseline.parent)
-    Files.writeString(baseline, "contract_version: \"0.1\"\nacknowledgements: {}\n")
-    assertEquals(
-      listOf("platform pack substance baseline acknowledgements must be a list"),
-      PlatformPackSubstanceAudit.audit(malformedRoot).baselineErrors,
+      listOf("platform-packs/missing/platform.yaml: maintained platform pack manifest is missing"),
+      report.auditErrors,
     )
   }
 
@@ -291,8 +275,8 @@ class PlatformPackSubstanceAuditTest {
 
     val report = PlatformPackSubstanceAudit.audit(root)
 
-    assertTrue(report.blockingViolations.any { it.areaOrRole.endsWith(":rules") })
-    assertTrue(report.blockingViolations.any { it.areaOrRole == "quality-check" })
+    assertTrue(report.violations.any { it.areaOrRole.endsWith(":rules") })
+    assertTrue(report.violations.any { it.areaOrRole == "quality-check" })
   }
 
   private fun appendComposition(root: java.nio.file.Path, pack: String, target: String) {
@@ -314,16 +298,4 @@ class PlatformPackSubstanceAuditTest {
 
   private fun immediatelyBelow(value: Fraction): Fraction =
     Fraction(value.numerator * value.denominator - 1, value.denominator * value.denominator)
-
-  private fun owner(pack: String): Int = mapOf(
-    "go" to 2,
-    "php" to 3,
-    "python" to 4,
-    "rust" to 5,
-    "typescript" to 6,
-    "kotlin" to 7,
-    "kmp" to 8,
-    "ios" to 9,
-  ).getValue(pack)
-  private fun quote(value: String): String = "\"${value.replace("\\", "\\\\").replace("\"", "\\\"")}\""
 }

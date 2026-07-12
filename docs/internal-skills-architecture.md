@@ -311,7 +311,7 @@ parsed `internalFor`) rather than re-scanning `platform-packs/` independently
 of selection. The parent's content hash folds exactly the selected sidecars.
 
 After a scratch install with all packs selected, `bill-code-review`'s staged
-directory contains `SKILL.md` plus 78 sibling sidecars — and no agent
+directory contains `SKILL.md` plus 81 sibling sidecars — and no agent
 `skills_dir` symlink exists for any manifest-discovered review sidecar:
 
 ```
@@ -332,6 +332,8 @@ directory contains `SKILL.md` plus 78 sibling sidecars — and no agent
       ... (10 PHP specialists total)
       bill-python-code-review.md            sidecar: Python stack entry (selected)
       ... (10 Python specialists total)
+      bill-rust-code-review.md              sidecar: Rust stack entry (selected)
+      ... (10 Rust specialists total)
       bill-typescript-code-review.md        sidecar: TypeScript stack entry (selected)
       ... (10 TypeScript specialists total)
       platform-packs → …                    symlink for pack pointer resolution
@@ -391,8 +393,8 @@ standalone `skills_dir` path (PD5).
 
 | Selection | Sidecars staged inside `bill-code-review/` |
 |---|---|
-| `ALL` | 78 (8 stack entries + 70 specialists) |
-| Kotlin only | 9 (`bill-kotlin-code-review.md` + 8 specialists) |
+| `ALL` | 81 (8 stack entries + 73 specialists) |
+| Kotlin only | 11 (`bill-kotlin-code-review.md` + 10 specialists) |
 | KMP only | fails — Kotlin is a required baseline (PD8) |
 | KMP + Kotlin | 12 (3 KMP + 9 Kotlin) |
 | None | 0; `bill-code-review` stages inert (byte-identical to no pack internals) |

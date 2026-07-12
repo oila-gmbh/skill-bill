@@ -530,7 +530,7 @@ class TypeScriptPlatformPackTest {
       "platform-correctness" to listOf("Generic constraints", "declaration drift", "ESM, CommonJS"),
       "reliability" to listOf("floating promises", "`AbortSignal`", "`SIGTERM`", "queue saturation"),
       "security" to listOf("CSRF-token", "prototype pollution", "lifecycle scripts"),
-      "testing" to listOf("`tsd`", "Playwright", "ESM and CommonJS", "controlled promises", "regression fixture"),
+      "testing" to listOf("`tsd`", "Playwright", "ESM and CommonJS", "controlled promises", "pre-fix behavior"),
       "ui" to listOf("TSX alone", "React, Vue, Svelte, Solid, Angular, Lit", "hydration"),
       "ux-accessibility" to listOf("`aria-labelledby`", "`aria-live`", "`dir=\"rtl\"`"),
     )

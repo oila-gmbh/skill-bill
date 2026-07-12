@@ -15,17 +15,15 @@ fun main(arguments: Array<String>) {
     else -> error("Unsupported report format '${options["format"]}'; expected text or json.")
   }
   println(output)
-  check(report.auditErrors.isEmpty() && report.baselineErrors.isEmpty() && report.blockingViolations.isEmpty()) {
+  check(report.auditErrors.isEmpty() && report.violations.isEmpty()) {
     "Platform pack substance report contains blocking findings."
   }
 }
 
 internal fun PlatformPackSubstanceReport.toHumanReadable(): String = buildString {
   appendLine("Platform pack substance contract $contractVersion")
-  appendLine("acknowledged violations: ${violations.count { it.acknowledgedBy != null }}")
-  appendLine("blocking violations: ${blockingViolations.size}")
+  appendLine("violations: ${violations.size}")
   appendLine("audit errors: ${auditErrors.size}")
-  appendLine("baseline errors: ${baselineErrors.size}")
   packs.forEach { pack ->
     val maximumPair = pack.highestCorrespondingSimilarity?.similarity?.percentage() ?: "0.00%"
     appendLine(
@@ -80,10 +78,8 @@ internal fun PlatformPackSubstanceReport.toWireMap(): Map<String, Any?> = linked
       "files" to violation.files,
       "measured" to violation.measured,
       "target" to violation.target,
-      "acknowledged_by" to violation.acknowledgedBy,
     )
   },
   "audit_errors" to auditErrors,
-  "baseline_errors" to baselineErrors,
-  "blocking_violation_count" to blockingViolations.size,
+  "violation_count" to violations.size,
 )

@@ -26,7 +26,7 @@ Detect DOM usage and repository-owned React, Vue, Svelte, Solid, Angular, Lit, v
 
 ### State and Event Contract Rules
 
-- TSX alone must never be proof of React behavior; verify the repository's actual JSX transform and framework owner or reject an invalid effect, event, and lifecycle model. Verify `tsconfig.json` before reporting this failure.
+- TSX alone must never be proof of React behavior; verify the repository's actual JSX transform and framework owner or reject an invalid effect, event, and lifecycle model. Verify the configured JSX factory or runtime and the owning framework's rendered lifecycle behavior before reporting this failure.
 - User-visible state must have one owner and derived values must remain derived through the detected store or component model; reject duplicated state that produces invalid rendering after updates. Verify `browser trace` before reporting this failure.
 - Effects, watchers, signals, stores, and subscriptions must declare accurate dependencies and cleanup for their framework; prevent stale closures, loops, or retained lifecycle resources. Verify `browser trace` before reporting this failure.
 - Typed DOM and component events must match the actual element, payload, and propagation path; flag an assertion that hides invalid form data or a handler that never receives the claimed event. Verify `browser trace` before reporting this failure.

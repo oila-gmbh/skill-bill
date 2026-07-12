@@ -4,14 +4,14 @@ issue_key: "SKILL-114"
 feature_name: "platform-pack-substance"
 parent_spec_path: ".feature-specs/SKILL-114-platform-pack-substance/spec.md"
 spec_source: "local"
-status: "in_progress"
+status: "complete"
 execution_model: "same_branch_commit_per_subtask"
 base_branch: "main"
 feature_branch: "feat/SKILL-114-platform-pack-substance"
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 10
-  action: "resume"
+  subtask_id: 0
+  action: "complete"
 subtasks:
 - id: 1
   name: "Substance standard and audit gate"
@@ -160,12 +160,12 @@ subtasks:
 - id: 10
   name: "Cross-pack conformance and release gate"
   spec_path: ".feature-specs/SKILL-114-platform-pack-substance/spec_subtask_10_cross_pack_conformance_and_release_gate.md"
-  status: "in_progress"
+  status: "complete"
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260712-093948-gxgm"
   blocked_reason: null
-  last_resumable_step: "plan"
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []

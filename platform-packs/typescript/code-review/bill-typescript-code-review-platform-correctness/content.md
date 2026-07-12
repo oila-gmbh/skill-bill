@@ -26,10 +26,10 @@ Apply only to the compiler options, module graph, package topology, and runtimes
 
 ### Type and State Correctness Rules
 
-- External values must enter as `unknown` and be narrowed by checks that verify every claimed field; reject a type guard whose partial predicate permits invalid state at runtime. Verify `tsconfig.json` before reporting this failure.
-- Generic constraints and conditional types must preserve the caller-to-implementation relationship visible in `tsc --noEmit`; flag variance or inference changes that make an unsafe write or incorrect return type reachable. Verify `tsconfig.json` before reporting this failure.
-- Uses of `any`, unchecked casts, non-null assertions, `@ts-ignore`, and declaration merging require producer evidence; reject an escape hatch when malformed data can leak past the erased type boundary. Verify `tsconfig.json` before reporting this failure.
-- Optional, absent, `undefined`, and `null` states must remain distinct through `exactOptionalPropertyTypes`, object spread, JSON, and forms or a valid state can be silently corrupted. Verify `tsconfig.json` before reporting this failure.
+- External values must enter as `unknown` and be narrowed by checks that verify every claimed field; reject a type guard whose partial predicate permits invalid state at runtime. Verify accepted and rejected runtime payloads at the narrowing boundary before reporting this failure.
+- Generic constraints and conditional types must preserve the caller-to-implementation relationship visible in `tsc --noEmit`; flag variance or inference changes that make an unsafe write or incorrect return type reachable. Verify inferred types and the compiler diagnostic for an unsafe caller before reporting this failure.
+- Uses of `any`, unchecked casts, non-null assertions, `@ts-ignore`, and declaration merging require producer evidence; reject an escape hatch when malformed data can leak past the erased type boundary. Verify producer schema output and a malformed runtime value through the escape hatch before reporting this failure.
+- Optional, absent, `undefined`, and `null` states must remain distinct through `exactOptionalPropertyTypes`, object spread, JSON, and forms or a valid state can be silently corrupted. Verify serialized keys and round-trip values for all four states before reporting this failure.
 
 ### Emission and Consumer Contract Rules
 
@@ -40,8 +40,8 @@ Apply only to the compiler options, module graph, package topology, and runtimes
 
 ### Target and Toolchain Failure Rules
 
-- The selected `target` and `lib` must match every supported runtime; reject code whose syntax, built-ins, or polyfill assumptions fail on the declared Node, Deno, Bun, browser, worker, or edge matrix. Verify `tsconfig.json` before reporting this failure.
-- Browser globals such as `window` and server globals such as `process` must be guarded by the actual deployment boundary; prevent an availability failure hidden by broad ambient types. Verify `tsconfig.json` before reporting this failure.
+- The selected `target` and `lib` must match every supported runtime; reject code whose syntax, built-ins, or polyfill assumptions fail on the declared Node, Deno, Bun, browser, worker, or edge matrix. Verify emitted syntax and execution in the oldest supported runtime before reporting this failure.
+- Browser globals such as `window` and server globals such as `process` must be guarded by the actual deployment boundary; prevent an availability failure hidden by broad ambient types. Verify server-side and browser entry execution without cross-environment ambient globals before reporting this failure.
 - Bundler aliases, package conditions, tree-shaking, and code-splitting must resolve the same public contract as the compiler; flag a production-only build failure that editor resolution cannot reveal. Verify `production bundle output` before reporting this failure.
 - Generated or ambient `*.d.ts` files must be checked against the producing tool and runtime artifact; reject stale declarations that conceal an invalid call, serialization mismatch, or missing module. Verify `generated declaration provenance` before reporting this failure.
 - For Blocker or Major findings, describe the concrete invalid-state or ordering failure scenario.
