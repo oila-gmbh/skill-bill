@@ -1,5 +1,7 @@
 package skillbill.scaffold
 
+import skillbill.nativeagent.composition.composeNativeAgentSource
+import skillbill.nativeagent.composition.parseNativeAgentBundle
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.InstallAgentSelection
 import skillbill.install.model.InstallAgentSelectionMode
@@ -15,7 +17,10 @@ import skillbill.install.model.WindowsSymlinkDecision
 import skillbill.install.model.WindowsSymlinkPreflight
 import skillbill.install.model.WindowsSymlinkPreflightState
 import skillbill.install.runtime.InstallOperations
+import skillbill.scaffold.authoring.renderAuthoringTarget
 import skillbill.scaffold.platformpack.loadPlatformPack
+import skillbill.scaffold.substance.Fraction
+import skillbill.scaffold.substance.PlatformPackSubstanceAudit
 import skillbill.testing.repoRootFromTest
 import java.nio.file.Files
 import kotlin.test.Test
@@ -33,6 +38,8 @@ private val KOTLIN_CODE_REVIEW_AREAS = setOf(
   "reliability",
   "security",
   "testing",
+  "ui",
+  "ux-accessibility",
 )
 
 class KotlinPlatformPackTest {
@@ -75,8 +82,12 @@ class KotlinPlatformPackTest {
     assertTrue(pack.routingSignals.tieBreakers.any { it.contains("Kotlin/JVM") && it.contains("dominate") })
     assertTrue(pack.routingSignals.tieBreakers.any { it.contains("adjacent KMP") })
     assertTrue(pack.routingSignals.tieBreakers.any { it.contains("generated and vendored") })
-    assertEquals(8, pack.areaMetadata.values.toSet().size)
+    assertEquals(10, pack.areaMetadata.values.toSet().size)
     pack.areaMetadata.values.forEach { focus -> assertContains(focus, "Kotlin") }
+    val pointerConsumers = pack.pointers.map { pointer -> pointer.skillRelativeDir }.toSet()
+    KOTLIN_CODE_REVIEW_AREAS.forEach { area ->
+      assertContains(pointerConsumers, "code-review/bill-kotlin-code-review-$area")
+    }
   }
 
   @Test
@@ -89,7 +100,7 @@ class KotlinPlatformPackTest {
         .toList()
     }
 
-    assertEquals(10, contentFiles.size)
+    assertEquals(12, contentFiles.size)
     contentFiles.forEach { contentFile ->
       val text = Files.readString(contentFile)
       assertTrue(text.contains("internal-for:"), "Missing internal classification in $contentFile")
@@ -113,6 +124,52 @@ class KotlinPlatformPackTest {
         },
         "Kotlin specialists must contain $requiredRule guidance",
       )
+    }
+
+    val baseline = Files.readString(reviewRoot.resolve("bill-kotlin-code-review/content.md"))
+    KOTLIN_CODE_REVIEW_AREAS.forEach { area ->
+      assertTrue(Regex("(?m)^- .+ -> `$area` specialist\\.").containsMatchIn(baseline))
+    }
+    listOf("Compose Desktop", "Swing EDT", "JavaFX Application Thread", "server templates", "CLI", "TUI")
+      .forEach { signal -> assertContains(baseline, signal) }
+  }
+
+  @Test
+  fun `kotlin specialists native agents rendering and substance have exact ten-area parity`() {
+    val repoRoot = repoRootFromTest()
+    val packRoot = repoRoot.resolve("platform-packs/kotlin")
+    val pack = loadPlatformPack(packRoot)
+    val agents = parseNativeAgentBundle(
+      packRoot.resolve("code-review/bill-kotlin-code-review/native-agents/agents.yaml"),
+    )
+    val expectedNames = KOTLIN_CODE_REVIEW_AREAS.map { area -> "bill-kotlin-code-review-$area" }.toSet()
+
+    assertEquals(expectedNames, agents.map { agent -> agent.name }.toSet())
+    agents.forEach { agent ->
+      assertTrue(composeNativeAgentSource(repoRoot, agent).body.isNotBlank())
+      val rendered = renderAuthoringTarget(repoRoot, agent.name)
+      assertContains(rendered.stdout, "===== SKILL.md:")
+      assertEquals(
+        setOf("review-orchestrator.md", "shell-ceremony.md", "telemetry-contract.md"),
+        rendered.blocks.drop(1).map { block -> block.header.substringAfterLast('/').substringBefore(" =====") }.toSet(),
+      )
+    }
+
+    val report = PlatformPackSubstanceAudit.audit(repoRoot)
+    val kotlin = report.packs.single { metric -> metric.pack == "kotlin" }
+    assertEquals(KOTLIN_CODE_REVIEW_AREAS, kotlin.physicalAreas.toSet())
+    kotlin.specialists.filterNot { specialist -> specialist.inherited }.forEach { specialist ->
+      assertTrue(specialist.substantiveRules >= 10, "Thin Kotlin specialist: ${specialist.area}")
+      assertEquals(3, specialist.failureModeClusters, "Missing failure cluster: ${specialist.area}")
+      assertTrue(specialist.concreteEvidenceRules >= 10, "Missing evidence: ${specialist.area}")
+      assertTrue(specialist.placeholders.isEmpty(), "Placeholder in ${specialist.area}")
+    }
+    assertEquals(7, kotlin.qualityCheckFacets.size)
+    assertTrue(kotlin.sharedShingles <= Fraction(35, 100), kotlin.sharedShingles.percentage())
+    report.pairs.filter { pair ->
+      pair.firstFile.startsWith("platform-packs/kotlin/") || pair.secondFile.startsWith("platform-packs/kotlin/")
+    }.forEach { pair ->
+      assertTrue(pair.similarity <= Fraction(65, 100), "${pair.role}: ${pair.similarity.percentage()}")
     }
   }
 

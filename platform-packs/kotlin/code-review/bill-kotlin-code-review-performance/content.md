@@ -1,38 +1,37 @@
 ---
 name: bill-kotlin-code-review-performance
-description: Use when reviewing performance risks in Kotlin code, including hot-path work, blocking I/O, latency regressions, and resource waste. Use when user mentions performance, blocking I/O, hot path, memory leak, or latency in Kotlin code.
+description: Review Kotlin blocking, allocation, Flow, serialization, persistence, queue, and measurement performance risks.
 internal-for: bill-code-review
 ---
 
 # Performance Review Specialist
 
-Review only measurable user-facing or production-facing performance failures.
-
 ## Focus
 
-- Blocking work, dispatcher saturation, Flow backpressure, collection cost, database over-fetching, and lazy-load amplification
+- Dispatcher capacity, backpressure, allocation, serialization, ORM access, queues, and evidence
 
 ## Ignore
 
-- Micro-optimizations, small allocations, or style changes without evidence of latency, memory, throughput, or resource impact
+- Micro-optimizations without measurable latency, memory, throughput, or resource impact
 
 ## Applicability
 
-Use this specialist for Kotlin libraries and services where execution context, data volume, I/O, or serialization can create observable cost.
+Use when Kotlin execution context, data volume, I/O, or framework behavior can create observable cost.
 
 ## Project-Specific Rules
 
-### Execution and Backpressure
+### Performance Review Rules
 
-- Reject `runBlocking` inside a coroutine or on `Dispatchers.Default`; it blocks worker threads and can starve unrelated coroutine work.
-- Reject blocking JDBC or filesystem I/O outside `Dispatchers.IO` or a repository-owned blocking dispatcher.
-- Account for `Dispatchers.IO`'s default parallelism ceiling of the greater of 64 threads or the available processor count, unless `kotlinx.coroutines.io.parallelism` configures it; reject unbounded blocking fan-out that can exhaust that ceiling, connections, or downstream capacity under load.
-- Verify `flowOn` is placed upstream of the work it should move and require bounded `buffer` or explicit backpressure where producer/consumer rates diverge.
-
-### Allocation and Data Access
-
-- Prefer `asSequence` or a single-pass operation when a large eager `map`/`filter` chain creates avoidable intermediate collections on a hot path.
-- Reject full-row or full-entity hydration for count, exists, or aggregate operations when the datastore can compute the answer directly.
-- Reject serialization that traverses lazy ORM relationships and triggers N+1 queries or detached-session failures.
-- Require batches, queues, retries, and in-memory buffers to remain bounded under realistic load.
+- Reject `runBlocking` inside suspend code because it consumes a worker and risks dispatcher starvation under concurrent load.
+- Require JDBC, filesystem, and legacy client calls to run on `Dispatchers.IO` or a bounded owned dispatcher; blocking the default pool causes latency failure.
+- Verify `Dispatchers.IO.limitedParallelism` and connection-pool capacity agree; excessive fan-out can exhaust resources and amplify timeouts.
+- Require upstream placement of `flowOn` around expensive production; misplaced context changes leave CPU or blocking work on the collector and cause performance regression.
+- Reject unbounded `buffer`, `Channel.UNLIMITED`, or queue accumulation because a fast producer can cause memory failure before backpressure arrives.
+- Verify large `map` and `filter` chains with `async-profiler` or allocation measurements; eager intermediates can create avoidable memory pressure.
+- Require `sequence` or single-pass processing only when `jmh` evidence shows collection allocation affects the hot path; speculative rewrites risk slower behavior.
+- Reject `Json.encodeToString` repetition for invariant payloads on a hot path when profiling shows serialization latency and allocation regression.
+- Require ORM projections for count, existence, and summary queries; hydrating full `@Entity` graphs risks N+1 access and resource exhaustion.
+- Verify lazy associations are not traversed during serialization; `Hibernate.initialize` cascades can cause query storms or session failure.
+- Require `batchSize`, semaphore, or rate limits around queue consumers; unbounded parallel launches risk downstream timeout and connection starvation.
+- Reject performance claims without reproducible `jmh`, load-test, trace, or profiler evidence because unmeasured changes can hide throughput regression.
 - For Blocker or Major findings, describe the concrete latency, memory-pressure, or throughput failure scenario.

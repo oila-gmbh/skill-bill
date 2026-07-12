@@ -1,38 +1,37 @@
 ---
 name: bill-kotlin-code-review-security
-description: Use when reviewing secrets handling, auth/session safety, sensitive data exposure, and transport/storage security in Kotlin code. Use when user mentions secrets, auth tokens, encryption, sensitive data, or security review in Kotlin code.
+description: Review Kotlin input, authorization, injection, secrets, authentication, deserialization, and dependency security failures.
 internal-for: bill-code-review
 ---
 
 # Security Review Specialist
 
-Review only exploitable or compliance-relevant failures.
-
 ## Focus
 
-- Dangerous input sinks, authentication and authorization, tenant isolation, secrets, verification, and deserialization
+- Attacker-controlled data, identity boundaries, dangerous sinks, credentials, verification, and dependencies
 
 ## Ignore
 
-- Non-security style feedback or hypothetical concerns without an attacker-controlled path
+- Hypothetical concerns without a reachable attacker-controlled path or exposure
 
 ## Applicability
 
-Use this specialist for Kotlin libraries and services that process untrusted data, identities, credentials, files, URLs, commands, templates, or serialized payloads.
+Use for Kotlin code processing untrusted payloads, identities, URLs, files, commands, templates, or serialized objects.
 
 ## Project-Specific Rules
 
-### Dangerous Sinks
+### Security Review Rules
 
-- Require allowlisting before untrusted input reaches network destinations, process builders or shells, filesystem paths, SQL fragments, or template engines.
-- Reject SSRF paths that let attackers reach internal services, command execution paths that permit argument or shell injection, and path traversal that escapes the intended root.
-- Reject SQL or template injection wherever untrusted text is concatenated into executable syntax rather than passed through safe typed or parameterized APIs.
-- Reject unsafe deserialization through `ObjectInputStream`, unrestricted kotlinx.serialization polymorphism, SnakeYAML `load`, or equivalent gadget-capable mechanisms.
-
-### Identity and Verification
-
-- Require object-level authorization at the trusted security boundary for every requested resource and enforce tenant/account isolation using trusted actor context, never caller-supplied ownership alone.
-- Reject hand-rolled JWT validation that omits signature, algorithm, issuer, audience, expiry, or key-rotation verification.
-- Reject temporary debug endpoints, actions, or other debug code; bypass flags; committed test credentials; relaxed TLS or signature verification; and feature flags that weaken authentication or authorization.
-- Never expose secrets, auth headers, session cookies, private keys, sensitive payloads, or internal exception details in code, logs, tests, or responses.
+- Require `kotlinx.serialization` DTO validation before domain use; syntactically valid hostile values can break state invariants or exhaust resources.
+- Reject unrestricted polymorphic serializers in `SerializersModule`; attacker-selected subclasses can create unsafe deserialization paths.
+- Verify object authorization at the service boundary using the trusted `Principal`; route-only checks risk direct-call authorization bypass.
+- Require tenant predicates to derive from `SecurityContext`, never request fields; caller-controlled ownership risks cross-tenant data exposure.
+- Reject concatenated SQL in `exec` or JDBC statements; untrusted fragments create injection and data-corruption risk.
+- Require escaped output in `kotlinx.html`, Thymeleaf, or FreeMarker templates; raw interpolation can cause script injection and session exposure.
+- Verify `Path.normalize` plus root containment before file access; unchecked `resolve` input risks traversal outside the allowed directory.
+- Reject unvalidated destinations passed to `HttpClient`; permissive URL handling creates SSRF exposure to metadata or internal services.
+- Require `ProcessBuilder` argument allowlists and never invoke `sh -c` with input; shell composition creates command-injection failure.
+- Reject secrets, `Authorization` headers, cookies, and private payloads in `logger` calls; production logs can become credential exposure.
+- Verify JWT signature, algorithm, issuer, audience, expiry, and rotation using `JWTVerifier`; decode-only authentication is an unsafe bypass.
+- Require Gradle dependency verification or vulnerability checks for exposed libraries; stale `libs.versions.toml` entries can retain exploitable runtime risk.
 - For Blocker or Major findings, describe the concrete authorization-bypass or data-exposure scenario.

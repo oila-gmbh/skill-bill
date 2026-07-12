@@ -1,38 +1,37 @@
 ---
 name: bill-kotlin-code-review-reliability
-description: Use when reviewing Kotlin backend/server reliability risks including timeouts, retries, background work, concurrency under load, caching, and observability-critical failures. Use when user mentions timeout, retry logic, circuit breaker, caching, or observability in Kotlin backend.
+description: Review Kotlin retries, timeouts, supervision, replay, shutdown, cleanup, ordering, and operational evidence.
 internal-for: bill-code-review
 ---
 
-# Backend Reliability Review Specialist
-
-Review service behavior that can cause outages, stuck work, duplication, or invisible failure.
+# Reliability Review Specialist
 
 ## Focus
 
-- Consumer isolation, timeout classification, retries, replay, durable publication, and failure telemetry
+- Failure classification, bounded recovery, consumer lifecycle, durable ordering, cleanup, and telemetry
 
 ## Ignore
 
-- Tiny observability niceties without incident or operational impact
+- Observability polish without an outage, loss, duplication, or recovery consequence
 
 ## Applicability
 
-Use this specialist for Kotlin services, workers, consumers, schedulers, queues, caches, and downstream integrations.
+Use for Kotlin services, workers, schedulers, queues, caches, and downstream integrations.
 
 ## Project-Specific Rules
 
-### Isolation and Retry
+### Reliability Review Rules
 
-- Require `SupervisorJob` for long-lived consumers whose sibling partitions or handlers must continue after one child fails.
-- Treat `TimeoutCancellationException` thrown by `withTimeout` as cancellation or a timeout category; reject generic catch blocks that misclassify it as an ordinary retriable business error, cause duplicate work, or defeat structured cancellation.
-- Reject `Thread.sleep` in coroutine retry loops; require cancellable `delay` with bounded attempts, backoff, and jitter for transient failures.
-- Distinguish poison, transient, and permanent failures in retry decisions and telemetry so operators can identify drops, dead letters, and retry storms.
-
-### Replay and Durable Ordering
-
-- Require replay, rebuild, and republish flows to be bounded, observable, and safe to rerun without duplicating durable or user-visible effects.
-- Acknowledge or commit consumed work only after durable success.
-- Require event publication after commit or through an outbox so events never describe rolled-back state and committed state is not left unpublished.
-- Require explicit timeouts, bounded concurrency, and cleanup for external calls and long-lived resources.
+- Require retries around `HttpClient.request` to classify transient, permanent, and authorization failure; retrying every error risks amplification and lockout.
+- Reject unbounded `retryWhen` loops; require attempt limits, backoff, jitter, and a terminal outcome to prevent resource exhaustion.
+- Verify `TimeoutCancellationException` remains cancellation-aware; treating it as ordinary failure can lose parent cancellation and duplicate effects.
+- Require idempotency keys around retried writes such as `repository.insert`; absent replay protection risks duplicate durable state.
+- Reject consumer acknowledgement before `transaction.commit`; a crash in that ordering can cause permanent data loss.
+- Require `SupervisorJob` only for independently recoverable partitions; hiding a shared fatal dependency failure can leave invalid partial service state.
+- Verify startup readiness follows successful migrations and client initialization; publishing readiness early risks request failure and corrupt partial startup.
+- Require shutdown hooks to stop intake, drain bounded work, cancel scopes, and close `DataSource` in order; skipped stages risk incomplete shutdown.
+- Reject suspending cleanup in `finally` without bounded `withContext(NonCancellable)` where durability requires completion; cancellation can leak resources.
+- Require outbox records and business state to share one `@Transactional` boundary; separate commits risk missing or incorrectly ordered events.
+- Verify circuit breakers such as `resilience4j` distinguish dependency timeout from caller cancellation; mixed signals can open circuits incorrectly.
+- Require metrics and structured logs to expose attempts, terminal outcome, queue depth, and correlation ID; missing `retry_count` evidence makes operational failure invisible.
 - For Blocker or Major findings, describe the concrete availability, duplication, or cleanup failure scenario.

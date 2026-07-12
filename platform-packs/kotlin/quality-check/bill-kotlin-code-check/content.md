@@ -1,6 +1,6 @@
 ---
 name: bill-kotlin-code-check
-description: Run ./gradlew check and systematically fix all issues without using suppressions. Use when running Gradle checks, fixing lint errors, formatting issues, test failures, or deprecation warnings in Gradle/Kotlin projects. Fixes issues properly at the root cause instead of suppressing them. Use when user mentions gradlew check, Kotlin lint, ktfmt, detekt, or fix Gradle warnings.
+description: Discover and run repository-owned Kotlin and Gradle quality checks across compiler, API, analysis, tests, dependencies, toolchains, and generated sources.
 internal-for: bill-code-check
 ---
 
@@ -8,31 +8,31 @@ internal-for: bill-code-check
 
 ## Purpose
 
-Run the repository's authoritative Kotlin quality workflow, fix root causes only in files in scope, and preserve project-owned tooling and conventions.
+Run the repository's authoritative Kotlin workflow, fix root causes only in changed files or owned build configuration, and report blockers without weakening checks.
 
 ## Execution Steps
 
-1. Determine files in scope with `git diff --name-only` against the relevant base or current work-unit boundary.
-2. Discover the authoritative command from build files, Gradle wrappers, version catalogs, Makefile targets, and CI configuration before falling back to `./gradlew check`.
-3. Inspect `build.gradle`, `build.gradle.kts`, `settings.gradle`, `settings.gradle.kts`, `gradle/libs.versions.toml`, `gradlew`, `Makefile`, and CI workflows for repository-owned quality entrypoints.
-4. Inspect named tool configuration when present: `detekt.yml`, `.editorconfig`, ktlint configuration, and Spotless configuration.
-5. Invoke the pack's quality-check entrypoint using the discovered repository command, or `./gradlew check` only when no authoritative entrypoint exists, while retaining the files in scope from step 1.
-6. Capture complete output, categorize structural, formatting, lint, deprecation, logic, and test failures, and address only failures caused by files in scope.
-7. Apply fixes in priority order and iterate until the relevant checks are clean.
+1. Establish scope from the requested work unit and `git diff --name-only`; record changed modules, source sets, generated code, and build logic.
+2. Discover build files, the Gradle wrapper, and CI configuration in `settings.gradle.kts`, module `build.gradle.kts` files, convention plugins, `gradle/libs.versions.toml`, `gradlew`, and repository scripts before falling back to `./gradlew check`.
+3. List Gradle tasks when ownership is unclear, then invoke the pack's quality-check entrypoint using the discovered repository command.
+4. Run focused compiler and API validation such as `./gradlew :module:compileKotlin`, `apiCheck`, `binaryCompatibilityCheck`, or configured equivalents.
+5. Run configured formatting and static analysis such as `ktlintCheck`, `detekt`, `spotlessCheck`, and compiler warning gates.
+6. Run focused tests such as `./gradlew :module:test`, then integration, contract, or broader `check` tasks required by the changed boundary.
+7. Run configured dependency and security validation such as `dependencyCheckAnalyze`, dependency verification, version-catalog checks, or repository scanners.
+8. Validate Java and Kotlin toolchains, `jvmTarget` alignment, source-set targets, Gradle compatibility, and configured build matrices.
+9. Validate KSP, kapt, protobuf, OpenAPI, and other generated sources by running their generation and compilation tasks and checking freshness where the repository defines it.
+10. Capture full output, retain the files in scope, and attribute each failure to scoped work, pre-existing state, environment, or maintainer-owned configuration.
 
 ## Fix Strategy
 
 Use this priority-ordered fix ladder:
 
-0. Structural issues: package/directory mismatch, declaration/file-name mismatch, source-set placement, or Gradle module ownership
-1. Formatting and configured ktlint or Spotless failures
-2. Detekt, compiler, and other lint errors
-3. Deprecation warnings and API migrations
-4. Null-safety, type, and logic failures
-5. Test failures, fixing implementation or behavioral expectations rather than weakening assertions
+1. Repair structural, source-set, Gradle, compiler, toolchain, and generated-source failures.
+2. Repair public API or binary compatibility regressions according to the intended contract.
+3. Apply repository formatters and fix static-analysis findings at their source.
+4. Fix behavioral test failures without weakening assertions or deleting coverage.
+5. Resolve dependency or security failures through supported versions and verification metadata.
 
-Never suppress a failure with `@Suppress`, lint baselines, ignore configuration, placeholder comments, or disabled checks. Refactor or correct the root cause.
+Never suppress a failure with annotations, baselines, disabled rules, or skipped tests. After each fix, re-run targeted checks. Run the full suite when targeted checks cannot establish safety, including when build logic, shared APIs, toolchains, generated sources, dependencies, or cross-module behavior changed.
 
-After each fix, re-run targeted checks first. Run the full suite when targeted checks cannot establish safety, when shared build configuration changed, or when the discovered project workflow requires it.
-
-Ask the user only for unresolved architectural choices, breaking API trade-offs, unclear business behavior, security policy decisions, or materially different valid fixes that repository conventions do not settle.
+Report a blocker with the exact command, owned failure, attempted diagnosis, and required maintainer decision when credentials, unavailable infrastructure, conflicting compatibility requirements, or out-of-scope repository state prevents completion.

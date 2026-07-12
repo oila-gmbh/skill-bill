@@ -1,40 +1,37 @@
 ---
 name: bill-kotlin-code-review-architecture
-description: Use when reviewing architecture, boundaries, DI scopes, and source-of-truth consistency in Kotlin code. Use when user mentions Kotlin architecture, DI scope, module boundaries, or dependency direction in Kotlin code.
+description: Review Kotlin ownership, module, coroutine-scope, service, transaction, and JVM boundary architecture. Use for Kotlin architecture and dependency reviews.
 internal-for: bill-code-review
 ---
 
 # Architecture Review Specialist
 
-Review only concrete ownership, dependency, lifecycle, or module-boundary failures.
-
 ## Focus
 
-- Use-case ownership, transaction ownership, event durability, coroutine scope ownership, visibility, and Gradle modules
+- Ownership of scopes, suspend boundaries, modules, services, transactions, and interop
 
 ## Ignore
 
-- Naming, layering, or framework preferences that conflict with established local architecture but do not create a concrete risk
+- Naming or layout preferences without a reachable architectural failure
 
 ## Applicability
 
-Use this specialist across Kotlin libraries and services. Treat documented repository architecture as authoritative before generic patterns and report only reachable boundary failures.
+Use for Kotlin libraries, Gradle modules, services, workers, and JVM framework integrations.
 
 ## Project-Specific Rules
 
-### Ownership and Durability
+### Architecture Review Rules
 
-- Require one use-case owner for each business workflow; reject duplicated orchestration across transports, jobs, and adapters when behavior can drift.
-- Require one transaction owner for each atomic business operation; reject nested ownership that silently splits or widens the boundary.
-- Persist domain events in the same transaction as business state, typically through an outbox, when losing or duplicating the event would violate an invariant.
-- Preserve one source of truth and explicit translation among transport, domain, and persistence models when their ownership or lifecycle differs.
-
-### Kotlin Boundaries
-
-- Require blocking or asynchronous contracts to use `suspend` only when suspension is part of the boundary; reject decorative suspend APIs that hide blocking work.
-- Reject `suspend` leaking into domain interfaces when suspension is only an infrastructure or transport concern, because it couples the domain boundary to coroutine execution.
-- Require long-lived background work to receive an injected `CoroutineScope` with an explicit lifecycle instead of constructing hidden global scopes.
-- Reject an injected `CoroutineScope` that crosses the layer or Gradle-module boundary owned by its lifecycle; the owning boundary must launch and cancel its work.
-- Keep implementation details `internal` when cross-module access is not part of the supported API.
-- Enforce Gradle module dependency direction and reject cycles or implementation dependencies that leak across owned boundaries.
+- Require each injected `CoroutineScope` to end at its owning service lifecycle; a scope that outlives the owner risks leaked concurrent work and stale state.
+- Reject `GlobalScope` and hidden `CoroutineScope(Job())` construction because unowned jobs break shutdown ordering and leak resources.
+- Verify `suspend` appears at I/O or concurrency boundaries such as `Repository.load`; decorative suspension over blocking work causes dispatcher starvation and invalid caller contracts.
+- Require blocking adapters such as `Files.readAllBytes` to receive an explicit dispatcher owned by infrastructure; implicit execution can cause latency failure on `Dispatchers.Default`.
+- Reject Gradle dependency cycles visible in `dependencies` or `api(project(...))` because they break build isolation and module ownership.
+- Require `internal` visibility or non-exported Gradle dependencies for implementation declarations; leaking them through `api` creates binary contract risk.
+- Verify transaction ownership is located in an application use case around `newSuspendedTransaction`; repository-local transactions can split atomic state changes.
+- Require remote calls and event delivery to occur outside `@Transactional` work or through an outbox; holding the transaction risks timeout and incorrect ordering.
+- Reject singleton services that capture request-scoped principals or sessions through `@Singleton`; lifecycle mismatch causes cross-request data exposure.
+- Require shutdown ordering to cancel producers before closing `DataSource` or queue clients; reversed teardown risks resource failure and lost work.
+- Verify Java callbacks cross into suspend code through an owned adapter such as `CompletableFuture.await`; blocking `.get()` creates deadlock or starvation risk.
+- Reject Gradle source-set or package placement that makes JVM-only code reachable from unsupported modules; `sourceSets` leakage causes compiler and toolchain failure.
 - For Blocker or Major findings, describe the concrete dependency-cycle or ownership-boundary failure scenario.

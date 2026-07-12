@@ -1,38 +1,41 @@
 ---
 name: bill-kotlin-code-review-persistence
-description: Use when reviewing Kotlin backend/server persistence risks including transaction boundaries, query correctness, migration safety, concurrency, and data-consistency behavior. Use when user mentions database review, transaction boundaries, migration safety, ORM mapping, or query correctness in Kotlin backend.
+description: Review Kotlin transaction, session, concurrency, migration, tenant, bulk-write, retry, and durable-side-effect persistence failures.
 internal-for: bill-code-review
 ---
 
-# Backend Persistence Review Specialist
-
-Review persistence failures that can corrupt, expose, or lose data.
+# Persistence Review Specialist
 
 ## Focus
 
-- Transaction ownership, ORM/session behavior, concurrent writes, tenant scope, and durable side-effect ordering
+- Transaction ownership, thread or session context, concurrent writes, migrations, scoping, and durability
 
 ## Ignore
 
-- Query style preferences without a correctness or production consequence
+- Query style preferences without a correctness, exposure, latency, or data-loss consequence
 
 ## Applicability
 
-Use this specialist for Exposed, Spring transactions, Hibernate/JPA, JDBC, R2DBC, repositories, migrations, and mass writes.
+Use when Exposed, Spring, Hibernate, JDBC, R2DBC, migrations, repositories, or bulk writes are present.
 
 ## Project-Specific Rules
 
-### Transaction and ORM Boundaries
+### Persistence Review Rules
 
-- Reject suspend calls or dispatcher hops inside Exposed `transaction {}` because its transaction context is thread-bound; use one correctly owned `newSuspendedTransaction` for suspending work, and reject nested or misplaced calls that create a second transaction or lose atomicity.
-- Reject Spring `@Transactional` self-invocation and transactional final or non-open methods when proxy interception will not occur.
-- Reject Hibernate access that can cause `LazyInitializationException`, and reject unintended dirty flushes caused by mutating managed entities during read-oriented work.
-- Do not hold a transaction while performing remote I/O, publishing an event, or dispatching queue work; require after-commit handling or an outbox when ordering matters.
-
-### Consistency and Scope
-
-- Require atomic predicates, version checks, locks, or unique constraints for concurrent writes; reject load-modify-save paths that can lose updates.
-- Require tenant, account, ownership, and soft-delete predicates on mass updates and deletes with the same scope enforced by ordinary reads and writes.
-- Verify migrations against existing data, nullability transitions, indexes, and mixed-version rollout.
-- Require bulk operations and retries to define partial-failure and idempotency behavior.
+- Reject suspend calls and dispatcher hops inside Exposed `transaction {}`; thread-bound context can be lost and corrupt atomic behavior.
+- Require one owned `newSuspendedTransaction` around the use case; nested repository transactions risk partial commit and incorrect ordering.
+- Verify Spring `@Transactional` calls cross a proxy; self-invocation or final methods can skip interception and cause data loss.
+- Reject Hibernate lazy access after the session closes; reading `entity.children` can throw `LazyInitializationException` or hide query failure.
+- Require read-only work to avoid mutating managed `@Entity` objects; automatic dirty flush can corrupt data unexpectedly.
+- Verify blocking JDBC stays on `Dispatchers.IO` while R2DBC remains nonblocking; wrong dispatcher ownership risks starvation and timeout.
+- Require optimistic versions, locks, atomic predicates, or unique constraints for concurrent updates; load-modify-save can race and lose writes.
+- Reject queries and bulk mutations missing trusted tenant and soft-delete predicates; incomplete scope creates cross-account exposure.
+- Require Flyway or Liquibase migrations to handle existing rows and mixed application versions; unsafe `NOT NULL` changes can fail rollout.
+- Verify indexes with `EXPLAIN` for changed high-volume predicates; an unindexed migration can cause latency and resource exhaustion.
+- Require bounded chunking and resume markers for bulk updates; one giant transaction risks lock timeout and unrecoverable partial failure.
+- Reject event publication before commit; require an outbox or after-commit hook because rollback would otherwise expose invalid state.
+- Require `transaction {}` ownership to preserve concurrent update order; reject a split boundary because it risks data loss and invalid state.
+- Verify `@Version` failures trigger bounded conflict handling; ignoring optimistic-lock errors can corrupt data under concurrency.
+- Reject `SchemaUtils.create` in production startup because uncontrolled DDL can fail the build and damage persisted state.
+- Require `flywayValidate` evidence before release; checksum drift can break migration contracts and cause operational failure.
 - For Blocker or Major findings, describe the concrete data-loss, consistency, or durability failure scenario.

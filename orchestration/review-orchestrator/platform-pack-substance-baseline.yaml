@@ -1,7 +1,5 @@
 contract_version: "0.1"
 acknowledgements:
-  - {id: "kmp|quality-check|platform-packs/kotlin/quality-check/bill-kotlin-code-check/content.md", measured: "6", target: "7", owner: SKILL-114-8}
-  - {id: "kotlin|effective-area-coverage|platform-packs/kotlin/platform.yaml", measured: "ui,ux-accessibility", target: "all-approved-areas", owner: SKILL-114-7}
   - {id: "ios|api-contracts:clusters|platform-packs/ios/code-review/bill-ios-code-review-api-contracts/content.md", measured: "0", target: "3", owner: SKILL-114-9}
   - {id: "ios|api-contracts:rules|platform-packs/ios/code-review/bill-ios-code-review-api-contracts/content.md", measured: "0", target: ">=10", owner: SKILL-114-9}
   - {id: "ios|architecture:clusters|platform-packs/ios/code-review/bill-ios-code-review-architecture/content.md", measured: "0", target: "3", owner: SKILL-114-9}
@@ -30,20 +28,3 @@ acknowledgements:
   - {id: "kmp|ux-accessibility:clusters|platform-packs/kmp/code-review/bill-kmp-code-review-ux-accessibility/content.md", measured: "0", target: "3", owner: SKILL-114-8}
   - {id: "kmp|ux-accessibility:placeholders|platform-packs/kmp/code-review/bill-kmp-code-review-ux-accessibility/content.md", measured: "xxx", target: "none", owner: SKILL-114-8}
   - {id: "kmp|ux-accessibility:rules|platform-packs/kmp/code-review/bill-kmp-code-review-ux-accessibility/content.md", measured: "0", target: ">=10", owner: SKILL-114-8}
-  - {id: "kotlin|api-contracts:clusters|platform-packs/kotlin/code-review/bill-kotlin-code-review-api-contracts/content.md", measured: "0", target: "3", owner: SKILL-114-7}
-  - {id: "kotlin|api-contracts:rules|platform-packs/kotlin/code-review/bill-kotlin-code-review-api-contracts/content.md", measured: "0", target: ">=10", owner: SKILL-114-7}
-  - {id: "kotlin|architecture:clusters|platform-packs/kotlin/code-review/bill-kotlin-code-review-architecture/content.md", measured: "0", target: "3", owner: SKILL-114-7}
-  - {id: "kotlin|architecture:rules|platform-packs/kotlin/code-review/bill-kotlin-code-review-architecture/content.md", measured: "0", target: ">=10", owner: SKILL-114-7}
-  - {id: "kotlin|performance:clusters|platform-packs/kotlin/code-review/bill-kotlin-code-review-performance/content.md", measured: "0", target: "3", owner: SKILL-114-7}
-  - {id: "kotlin|performance:rules|platform-packs/kotlin/code-review/bill-kotlin-code-review-performance/content.md", measured: "0", target: ">=10", owner: SKILL-114-7}
-  - {id: "kotlin|persistence:clusters|platform-packs/kotlin/code-review/bill-kotlin-code-review-persistence/content.md", measured: "0", target: "3", owner: SKILL-114-7}
-  - {id: "kotlin|persistence:rules|platform-packs/kotlin/code-review/bill-kotlin-code-review-persistence/content.md", measured: "0", target: ">=10", owner: SKILL-114-7}
-  - {id: "kotlin|platform-correctness:clusters|platform-packs/kotlin/code-review/bill-kotlin-code-review-platform-correctness/content.md", measured: "0", target: "3", owner: SKILL-114-7}
-  - {id: "kotlin|platform-correctness:rules|platform-packs/kotlin/code-review/bill-kotlin-code-review-platform-correctness/content.md", measured: "0", target: ">=10", owner: SKILL-114-7}
-  - {id: "kotlin|quality-check|platform-packs/kotlin/quality-check/bill-kotlin-code-check/content.md", measured: "6", target: "7", owner: SKILL-114-7}
-  - {id: "kotlin|reliability:clusters|platform-packs/kotlin/code-review/bill-kotlin-code-review-reliability/content.md", measured: "0", target: "3", owner: SKILL-114-7}
-  - {id: "kotlin|reliability:rules|platform-packs/kotlin/code-review/bill-kotlin-code-review-reliability/content.md", measured: "0", target: ">=10", owner: SKILL-114-7}
-  - {id: "kotlin|security:clusters|platform-packs/kotlin/code-review/bill-kotlin-code-review-security/content.md", measured: "0", target: "3", owner: SKILL-114-7}
-  - {id: "kotlin|security:rules|platform-packs/kotlin/code-review/bill-kotlin-code-review-security/content.md", measured: "0", target: ">=10", owner: SKILL-114-7}
-  - {id: "kotlin|testing:clusters|platform-packs/kotlin/code-review/bill-kotlin-code-review-testing/content.md", measured: "0", target: "3", owner: SKILL-114-7}
-  - {id: "kotlin|testing:rules|platform-packs/kotlin/code-review/bill-kotlin-code-review-testing/content.md", measured: "0", target: ">=10", owner: SKILL-114-7}

@@ -1,37 +1,37 @@
 ---
 name: bill-kotlin-code-review-api-contracts
-description: Use when reviewing Kotlin backend/server API boundaries including request validation, serialization, HTTP or RPC contracts, status-code mapping, and backward compatibility. Use when user mentions API contract, request validation, response serialization, status codes, or backward compatibility in Kotlin backend.
+description: Review Kotlin serialization, null/default, enum, time, validation, error, pagination, idempotency, and compatibility contracts.
 internal-for: bill-code-review
 ---
 
-# Backend API & Contract Review Specialist
-
-Review client-visible compatibility and validation failures.
+# API Contracts Review Specialist
 
 ## Focus
 
-- Serialization configuration, absent/default fields, error contracts, validation, and schema evolution
+- Wire shape, serializer configuration, validation, errors, compatibility, pagination, and idempotency
 
 ## Ignore
 
-- Internal refactors that cannot change externally observable behavior
+- Internal refactors that do not change an observable service or library contract
 
 ## Applicability
 
-Use this specialist for Kotlin HTTP, RPC, DTO, serializer, validation, and public schema boundaries.
+Use for Kotlin DTOs, HTTP endpoints, events, public services, and generated schemas.
 
 ## Project-Specific Rules
 
-### Serialization Compatibility
+### API Contract Review Rules
 
-- Require explicit client-impact review for drift in kotlinx.serialization `explicitNulls`, `encodeDefaults`, or `ignoreUnknownKeys`; reject changes that silently alter wire shape or compatibility.
-- Verify absent fields are not incorrectly accepted because Kotlin constructor defaults mask required input.
-- Reject missing or misconfigured `jackson-module-kotlin` when it lets absent or null input be coerced into non-null constructor parameters or Kotlin defaults and delays failure beyond boundary deserialization.
-- Reject enum, date/time, nullability, renamed-field, or default-field drift without versioning, coordinated migration, or a compatibility path.
-
-### Boundary and Error Semantics
-
-- Validate untrusted input before business logic depends on it and preserve the distinction among absent, null, empty, and defaulted values.
-- Require distinct stable errors for validation, authentication, authorization, and domain failures; reject generic mappings that erase client-actionable meaning.
-- Require deterministic bounded pagination and explicit idempotency semantics for retriable mutations and webhooks.
+- Require `Json { explicitNulls = ... }` to match the published absent-versus-null contract; configuration drift can silently corrupt client intent.
+- Verify `encodeDefaults` behavior before adding a DTO default; changed omission can break signatures, caches, or compatibility.
+- Reject renaming a `@SerialName` value without migration evidence; deployed payloads can fail deserialization and data replay.
+- Require Jackson endpoints to register `jackson-module-kotlin`; missing Kotlin constructor and null handling can cause invalid runtime binding.
+- Verify unknown enum behavior with an explicit fallback or rejection contract; a new wire value can crash older consumers.
+- Require `Instant` and `LocalDate` fields to declare format and zone semantics; implicit conversions risk incorrect ordering and persisted data.
+- Reject exposing inline or value classes without verifying `@JvmInline` serializer and OpenAPI shape; generated clients can receive an incompatible contract.
+- Require Bean Validation such as `@field:NotBlank` on the effective Kotlin target; misplaced annotations can skip validation and admit invalid data.
+- Verify Ktor or Spring exception mapping preserves stable status and error codes; leaking `exception.message` risks exposure and contract regression.
+- Require pagination to define stable sort keys, cursor encoding, and bounds; offset-only mutation can duplicate or lose records between pages.
+- Reject retriable mutation endpoints without an `Idempotency-Key` contract; network timeout recovery can duplicate state changes.
+- Require executable compatibility evidence from `apiCheck`, generated OpenAPI diff, or consumer tests; declaration review alone can miss binary or wire breakage.
 - For Blocker or Major findings, describe the concrete compatibility or validation failure scenario.
