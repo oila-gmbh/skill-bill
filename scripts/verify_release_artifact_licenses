@@ -19,17 +19,21 @@ mounted_dirs=()
 
 cleanup_temp_dirs() {
   local exit_status=$? directory mount_dir
-  for mount_dir in "${mounted_dirs[@]}"; do
-    if ! hdiutil detach "${mount_dir}" >/dev/null 2>&1; then
-      echo "Could not detach mounted disk image at ${mount_dir}." >&2
-      if [[ "${exit_status}" == "0" ]]; then
-        exit_status=1
+  if ((${#mounted_dirs[@]})); then
+    for mount_dir in "${mounted_dirs[@]}"; do
+      if ! hdiutil detach "${mount_dir}" >/dev/null 2>&1; then
+        echo "Could not detach mounted disk image at ${mount_dir}." >&2
+        if [[ "${exit_status}" == "0" ]]; then
+          exit_status=1
+        fi
       fi
-    fi
-  done
-  for directory in "${temporary_dirs[@]}"; do
-    rm -rf "${directory}"
-  done
+    done
+  fi
+  if ((${#temporary_dirs[@]})); then
+    for directory in "${temporary_dirs[@]}"; do
+      rm -rf "${directory}"
+    done
+  fi
   return "${exit_status}"
 }
 

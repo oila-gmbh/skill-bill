@@ -264,7 +264,7 @@ class ReleaseArtifactLicenseVerifierTest {
     }
     val command = mutableListOf("tar", "-cf", artifact.toString())
     if (unsafePath) {
-      command += "--transform=s#^\\./#../#"
+      command += tarPathRewriteArgs()
     }
     command += listOf("-C", source.toString(), ".")
     val process = ProcessBuilder(command)
@@ -272,6 +272,18 @@ class ReleaseArtifactLicenseVerifierTest {
       .start()
     val output = process.inputStream.bufferedReader().readText()
     assertEquals(0, process.waitFor(), output)
+  }
+
+  private fun tarPathRewriteArgs(): List<String> {
+    val versionProcess = ProcessBuilder(listOf("tar", "--version")).redirectErrorStream(true).start()
+    val versionOutput = versionProcess.inputStream.bufferedReader().readText()
+    versionProcess.waitFor()
+    val substitution = "#^\\./#../#"
+    return if (versionOutput.contains("GNU tar")) {
+      listOf("--transform=s$substitution")
+    } else {
+      listOf("-s", substitution)
+    }
   }
 
   private fun writeDesktopToolDoubles(shims: Path) {
