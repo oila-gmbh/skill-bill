@@ -380,7 +380,7 @@ class DatabaseMigrationsTest {
   }
 
   @Test
-  fun `goal continuation recovery keeps non-text issue keys unknown and normalizes text keys`() {
+  fun `goal continuation recovery accepts the runtime and prose continuation contracts`() {
     val dbPath = Files.createTempDirectory("runtime-kotlin-db-goal-continuation-issue-key").resolve("metrics.db")
 
     DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
@@ -392,6 +392,17 @@ class DatabaseMigrationsTest {
           ) VALUES (
             'wftr-text-key', 'runtime', '0.1', 'running',
             '{"goal_continuation":{"issue_key":" SKILL-117 ","subtask_id":1,"suppress_pr":true,"goal_branch":"feature/117"}}',
+            '2026-05-01T10:00:00Z', '2026-05-01T10:00:00Z'
+          )
+          """.trimIndent(),
+        )
+        statement.executeUpdate(
+          """
+          INSERT INTO feature_task_workflows (
+            workflow_id, mode, contract_version, workflow_status, artifacts_json, started_at, state_entered_at
+          ) VALUES (
+            'wfl-prose-key', 'prose', '0.1', 'running',
+            '{"goal_continuation":{"enabled":true,"issue_key":"SKILL-118","subtask_id":2,"suppress_pr":true}}',
             '2026-05-01T10:00:00Z', '2026-05-01T10:00:00Z'
           )
           """.trimIndent(),
@@ -415,6 +426,10 @@ class DatabaseMigrationsTest {
       assertEquals(
         "SKILL-117",
         tableColumnValue(connection, "feature_task_workflows", "workflow_id", "wftr-text-key", "issue_key"),
+      )
+      assertEquals(
+        "SKILL-118",
+        tableColumnValue(connection, "feature_task_workflows", "workflow_id", "wfl-prose-key", "issue_key"),
       )
       assertEquals(
         null,

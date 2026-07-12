@@ -57,7 +57,21 @@ data class DesktopWorkItem(
   val currentState: String,
   val stateEnteredAt: String,
   val stateEnteredAtEstimated: Boolean,
-)
+) {
+  val identity: DesktopWorkItemIdentity
+    get() = DesktopWorkItemIdentity(workflowKind, workflowId, issueKey)
+}
+
+data class DesktopWorkItemIdentity(
+  val workflowKind: String,
+  val workflowId: String,
+  val issueKey: String?,
+) {
+  val stableValue: String
+    get() = listOf(workflowKind, workflowId, issueKey).joinToString("|") { it.identitySegment() }
+}
+
+private fun String?.identitySegment(): String = this?.let { "${it.length}:$it" } ?: "-1:"
 
 enum class WorkListLoadState { COLLAPSED, LOADING, POPULATED, EMPTY, ERROR }
 

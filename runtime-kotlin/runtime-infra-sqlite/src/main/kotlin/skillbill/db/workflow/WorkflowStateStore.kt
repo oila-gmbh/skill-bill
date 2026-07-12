@@ -13,6 +13,9 @@ import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import skillbill.ports.persistence.model.FeatureVerifySessionSummary
 import skillbill.ports.persistence.model.WorkflowStateRecord
 import java.sql.Connection
+import java.time.Instant
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
 
 typealias WorkflowStateRow = WorkflowStateRecord
 
@@ -20,6 +23,8 @@ private const val WORKFLOW_ID_PARAMETER_INDEX: Int = 1
 
 private val terminalWorkflowStatuses: Set<String> = setOf("completed", "failed", "abandoned")
 private const val SQLITE_TIMESTAMP_NOW = "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')"
+private val sqliteInsertionTimestampFormatter: DateTimeFormatter =
+  DateTimeFormatter.ofPattern("uuuu-MM-dd HH:mm:ss").withZone(ZoneOffset.UTC)
 
 /**
  * SQLite-backed [WorkflowStateRepository]. Delegates each per-family capability
@@ -210,6 +215,7 @@ private class FeatureVerifyWorkflowStateStore(
 
 private fun Connection.upsertWorkflowRow(tableName: String, row: WorkflowStateRecord, defaultContractVersion: String) {
   val transitionTimestamp = nextStateEnteredAtSql(tableName)
+  val insertionTimestamp = row.startedAt.orInsertionTimestamp()
   prepareStatement(
     """
     INSERT INTO $tableName (
@@ -226,8 +232,7 @@ private fun Connection.upsertWorkflowRow(tableName: String, row: WorkflowStateRe
       state_entered_at,
       state_entered_at_estimated,
       finished_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(NULLIF(?, ''), CURRENT_TIMESTAMP),
-              COALESCE(NULLIF(?, ''), $SQLITE_TIMESTAMP_NOW), 0,
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0,
               CASE WHEN ? THEN COALESCE(NULLIF(?, ''), CURRENT_TIMESTAMP) ELSE NULL END)
     ON CONFLICT(workflow_id) DO UPDATE SET
       session_id = excluded.session_id,
@@ -264,8 +269,8 @@ private fun Connection.upsertWorkflowRow(tableName: String, row: WorkflowStateRe
     statement.setString(7, row.stepsJson)
     statement.setString(8, row.artifactsJson)
     statement.setString(9, row.issueKey)
-    statement.setString(10, row.startedAt)
-    statement.setString(11, row.startedAt)
+    statement.setString(10, insertionTimestamp)
+    statement.setString(11, insertionTimestamp)
     statement.setBoolean(12, terminal)
     statement.setString(13, row.finishedAt)
     statement.executeUpdate()
@@ -291,6 +296,7 @@ private fun Connection.upsertFeatureTaskWorkflowRow(
   defaultContractVersion: String,
 ) {
   val transitionTimestamp = nextStateEnteredAtSql("feature_task_workflows")
+  val insertionTimestamp = row.startedAt.orInsertionTimestamp()
   prepareStatement(
     """
     INSERT INTO feature_task_workflows (
@@ -309,8 +315,7 @@ private fun Connection.upsertFeatureTaskWorkflowRow(
       finished_at,
       mode,
       implementation_skill
-    ) VALUES (?, ?, 'bill-feature-task', ?, ?, ?, ?, ?, ?, COALESCE(NULLIF(?, ''), CURRENT_TIMESTAMP),
-              COALESCE(NULLIF(?, ''), $SQLITE_TIMESTAMP_NOW), 0,
+    ) VALUES (?, ?, 'bill-feature-task', ?, ?, ?, ?, ?, ?, ?, ?, 0,
               CASE WHEN ? THEN COALESCE(NULLIF(?, ''), CURRENT_TIMESTAMP) ELSE NULL END, ?, ?)
     ON CONFLICT(workflow_id) DO UPDATE SET
       session_id = excluded.session_id,
@@ -348,8 +353,8 @@ private fun Connection.upsertFeatureTaskWorkflowRow(
     statement.setString(6, row.stepsJson)
     statement.setString(7, row.artifactsJson)
     statement.setString(8, row.issueKey)
-    statement.setString(9, row.startedAt)
-    statement.setString(10, row.startedAt)
+    statement.setString(9, insertionTimestamp)
+    statement.setString(10, insertionTimestamp)
     statement.setBoolean(11, terminal)
     statement.setString(12, row.finishedAt)
     statement.setString(13, mode.wireValue)
@@ -366,6 +371,9 @@ private fun nextStateEnteredAtSql(tableName: String): String =
     ELSE strftime('%Y-%m-%dT%H:%M:%fZ', julianday($tableName.state_entered_at) + 0.001 / 86400.0)
   END
   """.trimIndent()
+
+private fun String?.orInsertionTimestamp(): String =
+  takeUnless { it.isNullOrBlank() } ?: sqliteInsertionTimestampFormatter.format(Instant.now())
 
 private fun Connection.getWorkflowRow(tableName: String, workflowId: String): WorkflowStateRecord? = prepareStatement(
   """

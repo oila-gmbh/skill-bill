@@ -63,6 +63,7 @@
     <string name="work_field_started">STARTED</string>
     <string name="work_field_state">STATE</string>
     <string name="work_field_state_since">STATE SINCE</string>
+    <string name="work_field_state_badge_cd">Current workflow state: %1$s</string>
     <string name="work_field_issue_cd">Issue: %1$s</string>
     <string name="work_field_kind_cd">Kind: %1$s</string>
     <string name="work_field_workflow_cd">Workflow: %1$s</string>

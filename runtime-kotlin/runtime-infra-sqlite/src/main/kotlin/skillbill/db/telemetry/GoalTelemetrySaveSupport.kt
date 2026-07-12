@@ -243,7 +243,7 @@ fun saveGoalIssueFinished(connection: Connection, record: GoalIssueFinishedRecor
   }
 }
 
-private fun nextGoalStateEnteredAtSql(candidateSql: String): String =
+internal fun nextGoalStateEnteredAtSql(candidateSql: String): String =
   """
   CASE
     WHEN julianday(NULLIF(goal_issue_progress.state_entered_at, '')) IS NULL THEN

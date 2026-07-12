@@ -16,28 +16,33 @@ import java.time.format.DateTimeFormatter
 @SingleIn(UserScope::class)
 class JvmWorkListGateway private constructor(
   private val loadWork: () -> List<WorkListItem>,
+  private val zoneIdProvider: () -> ZoneId,
 ) : WorkListGateway {
   @Inject
   constructor(
     runtimeServices: DesktopRuntimeApplicationServices = DesktopRuntimeApplicationServices.forCurrentUserHome(),
-  ) : this({ runtimeServices.workListService.list().work })
+  ) : this({ runtimeServices.workListService.list().work }, ZoneId::systemDefault)
 
-  internal constructor(workListService: WorkListService) : this({ workListService.list().work })
+  internal constructor(
+    workListService: WorkListService,
+    zoneIdProvider: () -> ZoneId = ZoneId::systemDefault,
+  ) : this({ workListService.list().work }, zoneIdProvider)
 
   override suspend fun list(): List<DesktopWorkItem> = runInterruptible(Dispatchers.IO) {
+    val timestampFormatter = desktopTimestampFormatter(zoneIdProvider())
     loadWork().map { item ->
       DesktopWorkItem(
         issueKey = item.issueKey,
         workflowKind = item.workflowKind.wireValue,
         workflowId = item.workflowId,
-        startedAt = desktopTimestampFormatter.format(item.startedAt),
+        startedAt = timestampFormatter.format(item.startedAt),
         currentState = item.currentState,
-        stateEnteredAt = desktopTimestampFormatter.format(item.stateEnteredAt),
+        stateEnteredAt = timestampFormatter.format(item.stateEnteredAt),
         stateEnteredAtEstimated = item.stateEnteredAtEstimated,
       )
     }
   }
 }
 
-private val desktopTimestampFormatter: DateTimeFormatter =
-  DateTimeFormatter.ofPattern("uuuu-MM-dd HH:mm:ss z").withZone(ZoneId.systemDefault())
+private fun desktopTimestampFormatter(zoneId: ZoneId): DateTimeFormatter =
+  DateTimeFormatter.ofPattern("uuuu-MM-dd HH:mm:ss z").withZone(zoneId)

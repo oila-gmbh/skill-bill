@@ -15,6 +15,16 @@ import kotlin.time.Duration.Companion.seconds
 
 class AgentRunGoalContinuationCommandTest {
   @Test
+  fun `ordinary phase worker does not receive goal continuation marker`() {
+    val runner = RecordingAgentRunProcessRunner()
+    requireNotNull(headlessAgentRunAdapters(runner)[InstallAgent.CODEX]).launch(
+      skillRunRequest(goalContinuation = null).copy(promptOverride = "Run the implementation phase."),
+    )
+
+    assertNull(runner.requests.single().environment["SKILL_BILL_GOAL_CONTINUATION"])
+  }
+
+  @Test
   fun `goal-continuation child with no child workflow id runs skill-bill feature-task run directly`() {
     val runner = RecordingAgentRunProcessRunner()
     val outcome = requireNotNull(headlessAgentRunAdapters(runner)[InstallAgent.CLAUDE]).launch(skillRunRequest())

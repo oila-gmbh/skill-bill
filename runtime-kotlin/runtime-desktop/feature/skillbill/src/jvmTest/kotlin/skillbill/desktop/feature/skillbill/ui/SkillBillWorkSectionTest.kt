@@ -81,8 +81,9 @@ class SkillBillWorkSectionTest {
     onNodeWithTag("work-section-list-viewport").assertIsDisplayed()
     onNodeWithContentDescription("Work table. Use left and right arrow keys to inspect all columns.").assertIsDisplayed()
     onNodeWithTag("work-section-field-headers").assertIsDisplayed()
-    onNodeWithTag("work-section-row-wftr-117").assertIsDisplayed()
-    onNodeWithTag("work-section-cell-wftr-117-state-since", useUnmergedTree = true).assertIsNotDisplayed()
+    onNodeWithTag(workRowTag("feature-task-runtime", "wftr-117", null)).assertIsDisplayed()
+    onNodeWithTag(workCellTag("feature-task-runtime", "wftr-117", null, "state-since"), useUnmergedTree = true)
+      .assertIsNotDisplayed()
     onNodeWithText("ISSUE").assertIsDisplayed()
     onNodeWithText("Unknown issue").assertIsDisplayed()
     onNodeWithContentDescription(
@@ -99,7 +100,53 @@ class SkillBillWorkSectionTest {
       pressKey(Key.DirectionRight)
     }
     waitForIdle()
-    onNodeWithTag("work-section-cell-wftr-117-state-since", useUnmergedTree = true).assertIsDisplayed()
+    onNodeWithContentDescription("Current workflow state: running", useUnmergedTree = true).assertIsDisplayed()
+    onNodeWithTag(workCellTag("feature-task-runtime", "wftr-117", null, "state-since"), useUnmergedTree = true)
+      .assertIsDisplayed()
+  }
+
+  @OptIn(ExperimentalTestApi::class)
+  @Test
+  fun `Work renders distinct issue-level goal rows that share a parent workflow`() = runComposeUiTest {
+    val first = workItem("goal-parent", "2026-05-01 14:01:00 CEST").copy(
+      issueKey = "SKILL-118",
+      workflowKind = "feature-goal",
+    )
+    val second = workItem("goal-parent", "2026-05-01 14:00:00 CEST").copy(
+      issueKey = "SKILL-117",
+      workflowKind = "feature-goal",
+    )
+    setContent {
+      SkillBillMaterialTheme {
+        NavigationPane(
+          paneWidth = 300.dp,
+          repoPath = "",
+          repoStatus = RepoLoadStatus.empty,
+          treeItems = emptyList(),
+          selectedNodeId = null,
+          openEditorTabIds = emptySet(),
+          expandedNodeIds = emptySet(),
+          busyOperation = null,
+          policyLabel = "Policy",
+          readOnlyModeLabel = "Read-only",
+          onRepoPathChanged = {},
+          onRepoSelected = {},
+          onChooseRepoDirectory = {},
+          onNodeSelected = {},
+          onNodeOpened = {},
+          onNodeExpandedToggled = {},
+          onMoveSelection = {},
+          workList = WorkListState(
+            expanded = true,
+            loadState = WorkListLoadState.POPULATED,
+            items = listOf(first, second),
+          ),
+        )
+      }
+    }
+
+    onNodeWithTag(workRowTag(first.workflowKind, first.workflowId, first.issueKey)).assertIsDisplayed()
+    onNodeWithTag(workRowTag(second.workflowKind, second.workflowId, second.issueKey)).assertIsDisplayed()
   }
 
   @OptIn(ExperimentalTestApi::class)
@@ -167,13 +214,13 @@ class SkillBillWorkSectionTest {
       )
     }
     onNodeWithTag("work-section-list-viewport").assertIsDisplayed()
-    onNodeWithTag("work-section-row-wftr-1").assertIsDisplayed()
+    onNodeWithTag(workRowTag("feature-task-runtime", "wftr-1", "SKILL-117")).assertIsDisplayed()
     onNodeWithTag("work-section-list-viewport").requestFocus().performKeyInput {
       pressKey(Key.PageDown)
       pressKey(Key.DirectionRight)
     }
     assertEquals(0, treeMoves)
-    onNodeWithTag("work-section-row-wftr-8").assertIsDisplayed()
+    onNodeWithTag(workRowTag("feature-task-runtime", "wftr-8", "SKILL-117")).assertIsDisplayed()
 
     onNodeWithTag("work-section-toggle").performClick()
     assertTrue(onAllNodesWithTag("work-section-list-viewport").fetchSemanticsNodes().isEmpty())
@@ -188,4 +235,21 @@ class SkillBillWorkSectionTest {
     stateEnteredAt = startedAt,
     stateEnteredAtEstimated = false,
   )
+
+  private fun workRowTag(workflowKind: String, workflowId: String, issueKey: String?): String =
+    "work-section-row-${workIdentity(workflowKind, workflowId, issueKey)}"
+
+  private fun workCellTag(workflowKind: String, workflowId: String, issueKey: String?, field: String): String =
+    "work-section-cell-${workIdentity(workflowKind, workflowId, issueKey)}-$field"
+
+  private fun workIdentity(workflowKind: String, workflowId: String, issueKey: String?): String =
+    DesktopWorkItem(
+      issueKey = issueKey,
+      workflowKind = workflowKind,
+      workflowId = workflowId,
+      startedAt = "",
+      currentState = "",
+      stateEnteredAt = "",
+      stateEnteredAtEstimated = false,
+    ).identity.stableValue
 }

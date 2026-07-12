@@ -18,7 +18,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
@@ -83,6 +85,7 @@ import dev.skillbill.designsystem.generated.resources.work_field_kind_cd
 import dev.skillbill.designsystem.generated.resources.work_field_started
 import dev.skillbill.designsystem.generated.resources.work_field_started_cd
 import dev.skillbill.designsystem.generated.resources.work_field_state
+import dev.skillbill.designsystem.generated.resources.work_field_state_badge_cd
 import dev.skillbill.designsystem.generated.resources.work_field_state_cd
 import dev.skillbill.designsystem.generated.resources.work_field_state_since
 import dev.skillbill.designsystem.generated.resources.work_field_state_since_cd
@@ -293,6 +296,7 @@ private fun WorkSection(
     Row(
       modifier = Modifier
         .fillMaxWidth()
+        .heightIn(min = SkillBillDimens.workInteractiveMinSize)
         .testTag(WORK_SECTION_TOGGLE_TAG)
         .semantics {
           contentDescription = toggleDescription
@@ -318,6 +322,10 @@ private fun WorkSection(
       Text(
         stringResource(Res.string.work_section_refresh),
         modifier = Modifier
+          .sizeIn(
+            minWidth = SkillBillDimens.workInteractiveMinSize,
+            minHeight = SkillBillDimens.workInteractiveMinSize,
+          )
           .testTag(WORK_SECTION_REFRESH_TAG)
           .semantics { contentDescription = refreshDescription }
           .clickable(enabled = refreshEnabled, role = Role.Button) {
@@ -417,7 +425,7 @@ private fun WorkRows(state: WorkListState) {
           modifier = Modifier.testTag(WORK_SECTION_HEADERS_TAG),
         )
       }
-      items(state.items, key = { item -> "${item.workflowKind}:${item.workflowId}" }) { item ->
+      items(state.items, key = { item -> item.identity }) { item ->
         WorkItemRow(item, fields)
       }
     }
@@ -450,9 +458,10 @@ private fun WorkItemRow(item: skillbill.desktop.core.domain.model.DesktopWorkIte
   WorkFieldRow(
     fields = fields,
     values = listOf(issue, item.workflowKind, item.workflowId, item.startedAt, item.currentState, since),
-    rowKey = item.workflowId,
+    rowKey = item.identity.stableValue,
+    state = item.currentState,
     modifier = Modifier
-      .testTag("$WORK_SECTION_ROW_TAG-${item.workflowId}")
+      .testTag("$WORK_SECTION_ROW_TAG-${item.identity.stableValue}")
       .semantics(mergeDescendants = true) { contentDescription = descriptions.joinToString(". ") },
   )
 }
@@ -462,17 +471,44 @@ private fun WorkFieldRow(
   fields: List<WorkField>,
   values: List<String>,
   rowKey: String,
+  state: String? = null,
   modifier: Modifier = Modifier,
 ) {
   Row(modifier = modifier.padding(vertical = SkillBillDimens.padSm)) {
     fields.zip(values).forEach { (field, value) ->
-      Text(
-        text = value,
-        modifier = Modifier.width(field.width).testTag("$WORK_SECTION_CELL_TAG-$rowKey-${field.id}"),
-        color = SkillBillTheme.frameTokens.text,
-        style = MaterialTheme.typography.bodySmall,
-      )
+      val cellModifier = Modifier.width(field.width).testTag("$WORK_SECTION_CELL_TAG-$rowKey-${field.id}")
+      if (field.id == "state" && state != null) {
+        WorkStateBadge(state = state, modifier = cellModifier)
+      } else {
+        Text(
+          text = value,
+          modifier = cellModifier,
+          color = SkillBillTheme.frameTokens.text,
+          style = MaterialTheme.typography.bodySmall,
+        )
+      }
     }
+  }
+}
+
+@Composable
+private fun WorkStateBadge(state: String, modifier: Modifier = Modifier) {
+  val description = stringResource(Res.string.work_field_state_badge_cd, state)
+  Box(
+    modifier = modifier
+      .border(SkillBillDimens.hairline, SkillBillTheme.frameTokens.line, SkillBillComponentShapes.chip)
+      .background(SkillBillTheme.frameTokens.panel, SkillBillComponentShapes.chip)
+      .padding(horizontal = SkillBillDimens.padSm, vertical = SkillBillDimens.padXs)
+      .semantics { contentDescription = description },
+    contentAlignment = Alignment.CenterStart,
+  ) {
+    Text(
+      text = state,
+      color = SkillBillTheme.frameTokens.text,
+      style = MaterialTheme.typography.bodySmall,
+      maxLines = 1,
+      overflow = TextOverflow.Ellipsis,
+    )
   }
 }
 

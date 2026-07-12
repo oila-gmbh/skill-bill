@@ -27,9 +27,8 @@ internal val GoalContinuationEnvironment: Map<String, String> = mapOf(
 )
 
 internal fun goalContinuationEnvironment(request: SkillRunRequest): Map<String, String> =
-  GoalContinuationEnvironment + buildMap {
-    val context = request.goalContinuation
-    if (context != null) {
+  request.goalContinuation?.let { context ->
+    GoalContinuationEnvironment + buildMap {
       put("SKILL_BILL_GOAL_PARENT_ISSUE_KEY", context.parentIssueKey)
       put("SKILL_BILL_GOAL_SUBTASK_ID", context.subtaskId.toString())
       put("SKILL_BILL_GOAL_BRANCH", context.goalBranch)
@@ -37,7 +36,7 @@ internal fun goalContinuationEnvironment(request: SkillRunRequest): Map<String, 
       context.parentWorkflowId?.let { put("SKILL_BILL_GOAL_PARENT_WORKFLOW_ID", it) }
       context.lastResumableStep?.let { put("SKILL_BILL_GOAL_LAST_RESUMABLE_STEP", it) }
     }
-  }
+  }.orEmpty()
 
 class ClaudeAgentRunCommandBuilder : AgentRunCommandBuilder {
   override val agent: InstallAgent = InstallAgent.CLAUDE

@@ -210,6 +210,40 @@ class WorkflowStateStoreTest {
   }
 
   @Test
+  fun `workflow inserts without a supplied start time use one effective timestamp`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-db-workflow-insert-state-entry").resolve("metrics.db")
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val store = WorkflowStateStore(connection)
+      store.saveFeatureImplementWorkflow(
+        workflowRow("wfl-insert", "fis-insert", "bill-feature-task", "assess"),
+      )
+      store.saveFeatureTaskRuntimeWorkflow(
+        workflowRow(
+          workflowId = "wftr-insert",
+          sessionId = "ftr-insert",
+          workflowName = "bill-feature-task",
+          currentStepId = "preplan",
+          mode = FeatureTaskWorkflowMode.RUNTIME,
+        ),
+      )
+      store.saveFeatureVerifyWorkflow(
+        workflowRow("wfv-insert", "fvr-insert", "bill-feature-verify", "collect_inputs"),
+      )
+
+      listOf(
+        assertNotNull(store.getFeatureImplementWorkflow("wfl-insert")),
+        assertNotNull(store.getFeatureTaskRuntimeWorkflow("wftr-insert")),
+        assertNotNull(store.getFeatureVerifyWorkflow("wfv-insert")),
+      ).forEach { inserted ->
+        assertEquals(inserted.startedAt, inserted.stateEnteredAt)
+        assertEquals(false, inserted.stateEnteredAtEstimated)
+        assertTrue(!inserted.startedAt.isNullOrBlank())
+      }
+    }
+  }
+
+  @Test
   fun `concurrent workflow status transitions serialize strictly increasing state entry times`() {
     val dbPath = Files.createTempDirectory("runtime-kotlin-db-workflow-concurrent-state").resolve("metrics.db")
     val initial = workflowRow(

@@ -185,7 +185,6 @@ internal object DatabaseColumnMigrations {
           ELSE NULL
         END
         WHERE (issue_key IS NULL OR issue_key = '')
-          AND mode = 'runtime'
           AND CASE WHEN json_valid(artifacts_json) THEN
             json_type(artifacts_json, '$.goal_continuation') = 'object'
             AND json_type(artifacts_json, '$.goal_continuation.issue_key') = 'text'
@@ -193,7 +192,11 @@ internal object DatabaseColumnMigrations {
             AND json_type(artifacts_json, '$.goal_continuation.subtask_id') = 'integer'
             AND json_extract(artifacts_json, '$.goal_continuation.subtask_id') > 0
             AND json_type(artifacts_json, '$.goal_continuation.suppress_pr') IN ('true', 'false')
-            AND NULLIF(trim(json_extract(artifacts_json, '$.goal_continuation.goal_branch')), '') IS NOT NULL
+            AND (
+              (mode = 'runtime'
+                AND NULLIF(trim(json_extract(artifacts_json, '$.goal_continuation.goal_branch')), '') IS NOT NULL)
+              OR (mode = 'prose' AND json_type(artifacts_json, '$.goal_continuation.enabled') = 'true')
+            )
           ELSE 0 END
         """.trimIndent(),
       )
