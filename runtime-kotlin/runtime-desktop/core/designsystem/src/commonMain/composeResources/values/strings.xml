@@ -56,6 +56,7 @@
     <string name="work_section_collapsed">collapsed</string>
     <string name="work_section_refresh_cd">Refresh persisted work</string>
     <string name="work_section_loaded">%1$d persisted workflows loaded.</string>
+    <string name="work_section_scroll_instructions">Work table. Use left and right arrow keys to inspect all columns.</string>
     <string name="work_field_issue">ISSUE</string>
     <string name="work_field_kind">KIND</string>
     <string name="work_field_workflow">WORKFLOW</string>

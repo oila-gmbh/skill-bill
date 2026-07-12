@@ -1,6 +1,8 @@
 package skillbill.desktop.core.data.service
 
 import me.tatarka.inject.annotations.Inject
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runInterruptible
 import skillbill.application.work.WorkListService
 import skillbill.desktop.core.common.di.UserScope
 import skillbill.desktop.core.data.di.DesktopRuntimeApplicationServices
@@ -22,16 +24,18 @@ class JvmWorkListGateway private constructor(
 
   internal constructor(workListService: WorkListService) : this({ workListService.list().work })
 
-  override fun list(): List<DesktopWorkItem> = loadWork().map { item ->
-    DesktopWorkItem(
-      issueKey = item.issueKey,
-      workflowKind = item.workflowKind.wireValue,
-      workflowId = item.workflowId,
-      startedAt = desktopTimestampFormatter.format(item.startedAt),
-      currentState = item.currentState,
-      stateEnteredAt = desktopTimestampFormatter.format(item.stateEnteredAt),
-      stateEnteredAtEstimated = item.stateEnteredAtEstimated,
-    )
+  override suspend fun list(): List<DesktopWorkItem> = runInterruptible(Dispatchers.IO) {
+    loadWork().map { item ->
+      DesktopWorkItem(
+        issueKey = item.issueKey,
+        workflowKind = item.workflowKind.wireValue,
+        workflowId = item.workflowId,
+        startedAt = desktopTimestampFormatter.format(item.startedAt),
+        currentState = item.currentState,
+        stateEnteredAt = desktopTimestampFormatter.format(item.stateEnteredAt),
+        stateEnteredAtEstimated = item.stateEnteredAtEstimated,
+      )
+    }
   }
 }
 

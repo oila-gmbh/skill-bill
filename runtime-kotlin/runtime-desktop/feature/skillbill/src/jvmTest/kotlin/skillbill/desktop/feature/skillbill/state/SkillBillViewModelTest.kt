@@ -39,6 +39,7 @@ import skillbill.desktop.feature.skillbill.ui.executeGeneratedArtifactSelection
 import skillbill.desktop.feature.skillbill.ui.generatedArtifactRowActivatesForKey
 import skillbill.desktop.feature.skillbill.ui.generatedArtifactRowDescription
 import kotlin.test.Test
+import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
@@ -563,10 +564,10 @@ class SkillBillViewModelTest {
   }
 
   @Test
-  fun `collapsing Work invalidates an in flight response`() {
+  fun `collapsing Work invalidates an in flight response`() = runBlocking {
     val viewModel = newViewModel(
       workListGateway = object : WorkListGateway {
-        override fun list(): List<DesktopWorkItem> = listOf(
+        override suspend fun list(): List<DesktopWorkItem> = listOf(
           DesktopWorkItem(
             issueKey = "SKILL-117",
             workflowKind = "feature-task-runtime",
@@ -589,6 +590,47 @@ class SkillBillViewModelTest {
     assertFalse(afterStaleResponse.workList.expanded)
     assertEquals(WorkListLoadState.COLLAPSED, afterStaleResponse.workList.loadState)
   }
+
+  @Test
+  fun `Work lifecycle resolves populated empty error and refresh gateway outcomes`() = runBlocking {
+    var response: Result<List<DesktopWorkItem>> = Result.success(listOf(workItem("wftr-populated")))
+    var calls = 0
+    val viewModel = newViewModel(
+      workListGateway = object : WorkListGateway {
+        override suspend fun list(): List<DesktopWorkItem> {
+          calls += 1
+          return response.getOrThrow()
+        }
+      },
+    )
+
+    val populatedRequest = assertNotNull(viewModel.toggleWork())
+    val populated = viewModel.finishWork(populatedRequest, viewModel.loadWork(populatedRequest))
+    assertEquals(WorkListLoadState.POPULATED, populated.workList.loadState)
+    assertEquals(listOf("wftr-populated"), populated.workList.items.map(DesktopWorkItem::workflowId))
+
+    response = Result.success(emptyList())
+    val emptyRequest = assertNotNull(viewModel.refreshWork())
+    val empty = viewModel.finishWork(emptyRequest, viewModel.loadWork(emptyRequest))
+    assertEquals(WorkListLoadState.EMPTY, empty.workList.loadState)
+
+    response = Result.failure(IllegalStateException("database unavailable"))
+    val errorRequest = assertNotNull(viewModel.refreshWork())
+    val error = viewModel.finishWork(errorRequest, viewModel.loadWork(errorRequest))
+    assertEquals(WorkListLoadState.ERROR, error.workList.loadState)
+    assertContains(error.workList.errorMessage.orEmpty(), "database unavailable")
+    assertEquals(3, calls)
+  }
+
+  private fun workItem(workflowId: String): DesktopWorkItem = DesktopWorkItem(
+    issueKey = "SKILL-117",
+    workflowKind = "feature-task-runtime",
+    workflowId = workflowId,
+    startedAt = "2026-05-01 14:00:00 CEST",
+    currentState = "running",
+    stateEnteredAt = "2026-05-01 14:00:00 CEST",
+    stateEnteredAtEstimated = false,
+  )
 
   @Test
   fun `keyboard movement selects through visible nodes`() {

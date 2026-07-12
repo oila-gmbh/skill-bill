@@ -102,7 +102,7 @@ class SkillBillViewModel(
 
   internal fun refreshWork(): WorkListRequest? = workController.refresh()
 
-  internal fun loadWork(request: WorkListRequest): WorkListResponse = workController.load(request)
+  internal suspend fun loadWork(request: WorkListRequest): WorkListResponse = workController.load(request)
 
   internal fun finishWork(request: WorkListRequest, response: WorkListResponse): SkillBillState {
     workController.finish(request, response)

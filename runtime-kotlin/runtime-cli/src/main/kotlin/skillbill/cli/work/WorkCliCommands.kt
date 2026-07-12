@@ -67,7 +67,7 @@ private fun WorkListResult.toTable(): String {
   val formatter = DateTimeFormatter.ofPattern("uuuu-MM-dd HH:mm:ss z").withZone(ZoneId.systemDefault())
   val rows = work.map { item ->
     listOf(
-      item.issueKey ?: "-",
+      item.issueKey?.toTerminalSafeIssueKey() ?: "-",
       item.workflowKind.wireValue,
       item.workflowId,
       formatter.format(item.startedAt),
@@ -83,3 +83,14 @@ private fun WorkListResult.toTable(): String {
     if (work.any { it.stateEnteredAtEstimated }) appendLine("~ estimated")
   }
 }
+
+private fun String.toTerminalSafeIssueKey(): String {
+  val sanitized = buildString(length) {
+    for (character in this@toTerminalSafeIssueKey) {
+      append(if (Character.isISOControl(character)) '\uFFFD' else character)
+    }
+  }
+  return if (sanitized.length <= MAX_TABLE_ISSUE_KEY_LENGTH) sanitized else sanitized.take(MAX_TABLE_ISSUE_KEY_LENGTH) + "…"
+}
+
+private const val MAX_TABLE_ISSUE_KEY_LENGTH = 128

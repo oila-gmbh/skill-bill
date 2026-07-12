@@ -72,6 +72,7 @@ import dev.skillbill.designsystem.generated.resources.work_section_loaded
 import dev.skillbill.designsystem.generated.resources.work_section_loading
 import dev.skillbill.designsystem.generated.resources.work_section_refresh
 import dev.skillbill.designsystem.generated.resources.work_section_refresh_cd
+import dev.skillbill.designsystem.generated.resources.work_section_scroll_instructions
 import dev.skillbill.designsystem.generated.resources.work_section_subtitle
 import dev.skillbill.designsystem.generated.resources.work_section_title
 import dev.skillbill.designsystem.generated.resources.work_section_toggle_cd
@@ -356,6 +357,7 @@ private fun WorkRows(state: WorkListState) {
   val vertical = rememberLazyListState()
   val scrollScope = rememberCoroutineScope()
   val fields = workFields()
+  val scrollInstructions = stringResource(Res.string.work_section_scroll_instructions)
   WorkText(stringResource(Res.string.work_section_loaded, state.items.size))
   Box(
     modifier = Modifier
@@ -369,23 +371,32 @@ private fun WorkRows(state: WorkListState) {
         .fillMaxHeight()
         .focusable()
         .testTag(WORK_SECTION_VIEWPORT_TAG)
+        .semantics { contentDescription = scrollInstructions }
         .onPreviewKeyEvent { event ->
           if (event.type != KeyEventType.KeyDown) {
             false
           } else {
-            val offset = when (event.key) {
-              Key.DirectionDown -> 1
-              Key.DirectionUp -> -1
-              Key.PageDown -> 8
-              Key.PageUp -> -8
-              else -> 0
-            }
-            if (offset == 0) {
-              false
-            } else {
-              val target = (vertical.firstVisibleItemIndex + offset).coerceIn(0, state.items.size)
-              scrollScope.launch { vertical.scrollToItem(target) }
+            val horizontalOffset = workHorizontalScrollDelta(event.key)
+            if (horizontalOffset != null) {
+              scrollScope.launch {
+                horizontal.scrollTo((horizontal.value + horizontalOffset).coerceIn(0, horizontal.maxValue))
+              }
               true
+            } else {
+              val offset = when (event.key) {
+                Key.DirectionDown -> 1
+                Key.DirectionUp -> -1
+                Key.PageDown -> 8
+                Key.PageUp -> -8
+                else -> 0
+              }
+              if (offset == 0) {
+                false
+              } else {
+                val target = (vertical.firstVisibleItemIndex + offset).coerceIn(0, state.items.size)
+                scrollScope.launch { vertical.scrollToItem(target) }
+                true
+              }
             }
           }
         }
@@ -463,7 +474,14 @@ private fun workFields(): List<WorkField> = listOf(
 
 private data class WorkField(val label: String, val width: Dp)
 
+internal fun workHorizontalScrollDelta(key: Key): Int? = when (key) {
+  Key.DirectionLeft -> -WORK_SECTION_KEYBOARD_SCROLL_INCREMENT
+  Key.DirectionRight -> WORK_SECTION_KEYBOARD_SCROLL_INCREMENT
+  else -> null
+}
+
 private val WORK_SECTION_CONTENT_WIDTH = 1_012.dp
+private const val WORK_SECTION_KEYBOARD_SCROLL_INCREMENT = 160
 private const val WORK_SECTION_TOGGLE_TAG = "work-section-toggle"
 private const val WORK_SECTION_REFRESH_TAG = "work-section-refresh"
 private const val WORK_SECTION_STATUS_TAG = "work-section-status"

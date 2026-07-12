@@ -15,6 +15,7 @@ import java.time.Instant
 import java.time.ZoneOffset
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 
 class GoalModeAttributionUnitTest {
@@ -33,6 +34,22 @@ class GoalModeAttributionUnitTest {
     val record = request.toRecord()
     assertEquals("prose", record.mode)
     assertEquals("running", record.status)
+  }
+
+  @Test
+  fun `goal telemetry records normalize safe issue keys and reject control characters`() {
+    val request = GoalStartedRequest(
+      issueKey = "  SKILL-92  ",
+      featureName = "test",
+      workflowId = "wf-1",
+      subtaskTotal = 1,
+      resumed = false,
+      startedAt = "2026-06-23T10:00:00Z",
+      mode = "prose",
+    )
+
+    assertEquals("SKILL-92", request.toRecord().issueKey)
+    assertFailsWith<IllegalArgumentException> { request.copy(issueKey = "SKILL-92\nspoofed").toRecord() }
   }
 
   @Test

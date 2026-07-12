@@ -4,13 +4,14 @@ import skillbill.application.model.WorkflowFamilyKind
 import skillbill.di.RuntimeComponent
 import skillbill.di.create
 import skillbill.model.RuntimeContext
+import kotlinx.coroutines.runBlocking
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
 class JvmWorkListGatewayTest {
   @Test
-  fun `gateway renders the shared application work service without a repository session`() {
+  fun `gateway renders the shared application work service without a repository session`() = runBlocking {
     val home = Files.createTempDirectory("skillbill-desktop-work-gateway")
     val component = RuntimeComponent::class.create(RuntimeContext(environment = emptyMap(), userHome = home))
     component.workflowService.open(WorkflowFamilyKind.TASK_PROSE, issueKey = "skill-117")

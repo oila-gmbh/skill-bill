@@ -11,11 +11,11 @@ interface RepoSessionService {
 }
 
 interface WorkListGateway {
-  fun list(): List<skillbill.desktop.core.domain.model.DesktopWorkItem>
+  suspend fun list(): List<skillbill.desktop.core.domain.model.DesktopWorkItem>
 }
 
 object EmptyWorkListGateway : WorkListGateway {
-  override fun list(): List<skillbill.desktop.core.domain.model.DesktopWorkItem> = emptyList()
+  override suspend fun list(): List<skillbill.desktop.core.domain.model.DesktopWorkItem> = emptyList()
 }
 
 interface RecentRepoRepository {

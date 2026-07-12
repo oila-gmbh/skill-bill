@@ -12,6 +12,7 @@ import androidx.compose.runtime.setValue
 import dev.skillbill.designsystem.generated.resources.Res
 import dev.skillbill.designsystem.generated.resources.scaffold_add_on_location_choose_title
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -42,6 +43,7 @@ fun SkillBillRoute(
   var pendingRepoFileChangeKind by remember(viewModel) { mutableStateOf<RepoFileChangeKind?>(null) }
   var pendingRepoFileChangeRefresh by remember(viewModel) { mutableStateOf(false) }
   var repoFileChangePulse by remember(viewModel) { mutableStateOf(0) }
+  var workLoadJob by remember(viewModel) { mutableStateOf<Job?>(null) }
   val addonLocationChooserTitle = stringResource(Res.string.scaffold_add_on_location_choose_title)
 
   fun runEditorSave() {
@@ -216,15 +218,18 @@ fun SkillBillRoute(
   }
 
   fun runWorkRequest(request: skillbill.desktop.feature.skillbill.state.WorkListRequest) {
-    coroutineScope.launch {
-      val response = withContext(dispatcherProvider.default) { viewModel.loadWork(request) }
+    workLoadJob?.cancel()
+    workLoadJob = coroutineScope.launch {
+      val response = withContext(dispatcherProvider.io) { viewModel.loadWork(request) }
       state = viewModel.finishWork(request, response)
     }
   }
 
   fun runWorkToggle() {
+    val collapsing = state.workList.expanded
     val request = viewModel.toggleWork()
     state = viewModel.state()
+    if (collapsing) workLoadJob?.cancel()
     request?.let(::runWorkRequest)
   }
 

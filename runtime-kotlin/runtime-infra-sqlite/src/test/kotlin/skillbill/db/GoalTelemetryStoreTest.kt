@@ -4,6 +4,7 @@ import skillbill.contracts.JsonSupport
 import skillbill.db.core.DatabaseRuntime
 import skillbill.db.telemetry.LifecycleTelemetryStore
 import skillbill.db.telemetry.TelemetryOutboxStore
+import skillbill.db.telemetry.recordGoalIssueBlockedSegment
 import skillbill.infrastructure.sqlite.review.InvalidGoalTelemetryRowError
 import skillbill.infrastructure.sqlite.review.ReviewStatsRuntime
 import skillbill.ports.persistence.model.TelemetryOutboxRecord
@@ -15,6 +16,7 @@ import java.nio.file.Files
 import java.sql.Connection
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
@@ -387,6 +389,71 @@ class GoalTelemetryStoreTest {
   }
 
   @Test
+  fun `goal issue progress state entry metadata changes only on real status transitions`() {
+    withConnection { connection ->
+      val store = LifecycleTelemetryStore(connection)
+      val parentWorkflowId = "wf-state-parent"
+      val initial = startedRecord(
+        workflowId = "$parentWorkflowId:seg:1",
+        subtaskTotal = 1,
+        resumed = false,
+        startedAt = "2026-06-04T10:00:00Z",
+      ).copy(parentWorkflowId = parentWorkflowId)
+      store.goalStarted(initial, "full")
+
+      assertGoalIssueState(connection, parentWorkflowId, "running", initial.startedAt, estimated = false)
+
+      store.goalStarted(
+        initial.copy(
+          workflowId = "$parentWorkflowId:seg:2",
+          resumed = true,
+          startedAt = "2026-06-04T10:10:00Z",
+        ),
+        "full",
+      )
+      assertGoalIssueState(connection, parentWorkflowId, "running", initial.startedAt, estimated = false)
+
+      store.goalFinished(
+        finishedRecord("$parentWorkflowId:seg:2", "blocked", "2026-06-04T10:10:00Z")
+          .copy(parentWorkflowId = parentWorkflowId),
+        "full",
+      )
+      val blocked = goalIssueState(connection, parentWorkflowId)
+      assertEquals("blocked", blocked.status)
+      assertFalse(blocked.estimated)
+      assertFalse(blocked.enteredAt == initial.startedAt)
+
+      recordGoalIssueBlockedSegment(connection, parentWorkflowId, "SKILL-66", "$parentWorkflowId:seg:2-repeat")
+      assertEquals(blocked, goalIssueState(connection, parentWorkflowId))
+
+      val resumed = initial.copy(
+        workflowId = "$parentWorkflowId:seg:3",
+        resumed = true,
+        startedAt = "2026-06-04T10:20:00Z",
+      )
+      store.goalStarted(resumed, "full")
+      assertGoalIssueState(connection, parentWorkflowId, "running", resumed.startedAt, estimated = false)
+
+      val completed = GoalIssueFinishedRecord(
+        issueKey = "SKILL-66",
+        parentWorkflowId = parentWorkflowId,
+        status = "completed",
+        subtasksComplete = 1,
+        subtasksBlocked = 0,
+        subtasksSkipped = 0,
+        finishedAt = "2026-06-04T10:30:00Z",
+        mode = "runtime",
+      )
+      store.goalIssueFinished(completed, "full")
+      assertGoalIssueState(connection, parentWorkflowId, "completed", completed.finishedAt, estimated = false)
+
+      val terminal = goalIssueState(connection, parentWorkflowId)
+      store.goalIssueFinished(completed, "full")
+      assertEquals(terminal, goalIssueState(connection, parentWorkflowId))
+    }
+  }
+
+  @Test
   fun `goal issue completion recovers aggregates from persisted segments when progress is missing`() {
     withConnection { connection ->
       val store = LifecycleTelemetryStore(connection)
@@ -609,8 +676,39 @@ class GoalTelemetryStoreTest {
   private fun pendingOutbox(connection: Connection): List<TelemetryOutboxRecord> =
     TelemetryOutboxStore(connection).listPending(limit = null)
 
+  private fun assertGoalIssueState(
+    connection: Connection,
+    parentWorkflowId: String,
+    status: String,
+    enteredAt: String,
+    estimated: Boolean,
+  ) {
+    assertEquals(GoalIssueState(status, enteredAt, estimated), goalIssueState(connection, parentWorkflowId))
+  }
+
+  private fun goalIssueState(connection: Connection, parentWorkflowId: String): GoalIssueState =
+    connection.prepareStatement(
+      "SELECT status, state_entered_at, state_entered_at_estimated FROM goal_issue_progress WHERE parent_workflow_id = ?",
+    ).use { statement ->
+      statement.setString(1, parentWorkflowId)
+      statement.executeQuery().use { resultSet ->
+        check(resultSet.next()) { "Expected goal issue progress for $parentWorkflowId." }
+        GoalIssueState(
+          status = resultSet.getString("status"),
+          enteredAt = resultSet.getString("state_entered_at"),
+          estimated = resultSet.getInt("state_entered_at_estimated") != 0,
+        )
+      }
+    }
+
   private fun withConnection(block: (Connection) -> Unit) {
     val dbPath = Files.createTempDirectory("runtime-kotlin-goal-telemetry").resolve("metrics.db")
     DatabaseRuntime.ensureDatabase(dbPath).use(block)
   }
+
+  private data class GoalIssueState(
+    val status: String,
+    val enteredAt: String,
+    val estimated: Boolean,
+  )
 }

@@ -2,10 +2,14 @@ package skillbill.db
 
 import skillbill.db.core.DatabaseRuntime
 import skillbill.db.worklist.SQLiteWorkListRepository
+import skillbill.error.InvalidWorkListRowError
 import java.nio.file.Files
 import java.sql.Connection
+import java.sql.DriverManager
 import kotlin.test.Test
+import kotlin.test.assertContains
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 
 class SQLiteWorkListRepositoryTest {
   @Test
@@ -32,6 +36,61 @@ class SQLiteWorkListRepositoryTest {
         all.map { it.workflowKind.wireValue },
       )
       assertEquals(listOf("wfv-tie-z", "wfl-tie-a", "goal-new"), repository.list(limit = 3).map { it.workflowId })
+    }
+  }
+
+  @Test
+  fun `work list rejects malformed persisted rows at every read boundary`() {
+    assertMalformedWorkListRow(
+      "INSERT INTO feature_task_workflows VALUES ('SKILL-117', 'prose', NULL, '2026-05-01T12:00:00Z', 'running', '2026-05-01T12:00:00Z', 0)",
+      "missing workflow_id",
+    )
+    assertMalformedWorkListRow(
+      "INSERT INTO feature_task_workflows VALUES ('SKILL-117', 'unknown', 'wf-kind', '2026-05-01T12:00:00Z', 'running', '2026-05-01T12:00:00Z', 0)",
+      "unknown workflow kind",
+    )
+    assertMalformedWorkListRow(
+      "INSERT INTO feature_task_workflows VALUES ('SKILL-117', 'prose', 'wf-state', '2026-05-01T12:00:00Z', 'unknown', '2026-05-01T12:00:00Z', 0)",
+      "unknown current state",
+    )
+    assertMalformedWorkListRow(
+      "INSERT INTO feature_task_workflows VALUES ('SKILL-117', 'prose', 'wf-estimated', '2026-05-01T12:00:00Z', 'running', '2026-05-01T12:00:00Z', 2)",
+      "invalid state_entered_at_estimated",
+    )
+    assertMalformedWorkListRow(
+      "INSERT INTO feature_task_workflows VALUES ('SKILL-117', 'prose', 'wf-started', 'invalid', 'running', '2026-05-01T12:00:00Z', 0)",
+      "invalid started_at",
+    )
+    assertMalformedWorkListRow(
+      "INSERT INTO feature_task_workflows VALUES ('SKILL-117', 'prose', 'wf-since', '2026-05-01T12:00:00Z', 'running', 'invalid', 0)",
+      "invalid state_entered_at",
+    )
+  }
+
+  private fun assertMalformedWorkListRow(insert: String, expectedDetail: String) {
+    DriverManager.getConnection("jdbc:sqlite::memory:").use { connection ->
+      createWorkListTables(connection)
+      connection.createStatement().use { it.executeUpdate(insert) }
+
+      val error = assertFailsWith<InvalidWorkListRowError> {
+        SQLiteWorkListRepository(connection).list()
+      }
+
+      assertContains(error.message.orEmpty(), expectedDetail)
+    }
+  }
+
+  private fun createWorkListTables(connection: Connection) {
+    connection.createStatement().use { statement ->
+      statement.executeUpdate(
+        "CREATE TABLE feature_task_workflows (issue_key TEXT, mode TEXT, workflow_id TEXT, started_at TEXT, workflow_status TEXT, state_entered_at TEXT, state_entered_at_estimated INTEGER)",
+      )
+      statement.executeUpdate(
+        "CREATE TABLE feature_verify_workflows (issue_key TEXT, workflow_id TEXT, started_at TEXT, workflow_status TEXT, state_entered_at TEXT, state_entered_at_estimated INTEGER)",
+      )
+      statement.executeUpdate(
+        "CREATE TABLE goal_issue_progress (issue_key TEXT, parent_workflow_id TEXT, first_started_at TEXT, status TEXT, state_entered_at TEXT, state_entered_at_estimated INTEGER)",
+      )
     }
   }
 

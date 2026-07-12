@@ -1,6 +1,7 @@
 package skillbill.application.featuretask
 
 import me.tatarka.inject.annotations.Inject
+import skillbill.application.normalizeIssueKey
 import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing
 import skillbill.application.model.FeatureTaskRuntimePhaseLedgerRequest
@@ -282,7 +283,7 @@ class FeatureTaskRuntimePhaseRecorder(
     issueKey: String? = null,
   ): Boolean =
     database.transaction(dbOverride) { unitOfWork ->
-      val normalizedIssueKey = issueKey?.trim()?.also { require(it.isNotEmpty()) { "issue key cannot be blank." } }
+      val normalizedIssueKey = normalizeIssueKey(issueKey)
       val existing = unitOfWork.workflowStates.getFeatureTaskRuntimeWorkflow(workflowId)
       if (existing != null) {
         if (existing.issueKey == null && normalizedIssueKey != null) {

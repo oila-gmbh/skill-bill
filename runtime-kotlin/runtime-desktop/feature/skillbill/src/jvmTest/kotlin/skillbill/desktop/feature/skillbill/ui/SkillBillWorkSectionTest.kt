@@ -24,6 +24,13 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class SkillBillWorkSectionTest {
+  @Test
+  fun `Work table maps horizontal direction keys to horizontal scrolling`() {
+    assertEquals(-160, workHorizontalScrollDelta(Key.DirectionLeft))
+    assertEquals(160, workHorizontalScrollDelta(Key.DirectionRight))
+    assertEquals(null, workHorizontalScrollDelta(Key.DirectionDown))
+  }
+
   @OptIn(ExperimentalTestApi::class)
   @Test
   fun `Work renders structured field headers an estimated item and stable test tags`() = runComposeUiTest {
@@ -70,6 +77,7 @@ class SkillBillWorkSectionTest {
     onNodeWithTag("work-section-refresh").assertIsDisplayed()
     onNodeWithTag("work-section-status").assertIsDisplayed()
     onNodeWithTag("work-section-list-viewport").assertIsDisplayed()
+    onNodeWithContentDescription("Work table. Use left and right arrow keys to inspect all columns.").assertIsDisplayed()
     onNodeWithTag("work-section-field-headers").assertIsDisplayed()
     onNodeWithTag("work-section-row-wftr-117").assertIsDisplayed()
     onNodeWithText("ISSUE").assertIsDisplayed()
@@ -147,6 +155,7 @@ class SkillBillWorkSectionTest {
     onNodeWithTag("work-section-row-wftr-1").assertIsDisplayed()
     onNodeWithTag("work-section-list-viewport").requestFocus().performKeyInput {
       pressKey(Key.PageDown)
+      pressKey(Key.DirectionRight)
     }
     assertEquals(0, treeMoves)
     onNodeWithTag("work-section-row-wftr-8").assertIsDisplayed()

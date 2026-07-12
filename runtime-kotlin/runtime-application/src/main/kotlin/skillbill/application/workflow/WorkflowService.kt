@@ -1,6 +1,7 @@
 package skillbill.application.workflow
 
 import me.tatarka.inject.annotations.Inject
+import skillbill.application.normalizeIssueKey
 import skillbill.application.decomposition.DECOMPOSITION_RUNTIME_ARTIFACT_KEY
 import skillbill.application.decomposition.DecompositionManifestWriter
 import skillbill.application.decomposition.encodeDecompositionManifestMap
@@ -259,10 +260,6 @@ class WorkflowService(
       ),
     )
   }
-}
-
-private fun normalizeIssueKey(issueKey: String?): String? = issueKey?.let { value ->
-  value.trim().also { require(it.isNotEmpty()) { "issue key cannot be blank." } }
 }
 
 private fun WorkflowEngine.syncDecompositionParentRuntime(

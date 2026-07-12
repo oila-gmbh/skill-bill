@@ -1,5 +1,6 @@
 package skillbill.desktop.feature.skillbill.state
 
+import kotlinx.coroutines.CancellationException
 import skillbill.desktop.core.domain.model.DesktopWorkItem
 import skillbill.desktop.core.domain.model.WorkListLoadState
 import skillbill.desktop.core.domain.model.WorkListState
@@ -28,11 +29,13 @@ internal class SkillBillWorkController(
 
   fun refresh(): WorkListRequest? = if (canLoad()) beginLoad() else null
 
-  fun load(request: WorkListRequest): WorkListResponse = runCatching { gateway.list() }
-    .fold(
-      onSuccess = WorkListResponse::Loaded,
-      onFailure = { error -> WorkListResponse.Failed(viewState.describe(error)) },
-    )
+  suspend fun load(request: WorkListRequest): WorkListResponse = try {
+    WorkListResponse.Loaded(gateway.list())
+  } catch (error: CancellationException) {
+    throw error
+  } catch (error: Throwable) {
+    WorkListResponse.Failed(viewState.describe(error))
+  }
 
   fun finish(request: WorkListRequest, response: WorkListResponse) {
     if (request.token != viewState.activeWorkListRequestToken) return
