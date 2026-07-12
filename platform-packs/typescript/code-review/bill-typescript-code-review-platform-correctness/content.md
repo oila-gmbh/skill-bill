@@ -1,6 +1,6 @@
 ---
 name: bill-typescript-code-review-platform-correctness
-description: Use when reviewing TypeScript strictness, narrowing, generics, module behavior, emitted JavaScript, and Node-versus-browser runtime correctness.
+description: Use when reviewing TypeScript type soundness, emitted JavaScript, module loading, bundlers, and runtime-target compatibility.
 internal-for: bill-code-review
 ---
 
@@ -8,32 +8,40 @@ internal-for: bill-code-review
 
 ## Focus
 
-- `strict` options, control-flow narrowing, discriminated unions, generics, variance, and exhaustiveness
-- `any`, `unknown`, unchecked casts, non-null assertions, ignored diagnostics, and declaration drift
-- ESM/CommonJS resolution, conditional exports, transpilation targets, bundlers, and source/runtime parity
-- Node, browser, worker, edge, and test-environment APIs and globals
+- Type-level claims versus values and control flow that exist after erasure
+- Compiler, declaration, module-resolution, bundler, and package-export behavior
+- Node, Deno, Bun, browser, worker, edge, and test-runtime availability
 
 ## Ignore
 
-- Type errors that prevent the changed code from compiling
-- Assertions or non-null syntax without a reachable invalid state
-- Stylistic type preferences with no soundness or maintenance impact
+- Diagnostics that already prevent the changed project from compiling
+- Assertions whose producer invariant is proven on every reachable path
+- Type-style preferences without an emitted-code or runtime consequence
 
 ## Applicability
 
-Use this specialist when changed TypeScript affects strictness, narrowing, async behavior, module emission, or Node/browser runtime assumptions.
+Apply only to the compiler options, module graph, package topology, and runtimes detected in the repository; never infer a browser, server, or framework target from a `.ts` or `.tsx` suffix alone.
 
 ## Project-Specific Rules
 
-### TypeScript Correctness Rules
+### Type and State Correctness Rules
 
-- Verify `TypeScript lifecycle and concurrency APIs` preserve runtime invariants; reject an invalid state or ordering failure.
-- Preserve the repository's strictness; do not fix incompatibilities by widening to `any`, disabling checks, or masking errors.
-- Require narrowing from `unknown` at external seams and verify that user-defined type guards check every property they claim.
-- Treat `as`, `!`, and declaration merging as proof obligations: the runtime producer must establish the asserted shape.
-- Distinguish optional, absent, `undefined`, and `null` values across object spreads, JSON, forms, databases, and APIs.
-- Verify emitted module semantics, file extensions, package exports, interop flags, top-level await, and tree-shaking against actual consumers.
-- Confirm runtime APIs exist in every supported target; DOM types do not make browser globals available in Node, and Node types do not make built-ins available in browsers.
-- Check async callbacks and promise-returning APIs for lost errors, missing awaits, and incompatible lifecycle assumptions.
-- Findings must show the runtime state or consumer that violates the type-level claim.
+- External values must enter as `unknown` and be narrowed by checks that verify every claimed field; reject a type guard whose partial predicate permits invalid state at runtime. Verify `tsconfig.json` before reporting this failure.
+- Generic constraints and conditional types must preserve the caller-to-implementation relationship visible in `tsc --noEmit`; flag variance or inference changes that make an unsafe write or incorrect return type reachable. Verify `tsconfig.json` before reporting this failure.
+- Uses of `any`, unchecked casts, non-null assertions, `@ts-ignore`, and declaration merging require producer evidence; reject an escape hatch when malformed data can leak past the erased type boundary. Verify `tsconfig.json` before reporting this failure.
+- Optional, absent, `undefined`, and `null` states must remain distinct through `exactOptionalPropertyTypes`, object spread, JSON, and forms or a valid state can be silently corrupted. Verify `tsconfig.json` before reporting this failure.
+
+### Emission and Consumer Contract Rules
+
+- Verify `declaration` and `declarationMap` output against emitted JavaScript in the built package; reject declaration drift that lets a TypeScript consumer call a missing export or misstates runtime behavior. Verify `built declaration and JavaScript diff` before reporting this failure.
+- Package entry points must align `exports`, `types`, file extensions, and conditional branches; fail a change that routes ESM, CommonJS, or plain JavaScript consumers to incompatible artifacts. Verify `packed-package consumer matrix` before reporting this failure.
+- Review `module`, `moduleResolution`, interop flags, top-level await, and side-effect metadata together; reject compiler success when Node or a supported bundler loads the emitted graph incorrectly. Verify `runtime import matrix` before reporting this failure.
+- Type-only imports and const-enum or decorator transforms must match the configured compiler or transpiler; prevent a runtime crash caused by an erased import or divergent emitted JavaScript. Verify `emitted JavaScript` before reporting this failure.
+
+### Target and Toolchain Failure Rules
+
+- The selected `target` and `lib` must match every supported runtime; reject code whose syntax, built-ins, or polyfill assumptions fail on the declared Node, Deno, Bun, browser, worker, or edge matrix. Verify `tsconfig.json` before reporting this failure.
+- Browser globals such as `window` and server globals such as `process` must be guarded by the actual deployment boundary; prevent an availability failure hidden by broad ambient types. Verify `tsconfig.json` before reporting this failure.
+- Bundler aliases, package conditions, tree-shaking, and code-splitting must resolve the same public contract as the compiler; flag a production-only build failure that editor resolution cannot reveal. Verify `production bundle output` before reporting this failure.
+- Generated or ambient `*.d.ts` files must be checked against the producing tool and runtime artifact; reject stale declarations that conceal an invalid call, serialization mismatch, or missing module. Verify `generated declaration provenance` before reporting this failure.
 - For Blocker or Major findings, describe the concrete invalid-state or ordering failure scenario.

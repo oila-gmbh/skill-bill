@@ -25,6 +25,8 @@ import skillbill.nativeagent.composition.composeNativeAgentSource
 import skillbill.nativeagent.composition.parseNativeAgentBundle
 import skillbill.scaffold.platformpack.loadPlatformPack
 import skillbill.scaffold.policy.APPROVED_CODE_REVIEW_AREAS
+import skillbill.scaffold.substance.Fraction
+import skillbill.scaffold.substance.PlatformPackSubstanceAudit
 import skillbill.testing.repoRootFromTest
 import java.nio.file.Files
 import java.nio.file.Path
@@ -139,6 +141,103 @@ class TypeScriptPlatformPackTest {
       val composed = composeNativeAgentSource(repoRoot, agent)
       assertTrue(composed.body.isNotBlank(), "Expected governed content for ${agent.name}")
     }
+  }
+
+  @Test
+  fun `typescript specialists expose runtime specific coverage synchronized with metadata and agents`() {
+    val packRoot = repoRootFromTest().resolve("platform-packs/typescript")
+    val pack = loadPlatformPack(packRoot)
+    val rulesByArea = pack.declaredFiles.areas.mapValues { (_, path) -> governedRules(Files.readString(path)) }
+
+    assertEquals(TYPESCRIPT_EXPECTED_FOCUS, pack.areaMetadata)
+
+    TYPESCRIPT_EXPECTED_MARKERS.forEach { (area, markers) ->
+      val rules = rulesByArea.getValue(area).joinToString("\n")
+      markers.forEach { marker -> assertContains(rules, marker, ignoreCase = true) }
+    }
+    TYPESCRIPT_EXPECTED_RULE_CONTRACTS.forEach { (area, contracts) ->
+      contracts.forEach { markers ->
+        assertTrue(
+          rulesByArea.getValue(area).any { rule -> markers.all { marker -> rule.contains(marker, ignoreCase = true) } },
+          "TypeScript $area must keep coupled rule contract: ${markers.joinToString()}",
+        )
+      }
+    }
+    rulesByArea.forEach { (area, rules) ->
+      assertFalse(
+        rules.any { rule -> Regex("`TypeScript [^`]* APIs`").containsMatchIn(rule) },
+        "TypeScript $area must name concrete evidence instead of a generic TypeScript APIs phrase",
+      )
+    }
+
+    val agents = parseNativeAgentBundle(
+      packRoot.resolve("code-review/bill-typescript-code-review/native-agents/agents.yaml"),
+    ).associateBy { agent -> agent.name.removePrefix("bill-typescript-code-review-") }
+    assertEquals(APPROVED_CODE_REVIEW_AREAS, agents.keys)
+    agents.forEach { (area, agent) ->
+      assertEquals(
+        "TypeScript ${area.replace('-', ' ')} specialist code reviewer. " +
+          "Runs against ${TYPESCRIPT_EXPECTED_FOCUS.getValue(area)}. " +
+          "Returns a Risk Register in the F-XXX bullet format.",
+        agent.description,
+      )
+    }
+  }
+
+  @Test
+  fun `typescript specialists and checker pass completed pack substance and duplication gates`() {
+    val report = PlatformPackSubstanceAudit.audit(repoRootFromTest())
+    val typescript = report.packs.single { pack -> pack.pack == "typescript" }
+
+    assertEquals(APPROVED_CODE_REVIEW_AREAS, typescript.physicalAreas.toSet())
+    typescript.specialists.filterNot { specialist -> specialist.inherited }.forEach { specialist ->
+      assertTrue(specialist.substantiveRules >= 10, "Thin TypeScript specialist: ${specialist.area}")
+      assertEquals(3, specialist.failureModeClusters, "Missing failure cluster: ${specialist.area}")
+      assertTrue(specialist.concreteEvidenceRules >= 10, "Missing evidence: ${specialist.area}")
+      assertTrue(specialist.placeholders.isEmpty(), "Placeholder in ${specialist.area}")
+    }
+    assertEquals(7, typescript.qualityCheckFacets.size)
+    assertTrue(typescript.sharedShingles <= Fraction(35, 100), typescript.sharedShingles.percentage())
+
+    val typescriptPairs = report.pairs.filter { pair ->
+      pair.firstFile.startsWith("platform-packs/typescript/") ||
+        pair.secondFile.startsWith("platform-packs/typescript/")
+    }
+    assertTrue(typescriptPairs.isNotEmpty())
+    typescriptPairs.forEach { pair ->
+      assertTrue(pair.similarity <= Fraction(65, 100), "${pair.role}: ${pair.similarity.percentage()}")
+    }
+    val typescriptRustRoles = typescriptPairs.filter { pair ->
+      pair.firstFile.startsWith("platform-packs/rust/") || pair.secondFile.startsWith("platform-packs/rust/")
+    }.map { pair -> pair.role }.toSet()
+    assertEquals(
+      setOf("baseline", "quality_check") + APPROVED_CODE_REVIEW_AREAS.map { area -> "specialist:$area" },
+      typescriptRustRoles,
+    )
+    assertFalse(report.violations.any { violation -> violation.pack == "typescript" })
+  }
+
+  @Test
+  fun `typescript quality checker preserves discovered ordered repository execution`() {
+    val content = Files.readString(
+      repoRootFromTest().resolve("platform-packs/typescript/quality-check/bill-typescript-code-check/content.md"),
+    )
+    listOf(
+      "repository build file, wrapper, and CI configuration",
+      "formatting verification",
+      "configured linting",
+      "Run typechecking",
+      "repository build after typechecking",
+      "unit tests, then integration, contract, browser, end-to-end, and worker tests",
+      "affected publishable package",
+      "application-only packages",
+      "*.d.ts",
+      "dependency, lockfile, license, provenance, and security checks",
+      "moduleResolution",
+      "environmental blocker",
+      "Re-run the smallest failing command",
+      "full suite when targeted checks cannot establish safety",
+    ).forEach { marker -> assertContains(content, marker) }
   }
 
   @Test
@@ -350,18 +449,18 @@ class TypeScriptPlatformPackTest {
 
     val specialistRequirements = mapOf(
       "bill-typescript-code-review-platform-correctness" to listOf(
-        "`any`, `unknown`, unchecked casts, non-null assertions",
-        "strictness",
-        "Node, browser, worker, edge",
+        "External values must enter as `unknown`",
+        "`any`, unchecked casts, non-null assertions",
+        "Node, Deno, Bun, browser, worker, or edge",
       ),
       "bill-typescript-code-review-reliability" to listOf(
         "unawaited or floating promises",
-        "async callbacks",
-        "races",
+        "`AbortSignal`",
+        "bounded admission",
       ),
       "bill-typescript-code-review-api-contracts" to listOf(
-        "validate untrusted values at runtime",
-        "optional, nullable",
+        "never treat a TypeScript annotation as runtime validation",
+        "optional, nullable, defaulted",
       ),
     )
     specialistRequirements.forEach { (skillName, requirements) ->
@@ -402,5 +501,128 @@ class TypeScriptPlatformPackTest {
         }
       }
     }
+  }
+
+  private fun governedRules(content: String): List<String> {
+    var governed = false
+    return content.lineSequence().mapNotNull { line ->
+      when {
+        line.startsWith("### ") -> {
+          governed = true
+          null
+        }
+        line.startsWith("## ") -> {
+          governed = false
+          null
+        }
+        governed && line.startsWith("- ") -> line.removePrefix("- ")
+        else -> null
+      }
+    }.toList()
+  }
+
+  companion object {
+    private val TYPESCRIPT_EXPECTED_MARKERS = mapOf(
+      "api-contracts" to listOf("`unknown`", "version-skew", "idempotency-key"),
+      "architecture" to listOf("project references", "conditional exports", "service-worker"),
+      "performance" to listOf("event loop", "`Promise.all`", "`ReadableStream`", "hydration"),
+      "persistence" to listOf("`PrismaClient`", "transaction", "mixed application versions"),
+      "platform-correctness" to listOf("Generic constraints", "declaration drift", "ESM, CommonJS"),
+      "reliability" to listOf("floating promises", "`AbortSignal`", "`SIGTERM`", "queue saturation"),
+      "security" to listOf("CSRF-token", "prototype pollution", "lifecycle scripts"),
+      "testing" to listOf("`tsd`", "Playwright", "ESM and CommonJS", "controlled promises", "regression fixture"),
+      "ui" to listOf("TSX alone", "React, Vue, Svelte, Solid, Angular, Lit", "hydration"),
+      "ux-accessibility" to listOf("`aria-labelledby`", "`aria-live`", "`dir=\"rtl\"`"),
+    )
+
+    private val TYPESCRIPT_EXPECTED_RULE_CONTRACTS = mapOf(
+      "api-contracts" to listOf(
+        listOf("runtime validation", "erased types"),
+        listOf("built-tarball export matrix", "ESM, CommonJS, browser"),
+        listOf("Event and message", "version-skew"),
+      ),
+      "architecture" to listOf(
+        listOf("server, browser", "invalid runtime"),
+        listOf("conditional exports", "ESM, CommonJS, browser, and worker"),
+        listOf("project-reference", "changed producer", "consumers"),
+      ),
+      "performance" to listOf(
+        listOf("event loop", "latency starvation"),
+        listOf("`Promise.all`", "unbounded fan-out"),
+        listOf("`ReadableStream`", "backpressure"),
+        listOf("hydration", "browser"),
+      ),
+      "persistence" to listOf(
+        listOf("transaction", "external calls", "idempotent"),
+        listOf("migration", "mixed application versions"),
+        listOf("`PrismaClient`", "stale client"),
+        listOf("clients", "worker lifecycle"),
+      ),
+      "platform-correctness" to listOf(
+        listOf("packed-package consumer matrix", "ESM, CommonJS"),
+        listOf("production bundle output", "tree-shaking"),
+        listOf("`any`, unchecked casts", "erased type boundary"),
+      ),
+      "reliability" to listOf(
+        listOf("Retries", "idempotency-key", "duplicate"),
+        listOf("`AbortSignal`", "stale work"),
+        listOf("bounded admission", "downstream capacity"),
+        listOf("telemetry", "queue saturation"),
+      ),
+      "security" to listOf(
+        listOf("Browser Web Workers and Service Workers", "untrusted", "server-side"),
+        listOf("browser bundles", "credential exposure"),
+        listOf("lifecycle scripts", "executable code"),
+      ),
+      "testing" to listOf(
+        listOf("Compile-time assertions", "runtime validation tests"),
+        listOf("ESM and CommonJS", "built tarballs"),
+        listOf("Playwright", "hydration"),
+      ),
+      "ui" to listOf(
+        listOf("TSX alone", "proof of React"),
+        listOf("Effects", "subscriptions", "cleanup"),
+        listOf("hydration", "server-rendered"),
+      ),
+      "ux-accessibility" to listOf(
+        listOf("WAI-ARIA widget", "arrow navigation", "Escape"),
+        listOf("Focus", "portal teardown"),
+        listOf("`aria-live`", "async feedback"),
+        listOf("localization keys", "plural rules"),
+      ),
+    )
+
+    private val TYPESCRIPT_EXPECTED_FOCUS = mapOf(
+      "api-contracts" to
+        "erased TypeScript declarations, runtime schemas, JavaScript consumers, HTTP/RPC/events, serialization, " +
+        "idempotency, and version skew",
+      "architecture" to
+        "TypeScript workspaces, project references, package exports, build graphs, dependency direction, " +
+        "runtime partitions, and lifecycle ownership",
+      "performance" to
+        "Node/browser event loops, promise fan-out, streams and backpressure, allocation, bundles, rendering, " +
+        "hydration, and retained resources",
+      "persistence" to
+        "TypeScript ORM/query clients, transaction isolation and retries, migrations, mixed versions, " +
+        "connection lifecycles, and durable serialization",
+      "platform-correctness" to
+        "TypeScript narrowing, generics and escape hatches, declaration/emission parity, ESM/CommonJS, " +
+        "bundlers, targets, and runtime availability",
+      "reliability" to
+        "observed promises, causal errors, AbortSignal cancellation, bounded queues, retries, stream cleanup, " +
+        "process shutdown, and telemetry",
+      "security" to
+        "browser/server identity boundaries, runtime validation, XSS/CSRF and injection sinks, client secrets, " +
+        "lockfiles, build plugins, and supply chain",
+      "testing" to
+        "TypeScript type assertions, behavioral unit/integration/contract/browser/worker tests, package entry " +
+        "points, module matrices, async races, and regression proof",
+      "ui" to
+        "detected DOM/TSX frameworks, state and effects, typed events and forms, async races, rendering, " +
+        "routing, hydration, cleanup, and recovery",
+      "ux-accessibility" to
+        "framework-rendered semantics, accessible names, focus and keyboard behavior, live feedback, " +
+        "localization, direction, zoom, motion, and assistive technology",
+    )
   }
 }

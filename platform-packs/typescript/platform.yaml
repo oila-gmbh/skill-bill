@@ -46,25 +46,25 @@ declared_files:
     ux-accessibility: code-review/bill-typescript-code-review-ux-accessibility/content.md
 area_metadata:
   api-contracts:
-    focus: "TypeScript public types, HTTP/RPC, serialization, validation, and compatibility contracts"
+    focus: "erased TypeScript declarations, runtime schemas, JavaScript consumers, HTTP/RPC/events, serialization, idempotency, and version skew"
   architecture:
-    focus: "TypeScript package and module boundaries, dependency direction, ownership, and layering"
+    focus: "TypeScript workspaces, project references, package exports, build graphs, dependency direction, runtime partitions, and lifecycle ownership"
   performance:
-    focus: "TypeScript event-loop, allocation, rendering, async scheduling, I/O, and hot-path behavior"
+    focus: "Node/browser event loops, promise fan-out, streams and backpressure, allocation, bundles, rendering, hydration, and retained resources"
   persistence:
-    focus: "TypeScript database clients, transactions, schemas, serialization, and durable data consistency"
+    focus: "TypeScript ORM/query clients, transaction isolation and retries, migrations, mixed versions, connection lifecycles, and durable serialization"
   platform-correctness:
-    focus: "TypeScript strictness, narrowing, module semantics, runtime targets, and Node/browser correctness"
+    focus: "TypeScript narrowing, generics and escape hatches, declaration/emission parity, ESM/CommonJS, bundlers, targets, and runtime availability"
   reliability:
-    focus: "TypeScript promise handling, cancellation, retries, shutdown, observability, and degradation behavior"
+    focus: "observed promises, causal errors, AbortSignal cancellation, bounded queues, retries, stream cleanup, process shutdown, and telemetry"
   security:
-    focus: "TypeScript trust boundaries, runtime validation, auth, parsing, secrets, dependencies, and sensitive data"
+    focus: "browser/server identity boundaries, runtime validation, XSS/CSRF and injection sinks, client secrets, lockfiles, build plugins, and supply chain"
   testing:
-    focus: "TypeScript type-check, unit, integration, browser, concurrency, and regression tests"
+    focus: "TypeScript type assertions, behavioral unit/integration/contract/browser/worker tests, package entry points, module matrices, async races, and regression proof"
   ui:
-    focus: "TypeScript and TSX state, rendering, events, hydration, browser behavior, and interactive output"
+    focus: "detected DOM/TSX frameworks, state and effects, typed events and forms, async races, rendering, routing, hydration, cleanup, and recovery"
   ux-accessibility:
-    focus: "TypeScript UI semantics, keyboard and focus behavior, feedback, localization, and assistive access"
+    focus: "framework-rendered semantics, accessible names, focus and keyboard behavior, live feedback, localization, direction, zoom, motion, and assistive technology"
 
 declared_quality_check_file: quality-check/bill-typescript-code-check/content.md
 

@@ -1,6 +1,6 @@
 ---
 name: bill-typescript-code-check
-description: Run TypeScript project checks and fix issues in changed files without suppressions, including type-checking, lint, formatting, tests, and workspace tasks.
+description: Run repository-owned TypeScript format, lint, type, build, test, package, declaration, dependency, and runtime-matrix checks without weakening policy.
 internal-for: bill-code-check
 ---
 
@@ -8,33 +8,37 @@ internal-for: bill-code-check
 
 ## Purpose
 
-Validate changed TypeScript with repository-owned scripts, configuration, package manager, workspace topology, runtime targets, and CI commands. Fix root causes in changed files without installing tools, changing lockfiles incidentally, or weakening strictness, lint, formatting, or test policy.
+Validate changed TypeScript through the repository's pinned package manager, wrappers, workspace graph, scripts, compiler and bundler configuration, CI contract, package outputs, and supported runtimes. Fix root causes in owned files without installing tools, incidentally changing lockfiles, suppressing diagnostics, or narrowing the declared support matrix.
 
 ## Execution Steps
 
-1. Determine the files in scope using the relevant diff.
-2. Discover commands from the build file (`package.json` and workspace metadata), repository wrapper, and CI configuration, in that order, before falling back to TypeScript defaults.
-3. Select npm from `package-lock.json`, yarn from `yarn.lock`, pnpm from `pnpm-lock.yaml`, or bun from `bun.lockb`; prefer the repository's pinned package-manager declaration when present.
-4. Run the pack's quality-check entrypoint through repository scripts such as `typecheck`, `lint`, `format:check`, and `test` because they preserve project flags and package scope.
-5. Run type-checking with the project command or `tsc --noEmit`; use project references or the configured build mode when the repository requires them.
-6. Run configured lint through ESLint or Biome, formatting verification through Biome or Prettier check mode, and the repository's Vitest or Jest command.
-7. In workspaces, use npm, yarn, pnpm, or bun workspace commands. When turbo or nx is configured, use its affected/filter/task graph and keep execution to files in scope or their owning packages.
-8. Re-run each affected command after fixes and report unavailable commands with the exact command, scope, diagnostic, and missing environment reason.
+1. Determine the files in scope, owning packages, dependants, generated boundaries, and supported targets from the relevant diff.
+2. Discover commands from the repository build file, wrapper, and CI configuration, in that order, before falling back to tool defaults; include the `packageManager` pin, lockfile, workspace metadata, `package.json` scripts, and turbo or nx task graph.
+3. Use the detected npm, yarn, pnpm, or bun invocation and preserve Corepack or repository wrapper behavior; do not substitute a globally available manager.
+4. Run the pack's quality-check entrypoint, beginning with formatting verification through the configured script or discovered `prettier --check`, `biome format`, or equivalent command.
+5. Run configured linting next through repository ESLint, Biome, framework, or workspace scripts with the same package and generated-file scope as CI.
+6. Run typechecking through the owned script, `tsc --noEmit`, solution build, or project-reference graph; include type tests and all changed producer-to-consumer projects.
+7. Run the repository build after typechecking so compiler emission, bundler transforms, server/client partitions, and production-only module resolution are exercised.
+8. Run configured unit tests, then integration, contract, browser, end-to-end, and worker tests when their packages or shared dependencies are affected.
+9. For each affected publishable package, or package with a configured package-output task, build its tarball or repository-owned output and verify public `exports`, ESM/CommonJS entry points, source maps, `*.d.ts` declarations, and plain JavaScript consumption; skip this step for application-only packages with no published or configured package output.
+10. Run configured dependency, lockfile, license, provenance, and security checks such as `npm audit`, while attributing pre-existing advisories separately from scoped failures.
+11. Exercise supported `module`, `moduleResolution`, `target`, runtime, browser, and bundler matrices when the diff changes conditional exports, compilation, declarations, or environment boundaries.
+12. Preserve exact command, workspace, environment, exit status, and diagnostics for each failure; distinguish an owned regression from an environmental blocker requiring a maintainer decision.
+13. Re-run the smallest failing command after each fix, expand through dependency-aware affected packages, and escalate to the full suite after targeted checks pass.
 
-### Command Guidance
+### Conditional Command Guidance
 
-- npm: `npm run typecheck`, `npm run lint`, `npm test`; use `npm run <script> --workspace <name>` when configured.
-- yarn: `yarn typecheck`, `yarn lint`, `yarn test`; use the repository's workspace or foreach command.
-- pnpm: `pnpm typecheck`, `pnpm lint`, `pnpm test`; use `--filter` or recursive workspace execution as configured.
-- bun: `bun run typecheck`, `bun run lint`, `bun test`; use workspace filters only when supported by the pinned version.
-- Direct fallbacks may include `tsc --noEmit`, `eslint .`, `biome check .`, `prettier --check .`, `vitest run`, and `jest`, but only when repository scripts do not own the contract.
+- npm repositories may expose `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm run build`, and `npm test`; use workspace flags only when their scripts and pinned version support them.
+- yarn repositories may require `yarn workspaces foreach`, Plug'n'Play loaders, or constraints; derive the command from checked-in configuration.
+- pnpm repositories may use `pnpm --filter`, recursive execution, catalogs, or workspace protocols; keep selection aligned with the dependency graph.
+- bun repositories may use `bun run`, `bun test`, or Bun-specific lock and runtime checks; do not assume Node parity where repository targets differ.
+- turbo and nx repositories must use their configured affected/filter graph when it preserves CI semantics, then run the unfiltered release-critical suite before completion.
+- Direct fallbacks such as `tsc --noEmit`, ESLint `eslint .`, Biome `biome check .`, Prettier `prettier --check .`, Vitest `vitest run`, Jest `jest`, Playwright, or Cypress are allowed only when repository scripts do not own the contract.
 
 ## Fix Strategy
 
-- Use a priority-ordered fix strategy and never suppress failures.
-- Fix configuration, module-resolution, generated-source, and type errors before lint, formatting, and tests.
-- Do not introduce `any`, unsafe casts, non-null assertions, ignored diagnostics, disabled rules, or reduced strictness merely to silence a failure.
-- Do not install missing tools or silently substitute a weaker command; report unavailable requirements explicitly.
-- Preserve the original command, package/workspace scope, and full actionable diagnostics in failure reporting.
-- Re-run targeted checks after each fix category.
-- Run the full suite when targeted checks cannot establish safety.
+- Use a priority-ordered fix ladder and never suppress failures: configuration and module resolution, generated or declaration output, type errors, build failures, lint, formatting, behavioral tests, then package and matrix regressions.
+- Never introduce `any`, unchecked casts, non-null assertions, ignored diagnostics, disabled rules, reduced strictness, skipped tests, or a smaller runtime matrix merely to make checks green.
+- Keep failures belonging to unrelated packages or pre-existing diagnostics separate from scoped work, with reproducible evidence rather than incidental cleanup.
+- Do not install missing tooling or silently replace an unavailable browser, service, credential, or runtime; report the blocked command and the exact maintainer decision needed.
+- Re-run targeted checks after each fix category, escalate through affected dependants, and run the full suite when targeted checks cannot establish safety.
