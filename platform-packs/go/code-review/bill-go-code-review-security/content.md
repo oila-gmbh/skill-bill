@@ -1,71 +1,49 @@
 ---
 name: bill-go-code-review-security
-description: Use when reviewing Go security risks including auth, authorization, secret handling, sensitive logging, uploads, template rendering, deserialization, and credential exposure.
+description: Use when reviewing Go authentication, authorization, templates, input limits, paths, processes, SSRF, uploads, secrets, dependencies, and security middleware.
 internal-for: bill-code-review
 ---
 
-# Security Review Specialist
+# Go Security Review Specialist
 
-Review only exploitable or compliance-relevant issues.
+Own trust boundaries and attacker-controlled behavior. Apply framework rules only when the repository imports or configures that framework.
 
 ## Focus
 
-- Secret leakage
-- Auth/authz logic gaps and session/token misuse
-- Sensitive logging
-- Insecure storage or transport assumptions
-- Security regressions from new code paths
+- Authentication, authorization, sessions, templates, input limits, paths, processes, SSRF, secrets, and reachable dependencies
+- Exploitable authorization-bypass, injection, traversal, resource-exhaustion, and data-exposure paths
 
 ## Ignore
 
-- Non-security style comments
+- Hypothetical ecosystem risks without a reachable repository precondition
+- Reliability or API-contract findings without an attacker-controlled consequence
 
 ## Applicability
 
-Use this specialist for Go code at trust boundaries: auth/authz, sessions, input and output handling, file/network/process APIs, secrets, uploads, templates, background entry points, and scripts that handle credentials or untrusted data.
+Trace user-controlled bytes through parsing, authorization, rendering, filesystem, network, and process boundaries. Verify both rejection and safe resource limits.
 
 ## Project-Specific Rules
 
-### Shared Security
+### Go Security Rules
 
-- No secrets, tokens, passwords, or private keys in code, logs, tests, or repo config
-- Sensitive identifiers and personal data must not be logged or exposed without explicit need and protection
-- New code paths must preserve auth/authz guarantees and avoid bypassable feature-flag checks
-- Treat all external input as untrusted and validate or constrain it at the boundary
-- Watch for SSRF, command execution, path traversal, SQL injection, template injection, unsafe deserialization, and object-level access control gaps
-- Do not pass untrusted data into unsafe deserialization, archive readers, template engines, shell commands, URL fetchers, SQL builders, XML/YAML parsers, or file APIs without an explicit allowlist and safe mode of use
-- Temporary debug code, bypass flags, test credentials, or relaxed verification paths must not ship
-- Cross-tenant or cross-account data access must be impossible unless the contract explicitly permits it
-
-### Backend/Server-Specific Rules
-
-- Enforce authn/authz at entry points; do not trust client-supplied role, tenant, actor, or ownership identifiers without server-side verification
-- Authorization must be enforced on every reachable path, including background-triggered, indirect, or alternate action paths
-- Secrets/config must come from env vars, vaults, or secret-management systems, not committed config files
-- Do not expose stack traces, internal exception messages, or sensitive failure details in API responses
-- Verify webhook signatures, internal-service auth, signed callbacks, or mTLS assumptions when new external entry points are introduced
-- SSRF-sensitive HTTP/file fetches must restrict schemes, hosts, redirects, DNS rebinding, internal IP ranges, metadata services, and local stream wrappers according to the project's threat model
-- Command execution must avoid shell interpretation where possible; when unavoidable, validate commands and arguments separately and preserve least privilege
-- Avoid logging raw auth headers, session cookies, full request bodies, or other high-risk payloads by default
-- File upload, archive extraction, and file-path handling must not allow traversal, unsafe content execution, or unsafe trust in client-provided metadata
-- Secret material and auth context must not bleed across boundaries accidentally
-- Output encoding and template rendering must not allow unescaped user-controlled content to reach server-rendered UI or generated documents
-
-### Template / Output Encoding
-
-- `html/template`, server-rendered templates, and generated HTML must escape user-controlled content unless raw output is explicitly required and proven safe
-- Client-side JavaScript must not inject untrusted content into the DOM, HTML, script contexts, or URLs without safe encoding or sanitization
-
-### Browser / Session Surface
-
-- CSRF protection, same-site cookie assumptions, and session/auth flows must remain intact on every reachable state-changing browser path
-- Session fixation, remember-me tokens, password reset flows, invite links, and capability URLs must rotate, expire, and scope credentials correctly
-- Uploaded file metadata, MIME/type checks, extension checks, and storage paths must not be trusted independently of server-side verification
-
-### Framework Feature Checks
-
-- Server-driven component state, action methods, and emitted events must not trust client-mutated values without server-side authorization and boundary validation
-- Struct binding, map-driven updates, and model hydration must not allow unauthorized field writes
-- Signed URLs, temporary links, reset/invite tokens, and other capability URLs must be validated, scoped, and expire correctly
-- For Blocker or Major findings, describe the abuse or exploit scenario explicitly
+- Require authentication middleware around every protected `http.Handler`; a missing route wrapper risks anonymous data exposure.
+- Require login to rotate session identifiers and set `HttpOnly`, `Secure`, and appropriate `SameSite` cookie attributes; session fixation or script-readable cookies expose authenticated accounts.
+- Verify state-changing browser handlers use a repository-compatible CSRF token and object authorization after authentication; cookie-authenticated requests without CSRF protection permit unauthorized writes.
+- Require applicable OAuth 2.0 authorization flows to validate `state` and exact redirect URIs, and require PKCE for public clients or other flows whose threat model needs code-interception protection; omitted controls permit login CSRF or stolen-code exchange.
+- Require applicable OIDC flows to validate `nonce` when replay binding is required, plus issuer, audience, token lifetime, signature, and rotating verification keys for ID tokens; omitted identity checks can accept replayed or attacker-issued tokens.
+- Verify object-level authorization after loading the target through `r.PathValue` or the active router rather than trusting its identifier; identifier swapping creates cross-tenant data exposure.
+- Ensure identity stored in `context.Context` uses a private typed key and cannot be supplied by request data; key collisions risk authorization bypass.
+- Require untrusted HTML to render through `html/template`, not `text/template`; the wrong engine risks cross-site scripting.
+- Reject converting user input to `template.HTML`, `template.URL`, or `template.JS` without a narrow trusted-source proof; typed bypasses disable contextual escaping and create injection exposure.
+- Ensure parsers such as `json.Decoder`, `multipart.Reader`, and `bufio.Scanner` have byte, field, or token limits; oversized input risks memory or CPU resource failure.
+- Require filesystem targets to pass `filepath.Rel` containment and use symlink-safe, race-resistant opening such as `openat`-style traversal with `O_NOFOLLOW` where supported; `filepath.Clean` alone permits symlink swaps that escape the allowed root.
+- Verify URL paths use `path` semantics and OS paths use `filepath`; mixing them creates platform-specific traversal or routing bugs.
+- Reject `exec.Command("sh", "-c", userInput)` and require a fixed executable plus separated arguments, leading-option rejection, and `--` where the child supports it; shell interpretation or option injection permits attacker-controlled behavior.
+- Ensure `exec.CommandContext` receives a bounded context and constrained environment; hostile subprocesses risk timeout failure or secret-data exposure.
+- Require SSRF policy at connection time through a controlled `net.Dialer` or `http.Transport.DialContext` that validates every resolved IP, plus `http.Client.CheckRedirect` validation on each hop; preflight URL checks alone lose DNS-rebinding and redirect races and expose internal services.
+- Verify uploads use `http.MaxBytesReader`, sanitized server-owned names, and content inspection where required; trusting filenames risks overwrite, traversal, or storage exhaustion.
+- Ensure archive extraction validates every `zip.File` target remains beneath the destination; zip-slip entries risk data corruption by overwriting executable or configuration files.
+- Reject secrets, bearer tokens, cookies, or raw credentials in `slog` attributes and errors; logs can create durable credential exposure.
+- Require dependency findings from `govulncheck ./...` to be evaluated against reachable packages and fixed or explicitly blocked; ignoring reachable advisories leaves known exploitation risk.
+- Verify applicable chi, Gin, Echo, `grpc.UnaryServerInterceptor`, or oauth middleware order preserves authentication before authorization and handlers; wrong ordering risks protected-operation exposure.
 - For Blocker or Major findings, describe the concrete authorization-bypass or data-exposure scenario.

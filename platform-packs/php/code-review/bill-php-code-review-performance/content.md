@@ -1,68 +1,47 @@
 ---
 name: bill-php-code-review-performance
-description: Use when reviewing PHP performance risks including hot paths, repeated database or network work, serialization waste, memory pressure, and throughput regressions.
+description: Use when reviewing measurable PHP latency, query, hydration, rendering, allocation, autoload, cache, and worker-memory regressions.
 internal-for: bill-code-review
 ---
 
-# Performance Review Specialist
+# PHP Performance Review Specialist
 
-Review only high-impact performance issues.
+Report only evidence-backed regressions on important paths, with the input shape and resource consequence.
 
 ## Focus
 
-- Blocking or heavy work on latency-sensitive request or worker paths
-- Expensive or repeated work in hot paths
-- Inefficient DB/network access patterns
-- Retry/backoff inefficiency and CPU/network waste
-- Memory pressure, buffering, or throughput regressions users or operators would notice
+- PDO, Doctrine, Eloquent, serializers, and template hot paths
+- Streaming, batching, OPcache, Composer autoload, and boot cost
+- Persistent-worker memory and async blocking
 
 ## Ignore
 
-- Micro-optimizations without measurable user-facing or production-facing impact
-- Style feedback
-- Single extra object allocations with no realistic impact
-- Small collection reshaping with no hot-path evidence
-- Minor refactors that are only theoretically faster
-
-Litmus test before reporting: would a user or operator ever notice this in production? If not, skip it.
+- Micro-optimizations without measured or structurally obvious impact
+- ORM, template, cache, or fiber rules unsupported by repository evidence
 
 ## Applicability
 
-Use this specialist for PHP backend/service, worker, batch, queue, API serialization, and server-rendered paths where changed code can affect latency, throughput, memory, or infrastructure cost.
+Use framework and tool-specific checks only when Composer packages, configuration, profiles, queries, or changed source prove they participate in the path.
 
 ## Project-Specific Rules
 
-### Shared Backend Performance
+### PHP Performance Failure Checks
 
-- Avoid repeated expensive work in hot paths when inputs are unchanged
-- Watch for `N+1` query/call patterns and redundant round-trips
-- Retry behavior must not amplify latency, downstream load, or CPU/network waste under failure
-- Large batch processing must avoid unbounded memory growth
-
-### Backend/Server-Specific Rules
-
-- Do not perform blocking or heavy work on latency-sensitive request or worker execution paths without explicit offloading or batching strategy
-- Watch for per-item downstream calls inside request handlers, consumers, schedulers, or batch loops
-- Watch for cross-module enrichment loops that turn one logical read into repeated port/adapter calls or repeated queries
-- Reuse expensive clients, serializers, and parsers where construction cost is significant instead of rebuilding them per request/job
-- Bound pagination, batch sizes, queue drains, and in-memory buffering
-- Long-running workers must clear job-specific context, large temporary buffers, and ORM/unit-of-work state between jobs so memory, tenant/user context leakage, and stale-state risks stay bounded
-- Flag cache stampede or thundering-herd patterns when they can realistically spike load, latency, or infrastructure cost
-- Watch for duplicate serialization, duplicate auth lookups, or repeated config parsing inside hot paths
-- Projection rebuilds, feed generation, ranking, and backfill jobs must avoid quadratic work or repeated per-item lookups when batch access is possible
-- Queue/batch processing must use bounded chunk sizes and avoid loading unbounded job payloads or record sets into memory
-- Cache keys, cache cardinality, and invalidation scope must not create unbounded memory growth or low-hit-rate caches
-
-### ORM / Query Shape
-
-- ORM-backed reads must not load large relation graphs or whole record sets when the hot path only needs a small slice of fields
-- Count, exists, and aggregate paths must not load full rows or hydrated models when scalar queries would preserve behavior
-- Avoid hydration-heavy loops when scalar queries, chunking, streaming, or bulk operations would preserve behavior with lower cost
-- Collection pipelines, eager/lazy loading choices, and accessor/appended attribute usage must not introduce hidden repeated work in hot paths
-
-### Serialization / Rendering Paths
-
-- Server-rendered HTML, component rendering, and API/resource serialization paths must not repeatedly compute or re-query the same data without need
-- Serialization and response shaping must not trigger hidden lazy loads or repeated transformation work on large result sets
-- In findings, state the expected production impact such as latency, memory pressure, throughput loss, infrastructure cost, or user-visible slowdown
+- Require repeated PDO lookups to use one prepared `PDOStatement` where semantics permit; reparsing per row causes an operational latency failure.
+- Reject Doctrine lazy association access or Eloquent property traversal inside unbounded loops; N+1 queries cause request timeouts as result size grows.
+- Ensure eager loading selects only needed relations and columns; loading a full object graph can crash PHP before serialization.
+- Require bulk writes to use set-based operations or bounded batches with periodic Doctrine `flush()` and `clear()`; when Eloquent processing mutates the selection predicate, use stable-key `chunkById()` or `lazyById()` instead of offset-based `chunk()`, which can skip records while an ever-growing unit of work can crash workers.
+- Verify cursor, `yield`, `LazyCollection`, or streamed-response paths do not first call `all()` or `toArray()`; accidental materialization creates a memory failure.
+- Reject per-item Symfony Serializer normalization or Laravel Resource expansion when one batched projection suffices; repeated reflection and queries create latency regressions.
+- Ensure Blade or Twig loops do not perform service resolution, authorization queries, or database access per element; render cost creates a request-timeout failure.
+- Require cache keys to have bounded cardinality and TTLs aligned with invalidation; user-input key explosions cause memory pressure and eviction failures.
+- Verify OPcache preload and `opcache.validate_timestamps` assumptions match the deployment model; stale bytecode can serve incorrect code after rollout.
+- Ensure optimized Composer autoload files are rebuilt after namespace changes when deployment uses `composer install --classmap-authoritative`; stale maps cause startup failures.
+- Reject repeated container or configuration reconstruction inside each job when the selected worker safely supports reuse; unnecessary boot work causes a performance regression.
+- Require reused services under `RoadRunner`, `Swoole`, or `FrankenPHP` to release request graphs and buffers; retained references eventually crash the worker.
+- Verify large string concatenation, `json_encode()`, and copy-on-write array transformations do not duplicate full payloads on the hot path; exceeding `memory_limit` produces a fatal crash.
+- Ensure pagination uses indexed deterministic predicates or keyset cursors for deep traversal; large `OFFSET` values produce database latency and timeouts.
+- Reject blocking PDO, filesystem, or HTTP operations inside an event-loop `Fiber` without runtime-aware adapters; one call starves concurrent work.
+- Require supported PHP and extension benchmarks to cover JIT, mbstring, intl, or driver differences relied upon by the optimization; matrix drift can erase gains or break output.
+- Verify changes to `realpath_cache_size` or filesystem-heavy autoloading against production path counts; undersized caches cause a repeat-I/O latency regression.
 - For Blocker or Major findings, describe the concrete latency, memory-pressure, or throughput failure scenario.

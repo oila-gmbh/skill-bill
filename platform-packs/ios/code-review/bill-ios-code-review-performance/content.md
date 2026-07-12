@@ -1,40 +1,45 @@
 ---
 name: bill-ios-code-review-performance
-description: Use when reviewing iOS performance risks on hot reducer paths, main-thread work, and image/PDF-heavy processing.
+description: Use when reviewing measurable iOS rendering, memory, I/O, and resource risks.
 internal-for: bill-code-review
 ---
 
 # Performance Review Specialist
 
-Review only performance issues with real, demonstrable production impact.
+Review only plausible production performance failures.
 
 ## Focus
 
-- Hot reducer/store paths that run on every state update
-- Main-thread work that can cause dropped frames or UI stalls
-- Image, PDF, and media-processing hot paths
-- Large sync/import loops with unbounded or repeated work
+- SwiftUI recomputation and rendering cost
+- ImageIO and media memory behavior
+- Bounded concurrency, I/O, and resource lifetime
 
 ## Ignore
 
-- Micro-optimizations with no measurable or plausible production impact
-- Premature optimization of cold paths
+- Unmeasured micro-optimizations on cold paths
+- Style preferences without latency, memory, or energy risk
 
 ## Applicability
 
-Use this specialist for reducer/store code that runs on frequent state updates, any code executing on the main thread that affects UI responsiveness, and image/PDF/media-processing code paths (for example, gallery, editor, or camera-adjacent features).
+Apply rules to detected SwiftUI/UIKit, media, import, networking, or persistence hot paths. Calibrate findings to device class, supported OS versions, workload size, and measurement evidence.
 
 ## Project-Specific Rules
 
-### Hot Paths And Rendering
+### Rendering Performance Rules
 
-- Reducer logic invoked on every action dispatch must avoid expensive synchronous work (large collection copies, repeated filtering/sorting, synchronous I/O); move expensive computation into an effect off the hot reducer path
-- Image and PDF decoding, downscaling, and rendering must not run synchronously on the main thread for anything larger than trivial thumbnail-sized content
-- Reject expensive work repeated from SwiftUI `body` without isolating it in derived state, caching, or another measured boundary; verify the change does not recompute sorting, formatting, decoding, or I/O on every render
-- Thumbnail workloads must use ImageIO thumbnail downsampling, such as `CGImageSourceCreateThumbnailAtIndex`, rather than fully decoding originals with `UIImage(contentsOfFile:)` and resizing afterward
+- Reject expensive work repeated from SwiftUI `body`; sorting, decoding, or I/O on every recomputation causes frame latency and visible interaction failures.
+- Collection views must provide stable `ForEach` or `UICollectionViewDiffableDataSource` identity; reject index identity that invalidates all rows and causes incorrect animation state.
+- Animation work must limit layout and offscreen rendering cost; reject unbounded `.drawingGroup()` or repeated geometry reads that create GPU or memory regressions.
+- Main-actor callbacks must move heavy parsing or image processing off `@MainActor`; reject synchronous work that blocks lifecycle events and produces dropped frames.
+- Image loads must downsample with `CGImageSourceCreateThumbnailAtIndex` before materializing full pixels; reject `UIImage(contentsOfFile:)` for thumbnails because memory pressure can terminate the app.
+- Reusable UIKit cells must cancel and reset image work in `prepareForReuse()`; reject stale completion races that render incorrect content and waste resources.
 
-### Import And Resource Pressure
+### Resource And Throughput Rules
 
-- Large sync/import loops must avoid O(n²) patterns (e.g. repeated linear scans per item) when a single pass or indexed lookup is available
-- Large import loops that create many temporary Objective-C objects must use bounded `autoreleasepool` scopes where measurement or allocation behavior shows that temporaries otherwise accumulate until the loop ends
+- Parallel task creation must use bounded `withTaskGroup` scheduling for large inputs; reject one `Task` per item when it risks resource starvation or timeouts.
+- Large Objective-C bridging loops must use measured, bounded `autoreleasepool` scopes; reject temporary-object accumulation that causes memory failure.
+- File and security-scoped URL access must balance `startAccessingSecurityScopedResource()` with cleanup; reject leaked handles that exhaust process resources.
+- Database imports must batch transactions and indexed lookups through detected `NSBatchInsertRequest`, SwiftData, or SQLite tooling; reject O(n²) access that creates operational latency.
+- Network media streams must write incrementally or enforce a size bound instead of accumulating `Data`; reject unbounded buffers that crash under memory pressure.
+- Performance changes must include `XCTMetric`, Instruments, signpost, or equivalent observable evidence when the regression threshold is disputed; reject claims that conceal a reproducible latency failure.
 - For Blocker or Major findings, describe the concrete latency, memory-pressure, or throughput failure scenario.

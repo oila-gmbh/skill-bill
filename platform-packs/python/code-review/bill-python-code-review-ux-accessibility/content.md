@@ -24,20 +24,21 @@ Use this specialist for server-rendered templates, Django forms, WTForms, admin 
 
 ## Project-Specific Rules
 
-### Semantics and Forms
+### Python-Owned Accessibility Rules
 
-- Require headings, landmarks, table headers, form groups, status messages, accessible names, and alt text to convey structure without relying on visual layout alone.
-- Require information, status, validation, and charts not to depend on color alone; preserve text, symbols, patterns, or programmatic state that communicates the same meaning.
-- Require rendered text, controls, focus indicators, and meaningful graphical objects or states to preserve sufficient contrast in every interactive state; reject contrast failures that hide content, obscure the available action or state, or block task completion.
-- Require links for navigation and buttons or form submissions for destructive actions; reject destructive links whose semantics or keyboard behavior misrepresents the operation, while deferring request-forgery protection to the `security` specialist.
-- Require Django `Form` and WTForms fields to associate each label, help text, required or optional status, field error, and error summary with the correct control and focus target.
-
-### Dynamic Behavior and Copy
-
-- Require modals and dialogs to expose their role, name, initial focus, focus containment, Escape or equivalent dismissal, and focus restoration without trapping users outside the active interaction.
-- Require custom controls to provide native-equivalent keyboard operation and state, and require skip links or equivalent navigation affordances when repeated content would otherwise block efficient keyboard access.
-- Verify focus moves to the new error, heading, dialog, or logical continuation after an HTMX-style swap without trapping or unexpectedly resetting keyboard users.
-- Require dynamic fragments and status changes to expose appropriate screen-reader announcements while using ARIA only when native semantics cannot express the behavior.
-- Reject copy that promises save, delivery, completion, deletion, or other success before the system can guarantee that outcome; require recovery guidance for partial or failed operations.
-- Preserve input, actionable errors, keyboard order, localization-safe pluralization, date/time/number formatting, timezone clarity, and translatable text through error and recovery paths; reject user-facing text embedded in generated images or reports when it cannot be translated or exposed through an accessible text alternative.
+- Require Django `Form` and WTForms controls to render associated `label`, help text, required status, and field errors through stable IDs; missing relationships create invalid form semantics for screen readers.
+- Require an error summary whose entries link to invalid control IDs and move focus to that summary after failed submission; missing navigation and focus make rejection errors undiscoverable to keyboard users.
+- Separately require each invalid control to render `aria-invalid="true"` and reference stable, control-specific help and error element IDs through `aria-describedby` or `aria-errormessage`; absent state or control-level relationships make field failures ambiguous to screen-reader users.
+- Verify Python-rendered templates use `main`, `nav`, headings, table headers, and native button or link semantics before ARIA; generic containers create invalid document structure and navigation failure.
+- Require every dialog widget to expose `role="dialog"` plus `aria-labelledby` or `aria-label`, receive intentional initial focus, define Escape or close behavior, and restore focus to its invoking control when dismissed, or provide equivalent detected PyQt/Tk accessibility behavior. For modal dialogs, additionally require `aria-modal="true"` and modal focus containment, because unnamed dialogs, missing focus placement or restoration, and focus escaping into inert background content block keyboard and screen-reader use.
+- Prefer native controls for Python-owned widgets. Otherwise require the widget's role-specific ARIA role, state or value, accessible name, focus behavior, and documented keyboard pattern, or equivalent Qt/Tk framework accessibility APIs; generic `aria-pressed` or mouse-only behavior does not make a slider, tab, menu, combobox, or other custom widget operable.
+- Verify dynamic updates use `aria-live`, Dash loading state, Streamlit status, or desktop accessibility notifications only for meaningful changes; silent failures and excessive announcements both prevent task completion.
+- Preserve the active element after fragment replacement by default, and move focus through an HTMX swap hook or widget focus API only when an intentional context change supplies a documented target; automatic `autofocus` can steal focus and create a keyboard navigation regression.
+- Reject charts, heatmaps, admin badges, and notebook outputs that communicate status only through color; require an `alt` summary, symbols, patterns, or table data or critical contract state is invalidly hidden.
+- Require configured foreground, background, and focus styles to pass the repository's `axe` or contrast check in templates and desktop themes; low contrast can hide controls and cause task failure.
+- Require feedback rendered through Django `messages`, Streamlit status, or desktop notifications to reflect durable backend state and recovery; premature success causes destructive action repetition and data-loss risk.
+- Verify `gettext`, `ngettext`, Babel, and locale-aware date, number, and timezone formatting wrap user-visible Python strings; hard-coded grammar or server locale causes invalid localized output.
+- Require Jupyter notebooks and generated reports to provide Markdown `#` headings, table headers, plot alt summaries, and logical reading order; visual-only output creates an accessibility failure in exported artifacts.
+- Require an accessible `DataTable` or textual alternative for interactive Dash, Panel, or Streamlit visualizations when chart semantics cannot expose the data; absent alternatives cause analysis failure for assistive-technology users.
+- Require large accessible tables rendered by `DataTable` to paginate or virtualize without dropping headers and names; unbounded DOM resources cause performance failure and inaccessible navigation.
 - For Blocker or Major findings, describe the concrete accessibility or task-completion failure scenario.

@@ -1,6 +1,7 @@
 package skillbill.scaffold
 
 import org.yaml.snakeyaml.Yaml
+import skillbill.scaffold.authoring.renderAuthoringTarget
 import skillbill.scaffold.policy.APPROVED_CODE_REVIEW_AREAS
 import skillbill.scaffold.rendering.canonicalSeverityCloser
 import skillbill.scaffold.rendering.defaultAreaFocus
@@ -11,6 +12,7 @@ import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class ScaffoldReviewStructureAcceptanceTest {
   @Test
@@ -21,6 +23,7 @@ class ScaffoldReviewStructureAcceptanceTest {
 
     val pack = repo.resolve("platform-packs/java")
     assertSpecialistPointers(pack)
+    assertRenderedSharedContract(repo)
     assertBaseline(pack)
     assertQualityCheck(pack)
     assertNativeAgents(pack)
@@ -48,6 +51,33 @@ class ScaffoldReviewStructureAcceptanceTest {
     }
   }
 
+  private fun assertRenderedSharedContract(repo: Path) {
+    val canonical = repo.resolve("orchestration/review-orchestrator/PLAYBOOK.md")
+    Files.writeString(
+      canonical,
+      """
+      |## Shared Contract For Every Specialist
+      |- Evidence is mandatory: include `file:line` and a consequence.
+      |- Severity: `Blocker | Major | Minor`.
+      |- Include a minimal concrete fix for each finding.
+      |
+      |## Shared Delegation Contract
+      |- Deduplicate overlapping findings without losing attribution.
+      """.trimMargin(),
+    )
+    listOf("bill-java-code-review", "bill-java-code-review-architecture").forEach { skillName ->
+      val rendered = renderAuthoringTarget(repo, skillName)
+      val pointer = rendered.blocks.single { it.header.endsWith("review-orchestrator.md =====") }
+      val target = pointer.header.substringAfter("pointer: ").substringBeforeLast(" =====")
+      val resolved = repo.resolve(target).parent.resolve(pointer.content.trim()).normalize()
+      val shared = Files.readString(resolved)
+      assertContains(shared, "Evidence is mandatory")
+      assertContains(shared, "Severity: `Blocker | Major | Minor`")
+      assertContains(shared, "Deduplicate overlapping findings")
+      assertContains(shared, "minimal concrete fix")
+    }
+  }
+
   private fun assertBaseline(pack: Path) {
     val content = Files.readString(pack.resolve("code-review/bill-java-code-review/content.md"))
     assertContains(content, "internal-for: bill-code-review")
@@ -59,9 +89,10 @@ class ScaffoldReviewStructureAcceptanceTest {
     assertContains(content, "lightweight file-level classification")
     assertContains(content, "generated, vendored, and non-stack-owned files")
     assertContains(content, "deterministic waves and retain every selected specialist result")
-    assertContains(content, "Calibrate severity and verify each finding's preconditions")
-    assertContains(content, "attributed to their specialist lane through merge")
-    assertContains(content, "Deduplicate overlapping findings without losing evidence")
+    assertContains(content, "limited to platform-specific finding preconditions")
+    assertTrue(!content.contains("Calibrate severity and verify each finding's preconditions"))
+    assertTrue(!content.contains("attributed to their specialist lane through merge"))
+    assertTrue(!content.contains("Deduplicate overlapping findings without losing evidence"))
     APPROVED_CODE_REVIEW_AREAS.forEach { area ->
       assertContains(content, "-> `$area` specialist.")
     }

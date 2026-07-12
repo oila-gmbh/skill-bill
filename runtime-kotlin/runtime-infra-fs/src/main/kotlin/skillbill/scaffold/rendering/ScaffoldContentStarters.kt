@@ -1,3 +1,5 @@
+@file:Suppress("MaxLineLength", "MagicNumber", "ktlint:standard:max-line-length")
+
 package skillbill.scaffold.rendering
 
 internal fun qualityCheckContent(summary: String): String = buildString {
@@ -14,6 +16,8 @@ internal fun qualityCheckContent(summary: String): String = buildString {
   )
   appendLine("3. Run the pack's quality-check entrypoint and capture the scoped failures.")
   appendLine("4. Fix only failures that belong to the scoped work unless the contract says otherwise.")
+  appendLine("5. TODO: name the repository files, wrappers, or CI jobs used to discover the exact checker commands.")
+  appendLine("6. TODO: replace this prompt with backticked repository-specific tool commands and scoped variants.")
   appendLine()
   appendLine("## Fix Strategy")
   appendLine()
@@ -22,6 +26,10 @@ internal fun qualityCheckContent(summary: String): String = buildString {
   appendLine("- Re-run targeted checks after each fix category.")
   appendLine("- Escalate to the full suite when targeted checks cannot establish safety.")
   appendLine("- Call out any blocker that requires a maintainer decision instead of guessing.")
+  appendLine(
+    "- TODO: define failure ownership, priority order, targeted reruns, " +
+      "and the condition that escalates to the full suite.",
+  )
 }
 
 internal fun areaReviewContent(summary: String, area: String, stackLabel: String): String {
@@ -59,10 +67,25 @@ internal fun areaReviewContent(summary: String, area: String, stackLabel: String
     appendLine("### Review Rules")
     appendLine()
     appendLine(areaStarterRule(stackLabel, area))
-    appendLine("- Keep output format, telemetry, and runtime ceremony in the wrapper or shared sidecars.")
+    appendLine()
+    appendLine("### State, Lifecycle, and Ordering Failures")
+    appendLine()
+    repeat(4) { index -> appendLine(todoRule(stackLabel, area, "state/lifecycle/ordering", index + 1)) }
+    appendLine()
+    appendLine("### Contract, Data, and Security Failures")
+    appendLine()
+    repeat(3) { index -> appendLine(todoRule(stackLabel, area, "contract/data/security", index + 5)) }
+    appendLine()
+    appendLine("### Resource, Toolchain, and Operational Failures")
+    appendLine()
+    repeat(3) { index -> appendLine(todoRule(stackLabel, area, "resource/toolchain/operational", index + 8)) }
     appendLine(canonicalSeverityCloser(area))
   }
 }
+
+private fun todoRule(stackLabel: String, area: String, cluster: String, number: Int): String =
+  "- TODO rule $number ($cluster): require or prohibit one concrete `${stackLabel.ifBlank { "platform" }}` " +
+    "mechanism for $area and name the observable failure or consequence in this same bullet."
 
 private fun areaStarterRule(stackLabel: String, area: String): String {
   val stack = stackLabel.ifBlank { "Platform" }
@@ -168,7 +191,9 @@ internal fun baselineReviewContent(summary: String): String = buildString {
   appendLine()
   appendLine("## Finding Discipline")
   appendLine()
-  appendLine("Calibrate severity and verify each finding's preconditions before reporting it.")
-  appendLine("Keep findings attributed to their specialist lane through merge.")
-  appendLine("Deduplicate overlapping findings without losing evidence.")
+  appendLine(
+    "Keep this section limited to platform-specific finding preconditions; " +
+      "generated orchestration owns universal severity and precondition checks, keeps findings attributed through merge, " +
+      "and deduplicates without losing evidence.",
+  )
 }

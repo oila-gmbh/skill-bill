@@ -15,9 +15,15 @@ import skillbill.install.model.WindowsSymlinkDecision
 import skillbill.install.model.WindowsSymlinkPreflight
 import skillbill.install.model.WindowsSymlinkPreflightState
 import skillbill.install.runtime.InstallOperations
+import skillbill.nativeagent.composition.composeNativeAgentSource
+import skillbill.nativeagent.composition.parseNativeAgentBundle
+import skillbill.scaffold.authoring.renderAuthoringTarget
 import skillbill.scaffold.platformpack.loadPlatformPack
+import skillbill.scaffold.substance.Fraction
+import skillbill.scaffold.substance.PlatformPackSubstanceAudit
 import skillbill.testing.repoRootFromTest
 import java.nio.file.Files
+import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -33,6 +39,8 @@ private val KOTLIN_CODE_REVIEW_AREAS = setOf(
   "reliability",
   "security",
   "testing",
+  "ui",
+  "ux-accessibility",
 )
 
 class KotlinPlatformPackTest {
@@ -75,8 +83,12 @@ class KotlinPlatformPackTest {
     assertTrue(pack.routingSignals.tieBreakers.any { it.contains("Kotlin/JVM") && it.contains("dominate") })
     assertTrue(pack.routingSignals.tieBreakers.any { it.contains("adjacent KMP") })
     assertTrue(pack.routingSignals.tieBreakers.any { it.contains("generated and vendored") })
-    assertEquals(8, pack.areaMetadata.values.toSet().size)
+    assertEquals(10, pack.areaMetadata.values.toSet().size)
     pack.areaMetadata.values.forEach { focus -> assertContains(focus, "Kotlin") }
+    val pointerConsumers = pack.pointers.map { pointer -> pointer.skillRelativeDir }.toSet()
+    KOTLIN_CODE_REVIEW_AREAS.forEach { area ->
+      assertContains(pointerConsumers, "code-review/bill-kotlin-code-review-$area")
+    }
   }
 
   @Test
@@ -89,7 +101,7 @@ class KotlinPlatformPackTest {
         .toList()
     }
 
-    assertEquals(10, contentFiles.size)
+    assertEquals(12, contentFiles.size)
     contentFiles.forEach { contentFile ->
       val text = Files.readString(contentFile)
       assertTrue(text.contains("internal-for:"), "Missing internal classification in $contentFile")
@@ -113,6 +125,161 @@ class KotlinPlatformPackTest {
         },
         "Kotlin specialists must contain $requiredRule guidance",
       )
+    }
+
+    val baseline = Files.readString(reviewRoot.resolve("bill-kotlin-code-review/content.md"))
+    KOTLIN_CODE_REVIEW_AREAS.forEach { area ->
+      assertTrue(Regex("(?m)^- .+ -> `$area` specialist\\.").containsMatchIn(baseline))
+    }
+    listOf("Compose Desktop", "Swing EDT", "JavaFX Application Thread", "server templates", "CLI", "TUI")
+      .forEach { signal -> assertContains(baseline, signal) }
+  }
+
+  @Test
+  fun `kotlin specialists preserve corrected framework and concurrency contracts`() {
+    val reviewRoot = repoRootFromTest().resolve("platform-packs/kotlin/code-review")
+
+    assertArchitectureAndCorrectnessContracts(reviewRoot)
+    assertApiPersistenceAndReliabilityContracts(reviewRoot)
+    assertPerformanceSecurityTestingAndUiContracts(reviewRoot)
+  }
+
+  private fun assertArchitectureAndCorrectnessContracts(reviewRoot: Path) {
+    val architecture = specialistContent(reviewRoot, "architecture")
+    assertContains(architecture, "dispatcher may be encapsulated by the adapter")
+    assertContains(architecture, "infrastructure transaction runner or adapter")
+    assertContains(architecture, "application-owned scope may deliberately outlive")
+    assertFalse(architecture.contains("use case owns the atomic boundary and calls `newSuspendedTransaction`"))
+    assertFalse(architecture.contains("every blocking API must receive an injected dispatcher"))
+
+    val correctness = specialistContent(reviewRoot, "platform-correctness")
+    assertContains(correctness, "propagate parent or scope `CancellationException`")
+    assertContains(correctness, "equality-based conflation")
+    assertContains(correctness, "For APIs actually published to Java callers")
+    assertContains(correctness, "only while subscribers are active")
+    assertContains(correctness, "`TimeoutCancellationException` created and owned by the current boundary")
+    assertContains(correctness, "same non-null owner token throws `IllegalStateException`")
+  }
+
+  private fun assertApiPersistenceAndReliabilityContracts(reviewRoot: Path) {
+    val apiContracts = specialistContent(reviewRoot, "api-contracts")
+    assertContains(
+      apiContracts,
+      "`LocalDate` fields to declare calendar and format semantics while remaining zone-free",
+    )
+    assertContains(apiContracts, "`ignoreUnknownKeys` to match the published unknown-field policy")
+    assertContains(apiContracts, "constructor defaults do not silently accept an omitted input")
+    assertContains(apiContracts, "bounded offset pagination can be valid")
+    assertContains(apiContracts, "an effective idempotency mechanism")
+    assertFalse(apiContracts.contains("`Instant` and `LocalDate` fields to declare format and zone semantics"))
+
+    val persistence = specialistContent(reviewRoot, "persistence")
+    assertContains(persistence, "do not hop to `Dispatchers.IO` from inside an active thread-bound transaction")
+    assertContains(persistence, "transactional outbox")
+    assertContains(persistence, "atomic mutation-and-checkpoint commit")
+    assertContains(persistence, "injected infrastructure transaction runner opens `newSuspendedTransaction`")
+    assertContains(persistence, "a transaction boundary alone does not prevent lost updates")
+    assertContains(persistence, "migration validation through the repository's detected integration")
+    assertFalse(persistence.contains("unrecoverable partial failure"))
+
+    val reliability = specialistContent(reviewRoot, "reliability")
+    assertContains(reliability, "parent or sibling `CancellationException`")
+    assertContains(reliability, "broker's drain or rebalance contract")
+    assertContains(reliability, "caller-owned latency and attempt budget")
+    assertContains(reliability, "effective deduplication strategy")
+    assertContains(reliability, "atomic transaction owned by the detected framework")
+    assertContains(reliability, "replay and rebuild jobs to bound concurrency")
+    assertFalse(reliability.contains("Require retries around `HttpClient.request`"))
+    assertFalse(reliability.contains("Require idempotency keys around retried writes"))
+    assertFalse(reliability.contains("share one `@Transactional` boundary"))
+  }
+
+  private fun assertPerformanceSecurityTestingAndUiContracts(reviewRoot: Path) {
+    val performance = specialistContent(reviewRoot, "performance")
+    assertContains(performance, "`flowOn` changes only the upstream flow execution context")
+    assertContains(performance, "not a universal substitute")
+    assertContains(performance, "ordinary callbacks or non-suspend functions")
+    assertContains(performance, "benchmark, profiler, allocation, load-test, or trace evidence")
+    assertFalse(performance.contains("Reject `runBlocking` inside suspend code"))
+
+    val security = specialistContent(reviewRoot, "security")
+    assertContains(security, "does not instantiate arbitrary JVM classes")
+    assertContains(security, "canonical resolution")
+    assertContains(security, "direct argument-list execution does not perform shell expansion")
+    assertContains(security, "JVM `ObjectInputStream`")
+    assertContains(security, "expiration according to policy")
+    assertContains(security, "both applicable Gradle dependency integrity")
+    assertFalse(security.contains("expiry or not-before"))
+    assertFalse(security.contains("dependency verification or vulnerability checks"))
+
+    val testing = specialistContent(reviewRoot, "testing")
+    assertContains(testing, "never as evidence of production thread or event ordering")
+    assertContains(testing, "`backgroundScope`")
+    assertContains(testing, "do not universally require `compileTestKotlin`")
+    assertContains(testing, "other hot streams that normally never complete")
+    assertContains(testing, "explicitly cancel the collector")
+    assertContains(testing, "explicit decoding fixtures for absent fields")
+    assertContains(testing, "reserve serializer round trips for encode/decode symmetry")
+
+    val ui = specialistContent(reviewRoot, "ui")
+    assertContains(ui, "`DisposableEffect` for acquire/dispose")
+    assertContains(ui, "Compose Desktop UI thread")
+    assertContains(ui, "only when the current execution is off that thread")
+    assertContains(ui, "standalone Compose Desktop remains Kotlin-owned")
+    assertContains(ui, "targeted rendering, interaction, golden, or UI-harness evidence")
+    assertContains(ui, "inputs change more often than the derived result")
+    assertFalse(ui.contains("Android and Compose Multiplatform behavior"))
+
+    val accessibility = specialistContent(reviewRoot, "ux-accessibility")
+    assertContains(accessibility, "version- and platform-dependent")
+    assertContains(accessibility, "semantics alone do not prove")
+    assertContains(
+      accessibility,
+      "require manual `focusable` and key handling only for low-level gesture implementations",
+    )
+    assertContains(accessibility, "standalone Compose Desktop remains Kotlin-owned")
+    assertFalse(accessibility.contains("Android and Compose Multiplatform accessibility"))
+  }
+
+  @Test
+  fun `kotlin specialists native agents rendering and substance have exact ten-area parity`() {
+    val repoRoot = repoRootFromTest()
+    val packRoot = repoRoot.resolve("platform-packs/kotlin")
+    val pack = loadPlatformPack(packRoot)
+    val agents = parseNativeAgentBundle(
+      packRoot.resolve("code-review/bill-kotlin-code-review/native-agents/agents.yaml"),
+    )
+    val expectedNames = KOTLIN_CODE_REVIEW_AREAS.map { area -> "bill-kotlin-code-review-$area" }.toSet()
+
+    assertEquals(expectedNames, agents.map { agent -> agent.name }.toSet())
+    agents.forEach { agent ->
+      assertTrue(composeNativeAgentSource(repoRoot, agent).body.isNotBlank())
+      val rendered = renderAuthoringTarget(repoRoot, agent.name)
+      assertContains(rendered.stdout, "===== SKILL.md:")
+      assertEquals(
+        setOf("review-orchestrator.md", "shell-ceremony.md", "telemetry-contract.md"),
+        rendered.blocks.drop(1).map { block -> block.header.substringAfterLast('/').substringBefore(" =====") }.toSet(),
+      )
+    }
+
+    val report = PlatformPackSubstanceAudit.audit(repoRoot)
+    val kotlin = report.packs.single { metric -> metric.pack == "kotlin" }
+    assertEquals(KOTLIN_CODE_REVIEW_AREAS, kotlin.physicalAreas.toSet())
+    kotlin.specialists.filterNot { specialist -> specialist.inherited }.forEach { specialist ->
+      assertTrue(
+        specialist.substantiveRules >= 10,
+        "Thin Kotlin specialist: ${specialist.area} (${specialist.substantiveRules})",
+      )
+      assertEquals(3, specialist.failureModeClusters, "Missing failure cluster: ${specialist.area}")
+      assertTrue(specialist.concreteEvidenceRules >= 10, "Missing evidence: ${specialist.area}")
+      assertTrue(specialist.placeholders.isEmpty(), "Placeholder in ${specialist.area}")
+    }
+    assertEquals(7, kotlin.qualityCheckFacets.size)
+    assertTrue(kotlin.sharedShingles <= Fraction(35, 100), kotlin.sharedShingles.percentage())
+    report.pairs.filter { pair ->
+      pair.firstFile.startsWith("platform-packs/kotlin/") || pair.secondFile.startsWith("platform-packs/kotlin/")
+    }.forEach { pair ->
+      assertTrue(pair.similarity <= Fraction(65, 100), "${pair.role}: ${pair.similarity.percentage()}")
     }
   }
 
@@ -172,3 +339,6 @@ class KotlinPlatformPackTest {
     }
   }
 }
+
+private fun specialistContent(reviewRoot: java.nio.file.Path, area: String): String =
+  Files.readString(reviewRoot.resolve("bill-kotlin-code-review-$area/content.md"))

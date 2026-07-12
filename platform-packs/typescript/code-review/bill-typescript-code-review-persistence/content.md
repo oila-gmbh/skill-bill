@@ -1,6 +1,6 @@
 ---
 name: bill-typescript-code-review-persistence
-description: Use when reviewing TypeScript database clients, ORM or query code, transactions, migrations, serialization, and durable consistency.
+description: Use when reviewing TypeScript ORM and query clients, transactions, migrations, connection lifecycles, durable serialization, and consistency.
 internal-for: bill-code-review
 ---
 
@@ -8,32 +8,40 @@ internal-for: bill-code-review
 
 ## Focus
 
-- ORM/query builders, raw SQL, mappings, schema validators, and connection lifecycle
-- Transaction ownership, isolation, retries, idempotency, and partial failure
-- Migrations, constraints, backfills, locking, and mixed-version deployment
-- Nullability, dates, decimals, bigint, enums, JSON, identifiers, and data-shape drift
+- ORM, query-builder, generated client, raw query, and result-mapping behavior
+- Transaction ownership, isolation, retries, concurrency, and external side effects
+- Migrations, mixed versions, connections, batching, and durable representations
 
 ## Ignore
 
-- Query style preferences without correctness or performance impact
+- ORM-versus-SQL preference when both preserve the repository contract
+- Query formatting without correctness or performance impact
 - Unrelated schema redesign
-- ORM-versus-SQL preferences when contracts are satisfied
 
 ## Applicability
 
-Use this specialist when changed TypeScript affects database access, schemas, migrations, transactions, or durable serialization.
+Apply to the database engine, driver, ORM or query builder, migration tool, deployment topology, and consistency model detected in the repository.
 
 ## Project-Specific Rules
 
-### TypeScript Persistence Rules
+### Client and Data Mapping Rules
 
-- Verify `TypeScript transaction and storage APIs` preserve consistency invariants; reject a consistency or durability failure.
-- Keep one transaction owner per business operation and await every persistence promise before commit or release.
-- Validate database results when generated or declared types can drift from deployed schema.
-- Preserve the distinction among absent, `undefined`, `null`, database NULL, default, and omitted update fields.
-- Check tenant, ownership, soft-delete, and authorization scoping on every reachable query.
-- Make retries safe for unique constraints, lost updates, external side effects, and transaction abort semantics.
-- Keep migrations compatible with realistic table sizes and mixed application versions.
-- Serialize date, decimal, bigint, enum, and JSON values explicitly across runtime and driver boundaries.
-- Findings must provide the failing data shape, interleaving, or deployment sequence.
+- Generated clients such as `PrismaClient`, Drizzle, TypeORM, Kysely, or repository adapters must match the deployed schema; reject compile-time confidence when a stale client returns invalid data. Verify `migration rehearsal` before reporting this failure.
+- Reads and writes must preserve the distinction among omitted, `undefined`, `null`, database NULL, and defaults; prevent accidental clearing or retention of durable fields. Verify `migration rehearsal` before reporting this failure.
+- Dates, decimals, bigint, enums, JSON, and identifiers must use explicit driver-to-domain conversion; flag precision loss, timezone drift, or serialization corruption. Verify `migration rehearsal` before reporting this failure.
+- Tenant, ownership, authorization, and soft-delete predicates must reach every query path; reject a data-exposure failure hidden behind a typed repository method. Verify `migration rehearsal` before reporting this failure.
+
+### Transaction and Concurrency Contract Rules
+
+- One component must own the `transaction` boundary for each business operation and await all database work before commit; prevent partial state or use-after-release failures. Verify `migration rehearsal` before reporting this failure.
+- Isolation, locks, compare-and-swap conditions, and unique constraints must match the concurrency invariant; flag lost updates, duplicate creation, or write skew with a concrete interleaving. Verify `migration rehearsal` before reporting this failure.
+- Transaction retries must recognize driver-specific aborts and keep external calls outside or idempotent; reject a retry that duplicates messages, payments, or other side effects. Verify `migration rehearsal` before reporting this failure.
+- Batch and pagination operations must preserve ordering, limits, and partial-failure behavior; prevent memory pressure, skipped rows, or repeated processing at realistic cardinality. Verify `migration rehearsal` before reporting this failure.
+
+### Migration and Resource Failure Rules
+
+- Migrations must support mixed application versions and realistic table sizes through the repository migration tool; reject destructive ordering, long locks, or incompatible reads during rollout. Verify `migration rehearsal` before reporting this failure.
+- Backfills must be resumable, bounded, observable, and safe under concurrent writes; prevent data loss or inconsistent completion after interruption. Verify `migration rehearsal` before reporting this failure.
+- Pools, clients, cursors, and subscriptions must follow application, request, transaction, or worker lifecycle; flag connection starvation or shutdown hangs from leaked resources. Verify `migration rehearsal` before reporting this failure.
+- Persistence evidence must include affected integration tests, migration rehearsal, query plans, or concurrency fixtures as appropriate; reject a consistency claim supported only by TypeScript types. Verify `migration rehearsal` before reporting this failure.
 - For Blocker or Major findings, describe the concrete data-loss, consistency, or durability failure scenario.

@@ -207,3 +207,16 @@ tasks.withType<Test>().configureEach {
     systemProperty("update-snapshots", "true")
   }
 }
+
+tasks.register<JavaExec>("platformPackSubstanceReport") {
+  group = "verification"
+  description = "Emit the maintained platform-pack substance report in text or JSON form."
+  classpath = sourceSets.main.get().runtimeClasspath
+  mainClass.set("skillbill.scaffold.substance.PlatformPackSubstanceReportMainKt")
+  args(
+    "--repo-root=${providers.gradleProperty(
+      "repoRoot",
+    ).orElse(rootProject.projectDir.parentFile.absolutePath).get()}",
+    "--format=${providers.gradleProperty("reportFormat").orElse("text").get()}",
+  )
+}

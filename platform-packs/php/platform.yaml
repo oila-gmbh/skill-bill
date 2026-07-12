@@ -45,25 +45,25 @@ declared_files:
     ux-accessibility: code-review/bill-php-code-review-ux-accessibility/content.md
 area_metadata:
   api-contracts:
-    focus: "PHP API contracts, request validation, resources and serializers, error payloads, and client compatibility"
+    focus: "PHP Symfony, Laravel, and PSR request validation, serialization, errors, webhooks, idempotency, and client compatibility"
   architecture:
-    focus: "PHP module and layer boundaries, dependency direction, framework coupling, and cross-boundary composition"
+    focus: "PHP Composer and PSR-4 boundaries, composition roots, container and worker lifetimes, transactions, generators, and fibers"
   performance:
-    focus: "PHP hot paths, N+1 queries, serialization and rendering waste, worker memory, and bounded batch work"
+    focus: "PHP PDO and ORM query cost, serializers and templates, streaming, OPcache, autoload state, worker memory, and fiber blocking"
   persistence:
-    focus: "PHP ORM and SQL boundaries, transactions, locking, migrations, tenant scoping, and data consistency"
+    focus: "PHP PDO, Doctrine, and Eloquent transactions, locking, unit-of-work lifetime, tenant scope, migrations, and streaming"
   platform-correctness:
-    focus: "PHP coercion and null semantics, business invariants, state transitions, retries, worker lifecycle, and runtime correctness"
+    focus: "PHP coercion, truthiness, errors, references, generators, request-versus-worker lifetime, autoloading, and fiber correctness"
   reliability:
-    focus: "PHP queues, jobs, schedulers, caches, timeouts, retries, downstream failures, and observability"
+    focus: "PHP Laravel and Messenger queues, acknowledgement, retry, worker reset, signals, timeouts, caches, locks, and fatal telemetry"
   security:
-    focus: "PHP authentication and authorization, uploads, signed URLs, templates, deserialization, secrets, and sensitive logs"
+    focus: "PHP authorization, CSRF, deserialization, Blade and Twig escaping, uploads, paths, processes, SSRF, proxies, and secrets"
   testing:
-    focus: "PHPUnit and Pest regression proof, contract and persistence tests, deterministic retries, and assertion quality"
+    focus: "PHPUnit and Pest isolation, framework kernels, database and worker regressions, PHPStan and Psalm, and runtime matrices"
   ui:
-    focus: "PHP Blade, Twig, Livewire, Inertia, and Filament rendering, forms, state ownership, and interactive admin correctness"
+    focus: "PHP Blade, Twig, Livewire, Inertia, Filament, and Symfony Form state, escaping, identity, and hydration correctness"
   ux-accessibility:
-    focus: "PHP server-rendered semantics, labels, keyboard and focus behavior, validation feedback, localization, and accessible task completion"
+    focus: "PHP-rendered labels, errors, keyboard and focus behavior, landmarks, live updates, localization, and progressive enhancement"
 
 declared_quality_check_file: quality-check/bill-php-code-check/content.md
 

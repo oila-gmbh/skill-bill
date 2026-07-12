@@ -1,56 +1,47 @@
 ---
 name: bill-php-code-review-persistence
-description: Use when reviewing PHP persistence risks including transactions, ORM mappings, query scoping, migrations, concurrency, and data consistency.
+description: Use when reviewing PHP database access, ORM lifecycles, transactions, locking, migrations, and tenant-safe data integrity.
 internal-for: bill-code-review
 ---
 
-# Backend Persistence Review Specialist
+# PHP Persistence Review Specialist
 
-Review only backend persistence issues that can corrupt data, break consistency, or create high-risk operational regressions.
+Review durable-state behavior and identify concrete loss, inconsistency, isolation, or query failures.
 
 ## Focus
 
-- Transaction boundaries and atomicity
-- Query correctness and tenant/filter scoping
-- Lost updates, race-prone write patterns, and idempotent persistence behavior
-- Migration/schema compatibility risks
-- ORM/SQL mapping mismatches that break reads or writes
+- PDO and repository-owned SQL
+- Doctrine and Eloquent when detected
+- Transactions, concurrency, tenant scope, migrations, and streaming
 
 ## Ignore
 
-- Harmless query-style preferences
-- Micro-optimizations with no correctness or production impact
+- ORM preferences without a correctness or performance consequence
+- Doctrine or Eloquent rules in repositories that do not own those packages
 
 ## Applicability
 
-Use this specialist for backend/server persistence code only: repositories, ORM models, query builders, SQL, migrations, projections, and similar persistence layers.
+Apply `PDO` rules to direct database access. Apply Doctrine guidance only with `doctrine/orm` evidence, and Eloquent guidance only with `illuminate/database` or Laravel-owned models and configuration.
 
 ## Project-Specific Rules
 
-### Transaction And Consistency
+### PHP Persistence Correctness Rules
 
-- Do not split one business write across multiple implicit transactions unless partial completion is explicitly intended
-- Avoid load-modify-save patterns that can lose concurrent updates when atomic SQL or version checks are required
-- Optimistic updates, counters, balances, status transitions, and reservation flows need atomic predicates, version checks, locks, or unique constraints when concurrent requests can collide
-- Repository methods must apply required tenant/account/ownership filters consistently
-- Upserts, deduplication, and unique-constraint behavior should match the intended idempotency contract
-- Migrations must account for existing data, nullability transitions, indexes, and rollout compatibility
-- Connections, database sessions, cursors, and statements must be closed reliably using the framework or driver equivalent
-- Avoid holding connections across async boundaries or long-running operations where pool exhaustion could occur
-- Do not hold persistence transactions open across remote I/O, event publishing, queue dispatch, or other work that should happen after commit unless the project explicitly requires it
-- Bulk operations should preserve correctness, not just speed; verify partial-failure behavior
-- Projection or derived-table updates must be concurrency-safe; avoid read-modify-write patterns when atomic SQL/update operations are required
-- Migration rollout must consider backfills, dual-read/dual-write windows, and replay or rebuild paths when contracts or projections change
-- `ORM` convenience methods must not hide missing filters, accidental N+1 query/write patterns, or silent partial updates in persistence-critical paths
-- Check database defaults, casts, enum storage, and timestamp behavior for write/read drift against the intended domain and API contract
-- For Blocker or Major findings, explain the data-loss, stale-write, cross-tenant, migration, or consistency consequence explicitly
-
-### ORM And Query Boundaries
-
-- Eager/lazy loading choices must not create N+1 reads, over-broad hydration, or stale relation assumptions in persistence-critical or hot paths
-- Within transactions and persistence workflows, reused model/entity instances must be refreshed, reloaded, or replaced when stale attributes or loaded relations can change query or write behavior
-- Query builders, ORM scopes, cursors, transactions, and persistence records should not leak across service or module boundaries unless the local architecture explicitly accepts that coupling
-- Mass update, delete, restore, and bulk-write paths must carry tenant, account, ownership, soft-delete, and business filters as explicitly as single-row paths
-- Global scopes, default filters, and implicit ORM events are acceptable local patterns only when their authorization, tenant scoping, lifecycle side effects, and transaction ownership remain visible, tested, and hard to bypass where correctness or security depends on them
-- Model/entity events, observers, listeners, and callbacks must not perform cross-boundary business workflows unless the project architecture intentionally routes side effects there
+- Require `PDO::ATTR_ERRMODE` to surface query failures as exceptions or an equally checked result; ignored `false` returns create a data-consistency failure.
+- Verify `PDOStatement::bindValue()` uses the intended `PDO::PARAM_*` type for booleans, integers, and large identifiers; driver coercion creates incorrect durable data.
+- Reject interpolation of values or identifiers into SQL unless identifiers come from a strict allowlist; unsafe composition creates injection exposure.
+- Ensure transaction ownership covers every dependent write and rolls back on `Throwable`; catching only `Exception` causes partial-data loss.
+- Require locking or an atomic predicate for read-modify-write operations using `SELECT ... FOR UPDATE`, version columns, or equivalent; concurrent requests otherwise lose updates.
+- Verify retry logic recognizes driver-specific deadlock or serialization codes and reruns the whole transaction; partial replay can corrupt data.
+- Require Doctrine's closed `EntityManager` to be replaced or reset after rollback; permit `clear()` only while the manager remains open and its managed state is stale, or later persistent jobs fail writes or leak invalid entity state.
+- Reject Doctrine lazy proxies escaping the request or serialization boundary; later access can fail on a detached entity or trigger unbounded queries.
+- Require deliberate `flush()` placement around aggregate invariants and dispatched work; early flushing creates a consistency failure.
+- Verify Eloquent models protect `fillable` or `guarded` attributes at mass-assignment boundaries; unchecked `create($input)` enables authorization exposure.
+- Ensure Eloquent global scopes and Doctrine filters enforce tenant ownership on reads, while every insert and identity-based update proves ownership explicitly and uses database constraints where possible; query filters do not protect all write paths, so relying on them can create cross-tenant mutations.
+- Reject casts, observers, accessors, or model events that hide externally visible writes without transaction ownership; implicit effects produce a retry failure.
+- Require migration ordering and reversible expand/contract compatibility with concurrently deployed application versions defined by repository rollout or deployment policy; use `composer.json` only for PHP runtime and dependency compatibility, or destructive schema changes can break mixed-version live deployments.
+- Verify indexes serve actual Doctrine `QueryBuilder`, Eloquent builder, or SQL predicates and ordering; missing support causes a timeout failure.
+- Reject per-row access to lazy Doctrine associations or Eloquent relationships; use bounded Doctrine `JOIN FETCH` queries, Eloquent eager loading, or batching where cardinality permits, because repeated lazy loads create production timeout failures.
+- Require cursor and `Generator` consumers to close statements and avoid writes on a connection with an active unbuffered result; leaked resources can block the worker.
+- Verify timestamps, decimals, JSON, and enum mappings match the selected database driver and PHP types; round-trip drift corrupts durable values.
 - For Blocker or Major findings, describe the concrete data-loss, consistency, or durability failure scenario.

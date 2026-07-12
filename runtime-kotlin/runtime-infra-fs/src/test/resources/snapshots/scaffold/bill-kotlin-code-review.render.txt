@@ -1,7 +1,7 @@
 ===== SKILL.md: platform-packs/kotlin/code-review/bill-kotlin-code-review/SKILL.md =====
 ---
 name: bill-kotlin-code-review
-description: Use when conducting a thorough Kotlin PR code review across shared, backend/server, or generic Kotlin code, or when providing the baseline Kotlin review layer for Android/KMP reviews. Select shared Kotlin specialists for architecture, correctness, security, performance, and testing, and add backend-focused specialists for API contracts, persistence, and reliability when server signals are present. Produces a structured review with risk register and prioritized action items. Use when user mentions Kotlin review, review Kotlin PR, Kotlin code review, or asks to review .kt files.
+description: Use when conducting a thorough Kotlin PR code review across shared, backend, desktop, server-rendered, CLI, or TUI code, or when providing the baseline Kotlin review layer for Android/KMP reviews. Routes all ten governed areas while preserving KMP ownership of Android and Compose Multiplatform behavior. Produces a structured review with risk register and prioritized action items. Use when user mentions Kotlin review, review Kotlin PR, Kotlin code review, or asks to review .kt files.
 ---
 
 ## Descriptor
@@ -34,6 +34,8 @@ Always keep the `architecture` and `platform-correctness` specialists as the bas
 - Request/response DTOs, validation, status/error mapping, serialization settings, enums, dates, nullability, defaults, or schema changes -> `api-contracts` specialist.
 - Transactions, `newSuspendedTransaction`, repositories, ORM mappings, migrations, locking, tenant filters, or bulk writes -> `persistence` specialist.
 - Timeouts, retries, consumers, queues, replay, outbox ordering, caching, telemetry, startup, or shutdown -> `reliability` specialist.
+- Compose Desktop state, effects, recomposition, rendering, Swing EDT, JavaFX Application Thread, server templates, CLI input, TUI rendering, resize, recovery, or terminal cleanup -> `ui` specialist.
+- Compose Desktop semantics, focus or keyboard navigation, Swing `AccessibleContext`, JavaFX accessibility, semantic HTML, screen readers, terminal color, localization, or task completion -> `ux-accessibility` specialist.
 
 ### Mixed Diffs
 
@@ -44,6 +46,8 @@ Always keep the `architecture` and `platform-correctness` specialists as the bas
 - Re-check the two-specialist minimum after scoping; if only architecture remains, give all Kotlin-owned files to platform-correctness as the default second lane.
 - Load and execute each selected specialist's governed rubric so every selected lane produces an attributed result.
 - When the selected lanes exceed the runtime's available delegated-worker capacity, run them in deterministic waves while retaining every selected result.
+- Merge every applicable lane deterministically in manifest area order, then deduplicate only identical failures while retaining the strongest evidence and all specialist attribution.
+- When Android or Compose Multiplatform signals are present, retain Kotlin as the required baseline and let KMP's more-specific `platform-correctness`, `ui`, and `ux-accessibility` lanes add target-specific findings without replacing standalone Kotlin findings.
 
 ### Finding Discipline
 
@@ -60,7 +64,7 @@ Specialist spawn instructions in this orchestrator are runtime-neutral. Each phr
 
 **On Codex.** The spawn is a natural-language directive in the orchestrator's turn. Codex resolves the subagent by `name` against the installed TOML files in the Codex user agents directory (with the legacy Agents agents fallback), respecting `agents.max_threads` and `agents.max_depth`. Because Codex runs subagents asynchronously, the orchestrator MUST poll for completion between turns before consuming the subagent's `RESULT:` block — do not proceed to the next phase until the subagent has visibly finished and its `RESULT:` JSON is available in the conversation.
 
-**On OpenCode.** The spawn resolves by filename-derived `name` against markdown agents installed in the OpenCode user agents directory; operators can also invoke the same specialists manually with `@bill-kotlin-code-review-api-contracts`, `@bill-kotlin-code-review-architecture`, `@bill-kotlin-code-review-performance`, `@bill-kotlin-code-review-persistence`, `@bill-kotlin-code-review-platform-correctness`, `@bill-kotlin-code-review-reliability`, `@bill-kotlin-code-review-security`, `@bill-kotlin-code-review-testing`. Like Codex, OpenCode runs the spawn asynchronously, so the orchestrator MUST wait for the subagent to finish (checking between turns) and only then read its `RESULT:` JSON before advancing.
+**On OpenCode.** The spawn resolves by filename-derived `name` against markdown agents installed in the OpenCode user agents directory; operators can also invoke the same specialists manually with `@bill-kotlin-code-review-api-contracts`, `@bill-kotlin-code-review-architecture`, `@bill-kotlin-code-review-performance`, `@bill-kotlin-code-review-persistence`, `@bill-kotlin-code-review-platform-correctness`, `@bill-kotlin-code-review-reliability`, `@bill-kotlin-code-review-security`, `@bill-kotlin-code-review-testing`, `@bill-kotlin-code-review-ui`, `@bill-kotlin-code-review-ux-accessibility`. Like Codex, OpenCode runs the spawn asynchronously, so the orchestrator MUST wait for the subagent to finish (checking between turns) and only then read its `RESULT:` JSON before advancing.
 
 Selected fan-out exceeds Codex's `agents.max_threads = 6` default; run waves of at most 6 specialists, with the orchestrator merging wave outputs before final review.
 

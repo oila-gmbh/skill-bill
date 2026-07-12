@@ -31,6 +31,8 @@ description: >
   manifest-driven; the schema describes SHAPE only and never hard-codes any
   specific platform slug (e.g. `kotlin`, `kmp`). New packs can ship as long
   as their manifest matches this schema and the coherence checks below.
+  Maintained-pack effective coverage and substance thresholds are enforced by
+  the repository audit rather than encoded as a fixed slug set in this schema.
 type: object
 # SKILL-48 Subtask 3 (per-repo customization): the top-level mapping intentionally allows
 # unknown keys so repo authors can extend `platform.yaml` with fork-specific fields without
@@ -192,7 +194,9 @@ properties:
     x-runtime-anchored: true
     description: >
       Optional pack-relative path to the quality-check specialist's
-      `content.md`. Must end in `content.md` when present.
+      `content.md`. Must end in `content.md` when present. Review composition
+      never supplies this field: every maintained pack declares its own direct
+      quality checker, including packs that inherit review areas.
   code_review_composition:
     type: object
     additionalProperties: false

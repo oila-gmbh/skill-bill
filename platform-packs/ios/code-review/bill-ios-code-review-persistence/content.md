@@ -1,50 +1,46 @@
 ---
 name: bill-ios-code-review-persistence
-description: Use when reviewing iOS GRDB/SQLite persistence risks including migration safety, schema changes, and offline-sync data consistency.
+description: Use when reviewing iOS persistence, migration, transaction, and offline-sync risks.
 internal-for: bill-code-review
 ---
 
 # Persistence Review Specialist
 
-Review only persistence issues that can corrupt data, break consistency, or create high-risk operational regressions.
+Review only data durability and consistency failures.
 
 ## Focus
 
-- Migration safety and forward compatibility
-- Schema-change discipline for local SQLite/GRDB storage
-- 1:1 coverage between SQL statements and their statement tests
-- Blast radius of changes touching deep/offline sync
+- Core Data, SwiftData, and detected SQLite-family stores
+- Migration and transaction safety
+- Offline synchronization and recovery
 
 ## Ignore
 
-- Harmless query-style preferences
-- Micro-optimizations with no correctness or sync-consistency impact
+- Query style without correctness or performance impact
+- Framework preferences where the repository's detected store is coherent
 
 ## Applicability
 
-Use the Core Data/SwiftData branch for managed models, contexts, stores, and model migrations. Use the GRDB/SQLite branch for migrations, schema definitions, statement-level SQL, transactions, and code paths that participate in offline-first sync of persisted data.
+Use the Core Data/SwiftData branch or the detected GRDB, SQLite, Realm, or other local-store branch. Review queue and actor ownership, including work on its owning queue and on its owning actor; never pass an `NSManagedObject` or `ModelContext` across those boundaries. Consider installed-version upgrades, offline operation, relaunch, and supported OS versions. Repo-local rules are optional enrichment.
 
 ## Project-Specific Rules
 
-### Core Data And SwiftData
+### Isolation And Transaction Rules
 
-- `NSManagedObjectContext` work must execute through `perform` or `performAndWait` on its owning queue, and SwiftData `ModelContext` work must remain on its owning actor; never pass an `NSManagedObject` or `ModelContext` across queues, tasks, or actors
-- Cross a context or isolation boundary with an `NSManagedObjectID` or an explicitly `Sendable` value representation, then refetch in the destination context; reject direct managed-object or context transfer
-- Merge policies and conflict resolution must be selected deliberately for parent, child, view, and background contexts; never rely on an accidental default when multiple contexts can update the same records
-- Core Data lightweight migration and SwiftData automatic migration are valid only for changes the frameworks can safely infer
-- Transformations, renames without metadata, splits, merges, semantic backfills, and other non-inferable changes require `VersionedSchema` with `SchemaMigrationPlan`, or the appropriate Core Data staged/custom migration mechanism, plus evidence that an existing store upgrades successfully
+- `NSManagedObjectContext` work must use `perform` or `performAndWait`; reject queue crossings that race and corrupt Core Data state.
+- SwiftData `ModelContext` values must remain on their owning actor; never cross tasks with a context because isolation failure can crash or corrupt data.
+- Cross-context transfers must use an `NSManagedObjectID` or an explicitly `Sendable` value representation; reject passing `NSManagedObject` instances across lifecycle boundaries.
+- Multi-record invariants must use a detected store transaction such as `DatabaseWriter.write` or a context save; reject partial commits that leave invalid data after failure.
+- SQLite statements must bind values through `StatementArguments` or equivalent parameters; reject string interpolation that creates injection or serialization failures.
+- Concurrent writers must define merge policy, conflict handling, or serialization ownership in `NSMergePolicy`; reject default behavior when it can silently cause data-loss failure.
 
-### GRDB, SQLite, And Offline Sync
+### Migration And Offline Rules
 
-- A migration that has already shipped is frozen: never edit an already-applied migration's body to add or change behavior, even to fix a bug — ship a new, additive migration instead
-- Migrations are additive-only; do not drop columns/tables or narrow types in a way that breaks a device that has not yet migrated forward, unless the project has an explicit deprecation/backfill path for that
-- Any schema change (new table, new column, index change, constraint change) must ship with a corresponding migration in the same diff — schema drift between code and the applied migration history is a correctness risk
-- Statement tests (e.g. a `{Statement}SQLStatementTests.swift`-style 1:1 test) are a recommended convention, not a universal hard rule — confirm the repo actually applies it broadly before treating its absence as a violation (in practice only a subset of statements carry one). A new or changed hand-written SQL statement without a matching test is a real but at-most-Minor coverage gap; reserve higher severity for a statement whose correctness is genuinely load-bearing (migration-affecting, sync-driving, or complex enough that a silent regression would corrupt or drop data)
-- A SQL statement assembled by regex/string substitution against another statement's raw text (e.g. stripping a join by pattern-matching the `.sql` file) is fragile: its correctness is coupled to the exact formatting of the source SQL. Flag it, and note that a test which only asserts substring presence/absence does not prove the produced statement is valid runnable SQL
-- Changes that touch deep/offline sync of persisted data must be evaluated for blast radius: what happens to already-synced records, in-flight sync operations, and conflict resolution when this change ships to a device mid-sync
-- Reads and writes that participate in sync must preserve whatever consistency guarantee the existing sync design relies on (e.g. last-write-wins, versioned records, or conflict markers) — do not silently change write semantics for a table that sync depends on
+- A shipped GRDB or SQLite migration must never be edited; require a new `DatabaseMigrator` migration because existing devices otherwise retain an incompatible schema and fail operationally.
+- Core Data lightweight migration and SwiftData automatic migration must be used only for inferable `NSManagedObjectModel` changes; reject unsafe model drift that causes store-loading failure.
+- Semantic changes must provide `VersionedSchema` with `SchemaMigrationPlan`, staged Core Data migration, or detected equivalent plus evidence that an existing store upgrades successfully; reject a missing old-store test because it risks data loss.
+- Offline writes must persist an operation identifier and retry state in the detected store before network dispatch; reject memory-only queues that cause user-data loss on relaunch.
+- Sync conflict resolution must preserve `version`, tombstones, and idempotency under retry; reject delete or merge ordering that resurrects stale data and causes consistency failure.
+- Cache eviction must download and durably swap a replacement with `FileManager.replaceItemAt` or detected equivalent before deleting the old artifact; reject delete-first flows that cause offline data loss.
+- Recovery must surface migration or `NSPersistentStore` open failure and preserve the original store for diagnostics; never silently delete it because that corrupts user trust and data.
 - For Blocker or Major findings, describe the concrete data-loss, consistency, or durability failure scenario.
-
-## Repo-Local Knowledge
-
-Before finalizing findings, check whether the repo under review ships its own agent-knowledge docs (e.g. `.agents/skills/*/references/*.md` and a root `AGENTS.md`/`CLAUDE.md`). When present, read them and weigh any documented hard-rule violation (e.g. an explicitly frozen-migration rule or a documented sync-consistency invariant) as a high-confidence finding. This is a read-only lookup local to the repo under review — nothing from these documents is copied into skill-bill's own tree.

@@ -1,46 +1,45 @@
 ---
 name: bill-go-code-review-ux-accessibility
-description: Use when reviewing Go product UX and accessibility risks including semantic structure, labels, keyboard behavior, focus management, validation feedback, and localization-sensitive UI copy.
+description: Use when reviewing accessibility and task completion in Go-owned templates, forms, fragments, CLI, and TUI surfaces.
 internal-for: bill-code-review
 ---
 
-# UX & Accessibility Review Specialist
+# Go UX and Accessibility Review Specialist
 
-Review only UX correctness and accessibility issues that can make the Go product harder to understand, harder to operate, or inaccessible to keyboard and assistive-technology users.
+Own semantics, keyboard flow, feedback, localization, and whether a person can complete the task. UI owns rendering mechanics; security owns trust boundaries.
 
 ## Focus
 
-- Semantic structure, labels, and screen-reader affordances
-- Keyboard navigation, focus order, and focus restoration
-- Validation feedback clarity and error-state discoverability
-- Localization-sensitive UI behavior and user-facing copy regressions
-- Interaction patterns where the UI technically renders but is confusing, misleading, or inaccessible
+- Accessible names, error association, focus, keyboard flow, semantics, live feedback, localization, and terminal interaction
+- Concrete assistive-technology or task-completion failures in Go-owned interfaces
 
 ## Ignore
 
-- Pure visual design preference
-- Internal refactors with no user-visible outcome
-- UI framework and rendering-correctness findings that belong to `bill-go-code-review-ui`
-- Security-only escaping issues that belong to `bill-go-code-review-security`
+- Rendering correctness and state ownership findings owned by UI
+- Escaping, authorization, and sensitive-data findings owned by security
 
 ## Applicability
 
-Use this specialist when changed Go UI behavior affects semantic structure, accessible names, keyboard or focus flow, validation feedback, localization, or assistive-technology users.
+Apply to HTML emitted by Go templates and interactive terminal output. Evaluate server-driven updates and failure recovery with keyboard and assistive-technology use in mind.
 
 ## Project-Specific Rules
 
-### Review Rules
+### Go Accessibility Rules
 
-- Verify `html/template` interaction boundaries preserve accessibility invariants and expose validation errors
-- Every interactive control must have an accessible name that matches the intended user action
-- Form inputs need explicit labels, correctly associated help text, and validation errors that are both visible and programmatically associated
-- Do not rely on color alone to communicate status, errors, or destructive outcomes
-- Keyboard users must be able to reach, operate, and dismiss interactive controls, modals, menus, and dialogs
-- Focus should move intentionally after validation failures, modal open or close, and server-driven state changes that replace major content
-- Dynamic server-rendered updates should preserve heading structure, landmarks, and screen-reader comprehension where the framework allows it
-- Links and buttons must reflect their real behavior; do not use links for destructive state changes when the flow expects a button or form submission
-- Empty, loading, success, and error states should be distinguishable and understandable without hidden context
-- User-facing copy should stay consistent with the actual workflow outcome and should not imply success, permanence, or safety when the backend contract does not guarantee it
-- Localization-sensitive paths should avoid hardcoded English-only assumptions for date, number, currency, directionality, and plural-sensitive messaging when the product supports multiple locales
-- In findings, make the user-visible UX or accessibility consequence explicit
+- Require every form control emitted by `html/template` to obtain an accessible name through a native `<label for>`, wrapping label, or valid `aria-label`/`aria-labelledby` relationship; unnamed controls break screen-reader task completion.
+- Ensure field errors use `aria-describedby` or an equivalent semantic relationship to the input; visual-only feedback leaves screen-reader users unaware of invalid data and causes task failure.
+- Require a validation summary with `tabindex="-1"` to link to failing fields and receive focus when the failed submission's task flow needs summary navigation; unconditional movement can disrupt keyboard users, while absent movement can make the first error unreachable.
+- Verify htmx swaps restore focus through actual client behavior only when the active element was replaced or task flow moves to a new region; `HX-Trigger` merely emits an event and cannot by itself prevent focus loss for keyboard and assistive-technology users.
+- Ensure `<dialog>` and menu markup supports Escape, tab containment where appropriate, and focus return; incomplete keyboard flow causes task failure without a pointer.
+- Require `<h1>` through `<h6>` and landmarks in template composition to remain ordered across nested components; broken semantics create an ordering failure for page navigation.
+- Verify dynamic status uses an applicable `aria-live` region without repeatedly announcing decorative changes; silent or noisy updates break feedback and cause task failure.
+- Ensure `role="status"` output is conveyed by text or icon meaning in addition to CSS color; color-only errors create inaccessible failure reporting.
+- Require `<button>` for mutations and `<a>` for navigation in generated HTML; incorrect elements break keyboard activation and cause task failure.
+- Verify localized strings pass through the repository's message catalog rather than `fmt.Sprintf` fragments; concatenation risks incorrect grammar and untranslated failures.
+- Ensure dates, numbers, and plural-sensitive counts use configured `golang.org/x/text` formatting when locales are supported; hard-coded output communicates incorrect data and causes contract failure.
+- Require user-visible `error` copy to state what failed and a viable recovery action without exposing internals; vague feedback causes task-completion failure.
+- Verify applicable htmx client handlers connect `HX-Trigger` events to an `aria-live` status or other semantic feedback when validation or completion must be announced; an event header alone leaves the state change invisible to assistive technology.
+- Ensure CLI prompts accept a non-interactive flag or `os.Stdin` path when automation is supported; TTY-only interaction creates an operational timeout failure in pipelines.
+- Require terminal errors and progress states to remain understandable with `NO_COLOR` and redirected output; escape-only or color-only status corrupts operational feedback.
+- Verify TUI `tea.KeyMsg` controls expose a discoverable keyboard help view and preserve a clear focus indicator; hidden bindings cause task failure by making critical actions unreachable.
 - For Blocker or Major findings, describe the concrete accessibility or task-completion failure scenario.

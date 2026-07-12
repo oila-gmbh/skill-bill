@@ -1,44 +1,37 @@
 ---
 name: bill-kotlin-code-review-platform-correctness
-description: Use when reviewing lifecycle, coroutine, threading, and logic correctness risks in Kotlin code. Use when user mentions coroutine leak, race condition, dispatcher misuse, lifecycle-unsafe collection, or threading bug in Kotlin code.
+description: Review Kotlin type, interop, coroutine, synchronization, and Flow correctness. Use for Kotlin runtime and language-semantics failures.
 internal-for: bill-code-review
 ---
 
-# Platform & Correctness Review Specialist
-
-Review only correctness and runtime-safety issues.
+# Platform and Correctness Review Specialist
 
 ## Focus
 
-- Coroutine ownership, cancellation, supervision, synchronization, Flow delivery, and business invariants
+- Kotlin types, Java interop, cancellation, supervision, dispatchers, synchronization, and Flow delivery
 
 ## Ignore
 
-- Style or readability feedback without a reachable correctness failure
+- Readability feedback without a concrete incorrect state or runtime failure
 
 ## Applicability
 
-Use this specialist for Kotlin concurrency, lifecycle, state, retry, and partial-effect behavior across libraries and services.
+Use across Kotlin/JVM libraries and services. Android and Compose Multiplatform target behavior belongs to KMP.
 
 ## Project-Specific Rules
 
-### Coroutine Cancellation and Ownership
+### Correctness Review Rules
 
-- Never use `GlobalScope`; require every long-lived scope to have an explicit owner and cancellation strategy.
-- Rethrow `CancellationException` from `catch (Exception)` and from `runCatching` wrappers around suspend calls so cancellation is never converted into ordinary failure.
-- Require `SupervisorJob` when sibling tasks must fail independently; reject a plain `Job` when one child failure would incorrectly cancel unrelated siblings.
-- Require bounded suspending cleanup in `finally` to run with `withContext(NonCancellable)` when it must complete after cancellation; reject unbounded cleanup or ordinary suspending cleanup that cancellation can abort.
-- Reject retry or lifecycle re-entry that duplicates billing, messages, notifications, or other user-visible effects.
-
-### Synchronization and Flow Semantics
-
-- Reject non-reentrant `Mutex` paths where code holding a mutex calls another path that attempts to acquire the same mutex.
-- Verify atomic statements, locking, version checks, or serialization wherever concurrent mutation must preserve an invariant.
-- Reject `StateFlow` when equality conflation can suppress a required repeated event or when slow collectors must observe every distinct intermediate transition rather than only the latest state.
-- Reject `SharedFlow` with `replay = 0` when late subscribers must receive an event and no durable delivery mechanism exists.
-
-### Truthful Outcomes
-
-- Require result values to report faults truthfully; never return success after a required operation fails.
-- Require partial effects to be reported explicitly rather than collapsing partial completion into durable success.
+- Require platform values from Java such as `String!` to be validated before dereference; unchecked nullability can crash at `value.length`.
+- Reject unsafe generic casts around `List<*>` or erased Java collections because incorrect variance can corrupt data or throw `ClassCastException`.
+- Verify `data class` equality excludes mutable identity-sensitive state; unstable `equals` can break map membership and Flow state delivery.
+- Require exhaustive handling for `sealed interface` variants; an `else` branch can hide a new contract state and cause incorrect behavior.
+- For APIs actually published to Java callers, verify default parameters have the intended Java surface through explicit overloads, a bridge, or selectively applied `@JvmOverloads`; Kotlin-only and non-overloaded Java APIs do not require it.
+- Require broad `catch` blocks and `runCatching` recovery paths to propagate parent or scope `CancellationException` while handling ordinary failures separately; a `TimeoutCancellationException` created and owned by the current boundary may be translated to its declared timeout result, but swallowing external cancellation keeps abandoned work alive and breaks parent-child completion ordering.
+- Verify `SupervisorJob` is used only where a child failure must not cancel siblings, and that failures are still observed; it isolates child failure propagation but does not make shared mutable state or a failed dependency safe.
+- Reject blocking calls on `Dispatchers.Default` and UI dispatchers; `Thread.sleep` or JDBC there risks thread starvation and timeout.
+- Require `Mutex` ownership paths to avoid reentrant acquisition and keep suspension or external calls outside the critical section where possible; reacquiring with the same non-null owner token throws `IllegalStateException`, while ownerless nested acquisition can suspend indefinitely.
+- Verify shared mutation uses an atomic operation, `Mutex`, actor, or single-dispatcher confinement whose lifetime is explicit; choosing a dispatcher alone does not protect a plain `var` when other contexts can reach it, risking races and lost updates.
+- Require `StateFlow` only for a current-state contract where equality-based conflation is acceptable; using it for distinct repeated events risks delivery loss unless replay and ordering are defined elsewhere.
+- Require `SharedFlow` replay and extra-buffer capacity, channel capacity, and overflow behavior to match explicit producer/consumer guarantees; `BufferOverflow.SUSPEND` applies backpressure only while subscribers are active, because without subscribers emission does not suspend and values beyond replay are discarded. Require replay, subscriber-readiness coordination, or durable delivery for subscriber gaps; drop policies accept data loss and rendezvous channels provide no buffer.
 - For Blocker or Major findings, describe the concrete invalid-state or ordering failure scenario.

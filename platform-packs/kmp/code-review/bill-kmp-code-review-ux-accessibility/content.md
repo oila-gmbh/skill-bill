@@ -23,22 +23,29 @@ Use this specialist when changed UI affects assistive technology, keyboard or fo
 
 ## Project-Specific Rules
 
-### Compose Semantics
+### Compose Semantics Failure Checks
 
-- Require `Modifier.semantics` where native semantics are insufficient; verify `mergeDescendants` preserves a coherent accessible control and reject merges that hide required child actions.
-- Use `clearAndSetSemantics` only when replacing descendant meaning is intentional; reject it when it erases an accessible name, state, action, or error.
-- Require decorative images to use `contentDescription = null`; require meaningful images and controls to expose localized accessible names.
-- Require dynamic controls to expose accurate `stateDescription` and `Role`, and require urgent asynchronous updates to use an appropriate `liveRegion` without duplicate announcements.
-- Require structural titles to expose `heading()` and validation failures to expose `error()` so assistive technology can navigate and announce them.
+- Require `Modifier.semantics` where native semantics are insufficient; verify `mergeDescendants` preserves a coherent control and reject merges that hide child actions and cause task-completion failure.
+- Require `clearAndSetSemantics` only when replacing descendant meaning is intentional; reject it when it erases a name, state, action, or error and leaves an invalid accessibility tree.
+- Require decorative images to use `contentDescription = null`; reject meaningful `Image` controls without localized names because assistive-technology users lose the action contract.
+- Require dynamic controls to expose accurate `stateDescription` and `Role`; reject incorrect `liveRegion` use that drops urgent state or creates duplicate announcements.
+- Require structural titles to expose `heading()` and validation failures to expose `error()`; reject a semantics tree that hides invalid data from assistive technology.
 
-### Traversal, Targets, and Scaling
+### Traversal, Target, and Scaling Failure Checks
 
-- Verify `traversalIndex` and `isTraversalGroup` produce a stable logical order; reject focus order that diverges from the task flow.
-- Require `minimumInteractiveComponentSize` or an equivalent 48dp touch target for interactive controls; reject clipped or overlapping targets.
-- Verify layouts survive increased `fontScale` without truncating actionable text, hiding controls, or blocking task completion.
+- Verify `traversalIndex` and `isTraversalGroup` produce stable logical order; reject focus ordering that diverges from task flow and sends input to the incorrect control.
+- Require `minimumInteractiveComponentSize` or an equivalent 48dp target; reject clipped or overlapping controls that cause touch-operation failure.
+- Verify `fontScale` changes preserve actionable text and controls; reject truncation or hidden actions that cause task-completion failure.
 
-### Localization Boundaries
+### Localization Boundary Failure Checks
 
-- On Android targets, require user-facing text to use `stringResource(R.string.xxx)` and preserve needed `strings.xml` translations.
-- In common Compose Multiplatform sources, require `Res.string` with `org.jetbrains.compose.resources.stringResource`; never require Android resource APIs in `commonMain`.
+- On Android targets, require user-facing text to use `stringResource(R.string.account_title)` and preserve `strings.xml` translations; reject hard-coded content that creates incorrect localized output.
+- In common Compose Multiplatform sources, require `Res.string` with `org.jetbrains.compose.resources.stringResource`; reject Android resource APIs in `commonMain` because they break target compilation.
+- Verify screen-reader names, roles, states, actions, and announcements through TalkBack on Android, VoiceOver on iOS, desktop accessibility bridges, and the browser accessibility tree; do not assume one target's semantics mapping represents the others.
+- Require logical `FocusRequester` restoration and traversal for keyboard, switch, remote, and assistive input; reject lifecycle transitions that lose focus or restore it to an invalid target.
+- Verify pointer hover, mouse and trackpad actions, touch gestures, keyboard shortcuts, and platform back or escape conventions have equivalent discoverable outcomes without forcing touch-only interaction.
+- Require progress, validation, loading, success, and failure feedback to use semantics such as `liveRegion` without color alone; reject missing or duplicate cross-target announcements.
+- Verify localization with plural rules, bidirectional text, long translations, large text, locale-specific formatting, and text expansion without clipped actions or reordered meaning.
+- Require `MotionDurationScale` and host contrast preferences to preserve an equivalent state transition; reject animation-only feedback that causes reduced-motion users to miss a state change.
+- Require adaptive layouts using `WindowSizeClass` or equivalent evidence to preserve reading order, focus order, target size, and task completion; reject resize behavior that produces incorrect traversal.
 - For Blocker or Major findings, describe the concrete accessibility or task-completion failure scenario.

@@ -16,6 +16,7 @@ import skillbill.install.model.WindowsSymlinkDecision
 import skillbill.install.model.WindowsSymlinkPreflight
 import skillbill.install.model.WindowsSymlinkPreflightState
 import skillbill.install.runtime.InstallOperations
+import skillbill.nativeagent.composition.parseNativeAgentBundle
 import skillbill.scaffold.platformpack.loadPlatformPack
 import skillbill.scaffold.policy.APPROVED_CODE_REVIEW_AREAS
 import skillbill.testing.repoRootFromTest
@@ -108,6 +109,70 @@ class GoPlatformPackTest {
         text.lines().size > 12,
         "Go pack source should contain substantive guidance: $contentFile",
       )
+    }
+  }
+
+  @Test
+  fun `go review metadata routing agents and rubrics expose concrete lane responsibilities`() {
+    val repoRoot = repoRootFromTest()
+    val packRoot = repoRoot.resolve("platform-packs/go")
+    val pack = loadPlatformPack(packRoot)
+    val expectedFocusMarkers = mapOf(
+      "api-contracts" to "JSON/protobuf evolution",
+      "architecture" to "goroutine scope ownership",
+      "performance" to "pprof",
+      "persistence" to "database/sql",
+      "platform-correctness" to "protocol-specific channel ownership",
+      "reliability" to "delivery semantics",
+      "security" to "connection-time SSRF",
+      "testing" to "parallel capture",
+      "ui" to "htmx fragment ownership",
+      "ux-accessibility" to "conditional focus restoration",
+    )
+
+    expectedFocusMarkers.forEach { (area, marker) ->
+      assertContains(pack.areaMetadata.getValue(area), marker)
+    }
+
+    val baseline = Files.readString(pack.declaredFiles.baseline)
+    mapOf(
+      "errors.Is" to "platform-correctness",
+      "http.Server.Shutdown" to "reliability",
+      "Bubble Tea" to "ui",
+      "color-independent status" to "ux-accessibility",
+    ).forEach { (signal, area) ->
+      val routingRule = baseline.lines().single { line -> signal in line }
+      assertContains(routingRule, "-> `$area` specialist.")
+    }
+
+    val agents = parseNativeAgentBundle(
+      packRoot.resolve("code-review/bill-go-code-review/native-agents/agents.yaml"),
+    ).associateBy { agent -> agent.name.removePrefix("bill-go-code-review-") }
+    assertEquals(APPROVED_CODE_REVIEW_AREAS, agents.keys)
+    agents.forEach { (area, agent) ->
+      assertEquals(
+        "${pack.displayName} ${area.replace('-', ' ')} specialist code reviewer. " +
+          "Runs against ${pack.areaMetadata.getValue(area)}. " +
+          "Returns a Risk Register in the F-XXX bullet format.",
+        agent.description,
+      )
+    }
+
+    val rubricMarkers = mapOf(
+      "api-contracts" to listOf("http.MaxBytesReader", "schema evolution", "protobuf presence"),
+      "architecture" to listOf("cmd/<name>/main.go", "goroutines do not need invented names"),
+      "performance" to listOf("go tool pprof", "mere absence as a defect"),
+      "persistence" to listOf("sql.ErrNoRows", "expand-and-contract migrations"),
+      "platform-correctness" to listOf("channels need not always close", "confinement"),
+      "reliability" to listOf("http.Server.Close", "hijacked connections", "at-most-once"),
+      "security" to listOf("OAuth 2.0", "O_NOFOLLOW", "DialContext", "option injection"),
+      "testing" to listOf("go test -race", "immediately after successful resource acquisition"),
+      "ui" to listOf("HX-Retarget", "HX-Trigger", "universal `RenderState`"),
+      "ux-accessibility" to listOf("accessible name", "cannot by itself prevent focus loss"),
+    )
+    rubricMarkers.forEach { (area, markers) ->
+      val rubric = Files.readString(pack.declaredFiles.areas.getValue(area))
+      markers.forEach { marker -> assertContains(rubric, marker) }
     }
   }
 

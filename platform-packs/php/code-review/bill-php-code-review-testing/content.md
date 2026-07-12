@@ -1,69 +1,48 @@
 ---
 name: bill-php-code-review-testing
-description: Use when reviewing PHP test coverage quality, regression protection, brittle tests, weak assertions, and low-value coverage-padding tests.
+description: Use when reviewing PHP test evidence, isolation, static analysis, framework kernels, fixtures, and supported runtime matrices.
 internal-for: bill-code-review
 ---
 
-# Testing Review Specialist
+# PHP Testing Review Specialist
 
-Review only test gaps that create real regression risk.
+Review whether PHP tests and analyzers can fail for the real regression and remain trustworthy across execution environments.
 
 ## Focus
 
-- Missing tests for changed behavior and failure paths
-- Brittle or flaky test patterns and false-confidence assertions
-- Low-value, tautological, or coverage-padding tests that do not validate real behavior
-- Contract drift between implementation and tests
-- Inadequate negative-path coverage
-- Missing integration points where unit-only tests are insufficient
+- PHPUnit and Pest behavior assertions
+- Framework, database, queue, cache, and persistent-worker isolation
+- PHPStan, Psalm, and supported PHP/extension matrices
 
 ## Ignore
 
-- Test style preferences without risk impact
-- Missing tests for trivial mappers, accessors, or glue code with no meaningful behavior
+- Coverage-percentage demands without missing behavioral proof
+- Tool-specific expectations unless configuration, Composer scripts, or dependencies own the tool
 
 ## Applicability
 
-Use this specialist when changed PHP behavior, failure paths, contracts, persistence, retries, UI flows, or test code require credible regression proof.
+Apply PHPUnit, Pest, Laravel, Symfony, PHPStan, and Psalm rules only when their packages, configuration, base classes, or repository commands are present.
 
 ## Project-Specific Rules
 
-### Shared Backend Testing
+### PHP Test Confidence Rules
 
-- Changed behavior and failure paths should be covered at the layer where regressions would surface first
-- A test only adds value if it would fail on a meaningful regression in business behavior
-- Prefer tests that validate real behavior over tests that only mirror implementation details
-- Treat tautological tests as test gaps when they create false confidence without exercising real logic
-- Mock only true external boundaries; over-mocking internal collaborators can hide regressions
-- Time, retries, duplicate delivery, and ordering-sensitive behavior should be tested deterministically when they matter
-- Domain logic should be tested comprehensively in framework-free unit tests when the project architecture isolates domain behavior
-
-### Unit Test Value Lens
-
-- Flag tests that only instantiate a DTO/model, assign values, and assert the same values without logic in between
-- Flag tests that only verify a stubbed return value or a mock interaction without asserting an externally meaningful outcome
-- Flag tests that duplicate the implementation step-for-step and compare against the duplicated result
-- Flag tests that only check `not null`, booleans, or collection size when those assertions are not tied to important behavior
-- Do not request tests for trivial mappers, accessors, or generated code unless they enforce business rules, compatibility, or invariants
-- Constructors, value objects, parsers, and serializers can still be worth testing when they validate, normalize, clamp, reject, or preserve a contract
-
-### Backend/Server-Specific Rules
-
-- Public boundary changes need contract or integration tests when status codes, validation, auth context, or serialization changed
-- API and boundary tests should assert the real contract shape, not only loose structure, when contract drift would matter to clients or downstream systems
-- When the local project requires exact API contracts, prefer full response or error assertions over partial JSON structure checks
-- HTTP/API tests should cover full request-response behavior, including exact error contracts or exact response payloads when the local project standard requires them
-- Persistence changes need repository or integration tests around transactions, constraints, locking, replay-sensitive behavior, and migration-sensitive behavior
-- Persistence-backed integration tests should verify actual persistence effects, not only mocked repository interactions
-- Retry, timeout, scheduler, consumer, outbox, and idempotency logic needs deterministic tests that control time, ordering, and duplicate delivery where relevant
-- Outbox, after-commit, replay, and projector-sensitive flows should be tested where duplicate delivery, ordering, or missed dispatch would surface
-- Queue, event, notification, and after-commit flows should be tested at the boundary where duplicate delivery, retries, or ordering regressions would surface
-- Prefer real request parsing, serializers, and boundary objects at API/transport tests; mock downstream systems, not the contract itself
-- Verify negative-path coverage for malformed input, forbidden access, downstream failures, duplicate delivery, and partial-failure paths where relevant
-- Negative-path tests should cover not-found, validation, auth, authorization, and business-rule failures separately when they produce different contracts
-- Public boundary tests should cover each meaningful outcome separately when the contracts differ: success, validation failure, authentication failure, authorization failure, not-found, and business-rule failure
-- Multi-step workflows need tests that prove success and failure outcomes at the externally visible boundary, not only inside intermediate collaborators
-- Boundary tests should verify persisted side effects or externally visible outcomes, not only response status or mock interactions
-- Server-rendered or component-driven flows should test the user-visible behavior that could regress, not only helper internals
-- Feature-flag, permission-gated, and role-gated paths need explicit tests for both enabled and disabled or forbidden behavior when they change semantics
+- Require PHPUnit or Pest assertions on externally observable results rather than only `assertInstanceOf()`; shallow checks allow incorrect behavior to pass.
+- Reject tests that compute expected values with the same production `helper()` under test; shared bugs create false-positive confidence.
+- Ensure PHPUnit data providers include `0`, `"0"`, `false`, `null`, missing keys, and boundary values when coercion matters; omitted cases hide validation regressions.
+- Require exception tests to assert the relevant `Throwable` type and state consequence; accepting any failure can conceal a different crash.
+- Verify global state, `ini_set()`, error handlers, clocks, environment variables, and mutable statics are restored in `tearDown()`; leaked lifecycle state makes order-dependent failures.
+- Ensure Symfony `KernelTestCase` or Laravel application refreshes do not reuse a contaminated container between tests; stale services can mask worker leaks.
+- Require database tests around `DB::transaction()` to prove commit, rollback, locking, tenant scope, and migration behavior; fake persistence misses data-loss races.
+- Reject fixtures that bypass model `factory()` events, casts, or constraints when those mechanisms are under review; unrealistic rows yield invalid test evidence.
+- Verify `Queue::fake()` assertions cover payload, routing, delay, and stable business idempotency identifiers, then retain a transport integration test; call counts alone miss delivery-contract failures.
+- Verify cache fakes assert tenant-aware key scope, `TTL`, tags, and invalidation behavior, then retain a cache integration test; an in-memory fake can hide stale or cross-tenant values.
+- Require a multi-unit process test for `RoadRunner`, Swoole, FrankenPHP, Horizon, or Messenger state reset when supported; one-request tests cannot detect cross-tenant leakage.
+- Ensure retry tests use deterministic `Clock` instances and explicit attempt state; wall-clock sleeps create flaky timeout regressions.
+- Require `RunInSeparateProcess` coverage when code mutates constants, extensions, shutdown handlers, or fatal behavior; in-process tests cannot safely observe those failures.
+- Verify PHPStan or Psalm configuration analyzes changed source at the repository's declared level; an excluded path or expanded baseline creates false static-analysis confidence.
+- Reject new PHPStan/Psalm baseline entries used to silence changed-code errors; suppression converts a detectable type failure into latent risk.
+- Ensure `Serializer` contract or golden-file tests fail when fields, status codes, or template escaping change; snapshot churn without semantic assertions misses client breakage.
+- Require CI to exercise every supported PHP version and required extension set declared by `composer.json`; untested matrices can fail installation or runtime behavior.
+- Verify parallel PHPUnit/Pest execution isolates `TEST_TOKEN` database names, caches, queues, and temp paths; shared resources create races and corrupt results.
 - For Blocker or Major findings, describe the concrete undetected-regression or false-positive test scenario.

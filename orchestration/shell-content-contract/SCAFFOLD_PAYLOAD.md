@@ -143,10 +143,11 @@ and Junie resolve specialist spawns. Explicit `subagent_specialists` source
 stubs ship with a `TODO:` description and body plus a free-text pointer to
 `specialist-contract.md` for the F-XXX Risk Register format used by review
 specialists; they do NOT include literal `F-XXX` markers. Platform-pack
-default specialist bundles are not TODO stubs: each entry composes from
-governed content and uses the generated specialist's per-area review
-description. Authors fill in any TODO placeholders before shipping, and repo
-validation fails if generated provider artifacts are checked into the repo.
+default specialist bundles compose from governed content and use the generated
+specialist's per-area review description. Their governed content deliberately
+contains the substance-promotion TODO prompts described below. Authors replace
+those prompts before promotion, and repo validation fails if generated provider
+artifacts are checked into the repo.
 
 ## Worked Examples
 
@@ -289,6 +290,25 @@ This writes `~/dev/acme-review-addon/acme-review.md` and creates or updates
 directory in `external_addon_sources` after successful execution so the app tree
 and install overlay can discover it. Scripted callers invoking this raw payload
 outside the desktop app must register the source themselves.
+
+## Platform-pack substance promotion
+
+Platform-pack scaffolds deliberately emit TODO-bearing specialist prompts for
+ten mechanism-plus-consequence rules across state/lifecycle/ordering,
+contract/data/security, and resource/toolchain/operational failure clusters.
+The quality-check starter likewise prompts for repository command discovery,
+exact tools and commands, scoped execution, failure ownership, fix ordering,
+targeted reruns with full-suite escalation, and blocker reporting. These prompts
+make the required authoring work explicit, but TODO is forbidden by the
+maintained-repository substance audit. A newly generated pack must be filled with
+concrete platform evidence before it can be promoted into the maintained set.
+Promotion uses the normal exemption-free repository gate: every effective
+specialist needs at least three platform-specific failure-mode clusters and ten
+evidence-bearing rules with zero forbidden placeholders; pack-wide shared
+normalized five-word sequences must be at most 35%, and corresponding authored
+rubrics at most 65% similar. A composed pack must still declare its own quality
+checker. Discovery and enforcement remain manifest-driven rather than
+enumerating the currently maintained platform slugs.
 
 ## Loud-Fail Exception Catalog
 

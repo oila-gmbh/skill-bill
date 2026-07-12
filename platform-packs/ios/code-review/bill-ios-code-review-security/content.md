@@ -1,45 +1,46 @@
 ---
 name: bill-ios-code-review-security
-description: Use when reviewing iOS security risks including Keychain-only token storage, credential logging, and auth/session handling.
+description: Use when reviewing iOS secrets, privacy, entitlements, links, sharing, and sensitive output.
 internal-for: bill-code-review
 ---
 
 # Security Review Specialist
 
-Review only exploitable or compliance-relevant issues.
+Review only concrete authorization, privacy, or data-exposure risks.
 
 ## Focus
 
-- Secret and credential leakage
-- Auth/session token storage and handling
-- Sensitive logging
-- Insecure local storage or transport assumptions
+- Keychain accessibility and access groups
+- Privacy manifests, entitlements, ATS exceptions, and usage descriptions
+- Links, sharing, pasteboard, logs, and generated output
 
 ## Ignore
 
-- Non-security style comments
+- Generic hardening advice without an applicable API or threat
+- Platform capabilities absent from the changed targets
 
 ## Applicability
 
-Use this specialist for iOS code at trust boundaries: auth/session handling, token storage, network clients, and any code that reads or writes credentials or sensitive user data.
+Gate every rule on detected APIs, capabilities, extensions, deployment targets, and data sensitivity. Repository policy may add stricter requirements but is not needed to apply these rules.
 
 ## Project-Specific Rules
 
-### Protected Storage And Transport
+### Secret And Capability Rules
 
-- Auth/session tokens must be stored in the Keychain (or an equivalent OS-backed secure store), never in `UserDefaults`, plain files, or in-memory-only globals that could be trivially dumped
-- Keychain items must verify the intended access group and use a `kSecAttrAccessible` class appropriate to the data's background-access and device-lock requirements; reject accidental cross-app access or overly broad availability
-- Tokens, passwords, and other credentials must never appear in log output, including debug-only logging that can ship in a release build by accident
-- Do not log full request/response bodies or headers for authenticated endpoints by default; redact or omit auth headers and any field known to carry sensitive user data
-- New network clients must use TLS and must not disable certificate validation, even temporarily, outside of an explicit and reviewed debug-only build configuration
-- ATS exceptions must be justified, restricted to the narrowest necessary domain and capability, and never use a broad arbitrary-loads escape hatch that creates a transport security boundary failure without a reviewed platform requirement
+- Keychain writes must choose a deliberate `kSecAttrAccessible` value matching background and device-lock needs; reject weaker accessibility that creates secret exposure.
+- Keychain queries must constrain `kSecAttrAccessGroup` to the intended access group; reject broad or mismatched sharing that leaks data or breaks extension authorization.
+- Authentication tokens must never persist in `UserDefaults` or plaintext files; require Keychain storage because backups or logs otherwise expose credentials.
+- Entitlements such as `com.apple.security.application-groups` must use the least shared scope and match provisioning; reject drift that causes authorization or build-signing failure.
+- `NSAppTransportSecurity` exceptions must be host-scoped and justified; reject arbitrary loads because plaintext transport creates data exposure.
+- Sensitive local files must select appropriate `FileProtectionType` and lifecycle access; reject unprotected data that remains readable while the device is locked.
 
-### Sensitive Output And Sharing
+### Privacy And Boundary Rules
 
-- Biometric-gated or Keychain-protected data must not be duplicated into a less-protected store as a convenience cache
-- Deep links, universal links, and pasteboard access must not leak sensitive tokens or personal data to other apps
-- `Logger` interpolation must preserve private redaction for credentials, identifiers, and personal data; never mark sensitive values with a public privacy specifier
-- Sensitive pasteboard content must be local-only where interoperability is unnecessary and must carry an expiration date; reject indefinite globally readable pasteboard storage
-- Temporary debug bypasses, hardcoded test credentials, or relaxed certificate/auth checks must not ship in production code paths
-- SQL built by string interpolation is worth flagging, but rate it by the trust of the interpolated value: interpolating a DB-sourced or upstream-validated UUID (no untrusted-input path reaching it) is a defense-in-depth/consistency Minor issue, not a Major injection vulnerability. Reserve a security severity for a real path where attacker- or user-controlled text reaches the query unescaped. Inconsistency with a sibling `.sqlEscaped`-style helper is a code-quality point better owned by architecture/persistence than a security Major
+- Required-reason API use must be declared in `PrivacyInfo.xcprivacy`, and merged manifests must remain valid; reject omissions that create App Store validation failure.
+- Camera, location, contacts, and similar access must have accurate `Info.plist` usage descriptions before invocation; reject missing purpose strings that crash or mislead users.
+- Universal links must validate `NSUserActivity.webpageURL` host and path before routing; reject untrusted parameters that bypass authorization state.
+- Custom URL schemes must validate source, route, and payload rather than trusting `application(_:open:options:)`; reject malformed deep links that corrupt navigation state.
+- `UIActivityViewController` exports must minimize payload and exclude secrets; reject sharing flows that expose private files through unintended extensions.
+- Sensitive `UIPasteboard` content must use local-only or expiring options and must carry an expiration date; reject indefinite pasteboard lifetime that leaks data across apps.
+- `Logger` fields must use `.private` for sensitive values, and generated diagnostics must redact tokens; reject a public privacy specifier that exposes credentials in operational output.
 - For Blocker or Major findings, describe the concrete authorization-bypass or data-exposure scenario.

@@ -1,3 +1,5 @@
+@file:Suppress("MaxLineLength", "ktlint:standard:max-line-length")
+
 package skillbill.scaffold.validation
 
 import skillbill.scaffold.platformpack.resolveSkillClassForSkill
@@ -5,6 +7,9 @@ import skillbill.scaffold.runtime.scaffold
 import java.nio.file.Path
 
 private val UNRESOLVED_PLACEHOLDER_PATTERN = Regex("""(?m)^\s*(?:[-*]\s*)?(?:TODO|FIXME)\b""")
+private val GOVERNED_SCAFFOLD_PROMPT_PATTERN = Regex(
+  """^\s*[-*]\s+TODO(?::|\s+rule\s+\d+\s+\()[^\n]*(?:repository files|backticked repository-specific|mechanism for|failure ownership)[^\n]*$""",
+)
 private val WRAPPER_BOILERPLATE_HEADING_PATTERN = Regex("""^##\s+(Descriptor|Execution|Ceremony)\s*$""")
 private val SELF_REFERENTIAL_CONTENT_POINTER_PATTERN =
   Regex("""Follow the instructions in\s+\[content\.md\]\(content\.md\)\.""", RegexOption.IGNORE_CASE)
@@ -80,7 +85,10 @@ internal fun validateAuthoredContent(contentFile: Path, text: String): List<Stri
       issues += "$contentFile: content.md must include authored guidance beyond the title heading"
     }
   }
-  if (UNRESOLVED_PLACEHOLDER_PATTERN.containsMatchIn(body)) {
+  val unresolvedPlaceholder = body.lineSequence().any { line ->
+    UNRESOLVED_PLACEHOLDER_PATTERN.containsMatchIn(line) && !GOVERNED_SCAFFOLD_PROMPT_PATTERN.matches(line)
+  }
+  if (unresolvedPlaceholder) {
     issues += "$contentFile: content.md contains an unresolved TODO/FIXME placeholder"
   }
   wrapperBoilerplateHeadings(body).forEach { heading ->

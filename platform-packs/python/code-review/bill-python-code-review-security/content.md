@@ -23,22 +23,26 @@ Use this specialist for dependencies, routes, object permissions, tenant boundar
 
 ## Project-Specific Rules
 
-### Trust Boundaries and Dangerous Execution
+### Python Security Rules
 
-- Reject new dependency sources, names, extras, build backends, or scripts that permit dependency confusion, and require lockfile or version-bound changes to preserve reproducible, reviewed package resolution.
-- Reject `eval`, `exec`, or dynamic imports whose expression, module, or attribute is derived from untrusted input; require a fixed allowlist and explicit dispatch boundary.
-- Reject unsafe pickle, YAML, XML/entity, template, markdown/HTML, archive, upload, path, symlink, shell, subprocess, or SSRF handling when attacker input can reach the sink; specifically reject Jinja or Django autoescape bypasses and uploaded-file validation that trusts a client-supplied content type.
-- Require route and object-level authorization, tenant isolation, and explicit delegation scope so confused-deputy paths cannot use the service's authority for an unprivileged caller.
-- Require authentication credentials and tokens to validate their signature, expiry, issuer, audience, intended use, and revocation state before granting access; reject decoding or parsing that is treated as authentication.
-- Require least-privilege outbound clients, safe temporary-file cleanup, and limits on uploaded size and extracted archive shape.
-- Require subprocess calls to use controlled arguments and a minimal trusted environment plus explicit timeouts and termination cleanup; reject inherited secrets, attacker-controlled environment entries, and indefinitely running children.
-- Reject secrets, tokens, PII, credentials, or tenant data in configuration dumps, exceptions, logs, traces, metrics, fixtures, notebooks, or persisted debug artifacts.
-
-### Browser, Session, and Framework Features
-
-- Reject Django `DEBUG=True` in deployed settings and exposed stack traces or error payloads that reveal secrets, filesystem paths, source, queries, or tenant data.
-- Require CSRF protection for cookie-authenticated state changes, session rotation after authentication or privilege change to prevent fixation, and explicit expiry for signed or capability URLs.
-- Reject Django `ModelForm` declarations with `fields="__all__"` where newly added model fields can become mass-assignable across the authorization boundary.
-- Require pydantic models to validate untrusted hydration rather than using unchecked construction or raw dictionary assignment that bypasses validators.
-- Require webhook signatures to be verified over the exact raw payload with the documented algorithm, secret, freshness, and replay boundary before parsing or processing.
+- Reject untrusted bytes reaching `pickle.loads`, `dill.loads`, or `joblib.load`; object deserialization can execute attacker code and compromise the process.
+- Require `yaml.safe_load` and hardened XML parsing such as `defusedxml` for attacker-controlled documents; unsafe constructors or entities risk code execution and file disclosure.
+- Verify Jinja `Environment(autoescape=True)`, Django templates, and markdown-to-HTML output preserve escaping or sanitize with an explicit allowlist; unsafe markup creates stored cross-site scripting exposure.
+- Require archive and upload handling through bounded sizes, canonical names, and validated content rather than `ZipFile.extractall` or client MIME claims; zip bombs and traversal can exhaust resources or overwrite files.
+- Require paths resolved with `Path.resolve` to remain beneath an owned root and reject unsafe symlink following; lexical prefix checks permit traversal and cross-tenant file exposure.
+- Reject `subprocess.run(..., shell=True)` and attacker-controlled executable, option, or `cwd` values; require a timeout, cancellation that terminates and reaps the child, and an explicit environment allowlist rather than inherited credentials, because even safe argv construction can permit command injection, orphaned-process exhaustion, or secret exposure.
+- Require outbound `requests` or `httpx` targets to use an allowlist, validated schemes, resolved-address controls, redirect revalidation, and egress policy; URL parsing alone cannot prevent SSRF to internal networks.
+- For tenant-owned data, require Django, SQLAlchemy, or service-layer lookups to apply a trusted tenant and visibility predicate before returning an object, then enforce object authorization before disclosing or mutating it. Accept verified database-per-tenant, schema-per-tenant, or session-enforced isolation only when raw SQL, background work, and reused sessions cannot bypass it; unverified isolation, unscoped fetches, or ambient identity without resource checks enable cross-tenant exposure and privilege escalation.
+- Require JWT validation through a pinned algorithm plus issuer, audience, expiry, not-before, key selection, and token purpose; decode-only `jwt.decode` usage accepts invalid credentials and corrupts authentication state.
+- Require webhook signatures to be verified against the exact raw request body with an explicitly allowed algorithm and trusted key selection, enforce a bounded timestamp freshness window, and durably reject replayed event identifiers or signatures before effects; reserialized bodies, algorithm confusion, stale deliveries, or missing replay state allow forged or repeated mutations.
+- When browser sessions are detected, verify Django or Flask CSRF middleware, session rotation after authentication or privilege changes, `SameSite`, `Secure`, `HttpOnly`, trusted hosts, and proxy headers match deployment; unchanged session identifiers or weakened cookie boundaries enable fixation and forged or stolen requests.
+- Require signed capability URLs and password-reset or action tokens to carry a bounded expiry and the intended resource, principal, and purpose; reusable or over-broad links allow stale authorization to outlive the grant.
+- When Django `ModelForm` or untrusted Pydantic input is detected, require an explicit `fields` allowlist and normal `model_validate` validation; broad model binding or attacker-controlled use of `model_construct` can assign privileged state while bypassing validation.
+- Reject secrets, tokens, cookies, personal data, request bodies, model `repr`, and stack traces in `logging`, tracing attributes, or user errors; diagnostics can create durable credential exposure.
+- Require dependency resolution from trusted indexes with hashes or an unchanged lock through `uv.lock`, Poetry lockfiles, or pip-tools output; dependency confusion and mutable versions risk supply-chain compromise.
+- Verify `pyproject.toml` build backends and build requirements are reviewed and version constrained; malicious backend execution occurs before package code and can violate build security policy.
+- Reject attacker-controlled expressions passed to `eval`, `exec`, or dynamic `importlib.import_module`; arbitrary execution is a critical security failure.
+- Require temporary uploads created with `NamedTemporaryFile` or `TemporaryDirectory` to close and delete on error paths; leaked sensitive files create persistent data exposure.
+- Verify Flask or Django production settings disable `DEBUG` and sanitize exception handlers; exposed tracebacks leak secrets, paths, and contract data.
+- Require `SpooledTemporaryFile` and upload parsers to enforce memory, disk, and lifecycle resource limits; oversized concurrent requests otherwise cause resource exhaustion and service failure.
 - For Blocker or Major findings, describe the concrete authorization-bypass or data-exposure scenario.

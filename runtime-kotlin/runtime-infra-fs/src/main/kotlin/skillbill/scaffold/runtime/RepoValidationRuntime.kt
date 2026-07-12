@@ -1,4 +1,4 @@
-@file:Suppress("TooManyFunctions", "MaxLineLength", "LargeClass")
+@file:Suppress("TooManyFunctions", "MaxLineLength", "LargeClass", "ktlint:standard:max-line-length")
 
 package skillbill.scaffold.runtime
 
@@ -16,6 +16,7 @@ import skillbill.scaffold.platformpack.loadPlatformManifest
 import skillbill.scaffold.platformpack.loadPlatformPack
 import skillbill.scaffold.platformpack.resolveSkillClass
 import skillbill.scaffold.pointer.validateGeneratedArtifactGuard
+import skillbill.scaffold.substance.PlatformPackSubstanceAudit
 import skillbill.scaffold.validation.validateAuthoredContent
 import skillbill.scaffold.validation.validateGovernedSkillDrift
 import skillbill.scaffold.validation.validateSkillMdShape
@@ -168,11 +169,15 @@ object RepoValidationRuntime {
     validateWorkflowContracts(root, issues)
     validateOrchestrationPlaybooks(root, issues)
     validateNoInlineTelemetryContractDrift(root, issues)
+    validateSpecialistContractParity(root, issues)
     validatePluginManifest(root.resolve(".claude-plugin/plugin.json"), issues)
     issues += validateRepoNativeAgents(root).issues
     issues += validatePointerTargetParityIssues(root)
     issues += validateGovernedSkillDrift(root).issues
     issues += validateGeneratedArtifactGuard(root).issues
+    val substanceReport = PlatformPackSubstanceAudit.audit(root)
+    issues += substanceReport.auditErrors
+    issues += substanceReport.violations.map { it.format() }
     validateNoOrchestrationPathsInSkillBodies(root, skillFiles, platformSkillFiles, issues)
 
     return RepoValidationReport(
@@ -182,6 +187,27 @@ object RepoValidationRuntime {
       platformPackCount = platformPacks,
       nativeAgentCount = nativeAgentSources.size,
     )
+  }
+
+  private fun validateSpecialistContractParity(root: Path, issues: MutableList<String>) {
+    val canonical = root.resolve("orchestration/review-orchestrator/PLAYBOOK.md")
+    val specialist = root.resolve("orchestration/review-orchestrator/specialist-contract.md")
+    if (!canonical.isRegularFile() || !specialist.isRegularFile()) return
+    val headings = listOf("Shared Contract For Every Specialist", "Shared Report Structure")
+    val expected = headings.joinToString("\n\n") { extractH2(Files.readString(canonical), it) }.trim()
+    val actual = headings.joinToString("\n\n") { extractH2(Files.readString(specialist), it) }.trim()
+    if (expected != actual) {
+      issues += "orchestration/review-orchestrator/specialist-contract.md: shared specialist sections must exactly match PLAYBOOK.md"
+    }
+  }
+
+  internal fun extractH2(text: String, heading: String): String {
+    val normalized = text.replace("\r\n", "\n")
+    val startMarker = "## $heading"
+    val start = normalized.indexOf(startMarker)
+    if (start < 0) return ""
+    val next = normalized.indexOf("\n## ", start + startMarker.length)
+    return normalized.substring(start, if (next < 0) normalized.length else next).trimEnd()
   }
 
   fun parseReleaseRef(rawValue: String): ReleaseRefMetadata {

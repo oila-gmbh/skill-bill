@@ -27,12 +27,16 @@ Apply to library APIs, service boundaries, serialized data, messages, plugins, a
 
 ### Rust API Contract Rules
 
-- Verify `Rust request and serialization APIs` preserve their documented invariants; reject a compatibility or validation failure.
-- Treat new public trait requirements, generic bounds, lifetime constraints, and non-exhaustive enum changes as caller-impacting contracts.
-- Preserve error classification and stable machine-readable fields while avoiding accidental exposure of internal details.
-- Ensure serde defaults and optional fields distinguish absent, null, zero, and empty values as the external protocol intends.
-- Keep feature-gated public APIs available in documented combinations and prevent default-feature leakage into supposedly optional contracts.
-- At FFI boundaries, pin ABI, layout, allocation owner, string encoding, nullability, thread rules, and panic/unwind behavior.
-- Require request validation before domain work and map every failure to the intended status or protocol code.
-- Findings must identify the broken caller or payload scenario and use only canonical severities.
+- Require new public bounds such as `T: Send + Sync + 'static` to reflect existing caller needs; reject a semver regression that excludes valid implementations or targets.
+- Verify public `trait` changes preserve object safety and default behavior for downstream implementors; flag a required method or associated type that breaks compilation without a major-version contract.
+- Ensure exposed lifetimes in types such as `Response<'a>` describe a stable owner and do not shorten previously usable borrows; reject caller-invalidating lifetime changes.
+- Design a public enum with `#[non_exhaustive]` before its first stable release when downstream matching must remain extensible; reject adding the attribute or a variant to an already-published exhaustive enum without a major-version change or replacement-and-deprecation path because either change breaks exhaustive consumers.
+- Verify `#[serde(rename)]`, `rename_all`, `default`, `skip_serializing_if`, and `deny_unknown_fields` match the wire policy; reject payload incompatibility between absent, null, empty, and default values.
+- Ensure tagged enums using `#[serde(tag = "type")]` preserve tag names and unknown-variant behavior; flag serialization drift that loses data or rejects forward-compatible messages.
+- Require HTTP or RPC errors to retain stable status, code, and machine-readable fields; reject mapping through `IntoResponse` or `Status` that turns validation failure into an indistinguishable server error.
+- Verify mutation endpoints carry an idempotency key or conditional contract when clients may retry; reject replay that duplicates externally visible state.
+- Ensure pagination cursors encoded by `base64::Engine` bind ordering and filters and fail closed on invalid data; reject skipped, repeated, or cross-tenant results.
+- Require feature-gated public items under `#[cfg(feature = "...")]` to compile in documented combinations; flag default-feature leakage or missing symbols that break consumers.
+- Verify FFI layouts use an intentional `#[repr(C)]`, fixed-width fields, explicit string encoding, and documented pointer nullability; reject ABI corruption or a null dereference from compiler-dependent layout, enum representation, or an unchecked pointer contract.
+- Require every `extern "C"` boundary to define borrowed-buffer lifetimes and aliasing, pair ownership transfers with constructors and destructors, prevent unwinding, and constrain callbacks to their documented thread; reject dangling aliases, leaks, double frees, cross-thread UI access, or cross-language crashes.
 - For Blocker or Major findings, describe the concrete compatibility or validation failure scenario.

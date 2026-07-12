@@ -17,8 +17,11 @@ Use when validating iOS changes with the shared quality-check contract.
 3. Identify the pack's quality-check entrypoint and prefer the repository-owned command that CI uses.
 4. Discover the Xcode workspace or project, shared schemes, build configuration, destinations, and CI-selected simulator settings. Never invent a scheme or destination.
 5. For an Xcode-backed scope, run the repository entrypoint or an appropriate `xcodebuild build` or `xcodebuild test` command with the discovered workspace-or-project, scheme, configuration, and destination. For an SPM-only scope, run `swift build` and `swift test`.
-6. Discover `.swiftlint.yml`, `.swiftformat`, and other SwiftFormat configuration before running their configured lint or formatting checks.
-7. Capture scoped failures and fix only failures that belong to the current work unless the contract says otherwise.
+6. Discover `.swiftlint.yml`, `.swiftformat`, and other SwiftFormat configuration before running configured `swiftlint` and `swiftformat --lint` checks.
+7. Verify package resolution and generated state with repository-owned commands or applicable `swift package resolve`, `xcodebuild -resolvePackageDependencies`, and code-generation checks; do not rewrite lockfiles or generated output without an input change.
+8. Exercise configured strict-concurrency diagnostics and warnings-as-errors through the selected build command, respecting the target's Swift language mode.
+9. Run configured security or static-analysis paths such as `swiftlint analyze`, CodeQL, or repository scanners only when their configuration and required environment are present.
+10. Capture scoped failures, assign ownership to the current work or pre-existing state, and fix only failures that belong to the current work unless the contract says otherwise. Report missing destinations, credentials, tools, and maintainer decisions as explicit blockers.
 
 ## Fix Strategy
 

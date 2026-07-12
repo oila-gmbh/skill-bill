@@ -36,7 +36,9 @@ Every router, reviewer, and validator agrees on the following procedure:
      this pack against overlapping packs.
 4. Collect signals from the review scope: changed files, repo markers, and
    dependency manifests — in that order.
-5. Rank loaded packs by strong-signal presence in the scope.
+5. Match literals at lexical or path boundaries and match manifest globs against
+   normalized paths and basenames. Rank candidates by ownership evidence and
+   signal specificity, not repeated occurrences or incidental manifest order.
 6. Apply each candidate pack's declared tie-breaker rules in the order they
    appear in the manifest. When a pack declares a tie-breaker that subsumes
    another pack (for example, "prefer this pack when it layers the Kotlin
@@ -49,6 +51,13 @@ Every router, reviewer, and validator agrees on the following procedure:
 9. The routed skill name for the selected pack is
    `bill-<slug>-code-review`. This contract is preserved so existing
    user-facing commands keep working.
+
+Quality-check routing selects exactly one dominant pack and then reads that pack's
+manifest-declared checker. Ordinary Kotlin/JVM ownership selects Kotlin;
+multiplatform source sets, plugin coordinates, or `expect`/`actual` ownership select
+KMP. Evidence that genuinely spans both ownership surfaces, or any other unresolved
+mixed-stack tie, fails explicitly instead of choosing by order. KMP routes directly
+to `bill-kmp-code-check`; review composition never supplies a Kotlin checker fallback.
 
 ## Signal Collection Order
 

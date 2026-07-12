@@ -311,8 +311,8 @@ parsed `internalFor`) rather than re-scanning `platform-packs/` independently
 of selection. The parent's content hash folds exactly the selected sidecars.
 
 After a scratch install with all packs selected, `bill-code-review`'s staged
-directory contains `SKILL.md` plus 78 sibling sidecars — and no agent
-`skills_dir` symlink exists for any of the 78:
+directory contains `SKILL.md` plus 81 sibling sidecars — and no agent
+`skills_dir` symlink exists for any manifest-discovered review sidecar:
 
 ```
 ~/.claude/skills/bill-code-review
@@ -325,26 +325,27 @@ directory contains `SKILL.md` plus 78 sibling sidecars — and no agent
       bill-go-code-review.md                sidecar: Go stack entry (selected)
       ... (10 Go specialists total)
       bill-kotlin-code-review.md            sidecar: Kotlin stack entry (selected)
-      ... (8 Kotlin specialists total)
+      ... (10 Kotlin specialists total)
       bill-kmp-code-review.md               sidecar: KMP stack entry (selected)
-      ... (2 KMP specialists total)
+      ... (3 KMP delta specialists; 7 effective lanes compose from Kotlin)
       bill-php-code-review.md               sidecar: PHP stack entry (selected)
       ... (10 PHP specialists total)
       bill-python-code-review.md            sidecar: Python stack entry (selected)
       ... (10 Python specialists total)
+      bill-rust-code-review.md              sidecar: Rust stack entry (selected)
+      ... (10 Rust specialists total)
       bill-typescript-code-review.md        sidecar: TypeScript stack entry (selected)
       ... (10 TypeScript specialists total)
       platform-packs → …                    symlink for pack pointer resolution
 ```
 
-With only the Kotlin pack selected, exactly 9 review sidecars stage
-(`bill-kotlin-code-review.md` plus its 8 specialists); the other 69 contribute
+With only the Kotlin pack selected, its entry and ten review specialists stage; other packs contribute
 nothing. With no review packs selected, `bill-code-review` stages
 byte-identically to a repo with no internal pack skills (inertness). `ALL`
 selection stages every opted-in review sidecar. SKILL-105 applies the same
 selection-aware sidecar model to quality-check overrides: selected
 `bill-<platform>-code-check` skills stage inside `bill-code-check/` and are not
-listed commands.
+listed commands. KMP stages and routes `bill-kmp-code-check` directly; review baseline composition never substitutes the Kotlin checker.
 
 ### Baseline co-presence guard (PD8)
 
@@ -392,8 +393,8 @@ standalone `skills_dir` path (PD5).
 
 | Selection | Sidecars staged inside `bill-code-review/` |
 |---|---|
-| `ALL` | 78 (8 stack entries + 70 specialists) |
-| Kotlin only | 9 (`bill-kotlin-code-review.md` + 8 specialists) |
+| `ALL` | 81 (8 stack entries + 73 specialists) |
+| Kotlin only | 11 (`bill-kotlin-code-review.md` + 10 specialists) |
 | KMP only | fails — Kotlin is a required baseline (PD8) |
 | KMP + Kotlin | 12 (3 KMP + 9 Kotlin) |
 | None | 0; `bill-code-review` stages inert (byte-identical to no pack internals) |

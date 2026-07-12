@@ -37,17 +37,17 @@ Add other specialists only when the changed files justify them.
 
 ## Diff-Signal Routing Table
 
-- Package layout, module/workspace boundaries, import direction, dependency injection, service boundaries, interface ownership, framework coupling -> `architecture` specialist.
-- Runtime semantics, nil/interface edge cases, errors, defer/panic/recover behavior, goroutines, channels, context cancellation, time/date logic -> `platform-correctness` specialist.
-- HTTP handlers, gRPC/protobuf/OpenAPI, request/response DTOs, JSON tags, validation, status codes, backward compatibility -> `api-contracts` specialist.
+- `go.mod`, `internal/`, import direction, constructors, composition roots, interface ownership, component lifecycles, or goroutine scope ownership -> `architecture` specialist.
+- Channel send/receive/close ownership, `select`, context cancellation, `errors.Is`, typed nils, copying, aliasing, defer/panic/recover, races, or deadlocks -> `platform-correctness` specialist.
+- HTTP handlers, middleware ordering, streaming, gRPC/Connect/protobuf/OpenAPI, request/response DTOs, JSON presence or precision, status codes, schema evolution, or backward compatibility -> `api-contracts` specialist.
 - `database/sql`, sqlc, GORM, Ent, migrations, transactions, locking, connection lifecycle, idempotent writes -> `persistence` specialist.
-- External clients, queues, workers, schedulers, retries, timeouts, context propagation, observability, degradation, backpressure -> `reliability` specialist.
-- Auth/authz, secrets, unsafe parsing, path traversal, subprocess/shell usage, SSRF, uploads, templates, sensitive logs -> `security` specialist.
+- `http.Server.Shutdown`, hijacked connections, `signal.NotifyContext`, queue delivery or acknowledgement, external clients, workers, draining, retries, deadlines, observability, degradation, or backpressure -> `reliability` specialist.
+- Auth/authz, sessions, OAuth/OIDC, CSRF, secrets, unsafe parsing, symlink or archive traversal, subprocess option injection, SSRF, uploads, templates, sensitive logs -> `security` specialist.
 - Test files, table tests, fixtures, fakes, golden files, race-sensitive tests, integration boundaries, weak assertions, missing regression proof -> `testing` specialist.
 - Changed tests look suspiciously weak, tautological, or coverage-padding -> `bill-unit-test-value-check`.
 - Hot paths, allocations, reflection, goroutine leaks, unbounded buffers, N+1 queries, repeated network/filesystem work, serialization waste -> `performance` specialist.
-- `html/template`, `text/template`, htmx-style fragments, admin pages, generated reports, terminal UI, or dashboards -> `ui` specialist.
-- Server-rendered semantics, form feedback, keyboard/focus behavior, localization-sensitive copy, assistive technology affordances -> `ux-accessibility` specialist.
+- `html/template`, templ components, htmx request/response headers, form rendering, Bubble Tea, terminal layout, progress, or redraw state -> `ui` specialist.
+- Labels, error association, headings, live regions, keyboard/focus flow, localization, color-independent status, or accessible terminal interaction -> `ux-accessibility` specialist.
 
 ## Mixed Diffs
 

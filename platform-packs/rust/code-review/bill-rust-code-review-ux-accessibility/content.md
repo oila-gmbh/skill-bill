@@ -29,12 +29,16 @@ Apply when changed Rust UI affects semantics, accessible names, keyboard or focu
 
 ### Rust Accessibility Rules
 
-- Verify `Rust semantics and input APIs` preserve their documented invariants; reject an accessibility or task-completion failure.
-- Every interactive control needs an accessible name and operable keyboard path; custom widgets must reproduce native semantics and states.
-- Move or restore focus intentionally after dialogs, navigation, validation failure, and async completion without stealing it during normal updates.
-- Associate errors with fields and announce material async status through the platform's accessibility mechanism.
-- Do not encode meaning only through color, animation, pointer hover, terminal color, or spatial position.
-- Preserve localization keys, placeholders, pluralization, text direction, Unicode width, and expansion across web, desktop, and terminal surfaces.
-- Ensure terminal UI shortcuts, focus, status, and fallback text remain usable without mouse, color, or advanced terminal features.
-- Findings must describe the blocked user task and use only the shared Risk Register and canonical severity definitions.
+- For wasm or server-rendered HTML, require controls created through `web_sys` or templates to expose native elements or correct ARIA names, roles, and states; reject screen-reader ambiguity.
+- For native GUI frameworks such as `egui`, `iced`, or Slint, ensure custom widgets publish available accessibility metadata; flag a task-completion failure when assistive technology cannot identify or operate controls.
+- For terminal interfaces using `ratatui`, require a linear basic-terminal or plain-text fallback for essential results; reject operational task failure when cursor addressing, color, or mouse input is unavailable.
+- Require every action to be reachable by keyboard events such as `KeyboardEvent` or `crossterm::event::KeyCode`; flag task failure from pointer-only controls or shortcuts that trap input.
+- Ensure focus order follows task order and use `HtmlElement::focus` or the framework equivalent to restore focus after dialogs and navigation; reject lost or stolen focus.
+- Require dialogs, menus, and overlays to contain focus and support each surface's equivalent Escape event when the interaction contract permits, using `crossterm::event::KeyCode::Esc` only for terminal interfaces; flag task failure from keyboard traps or background activation.
+- Ensure validation errors are associated through `aria-describedby`, native labels, or framework accessibility nodes; reject fields whose failure cannot be discovered without visual proximity.
+- Require meaningful loading, completion, and error changes to use `aria-live` or an equivalent native accessibility event; flag task failure from silent async state that blocks assistive users.
+- Never encode status only through `Color`, CSS color, animation, hover, or spatial position; require text, symbols, or semantic state and reject information loss.
+- Require reduced-motion preferences through `matchMedia("(prefers-reduced-motion: reduce)")` or native settings where animation exists; flag vestibular-access risk.
+- Verify localization with `fluent_bundle::FluentBundle`, ICU-style message formatting, or the repository catalog, including pluralization and bidi isolation; reject untranslated or directionally corrupted tasks.
+- Require terminal layout to use `unicode_width::UnicodeWidthStr` rather than byte length and handle text expansion; reject clipped labels, broken focus indicators, or invalid cursor placement.
 - For Blocker or Major findings, describe the concrete accessibility or task-completion failure scenario.

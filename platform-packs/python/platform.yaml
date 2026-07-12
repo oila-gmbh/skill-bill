@@ -47,25 +47,25 @@ declared_files:
     ux-accessibility: code-review/bill-python-code-review-ux-accessibility/content.md
 area_metadata:
   api-contracts:
-    focus: "Python API contracts, validation, serialization, and compatibility"
+    focus: "Python runtime validation, framework request/response contracts, serialization, and compatibility"
   architecture:
-    focus: "Python package boundaries, import direction, and dependency ownership"
+    focus: "Python imports, package and entry-point ownership, composition roots, and dependency lifetimes"
   performance:
-    focus: "Python performance risks in hot paths, I/O, memory, imports, and async boundaries"
+    focus: "Python ORM evaluation, I/O, memory, GIL-aware executors, bounded concurrency, and async latency"
   persistence:
-    focus: "ORM/raw SQL usage, migrations, transactions, sessions, and data consistency"
+    focus: "Python ORM sessions, transactions, locking, migrations, tenant scope, and cross-store consistency"
   platform-correctness:
-    focus: "Python runtime semantics, typing edge cases, resources, concurrency, and time logic"
+    focus: "Python mutation and model semantics, runtime typing, asyncio cancellation, resources, and time logic"
   reliability:
-    focus: "timeouts, retries, workers, schedulers, external clients, observability, and degradation"
+    focus: "Python client timeouts, retries, queues, workers, task shutdown, observability, and degradation"
   security:
-    focus: "dependency supply chain, trust boundaries, secrets, unsafe parsing, subprocesses, and sensitive logs"
+    focus: "Python supply chain, authorization, unsafe parsing/rendering/uploads/paths, subprocesses, SSRF, and secrets"
   testing:
-    focus: "pytest/unittest quality, fixtures, parametrization, integration boundaries, and regression proof"
+    focus: "High-value pytest, property and async evidence, fixtures, concurrency, integration boundaries, and regression proof"
   ui:
-    focus: "Python-rendered UI, templates, admin surfaces, notebooks, and dashboards"
+    focus: "Python-owned admin, templates, notebooks, reports, dashboards, forms, state, and desktop rendering"
   ux-accessibility:
-    focus: "server-rendered accessibility, forms, feedback, keyboard flow, and localization-sensitive UX"
+    focus: "Python-owned semantics, forms, focus and keyboard flow, feedback, localization, notebooks, and reports"
 
 declared_quality_check_file: quality-check/bill-python-code-check/content.md
 

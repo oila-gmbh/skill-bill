@@ -1,46 +1,48 @@
 ---
 name: bill-go-code-review-ui
-description: Use when reviewing Go UI correctness and framework usage for html/template, templ, server-rendered forms, htmx-style fragments, terminal UI, dashboards, and interaction state.
+description: Use when reviewing Go-owned HTML template, component, form, fragment, CLI, TUI, progress, layout, and rendering correctness.
 internal-for: bill-code-review
 ---
 
-# UI Review Specialist
+# Go UI Review Specialist
 
-Review only UI correctness and framework-usage issues that can break the rendered experience or make the server-rendered surface behave inconsistently.
+Own rendering and interactive state correctness. Security owns escaping and authorization; UX/accessibility owns semantics and successful task completion.
 
 ## Focus
 
-- `html/template`, `text/template`, templ, htmx-style fragments, generated reports, terminal UI, dashboards, or similar Go UI surface correctness
-- Form wiring, validation rendering, and state-sync behavior
-- Component ownership and source-of-truth clarity between server and client
-- Broken navigation, modal, table, and interactive admin flows
-- Render-path behavior that causes obviously incorrect or unstable UI output
+- Go-owned template, component, form, fragment, CLI, TUI, progress, layout, and render-state correctness
+- Observable rendering, interaction, redirect, redraw, and terminal-capability failures
 
 ## Ignore
 
-- Pure visual taste feedback
-- Copy edits without product or UX impact
-- Accessibility-only findings that belong to `bill-go-code-review-ux-accessibility`
-- Security-only escaping, authorization, or sensitive-data findings that belong to `bill-go-code-review-security`
+- Accessibility semantics and task-completion findings owned by ux-accessibility
+- Escaping, authorization, and sensitive-data findings owned by security
 
 ## Applicability
 
-Use this specialist when changed Go code affects server-rendered templates, interactive fragments, forms, terminal UI, dashboards, or other user-visible rendering and state behavior.
+Apply to Go-rendered web surfaces and interactive terminal programs. Apply templ, htmx, Bubble Tea, or other ecosystem guidance only when repository evidence confirms its use.
 
 ## Project-Specific Rules
 
-### Review Rules
+### Go UI Correctness Rules
 
-- Verify `html/template` rendering boundaries preserve UI state invariants and surface failures
-- Keep business logic out of templates and render hooks unless the project explicitly uses that shape
-- Server-rendered templates should receive already-shaped view data rather than performing hidden cross-module orchestration in the view
-- Form defaults, submitted values, validation messages, disabled states, and submit affordances must match the backend contract
-- Conditional rendering must preserve state-machine correctness across success, empty, loading, and error states
-- Server-rendered component state must not trust client-mutated values without explicit server-side validation and authorization
-- Interactive components must preserve a clear source of truth; do not split ownership of the same state across controller, view, and client hooks without an explicit synchronization model
-- Rendering helpers, template functions, and view-model builders must not trigger hidden N+1 queries or repeated heavy work on common paths
-- Route generation, signed links, and action targets used by UI surfaces must stay aligned with the backend contract
-- Tables, filters, pagination widgets, and bulk-action surfaces must preserve deterministic behavior when multiple filters or selection states are active
-- Server-rendered HTML should degrade gracefully when JavaScript is unavailable unless the product explicitly requires a JS-only interaction model
-- In findings, explain the rendered or interactive behavior a user or operator would actually experience
+Every rule below identifies a concrete rendering or interaction failure.
+
+- Require `html/template.ExecuteTemplate` errors to reach the response or fallback before bytes are committed; ignored failures produce truncated pages with a success status.
+- Verify template data uses a purpose-built `struct` view model rather than persistence rows or request objects; leaking internal state risks invalid rendering and accidental data exposure.
+- Ensure template lookups use `template.Must` only during controlled startup; request-time panic on a missing template can crash active work.
+- Require form repopulation from an allowlisted view model containing only safe fields selected from validated input; clearing safe input causes task failure, while reflecting passwords, tokens, or payment data back into the DOM creates sensitive-data exposure.
+- Require `r.ParseForm` errors to be handled before reading controls, then inspect `r.PostForm` membership and complete value slices for checkbox, radio, and multi-select fields; `r.FormValue` cannot distinguish absent from present-empty controls and returns only the first value, which can mutate unintended data.
+- Ensure POST success follows `http.StatusSeeOther` redirect when duplicate refresh submission is unsafe; rendering success directly risks repeated writes.
+- Verify fragment handlers interpret the incoming `HX-Target` request header as context only, and use the `HX-Retarget` response header solely when intentionally overriding the client target; confusing the headers replaces the wrong region and corrupts interaction state.
+- Require applicable `HX-Trigger` response headers to name deliberate client events without assuming they restore focus or announce status; missing client handlers leave controls unfocused and feedback silent after a swap.
+- Verify applicable `templ.Component` values receive immutable shaped parameters and propagate render errors; hidden shared state can race and produce incorrect output.
+- Require stable element IDs only when targeting, label association, focus preservation, DOM morphing, or framework reconciliation depends on identity; unstable identity in those flows can bind controls or state to the wrong item, while ordinary template rendering does not need invented IDs.
+- Verify the repository's actual view model represents every reachable empty, pending, success, and error branch needed by that surface; inventing a universal `RenderState` hides real state transitions while omitted branches produce a blank or misleading screen.
+- Verify links and form actions use the active router or `url.URL` rather than concatenated strings; stale paths break navigation after route changes.
+- Ensure interactive CLI output detects `term.IsTerminal` or an equivalent capability before cursor control; ANSI sequences corrupt redirected logs and files.
+- Require TUI update logic such as Bubble Tea `Update` to own state transitions and return commands separately; mutation from background goroutines risks races and redraw corruption.
+- Verify terminal layout uses measured cell width for Unicode rather than `len(string)`; byte counts can break columns and hide status text.
+- Ensure progress renderers writing to `io.Writer` stop and restore the cursor on cancellation or error; abandoned terminal state creates an operational failure by making later output unreadable.
+- Require CLI and TUI failures to retain an actionable `error` after redraw; transient messages can disappear and leave an invalid success impression.
 - For Blocker or Major findings, describe the concrete user-visible interaction or rendering failure scenario.

@@ -24,11 +24,11 @@ Always keep the `architecture` and `platform-correctness` specialists as the bas
 - Runtime semantics, typing or nullability, resources, concurrency, serialization, state transitions, retries, or time logic -> `platform-correctness` specialist.
 - Dependency supply chain, auth, secrets, unsafe parsing, templates, paths, subprocesses, SSRF, uploads, or sensitive logs -> `security` specialist.
 - Tests, fixtures, monkeypatching, parametrization, async or time behavior, integration boundaries, or regression proof -> `testing` specialist.
-- Routes, request or response models, schemas, OpenAPI, status codes, validation, serializers, or compatibility -> `api-contracts` specialist.
+- Routes, request or response models, runtime validation, schemas, OpenAPI, status codes, serializers, streaming, webhooks, or compatibility -> `api-contracts` specialist.
 - SQLAlchemy, Django ORM, raw SQL, migrations, transactions, locking, sessions, or idempotent writes -> `persistence` specialist.
 - External clients, queues, workers, schedulers, retries, timeouts, observability, degradation, or backpressure -> `reliability` specialist.
-- Django admin, templates, Streamlit, Dash, Panel, notebooks, reports, forms, or dashboards -> `ui` specialist.
-- Server-rendered semantics, form feedback, keyboard or focus behavior, localization-sensitive copy, or assistive technology -> `ux-accessibility` specialist.
+- Django admin, templates, Streamlit, Dash, Panel, notebooks, reports, forms, PyQt/PySide, Tkinter, Textual, or dashboards -> `ui` specialist.
+- Server-rendered or desktop semantics, form feedback, keyboard or focus behavior, localization-sensitive copy, notebook/report alternatives, or assistive technology -> `ux-accessibility` specialist.
 
 ## Mixed Diffs
 

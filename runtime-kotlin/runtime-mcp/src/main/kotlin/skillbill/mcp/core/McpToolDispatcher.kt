@@ -257,14 +257,6 @@ private fun normalizeQualityCheckStack(rawValue: String?): NormalizedQualityChec
   if (value.isEmpty()) {
     return NormalizedQualityCheckStack(stack = "unknown", fallback = false, fallbackReason = null)
   }
-  val lower = value.lowercase()
-  if (lower.contains("kmp") && lower.contains("kotlin") && lower.contains("fallback")) {
-    return NormalizedQualityCheckStack(
-      stack = "kmp",
-      fallback = true,
-      fallbackReason = "kotlin_quality_check_fallback",
-    )
-  }
   return NormalizedQualityCheckStack(stack = value, fallback = false, fallbackReason = null)
 }
 

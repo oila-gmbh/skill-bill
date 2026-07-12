@@ -24,3 +24,9 @@ agents:
   - name: bill-kotlin-code-review-testing
     description: "Kotlin testing specialist code reviewer. Runs against Kotlin runTest virtual time, test dispatcher ordering, Flow sequence assertions, and real persistence effects. Returns a Risk Register in the F-XXX bullet format."
     compose: governed-content
+  - name: bill-kotlin-code-review-ui
+    description: "Kotlin ui specialist code reviewer. Runs against Kotlin Compose Desktop state and lifecycle, Swing or JavaFX thread interop, server rendering, and CLI or TUI behavior. Returns a Risk Register in the F-XXX bullet format."
+    compose: governed-content
+  - name: bill-kotlin-code-review-ux-accessibility
+    description: "Kotlin ux accessibility specialist code reviewer. Runs against Kotlin desktop semantics and focus, semantic server output, terminal accessibility, keyboard use, and localization. Returns a Risk Register in the F-XXX bullet format."
+    compose: governed-content

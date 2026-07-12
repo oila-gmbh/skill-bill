@@ -23,23 +23,19 @@ Use this specialist for Python runtime logic, dataclasses, attrs, pydantic, deco
 
 ## Project-Specific Rules
 
-### State and Business Logic
+### Python Correctness Rules
 
-- Verify `Optional`, `Any`, casts, protocols, and overloads match reachable runtime values; reject type-checker-only assumptions that permit invalid null, attribute, or call behavior at runtime.
-- Verify dataclass, attrs, and pydantic defaults are created and validated as intended, and require descriptors, decorators, properties, and late-bound closures to preserve binding, ordering, and access semantics.
-- Verify guard ordering preserves the intended invariant before mutations or external effects occur.
-- Require retry-, replay-, and duplicate-delivery-safe business logic; reject one-time checks or operations that can rerun on retry without idempotency or a durable guard.
-- Require partial-success responses and persisted status to report completed and failed work accurately instead of claiming atomic success.
-- Reject truthiness checks such as `if not x` when `0`, `""`, `[]`, and `None` have distinct valid meanings.
-- Preserve mutable-default, equality/hash, late-binding, JSON/YAML/pickle/msgpack, decimal, enum, and backward-compatible payload invariants across runtime and serialization boundaries.
-- Require timezone-aware date handling, explicit date-truncation boundaries, injectable clocks for time-dependent behavior, and monotonic deadline calculations so DST, wall-clock changes, and timeout arithmetic cannot corrupt state or ordering.
-
-### Errors, Tasks, and Resources
-
-- Reject bare `except`, `except Exception: pass`, and other swallowed errors that turn a failed operation into false success.
-- Never swallow `asyncio.CancelledError`; require cleanup followed by cancellation propagation so shutdown and timeout ordering remains correct.
-- Reject unowned fire-and-forget `asyncio.create_task` work; require a retained task reference and an explicit lifetime, error-observation, and cancellation owner because an unreferenced task may be garbage-collected or fail invisibly.
-- Require context-managed cleanup for files, sockets, sessions, temporary files, generators, and async generators on success, exception, and cancellation paths.
-- Reject blocking event-loop calls, thread- or process-unsafe shared state, lock-order hazards, and executor work whose lifetime outlives its owning request or service.
-- Require queues to drain or explicitly discard owned work during shutdown, with producers stopped before consumers and unfinished-task accounting preserved.
+- Verify mutations through aliases, slices, and shallow copies such as `copy.copy` cannot corrupt shared state; require an ownership boundary when a caller expects isolation or later writes will create invalid results.
+- Reject mutable function defaults such as `def collect(items=[])` and require `None` or a factory because cross-call state leakage causes order-dependent failures.
+- Verify `dataclasses.field(default_factory=...)`, attrs factories, and pydantic `Field(default_factory=...)` create and validate independent model state; shared or unvalidated defaults risk corrupt records.
+- Require runtime checks at untrusted boundaries even when `typing.cast`, `Protocol`, `Any`, or overloads satisfy a type checker; otherwise invalid values fail later with misleading attribute or call errors.
+- Reject truthiness guards such as `if not value` when `0`, `""`, `[]`, and `None` have different contract meanings because valid state can be lost or incorrectly defaulted.
+- Require exception handlers around `except Exception` to translate, recover, or re-raise with preserved cause; swallowed failures must not become false success or hide cleanup errors.
+- Verify `contextlib.contextmanager`, `with`, and `async with` release files, sockets, sessions, generators, and temporary paths after success, exception, and cancellation or resource leaks will exhaust capacity.
+- Require `asyncio.TaskGroup` or an equivalent retained task owner for `asyncio.create_task`; unobserved child exceptions and orphaned tasks risk silent failure and lifecycle leaks.
+- Never consume `asyncio.CancelledError` inside cancelled work without cleanup and re-propagation. A task owner that initiated cancellation may await the owned task and consume the expected exception only after verifying its cleanup completed; cancellation loss elsewhere breaks timeout and shutdown ordering and can leave invalid partial state.
+- Verify `concurrent.futures.ThreadPoolExecutor` versus `ProcessPoolExecutor` selection matches I/O or GIL-sensitive CPU work, and require owned shutdown because the wrong or leaked executor causes starvation and process hangs.
+- Require `asyncio.Queue.task_done` and `Queue.join` accounting to match every dequeued item, with producers stopped before consumers; mismatches deadlock shutdown or discard queued work.
+- Verify `json`, `Decimal`, `Enum`, and timezone-aware `datetime` serialization preserves precision, identity, and offsets; implicit conversion or naive time can corrupt contract data across DST and replay.
+- Keep wall-clock timestamps separate from elapsed-time deadlines: require timezone-aware wall time for persisted or user-visible events, `time.monotonic` or the event loop's monotonic clock for durations and timeout calculations, and an injectable clock at testable boundaries; wall-clock adjustments otherwise expire work early or extend it indefinitely.
 - For Blocker or Major findings, describe the concrete invalid-state or ordering failure scenario.

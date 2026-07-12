@@ -25,6 +25,8 @@ import skillbill.nativeagent.composition.composeNativeAgentSource
 import skillbill.nativeagent.composition.parseNativeAgentBundle
 import skillbill.scaffold.platformpack.loadPlatformPack
 import skillbill.scaffold.policy.APPROVED_CODE_REVIEW_AREAS
+import skillbill.scaffold.substance.Fraction
+import skillbill.scaffold.substance.PlatformPackSubstanceAudit
 import skillbill.testing.repoRootFromTest
 import java.nio.file.Files
 import java.nio.file.Path
@@ -91,6 +93,126 @@ class RustPlatformPackTest {
       val composed = composeNativeAgentSource(repoRoot, agent)
       assertTrue(composed.body.isNotBlank(), "Expected governed content for ${agent.name}")
     }
+  }
+
+  @Test
+  fun `rust specialists expose concrete coverage synchronized with metadata and agents`() {
+    val repoRoot = repoRootFromTest()
+    val packRoot = repoRoot.resolve("platform-packs/rust")
+    val pack = loadPlatformPack(packRoot)
+    val governedRulesByArea = pack.declaredFiles.areas.mapValues { (_, path) ->
+      governedRules(Files.readString(path))
+    }
+
+    RUST_EXPECTED_MARKERS.forEach { (area, markers) ->
+      val rules = governedRulesByArea.getValue(area).joinToString("\n")
+      markers.forEach { marker -> assertContains(rules, marker) }
+    }
+    RUST_EXPECTED_RULE_CONTRACTS.forEach { (area, contracts) ->
+      val rules = governedRulesByArea.getValue(area)
+      contracts.forEach { markers ->
+        assertTrue(
+          rules.any { rule -> markers.all(rule::contains) },
+          "Rust $area must keep coupled rule contract: ${markers.joinToString()}",
+        )
+      }
+    }
+    governedRulesByArea.forEach { (area, rules) ->
+      assertFalse(
+        rules.any { rule -> Regex("`Rust [^`]* APIs`").containsMatchIn(rule) },
+        "Rust $area must name concrete evidence instead of a generic Rust APIs phrase",
+      )
+    }
+
+    val agents = parseNativeAgentBundle(
+      packRoot.resolve("code-review/bill-rust-code-review/native-agents/agents.yaml"),
+    ).associateBy { agent -> agent.name.removePrefix("bill-rust-code-review-") }
+    assertEquals(APPROVED_CODE_REVIEW_AREAS, agents.keys)
+    agents.forEach { (area, agent) ->
+      assertEquals(
+        "${pack.displayName} ${area.replace('-', ' ')} specialist code reviewer. " +
+          "Runs against ${pack.areaMetadata.getValue(area)}. " +
+          "Returns a Risk Register in the F-XXX bullet format.",
+        agent.description,
+      )
+    }
+  }
+
+  @Test
+  fun `rust specialists and checker pass completed pack substance and duplication gates`() {
+    val report = PlatformPackSubstanceAudit.audit(repoRootFromTest())
+    val rust = report.packs.single { pack -> pack.pack == "rust" }
+
+    assertEquals(APPROVED_CODE_REVIEW_AREAS, rust.physicalAreas.toSet())
+    rust.specialists.filterNot { specialist -> specialist.inherited }.forEach { specialist ->
+      assertTrue(specialist.substantiveRules >= 10, "Thin Rust specialist: ${specialist.area}")
+      assertEquals(3, specialist.failureModeClusters, "Missing failure cluster: ${specialist.area}")
+      assertTrue(specialist.concreteEvidenceRules >= 10, "Missing evidence: ${specialist.area}")
+      assertTrue(specialist.placeholders.isEmpty(), "Placeholder in ${specialist.area}")
+    }
+    assertEquals(7, rust.qualityCheckFacets.size)
+    assertTrue(rust.sharedShingles <= Fraction(35, 100), rust.sharedShingles.percentage())
+
+    val rustPairs = report.pairs.filter { pair ->
+      pair.firstFile.startsWith("platform-packs/rust/") || pair.secondFile.startsWith("platform-packs/rust/")
+    }
+    assertTrue(rustPairs.isNotEmpty())
+    rustPairs.forEach { pair ->
+      assertTrue(pair.similarity <= Fraction(65, 100), "${pair.role}: ${pair.similarity.percentage()}")
+    }
+    val rustTypeScriptRoles = rustPairs.filter { pair ->
+      pair.firstFile.startsWith("platform-packs/typescript/") ||
+        pair.secondFile.startsWith("platform-packs/typescript/")
+    }.map { pair -> pair.role }.toSet()
+    assertEquals(
+      setOf("baseline", "quality_check") + APPROVED_CODE_REVIEW_AREAS.map { area -> "specialist:$area" },
+      rustTypeScriptRoles,
+    )
+    assertFalse(report.violations.any { violation -> violation.pack == "rust" })
+  }
+
+  @Test
+  fun `rust quality checker preserves conditional ordered repository execution`() {
+    val content = Files.readString(
+      repoRootFromTest().resolve("platform-packs/rust/quality-check/bill-rust-code-check/content.md"),
+    )
+    listOf(
+      "repository wrapper, and CI configuration",
+      "cargo fmt --all --check",
+      "cargo clippy --workspace --all-targets -- -D warnings",
+      "cargo check --workspace --all-targets",
+      "cargo build --workspace",
+      "cargo test --workspace",
+      "cargo test --doc",
+      "--no-default-features",
+      "cargo deny check",
+      "cargo audit",
+      "cbindgen",
+      "cargo miri test",
+      "scoped work",
+      "environmental blocker",
+      "full suite",
+    ).forEach { marker -> assertContains(content, marker) }
+    listOf(
+      "Do not require mutually exclusive all-feature combinations",
+      "Run them only when required by the repository and already provisioned",
+      "Do not regenerate or require binding tools when the project does not configure that path",
+    ).forEach { marker -> assertContains(content, marker) }
+
+    val orderedMarkers = listOf(
+      "Verify formatting first",
+      "Run configured linting",
+      "Run type and conditional-compilation checks",
+      "Run behavior checks",
+      "Verify dependency and lockfile policy",
+      "When generated bindings are owned",
+      "When changed unsafe code",
+      "Attribute each failure",
+      "Re-run the smallest affected package",
+    )
+    val orderedPositions = orderedMarkers.map(content::indexOf)
+    assertTrue(orderedPositions.all { position -> position >= 0 })
+    assertTrue(orderedPositions.zipWithNext().all { (first, second) -> first < second })
   }
 
   @Test
@@ -303,4 +425,54 @@ class RustPlatformPackTest {
       }
     }
   }
+
+  private fun governedRules(content: String): List<String> {
+    var governed = false
+    return content.lineSequence().mapNotNull { line ->
+      when {
+        line.startsWith("### ") -> {
+          governed = line.contains("Rules")
+          null
+        }
+        line.startsWith("## ") -> {
+          governed = false
+          null
+        }
+        governed && line.startsWith("- ") -> line
+        else -> null
+      }
+    }.toList()
+  }
 }
+
+private val RUST_EXPECTED_MARKERS = mapOf(
+  "api-contracts" to listOf("T: Send + Sync + 'static", "#[serde(rename)]", "idempotency key", "#[repr(C)]"),
+  "architecture" to listOf("[workspace]", "dyn Trait", "dep:name", "build.rs"),
+  "performance" to listOf("Vec::with_capacity", "MutexGuard", "spawn_blocking", "buffer_unordered"),
+  "persistence" to listOf("sqlx::Transaction", "SELECT ... FOR UPDATE", "durable outbox", "chrono::DateTime<Utc>"),
+  "platform-correctness" to listOf("RefCell<T>", "unsafe impl Send", "Pin<&mut T>", "Drop::drop"),
+  "reliability" to listOf("tokio::time::timeout", "Semaphore", "JoinSet", "CancellationToken"),
+  "security" to listOf("catch_unwind", "serde_json::from_slice", "std::process::Command::arg", "Path::canonicalize"),
+  "testing" to listOf("trybuild", "cargo fuzz", "cargo miri test", "loom::model"),
+  "ui" to listOf("wasm_bindgen", "hydrate", "egui", "ratatui"),
+  "ux-accessibility" to listOf("aria-describedby", "aria-live", "prefers-reduced-motion", "UnicodeWidthStr"),
+)
+
+private val RUST_EXPECTED_RULE_CONTRACTS = mapOf(
+  "api-contracts" to listOf(
+    listOf("#[serde(rename)]", "payload incompatibility"),
+    listOf("extern \"C\"", "double frees"),
+  ),
+  "architecture" to listOf(
+    listOf("[features]", "compile_error!"),
+    listOf("Arc<dyn Trait + Send + Sync>", "concurrency contract"),
+  ),
+  "performance" to listOf(listOf("spawn_blocking", "shutdown"), listOf("mpsc::channel", "backpressure")),
+  "persistence" to listOf(listOf("rollback", "invalid state"), listOf("bounded `LIMIT` batches", "restart data loss")),
+  "platform-correctness" to listOf(listOf("unsafe", "provenance", "undefined-behavior"), listOf(".await", "deadlock")),
+  "reliability" to listOf(listOf("CancellationToken", "dependency order"), listOf("idempotency key", "duplicates")),
+  "security" to listOf(listOf("Command::arg", "injection"), listOf("Path::canonicalize", "traversal")),
+  "testing" to listOf(listOf("cargo miri test", "memory-safety"), listOf("loom::model", "concurrency race")),
+  "ui" to listOf(listOf("hydrate", "duplicate events"), listOf("ratatui", "corrupted terminal")),
+  "ux-accessibility" to listOf(listOf("KeyCode", "pointer-only"), listOf("UnicodeWidthStr", "cursor placement")),
+)

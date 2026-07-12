@@ -9,6 +9,7 @@ import skillbill.tempDbConnection
 import java.sql.Connection
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 
 class ReviewFinishedTelemetryNormalizationTest {
   @Test
@@ -146,17 +147,17 @@ class ReviewFinishedTelemetryNormalizationTest {
   }
 
   @Test
-  fun `review-finished payload emits structured fallback and nonblank unresolved routing defaults`() {
-    val (_, connection) = tempDbConnection("review-finished-fallback-labels")
+  fun `review-finished payload emits direct KMP routing and nonblank unresolved routing defaults`() {
+    val (_, connection) = tempDbConnection("review-finished-kmp-labels")
     connection.use {
       val review =
         saveReview(
           connection,
           """
-          Review session ID: rvs-fallback-labels
-          Review run ID: rvw-fallback-labels
+          Review session ID: rvs-kmp-labels
+          Review run ID: rvw-kmp-labels
           Detected review scope: branch diff
-          Detected stack: kmp→kotlin fallback
+          Detected stack: kmp
           Execution mode: inline
 
           ### 2. Risk Register
@@ -170,9 +171,9 @@ class ReviewFinishedTelemetryNormalizationTest {
       assertEquals("kmp", payload["review_platform"])
       assertEquals("kmp", payload["platform_slug"])
       assertEquals("kmp", payload["detected_stack"])
-      assertEquals("kmp→kotlin fallback", payload["detected_stack_detail"])
-      assertEquals(true, payload["fallback"])
-      assertEquals("kotlin_quality_check_fallback", payload["fallback_reason"])
+      assertFalse("detected_stack_detail" in payload)
+      assertEquals(false, payload["fallback"])
+      assertFalse("fallback_reason" in payload)
     }
   }
 }

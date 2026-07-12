@@ -1,3 +1,16 @@
+## [2026-07-12] SKILL-114 iOS pack substantive depth
+Areas: platform-packs/ios, orchestration/review-orchestrator, runtime-kotlin/runtime-infra-fs
+- Reworked all ten iOS specialists to retain domain-specific, applicability-gated
+  SDK, lifecycle, tooling, and observable-failure guidance without shared review prose.
+- Deepened the quality checker around discovered Xcode/SPM commands, destinations,
+  generated state, concurrency checks, and configured static/security analysis.
+- Reusable: iOS pack regression coverage now enforces specialist depth and evidence,
+  duplication ceilings, checker facets, and offline add-on pointer reachability.
+- Removed the temporary iOS substance-baseline acknowledgements after the pack met
+  the canonical gates; no interface breaks or feature flags were introduced.
+Feature flag: N/A
+Acceptance criteria: 9/9 implemented
+
 ## [2026-07-10] SKILL-112 iOS pack alignment
 Areas: platform-packs/ios, platform-packs/ios/code-review, runtime-kotlin/runtime-infra-fs
 - Rebuilt iOS quality checks around discovered project commands, xcodebuild/SPM

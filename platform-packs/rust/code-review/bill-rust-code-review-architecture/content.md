@@ -27,13 +27,16 @@ Apply to every first-party Rust diff. Infer the existing workspace architecture 
 
 ### Rust Architecture Rules
 
-- Verify `Rust module and dependency APIs` preserve their documented invariants; reject a dependency cycle or ownership boundary failure.
-- Keep stable business rules independent of web, async-runtime, database, UI, and serialization details when the repository establishes that boundary.
-- Put traits where their consumers own the required contract; avoid broad provider-owned traits that leak implementation details or make downstream evolution semver-sensitive.
-- Do not use lifetimes as hidden global coupling. Public borrowed types must have a clear owner and usable lifetime contract.
-- Keep feature flags additive and coherent: no accidental mutually exclusive defaults, hidden dependency activation, or combinations that cannot compile.
-- Avoid cyclic conceptual ownership disguised by callback traits, global registries, service locators, or shared mutable singletons.
-- Treat proc macros and build scripts as architectural dependencies when they generate APIs or influence compilation.
-- Findings must identify the misplaced responsibility, violated boundary, and concrete maintenance, compatibility, or correctness risk.
-- Use only the shared Risk Register and canonical severity definitions.
+- Verify `[workspace]` members and crate dependencies preserve the intended dependency direction; reject a Cargo cycle or duplicated source of truth that breaks independent builds.
+- Require domain crates to avoid importing transport, database, GUI, or executor types such as `axum::Router`, `sqlx::Pool`, or `tokio::Runtime` when the repository owns an inward dependency boundary; flag coupling that blocks reuse or testing.
+- Place public traits beside the consumers that define their contract and keep provider details out of `trait` signatures; reject semver-sensitive leakage that forces unrelated implementations to change.
+- Ensure object-safe dispatch through `dyn Trait` is intentional and that associated types, generic methods, and `Self: Sized` constraints match callers; reject an abstraction that cannot be used at its promised boundary.
+- Require public borrowed structures such as `View<'a>` to expose a usable owner and lifetime relationship; reject hidden global coupling or data that cannot safely cross the intended layer.
+- Keep Cargo `[features]` additive unless exclusivity is explicitly enforced with `compile_error!`; reject default-feature leakage or combinations that select contradictory backends.
+- For new or private optional dependencies, use `dep:name` and weak feature forwarding such as `name?/feature` where appropriate; for an already-published implicit feature, preserve `name = ["dep:name"]` or make a major-version migration, and reject downstream `--features name` breakage or accidental activation that changes runtime behavior.
+- Ensure platform selection through `cfg(target_os)` and `cfg(feature)` has one coherent implementation per supported target; reject missing or overlapping branches that cause build failure.
+- Treat `build.rs` outputs and proc-macro expansion as architectural inputs with declared ownership; reject generated interfaces that bypass crate boundaries or become environment-dependent.
+- Require plugin or registry ownership through `inventory::submit!`, `OnceLock<T>`, or an explicit constructor to have deterministic initialization; flag global mutable state that creates ordering races.
+- Verify callbacks and service handles using `Arc<dyn Trait + Send + Sync>` encode the actual concurrency contract; reject downcasts or shared ownership that evade layer invariants.
+- Ensure public crate re-exports in `lib.rs` expose stable owned types rather than dependency internals; reject an avoidable compatibility break when an implementation crate changes.
 - For Blocker or Major findings, describe the concrete dependency-cycle or ownership-boundary failure scenario.

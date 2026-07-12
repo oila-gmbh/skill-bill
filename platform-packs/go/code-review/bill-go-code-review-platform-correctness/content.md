@@ -1,92 +1,46 @@
 ---
 name: bill-go-code-review-platform-correctness
-description: Use when reviewing Go correctness risks in business logic, state transitions, goroutines, channels, context cancellation, error handling, nil/zero-value edge cases, retry or replay behavior, and runtime safety.
+description: Use when reviewing Go language and runtime correctness for goroutines, channels, contexts, errors, interfaces, aliasing, defer, panic, races, and deadlocks.
 internal-for: bill-code-review
 ---
 
-# Platform-Correctness Review Specialist
+# Go Platform Correctness Review Specialist
 
-Review only reachable correctness issues that change behavior, violate a declared contract, or make behavior unsafe.
-
-Within the Go package, `platform-correctness` is the language and runtime correctness lane. In practice, this specialist is primarily about backend business-logic correctness, context propagation, zero-value and nil handling, error flow, goroutine/channel safety, retry/idempotency correctness, and runtime-safety issues in changed Go code.
+Own language-level behavior and synchronization invariants. Leave component placement to architecture and service shutdown policy to reliability.
 
 ## Focus
 
-- Race conditions, ordering bugs, and stale-state updates
-- Nil/zero-value edge cases and crash paths
-- State-machine and contract handling correctness
-- Business-rule drift in conditionals, refactors, and retries
-- Violated invariants, missing guards, and wrong branch selection in business logic
-- Partial-success or alternate-path behavior that no longer matches the declared contract
-- Retry/replay and duplicate-delivery correctness
-- Goroutine lifecycle, channel ownership, and context cancellation correctness
+- Goroutine exits, channel protocols, contexts, errors, aliasing, synchronization, defer, panic, races, and deadlocks
+- Reachable language-level invalid states and ordering failures
 
 ## Ignore
 
-- Style or readability feedback without correctness impact
+- Package placement and component ownership decisions owned by architecture
+- Operational drain, retry, and shutdown policy owned by reliability
 
 ## Applicability
 
-Use this specialist when changed Go code affects business invariants, error flow, nil or zero-value semantics, concurrency, cancellation, retries, replay, or runtime safety.
+Apply these checks wherever changed Go code depends on goroutine exit, channel protocol, cancellation, error identity, interface representation, copying, aliasing, or deferred execution.
 
 ## Project-Specific Rules
 
-### Shared Backend Correctness
+### Go Correctness Rules
 
-- Distinguish absent vs zero vs nil values when behavior changes
-- Keep decoded payloads, maps, and struct assumptions validated before business logic depends on keys, nested values, or value types
-- Shared mutable state must be synchronized, serialized, version-checked, or replaced with safer flow/message-driven coordination
-- Do not introduce silent fallback behavior that hides failures unless the contract explicitly requires it
-- Validate ordering guarantees where retries, duplicate delivery, schedulers, or concurrent requests can race or overwrite each other
-- Treat deprecated APIs or patterns as correctness findings only when they create runtime behavior, compatibility, security, lifecycle, or supportability risk; otherwise leave them to quality tooling or style review
-- State transitions must preserve declared invariants and reject invalid intermediate states
-- Time, timezone, and clock-boundary logic must be explicit where behavior depends on them
-
-### Business Logic / Invariant Checks
-
-- Guard ordering must preserve business-rule priority and must not make terminal, invalid, or exceptional states reachable as normal success paths
-- Refactors, condition merges, and extracted helpers must not collapse previously distinct business cases into the same outcome unless the contract explicitly changed
-- Nil vs zero vs empty vs defaulted values must preserve their business meaning across validation, mapping, persistence, and response code
-- Multi-step workflows must not persist state that contradicts the reported outcome or skip cleanup that the surrounding contract depends on
-- One-time or prerequisite checks must still run on retry, replay, duplicate delivery, and alternate entry paths unless the contract explicitly permits bypassing them
-- Feature-flag, permission-gated, and role-gated paths must preserve the same core invariants as the primary path unless different behavior is explicitly intended
-- Ground potential edge-case findings in a reachable code path or declared contract by naming the triggering input, state, retry sequence, worker lifecycle, or boundary condition and the violated expected behavior
-- For Blocker or Major correctness findings, include a concrete failure scenario that explains how the changed code can produce the wrong outcome
-
-### Backend/Server-Specific Rules
-
-- Message consumers, schedulers, and jobs must be safe under retry/replay; acknowledge or commit only after durable success
-- Concurrent writes need atomic statements, locking, version checks, idempotency keys, or another explicit consistency mechanism
-- External side effects must happen in the intended order relative to persistence and commit boundaries
-- Retry-sensitive paths must not duplicate user-visible effects, billing effects, or event emission unless the contract explicitly permits it
-
-### Error Handling
-
-- Domain faults, client faults, and operational failures must not be collapsed into misleading success or generic fallback behavior
-- Normal error handling should use returned errors, not `panic`, unless the contract is truly unrecoverable
-- Check returned errors instead of discarding them; avoid misleading success paths after partial failure
-- Wrapped errors should preserve actionable causes and be checked with `errors.Is`/`errors.As` or an equivalent chain-aware approach
-- Multi-step workflows must not report full success when only a partial effect was applied unless the contract explicitly permits partial success
-
-### Runtime / Dispatch Semantics
-
-- Queued/background work, subscribers, timers, and HTTP handlers must preserve the same correctness guarantees under retries and duplicate delivery
-- Shutdown, cancellation, and deadline handling must not leave orphaned goroutines or partially applied effects that callers believe succeeded
-- If a spawned goroutine must not crash silently, recovery/logging belongs inside that goroutine; caller-side recovery does not protect it
-- Build tags and platform-specific files should not hide changed production paths from CI or create inconsistent runtime behavior across the platforms the project claims to support
-
-### Go Runtime / Language-Behavior Checks
-
-- Functions that depend on cancellation, deadlines, tracing, or auth context should accept `context.Context` explicitly and pass it through the call chain
-- Do not stash mutable request context in structs or globals when explicit parameters are required for safe propagation
-- Channel ownership, close behavior, and send/receive coordination must make goroutine exits obvious and safe
-- Goroutines must have clear owners, exit paths, and synchronization expectations; `WaitGroup`, semaphore, and channel usage should match the intended lifecycle exactly
-- Concurrent access to maps, slices, caches, or shared structs must be synchronized or replaced with safer ownership patterns
-- Be explicit about pointer aliasing, copying, and mutation when values cross goroutines or package boundaries
-- Loop variables captured by goroutines, callbacks, or subtests must be copied explicitly so later iterations do not corrupt behavior
-- `defer` inside loops or retry paths must not quietly accumulate cleanup, hold locks, or delay resource release longer than intended
-- Timers, tickers, and `time.After`-style resources should be stopped or drained when lifetimes outlive one call path
-- Authorization checks, parameter binding/lookup, and boundary validation must not leave reachable paths with partially authorized or partially validated behavior
-- Date, enum, and numeric/string conversions must not change business behavior unexpectedly
-- If behavior depends on the current user, current time, locale, or timezone, make that dependency explicit and verify boundary cases
+- Require every goroutine launched by a `go` statement—including function literals, named calls such as `go worker(ctx)`, methods such as `go component.Run()`, and function values—to have a reachable exit on cancellation or completion; a missing exit leaks work and can race with teardown.
+- Verify `close(ch)` appears only when closure is part of the channel protocol and is performed by its declared owner; channels need not always close, while receiver closure or uncoordinated producer closure risks `send on closed channel` or `close of closed channel` crashes.
+- Require multiple producers that share a closable `chan T` to coordinate completion through `sync.WaitGroup`, `errgroup.Group`, or one closing owner before closure; racing producers against close causes panics or lost work.
+- Ensure sends on `chan T` cannot outlive the receiver or block forever; an unbounded wait causes deadlock and request starvation.
+- Reject `select` loops whose `default` branch spins without blocking or backoff; scheduler pressure creates latency and CPU performance regressions.
+- Require derived work to propagate `ctx` and observe `ctx.Done()`; replacing it with `context.Background()` loses cancellation and causes timeout leaks.
+- Verify cancellation functions returned by `context.WithCancel` or `context.WithTimeout` are called on every path; retained timers and children leak resources.
+- Require wrapped errors to use `%w` when callers depend on `errors.Is` or `errors.As`; `%v` breaks the error contract and can misclassify retries or status codes.
+- Reject direct equality against wrapped sentinel errors when `errors.Is` is required; the comparison produces incorrect failure handling after wrapping.
+- Verify an interface containing a typed nil pointer is not treated as nil; `var x error = (*MyError)(nil)` risks unexpected branches or panics.
+- Ensure copying a struct containing `sync.Mutex`, `sync.Once`, `atomic.Int64`, or `strings.Builder` is prohibited after first use; copied state risks races and corruption.
+- Require slice and map ownership to account for shared backing storage; returning or appending aliased `[]byte` values can corrupt data across goroutines.
+- Verify range-loop addresses and closures bind the intended iteration value under the repository's `go` directive; incorrect capture breaks state or concurrent subtests.
+- Ensure `defer` arguments and receiver values are evaluated with the intended timing; stale captured data risks incorrect cleanup or error reporting.
+- Reject broad `recover()` that converts programmer panics into success; hidden invariant failures leave invalid state and mask crashes.
+- Require shared memory touched by multiple goroutines to use one mechanism appropriate to its contract—confinement, channel ownership, `sync.Mutex`, or `sync/atomic`; unsynchronized or mixed access risks a `go test -race` failure without imposing channels on unrelated state.
+- Verify lock acquisition order is stable across code paths and callbacks do not run under `sync.Mutex` unexpectedly; inverted order risks production deadlock.
 - For Blocker or Major findings, describe the concrete invalid-state or ordering failure scenario.

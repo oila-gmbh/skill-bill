@@ -57,9 +57,6 @@ import skillbill.workflow.model.DecompositionSubtask
 import skillbill.workflow.model.SpecSource
 import kotlin.time.Duration.Companion.milliseconds
 
-// SKILL-87: the pre-assigned id substitutes for what the CLI's open(TASK_RUNTIME) would mint, so the
-// prefix must stay in lockstep with the TASK_RUNTIME family's canonical workflow-id prefix ("wftr")
-// rather than a duplicated literal.
 private val RUNTIME_WORKFLOW_ID_PREFIX: String = WorkflowFamily.TASK_RUNTIME.definition.workflowIdPrefix
 
 @Inject
@@ -868,8 +865,11 @@ internal class GoalRunnerLaunchReconciler(
     return if (branch != null && subtask != null && specPath != null) {
       // SKILL-87: a freshly pre-assigned id is an open, not a resume — drop it from childWorkflowId so
       // the command builder emits `run --workflow-id`; a pre-existing id stays the resume id.
-      val manifestWorkflowId = state.manifest.workflowIdFor(subtaskId)
-      val childWorkflowId = manifestWorkflowId?.takeIf { it != assignedWorkflowId }
+      val childWorkflowId = if (assignedWorkflowId == null) {
+        state.manifest.workflowIdFor(subtaskId)
+      } else {
+        null
+      }
       SkillRunGoalContinuationContext(
         parentIssueKey = issueKey,
         subtaskId = subtaskId,
@@ -879,7 +879,7 @@ internal class GoalRunnerLaunchReconciler(
         parentWorkflowId = state.parentWorkflowId,
         lastResumableStep = subtask.lastResumableStep?.takeIf(String::isNotBlank),
         childWorkflowId = childWorkflowId,
-        assignedWorkflowId = assignedWorkflowId?.takeIf { childWorkflowId == null },
+        assignedWorkflowId = assignedWorkflowId,
       )
     } else {
       null

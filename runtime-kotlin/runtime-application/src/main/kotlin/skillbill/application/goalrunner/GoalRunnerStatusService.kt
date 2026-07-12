@@ -217,6 +217,10 @@ private fun canApplyAuthoritativeOutcome(
   workflowId: String,
   outcome: GoalRunnerStoredOutcome,
 ): Boolean {
+  val resetPendingSubtask = subtask.status == "pending" && subtask.workflowId.isNullOrBlank()
+  if (resetPendingSubtask && outcome.status != GoalRunnerTerminalStatus.COMPLETE) {
+    return false
+  }
   // Do not let non-complete sibling outcomes overwrite an active retry workflow.
   val nonCompleteSibling = outcome.workflowId != workflowId && outcome.status != GoalRunnerTerminalStatus.COMPLETE
   return subtask.status != "in_progress" || !nonCompleteSibling

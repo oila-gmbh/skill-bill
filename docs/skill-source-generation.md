@@ -188,10 +188,16 @@ sidecar hosting another sidecar), and sibling co-location is exactly what a
 router flow needs: the parent's installed directory holds the routed entry
 sidecar and the specialist sidecars it reads as siblings, all resolvable as
 "a file next to this `SKILL.md`" with no per-agent path knowledge. The
-code-review family is the worked example: 78 review-pack skills — eight stack
-entries plus their 70 specialists — all carry `internal-for: bill-code-review`
+code-review family is the worked example: 81 review-pack skills — eight stack
+entries plus their 73 specialists — all carry `internal-for: bill-code-review`
 and all install as siblings inside `bill-code-review/`. The stack entry skills
 do **not** become parents of their specialists.
+
+The maintained manifest-derived totals are 81 review sidecars, eight direct
+quality-check sidecars, and 73 provider-neutral specialist agents. KMP accounts
+for one review entry, three physical specialists, one direct checker, and three
+neutral agents; its seven inherited review lanes reuse Kotlin rather than
+duplicating Kotlin source or native-agent declarations.
 
 ### Selection-aware sidecars for platform-pack internals (PD3)
 
@@ -265,26 +271,25 @@ byte-for-byte unchanged (PD4) even though the skills are no longer listed.
 
 ### Worked example: the code-review family
 
-The code-review family is the platform-pack worked example. Exactly 78
-review-pack skills are internal — every skill under
+The code-review family is the platform-pack worked example. Every manifest-discovered
+review-pack skill is internal — all entries under
 `platform-packs/{go,ios,kotlin,kmp,php,python,rust,typescript}/code-review/`: eight stack entry skills
 (`bill-ios-code-review`, `bill-kotlin-code-review`, `bill-kmp-code-review`,
 `bill-go-code-review`, `bill-php-code-review`, `bill-python-code-review`, `bill-rust-code-review`,
-`bill-typescript-code-review`) plus their 70 area specialists. All 78 carry
+`bill-typescript-code-review`) plus their area specialists. Go, iOS, Kotlin, PHP, Python, Rust, and TypeScript declare all ten areas; KMP declares three delta lanes and composes seven from Kotlin. All carry
 `internal-for: bill-code-review` and install as siblings inside
 `bill-code-review/`'s staged directory; the eight stack entries do **not** become
 parents of their specialists (PD2 flatten rule). After install with all packs
 selected, the agent skill list shows `bill-code-review` (plus the listed
-`bill-code-review-parallel` and `bill-code-check`) but none of the 78.
+`bill-code-review-parallel` and `bill-code-check`) but none of those internal sidecars.
 `bill-code-review` reads the dominant pack's entry sidecar, which reads its
 specialist rubric sidecars as siblings. With only the Kotlin pack selected,
-exactly the 9 Kotlin sidecars (`bill-kotlin-code-review.md` plus its 8
-specialists) stage; the other 69 contribute nothing (PD3). The KMP pack declares
+the Kotlin entry plus its ten specialists stage; other packs contribute nothing (PD3). The KMP pack declares
 `bill-kotlin-code-review` as a required baseline layer, so selecting KMP without
 Kotlin fails install planning with the typed baseline-co-presence error (PD8).
 SKILL-105 applies the same platform-pack internal-sidecar mechanism to the
 quality-check family: pack quality-check skills (`bill-ios-code-check`,
-`bill-go-code-check`, `bill-kotlin-code-check`, `bill-php-code-check`, `bill-python-code-check`, `bill-rust-code-check`,
+`bill-go-code-check`, `bill-kotlin-code-check`, `bill-kmp-code-check`, `bill-php-code-check`, `bill-python-code-check`, `bill-rust-code-check`,
 `bill-typescript-code-check`) carry
 `internal-for: bill-code-check`, install as selected-pack sidecars inside
 `bill-code-check/`, and are not listed commands. Their routed skill names remain

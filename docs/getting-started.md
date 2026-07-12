@@ -292,13 +292,18 @@ The shipped platform packs are reference packs. They are real, validated, ready 
 
 Reference packs currently shipped:
 
+Seven packs—Go, iOS, Kotlin, PHP, Python, Rust, and TypeScript—declare all ten approved review areas directly. KMP reaches the same effective coverage by composing seven Kotlin areas with its platform-correctness, UI, and UX-accessibility delta lanes. Quality checks do not follow review composition: every pack declares and routes directly to its own checker, including `bill-kmp-code-check`.
+
 - `kotlin`: Kotlin baseline review and quality-check behavior
-- `kmp`: Kotlin baseline plus Android/KMP review depth and governed add-ons
+- `kmp`: Kotlin review baseline plus KMP platform, UI, and accessibility depth, governed add-ons, and direct multiplatform quality-check behavior
+- `ios`: native iOS review and direct Xcode/SPM-aware quality-check behavior
 - `go`: Go services, libraries, CLIs, modules, APIs, persistence, concurrency, security, testing, Go-rendered UI, UX/accessibility, and quality-check behavior
 - `php`: PHP applications, services, Composer projects, APIs, persistence, security, testing, server-rendered UI, UX/accessibility, and quality-check behavior
 - `python`: Python applications, libraries, CLIs, APIs, persistence, security, testing, UI, UX/accessibility, and quality-check behavior
 - `rust`: Rust crates and Cargo workspaces, services, CLIs, async runtimes, FFI, persistence, safety, testing, UI/UX, and quality-check behavior
 - `typescript`: TypeScript applications, libraries, services, Node/browser runtimes, APIs, persistence, async behavior, TSX UI/UX, and package-manager-aware quality-check behavior
+
+`skill-bill validate` discovers maintained packs from their manifests and applies the normal substance gate without exemptions: at least three platform-specific failure-mode clusters and ten evidence-bearing rules per effective specialist, no forbidden placeholders, at most 35% shared normalized five-word sequences per pack, and at most 65% similarity for corresponding authored rubrics.
 
 ## Common CLI Surfaces
 

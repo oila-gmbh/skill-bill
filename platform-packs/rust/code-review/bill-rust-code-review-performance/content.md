@@ -27,13 +27,16 @@ Apply when changed Rust code affects throughput, latency, memory, startup, binar
 
 ### Rust Performance Rules
 
-- Verify `Rust hot-path and resource APIs` preserve their documented invariants; reject a measurable latency, memory, or throughput failure.
-- Flag `.clone()` only when the copied value, frequency, or retained lifetime creates material cost.
-- Watch mutex or read/write guards held across `.await`; require intentional ownership and lock duration.
-- Use `spawn_blocking` or the repository's equivalent for blocking work only with bounded concurrency and shutdown behavior.
-- Ensure streams, queues, buffers, and task fan-out have explicit bounds or defensible backpressure.
-- Check iterator pipelines and async streams for accidental eager collection, repeated traversal, or lost batching.
-- Check feature flags and monomorphization for material build-time or binary-size expansion when that is a product constraint.
-- Findings must state the hot path, scale factor, and expected impact, not merely name an allocation or lock.
-- Use only the shared Risk Register and canonical severity definitions.
+- Require hot-path allocation through `Vec::with_capacity`, `String::with_capacity`, or borrowed slices when measured cardinality is known; flag repeated growth that causes latency or memory regression.
+- Verify `.clone()` and `.to_owned()` copy frequency and retained size against the actual workload; reject material allocation amplification or stale duplicated state rather than the syntax alone.
+- Ensure iterator chains do not introduce accidental `collect::<Vec<_>>()`, repeated traversal, or per-item serialization; flag lost streaming that creates peak-memory failure.
+- Require `MutexGuard` and `RwLockReadGuard` scopes to end before `.await` unless the lock protocol proves otherwise; reject contention, starvation, or deadlock on executor threads.
+- Verify atomics such as `AtomicUsize::fetch_add` use an ordering no stronger than required and no weaker than correctness permits; reject race risk or needless synchronization cost.
+- Bound work submitted through `tokio::task::spawn_blocking` or `rayon::ThreadPool`; reject unbounded blocking tasks that exhaust threads, delay shutdown, or inflate memory.
+- Ensure CPU-heavy loops do not run directly inside `tokio::spawn`; require measured chunking or an owned worker pool and flag executor latency regression.
+- Require channels such as `tokio::sync::mpsc::channel` to have capacity and backpressure matched to producers; reject unbounded buffering or producer starvation under load.
+- Verify async fan-out through `buffer_unordered`, `FuturesUnordered`, or `JoinSet` has a concurrency ceiling; flag connection-pool exhaustion or timeout cascades.
+- Preserve batching across `read_vectored`, database bulk operations, and `serde_json::to_writer`; reject repeated I/O or temporary buffers that create throughput failure.
+- Require benchmark or profile evidence from configured `criterion`, `cargo bench`, or repository telemetry before complex hot-path rewrites; reject speculative unsafe code that adds correctness risk without demonstrated gain.
+- Verify Cargo feature and generic expansion with `cargo bloat` or repository size checks when binary size is a stated constraint; flag monomorphization that breaks deployment limits.
 - For Blocker or Major findings, describe the concrete latency, memory-pressure, or throughput failure scenario.

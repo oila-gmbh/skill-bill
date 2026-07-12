@@ -1067,6 +1067,35 @@ class GoalRunnerStatusProjectionTest {
   }
 
   @Test
+  fun `status reconciliation preserves reset pending subtask when blocked sibling outcome exists`() {
+    val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 1))
+    val outcomes = RecordingOutcomeStore().apply {
+      authoritativeOutcomesBySubtask[1] = GoalRunnerStoredOutcome(
+        status = GoalRunnerTerminalStatus.BLOCKED,
+        workflowId = "wfl-blocked-before-reset",
+        blockedReason = "old sibling blocked",
+        lastResumableStep = "review",
+        suppressPr = true,
+      )
+    }
+    val service = GoalRunnerStatusService(store, outcomes, goalTestPhaseRecorder())
+
+    val status = service.status(
+      GoalRunnerStatusRequest(
+        issueKey = "SKILL-56",
+        invokedAgentId = "codex",
+      ),
+    )
+
+    requireNotNull(status)
+    assertEquals(1, status.pendingCount)
+    assertEquals(0, status.blockedCount)
+    val subtask = store.manifest.subtasks.single()
+    assertEquals("pending", subtask.status)
+    assertEquals(null, subtask.workflowId)
+  }
+
+  @Test
   fun `status reconciliation persists blocked terminal outcome to manifest state`() {
     val store = InMemoryGoalManifestStore(
       manifest = manifest(subtaskCount = 1)
