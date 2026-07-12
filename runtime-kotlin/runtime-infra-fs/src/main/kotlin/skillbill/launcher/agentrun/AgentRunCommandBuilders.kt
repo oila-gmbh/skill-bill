@@ -53,6 +53,10 @@ class ClaudeAgentRunCommandBuilder : AgentRunCommandBuilder {
           add("--model")
           add(it)
         }
+        request.effortOverride?.let {
+          add("--effort")
+          add(it)
+        }
         add("--dangerously-skip-permissions")
         add("--add-dir")
         add(request.repoRoot.toString())
@@ -81,6 +85,10 @@ class CodexAgentRunCommandBuilder : AgentRunCommandBuilder {
           add("--model")
           add(it)
         }
+        request.effortOverride?.let {
+          add("--config")
+          add("model_reasoning_effort=$it")
+        }
       },
       workingDirectory = request.repoRoot,
       timeout = request.timeout,
@@ -95,6 +103,9 @@ class JunieAgentRunCommandBuilder : AgentRunCommandBuilder {
   override fun build(request: SkillRunRequest): AgentRunCommand =
     goalContinuationCommand(request, agent) ?: AgentRunCommand(
       command = buildList {
+        require(request.modelOverride == null && request.effortOverride == null) {
+          "junie cannot honor a model/effort directive; remove its execution_matrix entry or --phase-model assignment."
+        }
         add("junie")
         add("--project")
         add(request.repoRoot.toString())

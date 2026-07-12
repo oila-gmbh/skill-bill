@@ -18,6 +18,7 @@ data class FeatureTaskRuntimeRunRequest(
   val runInvariants: FeatureTaskRuntimeRunInvariants,
   val invokedAgentId: String,
   val agentAssignment: FeatureTaskRuntimeAgentAssignment = FeatureTaskRuntimeAgentAssignment(),
+  val modelAssignment: FeatureTaskRuntimeModelAssignment = FeatureTaskRuntimeModelAssignment(),
   val environment: Map<String, String> = emptyMap(),
   val dbPathOverride: String? = null,
   val repoRoot: Path,
@@ -203,6 +204,8 @@ sealed interface FeatureTaskRuntimeRunEvent {
     val resolvedAgentId: String,
     val attemptCount: Int,
     val resumed: Boolean,
+    val model: String? = null,
+    val effort: String? = null,
   ) : FeatureTaskRuntimeRunEvent
 
   data class PhaseFixLoopIteration(

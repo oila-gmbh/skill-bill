@@ -12,6 +12,7 @@ import skillbill.application.model.FeatureTaskRuntimeRunReport
 import skillbill.application.model.FeatureTaskRuntimeRunRequest
 import skillbill.application.model.FeatureTaskRuntimeSubtaskOutcome
 import skillbill.application.workflow.repoRoot
+import skillbill.config.model.PhaseModelDirective
 import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.goalrunner.model.GoalRunnerLaunchFacts
@@ -623,13 +624,19 @@ class FeatureTaskRuntimeRunner(
         unresolvedFindings,
         unmetCriteria,
       )
+      val resolvedAgent = FeatureTaskRuntimeAgentResolver.resolve(
+        phaseId = phaseId,
+        assignment = request.agentAssignment,
+        invokedAgentId = request.invokedAgentId,
+      )
       val run = PhaseRun(
         phaseId = phaseId,
         declaration = phaseDeclaration(phaseId, request.runInvariants.featureSize),
-        resolvedAgent = FeatureTaskRuntimeAgentResolver.resolve(
-          phaseId = phaseId,
-          assignment = request.agentAssignment,
-          invokedAgentId = request.invokedAgentId,
+        resolvedAgent = resolvedAgent,
+        modelDirective = FeatureTaskRuntimeModelResolver.resolve(
+          phaseId,
+          resolvedAgent.resolvedAgentId,
+          request.modelAssignment,
         ),
         request = request,
         specSource = specSource,
@@ -714,13 +721,19 @@ class FeatureTaskRuntimeRunner(
     reentry: PendingReentry?,
     phaseTokenAccumulator: MutableMap<String, Pair<Int, Int>>? = null,
   ): PhaseOutcome {
+    val resolvedAgent = FeatureTaskRuntimeAgentResolver.resolve(
+      phaseId = phaseId,
+      assignment = request.agentAssignment,
+      invokedAgentId = request.invokedAgentId,
+    )
     val run = PhaseRun(
       phaseId = phaseId,
       declaration = phaseDeclaration(phaseId, request.runInvariants.featureSize),
-      resolvedAgent = FeatureTaskRuntimeAgentResolver.resolve(
-        phaseId = phaseId,
-        assignment = request.agentAssignment,
-        invokedAgentId = request.invokedAgentId,
+      resolvedAgent = resolvedAgent,
+      modelDirective = FeatureTaskRuntimeModelResolver.resolve(
+        phaseId,
+        resolvedAgent.resolvedAgentId,
+        request.modelAssignment,
       ),
       request = request,
       specSource = specSource,
@@ -794,7 +807,13 @@ class FeatureTaskRuntimeRunner(
     FeatureTaskRuntimeFixLoopPolicy
       .blockReasonIfBudgetExhausted(run.phaseId, iteration - budgetBaseOffset)
       ?.let { reason -> return blockAndPersistInPhase(run, iteration, reason, observability) }
-    observability.started(run.phaseId, agentId, iteration, iteration > 1 || state.hasPriorRecord(run.phaseId))
+    observability.started(
+      run.phaseId,
+      agentId,
+      iteration,
+      iteration > 1 || state.hasPriorRecord(run.phaseId),
+      run.modelDirective,
+    )
     var outcome: PhaseOutcome? = null
     // The prior attempt's schema-gate reason, threaded into the next attempt's prompt so a retry is a
     // corrective attempt rather than a blind re-roll of the identical prompt (null on the first attempt).
@@ -975,6 +994,8 @@ class FeatureTaskRuntimeRunner(
           repoRoot = run.request.repoRoot,
           dbPathOverride = run.request.dbPathOverride,
           timeout = run.request.timeout,
+          modelOverride = run.modelDirective?.model,
+          effortOverride = run.modelDirective?.effort,
           promptOverride = FeatureTaskRuntimePhasePromptComposer.compose(
             issueKey = run.request.issueKey,
             briefing = briefing,
@@ -1031,6 +1052,7 @@ class FeatureTaskRuntimeRunner(
     val phaseId: String,
     val declaration: FeatureTaskRuntimePhaseDeclaration,
     val resolvedAgent: FeatureTaskRuntimeResolvedPhaseAgent,
+    val modelDirective: PhaseModelDirective?,
     val request: FeatureTaskRuntimeRunRequest,
     val specSource: SpecSource,
     // Set only when this launch is a backward-edge re-entry; null for an ordinary forward launch.

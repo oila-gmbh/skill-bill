@@ -21,12 +21,14 @@ data class SkillRunRequest(
   val outputSink: AgentRunOutputSink = AgentRunOutputSink.NONE,
   val promptOverride: String? = null,
   val modelOverride: String? = null,
+  val effortOverride: String? = null,
   val goalContinuation: SkillRunGoalContinuationContext? = null,
 ) {
   init {
     require(issueKey.isNotBlank()) { "issueKey is required." }
     promptOverride?.let { prompt -> require(prompt.isNotBlank()) { "promptOverride must be non-blank when provided." } }
     modelOverride?.let { model -> require(model.isNotBlank()) { "modelOverride must be non-blank when provided." } }
+    effortOverride?.let { effort -> require(effort.isNotBlank()) { "effortOverride must be non-blank when provided." } }
     subtaskId?.let { id -> require(id > 0) { "subtaskId must be positive when provided." } }
     timeout?.let { maxWallClockTimeout ->
       require(maxWallClockTimeout.isPositive()) { "timeout must be positive when provided." }

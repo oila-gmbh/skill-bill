@@ -21,6 +21,7 @@ import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.minutes
 
@@ -37,6 +38,7 @@ class CliFeatureTaskRuntimeRuntimeTest {
     // The documented explicit `run` form is a real subcommand, not a misparsed positional.
     assertContains(help.stdout, "explicit form")
     assertContains(help.stdout, "--phase-agent")
+    assertContains(help.stdout, "--phase-model")
     assertContains(help.stdout, "--agent-override")
     assertContains(help.stdout, "--monitor")
     assertContains(help.stdout, "--max-wall-clock-minutes")
@@ -824,6 +826,207 @@ class CliFeatureTaskRuntimeZcodeRefusalTest {
     assertEquals(1, result.exitCode, result.stdout)
     assertContains(result.stdout, "Runtime mode is not supported on opencode or zcode")
     assertEquals(emptyList(), launcher.requests, result.stdout)
+  }
+}
+
+class CliFeatureTaskRuntimeModelDirectiveTest {
+  @Test
+  fun `feature-task runtime applies a cli phase model directive`() {
+    val fixture = runtimeFixture()
+    val launcher = RecordingPhaseLauncher()
+    val monitor = StringBuilder()
+
+    val result = CliRuntime.run(
+      fixture.runCommand(extra = listOf("--agent", "codex", "--phase-model", "plan=gpt-sol@high", "--monitor")),
+      fixture.context(launcher, liveStdout = { monitor.append(it) }),
+    )
+
+    assertEquals(0, result.exitCode, result.stdout)
+    val plan = launcher.requests[ALL_PHASES.indexOf("plan")].skillRunRequest
+    assertEquals("gpt-sol", plan.modelOverride)
+    assertEquals("high", plan.effortOverride)
+    assertTrue(
+      launcher.requests.filterIndexed { index, _ -> ALL_PHASES[index] != "plan" }.all { request ->
+        request.skillRunRequest.modelOverride == null && request.skillRunRequest.effortOverride == null
+      },
+    )
+    assertContains(monitor.toString(), "phase plan started agent=codex attempt=1 model=gpt-sol effort=high")
+  }
+
+  @Test
+  fun `feature-task runtime uses the final repeated phase model assignment`() {
+    val fixture = runtimeFixture()
+    val launcher = RecordingPhaseLauncher()
+
+    val result = CliRuntime.run(
+      fixture.runCommand(
+        extra = listOf("--agent", "codex", "--phase-model", "plan=first", "--phase-model", "plan=second@high"),
+      ),
+      fixture.context(launcher),
+    )
+
+    assertEquals(0, result.exitCode, result.stdout)
+    val plan = launcher.requests[ALL_PHASES.indexOf("plan")].skillRunRequest
+    assertEquals("second", plan.modelOverride)
+    assertEquals("high", plan.effortOverride)
+  }
+
+  @Test
+  fun `feature-task runtime applies a model only cli phase directive`() {
+    val fixture = runtimeFixture()
+    val launcher = RecordingPhaseLauncher()
+
+    val result = CliRuntime.run(
+      fixture.runCommand(extra = listOf("--agent", "codex", "--phase-model", "plan=gpt-sol")),
+      fixture.context(launcher),
+    )
+
+    assertEquals(0, result.exitCode, result.stdout)
+    val plan = launcher.requests[ALL_PHASES.indexOf("plan")].skillRunRequest
+    assertEquals("gpt-sol", plan.modelOverride)
+    assertNull(plan.effortOverride)
+  }
+
+  @Test
+  fun `feature-task runtime reads phase directives from the repo local execution matrix`() {
+    val fixture = runtimeFixture()
+    val config = fixture.tempDir.resolve(".skill-bill/config.yaml")
+    Files.createDirectories(config.parent)
+    Files.writeString(
+      config,
+      """
+      execution_matrix:
+        agents:
+          codex:
+            reasoning:
+              model: gpt-sol
+              effort: high
+      """.trimIndent(),
+    )
+    val launcher = RecordingPhaseLauncher()
+
+    val result = CliRuntime.run(
+      fixture.runCommand(extra = listOf("--agent", "codex")),
+      fixture.context(launcher),
+    )
+
+    assertEquals(0, result.exitCode, result.stdout)
+    val plan = launcher.requests[ALL_PHASES.indexOf("plan")].skillRunRequest
+    assertEquals("gpt-sol", plan.modelOverride)
+    assertEquals("high", plan.effortOverride)
+  }
+
+  @Test
+  fun `goal continuation re-resolves execution matrix directives for child phase launches`() {
+    val fixture = runtimeFixture(specFileName = "spec_subtask_5_runtime.md")
+    val config = fixture.tempDir.resolve(".skill-bill/config.yaml")
+    Files.createDirectories(config.parent)
+    Files.writeString(
+      config,
+      """
+      execution_matrix:
+        agents:
+          codex:
+            reasoning:
+              model: gpt-sol
+              effort: high
+      """.trimIndent(),
+    )
+    val directLauncher = RecordingPhaseLauncher()
+    val direct = CliRuntime.run(
+      fixture.runCommand(extra = listOf("--agent", "codex")),
+      fixture.context(directLauncher),
+    )
+    val childLauncher = RecordingPhaseLauncher()
+    val child = CliRuntime.run(
+      fixture.runCommand(
+        extra = listOf(
+          "--agent",
+          "codex",
+          "--goal-parent-issue-key",
+          "SKILL-650",
+          "--goal-subtask-id",
+          "5",
+          "--goal-branch",
+          "feat/existing-runtime-branch",
+          "--suppress-pr",
+        ),
+      ),
+      fixture.context(childLauncher),
+    )
+
+    assertEquals(0, direct.exitCode, direct.stdout)
+    assertEquals(0, child.exitCode, child.stdout)
+    val directPlan = directLauncher.requests[ALL_PHASES.indexOf("plan")].skillRunRequest
+    val childPlan = childLauncher.requests[ALL_PHASES.indexOf("plan")].skillRunRequest
+    assertEquals(directPlan.modelOverride, childPlan.modelOverride)
+    assertEquals(directPlan.effortOverride, childPlan.effortOverride)
+    assertEquals("gpt-sol", childPlan.modelOverride)
+    assertEquals("high", childPlan.effortOverride)
+  }
+
+  @Test
+  fun `feature-task runtime rejects malformed phase model directives before workflow opening`() {
+    listOf("plan", "=model", "plan=", "unknown=model", "plan=model@high@xhigh", "plan=@high", "plan=model@").forEach {
+        assignment ->
+      val fixture = runtimeFixture()
+      val launcher = RecordingPhaseLauncher()
+
+      val result = CliRuntime.run(
+        fixture.runCommand(extra = listOf("--agent", "codex", "--phase-model", assignment)),
+        fixture.context(launcher),
+      )
+
+      assertEquals(1, result.exitCode, "expected rejection for $assignment: ${result.stdout}")
+      assertContains(result.stdout, "--phase-model")
+      assertEquals(emptyList(), launcher.requests, result.stdout)
+      assertFalse(result.stdout.contains("workflow_id:"), result.stdout)
+    }
+  }
+
+  @Test
+  fun `feature-task run and resume refuse a directive that resolves to junie before launching`() {
+    val runFixture = runtimeFixture()
+    val runLauncher = RecordingPhaseLauncher()
+    val run = CliRuntime.run(
+      runFixture.runCommand(
+        extra = listOf("--agent", "codex", "--phase-agent", "plan=junie", "--phase-model", "plan=model"),
+      ),
+      runFixture.context(runLauncher),
+    )
+
+    assertEquals(1, run.exitCode, run.stdout)
+    assertContains(run.stdout, "phase 'plan'")
+    assertContains(run.stdout, "agent 'junie'")
+    assertEquals(emptyList(), runLauncher.requests)
+    assertFalse(run.stdout.contains("workflow_id:"), run.stdout)
+
+    val resumeFixture = runtimeFixture()
+    val resumeLauncher = RecordingPhaseLauncher()
+    val resume = CliRuntime.run(
+      listOf(
+        "--db",
+        resumeFixture.dbPath.toString(),
+        "feature-task",
+        "resume",
+        "wftr-model-directive",
+        "SKILL-650",
+        resumeFixture.specPath.toString(),
+        "--repo-root",
+        resumeFixture.tempDir.toString(),
+        "--agent",
+        "codex",
+        "--phase-agent",
+        "plan=junie",
+        "--phase-model",
+        "plan=model",
+      ),
+      resumeFixture.context(resumeLauncher),
+    )
+
+    assertEquals(1, resume.exitCode, resume.stdout)
+    assertContains(resume.stdout, "agent 'junie'")
+    assertEquals(emptyList(), resumeLauncher.requests)
   }
 }
 
