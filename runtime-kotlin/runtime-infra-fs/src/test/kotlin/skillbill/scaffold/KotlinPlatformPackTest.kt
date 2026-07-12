@@ -1,7 +1,5 @@
 package skillbill.scaffold
 
-import skillbill.nativeagent.composition.composeNativeAgentSource
-import skillbill.nativeagent.composition.parseNativeAgentBundle
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.InstallAgentSelection
 import skillbill.install.model.InstallAgentSelectionMode
@@ -17,12 +15,15 @@ import skillbill.install.model.WindowsSymlinkDecision
 import skillbill.install.model.WindowsSymlinkPreflight
 import skillbill.install.model.WindowsSymlinkPreflightState
 import skillbill.install.runtime.InstallOperations
+import skillbill.nativeagent.composition.composeNativeAgentSource
+import skillbill.nativeagent.composition.parseNativeAgentBundle
 import skillbill.scaffold.authoring.renderAuthoringTarget
 import skillbill.scaffold.platformpack.loadPlatformPack
 import skillbill.scaffold.substance.Fraction
 import skillbill.scaffold.substance.PlatformPackSubstanceAudit
 import skillbill.testing.repoRootFromTest
 import java.nio.file.Files
+import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -138,6 +139,12 @@ class KotlinPlatformPackTest {
   fun `kotlin specialists preserve corrected framework and concurrency contracts`() {
     val reviewRoot = repoRootFromTest().resolve("platform-packs/kotlin/code-review")
 
+    assertArchitectureAndCorrectnessContracts(reviewRoot)
+    assertApiPersistenceAndReliabilityContracts(reviewRoot)
+    assertPerformanceSecurityTestingAndUiContracts(reviewRoot)
+  }
+
+  private fun assertArchitectureAndCorrectnessContracts(reviewRoot: Path) {
     val architecture = specialistContent(reviewRoot, "architecture")
     assertContains(architecture, "dispatcher may be encapsulated by the adapter")
     assertContains(architecture, "infrastructure transaction runner or adapter")
@@ -152,9 +159,14 @@ class KotlinPlatformPackTest {
     assertContains(correctness, "only while subscribers are active")
     assertContains(correctness, "`TimeoutCancellationException` created and owned by the current boundary")
     assertContains(correctness, "same non-null owner token throws `IllegalStateException`")
+  }
 
+  private fun assertApiPersistenceAndReliabilityContracts(reviewRoot: Path) {
     val apiContracts = specialistContent(reviewRoot, "api-contracts")
-    assertContains(apiContracts, "`LocalDate` fields to declare calendar and format semantics while remaining zone-free")
+    assertContains(
+      apiContracts,
+      "`LocalDate` fields to declare calendar and format semantics while remaining zone-free",
+    )
     assertContains(apiContracts, "`ignoreUnknownKeys` to match the published unknown-field policy")
     assertContains(apiContracts, "constructor defaults do not silently accept an omitted input")
     assertContains(apiContracts, "bounded offset pagination can be valid")
@@ -180,7 +192,9 @@ class KotlinPlatformPackTest {
     assertFalse(reliability.contains("Require retries around `HttpClient.request`"))
     assertFalse(reliability.contains("Require idempotency keys around retried writes"))
     assertFalse(reliability.contains("share one `@Transactional` boundary"))
+  }
 
+  private fun assertPerformanceSecurityTestingAndUiContracts(reviewRoot: Path) {
     val performance = specialistContent(reviewRoot, "performance")
     assertContains(performance, "`flowOn` changes only the upstream flow execution context")
     assertContains(performance, "not a universal substitute")
@@ -219,7 +233,10 @@ class KotlinPlatformPackTest {
     val accessibility = specialistContent(reviewRoot, "ux-accessibility")
     assertContains(accessibility, "version- and platform-dependent")
     assertContains(accessibility, "semantics alone do not prove")
-    assertContains(accessibility, "require manual `focusable` and key handling only for low-level gesture implementations")
+    assertContains(
+      accessibility,
+      "require manual `focusable` and key handling only for low-level gesture implementations",
+    )
     assertContains(accessibility, "standalone Compose Desktop remains Kotlin-owned")
     assertFalse(accessibility.contains("Android and Compose Multiplatform accessibility"))
   }
