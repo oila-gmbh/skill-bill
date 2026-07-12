@@ -3,6 +3,12 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 args=(--repo-root "$repo_root" "$@")
+gradle_args="validate-release-ref"
+for arg in "${args[@]}"; do
+  escaped_arg="${arg//\\/\\\\}"
+  escaped_arg="${escaped_arg//\"/\\\"}"
+  gradle_args+=" \"${escaped_arg}\""
+done
 
 cd "$repo_root/runtime-kotlin"
-./gradlew --quiet :runtime-cli:run --args="validate-release-ref ${args[*]}"
+./gradlew --quiet :runtime-cli:run --args="$gradle_args"

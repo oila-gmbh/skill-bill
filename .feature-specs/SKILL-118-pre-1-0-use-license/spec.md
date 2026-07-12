@@ -1,5 +1,5 @@
 ---
-status: In Progress
+status: Complete
 issue_key: SKILL-118
 source: inline user request
 ---

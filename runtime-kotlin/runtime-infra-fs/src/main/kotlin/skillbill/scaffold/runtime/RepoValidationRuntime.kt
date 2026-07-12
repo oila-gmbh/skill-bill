@@ -116,9 +116,12 @@ object RepoValidationRuntime {
   private const val NORMALIZED_TRANSITIONAL_LICENSE_SHA256 =
     "b73acd2889fc6178a9b1e34fca5a0c7aa131152d4f9c5d122f98b57afb6840aa"
   private const val SUCCESSOR_LICENSE_IDENTIFIER_MARKER = "Successor License Identifier:"
-  private const val SUCCESSOR_LICENSE_EFFECTIVE_VERSION_MARKER = "Successor License Effective Version: v1.0.0"
-  private const val SUCCESSOR_LICENSE_TERMS_MARKER = "Successor License Terms:"
-  private const val MINIMUM_SUCCESSOR_LICENSE_TERMS_LENGTH = 200
+  private const val SUCCESSOR_LICENSE_APPROVAL_PATH = "docs/release-successor-license-approval.md"
+  private const val APPROVED_SUCCESSOR_LICENSE_STATUS = "Status: Approved"
+  private const val APPROVED_SUCCESSOR_LICENSE_IDENTIFIER_PREFIX = "Approved Successor License Identifier: "
+  private const val APPROVED_SUCCESSOR_LICENSE_SHA256_PREFIX = "Approved LICENSE SHA-256: "
+  private const val APPROVED_SUCCESSOR_LICENSE_HOLDER = "Approved by: Braian Gapur"
+  private const val APPROVED_SUCCESSOR_LICENSE_LOCATION_PREFIX = "Approval location: "
   private const val UNSIGNED_BYTE_MASK = 0xff
 
   private val semverTagPattern =
@@ -269,8 +272,12 @@ object RepoValidationRuntime {
       metadata.isCoveredPreOneRelease() ->
         requireTransitionalPolicy(repoRoot.resolve("LICENSE"), metadata)
       metadata.isNonTriggeringV1Release() ->
-        requireNonTriggeringV1Policy(repoRoot.resolve("LICENSE"), metadata)
-      else -> requirePostOneLicenseDecision(repoRoot.resolve("LICENSE"), metadata)
+        requireTransitionalPolicy(repoRoot.resolve("LICENSE"), metadata)
+      else -> requirePostOneLicenseDecision(
+        repoRoot.resolve("LICENSE"),
+        repoRoot.resolve(SUCCESSOR_LICENSE_APPROVAL_PATH),
+        metadata,
+      )
     }
   }
 
@@ -295,31 +302,16 @@ object RepoValidationRuntime {
     }
   }
 
-  private fun requirePostOneLicenseDecision(licenseFile: Path, metadata: ReleaseRefMetadata) {
+  private fun requirePostOneLicenseDecision(licenseFile: Path, approvalFile: Path, metadata: ReleaseRefMetadata) {
     if (!licenseFile.isRegularFile()) {
       throw ReleaseLicensePolicyError(
-        "Stable release ${metadata.tag} requires a root LICENSE that records the deliberate v1.0 licensing decision.",
+        "Release ${metadata.tag} requires a root LICENSE that records the deliberate v1.0 licensing decision.",
       )
     }
     val licenseText = Files.readString(licenseFile)
-    if (!isDeliberateSuccessorLicense(licenseText)) {
+    if (!approvalFile.isRegularFile() || !isApprovedSuccessorLicense(licenseText, Files.readString(approvalFile))) {
       throw ReleaseLicensePolicyError(
-        "Stable release ${metadata.tag} requires a complete, versioned successor license policy.",
-      )
-    }
-  }
-
-  private fun requireNonTriggeringV1Policy(licenseFile: Path, metadata: ReleaseRefMetadata) {
-    if (!licenseFile.isRegularFile()) {
-      throw ReleaseLicensePolicyError(
-        "Prerelease ${metadata.tag} requires a complete transitional policy or a deliberate successor license.",
-      )
-    }
-    val licenseText = Files.readString(licenseFile)
-    if (isCurrentTransitionalLicense(licenseText)) return
-    if (!isDeliberateSuccessorLicense(licenseText)) {
-      throw ReleaseLicensePolicyError(
-        "Prerelease ${metadata.tag} requires a complete transitional policy or a versioned successor license policy.",
+        "Release ${metadata.tag} requires an explicitly approved successor license policy.",
       )
     }
   }
@@ -328,20 +320,22 @@ object RepoValidationRuntime {
     return normalizedLicenseSha256(licenseText) == NORMALIZED_TRANSITIONAL_LICENSE_SHA256
   }
 
-  private fun isDeliberateSuccessorLicense(licenseText: String): Boolean {
+  private fun isApprovedSuccessorLicense(licenseText: String, approvalText: String): Boolean {
     val normalized = normalizeLicense(licenseText)
-    val preambleEnd = normalized.indexOf("\n\n")
-    if (preambleEnd < 0) return false
-    val preamble = normalized.substring(0, preambleEnd)
-    val terms = normalized.substring(preambleEnd).trim()
-    val successorTerms = terms.removePrefix(SUCCESSOR_LICENSE_TERMS_MARKER).trim()
+    val identifier = Regex(
+      "(?m)^${Regex.escape(SUCCESSOR_LICENSE_IDENTIFIER_MARKER)} ([A-Za-z0-9][A-Za-z0-9.+:-]*)$",
+    ).find(normalized)?.groupValues?.get(1) ?: return false
     return !presentsTransitionalLicenseAsCurrent(normalized) &&
-      Regex("(?m)^${Regex.escape(SUCCESSOR_LICENSE_IDENTIFIER_MARKER)} [A-Za-z0-9][A-Za-z0-9.+:-]*$")
-        .containsMatchIn(preamble) &&
-      preamble.lineSequence().any { it == SUCCESSOR_LICENSE_EFFECTIVE_VERSION_MARKER } &&
-      terms.startsWith(SUCCESSOR_LICENSE_TERMS_MARKER) &&
-      !presentsTransitionalLicenseAsCurrent(successorTerms) &&
-      successorTerms.length >= MINIMUM_SUCCESSOR_LICENSE_TERMS_LENGTH
+      approvalText.lineSequence().any { it == APPROVED_SUCCESSOR_LICENSE_STATUS } &&
+      approvalText.lineSequence().any { it == "$APPROVED_SUCCESSOR_LICENSE_IDENTIFIER_PREFIX$identifier" } &&
+      approvalText.lineSequence().any {
+        it == "$APPROVED_SUCCESSOR_LICENSE_SHA256_PREFIX${normalizedLicenseSha256(licenseText)}"
+      } &&
+      approvalText.lineSequence().any { it == APPROVED_SUCCESSOR_LICENSE_HOLDER } &&
+      approvalText.lineSequence().any {
+        it.startsWith(APPROVED_SUCCESSOR_LICENSE_LOCATION_PREFIX) &&
+          it.removePrefix(APPROVED_SUCCESSOR_LICENSE_LOCATION_PREFIX).isNotBlank()
+      }
   }
 
   private fun normalizedLicenseSha256(licenseText: String): String = MessageDigest.getInstance("SHA-256")
@@ -351,10 +345,10 @@ object RepoValidationRuntime {
   private fun normalizeLicense(licenseText: String): String = licenseText.replace("\r\n", "\n").trimEnd()
 
   private fun presentsTransitionalLicenseAsCurrent(licenseText: String): Boolean {
-    val normalized = licenseText.replace("\r\n", "\n").trimStart()
-    return normalized.startsWith(TRANSITIONAL_LICENSE_MARKER) ||
-      normalized.startsWith("Identifier: $PRE_1_LICENSE_IDENTIFIER") ||
-      normalized.startsWith(PROSPECTIVE_EFFECTIVE_VERSION_MARKER)
+    val lines = licenseText.replace("\r\n", "\n").lineSequence().map(String::trim).toSet()
+    return TRANSITIONAL_LICENSE_MARKER in lines &&
+      "Identifier: $PRE_1_LICENSE_IDENTIFIER" in lines &&
+      PROSPECTIVE_EFFECTIVE_VERSION_MARKER in lines
   }
 
   fun appendGithubOutput(outputPath: Path, metadata: ReleaseRefMetadata) {

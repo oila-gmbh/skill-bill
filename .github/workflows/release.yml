@@ -102,6 +102,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends fakeroot rpm
 
+      - name: Install MSI inspection tooling
+        if: matrix.host_token == 'windows-x64'
+        shell: bash
+        run: choco install lessmsi --yes --no-progress
+
       # AC1/AC5: self-contained per-OS runtime images for CLI + MCP. runtimeZip is
       # finalizedBy its .sha256 task, so each produces archive + .sha256. Badass
       # Runtime tasks are not configuration-cache compatible, so do NOT pass
@@ -167,6 +172,21 @@ jobs:
             [[ -f "${artifact}.sha256" ]] || { echo "Missing checksum sidecar: ${artifact}.sha256." >&2; exit 1; }
           done
           scripts/verify_release_artifact_licenses "${artifacts[@]}"
+          verifier_probe="$(mktemp -d)"
+          cp scripts/verify_release_artifact_licenses "${verifier_probe}/verify_release_artifact_licenses"
+          printf '%s\n' 'intentional license drift probe' > "${verifier_probe}/LICENSE"
+          for artifact in "${artifacts[@]}"; do
+            probe_log="${verifier_probe}/$(basename "${artifact}").log"
+            if "${verifier_probe}/verify_release_artifact_licenses" "${artifact}" >"${probe_log}" 2>&1; then
+              echo "License drift probe unexpectedly accepted ${artifact}." >&2
+              exit 1
+            fi
+            if ! grep -q 'LICENSE bytes differ' "${probe_log}"; then
+              echo "License drift probe failed for an unrelated reason in ${artifact}." >&2
+              cat "${probe_log}" >&2
+              exit 1
+            fi
+          done
           mkdir release-assets
           for artifact in "${artifacts[@]}"; do
             cp "${artifact}" "${artifact}.sha256" release-assets/
@@ -262,6 +282,8 @@ jobs:
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
+          HOLDER_RELEASE_TOKEN: ${{ secrets.SKILL_BILL_COPYRIGHT_HOLDER_RELEASE_TOKEN }}
+          HOLDER_GITHUB_LOGIN: ${{ vars.SKILL_BILL_COPYRIGHT_HOLDER_GITHUB_LOGIN }}
           RELEASE_TAG: ${{ steps.release_meta.outputs.tag || steps.staging_meta.outputs.tag }}
           RELEASE_PRERELEASE: ${{ steps.release_meta.outputs.prerelease || steps.staging_meta.outputs.prerelease }}
           IS_STAGING: ${{ github.event_name == 'workflow_dispatch' }}
@@ -271,6 +293,33 @@ jobs:
           if [[ -z "${RELEASE_TAG}" ]]; then
             echo "No release tag resolved; refusing to publish." >&2
             exit 1
+          fi
+
+          holder_release=false
+          if [[ "${RELEASE_TAG}" == "v1.0.0" && "${RELEASE_PRERELEASE}" != "true" ]]; then
+            if [[ -z "${HOLDER_RELEASE_TOKEN}" || -z "${HOLDER_GITHUB_LOGIN}" ]]; then
+              echo "Stable v1.0.0 publication requires the copyright holder's release token and GitHub login." >&2
+              exit 1
+            fi
+            GH_TOKEN="${HOLDER_RELEASE_TOKEN}"
+            authenticated_login="$(gh api user --jq '.login')"
+            if [[ "${authenticated_login}" != "${HOLDER_GITHUB_LOGIN}" ]]; then
+              echo "Stable v1.0.0 publication token is not authenticated as the configured copyright holder." >&2
+              exit 1
+            fi
+            holder_release=true
+          fi
+
+          expected_commit="${GITHUB_SHA}"
+          if [[ "${IS_STAGING}" != "true" ]]; then
+            expected_commit="$(git ls-remote origin "refs/tags/${RELEASE_TAG}^{}" | awk 'NR == 1 { print $1 }')"
+            if [[ -z "${expected_commit}" ]]; then
+              expected_commit="$(git ls-remote --refs origin "refs/tags/${RELEASE_TAG}" | awk 'NR == 1 { print $1 }')"
+            fi
+            if [[ -z "${expected_commit}" || "${expected_commit}" != "${GITHUB_SHA}" ]]; then
+              echo "Release tag ${RELEASE_TAG} does not peel to the validated commit ${GITHUB_SHA}." >&2
+              exit 1
+            fi
           fi
 
           release_version="${RELEASE_TAG#v}"
@@ -315,20 +364,28 @@ jobs:
           done
 
           release_exists=false
+          release_published=false
           if gh release view "${RELEASE_TAG}" --repo "${{ github.repository }}" >/dev/null 2>&1; then
             release_exists=true
           fi
 
           if [[ "${release_exists}" == "true" ]]; then
-            release_metadata="$(gh release view "${RELEASE_TAG}" --repo "${{ github.repository }}" --json isDraft,isPrerelease,targetCommitish,tagName --jq '[.isDraft, .isPrerelease, .targetCommitish, .tagName] | @tsv')"
-            IFS=$'\t' read -r existing_draft existing_prerelease existing_target existing_tag <<< "${release_metadata}"
-            if [[ "${existing_draft}" != "true" ]]; then
-              echo "Release ${RELEASE_TAG} is already published and cannot be resumed." >&2
-              exit 1
-            fi
-            if [[ "${existing_tag}" != "${RELEASE_TAG}" || "${existing_target}" != "${GITHUB_SHA}" || "${existing_prerelease}" != "${RELEASE_PRERELEASE}" ]]; then
+            release_metadata="$(gh release view "${RELEASE_TAG}" --repo "${{ github.repository }}" --json author,isDraft,isPrerelease,targetCommitish,tagName --jq '[.isDraft, .isPrerelease, .targetCommitish, .tagName, .author.login] | @tsv')"
+            IFS=$'\t' read -r existing_draft existing_prerelease existing_target existing_tag existing_author <<< "${release_metadata}"
+            if [[ "${existing_tag}" != "${RELEASE_TAG}" || "${existing_prerelease}" != "${RELEASE_PRERELEASE}" ]]; then
               echo "Existing draft ${RELEASE_TAG} does not match this validated tag, commit, and prerelease classification." >&2
               exit 1
+            fi
+            if [[ "${IS_STAGING}" == "true" && "${existing_target}" != "${expected_commit}" ]]; then
+              echo "Existing staging release ${RELEASE_TAG} does not target the validated commit ${expected_commit}." >&2
+              exit 1
+            fi
+            if [[ "${holder_release}" == "true" && "${existing_author}" != "${HOLDER_GITHUB_LOGIN}" ]]; then
+              echo "Stable v1.0.0 release ${RELEASE_TAG} was not created by the configured copyright holder." >&2
+              exit 1
+            fi
+            if [[ "${existing_draft}" != "true" ]]; then
+              release_published=true
             fi
           else
             if [[ "${IS_STAGING}" == "true" ]] && git ls-remote --exit-code --refs origin "refs/tags/${RELEASE_TAG}" >/dev/null 2>&1; then
@@ -378,6 +435,10 @@ jobs:
                 exit 1
               fi
             else
+              if [[ "${release_published}" == "true" ]]; then
+                echo "Published release is missing expected asset: ${asset_name}." >&2
+                exit 1
+              fi
               gh release upload "${RELEASE_TAG}" "dist/${asset_name}" --repo "${{ github.repository }}"
             fi
           done
@@ -393,4 +454,8 @@ jobs:
             echo "Draft release contains an unexpected number of assets: ${uploaded_count}." >&2
             exit 1
           fi
-          gh release edit "${RELEASE_TAG}" --repo "${{ github.repository }}" --draft=false
+          if [[ "${release_published}" == "true" ]]; then
+            echo "Published release ${RELEASE_TAG} already matches the validated metadata and assets."
+          else
+            gh release edit "${RELEASE_TAG}" --repo "${{ github.repository }}" --draft=false
+          fi

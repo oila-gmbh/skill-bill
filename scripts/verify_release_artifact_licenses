@@ -18,13 +18,19 @@ temporary_dirs=()
 mounted_dirs=()
 
 cleanup_temp_dirs() {
-  local directory mount_dir
+  local exit_status=$? directory mount_dir
   for mount_dir in "${mounted_dirs[@]}"; do
-    hdiutil detach "${mount_dir}" >/dev/null 2>&1 || true
+    if ! hdiutil detach "${mount_dir}" >/dev/null 2>&1; then
+      echo "Could not detach mounted disk image at ${mount_dir}." >&2
+      if [[ "${exit_status}" == "0" ]]; then
+        exit_status=1
+      fi
+    fi
   done
   for directory in "${temporary_dirs[@]}"; do
     rm -rf "${directory}"
   done
+  return "${exit_status}"
 }
 
 trap cleanup_temp_dirs EXIT
@@ -126,16 +132,40 @@ find_desktop_license() {
   printf '%s\n' "${entry}"
 }
 
+find_desktop_license_entry() {
+  local entries="$1"
+  local artifact="$2"
+  local entry entry_count
+  entry=""
+  entry_count=0
+  while IFS= read -r candidate; do
+    [[ -n "${candidate}" ]] || continue
+    case "${candidate}" in
+      /*|..|../*|*/..|*/../*)
+        echo "Unsafe archive entry in ${artifact}: ${candidate}." >&2
+        exit 1
+        ;;
+    esac
+    if [[ "${candidate}" == "resources/skill-bill-runtime/LICENSE" || "${candidate}" == */resources/skill-bill-runtime/LICENSE ]]; then
+      entry="${candidate}"
+      entry_count=$((entry_count + 1))
+    fi
+  done <<< "${entries}"
+  if [[ "${entry_count}" != "1" ]]; then
+    echo "Expected exactly one canonical resources/skill-bill-runtime/LICENSE entry in ${artifact}, found ${entry_count}." >&2
+    exit 1
+  fi
+  printf '%s\n' "${entry}"
+}
+
 verify_deb() {
   local artifact="$1"
-  local work_dir entry
+  local entries entry
   require_command dpkg-deb
   require_command tar
-  work_dir="$(mktemp -d)"
-  temporary_dirs+=("${work_dir}")
-  dpkg-deb --fsys-tarfile "${artifact}" | tar -x -C "${work_dir}"
-  entry="$(find_desktop_license "${work_dir}" "${artifact}")"
-  if ! cmp -s "${root_license}" "${work_dir}/${entry}"; then
+  entries="$(dpkg-deb --fsys-tarfile "${artifact}" | tar -tf -)"
+  entry="$(find_desktop_license_entry "${entries}" "${artifact}")"
+  if ! cmp -s "${root_license}" <(dpkg-deb --fsys-tarfile "${artifact}" | tar -xOf - "${entry}"); then
     echo "Canonical desktop LICENSE bytes differ from root LICENSE in ${artifact}." >&2
     exit 1
   fi
@@ -143,15 +173,17 @@ verify_deb() {
 
 verify_rpm() {
   local artifact="$1"
-  local work_dir entry
+  local entries entry regular_entry_count
   require_command rpm2cpio
   require_command cpio
-  artifact="$(cd "$(dirname "${artifact}")" && pwd)/$(basename "${artifact}")"
-  work_dir="$(mktemp -d)"
-  temporary_dirs+=("${work_dir}")
-  (cd "${work_dir}" && rpm2cpio "${artifact}" | cpio -idm --quiet)
-  entry="$(find_desktop_license "${work_dir}" "${artifact}")"
-  if ! cmp -s "${root_license}" "${work_dir}/${entry}"; then
+  entries="$(rpm2cpio "${artifact}" | cpio -it --quiet)"
+  entry="$(find_desktop_license_entry "${entries}" "${artifact}")"
+  regular_entry_count="$(rpm2cpio "${artifact}" | cpio -itv --quiet | awk -v entry="${entry}" '$NF == entry && substr($1, 1, 1) == "-" { count++ } END { print count + 0 }')"
+  if [[ "${regular_entry_count}" != "1" ]]; then
+    echo "Canonical desktop LICENSE entry in ${artifact} must be one regular file." >&2
+    exit 1
+  fi
+  if ! cmp -s "${root_license}" <(rpm2cpio "${artifact}" | cpio -i --to-stdout --quiet "${entry}"); then
     echo "Canonical desktop LICENSE bytes differ from root LICENSE in ${artifact}." >&2
     exit 1
   fi
@@ -174,14 +206,11 @@ verify_dmg() {
 
 verify_msi() {
   local artifact="$1"
-  local work_dir windows_artifact windows_work_dir
-  require_command cygpath
-  require_command msiexec.exe
+  local work_dir entry
+  require_command lessmsi
   work_dir="$(mktemp -d)"
   temporary_dirs+=("${work_dir}")
-  windows_artifact="$(cygpath -aw "${artifact}")"
-  windows_work_dir="$(cygpath -aw "${work_dir}")"
-  msiexec.exe /a "${windows_artifact}" /qn "TARGETDIR=${windows_work_dir}"
+  lessmsi x "${artifact}" "${work_dir}" >/dev/null
   entry="$(find_desktop_license "${work_dir}" "${artifact}")"
   if ! cmp -s "${root_license}" "${work_dir}/${entry}"; then
     echo "Canonical desktop LICENSE bytes differ from root LICENSE in ${artifact}." >&2

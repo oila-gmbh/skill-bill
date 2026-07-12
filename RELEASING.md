@@ -24,10 +24,18 @@ A stable `v1.0.0`, every later release line, and later prereleases are rejected
 until the copyright holder replaces the transitional current-release license
 with a complete, versioned successor-license policy.
 
-That successor policy must be the complete root `LICENSE` text and declare a
-`Successor License Identifier`, `Successor License Effective Version: v1.0.0`,
-and substantive `Successor License Terms`. These validation fields record a
-deliberate versioned policy decision without preselecting the successor license.
+That successor policy must replace the transitional root `LICENSE` text, declare
+a `Successor License Identifier`, and have an explicit copyright-holder approval
+record tied to its exact normalized SHA-256. Use the
+[successor-license approval record](docs/release-successor-license-approval.md)
+before any `v1.0.0` or later release. This gate records a deliberate versioned
+policy decision without preselecting the successor license.
+
+For the exact stable `v1.0.0` publication, configure the repository secret
+`SKILL_BILL_COPYRIGHT_HOLDER_RELEASE_TOKEN` and variable
+`SKILL_BILL_COPYRIGHT_HOLDER_GITHUB_LOGIN` for Braian Gapur. The workflow
+fails closed unless that token authenticates as the configured holder and the
+release is created by that account.
 
 The [LICENSE](LICENSE) alone defines the Stable Release Event. A successful
 workflow, an existing GitHub Release object, a bare tag, or a local artifact is
