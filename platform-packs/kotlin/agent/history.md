@@ -3,7 +3,7 @@ Areas: Kotlin code-review baseline and all ten specialists, quality check, platf
 - Established Kotlin ownership for standalone Compose Desktop, Swing and JavaFX interop, server-rendered Kotlin, and CLI or TUI UI and accessibility review.
 - Kept Android and Compose Multiplatform behavior in KMP-owned lanes; KMP retains Kotlin as its required baseline and deterministically adds more-specific platform-correctness, UI, and UX/accessibility findings.
 - Deepened every Kotlin specialist with evidence-bearing Kotlin, coroutine, Flow, serialization, Gradle, JVM, framework, persistence, service, and toolchain failure modes.
-- Cleared the ten-rule, three-cluster, seven-checker-facet, 35 percent shared-shingle, and 65 percent corresponding-pair substance gates with area-specific guidance.
+- Passed pack, composition, render/install, repository, Gradle, agent-config, and substance validation, including the 35 percent shared-shingle and 65 percent corresponding-pair limits.
 Feature flag: N/A
 Acceptance criteria: 8/8 implemented
 
