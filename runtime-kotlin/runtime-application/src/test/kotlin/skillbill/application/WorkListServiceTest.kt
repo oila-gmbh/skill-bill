@@ -10,6 +10,7 @@ import skillbill.ports.persistence.TelemetryOutboxRepository
 import skillbill.ports.persistence.TelemetryReconciliationRepository
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.persistence.WorkListRepository
+import skillbill.ports.persistence.WorkflowStateRepository
 import skillbill.ports.persistence.model.WorkItem
 import skillbill.ports.persistence.model.WorkItemKind
 import skillbill.ports.persistence.model.WorkflowStateRecord
@@ -18,6 +19,7 @@ import java.nio.file.Path
 import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertFailsWith
+import kotlin.test.assertEquals
 
 class WorkListServiceTest {
   @Test
@@ -62,10 +64,58 @@ class WorkListServiceTest {
 
     assertFailsWith<InvalidWorkflowStateSchemaError> { service.list() }
   }
+
+  @Test
+  fun `work list batches workflow snapshot validation below SQLite bind limits`() {
+    val delegate = InMemoryWorkflowStates()
+    val workflows = BatchingWorkflowStates(delegate)
+    val work = buildList {
+      repeat(901) { index ->
+        val workflowId = "wfl-batch-$index"
+        delegate.saveFeatureImplementWorkflow(
+          WorkflowStateRecord(
+            workflowId = workflowId,
+            sessionId = "fis-batch-$index",
+            workflowName = "bill-feature-task",
+            contractVersion = "0.1",
+            workflowStatus = "running",
+            currentStepId = "implement",
+            stepsJson = "[]",
+            artifactsJson = "{}",
+            startedAt = "2026-05-01T12:00:00Z",
+            updatedAt = "2026-05-01T12:00:00Z",
+            finishedAt = null,
+          ),
+        )
+        add(
+          WorkItem(
+            issueKey = "SKILL-117",
+            workflowKind = WorkItemKind.FEATURE_TASK_PROSE,
+            workflowId = workflowId,
+            startedAt = Instant.parse("2026-05-01T12:00:00Z"),
+            currentState = "running",
+            stateEnteredAt = Instant.parse("2026-05-01T12:00:00Z"),
+            stateEnteredAtEstimated = false,
+          ),
+        )
+      }
+    }
+    val service = WorkListService(
+      database = WorkListDatabase(workflows = workflows, work = work),
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+    )
+
+    val result = service.list()
+
+    assertEquals(901, result.work.size)
+    assertEquals(901, workflows.snapshotBatchSizes.sum())
+    assertEquals(2, workflows.snapshotBatchSizes.size)
+    assertEquals(true, workflows.snapshotBatchSizes.all { it <= 900 })
+  }
 }
 
 private class WorkListDatabase(
-  private val workflows: InMemoryWorkflowStates,
+  private val workflows: WorkflowStateRepository,
   private val work: List<WorkItem>,
 ) : DatabaseSessionFactory {
   override fun resolveDbPath(dbOverride: String?): Path = Path.of("/fake/work-list.db")
@@ -92,5 +142,17 @@ private class WorkListDatabase(
       get() = error("Not exercised by WorkListServiceTest.")
     override val telemetryOutbox: TelemetryOutboxRepository
       get() = error("Not exercised by WorkListServiceTest.")
+  }
+}
+
+private class BatchingWorkflowStates(
+  private val delegate: WorkflowStateRepository,
+) : WorkflowStateRepository by delegate {
+  val snapshotBatchSizes = mutableListOf<Int>()
+
+  override fun getFeatureImplementWorkflows(workflowIds: Set<String>): Map<String, WorkflowStateRecord> {
+    snapshotBatchSizes += workflowIds.size
+    require(workflowIds.size <= 900) { "Snapshot lookup exceeds SQLite's bind limit." }
+    return delegate.getFeatureImplementWorkflows(workflowIds)
   }
 }

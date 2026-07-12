@@ -444,6 +444,7 @@ private class StatusFakeDatabaseSessionFactory(
     override val telemetryReconciliation: TelemetryReconciliationRepository get() = error("unused")
     override val telemetryOutbox: TelemetryOutboxRepository get() = error("unused")
     override val workflowStates: WorkflowStateRepository = repository
+    override val workList = skillbill.ports.persistence.EmptyWorkListRepository
   }
 }
 

@@ -286,8 +286,8 @@ object McpWorkflowRuntime {
     kind: WorkflowFamilyKind,
     sessionId: String = "",
     currentStepId: String? = null,
-    issueKey: String? = null,
     context: McpRuntimeContext = McpRuntimeContext(),
+    issueKey: String? = null,
   ): Map<String, Any?> {
     val runtimeServices = services(context)
     return runtimeServices.workflowService.open(

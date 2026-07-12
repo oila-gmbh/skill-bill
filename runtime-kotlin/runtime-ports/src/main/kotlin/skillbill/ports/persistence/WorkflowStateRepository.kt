@@ -65,6 +65,9 @@ interface FeatureImplementWorkflowStateRepository {
 
   fun getFeatureImplementWorkflow(workflowId: String): WorkflowStateRecord?
 
+  fun getFeatureImplementWorkflows(workflowIds: Set<String>): Map<String, WorkflowStateRecord> =
+    workflowIds.mapNotNull { workflowId -> getFeatureImplementWorkflow(workflowId)?.let { workflowId to it } }.toMap()
+
   fun listFeatureImplementWorkflows(limit: Int = 20): List<WorkflowStateRecord>
 
   fun latestFeatureImplementWorkflow(): WorkflowStateRecord?
@@ -76,6 +79,9 @@ interface FeatureVerifyWorkflowStateRepository {
   fun saveFeatureVerifyWorkflow(row: WorkflowStateRecord)
 
   fun getFeatureVerifyWorkflow(workflowId: String): WorkflowStateRecord?
+
+  fun getFeatureVerifyWorkflows(workflowIds: Set<String>): Map<String, WorkflowStateRecord> =
+    workflowIds.mapNotNull { workflowId -> getFeatureVerifyWorkflow(workflowId)?.let { workflowId to it } }.toMap()
 
   fun listFeatureVerifyWorkflows(limit: Int = 20): List<WorkflowStateRecord>
 
@@ -97,6 +103,9 @@ interface FeatureTaskRuntimeWorkflowStateRepository {
   fun saveFeatureTaskRuntimeWorkflow(row: WorkflowStateRecord)
 
   fun getFeatureTaskRuntimeWorkflow(workflowId: String): WorkflowStateRecord?
+
+  fun getFeatureTaskRuntimeWorkflows(workflowIds: Set<String>): Map<String, WorkflowStateRecord> =
+    workflowIds.mapNotNull { workflowId -> getFeatureTaskRuntimeWorkflow(workflowId)?.let { workflowId to it } }.toMap()
 
   fun listFeatureTaskRuntimeWorkflows(limit: Int = 20): List<WorkflowStateRecord>
 

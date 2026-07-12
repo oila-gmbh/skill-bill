@@ -1,9 +1,12 @@
 package skillbill.db
 
 import skillbill.contracts.JsonSupport
+import skillbill.db.core.DatabaseColumnMigrations
 import skillbill.db.core.DatabaseMigrations
 import skillbill.db.core.DatabaseRuntime
 import skillbill.db.telemetry.GoalTelemetryMigration
+import skillbill.db.worklist.SQLiteWorkListRepository
+import skillbill.error.InvalidWorkListRowError
 import skillbill.db.telemetry.LifecycleTelemetryStore
 import skillbill.telemetry.model.FeatureImplementFinishedRecord
 import java.nio.file.Files
@@ -14,6 +17,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import kotlin.test.assertFailsWith
 
 @Suppress("LargeClass")
 class DatabaseMigrationsTest {
@@ -263,7 +267,8 @@ class DatabaseMigrationsTest {
           ) VALUES
             ('wfl-finished', 'prose', '0.1', '2026-05-01T10:00:00Z', '2026-05-02T10:00:00Z', '2026-05-03T10:00:00Z'),
             ('wfl-updated', 'prose', '0.1', '2026-05-01T10:00:00Z', '2026-05-02T10:00:00Z', NULL),
-            ('wfl-started', 'prose', '0.1', '2026-05-01T10:00:00Z', '', NULL)
+            ('wfl-started', 'prose', '0.1', '2026-05-01T10:00:00Z', '', NULL),
+            ('wfl-no-time', 'prose', '0.1', '', '', NULL)
           """.trimIndent(),
         )
         statement.executeUpdate(
@@ -273,7 +278,8 @@ class DatabaseMigrationsTest {
           ) VALUES
             ('goal-finished', 'SKILL-117', '2026-05-01T10:00:00Z', '2026-05-02T10:00:00Z', '2026-05-03T10:00:00Z'),
             ('goal-activity', 'SKILL-117', '2026-05-01T10:00:00Z', '2026-05-02T10:00:00Z', NULL),
-            ('goal-started', 'SKILL-117', '2026-05-01T10:00:00Z', '', NULL)
+            ('goal-started', 'SKILL-117', '2026-05-01T10:00:00Z', '', NULL),
+            ('goal-no-time', 'SKILL-117', '', '', NULL)
           """.trimIndent(),
         )
       }
@@ -314,7 +320,63 @@ class DatabaseMigrationsTest {
           "state_entered_at_estimated",
         ),
       )
+      assertEquals(
+        null,
+        nullableTableColumnValue(
+          connection,
+          "feature_task_workflows",
+          "workflow_id",
+          "wfl-no-time",
+          "state_entered_at",
+        ),
+      )
+      assertEquals(
+        null,
+        nullableTableColumnValue(
+          connection,
+          "goal_issue_progress",
+          "parent_workflow_id",
+          "goal-no-time",
+          "state_entered_at",
+        ),
+      )
+      assertEquals(
+        1,
+        tableColumnValue(
+          connection,
+          "feature_task_workflows",
+          "workflow_id",
+          "wfl-no-time",
+          "state_entered_at_estimated",
+        ),
+      )
+      assertEquals(
+        1,
+        tableColumnValue(
+          connection,
+          "goal_issue_progress",
+          "parent_workflow_id",
+          "goal-no-time",
+          "state_entered_at_estimated",
+        ),
+      )
+      assertFailsWith<InvalidWorkListRowError> {
+        SQLiteWorkListRepository(connection).list()
+      }
+      connection.createStatement().use { statement ->
+        statement.execute(
+          """
+          CREATE TRIGGER reject_missing_timestamp_rewrite
+          BEFORE UPDATE ON feature_task_workflows
+          BEGIN
+            SELECT RAISE(ABORT, 'missing legacy timestamp must not be rewritten');
+          END
+          """.trimIndent(),
+        )
+      }
     }
+
+    DatabaseRuntime.ensureDatabase(dbPath).close()
   }
 
   @Test
@@ -348,7 +410,8 @@ class DatabaseMigrationsTest {
       }
     }
 
-    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+    DriverManager.getConnection("jdbc:sqlite:$dbPath").use { connection ->
+      DatabaseColumnMigrations.applyWorkListMetadata(connection)
       assertEquals(
         "SKILL-117",
         tableColumnValue(connection, "feature_task_workflows", "workflow_id", "wftr-text-key", "issue_key"),
@@ -358,6 +421,38 @@ class DatabaseMigrationsTest {
         nullableTableColumnValue(connection, "feature_task_workflows", "workflow_id", "wftr-number-key", "issue_key"),
       )
     }
+  }
+
+  @Test
+  fun `healthy database reopens do not retry unrecoverable issue key recovery`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-db-work-list-recovery").resolve("metrics.db")
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      connection.createStatement().use { statement ->
+        statement.executeUpdate(
+          """
+          INSERT INTO feature_task_workflows (
+            workflow_id, mode, contract_version, workflow_status, artifacts_json,
+            started_at, state_entered_at, state_entered_at_estimated
+          ) VALUES (
+            'wftr-unrecoverable', 'runtime', '0.1', 'running', '{not json}',
+            '2026-05-01T10:00:00Z', '2026-05-01T10:00:00Z', 0
+          )
+          """.trimIndent(),
+        )
+        statement.execute(
+          """
+          CREATE TRIGGER reject_recovery_retry
+          BEFORE UPDATE ON feature_task_workflows
+          BEGIN
+            SELECT RAISE(ABORT, 'unrecoverable issue key must not be retried');
+          END
+          """.trimIndent(),
+        )
+      }
+    }
+
+    DatabaseRuntime.ensureDatabase(dbPath).close()
   }
 
   @Test

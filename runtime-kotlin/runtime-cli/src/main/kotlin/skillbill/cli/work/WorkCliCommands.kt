@@ -13,7 +13,7 @@ import skillbill.cli.core.CliRunState
 import skillbill.cli.core.DocumentedCliCommand
 import skillbill.cli.core.DocumentedNoOpCliCommand
 import skillbill.cli.model.CliFormat
-import skillbill.ports.persistence.model.WorkItem
+import skillbill.application.work.WorkListItem
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
@@ -49,10 +49,10 @@ class WorkListCommand(
 }
 
 private fun WorkListResult.toPayload(): Map<String, Any?> = mapOf(
-  "work" to work.map(WorkItem::toPayload),
+  "work" to work.map(WorkListItem::toPayload),
 )
 
-private fun WorkItem.toPayload(): Map<String, Any?> = linkedMapOf(
+private fun WorkListItem.toPayload(): Map<String, Any?> = linkedMapOf(
   "issue_key" to issueKey,
   "workflow_kind" to workflowKind.wireValue,
   "workflow_id" to workflowId,
@@ -69,7 +69,7 @@ private fun WorkListResult.toTable(): String {
     listOf(
       item.issueKey?.toTerminalSafeIssueKey() ?: "-",
       item.workflowKind.wireValue,
-      item.workflowId,
+      item.workflowId.toTerminalSafeText(),
       formatter.format(item.startedAt),
       item.currentState,
       formatter.format(item.stateEnteredAt) + if (item.stateEnteredAtEstimated) "~" else "",
@@ -89,12 +89,16 @@ private fun WorkListResult.toTable(): String {
 }
 
 internal fun String.toTerminalSafeIssueKey(): String {
+  return toTerminalSafeText().truncateTerminalDisplayWidth(MAX_TABLE_ISSUE_KEY_DISPLAY_WIDTH)
+}
+
+internal fun String.toTerminalSafeText(): String {
   val sanitized = buildString(length) {
-    this@toTerminalSafeIssueKey.codePoints().forEach { codePoint ->
+    this@toTerminalSafeText.codePoints().forEach { codePoint ->
       appendCodePoint(if (Character.isISOControl(codePoint)) REPLACEMENT_CODE_POINT else codePoint)
     }
   }
-  return sanitized.truncateTerminalDisplayWidth(MAX_TABLE_ISSUE_KEY_DISPLAY_WIDTH)
+  return sanitized
 }
 
 internal fun terminalDisplayWidth(value: String): Int = value.codePoints().toArray().sumOf(::terminalDisplayWidth)
@@ -149,6 +153,8 @@ private val WIDE_CODE_POINT_RANGES: List<IntRange> = listOf(
   0x1B000..0x1B12F,
   0x1B170..0x1B2FF,
   0x1F200..0x1F251,
+  0x1F300..0x1FAFF,
+  0x1FC00..0x1FFFD,
   0x20000..0x3FFFD,
 )
 

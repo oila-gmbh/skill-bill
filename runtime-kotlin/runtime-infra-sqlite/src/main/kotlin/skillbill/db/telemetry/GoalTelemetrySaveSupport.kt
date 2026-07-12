@@ -182,7 +182,10 @@ fun recordGoalIssueBlockedSegment(
         last_activity_at = CURRENT_TIMESTAMP,
         last_blocked_at = CURRENT_TIMESTAMP,
         last_blocked_segment_workflow_id = ?
-    WHERE parent_workflow_id = ? AND issue_key = ?
+    WHERE parent_workflow_id = ?
+      AND issue_key = ?
+      AND finished_at IS NULL
+      AND COALESCE(status, '') NOT IN ('completed', 'failed', 'abandoned')
     """.trimIndent(),
   ).use { statement ->
     statement.bind(workflowId, parentWorkflowId, issueKey)

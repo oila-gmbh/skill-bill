@@ -12,7 +12,7 @@ import skillbill.workflow.WorkflowSnapshotValidator
 
 data class WorkListResult(
   val dbPath: String,
-  val work: List<WorkItem>,
+  val work: List<WorkListItem>,
 )
 
 @Inject
@@ -25,28 +25,48 @@ class WorkListService(
   fun list(limit: Int? = null, dbOverride: String? = null): WorkListResult {
     require(limit == null || limit > 0) { "--limit must be a positive integer." }
     return database.read(dbOverride) { unitOfWork ->
-      val work = unitOfWork.workList.list(limit)
-      validateWorkflowSnapshots(unitOfWork, work)
+      val persistedWork = unitOfWork.workList.list(limit)
+      validateWorkflowSnapshots(unitOfWork, persistedWork)
       WorkListResult(
         dbPath = unitOfWork.dbPath.toString(),
-        work = work,
+        work = persistedWork.map(WorkItem::toApplicationItem),
       )
     }
   }
 
   private fun validateWorkflowSnapshots(unitOfWork: UnitOfWork, work: List<WorkItem>) {
-    work.forEach { item ->
-      val family = when (item.workflowKind) {
-        WorkItemKind.FEATURE_TASK_PROSE -> WorkflowFamily.IMPLEMENT
-        WorkItemKind.FEATURE_TASK_RUNTIME -> WorkflowFamily.TASK_RUNTIME
-        WorkItemKind.FEATURE_VERIFY -> WorkflowFamily.VERIFY
-        WorkItemKind.FEATURE_GOAL -> null
-      } ?: return@forEach
-      val snapshot = family.get(unitOfWork.workflowStates, item.workflowId)
-        ?: throw InvalidWorkListRowError(
-          "Work-list row '${item.workflowId}' has no matching ${item.workflowKind.wireValue} workflow snapshot.",
-        )
-      workflowEngine.summaryView(family.definition, snapshot)
+    work.groupBy(::workflowFamily).forEach { (family, items) ->
+      family ?: return@forEach
+      val snapshots = family.getAll(unitOfWork.workflowStates, items.mapTo(linkedSetOf(), WorkItem::workflowId))
+      items.forEach { item ->
+        val snapshot = snapshots[item.workflowId]
+          ?: throw InvalidWorkListRowError(
+            "Work-list row '${item.workflowId}' has no matching ${item.workflowKind.wireValue} workflow snapshot.",
+          )
+        workflowEngine.summaryView(family.definition, snapshot)
+      }
     }
   }
 }
+
+private fun workflowFamily(item: WorkItem): WorkflowFamily? = when (item.workflowKind) {
+  WorkItemKind.FEATURE_TASK_PROSE -> WorkflowFamily.IMPLEMENT
+  WorkItemKind.FEATURE_TASK_RUNTIME -> WorkflowFamily.TASK_RUNTIME
+  WorkItemKind.FEATURE_VERIFY -> WorkflowFamily.VERIFY
+  WorkItemKind.FEATURE_GOAL -> null
+}
+
+private fun WorkItem.toApplicationItem(): WorkListItem = WorkListItem(
+  issueKey = issueKey,
+  workflowKind = when (workflowKind) {
+    WorkItemKind.FEATURE_TASK_PROSE -> WorkListItemKind.FEATURE_TASK_PROSE
+    WorkItemKind.FEATURE_TASK_RUNTIME -> WorkListItemKind.FEATURE_TASK_RUNTIME
+    WorkItemKind.FEATURE_VERIFY -> WorkListItemKind.FEATURE_VERIFY
+    WorkItemKind.FEATURE_GOAL -> WorkListItemKind.FEATURE_GOAL
+  },
+  workflowId = workflowId,
+  startedAt = startedAt,
+  currentState = currentState,
+  stateEnteredAt = stateEnteredAt,
+  stateEnteredAtEstimated = stateEnteredAtEstimated,
+)

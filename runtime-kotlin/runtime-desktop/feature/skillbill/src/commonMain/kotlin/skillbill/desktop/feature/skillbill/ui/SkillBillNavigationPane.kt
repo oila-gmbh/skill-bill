@@ -288,6 +288,7 @@ private fun WorkSection(
   )
   val toggleDescription = stringResource(Res.string.work_section_toggle_cd)
   val refreshDescription = stringResource(Res.string.work_section_refresh_cd)
+  val refreshEnabled = enabled && state.loadState != WorkListLoadState.LOADING
   Column(modifier = Modifier.fillMaxWidth().padding(top = SkillBillDimens.spacingLg)) {
     Row(
       modifier = Modifier
@@ -319,11 +320,11 @@ private fun WorkSection(
         modifier = Modifier
           .testTag(WORK_SECTION_REFRESH_TAG)
           .semantics { contentDescription = refreshDescription }
-          .clickable(enabled = enabled && state.loadState != WorkListLoadState.LOADING, role = Role.Button) {
+          .clickable(enabled = refreshEnabled, role = Role.Button) {
             onRefresh()
           }
           .padding(SkillBillDimens.padSm),
-        color = if (enabled) SkillBillTheme.frameTokens.primary else SkillBillTheme.frameTokens.subtle,
+        color = if (refreshEnabled) SkillBillTheme.frameTokens.primary else SkillBillTheme.frameTokens.subtle,
         style = MaterialTheme.typography.labelSmall,
       )
     }

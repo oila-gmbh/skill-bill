@@ -70,26 +70,35 @@ internal object DatabaseColumnMigrations {
   }
 
   fun applyWorkListMetadata(connection: Connection) {
-    ensureWorkListWorkflowColumns(connection)
-    if (tableExists(connection, "goal_issue_progress")) {
-      ensureColumn(connection, "goal_issue_progress", "state_entered_at", "TEXT")
-      ensureColumn(connection, "goal_issue_progress", "state_entered_at_estimated", "INTEGER")
-      healGoalIssueProgressStateEntries(connection)
+    applyWorkListMetadata(connection, recoverIssueKeys = true)
+  }
+
+  fun healWorkListMetadata(connection: Connection) {
+    applyWorkListMetadata(connection, recoverIssueKeys = false)
+  }
+
+  private fun applyWorkListMetadata(connection: Connection, recoverIssueKeys: Boolean) {
+    val workflowColumnsHealed = ensureWorkListWorkflowColumns(connection)
+    val goalColumnsHealed = ensureGoalWorkListColumns(connection)
+    if (recoverIssueKeys || workflowColumnsHealed || goalColumnsHealed) {
+      recoverRuntimeWorkflowIssueKeys(connection)
+      recoverGoalContinuationWorkflowIssueKeys(connection)
     }
   }
 
-  private fun ensureWorkListWorkflowColumns(connection: Connection) {
+  private fun ensureWorkListWorkflowColumns(connection: Connection): Boolean {
+    var columnsHealed = false
     listOf("feature_task_workflows", "feature_verify_workflows").forEach { tableName ->
-      ensureColumn(connection, tableName, "issue_key", "TEXT")
-      ensureColumn(connection, tableName, "state_entered_at", "TEXT")
-      ensureColumn(connection, tableName, "state_entered_at_estimated", "INTEGER")
+      columnsHealed = ensureColumn(connection, tableName, "issue_key", "TEXT") || columnsHealed
+      columnsHealed = ensureColumn(connection, tableName, "state_entered_at", "TEXT") || columnsHealed
+      columnsHealed = ensureColumn(connection, tableName, "state_entered_at_estimated", "INTEGER") || columnsHealed
       connection.createStatement().use { statement ->
         statement.execute(
           """
           UPDATE $tableName
           SET state_entered_at = CASE
                 WHEN state_entered_at IS NULL OR state_entered_at = '' THEN COALESCE(
-                  NULLIF(finished_at, ''), NULLIF(updated_at, ''), NULLIF(started_at, ''), CURRENT_TIMESTAMP
+                  NULLIF(finished_at, ''), NULLIF(updated_at, ''), NULLIF(started_at, '')
                 )
                 ELSE state_entered_at
               END,
@@ -98,14 +107,36 @@ internal object DatabaseColumnMigrations {
                      OR state_entered_at_estimated IS NULL THEN 1
                 ELSE state_entered_at_estimated
               END
-          WHERE state_entered_at IS NULL OR state_entered_at = ''
-             OR state_entered_at_estimated IS NULL
+          WHERE state_entered_at_estimated IS NULL
+             OR (
+               (state_entered_at IS NULL OR state_entered_at = '')
+               AND (
+                 state_entered_at_estimated != 1
+                 OR NULLIF(finished_at, '') IS NOT NULL
+                 OR NULLIF(updated_at, '') IS NOT NULL
+                 OR NULLIF(started_at, '') IS NOT NULL
+               )
+             )
           """.trimIndent(),
         )
       }
     }
-    recoverRuntimeWorkflowIssueKeys(connection)
-    recoverGoalContinuationWorkflowIssueKeys(connection)
+    return columnsHealed
+  }
+
+  private fun ensureGoalWorkListColumns(connection: Connection): Boolean {
+    if (!tableExists(connection, "goal_issue_progress")) {
+      return false
+    }
+    val stateEnteredAtAdded = ensureColumn(connection, "goal_issue_progress", "state_entered_at", "TEXT")
+    val estimatedAdded = ensureColumn(
+      connection,
+      "goal_issue_progress",
+      "state_entered_at_estimated",
+      "INTEGER",
+    )
+    healGoalIssueProgressStateEntries(connection)
+    return stateEnteredAtAdded || estimatedAdded
   }
 
   private fun healGoalIssueProgressStateEntries(connection: Connection) {
@@ -121,7 +152,7 @@ internal object DatabaseColumnMigrations {
             END,
             state_entered_at = COALESCE(
               NULLIF(state_entered_at, ''), NULLIF(finished_at, ''), NULLIF(last_activity_at, ''),
-              NULLIF(first_started_at, ''), CURRENT_TIMESTAMP
+              NULLIF(first_started_at, '')
             ),
             state_entered_at_estimated = CASE
               WHEN state_entered_at IS NULL OR state_entered_at = ''
@@ -129,8 +160,16 @@ internal object DatabaseColumnMigrations {
               ELSE COALESCE(state_entered_at_estimated, 0)
             END
         WHERE status IS NULL OR status = ''
-           OR state_entered_at IS NULL OR state_entered_at = ''
            OR state_entered_at_estimated IS NULL
+           OR (
+             (state_entered_at IS NULL OR state_entered_at = '')
+             AND (
+               state_entered_at_estimated != 1
+               OR NULLIF(finished_at, '') IS NOT NULL
+               OR NULLIF(last_activity_at, '') IS NOT NULL
+               OR NULLIF(first_started_at, '') IS NOT NULL
+             )
+           )
         """.trimIndent(),
       )
     }
@@ -431,15 +470,16 @@ internal object DatabaseColumnMigrations {
     }
   }
 
-  private fun ensureColumn(connection: Connection, tableName: String, columnName: String, definition: String) {
+  private fun ensureColumn(connection: Connection, tableName: String, columnName: String, definition: String): Boolean {
     require(tableName.matches(safeIdentifierPattern)) { "Unsafe table name: '$tableName'" }
     require(columnName.matches(safeIdentifierPattern)) { "Unsafe column name: '$columnName'" }
     if (tableColumnNames(connection = connection, tableName = tableName).contains(columnName)) {
-      return
+      return false
     }
     connection.createStatement().use { statement ->
       statement.execute("ALTER TABLE $tableName ADD COLUMN $columnName $definition")
     }
+    return true
   }
 
   private fun backfillBlankColumn(connection: Connection, tableName: String, columnName: String, expression: String) {

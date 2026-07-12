@@ -461,6 +461,37 @@ class GoalTelemetryStoreTest {
   }
 
   @Test
+  fun `delayed blocked segments cannot replace a terminal goal issue state`() {
+    withConnection { connection ->
+      val store = LifecycleTelemetryStore(connection)
+      val parentWorkflowId = "wf-terminal-parent"
+      store.goalStarted(
+        startedRecord("$parentWorkflowId:seg:1", subtaskTotal = 1, resumed = false)
+          .copy(parentWorkflowId = parentWorkflowId),
+        "full",
+      )
+      store.goalIssueFinished(
+        GoalIssueFinishedRecord(
+          issueKey = "SKILL-66",
+          parentWorkflowId = parentWorkflowId,
+          status = "completed",
+          subtasksComplete = 1,
+          subtasksBlocked = 0,
+          subtasksSkipped = 0,
+          finishedAt = "2026-06-04T10:30:00Z",
+          mode = "runtime",
+        ),
+        "full",
+      )
+
+      val terminal = goalIssueState(connection, parentWorkflowId)
+      recordGoalIssueBlockedSegment(connection, parentWorkflowId, "SKILL-66", "$parentWorkflowId:seg:1")
+
+      assertEquals(terminal, goalIssueState(connection, parentWorkflowId))
+    }
+  }
+
+  @Test
   fun `goal issue completion recovers aggregates from persisted segments when progress is missing`() {
     withConnection { connection ->
       val store = LifecycleTelemetryStore(connection)

@@ -75,7 +75,13 @@ class WorkflowService(
     }
     return database.transaction(dbOverride) { unitOfWork ->
       val record = engine.openRecord(family.definition, workflowId, sessionId, stepId)
-      family.saveRecord(unitOfWork.workflowStates, record.toRecord().copy(issueKey = normalizeIssueKey(issueKey)))
+      family.saveRecord(
+        unitOfWork.workflowStates,
+        record.toRecord().copy(
+          startedAt = null,
+          issueKey = normalizeIssueKey(issueKey),
+        ),
+      )
       val saved = family.get(unitOfWork.workflowStates, workflowId) ?: record
       WorkflowOpenResult.Ok(
         workflowId = saved.workflowId,
@@ -446,6 +452,20 @@ internal enum class WorkflowFamily(
     TASK_RUNTIME -> repository.getFeatureTaskWorkflowAsMode(workflowId, FeatureTaskWorkflowMode.RUNTIME)
   }?.toSnapshot()
 
+  fun getAll(
+    repository: WorkflowStateRepository,
+    workflowIds: Set<String>,
+  ): Map<String, WorkflowStateSnapshot> = buildMap {
+    workflowIds.chunked(WORKFLOW_SNAPSHOT_BATCH_SIZE).forEach { batch ->
+      val records = when (this@WorkflowFamily) {
+        IMPLEMENT -> repository.getFeatureImplementWorkflows(batch.toSet())
+        VERIFY -> repository.getFeatureVerifyWorkflows(batch.toSet())
+        TASK_RUNTIME -> repository.getFeatureTaskRuntimeWorkflows(batch.toSet())
+      }
+      records.forEach { (workflowId, record) -> put(workflowId, record.toSnapshot()) }
+    }
+  }
+
   fun list(repository: WorkflowStateRepository, limit: Int): List<WorkflowStateSnapshot> = when (this) {
     IMPLEMENT -> repository.listFeatureTaskWorkflows(FeatureTaskWorkflowMode.PROSE, limit)
     VERIFY -> repository.listFeatureVerifyWorkflows(limit)
@@ -477,3 +497,5 @@ internal enum class WorkflowFamily(
     }
   }
 }
+
+private const val WORKFLOW_SNAPSHOT_BATCH_SIZE = 900

@@ -2,6 +2,7 @@ package skillbill.desktop.feature.skillbill.ui
 
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -142,6 +143,7 @@ class SkillBillWorkSectionTest {
 
     onNodeWithTag("work-section-toggle").performClick()
     onNodeWithText("Loading work…").assertIsDisplayed()
+    onNodeWithTag("work-section-refresh").assertIsNotEnabled()
     runOnIdle { state.value = WorkListState(expanded = true, loadState = WorkListLoadState.EMPTY) }
     onNodeWithText("No persisted work.").assertIsDisplayed()
     onNodeWithTag("work-section-refresh").performClick()

@@ -6,6 +6,7 @@ import skillbill.cli.core.CliRuntime
 import skillbill.cli.work.padTerminalEnd
 import skillbill.cli.work.terminalDisplayWidth
 import skillbill.cli.work.truncateTerminalDisplayWidth
+import skillbill.cli.work.toTerminalSafeText
 import skillbill.contracts.JsonSupport
 import skillbill.db.core.DatabaseRuntime
 import skillbill.di.RuntimeComponent
@@ -111,6 +112,25 @@ class CliWorkListRuntimeTest {
     assertEquals("A\u0301…", "A\u0301界".truncateTerminalDisplayWidth(2))
     assertEquals("界  ", "界".padTerminalEnd(4))
     assertEquals("A\u0301   ", "A\u0301".padTerminalEnd(4))
+    assertEquals(2, terminalDisplayWidth("🧪"))
+  }
+
+  @Test
+  fun `work list sanitizes persisted workflow identifiers for table output only`() {
+    val dbPath = Files.createTempDirectory("skillbill-cli-work-workflow-id-controls").resolve("metrics.db")
+    val workflowId = "goal\u001b]8;;https://example.test\u0007"
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      insertGoal(connection, workflowId, "SKILL-117", "2026-05-01T12:00:00Z", "2026-05-01T12:00:00Z", false)
+    }
+
+    val table = CliRuntime.run(listOf("--db", dbPath.toString(), "work", "list"))
+    val json = CliRuntime.run(listOf("--db", dbPath.toString(), "work", "list", "--format", "json"))
+    val row = (decodeJsonObject(json.stdout)["work"] as List<*>).single() as Map<*, *>
+
+    assertEquals(0, table.exitCode, table.stdout)
+    assertFalse(table.stdout.contains('\u001b'))
+    assertContains(table.stdout, workflowId.toTerminalSafeText())
+    assertEquals(workflowId, row["workflow_id"])
   }
 
   private fun RuntimeComponent.openWorkflow(kind: WorkflowFamilyKind, dbPath: java.nio.file.Path, issueKey: String): String =

@@ -17,7 +17,8 @@ class SQLiteWorkListRepository(
 ) : WorkListRepository {
   override fun list(limit: Int?): List<WorkItem> {
     require(limit == null || limit > 0) { "Work-list limit must be positive." }
-    val work = connection.prepareStatement(query()).use { statement ->
+    return connection.prepareStatement(query()).use { statement ->
+      statement.setInt(1, limit ?: -1)
       statement.executeQuery().use { resultSet ->
         buildList<WorkItem> {
           while (resultSet.next()) {
@@ -26,8 +27,6 @@ class SQLiteWorkListRepository(
         }
       }
     }
-    val ordered = work.sortedWith(compareByDescending(WorkItem::startedAt).thenByDescending(WorkItem::workflowId))
-    return limit?.let(ordered::take) ?: ordered
   }
 }
 
@@ -67,6 +66,28 @@ private fun query(): String =
            state_entered_at_estimated
     FROM goal_issue_progress
   )
+  ORDER BY unixepoch(started_at) DESC, ${fractionalSecondsSql("started_at")} DESC, workflow_id DESC
+  LIMIT ?
+  """.trimIndent()
+
+private fun fractionalSecondsSql(columnName: String): String =
+  """
+  CASE
+    WHEN instr($columnName, '.') = 0 THEN 0
+    ELSE CAST('0.' || substr(
+      substr($columnName, instr($columnName, '.') + 1),
+      1,
+      CASE
+        WHEN instr(substr($columnName, instr($columnName, '.') + 1), 'Z') > 0 THEN
+          instr(substr($columnName, instr($columnName, '.') + 1), 'Z') - 1
+        WHEN instr(substr($columnName, instr($columnName, '.') + 1), '+') > 0 THEN
+          instr(substr($columnName, instr($columnName, '.') + 1), '+') - 1
+        WHEN instr(substr($columnName, instr($columnName, '.') + 1), '-') > 0 THEN
+          instr(substr($columnName, instr($columnName, '.') + 1), '-') - 1
+        ELSE length(substr($columnName, instr($columnName, '.') + 1))
+      END
+    ) AS REAL)
+  END
   """.trimIndent()
 
 private fun java.sql.ResultSet.toWorkItem(): WorkItem {
