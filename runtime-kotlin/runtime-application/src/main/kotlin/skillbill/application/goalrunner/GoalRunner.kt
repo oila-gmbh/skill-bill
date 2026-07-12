@@ -868,8 +868,11 @@ internal class GoalRunnerLaunchReconciler(
     return if (branch != null && subtask != null && specPath != null) {
       // SKILL-87: a freshly pre-assigned id is an open, not a resume — drop it from childWorkflowId so
       // the command builder emits `run --workflow-id`; a pre-existing id stays the resume id.
-      val manifestWorkflowId = state.manifest.workflowIdFor(subtaskId)
-      val childWorkflowId = manifestWorkflowId?.takeIf { it != assignedWorkflowId }
+      val childWorkflowId = if (assignedWorkflowId == null) {
+        state.manifest.workflowIdFor(subtaskId)
+      } else {
+        null
+      }
       SkillRunGoalContinuationContext(
         parentIssueKey = issueKey,
         subtaskId = subtaskId,
@@ -879,7 +882,7 @@ internal class GoalRunnerLaunchReconciler(
         parentWorkflowId = state.parentWorkflowId,
         lastResumableStep = subtask.lastResumableStep?.takeIf(String::isNotBlank),
         childWorkflowId = childWorkflowId,
-        assignedWorkflowId = assignedWorkflowId?.takeIf { childWorkflowId == null },
+        assignedWorkflowId = assignedWorkflowId,
       )
     } else {
       null

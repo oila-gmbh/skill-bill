@@ -11,7 +11,7 @@ feature_branch: "feat/SKILL-114-platform-pack-substance"
 stack_branches: []
 current_subtask_intent:
   subtask_id: 7
-  action: "start"
+  action: "resume"
 subtasks:
 - id: 1
   name: "Substance standard and audit gate"
@@ -21,7 +21,7 @@ subtasks:
   commit_sha: null
   workflow_id: "wftr-20260711-142237-a3zz"
   blocked_reason: null
-  last_resumable_step: "commit_push"
+  last_resumable_step: null
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -34,7 +34,7 @@ subtasks:
   commit_sha: null
   workflow_id: "wftr-20260711-150116-qdza"
   blocked_reason: null
-  last_resumable_step: "commit_push"
+  last_resumable_step: null
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -50,7 +50,7 @@ subtasks:
   commit_sha: null
   workflow_id: "wftr-20260711-155902-gcp7"
   blocked_reason: null
-  last_resumable_step: "commit_push"
+  last_resumable_step: null
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -66,7 +66,7 @@ subtasks:
   commit_sha: null
   workflow_id: "wftr-20260711-172629-5l4g"
   blocked_reason: null
-  last_resumable_step: "commit_push"
+  last_resumable_step: null
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -82,7 +82,7 @@ subtasks:
   commit_sha: null
   workflow_id: "wftr-20260711-192911-tbi9"
   blocked_reason: null
-  last_resumable_step: "commit_push"
+  last_resumable_step: null
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -98,7 +98,7 @@ subtasks:
   commit_sha: null
   workflow_id: "wftr-20260711-200857-v75o"
   blocked_reason: null
-  last_resumable_step: "commit_push"
+  last_resumable_step: null
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -112,7 +112,7 @@ subtasks:
   status: "pending"
   branch: null
   commit_sha: null
-  workflow_id: "wftr-20260712-062526-6emu"
+  workflow_id: "wftr-20260712-080218-tfk5"
   blocked_reason: null
   last_resumable_step: null
   linear_issue_id: null

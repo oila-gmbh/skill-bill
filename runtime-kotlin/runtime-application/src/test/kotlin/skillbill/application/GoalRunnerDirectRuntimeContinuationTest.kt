@@ -32,6 +32,29 @@ class GoalRunnerDirectRuntimeContinuationTest {
     assertNull(launchRequest.skillRunRequest.promptOverride)
   }
 
+  @Test
+  fun `fresh assigned workflow id wins over stale manifest workflow id`() {
+    val store = InMemoryGoalManifestStore(
+      manifest = manifest(subtaskCount = 1).withWorkflowId(subtaskId = 1, workflowId = "wfl-stale-blocked"),
+    )
+    val reconciler = GoalRunnerLaunchReconciler(
+      manifestStore = store,
+      subtaskLauncher = RecordingSubtaskLauncher { launchFacts() },
+      outcomeStore = RecordingOutcomeStore(),
+    )
+
+    val launchRequest = reconciler.subtaskLaunchRequest(
+      issueKey = "SKILL-56",
+      subtaskId = 1,
+      request = wiringRunRequest(),
+      assignedWorkflowId = "wftr-fresh-assigned",
+    )
+    val context = requireNotNull(launchRequest.skillRunRequest.goalContinuation)
+
+    assertNull(context.childWorkflowId)
+    assertEquals("wftr-fresh-assigned", context.assignedWorkflowId)
+  }
+
   private fun wiringRunRequest(): skillbill.application.model.GoalRunnerRunRequest =
     skillbill.application.model.GoalRunnerRunRequest(
       issueKey = "SKILL-56",
