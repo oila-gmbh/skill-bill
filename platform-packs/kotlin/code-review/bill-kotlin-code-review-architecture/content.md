@@ -25,13 +25,13 @@ Use for Kotlin libraries, Gradle modules, services, workers, and JVM framework i
 - Require each injected `CoroutineScope` to end at its owning service lifecycle; a scope that outlives the owner risks leaked concurrent work and stale state.
 - Reject `GlobalScope` and hidden `CoroutineScope(Job())` construction because unowned jobs break shutdown ordering and leak resources.
 - Verify `suspend` appears at I/O or concurrency boundaries such as `Repository.load`; decorative suspension over blocking work causes dispatcher starvation and invalid caller contracts.
-- Require blocking adapters such as `Files.readAllBytes` to receive an explicit dispatcher owned by infrastructure; implicit execution can cause latency failure on `Dispatchers.Default`.
+- Require infrastructure adapters around blocking APIs such as `Files.readAllBytes` to switch to an explicitly owned blocking context; the dispatcher may be encapsulated by the adapter rather than injected into every API call, but running on `Dispatchers.Default` can still cause thread starvation.
 - Reject Gradle dependency cycles visible in `dependencies` or `api(project(...))` because they break build isolation and module ownership.
-- Require `internal` visibility or non-exported Gradle dependencies for implementation declarations; leaking them through `api` creates binary contract risk.
-- Verify transaction ownership is located in an application use case around `newSuspendedTransaction`; repository-local transactions can split atomic state changes.
+- Require `internal` visibility or Gradle `implementation` dependencies for declarations that are not part of the published binary contract; exposing them through public signatures or `api` creates downstream ABI and dependency risk.
+- When Exposed is detected, verify an application use case owns the atomic boundary and calls `newSuspendedTransaction`; repository-local boundaries risk partial commit, while prescribing that API to Spring, Hibernate, JDBC, or R2DBC would impose an invalid transaction contract on a different framework.
 - Require remote calls and event delivery to occur outside `@Transactional` work or through an outbox; holding the transaction risks timeout and incorrect ordering.
 - Reject singleton services that capture request-scoped principals or sessions through `@Singleton`; lifecycle mismatch causes cross-request data exposure.
-- Require shutdown ordering to cancel producers before closing `DataSource` or queue clients; reversed teardown risks resource failure and lost work.
-- Verify Java callbacks cross into suspend code through an owned adapter such as `CompletableFuture.await`; blocking `.get()` creates deadlock or starvation risk.
-- Reject Gradle source-set or package placement that makes JVM-only code reachable from unsupported modules; `sourceSets` leakage causes compiler and toolchain failure.
+- Require shutdown ordering to stop intake, cancel or drain owned producers, await bounded completion, and only then close `DataSource` or queue clients; reversed teardown lets live work reach closed resources or disappear before durable completion.
+- Verify JVM callbacks cross into suspend code through a lifecycle-owned adapter that maps completion and cancellation, such as adapting `CompletionStage` with `await`; blocking `.get()` can deadlock or starve the callback executor.
+- Reject Gradle module or `sourceSets` edges that make JVM-only code reachable from unsupported targets; misplaced dependencies or packages can compile in one module yet fail consumers, publication, or another toolchain.
 - For Blocker or Major findings, describe the concrete dependency-cycle or ownership-boundary failure scenario.

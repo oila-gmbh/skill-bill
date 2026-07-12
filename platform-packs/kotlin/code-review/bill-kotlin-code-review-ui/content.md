@@ -23,12 +23,12 @@ Run only when the diff contains Compose Desktop, Swing, JavaFX, server-rendered 
 ### UI Review Rules
 
 - Require Compose Desktop state that survives recomposition to use `remember` or owned observable state; recreating it can reset user input and break interaction state.
-- Reject side effects launched directly from a composable body; repeated recomposition can duplicate I/O and leak concurrent work instead of using `LaunchedEffect`.
-- Verify `LaunchedEffect` keys identify the actual lifecycle owner; a stale key can retain obsolete data while a broad key restarts expensive work.
+- Reject side effects launched directly from a composable body; select the effect primitive that matches ownership: `LaunchedEffect` for suspend work, `DisposableEffect` for acquire/dispose, `SideEffect` for post-commit synchronization, and `rememberUpdatedState` when a long-lived effect needs the latest callback.
+- When `LaunchedEffect` is appropriate, verify its keys identify the actual lifecycle owner; a stale key risks lifecycle failure by retaining obsolete work, while a broad key can cause performance regression through repeated launches.
 - Require expensive derived values to use `derivedStateOf` only when measurements show recomposition pressure; incorrect snapshots can cause stale rendering or performance regression.
-- Reject blocking I/O on the Compose application dispatcher; `runBlocking` can freeze painting and create input timeout.
-- Require Swing mutations to execute on `SwingUtilities.invokeLater` or the EDT; cross-thread model changes can race and corrupt widget state.
-- Verify JavaFX scene graph updates execute through `Platform.runLater`; background-thread updates can throw runtime failure and leave partial UI state.
+- Reject blocking I/O on the Compose Desktop UI thread; its UI execution context owns snapshot and rendering work and is not a generic dispatcher for application I/O, so `runBlocking` can freeze painting and cause input timeout.
+- Require Swing mutations on the EDT, using `SwingUtilities.invokeLater` only when the current execution is off that thread; cross-thread access risks a race, while always enqueueing can introduce stale ordering.
+- Require JavaFX scene-graph mutations on the JavaFX Application Thread, using `Platform.runLater` only to cross from another thread; cross-thread access can fail, while unnecessary re-enqueueing can produce invalid update ordering.
 - Require Swing or JavaFX bridges to dispose listeners and windows with the owning Compose lifecycle; retained callbacks can leak resources after close.
 - Reject server-rendered Kotlin templates that derive visible state from hidden mutable singletons; concurrent requests can expose another user's data.
 - Verify `kotlinx.html`, Thymeleaf, or FreeMarker conditionals render validation and recovery states; omitted errors can break form completion after invalid input.

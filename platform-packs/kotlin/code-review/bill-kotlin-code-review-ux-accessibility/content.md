@@ -22,7 +22,8 @@ Run only when a Kotlin diff exposes Compose Desktop, Swing, JavaFX, server-rende
 
 ### Accessibility Review Rules
 
-- Require meaningful Compose Desktop controls to expose `Modifier.semantics` roles and labels; missing semantics can make actions invisible to assistive technology.
+- Require meaningful Compose Desktop controls to expose accurate `Modifier.semantics` roles and labels, then verify assistive-technology exposure against the repository's Compose version and supported desktop OS; semantics alone do not prove the platform accessibility bridge is active.
+- Treat Compose Desktop accessibility activation as version- and platform-dependent: require repository evidence for any runtime flag, JVM property, or automatic activation path rather than prescribing one switch across releases.
 - Reject clickable containers without keyboard focus and activation through `focusable` and key handling; mouse-only behavior blocks task completion.
 - Verify focus movement after dialogs, errors, and dynamic content through `FocusRequester`; lost focus can trap keyboard users in invalid state.
 - Require state changes such as progress and validation to expose `stateDescription` or equivalent semantics; silent updates can cause accessibility failure.
@@ -35,7 +36,7 @@ Run only when a Kotlin diff exposes Compose Desktop, Swing, JavaFX, server-rende
 - Reject TUI meaning conveyed only through ANSI color; require text, symbols, or `NO_COLOR` behavior so low-vision and plain-terminal users retain state information.
 - Require terminal layouts and localized messages to survive resize and wide Unicode text; clipped controls or broken cursor ordering can block task completion.
 - Require `Modifier.semantics` state to follow observable UI lifecycle changes; stale announcements can break accessible task ordering.
-- Reject focus changes outside `SwingUtilities.invokeLater`; concurrent focus races can cause keyboard navigation failure.
+- Require Swing focus changes on the EDT, crossing with `SwingUtilities.invokeLater` only when currently off-thread; needless enqueueing can reorder focus after a newer user action.
 - Verify semantic templates with `axe-core` or an equivalent accessibility test; missing contract evidence risks invalid HTML and data-entry failure.
 - Require `gradle test` coverage for localized resource loading; missing keys can cause build-time or runtime accessibility failure.
 - Require bounded terminal redraw work around `SIGWINCH`; unbounded resize processing can exhaust resources and cause latency failure.

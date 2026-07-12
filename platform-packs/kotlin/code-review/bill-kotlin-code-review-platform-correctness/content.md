@@ -26,12 +26,12 @@ Use across Kotlin/JVM libraries and services. Android and Compose Multiplatform 
 - Reject unsafe generic casts around `List<*>` or erased Java collections because incorrect variance can corrupt data or throw `ClassCastException`.
 - Verify `data class` equality excludes mutable identity-sensitive state; unstable `equals` can break map membership and Flow state delivery.
 - Require exhaustive handling for `sealed interface` variants; an `else` branch can hide a new contract state and cause incorrect behavior.
-- Reject Java-facing defaults that rely only on Kotlin optional parameters; missing `@JvmOverloads` or a bridge can break JVM caller compatibility.
-- Require `CancellationException` to be rethrown from `catch (Exception)` and `runCatching`; swallowing it leaks lifecycle work and breaks cancellation ordering.
-- Verify `SupervisorJob` is used only where sibling failure isolation is intended; wrong supervision can either cancel healthy work or hide fatal failure.
+- For APIs actually published to Java callers, verify default parameters have the intended Java surface through explicit overloads, a bridge, or selectively applied `@JvmOverloads`; Kotlin-only and non-overloaded Java APIs do not require it.
+- Require broad `catch` blocks and `runCatching` recovery paths to propagate `CancellationException` while handling ordinary failures separately; swallowing cancellation keeps abandoned work alive and breaks parent-child completion ordering.
+- Verify `SupervisorJob` is used only where a child failure must not cancel siblings, and that failures are still observed; it isolates child failure propagation but does not make shared mutable state or a failed dependency safe.
 - Reject blocking calls on `Dispatchers.Default` and UI dispatchers; `Thread.sleep` or JDBC there risks thread starvation and timeout.
-- Require `Mutex` ownership paths to avoid reentrant acquisition; a holder calling another `withLock` path can deadlock concurrent state changes.
-- Verify shared mutation uses `AtomicReference`, `Mutex`, or confinement; a plain `var` updated by multiple coroutines risks races and lost data.
-- Reject `StateFlow` for distinct repeated events because equality conflation can lose required delivery; use an event contract with observable ordering.
-- Require bounded `SharedFlow` or channel overflow policy to match producer guarantees; unbounded buffering risks memory failure while dropped values break contracts.
+- Require `Mutex` ownership paths to avoid reentrant acquisition and keep suspension or external calls outside the critical section where possible; Kotlin `Mutex` is non-reentrant, so nested `withLock` by the same owner can suspend forever.
+- Verify shared mutation uses an atomic operation, `Mutex`, actor, or single-dispatcher confinement whose lifetime is explicit; choosing a dispatcher alone does not protect a plain `var` when other contexts can reach it, risking races and lost updates.
+- Require `StateFlow` only for a current-state contract where equality-based conflation is acceptable; using it for distinct repeated events risks delivery loss unless replay and ordering are defined elsewhere.
+- Require `SharedFlow` replay and extra-buffer capacity, channel capacity, and overflow behavior to match explicit producer/consumer guarantees; `SUSPEND` applies backpressure while drop policies accept data loss and rendezvous channels provide no buffer.
 - For Blocker or Major findings, describe the concrete invalid-state or ordering failure scenario.

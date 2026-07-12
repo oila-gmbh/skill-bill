@@ -135,6 +135,52 @@ class KotlinPlatformPackTest {
   }
 
   @Test
+  fun `kotlin specialists preserve corrected framework and concurrency contracts`() {
+    val reviewRoot = repoRootFromTest().resolve("platform-packs/kotlin/code-review")
+
+    val architecture = specialistContent(reviewRoot, "architecture")
+    assertContains(architecture, "dispatcher may be encapsulated by the adapter")
+    assertContains(architecture, "When Exposed is detected")
+    assertFalse(architecture.contains("every blocking API must receive an injected dispatcher"))
+
+    val correctness = specialistContent(reviewRoot, "platform-correctness")
+    assertContains(correctness, "propagate `CancellationException`")
+    assertContains(correctness, "equality-based conflation")
+    assertContains(correctness, "For APIs actually published to Java callers")
+
+    val persistence = specialistContent(reviewRoot, "persistence")
+    assertContains(persistence, "do not hop to `Dispatchers.IO` from inside an active thread-bound transaction")
+    assertContains(persistence, "transactional outbox")
+
+    val reliability = specialistContent(reviewRoot, "reliability")
+    assertContains(reliability, "parent or sibling `CancellationException`")
+    assertContains(reliability, "broker's drain or rebalance contract")
+
+    val performance = specialistContent(reviewRoot, "performance")
+    assertContains(performance, "`flowOn` changes only the upstream flow execution context")
+    assertContains(performance, "not a universal substitute")
+
+    val security = specialistContent(reviewRoot, "security")
+    assertContains(security, "does not instantiate arbitrary JVM classes")
+    assertContains(security, "canonical resolution")
+    assertContains(security, "direct argument-list execution does not perform shell expansion")
+
+    val testing = specialistContent(reviewRoot, "testing")
+    assertContains(testing, "never as evidence of production thread or event ordering")
+    assertContains(testing, "`backgroundScope`")
+    assertContains(testing, "do not universally require `compileTestKotlin`")
+
+    val ui = specialistContent(reviewRoot, "ui")
+    assertContains(ui, "`DisposableEffect` for acquire/dispose")
+    assertContains(ui, "Compose Desktop UI thread")
+    assertContains(ui, "only when the current execution is off that thread")
+
+    val accessibility = specialistContent(reviewRoot, "ux-accessibility")
+    assertContains(accessibility, "version- and platform-dependent")
+    assertContains(accessibility, "semantics alone do not prove")
+  }
+
+  @Test
   fun `kotlin specialists native agents rendering and substance have exact ten-area parity`() {
     val repoRoot = repoRootFromTest()
     val packRoot = repoRoot.resolve("platform-packs/kotlin")
@@ -159,7 +205,10 @@ class KotlinPlatformPackTest {
     val kotlin = report.packs.single { metric -> metric.pack == "kotlin" }
     assertEquals(KOTLIN_CODE_REVIEW_AREAS, kotlin.physicalAreas.toSet())
     kotlin.specialists.filterNot { specialist -> specialist.inherited }.forEach { specialist ->
-      assertTrue(specialist.substantiveRules >= 10, "Thin Kotlin specialist: ${specialist.area}")
+      assertTrue(
+        specialist.substantiveRules >= 10,
+        "Thin Kotlin specialist: ${specialist.area} (${specialist.substantiveRules})",
+      )
       assertEquals(3, specialist.failureModeClusters, "Missing failure cluster: ${specialist.area}")
       assertTrue(specialist.concreteEvidenceRules >= 10, "Missing evidence: ${specialist.area}")
       assertTrue(specialist.placeholders.isEmpty(), "Placeholder in ${specialist.area}")
@@ -229,3 +278,6 @@ class KotlinPlatformPackTest {
     }
   }
 }
+
+private fun specialistContent(reviewRoot: java.nio.file.Path, area: String): String =
+  Files.readString(reviewRoot.resolve("bill-kotlin-code-review-$area/content.md"))

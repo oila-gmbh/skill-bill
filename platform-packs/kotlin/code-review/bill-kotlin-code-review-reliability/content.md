@@ -24,14 +24,14 @@ Use for Kotlin services, workers, schedulers, queues, caches, and downstream int
 
 - Require retries around `HttpClient.request` to classify transient, permanent, and authorization failure; retrying every error risks amplification and lockout.
 - Reject unbounded `retryWhen` loops; require attempt limits, backoff, jitter, and a terminal outcome to prevent resource exhaustion.
-- Verify `TimeoutCancellationException` remains cancellation-aware; treating it as ordinary failure can lose parent cancellation and duplicate effects.
+- Require a locally owned `TimeoutCancellationException`, which may become a domain timeout at that boundary, to remain distinct from parent or sibling `CancellationException`, which must propagate; broad recovery otherwise risks cancellation failure, abandoned work, and duplicate effects.
 - Require idempotency keys around retried writes such as `repository.insert`; absent replay protection risks duplicate durable state.
-- Reject consumer acknowledgement before `transaction.commit`; a crash in that ordering can cause permanent data loss.
+- For the detected broker, verify `acknowledge` or offset commit occurs only after the corresponding durable state reaches its required commit point; exact ack, transaction, redelivery, and offset semantics are framework-specific, but a crash must not turn incomplete work into permanent loss.
 - Require `SupervisorJob` only for independently recoverable partitions; hiding a shared fatal dependency failure can leave invalid partial service state.
-- Verify startup readiness follows successful migrations and client initialization; publishing readiness early risks request failure and corrupt partial startup.
-- Require shutdown hooks to stop intake, drain bounded work, cancel scopes, and close `DataSource` in order; skipped stages risk incomplete shutdown.
-- Reject suspending cleanup in `finally` without bounded `withContext(NonCancellable)` where durability requires completion; cancellation can leak resources.
+- Verify the `readiness` signal follows the migrations, clients, subscriptions, and warmup actually required by the detected service; publishing readiness before required dependencies risks request failure or consumption in an invalid partial state.
+- Require shutdown hooks to stop intake, apply the broker's drain or rebalance contract, await bounded in-flight work, cancel remaining scopes, and `close` resources in dependency order; skipped stages risk loss, duplication, or use-after-close failure.
+- Require bounded `withContext(NonCancellable)` only for cleanup that must finish despite cancellation, and keep that region minimal; an unbounded non-cancellable region risks shutdown timeout, while ordinary cleanup should remain cancellable.
 - Require outbox records and business state to share one `@Transactional` boundary; separate commits risk missing or incorrectly ordered events.
-- Verify circuit breakers such as `resilience4j` distinguish dependency timeout from caller cancellation; mixed signals can open circuits incorrectly.
+- When a circuit-breaker library such as `resilience4j` is detected, verify its configured failure predicate distinguishes dependency failures and timeouts from caller cancellation and locally excluded outcomes; counting the wrong signals can open or hold a circuit incorrectly.
 - Require metrics and structured logs to expose attempts, terminal outcome, queue depth, and correlation ID; missing `retry_count` evidence makes operational failure invisible.
 - For Blocker or Major findings, describe the concrete availability, duplication, or cleanup failure scenario.
