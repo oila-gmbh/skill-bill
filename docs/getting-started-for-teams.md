@@ -143,8 +143,11 @@ The shipped skills and platform packs are reference assets. They are production-
 
 Start from reference packs when they fit:
 
+Go, iOS, Kotlin, PHP, Python, Rust, and TypeScript directly declare all ten approved review areas. KMP composes seven Kotlin baseline areas with three KMP delta lanes. Review composition never supplies quality behavior: every dominant stack selects its own manifest-declared checker, including KMP through `bill-kmp-code-check` with no fallback.
+
 - `kotlin`: Kotlin baseline review and quality-check behavior
 - `kmp`: Kotlin review baseline plus KMP platform, UI, and accessibility depth, governed add-ons, and direct multiplatform quality-check behavior
+- `ios`: native iOS review and direct Xcode/SPM-aware quality-check behavior
 - `go`: Go services, libraries, CLIs, modules, APIs, persistence, concurrency, security, testing, Go-rendered UI, UX/accessibility, and quality-check behavior
 - `php`: PHP applications, services, Composer projects, APIs, persistence, security, testing, server-rendered UI, UX/accessibility, and quality-check behavior
 - `python`: Python applications, libraries, CLIs, APIs, persistence, security, testing, UI, UX/accessibility, and quality-check behavior
@@ -152,6 +155,8 @@ Start from reference packs when they fit:
 - `typescript`: TypeScript applications, libraries, services, Node/browser runtimes, APIs, persistence, async behavior, TSX UI/UX, and package-manager-aware quality-check behavior
 
 Create or fork a pack when team-specific architecture, framework, API, persistence, reliability, UI, or accessibility expectations need their own maintained behavior.
+
+Keep maintained packs behind the exemption-free repository substance gate: three platform-specific failure-mode clusters and ten evidence-bearing rules for every effective specialist, zero forbidden placeholders, no more than 35% shared normalized five-word sequences per pack, and no more than 65% similarity between corresponding authored rubrics.
 
 ## External Authoring Signals
 

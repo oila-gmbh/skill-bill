@@ -312,7 +312,7 @@ of selection. The parent's content hash folds exactly the selected sidecars.
 
 After a scratch install with all packs selected, `bill-code-review`'s staged
 directory contains `SKILL.md` plus 78 sibling sidecars — and no agent
-`skills_dir` symlink exists for any of the 78:
+`skills_dir` symlink exists for any manifest-discovered review sidecar:
 
 ```
 ~/.claude/skills/bill-code-review
@@ -325,9 +325,9 @@ directory contains `SKILL.md` plus 78 sibling sidecars — and no agent
       bill-go-code-review.md                sidecar: Go stack entry (selected)
       ... (10 Go specialists total)
       bill-kotlin-code-review.md            sidecar: Kotlin stack entry (selected)
-      ... (8 Kotlin specialists total)
+      ... (10 Kotlin specialists total)
       bill-kmp-code-review.md               sidecar: KMP stack entry (selected)
-      ... (2 KMP specialists total)
+      ... (3 KMP delta specialists; 7 effective lanes compose from Kotlin)
       bill-php-code-review.md               sidecar: PHP stack entry (selected)
       ... (10 PHP specialists total)
       bill-python-code-review.md            sidecar: Python stack entry (selected)
@@ -337,14 +337,13 @@ directory contains `SKILL.md` plus 78 sibling sidecars — and no agent
       platform-packs → …                    symlink for pack pointer resolution
 ```
 
-With only the Kotlin pack selected, exactly 9 review sidecars stage
-(`bill-kotlin-code-review.md` plus its 8 specialists); the other 69 contribute
+With only the Kotlin pack selected, its entry and ten review specialists stage; other packs contribute
 nothing. With no review packs selected, `bill-code-review` stages
 byte-identically to a repo with no internal pack skills (inertness). `ALL`
 selection stages every opted-in review sidecar. SKILL-105 applies the same
 selection-aware sidecar model to quality-check overrides: selected
 `bill-<platform>-code-check` skills stage inside `bill-code-check/` and are not
-listed commands.
+listed commands. KMP stages and routes `bill-kmp-code-check` directly; review baseline composition never substitutes the Kotlin checker.
 
 ### Baseline co-presence guard (PD8)
 

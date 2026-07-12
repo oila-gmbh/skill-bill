@@ -10,7 +10,7 @@ base_branch: "main"
 feature_branch: "feat/SKILL-114-platform-pack-substance"
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 8
+  subtask_id: 10
   action: "resume"
 subtasks:
 - id: 1
@@ -21,7 +21,7 @@ subtasks:
   commit_sha: null
   workflow_id: "wftr-20260711-142237-a3zz"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -34,7 +34,7 @@ subtasks:
   commit_sha: null
   workflow_id: "wftr-20260711-150116-qdza"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -50,7 +50,7 @@ subtasks:
   commit_sha: null
   workflow_id: "wftr-20260711-155902-gcp7"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -66,7 +66,7 @@ subtasks:
   commit_sha: null
   workflow_id: "wftr-20260711-172629-5l4g"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -82,7 +82,7 @@ subtasks:
   commit_sha: null
   workflow_id: "wftr-20260711-192911-tbi9"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -98,7 +98,7 @@ subtasks:
   commit_sha: null
   workflow_id: "wftr-20260711-200857-v75o"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -125,12 +125,12 @@ subtasks:
 - id: 8
   name: "KMP pack depth"
   spec_path: ".feature-specs/SKILL-114-platform-pack-substance/spec_subtask_8_kmp_pack_depth.md"
-  status: "pending"
+  status: "complete"
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260712-081840-jhb4"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -144,12 +144,12 @@ subtasks:
 - id: 9
   name: "iOS pack depth"
   spec_path: ".feature-specs/SKILL-114-platform-pack-substance/spec_subtask_9_ios_pack_depth.md"
-  status: "pending"
+  status: "complete"
   branch: null
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wftr-20260712-084025-hplb"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -160,12 +160,12 @@ subtasks:
 - id: 10
   name: "Cross-pack conformance and release gate"
   spec_path: ".feature-specs/SKILL-114-platform-pack-substance/spec_subtask_10_cross_pack_conformance_and_release_gate.md"
-  status: "pending"
+  status: "in_progress"
   branch: null
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wftr-20260712-093948-gxgm"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "plan"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []

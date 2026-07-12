@@ -24,20 +24,24 @@ Use this specialist for `@Composable` functions, UI state holders, Compose navig
 
 ## Project-Specific Rules
 
-### Governed Compose Rubric
+### Governed Compose Correctness Rules
 
 - Read [compose-guidelines.md](compose-guidelines.md); an H2 section is insufficient for the detailed Compose rubric, and this companion is its single source of truth.
 - Enforce every governed H2 rubric section against the applicable target: State Hoisting; Composable Function Signature Conventions; Recomposition & Performance; Theming & Design System; String Resources & Localization; Compose Multiplatform; Composable Structure & Decomposition; Side Effects; Navigation Integration; Preview Annotations; Error Handling & Loading States; Proper UI Elements; Modifier Best Practices; and ViewModel Integration.
 - Do not duplicate that checklist here; require violations to identify the named rubric section, concrete failure precondition, and user-visible or runtime consequence.
 
-### Add-On Boundaries
+### Add-On Boundary Failure Checks
 
-- Require common UI state to have one owner and platform hosts to adapt lifecycle delivery without duplicating navigation or effect consumption.
-- Verify `LaunchedEffect`, `DisposableEffect`, and coroutine scopes cancel and restart with equivalent keys on Android activities, iOS view controllers, desktop windows, and browser pages.
-- Keep navigation contracts in common code only where destination identity and restoration semantics are portable; adapt Android back stacks, iOS presentation, desktop multi-window state, and browser URL/history at their host boundaries.
-- Verify rendering and input integration per target: density and insets on Android, UIKit/SwiftUI hosting and disposal on iOS, resize/window/focus behavior on desktop, and DOM canvas, browser lifecycle, and back navigation on web.
-- Require shared resources to use Compose resource accessors and verify target packaging; isolate Android `R`, Apple bundles, desktop classpath resources, and web assets behind target adapters.
-- Require layouts to adapt by available space, input mode, platform conventions, and window class instead of branching only on target names.
+- Require common UI state to have one `StateFlow` owner and platform hosts to adapt lifecycle delivery; reject duplicate collectors that race to consume navigation or effects.
+- Verify `LaunchedEffect` and `DisposableEffect` cancel and restart with stable keys on Android activities, iOS view controllers, desktop windows, and browser pages; reject stale-key behavior that leaks work or renders incorrect state.
+- Require portable destination identity and restoration in common navigation contracts, then adapt `NavHost`, iOS presentation, desktop windows, and browser history at host boundaries; reject a target back-stack failure caused by sharing host-only state.
+- Verify `UIKitView`, Android insets, desktop focus, and browser canvas integration owns attachment and disposal per target; reject lifecycle ordering that leaks a host view or sends input to a detached surface.
+- Require shared resources to use Compose `Res` accessors and verify target packaging; reject Android `R`, Apple bundle, desktop classpath, or web asset leakage that causes a missing-resource failure.
+- Require layouts to use evidence such as `BoxWithConstraints` for available space, input mode, and window class; reject target-name branching that produces incorrect rendering after resize or rotation.
+- Verify `rememberSaveable` uses a target-supported saver for state that must survive host recreation; reject serialization failure or state loss across Android recreation, iOS host replacement, or browser reload.
+- Require stable `key` values for lazy lists and movable content; reject index keys that attach remembered state to incorrect rows after insertion or reordering.
+- Verify `snapshotFlow` and derived state observe only the intended reads; reject feedback loops or over-broad observation that causes recomposition races and performance failure.
+- Require `AndroidView` and `UIKitView` update callbacks to be idempotent and disposal-aware; reject interop mutation that duplicates listeners, leaks resources, or corrupts native view state.
 
-- Apply only generated add-ons selected by the baseline routing table, and verify Android-only add-ons are not enforced against `commonMain` or iOS-only code.
+- Require generated `addon_usage` selection from the baseline routing table; reject Android-only guidance applied to `commonMain` or iOS code because it creates an invalid platform contract.
 - For Blocker or Major findings, describe the concrete user-visible interaction or rendering failure scenario.

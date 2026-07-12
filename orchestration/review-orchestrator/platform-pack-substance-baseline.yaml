@@ -1,9 +1,2 @@
 contract_version: "0.1"
-acknowledgements:
-  - {id: "kmp|platform-correctness:clusters|platform-packs/kmp/code-review/bill-kmp-code-review-platform-correctness/content.md", measured: "0", target: "3", owner: SKILL-114-8}
-  - {id: "kmp|platform-correctness:rules|platform-packs/kmp/code-review/bill-kmp-code-review-platform-correctness/content.md", measured: "0", target: ">=10", owner: SKILL-114-8}
-  - {id: "kmp|ui:clusters|platform-packs/kmp/code-review/bill-kmp-code-review-ui/content.md", measured: "0", target: "3", owner: SKILL-114-8}
-  - {id: "kmp|ui:rules|platform-packs/kmp/code-review/bill-kmp-code-review-ui/content.md", measured: "0", target: ">=10", owner: SKILL-114-8}
-  - {id: "kmp|ux-accessibility:clusters|platform-packs/kmp/code-review/bill-kmp-code-review-ux-accessibility/content.md", measured: "0", target: "3", owner: SKILL-114-8}
-  - {id: "kmp|ux-accessibility:placeholders|platform-packs/kmp/code-review/bill-kmp-code-review-ux-accessibility/content.md", measured: "xxx", target: "none", owner: SKILL-114-8}
-  - {id: "kmp|ux-accessibility:rules|platform-packs/kmp/code-review/bill-kmp-code-review-ux-accessibility/content.md", measured: "0", target: ">=10", owner: SKILL-114-8}
+acknowledgements: []

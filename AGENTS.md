@@ -77,7 +77,7 @@ Product versus extension surface:
 - `.bill-shared` is protected on every axis
 - maintainers may remove deprecated shipped surfaces only through the CLI `--allow-shipped` path in this repo
 
-`kmp` quality-check routing currently falls back to `kotlin`. `bill-feature-verify` remains pre-shell.
+`kmp` composes its seven-area Kotlin review baseline with KMP-owned platform-correctness, UI, and UX/accessibility lanes. Its quality checks route directly to `bill-kmp-code-check`; quality-check routing never inherits or substitutes the Kotlin checker. `bill-feature-verify` remains pre-shell.
 
 ## Runtime Contract Schemas
 
@@ -135,7 +135,7 @@ The scaffolder is atomic: validator, manifest-write, install, or generated-link 
 
 For code review, create the pack root, add a conforming manifest and `content.md` files, register generated pointers through the manifest, update the README catalog, extend pack tests, and run validation.
 
-For quality-check, register the manifest entry and ship the governed `content.md`. In the built-in set, `kmp` falls back to `kotlin`.
+For quality-check, register the manifest entry and ship the governed `content.md`. Every maintained pack, including `kmp`, routes directly to its own manifest-declared checker.
 
 For feature-task and feature-verify, keep platform-specific behavior on current horizontal and manifest-driven surfaces; do not add legacy `skills/<platform>/` overrides.
 

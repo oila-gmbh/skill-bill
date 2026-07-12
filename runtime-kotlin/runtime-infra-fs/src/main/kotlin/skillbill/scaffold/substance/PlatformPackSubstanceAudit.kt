@@ -608,7 +608,10 @@ object PlatformPackSubstanceAudit {
         "platform pack substance baseline contract_version must be $PLATFORM_PACK_SUBSTANCE_CONTRACT_VERSION",
       )
     }
-    val entries = raw["acknowledgements"] as? List<*> ?: emptyList<Any>()
+    val entries = raw["acknowledgements"] as? List<*>
+      ?: return emptyList<BaselineAcknowledgement>() to listOf(
+        "platform pack substance baseline acknowledgements must be a list",
+      )
     val errors = mutableListOf<String>()
     val parsed = entries.mapNotNull { value ->
       val entry = value as? Map<*, *> ?: return@mapNotNull null.also {

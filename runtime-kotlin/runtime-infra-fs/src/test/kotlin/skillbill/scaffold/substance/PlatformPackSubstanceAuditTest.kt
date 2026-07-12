@@ -70,6 +70,7 @@ class PlatformPackSubstanceAuditTest {
     assertEquals(first, second)
     assertEquals(PLATFORM_PACK_SUBSTANCE_CONTRACT_VERSION, first.contractVersion)
     assertTrue(first.packs.isNotEmpty())
+    assertTrue(first.violations.isEmpty(), first.violations.joinToString("\n") { it.format() })
     assertTrue(first.baselineErrors.isEmpty(), first.baselineErrors.joinToString("\n"))
     assertTrue(
       first.blockingViolations.isEmpty(),
@@ -80,6 +81,36 @@ class PlatformPackSubstanceAuditTest {
           violation.measured,
         )}\n  target: ${quote(violation.target)}\n  owner: SKILL-114-${owner(violation.pack)}"
       },
+    )
+  }
+
+  @Test
+  fun `empty governed baseline is valid and suppresses no maintained violation`() {
+    val root = repoRootFromTest()
+    val report = PlatformPackSubstanceAudit.audit(root)
+
+    assertTrue(report.baselineErrors.isEmpty(), report.baselineErrors.joinToString("\n"))
+    assertTrue(report.violations.none { it.acknowledgedBy != null })
+    assertEquals(report.violations, report.blockingViolations)
+  }
+
+  @Test
+  fun `missing and malformed governed baselines fail loudly`() {
+    val missingRoot = Files.createTempDirectory("substance-missing-baseline")
+    seedConformingPlatformPack(missingRoot, "alpha")
+    assertEquals(
+      listOf("platform pack substance baseline is missing"),
+      PlatformPackSubstanceAudit.audit(missingRoot).baselineErrors,
+    )
+
+    val malformedRoot = Files.createTempDirectory("substance-malformed-baseline")
+    seedConformingPlatformPack(malformedRoot, "alpha")
+    val baseline = malformedRoot.resolve("orchestration/review-orchestrator/platform-pack-substance-baseline.yaml")
+    Files.createDirectories(baseline.parent)
+    Files.writeString(baseline, "contract_version: \"0.1\"\nacknowledgements: {}\n")
+    assertEquals(
+      listOf("platform pack substance baseline acknowledgements must be a list"),
+      PlatformPackSubstanceAudit.audit(malformedRoot).baselineErrors,
     )
   }
 

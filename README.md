@@ -79,6 +79,8 @@ Skill Bill ships complete Go, iOS, Kotlin/KMP, PHP, Python, Rust, and TypeScript
 
 **Shipped platform packs:**
 
+Go, iOS, Kotlin, PHP, Python, Rust, and TypeScript each own all ten approved review areas. KMP composes the seven Kotlin baseline areas it does not replace with KMP-owned platform-correctness, UI, and UX-accessibility lanes. Every pack routes quality checks directly to its own manifest-declared checker, including KMP through `bill-kmp-code-check`.
+
 - `kotlin` — baseline Kotlin review and quality-check behavior
 - `kmp` — Kotlin review baseline plus KMP platform, UI, and accessibility depth, governed add-ons, and direct multiplatform quality-check behavior
 - `ios` — native iOS review and quality-check behavior via `bill-ios-code-review` and `bill-ios-code-check`, routed from `.xcodeproj`, `.xcworkspace`, SwiftUI/UIKit, lifecycle, concurrency, UI, and accessibility signals
@@ -87,6 +89,8 @@ Skill Bill ships complete Go, iOS, Kotlin/KMP, PHP, Python, Rust, and TypeScript
 - `python` — Python applications, libraries, CLIs, APIs, persistence, security, testing, UI, UX/accessibility, and quality-check behavior
 - `rust` — Rust crates and workspaces, services, CLIs, async runtimes, FFI, persistence, safety, testing, UI/UX, and Cargo-aware quality-check behavior
 - `typescript` — TypeScript applications, libraries, services, Node/browser runtimes, APIs, persistence, async behavior, TSX UI/UX, and package-manager-aware quality checks
+
+Maintained packs share one exemption-free substance gate: every effective specialist needs at least three platform-specific failure-mode clusters and ten evidence-bearing rules, forbidden generic placeholders are rejected, shared normalized five-word sequences are capped at 35%, and corresponding authored rubrics are capped at 65% similarity. Discovery remains manifest-driven; the current pack list is not hard-coded into the gate.
 
 **Full skill catalog:**
 

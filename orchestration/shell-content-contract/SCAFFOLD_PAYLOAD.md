@@ -302,6 +302,13 @@ targeted reruns with full-suite escalation, and blocker reporting. These prompts
 make the required authoring work explicit, but TODO is forbidden by the
 maintained-repository substance audit. A newly generated pack must be filled with
 concrete platform evidence before it can be promoted into the maintained set.
+Promotion uses the normal exemption-free repository gate: every effective
+specialist needs at least three platform-specific failure-mode clusters and ten
+evidence-bearing rules with zero forbidden placeholders; pack-wide shared
+normalized five-word sequences must be at most 35%, and corresponding authored
+rubrics at most 65% similar. A composed pack must still declare its own quality
+checker. Discovery and enforcement remain manifest-driven rather than
+enumerating the currently maintained platform slugs.
 
 ## Loud-Fail Exception Catalog
 

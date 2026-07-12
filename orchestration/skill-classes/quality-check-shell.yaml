@@ -17,7 +17,7 @@ sections:
       Keep this shell thin:
 
       - detect the dominant stack in the current unit of work via manifest-driven discovery
-      - load the matching platform pack through the shell+content contract and resolve its declared quality-check file through `skillbill.scaffold.platformpack.ShellContentLoader.loadQualityCheckContent` in `runtime-infra-fs`
+      - resolve the dominant pack and its declared checker through `skillbill.scaffold.platformpack.routeQualityCheck` in `runtime-infra-fs`, which uses the same manifest loader and content contract
       - pass through the same scope and relevant context to the routed skill
       - refuse to run when a routed pack declares a quality-check file that does not exist or is missing a required section — never silently fall back
 
@@ -38,7 +38,7 @@ sections:
     body: |
       Stack detection and routing are manifest-driven. The shell discovers every `platform-packs/<slug>/platform.yaml`, reads each pack's declared routing signals, and chooses the dominant stack using manifest-declared tie-breakers. The shell does not enumerate platform names inline.
 
-      - For the dominant pack, read the optional top-level `declared_quality_check_file` key from the manifest. The runtime authority is `skillbill.scaffold.platformpack.ShellContentLoader.loadQualityCheckContent` in `runtime-infra-fs`.
+      - For the dominant pack, read the optional top-level `declared_quality_check_file` key from the manifest. The runtime authority is `skillbill.scaffold.platformpack.routeQualityCheck` in `runtime-infra-fs`; it discovers manifests dynamically and loud-fails ambiguous or invalid routes.
       - The routed skill name is the `name:` frontmatter field of the declared quality-check `content.md`. The declared content must also carry `internal-for: bill-code-check`, so the routed checker installs as a sibling `<routed-skill-name>.md` sidecar inside `bill-code-check` rather than as a separately listed skill.
       - Route every dominant pack through its manifest-declared `declared_quality_check_file`, including KMP through `bill-kmp-code-check`. A pack without that key loud-fails via `MissingContentFileError`; the shell never silently substitutes another pack.
       - If multiple supported stacks appear in one repo, run the matching stack-specific quality checks sequentially, not in parallel, so fixes stay deterministic.
