@@ -87,16 +87,32 @@ enum class RepoValidationIssueSeverity {
 data class ReleaseRefMetadata(
   val tag: String,
   val version: String,
+  val major: Int,
+  val minor: Int,
+  val patch: Int,
   val prerelease: Boolean,
+  val prereleaseIdentifier: String?,
+  val buildMetadata: String?,
 ) {
   fun toPayload(): Map<String, Any?> = mapOf(
     "tag" to tag,
     "version" to version,
+    "major" to major,
+    "minor" to minor,
+    "patch" to patch,
     "prerelease" to prerelease,
+    "prerelease_identifier" to prereleaseIdentifier,
+    "build_metadata" to buildMetadata,
   )
 }
 
+class ReleaseLicensePolicyError(message: String) : IllegalArgumentException(message)
+
 object RepoValidationRuntime {
+  const val PRE_1_LICENSE_IDENTIFIER = "LicenseRef-Skill-Bill-Pre-1.0-Use-1.0"
+  const val PROSPECTIVE_EFFECTIVE_VERSION_MARKER = "Prospective Effective Version: v0.1.2"
+  const val TRANSITIONAL_LICENSE_MARKER = "Skill Bill Pre-1.0 Use License 1.0"
+
   private val semverTagPattern =
     Regex(
       "^v?(?<major>0|[1-9]\\d*)\\.(?<minor>0|[1-9]\\d*)\\.(?<patch>0|[1-9]\\d*)" +
@@ -219,8 +235,67 @@ object RepoValidationRuntime {
     return ReleaseRefMetadata(
       tag = candidate,
       version = candidate.removePrefix("v"),
+      major = match.groups["major"]!!.value.toInt(),
+      minor = match.groups["minor"]!!.value.toInt(),
+      patch = match.groups["patch"]!!.value.toInt(),
       prerelease = match.groups["prerelease"] != null,
+      prereleaseIdentifier = match.groups["prerelease"]?.value,
+      buildMetadata = match.groups["build"]?.value,
     )
+  }
+
+  fun validateReleaseRef(
+    repoRoot: Path,
+    rawValue: String,
+    forcePrerelease: Boolean = false,
+  ): ReleaseRefMetadata {
+    val parsed = parseReleaseRef(rawValue)
+    val metadata = if (forcePrerelease) parsed.copy(prerelease = true) else parsed
+    validateReleaseLicensePolicy(repoRoot.toAbsolutePath().normalize(), metadata)
+    return metadata
+  }
+
+  private fun validateReleaseLicensePolicy(repoRoot: Path, metadata: ReleaseRefMetadata) {
+    when {
+      metadata.isHistoricalReleaseLine() -> return
+      metadata.isCoveredPreOneRelease() || metadata.prerelease ->
+        requireTransitionalPolicy(repoRoot.resolve("LICENSE"), metadata)
+      else -> requirePostOneLicenseDecision(repoRoot.resolve("LICENSE"), metadata)
+    }
+  }
+
+  private fun ReleaseRefMetadata.isHistoricalReleaseLine(): Boolean = major == 0 && minor == 1 && patch <= 1
+
+  private fun ReleaseRefMetadata.isCoveredPreOneRelease(): Boolean =
+    major == 0 && (minor > 1 || (minor == 1 && patch >= 2))
+
+  private fun requireTransitionalPolicy(licenseFile: Path, metadata: ReleaseRefMetadata) {
+    if (!licenseFile.isRegularFile()) {
+      throw ReleaseLicensePolicyError(
+        "Release ${metadata.tag} requires root LICENSE with $PRE_1_LICENSE_IDENTIFIER, but LICENSE is missing.",
+      )
+    }
+    val licenseText = Files.readString(licenseFile)
+    val missingMarkers = listOf(PRE_1_LICENSE_IDENTIFIER, PROSPECTIVE_EFFECTIVE_VERSION_MARKER)
+      .filterNot(licenseText::contains)
+    if (missingMarkers.isNotEmpty()) {
+      throw ReleaseLicensePolicyError(
+        "Release ${metadata.tag} requires the pre-1.0 license policy markers: ${missingMarkers.joinToString()}.",
+      )
+    }
+  }
+
+  private fun requirePostOneLicenseDecision(licenseFile: Path, metadata: ReleaseRefMetadata) {
+    if (!licenseFile.isRegularFile()) {
+      throw ReleaseLicensePolicyError(
+        "Stable release ${metadata.tag} requires a root LICENSE that records the deliberate v1.0 licensing decision.",
+      )
+    }
+    if (Files.readString(licenseFile).contains(TRANSITIONAL_LICENSE_MARKER)) {
+      throw ReleaseLicensePolicyError(
+        "Stable release ${metadata.tag} cannot publish while $TRANSITIONAL_LICENSE_MARKER remains its current license.",
+      )
+    }
   }
 
   fun appendGithubOutput(outputPath: Path, metadata: ReleaseRefMetadata) {

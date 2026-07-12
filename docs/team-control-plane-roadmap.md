@@ -182,8 +182,12 @@ Likely paid value:
 - support for onboarding and pack tuning
 - self-hosted or privacy-restricted telemetry options
 
-Individual and noncommercial use can remain free while team/company use requires
-a commercial license.
+The project [LICENSE](../LICENSE) governs the pre-1.0 use policy. Its concise
+version matrix is in [Licensing](licensing.md): covered releases allow
+unmodified lawful use, including commercial use, before the Stable Release
+Event and only personal or unpaid individual open-source contribution use after
+it. This roadmap does not alter that policy or independently grant modification
+or redistribution rights.
 
 ## Discovery Checklist
 

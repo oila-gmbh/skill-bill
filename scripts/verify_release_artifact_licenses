@@ -1,0 +1,157 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+root_license="${repo_root}/LICENSE"
+
+if [[ ! -f "${root_license}" ]]; then
+  echo "Repository LICENSE is missing." >&2
+  exit 1
+fi
+
+if [[ "$#" -eq 0 ]]; then
+  echo "At least one artifact is required for license verification." >&2
+  exit 1
+fi
+
+verify_checksum() {
+  local artifact="$1"
+  local checksum="${artifact}.sha256"
+  if [[ ! -f "${checksum}" ]]; then
+    echo "Missing checksum for ${artifact}." >&2
+    exit 1
+  fi
+  if command -v sha256sum >/dev/null; then
+    (cd "$(dirname "${artifact}")" && sha256sum --check "$(basename "${checksum}")")
+  else
+    (cd "$(dirname "${artifact}")" && shasum -a 256 --check "$(basename "${checksum}")")
+  fi
+}
+
+verify_zip() {
+  local artifact="$1"
+  local matches=()
+  local entry
+  while IFS= read -r entry; do
+    if cmp -s "${root_license}" <(unzip -p "${artifact}" "${entry}"); then
+      matches+=("${entry}")
+    fi
+  done < <(unzip -Z1 "${artifact}" | awk '/(^|\/)LICENSE$/')
+  if [[ "${#matches[@]}" != "1" ]]; then
+    echo "Expected exactly one root LICENSE copy in ${artifact}, found ${#matches[@]}." >&2
+    exit 1
+  fi
+}
+
+verify_tar() {
+  local artifact="$1"
+  local matches=()
+  local entry
+  while IFS= read -r entry; do
+    if cmp -s "${root_license}" <(tar -xOzf "${artifact}" "${entry}"); then
+      matches+=("${entry}")
+    fi
+  done < <(tar -tzf "${artifact}" | awk '/(^|\/)LICENSE$/')
+  if [[ "${#matches[@]}" != "1" ]]; then
+    echo "Expected exactly one root LICENSE copy in ${artifact}, found ${#matches[@]}." >&2
+    exit 1
+  fi
+}
+
+verify_deb() {
+  local artifact="$1"
+  local matches=()
+  local entry
+  while IFS= read -r entry; do
+    if cmp -s "${root_license}" <(dpkg-deb --fsys-tarfile "${artifact}" | tar -xO "${entry}"); then
+      matches+=("${entry}")
+    fi
+  done < <(dpkg-deb --fsys-tarfile "${artifact}" | tar -t | awk '/(^|\/)LICENSE$/')
+  if [[ "${#matches[@]}" != "1" ]]; then
+    echo "Expected exactly one root LICENSE copy in ${artifact}, found ${#matches[@]}." >&2
+    exit 1
+  fi
+}
+
+verify_rpm() {
+  local artifact="$1"
+  local work_dir
+  artifact="$(cd "$(dirname "${artifact}")" && pwd)/$(basename "${artifact}")"
+  work_dir="$(mktemp -d)"
+  trap 'rm -rf "${work_dir}"' EXIT
+  (cd "${work_dir}" && rpm2cpio "${artifact}" | cpio -idm --quiet)
+  local matches=()
+  local entry
+  while IFS= read -r entry; do
+    if cmp -s "${root_license}" "${work_dir}/${entry}"; then
+      matches+=("${entry}")
+    fi
+  done < <(cd "${work_dir}" && find . -type f -name LICENSE -print | sed 's#^./##')
+  if [[ "${#matches[@]}" != "1" ]]; then
+    echo "Expected exactly one root LICENSE copy in ${artifact}, found ${#matches[@]}." >&2
+    exit 1
+  fi
+  rm -rf "${work_dir}"
+  trap - EXIT
+}
+
+verify_dmg() {
+  local artifact="$1"
+  local mount_dir
+  mount_dir="$(mktemp -d)"
+  hdiutil attach -nobrowse -readonly -mountpoint "${mount_dir}" "${artifact}" >/dev/null
+  local matches=()
+  local entry
+  while IFS= read -r entry; do
+    if cmp -s "${root_license}" "${mount_dir}/${entry}"; then
+      matches+=("${entry}")
+    fi
+  done < <(cd "${mount_dir}" && find . -type f -name LICENSE -print | sed 's#^./##')
+  if [[ "${#matches[@]}" != "1" ]]; then
+    hdiutil detach "${mount_dir}" >/dev/null
+    echo "Expected exactly one root LICENSE copy in ${artifact}, found ${#matches[@]}." >&2
+    exit 1
+  fi
+  hdiutil detach "${mount_dir}" >/dev/null
+  rm -rf "${mount_dir}"
+}
+
+verify_msi() {
+  local artifact="$1"
+  local work_dir
+  work_dir="$(mktemp -d)"
+  powershell.exe -NoProfile -Command "Start-Process msiexec.exe -Wait -ArgumentList '/a', '${artifact}', '/qn', 'TARGETDIR=${work_dir}'"
+  local matches=()
+  local entry
+  while IFS= read -r entry; do
+    if cmp -s "${root_license}" "${work_dir}/${entry}"; then
+      matches+=("${entry}")
+    fi
+  done < <(find "${work_dir}" -type f -name LICENSE -print | sed "s#^${work_dir}/##")
+  if [[ "${#matches[@]}" != "1" ]]; then
+    rm -rf "${work_dir}"
+    echo "Expected exactly one root LICENSE copy in ${artifact}, found ${#matches[@]}." >&2
+    exit 1
+  fi
+  rm -rf "${work_dir}"
+}
+
+for artifact in "$@"; do
+  if [[ ! -f "${artifact}" ]]; then
+    echo "Artifact is missing: ${artifact}." >&2
+    exit 1
+  fi
+  verify_checksum "${artifact}"
+  case "${artifact}" in
+    *.zip) verify_zip "${artifact}" ;;
+    *.tar.gz) verify_tar "${artifact}" ;;
+    *.deb) verify_deb "${artifact}" ;;
+    *.rpm) verify_rpm "${artifact}" ;;
+    *.dmg) verify_dmg "${artifact}" ;;
+    *.msi) verify_msi "${artifact}" ;;
+    *)
+      echo "Unsupported artifact type: ${artifact}." >&2
+      exit 1
+      ;;
+  esac
+done

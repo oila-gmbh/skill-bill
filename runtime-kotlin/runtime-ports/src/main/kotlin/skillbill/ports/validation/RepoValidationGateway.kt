@@ -7,7 +7,11 @@ import java.nio.file.Path
 interface RepoValidationGateway {
   fun validateRepo(repoRoot: Path): RepoValidationReport
 
-  fun parseReleaseRef(rawRef: String): ReleaseRefMetadata
+  fun validateReleaseRef(
+    repoRoot: Path,
+    rawRef: String,
+    forcePrerelease: Boolean,
+  ): ReleaseRefMetadata
 
   fun appendGithubOutput(outputPath: Path, metadata: ReleaseRefMetadata)
 }

@@ -62,12 +62,22 @@ enum class RepoValidationIssueSeverity {
 data class ReleaseRefMetadata(
   val tag: String,
   val version: String,
+  val major: Int,
+  val minor: Int,
+  val patch: Int,
   val prerelease: Boolean,
+  val prereleaseIdentifier: String?,
+  val buildMetadata: String?,
 ) {
   @OpenBoundaryMap("Wire-shape serializer for release-ref metadata")
   fun toPayload(): Map<String, Any?> = mapOf(
     "tag" to tag,
     "version" to version,
+    "major" to major,
+    "minor" to minor,
+    "patch" to patch,
     "prerelease" to prerelease,
+    "prerelease_identifier" to prereleaseIdentifier,
+    "build_metadata" to buildMetadata,
   )
 }

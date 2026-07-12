@@ -3,6 +3,7 @@ package skillbill.cli.repovalidation
 import com.github.ajalt.clikt.parameters.arguments.argument
 import com.github.ajalt.clikt.parameters.arguments.optional
 import com.github.ajalt.clikt.parameters.options.default
+import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.options.option
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.scaffold.RepoValidationService
@@ -73,6 +74,11 @@ class ValidateReleaseRefCommand(
     "--github-output",
     help = "Optional file path where GitHub Actions step outputs should be appended.",
   )
+  private val repoRoot by option("--repo-root", help = "Repository root whose LICENSE is evaluated.").default(".")
+  private val forcePrerelease by option(
+    "--force-prerelease",
+    help = "Publish metadata as a prerelease after validating a manual staging version.",
+  ).flag()
   private val format by formatOption()
 
   override fun run() {
@@ -89,13 +95,14 @@ class ValidateReleaseRefCommand(
     }
 
     val metadata = try {
-      repoValidationService.parseReleaseRef(rawRef)
+      repoValidationService.validateReleaseRef(Path.of(repoRoot), rawRef, forcePrerelease)
     } catch (error: IllegalArgumentException) {
-      state.completeText(
-        "${error.message}\n",
-        mapOf("status" to "failed", "error" to error.message.orEmpty()),
-        exitCode = 1,
-      )
+      val payload = mapOf("status" to "failed", "error" to error.message.orEmpty())
+      if (format == CliFormat.JSON) {
+        state.complete(payload, format, exitCode = 1)
+      } else {
+        state.completeText("${error.message}\n", payload, exitCode = 1)
+      }
       return
     }
 

@@ -117,7 +117,33 @@ jobs:
           cd runtime-kotlin
           ./gradlew ${{ matrix.installer_tasks }}
 
-      # AC2/AC5: upload every produced archive + its .sha256 under an artifact
+      - name: Bundle skills archive
+        if: matrix.host_token == 'linux-x64'
+        shell: bash
+        run: |
+          archive="skill-bill-skills-${RELEASE_VERSION}.tar.gz"
+          tar -czf "$archive" LICENSE skills/ platform-packs/ orchestration/ uninstall.sh
+          sha256sum "$archive" > "${archive}.sha256"
+
+      - name: Verify packaged licenses and checksums
+        shell: bash
+        run: |
+          shopt -s nullglob
+          artifacts=(
+            runtime-kotlin/runtime-cli/build/runtime-image/*.zip
+            runtime-kotlin/runtime-mcp/build/runtime-image/*.zip
+          )
+          for artifact in runtime-kotlin/runtime-desktop/build/compose/binaries/main/*/SkillBill-*; do
+            if [[ "${artifact}" != *.sha256 ]]; then
+              artifacts+=("${artifact}")
+            fi
+          done
+          if [[ "${{ matrix.host_token }}" == "linux-x64" ]]; then
+            artifacts+=(skill-bill-skills-*.tar.gz)
+          fi
+          scripts/verify_release_artifact_licenses "${artifacts[@]}"
+
+      # AC2/AC5: upload every verified archive + its .sha256 under an artifact
       # named with the canonical host token so the publish job can collect them.
       # The runtime-image zips live under <module>/build/runtime-image/ and the
       # installers under runtime-desktop/build/compose/binaries/main/<format>/.
@@ -133,14 +159,6 @@ jobs:
             runtime-kotlin/runtime-mcp/build/runtime-image/*.zip
             runtime-kotlin/runtime-mcp/build/runtime-image/*.zip.sha256
             runtime-kotlin/runtime-desktop/build/compose/binaries/main/*/SkillBill-*
-
-      - name: Bundle skills archive
-        if: matrix.host_token == 'linux-x64'
-        shell: bash
-        run: |
-          archive="skill-bill-skills-${RELEASE_VERSION}.tar.gz"
-          tar -czf "$archive" skills/ platform-packs/ orchestration/ uninstall.sh
-          sha256sum "$archive" > "${archive}.sha256"
 
       - name: Upload skills bundle
         if: matrix.host_token == 'linux-x64'
@@ -212,13 +230,7 @@ jobs:
         if: github.event_name == 'workflow_dispatch'
         env:
           STAGING_VERSION: ${{ inputs.staging_version }}
-        run: |
-          # AC6: a manual staging run produces a real downloadable prerelease asset
-          # set without relying on validate_release_ref's tag parsing.
-          {
-            echo "tag=${STAGING_VERSION}"
-            echo "prerelease=true"
-          } >>"$GITHUB_OUTPUT"
+        run: scripts/validate_release_ref "$STAGING_VERSION" --force-prerelease --github-output "$GITHUB_OUTPUT"
 
       # AC2/AC5: collect every host's archives + .sha256 into one flat directory.
       # merge-multiple flattens the per-host artifact dirs so every asset lands

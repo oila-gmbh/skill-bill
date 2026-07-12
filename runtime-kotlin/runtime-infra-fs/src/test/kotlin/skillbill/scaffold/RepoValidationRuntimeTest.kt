@@ -9,6 +9,7 @@ import skillbill.testing.seedConformingPlatformPack
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -48,6 +49,61 @@ class RepoValidationRuntimeTest {
 
     assertTrue(error is IllegalArgumentException)
     assertTrue(error.message.orEmpty().contains("Release tag must match"))
+  }
+
+  @Test
+  fun `release policy preserves historical lines and requires custom policy from v0 1 2`() {
+    val repoRoot = Files.createTempDirectory("skillbill-release-policy")
+
+    RepoValidationRuntime.validateReleaseRef(repoRoot, "v0.1.1", forcePrerelease = false)
+
+    val missingPolicy = assertFailsWith<IllegalArgumentException> {
+      RepoValidationRuntime.validateReleaseRef(repoRoot, "v0.1.2", forcePrerelease = false)
+    }
+    assertTrue(missingPolicy.message.orEmpty().contains("LICENSE"))
+
+    writeTransitionalLicense(repoRoot)
+    val coveredRelease = RepoValidationRuntime.validateReleaseRef(repoRoot, "v0.2.0+build.7", forcePrerelease = false)
+
+    assertEquals(0, coveredRelease.major)
+    assertEquals(2, coveredRelease.minor)
+    assertEquals(0, coveredRelease.patch)
+    assertEquals("build.7", coveredRelease.buildMetadata)
+  }
+
+  @Test
+  fun `release policy keeps rc and manual staging non triggering while rejecting stable v1`() {
+    val repoRoot = Files.createTempDirectory("skillbill-pre-one-staging")
+    writeTransitionalLicense(repoRoot)
+
+    val releaseCandidate = RepoValidationRuntime.validateReleaseRef(repoRoot, "v1.0.0-rc.1", forcePrerelease = false)
+    val staging = RepoValidationRuntime.validateReleaseRef(repoRoot, "v1.0.0", forcePrerelease = true)
+    val stableFailure = assertFailsWith<IllegalArgumentException> {
+      RepoValidationRuntime.validateReleaseRef(repoRoot, "v1.0.0", forcePrerelease = false)
+    }
+
+    assertTrue(releaseCandidate.prerelease)
+    assertTrue(staging.prerelease)
+    assertTrue(stableFailure.message.orEmpty().contains("cannot publish"))
+  }
+
+  @Test
+  fun `stable post one release accepts a deliberate successor license`() {
+    val repoRoot = Files.createTempDirectory("skillbill-successor-license")
+    Files.writeString(repoRoot.resolve("LICENSE"), "Skill Bill Successor License\n")
+
+    RepoValidationRuntime.validateReleaseRef(repoRoot, "v1.1.0", forcePrerelease = false)
+  }
+
+  private fun writeTransitionalLicense(repoRoot: java.nio.file.Path) {
+    Files.writeString(
+      repoRoot.resolve("LICENSE"),
+      """
+      Skill Bill Pre-1.0 Use License 1.0
+      Identifier: LicenseRef-Skill-Bill-Pre-1.0-Use-1.0
+      Prospective Effective Version: v0.1.2
+      """.trimIndent() + "\n",
+    )
   }
 
   @Test

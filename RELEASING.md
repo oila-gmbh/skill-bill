@@ -8,7 +8,24 @@ The release contract is:
 - push the tag to GitHub
 - let the `Release` workflow rerun validation and publish the GitHub Release
 
-Pre-release tags such as `v0.5.0-rc.1` are also supported and publish GitHub prereleases.
+The root [LICENSE](LICENSE) governs release licensing. Its non-authoritative
+[version matrix](docs/licensing.md) is deliberately short: v0.1.0/v0.1.1 retain
+their shipped terms; covered releases starting at v0.1.2 permit unmodified
+lawful use, including commercial use, before the Stable Release Event and only
+personal or unpaid individual open-source contribution use after it. The project
+license never grants modification or redistribution.
+
+Pre-release tags such as `v0.5.0-rc.1` are also supported and publish GitHub
+prereleases. v0.1.0 and v0.1.1 are historical exceptions. Starting at v0.1.2,
+the release validator requires the transitional custom-license identifier and
+prospective-version marker. A stable `v1.0.0` or later release is rejected until
+the copyright holder deliberately replaces the transitional current-release
+license. Release candidates and manual staging releases remain prereleases and
+do not make that legal decision.
+
+The [LICENSE](LICENSE) alone defines the Stable Release Event. A successful
+workflow, an existing GitHub Release object, an idempotent release upload, a
+bare tag, or a local artifact is not proof that the event occurred.
 
 ## What a tag push builds
 
@@ -24,7 +41,11 @@ archive plus its `.sha256` sidecar to the GitHub Release for that tag:
 The `<os>-<arch>` token is the canonical set `macos-arm64` / `windows-x64` /
 `linux-x64`, so downstream installers can resolve the correct asset by host. Each
 artifact ships with a matching `<name>.sha256` file. The build toolchain is
-pinned to JDK 17 (temurin) on every runner.
+pinned to JDK 17 (temurin) on every runner. Before upload, each host extracts or
+mounts its native artifacts and compares the included root `LICENSE` bytes; it
+also verifies the adjacent checksum after the licensed artifact is finalized.
+The Linux skills archive includes the root `LICENSE` directly and is checked the
+same way.
 
 Builds run on host-matched runners because jlink and jpackage cannot
 cross-compile: macOS arm64 on the **self-hosted Apple Silicon Mac mini**
@@ -54,8 +75,9 @@ stable release:
    push is required; the workflow builds the same per-OS asset set and publishes a
    prerelease named from the input, so testers get a real downloadable asset set.
 
-Both paths reuse the same build matrix and the same fail-closed validation gate as
-a stable release.
+Both paths reuse the same build matrix and the same fail-closed release-policy
+validator as a stable release. The manual path validates `staging_version` and
+then forces its publication metadata to `prerelease=true`.
 
 ## Release notes
 
@@ -123,22 +145,31 @@ under the hood.
    scripts/validate_agent_configs
    ```
 
-3. Pick the next version tag.
-4. Create an annotated tag:
+3. Before creating `v0.1.2`, obtain and record explicit approval of the exact
+   final [LICENSE](LICENSE) text from the copyright holder, Braian Gapur.
+   Automated checks do not replace this approval or external legal review.
+   Use the [pre-1.0 license approval record](docs/release-license-approval.md)
+   to capture the approved `LICENSE` SHA-256 and approval location.
+4. Pick the next version tag. For releases from `v0.1.2` through pre-1.0, run
+   `scripts/validate_release_ref v0.x.y`; for a staging build, add
+   `--force-prerelease`. Do not create stable `v1.0.0` or later until a
+   deliberate successor license has replaced the transitional text.
+5. Create an annotated tag:
 
    ```bash
    git tag -a v0.x.y -m "Release v0.x.y"
    ```
 
-5. Push the tag:
+6. Push the tag:
 
    ```bash
    git push origin v0.x.y
    ```
 
-6. Confirm the `Release` workflow succeeds and the GitHub Release appears with
+7. Confirm the `Release` workflow succeeds and the GitHub Release appears with
    generated notes and the per-OS runtime-image + desktop-installer assets (each
-   with its `.sha256`) attached.
+   with its `.sha256`) attached. Confirm the published artifacts passed the
+   root-license byte check on their native release-matrix host.
 
 ## Installing from a release
 

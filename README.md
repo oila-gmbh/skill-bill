@@ -2,7 +2,7 @@
 
 # Skill Bill
 
-[![License: PolyForm NC + Commercial](https://img.shields.io/badge/License-PolyForm%20NC%20%2B%20Commercial-orange.svg)](LICENSE)
+[![License: Skill Bill Pre-1.0 Use License](https://img.shields.io/badge/License-Skill%20Bill%20Pre--1.0%20Use-4c1.svg)](LICENSE)
 ![Latest release](https://img.shields.io/github/v/release/oila-gmbh/skill-bill?include_prereleases&sort=semver)
 ![Validate agent configs](https://img.shields.io/github/actions/workflow/status/oila-gmbh/skill-bill/validate-agent-configs.yml?branch=main&label=validate)
 
@@ -124,9 +124,12 @@ Maintained packs share one exemption-free substance gate: every effective specia
 
 ## License
 
-Skill Bill is source-available. Personal and noncommercial use is available
-under the [PolyForm Noncommercial License 1.0.0](LICENSE). Commercial use,
-including use by for-profit companies or in revenue-generating work, requires a
-separate commercial license from the copyright holder. The copyright holder may
-separately authorize specific people, companies, customers, and partners to use
-Skill Bill outside the public noncommercial license.
+The governing text is the [Skill Bill Pre-1.0 Use License 1.0](LICENSE)
+(`LicenseRef-Skill-Bill-Pre-1.0-Use-1.0`). The concise, non-authoritative
+version matrix is in [Licensing](docs/licensing.md): v0.1.0 and v0.1.1 retain
+their shipped terms; covered v0.1.2 pre-1.0 releases allow unmodified lawful
+use, including commercial use, before the Stable Release Event; afterwards they
+allow only personal use and unpaid individual open-source contribution use. The
+project license never grants modification or redistribution. User-authored
+materials and generated outputs remain the user's, subject to protected Skill
+Bill material and third-party rights.
