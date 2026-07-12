@@ -110,23 +110,23 @@ data class ReleaseRefMetadata(
 class ReleaseLicensePolicyError(message: String) : IllegalArgumentException(message)
 
 object RepoValidationRuntime {
-  const val PRE_1_LICENSE_IDENTIFIER = "LicenseRef-Skill-Bill-Pre-1.0-Use-1.0"
+  const val PRE_1_LICENSE_IDENTIFIER = "LicenseRef-Skill-Bill-Use-1.0"
   const val PROSPECTIVE_EFFECTIVE_VERSION_MARKER = "Prospective Effective Version: v0.1.2"
-  const val TRANSITIONAL_LICENSE_MARKER = "Skill Bill Pre-1.0 Use License 1.0"
+  const val TRANSITIONAL_LICENSE_MARKER = "Skill Bill Use License 1.0"
   private const val NORMALIZED_TRANSITIONAL_LICENSE_SHA256 =
-    "b73acd2889fc6178a9b1e34fca5a0c7aa131152d4f9c5d122f98b57afb6840aa"
-  private const val SUCCESSOR_LICENSE_IDENTIFIER_MARKER = "Successor License Identifier:"
-  private const val SUCCESSOR_LICENSE_APPROVAL_PATH = "docs/release-successor-license-approval.md"
-  private const val APPROVED_SUCCESSOR_LICENSE_STATUS = "Status: Approved"
-  private const val APPROVED_SUCCESSOR_LICENSE_IDENTIFIER_PREFIX = "Approved Successor License Identifier: "
-  private const val APPROVED_SUCCESSOR_LICENSE_SHA256_PREFIX = "Approved LICENSE SHA-256: "
-  private const val APPROVED_SUCCESSOR_LICENSE_HOLDER = "Approved by: Braian Gapur"
-  private const val APPROVED_SUCCESSOR_LICENSE_LOCATION_PREFIX = "Approval location: "
+    "4c6d42f5a704b5722d707f92e1f0312cacc6cbee1058171987cc46393ad8f8f3"
+  private const val LICENSE_IDENTIFIER_MARKER = "Identifier:"
+  private const val STABLE_LICENSE_APPROVAL_PATH = "docs/release-successor-license-approval.md"
+  private const val APPROVED_LICENSE_STATUS = "Status: Approved"
+  private const val APPROVED_LICENSE_IDENTIFIER_PREFIX = "Approved License Identifier: "
+  private const val APPROVED_LICENSE_SHA256_PREFIX = "Approved LICENSE SHA-256: "
+  private const val APPROVED_LICENSE_HOLDER = "Approved by: Braian Gapur"
+  private const val APPROVED_LICENSE_LOCATION_PREFIX = "Approval location: "
   private const val UNSIGNED_BYTE_MASK = 0xff
 
   private val semverTagPattern =
     Regex(
-      "^v?(?<major>0|[1-9]\\d*)\\.(?<minor>0|[1-9]\\d*)\\.(?<patch>0|[1-9]\\d*)" +
+      "^v(?<major>0|[1-9]\\d*)\\.(?<minor>0|[1-9]\\d*)\\.(?<patch>0|[1-9]\\d*)" +
         "(?:-(?<prerelease>(?:0|[1-9]\\d*|\\d*[A-Za-z-][0-9A-Za-z-]*)" +
         "(?:\\.(?:0|[1-9]\\d*|\\d*[A-Za-z-][0-9A-Za-z-]*))*))?" +
         "(?:\\+(?<build>[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*))?$",
@@ -241,7 +241,7 @@ object RepoValidationRuntime {
     val candidate = rawValue.trim().removePrefix("refs/tags/")
     val match = semverTagPattern.matchEntire(candidate)
       ?: throw IllegalArgumentException(
-        "Release tag must match vMAJOR.MINOR.PATCH with optional SemVer prerelease/build metadata.",
+        "Release tag must match canonical vMAJOR.MINOR.PATCH with optional SemVer prerelease/build metadata.",
       )
     return ReleaseRefMetadata(
       tag = candidate,
@@ -275,7 +275,7 @@ object RepoValidationRuntime {
         requireTransitionalPolicy(repoRoot.resolve("LICENSE"), metadata)
       else -> requirePostOneLicenseDecision(
         repoRoot.resolve("LICENSE"),
-        repoRoot.resolve(SUCCESSOR_LICENSE_APPROVAL_PATH),
+        repoRoot.resolve(STABLE_LICENSE_APPROVAL_PATH),
         metadata,
       )
     }
@@ -297,7 +297,7 @@ object RepoValidationRuntime {
     }
     if (!isCurrentTransitionalLicense(Files.readString(licenseFile))) {
       throw ReleaseLicensePolicyError(
-        "Release ${metadata.tag} requires the complete current pre-1.0 license policy.",
+        "Release ${metadata.tag} requires the complete current Skill Bill use license policy.",
       )
     }
   }
@@ -309,9 +309,9 @@ object RepoValidationRuntime {
       )
     }
     val licenseText = Files.readString(licenseFile)
-    if (!approvalFile.isRegularFile() || !isApprovedSuccessorLicense(licenseText, Files.readString(approvalFile))) {
+    if (!approvalFile.isRegularFile() || !isApprovedStableLicense(licenseText, Files.readString(approvalFile))) {
       throw ReleaseLicensePolicyError(
-        "Release ${metadata.tag} requires an explicitly approved successor license policy.",
+        "Release ${metadata.tag} requires the explicitly approved stable license policy.",
       )
     }
   }
@@ -320,21 +320,21 @@ object RepoValidationRuntime {
     return normalizedLicenseSha256(licenseText) == NORMALIZED_TRANSITIONAL_LICENSE_SHA256
   }
 
-  private fun isApprovedSuccessorLicense(licenseText: String, approvalText: String): Boolean {
+  private fun isApprovedStableLicense(licenseText: String, approvalText: String): Boolean {
     val normalized = normalizeLicense(licenseText)
     val identifier = Regex(
-      "(?m)^${Regex.escape(SUCCESSOR_LICENSE_IDENTIFIER_MARKER)} ([A-Za-z0-9][A-Za-z0-9.+:-]*)$",
+      "(?m)^${Regex.escape(LICENSE_IDENTIFIER_MARKER)} ([A-Za-z0-9][A-Za-z0-9.+:-]*)$",
     ).find(normalized)?.groupValues?.get(1) ?: return false
-    return !presentsTransitionalLicenseAsCurrent(normalized) &&
-      approvalText.lineSequence().any { it == APPROVED_SUCCESSOR_LICENSE_STATUS } &&
-      approvalText.lineSequence().any { it == "$APPROVED_SUCCESSOR_LICENSE_IDENTIFIER_PREFIX$identifier" } &&
+    return isCurrentTransitionalLicense(licenseText) &&
+      approvalText.lineSequence().any { it == APPROVED_LICENSE_STATUS } &&
+      approvalText.lineSequence().any { it == "$APPROVED_LICENSE_IDENTIFIER_PREFIX$identifier" } &&
       approvalText.lineSequence().any {
-        it == "$APPROVED_SUCCESSOR_LICENSE_SHA256_PREFIX${normalizedLicenseSha256(licenseText)}"
+        it == "$APPROVED_LICENSE_SHA256_PREFIX${normalizedLicenseSha256(licenseText)}"
       } &&
-      approvalText.lineSequence().any { it == APPROVED_SUCCESSOR_LICENSE_HOLDER } &&
+      approvalText.lineSequence().any { it == APPROVED_LICENSE_HOLDER } &&
       approvalText.lineSequence().any {
-        it.startsWith(APPROVED_SUCCESSOR_LICENSE_LOCATION_PREFIX) &&
-          it.removePrefix(APPROVED_SUCCESSOR_LICENSE_LOCATION_PREFIX).isNotBlank()
+        it.startsWith(APPROVED_LICENSE_LOCATION_PREFIX) &&
+          it.removePrefix(APPROVED_LICENSE_LOCATION_PREFIX).isNotBlank()
       }
   }
 
@@ -343,13 +343,6 @@ object RepoValidationRuntime {
     .joinToString("") { byte -> "%02x".format(byte.toInt() and UNSIGNED_BYTE_MASK) }
 
   private fun normalizeLicense(licenseText: String): String = licenseText.replace("\r\n", "\n").trimEnd()
-
-  private fun presentsTransitionalLicenseAsCurrent(licenseText: String): Boolean {
-    val lines = licenseText.replace("\r\n", "\n").lineSequence().map(String::trim).toSet()
-    return TRANSITIONAL_LICENSE_MARKER in lines &&
-      "Identifier: $PRE_1_LICENSE_IDENTIFIER" in lines &&
-      PROSPECTIVE_EFFECTIVE_VERSION_MARKER in lines
-  }
 
   fun appendGithubOutput(outputPath: Path, metadata: ReleaseRefMetadata) {
     Files.writeString(

@@ -9,8 +9,8 @@ not replace that approval or legal advice.
 | Field | Required record |
 | --- | --- |
 | Release | `v0.1.2` |
-| License identifier | `LicenseRef-Skill-Bill-Pre-1.0-Use-1.0` |
-| Exact `LICENSE` SHA-256 | Candidate: `221aae22ee3e9d6c2a3bdb243999865d5df054335cfe768aeccea047cf34d094`; re-run `sha256sum LICENSE` from the release commit and record that commit before approval. |
+| License identifier | `LicenseRef-Skill-Bill-Use-1.0` |
+| Exact `LICENSE` SHA-256 | Candidate: `8abf81451e45732aa8eae82182cb931c34a7466d26c1189d6a2fa75d27e9c1fb`; re-run `sha256sum LICENSE` from the release commit and record that commit before approval. |
 | Copyright holder | Braian Gapur |
 | Approval | Record an explicit approval of the exact license text and its SHA-256. |
 | Date and approval location | Record the date and durable location of the approval. |

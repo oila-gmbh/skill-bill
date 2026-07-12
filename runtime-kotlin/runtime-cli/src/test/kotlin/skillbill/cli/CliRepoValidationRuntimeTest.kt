@@ -47,8 +47,8 @@ class CliRepoValidationRuntimeTest {
     Files.writeString(
       repoRoot.resolve("LICENSE"),
       """
-      Skill Bill Pre-1.0 Use License 1.0
-      Identifier: LicenseRef-Skill-Bill-Pre-1.0-Use-1.0
+      Skill Bill Use License 1.0
+      Identifier: LicenseRef-Skill-Bill-Use-1.0
       Prospective Effective Version: v0.1.2
       """.trimIndent() + "\n",
     )
@@ -67,7 +67,7 @@ class CliRepoValidationRuntimeTest {
 
     assertEquals(1, result.exitCode)
     assertContains(result.stdout, "\"status\": \"failed\"")
-    assertContains(result.stdout, "successor license policy")
+    assertContains(result.stdout, "stable license policy")
   }
 
   @Test

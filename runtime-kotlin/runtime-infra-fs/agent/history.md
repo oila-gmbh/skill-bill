@@ -1,14 +1,15 @@
 # Boundary History — runtime-kotlin/runtime-infra-fs
 
-## [2026-07-12] SKILL-118 pre-1.0 use-only license
+## [2026-07-12] SKILL-118 unified use license
 Areas: LICENSE and policy docs, GitHub release workflow, scripts, runtime-kotlin/{build-logic,runtime-application,runtime-cli,runtime-ports,runtime-infra-fs,runtime-desktop}
-- Replaced the prospective public policy with `LicenseRef-Skill-Bill-Pre-1.0-Use-1.0`; docs, metadata, and release guidance use one governing-LICENSE version matrix while preserving earlier grants and user-authored materials. reusable
-- Release validation distinguishes protected historical versions, covered pre-1.0 releases, non-triggering staging/RC builds, and successor-policy releases; quote repository paths at the shell boundary. reusable
+- `LicenseRef-Skill-Bill-Use-1.0` governs v0.1.2 prereleases distributed with it, v0.1.2, and later releases: lawful commercial use is free before stable v1.0.0; afterwards personal and qualifying open-source-project use remain free while other commercial use requires a purchased agreement. reusable
+- Documented skills, packs, and orchestration materials may be customized for permitted internal use; executable runtime modification and public redistribution remain outside the public grant.
+- Release refs are canonical `v`-prefixed SemVer. Stable and post-v1 releases require holder approval tied to the exact normalized governing-license hash; placeholders or alternate successor text do not pass. reusable
 - Artifact verification compares staged and packaged license bytes for CLI, MCP, skills, and desktop artifacts; test positive, missing-license, duplicate-path, and byte-drift cases on every host-native extractor. reusable
 - Draft releases target the triggering commit, resume only a matching draft, verify existing asset bytes, upload only missing assets, and publish last; release retries must preserve that order. reusable
-- Known release gate: Braian Gapur must explicitly approve the final root-LICENSE hash before creating `v0.1.2`; the pending record is intentional and must not be filled by automation.
+- Known release gate: Braian Gapur must explicitly approve the final root-LICENSE hashes before `v0.1.2` and stable `v1.0.0`; pending records are intentional and must not be filled by automation.
 Feature flag: N/A
-Acceptance criteria: 12/12 implemented (copyright-holder approval remains required before tagging)
+Acceptance criteria: 8/8 review findings fixed; original 12/12 implemented
 
 ## [2026-07-06] SKILL-107 feature add-on usage schema
 Areas: orchestration/contracts, platform-packs/{go,ios,kotlin,kmp,php,python}, runtime-domain/scaffold, runtime-infra-fs/{scaffold,install,validation}

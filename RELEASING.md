@@ -10,26 +10,25 @@ The release contract is:
 
 The root [LICENSE](LICENSE) governs release licensing. Its non-authoritative
 [version matrix](docs/licensing.md) is deliberately short: v0.1.0 and v0.1.1
-retain their shipped terms; covered releases starting at v0.1.2 permit unmodified
-lawful use, including commercial use, before the Stable Release Event and only
-personal or unpaid individual open-source contribution use after it. The project
-license never grants modification or redistribution.
+retain their shipped terms; releases starting with v0.1.2, including v0.1.2
+prereleases distributed with the license, permit lawful use including commercial
+use before the Stable Release Event. At and after the event, personal and
+qualifying open-source-project use remain free while other commercial use
+requires a purchased Commercial License. Documented customization materials may
+be modified for permitted use; public redistribution is not granted.
 
 Pre-release tags such as `v0.5.0-rc.1` are also supported and publish GitHub
 prereleases. Versions preceding v0.1.2 by SemVer precedence, including
 `v0.1.1+rebuild.1`, retain their historical terms. Starting at v0.1.2, the
-release validator requires the complete transitional custom policy, not just
-its identifier or a marker. A `v1.0.0` release candidate remains non-triggering.
-A stable `v1.0.0`, every later release line, and later prereleases are rejected
-until the copyright holder replaces the transitional current-release license
-with a complete, versioned successor-license policy.
+release validator requires the complete custom policy, not just its identifier
+or a marker. A `v1.0.0` release candidate remains non-triggering. Stable
+`v1.0.0` and later release lines use the same policy and are rejected until the
+copyright holder approves its exact normalized bytes for stable publication.
 
-That successor policy must replace the transitional root `LICENSE` text, declare
-a `Successor License Identifier`, and have an explicit copyright-holder approval
-record tied to its exact normalized SHA-256. Use the
-[successor-license approval record](docs/release-successor-license-approval.md)
-before any `v1.0.0` or later release. This gate records a deliberate versioned
-policy decision without preselecting the successor license.
+Use the [stable-policy approval record](docs/release-successor-license-approval.md)
+before any `v1.0.0` or later release. The record must name the governing license
+identifier and exact normalized SHA-256. This gate prevents placeholder or
+substitute terms from being published as the stable policy.
 
 For the exact stable `v1.0.0` publication, configure the repository secret
 `SKILL_BILL_COPYRIGHT_HOLDER_RELEASE_TOKEN` and variable
@@ -169,11 +168,12 @@ under the hood.
    Automated checks do not replace this approval or external legal review.
    Use the [pre-1.0 license approval record](docs/release-license-approval.md)
    to capture the approved `LICENSE` SHA-256 and approval location.
-4. Pick the next version tag. For releases from `v0.1.2` through pre-1.0, run
+4. Pick the next canonical `v`-prefixed version tag. For releases from `v0.1.2`
+   through pre-1.0, run
    `scripts/validate_release_ref v0.x.y`; a staging build must use a SemVer
    prerelease label such as `v0.x.y-staging.1`. Do not create stable `v1.0.0` or
-   later until a complete, versioned successor-license policy has replaced the
-   transitional text.
+   later until the exact governing policy has the completed copyright-holder
+   approval record described above.
 5. Create an annotated tag:
 
    ```bash

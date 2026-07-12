@@ -31,16 +31,13 @@ class RepoValidationRuntimeTest {
   }
 
   @Test
-  fun `release refs accept bare version tags without v prefix`() {
-    val stable = RepoValidationRuntime.parseReleaseRef("0.2.0")
-    assertEquals("0.2.0", stable.tag)
-    assertEquals("0.2.0", stable.version)
-    assertFalse(stable.prerelease)
-
-    val prerelease = RepoValidationRuntime.parseReleaseRef("refs/tags/1.0.0-rc.1")
-    assertEquals("1.0.0-rc.1", prerelease.tag)
-    assertEquals("1.0.0-rc.1", prerelease.version)
-    assertTrue(prerelease.prerelease)
+  fun `release refs reject bare version tags without v prefix`() {
+    listOf("0.2.0", "refs/tags/1.0.0-rc.1").forEach { ref ->
+      val failure = assertFailsWith<IllegalArgumentException> {
+        RepoValidationRuntime.parseReleaseRef(ref)
+      }
+      assertTrue(failure.message.orEmpty().contains("canonical vMAJOR"), ref)
+    }
   }
 
   @Test
@@ -75,11 +72,11 @@ class RepoValidationRuntimeTest {
       "identifier-only" to RepoValidationRuntime.PRE_1_LICENSE_IDENTIFIER,
       "marker-only" to RepoValidationRuntime.TRANSITIONAL_LICENSE_MARKER,
       "wrong-boundary" to completeTransitionalLicense().replace("v0.1.2", "v0.1.3"),
-      "truncated" to completeTransitionalLicense().substringBefore("9. Termination and cure"),
+      "truncated" to completeTransitionalLicense().substringBefore("10. Termination and cure"),
       "material-clause-change" to
         completeTransitionalLicense().replace(
-          "commercial use, consulting",
-          "commercial and consulting",
+          "hosted-service use",
+          "hosted-product use",
         ),
     ).forEach { (fixture, license) ->
       Files.writeString(repoRoot.resolve("LICENSE"), license)
@@ -115,7 +112,7 @@ class RepoValidationRuntimeTest {
     assertTrue(staging.prerelease)
     assertEquals("v1.0.0-staging.1", staging.tag)
     assertTrue(forcedStableFailure.message.orEmpty().contains("prerelease identifier"))
-    assertTrue(stableFailure.message.orEmpty().contains("approved successor license policy"))
+    assertTrue(stableFailure.message.orEmpty().contains("approved stable license policy"))
   }
 
   @Test
@@ -129,19 +126,18 @@ class RepoValidationRuntimeTest {
     val incomplete = assertFailsWith<IllegalArgumentException> {
       RepoValidationRuntime.validateReleaseRef(repoRoot, "v1.0.0-rc.1", forcePrerelease = false)
     }
-    Files.writeString(repoRoot.resolve("LICENSE"), completeSuccessorLicense())
-    writeSuccessorApproval(repoRoot, completeSuccessorLicense())
-    val successor = assertFailsWith<IllegalArgumentException> {
+    Files.writeString(repoRoot.resolve("LICENSE"), completeTransitionalLicense().replace("Skill Bill Use", "Other Use"))
+    val otherPolicy = assertFailsWith<IllegalArgumentException> {
       RepoValidationRuntime.validateReleaseRef(repoRoot, "v1.0.0-rc.1", forcePrerelease = false)
     }
 
     assertTrue(missing.message.orEmpty().contains("LICENSE"))
-    assertTrue(incomplete.message.orEmpty().contains("complete current pre-1.0"))
-    assertTrue(successor.message.orEmpty().contains("complete current pre-1.0"))
+    assertTrue(incomplete.message.orEmpty().contains("complete current Skill Bill use license"))
+    assertTrue(otherPolicy.message.orEmpty().contains("complete current Skill Bill use license"))
   }
 
   @Test
-  fun `post one lines including prereleases require a successor policy`() {
+  fun `post one lines including prereleases require stable policy approval`() {
     val repoRoot = Files.createTempDirectory("skillbill-post-one-policy")
     Files.writeString(repoRoot.resolve("LICENSE"), completeTransitionalLicense())
 
@@ -149,14 +145,14 @@ class RepoValidationRuntimeTest {
       val failure = assertFailsWith<IllegalArgumentException> {
         RepoValidationRuntime.validateReleaseRef(repoRoot, ref, forcePrerelease = false)
       }
-      assertTrue(failure.message.orEmpty().contains("approved successor license policy"), ref)
+      assertTrue(failure.message.orEmpty().contains("approved stable license policy"), ref)
     }
   }
 
   @Test
-  fun `post one releases require an approved successor license record tied to its exact bytes`() {
+  fun `post one releases require an approved stable license record tied to its exact bytes`() {
     val repoRoot = Files.createTempDirectory("skillbill-successor-license")
-    val successor = completeSuccessorLicense()
+    val successor = completeTransitionalLicense()
     Files.writeString(
       repoRoot.resolve("LICENSE"),
       successor,
@@ -167,46 +163,31 @@ class RepoValidationRuntimeTest {
     }
     writeSuccessorApproval(repoRoot, successor)
     RepoValidationRuntime.validateReleaseRef(repoRoot, "v1.1.0", forcePrerelease = false)
-    Files.writeString(repoRoot.resolve("LICENSE"), successor.replace("warranty", "guarantee"))
+    Files.writeString(repoRoot.resolve("LICENSE"), successor.replace("Commercial License", "Business Agreement"))
     val changedLicense = assertFailsWith<IllegalArgumentException> {
       RepoValidationRuntime.validateReleaseRef(repoRoot, "v1.1.0", forcePrerelease = false)
     }
-    assertTrue(changedLicense.message.orEmpty().contains("approved successor license policy"))
+    assertTrue(changedLicense.message.orEmpty().contains("approved stable license policy"))
   }
 
   @Test
-  fun `post one release rejects unapproved or transitional successor placeholders`() {
+  fun `post one release rejects unapproved or altered policy placeholders`() {
     val repoRoot = Files.createTempDirectory("skillbill-invalid-successor-license")
     listOf(
       "",
-      "Successor License Identifier: LicenseRef-Skill-Bill-Successor-1.0\n" +
-        "Successor License Effective Version: v1.0.0\n",
+      "Identifier: LicenseRef-Skill-Bill-Use-1.0\n",
       "Historical notice\n\n${completeTransitionalLicense()}",
-      "${completeSuccessorLicense()}\n${completeTransitionalLicense()}",
-      completeSuccessorLicense().replace("restrictions", "restrictions".repeat(80)),
+      completeTransitionalLicense().replace("Commercial License", "Business Agreement"),
     ).forEach { license ->
       Files.writeString(repoRoot.resolve("LICENSE"), license)
       val failure = assertFailsWith<IllegalArgumentException> {
         RepoValidationRuntime.validateReleaseRef(repoRoot, "v1.0.1", forcePrerelease = false)
       }
-      assertTrue(failure.message.orEmpty().contains("approved successor license policy"))
+      assertTrue(failure.message.orEmpty().contains("approved stable license policy"))
     }
   }
 
   private fun completeTransitionalLicense(): String = Files.readString(repositoryRoot().resolve("LICENSE"))
-
-  private fun completeSuccessorLicense(): String = """
-    Skill Bill Successor License
-    Successor License Identifier: LicenseRef-Skill-Bill-Successor-1.0
-    Successor License Effective Version: v1.0.0
-
-    Successor License Terms:
-    This successor policy is the complete governing text for Skill Bill releases at and after v1.0.0.
-    It records the licensing decision made by the copyright holder and states the permissions, conditions,
-    restrictions, warranty treatment, and liability rules applicable to those releases. Historical references
-    to Skill Bill Pre-1.0 Use License 1.0 explain only the earlier release line and do not make that
-    transitional policy the current license for this successor release.
-  """.trimIndent() + "\n"
 
   private fun writeSuccessorApproval(repoRoot: Path, license: String) {
     val sha256 = MessageDigest.getInstance("SHA-256")
@@ -217,7 +198,7 @@ class RepoValidationRuntimeTest {
       repoRoot.resolve("docs/release-successor-license-approval.md"),
       """
       Status: Approved
-      Approved Successor License Identifier: LicenseRef-Skill-Bill-Successor-1.0
+      Approved License Identifier: LicenseRef-Skill-Bill-Use-1.0
       Approved LICENSE SHA-256: $sha256
       Approved by: Braian Gapur
       Approval location: https://example.test/approvals/successor-license

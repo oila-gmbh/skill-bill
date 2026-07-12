@@ -2,7 +2,7 @@
 
 # Skill Bill
 
-[![License: Skill Bill Pre-1.0 Use License](https://img.shields.io/badge/License-Skill%20Bill%20Pre--1.0%20Use-4c1.svg)](LICENSE)
+[![License: Skill Bill Use License](https://img.shields.io/badge/License-Skill%20Bill%20Use-4c1.svg)](LICENSE)
 ![Latest release](https://img.shields.io/github/v/release/oila-gmbh/skill-bill?include_prereleases&sort=semver)
 ![Validate agent configs](https://img.shields.io/github/actions/workflow/status/oila-gmbh/skill-bill/validate-agent-configs.yml?branch=main&label=validate)
 
@@ -124,13 +124,15 @@ Maintained packs share one exemption-free substance gate: every effective specia
 
 ## License
 
-The governing text is the [Skill Bill Pre-1.0 Use License 1.0](LICENSE)
-(`LicenseRef-Skill-Bill-Pre-1.0-Use-1.0`). The concise, non-authoritative
+The governing text is the [Skill Bill Use License 1.0](LICENSE)
+(`LicenseRef-Skill-Bill-Use-1.0`). The concise, non-authoritative
 version matrix is in [Licensing](docs/licensing.md): v0.1.0 and v0.1.1 retain
-their shipped terms; covered v0.1.2 pre-1.0 releases allow unmodified lawful
-use, including commercial use, before the Stable Release Event; afterwards they
-allow only personal use and unpaid individual open-source contribution use. The
-`v1.0.0` release requires a deliberate successor-license decision. The project
-license never grants modification or redistribution. User-authored materials and
-generated outputs remain the user's, subject to protected Skill Bill material
-and third-party rights.
+their shipped terms; releases from v0.1.2 allow lawful use, including commercial
+use, before the stable `v1.0.0` Stable Release Event. At and after that event,
+personal use and
+qualifying open-source-project use remain free, while every other commercial use
+requires a purchased Commercial License. Documented skills, packs, and other
+customization materials may be modified for permitted use, but public
+redistribution is not granted. User-authored materials and generated outputs
+remain the user's, subject to protected Skill Bill material and third-party
+rights.

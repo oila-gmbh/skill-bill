@@ -16,10 +16,11 @@ governs rights in Skill Bill itself.
 
 The non-authoritative [licensing summary](docs/licensing.md) gives the same
 version matrix as the public release guidance: v0.1.0 and v0.1.1 retain their
-shipped terms; v0.1.2 through covered pre-1.0 releases use the custom project
-license; the Stable Release Event changes permitted execution; and v1.0.0
-requires a deliberate successor-license decision. The root `LICENSE` text
-governs. This is not a CLA or sign-off requirement.
+shipped terms; releases from v0.1.2 use the custom project license; and the
+stable `v1.0.0` Stable Release Event changes free commercial use to free personal and
+qualifying open-source-project use, with other commercial use requiring a
+purchased Commercial License. The root `LICENSE` text governs. This is not a
+CLA or sign-off requirement.
 
 ## Quality Gate
 
