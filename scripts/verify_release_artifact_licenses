@@ -101,7 +101,7 @@ verify_tar() {
   local artifact="$1"
   local entry entry_count
   require_command tar
-  entry="$(tar -tzf "${artifact}" | awk '$0 == "LICENSE" || $0 == "./LICENSE" { print; exit }')"
+  entry="$(tar -tzf "${artifact}" | awk '$0 == "LICENSE" || $0 == "./LICENSE" { if (!found) { print; found = 1 } }')"
   entry_count="$(tar -tzf "${artifact}" | awk '$0 == "LICENSE" || $0 == "./LICENSE" { count++ } END { print count + 0 }')"
   if [[ "${entry_count}" != "1" ]]; then
     echo "Expected exactly one canonical LICENSE entry in ${artifact}, found ${entry_count}." >&2

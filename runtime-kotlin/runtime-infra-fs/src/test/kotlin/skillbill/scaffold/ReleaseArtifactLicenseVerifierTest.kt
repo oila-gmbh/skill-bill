@@ -134,9 +134,10 @@ class ReleaseArtifactLicenseVerifierTest {
   private fun writeTar(artifact: Path, licenseBytes: ByteArray, duplicateLicense: Boolean = false) {
     val source = Files.createTempDirectory("skillbill-artifact-tar-source")
     Files.write(source.resolve("LICENSE"), licenseBytes)
+    Files.writeString(source.resolve("README.md"), "Skill Bill skills archive fixture\n")
     val process =
       ProcessBuilder(
-        listOf("tar", "-czf", artifact.toString(), "-C", source.toString(), "LICENSE") +
+        listOf("tar", "-czf", artifact.toString(), "-C", source.toString(), "LICENSE", "README.md") +
           if (duplicateLicense) listOf("LICENSE") else emptyList(),
       )
         .redirectErrorStream(true)
