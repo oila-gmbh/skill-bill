@@ -19,6 +19,7 @@ internal fun workflowOpen(
   kind = kind,
   sessionId = arguments.string("session_id"),
   currentStepId = arguments.optionalString("current_step_id"),
+  issueKey = arguments.optionalString("issue_key"),
   context = context,
 )
 

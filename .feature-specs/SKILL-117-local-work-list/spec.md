@@ -16,7 +16,7 @@ The primary CLI surface is:
 skill-bill work list
 ```
 
-The desktop toolbar gains a **Work** button that opens a read-only work-list view backed directly by the same application service. The desktop must not invoke the CLI or implement a second SQL/query interpretation.
+The desktop left panel gains an expandable **Work** section containing the read-only work list, backed directly by the same application service. The desktop must not invoke the CLI or implement a second SQL/query interpretation.
 
 ## Background / Problem
 
@@ -31,7 +31,7 @@ The relevant existing surfaces are:
 - `runtime-ports/.../persistence/WorkflowStateRepository.kt` and `WorkflowStateRecord.kt` for the persistence boundary.
 - `runtime-application/.../application/workflow/WorkflowService.kt` for workflow application behavior.
 - `runtime-cli/.../cli/workflow/WorkflowCliCommands.kt` for the existing family-specific commands.
-- `runtime-desktop/core/data/.../DesktopRuntimeApplicationServices.kt` and the `feature/skillbill` state/route/frame files for in-process runtime access and the desktop toolbar.
+- `runtime-desktop/core/data/.../DesktopRuntimeApplicationServices.kt` and the `feature/skillbill` state/route/frame files for in-process runtime access and the desktop left panel.
 
 ## Decided Semantics
 
@@ -119,19 +119,19 @@ Family-specific `workflow list` and `verify-workflow list` commands remain uncha
 
 ### 4. Desktop work list
 
-Add a **Work** button to the desktop workspace toolbar. Activating it opens a read-only modal, overlay, or dedicated pane containing the same six columns as the CLI's human table. The implementation should follow the desktop's existing state/controller/route split and obtain data through a small desktop domain gateway backed by the shared application service in `DesktopRuntimeApplicationServices`.
+Add an expandable **Work** section to the desktop workspace left panel, alongside the existing left-panel content. Expanding it renders the read-only work list in that panel; it is not launched from a toolbar button or a modal/overlay. The implementation should follow the desktop's existing state/controller/route split and obtain data through a small desktop domain gateway backed by the shared application service in `DesktopRuntimeApplicationServices`.
 
 The view must provide:
 
 - initial loading, populated, empty, and error states;
+- an accessible expand/collapse control and state consistent with existing left-panel sections;
 - a **Refresh** action that rereads the database without restarting the app;
-- a close action and keyboard dismissal consistent with existing desktop overlays;
 - distinct but non-color-only presentation of current state;
 - an explicit indicator/accessible description for estimated legacy `STATE SINCE` values;
 - deterministic newest-first row order identical to the CLI; and
 - horizontal/vertical scrolling or responsive sizing so workflow ids and timestamps remain inspectable at supported window sizes.
 
-The button remains usable when no repository is open, but is disabled while another exclusive desktop operation or blocking first-run dialog makes opening an overlay unsafe.
+The Work section remains usable when no repository is open, but is disabled while another exclusive desktop operation or blocking first-run dialog makes loading it unsafe.
 
 All new user-facing text belongs in Compose resources. Interactive controls require roles, content descriptions or visible labels, keyboard access, and test tags following existing desktop conventions.
 
@@ -144,8 +144,8 @@ All new user-facing text belongs in Compose resources. Interactive controls requ
 5. Fresh and legacy databases receive the new fields through append-only, idempotent migration/healing behavior. Legacy workflow state-entry values use `finished_at`, then `updated_at`, then `started_at`; goal values use `finished_at`, then `last_activity_at`, then `first_started_at`. Backfilled values remain marked estimated until a real transition occurs.
 6. The CLI's default table contains `ISSUE`, `KIND`, `WORKFLOW`, `STARTED`, `STATE`, and `STATE SINCE`, visibly identifies estimated values, succeeds on an empty database, and honors an optional positive `--limit` plus the existing global `--db` override.
 7. `skill-bill work list --format json` returns the shared read model in a stable envelope, preserves unambiguous UTC ISO-8601 instants, and includes `state_entered_at_estimated` for every row.
-8. The desktop toolbar exposes a **Work** button that can open without a repository, loads through an in-process gateway backed by the same application service as the CLI, and never shells out to `skill-bill` or duplicates the inventory SQL.
-9. The desktop work view renders the same fields and ordering as the CLI and has verified loading, populated, empty, error, refresh, close/keyboard-dismissal, estimated-time accessibility, and constrained-window scrolling behavior.
+8. The desktop left panel exposes an expandable **Work** section that can open without a repository, loads through an in-process gateway backed by the same application service as the CLI, and never shells out to `skill-bill` or duplicates the inventory SQL.
+9. The desktop work section renders the same fields and ordering as the CLI and has verified loading, populated, empty, error, expand/collapse, refresh, estimated-time accessibility, and constrained-window scrolling behavior.
 10. Existing `workflow list` and `verify-workflow list` behavior and workflow-state schema loud-fail guarantees remain unchanged, and the full Kotlin quality gate passes.
 
 ## Non-goals / Constraints
@@ -164,7 +164,7 @@ All new user-facing text belongs in Compose resources. Interactive controls requ
 - Workflow and goal persistence tests for insert, status transition, same-status update, terminal transition, prose/runtime mode, verify and goal work, deterministic union ordering, empty results, and limit behavior.
 - Application-service tests proving a single shared mapping and typed failure for malformed persisted timestamps/rows.
 - CLI tests for human table, JSON envelope, all workflow kinds, repeated issue keys, unknown issue keys, estimated markers, empty database, invalid/valid limits, ordering, and global `--db` selection.
-- Desktop controller/gateway tests for load, refresh, empty, and error transitions, plus Compose UI tests for button availability, column content, ordering, scrolling, close/keyboard dismissal, accessible estimated-state labeling, and test tags.
+- Desktop controller/gateway tests for load, expand/collapse, refresh, empty, and error transitions, plus Compose UI tests for section availability, column content, ordering, scrolling, accessible estimated-state labeling, and test tags.
 - Run the repository quality entry point and full Kotlin gate:
 
 ```bash
@@ -180,7 +180,7 @@ bill-code-check
 - `runtime-kotlin/runtime-cli` top-level command registration, rendering, and tests
 - `runtime-kotlin/runtime-desktop/core/domain` work-list gateway and UI state models
 - `runtime-kotlin/runtime-desktop/core/data` in-process runtime service adapter
-- `runtime-kotlin/runtime-desktop/feature/skillbill` toolbar, controller/state, work view, resources, accessibility, and tests
+- `runtime-kotlin/runtime-desktop/feature/skillbill` left panel, controller/state, work section, resources, accessibility, and tests
 
 ## Next Path
 

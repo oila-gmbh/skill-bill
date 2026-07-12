@@ -64,6 +64,7 @@ class WorkflowService(
     sessionId: String = "",
     currentStepId: String? = null,
     dbOverride: String? = null,
+    issueKey: String? = null,
   ): WorkflowOpenResult {
     val family = kind.workflowFamily()
     val stepId = currentStepId ?: family.definition.defaultInitialStepId
@@ -73,7 +74,7 @@ class WorkflowService(
     }
     return database.transaction(dbOverride) { unitOfWork ->
       val record = engine.openRecord(family.definition, workflowId, sessionId, stepId)
-      family.save(unitOfWork.workflowStates, record)
+      family.saveRecord(unitOfWork.workflowStates, record.toRecord().copy(issueKey = normalizeIssueKey(issueKey)))
       val saved = family.get(unitOfWork.workflowStates, workflowId) ?: record
       WorkflowOpenResult.Ok(
         workflowId = saved.workflowId,
@@ -260,6 +261,10 @@ class WorkflowService(
   }
 }
 
+private fun normalizeIssueKey(issueKey: String?): String? = issueKey?.let { value ->
+  value.trim().also { require(it.isNotEmpty()) { "issue key cannot be blank." } }
+}
+
 private fun WorkflowEngine.syncDecompositionParentRuntime(
   family: WorkflowFamily,
   updated: WorkflowStateSnapshot,
@@ -427,10 +432,14 @@ internal enum class WorkflowFamily(
   }
 
   fun save(repository: WorkflowStateRepository, record: WorkflowStateSnapshot) {
+    saveRecord(repository, record.toRecord())
+  }
+
+  fun saveRecord(repository: WorkflowStateRepository, record: WorkflowStateRecord) {
     when (this) {
-      IMPLEMENT -> repository.saveFeatureTaskWorkflow(record.toRecord(), FeatureTaskWorkflowMode.PROSE)
-      VERIFY -> repository.saveFeatureVerifyWorkflow(record.toRecord())
-      TASK_RUNTIME -> repository.saveFeatureTaskWorkflow(record.toRecord(), FeatureTaskWorkflowMode.RUNTIME)
+      IMPLEMENT -> repository.saveFeatureTaskWorkflow(record, FeatureTaskWorkflowMode.PROSE)
+      VERIFY -> repository.saveFeatureVerifyWorkflow(record)
+      TASK_RUNTIME -> repository.saveFeatureTaskWorkflow(record, FeatureTaskWorkflowMode.RUNTIME)
     }
   }
 

@@ -95,7 +95,7 @@ class FeatureTaskRuntimeRunner(
   @Suppress("LongMethod") // single runtime-owned orchestration seam; the token accumulator wiring is additive
   fun run(request: FeatureTaskRuntimeRunRequest): FeatureTaskRuntimeRunReport {
     foreignModeWorkflowBlock(request)?.let { return it }
-    recorder.ensureWorkflowOpen(request.workflowId, request.sessionId, request.dbPathOverride)
+    recorder.ensureWorkflowOpen(request.workflowId, request.sessionId, request.dbPathOverride, request.issueKey)
     val durableRunInvariants = runInvariantsStore.resolve(
       workflowId = request.workflowId,
       dbOverride = request.dbPathOverride,

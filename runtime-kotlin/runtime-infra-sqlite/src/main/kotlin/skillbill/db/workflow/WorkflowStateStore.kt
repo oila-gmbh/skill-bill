@@ -13,21 +13,11 @@ import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import skillbill.ports.persistence.model.FeatureVerifySessionSummary
 import skillbill.ports.persistence.model.WorkflowStateRecord
 import java.sql.Connection
+import java.time.Instant
 
 typealias WorkflowStateRow = WorkflowStateRecord
 
 private const val WORKFLOW_ID_PARAMETER_INDEX: Int = 1
-private const val SESSION_ID_PARAMETER_INDEX: Int = 2
-private const val WORKFLOW_NAME_PARAMETER_INDEX: Int = 3
-private const val CONTRACT_VERSION_PARAMETER_INDEX: Int = 4
-private const val WORKFLOW_STATUS_PARAMETER_INDEX: Int = 5
-private const val CURRENT_STEP_ID_PARAMETER_INDEX: Int = 6
-private const val STEPS_JSON_PARAMETER_INDEX: Int = 7
-private const val ARTIFACTS_JSON_PARAMETER_INDEX: Int = 8
-private const val INSERT_TERMINAL_PARAMETER_INDEX: Int = 9
-private const val INSERT_FINISHED_AT_PARAMETER_INDEX: Int = 10
-private const val FEATURE_TASK_MODE_PARAMETER_INDEX: Int = 12
-private const val FEATURE_TASK_IMPLEMENTATION_SKILL_PARAMETER_INDEX: Int = 13
 
 private val terminalWorkflowStatuses: Set<String> = setOf("completed", "failed", "abandoned")
 
@@ -210,6 +200,8 @@ private class FeatureVerifyWorkflowStateStore(
 }
 
 private fun Connection.upsertWorkflowRow(tableName: String, row: WorkflowStateRecord, defaultContractVersion: String) {
+  val stateTimestamp = row.stateEnteredAt?.takeIf(String::isNotBlank) ?: Instant.now().toString()
+  val startedTimestamp = row.startedAt?.takeIf(String::isNotBlank) ?: stateTimestamp
   prepareStatement(
     """
     INSERT INTO $tableName (
@@ -221,8 +213,12 @@ private fun Connection.upsertWorkflowRow(tableName: String, row: WorkflowStateRe
       current_step_id,
       steps_json,
       artifacts_json,
+      issue_key,
+      started_at,
+      state_entered_at,
+      state_entered_at_estimated,
       finished_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CASE WHEN ? THEN COALESCE(NULLIF(?, ''), CURRENT_TIMESTAMP) ELSE NULL END)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CASE WHEN ? THEN COALESCE(NULLIF(?, ''), CURRENT_TIMESTAMP) ELSE NULL END)
     ON CONFLICT(workflow_id) DO UPDATE SET
       session_id = excluded.session_id,
       workflow_name = excluded.workflow_name,
@@ -231,7 +227,16 @@ private fun Connection.upsertWorkflowRow(tableName: String, row: WorkflowStateRe
       current_step_id = excluded.current_step_id,
       steps_json = excluded.steps_json,
       artifacts_json = excluded.artifacts_json,
+      issue_key = COALESCE(NULLIF(excluded.issue_key, ''), $tableName.issue_key),
       updated_at = CURRENT_TIMESTAMP,
+      state_entered_at = CASE
+        WHEN $tableName.workflow_status != excluded.workflow_status THEN excluded.state_entered_at
+        ELSE $tableName.state_entered_at
+      END,
+      state_entered_at_estimated = CASE
+        WHEN $tableName.workflow_status != excluded.workflow_status THEN 0
+        ELSE $tableName.state_entered_at_estimated
+      END,
       finished_at = CASE
         WHEN excluded.workflow_status IN ('completed', 'failed', 'abandoned')
           THEN COALESCE(NULLIF(excluded.finished_at, ''), CURRENT_TIMESTAMP)
@@ -240,16 +245,20 @@ private fun Connection.upsertWorkflowRow(tableName: String, row: WorkflowStateRe
     """.trimIndent(),
   ).use { statement ->
     val terminal = row.workflowStatus in terminalWorkflowStatuses
-    statement.setString(WORKFLOW_ID_PARAMETER_INDEX, row.workflowId)
-    statement.setString(SESSION_ID_PARAMETER_INDEX, row.sessionId)
-    statement.setString(WORKFLOW_NAME_PARAMETER_INDEX, row.workflowName)
-    statement.setString(CONTRACT_VERSION_PARAMETER_INDEX, row.contractVersion.ifBlank { defaultContractVersion })
-    statement.setString(WORKFLOW_STATUS_PARAMETER_INDEX, row.workflowStatus)
-    statement.setString(CURRENT_STEP_ID_PARAMETER_INDEX, row.currentStepId)
-    statement.setString(STEPS_JSON_PARAMETER_INDEX, row.stepsJson)
-    statement.setString(ARTIFACTS_JSON_PARAMETER_INDEX, row.artifactsJson)
-    statement.setBoolean(INSERT_TERMINAL_PARAMETER_INDEX, terminal)
-    statement.setString(INSERT_FINISHED_AT_PARAMETER_INDEX, row.finishedAt)
+    statement.setString(1, row.workflowId)
+    statement.setString(2, row.sessionId)
+    statement.setString(3, row.workflowName)
+    statement.setString(4, row.contractVersion.ifBlank { defaultContractVersion })
+    statement.setString(5, row.workflowStatus)
+    statement.setString(6, row.currentStepId)
+    statement.setString(7, row.stepsJson)
+    statement.setString(8, row.artifactsJson)
+    statement.setString(9, row.issueKey)
+    statement.setString(10, startedTimestamp)
+    statement.setString(11, stateTimestamp)
+    statement.setInt(12, if (row.stateEnteredAtEstimated) 1 else 0)
+    statement.setBoolean(13, terminal)
+    statement.setString(14, row.finishedAt)
     statement.executeUpdate()
   }
 }
@@ -272,6 +281,8 @@ private fun Connection.upsertFeatureTaskWorkflowRow(
   implementationSkill: String,
   defaultContractVersion: String,
 ) {
+  val stateTimestamp = row.stateEnteredAt?.takeIf(String::isNotBlank) ?: Instant.now().toString()
+  val startedTimestamp = row.startedAt?.takeIf(String::isNotBlank) ?: stateTimestamp
   prepareStatement(
     """
     INSERT INTO feature_task_workflows (
@@ -283,10 +294,14 @@ private fun Connection.upsertFeatureTaskWorkflowRow(
       current_step_id,
       steps_json,
       artifacts_json,
+      issue_key,
+      started_at,
+      state_entered_at,
+      state_entered_at_estimated,
       finished_at,
       mode,
       implementation_skill
-    ) VALUES (?, ?, 'bill-feature-task', ?, ?, ?, ?, ?, CASE WHEN ? THEN COALESCE(NULLIF(?, ''), CURRENT_TIMESTAMP) ELSE NULL END, ?, ?)
+    ) VALUES (?, ?, 'bill-feature-task', ?, ?, ?, ?, ?, ?, ?, ?, ?, CASE WHEN ? THEN COALESCE(NULLIF(?, ''), CURRENT_TIMESTAMP) ELSE NULL END, ?, ?)
     ON CONFLICT(workflow_id) DO UPDATE SET
       session_id = excluded.session_id,
       workflow_name = 'bill-feature-task',
@@ -295,7 +310,16 @@ private fun Connection.upsertFeatureTaskWorkflowRow(
       current_step_id = excluded.current_step_id,
       steps_json = excluded.steps_json,
       artifacts_json = excluded.artifacts_json,
+      issue_key = COALESCE(NULLIF(excluded.issue_key, ''), feature_task_workflows.issue_key),
       updated_at = CURRENT_TIMESTAMP,
+      state_entered_at = CASE
+        WHEN feature_task_workflows.workflow_status != excluded.workflow_status THEN excluded.state_entered_at
+        ELSE feature_task_workflows.state_entered_at
+      END,
+      state_entered_at_estimated = CASE
+        WHEN feature_task_workflows.workflow_status != excluded.workflow_status THEN 0
+        ELSE feature_task_workflows.state_entered_at_estimated
+      END,
       finished_at = CASE
         WHEN excluded.workflow_status IN ('completed', 'failed', 'abandoned')
           THEN COALESCE(NULLIF(excluded.finished_at, ''), CURRENT_TIMESTAMP)
@@ -306,17 +330,21 @@ private fun Connection.upsertFeatureTaskWorkflowRow(
     """.trimIndent(),
   ).use { statement ->
     val terminal = row.workflowStatus in terminalWorkflowStatuses
-    statement.setString(WORKFLOW_ID_PARAMETER_INDEX, row.workflowId)
-    statement.setString(SESSION_ID_PARAMETER_INDEX, row.sessionId)
-    statement.setString(CONTRACT_VERSION_PARAMETER_INDEX - 1, row.contractVersion.ifBlank { defaultContractVersion })
-    statement.setString(WORKFLOW_STATUS_PARAMETER_INDEX - 1, row.workflowStatus)
-    statement.setString(CURRENT_STEP_ID_PARAMETER_INDEX - 1, row.currentStepId)
-    statement.setString(STEPS_JSON_PARAMETER_INDEX - 1, row.stepsJson)
-    statement.setString(ARTIFACTS_JSON_PARAMETER_INDEX - 1, row.artifactsJson)
-    statement.setBoolean(INSERT_TERMINAL_PARAMETER_INDEX - 1, terminal)
-    statement.setString(INSERT_FINISHED_AT_PARAMETER_INDEX - 1, row.finishedAt)
-    statement.setString(FEATURE_TASK_MODE_PARAMETER_INDEX - 2, mode.wireValue)
-    statement.setString(FEATURE_TASK_IMPLEMENTATION_SKILL_PARAMETER_INDEX - 2, implementationSkill)
+    statement.setString(1, row.workflowId)
+    statement.setString(2, row.sessionId)
+    statement.setString(3, row.contractVersion.ifBlank { defaultContractVersion })
+    statement.setString(4, row.workflowStatus)
+    statement.setString(5, row.currentStepId)
+    statement.setString(6, row.stepsJson)
+    statement.setString(7, row.artifactsJson)
+    statement.setString(8, row.issueKey)
+    statement.setString(9, startedTimestamp)
+    statement.setString(10, stateTimestamp)
+    statement.setInt(11, if (row.stateEnteredAtEstimated) 1 else 0)
+    statement.setBoolean(12, terminal)
+    statement.setString(13, row.finishedAt)
+    statement.setString(14, mode.wireValue)
+    statement.setString(15, implementationSkill)
     statement.executeUpdate()
   }
 }
@@ -332,8 +360,11 @@ private fun Connection.getWorkflowRow(tableName: String, workflowId: String): Wo
         current_step_id,
         steps_json,
         artifacts_json,
+        issue_key,
         started_at,
         updated_at,
+        state_entered_at,
+        state_entered_at_estimated,
         finished_at
       FROM $tableName
       WHERE workflow_id = ?
@@ -361,8 +392,11 @@ private fun Connection.getFeatureTaskWorkflowRow(workflowId: String): WorkflowSt
         current_step_id,
         steps_json,
         artifacts_json,
+        issue_key,
         started_at,
         updated_at,
+        state_entered_at,
+        state_entered_at_estimated,
         finished_at
       FROM feature_task_workflows
       WHERE workflow_id = ?
@@ -390,8 +424,11 @@ private fun Connection.listWorkflowRows(tableName: String, limit: Int): List<Wor
       current_step_id,
       steps_json,
       artifacts_json,
+      issue_key,
       started_at,
       updated_at,
+      state_entered_at,
+      state_entered_at_estimated,
       finished_at
     FROM $tableName
     ORDER BY updated_at DESC, rowid DESC
@@ -440,8 +477,11 @@ private fun Connection.listFeatureTaskWorkflowRows(
       current_step_id,
       steps_json,
       artifacts_json,
+      issue_key,
       started_at,
       updated_at,
+      state_entered_at,
+      state_entered_at_estimated,
       finished_at
     FROM feature_task_workflows
     WHERE mode = ?
@@ -470,8 +510,11 @@ private fun java.sql.ResultSet.toWorkflowStateRecord(): WorkflowStateRecord = Wo
   currentStepId = getString("current_step_id"),
   stepsJson = getString("steps_json"),
   artifactsJson = getString("artifacts_json"),
+  issueKey = getString("issue_key"),
   startedAt = getString("started_at"),
   updatedAt = getString("updated_at"),
+  stateEnteredAt = getString("state_entered_at"),
+  stateEnteredAtEstimated = getInt("state_entered_at_estimated") != 0,
   finishedAt = getString("finished_at"),
 )
 
@@ -497,8 +540,11 @@ private fun java.sql.ResultSet.toFeatureTaskWorkflowStateRecord(): WorkflowState
     currentStepId = getString("current_step_id"),
     stepsJson = getString("steps_json"),
     artifactsJson = getString("artifacts_json"),
+    issueKey = getString("issue_key"),
     startedAt = getString("started_at"),
     updatedAt = getString("updated_at"),
+    stateEnteredAt = getString("state_entered_at"),
+    stateEnteredAtEstimated = getInt("state_entered_at_estimated") != 0,
     finishedAt = getString("finished_at"),
     mode = mode,
     implementationSkill = getString("implementation_skill"),

@@ -14,6 +14,7 @@ import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import skillbill.workflow.WorkflowEngine
 import skillbill.workflow.WorkflowSnapshotValidator
 import skillbill.workflow.model.WorkflowStateSnapshot
+import skillbill.application.workflow.toRecord
 import skillbill.workflow.model.WorkflowUpdateInput
 import skillbill.workflow.model.appendBoundedHistoryBySequence
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
@@ -274,9 +275,19 @@ class FeatureTaskRuntimePhaseRecorder(
    * Ensures a runtime workflow row exists, opening one at the definition's initial step when
    * absent. Idempotent: a no-op when a row already exists.
    */
-  fun ensureWorkflowOpen(workflowId: String, sessionId: String, dbOverride: String? = null): Boolean =
+  fun ensureWorkflowOpen(
+    workflowId: String,
+    sessionId: String,
+    dbOverride: String? = null,
+    issueKey: String? = null,
+  ): Boolean =
     database.transaction(dbOverride) { unitOfWork ->
-      if (WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) != null) {
+      val normalizedIssueKey = issueKey?.trim()?.also { require(it.isNotEmpty()) { "issue key cannot be blank." } }
+      val existing = unitOfWork.workflowStates.getFeatureTaskRuntimeWorkflow(workflowId)
+      if (existing != null) {
+        if (existing.issueKey == null && normalizedIssueKey != null) {
+          unitOfWork.workflowStates.saveFeatureTaskRuntimeWorkflow(existing.copy(issueKey = normalizedIssueKey))
+        }
         return@transaction true
       }
       val opened = engine.openRecord(
@@ -285,7 +296,10 @@ class FeatureTaskRuntimePhaseRecorder(
         sessionId,
         WorkflowFamily.TASK_RUNTIME.definition.defaultInitialStepId,
       )
-      WorkflowFamily.TASK_RUNTIME.save(unitOfWork.workflowStates, opened)
+      WorkflowFamily.TASK_RUNTIME.saveRecord(
+        unitOfWork.workflowStates,
+        opened.toRecord().copy(issueKey = normalizedIssueKey),
+      )
       true
     }
 

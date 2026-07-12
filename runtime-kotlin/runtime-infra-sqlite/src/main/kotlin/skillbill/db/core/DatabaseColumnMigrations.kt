@@ -7,6 +7,7 @@ internal object DatabaseColumnMigrations {
   private val safeIdentifierPattern = Regex("^[a-z_][a-z0-9_]*$")
 
   fun apply(connection: Connection) {
+    ensureWorkListWorkflowColumns(connection)
     ensureFeatureVerifyWorkflowColumns(connection)
     ensureReviewRunColumns(connection)
     ensureFindingColumns(connection)
@@ -65,8 +66,104 @@ internal object DatabaseColumnMigrations {
       ensureColumn(connection, "goal_issue_progress", "last_blocked_at", "TEXT")
       ensureColumn(connection, "goal_issue_progress", "latest_segment_workflow_id", "TEXT")
       ensureColumn(connection, "goal_issue_progress", "last_blocked_segment_workflow_id", "TEXT")
+      ensureColumn(connection, "goal_issue_progress", "state_entered_at", "TEXT")
+      ensureColumn(connection, "goal_issue_progress", "state_entered_at_estimated", "INTEGER")
+      healGoalIssueProgressStateEntries(connection)
     }
     ensureReconciliationIndexes(connection)
+  }
+
+  private fun ensureWorkListWorkflowColumns(connection: Connection) {
+    listOf("feature_task_workflows", "feature_verify_workflows").forEach { tableName ->
+      ensureColumn(connection, tableName, "issue_key", "TEXT")
+      ensureColumn(connection, tableName, "state_entered_at", "TEXT")
+      ensureColumn(connection, tableName, "state_entered_at_estimated", "INTEGER")
+      connection.createStatement().use { statement ->
+        statement.execute(
+          """
+          UPDATE $tableName
+          SET state_entered_at = COALESCE(
+                NULLIF(finished_at, ''), NULLIF(updated_at, ''), NULLIF(started_at, ''), CURRENT_TIMESTAMP
+              ),
+              state_entered_at_estimated = 1
+          WHERE state_entered_at IS NULL OR state_entered_at = ''
+          """.trimIndent(),
+        )
+      }
+    }
+    recoverRuntimeWorkflowIssueKeys(connection)
+    recoverGoalContinuationWorkflowIssueKeys(connection)
+  }
+
+  private fun healGoalIssueProgressStateEntries(connection: Connection) {
+    connection.createStatement().use { statement ->
+      statement.execute(
+        """
+        UPDATE goal_issue_progress
+        SET status = CASE
+              WHEN status IS NOT NULL AND status != '' THEN status
+              WHEN last_blocked_segment_workflow_id IS NOT NULL
+                   AND last_blocked_segment_workflow_id = latest_segment_workflow_id THEN 'blocked'
+              ELSE 'running'
+            END,
+            state_entered_at = COALESCE(
+              NULLIF(state_entered_at, ''), NULLIF(finished_at, ''), NULLIF(last_activity_at, ''),
+              NULLIF(first_started_at, ''), CURRENT_TIMESTAMP
+            ),
+            state_entered_at_estimated = CASE
+              WHEN state_entered_at IS NULL OR state_entered_at = '' THEN 1
+              ELSE COALESCE(state_entered_at_estimated, 0)
+            END
+        """.trimIndent(),
+      )
+    }
+  }
+
+  private fun recoverGoalContinuationWorkflowIssueKeys(connection: Connection) {
+    connection.createStatement().use { statement ->
+      statement.execute(
+        """
+        UPDATE feature_task_workflows
+        SET issue_key = CASE
+          WHEN json_valid(artifacts_json) THEN json_extract(artifacts_json, '$.goal_continuation.issue_key')
+          ELSE NULL
+        END
+        WHERE (issue_key IS NULL OR issue_key = '')
+          AND mode = 'runtime'
+          AND CASE WHEN json_valid(artifacts_json) THEN
+            json_type(artifacts_json, '$.goal_continuation') = 'object'
+            AND NULLIF(trim(json_extract(artifacts_json, '$.goal_continuation.issue_key')), '') IS NOT NULL
+            AND json_type(artifacts_json, '$.goal_continuation.subtask_id') = 'integer'
+            AND json_extract(artifacts_json, '$.goal_continuation.subtask_id') > 0
+            AND json_type(artifacts_json, '$.goal_continuation.suppress_pr') IN ('true', 'false')
+            AND NULLIF(trim(json_extract(artifacts_json, '$.goal_continuation.goal_branch')), '') IS NOT NULL
+          ELSE 0 END
+        """.trimIndent(),
+      )
+    }
+  }
+
+  private fun recoverRuntimeWorkflowIssueKeys(connection: Connection) {
+    connection.createStatement().use { statement ->
+      statement.execute(
+        """
+        UPDATE feature_task_workflows
+        SET issue_key = (
+          SELECT NULLIF(feature_task_runtime_sessions.issue_key, '')
+          FROM feature_task_runtime_sessions
+          WHERE feature_task_runtime_sessions.session_id = feature_task_workflows.session_id
+        )
+        WHERE (issue_key IS NULL OR issue_key = '')
+          AND mode = 'runtime'
+          AND EXISTS (
+            SELECT 1 FROM feature_task_runtime_sessions
+            WHERE feature_task_runtime_sessions.session_id = feature_task_workflows.session_id
+              AND feature_task_runtime_sessions.issue_key IS NOT NULL
+              AND feature_task_runtime_sessions.issue_key != ''
+          )
+        """.trimIndent(),
+      )
+    }
   }
 
   private fun ensureReconciliationIndexes(connection: Connection) {

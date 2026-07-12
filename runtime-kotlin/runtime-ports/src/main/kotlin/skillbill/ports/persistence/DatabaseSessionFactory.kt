@@ -20,4 +20,6 @@ interface UnitOfWork {
   val telemetryReconciliation: TelemetryReconciliationRepository
   val telemetryOutbox: TelemetryOutboxRepository
   val workflowStates: WorkflowStateRepository
+  val workList: WorkListRepository
+    get() = EmptyWorkListRepository
 }

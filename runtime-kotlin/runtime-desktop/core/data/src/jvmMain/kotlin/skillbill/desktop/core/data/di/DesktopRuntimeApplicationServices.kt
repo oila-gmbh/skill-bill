@@ -9,6 +9,7 @@ import skillbill.application.scaffold.RepoValidationService
 import skillbill.application.scaffold.ScaffoldCatalogService
 import skillbill.application.scaffold.ScaffoldService
 import skillbill.application.scaffold.SkillRemoveService
+import skillbill.application.work.WorkListService
 import skillbill.desktop.core.common.di.UserScope
 import skillbill.di.RuntimeComponent
 import skillbill.di.create
@@ -53,6 +54,9 @@ class DesktopRuntimeApplicationServices {
 
   val installedWorkspaceBaselineStatusPort: InstalledWorkspaceBaselineStatusPort
     get() = services.installedWorkspaceBaselineStatusPort
+
+  val workListService: WorkListService
+    get() = services.workListService
 
   fun resolveExternalAddonSources(): List<ExternalAddonSource> =
     services.externalAddonOverlayService.resolveSources(currentUserHome(), System.getenv())
@@ -99,6 +103,7 @@ private data class DesktopRuntimeApplicationServiceBundle(
   val installedWorkspaceBaselineStatusPort: InstalledWorkspaceBaselineStatusPort,
   val externalAddonOverlayService: ExternalAddonOverlayService,
   val telemetryConfigStore: TelemetryConfigStore,
+  val workListService: WorkListService,
 )
 
 private fun buildDesktopRuntimeApplicationServices(home: Path): DesktopRuntimeApplicationServiceBundle {
@@ -112,6 +117,7 @@ private fun buildDesktopRuntimeApplicationServices(home: Path): DesktopRuntimeAp
     installedWorkspaceBaselineStatusPort = component.installedWorkspaceBaselineStatusPort,
     externalAddonOverlayService = component.externalAddonOverlayService,
     telemetryConfigStore = component.telemetryConfigStorePort,
+    workListService = component.workListService,
   )
 }
 

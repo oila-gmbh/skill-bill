@@ -125,8 +125,12 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
       "driver's open-with-assigned-id path for a first runtime subtask run (distinct from resume).",
   )
 
-  protected fun resolveRunWorkflowId(workflowService: WorkflowService, state: CliRunState): String =
-    explicitWorkflowId?.takeIf(String::isNotBlank) ?: openRuntimeWorkflowId(workflowService, state)
+  protected fun resolveRunWorkflowId(
+    workflowService: WorkflowService,
+    state: CliRunState,
+    issueKey: String,
+  ): String =
+    explicitWorkflowId?.takeIf(String::isNotBlank) ?: openRuntimeWorkflowId(workflowService, state, issueKey)
 
   // Refuses before a workflow is opened, a branch resolved, or a phase spawned: opencode is
   // prose-only because its foreground Bash tool is hard-killed at 120s and per-phase output
@@ -282,7 +286,7 @@ class FeatureTaskRuntimeRunCommand(
       deps = deps,
       issueKey = runIssueKey,
       specPath = runSpecPath,
-      workflowId = { resolveRunWorkflowId(workflowService, deps.state) },
+      workflowId = { resolveRunWorkflowId(workflowService, deps.state, runIssueKey) },
     )
   }
 }
@@ -308,7 +312,7 @@ class FeatureTaskRuntimeExplicitRunCommand(
       deps = deps,
       issueKey = issueKey,
       specPath = resolveSpecPath(deps, issueKey, specPath),
-      workflowId = { resolveRunWorkflowId(workflowService, deps.state) },
+      workflowId = { resolveRunWorkflowId(workflowService, deps.state, issueKey) },
     )
   }
 }
@@ -398,7 +402,7 @@ class FeatureTaskRuntimeDeprecatedRunCommand(
       deps = deps,
       issueKey = runIssueKey,
       specPath = runSpecPath,
-      workflowId = { openRuntimeWorkflowId(workflowService, deps.state) },
+      workflowId = { openRuntimeWorkflowId(workflowService, deps.state, runIssueKey) },
     )
   }
 }
@@ -419,7 +423,7 @@ class FeatureTaskRuntimeDeprecatedExplicitRunCommand(
       deps = deps,
       issueKey = issueKey,
       specPath = resolveSpecPath(deps, issueKey, specPath),
-      workflowId = { openRuntimeWorkflowId(workflowService, deps.state) },
+      workflowId = { openRuntimeWorkflowId(workflowService, deps.state, issueKey) },
     )
   }
 }
@@ -461,8 +465,8 @@ class FeatureTaskRuntimeDeprecatedResumeCommand(
   }
 }
 
-private fun openRuntimeWorkflowId(workflowService: WorkflowService, state: CliRunState): String =
-  when (val opened = workflowService.open(WorkflowFamilyKind.TASK_RUNTIME, dbOverride = state.dbOverride)) {
+private fun openRuntimeWorkflowId(workflowService: WorkflowService, state: CliRunState, issueKey: String?): String =
+  when (val opened = workflowService.open(WorkflowFamilyKind.TASK_RUNTIME, issueKey = issueKey, dbOverride = state.dbOverride)) {
     is WorkflowOpenResult.Ok -> opened.workflowId
     is WorkflowOpenResult.Error -> throw UsageError(
       "Could not open a feature-task workflow: ${opened.error}",

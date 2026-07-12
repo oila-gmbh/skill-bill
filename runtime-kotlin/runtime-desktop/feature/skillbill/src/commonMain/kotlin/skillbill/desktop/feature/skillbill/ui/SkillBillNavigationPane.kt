@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -39,6 +40,8 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -51,6 +54,14 @@ import dev.skillbill.designsystem.generated.resources.nav_open_repo_tooltip
 import dev.skillbill.designsystem.generated.resources.nav_repo_busy
 import dev.skillbill.designsystem.generated.resources.nav_repo_open
 import dev.skillbill.designsystem.generated.resources.nav_repository
+import dev.skillbill.designsystem.generated.resources.work_section_empty
+import dev.skillbill.designsystem.generated.resources.work_section_error
+import dev.skillbill.designsystem.generated.resources.work_section_estimated
+import dev.skillbill.designsystem.generated.resources.work_section_loading
+import dev.skillbill.designsystem.generated.resources.work_section_refresh
+import dev.skillbill.designsystem.generated.resources.work_section_subtitle
+import dev.skillbill.designsystem.generated.resources.work_section_title
+import dev.skillbill.designsystem.generated.resources.work_section_unknown_issue
 import org.jetbrains.compose.resources.stringResource
 import skillbill.desktop.core.designsystem.SkillBillComponentShapes
 import skillbill.desktop.core.designsystem.SkillBillDimens
@@ -60,6 +71,8 @@ import skillbill.desktop.core.domain.model.RepoLoadState
 import skillbill.desktop.core.domain.model.RepoLoadStatus
 import skillbill.desktop.core.domain.model.SkillBillBusyOperation
 import skillbill.desktop.core.domain.model.SkillBillTreeItem
+import skillbill.desktop.core.domain.model.WorkListLoadState
+import skillbill.desktop.core.domain.model.WorkListState
 
 @Composable
 internal fun NavigationPane(
@@ -81,6 +94,10 @@ internal fun NavigationPane(
   onNodeExpandedToggled: (String) -> Unit,
   onMoveSelection: (Int) -> Unit,
   onShowContextMenu: (SkillBillTreeItem) -> Unit = {},
+  workList: WorkListState = WorkListState(),
+  workEnabled: Boolean = true,
+  onWorkToggled: () -> Unit = {},
+  onWorkRefreshed: () -> Unit = {},
 ) {
   val busy = busyOperation != null
   Column(
@@ -154,6 +171,12 @@ internal fun NavigationPane(
           onShowContextMenu = onShowContextMenu,
         )
       }
+      WorkSection(
+        state = workList,
+        enabled = workEnabled && !busy,
+        onToggle = onWorkToggled,
+        onRefresh = onWorkRefreshed,
+      )
       HorizontalDivider(
         modifier = Modifier.padding(top = SkillBillDimens.spacingXl, bottom = SkillBillDimens.spacingLg),
         color = SkillBillTheme.frameTokens.line,
@@ -186,6 +209,92 @@ internal fun NavigationPane(
         style = MaterialTheme.typography.labelSmall,
       )
       Text(text = policyLabel, color = SkillBillTheme.frameTokens.text, style = MaterialTheme.typography.labelSmall)
+    }
+  }
+}
+
+@Composable
+private fun WorkSection(
+  state: WorkListState,
+  enabled: Boolean,
+  onToggle: () -> Unit,
+  onRefresh: () -> Unit,
+) {
+  val expanded = state.expanded
+  Column(modifier = Modifier.fillMaxWidth().padding(top = SkillBillDimens.spacingLg)) {
+    Row(
+      modifier = Modifier
+        .fillMaxWidth()
+        .semantics { stateDescription = if (expanded) "expanded" else "collapsed" }
+        .clickable(enabled = enabled, role = Role.Button, onClick = onToggle)
+        .padding(horizontal = SkillBillDimens.padLg, vertical = SkillBillDimens.padMd),
+      verticalAlignment = Alignment.CenterVertically,
+      horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+      Text(stringResource(Res.string.work_section_title), style = MaterialTheme.typography.labelLarge, color = SkillBillTheme.frameTokens.text)
+      Text(if (expanded) "−" else "+", color = SkillBillTheme.frameTokens.primary)
+    }
+    if (!expanded) return
+    Row(
+      modifier = Modifier
+        .fillMaxWidth()
+        .padding(horizontal = SkillBillDimens.padLg),
+      horizontalArrangement = Arrangement.SpaceBetween,
+      verticalAlignment = Alignment.CenterVertically,
+    ) {
+      Text(stringResource(Res.string.work_section_subtitle), style = MaterialTheme.typography.labelSmall, color = SkillBillTheme.frameTokens.subtle)
+      Text(
+        stringResource(Res.string.work_section_refresh),
+        modifier = Modifier
+          .semantics { stateDescription = "refresh work" }
+          .clickable(enabled = enabled && state.loadState != WorkListLoadState.LOADING, role = Role.Button) {
+            onRefresh()
+          }
+          .padding(SkillBillDimens.padSm),
+        color = if (enabled) SkillBillTheme.frameTokens.primary else SkillBillTheme.frameTokens.subtle,
+        style = MaterialTheme.typography.labelSmall,
+      )
+    }
+    when (state.loadState) {
+      WorkListLoadState.LOADING -> WorkText(stringResource(Res.string.work_section_loading))
+      WorkListLoadState.EMPTY -> WorkText(stringResource(Res.string.work_section_empty))
+      WorkListLoadState.ERROR -> WorkText(state.errorMessage ?: stringResource(Res.string.work_section_error))
+      WorkListLoadState.POPULATED -> WorkRows(state)
+      WorkListLoadState.COLLAPSED -> Unit
+    }
+  }
+}
+
+@Composable
+private fun WorkText(text: String) {
+  Text(
+    text = text,
+    modifier = Modifier.padding(horizontal = SkillBillDimens.padLg, vertical = SkillBillDimens.padMd),
+    color = SkillBillTheme.frameTokens.subtle,
+    style = MaterialTheme.typography.bodySmall,
+  )
+}
+
+@Composable
+private fun WorkRows(state: WorkListState) {
+  val vertical = rememberScrollState()
+  val horizontal = rememberScrollState()
+  Column(
+    modifier = Modifier
+      .height(SkillBillDimens.navPaneHeaderHeight * 3)
+      .verticalScroll(vertical)
+      .horizontalScroll(horizontal)
+      .padding(horizontal = SkillBillDimens.padLg, vertical = SkillBillDimens.padSm),
+  ) {
+    state.items.forEach { item ->
+      val issue = item.issueKey ?: stringResource(Res.string.work_section_unknown_issue)
+      val since = item.stateEnteredAt + if (item.stateEnteredAtEstimated) " ~ ${stringResource(Res.string.work_section_estimated)}" else ""
+      Text(
+        "$issue  ${item.workflowKind}  ${item.workflowId}\n${item.startedAt}  ${item.currentState}  $since",
+        modifier = Modifier.padding(vertical = SkillBillDimens.padSm),
+        color = SkillBillTheme.frameTokens.text,
+        style = MaterialTheme.typography.bodySmall,
+      )
     }
   }
 }

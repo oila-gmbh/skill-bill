@@ -24,6 +24,8 @@ import skillbill.desktop.core.domain.service.RepoSessionService
 import skillbill.desktop.core.domain.service.RuntimeScaffoldGateway
 import skillbill.desktop.core.domain.service.RuntimeSkillRemoveGateway
 import skillbill.desktop.core.domain.service.SkillTreeService
+import skillbill.desktop.core.domain.service.WorkListGateway
+import skillbill.desktop.core.domain.service.EmptyWorkListGateway
 import software.amazon.lastmile.kotlin.inject.anvil.SingleIn
 
 @Inject
@@ -38,6 +40,7 @@ class SkillBillViewModel(
   private val desktopPreferenceStore: DesktopPreferenceStore,
   private val skillRemoveGateway: RuntimeSkillRemoveGateway,
   private val installedWorkspaceLocator: InstalledWorkspaceLocator,
+  private val workListGateway: WorkListGateway = EmptyWorkListGateway,
 ) {
   private val viewState = SkillBillViewState(authoringGateway, computeInitialFirstRunSetup())
   private val repoController = SkillBillRepoController(
@@ -57,6 +60,7 @@ class SkillBillViewModel(
     installedWorkspaceLocator,
   )
   private val removalController = SkillBillRemovalController(viewState, skillRemoveGateway)
+  private val workController = SkillBillWorkController(viewState, workListGateway)
 
   private fun computeInitialFirstRunSetup(): FirstRunSetupState? {
     if (desktopPreferenceStore.firstRunPreferences.value.completed || firstRunGateway.hasExistingInstall()) {
@@ -93,6 +97,17 @@ class SkillBillViewModel(
     repoController.resolveGeneratedArtifactTreeItemId(artifactPath)
 
   fun refresh(): SkillBillState = repoController.refresh()
+
+  internal fun toggleWork(): WorkListRequest? = workController.toggle()
+
+  internal fun refreshWork(): WorkListRequest? = workController.refresh()
+
+  internal fun loadWork(request: WorkListRequest): WorkListResponse = workController.load(request)
+
+  internal fun finishWork(request: WorkListRequest, response: WorkListResponse): SkillBillState {
+    workController.finish(request, response)
+    return viewState.currentState
+  }
 
   fun beginRefreshAfterScaffold(): RepoLoadRequest = repoController.beginRefreshAfterScaffold()
 

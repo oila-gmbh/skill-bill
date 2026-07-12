@@ -14,6 +14,7 @@ import skillbill.desktop.core.domain.model.SkillBillState
 import skillbill.desktop.core.domain.model.SkillBillStatusBar
 import skillbill.desktop.core.domain.model.SkillBillTreeItem
 import skillbill.desktop.core.domain.model.ValidateAgentConfigsSummary
+import skillbill.desktop.core.domain.model.WorkListState
 import skillbill.desktop.core.domain.service.AuthoringGateway
 
 internal class SkillBillViewState(
@@ -53,6 +54,8 @@ internal class SkillBillViewState(
   var firstRunSetup: FirstRunSetupState? = initialFirstRunSetup
   var activeFirstRunToken: Long = 0L
   var startupRequested: Boolean = false
+  var workList: WorkListState = WorkListState()
+  var activeWorkListRequestToken: Long = 0L
 
   var currentState = createState()
 
@@ -73,6 +76,7 @@ internal class SkillBillViewState(
       canReturnToInstalledWorkspace =
       installedWorkspaceRoot != null && !isInstalledWorkspaceRoot(session?.repoPath),
       dirtyEditorPrompt = dirtyEditorPrompt,
+      workList = workList,
     )
     val paletteState = buildCommandPaletteState(
       state = state,

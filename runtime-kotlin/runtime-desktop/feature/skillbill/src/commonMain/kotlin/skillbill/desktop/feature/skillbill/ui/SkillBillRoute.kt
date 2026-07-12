@@ -215,6 +215,25 @@ fun SkillBillRoute(
     }
   }
 
+  fun runWorkRequest(request: skillbill.desktop.feature.skillbill.state.WorkListRequest) {
+    coroutineScope.launch {
+      val response = withContext(dispatcherProvider.default) { viewModel.loadWork(request) }
+      state = viewModel.finishWork(request, response)
+    }
+  }
+
+  fun runWorkToggle() {
+    val request = viewModel.toggleWork()
+    state = viewModel.state()
+    request?.let(::runWorkRequest)
+  }
+
+  fun runWorkRefresh() {
+    val request = viewModel.refreshWork()
+    state = viewModel.state()
+    request?.let(::runWorkRequest)
+  }
+
   LaunchedEffect(state.selectedRepoPath, state.repoStatus.state) {
     val repoPath = state.selectedRepoPath ?: return@LaunchedEffect
     if (state.repoStatus.state != RepoLoadState.LOADED) {
@@ -478,6 +497,8 @@ fun SkillBillRoute(
         state = viewModel.moveSelection(delta)
       }
     },
+    onWorkToggled = ::runWorkToggle,
+    onWorkRefreshed = ::runWorkRefresh,
     onGeneratedArtifactResolvable = { artifactPath ->
       viewModel.resolveGeneratedArtifactTreeItemId(artifactPath) != null
     },

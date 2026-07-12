@@ -93,6 +93,8 @@ fun SkillBillFrame(
   onTreeItemSelected: (String) -> Unit,
   onTreeItemExpandedToggled: (String) -> Unit,
   onMoveTreeSelection: (Int) -> Unit,
+  onWorkToggled: () -> Unit = {},
+  onWorkRefreshed: () -> Unit = {},
   onGeneratedArtifactResolvable: (String) -> Boolean,
   onGeneratedArtifactSelected: (String) -> Unit,
   onCommandPaletteOpen: () -> Unit,
@@ -222,6 +224,10 @@ fun SkillBillFrame(
           onNodeExpandedToggled = onTreeItemExpandedToggled,
           onMoveSelection = onMoveTreeSelection,
           onShowContextMenu = onShowDeleteContextMenu,
+          workList = state.workList,
+          workEnabled = state.busyOperation == null && state.firstRunSetup == null,
+          onWorkToggled = onWorkToggled,
+          onWorkRefreshed = onWorkRefreshed,
         )
         NavigationPaneResizeHandle(
           onResize = { delta ->

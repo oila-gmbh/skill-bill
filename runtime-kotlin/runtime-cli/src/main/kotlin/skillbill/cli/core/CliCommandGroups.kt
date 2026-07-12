@@ -22,6 +22,7 @@ import skillbill.cli.system.UpdateCommand
 import skillbill.cli.system.VersionCommand
 import skillbill.cli.telemetry.TelemetryCommand
 import skillbill.cli.workflow.WorkflowTopLevelCommands
+import skillbill.cli.work.WorkTopLevelCommands
 
 @Inject
 class ReviewCliCommandGroup(
@@ -59,6 +60,7 @@ class UtilityCliCommandGroup(
   codeReviewParallelCommand: CodeReviewParallelCommand,
   codeReviewMergeCommand: CodeReviewMergeCommand,
   configCommand: ConfigCommand,
+  workCommands: WorkTopLevelCommands,
 ) {
   val commands: List<CliktCommand> =
     workflowCommands.commands + repoValidationCommands.commands + listOf(
@@ -74,6 +76,7 @@ class UtilityCliCommandGroup(
       codeReviewParallelCommand,
       codeReviewMergeCommand,
       configCommand,
+      workCommands.command,
     )
 }
 

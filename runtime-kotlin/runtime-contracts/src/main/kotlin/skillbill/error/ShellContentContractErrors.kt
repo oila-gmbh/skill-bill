@@ -30,6 +30,11 @@ class InvalidWorkflowStateSchemaError(
   cause: Throwable? = null,
 ) : ShellContentContractException(message, cause)
 
+class InvalidWorkListRowError(
+  message: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(message, cause)
+
 /**
  * SKILL-51: surfaced when a parent decomposition manifest fails the
  * canonical `orchestration/contracts/decomposition-manifest-schema.yaml`

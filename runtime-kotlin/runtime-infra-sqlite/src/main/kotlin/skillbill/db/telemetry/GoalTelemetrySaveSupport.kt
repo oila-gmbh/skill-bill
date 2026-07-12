@@ -113,15 +113,25 @@ fun recordGoalIssueSegmentStarted(connection: Connection, segment: GoalIssueSegm
     """
     INSERT INTO goal_issue_progress (
       parent_workflow_id, issue_key, total_invocations, total_resumes, first_started_at,
-      last_activity_at, latest_segment_workflow_id, mode
-    ) VALUES (?, ?, 1, ?, ?, ?, ?, ?)
+      last_activity_at, latest_segment_workflow_id, mode, status,
+      state_entered_at, state_entered_at_estimated
+    ) VALUES (?, ?, 1, ?, ?, ?, ?, ?, 'running', ?, 0)
     ON CONFLICT(parent_workflow_id, issue_key) DO UPDATE SET
       total_invocations = goal_issue_progress.total_invocations + 1,
       total_resumes = goal_issue_progress.total_resumes + excluded.total_resumes,
       first_started_at = COALESCE(goal_issue_progress.first_started_at, excluded.first_started_at),
       last_activity_at = excluded.last_activity_at,
       latest_segment_workflow_id = excluded.latest_segment_workflow_id,
-      mode = excluded.mode
+      mode = excluded.mode,
+      status = 'running',
+      state_entered_at = CASE
+        WHEN COALESCE(goal_issue_progress.status, '') != 'running' THEN excluded.state_entered_at
+        ELSE goal_issue_progress.state_entered_at
+      END,
+      state_entered_at_estimated = CASE
+        WHEN COALESCE(goal_issue_progress.status, '') != 'running' THEN 0
+        ELSE goal_issue_progress.state_entered_at_estimated
+      END
     """.trimIndent(),
   ).use { statement ->
     statement.bind(
@@ -132,6 +142,7 @@ fun recordGoalIssueSegmentStarted(connection: Connection, segment: GoalIssueSegm
       segment.startedAt,
       segment.workflowId,
       segment.mode,
+      segment.startedAt,
     )
     statement.executeUpdate()
   }
@@ -156,6 +167,15 @@ fun recordGoalIssueBlockedSegment(
     """
     UPDATE goal_issue_progress
     SET total_blocks = total_blocks + 1,
+        status = 'blocked',
+        state_entered_at = CASE
+          WHEN COALESCE(status, '') != 'blocked' THEN CURRENT_TIMESTAMP
+          ELSE state_entered_at
+        END,
+        state_entered_at_estimated = CASE
+          WHEN COALESCE(status, '') != 'blocked' THEN 0
+          ELSE state_entered_at_estimated
+        END,
         last_activity_at = CURRENT_TIMESTAMP,
         last_blocked_at = CURRENT_TIMESTAMP,
         last_blocked_segment_workflow_id = ?
@@ -182,7 +202,15 @@ fun saveGoalIssueFinished(connection: Connection, record: GoalIssueFinishedRecor
     """
     UPDATE goal_issue_progress SET
       status = ?, subtasks_complete = ?, subtasks_blocked = ?, subtasks_skipped = ?,
-      finished_at = ?, mode = ?
+      finished_at = ?, mode = ?,
+      state_entered_at = CASE
+        WHEN COALESCE(status, '') != ? THEN ?
+        ELSE state_entered_at
+      END,
+      state_entered_at_estimated = CASE
+        WHEN COALESCE(status, '') != ? THEN 0
+        ELSE state_entered_at_estimated
+      END
     WHERE parent_workflow_id = ? AND issue_key = ? AND finished_event_emitted_at IS NULL
     """.trimIndent(),
   ).use { statement ->
@@ -193,6 +221,9 @@ fun saveGoalIssueFinished(connection: Connection, record: GoalIssueFinishedRecor
       record.subtasksSkipped,
       record.finishedAt,
       record.mode,
+      record.status,
+      record.finishedAt,
+      record.status,
       record.parentWorkflowId,
       record.issueKey,
     )

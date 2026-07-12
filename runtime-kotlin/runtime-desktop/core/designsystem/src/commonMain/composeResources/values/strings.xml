@@ -43,6 +43,14 @@
     <string name="nav_tree_delete">Delete…</string>
     <string name="nav_tree_toggle_group_cd">Toggle group %1$s</string>
     <string name="nav_tree_item_status_cd">%1$s: %2$s</string>
+    <string name="work_section_title">Work</string>
+    <string name="work_section_subtitle">Persisted workflows</string>
+    <string name="work_section_refresh">Refresh</string>
+    <string name="work_section_loading">Loading work…</string>
+    <string name="work_section_empty">No persisted work.</string>
+    <string name="work_section_error">Could not load work.</string>
+    <string name="work_section_unknown_issue">Unknown issue</string>
+    <string name="work_section_estimated">estimated</string>
 
     <string name="inspector_metadata">Metadata</string>
     <string name="inspector_repository_validation">Repository validation</string>

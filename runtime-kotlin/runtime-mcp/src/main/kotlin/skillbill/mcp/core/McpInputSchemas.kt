@@ -46,6 +46,7 @@ internal fun workflowOpenSchema(): Map<String, Any?> = objectSchema(
   properties = mapOf(
     "session_id" to stringSchema(),
     "current_step_id" to stringSchema(),
+    "issue_key" to stringSchema(),
   ),
 )
 

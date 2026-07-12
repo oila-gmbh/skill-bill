@@ -127,11 +127,12 @@ open class WorkflowOpenCommand(
 ) : DocumentedCliCommand(name, "Open durable workflow state.") {
   private val sessionId by option("--session-id", help = "Optional workflow telemetry session id.").default("")
   private val currentStepId by option("--current-step-id", help = "Initial workflow step id.")
+  private val issueKey by option("--issue-key", help = "Optional normalized issue key for work inventory.")
   private val format by formatOption()
 
   override fun run() {
     val payload =
-      service.open(kind, sessionId, currentStepId, state.dbOverride)
+      service.open(kind, sessionId, currentStepId, state.dbOverride, issueKey)
         .toCliMap(service.goalObservabilityEventValidator)
     state.complete(payload, format, exitCode = payload.exitCode())
   }

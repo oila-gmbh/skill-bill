@@ -23,6 +23,11 @@ internal object DatabaseMigrations {
         name = "add-goal-telemetry-tables",
         operation = GoalTelemetryMigration::apply,
       ),
+      DatabaseMigration(
+        version = 4,
+        name = "add-work-list-state-metadata",
+        operation = DatabaseColumnMigrations::apply,
+      ),
     ).also(::requireDeterministicMigrations)
 
   fun apply(connection: Connection) {

@@ -24,6 +24,9 @@ data class WorkflowStateRecord(
   val finishedAt: String?,
   val mode: FeatureTaskWorkflowMode? = null,
   val implementationSkill: String? = null,
+  val issueKey: String? = null,
+  val stateEnteredAt: String? = null,
+  val stateEnteredAtEstimated: Boolean = false,
 )
 
 data class FeatureImplementSessionSummary(
