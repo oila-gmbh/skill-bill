@@ -3,6 +3,7 @@ package skillbill.db
 import skillbill.contracts.JsonSupport
 import skillbill.db.core.DatabaseMigrations
 import skillbill.db.core.DatabaseRuntime
+import skillbill.db.telemetry.GoalTelemetryMigration
 import skillbill.db.telemetry.LifecycleTelemetryStore
 import skillbill.telemetry.model.FeatureImplementFinishedRecord
 import java.nio.file.Files
@@ -10,6 +11,7 @@ import java.nio.file.Path
 import java.sql.DriverManager
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
@@ -45,6 +47,27 @@ class DatabaseMigrationsTest {
         rows.map { row -> row.version to row.name },
       )
       rows.forEach { row -> assertTrue(row.appliedAt.isNotBlank()) }
+    }
+  }
+
+  @Test
+  fun `historical goal telemetry migration v3 remains unchanged while v4 owns work state metadata`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-db-v3-contract").resolve("metrics.db")
+
+    DriverManager.getConnection("jdbc:sqlite:$dbPath").use { connection ->
+      GoalTelemetryMigration.apply(connection)
+      val v3Columns = tableColumns(connection, "goal_issue_progress")
+
+      assertFalse("state_entered_at" in v3Columns)
+      assertFalse("state_entered_at_estimated" in v3Columns)
+    }
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val v4Columns = tableColumns(connection, "goal_issue_progress")
+
+      assertTrue("state_entered_at" in v4Columns)
+      assertTrue("state_entered_at_estimated" in v4Columns)
+      assertNotNull(migrationRows(connection).singleOrNull { it.version == 4 })
     }
   }
 

@@ -35,6 +35,14 @@ class InvalidWorkListRowError(
   cause: Throwable? = null,
 ) : ShellContentContractException(message, cause)
 
+class WorkflowIssueKeyConflictError(
+  val workflowId: String,
+  val persistedIssueKey: String,
+  val requestedIssueKey: String,
+) : ShellContentContractException(
+  "Workflow '$workflowId' is already associated with issue key '$persistedIssueKey', not '$requestedIssueKey'.",
+)
+
 /**
  * SKILL-51: surfaced when a parent decomposition manifest fails the
  * canonical `orchestration/contracts/decomposition-manifest-schema.yaml`

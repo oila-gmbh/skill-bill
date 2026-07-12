@@ -7,6 +7,8 @@ import skillbill.telemetry.model.GoalSubtaskFinishedRecord
 import java.sql.Connection
 import java.util.logging.Logger
 
+private const val SQLITE_TIMESTAMP_NOW = "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')"
+
 enum class GoalStartedSaveOutcome { INSERTED, DUPLICATE }
 
 enum class GoalFinishedSaveOutcome { FIRST_TERMINAL, DUPLICATE }
@@ -125,7 +127,8 @@ fun recordGoalIssueSegmentStarted(connection: Connection, segment: GoalIssueSegm
       mode = excluded.mode,
       status = 'running',
       state_entered_at = CASE
-        WHEN COALESCE(goal_issue_progress.status, '') != 'running' THEN excluded.state_entered_at
+        WHEN COALESCE(goal_issue_progress.status, '') != 'running' THEN
+          ${nextGoalStateEnteredAtSql("excluded.state_entered_at")}
         ELSE goal_issue_progress.state_entered_at
       END,
       state_entered_at_estimated = CASE
@@ -169,7 +172,7 @@ fun recordGoalIssueBlockedSegment(
     SET total_blocks = total_blocks + 1,
         status = 'blocked',
         state_entered_at = CASE
-          WHEN COALESCE(status, '') != 'blocked' THEN CURRENT_TIMESTAMP
+          WHEN COALESCE(status, '') != 'blocked' THEN ${nextGoalStateEnteredAtSql(SQLITE_TIMESTAMP_NOW)}
           ELSE state_entered_at
         END,
         state_entered_at_estimated = CASE
@@ -204,7 +207,7 @@ fun saveGoalIssueFinished(connection: Connection, record: GoalIssueFinishedRecor
       status = ?, subtasks_complete = ?, subtasks_blocked = ?, subtasks_skipped = ?,
       finished_at = ?, mode = ?,
       state_entered_at = CASE
-        WHEN COALESCE(status, '') != ? THEN ?
+        WHEN COALESCE(status, '') != ? THEN ${nextGoalStateEnteredAtSql("?")}
         ELSE state_entered_at
       END,
       state_entered_at_estimated = CASE
@@ -223,6 +226,8 @@ fun saveGoalIssueFinished(connection: Connection, record: GoalIssueFinishedRecor
       record.mode,
       record.status,
       record.finishedAt,
+      record.finishedAt,
+      record.finishedAt,
       record.status,
       record.parentWorkflowId,
       record.issueKey,
@@ -234,6 +239,17 @@ fun saveGoalIssueFinished(connection: Connection, record: GoalIssueFinishedRecor
     )
   }
 }
+
+private fun nextGoalStateEnteredAtSql(candidateSql: String): String =
+  """
+  CASE
+    WHEN julianday(NULLIF(goal_issue_progress.state_entered_at, '')) IS NULL THEN
+      COALESCE(NULLIF($candidateSql, ''), $SQLITE_TIMESTAMP_NOW)
+    WHEN julianday(NULLIF($candidateSql, '')) > julianday(goal_issue_progress.state_entered_at) THEN $candidateSql
+    WHEN julianday($SQLITE_TIMESTAMP_NOW) > julianday(goal_issue_progress.state_entered_at) THEN $SQLITE_TIMESTAMP_NOW
+    ELSE strftime('%Y-%m-%dT%H:%M:%fZ', julianday(goal_issue_progress.state_entered_at) + 0.001 / 86400.0)
+  END
+  """.trimIndent()
 
 fun saveGoalSubtaskFinished(connection: Connection, record: GoalSubtaskFinishedRecord): Boolean {
   val inserted = connection.prepareStatement(

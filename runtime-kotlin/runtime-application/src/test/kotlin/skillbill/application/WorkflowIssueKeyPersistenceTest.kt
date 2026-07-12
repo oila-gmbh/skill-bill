@@ -3,6 +3,8 @@ package skillbill.application
 import skillbill.application.model.WorkflowFamilyKind
 import skillbill.application.model.WorkflowOpenResult
 import skillbill.application.workflow.WorkflowService
+import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
+import skillbill.error.WorkflowIssueKeyConflictError
 import skillbill.ports.workflow.UnavailableDecompositionManifestFileStore
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -52,5 +54,29 @@ class WorkflowIssueKeyPersistenceTest {
     assertFailsWith<IllegalArgumentException> {
       service.open(WorkflowFamilyKind.TASK_PROSE, issueKey = "S".repeat(129))
     }
+  }
+
+  @Test
+  fun `runtime workflow reopen heals a missing issue key and rejects a conflicting normalized key`() {
+    val workflows = InMemoryWorkflowStates()
+    val recorder = FeatureTaskRuntimePhaseRecorder(
+      database = FakeDatabaseSessionFactory(workflows),
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+    )
+
+    recorder.ensureWorkflowOpen("wftr-117", "session-117")
+    recorder.ensureWorkflowOpen("wftr-117", "session-117", issueKey = " SKILL-117 ")
+    recorder.ensureWorkflowOpen("wftr-117", "session-117", issueKey = "SKILL-117")
+
+    val healed = assertNotNull(workflows.getFeatureTaskRuntimeWorkflow("wftr-117"))
+    assertEquals("SKILL-117", healed.issueKey)
+
+    val conflict = assertFailsWith<WorkflowIssueKeyConflictError> {
+      recorder.ensureWorkflowOpen("wftr-117", "session-117", issueKey = "SKILL-118")
+    }
+    assertEquals("wftr-117", conflict.workflowId)
+    assertEquals("SKILL-117", conflict.persistedIssueKey)
+    assertEquals("SKILL-118", conflict.requestedIssueKey)
+    assertEquals("SKILL-117", assertNotNull(workflows.getFeatureTaskRuntimeWorkflow("wftr-117")).issueKey)
   }
 }

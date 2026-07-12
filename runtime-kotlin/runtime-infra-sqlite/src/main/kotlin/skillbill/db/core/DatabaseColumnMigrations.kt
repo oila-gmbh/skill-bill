@@ -7,7 +7,6 @@ internal object DatabaseColumnMigrations {
   private val safeIdentifierPattern = Regex("^[a-z_][a-z0-9_]*$")
 
   fun apply(connection: Connection) {
-    ensureWorkListWorkflowColumns(connection)
     ensureFeatureVerifyWorkflowColumns(connection)
     ensureReviewRunColumns(connection)
     ensureFindingColumns(connection)
@@ -66,11 +65,17 @@ internal object DatabaseColumnMigrations {
       ensureColumn(connection, "goal_issue_progress", "last_blocked_at", "TEXT")
       ensureColumn(connection, "goal_issue_progress", "latest_segment_workflow_id", "TEXT")
       ensureColumn(connection, "goal_issue_progress", "last_blocked_segment_workflow_id", "TEXT")
+    }
+    ensureReconciliationIndexes(connection)
+  }
+
+  fun applyWorkListMetadata(connection: Connection) {
+    ensureWorkListWorkflowColumns(connection)
+    if (tableExists(connection, "goal_issue_progress")) {
       ensureColumn(connection, "goal_issue_progress", "state_entered_at", "TEXT")
       ensureColumn(connection, "goal_issue_progress", "state_entered_at_estimated", "INTEGER")
       healGoalIssueProgressStateEntries(connection)
     }
-    ensureReconciliationIndexes(connection)
   }
 
   private fun ensureWorkListWorkflowColumns(connection: Connection) {
@@ -177,6 +182,13 @@ internal object DatabaseColumnMigrations {
         """.trimIndent(),
       )
     }
+  }
+
+  private fun tableExists(connection: Connection, tableName: String): Boolean = connection.prepareStatement(
+    "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+  ).use { statement ->
+    statement.setString(1, tableName)
+    statement.executeQuery().use { resultSet -> resultSet.next() }
   }
 
   private fun ensureReconciliationIndexes(connection: Connection) {

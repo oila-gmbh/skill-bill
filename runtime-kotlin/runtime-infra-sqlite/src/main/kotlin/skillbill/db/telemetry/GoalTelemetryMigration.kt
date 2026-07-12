@@ -79,8 +79,6 @@ internal object GoalTelemetryMigration {
       first_started_at TEXT,
       finished_at TEXT,
       status TEXT,
-      state_entered_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      state_entered_at_estimated INTEGER NOT NULL DEFAULT 0,
       subtasks_complete INTEGER,
       subtasks_blocked INTEGER,
       subtasks_skipped INTEGER,

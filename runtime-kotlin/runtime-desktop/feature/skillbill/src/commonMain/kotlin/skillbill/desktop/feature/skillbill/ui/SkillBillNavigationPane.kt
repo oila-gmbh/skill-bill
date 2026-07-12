@@ -53,7 +53,6 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.dp
 import dev.skillbill.designsystem.generated.resources.Res
 import dev.skillbill.designsystem.generated.resources.accelerator_repo_open
 import dev.skillbill.designsystem.generated.resources.nav_choose_repo_dir_cd
@@ -64,7 +63,7 @@ import dev.skillbill.designsystem.generated.resources.nav_repo_busy
 import dev.skillbill.designsystem.generated.resources.nav_repo_open
 import dev.skillbill.designsystem.generated.resources.nav_repository
 import dev.skillbill.designsystem.generated.resources.work_section_empty
-import dev.skillbill.designsystem.generated.resources.work_section_error
+import dev.skillbill.designsystem.generated.resources.work_section_error_summary
 import dev.skillbill.designsystem.generated.resources.work_section_estimated
 import dev.skillbill.designsystem.generated.resources.work_section_expanded
 import dev.skillbill.designsystem.generated.resources.work_section_collapsed
@@ -331,7 +330,7 @@ private fun WorkSection(
     when (state.loadState) {
       WorkListLoadState.LOADING -> WorkText(stringResource(Res.string.work_section_loading))
       WorkListLoadState.EMPTY -> WorkText(stringResource(Res.string.work_section_empty))
-      WorkListLoadState.ERROR -> WorkText(state.errorMessage ?: stringResource(Res.string.work_section_error))
+      WorkListLoadState.ERROR -> WorkError(state.errorMessage)
       WorkListLoadState.POPULATED -> WorkRows(state)
       WorkListLoadState.COLLAPSED -> Unit
     }
@@ -352,6 +351,12 @@ private fun WorkText(text: String) {
 }
 
 @Composable
+private fun WorkError(diagnostic: String?) {
+  WorkText(stringResource(Res.string.work_section_error_summary))
+  diagnostic?.takeIf(String::isNotBlank)?.let { WorkText(it) }
+}
+
+@Composable
 private fun WorkRows(state: WorkListState) {
   val horizontal = rememberScrollState()
   val vertical = rememberLazyListState()
@@ -361,51 +366,53 @@ private fun WorkRows(state: WorkListState) {
   WorkText(stringResource(Res.string.work_section_loaded, state.items.size))
   Box(
     modifier = Modifier
-      .height(SkillBillDimens.navPaneHeaderHeight * 3)
+      .fillMaxWidth()
+      .height(SkillBillDimens.workViewportHeight)
       .horizontalScroll(horizontal)
+      .focusable()
+      .testTag(WORK_SECTION_VIEWPORT_TAG)
+      .semantics { contentDescription = scrollInstructions }
+      .onPreviewKeyEvent { event ->
+        if (event.type != KeyEventType.KeyDown) {
+          false
+        } else {
+          val horizontalOffset = workHorizontalScrollDelta(event.key)
+          if (horizontalOffset != null) {
+            scrollScope.launch {
+              horizontal.scrollTo((horizontal.value + horizontalOffset).coerceIn(0, horizontal.maxValue))
+            }
+            true
+          } else {
+            val offset = when (event.key) {
+              Key.DirectionDown -> 1
+              Key.DirectionUp -> -1
+              Key.PageDown -> 8
+              Key.PageUp -> -8
+              else -> 0
+            }
+            if (offset == 0) {
+              false
+            } else {
+              val target = (vertical.firstVisibleItemIndex + offset).coerceIn(0, state.items.size)
+              scrollScope.launch { vertical.scrollToItem(target) }
+              true
+            }
+          }
+        }
+      },
   ) {
     LazyColumn(
       state = vertical,
       modifier = Modifier
-        .width(WORK_SECTION_CONTENT_WIDTH)
+        .width(SkillBillDimens.workContentWidth)
         .fillMaxHeight()
-        .focusable()
-        .testTag(WORK_SECTION_VIEWPORT_TAG)
-        .semantics { contentDescription = scrollInstructions }
-        .onPreviewKeyEvent { event ->
-          if (event.type != KeyEventType.KeyDown) {
-            false
-          } else {
-            val horizontalOffset = workHorizontalScrollDelta(event.key)
-            if (horizontalOffset != null) {
-              scrollScope.launch {
-                horizontal.scrollTo((horizontal.value + horizontalOffset).coerceIn(0, horizontal.maxValue))
-              }
-              true
-            } else {
-              val offset = when (event.key) {
-                Key.DirectionDown -> 1
-                Key.DirectionUp -> -1
-                Key.PageDown -> 8
-                Key.PageUp -> -8
-                else -> 0
-              }
-              if (offset == 0) {
-                false
-              } else {
-                val target = (vertical.firstVisibleItemIndex + offset).coerceIn(0, state.items.size)
-                scrollScope.launch { vertical.scrollToItem(target) }
-                true
-              }
-            }
-          }
-        }
         .padding(horizontal = SkillBillDimens.padLg, vertical = SkillBillDimens.padSm),
     ) {
       item(key = "work-field-headers") {
         WorkFieldRow(
           fields = fields,
           values = fields.map(WorkField::label),
+          rowKey = "headers",
           modifier = Modifier.testTag(WORK_SECTION_HEADERS_TAG),
         )
       }
@@ -442,6 +449,7 @@ private fun WorkItemRow(item: skillbill.desktop.core.domain.model.DesktopWorkIte
   WorkFieldRow(
     fields = fields,
     values = listOf(issue, item.workflowKind, item.workflowId, item.startedAt, item.currentState, since),
+    rowKey = item.workflowId,
     modifier = Modifier
       .testTag("$WORK_SECTION_ROW_TAG-${item.workflowId}")
       .semantics(mergeDescendants = true) { contentDescription = descriptions.joinToString(". ") },
@@ -449,12 +457,17 @@ private fun WorkItemRow(item: skillbill.desktop.core.domain.model.DesktopWorkIte
 }
 
 @Composable
-private fun WorkFieldRow(fields: List<WorkField>, values: List<String>, modifier: Modifier = Modifier) {
+private fun WorkFieldRow(
+  fields: List<WorkField>,
+  values: List<String>,
+  rowKey: String,
+  modifier: Modifier = Modifier,
+) {
   Row(modifier = modifier.padding(vertical = SkillBillDimens.padSm)) {
     fields.zip(values).forEach { (field, value) ->
       Text(
         text = value,
-        modifier = Modifier.width(field.width),
+        modifier = Modifier.width(field.width).testTag("$WORK_SECTION_CELL_TAG-$rowKey-${field.id}"),
         color = SkillBillTheme.frameTokens.text,
         style = MaterialTheme.typography.bodySmall,
       )
@@ -464,15 +477,23 @@ private fun WorkFieldRow(fields: List<WorkField>, values: List<String>, modifier
 
 @Composable
 private fun workFields(): List<WorkField> = listOf(
-  WorkField(stringResource(Res.string.work_field_issue), 112.dp),
-  WorkField(stringResource(Res.string.work_field_kind), 156.dp),
-  WorkField(stringResource(Res.string.work_field_workflow), 248.dp),
-  WorkField(stringResource(Res.string.work_field_started), 188.dp),
-  WorkField(stringResource(Res.string.work_field_state), 112.dp),
-  WorkField(stringResource(Res.string.work_field_state_since), 196.dp),
+  WorkField("issue", stringResource(Res.string.work_field_issue), SkillBillDimens.workFieldIssueWidth),
+  WorkField("kind", stringResource(Res.string.work_field_kind), SkillBillDimens.workFieldKindWidth),
+  WorkField(
+    "workflow",
+    stringResource(Res.string.work_field_workflow),
+    SkillBillDimens.workFieldWorkflowWidth,
+  ),
+  WorkField("started", stringResource(Res.string.work_field_started), SkillBillDimens.workFieldStartedWidth),
+  WorkField("state", stringResource(Res.string.work_field_state), SkillBillDimens.workFieldStateWidth),
+  WorkField(
+    "state-since",
+    stringResource(Res.string.work_field_state_since),
+    SkillBillDimens.workFieldStateSinceWidth,
+  ),
 )
 
-private data class WorkField(val label: String, val width: Dp)
+private data class WorkField(val id: String, val label: String, val width: Dp)
 
 internal fun workHorizontalScrollDelta(key: Key): Int? = when (key) {
   Key.DirectionLeft -> -WORK_SECTION_KEYBOARD_SCROLL_INCREMENT
@@ -480,7 +501,6 @@ internal fun workHorizontalScrollDelta(key: Key): Int? = when (key) {
   else -> null
 }
 
-private val WORK_SECTION_CONTENT_WIDTH = 1_012.dp
 private const val WORK_SECTION_KEYBOARD_SCROLL_INCREMENT = 160
 private const val WORK_SECTION_TOGGLE_TAG = "work-section-toggle"
 private const val WORK_SECTION_REFRESH_TAG = "work-section-refresh"
@@ -488,6 +508,7 @@ private const val WORK_SECTION_STATUS_TAG = "work-section-status"
 private const val WORK_SECTION_VIEWPORT_TAG = "work-section-list-viewport"
 private const val WORK_SECTION_HEADERS_TAG = "work-section-field-headers"
 private const val WORK_SECTION_ROW_TAG = "work-section-row"
+private const val WORK_SECTION_CELL_TAG = "work-section-cell"
 
 @Composable
 private fun RepositorySelector(

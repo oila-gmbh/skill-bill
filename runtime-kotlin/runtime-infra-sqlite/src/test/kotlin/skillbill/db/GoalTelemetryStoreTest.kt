@@ -14,6 +14,7 @@ import skillbill.telemetry.model.GoalStartedRecord
 import skillbill.telemetry.model.GoalSubtaskFinishedRecord
 import java.nio.file.Files
 import java.sql.Connection
+import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -432,7 +433,10 @@ class GoalTelemetryStoreTest {
         startedAt = "2026-06-04T10:20:00Z",
       )
       store.goalStarted(resumed, "full")
-      assertGoalIssueState(connection, parentWorkflowId, "running", resumed.startedAt, estimated = false)
+      val resumedState = goalIssueState(connection, parentWorkflowId)
+      assertEquals("running", resumedState.status)
+      assertFalse(resumedState.estimated)
+      assertTrue(Instant.parse(resumedState.enteredAt).isAfter(Instant.parse(blocked.enteredAt)))
 
       val completed = GoalIssueFinishedRecord(
         issueKey = "SKILL-66",
@@ -445,7 +449,10 @@ class GoalTelemetryStoreTest {
         mode = "runtime",
       )
       store.goalIssueFinished(completed, "full")
-      assertGoalIssueState(connection, parentWorkflowId, "completed", completed.finishedAt, estimated = false)
+      val completedState = goalIssueState(connection, parentWorkflowId)
+      assertEquals("completed", completedState.status)
+      assertFalse(completedState.estimated)
+      assertTrue(Instant.parse(completedState.enteredAt).isAfter(Instant.parse(resumedState.enteredAt)))
 
       val terminal = goalIssueState(connection, parentWorkflowId)
       store.goalIssueFinished(completed, "full")

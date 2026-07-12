@@ -48,7 +48,7 @@
     <string name="work_section_refresh">Refresh</string>
     <string name="work_section_loading">Loading work…</string>
     <string name="work_section_empty">No persisted work.</string>
-    <string name="work_section_error">Could not load work.</string>
+    <string name="work_section_error_summary">Could not load work.</string>
     <string name="work_section_unknown_issue">Unknown issue</string>
     <string name="work_section_estimated">estimated</string>
     <string name="work_section_toggle_cd">Toggle Work section</string>

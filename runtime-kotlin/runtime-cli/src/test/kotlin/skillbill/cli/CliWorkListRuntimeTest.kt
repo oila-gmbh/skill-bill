@@ -3,6 +3,9 @@ package skillbill.cli
 import skillbill.application.model.WorkflowFamilyKind
 import skillbill.application.model.WorkflowOpenResult
 import skillbill.cli.core.CliRuntime
+import skillbill.cli.work.padTerminalEnd
+import skillbill.cli.work.terminalDisplayWidth
+import skillbill.cli.work.truncateTerminalDisplayWidth
 import skillbill.contracts.JsonSupport
 import skillbill.db.core.DatabaseRuntime
 import skillbill.di.RuntimeComponent
@@ -87,6 +90,27 @@ class CliWorkListRuntimeTest {
     assertEquals(listOf(runtime), limitedWork.map { (it as Map<*, *>)["workflow_id"] })
     assertFalse(invalidLimit.exitCode == 0)
     assertContains(invalidLimit.stdout, "--limit must be a positive integer.")
+  }
+
+  @Test
+  fun `work list table aligns wide and combining issue keys by terminal display cells`() {
+    val dbPath = Files.createTempDirectory("skillbill-cli-work-unicode").resolve("metrics.db")
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      insertGoal(connection, "goal-wide", "界", "2026-05-01T12:00:00Z", "2026-05-01T12:00:00Z", false)
+      insertGoal(connection, "goal-combining", "A\u0301", "2026-05-01T12:00:01Z", "2026-05-01T12:00:01Z", false)
+    }
+
+    val table = CliRuntime.run(listOf("--db", dbPath.toString(), "work", "list"))
+    val wideLine = table.stdout.lineSequence().first { it.startsWith("界") }
+    val combiningLine = table.stdout.lineSequence().first { it.startsWith("A\u0301") }
+
+    assertEquals(0, table.exitCode, table.stdout)
+    assertEquals(7, terminalDisplayWidth(wideLine.substringBefore("feature-goal")))
+    assertEquals(7, terminalDisplayWidth(combiningLine.substringBefore("feature-goal")))
+    assertEquals(3, terminalDisplayWidth("A\u0301界"))
+    assertEquals("A\u0301…", "A\u0301界".truncateTerminalDisplayWidth(2))
+    assertEquals("界  ", "界".padTerminalEnd(4))
+    assertEquals("A\u0301   ", "A\u0301".padTerminalEnd(4))
   }
 
   private fun RuntimeComponent.openWorkflow(kind: WorkflowFamilyKind, dbPath: java.nio.file.Path, issueKey: String): String =

@@ -26,7 +26,7 @@ internal object DatabaseMigrations {
       DatabaseMigration(
         version = 4,
         name = "add-work-list-state-metadata",
-        operation = DatabaseColumnMigrations::apply,
+        operation = DatabaseColumnMigrations::applyWorkListMetadata,
       ),
     ).also(::requireDeterministicMigrations)
 

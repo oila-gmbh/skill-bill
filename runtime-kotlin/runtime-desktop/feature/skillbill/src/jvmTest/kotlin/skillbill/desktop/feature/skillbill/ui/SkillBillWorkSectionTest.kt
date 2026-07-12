@@ -2,6 +2,7 @@ package skillbill.desktop.feature.skillbill.ui
 
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
@@ -80,6 +81,7 @@ class SkillBillWorkSectionTest {
     onNodeWithContentDescription("Work table. Use left and right arrow keys to inspect all columns.").assertIsDisplayed()
     onNodeWithTag("work-section-field-headers").assertIsDisplayed()
     onNodeWithTag("work-section-row-wftr-117").assertIsDisplayed()
+    onNodeWithTag("work-section-cell-wftr-117-state-since", useUnmergedTree = true).assertIsNotDisplayed()
     onNodeWithText("ISSUE").assertIsDisplayed()
     onNodeWithText("Unknown issue").assertIsDisplayed()
     onNodeWithContentDescription(
@@ -87,6 +89,16 @@ class SkillBillWorkSectionTest {
         "Started: 2026-05-01 14:00:00 CEST. State: running. " +
         "State since: 2026-05-01 14:00:00 CEST, estimated",
     ).assertIsDisplayed()
+    onNodeWithTag("work-section-list-viewport").requestFocus().performKeyInput {
+      pressKey(Key.DirectionRight)
+      pressKey(Key.DirectionRight)
+      pressKey(Key.DirectionRight)
+      pressKey(Key.DirectionRight)
+      pressKey(Key.DirectionRight)
+      pressKey(Key.DirectionRight)
+    }
+    waitForIdle()
+    onNodeWithTag("work-section-cell-wftr-117-state-since", useUnmergedTree = true).assertIsDisplayed()
   }
 
   @OptIn(ExperimentalTestApi::class)
@@ -143,6 +155,7 @@ class SkillBillWorkSectionTest {
       )
     }
     onNodeWithText("Database unavailable").assertIsDisplayed()
+    onNodeWithText("Could not load work.").assertIsDisplayed()
 
     runOnIdle {
       state.value = WorkListState(

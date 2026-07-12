@@ -32,6 +32,7 @@ import skillbill.application.telemetry.LifecycleTelemetryService
 import skillbill.application.workflow.repoRoot
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.error.InvalidWorkflowStateSchemaError
+import skillbill.error.WorkflowIssueKeyConflictError
 import skillbill.featurespec.model.FeatureSpecPreparationDecision
 import skillbill.featurespec.model.FeatureSpecPreparationMode
 import skillbill.install.model.InstallAgent
@@ -145,6 +146,19 @@ class FeatureTaskRuntimeRunnerTest {
     val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
     assertContains(blocked.blockedReason, "was created in 'prose' mode")
     assertContains(blocked.blockedReason, "reset the subtask")
+    assertTrue(harness.launcher.requests.isEmpty())
+  }
+
+  @Test
+  fun `runtime issue-key reopen conflict fails before run events or agents start`() {
+    val harness = runnerHarness(agentAssignment = phasePerAgentAssignment())
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID, issueKey = ISSUE_KEY)
+
+    assertFailsWith<WorkflowIssueKeyConflictError> {
+      harness.runner.run(harness.request().copy(issueKey = "SKILL-118"))
+    }
+
+    assertTrue(harness.events.isEmpty())
     assertTrue(harness.launcher.requests.isEmpty())
   }
 

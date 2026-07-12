@@ -75,8 +75,12 @@ private fun WorkListResult.toTable(): String {
       formatter.format(item.stateEnteredAt) + if (item.stateEnteredAtEstimated) "~" else "",
     )
   }
-  val widths = headers.indices.map { index -> maxOf(headers[index].length, rows.maxOfOrNull { it[index].length } ?: 0) }
-  fun render(values: List<String>): String = values.indices.joinToString("  ") { index -> values[index].padEnd(widths[index]) }
+  val widths = headers.indices.map { index ->
+    maxOf(terminalDisplayWidth(headers[index]), rows.maxOfOrNull { terminalDisplayWidth(it[index]) } ?: 0)
+  }
+  fun render(values: List<String>): String = values.indices.joinToString("  ") { index ->
+    values[index].padTerminalEnd(widths[index])
+  }
   return buildString {
     appendLine(render(headers))
     rows.forEach { appendLine(render(it)) }
@@ -84,13 +88,70 @@ private fun WorkListResult.toTable(): String {
   }
 }
 
-private fun String.toTerminalSafeIssueKey(): String {
+internal fun String.toTerminalSafeIssueKey(): String {
   val sanitized = buildString(length) {
-    for (character in this@toTerminalSafeIssueKey) {
-      append(if (Character.isISOControl(character)) '\uFFFD' else character)
+    this@toTerminalSafeIssueKey.codePoints().forEach { codePoint ->
+      appendCodePoint(if (Character.isISOControl(codePoint)) REPLACEMENT_CODE_POINT else codePoint)
     }
   }
-  return if (sanitized.length <= MAX_TABLE_ISSUE_KEY_LENGTH) sanitized else sanitized.take(MAX_TABLE_ISSUE_KEY_LENGTH) + "…"
+  return sanitized.truncateTerminalDisplayWidth(MAX_TABLE_ISSUE_KEY_DISPLAY_WIDTH)
 }
 
-private const val MAX_TABLE_ISSUE_KEY_LENGTH = 128
+internal fun terminalDisplayWidth(value: String): Int = value.codePoints().toArray().sumOf(::terminalDisplayWidth)
+
+internal fun String.truncateTerminalDisplayWidth(maxWidth: Int): String {
+  require(maxWidth > 0) { "maxWidth must be positive." }
+  if (terminalDisplayWidth(this) <= maxWidth) {
+    return this
+  }
+  val markerWidth = terminalDisplayWidth(TRUNCATION_MARKER)
+  val contentWidth = (maxWidth - markerWidth).coerceAtLeast(0)
+  val truncated = StringBuilder()
+  var usedWidth = 0
+  for (codePoint in codePoints().toArray()) {
+    val codePointWidth = terminalDisplayWidth(codePoint)
+    if (codePointWidth > contentWidth - usedWidth) {
+      break
+    }
+    truncated.appendCodePoint(codePoint)
+    usedWidth += codePointWidth
+  }
+  return truncated.append(TRUNCATION_MARKER).toString()
+}
+
+internal fun String.padTerminalEnd(width: Int): String =
+  this + " ".repeat((width - terminalDisplayWidth(this)).coerceAtLeast(0))
+
+private fun terminalDisplayWidth(codePoint: Int): Int = when {
+  Character.isISOControl(codePoint) -> 1
+  Character.getType(codePoint) in ZERO_WIDTH_CHARACTER_TYPES -> 0
+  WIDE_CODE_POINT_RANGES.any { codePoint in it } -> 2
+  else -> 1
+}
+
+private val ZERO_WIDTH_CHARACTER_TYPES: Set<Int> = setOf(
+  Character.NON_SPACING_MARK.toInt(),
+  Character.COMBINING_SPACING_MARK.toInt(),
+  Character.ENCLOSING_MARK.toInt(),
+  Character.FORMAT.toInt(),
+)
+
+private val WIDE_CODE_POINT_RANGES: List<IntRange> = listOf(
+  0x1100..0x115F,
+  0x2329..0x232A,
+  0x2E80..0xA4CF,
+  0xAC00..0xD7A3,
+  0xF900..0xFAFF,
+  0xFE10..0xFE19,
+  0xFE30..0xFE6F,
+  0xFF00..0xFF60,
+  0xFFE0..0xFFE6,
+  0x1B000..0x1B12F,
+  0x1B170..0x1B2FF,
+  0x1F200..0x1F251,
+  0x20000..0x3FFFD,
+)
+
+private const val REPLACEMENT_CODE_POINT = 0xFFFD
+private const val MAX_TABLE_ISSUE_KEY_DISPLAY_WIDTH = 128
+private const val TRUNCATION_MARKER = "…"

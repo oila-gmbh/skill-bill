@@ -16,6 +16,7 @@ import skillbill.workflow.WorkflowEngine
 import skillbill.workflow.WorkflowSnapshotValidator
 import skillbill.workflow.model.WorkflowStateSnapshot
 import skillbill.application.workflow.toRecord
+import skillbill.error.WorkflowIssueKeyConflictError
 import skillbill.workflow.model.WorkflowUpdateInput
 import skillbill.workflow.model.appendBoundedHistoryBySequence
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
@@ -286,7 +287,18 @@ class FeatureTaskRuntimePhaseRecorder(
       val normalizedIssueKey = normalizeIssueKey(issueKey)
       val existing = unitOfWork.workflowStates.getFeatureTaskRuntimeWorkflow(workflowId)
       if (existing != null) {
-        if (existing.issueKey == null && normalizedIssueKey != null) {
+        val persistedIssueKey = existing.issueKey
+          ?.trim()
+          ?.takeIf(String::isNotEmpty)
+          ?.let(::normalizeIssueKey)
+        if (
+          persistedIssueKey != null &&
+          normalizedIssueKey != null &&
+          persistedIssueKey != normalizedIssueKey
+        ) {
+          throw WorkflowIssueKeyConflictError(workflowId, persistedIssueKey, normalizedIssueKey)
+        }
+        if (persistedIssueKey == null && normalizedIssueKey != null) {
           unitOfWork.workflowStates.saveFeatureTaskRuntimeWorkflow(existing.copy(issueKey = normalizedIssueKey))
         }
         return@transaction true

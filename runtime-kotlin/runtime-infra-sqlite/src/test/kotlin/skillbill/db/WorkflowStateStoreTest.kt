@@ -9,6 +9,11 @@ import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import java.nio.file.Files
 import java.sql.Connection
+import java.sql.DriverManager
+import java.time.Instant
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -134,7 +139,7 @@ class WorkflowStateStoreTest {
   @Test
   fun `workflow state entry starts at supplied start time and changes only on a status transition`() {
     val dbPath = Files.createTempDirectory("runtime-kotlin-db-workflow-state-entry").resolve("metrics.db")
-    val startedAt = "2026-05-01T12:00:00.123456789Z"
+    val startedAt = "2999-05-01T12:00:00.123456789Z"
 
     DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
       val store = WorkflowStateStore(connection)
@@ -159,8 +164,22 @@ class WorkflowStateStoreTest {
       store.saveFeatureImplementWorkflow(sameStatus.copy(workflowStatus = "blocked", currentStepId = "plan"))
       val transitioned = assertNotNull(store.getFeatureImplementWorkflow("wfl-state-entry"))
       assertEquals("blocked", transitioned.workflowStatus)
-      assertTrue(transitioned.stateEnteredAt != startedAt)
+      assertTrue(Instant.parse(transitioned.stateEnteredAt).isAfter(Instant.parse(startedAt)))
       assertEquals(false, transitioned.stateEnteredAtEstimated)
+
+      val runtimeInitial = initial.copy(
+        workflowId = "wftr-state-entry",
+        sessionId = "ftr-state-entry",
+        mode = FeatureTaskWorkflowMode.RUNTIME,
+      )
+      store.saveFeatureTaskRuntimeWorkflow(runtimeInitial)
+      val runtimeInserted = assertNotNull(store.getFeatureTaskRuntimeWorkflow("wftr-state-entry"))
+      assertEquals(startedAt, runtimeInserted.stateEnteredAt)
+
+      store.saveFeatureTaskRuntimeWorkflow(runtimeInserted.copy(workflowStatus = "blocked", currentStepId = "plan"))
+      val runtimeTransitioned = assertNotNull(store.getFeatureTaskRuntimeWorkflow("wftr-state-entry"))
+      assertTrue(Instant.parse(runtimeTransitioned.stateEnteredAt).isAfter(Instant.parse(startedAt)))
+      assertEquals(false, runtimeTransitioned.stateEnteredAtEstimated)
 
       val verifyInitial = WorkflowStateRow(
         workflowId = "wfv-state-entry",
@@ -185,8 +204,75 @@ class WorkflowStateStoreTest {
 
       store.saveFeatureVerifyWorkflow(verifySameStatus.copy(workflowStatus = "completed", currentStepId = "finish"))
       val verifyTransitioned = assertNotNull(store.getFeatureVerifyWorkflow("wfv-state-entry"))
-      assertTrue(verifyTransitioned.stateEnteredAt != startedAt)
+      assertTrue(Instant.parse(verifyTransitioned.stateEnteredAt).isAfter(Instant.parse(startedAt)))
       assertEquals(false, verifyTransitioned.stateEnteredAtEstimated)
+    }
+  }
+
+  @Test
+  fun `concurrent workflow status transitions serialize strictly increasing state entry times`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-db-workflow-concurrent-state").resolve("metrics.db")
+    val initial = workflowRow(
+      workflowId = "wfl-concurrent-state-entry",
+      sessionId = "fis-concurrent-state-entry",
+      workflowName = "bill-feature-task",
+      currentStepId = "assess",
+    ).copy(startedAt = "2999-05-01T12:00:00.123456789Z")
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      WorkflowStateStore(connection).saveFeatureImplementWorkflow(initial)
+      connection.createStatement().use { statement ->
+        statement.execute("CREATE TABLE workflow_transition_log (state_entered_at TEXT NOT NULL)")
+        statement.execute(
+          """
+          CREATE TRIGGER workflow_state_transition_log
+          AFTER UPDATE OF workflow_status ON feature_task_workflows
+          WHEN OLD.workflow_status != NEW.workflow_status
+          BEGIN
+            INSERT INTO workflow_transition_log (state_entered_at) VALUES (NEW.state_entered_at);
+          END
+          """.trimIndent(),
+        )
+      }
+    }
+
+    val ready = CountDownLatch(2)
+    val start = CountDownLatch(1)
+    val executor = Executors.newFixedThreadPool(2)
+    try {
+      val transitions = listOf("blocked", "failed").map { status ->
+        executor.submit {
+          ready.countDown()
+          check(start.await(5, TimeUnit.SECONDS)) { "Concurrent transition start timed out." }
+          DriverManager.getConnection("jdbc:sqlite:$dbPath").use { connection ->
+            connection.createStatement().use { it.execute("PRAGMA busy_timeout = 5000") }
+            WorkflowStateStore(connection).saveFeatureImplementWorkflow(
+              initial.copy(workflowStatus = status, currentStepId = "plan"),
+            )
+          }
+        }
+      }
+
+      assertTrue(ready.await(5, TimeUnit.SECONDS))
+      start.countDown()
+      transitions.forEach { it.get(5, TimeUnit.SECONDS) }
+    } finally {
+      executor.shutdownNow()
+    }
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val entries = connection.createStatement().use { statement ->
+        statement.executeQuery("SELECT state_entered_at FROM workflow_transition_log ORDER BY rowid").use { resultSet ->
+          buildList {
+            while (resultSet.next()) {
+              add(resultSet.getString("state_entered_at"))
+            }
+          }
+        }
+      }
+
+      assertEquals(2, entries.size)
+      assertTrue(Instant.parse(entries[1]).isAfter(Instant.parse(entries[0])))
     }
   }
 
