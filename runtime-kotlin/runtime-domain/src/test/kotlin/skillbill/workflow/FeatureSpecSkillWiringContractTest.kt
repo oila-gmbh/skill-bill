@@ -47,6 +47,17 @@ class FeatureSpecSkillWiringContractTest {
   }
 
   @Test
+  fun `issue keyed prose and verify workflow openings forward only normalized issue keys`() {
+    val proseContent = Files.readString(repoRootFromTest().resolve("skills/bill-feature-task-prose/content.md"))
+    val verifyContent = Files.readString(repoRootFromTest().resolve("skills/bill-feature-verify/content.md"))
+
+    assertContains(proseContent, "issue_key: <normalized issue key>")
+    assertContains(verifyContent, "issue_key: <normalized issue key>")
+    assertContains(verifyContent, "otherwise omit the field")
+    assertContains(verifyContent, "rather than deriving one from presentation data, workflow ids, or free text")
+  }
+
+  @Test
   fun `bill feature goal content reuses shared preparation and keeps goal runner consumer only`() {
     val content = Files.readString(repoRootFromTest().resolve("skills/bill-feature-goal/content.md"))
     val featureSpecContent = Files.readString(repoRootFromTest().resolve("skills/bill-feature-spec/content.md"))

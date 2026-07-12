@@ -11,6 +11,7 @@ import skillbill.desktop.core.domain.model.CommandPaletteAction
 import skillbill.desktop.core.domain.model.CommandPaletteResult
 import skillbill.desktop.core.domain.model.CommandPaletteResultKind
 import skillbill.desktop.core.domain.model.DirtyEditorPromptReason
+import skillbill.desktop.core.domain.model.DesktopWorkItem
 import skillbill.desktop.core.domain.model.EditorPlaceholder
 import skillbill.desktop.core.domain.model.GeneratedArtifactDetail
 import skillbill.desktop.core.domain.model.InstalledWorkspaceAvailability
@@ -22,9 +23,11 @@ import skillbill.desktop.core.domain.model.SkillBillState
 import skillbill.desktop.core.domain.model.SkillBillStatusBar
 import skillbill.desktop.core.domain.model.SkillBillTreeItem
 import skillbill.desktop.core.domain.model.TreeItemKind
+import skillbill.desktop.core.domain.model.WorkListLoadState
 import skillbill.desktop.core.domain.service.AuthoringGateway
 import skillbill.desktop.core.domain.service.RepoSessionService
 import skillbill.desktop.core.domain.service.SkillTreeService
+import skillbill.desktop.core.domain.service.WorkListGateway
 import skillbill.desktop.core.testing.FakeAuthoringGateway
 import skillbill.desktop.core.testing.FakeRecentRepoRepository
 import skillbill.desktop.core.testing.FakeRepoSessionService
@@ -557,6 +560,34 @@ class SkillBillViewModelTest {
     assertFalse(loaded.treeItems.single().id in collapsed.expandedNodeIds)
     assertEquals("skill-one", collapsed.selectedTreeItemId)
     assertEquals(listOf("/repo"), repoSessionService.openedRepoPaths)
+  }
+
+  @Test
+  fun `collapsing Work invalidates an in flight response`() {
+    val viewModel = newViewModel(
+      workListGateway = object : WorkListGateway {
+        override fun list(): List<DesktopWorkItem> = listOf(
+          DesktopWorkItem(
+            issueKey = "SKILL-117",
+            workflowKind = "feature-task-runtime",
+            workflowId = "wftr-117",
+            startedAt = "2026-05-01 14:00:00 CEST",
+            currentState = "running",
+            stateEnteredAt = "2026-05-01 14:00:00 CEST",
+            stateEnteredAtEstimated = false,
+          ),
+        )
+      },
+    )
+
+    val request = assertNotNull(viewModel.toggleWork())
+    assertEquals(WorkListLoadState.LOADING, viewModel.state().workList.loadState)
+
+    viewModel.toggleWork()
+    val afterStaleResponse = viewModel.finishWork(request, viewModel.loadWork(request))
+
+    assertFalse(afterStaleResponse.workList.expanded)
+    assertEquals(WorkListLoadState.COLLAPSED, afterStaleResponse.workList.loadState)
   }
 
   @Test
@@ -1167,6 +1198,7 @@ class SkillBillViewModelTest {
     skillRemoveGateway: skillbill.desktop.core.domain.service.RuntimeSkillRemoveGateway =
       skillbill.desktop.core.testing.skillremove.FakeSkillRemoveGateway(),
     installedWorkspaceLocator: FakeInstalledWorkspaceLocator = FakeInstalledWorkspaceLocator(),
+    workListGateway: WorkListGateway = skillbill.desktop.core.domain.service.EmptyWorkListGateway,
   ): SkillBillViewModel = SkillBillViewModel(
     repoSessionService = repoSessionService,
     skillTreeService = skillTreeService,
@@ -1177,6 +1209,7 @@ class SkillBillViewModelTest {
     desktopPreferenceStore = desktopPreferenceStore,
     skillRemoveGateway = skillRemoveGateway,
     installedWorkspaceLocator = installedWorkspaceLocator,
+    workListGateway = workListGateway,
   )
 
   private fun SkillBillViewModel.startupState(): SkillBillState = runBlocking {

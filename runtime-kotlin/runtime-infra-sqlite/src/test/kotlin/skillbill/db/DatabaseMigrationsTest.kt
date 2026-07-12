@@ -24,6 +24,7 @@ class DatabaseMigrationsTest {
         1 to "add-review-workflow-session-columns",
         2 to "normalize-feedback-event-outcomes",
         3 to "add-goal-telemetry-tables",
+        4 to "add-work-list-state-metadata",
       ),
       migrationDefinitions,
     )
@@ -75,6 +76,47 @@ class DatabaseMigrationsTest {
     DatabaseRuntime.ensureDatabase(dbPath).close()
     DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
       assertEquals(DatabaseMigrations.migrations.size, migrationRows(connection).size)
+    }
+  }
+
+  @Test
+  fun `reopening a healthy goal row does not rewrite healed state metadata`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-db-goal-healing").resolve("metrics.db")
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      connection.createStatement().use { statement ->
+        statement.executeUpdate(
+          """
+          INSERT INTO goal_issue_progress (
+            parent_workflow_id, issue_key, first_started_at, status, state_entered_at,
+            state_entered_at_estimated
+          ) VALUES ('goal-healthy', 'SKILL-117', '2026-05-01T12:00:00Z', 'running',
+                    '2026-05-01T12:00:00Z', 0)
+          """.trimIndent(),
+        )
+        statement.execute(
+          """
+          CREATE TRIGGER reject_healthy_goal_rewrite
+          BEFORE UPDATE ON goal_issue_progress
+          BEGIN
+            SELECT RAISE(ABORT, 'healthy goal metadata must not be rewritten');
+          END
+          """.trimIndent(),
+        )
+      }
+    }
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      assertEquals(
+        "2026-05-01T12:00:00Z",
+        tableColumnValue(
+          connection = connection,
+          tableName = "goal_issue_progress",
+          pkColumnName = "parent_workflow_id",
+          pkValue = "goal-healthy",
+          columnName = "state_entered_at",
+        ),
+      )
     }
   }
 

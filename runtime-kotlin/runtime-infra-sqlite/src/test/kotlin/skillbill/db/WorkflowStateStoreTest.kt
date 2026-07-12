@@ -132,6 +132,65 @@ class WorkflowStateStoreTest {
   }
 
   @Test
+  fun `workflow state entry starts at supplied start time and changes only on a status transition`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-db-workflow-state-entry").resolve("metrics.db")
+    val startedAt = "2026-05-01T12:00:00.123456789Z"
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val store = WorkflowStateStore(connection)
+      val initial = workflowRow(
+        workflowId = "wfl-state-entry",
+        sessionId = "fis-state-entry",
+        workflowName = "bill-feature-task",
+        currentStepId = "assess",
+      ).copy(startedAt = startedAt)
+
+      store.saveFeatureImplementWorkflow(initial)
+      val inserted = assertNotNull(store.getFeatureImplementWorkflow("wfl-state-entry"))
+      assertEquals(startedAt, inserted.startedAt)
+      assertEquals(startedAt, inserted.stateEnteredAt)
+      assertEquals(false, inserted.stateEnteredAtEstimated)
+
+      store.saveFeatureImplementWorkflow(initial.copy(currentStepId = "plan", artifactsJson = "{\"plan\":{}}"))
+      val sameStatus = assertNotNull(store.getFeatureImplementWorkflow("wfl-state-entry"))
+      assertEquals(startedAt, sameStatus.stateEnteredAt)
+      assertEquals(false, sameStatus.stateEnteredAtEstimated)
+
+      store.saveFeatureImplementWorkflow(initial.copy(workflowStatus = "blocked", currentStepId = "plan"))
+      val transitioned = assertNotNull(store.getFeatureImplementWorkflow("wfl-state-entry"))
+      assertEquals("blocked", transitioned.workflowStatus)
+      assertTrue(transitioned.stateEnteredAt != startedAt)
+      assertEquals(false, transitioned.stateEnteredAtEstimated)
+
+      val verifyInitial = WorkflowStateRow(
+        workflowId = "wfv-state-entry",
+        sessionId = "fvr-state-entry",
+        workflowName = "bill-feature-verify",
+        contractVersion = "0.1",
+        workflowStatus = "running",
+        currentStepId = "gather_diff",
+        stepsJson = "[]",
+        artifactsJson = "{}",
+        startedAt = startedAt,
+        updatedAt = null,
+        finishedAt = null,
+      )
+      store.saveFeatureVerifyWorkflow(verifyInitial)
+      val verifyInserted = assertNotNull(store.getFeatureVerifyWorkflow("wfv-state-entry"))
+      assertEquals(startedAt, verifyInserted.stateEnteredAt)
+
+      store.saveFeatureVerifyWorkflow(verifyInitial.copy(currentStepId = "code_review"))
+      val verifySameStatus = assertNotNull(store.getFeatureVerifyWorkflow("wfv-state-entry"))
+      assertEquals(startedAt, verifySameStatus.stateEnteredAt)
+
+      store.saveFeatureVerifyWorkflow(verifyInitial.copy(workflowStatus = "completed", currentStepId = "finish"))
+      val verifyTransitioned = assertNotNull(store.getFeatureVerifyWorkflow("wfv-state-entry"))
+      assertTrue(verifyTransitioned.stateEnteredAt != startedAt)
+      assertEquals(false, verifyTransitioned.stateEnteredAtEstimated)
+    }
+  }
+
+  @Test
   fun `workflow lists and latest use updated timestamp then rowid ordering for both families`() {
     val dbPath = Files.createTempDirectory("runtime-kotlin-db-workflow-list").resolve("metrics.db")
 

@@ -204,6 +204,8 @@ class StaleSessionReconcilerTest {
       Instant.parse(assertIs<String>(payload["first_started_at"]).also { assertTrue(it.isNotBlank()) })
       Instant.parse(assertIs<String>(payload["finished_at"]).also { assertTrue(it.isNotBlank()) })
       assertEquals("abandoned", goalColumnValue(connection, "SKILL-109", "status"))
+      Instant.parse(assertIs<String>(goalColumnValue(connection, "SKILL-109", "state_entered_at")))
+      assertEquals(0, goalColumnValue(connection, "SKILL-109", "state_entered_at_estimated"))
       assertEquals(null, goalColumnValue(connection, "SKILL-111", "status"))
       assertEquals(null, goalColumnValue(connection, "SKILL-110", "status"))
 

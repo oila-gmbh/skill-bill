@@ -6,6 +6,8 @@ import skillbill.desktop.core.data.di.DesktopRuntimeApplicationServices
 import skillbill.desktop.core.domain.model.DesktopWorkItem
 import skillbill.desktop.core.domain.service.WorkListGateway
 import software.amazon.lastmile.kotlin.inject.anvil.SingleIn
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 @Inject
 @SingleIn(UserScope::class)
@@ -17,10 +19,13 @@ class JvmWorkListGateway(
       issueKey = item.issueKey,
       workflowKind = item.workflowKind.wireValue,
       workflowId = item.workflowId,
-      startedAt = item.startedAt.toString(),
+      startedAt = desktopTimestampFormatter.format(item.startedAt),
       currentState = item.currentState,
-      stateEnteredAt = item.stateEnteredAt.toString(),
+      stateEnteredAt = desktopTimestampFormatter.format(item.stateEnteredAt),
       stateEnteredAtEstimated = item.stateEnteredAtEstimated,
     )
   }
 }
+
+private val desktopTimestampFormatter: DateTimeFormatter =
+  DateTimeFormatter.ofPattern("uuuu-MM-dd HH:mm:ss z").withZone(ZoneId.systemDefault())

@@ -200,8 +200,9 @@ private class FeatureVerifyWorkflowStateStore(
 }
 
 private fun Connection.upsertWorkflowRow(tableName: String, row: WorkflowStateRecord, defaultContractVersion: String) {
-  val stateTimestamp = row.stateEnteredAt?.takeIf(String::isNotBlank) ?: Instant.now().toString()
-  val startedTimestamp = row.startedAt?.takeIf(String::isNotBlank) ?: stateTimestamp
+  val startedTimestamp = row.startedAt?.takeIf(String::isNotBlank) ?: Instant.now().toString()
+  val stateTimestamp = row.stateEnteredAt?.takeIf(String::isNotBlank) ?: startedTimestamp
+  val transitionTimestamp = row.stateEnteredAt?.takeIf(String::isNotBlank) ?: Instant.now().toString()
   prepareStatement(
     """
     INSERT INTO $tableName (
@@ -230,7 +231,7 @@ private fun Connection.upsertWorkflowRow(tableName: String, row: WorkflowStateRe
       issue_key = COALESCE(NULLIF(excluded.issue_key, ''), $tableName.issue_key),
       updated_at = CURRENT_TIMESTAMP,
       state_entered_at = CASE
-        WHEN $tableName.workflow_status != excluded.workflow_status THEN excluded.state_entered_at
+        WHEN $tableName.workflow_status != excluded.workflow_status THEN ?
         ELSE $tableName.state_entered_at
       END,
       state_entered_at_estimated = CASE
@@ -259,6 +260,7 @@ private fun Connection.upsertWorkflowRow(tableName: String, row: WorkflowStateRe
     statement.setInt(12, if (row.stateEnteredAtEstimated) 1 else 0)
     statement.setBoolean(13, terminal)
     statement.setString(14, row.finishedAt)
+    statement.setString(15, transitionTimestamp)
     statement.executeUpdate()
   }
 }
@@ -281,8 +283,9 @@ private fun Connection.upsertFeatureTaskWorkflowRow(
   implementationSkill: String,
   defaultContractVersion: String,
 ) {
-  val stateTimestamp = row.stateEnteredAt?.takeIf(String::isNotBlank) ?: Instant.now().toString()
-  val startedTimestamp = row.startedAt?.takeIf(String::isNotBlank) ?: stateTimestamp
+  val startedTimestamp = row.startedAt?.takeIf(String::isNotBlank) ?: Instant.now().toString()
+  val stateTimestamp = row.stateEnteredAt?.takeIf(String::isNotBlank) ?: startedTimestamp
+  val transitionTimestamp = row.stateEnteredAt?.takeIf(String::isNotBlank) ?: Instant.now().toString()
   prepareStatement(
     """
     INSERT INTO feature_task_workflows (
@@ -313,7 +316,7 @@ private fun Connection.upsertFeatureTaskWorkflowRow(
       issue_key = COALESCE(NULLIF(excluded.issue_key, ''), feature_task_workflows.issue_key),
       updated_at = CURRENT_TIMESTAMP,
       state_entered_at = CASE
-        WHEN feature_task_workflows.workflow_status != excluded.workflow_status THEN excluded.state_entered_at
+        WHEN feature_task_workflows.workflow_status != excluded.workflow_status THEN ?
         ELSE feature_task_workflows.state_entered_at
       END,
       state_entered_at_estimated = CASE
@@ -345,6 +348,7 @@ private fun Connection.upsertFeatureTaskWorkflowRow(
     statement.setString(13, row.finishedAt)
     statement.setString(14, mode.wireValue)
     statement.setString(15, implementationSkill)
+    statement.setString(16, transitionTimestamp)
     statement.executeUpdate()
   }
 }

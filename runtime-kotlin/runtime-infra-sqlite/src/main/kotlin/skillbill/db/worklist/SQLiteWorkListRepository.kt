@@ -17,20 +17,21 @@ class SQLiteWorkListRepository(
 ) : WorkListRepository {
   override fun list(limit: Int?): List<WorkItem> {
     require(limit == null || limit > 0) { "Work-list limit must be positive." }
-    return connection.prepareStatement(query(limit != null)).use { statement ->
-      limit?.let { statement.setInt(1, it) }
+    val work = connection.prepareStatement(query()).use { statement ->
       statement.executeQuery().use { resultSet ->
-        buildList {
+        buildList<WorkItem> {
           while (resultSet.next()) {
             add(resultSet.toWorkItem())
           }
         }
       }
     }
+    val ordered = work.sortedWith(compareByDescending(WorkItem::startedAt).thenByDescending(WorkItem::workflowId))
+    return limit?.let(ordered::take) ?: ordered
   }
 }
 
-private fun query(hasLimit: Boolean): String =
+private fun query(): String =
   """
   SELECT issue_key, workflow_kind, workflow_id, started_at, current_state,
          state_entered_at, state_entered_at_estimated
@@ -66,8 +67,6 @@ private fun query(hasLimit: Boolean): String =
            state_entered_at_estimated
     FROM goal_issue_progress
   )
-  ORDER BY julianday(started_at) DESC, workflow_id DESC, issue_key DESC
-  ${if (hasLimit) "LIMIT ?" else ""}
   """.trimIndent()
 
 private fun java.sql.ResultSet.toWorkItem(): WorkItem {

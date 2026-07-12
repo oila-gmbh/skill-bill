@@ -214,10 +214,13 @@ private fun markGoalIssueAbandoned(connection: Connection, goal: GoalIssueIdenti
         subtasks_complete = COALESCE((${latestSegmentCountSelect("subtasks_complete")}), 0),
         subtasks_blocked = COALESCE((${latestSegmentCountSelect("subtasks_blocked")}), 0),
         subtasks_skipped = COALESCE((${latestSegmentCountSelect("subtasks_skipped")}), 0),
-        finished_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+        finished_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+        state_entered_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+        state_entered_at_estimated = 0
     WHERE parent_workflow_id = ? AND issue_key = ?
       AND finished_at IS NULL AND finished_event_emitted_at IS NULL
       AND latest_segment_workflow_id = last_blocked_segment_workflow_id
+      AND COALESCE(status, '') != 'abandoned'
     """.trimIndent(),
   ).use { statement ->
     statement.bind(goal.parentWorkflowId, goal.issueKey)

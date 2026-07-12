@@ -18,6 +18,7 @@ internal class SkillBillWorkController(
 ) {
   fun toggle(): WorkListRequest? {
     if (viewState.workList.expanded) {
+      viewState.activeWorkListRequestToken += 1
       viewState.workList = viewState.workList.copy(expanded = false, loadState = WorkListLoadState.COLLAPSED)
       viewState.currentState = viewState.createState()
       return null

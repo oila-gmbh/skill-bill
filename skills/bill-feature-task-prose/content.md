@@ -476,6 +476,7 @@ Immediately after Step 1 is confirmed:
 3. Call `feature_task_prose_workflow_open` with:
    - `session_id`
    - `current_step_id: "assess"`
+   - `issue_key: <normalized issue key>` from the confirmed task context
 4. Save `workflow_id`.
 5. Initialize `child_steps = []`.
 

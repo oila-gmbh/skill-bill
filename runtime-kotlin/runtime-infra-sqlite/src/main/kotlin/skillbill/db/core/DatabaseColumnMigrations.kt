@@ -111,9 +111,13 @@ internal object DatabaseColumnMigrations {
               NULLIF(first_started_at, ''), CURRENT_TIMESTAMP
             ),
             state_entered_at_estimated = CASE
-              WHEN state_entered_at IS NULL OR state_entered_at = '' THEN 1
+              WHEN state_entered_at IS NULL OR state_entered_at = ''
+                   OR state_entered_at_estimated IS NULL THEN 1
               ELSE COALESCE(state_entered_at_estimated, 0)
             END
+        WHERE status IS NULL OR status = ''
+           OR state_entered_at IS NULL OR state_entered_at = ''
+           OR state_entered_at_estimated IS NULL
         """.trimIndent(),
       )
     }
