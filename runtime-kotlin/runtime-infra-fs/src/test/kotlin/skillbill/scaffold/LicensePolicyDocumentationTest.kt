@@ -90,7 +90,7 @@ class LicensePolicyDocumentationTest {
         assertTrue(text.contains("v0.1.2"), path)
         assertTrue(text.contains("Stable Release Event"), path)
         assertTrue(text.contains("v1.0.0"), path)
-    }
+      }
     val contribution = publicFiles.getValue("CONTRIBUTING.md")
     val normalizedContribution = contribution.replace(Regex("\\s+"), " ")
     listOf(
@@ -107,6 +107,7 @@ class LicensePolicyDocumentationTest {
     assertTrue(normalizedContribution.contains("authority to grant"))
     assertTrue(read("README.md").contains("LicenseRef-Skill-Bill-Pre-1.0-Use-1.0"))
     assertTrue(read("README.md").contains("License-Skill%20Bill%20Pre--1.0%20Use"))
+    assertTrue(read("docs/licensing.md").contains("Earlier MIT and PolyForm grants"))
     assertTrue(
       read("runtime-kotlin/runtime-desktop/packaging/arch/PKGBUILD")
         .contains("custom:Skill-Bill-Pre-1.0-Use-1.0"),

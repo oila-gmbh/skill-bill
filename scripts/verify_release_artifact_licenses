@@ -40,59 +40,103 @@ require_command() {
 verify_checksum() {
   local artifact="$1"
   local checksum="${artifact}.sha256"
+  local expected_name expected_digest actual_digest line record_count record_digest record_name
   if [[ ! -f "${checksum}" ]]; then
     echo "Missing checksum for ${artifact}." >&2
     exit 1
   fi
+  expected_name="$(basename "${artifact}")"
+  record_count=0
+  expected_digest=""
+  while IFS= read -r line || [[ -n "${line}" ]]; do
+    [[ -n "${line}" ]] || continue
+    if [[ ! "${line}" =~ ^([0-9A-Fa-f]{64})\ \ (.+)$ ]]; then
+      echo "Checksum ${checksum} must contain one SHA-256 record for ${expected_name}." >&2
+      exit 1
+    fi
+    record_count=$((record_count + 1))
+    record_digest="${BASH_REMATCH[1]}"
+    record_name="${BASH_REMATCH[2]}"
+    if [[ "${record_name}" != "${expected_name}" ]]; then
+      echo "Checksum ${checksum} names ${record_name}, not ${expected_name}." >&2
+      exit 1
+    fi
+    expected_digest="$(printf '%s' "${record_digest}" | tr 'A-F' 'a-f')"
+  done < "${checksum}"
+  if [[ "${record_count}" != "1" ]]; then
+    echo "Checksum ${checksum} must contain exactly one record for ${expected_name}." >&2
+    exit 1
+  fi
   if command -v sha256sum >/dev/null; then
-    (cd "$(dirname "${artifact}")" && sha256sum --check "$(basename "${checksum}")")
+    actual_digest="$(sha256sum "${artifact}" | awk '{print $1}')"
   elif command -v shasum >/dev/null; then
-    (cd "$(dirname "${artifact}")" && shasum -a 256 --check "$(basename "${checksum}")")
+    actual_digest="$(shasum -a 256 "${artifact}" | awk '{print $1}')"
   else
     echo "Required checksum tool is unavailable: sha256sum or shasum." >&2
+    exit 1
+  fi
+  actual_digest="$(printf '%s' "${actual_digest}" | tr 'A-F' 'a-f')"
+  if [[ "${actual_digest}" != "${expected_digest}" ]]; then
+    echo "Checksum digest differs for ${artifact}." >&2
     exit 1
   fi
 }
 
 verify_zip() {
   local artifact="$1"
+  local entry_count
   require_command unzip
-  mapfile -t entries < <(unzip -Z1 "${artifact}" | awk '/(^|\/)LICENSE$/')
-  if [[ "${#entries[@]}" != "1" ]]; then
-    echo "Expected exactly one LICENSE entry in ${artifact}, found ${#entries[@]}." >&2
+  entry_count="$(unzip -Z1 "${artifact}" | awk '$0 == "image/LICENSE" { count++ } END { print count + 0 }')"
+  if [[ "${entry_count}" != "1" ]]; then
+    echo "Expected exactly one canonical image/LICENSE entry in ${artifact}, found ${entry_count}." >&2
     exit 1
   fi
-  if ! cmp -s "${root_license}" <(unzip -p "${artifact}" "${entries[0]}"); then
-    echo "LICENSE bytes differ from root LICENSE in ${artifact}." >&2
+  if ! cmp -s "${root_license}" <(unzip -p "${artifact}" "image/LICENSE"); then
+    echo "Canonical image/LICENSE bytes differ from root LICENSE in ${artifact}." >&2
     exit 1
   fi
 }
 
 verify_tar() {
   local artifact="$1"
+  local entry entry_count
   require_command tar
-  mapfile -t entries < <(tar -tzf "${artifact}" | awk '/(^|\/)LICENSE$/')
-  if [[ "${#entries[@]}" != "1" ]]; then
-    echo "Expected exactly one LICENSE entry in ${artifact}, found ${#entries[@]}." >&2
+  entry="$(tar -tzf "${artifact}" | awk '$0 == "LICENSE" || $0 == "./LICENSE" { print; exit }')"
+  entry_count="$(tar -tzf "${artifact}" | awk '$0 == "LICENSE" || $0 == "./LICENSE" { count++ } END { print count + 0 }')"
+  if [[ "${entry_count}" != "1" ]]; then
+    echo "Expected exactly one canonical LICENSE entry in ${artifact}, found ${entry_count}." >&2
     exit 1
   fi
-  if ! cmp -s "${root_license}" <(tar -xOzf "${artifact}" "${entries[0]}"); then
-    echo "LICENSE bytes differ from root LICENSE in ${artifact}." >&2
+  if ! cmp -s "${root_license}" <(tar -xOzf "${artifact}" "${entry}"); then
+    echo "Canonical LICENSE bytes differ from root LICENSE in ${artifact}." >&2
     exit 1
   fi
 }
 
-verify_deb() {
-  local artifact="$1"
-  require_command dpkg-deb
-  require_command tar
-  mapfile -t entries < <(dpkg-deb --fsys-tarfile "${artifact}" | tar -t | awk '/(^|\/)LICENSE$/')
-  if [[ "${#entries[@]}" != "1" ]]; then
-    echo "Expected exactly one LICENSE entry in ${artifact}, found ${#entries[@]}." >&2
+find_desktop_license() {
+  local root="$1"
+  local artifact="$2"
+  local entry entry_count
+  entry="$(find "${root}" -type f -path '*/resources/skill-bill-runtime/LICENSE' -print | sed "s#^${root}/##" | head -n 1)"
+  entry_count="$(find "${root}" -type f -path '*/resources/skill-bill-runtime/LICENSE' -print | wc -l | tr -d ' ')"
+  if [[ "${entry_count}" != "1" ]]; then
+    echo "Expected exactly one canonical resources/skill-bill-runtime/LICENSE entry in ${artifact}, found ${entry_count}." >&2
     exit 1
   fi
-  if ! cmp -s "${root_license}" <(dpkg-deb --fsys-tarfile "${artifact}" | tar -xO "${entries[0]}"); then
-    echo "LICENSE bytes differ from root LICENSE in ${artifact}." >&2
+  printf '%s\n' "${entry}"
+}
+
+verify_deb() {
+  local artifact="$1"
+  local work_dir entry
+  require_command dpkg-deb
+  require_command tar
+  work_dir="$(mktemp -d)"
+  temporary_dirs+=("${work_dir}")
+  dpkg-deb --fsys-tarfile "${artifact}" | tar -x -C "${work_dir}"
+  entry="$(find_desktop_license "${work_dir}" "${artifact}")"
+  if ! cmp -s "${root_license}" "${work_dir}/${entry}"; then
+    echo "Canonical desktop LICENSE bytes differ from root LICENSE in ${artifact}." >&2
     exit 1
   fi
 }
@@ -106,13 +150,9 @@ verify_rpm() {
   work_dir="$(mktemp -d)"
   temporary_dirs+=("${work_dir}")
   (cd "${work_dir}" && rpm2cpio "${artifact}" | cpio -idm --quiet)
-  mapfile -t entries < <(cd "${work_dir}" && find . -type f -name LICENSE -print | sed 's#^./##')
-  if [[ "${#entries[@]}" != "1" ]]; then
-    echo "Expected exactly one LICENSE entry in ${artifact}, found ${#entries[@]}." >&2
-    exit 1
-  fi
-  if ! cmp -s "${root_license}" "${work_dir}/${entries[0]}"; then
-    echo "LICENSE bytes differ from root LICENSE in ${artifact}." >&2
+  entry="$(find_desktop_license "${work_dir}" "${artifact}")"
+  if ! cmp -s "${root_license}" "${work_dir}/${entry}"; then
+    echo "Canonical desktop LICENSE bytes differ from root LICENSE in ${artifact}." >&2
     exit 1
   fi
 }
@@ -125,13 +165,9 @@ verify_dmg() {
   temporary_dirs+=("${mount_dir}")
   hdiutil attach -nobrowse -readonly -mountpoint "${mount_dir}" "${artifact}" >/dev/null
   mounted_dirs+=("${mount_dir}")
-  mapfile -t entries < <(cd "${mount_dir}" && find . -type f -name LICENSE -print | sed 's#^./##')
-  if [[ "${#entries[@]}" != "1" ]]; then
-    echo "Expected exactly one LICENSE entry in ${artifact}, found ${#entries[@]}." >&2
-    exit 1
-  fi
-  if ! cmp -s "${root_license}" "${mount_dir}/${entries[0]}"; then
-    echo "LICENSE bytes differ from root LICENSE in ${artifact}." >&2
+  entry="$(find_desktop_license "${mount_dir}" "${artifact}")"
+  if ! cmp -s "${root_license}" "${mount_dir}/${entry}"; then
+    echo "Canonical desktop LICENSE bytes differ from root LICENSE in ${artifact}." >&2
     exit 1
   fi
 }
@@ -146,13 +182,9 @@ verify_msi() {
   windows_artifact="$(cygpath -aw "${artifact}")"
   windows_work_dir="$(cygpath -aw "${work_dir}")"
   msiexec.exe /a "${windows_artifact}" /qn "TARGETDIR=${windows_work_dir}"
-  mapfile -t entries < <(find "${work_dir}" -type f -name LICENSE -print | sed "s#^${work_dir}/##")
-  if [[ "${#entries[@]}" != "1" ]]; then
-    echo "Expected exactly one LICENSE entry in ${artifact}, found ${#entries[@]}." >&2
-    exit 1
-  fi
-  if ! cmp -s "${root_license}" "${work_dir}/${entries[0]}"; then
-    echo "LICENSE bytes differ from root LICENSE in ${artifact}." >&2
+  entry="$(find_desktop_license "${work_dir}" "${artifact}")"
+  if ! cmp -s "${root_license}" "${work_dir}/${entry}"; then
+    echo "Canonical desktop LICENSE bytes differ from root LICENSE in ${artifact}." >&2
     exit 1
   fi
 }

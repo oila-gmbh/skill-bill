@@ -56,8 +56,14 @@ class RepoValidationRuntimeTest {
   fun `release policy preserves historical lines and requires complete custom policy from v0 1 2`() {
     val repoRoot = Files.createTempDirectory("skillbill-release-policy")
 
-    RepoValidationRuntime.validateReleaseRef(repoRoot, "v0.1.0", forcePrerelease = false)
-    RepoValidationRuntime.validateReleaseRef(repoRoot, "v0.1.1", forcePrerelease = false)
+    listOf("v0.0.9", "v0.1.0", "v0.1.1+rebuild.1").forEach { ref ->
+      RepoValidationRuntime.validateReleaseRef(repoRoot, ref, forcePrerelease = false)
+    }
+
+    val coveredPrerelease = assertFailsWith<IllegalArgumentException> {
+      RepoValidationRuntime.validateReleaseRef(repoRoot, "v0.1.2-rc.1", forcePrerelease = false)
+    }
+    assertTrue(coveredPrerelease.message.orEmpty().contains("LICENSE"))
 
     val missingPolicy = assertFailsWith<IllegalArgumentException> {
       RepoValidationRuntime.validateReleaseRef(repoRoot, "v0.1.2", forcePrerelease = false)
@@ -69,6 +75,11 @@ class RepoValidationRuntimeTest {
       "marker-only" to RepoValidationRuntime.TRANSITIONAL_LICENSE_MARKER,
       "wrong-boundary" to completeTransitionalLicense().replace("v0.1.2", "v0.1.3"),
       "truncated" to completeTransitionalLicense().substringBefore("9. Termination and cure"),
+      "material-clause-change" to
+        completeTransitionalLicense().replace(
+          "commercial use, consulting",
+          "commercial and consulting",
+        ),
     ).forEach { (fixture, license) ->
       Files.writeString(repoRoot.resolve("LICENSE"), license)
       val failure = assertFailsWith<IllegalArgumentException> {
@@ -81,6 +92,8 @@ class RepoValidationRuntimeTest {
     listOf("v0.1.2", "v0.2.0+build.7", "v0.9.9-rc.1").forEach { ref ->
       RepoValidationRuntime.validateReleaseRef(repoRoot, ref, forcePrerelease = false)
     }
+    Files.writeString(repoRoot.resolve("LICENSE"), completeTransitionalLicense().replace("\n", "\r\n"))
+    RepoValidationRuntime.validateReleaseRef(repoRoot, "v0.1.2", forcePrerelease = false)
   }
 
   @Test
@@ -89,14 +102,19 @@ class RepoValidationRuntimeTest {
     Files.writeString(repoRoot.resolve("LICENSE"), completeTransitionalLicense())
 
     val releaseCandidate = RepoValidationRuntime.validateReleaseRef(repoRoot, "v1.0.0-rc.1", forcePrerelease = false)
-    val staging = RepoValidationRuntime.validateReleaseRef(repoRoot, "v1.0.0", forcePrerelease = true)
+    val staging = RepoValidationRuntime.validateReleaseRef(repoRoot, "v1.0.0-staging.1", forcePrerelease = false)
+    val forcedStableFailure = assertFailsWith<IllegalArgumentException> {
+      RepoValidationRuntime.validateReleaseRef(repoRoot, "v1.0.0", forcePrerelease = true)
+    }
     val stableFailure = assertFailsWith<IllegalArgumentException> {
       RepoValidationRuntime.validateReleaseRef(repoRoot, "v1.0.0", forcePrerelease = false)
     }
 
     assertTrue(releaseCandidate.prerelease)
     assertTrue(staging.prerelease)
-    assertTrue(stableFailure.message.orEmpty().contains("cannot publish"))
+    assertEquals("v1.0.0-staging.1", staging.tag)
+    assertTrue(forcedStableFailure.message.orEmpty().contains("prerelease identifier"))
+    assertTrue(stableFailure.message.orEmpty().contains("successor license policy"))
   }
 
   @Test
@@ -112,7 +130,7 @@ class RepoValidationRuntimeTest {
     }
 
     assertTrue(missing.message.orEmpty().contains("complete transitional"))
-    assertTrue(incomplete.message.orEmpty().contains("incomplete transitional"))
+    assertTrue(incomplete.message.orEmpty().contains("complete transitional"))
   }
 
   @Test
@@ -124,7 +142,7 @@ class RepoValidationRuntimeTest {
       val failure = assertFailsWith<IllegalArgumentException> {
         RepoValidationRuntime.validateReleaseRef(repoRoot, ref, forcePrerelease = false)
       }
-      assertTrue(failure.message.orEmpty().contains("cannot publish"), ref)
+      assertTrue(failure.message.orEmpty().contains("successor license policy"), ref)
     }
   }
 
@@ -133,22 +151,48 @@ class RepoValidationRuntimeTest {
     val repoRoot = Files.createTempDirectory("skillbill-successor-license")
     Files.writeString(
       repoRoot.resolve("LICENSE"),
-      """
-      Skill Bill Successor License
-
-      Historical notice: Skill Bill Pre-1.0 Use License 1.0 applied before v1.0.0.
-      """.trimIndent() + "\n",
+      completeSuccessorLicense(),
     )
 
     RepoValidationRuntime.validateReleaseRef(repoRoot, "v1.1.0", forcePrerelease = false)
   }
 
-  private fun completeTransitionalLicense(): String =
-    Files.readString(repositoryRoot().resolve("LICENSE"))
+  @Test
+  fun `post one release rejects empty placeholder and trivially prefixed successor policies`() {
+    val repoRoot = Files.createTempDirectory("skillbill-invalid-successor-license")
+    listOf(
+      "",
+      "Successor License Identifier: LicenseRef-Skill-Bill-Successor-1.0\n" +
+        "Successor License Effective Version: v1.0.0\n",
+      "Historical notice\n\n${completeTransitionalLicense()}",
+      completeSuccessorLicense().substringBefore("Successor License Terms:") +
+        "Successor License Terms:\n${completeTransitionalLicense()}",
+    ).forEach { license ->
+      Files.writeString(repoRoot.resolve("LICENSE"), license)
+      val failure = assertFailsWith<IllegalArgumentException> {
+        RepoValidationRuntime.validateReleaseRef(repoRoot, "v1.0.1", forcePrerelease = false)
+      }
+      assertTrue(failure.message.orEmpty().contains("successor license policy"))
+    }
+  }
 
-  private fun repositoryRoot(): Path =
-    generateSequence(Path.of("").toAbsolutePath().normalize()) { it.parent }
-      .first { Files.isRegularFile(it.resolve("LICENSE")) }
+  private fun completeTransitionalLicense(): String = Files.readString(repositoryRoot().resolve("LICENSE"))
+
+  private fun completeSuccessorLicense(): String = """
+    Skill Bill Successor License
+    Successor License Identifier: LicenseRef-Skill-Bill-Successor-1.0
+    Successor License Effective Version: v1.0.0
+
+    Successor License Terms:
+    This successor policy is the complete governing text for Skill Bill releases at and after v1.0.0.
+    It records the licensing decision made by the copyright holder and states the permissions, conditions,
+    restrictions, warranty treatment, and liability rules applicable to those releases. Historical references
+    to Skill Bill Pre-1.0 Use License 1.0 explain only the earlier release line and do not make that
+    transitional policy the current license for this successor release.
+  """.trimIndent() + "\n"
+
+  private fun repositoryRoot(): Path = generateSequence(Path.of("").toAbsolutePath().normalize()) { it.parent }
+    .first { Files.isRegularFile(it.resolve("LICENSE")) }
 
   @Test
   fun `repo validation reports missing governed directories`() {

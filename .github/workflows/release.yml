@@ -12,8 +12,8 @@ on:
     inputs:
       staging_version:
         description: >-
-          Staging version label for a manual run (e.g. v0.4.0-rc.1). Produces a
-          downloadable prerelease asset set without requiring a pushed tag.
+          SemVer prerelease label for a manual run (e.g. v0.4.0-staging.1).
+          Produces a downloadable prerelease asset set without requiring a pushed tag.
         required: true
         type: string
 
@@ -80,8 +80,16 @@ jobs:
       # build.gradle.kts so every artifact name embeds the correct version.
       - name: Set release version
         shell: bash
+        env:
+          STAGING_VERSION: ${{ inputs.staging_version }}
         run: |
-          raw="${{ github.event_name == 'workflow_dispatch' && inputs.staging_version || github.ref_name }}"
+          validation_args=()
+          raw="$GITHUB_REF_NAME"
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            raw="$STAGING_VERSION"
+            validation_args+=(--force-prerelease)
+          fi
+          scripts/validate_release_ref "$raw" "${validation_args[@]}"
           echo "RELEASE_VERSION=${raw#v}" >> "$GITHUB_ENV"
 
       # Linux desktop installers shell out to native packaging tools: .deb needs
@@ -221,10 +229,6 @@ jobs:
       - name: Run repo-native validation
         run: scripts/validate_agent_configs
 
-      # AC3/AC4: derive release metadata. On a tag push we validate the ref and
-      # let validate_release_ref decide prerelease vs stable. On a manual staging
-      # run there is no tag, so we derive metadata from the staging_version input
-      # and ALWAYS publish a prerelease (staging is never a stable release).
       - name: Validate release tag
         id: release_meta
         if: github.event_name != 'workflow_dispatch'
@@ -235,7 +239,9 @@ jobs:
         if: github.event_name == 'workflow_dispatch'
         env:
           STAGING_VERSION: ${{ inputs.staging_version }}
-        run: scripts/validate_release_ref "$STAGING_VERSION" --force-prerelease --github-output "$GITHUB_OUTPUT"
+        run: >-
+          scripts/validate_release_ref "$STAGING_VERSION" --force-prerelease
+          --github-output "$GITHUB_OUTPUT"
 
       # AC2/AC5: collect every host's archives + .sha256 into one flat directory.
       # merge-multiple flattens the per-host artifact dirs so every asset lands
@@ -253,7 +259,6 @@ jobs:
           ls -la dist
           echo "Total asset count: $(find dist -type f | wc -l)"
 
-      # AC2/AC3/AC6: publish a fresh immutable GitHub Release and attach every verified asset.
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -268,18 +273,53 @@ jobs:
             exit 1
           fi
 
-          mapfile -t assets < <(find dist -type f | sort)
-          if [[ "${#assets[@]}" -eq 0 ]]; then
-            echo "No assets found under dist/; refusing to publish an empty release." >&2
-            exit 1
-          fi
-
-          echo "Publishing ${RELEASE_TAG} with ${#assets[@]} assets (prerelease=${RELEASE_PRERELEASE})."
-
           if gh release view "${RELEASE_TAG}" --repo "${{ github.repository }}" >/dev/null 2>&1; then
             echo "Release ${RELEASE_TAG} already exists; release assets are immutable. Use a fresh staging version." >&2
             exit 1
           fi
+
+          release_version="${RELEASE_TAG#v}"
+          artifact_names=(
+            "runtime-cli-${release_version}-macos-arm64.zip"
+            "runtime-mcp-${release_version}-macos-arm64.zip"
+            "SkillBill-${release_version}-macos-arm64.dmg"
+            "runtime-cli-${release_version}-windows-x64.zip"
+            "runtime-mcp-${release_version}-windows-x64.zip"
+            "SkillBill-${release_version}-windows-x64.msi"
+            "runtime-cli-${release_version}-linux-x64.zip"
+            "runtime-mcp-${release_version}-linux-x64.zip"
+            "SkillBill-${release_version}-linux-x64.deb"
+            "SkillBill-${release_version}-linux-x64.rpm"
+            "skill-bill-skills-${release_version}.tar.gz"
+          )
+          asset_names=()
+          for artifact_name in "${artifact_names[@]}"; do
+            asset_names+=("${artifact_name}" "${artifact_name}.sha256")
+          done
+          for asset_name in "${asset_names[@]}"; do
+            [[ -f "dist/${asset_name}" ]] || { echo "Missing expected release asset: ${asset_name}." >&2; exit 1; }
+          done
+          for downloaded_asset in dist/*; do
+            [[ -f "${downloaded_asset}" ]] || continue
+            downloaded_name="$(basename "${downloaded_asset}")"
+            expected=false
+            for asset_name in "${asset_names[@]}"; do
+              if [[ "${downloaded_name}" == "${asset_name}" ]]; then
+                expected=true
+                break
+              fi
+            done
+            if [[ "${expected}" != "true" ]]; then
+              echo "Unexpected release asset: ${downloaded_name}." >&2
+              exit 1
+            fi
+          done
+          assets=()
+          for asset_name in "${asset_names[@]}"; do
+            assets+=("dist/${asset_name}")
+          done
+
+          echo "Creating draft ${RELEASE_TAG} with ${#assets[@]} verified assets (prerelease=${RELEASE_PRERELEASE})."
 
           args=(
             "${RELEASE_TAG}"
@@ -299,4 +339,19 @@ jobs:
             args+=(--prerelease)
           fi
 
-          gh release create "${args[@]}" "${assets[@]}"
+          gh release create "${args[@]}" --draft
+          gh release upload "${RELEASE_TAG}" "${assets[@]}" --repo "${{ github.repository }}"
+
+          uploaded_names="$(gh release view "${RELEASE_TAG}" --repo "${{ github.repository }}" --json assets --jq '.assets[].name' | sort)"
+          for asset_name in "${asset_names[@]}"; do
+            if ! grep -Fxq "${asset_name}" <<< "${uploaded_names}"; then
+              echo "Draft release is missing uploaded asset: ${asset_name}." >&2
+              exit 1
+            fi
+          done
+          uploaded_count="$(printf '%s\n' "${uploaded_names}" | sed '/^$/d' | wc -l | tr -d ' ')"
+          if [[ "${uploaded_count}" != "${#asset_names[@]}" ]]; then
+            echo "Draft release contains an unexpected number of assets: ${uploaded_count}." >&2
+            exit 1
+          fi
+          gh release edit "${RELEASE_TAG}" --repo "${{ github.repository }}" --draft=false

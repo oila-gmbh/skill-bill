@@ -67,7 +67,7 @@ class CliRepoValidationRuntimeTest {
 
     assertEquals(1, result.exitCode)
     assertContains(result.stdout, "\"status\": \"failed\"")
-    assertContains(result.stdout, "cannot publish")
+    assertContains(result.stdout, "successor license policy")
   }
 
   @Test

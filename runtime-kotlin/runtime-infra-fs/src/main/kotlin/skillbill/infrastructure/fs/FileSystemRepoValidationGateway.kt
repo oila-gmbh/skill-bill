@@ -18,11 +18,7 @@ class FileSystemRepoValidationGateway : RepoValidationGateway {
   override fun validateRepo(repoRoot: Path): PortRepoValidationReport =
     RepoValidationRuntime.validateRepo(repoRoot).toPortReport()
 
-  override fun validateReleaseRef(
-    repoRoot: Path,
-    rawRef: String,
-    forcePrerelease: Boolean,
-  ): PortReleaseRefMetadata =
+  override fun validateReleaseRef(repoRoot: Path, rawRef: String, forcePrerelease: Boolean): PortReleaseRefMetadata =
     RepoValidationRuntime.validateReleaseRef(repoRoot, rawRef, forcePrerelease).toPortMetadata()
 
   override fun appendGithubOutput(outputPath: Path, metadata: PortReleaseRefMetadata) =
@@ -64,15 +60,14 @@ class FileSystemRepoValidationGateway : RepoValidationGateway {
     RepoValidationIssueSeverity.INFO -> PortRepoValidationIssueSeverity.INFO
   }
 
-  private fun ReleaseRefMetadata.toPortMetadata(): PortReleaseRefMetadata =
-    PortReleaseRefMetadata(
-      tag = tag,
-      version = version,
-      major = major,
-      minor = minor,
-      patch = patch,
-      prerelease = prerelease,
-      prereleaseIdentifier = prereleaseIdentifier,
-      buildMetadata = buildMetadata,
-    )
+  private fun ReleaseRefMetadata.toPortMetadata(): PortReleaseRefMetadata = PortReleaseRefMetadata(
+    tag = tag,
+    version = version,
+    major = major,
+    minor = minor,
+    patch = patch,
+    prerelease = prerelease,
+    prereleaseIdentifier = prereleaseIdentifier,
+    buildMetadata = buildMetadata,
+  )
 }

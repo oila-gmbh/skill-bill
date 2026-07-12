@@ -27,6 +27,8 @@ class ReleaseWorkflowContractTest {
     assertTrue(workflow.contains("scripts/verify_release_artifact_licenses \"\${artifacts[@]}\""))
     assertTrue(workflow.contains("cp \"\${artifact}\" \"\${artifact}.sha256\" release-assets/"))
     assertTrue(workflow.contains("path: release-assets/"))
+    assertTrue(workflow.contains("artifact_names=("))
+    assertTrue(workflow.contains("Missing expected release asset"))
     assertFalse(workflow.contains("binaries/main/*/SkillBill-*"))
   }
 
@@ -36,7 +38,13 @@ class ReleaseWorkflowContractTest {
 
     assertTrue(workflow.contains("release assets are immutable"))
     assertTrue(workflow.contains("Use a fresh staging version"))
+    assertTrue(workflow.contains("gh release create \"\${args[@]}\" --draft"))
+    assertTrue(workflow.contains("gh release upload \"\${RELEASE_TAG}\" \"\${assets[@]}\""))
+    assertTrue(workflow.contains("gh release edit \"\${RELEASE_TAG}\""))
+    assertTrue(workflow.contains("SemVer prerelease label"))
+    assertTrue(workflow.contains("scripts/validate_release_ref \"\$raw\" \"\${validation_args[@]}\""))
+    assertTrue(workflow.contains("scripts/validate_release_ref \"\$STAGING_VERSION\" --force-prerelease"))
+    assertFalse(workflow.contains("raw=\"\${{"))
     assertFalse(workflow.contains("--clobber"))
-    assertFalse(workflow.contains("gh release upload"))
   }
 }

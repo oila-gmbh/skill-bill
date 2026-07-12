@@ -1,9 +1,9 @@
 package dev.skillbill.runtime.buildlogic
 
-import java.nio.file.Files
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import java.nio.file.Files
 
 class RuntimeImageLicenseTest {
   @Test

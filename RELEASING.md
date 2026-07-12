@@ -16,12 +16,18 @@ personal or unpaid individual open-source contribution use after it. The project
 license never grants modification or redistribution.
 
 Pre-release tags such as `v0.5.0-rc.1` are also supported and publish GitHub
-prereleases. v0.1.0 and v0.1.1 are historical exceptions. Starting at v0.1.2,
-the release validator requires the complete transitional custom policy, not
-just its identifier or a marker. A `v1.0.0` release candidate and a forced
-`v1.0.0` staging release remain non-triggering. A stable `v1.0.0`, every later
-release line, and later prereleases are rejected until the copyright holder
-deliberately replaces the transitional current-release license.
+prereleases. Versions preceding v0.1.2 by SemVer precedence, including
+`v0.1.1+rebuild.1`, retain their historical terms. Starting at v0.1.2, the
+release validator requires the complete transitional custom policy, not just
+its identifier or a marker. A `v1.0.0` release candidate remains non-triggering.
+A stable `v1.0.0`, every later release line, and later prereleases are rejected
+until the copyright holder replaces the transitional current-release license
+with a complete, versioned successor-license policy.
+
+That successor policy must be the complete root `LICENSE` text and declare a
+`Successor License Identifier`, `Successor License Effective Version: v1.0.0`,
+and substantive `Successor License Terms`. These validation fields record a
+deliberate versioned policy decision without preselecting the successor license.
 
 The [LICENSE](LICENSE) alone defines the Stable Release Event. A successful
 workflow, an existing GitHub Release object, a bare tag, or a local artifact is
@@ -71,16 +77,18 @@ stable release:
    workflow validates the ref, builds every per-OS asset, and publishes a GitHub
    prerelease with all archives + `.sha256` files attached.
 2. **Manual run (`workflow_dispatch`)** — trigger the `Release` workflow from the
-   Actions tab and supply a `staging_version` label (e.g. `v0.5.0-rc.1`). No tag
-   push is required; the workflow builds the same per-OS asset set and publishes a
-   prerelease named from the input, so testers get a real downloadable asset set.
+   Actions tab and supply a SemVer prerelease `staging_version` label (e.g.
+   `v0.5.0-staging.1`). No tag push is required; the workflow rejects a stable
+   version label, builds the same per-OS asset set, and publishes a prerelease
+   named from the input, so testers get a real downloadable asset set.
 
 Both paths reuse the same build matrix and the same fail-closed release-policy
-validator as a stable release. The manual path validates `staging_version` and
-then forces its publication metadata to `prerelease=true`. Every staging label
-is immutable evidence for one asset set: the workflow refuses an existing
-release or staging tag instead of replacing assets, so use a fresh prerelease
-label for every new matrix run.
+validator as a stable release. Every staging label is immutable evidence for
+one asset set: the workflow refuses an existing release or staging tag instead
+of replacing assets, so use a fresh prerelease label for every new matrix run.
+The workflow creates a draft, uploads and confirms the complete expected asset
+set, then publishes it; a failed upload therefore cannot make a partial stable
+release public.
 
 ## Release notes
 
@@ -154,9 +162,10 @@ under the hood.
    Use the [pre-1.0 license approval record](docs/release-license-approval.md)
    to capture the approved `LICENSE` SHA-256 and approval location.
 4. Pick the next version tag. For releases from `v0.1.2` through pre-1.0, run
-   `scripts/validate_release_ref v0.x.y`; for a staging build, add
-   `--force-prerelease`. Do not create stable `v1.0.0` or later until a
-   deliberate successor license has replaced the transitional text.
+   `scripts/validate_release_ref v0.x.y`; a staging build must use a SemVer
+   prerelease label such as `v0.x.y-staging.1`. Do not create stable `v1.0.0` or
+   later until a complete, versioned successor-license policy has replaced the
+   transitional text.
 5. Create an annotated tag:
 
    ```bash

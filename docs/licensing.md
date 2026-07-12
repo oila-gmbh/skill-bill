@@ -25,6 +25,7 @@ outputs remain their author's property. A protected portion of Skill Bill
 reproduced in them remains governed by the [LICENSE](../LICENSE), and
 third-party rights remain unaffected.
 
-Earlier terms for v0.1.0/v0.1.1 and earlier revisions, applicable-law rights,
-separate agreements, GitHub's platform-limited public-repository rights, and
-third-party component licenses are not retroactively withdrawn or narrowed.
+Earlier MIT and PolyForm grants for v0.1.0/v0.1.1 and earlier revisions,
+applicable-law rights, separate agreements, GitHub's platform-limited
+public-repository rights, and third-party component licenses are not
+retroactively withdrawn or narrowed.

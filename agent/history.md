@@ -1,3 +1,13 @@
+## [2026-07-12] SKILL-118 pre-1.0 use-only license and stable-release cutoff
+Areas: root `LICENSE` and public licensing/release policy, `.github/workflows/release.yml`, `scripts/verify_release_artifact_licenses`, runtime-kotlin/{build-logic, runtime-application, runtime-cli, runtime-infra-fs, runtime-ports}
+- Established the complete custom `LicenseRef-Skill-Bill-Pre-1.0-Use-1.0` policy for covered releases from v0.1.2, with prospective commercial execution and the exact canonical v1.0.0 GitHub Release cutoff. reusable
+- Repository validation now distinguishes historical v0.1.0/v0.1.1, covered pre-1.0 releases and RCs, and post-1.0 successor-license requirements; policy documentation and release commands share that classification. reusable
+- Release publishing selects canonical archives, verifies that each contains byte-identical root license text and a matching checksum, and refuses to replace an existing release. reusable
+- Pattern: keep legal terms in the root `LICENSE` as the sole authored source, then enforce their version boundary at repository validation, package assembly, artifact verification, and immutable publication seams.
+- Known release prerequisite: Braian Gapur must explicitly approve the final license hash before v0.1.2 is tagged; no tag or GitHub Release was created by this feature.
+Feature flag: N/A
+Acceptance criteria: 12/12 implemented
+
 ## [2026-07-03] SKILL-100 subtask 3 cli-shell-schema
 Areas: install.sh, uninstall.sh, runtime-kotlin/runtime-application (InstallAgentService), runtime-kotlin/runtime-cli (InstallCliCommands, ScaffoldCliCommands), runtime-kotlin/runtime-core (InstallerShellDelegationTest)
 - Completed zcode native-agent CLI/shell/schema wiring on top of subtasks 1-2 (enum/path fan-out, MCP+runtime): added `InstallZcodeAgentsPathCommand`/`InstallLinkZcodeAgentsCommand`/`InstallUnlinkZcodeAgentsCommand` modeled 1:1 on the junie equivalents, registered as `InstallTopLevelCommands` subcommands. reusable

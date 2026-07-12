@@ -77,7 +77,7 @@ class ValidateReleaseRefCommand(
   private val repoRoot by option("--repo-root", help = "Repository root whose LICENSE is evaluated.").default(".")
   private val forcePrerelease by option(
     "--force-prerelease",
-    help = "Publish metadata as a prerelease after validating a manual staging version.",
+    help = "Require a manual staging version to carry a SemVer prerelease identifier.",
   ).flag()
   private val format by formatOption()
 

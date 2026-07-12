@@ -23,6 +23,7 @@ import skillbill.scaffold.validation.validateSkillMdShape
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
+import java.security.MessageDigest
 import kotlin.io.path.isDirectory
 import kotlin.io.path.isRegularFile
 import kotlin.io.path.name
@@ -112,36 +113,13 @@ object RepoValidationRuntime {
   const val PRE_1_LICENSE_IDENTIFIER = "LicenseRef-Skill-Bill-Pre-1.0-Use-1.0"
   const val PROSPECTIVE_EFFECTIVE_VERSION_MARKER = "Prospective Effective Version: v0.1.2"
   const val TRANSITIONAL_LICENSE_MARKER = "Skill Bill Pre-1.0 Use License 1.0"
-
-  private val transitionalLicenseSections = listOf(
-    "1. Purpose and prospective application",
-    "2. Definitions",
-    "3. Acceptance and ownership",
-    "4. Grant before the Stable Release Event",
-    "5. Automatic change at the Stable Release Event",
-    "6. Restrictions that apply at all times",
-    "7. User Materials and Generated Outputs",
-    "8. Earlier, separate, platform, and third-party rights",
-    "9. Termination and cure",
-    "10. Disclaimer and limitation of liability",
-    "11. General terms",
-  )
-  private val transitionalLicenseClauses = listOf(
-    "non-exclusive, worldwide, royalty-free right to obtain an unmodified copy",
-    "commercial use, consulting, managed-service use, and hosted-service use",
-    "first public, non-draft, non-prerelease",
-    "tagged exactly v1.0.0",
-    "does not undo the event",
-    "commercial-use permission in section 4 ends automatically",
-    "Personal Use or Open Source Contribution Use",
-    "grants no right to modify",
-    "redistribute, distribute, publish, mirror, sublicense, sell, lease, transfer, bundle",
-    "Licensees retain all rights in their User Materials and Generated Outputs",
-    "does not retroactively withdraw or narrow rights arising under an earlier MIT, PolyForm",
-    "For a first material breach",
-    "Covered Software is provided \"AS IS\" and \"AS AVAILABLE.\"",
-    "If any provision of this License is unenforceable",
-  )
+  private const val NORMALIZED_TRANSITIONAL_LICENSE_SHA256 =
+    "b73acd2889fc6178a9b1e34fca5a0c7aa131152d4f9c5d122f98b57afb6840aa"
+  private const val SUCCESSOR_LICENSE_IDENTIFIER_MARKER = "Successor License Identifier:"
+  private const val SUCCESSOR_LICENSE_EFFECTIVE_VERSION_MARKER = "Successor License Effective Version: v1.0.0"
+  private const val SUCCESSOR_LICENSE_TERMS_MARKER = "Successor License Terms:"
+  private const val MINIMUM_SUCCESSOR_LICENSE_TERMS_LENGTH = 200
+  private const val UNSIGNED_BYTE_MASK = 0xff
 
   private val semverTagPattern =
     Regex(
@@ -274,15 +252,15 @@ object RepoValidationRuntime {
     )
   }
 
-  fun validateReleaseRef(
-    repoRoot: Path,
-    rawValue: String,
-    forcePrerelease: Boolean = false,
-  ): ReleaseRefMetadata {
+  fun validateReleaseRef(repoRoot: Path, rawValue: String, forcePrerelease: Boolean = false): ReleaseRefMetadata {
     val parsed = parseReleaseRef(rawValue)
-    val metadata = if (forcePrerelease) parsed.copy(prerelease = true) else parsed
-    validateReleaseLicensePolicy(repoRoot.toAbsolutePath().normalize(), metadata)
-    return metadata
+    if (forcePrerelease && !parsed.prerelease) {
+      throw ReleaseLicensePolicyError(
+        "Manual staging references must carry a SemVer prerelease identifier; stable tags cannot be forced into staging.",
+      )
+    }
+    validateReleaseLicensePolicy(repoRoot.toAbsolutePath().normalize(), parsed)
+    return parsed
   }
 
   private fun validateReleaseLicensePolicy(repoRoot: Path, metadata: ReleaseRefMetadata) {
@@ -297,10 +275,9 @@ object RepoValidationRuntime {
   }
 
   private fun ReleaseRefMetadata.isHistoricalReleaseLine(): Boolean =
-    major == 0 && minor == 1 && patch in 0..1 && !prerelease && buildMetadata == null
+    major == 0 && (minor < 1 || (minor == 1 && patch < 2))
 
-  private fun ReleaseRefMetadata.isCoveredPreOneRelease(): Boolean =
-    major == 0 && (minor > 1 || (minor == 1 && patch >= 2))
+  private fun ReleaseRefMetadata.isCoveredPreOneRelease(): Boolean = major == 0 && !isHistoricalReleaseLine()
 
   private fun ReleaseRefMetadata.isNonTriggeringV1Release(): Boolean =
     major == 1 && minor == 0 && patch == 0 && prerelease
@@ -325,9 +302,9 @@ object RepoValidationRuntime {
       )
     }
     val licenseText = Files.readString(licenseFile)
-    if (isCurrentTransitionalLicense(licenseText) || presentsTransitionalLicenseAsCurrent(licenseText)) {
+    if (!isDeliberateSuccessorLicense(licenseText)) {
       throw ReleaseLicensePolicyError(
-        "Stable release ${metadata.tag} cannot publish while $TRANSITIONAL_LICENSE_MARKER remains its current license.",
+        "Stable release ${metadata.tag} requires a complete, versioned successor license policy.",
       )
     }
   }
@@ -340,26 +317,38 @@ object RepoValidationRuntime {
     }
     val licenseText = Files.readString(licenseFile)
     if (isCurrentTransitionalLicense(licenseText)) return
-    if (presentsTransitionalLicenseAsCurrent(licenseText)) {
+    if (!isDeliberateSuccessorLicense(licenseText)) {
       throw ReleaseLicensePolicyError(
-        "Prerelease ${metadata.tag} cannot use an incomplete transitional license policy.",
+        "Prerelease ${metadata.tag} requires a complete transitional policy or a versioned successor license policy.",
       )
     }
   }
 
   private fun isCurrentTransitionalLicense(licenseText: String): Boolean {
-    val normalized = licenseText.replace("\r\n", "\n").trimEnd()
-    val normalizedWhitespace = normalized.replace(Regex("\\s+"), " ")
-    if (!normalized.startsWith("$TRANSITIONAL_LICENSE_MARKER\n\n")) return false
-    if (!Regex("(?m)^Identifier: ${Regex.escape(PRE_1_LICENSE_IDENTIFIER)}$").containsMatchIn(normalized)) {
-      return false
-    }
-    if (!Regex("(?m)^${Regex.escape(PROSPECTIVE_EFFECTIVE_VERSION_MARKER)}$").containsMatchIn(normalized)) {
-      return false
-    }
-    return transitionalLicenseSections.all { section -> normalized.contains("\n$section\n") } &&
-      transitionalLicenseClauses.all(normalizedWhitespace::contains)
+    return normalizedLicenseSha256(licenseText) == NORMALIZED_TRANSITIONAL_LICENSE_SHA256
   }
+
+  private fun isDeliberateSuccessorLicense(licenseText: String): Boolean {
+    val normalized = normalizeLicense(licenseText)
+    val preambleEnd = normalized.indexOf("\n\n")
+    if (preambleEnd < 0) return false
+    val preamble = normalized.substring(0, preambleEnd)
+    val terms = normalized.substring(preambleEnd).trim()
+    val successorTerms = terms.removePrefix(SUCCESSOR_LICENSE_TERMS_MARKER).trim()
+    return !presentsTransitionalLicenseAsCurrent(normalized) &&
+      Regex("(?m)^${Regex.escape(SUCCESSOR_LICENSE_IDENTIFIER_MARKER)} [A-Za-z0-9][A-Za-z0-9.+:-]*$")
+        .containsMatchIn(preamble) &&
+      preamble.lineSequence().any { it == SUCCESSOR_LICENSE_EFFECTIVE_VERSION_MARKER } &&
+      terms.startsWith(SUCCESSOR_LICENSE_TERMS_MARKER) &&
+      !presentsTransitionalLicenseAsCurrent(successorTerms) &&
+      successorTerms.length >= MINIMUM_SUCCESSOR_LICENSE_TERMS_LENGTH
+  }
+
+  private fun normalizedLicenseSha256(licenseText: String): String = MessageDigest.getInstance("SHA-256")
+    .digest(normalizeLicense(licenseText).encodeToByteArray())
+    .joinToString("") { byte -> "%02x".format(byte.toInt() and UNSIGNED_BYTE_MASK) }
+
+  private fun normalizeLicense(licenseText: String): String = licenseText.replace("\r\n", "\n").trimEnd()
 
   private fun presentsTransitionalLicenseAsCurrent(licenseText: String): Boolean {
     val normalized = licenseText.replace("\r\n", "\n").trimStart()
