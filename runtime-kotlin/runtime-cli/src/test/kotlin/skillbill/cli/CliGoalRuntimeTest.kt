@@ -1276,7 +1276,7 @@ private object GoalTestWorkflowGitOperations : WorkflowGitOperations {
   override fun currentBranch(repoRoot: Path): WorkflowGitOperationResult =
     WorkflowGitOperationResult(status = "ok", value = "")
 
-  override fun captureGoalSubtaskReviewBaseline(repoRoot: Path): GoalSubtaskReviewBaselineResult =
+  override fun captureGoalSubtaskReviewBaseline(repoRoot: Path, expectedBranch: String): GoalSubtaskReviewBaselineResult =
     GoalSubtaskReviewBaselineResult(
       status = "ok",
       baseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),

@@ -579,6 +579,30 @@ class GoalRunnerTest {
   }
 
   @Test
+  fun `goal baseline capture failure blocks before opening or launching a child`() {
+    val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 1))
+    val launcher = RecordingSubtaskLauncher { launchFacts() }
+    val runner = GoalRunner(
+      manifestStore = store,
+      subtaskLauncher = launcher,
+      outcomeStore = RecordingOutcomeStore(),
+      pullRequestPort = RecordingPullRequestPort(),
+      gitOperations = RecordingGitOperations(
+        currentBranch = "feat/SKILL-56-goal",
+        baselineError = "staged tracked changes are present",
+      ),
+    )
+
+    val report = runner.run(runRequest())
+
+    val stopped = assertIs<GoalRunnerRunReport.Stopped>(report)
+    assertContains(stopped.stop.blockedReason, "staged tracked changes are present")
+    assertEquals(emptyList(), launcher.requests)
+    assertEquals(emptyList(), store.newChildWorkflowSetups)
+    assertNull(store.manifest.subtasks.single().workflowId)
+  }
+
+  @Test
   fun `same-branch policy guard does not demote already completed goals`() {
     val completeManifest = manifest(subtaskCount = 1)
       .withCompletedSubtask(1, workflowId = "wfl-1", commitSha = "sha-1")
@@ -852,7 +876,7 @@ private class DirtyManifestGitOperations(
     request: WorkflowSelectedDiffHunksRequest,
   ): WorkflowSelectedDiffHunksResult = WorkflowSelectedDiffHunksResult(status = "ok")
 
-  override fun captureGoalSubtaskReviewBaseline(repoRoot: Path): GoalSubtaskReviewBaselineResult =
+  override fun captureGoalSubtaskReviewBaseline(repoRoot: Path, expectedBranch: String): GoalSubtaskReviewBaselineResult =
     GoalSubtaskReviewBaselineResult(
       status = "ok",
       baseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
@@ -2158,7 +2182,7 @@ private class FixedBranchGitOperations(
     request: WorkflowSelectedDiffHunksRequest,
   ): WorkflowSelectedDiffHunksResult = WorkflowSelectedDiffHunksResult(status = "ok")
 
-  override fun captureGoalSubtaskReviewBaseline(repoRoot: Path): GoalSubtaskReviewBaselineResult =
+  override fun captureGoalSubtaskReviewBaseline(repoRoot: Path, expectedBranch: String): GoalSubtaskReviewBaselineResult =
     GoalSubtaskReviewBaselineResult(
       status = "ok",
       baseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
@@ -2220,6 +2244,7 @@ private class RecordingGitOperations(
   private val currentBranch: String = "",
   private val checkoutError: String? = null,
   private val validationError: String? = null,
+  private val baselineError: String? = null,
 ) : WorkflowGitOperations {
   val checkouts: MutableList<String> = mutableListOf()
   val validations: MutableList<String> = mutableListOf()
@@ -2263,11 +2288,12 @@ private class RecordingGitOperations(
     request: WorkflowSelectedDiffHunksRequest,
   ): WorkflowSelectedDiffHunksResult = WorkflowSelectedDiffHunksResult(status = "ok")
 
-  override fun captureGoalSubtaskReviewBaseline(repoRoot: Path): GoalSubtaskReviewBaselineResult =
-    GoalSubtaskReviewBaselineResult(
-      status = "ok",
-      baseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
-    )
+  override fun captureGoalSubtaskReviewBaseline(repoRoot: Path, expectedBranch: String): GoalSubtaskReviewBaselineResult =
+    baselineError?.let { GoalSubtaskReviewBaselineResult(status = "error", error = it) }
+      ?: GoalSubtaskReviewBaselineResult(
+        status = "ok",
+        baseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
+      )
 }
 
 private class RecordingTimingPort(

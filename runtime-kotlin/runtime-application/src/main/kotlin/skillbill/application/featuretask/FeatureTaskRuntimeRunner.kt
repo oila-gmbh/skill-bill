@@ -103,115 +103,145 @@ class FeatureTaskRuntimeRunner(
       workflowId = request.workflowId,
       dbOverride = request.dbPathOverride,
     )
-    if (persistedRunInvariants != null &&
-      request.requestedCodeReviewMode != null &&
+    val persistedContinuation = goalContinuationRecorder.continuation(
+      request.workflowId,
+      request.dbPathOverride,
+    )
+    val reportInvariants = persistedRunInvariants ?: request.runInvariants
+    val durableReviewBaseline = persistedContinuation?.let {
+      runCatching {
+        goalContinuationRecorder.reviewState(request.workflowId, request.dbPathOverride)
+      }.getOrElse { error ->
+        return goalContinuationPolicyBlockedReport(
+          request = request,
+          runInvariants = reportInvariants,
+          reason = "Goal-continuation review state or durable raw evidence is malformed: ${error.message.orEmpty()}",
+        )
+      }
+        ?.let { state -> GoalSubtaskReviewBaseline(state.reviewBaseSha, state.baselineUntrackedPaths) }
+        ?: return goalContinuationPolicyBlockedReport(
+          request = request,
+          runInvariants = reportInvariants,
+          reason = "Goal-continuation review state is missing; refusing to recreate its immutable review baseline.",
+        )
+    }
+    val selectedReviewMode = when {
+      persistedContinuation != null -> persistedContinuation.codeReviewMode
+      request.goalContinuation != null -> request.goalContinuation.codeReviewMode
+        ?: request.requestedCodeReviewMode
+        ?: request.runInvariants.codeReviewMode
+      else -> request.requestedCodeReviewMode ?: CodeReviewExecutionMode.AUTO
+    }
+    if (persistedContinuation != null) {
+      goalContinuationConflict(request, persistedContinuation, requireNotNull(durableReviewBaseline))?.let { reason ->
+        return goalContinuationPolicyBlockedReport(request, reportInvariants, reason)
+      }
+      if (persistedRunInvariants != null && persistedRunInvariants.codeReviewMode != selectedReviewMode) {
+        return goalContinuationPolicyBlockedReport(
+          request,
+          persistedRunInvariants,
+          "Goal-continuation review policy does not match the workflow's durable code-review mode.",
+        )
+      }
+    } else if (request.goalContinuation != null) {
+      newGoalContinuationConflict(request, selectedReviewMode)?.let { reason ->
+        return goalContinuationPolicyBlockedReport(request, reportInvariants, reason)
+      }
+    } else if (persistedRunInvariants != null && request.requestedCodeReviewMode != null &&
       persistedRunInvariants.codeReviewMode != request.requestedCodeReviewMode
     ) {
-      return FeatureTaskRuntimeRunReport.Blocked(
-        issueKey = request.issueKey,
-        workflowId = request.workflowId,
-        featureSize = persistedRunInvariants.featureSize.name,
-        lastIncompletePhase = FeatureTaskRuntimePhaseWorkflowDefinition.definition.defaultInitialStepId,
-        blockedReason = "Cannot change code-review mode on resume: workflow '${request.workflowId}' is pinned to " +
+      return goalContinuationPolicyBlockedReport(
+        request,
+        persistedRunInvariants,
+        "Cannot change code-review mode on resume: workflow '${request.workflowId}' is pinned to " +
           "'${persistedRunInvariants.codeReviewMode.wireValue}', not " +
           "'${request.requestedCodeReviewMode.wireValue}'.",
-        completedPhaseIds = emptyList(),
-        resolvedBranch = null,
+      )
+    }
+    if (persistedRunInvariants != null &&
+      (persistedContinuation != null || request.goalContinuation != null) &&
+      persistedRunInvariants.codeReviewMode != selectedReviewMode
+    ) {
+      return goalContinuationPolicyBlockedReport(
+        request,
+        persistedRunInvariants,
+        "Goal-continuation review policy does not match the workflow's durable code-review mode.",
       )
     }
     recorder.ensureWorkflowOpen(request.workflowId, request.sessionId, request.dbPathOverride, request.issueKey)
+    if (persistedContinuation == null && request.goalContinuation != null) {
+      val context = requireNotNull(request.goalContinuation)
+      val recorded = goalContinuationRecorder.recordGoalContinuationState(
+        workflowId = request.workflowId,
+        continuation = FeatureTaskRuntimeGoalContinuationArtifact(
+          issueKey = context.parentIssueKey,
+          subtaskId = context.subtaskId,
+          suppressPr = context.suppressPr,
+          goalBranch = context.goalBranch,
+          parentWorkflowId = context.parentWorkflowId,
+          codeReviewMode = selectedReviewMode,
+          parallelReviewAgent = context.parallelReviewAgent ?: request.parallelReviewAgent,
+        ),
+        reviewBaseline = requireNotNull(context.reviewBaseline),
+        dbOverride = request.dbPathOverride,
+      )
+      if (!recorded) {
+        return goalContinuationPolicyBlockedReport(
+          request,
+          reportInvariants,
+          "Goal-continuation child state could not be persisted before freezing run invariants.",
+        )
+      }
+    }
+    val resolvedContinuation = goalContinuationRecorder.continuation(request.workflowId, request.dbPathOverride)
+    val resolvedBaseline = resolvedContinuation?.let {
+      runCatching {
+        goalContinuationRecorder.reviewState(request.workflowId, request.dbPathOverride)
+      }.getOrElse { error ->
+        return goalContinuationPolicyBlockedReport(
+          request,
+          reportInvariants,
+          "Goal-continuation review state or durable raw evidence is malformed: ${error.message.orEmpty()}",
+        )
+      }
+        ?.let { state -> GoalSubtaskReviewBaseline(state.reviewBaseSha, state.baselineUntrackedPaths) }
+        ?: return goalContinuationPolicyBlockedReport(
+          request,
+          reportInvariants,
+          "Goal-continuation review state is missing; refusing to recreate its immutable review baseline.",
+        )
+    }
     val proposedRunInvariants = persistedRunInvariants ?: request.runInvariants.copy(
-      codeReviewMode = request.requestedCodeReviewMode ?: CodeReviewExecutionMode.AUTO,
+      codeReviewMode = resolvedContinuation?.codeReviewMode ?: selectedReviewMode,
     )
     val durableRunInvariants = runInvariantsStore.resolve(
       workflowId = request.workflowId,
       dbOverride = request.dbPathOverride,
       proposed = proposedRunInvariants,
     ) ?: proposedRunInvariants
-    val persistedContinuation = goalContinuationRecorder.continuation(
-      request.workflowId,
-      request.dbPathOverride,
-    )
-    if (persistedContinuation != null && request.goalContinuation == null) {
+    if (resolvedContinuation != null && durableRunInvariants.codeReviewMode != resolvedContinuation.codeReviewMode) {
       return goalContinuationPolicyBlockedReport(
-        request = request,
-        runInvariants = durableRunInvariants,
-        reason = "Workflow '${request.workflowId}' is a goal-continuation child and requires its durable " +
-          "continuation policy on resume.",
+        request,
+        durableRunInvariants,
+        "Goal-continuation review policy does not match the workflow's durable code-review mode.",
       )
     }
-    if (persistedContinuation != null &&
-      durableRunInvariants.codeReviewMode != persistedContinuation.codeReviewMode
-    ) {
-      return goalContinuationPolicyBlockedReport(
-        request = request,
-        runInvariants = durableRunInvariants,
-        reason = "Goal-continuation review policy does not match the workflow's durable code-review mode.",
-      )
-    }
-    if (persistedContinuation != null && request.requestedCodeReviewMode != null &&
-      request.requestedCodeReviewMode != persistedContinuation.codeReviewMode
-    ) {
-      return goalContinuationPolicyBlockedReport(
-        request = request,
-        runInvariants = durableRunInvariants,
-        reason = "Cannot change code-review mode on a goal child resume; its durable continuation policy is " +
-          "'${persistedContinuation.codeReviewMode.wireValue}'.",
-      )
-    }
-    if (persistedContinuation != null && request.parallelReviewAgent != null &&
-      request.parallelReviewAgent != persistedContinuation.parallelReviewAgent
-    ) {
-      return goalContinuationPolicyBlockedReport(
-        request = request,
-        runInvariants = durableRunInvariants,
-        reason = "Cannot change the parallel-review agent on a goal child resume; its durable continuation policy is " +
-          "'${persistedContinuation.parallelReviewAgent ?: "none"}'.",
-      )
-    }
-    val effectiveGoalContinuation = request.goalContinuation?.let { context ->
-      persistedContinuation?.let { durable ->
-        if (context.codeReviewMode != null &&
-          context.codeReviewMode != durable.codeReviewMode
-        ) {
-          return goalContinuationPolicyBlockedReport(
-            request = request,
-            runInvariants = durableRunInvariants,
-            reason = "The supplied goal-continuation code-review mode conflicts with its durable child policy.",
-          )
-        }
-        if (context.parallelReviewAgent != null &&
-          context.parallelReviewAgent != durable.parallelReviewAgent
-        ) {
-          return goalContinuationPolicyBlockedReport(
-            request = request,
-            runInvariants = durableRunInvariants,
-            reason = "The supplied goal-continuation parallel-review agent conflicts with its durable child policy.",
-          )
-        }
-        val durableBaseline = goalContinuationRecorder.reviewState(
-          request.workflowId,
-          request.dbPathOverride,
-        )
-          ?.let { state -> GoalSubtaskReviewBaseline(state.reviewBaseSha, state.baselineUntrackedPaths) }
-          ?: return goalContinuationPolicyBlockedReport(
-            request = request,
-            runInvariants = durableRunInvariants,
-            reason = "Goal-continuation review state is missing; refusing to recreate its immutable review baseline.",
-          )
-        context.copy(
-          codeReviewMode = durable.codeReviewMode,
-          parallelReviewAgent = durable.parallelReviewAgent,
-          reviewBaseline = durableBaseline,
-        )
-      } ?: context.copy(
-        codeReviewMode = context.codeReviewMode ?: durableRunInvariants.codeReviewMode,
-        parallelReviewAgent = context.parallelReviewAgent ?: request.parallelReviewAgent,
+    val effectiveGoalContinuation = resolvedContinuation?.let { durable ->
+      FeatureTaskRuntimeGoalContinuationContext(
+        parentIssueKey = durable.issueKey,
+        subtaskId = durable.subtaskId,
+        goalBranch = durable.goalBranch,
+        suppressPr = durable.suppressPr,
+        parentWorkflowId = durable.parentWorkflowId,
+        lastResumableStep = request.goalContinuation?.lastResumableStep,
+        codeReviewMode = durable.codeReviewMode,
+        parallelReviewAgent = durable.parallelReviewAgent,
+        reviewBaseline = requireNotNull(resolvedBaseline),
       )
     }
     val runRequest = request.copy(
       runInvariants = durableRunInvariants,
-      parallelReviewAgent = persistedContinuation?.parallelReviewAgent ?: request.parallelReviewAgent,
+      parallelReviewAgent = resolvedContinuation?.parallelReviewAgent ?: request.parallelReviewAgent,
       goalContinuation = effectiveGoalContinuation,
     )
     // Resolve the persisted spec_source stamp once per run (artifact-only, additive — never config).
@@ -222,7 +252,6 @@ class FeatureTaskRuntimeRunner(
       specReference = runRequest.runInvariants.specReference,
       isGoalContinuation = isGoalContinuationRun(runRequest),
     )
-    persistGoalContinuationContext(goalContinuationRecorder, runRequest)
     runRequest.eventSink.emit(
       FeatureTaskRuntimeRunEvent.RunStarted(runRequest.workflowId, runRequest.runInvariants.featureSize.name),
     )
@@ -379,17 +408,11 @@ class FeatureTaskRuntimeRunner(
         blockAt(phaseId, reason)
         return PhaseSettlement.stop()
       }
-      if (phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW &&
-        isGoalContinuationRun(request) &&
-        goalContinuationRecorder.reviewState(request.workflowId, request.dbPathOverride)
-          ?.let { reviewState -> reviewState.reviewCapReached || reviewState.completedPassCount >= 2 } == true
-      ) {
-        val verdict = goalContinuationRecorder.reviewState(request.workflowId, request.dbPathOverride)
-          ?.passResults
-          ?.lastOrNull()
-          ?.verdict
-          ?: FeatureTaskRuntimeVerdict.REVIEW_CAP_REACHED
-        return PhaseSettlement.completed(phaseId, verdict)
+      if (phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW && isGoalContinuationRun(request)) {
+        val carriedForward = carriedForwardGoalReviewSettlement()
+        if (carriedForward != null) {
+          return carriedForward
+        }
       }
       // For an already-complete PLAN, re-evaluate the decompose determination on resume before
       // advancing, so a crash after PLAN persisted completed but before the decompose terminal was
@@ -427,8 +450,11 @@ class FeatureTaskRuntimeRunner(
       ) {
         return null
       }
-      val reviewState = goalContinuationRecorder.reviewState(request.workflowId, request.dbPathOverride)
-        ?: return "Goal-subtask review state is missing while reconciling a completed review pass."
+      val reviewState = runCatching {
+        goalContinuationRecorder.reviewState(request.workflowId, request.dbPathOverride)
+      }.getOrElse { error ->
+        return "Goal-subtask review state is malformed while reconciling a completed review pass: ${error.message.orEmpty()}"
+      } ?: return "Goal-subtask review state is missing while reconciling a completed review pass."
       if (reviewState.reservedPassNumber == null) {
         return null
       }
@@ -454,6 +480,47 @@ class FeatureTaskRuntimeRunner(
       } else {
         null
       }
+    }
+
+    private fun carriedForwardGoalReviewSettlement(): PhaseSettlement? {
+      val reviewState = runCatching {
+        goalContinuationRecorder.reviewState(request.workflowId, request.dbPathOverride)
+      }.getOrElse { error ->
+        blockAt(
+          FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
+          "Goal-subtask review pass budget is exhausted but its durable raw review result is malformed: ${error.message.orEmpty()}",
+        )
+        return PhaseSettlement.stop()
+      } ?: return null
+      if (!reviewState.reviewCapReached && reviewState.completedPassCount < 2) return null
+      val rawResult = runCatching {
+        goalContinuationRecorder.lastGoalReviewResult(request.workflowId, request.dbPathOverride)
+      }.getOrElse { error ->
+        blockAt(
+          FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
+          "Goal-subtask review pass budget is exhausted but its durable raw review result is malformed: ${error.message.orEmpty()}",
+        )
+        return PhaseSettlement.stop()
+      } ?: run {
+        blockAt(
+          FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
+          "Goal-subtask review pass budget is exhausted but its durable raw review result is missing.",
+        )
+        return PhaseSettlement.stop()
+      }
+      runCatching {
+        outputValidator.validateAndReadPhaseOutput(rawResult, sourceLabel = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW)
+      }.getOrElse { error ->
+        blockAt(
+          FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
+          "Goal-subtask review pass budget is exhausted but its durable raw review result is malformed: ${error.message.orEmpty()}",
+        )
+        return PhaseSettlement.stop()
+      }
+      return PhaseSettlement.completed(
+        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
+        requireNotNull(reviewState.passResults.lastOrNull()).verdict,
+      )
     }
 
     // Computes the next phase from the transition function. A forward edge advances to the next
@@ -937,7 +1004,18 @@ class FeatureTaskRuntimeRunner(
     if (run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW || !isGoalContinuationRun(run.request)) {
       return GoalReviewRunPreparation.Ready(run)
     }
-    when (val reservation = goalContinuationRecorder.reserveGoalReviewPass(run.request.workflowId, run.request.dbPathOverride)) {
+    val reservation = runCatching {
+      goalContinuationRecorder.reserveGoalReviewPass(run.request.workflowId, run.request.dbPathOverride)
+    }.getOrElse { error ->
+      blockAndPersist(
+        run,
+        1,
+        "Goal-subtask review state or durable raw evidence is malformed: ${error.message.orEmpty()}",
+        observability,
+      )
+      return GoalReviewRunPreparation.Blocked
+    }
+    when (reservation) {
       GoalSubtaskReviewPassReservation.MissingState -> {
         blockAndPersist(
           run,
@@ -951,12 +1029,23 @@ class FeatureTaskRuntimeRunner(
       is GoalSubtaskReviewPassReservation.CarryForward -> return GoalReviewRunPreparation.CarryForward
       is GoalSubtaskReviewPassReservation.Reserved -> Unit
     }
-    return when (val prepared = goalContinuationRecorder.buildGoalReviewInput(
-      workflowId = run.request.workflowId,
-      gitOperations = phaseGates.gitOperations,
-      repoRoot = run.request.repoRoot,
-      dbOverride = run.request.dbPathOverride,
-    )) {
+    val prepared = runCatching {
+      goalContinuationRecorder.buildGoalReviewInput(
+        workflowId = run.request.workflowId,
+        gitOperations = phaseGates.gitOperations,
+        repoRoot = run.request.repoRoot,
+        dbOverride = run.request.dbPathOverride,
+      )
+    }.getOrElse { error ->
+      blockAndPersist(
+        run,
+        1,
+        "Goal-subtask review state or durable raw evidence is malformed: ${error.message.orEmpty()}",
+        observability,
+      )
+      return GoalReviewRunPreparation.Blocked
+    }
+    return when (prepared) {
       GoalSubtaskReviewInputPreparation.MissingState -> {
         blockAndPersist(run, 1, "Goal-subtask review state disappeared before review launch.", observability)
         GoalReviewRunPreparation.Blocked
@@ -974,7 +1063,17 @@ class FeatureTaskRuntimeRunner(
     state: RunState,
     observability: FeatureTaskRuntimeRunObservability,
   ): PhaseOutcome {
-    val output = goalContinuationRecorder.lastGoalReviewResult(run.request.workflowId, run.request.dbPathOverride)
+    val output = runCatching {
+      goalContinuationRecorder.lastGoalReviewResult(run.request.workflowId, run.request.dbPathOverride)
+    }.getOrElse { error ->
+      return blockAndPersist(
+        run,
+        state.nextIteration(run.phaseId),
+        "Goal-subtask review pass budget is exhausted but its durable raw review result is malformed: " +
+          error.message.orEmpty(),
+        observability,
+      )
+    }
       ?: return blockAndPersist(
         run,
         state.nextIteration(run.phaseId),
@@ -1191,11 +1290,10 @@ class FeatureTaskRuntimeRunner(
       } ?: auditVerificationSignalGateReason(run.phaseId, outputMap)?.let { reason ->
         schemaInvalidAttempt(run, iteration, reason, observability)
       } ?: run {
-        persistPhase(run, iteration, STATUS_COMPLETED, finished = true, outputArtifact = outputText)
         if (run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW && isGoalContinuationRun(run.request)) {
           val findings = GoalSubtaskReviewSummaryReducer.fromOutput(outputMap)
           val outcome = goalReviewOutcome(outputMap, findings)
-          goalContinuationRecorder.completeGoalReviewPass(
+          val completed = goalContinuationRecorder.completeGoalReviewPass(
             workflowId = run.request.workflowId,
             verdict = outcome.verdict,
             unresolvedFindingCount = outcome.unresolvedFindingCount,
@@ -1203,7 +1301,18 @@ class FeatureTaskRuntimeRunner(
             rawReviewResult = outputText,
             dbOverride = run.request.dbPathOverride,
           )
+          if (completed == null) {
+            return AttemptResult.settled(
+              blockAndPersistInPhase(
+                run,
+                iteration,
+                "Goal-subtask review could not persist its reserved pass.",
+                observability,
+              ),
+            )
+          }
         }
+        persistPhase(run, iteration, STATUS_COMPLETED, finished = true, outputArtifact = outputText)
         observability.completed(run.phaseId, run.resolvedAgent.resolvedAgentId, iteration)
         AttemptResult.settled(
           PhaseOutcome.completed(FeatureTaskRuntimePhaseOutput(run.phaseId, iteration, outputText)),
@@ -1905,26 +2014,54 @@ private fun terminalBlockedReasonFrom(phaseId: String, outputMap: Map<String, An
   return prefix + detail.takeIf(String::isNotBlank)?.let { " $it" }.orEmpty()
 }
 
-private fun persistGoalContinuationContext(
-  recorder: FeatureTaskRuntimeGoalContinuationRecorder,
+private fun goalContinuationConflict(
   request: FeatureTaskRuntimeRunRequest,
-) {
-  val context = request.goalContinuation
-  if (context != null) {
-    recorder.recordGoalContinuationState(
-      workflowId = request.workflowId,
-      continuation = FeatureTaskRuntimeGoalContinuationArtifact(
-        issueKey = context.parentIssueKey,
-        subtaskId = context.subtaskId,
-        suppressPr = context.suppressPr,
-        goalBranch = context.goalBranch,
-        parentWorkflowId = context.parentWorkflowId,
-        codeReviewMode = request.runInvariants.codeReviewMode,
-        parallelReviewAgent = context.parallelReviewAgent ?: request.parallelReviewAgent,
-      ),
-      reviewBaseline = context.reviewBaseline,
-      dbOverride = request.dbPathOverride,
-    )
+  durable: FeatureTaskRuntimeGoalContinuationArtifact,
+  baseline: GoalSubtaskReviewBaseline,
+): String? {
+  if (request.requestedCodeReviewMode != null && request.requestedCodeReviewMode != durable.codeReviewMode) {
+    return "Cannot change code-review mode on a goal child resume; its durable continuation policy is " +
+      "'${durable.codeReviewMode.wireValue}'."
+  }
+  if (request.parallelReviewAgent != null && request.parallelReviewAgent != durable.parallelReviewAgent) {
+    return "Cannot change the parallel-review agent on a goal child resume; its durable continuation policy is " +
+      "'${durable.parallelReviewAgent ?: "none"}'."
+  }
+  val supplied = request.goalContinuation ?: return null
+  if (supplied.parentIssueKey != durable.issueKey || supplied.subtaskId != durable.subtaskId ||
+    supplied.goalBranch != durable.goalBranch || supplied.suppressPr != durable.suppressPr ||
+    supplied.parentWorkflowId != durable.parentWorkflowId
+  ) {
+    return "The supplied goal-continuation identity conflicts with its durable child policy."
+  }
+  if (supplied.codeReviewMode != null && supplied.codeReviewMode != durable.codeReviewMode) {
+    return "The supplied goal-continuation code-review mode conflicts with its durable child policy."
+  }
+  if (supplied.parallelReviewAgent != null && supplied.parallelReviewAgent != durable.parallelReviewAgent) {
+    return "The supplied goal-continuation parallel-review agent conflicts with its durable child policy."
+  }
+  val suppliedBaseline = requireNotNull(supplied.reviewBaseline)
+  return if (suppliedBaseline != baseline) {
+    "The supplied goal-continuation review baseline conflicts with its durable child policy."
+  } else {
+    null
+  }
+}
+
+private fun newGoalContinuationConflict(
+  request: FeatureTaskRuntimeRunRequest,
+  selectedReviewMode: CodeReviewExecutionMode,
+): String? {
+  val context = requireNotNull(request.goalContinuation)
+  if (request.requestedCodeReviewMode != null && request.requestedCodeReviewMode != selectedReviewMode) {
+    return "The supplied goal-continuation code-review mode conflicts with the requested child review policy."
+  }
+  return if (request.parallelReviewAgent != null && context.parallelReviewAgent != null &&
+    request.parallelReviewAgent != context.parallelReviewAgent
+  ) {
+    "The supplied goal-continuation parallel-review agent conflicts with the requested child review policy."
+  } else {
+    null
   }
 }
 

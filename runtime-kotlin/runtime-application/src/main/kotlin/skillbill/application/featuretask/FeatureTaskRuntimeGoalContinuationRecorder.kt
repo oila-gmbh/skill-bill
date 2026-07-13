@@ -74,6 +74,11 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
           throw IllegalStateException(
             "Goal-subtask review baseline is required when opening a child workflow; refusing to create an unpinned review scope.",
           )
+        state == null && GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY in artifacts ->
+          rawReviewResultError(
+            GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY,
+            "must be absent before the goal-subtask review state exists.",
+          )
         state == null && baseline != null -> mapOf(
           GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY to GoalSubtaskReviewState.initial(
             reviewBaseSha = baseline.reviewBaseSha,
@@ -172,9 +177,10 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
     val artifacts = decodeArtifacts(record.artifactsJson)
     val state = reviewStateFromArtifacts(artifacts)
       ?: return@transaction null
+    require(rawReviewResult.isNotBlank()) { "Goal-subtask review pass result must be non-blank." }
+    val previousResults = rawReviewResultsFromArtifacts(artifacts, state)
     val completed = state.completeReservedPass(verdict, unresolvedFindingCount, findings)
     val passNumber = completed.completedPassCount.toString()
-    val previousResults = rawReviewResultsFromArtifacts(artifacts, state)
     savePatch(
       record,
       unitOfWork.workflowStates,
@@ -296,6 +302,7 @@ private fun reviewStateFromArtifacts(artifacts: Map<String, Any?>): GoalSubtaskR
       reason = "must match the immutable goal-continuation review policy.",
     )
   }
+  rawReviewResultsFromArtifacts(artifacts, state)
   return state
 }
 
@@ -303,7 +310,15 @@ private fun rawReviewResultsFromArtifacts(
   artifacts: Map<String, Any?>,
   state: GoalSubtaskReviewState,
 ): Map<String, String> {
-  if (state.completedPassCount == 0) return emptyMap()
+  if (state.completedPassCount == 0) {
+    if (GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY in artifacts) {
+      rawReviewResultError(
+        GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY,
+        "must be absent before the first completed review pass.",
+      )
+    }
+    return emptyMap()
+  }
   val raw = artifacts[GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY]
     ?.let(::asGoalReviewArtifactMap)
     ?: rawReviewResultError(

@@ -36,13 +36,13 @@ interface WorkflowGitOperations {
 
   fun selectedDiffHunks(repoRoot: Path, request: WorkflowSelectedDiffHunksRequest): WorkflowSelectedDiffHunksResult
 
-  fun captureGoalSubtaskReviewBaseline(repoRoot: Path): GoalSubtaskReviewBaselineResult =
-    GoalSubtaskReviewBaselineResult(status = "error", error = "Goal-subtask review baselines require a git adapter.")
-
   fun captureGoalSubtaskReviewBaseline(
     repoRoot: Path,
     expectedBranch: String,
-  ): GoalSubtaskReviewBaselineResult = captureGoalSubtaskReviewBaseline(repoRoot)
+  ): GoalSubtaskReviewBaselineResult = GoalSubtaskReviewBaselineResult(
+    status = "error",
+    error = "Goal-subtask review baselines require a branch-aware git adapter.",
+  )
 
   fun buildGoalSubtaskReviewInput(
     repoRoot: Path,
@@ -102,16 +102,17 @@ object NoopWorkflowGitOperations : WorkflowGitOperations {
     selectedDiffHunks = GoalObservabilitySelectedDiffHunks(),
   )
 
-  override fun captureGoalSubtaskReviewBaseline(repoRoot: Path): GoalSubtaskReviewBaselineResult =
+  override fun captureGoalSubtaskReviewBaseline(
+    repoRoot: Path,
+    expectedBranch: String,
+  ): GoalSubtaskReviewBaselineResult = if (expectedBranch.isBlank()) {
+    GoalSubtaskReviewBaselineResult(status = "error", error = "Goal-subtask durable child branch is required.")
+  } else {
     GoalSubtaskReviewBaselineResult(
       status = "ok",
       baseline = GoalSubtaskReviewBaseline(reviewBaseSha = "0".repeat(40), baselineUntrackedPaths = emptyList()),
     )
-
-  override fun captureGoalSubtaskReviewBaseline(
-    repoRoot: Path,
-    expectedBranch: String,
-  ): GoalSubtaskReviewBaselineResult = captureGoalSubtaskReviewBaseline(repoRoot)
+  }
 
   override fun buildGoalSubtaskReviewInput(
     repoRoot: Path,

@@ -6,10 +6,14 @@ import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
 internal object GoalSubtaskReviewSummaryReducer {
   private const val MAX_TEXT_LENGTH: Int = 180
   private val pathLikeToken = Regex("(?:[A-Za-z]:)?(?:[/\\\\][^\\s:|]+)+|(?:[A-Za-z0-9_.-]+[/\\\\])+[A-Za-z0-9_.-]+")
-  private val lineSuffix = Regex("(?::\\d+(?::\\d+)?)|(?:\\bline\\s+\\d+\\b)", RegexOption.IGNORE_CASE)
   private val hunk = Regex("@@[^@]+@@")
+  private val lineLocation = Regex(
+    "(?:\\b(?:lines?|ln)\\s+\\d+(?:\\s*[-–]\\s*\\d+)?)|(?:\\bL\\d+(?:\\s*[-–]\\s*L?\\d+)?)|" +
+      "(?:\\b(?:columns?|cols?)\\s+\\d+(?:\\s*[-–]\\s*\\d+)?)|(?::\\d+(?::\\d+)?(?:\\s*[-–]\\s*\\d+)?)",
+    RegexOption.IGNORE_CASE,
+  )
   private val classOrSymbol = Regex("\\b[A-Z][A-Za-z0-9_]*(?:[.#][A-Za-z_][A-Za-z0-9_]*)?\\b")
-  private val fileStem = Regex("(?:^|[/\\\\])([A-Za-z0-9_.-]+)\\.[A-Za-z0-9]+(?::\\d+)?")
+  private val fileStem = Regex("(?:^|[/\\\\])([A-Za-z0-9_.-]+)\\.[A-Za-z0-9]+(?::\\d+(?:-\\d+)?)?")
   private val bareFilenameToken = Regex("\\b[A-Za-z0-9][A-Za-z0-9_.-]*\\.[A-Za-z0-9]+\\b")
 
   fun fromOutput(output: Map<String, Any?>): List<GoalSubtaskReviewCompactFinding> {
@@ -41,10 +45,6 @@ internal object GoalSubtaskReviewSummaryReducer {
 
   private fun labelFor(finding: Map<String, Any?>, message: String): String {
     explicitLabel(finding)?.let { return it }
-    val symbol = classOrSymbol.find(message)?.value
-    if (symbol != null) {
-      return symbol.removeSuffix(".kt").removeSuffix(".java").removeSuffix(".kts")
-    }
     return fileStem.find(message)?.groupValues?.get(1)?.substringBeforeLast('.')?.takeIf(String::isNotBlank)
       ?: "Review"
   }
@@ -59,14 +59,18 @@ internal object GoalSubtaskReviewSummaryReducer {
     .firstOrNull(String::isNotBlank)
 
   private fun compactLabel(value: String): String {
-    classOrSymbol.find(value)?.value?.let { symbol ->
-      return symbol.removeSuffix(".kt").removeSuffix(".java").removeSuffix(".kts")
-    }
+    classOrSymbol.find(value)
+      ?.value
+      ?.takeUnless { candidate ->
+        pathLikeToken.containsMatchIn(candidate) || lineLocation.containsMatchIn(candidate)
+      }
+      ?.removeSuffix(".kt")
+      ?.removeSuffix(".java")
+      ?.removeSuffix(".kts")
+      ?.let { return it }
     val fileStemLabel = fileStem.find(value)?.groupValues?.get(1)?.substringBeforeLast('.')?.takeIf(String::isNotBlank)
     if (fileStemLabel != null) return fileStemLabel
-    return value.takeUnless {
-      pathLikeToken.containsMatchIn(it) || lineSuffix.containsMatchIn(it) || bareFilenameToken.containsMatchIn(it)
-    }.orEmpty()
+    return ""
   }
 
   private fun severityRank(finding: GoalSubtaskReviewCompactFinding): Int = when (finding.severity) {
@@ -80,7 +84,7 @@ internal object GoalSubtaskReviewSummaryReducer {
     .replace(hunk, " ")
     .replace(pathLikeToken, " ")
     .replace(bareFilenameToken, " ")
-    .replace(lineSuffix, " ")
+    .replace(lineLocation, " ")
     .replace(Regex("\\s+"), " ")
     .trim()
     .take(MAX_TEXT_LENGTH)

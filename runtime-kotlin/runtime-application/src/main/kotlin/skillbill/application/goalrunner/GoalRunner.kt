@@ -53,6 +53,7 @@ import skillbill.ports.workflow.SpecScratchStore
 import skillbill.ports.workflow.UnavailableSpecScratchStore
 import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
+import skillbill.ports.workflow.model.GoalSubtaskReviewBaselineResult
 import skillbill.workflow.model.CurrentSubtaskIntent
 import skillbill.workflow.model.DecompositionExecutionModel
 import skillbill.workflow.model.DecompositionManifest
@@ -257,12 +258,17 @@ class GoalRunner(
     goalBranchSetupFailure(state, selection, request)?.let { failure ->
       return failure
     }
-    val reviewBaseline = goalReviewBaseline(state, subtaskId, request) ?: return blockedReviewBaselineIteration(
-      state,
-      subtaskId,
-      "Could not capture the goal-subtask review baseline before implementation. Refusing to substitute a branch-wide scope.",
-      request,
-    )
+    val baselineCapture = goalReviewBaseline(state, subtaskId, request)
+    if (!baselineCapture.ok) {
+      return blockedReviewBaselineIteration(
+        state,
+        subtaskId,
+        "Could not capture the goal-subtask review baseline before implementation. " +
+          "Refusing to substitute a branch-wide scope. ${baselineCapture.error}",
+        request,
+      )
+    }
+    val reviewBaseline = requireNotNull(baselineCapture.baseline)
     val prepared = prepareAttemptedLaunch(state, subtaskId, request, reviewBaseline)
     val attemptedState = prepared.state
     attempted += subtaskId
@@ -328,18 +334,28 @@ class GoalRunner(
     state: GoalRunnerManifestState,
     subtaskId: Int,
     request: GoalRunnerRunRequest,
-  ): GoalSubtaskReviewBaseline? {
+  ): GoalSubtaskReviewBaselineResult {
     val existingWorkflowId = state.manifest.workflowIdFor(subtaskId)
     if (existingWorkflowId != null) {
       return outcomeStore.goalSubtaskReviewState(existingWorkflowId, request.dbPathOverride)
         ?.let { reviewState ->
-          GoalSubtaskReviewBaseline(reviewState.reviewBaseSha, reviewState.baselineUntrackedPaths)
+          GoalSubtaskReviewBaselineResult(
+            status = "ok",
+            baseline = GoalSubtaskReviewBaseline(reviewState.reviewBaseSha, reviewState.baselineUntrackedPaths),
+          )
         }
+        ?: GoalSubtaskReviewBaselineResult(
+          status = "error",
+          error = "Goal-subtask review state is missing for existing child '$existingWorkflowId'; refusing to recapture its immutable baseline.",
+        )
     }
     val branch = state.manifest.branchPlanFor(subtaskId).branch.takeIf(String::isNotBlank)
       ?: state.manifest.featureBranch?.takeIf(String::isNotBlank)
-      ?: return null
-    return gitOperations.captureGoalSubtaskReviewBaseline(request.repoRoot, branch).baseline
+      ?: return GoalSubtaskReviewBaselineResult(
+        status = "error",
+        error = "Goal subtask '$subtaskId' has no durable child branch for review baseline capture.",
+      )
+    return gitOperations.captureGoalSubtaskReviewBaseline(request.repoRoot, branch)
   }
 
   private fun blockedReviewBaselineIteration(

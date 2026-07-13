@@ -143,7 +143,24 @@ class GitWorkflowGitOperations : WorkflowGitOperations {
     )
   }
 
-  override fun captureGoalSubtaskReviewBaseline(repoRoot: Path): GoalSubtaskReviewBaselineResult {
+  override fun captureGoalSubtaskReviewBaseline(
+    repoRoot: Path,
+    expectedBranch: String,
+  ): GoalSubtaskReviewBaselineResult {
+    val expected = expectedBranch.trim()
+    if (expected.isBlank()) {
+      return GoalSubtaskReviewBaselineResult(status = "error", error = "Goal-subtask durable child branch is required.")
+    }
+    val branchBeforeCapture = runGitCommand(repoRoot, "branch", "--show-current")
+    if (!branchBeforeCapture.ok || branchBeforeCapture.value.trim() != expected) {
+      return GoalSubtaskReviewBaselineResult(
+        status = "error",
+        error = "Goal-subtask review baseline must be captured on durable child branch '$expected'.",
+      )
+    }
+    trackedWorktreeClean(repoRoot)?.let { error ->
+      return GoalSubtaskReviewBaselineResult(status = "error", error = error)
+    }
     val head = runGitCommand(repoRoot, "rev-parse", "HEAD")
     if (!head.ok || head.value.isBlank()) {
       return GoalSubtaskReviewBaselineResult(status = "error", error = head.error.ifBlank { "Could not resolve HEAD." })
@@ -152,6 +169,23 @@ class GitWorkflowGitOperations : WorkflowGitOperations {
     if (!untracked.ok) {
       return GoalSubtaskReviewBaselineResult(status = "error", error = untracked.error)
     }
+    val branchAfterCapture = runGitCommand(repoRoot, "branch", "--show-current")
+    if (!branchAfterCapture.ok || branchAfterCapture.value.trim() != expected) {
+      return GoalSubtaskReviewBaselineResult(
+        status = "error",
+        error = "Goal-subtask branch changed while capturing its immutable review baseline; refusing to persist it.",
+      )
+    }
+    val headAfterCapture = runGitCommand(repoRoot, "rev-parse", "HEAD")
+    if (!headAfterCapture.ok || headAfterCapture.value.trim() != head.value.trim()) {
+      return GoalSubtaskReviewBaselineResult(
+        status = "error",
+        error = "Goal-subtask HEAD changed while capturing its immutable review baseline; refusing to persist it.",
+      )
+    }
+    trackedWorktreeClean(repoRoot)?.let { error ->
+      return GoalSubtaskReviewBaselineResult(status = "error", error = error)
+    }
     return GoalSubtaskReviewBaselineResult(
       status = "ok",
       baseline = GoalSubtaskReviewBaseline(
@@ -159,29 +193,6 @@ class GitWorkflowGitOperations : WorkflowGitOperations {
         baselineUntrackedPaths = untracked.value.split('\u0000').filter(String::isNotBlank).distinct().sorted(),
       ),
     )
-  }
-
-  override fun captureGoalSubtaskReviewBaseline(
-    repoRoot: Path,
-    expectedBranch: String,
-  ): GoalSubtaskReviewBaselineResult {
-    val branchBeforeCapture = runGitCommand(repoRoot, "branch", "--show-current")
-    if (!branchBeforeCapture.ok || branchBeforeCapture.value.trim() != expectedBranch) {
-      return GoalSubtaskReviewBaselineResult(
-        status = "error",
-        error = "Goal-subtask review baseline must be captured on durable child branch '$expectedBranch'.",
-      )
-    }
-    val captured = captureGoalSubtaskReviewBaseline(repoRoot)
-    if (!captured.ok) return captured
-    val branchAfterCapture = runGitCommand(repoRoot, "branch", "--show-current")
-    if (!branchAfterCapture.ok || branchAfterCapture.value.trim() != expectedBranch) {
-      return GoalSubtaskReviewBaselineResult(
-        status = "error",
-        error = "Goal-subtask branch changed while capturing its immutable review baseline; refusing to persist it.",
-      )
-    }
-    return captured
   }
 
   override fun buildGoalSubtaskReviewInput(
@@ -209,16 +220,17 @@ class GitWorkflowGitOperations : WorkflowGitOperations {
         error = "Persisted review base '${baseline.reviewBaseSha}' is not an existing commit: ${verified.error}",
       )
     }
-    val ancestor = runGitCommand(repoRoot, "merge-base", "--is-ancestor", baseline.reviewBaseSha, "HEAD")
+    val head = runGitCommand(repoRoot, "rev-parse", "HEAD")
+    if (!head.ok || head.value.isBlank()) {
+      return GoalSubtaskReviewInputResult(status = "error", error = head.error.ifBlank { "Could not resolve current HEAD." })
+    }
+    val currentHead = head.value.trim()
+    val ancestor = runGitCommand(repoRoot, "merge-base", "--is-ancestor", baseline.reviewBaseSha, currentHead)
     if (!ancestor.ok) {
       return GoalSubtaskReviewInputResult(
         status = "error",
         error = "Persisted review base '${baseline.reviewBaseSha}' is not an ancestor of current HEAD; refusing a broader review scope.",
       )
-    }
-    val head = runGitCommand(repoRoot, "rev-parse", "HEAD")
-    if (!head.ok || head.value.isBlank()) {
-      return GoalSubtaskReviewInputResult(status = "error", error = head.error.ifBlank { "Could not resolve current HEAD." })
     }
     val tracked = runGitCommand(repoRoot, "diff", "--binary", baseline.reviewBaseSha)
     if (!tracked.ok) {
@@ -255,11 +267,25 @@ class GitWorkflowGitOperations : WorkflowGitOperations {
         error = "Goal-subtask review input exceeds the ${GOAL_SUBTASK_REVIEW_INPUT_MAX_BYTES}-byte bound.",
       )
     }
+    val branchAfterInput = runGitCommand(repoRoot, "branch", "--show-current")
+    if (!branchAfterInput.ok || branchAfterInput.value.trim() != expectedBranch) {
+      return GoalSubtaskReviewInputResult(
+        status = "error",
+        error = "Goal-subtask branch changed while materializing its exact review input; refusing to use it.",
+      )
+    }
+    val headAfterInput = runGitCommand(repoRoot, "rev-parse", "HEAD")
+    if (!headAfterInput.ok || headAfterInput.value.trim() != currentHead) {
+      return GoalSubtaskReviewInputResult(
+        status = "error",
+        error = "Goal-subtask HEAD changed while materializing its exact review input; refusing to use it.",
+      )
+    }
     return GoalSubtaskReviewInputResult(
       status = "ok",
       input = GoalSubtaskReviewInput(
         reviewBaseSha = baseline.reviewBaseSha,
-        currentHeadSha = head.value.trim(),
+        currentHeadSha = currentHead,
         trackedDelta = tracked.value,
         ownedUntrackedPatches = patches,
       ),
@@ -268,6 +294,25 @@ class GitWorkflowGitOperations : WorkflowGitOperations {
 }
 
 private const val GOAL_SUBTASK_REVIEW_INPUT_MAX_BYTES: Int = 1_000_000
+
+private fun trackedWorktreeClean(repoRoot: Path): String? {
+  val unstaged = runGitProcess(repoRoot, listOf("diff", "--quiet"))
+  if (unstaged.timedOut || unstaged.readFailure != null || unstaged.exitCode !in setOf(0, 1)) {
+    return unstaged.readFailure?.message ?: "Could not inspect unstaged tracked changes before review baseline capture."
+  }
+  if (unstaged.exitCode == 1) {
+    return "Goal-subtask review baseline capture requires a clean tracked worktree; unstaged tracked changes are present."
+  }
+  val staged = runGitProcess(repoRoot, listOf("diff", "--cached", "--quiet"))
+  if (staged.timedOut || staged.readFailure != null || staged.exitCode !in setOf(0, 1)) {
+    return staged.readFailure?.message ?: "Could not inspect staged tracked changes before review baseline capture."
+  }
+  return if (staged.exitCode == 1) {
+    "Goal-subtask review baseline capture requires a clean tracked worktree; staged tracked changes are present."
+  } else {
+    null
+  }
+}
 
 private fun combinedDiffStat(repoRoot: Path): GoalObservabilityDiffStat {
   val unstaged = runCatchingDiffStat(repoRoot, "diff", "--numstat")
