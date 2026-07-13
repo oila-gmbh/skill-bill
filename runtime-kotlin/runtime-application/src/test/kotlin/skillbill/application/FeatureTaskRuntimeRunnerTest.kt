@@ -1347,6 +1347,39 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
   }
 
   @Test
+  fun `orphaned goal review state blocks before a runtime child can be treated as standalone`() {
+    val harness = runnerHarness(
+      agentAssignment = phasePerAgentAssignment(),
+      runtimeConfig = RuntimeHarnessConfig(
+        goalContinuation = FeatureTaskRuntimeGoalContinuationContext(
+          parentIssueKey = ISSUE_KEY,
+          subtaskId = 5,
+          goalBranch = "feat/existing-runtime-branch",
+          suppressPr = true,
+          parentWorkflowId = "wfl-parent",
+          reviewBaseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
+        ),
+      ),
+    )
+    val preplanOnly = harness.request().copy(
+      transitionsOverride = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration(
+        forwardPhaseIds = listOf("preplan"),
+        backwardEdges = emptyList(),
+      ),
+    )
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(preplanOnly))
+    val orphanedArtifacts = harness.repository.taskRuntimeArtifacts(WORKFLOW_ID).toMutableMap().apply {
+      remove("goal_continuation")
+    }
+    harness.repository.replaceTaskRuntimeArtifacts(WORKFLOW_ID, orphanedArtifacts)
+
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(preplanOnly))
+    assertContains(blocked.blockedReason, "Goal-continuation review persistence is malformed")
+    assertEquals(1, harness.launcher.requests.size)
+  }
+
+  @Test
   fun `goal review resumes a reserved pass after a crash without consuming another pass`() {
     var crashReview = true
     val harness = runnerHarness(
@@ -4031,6 +4064,13 @@ internal class InMemoryRuntimeWorkflowRepository : WorkflowStateRepository {
     val artifacts = LinkedHashMap(taskRuntimeArtifacts(workflowId)).apply {
       put(FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY, corruptValue)
     }
+    taskRuntimeRows[workflowId] = record.copy(
+      artifactsJson = skillbill.contracts.JsonSupport.mapToJsonString(artifacts),
+    )
+  }
+
+  fun replaceTaskRuntimeArtifacts(workflowId: String, artifacts: Map<String, Any?>) {
+    val record = requireNotNull(taskRuntimeRows[workflowId]) { "no runtime row for $workflowId" }
     taskRuntimeRows[workflowId] = record.copy(
       artifactsJson = skillbill.contracts.JsonSupport.mapToJsonString(artifacts),
     )

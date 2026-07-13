@@ -1,20 +1,30 @@
 package skillbill.application.goalrunner
 
 import skillbill.contracts.JsonSupport
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
+
+internal data class GoalSubtaskReviewOutputOutcome(
+  val verdict: FeatureTaskRuntimeVerdict,
+  val unresolvedFindingCount: Int,
+)
 
 internal object GoalSubtaskReviewSummaryReducer {
   private const val MAX_TEXT_LENGTH: Int = 180
   private val pathLikeToken = Regex("(?:[A-Za-z]:)?(?:[/\\\\][^\\s:|]+)+|(?:[A-Za-z0-9_.-]+[/\\\\])+[A-Za-z0-9_.-]+")
   private val hunk = Regex("@@[^@]+@@")
   private val lineLocation = Regex(
-    "(?:\\b(?:lines?|ln)\\s+\\d+(?:\\s*[-–]\\s*\\d+)?)|(?:\\bL\\d+(?:\\s*[-–]\\s*L?\\d+)?)|" +
-      "(?:\\b(?:columns?|cols?)\\s+\\d+(?:\\s*[-–]\\s*\\d+)?)|(?::\\d+(?::\\d+)?(?:\\s*[-–]\\s*\\d+)?)",
+    "(?:\\b(?:lines?|ln)\\s*:?\\s*\\d+(?:\\s*[-–]\\s*\\d+)?)|" +
+      "(?:\\b(?:L|#)\\s*\\d+(?:\\s*[-–]\\s*(?:L|#)?\\s*\\d+)?)|" +
+      "(?:\\b(?:columns?|cols?)\\s*:?\\s*\\d+(?:\\s*[-–]\\s*\\d+)?)|" +
+      "(?::\\s*\\d+(?::\\s*\\d+)?(?:\\s*[-–]\\s*\\d+)?)|" +
+      "(?:[\\(\\[\\{]\\s*\\d+(?:\\s*,\\s*\\d+)?\\s*[\\)\\]\\}])",
     RegexOption.IGNORE_CASE,
   )
-  private val classOrSymbol = Regex("\\b[A-Z][A-Za-z0-9_]*(?:[.#][A-Za-z_][A-Za-z0-9_]*)?\\b")
+  private val classOrSymbol = Regex("^[A-Z][A-Za-z0-9_]*(?:[.#][A-Za-z_][A-Za-z0-9_]*)?$")
   private val fileStem = Regex("(?:^|[/\\\\])([A-Za-z0-9_.-]+)\\.[A-Za-z0-9]+(?::\\d+(?:-\\d+)?)?")
   private val bareFilenameToken = Regex("\\b[A-Za-z0-9][A-Za-z0-9_.-]*\\.[A-Za-z0-9]+\\b")
+  private val diffFragment = Regex("(?i)(?:\\bdiff\\s+--git\\b|\\bindex\\s+[0-9a-f]{7,}\\b|---|\\+\\+\\+)")
 
   fun fromOutput(output: Map<String, Any?>): List<GoalSubtaskReviewCompactFinding> {
     val findings = output["produced_outputs"]
@@ -43,6 +53,30 @@ internal object GoalSubtaskReviewSummaryReducer {
   fun unresolvedCount(output: Map<String, Any?>): Int = fromOutput(output)
     .count { finding -> finding.severity == "blocker" || finding.severity == "major" }
 
+  fun outcomeFor(
+    output: Map<String, Any?>,
+    findings: List<GoalSubtaskReviewCompactFinding> = fromOutput(output),
+  ): GoalSubtaskReviewOutputOutcome {
+    val structuredUnresolved = findings.count { finding ->
+      finding.severity == "blocker" || finding.severity == "major"
+    }
+    val declaredVerdict = (output["verdict"] as? String)?.trim()
+    val changesRequested = declaredVerdict in setOf("needs_fix", FeatureTaskRuntimeVerdict.CHANGES_REQUESTED.wireValue)
+    val verdict = when {
+      structuredUnresolved > 0 || changesRequested -> FeatureTaskRuntimeVerdict.CHANGES_REQUESTED
+      declaredVerdict?.isNotBlank() == true -> FeatureTaskRuntimeVerdict.fromWire(declaredVerdict)
+      else -> FeatureTaskRuntimeVerdict.APPROVED
+    }
+    return GoalSubtaskReviewOutputOutcome(
+      verdict = verdict,
+      unresolvedFindingCount = if (verdict == FeatureTaskRuntimeVerdict.APPROVED) {
+        structuredUnresolved
+      } else {
+        structuredUnresolved.coerceAtLeast(1)
+      },
+    )
+  }
+
   private fun labelFor(finding: Map<String, Any?>, message: String): String {
     explicitLabel(finding)?.let { return it }
     return fileStem.find(message)?.groupValues?.get(1)?.substringBeforeLast('.')?.takeIf(String::isNotBlank)
@@ -55,23 +89,8 @@ internal object GoalSubtaskReviewSummaryReducer {
     finding["class"],
   ).filterIsInstance<String>()
     .map(String::trim)
-    .map(::compactLabel)
+    .filter(classOrSymbol::matches)
     .firstOrNull(String::isNotBlank)
-
-  private fun compactLabel(value: String): String {
-    classOrSymbol.find(value)
-      ?.value
-      ?.takeUnless { candidate ->
-        pathLikeToken.containsMatchIn(candidate) || lineLocation.containsMatchIn(candidate)
-      }
-      ?.removeSuffix(".kt")
-      ?.removeSuffix(".java")
-      ?.removeSuffix(".kts")
-      ?.let { return it }
-    val fileStemLabel = fileStem.find(value)?.groupValues?.get(1)?.substringBeforeLast('.')?.takeIf(String::isNotBlank)
-    if (fileStemLabel != null) return fileStemLabel
-    return ""
-  }
 
   private fun severityRank(finding: GoalSubtaskReviewCompactFinding): Int = when (finding.severity) {
     "blocker" -> 0
@@ -80,13 +99,23 @@ internal object GoalSubtaskReviewSummaryReducer {
     else -> 3
   }
 
-  private fun sanitize(message: String): String = message
-    .replace(hunk, " ")
-    .replace(pathLikeToken, " ")
-    .replace(bareFilenameToken, " ")
-    .replace(lineLocation, " ")
-    .replace(Regex("\\s+"), " ")
-    .trim()
-    .take(MAX_TEXT_LENGTH)
-    .ifBlank { "Review finding" }
+  private fun sanitize(message: String): String {
+    val compact = message
+      .replace(hunk, " ")
+      .replace(pathLikeToken, " ")
+      .replace(bareFilenameToken, " ")
+      .replace(lineLocation, " ")
+      .replace(diffFragment, " ")
+      .replace(Regex("\\s+"), " ")
+      .trim()
+      .take(MAX_TEXT_LENGTH)
+    return if (compact.isBlank() || containsUnsafeReviewMaterial(compact)) "Review finding" else compact
+  }
+
+  private fun containsUnsafeReviewMaterial(value: String): Boolean =
+    pathLikeToken.containsMatchIn(value) ||
+      bareFilenameToken.containsMatchIn(value) ||
+      hunk.containsMatchIn(value) ||
+      lineLocation.containsMatchIn(value) ||
+      diffFragment.containsMatchIn(value)
 }

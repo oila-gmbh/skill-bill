@@ -57,4 +57,41 @@ class GoalSubtaskReviewStateTest {
       )
     }
   }
+
+  @Test
+  fun `goal review persistence requires paired continuation and review state artifacts`() {
+    val state = GoalSubtaskReviewState.initial(
+      reviewBaseSha = "c".repeat(40),
+      baselineUntrackedPaths = emptyList(),
+      codeReviewMode = CodeReviewExecutionMode.AUTO,
+    )
+    val continuation = FeatureTaskRuntimeGoalContinuationArtifact(
+      issueKey = "SKILL-119",
+      subtaskId = 2,
+      suppressPr = true,
+      goalBranch = "feat/SKILL-119",
+      codeReviewMode = CodeReviewExecutionMode.AUTO,
+    )
+
+    assertEquals(null, GoalSubtaskReviewArtifactDecoder.decode(emptyMap()))
+    assertFailsWith<InvalidGoalSubtaskReviewStateSchemaError> {
+      GoalSubtaskReviewArtifactDecoder.decode(
+        mapOf(GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY to state.toArtifactMap()),
+      )
+    }
+    assertFailsWith<InvalidGoalSubtaskReviewStateSchemaError> {
+      GoalSubtaskReviewArtifactDecoder.decode(
+        mapOf(FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY to continuation.toArtifactMap()),
+      )
+    }
+    assertFailsWith<InvalidGoalSubtaskReviewStateSchemaError> {
+      GoalSubtaskReviewArtifactDecoder.decode(
+        mapOf(
+          FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY to continuation.toArtifactMap(),
+          GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY to state.toArtifactMap(),
+          GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY to emptyMap<String, String>(),
+        ),
+      )
+    }
+  }
 }

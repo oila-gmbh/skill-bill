@@ -88,4 +88,76 @@ class GoalSubtaskReviewSummaryReducerTest {
     assertFalse("OrderService.kt" in rendered)
     assertFalse("Checkout.kt" in rendered)
   }
+
+  @Test
+  fun `compact summaries reject unsafe labels and parenthesized or colon coordinates`() {
+    val summary = GoalSubtaskReviewSummaryReducer.fromOutput(
+      mapOf(
+        "produced_outputs" to mapOf(
+          "findings" to listOf(
+            mapOf(
+              "severity" to "major",
+              "class_or_symbol" to "src/main/kotlin/OrderService.kt(42,17)",
+              "message" to "OrderService.kt(42,17) line: 42 leaves the order unvalidated",
+            ),
+            mapOf(
+              "severity" to "major",
+              "symbol" to "OrderService.submit",
+              "message" to "src/main/kotlin/OrderService.kt:42 needs an invariant",
+            ),
+          ),
+        ),
+      ),
+    )
+
+    assertTrue(summary.any { it.label == "OrderService" })
+    assertTrue(summary.any { it.label == "OrderService.submit" })
+    val rendered = summary.joinToString(" ") { "${it.label} ${it.text}" }
+    assertFalse("OrderService.kt" in rendered)
+    assertFalse("line:" in rendered.lowercase())
+    assertFalse(Regex("\\(\\d+,").containsMatchIn(rendered))
+    assertFalse(Regex(":\\s*\\d+").containsMatchIn(rendered))
+  }
+
+  @Test
+  fun `compact summaries remove bracket coordinates and diff markers`() {
+    val summary = GoalSubtaskReviewSummaryReducer.fromOutput(
+      mapOf(
+        "produced_outputs" to mapOf(
+          "findings" to listOf(
+            mapOf(
+              "severity" to "major",
+              "message" to "OrderService.kt[42,17] --- +++ leaves the order unvalidated",
+            ),
+            mapOf(
+              "severity" to "minor",
+              "message" to "diff --git index abcdef0 --- +++ preserves a safe summary",
+            ),
+          ),
+        ),
+      ),
+    )
+
+    val rendered = summary.joinToString(" ") { "${it.label} ${it.text}" }
+    assertFalse("[42,17]" in rendered)
+    assertFalse("---" in rendered)
+    assertFalse("+++" in rendered)
+    assertTrue(rendered.contains("leaves the order unvalidated"))
+    assertTrue(rendered.contains("preserves a safe summary"))
+  }
+
+  @Test
+  fun `compact summaries fall back when locations and diff markers consume all finding text`() {
+    val summary = GoalSubtaskReviewSummaryReducer.fromOutput(
+      mapOf(
+        "produced_outputs" to mapOf(
+          "findings" to listOf(
+            mapOf("severity" to "major", "message" to "OrderService.kt[42,17] --- +++"),
+          ),
+        ),
+      ),
+    )
+
+    assertEquals("Review finding", summary.single().text)
+  }
 }

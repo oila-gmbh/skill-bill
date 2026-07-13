@@ -103,11 +103,19 @@ class FeatureTaskRuntimeRunner(
       workflowId = request.workflowId,
       dbOverride = request.dbPathOverride,
     )
-    val persistedContinuation = goalContinuationRecorder.continuation(
-      request.workflowId,
-      request.dbPathOverride,
-    )
     val reportInvariants = persistedRunInvariants ?: request.runInvariants
+    val persistedContinuation = runCatching {
+      goalContinuationRecorder.continuation(
+        request.workflowId,
+        request.dbPathOverride,
+      )
+    }.getOrElse { error ->
+      return goalContinuationPolicyBlockedReport(
+        request = request,
+        runInvariants = reportInvariants,
+        reason = "Goal-continuation review persistence is malformed: ${error.message.orEmpty()}",
+      )
+    }
     val durableReviewBaseline = persistedContinuation?.let {
       runCatching {
         goalContinuationRecorder.reviewState(request.workflowId, request.dbPathOverride)
@@ -193,7 +201,15 @@ class FeatureTaskRuntimeRunner(
         )
       }
     }
-    val resolvedContinuation = goalContinuationRecorder.continuation(request.workflowId, request.dbPathOverride)
+    val resolvedContinuation = runCatching {
+      goalContinuationRecorder.continuation(request.workflowId, request.dbPathOverride)
+    }.getOrElse { error ->
+      return goalContinuationPolicyBlockedReport(
+        request = request,
+        runInvariants = reportInvariants,
+        reason = "Goal-continuation review persistence is malformed after initialization: ${error.message.orEmpty()}",
+      )
+    }
     val resolvedBaseline = resolvedContinuation?.let {
       runCatching {
         goalContinuationRecorder.reviewState(request.workflowId, request.dbPathOverride)
@@ -466,7 +482,7 @@ class FeatureTaskRuntimeRunner(
         return "Completed goal-subtask review output cannot reconcile its reserved pass: ${error.message.orEmpty()}"
       }
       val findings = GoalSubtaskReviewSummaryReducer.fromOutput(outputMap)
-      val outcome = goalReviewOutcome(outputMap, findings)
+      val outcome = GoalSubtaskReviewSummaryReducer.outcomeFor(outputMap, findings)
       return if (goalContinuationRecorder.completeGoalReviewPass(
           workflowId = request.workflowId,
           verdict = outcome.verdict,
@@ -1292,27 +1308,45 @@ class FeatureTaskRuntimeRunner(
       } ?: run {
         if (run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW && isGoalContinuationRun(run.request)) {
           val findings = GoalSubtaskReviewSummaryReducer.fromOutput(outputMap)
-          val outcome = goalReviewOutcome(outputMap, findings)
-          val completed = goalContinuationRecorder.completeGoalReviewPass(
-            workflowId = run.request.workflowId,
-            verdict = outcome.verdict,
-            unresolvedFindingCount = outcome.unresolvedFindingCount,
-            findings = findings,
-            rawReviewResult = outputText,
-            dbOverride = run.request.dbPathOverride,
-          )
-          if (completed == null) {
+          val outcome = GoalSubtaskReviewSummaryReducer.outcomeFor(outputMap, findings)
+          val completed = runCatching {
+            recorder.completeGoalReviewPhase(
+              request = phaseStateRequest(
+                run = run,
+                iteration = iteration,
+                status = STATUS_COMPLETED,
+                finished = true,
+                outputArtifact = outputText,
+              ),
+              verdict = outcome.verdict,
+              unresolvedFindingCount = outcome.unresolvedFindingCount,
+              findings = findings,
+              rawReviewResult = outputText,
+              dbOverride = run.request.dbPathOverride,
+            )
+          }.getOrElse { error ->
             return AttemptResult.settled(
               blockAndPersistInPhase(
                 run,
                 iteration,
-                "Goal-subtask review could not persist its reserved pass.",
+                "Goal-subtask review could not atomically persist its pass and completed phase: ${error.message.orEmpty()}",
                 observability,
               ),
             )
           }
+          if (!completed) {
+            return AttemptResult.settled(
+              blockAndPersistInPhase(
+                run,
+                iteration,
+                "Goal-subtask review could not atomically persist its reserved pass and completed phase.",
+                observability,
+              ),
+            )
+          }
+        } else {
+          persistPhase(run, iteration, STATUS_COMPLETED, finished = true, outputArtifact = outputText)
         }
-        persistPhase(run, iteration, STATUS_COMPLETED, finished = true, outputArtifact = outputText)
         observability.completed(run.phaseId, run.resolvedAgent.resolvedAgentId, iteration)
         AttemptResult.settled(
           PhaseOutcome.completed(FeatureTaskRuntimePhaseOutput(run.phaseId, iteration, outputText)),
@@ -1345,22 +1379,28 @@ class FeatureTaskRuntimeRunner(
 
   private fun persistPhase(run: PhaseRun, iteration: Int, status: String, finished: Boolean, outputArtifact: String?) {
     recorder.recordPhaseState(
-      FeatureTaskRuntimePhaseStateRequest(
-        workflowId = run.request.workflowId,
-        phaseId = run.phaseId,
-        status = status,
-        attemptCount = iteration,
-        resolvedAgentId = run.resolvedAgent.resolvedAgentId,
-        finished = finished,
-        outputArtifact = outputArtifact,
-        // Stamp the latest backward-edge context onto the record so resume reconstructs loop
-        // position and re-blocks a cap-exhausted edge before relaunching.
-        loopId = run.reentry?.loopId,
-        edgeIteration = run.reentry?.edgeIteration,
-      ),
+      phaseStateRequest(run, iteration, status, finished, outputArtifact),
       run.request.dbPathOverride,
     )
   }
+
+  private fun phaseStateRequest(
+    run: PhaseRun,
+    iteration: Int,
+    status: String,
+    finished: Boolean,
+    outputArtifact: String?,
+  ): FeatureTaskRuntimePhaseStateRequest = FeatureTaskRuntimePhaseStateRequest(
+    workflowId = run.request.workflowId,
+    phaseId = run.phaseId,
+    status = status,
+    attemptCount = iteration,
+    resolvedAgentId = run.resolvedAgent.resolvedAgentId,
+    finished = finished,
+    outputArtifact = outputArtifact,
+    loopId = run.reentry?.loopId,
+    edgeIteration = run.reentry?.edgeIteration,
+  )
 
   // Persist the briefing before launching so it is a durable handoff a consumer can read
   // back, then deliver the same briefing to the agent as the launch prompt: the phase agent
@@ -1504,37 +1544,6 @@ class FeatureTaskRuntimeRunner(
     data class Ready(val run: PhaseRun) : GoalReviewRunPreparation
     data object CarryForward : GoalReviewRunPreparation
     data object Blocked : GoalReviewRunPreparation
-  }
-
-  private data class GoalReviewOutcome(
-    val verdict: FeatureTaskRuntimeVerdict,
-    val unresolvedFindingCount: Int,
-  )
-
-  private fun goalReviewOutcome(
-    output: Map<String, Any?>,
-    findings: List<skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding>,
-  ): GoalReviewOutcome {
-    val structuredUnresolved = findings.count { finding ->
-      finding.severity == "blocker" || finding.severity == "major"
-    }
-    val declaredVerdict = (output[FeatureTaskRuntimeVerificationSignalKeys.VERDICT] as? String)
-      ?.takeIf(String::isNotBlank)
-      ?.let(FeatureTaskRuntimeVerdict::fromWire)
-    val verdict = when {
-      structuredUnresolved > 0 -> FeatureTaskRuntimeVerdict.CHANGES_REQUESTED
-      declaredVerdict?.wireValue == "needs_fix" -> FeatureTaskRuntimeVerdict.CHANGES_REQUESTED
-      declaredVerdict != null -> declaredVerdict
-      else -> FeatureTaskRuntimeVerdict.APPROVED
-    }
-    return GoalReviewOutcome(
-      verdict = verdict,
-      unresolvedFindingCount = if (verdict == FeatureTaskRuntimeVerdict.APPROVED) {
-        structuredUnresolved
-      } else {
-        structuredUnresolved.coerceAtLeast(1)
-      },
-    )
   }
 
   // `completed` is derived from record status while `outputs` carries only records with a

@@ -13,6 +13,7 @@ import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATI
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationOutcome
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
+import skillbill.workflow.taskruntime.model.GoalSubtaskReviewArtifactDecoder
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_INPUT_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY
@@ -262,83 +263,29 @@ sealed interface GoalSubtaskReviewInputPreparation {
   data class Ready(val state: GoalSubtaskReviewState, val input: GoalSubtaskReviewInput) : GoalSubtaskReviewInputPreparation
 }
 
-private fun asGoalReviewArtifactMap(value: Any?): Map<String, Any?> = (value as? Map<*, *>)
-  ?.entries
-  ?.associate { (key, entryValue) ->
-    val stringKey = key as? String ?: throw InvalidGoalSubtaskReviewStateSchemaError(
-      sourceLabel = GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY,
-      fieldPath = GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY,
-      reason = "map keys must be strings.",
-    )
-    stringKey to entryValue
-  }
-  ?: throw InvalidGoalSubtaskReviewStateSchemaError(
-    sourceLabel = GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY,
-    fieldPath = GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY,
-    reason = "must be an object.",
-  )
-
 private fun continuationFromArtifacts(
   artifacts: Map<String, Any?>,
-): FeatureTaskRuntimeGoalContinuationArtifact? = artifacts[FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY]
-  ?.let(::asGoalReviewArtifactMap)
-  ?.let(FeatureTaskRuntimeGoalContinuationArtifact::fromArtifactMap)
+): FeatureTaskRuntimeGoalContinuationArtifact? = GoalSubtaskReviewArtifactDecoder.decode(artifacts)?.continuation
 
-private fun reviewStateFromArtifacts(artifacts: Map<String, Any?>): GoalSubtaskReviewState? {
-  val state = artifacts[GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY]
-    ?.let(::asGoalReviewArtifactMap)
-    ?.let(GoalSubtaskReviewState::fromArtifactMap)
-    ?: return null
-  val continuation = continuationFromArtifacts(artifacts)
-    ?: throw InvalidGoalSubtaskReviewStateSchemaError(
-      sourceLabel = GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY,
-      fieldPath = FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY,
-      reason = "must be present whenever a goal-subtask review state exists.",
-    )
-  if (state.codeReviewMode != continuation.codeReviewMode) {
-    throw InvalidGoalSubtaskReviewStateSchemaError(
-      sourceLabel = GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY,
-      fieldPath = "code_review_mode",
-      reason = "must match the immutable goal-continuation review policy.",
-    )
-  }
-  rawReviewResultsFromArtifacts(artifacts, state)
-  return state
-}
+private fun reviewStateFromArtifacts(artifacts: Map<String, Any?>): GoalSubtaskReviewState? =
+  GoalSubtaskReviewArtifactDecoder.decode(artifacts)?.state
 
 private fun rawReviewResultsFromArtifacts(
   artifacts: Map<String, Any?>,
   state: GoalSubtaskReviewState,
 ): Map<String, String> {
-  if (state.completedPassCount == 0) {
-    if (GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY in artifacts) {
-      rawReviewResultError(
-        GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY,
-        "must be absent before the first completed review pass.",
-      )
-    }
-    return emptyMap()
-  }
-  val raw = artifacts[GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY]
-    ?.let(::asGoalReviewArtifactMap)
+  val decoded = GoalSubtaskReviewArtifactDecoder.decode(artifacts)
     ?: rawReviewResultError(
-      GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY,
-      "must contain the durable raw review result for every completed pass.",
+      GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY,
+      "must be present whenever raw goal-subtask review results are read.",
     )
-  val expectedKeys = state.passResults.map { result -> result.passNumber.toString() }.toSet()
-  if (raw.keys != expectedKeys) {
+  if (decoded.state != state) {
     rawReviewResultError(
-      GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY,
-      "must contain exactly one durable raw review result for every completed pass.",
+      GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY,
+      "changed while reading its durable raw review results.",
     )
   }
-  return raw.mapValues { (passNumber, value) ->
-    (value as? String)?.takeIf(String::isNotBlank)
-      ?: rawReviewResultError(
-        "$GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY.$passNumber",
-        "must be a non-blank durable raw review result.",
-      )
-  }
+  return decoded.rawResults
 }
 
 private fun rawReviewResultError(fieldPath: String, reason: String): Nothing =

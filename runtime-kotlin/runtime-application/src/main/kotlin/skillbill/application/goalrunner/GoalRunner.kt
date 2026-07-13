@@ -337,17 +337,24 @@ class GoalRunner(
   ): GoalSubtaskReviewBaselineResult {
     val existingWorkflowId = state.manifest.workflowIdFor(subtaskId)
     if (existingWorkflowId != null) {
-      return outcomeStore.goalSubtaskReviewState(existingWorkflowId, request.dbPathOverride)
-        ?.let { reviewState ->
-          GoalSubtaskReviewBaselineResult(
-            status = "ok",
-            baseline = GoalSubtaskReviewBaseline(reviewState.reviewBaseSha, reviewState.baselineUntrackedPaths),
+      return runCatching {
+        outcomeStore.goalSubtaskReviewState(existingWorkflowId, request.dbPathOverride)
+          ?.let { reviewState ->
+            GoalSubtaskReviewBaselineResult(
+              status = "ok",
+              baseline = GoalSubtaskReviewBaseline(reviewState.reviewBaseSha, reviewState.baselineUntrackedPaths),
+            )
+          }
+          ?: GoalSubtaskReviewBaselineResult(
+            status = "error",
+            error = "Goal-subtask review state is missing for existing child '$existingWorkflowId'; refusing to recapture its immutable baseline.",
           )
-        }
-        ?: GoalSubtaskReviewBaselineResult(
+      }.getOrElse { error ->
+        GoalSubtaskReviewBaselineResult(
           status = "error",
-          error = "Goal-subtask review state is missing for existing child '$existingWorkflowId'; refusing to recapture its immutable baseline.",
+          error = "Goal-subtask review persistence is malformed for existing child '$existingWorkflowId': ${error.message.orEmpty()}",
         )
+      }
     }
     val branch = state.manifest.branchPlanFor(subtaskId).branch.takeIf(String::isNotBlank)
       ?: state.manifest.featureBranch?.takeIf(String::isNotBlank)

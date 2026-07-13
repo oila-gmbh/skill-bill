@@ -2,6 +2,7 @@ package skillbill.workflow.taskruntime.model
 
 import skillbill.contracts.workflow.GOAL_SUBTASK_REVIEW_STATE_CONTRACT_VERSION
 import skillbill.error.InvalidGoalSubtaskReviewStateSchemaError
+import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.review.CodeReviewExecutionMode
 
 const val GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY: String = "goal_subtask_review_state"
@@ -65,7 +66,9 @@ data class GoalSubtaskReviewPassResult(
       FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
       FeatureTaskRuntimeVerdict.REVIEW_CAP_REACHED,
     )) { "Goal review pass verdict is invalid: '${verdict.wireValue}'." }
-    require(reviewResultArtifact.isNotBlank()) { "Goal review result artifact must be non-blank." }
+    require(reviewResultArtifact == "$GOAL_SUBTASK_REVIEW_RESULT_ARTIFACT_PREFIX.$passNumber") {
+      "Goal review result artifact must identify its exact review pass."
+    }
     require(unresolvedFindingCount >= 0) { "Goal unresolved finding count must be non-negative." }
   }
 
@@ -93,6 +96,104 @@ data class GoalSubtaskReviewPassResult(
         unresolvedFindingCount = raw.requireReviewStateInt("unresolved_finding_count", path),
         findings = findings,
       )
+    }
+  }
+}
+
+/**
+ * The indivisible durable identity of a goal-review child. A regular feature-task runtime
+ * workflow has none of these artifacts; a goal child has all of them. Decoding them together
+ * prevents a damaged child row from being mistaken for a standalone runtime workflow.
+ */
+data class GoalSubtaskReviewArtifacts(
+  val continuation: FeatureTaskRuntimeGoalContinuationArtifact,
+  val state: GoalSubtaskReviewState,
+  val rawResults: Map<String, String>,
+)
+
+object GoalSubtaskReviewArtifactDecoder {
+  fun decode(artifacts: Map<String, Any?>): GoalSubtaskReviewArtifacts? {
+    val hasContinuation = FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY in artifacts
+    val hasState = GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY in artifacts
+    if (!hasContinuation && !hasState) {
+      if (GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY in artifacts) {
+        reviewStateError(
+          GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY,
+          "must be absent when no goal-subtask review child state exists.",
+        )
+      }
+      return null
+    }
+    if (!hasContinuation) {
+      reviewStateError(
+        FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY,
+        "must be present whenever a goal-subtask review state exists.",
+      )
+    }
+    if (!hasState) {
+      reviewStateError(
+        GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY,
+        "must be present whenever a goal-continuation child exists.",
+      )
+    }
+    val continuation = try {
+      FeatureTaskRuntimeGoalContinuationArtifact.fromArtifactMap(
+        artifacts.getValue(FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY).asGoalReviewArtifactMap(
+          FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY,
+        ),
+      )
+    } catch (error: InvalidWorkflowStateSchemaError) {
+      reviewStateError(FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY, error.message.orEmpty(), error)
+    } catch (error: IllegalArgumentException) {
+      reviewStateError(FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY, error.message.orEmpty(), error)
+    }
+    val state = GoalSubtaskReviewState.fromArtifactMap(
+      artifacts.getValue(GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY).asGoalReviewArtifactMap(
+        GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY,
+      ),
+    )
+    if (state.codeReviewMode != continuation.codeReviewMode) {
+      reviewStateError(
+        "$GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY.code_review_mode",
+        "must match the immutable goal-continuation review policy.",
+      )
+    }
+    return GoalSubtaskReviewArtifacts(
+      continuation = continuation,
+      state = state,
+      rawResults = rawResults(artifacts, state),
+    )
+  }
+
+  private fun rawResults(artifacts: Map<String, Any?>, state: GoalSubtaskReviewState): Map<String, String> {
+    if (state.completedPassCount == 0) {
+      if (GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY in artifacts) {
+        reviewStateError(
+          GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY,
+          "must be absent before the first completed review pass.",
+        )
+      }
+      return emptyMap()
+    }
+    val raw = artifacts[GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY]
+      ?.asGoalReviewArtifactMap(GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY)
+      ?: reviewStateError(
+        GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY,
+        "must contain the durable raw review result for every completed pass.",
+      )
+    val expectedKeys = state.passResults.map { result -> result.passNumber.toString() }.toSet()
+    if (raw.keys != expectedKeys) {
+      reviewStateError(
+        GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY,
+        "must contain exactly one durable raw review result for every completed pass.",
+      )
+    }
+    return raw.mapValues { (passNumber, value) ->
+      (value as? String)?.takeIf(String::isNotBlank)
+        ?: reviewStateError(
+          "$GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY.$passNumber",
+          "must be a non-blank durable raw review result.",
+        )
     }
   }
 }
@@ -263,6 +364,12 @@ private fun Map<String, Any?>.requireReviewStateList(key: String, sourceLabel: S
   this[key] as? List<*> ?: reviewStateError("$sourceLabel.$key", "must be a list.")
 
 private fun Any?.asReviewStateMap(sourceLabel: String): Map<String, Any?> =
+  (this as? Map<*, *>)?.entries?.associate { (key, value) ->
+    val stringKey = key as? String ?: reviewStateError(sourceLabel, "map keys must be strings.")
+    stringKey to value
+  } ?: reviewStateError(sourceLabel, "must be an object.")
+
+private fun Any?.asGoalReviewArtifactMap(sourceLabel: String): Map<String, Any?> =
   (this as? Map<*, *>)?.entries?.associate { (key, value) ->
     val stringKey = key as? String ?: reviewStateError(sourceLabel, "map keys must be strings.")
     stringKey to value

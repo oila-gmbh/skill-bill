@@ -13,16 +13,25 @@ import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequestOutcome
 import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequestRejectionReason
 import skillbill.ports.goalrunner.model.GoalRunnerAttemptLedgerRecordRequest
 import skillbill.ports.goalrunner.model.GoalRunnerReconcileGate
+import skillbill.review.CodeReviewExecutionMode
 import skillbill.workflow.WorkflowEngine
 import skillbill.workflow.model.GoalProgressEvent
 import skillbill.workflow.model.GoalProgressEventKind
 import skillbill.workflow.model.WorkflowUpdateInput
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
+import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
+import skillbill.error.InvalidGoalSubtaskReviewStateSchemaError
 import java.time.Instant
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -103,6 +112,41 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
     val rejected = outcomes.single() as Map<*, *>
     assertEquals("rejected", rejected["status"])
     assertEquals("unsafe_path", rejected["reason"])
+  }
+
+  @Test
+  fun `raw review evidence must match a compact pass before it can be emitted or acknowledged`() {
+    val workflows = InMemoryWorkflowStates()
+    val state = GoalSubtaskReviewState.initial(
+      reviewBaseSha = "a".repeat(40),
+      baselineUntrackedPaths = emptyList(),
+      codeReviewMode = CodeReviewExecutionMode.AUTO,
+    ).reserveNextPass().completeReservedPass(
+      verdict = FeatureTaskRuntimeVerdict.APPROVED,
+      unresolvedFindingCount = 0,
+      findings = emptyList(),
+    )
+    workflows.saveFeatureTaskRuntimeWorkflow(
+      goalReviewWorkflowRecord(
+        workflowId = "wfl-goal-review",
+        state = state,
+        rawReviewResult = """
+          {"verdict":"changes_requested","produced_outputs":{"findings":[]}}
+        """.trimIndent(),
+      ),
+    )
+    val store = WorkflowGoalRunnerOutcomeStore(
+      database = FakeDatabaseSessionFactory(workflows),
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      phaseOutputValidator = AlwaysValidValidator,
+    )
+
+    assertFailsWith<InvalidGoalSubtaskReviewStateSchemaError> {
+      store.unemittedGoalReviewPasses("wfl-goal-review")
+    }
+    assertFailsWith<InvalidGoalSubtaskReviewStateSchemaError> {
+      store.acknowledgeGoalReviewPass("wfl-goal-review", 1)
+    }
   }
 
   @Test
@@ -272,6 +316,37 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
         sessionId = "fis-001",
       ),
     ).toRecord().copy(updatedAt = updatedAt)
+  }
+
+  private fun goalReviewWorkflowRecord(
+    workflowId: String,
+    state: GoalSubtaskReviewState,
+    rawReviewResult: String,
+  ): skillbill.ports.persistence.model.WorkflowStateRecord {
+    val definition = WorkflowFamily.TASK_RUNTIME.definition
+    val engine = WorkflowEngine(testWorkflowSnapshotValidator)
+    val opened = engine.openRecord(definition, workflowId, "fis-001", "preplan")
+    return engine.updateRecord(
+      definition,
+      opened,
+      WorkflowUpdateInput(
+        workflowStatus = "running",
+        currentStepId = "review",
+        stepUpdates = null,
+        artifactsPatch = mapOf(
+          FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY to FeatureTaskRuntimeGoalContinuationArtifact(
+            issueKey = "SKILL-119",
+            subtaskId = 2,
+            suppressPr = true,
+            goalBranch = "feat/SKILL-119",
+            codeReviewMode = CodeReviewExecutionMode.AUTO,
+          ).toArtifactMap(),
+          GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY to state.toArtifactMap(),
+          GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY to mapOf("1" to rawReviewResult),
+        ),
+        sessionId = "fis-001",
+      ),
+    ).toRecord()
   }
 
   private fun runtimeCandidateRecord(

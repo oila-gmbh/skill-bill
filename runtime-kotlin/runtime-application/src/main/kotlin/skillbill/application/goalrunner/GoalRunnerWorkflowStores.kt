@@ -17,6 +17,7 @@ import skillbill.application.workflow.repoRoot
 import skillbill.application.workflow.toSnapshot
 import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidGoalSubtaskReviewStateSchemaError
+import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.goalrunner.model.GOAL_ATTEMPT_LEDGER_ARTIFACT_KEY
 import skillbill.goalrunner.model.GOAL_ATTEMPT_LEDGER_LIMIT
@@ -55,6 +56,7 @@ import skillbill.workflow.NoopGoalObservabilityEventValidator
 import skillbill.workflow.NoopGoalProgressEventValidator
 import skillbill.workflow.WorkflowEngine
 import skillbill.workflow.WorkflowSnapshotValidator
+import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.model.DecompositionManifest
 import skillbill.workflow.model.GOAL_PROGRESS_HISTORY_LIMIT
 import skillbill.workflow.model.GOAL_PROGRESS_LATEST_EVENT_ARTIFACT_KEY
@@ -69,7 +71,10 @@ import skillbill.workflow.model.appendBoundedHistoryBySequence
 import skillbill.workflow.model.goalObservabilityLatestEventFromArtifacts
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewPassResult
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
+import skillbill.workflow.taskruntime.model.GoalSubtaskReviewArtifactDecoder
+import skillbill.workflow.taskruntime.model.GoalSubtaskReviewArtifacts
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
 import java.nio.file.Path
@@ -474,13 +479,14 @@ class WorkflowGoalRunnerOutcomeStore(
   // Ground-truth git read to recover the terminal commit SHA when an agent completes
   // commit_push under suppress_pr but omits the SHA. No-op default keeps artifact-only behavior.
   private val gitOperations: WorkflowGitOperations = NoopWorkflowGitOperations,
+  private val phaseOutputValidator: FeatureTaskRuntimePhaseOutputValidator = ReviewRawOutputFallbackValidator,
 ) : GoalRunnerWorkflowOutcomeStore {
   private val engine: WorkflowEngine = WorkflowEngine(workflowSnapshotValidator)
 
   override fun goalSubtaskReviewState(workflowId: String, dbPathOverride: String?): GoalSubtaskReviewState? =
     database.read(dbPathOverride) { unitOfWork ->
       val record = taskRuntimeRecordOrNull(unitOfWork.workflowStates, workflowId) ?: return@read null
-      goalReviewStateWithPolicy(decodeArtifacts(record.artifactsJson))
+      goalReviewArtifacts(decodeArtifacts(record.artifactsJson))?.state
     }
 
   override fun unemittedGoalReviewPasses(
@@ -489,8 +495,9 @@ class WorkflowGoalRunnerOutcomeStore(
   ): List<GoalSubtaskReviewPassResult> = database.read(dbPathOverride) { unitOfWork ->
     val record = taskRuntimeRecordOrNull(unitOfWork.workflowStates, workflowId) ?: return@read emptyList()
     val artifacts = decodeArtifacts(record.artifactsJson)
-    val state = goalReviewStateWithPolicy(artifacts) ?: return@read emptyList()
-    state.passResults.drop(state.emittedPassCount)
+    val review = goalReviewArtifacts(artifacts) ?: return@read emptyList()
+    validatedGoalReviewPasses(review, phaseOutputValidator)
+      .drop(review.state.emittedPassCount)
   }
 
   override fun acknowledgeGoalReviewPass(
@@ -500,7 +507,9 @@ class WorkflowGoalRunnerOutcomeStore(
   ): Boolean = database.transaction(dbPathOverride) { unitOfWork ->
     val record = taskRuntimeRecordOrNull(unitOfWork.workflowStates, workflowId) ?: return@transaction false
     val artifacts = decodeArtifacts(record.artifactsJson)
-    val state = goalReviewStateWithPolicy(artifacts) ?: return@transaction false
+    val review = goalReviewArtifacts(artifacts) ?: return@transaction false
+    val state = review.state
+    validatedGoalReviewPasses(review, phaseOutputValidator)
     if (passNumber != state.emittedPassCount + 1 || passNumber > state.completedPassCount) {
       return@transaction false
     }
@@ -1140,43 +1149,61 @@ private fun goalContinuation(artifacts: Map<String, Any?>): GoalContinuation? =
     }
   }
 
-private fun goalReviewArtifactMap(value: Any?): Map<String, Any?> = (value as? Map<*, *>)
-  ?.entries
-  ?.associate { (key, entryValue) ->
-    val stringKey = key as? String ?: throw InvalidGoalSubtaskReviewStateSchemaError(
-      sourceLabel = GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY,
-      fieldPath = GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY,
-      reason = "map keys must be strings.",
-    )
-    stringKey to entryValue
-  }
-  ?: throw InvalidGoalSubtaskReviewStateSchemaError(
-    sourceLabel = GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY,
-    fieldPath = GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY,
-    reason = "must be an object.",
-  )
+private fun goalReviewArtifacts(artifacts: Map<String, Any?>): GoalSubtaskReviewArtifacts? =
+  GoalSubtaskReviewArtifactDecoder.decode(artifacts)
 
-private fun goalReviewStateWithPolicy(artifacts: Map<String, Any?>): GoalSubtaskReviewState? {
-  val state = artifacts[GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY]
-    ?.let(::goalReviewArtifactMap)
-    ?.let(GoalSubtaskReviewState::fromArtifactMap)
-    ?: return null
-  val continuation = artifacts[FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY]
-    ?.let(::goalReviewArtifactMap)
-    ?.let(FeatureTaskRuntimeGoalContinuationArtifact::fromArtifactMap)
-    ?: throw InvalidGoalSubtaskReviewStateSchemaError(
-      sourceLabel = GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY,
-      fieldPath = FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY,
-      reason = "must be present whenever a goal-subtask review state exists.",
+private fun validatedGoalReviewPasses(
+  review: GoalSubtaskReviewArtifacts,
+  phaseOutputValidator: FeatureTaskRuntimePhaseOutputValidator,
+): List<GoalSubtaskReviewPassResult> {
+  review.state.passResults.forEach { pass ->
+    val rawResult = review.rawResults.getValue(pass.passNumber.toString())
+    val output = phaseOutputValidator.validateAndReadPhaseOutput(
+      rawResult,
+      "goal review pass ${pass.passNumber}",
     )
-  if (state.codeReviewMode != continuation.codeReviewMode) {
-    throw InvalidGoalSubtaskReviewStateSchemaError(
-      sourceLabel = GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY,
-      fieldPath = "code_review_mode",
-      reason = "must match the immutable goal-continuation review policy.",
-    )
+    val findings = GoalSubtaskReviewSummaryReducer.fromOutput(output)
+    val outcome = GoalSubtaskReviewSummaryReducer.outcomeFor(output, findings)
+    val expectedVerdict = if (pass.passNumber == 2 && outcome.unresolvedFindingCount > 0) {
+      FeatureTaskRuntimeVerdict.REVIEW_CAP_REACHED
+    } else {
+      outcome.verdict
+    }
+    if (
+      pass.verdict != expectedVerdict ||
+      pass.unresolvedFindingCount != outcome.unresolvedFindingCount ||
+      pass.findings != findings
+    ) {
+      throw InvalidGoalSubtaskReviewStateSchemaError(
+        sourceLabel = GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY,
+        fieldPath = "pass_results.${pass.passNumber}",
+        reason = "must exactly match the verdict, unresolved count, and compact findings derived from its durable raw review result.",
+      )
+    }
   }
-  return state
+  return review.state.passResults
+}
+
+private object ReviewRawOutputFallbackValidator : FeatureTaskRuntimePhaseOutputValidator {
+  override fun validatePhaseOutputText(phaseOutputText: String, sourceLabel: String) {
+    if (JsonSupport.parseObjectOrNull(phaseOutputText) == null) {
+      throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
+        sourceLabel = sourceLabel,
+        reason = "must be a JSON object when no runtime schema validator is injected.",
+      )
+    }
+  }
+
+  override fun validateAndReadPhaseOutput(phaseOutputText: String, sourceLabel: String): Map<String, Any?> {
+    validatePhaseOutputText(phaseOutputText, sourceLabel)
+    return requireNotNull(JsonSupport.parseObjectOrNull(phaseOutputText))
+      .let(JsonSupport::jsonElementToValue)
+      .let(JsonSupport::anyToStringAnyMap)
+      ?: throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
+        sourceLabel = sourceLabel,
+        reason = "must decode to a string-keyed object when no runtime schema validator is injected.",
+      )
+  }
 }
 
 private fun taskRuntimeRecordOrNull(
