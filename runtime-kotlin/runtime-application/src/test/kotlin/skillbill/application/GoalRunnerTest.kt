@@ -9,8 +9,8 @@ import skillbill.application.goalrunner.GoalRunnerLedgerContext
 import skillbill.application.goalrunner.GoalRunnerLedgerRecorder
 import skillbill.application.goalrunner.GoalRunnerProgressEventEmitter
 import skillbill.application.goalrunner.GoalRunnerStatusService
-import skillbill.application.model.GoalRunnerResetRequest
 import skillbill.application.model.GoalRunnerEventSink
+import skillbill.application.model.GoalRunnerResetRequest
 import skillbill.application.model.GoalRunnerRunEvent
 import skillbill.application.model.GoalRunnerRunRequest
 import skillbill.application.model.GoalRunnerStatusRequest
@@ -29,13 +29,13 @@ import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.agentrun.model.AgentRunProgressEmission
 import skillbill.ports.goalrunner.GoalPullRequestPort
 import skillbill.ports.goalrunner.GoalRunnerManifestStore
-import skillbill.ports.goalrunner.GoalRunnerChildWorkflowSetup
 import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.GoalRunnerWorkflowOutcomeStore
 import skillbill.ports.goalrunner.model.GoalObservabilityProgressEvent
 import skillbill.ports.goalrunner.model.GoalPullRequestRequest
 import skillbill.ports.goalrunner.model.GoalPullRequestResult
 import skillbill.ports.goalrunner.model.GoalRunnerAttemptLedgerRecordRequest
+import skillbill.ports.goalrunner.model.GoalRunnerChildWorkflowSetup
 import skillbill.ports.goalrunner.model.GoalRunnerLedgerSequenceWatermarks
 import skillbill.ports.goalrunner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.model.GoalRunnerObservabilityRecordRequest
@@ -58,15 +58,15 @@ import skillbill.ports.persistence.model.WorkflowStateRecord
 import skillbill.ports.time.RuntimeTimingPort
 import skillbill.ports.time.model.RuntimeWaitResult
 import skillbill.ports.workflow.WorkflowGitOperations
-import skillbill.ports.workflow.model.WorkflowGitOperationResult
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaselineResult
 import skillbill.ports.workflow.model.GoalSubtaskReviewInput
 import skillbill.ports.workflow.model.GoalSubtaskReviewInputResult
+import skillbill.ports.workflow.model.WorkflowGitOperationResult
 import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksRequest
 import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksResult
 import skillbill.ports.workflow.model.WorkflowWorktreeActivityResult
-import skillbill.review.CodeReviewExecutionMode
+import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.model.CurrentSubtaskIntent
 import skillbill.workflow.model.DecompositionDependency
 import skillbill.workflow.model.DecompositionManifest
@@ -75,10 +75,10 @@ import skillbill.workflow.model.GoalObservabilityDiffStat
 import skillbill.workflow.model.GoalProgressEventKind
 import skillbill.workflow.model.GoalProgressOutcome
 import skillbill.workflow.model.SpecSource
-import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewPassResult
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
+import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -876,11 +876,13 @@ private class DirtyManifestGitOperations(
     request: WorkflowSelectedDiffHunksRequest,
   ): WorkflowSelectedDiffHunksResult = WorkflowSelectedDiffHunksResult(status = "ok")
 
-  override fun captureGoalSubtaskReviewBaseline(repoRoot: Path, expectedBranch: String): GoalSubtaskReviewBaselineResult =
-    GoalSubtaskReviewBaselineResult(
-      status = "ok",
-      baseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
-    )
+  override fun captureGoalSubtaskReviewBaseline(
+    repoRoot: Path,
+    expectedBranch: String,
+  ): GoalSubtaskReviewBaselineResult = GoalSubtaskReviewBaselineResult(
+    status = "ok",
+    baseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
+  )
 
   override fun buildGoalSubtaskReviewInput(
     repoRoot: Path,
@@ -2182,11 +2184,13 @@ private class FixedBranchGitOperations(
     request: WorkflowSelectedDiffHunksRequest,
   ): WorkflowSelectedDiffHunksResult = WorkflowSelectedDiffHunksResult(status = "ok")
 
-  override fun captureGoalSubtaskReviewBaseline(repoRoot: Path, expectedBranch: String): GoalSubtaskReviewBaselineResult =
-    GoalSubtaskReviewBaselineResult(
-      status = "ok",
-      baseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
-    )
+  override fun captureGoalSubtaskReviewBaseline(
+    repoRoot: Path,
+    expectedBranch: String,
+  ): GoalSubtaskReviewBaselineResult = GoalSubtaskReviewBaselineResult(
+    status = "ok",
+    baseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
+  )
 
   override fun buildGoalSubtaskReviewInput(
     repoRoot: Path,
@@ -2237,7 +2241,6 @@ private object StatusDiffGitOperations : WorkflowGitOperations {
     repoRoot: Path,
     request: WorkflowSelectedDiffHunksRequest,
   ): WorkflowSelectedDiffHunksResult = WorkflowSelectedDiffHunksResult(status = "ok")
-
 }
 
 private class RecordingGitOperations(
@@ -2288,7 +2291,10 @@ private class RecordingGitOperations(
     request: WorkflowSelectedDiffHunksRequest,
   ): WorkflowSelectedDiffHunksResult = WorkflowSelectedDiffHunksResult(status = "ok")
 
-  override fun captureGoalSubtaskReviewBaseline(repoRoot: Path, expectedBranch: String): GoalSubtaskReviewBaselineResult =
+  override fun captureGoalSubtaskReviewBaseline(
+    repoRoot: Path,
+    expectedBranch: String,
+  ): GoalSubtaskReviewBaselineResult =
     baselineError?.let { GoalSubtaskReviewBaselineResult(status = "error", error = it) }
       ?: GoalSubtaskReviewBaselineResult(
         status = "ok",

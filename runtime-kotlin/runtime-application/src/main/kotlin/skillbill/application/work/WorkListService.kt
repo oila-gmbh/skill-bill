@@ -1,6 +1,9 @@
 package skillbill.application.work
 
 import me.tatarka.inject.annotations.Inject
+import skillbill.application.model.WorkListItem
+import skillbill.application.model.WorkListItemKind
+import skillbill.application.model.WorkListResult
 import skillbill.application.workflow.WorkflowFamily
 import skillbill.error.InvalidWorkListRowError
 import skillbill.ports.persistence.DatabaseSessionFactory
@@ -9,11 +12,6 @@ import skillbill.ports.persistence.model.WorkItem
 import skillbill.ports.persistence.model.WorkItemKind
 import skillbill.workflow.WorkflowEngine
 import skillbill.workflow.WorkflowSnapshotValidator
-
-data class WorkListResult(
-  val dbPath: String,
-  val work: List<WorkListItem>,
-)
 
 @Inject
 class WorkListService(

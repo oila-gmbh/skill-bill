@@ -1,7 +1,7 @@
 package skillbill.infrastructure.fs
 
-import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksRequest
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
+import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksRequest
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -442,7 +442,8 @@ class GitWorkflowGitOperationsTest {
     git(repoRoot, "commit", "-m", "earlier subtask")
 
     val branch = git(repoRoot, "branch", "--show-current")
-    val baseline = requireNotNull(GitWorkflowGitOperations().captureGoalSubtaskReviewBaseline(repoRoot, branch).baseline)
+    val baseline =
+      requireNotNull(GitWorkflowGitOperations().captureGoalSubtaskReviewBaseline(repoRoot, branch).baseline)
     Files.writeString(repoRoot.resolve("current-subtask.txt"), "current subtask marker\n")
     git(repoRoot, "add", "current-subtask.txt")
     git(repoRoot, "commit", "-m", "current subtask")
@@ -493,7 +494,8 @@ class GitWorkflowGitOperationsTest {
     git(repoRoot, "commit", "-m", "initial")
     val originalBranch = git(repoRoot, "branch", "--show-current")
     git(repoRoot, "checkout", "-b", "feat/child-one")
-    val baseline = requireNotNull(GitWorkflowGitOperations().captureGoalSubtaskReviewBaseline(repoRoot, "feat/child-one").baseline)
+    val baseline =
+      requireNotNull(GitWorkflowGitOperations().captureGoalSubtaskReviewBaseline(repoRoot, "feat/child-one").baseline)
     git(repoRoot, "checkout", originalBranch)
 
     val result = GitWorkflowGitOperations().buildGoalSubtaskReviewInput(repoRoot, baseline, "feat/child-one")

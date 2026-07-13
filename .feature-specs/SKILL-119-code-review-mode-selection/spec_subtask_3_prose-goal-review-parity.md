@@ -1,5 +1,5 @@
 ---
-status: Ready for implementation
+status: In Progress
 issue_key: SKILL-119
 parent_issue_key: SKILL-119
 subtask_id: 3

@@ -1,10 +1,12 @@
 package skillbill.desktop.feature.skillbill.ui
 
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.test.ExperimentalTestApi
-import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertHasClickAction
-import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
@@ -14,9 +16,7 @@ import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.pressKey
 import androidx.compose.ui.test.requestFocus
 import androidx.compose.ui.test.runComposeUiTest
-import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.unit.dp
-import androidx.compose.runtime.mutableStateOf
 import skillbill.desktop.core.designsystem.SkillBillMaterialTheme
 import skillbill.desktop.core.domain.model.DesktopWorkItem
 import skillbill.desktop.core.domain.model.RepoLoadStatus
@@ -82,7 +82,9 @@ class SkillBillWorkSectionTest {
     onNodeWithContentDescription("Refresh persisted work").assertHasClickAction()
     onNodeWithTag("work-section-status").assertIsDisplayed()
     onNodeWithTag("work-section-list-viewport").assertIsDisplayed()
-    onNodeWithContentDescription("Work table. Use left and right arrow keys to inspect all columns.").assertIsDisplayed()
+    onNodeWithContentDescription(
+      "Work table. Use left and right arrow keys to inspect all columns.",
+    ).assertIsDisplayed()
     onNodeWithTag("work-section-field-headers").assertIsDisplayed()
     onNodeWithTag(workRowTag("feature-task-runtime", "wftr-117", null)).assertIsDisplayed()
     onNodeWithTag(workCellTag("feature-task-runtime", "wftr-117", null, "state-since"), useUnmergedTree = true)
@@ -245,14 +247,13 @@ class SkillBillWorkSectionTest {
   private fun workCellTag(workflowKind: String, workflowId: String, issueKey: String?, field: String): String =
     "work-section-cell-${workIdentity(workflowKind, workflowId, issueKey)}-$field"
 
-  private fun workIdentity(workflowKind: String, workflowId: String, issueKey: String?): String =
-    DesktopWorkItem(
-      issueKey = issueKey,
-      workflowKind = workflowKind,
-      workflowId = workflowId,
-      startedAt = "",
-      currentState = "",
-      stateEnteredAt = "",
-      stateEnteredAtEstimated = false,
-    ).identity.stableValue
+  private fun workIdentity(workflowKind: String, workflowId: String, issueKey: String?): String = DesktopWorkItem(
+    issueKey = issueKey,
+    workflowKind = workflowKind,
+    workflowId = workflowId,
+    startedAt = "",
+    currentState = "",
+    stateEnteredAt = "",
+    stateEnteredAtEstimated = false,
+  ).identity.stableValue
 }

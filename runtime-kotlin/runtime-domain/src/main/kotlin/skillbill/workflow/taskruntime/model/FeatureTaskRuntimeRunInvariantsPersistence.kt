@@ -2,7 +2,7 @@ package skillbill.workflow.taskruntime.model
 
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.error.InvalidWorkflowStateSchemaError
-import skillbill.review.CodeReviewExecutionMode
+import skillbill.workflow.model.CodeReviewExecutionMode
 
 /**
  * Durable run-scoped invariants resolved at run creation. Resume reads this artifact instead of

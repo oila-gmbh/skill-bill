@@ -42,38 +42,53 @@ class SQLiteWorkListRepositoryTest {
   @Test
   fun `work list rejects malformed persisted rows at every read boundary`() {
     assertMalformedWorkListRow(
-      "INSERT INTO feature_task_workflows VALUES ('SKILL-117', 'prose', NULL, '2026-05-01T12:00:00Z', 'running', '2026-05-01T12:00:00Z', 0)",
+      featureTaskWorkflowRow(workflowId = "NULL"),
       "missing workflow_id",
     )
     assertMalformedWorkListRow(
-      "INSERT INTO feature_task_workflows VALUES ('SKILL-117', 'unknown', 'wf-kind', '2026-05-01T12:00:00Z', 'running', '2026-05-01T12:00:00Z', 0)",
+      featureTaskWorkflowRow(mode = "unknown", workflowId = "'wf-kind'"),
       "unknown workflow kind",
     )
     assertMalformedWorkListRow(
-      "INSERT INTO feature_task_workflows VALUES ('SKILL-117', 'prose', 'wf-state', '2026-05-01T12:00:00Z', 'unknown', '2026-05-01T12:00:00Z', 0)",
+      featureTaskWorkflowRow(workflowId = "'wf-state'", workflowStatus = "unknown"),
       "unknown current state",
     )
     assertMalformedWorkListRow(
-      "INSERT INTO feature_task_workflows VALUES ('SKILL-117', 'prose', 'wf-estimated', '2026-05-01T12:00:00Z', 'running', '2026-05-01T12:00:00Z', 2)",
+      featureTaskWorkflowRow(workflowId = "'wf-estimated'", estimated = 2),
       "invalid state_entered_at_estimated",
     )
     assertMalformedWorkListRow(
-      "INSERT INTO feature_task_workflows VALUES ('SKILL-117', 'prose', 'wf-started', 'invalid', 'running', '2026-05-01T12:00:00Z', 0)",
+      featureTaskWorkflowRow(workflowId = "'wf-started'", startedAt = "invalid"),
       "invalid started_at",
     )
     assertMalformedWorkListRow(
-      "INSERT INTO feature_task_workflows VALUES ('SKILL-117', 'prose', 'wf-since', '2026-05-01T12:00:00Z', 'running', 'invalid', 0)",
+      featureTaskWorkflowRow(workflowId = "'wf-since'", stateEnteredAt = "invalid"),
       "invalid state_entered_at",
     )
     assertMalformedWorkListRow(
-      "INSERT INTO goal_issue_progress VALUES ('SKILL-117', ' goal-parent ', '2026-05-01T12:00:00Z', 'running', '2026-05-01T12:00:00Z', 0)",
+      goalIssueProgressRow(parentWorkflowId = " goal-parent "),
       "invalid workflow_id",
     )
     assertMalformedWorkListRow(
-      "INSERT INTO goal_issue_progress VALUES ('SKILL-117', 'goal-state', '2026-05-01T12:00:00Z', ' running ', '2026-05-01T12:00:00Z', 0)",
+      goalIssueProgressRow(parentWorkflowId = "goal-state", status = " running "),
       "invalid current_state",
     )
   }
+
+  private fun featureTaskWorkflowRow(
+    mode: String = "prose",
+    workflowId: String,
+    startedAt: String = "2026-05-01T12:00:00Z",
+    workflowStatus: String = "running",
+    stateEnteredAt: String = "2026-05-01T12:00:00Z",
+    estimated: Int = 0,
+  ): String =
+    "INSERT INTO feature_task_workflows VALUES " +
+      "('SKILL-117', '$mode', $workflowId, '$startedAt', '$workflowStatus', '$stateEnteredAt', $estimated)"
+
+  private fun goalIssueProgressRow(parentWorkflowId: String, status: String = "running"): String =
+    "INSERT INTO goal_issue_progress VALUES " +
+      "('SKILL-117', '$parentWorkflowId', '2026-05-01T12:00:00Z', '$status', '2026-05-01T12:00:00Z', 0)"
 
   private fun assertMalformedWorkListRow(insert: String, expectedDetail: String) {
     DriverManager.getConnection("jdbc:sqlite::memory:").use { connection ->
@@ -91,13 +106,19 @@ class SQLiteWorkListRepositoryTest {
   private fun createWorkListTables(connection: Connection) {
     connection.createStatement().use { statement ->
       statement.executeUpdate(
-        "CREATE TABLE feature_task_workflows (issue_key TEXT, mode TEXT, workflow_id TEXT, started_at TEXT, workflow_status TEXT, state_entered_at TEXT, state_entered_at_estimated INTEGER)",
+        "CREATE TABLE feature_task_workflows (" +
+          "issue_key TEXT, mode TEXT, workflow_id TEXT, started_at TEXT, workflow_status TEXT, " +
+          "state_entered_at TEXT, state_entered_at_estimated INTEGER)",
       )
       statement.executeUpdate(
-        "CREATE TABLE feature_verify_workflows (issue_key TEXT, workflow_id TEXT, started_at TEXT, workflow_status TEXT, state_entered_at TEXT, state_entered_at_estimated INTEGER)",
+        "CREATE TABLE feature_verify_workflows (" +
+          "issue_key TEXT, workflow_id TEXT, started_at TEXT, workflow_status TEXT, " +
+          "state_entered_at TEXT, state_entered_at_estimated INTEGER)",
       )
       statement.executeUpdate(
-        "CREATE TABLE goal_issue_progress (issue_key TEXT, parent_workflow_id TEXT, first_started_at TEXT, status TEXT, state_entered_at TEXT, state_entered_at_estimated INTEGER)",
+        "CREATE TABLE goal_issue_progress (" +
+          "issue_key TEXT, parent_workflow_id TEXT, first_started_at TEXT, status TEXT, " +
+          "state_entered_at TEXT, state_entered_at_estimated INTEGER)",
       )
     }
   }

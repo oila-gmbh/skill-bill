@@ -2,8 +2,8 @@ package skillbill.ports.agentrun.model
 
 import skillbill.goalrunner.model.GoalRunnerLivenessState
 import skillbill.install.model.InstallAgent
-import skillbill.review.CodeReviewExecutionMode
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
+import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.model.GoalProgressEvent
 import skillbill.workflow.model.GoalProgressEventKind
 import skillbill.workflow.model.GoalProgressOutcome

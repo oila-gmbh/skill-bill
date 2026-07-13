@@ -19,8 +19,7 @@ import skillbill.cli.core.refuseRuntimeRefusedAgents
 import skillbill.cli.model.CliExecutionResult
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.InvokingAgentContextResolver
-import skillbill.review.CodeReviewExecutionMode
-import java.nio.file.Files
+import skillbill.workflow.model.CodeReviewExecutionMode
 import java.nio.file.Path
 import kotlin.time.Duration.Companion.minutes
 
@@ -59,7 +58,7 @@ class CodeReviewParallelCommand(
   ).long()
   private val diffFile by option(
     "--diff-file",
-    help = "Exact diff input for both lanes. When supplied, it is used instead of the branch, PR, staged, or unstaged scope.",
+    help = "Exact diff input for both lanes. When supplied, it replaces the configured review scope.",
   )
   private val codeReviewMode by option(
     "--execution-mode",
@@ -96,7 +95,7 @@ class CodeReviewParallelCommand(
           repoRoot = Path.of(repoRoot).toAbsolutePath().normalize(),
           timeout = timeoutMinutes?.minutes,
           codeReviewMode = parseExecutionMode(codeReviewMode),
-          suppliedDiff = suppliedDiff(),
+          suppliedDiffPath = suppliedDiffPath(),
         ),
       )
     } catch (@Suppress("SwallowedException") e: UsageValidationException) {
@@ -134,20 +133,11 @@ class CodeReviewParallelCommand(
     throw UsageError(error.message.orEmpty())
   }
 
-  private fun suppliedDiff(): String? = diffFile?.let { value ->
-    val path = Path.of(value).toAbsolutePath().normalize()
-    if (!Files.isRegularFile(path)) {
-      throw UsageError("--diff-file must name a readable regular file: $path")
-    }
-    if (Files.size(path) > MAX_SUPPLIED_DIFF_BYTES) {
-      throw UsageError("--diff-file exceeds the ${MAX_SUPPLIED_DIFF_BYTES}-byte review-input limit.")
-    }
-    Files.readString(path).takeIf(String::isNotBlank)
-      ?: throw UsageError("--diff-file must contain a non-empty diff.")
+  private fun suppliedDiffPath(): Path? = diffFile?.let { value ->
+    Path.of(value).toAbsolutePath().normalize()
   }
 
   private companion object {
     const val DEFAULT_AGENT = "codex"
-    const val MAX_SUPPLIED_DIFF_BYTES: Long = 1_000_000
   }
 }

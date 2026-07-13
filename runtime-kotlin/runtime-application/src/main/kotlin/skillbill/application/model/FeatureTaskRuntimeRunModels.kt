@@ -2,8 +2,8 @@ package skillbill.application.model
 
 import skillbill.application.decomposition.decompositionManifestPath
 import skillbill.application.decomposition.parentSpecPath
-import skillbill.review.CodeReviewExecutionMode
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
+import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
 import java.nio.file.Path
@@ -64,7 +64,9 @@ data class FeatureTaskRuntimeGoalContinuationContext(
     require(parentIssueKey.isNotBlank()) { "parentIssueKey is required." }
     require(subtaskId > 0) { "subtaskId must be positive." }
     require(goalBranch.isNotBlank()) { "goalBranch is required." }
-    requireNotNull(reviewBaseline) { "reviewBaseline is required for goal continuation before implementation can begin." }
+    requireNotNull(reviewBaseline) {
+      "reviewBaseline is required for goal continuation before implementation can begin."
+    }
     parentWorkflowId?.let { require(it.isNotBlank()) { "parentWorkflowId must be non-blank when provided." } }
     lastResumableStep?.let { require(it.isNotBlank()) { "lastResumableStep must be non-blank when provided." } }
     parallelReviewAgent?.let { require(it.isNotBlank()) { "parallelReviewAgent must be non-blank when provided." } }

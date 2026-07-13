@@ -18,8 +18,8 @@ import skillbill.workflow.WorkflowSnapshotValidator
 import java.nio.file.Path
 import java.time.Instant
 import kotlin.test.Test
-import kotlin.test.assertFailsWith
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 
 class WorkListServiceTest {
   @Test

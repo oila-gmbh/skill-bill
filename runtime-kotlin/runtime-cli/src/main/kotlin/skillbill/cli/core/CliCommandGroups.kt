@@ -21,8 +21,8 @@ import skillbill.cli.system.UpdateCheckCommand
 import skillbill.cli.system.UpdateCommand
 import skillbill.cli.system.VersionCommand
 import skillbill.cli.telemetry.TelemetryCommand
-import skillbill.cli.workflow.WorkflowTopLevelCommands
 import skillbill.cli.work.WorkTopLevelCommands
+import skillbill.cli.workflow.WorkflowTopLevelCommands
 
 @Inject
 class ReviewCliCommandGroup(

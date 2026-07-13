@@ -8,42 +8,20 @@ import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.goalrunner.model.GoalPullRequestRequest
 import skillbill.ports.goalrunner.model.GoalPullRequestResult
 import skillbill.ports.goalrunner.model.GoalRunnerAttemptLedgerRecordRequest
+import skillbill.ports.goalrunner.model.GoalRunnerChildWorkflowSetup
 import skillbill.ports.goalrunner.model.GoalRunnerLedgerSequenceWatermarks
 import skillbill.ports.goalrunner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.model.GoalRunnerObservabilityRecordRequest
 import skillbill.ports.goalrunner.model.GoalRunnerProgressEventRecordRequest
 import skillbill.ports.goalrunner.model.GoalRunnerReconcileGate
+import skillbill.ports.goalrunner.model.GoalRunnerReviewPolicy
 import skillbill.ports.goalrunner.model.GoalRunnerSessionAccountingRecordRequest
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.goalrunner.model.GoalRunnerWorkflowProgress
-import skillbill.review.CodeReviewExecutionMode
-import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
+import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewPassResult
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
 import java.nio.file.Path
-
-data class GoalRunnerReviewPolicy(
-  val codeReviewMode: CodeReviewExecutionMode,
-  val parallelReviewAgent: String? = null,
-) {
-  init {
-    parallelReviewAgent?.let { require(it.isNotBlank()) { "parallelReviewAgent must not be blank." } }
-  }
-}
-
-data class GoalRunnerChildWorkflowSetup(
-  val subtaskId: Int,
-  val workflowId: String,
-  val goalBranch: String,
-  val reviewBaseline: GoalSubtaskReviewBaseline,
-  val reviewPolicy: GoalRunnerReviewPolicy,
-) {
-  init {
-    require(subtaskId > 0) { "subtaskId must be positive." }
-    require(workflowId.isNotBlank()) { "workflowId must not be blank." }
-    require(goalBranch.isNotBlank()) { "goalBranch must not be blank." }
-  }
-}
 
 interface GoalRunnerManifestStore {
   fun loadByIssueKey(
@@ -124,11 +102,7 @@ interface GoalRunnerWorkflowOutcomeStore : GoalRunnerTerminalOutcomeStore {
   fun unemittedGoalReviewPasses(workflowId: String, dbPathOverride: String? = null): List<GoalSubtaskReviewPassResult> =
     emptyList()
 
-  fun acknowledgeGoalReviewPass(
-    workflowId: String,
-    passNumber: Int,
-    dbPathOverride: String? = null,
-  ): Boolean = false
+  fun acknowledgeGoalReviewPass(workflowId: String, passNumber: Int, dbPathOverride: String? = null): Boolean = false
 
   // [repoRoot] is the manifest-workflowId-independent self-heal seam (SKILL-68): when supplied, a
   // complete-without-SHA continuation child recovers its commit SHA from measured HEAD and is

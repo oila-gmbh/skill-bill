@@ -5,8 +5,8 @@ import skillbill.application.model.WorkflowOpenResult
 import skillbill.cli.core.CliRuntime
 import skillbill.cli.work.padTerminalEnd
 import skillbill.cli.work.terminalDisplayWidth
-import skillbill.cli.work.truncateTerminalDisplayWidth
 import skillbill.cli.work.toTerminalSafeText
+import skillbill.cli.work.truncateTerminalDisplayWidth
 import skillbill.contracts.JsonSupport
 import skillbill.db.core.DatabaseRuntime
 import skillbill.di.RuntimeComponent
@@ -19,7 +19,6 @@ import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
-import kotlin.test.assertTrue
 
 class CliWorkListRuntimeTest {
   @Test
@@ -55,7 +54,14 @@ class CliWorkListRuntimeTest {
       updateStartedAt(connection, "feature_verify_workflows", verify, "2026-05-01T12:00:00.000003Z")
       insertGoal(connection, "goal-a", null, "2026-05-01T12:00:00.000001Z", "2026-05-01T12:00:00.000001Z", true)
       insertGoal(connection, "goal-z", "SKILL-117", "2026-05-01T12:00:00.000002Z", "2026-05-01T12:01:00Z", false)
-      insertGoal(connection, "goal-control", "BAD\u001b]8;;https://example.test\u0007", "2026-05-01T12:00:00Z", "2026-05-01T12:00:00Z", false)
+      insertGoal(
+        connection,
+        "goal-control",
+        "BAD\u001b]8;;https://example.test\u0007",
+        "2026-05-01T12:00:00Z",
+        "2026-05-01T12:00:00Z",
+        false,
+      )
     }
 
     val table = CliRuntime.run(listOf("--db", dbPath.toString(), "work", "list"))
@@ -133,13 +139,18 @@ class CliWorkListRuntimeTest {
     assertEquals(workflowId, row["workflow_id"])
   }
 
-  private fun RuntimeComponent.openWorkflow(kind: WorkflowFamilyKind, dbPath: java.nio.file.Path, issueKey: String): String =
-    assertIs<WorkflowOpenResult.Ok>(
-      workflowService.open(kind = kind, dbOverride = dbPath.toString(), issueKey = issueKey),
-    ).workflowId
+  private fun RuntimeComponent.openWorkflow(
+    kind: WorkflowFamilyKind,
+    dbPath: java.nio.file.Path,
+    issueKey: String,
+  ): String = assertIs<WorkflowOpenResult.Ok>(
+    workflowService.open(kind = kind, dbOverride = dbPath.toString(), issueKey = issueKey),
+  ).workflowId
 
   private fun updateStartedAt(connection: Connection, table: String, workflowId: String, startedAt: String) {
-    connection.prepareStatement("UPDATE $table SET started_at = ?, state_entered_at = ? WHERE workflow_id = ?").use { statement ->
+    connection.prepareStatement(
+      "UPDATE $table SET started_at = ?, state_entered_at = ? WHERE workflow_id = ?",
+    ).use { statement ->
       statement.setString(1, startedAt)
       statement.setString(2, startedAt)
       statement.setString(3, workflowId)

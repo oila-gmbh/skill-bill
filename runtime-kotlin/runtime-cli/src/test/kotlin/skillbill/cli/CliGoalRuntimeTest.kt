@@ -15,9 +15,9 @@ import skillbill.ports.goalrunner.GoalPullRequestPort
 import skillbill.ports.goalrunner.model.GoalPullRequestRequest
 import skillbill.ports.goalrunner.model.GoalPullRequestResult
 import skillbill.ports.workflow.WorkflowGitOperations
-import skillbill.ports.workflow.model.WorkflowGitOperationResult
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaselineResult
+import skillbill.ports.workflow.model.WorkflowGitOperationResult
 import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksRequest
 import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksResult
 import skillbill.ports.workflow.model.WorkflowWorktreeActivityResult
@@ -1276,11 +1276,13 @@ private object GoalTestWorkflowGitOperations : WorkflowGitOperations {
   override fun currentBranch(repoRoot: Path): WorkflowGitOperationResult =
     WorkflowGitOperationResult(status = "ok", value = "")
 
-  override fun captureGoalSubtaskReviewBaseline(repoRoot: Path, expectedBranch: String): GoalSubtaskReviewBaselineResult =
-    GoalSubtaskReviewBaselineResult(
-      status = "ok",
-      baseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
-    )
+  override fun captureGoalSubtaskReviewBaseline(
+    repoRoot: Path,
+    expectedBranch: String,
+  ): GoalSubtaskReviewBaselineResult = GoalSubtaskReviewBaselineResult(
+    status = "ok",
+    baseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
+  )
 
   override fun createCommit(repoRoot: Path, message: String): WorkflowGitOperationResult =
     WorkflowGitOperationResult(status = "ok", value = "test-commit")

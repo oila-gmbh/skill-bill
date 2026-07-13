@@ -1,10 +1,10 @@
 package skillbill.desktop.core.data.service
 
-import me.tatarka.inject.annotations.Inject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runInterruptible
+import me.tatarka.inject.annotations.Inject
+import skillbill.application.model.WorkListItem
 import skillbill.application.work.WorkListService
-import skillbill.application.work.WorkListItem
 import skillbill.desktop.core.common.di.UserScope
 import skillbill.desktop.core.data.di.DesktopRuntimeApplicationServices
 import skillbill.desktop.core.domain.model.DesktopWorkItem

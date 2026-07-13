@@ -1,9 +1,10 @@
 package skillbill.workflow.taskruntime.model
 
+import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.workflow.GOAL_SUBTASK_REVIEW_STATE_CONTRACT_VERSION
 import skillbill.error.InvalidGoalSubtaskReviewStateSchemaError
 import skillbill.error.InvalidWorkflowStateSchemaError
-import skillbill.review.CodeReviewExecutionMode
+import skillbill.workflow.model.CodeReviewExecutionMode
 
 const val GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY: String = "goal_subtask_review_state"
 const val GOAL_SUBTASK_REVIEW_INPUT_ARTIFACT_KEY: String = "goal_subtask_review_input"
@@ -17,9 +18,8 @@ enum class GoalSubtaskReviewDisposition(val wireValue: String) {
   ;
 
   companion object {
-    fun fromWire(value: String): GoalSubtaskReviewDisposition =
-      entries.firstOrNull { it.wireValue == value }
-        ?: reviewStateError("disposition", "must be one of ${entries.joinToString { it.wireValue }}.")
+    fun fromWire(value: String): GoalSubtaskReviewDisposition = entries.firstOrNull { it.wireValue == value }
+      ?: reviewStateError("disposition", "must be one of ${entries.joinToString { it.wireValue }}.")
   }
 }
 
@@ -34,6 +34,7 @@ data class GoalSubtaskReviewCompactFinding(
     require(text.isNotBlank()) { "GoalSubtaskReviewCompactFinding.text must be non-blank." }
   }
 
+  @OpenBoundaryMap("Compact goal-review finding at the durable workflow-artifact seam")
   fun toArtifactMap(): Map<String, Any?> = linkedMapOf(
     "severity" to severity,
     "label" to label,
@@ -41,6 +42,7 @@ data class GoalSubtaskReviewCompactFinding(
   )
 
   companion object {
+    @OpenBoundaryMap("Compact goal-review finding decode from the durable workflow-artifact map")
     fun fromArtifactMap(raw: Map<String, Any?>, path: String): GoalSubtaskReviewCompactFinding {
       raw.requireOnlyReviewStateKeys(setOf("severity", "label", "text"), path)
       return GoalSubtaskReviewCompactFinding(
@@ -61,17 +63,20 @@ data class GoalSubtaskReviewPassResult(
 ) {
   init {
     require(passNumber in 1..GOAL_SUBTASK_REVIEW_MAX_PASSES) { "Goal review pass number must be 1 or 2." }
-    require(verdict in setOf(
-      FeatureTaskRuntimeVerdict.APPROVED,
-      FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
-      FeatureTaskRuntimeVerdict.REVIEW_CAP_REACHED,
-    )) { "Goal review pass verdict is invalid: '${verdict.wireValue}'." }
+    require(
+      verdict in setOf(
+        FeatureTaskRuntimeVerdict.APPROVED,
+        FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
+        FeatureTaskRuntimeVerdict.REVIEW_CAP_REACHED,
+      ),
+    ) { "Goal review pass verdict is invalid: '${verdict.wireValue}'." }
     require(reviewResultArtifact == "$GOAL_SUBTASK_REVIEW_RESULT_ARTIFACT_PREFIX.$passNumber") {
       "Goal review result artifact must identify its exact review pass."
     }
     require(unresolvedFindingCount >= 0) { "Goal unresolved finding count must be non-negative." }
   }
 
+  @OpenBoundaryMap("Goal-review pass result at the durable workflow-artifact seam")
   fun toArtifactMap(): Map<String, Any?> = linkedMapOf(
     "pass_number" to passNumber,
     "verdict" to verdict.wireValue,
@@ -81,13 +86,17 @@ data class GoalSubtaskReviewPassResult(
   )
 
   companion object {
+    @OpenBoundaryMap("Goal-review pass result decode from the durable workflow-artifact map")
     fun fromArtifactMap(raw: Map<String, Any?>, path: String): GoalSubtaskReviewPassResult {
       raw.requireOnlyReviewStateKeys(
         setOf("pass_number", "verdict", "review_result_artifact", "unresolved_finding_count", "findings"),
         path,
       )
       val findings = raw.requireReviewStateList("findings", path).mapIndexed { index, value ->
-        GoalSubtaskReviewCompactFinding.fromArtifactMap(value.asReviewStateMap("$path.findings[$index]"), "$path.findings[$index]")
+        GoalSubtaskReviewCompactFinding.fromArtifactMap(
+          value.asReviewStateMap("$path.findings[$index]"),
+          "$path.findings[$index]",
+        )
       }
       return GoalSubtaskReviewPassResult(
         passNumber = raw.requireReviewStateInt("pass_number", path),
@@ -112,6 +121,7 @@ data class GoalSubtaskReviewArtifacts(
 )
 
 object GoalSubtaskReviewArtifactDecoder {
+  @OpenBoundaryMap("Atomic goal-review artifact decode from the durable workflow-artifact map")
   fun decode(artifacts: Map<String, Any?>): GoalSubtaskReviewArtifacts? {
     val hasContinuation = FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY in artifacts
     val hasState = GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY in artifacts
@@ -211,8 +221,12 @@ data class GoalSubtaskReviewState(
   val contractVersion: String = GOAL_SUBTASK_REVIEW_STATE_CONTRACT_VERSION,
 ) {
   init {
-    require(contractVersion == GOAL_SUBTASK_REVIEW_STATE_CONTRACT_VERSION) { "Unsupported goal review state contract '$contractVersion'." }
-    require(GIT_COMMIT_SHA.matches(reviewBaseSha)) { "Goal review base SHA must be a 40- or 64-character lowercase commit SHA." }
+    require(contractVersion == GOAL_SUBTASK_REVIEW_STATE_CONTRACT_VERSION) {
+      "Unsupported goal review state contract '$contractVersion'."
+    }
+    require(GIT_COMMIT_SHA.matches(reviewBaseSha)) {
+      "Goal review base SHA must be a 40- or 64-character lowercase commit SHA."
+    }
     require(baselineUntrackedPaths.all(String::isNotBlank)) { "Baseline untracked paths must be non-blank." }
     require(baselineUntrackedPaths == baselineUntrackedPaths.distinct().sorted()) {
       "Baseline untracked paths must be sorted and unique."
@@ -230,8 +244,10 @@ data class GoalSubtaskReviewState(
     require(emittedPassCount in 0..completedPassCount) { "Emitted pass count cannot exceed completed pass count." }
     require(
       disposition != GoalSubtaskReviewDisposition.REVIEW_CAP_REACHED ||
-        (completedPassCount == GOAL_SUBTASK_REVIEW_MAX_PASSES &&
-          (passResults.lastOrNull()?.unresolvedFindingCount ?: 0) > 0),
+        (
+          completedPassCount == GOAL_SUBTASK_REVIEW_MAX_PASSES &&
+            (passResults.lastOrNull()?.unresolvedFindingCount ?: 0) > 0
+          ),
     ) { "review_cap_reached requires unresolved findings on pass two." }
   }
 
@@ -277,6 +293,7 @@ data class GoalSubtaskReviewState(
   fun acknowledgeSummariesThrough(passNumber: Int): GoalSubtaskReviewState =
     copy(emittedPassCount = passNumber.coerceIn(emittedPassCount, completedPassCount))
 
+  @OpenBoundaryMap("Goal-review state at the durable workflow-artifact seam")
   fun toArtifactMap(): Map<String, Any?> = linkedMapOf<String, Any?>(
     "contract_version" to contractVersion,
     "review_base_sha" to reviewBaseSha,
@@ -302,7 +319,11 @@ data class GoalSubtaskReviewState(
       codeReviewMode = codeReviewMode,
     )
 
-    fun fromArtifactMap(raw: Map<String, Any?>, sourceLabel: String = GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY): GoalSubtaskReviewState {
+    @OpenBoundaryMap("Goal-review state decode from the durable workflow-artifact map")
+    fun fromArtifactMap(
+      raw: Map<String, Any?>,
+      sourceLabel: String = GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY,
+    ): GoalSubtaskReviewState {
       raw.requireOnlyReviewStateKeys(
         setOf(
           "contract_version", "review_base_sha", "baseline_untracked_paths", "code_review_mode", "reserved_pass_number",
@@ -321,8 +342,15 @@ data class GoalSubtaskReviewState(
           contractVersion = raw.requireReviewStateString("contract_version", sourceLabel),
           reviewBaseSha = raw.requireReviewStateString("review_base_sha", sourceLabel),
           baselineUntrackedPaths = raw.requireReviewStateList("baseline_untracked_paths", sourceLabel)
-            .mapIndexed { index, value -> value as? String ?: reviewStateError("$sourceLabel.baseline_untracked_paths[$index]", "must be a string.") },
-          codeReviewMode = CodeReviewExecutionMode.fromWire(raw.requireReviewStateString("code_review_mode", sourceLabel)),
+            .mapIndexed { index, value ->
+              value as? String ?: reviewStateError(
+                "$sourceLabel.baseline_untracked_paths[$index]",
+                "must be a string.",
+              )
+            },
+          codeReviewMode = CodeReviewExecutionMode.fromWire(
+            raw.requireReviewStateString("code_review_mode", sourceLabel),
+          ),
           reservedPassNumber = raw.optionalReviewStateInt("reserved_pass_number", sourceLabel),
           completedPassCount = raw.requireReviewStateInt("completed_pass_count", sourceLabel),
           disposition = GoalSubtaskReviewDisposition.fromWire(raw.requireReviewStateString("disposition", sourceLabel)),
@@ -347,11 +375,13 @@ private fun Map<String, Any?>.requireReviewStateString(key: String, sourceLabel:
   (this[key] as? String)?.takeIf(String::isNotBlank)
     ?: reviewStateError("$sourceLabel.$key", "must be a non-blank string.")
 
-private fun Map<String, Any?>.optionalReviewStateString(key: String, sourceLabel: String): String? = when (val value = this[key]) {
-  null -> null
-  is String -> value.takeIf(String::isNotBlank) ?: reviewStateError("$sourceLabel.$key", "must be a non-blank string.")
-  else -> reviewStateError("$sourceLabel.$key", "must be a string.")
-}
+private fun Map<String, Any?>.optionalReviewStateString(key: String, sourceLabel: String): String? =
+  when (val value = this[key]) {
+    null -> null
+    is String -> value.takeIf(String::isNotBlank)
+      ?: reviewStateError("$sourceLabel.$key", "must be a non-blank string.")
+    else -> reviewStateError("$sourceLabel.$key", "must be a string.")
+  }
 
 private fun Map<String, Any?>.requireReviewStateInt(key: String, sourceLabel: String): Int =
   (this[key] as? Number)?.toInt()?.takeIf { value -> value.toDouble() == (this[key] as Number).toDouble() }

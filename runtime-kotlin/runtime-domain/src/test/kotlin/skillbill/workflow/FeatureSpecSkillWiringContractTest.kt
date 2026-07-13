@@ -149,6 +149,7 @@ class FeatureSpecSkillWiringContractTest {
 
   @Test
   fun `decomposed prose review lanes and cap remain coordinated while standalone behavior remains unchanged`() {
+    val goal = Files.readString(repoRootFromTest().resolve("skills/bill-feature-goal/content.md"))
     val prose = Files.readString(repoRootFromTest().resolve("skills/bill-feature-task-prose/content.md"))
     val runner = Files.readString(
       repoRootFromTest().resolve("skills/bill-feature-task-subtask-runner/content.md"),
@@ -170,6 +171,10 @@ class FeatureSpecSkillWiringContractTest {
     )
     assertContains(runner, "complete\nlocation-bearing evidence in durable artifacts and telemetry")
     assertContains(runner, "class/symbol-or-sanitized label, and concise text")
+    assertContains(
+      goal,
+      "They must never contain a path, line number, diff\nhunk, or raw child-review output",
+    )
     assertContains(
       prose,
       "two-pass cap and `review_cap_reached` continuation apply only to\ndecomposed prose-goal children",

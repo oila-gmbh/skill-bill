@@ -1,11 +1,11 @@
 package skillbill.application.featuretask
 
 import skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing
+import skillbill.ports.workflow.model.GoalSubtaskReviewInput
+import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.model.SpecSource
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
-import skillbill.review.CodeReviewExecutionMode
-import skillbill.ports.workflow.model.GoalSubtaskReviewInput
 
 /**
  * Pure composer of the full prompt a feature-task-runtime phase agent receives. The persisted
@@ -247,14 +247,20 @@ object FeatureTaskRuntimePhasePromptComposer {
       """
 
       ## Goal subtask review scope
-      Review only this child-owned delta from durable base `${input.reviewBaseSha}` to current HEAD `${input.currentHeadSha}`. It includes committed, staged, unstaged, and owned untracked changes below. Do not use `origin/main...HEAD`, a merge base, the full feature branch, or a replacement baseline. If parallel CLI delegation is required, give both lanes this exact diff through `--diff-file`; never select a branch scope.
+      Review only this child-owned delta from durable base `${input.reviewBaseSha}` to current HEAD `${input.currentHeadSha}`.
+      It includes committed, staged, unstaged, and owned untracked changes below.
+      Do not use `origin/main...HEAD`, a merge base, the full feature branch, or a replacement baseline.
+      If parallel CLI delegation is required, give both lanes this exact diff through `--diff-file`;
+      never select a branch scope.
 
       ${input.reviewText}
       """.trimIndent()
     }.orEmpty()
     return """
       ## Review execution mode
-      Run `bill-code-review execution-mode:${codeReviewMode.wireValue}` for this review and every re-review. AUTO keeps the shared policy's existing selection; INLINE must reject an ineligible scope instead of substituting delegated mode; DELEGATED must use normal routed delegation and fail if workers cannot start.$parallel$goalScope
+      Run `bill-code-review execution-mode:${codeReviewMode.wireValue}` for this review and every re-review.
+      AUTO keeps the shared policy's existing selection; INLINE must reject an ineligible scope instead of substituting
+      delegated mode; DELEGATED must use normal routed delegation and fail if workers cannot start.$parallel$goalScope
     """.trimIndent()
   }
 

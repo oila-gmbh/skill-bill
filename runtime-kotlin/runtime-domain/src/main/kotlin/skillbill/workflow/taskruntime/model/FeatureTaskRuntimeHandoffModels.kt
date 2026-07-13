@@ -1,6 +1,6 @@
 package skillbill.workflow.taskruntime.model
 
-import skillbill.review.CodeReviewExecutionMode
+import skillbill.workflow.model.CodeReviewExecutionMode
 
 /**
  * Domain models for the inter-phase handoff contract. The handoff is an

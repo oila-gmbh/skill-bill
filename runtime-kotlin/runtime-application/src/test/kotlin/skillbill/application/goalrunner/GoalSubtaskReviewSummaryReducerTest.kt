@@ -12,8 +12,14 @@ class GoalSubtaskReviewSummaryReducerTest {
       mapOf(
         "produced_outputs" to mapOf(
           "findings" to listOf(
-            mapOf("severity" to "major", "message" to "src/main/kotlin/OrderService.kt:42 @@ -1,2 +1,2 @@ OrderService misses validation"),
-            mapOf("severity" to "major", "message" to "src/main/kotlin/OrderService.kt:42 @@ -1,2 +1,2 @@ OrderService misses validation"),
+            mapOf(
+              "severity" to "major",
+              "message" to "src/main/kotlin/OrderService.kt:42 @@ -1,2 +1,2 @@ OrderService misses validation",
+            ),
+            mapOf(
+              "severity" to "major",
+              "message" to "src/main/kotlin/OrderService.kt:42 @@ -1,2 +1,2 @@ OrderService misses validation",
+            ),
             mapOf("severity" to "minor", "message" to "/tmp/work/Repository.kt:8 Repository leaks a detail"),
           ),
         ),

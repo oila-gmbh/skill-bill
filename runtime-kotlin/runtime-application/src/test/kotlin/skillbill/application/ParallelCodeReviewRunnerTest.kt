@@ -216,7 +216,9 @@ class ParallelCodeReviewRunnerTest {
     runner.run(baseRequest(scope = ParallelReviewScope.BRANCH).copy(suppliedDiff = exactDiff))
 
     assertTrue(resolver.calls.isEmpty())
-    assertTrue(launcher.requests.all { request -> request.skillRunRequest.promptOverride.orEmpty().contains(exactDiff) })
+    assertTrue(
+      launcher.requests.all { request -> request.skillRunRequest.promptOverride.orEmpty().contains(exactDiff) },
+    )
   }
 
   @Test

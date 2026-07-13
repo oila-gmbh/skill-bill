@@ -7,10 +7,10 @@ import skillbill.desktop.core.data.service.JvmInstalledWorkspaceBaselineService
 import skillbill.desktop.core.data.service.JvmInstalledWorkspaceLocator
 import skillbill.desktop.core.data.service.JvmRuntimeScaffoldGateway
 import skillbill.desktop.core.data.service.JvmRuntimeSkillRemoveGateway
+import skillbill.desktop.core.data.service.JvmWorkListGateway
 import skillbill.desktop.core.data.service.RuntimeAuthoringGateway
 import skillbill.desktop.core.data.service.RuntimeRepoSessionService
 import skillbill.desktop.core.data.service.RuntimeSkillTreeService
-import skillbill.desktop.core.data.service.JvmWorkListGateway
 import skillbill.desktop.core.domain.service.AuthoringGateway
 import skillbill.desktop.core.domain.service.DesktopFirstRunGateway
 import skillbill.desktop.core.domain.service.InstalledWorkspaceBaselineService

@@ -1,4 +1,4 @@
-package skillbill.application.work
+package skillbill.application.model
 
 import java.time.Instant
 
@@ -17,4 +17,9 @@ data class WorkListItem(
   val currentState: String,
   val stateEnteredAt: Instant,
   val stateEnteredAtEstimated: Boolean,
+)
+
+data class WorkListResult(
+  val dbPath: String,
+  val work: List<WorkListItem>,
 )

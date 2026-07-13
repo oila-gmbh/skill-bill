@@ -112,10 +112,9 @@ internal object GoalSubtaskReviewSummaryReducer {
     return if (compact.isBlank() || containsUnsafeReviewMaterial(compact)) "Review finding" else compact
   }
 
-  private fun containsUnsafeReviewMaterial(value: String): Boolean =
-    pathLikeToken.containsMatchIn(value) ||
-      bareFilenameToken.containsMatchIn(value) ||
-      hunk.containsMatchIn(value) ||
-      lineLocation.containsMatchIn(value) ||
-      diffFragment.containsMatchIn(value)
+  private fun containsUnsafeReviewMaterial(value: String): Boolean = pathLikeToken.containsMatchIn(value) ||
+    bareFilenameToken.containsMatchIn(value) ||
+    hunk.containsMatchIn(value) ||
+    lineLocation.containsMatchIn(value) ||
+    diffFragment.containsMatchIn(value)
 }

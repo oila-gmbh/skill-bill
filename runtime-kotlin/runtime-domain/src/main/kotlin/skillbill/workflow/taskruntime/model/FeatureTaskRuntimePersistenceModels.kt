@@ -2,7 +2,7 @@ package skillbill.workflow.taskruntime.model
 
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.error.InvalidWorkflowStateSchemaError
-import skillbill.review.CodeReviewExecutionMode
+import skillbill.workflow.model.CodeReviewExecutionMode
 import java.math.BigDecimal
 import java.math.BigInteger
 
@@ -92,6 +92,7 @@ data class FeatureTaskRuntimeGoalContinuationArtifact(
   }
 
   companion object {
+    @OpenBoundaryMap("Feature-task-runtime goal-continuation decode from the durable workflow-artifact map")
     fun fromArtifactMap(raw: Map<String, Any?>): FeatureTaskRuntimeGoalContinuationArtifact {
       val allowedKeys = setOf(
         "issue_key",
@@ -102,27 +103,35 @@ data class FeatureTaskRuntimeGoalContinuationArtifact(
         "code_review_mode",
         "parallel_review_agent",
       )
-      raw.keys.forEach { key ->
-        if (key !in allowedKeys) {
-          throw InvalidWorkflowStateSchemaError("Goal-continuation artifact field '$key' is not supported.")
-        }
-      }
+      rejectUnknownGoalContinuationKeys(raw, allowedKeys)
       return FeatureTaskRuntimeGoalContinuationArtifact(
         issueKey = raw.requireStringField("issue_key"),
         subtaskId = raw.requireIntField("subtask_id"),
-        suppressPr = raw.optionalBooleanField("suppress_pr")
-          ?: throw InvalidWorkflowStateSchemaError("Goal-continuation artifact field 'suppress_pr' must be a boolean."),
+        suppressPr = raw.requireGoalContinuationSuppressPr(),
         goalBranch = raw.requireStringField("goal_branch"),
         parentWorkflowId = raw.optionalStringField("parent_workflow_id"),
-        codeReviewMode = try {
-          CodeReviewExecutionMode.fromWire(raw.requireStringField("code_review_mode"))
-        } catch (error: IllegalArgumentException) {
-          throw InvalidWorkflowStateSchemaError("Goal-continuation artifact code_review_mode is invalid.", error)
-        },
+        codeReviewMode = raw.requireGoalContinuationCodeReviewMode(),
         parallelReviewAgent = raw.optionalStringField("parallel_review_agent"),
       )
     }
   }
+}
+
+private fun rejectUnknownGoalContinuationKeys(raw: Map<String, Any?>, allowedKeys: Set<String>) {
+  raw.keys.firstOrNull { it !in allowedKeys }?.let { key ->
+    throw InvalidWorkflowStateSchemaError("Goal-continuation artifact field '$key' is not supported.")
+  }
+}
+
+private fun Map<String, Any?>.requireGoalContinuationSuppressPr(): Boolean = optionalBooleanField("suppress_pr")
+  ?: throw InvalidWorkflowStateSchemaError(
+    "Goal-continuation artifact field 'suppress_pr' must be a boolean.",
+  )
+
+private fun Map<String, Any?>.requireGoalContinuationCodeReviewMode(): CodeReviewExecutionMode = try {
+  CodeReviewExecutionMode.fromWire(requireStringField("code_review_mode"))
+} catch (error: IllegalArgumentException) {
+  throw InvalidWorkflowStateSchemaError("Goal-continuation artifact code_review_mode is invalid.", error)
 }
 
 data class FeatureTaskRuntimeGoalContinuationOutcome(

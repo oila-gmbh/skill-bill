@@ -41,8 +41,8 @@ import skillbill.ports.featurespec.FeatureSpecPathResolverPort
 import skillbill.ports.featurespec.model.FeatureSpecPathResolveInput
 import skillbill.ports.featurespec.model.FeatureSpecPathResolveResult
 import skillbill.ports.taskruntime.FeatureTaskRuntimeRunInvariantsSource
-import skillbill.review.CodeReviewExecutionMode
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
+import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import java.nio.file.Path
 import kotlin.time.Duration.Companion.minutes
@@ -140,11 +140,7 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
       "driver's open-with-assigned-id path for a first runtime subtask run (distinct from resume).",
   )
 
-  protected fun resolveRunWorkflowId(
-    workflowService: WorkflowService,
-    state: CliRunState,
-    issueKey: String,
-  ): String =
+  protected fun resolveRunWorkflowId(workflowService: WorkflowService, state: CliRunState, issueKey: String): String =
     explicitWorkflowId?.takeIf(String::isNotBlank) ?: openRuntimeWorkflowId(workflowService, state, issueKey)
 
   // Refuses before a workflow is opened, a branch resolved, or a phase spawned: opencode is
@@ -267,7 +263,9 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
       lastResumableStep = goalLastResumableStep?.takeIf(String::isNotBlank),
       codeReviewMode = requestedReviewMode,
       parallelReviewAgent = parallelReviewAgent?.takeIf(String::isNotBlank),
-      reviewBaseline = requireNotNull(goalReviewBaseSha?.takeIf(String::isNotBlank)) { "--goal-review-base-sha is required with goal-continuation options." }.let { base ->
+      reviewBaseline = requireNotNull(goalReviewBaseSha?.takeIf(String::isNotBlank)) {
+        "--goal-review-base-sha is required with goal-continuation options."
+      }.let { base ->
         GoalSubtaskReviewBaseline(base, goalBaselineUntrackedPaths.distinct().sorted())
       },
     )
@@ -518,7 +516,13 @@ class FeatureTaskRuntimeDeprecatedResumeCommand(
 }
 
 private fun openRuntimeWorkflowId(workflowService: WorkflowService, state: CliRunState, issueKey: String?): String =
-  when (val opened = workflowService.open(WorkflowFamilyKind.TASK_RUNTIME, issueKey = issueKey, dbOverride = state.dbOverride)) {
+  when (
+    val opened = workflowService.open(
+      WorkflowFamilyKind.TASK_RUNTIME,
+      issueKey = issueKey,
+      dbOverride = state.dbOverride,
+    )
+  ) {
     is WorkflowOpenResult.Ok -> opened.workflowId
     is WorkflowOpenResult.Error -> throw UsageError(
       "Could not open a feature-task workflow: ${opened.error}",

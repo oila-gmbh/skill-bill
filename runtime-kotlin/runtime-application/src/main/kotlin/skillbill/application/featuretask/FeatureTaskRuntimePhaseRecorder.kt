@@ -1,22 +1,22 @@
 package skillbill.application.featuretask
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.application.normalizeIssueKey
 import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing
 import skillbill.application.model.FeatureTaskRuntimePhaseLedgerRequest
 import skillbill.application.model.FeatureTaskRuntimePhaseStateRequest
+import skillbill.application.normalizeIssueKey
 import skillbill.application.workflow.WorkflowFamily
+import skillbill.application.workflow.toRecord
 import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidWorkflowStateSchemaError
+import skillbill.error.WorkflowIssueKeyConflictError
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.WorkflowStateRepository
 import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import skillbill.workflow.WorkflowEngine
 import skillbill.workflow.WorkflowSnapshotValidator
 import skillbill.workflow.model.WorkflowStateSnapshot
-import skillbill.application.workflow.toRecord
-import skillbill.error.WorkflowIssueKeyConflictError
 import skillbill.workflow.model.WorkflowUpdateInput
 import skillbill.workflow.model.appendBoundedHistoryBySequence
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
@@ -319,39 +319,38 @@ class FeatureTaskRuntimePhaseRecorder(
     sessionId: String,
     dbOverride: String? = null,
     issueKey: String? = null,
-  ): Boolean =
-    database.transaction(dbOverride) { unitOfWork ->
-      val normalizedIssueKey = normalizeIssueKey(issueKey)
-      val existing = unitOfWork.workflowStates.getFeatureTaskRuntimeWorkflow(workflowId)
-      if (existing != null) {
-        val persistedIssueKey = existing.issueKey
-          ?.trim()
-          ?.takeIf(String::isNotEmpty)
-          ?.let(::normalizeIssueKey)
-        if (
-          persistedIssueKey != null &&
-          normalizedIssueKey != null &&
-          persistedIssueKey != normalizedIssueKey
-        ) {
-          throw WorkflowIssueKeyConflictError(workflowId, persistedIssueKey, normalizedIssueKey)
-        }
-        if (persistedIssueKey == null && normalizedIssueKey != null) {
-          unitOfWork.workflowStates.saveFeatureTaskRuntimeWorkflow(existing.copy(issueKey = normalizedIssueKey))
-        }
-        return@transaction true
+  ): Boolean = database.transaction(dbOverride) { unitOfWork ->
+    val normalizedIssueKey = normalizeIssueKey(issueKey)
+    val existing = unitOfWork.workflowStates.getFeatureTaskRuntimeWorkflow(workflowId)
+    if (existing != null) {
+      val persistedIssueKey = existing.issueKey
+        ?.trim()
+        ?.takeIf(String::isNotEmpty)
+        ?.let(::normalizeIssueKey)
+      if (
+        persistedIssueKey != null &&
+        normalizedIssueKey != null &&
+        persistedIssueKey != normalizedIssueKey
+      ) {
+        throw WorkflowIssueKeyConflictError(workflowId, persistedIssueKey, normalizedIssueKey)
       }
-      val opened = engine.openRecord(
-        WorkflowFamily.TASK_RUNTIME.definition,
-        workflowId,
-        sessionId,
-        WorkflowFamily.TASK_RUNTIME.definition.defaultInitialStepId,
-      )
-      WorkflowFamily.TASK_RUNTIME.saveRecord(
-        unitOfWork.workflowStates,
-        opened.toRecord().copy(issueKey = normalizedIssueKey),
-      )
-      true
+      if (persistedIssueKey == null && normalizedIssueKey != null) {
+        unitOfWork.workflowStates.saveFeatureTaskRuntimeWorkflow(existing.copy(issueKey = normalizedIssueKey))
+      }
+      return@transaction true
     }
+    val opened = engine.openRecord(
+      WorkflowFamily.TASK_RUNTIME.definition,
+      workflowId,
+      sessionId,
+      WorkflowFamily.TASK_RUNTIME.definition.defaultInitialStepId,
+    )
+    WorkflowFamily.TASK_RUNTIME.saveRecord(
+      unitOfWork.workflowStates,
+      opened.toRecord().copy(issueKey = normalizedIssueKey),
+    )
+    true
+  }
 
   private fun persistPatch(
     workflowStates: WorkflowStateRepository,

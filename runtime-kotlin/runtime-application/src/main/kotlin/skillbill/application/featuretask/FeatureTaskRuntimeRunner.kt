@@ -1,8 +1,8 @@
 package skillbill.application.featuretask
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.application.goalrunner.stderrExcerpt
 import skillbill.application.goalrunner.GoalSubtaskReviewSummaryReducer
+import skillbill.application.goalrunner.stderrExcerpt
 import skillbill.application.model.FeatureTaskRuntimeFixLoopDecision
 import skillbill.application.model.FeatureTaskRuntimeGoalContinuationContext
 import skillbill.application.model.FeatureTaskRuntimePhaseStateRequest
@@ -27,9 +27,9 @@ import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.model.GoalSubtaskReviewInput
-import skillbill.review.CodeReviewExecutionMode
 import skillbill.telemetry.estimation.estimateTokens
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
+import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.model.SpecSource
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
@@ -135,9 +135,10 @@ class FeatureTaskRuntimeRunner(
     }
     val selectedReviewMode = when {
       persistedContinuation != null -> persistedContinuation.codeReviewMode
-      request.goalContinuation != null -> request.goalContinuation.codeReviewMode
-        ?: request.requestedCodeReviewMode
-        ?: request.runInvariants.codeReviewMode
+      request.goalContinuation != null ->
+        request.goalContinuation.codeReviewMode
+          ?: request.requestedCodeReviewMode
+          ?: request.runInvariants.codeReviewMode
       else -> request.requestedCodeReviewMode ?: CodeReviewExecutionMode.AUTO
     }
     if (persistedContinuation != null) {
@@ -469,7 +470,8 @@ class FeatureTaskRuntimeRunner(
       val reviewState = runCatching {
         goalContinuationRecorder.reviewState(request.workflowId, request.dbPathOverride)
       }.getOrElse { error ->
-        return "Goal-subtask review state is malformed while reconciling a completed review pass: ${error.message.orEmpty()}"
+        return "Goal-subtask review state is malformed while reconciling a completed review pass: " +
+          error.message.orEmpty()
       } ?: return "Goal-subtask review state is missing while reconciling a completed review pass."
       if (reviewState.reservedPassNumber == null) {
         return null
@@ -504,7 +506,8 @@ class FeatureTaskRuntimeRunner(
       }.getOrElse { error ->
         blockAt(
           FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
-          "Goal-subtask review pass budget is exhausted but its durable raw review result is malformed: ${error.message.orEmpty()}",
+          "Goal-subtask review pass budget is exhausted but its durable raw review result is malformed: " +
+            error.message.orEmpty(),
         )
         return PhaseSettlement.stop()
       } ?: return null
@@ -514,7 +517,8 @@ class FeatureTaskRuntimeRunner(
       }.getOrElse { error ->
         blockAt(
           FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
-          "Goal-subtask review pass budget is exhausted but its durable raw review result is malformed: ${error.message.orEmpty()}",
+          "Goal-subtask review pass budget is exhausted but its durable raw review result is malformed: " +
+            error.message.orEmpty(),
         )
         return PhaseSettlement.stop()
       } ?: run {
@@ -525,11 +529,15 @@ class FeatureTaskRuntimeRunner(
         return PhaseSettlement.stop()
       }
       runCatching {
-        outputValidator.validateAndReadPhaseOutput(rawResult, sourceLabel = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW)
+        outputValidator.validateAndReadPhaseOutput(
+          rawResult,
+          sourceLabel = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
+        )
       }.getOrElse { error ->
         blockAt(
           FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
-          "Goal-subtask review pass budget is exhausted but its durable raw review result is malformed: ${error.message.orEmpty()}",
+          "Goal-subtask review pass budget is exhausted but its durable raw review result is malformed: " +
+            error.message.orEmpty(),
         )
         return PhaseSettlement.stop()
       }
@@ -1001,7 +1009,7 @@ class FeatureTaskRuntimeRunner(
     // which resumes at the next durable attempt and still enforces the bounded budget.
     preLaunchBlock(run, state, observability)?.let { return it }
     return when (val prepared = prepareGoalReviewRun(run, observability)) {
-      is GoalReviewRunPreparation.Ready -> runPhaseAttempts(prepared.run, state, observability, phaseTokenAccumulator)
+      is GoalReviewRunReady -> runPhaseAttempts(prepared.run, state, observability, phaseTokenAccumulator)
       GoalReviewRunPreparation.CarryForward -> settleCarriedForwardGoalReview(
         run = run,
         state = state,
@@ -1018,7 +1026,7 @@ class FeatureTaskRuntimeRunner(
     observability: FeatureTaskRuntimeRunObservability,
   ): GoalReviewRunPreparation {
     if (run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW || !isGoalContinuationRun(run.request)) {
-      return GoalReviewRunPreparation.Ready(run)
+      return GoalReviewRunReady(run)
     }
     val reservation = runCatching {
       goalContinuationRecorder.reserveGoalReviewPass(run.request.workflowId, run.request.dbPathOverride)
@@ -1036,14 +1044,15 @@ class FeatureTaskRuntimeRunner(
         blockAndPersist(
           run,
           1,
-          "Goal-subtask review state is missing; review_base_sha must be captured before implementation and cannot be substituted.",
+          "Goal-subtask review state is missing; review_base_sha must be captured before implementation " +
+            "and cannot be substituted.",
           observability,
         )
         return GoalReviewRunPreparation.Blocked
       }
-      is GoalSubtaskReviewPassReservation.InFlight -> {}
-      is GoalSubtaskReviewPassReservation.CarryForward -> return GoalReviewRunPreparation.CarryForward
-      is GoalSubtaskReviewPassReservation.Reserved -> Unit
+      is GoalSubtaskReviewPassInFlight -> {}
+      is GoalSubtaskReviewPassCarryForward -> return GoalReviewRunPreparation.CarryForward
+      is GoalSubtaskReviewPassReserved -> Unit
     }
     val prepared = runCatching {
       goalContinuationRecorder.buildGoalReviewInput(
@@ -1066,11 +1075,12 @@ class FeatureTaskRuntimeRunner(
         blockAndPersist(run, 1, "Goal-subtask review state disappeared before review launch.", observability)
         GoalReviewRunPreparation.Blocked
       }
-      is GoalSubtaskReviewInputPreparation.Blocked -> {
+      is GoalSubtaskReviewInputBlocked -> {
         blockAndPersist(run, 1, prepared.reason, observability)
         GoalReviewRunPreparation.Blocked
       }
-      is GoalSubtaskReviewInputPreparation.Ready -> GoalReviewRunPreparation.Ready(run.copy(goalReviewInput = prepared.input))
+      is GoalSubtaskReviewInputReady ->
+        GoalReviewRunReady(run.copy(goalReviewInput = prepared.input))
     }
   }
 
@@ -1306,7 +1316,10 @@ class FeatureTaskRuntimeRunner(
       } ?: auditVerificationSignalGateReason(run.phaseId, outputMap)?.let { reason ->
         schemaInvalidAttempt(run, iteration, reason, observability)
       } ?: run {
-        if (run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW && isGoalContinuationRun(run.request)) {
+        if (
+          run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW &&
+          isGoalContinuationRun(run.request)
+        ) {
           val findings = GoalSubtaskReviewSummaryReducer.fromOutput(outputMap)
           val outcome = GoalSubtaskReviewSummaryReducer.outcomeFor(outputMap, findings)
           val completed = runCatching {
@@ -1329,7 +1342,8 @@ class FeatureTaskRuntimeRunner(
               blockAndPersistInPhase(
                 run,
                 iteration,
-                "Goal-subtask review could not atomically persist its pass and completed phase: ${error.message.orEmpty()}",
+                "Goal-subtask review could not atomically persist its pass and completed phase: " +
+                  error.message.orEmpty(),
                 observability,
               ),
             )
@@ -1369,7 +1383,8 @@ class FeatureTaskRuntimeRunner(
       blockAndPersistInPhase(
         run,
         iteration,
-        "Goal-subtask review output failed schema validation after its reserved pass; refusing an unaccounted relaunch. $reason",
+        "Goal-subtask review output failed schema validation after its reserved pass; " +
+          "refusing an unaccounted relaunch. $reason",
         observability,
       ),
     )
@@ -1541,10 +1556,11 @@ class FeatureTaskRuntimeRunner(
   }
 
   private sealed interface GoalReviewRunPreparation {
-    data class Ready(val run: PhaseRun) : GoalReviewRunPreparation
     data object CarryForward : GoalReviewRunPreparation
     data object Blocked : GoalReviewRunPreparation
   }
+
+  private data class GoalReviewRunReady(val run: PhaseRun) : GoalReviewRunPreparation
 
   // `completed` is derived from record status while `outputs` carries only records with a
   // validated artifact, so a complete-but-output-less upstream is absent from the handoff and

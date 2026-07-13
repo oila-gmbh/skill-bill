@@ -758,7 +758,8 @@ class GoalTelemetryStoreTest {
 
   private fun goalIssueState(connection: Connection, parentWorkflowId: String): GoalIssueState =
     connection.prepareStatement(
-      "SELECT status, state_entered_at, state_entered_at_estimated FROM goal_issue_progress WHERE parent_workflow_id = ?",
+      "SELECT status, state_entered_at, state_entered_at_estimated " +
+        "FROM goal_issue_progress WHERE parent_workflow_id = ?",
     ).use { statement ->
       statement.setString(1, parentWorkflowId)
       statement.executeQuery().use { resultSet ->

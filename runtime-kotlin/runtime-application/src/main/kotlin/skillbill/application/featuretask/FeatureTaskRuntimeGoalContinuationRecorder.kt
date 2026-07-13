@@ -5,6 +5,9 @@ import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.workflow.WorkflowFamily
 import skillbill.error.InvalidGoalSubtaskReviewStateSchemaError
 import skillbill.ports.persistence.DatabaseSessionFactory
+import skillbill.ports.workflow.WorkflowGitOperations
+import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
+import skillbill.ports.workflow.model.GoalSubtaskReviewInput
 import skillbill.workflow.WorkflowEngine
 import skillbill.workflow.WorkflowSnapshotValidator
 import skillbill.workflow.model.WorkflowUpdateInput
@@ -12,16 +15,13 @@ import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATI
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_OUTCOME_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationOutcome
-import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
-import skillbill.workflow.taskruntime.model.GoalSubtaskReviewArtifactDecoder
-import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_INPUT_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
-import skillbill.ports.workflow.WorkflowGitOperations
-import skillbill.ports.workflow.model.GoalSubtaskReviewInput
-import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
+import skillbill.workflow.taskruntime.model.GoalSubtaskReviewArtifactDecoder
+import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
+import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
 
 @Inject
 class FeatureTaskRuntimeGoalContinuationRecorder(
@@ -44,7 +44,8 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
     val existingContinuation = continuationFromArtifacts(artifacts)
     if (existingContinuation != null && continuation != null && existingContinuation != continuation) {
       throw IllegalStateException(
-        "Goal continuation is immutable for workflow '$workflowId'; parent, subtask, branch, and review mode cannot change on resume.",
+        "Goal continuation is immutable for workflow '$workflowId'; " +
+          "parent, subtask, branch, and review mode cannot change on resume.",
       )
     }
     val continuationPatch = if (continuation != null && existingContinuation == null) {
@@ -63,17 +64,21 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
       val baseline = reviewBaseline
       when {
         state != null && baseline != null &&
-          (state.reviewBaseSha != baseline.reviewBaseSha ||
-            state.baselineUntrackedPaths != baseline.baselineUntrackedPaths.distinct().sorted() ||
-            state.codeReviewMode != context.codeReviewMode) ->
+          (
+            state.reviewBaseSha != baseline.reviewBaseSha ||
+              state.baselineUntrackedPaths != baseline.baselineUntrackedPaths.distinct().sorted() ||
+              state.codeReviewMode != context.codeReviewMode
+            ) ->
           throw IllegalStateException("Goal-subtask review baseline and execution mode are immutable on resume.")
         state == null && existingContinuation != null ->
           throw IllegalStateException(
-            "Goal-subtask review state is missing for an existing child workflow; refusing to capture a replacement baseline.",
+            "Goal-subtask review state is missing for an existing child workflow; " +
+              "refusing to capture a replacement baseline.",
           )
         state == null && baseline == null ->
           throw IllegalStateException(
-            "Goal-subtask review baseline is required when opening a child workflow; refusing to create an unpinned review scope.",
+            "Goal-subtask review baseline is required when opening a child workflow; " +
+              "refusing to create an unpinned review scope.",
           )
         state == null && GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY in artifacts ->
           rawReviewResultError(
@@ -114,33 +119,37 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
       reviewStateFromArtifacts(decodeArtifacts(record.artifactsJson))
     }
 
-  fun continuation(
+  fun continuation(workflowId: String, dbOverride: String? = null): FeatureTaskRuntimeGoalContinuationArtifact? =
+    database.read(dbOverride) { unitOfWork ->
+      val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@read null
+      continuationFromArtifacts(decodeArtifacts(record.artifactsJson))
+    }
+
+  internal fun reserveGoalReviewPass(
     workflowId: String,
     dbOverride: String? = null,
-  ): FeatureTaskRuntimeGoalContinuationArtifact? = database.read(dbOverride) { unitOfWork ->
-    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@read null
-    continuationFromArtifacts(decodeArtifacts(record.artifactsJson))
-  }
-
-  fun reserveGoalReviewPass(workflowId: String, dbOverride: String? = null): GoalSubtaskReviewPassReservation =
-    database.transaction(dbOverride) { unitOfWork ->
-      val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
-        ?: return@transaction GoalSubtaskReviewPassReservation.MissingState
-      val artifacts = decodeArtifacts(record.artifactsJson)
-      val state = reviewStateFromArtifacts(artifacts)
-        ?: return@transaction GoalSubtaskReviewPassReservation.MissingState
-      if (state.reviewCapReached || state.completedPassCount >= 2) {
-        return@transaction GoalSubtaskReviewPassReservation.CarryForward(state)
-      }
-      if (state.reservedPassNumber != null) {
-        return@transaction GoalSubtaskReviewPassReservation.InFlight(state)
-      }
-      val reserved = state.reserveNextPass()
-      if (reserved != state) {
-        savePatch(record, unitOfWork.workflowStates, mapOf(GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY to reserved.toArtifactMap()))
-      }
-      GoalSubtaskReviewPassReservation.Reserved(reserved)
+  ): GoalSubtaskReviewPassReservation = database.transaction(dbOverride) { unitOfWork ->
+    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
+      ?: return@transaction GoalSubtaskReviewPassReservation.MissingState
+    val artifacts = decodeArtifacts(record.artifactsJson)
+    val state = reviewStateFromArtifacts(artifacts)
+      ?: return@transaction GoalSubtaskReviewPassReservation.MissingState
+    if (state.reviewCapReached || state.completedPassCount >= 2) {
+      return@transaction GoalSubtaskReviewPassCarryForward(state)
     }
+    if (state.reservedPassNumber != null) {
+      return@transaction GoalSubtaskReviewPassInFlight(state)
+    }
+    val reserved = state.reserveNextPass()
+    if (reserved != state) {
+      savePatch(
+        record,
+        unitOfWork.workflowStates,
+        mapOf(GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY to reserved.toArtifactMap()),
+      )
+    }
+    GoalSubtaskReviewPassReserved(reserved)
+  }
 
   fun persistGoalReviewInput(
     workflowId: String,
@@ -193,7 +202,7 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
     completed
   }
 
-  fun buildGoalReviewInput(
+  internal fun buildGoalReviewInput(
     workflowId: String,
     gitOperations: WorkflowGitOperations,
     repoRoot: java.nio.file.Path,
@@ -214,10 +223,10 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
       GoalSubtaskReviewBaseline(state.reviewBaseSha, state.baselineUntrackedPaths),
       continuation.goalBranch,
     )
-    if (!result.ok) return GoalSubtaskReviewInputPreparation.Blocked(result.error)
+    if (!result.ok) return GoalSubtaskReviewInputBlocked(result.error)
     val persisted = persistGoalReviewInput(workflowId, requireNotNull(result.input), dbOverride)
       ?: return GoalSubtaskReviewInputPreparation.MissingState
-    return GoalSubtaskReviewInputPreparation.Ready(persisted, requireNotNull(result.input))
+    return GoalSubtaskReviewInputReady(persisted, requireNotNull(result.input))
   }
 
   fun lastGoalReviewResult(workflowId: String, dbOverride: String? = null): String? =
@@ -250,22 +259,28 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
   }
 }
 
-sealed interface GoalSubtaskReviewPassReservation {
+internal sealed interface GoalSubtaskReviewPassReservation {
   data object MissingState : GoalSubtaskReviewPassReservation
-  data class Reserved(val state: GoalSubtaskReviewState) : GoalSubtaskReviewPassReservation
-  data class InFlight(val state: GoalSubtaskReviewState) : GoalSubtaskReviewPassReservation
-  data class CarryForward(val state: GoalSubtaskReviewState) : GoalSubtaskReviewPassReservation
 }
 
-sealed interface GoalSubtaskReviewInputPreparation {
+internal data class GoalSubtaskReviewPassReserved(val state: GoalSubtaskReviewState) : GoalSubtaskReviewPassReservation
+internal data class GoalSubtaskReviewPassInFlight(val state: GoalSubtaskReviewState) : GoalSubtaskReviewPassReservation
+internal data class GoalSubtaskReviewPassCarryForward(
+  val state: GoalSubtaskReviewState,
+) : GoalSubtaskReviewPassReservation
+
+internal sealed interface GoalSubtaskReviewInputPreparation {
   data object MissingState : GoalSubtaskReviewInputPreparation
-  data class Blocked(val reason: String) : GoalSubtaskReviewInputPreparation
-  data class Ready(val state: GoalSubtaskReviewState, val input: GoalSubtaskReviewInput) : GoalSubtaskReviewInputPreparation
 }
 
-private fun continuationFromArtifacts(
-  artifacts: Map<String, Any?>,
-): FeatureTaskRuntimeGoalContinuationArtifact? = GoalSubtaskReviewArtifactDecoder.decode(artifacts)?.continuation
+internal data class GoalSubtaskReviewInputBlocked(val reason: String) : GoalSubtaskReviewInputPreparation
+internal data class GoalSubtaskReviewInputReady(
+  val state: GoalSubtaskReviewState,
+  val input: GoalSubtaskReviewInput,
+) : GoalSubtaskReviewInputPreparation
+
+private fun continuationFromArtifacts(artifacts: Map<String, Any?>): FeatureTaskRuntimeGoalContinuationArtifact? =
+  GoalSubtaskReviewArtifactDecoder.decode(artifacts)?.continuation
 
 private fun reviewStateFromArtifacts(artifacts: Map<String, Any?>): GoalSubtaskReviewState? =
   GoalSubtaskReviewArtifactDecoder.decode(artifacts)?.state

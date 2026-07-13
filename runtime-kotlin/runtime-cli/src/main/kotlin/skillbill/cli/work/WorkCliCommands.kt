@@ -1,19 +1,18 @@
 package skillbill.cli.work
 
-import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.core.subcommands
 import com.github.ajalt.clikt.parameters.options.default
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.options.validate
 import com.github.ajalt.clikt.parameters.types.int
 import me.tatarka.inject.annotations.Inject
-import skillbill.application.work.WorkListResult
+import skillbill.application.model.WorkListItem
+import skillbill.application.model.WorkListResult
 import skillbill.application.work.WorkListService
 import skillbill.cli.core.CliRunState
 import skillbill.cli.core.DocumentedCliCommand
 import skillbill.cli.core.DocumentedNoOpCliCommand
 import skillbill.cli.model.CliFormat
-import skillbill.application.work.WorkListItem
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 

@@ -18,6 +18,7 @@ import skillbill.desktop.core.domain.model.SkillBillState
 import skillbill.desktop.core.domain.model.ValidateAgentConfigsSummary
 import skillbill.desktop.core.domain.service.AuthoringGateway
 import skillbill.desktop.core.domain.service.DesktopFirstRunGateway
+import skillbill.desktop.core.domain.service.EmptyWorkListGateway
 import skillbill.desktop.core.domain.service.InstalledWorkspaceLocator
 import skillbill.desktop.core.domain.service.RecentRepoRepository
 import skillbill.desktop.core.domain.service.RepoSessionService
@@ -25,7 +26,6 @@ import skillbill.desktop.core.domain.service.RuntimeScaffoldGateway
 import skillbill.desktop.core.domain.service.RuntimeSkillRemoveGateway
 import skillbill.desktop.core.domain.service.SkillTreeService
 import skillbill.desktop.core.domain.service.WorkListGateway
-import skillbill.desktop.core.domain.service.EmptyWorkListGateway
 import software.amazon.lastmile.kotlin.inject.anvil.SingleIn
 
 @Inject

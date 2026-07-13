@@ -2,11 +2,11 @@ package skillbill.infrastructure.fs
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.ports.workflow.WorkflowGitOperations
-import skillbill.ports.workflow.model.WorkflowGitOperationResult
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaselineResult
 import skillbill.ports.workflow.model.GoalSubtaskReviewInput
 import skillbill.ports.workflow.model.GoalSubtaskReviewInputResult
+import skillbill.ports.workflow.model.WorkflowGitOperationResult
 import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksRequest
 import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksResult
 import skillbill.ports.workflow.model.WorkflowWorktreeActivityResult
@@ -158,7 +158,9 @@ class GitWorkflowGitOperations : WorkflowGitOperations {
     if (before.snapshot != after.snapshot) {
       return GoalSubtaskReviewBaselineResult(
         status = "error",
-        error = "Goal-subtask branch, HEAD, index, tracked worktree, or untracked inventory changed while capturing its immutable review baseline; refusing to persist it.",
+        error =
+        "Goal-subtask repository state changed while capturing its immutable review baseline; " +
+          "refusing to persist it.",
       )
     }
     val snapshot = requireNotNull(before.snapshot)
@@ -187,7 +189,7 @@ class GitWorkflowGitOperations : WorkflowGitOperations {
     if (before.snapshot != after.snapshot) {
       return GoalSubtaskReviewInputResult(
         status = "error",
-        error = "Goal-subtask review input was torn by a concurrent branch, HEAD, index, tracked worktree, untracked inventory, or owned-untracked content mutation.",
+        error = "Goal-subtask repository state changed while building its review input; refusing a torn snapshot.",
       )
     }
     val snapshot = requireNotNull(before.snapshot)
@@ -229,16 +231,20 @@ private data class GoalReviewSnapshotResult<T>(
   val ok: Boolean get() = snapshot != null && error.isBlank()
 }
 
-private fun baselineSnapshot(repoRoot: Path, expectedBranch: String): GoalReviewSnapshotResult<GoalReviewBaselineSnapshot> {
+private fun baselineSnapshot(
+  repoRoot: Path,
+  expectedBranch: String,
+): GoalReviewSnapshotResult<GoalReviewBaselineSnapshot> {
   val branch = currentGoalReviewBranch(repoRoot, expectedBranch) ?: return GoalReviewSnapshotResult(
     error = "Goal-subtask review baseline must be captured on durable child branch '$expectedBranch'.",
   )
   trackedWorktreeClean(repoRoot)?.let { error -> return GoalReviewSnapshotResult(error = error) }
   val head = gitValue(repoRoot, "rev-parse", "HEAD")?.trim()?.takeIf(String::isNotBlank)
     ?: return GoalReviewSnapshotResult(error = "Could not resolve HEAD.")
-  val indexTree = gitValue(repoRoot, "write-tree")?.trim()?.takeIf(String::isNotBlank) ?: return GoalReviewSnapshotResult(
-    error = "Could not resolve the git index while capturing the immutable review baseline.",
-  )
+  val indexTree = gitValue(repoRoot, "write-tree")?.trim()?.takeIf(String::isNotBlank)
+    ?: return GoalReviewSnapshotResult(
+      error = "Could not resolve the git index while capturing the immutable review baseline.",
+    )
   val tracked = gitValue(repoRoot, "diff", "--binary", "HEAD") ?: return GoalReviewSnapshotResult(
     error = "Could not read tracked worktree state while capturing the immutable review baseline.",
   )
@@ -269,12 +275,15 @@ private fun reviewInputSnapshot(
   val ancestor = runGitCommand(repoRoot, "merge-base", "--is-ancestor", baseline.reviewBaseSha, head)
   if (!ancestor.ok) {
     return GoalReviewSnapshotResult(
-      error = "Persisted review base '${baseline.reviewBaseSha}' is not an ancestor of current HEAD; refusing a broader review scope.",
+      error =
+      "Persisted review base '${baseline.reviewBaseSha}' is not an ancestor of current HEAD; " +
+        "refusing a broader review scope.",
     )
   }
-  val indexTree = gitValue(repoRoot, "write-tree")?.trim()?.takeIf(String::isNotBlank) ?: return GoalReviewSnapshotResult(
-    error = "Could not resolve the git index while materializing the exact review input.",
-  )
+  val indexTree = gitValue(repoRoot, "write-tree")?.trim()?.takeIf(String::isNotBlank)
+    ?: return GoalReviewSnapshotResult(
+      error = "Could not resolve the git index while materializing the exact review input.",
+    )
   val trackedDelta = gitValue(repoRoot, "diff", "--binary", baseline.reviewBaseSha) ?: return GoalReviewSnapshotResult(
     error = "Could not materialize tracked changes from the immutable review base.",
   )
@@ -304,7 +313,8 @@ private fun ownedUntrackedPatches(repoRoot: Path, paths: List<String>): GoalRevi
   paths.forEach { path ->
     val patch = runGitProcess(repoRoot, listOf("diff", "--binary", "--no-index", "/dev/null", path))
     if (patch.timedOut || patch.readFailure != null || patch.exitCode !in setOf(0, 1)) {
-      return GoalReviewStringResult(error = patch.readFailure?.message ?: "Could not diff owned untracked path '$path'.")
+      val error = patch.readFailure?.message ?: "Could not diff owned untracked path '$path'."
+      return GoalReviewStringResult(error = error)
     }
     patches.append(patch.output)
     if (!patches.endsWith("\n")) patches.append('\n')
@@ -342,7 +352,8 @@ private fun trackedWorktreeClean(repoRoot: Path): String? {
     return unstaged.readFailure?.message ?: "Could not inspect unstaged tracked changes before review baseline capture."
   }
   if (unstaged.exitCode == 1) {
-    return "Goal-subtask review baseline capture requires a clean tracked worktree; unstaged tracked changes are present."
+    return "Goal-subtask review baseline capture requires a clean tracked worktree; " +
+      "unstaged tracked changes are present."
   }
   val staged = runGitProcess(repoRoot, listOf("diff", "--cached", "--quiet"))
   if (staged.timedOut || staged.readFailure != null || staged.exitCode !in setOf(0, 1)) {

@@ -1,7 +1,7 @@
 package skillbill.application
 
 import skillbill.application.model.FeatureTaskRuntimeRunReport
-import skillbill.review.CodeReviewExecutionMode
+import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import kotlin.test.Test
 import kotlin.test.assertContains

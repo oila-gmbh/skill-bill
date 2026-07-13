@@ -1,7 +1,6 @@
 package skillbill.application.workflow
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.application.normalizeIssueKey
 import skillbill.application.decomposition.DECOMPOSITION_RUNTIME_ARTIFACT_KEY
 import skillbill.application.decomposition.DecompositionManifestWriter
 import skillbill.application.decomposition.encodeDecompositionManifestMap
@@ -16,6 +15,7 @@ import skillbill.application.model.WorkflowOpenResult
 import skillbill.application.model.WorkflowResumeResult
 import skillbill.application.model.WorkflowUpdateRequest
 import skillbill.application.model.WorkflowUpdateResult
+import skillbill.application.normalizeIssueKey
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.JsonSupport
 import skillbill.ports.persistence.DatabaseSessionFactory
@@ -452,19 +452,17 @@ internal enum class WorkflowFamily(
     TASK_RUNTIME -> repository.getFeatureTaskWorkflowAsMode(workflowId, FeatureTaskWorkflowMode.RUNTIME)
   }?.toSnapshot()
 
-  fun getAll(
-    repository: WorkflowStateRepository,
-    workflowIds: Set<String>,
-  ): Map<String, WorkflowStateSnapshot> = buildMap {
-    workflowIds.chunked(WORKFLOW_SNAPSHOT_BATCH_SIZE).forEach { batch ->
-      val records = when (this@WorkflowFamily) {
-        IMPLEMENT -> repository.getFeatureImplementWorkflows(batch.toSet())
-        VERIFY -> repository.getFeatureVerifyWorkflows(batch.toSet())
-        TASK_RUNTIME -> repository.getFeatureTaskRuntimeWorkflows(batch.toSet())
+  fun getAll(repository: WorkflowStateRepository, workflowIds: Set<String>): Map<String, WorkflowStateSnapshot> =
+    buildMap {
+      workflowIds.chunked(WORKFLOW_SNAPSHOT_BATCH_SIZE).forEach { batch ->
+        val records = when (this@WorkflowFamily) {
+          IMPLEMENT -> repository.getFeatureImplementWorkflows(batch.toSet())
+          VERIFY -> repository.getFeatureVerifyWorkflows(batch.toSet())
+          TASK_RUNTIME -> repository.getFeatureTaskRuntimeWorkflows(batch.toSet())
+        }
+        records.forEach { (workflowId, record) -> put(workflowId, record.toSnapshot()) }
       }
-      records.forEach { (workflowId, record) -> put(workflowId, record.toSnapshot()) }
     }
-  }
 
   fun list(repository: WorkflowStateRepository, limit: Int): List<WorkflowStateSnapshot> = when (this) {
     IMPLEMENT -> repository.listFeatureTaskWorkflows(FeatureTaskWorkflowMode.PROSE, limit)

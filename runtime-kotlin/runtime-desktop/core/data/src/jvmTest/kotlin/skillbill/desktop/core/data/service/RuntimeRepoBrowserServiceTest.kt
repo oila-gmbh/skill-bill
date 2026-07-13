@@ -177,9 +177,11 @@ class RuntimeRepoBrowserServiceTest {
     assertEquals("skill-bill config", document.kind)
     assertEquals("{\n  \"external_addon_sources\": []\n}\n", document.text)
     assertFalse(Files.exists(configPath))
-    assertTrue(tree.single { it.kind == TreeItemKind.GROUP && it.label == "Add-ons" }.children.none {
-      it.kind == TreeItemKind.CONFIG
-    })
+    assertTrue(
+      tree.single { it.kind == TreeItemKind.GROUP && it.label == "Add-ons" }.children.none {
+        it.kind == TreeItemKind.CONFIG
+      },
+    )
   }
 
   @Test

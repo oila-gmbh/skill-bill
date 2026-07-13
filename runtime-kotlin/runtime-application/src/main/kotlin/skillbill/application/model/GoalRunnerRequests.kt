@@ -1,11 +1,11 @@
 package skillbill.application.model
 
 import skillbill.ports.agentrun.model.AgentRunOutputSink
-import skillbill.review.CodeReviewExecutionMode
-import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
 import skillbill.ports.workflow.model.DEFAULT_SELECTED_DIFF_MAX_BYTES
 import skillbill.ports.workflow.model.DEFAULT_SELECTED_DIFF_MAX_HUNKS
 import skillbill.ports.workflow.model.DEFAULT_SELECTED_DIFF_MAX_LINES
+import skillbill.workflow.model.CodeReviewExecutionMode
+import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
 import java.nio.file.Path
 import kotlin.time.Duration
 

@@ -56,19 +56,19 @@ import skillbill.ports.telemetry.TelemetrySettingsProvider
 import skillbill.ports.workflow.NoopWorkflowGitOperations
 import skillbill.ports.workflow.SpecScratchStore
 import skillbill.ports.workflow.WorkflowGitOperations
-import skillbill.ports.workflow.model.WorkflowGitOperationResult
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.model.GoalSubtaskReviewInput
 import skillbill.ports.workflow.model.GoalSubtaskReviewInputResult
+import skillbill.ports.workflow.model.WorkflowGitOperationResult
 import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksRequest
 import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksResult
 import skillbill.ports.workflow.model.WorkflowWorktreeActivityResult
-import skillbill.review.CodeReviewExecutionMode
 import skillbill.telemetry.model.FeatureTaskRuntimeFinishedRecord
 import skillbill.telemetry.model.FeatureTaskRuntimeStartedRecord
 import skillbill.telemetry.model.TelemetrySettings
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.WorkflowSnapshotValidator
+import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.model.GoalObservabilityChangedFileSummary
 import skillbill.workflow.model.GoalObservabilityDiffStat
 import skillbill.workflow.model.GoalObservabilitySelectedDiffHunks
@@ -1340,6 +1340,7 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
 
     @Suppress("UNCHECKED_CAST")
     val state = harness.repository.taskRuntimeArtifacts(WORKFLOW_ID)["goal_subtask_review_state"] as Map<String, Any?>
+
     @Suppress("UNCHECKED_CAST")
     val firstPass = (state["pass_results"] as List<Map<String, Any?>>).first()
     assertEquals("changes_requested", firstPass["verdict"])

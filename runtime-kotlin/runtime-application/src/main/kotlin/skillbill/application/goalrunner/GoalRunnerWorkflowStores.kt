@@ -16,8 +16,8 @@ import skillbill.application.workflow.isActiveGoalRuntime
 import skillbill.application.workflow.repoRoot
 import skillbill.application.workflow.toSnapshot
 import skillbill.contracts.JsonSupport
-import skillbill.error.InvalidGoalSubtaskReviewStateSchemaError
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
+import skillbill.error.InvalidGoalSubtaskReviewStateSchemaError
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.goalrunner.model.GOAL_ATTEMPT_LEDGER_ARTIFACT_KEY
 import skillbill.goalrunner.model.GOAL_ATTEMPT_LEDGER_LIMIT
@@ -29,17 +29,17 @@ import skillbill.goalrunner.model.GoalRunnerTerminalStatus
 import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequest
 import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequestOutcome
 import skillbill.ports.goalrunner.GoalRunnerManifestStore
-import skillbill.ports.goalrunner.GoalRunnerChildWorkflowSetup
-import skillbill.ports.goalrunner.GoalRunnerReviewPolicy
 import skillbill.ports.goalrunner.GoalRunnerWorkflowOutcomeStore
 import skillbill.ports.goalrunner.model.GoalObservabilityProgressEvent
 import skillbill.ports.goalrunner.model.GoalRunnerAttemptLedgerRecordRequest
+import skillbill.ports.goalrunner.model.GoalRunnerChildWorkflowSetup
 import skillbill.ports.goalrunner.model.GoalRunnerLedgerSequenceWatermarks
 import skillbill.ports.goalrunner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.model.GoalRunnerObservabilityRecordRequest
 import skillbill.ports.goalrunner.model.GoalRunnerProgressEvent
 import skillbill.ports.goalrunner.model.GoalRunnerProgressEventRecordRequest
 import skillbill.ports.goalrunner.model.GoalRunnerReconcileGate
+import skillbill.ports.goalrunner.model.GoalRunnerReviewPolicy
 import skillbill.ports.goalrunner.model.GoalRunnerSessionAccountingRecordRequest
 import skillbill.ports.goalrunner.model.GoalRunnerWorkflowProgress
 import skillbill.ports.persistence.DatabaseSessionFactory
@@ -50,13 +50,13 @@ import skillbill.ports.workflow.NoopWorkflowGitOperations
 import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.ports.workflow.model.WorkflowGitOperationResult
 import skillbill.workflow.DecompositionManifestValidator
+import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.GoalObservabilityEventValidator
 import skillbill.workflow.GoalProgressEventValidator
 import skillbill.workflow.NoopGoalObservabilityEventValidator
 import skillbill.workflow.NoopGoalProgressEventValidator
 import skillbill.workflow.WorkflowEngine
 import skillbill.workflow.WorkflowSnapshotValidator
-import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.model.DecompositionManifest
 import skillbill.workflow.model.GOAL_PROGRESS_HISTORY_LIMIT
 import skillbill.workflow.model.GOAL_PROGRESS_LATEST_EVENT_ARTIFACT_KEY
@@ -69,14 +69,14 @@ import skillbill.workflow.model.WorkflowStepState
 import skillbill.workflow.model.WorkflowUpdateInput
 import skillbill.workflow.model.appendBoundedHistoryBySequence
 import skillbill.workflow.model.goalObservabilityLatestEventFromArtifacts
-import skillbill.workflow.taskruntime.model.GoalSubtaskReviewPassResult
-import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
-import skillbill.workflow.taskruntime.model.GoalSubtaskReviewArtifactDecoder
-import skillbill.workflow.taskruntime.model.GoalSubtaskReviewArtifacts
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
-import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.GoalSubtaskReviewArtifactDecoder
+import skillbill.workflow.taskruntime.model.GoalSubtaskReviewArtifacts
+import skillbill.workflow.taskruntime.model.GoalSubtaskReviewPassResult
+import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
 import java.nio.file.Path
 import java.time.Duration
 import java.time.Instant
@@ -204,7 +204,9 @@ class WorkflowGoalRunnerManifestStore(
         ),
       )
       WorkflowFamily.TASK_RUNTIME.save(unitOfWork.workflowStates, childUpdated)
-      val refreshedParent = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, parentUpdated.workflowId) ?: parentUpdated
+      val refreshedParent =
+        WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, parentUpdated.workflowId)
+          ?: parentUpdated
       projectionArtifactsJson = refreshedParent.artifactsJson
       GoalRunnerManifestState(
         parentWorkflowId = refreshedParent.workflowId,
@@ -221,17 +223,19 @@ class WorkflowGoalRunnerManifestStore(
     return saved
   }
 
-  override fun reviewMode(parentWorkflowId: String, dbPathOverride: String?): skillbill.review.CodeReviewExecutionMode? =
-    database.read(dbPathOverride) { unitOfWork ->
-      val record = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, parentWorkflowId) ?: return@read null
-      reviewModeFromArtifacts(decodeArtifacts(record.artifactsJson))
-    }
+  override fun reviewMode(
+    parentWorkflowId: String,
+    dbPathOverride: String?,
+  ): skillbill.workflow.model.CodeReviewExecutionMode? = database.read(dbPathOverride) { unitOfWork ->
+    val record = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, parentWorkflowId) ?: return@read null
+    reviewModeFromArtifacts(decodeArtifacts(record.artifactsJson))
+  }
 
   override fun persistReviewMode(
     parentWorkflowId: String,
-    mode: skillbill.review.CodeReviewExecutionMode,
+    mode: skillbill.workflow.model.CodeReviewExecutionMode,
     dbPathOverride: String?,
-  ): skillbill.review.CodeReviewExecutionMode = database.transaction(dbPathOverride) { unitOfWork ->
+  ): skillbill.workflow.model.CodeReviewExecutionMode = database.transaction(dbPathOverride) { unitOfWork ->
     val record = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, parentWorkflowId)
       ?: error("Goal parent workflow '$parentWorkflowId' no longer exists.")
     val existing = reviewModeFromArtifacts(decodeArtifacts(record.artifactsJson))
@@ -424,7 +428,7 @@ private data class ProjectedManifestCandidate(
   val manifest: DecompositionManifest,
 )
 
-private fun reviewModeFromArtifacts(artifacts: Map<String, Any?>): skillbill.review.CodeReviewExecutionMode? {
+private fun reviewModeFromArtifacts(artifacts: Map<String, Any?>): skillbill.workflow.model.CodeReviewExecutionMode? {
   return reviewPolicyFromArtifacts(artifacts)?.codeReviewMode
 }
 
@@ -441,7 +445,7 @@ private fun reviewPolicyFromArtifacts(artifacts: Map<String, Any?>): GoalRunnerR
   val mode = policy["code_review_mode"] as? String
     ?: error("Goal review policy artifact '$GOAL_REVIEW_POLICY_ARTIFACT_KEY' is missing code_review_mode.")
   val codeReviewMode = try {
-    skillbill.review.CodeReviewExecutionMode.fromWire(mode)
+    skillbill.workflow.model.CodeReviewExecutionMode.fromWire(mode)
   } catch (error: IllegalArgumentException) {
     throw IllegalStateException("Goal review policy artifact has invalid code_review_mode '$mode'.", error)
   }
@@ -500,35 +504,32 @@ class WorkflowGoalRunnerOutcomeStore(
       .drop(review.state.emittedPassCount)
   }
 
-  override fun acknowledgeGoalReviewPass(
-    workflowId: String,
-    passNumber: Int,
-    dbPathOverride: String?,
-  ): Boolean = database.transaction(dbPathOverride) { unitOfWork ->
-    val record = taskRuntimeRecordOrNull(unitOfWork.workflowStates, workflowId) ?: return@transaction false
-    val artifacts = decodeArtifacts(record.artifactsJson)
-    val review = goalReviewArtifacts(artifacts) ?: return@transaction false
-    val state = review.state
-    validatedGoalReviewPasses(review, phaseOutputValidator)
-    if (passNumber != state.emittedPassCount + 1 || passNumber > state.completedPassCount) {
-      return@transaction false
-    }
-    val updated = engine.updateRecord(
-      WorkflowFamily.TASK_RUNTIME.definition,
-      record,
-      WorkflowUpdateInput(
-        workflowStatus = record.workflowStatus,
-        currentStepId = record.currentStepId,
-        stepUpdates = null,
-        artifactsPatch = mapOf(
-          GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY to state.acknowledgeSummariesThrough(passNumber).toArtifactMap(),
+  override fun acknowledgeGoalReviewPass(workflowId: String, passNumber: Int, dbPathOverride: String?): Boolean =
+    database.transaction(dbPathOverride) { unitOfWork ->
+      val record = taskRuntimeRecordOrNull(unitOfWork.workflowStates, workflowId) ?: return@transaction false
+      val artifacts = decodeArtifacts(record.artifactsJson)
+      val review = goalReviewArtifacts(artifacts) ?: return@transaction false
+      val state = review.state
+      validatedGoalReviewPasses(review, phaseOutputValidator)
+      if (passNumber != state.emittedPassCount + 1 || passNumber > state.completedPassCount) {
+        return@transaction false
+      }
+      val updated = engine.updateRecord(
+        WorkflowFamily.TASK_RUNTIME.definition,
+        record,
+        WorkflowUpdateInput(
+          workflowStatus = record.workflowStatus,
+          currentStepId = record.currentStepId,
+          stepUpdates = null,
+          artifactsPatch = mapOf(
+            GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY to state.acknowledgeSummariesThrough(passNumber).toArtifactMap(),
+          ),
+          sessionId = record.sessionId.orEmpty(),
         ),
-        sessionId = record.sessionId.orEmpty(),
-      ),
-    )
-    WorkflowFamily.TASK_RUNTIME.save(unitOfWork.workflowStates, updated)
-    true
-  }
+      )
+      WorkflowFamily.TASK_RUNTIME.save(unitOfWork.workflowStates, updated)
+      true
+    }
 
   override fun reconcileAuthoritativeOutcomes(
     issueKey: String,
@@ -1177,7 +1178,9 @@ private fun validatedGoalReviewPasses(
       throw InvalidGoalSubtaskReviewStateSchemaError(
         sourceLabel = GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY,
         fieldPath = "pass_results.${pass.passNumber}",
-        reason = "must exactly match the verdict, unresolved count, and compact findings derived from its durable raw review result.",
+        reason =
+        "must exactly match the verdict, unresolved count, and compact findings derived from " +
+          "its durable raw review result.",
       )
     }
   }

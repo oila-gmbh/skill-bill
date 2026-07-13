@@ -35,14 +35,14 @@ import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.goalrunner.GoalPullRequestPort
 import skillbill.ports.goalrunner.GoalRunnerManifestStore
-import skillbill.ports.goalrunner.GoalRunnerChildWorkflowSetup
-import skillbill.ports.goalrunner.GoalRunnerReviewPolicy
 import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.GoalRunnerWorkflowOutcomeStore
 import skillbill.ports.goalrunner.model.GoalPullRequestRequest
 import skillbill.ports.goalrunner.model.GoalPullRequestResult
+import skillbill.ports.goalrunner.model.GoalRunnerChildWorkflowSetup
 import skillbill.ports.goalrunner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.model.GoalRunnerReconcileGate
+import skillbill.ports.goalrunner.model.GoalRunnerReviewPolicy
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.goalrunner.model.GoalRunnerWorkflowProgress
 import skillbill.ports.time.NoopRuntimeTimingPort
@@ -54,12 +54,12 @@ import skillbill.ports.workflow.UnavailableSpecScratchStore
 import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaselineResult
+import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.model.CurrentSubtaskIntent
 import skillbill.workflow.model.DecompositionExecutionModel
 import skillbill.workflow.model.DecompositionManifest
 import skillbill.workflow.model.DecompositionSubtask
 import skillbill.workflow.model.SpecSource
-import skillbill.review.CodeReviewExecutionMode
 import kotlin.time.Duration.Companion.milliseconds
 
 private val RUNTIME_WORKFLOW_ID_PREFIX: String = WorkflowFamily.TASK_RUNTIME.definition.workflowIdPrefix
@@ -92,8 +92,10 @@ class GoalRunner(
         attempted = emptyList(),
         subtaskId = 0,
         reason = GoalRunnerStopReason.BLOCKED,
-        blockedReason = "Cannot change code-review mode on goal resume: parent workflow '${state.parentWorkflowId}' is pinned to " +
-          "'${persistedReviewPolicy.codeReviewMode.wireValue}', not '${request.codeReviewMode.wireValue}'.",
+        blockedReason =
+        "Cannot change code-review mode on goal resume: parent workflow " +
+          "'${state.parentWorkflowId}' is pinned to '${persistedReviewPolicy.codeReviewMode.wireValue}', " +
+          "not '${request.codeReviewMode.wireValue}'.",
         workflowId = state.parentWorkflowId,
         lastResumableStep = "preplan",
       )
@@ -106,7 +108,9 @@ class GoalRunner(
         attempted = emptyList(),
         subtaskId = 0,
         reason = GoalRunnerStopReason.BLOCKED,
-        blockedReason = "Cannot change parallel-review agent on goal resume: parent workflow '${state.parentWorkflowId}' is pinned to " +
+        blockedReason =
+        "Cannot change parallel-review agent on goal resume: parent workflow " +
+          "'${state.parentWorkflowId}' is pinned to " +
           "'${persistedReviewPolicy.parallelReviewAgent ?: "none"}', not '${request.parallelReviewAgent}'.",
         workflowId = state.parentWorkflowId,
         lastResumableStep = "preplan",
@@ -347,12 +351,16 @@ class GoalRunner(
           }
           ?: GoalSubtaskReviewBaselineResult(
             status = "error",
-            error = "Goal-subtask review state is missing for existing child '$existingWorkflowId'; refusing to recapture its immutable baseline.",
+            error =
+            "Goal-subtask review state is missing for existing child '$existingWorkflowId'; " +
+              "refusing to recapture its immutable baseline.",
           )
       }.getOrElse { error ->
         GoalSubtaskReviewBaselineResult(
           status = "error",
-          error = "Goal-subtask review persistence is malformed for existing child '$existingWorkflowId': ${error.message.orEmpty()}",
+          error =
+          "Goal-subtask review persistence is malformed for existing child '$existingWorkflowId': " +
+            error.message.orEmpty(),
         )
       }
     }
@@ -1062,7 +1070,9 @@ internal class GoalRunnerLaunchReconciler(
         parallelReviewAgent = request.parallelReviewAgent,
         reviewBaseline = state.manifest.workflowIdFor(subtaskId)
           ?.let { workflowId -> outcomeStore.goalSubtaskReviewState(workflowId, request.dbPathOverride) }
-          ?.let { reviewState -> GoalSubtaskReviewBaseline(reviewState.reviewBaseSha, reviewState.baselineUntrackedPaths) }
+          ?.let { reviewState ->
+            GoalSubtaskReviewBaseline(reviewState.reviewBaseSha, reviewState.baselineUntrackedPaths)
+          }
           ?: reviewBaseline,
       )
     } else {

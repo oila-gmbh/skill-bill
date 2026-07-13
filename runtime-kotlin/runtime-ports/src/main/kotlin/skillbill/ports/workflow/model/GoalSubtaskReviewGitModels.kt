@@ -1,11 +1,15 @@
 package skillbill.ports.workflow.model
 
+import skillbill.boundary.OpenBoundaryMap
+
 data class GoalSubtaskReviewBaseline(
   val reviewBaseSha: String,
   val baselineUntrackedPaths: List<String>,
 ) {
   init {
-    require(GOAL_REVIEW_GIT_SHA.matches(reviewBaseSha)) { "reviewBaseSha must be a 40- or 64-character lowercase commit SHA." }
+    require(GOAL_REVIEW_GIT_SHA.matches(reviewBaseSha)) {
+      "reviewBaseSha must be a 40- or 64-character lowercase commit SHA."
+    }
     require(baselineUntrackedPaths.all(String::isNotBlank)) { "baselineUntrackedPaths must not contain blanks." }
   }
 }
@@ -25,8 +29,12 @@ data class GoalSubtaskReviewInput(
   val ownedUntrackedPatches: String,
 ) {
   init {
-    require(GOAL_REVIEW_GIT_SHA.matches(reviewBaseSha)) { "reviewBaseSha must be a 40- or 64-character lowercase commit SHA." }
-    require(GOAL_REVIEW_GIT_SHA.matches(currentHeadSha)) { "currentHeadSha must be a 40- or 64-character lowercase commit SHA." }
+    require(GOAL_REVIEW_GIT_SHA.matches(reviewBaseSha)) {
+      "reviewBaseSha must be a 40- or 64-character lowercase commit SHA."
+    }
+    require(GOAL_REVIEW_GIT_SHA.matches(currentHeadSha)) {
+      "currentHeadSha must be a 40- or 64-character lowercase commit SHA."
+    }
   }
 
   val reviewText: String get() = buildString {
@@ -37,6 +45,7 @@ data class GoalSubtaskReviewInput(
     }
   }
 
+  @OpenBoundaryMap("Exact goal-review git input at the durable workflow-artifact seam")
   fun toArtifactMap(): Map<String, Any?> = linkedMapOf(
     "review_base_sha" to reviewBaseSha,
     "current_head_sha" to currentHeadSha,

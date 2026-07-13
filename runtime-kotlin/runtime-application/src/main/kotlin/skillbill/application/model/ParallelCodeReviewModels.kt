@@ -1,7 +1,7 @@
 package skillbill.application.model
 
 import skillbill.review.model.ParallelReviewMergeResult
-import skillbill.review.CodeReviewExecutionMode
+import skillbill.workflow.model.CodeReviewExecutionMode
 import java.nio.file.Path
 import kotlin.time.Duration
 
@@ -16,9 +16,13 @@ data class ParallelCodeReviewRequest(
   val timeout: Duration?,
   val codeReviewMode: CodeReviewExecutionMode = CodeReviewExecutionMode.AUTO,
   val suppliedDiff: String? = null,
+  val suppliedDiffPath: Path? = null,
 ) {
   init {
     suppliedDiff?.let { require(it.isNotBlank()) { "suppliedDiff must be non-blank when provided." } }
+    require(suppliedDiff == null || suppliedDiffPath == null) {
+      "suppliedDiff and suppliedDiffPath cannot both be provided."
+    }
   }
 }
 

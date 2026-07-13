@@ -1,10 +1,10 @@
 package skillbill.ports.workflow
 
-import skillbill.ports.workflow.model.WorkflowGitOperationResult
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaselineResult
 import skillbill.ports.workflow.model.GoalSubtaskReviewInput
 import skillbill.ports.workflow.model.GoalSubtaskReviewInputResult
+import skillbill.ports.workflow.model.WorkflowGitOperationResult
 import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksRequest
 import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksResult
 import skillbill.ports.workflow.model.WorkflowWorktreeActivityResult
@@ -36,13 +36,11 @@ interface WorkflowGitOperations {
 
   fun selectedDiffHunks(repoRoot: Path, request: WorkflowSelectedDiffHunksRequest): WorkflowSelectedDiffHunksResult
 
-  fun captureGoalSubtaskReviewBaseline(
-    repoRoot: Path,
-    expectedBranch: String,
-  ): GoalSubtaskReviewBaselineResult = GoalSubtaskReviewBaselineResult(
-    status = "error",
-    error = "Goal-subtask review baselines require a branch-aware git adapter.",
-  )
+  fun captureGoalSubtaskReviewBaseline(repoRoot: Path, expectedBranch: String): GoalSubtaskReviewBaselineResult =
+    GoalSubtaskReviewBaselineResult(
+      status = "error",
+      error = "Goal-subtask review baselines require a branch-aware git adapter.",
+    )
 
   fun buildGoalSubtaskReviewInput(
     repoRoot: Path,

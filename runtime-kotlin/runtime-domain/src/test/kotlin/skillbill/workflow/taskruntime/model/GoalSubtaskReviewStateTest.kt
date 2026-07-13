@@ -1,11 +1,11 @@
 package skillbill.workflow.taskruntime.model
 
+import skillbill.error.InvalidGoalSubtaskReviewStateSchemaError
+import skillbill.workflow.model.CodeReviewExecutionMode
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
-import skillbill.error.InvalidGoalSubtaskReviewStateSchemaError
-import skillbill.review.CodeReviewExecutionMode
 
 class GoalSubtaskReviewStateTest {
   @Test
@@ -45,15 +45,17 @@ class GoalSubtaskReviewStateTest {
     }
     assertFailsWith<InvalidGoalSubtaskReviewStateSchemaError> {
       GoalSubtaskReviewState.fromArtifactMap(
-        state.toArtifactMap() + ("pass_results" to listOf(
-          mapOf(
-            "pass_number" to 1,
-            "verdict" to "arbitrary",
-            "review_result_artifact" to "goal_subtask_review_results.1",
-            "unresolved_finding_count" to 0,
-            "findings" to emptyList<Any>(),
-          ),
-        )) + ("completed_pass_count" to 1),
+        state.toArtifactMap() + (
+          "pass_results" to listOf(
+            mapOf(
+              "pass_number" to 1,
+              "verdict" to "arbitrary",
+              "review_result_artifact" to "goal_subtask_review_results.1",
+              "unresolved_finding_count" to 0,
+              "findings" to emptyList<Any>(),
+            ),
+          )
+          ) + ("completed_pass_count" to 1),
       )
     }
   }

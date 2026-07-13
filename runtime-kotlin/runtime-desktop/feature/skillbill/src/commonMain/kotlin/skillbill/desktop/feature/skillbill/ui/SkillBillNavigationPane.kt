@@ -8,9 +8,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,10 +20,12 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -64,20 +64,6 @@ import dev.skillbill.designsystem.generated.resources.nav_open_repo_tooltip
 import dev.skillbill.designsystem.generated.resources.nav_repo_busy
 import dev.skillbill.designsystem.generated.resources.nav_repo_open
 import dev.skillbill.designsystem.generated.resources.nav_repository
-import dev.skillbill.designsystem.generated.resources.work_section_empty
-import dev.skillbill.designsystem.generated.resources.work_section_error_summary
-import dev.skillbill.designsystem.generated.resources.work_section_estimated
-import dev.skillbill.designsystem.generated.resources.work_section_expanded
-import dev.skillbill.designsystem.generated.resources.work_section_collapsed
-import dev.skillbill.designsystem.generated.resources.work_section_loaded
-import dev.skillbill.designsystem.generated.resources.work_section_loading
-import dev.skillbill.designsystem.generated.resources.work_section_refresh
-import dev.skillbill.designsystem.generated.resources.work_section_refresh_cd
-import dev.skillbill.designsystem.generated.resources.work_section_scroll_instructions
-import dev.skillbill.designsystem.generated.resources.work_section_subtitle
-import dev.skillbill.designsystem.generated.resources.work_section_title
-import dev.skillbill.designsystem.generated.resources.work_section_toggle_cd
-import dev.skillbill.designsystem.generated.resources.work_section_unknown_issue
 import dev.skillbill.designsystem.generated.resources.work_field_issue
 import dev.skillbill.designsystem.generated.resources.work_field_issue_cd
 import dev.skillbill.designsystem.generated.resources.work_field_kind
@@ -92,6 +78,20 @@ import dev.skillbill.designsystem.generated.resources.work_field_state_since_cd
 import dev.skillbill.designsystem.generated.resources.work_field_state_since_estimated_cd
 import dev.skillbill.designsystem.generated.resources.work_field_workflow
 import dev.skillbill.designsystem.generated.resources.work_field_workflow_cd
+import dev.skillbill.designsystem.generated.resources.work_section_collapsed
+import dev.skillbill.designsystem.generated.resources.work_section_empty
+import dev.skillbill.designsystem.generated.resources.work_section_error_summary
+import dev.skillbill.designsystem.generated.resources.work_section_estimated
+import dev.skillbill.designsystem.generated.resources.work_section_expanded
+import dev.skillbill.designsystem.generated.resources.work_section_loaded
+import dev.skillbill.designsystem.generated.resources.work_section_loading
+import dev.skillbill.designsystem.generated.resources.work_section_refresh
+import dev.skillbill.designsystem.generated.resources.work_section_refresh_cd
+import dev.skillbill.designsystem.generated.resources.work_section_scroll_instructions
+import dev.skillbill.designsystem.generated.resources.work_section_subtitle
+import dev.skillbill.designsystem.generated.resources.work_section_title
+import dev.skillbill.designsystem.generated.resources.work_section_toggle_cd
+import dev.skillbill.designsystem.generated.resources.work_section_unknown_issue
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import skillbill.desktop.core.designsystem.SkillBillComponentShapes
@@ -279,12 +279,7 @@ private fun TreeNavigation(
 }
 
 @Composable
-private fun WorkSection(
-  state: WorkListState,
-  enabled: Boolean,
-  onToggle: () -> Unit,
-  onRefresh: () -> Unit,
-) {
+private fun WorkSection(state: WorkListState, enabled: Boolean, onToggle: () -> Unit, onRefresh: () -> Unit) {
   val expanded = state.expanded
   val expandedDescription = stringResource(
     if (expanded) Res.string.work_section_expanded else Res.string.work_section_collapsed,
@@ -307,7 +302,11 @@ private fun WorkSection(
       verticalAlignment = Alignment.CenterVertically,
       horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-      Text(stringResource(Res.string.work_section_title), style = MaterialTheme.typography.labelLarge, color = SkillBillTheme.frameTokens.text)
+      Text(
+        stringResource(Res.string.work_section_title),
+        style = MaterialTheme.typography.labelLarge,
+        color = SkillBillTheme.frameTokens.text,
+      )
       Text(if (expanded) "−" else "+", color = SkillBillTheme.frameTokens.primary)
     }
     if (!expanded) return
@@ -318,7 +317,11 @@ private fun WorkSection(
       horizontalArrangement = Arrangement.SpaceBetween,
       verticalAlignment = Alignment.CenterVertically,
     ) {
-      Text(stringResource(Res.string.work_section_subtitle), style = MaterialTheme.typography.labelSmall, color = SkillBillTheme.frameTokens.subtle)
+      Text(
+        stringResource(Res.string.work_section_subtitle),
+        style = MaterialTheme.typography.labelSmall,
+        color = SkillBillTheme.frameTokens.subtle,
+      )
       Text(
         stringResource(Res.string.work_section_refresh),
         modifier = Modifier

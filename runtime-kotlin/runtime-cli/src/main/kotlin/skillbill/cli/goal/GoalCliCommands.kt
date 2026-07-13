@@ -27,14 +27,14 @@ import skillbill.cli.core.refuseRuntimeRefusedAgents
 import skillbill.contracts.system.RuntimeProvenanceContract
 import skillbill.goalrunner.model.GoalRunnerRunReport
 import skillbill.goalrunner.model.GoalRunnerStatusProjection
-import skillbill.install.model.InvokingAgentContextResolver
 import skillbill.install.model.InstallAgent
-import skillbill.review.CodeReviewExecutionMode
+import skillbill.install.model.InvokingAgentContextResolver
 import skillbill.ports.agentrun.model.AgentRunOutputSink
 import skillbill.ports.agentrun.model.AgentRunOutputStream
 import skillbill.ports.workflow.model.DEFAULT_SELECTED_DIFF_MAX_BYTES
 import skillbill.ports.workflow.model.DEFAULT_SELECTED_DIFF_MAX_HUNKS
 import skillbill.ports.workflow.model.DEFAULT_SELECTED_DIFF_MAX_LINES
+import skillbill.workflow.model.CodeReviewExecutionMode
 import java.nio.file.Path
 import kotlin.time.Duration.Companion.minutes
 
@@ -64,7 +64,9 @@ class GoalRunCommand(
   )
   private val parallelReviewAgent by option(
     "--parallel-review-agent",
-    help = "Run every child review with a second parallel agent lane. Supported agents: ${InstallAgent.supportedIds.joinToString()}.",
+    help =
+    "Run every child review with a second parallel agent lane. " +
+      "Supported agents: ${InstallAgent.supportedIds.joinToString()}.",
   )
   private val maxWallClockMinutes by option(
     "--max-wall-clock-minutes",
@@ -99,7 +101,11 @@ class GoalRunCommand(
     // issue_key check so the actionable refusal wins over a generic argument error (mirrors
     // feature-task, where the preflight is the first statement in every run body).
     refuseRuntimeRefusedAgents(
-      listOf(resolveInvokedAgentId(agent, state.environment), agentOverride, parallelReviewAgent?.takeIf(String::isNotBlank)),
+      listOf(
+        resolveInvokedAgentId(agent, state.environment),
+        agentOverride,
+        parallelReviewAgent?.takeIf(String::isNotBlank),
+      ),
     )
     val runIssueKey = issueKey ?: throw UsageError("issue_key is required for goal run.")
     val presenter = GoalRunPresenter(

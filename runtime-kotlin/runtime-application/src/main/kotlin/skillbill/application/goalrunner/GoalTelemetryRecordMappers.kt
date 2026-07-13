@@ -1,10 +1,10 @@
 package skillbill.application.goalrunner
 
-import skillbill.application.normalizeRequiredIssueKey
 import skillbill.application.model.GoalFinishedRequest
 import skillbill.application.model.GoalIssueFinishedRequest
 import skillbill.application.model.GoalStartedRequest
 import skillbill.application.model.GoalSubtaskFinishedRequest
+import skillbill.application.normalizeRequiredIssueKey
 import skillbill.telemetry.model.GoalFinishedRecord
 import skillbill.telemetry.model.GoalIssueFinishedRecord
 import skillbill.telemetry.model.GoalStartedRecord
