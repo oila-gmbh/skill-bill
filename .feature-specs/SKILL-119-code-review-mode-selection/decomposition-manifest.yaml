@@ -4,14 +4,14 @@ issue_key: "SKILL-119"
 feature_name: "code-review-mode-selection"
 parent_spec_path: ".feature-specs/SKILL-119-code-review-mode-selection/spec.md"
 spec_source: "local"
-status: "blocked"
+status: "complete"
 execution_model: "same_branch_commit_per_subtask"
 base_branch: "main"
 feature_branch: "feat/SKILL-117-local-work-list"
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 4
-  action: "blocked"
+  subtask_id: 0
+  action: "complete"
 subtasks:
 - id: 1
   name: "Review-selection contract and single-task propagation"
@@ -61,15 +61,12 @@ subtasks:
 - id: 4
   name: "Integration, migration boundary, and validation"
   spec_path: ".feature-specs/SKILL-119-code-review-mode-selection/spec_subtask_4_integration-validation.md"
-  status: "blocked"
+  status: "complete"
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260713-122105-bsmj"
-  blocked_reason: "Phase output reported status 'blocked'. AUTO correctly selected\
-    \ delegated Kotlin review, but the required specialist workers could not be launched\
-    \ because this request did not explicitly authorize subagents under the repository\
-    \ policy; inline substitution was ineligible and prohibited."
-  last_resumable_step: "review"
+  blocked_reason: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
