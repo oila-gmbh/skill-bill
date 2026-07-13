@@ -4,13 +4,13 @@ issue_key: "SKILL-119"
 feature_name: "code-review-mode-selection"
 parent_spec_path: ".feature-specs/SKILL-119-code-review-mode-selection/spec.md"
 spec_source: "local"
-status: "in_progress"
+status: "pending"
 execution_model: "same_branch_commit_per_subtask"
 base_branch: "main"
 feature_branch: "feat/SKILL-117-local-work-list"
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 2
+  subtask_id: 3
   action: "start"
 subtasks:
 - id: 1
@@ -29,12 +29,12 @@ subtasks:
 - id: 2
   name: "Runtime goal review policy and exact delta"
   spec_path: ".feature-specs/SKILL-119-code-review-mode-selection/spec_subtask_2_runtime-goal-review-policy.md"
-  status: "pending"
+  status: "complete"
   branch: null
-  commit_sha: null
+  commit_sha: "de09ffb6"
   workflow_id: "wftr-20260713-072701-m0p3"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
