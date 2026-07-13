@@ -49,7 +49,7 @@ object FeatureImplementWorkflowDefinition {
       "create_branch" to listOf("assessment"),
       "preplan" to listOf("assessment", "branch"),
       "plan" to listOf("assessment", "preplan_digest"),
-      "implement" to listOf("plan", "preplan_digest"),
+      "implement" to listOf("plan"),
       "review" to listOf("implementation_summary"),
       "audit" to listOf("implementation_summary", "review_result"),
       "validate" to listOf("audit_report"),
@@ -68,7 +68,7 @@ object FeatureImplementWorkflowDefinition {
         "Re-run the planning phase using assessment and preplan_digest. Persist either the implementation plan " +
         "or the terminal decomposition package.",
       "implement" to
-        "Resume implementation from the persisted plan and preplan_digest, then refresh implementation_summary.",
+        "Resume implementation from the persisted plan, then refresh implementation_summary.",
       "review" to
         "Resume code review from the latest implementation_summary and persist review_result after each pass.",
       "audit" to
@@ -163,7 +163,7 @@ object FeatureImplementWorkflowDefinition {
         "close the workflow at planning instead of proceeding to implementation. Require durable progress writes " +
         "using workflow_id, step_id=plan, and the resumed attempt_count.",
       "implement" to
-        "Do not re-plan unless the recovered plan proves invalid. Reuse the saved plan and preplan_digest artifacts, " +
+        "Do not re-plan unless the recovered plan proves invalid. Reuse the saved plan artifact, " +
         "then resume the implementation subagent from Step 4. Require durable progress writes at task boundaries and " +
         "heartbeat intervals using workflow_id, step_id=implement, and the resumed attempt_count.",
       "review" to

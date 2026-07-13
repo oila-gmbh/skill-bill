@@ -214,7 +214,7 @@ Spawn a subagent with the pre-planning briefing defined in the inline reference 
 - Confirm `bill-code-check` can route this repo; if not, pick a repo-native validation command.
 - If the rollout uses a feature flag, invoke `bill-feature-guard` via the Skill tool (do not search the filesystem to locate skill files) and choose a pattern (Legacy / DI Switch / Simple Conditional).
 
-The subagent returns the pre-planning return contract from the inline reference sections below. The orchestrator keeps this digest in context and passes it to later subagents — the raw findings stay in the subagent. Persist `preplan_digest` before advancing to `plan`.
+The subagent returns the pre-planning return contract from the inline reference sections below. Persist `preplan_digest` before advancing to `plan`. It is planning-only recovery context: recover it while resuming preplan or plan, when plan is unavailable or invalid, or when the normal loop returns to planning. Implementation continuation receives the completed `plan` only and must not inject `preplan_digest` merely because it exists.
 
 ## Step 3: Create Implementation Plan (subagent)
 

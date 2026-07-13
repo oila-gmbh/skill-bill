@@ -28,6 +28,35 @@ internal object DatabaseMigrations {
         name = "add-work-list-state-metadata",
         operation = DatabaseColumnMigrations::applyWorkListMetadata,
       ),
+      DatabaseMigration(
+        version = 5,
+        name = "add-feature-task-execution-identities",
+        operation = { connection ->
+          connection.createStatement().use { statement ->
+            statement.execute(
+              """
+              CREATE TABLE IF NOT EXISTS feature_task_execution_identities (
+                workflow_id TEXT PRIMARY KEY,
+                contract_version TEXT NOT NULL CHECK (contract_version = '0.1'),
+                normalized_issue_key TEXT NOT NULL,
+                repository_identity TEXT NOT NULL,
+                governed_spec_path TEXT NOT NULL,
+                mode TEXT NOT NULL CHECK (mode IN ('prose', 'runtime')),
+                route_scope TEXT NOT NULL CHECK (route_scope IN ('standalone', 'goal_child')),
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (workflow_id) REFERENCES feature_task_workflows(workflow_id) ON DELETE CASCADE
+              )
+              """.trimIndent(),
+            )
+            statement.execute(
+              """
+              CREATE INDEX IF NOT EXISTS idx_feature_task_identity_lookup
+                ON feature_task_execution_identities(normalized_issue_key, repository_identity, route_scope)
+              """.trimIndent(),
+            )
+          }
+        },
+      ),
     ).also(::requireDeterministicMigrations)
 
   fun apply(connection: Connection) {

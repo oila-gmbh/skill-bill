@@ -2,6 +2,12 @@
 
 This document defines the enforced architecture for `runtime-kotlin`.
 
+## DB-first feature-task continuation
+
+Feature-task continuation is repository-scoped and database-authoritative. At workflow creation, an immutable identity row binds the workflow id to a normalized issue key, canonical real-path Git-root identity, repository-relative governed spec path, persisted mode, and standalone/goal-child route scope. Read-only lookup never chooses among multiple eligible rows by timestamp.
+
+The feature `spec.md` remains the governed product contract; it is not a mutable workflow ledger. Pre-planning, planning, phase outputs, and the phase ledger remain durable database artifacts. Implementation continuation is hydrated from the completed `plan` only. `preplan_digest` remains available for planning recovery or an explicit loop back to planning.
+
 The runtime uses a hexagonal JVM graph with entry adapters at the outside,
 application use cases in the orchestration layer, ports as the dependency
 boundary, domain models and rules below the ports, and concrete infrastructure

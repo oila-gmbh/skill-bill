@@ -49,6 +49,10 @@ If the issue key is missing, stop and ask for it. Do not invent one.
 
 ## Prepare Spec
 
+Before discovering or preparing governed artifacts, perform the read-only, repository-scoped continuation lookup for the normalized issue key and current canonical Git root. The workflow database and immutable execution identity are authoritative; `spec.md` is the governed feature contract, not a planning checkpoint.
+
+Handle `resumable`, `already_running`, `ambiguous`, and `terminal_only` before dispatch. Resume with the persisted workflow id, mode, and spec path; report and stop for running or terminal rows; and report every ambiguous candidate rather than selecting by recency. Only `no_match` may continue below. A malformed request, identity/snapshot/version error, selector mismatch, or explicit mode conflict must loud-fail rather than becoming `no_match`.
+
 Always invoke `bill-feature-spec` first in the current session. Do not write spec artifacts directly and do not fork spec-preparation logic.
 
 Wait for `bill-feature-spec` to produce governed artifacts under `.feature-specs/{ISSUE_KEY}-{feature-name}/`. Treat its selected mode as authoritative for dispatch.

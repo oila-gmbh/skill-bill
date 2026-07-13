@@ -9,6 +9,7 @@ import com.github.ajalt.clikt.parameters.arguments.optional
 import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.options.multiple
 import com.github.ajalt.clikt.parameters.options.option
+import com.github.ajalt.clikt.parameters.options.required
 import com.github.ajalt.clikt.parameters.types.int
 import com.github.ajalt.clikt.parameters.types.restrictTo
 import me.tatarka.inject.annotations.Inject
@@ -17,6 +18,9 @@ import skillbill.application.featuretask.FeatureTaskRuntimeAgentResolver
 import skillbill.application.featuretask.FeatureTaskRuntimeModelResolver
 import skillbill.application.featuretask.FeatureTaskRuntimeRunner
 import skillbill.application.featuretask.FeatureTaskRuntimeStatusService
+import skillbill.application.featuretask.FeatureTaskContinuationLookupService
+import skillbill.application.featuretask.model.FeatureTaskContinuationCandidate
+import skillbill.application.featuretask.model.FeatureTaskContinuationLookupResult
 import skillbill.application.model.FeatureTaskRuntimeAgentAssignment
 import skillbill.application.model.FeatureTaskRuntimeGoalContinuationContext
 import skillbill.application.model.FeatureTaskRuntimeModelAssignment
@@ -32,6 +36,7 @@ import skillbill.application.model.WorkflowOpenResult
 import skillbill.application.workflow.WorkflowService
 import skillbill.cli.core.CliRunState
 import skillbill.cli.core.DocumentedCliCommand
+import skillbill.cli.core.formatOption
 import skillbill.cli.core.refuseRuntimeRefusedAgents
 import skillbill.cli.core.refuseUnsupportedModelDirectives
 import skillbill.config.model.PhaseModelDirective
@@ -140,8 +145,14 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
       "driver's open-with-assigned-id path for a first runtime subtask run (distinct from resume).",
   )
 
-  protected fun resolveRunWorkflowId(workflowService: WorkflowService, state: CliRunState, issueKey: String): String =
-    explicitWorkflowId?.takeIf(String::isNotBlank) ?: openRuntimeWorkflowId(workflowService, state, issueKey)
+  protected fun resolveRunWorkflowId(
+    workflowService: WorkflowService,
+    state: CliRunState,
+    issueKey: String,
+    specPath: String,
+    repoRoot: String,
+  ): String = explicitWorkflowId?.takeIf(String::isNotBlank)
+    ?: openRuntimeWorkflowId(workflowService, state, issueKey, specPath, repoRoot)
 
   // Refuses before a workflow is opened, a branch resolved, or a phase spawned: opencode is
   // prose-only because its foreground Bash tool is hard-killed at 120s and per-phase output
@@ -313,6 +324,7 @@ class FeatureTaskRuntimeRunCommand(
   featureTaskRuntimeExplicitRunCommand: FeatureTaskRuntimeExplicitRunCommand,
   featureTaskRuntimeStatusCommand: FeatureTaskRuntimeStatusCommand,
   featureTaskRuntimeResumeCommand: FeatureTaskRuntimeResumeCommand,
+  featureTaskLookupCommand: FeatureTaskLookupCommand,
 ) : FeatureTaskRuntimePhaseAgentCommand(
   "feature-task",
   "Run the runtime-driven feature-task phase loop in the foreground.",
@@ -323,7 +335,12 @@ class FeatureTaskRuntimeRunCommand(
   override val invokeWithoutSubcommand: Boolean = true
 
   init {
-    subcommands(featureTaskRuntimeExplicitRunCommand, featureTaskRuntimeStatusCommand, featureTaskRuntimeResumeCommand)
+    subcommands(
+      featureTaskRuntimeExplicitRunCommand,
+      featureTaskRuntimeStatusCommand,
+      featureTaskRuntimeResumeCommand,
+      featureTaskLookupCommand,
+    )
   }
 
   override fun run() {
@@ -336,7 +353,7 @@ class FeatureTaskRuntimeRunCommand(
       deps = deps,
       issueKey = runIssueKey,
       specPath = runSpecPath,
-      workflowId = { resolveRunWorkflowId(workflowService, deps.state, runIssueKey) },
+      workflowId = { resolveRunWorkflowId(workflowService, deps.state, runIssueKey, runSpecPath, repoRoot ?: ".") },
     )
   }
 }
@@ -358,14 +375,53 @@ class FeatureTaskRuntimeExplicitRunCommand(
   private val specPath by argument(help = "Path to the governed spec the run implements.").optional()
 
   override fun run() {
+    val runSpecPath = resolveSpecPath(deps, issueKey, specPath)
     executeRuntimeRun(
       deps = deps,
       issueKey = issueKey,
-      specPath = resolveSpecPath(deps, issueKey, specPath),
-      workflowId = { resolveRunWorkflowId(workflowService, deps.state, issueKey) },
+      specPath = runSpecPath,
+      workflowId = { resolveRunWorkflowId(workflowService, deps.state, issueKey, runSpecPath, repoRoot ?: ".") },
     )
   }
 }
+
+@Inject
+class FeatureTaskLookupCommand(
+  private val lookupService: FeatureTaskContinuationLookupService,
+  private val state: CliRunState,
+) : DocumentedCliCommand(
+  "lookup",
+  "Read-only, repository-scoped lookup of DB-authoritative feature-task continuation state.",
+) {
+  private val issueKey by argument(help = "Issue key to find.")
+  private val repoRoot by option("--repo-root", help = "Path within the Git worktree.").required()
+  private val workflowId by option("--workflow-id", help = "Explicit matching workflow selection.")
+  private val format by formatOption()
+
+  override fun run() {
+    val result = lookupService.lookup(issueKey, repositoryIdentity(Path.of(repoRoot)), workflowId, state.dbOverride)
+    val payload = result.toCliPayload()
+    state.complete(payload, format, if (result is FeatureTaskContinuationLookupResult.Ambiguous) 2 else 0)
+  }
+}
+
+private fun FeatureTaskContinuationLookupResult.toCliPayload(): Map<String, Any?> = when (this) {
+  FeatureTaskContinuationLookupResult.NoMatch -> mapOf("result" to "no_match")
+  is FeatureTaskContinuationLookupResult.Resumable -> mapOf("result" to "resumable", "candidate" to candidate.toMap())
+  is FeatureTaskContinuationLookupResult.AlreadyRunning -> mapOf("result" to "already_running", "candidate" to candidate.toMap())
+  is FeatureTaskContinuationLookupResult.Ambiguous -> mapOf("result" to "ambiguous", "candidates" to candidates.map { it.toMap() })
+  is FeatureTaskContinuationLookupResult.TerminalOnly -> mapOf("result" to "terminal_only", "candidates" to candidates.map { it.toMap() })
+}
+
+private fun FeatureTaskContinuationCandidate.toMap(): Map<String, Any?> = mapOf(
+  "workflow_id" to workflowId,
+  "mode" to mode.wireValue,
+  "status" to status,
+  "current_step" to currentStep,
+  "governed_spec_path" to governedSpecPath,
+  "updated_at" to updatedAt,
+  "summary" to summary,
+)
 
 @Inject
 class FeatureTaskRuntimeStatusCommand(
@@ -452,7 +508,7 @@ class FeatureTaskRuntimeDeprecatedRunCommand(
       deps = deps,
       issueKey = runIssueKey,
       specPath = runSpecPath,
-      workflowId = { openRuntimeWorkflowId(workflowService, deps.state, runIssueKey) },
+      workflowId = { openRuntimeWorkflowId(workflowService, deps.state, runIssueKey, runSpecPath, repoRoot ?: ".") },
     )
   }
 }
@@ -469,11 +525,12 @@ class FeatureTaskRuntimeDeprecatedExplicitRunCommand(
   private val specPath by argument(help = "Path to the governed spec the run implements.").optional()
 
   override fun run() {
+    val runSpecPath = resolveSpecPath(deps, issueKey, specPath)
     executeRuntimeRun(
       deps = deps,
       issueKey = issueKey,
-      specPath = resolveSpecPath(deps, issueKey, specPath),
-      workflowId = { openRuntimeWorkflowId(workflowService, deps.state, issueKey) },
+      specPath = runSpecPath,
+      workflowId = { openRuntimeWorkflowId(workflowService, deps.state, issueKey, runSpecPath, repoRoot ?: ".") },
     )
   }
 }
@@ -515,11 +572,19 @@ class FeatureTaskRuntimeDeprecatedResumeCommand(
   }
 }
 
-private fun openRuntimeWorkflowId(workflowService: WorkflowService, state: CliRunState, issueKey: String?): String =
+private fun openRuntimeWorkflowId(
+  workflowService: WorkflowService,
+  state: CliRunState,
+  issueKey: String?,
+  specPath: String,
+  repoRoot: String,
+): String =
   when (
     val opened = workflowService.open(
       WorkflowFamilyKind.TASK_RUNTIME,
       issueKey = issueKey,
+      repositoryIdentity = repositoryIdentity(Path.of(repoRoot)),
+      governedSpecPath = governedSpecPath(Path.of(repoRoot), Path.of(specPath)),
       dbOverride = state.dbOverride,
     )
   ) {
@@ -528,6 +593,21 @@ private fun openRuntimeWorkflowId(workflowService: WorkflowService, state: CliRu
       "Could not open a feature-task workflow: ${opened.error}",
     )
   }
+
+private fun repositoryIdentity(start: Path): String {
+  return "repo-root-realpath-v1:${start.toAbsolutePath().normalize().toRealPath()}"
+}
+
+private fun governedSpecPath(repositoryRoot: Path, specPath: Path): String {
+  val root = repositoryRoot.toAbsolutePath().normalize().toRealPath()
+  val resolved = (if (specPath.isAbsolute) specPath else root.resolve(specPath)).normalize().toRealPath()
+  require(resolved.startsWith(root)) { "Governed spec path must remain inside repository '$root'." }
+  val relative = root.relativize(resolved).joinToString("/") { it.toString() }
+  require(relative.startsWith(".feature-specs/") && relative.endsWith(".md")) {
+    "Governed spec path must be Markdown beneath .feature-specs/."
+  }
+  return relative
+}
 
 private fun runtimeRunEventSink(state: CliRunState, monitor: Boolean): FeatureTaskRuntimeRunEventSink = if (!monitor) {
   FeatureTaskRuntimeRunEventSink.NONE

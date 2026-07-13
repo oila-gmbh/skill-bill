@@ -22,6 +22,8 @@ import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.persistence.WorkflowStateRepository
 import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
+import skillbill.ports.persistence.model.FeatureTaskExecutionIdentity
+import skillbill.ports.persistence.model.FeatureTaskRouteScope
 import skillbill.ports.persistence.model.WorkflowStateRecord
 import skillbill.ports.workflow.DecompositionManifestFileStore
 import skillbill.ports.workflow.NoopWorkflowGitOperations
@@ -66,6 +68,9 @@ class WorkflowService(
     currentStepId: String? = null,
     dbOverride: String? = null,
     issueKey: String? = null,
+    repositoryIdentity: String? = null,
+    governedSpecPath: String? = null,
+    routeScope: FeatureTaskRouteScope = FeatureTaskRouteScope.STANDALONE,
   ): WorkflowOpenResult {
     val family = kind.workflowFamily()
     val stepId = currentStepId ?: family.definition.defaultInitialStepId
@@ -82,6 +87,22 @@ class WorkflowService(
           issueKey = normalizeIssueKey(issueKey),
         ),
       )
+      if (kind != WorkflowFamilyKind.VERIFY && repositoryIdentity != null && governedSpecPath != null) {
+        val normalizedIssueKey = requireNotNull(normalizeIssueKey(issueKey)).uppercase()
+        val identity = FeatureTaskExecutionIdentity(
+          workflowId = workflowId,
+          normalizedIssueKey = normalizedIssueKey,
+          repositoryIdentity = repositoryIdentity,
+          governedSpecPath = governedSpecPath,
+          mode = if (kind == WorkflowFamilyKind.TASK_PROSE) {
+            FeatureTaskWorkflowMode.PROSE
+          } else {
+            FeatureTaskWorkflowMode.RUNTIME
+          },
+          routeScope = routeScope,
+        )
+        unitOfWork.workflowStates.saveFeatureTaskExecutionIdentity(identity)
+      }
       val saved = family.get(unitOfWork.workflowStates, workflowId) ?: record
       WorkflowOpenResult.Ok(
         workflowId = saved.workflowId,

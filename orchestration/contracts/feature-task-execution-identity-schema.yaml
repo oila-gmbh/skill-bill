@@ -1,0 +1,33 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://skill-bill.dev/contracts/feature-task-execution-identity-schema.yaml"
+title: Feature task execution identity
+description: Immutable repository-scoped identity used to continue a feature-task workflow.
+type: object
+additionalProperties: false
+required:
+  - contract_version
+  - workflow_id
+  - normalized_issue_key
+  - repository_identity
+  - governed_spec_path
+  - mode
+  - route_scope
+properties:
+  contract_version:
+    const: "0.1"
+  workflow_id:
+    type: string
+    minLength: 1
+  normalized_issue_key:
+    type: string
+    pattern: "^[A-Z][A-Z0-9]*-[0-9]+$"
+  repository_identity:
+    type: string
+    pattern: "^repo-root-realpath-v1:.+"
+  governed_spec_path:
+    type: string
+    pattern: "^\\.feature-specs/.+\\.md$"
+  mode:
+    enum: [prose, runtime]
+  route_scope:
+    enum: [standalone, goal_child]

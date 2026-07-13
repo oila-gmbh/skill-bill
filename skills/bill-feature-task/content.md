@@ -15,6 +15,8 @@ Both modes persist under the public workflow identity `bill-feature-task` in the
 shared feature-task workflow store: prose records use `mode=prose`, and runtime
 records use `mode=runtime`.
 
+When args include a validated `workflow-id:<id>`, use continuation mode. Keep the persisted mode and governed spec path, reject a conflicting explicit mode before launch, and present this skill's single gate as a continuation confirmation. After confirmation, prose continues the same workflow/session through `feature_task_prose_workflow_continue`; runtime invokes `skill-bill feature-task resume <workflow_id> <issue_key> <persisted_spec_path> --agent <current-agent>`. Never open a replacement row or mutate state during lookup.
+
 ## Intake
 
 Gather enough to identify and confirm the run:

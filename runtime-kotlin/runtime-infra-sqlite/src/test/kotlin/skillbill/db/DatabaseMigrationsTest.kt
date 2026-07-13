@@ -59,6 +59,7 @@ class DatabaseMigrationsTest {
         2 to "normalize-feedback-event-outcomes",
         3 to "add-goal-telemetry-tables",
         4 to "add-work-list-state-metadata",
+        5 to "add-feature-task-execution-identities",
       ),
       migrationDefinitions,
     )

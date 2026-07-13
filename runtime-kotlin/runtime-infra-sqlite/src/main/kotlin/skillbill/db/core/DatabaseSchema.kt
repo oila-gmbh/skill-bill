@@ -17,6 +17,7 @@ internal object DatabaseSchema {
       "feature_implement_sessions",
       "feature_task_runtime_sessions",
       "feature_task_workflows",
+      "feature_task_execution_identities",
       "feature_verify_workflows",
       "goal_run_sessions",
       "goal_subtask_events",
@@ -30,6 +31,7 @@ internal object DatabaseSchema {
       "idx_learnings_scope",
       "idx_telemetry_outbox_pending",
       "idx_feature_task_workflows_updated",
+      "idx_feature_task_identity_lookup",
       "idx_feature_implement_reconciliation_candidates",
       "idx_feature_task_runtime_reconciliation_candidates",
       "idx_feature_verify_reconciliation_candidates",
@@ -265,6 +267,23 @@ internal object DatabaseSchema {
         state_entered_at_estimated INTEGER NOT NULL DEFAULT 0,
         finished_at TEXT
       )
+      """.trimIndent(),
+      """
+      CREATE TABLE IF NOT EXISTS feature_task_execution_identities (
+        workflow_id TEXT PRIMARY KEY,
+        contract_version TEXT NOT NULL CHECK (contract_version = '0.1'),
+        normalized_issue_key TEXT NOT NULL,
+        repository_identity TEXT NOT NULL,
+        governed_spec_path TEXT NOT NULL,
+        mode TEXT NOT NULL CHECK (mode IN ('prose', 'runtime')),
+        route_scope TEXT NOT NULL CHECK (route_scope IN ('standalone', 'goal_child')),
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (workflow_id) REFERENCES feature_task_workflows(workflow_id) ON DELETE CASCADE
+      )
+      """.trimIndent(),
+      """
+      CREATE INDEX IF NOT EXISTS idx_feature_task_identity_lookup
+        ON feature_task_execution_identities(normalized_issue_key, repository_identity, route_scope)
       """.trimIndent(),
       """
       CREATE TABLE IF NOT EXISTS feature_verify_workflows (

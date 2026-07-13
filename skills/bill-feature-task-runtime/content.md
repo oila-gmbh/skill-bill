@@ -16,6 +16,8 @@ Durable workflow rows use the public workflow identity `bill-feature-task` with
 names are compatibility aliases for that mode, not a separate authoritative
 workflow family.
 
+The workflow database is the continuation authority. Resume keeps the existing workflow id and validates the issue key, canonical repository identity, persisted governed spec path, and runtime mode before branch preparation or phase launch. Completed durable phases remain skipped. Implementation hydrates from the completed `plan`; `preplan_digest` is planning-only recovery context and is not an implementation input.
+
 `bill-feature-task-runtime` consumes the normalized, router-confirmed run and
 launches the runtime command. It does **not** re-implement phase orchestration
 in prose — the runtime owns the phase loop, the per-phase handoff, the schema

@@ -9,6 +9,9 @@ import skillbill.ports.persistence.FeatureVerifyWorkflowStateRepository
 import skillbill.ports.persistence.WorkflowStateRepository
 import skillbill.ports.persistence.model.FeatureImplementSessionSummary
 import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
+import skillbill.ports.persistence.model.FeatureTaskExecutionIdentity
+import skillbill.ports.persistence.model.FeatureTaskRouteScope
+import skillbill.ports.persistence.model.FeatureTaskWorkflowCandidate
 import skillbill.ports.persistence.model.FeatureVerifySessionSummary
 import skillbill.ports.persistence.model.WorkflowStateRecord
 import java.sql.Connection
@@ -33,6 +36,56 @@ class WorkflowStateStore(
 private class FeatureTaskWorkflowStateStore(
   private val connection: Connection,
 ) : FeatureTaskWorkflowStateRepository {
+  override fun saveFeatureTaskExecutionIdentity(identity: FeatureTaskExecutionIdentity) {
+    connection.prepareStatement(
+      """
+      INSERT INTO feature_task_execution_identities (
+        workflow_id, contract_version, normalized_issue_key, repository_identity,
+        governed_spec_path, mode, route_scope
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(workflow_id) DO NOTHING
+      """.trimIndent(),
+    ).use { statement ->
+      statement.setString(1, identity.workflowId)
+      statement.setString(2, identity.contractVersion)
+      statement.setString(3, identity.normalizedIssueKey)
+      statement.setString(4, identity.repositoryIdentity)
+      statement.setString(5, identity.governedSpecPath)
+      statement.setString(6, identity.mode.wireValue)
+      statement.setString(7, identity.routeScope.wireValue)
+      statement.executeUpdate()
+    }
+    val persisted = connection.featureTaskIdentity(identity.workflowId)
+      ?: error("Feature-task identity '${identity.workflowId}' was not persisted.")
+    require(persisted == identity) {
+      "Immutable feature-task execution identity conflicts for workflow '${identity.workflowId}'."
+    }
+  }
+
+  override fun findStandaloneFeatureTaskCandidates(
+    normalizedIssueKey: String,
+    repositoryIdentity: String,
+  ): List<FeatureTaskWorkflowCandidate> = connection.prepareStatement(
+    """
+    SELECT workflow_id
+    FROM feature_task_execution_identities
+    WHERE normalized_issue_key = ? AND repository_identity = ? AND route_scope = 'standalone'
+    ORDER BY created_at, workflow_id
+    """.trimIndent(),
+  ).use { statement ->
+    statement.setString(1, normalizedIssueKey)
+    statement.setString(2, repositoryIdentity)
+    statement.executeQuery().use { rows ->
+      buildList {
+        while (rows.next()) {
+          val workflowId = rows.getString("workflow_id")
+          val workflow = connection.getFeatureTaskWorkflowRow(workflowId)
+            ?: error("Feature-task identity '$workflowId' has no workflow row.")
+          add(FeatureTaskWorkflowCandidate(connection.featureTaskIdentity(workflowId), workflow))
+        }
+      }
+    }
+  }
   override fun saveFeatureTaskWorkflow(row: WorkflowStateRecord, mode: FeatureTaskWorkflowMode) {
     connection.upsertFeatureTaskWorkflowRow(
       row = row,
@@ -60,6 +113,27 @@ private class FeatureTaskWorkflowStateStore(
 
   override fun latestFeatureTaskWorkflow(mode: FeatureTaskWorkflowMode): WorkflowStateRecord? =
     listFeatureTaskWorkflows(mode, 1).firstOrNull()
+}
+
+private fun Connection.featureTaskIdentity(workflowId: String): FeatureTaskExecutionIdentity? = prepareStatement(
+  """
+  SELECT contract_version, normalized_issue_key, repository_identity, governed_spec_path, mode, route_scope
+  FROM feature_task_execution_identities WHERE workflow_id = ?
+  """.trimIndent(),
+).use { statement ->
+  statement.setString(1, workflowId)
+  statement.executeQuery().use { row ->
+    if (!row.next()) return null
+    FeatureTaskExecutionIdentity(
+      workflowId = workflowId,
+      contractVersion = row.getString("contract_version"),
+      normalizedIssueKey = row.getString("normalized_issue_key"),
+      repositoryIdentity = row.getString("repository_identity"),
+      governedSpecPath = row.getString("governed_spec_path"),
+      mode = FeatureTaskWorkflowMode.entries.single { it.wireValue == row.getString("mode") },
+      routeScope = FeatureTaskRouteScope.entries.single { it.wireValue == row.getString("route_scope") },
+    )
+  }
 }
 
 private class FeatureImplementWorkflowStateStore(
