@@ -123,10 +123,10 @@ Blocker/Major finding.
   `implement_fix` phase, which addresses the carried review findings on the
   current working tree as incremental reconciliation (not a plan re-application),
   then re-runs `review`. This `review` → `implement_fix` → `review` cycle is
-  capped at one remediation iteration via a durable per-edge counter: the
-  initial review may use the selected mode, while the only re-review is reserved
-  before launch and always invokes `bill-code-review mode:inline`. The first
-  `approved` verdict advances the run to `audit`.
+  capped at one remediation iteration via a durable per-edge counter. The
+  initial review and the only re-review both use the run-selected mode, so
+  `auto` applies the shared review policy independently to each review scope.
+  The first `approved` verdict advances the run to `audit`.
 - If the loop exhausts its cap without an `approved` verdict, the run blocks
   loudly rather than advancing: it records a durable terminal blocked phase plus
   an observability/ledger event carrying the loop id `review_fix`, the iteration
@@ -168,9 +168,9 @@ correct phase and iteration, preserving the `audit_gap` watermark and re-blockin
 a cap-exhausted loop on resume rather than re-entering past the cap.
 
 The two loops compose under one durable two-pass review budget. The initial
-review may use the selected mode. The first later review reached by either a
-review-fix or audit-gap path consumes pass two and runs inline. Later audit-gap
-iterations reuse the completed pass-two result rather than launching a third
+review and the first later review reached by either a review-fix or audit-gap
+path use the run-selected mode. That later review consumes pass two; later
+audit-gap iterations reuse its completed result rather than launching a third
 review. Each backward edge carries the `audit_gap` loop id and iteration in the
 ledger and status output, and finished telemetry reflects the audit-gap
 iteration count alongside the review-fix count.

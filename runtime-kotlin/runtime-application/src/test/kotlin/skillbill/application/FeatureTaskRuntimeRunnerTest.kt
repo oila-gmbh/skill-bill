@@ -1937,7 +1937,7 @@ class FeatureTaskRuntimeReviewFixLoopTest {
       .filter { it.contains("Phase: review") }
     assertEquals(2, reviewPrompts.size)
     assertContains(reviewPrompts[0], "bill-code-review mode:delegated")
-    assertContains(reviewPrompts[1], "bill-code-review mode:inline")
+    assertContains(reviewPrompts[1], "bill-code-review mode:delegated")
     assertEquals(
       CodeReviewExecutionMode.DELEGATED,
       requireNotNull(harness.runInvariantsStore.resolve(WORKFLOW_ID)).codeReviewMode,
@@ -1978,7 +1978,7 @@ class FeatureTaskRuntimeReviewFixLoopTest {
   }
 
   @Test
-  fun `failed second review resumes the same durably reserved inline pass`() {
+  fun `failed second review resumes the same durably reserved selected-mode pass`() {
     var reviewLaunches = 0
     val harness = runnerHarness(
       launcher = RuntimeRecordingLauncher { request ->
@@ -2015,7 +2015,7 @@ class FeatureTaskRuntimeReviewFixLoopTest {
       "the failed launch retries the same reserved pass rather than reserving pass three",
     )
     assertContains(reviewPrompts[0], "bill-code-review mode:delegated")
-    reviewPrompts.drop(1).forEach { prompt -> assertContains(prompt, "bill-code-review mode:inline") }
+    reviewPrompts.drop(1).forEach { prompt -> assertContains(prompt, "bill-code-review mode:delegated") }
     val completedReview = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["review"])
     assertEquals("completed", completedReview.status)
     assertEquals(2, completedReview.reviewPassNumber)
@@ -2038,7 +2038,7 @@ class FeatureTaskRuntimeReviewFixLoopTest {
     assertEquals(launchCount, harness.launcher.requests.size)
   }
 
-  // (c) AC3/AC10: convergence on the only allowed inline re-review still advances to audit.
+  // (c) AC3/AC10: convergence on the only allowed re-review still advances to audit.
   @Test
   fun `m1 converges on the last allowed iteration and advances`() {
     val harness = runnerHarness(launcher = reviewFixLauncher(convergeOnReview = 2))
@@ -2054,7 +2054,7 @@ class FeatureTaskRuntimeReviewFixLoopTest {
     assertEquals(listOf(1), loopEdges.mapNotNull { it.edgeIteration })
   }
 
-  // (d) AC4/AC10: an unresolved inline re-review exhausts the two-pass budget and blocks loudly.
+  // (d) AC4/AC10: an unresolved re-review exhausts the two-pass budget and blocks loudly.
   @Test
   fun `m1 cap exhaustion blocks loudly with review_fix iteration and unresolved findings`() {
     // convergeOnReview above the cap => review never approves; the edge fires to the cap then blocks.

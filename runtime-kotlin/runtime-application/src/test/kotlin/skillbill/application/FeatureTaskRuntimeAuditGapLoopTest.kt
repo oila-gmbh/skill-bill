@@ -66,7 +66,7 @@ class FeatureTaskRuntimeAuditGapLoopTest {
   }
 
   @Test
-  fun `m2 audit re-entry uses selected mode once then inline`() {
+  fun `m2 audit re-entry retains the selected review mode`() {
     val harness = runnerHarness(launcher = auditGapLauncher(convergeOnAudit = 2))
 
     val report = harness.runner.run(
@@ -79,7 +79,7 @@ class FeatureTaskRuntimeAuditGapLoopTest {
       .filter { it.contains("Phase: review") }
     assertEquals(2, reviewPrompts.size)
     assertContains(reviewPrompts[0], "bill-code-review mode:delegated")
-    assertContains(reviewPrompts[1], "bill-code-review mode:inline")
+    assertContains(reviewPrompts[1], "bill-code-review mode:delegated")
   }
 
   // (c) AC2: convergence on the last allowed (2nd) iteration still advances.
