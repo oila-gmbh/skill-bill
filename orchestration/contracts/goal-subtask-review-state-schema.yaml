@@ -31,6 +31,7 @@ properties:
       minLength: 1
     uniqueItems: true
   code_review_mode:
+    description: Immutable selected mode for the initial review pass; any later pass executes inline.
     type: string
     enum: [auto, inline, delegated]
   reserved_pass_number:

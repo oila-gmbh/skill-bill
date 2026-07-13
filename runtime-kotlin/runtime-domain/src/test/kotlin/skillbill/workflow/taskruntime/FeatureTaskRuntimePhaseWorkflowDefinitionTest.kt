@@ -147,7 +147,7 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
     assertEquals(def.PHASE_REVIEW, edge.fromPhaseId)
     assertEquals(def.PHASE_IMPLEMENT_FIX, edge.destinationPhaseId)
     assertEquals("review_fix", edge.loopId)
-    assertEquals(3, edge.perEdgeCap)
+    assertEquals(1, edge.perEdgeCap)
     assertEquals(FeatureTaskRuntimeVerdict.CHANGES_REQUESTED, edge.triggeringVerdict)
     // The backward destination precedes its source so the reopened span includes review (re-review leg).
     val ids = transitions.forwardPhaseIds

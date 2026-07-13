@@ -467,7 +467,7 @@ class GitWorkflowGitOperationsTest {
   @Test
   fun `goal review input rejects an unsafe persisted base without branch fallback`() {
     val repoRoot = Files.createTempDirectory("skillbill-goal-review-unsafe-base")
-    git(repoRoot, "init")
+    git(repoRoot, "init", "-b", "main")
     git(repoRoot, "config", "user.email", "skill-bill@example.test")
     git(repoRoot, "config", "user.name", "Skill Bill")
     Files.writeString(repoRoot.resolve("tracked.txt"), "base\n")
@@ -477,7 +477,7 @@ class GitWorkflowGitOperationsTest {
     val result = GitWorkflowGitOperations().buildGoalSubtaskReviewInput(
       repoRoot,
       GoalSubtaskReviewBaseline("f".repeat(40), emptyList()),
-      "master",
+      "main",
     )
 
     assertFalse(result.ok)

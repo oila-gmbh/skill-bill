@@ -62,7 +62,6 @@ import skillbill.infrastructure.fs.FileSystemRepoSourceDiscoveryGateway
 import skillbill.infrastructure.fs.FileSystemRepoValidationGateway
 import skillbill.infrastructure.fs.FileSystemReviewAttribution
 import skillbill.infrastructure.fs.FileSystemReviewInputSource
-import skillbill.infrastructure.fs.FileSystemReviewRubricAdapter
 import skillbill.infrastructure.fs.FileSystemScaffoldCatalogGateway
 import skillbill.infrastructure.fs.FileSystemScaffoldGateway
 import skillbill.infrastructure.fs.FileSystemScaffoldGeneratedStaging
@@ -122,7 +121,6 @@ import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.review.ParallelReviewLaneRunner
 import skillbill.ports.review.ReviewAttributionPort
 import skillbill.ports.review.ReviewInputSource
-import skillbill.ports.review.ReviewRubricPort
 import skillbill.ports.scaffold.RepoSourceDiscoveryGateway
 import skillbill.ports.scaffold.ScaffoldCatalogGateway
 import skillbill.ports.scaffold.ScaffoldGateway
@@ -397,10 +395,6 @@ abstract class RuntimeComponent(
   @Provides
   @JvmSynthetic
   internal fun diffResolverPort(adapter: FileSystemDiffResolver): DiffResolverPort = adapter
-
-  @Provides
-  @JvmSynthetic
-  internal fun reviewRubricPort(adapter: FileSystemReviewRubricAdapter): ReviewRubricPort = adapter
 
   @Provides
   @JvmSynthetic

@@ -148,7 +148,7 @@ class FeatureSpecSkillWiringContractTest {
   }
 
   @Test
-  fun `decomposed prose review lanes and cap remain coordinated while standalone behavior remains unchanged`() {
+  fun `prose review lanes share the two-pass cap while decomposed children retain cap continuation`() {
     val goal = Files.readString(repoRootFromTest().resolve("skills/bill-feature-goal/content.md"))
     val prose = Files.readString(repoRootFromTest().resolve("skills/bill-feature-task-prose/content.md"))
     val runner = Files.readString(
@@ -177,12 +177,12 @@ class FeatureSpecSkillWiringContractTest {
     )
     assertContains(
       prose,
-      "two-pass cap and `review_cap_reached` continuation apply only to\ndecomposed prose-goal children",
+      "The two-pass cap applies to every feature task",
     )
     assertContains(
       prose,
-      "normal three-iteration repair loop, ordinary `parallel:<agent>`\n" +
-        "invocation, approval behavior, and Step 9 PR creation",
+      "standalone prose\nfeature tasks stop at the existing review gate when their single inline\n" +
+        "re-review still has unresolved Blocker or Major findings",
     )
   }
 }

@@ -15,7 +15,6 @@ import skillbill.ports.diff.DiffResolverPort
 import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.review.ParallelReviewLaneRunner
-import skillbill.ports.review.ReviewRubricPort
 import skillbill.ports.review.model.ParallelReviewLaneOutcome
 import skillbill.ports.review.model.ParallelReviewLaneRunRequest
 import skillbill.ports.review.model.ParallelReviewLaneRunResult
@@ -210,15 +209,27 @@ class ParallelCodeReviewRunnerTest {
   fun `supplied exact diff bypasses branch-scope resolution for both lanes`() {
     val resolver = RecordingDiffResolver(default = "unexpected branch diff")
     val launcher = ParallelSubtaskLauncher()
-    val runner = runner(launcher, diffResolver = resolver)
+    val runner = runner(
+      launcher,
+      catalogGateway = stubCatalogGateway(listOf(platformManifest("kotlin", listOf("*.kt")))),
+      diffResolver = resolver,
+    )
     val exactDiff = "diff --git a/Child.kt b/Child.kt\n+++ b/Child.kt\n+owned change\n"
 
     runner.run(baseRequest(scope = ParallelReviewScope.BRANCH).copy(suppliedDiff = exactDiff))
 
     assertTrue(resolver.calls.isEmpty())
-    assertTrue(
-      launcher.requests.all { request -> request.skillRunRequest.promptOverride.orEmpty().contains(exactDiff) },
-    )
+    assertEquals(2, launcher.requests.size)
+    launcher.requests.forEach { request ->
+      val prompt = request.skillRunRequest.promptOverride.orEmpty()
+      assertContains(prompt, exactDiff)
+      assertContains(prompt, "dominant stack is kotlin (pre-resolved detected stack)")
+      assertContains(prompt, "Prepare one shared review-context packet")
+      assertContains(prompt, "workers must not repeat repository, scope, stack, routing, or guidance discovery")
+      assertContains(prompt, "launch only signal-relevant non-empty specialist lanes")
+      assertFalse(prompt.contains("## Specialist:"), "flattened specialist rubric bodies must stay out of lane prompts")
+      assertFalse(prompt.contains("Apply all of the following specialist review rubrics"))
+    }
   }
 
   @Test
@@ -460,13 +471,11 @@ class ParallelCodeReviewRunnerTest {
     launcher: GoalRunnerSubtaskLauncher,
     catalogGateway: ScaffoldCatalogGateway = noManifestsCatalogGateway,
     diffResolver: DiffResolverPort = RealProcessDiffResolver(),
-    rubricPort: ReviewRubricPort = ReviewRubricPort { emptyList() },
     parallelLaneRunner: ParallelReviewLaneRunner = TestParallelLaneRunner(),
   ): ParallelCodeReviewRunner = ParallelCodeReviewRunner(
     subtaskLauncher = launcher,
     scaffoldCatalogService = ScaffoldCatalogService(catalogGateway),
     diffResolver = diffResolver,
-    rubricPort = rubricPort,
     parallelLaneRunner = parallelLaneRunner,
   )
 

@@ -219,6 +219,31 @@ class FeatureTaskRuntimePersistenceModelsTest {
   }
 
   @Test
+  fun `review phase record round trips the durably reserved pass number`() {
+    val record = FeatureTaskRuntimePhaseRecord(
+      phaseId = "review",
+      status = "running",
+      attemptCount = 2,
+      startedAt = "2026-06-02T10:00:00Z",
+      resolvedAgentId = "agent-review-1",
+      loopId = "review_fix",
+      edgeIteration = 1,
+      reviewPassNumber = 2,
+    )
+
+    val map = record.toArtifactMap()
+
+    assertEquals(2, map["review_pass_number"])
+    assertEquals(record, FeatureTaskRuntimePhaseRecord.fromArtifactMap(map))
+    assertFailsWith<IllegalArgumentException> {
+      FeatureTaskRuntimePhaseRecord.fromArtifactMap(map + ("review_pass_number" to 3))
+    }
+    assertFailsWith<IllegalArgumentException> {
+      FeatureTaskRuntimePhaseRecord.fromArtifactMap(map + ("phase_id" to "audit"))
+    }
+  }
+
+  @Test
   fun `per-phase record omits loop_id and edge_iteration when absent and old maps decode unchanged`() {
     val record = FeatureTaskRuntimePhaseRecord(
       phaseId = "plan",
@@ -230,6 +255,7 @@ class FeatureTaskRuntimePersistenceModelsTest {
     val map = record.toArtifactMap()
     assertNull(map["loop_id"])
     assertNull(map["edge_iteration"])
+    assertNull(map["review_pass_number"])
     // An old map predating the loop fields decodes with null loop context.
     val legacy = mapOf(
       "phase_id" to "plan",

@@ -71,6 +71,8 @@ sections:
     body: |
       Multi-stack delegated routing reads only its current runtime's section of the delegation contract. Single-stack reviews skip delegation — the routed pack handles its own.
 
+      Before any delegated routed layer or specialist launches, prepare the compact shared review-context packet required by `review-delegation.md`. Apply the routed pack's Diff-Signal Routing Table, retain required baseline layers, add only relevant specialists, and drop empty lanes. Pass each selected worker the packet, its assignment, and only its applicable rubric.
+
       For a single routed platform pack:
 
       - Let the routed pack choose `inline` or `delegated`.

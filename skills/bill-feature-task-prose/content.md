@@ -70,9 +70,8 @@ resolves omission to `auto` and rejects malformed, unknown, repeated, and
 conflicting tokens before its sole confirmation gate. For a non-interactive
 goal continuation, durable goal and child workflow state supply the immutable
 selection. This sidecar must not reparse the token, present another gate, or
-substitute a different mode. Persist the selected mode with the workflow and
-reuse it for every review-fix or audit-driven re-review. In Step 5 invoke
-`bill-code-review mode:<selected-mode>`; when a parallel lane is
+substitute a different mode for the initial pass. Persist the selected mode with the workflow as initial-pass policy. In Step 5 invoke
+`bill-code-review mode:<selected-mode>`; every review-fix or audit-driven re-review invokes `bill-code-review mode:inline`. When a parallel lane is
 configured, pass the same execution mode to both lanes without allowing
 recursive parallel launch.
 
@@ -262,7 +261,7 @@ Step id: `review`
 
 Primary artifact: `review_result`
 
-Run `bill-code-review mode:<selected-mode>` inline in the orchestrator through the active skill runtime. Scope: current unit of work for SMALL, branch diff for MEDIUM/LARGE. Do not wrap `bill-code-review` in an additional subagent — it already spawns specialist subagents internally. When `parallel-review:<agent>` was passed to this skill, invoke `bill-code-review mode:<selected-mode> parallel:<agent>` so a second review lane runs alongside the primary review without recursive parallel launch.
+Run `bill-code-review mode:<selected-mode>` inline in the orchestrator through the active skill runtime for the initial pass; invoke every later pass as `bill-code-review mode:inline`. Scope: current unit of work for SMALL, branch diff for MEDIUM/LARGE. Do not wrap `bill-code-review` in an additional subagent — it already spawns specialist subagents internally. When `parallel-review:<agent>` was passed to this skill, give both lanes the same per-pass mode and exact diff without recursive parallel launch.
 
 Review loop:
 
@@ -270,7 +269,7 @@ Review loop:
 - Before respawning, capture the exact diff pointer the review was run against — the branch name, commit range (for example `main..HEAD`), or explicit file list — and pass it as `{branch_or_commit_range}` in the fix briefing so the subagent knows which diff the findings refer to.
 - Re-run review.
 - Continue past Minor-only findings.
-- Max 3 iterations.
+- Reserve at most one inline re-review, for two total review passes. Never start pass three.
 - Do not pause to ask the user which finding to fix.
 
 For a decomposed prose-goal child, the parent supplies an immutable
@@ -284,7 +283,7 @@ after every repair and resume; never replace it with a merge base,
 `origin/main`, or sibling-subtask delta.
 
 The decomposed child invokes the primary and optional second lanes directly
-with the same `mode:<selected-mode>` and exact prepared delta. Do not
+with the same per-pass mode and exact prepared delta. Do not
 pass `parallel:` to either lane: the lanes must not recursively request
 parallel review, and together they count as one pass. Reserve a pass before
 launching it. When durable state has an unfinished reserved pass, resume that
@@ -298,10 +297,10 @@ text. It contains no path, line number, hunk, or raw review output. Continue
 through audit, validation, history, dependency advancement, commit_push, and
 final reporting unless an independent later gate fails.
 
-The two-pass cap and `review_cap_reached` continuation apply only to
-decomposed prose-goal children. Standalone prose feature tasks keep this
-step's normal three-iteration repair loop, ordinary `parallel:<agent>`
-invocation, approval behavior, and Step 9 PR creation.
+The two-pass cap applies to every feature task. Decomposed prose-goal children
+use the `review_cap_reached` continuation described above; standalone prose
+feature tasks stop at the existing review gate when their single inline
+re-review still has unresolved Blocker or Major findings.
 
 Orchestrated child telemetry:
 
@@ -1118,7 +1117,7 @@ For the parsing posture of subagent `RESULT:` blocks (best-effort recovery, sing
 - **Planning subagent returns an invalid plan** (missing fields, no dedicated test task when testable logic exists, etc.) — respawn it once with a corrective briefing that lists the violations. If it still fails, abandon at planning.
 - **Planning subagent returns `mode: "decompose"`** — treat this as a valid terminal planning result. Persist the `plan` artifact, validate and write the parent `decomposition-manifest.yaml`, present the subtask order and acceptance criteria, mark later workflow steps skipped, close workflow state as `abandoned` at `plan`, and call `feature_task_prose_finished` with `completion_status: "abandoned_at_planning"`.
 - **Implementation subagent stops early with `stopped_early: true`** — the orchestrator decides: if `plan_deviation_notes` imply a re-plan, respawn the planning subagent with the deviation notes and then a fresh implementation subagent; otherwise, hand to the user.
-- **Code-review fix loop exceeds 3 iterations** — stop, report remaining findings, hand to user. Call `feature_task_prose_finished` with `completion_status: "abandoned_at_review"`.
+- **The inline re-review exhausts the two-pass review budget** — stop, report remaining findings, hand to user. Call `feature_task_prose_finished` with `completion_status: "abandoned_at_review"`.
 - **Completeness audit loops exceed 2 iterations** — report remaining gaps, let user decide. Call `feature_task_prose_finished` accordingly.
 - **Quality-check subagent cannot run any validation command** — persist `validation_result: "skipped"` with the reason and continue finalization. Do not block the workflow for validation failures that can be fixed in the repository; keep fixing and rerunning validation until it passes.
 - **PR-description subagent fails to create the PR** — report the error, offer to retry. If abandoned, call `feature_task_prose_finished` with `completion_status: "error"`.

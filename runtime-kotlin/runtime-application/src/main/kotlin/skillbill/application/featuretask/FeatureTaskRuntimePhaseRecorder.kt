@@ -393,6 +393,7 @@ class FeatureTaskRuntimePhaseRecorder(
       blockedReason = request.blockedReason,
       loopId = request.loopId,
       edgeIteration = request.edgeIteration,
+      reviewPassNumber = request.reviewPassNumber,
     )
   }
 

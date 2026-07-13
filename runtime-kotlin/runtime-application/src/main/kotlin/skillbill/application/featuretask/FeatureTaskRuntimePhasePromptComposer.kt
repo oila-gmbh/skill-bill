@@ -258,7 +258,9 @@ object FeatureTaskRuntimePhasePromptComposer {
     }.orEmpty()
     return """
       ## Review execution mode
-      Run `bill-code-review mode:${codeReviewMode.wireValue}` for this review and every re-review.
+      Run `bill-code-review mode:${codeReviewMode.wireValue}` for this review. The initial pass uses the run-selected
+      mode; every later pass is explicitly INLINE and must fail with the existing eligibility reason rather than
+      substituting delegated mode. Never launch a third review pass.
       AUTO keeps the shared policy's existing selection; INLINE must reject an ineligible scope instead of substituting
       delegated mode; DELEGATED must use normal routed delegation and fail if workers cannot start.$parallel$goalScope
     """.trimIndent()
