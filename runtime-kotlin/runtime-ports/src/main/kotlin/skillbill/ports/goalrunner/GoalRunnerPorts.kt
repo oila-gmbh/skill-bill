@@ -36,7 +36,7 @@ data class GoalRunnerChildWorkflowSetup(
   val workflowId: String,
   val goalBranch: String,
   val reviewBaseline: GoalSubtaskReviewBaseline,
-  val codeReviewMode: CodeReviewExecutionMode,
+  val reviewPolicy: GoalRunnerReviewPolicy,
 ) {
   init {
     require(subtaskId > 0) { "subtaskId must be positive." }

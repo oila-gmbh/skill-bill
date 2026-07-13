@@ -371,6 +371,22 @@ class GitWorkflowGitOperationsTest {
   }
 
   @Test
+  fun `goal review baseline capture rejects a branch other than the durable child branch`() {
+    val repoRoot = Files.createTempDirectory("skillbill-goal-review-baseline-branch")
+    git(repoRoot, "init")
+    git(repoRoot, "config", "user.email", "skill-bill@example.test")
+    git(repoRoot, "config", "user.name", "Skill Bill")
+    Files.writeString(repoRoot.resolve("tracked.txt"), "base\n")
+    git(repoRoot, "add", ".")
+    git(repoRoot, "commit", "-m", "initial")
+
+    val result = GitWorkflowGitOperations().captureGoalSubtaskReviewBaseline(repoRoot, "feat/another-child")
+
+    assertFalse(result.ok)
+    assertContains(result.error, "durable child branch 'feat/another-child'")
+  }
+
+  @Test
   fun `goal review input excludes committed changes from an earlier subtask`() {
     val repoRoot = Files.createTempDirectory("skillbill-goal-review-earlier-subtask")
     git(repoRoot, "init")

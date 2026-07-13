@@ -67,12 +67,16 @@ data class FeatureTaskRuntimeGoalContinuationArtifact(
   val suppressPr: Boolean,
   val goalBranch: String,
   val parentWorkflowId: String? = null,
-  val codeReviewMode: CodeReviewExecutionMode = CodeReviewExecutionMode.AUTO,
+  val codeReviewMode: CodeReviewExecutionMode,
+  val parallelReviewAgent: String? = null,
 ) {
   init {
     require(issueKey.isNotBlank()) { "FeatureTaskRuntimeGoalContinuationArtifact.issueKey must be non-blank." }
     require(subtaskId > 0) { "FeatureTaskRuntimeGoalContinuationArtifact.subtaskId must be positive." }
     require(goalBranch.isNotBlank()) { "FeatureTaskRuntimeGoalContinuationArtifact.goalBranch must be non-blank." }
+    parallelReviewAgent?.let {
+      require(it.isNotBlank()) { "FeatureTaskRuntimeGoalContinuationArtifact.parallelReviewAgent must be non-blank." }
+    }
   }
 
   @OpenBoundaryMap("Feature-task-runtime goal-continuation artifact map at the durable workflow-artifact seam")
@@ -84,6 +88,7 @@ data class FeatureTaskRuntimeGoalContinuationArtifact(
     "code_review_mode" to codeReviewMode.wireValue,
   ).apply {
     parentWorkflowId?.let { put("parent_workflow_id", it) }
+    parallelReviewAgent?.let { put("parallel_review_agent", it) }
   }
 
   companion object {
@@ -95,6 +100,7 @@ data class FeatureTaskRuntimeGoalContinuationArtifact(
         "goal_branch",
         "parent_workflow_id",
         "code_review_mode",
+        "parallel_review_agent",
       )
       raw.keys.forEach { key ->
         if (key !in allowedKeys) {
@@ -113,6 +119,7 @@ data class FeatureTaskRuntimeGoalContinuationArtifact(
         } catch (error: IllegalArgumentException) {
           throw InvalidWorkflowStateSchemaError("Goal-continuation artifact code_review_mode is invalid.", error)
         },
+        parallelReviewAgent = raw.optionalStringField("parallel_review_agent"),
       )
     }
   }

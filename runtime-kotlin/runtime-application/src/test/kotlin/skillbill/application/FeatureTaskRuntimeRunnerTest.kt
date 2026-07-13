@@ -1417,7 +1417,14 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
       """.trimIndent(),
     )
 
-    harness.runner.run(harness.request())
+    harness.runner.run(
+      harness.request().copy(
+        transitionsOverride = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration(
+          forwardPhaseIds = listOf("preplan", "plan", "implement", "review"),
+          backwardEdges = emptyList(),
+        ),
+      ),
+    )
 
     val state = requireNotNull(harness.goalContinuationRecorder.reviewState(WORKFLOW_ID))
     assertEquals(1, state.completedPassCount)

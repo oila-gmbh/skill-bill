@@ -16,6 +16,8 @@ import skillbill.ports.goalrunner.model.GoalPullRequestRequest
 import skillbill.ports.goalrunner.model.GoalPullRequestResult
 import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.ports.workflow.model.WorkflowGitOperationResult
+import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
+import skillbill.ports.workflow.model.GoalSubtaskReviewBaselineResult
 import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksRequest
 import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksResult
 import skillbill.ports.workflow.model.WorkflowWorktreeActivityResult
@@ -351,7 +353,7 @@ class CliGoalRuntimeTest {
   }
 
   @Test
-  fun `goal interrupted run resumes same subtask with coherent observability status`() {
+  fun `goal interrupted legacy child blocks without recapturing a runtime review baseline`() {
     val fixture = goalFixture(subtaskCount = 1)
     val childWorkflowId = startRunningGoalChild(fixture)
     recordRunningGoalChildProgress(
@@ -384,8 +386,7 @@ class CliGoalRuntimeTest {
     )
     val resumed = CliRuntime.run(fixture.goalCommand(), fixture.context(launcher = launcher))
 
-    assertInterruptedResumeOutput(status, watch, resumed, launcher)
-    assertResumeCompletedOriginalChild(fixture, childWorkflowId)
+    assertInterruptedLegacyChildOutput(status, watch, resumed, launcher)
   }
 
   @Test
@@ -431,7 +432,7 @@ class CliGoalRuntimeTest {
     assertTrue(gitOperations.selectedDiffRequests.all { request -> request.limits() == Triple(2, 3, 40) })
   }
 
-  private fun assertInterruptedResumeOutput(
+  private fun assertInterruptedLegacyChildOutput(
     status: CliExecutionResult,
     watch: CliExecutionResult,
     resumed: CliExecutionResult,
@@ -451,35 +452,9 @@ class CliGoalRuntimeTest {
     assertContains(watch.stdout, "watch_refresh: index=1 status=ok current_subtask=1 current_step=implement")
     assertContains(watch.stdout, "watch_observability: index=1 phase=implement role=phase_subagent")
     assertContains(watch.stdout, "sequence=12")
-    assertEquals(0, resumed.exitCode, resumed.stdout)
-    assertEquals(listOf(1), launcher.requests.map { it.skillRunRequest.subtaskId })
-    assertContains(resumed.stdout, "status: complete")
-    assertContains(resumed.stdout, "attempted_subtasks: 1")
-  }
-
-  private fun assertResumeCompletedOriginalChild(fixture: GoalCliFixture, childWorkflowId: String) {
-    val completedOutcome = runGoalJson(
-      listOf(
-        "--db",
-        fixture.dbPath.toString(),
-        "workflow",
-        "continue",
-        "SKILL-901",
-        "--subtask-id",
-        "1",
-        "--format",
-        "json",
-      ),
-      fixture.context(launcher = NoopGoalTestAgentRunLauncher),
-    )["goal_continuation_outcome"] as Map<*, *>
-    val originalChild = runGoalJson(
-      listOf("--db", fixture.dbPath.toString(), "workflow", "get", childWorkflowId, "--format", "json"),
-      fixture.context(launcher = NoopGoalTestAgentRunLauncher),
-    )
-    assertEquals("complete", completedOutcome["status"])
-    assertEquals(childWorkflowId, completedOutcome["workflow_id"])
-    assertEquals(childWorkflowId, originalChild["workflow_id"])
-    assertEquals(emptyList(), runningGoalChildWorkflowIds(fixture, "SKILL-901", 1))
+    assertEquals(1, resumed.exitCode, resumed.stdout)
+    assertTrue(launcher.requests.isEmpty())
+    assertContains(resumed.stdout, "Could not capture the goal-subtask review baseline")
   }
 
   @Test
@@ -1300,6 +1275,12 @@ private object GoalTestWorkflowGitOperations : WorkflowGitOperations {
 
   override fun currentBranch(repoRoot: Path): WorkflowGitOperationResult =
     WorkflowGitOperationResult(status = "ok", value = "")
+
+  override fun captureGoalSubtaskReviewBaseline(repoRoot: Path): GoalSubtaskReviewBaselineResult =
+    GoalSubtaskReviewBaselineResult(
+      status = "ok",
+      baseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
+    )
 
   override fun createCommit(repoRoot: Path, message: String): WorkflowGitOperationResult =
     WorkflowGitOperationResult(status = "ok", value = "test-commit")

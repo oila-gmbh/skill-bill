@@ -39,6 +39,11 @@ interface WorkflowGitOperations {
   fun captureGoalSubtaskReviewBaseline(repoRoot: Path): GoalSubtaskReviewBaselineResult =
     GoalSubtaskReviewBaselineResult(status = "error", error = "Goal-subtask review baselines require a git adapter.")
 
+  fun captureGoalSubtaskReviewBaseline(
+    repoRoot: Path,
+    expectedBranch: String,
+  ): GoalSubtaskReviewBaselineResult = captureGoalSubtaskReviewBaseline(repoRoot)
+
   fun buildGoalSubtaskReviewInput(
     repoRoot: Path,
     baseline: GoalSubtaskReviewBaseline,
@@ -102,6 +107,11 @@ object NoopWorkflowGitOperations : WorkflowGitOperations {
       status = "ok",
       baseline = GoalSubtaskReviewBaseline(reviewBaseSha = "0".repeat(40), baselineUntrackedPaths = emptyList()),
     )
+
+  override fun captureGoalSubtaskReviewBaseline(
+    repoRoot: Path,
+    expectedBranch: String,
+  ): GoalSubtaskReviewBaselineResult = captureGoalSubtaskReviewBaseline(repoRoot)
 
   override fun buildGoalSubtaskReviewInput(
     repoRoot: Path,

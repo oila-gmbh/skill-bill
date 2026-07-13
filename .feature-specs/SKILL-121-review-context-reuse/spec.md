@@ -84,6 +84,27 @@ which loop asks for it; it records the exhausted review budget and continues or
 stops according to the owning audit/validation contract without substituting a
 third delegated or inline review.
 
+Audit gaps do not automatically restart planning. The audit result classifies
+each re-entry as either `implement` or `plan` and persists the selected target
+and concise rationale. Localized omissions, incorrect conditions, missing
+regression coverage, narrow wiring defects, and other fixes that preserve the
+approved design re-enter `implement` directly. A gap re-enters `plan` only when
+it invalidates the approved design or materially changes dependent work, such
+as an acceptance-criteria correction, public contract, data model, module
+boundary, rollout decision, or dependency/order change. A resumed workflow
+uses the persisted target; it does not recompute the decision from prose or
+silently widen a direct implementation fix back to planning.
+
+Before every feature-task step starts, the workflow prints the resolved agent
+and model that will execute it. This includes orchestrator-owned steps,
+subagent-owned phases, and the code-review step's parent review; any delegated
+review worker is reported in that step's execution summary with its specialist
+assignment. The value is the runtime's resolved model identifier. When an agent
+uses its provider-managed default instead of a concrete override, print
+`default (agent-managed)` rather than guessing a model name. Step execution
+metadata is carried through resume and available in the final workflow summary
+so an operator can tell which model ran each step.
+
 ## Scope
 
 - `orchestration/review-delegation/PLAYBOOK.md` and the code-review shell
@@ -99,6 +120,12 @@ third delegated or inline review.
   initial pass may carry the selected delegated mode; review-fix and audit-gap
   re-entries share the one remaining inline pass and preserve an
   ineligible-inline failure rather than widening back to delegated workers.
+- Audit output and workflow re-entry state classify each gap as a direct
+  implementation correction or a true design re-plan. Runtime and prose
+  execution use the same persisted target when resuming an audit-gap loop.
+- Feature-task progress and completion reporting expose the resolved
+  agent/model for every step, including the review parent and any specialist
+  workers it launches.
 - The now-unused rubric-loading adapter/port is removed with focused runtime
   tests that protect the compact parent prompt and pre-resolved-stack hand-off.
 - Source changes are rendered/installed through the normal staging flow; no
@@ -153,7 +180,20 @@ third delegated or inline review.
     loop can launch a third review, delegated or inline. Focused tests cover
     audit-fix consuming the remaining pass, review-fix consuming it first, and
     durable resume retaining the exhausted budget.
-11. `skill-bill validate`, the relevant Gradle test suite, `npx --yes agnix
+11. An audit gap carries a persisted re-entry target and rationale. Localized
+    gaps that preserve the accepted design resume at `implement` without
+    invoking planning; only a documented design-invalidating gap resumes at
+    `plan`. Runtime, prose, retries, and resume use the saved target
+    deterministically. Tests cover both routes and prove that a direct
+    implementation correction never invokes planning.
+12. Before every workflow step starts, user-visible progress prints the
+    resolved agent and model. The final workflow summary retains that mapping
+    for every completed/skipped/resumed step, including the code-review parent
+    and any delegated specialist workers. A provider-managed default is shown
+    exactly as `default (agent-managed)`; the system never fabricates a model
+    identifier. Tests cover overrides, inherited/default models, resume, and
+    step-specific agent overrides.
+13. `skill-bill validate`, the relevant Gradle test suite, `npx --yes agnix
    --strict .`, and `scripts/validate_agent_configs` pass. `./install.sh` runs
    after source-contract changes so local staged installations refresh.
 

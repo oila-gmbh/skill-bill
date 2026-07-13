@@ -17,6 +17,7 @@ import skillbill.application.workflow.repoRoot
 import skillbill.application.workflow.toSnapshot
 import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidGoalSubtaskReviewStateSchemaError
+import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.goalrunner.model.GOAL_ATTEMPT_LEDGER_ARTIFACT_KEY
 import skillbill.goalrunner.model.GOAL_ATTEMPT_LEDGER_LIMIT
 import skillbill.goalrunner.model.GOAL_SESSION_ACCOUNTING_ARTIFACT_KEY
@@ -181,12 +182,13 @@ class WorkflowGoalRunnerManifestStore(
               suppressPr = true,
               goalBranch = setup.goalBranch,
               parentWorkflowId = parentUpdated.workflowId,
-              codeReviewMode = setup.codeReviewMode,
+              codeReviewMode = setup.reviewPolicy.codeReviewMode,
+              parallelReviewAgent = setup.reviewPolicy.parallelReviewAgent,
             ).toArtifactMap(),
             GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY to GoalSubtaskReviewState.initial(
               reviewBaseSha = setup.reviewBaseline.reviewBaseSha,
               baselineUntrackedPaths = setup.reviewBaseline.baselineUntrackedPaths,
-              codeReviewMode = setup.codeReviewMode,
+              codeReviewMode = setup.reviewPolicy.codeReviewMode,
             ).toArtifactMap(),
             "install_sync_result" to mapOf(
               "status" to "skipped",
@@ -262,6 +264,9 @@ class WorkflowGoalRunnerManifestStore(
       ?: error("Goal parent workflow '$parentWorkflowId' no longer exists.")
     val existing = reviewPolicyFromArtifacts(decodeArtifacts(record.artifactsJson))
     if (existing != null) {
+      check(existing == policy) {
+        "Goal review policy is immutable for parent workflow '$parentWorkflowId'."
+      }
       existing
     } else {
       val updated = engine.updateRecord(
@@ -422,6 +427,12 @@ private fun reviewPolicyFromArtifacts(artifacts: Map<String, Any?>): GoalRunnerR
   val raw = artifacts[GOAL_REVIEW_POLICY_ARTIFACT_KEY] ?: return null
   val policy = JsonSupport.anyToStringAnyMap(raw)
     ?: error("Goal review policy artifact '$GOAL_REVIEW_POLICY_ARTIFACT_KEY' must be a map.")
+  val allowedKeys = setOf("code_review_mode", "parallel_review_agent")
+  policy.keys.forEach { key ->
+    require(key in allowedKeys) {
+      "Goal review policy artifact '$GOAL_REVIEW_POLICY_ARTIFACT_KEY' has unsupported field '$key'."
+    }
+  }
   val mode = policy["code_review_mode"] as? String
     ?: error("Goal review policy artifact '$GOAL_REVIEW_POLICY_ARTIFACT_KEY' is missing code_review_mode.")
   val codeReviewMode = try {
@@ -468,22 +479,17 @@ class WorkflowGoalRunnerOutcomeStore(
 
   override fun goalSubtaskReviewState(workflowId: String, dbPathOverride: String?): GoalSubtaskReviewState? =
     database.read(dbPathOverride) { unitOfWork ->
-      val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@read null
-      decodeArtifacts(record.artifactsJson)[GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY]
-        ?.let(::goalReviewArtifactMap)
-        ?.let(GoalSubtaskReviewState::fromArtifactMap)
+      val record = taskRuntimeRecordOrNull(unitOfWork.workflowStates, workflowId) ?: return@read null
+      goalReviewStateWithPolicy(decodeArtifacts(record.artifactsJson))
     }
 
   override fun unemittedGoalReviewPasses(
     workflowId: String,
     dbPathOverride: String?,
   ): List<GoalSubtaskReviewPassResult> = database.read(dbPathOverride) { unitOfWork ->
-    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@read emptyList()
+    val record = taskRuntimeRecordOrNull(unitOfWork.workflowStates, workflowId) ?: return@read emptyList()
     val artifacts = decodeArtifacts(record.artifactsJson)
-    val state = artifacts[GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY]
-      ?.let(::goalReviewArtifactMap)
-      ?.let(GoalSubtaskReviewState::fromArtifactMap)
-    ?: return@read emptyList()
+    val state = goalReviewStateWithPolicy(artifacts) ?: return@read emptyList()
     state.passResults.drop(state.emittedPassCount)
   }
 
@@ -492,12 +498,9 @@ class WorkflowGoalRunnerOutcomeStore(
     passNumber: Int,
     dbPathOverride: String?,
   ): Boolean = database.transaction(dbPathOverride) { unitOfWork ->
-    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@transaction false
+    val record = taskRuntimeRecordOrNull(unitOfWork.workflowStates, workflowId) ?: return@transaction false
     val artifacts = decodeArtifacts(record.artifactsJson)
-    val state = artifacts[GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY]
-      ?.let(::goalReviewArtifactMap)
-      ?.let(GoalSubtaskReviewState::fromArtifactMap)
-      ?: return@transaction false
+    val state = goalReviewStateWithPolicy(artifacts) ?: return@transaction false
     if (passNumber != state.emittedPassCount + 1 || passNumber > state.completedPassCount) {
       return@transaction false
     }
@@ -1152,6 +1155,42 @@ private fun goalReviewArtifactMap(value: Any?): Map<String, Any?> = (value as? M
     fieldPath = GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY,
     reason = "must be an object.",
   )
+
+private fun goalReviewStateWithPolicy(artifacts: Map<String, Any?>): GoalSubtaskReviewState? {
+  val state = artifacts[GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY]
+    ?.let(::goalReviewArtifactMap)
+    ?.let(GoalSubtaskReviewState::fromArtifactMap)
+    ?: return null
+  val continuation = artifacts[FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY]
+    ?.let(::goalReviewArtifactMap)
+    ?.let(FeatureTaskRuntimeGoalContinuationArtifact::fromArtifactMap)
+    ?: throw InvalidGoalSubtaskReviewStateSchemaError(
+      sourceLabel = GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY,
+      fieldPath = FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY,
+      reason = "must be present whenever a goal-subtask review state exists.",
+    )
+  if (state.codeReviewMode != continuation.codeReviewMode) {
+    throw InvalidGoalSubtaskReviewStateSchemaError(
+      sourceLabel = GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY,
+      fieldPath = "code_review_mode",
+      reason = "must match the immutable goal-continuation review policy.",
+    )
+  }
+  return state
+}
+
+private fun taskRuntimeRecordOrNull(
+  workflowStates: WorkflowStateRepository,
+  workflowId: String,
+): WorkflowStateSnapshot? = try {
+  WorkflowFamily.TASK_RUNTIME.get(workflowStates, workflowId)
+} catch (error: InvalidWorkflowStateSchemaError) {
+  if (error.message.orEmpty().contains("mode='")) {
+    null
+  } else {
+    throw error
+  }
+}
 
 private fun terminalOutcomeFor(
   snapshot: WorkflowStateSnapshot,

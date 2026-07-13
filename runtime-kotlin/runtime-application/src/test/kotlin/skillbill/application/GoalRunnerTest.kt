@@ -1923,6 +1923,14 @@ internal class RecordingOutcomeStore : GoalRunnerWorkflowOutcomeStore {
     )
   }
 
+  fun seedReviewState(workflowId: String) {
+    reviewStates[workflowId] = GoalSubtaskReviewState.initial(
+      reviewBaseSha = "0".repeat(40),
+      baselineUntrackedPaths = emptyList(),
+      codeReviewMode = CodeReviewExecutionMode.AUTO,
+    )
+  }
+
   override fun goalSubtaskReviewState(workflowId: String, dbPathOverride: String?): GoalSubtaskReviewState? =
     reviewStates[workflowId]
 

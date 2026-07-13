@@ -1,5 +1,5 @@
 ---
-status: Ready for implementation
+status: In Progress
 issue_key: SKILL-119
 source: inline user request
 ---
@@ -206,6 +206,22 @@ own documented argument (for example `execution-mode:auto|inline|delegated`),
 so standalone code review and feature-owned review share one selection and
 eligibility implementation instead of duplicating the policy in feature
 skills.
+
+## Decomposition
+
+This feature is a dependency-ordered decomposed goal. The original
+single-spec workflow `wftr-20260713-045113-oseu` is retained as historical
+evidence only: it is not a child of this goal and must not be resumed after
+the manifest is adopted. The goal starts new child workflows from the governed
+subtask specs below.
+
+1. Public review-selection contract and single-task propagation.
+2. Runtime goal persistence, exact review-delta scope, and cap continuation.
+3. Prose-goal and native subtask-runner parity with the runtime policy.
+4. Cross-boundary regression coverage, install refresh, and full validation.
+
+Subtasks 2 and 3 depend on the canonical selection contract in subtask 1.
+Subtask 4 is the integration gate and depends on all implementation subtasks.
 
 ## Scope
 

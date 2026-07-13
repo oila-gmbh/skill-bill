@@ -161,6 +161,29 @@ class GitWorkflowGitOperations : WorkflowGitOperations {
     )
   }
 
+  override fun captureGoalSubtaskReviewBaseline(
+    repoRoot: Path,
+    expectedBranch: String,
+  ): GoalSubtaskReviewBaselineResult {
+    val branchBeforeCapture = runGitCommand(repoRoot, "branch", "--show-current")
+    if (!branchBeforeCapture.ok || branchBeforeCapture.value.trim() != expectedBranch) {
+      return GoalSubtaskReviewBaselineResult(
+        status = "error",
+        error = "Goal-subtask review baseline must be captured on durable child branch '$expectedBranch'.",
+      )
+    }
+    val captured = captureGoalSubtaskReviewBaseline(repoRoot)
+    if (!captured.ok) return captured
+    val branchAfterCapture = runGitCommand(repoRoot, "branch", "--show-current")
+    if (!branchAfterCapture.ok || branchAfterCapture.value.trim() != expectedBranch) {
+      return GoalSubtaskReviewBaselineResult(
+        status = "error",
+        error = "Goal-subtask branch changed while capturing its immutable review baseline; refusing to persist it.",
+      )
+    }
+    return captured
+  }
+
   override fun buildGoalSubtaskReviewInput(
     repoRoot: Path,
     baseline: GoalSubtaskReviewBaseline,

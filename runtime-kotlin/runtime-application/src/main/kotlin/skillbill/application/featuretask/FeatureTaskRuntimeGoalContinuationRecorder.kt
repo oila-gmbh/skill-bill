@@ -40,9 +40,7 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
     val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
       ?: return@transaction false
     val artifacts = decodeArtifacts(record.artifactsJson)
-    val existingContinuation = artifacts[FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY]
-      ?.let(::asGoalReviewArtifactMap)
-      ?.let(FeatureTaskRuntimeGoalContinuationArtifact::fromArtifactMap)
+    val existingContinuation = continuationFromArtifacts(artifacts)
     if (existingContinuation != null && continuation != null && existingContinuation != continuation) {
       throw IllegalStateException(
         "Goal continuation is immutable for workflow '$workflowId'; parent, subtask, branch, and review mode cannot change on resume.",
@@ -60,9 +58,7 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
       emptyMap()
     }
     val reviewStatePatch = continuation?.let { context ->
-      val state = artifacts[GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY]
-        ?.let(::asGoalReviewArtifactMap)
-        ?.let(GoalSubtaskReviewState::fromArtifactMap)
+      val state = reviewStateFromArtifacts(artifacts)
       val baseline = reviewBaseline
       when {
         state != null && baseline != null &&
@@ -73,6 +69,10 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
         state == null && existingContinuation != null ->
           throw IllegalStateException(
             "Goal-subtask review state is missing for an existing child workflow; refusing to capture a replacement baseline.",
+          )
+        state == null && baseline == null ->
+          throw IllegalStateException(
+            "Goal-subtask review baseline is required when opening a child workflow; refusing to create an unpinned review scope.",
           )
         state == null && baseline != null -> mapOf(
           GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY to GoalSubtaskReviewState.initial(
@@ -105,19 +105,23 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
   fun reviewState(workflowId: String, dbOverride: String? = null): GoalSubtaskReviewState? =
     database.read(dbOverride) { unitOfWork ->
       val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@read null
-      decodeArtifacts(record.artifactsJson)[GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY]
-        ?.let(::asGoalReviewArtifactMap)
-        ?.let(GoalSubtaskReviewState::fromArtifactMap)
+      reviewStateFromArtifacts(decodeArtifacts(record.artifactsJson))
     }
+
+  fun continuation(
+    workflowId: String,
+    dbOverride: String? = null,
+  ): FeatureTaskRuntimeGoalContinuationArtifact? = database.read(dbOverride) { unitOfWork ->
+    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@read null
+    continuationFromArtifacts(decodeArtifacts(record.artifactsJson))
+  }
 
   fun reserveGoalReviewPass(workflowId: String, dbOverride: String? = null): GoalSubtaskReviewPassReservation =
     database.transaction(dbOverride) { unitOfWork ->
       val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
         ?: return@transaction GoalSubtaskReviewPassReservation.MissingState
       val artifacts = decodeArtifacts(record.artifactsJson)
-      val state = artifacts[GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY]
-        ?.let(::asGoalReviewArtifactMap)
-        ?.let(GoalSubtaskReviewState::fromArtifactMap)
+      val state = reviewStateFromArtifacts(artifacts)
         ?: return@transaction GoalSubtaskReviewPassReservation.MissingState
       if (state.reviewCapReached || state.completedPassCount >= 2) {
         return@transaction GoalSubtaskReviewPassReservation.CarryForward(state)
@@ -139,9 +143,7 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
   ): GoalSubtaskReviewState? = database.transaction(dbOverride) { unitOfWork ->
     val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@transaction null
     val artifacts = decodeArtifacts(record.artifactsJson)
-    val state = artifacts[GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY]
-      ?.let(::asGoalReviewArtifactMap)
-      ?.let(GoalSubtaskReviewState::fromArtifactMap)
+    val state = reviewStateFromArtifacts(artifacts)
       ?: return@transaction null
     if (state.reviewBaseSha != input.reviewBaseSha) {
       throw IllegalStateException("Goal-subtask review input does not match the durable review baseline.")
@@ -168,15 +170,11 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
   ): GoalSubtaskReviewState? = database.transaction(dbOverride) { unitOfWork ->
     val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@transaction null
     val artifacts = decodeArtifacts(record.artifactsJson)
-    val state = artifacts[GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY]
-      ?.let(::asGoalReviewArtifactMap)
-      ?.let(GoalSubtaskReviewState::fromArtifactMap)
+    val state = reviewStateFromArtifacts(artifacts)
       ?: return@transaction null
     val completed = state.completeReservedPass(verdict, unresolvedFindingCount, findings)
     val passNumber = completed.completedPassCount.toString()
-    val previousResults = artifacts[GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY]
-      ?.let(::asGoalReviewArtifactMap)
-      .orEmpty()
+    val previousResults = rawReviewResultsFromArtifacts(artifacts, state)
     savePatch(
       record,
       unitOfWork.workflowStates,
@@ -197,13 +195,9 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
     val durable = database.read(dbOverride) { unitOfWork ->
       val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@read null
       val artifacts = decodeArtifacts(record.artifactsJson)
-      val state = artifacts[GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY]
-        ?.let(::asGoalReviewArtifactMap)
-        ?.let(GoalSubtaskReviewState::fromArtifactMap)
+      val state = reviewStateFromArtifacts(artifacts)
         ?: return@read null
-      val continuation = artifacts[FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY]
-        ?.let(::asGoalReviewArtifactMap)
-        ?.let(FeatureTaskRuntimeGoalContinuationArtifact::fromArtifactMap)
+      val continuation = continuationFromArtifacts(artifacts)
         ?: return@read null
       state to continuation
     } ?: return GoalSubtaskReviewInputPreparation.MissingState
@@ -223,20 +217,10 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
     database.read(dbOverride) { unitOfWork ->
       val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@read null
       val artifacts = decodeArtifacts(record.artifactsJson)
-      val state = artifacts[GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY]
-        ?.let(::asGoalReviewArtifactMap)
-        ?.let(GoalSubtaskReviewState::fromArtifactMap)
+      val state = reviewStateFromArtifacts(artifacts)
         ?: return@read null
       val passNumber = state.passResults.lastOrNull()?.passNumber ?: return@read null
-      val results = artifacts[GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY]
-        ?.let(::asGoalReviewArtifactMap)
-        ?: return@read null
-      results[passNumber.toString()] as? String
-        ?: throw InvalidGoalSubtaskReviewStateSchemaError(
-          sourceLabel = GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY,
-          fieldPath = "$GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY.$passNumber",
-          reason = "must contain the durable raw review result for the completed pass.",
-        )
+      rawReviewResultsFromArtifacts(artifacts, state)[passNumber.toString()]
     }
 
   private fun savePatch(
@@ -286,4 +270,65 @@ private fun asGoalReviewArtifactMap(value: Any?): Map<String, Any?> = (value as?
     sourceLabel = GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY,
     fieldPath = GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY,
     reason = "must be an object.",
+  )
+
+private fun continuationFromArtifacts(
+  artifacts: Map<String, Any?>,
+): FeatureTaskRuntimeGoalContinuationArtifact? = artifacts[FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY]
+  ?.let(::asGoalReviewArtifactMap)
+  ?.let(FeatureTaskRuntimeGoalContinuationArtifact::fromArtifactMap)
+
+private fun reviewStateFromArtifacts(artifacts: Map<String, Any?>): GoalSubtaskReviewState? {
+  val state = artifacts[GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY]
+    ?.let(::asGoalReviewArtifactMap)
+    ?.let(GoalSubtaskReviewState::fromArtifactMap)
+    ?: return null
+  val continuation = continuationFromArtifacts(artifacts)
+    ?: throw InvalidGoalSubtaskReviewStateSchemaError(
+      sourceLabel = GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY,
+      fieldPath = FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY,
+      reason = "must be present whenever a goal-subtask review state exists.",
+    )
+  if (state.codeReviewMode != continuation.codeReviewMode) {
+    throw InvalidGoalSubtaskReviewStateSchemaError(
+      sourceLabel = GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY,
+      fieldPath = "code_review_mode",
+      reason = "must match the immutable goal-continuation review policy.",
+    )
+  }
+  return state
+}
+
+private fun rawReviewResultsFromArtifacts(
+  artifacts: Map<String, Any?>,
+  state: GoalSubtaskReviewState,
+): Map<String, String> {
+  if (state.completedPassCount == 0) return emptyMap()
+  val raw = artifacts[GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY]
+    ?.let(::asGoalReviewArtifactMap)
+    ?: rawReviewResultError(
+      GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY,
+      "must contain the durable raw review result for every completed pass.",
+    )
+  val expectedKeys = state.passResults.map { result -> result.passNumber.toString() }.toSet()
+  if (raw.keys != expectedKeys) {
+    rawReviewResultError(
+      GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY,
+      "must contain exactly one durable raw review result for every completed pass.",
+    )
+  }
+  return raw.mapValues { (passNumber, value) ->
+    (value as? String)?.takeIf(String::isNotBlank)
+      ?: rawReviewResultError(
+        "$GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY.$passNumber",
+        "must be a non-blank durable raw review result.",
+      )
+  }
+}
+
+private fun rawReviewResultError(fieldPath: String, reason: String): Nothing =
+  throw InvalidGoalSubtaskReviewStateSchemaError(
+    sourceLabel = GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY,
+    fieldPath = fieldPath,
+    reason = reason,
   )

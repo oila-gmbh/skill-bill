@@ -56,7 +56,8 @@ data class FeatureTaskRuntimeGoalContinuationContext(
   val suppressPr: Boolean,
   val parentWorkflowId: String? = null,
   val lastResumableStep: String? = null,
-  val codeReviewMode: CodeReviewExecutionMode = CodeReviewExecutionMode.AUTO,
+  val codeReviewMode: CodeReviewExecutionMode? = null,
+  val parallelReviewAgent: String? = null,
   val reviewBaseline: GoalSubtaskReviewBaseline? = null,
 ) {
   init {
@@ -66,6 +67,7 @@ data class FeatureTaskRuntimeGoalContinuationContext(
     requireNotNull(reviewBaseline) { "reviewBaseline is required for goal continuation before implementation can begin." }
     parentWorkflowId?.let { require(it.isNotBlank()) { "parentWorkflowId must be non-blank when provided." } }
     lastResumableStep?.let { require(it.isNotBlank()) { "lastResumableStep must be non-blank when provided." } }
+    parallelReviewAgent?.let { require(it.isNotBlank()) { "parallelReviewAgent must be non-blank when provided." } }
   }
 }
 

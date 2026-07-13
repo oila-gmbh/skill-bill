@@ -332,9 +332,14 @@ class GoalRunner(
     val existingWorkflowId = state.manifest.workflowIdFor(subtaskId)
     if (existingWorkflowId != null) {
       return outcomeStore.goalSubtaskReviewState(existingWorkflowId, request.dbPathOverride)
-        ?.let { reviewState -> GoalSubtaskReviewBaseline(reviewState.reviewBaseSha, reviewState.baselineUntrackedPaths) }
+        ?.let { reviewState ->
+          GoalSubtaskReviewBaseline(reviewState.reviewBaseSha, reviewState.baselineUntrackedPaths)
+        }
     }
-    return gitOperations.captureGoalSubtaskReviewBaseline(request.repoRoot).baseline
+    val branch = state.manifest.branchPlanFor(subtaskId).branch.takeIf(String::isNotBlank)
+      ?: state.manifest.featureBranch?.takeIf(String::isNotBlank)
+      ?: return null
+    return gitOperations.captureGoalSubtaskReviewBaseline(request.repoRoot, branch).baseline
   }
 
   private fun blockedReviewBaselineIteration(
@@ -422,7 +427,10 @@ class GoalRunner(
           workflowId = assignedWorkflowId,
           goalBranch = branch,
           reviewBaseline = reviewBaseline,
-          codeReviewMode = request.codeReviewMode ?: CodeReviewExecutionMode.AUTO,
+          reviewPolicy = GoalRunnerReviewPolicy(
+            codeReviewMode = request.codeReviewMode ?: CodeReviewExecutionMode.AUTO,
+            parallelReviewAgent = request.parallelReviewAgent,
+          ),
         ),
         request.dbPathOverride,
       )

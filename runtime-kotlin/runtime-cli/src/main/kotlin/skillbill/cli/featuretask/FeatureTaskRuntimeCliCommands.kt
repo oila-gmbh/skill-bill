@@ -265,7 +265,8 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
       suppressPr = true,
       parentWorkflowId = goalParentWorkflowId?.takeIf(String::isNotBlank),
       lastResumableStep = goalLastResumableStep?.takeIf(String::isNotBlank),
-      codeReviewMode = requestedReviewMode ?: CodeReviewExecutionMode.AUTO,
+      codeReviewMode = requestedReviewMode,
+      parallelReviewAgent = parallelReviewAgent?.takeIf(String::isNotBlank),
       reviewBaseline = requireNotNull(goalReviewBaseSha?.takeIf(String::isNotBlank)) { "--goal-review-base-sha is required with goal-continuation options." }.let { base ->
         GoalSubtaskReviewBaseline(base, goalBaselineUntrackedPaths.distinct().sorted())
       },
