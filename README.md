@@ -72,7 +72,7 @@ Skill Bill ships complete Go, iOS, Kotlin/KMP, PHP, Python, Rust, and TypeScript
 
 - `/bill-feature` prepares the feature spec, then routes to implementation or the goal loop
 - `/bill-feature-spec` prepares governed single-spec or decomposed feature-spec artifacts before implementation
-- `/bill-code-review` routes to the matching platform review stack (the stack-specific review skills are internal sidecars, not separately invocable)
+- `/bill-code-review` routes to the matching platform review stack; use `mode:inline` or `mode:delegated` to select review execution explicitly (the stack-specific review skills are internal sidecars, not separately invocable)
 - `/bill-code-check` routes to the matching stack-specific checker (the stack-specific checker skills are internal sidecars, not separately invocable)
 - `/bill-pr-description` generates PR text and QA steps
 - `/bill-feature-verify` verifies a PR against a spec or design doc
@@ -92,6 +92,15 @@ Go, iOS, Kotlin, PHP, Python, Rust, and TypeScript each own all ten approved rev
 
 Maintained packs share one exemption-free substance gate: every effective specialist needs at least three platform-specific failure-mode clusters and ten evidence-bearing rules, forbidden generic placeholders are rejected, shared normalized five-word sequences are capped at 35%, and corresponding authored rubrics are capped at 65% similarity. Discovery remains manifest-driven; the current pack list is not hard-coded into the gate.
 
+**Review mode selection:**
+
+```text
+/bill-code-review mode:inline
+/bill-code-review mode:delegated
+```
+
+Omit `mode:` (or use `mode:auto`) to keep automatic selection. Feature workflows use a separate caller-facing spelling—`/bill-feature <issue-key> code-review:inline|delegated`—and translate it to the standalone review mode internally. The `mode:runtime|prose` argument on `/bill-feature` selects the feature execution engine, not the review strategy.
+
 **Full skill catalog:**
 
 | Skill | Purpose |
@@ -99,7 +108,7 @@ Maintained packs share one exemption-free substance gate: every effective specia
 | `/bill-boundary-decisions` | Record architectural and implementation decisions in `agent/decisions.md` |
 | `/bill-boundary-history` | Record reusable feature history in `agent/history.md` |
 | `/bill-code-check` | Stable quality-check entry point that routes to the matching platform checker (stack-specific checker skills install as internal sidecars, not listed commands) |
-| `/bill-code-review` | Stable code-review entry point that routes to the matching platform pack (stack-specific review skills install as internal sidecars, not listed commands) |
+| `/bill-code-review` | Stable code-review entry point that routes to the matching platform pack; accepts `mode:auto|inline|delegated` (stack-specific review skills install as internal sidecars, not listed commands) |
 | `/bill-code-review-parallel` | Run two review agents in parallel on the same diff and merge their findings |
 | `/bill-feature` | Primary feature entry point that prepares a spec, then routes to implementation or the goal loop (dispatches internally to the feature-execution family, which is not listed) |
 | `/bill-feature-guard` | Add feature-flag rollout safety to an implementation |

@@ -60,5 +60,5 @@ tasks.register("detekt") {
 
 tasks.register("spotlessCheck") {
   dependsOn(buildLogicSpotlessCheck)
-  dependsOn(subprojects.map { subproject -> subproject.tasks.named("spotlessCheck") })
+  dependsOn(subprojects.mapNotNull { subproject -> subproject.tasks.findByName("spotlessCheck") })
 }

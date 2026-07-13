@@ -50,15 +50,22 @@ class QualityCheckRoutingTest {
   }
 
   @Test
-  fun `genuinely mixed Kotlin and KMP ownership fails explicitly`() {
-    val failure = assertFailsWith<IllegalArgumentException> {
+  fun `mixed Kotlin and KMP ownership routes through the KMP superset checker`() {
+    val route = assertNotNull(
       routeQualityCheck(
         repoRootFromTest(),
-        listOf("server/src/main/kotlin/App.kt", "shared/src/commonMain/kotlin/Shared.kt"),
-      )
-    }
+        listOf(
+          "server/src/main/kotlin/App.kt",
+          "server/build.gradle.kts",
+          "settings.gradle.kts",
+          "config/detekt.yml",
+          "shared/src/commonMain/kotlin/Shared.kt",
+        ),
+      ),
+    )
 
-    assertTrue(failure.message.orEmpty().contains("ambiguous for [kmp, kotlin]"))
+    assertEquals("kmp", route.detectedStack)
+    assertEquals("bill-kmp-code-check", route.routedSkill)
   }
 
   @Test
