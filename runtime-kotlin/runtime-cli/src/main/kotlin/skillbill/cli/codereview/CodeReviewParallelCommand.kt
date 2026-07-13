@@ -130,7 +130,7 @@ class CodeReviewParallelCommand(
   private fun parseExecutionMode(value: String): CodeReviewExecutionMode = try {
     CodeReviewExecutionMode.fromWire(value)
   } catch (error: IllegalArgumentException) {
-    throw UsageError(error.message.orEmpty())
+    throw UsageError(error.message.orEmpty()).apply { initCause(error) }
   }
 
   private fun suppliedDiffPath(): Path? = diffFile?.let { value ->

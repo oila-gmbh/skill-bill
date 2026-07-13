@@ -144,7 +144,7 @@ private fun parseCodeReviewMode(raw: String?): CodeReviewExecutionMode? = raw?.l
   try {
     CodeReviewExecutionMode.fromWire(value)
   } catch (error: IllegalArgumentException) {
-    throw UsageError(error.message.orEmpty())
+    throw UsageError(error.message.orEmpty()).apply { initCause(error) }
   }
 }
 

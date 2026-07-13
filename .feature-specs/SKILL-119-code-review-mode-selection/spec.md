@@ -1,5 +1,5 @@
 ---
-status: In Progress
+status: Blocked
 issue_key: SKILL-119
 source: inline user request
 ---

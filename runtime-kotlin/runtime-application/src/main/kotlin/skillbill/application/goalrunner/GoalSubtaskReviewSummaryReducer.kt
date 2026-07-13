@@ -92,12 +92,8 @@ internal object GoalSubtaskReviewSummaryReducer {
     .filter(classOrSymbol::matches)
     .firstOrNull(String::isNotBlank)
 
-  private fun severityRank(finding: GoalSubtaskReviewCompactFinding): Int = when (finding.severity) {
-    "blocker" -> 0
-    "major" -> 1
-    "minor" -> 2
-    else -> 3
-  }
+  private fun severityRank(finding: GoalSubtaskReviewCompactFinding): Int =
+    CompactFindingSeverity.from(finding.severity).ordinal
 
   private fun sanitize(message: String): String {
     val compact = message
@@ -117,4 +113,21 @@ internal object GoalSubtaskReviewSummaryReducer {
     hunk.containsMatchIn(value) ||
     lineLocation.containsMatchIn(value) ||
     diffFragment.containsMatchIn(value)
+}
+
+private enum class CompactFindingSeverity {
+  BLOCKER,
+  MAJOR,
+  MINOR,
+  OTHER,
+  ;
+
+  companion object {
+    fun from(value: String): CompactFindingSeverity = when (value) {
+      "blocker" -> BLOCKER
+      "major" -> MAJOR
+      "minor" -> MINOR
+      else -> OTHER
+    }
+  }
 }

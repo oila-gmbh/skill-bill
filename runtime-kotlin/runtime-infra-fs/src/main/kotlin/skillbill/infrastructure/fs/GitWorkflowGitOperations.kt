@@ -1,11 +1,9 @@
 package skillbill.infrastructure.fs
 
 import me.tatarka.inject.annotations.Inject
+import skillbill.ports.workflow.GoalSubtaskReviewGitOperations
+import skillbill.ports.workflow.GoalSubtaskReviewGitOperationsProvider
 import skillbill.ports.workflow.WorkflowGitOperations
-import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
-import skillbill.ports.workflow.model.GoalSubtaskReviewBaselineResult
-import skillbill.ports.workflow.model.GoalSubtaskReviewInput
-import skillbill.ports.workflow.model.GoalSubtaskReviewInputResult
 import skillbill.ports.workflow.model.WorkflowGitOperationResult
 import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksRequest
 import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksResult
@@ -20,7 +18,13 @@ import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 
 @Inject
-class GitWorkflowGitOperations : WorkflowGitOperations {
+class GitWorkflowGitOperations :
+  WorkflowGitOperations by GitStandardWorkflowGitOperations,
+  GoalSubtaskReviewGitOperationsProvider {
+  override val goalSubtaskReviewOperations: GoalSubtaskReviewGitOperations = GitGoalSubtaskReviewOperations
+}
+
+private object GitStandardWorkflowGitOperations : WorkflowGitOperations {
   override fun checkoutBranch(repoRoot: Path, branch: String, baseBranch: String?): WorkflowGitOperationResult {
     val normalizedBranch = branch.trim()
     if (normalizedBranch.isBlank()) {
@@ -143,227 +147,6 @@ class GitWorkflowGitOperations : WorkflowGitOperations {
     )
   }
 
-  override fun captureGoalSubtaskReviewBaseline(
-    repoRoot: Path,
-    expectedBranch: String,
-  ): GoalSubtaskReviewBaselineResult {
-    val expected = expectedBranch.trim()
-    if (expected.isBlank()) {
-      return GoalSubtaskReviewBaselineResult(status = "error", error = "Goal-subtask durable child branch is required.")
-    }
-    val before = baselineSnapshot(repoRoot, expected)
-    if (!before.ok) return GoalSubtaskReviewBaselineResult(status = "error", error = before.error)
-    val after = baselineSnapshot(repoRoot, expected)
-    if (!after.ok) return GoalSubtaskReviewBaselineResult(status = "error", error = after.error)
-    if (before.snapshot != after.snapshot) {
-      return GoalSubtaskReviewBaselineResult(
-        status = "error",
-        error =
-        "Goal-subtask repository state changed while capturing its immutable review baseline; " +
-          "refusing to persist it.",
-      )
-    }
-    val snapshot = requireNotNull(before.snapshot)
-    return GoalSubtaskReviewBaselineResult(
-      status = "ok",
-      baseline = GoalSubtaskReviewBaseline(
-        reviewBaseSha = snapshot.headSha,
-        baselineUntrackedPaths = snapshot.untrackedPaths,
-      ),
-    )
-  }
-
-  override fun buildGoalSubtaskReviewInput(
-    repoRoot: Path,
-    baseline: GoalSubtaskReviewBaseline,
-    expectedBranch: String,
-  ): GoalSubtaskReviewInputResult {
-    val expected = expectedBranch.trim()
-    if (expected.isBlank()) {
-      return GoalSubtaskReviewInputResult(status = "error", error = "Goal-subtask durable child branch is required.")
-    }
-    val before = reviewInputSnapshot(repoRoot, baseline, expected)
-    if (!before.ok) return GoalSubtaskReviewInputResult(status = "error", error = before.error)
-    val after = reviewInputSnapshot(repoRoot, baseline, expected)
-    if (!after.ok) return GoalSubtaskReviewInputResult(status = "error", error = after.error)
-    if (before.snapshot != after.snapshot) {
-      return GoalSubtaskReviewInputResult(
-        status = "error",
-        error = "Goal-subtask repository state changed while building its review input; refusing a torn snapshot.",
-      )
-    }
-    val snapshot = requireNotNull(before.snapshot)
-    return GoalSubtaskReviewInputResult(
-      status = "ok",
-      input = GoalSubtaskReviewInput(
-        reviewBaseSha = baseline.reviewBaseSha,
-        currentHeadSha = snapshot.headSha,
-        trackedDelta = snapshot.trackedDelta,
-        ownedUntrackedPatches = snapshot.ownedUntrackedPatches,
-      ),
-    )
-  }
-}
-
-private const val GOAL_SUBTASK_REVIEW_INPUT_MAX_BYTES: Int = 1_000_000
-
-private data class GoalReviewBaselineSnapshot(
-  val branch: String,
-  val headSha: String,
-  val indexTree: String,
-  val trackedDelta: String,
-  val untrackedPaths: List<String>,
-)
-
-private data class GoalReviewInputSnapshot(
-  val branch: String,
-  val headSha: String,
-  val indexTree: String,
-  val trackedDelta: String,
-  val untrackedPaths: List<String>,
-  val ownedUntrackedPatches: String,
-)
-
-private data class GoalReviewSnapshotResult<T>(
-  val snapshot: T? = null,
-  val error: String = "",
-) {
-  val ok: Boolean get() = snapshot != null && error.isBlank()
-}
-
-private fun baselineSnapshot(
-  repoRoot: Path,
-  expectedBranch: String,
-): GoalReviewSnapshotResult<GoalReviewBaselineSnapshot> {
-  val branch = currentGoalReviewBranch(repoRoot, expectedBranch) ?: return GoalReviewSnapshotResult(
-    error = "Goal-subtask review baseline must be captured on durable child branch '$expectedBranch'.",
-  )
-  trackedWorktreeClean(repoRoot)?.let { error -> return GoalReviewSnapshotResult(error = error) }
-  val head = gitValue(repoRoot, "rev-parse", "HEAD")?.trim()?.takeIf(String::isNotBlank)
-    ?: return GoalReviewSnapshotResult(error = "Could not resolve HEAD.")
-  val indexTree = gitValue(repoRoot, "write-tree")?.trim()?.takeIf(String::isNotBlank)
-    ?: return GoalReviewSnapshotResult(
-      error = "Could not resolve the git index while capturing the immutable review baseline.",
-    )
-  val tracked = gitValue(repoRoot, "diff", "--binary", "HEAD") ?: return GoalReviewSnapshotResult(
-    error = "Could not read tracked worktree state while capturing the immutable review baseline.",
-  )
-  val untracked = untrackedPaths(repoRoot) ?: return GoalReviewSnapshotResult(
-    error = "Could not read untracked inventory while capturing the immutable review baseline.",
-  )
-  return GoalReviewSnapshotResult(
-    snapshot = GoalReviewBaselineSnapshot(branch, head, indexTree, tracked, untracked),
-  )
-}
-
-private fun reviewInputSnapshot(
-  repoRoot: Path,
-  baseline: GoalSubtaskReviewBaseline,
-  expectedBranch: String,
-): GoalReviewSnapshotResult<GoalReviewInputSnapshot> {
-  val branch = currentGoalReviewBranch(repoRoot, expectedBranch) ?: return GoalReviewSnapshotResult(
-    error = "Goal-subtask review must run on durable child branch '$expectedBranch'.",
-  )
-  val head = gitValue(repoRoot, "rev-parse", "HEAD")?.trim()?.takeIf(String::isNotBlank)
-    ?: return GoalReviewSnapshotResult(error = "Could not resolve current HEAD.")
-  val verified = runGitCommand(repoRoot, "cat-file", "-e", "${baseline.reviewBaseSha}^{commit}")
-  if (!verified.ok) {
-    return GoalReviewSnapshotResult(
-      error = "Persisted review base '${baseline.reviewBaseSha}' is not an existing commit: ${verified.error}",
-    )
-  }
-  val ancestor = runGitCommand(repoRoot, "merge-base", "--is-ancestor", baseline.reviewBaseSha, head)
-  if (!ancestor.ok) {
-    return GoalReviewSnapshotResult(
-      error =
-      "Persisted review base '${baseline.reviewBaseSha}' is not an ancestor of current HEAD; " +
-        "refusing a broader review scope.",
-    )
-  }
-  val indexTree = gitValue(repoRoot, "write-tree")?.trim()?.takeIf(String::isNotBlank)
-    ?: return GoalReviewSnapshotResult(
-      error = "Could not resolve the git index while materializing the exact review input.",
-    )
-  val trackedDelta = gitValue(repoRoot, "diff", "--binary", baseline.reviewBaseSha) ?: return GoalReviewSnapshotResult(
-    error = "Could not materialize tracked changes from the immutable review base.",
-  )
-  val untracked = untrackedPaths(repoRoot) ?: return GoalReviewSnapshotResult(
-    error = "Could not read untracked inventory while materializing the exact review input.",
-  )
-  val ownedPaths = untracked.filterNot { it in baseline.baselineUntrackedPaths }
-  val ownedPatches = ownedUntrackedPatches(repoRoot, ownedPaths)
-  if (!ownedPatches.ok) return GoalReviewSnapshotResult(error = ownedPatches.error)
-  val patches = requireNotNull(ownedPatches.value)
-  if (trackedDelta.toByteArray().size + patches.toByteArray().size > GOAL_SUBTASK_REVIEW_INPUT_MAX_BYTES) {
-    return GoalReviewSnapshotResult(
-      error = "Goal-subtask review input exceeds the ${GOAL_SUBTASK_REVIEW_INPUT_MAX_BYTES}-byte bound.",
-    )
-  }
-  return GoalReviewSnapshotResult(
-    snapshot = GoalReviewInputSnapshot(branch, head, indexTree, trackedDelta, untracked, patches),
-  )
-}
-
-private data class GoalReviewStringResult(val value: String? = null, val error: String = "") {
-  val ok: Boolean get() = value != null && error.isBlank()
-}
-
-private fun ownedUntrackedPatches(repoRoot: Path, paths: List<String>): GoalReviewStringResult {
-  val patches = StringBuilder()
-  paths.forEach { path ->
-    val patch = runGitProcess(repoRoot, listOf("diff", "--binary", "--no-index", "/dev/null", path))
-    if (patch.timedOut || patch.readFailure != null || patch.exitCode !in setOf(0, 1)) {
-      val error = patch.readFailure?.message ?: "Could not diff owned untracked path '$path'."
-      return GoalReviewStringResult(error = error)
-    }
-    patches.append(patch.output)
-    if (!patches.endsWith("\n")) patches.append('\n')
-    if (patches.toString().toByteArray().size > GOAL_SUBTASK_REVIEW_INPUT_MAX_BYTES) {
-      return GoalReviewStringResult(
-        error = "Goal-subtask review input exceeds the ${GOAL_SUBTASK_REVIEW_INPUT_MAX_BYTES}-byte bound.",
-      )
-    }
-  }
-  return GoalReviewStringResult(value = patches.toString())
-}
-
-private fun currentGoalReviewBranch(repoRoot: Path, expectedBranch: String): String? =
-  gitValue(repoRoot, "branch", "--show-current")?.trim()?.takeIf { it == expectedBranch }
-
-private fun gitValue(repoRoot: Path, vararg args: String): String? =
-  runGitCommand(repoRoot, *args).takeIf { it.ok }?.value
-
-private fun untrackedPaths(repoRoot: Path): List<String>? = runGitCommand(
-  repoRoot,
-  "ls-files",
-  "--others",
-  "--exclude-standard",
-  "-z",
-).takeIf { it.ok }
-  ?.value
-  ?.split('\u0000')
-  ?.filter(String::isNotBlank)
-  ?.distinct()
-  ?.sorted()
-
-private fun trackedWorktreeClean(repoRoot: Path): String? {
-  val unstaged = runGitProcess(repoRoot, listOf("diff", "--quiet"))
-  if (unstaged.timedOut || unstaged.readFailure != null || unstaged.exitCode !in setOf(0, 1)) {
-    return unstaged.readFailure?.message ?: "Could not inspect unstaged tracked changes before review baseline capture."
-  }
-  if (unstaged.exitCode == 1) {
-    return "Goal-subtask review baseline capture requires a clean tracked worktree; " +
-      "unstaged tracked changes are present."
-  }
-  val staged = runGitProcess(repoRoot, listOf("diff", "--cached", "--quiet"))
-  if (staged.timedOut || staged.readFailure != null || staged.exitCode !in setOf(0, 1)) {
-    return staged.readFailure?.message ?: "Could not inspect staged tracked changes before review baseline capture."
-  }
-  return if (staged.exitCode == 1) {
-    "Goal-subtask review baseline capture requires a clean tracked worktree; staged tracked changes are present."
-  } else {
-    null
-  }
 }
 
 private fun combinedDiffStat(repoRoot: Path): GoalObservabilityDiffStat {

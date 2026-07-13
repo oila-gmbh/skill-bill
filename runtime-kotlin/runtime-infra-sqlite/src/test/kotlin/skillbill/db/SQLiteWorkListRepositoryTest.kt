@@ -42,27 +42,27 @@ class SQLiteWorkListRepositoryTest {
   @Test
   fun `work list rejects malformed persisted rows at every read boundary`() {
     assertMalformedWorkListRow(
-      featureTaskWorkflowRow(workflowId = "NULL"),
+      featureTaskWorkflowRow(FeatureTaskWorkflowRow(workflowId = "NULL")),
       "missing workflow_id",
     )
     assertMalformedWorkListRow(
-      featureTaskWorkflowRow(mode = "unknown", workflowId = "'wf-kind'"),
+      featureTaskWorkflowRow(FeatureTaskWorkflowRow(mode = "unknown", workflowId = "'wf-kind'")),
       "unknown workflow kind",
     )
     assertMalformedWorkListRow(
-      featureTaskWorkflowRow(workflowId = "'wf-state'", workflowStatus = "unknown"),
+      featureTaskWorkflowRow(FeatureTaskWorkflowRow(workflowId = "'wf-state'", workflowStatus = "unknown")),
       "unknown current state",
     )
     assertMalformedWorkListRow(
-      featureTaskWorkflowRow(workflowId = "'wf-estimated'", estimated = 2),
+      featureTaskWorkflowRow(FeatureTaskWorkflowRow(workflowId = "'wf-estimated'", estimated = 2)),
       "invalid state_entered_at_estimated",
     )
     assertMalformedWorkListRow(
-      featureTaskWorkflowRow(workflowId = "'wf-started'", startedAt = "invalid"),
+      featureTaskWorkflowRow(FeatureTaskWorkflowRow(workflowId = "'wf-started'", startedAt = "invalid")),
       "invalid started_at",
     )
     assertMalformedWorkListRow(
-      featureTaskWorkflowRow(workflowId = "'wf-since'", stateEnteredAt = "invalid"),
+      featureTaskWorkflowRow(FeatureTaskWorkflowRow(workflowId = "'wf-since'", stateEnteredAt = "invalid")),
       "invalid state_entered_at",
     )
     assertMalformedWorkListRow(
@@ -75,16 +75,10 @@ class SQLiteWorkListRepositoryTest {
     )
   }
 
-  private fun featureTaskWorkflowRow(
-    mode: String = "prose",
-    workflowId: String,
-    startedAt: String = "2026-05-01T12:00:00Z",
-    workflowStatus: String = "running",
-    stateEnteredAt: String = "2026-05-01T12:00:00Z",
-    estimated: Int = 0,
-  ): String =
+  private fun featureTaskWorkflowRow(row: FeatureTaskWorkflowRow): String =
     "INSERT INTO feature_task_workflows VALUES " +
-      "('SKILL-117', '$mode', $workflowId, '$startedAt', '$workflowStatus', '$stateEnteredAt', $estimated)"
+      "('SKILL-117', '${row.mode}', ${row.workflowId}, '${row.startedAt}', " +
+      "'${row.workflowStatus}', '${row.stateEnteredAt}', ${row.estimated})"
 
   private fun goalIssueProgressRow(parentWorkflowId: String, status: String = "running"): String =
     "INSERT INTO goal_issue_progress VALUES " +
@@ -188,4 +182,13 @@ class SQLiteWorkListRepositoryTest {
       )
     }
   }
+
+  private data class FeatureTaskWorkflowRow(
+    val workflowId: String,
+    val mode: String = "prose",
+    val startedAt: String = "2026-05-01T12:00:00Z",
+    val workflowStatus: String = "running",
+    val stateEnteredAt: String = "2026-05-01T12:00:00Z",
+    val estimated: Int = 0,
+  )
 }

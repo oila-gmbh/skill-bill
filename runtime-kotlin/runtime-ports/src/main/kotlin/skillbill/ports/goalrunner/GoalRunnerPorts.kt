@@ -96,13 +96,16 @@ interface GoalRunnerTerminalOutcomeStore {
   ): GoalRunnerStoredOutcome?
 }
 
-interface GoalRunnerWorkflowOutcomeStore : GoalRunnerTerminalOutcomeStore {
+interface GoalRunnerReviewOutcomeStore {
   fun goalSubtaskReviewState(workflowId: String, dbPathOverride: String? = null): GoalSubtaskReviewState? = null
 
   fun unemittedGoalReviewPasses(workflowId: String, dbPathOverride: String? = null): List<GoalSubtaskReviewPassResult> =
     emptyList()
 
   fun acknowledgeGoalReviewPass(workflowId: String, passNumber: Int, dbPathOverride: String? = null): Boolean = false
+}
+
+interface GoalRunnerWorkflowOutcomeStore : GoalRunnerTerminalOutcomeStore, GoalRunnerReviewOutcomeStore {
 
   // [repoRoot] is the manifest-workflowId-independent self-heal seam (SKILL-68): when supplied, a
   // complete-without-SHA continuation child recovers its commit SHA from measured HEAD and is

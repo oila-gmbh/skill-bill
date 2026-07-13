@@ -20,6 +20,14 @@ Non-negotiable contracts:
 
 Bundled skills and reference packs are defaults, not the framework boundary. Teams may delete, fork, or replace them while retaining governed source shape, generated-output boundaries, manifests, install staging, validators, dynamic discovery, and loud-fail behavior.
 
+## Subagent Policy
+
+Use subagents only when the user explicitly requests subagents, delegation, or
+parallel agent work. Do not infer that permission from task size, review mode,
+runtime defaults, or model preference. A model must never autonomously decide
+to spawn subagents; otherwise complete the task in the current agent context or
+ask the user whether delegation is desired.
+
 ## Taxonomy
 
 - `skills/`: canonical user-facing skill sources.

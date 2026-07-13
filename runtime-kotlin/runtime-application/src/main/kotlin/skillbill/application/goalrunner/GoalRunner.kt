@@ -52,6 +52,7 @@ import skillbill.ports.workflow.NoopWorkflowGitOperations
 import skillbill.ports.workflow.SpecScratchStore
 import skillbill.ports.workflow.UnavailableSpecScratchStore
 import skillbill.ports.workflow.WorkflowGitOperations
+import skillbill.ports.workflow.captureGoalSubtaskReviewBaseline
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaselineResult
 import skillbill.workflow.model.CodeReviewExecutionMode
@@ -81,13 +82,23 @@ class GoalRunner(
   private val reconciler = GoalRunnerLaunchReconciler(manifestStore, subtaskLauncher, outcomeStore, timing, diagnostics)
 
   fun run(request: GoalRunnerRunRequest): GoalRunnerRunReport {
-    var state = manifestStore.loadByIssueKey(request.issueKey, request.dbPathOverride, request.repoRoot)
+    val state = manifestStore.loadByIssueKey(request.issueKey, request.dbPathOverride, request.repoRoot)
       ?: return unknownGoal(request.issueKey)
+    return when (val preparation = prepareRun(state, request)) {
+      is GoalRunPreparation.Blocked -> preparation.report
+      is GoalRunPreparation.Ready -> runPrepared(preparation)
+    }
+  }
+
+  private fun prepareRun(
+    state: GoalRunnerManifestState,
+    request: GoalRunnerRunRequest,
+  ): GoalRunPreparation {
     val persistedReviewPolicy = manifestStore.reviewPolicy(state.parentWorkflowId, request.dbPathOverride)
     if (persistedReviewPolicy != null && request.codeReviewMode != null &&
       persistedReviewPolicy.codeReviewMode != request.codeReviewMode
     ) {
-      return stopped(
+      return GoalRunPreparation.Blocked(stopped(
         issueKey = request.issueKey,
         attempted = emptyList(),
         subtaskId = 0,
@@ -98,12 +109,12 @@ class GoalRunner(
           "not '${request.codeReviewMode.wireValue}'.",
         workflowId = state.parentWorkflowId,
         lastResumableStep = "preplan",
-      )
+      ))
     }
     if (persistedReviewPolicy != null && request.parallelReviewAgent != null &&
       persistedReviewPolicy.parallelReviewAgent != request.parallelReviewAgent
     ) {
-      return stopped(
+      return GoalRunPreparation.Blocked(stopped(
         issueKey = request.issueKey,
         attempted = emptyList(),
         subtaskId = 0,
@@ -114,7 +125,7 @@ class GoalRunner(
           "'${persistedReviewPolicy.parallelReviewAgent ?: "none"}', not '${request.parallelReviewAgent}'.",
         workflowId = state.parentWorkflowId,
         lastResumableStep = "preplan",
-      )
+      ))
     }
     val effectiveReviewPolicy = persistedReviewPolicy ?: manifestStore.persistReviewPolicy(
       parentWorkflowId = state.parentWorkflowId,
@@ -124,23 +135,52 @@ class GoalRunner(
       ),
       dbPathOverride = request.dbPathOverride,
     )
-    val effectiveRequest = request.copy(
+    return GoalRunPreparation.Ready(state, request.copy(
       codeReviewMode = effectiveReviewPolicy.codeReviewMode,
       parallelReviewAgent = effectiveReviewPolicy.parallelReviewAgent,
-    )
+    ))
+  }
+
+  private fun runPrepared(preparation: GoalRunPreparation.Ready): GoalRunnerRunReport {
+    var state = preparation.state
+    val effectiveRequest = preparation.request
     val attempted = mutableListOf<Int>()
     val observability = GoalRunnerObservabilityEmitter(outcomeStore, effectiveRequest)
     val ledger = GoalRunnerLedgerRecorder(outcomeStore, effectiveRequest, diagnostics)
     effectiveRequest.eventSink.emit(GoalRunnerRunEvent.Started(state.manifest.issueKey))
     val telemetryEmitter =
       GoalRunnerTelemetryEmitter(telemetry, clock, state, effectiveRequest.dbPathOverride).also { it.goalStarted() }
-    var terminalReport: GoalRunnerRunReport? = preflightPolicyBlockedReport(state, effectiveRequest, ledger)
+    val loopResult = driveGoalLoop(
+      state,
+      effectiveRequest,
+      attempted,
+      observability,
+      ledger,
+      telemetryEmitter,
+    )
+    state = loopResult.state
+    val finalReport = requireNotNull(loopResult.report)
+    closeGoalTelemetrySegment(telemetryEmitter, state, finalReport, attempted)
+    emitCompletedGoalEvent(effectiveRequest, finalReport)
+    return finalReport
+  }
+
+  private fun driveGoalLoop(
+    initialState: GoalRunnerManifestState,
+    request: GoalRunnerRunRequest,
+    attempted: MutableList<Int>,
+    observability: GoalRunnerObservabilityEmitter,
+    ledger: GoalRunnerLedgerRecorder,
+    telemetryEmitter: GoalRunnerTelemetryEmitter,
+  ): GoalRunnerIterationResult {
+    var state = initialState
+    var terminalReport: GoalRunnerRunReport? = preflightPolicyBlockedReport(state, request, ledger)
     while (terminalReport == null) {
       val selection = GoalRunnerPlanner.selectNext(state.manifest)
       when (selection) {
-        is GoalRunnerSelection.Done -> terminalReport = finalizeGoal(state, effectiveRequest, attempted, ledger)
+        is GoalRunnerSelection.Done -> terminalReport = finalizeGoal(state, request, attempted, ledger)
         is GoalRunnerSelection.Blocked ->
-          blockedSelectionIteration(state, selection, effectiveRequest, attempted, observability, ledger)
+          blockedSelectionIteration(state, selection, request, attempted, observability, ledger)
             .also { result ->
               state = result.state
               terminalReport = result.report
@@ -149,7 +189,7 @@ class GoalRunner(
           val result = runSelectedSubtask(
             state,
             selection,
-            effectiveRequest,
+            request,
             attempted,
             observability,
             ledger,
@@ -161,10 +201,15 @@ class GoalRunner(
       }
       telemetryEmitter.emitNewlyTerminalSubtasks(state.manifest, attempted)
     }
-    val finalReport = terminalReport
-    closeGoalTelemetrySegment(telemetryEmitter, state, finalReport, attempted)
+    return GoalRunnerIterationResult(state, requireNotNull(terminalReport))
+  }
+
+  private fun emitCompletedGoalEvent(
+    request: GoalRunnerRunRequest,
+    finalReport: GoalRunnerRunReport,
+  ) {
     if (finalReport is GoalRunnerRunReport.Completed) {
-      effectiveRequest.eventSink.emit(
+      request.eventSink.emit(
         GoalRunnerRunEvent.Completed(
           issueKey = finalReport.issueKey,
           completedCount = finalReport.subtasksCompleted,
@@ -175,7 +220,6 @@ class GoalRunner(
         ),
       )
     }
-    return finalReport
   }
 
   private fun closeGoalTelemetrySegment(
@@ -277,20 +321,11 @@ class GoalRunner(
     val attemptedState = prepared.state
     attempted += subtaskId
     emitSubtaskStarted(attemptedState, subtaskId, selection, request, telemetryEmitter)
-    val launchOutcome = subtaskLauncher.launch(
-      reconciler.subtaskLaunchRequest(
-        attemptedState.manifest.issueKey,
-        subtaskId,
-        request,
-        assignedWorkflowId = prepared.openWithAssignedId,
-        reviewBaseline = reviewBaseline,
-      ),
-    )
-    val launchReconciliation = reconciler.reconcileLaunchOutcome(
+    val launchReconciliation = launchAndReconcileSubtask(
       attemptedState,
-      launchOutcome,
       subtaskId,
       request,
+      prepared.openWithAssignedId,
       reviewBaseline,
     )
     val workerRequestResult = workerRequestHandler.handle(
@@ -301,15 +336,7 @@ class GoalRunner(
     )
     val refreshed = workerRequestResult.state
     val reconciled = launchReconciliation.reconciled
-    refreshed.manifest.workflowIdFor(subtaskId)?.let { workflowId ->
-      recordLaunchObservabilityLedgerAndAccounting(
-        LaunchRecordingContext(workflowId, refreshed, subtaskId, selection, launchReconciliation),
-        safeProgress(workflowId, request),
-        observability,
-        ledger,
-      )
-      emitGoalReviewSummaries(refreshed.manifest.issueKey, subtaskId, workflowId, request)
-    }
+    recordPostLaunchState(refreshed, subtaskId, selection, launchReconciliation, request, observability, ledger)
     return workerRequestResult.operatorConfirmationStop?.let { stop ->
       stoppedIteration(refreshed, subtaskId, stop, request, attempted, observability, ledger)
     } ?: when (reconciled) {
@@ -332,6 +359,45 @@ class GoalRunner(
         launchReconciliation.diagnostics,
       )
     }
+  }
+
+  private fun recordPostLaunchState(
+    refreshed: GoalRunnerManifestState,
+    subtaskId: Int,
+    selection: GoalRunnerSelection.Run,
+    reconciliation: GoalRunnerLaunchReconciliation,
+    request: GoalRunnerRunRequest,
+    observability: GoalRunnerObservabilityEmitter,
+    ledger: GoalRunnerLedgerRecorder,
+  ) {
+    refreshed.manifest.workflowIdFor(subtaskId)?.let { workflowId ->
+      recordLaunchObservabilityLedgerAndAccounting(
+        LaunchRecordingContext(workflowId, refreshed, subtaskId, selection, reconciliation),
+        safeProgress(workflowId, request),
+        observability,
+        ledger,
+      )
+      emitGoalReviewSummaries(refreshed.manifest.issueKey, subtaskId, workflowId, request)
+    }
+  }
+
+  private fun launchAndReconcileSubtask(
+    state: GoalRunnerManifestState,
+    subtaskId: Int,
+    request: GoalRunnerRunRequest,
+    assignedWorkflowId: String?,
+    reviewBaseline: GoalSubtaskReviewBaseline,
+  ): GoalRunnerLaunchReconciliation {
+    val launchOutcome = subtaskLauncher.launch(
+      reconciler.subtaskLaunchRequest(
+        state.manifest.issueKey,
+        subtaskId,
+        request,
+        assignedWorkflowId = assignedWorkflowId,
+        reviewBaseline = reviewBaseline,
+      ),
+    )
+    return reconciler.reconcileLaunchOutcome(state, launchOutcome, subtaskId, request, reviewBaseline)
   }
 
   private fun goalReviewBaseline(
@@ -1818,3 +1884,12 @@ private data class GoalRunnerIterationResult(
   val state: GoalRunnerManifestState,
   val report: GoalRunnerRunReport? = null,
 )
+
+private sealed interface GoalRunPreparation {
+  data class Ready(
+    val state: GoalRunnerManifestState,
+    val request: GoalRunnerRunRequest,
+  ) : GoalRunPreparation
+
+  data class Blocked(val report: GoalRunnerRunReport) : GoalRunPreparation
+}

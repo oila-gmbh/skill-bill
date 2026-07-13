@@ -89,21 +89,18 @@ class FeatureTaskRuntimePhaseRecorder(
       true
     }
 
-  fun completeGoalReviewPhase(
-    request: FeatureTaskRuntimePhaseStateRequest,
-    verdict: FeatureTaskRuntimeVerdict,
-    unresolvedFindingCount: Int,
-    findings: List<GoalSubtaskReviewCompactFinding>,
-    rawReviewResult: String,
+  internal fun completeGoalReviewPhase(
+    completion: GoalReviewPhaseCompletionRequest,
     dbOverride: String? = null,
   ): Boolean {
+    val request = completion.phaseState
     require(request.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW) {
       "Goal review completion can only persist the review phase."
     }
     require(request.status == "completed" && request.finished) {
       "Goal review completion must persist a finished completed review phase."
     }
-    require(rawReviewResult.isNotBlank()) { "Goal-subtask review pass result must be non-blank." }
+    require(completion.rawReviewResult.isNotBlank()) { "Goal-subtask review pass result must be non-blank." }
     return database.transaction(dbOverride) { unitOfWork ->
       val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, request.workflowId)
         ?: return@transaction false
@@ -111,9 +108,9 @@ class FeatureTaskRuntimePhaseRecorder(
       val reviewArtifacts = GoalSubtaskReviewArtifactDecoder.decode(artifacts)
         ?: return@transaction false
       val completedState = reviewArtifacts.state.completeReservedPass(
-        verdict = verdict,
-        unresolvedFindingCount = unresolvedFindingCount,
-        findings = findings,
+        verdict = completion.verdict,
+        unresolvedFindingCount = completion.unresolvedFindingCount,
+        findings = completion.findings,
       )
       val passNumber = completedState.completedPassCount.toString()
       val existingRecords = phaseRecordsFrom(artifacts)
@@ -124,7 +121,8 @@ class FeatureTaskRuntimePhaseRecorder(
         record,
         mapOf(
           GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY to completedState.toArtifactMap(),
-          GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY to (reviewArtifacts.rawResults + (passNumber to rawReviewResult)),
+          GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY to
+            (reviewArtifacts.rawResults + (passNumber to completion.rawReviewResult)),
           FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY to
             updatedRecords.mapValues { (_, value) -> value.toArtifactMap() },
         ),
@@ -402,6 +400,14 @@ class FeatureTaskRuntimePhaseRecorder(
     const val STATUS_RUNNING = "running"
   }
 }
+
+internal data class GoalReviewPhaseCompletionRequest(
+  val phaseState: FeatureTaskRuntimePhaseStateRequest,
+  val verdict: FeatureTaskRuntimeVerdict,
+  val unresolvedFindingCount: Int,
+  val findings: List<GoalSubtaskReviewCompactFinding>,
+  val rawReviewResult: String,
+)
 
 // How the coarse workflow row + shared steps[] advance alongside a per-phase record write. Grouping
 // these together keeps persistPatch a three-argument seam; the default keeps the row untouched for

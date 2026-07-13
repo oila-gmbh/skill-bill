@@ -14,6 +14,7 @@ import skillbill.workflow.model.GoalObservabilitySelectedDiffHunks
 import java.nio.file.Path
 
 private const val HASH_RADIX_HEX: Int = 16
+private const val NOOP_REVIEW_BASE_SHA_LENGTH: Int = 40
 
 interface WorkflowGitOperations {
   fun checkoutBranch(repoRoot: Path, branch: String, baseBranch: String? = null): WorkflowGitOperationResult
@@ -36,13 +37,30 @@ interface WorkflowGitOperations {
 
   fun selectedDiffHunks(repoRoot: Path, request: WorkflowSelectedDiffHunksRequest): WorkflowSelectedDiffHunksResult
 
-  fun captureGoalSubtaskReviewBaseline(repoRoot: Path, expectedBranch: String): GoalSubtaskReviewBaselineResult =
+}
+
+interface GoalSubtaskReviewGitOperations {
+  fun captureBaseline(repoRoot: Path, expectedBranch: String): GoalSubtaskReviewBaselineResult
+
+  fun buildInput(
+    repoRoot: Path,
+    baseline: GoalSubtaskReviewBaseline,
+    expectedBranch: String,
+  ): GoalSubtaskReviewInputResult
+}
+
+interface GoalSubtaskReviewGitOperationsProvider {
+  val goalSubtaskReviewOperations: GoalSubtaskReviewGitOperations
+}
+
+private object UnavailableGoalSubtaskReviewGitOperations : GoalSubtaskReviewGitOperations {
+  override fun captureBaseline(repoRoot: Path, expectedBranch: String): GoalSubtaskReviewBaselineResult =
     GoalSubtaskReviewBaselineResult(
       status = "error",
       error = "Goal-subtask review baselines require a branch-aware git adapter.",
     )
 
-  fun buildGoalSubtaskReviewInput(
+  override fun buildInput(
     repoRoot: Path,
     baseline: GoalSubtaskReviewBaseline,
     expectedBranch: String,
@@ -52,7 +70,22 @@ interface WorkflowGitOperations {
   )
 }
 
-object NoopWorkflowGitOperations : WorkflowGitOperations {
+fun WorkflowGitOperations.captureGoalSubtaskReviewBaseline(
+  repoRoot: Path,
+  expectedBranch: String,
+): GoalSubtaskReviewBaselineResult = reviewOperations().captureBaseline(repoRoot, expectedBranch)
+
+fun WorkflowGitOperations.buildGoalSubtaskReviewInput(
+  repoRoot: Path,
+  baseline: GoalSubtaskReviewBaseline,
+  expectedBranch: String,
+): GoalSubtaskReviewInputResult = reviewOperations().buildInput(repoRoot, baseline, expectedBranch)
+
+private fun WorkflowGitOperations.reviewOperations(): GoalSubtaskReviewGitOperations =
+  (this as? GoalSubtaskReviewGitOperationsProvider)?.goalSubtaskReviewOperations
+    ?: UnavailableGoalSubtaskReviewGitOperations
+
+object NoopWorkflowGitOperations : WorkflowGitOperations, GoalSubtaskReviewGitOperationsProvider {
   override fun checkoutBranch(repoRoot: Path, branch: String, baseBranch: String?): WorkflowGitOperationResult =
     WorkflowGitOperationResult(status = "ok", value = branch)
 
@@ -100,19 +133,24 @@ object NoopWorkflowGitOperations : WorkflowGitOperations {
     selectedDiffHunks = GoalObservabilitySelectedDiffHunks(),
   )
 
-  override fun captureGoalSubtaskReviewBaseline(
-    repoRoot: Path,
-    expectedBranch: String,
-  ): GoalSubtaskReviewBaselineResult = if (expectedBranch.isBlank()) {
-    GoalSubtaskReviewBaselineResult(status = "error", error = "Goal-subtask durable child branch is required.")
-  } else {
-    GoalSubtaskReviewBaselineResult(
-      status = "ok",
-      baseline = GoalSubtaskReviewBaseline(reviewBaseSha = "0".repeat(40), baselineUntrackedPaths = emptyList()),
-    )
-  }
+  override val goalSubtaskReviewOperations: GoalSubtaskReviewGitOperations = NoopGoalSubtaskReviewGitOperations
+}
 
-  override fun buildGoalSubtaskReviewInput(
+private object NoopGoalSubtaskReviewGitOperations : GoalSubtaskReviewGitOperations {
+  override fun captureBaseline(repoRoot: Path, expectedBranch: String): GoalSubtaskReviewBaselineResult =
+    if (expectedBranch.isBlank()) {
+      GoalSubtaskReviewBaselineResult(status = "error", error = "Goal-subtask durable child branch is required.")
+    } else {
+      GoalSubtaskReviewBaselineResult(
+        status = "ok",
+        baseline = GoalSubtaskReviewBaseline(
+          reviewBaseSha = "0".repeat(NOOP_REVIEW_BASE_SHA_LENGTH),
+          baselineUntrackedPaths = emptyList(),
+        ),
+      )
+    }
+
+  override fun buildInput(
     repoRoot: Path,
     baseline: GoalSubtaskReviewBaseline,
     expectedBranch: String,

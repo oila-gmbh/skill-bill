@@ -56,6 +56,9 @@ import skillbill.ports.telemetry.TelemetrySettingsProvider
 import skillbill.ports.workflow.NoopWorkflowGitOperations
 import skillbill.ports.workflow.SpecScratchStore
 import skillbill.ports.workflow.WorkflowGitOperations
+import skillbill.ports.workflow.GoalSubtaskReviewGitOperations
+import skillbill.ports.workflow.GoalSubtaskReviewGitOperationsProvider
+import skillbill.ports.workflow.buildGoalSubtaskReviewInput
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.model.GoalSubtaskReviewInput
 import skillbill.ports.workflow.model.GoalSubtaskReviewInputResult
@@ -1538,7 +1541,9 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
 
     assertEquals(0, git.headCommitShaCalls, "a non-goal-continuation run must not measure git HEAD for an outcome")
   }
+}
 
+class FeatureTaskRuntimeRunnerSpecLifecycleTest {
   @Test
   fun `standalone run flips its spec status to complete before commit_push so the commit includes it`() {
     val repoRoot = Files.createTempDirectory("skillbill-runtime-spec-status")
@@ -2973,13 +2978,17 @@ internal fun phasePerAgentAssignment(): FeatureTaskRuntimeAgentAssignment =
 // Bundles the persistence + git collaborators a harness exposes so the harness constructor stays
 // within the parameter budget.
 internal class RunnerHarnessIo(
+  val workflow: RunnerHarnessWorkflow,
+  val repository: InMemoryRuntimeWorkflowRepository,
+  val gitOperations: RecordingWorkflowGitOperations,
+  val specStatusWriter: RecordingSpecStatusWriter,
+)
+
+internal class RunnerHarnessWorkflow(
   val recorder: FeatureTaskRuntimePhaseRecorder,
   val goalContinuationRecorder: FeatureTaskRuntimeGoalContinuationRecorder,
   val decomposeTerminalRecorder: FeatureTaskRuntimeDecomposeTerminalRecorder,
   val runInvariantsStore: FeatureTaskRuntimeRunInvariantsStore,
-  val repository: InMemoryRuntimeWorkflowRepository,
-  val gitOperations: RecordingWorkflowGitOperations,
-  val specStatusWriter: RecordingSpecStatusWriter,
 )
 
 internal class RunnerHarness(
@@ -2991,10 +3000,12 @@ internal class RunnerHarness(
   val specScratchStore: RecordingSpecScratchStore,
 ) {
   val specStatusWriter: RecordingSpecStatusWriter get() = io.specStatusWriter
-  val recorder: FeatureTaskRuntimePhaseRecorder get() = io.recorder
-  val goalContinuationRecorder: FeatureTaskRuntimeGoalContinuationRecorder get() = io.goalContinuationRecorder
-  val decomposeTerminalRecorder: FeatureTaskRuntimeDecomposeTerminalRecorder get() = io.decomposeTerminalRecorder
-  val runInvariantsStore: FeatureTaskRuntimeRunInvariantsStore get() = io.runInvariantsStore
+  val recorder: FeatureTaskRuntimePhaseRecorder get() = io.workflow.recorder
+  val goalContinuationRecorder: FeatureTaskRuntimeGoalContinuationRecorder
+    get() = io.workflow.goalContinuationRecorder
+  val decomposeTerminalRecorder: FeatureTaskRuntimeDecomposeTerminalRecorder
+    get() = io.workflow.decomposeTerminalRecorder
+  val runInvariantsStore: FeatureTaskRuntimeRunInvariantsStore get() = io.workflow.runInvariantsStore
   val repository: InMemoryRuntimeWorkflowRepository get() = io.repository
   val gitOperations: RecordingWorkflowGitOperations get() = io.gitOperations
 
@@ -3265,13 +3276,15 @@ internal fun runnerHarness(
   }
   val runRequest = runnerHarnessRequest(runtimeConfig, agentAssignment, sink)
   val io = RunnerHarnessIo(
-    recorder,
-    goalContinuationRecorder,
-    decomposeTerminalRecorder,
-    runInvariantsStore,
-    repository,
-    runtimeConfig.branchSetup.gitOperations,
-    specStatusWriter,
+    workflow = RunnerHarnessWorkflow(
+      recorder,
+      goalContinuationRecorder,
+      decomposeTerminalRecorder,
+      runInvariantsStore,
+    ),
+    repository = repository,
+    gitOperations = runtimeConfig.branchSetup.gitOperations,
+    specStatusWriter = specStatusWriter,
   )
   return RunnerHarness(launcher, io, runner, captured, runRequest, specScratchStore)
 }
@@ -3817,7 +3830,7 @@ internal class RecordingWorkflowGitOperations(
   // branch may have been deleted. branchExistsResult overrides with a raw result for error cases.
   var existingBranches: Set<String>? = null,
   var branchExistsResult: WorkflowGitOperationResult? = null,
-) : WorkflowGitOperations {
+) : WorkflowGitOperations, GoalSubtaskReviewGitOperationsProvider {
   // Seeded git HEAD for the SKILL-68 capture-at-source fallback: blank models an unmeasurable HEAD;
   // a concrete value models a measurable commit. headCommitShaResult overrides with a raw result.
   var headCommitShaValue: String = ""
@@ -3913,19 +3926,25 @@ internal class RecordingWorkflowGitOperations(
     selectedDiffHunks = GoalObservabilitySelectedDiffHunks(),
   )
 
-  override fun buildGoalSubtaskReviewInput(
-    repoRoot: Path,
-    baseline: GoalSubtaskReviewBaseline,
-    expectedBranch: String,
-  ): GoalSubtaskReviewInputResult = GoalSubtaskReviewInputResult(
-    status = "ok",
-    input = GoalSubtaskReviewInput(
-      reviewBaseSha = baseline.reviewBaseSha,
-      currentHeadSha = baseline.reviewBaseSha,
-      trackedDelta = "",
-      ownedUntrackedPatches = "",
-    ),
-  )
+  override val goalSubtaskReviewOperations: GoalSubtaskReviewGitOperations =
+    object : GoalSubtaskReviewGitOperations {
+      override fun captureBaseline(repoRoot: Path, expectedBranch: String) =
+        error("Goal review baseline capture is not used by this runtime runner fixture.")
+
+      override fun buildInput(
+        repoRoot: Path,
+        baseline: GoalSubtaskReviewBaseline,
+        expectedBranch: String,
+      ): GoalSubtaskReviewInputResult = GoalSubtaskReviewInputResult(
+        status = "ok",
+        input = GoalSubtaskReviewInput(
+          reviewBaseSha = baseline.reviewBaseSha,
+          currentHeadSha = baseline.reviewBaseSha,
+          trackedDelta = "",
+          ownedUntrackedPatches = "",
+        ),
+      )
+    }
 }
 
 // The runner only drives openRecord/updateRecord (no snapshotView casts), so a

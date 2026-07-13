@@ -43,6 +43,7 @@ import skillbill.ports.goalrunner.model.GoalRunnerReviewPolicy
 import skillbill.ports.goalrunner.model.GoalRunnerSessionAccountingRecordRequest
 import skillbill.ports.goalrunner.model.GoalRunnerWorkflowProgress
 import skillbill.ports.persistence.DatabaseSessionFactory
+import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.persistence.WorkflowStateRepository
 import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import skillbill.ports.workflow.DecompositionManifestFileStore
@@ -91,6 +92,11 @@ private const val STALENESS_EVIDENCE_WINDOW_MINUTES: Long = 30
 private val STALENESS_EVIDENCE_WINDOW: Duration = Duration.ofMinutes(STALENESS_EVIDENCE_WINDOW_MINUTES)
 private const val GOAL_REVIEW_POLICY_ARTIFACT_KEY = "goal_review_policy"
 
+private data class SavedGoalChildWorkflow(
+  val state: GoalRunnerManifestState,
+  val projectionArtifactsJson: String,
+)
+
 @Inject
 class WorkflowGoalRunnerManifestStore(
   private val database: DatabaseSessionFactory,
@@ -138,90 +144,121 @@ class WorkflowGoalRunnerManifestStore(
     setup: GoalRunnerChildWorkflowSetup,
     dbPathOverride: String?,
   ): GoalRunnerManifestState {
-    var projectionArtifactsJson: String? = null
     val saved = database.transaction(dbPathOverride) { unitOfWork ->
-      val existingParent = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, state.parentWorkflowId)
-        ?: unitOfWork.workflowStates.findDecomposedParentWorkflow(
-          state.manifest.issueKey,
-          decompositionManifestValidator,
-        )?.toSnapshot()
-        ?: error("Unknown decomposed parent workflow '${state.parentWorkflowId}'.")
-      val parentUpdated = engine.updateRecord(
-        WorkflowFamily.IMPLEMENT.definition,
-        existingParent,
-        WorkflowUpdateInput(
-          workflowStatus = existingParent.workflowStatus,
-          currentStepId = existingParent.currentStepId,
-          stepUpdates = null,
-          artifactsPatch = mapOf(
-            DECOMPOSITION_RUNTIME_ARTIFACT_KEY to encodeDecompositionManifestMap(
-              state.manifest,
-              decompositionManifestValidator,
-              DECOMPOSITION_RUNTIME_ARTIFACT_KEY,
-            ),
-          ),
-          sessionId = existingParent.sessionId.orEmpty(),
-        ),
-      )
-      WorkflowFamily.IMPLEMENT.save(unitOfWork.workflowStates, parentUpdated)
-      check(WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, setup.workflowId) == null) {
-        "Goal child workflow '${setup.workflowId}' already exists."
-      }
-      val openedChild = engine.openRecord(
-        WorkflowFamily.TASK_RUNTIME.definition,
-        setup.workflowId,
-        "${WorkflowFamily.TASK_RUNTIME.definition.defaultSessionPrefix}-${state.manifest.issueKey}",
-        WorkflowFamily.TASK_RUNTIME.definition.defaultInitialStepId,
-      )
-      val childUpdated = engine.updateRecord(
-        WorkflowFamily.TASK_RUNTIME.definition,
-        openedChild,
-        WorkflowUpdateInput(
-          workflowStatus = openedChild.workflowStatus,
-          currentStepId = openedChild.currentStepId,
-          stepUpdates = null,
-          artifactsPatch = mapOf(
-            FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY to FeatureTaskRuntimeGoalContinuationArtifact(
-              issueKey = state.manifest.issueKey,
-              subtaskId = setup.subtaskId,
-              suppressPr = true,
-              goalBranch = setup.goalBranch,
-              parentWorkflowId = parentUpdated.workflowId,
-              codeReviewMode = setup.reviewPolicy.codeReviewMode,
-              parallelReviewAgent = setup.reviewPolicy.parallelReviewAgent,
-            ).toArtifactMap(),
-            GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY to GoalSubtaskReviewState.initial(
-              reviewBaseSha = setup.reviewBaseline.reviewBaseSha,
-              baselineUntrackedPaths = setup.reviewBaseline.baselineUntrackedPaths,
-              codeReviewMode = setup.reviewPolicy.codeReviewMode,
-            ).toArtifactMap(),
-            "install_sync_result" to mapOf(
-              "status" to "skipped",
-              "reason" to "goal-continuation forbids installer, uninstall, and install-sync flows",
-            ),
-          ),
-          sessionId = openedChild.sessionId.orEmpty(),
-        ),
-      )
-      WorkflowFamily.TASK_RUNTIME.save(unitOfWork.workflowStates, childUpdated)
-      val refreshedParent =
-        WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, parentUpdated.workflowId)
-          ?: parentUpdated
-      projectionArtifactsJson = refreshedParent.artifactsJson
-      GoalRunnerManifestState(
-        parentWorkflowId = refreshedParent.workflowId,
-        dbPath = unitOfWork.dbPath.toString(),
-        manifest = refreshedParent.decompositionRuntime(decompositionManifestValidator) ?: state.manifest,
-      )
+      saveNewChildWorkflowInTransaction(unitOfWork, state, setup)
     }
     DecompositionManifestWriter.writeProjectionFromWorkflowState(
       Path.of("").toAbsolutePath(),
-      requireNotNull(projectionArtifactsJson),
+      saved.projectionArtifactsJson,
       decompositionManifestValidator,
       decompositionManifestFileStore,
     )
-    return saved
+    return saved.state
   }
+
+  private fun saveNewChildWorkflowInTransaction(
+    unitOfWork: UnitOfWork,
+    state: GoalRunnerManifestState,
+    setup: GoalRunnerChildWorkflowSetup,
+  ): SavedGoalChildWorkflow {
+    val parentUpdated = updateParentForChildWorkflow(unitOfWork, state)
+    val childUpdated = openGoalChildWorkflow(unitOfWork, state, setup, parentUpdated.workflowId)
+    WorkflowFamily.TASK_RUNTIME.save(unitOfWork.workflowStates, childUpdated)
+    val refreshedParent =
+      WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, parentUpdated.workflowId) ?: parentUpdated
+    return SavedGoalChildWorkflow(
+      state = GoalRunnerManifestState(
+        parentWorkflowId = refreshedParent.workflowId,
+        dbPath = unitOfWork.dbPath.toString(),
+        manifest = refreshedParent.decompositionRuntime(decompositionManifestValidator) ?: state.manifest,
+      ),
+      projectionArtifactsJson = refreshedParent.artifactsJson,
+    )
+  }
+
+  private fun updateParentForChildWorkflow(
+    unitOfWork: UnitOfWork,
+    state: GoalRunnerManifestState,
+  ): WorkflowStateSnapshot {
+    val existingParent = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, state.parentWorkflowId)
+      ?: unitOfWork.workflowStates.findDecomposedParentWorkflow(
+        state.manifest.issueKey,
+        decompositionManifestValidator,
+      )?.toSnapshot()
+      ?: error("Unknown decomposed parent workflow '${state.parentWorkflowId}'.")
+    val parentUpdated = engine.updateRecord(
+      WorkflowFamily.IMPLEMENT.definition,
+      existingParent,
+      WorkflowUpdateInput(
+        workflowStatus = existingParent.workflowStatus,
+        currentStepId = existingParent.currentStepId,
+        stepUpdates = null,
+        artifactsPatch = mapOf(
+          DECOMPOSITION_RUNTIME_ARTIFACT_KEY to encodeDecompositionManifestMap(
+            state.manifest,
+            decompositionManifestValidator,
+            DECOMPOSITION_RUNTIME_ARTIFACT_KEY,
+          ),
+        ),
+        sessionId = existingParent.sessionId.orEmpty(),
+      ),
+    )
+    WorkflowFamily.IMPLEMENT.save(unitOfWork.workflowStates, parentUpdated)
+    return parentUpdated
+  }
+
+  private fun openGoalChildWorkflow(
+    unitOfWork: UnitOfWork,
+    state: GoalRunnerManifestState,
+    setup: GoalRunnerChildWorkflowSetup,
+    parentWorkflowId: String,
+  ): WorkflowStateSnapshot {
+    check(WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, setup.workflowId) == null) {
+      "Goal child workflow '${setup.workflowId}' already exists."
+    }
+    val openedChild = engine.openRecord(
+      WorkflowFamily.TASK_RUNTIME.definition,
+      setup.workflowId,
+      "${WorkflowFamily.TASK_RUNTIME.definition.defaultSessionPrefix}-${state.manifest.issueKey}",
+      WorkflowFamily.TASK_RUNTIME.definition.defaultInitialStepId,
+    )
+    return engine.updateRecord(
+      WorkflowFamily.TASK_RUNTIME.definition,
+      openedChild,
+      WorkflowUpdateInput(
+        workflowStatus = openedChild.workflowStatus,
+        currentStepId = openedChild.currentStepId,
+        stepUpdates = null,
+        artifactsPatch = childWorkflowArtifacts(state, setup, parentWorkflowId),
+        sessionId = openedChild.sessionId.orEmpty(),
+      ),
+    )
+  }
+
+  private fun childWorkflowArtifacts(
+    state: GoalRunnerManifestState,
+    setup: GoalRunnerChildWorkflowSetup,
+    parentWorkflowId: String,
+  ): Map<String, Any?> = mapOf(
+    FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY to FeatureTaskRuntimeGoalContinuationArtifact(
+      issueKey = state.manifest.issueKey,
+      subtaskId = setup.subtaskId,
+      suppressPr = true,
+      goalBranch = setup.goalBranch,
+      parentWorkflowId = parentWorkflowId,
+      codeReviewMode = setup.reviewPolicy.codeReviewMode,
+      parallelReviewAgent = setup.reviewPolicy.parallelReviewAgent,
+    ).toArtifactMap(),
+    GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY to GoalSubtaskReviewState.initial(
+      reviewBaseSha = setup.reviewBaseline.reviewBaseSha,
+      baselineUntrackedPaths = setup.reviewBaseline.baselineUntrackedPaths,
+      codeReviewMode = setup.reviewPolicy.codeReviewMode,
+    ).toArtifactMap(),
+    "install_sync_result" to mapOf(
+      "status" to "skipped",
+      "reason" to "goal-continuation forbids installer, uninstall, and install-sync flows",
+    ),
+  )
 
   override fun reviewMode(
     parentWorkflowId: String,

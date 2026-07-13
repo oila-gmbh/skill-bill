@@ -15,6 +15,9 @@ import skillbill.ports.goalrunner.GoalPullRequestPort
 import skillbill.ports.goalrunner.model.GoalPullRequestRequest
 import skillbill.ports.goalrunner.model.GoalPullRequestResult
 import skillbill.ports.workflow.WorkflowGitOperations
+import skillbill.ports.workflow.GoalSubtaskReviewGitOperations
+import skillbill.ports.workflow.GoalSubtaskReviewGitOperationsProvider
+import skillbill.ports.workflow.captureGoalSubtaskReviewBaseline
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaselineResult
 import skillbill.ports.workflow.model.WorkflowGitOperationResult
@@ -967,25 +970,6 @@ private fun recordRunningGoalChildProgress(
   )
 }
 
-private fun runningGoalChildWorkflowIds(fixture: GoalCliFixture, issueKey: String, subtaskId: Int): List<String> {
-  val listed = runGoalJson(
-    listOf("--db", fixture.dbPath.toString(), "workflow", "list", "--limit", "50", "--format", "json"),
-    fixture.context(launcher = NoopGoalTestAgentRunLauncher),
-  )
-  return (listed["workflows"] as List<*>)
-    .mapNotNull { workflow -> (workflow as Map<*, *>)["workflow_id"] as? String }
-    .filter { workflowId ->
-      val workflow = runGoalJson(
-        listOf("--db", fixture.dbPath.toString(), "workflow", "get", workflowId, "--format", "json"),
-        fixture.context(launcher = NoopGoalTestAgentRunLauncher),
-      )
-      val continuation = (workflow["artifacts"] as? Map<*, *>)?.get("goal_continuation") as? Map<*, *>
-      workflow["workflow_status"] == "running" &&
-        continuation?.get("issue_key") == issueKey &&
-        (continuation["subtask_id"] as? Number)?.toInt() == subtaskId
-    }
-}
-
 private fun seedAuthoritativeCompleteChild(fixture: GoalCliFixture) {
   val authoritativeChild = runGoalJson(
     listOf("--db", fixture.dbPath.toString(), "workflow", "open", "--format", "json"),
@@ -1266,7 +1250,7 @@ private object NoopGoalTestAgentRunLauncher : AgentRunLauncher {
   override fun launch(request: AgentRunLaunchRequest): AgentRunLaunchOutcome = error("Unexpected launch")
 }
 
-private object GoalTestWorkflowGitOperations : WorkflowGitOperations {
+private object GoalTestWorkflowGitOperations : WorkflowGitOperations, GoalSubtaskReviewGitOperationsProvider {
   override fun checkoutBranch(repoRoot: Path, branch: String, baseBranch: String?): WorkflowGitOperationResult =
     WorkflowGitOperationResult(status = "ok", value = branch)
 
@@ -1276,13 +1260,20 @@ private object GoalTestWorkflowGitOperations : WorkflowGitOperations {
   override fun currentBranch(repoRoot: Path): WorkflowGitOperationResult =
     WorkflowGitOperationResult(status = "ok", value = "")
 
-  override fun captureGoalSubtaskReviewBaseline(
-    repoRoot: Path,
-    expectedBranch: String,
-  ): GoalSubtaskReviewBaselineResult = GoalSubtaskReviewBaselineResult(
-    status = "ok",
-    baseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
-  )
+  override val goalSubtaskReviewOperations: GoalSubtaskReviewGitOperations =
+    object : GoalSubtaskReviewGitOperations {
+      override fun captureBaseline(repoRoot: Path, expectedBranch: String): GoalSubtaskReviewBaselineResult =
+        GoalSubtaskReviewBaselineResult(
+          status = "ok",
+          baseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
+        )
+
+      override fun buildInput(
+        repoRoot: Path,
+        baseline: GoalSubtaskReviewBaseline,
+        expectedBranch: String,
+      ): Nothing = error("Goal review input is not used by this goal CLI fixture.")
+    }
 
   override fun createCommit(repoRoot: Path, message: String): WorkflowGitOperationResult =
     WorkflowGitOperationResult(status = "ok", value = "test-commit")

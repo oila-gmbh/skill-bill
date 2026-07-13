@@ -4,14 +4,14 @@ issue_key: "SKILL-119"
 feature_name: "code-review-mode-selection"
 parent_spec_path: ".feature-specs/SKILL-119-code-review-mode-selection/spec.md"
 spec_source: "local"
-status: "in_progress"
+status: "blocked"
 execution_model: "same_branch_commit_per_subtask"
 base_branch: "main"
 feature_branch: "feat/SKILL-117-local-work-list"
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 3
-  action: "start"
+  subtask_id: 4
+  action: "blocked"
 subtasks:
 - id: 1
   name: "Review-selection contract and single-task propagation"
@@ -45,12 +45,12 @@ subtasks:
 - id: 3
   name: "Prose-goal review-policy parity"
   spec_path: ".feature-specs/SKILL-119-code-review-mode-selection/spec_subtask_3_prose-goal-review-parity.md"
-  status: "pending"
+  status: "complete"
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260713-092436-thfa"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -61,12 +61,15 @@ subtasks:
 - id: 4
   name: "Integration, migration boundary, and validation"
   spec_path: ".feature-specs/SKILL-119-code-review-mode-selection/spec_subtask_4_integration-validation.md"
-  status: "pending"
+  status: "blocked"
   branch: null
   commit_sha: null
-  workflow_id: null
-  blocked_reason: null
-  last_resumable_step: null
+  workflow_id: "wftr-20260713-101538-cwl6"
+  blocked_reason: "Phase output reported status 'blocked'. Implemented and verified\
+    \ the owned goal-review persistence and exact-Git-boundary refactors, but mandatory\
+    \ integration validation remains blocked by unresolved Detekt findings and the\
+    \ goal-continuation install guard."
+  last_resumable_step: "implement"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []

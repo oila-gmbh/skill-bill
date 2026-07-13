@@ -115,8 +115,15 @@ internal inline fun <T> Connection.inImmediateTransaction(block: Connection.() -
     val result = block()
     createStatement().use { it.execute("COMMIT") }
     result
-  } catch (error: Throwable) {
-    runCatching { createStatement().use { it.execute("ROLLBACK") } }
+  } catch (error: SQLException) {
+    rollbackImmediateTransaction()
+    throw error
+  } catch (error: IllegalArgumentException) {
+    rollbackImmediateTransaction()
     throw error
   }
+}
+
+private fun Connection.rollbackImmediateTransaction() {
+  runCatching { createStatement().use { it.execute("ROLLBACK") } }
 }

@@ -58,6 +58,10 @@ import skillbill.ports.persistence.model.WorkflowStateRecord
 import skillbill.ports.time.RuntimeTimingPort
 import skillbill.ports.time.model.RuntimeWaitResult
 import skillbill.ports.workflow.WorkflowGitOperations
+import skillbill.ports.workflow.GoalSubtaskReviewGitOperations
+import skillbill.ports.workflow.GoalSubtaskReviewGitOperationsProvider
+import skillbill.ports.workflow.buildGoalSubtaskReviewInput
+import skillbill.ports.workflow.captureGoalSubtaskReviewBaseline
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaselineResult
 import skillbill.ports.workflow.model.GoalSubtaskReviewInput
@@ -843,7 +847,7 @@ class GoalRunnerNoTerminalOutcomeDiagnosisTest {
 // guard can be exercised; everything else returns ok.
 private class DirtyManifestGitOperations(
   private val dirtyManifestPath: String,
-) : WorkflowGitOperations {
+) : WorkflowGitOperations, GoalSubtaskReviewGitOperationsProvider {
   override fun checkoutBranch(repoRoot: Path, branch: String, baseBranch: String?): WorkflowGitOperationResult =
     WorkflowGitOperationResult(status = "ok", value = branch)
 
@@ -876,27 +880,7 @@ private class DirtyManifestGitOperations(
     request: WorkflowSelectedDiffHunksRequest,
   ): WorkflowSelectedDiffHunksResult = WorkflowSelectedDiffHunksResult(status = "ok")
 
-  override fun captureGoalSubtaskReviewBaseline(
-    repoRoot: Path,
-    expectedBranch: String,
-  ): GoalSubtaskReviewBaselineResult = GoalSubtaskReviewBaselineResult(
-    status = "ok",
-    baseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
-  )
-
-  override fun buildGoalSubtaskReviewInput(
-    repoRoot: Path,
-    baseline: GoalSubtaskReviewBaseline,
-    expectedBranch: String,
-  ): GoalSubtaskReviewInputResult = GoalSubtaskReviewInputResult(
-    status = "ok",
-    input = GoalSubtaskReviewInput(
-      reviewBaseSha = baseline.reviewBaseSha,
-      currentHeadSha = "0".repeat(40),
-      trackedDelta = "",
-      ownedUntrackedPatches = "",
-    ),
-  )
+  override val goalSubtaskReviewOperations: GoalSubtaskReviewGitOperations = readyGoalReviewOperations()
 }
 
 class GoalRunnerStatusProjectionTest {
@@ -2151,7 +2135,7 @@ internal class RecordingPullRequestPort : GoalPullRequestPort {
 
 private class FixedBranchGitOperations(
   private val branch: String,
-) : WorkflowGitOperations {
+) : WorkflowGitOperations, GoalSubtaskReviewGitOperationsProvider {
   override fun checkoutBranch(repoRoot: Path, branch: String, baseBranch: String?): WorkflowGitOperationResult =
     WorkflowGitOperationResult(status = "ok", value = branch)
 
@@ -2184,27 +2168,7 @@ private class FixedBranchGitOperations(
     request: WorkflowSelectedDiffHunksRequest,
   ): WorkflowSelectedDiffHunksResult = WorkflowSelectedDiffHunksResult(status = "ok")
 
-  override fun captureGoalSubtaskReviewBaseline(
-    repoRoot: Path,
-    expectedBranch: String,
-  ): GoalSubtaskReviewBaselineResult = GoalSubtaskReviewBaselineResult(
-    status = "ok",
-    baseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
-  )
-
-  override fun buildGoalSubtaskReviewInput(
-    repoRoot: Path,
-    baseline: GoalSubtaskReviewBaseline,
-    expectedBranch: String,
-  ): GoalSubtaskReviewInputResult = GoalSubtaskReviewInputResult(
-    status = "ok",
-    input = GoalSubtaskReviewInput(
-      reviewBaseSha = baseline.reviewBaseSha,
-      currentHeadSha = "0".repeat(40),
-      trackedDelta = "",
-      ownedUntrackedPatches = "",
-    ),
-  )
+  override val goalSubtaskReviewOperations: GoalSubtaskReviewGitOperations = readyGoalReviewOperations()
 }
 
 private object StatusDiffGitOperations : WorkflowGitOperations {
@@ -2248,7 +2212,7 @@ private class RecordingGitOperations(
   private val checkoutError: String? = null,
   private val validationError: String? = null,
   private val baselineError: String? = null,
-) : WorkflowGitOperations {
+) : WorkflowGitOperations, GoalSubtaskReviewGitOperationsProvider {
   val checkouts: MutableList<String> = mutableListOf()
   val validations: MutableList<String> = mutableListOf()
 
@@ -2291,16 +2255,33 @@ private class RecordingGitOperations(
     request: WorkflowSelectedDiffHunksRequest,
   ): WorkflowSelectedDiffHunksResult = WorkflowSelectedDiffHunksResult(status = "ok")
 
-  override fun captureGoalSubtaskReviewBaseline(
-    repoRoot: Path,
-    expectedBranch: String,
-  ): GoalSubtaskReviewBaselineResult =
-    baselineError?.let { GoalSubtaskReviewBaselineResult(status = "error", error = it) }
-      ?: GoalSubtaskReviewBaselineResult(
-        status = "ok",
-        baseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
-      )
+  override val goalSubtaskReviewOperations: GoalSubtaskReviewGitOperations =
+    readyGoalReviewOperations(baselineError)
 }
+
+private fun readyGoalReviewOperations(baselineError: String? = null): GoalSubtaskReviewGitOperations =
+  object : GoalSubtaskReviewGitOperations {
+    override fun captureBaseline(repoRoot: Path, expectedBranch: String): GoalSubtaskReviewBaselineResult =
+      baselineError?.let { GoalSubtaskReviewBaselineResult(status = "error", error = it) }
+        ?: GoalSubtaskReviewBaselineResult(
+          status = "ok",
+          baseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
+        )
+
+    override fun buildInput(
+      repoRoot: Path,
+      baseline: GoalSubtaskReviewBaseline,
+      expectedBranch: String,
+    ): GoalSubtaskReviewInputResult = GoalSubtaskReviewInputResult(
+      status = "ok",
+      input = GoalSubtaskReviewInput(
+        reviewBaseSha = baseline.reviewBaseSha,
+        currentHeadSha = "0".repeat(40),
+        trackedDelta = "",
+        ownedUntrackedPatches = "",
+      ),
+    )
+  }
 
 private class RecordingTimingPort(
   private val result: () -> RuntimeWaitResult,

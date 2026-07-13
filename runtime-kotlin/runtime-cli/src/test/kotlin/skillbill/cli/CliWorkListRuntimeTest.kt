@@ -52,16 +52,7 @@ class CliWorkListRuntimeTest {
       updateStartedAt(connection, "feature_task_workflows", prose, "2026-05-01T12:00:00.000001Z")
       updateStartedAt(connection, "feature_task_workflows", runtime, "2026-05-01T12:00:00.000004Z")
       updateStartedAt(connection, "feature_verify_workflows", verify, "2026-05-01T12:00:00.000003Z")
-      insertGoal(connection, "goal-a", null, "2026-05-01T12:00:00.000001Z", "2026-05-01T12:00:00.000001Z", true)
-      insertGoal(connection, "goal-z", "SKILL-117", "2026-05-01T12:00:00.000002Z", "2026-05-01T12:01:00Z", false)
-      insertGoal(
-        connection,
-        "goal-control",
-        "BAD\u001b]8;;https://example.test\u0007",
-        "2026-05-01T12:00:00Z",
-        "2026-05-01T12:00:00Z",
-        false,
-      )
+      seedWorkListGoals(connection)
     }
 
     val table = CliRuntime.run(listOf("--db", dbPath.toString(), "work", "list"))
@@ -103,8 +94,14 @@ class CliWorkListRuntimeTest {
   fun `work list table aligns wide and combining issue keys by terminal display cells`() {
     val dbPath = Files.createTempDirectory("skillbill-cli-work-unicode").resolve("metrics.db")
     DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
-      insertGoal(connection, "goal-wide", "界", "2026-05-01T12:00:00Z", "2026-05-01T12:00:00Z", false)
-      insertGoal(connection, "goal-combining", "A\u0301", "2026-05-01T12:00:01Z", "2026-05-01T12:00:01Z", false)
+      insertGoal(
+        connection,
+        GoalProgressRow("goal-wide", "界", "2026-05-01T12:00:00Z", "2026-05-01T12:00:00Z", false),
+      )
+      insertGoal(
+        connection,
+        GoalProgressRow("goal-combining", "A\u0301", "2026-05-01T12:00:01Z", "2026-05-01T12:00:01Z", false),
+      )
     }
 
     val table = CliRuntime.run(listOf("--db", dbPath.toString(), "work", "list"))
@@ -126,7 +123,10 @@ class CliWorkListRuntimeTest {
     val dbPath = Files.createTempDirectory("skillbill-cli-work-workflow-id-controls").resolve("metrics.db")
     val workflowId = "goal\u001b]8;;https://example.test\u0007"
     DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
-      insertGoal(connection, workflowId, "SKILL-117", "2026-05-01T12:00:00Z", "2026-05-01T12:00:00Z", false)
+      insertGoal(
+        connection,
+        GoalProgressRow(workflowId, "SKILL-117", "2026-05-01T12:00:00Z", "2026-05-01T12:00:00Z", false),
+      )
     }
 
     val table = CliRuntime.run(listOf("--db", dbPath.toString(), "work", "list"))
@@ -158,14 +158,28 @@ class CliWorkListRuntimeTest {
     }
   }
 
-  private fun insertGoal(
-    connection: Connection,
-    workflowId: String,
-    issueKey: String?,
-    startedAt: String,
-    stateEnteredAt: String,
-    estimated: Boolean,
-  ) {
+  private fun seedWorkListGoals(connection: Connection) {
+    insertGoal(
+      connection,
+      GoalProgressRow("goal-a", null, "2026-05-01T12:00:00.000001Z", "2026-05-01T12:00:00.000001Z", true),
+    )
+    insertGoal(
+      connection,
+      GoalProgressRow("goal-z", "SKILL-117", "2026-05-01T12:00:00.000002Z", "2026-05-01T12:01:00Z", false),
+    )
+    insertGoal(
+      connection,
+      GoalProgressRow(
+        "goal-control",
+        "BAD\u001b]8;;https://example.test\u0007",
+        "2026-05-01T12:00:00Z",
+        "2026-05-01T12:00:00Z",
+        false,
+      ),
+    )
+  }
+
+  private fun insertGoal(connection: Connection, row: GoalProgressRow) {
     connection.prepareStatement(
       """
       INSERT INTO goal_issue_progress (
@@ -173,14 +187,22 @@ class CliWorkListRuntimeTest {
       ) VALUES (?, ?, ?, 'running', ?, ?)
       """.trimIndent(),
     ).use { statement ->
-      statement.setString(1, workflowId)
-      statement.setString(2, issueKey.orEmpty())
-      statement.setString(3, startedAt)
-      statement.setString(4, stateEnteredAt)
-      statement.setInt(5, if (estimated) 1 else 0)
+      statement.setString(1, row.workflowId)
+      statement.setString(2, row.issueKey.orEmpty())
+      statement.setString(3, row.startedAt)
+      statement.setString(4, row.stateEnteredAt)
+      statement.setInt(5, if (row.estimated) 1 else 0)
       statement.executeUpdate()
     }
   }
+
+  private data class GoalProgressRow(
+    val workflowId: String,
+    val issueKey: String?,
+    val startedAt: String,
+    val stateEnteredAt: String,
+    val estimated: Boolean,
+  )
 }
 
 private fun decodeJsonObject(rawJson: String): Map<String, Any?> {

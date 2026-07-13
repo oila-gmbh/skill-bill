@@ -12,6 +12,7 @@ import skillbill.db.telemetry.LifecycleTelemetryStore
 import skillbill.telemetry.model.FeatureImplementFinishedRecord
 import java.nio.file.Files
 import java.nio.file.Path
+import java.sql.Connection
 import java.sql.DriverManager
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
@@ -190,7 +191,14 @@ class DatabaseMigrationsTest {
   @Test
   fun `opening a legacy workflow with a partial state entry heal fills its missing estimated flag`() {
     val dbPath = Files.createTempDirectory("runtime-kotlin-db-workflow-partial-healing").resolve("metrics.db")
+    seedPartiallyHealedLegacyWorkflow(dbPath)
 
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      assertPartiallyHealedStateEntry(connection)
+    }
+  }
+
+  private fun seedPartiallyHealedLegacyWorkflow(dbPath: Path) {
     DriverManager.getConnection("jdbc:sqlite:$dbPath").use { connection ->
       connection.createStatement().use { statement ->
         statement.execute(
@@ -226,197 +234,158 @@ class DatabaseMigrationsTest {
         )
       }
     }
+  }
 
-    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
-      assertEquals(
-        "2026-05-02T11:00:00Z",
-        tableColumnValue(
-          connection,
-          "feature_task_workflows",
-          "workflow_id",
-          "wfl-partial-heal",
-          "state_entered_at",
-        ),
-      )
-      assertEquals(
-        1,
-        tableColumnValue(
-          connection,
-          "feature_task_workflows",
-          "workflow_id",
-          "wfl-partial-heal",
-          "state_entered_at_estimated",
-        ),
-      )
-    }
+  private fun assertPartiallyHealedStateEntry(connection: Connection) {
+    assertEquals(
+      "2026-05-02T11:00:00Z",
+      tableColumnValue(connection, "feature_task_workflows", "workflow_id", "wfl-partial-heal", "state_entered_at"),
+    )
+    assertEquals(
+      1,
+      tableColumnValue(
+        connection,
+        "feature_task_workflows",
+        "workflow_id",
+        "wfl-partial-heal",
+        "state_entered_at_estimated",
+      ),
+    )
   }
 
   @Test
   fun `legacy workflow and goal state entries use their documented timestamp fallbacks`() {
     val dbPath = Files.createTempDirectory("runtime-kotlin-db-state-entry-fallbacks").resolve("metrics.db")
 
-    DriverManager.getConnection("jdbc:sqlite:$dbPath").use { connection ->
-      connection.createStatement().use { statement ->
-        statement.execute(
-          """
-          CREATE TABLE feature_task_workflows (
-            workflow_id TEXT PRIMARY KEY,
-            session_id TEXT NOT NULL DEFAULT '',
-            workflow_name TEXT NOT NULL DEFAULT 'bill-feature-task',
-            mode TEXT NOT NULL,
-            implementation_skill TEXT NOT NULL DEFAULT '',
-            contract_version TEXT NOT NULL,
-            workflow_status TEXT NOT NULL DEFAULT 'pending',
-            current_step_id TEXT NOT NULL DEFAULT '',
-            steps_json TEXT NOT NULL DEFAULT '',
-            artifacts_json TEXT NOT NULL DEFAULT '',
-            started_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL,
-            finished_at TEXT
-          )
-          """.trimIndent(),
-        )
-        statement.execute(
-          """
-          CREATE TABLE goal_issue_progress (
-            parent_workflow_id TEXT NOT NULL,
-            issue_key TEXT NOT NULL,
-            total_invocations INTEGER NOT NULL DEFAULT 0,
-            total_blocks INTEGER NOT NULL DEFAULT 0,
-            total_resumes INTEGER NOT NULL DEFAULT 0,
-            first_started_at TEXT,
-            last_activity_at TEXT,
-            last_blocked_at TEXT,
-            latest_segment_workflow_id TEXT,
-            last_blocked_segment_workflow_id TEXT,
-            finished_at TEXT,
-            status TEXT,
-            subtasks_complete INTEGER,
-            subtasks_blocked INTEGER,
-            subtasks_skipped INTEGER,
-            mode TEXT NOT NULL DEFAULT 'runtime',
-            finished_event_emitted_at TEXT,
-            PRIMARY KEY (parent_workflow_id, issue_key)
-          )
-          """.trimIndent(),
-        )
-        statement.executeUpdate(
-          """
-          INSERT INTO feature_task_workflows (
-            workflow_id, mode, contract_version, started_at, updated_at, finished_at
-          ) VALUES
-            ('wfl-finished', 'prose', '0.1', '2026-05-01T10:00:00Z', '2026-05-02T10:00:00Z', '2026-05-03T10:00:00Z'),
-            ('wfl-updated', 'prose', '0.1', '2026-05-01T10:00:00Z', '2026-05-02T10:00:00Z', NULL),
-            ('wfl-started', 'prose', '0.1', '2026-05-01T10:00:00Z', '', NULL),
-            ('wfl-no-time', 'prose', '0.1', '', '', NULL)
-          """.trimIndent(),
-        )
-        statement.executeUpdate(
-          """
-          INSERT INTO goal_issue_progress (
-            parent_workflow_id, issue_key, first_started_at, last_activity_at, finished_at
-          ) VALUES
-            ('goal-finished', 'SKILL-117', '2026-05-01T10:00:00Z', '2026-05-02T10:00:00Z', '2026-05-03T10:00:00Z'),
-            ('goal-activity', 'SKILL-117', '2026-05-01T10:00:00Z', '2026-05-02T10:00:00Z', NULL),
-            ('goal-started', 'SKILL-117', '2026-05-01T10:00:00Z', '', NULL),
-            ('goal-no-time', 'SKILL-117', '', '', NULL)
-          """.trimIndent(),
-        )
-      }
-    }
+    seedLegacyStateEntryFallbacks(dbPath)
 
     DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
-      assertEquals(
-        "2026-05-03T10:00:00Z",
-        tableColumnValue(connection, "feature_task_workflows", "workflow_id", "wfl-finished", "state_entered_at"),
-      )
-      assertEquals(
-        "2026-05-02T10:00:00Z",
-        tableColumnValue(connection, "feature_task_workflows", "workflow_id", "wfl-updated", "state_entered_at"),
-      )
-      assertEquals(
-        "2026-05-01T10:00:00Z",
-        tableColumnValue(connection, "feature_task_workflows", "workflow_id", "wfl-started", "state_entered_at"),
-      )
-      assertEquals(
-        "2026-05-03T10:00:00Z",
-        tableColumnValue(connection, "goal_issue_progress", "parent_workflow_id", "goal-finished", "state_entered_at"),
-      )
-      assertEquals(
-        "2026-05-02T10:00:00Z",
-        tableColumnValue(connection, "goal_issue_progress", "parent_workflow_id", "goal-activity", "state_entered_at"),
-      )
-      assertEquals(
-        "2026-05-01T10:00:00Z",
-        tableColumnValue(connection, "goal_issue_progress", "parent_workflow_id", "goal-started", "state_entered_at"),
-      )
-      assertEquals(
-        1,
-        tableColumnValue(
-          connection,
-          "goal_issue_progress",
-          "parent_workflow_id",
-          "goal-started",
-          "state_entered_at_estimated",
-        ),
-      )
-      assertEquals(
-        null,
-        nullableTableColumnValue(
-          connection,
-          "feature_task_workflows",
-          "workflow_id",
-          "wfl-no-time",
-          "state_entered_at",
-        ),
-      )
-      assertEquals(
-        null,
-        nullableTableColumnValue(
-          connection,
-          "goal_issue_progress",
-          "parent_workflow_id",
-          "goal-no-time",
-          "state_entered_at",
-        ),
-      )
-      assertEquals(
-        1,
-        tableColumnValue(
-          connection,
-          "feature_task_workflows",
-          "workflow_id",
-          "wfl-no-time",
-          "state_entered_at_estimated",
-        ),
-      )
-      assertEquals(
-        1,
-        tableColumnValue(
-          connection,
-          "goal_issue_progress",
-          "parent_workflow_id",
-          "goal-no-time",
-          "state_entered_at_estimated",
-        ),
-      )
-      assertFailsWith<InvalidWorkListRowError> {
-        SQLiteWorkListRepository(connection).list()
-      }
-      connection.createStatement().use { statement ->
-        statement.execute(
-          """
-          CREATE TRIGGER reject_missing_timestamp_rewrite
-          BEFORE UPDATE ON feature_task_workflows
-          BEGIN
-            SELECT RAISE(ABORT, 'missing legacy timestamp must not be rewritten');
-          END
-          """.trimIndent(),
-        )
-      }
+      assertLegacyStateEntryFallbacks(connection)
+      assertMissingTimestampRowsRemainUnchanged(connection)
     }
 
     DatabaseRuntime.ensureDatabase(dbPath).close()
+  }
+
+  private fun seedLegacyStateEntryFallbacks(dbPath: Path) {
+    DriverManager.getConnection("jdbc:sqlite:$dbPath").use { connection ->
+      connection.createStatement().use { statement ->
+        createLegacyStateEntryTables(statement)
+        insertLegacyWorkflowStateEntryRows(statement)
+        insertLegacyGoalStateEntryRows(statement)
+      }
+    }
+  }
+
+  private fun createLegacyStateEntryTables(statement: java.sql.Statement) {
+    statement.execute(
+      """
+      CREATE TABLE feature_task_workflows (
+        workflow_id TEXT PRIMARY KEY, session_id TEXT NOT NULL DEFAULT '',
+        workflow_name TEXT NOT NULL DEFAULT 'bill-feature-task', mode TEXT NOT NULL,
+        implementation_skill TEXT NOT NULL DEFAULT '', contract_version TEXT NOT NULL,
+        workflow_status TEXT NOT NULL DEFAULT 'pending', current_step_id TEXT NOT NULL DEFAULT '',
+        steps_json TEXT NOT NULL DEFAULT '', artifacts_json TEXT NOT NULL DEFAULT '',
+        started_at TEXT NOT NULL, updated_at TEXT NOT NULL, finished_at TEXT
+      )
+      """.trimIndent(),
+    )
+    statement.execute(
+      """
+      CREATE TABLE goal_issue_progress (
+        parent_workflow_id TEXT NOT NULL, issue_key TEXT NOT NULL,
+        total_invocations INTEGER NOT NULL DEFAULT 0, total_blocks INTEGER NOT NULL DEFAULT 0,
+        total_resumes INTEGER NOT NULL DEFAULT 0, first_started_at TEXT, last_activity_at TEXT,
+        last_blocked_at TEXT, latest_segment_workflow_id TEXT, last_blocked_segment_workflow_id TEXT,
+        finished_at TEXT, status TEXT, subtasks_complete INTEGER, subtasks_blocked INTEGER,
+        subtasks_skipped INTEGER, mode TEXT NOT NULL DEFAULT 'runtime', finished_event_emitted_at TEXT,
+        PRIMARY KEY (parent_workflow_id, issue_key)
+      )
+      """.trimIndent(),
+    )
+  }
+
+  private fun insertLegacyWorkflowStateEntryRows(statement: java.sql.Statement) {
+    statement.executeUpdate(
+      """
+      INSERT INTO feature_task_workflows (workflow_id, mode, contract_version, started_at, updated_at, finished_at)
+      VALUES
+        ('wfl-finished', 'prose', '0.1', '2026-05-01T10:00:00Z', '2026-05-02T10:00:00Z', '2026-05-03T10:00:00Z'),
+        ('wfl-updated', 'prose', '0.1', '2026-05-01T10:00:00Z', '2026-05-02T10:00:00Z', NULL),
+        ('wfl-started', 'prose', '0.1', '2026-05-01T10:00:00Z', '', NULL),
+        ('wfl-no-time', 'prose', '0.1', '', '', NULL)
+      """.trimIndent(),
+    )
+  }
+
+  private fun insertLegacyGoalStateEntryRows(statement: java.sql.Statement) {
+    statement.executeUpdate(
+      """
+      INSERT INTO goal_issue_progress (parent_workflow_id, issue_key, first_started_at, last_activity_at, finished_at)
+      VALUES
+        ('goal-finished', 'SKILL-117', '2026-05-01T10:00:00Z', '2026-05-02T10:00:00Z', '2026-05-03T10:00:00Z'),
+        ('goal-activity', 'SKILL-117', '2026-05-01T10:00:00Z', '2026-05-02T10:00:00Z', NULL),
+        ('goal-started', 'SKILL-117', '2026-05-01T10:00:00Z', '', NULL),
+        ('goal-no-time', 'SKILL-117', '', '', NULL)
+      """.trimIndent(),
+    )
+  }
+
+  private fun assertLegacyStateEntryFallbacks(connection: java.sql.Connection) {
+    assertStateEntryFallbacks(
+      connection,
+      "feature_task_workflows",
+      "workflow_id",
+      "wfl",
+      listOf("finished", "updated", "started"),
+    )
+    assertStateEntryFallbacks(
+      connection,
+      "goal_issue_progress",
+      "parent_workflow_id",
+      "goal",
+      listOf("finished", "activity", "started"),
+    )
+    assertEstimatedMissingStateEntries(connection, "feature_task_workflows", "workflow_id", "wfl-no-time")
+    assertEstimatedMissingStateEntries(connection, "goal_issue_progress", "parent_workflow_id", "goal-no-time")
+    assertFailsWith<InvalidWorkListRowError> { SQLiteWorkListRepository(connection).list() }
+  }
+
+  private fun assertStateEntryFallbacks(
+    connection: java.sql.Connection,
+    table: String,
+    keyColumn: String,
+    prefix: String,
+    suffixes: List<String>,
+  ) {
+    val expected = listOf("2026-05-03T10:00:00Z", "2026-05-02T10:00:00Z", "2026-05-01T10:00:00Z")
+    suffixes.zip(expected).forEach { (suffix, timestamp) ->
+      assertEquals(timestamp, tableColumnValue(connection, table, keyColumn, "$prefix-$suffix", "state_entered_at"))
+    }
+  }
+
+  private fun assertEstimatedMissingStateEntries(
+    connection: java.sql.Connection,
+    table: String,
+    keyColumn: String,
+    rowKey: String,
+  ) {
+    assertEquals(null, nullableTableColumnValue(connection, table, keyColumn, rowKey, "state_entered_at"))
+    assertEquals(1, tableColumnValue(connection, table, keyColumn, rowKey, "state_entered_at_estimated"))
+  }
+
+  private fun assertMissingTimestampRowsRemainUnchanged(connection: java.sql.Connection) {
+    connection.createStatement().use { statement ->
+      statement.execute(
+        """
+        CREATE TRIGGER reject_missing_timestamp_rewrite
+        BEFORE UPDATE ON feature_task_workflows
+        BEGIN
+          SELECT RAISE(ABORT, 'missing legacy timestamp must not be rewritten');
+        END
+        """.trimIndent(),
+      )
+    }
   }
 
   @Test
