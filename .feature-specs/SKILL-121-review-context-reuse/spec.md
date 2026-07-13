@@ -1,5 +1,5 @@
 ---
-status: Ready for implementation
+status: Complete
 issue_key: SKILL-121
 source: inline user request
 ---

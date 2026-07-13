@@ -18,7 +18,6 @@ import skillbill.ports.diff.DiffResolverPort
 import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.review.ParallelReviewLaneRunner
-import skillbill.ports.review.ReviewRubricPort
 import skillbill.ports.review.model.ParallelReviewLaneOutcome
 import skillbill.ports.review.model.ParallelReviewLaneRunRequest
 import skillbill.review.ParallelReviewFindingParser
@@ -33,7 +32,6 @@ class ParallelCodeReviewRunner(
   private val subtaskLauncher: GoalRunnerSubtaskLauncher,
   private val scaffoldCatalogService: ScaffoldCatalogService,
   private val diffResolver: DiffResolverPort,
-  private val rubricPort: ReviewRubricPort,
   private val parallelLaneRunner: ParallelReviewLaneRunner,
 ) {
   fun run(request: ParallelCodeReviewRequest): ParallelCodeReviewResult {
@@ -169,24 +167,24 @@ class ParallelCodeReviewRunner(
     codeReviewMode: skillbill.workflow.model.CodeReviewExecutionMode,
   ): String = buildString {
     appendLine(
-      "You are driving one lane of a parallel code review. Apply all of the following specialist " +
-        "review rubrics to the diff below and return a single consolidated Risk Register. " +
-        "Do not use parallel mode.",
+      "You are driving one compact parent lane of a parallel code review. Treat the detected stack " +
+        "and exact diff below as pre-resolved authoritative inputs. Do not use parallel mode.",
     )
-    appendLine("Run bill-code-review with execution-mode:${codeReviewMode.wireValue}; do not reinterpret it.")
+    appendLine(
+      "Run bill-code-review mode:${codeReviewMode.wireValue}; do not reinterpret it or launch parallel " +
+        "review recursively.",
+    )
+    appendLine(
+      "Prepare one shared review-context packet, then use the routed pack's Diff-Signal Routing Table, " +
+        "retain required baseline layers, and launch only signal-relevant non-empty specialist lanes.",
+    )
+    appendLine(
+      "Give each worker only the shared packet, its assignment, and its applicable rubric; workers must " +
+        "not repeat repository, scope, stack, routing, or guidance discovery.",
+    )
     appendLine()
-    val rubrics = if (stack != null) rubricPort.loadSpecialistRubrics(stack) else emptyList()
-    if (rubrics.isNotEmpty()) {
-      rubrics.forEach { rubric ->
-        appendLine("## Specialist: ${rubric.skillName}")
-        appendLine(rubric.content)
-        appendLine()
-      }
-    } else {
-      if (stack != null) appendLine("The dominant stack is $stack.")
-      appendLine("Review for architecture, correctness, testing, performance, and reliability risks.")
-      appendLine()
-    }
+    appendLine("The dominant stack is ${stack ?: "unknown"} (pre-resolved detected stack).")
+    appendLine()
     appendLine(
       "Return only a risk register in F-XXX bullet format, one finding per line: " +
         "- [F-NNN] Blocker|Major|Minor|Nit | High|Medium|Low | file:line | description",

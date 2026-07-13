@@ -149,7 +149,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
    * `audit_gap` backward edges. `implement_fix` sits between `implement` and `review` in the pipeline
    * but is loop-only — the forward edge skips it, so a clean run advances `implement` -> `review` and
    * never launches a fix. A `review` `changes_requested` verdict reopens the `[implement_fix, review]`
-   * span (the backward destination precedes the source), bounded at 3 review->fix iterations; the
+   * span (the backward destination precedes the source), bounded at one review->fix iteration; the
    * first `approved` verdict advances to `audit`. An `audit` `gaps_found` verdict reopens the wider
    * `[plan, audit]` span — which contains the mutating `implement` phase — to re-plan then
    * re-implement against the failing criteria and re-pass through `review` (incl. its `review_fix`
@@ -165,7 +165,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
           triggeringVerdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
           destinationPhaseId = PHASE_IMPLEMENT_FIX,
           loopId = REVIEW_FIX_LOOP_ID,
-          perEdgeCap = 3,
+          perEdgeCap = 1,
         ),
         FeatureTaskRuntimeBackwardEdge(
           fromPhaseId = PHASE_AUDIT,

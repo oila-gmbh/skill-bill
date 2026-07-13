@@ -29,7 +29,7 @@ baseline, and pass state; the runner must not default, recompute, or replace
 them. On resume, omission reuses them. An explicit incompatible mode or lane
 is rejected before child work starts and leaves the durable policy unchanged.
 
-For every review pass, call `bill-code-review mode:<code_review_mode>`
+For the initial review pass, call `bill-code-review mode:<code_review_mode>`. For the single possible later pass, call `bill-code-review mode:inline`
 against only the durable child-owned base-to-current delta. Reconstruct that
 scope from the immutable `review_base_sha` through the current committed,
 staged, and unstaged changes, plus current untracked paths after subtracting
@@ -42,7 +42,7 @@ When `parallel_review_agent` is set, start exactly its second full lane with
 the same execution mode and exact prepared delta. Invoke both lanes directly;
 never pass a parallel argument into either lane, so neither lane recursively
 launches parallel review. The coordinated lanes are exactly one pass. Preserve
-the selected mode and exact scope through repair and audit re-entry. Reserve
+the exact scope through repair and audit re-entry; the selected mode is initial-pass policy only. Reserve
 before launch; when `reserved_review_pass_number` has no completed durable
 output, resume that accounted pass instead of reserving another. Carry forward
 `completed_review_pass_count` and `review_cap_disposition`, and never run pass

@@ -260,6 +260,7 @@ internal class FeatureTaskRuntimeRunLoop(
       verdict
     }
     val edge = matchingBackwardEdge(phaseId, effectiveVerdict)
+    edge?.let(::resumeInFlightReviewFix)?.let { return it }
     val transition = FeatureTaskRuntimeTransitionFunction.nextTransition(
       declaration = transitions,
       currentPhaseId = phaseId,
@@ -345,6 +346,25 @@ internal class FeatureTaskRuntimeRunLoop(
   ): FeatureTaskRuntimeBackwardEdge? =
     transitions.backwardEdges.firstOrNull { it.fromPhaseId == phaseId && it.triggeringVerdict == verdict }
 
+  private fun resumeInFlightReviewFix(edge: FeatureTaskRuntimeBackwardEdge): String? {
+    if (edge.loopId != FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID) return null
+    val reviewRecord = state.recordFor(edge.fromPhaseId)
+    if (reviewRecord?.reviewPassNumber == 2 || state.outputCountFor(edge.fromPhaseId) >= 2) return null
+    val destinationRecord = state.recordFor(edge.destinationPhaseId)
+      ?.takeIf { it.loopId == edge.loopId && it.edgeIteration == state.edgeIterationCount(edge.loopId) }
+      ?: return null
+    val edgeIteration = requireNotNull(destinationRecord.edgeIteration)
+    state.reopenForReentry(edge.fromPhaseId)
+    state.recordEdgeIteration(edge.loopId, edgeIteration)
+    pendingReentry = PendingReentry(
+      phaseId = edge.destinationPhaseId,
+      loopId = edge.loopId,
+      edgeIteration = edgeIteration,
+      drivingVerdict = edge.triggeringVerdict,
+    )
+    return edge.destinationPhaseId
+  }
+
   private fun recordBackwardEdge(
     edge: FeatureTaskRuntimeBackwardEdge,
     destinationPhaseId: String,
@@ -372,6 +392,13 @@ internal class FeatureTaskRuntimeRunLoop(
 
   private fun capExhaustedOnResume(phaseId: String): String? {
     val record = state.recordFor(phaseId) ?: return null
+    if (
+      phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW &&
+      record.reviewPassNumber == 2 &&
+      record.blockedReason?.startsWith("Backward-edge loop '") != true
+    ) {
+      return null
+    }
     val loopId = record.loopId
     val iteration = record.edgeIteration
     if (loopId == null || iteration == null || state.isLoopLiveClaimed(loopId)) {
@@ -609,6 +636,9 @@ internal class FeatureTaskRuntimeRunLoop(
     reentry: PendingReentry?,
     phaseTokenAccumulator: MutableMap<String, Pair<Int, Int>>? = null,
   ): PhaseOutcome {
+    completedReviewBudgetOutput(phaseId, state)?.let { output ->
+      return PhaseOutcome.completed(output)
+    }
     val resolvedAgent = FeatureTaskRuntimeAgentResolver.resolve(
       phaseId = phaseId,
       assignment = request.agentAssignment,
@@ -843,19 +873,22 @@ internal class FeatureTaskRuntimeRunLoop(
     loopId: String? = null,
     edgeIteration: Int? = null,
   ): PhaseOutcome {
+    val phaseState = FeatureTaskRuntimePhaseStateRequest(
+      workflowId = run.request.workflowId,
+      phaseId = run.phaseId,
+      status = STATUS_BLOCKED,
+      attemptCount = attemptCount.coerceAtLeast(1),
+      resolvedAgentId = run.resolvedAgent.resolvedAgentId,
+      finished = false,
+      outputArtifact = null,
+      blockedReason = reason,
+      loopId = loopId,
+      edgeIteration = edgeIteration,
+      reviewPassNumber = reviewPassNumber(run, state),
+    )
+    state.reserveReviewPass(phaseState.reviewPassNumber)
     recorder.recordPhaseState(
-      FeatureTaskRuntimePhaseStateRequest(
-        workflowId = run.request.workflowId,
-        phaseId = run.phaseId,
-        status = STATUS_BLOCKED,
-        attemptCount = attemptCount.coerceAtLeast(1),
-        resolvedAgentId = run.resolvedAgent.resolvedAgentId,
-        finished = false,
-        outputArtifact = null,
-        blockedReason = reason,
-        loopId = loopId,
-        edgeIteration = edgeIteration,
-      ),
+      phaseState,
       run.request.dbPathOverride,
     )
     observability.blocked(run.phaseId, run.resolvedAgent.resolvedAgentId, attemptCount.coerceAtLeast(1), reason)
@@ -1028,8 +1061,10 @@ internal class FeatureTaskRuntimeRunLoop(
   }
 
   private fun persistPhase(run: PhaseRun, iteration: Int, status: String, finished: Boolean, outputArtifact: String?) {
+    val phaseState = phaseStateRequest(run, iteration, status, finished, outputArtifact)
+    state.reserveReviewPass(phaseState.reviewPassNumber)
     recorder.recordPhaseState(
-      phaseStateRequest(run, iteration, status, finished, outputArtifact),
+      phaseState,
       run.request.dbPathOverride,
     )
   }
@@ -1050,7 +1085,23 @@ internal class FeatureTaskRuntimeRunLoop(
     outputArtifact = outputArtifact,
     loopId = run.reentry?.loopId,
     edgeIteration = run.reentry?.edgeIteration,
+    reviewPassNumber = reviewPassNumber(run, state),
   )
+
+  private fun reviewPassNumber(run: PhaseRun, state: FeatureTaskRuntimeRunState): Int? {
+    if (run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW) return null
+    val currentPass = state.currentReviewPassNumber()
+    return if (currentPass == 2 || state.outputCountFor(run.phaseId) > 0) 2 else currentPass ?: 1
+  }
+
+  private fun completedReviewBudgetOutput(
+    phaseId: String,
+    state: FeatureTaskRuntimeRunState,
+  ): FeatureTaskRuntimePhaseOutput? {
+    if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW) return null
+    val budgetCompleted = state.completedReviewPassNumber() == 2 || state.outputCountFor(phaseId) >= 2
+    return state.outputFor(phaseId)?.takeIf { budgetCompleted }
+  }
 
   private fun launchAndCapture(
     run: PhaseRun,
@@ -1084,7 +1135,11 @@ internal class FeatureTaskRuntimeRunLoop(
             suppressDecomposition = isGoalContinuationRun(run.request),
             parallelReviewAgent = run.request.parallelReviewAgent
               ?.takeIf { run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW },
-            codeReviewMode = run.request.runInvariants.codeReviewMode,
+            codeReviewMode = if (reviewPassNumber(run, state) == 2) {
+              skillbill.workflow.model.CodeReviewExecutionMode.INLINE
+            } else {
+              run.request.runInvariants.codeReviewMode
+            },
             goalSubtaskReviewInput = run.goalReviewInput,
             specSource = run.specSource,
             priorSchemaFailure = priorSchemaFailure,

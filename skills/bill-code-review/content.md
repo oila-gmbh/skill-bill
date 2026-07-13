@@ -115,7 +115,7 @@ Scope: <scope description — e.g. "commit <SHA>", "staged changes", "branch dif
 Repo root: <repo-root>
 
 Rules:
-- Run the full routed review by spawning one isolated-context subagent per specialist domain — do NOT do a single flat read of the diff.
+- Run the full routed review using the routed pack's Diff-Signal Routing Table: retain required baseline layers, add only signal-relevant specialists, and drop empty lanes.
 - Invoke `bill-code-review mode:<selected-mode>` for this lane. Preserve the caller's selected mode; do not replace it with `auto`.
 - Do NOT pass parallel:<agent> to bill-code-review — you are already lane 2; recursion is not allowed.
 - Spawn each specialist as an isolated-context subagent using your agent's native subagent mechanism (see Agent-specific instructions below). What matters is that each specialist reasons in its own context window — not that it runs as a separate OS process.
@@ -131,13 +131,13 @@ Invoke `/bill-code-review` as a slash command — it handles all specialist rout
 **If you are `codex`:**
 Spawn one isolated-context subagent per specialist domain below using your native `SpawnAgent` mechanism — the same primitive Codex uses for parallel subagents. Do **not** shell out to `codex exec` subprocesses; the native subagent already gives each specialist its own context window, which is the only isolation this review needs. Run all subagents in parallel from the repo root and wait for them to complete.
 
-Derive specialist domains from the routed platform pack's `declared_code_review_areas` and use that pack's `area_metadata.<area>.focus` text for each specialist. Spawn one isolated-context subagent per declared area. Approved areas are `architecture`, `performance`, `platform-correctness`, `security`, `testing`, `api-contracts`, `persistence`, `reliability`, `ui`, and `ux-accessibility`; include every area declared by the routed pack.
+Prepare the compact shared review-context packet from `review-delegation.md` once. Derive specialist domains from the routed platform pack's Diff-Signal Routing Table, including required baseline layers, and spawn only selected non-empty lanes. Give each worker the shared packet, its lane assignment, and only its applicable rubric. Packet facts are authoritative; workers must not repeat repository, scope, stack, routing, or guidance discovery.
 
 Give each specialist subagent this brief:
 
   You are the <domain> specialist reviewing <scope> in <repo-root>.
   Focus: <focus>.
-  Read the changed files from the repo, then output ONLY Risk Register findings:
+  Read only the assigned changed code and direct dependencies needed to prove a reachable finding, then output ONLY Risk Register findings:
   - [F-NNN] Severity | Confidence | file:line | description
   Severity: Blocker, Major, Minor, Nit. Confidence: High, Medium, Low.
 

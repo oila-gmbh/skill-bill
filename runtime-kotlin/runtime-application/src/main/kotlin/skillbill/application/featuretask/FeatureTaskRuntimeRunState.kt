@@ -27,6 +27,11 @@ internal class FeatureTaskRuntimeRunState(
       .filterNot { it.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN && it.phaseId !in completed }
       .toMutableList()
   private val priorRecords: MutableSet<String> = initialRecords.keys.toMutableSet()
+  private val initialReviewRecord = initialRecords[FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW]
+  private var currentReviewPassNumber: Int? = initialReviewRecord?.reviewPassNumber
+    ?: initialReviewRecord?.let { 1 }
+  private var completedReviewPassNumber: Int? = currentReviewPassNumber
+    ?.takeIf { initialReviewRecord?.status == STATUS_COMPLETED }
 
   // Durable per-phase attempt count from the loaded record (0 when no record exists).
   private val persistedAttemptCounts: MutableMap<String, Int> =
@@ -166,6 +171,16 @@ internal class FeatureTaskRuntimeRunState(
   fun outputFor(phaseId: String): FeatureTaskRuntimePhaseOutput? =
     outputs.filter { it.phaseId == phaseId }.maxByOrNull { it.iteration }
 
+  fun outputCountFor(phaseId: String): Int = outputs.count { it.phaseId == phaseId }
+
+  fun currentReviewPassNumber(): Int? = currentReviewPassNumber
+
+  fun completedReviewPassNumber(): Int? = completedReviewPassNumber
+
+  fun reserveReviewPass(passNumber: Int?) {
+    if (passNumber != null) currentReviewPassNumber = passNumber
+  }
+
   fun isComplete(phaseId: String): Boolean = phaseId in completed
 
   fun hasPriorRecord(phaseId: String): Boolean = phaseId in priorRecords
@@ -201,6 +216,9 @@ internal class FeatureTaskRuntimeRunState(
     outputs += output
     completed += output.phaseId
     priorRecords += output.phaseId
+    if (output.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW) {
+      completedReviewPassNumber = currentReviewPassNumber
+    }
   }
 
   fun completedPhaseIds(): List<String> =

@@ -1873,15 +1873,13 @@ class FeatureTaskRuntimeReviewFixLoopTest {
 
   @Test
   fun `m1 finished telemetry carries the review fix iteration count after a loop ran`() {
-    // SKILL-85 Subtask 4 (F-002/AC6): a run that looped review->fix twice before converging must report
-    // reviewFixIterationCount == 2, sourced from the durable LOOP_EDGE ledger, not agent-self-reported.
-    val harness = telemetryRunnerHarness(launcher = reviewFixLauncher(convergeOnReview = 3))
+    val harness = telemetryRunnerHarness(launcher = reviewFixLauncher(convergeOnReview = 2))
 
     val report = harness.runner.run(harness.request)
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
     val finished = harness.lifecycle.finishedRecords.single()
-    assertEquals(2, finished.reviewFixIterationCount, "two review->fix iterations are reflected in finished telemetry")
+    assertEquals(1, finished.reviewFixIterationCount, "the single review->fix iteration is reflected in telemetry")
   }
 
   @Test
@@ -1938,7 +1936,8 @@ class FeatureTaskRuntimeReviewFixLoopTest {
       .map { requireNotNull(it.skillRunRequest.promptOverride) }
       .filter { it.contains("Phase: review") }
     assertEquals(2, reviewPrompts.size)
-    assertTrue(reviewPrompts.all { it.contains("bill-code-review mode:delegated") })
+    assertContains(reviewPrompts[0], "bill-code-review mode:delegated")
+    assertContains(reviewPrompts[1], "bill-code-review mode:inline")
     assertEquals(
       CodeReviewExecutionMode.DELEGATED,
       requireNotNull(harness.runInvariantsStore.resolve(WORKFLOW_ID)).codeReviewMode,
@@ -1979,6 +1978,50 @@ class FeatureTaskRuntimeReviewFixLoopTest {
   }
 
   @Test
+  fun `failed second review resumes the same durably reserved inline pass`() {
+    var reviewLaunches = 0
+    val harness = runnerHarness(
+      launcher = RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        when (phaseId) {
+          "review" -> {
+            reviewLaunches += 1
+            when (reviewLaunches) {
+              1 -> facts(reviewFindingsOutput(changesRequested = true))
+              2 -> spawnFailedFacts()
+              else -> facts(reviewFindingsOutput(changesRequested = false))
+            }
+          }
+          else -> facts(validJsonOutput(phaseId))
+        }
+      },
+    )
+
+    val first = harness.runner.run(
+      harness.request().copy(requestedCodeReviewMode = CodeReviewExecutionMode.DELEGATED),
+    )
+
+    assertIs<FeatureTaskRuntimeRunReport.Blocked>(first)
+    val blockedReview = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["review"])
+    assertEquals("blocked", blockedReview.status)
+    assertEquals(2, blockedReview.reviewPassNumber)
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
+    val reviewPrompts = harness.launcher.requests
+      .map { requireNotNull(it.skillRunRequest.promptOverride) }
+      .filter { it.contains("Phase: review") }
+    assertEquals(
+      3,
+      reviewPrompts.size,
+      "the failed launch retries the same reserved pass rather than reserving pass three",
+    )
+    assertContains(reviewPrompts[0], "bill-code-review mode:delegated")
+    reviewPrompts.drop(1).forEach { prompt -> assertContains(prompt, "bill-code-review mode:inline") }
+    val completedReview = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["review"])
+    assertEquals("completed", completedReview.status)
+    assertEquals(2, completedReview.reviewPassNumber)
+  }
+
+  @Test
   fun `resume rejects a changed review mode before opening or launching`() {
     val harness = runnerHarness()
     assertIs<FeatureTaskRuntimeRunReport.Completed>(
@@ -1995,23 +2038,23 @@ class FeatureTaskRuntimeReviewFixLoopTest {
     assertEquals(launchCount, harness.launcher.requests.size)
   }
 
-  // (c) AC3/AC10: convergence on the third review (two fix iterations) still advances to audit.
+  // (c) AC3/AC10: convergence on the only allowed inline re-review still advances to audit.
   @Test
   fun `m1 converges on the last allowed iteration and advances`() {
-    val harness = runnerHarness(launcher = reviewFixLauncher(convergeOnReview = 3))
+    val harness = runnerHarness(launcher = reviewFixLauncher(convergeOnReview = 2))
 
     val report = harness.runner.run(harness.request())
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
     val launched = harness.launchedPromptPhaseOrder()
-    assertEquals(2, launched.count { it == "implement_fix" }, "two fix iterations before converging")
-    assertEquals(3, launched.count { it == "review" })
+    assertEquals(1, launched.count { it == "implement_fix" }, "one fix iteration before converging")
+    assertEquals(2, launched.count { it == "review" })
     val loopEdges = harness.recorder.loadPhaseLedger(WORKFLOW_ID).orEmpty()
       .filter { it.action == FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE }
-    assertEquals(listOf(1, 2), loopEdges.mapNotNull { it.edgeIteration })
+    assertEquals(listOf(1), loopEdges.mapNotNull { it.edgeIteration })
   }
 
-  // (d) AC4/AC10: three unsuccessful iterations block loudly with review_fix + iteration + findings.
+  // (d) AC4/AC10: an unresolved inline re-review exhausts the two-pass budget and blocks loudly.
   @Test
   fun `m1 cap exhaustion blocks loudly with review_fix iteration and unresolved findings`() {
     // convergeOnReview above the cap => review never approves; the edge fires to the cap then blocks.
@@ -2022,23 +2065,22 @@ class FeatureTaskRuntimeReviewFixLoopTest {
     val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
     assertEquals("review", blocked.lastIncompletePhase)
     assertContains(blocked.blockedReason, "review_fix")
-    assertContains(blocked.blockedReason, "3")
+    assertContains(blocked.blockedReason, "1")
     assertContains(blocked.blockedReason, "changes_requested")
     assertContains(blocked.blockedReason, REVIEW_BLOCKER_MESSAGE)
     // Never advanced to audit on unresolved Blocker findings.
     val launched = harness.launchedPromptPhaseOrder()
     assertTrue(launched.none { it == "audit" })
-    // The review_fix edge has perEdgeCap=3, so it fires three times (three fixes) before the fourth
-    // review trips the cap and blocks loudly.
-    assertEquals(3, launched.count { it == "implement_fix" }, "fix ran cap times")
-    assertEquals(4, launched.count { it == "review" }, "review ran cap+1 times: the last triggers the block")
+    assertEquals(1, launched.count { it == "implement_fix" }, "the fix ran once")
+    assertEquals(2, launched.count { it == "review" }, "the initial and inline review consumed the budget")
     // Durable terminal blocked record + observability/ledger event for the review phase.
     val reviewRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["review"])
     assertEquals("blocked", reviewRecord.status)
     // The terminal blocked record carries the structured loop context (mirrors the plan-fix cap test),
     // so the cap-exhaustion block is diagnosable from durable state, not only the reason substring.
     assertEquals("review_fix", reviewRecord.loopId)
-    assertEquals(3, reviewRecord.edgeIteration)
+    assertEquals(1, reviewRecord.edgeIteration)
+    assertEquals(2, reviewRecord.reviewPassNumber)
     assertTrue(
       harness.events.any { it is FeatureTaskRuntimeRunEvent.PhaseBlocked && it.phaseId == "review" },
       "a loud PhaseBlocked event is emitted for the exhausted loop",
@@ -2123,7 +2165,7 @@ class FeatureTaskRuntimeReviewFixLoopTest {
       .mapNotNull { it.edgeIteration }
     assertEquals(edgeIterations.sorted(), edgeIterations, "edge iterations advance monotonically across the crash")
     assertEquals(edgeIterations.toSet().size, edgeIterations.size, "no edge iteration repeats after the crash")
-    assertTrue(edgeIterations.all { it <= 3 }, "the cap is never exceeded across the crash")
+    assertTrue(edgeIterations.all { it <= 1 }, "the cap is never exceeded across the crash")
   }
 
   // (h) AC5/AC10: a review_fix loop that already burned its cap re-blocks on resume without relaunching.
@@ -2136,27 +2178,24 @@ class FeatureTaskRuntimeReviewFixLoopTest {
       },
     )
     // Seed a loop that already burned its cap: the fix phase carries the review_fix watermark at the
-    // perEdgeCap (3), modelling a prior run that exhausted the loop. On resume the review re-settles
-    // changes_requested, the edge would fire a 4th time, and the cap blocks loudly.
+    // perEdgeCap (1), modelling a prior run that exhausted the loop. On resume the review settles
+    // changes_requested and the cap blocks loudly without another fix.
     harness.seedPhase("preplan", "completed", 1, INVOKED_AGENT, PREPLAN_OUTPUT)
     harness.seedPhase("plan", "completed", 1, INVOKED_AGENT, PLAN_OUTPUT)
     harness.seedPhase("implement", "completed", 1, INVOKED_AGENT, IMPLEMENT_OUTPUT)
-    harness.seedReentryPhase("implement_fix", "completed", 3, INVOKED_AGENT, IMPLEMENT_OUTPUT, "review_fix", 3)
+    harness.seedReentryPhase("implement_fix", "completed", 1, INVOKED_AGENT, IMPLEMENT_OUTPUT, "review_fix", 1)
 
     val report = harness.runner.run(harness.request())
 
     val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
     assertContains(blocked.blockedReason, "review_fix")
-    assertContains(blocked.blockedReason, "3")
+    assertContains(blocked.blockedReason, "1")
     // The burned-cap loop re-blocks loudly and never advances to audit on resume.
     assertTrue(harness.launchedPromptPhaseOrder().none { it == "audit" })
   }
 
-  // (i) AC5/SKILL-85-F-001: a crash after review accrued attempt_count >= 3 across review_fix visits,
-  // with review left non-completed and the loop still BELOW its cap, must resume by relaunching the
-  // review — not prematurely block on the same-phase schema-retry budget (whose baseline is rebuilt
-  // from durable state on resume). The resumed review approves, so the run converges to completion
-  // exactly as a continuous (non-crash) run with the loop below its cap would.
+  // (i) AC5/SKILL-85-F-001: a crash during the reserved inline pass after its same-phase attempt count
+  // accrued beyond the schema budget must resume that same pass rather than prematurely block.
   @Test
   fun `m1 crash with review attempt_count past the schema budget resumes without premature block`() {
     val harness = runnerHarness(
@@ -2166,15 +2205,17 @@ class FeatureTaskRuntimeReviewFixLoopTest {
         facts(if (phaseId == "review") reviewFindingsOutput(changesRequested = false) else validJsonOutput(phaseId))
       },
     )
-    // Model the crash: preplan/plan/implement done; two fixes ran (review_fix watermark = 2, below the
-    // cap of 3); review re-entered for its third visit and crashed while running at attempt_count = 3.
-    // Pre-fix, the schema budget index would degrade to attempt_count + 1 = 4 > 3 and block review
-    // before it ever relaunched.
+    // Model the crash: the only fix ran, then review pass two crashed while running at attempt_count 3.
     harness.seedPhase("preplan", "completed", 1, INVOKED_AGENT, PREPLAN_OUTPUT)
     harness.seedPhase("plan", "completed", 1, INVOKED_AGENT, PLAN_OUTPUT)
     harness.seedPhase("implement", "completed", 1, INVOKED_AGENT, IMPLEMENT_OUTPUT)
-    harness.seedReentryPhase("implement_fix", "completed", 2, INVOKED_AGENT, IMPLEMENT_OUTPUT, "review_fix", 2)
-    harness.seedPhase("review", "running", 3, phaseAgent("review"), reviewFindingsOutput(changesRequested = true))
+    harness.seedReentryPhase("implement_fix", "completed", 1, INVOKED_AGENT, IMPLEMENT_OUTPUT, "review_fix", 1)
+    harness.seedReviewPhase(
+      "running",
+      3,
+      reviewFindingsOutput(changesRequested = true),
+      2,
+    )
 
     val report = harness.runner.run(harness.request())
 
@@ -3036,6 +3077,22 @@ internal class RunnerHarness(
   fun seedPhase(phaseId: String, status: String, attemptCount: Int, agentId: String, outputArtifact: String?) {
     recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
     recorder.recordPhaseStateForTest(phaseId, status, attemptCount, agentId, outputArtifact)
+  }
+
+  fun seedReviewPhase(status: String, attemptCount: Int, outputArtifact: String?, reviewPassNumber: Int) {
+    recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    recorder.recordPhaseState(
+      skillbill.application.model.FeatureTaskRuntimePhaseStateRequest(
+        workflowId = WORKFLOW_ID,
+        phaseId = "review",
+        status = status,
+        attemptCount = attemptCount,
+        resolvedAgentId = phaseAgent("review"),
+        finished = status == "completed",
+        outputArtifact = outputArtifact,
+        reviewPassNumber = reviewPassNumber,
+      ),
+    )
   }
 
   // Seeds a foreign-mode (prose) row at WORKFLOW_ID for the runtime mode-collision path.

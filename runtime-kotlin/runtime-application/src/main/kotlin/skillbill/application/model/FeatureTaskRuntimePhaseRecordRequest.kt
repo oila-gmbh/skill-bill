@@ -19,6 +19,7 @@ data class FeatureTaskRuntimePhaseStateRequest(
   /** Runtime-minted backward-edge context for the resume watermark; never agent-reported. */
   val loopId: String? = null,
   val edgeIteration: Int? = null,
+  val reviewPassNumber: Int? = null,
 )
 
 /**

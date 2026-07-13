@@ -147,6 +147,7 @@ data class FeatureTaskRuntimePhaseRecord(
   /** Latest backward-edge context for the resume watermark: the loop and per-edge iteration. */
   val loopId: String? = null,
   val edgeIteration: Int? = null,
+  val reviewPassNumber: Int? = null,
 ) {
   init {
     require(phaseId.isNotBlank()) { "FeatureTaskRuntimePhaseRecord.phaseId must be non-blank." }
@@ -163,6 +164,11 @@ data class FeatureTaskRuntimePhaseRecord(
     edgeIteration?.let { iteration ->
       require(iteration >= 1) {
         "FeatureTaskRuntimePhaseRecord.edgeIteration must be >= 1 when present, was $iteration."
+      }
+    }
+    reviewPassNumber?.let { pass ->
+      require(phaseId == "review" && pass in 1..2) {
+        "FeatureTaskRuntimePhaseRecord.reviewPassNumber must be 1 or 2 and present only for review."
       }
     }
   }
@@ -182,6 +188,7 @@ data class FeatureTaskRuntimePhaseRecord(
     blockedReason?.let { put("blocked_reason", it) }
     loopId?.let { put("loop_id", it) }
     edgeIteration?.let { put("edge_iteration", it) }
+    reviewPassNumber?.let { put("review_pass_number", it) }
   }
 
   companion object {
@@ -203,6 +210,7 @@ data class FeatureTaskRuntimePhaseRecord(
         blockedReason = raw.optionalStringField("blocked_reason"),
         loopId = raw.optionalStringField("loop_id"),
         edgeIteration = raw.optionalIntField("edge_iteration"),
+        reviewPassNumber = raw.optionalIntField("review_pass_number"),
       )
     }
   }

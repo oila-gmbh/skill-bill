@@ -66,7 +66,7 @@ class FeatureTaskRuntimeAuditGapLoopTest {
   }
 
   @Test
-  fun `m2 audit re-entry retains the selected review mode for every review launch`() {
+  fun `m2 audit re-entry uses selected mode once then inline`() {
     val harness = runnerHarness(launcher = auditGapLauncher(convergeOnAudit = 2))
 
     val report = harness.runner.run(
@@ -78,7 +78,8 @@ class FeatureTaskRuntimeAuditGapLoopTest {
       .map { requireNotNull(it.skillRunRequest.promptOverride) }
       .filter { it.contains("Phase: review") }
     assertEquals(2, reviewPrompts.size)
-    assertTrue(reviewPrompts.all { it.contains("bill-code-review mode:delegated") })
+    assertContains(reviewPrompts[0], "bill-code-review mode:delegated")
+    assertContains(reviewPrompts[1], "bill-code-review mode:inline")
   }
 
   // (c) AC2: convergence on the last allowed (2nd) iteration still advances.
@@ -126,8 +127,7 @@ class FeatureTaskRuntimeAuditGapLoopTest {
   }
 
   // (f) AC5: M1 and M2 compose with independent counters. The re-run after an audit gap passes through
-  // review, which itself runs a review_fix iteration; the review_fix counter resets per audit-gap
-  // iteration while the audit_gap counter is independent.
+  // review, while the shared pass budget prevents another review after review_fix consumed pass two.
   @Test
   fun `m2 composes with m1 keeping independent loop counters`() {
     var auditLaunches = 0
@@ -136,8 +136,7 @@ class FeatureTaskRuntimeAuditGapLoopTest {
       launcher = RuntimeRecordingLauncher { request ->
         val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
         when (phaseId) {
-          // Each review launch demands one fix (changes_requested), then approves on the immediate
-          // re-review; this yields exactly one review_fix iteration per audit-gap iteration.
+          // The initial review demands one fix, then pass two approves.
           "review" -> {
             reviewLaunches += 1
             facts(reviewFindingsOutput(changesRequested = reviewLaunches % 2 == 1))
@@ -159,11 +158,11 @@ class FeatureTaskRuntimeAuditGapLoopTest {
       .filter { it.action == FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE }
     val reviewFixIterations = loopEdges.filter { it.loopId == "review_fix" }.mapNotNull { it.edgeIteration }
     val auditGapIterations = loopEdges.filter { it.loopId == "audit_gap" }.mapNotNull { it.edgeIteration }
-    // The audit_gap counter is independent and reached 1; the review_fix counter is per-visit and never
-    // exceeds 1 because each visit converges on a single fix (it resets across the audit-gap iteration).
+    // The audit-gap counter is independent and reached 1; review-fix consumed the only later review.
     assertEquals(listOf(1), auditGapIterations)
-    assertTrue(reviewFixIterations.all { it == 1 }, "review_fix resets per audit-gap iteration, never accruing")
-    assertEquals(2, reviewFixIterations.size, "one review_fix iteration per review visit (initial + re-run)")
+    assertTrue(reviewFixIterations.all { it == 1 })
+    assertEquals(1, reviewFixIterations.size, "the shared two-pass budget prevents a third review")
+    assertEquals(2, harness.launchedPromptPhaseOrder().count { it == "review" }, "review-fix consumed pass two")
   }
 
   // (g) AC4: the re-entered implement is idempotent — a re-implement that omits the reconciliation
@@ -318,11 +317,10 @@ class FeatureTaskRuntimeAuditGapLoopTest {
   }
 
   // (l) AC5/SKILL-85-F-001: the review_fix per-iteration reset is DURABLE across a crash. The pre-gap
-  // pass burns review_fix to its cap (3), the audit_gap edge then fires and resets review_fix, and the
+  // pass consumes the single review-fix allowance, the audit_gap edge then fires, and the
   // run crashes after the reset but before the reopened span re-runs. On resume the cleared watermark
   // must NOT be re-imported from the durable per-phase records: the resumed audit-gap iteration gets a
-  // FRESH review_fix budget, so its re-review can fire a fix again (edge iteration 1) and converge,
-  // rather than immediately re-blocking on the cap "after 3 iteration(s)".
+  // preserved two-pass budget, so resume cannot launch a third review.
   @Test
   fun `m2 audit-gap reset of review_fix survives a crash and grants a fresh per-iteration budget`() {
     var auditLaunches = 0
@@ -333,10 +331,9 @@ class FeatureTaskRuntimeAuditGapLoopTest {
       launcher = RuntimeRecordingLauncher { request ->
         val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
         when (phaseId) {
-          // The pre-gap segment (no gaps_found audit yet) burns review_fix to its cap of 3 fixes before
-          // approving; the resumed audit-gap segment needs only ONE fix, proving the budget is fresh.
+          // The pre-gap segment consumes review pass two before approving.
           "review" -> {
-            val segmentCap = if (auditLaunches == 0) 3 else 1
+            val segmentCap = 1
             if (reviewFixesThisSegment < segmentCap) {
               reviewFixesThisSegment += 1
               facts(reviewFindingsOutput(changesRequested = true))
@@ -361,22 +358,21 @@ class FeatureTaskRuntimeAuditGapLoopTest {
       },
     )
 
-    // Run 1: review_fix burns to its cap (3), the audit fires gaps_found (audit_gap iteration 1, which
+    // Run 1: review_fix consumes pass two, the audit fires gaps_found (audit_gap iteration 1, which
     // resets+durably-clears review_fix), then the re-implement crashes.
     val firstReport = harness.runner.run(harness.request())
     assertIs<FeatureTaskRuntimeRunReport.Blocked>(firstReport)
     val preGapReviewFix = harness.recorder.loadPhaseLedger(WORKFLOW_ID).orEmpty()
       .filter { it.action == FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE && it.loopId == "review_fix" }
       .mapNotNull { it.edgeIteration }
-    assertEquals(listOf(1, 2, 3), preGapReviewFix, "the pre-gap pass burned review_fix to its cap of 3")
+    assertEquals(listOf(1), preGapReviewFix, "review-fix consumed the single remaining review pass")
     // The reset durably cleared the nested loop's per-phase watermark: review/implement_fix no longer
-    // carry the stale review_fix=3 context that resume reconstruction would otherwise re-import.
+    // carry stale review_fix context that resume reconstruction would otherwise re-import.
     val records = harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()
     assertEquals(null, requireNotNull(records["review"]).loopId, "the reset cleared review's stale review_fix context")
     assertEquals(null, requireNotNull(records["implement_fix"]).loopId)
 
-    // Run 2 (resume): the crash heals; the resumed audit-gap iteration's re-review fires a fix at a
-    // FRESH review_fix iteration 1 (not a 4th edge that would block on the cap) and converges.
+    // Run 2 (resume): the crash heals and the durable budget prevents any third review launch.
     crashOnReImplement = false
     val resumeReport = harness.runner.run(harness.request())
     assertIs<FeatureTaskRuntimeRunReport.Completed>(resumeReport)
@@ -384,15 +380,16 @@ class FeatureTaskRuntimeAuditGapLoopTest {
       .filter { it.action == FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE }
     val auditGapSeq = loopEdges.first { it.loopId == "audit_gap" }.sequenceNumber
     val postResetReviewFix = loopEdges.filter { it.loopId == "review_fix" && it.sequenceNumber > auditGapSeq }
+    assertTrue(postResetReviewFix.size <= 1, "the cap may settle but cannot relaunch beyond the remaining pass")
     assertEquals(
-      listOf(1),
-      postResetReviewFix.mapNotNull { it.edgeIteration },
-      "the resumed audit-gap iteration fired a FRESH review_fix at iteration 1, not a capped 4th edge",
+      2,
+      harness.launcher.requests.count { it.skillRunRequest.promptOverride.orEmpty().contains("Phase: review") },
+      "the durable budget prevents a third review launch",
     )
-    // The cap is still enforced WITHIN a single audit-gap iteration: no review_fix edge exceeds 3.
+    // The cap is still enforced within a single audit-gap iteration: no review_fix edge exceeds one.
     assertTrue(
-      loopEdges.filter { it.loopId == "review_fix" }.mapNotNull { it.edgeIteration }.all { it <= 3 },
-      "review_fix never exceeds its per-iteration cap of 3",
+      loopEdges.filter { it.loopId == "review_fix" }.mapNotNull { it.edgeIteration }.all { it <= 1 },
+      "review_fix never exceeds the single re-review allowance",
     )
   }
 }

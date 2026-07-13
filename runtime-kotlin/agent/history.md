@@ -1,3 +1,12 @@
+## [2026-07-13] SKILL-121 shared delegated review context and bounded re-review
+Areas: runtime-kotlin/runtime-application review and feature-task, runtime-domain workflow state, runtime-ports/runtime-infra-fs review, orchestration review contracts, skills/bill-code-review and bill-feature-task*
+- Delegated review parents now prepare one compact authoritative scope/routing/guidance/build packet, assign only diff-signal-selected lanes plus baselines, and restrict workers to assigned hunks and direct dependencies. reusable
+- Parallel review preserves the exact diff and pre-resolved stack for both lanes without flattening every specialist rubric; the obsolete rubric-loading port, adapter, model, and DI binding were removed.
+- Feature-task review identity is reserved durably before launch: pass one may use the selected mode, while the single shared review-fix or audit-fix re-review is pass two in inline mode and survives interruption/resume. reusable
+- Exhausted or completed pass-two state cannot mint a third review; ineligible inline re-review retains the existing explicit failure rather than widening to delegated mode.
+Feature flag: N/A
+Acceptance criteria: 11/11 implemented
+
 ## [2026-07-13] SKILL-119 prose-goal review-policy parity
 Areas: runtime-kotlin/runtime-domain workflow, runtime-application/{goalrunner,featuretask,review}, runtime-ports/{goalrunner,diff,workflow}, runtime-infra-fs, runtime-cli, skills/bill-feature*
 - Decomposed goals durably pin the canonical review mode and optional parallel reviewer for each child; resume rejects policy changes and reuses the immutable base SHA plus baseline untracked inventory to reconstruct only that child's complete delta. reusable
