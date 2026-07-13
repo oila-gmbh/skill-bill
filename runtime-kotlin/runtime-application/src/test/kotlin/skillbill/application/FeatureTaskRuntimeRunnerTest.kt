@@ -1345,6 +1345,81 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
   }
 
   @Test
+  fun `goal review resumes a reserved pass after a crash without consuming another pass`() {
+    var crashReview = true
+    val harness = runnerHarness(
+      agentAssignment = phasePerAgentAssignment(),
+      runtimeConfig = RuntimeHarnessConfig(
+        goalContinuation = FeatureTaskRuntimeGoalContinuationContext(
+          parentIssueKey = ISSUE_KEY,
+          subtaskId = 5,
+          goalBranch = "feat/existing-runtime-branch",
+          suppressPr = true,
+          parentWorkflowId = "wfl-parent",
+          reviewBaseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
+        ),
+      ),
+      launcher = RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        if (phaseId == "review" && crashReview) spawnFailedFacts() else facts(validJsonOutput(phaseId))
+      },
+    )
+
+    val first = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+    assertEquals("review", first.lastIncompletePhase)
+    val reserved = requireNotNull(harness.goalContinuationRecorder.reviewState(WORKFLOW_ID))
+    assertEquals(1, reserved.reservedPassNumber)
+    assertEquals(0, reserved.completedPassCount)
+
+    crashReview = false
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
+    val resumed = requireNotNull(harness.goalContinuationRecorder.reviewState(WORKFLOW_ID))
+    assertEquals(1, resumed.completedPassCount)
+    assertEquals(null, resumed.reservedPassNumber)
+  }
+
+  @Test
+  fun `crash reconciliation preserves a changes requested disposition without structured findings`() {
+    val harness = runnerHarness(
+      agentAssignment = phasePerAgentAssignment(),
+      runtimeConfig = RuntimeHarnessConfig(
+        goalContinuation = FeatureTaskRuntimeGoalContinuationContext(
+          parentIssueKey = ISSUE_KEY,
+          subtaskId = 5,
+          goalBranch = "feat/existing-runtime-branch",
+          suppressPr = true,
+          parentWorkflowId = "wfl-parent",
+          reviewBaseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
+        ),
+      ),
+    )
+    harness.runner.run(harness.request().copy(transitionsOverride = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration(
+      forwardPhaseIds = listOf("preplan"),
+      backwardEdges = emptyList(),
+    )))
+    harness.goalContinuationRecorder.reserveGoalReviewPass(WORKFLOW_ID)
+    harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), PREPLAN_OUTPUT)
+    harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), PLAN_OUTPUT)
+    harness.seedPhase("implement", "completed", 1, phaseAgent("implement"), IMPLEMENT_OUTPUT)
+    harness.seedPhase(
+      "review",
+      "completed",
+      1,
+      phaseAgent("review"),
+      """
+        {"contract_version":"0.1","phase_id":"review","status":"completed","summary":"Review requests changes.","verdict":"changes_requested","produced_outputs":{"summary":"full evidence remains durable"}}
+      """.trimIndent(),
+    )
+
+    harness.runner.run(harness.request())
+
+    val state = requireNotNull(harness.goalContinuationRecorder.reviewState(WORKFLOW_ID))
+    assertEquals(1, state.completedPassCount)
+    assertEquals(FeatureTaskRuntimeVerdict.CHANGES_REQUESTED, state.passResults.single().verdict)
+    assertEquals(1, state.passResults.single().unresolvedFindingCount)
+  }
+
+  @Test
   fun `goal-continuation outcome struct carries finalizingAgentId and participatingAgentIds`() {
     val repoRoot = Files.createTempDirectory("skillbill-runtime-goal-attribution-struct")
     val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
@@ -2790,6 +2865,7 @@ internal fun phasePerAgentAssignment(): FeatureTaskRuntimeAgentAssignment =
 // within the parameter budget.
 internal class RunnerHarnessIo(
   val recorder: FeatureTaskRuntimePhaseRecorder,
+  val goalContinuationRecorder: FeatureTaskRuntimeGoalContinuationRecorder,
   val decomposeTerminalRecorder: FeatureTaskRuntimeDecomposeTerminalRecorder,
   val runInvariantsStore: FeatureTaskRuntimeRunInvariantsStore,
   val repository: InMemoryRuntimeWorkflowRepository,
@@ -2807,6 +2883,7 @@ internal class RunnerHarness(
 ) {
   val specStatusWriter: RecordingSpecStatusWriter get() = io.specStatusWriter
   val recorder: FeatureTaskRuntimePhaseRecorder get() = io.recorder
+  val goalContinuationRecorder: FeatureTaskRuntimeGoalContinuationRecorder get() = io.goalContinuationRecorder
   val decomposeTerminalRecorder: FeatureTaskRuntimeDecomposeTerminalRecorder get() = io.decomposeTerminalRecorder
   val runInvariantsStore: FeatureTaskRuntimeRunInvariantsStore get() = io.runInvariantsStore
   val repository: InMemoryRuntimeWorkflowRepository get() = io.repository
@@ -3080,6 +3157,7 @@ internal fun runnerHarness(
   val runRequest = runnerHarnessRequest(runtimeConfig, agentAssignment, sink)
   val io = RunnerHarnessIo(
     recorder,
+    goalContinuationRecorder,
     decomposeTerminalRecorder,
     runInvariantsStore,
     repository,

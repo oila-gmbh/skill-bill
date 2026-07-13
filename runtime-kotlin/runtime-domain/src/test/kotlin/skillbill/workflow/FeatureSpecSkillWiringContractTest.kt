@@ -69,6 +69,32 @@ class FeatureSpecSkillWiringContractTest {
     assertContains(content, "Ask one confirmation question")
     assertEquals(1, countOccurrences(content, "Ask one confirmation question"))
   }
+
+  @Test
+  fun `review mode source contracts reject invalid selection and preserve the selected mode through prose goals`() {
+    val feature = Files.readString(repoRootFromTest().resolve("skills/bill-feature/content.md"))
+    val task = Files.readString(repoRootFromTest().resolve("skills/bill-feature-task/content.md"))
+    val goal = Files.readString(repoRootFromTest().resolve("skills/bill-feature-goal/content.md"))
+    val review = Files.readString(repoRootFromTest().resolve("skills/bill-code-review/content.md"))
+    val nativeAgents = Files.readString(
+      repoRootFromTest().resolve("skills/bill-feature-task-prose/native-agents/agents.yaml"),
+    )
+
+    assertContains(feature, "zero or one `code-review:auto`, `code-review:inline`, or")
+    assertContains(feature, "Reject a malformed, unknown, repeated, or conflicting")
+    assertContains(task, "the requested code-review selection, showing `auto (default)` when omitted")
+    assertContains(goal, "The selected mode is immutable for the parent and every child")
+    assertContains(review, "`delegated` always runs the normal routed delegated path")
+    assertContains(review, "`inline` is allowed only after every shared eligibility condition passes")
+    assertContains(review, "do not pass `parallel:` into lane 2")
+    assertContains(nativeAgents, "Code-review execution mode: {code_review_mode}")
+    assertContains(nativeAgents, "Parallel review agent: {parallel_review_agent}")
+    assertContains(nativeAgents, "Immutable review base SHA: {review_base_sha}")
+    assertContains(nativeAgents, "Baseline untracked inventory: {baseline_untracked_paths}")
+    assertContains(nativeAgents, "Completed review passes: {completed_review_pass_count}")
+    assertContains(nativeAgents, "Reserved review pass: {reserved_review_pass_number}")
+    assertContains(nativeAgents, "Review cap disposition: {review_cap_disposition}")
+  }
 }
 
 private fun countOccurrences(haystack: String, needle: String): Int =

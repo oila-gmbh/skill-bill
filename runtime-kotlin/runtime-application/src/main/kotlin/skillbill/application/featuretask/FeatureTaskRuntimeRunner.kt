@@ -354,11 +354,11 @@ class FeatureTaskRuntimeRunner(
         return "Completed goal-subtask review output cannot reconcile its reserved pass: ${error.message.orEmpty()}"
       }
       val findings = GoalSubtaskReviewSummaryReducer.fromOutput(outputMap)
-      val unresolved = findings.count { finding -> finding.severity == "blocker" || finding.severity == "major" }
+      val outcome = goalReviewOutcome(outputMap, findings)
       return if (goalContinuationRecorder.completeGoalReviewPass(
           workflowId = request.workflowId,
-          verdict = if (unresolved > 0) FeatureTaskRuntimeVerdict.CHANGES_REQUESTED else FeatureTaskRuntimeVerdict.APPROVED,
-          unresolvedFindingCount = unresolved,
+          verdict = outcome.verdict,
+          unresolvedFindingCount = outcome.unresolvedFindingCount,
           findings = findings,
           rawReviewResult = output,
           dbOverride = request.dbPathOverride,
@@ -861,15 +861,7 @@ class FeatureTaskRuntimeRunner(
         )
         return GoalReviewRunPreparation.Blocked
       }
-      is GoalSubtaskReviewPassReservation.InFlight -> {
-        blockAndPersist(
-          run,
-          1,
-          "Goal-subtask review pass ${reservation.state.reservedPassNumber} is already reserved without a durable result; refusing to launch an unaccounted review pass.",
-          observability,
-        )
-        return GoalReviewRunPreparation.Blocked
-      }
+      is GoalSubtaskReviewPassReservation.InFlight -> {}
       is GoalSubtaskReviewPassReservation.CarryForward -> return GoalReviewRunPreparation.CarryForward
       is GoalSubtaskReviewPassReservation.Reserved -> Unit
     }
@@ -1105,24 +1097,11 @@ class FeatureTaskRuntimeRunner(
         persistPhase(run, iteration, STATUS_COMPLETED, finished = true, outputArtifact = outputText)
         if (run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW && isGoalContinuationRun(run.request)) {
           val findings = GoalSubtaskReviewSummaryReducer.fromOutput(outputMap)
-          val structuredUnresolved = findings.count { finding -> finding.severity == "blocker" || finding.severity == "major" }
-          val declaredVerdict = (outputMap[FeatureTaskRuntimeVerificationSignalKeys.VERDICT] as? String)
-            ?.takeIf(String::isNotBlank)
-            ?.let(FeatureTaskRuntimeVerdict::fromWire)
-          val verdict = when {
-            structuredUnresolved > 0 -> FeatureTaskRuntimeVerdict.CHANGES_REQUESTED
-            declaredVerdict != null -> declaredVerdict
-            else -> FeatureTaskRuntimeVerdict.APPROVED
-          }
-          val unresolved = if (verdict == FeatureTaskRuntimeVerdict.APPROVED) {
-            structuredUnresolved
-          } else {
-            structuredUnresolved.coerceAtLeast(1)
-          }
+          val outcome = goalReviewOutcome(outputMap, findings)
           goalContinuationRecorder.completeGoalReviewPass(
             workflowId = run.request.workflowId,
-            verdict = verdict,
-            unresolvedFindingCount = unresolved,
+            verdict = outcome.verdict,
+            unresolvedFindingCount = outcome.unresolvedFindingCount,
             findings = findings,
             rawReviewResult = outputText,
             dbOverride = run.request.dbPathOverride,
@@ -1319,6 +1298,34 @@ class FeatureTaskRuntimeRunner(
     data class Ready(val run: PhaseRun) : GoalReviewRunPreparation
     data object CarryForward : GoalReviewRunPreparation
     data object Blocked : GoalReviewRunPreparation
+  }
+
+  private data class GoalReviewOutcome(
+    val verdict: FeatureTaskRuntimeVerdict,
+    val unresolvedFindingCount: Int,
+  )
+
+  private fun goalReviewOutcome(
+    output: Map<String, Any?>,
+    findings: List<skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding>,
+  ): GoalReviewOutcome {
+    val structuredUnresolved = findings.count { finding -> finding.severity == "blocker" || finding.severity == "major" }
+    val declaredVerdict = (output[FeatureTaskRuntimeVerificationSignalKeys.VERDICT] as? String)
+      ?.takeIf(String::isNotBlank)
+      ?.let(FeatureTaskRuntimeVerdict::fromWire)
+    val verdict = when {
+      structuredUnresolved > 0 -> FeatureTaskRuntimeVerdict.CHANGES_REQUESTED
+      declaredVerdict != null -> declaredVerdict
+      else -> FeatureTaskRuntimeVerdict.APPROVED
+    }
+    return GoalReviewOutcome(
+      verdict = verdict,
+      unresolvedFindingCount = if (verdict == FeatureTaskRuntimeVerdict.APPROVED) {
+        structuredUnresolved
+      } else {
+        structuredUnresolved.coerceAtLeast(1)
+      },
+    )
   }
 
   // `completed` is derived from record status while `outputs` carries only records with a

@@ -371,6 +371,38 @@ class GitWorkflowGitOperationsTest {
   }
 
   @Test
+  fun `goal review input excludes committed changes from an earlier subtask`() {
+    val repoRoot = Files.createTempDirectory("skillbill-goal-review-earlier-subtask")
+    git(repoRoot, "init")
+    git(repoRoot, "config", "user.email", "skill-bill@example.test")
+    git(repoRoot, "config", "user.name", "Skill Bill")
+    Files.writeString(repoRoot.resolve("shared.txt"), "initial\n")
+    git(repoRoot, "add", ".")
+    git(repoRoot, "commit", "-m", "initial")
+    Files.writeString(repoRoot.resolve("earlier-subtask.txt"), "earlier subtask marker\n")
+    git(repoRoot, "add", "earlier-subtask.txt")
+    git(repoRoot, "commit", "-m", "earlier subtask")
+
+    val baseline = requireNotNull(GitWorkflowGitOperations().captureGoalSubtaskReviewBaseline(repoRoot).baseline)
+    Files.writeString(repoRoot.resolve("current-subtask.txt"), "current subtask marker\n")
+    git(repoRoot, "add", "current-subtask.txt")
+    git(repoRoot, "commit", "-m", "current subtask")
+
+    val input = GitWorkflowGitOperations().buildGoalSubtaskReviewInput(
+      repoRoot,
+      baseline,
+      git(repoRoot, "branch", "--show-current"),
+    )
+
+    assertTrue(input.ok, input.error)
+    val reviewText = requireNotNull(input.input).reviewText
+    assertContains(reviewText, "current-subtask.txt")
+    assertContains(reviewText, "current subtask marker")
+    assertFalse("earlier-subtask.txt" in reviewText)
+    assertFalse("earlier subtask marker" in reviewText)
+  }
+
+  @Test
   fun `goal review input rejects an unsafe persisted base without branch fallback`() {
     val repoRoot = Files.createTempDirectory("skillbill-goal-review-unsafe-base")
     git(repoRoot, "init")
