@@ -6,6 +6,7 @@ import skillbill.application.decomposition.DECOMPOSITION_RUNTIME_ARTIFACT_KEY
 import skillbill.application.decomposition.encodeDecompositionManifestMap
 import skillbill.application.decomposition.loadManifestOrNull
 import skillbill.application.decomposition.withBlockedSubtask
+import skillbill.application.normalizeRequiredIssueKey
 import skillbill.application.model.GoalContinuationOutcome
 import skillbill.application.model.WorkflowContinueResult
 import skillbill.ports.persistence.UnitOfWork
@@ -111,7 +112,10 @@ internal class DecompositionWorkflowContinuation(
         sessionId = opened.sessionId.orEmpty(),
       ),
     )
-    WorkflowFamily.IMPLEMENT.save(unitOfWork.workflowStates, imported)
+    WorkflowFamily.IMPLEMENT.saveRecord(
+      unitOfWork.workflowStates,
+      imported.toRecord().copy(issueKey = normalizeRequiredIssueKey(manifest.issueKey)),
+    )
     return WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, workflowId) ?: imported
   }
 
@@ -257,7 +261,10 @@ internal class DecompositionWorkflowContinuation(
         sessionId = parentRecord.sessionId.orEmpty(),
       ),
     )
-    WorkflowFamily.IMPLEMENT.save(unitOfWork.workflowStates, started)
+    WorkflowFamily.IMPLEMENT.saveRecord(
+      unitOfWork.workflowStates,
+      started.toRecord().copy(issueKey = normalizeRequiredIssueKey(manifest.issueKey)),
+    )
     engine.persistParentDecompositionRuntime(parentRecord, updatedManifest, unitOfWork, validator)
     val saved = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, workflowId) ?: started
     return engine.continueExistingWorkflow(

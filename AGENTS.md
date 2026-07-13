@@ -22,11 +22,11 @@ Bundled skills and packs are defaults, not the framework boundary. Teams may rep
 
 ## Subagent Policy
 
-Use subagents only when the user explicitly requests subagents, delegation, or
-parallel agent work. Do not infer that permission from task size, review mode,
-runtime defaults, or model preference. A model must never autonomously decide
-to spawn subagents; otherwise complete the task in the current agent context or
-ask the user whether delegation is desired.
+Use subagents only when the user explicitly requests them or an invoked skill's
+governed contract selects delegated execution. For `bill-code-review`,
+`mode:auto` may choose inline or delegated; explicit `mode:inline` or
+`mode:delegated` wins. Otherwise do not infer permission from task size,
+runtime defaults, or model preference; work inline or ask the user.
 
 ## Taxonomy
 

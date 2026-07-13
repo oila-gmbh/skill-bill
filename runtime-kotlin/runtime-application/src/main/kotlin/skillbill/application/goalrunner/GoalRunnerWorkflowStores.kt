@@ -8,12 +8,14 @@ import skillbill.application.decomposition.DecompositionManifestWriter
 import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.decomposition.encodeDecompositionManifestMap
 import skillbill.application.decomposition.loadManifestOrNull
+import skillbill.application.normalizeRequiredIssueKey
 import skillbill.application.workflow.WorkflowFamily
 import skillbill.application.workflow.decompositionRuntime
 import skillbill.application.workflow.findDecomposedParentWorkflow
 import skillbill.application.workflow.generateWorkflowId
 import skillbill.application.workflow.isActiveGoalRuntime
 import skillbill.application.workflow.repoRoot
+import skillbill.application.workflow.toRecord
 import skillbill.application.workflow.toSnapshot
 import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
@@ -163,7 +165,10 @@ class WorkflowGoalRunnerManifestStore(
   ): SavedGoalChildWorkflow {
     val parentUpdated = updateParentForChildWorkflow(unitOfWork, state)
     val childUpdated = openGoalChildWorkflow(unitOfWork, state, setup, parentUpdated.workflowId)
-    WorkflowFamily.TASK_RUNTIME.save(unitOfWork.workflowStates, childUpdated)
+    WorkflowFamily.TASK_RUNTIME.saveRecord(
+      unitOfWork.workflowStates,
+      childUpdated.toRecord().copy(issueKey = normalizeRequiredIssueKey(state.manifest.issueKey)),
+    )
     val refreshedParent =
       WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, parentUpdated.workflowId) ?: parentUpdated
     return SavedGoalChildWorkflow(
@@ -426,7 +431,10 @@ class WorkflowGoalRunnerManifestStore(
           sessionId = opened.sessionId.orEmpty(),
         ),
       )
-      WorkflowFamily.IMPLEMENT.save(unitOfWork.workflowStates, imported)
+      WorkflowFamily.IMPLEMENT.saveRecord(
+        unitOfWork.workflowStates,
+        imported.toRecord().copy(issueKey = normalizeRequiredIssueKey(manifest.issueKey)),
+      )
       val saved = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, workflowId) ?: imported
       GoalRunnerManifestState(
         parentWorkflowId = saved.workflowId,
