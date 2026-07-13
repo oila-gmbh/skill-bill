@@ -23,10 +23,10 @@ properties:
     pattern: "^[A-Z][A-Z0-9]*-[0-9]+$"
   repository_identity:
     type: string
-    pattern: "^repo-root-realpath-v1:.+"
+    pattern: "^repo-root-realpath-v1:/[^\\r\\n]+$"
   governed_spec_path:
     type: string
-    pattern: "^\\.feature-specs/.+\\.md$"
+    pattern: "^\\.feature-specs/(?!.*(?:^|/)\\.{1,2}(?:/|$))[^\\r\\n]+\\.md$"
   mode:
     enum: [prose, runtime]
   route_scope:

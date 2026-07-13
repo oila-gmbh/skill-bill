@@ -56,6 +56,8 @@ import skillbill.ports.telemetry.TelemetrySettingsProvider
 import skillbill.ports.workflow.GoalSubtaskReviewGitOperations
 import skillbill.ports.workflow.GoalSubtaskReviewGitOperationsProvider
 import skillbill.ports.workflow.NoopWorkflowGitOperations
+import skillbill.ports.workflow.RuntimePhaseFileManifestGitOperations
+import skillbill.ports.workflow.RuntimePhaseFileManifestGitOperationsProvider
 import skillbill.ports.workflow.SpecScratchStore
 import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
@@ -95,6 +97,7 @@ import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
+@Suppress("LargeClass")
 class FeatureTaskRuntimeRunnerTest {
   @Test
   fun `runs phases deterministically through terminal pr phase order`() {
@@ -189,6 +192,114 @@ class FeatureTaskRuntimeRunnerTest {
       harness.events.any { event ->
         event is FeatureTaskRuntimeRunEvent.PhaseBlocked && event.phaseId == "commit_push"
       },
+    )
+  }
+
+  @Test
+  fun `non-retryable review policy conflict re-blocks on resume without relaunch`() {
+    val reviewBlocked = """
+      {
+        "contract_version":"0.1",
+        "phase_id":"review",
+        "status":"blocked",
+        "failure_disposition":"non_retryable_policy_conflict",
+        "summary":"Review policy cannot run for this scope.",
+        "produced_outputs":{"findings":[],"blocking_reasons":["Inline policy conflict."]}
+      }
+    """.trimIndent()
+    val harness = runnerHarness(
+      launcher = RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        facts(if (phaseId == "review") reviewBlocked else validJsonOutput(phaseId))
+      },
+      agentAssignment = phasePerAgentAssignment(),
+    )
+
+    assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+    val launchCount = harness.launcher.requests.size
+    val resumed = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+
+    assertEquals("review", resumed.lastIncompletePhase)
+    assertEquals(launchCount, harness.launcher.requests.size)
+    val record = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["review"])
+    assertEquals("non_retryable_policy_conflict", record.failureDisposition?.wireValue)
+  }
+
+  @Test
+  fun `retryable review failure uses the bounded in-phase retry`() {
+    var reviewLaunches = 0
+    val retryableFailure = """
+      {
+        "contract_version":"0.1",
+        "phase_id":"review",
+        "status":"failed",
+        "failure_disposition":"retryable",
+        "summary":"Transient review preparation failed.",
+        "produced_outputs":{"blocking_reasons":["Temporary input unavailable."]}
+      }
+    """.trimIndent()
+    val harness = runnerHarness(
+      launcher = RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        if (phaseId == "review") reviewLaunches += 1
+        facts(if (phaseId == "review" && reviewLaunches == 1) retryableFailure else validJsonOutput(phaseId))
+      },
+      agentAssignment = phasePerAgentAssignment(),
+    )
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
+
+    assertEquals(2, reviewLaunches)
+  }
+
+  @Test
+  fun `phase blocks and records manifests when it introduces another issue spec`() {
+    val git = RecordingWorkflowGitOperations()
+    git.worktreeStatusSequence.addAll(
+      listOf("", "?? .feature-specs/SKILL-124-sqldelight-runtime-persistence/spec.md"),
+    )
+    val harness = runnerHarness(
+      launcher = RuntimeRecordingLauncher { request ->
+        facts(validJsonOutput(phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))))
+      },
+      agentAssignment = phasePerAgentAssignment(),
+      runtimeConfig = RuntimeHarnessConfig(branchSetup = BranchSetupTestConfig(gitOperations = git)),
+    )
+
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+
+    assertEquals("preplan", blocked.lastIncompletePhase)
+    assertContains(blocked.blockedReason, "SKILL-124")
+    val record = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["preplan"])
+    assertEquals(
+      listOf(".feature-specs/SKILL-124-sqldelight-runtime-persistence/spec.md"),
+      record.fileManifestIntroduced,
+    )
+    assertEquals("non_retryable_policy_conflict", record.failureDisposition?.wireValue)
+  }
+
+  @Test
+  fun `phase blocks when it commits another issue spec`() {
+    val git = RecordingWorkflowGitOperations()
+    git.runtimePhaseHeadCommitSequence.addAll(listOf("before", "after"))
+    git.changedPathsBetweenCommitsValue =
+      ".feature-specs/SKILL-124-sqldelight-runtime-persistence/spec.md"
+    val harness = runnerHarness(
+      launcher = RuntimeRecordingLauncher { request ->
+        facts(validJsonOutput(phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))))
+      },
+      agentAssignment = phasePerAgentAssignment(),
+      runtimeConfig = RuntimeHarnessConfig(branchSetup = BranchSetupTestConfig(gitOperations = git)),
+    )
+
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+
+    assertEquals("preplan", blocked.lastIncompletePhase)
+    assertContains(blocked.blockedReason, "SKILL-124")
+    val record = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["preplan"])
+    assertEquals(
+      listOf(".feature-specs/SKILL-124-sqldelight-runtime-persistence/spec.md"),
+      record.fileManifestIntroduced,
     )
   }
 
@@ -2054,37 +2165,23 @@ class FeatureTaskRuntimeReviewFixLoopTest {
     assertEquals(listOf(1), loopEdges.mapNotNull { it.edgeIteration })
   }
 
-  // (d) AC4/AC10: an unresolved inline re-review exhausts the two-pass budget and blocks loudly.
   @Test
-  fun `m1 cap exhaustion blocks loudly with review_fix iteration and unresolved findings`() {
-    // convergeOnReview above the cap => review never approves; the edge fires to the cap then blocks.
+  fun `m1 cap exhaustion advances to audit with review findings preserved`() {
     val harness = runnerHarness(launcher = reviewFixLauncher(convergeOnReview = 99))
 
     val report = harness.runner.run(harness.request())
 
-    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
-    assertEquals("review", blocked.lastIncompletePhase)
-    assertContains(blocked.blockedReason, "review_fix")
-    assertContains(blocked.blockedReason, "1")
-    assertContains(blocked.blockedReason, "changes_requested")
-    assertContains(blocked.blockedReason, REVIEW_BLOCKER_MESSAGE)
-    // Never advanced to audit on unresolved Blocker findings.
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
     val launched = harness.launchedPromptPhaseOrder()
-    assertTrue(launched.none { it == "audit" })
+    assertTrue(launched.any { it == "audit" })
     assertEquals(1, launched.count { it == "implement_fix" }, "the fix ran once")
     assertEquals(2, launched.count { it == "review" }, "the initial and inline review consumed the budget")
-    // Durable terminal blocked record + observability/ledger event for the review phase.
     val reviewRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["review"])
-    assertEquals("blocked", reviewRecord.status)
-    // The terminal blocked record carries the structured loop context (mirrors the plan-fix cap test),
-    // so the cap-exhaustion block is diagnosable from durable state, not only the reason substring.
-    assertEquals("review_fix", reviewRecord.loopId)
-    assertEquals(1, reviewRecord.edgeIteration)
+    assertEquals("completed", reviewRecord.status)
     assertEquals(2, reviewRecord.reviewPassNumber)
-    assertTrue(
-      harness.events.any { it is FeatureTaskRuntimeRunEvent.PhaseBlocked && it.phaseId == "review" },
-      "a loud PhaseBlocked event is emitted for the exhausted loop",
-    )
+    val loopEdges = harness.recorder.loadPhaseLedger(WORKFLOW_ID).orEmpty()
+      .filter { it.action == FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE }
+    assertEquals(listOf(1), loopEdges.mapNotNull { it.edgeIteration })
   }
 
   // (f) AC5/AC10: an idempotent re-entry — implement_fix's reconciliation gate is enforced, so a fix
@@ -2168,18 +2265,14 @@ class FeatureTaskRuntimeReviewFixLoopTest {
     assertTrue(edgeIterations.all { it <= 1 }, "the cap is never exceeded across the crash")
   }
 
-  // (h) AC5/AC10: a review_fix loop that already burned its cap re-blocks on resume without relaunching.
   @Test
-  fun `m1 cap-exhausted review_fix loop re-blocks on resume without relaunching the fix`() {
+  fun `m1 cap-exhausted review_fix loop advances on resume without relaunching the fix`() {
     val harness = runnerHarness(
       launcher = RuntimeRecordingLauncher { request ->
         val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
         facts(if (phaseId == "review") reviewFindingsOutput(changesRequested = true) else validJsonOutput(phaseId))
       },
     )
-    // Seed a loop that already burned its cap: the fix phase carries the review_fix watermark at the
-    // perEdgeCap (1), modelling a prior run that exhausted the loop. On resume the review settles
-    // changes_requested and the cap blocks loudly without another fix.
     harness.seedPhase("preplan", "completed", 1, INVOKED_AGENT, PREPLAN_OUTPUT)
     harness.seedPhase("plan", "completed", 1, INVOKED_AGENT, PLAN_OUTPUT)
     harness.seedPhase("implement", "completed", 1, INVOKED_AGENT, IMPLEMENT_OUTPUT)
@@ -2187,11 +2280,10 @@ class FeatureTaskRuntimeReviewFixLoopTest {
 
     val report = harness.runner.run(harness.request())
 
-    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
-    assertContains(blocked.blockedReason, "review_fix")
-    assertContains(blocked.blockedReason, "1")
-    // The burned-cap loop re-blocks loudly and never advances to audit on resume.
-    assertTrue(harness.launchedPromptPhaseOrder().none { it == "audit" })
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    val launched = harness.launchedPromptPhaseOrder()
+    assertTrue(launched.any { it == "audit" })
+    assertTrue(launched.none { it == "implement_fix" })
   }
 
   // (i) AC5/SKILL-85-F-001: a crash during the reserved inline pass after its same-phase attempt count
@@ -3886,17 +3978,22 @@ internal class RecordingWorkflowGitOperations(
   // branch may have been deleted. branchExistsResult overrides with a raw result for error cases.
   var existingBranches: Set<String>? = null,
   var branchExistsResult: WorkflowGitOperationResult? = null,
-) : WorkflowGitOperations, GoalSubtaskReviewGitOperationsProvider {
+) : WorkflowGitOperations,
+  GoalSubtaskReviewGitOperationsProvider,
+  RuntimePhaseFileManifestGitOperationsProvider {
   // Seeded git HEAD for the SKILL-68 capture-at-source fallback: blank models an unmeasurable HEAD;
   // a concrete value models a measurable commit. headCommitShaResult overrides with a raw result.
   var headCommitShaValue: String = ""
   var headCommitShaResult: WorkflowGitOperationResult? = null
+  val runtimePhaseHeadCommitSequence = ArrayDeque<String>()
+  var changedPathsBetweenCommitsValue: String = ""
 
   // Models the working-tree cleanliness the remediation-checkpoint boundary reads: blank => clean
   // (no checkpoint commit), non-blank => dirty (a checkpoint commit is created). worktreeStatusResult
   // overrides with a raw result to model an unreadable worktree.
   var worktreeStatusValue: String = ""
   var worktreeStatusResult: WorkflowGitOperationResult? = null
+  val worktreeStatusSequence = ArrayDeque<String>()
 
   // Records every remediation-checkpoint commit message; createCommitResult overrides the result to
   // model a failed checkpoint commit.
@@ -3952,6 +4049,23 @@ internal class RecordingWorkflowGitOperations(
     return headCommitShaResult ?: WorkflowGitOperationResult(status = "ok", value = headCommitShaValue)
   }
 
+  override val runtimePhaseFileManifestOperations: RuntimePhaseFileManifestGitOperations =
+    object : RuntimePhaseFileManifestGitOperations {
+      override fun headCommit(repoRoot: Path): WorkflowGitOperationResult = WorkflowGitOperationResult(
+        status = "ok",
+        value = runtimePhaseHeadCommitSequence.removeFirstOrNull().orEmpty(),
+      )
+
+      override fun changedPathsBetweenCommits(
+        repoRoot: Path,
+        beforeCommit: String,
+        afterCommit: String,
+      ): WorkflowGitOperationResult = WorkflowGitOperationResult(
+        status = "ok",
+        value = changedPathsBetweenCommitsValue,
+      )
+    }
+
   override fun validateBranchBase(
     repoRoot: Path,
     branch: String,
@@ -3959,7 +4073,10 @@ internal class RecordingWorkflowGitOperations(
   ): WorkflowGitOperationResult = WorkflowGitOperationResult(status = "ok", value = expectedBaseBranch)
 
   override fun worktreeStatus(repoRoot: Path): WorkflowGitOperationResult =
-    worktreeStatusResult ?: WorkflowGitOperationResult(status = "ok", value = worktreeStatusValue)
+    worktreeStatusResult ?: WorkflowGitOperationResult(
+      status = "ok",
+      value = worktreeStatusSequence.removeFirstOrNull() ?: worktreeStatusValue,
+    )
 
   override fun worktreeActivity(repoRoot: Path): WorkflowWorktreeActivityResult = WorkflowWorktreeActivityResult(
     status = "ok",
@@ -4120,6 +4237,13 @@ internal class RecordingLifecycleTelemetryRepository : LifecycleTelemetryReposit
 }
 
 internal class InMemoryRuntimeWorkflowRepository : WorkflowStateRepository {
+  override fun saveFeatureTaskExecutionIdentity(
+    identity: skillbill.ports.persistence.model.FeatureTaskExecutionIdentity,
+  ) = Unit
+
+  override fun findStandaloneFeatureTaskCandidates(normalizedIssueKey: String, repositoryIdentity: String) =
+    emptyList<skillbill.ports.persistence.model.FeatureTaskWorkflowCandidate>()
+
   private val taskRuntimeRows = linkedMapOf<String, WorkflowStateRecord>()
 
   // Prose feature-task rows route through the legacy prose family store (see WorkflowStateRepository).

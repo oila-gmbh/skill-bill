@@ -3,6 +3,8 @@ package skillbill.infrastructure.fs
 import me.tatarka.inject.annotations.Inject
 import skillbill.ports.workflow.GoalSubtaskReviewGitOperations
 import skillbill.ports.workflow.GoalSubtaskReviewGitOperationsProvider
+import skillbill.ports.workflow.RuntimePhaseFileManifestGitOperations
+import skillbill.ports.workflow.RuntimePhaseFileManifestGitOperationsProvider
 import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.ports.workflow.model.WorkflowGitOperationResult
 import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksRequest
@@ -20,8 +22,11 @@ import kotlin.concurrent.thread
 @Inject
 class GitWorkflowGitOperations :
   WorkflowGitOperations by GitStandardWorkflowGitOperations,
-  GoalSubtaskReviewGitOperationsProvider {
+  GoalSubtaskReviewGitOperationsProvider,
+  RuntimePhaseFileManifestGitOperationsProvider {
   override val goalSubtaskReviewOperations: GoalSubtaskReviewGitOperations = GitGoalSubtaskReviewOperations
+  override val runtimePhaseFileManifestOperations: RuntimePhaseFileManifestGitOperations =
+    GitRuntimePhaseFileManifestOperations
 }
 
 private object GitStandardWorkflowGitOperations : WorkflowGitOperations {
@@ -145,6 +150,20 @@ private object GitStandardWorkflowGitOperations : WorkflowGitOperations {
         truncated = results.any { result -> result.selectedDiffHunks.truncated },
       ),
     )
+  }
+}
+
+private object GitRuntimePhaseFileManifestOperations : RuntimePhaseFileManifestGitOperations {
+  override fun headCommit(repoRoot: Path): WorkflowGitOperationResult = runGitCommand(repoRoot, "rev-parse", "HEAD")
+
+  override fun changedPathsBetweenCommits(
+    repoRoot: Path,
+    beforeCommit: String,
+    afterCommit: String,
+  ): WorkflowGitOperationResult = if (beforeCommit == afterCommit) {
+    WorkflowGitOperationResult(status = "ok", value = "")
+  } else {
+    runGitCommand(repoRoot, "diff", "--name-only", beforeCommit, afterCommit)
   }
 }
 

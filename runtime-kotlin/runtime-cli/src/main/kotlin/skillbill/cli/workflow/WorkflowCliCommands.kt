@@ -133,16 +133,32 @@ open class WorkflowOpenCommand(
   private val format by formatOption()
 
   override fun run() {
-    val payload =
+    val hasFeatureTaskIdentityInput = listOf(issueKey, repositoryIdentity, governedSpecPath).any { it != null }
+    val opened = if (kind == WorkflowFamilyKind.TASK_PROSE && hasFeatureTaskIdentityInput) {
+      service.openFeatureTask(
+        kind = kind,
+        sessionId = sessionId,
+        currentStepId = currentStepId,
+        dbOverride = state.dbOverride,
+        issueKey = requireNotNull(issueKey) { "Feature-task workflow opens require --issue-key." },
+        repositoryIdentity = requireNotNull(repositoryIdentity) {
+          "Feature-task workflow opens require --repository-identity."
+        },
+        governedSpecPath = requireNotNull(governedSpecPath) {
+          "Feature-task workflow opens require --governed-spec-path."
+        },
+      )
+    } else {
       service.open(
         kind,
         sessionId,
         currentStepId,
         state.dbOverride,
         issueKey,
-        repositoryIdentity,
-        governedSpecPath,
       )
+    }
+    val payload =
+      opened
         .toCliMap(service.goalObservabilityEventValidator)
     state.complete(payload, format, exitCode = payload.exitCode())
   }

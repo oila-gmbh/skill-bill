@@ -333,7 +333,11 @@ class FeatureTaskRuntimePhaseRecorder(
         throw WorkflowIssueKeyConflictError(workflowId, persistedIssueKey, normalizedIssueKey)
       }
       if (persistedIssueKey == null && normalizedIssueKey != null) {
-        unitOfWork.workflowStates.saveFeatureTaskRuntimeWorkflow(existing.copy(issueKey = normalizedIssueKey))
+        unitOfWork.workflowStates.saveFeatureTaskRuntimeWorkflow(
+          existing.copy(issueKey = normalizedIssueKey, sessionId = existing.sessionId.ifBlank { sessionId }),
+        )
+      } else if (existing.sessionId.isBlank()) {
+        unitOfWork.workflowStates.saveFeatureTaskRuntimeWorkflow(existing.copy(sessionId = sessionId))
       }
       return@transaction true
     }
@@ -391,6 +395,10 @@ class FeatureTaskRuntimePhaseRecorder(
       resolvedAgentId = request.resolvedAgentId,
       outputArtifact = request.outputArtifact,
       blockedReason = request.blockedReason,
+      failureDisposition = request.failureDisposition,
+      fileManifestBefore = request.fileManifestBefore,
+      fileManifestAfter = request.fileManifestAfter,
+      fileManifestIntroduced = request.fileManifestIntroduced,
       loopId = request.loopId,
       edgeIteration = request.edgeIteration,
       reviewPassNumber = request.reviewPassNumber,

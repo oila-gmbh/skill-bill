@@ -51,9 +51,9 @@ If the issue key is missing, stop and ask for it. Do not invent one.
 
 Before discovering or preparing governed artifacts, perform the read-only, repository-scoped continuation lookup for the normalized issue key and current canonical Git root. The workflow database and immutable execution identity are authoritative; `spec.md` is the governed feature contract, not a planning checkpoint.
 
-Handle `resumable`, `already_running`, `ambiguous`, and `terminal_only` before dispatch. Resume with the persisted workflow id, mode, and spec path; report and stop for running or terminal rows; and report every ambiguous candidate rather than selecting by recency. Only `no_match` may continue below. A malformed request, identity/snapshot/version error, selector mismatch, or explicit mode conflict must loud-fail rather than becoming `no_match`.
+Handle `resumable`, `already_running`, `ambiguous`, and `terminal_only` before new-work preparation. For `resumable`, dispatch directly to the task sidecar with the persisted workflow id, mode, and spec path. Report and stop for running or terminal rows, and report every ambiguous candidate rather than selecting by recency. Only `no_match` may continue below. A malformed request, identity/snapshot/version error, selector mismatch, or explicit mode conflict must loud-fail rather than becoming `no_match`.
 
-Always invoke `bill-feature-spec` first in the current session. Do not write spec artifacts directly and do not fork spec-preparation logic.
+For `no_match`, invoke `bill-feature-spec` first in the current session unless the direct-dispatch rules below find existing governed artifacts. Do not write spec artifacts directly and do not fork spec-preparation logic.
 
 Wait for `bill-feature-spec` to produce governed artifacts under `.feature-specs/{ISSUE_KEY}-{feature-name}/`. Treat its selected mode as authoritative for dispatch.
 
@@ -69,7 +69,7 @@ Before running spec preparation, check `.feature-specs/{ISSUE_KEY}-*/` for the i
 
 For `single_spec` output (or the direct-dispatch route above when only a `spec.md` exists):
 
-  - Read the file `bill-feature-task.md` located in this skill's own installed directory (a sibling of this `SKILL.md`) and execute its instructions in the current session with args: `<issue-key> mode:<mode> parallel-review:<agent> code-review:<explicit-mode> .feature-specs/{ISSUE_KEY}-{feature-name}/spec.md`, omitting `parallel-review:<agent>` when the caller did not provide it and omitting the `code-review:` token when the caller did not provide it. Do not use the Skill tool for this — `bill-feature-task` is an internal skill and is not listed. When exactly one governed `.feature-specs/{ISSUE_KEY}-*/spec.md` exists, the issue key alone is enough.
+- Read the file `bill-feature-task.md` located in this skill's own installed directory (a sibling of this `SKILL.md`) and execute its instructions in the current session with args: `<issue-key> mode:<mode> parallel-review:<agent> code-review:<explicit-mode> workflow-id:<id> .feature-specs/{ISSUE_KEY}-{feature-name}/spec.md`, including `workflow-id:<id>` only for a validated resumable lookup result, omitting `parallel-review:<agent>` when the caller did not provide it, and omitting the `code-review:` token when the caller did not provide it. For continuation, use the persisted mode and spec path rather than rediscovering or preparing them. Do not use the Skill tool for this — `bill-feature-task` is an internal skill and is not listed. When exactly one governed `.feature-specs/{ISSUE_KEY}-*/spec.md` exists, the issue key alone is enough only for the `no_match` path.
 - Do not dispatch to the goal sidecar.
 - Let the task sidecar own implementation, review, validation, history, and PR description behavior.
 

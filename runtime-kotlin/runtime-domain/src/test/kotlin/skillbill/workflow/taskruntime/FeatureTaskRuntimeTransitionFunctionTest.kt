@@ -2,6 +2,7 @@ package skillbill.workflow.taskruntime
 
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeBackwardEdge
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCapExhaustionBehavior
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeNextPhase
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewFinding
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewSeverity
@@ -59,7 +60,8 @@ class FeatureTaskRuntimeTransitionFunctionTest {
 
   @Test
   fun `matching backward edge below cap re-enters the destination tagged with loop and iteration`() {
-    (0 until edge.perEdgeCap).forEach { alreadyFired ->
+    val cap = requireNotNull(edge.perEdgeCap)
+    (0 until cap).forEach { alreadyFired ->
       val transition = FeatureTaskRuntimeTransitionFunction.nextTransition(
         declaration = cyclic,
         currentPhaseId = "c",
@@ -75,15 +77,16 @@ class FeatureTaskRuntimeTransitionFunctionTest {
 
   @Test
   fun `matching backward edge at cap blocks loudly with loop id iteration and unresolved verdict`() {
+    val cap = requireNotNull(edge.perEdgeCap)
     val transition = FeatureTaskRuntimeTransitionFunction.nextTransition(
       declaration = cyclic,
       currentPhaseId = "c",
       verdict = needsFix,
-      edgeIterationCount = edge.perEdgeCap,
+      edgeIterationCount = cap,
     )
     val block = assertIs<FeatureTaskRuntimeNextPhase.TerminalBlock>(transition)
     assertEquals("c-to-b", block.loopId)
-    assertEquals(edge.perEdgeCap, block.edgeIteration)
+    assertEquals(cap, block.edgeIteration)
     assertEquals(needsFix, block.unresolvedVerdict)
   }
 
@@ -143,6 +146,7 @@ class FeatureTaskRuntimeTransitionFunctionTest {
     destinationPhaseId = "fix",
     loopId = "review_fix",
     perEdgeCap = 3,
+    capExhaustionBehavior = FeatureTaskRuntimeCapExhaustionBehavior.ADVANCE,
   )
   private val loopDeclaration = FeatureTaskRuntimeTransitionDeclaration(
     forwardPhaseIds = loopPipeline,
@@ -232,7 +236,8 @@ class FeatureTaskRuntimeTransitionFunctionTest {
 
   @Test
   fun `review changes_requested under cap re-enters fix tagged with review_fix and incrementing iteration`() {
-    (0 until reviewFixEdge.perEdgeCap).forEach { alreadyFired ->
+    val cap = requireNotNull(reviewFixEdge.perEdgeCap)
+    (0 until cap).forEach { alreadyFired ->
       val transition = FeatureTaskRuntimeTransitionFunction.nextTransition(
         declaration = loopDeclaration,
         currentPhaseId = "review",
@@ -247,17 +252,15 @@ class FeatureTaskRuntimeTransitionFunctionTest {
   }
 
   @Test
-  fun `review changes_requested at cap blocks with review_fix and the unresolved verdict`() {
+  fun `review changes_requested at cap advances to audit`() {
+    val cap = requireNotNull(reviewFixEdge.perEdgeCap)
     val transition = FeatureTaskRuntimeTransitionFunction.nextTransition(
       declaration = loopDeclaration,
       currentPhaseId = "review",
       verdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
-      edgeIterationCount = reviewFixEdge.perEdgeCap,
+      edgeIterationCount = cap,
     )
-    val block = assertIs<FeatureTaskRuntimeNextPhase.TerminalBlock>(transition)
-    assertEquals("review_fix", block.loopId)
-    assertEquals(reviewFixEdge.perEdgeCap, block.edgeIteration)
-    assertEquals(FeatureTaskRuntimeVerdict.CHANGES_REQUESTED, block.unresolvedVerdict)
+    assertEquals("audit", assertIs<FeatureTaskRuntimeNextPhase.Next>(transition).phaseId)
   }
 
   // --- verdict constants + findings -> verdict helper -------------------------------------------
@@ -314,7 +317,7 @@ class FeatureTaskRuntimeTransitionFunctionTest {
     triggeringVerdict = FeatureTaskRuntimeVerdict.GAPS_FOUND,
     destinationPhaseId = "plan",
     loopId = "audit_gap",
-    perEdgeCap = 2,
+    perEdgeCap = null,
   )
   private val twoEdgeDeclaration = FeatureTaskRuntimeTransitionDeclaration(
     forwardPhaseIds = loopPipeline,
@@ -352,7 +355,7 @@ class FeatureTaskRuntimeTransitionFunctionTest {
   }
 
   @Test
-  fun `audit satisfied forwards to the next phase while gaps_found at cap blocks with audit_gap`() {
+  fun `audit satisfied forwards while gaps_found remains eligible after many iterations`() {
     val satisfied = FeatureTaskRuntimeTransitionFunction.nextTransition(
       declaration = twoEdgeDeclaration,
       currentPhaseId = "audit",
@@ -361,15 +364,15 @@ class FeatureTaskRuntimeTransitionFunctionTest {
     )
     assertIs<FeatureTaskRuntimeNextPhase.TerminalAdvance>(satisfied)
 
-    val blocked = FeatureTaskRuntimeTransitionFunction.nextTransition(
+    val reentry = FeatureTaskRuntimeTransitionFunction.nextTransition(
       declaration = twoEdgeDeclaration,
       currentPhaseId = "audit",
       verdict = FeatureTaskRuntimeVerdict.GAPS_FOUND,
-      edgeIterationCount = auditGapEdge.perEdgeCap,
+      edgeIterationCount = 100,
     )
-    val block = assertIs<FeatureTaskRuntimeNextPhase.TerminalBlock>(blocked)
-    assertEquals("audit_gap", block.loopId)
-    assertEquals(auditGapEdge.perEdgeCap, block.edgeIteration)
-    assertEquals(FeatureTaskRuntimeVerdict.GAPS_FOUND, block.unresolvedVerdict)
+    val next = assertIs<FeatureTaskRuntimeNextPhase.Next>(reentry)
+    assertEquals("plan", next.phaseId)
+    assertEquals("audit_gap", next.loopId)
+    assertEquals(101, next.edgeIteration)
   }
 }

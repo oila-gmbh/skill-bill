@@ -50,6 +50,9 @@ import skillbill.ports.persistence.TelemetryReconciliationRepository
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.persistence.WorkflowStateRepository
 import skillbill.ports.persistence.model.FeatureImplementSessionSummary
+import skillbill.ports.persistence.model.FeatureTaskExecutionIdentity
+import skillbill.ports.persistence.model.FeatureTaskRouteScope
+import skillbill.ports.persistence.model.FeatureTaskWorkflowCandidate
 import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import skillbill.ports.persistence.model.FeatureVerifySessionSummary
 import skillbill.ports.persistence.model.WorkflowStateRecord
@@ -80,6 +83,16 @@ import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
+private fun WorkflowService.openTestProse(sessionId: String = "", currentStepId: String? = null): WorkflowOpenResult =
+  openFeatureTask(
+    kind = WorkflowFamilyKind.TASK_PROSE,
+    sessionId = sessionId,
+    currentStepId = currentStepId,
+    issueKey = "SKILL-120",
+    repositoryIdentity = "repo-root-realpath-v1:/test/repository",
+    governedSpecPath = ".feature-specs/SKILL-120/spec.md",
+  )
+
 /**
  * SKILL-52.1 — covers the typed [WorkflowService] surface end-to-end:
  * each public method returns its declared typed result, including the
@@ -87,11 +100,12 @@ import kotlin.test.assertTrue
  * engine's loud-fail schema error still propagates through the
  * service.
  */
+@Suppress("LargeClass")
 class WorkflowServiceTest {
   @Test
   fun `open returns Ok with dbPath and snapshot`() {
     val service = newService()
-    val result = service.open(WorkflowFamilyKind.TASK_PROSE, sessionId = "fis-001")
+    val result = service.openTestProse("fis-001")
     val ok = assertIs<WorkflowOpenResult.Ok>(result)
     assertEquals("running", ok.snapshot.workflowStatus)
     assertEquals("assess", ok.snapshot.currentStepId)
@@ -99,9 +113,153 @@ class WorkflowServiceTest {
   }
 
   @Test
+  fun `runtime opens mint workflow-scoped telemetry sessions`() {
+    val workflows = InMemoryWorkflowStates()
+    val service = WorkflowService(
+      database = FakeDatabaseSessionFactory(workflows),
+      decompositionManifestFileStore = UnavailableDecompositionManifestFileStore,
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      decompositionManifestValidator = testDecompositionManifestValidator,
+    )
+
+    val first = assertIs<WorkflowOpenResult.Ok>(
+      service.openFeatureTask(
+        WorkflowFamilyKind.TASK_RUNTIME,
+        issueKey = "SKILL-120",
+        repositoryIdentity = "repo-root-realpath-v1:/test/repository",
+        governedSpecPath = ".feature-specs/SKILL-120/spec.md",
+      ),
+    )
+    val second = assertIs<WorkflowOpenResult.Ok>(
+      service.openFeatureTask(
+        WorkflowFamilyKind.TASK_RUNTIME,
+        issueKey = "SKILL-120",
+        repositoryIdentity = "repo-root-realpath-v1:/test/repository",
+        governedSpecPath = ".feature-specs/SKILL-120/spec.md",
+      ),
+    )
+
+    val firstSession = requireNotNull(workflows.getFeatureTaskRuntimeWorkflow(first.workflowId)).sessionId
+    val secondSession = requireNotNull(workflows.getFeatureTaskRuntimeWorkflow(second.workflowId)).sessionId
+    assertEquals("ftr-${first.workflowId}", firstSession)
+    assertEquals("ftr-${second.workflowId}", secondSession)
+    assertTrue(firstSession != secondSession)
+  }
+
+  @Test
+  fun `runtime abandonment is explicit durable and terminal`() {
+    val workflows = InMemoryWorkflowStates()
+    val service = WorkflowService(
+      database = FakeDatabaseSessionFactory(workflows),
+      decompositionManifestFileStore = UnavailableDecompositionManifestFileStore,
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      decompositionManifestValidator = testDecompositionManifestValidator,
+    )
+    val opened = assertIs<WorkflowOpenResult.Ok>(
+      service.openFeatureTask(
+        WorkflowFamilyKind.TASK_RUNTIME,
+        issueKey = "SKILL-120",
+        repositoryIdentity = "repo-root-realpath-v1:/test/repository",
+        governedSpecPath = ".feature-specs/SKILL-120/spec.md",
+      ),
+    )
+
+    val abandoned = assertIs<WorkflowUpdateResult.Ok>(
+      service.abandonFeatureTaskRuntime(opened.workflowId, "Superseded after a deterministic policy block."),
+    )
+
+    assertEquals("abandoned", abandoned.acknowledgement.workflowStatus)
+    assertEquals(listOf("operator_abandonment"), abandoned.acknowledgement.updatedArtifactKeys)
+    val saved = requireNotNull(workflows.getFeatureTaskRuntimeWorkflow(opened.workflowId)).toSnapshot()
+    assertEquals("abandoned", saved.workflowStatus)
+    assertContains(saved.artifactsJson, "Superseded after a deterministic policy block.")
+    val repeated = assertIs<WorkflowUpdateResult.Error>(
+      service.abandonFeatureTaskRuntime(opened.workflowId, "Try again."),
+    )
+    assertContains(repeated.error, "already terminal")
+  }
+
+  @Test
+  fun `runtime identity repair requires matching explicit operator inputs`() {
+    val workflows = InMemoryWorkflowStates()
+    val service = WorkflowService(
+      database = FakeDatabaseSessionFactory(workflows),
+      decompositionManifestFileStore = UnavailableDecompositionManifestFileStore,
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      decompositionManifestValidator = testDecompositionManifestValidator,
+    )
+    val opened = assertIs<WorkflowOpenResult.Ok>(
+      service.openFeatureTask(
+        WorkflowFamilyKind.TASK_RUNTIME,
+        issueKey = "SKILL-120",
+        repositoryIdentity = "repo-root-realpath-v1:/test/repository",
+        governedSpecPath = ".feature-specs/SKILL-120/spec.md",
+      ),
+    )
+
+    val mismatch = assertIs<WorkflowUpdateResult.Error>(
+      service.repairFeatureTaskRuntimeIdentity(
+        opened.workflowId,
+        "SKILL-999",
+        "repo-root-realpath-v1:/test/repository",
+        ".feature-specs/SKILL-120/spec.md",
+        "Repair a legacy identity.",
+      ),
+    )
+    assertContains(mismatch.error, "belongs to issue 'SKILL-120'")
+
+    val repaired = assertIs<WorkflowUpdateResult.Ok>(
+      service.repairFeatureTaskRuntimeIdentity(
+        opened.workflowId,
+        "SKILL-120",
+        "repo-root-realpath-v1:/test/repository",
+        ".feature-specs/SKILL-120/spec.md",
+        "Repair a legacy identity.",
+      ),
+    )
+    assertEquals(listOf("operator_identity_repair"), repaired.acknowledgement.updatedArtifactKeys)
+    val saved = requireNotNull(workflows.getFeatureTaskRuntimeWorkflow(opened.workflowId)).toSnapshot()
+    assertContains(saved.artifactsJson, "Repair a legacy identity.")
+  }
+
+  @Test
+  fun `runtime identity repair rejects terminal workflows`() {
+    val workflows = InMemoryWorkflowStates()
+    val service = WorkflowService(
+      database = FakeDatabaseSessionFactory(workflows),
+      decompositionManifestFileStore = UnavailableDecompositionManifestFileStore,
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      decompositionManifestValidator = testDecompositionManifestValidator,
+    )
+    val opened = assertIs<WorkflowOpenResult.Ok>(
+      service.openFeatureTask(
+        WorkflowFamilyKind.TASK_RUNTIME,
+        issueKey = "SKILL-120",
+        repositoryIdentity = "repo-root-realpath-v1:/test/repository",
+        governedSpecPath = ".feature-specs/SKILL-120/spec.md",
+      ),
+    )
+    assertIs<WorkflowUpdateResult.Ok>(
+      service.abandonFeatureTaskRuntime(opened.workflowId, "Terminalize this workflow."),
+    )
+
+    val result = assertIs<WorkflowUpdateResult.Error>(
+      service.repairFeatureTaskRuntimeIdentity(
+        opened.workflowId,
+        "SKILL-120",
+        "repo-root-realpath-v1:/test/repository",
+        ".feature-specs/SKILL-120/spec.md",
+        "Repair a legacy identity.",
+      ),
+    )
+
+    assertContains(result.error, "already terminal")
+  }
+
+  @Test
   fun `open returns Error for invalid step id`() {
     val service = newService()
-    val result = service.open(WorkflowFamilyKind.TASK_PROSE, currentStepId = "not-a-step")
+    val result = service.openTestProse(currentStepId = "not-a-step")
     val error = assertIs<WorkflowOpenResult.Error>(result)
     assertTrue(error.error.contains("Invalid current_step_id"))
   }
@@ -157,10 +315,10 @@ class WorkflowServiceTest {
   fun `list returns the opened workflow ids in expected order`() {
     val service = newService()
     val first = assertIs<WorkflowOpenResult.Ok>(
-      service.open(WorkflowFamilyKind.TASK_PROSE, sessionId = "fis-001"),
+      service.openTestProse("fis-001"),
     )
     val second = assertIs<WorkflowOpenResult.Ok>(
-      service.open(WorkflowFamilyKind.TASK_PROSE, sessionId = "fis-002"),
+      service.openTestProse("fis-002"),
     )
     val result = service.list(WorkflowFamilyKind.TASK_PROSE)
     assertEquals(2, result.workflowCount)
@@ -174,7 +332,7 @@ class WorkflowServiceTest {
   @Test
   fun `get returns Ok for known workflow`() {
     val service = newService()
-    val opened = assertIs<WorkflowOpenResult.Ok>(service.open(WorkflowFamilyKind.TASK_PROSE, sessionId = "fis-001"))
+    val opened = assertIs<WorkflowOpenResult.Ok>(service.openTestProse("fis-001"))
     val got = service.get(WorkflowFamilyKind.TASK_PROSE, opened.workflowId)
     val ok = assertIs<WorkflowGetResult.Ok>(got)
     assertEquals(opened.workflowId, ok.workflowId)
@@ -185,7 +343,7 @@ class WorkflowServiceTest {
     assertEquals(WorkflowFamily.IMPLEMENT, WorkflowFamilyKind.TASK_PROSE.workflowFamily())
 
     val service = newService()
-    val opened = assertIs<WorkflowOpenResult.Ok>(service.open(WorkflowFamilyKind.TASK_PROSE, sessionId = "fis-001"))
+    val opened = assertIs<WorkflowOpenResult.Ok>(service.openTestProse("fis-001"))
     assertTrue(
       opened.workflowId.startsWith(WorkflowFamily.IMPLEMENT.definition.workflowIdPrefix),
       "Workflow opened under TASK_PROSE must persist under the IMPLEMENT id prefix; got ${opened.workflowId}.",
@@ -197,7 +355,7 @@ class WorkflowServiceTest {
   @Test
   fun `continueWorkflow with missing artifacts returns Standard with continue_status blocked`() {
     val service = newService()
-    val opened = assertIs<WorkflowOpenResult.Ok>(service.open(WorkflowFamilyKind.TASK_PROSE, sessionId = "fis-001"))
+    val opened = assertIs<WorkflowOpenResult.Ok>(service.openTestProse("fis-001"))
     service.update(
       WorkflowFamilyKind.TASK_PROSE,
       WorkflowUpdateRequest(
@@ -305,7 +463,7 @@ class WorkflowServiceTest {
       decompositionManifestValidator = testDecompositionManifestValidator,
       goalObservabilityEventValidator = testGoalObservabilityEventValidator,
     )
-    val opened = assertIs<WorkflowOpenResult.Ok>(service.open(WorkflowFamilyKind.TASK_PROSE, sessionId = "fis-001"))
+    val opened = assertIs<WorkflowOpenResult.Ok>(service.openTestProse("fis-001"))
 
     val updated = service.update(
       WorkflowFamilyKind.TASK_PROSE,
@@ -1003,7 +1161,7 @@ class WorkflowUpdateAcknowledgementBudgetTest {
     // + read-only full-state guidance — never the full durable artifacts map or
     // the full per-step list.
     val service = newAckBudgetService()
-    val opened = assertIs<WorkflowOpenResult.Ok>(service.open(WorkflowFamilyKind.TASK_PROSE, sessionId = "fis-001"))
+    val opened = assertIs<WorkflowOpenResult.Ok>(service.openTestProse("fis-001"))
     val updated = service.update(
       WorkflowFamilyKind.TASK_PROSE,
       WorkflowUpdateRequest(
@@ -2130,9 +2288,49 @@ internal class InMemoryWorkflowStates : WorkflowStateRepository {
   private val implement = mutableMapOf<String, WorkflowStateRecord>()
   private val verify = mutableMapOf<String, WorkflowStateRecord>()
   private val taskRuntime = mutableMapOf<String, WorkflowStateRecord>()
+  private val identities = mutableMapOf<String, FeatureTaskExecutionIdentity>()
+
+  override fun saveFeatureTaskExecutionIdentity(identity: FeatureTaskExecutionIdentity) {
+    val existing = identities.putIfAbsent(identity.workflowId, identity)
+    require(existing == null || existing == identity) { "Conflicting immutable identity for '${identity.workflowId}'." }
+  }
+
+  fun executionIdentity(workflowId: String): FeatureTaskExecutionIdentity? = identities[workflowId]
+
+  fun overwriteExecutionIdentity(identity: FeatureTaskExecutionIdentity) {
+    identities[identity.workflowId] = identity
+  }
+
+  override fun findStandaloneFeatureTaskCandidates(
+    normalizedIssueKey: String,
+    repositoryIdentity: String,
+  ): List<FeatureTaskWorkflowCandidate> = (implement.values + taskRuntime.values)
+    .filter { row ->
+      row.issueKey?.trim()?.uppercase() == normalizedIssueKey ||
+        identities[row.workflowId]?.normalizedIssueKey == normalizedIssueKey
+    }
+    .filter { row -> identities[row.workflowId] != null || !row.artifactsJson.contains("decomposition_runtime") }
+    .filter { row ->
+      identities[row.workflowId]?.let { identity ->
+        identity.repositoryIdentity == repositoryIdentity && identity.routeScope == FeatureTaskRouteScope.STANDALONE
+      } ?: true
+    }
+    .map { row -> FeatureTaskWorkflowCandidate(identities[row.workflowId], row) }
+
+  override fun claimFeatureTaskContinuation(workflowId: String, expectedUpdatedAt: String?): Boolean {
+    val rows = if (workflowId in implement) implement else taskRuntime
+    val existing = rows[workflowId] ?: return false
+    if (existing.updatedAt != expectedUpdatedAt ||
+      existing.workflowStatus in setOf("running", "completed", "failed", "abandoned")
+    ) {
+      return false
+    }
+    rows[workflowId] = existing.copy(workflowStatus = "running", updatedAt = "claimed")
+    return true
+  }
 
   override fun saveFeatureImplementWorkflow(row: WorkflowStateRecord) {
-    implement[row.workflowId] = row
+    implement[row.workflowId] = row.copy(issueKey = row.issueKey ?: implement[row.workflowId]?.issueKey)
   }
   override fun saveFeatureVerifyWorkflow(row: WorkflowStateRecord) {
     verify[row.workflowId] = row
@@ -2159,7 +2357,7 @@ internal class InMemoryWorkflowStates : WorkflowStateRepository {
     return row
   }
   override fun saveFeatureTaskRuntimeWorkflow(row: WorkflowStateRecord) {
-    taskRuntime[row.workflowId] = row
+    taskRuntime[row.workflowId] = row.copy(issueKey = row.issueKey ?: taskRuntime[row.workflowId]?.issueKey)
   }
   override fun getFeatureTaskRuntimeWorkflow(workflowId: String): WorkflowStateRecord? = taskRuntime[workflowId]
   override fun listFeatureTaskRuntimeWorkflows(limit: Int): List<WorkflowStateRecord> =

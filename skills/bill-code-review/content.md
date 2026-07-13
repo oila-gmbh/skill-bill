@@ -12,6 +12,11 @@ Omission means `mode:auto`.
 Reject malformed, unknown, duplicate, or conflicting values before resolving
 scope, starting a lane, or importing telemetry.
 
+Recognize at most one `context:feature-remediation` argument. It is valid only
+with `mode:inline` when a governed feature-task caller supplies the exact
+remediation delta since its checkpoint. Reject it with another mode, a full
+branch/PR scope, or no bounded remediation scope.
+
 `auto` preserves the shell contract's existing eligibility decision. `inline`
 is allowed only after every shared eligibility condition passes; otherwise stop
 with the failed reasons and state that delegated review is required. Do not
@@ -19,6 +24,13 @@ silently replace it. `delegated` always runs the normal routed delegated path,
 including specialist selection; inability to launch required workers blocks
 loudly and never falls back to inline. Report both requested mode and resolved
 execution mode in the normal review metadata.
+
+`context:feature-remediation` is the sole exception to normal inline-selection
+eligibility. The feature workflow has already reserved its one later review
+pass and requires it inline. Review the bounded remediation delta in this
+session, apply every signal-relevant baseline and specialist rubric, and treat
+high-risk signals as required coverage rather than grounds to refuse or
+delegate. Finding severity, evidence, and approval rules remain unchanged.
 
 When the caller passes `parallel:<agent>` or `parallel:<agent>:<model>` in args — for example `parallel:codex`, `parallel:codex:o3`, or `parallel:claude:claude-opus-4-8` — run two review lanes on the same diff and merge their findings with provenance labels.
 

@@ -26,10 +26,11 @@ Gather enough to identify and confirm the run:
 - the agent currently executing this skill
 - the mode (from args as `mode:runtime` or `mode:prose`; default to `runtime` when absent — except on opencode or zcode, where prose is the implicit default; see the prose-only rule below)
 - the parallel review agent (from args as `parallel-review:<agent>`; absent when not provided)
+- the optional validated continuation selector (from args as `workflow-id:<id>`)
 
 If the issue key is missing, stop and ask for it. If the spec path is missing, search `.feature-specs` for exactly one governed `.feature-specs/{ISSUE_KEY}-*/spec.md` match and use it. If there is no match or more than one match, stop and ask for the explicit spec path. Do not invent either value.
 
-Parse the mode and `parallel-review:<agent>` from args before presenting the confirmation gate. If no mode arg is provided, resolve the mode to `runtime`.
+Parse the mode, `parallel-review:<agent>`, and at most one `workflow-id:<id>` from args before presenting the confirmation gate. Reject empty, duplicate, or conflicting workflow selectors. If a selector is present, use the persisted mode and governed spec path supplied by the lookup and reject any explicit conflicting mode. If no mode arg is provided, resolve the mode to `runtime` only for a new run; continuation inherits its persisted mode.
 
 Also parse exactly one optional `code-review:auto|inline|delegated` token. Omission resolves to `auto`; malformed, unknown, duplicate, or conflicting values fail before confirmation, workflow opening, or delegation. Forward the resolved selection unchanged to either sidecar.
 
@@ -60,10 +61,12 @@ After confirmation, dispatch to the delegated sidecar by reading its file from t
 When mode is `runtime` or unspecified (on opencode or zcode the mode resolves to `prose`, or an explicit `mode:runtime` already refused per the prose-only rule above, so this runtime branch is never taken on opencode or zcode):
 
 - Read the file `bill-feature-task-runtime.md` located in this skill's own installed directory (a sibling of this `SKILL.md`) and execute its instructions in the current session. Forward `--agent`, `--agent-override`, `--phase-agent`, `parallel-review:<agent>`, and `code-review:<selected-mode>` identically from the args received by this router.
+- For continuation, also forward the validated workflow id, persisted issue key, and persisted governed spec path so the sidecar invokes the runtime resume path rather than opening a new workflow.
 
 When mode is `prose`:
 
 - Read the file `bill-feature-task-prose.md` located in this skill's own installed directory (a sibling of this `SKILL.md`) and execute its instructions in the current session. Forward `--agent`, `--agent-override`, `--phase-agent`, `parallel-review:<agent>`, and `code-review:<selected-mode>` identically from the args received by this router.
+- For continuation, also forward the validated workflow id so the sidecar activates the existing prose workflow and never calls the open tool.
 
 Delegate immediately after this router's gate clears. The delegated sidecar consumes
 the confirmed normalized inputs and owns launch and execution behavior; it must

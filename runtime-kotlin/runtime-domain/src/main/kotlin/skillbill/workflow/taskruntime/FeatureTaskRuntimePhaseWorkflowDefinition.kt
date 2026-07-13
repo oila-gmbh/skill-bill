@@ -5,6 +5,7 @@ import skillbill.workflow.model.WorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditCeremony
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeBackwardEdge
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCapExhaustionBehavior
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCeremonyScaling
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseDeclaration
@@ -149,12 +150,14 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
    * `audit_gap` backward edges. `implement_fix` sits between `implement` and `review` in the pipeline
    * but is loop-only — the forward edge skips it, so a clean run advances `implement` -> `review` and
    * never launches a fix. A `review` `changes_requested` verdict reopens the `[implement_fix, review]`
-   * span (the backward destination precedes the source), bounded at one review->fix iteration; the
-   * first `approved` verdict advances to `audit`. An `audit` `gaps_found` verdict reopens the wider
+   * span (the backward destination precedes the source), bounded at one review->fix iteration; an
+   * `approved` verdict or exhaustion of that remediation budget advances to `audit`. An audit
+   * `gaps_found` verdict reopens the wider
    * `[plan, audit]` span — which contains the mutating `implement` phase — to re-plan then
    * re-implement against the failing criteria and re-pass through `review` (incl. its `review_fix`
-   * loop) before re-`audit`, bounded at 2 audit-gap iterations; the first `satisfied` verdict
-   * advances to `validate`.
+   * loop) before re-`audit`. Audit-gap reconciliation is unbounded because each new audit verdict is
+   * the authority on whether implementation is complete; the first `satisfied` verdict advances to
+   * `validate`.
    */
   val transitions: FeatureTaskRuntimeTransitionDeclaration =
     FeatureTaskRuntimeTransitionDeclaration(
@@ -166,13 +169,14 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
           destinationPhaseId = PHASE_IMPLEMENT_FIX,
           loopId = REVIEW_FIX_LOOP_ID,
           perEdgeCap = 1,
+          capExhaustionBehavior = FeatureTaskRuntimeCapExhaustionBehavior.ADVANCE,
         ),
         FeatureTaskRuntimeBackwardEdge(
           fromPhaseId = PHASE_AUDIT,
           triggeringVerdict = FeatureTaskRuntimeVerdict.GAPS_FOUND,
           destinationPhaseId = PHASE_PLAN,
           loopId = AUDIT_GAP_LOOP_ID,
-          perEdgeCap = 2,
+          perEdgeCap = null,
         ),
       ),
       loopOnlyPhaseIds = setOf(PHASE_IMPLEMENT_FIX),

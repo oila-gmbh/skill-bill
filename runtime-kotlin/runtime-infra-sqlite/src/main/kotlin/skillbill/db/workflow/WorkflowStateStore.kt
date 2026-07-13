@@ -1,6 +1,9 @@
+@file:Suppress("TooManyFunctions")
+
 package skillbill.db.workflow
 
 import skillbill.db.core.DbConstants
+import skillbill.error.InvalidFeatureTaskExecutionIdentitySchemaError
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.ports.persistence.FeatureImplementWorkflowStateRepository
 import skillbill.ports.persistence.FeatureTaskRuntimeWorkflowStateRepository
@@ -8,10 +11,10 @@ import skillbill.ports.persistence.FeatureTaskWorkflowStateRepository
 import skillbill.ports.persistence.FeatureVerifyWorkflowStateRepository
 import skillbill.ports.persistence.WorkflowStateRepository
 import skillbill.ports.persistence.model.FeatureImplementSessionSummary
-import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import skillbill.ports.persistence.model.FeatureTaskExecutionIdentity
 import skillbill.ports.persistence.model.FeatureTaskRouteScope
 import skillbill.ports.persistence.model.FeatureTaskWorkflowCandidate
+import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import skillbill.ports.persistence.model.FeatureVerifySessionSummary
 import skillbill.ports.persistence.model.WorkflowStateRecord
 import java.sql.Connection
@@ -19,6 +22,19 @@ import java.sql.Connection
 typealias WorkflowStateRow = WorkflowStateRecord
 
 private const val WORKFLOW_ID_PARAMETER_INDEX: Int = 1
+private const val IDENTITY_WORKFLOW_ID_INDEX: Int = 1
+private const val IDENTITY_CONTRACT_VERSION_INDEX: Int = 2
+private const val IDENTITY_ISSUE_KEY_INDEX: Int = 3
+private const val IDENTITY_REPOSITORY_INDEX: Int = 4
+private const val IDENTITY_SPEC_PATH_INDEX: Int = 5
+private const val IDENTITY_MODE_INDEX: Int = 6
+private const val IDENTITY_ROUTE_SCOPE_INDEX: Int = 7
+private const val CLAIM_WORKFLOW_ID_INDEX: Int = 1
+private const val CLAIM_EXPECTED_UPDATED_AT_NULL_INDEX: Int = 2
+private const val CLAIM_EXPECTED_UPDATED_AT_INDEX: Int = 3
+private const val LOOKUP_WORKFLOW_ISSUE_KEY_INDEX: Int = 1
+private const val LOOKUP_IDENTITY_ISSUE_KEY_INDEX: Int = 2
+private const val LOOKUP_REPOSITORY_IDENTITY_INDEX: Int = 3
 
 /**
  * SQLite-backed [WorkflowStateRepository]. Delegates each per-family capability
@@ -36,6 +52,22 @@ class WorkflowStateStore(
 private class FeatureTaskWorkflowStateStore(
   private val connection: Connection,
 ) : FeatureTaskWorkflowStateRepository {
+  override fun claimFeatureTaskContinuation(workflowId: String, expectedUpdatedAt: String?): Boolean =
+    connection.prepareStatement(
+      """
+      UPDATE feature_task_workflows
+      SET workflow_status = 'running', updated_at = CURRENT_TIMESTAMP
+      WHERE workflow_id = ?
+        AND workflow_status NOT IN ('running', 'completed', 'failed', 'abandoned')
+        AND ((updated_at IS NULL AND ? IS NULL) OR updated_at = ?)
+      """.trimIndent(),
+    ).use { statement ->
+      statement.setString(CLAIM_WORKFLOW_ID_INDEX, workflowId)
+      statement.setString(CLAIM_EXPECTED_UPDATED_AT_NULL_INDEX, expectedUpdatedAt)
+      statement.setString(CLAIM_EXPECTED_UPDATED_AT_INDEX, expectedUpdatedAt)
+      statement.executeUpdate() == 1
+    }
+
   override fun saveFeatureTaskExecutionIdentity(identity: FeatureTaskExecutionIdentity) {
     connection.prepareStatement(
       """
@@ -46,35 +78,51 @@ private class FeatureTaskWorkflowStateStore(
       ON CONFLICT(workflow_id) DO NOTHING
       """.trimIndent(),
     ).use { statement ->
-      statement.setString(1, identity.workflowId)
-      statement.setString(2, identity.contractVersion)
-      statement.setString(3, identity.normalizedIssueKey)
-      statement.setString(4, identity.repositoryIdentity)
-      statement.setString(5, identity.governedSpecPath)
-      statement.setString(6, identity.mode.wireValue)
-      statement.setString(7, identity.routeScope.wireValue)
+      statement.setString(IDENTITY_WORKFLOW_ID_INDEX, identity.workflowId)
+      statement.setString(IDENTITY_CONTRACT_VERSION_INDEX, identity.contractVersion)
+      statement.setString(IDENTITY_ISSUE_KEY_INDEX, identity.normalizedIssueKey)
+      statement.setString(IDENTITY_REPOSITORY_INDEX, identity.repositoryIdentity)
+      statement.setString(IDENTITY_SPEC_PATH_INDEX, identity.governedSpecPath)
+      statement.setString(IDENTITY_MODE_INDEX, identity.mode.wireValue)
+      statement.setString(IDENTITY_ROUTE_SCOPE_INDEX, identity.routeScope.wireValue)
       statement.executeUpdate()
     }
     val persisted = connection.featureTaskIdentity(identity.workflowId)
-      ?: error("Feature-task identity '${identity.workflowId}' was not persisted.")
-    require(persisted == identity) {
-      "Immutable feature-task execution identity conflicts for workflow '${identity.workflowId}'."
+      ?: throw InvalidFeatureTaskExecutionIdentitySchemaError(identity.workflowId, "identity was not persisted")
+    if (persisted != identity) {
+      throw InvalidFeatureTaskExecutionIdentitySchemaError(
+        identity.workflowId,
+        "immutable identity conflicts with the persisted record",
+      )
     }
   }
 
   override fun findStandaloneFeatureTaskCandidates(
     normalizedIssueKey: String,
+    repositoryIdentity: String,
   ): List<FeatureTaskWorkflowCandidate> = connection.prepareStatement(
     """
     SELECT workflows.workflow_id
     FROM feature_task_workflows AS workflows
     LEFT JOIN feature_task_execution_identities AS identities
       ON identities.workflow_id = workflows.workflow_id
-    WHERE UPPER(workflows.issue_key) = ?
+    WHERE (UPPER(workflows.issue_key) = ? OR identities.normalized_issue_key = ?)
+      AND (
+        (
+          identities.workflow_id IS NULL
+          AND (
+            workflows.mode = 'runtime'
+            OR workflows.artifacts_json NOT LIKE '%"decomposition_runtime"%'
+          )
+        )
+        OR (identities.repository_identity = ? AND identities.route_scope = 'standalone')
+      )
     ORDER BY identities.created_at, workflows.workflow_id
     """.trimIndent(),
   ).use { statement ->
-    statement.setString(1, normalizedIssueKey)
+    statement.setString(LOOKUP_WORKFLOW_ISSUE_KEY_INDEX, normalizedIssueKey)
+    statement.setString(LOOKUP_IDENTITY_ISSUE_KEY_INDEX, normalizedIssueKey)
+    statement.setString(LOOKUP_REPOSITORY_IDENTITY_INDEX, repositoryIdentity)
     statement.executeQuery().use { rows ->
       buildList {
         while (rows.next()) {
@@ -130,11 +178,19 @@ private fun Connection.featureTaskIdentity(workflowId: String): FeatureTaskExecu
       normalizedIssueKey = row.getString("normalized_issue_key"),
       repositoryIdentity = row.getString("repository_identity"),
       governedSpecPath = row.getString("governed_spec_path"),
-      mode = FeatureTaskWorkflowMode.entries.single { it.wireValue == row.getString("mode") },
-      routeScope = FeatureTaskRouteScope.entries.single { it.wireValue == row.getString("route_scope") },
+      mode = decodeIdentityMode(workflowId, row.getString("mode")),
+      routeScope = decodeIdentityRouteScope(workflowId, row.getString("route_scope")),
     )
   }
 }
+
+private fun decodeIdentityMode(workflowId: String, value: String): FeatureTaskWorkflowMode =
+  FeatureTaskWorkflowMode.entries.singleOrNull { it.wireValue == value }
+    ?: throw InvalidFeatureTaskExecutionIdentitySchemaError(workflowId, "mode '$value' is not supported")
+
+private fun decodeIdentityRouteScope(workflowId: String, value: String): FeatureTaskRouteScope =
+  FeatureTaskRouteScope.entries.singleOrNull { it.wireValue == value }
+    ?: throw InvalidFeatureTaskExecutionIdentitySchemaError(workflowId, "route_scope '$value' is not supported")
 
 private class FeatureImplementWorkflowStateStore(
   private val connection: Connection,

@@ -5,8 +5,8 @@ import me.tatarka.inject.annotations.Provides
 import skillbill.application.agentrun.AgentRunGoalRunnerSubtaskLauncher
 import skillbill.application.agentrun.AgentRunService
 import skillbill.application.config.ConfigResolutionService
-import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
 import skillbill.application.featuretask.FeatureTaskContinuationLookupService
+import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
 import skillbill.application.featuretask.FeatureTaskRuntimeRunner
 import skillbill.application.featuretask.FeatureTaskRuntimeStatusService
 import skillbill.application.goalrunner.GoalLifecycleTelemetryEmitter
@@ -159,6 +159,7 @@ abstract class RuntimeComponent(
   private val inputRuntimeContext: RuntimeContext,
 ) {
   abstract val featureTaskContinuationLookupService: FeatureTaskContinuationLookupService
+
   /*
    * Composition-root exception: RuntimeComponent is the only runtime-core surface allowed to
    * know concrete filesystem, HTTP, and SQLite adapters. Downstream adapters consume the

@@ -1,6 +1,7 @@
 package skillbill.workflow.taskruntime
 
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeBackwardEdge
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCapExhaustionBehavior
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeNextPhase
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
@@ -12,11 +13,10 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
  * transition target:
  *
  * - A backward edge whose [FeatureTaskRuntimeBackwardEdge.fromPhaseId] and
- *   [FeatureTaskRuntimeBackwardEdge.triggeringVerdict] match the settled phase, with the edge below
- *   its cap, yields a backward [FeatureTaskRuntimeNextPhase.Next] to the destination, tagged with the
- *   loop id and the incremented iteration.
- * - The same edge at its cap yields a [FeatureTaskRuntimeNextPhase.TerminalBlock] carrying the loop
- *   id, the iteration count, and the unresolved verdict.
+ *   [FeatureTaskRuntimeBackwardEdge.triggeringVerdict] match the settled phase yields a backward
+ *   [FeatureTaskRuntimeNextPhase.Next] while its optional cap permits another iteration.
+ * - A bounded edge at its cap either advances along the forward pipeline or yields a
+ *   [FeatureTaskRuntimeNextPhase.TerminalBlock], according to its declared exhaustion behavior.
  * - Otherwise the default forward edge fires: the next forward index whose phase is not loop-only
  *   (loop-only phases are reachable only as backward-edge destinations), or
  *   [FeatureTaskRuntimeNextPhase.TerminalAdvance] when no such phase remains.
@@ -35,18 +35,22 @@ object FeatureTaskRuntimeTransitionFunction {
       "FeatureTaskRuntimeTransitionFunction.edgeIterationCount must be non-negative, was $edgeIterationCount."
     }
     matchingBackwardEdge(declaration, currentPhaseId, verdict)?.let { edge ->
-      return if (edgeIterationCount < edge.perEdgeCap) {
+      val mayReenter = edge.perEdgeCap?.let { edgeIterationCount < it } ?: true
+      return if (mayReenter) {
         FeatureTaskRuntimeNextPhase.Next(
           phaseId = edge.destinationPhaseId,
           loopId = edge.loopId,
           edgeIteration = edgeIterationCount + 1,
         )
       } else {
-        FeatureTaskRuntimeNextPhase.TerminalBlock(
-          loopId = edge.loopId,
-          edgeIteration = edgeIterationCount,
-          unresolvedVerdict = verdict,
-        )
+        when (edge.capExhaustionBehavior) {
+          FeatureTaskRuntimeCapExhaustionBehavior.ADVANCE -> forwardTransition(declaration, currentPhaseId)
+          FeatureTaskRuntimeCapExhaustionBehavior.BLOCK -> FeatureTaskRuntimeNextPhase.TerminalBlock(
+            loopId = edge.loopId,
+            edgeIteration = edgeIterationCount,
+            unresolvedVerdict = verdict,
+          )
+        }
       }
     }
     return forwardTransition(declaration, currentPhaseId)

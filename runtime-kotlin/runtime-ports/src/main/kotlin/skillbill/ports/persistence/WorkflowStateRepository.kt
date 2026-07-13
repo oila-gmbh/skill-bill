@@ -1,9 +1,9 @@
 package skillbill.ports.persistence
 
 import skillbill.ports.persistence.model.FeatureImplementSessionSummary
-import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import skillbill.ports.persistence.model.FeatureTaskExecutionIdentity
 import skillbill.ports.persistence.model.FeatureTaskWorkflowCandidate
+import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import skillbill.ports.persistence.model.FeatureVerifySessionSummary
 import skillbill.ports.persistence.model.WorkflowStateRecord
 
@@ -19,11 +19,15 @@ interface WorkflowStateRepository :
   FeatureTaskRuntimeWorkflowStateRepository
 
 interface FeatureTaskWorkflowStateRepository {
-  fun saveFeatureTaskExecutionIdentity(identity: FeatureTaskExecutionIdentity) = Unit
+  fun saveFeatureTaskExecutionIdentity(identity: FeatureTaskExecutionIdentity)
 
   fun findStandaloneFeatureTaskCandidates(
     normalizedIssueKey: String,
-  ): List<FeatureTaskWorkflowCandidate> = emptyList()
+    repositoryIdentity: String,
+  ): List<FeatureTaskWorkflowCandidate>
+
+  fun claimFeatureTaskContinuation(workflowId: String, expectedUpdatedAt: String?): Boolean =
+    error("Feature-task continuation claiming is not implemented by this persistence adapter.")
 
   fun saveFeatureTaskWorkflow(row: WorkflowStateRecord, mode: FeatureTaskWorkflowMode) {
     when (mode) {

@@ -144,6 +144,10 @@ data class FeatureTaskRuntimePhaseRecord(
   val resolvedAgentId: String,
   val outputArtifact: String? = null,
   val blockedReason: String? = null,
+  val failureDisposition: FeatureTaskRuntimeFailureDisposition? = null,
+  val fileManifestBefore: List<String> = emptyList(),
+  val fileManifestAfter: List<String> = emptyList(),
+  val fileManifestIntroduced: List<String> = emptyList(),
   /** Latest backward-edge context for the resume watermark: the loop and per-edge iteration. */
   val loopId: String? = null,
   val edgeIteration: Int? = null,
@@ -186,6 +190,10 @@ data class FeatureTaskRuntimePhaseRecord(
     durationMillis?.let { put("duration_millis", it) }
     outputArtifact?.let { put("output_artifact", it) }
     blockedReason?.let { put("blocked_reason", it) }
+    failureDisposition?.let { put("failure_disposition", it.wireValue) }
+    if (fileManifestBefore.isNotEmpty()) put("file_manifest_before", fileManifestBefore)
+    if (fileManifestAfter.isNotEmpty()) put("file_manifest_after", fileManifestAfter)
+    if (fileManifestIntroduced.isNotEmpty()) put("file_manifest_introduced", fileManifestIntroduced)
     loopId?.let { put("loop_id", it) }
     edgeIteration?.let { put("edge_iteration", it) }
     reviewPassNumber?.let { put("review_pass_number", it) }
@@ -208,11 +216,34 @@ data class FeatureTaskRuntimePhaseRecord(
         resolvedAgentId = raw.requireStringField("resolved_agent_id"),
         outputArtifact = raw.optionalStringField("output_artifact"),
         blockedReason = raw.optionalStringField("blocked_reason"),
+        failureDisposition = raw.optionalStringField("failure_disposition")?.let { value ->
+          FeatureTaskRuntimeFailureDisposition.fromWireValue(value)
+            ?: throw InvalidWorkflowStateSchemaError(
+              "Feature-task-runtime artifact field 'failure_disposition' has unsupported value '$value'.",
+            )
+        },
+        fileManifestBefore = raw.optionalStringListField("file_manifest_before"),
+        fileManifestAfter = raw.optionalStringListField("file_manifest_after"),
+        fileManifestIntroduced = raw.optionalStringListField("file_manifest_introduced"),
         loopId = raw.optionalStringField("loop_id"),
         edgeIteration = raw.optionalIntField("edge_iteration"),
         reviewPassNumber = raw.optionalIntField("review_pass_number"),
       )
     }
+  }
+}
+
+enum class FeatureTaskRuntimeFailureDisposition(val wireValue: String, val retryOnResume: Boolean) {
+  RETRYABLE("retryable", true),
+  NON_RETRYABLE_POLICY_CONFLICT("non_retryable_policy_conflict", false),
+  NEEDS_USER_ACTION("needs_user_action", false),
+  PROCESS_FAILURE("process_failure", true),
+  INVALID_OUTPUT("invalid_output", true),
+  ;
+
+  companion object {
+    fun fromWireValue(value: String): FeatureTaskRuntimeFailureDisposition? =
+      entries.firstOrNull { it.wireValue == value }
   }
 }
 
@@ -354,7 +385,7 @@ private fun Map<String, Any?>.optionalIntField(key: String): Int? {
     )
 }
 
-private fun Map<String, Any?>.optionalStringListField(key: String): List<String> {
+internal fun Map<String, Any?>.optionalStringListField(key: String): List<String> {
   if (!containsKey(key) || this[key] == null) {
     return emptyList()
   }

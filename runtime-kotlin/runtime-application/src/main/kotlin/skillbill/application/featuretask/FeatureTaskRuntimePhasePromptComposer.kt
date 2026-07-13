@@ -131,6 +131,8 @@ object FeatureTaskRuntimePhasePromptComposer {
       loop (preplan -> plan -> implement -> review -> audit -> validate -> write_history -> commit_push -> pr)
       for issue $issueKey. The runtime owns the loop; do not run other phases, do not open
       or continue any other skill-bill workflow, and do not call `skill-bill workflow continue`.
+      Do not create or modify a governed spec for another issue key unless this issue's spec
+      explicitly requires that exact follow-up artifact.
 
       Phase: $phaseId ($label)
       Task: $directive
@@ -148,8 +150,9 @@ object FeatureTaskRuntimePhasePromptComposer {
         "Apply ${scaling.preplanCeremony.promptLabel}. Keep the gate real: identify concrete scope, " +
           "affected boundaries, risks, and unknowns at the requested depth."
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW -> if (remediationReview) {
-        "Apply an inline review to only the combined staged, unstaged, and untracked remediation delta since " +
-          "checkpoint HEAD. Do not expand the re-review to the full feature branch."
+        "Apply bill-code-review mode:inline context:feature-remediation to only the combined staged, unstaged, " +
+          "and untracked remediation delta since checkpoint HEAD. Do not expand the re-review to the full " +
+          "feature branch."
       } else {
         "Apply ${scaling.reviewScope.promptLabel}. Keep the review gate real: inspect the implemented " +
           "change for defects and report concrete file references."
@@ -181,6 +184,9 @@ object FeatureTaskRuntimePhasePromptComposer {
     - "contract_version": must be exactly "${FeatureTaskRuntimePhaseWorkflowDefinition.definition.contractVersion}"
     - "phase_id": must be "$phaseId"
     - "status": one of "completed", "blocked", "failed"
+    - "failure_disposition": required by the runtime when status is "blocked" or "failed"; one of
+      "retryable", "non_retryable_policy_conflict", "needs_user_action", "process_failure", or
+      "invalid_output". Omit it when status is "completed".
     - "summary": non-empty string describing what this phase did
     - "produced_outputs": object with at least one entry carrying this phase's concrete
       result for downstream phases (for example plan steps, changed files, findings, or
@@ -280,10 +286,10 @@ object FeatureTaskRuntimePhasePromptComposer {
     return """
       ## Review execution mode
       Run `bill-code-review mode:${codeReviewMode.wireValue}` for this review. The initial pass uses the run-selected
-      mode; every later pass is explicitly INLINE and must fail with the existing eligibility reason rather than
-      substituting delegated mode. Never launch a third review pass.
-      AUTO keeps the shared policy's existing selection; INLINE must reject an ineligible scope instead of substituting
-      delegated mode; DELEGATED must use normal routed delegation and fail if workers cannot start.$parallel$goalScope$remediationScope
+      mode; every later pass is explicitly INLINE under context:feature-remediation. Never launch a third review pass.
+      AUTO keeps the shared policy's existing selection; remediation INLINE uses the governed exception and selects
+      inline specialist coverage for high-risk signals; DELEGATED must use normal routed delegation and fail if workers
+      cannot start.$parallel$goalScope$remediationScope
     """.trimIndent()
   }
 

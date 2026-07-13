@@ -1,5 +1,6 @@
 package skillbill.application.model
 
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 
 /**
@@ -16,6 +17,10 @@ data class FeatureTaskRuntimePhaseStateRequest(
   val outputArtifact: String? = null,
   /** Present only on a terminal blocked record so blocked-ness survives ledger pruning. */
   val blockedReason: String? = null,
+  val failureDisposition: FeatureTaskRuntimeFailureDisposition? = null,
+  val fileManifestBefore: List<String> = emptyList(),
+  val fileManifestAfter: List<String> = emptyList(),
+  val fileManifestIntroduced: List<String> = emptyList(),
   /** Runtime-minted backward-edge context for the resume watermark; never agent-reported. */
   val loopId: String? = null,
   val edgeIteration: Int? = null,

@@ -449,6 +449,13 @@ private class StatusFakeDatabaseSessionFactory(
 }
 
 private class StatusInMemoryWorkflowRepository : WorkflowStateRepository {
+  override fun saveFeatureTaskExecutionIdentity(
+    identity: skillbill.ports.persistence.model.FeatureTaskExecutionIdentity,
+  ) = Unit
+
+  override fun findStandaloneFeatureTaskCandidates(normalizedIssueKey: String, repositoryIdentity: String) =
+    emptyList<skillbill.ports.persistence.model.FeatureTaskWorkflowCandidate>()
+
   private val taskRuntimeRows = linkedMapOf<String, WorkflowStateRecord>()
 
   override fun saveFeatureTaskRuntimeWorkflow(row: WorkflowStateRecord) {

@@ -62,6 +62,7 @@ import skillbill.workflow.model.DecompositionExecutionModel
 import skillbill.workflow.model.DecompositionManifest
 import skillbill.workflow.model.DecompositionSubtask
 import skillbill.workflow.model.SpecSource
+import java.nio.file.Path
 import kotlin.time.Duration.Companion.milliseconds
 
 private val RUNTIME_WORKFLOW_ID_PREFIX: String = WorkflowFamily.TASK_RUNTIME.definition.workflowIdPrefix
@@ -513,6 +514,18 @@ class GoalRunner(
     val priorWorkflowId = state.manifest.workflowIdFor(subtaskId)
     val firstRun = priorWorkflowId == null
     val assignedWorkflowId = priorWorkflowId ?: generateWorkflowId(RUNTIME_WORKFLOW_ID_PREFIX)
+    val rawSpecPath = requireNotNull(
+      state.manifest.subtasks.firstOrNull { it.id == subtaskId }?.specPath?.takeIf(String::isNotBlank),
+    ) { "Goal subtask '$subtaskId' has no governed spec path." }
+    val canonicalRepository = runCatching { request.repoRoot.toRealPath() }
+      .getOrElse { request.repoRoot.toAbsolutePath().normalize() }
+    val resolvedSpecPath = Path.of(rawSpecPath).let { path ->
+      (if (path.isAbsolute) path else canonicalRepository.resolve(path)).toAbsolutePath().normalize()
+    }
+    check(resolvedSpecPath.startsWith(canonicalRepository)) {
+      "Goal subtask '$subtaskId' governed spec path escapes repository '$canonicalRepository'."
+    }
+    val governedSpecPath = canonicalRepository.relativize(resolvedSpecPath).joinToString("/")
     val attemptedManifest = state.manifest.withAttemptedSubtask(subtaskId)
       .let { manifest -> if (firstRun) manifest.withWorkflowId(subtaskId, assignedWorkflowId) else manifest }
     val attemptedState = if (firstRun) {
@@ -525,6 +538,9 @@ class GoalRunner(
           subtaskId = subtaskId,
           workflowId = assignedWorkflowId,
           goalBranch = branch,
+          normalizedIssueKey = state.manifest.issueKey.trim().uppercase(),
+          repositoryIdentity = "repo-root-realpath-v1:$canonicalRepository",
+          governedSpecPath = governedSpecPath,
           reviewBaseline = reviewBaseline,
           reviewPolicy = GoalRunnerReviewPolicy(
             codeReviewMode = request.codeReviewMode ?: CodeReviewExecutionMode.AUTO,

@@ -48,6 +48,14 @@ $defs:
       - completed
       - blocked
       - failed
+  failureDisposition:
+    type: string
+    enum:
+      - retryable
+      - non_retryable_policy_conflict
+      - needs_user_action
+      - process_failure
+      - invalid_output
 required:
   - contract_version
   - phase_id
@@ -63,6 +71,16 @@ properties:
     minLength: 1
   status:
     $ref: "#/$defs/phaseStatus"
+  failure_disposition:
+    description: >
+      Typed failure behavior for blocked or failed phase output. Agents should
+      omit it for completed output. The runtime treats policy conflicts and
+      user-action requirements as durable non-retryable blocks; retryable,
+      process-failure, and invalid-output dispositions may be relaunched under
+      the applicable bounded retry policy. Optional for compatibility with
+      existing durable 0.1 outputs; absent blocked output defaults to
+      needs_user_action and absent failed output defaults to retryable.
+    $ref: "#/$defs/failureDisposition"
   summary:
     type: string
     minLength: 1

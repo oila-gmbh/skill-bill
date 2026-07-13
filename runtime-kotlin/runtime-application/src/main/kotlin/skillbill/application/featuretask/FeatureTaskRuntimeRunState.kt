@@ -2,6 +2,8 @@ package skillbill.application.featuretask
 
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeBackwardEdge
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewFinding
@@ -12,7 +14,10 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 internal class FeatureTaskRuntimeRunState(
   private val initialRecords: Map<String, FeatureTaskRuntimePhaseRecord>,
   private val transitions: FeatureTaskRuntimeTransitionDeclaration,
+  private val initialLedger: List<FeatureTaskRuntimePhaseLedgerEntry> = emptyList(),
 ) {
+  private val inFlightReentries: Map<String, InFlightReentry> = reconstructInFlightReentries()
+
   // A legacy PLAN completed without its now-required PREPLAN predecessor is invalidated up front so
   // the loop re-runs PLAN rather than honouring a pre-PREPLAN completion.
   private val completed: MutableSet<String> =
@@ -21,6 +26,7 @@ internal class FeatureTaskRuntimeRunState(
       .map { it.phaseId }
       .toMutableSet()
       .also(::invalidateLegacyPlanWithoutPreplan)
+      .also(::invalidateIncompleteReentrySpans)
   private val outputs: MutableList<FeatureTaskRuntimePhaseOutput> =
     initialRecords.values
       .mapNotNull(::recordToOutput)
@@ -66,7 +72,7 @@ internal class FeatureTaskRuntimeRunState(
 
   // Loops the live run has already advanced this run, so the resume-entry cap guard does not
   // re-fire against a stale durable snapshot once the live machine owns the loop.
-  private val liveClaimedLoops: MutableSet<String> = mutableSetOf()
+  private val liveClaimedLoops: MutableSet<String> = inFlightReentries.keys.toMutableSet()
 
   // Per-phase same-phase fix-loop budget baseline: the attempt watermark a backward-edge re-visit
   // starts from, so the schema-retry budget restarts each visit (the cross-visit bound is the
@@ -158,6 +164,42 @@ internal class FeatureTaskRuntimeRunState(
     }
   }
 
+  private fun reconstructInFlightReentries(): Map<String, InFlightReentry> = buildMap {
+    transitions.backwardEdges.forEach { edge ->
+      if (edge.destinationPhaseId in transitions.loopOnlyPhaseIds) {
+        return@forEach
+      }
+      val latestEdge = initialLedger
+        .filter { ledger ->
+          ledger.action == FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE && ledger.loopId == edge.loopId
+        }
+        .maxByOrNull { it.sequenceNumber }
+        ?: return@forEach
+      val destination = initialRecords[edge.destinationPhaseId]
+      if (destination?.loopId != edge.loopId || destination.edgeIteration != latestEdge.edgeIteration) {
+        return@forEach
+      }
+      val completedAfterEdge = initialLedger
+        .asSequence()
+        .filter { it.sequenceNumber > latestEdge.sequenceNumber }
+        .filter { it.action == FeatureTaskRuntimePhaseLedgerAction.COMPLETE }
+        .map { it.phaseId }
+        .toSet()
+      val span = reopenedSpan(edge)
+      if (span.any { phaseId -> phaseId !in completedAfterEdge }) {
+        put(edge.loopId, InFlightReentry(span, completedAfterEdge))
+      }
+    }
+  }
+
+  private fun invalidateIncompleteReentrySpans(completedPhases: MutableSet<String>) {
+    inFlightReentries.values.forEach { reentry ->
+      reentry.span
+        .filterNot(reentry.completedAfterEdge::contains)
+        .forEach(completedPhases::remove)
+    }
+  }
+
   fun verdictFor(phaseId: String): FeatureTaskRuntimeVerdict =
     FeatureTaskRuntimeOutputVerification.verdictFor(phaseId, outputFor(phaseId))
 
@@ -224,3 +266,8 @@ internal class FeatureTaskRuntimeRunState(
   fun completedPhaseIds(): List<String> =
     FeatureTaskRuntimePhaseWorkflowDefinition.definition.stepIds.filter { it in completed }
 }
+
+private data class InFlightReentry(
+  val span: List<String>,
+  val completedAfterEdge: Set<String>,
+)

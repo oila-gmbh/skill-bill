@@ -68,7 +68,11 @@ class WorkflowCompactContinuationTest {
     assertTrue(compact.continuationEntryPrompt.contains("Current-step artifacts: plan"))
     assertFalse(compact.continuationEntryPrompt.contains("Current-step artifacts: plan, preplan_digest"))
     assertTrue(compact.continuationEntryPrompt.contains("Omitted artifact keys: branch"))
-    assertTrue(compact.continuationBrief.contains("Omitted artifact keys (branch, preplan_digest) require read-only inspection"))
+    assertTrue(
+      compact.continuationBrief.contains(
+        "Omitted artifact keys (branch, preplan_digest) require read-only inspection",
+      ),
+    )
     assertFalse(compact.continuationBrief.contains("`step_artifacts`"))
     assertFalse(compact.continuationEntryPrompt.contains("Recovered artifacts:"))
     val planSummary = compact.currentStepArtifacts.single { it.key == "plan" }

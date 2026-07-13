@@ -17,5 +17,12 @@ data class FeatureTaskContinuationCandidate(
   val currentStep: String,
   val governedSpecPath: String,
   val updatedAt: String?,
+  val liveness: FeatureTaskContinuationLiveness?,
   val summary: String,
+)
+
+data class FeatureTaskContinuationLiveness(
+  val classification: String,
+  val lastEvidenceAt: String?,
+  val evidence: String,
 )

@@ -873,6 +873,9 @@ $defs:
     required:
       - event_name
       - contract_version
+      - issue_key
+      - repository_identity
+      - governed_spec_path
     properties:
       event_name:
         const: feature_task_prose_workflow_open
@@ -1293,6 +1296,9 @@ $defs:
     required:
       - event_name
       - contract_version
+      - issue_key
+      - repository_identity
+      - governed_spec_path
     properties:
       event_name:
         const: feature_task_runtime_workflow_open

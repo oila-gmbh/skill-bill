@@ -145,6 +145,32 @@ class FileSystemFeatureTaskRuntimeRunInvariantsSourceTest {
   }
 
   @Test
+  fun `keeps nested acceptance bullets inside their parent criterion`() {
+    val spec = writeSpec(
+      """
+      # Runtime spec
+
+      ## Acceptance Criteria
+      1. Tests cover, at minimum:
+         - running duplicate protection;
+         - repository isolation.
+      2. Maintainer validation passes.
+      """.trimIndent(),
+    )
+
+    val invariants = FileSystemFeatureTaskRuntimeRunInvariantsSource().read(spec)
+
+    assertEquals(
+      listOf(
+        "Tests cover, at minimum: Subcriterion: running duplicate protection; " +
+          "Subcriterion: repository isolation.",
+        "Maintainer validation passes.",
+      ),
+      invariants.acceptanceCriteria,
+    )
+  }
+
+  @Test
   fun `does not harvest criteria from a non-acceptance heading`() {
     val spec = writeSpec(
       """

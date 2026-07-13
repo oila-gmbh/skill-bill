@@ -27,6 +27,7 @@ In addition to the top-level telemetry tools, the orchestrator must persist dura
 Workflow-state rules:
 
 - Open workflow state once, immediately after Step 1 records the router-confirmed assessment.
+- Opening a standalone prose workflow requires the normalized `issue_key`, canonical `repository_identity` (`repo-root-realpath-v1:` plus the canonical Git top-level real path), and repository-relative `governed_spec_path`. Never open with only session and step identity.
 - Save both ids:
   - `session_id` from `feature_task_prose_started` for telemetry
   - `workflow_id` from `feature_task_prose_workflow_open` for durable state
@@ -71,7 +72,7 @@ conflicting tokens before its sole confirmation gate. For a non-interactive
 goal continuation, durable goal and child workflow state supply the immutable
 selection. This sidecar must not reparse the token, present another gate, or
 substitute a different mode for the initial pass. Persist the selected mode with the workflow as initial-pass policy. In Step 5 invoke
-`bill-code-review mode:<selected-mode>`; every review-fix or audit-driven re-review invokes `bill-code-review mode:inline` against only the remediation delta since the preceding implementation checkpoint. When a parallel lane is
+`bill-code-review mode:<selected-mode>`; every review-fix or audit-driven re-review invokes `bill-code-review mode:inline context:feature-remediation` against only the remediation delta since the preceding implementation checkpoint. When a parallel lane is
 configured, pass the same execution mode to both lanes without allowing
 recursive parallel launch.
 
@@ -261,7 +262,7 @@ Step id: `review`
 
 Primary artifact: `review_result`
 
-Run `bill-code-review mode:<selected-mode>` inline in the orchestrator through the active skill runtime for the initial pass; invoke every later pass as `bill-code-review mode:inline` against only the staged, unstaged, and untracked remediation delta since the preceding implementation checkpoint. Initial scope: current unit of work for SMALL, branch diff for MEDIUM/LARGE. Do not wrap `bill-code-review` in an additional subagent — it already spawns specialist subagents internally. When `parallel-review:<agent>` was passed to this skill, give both lanes the same per-pass mode and exact diff without recursive parallel launch.
+Run `bill-code-review mode:<selected-mode>` inline in the orchestrator through the active skill runtime for the initial pass; invoke every later pass as `bill-code-review mode:inline context:feature-remediation` against only the staged, unstaged, and untracked remediation delta since the preceding implementation checkpoint. Initial scope: current unit of work for SMALL, branch diff for MEDIUM/LARGE. Do not wrap `bill-code-review` in an additional subagent — it already spawns specialist subagents internally. When `parallel-review:<agent>` was passed to this skill, give both lanes the same per-pass mode and exact diff without recursive parallel launch.
 
 Review loop:
 
@@ -532,6 +533,8 @@ Immediately after Step 1 records the assessment:
    - `session_id`
    - `current_step_id: "assess"`
    - `issue_key: <normalized issue key>` from the router-confirmed task context
+   - `repository_identity: repo-root-realpath-v1:<canonical Git top-level real path>`
+   - `governed_spec_path: <repository-relative .feature-specs/.../spec.md path>`
 4. Save `workflow_id`.
 5. Initialize `child_steps = []`.
 

@@ -2,6 +2,8 @@
 
 package skillbill.mcp.core
 
+import skillbill.application.featuretask.model.FeatureTaskContinuationCandidate
+import skillbill.application.featuretask.model.FeatureTaskContinuationLookupResult
 import skillbill.application.model.FeatureImplementFinishedRequest
 import skillbill.application.model.FeatureImplementStartedRequest
 import skillbill.application.model.FeatureTaskRuntimeFinishedRequest
@@ -16,8 +18,6 @@ import skillbill.application.model.QualityCheckFinishedRequest
 import skillbill.application.model.QualityCheckStartedRequest
 import skillbill.application.model.WorkflowFamilyKind
 import skillbill.application.model.WorkflowUpdateRequest
-import skillbill.application.featuretask.model.FeatureTaskContinuationCandidate
-import skillbill.application.featuretask.model.FeatureTaskContinuationLookupResult
 import skillbill.application.review.toReviewFinishedTelemetryPayload
 import skillbill.contracts.mcp.McpLearningsSkippedContract
 import skillbill.contracts.mcp.McpOrchestratedPayloadContract
@@ -293,6 +293,7 @@ object McpWorkflowRuntime {
     .lookup(issueKey, repositoryIdentity, workflowId)
     .toMcpPayload()
 
+  @Suppress("LongParameterList")
   fun open(
     kind: WorkflowFamilyKind,
     sessionId: String = "",
@@ -313,15 +314,17 @@ object McpWorkflowRuntime {
         requireNotNull(repositoryIdentity) { "Feature-task workflow opens require repository_identity." },
         requireNotNull(governedSpecPath) { "Feature-task workflow opens require governed_spec_path." },
       )
-    } else runtimeServices.workflowService.open(
-      kind,
-      sessionId = sessionId,
-      currentStepId = currentStepId,
-      dbOverride = null,
-      issueKey = issueKey,
-      repositoryIdentity = repositoryIdentity,
-      governedSpecPath = governedSpecPath,
-    )
+    } else {
+      runtimeServices.workflowService.open(
+        kind,
+        sessionId = sessionId,
+        currentStepId = currentStepId,
+        dbOverride = null,
+        issueKey = issueKey,
+        repositoryIdentity = repositoryIdentity,
+        governedSpecPath = governedSpecPath,
+      )
+    }
     return open.toMcpMap(runtimeServices.workflowService.goalObservabilityEventValidator)
   }
 
@@ -378,7 +381,8 @@ object McpWorkflowRuntime {
 
 private fun FeatureTaskContinuationLookupResult.toMcpPayload(): Map<String, Any?> = when (this) {
   FeatureTaskContinuationLookupResult.NoMatch -> mapOf("result" to "no_match")
-  is FeatureTaskContinuationLookupResult.Resumable -> mapOf("result" to "resumable", "candidate" to candidate.toMcpPayload())
+  is FeatureTaskContinuationLookupResult.Resumable ->
+    mapOf("result" to "resumable", "candidate" to candidate.toMcpPayload())
   is FeatureTaskContinuationLookupResult.AlreadyRunning ->
     mapOf("result" to "already_running", "candidate" to candidate.toMcpPayload())
   is FeatureTaskContinuationLookupResult.Ambiguous ->
@@ -394,6 +398,13 @@ private fun FeatureTaskContinuationCandidate.toMcpPayload(): Map<String, Any?> =
   "current_step" to currentStep,
   "governed_spec_path" to governedSpecPath,
   "updated_at" to updatedAt,
+  "liveness" to liveness?.let {
+    mapOf(
+      "classification" to it.classification,
+      "last_evidence_at" to it.lastEvidenceAt,
+      "evidence" to it.evidence,
+    )
+  },
   "summary" to summary,
 )
 

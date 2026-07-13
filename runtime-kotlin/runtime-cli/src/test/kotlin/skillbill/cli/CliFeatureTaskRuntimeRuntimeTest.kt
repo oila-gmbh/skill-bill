@@ -23,6 +23,7 @@ import skillbill.workflow.model.GoalObservabilityDiffStat
 import skillbill.workflow.model.GoalObservabilitySelectedDiffHunks
 import java.nio.file.Files
 import java.nio.file.Path
+import java.sql.DriverManager
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -32,9 +33,10 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.minutes
 
+@Suppress("LargeClass")
 class CliFeatureTaskRuntimeRuntimeTest {
   @Test
-  fun `feature-task command registers run status and resume`() {
+  fun `feature-task command registers run status resume and abandon`() {
     val help = CliRuntime.run(listOf("feature-task", "--help"), CliRuntimeContext())
 
     assertEquals(0, help.exitCode, help.stdout)
@@ -42,6 +44,8 @@ class CliFeatureTaskRuntimeRuntimeTest {
     assertFalse(help.stdout.contains("EXPERIMENTAL"), help.stdout)
     assertContains(help.stdout, "status")
     assertContains(help.stdout, "resume")
+    assertContains(help.stdout, "abandon")
+    assertContains(help.stdout, "repair-identity")
     // The documented explicit `run` form is a real subcommand, not a misparsed positional.
     assertContains(help.stdout, "explicit form")
     assertContains(help.stdout, "--phase-agent")
@@ -721,6 +725,94 @@ class CliFeatureTaskRuntimeRuntimeTest {
   }
 
   @Test
+  fun `feature-task abandon terminalizes a blocked workflow with a durable reason`() {
+    val fixture = runtimeFixture()
+    val launcher = RecordingPhaseLauncher(invalidFromLaunchIndex = 2)
+    val run = CliRuntime.run(fixture.runCommand(extra = listOf("--agent", "codex")), fixture.context(launcher))
+    val workflowId = run.stdout.lines().single { it.startsWith("workflow_id:") }.substringAfter(":").trim()
+
+    val abandoned = CliRuntime.run(
+      listOf(
+        "--db",
+        fixture.dbPath.toString(),
+        "feature-task",
+        "abandon",
+        workflowId,
+        "--reason",
+        "Replacing a deterministically blocked run.",
+      ),
+      fixture.context(launcher),
+    )
+
+    assertEquals(0, abandoned.exitCode, abandoned.stdout)
+    assertContains(abandoned.stdout, "workflow_status: abandoned")
+    assertContains(abandoned.stdout, "operator_abandonment")
+    val repeated = CliRuntime.run(
+      listOf(
+        "--db",
+        fixture.dbPath.toString(),
+        "feature-task",
+        "abandon",
+        workflowId,
+        "--reason",
+        "Repeated abandonment.",
+      ),
+      fixture.context(launcher),
+    )
+    assertEquals(1, repeated.exitCode, repeated.stdout)
+    assertContains(repeated.stdout, "already terminal")
+  }
+
+  @Test
+  fun `feature-task repair-identity restores an explicitly identified legacy workflow`() {
+    val fixture = runtimeFixture()
+    val launcher = RecordingPhaseLauncher(invalidFromLaunchIndex = 2)
+    val run = CliRuntime.run(fixture.runCommand(extra = listOf("--agent", "codex")), fixture.context(launcher))
+    val workflowId = run.stdout.lines().single { it.startsWith("workflow_id:") }.substringAfter(":").trim()
+    DriverManager.getConnection("jdbc:sqlite:${fixture.dbPath}").use { connection ->
+      connection.prepareStatement("DELETE FROM feature_task_execution_identities WHERE workflow_id = ?").use {
+        it.setString(1, workflowId)
+        assertEquals(1, it.executeUpdate())
+      }
+    }
+
+    val repaired = CliRuntime.run(
+      listOf(
+        "--db",
+        fixture.dbPath.toString(),
+        "feature-task",
+        "repair-identity",
+        workflowId,
+        "SKILL-650",
+        fixture.specPath.toString(),
+        "--repo-root",
+        fixture.tempDir.toString(),
+        "--reason",
+        "Repair a pre-identity runtime workflow.",
+      ),
+      fixture.context(launcher),
+    )
+
+    assertEquals(0, repaired.exitCode, repaired.stdout)
+    assertContains(repaired.stdout, "operator_identity_repair")
+    val lookup = CliRuntime.run(
+      listOf(
+        "--db",
+        fixture.dbPath.toString(),
+        "feature-task",
+        "lookup",
+        "SKILL-650",
+        "--repo-root",
+        fixture.tempDir.toString(),
+        "--workflow-id",
+        workflowId,
+      ),
+      fixture.context(launcher),
+    )
+    assertFalse(lookup.stdout.contains("missing immutable execution identity"), lookup.stdout)
+  }
+
+  @Test
   fun `feature-task-runtime explicit run subcommand completes every phase like the default run`() {
     // The documented `feature-task-runtime run <issue_key> <spec_path>` form: without a real
     // `run` subcommand, clikt silently consumes `run` as the optional issue-key positional and
@@ -1258,7 +1350,7 @@ class CliFeatureTaskRuntimeSpecLookupTest {
   }
 
   @Test
-  fun `feature-task-runtime resume re-runs against an existing workflow id without re-launching complete phases`() {
+  fun `feature-task-runtime resume refuses a terminal workflow without re-launching phases`() {
     val fixture = runtimeFixture()
     val launcher = RecordingPhaseLauncher()
     val run = CliRuntime.run(fixture.runCommand(extra = listOf("--agent", "codex")), fixture.context(launcher))
@@ -1283,10 +1375,8 @@ class CliFeatureTaskRuntimeSpecLookupTest {
       fixture.context(resumeLauncher),
     )
 
-    assertEquals(0, resume.exitCode, resume.stdout)
-    assertContains(resume.stdout, "status: complete")
-    assertContains(resume.stdout, "feature_size: SMALL")
-    // Every phase was already complete after the first run, so the resume launches nothing.
+    assertEquals(1, resume.exitCode, resume.stdout)
+    assertContains(resume.stdout, "is terminal and cannot be resumed")
     assertEquals(emptyList(), resumeLauncher.requests, resume.stdout)
   }
 }

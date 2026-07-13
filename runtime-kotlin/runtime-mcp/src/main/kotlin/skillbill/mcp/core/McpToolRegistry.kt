@@ -247,7 +247,9 @@ object McpToolRegistry {
       "feature_task_prose_workflow_get" to workflowIdSchema(),
       "feature_task_prose_workflow_latest" to emptyObjectSchema,
       "feature_task_prose_workflow_list" to workflowListSchema(),
-      "feature_task_prose_workflow_open" to workflowOpenSchema(),
+      "feature_task_prose_workflow_open" to workflowOpenSchema(
+        required = listOf("issue_key", "repository_identity", "governed_spec_path"),
+      ),
       "feature_task_continuation_lookup" to objectSchema(
         required = listOf("issue_key", "repository_identity"),
         properties = mapOf(
@@ -375,7 +377,9 @@ object McpToolRegistry {
       "feature_task_runtime_workflow_get" to workflowIdSchema(),
       "feature_task_runtime_workflow_latest" to emptyObjectSchema,
       "feature_task_runtime_workflow_list" to workflowListSchema(),
-      "feature_task_runtime_workflow_open" to workflowOpenSchema(),
+      "feature_task_runtime_workflow_open" to workflowOpenSchema(
+        required = listOf("issue_key", "repository_identity", "governed_spec_path"),
+      ),
       "feature_task_runtime_workflow_resume" to workflowIdSchema(),
       "feature_task_runtime_workflow_update" to workflowUpdateSchema(
         workflowStatusEnum = listOf("pending", "running", "completed", "failed", "abandoned", "blocked"),

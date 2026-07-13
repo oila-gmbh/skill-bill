@@ -106,6 +106,22 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
+internal fun WorkflowService.openTestFeatureTask(
+  kind: WorkflowFamilyKind,
+  sessionId: String = "",
+  currentStepId: String? = null,
+  dbOverride: String? = null,
+  issueKey: String = "SKILL-120",
+): WorkflowOpenResult = openFeatureTask(
+  kind = kind,
+  sessionId = sessionId,
+  currentStepId = currentStepId,
+  dbOverride = dbOverride,
+  issueKey = issueKey,
+  repositoryIdentity = "repo-root-realpath-v1:/test/repository",
+  governedSpecPath = ".feature-specs/$issueKey/spec.md",
+)
+
 @Suppress("LargeClass") // integration suite spanning learning/review/telemetry/workflow ports
 class ApplicationPersistencePortTest {
   @Test
@@ -354,7 +370,7 @@ class ApplicationPersistencePortTest {
     val database = FakeDatabaseSessionFactory(workflows = workflowRepository)
     val service = testWorkflowService(database)
 
-    val opened = service.open(WorkflowFamilyKind.TASK_PROSE, sessionId = "fis-001", dbOverride = null)
+    val opened = service.openTestFeatureTask(WorkflowFamilyKind.TASK_PROSE, sessionId = "fis-001", dbOverride = null)
       as WorkflowOpenResult.Ok
     val workflowId = opened.workflowId
     val updated = service.update(
@@ -389,9 +405,9 @@ class ApplicationPersistencePortTest {
     val database = FakeDatabaseSessionFactory(workflows = workflowRepository)
     val service = testWorkflowService(database)
 
-    val first = service.open(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-001", dbOverride = null)
+    val first = service.openTestFeatureTask(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-001", dbOverride = null)
       as WorkflowOpenResult.Ok
-    val second = service.open(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-002", dbOverride = null)
+    val second = service.openTestFeatureTask(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-002", dbOverride = null)
       as WorkflowOpenResult.Ok
 
     val got = service.get(WorkflowFamilyKind.TASK_RUNTIME, first.workflowId, dbOverride = null)
@@ -414,7 +430,7 @@ class ApplicationPersistencePortTest {
     val service = testWorkflowService(database)
     val recorder = FeatureTaskRuntimePhaseRecorder(database, WorkflowSnapshotValidatorInfraAdapter())
 
-    val opened = service.open(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-001", dbOverride = null)
+    val opened = service.openTestFeatureTask(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-001", dbOverride = null)
       as WorkflowOpenResult.Ok
     val workflowId = opened.workflowId
 
@@ -462,7 +478,7 @@ class ApplicationPersistencePortTest {
     val service = testWorkflowService(database)
     val recorder = FeatureTaskRuntimePhaseRecorder(database, WorkflowSnapshotValidatorInfraAdapter())
 
-    val opened = service.open(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-001", dbOverride = null)
+    val opened = service.openTestFeatureTask(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-001", dbOverride = null)
       as WorkflowOpenResult.Ok
     val workflowId = opened.workflowId
 
@@ -504,7 +520,7 @@ class ApplicationPersistencePortTest {
     val service = testWorkflowService(database)
     val recorder = FeatureTaskRuntimePhaseRecorder(database, WorkflowSnapshotValidatorInfraAdapter())
 
-    val opened = service.open(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-001", dbOverride = null)
+    val opened = service.openTestFeatureTask(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-001", dbOverride = null)
       as WorkflowOpenResult.Ok
     val workflowId = opened.workflowId
 
@@ -549,7 +565,7 @@ class ApplicationPersistencePortTest {
     val service = testWorkflowService(database)
     val recorder = FeatureTaskRuntimePhaseRecorder(database, WorkflowSnapshotValidatorInfraAdapter())
 
-    val opened = service.open(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-001", dbOverride = null)
+    val opened = service.openTestFeatureTask(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-001", dbOverride = null)
       as WorkflowOpenResult.Ok
     val workflowId = opened.workflowId
 
@@ -575,7 +591,7 @@ class ApplicationPersistencePortTest {
     val service = testWorkflowService(database)
     val recorder = FeatureTaskRuntimePhaseRecorder(database, WorkflowSnapshotValidatorInfraAdapter())
 
-    val opened = service.open(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-001", dbOverride = null)
+    val opened = service.openTestFeatureTask(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-001", dbOverride = null)
       as WorkflowOpenResult.Ok
     val workflowId = opened.workflowId
 
@@ -594,7 +610,7 @@ class ApplicationPersistencePortTest {
     val service = testWorkflowService(database)
     val recorder = FeatureTaskRuntimePhaseRecorder(database, WorkflowSnapshotValidatorInfraAdapter())
 
-    val opened = service.open(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-001", dbOverride = null)
+    val opened = service.openTestFeatureTask(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-001", dbOverride = null)
       as WorkflowOpenResult.Ok
     val workflowId = opened.workflowId
 
@@ -637,7 +653,7 @@ class ApplicationPersistencePortTest {
     val service = testWorkflowService(database)
     val recorder = FeatureTaskRuntimePhaseRecorder(database, WorkflowSnapshotValidatorInfraAdapter())
 
-    val opened = service.open(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-001", dbOverride = null)
+    val opened = service.openTestFeatureTask(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-001", dbOverride = null)
       as WorkflowOpenResult.Ok
     val workflowId = opened.workflowId
 
@@ -669,7 +685,7 @@ class ApplicationPersistencePortTest {
     val service = testWorkflowService(database)
     val recorder = FeatureTaskRuntimePhaseRecorder(database, WorkflowSnapshotValidatorInfraAdapter())
 
-    val opened = service.open(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-001", dbOverride = null)
+    val opened = service.openTestFeatureTask(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-001", dbOverride = null)
       as WorkflowOpenResult.Ok
     val workflowId = opened.workflowId
 
@@ -694,7 +710,7 @@ class ApplicationPersistencePortTest {
     val service = testWorkflowService(database)
     val recorder = FeatureTaskRuntimePhaseRecorder(database, WorkflowSnapshotValidatorInfraAdapter())
 
-    val opened = service.open(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-001", dbOverride = null)
+    val opened = service.openTestFeatureTask(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-001", dbOverride = null)
       as WorkflowOpenResult.Ok
     val workflowId = opened.workflowId
 
@@ -736,7 +752,7 @@ class ApplicationPersistencePortTest {
     val database = FakeDatabaseSessionFactory(workflows = workflowRepository)
     val service = testWorkflowService(database)
 
-    val opened = service.open(WorkflowFamilyKind.TASK_PROSE, sessionId = "fis-001", dbOverride = null)
+    val opened = service.openTestFeatureTask(WorkflowFamilyKind.TASK_PROSE, sessionId = "fis-001", dbOverride = null)
       as WorkflowOpenResult.Ok
     val workflowId = opened.workflowId
     val continued = service.continueWorkflow(WorkflowFamilyKind.TASK_PROSE, workflowId, dbOverride = null)
@@ -758,7 +774,7 @@ class ApplicationPersistencePortTest {
     val workflowRepository = InMemoryWorkflowStateRepository()
     val database = FakeDatabaseSessionFactory(workflows = workflowRepository)
     val service = testWorkflowService(database)
-    val opened = service.open(WorkflowFamilyKind.TASK_PROSE, sessionId = "fis-001", dbOverride = null)
+    val opened = service.openTestFeatureTask(WorkflowFamilyKind.TASK_PROSE, sessionId = "fis-001", dbOverride = null)
       as WorkflowOpenResult.Ok
     val workflowId = opened.workflowId
 
@@ -806,7 +822,7 @@ class ApplicationPersistencePortTest {
     val workflowRepository = InMemoryWorkflowStateRepository()
     val database = FakeDatabaseSessionFactory(workflows = workflowRepository)
     val service = testWorkflowService(database)
-    val opened = service.open(WorkflowFamilyKind.TASK_PROSE, sessionId = "fis-001", dbOverride = null)
+    val opened = service.openTestFeatureTask(WorkflowFamilyKind.TASK_PROSE, sessionId = "fis-001", dbOverride = null)
       as WorkflowOpenResult.Ok
     val workflowId = opened.workflowId
 
@@ -847,7 +863,7 @@ class ApplicationPersistencePortTest {
     val workflowRepository = InMemoryWorkflowStateRepository()
     val database = FakeDatabaseSessionFactory(workflows = workflowRepository)
     val service = testWorkflowService(database)
-    val opened = service.open(WorkflowFamilyKind.TASK_PROSE, sessionId = "fis-001", dbOverride = null)
+    val opened = service.openTestFeatureTask(WorkflowFamilyKind.TASK_PROSE, sessionId = "fis-001", dbOverride = null)
       as WorkflowOpenResult.Ok
     val workflowId = opened.workflowId
 
@@ -2041,6 +2057,11 @@ private class FakeTelemetryClient : TelemetryClient {
 }
 
 private object NoopWorkflowStateRepository : WorkflowStateRepository {
+  override fun saveFeatureTaskExecutionIdentity(
+    identity: skillbill.ports.persistence.model.FeatureTaskExecutionIdentity,
+  ) = Unit
+  override fun findStandaloneFeatureTaskCandidates(normalizedIssueKey: String, repositoryIdentity: String) =
+    emptyList<skillbill.ports.persistence.model.FeatureTaskWorkflowCandidate>()
   override fun saveFeatureImplementWorkflow(row: WorkflowStateRecord) = Unit
 
   override fun saveFeatureVerifyWorkflow(row: WorkflowStateRecord) = Unit
@@ -2080,7 +2101,7 @@ private fun createDecompositionWorkflow(
   subtaskTwo: Path?,
   executionModel: String = "same_branch_commit_per_subtask",
 ): String {
-  val opened = service.open(WorkflowFamilyKind.TASK_PROSE, sessionId = "fis-001", dbOverride = null)
+  val opened = service.openTestFeatureTask(WorkflowFamilyKind.TASK_PROSE, sessionId = "fis-001", dbOverride = null)
     as WorkflowOpenResult.Ok
   val workflowId = opened.workflowId
   service.update(
@@ -2310,6 +2331,11 @@ private class InMemoryWorkflowStateRepository(
   private val implementSessionSummary: FeatureImplementSessionSummary? = null,
   private val verifySessionSummary: FeatureVerifySessionSummary? = null,
 ) : WorkflowStateRepository {
+  override fun saveFeatureTaskExecutionIdentity(
+    identity: skillbill.ports.persistence.model.FeatureTaskExecutionIdentity,
+  ) = Unit
+  override fun findStandaloneFeatureTaskCandidates(normalizedIssueKey: String, repositoryIdentity: String) =
+    emptyList<skillbill.ports.persistence.model.FeatureTaskWorkflowCandidate>()
   private val implementRows = linkedMapOf<String, WorkflowStateRecord>()
   private val verifyRows = linkedMapOf<String, WorkflowStateRecord>()
   private val taskRuntimeRows = linkedMapOf<String, WorkflowStateRecord>()

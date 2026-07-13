@@ -400,7 +400,14 @@ class McpStdioServerTest {
         assertEquals("ok", it["status"], it.toString())
       }
 
-    val openedId = call("feature_task_runtime_workflow_open")["workflow_id"].toString()
+    val openedId = call(
+      "feature_task_runtime_workflow_open",
+      mapOf(
+        "issue_key" to "SKILL-120",
+        "repository_identity" to "repo-root-realpath-v1:/test/repository",
+        "governed_spec_path" to ".feature-specs/SKILL-120/spec.md",
+      ),
+    )["workflow_id"].toString()
     assertEquals(openedId, call("feature_task_runtime_workflow_latest")["workflow_id"])
     assertEquals(
       openedId,
@@ -423,6 +430,49 @@ class McpStdioServerTest {
     val afterUpdate = call("feature_task_runtime_workflow_get", mapOf("workflow_id" to openedId))
     assertEquals("running", afterUpdate["workflow_status"], afterUpdate.toString())
     assertEquals(firstStep, afterUpdate["current_step_id"], afterUpdate.toString())
+  }
+
+  @Test
+  fun `continuation lookup returns the bounded repository-scoped resumable projection`() {
+    val tempDir = Files.createTempDirectory("skillbill-stdio-feature-task-lookup")
+    val context = McpRuntimeContext(environment = enabledStdioTelemetryEnvironment(tempDir), userHome = tempDir)
+    val repositoryIdentity = "repo-root-realpath-v1:/test/repository"
+    val opened = dispatchTool(
+      id = 1,
+      name = "feature_task_runtime_workflow_open",
+      arguments = mapOf(
+        "issue_key" to "SKILL-120",
+        "repository_identity" to repositoryIdentity,
+        "governed_spec_path" to ".feature-specs/SKILL-120/spec.md",
+      ),
+      context = context,
+    )
+    val workflowId = opened.getValue("workflow_id").toString()
+    dispatchTool(
+      id = 2,
+      name = "feature_task_runtime_workflow_update",
+      arguments = mapOf(
+        "workflow_id" to workflowId,
+        "workflow_status" to "blocked",
+        "current_step_id" to "implement",
+      ),
+      context = context,
+    )
+
+    val lookup = dispatchTool(
+      id = 3,
+      name = "feature_task_continuation_lookup",
+      arguments = mapOf("issue_key" to "SKILL-120", "repository_identity" to repositoryIdentity),
+      context = context,
+    )
+
+    assertEquals("resumable", lookup["result"])
+    val candidate = lookup["candidate"] as Map<*, *>
+    assertEquals(workflowId, candidate["workflow_id"])
+    assertEquals("runtime", candidate["mode"])
+    assertEquals("blocked", candidate["status"])
+    assertEquals("implement", candidate["current_step"])
+    assertEquals(".feature-specs/SKILL-120/spec.md", candidate["governed_spec_path"])
   }
 
   @Test
@@ -476,7 +526,14 @@ class McpStdioServerTest {
         assertEquals("ok", it["status"], it.toString())
       }
 
-    val aliasOpenedId = call("feature_implement_workflow_open")["workflow_id"].toString()
+    val aliasOpenedId = call(
+      "feature_implement_workflow_open",
+      mapOf(
+        "issue_key" to "SKILL-120",
+        "repository_identity" to "repo-root-realpath-v1:/test/repository",
+        "governed_spec_path" to ".feature-specs/SKILL-120/spec.md",
+      ),
+    )["workflow_id"].toString()
     val canonicalLatest = call("feature_task_prose_workflow_latest")
     assertEquals(aliasOpenedId, canonicalLatest["workflow_id"], canonicalLatest.toString())
 
