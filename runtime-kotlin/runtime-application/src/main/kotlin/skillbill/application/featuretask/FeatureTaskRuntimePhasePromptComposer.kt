@@ -23,6 +23,7 @@ object FeatureTaskRuntimePhasePromptComposer {
     suppressDecomposition: Boolean = false,
     parallelReviewAgent: String? = null,
     codeReviewMode: CodeReviewExecutionMode = CodeReviewExecutionMode.AUTO,
+    reviewPassNumber: Int? = null,
     goalSubtaskReviewInput: GoalSubtaskReviewInput? = null,
     specSource: SpecSource = SpecSource.LOCAL,
     priorSchemaFailure: String? = null,
@@ -31,10 +32,16 @@ object FeatureTaskRuntimePhasePromptComposer {
     require(issueKey.isNotBlank()) { "issueKey is required to compose a phase prompt." }
     return listOf(
       header(issueKey, briefing.phaseId),
-      ceremonyDirective(briefing),
+      ceremonyDirective(briefing, reviewPassNumber),
       mutatingPhaseIdempotencyDirective(briefing.phaseId),
       goalContinuationDirective(briefing.phaseId, suppressDecomposition),
-      reviewExecutionDirective(briefing.phaseId, codeReviewMode, parallelReviewAgent, goalSubtaskReviewInput),
+      reviewExecutionDirective(
+        briefing.phaseId,
+        codeReviewMode,
+        reviewPassNumber,
+        parallelReviewAgent,
+        goalSubtaskReviewInput,
+      ),
       commitExclusionDirective(briefing.phaseId, issueKey, specSource),
       specCommitInclusionDirective(briefing.phaseId, specReference, specSource),
       briefing.briefingText,
@@ -130,16 +137,23 @@ object FeatureTaskRuntimePhasePromptComposer {
     """.trimIndent()
   }
 
-  private fun ceremonyDirective(briefing: FeatureTaskRuntimePhaseLaunchBriefing): String {
+  private fun ceremonyDirective(briefing: FeatureTaskRuntimePhaseLaunchBriefing, reviewPassNumber: Int?): String {
     val featureSize = FeatureTaskRuntimeFeatureSize.fromWire(briefing.featureSize)
     val scaling = FeatureTaskRuntimePhaseWorkflowDefinition.ceremonyScaling(featureSize)
+    val remediationReview = briefing.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW &&
+      reviewPassNumber == 2
+    val reviewScope = if (remediationReview) "remediation_delta" else scaling.reviewScope.wireValue
     val phaseSpecific = when (briefing.phaseId) {
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN ->
         "Apply ${scaling.preplanCeremony.promptLabel}. Keep the gate real: identify concrete scope, " +
           "affected boundaries, risks, and unknowns at the requested depth."
-      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW ->
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW -> if (remediationReview) {
+        "Apply an inline review to only the combined staged, unstaged, and untracked remediation delta since " +
+          "checkpoint HEAD. Do not expand the re-review to the full feature branch."
+      } else {
         "Apply ${scaling.reviewScope.promptLabel}. Keep the review gate real: inspect the implemented " +
           "change for defects and report concrete file references."
+      }
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT ->
         "Apply ${scaling.auditCeremony.promptLabel}. Keep the audit gate real: verify acceptance " +
           "criteria and report concrete gaps."
@@ -150,7 +164,7 @@ object FeatureTaskRuntimePhasePromptComposer {
       ## Runtime ceremony scaling
       feature_size: ${featureSize.name}
       preplan_ceremony: ${scaling.preplanCeremony.wireValue}
-      review_scope: ${scaling.reviewScope.wireValue}
+      review_scope: $reviewScope
       audit_ceremony: ${scaling.auditCeremony.wireValue}
       $phaseSpecific
       Scaling changes scope and verbosity only; it must not skip or weaken review, audit, validation,
@@ -233,6 +247,7 @@ object FeatureTaskRuntimePhasePromptComposer {
   private fun reviewExecutionDirective(
     phaseId: String,
     codeReviewMode: CodeReviewExecutionMode,
+    reviewPassNumber: Int?,
     parallelReviewAgent: String?,
     goalSubtaskReviewInput: GoalSubtaskReviewInput?,
   ): String {
@@ -256,13 +271,19 @@ object FeatureTaskRuntimePhasePromptComposer {
       ${input.reviewText}
       """.trimIndent()
     }.orEmpty()
+    val remediationScope = if (reviewPassNumber == 2 && goalSubtaskReviewInput == null) {
+      " Review only the combined working-tree remediation delta since checkpoint HEAD; include staged, unstaged, " +
+        "and untracked changes, and do not use the full branch diff."
+    } else {
+      ""
+    }
     return """
       ## Review execution mode
       Run `bill-code-review mode:${codeReviewMode.wireValue}` for this review. The initial pass uses the run-selected
       mode; every later pass is explicitly INLINE and must fail with the existing eligibility reason rather than
       substituting delegated mode. Never launch a third review pass.
       AUTO keeps the shared policy's existing selection; INLINE must reject an ineligible scope instead of substituting
-      delegated mode; DELEGATED must use normal routed delegation and fail if workers cannot start.$parallel$goalScope
+      delegated mode; DELEGATED must use normal routed delegation and fail if workers cannot start.$parallel$goalScope$remediationScope
     """.trimIndent()
   }
 

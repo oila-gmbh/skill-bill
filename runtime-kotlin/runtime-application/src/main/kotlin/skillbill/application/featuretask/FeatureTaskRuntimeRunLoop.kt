@@ -1140,6 +1140,7 @@ internal class FeatureTaskRuntimeRunLoop(
             } else {
               run.request.runInvariants.codeReviewMode
             },
+            reviewPassNumber = reviewPassNumber(run, state),
             goalSubtaskReviewInput = run.goalReviewInput,
             specSource = run.specSource,
             priorSchemaFailure = priorSchemaFailure,

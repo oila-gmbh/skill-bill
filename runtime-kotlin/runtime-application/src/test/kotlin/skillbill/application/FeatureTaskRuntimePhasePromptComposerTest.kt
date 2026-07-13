@@ -45,6 +45,21 @@ class FeatureTaskRuntimePhasePromptComposerTest {
   }
 
   @Test
+  fun `second review pass stays inline and scopes only the remediation delta`() {
+    val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor("review"),
+      codeReviewMode = CodeReviewExecutionMode.INLINE,
+      reviewPassNumber = 2,
+    )
+
+    assertContains(prompt, "bill-code-review mode:inline")
+    assertContains(prompt, "review_scope: remediation_delta")
+    assertContains(prompt, "combined working-tree remediation delta since checkpoint HEAD")
+    assertContains(prompt, "do not use the full branch diff")
+  }
+
+  @Test
   fun `composes header briefing and output contract for every runtime phase`() {
     FeatureTaskRuntimePhaseWorkflowDefinition.definition.stepIds.forEach { phaseId ->
       val prompt = FeatureTaskRuntimePhasePromptComposer.compose(ISSUE_KEY, briefingFor(phaseId))

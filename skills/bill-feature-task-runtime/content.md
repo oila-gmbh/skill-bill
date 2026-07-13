@@ -127,7 +127,9 @@ Blocker/Major finding.
   then re-runs `review`. This `review` → `implement_fix` → `review` cycle is
   capped at one remediation iteration via a durable per-edge counter: the
   initial review may use the selected mode, while the only re-review is reserved
-  before launch and always invokes `bill-code-review mode:inline`. The first
+  before launch and always invokes `bill-code-review mode:inline` against only
+  the staged, unstaged, and untracked remediation delta since the checkpoint
+  created before `implement_fix`, never the full feature-branch diff. The first
   `approved` verdict advances the run to `audit`.
 - If the loop exhausts its cap without an `approved` verdict, the run blocks
   loudly rather than advancing: it records a durable terminal blocked phase plus
