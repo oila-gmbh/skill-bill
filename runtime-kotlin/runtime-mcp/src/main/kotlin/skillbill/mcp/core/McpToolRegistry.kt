@@ -39,6 +39,7 @@ object McpToolRegistry {
       "feature_task_prose_finished",
       "feature_task_prose_stats",
       "feature_task_prose_started",
+      "feature_task_continuation_lookup",
       "feature_task_prose_workflow_get",
       "feature_task_prose_workflow_latest",
       "feature_task_prose_workflow_list",
@@ -95,6 +96,8 @@ object McpToolRegistry {
       "feature_task_prose_finished" to "Record completion of a feature-task prose session.",
       "feature_task_prose_stats" to "Show aggregate feature-task prose metrics.",
       "feature_task_prose_started" to "Record start of a feature-task prose session.",
+      "feature_task_continuation_lookup" to
+        "Read-only repository-scoped lookup of DB-authoritative feature-task continuation state.",
       "feature_task_prose_workflow_continue" to "Continue durable feature-task prose workflow state.",
       "feature_task_prose_workflow_get" to
         "Fetch read-only full durable feature-task prose workflow state.",
@@ -245,6 +248,14 @@ object McpToolRegistry {
       "feature_task_prose_workflow_latest" to emptyObjectSchema,
       "feature_task_prose_workflow_list" to workflowListSchema(),
       "feature_task_prose_workflow_open" to workflowOpenSchema(),
+      "feature_task_continuation_lookup" to objectSchema(
+        required = listOf("issue_key", "repository_identity"),
+        properties = mapOf(
+          "issue_key" to stringSchema(),
+          "repository_identity" to stringSchema(),
+          "workflow_id" to stringSchema(),
+        ),
+      ),
       "feature_task_prose_workflow_resume" to workflowIdSchema(),
       "feature_task_prose_workflow_update" to workflowUpdateSchema(
         workflowStatusEnum = listOf("pending", "running", "completed", "failed", "abandoned", "blocked"),

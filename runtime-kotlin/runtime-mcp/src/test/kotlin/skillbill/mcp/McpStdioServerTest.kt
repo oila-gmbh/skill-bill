@@ -770,6 +770,7 @@ private val expectedToolInventory =
     "feature_task_prose_finished",
     "feature_task_prose_stats",
     "feature_task_prose_started",
+    "feature_task_continuation_lookup",
     "feature_task_prose_workflow_get",
     "feature_task_prose_workflow_latest",
     "feature_task_prose_workflow_list",

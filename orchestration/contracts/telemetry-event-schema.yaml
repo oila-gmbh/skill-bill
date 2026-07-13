@@ -98,6 +98,7 @@ oneOf:
   - $ref: "#/$defs/featureTaskProseFinishedEvent"
   - $ref: "#/$defs/featureTaskProseStatsEvent"
   - $ref: "#/$defs/featureTaskProseStartedEvent"
+  - $ref: "#/$defs/featureTaskContinuationLookupEvent"
   - $ref: "#/$defs/featureTaskProseWorkflowGetEvent"
   - $ref: "#/$defs/featureTaskProseWorkflowLatestEvent"
   - $ref: "#/$defs/featureTaskProseWorkflowListEvent"
@@ -787,6 +788,26 @@ $defs:
           Estimated total tokens across all phases (heuristic, not billing-accurate).
           Sum of estimated_input_tokens and estimated_output_tokens for all phases that ran.
 
+  featureTaskContinuationLookupEvent:
+    type: object
+    additionalProperties: false
+    required:
+      - event_name
+      - contract_version
+      - issue_key
+      - repository_identity
+    properties:
+      event_name:
+        const: feature_task_continuation_lookup
+      contract_version:
+        const: "1.4.0"
+      issue_key:
+        type: string
+      repository_identity:
+        type: string
+      workflow_id:
+        type: string
+
   featureTaskProseWorkflowContinueEvent:
     type: object
     additionalProperties: false
@@ -862,6 +883,10 @@ $defs:
       current_step_id:
         type: string
       issue_key:
+        type: string
+      repository_identity:
+        type: string
+      governed_spec_path:
         type: string
 
   featureTaskProseWorkflowResumeEvent:
@@ -1155,6 +1180,10 @@ $defs:
         type: string
       issue_key:
         type: string
+      repository_identity:
+        type: string
+      governed_spec_path:
+        type: string
 
   featureVerifyWorkflowResumeEvent:
     type: object
@@ -1274,6 +1303,10 @@ $defs:
       current_step_id:
         type: string
       issue_key:
+        type: string
+      repository_identity:
+        type: string
+      governed_spec_path:
         type: string
 
   featureTaskRuntimeWorkflowResumeEvent:

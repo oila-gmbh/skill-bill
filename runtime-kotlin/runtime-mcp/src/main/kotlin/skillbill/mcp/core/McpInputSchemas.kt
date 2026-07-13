@@ -47,6 +47,8 @@ internal fun workflowOpenSchema(): Map<String, Any?> = objectSchema(
     "session_id" to stringSchema(),
     "current_step_id" to stringSchema(),
     "issue_key" to stringSchema(),
+    "repository_identity" to stringSchema(),
+    "governed_spec_path" to stringSchema(),
   ),
 )
 

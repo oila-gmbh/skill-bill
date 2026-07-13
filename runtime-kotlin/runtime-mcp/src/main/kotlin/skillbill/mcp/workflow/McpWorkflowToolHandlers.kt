@@ -20,6 +20,8 @@ internal fun workflowOpen(
   sessionId = arguments.string("session_id"),
   currentStepId = arguments.optionalString("current_step_id"),
   issueKey = arguments.optionalString("issue_key"),
+  repositoryIdentity = arguments.optionalString("repository_identity"),
+  governedSpecPath = arguments.optionalString("governed_spec_path"),
   context = context,
 )
 

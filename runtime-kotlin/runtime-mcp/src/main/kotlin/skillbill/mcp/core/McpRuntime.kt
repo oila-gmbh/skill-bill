@@ -16,6 +16,8 @@ import skillbill.application.model.QualityCheckFinishedRequest
 import skillbill.application.model.QualityCheckStartedRequest
 import skillbill.application.model.WorkflowFamilyKind
 import skillbill.application.model.WorkflowUpdateRequest
+import skillbill.application.featuretask.model.FeatureTaskContinuationCandidate
+import skillbill.application.featuretask.model.FeatureTaskContinuationLookupResult
 import skillbill.application.review.toReviewFinishedTelemetryPayload
 import skillbill.contracts.mcp.McpLearningsSkippedContract
 import skillbill.contracts.mcp.McpOrchestratedPayloadContract
@@ -282,21 +284,45 @@ object McpRuntime {
 }
 
 object McpWorkflowRuntime {
+  fun featureTaskContinuationLookup(
+    issueKey: String,
+    repositoryIdentity: String,
+    workflowId: String? = null,
+    context: McpRuntimeContext = McpRuntimeContext(),
+  ): Map<String, Any?> = services(context).featureTaskContinuationLookupService
+    .lookup(issueKey, repositoryIdentity, workflowId)
+    .toMcpPayload()
+
   fun open(
     kind: WorkflowFamilyKind,
     sessionId: String = "",
     currentStepId: String? = null,
     context: McpRuntimeContext = McpRuntimeContext(),
     issueKey: String? = null,
+    repositoryIdentity: String? = null,
+    governedSpecPath: String? = null,
   ): Map<String, Any?> {
     val runtimeServices = services(context)
-    return runtimeServices.workflowService.open(
+    val open = if (kind != WorkflowFamilyKind.VERIFY && issueKey != null) {
+      runtimeServices.workflowService.openFeatureTask(
+        kind,
+        sessionId,
+        currentStepId,
+        null,
+        issueKey,
+        requireNotNull(repositoryIdentity) { "Feature-task workflow opens require repository_identity." },
+        requireNotNull(governedSpecPath) { "Feature-task workflow opens require governed_spec_path." },
+      )
+    } else runtimeServices.workflowService.open(
       kind,
       sessionId = sessionId,
       currentStepId = currentStepId,
       dbOverride = null,
       issueKey = issueKey,
-    ).toMcpMap(runtimeServices.workflowService.goalObservabilityEventValidator)
+      repositoryIdentity = repositoryIdentity,
+      governedSpecPath = governedSpecPath,
+    )
+    return open.toMcpMap(runtimeServices.workflowService.goalObservabilityEventValidator)
   }
 
   fun update(
@@ -349,6 +375,27 @@ object McpWorkflowRuntime {
     dbOverride = null,
   ).toMcpMap()
 }
+
+private fun FeatureTaskContinuationLookupResult.toMcpPayload(): Map<String, Any?> = when (this) {
+  FeatureTaskContinuationLookupResult.NoMatch -> mapOf("result" to "no_match")
+  is FeatureTaskContinuationLookupResult.Resumable -> mapOf("result" to "resumable", "candidate" to candidate.toMcpPayload())
+  is FeatureTaskContinuationLookupResult.AlreadyRunning ->
+    mapOf("result" to "already_running", "candidate" to candidate.toMcpPayload())
+  is FeatureTaskContinuationLookupResult.Ambiguous ->
+    mapOf("result" to "ambiguous", "candidates" to candidates.map { it.toMcpPayload() })
+  is FeatureTaskContinuationLookupResult.TerminalOnly ->
+    mapOf("result" to "terminal_only", "candidates" to candidates.map { it.toMcpPayload() })
+}
+
+private fun FeatureTaskContinuationCandidate.toMcpPayload(): Map<String, Any?> = mapOf(
+  "workflow_id" to workflowId,
+  "mode" to mode.wireValue,
+  "status" to status,
+  "current_step" to currentStep,
+  "governed_spec_path" to governedSpecPath,
+  "updated_at" to updatedAt,
+  "summary" to summary,
+)
 
 internal fun services(context: McpRuntimeContext, stdinText: String? = null): McpRuntimeServices {
   val runtimeComponent = RuntimeComponent::class.create(context.toRuntimeContext(stdinText))

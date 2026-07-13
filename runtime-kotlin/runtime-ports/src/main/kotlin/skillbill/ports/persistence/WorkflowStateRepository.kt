@@ -23,7 +23,6 @@ interface FeatureTaskWorkflowStateRepository {
 
   fun findStandaloneFeatureTaskCandidates(
     normalizedIssueKey: String,
-    repositoryIdentity: String,
   ): List<FeatureTaskWorkflowCandidate> = emptyList()
 
   fun saveFeatureTaskWorkflow(row: WorkflowStateRecord, mode: FeatureTaskWorkflowMode) {

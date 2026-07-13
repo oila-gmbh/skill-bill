@@ -442,6 +442,7 @@ class FeatureTaskRuntimeStatusCommand(
 @Inject
 class FeatureTaskRuntimeResumeCommand(
   private val deps: FeatureTaskRuntimeRunDependencies,
+  private val lookupService: FeatureTaskContinuationLookupService,
 ) : FeatureTaskRuntimePhaseAgentCommand(
   "resume",
   "Resume a feature-task run against an existing workflow id.",
@@ -453,9 +454,12 @@ class FeatureTaskRuntimeResumeCommand(
   override fun run() {
     executeRuntimeRun(
       deps = deps,
-      issueKey = issueKey,
+      issueKey = requireNotNull(issueKey),
       specPath = specPath,
-      workflowId = { workflowId },
+      workflowId = {
+        verifyRuntimeResume(lookupService, deps.state, workflowId, issueKey, specPath, repoRoot ?: ".")
+        workflowId
+      },
     )
   }
 }
@@ -554,6 +558,7 @@ class FeatureTaskRuntimeDeprecatedStatusCommand(
 @Inject
 class FeatureTaskRuntimeDeprecatedResumeCommand(
   private val deps: FeatureTaskRuntimeRunDependencies,
+  private val lookupService: FeatureTaskContinuationLookupService,
 ) : FeatureTaskRuntimePhaseAgentCommand(
   "resume",
   "Resume a feature-task run against an existing workflow id.",
@@ -567,7 +572,10 @@ class FeatureTaskRuntimeDeprecatedResumeCommand(
       deps = deps,
       issueKey = issueKey,
       specPath = specPath,
-      workflowId = { workflowId },
+      workflowId = {
+        verifyRuntimeResume(lookupService, deps.state, workflowId, issueKey, specPath, repoRoot ?: ".")
+        workflowId
+      },
     )
   }
 }
@@ -580,9 +588,9 @@ private fun openRuntimeWorkflowId(
   repoRoot: String,
 ): String =
   when (
-    val opened = workflowService.open(
+    val opened = workflowService.openFeatureTask(
       WorkflowFamilyKind.TASK_RUNTIME,
-      issueKey = issueKey,
+      issueKey = requireNotNull(issueKey),
       repositoryIdentity = repositoryIdentity(Path.of(repoRoot)),
       governedSpecPath = governedSpecPath(Path.of(repoRoot), Path.of(specPath)),
       dbOverride = state.dbOverride,
@@ -595,11 +603,20 @@ private fun openRuntimeWorkflowId(
   }
 
 private fun repositoryIdentity(start: Path): String {
-  return "repo-root-realpath-v1:${start.toAbsolutePath().normalize().toRealPath()}"
+  return "repo-root-realpath-v1:${canonicalGitRoot(start)}"
+}
+
+private fun canonicalGitRoot(start: Path): Path {
+  val resolvedStart = start.toAbsolutePath().normalize().toRealPath()
+  var candidate = resolvedStart
+  while (!candidate.resolve(".git").toFile().exists()) {
+    candidate = candidate.parent ?: return resolvedStart
+  }
+  return candidate
 }
 
 private fun governedSpecPath(repositoryRoot: Path, specPath: Path): String {
-  val root = repositoryRoot.toAbsolutePath().normalize().toRealPath()
+  val root = canonicalGitRoot(repositoryRoot)
   val resolved = (if (specPath.isAbsolute) specPath else root.resolve(specPath)).normalize().toRealPath()
   require(resolved.startsWith(root)) { "Governed spec path must remain inside repository '$root'." }
   val relative = root.relativize(resolved).joinToString("/") { it.toString() }
@@ -607,6 +624,39 @@ private fun governedSpecPath(repositoryRoot: Path, specPath: Path): String {
     "Governed spec path must be Markdown beneath .feature-specs/."
   }
   return relative
+}
+
+private fun verifyRuntimeResume(
+  lookupService: FeatureTaskContinuationLookupService,
+  state: CliRunState,
+  workflowId: String,
+  issueKey: String,
+  specPath: String,
+  repoRoot: String,
+) {
+  val effectiveRoot = resumeRepositoryRoot(repoRoot, Path.of(specPath))
+  val result = lookupService.lookup(issueKey, repositoryIdentity(effectiveRoot), workflowId, state.dbOverride)
+  val candidate = when (result) {
+    is FeatureTaskContinuationLookupResult.Resumable -> result.candidate
+    is FeatureTaskContinuationLookupResult.AlreadyRunning ->
+      throw UsageError("Workflow '$workflowId' is already running; no phase was launched.")
+    is FeatureTaskContinuationLookupResult.TerminalOnly -> result.candidates.singleOrNull()
+      ?: throw UsageError("Workflow '$workflowId' is not a uniquely selected terminal runtime workflow.")
+    else -> throw UsageError("Workflow '$workflowId' is not a resumable runtime workflow.")
+  }
+  require(candidate.mode == skillbill.ports.persistence.model.FeatureTaskWorkflowMode.RUNTIME) {
+    "Workflow '$workflowId' was persisted in ${candidate.mode.wireValue} mode."
+  }
+  require(candidate.governedSpecPath == governedSpecPath(effectiveRoot, Path.of(specPath))) {
+    "Workflow '$workflowId' was persisted with a different governed spec path."
+  }
+}
+
+private fun resumeRepositoryRoot(repoRoot: String, specPath: Path): Path {
+  if (repoRoot != "." || !specPath.isAbsolute) return Path.of(repoRoot)
+  var candidate: Path? = specPath.parent
+  while (candidate != null && candidate.fileName?.toString() != ".feature-specs") candidate = candidate.parent
+  return candidate?.parent ?: Path.of(repoRoot)
 }
 
 private fun runtimeRunEventSink(state: CliRunState, monitor: Boolean): FeatureTaskRuntimeRunEventSink = if (!monitor) {

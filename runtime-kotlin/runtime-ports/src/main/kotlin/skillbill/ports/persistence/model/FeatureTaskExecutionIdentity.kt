@@ -1,5 +1,7 @@
 package skillbill.ports.persistence.model
 
+import skillbill.contracts.workflow.FEATURE_TASK_EXECUTION_IDENTITY_CONTRACT_VERSION
+
 data class FeatureTaskExecutionIdentity(
   val workflowId: String,
   val normalizedIssueKey: String,
@@ -7,7 +9,7 @@ data class FeatureTaskExecutionIdentity(
   val governedSpecPath: String,
   val mode: FeatureTaskWorkflowMode,
   val routeScope: FeatureTaskRouteScope = FeatureTaskRouteScope.STANDALONE,
-  val contractVersion: String = "0.1",
+  val contractVersion: String = FEATURE_TASK_EXECUTION_IDENTITY_CONTRACT_VERSION,
 )
 
 enum class FeatureTaskRouteScope(val wireValue: String) {

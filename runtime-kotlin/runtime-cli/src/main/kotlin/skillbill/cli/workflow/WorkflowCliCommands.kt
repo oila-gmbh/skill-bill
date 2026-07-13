@@ -128,11 +128,21 @@ open class WorkflowOpenCommand(
   private val sessionId by option("--session-id", help = "Optional workflow telemetry session id.").default("")
   private val currentStepId by option("--current-step-id", help = "Initial workflow step id.")
   private val issueKey by option("--issue-key", help = "Optional normalized issue key for work inventory.")
+  private val repositoryIdentity by option("--repository-identity", help = "Immutable canonical repository identity.")
+  private val governedSpecPath by option("--governed-spec-path", help = "Repository-relative governed spec path.")
   private val format by formatOption()
 
   override fun run() {
     val payload =
-      service.open(kind, sessionId, currentStepId, state.dbOverride, issueKey)
+      service.open(
+        kind,
+        sessionId,
+        currentStepId,
+        state.dbOverride,
+        issueKey,
+        repositoryIdentity,
+        governedSpecPath,
+      )
         .toCliMap(service.goalObservabilityEventValidator)
     state.complete(payload, format, exitCode = payload.exitCode())
   }

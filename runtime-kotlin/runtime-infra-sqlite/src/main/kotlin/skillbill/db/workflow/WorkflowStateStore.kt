@@ -64,17 +64,17 @@ private class FeatureTaskWorkflowStateStore(
 
   override fun findStandaloneFeatureTaskCandidates(
     normalizedIssueKey: String,
-    repositoryIdentity: String,
   ): List<FeatureTaskWorkflowCandidate> = connection.prepareStatement(
     """
-    SELECT workflow_id
-    FROM feature_task_execution_identities
-    WHERE normalized_issue_key = ? AND repository_identity = ? AND route_scope = 'standalone'
-    ORDER BY created_at, workflow_id
+    SELECT workflows.workflow_id
+    FROM feature_task_workflows AS workflows
+    LEFT JOIN feature_task_execution_identities AS identities
+      ON identities.workflow_id = workflows.workflow_id
+    WHERE UPPER(workflows.issue_key) = ?
+    ORDER BY identities.created_at, workflows.workflow_id
     """.trimIndent(),
   ).use { statement ->
     statement.setString(1, normalizedIssueKey)
-    statement.setString(2, repositoryIdentity)
     statement.executeQuery().use { rows ->
       buildList {
         while (rows.next()) {

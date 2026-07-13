@@ -92,8 +92,8 @@ class WorkflowService(
         val identity = FeatureTaskExecutionIdentity(
           workflowId = workflowId,
           normalizedIssueKey = normalizedIssueKey,
-          repositoryIdentity = repositoryIdentity,
-          governedSpecPath = governedSpecPath,
+          repositoryIdentity = requireNotNull(repositoryIdentity),
+          governedSpecPath = requireNotNull(governedSpecPath),
           mode = if (kind == WorkflowFamilyKind.TASK_PROSE) {
             FeatureTaskWorkflowMode.PROSE
           } else {
@@ -110,6 +110,29 @@ class WorkflowService(
         snapshot = engine.snapshotView(family.definition, saved),
       )
     }
+  }
+
+  fun openFeatureTask(
+    kind: WorkflowFamilyKind,
+    sessionId: String = "",
+    currentStepId: String? = null,
+    dbOverride: String? = null,
+    issueKey: String,
+    repositoryIdentity: String,
+    governedSpecPath: String,
+    routeScope: FeatureTaskRouteScope = FeatureTaskRouteScope.STANDALONE,
+  ): WorkflowOpenResult {
+    require(kind != WorkflowFamilyKind.VERIFY) { "Feature verify does not use feature-task execution identity." }
+    return open(
+      kind,
+      sessionId,
+      currentStepId,
+      dbOverride,
+      issueKey,
+      repositoryIdentity,
+      governedSpecPath,
+      routeScope,
+    )
   }
 
   fun update(
