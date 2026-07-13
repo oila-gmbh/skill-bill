@@ -28,6 +28,11 @@ internal object DatabaseMigrations {
         name = "add-work-list-state-metadata",
         operation = DatabaseColumnMigrations::applyWorkListMetadata,
       ),
+      DatabaseMigration(
+        version = 5,
+        name = "recover-work-list-issue-keys",
+        operation = DatabaseColumnMigrations::recoverWorkListIssueKeys,
+      ),
     ).also(::requireDeterministicMigrations)
 
   fun apply(connection: Connection) {

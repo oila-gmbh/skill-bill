@@ -1135,11 +1135,7 @@ internal class FeatureTaskRuntimeRunLoop(
             suppressDecomposition = isGoalContinuationRun(run.request),
             parallelReviewAgent = run.request.parallelReviewAgent
               ?.takeIf { run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW },
-            codeReviewMode = if (reviewPassNumber(run, state) == 2) {
-              skillbill.workflow.model.CodeReviewExecutionMode.INLINE
-            } else {
-              run.request.runInvariants.codeReviewMode
-            },
+            codeReviewMode = run.request.runInvariants.codeReviewMode,
             goalSubtaskReviewInput = run.goalReviewInput,
             specSource = run.specSource,
             priorSchemaFailure = priorSchemaFailure,

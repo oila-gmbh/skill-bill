@@ -6,9 +6,9 @@ import skillbill.application.decomposition.DECOMPOSITION_RUNTIME_ARTIFACT_KEY
 import skillbill.application.decomposition.encodeDecompositionManifestMap
 import skillbill.application.decomposition.loadManifestOrNull
 import skillbill.application.decomposition.withBlockedSubtask
-import skillbill.application.normalizeRequiredIssueKey
 import skillbill.application.model.GoalContinuationOutcome
 import skillbill.application.model.WorkflowContinueResult
+import skillbill.application.normalizeRequiredIssueKey
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.workflow.DecompositionManifestFileStore
 import skillbill.ports.workflow.UnavailableDecompositionManifestFileStore
@@ -194,11 +194,12 @@ internal class DecompositionWorkflowContinuation(
     selection: DecompositionContinuationSelection.Start,
     unitOfWork: UnitOfWork,
   ): ContinuationStepResult {
+    val issueKey = normalizeRequiredIssueKey(manifest.issueKey)
     val branchError = checkoutAndValidateBranch(parentRecord, manifest, selection, unitOfWork)
     return if (branchError != null) {
       ContinuationStepResult(branchError)
     } else {
-      openSubtaskWorkflow(parentRecord, manifest, selection, unitOfWork)
+      openSubtaskWorkflow(parentRecord, manifest, selection, issueKey, unitOfWork)
     }
   }
 
@@ -236,6 +237,7 @@ internal class DecompositionWorkflowContinuation(
     parentRecord: WorkflowStateSnapshot,
     manifest: DecompositionManifest,
     selection: DecompositionContinuationSelection.Start,
+    issueKey: String,
     unitOfWork: UnitOfWork,
   ): ContinuationStepResult {
     val workflowId = generateWorkflowId(WorkflowFamily.IMPLEMENT.definition.workflowIdPrefix)
@@ -263,7 +265,7 @@ internal class DecompositionWorkflowContinuation(
     )
     WorkflowFamily.IMPLEMENT.saveRecord(
       unitOfWork.workflowStates,
-      started.toRecord().copy(issueKey = normalizeRequiredIssueKey(manifest.issueKey)),
+      started.toRecord().copy(issueKey = issueKey),
     )
     engine.persistParentDecompositionRuntime(parentRecord, updatedManifest, unitOfWork, validator)
     val saved = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, workflowId) ?: started
