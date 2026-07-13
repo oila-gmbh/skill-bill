@@ -354,7 +354,11 @@ class GitWorkflowGitOperationsTest {
     Files.writeString(repoRoot.resolve("tracked.txt"), "base\ncommitted\nstaged\nunstaged\n")
     Files.writeString(repoRoot.resolve("owned.tmp"), "owned content\n")
 
-    val input = ops.buildGoalSubtaskReviewInput(repoRoot, requireNotNull(baseline.baseline))
+    val input = ops.buildGoalSubtaskReviewInput(
+      repoRoot,
+      requireNotNull(baseline.baseline),
+      git(repoRoot, "branch", "--show-current"),
+    )
 
     assertTrue(input.ok, input.error)
     val reviewText = requireNotNull(input.input).reviewText
@@ -379,11 +383,32 @@ class GitWorkflowGitOperationsTest {
     val result = GitWorkflowGitOperations().buildGoalSubtaskReviewInput(
       repoRoot,
       GoalSubtaskReviewBaseline("f".repeat(40), emptyList()),
+      "master",
     )
 
     assertFalse(result.ok)
     assertContains(result.error, "Persisted review base")
     assertFalse("origin/main" in result.error)
+  }
+
+  @Test
+  fun `goal review input rejects a worktree on another child branch`() {
+    val repoRoot = Files.createTempDirectory("skillbill-goal-review-wrong-branch")
+    git(repoRoot, "init")
+    git(repoRoot, "config", "user.email", "skill-bill@example.test")
+    git(repoRoot, "config", "user.name", "Skill Bill")
+    Files.writeString(repoRoot.resolve("tracked.txt"), "base\n")
+    git(repoRoot, "add", ".")
+    git(repoRoot, "commit", "-m", "initial")
+    val originalBranch = git(repoRoot, "branch", "--show-current")
+    git(repoRoot, "checkout", "-b", "feat/child-one")
+    val baseline = requireNotNull(GitWorkflowGitOperations().captureGoalSubtaskReviewBaseline(repoRoot).baseline)
+    git(repoRoot, "checkout", originalBranch)
+
+    val result = GitWorkflowGitOperations().buildGoalSubtaskReviewInput(repoRoot, baseline, "feat/child-one")
+
+    assertFalse(result.ok)
+    assertContains(result.error, "durable child branch 'feat/child-one'")
   }
 
   private fun git(repoRoot: Path, vararg args: String): String {

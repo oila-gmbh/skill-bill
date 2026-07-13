@@ -28,6 +28,7 @@ import skillbill.contracts.system.RuntimeProvenanceContract
 import skillbill.goalrunner.model.GoalRunnerRunReport
 import skillbill.goalrunner.model.GoalRunnerStatusProjection
 import skillbill.install.model.InvokingAgentContextResolver
+import skillbill.install.model.InstallAgent
 import skillbill.review.CodeReviewExecutionMode
 import skillbill.ports.agentrun.model.AgentRunOutputSink
 import skillbill.ports.agentrun.model.AgentRunOutputStream
@@ -61,6 +62,10 @@ class GoalRunCommand(
     "--code-review-mode",
     help = "Review execution mode for every child: auto (default), inline, or delegated.",
   )
+  private val parallelReviewAgent by option(
+    "--parallel-review-agent",
+    help = "Run every child review with a second parallel agent lane. Supported agents: ${InstallAgent.supportedIds.joinToString()}.",
+  )
   private val maxWallClockMinutes by option(
     "--max-wall-clock-minutes",
     "--timeout-minutes",
@@ -93,7 +98,9 @@ class GoalRunCommand(
     // opencode is prose-only: refuse before any child subprocess is spawned, and before the
     // issue_key check so the actionable refusal wins over a generic argument error (mirrors
     // feature-task, where the preflight is the first statement in every run body).
-    refuseRuntimeRefusedAgents(listOf(resolveInvokedAgentId(agent, state.environment), agentOverride))
+    refuseRuntimeRefusedAgents(
+      listOf(resolveInvokedAgentId(agent, state.environment), agentOverride, parallelReviewAgent?.takeIf(String::isNotBlank)),
+    )
     val runIssueKey = issueKey ?: throw UsageError("issue_key is required for goal run.")
     val presenter = GoalRunPresenter(
       issueKey = runIssueKey,
@@ -119,6 +126,7 @@ class GoalRunCommand(
         outputSink = presenter.outputSink(includeRawChildOutput = debugChildOutput),
         eventSink = presenter.eventSink(),
         codeReviewMode = parseCodeReviewMode(codeReviewMode),
+        parallelReviewAgent = parallelReviewAgent?.takeIf(String::isNotBlank),
       ),
     )
     val payload = report.toGoalRunCliMap()

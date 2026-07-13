@@ -165,6 +165,19 @@ class AgentRunGoalContinuationCommandTest {
   }
 
   @Test
+  fun `goal-continuation child carries the durable parallel review lane`() {
+    val runner = RecordingAgentRunProcessRunner()
+    requireNotNull(headlessAgentRunAdapters(runner)[InstallAgent.CODEX]).launch(
+      skillRunRequest(goalContinuation = goalContinuationContext().copy(parallelReviewAgent = "junie")),
+    )
+
+    val command = runner.requests.single().command
+    val flagIndex = command.indexOf("--parallel-review-agent")
+    assertTrue(flagIndex >= 0)
+    assertEquals("junie", command[flagIndex + 1])
+  }
+
+  @Test
   fun `goal-continuation wrapper never receives model or effort flags`() {
     val runner = RecordingAgentRunProcessRunner()
     requireNotNull(headlessAgentRunAdapters(runner)[InstallAgent.CODEX]).launch(

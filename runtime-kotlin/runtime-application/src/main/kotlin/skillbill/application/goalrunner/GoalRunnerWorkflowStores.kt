@@ -27,6 +27,8 @@ import skillbill.goalrunner.model.GoalRunnerTerminalStatus
 import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequest
 import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequestOutcome
 import skillbill.ports.goalrunner.GoalRunnerManifestStore
+import skillbill.ports.goalrunner.GoalRunnerChildWorkflowSetup
+import skillbill.ports.goalrunner.GoalRunnerReviewPolicy
 import skillbill.ports.goalrunner.GoalRunnerWorkflowOutcomeStore
 import skillbill.ports.goalrunner.model.GoalObservabilityProgressEvent
 import skillbill.ports.goalrunner.model.GoalRunnerAttemptLedgerRecordRequest
@@ -66,6 +68,8 @@ import skillbill.workflow.model.appendBoundedHistoryBySequence
 import skillbill.workflow.model.goalObservabilityLatestEventFromArtifacts
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewPassResult
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
 import java.nio.file.Path
 import java.time.Duration
@@ -123,6 +127,93 @@ class WorkflowGoalRunnerManifestStore(
     return saved.state
   }
 
+  override fun saveNewChildWorkflow(
+    state: GoalRunnerManifestState,
+    setup: GoalRunnerChildWorkflowSetup,
+    dbPathOverride: String?,
+  ): GoalRunnerManifestState {
+    var projectionArtifactsJson: String? = null
+    val saved = database.transaction(dbPathOverride) { unitOfWork ->
+      val existingParent = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, state.parentWorkflowId)
+        ?: unitOfWork.workflowStates.findDecomposedParentWorkflow(
+          state.manifest.issueKey,
+          decompositionManifestValidator,
+        )?.toSnapshot()
+        ?: error("Unknown decomposed parent workflow '${state.parentWorkflowId}'.")
+      val parentUpdated = engine.updateRecord(
+        WorkflowFamily.IMPLEMENT.definition,
+        existingParent,
+        WorkflowUpdateInput(
+          workflowStatus = existingParent.workflowStatus,
+          currentStepId = existingParent.currentStepId,
+          stepUpdates = null,
+          artifactsPatch = mapOf(
+            DECOMPOSITION_RUNTIME_ARTIFACT_KEY to encodeDecompositionManifestMap(
+              state.manifest,
+              decompositionManifestValidator,
+              DECOMPOSITION_RUNTIME_ARTIFACT_KEY,
+            ),
+          ),
+          sessionId = existingParent.sessionId.orEmpty(),
+        ),
+      )
+      WorkflowFamily.IMPLEMENT.save(unitOfWork.workflowStates, parentUpdated)
+      check(WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, setup.workflowId) == null) {
+        "Goal child workflow '${setup.workflowId}' already exists."
+      }
+      val openedChild = engine.openRecord(
+        WorkflowFamily.TASK_RUNTIME.definition,
+        setup.workflowId,
+        "${WorkflowFamily.TASK_RUNTIME.definition.defaultSessionPrefix}-${state.manifest.issueKey}",
+        WorkflowFamily.TASK_RUNTIME.definition.defaultInitialStepId,
+      )
+      val childUpdated = engine.updateRecord(
+        WorkflowFamily.TASK_RUNTIME.definition,
+        openedChild,
+        WorkflowUpdateInput(
+          workflowStatus = openedChild.workflowStatus,
+          currentStepId = openedChild.currentStepId,
+          stepUpdates = null,
+          artifactsPatch = mapOf(
+            FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY to FeatureTaskRuntimeGoalContinuationArtifact(
+              issueKey = state.manifest.issueKey,
+              subtaskId = setup.subtaskId,
+              suppressPr = true,
+              goalBranch = setup.goalBranch,
+              parentWorkflowId = parentUpdated.workflowId,
+              codeReviewMode = setup.codeReviewMode,
+            ).toArtifactMap(),
+            GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY to GoalSubtaskReviewState.initial(
+              reviewBaseSha = setup.reviewBaseline.reviewBaseSha,
+              baselineUntrackedPaths = setup.reviewBaseline.baselineUntrackedPaths,
+              codeReviewMode = setup.codeReviewMode,
+            ).toArtifactMap(),
+            "install_sync_result" to mapOf(
+              "status" to "skipped",
+              "reason" to "goal-continuation forbids installer, uninstall, and install-sync flows",
+            ),
+          ),
+          sessionId = openedChild.sessionId.orEmpty(),
+        ),
+      )
+      WorkflowFamily.TASK_RUNTIME.save(unitOfWork.workflowStates, childUpdated)
+      val refreshedParent = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, parentUpdated.workflowId) ?: parentUpdated
+      projectionArtifactsJson = refreshedParent.artifactsJson
+      GoalRunnerManifestState(
+        parentWorkflowId = refreshedParent.workflowId,
+        dbPath = unitOfWork.dbPath.toString(),
+        manifest = refreshedParent.decompositionRuntime(decompositionManifestValidator) ?: state.manifest,
+      )
+    }
+    DecompositionManifestWriter.writeProjectionFromWorkflowState(
+      Path.of("").toAbsolutePath(),
+      requireNotNull(projectionArtifactsJson),
+      decompositionManifestValidator,
+      decompositionManifestFileStore,
+    )
+    return saved
+  }
+
   override fun reviewMode(parentWorkflowId: String, dbPathOverride: String?): skillbill.review.CodeReviewExecutionMode? =
     database.read(dbPathOverride) { unitOfWork ->
       val record = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, parentWorkflowId) ?: return@read null
@@ -153,6 +244,44 @@ class WorkflowGoalRunnerManifestStore(
       )
       WorkflowFamily.IMPLEMENT.save(unitOfWork.workflowStates, updated)
       mode
+    }
+  }
+
+  override fun reviewPolicy(parentWorkflowId: String, dbPathOverride: String?): GoalRunnerReviewPolicy? =
+    database.read(dbPathOverride) { unitOfWork ->
+      val record = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, parentWorkflowId) ?: return@read null
+      reviewPolicyFromArtifacts(decodeArtifacts(record.artifactsJson))
+    }
+
+  override fun persistReviewPolicy(
+    parentWorkflowId: String,
+    policy: GoalRunnerReviewPolicy,
+    dbPathOverride: String?,
+  ): GoalRunnerReviewPolicy = database.transaction(dbPathOverride) { unitOfWork ->
+    val record = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, parentWorkflowId)
+      ?: error("Goal parent workflow '$parentWorkflowId' no longer exists.")
+    val existing = reviewPolicyFromArtifacts(decodeArtifacts(record.artifactsJson))
+    if (existing != null) {
+      existing
+    } else {
+      val updated = engine.updateRecord(
+        WorkflowFamily.IMPLEMENT.definition,
+        record,
+        WorkflowUpdateInput(
+          workflowStatus = record.workflowStatus,
+          currentStepId = record.currentStepId,
+          stepUpdates = null,
+          artifactsPatch = mapOf(
+            GOAL_REVIEW_POLICY_ARTIFACT_KEY to buildMap {
+              put("code_review_mode", policy.codeReviewMode.wireValue)
+              policy.parallelReviewAgent?.let { put("parallel_review_agent", it) }
+            },
+          ),
+          sessionId = record.sessionId.orEmpty(),
+        ),
+      )
+      WorkflowFamily.IMPLEMENT.save(unitOfWork.workflowStates, updated)
+      policy
     }
   }
 
@@ -286,16 +415,27 @@ private data class ProjectedManifestCandidate(
 )
 
 private fun reviewModeFromArtifacts(artifacts: Map<String, Any?>): skillbill.review.CodeReviewExecutionMode? {
+  return reviewPolicyFromArtifacts(artifacts)?.codeReviewMode
+}
+
+private fun reviewPolicyFromArtifacts(artifacts: Map<String, Any?>): GoalRunnerReviewPolicy? {
   val raw = artifacts[GOAL_REVIEW_POLICY_ARTIFACT_KEY] ?: return null
   val policy = JsonSupport.anyToStringAnyMap(raw)
     ?: error("Goal review policy artifact '$GOAL_REVIEW_POLICY_ARTIFACT_KEY' must be a map.")
   val mode = policy["code_review_mode"] as? String
     ?: error("Goal review policy artifact '$GOAL_REVIEW_POLICY_ARTIFACT_KEY' is missing code_review_mode.")
-  return try {
+  val codeReviewMode = try {
     skillbill.review.CodeReviewExecutionMode.fromWire(mode)
   } catch (error: IllegalArgumentException) {
     throw IllegalStateException("Goal review policy artifact has invalid code_review_mode '$mode'.", error)
   }
+  val parallelReviewAgent = when (val value = policy["parallel_review_agent"]) {
+    null -> null
+    is String -> value.takeIf(String::isNotBlank)
+      ?: error("Goal review policy artifact has a blank parallel_review_agent.")
+    else -> error("Goal review policy artifact parallel_review_agent must be a string.")
+  }
+  return GoalRunnerReviewPolicy(codeReviewMode, parallelReviewAgent)
 }
 
 private data class SavedManifestProjection(

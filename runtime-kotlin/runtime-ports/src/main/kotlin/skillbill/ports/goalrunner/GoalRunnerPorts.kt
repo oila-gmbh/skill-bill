@@ -17,9 +17,33 @@ import skillbill.ports.goalrunner.model.GoalRunnerSessionAccountingRecordRequest
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.goalrunner.model.GoalRunnerWorkflowProgress
 import skillbill.review.CodeReviewExecutionMode
+import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewPassResult
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
 import java.nio.file.Path
+
+data class GoalRunnerReviewPolicy(
+  val codeReviewMode: CodeReviewExecutionMode,
+  val parallelReviewAgent: String? = null,
+) {
+  init {
+    parallelReviewAgent?.let { require(it.isNotBlank()) { "parallelReviewAgent must not be blank." } }
+  }
+}
+
+data class GoalRunnerChildWorkflowSetup(
+  val subtaskId: Int,
+  val workflowId: String,
+  val goalBranch: String,
+  val reviewBaseline: GoalSubtaskReviewBaseline,
+  val codeReviewMode: CodeReviewExecutionMode,
+) {
+  init {
+    require(subtaskId > 0) { "subtaskId must be positive." }
+    require(workflowId.isNotBlank()) { "workflowId must not be blank." }
+    require(goalBranch.isNotBlank()) { "goalBranch must not be blank." }
+  }
+}
 
 interface GoalRunnerManifestStore {
   fun loadByIssueKey(
@@ -30,6 +54,12 @@ interface GoalRunnerManifestStore {
 
   fun save(state: GoalRunnerManifestState, dbPathOverride: String? = null): GoalRunnerManifestState
 
+  fun saveNewChildWorkflow(
+    state: GoalRunnerManifestState,
+    setup: GoalRunnerChildWorkflowSetup,
+    dbPathOverride: String? = null,
+  ): GoalRunnerManifestState = error("Goal runner manifest store must atomically persist new child workflow state.")
+
   fun reviewMode(parentWorkflowId: String, dbPathOverride: String? = null): CodeReviewExecutionMode? = null
 
   fun persistReviewMode(
@@ -37,6 +67,18 @@ interface GoalRunnerManifestStore {
     mode: CodeReviewExecutionMode,
     dbPathOverride: String? = null,
   ): CodeReviewExecutionMode = mode
+
+  fun reviewPolicy(parentWorkflowId: String, dbPathOverride: String? = null): GoalRunnerReviewPolicy? =
+    reviewMode(parentWorkflowId, dbPathOverride)?.let(::GoalRunnerReviewPolicy)
+
+  fun persistReviewPolicy(
+    parentWorkflowId: String,
+    policy: GoalRunnerReviewPolicy,
+    dbPathOverride: String? = null,
+  ): GoalRunnerReviewPolicy = GoalRunnerReviewPolicy(
+    codeReviewMode = persistReviewMode(parentWorkflowId, policy.codeReviewMode, dbPathOverride),
+    parallelReviewAgent = policy.parallelReviewAgent,
+  )
 }
 
 // Terminal-outcome resolution split into a strictly read-only query and an explicit

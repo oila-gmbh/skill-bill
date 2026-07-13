@@ -29,6 +29,7 @@ import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.agentrun.model.AgentRunProgressEmission
 import skillbill.ports.goalrunner.GoalPullRequestPort
 import skillbill.ports.goalrunner.GoalRunnerManifestStore
+import skillbill.ports.goalrunner.GoalRunnerChildWorkflowSetup
 import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.GoalRunnerWorkflowOutcomeStore
 import skillbill.ports.goalrunner.model.GoalObservabilityProgressEvent
@@ -117,6 +118,8 @@ class GoalRunnerTest {
     assertEquals("feat/SKILL-56-goal", pr.requests.single().headBranch)
     assertEquals("complete", store.manifest.status)
     assertEquals(listOf("sha-1", "sha-2"), store.manifest.subtasks.map { it.commitSha })
+    assertEquals(listOf(1, 2), store.newChildWorkflowSetups.map { it.subtaskId })
+    assertTrue(store.newChildWorkflowSetups.all { it.reviewBaseline.reviewBaseSha == "0".repeat(40) })
   }
 
   @Test
@@ -858,6 +861,7 @@ private class DirtyManifestGitOperations(
   override fun buildGoalSubtaskReviewInput(
     repoRoot: Path,
     baseline: GoalSubtaskReviewBaseline,
+    expectedBranch: String,
   ): GoalSubtaskReviewInputResult = GoalSubtaskReviewInputResult(
     status = "ok",
     input = GoalSubtaskReviewInput(
@@ -1495,6 +1499,7 @@ internal class InMemoryGoalManifestStore(
     private set
   var saveCount: Int = 0
     private set
+  val newChildWorkflowSetups: MutableList<GoalRunnerChildWorkflowSetup> = mutableListOf()
 
   override fun loadByIssueKey(issueKey: String, dbPathOverride: String?, repoRoot: Path?): GoalRunnerManifestState? =
     GoalRunnerManifestState(
@@ -1507,6 +1512,15 @@ internal class InMemoryGoalManifestStore(
     saveCount += 1
     manifest = state.manifest
     return state.copy(dbPath = dbPathOverride ?: state.dbPath, manifest = manifest)
+  }
+
+  override fun saveNewChildWorkflow(
+    state: GoalRunnerManifestState,
+    setup: GoalRunnerChildWorkflowSetup,
+    dbPathOverride: String?,
+  ): GoalRunnerManifestState {
+    newChildWorkflowSetups += setup
+    return save(state, dbPathOverride)
   }
 
   fun mutate(block: (DecompositionManifest) -> DecompositionManifest) {
@@ -1539,6 +1553,12 @@ private class SequencedLoadGoalManifestStore(
     manifest = state.manifest
     return state.copy(dbPath = dbPathOverride ?: state.dbPath, manifest = manifest)
   }
+
+  override fun saveNewChildWorkflow(
+    state: GoalRunnerManifestState,
+    setup: GoalRunnerChildWorkflowSetup,
+    dbPathOverride: String?,
+  ): GoalRunnerManifestState = save(state, dbPathOverride)
 }
 
 // SKILL-64 Subtask 3 (F-D01): the append-only attempt ledger and best-effort
@@ -2139,6 +2159,7 @@ private class FixedBranchGitOperations(
   override fun buildGoalSubtaskReviewInput(
     repoRoot: Path,
     baseline: GoalSubtaskReviewBaseline,
+    expectedBranch: String,
   ): GoalSubtaskReviewInputResult = GoalSubtaskReviewInputResult(
     status = "ok",
     input = GoalSubtaskReviewInput(

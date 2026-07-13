@@ -57,6 +57,9 @@ import skillbill.ports.workflow.NoopWorkflowGitOperations
 import skillbill.ports.workflow.SpecScratchStore
 import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.ports.workflow.model.WorkflowGitOperationResult
+import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
+import skillbill.ports.workflow.model.GoalSubtaskReviewInput
+import skillbill.ports.workflow.model.GoalSubtaskReviewInputResult
 import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksRequest
 import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksResult
 import skillbill.ports.workflow.model.WorkflowWorktreeActivityResult
@@ -1243,6 +1246,7 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
           goalBranch = "feat/existing-runtime-branch",
           suppressPr = true,
           parentWorkflowId = "wfl-parent",
+          reviewBaseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
         ),
         useRealDecompositionPlanner = true,
       ),
@@ -1261,6 +1265,7 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
         "subtask_id" to 5,
         "suppress_pr" to true,
         "goal_branch" to "feat/existing-runtime-branch",
+        "code_review_mode" to "auto",
         "parent_workflow_id" to "wfl-parent",
       ),
       artifacts["goal_continuation"],
@@ -1292,6 +1297,51 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
     val outcome = harness.repository.taskRuntimeArtifacts(WORKFLOW_ID)["goal_continuation_outcome"] as Map<*, *>
     assertEquals("complete", outcome["status"])
     assertEquals("commit-runtime-1", outcome["commit_sha"])
+  }
+
+  @Test
+  fun `goal review preserves a top-level changes requested verdict without findings`() {
+    var reviewLaunches = 0
+    val harness = runnerHarness(
+      agentAssignment = phasePerAgentAssignment(),
+      runtimeConfig = RuntimeHarnessConfig(
+        goalContinuation = FeatureTaskRuntimeGoalContinuationContext(
+          parentIssueKey = ISSUE_KEY,
+          subtaskId = 5,
+          goalBranch = "feat/existing-runtime-branch",
+          suppressPr = true,
+          parentWorkflowId = "wfl-parent",
+          reviewBaseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
+        ),
+      ),
+      launcher = RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        val output = if (phaseId == "review" && reviewLaunches++ == 0) {
+          """
+          {
+            "contract_version": "0.1",
+            "phase_id": "review",
+            "status": "completed",
+            "summary": "Delegated review requested changes.",
+            "verdict": "changes_requested",
+            "produced_outputs": {"summary": "findings were retained in the full artifact"}
+          }
+          """.trimIndent()
+        } else {
+          validJsonOutput(phaseId)
+        }
+        facts(output)
+      },
+    )
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
+
+    @Suppress("UNCHECKED_CAST")
+    val state = harness.repository.taskRuntimeArtifacts(WORKFLOW_ID)["goal_subtask_review_state"] as Map<String, Any?>
+    @Suppress("UNCHECKED_CAST")
+    val firstPass = (state["pass_results"] as List<Map<String, Any?>>).first()
+    assertEquals("changes_requested", firstPass["verdict"])
+    assertEquals(1, firstPass["unresolved_finding_count"])
   }
 
   @Test
@@ -1407,6 +1457,7 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
           goalBranch = "feat/existing-runtime-branch",
           suppressPr = true,
           parentWorkflowId = "wfl-parent",
+          reviewBaseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
         ),
       ),
     )
@@ -1492,6 +1543,7 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
           goalBranch = "feat/existing-runtime-branch",
           suppressPr = true,
           parentWorkflowId = "wfl-parent",
+          reviewBaseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
         ),
       ),
     )
@@ -2559,6 +2611,7 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
           goalBranch = "feat/existing-runtime-branch",
           suppressPr = true,
           parentWorkflowId = "wfl-parent",
+          reviewBaseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
         ),
       ),
       launcher = RuntimeRecordingLauncher { request ->
@@ -3378,6 +3431,7 @@ private fun goalContinuationHarness(
       goalBranch = "feat/existing-runtime-branch",
       suppressPr = true,
       parentWorkflowId = "wfl-parent",
+      reviewBaseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
     ),
     useRealDecompositionPlanner = true,
   ),
@@ -3670,6 +3724,20 @@ internal class RecordingWorkflowGitOperations(
   ): WorkflowSelectedDiffHunksResult = WorkflowSelectedDiffHunksResult(
     status = "ok",
     selectedDiffHunks = GoalObservabilitySelectedDiffHunks(),
+  )
+
+  override fun buildGoalSubtaskReviewInput(
+    repoRoot: Path,
+    baseline: GoalSubtaskReviewBaseline,
+    expectedBranch: String,
+  ): GoalSubtaskReviewInputResult = GoalSubtaskReviewInputResult(
+    status = "ok",
+    input = GoalSubtaskReviewInput(
+      reviewBaseSha = baseline.reviewBaseSha,
+      currentHeadSha = baseline.reviewBaseSha,
+      trackedDelta = "",
+      ownedUntrackedPatches = "",
+    ),
   )
 }
 

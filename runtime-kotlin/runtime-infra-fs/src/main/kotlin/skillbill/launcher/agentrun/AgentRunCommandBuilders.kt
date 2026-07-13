@@ -172,6 +172,10 @@ internal fun goalContinuationCommand(request: SkillRunRequest, agent: InstallAge
         }
         add("--code-review-mode")
         add(context.codeReviewMode.wireValue)
+        context.parallelReviewAgent?.takeIf(String::isNotBlank)?.let { parallelAgent ->
+          add("--parallel-review-agent")
+          add(parallelAgent)
+        }
         context.reviewBaseline?.let { baseline ->
           add("--goal-review-base-sha")
           add(baseline.reviewBaseSha)

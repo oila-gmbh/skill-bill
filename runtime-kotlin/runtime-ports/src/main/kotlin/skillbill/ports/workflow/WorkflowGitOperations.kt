@@ -18,23 +18,14 @@ private const val HASH_RADIX_HEX: Int = 16
 interface WorkflowGitOperations {
   fun checkoutBranch(repoRoot: Path, branch: String, baseBranch: String? = null): WorkflowGitOperationResult
 
-  // Whether [branch] already exists in the repository, without creating it. value is "true"/"false"
-  // on ok; callers must never treat an error result as existence. Used by branch re-attach to refuse
-  // creating a second/divergent branch when the persisted branch is gone.
   fun branchExists(repoRoot: Path, branch: String): WorkflowGitOperationResult
 
   fun currentBranch(repoRoot: Path): WorkflowGitOperationResult
 
-  // Stages the whole worktree (including untracked files) so a subsequent createCommit snapshots the
-  // full tree. Agents are told never to `git add`, so the checkpoint commit must stage first or it
-  // would run against an empty index and fail. Defaults to a no-op success for non-git adapters that
-  // never commit; the real git adapter overrides it with `git add -A`.
   fun stageAll(repoRoot: Path): WorkflowGitOperationResult = WorkflowGitOperationResult(status = "ok", value = "")
 
   fun createCommit(repoRoot: Path, message: String): WorkflowGitOperationResult
 
-  // Git-measured HEAD commit SHA, used as ground truth instead of an
-  // agent-self-reported value.
   fun headCommitSha(repoRoot: Path): WorkflowGitOperationResult
 
   fun validateBranchBase(repoRoot: Path, branch: String, expectedBaseBranch: String): WorkflowGitOperationResult
@@ -51,6 +42,7 @@ interface WorkflowGitOperations {
   fun buildGoalSubtaskReviewInput(
     repoRoot: Path,
     baseline: GoalSubtaskReviewBaseline,
+    expectedBranch: String,
   ): GoalSubtaskReviewInputResult = GoalSubtaskReviewInputResult(
     status = "error",
     error = "Goal-subtask review input requires a git adapter.",
@@ -72,7 +64,6 @@ object NoopWorkflowGitOperations : WorkflowGitOperations {
     value = "recorded:${message.hashCode().toUInt().toString(HASH_RADIX_HEX)}",
   )
 
-  // No-op measures nothing, so the SHA fallback stays inert without a real adapter.
   override fun headCommitSha(repoRoot: Path): WorkflowGitOperationResult =
     WorkflowGitOperationResult(status = "ok", value = "")
 
@@ -115,6 +106,7 @@ object NoopWorkflowGitOperations : WorkflowGitOperations {
   override fun buildGoalSubtaskReviewInput(
     repoRoot: Path,
     baseline: GoalSubtaskReviewBaseline,
+    expectedBranch: String,
   ): GoalSubtaskReviewInputResult = GoalSubtaskReviewInputResult(
     status = "ok",
     input = GoalSubtaskReviewInput(

@@ -122,6 +122,9 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
       if (state.reviewCapReached || state.completedPassCount >= 2) {
         return@transaction GoalSubtaskReviewPassReservation.CarryForward(state)
       }
+      if (state.reservedPassNumber != null) {
+        return@transaction GoalSubtaskReviewPassReservation.InFlight(state)
+      }
       val reserved = state.reserveNextPass()
       if (reserved != state) {
         savePatch(record, unitOfWork.workflowStates, mapOf(GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY to reserved.toArtifactMap()))
@@ -191,10 +194,24 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
     repoRoot: java.nio.file.Path,
     dbOverride: String? = null,
   ): GoalSubtaskReviewInputPreparation {
-    val state = reviewState(workflowId, dbOverride) ?: return GoalSubtaskReviewInputPreparation.MissingState
+    val durable = database.read(dbOverride) { unitOfWork ->
+      val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@read null
+      val artifacts = decodeArtifacts(record.artifactsJson)
+      val state = artifacts[GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY]
+        ?.let(::asGoalReviewArtifactMap)
+        ?.let(GoalSubtaskReviewState::fromArtifactMap)
+        ?: return@read null
+      val continuation = artifacts[FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY]
+        ?.let(::asGoalReviewArtifactMap)
+        ?.let(FeatureTaskRuntimeGoalContinuationArtifact::fromArtifactMap)
+        ?: return@read null
+      state to continuation
+    } ?: return GoalSubtaskReviewInputPreparation.MissingState
+    val (state, continuation) = durable
     val result = gitOperations.buildGoalSubtaskReviewInput(
       repoRoot,
       GoalSubtaskReviewBaseline(state.reviewBaseSha, state.baselineUntrackedPaths),
+      continuation.goalBranch,
     )
     if (!result.ok) return GoalSubtaskReviewInputPreparation.Blocked(result.error)
     val persisted = persistGoalReviewInput(workflowId, requireNotNull(result.input), dbOverride)
@@ -245,6 +262,7 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
 sealed interface GoalSubtaskReviewPassReservation {
   data object MissingState : GoalSubtaskReviewPassReservation
   data class Reserved(val state: GoalSubtaskReviewState) : GoalSubtaskReviewPassReservation
+  data class InFlight(val state: GoalSubtaskReviewState) : GoalSubtaskReviewPassReservation
   data class CarryForward(val state: GoalSubtaskReviewState) : GoalSubtaskReviewPassReservation
 }
 

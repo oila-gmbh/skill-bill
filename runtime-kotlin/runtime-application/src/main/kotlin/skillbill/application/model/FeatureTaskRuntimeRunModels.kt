@@ -63,6 +63,7 @@ data class FeatureTaskRuntimeGoalContinuationContext(
     require(parentIssueKey.isNotBlank()) { "parentIssueKey is required." }
     require(subtaskId > 0) { "subtaskId must be positive." }
     require(goalBranch.isNotBlank()) { "goalBranch is required." }
+    requireNotNull(reviewBaseline) { "reviewBaseline is required for goal continuation before implementation can begin." }
     parentWorkflowId?.let { require(it.isNotBlank()) { "parentWorkflowId must be non-blank when provided." } }
     lastResumableStep?.let { require(it.isNotBlank()) { "lastResumableStep must be non-blank when provided." } }
   }

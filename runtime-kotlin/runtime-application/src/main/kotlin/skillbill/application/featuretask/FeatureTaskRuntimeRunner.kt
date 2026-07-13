@@ -851,12 +851,21 @@ class FeatureTaskRuntimeRunner(
     if (run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW || !isGoalContinuationRun(run.request)) {
       return GoalReviewRunPreparation.Ready(run)
     }
-    when (goalContinuationRecorder.reserveGoalReviewPass(run.request.workflowId, run.request.dbPathOverride)) {
+    when (val reservation = goalContinuationRecorder.reserveGoalReviewPass(run.request.workflowId, run.request.dbPathOverride)) {
       GoalSubtaskReviewPassReservation.MissingState -> {
         blockAndPersist(
           run,
           1,
           "Goal-subtask review state is missing; review_base_sha must be captured before implementation and cannot be substituted.",
+          observability,
+        )
+        return GoalReviewRunPreparation.Blocked
+      }
+      is GoalSubtaskReviewPassReservation.InFlight -> {
+        blockAndPersist(
+          run,
+          1,
+          "Goal-subtask review pass ${reservation.state.reservedPassNumber} is already reserved without a durable result; refusing to launch an unaccounted review pass.",
           observability,
         )
         return GoalReviewRunPreparation.Blocked
@@ -1086,16 +1095,33 @@ class FeatureTaskRuntimeRunner(
         // Blocker/Major (AC1). Route the missing signal through the SAME loud schema-gate failure path
         // so the fix loop retries and ultimately blocks rather than silently advancing to audit. An
         // explicit empty findings array or an explicit verdict still legitimately advances.
-      } ?: mutatingReconciliationGateReason(run.phaseId, outputMap)?.let(AttemptResult::schemaInvalid)
-        ?: reviewVerificationSignalGateReason(run.phaseId, outputMap)?.let(AttemptResult::schemaInvalid)
-        ?: auditVerificationSignalGateReason(run.phaseId, outputMap)?.let(AttemptResult::schemaInvalid) ?: run {
+      } ?: mutatingReconciliationGateReason(run.phaseId, outputMap)?.let { reason ->
+        schemaInvalidAttempt(run, iteration, reason, observability)
+      } ?: reviewVerificationSignalGateReason(run.phaseId, outputMap)?.let { reason ->
+        schemaInvalidAttempt(run, iteration, reason, observability)
+      } ?: auditVerificationSignalGateReason(run.phaseId, outputMap)?.let { reason ->
+        schemaInvalidAttempt(run, iteration, reason, observability)
+      } ?: run {
         persistPhase(run, iteration, STATUS_COMPLETED, finished = true, outputArtifact = outputText)
         if (run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW && isGoalContinuationRun(run.request)) {
           val findings = GoalSubtaskReviewSummaryReducer.fromOutput(outputMap)
-          val unresolved = findings.count { finding -> finding.severity == "blocker" || finding.severity == "major" }
+          val structuredUnresolved = findings.count { finding -> finding.severity == "blocker" || finding.severity == "major" }
+          val declaredVerdict = (outputMap[FeatureTaskRuntimeVerificationSignalKeys.VERDICT] as? String)
+            ?.takeIf(String::isNotBlank)
+            ?.let(FeatureTaskRuntimeVerdict::fromWire)
+          val verdict = when {
+            structuredUnresolved > 0 -> FeatureTaskRuntimeVerdict.CHANGES_REQUESTED
+            declaredVerdict != null -> declaredVerdict
+            else -> FeatureTaskRuntimeVerdict.APPROVED
+          }
+          val unresolved = if (verdict == FeatureTaskRuntimeVerdict.APPROVED) {
+            structuredUnresolved
+          } else {
+            structuredUnresolved.coerceAtLeast(1)
+          }
           goalContinuationRecorder.completeGoalReviewPass(
             workflowId = run.request.workflowId,
-            verdict = if (unresolved > 0) FeatureTaskRuntimeVerdict.CHANGES_REQUESTED else FeatureTaskRuntimeVerdict.APPROVED,
+            verdict = verdict,
             unresolvedFindingCount = unresolved,
             findings = findings,
             rawReviewResult = outputText,
@@ -1108,8 +1134,28 @@ class FeatureTaskRuntimeRunner(
         )
       }
     } catch (error: InvalidFeatureTaskRuntimePhaseOutputSchemaError) {
-      AttemptResult.schemaInvalid(error.reason)
+      schemaInvalidAttempt(run, iteration, error.reason, observability)
     }
+  }
+
+  private fun schemaInvalidAttempt(
+    run: PhaseRun,
+    iteration: Int,
+    reason: String,
+    observability: FeatureTaskRuntimeRunObservability,
+  ): AttemptResult = if (
+    run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW && isGoalContinuationRun(run.request)
+  ) {
+    AttemptResult.settled(
+      blockAndPersistInPhase(
+        run,
+        iteration,
+        "Goal-subtask review output failed schema validation after its reserved pass; refusing an unaccounted relaunch. $reason",
+        observability,
+      ),
+    )
+  } else {
+    AttemptResult.schemaInvalid(reason)
   }
 
   private fun persistPhase(run: PhaseRun, iteration: Int, status: String, finished: Boolean, outputArtifact: String?) {

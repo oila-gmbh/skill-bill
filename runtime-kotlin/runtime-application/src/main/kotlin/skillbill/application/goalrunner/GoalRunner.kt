@@ -35,6 +35,8 @@ import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.goalrunner.GoalPullRequestPort
 import skillbill.ports.goalrunner.GoalRunnerManifestStore
+import skillbill.ports.goalrunner.GoalRunnerChildWorkflowSetup
+import skillbill.ports.goalrunner.GoalRunnerReviewPolicy
 import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.GoalRunnerWorkflowOutcomeStore
 import skillbill.ports.goalrunner.model.GoalPullRequestRequest
@@ -80,25 +82,47 @@ class GoalRunner(
   fun run(request: GoalRunnerRunRequest): GoalRunnerRunReport {
     var state = manifestStore.loadByIssueKey(request.issueKey, request.dbPathOverride, request.repoRoot)
       ?: return unknownGoal(request.issueKey)
-    val persistedReviewMode = manifestStore.reviewMode(state.parentWorkflowId, request.dbPathOverride)
-    if (persistedReviewMode != null && request.codeReviewMode != null && persistedReviewMode != request.codeReviewMode) {
+    val persistedReviewPolicy = manifestStore.reviewPolicy(state.parentWorkflowId, request.dbPathOverride)
+    if (persistedReviewPolicy != null && request.codeReviewMode != null &&
+      persistedReviewPolicy.codeReviewMode != request.codeReviewMode
+    ) {
       return stopped(
         issueKey = request.issueKey,
         attempted = emptyList(),
         subtaskId = 0,
         reason = GoalRunnerStopReason.BLOCKED,
         blockedReason = "Cannot change code-review mode on goal resume: parent workflow '${state.parentWorkflowId}' is pinned to " +
-          "'${persistedReviewMode.wireValue}', not '${request.codeReviewMode.wireValue}'.",
+          "'${persistedReviewPolicy.codeReviewMode.wireValue}', not '${request.codeReviewMode.wireValue}'.",
         workflowId = state.parentWorkflowId,
         lastResumableStep = "preplan",
       )
     }
-    val effectiveReviewMode = persistedReviewMode ?: manifestStore.persistReviewMode(
+    if (persistedReviewPolicy != null && request.parallelReviewAgent != null &&
+      persistedReviewPolicy.parallelReviewAgent != request.parallelReviewAgent
+    ) {
+      return stopped(
+        issueKey = request.issueKey,
+        attempted = emptyList(),
+        subtaskId = 0,
+        reason = GoalRunnerStopReason.BLOCKED,
+        blockedReason = "Cannot change parallel-review agent on goal resume: parent workflow '${state.parentWorkflowId}' is pinned to " +
+          "'${persistedReviewPolicy.parallelReviewAgent ?: "none"}', not '${request.parallelReviewAgent}'.",
+        workflowId = state.parentWorkflowId,
+        lastResumableStep = "preplan",
+      )
+    }
+    val effectiveReviewPolicy = persistedReviewPolicy ?: manifestStore.persistReviewPolicy(
       parentWorkflowId = state.parentWorkflowId,
-      mode = request.codeReviewMode ?: CodeReviewExecutionMode.AUTO,
+      policy = GoalRunnerReviewPolicy(
+        codeReviewMode = request.codeReviewMode ?: CodeReviewExecutionMode.AUTO,
+        parallelReviewAgent = request.parallelReviewAgent,
+      ),
       dbPathOverride = request.dbPathOverride,
     )
-    val effectiveRequest = request.copy(codeReviewMode = effectiveReviewMode)
+    val effectiveRequest = request.copy(
+      codeReviewMode = effectiveReviewPolicy.codeReviewMode,
+      parallelReviewAgent = effectiveReviewPolicy.parallelReviewAgent,
+    )
     val attempted = mutableListOf<Int>()
     val observability = GoalRunnerObservabilityEmitter(outcomeStore, effectiveRequest)
     val ledger = GoalRunnerLedgerRecorder(outcomeStore, effectiveRequest, diagnostics)
@@ -239,7 +263,7 @@ class GoalRunner(
       "Could not capture the goal-subtask review baseline before implementation. Refusing to substitute a branch-wide scope.",
       request,
     )
-    val prepared = prepareAttemptedLaunch(state, subtaskId, request)
+    val prepared = prepareAttemptedLaunch(state, subtaskId, request, reviewBaseline)
     val attemptedState = prepared.state
     attempted += subtaskId
     emitSubtaskStarted(attemptedState, subtaskId, selection, request, telemetryEmitter)
@@ -380,13 +404,31 @@ class GoalRunner(
     state: GoalRunnerManifestState,
     subtaskId: Int,
     request: GoalRunnerRunRequest,
+    reviewBaseline: GoalSubtaskReviewBaseline,
   ): PreparedLaunch {
     val priorWorkflowId = state.manifest.workflowIdFor(subtaskId)
     val firstRun = priorWorkflowId == null
     val assignedWorkflowId = priorWorkflowId ?: generateWorkflowId(RUNTIME_WORKFLOW_ID_PREFIX)
     val attemptedManifest = state.manifest.withAttemptedSubtask(subtaskId)
       .let { manifest -> if (firstRun) manifest.withWorkflowId(subtaskId, assignedWorkflowId) else manifest }
-    val attemptedState = manifestStore.save(state.copy(manifest = attemptedManifest), request.dbPathOverride)
+    val attemptedState = if (firstRun) {
+      val branch = attemptedManifest.branchPlanFor(subtaskId).branch.takeIf(String::isNotBlank)
+        ?: attemptedManifest.featureBranch?.takeIf(String::isNotBlank)
+        ?: error("Goal subtask '$subtaskId' has no durable branch for review baseline persistence.")
+      manifestStore.saveNewChildWorkflow(
+        state.copy(manifest = attemptedManifest),
+        GoalRunnerChildWorkflowSetup(
+          subtaskId = subtaskId,
+          workflowId = assignedWorkflowId,
+          goalBranch = branch,
+          reviewBaseline = reviewBaseline,
+          codeReviewMode = request.codeReviewMode ?: CodeReviewExecutionMode.AUTO,
+        ),
+        request.dbPathOverride,
+      )
+    } else {
+      manifestStore.save(state.copy(manifest = attemptedManifest), request.dbPathOverride)
+    }
     return PreparedLaunch(attemptedState, assignedWorkflowId.takeIf { firstRun })
   }
 
@@ -986,6 +1028,7 @@ internal class GoalRunnerLaunchReconciler(
         childWorkflowId = childWorkflowId,
         assignedWorkflowId = assignedWorkflowId,
         codeReviewMode = request.codeReviewMode ?: CodeReviewExecutionMode.AUTO,
+        parallelReviewAgent = request.parallelReviewAgent,
         reviewBaseline = state.manifest.workflowIdFor(subtaskId)
           ?.let { workflowId -> outcomeStore.goalSubtaskReviewState(workflowId, request.dbPathOverride) }
           ?.let { reviewState -> GoalSubtaskReviewBaseline(reviewState.reviewBaseSha, reviewState.baselineUntrackedPaths) }

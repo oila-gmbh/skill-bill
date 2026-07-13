@@ -52,6 +52,7 @@ data class SkillRunGoalContinuationContext(
   val childWorkflowId: String? = null,
   val assignedWorkflowId: String? = null,
   val codeReviewMode: CodeReviewExecutionMode = CodeReviewExecutionMode.AUTO,
+  val parallelReviewAgent: String? = null,
   val reviewBaseline: GoalSubtaskReviewBaseline? = null,
 ) {
   init {
@@ -63,6 +64,7 @@ data class SkillRunGoalContinuationContext(
     lastResumableStep?.let { require(it.isNotBlank()) { "lastResumableStep must be non-blank when provided." } }
     childWorkflowId?.let { require(it.isNotBlank()) { "childWorkflowId must be non-blank when provided." } }
     assignedWorkflowId?.let { require(it.isNotBlank()) { "assignedWorkflowId must be non-blank when provided." } }
+    parallelReviewAgent?.let { require(it.isNotBlank()) { "parallelReviewAgent must be non-blank when provided." } }
   }
 }
 

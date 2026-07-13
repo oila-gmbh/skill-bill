@@ -36,6 +36,12 @@ duplicate, or conflicting values fail before confirmation or goal launch. The
 selected mode is immutable for the parent and every child: a resume reuses it,
 and an attempted explicit change must fail loudly before launching a subtask.
 
+Accept at most one `parallel-review:<agent>` token independently of the review
+mode. Omission means one review lane; when present, show the selected agent in
+the confirmation gate and carry it unchanged through runtime and prose child
+launches. The parent persists this lane selection with the review mode, and a
+resume must reuse it rather than silently dropping or changing the second lane.
+
 **opencode and zcode are prose-only.** When the agent currently executing this skill is opencode or zcode, prose is the implicit default and runtime mode is unsupported: opencode's foreground Bash tool is hard-killed at 120s before a phase can finish and per-phase output cannot be harvested back; zcode's foreground runtime exceeds the Bash execution ceiling and a detached zcode child emits no harvestable output before the supervisor kills it as unresponsive. On opencode or zcode: with no mode arg, resolve to `prose` (no need to pass `mode:prose`); with an explicit `mode:runtime`, stop and emit the actionable refusal and do NOT hand off to the `skill-bill goal` runtime:
 
 > Runtime mode is not supported on opencode or zcode in this harness. opencode's foreground Bash tool is hard-killed at 120s before a phase can finish and per-phase output cannot be harvested back; zcode's foreground runtime exceeds the Bash execution ceiling and a detached zcode child emits no harvestable output before the supervisor kills it as unresponsive. Use prose instead — run bill-feature-task-prose for a single feature task, or bill-feature-goal mode:prose for a decomposed goal.
@@ -86,6 +92,7 @@ Then present a concise proposal that includes:
 - the expected first runnable subtask
 - the agent that will be used for child runs, including any explicit override
 - the resolved mode: show `runtime (default)` when the mode was not specified, `runtime` when explicitly set, or `prose` when `mode:prose` was passed
+- the parallel review agent when `parallel-review:<agent>` was passed, or `none` otherwise
 - the requested code-review selection, showing `auto (default)` when omitted
 
 Ask one confirmation question: whether to proceed with this decomposition and start the goal loop in the resolved mode.
@@ -160,9 +167,10 @@ foreground driver directly in the current agent session, always passing
 skill-bill goal <issue_key> --agent <currently-executing-agent>
 ```
 
-Append `--code-review-mode <auto|inline|delegated>` and require the runtime to
-pass it to every child. Parallel review remains a second full lane; both lanes
-receive this mode and neither may recursively launch parallel review.
+Append `--code-review-mode <auto|inline|delegated>` and, when requested,
+`--parallel-review-agent <agent>`; require the runtime to pass both selections
+to every child. Parallel review remains a second full lane; both lanes receive
+this mode and neither may recursively launch parallel review.
 
 ### Rehydrate a missing linear-mode spec before launch/resume
 
@@ -316,9 +324,11 @@ After the user confirms at that single gate, `mode:prose` does NOT launch
 exactly one Level-1 subtask-agent via the Agent tool with a self-contained
 briefing. The agent type is `bill-feature-task-subtask-runner`. The briefing
 must carry: `issue_key`, `subtask_id`, `workflow_id` (from the manifest or the
-continuation selector result), `spec_path`, and the goal-continuation contract
-rules (`suppress_pr=true`, `commit_push` is the terminal signal, no install
-flows). The Level-1 agent runs the full phase loop
+continuation selector result), `spec_path`, durable `code_review_mode`, optional
+`parallel_review_agent`, `review_base_sha`, baseline-untracked inventory,
+completed and reserved review-pass state, the cap disposition, and the
+goal-continuation contract rules (`suppress_pr=true`, `commit_push` is the
+terminal signal, no install flows). The Level-1 agent runs the full phase loop
 (preplan → plan → implement → review → audit → validate → history → commit_push)
 in its own fresh context and returns a bounded RESULT block.
 

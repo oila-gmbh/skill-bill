@@ -168,6 +168,8 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
     workflowId: () -> String,
   ) {
     val state = deps.state
+    val requestedReviewMode = requestedCodeReviewMode()
+    val goalContinuation = parseGoalContinuationContext(requestedReviewMode)
     val prepared = prepareRuntimeRun(deps)
     val report = deps.runner.run(
       FeatureTaskRuntimeRunRequest(
@@ -183,8 +185,8 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
         repoRoot = prepared.repoRoot,
         timeout = maxWallClockMinutes?.minutes,
         parallelReviewAgent = parallelReviewAgent?.takeIf(String::isNotBlank),
-        requestedCodeReviewMode = requestedCodeReviewMode(),
-        goalContinuation = parseGoalContinuationContext(),
+        requestedCodeReviewMode = requestedReviewMode,
+        goalContinuation = goalContinuation,
         eventSink = runtimeRunEventSink(state, monitor),
       ),
     )
@@ -243,7 +245,9 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
     }
   }
 
-  private fun parseGoalContinuationContext(): FeatureTaskRuntimeGoalContinuationContext? {
+  private fun parseGoalContinuationContext(
+    requestedReviewMode: CodeReviewExecutionMode?,
+  ): FeatureTaskRuntimeGoalContinuationContext? {
     val supplied = listOf(goalParentIssueKey, goalSubtaskId, goalBranch).count { it != null } +
       if (suppressPr) 1 else 0
     if (supplied == 0) {
@@ -260,8 +264,8 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
       suppressPr = true,
       parentWorkflowId = goalParentWorkflowId?.takeIf(String::isNotBlank),
       lastResumableStep = goalLastResumableStep?.takeIf(String::isNotBlank),
-      codeReviewMode = requestedCodeReviewMode() ?: CodeReviewExecutionMode.AUTO,
-      reviewBaseline = goalReviewBaseSha?.takeIf(String::isNotBlank)?.let { base ->
+      codeReviewMode = requestedReviewMode ?: CodeReviewExecutionMode.AUTO,
+      reviewBaseline = requireNotNull(goalReviewBaseSha?.takeIf(String::isNotBlank)) { "--goal-review-base-sha is required with goal-continuation options." }.let { base ->
         GoalSubtaskReviewBaseline(base, goalBaselineUntrackedPaths.distinct().sorted())
       },
     )
@@ -279,6 +283,7 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
     if (goalParentIssueKey.isNullOrBlank()) add("--goal-parent-issue-key is")
     if (goalSubtaskId == null) add("--goal-subtask-id is")
     if (goalBranch.isNullOrBlank()) add("--goal-branch is")
+    if (goalReviewBaseSha.isNullOrBlank()) add("--goal-review-base-sha is")
     if (!suppressPr) add("--suppress-pr is")
   }
 }

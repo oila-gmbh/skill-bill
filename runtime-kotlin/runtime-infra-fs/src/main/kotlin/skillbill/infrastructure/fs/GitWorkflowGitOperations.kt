@@ -164,7 +164,21 @@ class GitWorkflowGitOperations : WorkflowGitOperations {
   override fun buildGoalSubtaskReviewInput(
     repoRoot: Path,
     baseline: GoalSubtaskReviewBaseline,
+    expectedBranch: String,
   ): GoalSubtaskReviewInputResult {
+    val branch = runGitCommand(repoRoot, "branch", "--show-current")
+    if (!branch.ok || branch.value.isBlank()) {
+      return GoalSubtaskReviewInputResult(
+        status = "error",
+        error = branch.error.ifBlank { "Could not resolve the child branch for goal-subtask review." },
+      )
+    }
+    if (branch.value.trim() != expectedBranch) {
+      return GoalSubtaskReviewInputResult(
+        status = "error",
+        error = "Goal-subtask review must run on durable child branch '$expectedBranch', but current worktree is on '${branch.value.trim()}'.",
+      )
+    }
     val verified = runGitCommand(repoRoot, "cat-file", "-e", "${baseline.reviewBaseSha}^{commit}")
     if (!verified.ok) {
       return GoalSubtaskReviewInputResult(
