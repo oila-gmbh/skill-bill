@@ -1043,19 +1043,70 @@ class CliFeatureTaskRuntimeModelDirectiveTest {
   }
 
   @Test
-  fun `feature-task runtime rejects an unknown review mode before workflow opening`() {
-    val fixture = runtimeFixture()
-    val launcher = RecordingPhaseLauncher()
+  fun `feature-task runtime rejects malformed and unknown review modes before workflow opening`() {
+    listOf(
+      listOf("--code-review-mode", "unknown"),
+      listOf("--code-review-mode="),
+    ).forEach { modeArgs ->
+      val fixture = runtimeFixture()
+      val launcher = RecordingPhaseLauncher()
 
-    val result = CliRuntime.run(
-      fixture.runCommand(extra = listOf("--agent", "codex", "--code-review-mode", "unknown")),
-      fixture.context(launcher),
-    )
+      val result = CliRuntime.run(
+        fixture.runCommand(extra = listOf("--agent", "codex") + modeArgs),
+        fixture.context(launcher),
+      )
 
-    assertEquals(1, result.exitCode, result.stdout)
-    assertContains(result.stdout, "Unknown code-review execution mode")
-    assertEquals(emptyList(), launcher.requests)
-    assertFalse(result.stdout.contains("workflow_id:"), result.stdout)
+      assertEquals(1, result.exitCode, result.stdout)
+      assertContains(result.stdout, "Unknown code-review execution mode")
+      assertEquals(emptyList(), launcher.requests)
+      assertFalse(result.stdout.contains("workflow_id:"), result.stdout)
+    }
+  }
+
+  @Test
+  fun `feature-task runtime forwards omitted and explicit review modes unchanged to review`() {
+    listOf(
+      "omitted" to emptyList(),
+      "auto" to listOf("--code-review-mode", "auto"),
+      "inline" to listOf("--code-review-mode", "inline"),
+      "delegated" to listOf("--code-review-mode", "delegated"),
+    ).forEach { (expectedMode, modeArgs) ->
+      val fixture = runtimeFixture()
+      val launcher = RecordingPhaseLauncher()
+
+      val result = CliRuntime.run(
+        fixture.runCommand(extra = listOf("--agent", "codex") + modeArgs),
+        fixture.context(launcher),
+      )
+
+      assertEquals(0, result.exitCode, "$expectedMode: ${result.stdout}")
+      val reviewPrompt = launcher.requests
+        .map { requireNotNull(it.skillRunRequest.promptOverride) }
+        .single { it.contains("Phase: review") }
+      val forwardedMode = if (expectedMode == "omitted") "auto" else expectedMode
+      assertContains(reviewPrompt, "bill-code-review execution-mode:$forwardedMode")
+    }
+  }
+
+  @Test
+  fun `feature-task runtime rejects missing duplicate and conflicting review modes before workflow opening`() {
+    listOf(
+      "missing" to listOf("--code-review-mode"),
+      "duplicate" to listOf("--code-review-mode", "auto", "--code-review-mode", "auto"),
+      "conflicting" to listOf("--code-review-mode", "inline", "--code-review-mode", "delegated"),
+    ).forEach { (caseName, modeArgs) ->
+      val fixture = runtimeFixture()
+      val launcher = RecordingPhaseLauncher()
+
+      val result = CliRuntime.run(
+        fixture.runCommand(extra = listOf("--agent", "codex") + modeArgs),
+        fixture.context(launcher),
+      )
+
+      assertEquals(1, result.exitCode, "$caseName: ${result.stdout}")
+      assertEquals(emptyList(), launcher.requests, "$caseName: ${result.stdout}")
+      assertFalse(result.stdout.contains("workflow_id:"), "$caseName: ${result.stdout}")
+    }
   }
 
   @Test

@@ -125,10 +125,11 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
     help = "Run the review phase with a second parallel agent lane. " +
       "Supported agents: ${InstallAgent.supportedIds.joinToString()}.",
   )
-  protected val codeReviewMode by option(
+  protected val codeReviewModes by option(
     "--code-review-mode",
-    help = "Review execution mode: auto (default), inline, or delegated. A resumed workflow remains pinned to its original mode.",
-  )
+    help = "Review execution mode: auto (default), inline, or delegated. " +
+      "Supply at most once; a resumed workflow remains pinned to its original mode.",
+  ).multiple()
   protected val suppressPr by option(
     "--suppress-pr",
     help = "Suppress the runtime PR phase. Required with goal-continuation options.",
@@ -271,13 +272,31 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
     )
   }
 
-  private fun requestedCodeReviewMode(): CodeReviewExecutionMode? = codeReviewMode?.let { raw ->
-    try {
-      CodeReviewExecutionMode.fromWire(raw)
-    } catch (error: IllegalArgumentException) {
-      throw UsageError(error.message.orEmpty())
+  private fun requestedCodeReviewMode(): CodeReviewExecutionMode? {
+    val modes = codeReviewModes.map(::parseRequestedCodeReviewMode)
+    return when (modes.size) {
+      0 -> null
+      1 -> modes.single()
+      else -> {
+        val rawModes = codeReviewModes.joinToString(", ")
+        if (modes.distinct().size == 1) {
+          throw UsageError(
+            "Duplicate --code-review-mode '$rawModes' is not allowed; supply it at most once.",
+          )
+        }
+        throw UsageError(
+          "Conflicting --code-review-mode values '$rawModes' are not allowed; supply exactly one mode.",
+        )
+      }
     }
   }
+
+  private fun parseRequestedCodeReviewMode(raw: String): CodeReviewExecutionMode =
+    CodeReviewExecutionMode.entries.firstOrNull { it.wireValue == raw }
+      ?: throw UsageError(
+        "Unknown code-review execution mode '$raw'. Allowed: " +
+          "${CodeReviewExecutionMode.entries.joinToString { it.wireValue }}.",
+      )
 
   private fun goalContinuationMissingFields(): List<String> = buildList {
     if (goalParentIssueKey.isNullOrBlank()) add("--goal-parent-issue-key is")

@@ -1,3 +1,12 @@
+## [2026-07-13] SKILL-119 review-mode selection contract
+Areas: runtime-kotlin/runtime-cli, runtime-kotlin/runtime-application, runtime-kotlin/runtime-domain, skills/bill-feature*
+- The feature-facing `code-review:auto|inline|delegated` selection now travels from the router-owned confirmation gate through CLI parsing, durable runtime invariants, and review-phase prompts. reusable
+- Reject malformed, unknown, duplicate, and conflicting review-mode inputs before confirmation or workflow opening; preserve the accepted selection across resume, review-fix re-review, and audit re-entry.
+- Pattern: keep review selection and confirmation authority in the router while review executors consume a normalized durable mode, retaining shared inline-eligibility rejection and explicit delegated routing. reusable
+- Known limitation: full-repository Gradle remains non-green only on pre-existing SKILL-117 and goal-review baseline findings outside this subtask's delta.
+Feature flag: N/A
+Acceptance criteria: 5/5 implemented
+
 ## [2026-07-12] SKILL-113 execution matrix per-phase model and effort tiers
 Areas: runtime-kotlin/runtime-domain config/install, runtime-application feature-task/config, runtime-cli feature-task/core, runtime-infra-fs config/launcher, runtime-ports agent-run
 - Machine-global `execution_matrix` in `~/.config/skill-bill/config.json` maps per-agent reasoning/implementation tiers to model and optional effort, with default phase tiers, per-phase overrides, typed dotted-path validation failures, and unchanged behavior when absent. reusable

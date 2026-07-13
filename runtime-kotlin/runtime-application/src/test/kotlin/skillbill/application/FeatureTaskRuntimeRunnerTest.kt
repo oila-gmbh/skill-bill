@@ -63,6 +63,7 @@ import skillbill.ports.workflow.model.GoalSubtaskReviewInputResult
 import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksRequest
 import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksResult
 import skillbill.ports.workflow.model.WorkflowWorktreeActivityResult
+import skillbill.review.CodeReviewExecutionMode
 import skillbill.telemetry.model.FeatureTaskRuntimeFinishedRecord
 import skillbill.telemetry.model.FeatureTaskRuntimeStartedRecord
 import skillbill.telemetry.model.TelemetrySettings
@@ -79,6 +80,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -1393,10 +1395,14 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
         ),
       ),
     )
-    harness.runner.run(harness.request().copy(transitionsOverride = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration(
-      forwardPhaseIds = listOf("preplan"),
-      backwardEdges = emptyList(),
-    )))
+    harness.runner.run(
+      harness.request().copy(
+        transitionsOverride = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration(
+          forwardPhaseIds = listOf("preplan"),
+          backwardEdges = emptyList(),
+        ),
+      ),
+    )
     harness.goalContinuationRecorder.reserveGoalReviewPass(WORKFLOW_ID)
     harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), PREPLAN_OUTPUT)
     harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), PLAN_OUTPUT)
@@ -1415,8 +1421,9 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
 
     val state = requireNotNull(harness.goalContinuationRecorder.reviewState(WORKFLOW_ID))
     assertEquals(1, state.completedPassCount)
-    assertEquals(FeatureTaskRuntimeVerdict.CHANGES_REQUESTED, state.passResults.single().verdict)
-    assertEquals(1, state.passResults.single().unresolvedFindingCount)
+    val passResult = state.passResults.single()
+    assertEquals(FeatureTaskRuntimeVerdict.CHANGES_REQUESTED, passResult.verdict)
+    assertEquals(1, passResult.unresolvedFindingCount)
   }
 
   @Test
@@ -1861,7 +1868,9 @@ class FeatureTaskRuntimeReviewFixLoopTest {
   fun `m1 changes_requested spawns implement_fix with the findings then re-reviews`() {
     val harness = runnerHarness(launcher = reviewFixLauncher(convergeOnReview = 2))
 
-    val report = harness.runner.run(harness.request())
+    val report = harness.runner.run(
+      harness.request().copy(requestedCodeReviewMode = CodeReviewExecutionMode.DELEGATED),
+    )
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
     val launched = harness.launchedPromptPhaseOrder()
@@ -1880,6 +1889,65 @@ class FeatureTaskRuntimeReviewFixLoopTest {
       .filter { it.action == FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE }
     assertEquals(listOf(1), loopEdges.mapNotNull { it.edgeIteration })
     assertTrue(loopEdges.all { it.loopId == "review_fix" })
+    val reviewPrompts = harness.launcher.requests
+      .map { requireNotNull(it.skillRunRequest.promptOverride) }
+      .filter { it.contains("Phase: review") }
+    assertEquals(2, reviewPrompts.size)
+    assertTrue(reviewPrompts.all { it.contains("bill-code-review execution-mode:delegated") })
+    assertEquals(
+      CodeReviewExecutionMode.DELEGATED,
+      requireNotNull(harness.runInvariantsStore.resolve(WORKFLOW_ID)).codeReviewMode,
+    )
+  }
+
+  @Test
+  fun `resume without a review-mode request retains the durable mode for a re-review`() {
+    var failFirstReview = true
+    val harness = runnerHarness(
+      launcher = RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        if (phaseId == "review" && failFirstReview) {
+          failFirstReview = false
+          spawnFailedFacts()
+        } else {
+          facts(validJsonOutput(phaseId))
+        }
+      },
+    )
+
+    val first = harness.runner.run(
+      harness.request().copy(requestedCodeReviewMode = CodeReviewExecutionMode.INLINE),
+    )
+    assertIs<FeatureTaskRuntimeRunReport.Blocked>(first)
+
+    val resumed = harness.runner.run(harness.request())
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(resumed)
+    val reviewPrompts = harness.launcher.requests
+      .map { requireNotNull(it.skillRunRequest.promptOverride) }
+      .filter { it.contains("Phase: review") }
+    assertEquals(2, reviewPrompts.size)
+    assertTrue(reviewPrompts.all { it.contains("bill-code-review execution-mode:inline") })
+    assertEquals(
+      CodeReviewExecutionMode.INLINE,
+      requireNotNull(harness.runInvariantsStore.resolve(WORKFLOW_ID)).codeReviewMode,
+    )
+  }
+
+  @Test
+  fun `resume rejects a changed review mode before opening or launching`() {
+    val harness = runnerHarness()
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(
+      harness.runner.run(harness.request().copy(requestedCodeReviewMode = CodeReviewExecutionMode.INLINE)),
+    )
+    val launchCount = harness.launcher.requests.size
+
+    val report = harness.runner.run(
+      harness.request().copy(requestedCodeReviewMode = CodeReviewExecutionMode.DELEGATED),
+    )
+
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
+    assertContains(blocked.blockedReason, "Cannot change code-review mode on resume")
+    assertEquals(launchCount, harness.launcher.requests.size)
   }
 
   // (c) AC3/AC10: convergence on the third review (two fix iterations) still advances to audit.

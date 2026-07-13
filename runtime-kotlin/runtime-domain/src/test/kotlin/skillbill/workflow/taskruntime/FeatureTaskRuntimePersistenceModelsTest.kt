@@ -274,18 +274,28 @@ class FeatureTaskRuntimePersistenceModelsTest {
 
   @Test
   fun `run-invariants persist the selected code-review mode strictly`() {
-    val invariants = FeatureTaskRuntimeRunInvariants(
+    CodeReviewExecutionMode.entries.forEach { mode ->
+      val invariants = FeatureTaskRuntimeRunInvariants(
+        specReference = ".feature-specs/SKILL-119/spec.md",
+        acceptanceCriteria = listOf("AC-1"),
+        mandatesAndOverrides = emptyList(),
+        codeReviewMode = mode,
+      )
+      val map = invariants.toArtifactMap()
+
+      assertEquals(mode.wireValue, map["code_review_mode"])
+      assertEquals(invariants, featureTaskRuntimeRunInvariantsFromArtifactMap(map))
+    }
+    val invalid = FeatureTaskRuntimeRunInvariants(
       specReference = ".feature-specs/SKILL-119/spec.md",
       acceptanceCriteria = listOf("AC-1"),
       mandatesAndOverrides = emptyList(),
-      codeReviewMode = CodeReviewExecutionMode.DELEGATED,
-    )
-    val map = invariants.toArtifactMap()
-
-    assertEquals("delegated", map["code_review_mode"])
-    assertEquals(invariants, featureTaskRuntimeRunInvariantsFromArtifactMap(map))
+    ).toArtifactMap()
     assertFailsWith<InvalidWorkflowStateSchemaError> {
-      featureTaskRuntimeRunInvariantsFromArtifactMap(map + ("code_review_mode" to "DELEGATED"))
+      featureTaskRuntimeRunInvariantsFromArtifactMap(invalid + ("code_review_mode" to "DELEGATED"))
+    }
+    assertFailsWith<InvalidWorkflowStateSchemaError> {
+      featureTaskRuntimeRunInvariantsFromArtifactMap(invalid - "code_review_mode")
     }
   }
 

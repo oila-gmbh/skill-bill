@@ -32,6 +32,19 @@ class FeatureTaskRuntimePhasePromptComposerTest {
   }
 
   @Test
+  fun `review prompt preserves every durable execution mode unchanged`() {
+    CodeReviewExecutionMode.entries.forEach { mode ->
+      val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
+        ISSUE_KEY,
+        briefingFor("review"),
+        codeReviewMode = mode,
+      )
+
+      assertContains(prompt, "bill-code-review execution-mode:${mode.wireValue}")
+    }
+  }
+
+  @Test
   fun `composes header briefing and output contract for every runtime phase`() {
     FeatureTaskRuntimePhaseWorkflowDefinition.definition.stepIds.forEach { phaseId ->
       val prompt = FeatureTaskRuntimePhasePromptComposer.compose(ISSUE_KEY, briefingFor(phaseId))

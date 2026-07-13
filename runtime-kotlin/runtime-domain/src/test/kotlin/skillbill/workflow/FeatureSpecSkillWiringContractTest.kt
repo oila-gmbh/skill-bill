@@ -5,6 +5,7 @@ import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 
 class FeatureSpecSkillWiringContractTest {
   @Test
@@ -76,17 +77,36 @@ class FeatureSpecSkillWiringContractTest {
     val task = Files.readString(repoRootFromTest().resolve("skills/bill-feature-task/content.md"))
     val goal = Files.readString(repoRootFromTest().resolve("skills/bill-feature-goal/content.md"))
     val review = Files.readString(repoRootFromTest().resolve("skills/bill-code-review/content.md"))
+    val runtime = Files.readString(repoRootFromTest().resolve("skills/bill-feature-task-runtime/content.md"))
+    val prose = Files.readString(repoRootFromTest().resolve("skills/bill-feature-task-prose/content.md"))
+    val subtaskRunner = Files.readString(
+      repoRootFromTest().resolve("skills/bill-feature-task-subtask-runner/content.md"),
+    )
     val nativeAgents = Files.readString(
       repoRootFromTest().resolve("skills/bill-feature-task-prose/native-agents/agents.yaml"),
     )
 
     assertContains(feature, "zero or one `code-review:auto`, `code-review:inline`, or")
     assertContains(feature, "Reject a malformed, unknown, repeated, or conflicting")
+    assertContains(feature, "When omitted, do not synthesize `code-review:auto`")
+    assertContains(feature, "omitting the `code-review:` token when the caller did not provide it")
     assertContains(task, "the requested code-review selection, showing `auto (default)` when omitted")
-    assertContains(goal, "The selected mode is immutable for the parent and every child")
+    assertEquals(1, countOccurrences(task, "Ask exactly one confirmation question"))
+    assertContains(task, "not repeat intake or present another confirmation gate")
+    assertContains(runtime, "The `bill-feature-task` router has already rejected invalid review-selection")
+    assertContains(runtime, "Do not reparse, default, or\nchange `code-review:<selected-mode>`")
+    assertFalse(runtime.contains("## Single Confirmation Gate"))
+    assertContains(prose, "Obtain the normalized `code-review:auto|inline|delegated` selection")
+    assertContains(prose, "durable goal and child workflow state supply the immutable")
+    assertContains(prose, "This sidecar must not reparse the token, present another gate")
+    assertContains(prose, "The router's confirmation is the only gate")
+    assertFalse(prose.contains("Then ask: **Confirm or adjust the above before I plan.**"))
+    assertContains(subtaskRunner, "bill-code-review execution-mode:<code_review_mode>")
+    assertFalse(subtaskRunner.contains("bill-code-review execution-mode:code_review_mode"))
+    assertContains(goal, "selected mode is immutable for the parent and every child")
     assertContains(review, "`delegated` always runs the normal routed delegated path")
-    assertContains(review, "`inline` is allowed only after every shared eligibility condition passes")
-    assertContains(review, "do not pass `parallel:` into lane 2")
+    assertContains(review, "is allowed only after every shared eligibility condition passes")
+    assertContains(review, "Do not pass `parallel:` into lane 2")
     assertContains(nativeAgents, "Code-review execution mode: {code_review_mode}")
     assertContains(nativeAgents, "Parallel review agent: {parallel_review_agent}")
     assertContains(nativeAgents, "Immutable review base SHA: {review_base_sha}")

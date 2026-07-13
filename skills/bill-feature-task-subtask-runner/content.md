@@ -23,8 +23,8 @@ runs the full phase loop for that subtask by calling
 contract verbatim: `suppress_pr=true`, no install flows, `commit_push` is the
 terminal success signal.
 
-For every review pass, call `bill-code-review
-execution-mode:<code_review_mode>` against only the durable child-owned
+For every review pass, call `bill-code-review execution-mode:<code_review_mode>`
+against only the durable child-owned
 base-to-current delta. Include committed, staged, unstaged, and owned
 untracked changes; do not review `origin/main...HEAD`, the feature branch, or
 earlier-subtask commits. When `parallel_review_agent` is set, start exactly its

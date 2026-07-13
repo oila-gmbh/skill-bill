@@ -63,4 +63,6 @@ When mode is `prose`:
 
 - Read the file `bill-feature-task-prose.md` located in this skill's own installed directory (a sibling of this `SKILL.md`) and execute its instructions in the current session. Forward `--agent`, `--agent-override`, `--phase-agent`, `parallel-review:<agent>`, and `code-review:<selected-mode>` identically from the args received by this router.
 
-Do not add a second confirmation gate on top of the delegated sidecar's own behavior. Delegate immediately after this router's own gate clears. The delegated sidecar owns its own intake, confirmation, and execution logic.
+Delegate immediately after this router's gate clears. The delegated sidecar consumes
+the confirmed normalized inputs and owns launch and execution behavior; it must
+not repeat intake or present another confirmation gate.
