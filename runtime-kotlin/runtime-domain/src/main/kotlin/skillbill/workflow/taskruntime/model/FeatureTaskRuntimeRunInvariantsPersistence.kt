@@ -2,6 +2,7 @@ package skillbill.workflow.taskruntime.model
 
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.error.InvalidWorkflowStateSchemaError
+import skillbill.workflow.model.CodeReviewExecutionMode
 
 /**
  * Durable run-scoped invariants resolved at run creation. Resume reads this artifact instead of
@@ -15,6 +16,7 @@ fun FeatureTaskRuntimeRunInvariants.toArtifactMap(): Map<String, Any?> = linkedM
   "feature_size" to featureSize.name,
   "acceptance_criteria" to acceptanceCriteria,
   "mandates_and_overrides" to mandatesAndOverrides,
+  "code_review_mode" to codeReviewMode.wireValue,
 )
 
 /** Strict decode of the durable run-invariants artifact. */
@@ -25,6 +27,7 @@ fun featureTaskRuntimeRunInvariantsFromArtifactMap(raw: Map<String, Any?>): Feat
     featureSize = raw.requireFeatureSizeField("feature_size"),
     acceptanceCriteria = raw.requireInvariantStringListField("acceptance_criteria"),
     mandatesAndOverrides = raw.requireInvariantStringListField("mandates_and_overrides"),
+    codeReviewMode = raw.requireCodeReviewModeField("code_review_mode"),
   )
 
 private fun Map<String, Any?>.requireInvariantStringField(key: String): String {
@@ -51,6 +54,12 @@ private fun Map<String, Any?>.requireFeatureSizeField(key: String): FeatureTaskR
   } catch (_: IllegalArgumentException) {
     runInvariantSchemaError("Feature-task-runtime artifact field '$key' must be one of SMALL, MEDIUM, LARGE.")
   }
+}
+
+private fun Map<String, Any?>.requireCodeReviewModeField(key: String): CodeReviewExecutionMode = try {
+  CodeReviewExecutionMode.fromWire(requireInvariantStringField(key))
+} catch (_: IllegalArgumentException) {
+  runInvariantSchemaError("Feature-task-runtime artifact field '$key' must be one of auto, inline, delegated.")
 }
 
 private fun runInvariantSchemaError(detail: String): Nothing = throw InvalidWorkflowStateSchemaError(detail)

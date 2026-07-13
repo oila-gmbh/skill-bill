@@ -33,6 +33,11 @@ data class FeatureTaskRuntimeVerdict(
      */
     val CHANGES_REQUESTED: FeatureTaskRuntimeVerdict = FeatureTaskRuntimeVerdict("changes_requested")
 
+    /** Goal-only continuation verdict: unresolved critical findings reached the two-pass cap. */
+    val REVIEW_CAP_REACHED: FeatureTaskRuntimeVerdict = FeatureTaskRuntimeVerdict("review_cap_reached")
+
+    val REVIEW_SKIPPED_BY_USER: FeatureTaskRuntimeVerdict = FeatureTaskRuntimeVerdict("review_skipped_by_user")
+
     /** An audit verdict with no unmet acceptance criteria: the run advances past audit to validate. */
     val SATISFIED: FeatureTaskRuntimeVerdict = FeatureTaskRuntimeVerdict("satisfied")
 

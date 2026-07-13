@@ -1,14 +1,18 @@
 package skillbill.workflow.taskruntime
 
 import skillbill.error.InvalidWorkflowStateSchemaError
+import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.model.appendBoundedHistoryBySequence
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_LIMIT
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationOutcome
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeRunInvariantsFromArtifactMap
+import skillbill.workflow.taskruntime.model.toArtifactMap
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -16,6 +20,42 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class FeatureTaskRuntimePersistenceModelsTest {
+  @Test
+  fun `goal-continuation artifact retains the immutable review mode and optional parallel lane`() {
+    val artifact = FeatureTaskRuntimeGoalContinuationArtifact(
+      issueKey = "SKILL-119",
+      subtaskId = 2,
+      suppressPr = true,
+      goalBranch = "feat/SKILL-119-subtask-2",
+      parentWorkflowId = "wfl-parent",
+      codeReviewMode = CodeReviewExecutionMode.DELEGATED,
+      parallelReviewAgent = "claude",
+    )
+
+    assertEquals(artifact, FeatureTaskRuntimeGoalContinuationArtifact.fromArtifactMap(artifact.toArtifactMap()))
+  }
+
+  @Test
+  fun `goal-continuation artifact rejects missing mode unknown fields and blank parallel lane`() {
+    val complete = FeatureTaskRuntimeGoalContinuationArtifact(
+      issueKey = "SKILL-119",
+      subtaskId = 2,
+      suppressPr = true,
+      goalBranch = "feat/SKILL-119-subtask-2",
+      codeReviewMode = CodeReviewExecutionMode.INLINE,
+    ).toArtifactMap()
+
+    assertFailsWith<InvalidWorkflowStateSchemaError> {
+      FeatureTaskRuntimeGoalContinuationArtifact.fromArtifactMap(complete - "code_review_mode")
+    }
+    assertFailsWith<InvalidWorkflowStateSchemaError> {
+      FeatureTaskRuntimeGoalContinuationArtifact.fromArtifactMap(complete + ("unexpected" to true))
+    }
+    assertFailsWith<InvalidWorkflowStateSchemaError> {
+      FeatureTaskRuntimeGoalContinuationArtifact.fromArtifactMap(complete + ("parallel_review_agent" to ""))
+    }
+  }
+
   @Test
   fun `per-phase record round trips through its artifact map`() {
     val record = FeatureTaskRuntimePhaseRecord(
@@ -261,10 +301,38 @@ class FeatureTaskRuntimePersistenceModelsTest {
       "feature_size" to "HUGE",
       "acceptance_criteria" to listOf("AC-1"),
       "mandates_and_overrides" to emptyList<String>(),
+      "code_review_mode" to "auto",
     )
 
     assertFailsWith<InvalidWorkflowStateSchemaError> {
       featureTaskRuntimeRunInvariantsFromArtifactMap(malformed)
+    }
+  }
+
+  @Test
+  fun `run-invariants persist the selected code-review mode strictly`() {
+    CodeReviewExecutionMode.entries.forEach { mode ->
+      val invariants = FeatureTaskRuntimeRunInvariants(
+        specReference = ".feature-specs/SKILL-119/spec.md",
+        acceptanceCriteria = listOf("AC-1"),
+        mandatesAndOverrides = emptyList(),
+        codeReviewMode = mode,
+      )
+      val map = invariants.toArtifactMap()
+
+      assertEquals(mode.wireValue, map["code_review_mode"])
+      assertEquals(invariants, featureTaskRuntimeRunInvariantsFromArtifactMap(map))
+    }
+    val invalid = FeatureTaskRuntimeRunInvariants(
+      specReference = ".feature-specs/SKILL-119/spec.md",
+      acceptanceCriteria = listOf("AC-1"),
+      mandatesAndOverrides = emptyList(),
+    ).toArtifactMap()
+    assertFailsWith<InvalidWorkflowStateSchemaError> {
+      featureTaskRuntimeRunInvariantsFromArtifactMap(invalid + ("code_review_mode" to "DELEGATED"))
+    }
+    assertFailsWith<InvalidWorkflowStateSchemaError> {
+      featureTaskRuntimeRunInvariantsFromArtifactMap(invalid - "code_review_mode")
     }
   }
 

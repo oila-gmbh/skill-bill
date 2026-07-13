@@ -21,13 +21,13 @@ fun routeQualityCheck(repoRoot: Path, routingEvidence: Collection<String>): Qual
     RoutingCandidate(pack, matched)
   }.filter { it.matchedSignals.isNotEmpty() }
   if (candidates.isEmpty()) return null
-  require(!hasMixedKotlinKmpOwnership(candidates, routingEvidence)) {
-    "Quality-check routing is ambiguous for [kmp, kotlin]; mixed ownership evidence spans both product surfaces."
-  }
-  val maximum = candidates.maxOf(RoutingCandidate::rank)
-  val winners = candidates.filter { it.rank() == maximum }
-  val adjacentWinner = resolveKotlinKmpDominance(winners, routingEvidence)
-  val winner = adjacentWinner ?: winners.singleOrNull()
+  val adjacentWinner = resolveKotlinKmpDominance(candidates, routingEvidence)
+  val rankedCandidates = adjacentWinner?.let { selected ->
+    candidates.filterNot { it.pack.slug == "kotlin" || it.pack.slug == "kmp" } + selected
+  } ?: candidates
+  val maximum = rankedCandidates.maxOf(RoutingCandidate::rank)
+  val winners = rankedCandidates.filter { it.rank() == maximum }
+  val winner = winners.singleOrNull()
   require(winner != null) {
     val slugs = winners.map { it.pack.slug }.sorted()
     "Quality-check routing is ambiguous for $slugs; provide stronger manifest-declared evidence."
@@ -84,20 +84,8 @@ private fun resolveKotlinKmpDominance(
     kmpOwnedEvidence.isNotEmpty() && kotlinOwnedEvidence.isEmpty() -> kmp
     kotlinOwnedEvidence.isNotEmpty() && kmpOwnedEvidence.isEmpty() -> kotlin
     kmpOwnedEvidence.isEmpty() && kotlinOwnedEvidence.isEmpty() -> kotlin
-    else -> null
+    else -> kmp
   }
-}
-
-private fun hasMixedKotlinKmpOwnership(
-  candidates: List<RoutingCandidate>,
-  routingEvidence: Collection<String>,
-): Boolean {
-  if (candidates.none { it.pack.slug == "kotlin" } || candidates.none { it.pack.slug == "kmp" }) return false
-  val kmpOwnedEvidence = routingEvidence.filter(::hasKmpOwnership)
-  val kotlinOwnedEvidence = routingEvidence.filter { evidence ->
-    !hasKmpOwnership(evidence) && KOTLIN_OWNERSHIP_SIGNALS.any { routingSignalMatches(evidence, it) }
-  }
-  return kmpOwnedEvidence.isNotEmpty() && kotlinOwnedEvidence.isNotEmpty()
 }
 
 private fun hasKmpOwnership(evidence: String): Boolean = KMP_OWNERSHIP_SIGNALS.any {

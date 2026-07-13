@@ -42,6 +42,7 @@ object DatabaseRuntime {
     DatabaseSchema.createBaseSchema(connection)
     DatabaseMigrations.apply(connection)
     DatabaseColumnMigrations.apply(connection)
+    DatabaseColumnMigrations.healWorkListMetadata(connection)
     return connection
   }
 }

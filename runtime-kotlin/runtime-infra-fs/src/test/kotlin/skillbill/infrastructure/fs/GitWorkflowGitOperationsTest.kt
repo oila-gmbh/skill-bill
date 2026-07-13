@@ -1,5 +1,8 @@
 package skillbill.infrastructure.fs
 
+import skillbill.ports.workflow.buildGoalSubtaskReviewInput
+import skillbill.ports.workflow.captureGoalSubtaskReviewBaseline
+import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksRequest
 import java.nio.file.Files
 import java.nio.file.Path
@@ -329,6 +332,178 @@ class GitWorkflowGitOperationsTest {
     assertTrue(emittedBytes <= 24, hunk.lines.joinToString("\n"))
     assertTrue(hunk.lines.any { line -> line.startsWith("+x") }, hunk.lines.joinToString("\n"))
     assertTrue(hunk.lines.none { line -> line.length > 24 }, hunk.lines.joinToString("\n"))
+  }
+
+  @Test
+  fun `goal review input includes base to current tracked delta and only owned untracked files`() {
+    val repoRoot = Files.createTempDirectory("skillbill-goal-review-input")
+    git(repoRoot, "init")
+    git(repoRoot, "config", "user.email", "skill-bill@example.test")
+    git(repoRoot, "config", "user.name", "Skill Bill")
+    Files.writeString(repoRoot.resolve("tracked.txt"), "base\n")
+    git(repoRoot, "add", ".")
+    git(repoRoot, "commit", "-m", "initial")
+    Files.writeString(repoRoot.resolve("preexisting.tmp"), "not owned\n")
+    val ops = GitWorkflowGitOperations()
+    val branch = git(repoRoot, "branch", "--show-current")
+    val baseline = ops.captureGoalSubtaskReviewBaseline(repoRoot, branch)
+
+    assertTrue(baseline.ok, baseline.error)
+    Files.writeString(repoRoot.resolve("tracked.txt"), "base\ncommitted\n")
+    git(repoRoot, "add", "tracked.txt")
+    git(repoRoot, "commit", "-m", "subtask commit")
+    Files.writeString(repoRoot.resolve("tracked.txt"), "base\ncommitted\nstaged\n")
+    git(repoRoot, "add", "tracked.txt")
+    Files.writeString(repoRoot.resolve("tracked.txt"), "base\ncommitted\nstaged\nunstaged\n")
+    Files.writeString(repoRoot.resolve("owned.tmp"), "owned content\n")
+
+    val input = ops.buildGoalSubtaskReviewInput(
+      repoRoot,
+      requireNotNull(baseline.baseline),
+      branch,
+    )
+
+    assertTrue(input.ok, input.error)
+    val reviewText = requireNotNull(input.input).reviewText
+    assertContains(reviewText, "committed")
+    assertContains(reviewText, "staged")
+    assertContains(reviewText, "unstaged")
+    assertContains(reviewText, "owned.tmp")
+    assertContains(reviewText, "owned content")
+    assertFalse("preexisting.tmp" in reviewText)
+  }
+
+  @Test
+  fun `goal review baseline capture rejects a branch other than the durable child branch`() {
+    val repoRoot = Files.createTempDirectory("skillbill-goal-review-baseline-branch")
+    git(repoRoot, "init")
+    git(repoRoot, "config", "user.email", "skill-bill@example.test")
+    git(repoRoot, "config", "user.name", "Skill Bill")
+    Files.writeString(repoRoot.resolve("tracked.txt"), "base\n")
+    git(repoRoot, "add", ".")
+    git(repoRoot, "commit", "-m", "initial")
+
+    val result = GitWorkflowGitOperations().captureGoalSubtaskReviewBaseline(repoRoot, "feat/another-child")
+
+    assertFalse(result.ok)
+    assertContains(result.error, "durable child branch 'feat/another-child'")
+  }
+
+  @Test
+  fun `goal review baseline capture rejects staged tracked changes`() {
+    val repoRoot = Files.createTempDirectory("skillbill-goal-review-baseline-staged")
+    git(repoRoot, "init")
+    git(repoRoot, "config", "user.email", "skill-bill@example.test")
+    git(repoRoot, "config", "user.name", "Skill Bill")
+    Files.writeString(repoRoot.resolve("tracked.txt"), "base\n")
+    git(repoRoot, "add", ".")
+    git(repoRoot, "commit", "-m", "initial")
+    Files.writeString(repoRoot.resolve("tracked.txt"), "staged\n")
+    git(repoRoot, "add", "tracked.txt")
+
+    val result = GitWorkflowGitOperations().captureGoalSubtaskReviewBaseline(
+      repoRoot,
+      git(repoRoot, "branch", "--show-current"),
+    )
+
+    assertFalse(result.ok)
+    assertContains(result.error, "staged tracked changes")
+  }
+
+  @Test
+  fun `goal review baseline capture rejects unstaged tracked changes`() {
+    val repoRoot = Files.createTempDirectory("skillbill-goal-review-baseline-unstaged")
+    git(repoRoot, "init")
+    git(repoRoot, "config", "user.email", "skill-bill@example.test")
+    git(repoRoot, "config", "user.name", "Skill Bill")
+    Files.writeString(repoRoot.resolve("tracked.txt"), "base\n")
+    git(repoRoot, "add", ".")
+    git(repoRoot, "commit", "-m", "initial")
+    Files.writeString(repoRoot.resolve("tracked.txt"), "unstaged\n")
+
+    val result = GitWorkflowGitOperations().captureGoalSubtaskReviewBaseline(
+      repoRoot,
+      git(repoRoot, "branch", "--show-current"),
+    )
+
+    assertFalse(result.ok)
+    assertContains(result.error, "unstaged tracked changes")
+  }
+
+  @Test
+  fun `goal review input excludes committed changes from an earlier subtask`() {
+    val repoRoot = Files.createTempDirectory("skillbill-goal-review-earlier-subtask")
+    git(repoRoot, "init")
+    git(repoRoot, "config", "user.email", "skill-bill@example.test")
+    git(repoRoot, "config", "user.name", "Skill Bill")
+    Files.writeString(repoRoot.resolve("shared.txt"), "initial\n")
+    git(repoRoot, "add", ".")
+    git(repoRoot, "commit", "-m", "initial")
+    Files.writeString(repoRoot.resolve("earlier-subtask.txt"), "earlier subtask marker\n")
+    git(repoRoot, "add", "earlier-subtask.txt")
+    git(repoRoot, "commit", "-m", "earlier subtask")
+
+    val branch = git(repoRoot, "branch", "--show-current")
+    val baseline =
+      requireNotNull(GitWorkflowGitOperations().captureGoalSubtaskReviewBaseline(repoRoot, branch).baseline)
+    Files.writeString(repoRoot.resolve("current-subtask.txt"), "current subtask marker\n")
+    git(repoRoot, "add", "current-subtask.txt")
+    git(repoRoot, "commit", "-m", "current subtask")
+
+    val input = GitWorkflowGitOperations().buildGoalSubtaskReviewInput(
+      repoRoot,
+      baseline,
+      branch,
+    )
+
+    assertTrue(input.ok, input.error)
+    val reviewText = requireNotNull(input.input).reviewText
+    assertContains(reviewText, "current-subtask.txt")
+    assertContains(reviewText, "current subtask marker")
+    assertFalse("earlier-subtask.txt" in reviewText)
+    assertFalse("earlier subtask marker" in reviewText)
+  }
+
+  @Test
+  fun `goal review input rejects an unsafe persisted base without branch fallback`() {
+    val repoRoot = Files.createTempDirectory("skillbill-goal-review-unsafe-base")
+    git(repoRoot, "init")
+    git(repoRoot, "config", "user.email", "skill-bill@example.test")
+    git(repoRoot, "config", "user.name", "Skill Bill")
+    Files.writeString(repoRoot.resolve("tracked.txt"), "base\n")
+    git(repoRoot, "add", ".")
+    git(repoRoot, "commit", "-m", "initial")
+
+    val result = GitWorkflowGitOperations().buildGoalSubtaskReviewInput(
+      repoRoot,
+      GoalSubtaskReviewBaseline("f".repeat(40), emptyList()),
+      "master",
+    )
+
+    assertFalse(result.ok)
+    assertContains(result.error, "Persisted review base")
+    assertFalse("origin/main" in result.error)
+  }
+
+  @Test
+  fun `goal review input rejects a worktree on another child branch`() {
+    val repoRoot = Files.createTempDirectory("skillbill-goal-review-wrong-branch")
+    git(repoRoot, "init")
+    git(repoRoot, "config", "user.email", "skill-bill@example.test")
+    git(repoRoot, "config", "user.name", "Skill Bill")
+    Files.writeString(repoRoot.resolve("tracked.txt"), "base\n")
+    git(repoRoot, "add", ".")
+    git(repoRoot, "commit", "-m", "initial")
+    val originalBranch = git(repoRoot, "branch", "--show-current")
+    git(repoRoot, "checkout", "-b", "feat/child-one")
+    val baseline =
+      requireNotNull(GitWorkflowGitOperations().captureGoalSubtaskReviewBaseline(repoRoot, "feat/child-one").baseline)
+    git(repoRoot, "checkout", originalBranch)
+
+    val result = GitWorkflowGitOperations().buildGoalSubtaskReviewInput(repoRoot, baseline, "feat/child-one")
+
+    assertFalse(result.ok)
+    assertContains(result.error, "durable child branch 'feat/child-one'")
   }
 
   private fun git(repoRoot: Path, vararg args: String): String {

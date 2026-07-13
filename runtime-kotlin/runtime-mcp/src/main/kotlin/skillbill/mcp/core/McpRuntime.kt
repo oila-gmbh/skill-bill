@@ -287,6 +287,7 @@ object McpWorkflowRuntime {
     sessionId: String = "",
     currentStepId: String? = null,
     context: McpRuntimeContext = McpRuntimeContext(),
+    issueKey: String? = null,
   ): Map<String, Any?> {
     val runtimeServices = services(context)
     return runtimeServices.workflowService.open(
@@ -294,6 +295,7 @@ object McpWorkflowRuntime {
       sessionId = sessionId,
       currentStepId = currentStepId,
       dbOverride = null,
+      issueKey = issueKey,
     ).toMcpMap(runtimeServices.workflowService.goalObservabilityEventValidator)
   }
 

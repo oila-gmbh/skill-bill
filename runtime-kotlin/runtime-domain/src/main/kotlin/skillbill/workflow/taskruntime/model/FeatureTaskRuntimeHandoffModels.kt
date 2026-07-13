@@ -1,5 +1,7 @@
 package skillbill.workflow.taskruntime.model
 
+import skillbill.workflow.model.CodeReviewExecutionMode
+
 /**
  * Domain models for the inter-phase handoff contract. The handoff is an
  * accumulating, schema-validated artifact store over the phase DAG — not a baton
@@ -22,6 +24,8 @@ data class FeatureTaskRuntimeRunInvariants(
   val acceptanceCriteria: List<String>,
   /** Mandates and overrides that must reach every phase verbatim. */
   val mandatesAndOverrides: List<String>,
+  /** Immutable requested review policy, carried to every initial and repeat review launch. */
+  val codeReviewMode: CodeReviewExecutionMode = CodeReviewExecutionMode.AUTO,
 ) {
   init {
     require(specReference.isNotBlank()) {

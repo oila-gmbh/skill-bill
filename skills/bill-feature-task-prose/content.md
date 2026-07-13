@@ -26,7 +26,7 @@ In addition to the top-level telemetry tools, the orchestrator must persist dura
 
 Workflow-state rules:
 
-- Open workflow state once, immediately after Step 1 is confirmed.
+- Open workflow state once, immediately after Step 1 records the router-confirmed assessment.
 - Save both ids:
   - `session_id` from `feature_task_prose_started` for telemetry
   - `workflow_id` from `feature_task_prose_workflow_open` for durable state
@@ -62,6 +62,30 @@ Continuation-mode rules:
 
 ## Retry, Resume, and Review Reuse
 
+## Code-review selection
+
+Obtain the normalized `code-review:auto|inline|delegated` selection from the
+entry authority. For an interactive single-task run, `bill-feature-task`
+resolves omission to `auto` and rejects malformed, unknown, repeated, and
+conflicting tokens before its sole confirmation gate. For a non-interactive
+goal continuation, durable goal and child workflow state supply the immutable
+selection. This sidecar must not reparse the token, present another gate, or
+substitute a different mode. Persist the selected mode with the workflow and
+reuse it for every review-fix or audit-driven re-review. In Step 5 invoke
+`bill-code-review mode:<selected-mode>`; when a parallel lane is
+configured, pass the same execution mode to both lanes without allowing
+recursive parallel launch.
+
+For a decomposed goal continuation, an omitted resumed selection inherits the
+durable mode and optional lane. Reject an explicit incompatible mode or lane
+before any child work starts. A fresh child receives `code_review_mode`,
+`parallel_review_agent`, `review_base_sha`, `baseline_untracked_paths`,
+`completed_review_pass_count`, `reserved_review_pass_number`, and
+`review_cap_disposition` from durable state; it must not reconstruct them from
+the branch, chat history, or a sibling subtask.
+An incompatible resume rejection leaves those durable parent and child values
+unchanged.
+
 On retry or resume, durable workflow state is the single source of authority. Avoid re-injecting prior plans, reviews, implementation summaries, or unrelated decomposition artifacts into the resumed run:
 
 - Treat `current_step_artifacts` as the bounded recovered context. Pull only the artifacts the resumed step needs; do not re-paste prior plans, full prior review reports, prior implementation RESULT summaries, or sibling-subtask decomposition artifacts into history.
@@ -89,7 +113,7 @@ Goal-continuation rules:
 - Treat a completed `commit_push` step as the terminal success signal for this entry when PR suppression is active. Persist the subtask outcome in durable workflow state; stdout is diagnostic only.
 - The structured outcome fields are `issue_key`, `subtask_id`, `status`, `commit_sha`, `workflow_id`, `blocked_reason`, and `last_resumable_step`. Runtime state is authoritative; git-tracked `decomposition-manifest.yaml` projections may omit runtime-only commit SHAs.
 - To explain why a subtask retried, stopped, or blocked, read the append-only attempt ledger (`goal_attempt_ledger`) on the child workflow via read-only `workflow show`; its `action`, `blocked_reason`, `stop_reason`, and `final_reconciled_result` fields are sufficient without scraping any provider session log. Caveat (not a Skill Bill contract): provider-reported total token counts can be dominated by cached input replay, so treat them as a diagnostic signal — Skill Bill optimizes payload size and session behavior, not provider cache accounting. See the workflow-contract playbook (installed as a support pointer beside this skill) for detail.
-- Interactive `bill-feature-task` behavior is unchanged: direct user runs still perform Step 1 confirmation and create a PR in Step 9.
+- Interactive `bill-feature-task` behavior is unchanged: the router performs the one confirmation gate, and this sidecar creates a PR in Step 9.
 - The `bill-feature-goal` `mode:prose` orchestrator is the loop driver that enters this worker contract per subtask via `skill-bill workflow continue <issue_key> --subtask-id <id>` / `feature_task_prose_workflow_continue`.
 
 ## Shared Feature-Spec Preparation Path
@@ -132,25 +156,23 @@ For `spec_source: linear`:
 
 ## Orchestrator vs Subagent Split
 
-Step 1 (collect design doc + assess) runs in the orchestrator because it requires user interaction. Step 1b (create feature branch) runs in the orchestrator because it is a trivial git op that should stay visible. Step 2 (pre-planning), Step 3 (planning), Step 4 (implementation), Step 6 (completeness audit), Step 6b (quality check), and Step 9 (PR description) run as subagents. Step 5 (code review via `bill-code-review`) runs in the orchestrator because it already spawns specialist subagents internally — do not nest further. Step 7 (boundary history via `bill-boundary-history`) and Step 8 (commit and push) run in the orchestrator.
+Step 1 (read the router-confirmed spec and assess) runs in the orchestrator so it can persist the established task contract. Step 1b (create feature branch) runs in the orchestrator because it is a trivial git op that should stay visible. Step 2 (pre-planning), Step 3 (planning), Step 4 (implementation), Step 6 (completeness audit), Step 6b (quality check), and Step 9 (PR description) run as subagents. Step 5 (code review via `bill-code-review`) runs in the orchestrator because it already spawns specialist subagents internally — do not nest further. Step 7 (boundary history via `bill-boundary-history`) and Step 8 (commit and push) run in the orchestrator.
 
 Subagents run sequentially, in the same worktree (no `isolation: "worktree"`). Do not launch any of these subagents in parallel. Each subagent receives a self-contained briefing. See the inline reference sections below for the per-phase briefing templates and structured return contracts.
 
 For KMP implementation work, resolve governed add-ons only after stack routing settles on `kmp`, then scan the matching pack-owned add-on supporting files whose cues match the work.
 
-## Step 1: Collect Design Doc + Assess Size (orchestrator)
+## Step 1: Read Confirmed Spec + Assess Size (orchestrator)
 
 Step id: `assess`
 
 Primary artifact: `assessment`
 
-Ask the user for:
-1. **Feature design doc** — inline text, file path, or directory of spec files
-2. **Issue key** (for example `ME-5066`, `SKILL-10`) — required. The issue key prefixes the branch name, spec directory, and commit message. If the user has no issue yet, stop and ask them to create one before continuing; do not invent a placeholder.
+Read the issue key and governed spec path from the router-confirmed task context.
+Do not ask the user for a design document, issue key, or another confirmation.
+If the established context is missing, stop rather than inventing a replacement.
 
-Accept PDFs (read in page ranges if >10 pages), markdown, images. If a directory, read all files and synthesize. If spec exceeds about 8,000 words, ask which sections matter most.
-
-Single-pass assessment. Present everything together in one pass:
+Derive and persist one assessment from the governed spec:
 1. **Acceptance criteria** — numbered list
 2. **Non-goals** — things explicitly out of scope
 3. **Open questions** — unresolved decisions (if any)
@@ -158,9 +180,13 @@ Single-pass assessment. Present everything together in one pass:
 5. **Feature name** inferred from spec
 6. **Rollout need** — N/A unless spec, user, or repo requires guarded rollout
 
-Then ask: **Confirm or adjust the above before I plan.** Open questions must be resolved before proceeding. The confirmed criteria are the contract for the completeness audit and for every subagent briefing from Step 2 onward.
+The router's confirmation is the only gate. Open questions must be resolved from
+the governed spec before proceeding. The established criteria are the contract
+for the completeness audit and every subagent briefing from Step 2 onward.
 
-After the assessment is confirmed, record the Step 1 telemetry fields, open workflow state, save both ids, and persist the `assessment` artifact before advancing to `create_branch`.
+After recording the assessment, record the Step 1 telemetry fields, open workflow
+state, save both ids, and persist the `assessment` artifact before advancing to
+`create_branch`.
 
 ## Step 1b: Create Feature Branch (orchestrator)
 
@@ -236,7 +262,7 @@ Step id: `review`
 
 Primary artifact: `review_result`
 
-Run `bill-code-review` inline in the orchestrator through the active skill runtime. Scope: current unit of work for SMALL, branch diff for MEDIUM/LARGE. Do not wrap `bill-code-review` in an additional subagent — it already spawns specialist subagents internally. When `parallel-review:<agent>` was passed to this skill, invoke `bill-code-review` with `parallel:<agent>` so a second review lane runs alongside the primary review.
+Run `bill-code-review mode:<selected-mode>` inline in the orchestrator through the active skill runtime. Scope: current unit of work for SMALL, branch diff for MEDIUM/LARGE. Do not wrap `bill-code-review` in an additional subagent — it already spawns specialist subagents internally. When `parallel-review:<agent>` was passed to this skill, invoke `bill-code-review mode:<selected-mode> parallel:<agent>` so a second review lane runs alongside the primary review without recursive parallel launch.
 
 Review loop:
 
@@ -246,6 +272,36 @@ Review loop:
 - Continue past Minor-only findings.
 - Max 3 iterations.
 - Do not pause to ask the user which finding to fix.
+
+For a decomposed prose-goal child, the parent supplies an immutable
+`review_base_sha`, baseline untracked inventory, and durable pass count. Review
+only that child's exact base-to-current delta, including committed, staged,
+unstaged, and owned untracked changes. Do not use `origin/main...HEAD` or a
+branch-wide substitute. Construct the untracked portion as current untracked
+paths minus the baseline inventory, so pre-existing files are excluded and
+newly child-owned untracked files remain in scope. This exact scope applies
+after every repair and resume; never replace it with a merge base,
+`origin/main`, or sibling-subtask delta.
+
+The decomposed child invokes the primary and optional second lanes directly
+with the same `mode:<selected-mode>` and exact prepared delta. Do not
+pass `parallel:` to either lane: the lanes must not recursively request
+parallel review, and together they count as one pass. Reserve a pass before
+launching it. When durable state has an unfinished reserved pass, resume that
+same pass rather than reserving another; carry completed and capped state
+through repair and audit re-entry, and never start pass three. After a second
+pass with unresolved Blocker/Major findings, persist complete location-bearing
+evidence, record the non-approval `review_cap_reached` disposition, and emit
+only the compact path-free goal review status: subtask id, pass number, verdict
+or continuation state, severity, class/symbol-or-sanitized label, and concise
+text. It contains no path, line number, hunk, or raw review output. Continue
+through audit, validation, history, dependency advancement, commit_push, and
+final reporting unless an independent later gate fails.
+
+The two-pass cap and `review_cap_reached` continuation apply only to
+decomposed prose-goal children. Standalone prose feature tasks keep this
+step's normal three-iteration repair loop, ordinary `parallel:<agent>`
+invocation, approval behavior, and Step 9 PR creation.
 
 Orchestrated child telemetry:
 
@@ -338,7 +394,7 @@ After the PR is created (or when the workflow ends early due to error or user ab
 
 - `session_id`: from `feature_task_prose_started`
 - `completion_status`: `completed` if PR was created, otherwise `abandoned_at_planning`, `abandoned_at_implementation`, `abandoned_at_review`, or `error`
-- `plan_correction_count`: how many times the user corrected the assessment or plan (0 if confirmed without changes)
+- `plan_correction_count`: how many times the plan changed after the router-confirmed assessment (0 when no correction was needed)
 - `plan_task_count`, `plan_phase_count`
 - `feature_flag_used`, `feature_flag_pattern` (`simple_conditional`, `di_switch`, `legacy`, or `none`)
 - `files_created`, `files_modified`, `tasks_completed`
@@ -469,13 +525,14 @@ has in hand:
 
 ### Open sequence
 
-Immediately after Step 1 is confirmed:
+Immediately after Step 1 records the assessment:
 
 1. Call `feature_task_prose_started`.
 2. Save `session_id` even when the tool returns `status: skipped`.
 3. Call `feature_task_prose_workflow_open` with:
    - `session_id`
    - `current_step_id: "assess"`
+   - `issue_key: <normalized issue key>` from the router-confirmed task context
 4. Save `workflow_id`.
 5. Initialize `child_steps = []`.
 

@@ -10,6 +10,14 @@ interface RepoSessionService {
   fun open(repoPath: String): RepoSession
 }
 
+interface WorkListGateway {
+  suspend fun list(): List<skillbill.desktop.core.domain.model.DesktopWorkItem>
+}
+
+object EmptyWorkListGateway : WorkListGateway {
+  override suspend fun list(): List<skillbill.desktop.core.domain.model.DesktopWorkItem> = emptyList()
+}
+
 interface RecentRepoRepository {
   suspend fun recentRepoPath(): String?
   suspend fun rememberRepoPath(repoPath: String)

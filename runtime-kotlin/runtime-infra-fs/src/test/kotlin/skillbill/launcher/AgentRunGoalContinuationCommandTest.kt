@@ -15,6 +15,16 @@ import kotlin.time.Duration.Companion.seconds
 
 class AgentRunGoalContinuationCommandTest {
   @Test
+  fun `ordinary phase worker does not receive goal continuation marker`() {
+    val runner = RecordingAgentRunProcessRunner()
+    requireNotNull(headlessAgentRunAdapters(runner)[InstallAgent.CODEX]).launch(
+      skillRunRequest(goalContinuation = null).copy(promptOverride = "Run the implementation phase."),
+    )
+
+    assertNull(runner.requests.single().environment["SKILL_BILL_GOAL_CONTINUATION"])
+  }
+
+  @Test
   fun `goal-continuation child with no child workflow id runs skill-bill feature-task run directly`() {
     val runner = RecordingAgentRunProcessRunner()
     val outcome = requireNotNull(headlessAgentRunAdapters(runner)[InstallAgent.CLAUDE]).launch(skillRunRequest())
@@ -41,6 +51,8 @@ class AgentRunGoalContinuationCommandTest {
         "wfl-parent",
         "--goal-last-resumable-step",
         "implement",
+        "--code-review-mode",
+        "auto",
         "--agent",
         "claude",
       ),
@@ -50,6 +62,7 @@ class AgentRunGoalContinuationCommandTest {
     assertFalse(request.command.any { value -> "bill-feature-task" in value })
     assertFalse(request.command.any { value -> value == "claude" && request.command.indexOf(value) == 0 })
     assertEquals("1", request.environment["SKILL_BILL_GOAL_CONTINUATION"])
+    assertEquals("auto", request.environment["SKILL_BILL_CODE_REVIEW_MODE"])
     assertTrue(request.inheritEnvironment)
   }
 
@@ -82,6 +95,8 @@ class AgentRunGoalContinuationCommandTest {
         "wfl-parent",
         "--goal-last-resumable-step",
         "implement",
+        "--code-review-mode",
+        "auto",
         "--agent",
         "claude",
       ),
@@ -147,6 +162,19 @@ class AgentRunGoalContinuationCommandTest {
     requireNotNull(headlessAgentRunAdapters(runner)[InstallAgent.CODEX]).launch(skillRunRequest())
 
     assertContains(runner.requests.single().command, "--suppress-pr")
+  }
+
+  @Test
+  fun `goal-continuation child carries the durable parallel review lane`() {
+    val runner = RecordingAgentRunProcessRunner()
+    requireNotNull(headlessAgentRunAdapters(runner)[InstallAgent.CODEX]).launch(
+      skillRunRequest(goalContinuation = goalContinuationContext().copy(parallelReviewAgent = "junie")),
+    )
+
+    val command = runner.requests.single().command
+    val flagIndex = command.indexOf("--parallel-review-agent")
+    assertTrue(flagIndex >= 0)
+    assertEquals("junie", command[flagIndex + 1])
   }
 
   @Test

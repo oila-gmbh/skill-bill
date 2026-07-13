@@ -32,6 +32,7 @@ import skillbill.application.system.UninstallFileSystemService
 import skillbill.application.telemetry.LifecycleTelemetryService
 import skillbill.application.telemetry.TelemetryLevelMutationService
 import skillbill.application.telemetry.TelemetryService
+import skillbill.application.work.WorkListService
 import skillbill.application.workflow.WorkflowService
 import skillbill.domain.skillremove.SkillRemoveFileSystem
 import skillbill.infrastructure.fs.DecompositionManifestValidatorAdapter
@@ -541,4 +542,5 @@ abstract class RuntimeComponent(
   abstract val uninstallFileSystemService: UninstallFileSystemService
   abstract val unsupportedScaffoldService: UnsupportedScaffoldService
   abstract val workflowService: WorkflowService
+  abstract val workListService: WorkListService
 }

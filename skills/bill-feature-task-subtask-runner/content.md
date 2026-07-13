@@ -14,11 +14,45 @@ runnable subtask.
 ## Role
 
 The subtask-runner receives a self-contained briefing (`issue_key`,
-`subtask_id`, `workflow_id`, `spec_path`) and runs the full phase loop for
-that subtask by calling `feature_task_prose_workflow_continue` with the parent
-`issue_key` and `subtask_id`. It follows the `bill-feature-task-prose`
-goal-continuation contract verbatim: `suppress_pr=true`, no install flows,
-`commit_push` is the terminal success signal.
+`subtask_id`, `workflow_id`, `spec_path`, `code_review_mode`, optional
+`parallel_review_agent`, immutable `review_base_sha`,
+`baseline_untracked_paths`, `completed_review_pass_count`,
+`reserved_review_pass_number`, and `review_cap_disposition`) and runs the full
+phase loop for that subtask by calling
+`feature_task_prose_workflow_continue` with the parent `issue_key` and
+`subtask_id`. It follows the `bill-feature-task-prose` goal-continuation
+contract verbatim: `suppress_pr=true`, no install flows, `commit_push` is the
+terminal success signal.
+
+For a fresh child, the supplied values are already-durable selections,
+baseline, and pass state; the runner must not default, recompute, or replace
+them. On resume, omission reuses them. An explicit incompatible mode or lane
+is rejected before child work starts and leaves the durable policy unchanged.
+
+For every review pass, call `bill-code-review mode:<code_review_mode>`
+against only the durable child-owned base-to-current delta. Reconstruct that
+scope from the immutable `review_base_sha` through the current committed,
+staged, and unstaged changes, plus current untracked paths after subtracting
+the baseline untracked inventory. This retains newly child-owned untracked
+changes while excluding the pre-existing inventory. Do not review
+`origin/main...HEAD`, the feature branch, a merge base, or earlier-sibling
+subtask changes.
+
+When `parallel_review_agent` is set, start exactly its second full lane with
+the same execution mode and exact prepared delta. Invoke both lanes directly;
+never pass a parallel argument into either lane, so neither lane recursively
+launches parallel review. The coordinated lanes are exactly one pass. Preserve
+the selected mode and exact scope through repair and audit re-entry. Reserve
+before launch; when `reserved_review_pass_number` has no completed durable
+output, resume that accounted pass instead of reserving another. Carry forward
+`completed_review_pass_count` and `review_cap_disposition`, and never run pass
+three. At a two-pass unresolved Blocker/Major cap, preserve complete
+location-bearing evidence in durable artifacts and telemetry, return only the
+non-approval `review_cap_reached` compact path-free status to the parent
+(subtask id, pass number, verdict or continuation state, severity,
+class/symbol-or-sanitized label, and concise text), then continue through
+audit, validation, history, dependency advancement,
+commit_push, and final reporting unless an independent later gate fails.
 
 ## Return contract
 

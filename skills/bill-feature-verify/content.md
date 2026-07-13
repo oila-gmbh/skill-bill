@@ -85,7 +85,7 @@ Then ask: **Confirm or adjust the criteria before I review the PR.**
 
 The success artifact for this step is `criteria_summary`: acceptance criteria, non-goals, rollout expectation, and technical constraints.
 
-After Step 2 is confirmed, call `feature_verify_started` and save the returned `session_id`. Open workflow state with `feature_verify_workflow_open`. Immediately call `feature_verify_workflow_update` to mark `collect_inputs` and `extract_criteria` completed, set `gather_diff` to running, and persist `input_context` plus `criteria_summary`.
+After Step 2 is confirmed, call `feature_verify_started` and save the returned `session_id`. When the input context has an authoritative normalized issue key, retain it and pass `issue_key: <normalized issue key>` to `feature_verify_workflow_open`; otherwise omit the field rather than deriving one from presentation data, workflow ids, or free text. Immediately call `feature_verify_workflow_update` to mark `collect_inputs` and `extract_criteria` completed, set `gather_diff` to running, and persist `input_context` plus `criteria_summary`.
 
 ## Step 3: Gather PR Diff
 

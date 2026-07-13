@@ -30,6 +30,26 @@ convention:
 
 Resolve the mode to `runtime` when no `mode:` argument is supplied.
 
+Accept at most one `code-review:auto`, `code-review:inline`, or
+`code-review:delegated` token. Omission resolves to `auto`; malformed, unknown,
+duplicate, or conflicting values fail before confirmation or goal launch. The
+selected mode is immutable for the parent and every child: a resume reuses it,
+and an attempted explicit change must fail loudly before launching a subtask.
+
+Accept at most one `parallel-review:<agent>` token independently of the review
+mode. Omission means one review lane; when present, show the selected agent in
+the confirmation gate and carry it unchanged through runtime and prose child
+launches. The parent persists this lane selection with the review mode, and a
+resume must reuse it rather than silently dropping or changing the second lane.
+
+For a prose-goal resume, an omitted `code-review:` or `parallel-review:` token
+inherits the durable parent selection. An explicit resumed mode or lane must
+match that selection exactly; reject an incompatible value before selecting or
+launching a child. Every fresh prose child receives the durable mode and
+optional lane alongside its review baseline and pass state, never values
+re-derived from the current branch or a sibling subtask. A rejected resume
+must not overwrite the durable parent or child review policy.
+
 **opencode and zcode are prose-only.** When the agent currently executing this skill is opencode or zcode, prose is the implicit default and runtime mode is unsupported: opencode's foreground Bash tool is hard-killed at 120s before a phase can finish and per-phase output cannot be harvested back; zcode's foreground runtime exceeds the Bash execution ceiling and a detached zcode child emits no harvestable output before the supervisor kills it as unresponsive. On opencode or zcode: with no mode arg, resolve to `prose` (no need to pass `mode:prose`); with an explicit `mode:runtime`, stop and emit the actionable refusal and do NOT hand off to the `skill-bill goal` runtime:
 
 > Runtime mode is not supported on opencode or zcode in this harness. opencode's foreground Bash tool is hard-killed at 120s before a phase can finish and per-phase output cannot be harvested back; zcode's foreground runtime exceeds the Bash execution ceiling and a detached zcode child emits no harvestable output before the supervisor kills it as unresponsive. Use prose instead — run bill-feature-task-prose for a single feature task, or bill-feature-goal mode:prose for a decomposed goal.
@@ -80,6 +100,8 @@ Then present a concise proposal that includes:
 - the expected first runnable subtask
 - the agent that will be used for child runs, including any explicit override
 - the resolved mode: show `runtime (default)` when the mode was not specified, `runtime` when explicitly set, or `prose` when `mode:prose` was passed
+- the parallel review agent when `parallel-review:<agent>` was passed, or `none` otherwise
+- the requested code-review selection, showing `auto (default)` when omitted
 
 Ask one confirmation question: whether to proceed with this decomposition and start the goal loop in the resolved mode.
 
@@ -113,6 +135,47 @@ The inherited SKILL-56/SKILL-58 behavior remains part of the contract:
 - completion requires an explicit durable terminal outcome before the goal
   advances or opens the parent PR
 
+## Goal child review contract
+
+After the child branch is established and before implementation can mutate the
+worktree, capture and durably persist that child workflow's `review_base_sha`
+and normalized inventory of pre-existing untracked paths. On resume, reuse the
+stored baseline exactly; a missing, rewritten, unrelated, or non-ancestor base
+blocks loudly. Never substitute `HEAD`, `origin/main`, a merge base, the full
+feature branch, or an earlier subtask's commits.
+
+Every child review, including repair and audit-driven re-entry, reviews the
+complete base-to-current delta: committed, staged, unstaged, and untracked
+paths that were not in the baseline inventory. Pass the same exact delta and
+the selected `mode:<auto|inline|delegated>` contract to both full
+parallel lanes. Lanes remain non-recursive and the coordinated lanes count as
+one review pass.
+
+The complete child-owned delta is the immutable `review_base_sha` through the
+current worktree plus `current untracked paths - baseline untracked inventory`.
+The baseline subtraction excludes pre-existing untracked files while retaining
+new child-owned untracked files after implementation, repair, or resume. Never
+replace this scope with a branch-wide diff, merge base, `origin/main`, or
+sibling-subtask substitute.
+
+Each child reserves its pass before review starts and permits at most two total
+passes across resume, repair, and audit re-entry. If pass two still has
+Blocker or Major findings, persist full evidence and the
+`review_cap_reached` disposition, emit a compact path-free summary, and
+continue to audit without claiming approval or launching a third pass. Audit,
+validation, dependency, history, commit/push, and PR gates remain active.
+
+If a crash leaves a reserved pass without its completed durable output, resume
+that reserved pass rather than allocating another. Carry completed or capped
+state forward on every repair and audit re-entry; `review_cap_reached` is a
+non-approval disposition, not a reason to block any independent later gate.
+
+Goal-facing review output and `goal_event` lines contain only subtask id, pass,
+verdict/disposition, finding count, severity, class/symbol-or-sanitized-stem
+label, and concise text. They must never contain a path, line number, diff
+hunk, or raw child-review output; full location-bearing evidence remains in
+the child's durable review artifacts and telemetry.
+
 ## Confirmed Handoff
 
 After confirmation, ensure the decomposed parent workflow and runtime manifest
@@ -123,6 +186,11 @@ foreground driver directly in the current agent session, always passing
 ```bash
 skill-bill goal <issue_key> --agent <currently-executing-agent>
 ```
+
+Append `--code-review-mode <auto|inline|delegated>` and, when requested,
+`--parallel-review-agent <agent>`; require the runtime to pass both selections
+to every child. Parallel review remains a second full lane; both lanes receive
+this mode and neither may recursively launch parallel review.
 
 ### Rehydrate a missing linear-mode spec before launch/resume
 
@@ -276,11 +344,20 @@ After the user confirms at that single gate, `mode:prose` does NOT launch
 exactly one Level-1 subtask-agent via the Agent tool with a self-contained
 briefing. The agent type is `bill-feature-task-subtask-runner`. The briefing
 must carry: `issue_key`, `subtask_id`, `workflow_id` (from the manifest or the
-continuation selector result), `spec_path`, and the goal-continuation contract
-rules (`suppress_pr=true`, `commit_push` is the terminal signal, no install
-flows). The Level-1 agent runs the full phase loop
+continuation selector result), `spec_path`, durable `code_review_mode`, optional
+`parallel_review_agent`, `review_base_sha`, `baseline_untracked_paths`,
+`completed_review_pass_count`, `reserved_review_pass_number`,
+`review_cap_disposition`, and the
+goal-continuation contract rules (`suppress_pr=true`, `commit_push` is the
+terminal signal, no install flows). The Level-1 agent runs the full phase loop
 (preplan → plan → implement → review → audit → validate → history → commit_push)
 in its own fresh context and returns a bounded RESULT block.
+
+For every fresh child, copy those durable fields without recomputing them. On a
+resume, omission inherits the persisted mode and optional lane; reject an
+explicit incompatible mode or lane before the child is launched. This preserves
+one canonical selection and one exact scope across fresh runs, repair, and
+resumption, without changing durable state on a rejected resume.
 
 ### Prose goal lifecycle telemetry
 

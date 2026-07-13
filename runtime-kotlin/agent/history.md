@@ -1,3 +1,21 @@
+## [2026-07-13] SKILL-119 prose-goal review-policy parity
+Areas: runtime-kotlin/runtime-domain workflow, runtime-application/{goalrunner,featuretask,review}, runtime-ports/{goalrunner,diff,workflow}, runtime-infra-fs, runtime-cli, skills/bill-feature*
+- Decomposed goals durably pin the canonical review mode and optional parallel reviewer for each child; resume rejects policy changes and reuses the immutable base SHA plus baseline untracked inventory to reconstruct only that child's complete delta. reusable
+- Both prose review lanes consume the same exact input and count as one non-recursive pass; a reserved pass resumes, the second unresolved pass returns `review_cap_reached`, and later audit-through-reporting phases continue without false approval.
+- Pattern: store compact parent-facing findings separately from location-bearing raw review artifacts, then emit only the compact summary after the durable state is complete. reusable
+- Standalone prose feature tasks retain their existing review path; no breaking API or feature-flag change.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
+## [2026-07-13] SKILL-119 review-mode selection contract
+Areas: runtime-kotlin/runtime-cli, runtime-kotlin/runtime-application, runtime-kotlin/runtime-domain, skills/bill-feature*
+- The feature-facing `code-review:auto|inline|delegated` selection now travels from the router-owned confirmation gate through CLI parsing, durable runtime invariants, and review-phase prompts. reusable
+- Reject malformed, unknown, duplicate, and conflicting review-mode inputs before confirmation or workflow opening; preserve the accepted selection across resume, review-fix re-review, and audit re-entry.
+- Pattern: keep review selection and confirmation authority in the router while review executors consume a normalized durable mode, retaining shared inline-eligibility rejection and explicit delegated routing. reusable
+- Known limitation: full-repository Gradle remains non-green only on pre-existing SKILL-117 and goal-review baseline findings outside this subtask's delta.
+Feature flag: N/A
+Acceptance criteria: 5/5 implemented
+
 ## [2026-07-12] SKILL-113 execution matrix per-phase model and effort tiers
 Areas: runtime-kotlin/runtime-domain config/install, runtime-application feature-task/config, runtime-cli feature-task/core, runtime-infra-fs config/launcher, runtime-ports agent-run
 - Machine-global `execution_matrix` in `~/.config/skill-bill/config.json` maps per-agent reasoning/implementation tiers to model and optional effort, with default phase tiers, per-phase overrides, typed dotted-path validation failures, and unchanged behavior when absent. reusable

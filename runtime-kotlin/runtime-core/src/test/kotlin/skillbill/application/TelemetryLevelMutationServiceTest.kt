@@ -2,6 +2,7 @@ package skillbill.application
 
 import skillbill.application.telemetry.TelemetryLevelMutationService
 import skillbill.ports.persistence.DatabaseSessionFactory
+import skillbill.ports.persistence.EmptyWorkListRepository
 import skillbill.ports.persistence.LearningRepository
 import skillbill.ports.persistence.LifecycleTelemetryRepository
 import skillbill.ports.persistence.ReviewRepository
@@ -82,6 +83,7 @@ private class FakeTelemetryDatabaseSessionFactory(
     override val telemetryOutbox: TelemetryOutboxRepository = this@FakeTelemetryDatabaseSessionFactory.telemetryOutbox
     override val workflowStates: WorkflowStateRepository
       get() = error("Unexpected workflowStates")
+    override val workList = EmptyWorkListRepository
   }
 }
 

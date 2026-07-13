@@ -1,6 +1,5 @@
 package skillbill.db.workflow
 
-import skillbill.contracts.JsonSupport
 import skillbill.db.core.DbConstants
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.ports.persistence.FeatureImplementWorkflowStateRepository
@@ -17,19 +16,6 @@ import java.sql.Connection
 typealias WorkflowStateRow = WorkflowStateRecord
 
 private const val WORKFLOW_ID_PARAMETER_INDEX: Int = 1
-private const val SESSION_ID_PARAMETER_INDEX: Int = 2
-private const val WORKFLOW_NAME_PARAMETER_INDEX: Int = 3
-private const val CONTRACT_VERSION_PARAMETER_INDEX: Int = 4
-private const val WORKFLOW_STATUS_PARAMETER_INDEX: Int = 5
-private const val CURRENT_STEP_ID_PARAMETER_INDEX: Int = 6
-private const val STEPS_JSON_PARAMETER_INDEX: Int = 7
-private const val ARTIFACTS_JSON_PARAMETER_INDEX: Int = 8
-private const val INSERT_TERMINAL_PARAMETER_INDEX: Int = 9
-private const val INSERT_FINISHED_AT_PARAMETER_INDEX: Int = 10
-private const val FEATURE_TASK_MODE_PARAMETER_INDEX: Int = 12
-private const val FEATURE_TASK_IMPLEMENTATION_SKILL_PARAMETER_INDEX: Int = 13
-
-private val terminalWorkflowStatuses: Set<String> = setOf("completed", "failed", "abandoned")
 
 /**
  * SQLite-backed [WorkflowStateRepository]. Delegates each per-family capability
@@ -93,6 +79,9 @@ private class FeatureImplementWorkflowStateStore(
   override fun getFeatureImplementWorkflow(workflowId: String): WorkflowStateRecord? =
     connection.getFeatureTaskWorkflowRowAsMode(workflowId, FeatureTaskWorkflowMode.PROSE)
 
+  override fun getFeatureImplementWorkflows(workflowIds: Set<String>): Map<String, WorkflowStateRecord> =
+    connection.getFeatureTaskWorkflowRows(FeatureTaskWorkflowMode.PROSE, workflowIds)
+
   override fun listFeatureImplementWorkflows(limit: Int): List<WorkflowStateRecord> =
     connection.listFeatureTaskWorkflowRows(FeatureTaskWorkflowMode.PROSE, limit)
 
@@ -126,7 +115,7 @@ private class FeatureImplementWorkflowStateStore(
           sessionId = resultSet.getString("session_id"),
           issueKeyProvided = resultSet.getInt("issue_key_provided") == 1,
           issueKeyType = resultSet.getString("issue_key_type"),
-          specInputTypes = decodeStringList(resultSet.getString("spec_input_types")),
+          specInputTypes = decodeWorkflowStringList(resultSet.getString("spec_input_types")),
           specWordCount = resultSet.getInt("spec_word_count"),
           featureSize = resultSet.getString("feature_size"),
           featureName = resultSet.getString("feature_name"),
@@ -156,6 +145,9 @@ private class FeatureTaskRuntimeWorkflowStateStore(
   override fun getFeatureTaskRuntimeWorkflow(workflowId: String): WorkflowStateRecord? =
     connection.getFeatureTaskWorkflowRowAsMode(workflowId, FeatureTaskWorkflowMode.RUNTIME)
 
+  override fun getFeatureTaskRuntimeWorkflows(workflowIds: Set<String>): Map<String, WorkflowStateRecord> =
+    connection.getFeatureTaskWorkflowRows(FeatureTaskWorkflowMode.RUNTIME, workflowIds)
+
   override fun listFeatureTaskRuntimeWorkflows(limit: Int): List<WorkflowStateRecord> =
     connection.listFeatureTaskWorkflowRows(FeatureTaskWorkflowMode.RUNTIME, limit)
 
@@ -176,6 +168,9 @@ private class FeatureVerifyWorkflowStateStore(
 
   override fun getFeatureVerifyWorkflow(workflowId: String): WorkflowStateRecord? =
     connection.getWorkflowRow("feature_verify_workflows", workflowId)
+
+  override fun getFeatureVerifyWorkflows(workflowIds: Set<String>): Map<String, WorkflowStateRecord> =
+    connection.getWorkflowRows("feature_verify_workflows", workflowIds)
 
   override fun listFeatureVerifyWorkflows(limit: Int): List<WorkflowStateRecord> =
     connection.listWorkflowRows("feature_verify_workflows", limit)
@@ -209,118 +204,6 @@ private class FeatureVerifyWorkflowStateStore(
     }
 }
 
-private fun Connection.upsertWorkflowRow(tableName: String, row: WorkflowStateRecord, defaultContractVersion: String) {
-  prepareStatement(
-    """
-    INSERT INTO $tableName (
-      workflow_id,
-      session_id,
-      workflow_name,
-      contract_version,
-      workflow_status,
-      current_step_id,
-      steps_json,
-      artifacts_json,
-      finished_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CASE WHEN ? THEN COALESCE(NULLIF(?, ''), CURRENT_TIMESTAMP) ELSE NULL END)
-    ON CONFLICT(workflow_id) DO UPDATE SET
-      session_id = excluded.session_id,
-      workflow_name = excluded.workflow_name,
-      contract_version = excluded.contract_version,
-      workflow_status = excluded.workflow_status,
-      current_step_id = excluded.current_step_id,
-      steps_json = excluded.steps_json,
-      artifacts_json = excluded.artifacts_json,
-      updated_at = CURRENT_TIMESTAMP,
-      finished_at = CASE
-        WHEN excluded.workflow_status IN ('completed', 'failed', 'abandoned')
-          THEN COALESCE(NULLIF(excluded.finished_at, ''), CURRENT_TIMESTAMP)
-        ELSE NULL
-      END
-    """.trimIndent(),
-  ).use { statement ->
-    val terminal = row.workflowStatus in terminalWorkflowStatuses
-    statement.setString(WORKFLOW_ID_PARAMETER_INDEX, row.workflowId)
-    statement.setString(SESSION_ID_PARAMETER_INDEX, row.sessionId)
-    statement.setString(WORKFLOW_NAME_PARAMETER_INDEX, row.workflowName)
-    statement.setString(CONTRACT_VERSION_PARAMETER_INDEX, row.contractVersion.ifBlank { defaultContractVersion })
-    statement.setString(WORKFLOW_STATUS_PARAMETER_INDEX, row.workflowStatus)
-    statement.setString(CURRENT_STEP_ID_PARAMETER_INDEX, row.currentStepId)
-    statement.setString(STEPS_JSON_PARAMETER_INDEX, row.stepsJson)
-    statement.setString(ARTIFACTS_JSON_PARAMETER_INDEX, row.artifactsJson)
-    statement.setBoolean(INSERT_TERMINAL_PARAMETER_INDEX, terminal)
-    statement.setString(INSERT_FINISHED_AT_PARAMETER_INDEX, row.finishedAt)
-    statement.executeUpdate()
-  }
-}
-
-private val FeatureTaskWorkflowMode.defaultImplementationSkill: String
-  get() = when (this) {
-    FeatureTaskWorkflowMode.PROSE -> "bill-feature-task-prose"
-    FeatureTaskWorkflowMode.RUNTIME -> "bill-feature-task-runtime"
-  }
-
-private val FeatureTaskWorkflowMode.defaultContractVersion: String
-  get() = when (this) {
-    FeatureTaskWorkflowMode.PROSE -> DbConstants.FEATURE_IMPLEMENT_WORKFLOW_CONTRACT_VERSION
-    FeatureTaskWorkflowMode.RUNTIME -> DbConstants.FEATURE_TASK_RUNTIME_WORKFLOW_CONTRACT_VERSION
-  }
-
-private fun Connection.upsertFeatureTaskWorkflowRow(
-  row: WorkflowStateRecord,
-  mode: FeatureTaskWorkflowMode,
-  implementationSkill: String,
-  defaultContractVersion: String,
-) {
-  prepareStatement(
-    """
-    INSERT INTO feature_task_workflows (
-      workflow_id,
-      session_id,
-      workflow_name,
-      contract_version,
-      workflow_status,
-      current_step_id,
-      steps_json,
-      artifacts_json,
-      finished_at,
-      mode,
-      implementation_skill
-    ) VALUES (?, ?, 'bill-feature-task', ?, ?, ?, ?, ?, CASE WHEN ? THEN COALESCE(NULLIF(?, ''), CURRENT_TIMESTAMP) ELSE NULL END, ?, ?)
-    ON CONFLICT(workflow_id) DO UPDATE SET
-      session_id = excluded.session_id,
-      workflow_name = 'bill-feature-task',
-      contract_version = excluded.contract_version,
-      workflow_status = excluded.workflow_status,
-      current_step_id = excluded.current_step_id,
-      steps_json = excluded.steps_json,
-      artifacts_json = excluded.artifacts_json,
-      updated_at = CURRENT_TIMESTAMP,
-      finished_at = CASE
-        WHEN excluded.workflow_status IN ('completed', 'failed', 'abandoned')
-          THEN COALESCE(NULLIF(excluded.finished_at, ''), CURRENT_TIMESTAMP)
-        ELSE NULL
-      END,
-      mode = excluded.mode,
-      implementation_skill = excluded.implementation_skill
-    """.trimIndent(),
-  ).use { statement ->
-    val terminal = row.workflowStatus in terminalWorkflowStatuses
-    statement.setString(WORKFLOW_ID_PARAMETER_INDEX, row.workflowId)
-    statement.setString(SESSION_ID_PARAMETER_INDEX, row.sessionId)
-    statement.setString(CONTRACT_VERSION_PARAMETER_INDEX - 1, row.contractVersion.ifBlank { defaultContractVersion })
-    statement.setString(WORKFLOW_STATUS_PARAMETER_INDEX - 1, row.workflowStatus)
-    statement.setString(CURRENT_STEP_ID_PARAMETER_INDEX - 1, row.currentStepId)
-    statement.setString(STEPS_JSON_PARAMETER_INDEX - 1, row.stepsJson)
-    statement.setString(ARTIFACTS_JSON_PARAMETER_INDEX - 1, row.artifactsJson)
-    statement.setBoolean(INSERT_TERMINAL_PARAMETER_INDEX - 1, terminal)
-    statement.setString(INSERT_FINISHED_AT_PARAMETER_INDEX - 1, row.finishedAt)
-    statement.setString(FEATURE_TASK_MODE_PARAMETER_INDEX - 2, mode.wireValue)
-    statement.setString(FEATURE_TASK_IMPLEMENTATION_SKILL_PARAMETER_INDEX - 2, implementationSkill)
-    statement.executeUpdate()
-  }
-}
-
 private fun Connection.getWorkflowRow(tableName: String, workflowId: String): WorkflowStateRecord? = prepareStatement(
   """
       SELECT
@@ -332,8 +215,11 @@ private fun Connection.getWorkflowRow(tableName: String, workflowId: String): Wo
         current_step_id,
         steps_json,
         artifacts_json,
+        issue_key,
         started_at,
         updated_at,
+        state_entered_at,
+        state_entered_at_estimated,
         finished_at
       FROM $tableName
       WHERE workflow_id = ?
@@ -361,8 +247,11 @@ private fun Connection.getFeatureTaskWorkflowRow(workflowId: String): WorkflowSt
         current_step_id,
         steps_json,
         artifacts_json,
+        issue_key,
         started_at,
         updated_at,
+        state_entered_at,
+        state_entered_at_estimated,
         finished_at
       FROM feature_task_workflows
       WHERE workflow_id = ?
@@ -374,6 +263,86 @@ private fun Connection.getFeatureTaskWorkflowRow(workflowId: String): WorkflowSt
       return null
     }
     resultSet.toFeatureTaskWorkflowStateRecord()
+  }
+}
+
+private fun Connection.getWorkflowRows(tableName: String, workflowIds: Set<String>): Map<String, WorkflowStateRecord> {
+  if (workflowIds.isEmpty()) {
+    return emptyMap()
+  }
+  return prepareStatement(
+    """
+    SELECT
+      workflow_id,
+      session_id,
+      workflow_name,
+      contract_version,
+      workflow_status,
+      current_step_id,
+      steps_json,
+      artifacts_json,
+      issue_key,
+      started_at,
+      updated_at,
+      state_entered_at,
+      state_entered_at_estimated,
+      finished_at
+    FROM $tableName
+    WHERE workflow_id IN (${workflowIds.workflowSqlPlaceholders()})
+    """.trimIndent(),
+  ).use { statement ->
+    statement.bindWorkflowIdsForQuery(workflowIds)
+    statement.executeQuery().use { resultSet ->
+      buildMap {
+        while (resultSet.next()) {
+          val row = resultSet.toWorkflowStateRecord()
+          put(row.workflowId, row)
+        }
+      }
+    }
+  }
+}
+
+private fun Connection.getFeatureTaskWorkflowRows(
+  mode: FeatureTaskWorkflowMode,
+  workflowIds: Set<String>,
+): Map<String, WorkflowStateRecord> {
+  if (workflowIds.isEmpty()) {
+    return emptyMap()
+  }
+  return prepareStatement(
+    """
+    SELECT
+      workflow_id,
+      session_id,
+      workflow_name,
+      mode,
+      implementation_skill,
+      contract_version,
+      workflow_status,
+      current_step_id,
+      steps_json,
+      artifacts_json,
+      issue_key,
+      started_at,
+      updated_at,
+      state_entered_at,
+      state_entered_at_estimated,
+      finished_at
+    FROM feature_task_workflows
+    WHERE mode = ? AND workflow_id IN (${workflowIds.workflowSqlPlaceholders()})
+    """.trimIndent(),
+  ).use { statement ->
+    statement.setString(1, mode.wireValue)
+    statement.bindWorkflowIdsForQuery(workflowIds, startIndex = 2)
+    statement.executeQuery().use { resultSet ->
+      buildMap {
+        while (resultSet.next()) {
+          val row = resultSet.toFeatureTaskWorkflowStateRecord()
+          put(row.workflowId, row)
+        }
+      }
+    }
   }
 }
 
@@ -390,8 +359,11 @@ private fun Connection.listWorkflowRows(tableName: String, limit: Int): List<Wor
       current_step_id,
       steps_json,
       artifacts_json,
+      issue_key,
       started_at,
       updated_at,
+      state_entered_at,
+      state_entered_at_estimated,
       finished_at
     FROM $tableName
     ORDER BY updated_at DESC, rowid DESC
@@ -440,8 +412,11 @@ private fun Connection.listFeatureTaskWorkflowRows(
       current_step_id,
       steps_json,
       artifacts_json,
+      issue_key,
       started_at,
       updated_at,
+      state_entered_at,
+      state_entered_at_estimated,
       finished_at
     FROM feature_task_workflows
     WHERE mode = ?
@@ -470,8 +445,11 @@ private fun java.sql.ResultSet.toWorkflowStateRecord(): WorkflowStateRecord = Wo
   currentStepId = getString("current_step_id"),
   stepsJson = getString("steps_json"),
   artifactsJson = getString("artifacts_json"),
+  issueKey = getString("issue_key"),
   startedAt = getString("started_at"),
   updatedAt = getString("updated_at"),
+  stateEnteredAt = getString("state_entered_at"),
+  stateEnteredAtEstimated = getInt("state_entered_at_estimated") != 0,
   finishedAt = getString("finished_at"),
 )
 
@@ -497,13 +475,13 @@ private fun java.sql.ResultSet.toFeatureTaskWorkflowStateRecord(): WorkflowState
     currentStepId = getString("current_step_id"),
     stepsJson = getString("steps_json"),
     artifactsJson = getString("artifacts_json"),
+    issueKey = getString("issue_key"),
     startedAt = getString("started_at"),
     updatedAt = getString("updated_at"),
+    stateEnteredAt = getString("state_entered_at"),
+    stateEnteredAtEstimated = getInt("state_entered_at_estimated") != 0,
     finishedAt = getString("finished_at"),
     mode = mode,
     implementationSkill = getString("implementation_skill"),
   )
 }
-
-private fun decodeStringList(rawValue: String?): List<String> =
-  JsonSupport.parseArrayOrEmpty(rawValue.orEmpty()).mapNotNull { element -> element as? String }

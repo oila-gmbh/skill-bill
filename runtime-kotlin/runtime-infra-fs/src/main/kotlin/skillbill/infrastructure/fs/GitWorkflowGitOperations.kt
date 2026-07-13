@@ -1,6 +1,8 @@
 package skillbill.infrastructure.fs
 
 import me.tatarka.inject.annotations.Inject
+import skillbill.ports.workflow.GoalSubtaskReviewGitOperations
+import skillbill.ports.workflow.GoalSubtaskReviewGitOperationsProvider
 import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.ports.workflow.model.WorkflowGitOperationResult
 import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksRequest
@@ -16,7 +18,13 @@ import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 
 @Inject
-class GitWorkflowGitOperations : WorkflowGitOperations {
+class GitWorkflowGitOperations :
+  WorkflowGitOperations by GitStandardWorkflowGitOperations,
+  GoalSubtaskReviewGitOperationsProvider {
+  override val goalSubtaskReviewOperations: GoalSubtaskReviewGitOperations = GitGoalSubtaskReviewOperations
+}
+
+private object GitStandardWorkflowGitOperations : WorkflowGitOperations {
   override fun checkoutBranch(repoRoot: Path, branch: String, baseBranch: String?): WorkflowGitOperationResult {
     val normalizedBranch = branch.trim()
     if (normalizedBranch.isBlank()) {

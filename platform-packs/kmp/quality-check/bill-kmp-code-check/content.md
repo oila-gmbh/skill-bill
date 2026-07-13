@@ -12,9 +12,9 @@ Run the repository's authoritative multiplatform build matrix, distinguish unava
 
 ## Execution Steps
 
-1. Determine the files in scope from `git diff --name-only`, settings, version catalogs, convention plugins, source-set declarations, and CI matrices; record every configured KMP target and changed module.
+1. Determine the files in scope from `git diff --name-only`, settings, version catalogs, convention plugins, source-set declarations, and CI matrices; partition changed Kotlin/JVM modules from changed multiplatform modules, then record every configured KMP target and changed module.
 2. Discover commands from the repository build file, Gradle wrapper, and CI configuration, in that order, before falling back to Gradle conventions; inspect `./gradlew tasks --all` and never invent a target task from a conventional name.
-3. Run the pack's quality-check entrypoint with common metadata and compilation tasks plus the discovered compilation task for every affected JVM, Android, iOS, macOS, Linux, Windows, JavaScript, or Wasm target.
+3. Run the pack's quality-check entrypoint over both partitions. For affected Kotlin/JVM-only modules, run the repository's focused Kotlin compiler, API, formatting, static-analysis, test, toolchain, and generated-source tasks. For affected multiplatform modules, run common metadata and compilation tasks plus the discovered compilation task for every affected JVM, Android, iOS, macOS, Linux, Windows, JavaScript, or Wasm target. Deduplicate shared Gradle tasks and repository-wide checks across both subsets.
 4. Run affected common and target tests. On Android, run discovered lint, unit-test, instrumentation-build, and manifest/resource checks; on available Apple hosts, run discovered Kotlin/Native compilation, link, test, framework, and export checks.
 5. Run Compose Multiplatform resource generation, resource accessor compilation, duplicate-resource validation, and packaging tasks for every affected target.
 6. Validate Kotlin, Compose, Android Gradle, serialization, native, and other plugin versions; verify dependency alignment and that common dependencies resolve for every consumer target.

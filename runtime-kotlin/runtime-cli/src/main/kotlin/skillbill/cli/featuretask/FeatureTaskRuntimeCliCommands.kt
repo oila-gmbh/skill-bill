@@ -41,6 +41,8 @@ import skillbill.ports.featurespec.FeatureSpecPathResolverPort
 import skillbill.ports.featurespec.model.FeatureSpecPathResolveInput
 import skillbill.ports.featurespec.model.FeatureSpecPathResolveResult
 import skillbill.ports.taskruntime.FeatureTaskRuntimeRunInvariantsSource
+import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
+import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import java.nio.file.Path
 import kotlin.time.Duration.Companion.minutes
@@ -110,11 +112,24 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
     "--goal-last-resumable-step",
     help = "Optional durable resume step supplied by the goal runner.",
   )
+  protected val goalReviewBaseSha by option(
+    "--goal-review-base-sha",
+    help = "Review baseline commit captured by the goal runner before implementation.",
+  )
+  protected val goalBaselineUntrackedPaths by option(
+    "--goal-baseline-untracked-path",
+    help = "Baseline untracked path. Repeat for every path owned before this child starts.",
+  ).multiple()
   protected val parallelReviewAgent by option(
     "--parallel-review-agent",
     help = "Run the review phase with a second parallel agent lane. " +
       "Supported agents: ${InstallAgent.supportedIds.joinToString()}.",
   )
+  protected val codeReviewModes by option(
+    "--code-review-mode",
+    help = "Review execution mode: auto (default), inline, or delegated. " +
+      "Supply at most once; a resumed workflow remains pinned to its original mode.",
+  ).multiple()
   protected val suppressPr by option(
     "--suppress-pr",
     help = "Suppress the runtime PR phase. Required with goal-continuation options.",
@@ -125,8 +140,8 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
       "driver's open-with-assigned-id path for a first runtime subtask run (distinct from resume).",
   )
 
-  protected fun resolveRunWorkflowId(workflowService: WorkflowService, state: CliRunState): String =
-    explicitWorkflowId?.takeIf(String::isNotBlank) ?: openRuntimeWorkflowId(workflowService, state)
+  protected fun resolveRunWorkflowId(workflowService: WorkflowService, state: CliRunState, issueKey: String): String =
+    explicitWorkflowId?.takeIf(String::isNotBlank) ?: openRuntimeWorkflowId(workflowService, state, issueKey)
 
   // Refuses before a workflow is opened, a branch resolved, or a phase spawned: opencode is
   // prose-only because its foreground Bash tool is hard-killed at 120s and per-phase output
@@ -150,6 +165,8 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
     workflowId: () -> String,
   ) {
     val state = deps.state
+    val requestedReviewMode = requestedCodeReviewMode()
+    val goalContinuation = parseGoalContinuationContext(requestedReviewMode)
     val prepared = prepareRuntimeRun(deps)
     val report = deps.runner.run(
       FeatureTaskRuntimeRunRequest(
@@ -165,7 +182,8 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
         repoRoot = prepared.repoRoot,
         timeout = maxWallClockMinutes?.minutes,
         parallelReviewAgent = parallelReviewAgent?.takeIf(String::isNotBlank),
-        goalContinuation = parseGoalContinuationContext(),
+        requestedCodeReviewMode = requestedReviewMode,
+        goalContinuation = goalContinuation,
         eventSink = runtimeRunEventSink(state, monitor),
       ),
     )
@@ -224,7 +242,9 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
     }
   }
 
-  private fun parseGoalContinuationContext(): FeatureTaskRuntimeGoalContinuationContext? {
+  private fun parseGoalContinuationContext(
+    requestedReviewMode: CodeReviewExecutionMode?,
+  ): FeatureTaskRuntimeGoalContinuationContext? {
     val supplied = listOf(goalParentIssueKey, goalSubtaskId, goalBranch).count { it != null } +
       if (suppressPr) 1 else 0
     if (supplied == 0) {
@@ -241,13 +261,47 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
       suppressPr = true,
       parentWorkflowId = goalParentWorkflowId?.takeIf(String::isNotBlank),
       lastResumableStep = goalLastResumableStep?.takeIf(String::isNotBlank),
+      codeReviewMode = requestedReviewMode,
+      parallelReviewAgent = parallelReviewAgent?.takeIf(String::isNotBlank),
+      reviewBaseline = requireNotNull(goalReviewBaseSha?.takeIf(String::isNotBlank)) {
+        "--goal-review-base-sha is required with goal-continuation options."
+      }.let { base ->
+        GoalSubtaskReviewBaseline(base, goalBaselineUntrackedPaths.distinct().sorted())
+      },
     )
   }
+
+  private fun requestedCodeReviewMode(): CodeReviewExecutionMode? {
+    val modes = codeReviewModes.map(::parseRequestedCodeReviewMode)
+    return when (modes.size) {
+      0 -> null
+      1 -> modes.single()
+      else -> {
+        val rawModes = codeReviewModes.joinToString(", ")
+        if (modes.distinct().size == 1) {
+          throw UsageError(
+            "Duplicate --code-review-mode '$rawModes' is not allowed; supply it at most once.",
+          )
+        }
+        throw UsageError(
+          "Conflicting --code-review-mode values '$rawModes' are not allowed; supply exactly one mode.",
+        )
+      }
+    }
+  }
+
+  private fun parseRequestedCodeReviewMode(raw: String): CodeReviewExecutionMode =
+    CodeReviewExecutionMode.entries.firstOrNull { it.wireValue == raw }
+      ?: throw UsageError(
+        "Unknown code-review execution mode '$raw'. Allowed: " +
+          "${CodeReviewExecutionMode.entries.joinToString { it.wireValue }}.",
+      )
 
   private fun goalContinuationMissingFields(): List<String> = buildList {
     if (goalParentIssueKey.isNullOrBlank()) add("--goal-parent-issue-key is")
     if (goalSubtaskId == null) add("--goal-subtask-id is")
     if (goalBranch.isNullOrBlank()) add("--goal-branch is")
+    if (goalReviewBaseSha.isNullOrBlank()) add("--goal-review-base-sha is")
     if (!suppressPr) add("--suppress-pr is")
   }
 }
@@ -282,7 +336,7 @@ class FeatureTaskRuntimeRunCommand(
       deps = deps,
       issueKey = runIssueKey,
       specPath = runSpecPath,
-      workflowId = { resolveRunWorkflowId(workflowService, deps.state) },
+      workflowId = { resolveRunWorkflowId(workflowService, deps.state, runIssueKey) },
     )
   }
 }
@@ -308,7 +362,7 @@ class FeatureTaskRuntimeExplicitRunCommand(
       deps = deps,
       issueKey = issueKey,
       specPath = resolveSpecPath(deps, issueKey, specPath),
-      workflowId = { resolveRunWorkflowId(workflowService, deps.state) },
+      workflowId = { resolveRunWorkflowId(workflowService, deps.state, issueKey) },
     )
   }
 }
@@ -398,7 +452,7 @@ class FeatureTaskRuntimeDeprecatedRunCommand(
       deps = deps,
       issueKey = runIssueKey,
       specPath = runSpecPath,
-      workflowId = { openRuntimeWorkflowId(workflowService, deps.state) },
+      workflowId = { openRuntimeWorkflowId(workflowService, deps.state, runIssueKey) },
     )
   }
 }
@@ -419,7 +473,7 @@ class FeatureTaskRuntimeDeprecatedExplicitRunCommand(
       deps = deps,
       issueKey = issueKey,
       specPath = resolveSpecPath(deps, issueKey, specPath),
-      workflowId = { openRuntimeWorkflowId(workflowService, deps.state) },
+      workflowId = { openRuntimeWorkflowId(workflowService, deps.state, issueKey) },
     )
   }
 }
@@ -461,8 +515,14 @@ class FeatureTaskRuntimeDeprecatedResumeCommand(
   }
 }
 
-private fun openRuntimeWorkflowId(workflowService: WorkflowService, state: CliRunState): String =
-  when (val opened = workflowService.open(WorkflowFamilyKind.TASK_RUNTIME, dbOverride = state.dbOverride)) {
+private fun openRuntimeWorkflowId(workflowService: WorkflowService, state: CliRunState, issueKey: String?): String =
+  when (
+    val opened = workflowService.open(
+      WorkflowFamilyKind.TASK_RUNTIME,
+      issueKey = issueKey,
+      dbOverride = state.dbOverride,
+    )
+  ) {
     is WorkflowOpenResult.Ok -> opened.workflowId
     is WorkflowOpenResult.Error -> throw UsageError(
       "Could not open a feature-task workflow: ${opened.error}",

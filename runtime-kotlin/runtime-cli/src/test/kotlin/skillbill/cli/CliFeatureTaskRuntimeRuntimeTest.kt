@@ -8,7 +8,12 @@ import skillbill.ports.agentrun.AgentRunLauncher
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.agentrun.model.AgentRunLaunchRequest
+import skillbill.ports.workflow.GoalSubtaskReviewGitOperations
+import skillbill.ports.workflow.GoalSubtaskReviewGitOperationsProvider
 import skillbill.ports.workflow.WorkflowGitOperations
+import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
+import skillbill.ports.workflow.model.GoalSubtaskReviewInput
+import skillbill.ports.workflow.model.GoalSubtaskReviewInputResult
 import skillbill.ports.workflow.model.WorkflowGitOperationResult
 import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksRequest
 import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksResult
@@ -511,6 +516,8 @@ class CliFeatureTaskRuntimeRuntimeTest {
       "5",
       "--goal-branch",
       "feat/existing-runtime-branch",
+      "--goal-review-base-sha",
+      "0000000000000000000000000000000000000000",
       "--suppress-pr",
     )
 
@@ -568,7 +575,15 @@ class CliFeatureTaskRuntimeRuntimeTest {
     val goalFixture = runtimeFixture(specFileName = "spec_subtask_5_runtime.md")
     val goalLauncher = RecordingPhaseLauncher(decomposePlan = true)
     val goalGit = FakeRuntimeGitOperations(currentBranchValue = "feat/pre-created-runtime-branch")
+    assertGoalContinuationUsesExistingBranch(goalFixture, goalLauncher, goalGit)
+    assertDirectRunCreatesFeatureBranch()
+  }
 
+  private fun assertGoalContinuationUsesExistingBranch(
+    goalFixture: FeatureTaskRuntimeCliFixture,
+    goalLauncher: RecordingPhaseLauncher,
+    goalGit: FakeRuntimeGitOperations,
+  ) {
     val goalRun = CliRuntime.run(
       goalFixture.runCommand(
         extra = listOf(
@@ -580,6 +595,8 @@ class CliFeatureTaskRuntimeRuntimeTest {
           "5",
           "--goal-branch",
           "feat/pre-created-runtime-branch",
+          "--goal-review-base-sha",
+          "0000000000000000000000000000000000000000",
           "--goal-parent-workflow-id",
           "wfl-parent",
           "--suppress-pr",
@@ -603,7 +620,9 @@ class CliFeatureTaskRuntimeRuntimeTest {
       goalLauncher.requests.map { phaseIdFromPrompt(it.skillRunRequest.promptOverride.orEmpty()) },
       goalRun.stdout,
     )
+  }
 
+  private fun assertDirectRunCreatesFeatureBranch() {
     val directFixture = runtimeFixture()
     val directLauncher = RecordingPhaseLauncher()
     val directGit = FakeRuntimeGitOperations(currentBranchValue = "main")
@@ -998,6 +1017,8 @@ class CliFeatureTaskRuntimeModelDirectiveTest {
           "5",
           "--goal-branch",
           "feat/existing-runtime-branch",
+          "--goal-review-base-sha",
+          "0000000000000000000000000000000000000000",
           "--suppress-pr",
         ),
       ),
@@ -1030,6 +1051,73 @@ class CliFeatureTaskRuntimeModelDirectiveTest {
       assertContains(result.stdout, "--phase-model")
       assertEquals(emptyList(), launcher.requests, result.stdout)
       assertFalse(result.stdout.contains("workflow_id:"), result.stdout)
+    }
+  }
+
+  @Test
+  fun `feature-task runtime rejects malformed and unknown review modes before workflow opening`() {
+    listOf(
+      listOf("--code-review-mode", "unknown"),
+      listOf("--code-review-mode="),
+    ).forEach { modeArgs ->
+      val fixture = runtimeFixture()
+      val launcher = RecordingPhaseLauncher()
+
+      val result = CliRuntime.run(
+        fixture.runCommand(extra = listOf("--agent", "codex") + modeArgs),
+        fixture.context(launcher),
+      )
+
+      assertEquals(1, result.exitCode, result.stdout)
+      assertContains(result.stdout, "Unknown code-review execution mode")
+      assertEquals(emptyList(), launcher.requests)
+      assertFalse(result.stdout.contains("workflow_id:"), result.stdout)
+    }
+  }
+
+  @Test
+  fun `feature-task runtime forwards omitted and explicit review modes unchanged to review`() {
+    listOf(
+      "omitted" to emptyList(),
+      "auto" to listOf("--code-review-mode", "auto"),
+      "inline" to listOf("--code-review-mode", "inline"),
+      "delegated" to listOf("--code-review-mode", "delegated"),
+    ).forEach { (expectedMode, modeArgs) ->
+      val fixture = runtimeFixture()
+      val launcher = RecordingPhaseLauncher()
+
+      val result = CliRuntime.run(
+        fixture.runCommand(extra = listOf("--agent", "codex") + modeArgs),
+        fixture.context(launcher),
+      )
+
+      assertEquals(0, result.exitCode, "$expectedMode: ${result.stdout}")
+      val reviewPrompt = launcher.requests
+        .map { requireNotNull(it.skillRunRequest.promptOverride) }
+        .single { it.contains("Phase: review") }
+      val forwardedMode = if (expectedMode == "omitted") "auto" else expectedMode
+      assertContains(reviewPrompt, "bill-code-review mode:$forwardedMode")
+    }
+  }
+
+  @Test
+  fun `feature-task runtime rejects missing duplicate and conflicting review modes before workflow opening`() {
+    listOf(
+      "missing" to listOf("--code-review-mode"),
+      "duplicate" to listOf("--code-review-mode", "auto", "--code-review-mode", "auto"),
+      "conflicting" to listOf("--code-review-mode", "inline", "--code-review-mode", "delegated"),
+    ).forEach { (caseName, modeArgs) ->
+      val fixture = runtimeFixture()
+      val launcher = RecordingPhaseLauncher()
+
+      val result = CliRuntime.run(
+        fixture.runCommand(extra = listOf("--agent", "codex") + modeArgs),
+        fixture.context(launcher),
+      )
+
+      assertEquals(1, result.exitCode, "$caseName: ${result.stdout}")
+      assertEquals(emptyList(), launcher.requests, "$caseName: ${result.stdout}")
+      assertFalse(result.stdout.contains("workflow_id:"), "$caseName: ${result.stdout}")
     }
   }
 
@@ -1420,7 +1508,7 @@ private val ALL_PHASES =
 private class FakeRuntimeGitOperations(
   private var currentBranchValue: String = "feat/pre-created-runtime-branch",
   private val checkoutResult: WorkflowGitOperationResult? = null,
-) : WorkflowGitOperations {
+) : WorkflowGitOperations, GoalSubtaskReviewGitOperationsProvider {
   val checkoutBranches: MutableList<String> = mutableListOf()
 
   override fun checkoutBranch(repoRoot: Path, branch: String, baseBranch: String?): WorkflowGitOperationResult {
@@ -1473,4 +1561,24 @@ private class FakeRuntimeGitOperations(
     status = "ok",
     selectedDiffHunks = GoalObservabilitySelectedDiffHunks(),
   )
+
+  override val goalSubtaskReviewOperations: GoalSubtaskReviewGitOperations =
+    object : GoalSubtaskReviewGitOperations {
+      override fun captureBaseline(repoRoot: Path, expectedBranch: String): Nothing =
+        error("Goal review baseline capture is not used by this runtime CLI fixture.")
+
+      override fun buildInput(
+        repoRoot: Path,
+        baseline: GoalSubtaskReviewBaseline,
+        expectedBranch: String,
+      ): GoalSubtaskReviewInputResult = GoalSubtaskReviewInputResult(
+        status = "ok",
+        input = GoalSubtaskReviewInput(
+          reviewBaseSha = baseline.reviewBaseSha,
+          currentHeadSha = baseline.reviewBaseSha,
+          trackedDelta = "",
+          ownedUntrackedPatches = "",
+        ),
+      )
+    }
 }

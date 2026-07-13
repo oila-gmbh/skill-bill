@@ -46,6 +46,40 @@ data class SkillBillState(
    * explicit user acknowledgement clears the slot. The route renders this as a top-level banner.
    */
   val partialMutationPostMortem: PartialMutationPostMortem? = null,
+  val workList: WorkListState = WorkListState(),
+)
+
+data class DesktopWorkItem(
+  val issueKey: String?,
+  val workflowKind: String,
+  val workflowId: String,
+  val startedAt: String,
+  val currentState: String,
+  val stateEnteredAt: String,
+  val stateEnteredAtEstimated: Boolean,
+) {
+  val identity: DesktopWorkItemIdentity
+    get() = DesktopWorkItemIdentity(workflowKind, workflowId, issueKey)
+}
+
+data class DesktopWorkItemIdentity(
+  val workflowKind: String,
+  val workflowId: String,
+  val issueKey: String?,
+) {
+  val stableValue: String
+    get() = listOf(workflowKind, workflowId, issueKey).joinToString("|") { it.identitySegment() }
+}
+
+private fun String?.identitySegment(): String = this?.let { "${it.length}:$it" } ?: "-1:"
+
+enum class WorkListLoadState { COLLAPSED, LOADING, POPULATED, EMPTY, ERROR }
+
+data class WorkListState(
+  val expanded: Boolean = false,
+  val loadState: WorkListLoadState = WorkListLoadState.COLLAPSED,
+  val items: List<DesktopWorkItem> = emptyList(),
+  val errorMessage: String? = null,
 )
 
 data class SkillBillTreeItem(

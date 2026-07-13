@@ -55,9 +55,11 @@ Every router, reviewer, and validator agrees on the following procedure:
 Quality-check routing selects exactly one dominant pack and then reads that pack's
 manifest-declared checker. Ordinary Kotlin/JVM ownership selects Kotlin;
 multiplatform source sets, plugin coordinates, or `expect`/`actual` ownership select
-KMP. Evidence that genuinely spans both ownership surfaces, or any other unresolved
-mixed-stack tie, fails explicitly instead of choosing by order. KMP routes directly
-to `bill-kmp-code-check`; review composition never supplies a Kotlin checker fallback.
+KMP. When one scope contains both Kotlin/JVM and KMP ownership, KMP wins as the
+superset checker and partitions its work by affected module and source set. Other
+unresolved mixed-stack ties fail explicitly instead of choosing by order. KMP routes
+directly to `bill-kmp-code-check`; review composition never supplies a Kotlin checker
+fallback.
 
 ## Signal Collection Order
 

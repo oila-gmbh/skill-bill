@@ -4,6 +4,8 @@ import skillbill.ports.agentrun.model.AgentRunOutputSink
 import skillbill.ports.workflow.model.DEFAULT_SELECTED_DIFF_MAX_BYTES
 import skillbill.ports.workflow.model.DEFAULT_SELECTED_DIFF_MAX_HUNKS
 import skillbill.ports.workflow.model.DEFAULT_SELECTED_DIFF_MAX_LINES
+import skillbill.workflow.model.CodeReviewExecutionMode
+import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
 import java.nio.file.Path
 import kotlin.time.Duration
 
@@ -17,12 +19,17 @@ data class GoalRunnerRunRequest(
   val progressIdleTimeout: Duration? = null,
   val outputSink: AgentRunOutputSink = AgentRunOutputSink.NONE,
   val eventSink: GoalRunnerEventSink = GoalRunnerEventSink.NONE,
+  /** Null means reuse the parent goal's durable mode, or AUTO for a new parent. */
+  val codeReviewMode: CodeReviewExecutionMode? = null,
+  /** Null means reuse the parent goal's durable parallel lane, or run one lane for a new parent. */
+  val parallelReviewAgent: String? = null,
   val observabilitySequenceStart: Int = DEFAULT_GOAL_OBSERVABILITY_SEQUENCE_START,
 ) {
   init {
     require(issueKey.isNotBlank()) { "issueKey is required." }
     require(invokedAgentId.isNotBlank()) { "invokedAgentId is required." }
     configuredAgentOverrideId?.let { require(it.isNotBlank()) { "configuredAgentOverrideId must not be blank." } }
+    parallelReviewAgent?.let { require(it.isNotBlank()) { "parallelReviewAgent must not be blank." } }
     timeout?.let { maxWallClockTimeout ->
       require(maxWallClockTimeout.isPositive()) { "timeout must be positive when provided." }
     }
@@ -60,6 +67,16 @@ sealed interface GoalRunnerRunEvent {
     val reason: String,
     val blockedReason: String,
     val currentStepId: String? = null,
+  ) : GoalRunnerRunEvent
+
+  data class SubtaskReviewSummary(
+    override val issueKey: String,
+    val subtaskId: Int,
+    val passNumber: Int,
+    val verdict: String,
+    val findingCount: Int,
+    val unresolvedFindingCount: Int,
+    val findings: List<GoalSubtaskReviewCompactFinding>,
   ) : GoalRunnerRunEvent
 
   data class Completed(

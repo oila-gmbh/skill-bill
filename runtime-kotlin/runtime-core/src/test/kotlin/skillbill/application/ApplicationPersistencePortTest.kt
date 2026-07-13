@@ -1639,6 +1639,7 @@ private class FakeDatabaseSessionFactory(
       this@FakeDatabaseSessionFactory.telemetryReconciliation
     override val telemetryOutbox: TelemetryOutboxRepository = this@FakeDatabaseSessionFactory.telemetryOutbox
     override val workflowStates: WorkflowStateRepository = this@FakeDatabaseSessionFactory.workflows
+    override val workList = skillbill.ports.persistence.EmptyWorkListRepository
   }
 }
 

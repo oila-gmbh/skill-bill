@@ -59,8 +59,9 @@ private fun persistRecoveredGoalProgress(
     INSERT INTO goal_issue_progress (
       parent_workflow_id, issue_key, total_invocations, total_blocks, total_resumes,
       first_started_at, last_activity_at, latest_segment_workflow_id,
-      last_blocked_at, last_blocked_segment_workflow_id, mode
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      last_blocked_at, last_blocked_segment_workflow_id, mode, status,
+      state_entered_at, state_entered_at_estimated
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'running', ?, 0)
     """.trimIndent(),
   ).use { statement ->
     val latestBlocked = history.filter { it.status == "blocked" }
@@ -77,6 +78,7 @@ private fun persistRecoveredGoalProgress(
       latestBlocked?.startedAt,
       latestBlocked?.workflowId,
       record.mode,
+      latest.startedAt,
     )
     statement.executeUpdate()
   }

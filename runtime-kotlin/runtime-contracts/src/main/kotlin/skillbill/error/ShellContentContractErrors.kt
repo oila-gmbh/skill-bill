@@ -30,6 +30,19 @@ class InvalidWorkflowStateSchemaError(
   cause: Throwable? = null,
 ) : ShellContentContractException(message, cause)
 
+class InvalidWorkListRowError(
+  message: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(message, cause)
+
+class WorkflowIssueKeyConflictError(
+  val workflowId: String,
+  val persistedIssueKey: String,
+  val requestedIssueKey: String,
+) : ShellContentContractException(
+  "Workflow '$workflowId' is already associated with issue key '$persistedIssueKey', not '$requestedIssueKey'.",
+)
+
 /**
  * SKILL-51: surfaced when a parent decomposition manifest fails the
  * canonical `orchestration/contracts/decomposition-manifest-schema.yaml`
@@ -159,6 +172,17 @@ class InvalidGoalProgressEventSchemaError(
   cause: Throwable? = null,
 ) : ShellContentContractException(
   "Goal progress event '${sourceLabel.ifBlank { "<unknown>" }}' fails schema validation at " +
+    "'${fieldPath.ifBlank { "<root>" }}': $reason",
+  cause,
+)
+
+class InvalidGoalSubtaskReviewStateSchemaError(
+  val sourceLabel: String,
+  val fieldPath: String,
+  val reason: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Goal subtask review state '${sourceLabel.ifBlank { "<unknown>" }}' fails schema validation at " +
     "'${fieldPath.ifBlank { "<root>" }}': $reason",
   cause,
 )

@@ -9,6 +9,7 @@ import skillbill.application.goalrunner.GoalRunnerLedgerContext
 import skillbill.application.goalrunner.GoalRunnerLedgerRecorder
 import skillbill.application.goalrunner.GoalRunnerProgressEventEmitter
 import skillbill.application.goalrunner.GoalRunnerStatusService
+import skillbill.application.model.GoalRunnerEventSink
 import skillbill.application.model.GoalRunnerResetRequest
 import skillbill.application.model.GoalRunnerRunEvent
 import skillbill.application.model.GoalRunnerRunRequest
@@ -34,6 +35,7 @@ import skillbill.ports.goalrunner.model.GoalObservabilityProgressEvent
 import skillbill.ports.goalrunner.model.GoalPullRequestRequest
 import skillbill.ports.goalrunner.model.GoalPullRequestResult
 import skillbill.ports.goalrunner.model.GoalRunnerAttemptLedgerRecordRequest
+import skillbill.ports.goalrunner.model.GoalRunnerChildWorkflowSetup
 import skillbill.ports.goalrunner.model.GoalRunnerLedgerSequenceWatermarks
 import skillbill.ports.goalrunner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.model.GoalRunnerObservabilityRecordRequest
@@ -55,11 +57,18 @@ import skillbill.ports.persistence.model.FeatureVerifySessionSummary
 import skillbill.ports.persistence.model.WorkflowStateRecord
 import skillbill.ports.time.RuntimeTimingPort
 import skillbill.ports.time.model.RuntimeWaitResult
+import skillbill.ports.workflow.GoalSubtaskReviewGitOperations
+import skillbill.ports.workflow.GoalSubtaskReviewGitOperationsProvider
 import skillbill.ports.workflow.WorkflowGitOperations
+import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
+import skillbill.ports.workflow.model.GoalSubtaskReviewBaselineResult
+import skillbill.ports.workflow.model.GoalSubtaskReviewInput
+import skillbill.ports.workflow.model.GoalSubtaskReviewInputResult
 import skillbill.ports.workflow.model.WorkflowGitOperationResult
 import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksRequest
 import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksResult
 import skillbill.ports.workflow.model.WorkflowWorktreeActivityResult
+import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.model.CurrentSubtaskIntent
 import skillbill.workflow.model.DecompositionDependency
 import skillbill.workflow.model.DecompositionManifest
@@ -68,6 +77,10 @@ import skillbill.workflow.model.GoalObservabilityDiffStat
 import skillbill.workflow.model.GoalProgressEventKind
 import skillbill.workflow.model.GoalProgressOutcome
 import skillbill.workflow.model.SpecSource
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
+import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
+import skillbill.workflow.taskruntime.model.GoalSubtaskReviewPassResult
+import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -107,6 +120,8 @@ class GoalRunnerTest {
     assertEquals("feat/SKILL-56-goal", pr.requests.single().headBranch)
     assertEquals("complete", store.manifest.status)
     assertEquals(listOf("sha-1", "sha-2"), store.manifest.subtasks.map { it.commitSha })
+    assertEquals(listOf(1, 2), store.newChildWorkflowSetups.map { it.subtaskId })
+    assertTrue(store.newChildWorkflowSetups.all { it.reviewBaseline.reviewBaseSha == "0".repeat(40) })
   }
 
   @Test
@@ -133,6 +148,42 @@ class GoalRunnerTest {
     // SKILL-87 (AC4): finalize reconciles with the empty active set but demands staleness evidence,
     // so it can never false-kill a still-running subtask.
     assertEquals(true, outcomes.lastReconcileRequest?.gate?.requireStalenessEvidence)
+  }
+
+  @Test
+  fun `goal review summaries are acknowledged only after their event is emitted`() {
+    val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 1))
+    val outcomes = RecordingOutcomeStore()
+    outcomes.unemittedReviewPasses["wfl-1"] = listOf(
+      GoalSubtaskReviewPassResult(
+        passNumber = 1,
+        verdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
+        reviewResultArtifact = "goal_subtask_review_results.1",
+        unresolvedFindingCount = 1,
+        findings = listOf(GoalSubtaskReviewCompactFinding("major", "Service", "Missing behavior")),
+      ),
+    )
+    val launcher = RecordingSubtaskLauncher { request ->
+      store.mutate { current -> current.withWorkflowId(requireNotNull(request.skillRunRequest.subtaskId), "wfl-1") }
+      outcomes["wfl-1"] = completeOutcome(1)
+      launchFacts()
+    }
+    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort())
+    var emittedBeforeAcknowledgement = false
+
+    val report = runner.run(
+      runRequest().copy(
+        eventSink = GoalRunnerEventSink { event ->
+          if (event is GoalRunnerRunEvent.SubtaskReviewSummary) {
+            emittedBeforeAcknowledgement = outcomes.acknowledgedReviewPasses.isEmpty()
+          }
+        },
+      ),
+    )
+
+    assertIs<GoalRunnerRunReport.Completed>(report)
+    assertTrue(emittedBeforeAcknowledgement)
+    assertEquals(listOf("wfl-1" to 1), outcomes.acknowledgedReviewPasses)
   }
 
   @Test
@@ -500,7 +551,7 @@ class GoalRunnerTest {
 
     val report = runner.run(runRequest())
 
-    assertIs<GoalRunnerRunReport.Completed>(report)
+    assertTrue(report is GoalRunnerRunReport.Completed, report.toString())
     assertEquals(listOf("feat/SKILL-56-goal@main"), git.checkouts)
     assertEquals(listOf(1), launcher.requests.map { it.skillRunRequest.subtaskId })
     assertEquals("complete", store.manifest.status)
@@ -527,6 +578,30 @@ class GoalRunnerTest {
     assertEquals(emptyList(), launcher.requests)
     assertEquals("blocked", store.manifest.subtasks.single().status)
     assertEquals("create_branch", store.manifest.subtasks.single().lastResumableStep)
+  }
+
+  @Test
+  fun `goal baseline capture failure blocks before opening or launching a child`() {
+    val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 1))
+    val launcher = RecordingSubtaskLauncher { launchFacts() }
+    val runner = GoalRunner(
+      manifestStore = store,
+      subtaskLauncher = launcher,
+      outcomeStore = RecordingOutcomeStore(),
+      pullRequestPort = RecordingPullRequestPort(),
+      gitOperations = RecordingGitOperations(
+        currentBranch = "feat/SKILL-56-goal",
+        baselineError = "staged tracked changes are present",
+      ),
+    )
+
+    val report = runner.run(runRequest())
+
+    val stopped = assertIs<GoalRunnerRunReport.Stopped>(report)
+    assertContains(stopped.stop.blockedReason, "staged tracked changes are present")
+    assertEquals(emptyList(), launcher.requests)
+    assertEquals(emptyList(), store.newChildWorkflowSetups)
+    assertNull(store.manifest.subtasks.single().workflowId)
   }
 
   @Test
@@ -770,7 +845,7 @@ class GoalRunnerNoTerminalOutcomeDiagnosisTest {
 // guard can be exercised; everything else returns ok.
 private class DirtyManifestGitOperations(
   private val dirtyManifestPath: String,
-) : WorkflowGitOperations {
+) : WorkflowGitOperations, GoalSubtaskReviewGitOperationsProvider {
   override fun checkoutBranch(repoRoot: Path, branch: String, baseBranch: String?): WorkflowGitOperationResult =
     WorkflowGitOperationResult(status = "ok", value = branch)
 
@@ -802,6 +877,8 @@ private class DirtyManifestGitOperations(
     repoRoot: Path,
     request: WorkflowSelectedDiffHunksRequest,
   ): WorkflowSelectedDiffHunksResult = WorkflowSelectedDiffHunksResult(status = "ok")
+
+  override val goalSubtaskReviewOperations: GoalSubtaskReviewGitOperations = readyGoalReviewOperations()
 }
 
 class GoalRunnerStatusProjectionTest {
@@ -1430,6 +1507,7 @@ internal class InMemoryGoalManifestStore(
     private set
   var saveCount: Int = 0
     private set
+  val newChildWorkflowSetups: MutableList<GoalRunnerChildWorkflowSetup> = mutableListOf()
 
   override fun loadByIssueKey(issueKey: String, dbPathOverride: String?, repoRoot: Path?): GoalRunnerManifestState? =
     GoalRunnerManifestState(
@@ -1442,6 +1520,15 @@ internal class InMemoryGoalManifestStore(
     saveCount += 1
     manifest = state.manifest
     return state.copy(dbPath = dbPathOverride ?: state.dbPath, manifest = manifest)
+  }
+
+  override fun saveNewChildWorkflow(
+    state: GoalRunnerManifestState,
+    setup: GoalRunnerChildWorkflowSetup,
+    dbPathOverride: String?,
+  ): GoalRunnerManifestState {
+    newChildWorkflowSetups += setup
+    return save(state, dbPathOverride)
   }
 
   fun mutate(block: (DecompositionManifest) -> DecompositionManifest) {
@@ -1474,6 +1561,12 @@ private class SequencedLoadGoalManifestStore(
     manifest = state.manifest
     return state.copy(dbPath = dbPathOverride ?: state.dbPath, manifest = manifest)
   }
+
+  override fun saveNewChildWorkflow(
+    state: GoalRunnerManifestState,
+    setup: GoalRunnerChildWorkflowSetup,
+    dbPathOverride: String?,
+  ): GoalRunnerManifestState = save(state, dbPathOverride)
 }
 
 // SKILL-64 Subtask 3 (F-D01): the append-only attempt ledger and best-effort
@@ -1814,6 +1907,9 @@ class GoalRunnerLaunchReconcilerWiringTest {
 
 internal class RecordingOutcomeStore : GoalRunnerWorkflowOutcomeStore {
   private val outcomes: MutableMap<String, GoalRunnerStoredOutcome> = mutableMapOf()
+  private val reviewStates: MutableMap<String, GoalSubtaskReviewState> = mutableMapOf()
+  val unemittedReviewPasses: MutableMap<String, List<GoalSubtaskReviewPassResult>> = mutableMapOf()
+  val acknowledgedReviewPasses: MutableList<Pair<String, Int>> = mutableListOf()
   val progresses: MutableMap<String, GoalRunnerWorkflowProgress> = mutableMapOf()
   val blockedWorkflows: MutableList<BlockedWorkflow> = mutableListOf()
   val observabilityRecords: MutableList<GoalRunnerObservabilityRecordRequest> = mutableListOf()
@@ -1829,6 +1925,34 @@ internal class RecordingOutcomeStore : GoalRunnerWorkflowOutcomeStore {
 
   operator fun set(workflowId: String, outcome: GoalRunnerStoredOutcome) {
     outcomes[workflowId] = outcome
+    reviewStates.putIfAbsent(
+      workflowId,
+      GoalSubtaskReviewState.initial("0".repeat(40), emptyList(), CodeReviewExecutionMode.AUTO),
+    )
+  }
+
+  fun seedReviewState(workflowId: String) {
+    reviewStates[workflowId] = GoalSubtaskReviewState.initial(
+      reviewBaseSha = "0".repeat(40),
+      baselineUntrackedPaths = emptyList(),
+      codeReviewMode = CodeReviewExecutionMode.AUTO,
+    )
+  }
+
+  override fun goalSubtaskReviewState(workflowId: String, dbPathOverride: String?): GoalSubtaskReviewState? =
+    reviewStates[workflowId]
+
+  override fun unemittedGoalReviewPasses(
+    workflowId: String,
+    dbPathOverride: String?,
+  ): List<GoalSubtaskReviewPassResult> = unemittedReviewPasses[workflowId].orEmpty()
+
+  override fun acknowledgeGoalReviewPass(workflowId: String, passNumber: Int, dbPathOverride: String?): Boolean {
+    val remaining = unemittedReviewPasses[workflowId].orEmpty()
+    if (remaining.firstOrNull()?.passNumber != passNumber) return false
+    acknowledgedReviewPasses += workflowId to passNumber
+    unemittedReviewPasses[workflowId] = remaining.drop(1)
+    return true
   }
 
   override fun reconcileAuthoritativeOutcomes(
@@ -2009,7 +2133,7 @@ internal class RecordingPullRequestPort : GoalPullRequestPort {
 
 private class FixedBranchGitOperations(
   private val branch: String,
-) : WorkflowGitOperations {
+) : WorkflowGitOperations, GoalSubtaskReviewGitOperationsProvider {
   override fun checkoutBranch(repoRoot: Path, branch: String, baseBranch: String?): WorkflowGitOperationResult =
     WorkflowGitOperationResult(status = "ok", value = branch)
 
@@ -2041,6 +2165,8 @@ private class FixedBranchGitOperations(
     repoRoot: Path,
     request: WorkflowSelectedDiffHunksRequest,
   ): WorkflowSelectedDiffHunksResult = WorkflowSelectedDiffHunksResult(status = "ok")
+
+  override val goalSubtaskReviewOperations: GoalSubtaskReviewGitOperations = readyGoalReviewOperations()
 }
 
 private object StatusDiffGitOperations : WorkflowGitOperations {
@@ -2083,7 +2209,8 @@ private class RecordingGitOperations(
   private val currentBranch: String = "",
   private val checkoutError: String? = null,
   private val validationError: String? = null,
-) : WorkflowGitOperations {
+  private val baselineError: String? = null,
+) : WorkflowGitOperations, GoalSubtaskReviewGitOperationsProvider {
   val checkouts: MutableList<String> = mutableListOf()
   val validations: MutableList<String> = mutableListOf()
 
@@ -2125,7 +2252,34 @@ private class RecordingGitOperations(
     repoRoot: Path,
     request: WorkflowSelectedDiffHunksRequest,
   ): WorkflowSelectedDiffHunksResult = WorkflowSelectedDiffHunksResult(status = "ok")
+
+  override val goalSubtaskReviewOperations: GoalSubtaskReviewGitOperations =
+    readyGoalReviewOperations(baselineError)
 }
+
+private fun readyGoalReviewOperations(baselineError: String? = null): GoalSubtaskReviewGitOperations =
+  object : GoalSubtaskReviewGitOperations {
+    override fun captureBaseline(repoRoot: Path, expectedBranch: String): GoalSubtaskReviewBaselineResult =
+      baselineError?.let { GoalSubtaskReviewBaselineResult(status = "error", error = it) }
+        ?: GoalSubtaskReviewBaselineResult(
+          status = "ok",
+          baseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
+        )
+
+    override fun buildInput(
+      repoRoot: Path,
+      baseline: GoalSubtaskReviewBaseline,
+      expectedBranch: String,
+    ): GoalSubtaskReviewInputResult = GoalSubtaskReviewInputResult(
+      status = "ok",
+      input = GoalSubtaskReviewInput(
+        reviewBaseSha = baseline.reviewBaseSha,
+        currentHeadSha = "0".repeat(40),
+        trackedDelta = "",
+        ownedUntrackedPatches = "",
+      ),
+    )
+  }
 
 private class RecordingTimingPort(
   private val result: () -> RuntimeWaitResult,
@@ -2404,6 +2558,7 @@ private class GoalStatusSeedableDatabase(
     override val telemetryReconciliation: TelemetryReconciliationRepository get() = error("unused by goal status tests")
     override val telemetryOutbox: TelemetryOutboxRepository get() = error("unused by goal status tests")
     override val workflowStates: WorkflowStateRepository = repository
+    override val workList = skillbill.ports.persistence.EmptyWorkListRepository
   }
 }
 
@@ -2457,6 +2612,7 @@ private object GoalTestEmptyDatabase : DatabaseSessionFactory {
     override val telemetryReconciliation: TelemetryReconciliationRepository get() = error("unused by goal status tests")
     override val telemetryOutbox: TelemetryOutboxRepository get() = error("unused by goal status tests")
     override val workflowStates: WorkflowStateRepository = GoalTestEmptyWorkflowStateRepository
+    override val workList = skillbill.ports.persistence.EmptyWorkListRepository
   }
 }
 

@@ -69,6 +69,182 @@ internal object DatabaseColumnMigrations {
     ensureReconciliationIndexes(connection)
   }
 
+  fun applyWorkListMetadata(connection: Connection) {
+    applyWorkListMetadata(connection, recoverIssueKeys = true)
+  }
+
+  fun healWorkListMetadata(connection: Connection) {
+    if (workListMetadataRequiresHealing(connection)) {
+      applyWorkListMetadata(connection, recoverIssueKeys = true)
+    }
+  }
+
+  private fun workListMetadataRequiresHealing(connection: Connection): Boolean {
+    val workflowTables = listOf("feature_task_workflows", "feature_verify_workflows")
+    val requiredColumns = setOf("issue_key", "state_entered_at", "state_entered_at_estimated")
+    return workflowTables.any { tableName -> !tableColumnNames(connection, tableName).containsAll(requiredColumns) } ||
+      (
+        tableExists(connection, "goal_issue_progress") &&
+          !tableColumnNames(connection, "goal_issue_progress").containsAll(requiredColumns - "issue_key")
+        )
+  }
+
+  private fun applyWorkListMetadata(connection: Connection, recoverIssueKeys: Boolean) {
+    val workflowColumnsHealed = ensureWorkListWorkflowColumns(connection)
+    val goalColumnsHealed = ensureGoalWorkListColumns(connection)
+    if (recoverIssueKeys || workflowColumnsHealed || goalColumnsHealed) {
+      recoverRuntimeWorkflowIssueKeys(connection)
+      recoverGoalContinuationWorkflowIssueKeys(connection)
+    }
+  }
+
+  private fun ensureWorkListWorkflowColumns(connection: Connection): Boolean {
+    var columnsHealed = false
+    listOf("feature_task_workflows", "feature_verify_workflows").forEach { tableName ->
+      columnsHealed = ensureColumn(connection, tableName, "issue_key", "TEXT") || columnsHealed
+      columnsHealed = ensureColumn(connection, tableName, "state_entered_at", "TEXT") || columnsHealed
+      columnsHealed = ensureColumn(connection, tableName, "state_entered_at_estimated", "INTEGER") || columnsHealed
+      connection.createStatement().use { statement ->
+        statement.execute(
+          """
+          UPDATE $tableName
+          SET state_entered_at = CASE
+                WHEN state_entered_at IS NULL OR state_entered_at = '' THEN COALESCE(
+                  NULLIF(finished_at, ''), NULLIF(updated_at, ''), NULLIF(started_at, '')
+                )
+                ELSE state_entered_at
+              END,
+              state_entered_at_estimated = CASE
+                WHEN state_entered_at IS NULL OR state_entered_at = ''
+                     OR state_entered_at_estimated IS NULL THEN 1
+                ELSE state_entered_at_estimated
+              END
+          WHERE state_entered_at_estimated IS NULL
+             OR (
+               (state_entered_at IS NULL OR state_entered_at = '')
+               AND (
+                 state_entered_at_estimated != 1
+                 OR NULLIF(finished_at, '') IS NOT NULL
+                 OR NULLIF(updated_at, '') IS NOT NULL
+                 OR NULLIF(started_at, '') IS NOT NULL
+               )
+             )
+          """.trimIndent(),
+        )
+      }
+    }
+    return columnsHealed
+  }
+
+  private fun ensureGoalWorkListColumns(connection: Connection): Boolean {
+    if (!tableExists(connection, "goal_issue_progress")) {
+      return false
+    }
+    val stateEnteredAtAdded = ensureColumn(connection, "goal_issue_progress", "state_entered_at", "TEXT")
+    val estimatedAdded = ensureColumn(
+      connection,
+      "goal_issue_progress",
+      "state_entered_at_estimated",
+      "INTEGER",
+    )
+    healGoalIssueProgressStateEntries(connection)
+    return stateEnteredAtAdded || estimatedAdded
+  }
+
+  private fun healGoalIssueProgressStateEntries(connection: Connection) {
+    connection.createStatement().use { statement ->
+      statement.execute(
+        """
+        UPDATE goal_issue_progress
+        SET status = CASE
+              WHEN status IS NOT NULL AND status != '' THEN status
+              WHEN last_blocked_segment_workflow_id IS NOT NULL
+                   AND last_blocked_segment_workflow_id = latest_segment_workflow_id THEN 'blocked'
+              ELSE 'running'
+            END,
+            state_entered_at = COALESCE(
+              NULLIF(state_entered_at, ''), NULLIF(finished_at, ''), NULLIF(last_activity_at, ''),
+              NULLIF(first_started_at, '')
+            ),
+            state_entered_at_estimated = CASE
+              WHEN state_entered_at IS NULL OR state_entered_at = ''
+                   OR state_entered_at_estimated IS NULL THEN 1
+              ELSE COALESCE(state_entered_at_estimated, 0)
+            END
+        WHERE status IS NULL OR status = ''
+           OR state_entered_at_estimated IS NULL
+           OR (
+             (state_entered_at IS NULL OR state_entered_at = '')
+             AND (
+               state_entered_at_estimated != 1
+               OR NULLIF(finished_at, '') IS NOT NULL
+               OR NULLIF(last_activity_at, '') IS NOT NULL
+               OR NULLIF(first_started_at, '') IS NOT NULL
+             )
+           )
+        """.trimIndent(),
+      )
+    }
+  }
+
+  private fun recoverGoalContinuationWorkflowIssueKeys(connection: Connection) {
+    connection.createStatement().use { statement ->
+      statement.execute(
+        """
+        UPDATE feature_task_workflows
+        SET issue_key = CASE
+          WHEN json_valid(artifacts_json) THEN trim(json_extract(artifacts_json, '$.goal_continuation.issue_key'))
+          ELSE NULL
+        END
+        WHERE (issue_key IS NULL OR issue_key = '')
+          AND CASE WHEN json_valid(artifacts_json) THEN
+            json_type(artifacts_json, '$.goal_continuation') = 'object'
+            AND json_type(artifacts_json, '$.goal_continuation.issue_key') = 'text'
+            AND NULLIF(trim(json_extract(artifacts_json, '$.goal_continuation.issue_key')), '') IS NOT NULL
+            AND json_type(artifacts_json, '$.goal_continuation.subtask_id') = 'integer'
+            AND json_extract(artifacts_json, '$.goal_continuation.subtask_id') > 0
+            AND json_type(artifacts_json, '$.goal_continuation.suppress_pr') IN ('true', 'false')
+            AND (
+              (mode = 'runtime'
+                AND NULLIF(trim(json_extract(artifacts_json, '$.goal_continuation.goal_branch')), '') IS NOT NULL)
+              OR (mode = 'prose' AND json_type(artifacts_json, '$.goal_continuation.enabled') = 'true')
+            )
+          ELSE 0 END
+        """.trimIndent(),
+      )
+    }
+  }
+
+  private fun recoverRuntimeWorkflowIssueKeys(connection: Connection) {
+    connection.createStatement().use { statement ->
+      statement.execute(
+        """
+        UPDATE feature_task_workflows
+        SET issue_key = (
+          SELECT NULLIF(feature_task_runtime_sessions.issue_key, '')
+          FROM feature_task_runtime_sessions
+          WHERE feature_task_runtime_sessions.session_id = feature_task_workflows.session_id
+        )
+        WHERE (issue_key IS NULL OR issue_key = '')
+          AND mode = 'runtime'
+          AND EXISTS (
+            SELECT 1 FROM feature_task_runtime_sessions
+            WHERE feature_task_runtime_sessions.session_id = feature_task_workflows.session_id
+              AND feature_task_runtime_sessions.issue_key IS NOT NULL
+              AND feature_task_runtime_sessions.issue_key != ''
+          )
+        """.trimIndent(),
+      )
+    }
+  }
+
+  private fun tableExists(connection: Connection, tableName: String): Boolean = connection.prepareStatement(
+    "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+  ).use { statement ->
+    statement.setString(1, tableName)
+    statement.executeQuery().use { resultSet -> resultSet.next() }
+  }
+
   private fun ensureReconciliationIndexes(connection: Connection) {
     listOf(
       "CREATE INDEX IF NOT EXISTS idx_feature_implement_reconciliation_candidates " +
@@ -309,15 +485,16 @@ internal object DatabaseColumnMigrations {
     }
   }
 
-  private fun ensureColumn(connection: Connection, tableName: String, columnName: String, definition: String) {
+  private fun ensureColumn(connection: Connection, tableName: String, columnName: String, definition: String): Boolean {
     require(tableName.matches(safeIdentifierPattern)) { "Unsafe table name: '$tableName'" }
     require(columnName.matches(safeIdentifierPattern)) { "Unsafe column name: '$columnName'" }
     if (tableColumnNames(connection = connection, tableName = tableName).contains(columnName)) {
-      return
+      return false
     }
     connection.createStatement().use { statement ->
       statement.execute("ALTER TABLE $tableName ADD COLUMN $columnName $definition")
     }
+    return true
   }
 
   private fun backfillBlankColumn(connection: Connection, tableName: String, columnName: String, expression: String) {

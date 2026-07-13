@@ -70,6 +70,8 @@ class DatabaseSchemaTest {
         "last_blocked_segment_workflow_id",
         "finished_at",
         "status",
+        "state_entered_at",
+        "state_entered_at_estimated",
         "subtasks_complete",
         "subtasks_blocked",
         "subtasks_skipped",

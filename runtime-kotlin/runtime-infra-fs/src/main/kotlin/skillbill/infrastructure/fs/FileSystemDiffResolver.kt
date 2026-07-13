@@ -8,6 +8,11 @@ import java.util.concurrent.TimeUnit
 
 @Inject
 class FileSystemDiffResolver : DiffResolverPort {
+  override fun readDiff(path: Path, maxBytes: Long): String? = path.takeIf(Files::isRegularFile)
+    ?.takeIf { Files.size(it) <= maxBytes }
+    ?.let(Files::readString)
+    ?.takeIf(String::isNotBlank)
+
   // Output is redirected to a temp file rather than drained from the pipe so a large diff cannot
   // deadlock against the OS pipe buffer while we wait, and waitFor is bounded so a stalled git/gh
   // process cannot block the review indefinitely — it is force-killed and reported as a failure.

@@ -157,6 +157,24 @@ val copyGoalProgressEventSchema =
     }
   }
 
+val canonicalGoalSubtaskReviewStateSchemaPath: String =
+  rootProject.projectDir.parentFile
+    .resolve("orchestration/contracts/goal-subtask-review-state-schema.yaml")
+    .absolutePath
+
+val copyGoalSubtaskReviewStateSchema =
+  tasks.register<Copy>("copyGoalSubtaskReviewStateSchema") {
+    val schemaPath = canonicalGoalSubtaskReviewStateSchemaPath
+    from(schemaPath)
+    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/contracts"))
+    inputs.file(schemaPath)
+    doFirst {
+      require(File(schemaPath).exists()) {
+        "SKILL-119: canonical goal-subtask review-state schema is missing at $schemaPath."
+      }
+    }
+  }
+
 val canonicalFeatureTaskRuntimePhaseOutputSchemaPath: String =
   rootProject.projectDir.parentFile
     .resolve("orchestration/contracts/feature-task-runtime-phase-output-schema.yaml")
@@ -188,6 +206,7 @@ tasks.named("processResources") {
   dependsOn(copyDecompositionManifestSchema)
   dependsOn(copyGoalObservabilityEventSchema)
   dependsOn(copyGoalProgressEventSchema)
+  dependsOn(copyGoalSubtaskReviewStateSchema)
   dependsOn(copyFeatureTaskRuntimePhaseOutputSchema)
 }
 
@@ -199,6 +218,7 @@ tasks.named("processTestResources") {
   dependsOn(copyDecompositionManifestSchema)
   dependsOn(copyGoalObservabilityEventSchema)
   dependsOn(copyGoalProgressEventSchema)
+  dependsOn(copyGoalSubtaskReviewStateSchema)
   dependsOn(copyFeatureTaskRuntimePhaseOutputSchema)
 }
 

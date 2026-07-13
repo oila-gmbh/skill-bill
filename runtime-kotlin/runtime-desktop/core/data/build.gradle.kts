@@ -12,6 +12,7 @@ kotlin {
     }
 
     jvmMain.dependencies {
+      implementation(libs.kotlinx.coroutines.core)
       // SKILL-52.2 subtask 5: narrowed allow-list pinned by
       // `runtime-core/src/test/kotlin/skillbill/architecture/RuntimeAdapterDependencyAllowlistTest.kt`.
       // runtime-infra-fs was dropped — the desktop data gateways have no

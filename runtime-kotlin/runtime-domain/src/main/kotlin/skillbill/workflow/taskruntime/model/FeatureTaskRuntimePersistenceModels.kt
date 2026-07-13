@@ -60,30 +60,6 @@ data class FeatureTaskRuntimeResolvedBranch(
   }
 }
 
-data class FeatureTaskRuntimeGoalContinuationArtifact(
-  val issueKey: String,
-  val subtaskId: Int,
-  val suppressPr: Boolean,
-  val goalBranch: String,
-  val parentWorkflowId: String? = null,
-) {
-  init {
-    require(issueKey.isNotBlank()) { "FeatureTaskRuntimeGoalContinuationArtifact.issueKey must be non-blank." }
-    require(subtaskId > 0) { "FeatureTaskRuntimeGoalContinuationArtifact.subtaskId must be positive." }
-    require(goalBranch.isNotBlank()) { "FeatureTaskRuntimeGoalContinuationArtifact.goalBranch must be non-blank." }
-  }
-
-  @OpenBoundaryMap("Feature-task-runtime goal-continuation artifact map at the durable workflow-artifact seam")
-  fun toArtifactMap(): Map<String, Any?> = linkedMapOf<String, Any?>(
-    "issue_key" to issueKey,
-    "subtask_id" to subtaskId,
-    "suppress_pr" to suppressPr,
-    "goal_branch" to goalBranch,
-  ).apply {
-    parentWorkflowId?.let { put("parent_workflow_id", it) }
-  }
-}
-
 data class FeatureTaskRuntimeGoalContinuationOutcome(
   val issueKey: String,
   val subtaskId: Int,
@@ -327,7 +303,7 @@ data class FeatureTaskRuntimePhaseLedgerEntry(
 // Strict field decoders. The optional variants return null only when the key is
 // absent; a present-but-malformed value still loud-fails rather than defaulting.
 
-private fun Map<String, Any?>.requireStringField(key: String): String {
+internal fun Map<String, Any?>.requireStringField(key: String): String {
   val value = this[key]
     ?: throw InvalidWorkflowStateSchemaError(
       "Feature-task-runtime artifact map is missing required field '$key'.",
@@ -338,7 +314,7 @@ private fun Map<String, Any?>.requireStringField(key: String): String {
     )
 }
 
-private fun Map<String, Any?>.optionalStringField(key: String): String? {
+internal fun Map<String, Any?>.optionalStringField(key: String): String? {
   if (!containsKey(key) || this[key] == null) {
     return null
   }
@@ -348,7 +324,7 @@ private fun Map<String, Any?>.optionalStringField(key: String): String? {
     )
 }
 
-private fun Map<String, Any?>.requireIntField(key: String): Int {
+internal fun Map<String, Any?>.requireIntField(key: String): Int {
   if (!containsKey(key) || this[key] == null) {
     throw InvalidWorkflowStateSchemaError(
       "Feature-task-runtime artifact map is missing required integer field '$key'.",
@@ -386,7 +362,7 @@ private fun Map<String, Any?>.optionalStringListField(key: String): List<String>
   }
 }
 
-private fun Map<String, Any?>.optionalBooleanField(key: String): Boolean? {
+internal fun Map<String, Any?>.optionalBooleanField(key: String): Boolean? {
   if (!containsKey(key) || this[key] == null) {
     return null
   }

@@ -2122,6 +2122,7 @@ internal class FakeDatabaseSessionFactory(
       get() = error("TelemetryReconciliationRepository is not exercised in WorkflowServiceTest.")
     override val telemetryOutbox: TelemetryOutboxRepository
       get() = error("TelemetryOutboxRepository is not exercised in WorkflowServiceTest.")
+    override val workList = skillbill.ports.persistence.EmptyWorkListRepository
   }
 }
 

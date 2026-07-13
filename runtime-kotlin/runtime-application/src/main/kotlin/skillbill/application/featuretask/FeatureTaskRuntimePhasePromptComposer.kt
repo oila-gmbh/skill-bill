@@ -1,6 +1,8 @@
 package skillbill.application.featuretask
 
 import skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing
+import skillbill.ports.workflow.model.GoalSubtaskReviewInput
+import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.model.SpecSource
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
@@ -20,6 +22,8 @@ object FeatureTaskRuntimePhasePromptComposer {
     briefing: FeatureTaskRuntimePhaseLaunchBriefing,
     suppressDecomposition: Boolean = false,
     parallelReviewAgent: String? = null,
+    codeReviewMode: CodeReviewExecutionMode = CodeReviewExecutionMode.AUTO,
+    goalSubtaskReviewInput: GoalSubtaskReviewInput? = null,
     specSource: SpecSource = SpecSource.LOCAL,
     priorSchemaFailure: String? = null,
     specReference: String? = null,
@@ -30,7 +34,7 @@ object FeatureTaskRuntimePhasePromptComposer {
       ceremonyDirective(briefing),
       mutatingPhaseIdempotencyDirective(briefing.phaseId),
       goalContinuationDirective(briefing.phaseId, suppressDecomposition),
-      parallelReviewDirective(briefing.phaseId, parallelReviewAgent),
+      reviewExecutionDirective(briefing.phaseId, codeReviewMode, parallelReviewAgent, goalSubtaskReviewInput),
       commitExclusionDirective(briefing.phaseId, issueKey, specSource),
       specCommitInclusionDirective(briefing.phaseId, specReference, specSource),
       briefing.briefingText,
@@ -226,13 +230,37 @@ object FeatureTaskRuntimePhasePromptComposer {
     """.trimIndent()
   }
 
-  private fun parallelReviewDirective(phaseId: String, parallelReviewAgent: String?): String {
-    if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW || parallelReviewAgent.isNullOrBlank()) {
+  private fun reviewExecutionDirective(
+    phaseId: String,
+    codeReviewMode: CodeReviewExecutionMode,
+    parallelReviewAgent: String?,
+    goalSubtaskReviewInput: GoalSubtaskReviewInput?,
+  ): String {
+    if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW) {
       return ""
     }
+    val parallel = parallelReviewAgent?.takeIf(String::isNotBlank)?.let { agent ->
+      " Combine it with `parallel:$agent`; both lanes must receive mode:${codeReviewMode.wireValue} " +
+        "and the second lane must not launch parallel review recursively."
+    }.orEmpty()
+    val goalScope = goalSubtaskReviewInput?.let { input ->
+      """
+
+      ## Goal subtask review scope
+      Review only this child-owned delta from durable base `${input.reviewBaseSha}` to current HEAD `${input.currentHeadSha}`.
+      It includes committed, staged, unstaged, and owned untracked changes below.
+      Do not use `origin/main...HEAD`, a merge base, the full feature branch, or a replacement baseline.
+      If parallel CLI delegation is required, give both lanes this exact diff through `--diff-file`;
+      never select a branch scope.
+
+      ${input.reviewText}
+      """.trimIndent()
+    }.orEmpty()
     return """
-      ## Parallel review lane
-      Run the review using `bill-code-review parallel:$parallelReviewAgent` so a second lane from $parallelReviewAgent reviews the same diff concurrently. Findings from both lanes are merged with provenance labels.
+      ## Review execution mode
+      Run `bill-code-review mode:${codeReviewMode.wireValue}` for this review and every re-review.
+      AUTO keeps the shared policy's existing selection; INLINE must reject an ineligible scope instead of substituting
+      delegated mode; DELEGATED must use normal routed delegation and fail if workers cannot start.$parallel$goalScope
     """.trimIndent()
   }
 

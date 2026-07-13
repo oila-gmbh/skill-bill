@@ -43,6 +43,16 @@ import kotlin.test.assertTrue
 
 class McpRuntimeTest {
   @Test
+  fun `workflow open retains context as its fourth positional argument`() {
+    val tempDir = Files.createTempDirectory("skillbill-mcp-workflow-open-compat")
+    val context = McpRuntimeContext(environment = disabledTelemetryEnvironment(tempDir), userHome = tempDir)
+
+    val opened = McpWorkflowRuntime.open(WorkflowFamilyKind.TASK_PROSE, "fis-compat", null, context)
+
+    assertTrue((opened["workflow_id"] as String).startsWith("wfl-"))
+  }
+
+  @Test
   fun `version matches cli system service payload`() {
     val tempDir = Files.createTempDirectory("skillbill-mcp-version")
     val env = disabledTelemetryEnvironment(tempDir)

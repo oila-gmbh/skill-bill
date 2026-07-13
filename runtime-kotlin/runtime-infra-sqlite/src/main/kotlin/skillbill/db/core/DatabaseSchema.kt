@@ -258,8 +258,11 @@ internal object DatabaseSchema {
         current_step_id TEXT NOT NULL DEFAULT '',
         steps_json TEXT NOT NULL DEFAULT '',
         artifacts_json TEXT NOT NULL DEFAULT '',
+        issue_key TEXT,
         started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        state_entered_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        state_entered_at_estimated INTEGER NOT NULL DEFAULT 0,
         finished_at TEXT
       )
       """.trimIndent(),
@@ -273,8 +276,11 @@ internal object DatabaseSchema {
         current_step_id TEXT NOT NULL DEFAULT '',
         steps_json TEXT NOT NULL DEFAULT '',
         artifacts_json TEXT NOT NULL DEFAULT '',
+        issue_key TEXT,
         started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        state_entered_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        state_entered_at_estimated INTEGER NOT NULL DEFAULT 0,
         finished_at TEXT
       )
       """.trimIndent(),
@@ -332,6 +338,8 @@ internal object DatabaseSchema {
         last_blocked_segment_workflow_id TEXT,
         finished_at TEXT,
         status TEXT,
+        state_entered_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        state_entered_at_estimated INTEGER NOT NULL DEFAULT 0,
         subtasks_complete INTEGER,
         subtasks_blocked INTEGER,
         subtasks_skipped INTEGER,

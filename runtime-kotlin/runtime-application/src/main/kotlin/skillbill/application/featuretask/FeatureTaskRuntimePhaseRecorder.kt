@@ -5,9 +5,12 @@ import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing
 import skillbill.application.model.FeatureTaskRuntimePhaseLedgerRequest
 import skillbill.application.model.FeatureTaskRuntimePhaseStateRequest
+import skillbill.application.normalizeIssueKey
 import skillbill.application.workflow.WorkflowFamily
+import skillbill.application.workflow.toRecord
 import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidWorkflowStateSchemaError
+import skillbill.error.WorkflowIssueKeyConflictError
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.WorkflowStateRepository
 import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
@@ -28,6 +31,11 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDecomposeTerminal
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
+import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.GoalSubtaskReviewArtifactDecoder
+import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
 import java.time.Duration
 import java.time.Instant
 
@@ -62,24 +70,7 @@ class FeatureTaskRuntimePhaseRecorder(
       val existingRecords = phaseRecordsFrom(artifacts)
       val now = Instant.now().toString()
       val previous = existingRecords[request.phaseId]
-      val firstStartedAt = previous?.firstStartedAt ?: now
-      // Re-mint started_at on every running transition so duration measures the current run.
-      // A finishing/blocked write keeps the running attempt's started_at to time only this run.
-      val startedAt = if (request.status == STATUS_RUNNING || previous == null) now else previous.startedAt
-      val phaseRecord = FeatureTaskRuntimePhaseRecord(
-        phaseId = request.phaseId,
-        status = request.status,
-        attemptCount = request.attemptCount,
-        startedAt = startedAt,
-        firstStartedAt = firstStartedAt,
-        finishedAt = if (request.finished) now else null,
-        durationMillis = if (request.finished) durationMillis(startedAt, now) else null,
-        resolvedAgentId = request.resolvedAgentId,
-        outputArtifact = request.outputArtifact,
-        blockedReason = request.blockedReason,
-        loopId = request.loopId,
-        edgeIteration = request.edgeIteration,
-      )
+      val phaseRecord = phaseRecordFor(request, previous, now)
       val updatedRecords = LinkedHashMap(existingRecords).apply { put(request.phaseId, phaseRecord) }
       val patch = mapOf(
         FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY to
@@ -97,6 +88,53 @@ class FeatureTaskRuntimePhaseRecorder(
       )
       true
     }
+
+  internal fun completeGoalReviewPhase(
+    completion: GoalReviewPhaseCompletionRequest,
+    dbOverride: String? = null,
+  ): Boolean {
+    val request = completion.phaseState
+    require(request.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW) {
+      "Goal review completion can only persist the review phase."
+    }
+    require(request.status == "completed" && request.finished) {
+      "Goal review completion must persist a finished completed review phase."
+    }
+    require(completion.rawReviewResult.isNotBlank()) { "Goal-subtask review pass result must be non-blank." }
+    return database.transaction(dbOverride) { unitOfWork ->
+      val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, request.workflowId)
+        ?: return@transaction false
+      val artifacts = decodeArtifacts(record.artifactsJson)
+      val reviewArtifacts = GoalSubtaskReviewArtifactDecoder.decode(artifacts)
+        ?: return@transaction false
+      val completedState = reviewArtifacts.state.completeReservedPass(
+        verdict = completion.verdict,
+        unresolvedFindingCount = completion.unresolvedFindingCount,
+        findings = completion.findings,
+      )
+      val passNumber = completedState.completedPassCount.toString()
+      val existingRecords = phaseRecordsFrom(artifacts)
+      val phaseRecord = phaseRecordFor(request, existingRecords[request.phaseId], Instant.now().toString())
+      val updatedRecords = LinkedHashMap(existingRecords).apply { put(request.phaseId, phaseRecord) }
+      persistPatch(
+        unitOfWork.workflowStates,
+        record,
+        mapOf(
+          GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY to completedState.toArtifactMap(),
+          GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY to
+            (reviewArtifacts.rawResults + (passNumber to completion.rawReviewResult)),
+          FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY to
+            updatedRecords.mapValues { (_, value) -> value.toArtifactMap() },
+        ),
+        WorkflowRowAdvance(
+          currentStepId = request.phaseId,
+          workflowStatus = workflowStatusFor(request),
+          stepUpdates = stepUpdatesFrom(updatedRecords),
+        ),
+      )
+      true
+    }
+  }
 
   /**
    * Durably drops the backward-edge context (loop_id + edge_iteration) from the named phase records
@@ -274,20 +312,43 @@ class FeatureTaskRuntimePhaseRecorder(
    * Ensures a runtime workflow row exists, opening one at the definition's initial step when
    * absent. Idempotent: a no-op when a row already exists.
    */
-  fun ensureWorkflowOpen(workflowId: String, sessionId: String, dbOverride: String? = null): Boolean =
-    database.transaction(dbOverride) { unitOfWork ->
-      if (WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) != null) {
-        return@transaction true
+  fun ensureWorkflowOpen(
+    workflowId: String,
+    sessionId: String,
+    dbOverride: String? = null,
+    issueKey: String? = null,
+  ): Boolean = database.transaction(dbOverride) { unitOfWork ->
+    val normalizedIssueKey = normalizeIssueKey(issueKey)
+    val existing = unitOfWork.workflowStates.getFeatureTaskRuntimeWorkflow(workflowId)
+    if (existing != null) {
+      val persistedIssueKey = existing.issueKey
+        ?.trim()
+        ?.takeIf(String::isNotEmpty)
+        ?.let(::normalizeIssueKey)
+      if (
+        persistedIssueKey != null &&
+        normalizedIssueKey != null &&
+        persistedIssueKey != normalizedIssueKey
+      ) {
+        throw WorkflowIssueKeyConflictError(workflowId, persistedIssueKey, normalizedIssueKey)
       }
-      val opened = engine.openRecord(
-        WorkflowFamily.TASK_RUNTIME.definition,
-        workflowId,
-        sessionId,
-        WorkflowFamily.TASK_RUNTIME.definition.defaultInitialStepId,
-      )
-      WorkflowFamily.TASK_RUNTIME.save(unitOfWork.workflowStates, opened)
-      true
+      if (persistedIssueKey == null && normalizedIssueKey != null) {
+        unitOfWork.workflowStates.saveFeatureTaskRuntimeWorkflow(existing.copy(issueKey = normalizedIssueKey))
+      }
+      return@transaction true
     }
+    val opened = engine.openRecord(
+      WorkflowFamily.TASK_RUNTIME.definition,
+      workflowId,
+      sessionId,
+      WorkflowFamily.TASK_RUNTIME.definition.defaultInitialStepId,
+    )
+    WorkflowFamily.TASK_RUNTIME.saveRecord(
+      unitOfWork.workflowStates,
+      opened.toRecord().copy(issueKey = normalizedIssueKey),
+    )
+    true
+  }
 
   private fun persistPatch(
     workflowStates: WorkflowStateRepository,
@@ -312,10 +373,41 @@ class FeatureTaskRuntimePhaseRecorder(
     WorkflowFamily.TASK_RUNTIME.save(workflowStates, updated)
   }
 
+  private fun phaseRecordFor(
+    request: FeatureTaskRuntimePhaseStateRequest,
+    previous: FeatureTaskRuntimePhaseRecord?,
+    now: String,
+  ): FeatureTaskRuntimePhaseRecord {
+    val firstStartedAt = previous?.firstStartedAt ?: now
+    val startedAt = if (request.status == STATUS_RUNNING || previous == null) now else previous.startedAt
+    return FeatureTaskRuntimePhaseRecord(
+      phaseId = request.phaseId,
+      status = request.status,
+      attemptCount = request.attemptCount,
+      startedAt = startedAt,
+      firstStartedAt = firstStartedAt,
+      finishedAt = if (request.finished) now else null,
+      durationMillis = if (request.finished) durationMillis(startedAt, now) else null,
+      resolvedAgentId = request.resolvedAgentId,
+      outputArtifact = request.outputArtifact,
+      blockedReason = request.blockedReason,
+      loopId = request.loopId,
+      edgeIteration = request.edgeIteration,
+    )
+  }
+
   private companion object {
     const val STATUS_RUNNING = "running"
   }
 }
+
+internal data class GoalReviewPhaseCompletionRequest(
+  val phaseState: FeatureTaskRuntimePhaseStateRequest,
+  val verdict: FeatureTaskRuntimeVerdict,
+  val unresolvedFindingCount: Int,
+  val findings: List<GoalSubtaskReviewCompactFinding>,
+  val rawReviewResult: String,
+)
 
 // How the coarse workflow row + shared steps[] advance alongside a per-phase record write. Grouping
 // these together keeps persistPatch a three-argument seam; the default keeps the row untouched for

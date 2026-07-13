@@ -79,4 +79,16 @@ object SkillBillDimens {
   val commandPaletteMaxHeight = 480.dp
   val commandPaletteListHeight = 410.dp
   val commandPaletteTopOffset = 54.dp
+
+  val workFieldIssueWidth = 112.dp
+  val workFieldKindWidth = 156.dp
+  val workFieldWorkflowWidth = 248.dp
+  val workFieldStartedWidth = 188.dp
+  val workFieldStateWidth = 112.dp
+  val workFieldStateSinceWidth = 196.dp
+  val workTableWidth = workFieldIssueWidth + workFieldKindWidth + workFieldWorkflowWidth +
+    workFieldStartedWidth + workFieldStateWidth + workFieldStateSinceWidth
+  val workContentWidth = workTableWidth + padLg + padLg
+  val workViewportHeight = 105.dp
+  val workInteractiveMinSize = 48.dp
 }

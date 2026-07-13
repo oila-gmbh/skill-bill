@@ -9,6 +9,11 @@ import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import java.nio.file.Files
 import java.sql.Connection
+import java.sql.DriverManager
+import java.time.Instant
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -128,6 +133,192 @@ class WorkflowStateStoreTest {
       val saved = assertNotNull(store.getFeatureImplementWorkflow("wfl-terminal"))
       assertEquals("abandoned", saved.workflowStatus)
       assertNotNull(saved.finishedAt)
+    }
+  }
+
+  @Test
+  fun `workflow state entry starts at supplied start time and changes only on a status transition`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-db-workflow-state-entry").resolve("metrics.db")
+    val startedAt = "2999-05-01T12:00:00.123456789Z"
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val store = WorkflowStateStore(connection)
+      val initial = workflowRow(
+        workflowId = "wfl-state-entry",
+        sessionId = "fis-state-entry",
+        workflowName = "bill-feature-task",
+        currentStepId = "assess",
+      ).copy(startedAt = startedAt)
+
+      store.saveFeatureImplementWorkflow(initial)
+      val inserted = assertNotNull(store.getFeatureImplementWorkflow("wfl-state-entry"))
+      assertEquals(startedAt, inserted.startedAt)
+      assertEquals(startedAt, inserted.stateEnteredAt)
+      assertEquals(false, inserted.stateEnteredAtEstimated)
+
+      store.saveFeatureImplementWorkflow(initial.copy(currentStepId = "plan", artifactsJson = "{\"plan\":{}}"))
+      val sameStatus = assertNotNull(store.getFeatureImplementWorkflow("wfl-state-entry"))
+      assertEquals(startedAt, sameStatus.stateEnteredAt)
+      assertEquals(false, sameStatus.stateEnteredAtEstimated)
+
+      store.saveFeatureImplementWorkflow(sameStatus.copy(workflowStatus = "blocked", currentStepId = "plan"))
+      val transitioned = assertNotNull(store.getFeatureImplementWorkflow("wfl-state-entry"))
+      assertEquals("blocked", transitioned.workflowStatus)
+      assertTrue(Instant.parse(transitioned.stateEnteredAt).isAfter(Instant.parse(startedAt)))
+      assertEquals(false, transitioned.stateEnteredAtEstimated)
+
+      assertRuntimeAndVerifyStateTransitions(store, initial, startedAt)
+    }
+  }
+
+  @Test
+  fun `workflow inserts without a supplied start time use one effective timestamp`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-db-workflow-insert-state-entry").resolve("metrics.db")
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val store = WorkflowStateStore(connection)
+      store.saveFeatureImplementWorkflow(
+        workflowRow("wfl-insert", "fis-insert", "bill-feature-task", "assess"),
+      )
+      store.saveFeatureTaskRuntimeWorkflow(
+        workflowRow(
+          workflowId = "wftr-insert",
+          sessionId = "ftr-insert",
+          workflowName = "bill-feature-task",
+          currentStepId = "preplan",
+          mode = FeatureTaskWorkflowMode.RUNTIME,
+        ),
+      )
+      store.saveFeatureVerifyWorkflow(
+        workflowRow("wfv-insert", "fvr-insert", "bill-feature-verify", "collect_inputs"),
+      )
+
+      listOf(
+        assertNotNull(store.getFeatureImplementWorkflow("wfl-insert")),
+        assertNotNull(store.getFeatureTaskRuntimeWorkflow("wftr-insert")),
+        assertNotNull(store.getFeatureVerifyWorkflow("wfv-insert")),
+      ).forEach { inserted ->
+        assertEquals(inserted.startedAt, inserted.stateEnteredAt)
+        assertEquals(false, inserted.stateEnteredAtEstimated)
+        assertTrue(!inserted.startedAt.isNullOrBlank())
+      }
+    }
+  }
+
+  @Test
+  fun `concurrent workflow status transitions serialize strictly increasing state entry times`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-db-workflow-concurrent-state").resolve("metrics.db")
+    val initial = workflowRow(
+      workflowId = "wfl-concurrent-state-entry",
+      sessionId = "fis-concurrent-state-entry",
+      workflowName = "bill-feature-task",
+      currentStepId = "assess",
+    ).copy(startedAt = "2999-05-01T12:00:00.123456789Z")
+
+    prepareConcurrentWorkflowTransitions(dbPath, initial)
+
+    val ready = CountDownLatch(2)
+    val start = CountDownLatch(1)
+    val executor = Executors.newFixedThreadPool(2)
+    try {
+      val transitions = listOf("blocked", "failed").map { status ->
+        executor.submit {
+          ready.countDown()
+          check(start.await(5, TimeUnit.SECONDS)) { "Concurrent transition start timed out." }
+          DriverManager.getConnection("jdbc:sqlite:$dbPath").use { connection ->
+            connection.createStatement().use { it.execute("PRAGMA busy_timeout = 5000") }
+            WorkflowStateStore(connection).saveFeatureImplementWorkflow(
+              initial.copy(workflowStatus = status, currentStepId = "plan"),
+            )
+          }
+        }
+      }
+
+      assertTrue(ready.await(5, TimeUnit.SECONDS))
+      start.countDown()
+      transitions.forEach { it.get(5, TimeUnit.SECONDS) }
+    } finally {
+      executor.shutdownNow()
+    }
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val entries = connection.createStatement().use { statement ->
+        statement.executeQuery("SELECT state_entered_at FROM workflow_transition_log ORDER BY rowid").use { resultSet ->
+          buildList {
+            while (resultSet.next()) {
+              add(resultSet.getString("state_entered_at"))
+            }
+          }
+        }
+      }
+
+      assertEquals(2, entries.size)
+      assertTrue(Instant.parse(entries[1]).isAfter(Instant.parse(entries[0])))
+    }
+  }
+
+  private fun assertRuntimeAndVerifyStateTransitions(
+    store: WorkflowStateStore,
+    initial: WorkflowStateRow,
+    startedAt: String,
+  ) {
+    val runtimeInitial = initial.copy(
+      workflowId = "wftr-state-entry",
+      sessionId = "ftr-state-entry",
+      mode = FeatureTaskWorkflowMode.RUNTIME,
+    )
+    store.saveFeatureTaskRuntimeWorkflow(runtimeInitial)
+    val runtimeInserted = assertNotNull(store.getFeatureTaskRuntimeWorkflow("wftr-state-entry"))
+    assertEquals(startedAt, runtimeInserted.stateEnteredAt)
+
+    store.saveFeatureTaskRuntimeWorkflow(runtimeInserted.copy(workflowStatus = "blocked", currentStepId = "plan"))
+    val runtimeTransitioned = assertNotNull(store.getFeatureTaskRuntimeWorkflow("wftr-state-entry"))
+    assertTrue(Instant.parse(runtimeTransitioned.stateEnteredAt).isAfter(Instant.parse(startedAt)))
+    assertEquals(false, runtimeTransitioned.stateEnteredAtEstimated)
+
+    val verifyInitial = WorkflowStateRow(
+      workflowId = "wfv-state-entry",
+      sessionId = "fvr-state-entry",
+      workflowName = "bill-feature-verify",
+      contractVersion = "0.1",
+      workflowStatus = "running",
+      currentStepId = "gather_diff",
+      stepsJson = "[]",
+      artifactsJson = "{}",
+      startedAt = startedAt,
+      updatedAt = null,
+      finishedAt = null,
+    )
+    store.saveFeatureVerifyWorkflow(verifyInitial)
+    val verifyInserted = assertNotNull(store.getFeatureVerifyWorkflow("wfv-state-entry"))
+    assertEquals(startedAt, verifyInserted.stateEnteredAt)
+
+    store.saveFeatureVerifyWorkflow(verifyInitial.copy(currentStepId = "code_review"))
+    val verifySameStatus = assertNotNull(store.getFeatureVerifyWorkflow("wfv-state-entry"))
+    assertEquals(startedAt, verifySameStatus.stateEnteredAt)
+
+    store.saveFeatureVerifyWorkflow(verifySameStatus.copy(workflowStatus = "completed", currentStepId = "finish"))
+    val verifyTransitioned = assertNotNull(store.getFeatureVerifyWorkflow("wfv-state-entry"))
+    assertTrue(Instant.parse(verifyTransitioned.stateEnteredAt).isAfter(Instant.parse(startedAt)))
+    assertEquals(false, verifyTransitioned.stateEnteredAtEstimated)
+  }
+
+  private fun prepareConcurrentWorkflowTransitions(dbPath: java.nio.file.Path, initial: WorkflowStateRow) {
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      WorkflowStateStore(connection).saveFeatureImplementWorkflow(initial)
+      connection.createStatement().use { statement ->
+        statement.execute("CREATE TABLE workflow_transition_log (state_entered_at TEXT NOT NULL)")
+        statement.execute(
+          """
+          CREATE TRIGGER workflow_state_transition_log
+          AFTER UPDATE OF workflow_status ON feature_task_workflows
+          WHEN OLD.workflow_status != NEW.workflow_status
+          BEGIN
+            INSERT INTO workflow_transition_log (state_entered_at) VALUES (NEW.state_entered_at);
+          END
+          """.trimIndent(),
+        )
+      }
     }
   }
 

@@ -1,6 +1,7 @@
 package skillbill.application
 
 import skillbill.application.model.FeatureTaskRuntimeRunReport
+import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import kotlin.test.Test
 import kotlin.test.assertContains
@@ -62,6 +63,22 @@ class FeatureTaskRuntimeAuditGapLoopTest {
     val loopEdges = harness.recorder.loadPhaseLedger(WORKFLOW_ID).orEmpty()
       .filter { it.action == FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE && it.loopId == "audit_gap" }
     assertEquals(listOf(1), loopEdges.mapNotNull { it.edgeIteration })
+  }
+
+  @Test
+  fun `m2 audit re-entry retains the selected review mode for every review launch`() {
+    val harness = runnerHarness(launcher = auditGapLauncher(convergeOnAudit = 2))
+
+    val report = harness.runner.run(
+      harness.request().copy(requestedCodeReviewMode = CodeReviewExecutionMode.DELEGATED),
+    )
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    val reviewPrompts = harness.launcher.requests
+      .map { requireNotNull(it.skillRunRequest.promptOverride) }
+      .filter { it.contains("Phase: review") }
+    assertEquals(2, reviewPrompts.size)
+    assertTrue(reviewPrompts.all { it.contains("bill-code-review mode:delegated") })
   }
 
   // (c) AC2: convergence on the last allowed (2nd) iteration still advances.

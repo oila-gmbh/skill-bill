@@ -27,12 +27,14 @@ import skillbill.cli.core.refuseRuntimeRefusedAgents
 import skillbill.contracts.system.RuntimeProvenanceContract
 import skillbill.goalrunner.model.GoalRunnerRunReport
 import skillbill.goalrunner.model.GoalRunnerStatusProjection
+import skillbill.install.model.InstallAgent
 import skillbill.install.model.InvokingAgentContextResolver
 import skillbill.ports.agentrun.model.AgentRunOutputSink
 import skillbill.ports.agentrun.model.AgentRunOutputStream
 import skillbill.ports.workflow.model.DEFAULT_SELECTED_DIFF_MAX_BYTES
 import skillbill.ports.workflow.model.DEFAULT_SELECTED_DIFF_MAX_HUNKS
 import skillbill.ports.workflow.model.DEFAULT_SELECTED_DIFF_MAX_LINES
+import skillbill.workflow.model.CodeReviewExecutionMode
 import java.nio.file.Path
 import kotlin.time.Duration.Companion.minutes
 
@@ -56,6 +58,16 @@ class GoalRunCommand(
     help = "Agent to use for child subtask runs instead of the invoking agent. Wins over --agent and detection.",
   )
   private val repoRoot by option("--repo-root", help = "Repository root for child agent runs.")
+  private val codeReviewMode by option(
+    "--code-review-mode",
+    help = "Review execution mode for every child: auto (default), inline, or delegated.",
+  )
+  private val parallelReviewAgent by option(
+    "--parallel-review-agent",
+    help =
+    "Run every child review with a second parallel agent lane. " +
+      "Supported agents: ${InstallAgent.supportedIds.joinToString()}.",
+  )
   private val maxWallClockMinutes by option(
     "--max-wall-clock-minutes",
     "--timeout-minutes",
@@ -88,7 +100,13 @@ class GoalRunCommand(
     // opencode is prose-only: refuse before any child subprocess is spawned, and before the
     // issue_key check so the actionable refusal wins over a generic argument error (mirrors
     // feature-task, where the preflight is the first statement in every run body).
-    refuseRuntimeRefusedAgents(listOf(resolveInvokedAgentId(agent, state.environment), agentOverride))
+    refuseRuntimeRefusedAgents(
+      listOf(
+        resolveInvokedAgentId(agent, state.environment),
+        agentOverride,
+        parallelReviewAgent?.takeIf(String::isNotBlank),
+      ),
+    )
     val runIssueKey = issueKey ?: throw UsageError("issue_key is required for goal run.")
     val presenter = GoalRunPresenter(
       issueKey = runIssueKey,
@@ -113,10 +131,20 @@ class GoalRunCommand(
         progressIdleTimeout = progressIdleTimeoutMinutes?.minutes,
         outputSink = presenter.outputSink(includeRawChildOutput = debugChildOutput),
         eventSink = presenter.eventSink(),
+        codeReviewMode = parseCodeReviewMode(codeReviewMode),
+        parallelReviewAgent = parallelReviewAgent?.takeIf(String::isNotBlank),
       ),
     )
     val payload = report.toGoalRunCliMap()
     state.completeText(goalRunText(payload), payload, exitCode = payload.goalExitCode())
+  }
+}
+
+private fun parseCodeReviewMode(raw: String?): CodeReviewExecutionMode? = raw?.let { value ->
+  try {
+    CodeReviewExecutionMode.fromWire(value)
+  } catch (error: IllegalArgumentException) {
+    throw UsageError(error.message.orEmpty()).apply { initCause(error) }
   }
 }
 
@@ -351,6 +379,10 @@ private class GoalRunPresenter(
             activeSubtaskId = event.subtaskId
             activeStepId = event.currentStepId?.takeIf(String::isNotBlank) ?: activeStepId
           }
+          is GoalRunnerRunEvent.SubtaskReviewSummary -> {
+            activeSubtaskId = event.subtaskId
+            activeStepId = "review"
+          }
           else -> Unit
         }
         state.liveStdout(event.progressLine())
@@ -370,10 +402,17 @@ private class GoalRunPresenter(
     val subtask = transition.subtaskId?.toString() ?: activeSubtaskId?.toString() ?: "unknown"
     val step = activeStepId ?: "unknown"
     goalEventSequence += 1
+    val reviewSummary = (event as? GoalRunnerRunEvent.SubtaskReviewSummary)?.let { summary ->
+      " review_pass=${summary.passNumber} finding_count=${summary.findingCount} " +
+        "unresolved_finding_count=${summary.unresolvedFindingCount} compact_findings=" +
+        summary.findings.joinToString("|") { finding ->
+          "${finding.severity}:${finding.label}:${finding.text}".replace(Regex("\\s+"), "_")
+        }
+    }.orEmpty()
     state.liveStdout(
       "goal_event: issue_key=$issueKey subtask_id=$subtask prev_step=${prevStep ?: "none"} " +
         "current_step=$step prev_status=${prevStatus ?: "none"} current_status=${transition.currentStatus} " +
-        "event_kind=${transition.eventKind} sequence_number=$goalEventSequence\n",
+        "event_kind=${transition.eventKind}$reviewSummary sequence_number=$goalEventSequence\n",
     )
     lastEmittedStatus = transition.currentStatus
     lastEmittedStep = step
@@ -478,6 +517,8 @@ private fun goalEventTransition(event: GoalRunnerRunEvent): GoalEventTransition?
     GoalEventTransition(event.subtaskId, "complete", "subtask_completed")
   is GoalRunnerRunEvent.SubtaskStopped ->
     GoalEventTransition(event.subtaskId, event.reason, "subtask_stopped")
+  is GoalRunnerRunEvent.SubtaskReviewSummary ->
+    GoalEventTransition(event.subtaskId, event.verdict, "subtask_review_summary")
   is GoalRunnerRunEvent.Completed ->
     GoalEventTransition(null, "complete", "terminal_reconciliation")
 }
@@ -488,6 +529,27 @@ private fun GoalRunnerRunEvent.progressLine(): String = when (this) {
   is GoalRunnerRunEvent.SubtaskCompleted -> "goal $issueKey: subtask $subtaskId complete\n"
   is GoalRunnerRunEvent.SubtaskStopped ->
     "goal $issueKey: subtask $subtaskId stopped ($reason): $blockedReason\n"
+  is GoalRunnerRunEvent.SubtaskReviewSummary -> buildString {
+    append("goal review: subtask=")
+    append(subtaskId)
+    append(" pass=")
+    append(passNumber)
+    append(' ')
+    append(verdict)
+    append(" findings=")
+    append(findingCount)
+    append(" unresolved=")
+    append(unresolvedFindingCount)
+    findings.forEach { finding ->
+      append("\n  ")
+      append(finding.severity.replaceFirstChar(Char::uppercase))
+      append(' ')
+      append(finding.label)
+      append(" — ")
+      append(finding.text)
+    }
+    append('\n')
+  }
   is GoalRunnerRunEvent.Completed -> buildString {
     append("goal $issueKey: completion confirmed")
     append(" complete=")

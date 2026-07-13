@@ -11,6 +11,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import dev.skillbill.designsystem.generated.resources.Res
 import dev.skillbill.designsystem.generated.resources.scaffold_add_on_location_choose_title
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -42,6 +43,7 @@ fun SkillBillRoute(
   var pendingRepoFileChangeKind by remember(viewModel) { mutableStateOf<RepoFileChangeKind?>(null) }
   var pendingRepoFileChangeRefresh by remember(viewModel) { mutableStateOf(false) }
   var repoFileChangePulse by remember(viewModel) { mutableStateOf(0) }
+  var workLoadJob by remember(viewModel) { mutableStateOf<Job?>(null) }
   val addonLocationChooserTitle = stringResource(Res.string.scaffold_add_on_location_choose_title)
 
   fun runEditorSave() {
@@ -213,6 +215,28 @@ fun SkillBillRoute(
         runRefreshLoad()
       }
     }
+  }
+
+  fun runWorkRequest(request: skillbill.desktop.feature.skillbill.state.WorkListRequest) {
+    workLoadJob?.cancel()
+    workLoadJob = coroutineScope.launch {
+      val response = withContext(dispatcherProvider.io) { viewModel.loadWork(request) }
+      state = viewModel.finishWork(request, response)
+    }
+  }
+
+  fun runWorkToggle() {
+    val collapsing = state.workList.expanded
+    val request = viewModel.toggleWork()
+    state = viewModel.state()
+    if (collapsing) workLoadJob?.cancel()
+    request?.let(::runWorkRequest)
+  }
+
+  fun runWorkRefresh() {
+    val request = viewModel.refreshWork()
+    state = viewModel.state()
+    request?.let(::runWorkRequest)
   }
 
   LaunchedEffect(state.selectedRepoPath, state.repoStatus.state) {
@@ -478,6 +502,8 @@ fun SkillBillRoute(
         state = viewModel.moveSelection(delta)
       }
     },
+    onWorkToggled = ::runWorkToggle,
+    onWorkRefreshed = ::runWorkRefresh,
     onGeneratedArtifactResolvable = { artifactPath ->
       viewModel.resolveGeneratedArtifactTreeItemId(artifactPath) != null
     },

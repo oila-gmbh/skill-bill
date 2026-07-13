@@ -47,7 +47,7 @@ class ParallelCodeReviewRunner(
 
     val diffText = resolveDiff(request)
     val stack = detectStack(diffText, request.repoRoot)
-    val prompt = buildPrompt(stack, diffText)
+    val prompt = buildPrompt(stack, diffText, request.codeReviewMode)
 
     val timeoutSec = request.timeout?.inWholeSeconds ?: (DEFAULT_TIMEOUT_MINUTES * SECONDS_PER_MINUTE)
     val laneRunResult = parallelLaneRunner.runTwoLanes(
@@ -93,7 +93,12 @@ class ParallelCodeReviewRunner(
   }
 
   private fun resolveDiff(request: ParallelCodeReviewRequest): String {
-    val diffText = when (request.scope) {
+    val diffText = request.suppliedDiff ?: request.suppliedDiffPath?.let { path ->
+      diffResolver.readDiff(path, MAX_SUPPLIED_DIFF_BYTES)
+        ?: throw DiffResolutionException(
+          "--diff-file must name a readable, non-empty regular file no larger than $MAX_SUPPLIED_DIFF_BYTES bytes.",
+        )
+    } ?: when (request.scope) {
       ParallelReviewScope.STAGED -> runDiff(listOf("git", "diff", "--cached"), request.repoRoot)
       ParallelReviewScope.UNSTAGED -> runDiff(listOf("git", "diff"), request.repoRoot)
       ParallelReviewScope.BRANCH -> {
@@ -158,12 +163,17 @@ class ParallelCodeReviewRunner(
     return if (best != null && best.value > 0) best.key.slug else null
   }
 
-  private fun buildPrompt(stack: String?, diffText: String): String = buildString {
+  private fun buildPrompt(
+    stack: String?,
+    diffText: String,
+    codeReviewMode: skillbill.workflow.model.CodeReviewExecutionMode,
+  ): String = buildString {
     appendLine(
       "You are driving one lane of a parallel code review. Apply all of the following specialist " +
         "review rubrics to the diff below and return a single consolidated Risk Register. " +
         "Do not use parallel mode.",
     )
+    appendLine("Run bill-code-review with execution-mode:${codeReviewMode.wireValue}; do not reinterpret it.")
     appendLine()
     val rubrics = if (stack != null) rubricPort.loadSpecialistRubrics(stack) else emptyList()
     if (rubrics.isNotEmpty()) {
@@ -243,6 +253,7 @@ class ParallelCodeReviewRunner(
     const val TIMEOUT_BUFFER_SECONDS = 30L
     const val SECONDS_PER_MINUTE = 60L
     const val STDERR_EXCERPT_MAX_LENGTH = 120
+    const val MAX_SUPPLIED_DIFF_BYTES = 1_000_000L
     val DIFF_PATH_PATTERN = Regex("^\\+\\+\\+ b/(.+)$", RegexOption.MULTILINE)
   }
 }

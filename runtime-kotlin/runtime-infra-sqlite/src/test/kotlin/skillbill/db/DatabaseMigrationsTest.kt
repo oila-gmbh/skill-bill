@@ -1,20 +1,54 @@
 package skillbill.db
 
 import skillbill.contracts.JsonSupport
+import skillbill.db.core.DatabaseColumnMigrations
 import skillbill.db.core.DatabaseMigrations
 import skillbill.db.core.DatabaseRuntime
+import skillbill.db.core.DatabaseSchema
+import skillbill.db.core.inImmediateTransaction
+import skillbill.db.telemetry.GoalTelemetryMigration
 import skillbill.db.telemetry.LifecycleTelemetryStore
+import skillbill.db.worklist.SQLiteWorkListRepository
+import skillbill.error.InvalidWorkListRowError
 import skillbill.telemetry.model.FeatureImplementFinishedRecord
 import java.nio.file.Files
 import java.nio.file.Path
+import java.sql.Connection
 import java.sql.DriverManager
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 @Suppress("LargeClass")
 class DatabaseMigrationsTest {
+  @Test
+  fun `immediate transaction rolls back non SQL failures and remains reusable`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-db-immediate-rollback").resolve("rollback.db")
+
+    DriverManager.getConnection("jdbc:sqlite:$dbPath").use { connection ->
+      connection.createStatement().use { it.execute("CREATE TABLE rollback_probe (value TEXT NOT NULL)") }
+
+      assertFailsWith<IllegalStateException> {
+        connection.inImmediateTransaction {
+          createStatement().use { it.executeUpdate("INSERT INTO rollback_probe VALUES ('partial')") }
+          error("non-SQL migration failure")
+        }
+      }
+
+      assertEquals(0, rowCount(connection, "rollback_probe"))
+      connection.inImmediateTransaction {
+        createStatement().use { it.executeUpdate("INSERT INTO rollback_probe VALUES ('committed')") }
+      }
+      assertEquals(1, rowCount(connection, "rollback_probe"))
+    }
+  }
+
   @Test
   fun `migration definitions are append-only and deterministic`() {
     val migrationDefinitions = DatabaseMigrations.migrations.map { migration -> migration.version to migration.name }
@@ -24,6 +58,7 @@ class DatabaseMigrationsTest {
         1 to "add-review-workflow-session-columns",
         2 to "normalize-feedback-event-outcomes",
         3 to "add-goal-telemetry-tables",
+        4 to "add-work-list-state-metadata",
       ),
       migrationDefinitions,
     )
@@ -44,6 +79,27 @@ class DatabaseMigrationsTest {
         rows.map { row -> row.version to row.name },
       )
       rows.forEach { row -> assertTrue(row.appliedAt.isNotBlank()) }
+    }
+  }
+
+  @Test
+  fun `historical goal telemetry migration v3 remains unchanged while v4 owns work state metadata`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-db-v3-contract").resolve("metrics.db")
+
+    DriverManager.getConnection("jdbc:sqlite:$dbPath").use { connection ->
+      GoalTelemetryMigration.apply(connection)
+      val v3Columns = tableColumns(connection, "goal_issue_progress")
+
+      assertFalse("state_entered_at" in v3Columns)
+      assertFalse("state_entered_at_estimated" in v3Columns)
+    }
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val v4Columns = tableColumns(connection, "goal_issue_progress")
+
+      assertTrue("state_entered_at" in v4Columns)
+      assertTrue("state_entered_at_estimated" in v4Columns)
+      assertNotNull(migrationRows(connection).singleOrNull { it.version == 4 })
     }
   }
 
@@ -76,6 +132,374 @@ class DatabaseMigrationsTest {
     DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
       assertEquals(DatabaseMigrations.migrations.size, migrationRows(connection).size)
     }
+  }
+
+  @Test
+  fun `concurrent migration opens serialize applicability checks`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-db-concurrent-migrations").resolve("metrics.db")
+    DriverManager.getConnection("jdbc:sqlite:$dbPath").use { connection ->
+      DatabaseSchema.createBaseSchema(connection)
+    }
+    val ready = CountDownLatch(2)
+    val start = CountDownLatch(1)
+    val executor = Executors.newFixedThreadPool(2)
+
+    try {
+      val opens = (1..2).map {
+        executor.submit {
+          DriverManager.getConnection("jdbc:sqlite:$dbPath").use { connection ->
+            connection.createStatement().use { it.execute("PRAGMA busy_timeout = 5000") }
+            ready.countDown()
+            check(start.await(5, TimeUnit.SECONDS))
+            DatabaseMigrations.apply(connection)
+          }
+        }
+      }
+      assertTrue(ready.await(5, TimeUnit.SECONDS))
+      start.countDown()
+      opens.forEach { it.get(10, TimeUnit.SECONDS) }
+    } finally {
+      executor.shutdownNow()
+    }
+
+    DriverManager.getConnection("jdbc:sqlite:$dbPath").use { connection ->
+      assertEquals(
+        DatabaseMigrations.migrations.map { migration -> migration.version },
+        migrationRows(connection).map { row -> row.version },
+      )
+    }
+  }
+
+  @Test
+  fun `reopening a healthy goal row does not rewrite healed state metadata`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-db-goal-healing").resolve("metrics.db")
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      connection.createStatement().use { statement ->
+        statement.executeUpdate(
+          """
+          INSERT INTO goal_issue_progress (
+            parent_workflow_id, issue_key, first_started_at, status, state_entered_at,
+            state_entered_at_estimated
+          ) VALUES ('goal-healthy', 'SKILL-117', '2026-05-01T12:00:00Z', 'running',
+                    '2026-05-01T12:00:00Z', 0)
+          """.trimIndent(),
+        )
+        statement.execute(
+          """
+          CREATE TRIGGER reject_healthy_goal_rewrite
+          BEFORE UPDATE ON goal_issue_progress
+          BEGIN
+            SELECT RAISE(ABORT, 'healthy goal metadata must not be rewritten');
+          END
+          """.trimIndent(),
+        )
+      }
+    }
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      assertEquals(
+        "2026-05-01T12:00:00Z",
+        tableColumnValue(
+          connection = connection,
+          tableName = "goal_issue_progress",
+          pkColumnName = "parent_workflow_id",
+          pkValue = "goal-healthy",
+          columnName = "state_entered_at",
+        ),
+      )
+    }
+  }
+
+  @Test
+  fun `opening a legacy workflow with a partial state entry heal fills its missing estimated flag`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-db-workflow-partial-healing").resolve("metrics.db")
+    seedPartiallyHealedLegacyWorkflow(dbPath)
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      assertPartiallyHealedStateEntry(connection)
+    }
+  }
+
+  private fun seedPartiallyHealedLegacyWorkflow(dbPath: Path) {
+    DriverManager.getConnection("jdbc:sqlite:$dbPath").use { connection ->
+      connection.createStatement().use { statement ->
+        statement.execute(
+          """
+          CREATE TABLE feature_task_workflows (
+            workflow_id TEXT PRIMARY KEY,
+            session_id TEXT NOT NULL DEFAULT '',
+            workflow_name TEXT NOT NULL DEFAULT 'bill-feature-task',
+            mode TEXT NOT NULL,
+            implementation_skill TEXT NOT NULL DEFAULT '',
+            contract_version TEXT NOT NULL,
+            workflow_status TEXT NOT NULL DEFAULT 'pending',
+            current_step_id TEXT NOT NULL DEFAULT '',
+            steps_json TEXT NOT NULL DEFAULT '',
+            artifacts_json TEXT NOT NULL DEFAULT '',
+            issue_key TEXT,
+            started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            state_entered_at TEXT,
+            state_entered_at_estimated INTEGER,
+            finished_at TEXT
+          )
+          """.trimIndent(),
+        )
+        statement.executeUpdate(
+          """
+          INSERT INTO feature_task_workflows (
+            workflow_id, mode, contract_version, workflow_status, started_at, state_entered_at,
+            state_entered_at_estimated
+          ) VALUES ('wfl-partial-heal', 'prose', '0.1', 'running', '2026-05-01T10:00:00Z',
+                    '2026-05-02T11:00:00Z', NULL)
+          """.trimIndent(),
+        )
+      }
+    }
+  }
+
+  private fun assertPartiallyHealedStateEntry(connection: Connection) {
+    assertEquals(
+      "2026-05-02T11:00:00Z",
+      tableColumnValue(connection, "feature_task_workflows", "workflow_id", "wfl-partial-heal", "state_entered_at"),
+    )
+    assertEquals(
+      1,
+      tableColumnValue(
+        connection,
+        "feature_task_workflows",
+        "workflow_id",
+        "wfl-partial-heal",
+        "state_entered_at_estimated",
+      ),
+    )
+  }
+
+  @Test
+  fun `legacy workflow and goal state entries use their documented timestamp fallbacks`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-db-state-entry-fallbacks").resolve("metrics.db")
+
+    seedLegacyStateEntryFallbacks(dbPath)
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      assertLegacyStateEntryFallbacks(connection)
+      assertMissingTimestampRowsRemainUnchanged(connection)
+    }
+
+    DatabaseRuntime.ensureDatabase(dbPath).close()
+  }
+
+  private fun seedLegacyStateEntryFallbacks(dbPath: Path) {
+    DriverManager.getConnection("jdbc:sqlite:$dbPath").use { connection ->
+      connection.createStatement().use { statement ->
+        createLegacyStateEntryTables(statement)
+        insertLegacyWorkflowStateEntryRows(statement)
+        insertLegacyGoalStateEntryRows(statement)
+      }
+    }
+  }
+
+  private fun createLegacyStateEntryTables(statement: java.sql.Statement) {
+    statement.execute(
+      """
+      CREATE TABLE feature_task_workflows (
+        workflow_id TEXT PRIMARY KEY, session_id TEXT NOT NULL DEFAULT '',
+        workflow_name TEXT NOT NULL DEFAULT 'bill-feature-task', mode TEXT NOT NULL,
+        implementation_skill TEXT NOT NULL DEFAULT '', contract_version TEXT NOT NULL,
+        workflow_status TEXT NOT NULL DEFAULT 'pending', current_step_id TEXT NOT NULL DEFAULT '',
+        steps_json TEXT NOT NULL DEFAULT '', artifacts_json TEXT NOT NULL DEFAULT '',
+        started_at TEXT NOT NULL, updated_at TEXT NOT NULL, finished_at TEXT
+      )
+      """.trimIndent(),
+    )
+    statement.execute(
+      """
+      CREATE TABLE goal_issue_progress (
+        parent_workflow_id TEXT NOT NULL, issue_key TEXT NOT NULL,
+        total_invocations INTEGER NOT NULL DEFAULT 0, total_blocks INTEGER NOT NULL DEFAULT 0,
+        total_resumes INTEGER NOT NULL DEFAULT 0, first_started_at TEXT, last_activity_at TEXT,
+        last_blocked_at TEXT, latest_segment_workflow_id TEXT, last_blocked_segment_workflow_id TEXT,
+        finished_at TEXT, status TEXT, subtasks_complete INTEGER, subtasks_blocked INTEGER,
+        subtasks_skipped INTEGER, mode TEXT NOT NULL DEFAULT 'runtime', finished_event_emitted_at TEXT,
+        PRIMARY KEY (parent_workflow_id, issue_key)
+      )
+      """.trimIndent(),
+    )
+  }
+
+  private fun insertLegacyWorkflowStateEntryRows(statement: java.sql.Statement) {
+    statement.executeUpdate(
+      """
+      INSERT INTO feature_task_workflows (workflow_id, mode, contract_version, started_at, updated_at, finished_at)
+      VALUES
+        ('wfl-finished', 'prose', '0.1', '2026-05-01T10:00:00Z', '2026-05-02T10:00:00Z', '2026-05-03T10:00:00Z'),
+        ('wfl-updated', 'prose', '0.1', '2026-05-01T10:00:00Z', '2026-05-02T10:00:00Z', NULL),
+        ('wfl-started', 'prose', '0.1', '2026-05-01T10:00:00Z', '', NULL),
+        ('wfl-no-time', 'prose', '0.1', '', '', NULL)
+      """.trimIndent(),
+    )
+  }
+
+  private fun insertLegacyGoalStateEntryRows(statement: java.sql.Statement) {
+    statement.executeUpdate(
+      """
+      INSERT INTO goal_issue_progress (parent_workflow_id, issue_key, first_started_at, last_activity_at, finished_at)
+      VALUES
+        ('goal-finished', 'SKILL-117', '2026-05-01T10:00:00Z', '2026-05-02T10:00:00Z', '2026-05-03T10:00:00Z'),
+        ('goal-activity', 'SKILL-117', '2026-05-01T10:00:00Z', '2026-05-02T10:00:00Z', NULL),
+        ('goal-started', 'SKILL-117', '2026-05-01T10:00:00Z', '', NULL),
+        ('goal-no-time', 'SKILL-117', '', '', NULL)
+      """.trimIndent(),
+    )
+  }
+
+  private fun assertLegacyStateEntryFallbacks(connection: java.sql.Connection) {
+    assertStateEntryFallbacks(
+      connection,
+      "feature_task_workflows",
+      "workflow_id",
+      "wfl",
+      listOf("finished", "updated", "started"),
+    )
+    assertStateEntryFallbacks(
+      connection,
+      "goal_issue_progress",
+      "parent_workflow_id",
+      "goal",
+      listOf("finished", "activity", "started"),
+    )
+    assertEstimatedMissingStateEntries(connection, "feature_task_workflows", "workflow_id", "wfl-no-time")
+    assertEstimatedMissingStateEntries(connection, "goal_issue_progress", "parent_workflow_id", "goal-no-time")
+    assertFailsWith<InvalidWorkListRowError> { SQLiteWorkListRepository(connection).list() }
+  }
+
+  private fun assertStateEntryFallbacks(
+    connection: java.sql.Connection,
+    table: String,
+    keyColumn: String,
+    prefix: String,
+    suffixes: List<String>,
+  ) {
+    val expected = listOf("2026-05-03T10:00:00Z", "2026-05-02T10:00:00Z", "2026-05-01T10:00:00Z")
+    suffixes.zip(expected).forEach { (suffix, timestamp) ->
+      assertEquals(timestamp, tableColumnValue(connection, table, keyColumn, "$prefix-$suffix", "state_entered_at"))
+    }
+  }
+
+  private fun assertEstimatedMissingStateEntries(
+    connection: java.sql.Connection,
+    table: String,
+    keyColumn: String,
+    rowKey: String,
+  ) {
+    assertEquals(null, nullableTableColumnValue(connection, table, keyColumn, rowKey, "state_entered_at"))
+    assertEquals(1, tableColumnValue(connection, table, keyColumn, rowKey, "state_entered_at_estimated"))
+  }
+
+  private fun assertMissingTimestampRowsRemainUnchanged(connection: java.sql.Connection) {
+    connection.createStatement().use { statement ->
+      statement.execute(
+        """
+        CREATE TRIGGER reject_missing_timestamp_rewrite
+        BEFORE UPDATE ON feature_task_workflows
+        BEGIN
+          SELECT RAISE(ABORT, 'missing legacy timestamp must not be rewritten');
+        END
+        """.trimIndent(),
+      )
+    }
+  }
+
+  @Test
+  fun `goal continuation recovery accepts the runtime and prose continuation contracts`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-db-goal-continuation-issue-key").resolve("metrics.db")
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      connection.createStatement().use { statement ->
+        statement.executeUpdate(
+          """
+          INSERT INTO feature_task_workflows (
+            workflow_id, mode, contract_version, workflow_status, artifacts_json, started_at, state_entered_at
+          ) VALUES (
+            'wftr-text-key', 'runtime', '0.1', 'running',
+            '{"goal_continuation":{"issue_key":" SKILL-117 ","subtask_id":1,"suppress_pr":true,"goal_branch":"feature/117"}}',
+            '2026-05-01T10:00:00Z', '2026-05-01T10:00:00Z'
+          )
+          """.trimIndent(),
+        )
+        statement.executeUpdate(
+          """
+          INSERT INTO feature_task_workflows (
+            workflow_id, mode, contract_version, workflow_status, artifacts_json, started_at, state_entered_at
+          ) VALUES (
+            'wfl-prose-key', 'prose', '0.1', 'running',
+            '{"goal_continuation":{"enabled":true,"issue_key":"SKILL-118","subtask_id":2,"suppress_pr":true}}',
+            '2026-05-01T10:00:00Z', '2026-05-01T10:00:00Z'
+          )
+          """.trimIndent(),
+        )
+        statement.executeUpdate(
+          """
+          INSERT INTO feature_task_workflows (
+            workflow_id, mode, contract_version, workflow_status, artifacts_json, started_at, state_entered_at
+          ) VALUES (
+            'wftr-number-key', 'runtime', '0.1', 'running',
+            '{"goal_continuation":{"issue_key":117,"subtask_id":1,"suppress_pr":true,"goal_branch":"feature/117"}}',
+            '2026-05-01T10:00:00Z', '2026-05-01T10:00:00Z'
+          )
+          """.trimIndent(),
+        )
+      }
+    }
+
+    DriverManager.getConnection("jdbc:sqlite:$dbPath").use { connection ->
+      DatabaseColumnMigrations.applyWorkListMetadata(connection)
+      assertEquals(
+        "SKILL-117",
+        tableColumnValue(connection, "feature_task_workflows", "workflow_id", "wftr-text-key", "issue_key"),
+      )
+      assertEquals(
+        "SKILL-118",
+        tableColumnValue(connection, "feature_task_workflows", "workflow_id", "wfl-prose-key", "issue_key"),
+      )
+      assertEquals(
+        null,
+        nullableTableColumnValue(connection, "feature_task_workflows", "workflow_id", "wftr-number-key", "issue_key"),
+      )
+    }
+  }
+
+  @Test
+  fun `healthy database reopens do not retry unrecoverable issue key recovery`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-db-work-list-recovery").resolve("metrics.db")
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      connection.createStatement().use { statement ->
+        statement.executeUpdate(
+          """
+          INSERT INTO feature_task_workflows (
+            workflow_id, mode, contract_version, workflow_status, artifacts_json,
+            started_at, state_entered_at, state_entered_at_estimated
+          ) VALUES (
+            'wftr-unrecoverable', 'runtime', '0.1', 'running', '{not json}',
+            '2026-05-01T10:00:00Z', '2026-05-01T10:00:00Z', 0
+          )
+          """.trimIndent(),
+        )
+        statement.execute(
+          """
+          CREATE TRIGGER reject_recovery_retry
+          BEFORE UPDATE ON feature_task_workflows
+          BEGIN
+            SELECT RAISE(ABORT, 'unrecoverable issue key must not be retried');
+          END
+          """.trimIndent(),
+        )
+      }
+    }
+
+    DatabaseRuntime.ensureDatabase(dbPath).close()
   }
 
   @Test
@@ -815,6 +1239,13 @@ class DatabaseMigrationsTest {
         requireNotNull(JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(element)))
       }
     }
+
+  private fun rowCount(connection: Connection, tableName: String): Int = connection.createStatement().use { statement ->
+    statement.executeQuery("SELECT COUNT(*) FROM $tableName").use { resultSet ->
+      check(resultSet.next())
+      resultSet.getInt(1)
+    }
+  }
 
   private data class MigrationRow(
     val version: Int,

@@ -91,6 +91,7 @@ class GoalRunnerLedgerTest {
     )
     val store = InMemoryGoalManifestStore(manifest = initial)
     val outcomes = RecordingOutcomeStore()
+    outcomes.seedReviewState("wfl-1")
     val launcher = RecordingSubtaskLauncher { request ->
       val subtaskId = requireNotNull(request.skillRunRequest.subtaskId)
       outcomes["wfl-$subtaskId"] = completeOutcome(subtaskId)

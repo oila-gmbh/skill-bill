@@ -234,6 +234,15 @@ Then try the stable skill entry points in your agent, in this order:
 
 Use `/bill-feature` first because it exercises the full governed path: feature spec, planning, implementation, routed review, validation, history, and PR handoff. Use `/bill-feature-spec` when you need standalone spec/decomposition preparation before implementation. Use `/bill-code-review` directly when you only need the review phase.
 
+Choose standalone review execution explicitly with:
+
+```text
+/bill-code-review mode:inline
+/bill-code-review mode:delegated
+```
+
+Omitting `mode:` is equivalent to `mode:auto`. Feature workflows expose review selection as `/bill-feature <issue-key> code-review:inline|delegated`; their separate `mode:runtime|prose` argument selects the feature execution engine.
+
 ## Runtime Fallback Boundary
 
 Skill Bill separates fail-closed contract behavior from best-effort operational behavior.

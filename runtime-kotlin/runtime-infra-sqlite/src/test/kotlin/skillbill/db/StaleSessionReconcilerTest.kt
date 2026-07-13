@@ -204,6 +204,8 @@ class StaleSessionReconcilerTest {
       Instant.parse(assertIs<String>(payload["first_started_at"]).also { assertTrue(it.isNotBlank()) })
       Instant.parse(assertIs<String>(payload["finished_at"]).also { assertTrue(it.isNotBlank()) })
       assertEquals("abandoned", goalColumnValue(connection, "SKILL-109", "status"))
+      Instant.parse(assertIs<String>(goalColumnValue(connection, "SKILL-109", "state_entered_at")))
+      assertEquals(0, goalColumnValue(connection, "SKILL-109", "state_entered_at_estimated"))
       assertEquals(null, goalColumnValue(connection, "SKILL-111", "status"))
       assertEquals(null, goalColumnValue(connection, "SKILL-110", "status"))
 
@@ -211,6 +213,31 @@ class StaleSessionReconcilerTest {
 
       assertEquals(0, repeated.goalIssueAbandonedSessions)
       assertEquals(1, eventCount(connection, "skillbill_goal_issue_finished"))
+    }
+  }
+
+  @Test
+  fun `stale goal abandonment advances state entry beyond a future value`() {
+    val dbPath = Files.createTempDirectory("stale-reconciler-goal-state-entry").resolve("metrics.db")
+    val futureStateEntry = "2999-05-01T12:00:00.123456789Z"
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      seedAbandonedGoalIssueCandidates(connection)
+      connection.prepareStatement(
+        "UPDATE goal_issue_progress SET state_entered_at = ?, state_entered_at_estimated = 1 WHERE issue_key = ?",
+      ).use { statement ->
+        statement.setString(1, futureStateEntry)
+        statement.setString(2, "SKILL-109")
+        statement.executeUpdate()
+      }
+
+      reconcileStaleTelemetrySessions(connection, level = "full", goalIssueAbandonmentDays = 14)
+
+      assertEquals("abandoned", goalColumnValue(connection, "SKILL-109", "status"))
+      assertTrue(
+        Instant.parse(goalColumnValue(connection, "SKILL-109", "state_entered_at") as String)
+          .isAfter(Instant.parse(futureStateEntry)),
+      )
+      assertEquals(0, goalColumnValue(connection, "SKILL-109", "state_entered_at_estimated"))
     }
   }
 

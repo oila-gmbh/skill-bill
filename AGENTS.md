@@ -2,7 +2,7 @@
 
 ## Project Context
 
-skill-bill is a governed platform for authoring, routing, validating, installing, and measuring AI-agent skills. It ships shared orchestration, validators, installers, scaffolding, telemetry, workflow state, and stable base shells for review, quality checks, feature work, feature verification, and PR descriptions.
+skill-bill governs authoring, routing, validation, installation, and measurement of agent skills. It ships shared orchestration, tooling, telemetry, workflow state, and shells for review, quality checks, feature work, verification, and PR descriptions.
 
 Non-negotiable contracts:
 
@@ -18,7 +18,15 @@ Non-negotiable contracts:
 
 `bill-feature-task` is the feature-task router: it accepts `mode:runtime` (default) or `mode:prose`, presents one confirmation gate, then delegates. `bill-feature-task-prose` runs the full phase loop in-session. `bill-feature-task-runtime` launches the foreground `skill-bill feature-task` driver with durable workflow state, telemetry, platform packs, add-ons, and native subagents.
 
-Bundled skills and reference packs are defaults, not the framework boundary. Teams may delete, fork, or replace them while retaining governed source shape, generated-output boundaries, manifests, install staging, validators, dynamic discovery, and loud-fail behavior.
+Bundled skills and packs are defaults, not the framework boundary. Teams may replace them while retaining governed source shape, generated-output boundaries, manifests, install staging, validators, dynamic discovery, and loud-fail behavior.
+
+## Subagent Policy
+
+Use subagents only when the user explicitly requests subagents, delegation, or
+parallel agent work. Do not infer that permission from task size, review mode,
+runtime defaults, or model preference. A model must never autonomously decide
+to spawn subagents; otherwise complete the task in the current agent context or
+ask the user whether delegation is desired.
 
 ## Taxonomy
 
@@ -156,7 +164,7 @@ Each `AgentRunCommandBuilder` sets the right combination for its agent. `Process
 
 ## Comments Policy
 
-Comments — especially inline ones — are a code smell. They signal that the code itself failed to communicate its intent. Before writing any comment, first ask: can this be expressed better in code through clearer naming, smaller functions, or a refactor? Only add a comment when the *why* is genuinely non-obvious and cannot be encoded in the structure of the code itself (e.g. a non-obvious external constraint, a subtle invariant, or a workaround for a known bug). Never write comments that explain *what* the code does — well-named identifiers already do that.
+Comments, especially inline ones, are a code smell. Prefer clearer naming, smaller functions, or refactoring. Add a comment only when a non-obvious *why* cannot be encoded in the code, such as an external constraint, subtle invariant, or known-bug workaround. Never comment merely to explain *what* the code does.
 
 ## Quality Checks
 

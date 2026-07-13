@@ -2,6 +2,7 @@ package skillbill.launcher.agentrun
 
 import skillbill.install.model.InstallAgent
 import skillbill.launcher.process.AgentRunIdlePolicy
+import skillbill.ports.agentrun.model.SkillRunGoalContinuationContext
 import skillbill.ports.agentrun.model.SkillRunRequest
 import java.nio.file.Path
 import kotlin.time.DurationUnit
@@ -27,17 +28,17 @@ internal val GoalContinuationEnvironment: Map<String, String> = mapOf(
 )
 
 internal fun goalContinuationEnvironment(request: SkillRunRequest): Map<String, String> =
-  GoalContinuationEnvironment + buildMap {
-    val context = request.goalContinuation
-    if (context != null) {
+  request.goalContinuation?.let { context ->
+    GoalContinuationEnvironment + buildMap {
       put("SKILL_BILL_GOAL_PARENT_ISSUE_KEY", context.parentIssueKey)
       put("SKILL_BILL_GOAL_SUBTASK_ID", context.subtaskId.toString())
       put("SKILL_BILL_GOAL_BRANCH", context.goalBranch)
       put("SKILL_BILL_SUPPRESS_PR", context.suppressPr.toString())
       context.parentWorkflowId?.let { put("SKILL_BILL_GOAL_PARENT_WORKFLOW_ID", it) }
       context.lastResumableStep?.let { put("SKILL_BILL_GOAL_LAST_RESUMABLE_STEP", it) }
+      put("SKILL_BILL_CODE_REVIEW_MODE", context.codeReviewMode.wireValue)
     }
-  }
+  }.orEmpty()
 
 class ClaudeAgentRunCommandBuilder : AgentRunCommandBuilder {
   override val agent: InstallAgent = InstallAgent.CLAUDE
@@ -129,53 +130,73 @@ internal fun launchPrompt(request: SkillRunRequest): String = requireNotNull(req
 }
 
 internal fun goalContinuationCommand(request: SkillRunRequest, agent: InstallAgent): AgentRunCommand? {
-  val context = request.goalContinuation
-  return if (context == null || request.promptOverride != null) {
-    null
-  } else {
-    AgentRunCommand(
-      command = buildList {
-        add("skill-bill")
-        request.dbPathOverride?.let { db ->
-          add("--db")
-          add(db)
-        }
-        add("feature-task")
-        val childWorkflowId = context.childWorkflowId?.takeIf(String::isNotBlank)
-        val assignedWorkflowId = context.assignedWorkflowId?.takeIf(String::isNotBlank)
-        if (childWorkflowId != null) {
-          add("resume")
-          add(childWorkflowId)
-        } else {
-          add("run")
-        }
-        add(request.issueKey)
-        add(context.specPath)
-        if (childWorkflowId == null && assignedWorkflowId != null) {
-          add("--workflow-id")
-          add(assignedWorkflowId)
-        }
-        add("--goal-parent-issue-key")
-        add(context.parentIssueKey)
-        add("--goal-subtask-id")
-        add(context.subtaskId.toString())
-        add("--goal-branch")
-        add(context.goalBranch)
-        add("--suppress-pr")
-        context.parentWorkflowId?.takeIf(String::isNotBlank)?.let { parentWorkflowId ->
-          add("--goal-parent-workflow-id")
-          add(parentWorkflowId)
-        }
-        context.lastResumableStep?.takeIf(String::isNotBlank)?.let { step ->
-          add("--goal-last-resumable-step")
-          add(step)
-        }
-        add("--agent")
-        add(agent.id)
-      },
-      workingDirectory = request.repoRoot,
-      timeout = request.timeout,
-      environment = goalContinuationEnvironment(request),
-    )
+  val context = request.goalContinuation ?: return null
+  if (request.promptOverride != null) return null
+  return AgentRunCommand(
+    command = goalContinuationArguments(request, agent),
+    workingDirectory = request.repoRoot,
+    timeout = request.timeout,
+    environment = goalContinuationEnvironment(request),
+  )
+}
+
+private fun goalContinuationArguments(request: SkillRunRequest, agent: InstallAgent): List<String> {
+  val context = requireNotNull(request.goalContinuation)
+  val childWorkflowId = context.childWorkflowId?.takeIf(String::isNotBlank)
+  val assignedWorkflowId = context.assignedWorkflowId?.takeIf(String::isNotBlank)
+  return buildList {
+    add("skill-bill")
+    request.dbPathOverride?.let { db ->
+      add("--db")
+      add(db)
+    }
+    add("feature-task")
+    if (childWorkflowId != null) {
+      add("resume")
+      add(childWorkflowId)
+    } else {
+      add("run")
+    }
+    add(request.issueKey)
+    add(context.specPath)
+    if (childWorkflowId == null && assignedWorkflowId != null) {
+      add("--workflow-id")
+      add(assignedWorkflowId)
+    }
+    addGoalContinuationArguments(context)
+    add("--agent")
+    add(agent.id)
+  }
+}
+
+private fun MutableList<String>.addGoalContinuationArguments(context: SkillRunGoalContinuationContext) {
+  add("--goal-parent-issue-key")
+  add(context.parentIssueKey)
+  add("--goal-subtask-id")
+  add(context.subtaskId.toString())
+  add("--goal-branch")
+  add(context.goalBranch)
+  add("--suppress-pr")
+  context.parentWorkflowId?.takeIf(String::isNotBlank)?.let { parentWorkflowId ->
+    add("--goal-parent-workflow-id")
+    add(parentWorkflowId)
+  }
+  context.lastResumableStep?.takeIf(String::isNotBlank)?.let { step ->
+    add("--goal-last-resumable-step")
+    add(step)
+  }
+  add("--code-review-mode")
+  add(context.codeReviewMode.wireValue)
+  context.parallelReviewAgent?.takeIf(String::isNotBlank)?.let { parallelAgent ->
+    add("--parallel-review-agent")
+    add(parallelAgent)
+  }
+  context.reviewBaseline?.let { baseline ->
+    add("--goal-review-base-sha")
+    add(baseline.reviewBaseSha)
+    baseline.baselineUntrackedPaths.forEach { path ->
+      add("--goal-baseline-untracked-path")
+      add(path)
+    }
   }
 }

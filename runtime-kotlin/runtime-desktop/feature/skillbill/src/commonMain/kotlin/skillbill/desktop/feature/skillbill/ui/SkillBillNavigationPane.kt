@@ -8,6 +8,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,8 +16,13 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
@@ -27,6 +33,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -38,7 +45,13 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -51,6 +64,35 @@ import dev.skillbill.designsystem.generated.resources.nav_open_repo_tooltip
 import dev.skillbill.designsystem.generated.resources.nav_repo_busy
 import dev.skillbill.designsystem.generated.resources.nav_repo_open
 import dev.skillbill.designsystem.generated.resources.nav_repository
+import dev.skillbill.designsystem.generated.resources.work_field_issue
+import dev.skillbill.designsystem.generated.resources.work_field_issue_cd
+import dev.skillbill.designsystem.generated.resources.work_field_kind
+import dev.skillbill.designsystem.generated.resources.work_field_kind_cd
+import dev.skillbill.designsystem.generated.resources.work_field_started
+import dev.skillbill.designsystem.generated.resources.work_field_started_cd
+import dev.skillbill.designsystem.generated.resources.work_field_state
+import dev.skillbill.designsystem.generated.resources.work_field_state_badge_cd
+import dev.skillbill.designsystem.generated.resources.work_field_state_cd
+import dev.skillbill.designsystem.generated.resources.work_field_state_since
+import dev.skillbill.designsystem.generated.resources.work_field_state_since_cd
+import dev.skillbill.designsystem.generated.resources.work_field_state_since_estimated_cd
+import dev.skillbill.designsystem.generated.resources.work_field_workflow
+import dev.skillbill.designsystem.generated.resources.work_field_workflow_cd
+import dev.skillbill.designsystem.generated.resources.work_section_collapsed
+import dev.skillbill.designsystem.generated.resources.work_section_empty
+import dev.skillbill.designsystem.generated.resources.work_section_error_summary
+import dev.skillbill.designsystem.generated.resources.work_section_estimated
+import dev.skillbill.designsystem.generated.resources.work_section_expanded
+import dev.skillbill.designsystem.generated.resources.work_section_loaded
+import dev.skillbill.designsystem.generated.resources.work_section_loading
+import dev.skillbill.designsystem.generated.resources.work_section_refresh
+import dev.skillbill.designsystem.generated.resources.work_section_refresh_cd
+import dev.skillbill.designsystem.generated.resources.work_section_scroll_instructions
+import dev.skillbill.designsystem.generated.resources.work_section_subtitle
+import dev.skillbill.designsystem.generated.resources.work_section_title
+import dev.skillbill.designsystem.generated.resources.work_section_toggle_cd
+import dev.skillbill.designsystem.generated.resources.work_section_unknown_issue
+import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import skillbill.desktop.core.designsystem.SkillBillComponentShapes
 import skillbill.desktop.core.designsystem.SkillBillDimens
@@ -60,6 +102,8 @@ import skillbill.desktop.core.domain.model.RepoLoadState
 import skillbill.desktop.core.domain.model.RepoLoadStatus
 import skillbill.desktop.core.domain.model.SkillBillBusyOperation
 import skillbill.desktop.core.domain.model.SkillBillTreeItem
+import skillbill.desktop.core.domain.model.WorkListLoadState
+import skillbill.desktop.core.domain.model.WorkListState
 
 @Composable
 internal fun NavigationPane(
@@ -81,6 +125,10 @@ internal fun NavigationPane(
   onNodeExpandedToggled: (String) -> Unit,
   onMoveSelection: (Int) -> Unit,
   onShowContextMenu: (SkillBillTreeItem) -> Unit = {},
+  workList: WorkListState = WorkListState(),
+  workEnabled: Boolean = true,
+  onWorkToggled: () -> Unit = {},
+  onWorkRefreshed: () -> Unit = {},
 ) {
   val busy = busyOperation != null
   Column(
@@ -103,57 +151,27 @@ internal fun NavigationPane(
       Modifier
         .weight(1f)
         .verticalScroll(rememberScrollState())
-        .onPreviewKeyEvent { event ->
-          if (busy || event.type != KeyEventType.KeyDown) {
-            false
-          } else {
-            when (event.key) {
-              Key.DirectionDown -> {
-                onMoveSelection(1)
-                true
-              }
-              Key.DirectionUp -> {
-                onMoveSelection(-1)
-                true
-              }
-              Key.DirectionRight -> toggleSelectedNavigationExpansion(
-                treeItems = treeItems,
-                selectedNodeId = selectedNodeId,
-                expandedNodeIds = expandedNodeIds,
-                expand = true,
-                onNodeExpandedToggled = onNodeExpandedToggled,
-              )
-              Key.DirectionLeft -> toggleSelectedNavigationExpansion(
-                treeItems = treeItems,
-                selectedNodeId = selectedNodeId,
-                expandedNodeIds = expandedNodeIds,
-                expand = false,
-                onNodeExpandedToggled = onNodeExpandedToggled,
-              )
-              else -> false
-            }
-          }
-        }
-        .focusable()
         .padding(vertical = SkillBillDimens.padMd),
     ) {
-      if (treeItems.isEmpty()) {
-        EmptyTreeMessage(repoStatus)
-      }
-      treeItems.forEach { group ->
-        NavGroup(
-          group = group,
-          selectedNodeId = selectedNodeId,
-          openEditorTabIds = openEditorTabIds,
-          expandedNodeIds = expandedNodeIds,
-          expanded = group.id in expandedNodeIds,
-          enabled = !busy,
-          onNodeSelected = onNodeSelected,
-          onNodeOpened = onNodeOpened,
-          onNodeExpandedToggled = onNodeExpandedToggled,
-          onShowContextMenu = onShowContextMenu,
-        )
-      }
+      TreeNavigation(
+        treeItems = treeItems,
+        repoStatus = repoStatus,
+        selectedNodeId = selectedNodeId,
+        openEditorTabIds = openEditorTabIds,
+        expandedNodeIds = expandedNodeIds,
+        busy = busy,
+        onNodeSelected = onNodeSelected,
+        onNodeOpened = onNodeOpened,
+        onNodeExpandedToggled = onNodeExpandedToggled,
+        onMoveSelection = onMoveSelection,
+        onShowContextMenu = onShowContextMenu,
+      )
+      WorkSection(
+        state = workList,
+        enabled = workEnabled && !busy,
+        onToggle = onWorkToggled,
+        onRefresh = onWorkRefreshed,
+      )
       HorizontalDivider(
         modifier = Modifier.padding(top = SkillBillDimens.spacingXl, bottom = SkillBillDimens.spacingLg),
         color = SkillBillTheme.frameTokens.line,
@@ -189,6 +207,348 @@ internal fun NavigationPane(
     }
   }
 }
+
+@Composable
+private fun TreeNavigation(
+  treeItems: List<SkillBillTreeItem>,
+  repoStatus: RepoLoadStatus,
+  selectedNodeId: String?,
+  openEditorTabIds: Set<String>,
+  expandedNodeIds: Set<String>,
+  busy: Boolean,
+  onNodeSelected: (String) -> Unit,
+  onNodeOpened: (String) -> Unit,
+  onNodeExpandedToggled: (String) -> Unit,
+  onMoveSelection: (Int) -> Unit,
+  onShowContextMenu: (SkillBillTreeItem) -> Unit,
+) {
+  Column(
+    modifier = Modifier
+      .fillMaxWidth()
+      .onPreviewKeyEvent { event ->
+        if (busy || event.type != KeyEventType.KeyDown) {
+          false
+        } else {
+          when (event.key) {
+            Key.DirectionDown -> {
+              onMoveSelection(1)
+              true
+            }
+            Key.DirectionUp -> {
+              onMoveSelection(-1)
+              true
+            }
+            Key.DirectionRight -> toggleSelectedNavigationExpansion(
+              treeItems = treeItems,
+              selectedNodeId = selectedNodeId,
+              expandedNodeIds = expandedNodeIds,
+              expand = true,
+              onNodeExpandedToggled = onNodeExpandedToggled,
+            )
+            Key.DirectionLeft -> toggleSelectedNavigationExpansion(
+              treeItems = treeItems,
+              selectedNodeId = selectedNodeId,
+              expandedNodeIds = expandedNodeIds,
+              expand = false,
+              onNodeExpandedToggled = onNodeExpandedToggled,
+            )
+            else -> false
+          }
+        }
+      }
+      .focusable(),
+  ) {
+    if (treeItems.isEmpty()) {
+      EmptyTreeMessage(repoStatus)
+    }
+    treeItems.forEach { group ->
+      NavGroup(
+        group = group,
+        selectedNodeId = selectedNodeId,
+        openEditorTabIds = openEditorTabIds,
+        expandedNodeIds = expandedNodeIds,
+        expanded = group.id in expandedNodeIds,
+        enabled = !busy,
+        onNodeSelected = onNodeSelected,
+        onNodeOpened = onNodeOpened,
+        onNodeExpandedToggled = onNodeExpandedToggled,
+        onShowContextMenu = onShowContextMenu,
+      )
+    }
+  }
+}
+
+@Composable
+private fun WorkSection(state: WorkListState, enabled: Boolean, onToggle: () -> Unit, onRefresh: () -> Unit) {
+  val expanded = state.expanded
+  val expandedDescription = stringResource(
+    if (expanded) Res.string.work_section_expanded else Res.string.work_section_collapsed,
+  )
+  val toggleDescription = stringResource(Res.string.work_section_toggle_cd)
+  val refreshDescription = stringResource(Res.string.work_section_refresh_cd)
+  val refreshEnabled = enabled && state.loadState != WorkListLoadState.LOADING
+  Column(modifier = Modifier.fillMaxWidth().padding(top = SkillBillDimens.spacingLg)) {
+    Row(
+      modifier = Modifier
+        .fillMaxWidth()
+        .heightIn(min = SkillBillDimens.workInteractiveMinSize)
+        .testTag(WORK_SECTION_TOGGLE_TAG)
+        .clickable(enabled = enabled, role = Role.Button, onClickLabel = toggleDescription, onClick = onToggle)
+        .semantics {
+          contentDescription = toggleDescription
+          stateDescription = expandedDescription
+        }
+        .padding(horizontal = SkillBillDimens.padLg, vertical = SkillBillDimens.padMd),
+      verticalAlignment = Alignment.CenterVertically,
+      horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+      Text(
+        stringResource(Res.string.work_section_title),
+        style = MaterialTheme.typography.labelLarge,
+        color = SkillBillTheme.frameTokens.text,
+      )
+      Text(if (expanded) "−" else "+", color = SkillBillTheme.frameTokens.primary)
+    }
+    if (!expanded) return
+    Row(
+      modifier = Modifier
+        .fillMaxWidth()
+        .padding(horizontal = SkillBillDimens.padLg),
+      horizontalArrangement = Arrangement.SpaceBetween,
+      verticalAlignment = Alignment.CenterVertically,
+    ) {
+      Text(
+        stringResource(Res.string.work_section_subtitle),
+        style = MaterialTheme.typography.labelSmall,
+        color = SkillBillTheme.frameTokens.subtle,
+      )
+      Text(
+        stringResource(Res.string.work_section_refresh),
+        modifier = Modifier
+          .sizeIn(
+            minWidth = SkillBillDimens.workInteractiveMinSize,
+            minHeight = SkillBillDimens.workInteractiveMinSize,
+          )
+          .testTag(WORK_SECTION_REFRESH_TAG)
+          .clickable(enabled = refreshEnabled, role = Role.Button, onClickLabel = refreshDescription) {
+            onRefresh()
+          }
+          .semantics { contentDescription = refreshDescription }
+          .padding(SkillBillDimens.padSm),
+        color = if (refreshEnabled) SkillBillTheme.frameTokens.primary else SkillBillTheme.frameTokens.subtle,
+        style = MaterialTheme.typography.labelSmall,
+      )
+    }
+    when (state.loadState) {
+      WorkListLoadState.LOADING -> WorkText(stringResource(Res.string.work_section_loading))
+      WorkListLoadState.EMPTY -> WorkText(stringResource(Res.string.work_section_empty))
+      WorkListLoadState.ERROR -> WorkError(state.errorMessage)
+      WorkListLoadState.POPULATED -> WorkRows(state)
+      WorkListLoadState.COLLAPSED -> Unit
+    }
+  }
+}
+
+@Composable
+private fun WorkText(text: String) {
+  Text(
+    text = text,
+    modifier = Modifier
+      .testTag(WORK_SECTION_STATUS_TAG)
+      .semantics { liveRegion = LiveRegionMode.Polite }
+      .padding(horizontal = SkillBillDimens.padLg, vertical = SkillBillDimens.padMd),
+    color = SkillBillTheme.frameTokens.subtle,
+    style = MaterialTheme.typography.bodySmall,
+  )
+}
+
+@Composable
+private fun WorkError(diagnostic: String?) {
+  WorkText(stringResource(Res.string.work_section_error_summary))
+  diagnostic?.takeIf(String::isNotBlank)?.let { WorkText(it) }
+}
+
+@Composable
+private fun WorkRows(state: WorkListState) {
+  val horizontal = rememberScrollState()
+  val vertical = rememberLazyListState()
+  val scrollScope = rememberCoroutineScope()
+  val fields = workFields()
+  val scrollInstructions = stringResource(Res.string.work_section_scroll_instructions)
+  WorkText(stringResource(Res.string.work_section_loaded, state.items.size))
+  Box(
+    modifier = Modifier
+      .fillMaxWidth()
+      .height(SkillBillDimens.workViewportHeight)
+      .horizontalScroll(horizontal)
+      .focusable()
+      .testTag(WORK_SECTION_VIEWPORT_TAG)
+      .semantics { contentDescription = scrollInstructions }
+      .onPreviewKeyEvent { event ->
+        if (event.type != KeyEventType.KeyDown) {
+          false
+        } else {
+          val horizontalOffset = workHorizontalScrollDelta(event.key)
+          if (horizontalOffset != null) {
+            scrollScope.launch {
+              horizontal.scrollTo((horizontal.value + horizontalOffset).coerceIn(0, horizontal.maxValue))
+            }
+            true
+          } else {
+            val offset = when (event.key) {
+              Key.DirectionDown -> 1
+              Key.DirectionUp -> -1
+              Key.PageDown -> 8
+              Key.PageUp -> -8
+              else -> 0
+            }
+            if (offset == 0) {
+              false
+            } else {
+              val target = (vertical.firstVisibleItemIndex + offset).coerceIn(0, state.items.size)
+              scrollScope.launch { vertical.scrollToItem(target) }
+              true
+            }
+          }
+        }
+      },
+  ) {
+    LazyColumn(
+      state = vertical,
+      modifier = Modifier
+        .width(SkillBillDimens.workContentWidth)
+        .fillMaxHeight()
+        .padding(horizontal = SkillBillDimens.padLg, vertical = SkillBillDimens.padSm),
+    ) {
+      item(key = "work-field-headers") {
+        WorkFieldRow(
+          fields = fields,
+          values = fields.map(WorkField::label),
+          rowKey = "headers",
+          modifier = Modifier.testTag(WORK_SECTION_HEADERS_TAG),
+        )
+      }
+      items(state.items, key = { item -> item.identity }) { item ->
+        WorkItemRow(item, fields)
+      }
+    }
+  }
+}
+
+@Composable
+private fun WorkItemRow(item: skillbill.desktop.core.domain.model.DesktopWorkItem, fields: List<WorkField>) {
+  val issue = item.issueKey ?: stringResource(Res.string.work_section_unknown_issue)
+  val since = item.stateEnteredAt + if (item.stateEnteredAtEstimated) {
+    " ~ ${stringResource(Res.string.work_section_estimated)}"
+  } else {
+    ""
+  }
+  val descriptions = listOf(
+    stringResource(Res.string.work_field_issue_cd, issue),
+    stringResource(Res.string.work_field_kind_cd, item.workflowKind),
+    stringResource(Res.string.work_field_workflow_cd, item.workflowId),
+    stringResource(Res.string.work_field_started_cd, item.startedAt),
+    stringResource(Res.string.work_field_state_cd, item.currentState),
+    stringResource(
+      if (item.stateEnteredAtEstimated) {
+        Res.string.work_field_state_since_estimated_cd
+      } else {
+        Res.string.work_field_state_since_cd
+      },
+      item.stateEnteredAt,
+    ),
+  )
+  WorkFieldRow(
+    fields = fields,
+    values = listOf(issue, item.workflowKind, item.workflowId, item.startedAt, item.currentState, since),
+    rowKey = item.identity.stableValue,
+    state = item.currentState,
+    modifier = Modifier
+      .testTag("$WORK_SECTION_ROW_TAG-${item.identity.stableValue}")
+      .semantics(mergeDescendants = true) { contentDescription = descriptions.joinToString(". ") },
+  )
+}
+
+@Composable
+private fun WorkFieldRow(
+  fields: List<WorkField>,
+  values: List<String>,
+  rowKey: String,
+  state: String? = null,
+  modifier: Modifier = Modifier,
+) {
+  Row(modifier = modifier.padding(vertical = SkillBillDimens.padSm)) {
+    fields.zip(values).forEach { (field, value) ->
+      val cellModifier = Modifier.width(field.width).testTag("$WORK_SECTION_CELL_TAG-$rowKey-${field.id}")
+      if (field.id == "state" && state != null) {
+        WorkStateBadge(state = state, modifier = cellModifier)
+      } else {
+        Text(
+          text = value,
+          modifier = cellModifier,
+          color = SkillBillTheme.frameTokens.text,
+          style = MaterialTheme.typography.bodySmall,
+        )
+      }
+    }
+  }
+}
+
+@Composable
+private fun WorkStateBadge(state: String, modifier: Modifier = Modifier) {
+  val description = stringResource(Res.string.work_field_state_badge_cd, state)
+  Box(
+    modifier = modifier
+      .border(SkillBillDimens.hairline, SkillBillTheme.frameTokens.line, SkillBillComponentShapes.chip)
+      .background(SkillBillTheme.frameTokens.panel, SkillBillComponentShapes.chip)
+      .padding(horizontal = SkillBillDimens.padSm, vertical = SkillBillDimens.padXs)
+      .semantics { contentDescription = description },
+    contentAlignment = Alignment.CenterStart,
+  ) {
+    Text(
+      text = state,
+      color = SkillBillTheme.frameTokens.text,
+      style = MaterialTheme.typography.bodySmall,
+      maxLines = 1,
+      overflow = TextOverflow.Ellipsis,
+    )
+  }
+}
+
+@Composable
+private fun workFields(): List<WorkField> = listOf(
+  WorkField("issue", stringResource(Res.string.work_field_issue), SkillBillDimens.workFieldIssueWidth),
+  WorkField("kind", stringResource(Res.string.work_field_kind), SkillBillDimens.workFieldKindWidth),
+  WorkField(
+    "workflow",
+    stringResource(Res.string.work_field_workflow),
+    SkillBillDimens.workFieldWorkflowWidth,
+  ),
+  WorkField("started", stringResource(Res.string.work_field_started), SkillBillDimens.workFieldStartedWidth),
+  WorkField("state", stringResource(Res.string.work_field_state), SkillBillDimens.workFieldStateWidth),
+  WorkField(
+    "state-since",
+    stringResource(Res.string.work_field_state_since),
+    SkillBillDimens.workFieldStateSinceWidth,
+  ),
+)
+
+private data class WorkField(val id: String, val label: String, val width: Dp)
+
+internal fun workHorizontalScrollDelta(key: Key): Int? = when (key) {
+  Key.DirectionLeft -> -WORK_SECTION_KEYBOARD_SCROLL_INCREMENT
+  Key.DirectionRight -> WORK_SECTION_KEYBOARD_SCROLL_INCREMENT
+  else -> null
+}
+
+private const val WORK_SECTION_KEYBOARD_SCROLL_INCREMENT = 160
+private const val WORK_SECTION_TOGGLE_TAG = "work-section-toggle"
+private const val WORK_SECTION_REFRESH_TAG = "work-section-refresh"
+private const val WORK_SECTION_STATUS_TAG = "work-section-status"
+private const val WORK_SECTION_VIEWPORT_TAG = "work-section-list-viewport"
+private const val WORK_SECTION_HEADERS_TAG = "work-section-field-headers"
+private const val WORK_SECTION_ROW_TAG = "work-section-row"
+private const val WORK_SECTION_CELL_TAG = "work-section-cell"
 
 @Composable
 private fun RepositorySelector(

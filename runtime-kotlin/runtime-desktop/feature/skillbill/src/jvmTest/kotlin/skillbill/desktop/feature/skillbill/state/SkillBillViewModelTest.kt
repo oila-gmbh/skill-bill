@@ -10,6 +10,7 @@ import skillbill.desktop.core.domain.model.AuthoredContentDocument
 import skillbill.desktop.core.domain.model.CommandPaletteAction
 import skillbill.desktop.core.domain.model.CommandPaletteResult
 import skillbill.desktop.core.domain.model.CommandPaletteResultKind
+import skillbill.desktop.core.domain.model.DesktopWorkItem
 import skillbill.desktop.core.domain.model.DirtyEditorPromptReason
 import skillbill.desktop.core.domain.model.EditorPlaceholder
 import skillbill.desktop.core.domain.model.GeneratedArtifactDetail
@@ -22,9 +23,11 @@ import skillbill.desktop.core.domain.model.SkillBillState
 import skillbill.desktop.core.domain.model.SkillBillStatusBar
 import skillbill.desktop.core.domain.model.SkillBillTreeItem
 import skillbill.desktop.core.domain.model.TreeItemKind
+import skillbill.desktop.core.domain.model.WorkListLoadState
 import skillbill.desktop.core.domain.service.AuthoringGateway
 import skillbill.desktop.core.domain.service.RepoSessionService
 import skillbill.desktop.core.domain.service.SkillTreeService
+import skillbill.desktop.core.domain.service.WorkListGateway
 import skillbill.desktop.core.testing.FakeAuthoringGateway
 import skillbill.desktop.core.testing.FakeRecentRepoRepository
 import skillbill.desktop.core.testing.FakeRepoSessionService
@@ -36,6 +39,7 @@ import skillbill.desktop.feature.skillbill.ui.executeGeneratedArtifactSelection
 import skillbill.desktop.feature.skillbill.ui.generatedArtifactRowActivatesForKey
 import skillbill.desktop.feature.skillbill.ui.generatedArtifactRowDescription
 import kotlin.test.Test
+import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
@@ -558,6 +562,75 @@ class SkillBillViewModelTest {
     assertEquals("skill-one", collapsed.selectedTreeItemId)
     assertEquals(listOf("/repo"), repoSessionService.openedRepoPaths)
   }
+
+  @Test
+  fun `collapsing Work invalidates an in flight response`() = runBlocking {
+    val viewModel = newViewModel(
+      workListGateway = object : WorkListGateway {
+        override suspend fun list(): List<DesktopWorkItem> = listOf(
+          DesktopWorkItem(
+            issueKey = "SKILL-117",
+            workflowKind = "feature-task-runtime",
+            workflowId = "wftr-117",
+            startedAt = "2026-05-01 14:00:00 CEST",
+            currentState = "running",
+            stateEnteredAt = "2026-05-01 14:00:00 CEST",
+            stateEnteredAtEstimated = false,
+          ),
+        )
+      },
+    )
+
+    val request = assertNotNull(viewModel.toggleWork())
+    assertEquals(WorkListLoadState.LOADING, viewModel.state().workList.loadState)
+
+    viewModel.toggleWork()
+    val afterStaleResponse = viewModel.finishWork(request, viewModel.loadWork(request))
+
+    assertFalse(afterStaleResponse.workList.expanded)
+    assertEquals(WorkListLoadState.COLLAPSED, afterStaleResponse.workList.loadState)
+  }
+
+  @Test
+  fun `Work lifecycle resolves populated empty error and refresh gateway outcomes`() = runBlocking {
+    var response: Result<List<DesktopWorkItem>> = Result.success(listOf(workItem("wftr-populated")))
+    var calls = 0
+    val viewModel = newViewModel(
+      workListGateway = object : WorkListGateway {
+        override suspend fun list(): List<DesktopWorkItem> {
+          calls += 1
+          return response.getOrThrow()
+        }
+      },
+    )
+
+    val populatedRequest = assertNotNull(viewModel.toggleWork())
+    val populated = viewModel.finishWork(populatedRequest, viewModel.loadWork(populatedRequest))
+    assertEquals(WorkListLoadState.POPULATED, populated.workList.loadState)
+    assertEquals(listOf("wftr-populated"), populated.workList.items.map(DesktopWorkItem::workflowId))
+
+    response = Result.success(emptyList())
+    val emptyRequest = assertNotNull(viewModel.refreshWork())
+    val empty = viewModel.finishWork(emptyRequest, viewModel.loadWork(emptyRequest))
+    assertEquals(WorkListLoadState.EMPTY, empty.workList.loadState)
+
+    response = Result.failure(IllegalStateException("database unavailable"))
+    val errorRequest = assertNotNull(viewModel.refreshWork())
+    val error = viewModel.finishWork(errorRequest, viewModel.loadWork(errorRequest))
+    assertEquals(WorkListLoadState.ERROR, error.workList.loadState)
+    assertContains(error.workList.errorMessage.orEmpty(), "database unavailable")
+    assertEquals(3, calls)
+  }
+
+  private fun workItem(workflowId: String): DesktopWorkItem = DesktopWorkItem(
+    issueKey = "SKILL-117",
+    workflowKind = "feature-task-runtime",
+    workflowId = workflowId,
+    startedAt = "2026-05-01 14:00:00 CEST",
+    currentState = "running",
+    stateEnteredAt = "2026-05-01 14:00:00 CEST",
+    stateEnteredAtEstimated = false,
+  )
 
   @Test
   fun `keyboard movement selects through visible nodes`() {
@@ -1167,6 +1240,7 @@ class SkillBillViewModelTest {
     skillRemoveGateway: skillbill.desktop.core.domain.service.RuntimeSkillRemoveGateway =
       skillbill.desktop.core.testing.skillremove.FakeSkillRemoveGateway(),
     installedWorkspaceLocator: FakeInstalledWorkspaceLocator = FakeInstalledWorkspaceLocator(),
+    workListGateway: WorkListGateway = skillbill.desktop.core.domain.service.EmptyWorkListGateway,
   ): SkillBillViewModel = SkillBillViewModel(
     repoSessionService = repoSessionService,
     skillTreeService = skillTreeService,
@@ -1177,6 +1251,7 @@ class SkillBillViewModelTest {
     desktopPreferenceStore = desktopPreferenceStore,
     skillRemoveGateway = skillRemoveGateway,
     installedWorkspaceLocator = installedWorkspaceLocator,
+    workListGateway = workListGateway,
   )
 
   private fun SkillBillViewModel.startupState(): SkillBillState = runBlocking {

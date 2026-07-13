@@ -861,6 +861,8 @@ $defs:
         type: string
       current_step_id:
         type: string
+      issue_key:
+        type: string
 
   featureTaskProseWorkflowResumeEvent:
     type: object
@@ -1151,6 +1153,8 @@ $defs:
         type: string
       current_step_id:
         type: string
+      issue_key:
+        type: string
 
   featureVerifyWorkflowResumeEvent:
     type: object
@@ -1268,6 +1272,8 @@ $defs:
       session_id:
         type: string
       current_step_id:
+        type: string
+      issue_key:
         type: string
 
   featureTaskRuntimeWorkflowResumeEvent:

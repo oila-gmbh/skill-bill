@@ -3,6 +3,7 @@ package skillbill.application
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseBriefingAssembler
 import skillbill.application.featuretask.FeatureTaskRuntimePhasePromptComposer
 import skillbill.application.featuretask.FeatureTaskRuntimeVerificationSignalKeys
+import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.model.SpecSource
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
@@ -16,6 +17,33 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 class FeatureTaskRuntimePhasePromptComposerTest {
+  @Test
+  fun `review prompt forwards selected execution mode through a parallel lane`() {
+    val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor("review"),
+      parallelReviewAgent = "claude",
+      codeReviewMode = CodeReviewExecutionMode.DELEGATED,
+    )
+
+    assertContains(prompt, "bill-code-review mode:delegated")
+    assertContains(prompt, "parallel:claude")
+    assertContains(prompt, "must not launch parallel review recursively")
+  }
+
+  @Test
+  fun `review prompt preserves every durable execution mode unchanged`() {
+    CodeReviewExecutionMode.entries.forEach { mode ->
+      val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
+        ISSUE_KEY,
+        briefingFor("review"),
+        codeReviewMode = mode,
+      )
+
+      assertContains(prompt, "bill-code-review mode:${mode.wireValue}")
+    }
+  }
+
   @Test
   fun `composes header briefing and output contract for every runtime phase`() {
     FeatureTaskRuntimePhaseWorkflowDefinition.definition.stepIds.forEach { phaseId ->

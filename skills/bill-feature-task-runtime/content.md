@@ -1,7 +1,7 @@
 ---
 internal-for: bill-feature
 name: bill-feature-task-runtime
-description: Use when running a single governed feature spec through the runtime-driven feature-task phase loop via the foreground `skill-bill feature-task` runtime. This is the runtime-backed mode of bill-feature-task. Gathers and confirms the run, presents one confirmation gate, then launches the runtime. Use when user mentions implement feature, build feature, implement spec, run feature-task, or feature from design doc, and the runtime-driven phase loop is preferred over prose in-session orchestration.
+description: Use when running a single governed feature spec through the runtime-driven feature-task phase loop via the foreground `skill-bill feature-task` runtime. This is the runtime-backed mode of bill-feature-task. Consumes the router-confirmed run and launches the runtime. Use when user mentions implement feature, build feature, implement spec, run feature-task, or feature from design doc, and the runtime-driven phase loop is preferred over prose in-session orchestration.
 ---
 
 # Feature Task Content
@@ -16,30 +16,34 @@ Durable workflow rows use the public workflow identity `bill-feature-task` with
 names are compatibility aliases for that mode, not a separate authoritative
 workflow family.
 
-`bill-feature-task-runtime` is only the trigger surface: it gathers and confirms
-the spec, presents exactly one confirmation gate, and then launches the runtime
-command. It does **not** re-implement phase orchestration in prose — the runtime
-owns the phase loop, the per-phase handoff, the schema gates, and the durable
-state. This skill must never restate or re-derive that orchestration.
+`bill-feature-task-runtime` consumes the normalized, router-confirmed run and
+launches the runtime command. It does **not** re-implement phase orchestration
+in prose — the runtime owns the phase loop, the per-phase handoff, the schema
+gates, and the durable state. This skill must never restate or re-derive that
+orchestration.
 
-## Intake
+## Confirmed Input
 
-Gather enough to identify and confirm the run:
+Consume the router-confirmed run:
 
 - the issue key
 - the governed spec path the run implements
 - the agent currently executing this skill
 - the parallel review agent (from args as `parallel-review:<agent>`; absent when not provided)
+- the normalized review selection from `code-review:auto|inline|delegated`
 
-If the issue key or spec path is missing, stop and ask for it. Do not invent
-either one. The runtime sources the run-invariants (spec reference, acceptance
-criteria, mandates and overrides) directly from the spec at launch — this skill
-does not parse or restate them.
+The `bill-feature-task` router has already rejected invalid review-selection
+tokens and presented the only confirmation gate. Do not reparse, default, or
+change `code-review:<selected-mode>`, and do not ask another confirmation
+question. If the router failed to provide the issue key, spec path, or
+normalized selection, stop rather than inventing a value. The runtime sources
+the run-invariants (spec reference, acceptance criteria, mandates and overrides)
+directly from the spec at launch — this skill does not parse or restate them.
 
-**opencode and zcode are prose-only; refuse before launch.** This skill can be invoked
-directly (bypassing the `bill-feature-task` router), so it must refuse on its own
-when the agent currently executing it is opencode or zcode: stop before the Single
-confirmation Gate and the foreground launch and emit the actionable refusal
+**opencode and zcode are prose-only; refuse before launch.** Even when a caller
+supplies the already-confirmed input directly, this sidecar must refuse on its
+own when the agent currently executing it is opencode or zcode: stop before the
+foreground launch and emit the actionable refusal
 pointing to `bill-feature-task-prose`:
 
 > Runtime mode is not supported on opencode or zcode in this harness. opencode's foreground Bash tool is hard-killed at 120s before a phase can finish and per-phase output cannot be harvested back; zcode's foreground runtime exceeds the Bash execution ceiling and a detached zcode child emits no harvestable output before the supervisor kills it as unresponsive. Use prose instead — run bill-feature-task-prose for a single feature task, or bill-feature-goal mode:prose for a decomposed goal.
@@ -51,31 +55,17 @@ zcode's foreground run exceeding the Bash ceiling and detached children killed a
 unresponsive before emitting harvestable output). For a prose run instead, read the
 sibling `bill-feature-task-prose.md` sidecar.
 
-## Single Confirmation Gate
+## Runtime Launch
 
-Present one concise confirmation that includes:
-
-- the issue key and spec path
-- the agent that will run each phase, including any explicit override
-
-Ask exactly one confirmation question: whether to proceed and start the
-foreground runtime phase loop.
-
-Do not launch `skill-bill feature-task` while the run is unconfirmed. If the
-user declines, stop. The confirmation gate is the only user interaction required
-before execution starts.
-
-## Confirmed Handoff
-
-After confirmation, execute the foreground driver directly in the current agent
-session, always passing `--agent` set to the agent currently executing this
-skill:
+Execute the foreground driver directly in the current agent session, always
+passing `--agent` set to the agent currently executing this skill:
 
 ```bash
 skill-bill feature-task run <issue_key> <spec_path> --agent <currently-executing-agent>
 ```
 
 Append `--parallel-review-agent <agent>` when `parallel-review:<agent>` was passed to this skill.
+Append `--code-review-mode <auto|inline|delegated>` using the resolved selection.
 
 Always pass `--agent` set to the agent currently running this skill (for example
 `claude` from Claude Code, `codex` from Codex, `opencode` from OpenCode), so the

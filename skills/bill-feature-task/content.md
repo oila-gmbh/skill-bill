@@ -29,6 +29,8 @@ If the issue key is missing, stop and ask for it. If the spec path is missing, s
 
 Parse the mode and `parallel-review:<agent>` from args before presenting the confirmation gate. If no mode arg is provided, resolve the mode to `runtime`.
 
+Also parse exactly one optional `code-review:auto|inline|delegated` token. Omission resolves to `auto`; malformed, unknown, duplicate, or conflicting values fail before confirmation, workflow opening, or delegation. Forward the resolved selection unchanged to either sidecar.
+
 **opencode and zcode are prose-only.** When the agent currently executing this skill is opencode or zcode, prose is the implicit default and runtime mode is unsupported: opencode's foreground Bash tool is hard-killed at 120s before a phase can finish and per-phase output cannot be harvested back; zcode's foreground runtime exceeds the Bash execution ceiling and a detached zcode child emits no harvestable output before the supervisor kills it as unresponsive. On opencode or zcode: with no mode arg, resolve to `prose` (no need to pass `mode:prose`); with an explicit `mode:runtime`, stop and emit the actionable refusal and do NOT delegate to `bill-feature-task-runtime`:
 
 > Runtime mode is not supported on opencode or zcode in this harness. opencode's foreground Bash tool is hard-killed at 120s before a phase can finish and per-phase output cannot be harvested back; zcode's foreground runtime exceeds the Bash execution ceiling and a detached zcode child emits no harvestable output before the supervisor kills it as unresponsive. Use prose instead — run bill-feature-task-prose for a single feature task, or bill-feature-goal mode:prose for a decomposed goal.
@@ -43,6 +45,7 @@ Present one concise confirmation that includes:
 - the agent that will run each phase, including any explicit override
 - the resolved mode: show `runtime (default)` when the mode was not specified, `runtime` when explicitly set, or `prose` when `mode:prose` was passed
 - the parallel review agent when `parallel-review:<agent>` was passed, or `none` otherwise
+- the requested code-review selection, showing `auto (default)` when omitted
 
 Ask exactly one confirmation question: whether to proceed with the selected mode.
 
@@ -54,10 +57,12 @@ After confirmation, dispatch to the delegated sidecar by reading its file from t
 
 When mode is `runtime` or unspecified (on opencode or zcode the mode resolves to `prose`, or an explicit `mode:runtime` already refused per the prose-only rule above, so this runtime branch is never taken on opencode or zcode):
 
-- Read the file `bill-feature-task-runtime.md` located in this skill's own installed directory (a sibling of this `SKILL.md`) and execute its instructions in the current session. Forward `--agent`, `--agent-override`, `--phase-agent`, and `parallel-review:<agent>` identically from the args received by this router.
+- Read the file `bill-feature-task-runtime.md` located in this skill's own installed directory (a sibling of this `SKILL.md`) and execute its instructions in the current session. Forward `--agent`, `--agent-override`, `--phase-agent`, `parallel-review:<agent>`, and `code-review:<selected-mode>` identically from the args received by this router.
 
 When mode is `prose`:
 
-- Read the file `bill-feature-task-prose.md` located in this skill's own installed directory (a sibling of this `SKILL.md`) and execute its instructions in the current session. Forward `--agent`, `--agent-override`, `--phase-agent`, and `parallel-review:<agent>` identically from the args received by this router.
+- Read the file `bill-feature-task-prose.md` located in this skill's own installed directory (a sibling of this `SKILL.md`) and execute its instructions in the current session. Forward `--agent`, `--agent-override`, `--phase-agent`, `parallel-review:<agent>`, and `code-review:<selected-mode>` identically from the args received by this router.
 
-Do not add a second confirmation gate on top of the delegated sidecar's own behavior. Delegate immediately after this router's own gate clears. The delegated sidecar owns its own intake, confirmation, and execution logic.
+Delegate immediately after this router's gate clears. The delegated sidecar consumes
+the confirmed normalized inputs and owns launch and execution behavior; it must
+not repeat intake or present another confirmation gate.

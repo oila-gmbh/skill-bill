@@ -19,6 +19,7 @@ import skillbill.cli.core.refuseRuntimeRefusedAgents
 import skillbill.cli.model.CliExecutionResult
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.InvokingAgentContextResolver
+import skillbill.workflow.model.CodeReviewExecutionMode
 import java.nio.file.Path
 import kotlin.time.Duration.Companion.minutes
 
@@ -55,6 +56,14 @@ class CodeReviewParallelCommand(
     "--timeout-minutes",
     help = "Optional per-lane wall-clock cap in minutes.",
   ).long()
+  private val diffFile by option(
+    "--diff-file",
+    help = "Exact diff input for both lanes. When supplied, it replaces the configured review scope.",
+  )
+  private val codeReviewMode by option(
+    "--execution-mode",
+    help = "Shared execution mode for both lanes: auto, inline, or delegated.",
+  ).default("auto")
 
   override fun run() {
     val resolvedAgent1 = resolveAgent1()
@@ -85,6 +94,8 @@ class CodeReviewParallelCommand(
           scope = resolvedScope,
           repoRoot = Path.of(repoRoot).toAbsolutePath().normalize(),
           timeout = timeoutMinutes?.minutes,
+          codeReviewMode = parseExecutionMode(codeReviewMode),
+          suppliedDiffPath = suppliedDiffPath(),
         ),
       )
     } catch (@Suppress("SwallowedException") e: UsageValidationException) {
@@ -115,6 +126,16 @@ class CodeReviewParallelCommand(
     ?: state.environment["SKILL_BILL_AGENT"]?.takeIf(String::isNotBlank)
     ?: InvokingAgentContextResolver.detect(state.environment)?.id
     ?: DEFAULT_AGENT
+
+  private fun parseExecutionMode(value: String): CodeReviewExecutionMode = try {
+    CodeReviewExecutionMode.fromWire(value)
+  } catch (error: IllegalArgumentException) {
+    throw UsageError(error.message.orEmpty()).apply { initCause(error) }
+  }
+
+  private fun suppliedDiffPath(): Path? = diffFile?.let { value ->
+    Path.of(value).toAbsolutePath().normalize()
+  }
 
   private companion object {
     const val DEFAULT_AGENT = "codex"
