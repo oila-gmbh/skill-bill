@@ -1,6 +1,10 @@
 package skillbill.ports.workflow
 
 import skillbill.ports.workflow.model.WorkflowGitOperationResult
+import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
+import skillbill.ports.workflow.model.GoalSubtaskReviewBaselineResult
+import skillbill.ports.workflow.model.GoalSubtaskReviewInput
+import skillbill.ports.workflow.model.GoalSubtaskReviewInputResult
 import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksRequest
 import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksResult
 import skillbill.ports.workflow.model.WorkflowWorktreeActivityResult
@@ -40,6 +44,17 @@ interface WorkflowGitOperations {
   fun worktreeActivity(repoRoot: Path): WorkflowWorktreeActivityResult
 
   fun selectedDiffHunks(repoRoot: Path, request: WorkflowSelectedDiffHunksRequest): WorkflowSelectedDiffHunksResult
+
+  fun captureGoalSubtaskReviewBaseline(repoRoot: Path): GoalSubtaskReviewBaselineResult =
+    GoalSubtaskReviewBaselineResult(status = "error", error = "Goal-subtask review baselines require a git adapter.")
+
+  fun buildGoalSubtaskReviewInput(
+    repoRoot: Path,
+    baseline: GoalSubtaskReviewBaseline,
+  ): GoalSubtaskReviewInputResult = GoalSubtaskReviewInputResult(
+    status = "error",
+    error = "Goal-subtask review input requires a git adapter.",
+  )
 }
 
 object NoopWorkflowGitOperations : WorkflowGitOperations {
@@ -89,5 +104,24 @@ object NoopWorkflowGitOperations : WorkflowGitOperations {
   ): WorkflowSelectedDiffHunksResult = WorkflowSelectedDiffHunksResult(
     status = "ok",
     selectedDiffHunks = GoalObservabilitySelectedDiffHunks(),
+  )
+
+  override fun captureGoalSubtaskReviewBaseline(repoRoot: Path): GoalSubtaskReviewBaselineResult =
+    GoalSubtaskReviewBaselineResult(
+      status = "ok",
+      baseline = GoalSubtaskReviewBaseline(reviewBaseSha = "0".repeat(40), baselineUntrackedPaths = emptyList()),
+    )
+
+  override fun buildGoalSubtaskReviewInput(
+    repoRoot: Path,
+    baseline: GoalSubtaskReviewBaseline,
+  ): GoalSubtaskReviewInputResult = GoalSubtaskReviewInputResult(
+    status = "ok",
+    input = GoalSubtaskReviewInput(
+      reviewBaseSha = baseline.reviewBaseSha,
+      currentHeadSha = baseline.reviewBaseSha,
+      trackedDelta = "",
+      ownedUntrackedPatches = "",
+    ),
   )
 }

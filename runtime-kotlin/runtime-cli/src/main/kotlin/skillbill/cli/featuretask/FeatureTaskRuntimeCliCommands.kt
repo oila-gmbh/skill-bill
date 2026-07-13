@@ -42,6 +42,7 @@ import skillbill.ports.featurespec.model.FeatureSpecPathResolveInput
 import skillbill.ports.featurespec.model.FeatureSpecPathResolveResult
 import skillbill.ports.taskruntime.FeatureTaskRuntimeRunInvariantsSource
 import skillbill.review.CodeReviewExecutionMode
+import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import java.nio.file.Path
 import kotlin.time.Duration.Companion.minutes
@@ -111,6 +112,14 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
     "--goal-last-resumable-step",
     help = "Optional durable resume step supplied by the goal runner.",
   )
+  protected val goalReviewBaseSha by option(
+    "--goal-review-base-sha",
+    help = "Review baseline commit captured by the goal runner before implementation.",
+  )
+  protected val goalBaselineUntrackedPaths by option(
+    "--goal-baseline-untracked-path",
+    help = "Baseline untracked path. Repeat for every path owned before this child starts.",
+  ).multiple()
   protected val parallelReviewAgent by option(
     "--parallel-review-agent",
     help = "Run the review phase with a second parallel agent lane. " +
@@ -252,6 +261,9 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
       parentWorkflowId = goalParentWorkflowId?.takeIf(String::isNotBlank),
       lastResumableStep = goalLastResumableStep?.takeIf(String::isNotBlank),
       codeReviewMode = requestedCodeReviewMode() ?: CodeReviewExecutionMode.AUTO,
+      reviewBaseline = goalReviewBaseSha?.takeIf(String::isNotBlank)?.let { base ->
+        GoalSubtaskReviewBaseline(base, goalBaselineUntrackedPaths.distinct().sorted())
+      },
     )
   }
 

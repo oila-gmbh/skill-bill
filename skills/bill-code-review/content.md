@@ -40,6 +40,8 @@ skill-bill config resolve-parallel-agent --repo-root <repo-root>
 - It prints a supported agent id → run the two-lane parallel flow with that id as the lane-2 agent, exactly as if `parallel:<id>` had been passed (no model override; `lane2Model` is empty).
 - It exits non-zero when the configured value is unrecognized (validated against `InstallAgent.supportedIds + none`) or the config is malformed → stop immediately and surface the runtime's named error verbatim. Do not start either lane.
 
+When a feature-goal caller supplies a durable child-owned diff, preserve it verbatim for both lanes. The CLI delegation route uses `--diff-file <exact-diff-path>` and must not resolve `--scope branch`, `origin/main...HEAD`, or a replacement baseline.
+
 ## Argument Recognition
 
 - Recognise `parallel:<agent>` or `parallel:<agent>:<model>` where `<agent>` is a supported agent ID and `<model>` is an optional model override for lane 2 (e.g. `o3`, `claude-opus-4-8`).
@@ -86,6 +88,7 @@ skill-bill code-review-parallel \
   --agent1 <lane1-agent-id> \
   --agent2 <lane2-agent-id> \
   [--model2 <lane2Model>] \
+  --execution-mode <selected-mode> \
   --scope <scope> \
   --repo-root <repo-root>
 ```
@@ -113,6 +116,7 @@ Repo root: <repo-root>
 
 Rules:
 - Run the full routed review by spawning one isolated-context subagent per specialist domain — do NOT do a single flat read of the diff.
+- Invoke `bill-code-review execution-mode:<selected-mode>` for this lane. Preserve the caller's selected mode; do not replace it with `auto`.
 - Do NOT pass parallel:<agent> to bill-code-review — you are already lane 2; recursion is not allowed.
 - Spawn each specialist as an isolated-context subagent using your agent's native subagent mechanism (see Agent-specific instructions below). What matters is that each specialist reasons in its own context window — not that it runs as a separate OS process.
 - When all subagents complete, collect their findings and output ONLY the concatenated Risk Register, one finding per line:

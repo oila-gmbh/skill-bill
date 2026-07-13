@@ -2,6 +2,7 @@ package skillbill.application.model
 
 import skillbill.ports.agentrun.model.AgentRunOutputSink
 import skillbill.review.CodeReviewExecutionMode
+import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
 import skillbill.ports.workflow.model.DEFAULT_SELECTED_DIFF_MAX_BYTES
 import skillbill.ports.workflow.model.DEFAULT_SELECTED_DIFF_MAX_HUNKS
 import skillbill.ports.workflow.model.DEFAULT_SELECTED_DIFF_MAX_LINES
@@ -63,6 +64,16 @@ sealed interface GoalRunnerRunEvent {
     val reason: String,
     val blockedReason: String,
     val currentStepId: String? = null,
+  ) : GoalRunnerRunEvent
+
+  data class SubtaskReviewSummary(
+    override val issueKey: String,
+    val subtaskId: Int,
+    val passNumber: Int,
+    val verdict: String,
+    val findingCount: Int,
+    val unresolvedFindingCount: Int,
+    val findings: List<GoalSubtaskReviewCompactFinding>,
   ) : GoalRunnerRunEvent
 
   data class Completed(

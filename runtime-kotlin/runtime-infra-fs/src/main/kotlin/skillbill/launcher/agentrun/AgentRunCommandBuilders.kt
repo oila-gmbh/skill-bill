@@ -172,6 +172,14 @@ internal fun goalContinuationCommand(request: SkillRunRequest, agent: InstallAge
         }
         add("--code-review-mode")
         add(context.codeReviewMode.wireValue)
+        context.reviewBaseline?.let { baseline ->
+          add("--goal-review-base-sha")
+          add(baseline.reviewBaseSha)
+          baseline.baselineUntrackedPaths.forEach { path ->
+            add("--goal-baseline-untracked-path")
+            add(path)
+          }
+        }
         add("--agent")
         add(agent.id)
       },

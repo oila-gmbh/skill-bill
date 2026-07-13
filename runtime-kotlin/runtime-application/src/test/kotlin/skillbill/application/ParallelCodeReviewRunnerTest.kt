@@ -207,6 +207,19 @@ class ParallelCodeReviewRunnerTest {
   }
 
   @Test
+  fun `supplied exact diff bypasses branch-scope resolution for both lanes`() {
+    val resolver = RecordingDiffResolver(default = "unexpected branch diff")
+    val launcher = ParallelSubtaskLauncher()
+    val runner = runner(launcher, diffResolver = resolver)
+    val exactDiff = "diff --git a/Child.kt b/Child.kt\n+++ b/Child.kt\n+owned change\n"
+
+    runner.run(baseRequest(scope = ParallelReviewScope.BRANCH).copy(suppliedDiff = exactDiff))
+
+    assertTrue(resolver.calls.isEmpty())
+    assertTrue(launcher.requests.all { request -> request.skillRunRequest.promptOverride.orEmpty().contains(exactDiff) })
+  }
+
+  @Test
   fun `lane1 interrupted produces lane1Success false`() {
     val launcher = GoalRunnerSubtaskLauncher { request ->
       val agent = InstallAgent.fromNormalizedId(request.invokedAgentId, label = "agentId")

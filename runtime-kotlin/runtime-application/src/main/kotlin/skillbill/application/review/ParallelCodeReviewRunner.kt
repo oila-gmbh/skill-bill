@@ -93,7 +93,7 @@ class ParallelCodeReviewRunner(
   }
 
   private fun resolveDiff(request: ParallelCodeReviewRequest): String {
-    val diffText = when (request.scope) {
+    val diffText = request.suppliedDiff ?: when (request.scope) {
       ParallelReviewScope.STAGED -> runDiff(listOf("git", "diff", "--cached"), request.repoRoot)
       ParallelReviewScope.UNSTAGED -> runDiff(listOf("git", "diff"), request.repoRoot)
       ParallelReviewScope.BRANCH -> {

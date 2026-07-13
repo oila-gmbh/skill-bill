@@ -365,6 +365,10 @@ private class GoalRunPresenter(
             activeSubtaskId = event.subtaskId
             activeStepId = event.currentStepId?.takeIf(String::isNotBlank) ?: activeStepId
           }
+          is GoalRunnerRunEvent.SubtaskReviewSummary -> {
+            activeSubtaskId = event.subtaskId
+            activeStepId = "review"
+          }
           else -> Unit
         }
         state.liveStdout(event.progressLine())
@@ -384,10 +388,17 @@ private class GoalRunPresenter(
     val subtask = transition.subtaskId?.toString() ?: activeSubtaskId?.toString() ?: "unknown"
     val step = activeStepId ?: "unknown"
     goalEventSequence += 1
+    val reviewSummary = (event as? GoalRunnerRunEvent.SubtaskReviewSummary)?.let { summary ->
+      " review_pass=${summary.passNumber} finding_count=${summary.findingCount} " +
+        "unresolved_finding_count=${summary.unresolvedFindingCount} compact_findings=" +
+        summary.findings.joinToString("|") { finding ->
+          "${finding.severity}:${finding.label}:${finding.text}".replace(Regex("\\s+"), "_")
+        }
+    }.orEmpty()
     state.liveStdout(
       "goal_event: issue_key=$issueKey subtask_id=$subtask prev_step=${prevStep ?: "none"} " +
         "current_step=$step prev_status=${prevStatus ?: "none"} current_status=${transition.currentStatus} " +
-        "event_kind=${transition.eventKind} sequence_number=$goalEventSequence\n",
+        "event_kind=${transition.eventKind}$reviewSummary sequence_number=$goalEventSequence\n",
     )
     lastEmittedStatus = transition.currentStatus
     lastEmittedStep = step
@@ -492,6 +503,8 @@ private fun goalEventTransition(event: GoalRunnerRunEvent): GoalEventTransition?
     GoalEventTransition(event.subtaskId, "complete", "subtask_completed")
   is GoalRunnerRunEvent.SubtaskStopped ->
     GoalEventTransition(event.subtaskId, event.reason, "subtask_stopped")
+  is GoalRunnerRunEvent.SubtaskReviewSummary ->
+    GoalEventTransition(event.subtaskId, event.verdict, "subtask_review_summary")
   is GoalRunnerRunEvent.Completed ->
     GoalEventTransition(null, "complete", "terminal_reconciliation")
 }
@@ -502,6 +515,27 @@ private fun GoalRunnerRunEvent.progressLine(): String = when (this) {
   is GoalRunnerRunEvent.SubtaskCompleted -> "goal $issueKey: subtask $subtaskId complete\n"
   is GoalRunnerRunEvent.SubtaskStopped ->
     "goal $issueKey: subtask $subtaskId stopped ($reason): $blockedReason\n"
+  is GoalRunnerRunEvent.SubtaskReviewSummary -> buildString {
+    append("goal review: subtask=")
+    append(subtaskId)
+    append(" pass=")
+    append(passNumber)
+    append(' ')
+    append(verdict)
+    append(" findings=")
+    append(findingCount)
+    append(" unresolved=")
+    append(unresolvedFindingCount)
+    findings.forEach { finding ->
+      append("\n  ")
+      append(finding.severity.replaceFirstChar(Char::uppercase))
+      append(' ')
+      append(finding.label)
+      append(" — ")
+      append(finding.text)
+    }
+    append('\n')
+  }
   is GoalRunnerRunEvent.Completed -> buildString {
     append("goal $issueKey: completion confirmed")
     append(" complete=")

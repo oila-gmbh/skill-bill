@@ -85,6 +85,37 @@ data class FeatureTaskRuntimeGoalContinuationArtifact(
   ).apply {
     parentWorkflowId?.let { put("parent_workflow_id", it) }
   }
+
+  companion object {
+    fun fromArtifactMap(raw: Map<String, Any?>): FeatureTaskRuntimeGoalContinuationArtifact {
+      val allowedKeys = setOf(
+        "issue_key",
+        "subtask_id",
+        "suppress_pr",
+        "goal_branch",
+        "parent_workflow_id",
+        "code_review_mode",
+      )
+      raw.keys.forEach { key ->
+        if (key !in allowedKeys) {
+          throw InvalidWorkflowStateSchemaError("Goal-continuation artifact field '$key' is not supported.")
+        }
+      }
+      return FeatureTaskRuntimeGoalContinuationArtifact(
+        issueKey = raw.requireStringField("issue_key"),
+        subtaskId = raw.requireIntField("subtask_id"),
+        suppressPr = raw.optionalBooleanField("suppress_pr")
+          ?: throw InvalidWorkflowStateSchemaError("Goal-continuation artifact field 'suppress_pr' must be a boolean."),
+        goalBranch = raw.requireStringField("goal_branch"),
+        parentWorkflowId = raw.optionalStringField("parent_workflow_id"),
+        codeReviewMode = try {
+          CodeReviewExecutionMode.fromWire(raw.requireStringField("code_review_mode"))
+        } catch (error: IllegalArgumentException) {
+          throw InvalidWorkflowStateSchemaError("Goal-continuation artifact code_review_mode is invalid.", error)
+        },
+      )
+    }
+  }
 }
 
 data class FeatureTaskRuntimeGoalContinuationOutcome(

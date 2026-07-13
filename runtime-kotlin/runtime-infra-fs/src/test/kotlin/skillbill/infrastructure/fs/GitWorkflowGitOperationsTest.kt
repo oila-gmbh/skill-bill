@@ -1,6 +1,7 @@
 package skillbill.infrastructure.fs
 
 import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksRequest
+import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -329,6 +330,60 @@ class GitWorkflowGitOperationsTest {
     assertTrue(emittedBytes <= 24, hunk.lines.joinToString("\n"))
     assertTrue(hunk.lines.any { line -> line.startsWith("+x") }, hunk.lines.joinToString("\n"))
     assertTrue(hunk.lines.none { line -> line.length > 24 }, hunk.lines.joinToString("\n"))
+  }
+
+  @Test
+  fun `goal review input includes base to current tracked delta and only owned untracked files`() {
+    val repoRoot = Files.createTempDirectory("skillbill-goal-review-input")
+    git(repoRoot, "init")
+    git(repoRoot, "config", "user.email", "skill-bill@example.test")
+    git(repoRoot, "config", "user.name", "Skill Bill")
+    Files.writeString(repoRoot.resolve("tracked.txt"), "base\n")
+    git(repoRoot, "add", ".")
+    git(repoRoot, "commit", "-m", "initial")
+    Files.writeString(repoRoot.resolve("preexisting.tmp"), "not owned\n")
+    val ops = GitWorkflowGitOperations()
+    val baseline = ops.captureGoalSubtaskReviewBaseline(repoRoot)
+
+    assertTrue(baseline.ok, baseline.error)
+    Files.writeString(repoRoot.resolve("tracked.txt"), "base\ncommitted\n")
+    git(repoRoot, "add", "tracked.txt")
+    git(repoRoot, "commit", "-m", "subtask commit")
+    Files.writeString(repoRoot.resolve("tracked.txt"), "base\ncommitted\nstaged\n")
+    git(repoRoot, "add", "tracked.txt")
+    Files.writeString(repoRoot.resolve("tracked.txt"), "base\ncommitted\nstaged\nunstaged\n")
+    Files.writeString(repoRoot.resolve("owned.tmp"), "owned content\n")
+
+    val input = ops.buildGoalSubtaskReviewInput(repoRoot, requireNotNull(baseline.baseline))
+
+    assertTrue(input.ok, input.error)
+    val reviewText = requireNotNull(input.input).reviewText
+    assertContains(reviewText, "committed")
+    assertContains(reviewText, "staged")
+    assertContains(reviewText, "unstaged")
+    assertContains(reviewText, "owned.tmp")
+    assertContains(reviewText, "owned content")
+    assertFalse("preexisting.tmp" in reviewText)
+  }
+
+  @Test
+  fun `goal review input rejects an unsafe persisted base without branch fallback`() {
+    val repoRoot = Files.createTempDirectory("skillbill-goal-review-unsafe-base")
+    git(repoRoot, "init")
+    git(repoRoot, "config", "user.email", "skill-bill@example.test")
+    git(repoRoot, "config", "user.name", "Skill Bill")
+    Files.writeString(repoRoot.resolve("tracked.txt"), "base\n")
+    git(repoRoot, "add", ".")
+    git(repoRoot, "commit", "-m", "initial")
+
+    val result = GitWorkflowGitOperations().buildGoalSubtaskReviewInput(
+      repoRoot,
+      GoalSubtaskReviewBaseline("f".repeat(40), emptyList()),
+    )
+
+    assertFalse(result.ok)
+    assertContains(result.error, "Persisted review base")
+    assertFalse("origin/main" in result.error)
   }
 
   private fun git(repoRoot: Path, vararg args: String): String {

@@ -3,6 +3,10 @@ package skillbill.infrastructure.fs
 import me.tatarka.inject.annotations.Inject
 import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.ports.workflow.model.WorkflowGitOperationResult
+import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
+import skillbill.ports.workflow.model.GoalSubtaskReviewBaselineResult
+import skillbill.ports.workflow.model.GoalSubtaskReviewInput
+import skillbill.ports.workflow.model.GoalSubtaskReviewInputResult
 import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksRequest
 import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksResult
 import skillbill.ports.workflow.model.WorkflowWorktreeActivityResult
@@ -138,7 +142,95 @@ class GitWorkflowGitOperations : WorkflowGitOperations {
       ),
     )
   }
+
+  override fun captureGoalSubtaskReviewBaseline(repoRoot: Path): GoalSubtaskReviewBaselineResult {
+    val head = runGitCommand(repoRoot, "rev-parse", "HEAD")
+    if (!head.ok || head.value.isBlank()) {
+      return GoalSubtaskReviewBaselineResult(status = "error", error = head.error.ifBlank { "Could not resolve HEAD." })
+    }
+    val untracked = runGitCommand(repoRoot, "ls-files", "--others", "--exclude-standard", "-z")
+    if (!untracked.ok) {
+      return GoalSubtaskReviewBaselineResult(status = "error", error = untracked.error)
+    }
+    return GoalSubtaskReviewBaselineResult(
+      status = "ok",
+      baseline = GoalSubtaskReviewBaseline(
+        reviewBaseSha = head.value.trim(),
+        baselineUntrackedPaths = untracked.value.split('\u0000').filter(String::isNotBlank).distinct().sorted(),
+      ),
+    )
+  }
+
+  override fun buildGoalSubtaskReviewInput(
+    repoRoot: Path,
+    baseline: GoalSubtaskReviewBaseline,
+  ): GoalSubtaskReviewInputResult {
+    val verified = runGitCommand(repoRoot, "cat-file", "-e", "${baseline.reviewBaseSha}^{commit}")
+    if (!verified.ok) {
+      return GoalSubtaskReviewInputResult(
+        status = "error",
+        error = "Persisted review base '${baseline.reviewBaseSha}' is not an existing commit: ${verified.error}",
+      )
+    }
+    val ancestor = runGitCommand(repoRoot, "merge-base", "--is-ancestor", baseline.reviewBaseSha, "HEAD")
+    if (!ancestor.ok) {
+      return GoalSubtaskReviewInputResult(
+        status = "error",
+        error = "Persisted review base '${baseline.reviewBaseSha}' is not an ancestor of current HEAD; refusing a broader review scope.",
+      )
+    }
+    val head = runGitCommand(repoRoot, "rev-parse", "HEAD")
+    if (!head.ok || head.value.isBlank()) {
+      return GoalSubtaskReviewInputResult(status = "error", error = head.error.ifBlank { "Could not resolve current HEAD." })
+    }
+    val tracked = runGitCommand(repoRoot, "diff", "--binary", baseline.reviewBaseSha)
+    if (!tracked.ok) {
+      return GoalSubtaskReviewInputResult(status = "error", error = tracked.error)
+    }
+    val untracked = runGitCommand(repoRoot, "ls-files", "--others", "--exclude-standard", "-z")
+    if (!untracked.ok) {
+      return GoalSubtaskReviewInputResult(status = "error", error = untracked.error)
+    }
+    val ownedPaths = untracked.value.split('\u0000').filter(String::isNotBlank)
+      .filterNot { it in baseline.baselineUntrackedPaths }.sorted()
+    val patches = buildString {
+      ownedPaths.forEach { path ->
+        val patch = runGitProcess(repoRoot, listOf("diff", "--binary", "--no-index", "/dev/null", path))
+        if (patch.timedOut || patch.readFailure != null || patch.exitCode !in setOf(0, 1)) {
+          return GoalSubtaskReviewInputResult(
+            status = "error",
+            error = patch.readFailure?.message ?: "Could not diff owned untracked path '$path'.",
+          )
+        }
+        append(patch.output)
+        if (!endsWith("\n")) append('\n')
+        if (length > GOAL_SUBTASK_REVIEW_INPUT_MAX_BYTES) {
+          return GoalSubtaskReviewInputResult(
+            status = "error",
+            error = "Goal-subtask review input exceeds the ${GOAL_SUBTASK_REVIEW_INPUT_MAX_BYTES}-byte bound.",
+          )
+        }
+      }
+    }
+    if (tracked.value.toByteArray().size + patches.toByteArray().size > GOAL_SUBTASK_REVIEW_INPUT_MAX_BYTES) {
+      return GoalSubtaskReviewInputResult(
+        status = "error",
+        error = "Goal-subtask review input exceeds the ${GOAL_SUBTASK_REVIEW_INPUT_MAX_BYTES}-byte bound.",
+      )
+    }
+    return GoalSubtaskReviewInputResult(
+      status = "ok",
+      input = GoalSubtaskReviewInput(
+        reviewBaseSha = baseline.reviewBaseSha,
+        currentHeadSha = head.value.trim(),
+        trackedDelta = tracked.value,
+        ownedUntrackedPatches = patches,
+      ),
+    )
+  }
 }
+
+private const val GOAL_SUBTASK_REVIEW_INPUT_MAX_BYTES: Int = 1_000_000
 
 private fun combinedDiffStat(repoRoot: Path): GoalObservabilityDiffStat {
   val unstaged = runCatchingDiffStat(repoRoot, "diff", "--numstat")

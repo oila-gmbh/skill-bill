@@ -17,6 +17,8 @@ import skillbill.ports.goalrunner.model.GoalRunnerSessionAccountingRecordRequest
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.goalrunner.model.GoalRunnerWorkflowProgress
 import skillbill.review.CodeReviewExecutionMode
+import skillbill.workflow.taskruntime.model.GoalSubtaskReviewPassResult
+import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
 import java.nio.file.Path
 
 interface GoalRunnerManifestStore {
@@ -75,6 +77,17 @@ interface GoalRunnerTerminalOutcomeStore {
 }
 
 interface GoalRunnerWorkflowOutcomeStore : GoalRunnerTerminalOutcomeStore {
+  fun goalSubtaskReviewState(workflowId: String, dbPathOverride: String? = null): GoalSubtaskReviewState? = null
+
+  fun unemittedGoalReviewPasses(workflowId: String, dbPathOverride: String? = null): List<GoalSubtaskReviewPassResult> =
+    emptyList()
+
+  fun acknowledgeGoalReviewPass(
+    workflowId: String,
+    passNumber: Int,
+    dbPathOverride: String? = null,
+  ): Boolean = false
+
   // [repoRoot] is the manifest-workflowId-independent self-heal seam (SKILL-68): when supplied, a
   // complete-without-SHA continuation child recovers its commit SHA from measured HEAD and is
   // durably backfilled. null keeps the read-only, no-measure behavior for pure status/read callers.

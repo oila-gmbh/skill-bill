@@ -50,6 +50,7 @@ import skillbill.ports.workflow.NoopWorkflowGitOperations
 import skillbill.ports.workflow.SpecScratchStore
 import skillbill.ports.workflow.UnavailableSpecScratchStore
 import skillbill.ports.workflow.WorkflowGitOperations
+import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.workflow.model.CurrentSubtaskIntent
 import skillbill.workflow.model.DecompositionExecutionModel
 import skillbill.workflow.model.DecompositionManifest
@@ -232,6 +233,12 @@ class GoalRunner(
     goalBranchSetupFailure(state, selection, request)?.let { failure ->
       return failure
     }
+    val reviewBaseline = goalReviewBaseline(state, subtaskId, request) ?: return blockedReviewBaselineIteration(
+      state,
+      subtaskId,
+      "Could not capture the goal-subtask review baseline before implementation. Refusing to substitute a branch-wide scope.",
+      request,
+    )
     val prepared = prepareAttemptedLaunch(state, subtaskId, request)
     val attemptedState = prepared.state
     attempted += subtaskId
@@ -242,9 +249,16 @@ class GoalRunner(
         subtaskId,
         request,
         assignedWorkflowId = prepared.openWithAssignedId,
+        reviewBaseline = reviewBaseline,
       ),
     )
-    val launchReconciliation = reconciler.reconcileLaunchOutcome(attemptedState, launchOutcome, subtaskId, request)
+    val launchReconciliation = reconciler.reconcileLaunchOutcome(
+      attemptedState,
+      launchOutcome,
+      subtaskId,
+      request,
+      reviewBaseline,
+    )
     val workerRequestResult = workerRequestHandler.handle(
       state = launchReconciliation.refreshed,
       launchOutcome = launchReconciliation.launchOutcome,
@@ -260,6 +274,7 @@ class GoalRunner(
         observability,
         ledger,
       )
+      emitGoalReviewSummaries(refreshed.manifest.issueKey, subtaskId, workflowId, request)
     }
     return workerRequestResult.operatorConfirmationStop?.let { stop ->
       stoppedIteration(refreshed, subtaskId, stop, request, attempted, observability, ledger)
@@ -282,6 +297,74 @@ class GoalRunner(
         ledger,
         launchReconciliation.diagnostics,
       )
+    }
+  }
+
+  private fun goalReviewBaseline(
+    state: GoalRunnerManifestState,
+    subtaskId: Int,
+    request: GoalRunnerRunRequest,
+  ): GoalSubtaskReviewBaseline? {
+    val existingWorkflowId = state.manifest.workflowIdFor(subtaskId)
+    if (existingWorkflowId != null) {
+      return outcomeStore.goalSubtaskReviewState(existingWorkflowId, request.dbPathOverride)
+        ?.let { reviewState -> GoalSubtaskReviewBaseline(reviewState.reviewBaseSha, reviewState.baselineUntrackedPaths) }
+    }
+    return gitOperations.captureGoalSubtaskReviewBaseline(request.repoRoot).baseline
+  }
+
+  private fun blockedReviewBaselineIteration(
+    state: GoalRunnerManifestState,
+    subtaskId: Int,
+    reason: String,
+    request: GoalRunnerRunRequest,
+  ): GoalRunnerIterationResult {
+    val blocked = state.manifest.withBranchSetupBlockedSubtask(subtaskId, reason)
+    val saved = manifestStore.save(state.copy(manifest = blocked), request.dbPathOverride)
+    request.eventSink.emit(
+      GoalRunnerRunEvent.SubtaskStopped(
+        issueKey = saved.manifest.issueKey,
+        subtaskId = subtaskId,
+        reason = GoalRunnerStopReason.BLOCKED.name.lowercase(),
+        blockedReason = reason,
+        currentStepId = "preplan",
+      ),
+    )
+    return GoalRunnerIterationResult(
+      state = saved,
+      report = stopped(
+        issueKey = saved.manifest.issueKey,
+        attempted = emptyList(),
+        subtaskId = subtaskId,
+        reason = GoalRunnerStopReason.BLOCKED,
+        blockedReason = reason,
+        workflowId = state.manifest.workflowIdFor(subtaskId),
+        lastResumableStep = "preplan",
+      ),
+    )
+  }
+
+  private fun emitGoalReviewSummaries(
+    issueKey: String,
+    subtaskId: Int,
+    workflowId: String,
+    request: GoalRunnerRunRequest,
+  ) {
+    outcomeStore.unemittedGoalReviewPasses(workflowId, request.dbPathOverride).forEach { pass ->
+      request.eventSink.emit(
+        GoalRunnerRunEvent.SubtaskReviewSummary(
+          issueKey = issueKey,
+          subtaskId = subtaskId,
+          passNumber = pass.passNumber,
+          verdict = pass.verdict.wireValue,
+          findingCount = pass.findings.size,
+          unresolvedFindingCount = pass.unresolvedFindingCount,
+          findings = pass.findings,
+        ),
+      )
+      check(outcomeStore.acknowledgeGoalReviewPass(workflowId, pass.passNumber, request.dbPathOverride)) {
+        "Goal-subtask review summary pass ${pass.passNumber} could not be acknowledged after emission."
+      }
     }
   }
 
@@ -834,6 +917,7 @@ internal class GoalRunnerLaunchReconciler(
     request: GoalRunnerRunRequest,
     // SKILL-87: non-null only on a first run; routes the child through open-with-this-id, not resume.
     assignedWorkflowId: String? = null,
+    reviewBaseline: GoalSubtaskReviewBaseline? = null,
   ): GoalRunnerSubtaskLaunchRequest {
     val tickReader = GoalRunnerTickProgressReader(
       manifestStore = manifestStore,
@@ -866,7 +950,7 @@ internal class GoalRunnerLaunchReconciler(
         declaredProgressProbe = declaredProgressProbe(tickReader),
         progressEmitter = progressEmitter,
         outputSink = request.outputSink,
-        goalContinuation = goalContinuationContext(issueKey, subtaskId, request, assignedWorkflowId),
+        goalContinuation = goalContinuationContext(issueKey, subtaskId, request, assignedWorkflowId, reviewBaseline),
       ),
     )
   }
@@ -876,6 +960,7 @@ internal class GoalRunnerLaunchReconciler(
     subtaskId: Int,
     request: GoalRunnerRunRequest,
     assignedWorkflowId: String?,
+    reviewBaseline: GoalSubtaskReviewBaseline?,
   ): SkillRunGoalContinuationContext? {
     val state = manifestStore.loadByIssueKey(issueKey, request.dbPathOverride, request.repoRoot) ?: return null
     val branch = state.manifest.branchPlanFor(subtaskId).branch.takeIf(String::isNotBlank)
@@ -900,7 +985,11 @@ internal class GoalRunnerLaunchReconciler(
         lastResumableStep = subtask.lastResumableStep?.takeIf(String::isNotBlank),
         childWorkflowId = childWorkflowId,
         assignedWorkflowId = assignedWorkflowId,
-        codeReviewMode = requireNotNull(request.codeReviewMode),
+        codeReviewMode = request.codeReviewMode ?: CodeReviewExecutionMode.AUTO,
+        reviewBaseline = state.manifest.workflowIdFor(subtaskId)
+          ?.let { workflowId -> outcomeStore.goalSubtaskReviewState(workflowId, request.dbPathOverride) }
+          ?.let { reviewState -> GoalSubtaskReviewBaseline(reviewState.reviewBaseSha, reviewState.baselineUntrackedPaths) }
+          ?: reviewBaseline,
       )
     } else {
       null
@@ -912,6 +1001,7 @@ internal class GoalRunnerLaunchReconciler(
     launchOutcome: AgentRunLaunchOutcome,
     subtaskId: Int,
     request: GoalRunnerRunRequest,
+    reviewBaseline: GoalSubtaskReviewBaseline? = null,
   ): GoalRunnerLaunchReconciliation {
     val refreshed = manifestStore.loadByIssueKey(request.issueKey, request.dbPathOverride, request.repoRoot)
       ?: attemptedState
@@ -922,7 +1012,7 @@ internal class GoalRunnerLaunchReconciler(
       storedOutcome = storedOutcome(refreshed, subtaskId, request),
     )
     return if (shouldRecheckTerminalOutcome(reconciled, launchFacts)) {
-      recheckTerminalOutcome(attemptedState, refreshed, launchOutcome, launchFacts, subtaskId, request)
+      recheckTerminalOutcome(attemptedState, refreshed, launchOutcome, launchFacts, subtaskId, request, reviewBaseline)
     } else {
       launchReconciliation(refreshed, reconciled, launchOutcome, subtaskId, request)
     }
@@ -935,6 +1025,7 @@ internal class GoalRunnerLaunchReconciler(
     launchFacts: GoalRunnerLaunchFacts,
     subtaskId: Int,
     request: GoalRunnerRunRequest,
+    reviewBaseline: GoalSubtaskReviewBaseline?,
   ): GoalRunnerLaunchReconciliation {
     val lateOutcome = waitForLateTerminalOutcome(refreshed, subtaskId, request)
     return if (lateOutcome != null) {
@@ -944,7 +1035,7 @@ internal class GoalRunnerLaunchReconciler(
         launchOutcome = launchOutcome,
       )
     } else {
-      retryLaunchOutcome(attemptedState, refreshed, subtaskId, request)
+      retryLaunchOutcome(attemptedState, refreshed, subtaskId, request, reviewBaseline)
     }
   }
 
@@ -976,9 +1067,10 @@ internal class GoalRunnerLaunchReconciler(
     refreshed: GoalRunnerManifestState,
     subtaskId: Int,
     request: GoalRunnerRunRequest,
+    reviewBaseline: GoalSubtaskReviewBaseline?,
   ): GoalRunnerLaunchReconciliation {
     val retryLaunchOutcome = subtaskLauncher.launch(
-      subtaskLaunchRequest(attemptedState.manifest.issueKey, subtaskId, request),
+      subtaskLaunchRequest(attemptedState.manifest.issueKey, subtaskId, request, reviewBaseline = reviewBaseline),
     )
     val retryRefreshed = manifestStore.loadByIssueKey(request.issueKey, request.dbPathOverride, request.repoRoot)
       ?: refreshed

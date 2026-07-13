@@ -3,6 +3,7 @@ package skillbill.application.model
 import skillbill.application.decomposition.decompositionManifestPath
 import skillbill.application.decomposition.parentSpecPath
 import skillbill.review.CodeReviewExecutionMode
+import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
 import java.nio.file.Path
@@ -56,6 +57,7 @@ data class FeatureTaskRuntimeGoalContinuationContext(
   val parentWorkflowId: String? = null,
   val lastResumableStep: String? = null,
   val codeReviewMode: CodeReviewExecutionMode = CodeReviewExecutionMode.AUTO,
+  val reviewBaseline: GoalSubtaskReviewBaseline? = null,
 ) {
   init {
     require(parentIssueKey.isNotBlank()) { "parentIssueKey is required." }

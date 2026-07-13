@@ -2,6 +2,7 @@ package skillbill.application.featuretask
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.goalrunner.stderrExcerpt
+import skillbill.application.goalrunner.GoalSubtaskReviewSummaryReducer
 import skillbill.application.model.FeatureTaskRuntimeFixLoopDecision
 import skillbill.application.model.FeatureTaskRuntimeGoalContinuationContext
 import skillbill.application.model.FeatureTaskRuntimePhaseStateRequest
@@ -24,6 +25,7 @@ import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import skillbill.ports.workflow.WorkflowGitOperations
+import skillbill.ports.workflow.model.GoalSubtaskReviewInput
 import skillbill.review.CodeReviewExecutionMode
 import skillbill.telemetry.estimation.estimateTokens
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
@@ -287,6 +289,22 @@ class FeatureTaskRuntimeRunner(
         blockAt(phaseId, reason)
         return PhaseSettlement.stop()
       }
+      reconcileCompletedGoalReviewPass(phaseId)?.let { reason ->
+        blockAt(phaseId, reason)
+        return PhaseSettlement.stop()
+      }
+      if (phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW &&
+        isGoalContinuationRun(request) &&
+        goalContinuationRecorder.reviewState(request.workflowId, request.dbPathOverride)
+          ?.let { reviewState -> reviewState.reviewCapReached || reviewState.completedPassCount >= 2 } == true
+      ) {
+        val verdict = goalContinuationRecorder.reviewState(request.workflowId, request.dbPathOverride)
+          ?.passResults
+          ?.lastOrNull()
+          ?.verdict
+          ?: FeatureTaskRuntimeVerdict.REVIEW_CAP_REACHED
+        return PhaseSettlement.completed(phaseId, verdict)
+      }
       // For an already-complete PLAN, re-evaluate the decompose determination on resume before
       // advancing, so a crash after PLAN persisted completed but before the decompose terminal was
       // observed never silently advances to implement (AC2). Idempotent: a recorded terminal is
@@ -316,17 +334,62 @@ class FeatureTaskRuntimeRunner(
       }
     }
 
+    private fun reconcileCompletedGoalReviewPass(phaseId: String): String? {
+      if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW ||
+        !isGoalContinuationRun(request) ||
+        !state.isComplete(phaseId)
+      ) {
+        return null
+      }
+      val reviewState = goalContinuationRecorder.reviewState(request.workflowId, request.dbPathOverride)
+        ?: return "Goal-subtask review state is missing while reconciling a completed review pass."
+      if (reviewState.reservedPassNumber == null) {
+        return null
+      }
+      val output = state.outputFor(phaseId)?.payload
+        ?: return "Completed goal-subtask review has no durable output to reconcile its reserved pass."
+      val outputMap = runCatching {
+        outputValidator.validateAndReadPhaseOutput(output, sourceLabel = phaseId)
+      }.getOrElse { error ->
+        return "Completed goal-subtask review output cannot reconcile its reserved pass: ${error.message.orEmpty()}"
+      }
+      val findings = GoalSubtaskReviewSummaryReducer.fromOutput(outputMap)
+      val unresolved = findings.count { finding -> finding.severity == "blocker" || finding.severity == "major" }
+      return if (goalContinuationRecorder.completeGoalReviewPass(
+          workflowId = request.workflowId,
+          verdict = if (unresolved > 0) FeatureTaskRuntimeVerdict.CHANGES_REQUESTED else FeatureTaskRuntimeVerdict.APPROVED,
+          unresolvedFindingCount = unresolved,
+          findings = findings,
+          rawReviewResult = output,
+          dbOverride = request.dbPathOverride,
+        ) == null
+      ) {
+        "Completed goal-subtask review could not persist its reserved pass."
+      } else {
+        null
+      }
+    }
+
     // Computes the next phase from the transition function. A forward edge advances to the next
     // forward phase (or terminates with success at the pipeline end). A backward edge increments and
     // persists its runtime-minted per-edge counter, threads the driving verdict into the re-entered
     // phase, and re-enters; the same edge at its cap blocks loudly with the loop id, the iteration
     // count, and the unresolved verdict.
     private fun nextPhaseAfter(phaseId: String, verdict: FeatureTaskRuntimeVerdict): String? {
-      val edge = matchingBackwardEdge(phaseId, verdict)
+      val effectiveVerdict = if (
+        phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW &&
+        isGoalContinuationRun(request) &&
+        goalContinuationRecorder.reviewState(request.workflowId, request.dbPathOverride)?.reviewCapReached == true
+      ) {
+        FeatureTaskRuntimeVerdict.REVIEW_CAP_REACHED
+      } else {
+        verdict
+      }
+      val edge = matchingBackwardEdge(phaseId, effectiveVerdict)
       val transition = FeatureTaskRuntimeTransitionFunction.nextTransition(
         declaration = transitions,
         currentPhaseId = phaseId,
-        verdict = verdict,
+        verdict = effectiveVerdict,
         edgeIterationCount = edge?.let { state.edgeIterationCount(it.loopId) } ?: 0,
       )
       return when (transition) {
@@ -351,7 +414,7 @@ class FeatureTaskRuntimeRunner(
               destinationPhaseId = transition.phaseId,
               loopId = loopId,
               edgeIteration = requireNotNull(transition.edgeIteration),
-              verdict = verdict,
+              verdict = effectiveVerdict,
             )
           }
           transition.phaseId
@@ -767,8 +830,74 @@ class FeatureTaskRuntimeRunner(
     // survives ledger pruning, so the budget is never silently reset), or a missing required
     // upstream (never launch blind). Retryable fix-loop phases continue into runPhaseAttempts,
     // which resumes at the next durable attempt and still enforces the bounded budget.
-    return preLaunchBlock(run, state, observability)
-      ?: runPhaseAttempts(run, state, observability, phaseTokenAccumulator)
+    preLaunchBlock(run, state, observability)?.let { return it }
+    return when (val prepared = prepareGoalReviewRun(run, observability)) {
+      is GoalReviewRunPreparation.Ready -> runPhaseAttempts(prepared.run, state, observability, phaseTokenAccumulator)
+      GoalReviewRunPreparation.CarryForward -> settleCarriedForwardGoalReview(
+        run = run,
+        state = state,
+        observability = observability,
+      )
+      GoalReviewRunPreparation.Blocked -> PhaseOutcome.blocked(
+        "Goal-subtask review preparation could not establish the exact durable review scope.",
+      )
+    }
+  }
+
+  private fun prepareGoalReviewRun(
+    run: PhaseRun,
+    observability: FeatureTaskRuntimeRunObservability,
+  ): GoalReviewRunPreparation {
+    if (run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW || !isGoalContinuationRun(run.request)) {
+      return GoalReviewRunPreparation.Ready(run)
+    }
+    when (goalContinuationRecorder.reserveGoalReviewPass(run.request.workflowId, run.request.dbPathOverride)) {
+      GoalSubtaskReviewPassReservation.MissingState -> {
+        blockAndPersist(
+          run,
+          1,
+          "Goal-subtask review state is missing; review_base_sha must be captured before implementation and cannot be substituted.",
+          observability,
+        )
+        return GoalReviewRunPreparation.Blocked
+      }
+      is GoalSubtaskReviewPassReservation.CarryForward -> return GoalReviewRunPreparation.CarryForward
+      is GoalSubtaskReviewPassReservation.Reserved -> Unit
+    }
+    return when (val prepared = goalContinuationRecorder.buildGoalReviewInput(
+      workflowId = run.request.workflowId,
+      gitOperations = phaseGates.gitOperations,
+      repoRoot = run.request.repoRoot,
+      dbOverride = run.request.dbPathOverride,
+    )) {
+      GoalSubtaskReviewInputPreparation.MissingState -> {
+        blockAndPersist(run, 1, "Goal-subtask review state disappeared before review launch.", observability)
+        GoalReviewRunPreparation.Blocked
+      }
+      is GoalSubtaskReviewInputPreparation.Blocked -> {
+        blockAndPersist(run, 1, prepared.reason, observability)
+        GoalReviewRunPreparation.Blocked
+      }
+      is GoalSubtaskReviewInputPreparation.Ready -> GoalReviewRunPreparation.Ready(run.copy(goalReviewInput = prepared.input))
+    }
+  }
+
+  private fun settleCarriedForwardGoalReview(
+    run: PhaseRun,
+    state: RunState,
+    observability: FeatureTaskRuntimeRunObservability,
+  ): PhaseOutcome {
+    val output = goalContinuationRecorder.lastGoalReviewResult(run.request.workflowId, run.request.dbPathOverride)
+      ?: return blockAndPersist(
+        run,
+        state.nextIteration(run.phaseId),
+        "Goal-subtask review pass budget is exhausted but its durable raw review result is missing.",
+        observability,
+      )
+    val iteration = state.nextIteration(run.phaseId)
+    persistPhase(run, iteration, STATUS_COMPLETED, finished = true, outputArtifact = output)
+    observability.completed(run.phaseId, run.resolvedAgent.resolvedAgentId, iteration)
+    return PhaseOutcome.completed(FeatureTaskRuntimePhaseOutput(run.phaseId, iteration, output))
   }
 
   // Returns a blocked outcome when the phase must block before launching, else null. A persisted
@@ -961,6 +1090,18 @@ class FeatureTaskRuntimeRunner(
         ?: reviewVerificationSignalGateReason(run.phaseId, outputMap)?.let(AttemptResult::schemaInvalid)
         ?: auditVerificationSignalGateReason(run.phaseId, outputMap)?.let(AttemptResult::schemaInvalid) ?: run {
         persistPhase(run, iteration, STATUS_COMPLETED, finished = true, outputArtifact = outputText)
+        if (run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW && isGoalContinuationRun(run.request)) {
+          val findings = GoalSubtaskReviewSummaryReducer.fromOutput(outputMap)
+          val unresolved = findings.count { finding -> finding.severity == "blocker" || finding.severity == "major" }
+          goalContinuationRecorder.completeGoalReviewPass(
+            workflowId = run.request.workflowId,
+            verdict = if (unresolved > 0) FeatureTaskRuntimeVerdict.CHANGES_REQUESTED else FeatureTaskRuntimeVerdict.APPROVED,
+            unresolvedFindingCount = unresolved,
+            findings = findings,
+            rawReviewResult = outputText,
+            dbOverride = run.request.dbPathOverride,
+          )
+        }
         observability.completed(run.phaseId, run.resolvedAgent.resolvedAgentId, iteration)
         AttemptResult.settled(
           PhaseOutcome.completed(FeatureTaskRuntimePhaseOutput(run.phaseId, iteration, outputText)),
@@ -1027,6 +1168,7 @@ class FeatureTaskRuntimeRunner(
             parallelReviewAgent = run.request.parallelReviewAgent
               ?.takeIf { run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW },
             codeReviewMode = run.request.runInvariants.codeReviewMode,
+            goalSubtaskReviewInput = run.goalReviewInput,
             specSource = run.specSource,
             priorSchemaFailure = priorSchemaFailure,
             specReference = run.request.runInvariants.specReference,
@@ -1082,6 +1224,7 @@ class FeatureTaskRuntimeRunner(
     val specSource: SpecSource,
     // Set only when this launch is a backward-edge re-entry; null for an ordinary forward launch.
     val reentry: PendingReentry? = null,
+    val goalReviewInput: GoalSubtaskReviewInput? = null,
   )
 
   private sealed interface LaunchResult {
@@ -1124,6 +1267,12 @@ class FeatureTaskRuntimeRunner(
       fun completed(output: FeatureTaskRuntimePhaseOutput): PhaseOutcome = Completed(output)
       fun blocked(reason: String): PhaseOutcome = Blocked(reason)
     }
+  }
+
+  private sealed interface GoalReviewRunPreparation {
+    data class Ready(val run: PhaseRun) : GoalReviewRunPreparation
+    data object CarryForward : GoalReviewRunPreparation
+    data object Blocked : GoalReviewRunPreparation
   }
 
   // `completed` is derived from record status while `outputs` carries only records with a
@@ -1619,6 +1768,7 @@ private fun persistGoalContinuationContext(
         parentWorkflowId = context.parentWorkflowId,
         codeReviewMode = request.runInvariants.codeReviewMode,
       ),
+      reviewBaseline = context.reviewBaseline,
       dbOverride = request.dbPathOverride,
     )
   }

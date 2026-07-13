@@ -246,7 +246,7 @@ Step id: `review`
 
 Primary artifact: `review_result`
 
-Run `bill-code-review` inline in the orchestrator through the active skill runtime. Scope: current unit of work for SMALL, branch diff for MEDIUM/LARGE. Do not wrap `bill-code-review` in an additional subagent — it already spawns specialist subagents internally. When `parallel-review:<agent>` was passed to this skill, invoke `bill-code-review` with `parallel:<agent>` so a second review lane runs alongside the primary review.
+Run `bill-code-review execution-mode:<selected-mode>` inline in the orchestrator through the active skill runtime. Scope: current unit of work for SMALL, branch diff for MEDIUM/LARGE. Do not wrap `bill-code-review` in an additional subagent — it already spawns specialist subagents internally. When `parallel-review:<agent>` was passed to this skill, invoke `bill-code-review execution-mode:<selected-mode> parallel:<agent>` so a second review lane runs alongside the primary review without recursive parallel launch.
 
 Review loop:
 
@@ -256,6 +256,16 @@ Review loop:
 - Continue past Minor-only findings.
 - Max 3 iterations.
 - Do not pause to ask the user which finding to fix.
+
+For a decomposed prose-goal child, the parent supplies an immutable
+`review_base_sha`, baseline untracked inventory, and durable pass count. Review
+only that child's exact base-to-current delta, including committed, staged,
+unstaged, and owned untracked changes. Do not use `origin/main...HEAD` or a
+branch-wide substitute. Reserve a pass before review, reuse the selected mode
+on every re-review, and never start more than two total passes. After a second
+pass with unresolved Blocker/Major findings, persist the full review result,
+record `review_cap_reached`, emit the compact path-free goal summary, and
+continue to audit without reporting approval.
 
 Orchestrated child telemetry:
 

@@ -15,7 +15,12 @@ data class ParallelCodeReviewRequest(
   val repoRoot: Path,
   val timeout: Duration?,
   val codeReviewMode: CodeReviewExecutionMode = CodeReviewExecutionMode.AUTO,
-)
+  val suppliedDiff: String? = null,
+) {
+  init {
+    suppliedDiff?.let { require(it.isNotBlank()) { "suppliedDiff must be non-blank when provided." } }
+  }
+}
 
 data class ParallelCodeReviewResult(
   val mergeResult: ParallelReviewMergeResult,

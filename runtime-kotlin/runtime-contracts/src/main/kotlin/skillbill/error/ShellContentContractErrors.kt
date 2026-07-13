@@ -176,6 +176,17 @@ class InvalidGoalProgressEventSchemaError(
   cause,
 )
 
+class InvalidGoalSubtaskReviewStateSchemaError(
+  val sourceLabel: String,
+  val fieldPath: String,
+  val reason: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Goal subtask review state '${sourceLabel.ifBlank { "<unknown>" }}' fails schema validation at " +
+    "'${fieldPath.ifBlank { "<root>" }}': $reason",
+  cause,
+)
+
 class MissingInstallSelectionRecordError(
   val path: String,
   cause: Throwable? = null,

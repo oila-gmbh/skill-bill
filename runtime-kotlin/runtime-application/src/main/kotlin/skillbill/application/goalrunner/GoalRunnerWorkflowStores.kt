@@ -16,6 +16,7 @@ import skillbill.application.workflow.isActiveGoalRuntime
 import skillbill.application.workflow.repoRoot
 import skillbill.application.workflow.toSnapshot
 import skillbill.contracts.JsonSupport
+import skillbill.error.InvalidGoalSubtaskReviewStateSchemaError
 import skillbill.goalrunner.model.GOAL_ATTEMPT_LEDGER_ARTIFACT_KEY
 import skillbill.goalrunner.model.GOAL_ATTEMPT_LEDGER_LIMIT
 import skillbill.goalrunner.model.GOAL_SESSION_ACCOUNTING_ARTIFACT_KEY
@@ -63,6 +64,9 @@ import skillbill.workflow.model.WorkflowStepState
 import skillbill.workflow.model.WorkflowUpdateInput
 import skillbill.workflow.model.appendBoundedHistoryBySequence
 import skillbill.workflow.model.goalObservabilityLatestEventFromArtifacts
+import skillbill.workflow.taskruntime.model.GoalSubtaskReviewPassResult
+import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
+import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
 import java.nio.file.Path
 import java.time.Duration
 import java.time.Instant
@@ -321,6 +325,58 @@ class WorkflowGoalRunnerOutcomeStore(
   private val gitOperations: WorkflowGitOperations = NoopWorkflowGitOperations,
 ) : GoalRunnerWorkflowOutcomeStore {
   private val engine: WorkflowEngine = WorkflowEngine(workflowSnapshotValidator)
+
+  override fun goalSubtaskReviewState(workflowId: String, dbPathOverride: String?): GoalSubtaskReviewState? =
+    database.read(dbPathOverride) { unitOfWork ->
+      val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@read null
+      decodeArtifacts(record.artifactsJson)[GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY]
+        ?.let(::goalReviewArtifactMap)
+        ?.let(GoalSubtaskReviewState::fromArtifactMap)
+    }
+
+  override fun unemittedGoalReviewPasses(
+    workflowId: String,
+    dbPathOverride: String?,
+  ): List<GoalSubtaskReviewPassResult> = database.read(dbPathOverride) { unitOfWork ->
+    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@read emptyList()
+    val artifacts = decodeArtifacts(record.artifactsJson)
+    val state = artifacts[GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY]
+      ?.let(::goalReviewArtifactMap)
+      ?.let(GoalSubtaskReviewState::fromArtifactMap)
+    ?: return@read emptyList()
+    state.passResults.drop(state.emittedPassCount)
+  }
+
+  override fun acknowledgeGoalReviewPass(
+    workflowId: String,
+    passNumber: Int,
+    dbPathOverride: String?,
+  ): Boolean = database.transaction(dbPathOverride) { unitOfWork ->
+    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@transaction false
+    val artifacts = decodeArtifacts(record.artifactsJson)
+    val state = artifacts[GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY]
+      ?.let(::goalReviewArtifactMap)
+      ?.let(GoalSubtaskReviewState::fromArtifactMap)
+      ?: return@transaction false
+    if (passNumber != state.emittedPassCount + 1 || passNumber > state.completedPassCount) {
+      return@transaction false
+    }
+    val updated = engine.updateRecord(
+      WorkflowFamily.TASK_RUNTIME.definition,
+      record,
+      WorkflowUpdateInput(
+        workflowStatus = record.workflowStatus,
+        currentStepId = record.currentStepId,
+        stepUpdates = null,
+        artifactsPatch = mapOf(
+          GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY to state.acknowledgeSummariesThrough(passNumber).toArtifactMap(),
+        ),
+        sessionId = record.sessionId.orEmpty(),
+      ),
+    )
+    WorkflowFamily.TASK_RUNTIME.save(unitOfWork.workflowStates, updated)
+    true
+  }
 
   override fun reconcileAuthoritativeOutcomes(
     issueKey: String,
@@ -940,6 +996,22 @@ private fun goalContinuation(artifacts: Map<String, Any?>): GoalContinuation? =
       )
     }
   }
+
+private fun goalReviewArtifactMap(value: Any?): Map<String, Any?> = (value as? Map<*, *>)
+  ?.entries
+  ?.associate { (key, entryValue) ->
+    val stringKey = key as? String ?: throw InvalidGoalSubtaskReviewStateSchemaError(
+      sourceLabel = GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY,
+      fieldPath = GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY,
+      reason = "map keys must be strings.",
+    )
+    stringKey to entryValue
+  }
+  ?: throw InvalidGoalSubtaskReviewStateSchemaError(
+    sourceLabel = GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY,
+    fieldPath = GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY,
+    reason = "must be an object.",
+  )
 
 private fun terminalOutcomeFor(
   snapshot: WorkflowStateSnapshot,

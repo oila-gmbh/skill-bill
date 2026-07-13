@@ -120,6 +120,35 @@ The inherited SKILL-56/SKILL-58 behavior remains part of the contract:
 - completion requires an explicit durable terminal outcome before the goal
   advances or opens the parent PR
 
+## Goal child review contract
+
+After the child branch is established and before implementation can mutate the
+worktree, capture and durably persist that child workflow's `review_base_sha`
+and normalized inventory of pre-existing untracked paths. On resume, reuse the
+stored baseline exactly; a missing, rewritten, unrelated, or non-ancestor base
+blocks loudly. Never substitute `HEAD`, `origin/main`, a merge base, the full
+feature branch, or an earlier subtask's commits.
+
+Every child review, including repair and audit-driven re-entry, reviews the
+complete base-to-current delta: committed, staged, unstaged, and untracked
+paths that were not in the baseline inventory. Pass the same exact delta and
+the selected `execution-mode:<auto|inline|delegated>` contract to both full
+parallel lanes. Lanes remain non-recursive and the coordinated lanes count as
+one review pass.
+
+Each child reserves its pass before review starts and permits at most two total
+passes across resume, repair, and audit re-entry. If pass two still has
+Blocker or Major findings, persist full evidence and the
+`review_cap_reached` disposition, emit a compact path-free summary, and
+continue to audit without claiming approval or launching a third pass. Audit,
+validation, dependency, history, commit/push, and PR gates remain active.
+
+Goal-facing review output and `goal_event` lines contain only subtask id, pass,
+verdict/disposition, finding count, severity, class/symbol-or-sanitized-stem
+label, and concise text. They must never contain a path, line number, diff
+hunk, or raw child-review output; full location-bearing evidence remains in
+the child's durable review artifacts and telemetry.
+
 ## Confirmed Handoff
 
 After confirmation, ensure the decomposed parent workflow and runtime manifest
