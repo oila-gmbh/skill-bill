@@ -6,6 +6,7 @@ import me.tatarka.inject.annotations.Inject
 import skillbill.application.decomposition.executionModel
 import skillbill.application.decomposition.parentSpecPath
 import skillbill.application.decomposition.resolvedParentSpecPath
+import skillbill.application.model.GoalRunPreparation
 import skillbill.application.model.GoalRunnerRunEvent
 import skillbill.application.model.GoalRunnerRunRequest
 import skillbill.application.workflow.WorkflowFamily
@@ -85,47 +86,48 @@ class GoalRunner(
     val state = manifestStore.loadByIssueKey(request.issueKey, request.dbPathOverride, request.repoRoot)
       ?: return unknownGoal(request.issueKey)
     return when (val preparation = prepareRun(state, request)) {
-      is GoalRunPreparation.Blocked -> preparation.report
-      is GoalRunPreparation.Ready -> runPrepared(preparation)
+      is GoalRunPreparation.PreparationBlocked -> preparation.report
+      is GoalRunPreparation.Prepared -> runPrepared(preparation)
     }
   }
 
-  private fun prepareRun(
-    state: GoalRunnerManifestState,
-    request: GoalRunnerRunRequest,
-  ): GoalRunPreparation {
+  private fun prepareRun(state: GoalRunnerManifestState, request: GoalRunnerRunRequest): GoalRunPreparation {
     val persistedReviewPolicy = manifestStore.reviewPolicy(state.parentWorkflowId, request.dbPathOverride)
     if (persistedReviewPolicy != null && request.codeReviewMode != null &&
       persistedReviewPolicy.codeReviewMode != request.codeReviewMode
     ) {
-      return GoalRunPreparation.Blocked(stopped(
-        issueKey = request.issueKey,
-        attempted = emptyList(),
-        subtaskId = 0,
-        reason = GoalRunnerStopReason.BLOCKED,
-        blockedReason =
-        "Cannot change code-review mode on goal resume: parent workflow " +
-          "'${state.parentWorkflowId}' is pinned to '${persistedReviewPolicy.codeReviewMode.wireValue}', " +
-          "not '${request.codeReviewMode.wireValue}'.",
-        workflowId = state.parentWorkflowId,
-        lastResumableStep = "preplan",
-      ))
+      return GoalRunPreparation.PreparationBlocked(
+        stopped(
+          issueKey = request.issueKey,
+          attempted = emptyList(),
+          subtaskId = 0,
+          reason = GoalRunnerStopReason.BLOCKED,
+          blockedReason =
+          "Cannot change code-review mode on goal resume: parent workflow " +
+            "'${state.parentWorkflowId}' is pinned to '${persistedReviewPolicy.codeReviewMode.wireValue}', " +
+            "not '${request.codeReviewMode.wireValue}'.",
+          workflowId = state.parentWorkflowId,
+          lastResumableStep = "preplan",
+        ),
+      )
     }
     if (persistedReviewPolicy != null && request.parallelReviewAgent != null &&
       persistedReviewPolicy.parallelReviewAgent != request.parallelReviewAgent
     ) {
-      return GoalRunPreparation.Blocked(stopped(
-        issueKey = request.issueKey,
-        attempted = emptyList(),
-        subtaskId = 0,
-        reason = GoalRunnerStopReason.BLOCKED,
-        blockedReason =
-        "Cannot change parallel-review agent on goal resume: parent workflow " +
-          "'${state.parentWorkflowId}' is pinned to " +
-          "'${persistedReviewPolicy.parallelReviewAgent ?: "none"}', not '${request.parallelReviewAgent}'.",
-        workflowId = state.parentWorkflowId,
-        lastResumableStep = "preplan",
-      ))
+      return GoalRunPreparation.PreparationBlocked(
+        stopped(
+          issueKey = request.issueKey,
+          attempted = emptyList(),
+          subtaskId = 0,
+          reason = GoalRunnerStopReason.BLOCKED,
+          blockedReason =
+          "Cannot change parallel-review agent on goal resume: parent workflow " +
+            "'${state.parentWorkflowId}' is pinned to " +
+            "'${persistedReviewPolicy.parallelReviewAgent ?: "none"}', not '${request.parallelReviewAgent}'.",
+          workflowId = state.parentWorkflowId,
+          lastResumableStep = "preplan",
+        ),
+      )
     }
     val effectiveReviewPolicy = persistedReviewPolicy ?: manifestStore.persistReviewPolicy(
       parentWorkflowId = state.parentWorkflowId,
@@ -135,13 +137,16 @@ class GoalRunner(
       ),
       dbPathOverride = request.dbPathOverride,
     )
-    return GoalRunPreparation.Ready(state, request.copy(
-      codeReviewMode = effectiveReviewPolicy.codeReviewMode,
-      parallelReviewAgent = effectiveReviewPolicy.parallelReviewAgent,
-    ))
+    return GoalRunPreparation.Prepared(
+      state,
+      request.copy(
+        codeReviewMode = effectiveReviewPolicy.codeReviewMode,
+        parallelReviewAgent = effectiveReviewPolicy.parallelReviewAgent,
+      ),
+    )
   }
 
-  private fun runPrepared(preparation: GoalRunPreparation.Ready): GoalRunnerRunReport {
+  private fun runPrepared(preparation: GoalRunPreparation.Prepared): GoalRunnerRunReport {
     var state = preparation.state
     val effectiveRequest = preparation.request
     val attempted = mutableListOf<Int>()
@@ -204,10 +209,7 @@ class GoalRunner(
     return GoalRunnerIterationResult(state, requireNotNull(terminalReport))
   }
 
-  private fun emitCompletedGoalEvent(
-    request: GoalRunnerRunRequest,
-    finalReport: GoalRunnerRunReport,
-  ) {
+  private fun emitCompletedGoalEvent(request: GoalRunnerRunRequest, finalReport: GoalRunnerRunReport) {
     if (finalReport is GoalRunnerRunReport.Completed) {
       request.eventSink.emit(
         GoalRunnerRunEvent.Completed(
@@ -1884,12 +1886,3 @@ private data class GoalRunnerIterationResult(
   val state: GoalRunnerManifestState,
   val report: GoalRunnerRunReport? = null,
 )
-
-private sealed interface GoalRunPreparation {
-  data class Ready(
-    val state: GoalRunnerManifestState,
-    val request: GoalRunnerRunRequest,
-  ) : GoalRunPreparation
-
-  data class Blocked(val report: GoalRunnerRunReport) : GoalRunPreparation
-}

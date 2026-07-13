@@ -11,10 +11,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewVerdict
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 
 internal object FeatureTaskRuntimeOutputVerification {
-  fun verdictFor(
-    phaseId: String,
-    output: FeatureTaskRuntimePhaseOutput?,
-  ): FeatureTaskRuntimeVerdict {
+  fun verdictFor(phaseId: String, output: FeatureTaskRuntimePhaseOutput?): FeatureTaskRuntimeVerdict {
     val outputObject = output?.let(::outputObject)
     val wireVerdict = (outputObject?.get("verdict") as? String)
       ?.takeIf(String::isNotBlank)

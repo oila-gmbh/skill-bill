@@ -1,54 +1,27 @@
 package skillbill.application.featuretask
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.application.goalrunner.GoalSubtaskReviewSummaryReducer
 import skillbill.application.goalrunner.stderrExcerpt
-import skillbill.application.model.FeatureTaskRuntimeFixLoopDecision
 import skillbill.application.model.FeatureTaskRuntimeGoalContinuationContext
-import skillbill.application.model.FeatureTaskRuntimePhaseStateRequest
-import skillbill.application.model.FeatureTaskRuntimePlanningStopDecision
-import skillbill.application.model.FeatureTaskRuntimeResolvedPhaseAgent
+import skillbill.application.model.FeatureTaskRuntimePreparation
 import skillbill.application.model.FeatureTaskRuntimeRunEvent
 import skillbill.application.model.FeatureTaskRuntimeRunReport
 import skillbill.application.model.FeatureTaskRuntimeRunRequest
 import skillbill.application.model.FeatureTaskRuntimeSubtaskOutcome
 import skillbill.application.workflow.repoRoot
-import skillbill.config.model.PhaseModelDirective
-import skillbill.contracts.JsonSupport
-import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.goalrunner.model.GoalRunnerLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
-import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
-import skillbill.ports.agentrun.model.SkillRunRequest
-import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
 import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
-import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import skillbill.ports.workflow.WorkflowGitOperations
-import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
-import skillbill.ports.workflow.model.GoalSubtaskReviewInput
-import skillbill.telemetry.estimation.estimateTokens
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
-import skillbill.workflow.model.CodeReviewExecutionMode
-import skillbill.workflow.model.SpecSource
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
-import skillbill.workflow.taskruntime.FeatureTaskRuntimeTransitionFunction
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditCriterionGap
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditVerdict
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeBackwardEdge
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationOutcome
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeNextPhase
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewFinding
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewSeverity
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewVerdict
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 
 private const val PHASE_OUTPUT_STATUS_BLOCKED = "blocked"
 private const val PHASE_OUTPUT_STATUS_FAILED = "failed"
@@ -98,12 +71,12 @@ class FeatureTaskRuntimeRunner(
 
   fun run(request: FeatureTaskRuntimeRunRequest): FeatureTaskRuntimeRunReport =
     when (val preparation = prepareRun(request)) {
-      is FeatureTaskRuntimePreparation.Blocked -> preparation.report
-      is FeatureTaskRuntimePreparation.Ready -> executeRun(preparation.request)
+      is FeatureTaskRuntimePreparation.PreparationBlocked -> preparation.report
+      is FeatureTaskRuntimePreparation.Prepared -> executeRun(preparation.request)
     }
 
   private fun prepareRun(request: FeatureTaskRuntimeRunRequest): FeatureTaskRuntimePreparation =
-    foreignModeWorkflowBlock(request)?.let(FeatureTaskRuntimePreparation::Blocked)
+    foreignModeWorkflowBlock(request)?.let(FeatureTaskRuntimePreparation::PreparationBlocked)
       ?: FeatureTaskRuntimeRunPreparation(
         recorder,
         goalContinuationRecorder,
@@ -232,7 +205,6 @@ class FeatureTaskRuntimeRunner(
   // spec gate invokes this lazily only when it decides to write (terminal, non-goal-continuation run).
   private fun finalizingAgentId(request: FeatureTaskRuntimeRunRequest): String? =
     agentAttributionFromPhaseState(recorder, request.workflowId, request.dbPathOverride).finalizingAgentId
-
 }
 
 internal fun terminalBlockedReasonFrom(phaseId: String, outputMap: Map<String, Any?>): String? {

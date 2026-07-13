@@ -159,14 +159,13 @@ private fun PreparedStatement.bindFeatureTaskWorkflowRow(
   parameters.text(implementationSkill)
 }
 
-private fun nextStateEnteredAtSql(tableName: String): String =
-  """
+private fun nextStateEnteredAtSql(tableName: String): String = """
   CASE
     WHEN julianday(NULLIF($tableName.state_entered_at, '')) IS NULL THEN $SQLITE_TIMESTAMP_NOW
     WHEN julianday($SQLITE_TIMESTAMP_NOW) > julianday($tableName.state_entered_at) THEN $SQLITE_TIMESTAMP_NOW
     ELSE strftime('%Y-%m-%dT%H:%M:%fZ', julianday($tableName.state_entered_at) + 0.001 / 86400.0)
   END
-  """.trimIndent()
+""".trimIndent()
 
 private fun String?.orInsertionTimestamp(): String =
   takeUnless { it.isNullOrBlank() } ?: sqliteInsertionTimestampFormatter.format(Instant.now())

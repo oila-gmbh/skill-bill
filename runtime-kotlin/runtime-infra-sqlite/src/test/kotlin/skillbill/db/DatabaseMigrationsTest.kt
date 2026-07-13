@@ -5,10 +5,11 @@ import skillbill.db.core.DatabaseColumnMigrations
 import skillbill.db.core.DatabaseMigrations
 import skillbill.db.core.DatabaseRuntime
 import skillbill.db.core.DatabaseSchema
+import skillbill.db.core.inImmediateTransaction
 import skillbill.db.telemetry.GoalTelemetryMigration
+import skillbill.db.telemetry.LifecycleTelemetryStore
 import skillbill.db.worklist.SQLiteWorkListRepository
 import skillbill.error.InvalidWorkListRowError
-import skillbill.db.telemetry.LifecycleTelemetryStore
 import skillbill.telemetry.model.FeatureImplementFinishedRecord
 import java.nio.file.Files
 import java.nio.file.Path
@@ -19,13 +20,35 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
-import kotlin.test.assertFailsWith
 
 @Suppress("LargeClass")
 class DatabaseMigrationsTest {
+  @Test
+  fun `immediate transaction rolls back non SQL failures and remains reusable`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-db-immediate-rollback").resolve("rollback.db")
+
+    DriverManager.getConnection("jdbc:sqlite:$dbPath").use { connection ->
+      connection.createStatement().use { it.execute("CREATE TABLE rollback_probe (value TEXT NOT NULL)") }
+
+      assertFailsWith<IllegalStateException> {
+        connection.inImmediateTransaction {
+          createStatement().use { it.executeUpdate("INSERT INTO rollback_probe VALUES ('partial')") }
+          error("non-SQL migration failure")
+        }
+      }
+
+      assertEquals(0, rowCount(connection, "rollback_probe"))
+      connection.inImmediateTransaction {
+        createStatement().use { it.executeUpdate("INSERT INTO rollback_probe VALUES ('committed')") }
+      }
+      assertEquals(1, rowCount(connection, "rollback_probe"))
+    }
+  }
+
   @Test
   fun `migration definitions are append-only and deterministic`() {
     val migrationDefinitions = DatabaseMigrations.migrations.map { migration -> migration.version to migration.name }
@@ -1216,6 +1239,13 @@ class DatabaseMigrationsTest {
         requireNotNull(JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(element)))
       }
     }
+
+  private fun rowCount(connection: Connection, tableName: String): Int = connection.createStatement().use { statement ->
+    statement.executeQuery("SELECT COUNT(*) FROM $tableName").use { resultSet ->
+      check(resultSet.next())
+      resultSet.getInt(1)
+    }
+  }
 
   private data class MigrationRow(
     val version: Int,

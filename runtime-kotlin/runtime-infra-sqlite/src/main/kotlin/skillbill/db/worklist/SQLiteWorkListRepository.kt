@@ -30,8 +30,7 @@ class SQLiteWorkListRepository(
   }
 }
 
-private fun query(): String =
-  """
+private fun query(): String = """
   SELECT issue_key, workflow_kind, workflow_id, started_at, current_state,
          state_entered_at, state_entered_at_estimated
   FROM (
@@ -68,10 +67,9 @@ private fun query(): String =
   )
   ORDER BY unixepoch(started_at) DESC, ${fractionalSecondsSql("started_at")} DESC, workflow_id DESC
   LIMIT ?
-  """.trimIndent()
+""".trimIndent()
 
-private fun fractionalSecondsSql(columnName: String): String =
-  """
+private fun fractionalSecondsSql(columnName: String): String = """
   CASE
     WHEN instr($columnName, '.') = 0 THEN 0
     ELSE CAST('0.' || substr(
@@ -88,7 +86,7 @@ private fun fractionalSecondsSql(columnName: String): String =
       END
     ) AS REAL)
   END
-  """.trimIndent()
+""".trimIndent()
 
 private fun java.sql.ResultSet.toWorkItem(): WorkItem {
   val workflowId = required("workflow_id")

@@ -83,8 +83,10 @@ internal object DatabaseColumnMigrations {
     val workflowTables = listOf("feature_task_workflows", "feature_verify_workflows")
     val requiredColumns = setOf("issue_key", "state_entered_at", "state_entered_at_estimated")
     return workflowTables.any { tableName -> !tableColumnNames(connection, tableName).containsAll(requiredColumns) } ||
-      (tableExists(connection, "goal_issue_progress") &&
-        !tableColumnNames(connection, "goal_issue_progress").containsAll(requiredColumns - "issue_key"))
+      (
+        tableExists(connection, "goal_issue_progress") &&
+          !tableColumnNames(connection, "goal_issue_progress").containsAll(requiredColumns - "issue_key")
+        )
   }
 
   private fun applyWorkListMetadata(connection: Connection, recoverIssueKeys: Boolean) {

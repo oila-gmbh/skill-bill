@@ -4,7 +4,6 @@ import skillbill.contracts.JsonSupport
 import skillbill.db.core.DatabaseRuntime
 import skillbill.db.telemetry.LifecycleTelemetryStore
 import skillbill.db.telemetry.TelemetryOutboxStore
-import skillbill.db.telemetry.recordGoalIssueBlockedSegment
 import skillbill.infrastructure.sqlite.review.InvalidGoalTelemetryRowError
 import skillbill.infrastructure.sqlite.review.ReviewStatsRuntime
 import skillbill.ports.persistence.model.TelemetryOutboxRecord

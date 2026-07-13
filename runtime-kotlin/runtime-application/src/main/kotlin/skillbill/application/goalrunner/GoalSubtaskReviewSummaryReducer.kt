@@ -69,7 +69,9 @@ internal object GoalSubtaskReviewSummaryReducer {
     }
     return GoalSubtaskReviewOutputOutcome(
       verdict = verdict,
-      unresolvedFindingCount = if (verdict == FeatureTaskRuntimeVerdict.APPROVED) {
+      unresolvedFindingCount = if (
+        verdict == FeatureTaskRuntimeVerdict.APPROVED || verdict == FeatureTaskRuntimeVerdict.REVIEW_SKIPPED_BY_USER
+      ) {
         structuredUnresolved
       } else {
         structuredUnresolved.coerceAtLeast(1)

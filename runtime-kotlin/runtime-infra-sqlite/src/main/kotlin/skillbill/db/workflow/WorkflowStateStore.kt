@@ -266,10 +266,7 @@ private fun Connection.getFeatureTaskWorkflowRow(workflowId: String): WorkflowSt
   }
 }
 
-private fun Connection.getWorkflowRows(
-  tableName: String,
-  workflowIds: Set<String>,
-): Map<String, WorkflowStateRecord> {
+private fun Connection.getWorkflowRows(tableName: String, workflowIds: Set<String>): Map<String, WorkflowStateRecord> {
   if (workflowIds.isEmpty()) {
     return emptyMap()
   }

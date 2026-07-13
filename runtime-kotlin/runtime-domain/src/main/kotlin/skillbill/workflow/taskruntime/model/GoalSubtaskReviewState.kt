@@ -68,6 +68,7 @@ data class GoalSubtaskReviewPassResult(
         FeatureTaskRuntimeVerdict.APPROVED,
         FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
         FeatureTaskRuntimeVerdict.REVIEW_CAP_REACHED,
+        FeatureTaskRuntimeVerdict.REVIEW_SKIPPED_BY_USER,
       ),
     ) { "Goal review pass verdict is invalid: '${verdict.wireValue}'." }
     require(reviewResultArtifact == "$GOAL_SUBTASK_REVIEW_RESULT_ARTIFACT_PREFIX.$passNumber") {
@@ -253,8 +254,12 @@ data class GoalSubtaskReviewState(
 
   val reviewCapReached: Boolean get() = disposition == GoalSubtaskReviewDisposition.REVIEW_CAP_REACHED
 
+  val reviewSkippedByUser: Boolean get() =
+    passResults.lastOrNull()?.verdict == FeatureTaskRuntimeVerdict.REVIEW_SKIPPED_BY_USER
+
   fun reserveNextPass(): GoalSubtaskReviewState = when {
     reviewCapReached -> this
+    reviewSkippedByUser -> this
     reservedPassNumber != null -> this
     completedPassCount >= GOAL_SUBTASK_REVIEW_MAX_PASSES -> this
     else -> copy(reservedPassNumber = completedPassCount + 1)

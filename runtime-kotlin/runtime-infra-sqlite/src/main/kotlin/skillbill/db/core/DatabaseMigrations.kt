@@ -109,16 +109,14 @@ internal inline fun <T> Connection.inTransaction(block: Connection.() -> T): T {
   }
 }
 
+@Suppress("TooGenericExceptionCaught")
 internal inline fun <T> Connection.inImmediateTransaction(block: Connection.() -> T): T {
   createStatement().use { it.execute("BEGIN IMMEDIATE") }
   return try {
     val result = block()
     createStatement().use { it.execute("COMMIT") }
     result
-  } catch (error: SQLException) {
-    rollbackImmediateTransaction()
-    throw error
-  } catch (error: IllegalArgumentException) {
+  } catch (error: Exception) {
     rollbackImmediateTransaction()
     throw error
   }

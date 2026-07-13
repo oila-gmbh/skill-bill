@@ -34,7 +34,7 @@ subtasks:
   commit_sha: null
   workflow_id: "wftr-20260713-072701-m0p3"
   blocked_reason: null
-  last_resumable_step: "commit_push"
+  last_resumable_step: null
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -64,12 +64,12 @@ subtasks:
   status: "blocked"
   branch: null
   commit_sha: null
-  workflow_id: "wftr-20260713-101538-cwl6"
-  blocked_reason: "Phase output reported status 'blocked'. Implemented and verified\
-    \ the owned goal-review persistence and exact-Git-boundary refactors, but mandatory\
-    \ integration validation remains blocked by unresolved Detekt findings and the\
-    \ goal-continuation install guard."
-  last_resumable_step: "implement"
+  workflow_id: "wftr-20260713-122105-bsmj"
+  blocked_reason: "Phase output reported status 'blocked'. AUTO correctly selected\
+    \ delegated Kotlin review, but the required specialist workers could not be launched\
+    \ because this request did not explicitly authorize subagents under the repository\
+    \ policy; inline substitution was ineligible and prohibited."
+  last_resumable_step: "review"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []

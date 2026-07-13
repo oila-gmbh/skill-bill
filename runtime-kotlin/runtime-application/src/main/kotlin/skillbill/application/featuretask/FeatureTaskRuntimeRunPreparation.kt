@@ -1,18 +1,13 @@
 package skillbill.application.featuretask
 
+import skillbill.application.model.ContinuationRead
 import skillbill.application.model.FeatureTaskRuntimeGoalContinuationContext
-import skillbill.application.model.FeatureTaskRuntimeRunReport
+import skillbill.application.model.FeatureTaskRuntimePreparation
 import skillbill.application.model.FeatureTaskRuntimeRunRequest
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
-
-internal sealed interface FeatureTaskRuntimePreparation {
-  data class Ready(val request: FeatureTaskRuntimeRunRequest) : FeatureTaskRuntimePreparation
-
-  data class Blocked(val report: FeatureTaskRuntimeRunReport.Blocked) : FeatureTaskRuntimePreparation
-}
 
 internal class FeatureTaskRuntimeRunPreparation(
   private val recorder: FeatureTaskRuntimePhaseRecorder,
@@ -25,9 +20,9 @@ internal class FeatureTaskRuntimeRunPreparation(
     return when (
       val initial = continuationRecorder.readContinuation(request, "Goal-continuation review persistence is malformed")
     ) {
-      is ContinuationRead.Failed -> blocked(request, reportInvariants, initial.reason)
+      is ContinuationRead.Failure -> blocked(request, reportInvariants, initial.reason)
       ContinuationRead.None -> prepareWithContinuation(request, persistedInvariants, reportInvariants, null)
-      is ContinuationRead.Ready -> prepareWithContinuation(request, persistedInvariants, reportInvariants, initial)
+      is ContinuationRead.Available -> prepareWithContinuation(request, persistedInvariants, reportInvariants, initial)
     }
   }
 
@@ -35,7 +30,7 @@ internal class FeatureTaskRuntimeRunPreparation(
     request: FeatureTaskRuntimeRunRequest,
     persistedInvariants: FeatureTaskRuntimeRunInvariants?,
     reportInvariants: FeatureTaskRuntimeRunInvariants,
-    initial: ContinuationRead.Ready?,
+    initial: ContinuationRead.Available?,
   ): FeatureTaskRuntimePreparation {
     val selectedMode = selectedReviewMode(request, initial?.continuation)
     val policyConflict = continuationPolicyConflict(request, persistedInvariants, initial, selectedMode)
@@ -56,16 +51,16 @@ internal class FeatureTaskRuntimeRunPreparation(
         "Goal-continuation review persistence is malformed after initialization",
       )
     ) {
-      is ContinuationRead.Failed -> blocked(request, reportInvariants, resolved.reason)
+      is ContinuationRead.Failure -> blocked(request, reportInvariants, resolved.reason)
       ContinuationRead.None -> freezeRunInvariants(request, persistedInvariants, selectedMode, null)
-      is ContinuationRead.Ready -> freezeRunInvariants(request, persistedInvariants, selectedMode, resolved)
+      is ContinuationRead.Available -> freezeRunInvariants(request, persistedInvariants, selectedMode, resolved)
     }
   }
 
   private fun continuationPolicyConflict(
     request: FeatureTaskRuntimeRunRequest,
     persistedInvariants: FeatureTaskRuntimeRunInvariants?,
-    initial: ContinuationRead.Ready?,
+    initial: ContinuationRead.Available?,
     selectedMode: CodeReviewExecutionMode,
   ): String? = when {
     initial != null -> persistedContinuationConflict(request, persistedInvariants, initial, selectedMode)
@@ -76,7 +71,7 @@ internal class FeatureTaskRuntimeRunPreparation(
   private fun persistedContinuationConflict(
     request: FeatureTaskRuntimeRunRequest,
     persistedInvariants: FeatureTaskRuntimeRunInvariants?,
-    initial: ContinuationRead.Ready,
+    initial: ContinuationRead.Available,
     selectedMode: CodeReviewExecutionMode,
   ): String? = goalContinuationConflict(request, initial.continuation, initial.baseline)
     ?: persistedInvariants
@@ -96,7 +91,7 @@ internal class FeatureTaskRuntimeRunPreparation(
   private fun goalContinuationInvariantConflict(
     request: FeatureTaskRuntimeRunRequest,
     persistedInvariants: FeatureTaskRuntimeRunInvariants?,
-    initial: ContinuationRead.Ready?,
+    initial: ContinuationRead.Available?,
     selectedMode: CodeReviewExecutionMode,
   ): String? = persistedInvariants
     ?.takeIf { hasGoalContinuation(initial, request) && it.codeReviewMode != selectedMode }
@@ -129,7 +124,7 @@ internal class FeatureTaskRuntimeRunPreparation(
     request: FeatureTaskRuntimeRunRequest,
     persistedInvariants: FeatureTaskRuntimeRunInvariants?,
     selectedMode: CodeReviewExecutionMode,
-    continuation: ContinuationRead.Ready?,
+    continuation: ContinuationRead.Available?,
   ): FeatureTaskRuntimePreparation {
     val proposed = persistedInvariants ?: request.runInvariants.copy(
       codeReviewMode = continuation?.continuation?.codeReviewMode ?: selectedMode,
@@ -143,7 +138,7 @@ internal class FeatureTaskRuntimeRunPreparation(
         "Goal-continuation review policy does not match the workflow's durable code-review mode.",
       )
     }
-    return FeatureTaskRuntimePreparation.Ready(
+    return FeatureTaskRuntimePreparation.Prepared(
       request.copy(
         runInvariants = durable,
         parallelReviewAgent = durableContinuation?.parallelReviewAgent ?: request.parallelReviewAgent,
@@ -153,10 +148,9 @@ internal class FeatureTaskRuntimeRunPreparation(
       ),
     )
   }
-
 }
 
-private fun hasGoalContinuation(initial: ContinuationRead.Ready?, request: FeatureTaskRuntimeRunRequest): Boolean =
+private fun hasGoalContinuation(initial: ContinuationRead.Available?, request: FeatureTaskRuntimeRunRequest): Boolean =
   initial != null || request.goalContinuation != null
 
 private fun selectedReviewMode(
@@ -174,7 +168,7 @@ private fun FeatureTaskRuntimeGoalContinuationRecorder.readContinuation(
   onSuccess = { continuation ->
     continuation?.let { readReviewBaseline(request, it) } ?: ContinuationRead.None
   },
-  onFailure = { error -> ContinuationRead.Failed("$persistencePrefix: ${error.message.orEmpty()}") },
+  onFailure = { error -> ContinuationRead.Failure("$persistencePrefix: ${error.message.orEmpty()}") },
 )
 
 private fun FeatureTaskRuntimeGoalContinuationRecorder.readReviewBaseline(
@@ -183,16 +177,16 @@ private fun FeatureTaskRuntimeGoalContinuationRecorder.readReviewBaseline(
 ): ContinuationRead = runCatching { reviewState(request.workflowId, request.dbPathOverride) }.fold(
   onSuccess = { state ->
     state?.let {
-      ContinuationRead.Ready(
+      ContinuationRead.Available(
         continuation,
         GoalSubtaskReviewBaseline(it.reviewBaseSha, it.baselineUntrackedPaths),
       )
-    } ?: ContinuationRead.Failed(
+    } ?: ContinuationRead.Failure(
       "Goal-continuation review state is missing; refusing to recreate its immutable review baseline.",
     )
   },
   onFailure = { error ->
-    ContinuationRead.Failed(
+    ContinuationRead.Failure(
       "Goal-continuation review state or durable raw evidence is malformed: ${error.message.orEmpty()}",
     )
   },
@@ -218,17 +212,6 @@ private fun blocked(
   request: FeatureTaskRuntimeRunRequest,
   invariants: FeatureTaskRuntimeRunInvariants,
   reason: String,
-): FeatureTaskRuntimePreparation.Blocked = FeatureTaskRuntimePreparation.Blocked(
+): FeatureTaskRuntimePreparation.PreparationBlocked = FeatureTaskRuntimePreparation.PreparationBlocked(
   goalContinuationPolicyBlockedReport(request, invariants, reason),
 )
-
-private sealed interface ContinuationRead {
-  data object None : ContinuationRead
-
-  data class Ready(
-    val continuation: FeatureTaskRuntimeGoalContinuationArtifact,
-    val baseline: GoalSubtaskReviewBaseline,
-  ) : ContinuationRead
-
-  data class Failed(val reason: String) : ContinuationRead
-}

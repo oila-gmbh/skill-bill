@@ -64,8 +64,8 @@ private fun <T> stableSnapshot(
     !second.ok -> second
     first.snapshot != second.snapshot -> GoalReviewSnapshotResult(
       error =
-        "Goal-subtask repository state changed while preparing its immutable review state; " +
-          "refusing a torn snapshot.",
+      "Goal-subtask repository state changed while preparing its immutable review state; " +
+        "refusing a torn snapshot.",
     )
     else -> first
   }

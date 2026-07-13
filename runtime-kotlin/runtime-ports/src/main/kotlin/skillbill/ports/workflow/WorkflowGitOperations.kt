@@ -36,7 +36,6 @@ interface WorkflowGitOperations {
   fun worktreeActivity(repoRoot: Path): WorkflowWorktreeActivityResult
 
   fun selectedDiffHunks(repoRoot: Path, request: WorkflowSelectedDiffHunksRequest): WorkflowSelectedDiffHunksResult
-
 }
 
 interface GoalSubtaskReviewGitOperations {

@@ -1,11 +1,25 @@
 package skillbill.application.goalrunner
 
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class GoalSubtaskReviewSummaryReducerTest {
+  @Test
+  fun `user-directed review skip has no unresolved findings`() {
+    val outcome = GoalSubtaskReviewSummaryReducer.outcomeFor(
+      mapOf(
+        "verdict" to FeatureTaskRuntimeVerdict.REVIEW_SKIPPED_BY_USER.wireValue,
+        "produced_outputs" to mapOf("user_directed_skip" to "No review requested"),
+      ),
+    )
+
+    assertEquals(FeatureTaskRuntimeVerdict.REVIEW_SKIPPED_BY_USER, outcome.verdict)
+    assertEquals(0, outcome.unresolvedFindingCount)
+  }
+
   @Test
   fun `compact summaries remove paths lines hunks and duplicate findings`() {
     val summary = GoalSubtaskReviewSummaryReducer.fromOutput(

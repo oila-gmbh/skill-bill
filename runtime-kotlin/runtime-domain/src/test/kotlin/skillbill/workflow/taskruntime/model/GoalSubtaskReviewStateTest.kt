@@ -33,6 +33,22 @@ class GoalSubtaskReviewStateTest {
   }
 
   @Test
+  fun `a user-directed review skip is durable and prevents later review reservation`() {
+    val skipped = GoalSubtaskReviewState.initial(
+      reviewBaseSha = "d".repeat(40),
+      baselineUntrackedPaths = emptyList(),
+      codeReviewMode = CodeReviewExecutionMode.AUTO,
+    ).reserveNextPass().completeReservedPass(
+      verdict = FeatureTaskRuntimeVerdict.REVIEW_SKIPPED_BY_USER,
+      unresolvedFindingCount = 0,
+      findings = emptyList(),
+    )
+
+    assertTrue(skipped.reviewSkippedByUser)
+    assertEquals(skipped, skipped.reserveNextPass())
+  }
+
+  @Test
   fun `strict artifact decoding rejects unknown and unsupported verdict fields`() {
     val state = GoalSubtaskReviewState.initial(
       reviewBaseSha = "b".repeat(40),

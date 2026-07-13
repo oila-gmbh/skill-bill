@@ -146,7 +146,6 @@ private object GitStandardWorkflowGitOperations : WorkflowGitOperations {
       ),
     )
   }
-
 }
 
 private fun combinedDiffStat(repoRoot: Path): GoalObservabilityDiffStat {

@@ -24,8 +24,8 @@ import skillbill.ports.persistence.ReviewRepository
 import skillbill.ports.persistence.TelemetryOutboxRepository
 import skillbill.ports.persistence.TelemetryReconciliationRepository
 import skillbill.ports.persistence.UnitOfWork
-import skillbill.ports.persistence.WorkflowStateRepository
 import skillbill.ports.persistence.WorkListRepository
+import skillbill.ports.persistence.WorkflowStateRepository
 import skillbill.ports.persistence.WorkflowStatsRepository
 import skillbill.ports.persistence.model.LearningResolution
 import skillbill.ports.persistence.model.ReviewRepositoryStatsSnapshot

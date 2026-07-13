@@ -245,8 +245,7 @@ fun saveGoalIssueFinished(connection: Connection, record: GoalIssueFinishedRecor
   }
 }
 
-internal fun nextGoalStateEnteredAtSql(candidateSql: String): String =
-  """
+internal fun nextGoalStateEnteredAtSql(candidateSql: String): String = """
   CASE
     WHEN julianday(NULLIF(goal_issue_progress.state_entered_at, '')) IS NULL THEN
       COALESCE(NULLIF($candidateSql, ''), $SQLITE_TIMESTAMP_NOW)
@@ -254,7 +253,7 @@ internal fun nextGoalStateEnteredAtSql(candidateSql: String): String =
     WHEN julianday($SQLITE_TIMESTAMP_NOW) > julianday(goal_issue_progress.state_entered_at) THEN $SQLITE_TIMESTAMP_NOW
     ELSE strftime('%Y-%m-%dT%H:%M:%fZ', julianday(goal_issue_progress.state_entered_at) + 0.001 / 86400.0)
   END
-  """.trimIndent()
+""".trimIndent()
 
 fun saveGoalSubtaskFinished(connection: Connection, record: GoalSubtaskFinishedRecord): Boolean {
   val inserted = connection.prepareStatement(

@@ -88,7 +88,7 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
     val artifacts = decodeArtifacts(record.artifactsJson)
     val state = reviewStateFromArtifacts(artifacts)
       ?: return@transaction GoalSubtaskReviewPassReservation.MissingState
-    if (state.reviewCapReached || state.completedPassCount >= 2) {
+    if (state.reviewCapReached || state.reviewSkippedByUser || state.completedPassCount >= 2) {
       return@transaction GoalSubtaskReviewPassCarryForward(state)
     }
     if (state.reservedPassNumber != null) {

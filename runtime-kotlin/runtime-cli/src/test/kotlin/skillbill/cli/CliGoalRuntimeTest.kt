@@ -14,10 +14,9 @@ import skillbill.ports.agentrun.model.AgentRunOutputStream
 import skillbill.ports.goalrunner.GoalPullRequestPort
 import skillbill.ports.goalrunner.model.GoalPullRequestRequest
 import skillbill.ports.goalrunner.model.GoalPullRequestResult
-import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.ports.workflow.GoalSubtaskReviewGitOperations
 import skillbill.ports.workflow.GoalSubtaskReviewGitOperationsProvider
-import skillbill.ports.workflow.captureGoalSubtaskReviewBaseline
+import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaselineResult
 import skillbill.ports.workflow.model.WorkflowGitOperationResult
@@ -1268,11 +1267,8 @@ private object GoalTestWorkflowGitOperations : WorkflowGitOperations, GoalSubtas
           baseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
         )
 
-      override fun buildInput(
-        repoRoot: Path,
-        baseline: GoalSubtaskReviewBaseline,
-        expectedBranch: String,
-      ): Nothing = error("Goal review input is not used by this goal CLI fixture.")
+      override fun buildInput(repoRoot: Path, baseline: GoalSubtaskReviewBaseline, expectedBranch: String): Nothing =
+        error("Goal review input is not used by this goal CLI fixture.")
     }
 
   override fun createCommit(repoRoot: Path, message: String): WorkflowGitOperationResult =
