@@ -76,6 +76,16 @@ reuse it for every review-fix or audit-driven re-review. In Step 5 invoke
 configured, pass the same execution mode to both lanes without allowing
 recursive parallel launch.
 
+For a decomposed goal continuation, an omitted resumed selection inherits the
+durable mode and optional lane. Reject an explicit incompatible mode or lane
+before any child work starts. A fresh child receives `code_review_mode`,
+`parallel_review_agent`, `review_base_sha`, `baseline_untracked_paths`,
+`completed_review_pass_count`, `reserved_review_pass_number`, and
+`review_cap_disposition` from durable state; it must not reconstruct them from
+the branch, chat history, or a sibling subtask.
+An incompatible resume rejection leaves those durable parent and child values
+unchanged.
+
 On retry or resume, durable workflow state is the single source of authority. Avoid re-injecting prior plans, reviews, implementation summaries, or unrelated decomposition artifacts into the resumed run:
 
 - Treat `current_step_artifacts` as the bounded recovered context. Pull only the artifacts the resumed step needs; do not re-paste prior plans, full prior review reports, prior implementation RESULT summaries, or sibling-subtask decomposition artifacts into history.
@@ -267,11 +277,31 @@ For a decomposed prose-goal child, the parent supplies an immutable
 `review_base_sha`, baseline untracked inventory, and durable pass count. Review
 only that child's exact base-to-current delta, including committed, staged,
 unstaged, and owned untracked changes. Do not use `origin/main...HEAD` or a
-branch-wide substitute. Reserve a pass before review, reuse the selected mode
-on every re-review, and never start more than two total passes. After a second
-pass with unresolved Blocker/Major findings, persist the full review result,
-record `review_cap_reached`, emit the compact path-free goal summary, and
-continue to audit without reporting approval.
+branch-wide substitute. Construct the untracked portion as current untracked
+paths minus the baseline inventory, so pre-existing files are excluded and
+newly child-owned untracked files remain in scope. This exact scope applies
+after every repair and resume; never replace it with a merge base,
+`origin/main`, or sibling-subtask delta.
+
+The decomposed child invokes the primary and optional second lanes directly
+with the same `execution-mode:<selected-mode>` and exact prepared delta. Do not
+pass `parallel:` to either lane: the lanes must not recursively request
+parallel review, and together they count as one pass. Reserve a pass before
+launching it. When durable state has an unfinished reserved pass, resume that
+same pass rather than reserving another; carry completed and capped state
+through repair and audit re-entry, and never start pass three. After a second
+pass with unresolved Blocker/Major findings, persist complete location-bearing
+evidence, record the non-approval `review_cap_reached` disposition, and emit
+only the compact path-free goal review status: subtask id, pass number, verdict
+or continuation state, severity, class/symbol-or-sanitized label, and concise
+text. It contains no path, line number, hunk, or raw review output. Continue
+through audit, validation, history, dependency advancement, commit_push, and
+final reporting unless an independent later gate fails.
+
+The two-pass cap and `review_cap_reached` continuation apply only to
+decomposed prose-goal children. Standalone prose feature tasks keep this
+step's normal three-iteration repair loop, ordinary `parallel:<agent>`
+invocation, approval behavior, and Step 9 PR creation.
 
 Orchestrated child telemetry:
 

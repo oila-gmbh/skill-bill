@@ -105,6 +105,27 @@ uses its provider-managed default instead of a concrete override, print
 metadata is carried through resume and available in the final workflow summary
 so an operator can tell which model ran each step.
 
+Learnings have an explicit polarity. `suppress` is the existing default and
+means a prior rejected finding should be de-emphasized unless new evidence
+supports it. `detect` means a prior miss or nearly missed issue should be
+actively checked in comparable future reviews. The learning authoring command
+accepts `--kind suppress|detect`, defaulting to `suppress` for compatibility.
+
+Suppression learnings retain the current provenance requirement: both
+`--from-run` and `--from-finding` are required and the source finding must have
+a rejected outcome (`fix_rejected` or `false_positive`). Detection learnings
+allow either no provenance (a free-form observed miss) or a complete
+`--from-run`/`--from-finding` pair. A sourced detection learning may reference
+an accepted/applied finding as well as a rejected one; a half-specified source
+is invalid for either kind.
+
+Learning resolution, active-status filtering, specificity precedence (`skill`
+over `repo` over `global`), and normal review injection remain unchanged. The
+resolved record carries its kind so the review brief can clearly distinguish
+`Watch for` detection learnings from `De-emphasize` suppression learnings.
+Learnings remain explicit context, never hidden overrides: either kind cannot
+suppress evidence-backed correctness, security, or contract findings.
+
 ## Scope
 
 - `orchestration/review-delegation/PLAYBOOK.md` and the code-review shell
@@ -126,6 +147,9 @@ so an operator can tell which model ran each step.
 - Feature-task progress and completion reporting expose the resolved
   agent/model for every step, including the review parent and any specialist
   workers it launches.
+- Learning authoring supports explicit `suppress` and `detect` kinds with
+  provenance rules appropriate to each polarity, while preserving existing
+  resolution precedence and reviewer-context injection.
 - The now-unused rubric-loading adapter/port is removed with focused runtime
   tests that protect the compact parent prompt and pre-resolved-stack hand-off.
 - Source changes are rendered/installed through the normal staging flow; no
@@ -193,7 +217,21 @@ so an operator can tell which model ran each step.
     exactly as `default (agent-managed)`; the system never fabricates a model
     identifier. Tests cover overrides, inherited/default models, resume, and
     step-specific agent overrides.
-13. `skill-bill validate`, the relevant Gradle test suite, `npx --yes agnix
+13. Learning creation accepts `--kind suppress|detect` and defaults an omitted
+    kind to `suppress`. `suppress` retains the current complete provenance and
+    rejected-source requirement. `detect` accepts either no provenance or a
+    complete source pair, accepts accepted/applied or rejected source outcomes,
+    and rejects a half-specified source pair.
+14. Learning persistence and typed authoring/result models retain the kind.
+    Resolution continues to return only active records under the existing
+    `skill > repo > global` precedence and provides the kind needed to label
+    review context as `Watch for` or `De-emphasize`; no alternate resolution,
+    telemetry, or hidden-suppression path is introduced.
+15. Tests cover legacy/default suppression creation, valid and invalid
+    suppression provenance, free-form detection misses, sourced detection from
+    accepted/applied and rejected findings, persistence migration/round-trip,
+    precedence, active filtering, and polarity-labelled review injection.
+16. `skill-bill validate`, the relevant Gradle test suite, `npx --yes agnix
    --strict .`, and `scripts/validate_agent_configs` pass. `./install.sh` runs
    after source-contract changes so local staged installations refresh.
 

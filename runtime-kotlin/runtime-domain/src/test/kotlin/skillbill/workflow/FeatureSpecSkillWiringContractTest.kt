@@ -115,6 +115,71 @@ class FeatureSpecSkillWiringContractTest {
     assertContains(nativeAgents, "Reserved review pass: {reserved_review_pass_number}")
     assertContains(nativeAgents, "Review cap disposition: {review_cap_disposition}")
   }
+
+  @Test
+  fun `decomposed prose goals preserve durable review selections and complete child scope`() {
+    val goal = Files.readString(repoRootFromTest().resolve("skills/bill-feature-goal/content.md"))
+    val prose = Files.readString(repoRootFromTest().resolve("skills/bill-feature-task-prose/content.md"))
+    val runner = Files.readString(
+      repoRootFromTest().resolve("skills/bill-feature-task-subtask-runner/content.md"),
+    )
+    val nativeAgents = Files.readString(
+      repoRootFromTest().resolve("skills/bill-feature-task-prose/native-agents/agents.yaml"),
+    )
+
+    assertContains(goal, "An explicit resumed mode or lane must\nmatch that selection exactly")
+    assertContains(goal, "must not overwrite the durable parent or child review policy")
+    assertContains(goal, "`baseline_untracked_paths`,\n`completed_review_pass_count`, `reserved_review_pass_number`,")
+    assertContains(goal, "current untracked paths - baseline untracked inventory")
+    assertContains(prose, "Reject an explicit incompatible mode or lane\nbefore any child work starts")
+    assertContains(prose, "An incompatible resume rejection leaves those durable parent and child values\nunchanged")
+    assertContains(prose, "current untracked\npaths minus the baseline inventory")
+    assertContains(runner, "current untracked paths after subtracting\nthe baseline untracked inventory")
+    assertContains(runner, "`baseline_untracked_paths`, `completed_review_pass_count`,")
+    assertContains(runner, "the runner must not default, recompute, or replace\nthem")
+    assertContains(nativeAgents, "current untracked paths after subtracting `{baseline_untracked_paths}`")
+    assertContains(nativeAgents, "Durable review briefing:")
+    assertContains(
+      nativeAgents,
+      "Reject an explicit incompatible mode or lane before child work starts and " +
+        "leave durable state unchanged",
+    )
+    assertContains(runner, "a merge base, or earlier-sibling\nsubtask changes")
+  }
+
+  @Test
+  fun `decomposed prose review lanes and cap remain coordinated while standalone behavior remains unchanged`() {
+    val prose = Files.readString(repoRootFromTest().resolve("skills/bill-feature-task-prose/content.md"))
+    val runner = Files.readString(
+      repoRootFromTest().resolve("skills/bill-feature-task-subtask-runner/content.md"),
+    )
+    val nativeAgents = Files.readString(
+      repoRootFromTest().resolve("skills/bill-feature-task-prose/native-agents/agents.yaml"),
+    )
+
+    assertContains(prose, "Do not\npass `parallel:` to either lane")
+    assertContains(prose, "together they count as one pass")
+    assertContains(runner, "The coordinated lanes are exactly one pass")
+    assertContains(nativeAgents, "Invoke both lanes directly and do not pass a parallel argument into either lane")
+    assertContains(runner, "resume that accounted pass instead of reserving another")
+    assertContains(prose, "never start pass three")
+    assertContains(
+      prose,
+      "Continue\nthrough audit, validation, history, dependency advancement, commit_push, and\n" +
+        "final reporting",
+    )
+    assertContains(runner, "complete\nlocation-bearing evidence in durable artifacts and telemetry")
+    assertContains(runner, "class/symbol-or-sanitized label, and concise text")
+    assertContains(
+      prose,
+      "two-pass cap and `review_cap_reached` continuation apply only to\ndecomposed prose-goal children",
+    )
+    assertContains(
+      prose,
+      "normal three-iteration repair loop, ordinary `parallel:<agent>`\n" +
+        "invocation, approval behavior, and Step 9 PR creation",
+    )
+  }
 }
 
 private fun countOccurrences(haystack: String, needle: String): Int =
