@@ -1938,7 +1938,7 @@ class FeatureTaskRuntimeReviewFixLoopTest {
       .map { requireNotNull(it.skillRunRequest.promptOverride) }
       .filter { it.contains("Phase: review") }
     assertEquals(2, reviewPrompts.size)
-    assertTrue(reviewPrompts.all { it.contains("bill-code-review execution-mode:delegated") })
+    assertTrue(reviewPrompts.all { it.contains("bill-code-review mode:delegated") })
     assertEquals(
       CodeReviewExecutionMode.DELEGATED,
       requireNotNull(harness.runInvariantsStore.resolve(WORKFLOW_ID)).codeReviewMode,
@@ -1971,7 +1971,7 @@ class FeatureTaskRuntimeReviewFixLoopTest {
       .map { requireNotNull(it.skillRunRequest.promptOverride) }
       .filter { it.contains("Phase: review") }
     assertEquals(2, reviewPrompts.size)
-    assertTrue(reviewPrompts.all { it.contains("bill-code-review execution-mode:inline") })
+    assertTrue(reviewPrompts.all { it.contains("bill-code-review mode:inline") })
     assertEquals(
       CodeReviewExecutionMode.INLINE,
       requireNotNull(harness.runInvariantsStore.resolve(WORKFLOW_ID)).codeReviewMode,

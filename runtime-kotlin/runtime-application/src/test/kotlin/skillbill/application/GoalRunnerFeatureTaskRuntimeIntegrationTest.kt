@@ -56,7 +56,7 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
       .mapNotNull { it.skillRunRequest.promptOverride }
       .filter { it.contains("Phase: review") }
     assertEquals(1, reviewPrompts.size)
-    assertContains(reviewPrompts.single(), "bill-code-review execution-mode:delegated")
+    assertContains(reviewPrompts.single(), "bill-code-review mode:delegated")
     assertContains(reviewPrompts.single(), "Combine it with `parallel:claude`")
     assertContains(reviewPrompts.single(), "durable base `${"0".repeat(40)}`")
     assertContains(reviewPrompts.single(), "committed, staged, unstaged, and owned untracked changes")

@@ -5,10 +5,10 @@ description: Use when you want a generic code-review entry point that detects th
 
 # Parallel Review Argument
 
-## Execution-mode argument
+## Review mode argument
 
-Recognize at most one `execution-mode:auto`, `execution-mode:inline`, or
-`execution-mode:delegated` argument. Omission means `execution-mode:auto`.
+Recognize at most one `mode:auto`, `mode:inline`, or `mode:delegated` argument.
+Omission means `mode:auto`.
 Reject malformed, unknown, duplicate, or conflicting values before resolving
 scope, starting a lane, or importing telemetry.
 
@@ -22,7 +22,7 @@ execution mode in the normal review metadata.
 
 When the caller passes `parallel:<agent>` or `parallel:<agent>:<model>` in args — for example `parallel:codex`, `parallel:codex:o3`, or `parallel:claude:claude-opus-4-8` — run two review lanes on the same diff and merge their findings with provenance labels.
 
-Lane 1 is the normal routed stack-specific review, run in this session through its standard flow — which means it spawns the routed pack's specialist subagents (and any baseline review layer) exactly as a non-parallel `/bill-code-review` would. "In this session" only distinguishes it from lane 2; it does **not** mean a single in-thread read by the current agent. Lane 2 is the named agent, launched as a background subprocess via its CLI; it also runs `bill-code-review execution-mode:<selected-mode>` in full — routing to the dominant stack, spawning its own specialist subagents, and producing its own risk register. Do not pass `parallel:` into lane 2. Both lanes run the same full review pipeline independently. Findings are merged deterministically by the `skill-bill code-review-merge` CLI so the output is machine-readable by downstream tooling.
+Lane 1 is the normal routed stack-specific review, run in this session through its standard flow — which means it spawns the routed pack's specialist subagents (and any baseline review layer) exactly as a non-parallel `/bill-code-review` would. "In this session" only distinguishes it from lane 2; it does **not** mean a single in-thread read by the current agent. Lane 2 is the named agent, launched as a background subprocess via its CLI; it also runs `bill-code-review mode:<selected-mode>` in full — routing to the dominant stack, spawning its own specialist subagents, and producing its own risk register. Do not pass `parallel:` into lane 2. Both lanes run the same full review pipeline independently. Findings are merged deterministically by the `skill-bill code-review-merge` CLI so the output is machine-readable by downstream tooling.
 
 When the argument is absent, consult the repo-local config fallback (next section) before falling through to normal shell behaviour.
 
@@ -116,7 +116,7 @@ Repo root: <repo-root>
 
 Rules:
 - Run the full routed review by spawning one isolated-context subagent per specialist domain — do NOT do a single flat read of the diff.
-- Invoke `bill-code-review execution-mode:<selected-mode>` for this lane. Preserve the caller's selected mode; do not replace it with `auto`.
+- Invoke `bill-code-review mode:<selected-mode>` for this lane. Preserve the caller's selected mode; do not replace it with `auto`.
 - Do NOT pass parallel:<agent> to bill-code-review — you are already lane 2; recursion is not allowed.
 - Spawn each specialist as an isolated-context subagent using your agent's native subagent mechanism (see Agent-specific instructions below). What matters is that each specialist reasons in its own context window — not that it runs as a separate OS process.
 - When all subagents complete, collect their findings and output ONLY the concatenated Risk Register, one finding per line:

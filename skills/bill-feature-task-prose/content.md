@@ -72,7 +72,7 @@ goal continuation, durable goal and child workflow state supply the immutable
 selection. This sidecar must not reparse the token, present another gate, or
 substitute a different mode. Persist the selected mode with the workflow and
 reuse it for every review-fix or audit-driven re-review. In Step 5 invoke
-`bill-code-review execution-mode:<selected-mode>`; when a parallel lane is
+`bill-code-review mode:<selected-mode>`; when a parallel lane is
 configured, pass the same execution mode to both lanes without allowing
 recursive parallel launch.
 
@@ -262,7 +262,7 @@ Step id: `review`
 
 Primary artifact: `review_result`
 
-Run `bill-code-review execution-mode:<selected-mode>` inline in the orchestrator through the active skill runtime. Scope: current unit of work for SMALL, branch diff for MEDIUM/LARGE. Do not wrap `bill-code-review` in an additional subagent — it already spawns specialist subagents internally. When `parallel-review:<agent>` was passed to this skill, invoke `bill-code-review execution-mode:<selected-mode> parallel:<agent>` so a second review lane runs alongside the primary review without recursive parallel launch.
+Run `bill-code-review mode:<selected-mode>` inline in the orchestrator through the active skill runtime. Scope: current unit of work for SMALL, branch diff for MEDIUM/LARGE. Do not wrap `bill-code-review` in an additional subagent — it already spawns specialist subagents internally. When `parallel-review:<agent>` was passed to this skill, invoke `bill-code-review mode:<selected-mode> parallel:<agent>` so a second review lane runs alongside the primary review without recursive parallel launch.
 
 Review loop:
 
@@ -284,7 +284,7 @@ after every repair and resume; never replace it with a merge base,
 `origin/main`, or sibling-subtask delta.
 
 The decomposed child invokes the primary and optional second lanes directly
-with the same `execution-mode:<selected-mode>` and exact prepared delta. Do not
+with the same `mode:<selected-mode>` and exact prepared delta. Do not
 pass `parallel:` to either lane: the lanes must not recursively request
 parallel review, and together they count as one pass. Reserve a pass before
 launching it. When durable state has an unfinished reserved pass, resume that

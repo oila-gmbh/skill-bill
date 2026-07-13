@@ -1096,7 +1096,7 @@ class CliFeatureTaskRuntimeModelDirectiveTest {
         .map { requireNotNull(it.skillRunRequest.promptOverride) }
         .single { it.contains("Phase: review") }
       val forwardedMode = if (expectedMode == "omitted") "auto" else expectedMode
-      assertContains(reviewPrompt, "bill-code-review execution-mode:$forwardedMode")
+      assertContains(reviewPrompt, "bill-code-review mode:$forwardedMode")
     }
   }
 

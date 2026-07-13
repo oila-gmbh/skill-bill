@@ -78,7 +78,7 @@ class FeatureTaskRuntimeAuditGapLoopTest {
       .map { requireNotNull(it.skillRunRequest.promptOverride) }
       .filter { it.contains("Phase: review") }
     assertEquals(2, reviewPrompts.size)
-    assertTrue(reviewPrompts.all { it.contains("bill-code-review execution-mode:delegated") })
+    assertTrue(reviewPrompts.all { it.contains("bill-code-review mode:delegated") })
   }
 
   // (c) AC2: convergence on the last allowed (2nd) iteration still advances.

@@ -240,7 +240,7 @@ object FeatureTaskRuntimePhasePromptComposer {
       return ""
     }
     val parallel = parallelReviewAgent?.takeIf(String::isNotBlank)?.let { agent ->
-      " Combine it with `parallel:$agent`; both lanes must receive execution-mode:${codeReviewMode.wireValue} " +
+      " Combine it with `parallel:$agent`; both lanes must receive mode:${codeReviewMode.wireValue} " +
         "and the second lane must not launch parallel review recursively."
     }.orEmpty()
     val goalScope = goalSubtaskReviewInput?.let { input ->
@@ -258,7 +258,7 @@ object FeatureTaskRuntimePhasePromptComposer {
     }.orEmpty()
     return """
       ## Review execution mode
-      Run `bill-code-review execution-mode:${codeReviewMode.wireValue}` for this review and every re-review.
+      Run `bill-code-review mode:${codeReviewMode.wireValue}` for this review and every re-review.
       AUTO keeps the shared policy's existing selection; INLINE must reject an ineligible scope instead of substituting
       delegated mode; DELEGATED must use normal routed delegation and fail if workers cannot start.$parallel$goalScope
     """.trimIndent()

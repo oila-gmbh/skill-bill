@@ -147,7 +147,7 @@ feature branch, or an earlier subtask's commits.
 Every child review, including repair and audit-driven re-entry, reviews the
 complete base-to-current delta: committed, staged, unstaged, and untracked
 paths that were not in the baseline inventory. Pass the same exact delta and
-the selected `execution-mode:<auto|inline|delegated>` contract to both full
+the selected `mode:<auto|inline|delegated>` contract to both full
 parallel lanes. Lanes remain non-recursive and the coordinated lanes count as
 one review pass.
 

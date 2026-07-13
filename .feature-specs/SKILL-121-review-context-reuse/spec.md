@@ -71,7 +71,7 @@ Only the first, normal Step 5 review may use delegated mode. It receives the
 feature's selected review mode and remains the sole pass allowed to launch
 delegated specialist workers. Every later review pass, including a review-fix
 re-review and an audit-gap re-entry, explicitly requests
-`execution-mode:inline`. The established inline-eligibility safety gate remains
+`mode:inline`. The established inline-eligibility safety gate remains
 in force. If a re-review is ineligible for inline review, the workflow stops
 with that explicit reason; it must not silently substitute a delegated review.
 
@@ -142,7 +142,7 @@ third delegated or inline review.
    may use the selected delegated mode. Its existing mode-selection and
    delegated-worker failure behaviour remains unchanged.
 9. Every later review pass, including review-fix and audit-gap re-entry,
-   invokes `bill-code-review execution-mode:inline`. It neither launches
+   invokes `bill-code-review mode:inline`. It neither launches
    delegated specialist workers nor silently replaces the request with
    delegated mode; an ineligible inline re-review fails with the existing
    explicit eligibility reason. Durable resume state preserves which review

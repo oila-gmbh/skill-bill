@@ -26,7 +26,7 @@ class FeatureTaskRuntimePhasePromptComposerTest {
       codeReviewMode = CodeReviewExecutionMode.DELEGATED,
     )
 
-    assertContains(prompt, "bill-code-review execution-mode:delegated")
+    assertContains(prompt, "bill-code-review mode:delegated")
     assertContains(prompt, "parallel:claude")
     assertContains(prompt, "must not launch parallel review recursively")
   }
@@ -40,7 +40,7 @@ class FeatureTaskRuntimePhasePromptComposerTest {
         codeReviewMode = mode,
       )
 
-      assertContains(prompt, "bill-code-review execution-mode:${mode.wireValue}")
+      assertContains(prompt, "bill-code-review mode:${mode.wireValue}")
     }
   }
 

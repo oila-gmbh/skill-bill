@@ -202,7 +202,7 @@ Keep durable workflow records schema-valid and do not weaken their loud-fail
 behavior.
 
 `bill-code-review` receives the canonical execution-mode request through its
-own documented argument (for example `execution-mode:auto|inline|delegated`),
+own documented argument (for example `mode:auto|inline|delegated`),
 so standalone code review and feature-owned review share one selection and
 eligibility implementation instead of duplicating the policy in feature
 skills.

@@ -29,7 +29,7 @@ baseline, and pass state; the runner must not default, recompute, or replace
 them. On resume, omission reuses them. An explicit incompatible mode or lane
 is rejected before child work starts and leaves the durable policy unchanged.
 
-For every review pass, call `bill-code-review execution-mode:<code_review_mode>`
+For every review pass, call `bill-code-review mode:<code_review_mode>`
 against only the durable child-owned base-to-current delta. Reconstruct that
 scope from the immutable `review_base_sha` through the current committed,
 staged, and unstaged changes, plus current untracked paths after subtracting
