@@ -26,6 +26,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction.BLOCKED
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction.COMPLETE
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction.RESUME
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction.START
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
@@ -133,6 +134,46 @@ class FeatureTaskRuntimeStatusServiceTest {
     assertEquals(1, projection.blockedCount)
     assertEquals("blocked", projection.phases.single { it.phaseId == "implement" }.status)
     assertEquals("implement", projection.currentPhaseId)
+  }
+
+  @Test
+  fun `ledger-only audit gap projects reopened implement as current`() {
+    val harness = statusHarness()
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    listOf("preplan", "plan", "implement", "review", "audit")
+      .forEach { harness.recordCompleted(it, attemptCount = 1) }
+    harness.recordLoopEdge(
+      phaseId = "implement",
+      attemptCount = 1,
+      loopId = "audit_gap",
+      edgeIteration = 1,
+    )
+
+    val projection = requireNotNull(
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+    )
+
+    assertEquals("implement", projection.currentPhaseId)
+  }
+
+  @Test
+  fun `ledger-only review fix projects implement fix as current`() {
+    val harness = statusHarness()
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    listOf("preplan", "plan", "implement", "review")
+      .forEach { harness.recordCompleted(it, attemptCount = 1) }
+    harness.recordLoopEdge(
+      phaseId = "implement_fix",
+      attemptCount = 1,
+      loopId = "review_fix",
+      edgeIteration = 1,
+    )
+
+    val projection = requireNotNull(
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+    )
+
+    assertEquals("implement_fix", projection.currentPhaseId)
   }
 
   @Test
@@ -401,6 +442,24 @@ class FeatureTaskRuntimeStatusServiceTest {
       ),
     )
 
+    fun recordLoopEdge(
+      phaseId: String,
+      attemptCount: Int,
+      loopId: String,
+      edgeIteration: Int,
+      resolvedAgentId: String = "claude",
+    ) = recorder.appendLedgerEntry(
+      FeatureTaskRuntimePhaseLedgerRequest(
+        workflowId = WORKFLOW_ID,
+        action = LOOP_EDGE,
+        phaseId = phaseId,
+        attemptCount = attemptCount,
+        resolvedAgentId = resolvedAgentId,
+        loopId = loopId,
+        edgeIteration = edgeIteration,
+      ),
+    )
+
     fun attribution() = agentAttributionFromPhaseState(recorder, WORKFLOW_ID)
 
     fun recordRunInvariants(featureSize: FeatureTaskRuntimeFeatureSize) {
@@ -449,6 +508,13 @@ private class StatusFakeDatabaseSessionFactory(
 }
 
 private class StatusInMemoryWorkflowRepository : WorkflowStateRepository {
+  override fun saveFeatureTaskExecutionIdentity(
+    identity: skillbill.ports.persistence.model.FeatureTaskExecutionIdentity,
+  ) = Unit
+
+  override fun findStandaloneFeatureTaskCandidates(normalizedIssueKey: String, repositoryIdentity: String) =
+    emptyList<skillbill.ports.persistence.model.FeatureTaskWorkflowCandidate>()
+
   private val taskRuntimeRows = linkedMapOf<String, WorkflowStateRecord>()
 
   override fun saveFeatureTaskRuntimeWorkflow(row: WorkflowStateRecord) {

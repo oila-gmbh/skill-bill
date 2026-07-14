@@ -136,8 +136,8 @@ data class FeatureTaskRuntimePhaseHandoff(
    */
   val drivingVerdict: FeatureTaskRuntimeVerdict? = null,
   /**
-   * The failing acceptance criteria scoping an `audit_gap` re-entry (the re-entered `plan` and
-   * `implement` address these gaps rather than redoing settled content); empty for a forward launch
+   * The failing acceptance criteria scoping an `audit_gap` implementation re-entry. The remediation
+   * addresses only these gaps rather than redoing settled content; empty for a forward launch
    * or a non-audit-gap re-entry, preserving the existing forward-launch assembly.
    */
   val reentryGapCriteria: List<String> = emptyList(),

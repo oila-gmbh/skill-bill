@@ -16,6 +16,9 @@ data class GoalRunnerChildWorkflowSetup(
   val subtaskId: Int,
   val workflowId: String,
   val goalBranch: String,
+  val normalizedIssueKey: String,
+  val repositoryIdentity: String,
+  val governedSpecPath: String,
   val reviewBaseline: GoalSubtaskReviewBaseline,
   val reviewPolicy: GoalRunnerReviewPolicy,
 ) {
@@ -23,5 +26,8 @@ data class GoalRunnerChildWorkflowSetup(
     require(subtaskId > 0) { "subtaskId must be positive." }
     require(workflowId.isNotBlank()) { "workflowId must not be blank." }
     require(goalBranch.isNotBlank()) { "goalBranch must not be blank." }
+    require(normalizedIssueKey.isNotBlank()) { "normalizedIssueKey must not be blank." }
+    require(repositoryIdentity.isNotBlank()) { "repositoryIdentity must not be blank." }
+    require(governedSpecPath.isNotBlank()) { "governedSpecPath must not be blank." }
   }
 }

@@ -39,10 +39,11 @@ class ProcessAgentRunAdapter(
         idlePolicy = command.idlePolicy,
       ),
     )
+    val decoded = commandBuilder.outputDecoder.decode(result.stdout)
     return AgentRunLaunchFacts(
       agent = agent,
       exitStatus = result.exitStatus,
-      stdout = normalizeStdout(agent, result.stdout),
+      stdout = normalizeStdout(agent, decoded.text),
       stderr = result.stderr,
       timedOut = result.timedOut,
       interrupted = result.interrupted,
@@ -55,6 +56,11 @@ class ProcessAgentRunAdapter(
       // token-log format is consulted (Non-Goal).
       childSessionPath = command.workingDirectory.toString(),
       childSessionId = childSessionId(agent, request, command.workingDirectory),
+      inputTokens = decoded.inputTokens,
+      cachedInputTokens = decoded.cachedInputTokens,
+      outputTokens = decoded.outputTokens,
+      reasoningTokens = decoded.reasoningTokens,
+      totalTokens = decoded.totalTokens,
     )
   }
 
@@ -71,6 +77,62 @@ class ProcessAgentRunAdapter(
       append(workingDirectory.fileName?.toString() ?: workingDirectory.toString())
     }
 }
+
+data class DecodedAgentRunOutput(
+  val text: String,
+  val inputTokens: Long? = null,
+  val cachedInputTokens: Long? = null,
+  val outputTokens: Long? = null,
+  val reasoningTokens: Long? = null,
+  val totalTokens: Long? = null,
+)
+
+fun interface AgentRunOutputDecoder {
+  fun decode(stdout: String): DecodedAgentRunOutput
+
+  companion object {
+    val PLAIN = AgentRunOutputDecoder { DecodedAgentRunOutput(it) }
+    val CLAUDE_JSON = AgentRunOutputDecoder { stdout -> decodeClaudeJson(stdout) }
+    val CODEX_JSONL = AgentRunOutputDecoder { stdout -> decodeCodexJsonl(stdout) }
+  }
+}
+
+private val structuredOutputMapper: ObjectMapper by lazy { ObjectMapper() }
+
+private fun decodeClaudeJson(stdout: String): DecodedAgentRunOutput = runCatching {
+  val root = structuredOutputMapper.readTree(stdout.trim())
+  val usage = root.path("usage")
+  DecodedAgentRunOutput(
+    text = root.path("result").takeIf { it.isTextual }?.asText() ?: stdout,
+    inputTokens = usage.longOrNull("input_tokens"),
+    cachedInputTokens = usage.longOrNull("cache_read_input_tokens"),
+    outputTokens = usage.longOrNull("output_tokens"),
+    reasoningTokens = usage.longOrNull("reasoning_tokens"),
+    totalTokens = usage.longOrNull("total_tokens"),
+  )
+}.getOrElse { DecodedAgentRunOutput(stdout) }
+
+private fun decodeCodexJsonl(stdout: String): DecodedAgentRunOutput {
+  var text: String? = null
+  var usage: com.fasterxml.jackson.databind.JsonNode? = null
+  stdout.lineSequence().filter(String::isNotBlank).forEach { line ->
+    runCatching { structuredOutputMapper.readTree(line) }.getOrNull()?.let { event ->
+      event.path("item").path("text").takeIf { it.isTextual }?.asText()?.let { text = it }
+      event.path("usage").takeUnless { it.isMissingNode || it.isNull }?.let { usage = it }
+    }
+  }
+  return DecodedAgentRunOutput(
+    text = text ?: stdout,
+    inputTokens = usage?.longOrNull("input_tokens"),
+    cachedInputTokens = usage?.longOrNull("cached_input_tokens"),
+    outputTokens = usage?.longOrNull("output_tokens"),
+    reasoningTokens = usage?.longOrNull("reasoning_tokens"),
+    totalTokens = usage?.longOrNull("total_tokens"),
+  )
+}
+
+private fun com.fasterxml.jackson.databind.JsonNode.longOrNull(field: String): Long? =
+  path(field).takeIf { it.isIntegralNumber && it.canConvertToLong() }?.longValue()
 
 private val zcodeStdoutMapper: ObjectMapper by lazy { ObjectMapper() }
 

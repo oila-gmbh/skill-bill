@@ -23,6 +23,7 @@ object FeatureTaskRuntimePhasePromptComposer {
     suppressDecomposition: Boolean = false,
     parallelReviewAgent: String? = null,
     codeReviewMode: CodeReviewExecutionMode = CodeReviewExecutionMode.AUTO,
+    reviewPassNumber: Int? = null,
     goalSubtaskReviewInput: GoalSubtaskReviewInput? = null,
     specSource: SpecSource = SpecSource.LOCAL,
     priorSchemaFailure: String? = null,
@@ -31,10 +32,16 @@ object FeatureTaskRuntimePhasePromptComposer {
     require(issueKey.isNotBlank()) { "issueKey is required to compose a phase prompt." }
     return listOf(
       header(issueKey, briefing.phaseId),
-      ceremonyDirective(briefing),
+      ceremonyDirective(briefing, reviewPassNumber),
       mutatingPhaseIdempotencyDirective(briefing.phaseId),
       goalContinuationDirective(briefing.phaseId, suppressDecomposition),
-      reviewExecutionDirective(briefing.phaseId, codeReviewMode, parallelReviewAgent, goalSubtaskReviewInput),
+      reviewExecutionDirective(
+        briefing.phaseId,
+        codeReviewMode,
+        reviewPassNumber,
+        parallelReviewAgent,
+        goalSubtaskReviewInput,
+      ),
       commitExclusionDirective(briefing.phaseId, issueKey, specSource),
       specCommitInclusionDirective(briefing.phaseId, specReference, specSource),
       briefing.briefingText,
@@ -124,22 +131,32 @@ object FeatureTaskRuntimePhasePromptComposer {
       loop (preplan -> plan -> implement -> review -> audit -> validate -> write_history -> commit_push -> pr)
       for issue $issueKey. The runtime owns the loop; do not run other phases, do not open
       or continue any other skill-bill workflow, and do not call `skill-bill workflow continue`.
+      Do not create or modify a governed spec for another issue key unless this issue's spec
+      explicitly requires that exact follow-up artifact.
 
       Phase: $phaseId ($label)
       Task: $directive
     """.trimIndent()
   }
 
-  private fun ceremonyDirective(briefing: FeatureTaskRuntimePhaseLaunchBriefing): String {
+  private fun ceremonyDirective(briefing: FeatureTaskRuntimePhaseLaunchBriefing, reviewPassNumber: Int?): String {
     val featureSize = FeatureTaskRuntimeFeatureSize.fromWire(briefing.featureSize)
     val scaling = FeatureTaskRuntimePhaseWorkflowDefinition.ceremonyScaling(featureSize)
+    val remediationReview = briefing.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW &&
+      reviewPassNumber == 2
+    val reviewScope = if (remediationReview) "remediation_delta" else scaling.reviewScope.wireValue
     val phaseSpecific = when (briefing.phaseId) {
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN ->
         "Apply ${scaling.preplanCeremony.promptLabel}. Keep the gate real: identify concrete scope, " +
           "affected boundaries, risks, and unknowns at the requested depth."
-      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW ->
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW -> if (remediationReview) {
+        "Apply bill-code-review mode:inline context:feature-remediation to only the combined staged, unstaged, " +
+          "and untracked remediation delta since checkpoint HEAD. Do not expand the re-review to the full " +
+          "feature branch."
+      } else {
         "Apply ${scaling.reviewScope.promptLabel}. Keep the review gate real: inspect the implemented " +
           "change for defects and report concrete file references."
+      }
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT ->
         "Apply ${scaling.auditCeremony.promptLabel}. Keep the audit gate real: verify acceptance " +
           "criteria and report concrete gaps."
@@ -150,7 +167,7 @@ object FeatureTaskRuntimePhasePromptComposer {
       ## Runtime ceremony scaling
       feature_size: ${featureSize.name}
       preplan_ceremony: ${scaling.preplanCeremony.wireValue}
-      review_scope: ${scaling.reviewScope.wireValue}
+      review_scope: $reviewScope
       audit_ceremony: ${scaling.auditCeremony.wireValue}
       $phaseSpecific
       Scaling changes scope and verbosity only; it must not skip or weaken review, audit, validation,
@@ -167,6 +184,9 @@ object FeatureTaskRuntimePhasePromptComposer {
     - "contract_version": must be exactly "${FeatureTaskRuntimePhaseWorkflowDefinition.definition.contractVersion}"
     - "phase_id": must be "$phaseId"
     - "status": one of "completed", "blocked", "failed"
+    - "failure_disposition": required by the runtime when status is "blocked" or "failed"; one of
+      "retryable", "non_retryable_policy_conflict", "needs_user_action", "process_failure", or
+      "invalid_output". Omit it when status is "completed".
     - "summary": non-empty string describing what this phase did
     - "produced_outputs": object with at least one entry carrying this phase's concrete
       result for downstream phases (for example plan steps, changed files, findings, or
@@ -233,6 +253,7 @@ object FeatureTaskRuntimePhasePromptComposer {
   private fun reviewExecutionDirective(
     phaseId: String,
     codeReviewMode: CodeReviewExecutionMode,
+    reviewPassNumber: Int?,
     parallelReviewAgent: String?,
     goalSubtaskReviewInput: GoalSubtaskReviewInput?,
   ): String {
@@ -256,13 +277,19 @@ object FeatureTaskRuntimePhasePromptComposer {
       ${input.reviewText}
       """.trimIndent()
     }.orEmpty()
+    val remediationScope = if (reviewPassNumber == 2 && goalSubtaskReviewInput == null) {
+      " Review only the combined working-tree remediation delta since checkpoint HEAD; include staged, unstaged, " +
+        "and untracked changes, and do not use the full branch diff."
+    } else {
+      ""
+    }
     return """
       ## Review execution mode
       Run `bill-code-review mode:${codeReviewMode.wireValue}` for this review. The initial pass uses the run-selected
-      mode; every later pass is explicitly INLINE and must fail with the existing eligibility reason rather than
-      substituting delegated mode. Never launch a third review pass.
-      AUTO keeps the shared policy's existing selection; INLINE must reject an ineligible scope instead of substituting
-      delegated mode; DELEGATED must use normal routed delegation and fail if workers cannot start.$parallel$goalScope
+      mode; every later pass is explicitly INLINE under context:feature-remediation. Never launch a third review pass.
+      AUTO keeps the shared policy's existing selection; remediation INLINE uses the governed exception and selects
+      inline specialist coverage for high-risk signals; DELEGATED must use normal routed delegation and fail if workers
+      cannot start.$parallel$goalScope$remediationScope
     """.trimIndent()
   }
 
@@ -328,7 +355,9 @@ object FeatureTaskRuntimePhasePromptComposer {
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT to
       "Reconcile the repository to the intended state the upstream plan output describes: make the " +
       "changes it specifies, treating any already-applied change as a no-op. See the mutating-phase " +
-      "idempotency contract below.",
+      "idempotency contract below. When the briefing carries audit_gaps, reuse its immutable initial " +
+      "preplan and plan outputs and change only what the latest listed gaps require; do not regenerate " +
+      "planning, expand scope, or disturb settled implementation.",
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX to
       "Address the carried review Blocker/Major findings on the CURRENT working tree as incremental " +
       "reconciliation: fix exactly those findings using the review findings, the latest implement " +

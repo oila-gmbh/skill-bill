@@ -11,6 +11,10 @@ Do not reference this repo-relative path directly from installable skills — us
 
 ## Shared Delegation Rules
 
+- Every delegated specialist starts in a fresh conversation. Codex launches MUST set `fork_turns: "none"`; omission or an inherited-turn value is a governed contract failure.
+- Project exactly one compact specialist contract, one applicable rubric, immutable review identifiers and revisions, assigned paths and hunks, relevant criteria references, matched rules, named evidence targets, broker identifiers, and a budget summary into each launch. The parent transcript, full phase briefing, unrelated criteria or rubrics, and unrelated diff are forbidden.
+- Specialists use the bounded evidence surface and do not execute status, scope, stack, routing, or broad-diff discovery. Out-of-assignment access requires a nonblank reachability reason and consumes a bounded expansion.
+- Payload, evidence, result, and expansion excess terminates the affected lane as `review_context_budget_exceeded`. Never truncate required evidence, skip a required lane, widen repository access, replace a reviewer, or substitute execution mode.
 - Use this delegation contract only after the shared execution-mode contract selects `delegated` review.
 - Before launching any routed layer or specialist, the parent prepares one compact, in-memory review-context packet. The packet is authoritative for the whole review run and contains the resolved scope and diff source, routing decision, applicable project guidance, relevant build/test facts, changed-file and hunk map, selected add-ons, ordered selected lanes with inclusion or exclusion reasons, immutable session/run identifiers, and one assignment per worker.
 - Each worker assignment names the applicable routed skill, rubric, or sidecar; owns specific changed files and hunks; identifies only the direct dependencies that may be read; and states the evidence to verify. Give every worker the shared packet, its assignment, and only its applicable rubric.

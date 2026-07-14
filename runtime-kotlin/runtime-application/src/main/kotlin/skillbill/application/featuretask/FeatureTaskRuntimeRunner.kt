@@ -124,6 +124,8 @@ class FeatureTaskRuntimeRunner(
       val state = FeatureTaskRuntimeRunState(
         recorder.loadPhaseRecords(runRequest.workflowId, runRequest.dbPathOverride).orEmpty(),
         transitions,
+        recorder.loadPhaseLedger(runRequest.workflowId, runRequest.dbPathOverride).orEmpty(),
+        outputValidator,
       )
       val loop = FeatureTaskRuntimeRunLoop(
         FeatureTaskRuntimeRunLoopDependencies(
@@ -189,7 +191,7 @@ class FeatureTaskRuntimeRunner(
       ?: 0
 
   // The highest durable `audit_gap` per-edge iteration recorded on the LOOP_EDGE ledger (0 when the
-  // loop never fired): the runtime-owned audit->plan iteration count for finished telemetry (AC7).
+  // loop never fired): the runtime-owned audit->implement iteration count for finished telemetry (AC7).
   private fun loadAuditGapIterationCount(request: FeatureTaskRuntimeRunRequest): Int =
     recorder.loadPhaseLedger(request.workflowId, request.dbPathOverride)
       .orEmpty()

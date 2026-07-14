@@ -4,6 +4,7 @@ import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
 import skillbill.application.model.WorkflowFamilyKind
 import skillbill.application.model.WorkflowOpenResult
 import skillbill.application.workflow.WorkflowService
+import skillbill.error.InvalidFeatureTaskExecutionIdentitySchemaError
 import skillbill.error.WorkflowIssueKeyConflictError
 import skillbill.ports.workflow.UnavailableDecompositionManifestFileStore
 import kotlin.test.Test
@@ -24,10 +25,20 @@ class WorkflowIssueKeyPersistenceTest {
     )
 
     val prose = assertIs<WorkflowOpenResult.Ok>(
-      service.open(WorkflowFamilyKind.TASK_PROSE, issueKey = "  SKILL-117  "),
+      service.openFeatureTask(
+        WorkflowFamilyKind.TASK_PROSE,
+        issueKey = "  SKILL-117  ",
+        repositoryIdentity = "repo-root-realpath-v1:/test/repository",
+        governedSpecPath = ".feature-specs/SKILL-117/spec.md",
+      ),
     )
     val runtime = assertIs<WorkflowOpenResult.Ok>(
-      service.open(WorkflowFamilyKind.TASK_RUNTIME, issueKey = " SKILL-118 "),
+      service.openFeatureTask(
+        WorkflowFamilyKind.TASK_RUNTIME,
+        issueKey = " SKILL-118 ",
+        repositoryIdentity = "repo-root-realpath-v1:/test/repository",
+        governedSpecPath = ".feature-specs/SKILL-118/spec.md",
+      ),
     )
     val verify = assertIs<WorkflowOpenResult.Ok>(
       service.open(WorkflowFamilyKind.VERIFY, issueKey = " SKILL-119 "),
@@ -48,11 +59,21 @@ class WorkflowIssueKeyPersistenceTest {
       decompositionManifestValidator = testDecompositionManifestValidator,
     )
 
-    assertFailsWith<IllegalArgumentException> {
-      service.open(WorkflowFamilyKind.TASK_PROSE, issueKey = "SKILL-117\nspoofed")
+    assertFailsWith<InvalidFeatureTaskExecutionIdentitySchemaError> {
+      service.openFeatureTask(
+        WorkflowFamilyKind.TASK_PROSE,
+        issueKey = "SKILL-117\nspoofed",
+        repositoryIdentity = "repo-root-realpath-v1:/test/repository",
+        governedSpecPath = ".feature-specs/SKILL-117/spec.md",
+      )
     }
-    assertFailsWith<IllegalArgumentException> {
-      service.open(WorkflowFamilyKind.TASK_PROSE, issueKey = "S".repeat(129))
+    assertFailsWith<InvalidFeatureTaskExecutionIdentitySchemaError> {
+      service.openFeatureTask(
+        WorkflowFamilyKind.TASK_PROSE,
+        issueKey = "S".repeat(129),
+        repositoryIdentity = "repo-root-realpath-v1:/test/repository",
+        governedSpecPath = ".feature-specs/SKILL-117/spec.md",
+      )
     }
   }
 

@@ -194,11 +194,12 @@ internal class DecompositionWorkflowContinuation(
     selection: DecompositionContinuationSelection.Start,
     unitOfWork: UnitOfWork,
   ): ContinuationStepResult {
+    val issueKey = normalizeRequiredIssueKey(manifest.issueKey)
     val branchError = checkoutAndValidateBranch(parentRecord, manifest, selection, unitOfWork)
     return if (branchError != null) {
       ContinuationStepResult(branchError)
     } else {
-      openSubtaskWorkflow(parentRecord, manifest, selection, unitOfWork)
+      openSubtaskWorkflow(parentRecord, manifest, selection, issueKey, unitOfWork)
     }
   }
 
@@ -236,6 +237,7 @@ internal class DecompositionWorkflowContinuation(
     parentRecord: WorkflowStateSnapshot,
     manifest: DecompositionManifest,
     selection: DecompositionContinuationSelection.Start,
+    issueKey: String,
     unitOfWork: UnitOfWork,
   ): ContinuationStepResult {
     val workflowId = generateWorkflowId(WorkflowFamily.IMPLEMENT.definition.workflowIdPrefix)
@@ -263,7 +265,7 @@ internal class DecompositionWorkflowContinuation(
     )
     WorkflowFamily.IMPLEMENT.saveRecord(
       unitOfWork.workflowStates,
-      started.toRecord().copy(issueKey = normalizeRequiredIssueKey(manifest.issueKey)),
+      started.toRecord().copy(issueKey = issueKey),
     )
     engine.persistParentDecompositionRuntime(parentRecord, updatedManifest, unitOfWork, validator)
     val saved = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, workflowId) ?: started

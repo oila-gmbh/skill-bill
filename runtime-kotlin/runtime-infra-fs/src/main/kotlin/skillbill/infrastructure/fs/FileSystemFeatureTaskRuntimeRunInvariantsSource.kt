@@ -37,11 +37,21 @@ class FileSystemFeatureTaskRuntimeRunInvariantsSource : FeatureTaskRuntimeRunInv
   private fun parseListSection(specText: String, headingMatches: (String) -> Boolean): List<String> {
     val body = sectionBody(specText, headingMatches) ?: return emptyList()
     val items = mutableListOf<StringBuilder>()
+    var topLevelIndent: Int? = null
     body.lineSequence().forEach { rawLine ->
       val line = rawLine.trimEnd()
-      val item = NUMBERED_ITEM.find(line) ?: BULLET_ITEM.find(line)
+      val item = LIST_ITEM.find(line)
       when {
-        item != null -> items += StringBuilder(CHECKBOX_PREFIX.replaceFirst(item.groupValues[1].trim(), "").trim())
+        item != null -> {
+          val indent = item.groupValues[1].length
+          val text = CHECKBOX_PREFIX.replaceFirst(item.groupValues[2].trim(), "").trim()
+          val baseIndent = topLevelIndent ?: indent.also { topLevelIndent = it }
+          if (indent <= baseIndent) {
+            items += StringBuilder(text)
+          } else if (items.isNotEmpty()) {
+            items.last().append(" Subcriterion: ").append(text)
+          }
+        }
         line.isBlank() -> Unit
         items.isNotEmpty() -> items.last().append(' ').append(line.trim())
       }
@@ -70,8 +80,7 @@ class FileSystemFeatureTaskRuntimeRunInvariantsSource : FeatureTaskRuntimeRunInv
     const val ACCEPTANCE_CRITERIA_PREFIX = "acceptance criteria"
     val MANDATES_HEADINGS = setOf("mandates", "mandates and overrides", "mandates & overrides")
     val HEADING = Regex("""^#{2,6}\s+(.+)$""")
-    val NUMBERED_ITEM = Regex("""^\s*\d+\.\s+(.*)$""")
-    val BULLET_ITEM = Regex("""^\s*[-*]\s+(.*)$""")
+    val LIST_ITEM = Regex("""^(\s*)(?:\d+\.|[-*])\s+(.*)$""")
     val CHECKBOX_PREFIX = Regex("""^\[[ xX]]\s*""")
     val FEATURE_SIZE_LINE = Regex("""(?im)^\s*(?:feature[_ -]size|size)\s*:\s*([^\r\n#]+)(?:\s+#.*)?$""")
   }

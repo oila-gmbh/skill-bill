@@ -33,7 +33,7 @@ It is a tiny CI/CD for the feature itself, not just the code.
 
 Generic skills like `/bill-code-review` and `/bill-code-check` are routing shells. The real work lives in `platform-packs/<lang>/` (today: `go`, `ios`, `kotlin`, `kmp`, `php`, `python`, `rust`, `typescript`). Go, iOS, Kotlin, PHP, Python, Rust, and TypeScript directly declare all ten approved specialist areas. KMP composes seven areas from its required Kotlin baseline and owns the platform-correctness, UI, and UX-accessibility delta lanes. Each dominant stack routes directly to its own manifest-declared quality checker; KMP selects `bill-kmp-code-check` without a Kotlin fallback. At runtime the generic entry point reads `routing_signals` from every discovered `platform.yaml` and hands off to the matching native skill. Adding a new language is purely additive—drop in a conforming `platform-packs/<lang>/`; no generic-shell platform enumeration is needed.
 
-`/bill-code-review` accepts `mode:auto|inline|delegated`: omission keeps automatic eligibility-based selection, `mode:inline` requires an eligible inline review, and `mode:delegated` requires the routed delegated path. Feature workflows expose the same choice as `code-review:auto|inline|delegated`, independently of their `mode:runtime|prose` execution-engine selector.
+`/bill-code-review` accepts `mode:auto|inline|delegated`: omission keeps automatic eligibility-based selection, `mode:inline` runs the complete routed review in the current context regardless of size or risk, and `mode:delegated` requires the routed delegated path. Feature workflows expose the same choice as `code-review:auto|inline|delegated`, independently of their `mode:runtime|prose` execution-engine selector.
 
 The shipped `rust` pack follows that same manifest-driven path: Cargo and first-party `.rs` signals route to `bill-rust-code-review` and `bill-rust-code-check`, with governed native agents for the baseline and all ten specialist lanes. Its quality checks understand workspaces, features, targets, rustfmt, Clippy, nextest, cargo-deny, and cargo-audit; Rust-specific routing is not hard-coded into either generic shell.
 
@@ -134,6 +134,15 @@ Every module/package has its own `agent/decisions.md` and `agent/history.md`. Th
 <summary><b>10. First-class, transport-resilient structured telemetry</b></summary>
 
 Every skill that matters emits typed telemetry, not just log lines.
+
+Feature-task runs also use validated, immutable execution identity for
+database-first continuation. Identity binds the normalized issue key to the
+canonical repository, persisted mode, governed spec path, and route scope, so
+equal issue keys in separate clones cannot collide. Lookup distinguishes no
+match, resumable, already running, ambiguous, and terminal-only results without
+mutating state or treating `spec.md` as a duplicate planning ledger.
+
+Runtime process ownership is a separate fenced lease, never part of the immutable identity or governed spec. Exact host, boot, PID, and process-birth evidence protects takeover from PID reuse and cross-host mistakes; owner tokens and generations prevent concurrent reclaimers or displaced workers from writing progress.
 
 - **Per-skill start/finish pairs** with stable session ids: `feature_task_prose_started/_finished`, `feature_verify_started/_finished`, `quality_check_started/_finished`, `review_stats`, `pr_description_generated`, `import_review`, `triage_findings`, `resolve_learnings`, plus aggregate views (`feature_task_prose_stats`, `feature_verify_stats`, `telemetry_remote_stats`, `telemetry_proxy_capabilities`).
 - **Orchestrator/child relationship is modeled**: orchestrated subagents call their own `*_finished` with `orchestrated=true` and return a `telemetry_payload`; the orchestrator assembles a parent/child tree. You can see the whole run as a tree, not a flat stream.

@@ -1,3 +1,24 @@
+## [2026-07-14] SKILL-126 audit-fix context reuse
+Areas: runtime-kotlin/runtime-{application,domain,mcp}, skills/bill-feature-task-runtime
+- Audit `gaps_found` transitions now reopen implementation directly and reuse the workflow's immutable initial preplan and plan outputs for standalone and goal-child runs; planning phases are never relaunched or overwritten. reusable
+- Durable loop-edge state scopes remediation to the latest unmet criteria and resumes crash windows at implement or review without double-applying fixes; audit-gap iteration, phase, ledger, and terminal telemetry remain accurate.
+- Goal-child review completion records phase state and its COMPLETE ledger entry atomically, with observability no longer creating duplicate completion entries across audit-gap review passes. reusable
+- Pattern: recover backward-edge work from persisted destination state plus the original planning artifacts, and loud-fail missing or invalid context instead of regenerating it. reusable
+- Existing review-fix behavior and the shared two-pass review budget compose unchanged with repeated audit-gap iterations; no breaking external contract or feature flag.
+Feature flag: N/A
+Acceptance criteria: 9/9 implemented
+
+## [2026-07-14] SKILL-120 DB-first feature continuation
+Areas: runtime-kotlin/runtime-{application,cli,core,domain,infra-fs,infra-sqlite,mcp,ports}, orchestration/contracts, skills/bill-feature*, runtime-kotlin/ARCHITECTURE.md
+- Feature-task creation persists normalized issue and repository identity plus the governed spec path; typed repository-scoped lookup distinguishes no-match, resumable, running, ambiguous, and terminal-only results and loud-fails corrupt identity. reusable
+- `bill-feature` continuation preserves workflow/session IDs and persisted mode: prose and runtime resume at the durable next phase, implementation receives the completed plan without `preplan_digest`, and no-match retains the existing preparation and confirmation flow.
+- Runtime worker ownership uses durable host/process-start evidence, heartbeat supervision, and compare-and-set reclaim so confirmed continuation can take over an exact live worker or reclaim an orphan without duplicating work. reusable
+- Audit gaps re-enter planning without a fixed cap; exhausted review-fix retries advance to audit with the latest findings preserved instead of terminally blocking the workflow.
+- Pattern: keep the database authoritative for execution state and recovery artifacts while `spec.md` remains the governed feature contract; continuation never reconstructs planning state from chat or mutates the spec as a checkpoint. reusable
+- Known limitation: restart/new-attempt policy remains explicit operator intent and is not introduced by this feature; no breaking external contract or feature flag.
+Feature flag: N/A
+Acceptance criteria: 18/18 implemented
+
 ## [2026-07-13] SKILL-121 shared delegated review context and bounded re-review
 Areas: runtime-kotlin/runtime-application review and feature-task, runtime-domain workflow state, runtime-ports/runtime-infra-fs review, orchestration review contracts, skills/bill-code-review and bill-feature-task*
 - Delegated review parents now prepare one compact authoritative scope/routing/guidance/build packet, assign only diff-signal-selected lanes plus baselines, and restrict workers to assigned hunks and direct dependencies. reusable

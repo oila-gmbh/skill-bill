@@ -4,6 +4,7 @@ import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.model.appendBoundedHistoryBySequence
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_LIMIT
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationOutcome
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
@@ -20,6 +21,24 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class FeatureTaskRuntimePersistenceModelsTest {
+  @Test
+  fun `phase record round trips typed failure disposition and file manifests`() {
+    val record = FeatureTaskRuntimePhaseRecord(
+      phaseId = "review",
+      status = "blocked",
+      attemptCount = 1,
+      startedAt = "2026-07-13T12:00:00Z",
+      resolvedAgentId = "reviewer",
+      blockedReason = "Policy conflict.",
+      failureDisposition = FeatureTaskRuntimeFailureDisposition.NON_RETRYABLE_POLICY_CONFLICT,
+      fileManifestBefore = listOf("src/Existing.kt"),
+      fileManifestAfter = listOf(".feature-specs/SKILL-124/spec.md", "src/Existing.kt"),
+      fileManifestIntroduced = listOf(".feature-specs/SKILL-124/spec.md"),
+    )
+
+    assertEquals(record, FeatureTaskRuntimePhaseRecord.fromArtifactMap(record.toArtifactMap()))
+  }
+
   @Test
   fun `goal-continuation artifact retains the immutable review mode and optional parallel lane`() {
     val artifact = FeatureTaskRuntimeGoalContinuationArtifact(

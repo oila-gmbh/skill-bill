@@ -5,9 +5,11 @@ import me.tatarka.inject.annotations.Provides
 import skillbill.application.agentrun.AgentRunGoalRunnerSubtaskLauncher
 import skillbill.application.agentrun.AgentRunService
 import skillbill.application.config.ConfigResolutionService
+import skillbill.application.featuretask.FeatureTaskContinuationLookupService
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
 import skillbill.application.featuretask.FeatureTaskRuntimeRunner
 import skillbill.application.featuretask.FeatureTaskRuntimeStatusService
+import skillbill.application.featuretask.FeatureTaskRuntimeWorkerCoordinator
 import skillbill.application.goalrunner.GoalLifecycleTelemetryEmitter
 import skillbill.application.goalrunner.GoalRunner
 import skillbill.application.goalrunner.GoalRunnerStatusService
@@ -79,6 +81,7 @@ import skillbill.infrastructure.fs.GitWorkflowGitOperations
 import skillbill.infrastructure.fs.GoalObservabilityEventValidatorAdapter
 import skillbill.infrastructure.fs.GoalProgressEventValidatorAdapter
 import skillbill.infrastructure.fs.InstallPlanWireValidatorAdapter
+import skillbill.infrastructure.fs.JdkFeatureTaskRuntimeWorkerSupervisor
 import skillbill.infrastructure.fs.JdkParallelReviewLaneRunner
 import skillbill.infrastructure.fs.JdkRuntimeDiagnostics
 import skillbill.infrastructure.fs.JdkRuntimeTimingPort
@@ -133,6 +136,7 @@ import skillbill.ports.scaffold.staging.ScaffoldGeneratedStagingPort
 import skillbill.ports.system.UninstallFileSystemGateway
 import skillbill.ports.taskruntime.FeatureTaskRuntimeRunInvariantsSource
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSpecStatusWriter
+import skillbill.ports.taskruntime.FeatureTaskRuntimeWorkerSupervisor
 import skillbill.ports.telemetry.TelemetryClient
 import skillbill.ports.telemetry.TelemetryConfigStore
 import skillbill.ports.telemetry.TelemetryLevelMutator
@@ -157,6 +161,8 @@ import java.nio.file.Path
 abstract class RuntimeComponent(
   private val inputRuntimeContext: RuntimeContext,
 ) {
+  abstract val featureTaskContinuationLookupService: FeatureTaskContinuationLookupService
+
   /*
    * Composition-root exception: RuntimeComponent is the only runtime-core surface allowed to
    * know concrete filesystem, HTTP, and SQLite adapters. Downstream adapters consume the
@@ -426,6 +432,12 @@ abstract class RuntimeComponent(
 
   @Provides
   @JvmSynthetic
+  internal fun featureTaskRuntimeWorkerSupervisor(
+    adapter: JdkFeatureTaskRuntimeWorkerSupervisor,
+  ): FeatureTaskRuntimeWorkerSupervisor = adapter
+
+  @Provides
+  @JvmSynthetic
   internal fun featureTaskRuntimeSpecStatusWriter(
     adapter: FileSystemFeatureTaskRuntimeSpecStatusWriter,
   ): FeatureTaskRuntimeSpecStatusWriter = adapter
@@ -509,6 +521,7 @@ abstract class RuntimeComponent(
   abstract val featureTaskRuntimePhaseRecorder: FeatureTaskRuntimePhaseRecorder
   abstract val featureTaskRuntimeRunner: FeatureTaskRuntimeRunner
   abstract val featureTaskRuntimeStatusService: FeatureTaskRuntimeStatusService
+  abstract val featureTaskRuntimeWorkerCoordinator: FeatureTaskRuntimeWorkerCoordinator
 
   // Exposed as a pre-built object so the CLI consumer need not resolve the infra-fs adapter type,
   // which is not on the CLI module's compile classpath.

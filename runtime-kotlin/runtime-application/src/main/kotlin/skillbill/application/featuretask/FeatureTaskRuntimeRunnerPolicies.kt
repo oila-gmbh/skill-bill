@@ -79,6 +79,7 @@ internal fun reviewVerificationSignalGateReason(phaseId: String, outputMap: Map<
 
 internal fun auditVerificationSignalGateReason(phaseId: String, outputMap: Map<String, Any?>): String? {
   if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT) return null
+  FeatureTaskRuntimeOutputVerification.auditGapPayloadError(outputMap)?.let { return it }
   val hasVerdict = (outputMap[FeatureTaskRuntimeVerificationSignalKeys.VERDICT] as? String)?.isNotBlank() == true
   val producedOutputs = outputMap["produced_outputs"] as? Map<*, *>
   val hasCriteriaArray = listOf(

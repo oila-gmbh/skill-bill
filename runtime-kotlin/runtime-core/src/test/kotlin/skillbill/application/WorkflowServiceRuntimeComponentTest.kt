@@ -27,7 +27,7 @@ class WorkflowServiceRuntimeComponentTest {
           userHome = tempDir,
         ),
       ).workflowService
-    val opened = service.open(WorkflowFamilyKind.TASK_PROSE, sessionId = "fis-001", dbOverride = null)
+    val opened = service.openTestFeatureTask(WorkflowFamilyKind.TASK_PROSE, sessionId = "fis-001", dbOverride = null)
     val workflowId =
       (opened as skillbill.application.model.WorkflowOpenResult.Ok).workflowId
 

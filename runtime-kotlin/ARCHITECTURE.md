@@ -2,6 +2,14 @@
 
 This document defines the enforced architecture for `runtime-kotlin`.
 
+## DB-first feature-task continuation
+
+Feature-task continuation is repository-scoped and database-authoritative. At workflow creation, an immutable identity row binds the workflow id to a normalized issue key, canonical real-path Git-root identity, repository-relative governed spec path, persisted mode, and standalone/goal-child route scope. Read-only lookup never chooses among multiple eligible rows by timestamp.
+
+The feature `spec.md` remains the governed product contract; it is not a mutable workflow ledger. Pre-planning, planning, phase outputs, and the phase ledger remain durable database artifacts. Initial implementation continuation is hydrated from the completed `plan`. Audit-gap remediation reuses the immutable original completed `preplan` and `plan` outputs and never loops back to either planning phase.
+
+Runtime worker ownership is mutable state kept separately from immutable execution identity. A worker lease records a random owner token, monotonic fencing generation, host and boot identity, PID plus process-birth evidence, heartbeat/expiry, and the incomplete phase attempt. Every heartbeat, phase write, takeover reservation, transfer, and release must match both token and generation. Process liveness is exact only when host, boot, PID, and birth evidence agree; unverifiable or mismatched ownership must fail loudly instead of terminating a process or creating a replacement workflow. Confirmed takeover first reserves ownership with compare-and-set, then requests graceful shutdown and escalates only if the same process identity remains live.
+
 The runtime uses a hexagonal JVM graph with entry adapters at the outside,
 application use cases in the orchestration layer, ports as the dependency
 boundary, domain models and rules below the ports, and concrete infrastructure

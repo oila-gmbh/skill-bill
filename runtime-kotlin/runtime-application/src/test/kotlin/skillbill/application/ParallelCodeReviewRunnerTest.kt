@@ -222,14 +222,56 @@ class ParallelCodeReviewRunnerTest {
     assertEquals(2, launcher.requests.size)
     launcher.requests.forEach { request ->
       val prompt = request.skillRunRequest.promptOverride.orEmpty()
-      assertContains(prompt, exactDiff)
-      assertContains(prompt, "dominant stack is kotlin (pre-resolved detected stack)")
-      assertContains(prompt, "Prepare one shared review-context packet")
-      assertContains(prompt, "workers must not repeat repository, scope, stack, routing, or guidance discovery")
-      assertContains(prompt, "launch only signal-relevant non-empty specialist lanes")
+      assertContains(prompt, "+owned change", message = "the authoritative diff must be reviewable")
+      assertContains(prompt, "one complete bill-code-review parent review")
+      assertContains(prompt, "Detected stack: kotlin")
+      assertContains(prompt, "exact diff below as the authoritative review scope")
+      assertContains(prompt, "Route all required baseline and signal-relevant rubrics")
+      assertEquals(null, request.skillRunRequest.conversationIsolation)
+      assertFalse(prompt.contains("Prepare one shared review-context packet"))
+      assertFalse(prompt.contains("assignment_digest:"))
+      assertFalse(prompt.contains("fork_turns:"))
       assertFalse(prompt.contains("## Specialist:"), "flattened specialist rubric bodies must stay out of lane prompts")
       assertFalse(prompt.contains("Apply all of the following specialist review rubrics"))
     }
+  }
+
+  @Test
+  fun `provider usage is preserved in lane status`() {
+    val launcher = GoalRunnerSubtaskLauncher { request ->
+      AgentRunLaunchFacts(
+        agent = InstallAgent.fromNormalizedId(request.invokedAgentId, label = "agentId"),
+        exitStatus = 0,
+        stdout = "",
+        stderr = "",
+        timedOut = false,
+        spawnFailed = false,
+        inputTokens = 100,
+        cachedInputTokens = 40,
+        outputTokens = 10,
+        totalTokens = 110,
+      )
+    }
+
+    val result = runner(launcher, diffResolver = RecordingDiffResolver(default = diffFor("A.kt")))
+      .run(baseRequest(scope = ParallelReviewScope.STAGED))
+
+    assertEquals(70, result.lane1.tokenUsage?.freshTokenApproximation)
+    assertEquals(110, result.lane2.tokenUsage?.totalTokens)
+  }
+
+  @Test
+  fun `excessive lane result terminates with typed budget outcome`() {
+    val runner = runner(
+      alwaysSuccessLauncher("x".repeat(65_537)),
+      diffResolver = RecordingDiffResolver(default = diffFor("A.kt")),
+    )
+
+    val result = runner.run(baseRequest(scope = ParallelReviewScope.STAGED))
+
+    assertFalse(result.lane1.success)
+    assertContains(result.lane1.failureReason.orEmpty(), "review_context_budget_exceeded")
+    assertTrue(result.mergeResult.findings.isEmpty())
   }
 
   @Test
@@ -435,7 +477,7 @@ class ParallelCodeReviewRunnerTest {
 
     assertTrue(
       launcher.requests.all { request ->
-        request.skillRunRequest.promptOverride.orEmpty().contains("dominant stack is typescript")
+        request.skillRunRequest.promptOverride.orEmpty().contains("Detected stack: typescript")
       },
     )
   }

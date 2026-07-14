@@ -21,6 +21,26 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorTest {
   }
 
   @Test
+  fun `blocked output accepts a typed non-retryable disposition`() {
+    val blocked = wellFormed
+      .replace("status: \"completed\"", "status: \"blocked\"") +
+      "\nfailure_disposition: \"non_retryable_policy_conflict\""
+
+    FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(blocked, "plan")
+  }
+
+  @Test
+  fun `unknown failure disposition fails validation`() {
+    val blocked = wellFormed
+      .replace("status: \"completed\"", "status: \"blocked\"") +
+      "\nfailure_disposition: \"try_forever\""
+
+    assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
+      FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(blocked, "plan")
+    }
+  }
+
+  @Test
   fun `empty object fails validation`() {
     assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
       FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText("{}", "plan")

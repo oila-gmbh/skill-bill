@@ -4,6 +4,7 @@ import me.tatarka.inject.annotations.Inject
 import skillbill.application.decomposition.DECOMPOSITION_RUNTIME_ARTIFACT_KEY
 import skillbill.application.decomposition.DecompositionManifestWriter
 import skillbill.application.decomposition.encodeDecompositionManifestMap
+import skillbill.application.featuretask.FeatureTaskExecutionIdentityPolicy
 import skillbill.application.goalrunner.GoalObservabilityArtifacts
 import skillbill.application.model.DecompositionManifestRuntimeUpdate
 import skillbill.application.model.WorkflowContinueResult
@@ -21,6 +22,8 @@ import skillbill.contracts.JsonSupport
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.persistence.WorkflowStateRepository
+import skillbill.ports.persistence.model.FeatureTaskExecutionIdentity
+import skillbill.ports.persistence.model.FeatureTaskRouteScope
 import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import skillbill.ports.persistence.model.WorkflowStateRecord
 import skillbill.ports.workflow.DecompositionManifestFileStore
@@ -43,6 +46,7 @@ import java.time.ZoneOffset
 import kotlin.random.Random
 
 @Inject
+@Suppress("TooManyFunctions")
 class WorkflowService(
   private val database: DatabaseSessionFactory,
   private val gitOperations: WorkflowGitOperations = NoopWorkflowGitOperations,
@@ -60,21 +64,56 @@ class WorkflowService(
   // instance, so a single shared engine amortises schema parse + compile
   // cost across every call.
   private val engine: WorkflowEngine = WorkflowEngine(workflowSnapshotValidator)
+
+  @Suppress("LongParameterList")
   fun open(
     kind: WorkflowFamilyKind,
     sessionId: String = "",
     currentStepId: String? = null,
     dbOverride: String? = null,
     issueKey: String? = null,
+    repositoryIdentity: String? = null,
+    governedSpecPath: String? = null,
+    routeScope: FeatureTaskRouteScope = FeatureTaskRouteScope.STANDALONE,
   ): WorkflowOpenResult {
+    val hasIdentityCoordinates = repositoryIdentity != null || governedSpecPath != null
+    val hasIncompleteIdentity = hasIncompleteFeatureTaskIdentity(
+      kind,
+      hasIdentityCoordinates,
+      issueKey,
+      repositoryIdentity,
+      governedSpecPath,
+    )
+    if (hasIncompleteIdentity) {
+      return WorkflowOpenResult.Error(
+        workflowId = "unassigned",
+        error = INCOMPLETE_FEATURE_TASK_IDENTITY_ERROR,
+      )
+    }
     val family = kind.workflowFamily()
     val stepId = currentStepId ?: family.definition.defaultInitialStepId
     val workflowId = generateWorkflowId(family.definition.workflowIdPrefix)
+    val effectiveSessionId = if (
+      sessionId.isBlank() && kind == WorkflowFamilyKind.TASK_RUNTIME
+    ) {
+      "${family.definition.defaultSessionPrefix}-$workflowId"
+    } else {
+      sessionId
+    }
     WorkflowEngine.validateOpen(family.definition, stepId)?.let { error ->
       return WorkflowOpenResult.Error(workflowId, error)
     }
+    val executionIdentity = buildFeatureTaskExecutionIdentity(
+      kind,
+      hasIdentityCoordinates,
+      workflowId,
+      issueKey,
+      repositoryIdentity,
+      governedSpecPath,
+      routeScope,
+    )
     return database.transaction(dbOverride) { unitOfWork ->
-      val record = engine.openRecord(family.definition, workflowId, sessionId, stepId)
+      val record = engine.openRecord(family.definition, workflowId, effectiveSessionId, stepId)
       family.saveRecord(
         unitOfWork.workflowStates,
         record.toRecord().copy(
@@ -82,6 +121,7 @@ class WorkflowService(
           issueKey = normalizeIssueKey(issueKey),
         ),
       )
+      executionIdentity?.let(unitOfWork.workflowStates::saveFeatureTaskExecutionIdentity)
       val saved = family.get(unitOfWork.workflowStates, workflowId) ?: record
       WorkflowOpenResult.Ok(
         workflowId = saved.workflowId,
@@ -89,6 +129,73 @@ class WorkflowService(
         snapshot = engine.snapshotView(family.definition, saved),
       )
     }
+  }
+
+  private fun hasIncompleteFeatureTaskIdentity(
+    kind: WorkflowFamilyKind,
+    hasIdentityCoordinates: Boolean,
+    issueKey: String?,
+    repositoryIdentity: String?,
+    governedSpecPath: String?,
+  ): Boolean = kind in FEATURE_TASK_FAMILY_KINDS &&
+    hasIdentityCoordinates &&
+    listOf(issueKey, repositoryIdentity, governedSpecPath).any { it == null }
+
+  @Suppress("LongParameterList")
+  private fun buildFeatureTaskExecutionIdentity(
+    kind: WorkflowFamilyKind,
+    hasIdentityCoordinates: Boolean,
+    workflowId: String,
+    issueKey: String?,
+    repositoryIdentity: String?,
+    governedSpecPath: String?,
+    routeScope: FeatureTaskRouteScope,
+  ): FeatureTaskExecutionIdentity? {
+    if (kind !in FEATURE_TASK_FAMILY_KINDS || !hasIdentityCoordinates) return null
+    val requiredRepositoryIdentity = requireNotNull(repositoryIdentity)
+    val normalizedIssueKey = FeatureTaskExecutionIdentityPolicy.validateLookupRequest(
+      requireNotNull(issueKey),
+      requiredRepositoryIdentity,
+    )
+    val mode = if (kind == WorkflowFamilyKind.TASK_PROSE) {
+      FeatureTaskWorkflowMode.PROSE
+    } else {
+      FeatureTaskWorkflowMode.RUNTIME
+    }
+    return FeatureTaskExecutionIdentity(
+      workflowId = workflowId,
+      normalizedIssueKey = normalizedIssueKey,
+      repositoryIdentity = requiredRepositoryIdentity,
+      governedSpecPath = requireNotNull(governedSpecPath),
+      mode = mode,
+      routeScope = routeScope,
+    ).also(FeatureTaskExecutionIdentityPolicy::validate)
+  }
+
+  @Suppress("LongParameterList")
+  fun openFeatureTask(
+    kind: WorkflowFamilyKind,
+    sessionId: String = "",
+    currentStepId: String? = null,
+    dbOverride: String? = null,
+    issueKey: String,
+    repositoryIdentity: String,
+    governedSpecPath: String,
+    routeScope: FeatureTaskRouteScope = FeatureTaskRouteScope.STANDALONE,
+  ): WorkflowOpenResult {
+    require(kind in FEATURE_TASK_FAMILY_KINDS) {
+      "Only prose and runtime feature-task workflows use execution identity."
+    }
+    return open(
+      kind,
+      sessionId,
+      currentStepId,
+      dbOverride,
+      issueKey,
+      repositoryIdentity,
+      governedSpecPath,
+      routeScope,
+    )
   }
 
   fun update(
@@ -145,6 +252,119 @@ class WorkflowService(
       )
     }
     return result
+  }
+
+  fun abandonFeatureTaskRuntime(workflowId: String, reason: String, dbOverride: String? = null): WorkflowUpdateResult {
+    val normalizedReason = reason.trim()
+    if (normalizedReason.isEmpty() || normalizedReason.length > MAX_ABANDONMENT_REASON_LENGTH) {
+      return WorkflowUpdateResult.Error(
+        workflowId,
+        "Abandonment reason must contain 1..$MAX_ABANDONMENT_REASON_LENGTH characters.",
+      )
+    }
+    return database.transaction(dbOverride) { unitOfWork ->
+      val family = WorkflowFamily.TASK_RUNTIME
+      val existing = family.get(unitOfWork.workflowStates, workflowId)
+        ?: return@transaction WorkflowUpdateResult.Error(
+          workflowId,
+          "Unknown runtime workflow_id '$workflowId'.",
+          unitOfWork.dbPath.toString(),
+        )
+      if (existing.workflowStatus in family.definition.terminalStatuses) {
+        return@transaction WorkflowUpdateResult.Error(
+          workflowId,
+          "Runtime workflow '$workflowId' is already terminal with status '${existing.workflowStatus}'.",
+          unitOfWork.dbPath.toString(),
+        )
+      }
+      val input = WorkflowUpdateInput(
+        workflowStatus = "abandoned",
+        currentStepId = existing.currentStepId.orEmpty(),
+        stepUpdates = null,
+        artifactsPatch = mapOf(
+          FEATURE_TASK_RUNTIME_OPERATOR_ABANDONMENT_ARTIFACT_KEY to mapOf(
+            "reason" to normalizedReason,
+            "abandoned_at" to OffsetDateTime.now(ZoneOffset.UTC).toString(),
+          ),
+        ),
+        sessionId = "",
+      )
+      val updated = engine.updateRecord(family.definition, existing, input)
+      family.save(unitOfWork.workflowStates, updated)
+      updateOk(family.definition, updated, input, unitOfWork.dbPath.toString())
+    }
+  }
+
+  @Suppress("LongMethod", "LongParameterList")
+  fun repairFeatureTaskRuntimeIdentity(
+    workflowId: String,
+    issueKey: String,
+    repositoryIdentity: String,
+    governedSpecPath: String,
+    reason: String,
+    dbOverride: String? = null,
+  ): WorkflowUpdateResult {
+    val normalizedReason = reason.trim()
+    if (normalizedReason.isEmpty() || normalizedReason.length > MAX_ABANDONMENT_REASON_LENGTH) {
+      return WorkflowUpdateResult.Error(
+        workflowId,
+        "Identity-repair reason must contain 1..$MAX_ABANDONMENT_REASON_LENGTH characters.",
+      )
+    }
+    val normalizedIssueKey = requireNotNull(normalizeIssueKey(issueKey)).uppercase()
+    return database.transaction(dbOverride) { unitOfWork ->
+      val family = WorkflowFamily.TASK_RUNTIME
+      val workflowRow = unitOfWork.workflowStates.getFeatureTaskRuntimeWorkflow(workflowId)
+        ?: return@transaction WorkflowUpdateResult.Error(
+          workflowId,
+          "Unknown runtime workflow_id '$workflowId'.",
+          unitOfWork.dbPath.toString(),
+        )
+      val existing = requireNotNull(family.get(unitOfWork.workflowStates, workflowId))
+      if (existing.workflowStatus in family.definition.terminalStatuses) {
+        return@transaction WorkflowUpdateResult.Error(
+          workflowId,
+          "Runtime workflow '$workflowId' is already terminal with status '${existing.workflowStatus}'; " +
+            "identity repair is only supported for nonterminal workflows.",
+          unitOfWork.dbPath.toString(),
+        )
+      }
+      val persistedIssueKey = workflowRow.issueKey?.let(::normalizeIssueKey)?.uppercase()
+      if (persistedIssueKey != null && persistedIssueKey != normalizedIssueKey) {
+        return@transaction WorkflowUpdateResult.Error(
+          workflowId,
+          "Runtime workflow '$workflowId' belongs to issue '$persistedIssueKey', not '$normalizedIssueKey'.",
+          unitOfWork.dbPath.toString(),
+        )
+      }
+      val identity = FeatureTaskExecutionIdentity(
+        workflowId = workflowId,
+        normalizedIssueKey = normalizedIssueKey,
+        repositoryIdentity = repositoryIdentity,
+        governedSpecPath = governedSpecPath,
+        mode = FeatureTaskWorkflowMode.RUNTIME,
+        routeScope = FeatureTaskRouteScope.STANDALONE,
+      )
+      FeatureTaskExecutionIdentityPolicy.validate(identity)
+      unitOfWork.workflowStates.saveFeatureTaskExecutionIdentity(identity)
+      val input = WorkflowUpdateInput(
+        workflowStatus = existing.workflowStatus,
+        currentStepId = existing.currentStepId.orEmpty(),
+        stepUpdates = null,
+        artifactsPatch = mapOf(
+          FEATURE_TASK_RUNTIME_IDENTITY_REPAIR_ARTIFACT_KEY to mapOf(
+            "reason" to normalizedReason,
+            "repaired_at" to OffsetDateTime.now(ZoneOffset.UTC).toString(),
+            "repository_identity" to repositoryIdentity,
+            "governed_spec_path" to governedSpecPath,
+          ),
+        ),
+        sessionId = "",
+      )
+      val updated = engine.updateRecord(family.definition, existing, input)
+      family.save(unitOfWork.workflowStates, updated)
+      updateOk(family.definition, updated, input, unitOfWork.dbPath.toString())
+    }
   }
 
   fun get(kind: WorkflowFamilyKind, workflowId: String, dbOverride: String? = null): WorkflowGetResult =
@@ -285,7 +505,13 @@ private fun WorkflowEngine.syncDecompositionParentRuntime(
 }
 
 private const val DEFAULT_LIST_LIMIT: Int = 20
+private const val MAX_ABANDONMENT_REASON_LENGTH: Int = 1000
+private const val FEATURE_TASK_RUNTIME_OPERATOR_ABANDONMENT_ARTIFACT_KEY: String = "operator_abandonment"
+private const val FEATURE_TASK_RUNTIME_IDENTITY_REPAIR_ARTIFACT_KEY: String = "operator_identity_repair"
 private const val WORKFLOW_ID_SUFFIX_LENGTH: Int = 4
+private val FEATURE_TASK_FAMILY_KINDS = setOf(WorkflowFamilyKind.TASK_PROSE, WorkflowFamilyKind.TASK_RUNTIME)
+private const val INCOMPLETE_FEATURE_TASK_IDENTITY_ERROR =
+  "Feature-task workflows must be opened through openFeatureTask with complete immutable execution identity."
 private const val SUFFIX_CHARS: String = "abcdefghijklmnopqrstuvwxyz0123456789"
 
 private fun WorkflowUpdateRequest.toWorkflowUpdateInput(): WorkflowUpdateInput = WorkflowUpdateInput(

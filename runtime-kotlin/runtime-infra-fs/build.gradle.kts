@@ -24,6 +24,22 @@ val canonicalPlatformPackSchemaPath: String =
     .resolve("orchestration/contracts/platform-pack-schema.yaml")
     .absolutePath
 
+val canonicalReviewContextSchemaPath: String =
+  rootProject.projectDir.parentFile
+    .resolve("orchestration/contracts/review-context-schema.yaml").absolutePath
+val copyReviewContextSchema =
+  tasks.register<Copy>("copyReviewContextSchema") {
+    val schemaPath = canonicalReviewContextSchemaPath
+    from(schemaPath)
+    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/contracts"))
+    inputs.file(schemaPath)
+    doFirst {
+      require(File(schemaPath).exists()) {
+        "SKILL-125: canonical review-context schema is missing at $schemaPath."
+      }
+    }
+  }
+
 val copyPlatformPackSchema =
   tasks.register<Copy>("copyPlatformPackSchema") {
     val schemaPath = canonicalPlatformPackSchemaPath
@@ -180,6 +196,43 @@ val canonicalFeatureTaskRuntimePhaseOutputSchemaPath: String =
     .resolve("orchestration/contracts/feature-task-runtime-phase-output-schema.yaml")
     .absolutePath
 
+val canonicalFeatureTaskExecutionIdentitySchemaPath: String =
+  rootProject.projectDir.parentFile
+    .resolve("orchestration/contracts/feature-task-execution-identity-schema.yaml")
+    .absolutePath
+
+val canonicalFeatureTaskRuntimeWorkerOwnershipSchemaPath: String =
+  rootProject.projectDir.parentFile
+    .resolve("orchestration/contracts/feature-task-runtime-worker-ownership-schema.yaml")
+    .absolutePath
+
+val copyFeatureTaskRuntimeWorkerOwnershipSchema =
+  tasks.register<Copy>("copyFeatureTaskRuntimeWorkerOwnershipSchema") {
+    val schemaPath = canonicalFeatureTaskRuntimeWorkerOwnershipSchemaPath
+    from(schemaPath)
+    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/contracts"))
+    inputs.file(schemaPath)
+    doFirst {
+      require(File(schemaPath).exists()) {
+        "SKILL-120: canonical feature-task runtime worker-ownership schema is missing " +
+          "at $schemaPath."
+      }
+    }
+  }
+
+val copyFeatureTaskExecutionIdentitySchema =
+  tasks.register<Copy>("copyFeatureTaskExecutionIdentitySchema") {
+    val schemaPath = canonicalFeatureTaskExecutionIdentitySchemaPath
+    from(schemaPath)
+    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/contracts"))
+    inputs.file(schemaPath)
+    doFirst {
+      require(File(schemaPath).exists()) {
+        "SKILL-120: canonical feature-task execution-identity schema is missing at $schemaPath."
+      }
+    }
+  }
+
 val copyFeatureTaskRuntimePhaseOutputSchema =
   tasks.register<Copy>("copyFeatureTaskRuntimePhaseOutputSchema") {
     val schemaPath = canonicalFeatureTaskRuntimePhaseOutputSchemaPath
@@ -199,6 +252,7 @@ sourceSets.named("main") {
 }
 
 tasks.named("processResources") {
+  dependsOn(copyReviewContextSchema)
   dependsOn(copyPlatformPackSchema)
   dependsOn(copyNativeAgentCompositionSchema)
   dependsOn(copyWorkflowStateSchema)
@@ -208,9 +262,12 @@ tasks.named("processResources") {
   dependsOn(copyGoalProgressEventSchema)
   dependsOn(copyGoalSubtaskReviewStateSchema)
   dependsOn(copyFeatureTaskRuntimePhaseOutputSchema)
+  dependsOn(copyFeatureTaskExecutionIdentitySchema)
+  dependsOn(copyFeatureTaskRuntimeWorkerOwnershipSchema)
 }
 
 tasks.named("processTestResources") {
+  dependsOn(copyReviewContextSchema)
   dependsOn(copyPlatformPackSchema)
   dependsOn(copyNativeAgentCompositionSchema)
   dependsOn(copyWorkflowStateSchema)
@@ -220,6 +277,8 @@ tasks.named("processTestResources") {
   dependsOn(copyGoalProgressEventSchema)
   dependsOn(copyGoalSubtaskReviewStateSchema)
   dependsOn(copyFeatureTaskRuntimePhaseOutputSchema)
+  dependsOn(copyFeatureTaskExecutionIdentitySchema)
+  dependsOn(copyFeatureTaskRuntimeWorkerOwnershipSchema)
 }
 
 tasks.withType<Test>().configureEach {

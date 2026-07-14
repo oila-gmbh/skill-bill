@@ -27,6 +27,7 @@ In addition to the top-level telemetry tools, the orchestrator must persist dura
 Workflow-state rules:
 
 - Open workflow state once, immediately after Step 1 records the router-confirmed assessment.
+- Opening a standalone prose workflow requires the normalized `issue_key`, canonical `repository_identity` (`repo-root-realpath-v1:` plus the canonical Git top-level real path), and repository-relative `governed_spec_path`. Never open with only session and step identity.
 - Save both ids:
   - `session_id` from `feature_task_prose_started` for telemetry
   - `workflow_id` from `feature_task_prose_workflow_open` for durable state
@@ -71,7 +72,7 @@ conflicting tokens before its sole confirmation gate. For a non-interactive
 goal continuation, durable goal and child workflow state supply the immutable
 selection. This sidecar must not reparse the token, present another gate, or
 substitute a different mode for the initial pass. Persist the selected mode with the workflow as initial-pass policy. In Step 5 invoke
-`bill-code-review mode:<selected-mode>`; every review-fix or audit-driven re-review invokes `bill-code-review mode:inline`. When a parallel lane is
+`bill-code-review mode:<selected-mode>`; every review-fix or audit-driven re-review invokes `bill-code-review mode:inline context:feature-remediation` against only the remediation delta since the preceding implementation checkpoint. When a parallel lane is
 configured, pass the same execution mode to both lanes without allowing
 recursive parallel launch.
 
@@ -214,7 +215,7 @@ Spawn a subagent with the pre-planning briefing defined in the inline reference 
 - Confirm `bill-code-check` can route this repo; if not, pick a repo-native validation command.
 - If the rollout uses a feature flag, invoke `bill-feature-guard` via the Skill tool (do not search the filesystem to locate skill files) and choose a pattern (Legacy / DI Switch / Simple Conditional).
 
-The subagent returns the pre-planning return contract from the inline reference sections below. The orchestrator keeps this digest in context and passes it to later subagents — the raw findings stay in the subagent. Persist `preplan_digest` before advancing to `plan`.
+The subagent returns the pre-planning return contract from the inline reference sections below. Persist `preplan_digest` before advancing to `plan`. It is planning-only recovery context: recover it while resuming preplan or plan, when plan is unavailable or invalid, or when the normal loop returns to planning. Implementation continuation receives the completed `plan` only and must not inject `preplan_digest` merely because it exists.
 
 ## Step 3: Create Implementation Plan (subagent)
 
@@ -245,7 +246,7 @@ Step id: `implement`
 
 Primary artifact: `implementation_summary`
 
-Spawn a subagent with the implementation briefing defined in the inline reference sections below under `Implementation subagent briefing`. The briefing includes acceptance criteria, plan (from Step 3), pre-planning digest (from Step 2), rollout info, feature-flag pattern (if any), spec path (for MEDIUM/LARGE), and execution rules (project standards, test gate, orphan cleanup, catalog updates for agent-config changes).
+Spawn a subagent with the implementation briefing defined in the inline reference sections below under `Implementation subagent briefing`. The briefing includes acceptance criteria, plan (from Step 3), rollout info, feature-flag pattern (if any), spec path (for MEDIUM/LARGE), and execution rules (project standards, test gate, orphan cleanup, catalog updates for agent-config changes). Implementation continuation uses the completed `plan` as its only planning artifact and must not inject `preplan_digest`.
 
 The subagent executes the plan atomically (one task per turn), prints per-task progress, writes tests as specified, and stops to re-plan if a task reveals the plan is wrong. On stop-and-re-plan, the subagent returns with `plan_deviation_notes` populated so the orchestrator can decide whether to re-spawn the planning subagent.
 
@@ -261,7 +262,7 @@ Step id: `review`
 
 Primary artifact: `review_result`
 
-Run `bill-code-review mode:<selected-mode>` inline in the orchestrator through the active skill runtime for the initial pass; invoke every later pass as `bill-code-review mode:inline`. Scope: current unit of work for SMALL, branch diff for MEDIUM/LARGE. Do not wrap `bill-code-review` in an additional subagent — it already spawns specialist subagents internally. When `parallel-review:<agent>` was passed to this skill, give both lanes the same per-pass mode and exact diff without recursive parallel launch.
+Run `bill-code-review mode:<selected-mode>` inline in the orchestrator through the active skill runtime for the initial pass; invoke every later pass as `bill-code-review mode:inline context:feature-remediation` against only the staged, unstaged, and untracked remediation delta since the preceding implementation checkpoint. Initial scope: current unit of work for SMALL, branch diff for MEDIUM/LARGE. Do not wrap `bill-code-review` in an additional subagent — it already spawns specialist subagents internally. When `parallel-review:<agent>` was passed to this skill, give both lanes the same per-pass mode and exact diff without recursive parallel launch.
 
 Review loop:
 
@@ -532,6 +533,8 @@ Immediately after Step 1 records the assessment:
    - `session_id`
    - `current_step_id: "assess"`
    - `issue_key: <normalized issue key>` from the router-confirmed task context
+   - `repository_identity: repo-root-realpath-v1:<canonical Git top-level real path>`
+   - `governed_spec_path: <repository-relative .feature-specs/.../spec.md path>`
 4. Save `workflow_id`.
 5. Initialize `child_steps = []`.
 
@@ -895,9 +898,6 @@ Acceptance criteria (contract):
 
 Plan (from Step 3):
 {plan_json}
-
-Pre-planning digest (from Step 2):
-{pre_planning_digest_json}
 
 Execution rules:
 - After each task, print progress: "✅ [<n>/<total>] <task description>".

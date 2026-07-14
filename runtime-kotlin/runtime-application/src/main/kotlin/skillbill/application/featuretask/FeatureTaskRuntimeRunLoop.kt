@@ -17,6 +17,8 @@ import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
 import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.workflow.model.GoalSubtaskReviewInput
+import skillbill.ports.workflow.runtimePhaseChangedPathsBetweenCommits
+import skillbill.ports.workflow.runtimePhaseHeadCommit
 import skillbill.telemetry.estimation.estimateTokens
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.model.SpecSource
@@ -24,9 +26,12 @@ import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeTransitionFunction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeBackwardEdge
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCapExhaustionBehavior
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeNextPhase
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewFinding
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
@@ -48,7 +53,7 @@ internal data class FeatureTaskRuntimeRunLoopContext(
   val phaseTokenAccumulator: MutableMap<String, Pair<Int, Int>>,
 )
 
-@Suppress("LargeClass", "TooManyFunctions")
+@Suppress("LargeClass", "LongMethod", "LongParameterList", "TooManyFunctions")
 internal class FeatureTaskRuntimeRunLoop(
   private val dependencies: FeatureTaskRuntimeRunLoopDependencies,
   context: FeatureTaskRuntimeRunLoopContext,
@@ -67,15 +72,40 @@ internal class FeatureTaskRuntimeRunLoop(
   private val branchSetupRunner get() = phaseGates.branchSetupRunner
   private val planningStopper get() = phaseGates.planningStopper
   private val specStatusProjector get() = phaseGates.specStatusProjector
+  private val gitOperations get() = phaseGates.gitOperations
 
   private var resolvedBranch: String? = null
   private var blocked: FeatureTaskRuntimeRunReport.Blocked? = null
   private var decomposed: FeatureTaskRuntimeRunReport.Decomposed? = null
 
-  private var pendingReentry: PendingReentry? = null
+  private var pendingReentry: PendingReentry? = resumedReentry()
+  private var activeReentry: PendingReentry? = pendingReentry
+
+  private fun resumedReentry(): PendingReentry? {
+    val (loopId, reentry) = state.latestInFlightReentry() ?: return null
+    state.recordEdgeIteration(loopId, reentry.edgeIteration)
+    return PendingReentry(
+      phaseId = reentry.destinationPhaseId,
+      loopId = loopId,
+      edgeIteration = reentry.edgeIteration,
+      drivingVerdict = reentry.drivingVerdict,
+      reentryGapCriteria = if (loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID) {
+        state.unmetAuditCriteria(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT)
+      } else {
+        emptyList()
+      },
+    )
+  }
 
   fun drive() {
-    var phaseId: String? = transitions.forwardPhaseIds.first()
+    val resumedReentry = pendingReentry
+    if (resumedReentry?.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID) {
+      state.auditGapPlanningContextError()?.let { reason ->
+        blockInvalidAuditGapRecovery(resumedReentry, reason)
+        return
+      }
+    }
+    var phaseId: String? = resumedReentry?.phaseId ?: transitions.forwardPhaseIds.first()
     while (phaseId != null) {
       val settled = advance(phaseId)
       val completedPhaseId = settled.completedPhaseId
@@ -182,17 +212,23 @@ internal class FeatureTaskRuntimeRunLoop(
   }.fold(
     onSuccess = { reviewState ->
       reviewState?.takeIf { it.reviewCapReached || it.reviewSkippedByUser || it.completedPassCount >= 2 }
-        ?.let(::settleCarriedForwardGoalReview)
+        ?.let {
+          settleCarriedForwardGoalReview(
+            it,
+            activeReentry,
+          )
+        }
     },
     onFailure = { error -> blockCarriedForwardReview(error.message.orEmpty()) },
   )
 
   private fun settleCarriedForwardGoalReview(
     reviewState: skillbill.workflow.taskruntime.model.GoalSubtaskReviewState,
+    reentry: PendingReentry?,
   ): PhaseSettlement =
     runCatching { goalContinuationRecorder.lastGoalReviewResult(request.workflowId, request.dbPathOverride) }.fold(
       onSuccess = { rawResult ->
-        rawResult?.let { validateCarriedForwardGoalReview(it, reviewState) }
+        rawResult?.let { validateCarriedForwardGoalReview(it, reviewState, reentry) }
           ?: blockCarriedForwardReview("missing")
       },
       onFailure = { error -> blockCarriedForwardReview(error.message.orEmpty()) },
@@ -201,12 +237,13 @@ internal class FeatureTaskRuntimeRunLoop(
   private fun validateCarriedForwardGoalReview(
     rawResult: String,
     reviewState: skillbill.workflow.taskruntime.model.GoalSubtaskReviewState,
+    reentry: PendingReentry?,
   ): PhaseSettlement = runCatching {
     outputValidator.validateAndReadPhaseOutput(
       rawResult,
       sourceLabel = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
     )
-    recordCarriedForwardGoalReview(rawResult)
+    recordCarriedForwardGoalReview(rawResult, reentry)
   }.fold(
     onSuccess = {
       PhaseSettlement.completed(
@@ -217,14 +254,14 @@ internal class FeatureTaskRuntimeRunLoop(
     onFailure = { error -> blockCarriedForwardReview(error.message.orEmpty()) },
   )
 
-  private fun recordCarriedForwardGoalReview(rawResult: String) {
+  private fun recordCarriedForwardGoalReview(rawResult: String, reentry: PendingReentry?) {
     val phaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW
     if (state.isComplete(phaseId)) {
       return
     }
     val iteration = state.nextIteration(phaseId)
     val priorRecord = state.recordFor(phaseId)
-    recorder.recordPhaseState(
+    recorder.recordCompletedPhase(
       FeatureTaskRuntimePhaseStateRequest(
         workflowId = request.workflowId,
         phaseId = phaseId,
@@ -233,9 +270,12 @@ internal class FeatureTaskRuntimeRunLoop(
         resolvedAgentId = priorRecord?.resolvedAgentId ?: "user-directed",
         finished = true,
         outputArtifact = rawResult,
+        loopId = reentry?.loopId,
+        edgeIteration = reentry?.edgeIteration,
       ),
       request.dbPathOverride,
     )
+    if (reentry != null) pendingReentry = null
     state.recordCompleted(FeatureTaskRuntimePhaseOutput(phaseId, iteration, rawResult))
   }
 
@@ -306,9 +346,6 @@ internal class FeatureTaskRuntimeRunLoop(
     }
   }
 
-  private fun nestedLoopSpan(edge: FeatureTaskRuntimeBackwardEdge): List<String> =
-    spanBetween(edge.destinationPhaseId, edge.fromPhaseId)
-
   private fun establishRemediationCheckpoint(precedingPhaseId: String): Boolean {
     val branch = resolvedBranch ?: return true
     if (FeatureTaskRuntimeBranchSetup.protectedBranchName(branch) != null) {
@@ -362,6 +399,7 @@ internal class FeatureTaskRuntimeRunLoop(
       edgeIteration = edgeIteration,
       drivingVerdict = edge.triggeringVerdict,
     )
+    activeReentry = pendingReentry
     return edge.destinationPhaseId
   }
 
@@ -374,12 +412,6 @@ internal class FeatureTaskRuntimeRunLoop(
   ) {
     val reopenedSpan = spanBetween(destinationPhaseId, edge.fromPhaseId)
     reopenedSpan.forEach(state::reopenForReentry)
-    transitions.backwardEdges
-      .filter { it.loopId != loopId && it.fromPhaseId in reopenedSpan }
-      .forEach { nested ->
-        state.resetEdgeIteration(nested.loopId)
-        recorder.clearBackwardEdgeContext(request.workflowId, nestedLoopSpan(nested), request.dbPathOverride)
-      }
     state.recordEdgeIteration(loopId, edgeIteration)
     val reentryGapCriteria = if (loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID) {
       state.unmetAuditCriteria(edge.fromPhaseId)
@@ -387,11 +419,16 @@ internal class FeatureTaskRuntimeRunLoop(
       emptyList()
     }
     pendingReentry = PendingReentry(destinationPhaseId, loopId, edgeIteration, verdict, reentryGapCriteria)
+    activeReentry = pendingReentry
     observability.loopEdge(destinationPhaseId, loopId, edgeIteration, verdict)
   }
 
   private fun capExhaustedOnResume(phaseId: String): String? {
     val record = state.recordFor(phaseId) ?: return null
+    return capExhaustionForRecord(phaseId, record)
+  }
+
+  private fun capExhaustionForRecord(phaseId: String, record: FeatureTaskRuntimePhaseRecord): String? {
     if (
       phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW &&
       record.reviewPassNumber == 2 &&
@@ -404,21 +441,69 @@ internal class FeatureTaskRuntimeRunLoop(
     if (loopId == null || iteration == null || state.isLoopLiveClaimed(loopId)) {
       return null
     }
-    val edge = transitions.backwardEdges.firstOrNull { it.loopId == loopId && it.destinationPhaseId == phaseId }
+    val edge = transitions.backwardEdges.firstOrNull { candidate ->
+      candidate.loopId == loopId &&
+        (candidate.destinationPhaseId == phaseId || candidate.fromPhaseId == phaseId)
+    }
+    if (edge?.destinationPhaseId == phaseId) {
+      val sourceRecord = state.recordFor(edge.fromPhaseId)
+      if (
+        sourceRecord?.status == STATUS_BLOCKED && sourceRecord.loopId == loopId &&
+        sourceRecord.edgeIteration == iteration
+      ) {
+        return null
+      }
+    }
     return edge
-      ?.takeIf { iteration >= it.perEdgeCap }
+      ?.takeIf { candidate -> blocksWhenCapExhausted(candidate, iteration) }
       ?.let { capExhaustionReason(it.loopId, iteration, it.triggeringVerdict) }
   }
 
+  private fun blocksWhenCapExhausted(edge: FeatureTaskRuntimeBackwardEdge, iteration: Int): Boolean =
+    edge.capExhaustionBehavior == FeatureTaskRuntimeCapExhaustionBehavior.BLOCK &&
+      edge.perEdgeCap?.let { iteration >= it } == true
+
   private fun runPhaseFor(phaseId: String): String? {
-    val reentry = pendingReentry?.takeIf { it.phaseId == phaseId }
-    pendingReentry = null
+    val briefingReentry = pendingReentry?.takeIf { it.phaseId == phaseId }
+    if (briefingReentry != null) pendingReentry = null
+    val reentry = briefingReentry ?: activeReentry?.takeIf { active ->
+      transitions.backwardEdges
+        .firstOrNull { it.loopId == active.loopId }
+        ?.let { edge -> phaseId in spanBetween(edge.destinationPhaseId, edge.fromPhaseId) } == true
+    }?.copy(phaseId = phaseId, reentryGapCriteria = emptyList())
     val outcome = runPhase(phaseId, request, state, observability, specSource, reentry, phaseTokenAccumulator)
     return outcome.blockedReason ?: run {
       val completedOutput = requireNotNull(outcome.completedOutput)
       state.recordCompleted(completedOutput)
       applyPlanningStop(phaseId, completedOutput)
     }
+  }
+
+  private fun blockInvalidAuditGapRecovery(reentry: PendingReentry, reason: String) {
+    val phaseId = reentry.phaseId
+    val resolvedAgentId = FeatureTaskRuntimeAgentResolver.resolve(
+      phaseId = phaseId,
+      assignment = request.agentAssignment,
+      invokedAgentId = request.invokedAgentId,
+    ).resolvedAgentId
+    val attempt = state.nextIteration(phaseId)
+    recorder.recordPhaseState(
+      FeatureTaskRuntimePhaseStateRequest(
+        workflowId = request.workflowId,
+        phaseId = phaseId,
+        status = STATUS_BLOCKED,
+        attemptCount = attempt,
+        resolvedAgentId = resolvedAgentId,
+        finished = false,
+        blockedReason = reason,
+        failureDisposition = FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
+        loopId = reentry.loopId,
+        edgeIteration = reentry.edgeIteration,
+      ),
+      request.dbPathOverride,
+    )
+    observability.blocked(phaseId, resolvedAgentId, attempt, reason)
+    blockAt(phaseId, reason)
   }
 
   private fun applyPlanningStop(phaseId: String, planOutput: FeatureTaskRuntimePhaseOutput): String? {
@@ -471,7 +556,9 @@ internal class FeatureTaskRuntimeRunLoop(
   fun report(): FeatureTaskRuntimeRunReport {
     val branch = resolvedBranch
       ?: recorder.loadResolvedBranch(request.workflowId, request.dbPathOverride)?.branch
-    return decomposed ?: blocked ?: FeatureTaskRuntimeRunReport.Completed(
+    return decomposed ?: blocked?.let { report ->
+      if (report.resolvedBranch == null && branch != null) report.copy(resolvedBranch = branch) else report
+    } ?: FeatureTaskRuntimeRunReport.Completed(
       issueKey = request.issueKey,
       workflowId = request.workflowId,
       featureSize = request.runInvariants.featureSize.name,
@@ -636,17 +723,29 @@ internal class FeatureTaskRuntimeRunLoop(
     reentry: PendingReentry?,
     phaseTokenAccumulator: MutableMap<String, Pair<Int, Int>>? = null,
   ): PhaseOutcome {
-    completedReviewBudgetOutput(phaseId, state)?.let { output ->
-      return PhaseOutcome.completed(output)
-    }
+    val completedReviewBudgetOutput = completedReviewBudgetOutput(phaseId, state)
     val resolvedAgent = FeatureTaskRuntimeAgentResolver.resolve(
       phaseId = phaseId,
       assignment = request.agentAssignment,
       invokedAgentId = request.invokedAgentId,
     )
+    val declaration = phaseDeclaration(phaseId, request.runInvariants.featureSize).let { declaration ->
+      if (phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT &&
+        reentry?.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID
+      ) {
+        declaration.copy(
+          consumedUpstreamPhaseIds = listOf(
+            FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN,
+            FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN,
+          ),
+        )
+      } else {
+        declaration
+      }
+    }
     val run = PhaseRun(
       phaseId = phaseId,
-      declaration = phaseDeclaration(phaseId, request.runInvariants.featureSize),
+      declaration = declaration,
       resolvedAgent = resolvedAgent,
       modelDirective = FeatureTaskRuntimeModelResolver.resolve(
         phaseId,
@@ -657,6 +756,23 @@ internal class FeatureTaskRuntimeRunLoop(
       specSource = specSource,
       reentry = reentry,
     )
+    completedReviewBudgetOutput?.let { output ->
+      if (isGoalContinuationRun(request) && reentry != null) {
+        val iteration = state.nextIteration(phaseId)
+        val phaseState = phaseStateRequest(
+          run,
+          iteration,
+          STATUS_COMPLETED,
+          finished = true,
+          outputArtifact = output.payload,
+        )
+        state.reserveReviewPass(phaseState.reviewPassNumber)
+        recorder.recordCompletedPhase(phaseState, request.dbPathOverride)
+        observability.completed(phaseId, resolvedAgent.resolvedAgentId, iteration)
+        return PhaseOutcome.completed(FeatureTaskRuntimePhaseOutput(phaseId, iteration, output.payload))
+      }
+      return PhaseOutcome.completed(output)
+    }
     preLaunchBlock(run, state, observability)?.let { return it }
     return when (val prepared = prepareGoalReviewRun(run, observability)) {
       is GoalReviewRunReady -> runPhaseAttempts(prepared.run, state, observability, phaseTokenAccumulator)
@@ -784,7 +900,9 @@ internal class FeatureTaskRuntimeRunLoop(
       )
     }
     val iteration = state.nextIteration(run.phaseId)
-    persistPhase(run, iteration, STATUS_COMPLETED, finished = true, outputArtifact = output)
+    val phaseState = phaseStateRequest(run, iteration, STATUS_COMPLETED, finished = true, outputArtifact = output)
+    state.reserveReviewPass(phaseState.reviewPassNumber)
+    recorder.recordCompletedPhase(phaseState, run.request.dbPathOverride)
     observability.completed(run.phaseId, run.resolvedAgent.resolvedAgentId, iteration)
     return PhaseOutcome.completed(FeatureTaskRuntimePhaseOutput(run.phaseId, iteration, output))
   }
@@ -796,27 +914,48 @@ internal class FeatureTaskRuntimeRunLoop(
   ): PhaseOutcome? {
     val persisted = state.persistedBlockedReason(run.phaseId)?.let { persistedReason ->
       val nextIteration = state.nextIteration(run.phaseId)
-      if (FeatureTaskRuntimeFixLoopPolicy.participatesInFixLoop(run.phaseId)) {
+      val durable = state.recordFor(run.phaseId)
+      val retryOnResume = durable?.failureDisposition?.retryOnResume
+        ?: FeatureTaskRuntimeFixLoopPolicy.participatesInFixLoop(run.phaseId)
+      if (retryOnResume) {
         return@let null
       }
       val reason = persistedReason.ifBlank {
         "Phase '${run.phaseId}' is durably blocked from a prior run; the runtime re-blocks rather than relaunching."
       }
-      nextIteration to reason
+      PreLaunchBlock(nextIteration, reason, durable)
     }
-    val missing = persisted ?: missingUpstream(run.declaration, state.outputs())?.let { missingIds ->
-      1 to "Phase '${run.phaseId}' requires upstream output(s) ${missingIds.joinToString()} that are not " +
-        "present; the runtime blocks rather than launching the phase blind."
+    val invalidPlanningContext = if (
+      run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT &&
+      run.reentry?.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID
+    ) {
+      state.auditGapPlanningContextError()?.let { reason -> PreLaunchBlock(state.nextIteration(run.phaseId), reason) }
+    } else {
+      null
     }
-    return missing?.let { (attemptCount, reason) ->
-      val durable = state.recordFor(run.phaseId)
+    val missing = persisted ?: invalidPlanningContext
+      ?: missingUpstream(run.declaration, state.outputs())?.let { missingIds ->
+        PreLaunchBlock(
+          1,
+          "Phase '${run.phaseId}' requires upstream output(s) ${missingIds.joinToString()} that are not " +
+            "present; the runtime blocks rather than launching the phase blind.",
+        )
+      }
+    return missing?.let { preLaunch ->
+      val durable = preLaunch.durableRecord
       blockAndPersist(
         run,
-        attemptCount,
-        reason,
+        preLaunch.attemptCount,
+        preLaunch.reason,
         observability,
         loopId = durable?.loopId,
         edgeIteration = durable?.edgeIteration,
+        failureDisposition = durable?.failureDisposition
+          ?: FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
+        fileManifest = durable?.let {
+          FeatureTaskRuntimePhaseFileManifest(it.fileManifestBefore, it.fileManifestAfter)
+        },
+        outputArtifact = durable?.outputArtifact,
       )
     }
   }
@@ -858,6 +997,8 @@ internal class FeatureTaskRuntimeRunLoop(
             iteration,
             withSchemaGateDetail(decision.blockedReason, requireNotNull(attempt.schemaInvalidReason)),
             observability,
+            failureDisposition = FeatureTaskRuntimeFailureDisposition.INVALID_OUTPUT,
+            fileManifest = attempt.fileManifest,
           )
         }
     }
@@ -872,6 +1013,9 @@ internal class FeatureTaskRuntimeRunLoop(
     observability: FeatureTaskRuntimeRunObservability,
     loopId: String? = null,
     edgeIteration: Int? = null,
+    failureDisposition: FeatureTaskRuntimeFailureDisposition = FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
+    fileManifest: FeatureTaskRuntimePhaseFileManifest? = null,
+    outputArtifact: String? = null,
   ): PhaseOutcome {
     val phaseState = FeatureTaskRuntimePhaseStateRequest(
       workflowId = run.request.workflowId,
@@ -880,8 +1024,12 @@ internal class FeatureTaskRuntimeRunLoop(
       attemptCount = attemptCount.coerceAtLeast(1),
       resolvedAgentId = run.resolvedAgent.resolvedAgentId,
       finished = false,
-      outputArtifact = null,
+      outputArtifact = outputArtifact,
       blockedReason = reason,
+      failureDisposition = failureDisposition,
+      fileManifestBefore = fileManifest?.before.orEmpty(),
+      fileManifestAfter = fileManifest?.after.orEmpty(),
+      fileManifestIntroduced = fileManifest?.introduced.orEmpty(),
       loopId = loopId,
       edgeIteration = edgeIteration,
       reviewPassNumber = reviewPassNumber(run, state),
@@ -900,6 +1048,9 @@ internal class FeatureTaskRuntimeRunLoop(
     attemptCount: Int,
     reason: String,
     observability: FeatureTaskRuntimeRunObservability,
+    failureDisposition: FeatureTaskRuntimeFailureDisposition = FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
+    fileManifest: FeatureTaskRuntimePhaseFileManifest? = null,
+    outputArtifact: String? = null,
   ): PhaseOutcome = blockAndPersist(
     run,
     attemptCount,
@@ -907,6 +1058,9 @@ internal class FeatureTaskRuntimeRunLoop(
     observability,
     loopId = run.reentry?.loopId,
     edgeIteration = run.reentry?.edgeIteration,
+    failureDisposition = failureDisposition,
+    fileManifest = fileManifest,
+    outputArtifact = outputArtifact,
   )
 
   @Suppress("LongParameterList")
@@ -921,9 +1075,41 @@ internal class FeatureTaskRuntimeRunLoop(
     persistPhase(run, iteration, STATUS_RUNNING, finished = false, outputArtifact = null)
     val launch = launchAndCapture(run, state, priorSchemaFailure, phaseTokenAccumulator)
     launch.infraFailureReason?.let { reason ->
-      return AttemptResult.settled(blockAndPersistInPhase(run, iteration, reason, observability))
+      return AttemptResult.settled(
+        blockAndPersistInPhase(
+          run,
+          iteration,
+          reason,
+          observability,
+          failureDisposition = FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE,
+          fileManifest = launch.fileManifest,
+        ),
+      )
     }
-    return gateOutput(run, iteration, requireNotNull(launch.capturedStdout), observability)
+    val fileManifest = requireNotNull(launch.fileManifest)
+    val allowedIssues = setOfNotNull(run.request.issueKey, run.request.goalContinuation?.parentIssueKey)
+    val unauthorized = FeatureTaskRuntimePhaseSafetyPolicy.unauthorizedIssueSpecs(fileManifest, allowedIssues)
+    if (unauthorized.isNotEmpty()) {
+      val reason = "Phase '${run.phaseId}' introduced governed specification changes for another issue: " +
+        unauthorized.joinToString() + ". Cross-issue spec creation is not permitted in a feature-task phase."
+      return AttemptResult.settled(
+        blockAndPersistInPhase(
+          run,
+          iteration,
+          reason,
+          observability,
+          failureDisposition = FeatureTaskRuntimeFailureDisposition.NON_RETRYABLE_POLICY_CONFLICT,
+          fileManifest = fileManifest,
+        ),
+      )
+    }
+    return gateOutput(
+      run,
+      iteration,
+      requireNotNull(launch.capturedStdout),
+      observability,
+      fileManifest,
+    )
   }
 
   private fun gateOutput(
@@ -931,11 +1117,12 @@ internal class FeatureTaskRuntimeRunLoop(
     iteration: Int,
     outputText: String,
     observability: FeatureTaskRuntimeRunObservability,
+    fileManifest: FeatureTaskRuntimePhaseFileManifest,
   ): AttemptResult = try {
     val outputMap = outputValidator.validateAndReadPhaseOutput(outputText, sourceLabel = run.phaseId)
-    settleValidatedOutput(run, iteration, outputText, outputMap, observability)
+    settleValidatedOutput(run, iteration, outputText, outputMap, observability, fileManifest)
   } catch (error: InvalidFeatureTaskRuntimePhaseOutputSchemaError) {
-    schemaInvalidAttempt(run, iteration, error.reason, observability)
+    schemaInvalidAttempt(run, iteration, error.reason, observability, fileManifest)
   }
 
   private fun settleValidatedOutput(
@@ -944,25 +1131,45 @@ internal class FeatureTaskRuntimeRunLoop(
     outputText: String,
     outputMap: Map<String, Any?>,
     observability: FeatureTaskRuntimeRunObservability,
+    fileManifest: FeatureTaskRuntimePhaseFileManifest,
   ): AttemptResult {
     terminalBlockedReasonFrom(run.phaseId, outputMap)?.let { reason ->
-      return terminalOutputAttempt(run, iteration, reason, observability)
+      return terminalOutputAttempt(run, iteration, reason, outputText, outputMap, observability, fileManifest)
     }
     outputVerificationGateReason(run.phaseId, outputMap)?.let { reason ->
-      return schemaInvalidAttempt(run, iteration, reason, observability)
+      return schemaInvalidAttempt(run, iteration, reason, observability, fileManifest)
     }
-    return persistAcceptedOutput(run, iteration, outputText, outputMap, observability)
+    return persistAcceptedOutput(run, iteration, outputText, outputMap, observability, fileManifest)
   }
 
   private fun terminalOutputAttempt(
     run: PhaseRun,
     iteration: Int,
     reason: String,
+    outputText: String,
+    outputMap: Map<String, Any?>,
     observability: FeatureTaskRuntimeRunObservability,
-  ): AttemptResult = if (run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE) {
-    AttemptResult.schemaInvalid(reason)
-  } else {
-    AttemptResult.settled(blockAndPersistInPhase(run, iteration, reason, observability))
+    fileManifest: FeatureTaskRuntimePhaseFileManifest,
+  ): AttemptResult {
+    val disposition = FeatureTaskRuntimePhaseSafetyPolicy.dispositionForTerminalOutput(run.phaseId, outputMap)
+    return if (
+      disposition.retryOnResume &&
+      FeatureTaskRuntimeFixLoopPolicy.participatesInFixLoop(run.phaseId)
+    ) {
+      AttemptResult.schemaInvalid(reason, fileManifest)
+    } else {
+      AttemptResult.settled(
+        blockAndPersistInPhase(
+          run,
+          iteration,
+          reason,
+          observability,
+          failureDisposition = disposition,
+          fileManifest = fileManifest,
+          outputArtifact = outputText,
+        ),
+      )
+    }
   }
 
   private fun outputVerificationGateReason(phaseId: String, outputMap: Map<String, Any?>): String? =
@@ -976,15 +1183,26 @@ internal class FeatureTaskRuntimeRunLoop(
     outputText: String,
     outputMap: Map<String, Any?>,
     observability: FeatureTaskRuntimeRunObservability,
+    fileManifest: FeatureTaskRuntimePhaseFileManifest,
   ): AttemptResult {
     if (isGoalReviewRun(run)) {
-      persistGoalReviewCompletion(run, iteration, outputText, outputMap, observability)?.let { outcome ->
+      persistGoalReviewCompletion(run, iteration, outputText, outputMap, observability, fileManifest)?.let { outcome ->
         return AttemptResult.settled(outcome)
       }
     } else {
-      persistPhase(run, iteration, STATUS_COMPLETED, finished = true, outputArtifact = outputText)
+      recorder.recordCompletedPhase(
+        phaseStateRequest(
+          run,
+          iteration,
+          STATUS_COMPLETED,
+          finished = true,
+          outputArtifact = outputText,
+          fileManifest = fileManifest,
+        ),
+        run.request.dbPathOverride,
+      )
     }
-    observability.completed(run.phaseId, run.resolvedAgent.resolvedAgentId, iteration)
+    observability.completedEvent(run.phaseId, run.resolvedAgent.resolvedAgentId, iteration)
     return AttemptResult.settled(
       PhaseOutcome.completed(FeatureTaskRuntimePhaseOutput(run.phaseId, iteration, outputText)),
     )
@@ -996,6 +1214,7 @@ internal class FeatureTaskRuntimeRunLoop(
     outputText: String,
     outputMap: Map<String, Any?>,
     observability: FeatureTaskRuntimeRunObservability,
+    fileManifest: FeatureTaskRuntimePhaseFileManifest,
   ): PhaseOutcome? {
     val findings = GoalSubtaskReviewSummaryReducer.fromOutput(outputMap)
     val outcome = GoalSubtaskReviewSummaryReducer.outcomeFor(outputMap, findings)
@@ -1008,6 +1227,7 @@ internal class FeatureTaskRuntimeRunLoop(
             STATUS_COMPLETED,
             finished = true,
             outputArtifact = outputText,
+            fileManifest = fileManifest,
           ),
           verdict = outcome.verdict,
           unresolvedFindingCount = outcome.unresolvedFindingCount,
@@ -1022,6 +1242,7 @@ internal class FeatureTaskRuntimeRunLoop(
         iteration,
         "Goal-subtask review could not atomically persist its pass and completed phase: " + error.message.orEmpty(),
         observability,
+        fileManifest = fileManifest,
       )
     }
     return if (completed) {
@@ -1032,6 +1253,7 @@ internal class FeatureTaskRuntimeRunLoop(
         iteration,
         "Goal-subtask review could not atomically persist its reserved pass and completed phase.",
         observability,
+        fileManifest = fileManifest,
       )
     }
   }
@@ -1044,6 +1266,7 @@ internal class FeatureTaskRuntimeRunLoop(
     iteration: Int,
     reason: String,
     observability: FeatureTaskRuntimeRunObservability,
+    fileManifest: FeatureTaskRuntimePhaseFileManifest,
   ): AttemptResult = if (
     run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW && isGoalContinuationRun(run.request)
   ) {
@@ -1054,14 +1277,22 @@ internal class FeatureTaskRuntimeRunLoop(
         "Goal-subtask review output failed schema validation after its reserved pass; " +
           "refusing an unaccounted relaunch. $reason",
         observability,
+        fileManifest = fileManifest,
       ),
     )
   } else {
-    AttemptResult.schemaInvalid(reason)
+    AttemptResult.schemaInvalid(reason, fileManifest)
   }
 
-  private fun persistPhase(run: PhaseRun, iteration: Int, status: String, finished: Boolean, outputArtifact: String?) {
-    val phaseState = phaseStateRequest(run, iteration, status, finished, outputArtifact)
+  private fun persistPhase(
+    run: PhaseRun,
+    iteration: Int,
+    status: String,
+    finished: Boolean,
+    outputArtifact: String?,
+    fileManifest: FeatureTaskRuntimePhaseFileManifest? = null,
+  ) {
+    val phaseState = phaseStateRequest(run, iteration, status, finished, outputArtifact, fileManifest)
     state.reserveReviewPass(phaseState.reviewPassNumber)
     recorder.recordPhaseState(
       phaseState,
@@ -1075,6 +1306,7 @@ internal class FeatureTaskRuntimeRunLoop(
     status: String,
     finished: Boolean,
     outputArtifact: String?,
+    fileManifest: FeatureTaskRuntimePhaseFileManifest? = null,
   ): FeatureTaskRuntimePhaseStateRequest = FeatureTaskRuntimePhaseStateRequest(
     workflowId = run.request.workflowId,
     phaseId = run.phaseId,
@@ -1083,6 +1315,9 @@ internal class FeatureTaskRuntimeRunLoop(
     resolvedAgentId = run.resolvedAgent.resolvedAgentId,
     finished = finished,
     outputArtifact = outputArtifact,
+    fileManifestBefore = fileManifest?.before.orEmpty(),
+    fileManifestAfter = fileManifest?.after.orEmpty(),
+    fileManifestIntroduced = fileManifest?.introduced.orEmpty(),
     loopId = run.reentry?.loopId,
     edgeIteration = run.reentry?.edgeIteration,
     reviewPassNumber = reviewPassNumber(run, state),
@@ -1103,12 +1338,25 @@ internal class FeatureTaskRuntimeRunLoop(
     return state.outputFor(phaseId)?.takeIf { budgetCompleted }
   }
 
+  @Suppress("ReturnCount")
   private fun launchAndCapture(
     run: PhaseRun,
     state: FeatureTaskRuntimeRunState,
     priorSchemaFailure: String? = null,
     phaseTokenAccumulator: MutableMap<String, Pair<Int, Int>>? = null,
   ): LaunchResult {
+    val before = gitOperations.worktreeStatus(run.request.repoRoot)
+    if (!before.ok) {
+      return LaunchResult.infraFailure(
+        "Feature-task-runtime phase '${run.phaseId}' could not capture its before-file manifest: ${before.error}",
+      )
+    }
+    val beforeCommit = gitOperations.runtimePhaseHeadCommit(run.request.repoRoot)
+    if (!beforeCommit.ok) {
+      return LaunchResult.infraFailure(
+        "Feature-task-runtime phase '${run.phaseId}' could not capture its before commit: ${beforeCommit.error}",
+      )
+    }
     val handoff = FeatureTaskRuntimeHandoffContract.assembleHandoff(
       declaration = run.declaration,
       runInvariants = run.request.runInvariants,
@@ -1140,6 +1388,7 @@ internal class FeatureTaskRuntimeRunLoop(
             } else {
               run.request.runInvariants.codeReviewMode
             },
+            reviewPassNumber = reviewPassNumber(run, state),
             goalSubtaskReviewInput = run.goalReviewInput,
             specSource = run.specSource,
             priorSchemaFailure = priorSchemaFailure,
@@ -1153,7 +1402,36 @@ internal class FeatureTaskRuntimeRunLoop(
       val outputTokens = estimateTokens(outcome.stdout)
       phaseTokenAccumulator[run.phaseId] = Pair(inputTokens, outputTokens)
     }
-    return reconcileLaunch(run.phaseId, outcome)
+    val after = gitOperations.worktreeStatus(run.request.repoRoot)
+    if (!after.ok) {
+      return LaunchResult.infraFailure(
+        "Feature-task-runtime phase '${run.phaseId}' could not capture its after-file manifest: ${after.error}",
+      )
+    }
+    val afterCommit = gitOperations.runtimePhaseHeadCommit(run.request.repoRoot)
+    if (!afterCommit.ok) {
+      return LaunchResult.infraFailure(
+        "Feature-task-runtime phase '${run.phaseId}' could not capture its after commit: ${afterCommit.error}",
+      )
+    }
+    val committedPaths = gitOperations.runtimePhaseChangedPathsBetweenCommits(
+      run.request.repoRoot,
+      beforeCommit.value.orEmpty(),
+      afterCommit.value.orEmpty(),
+    )
+    if (!committedPaths.ok) {
+      return LaunchResult.infraFailure(
+        "Feature-task-runtime phase '${run.phaseId}' could not capture committed file changes: ${committedPaths.error}",
+      )
+    }
+    val fileManifest = FeatureTaskRuntimePhaseFileManifest(
+      before = FeatureTaskRuntimePhaseSafetyPolicy.changedPaths(before.value),
+      after = (
+        FeatureTaskRuntimePhaseSafetyPolicy.changedPaths(after.value) +
+          FeatureTaskRuntimePhaseSafetyPolicy.lineSeparatedPaths(committedPaths.value.orEmpty())
+        ).distinct().sorted(),
+    )
+    return reconcileLaunch(run.phaseId, outcome, fileManifest)
   }
 
   private fun auditGapCriteriaFor(run: PhaseRun, state: FeatureTaskRuntimeRunState): List<String> {
@@ -1173,13 +1451,18 @@ internal class FeatureTaskRuntimeRunLoop(
     return state.unmetAuditCriteria(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT)
   }
 
-  private fun reconcileLaunch(phaseId: String, outcome: AgentRunLaunchOutcome): LaunchResult = when (outcome) {
+  private fun reconcileLaunch(
+    phaseId: String,
+    outcome: AgentRunLaunchOutcome,
+    fileManifest: FeatureTaskRuntimePhaseFileManifest,
+  ): LaunchResult = when (outcome) {
     is UnsupportedAgentRunLaunch -> LaunchResult.infraFailure(
       "Feature-task-runtime phase '$phaseId' could not launch an agent: ${outcome.reason}",
+      fileManifest,
     )
     is AgentRunLaunchFacts -> infraFailureReason(phaseId, outcome)
-      ?.let(LaunchResult::infraFailure)
-      ?: LaunchResult.captured(outcome.stdout)
+      ?.let { LaunchResult.infraFailure(it, fileManifest) }
+      ?: LaunchResult.captured(outcome.stdout, fileManifest)
   }
 
   private data class PhaseRun(
@@ -1193,29 +1476,49 @@ internal class FeatureTaskRuntimeRunLoop(
     val goalReviewInput: GoalSubtaskReviewInput? = null,
   )
 
+  private data class PreLaunchBlock(
+    val attemptCount: Int,
+    val reason: String,
+    val durableRecord: FeatureTaskRuntimePhaseRecord? = null,
+  )
+
   private sealed interface LaunchResult {
-    private data class Captured(val stdout: String) : LaunchResult
-    private data class InfraFailure(val reason: String) : LaunchResult
+    private data class Captured(
+      val stdout: String,
+      override val fileManifest: FeatureTaskRuntimePhaseFileManifest,
+    ) : LaunchResult
+    private data class InfraFailure(
+      val reason: String,
+      override val fileManifest: FeatureTaskRuntimePhaseFileManifest?,
+    ) : LaunchResult
 
     val capturedStdout: String? get() = (this as? Captured)?.stdout
     val infraFailureReason: String? get() = (this as? InfraFailure)?.reason
+    val fileManifest: FeatureTaskRuntimePhaseFileManifest?
 
     companion object {
-      fun captured(stdout: String): LaunchResult = Captured(stdout)
-      fun infraFailure(reason: String): LaunchResult = InfraFailure(reason)
+      fun captured(stdout: String, fileManifest: FeatureTaskRuntimePhaseFileManifest): LaunchResult =
+        Captured(stdout, fileManifest)
+      fun infraFailure(reason: String, fileManifest: FeatureTaskRuntimePhaseFileManifest? = null): LaunchResult =
+        InfraFailure(reason, fileManifest)
     }
   }
 
   private sealed interface AttemptResult {
     private data class Settled(val outcome: PhaseOutcome) : AttemptResult
-    private data class SchemaInvalid(val validationReason: String) : AttemptResult
+    private data class SchemaInvalid(
+      val validationReason: String,
+      override val fileManifest: FeatureTaskRuntimePhaseFileManifest,
+    ) : AttemptResult
 
     val settledOutcome: PhaseOutcome? get() = (this as? Settled)?.outcome
     val schemaInvalidReason: String? get() = (this as? SchemaInvalid)?.validationReason
+    val fileManifest: FeatureTaskRuntimePhaseFileManifest? get() = (this as? SchemaInvalid)?.fileManifest
 
     companion object {
       fun settled(outcome: PhaseOutcome): AttemptResult = Settled(outcome)
-      fun schemaInvalid(validationReason: String): AttemptResult = SchemaInvalid(validationReason)
+      fun schemaInvalid(validationReason: String, fileManifest: FeatureTaskRuntimePhaseFileManifest): AttemptResult =
+        SchemaInvalid(validationReason, fileManifest)
     }
   }
 

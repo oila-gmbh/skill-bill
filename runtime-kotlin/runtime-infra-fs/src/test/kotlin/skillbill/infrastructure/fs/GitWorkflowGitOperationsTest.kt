@@ -4,6 +4,8 @@ import skillbill.ports.workflow.buildGoalSubtaskReviewInput
 import skillbill.ports.workflow.captureGoalSubtaskReviewBaseline
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksRequest
+import skillbill.ports.workflow.runtimePhaseChangedPathsBetweenCommits
+import skillbill.ports.workflow.runtimePhaseHeadCommit
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -13,6 +15,34 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class GitWorkflowGitOperationsTest {
+  @Test
+  fun `runtime phase commit range reports committed paths`() {
+    val repoRoot = Files.createTempDirectory("skillbill-git-runtime-phase")
+    git(repoRoot, "init")
+    git(repoRoot, "config", "user.email", "skill-bill@example.test")
+    git(repoRoot, "config", "user.name", "Skill Bill")
+    Files.writeString(repoRoot.resolve("tracked.txt"), "one\n")
+    git(repoRoot, "add", ".")
+    git(repoRoot, "commit", "-m", "initial")
+    val operations = GitWorkflowGitOperations()
+    val before = operations.runtimePhaseHeadCommit(repoRoot)
+    val specPath = repoRoot.resolve(".feature-specs/SKILL-124-demo/spec.md")
+    Files.createDirectories(specPath.parent)
+    Files.writeString(specPath, "# Spec\n")
+    git(repoRoot, "add", ".")
+    git(repoRoot, "commit", "-m", "unauthorized spec")
+    val after = operations.runtimePhaseHeadCommit(repoRoot)
+
+    val result = operations.runtimePhaseChangedPathsBetweenCommits(
+      repoRoot,
+      requireNotNull(before.value),
+      requireNotNull(after.value),
+    )
+
+    assertTrue(result.ok, result.error)
+    assertContains(result.value.orEmpty(), ".feature-specs/SKILL-124-demo/spec.md")
+  }
+
   @Test
   fun `create commit includes staged decomposition manifest projection`() {
     val repoRoot = Files.createTempDirectory("skillbill-git-workflow")

@@ -45,6 +45,22 @@ class FeatureTaskRuntimePhasePromptComposerTest {
   }
 
   @Test
+  fun `second review pass stays inline and scopes only the remediation delta`() {
+    val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor("review"),
+      codeReviewMode = CodeReviewExecutionMode.INLINE,
+      reviewPassNumber = 2,
+    )
+
+    assertContains(prompt, "bill-code-review mode:inline")
+    assertContains(prompt, "context:feature-remediation")
+    assertContains(prompt, "review_scope: remediation_delta")
+    assertContains(prompt, "combined working-tree remediation delta since checkpoint HEAD")
+    assertContains(prompt, "do not use the full branch diff")
+  }
+
+  @Test
   fun `composes header briefing and output contract for every runtime phase`() {
     FeatureTaskRuntimePhaseWorkflowDefinition.definition.stepIds.forEach { phaseId ->
       val prompt = FeatureTaskRuntimePhasePromptComposer.compose(ISSUE_KEY, briefingFor(phaseId))
@@ -65,6 +81,7 @@ class FeatureTaskRuntimePhasePromptComposerTest {
         "contract version for $phaseId",
       )
       assertContains(prompt, "\"completed\", \"blocked\", \"failed\"", false, "status enum for $phaseId")
+      assertContains(prompt, "failure_disposition", false, "typed failure behavior for $phaseId")
       assertContains(prompt, "produced_outputs", false, "produced_outputs for $phaseId")
     }
   }
@@ -148,6 +165,13 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     assertTrue(!prompt.contains("goal-continuation mode"))
     assertTrue(!prompt.contains("First execute this exact command"))
     assertContains(prompt, "do not call `skill-bill workflow continue`")
+  }
+
+  @Test
+  fun `forbids unrequested cross-issue governed specs`() {
+    val prompt = FeatureTaskRuntimePhasePromptComposer.compose(ISSUE_KEY, briefingFor("implement"))
+
+    assertContains(prompt, "Do not create or modify a governed spec for another issue key")
   }
 
   @Test

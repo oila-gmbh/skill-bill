@@ -3,6 +3,7 @@ package skillbill.workflow.taskruntime
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.workflow.implement.FeatureImplementWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCapExhaustionBehavior
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -148,6 +149,7 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
     assertEquals(def.PHASE_IMPLEMENT_FIX, edge.destinationPhaseId)
     assertEquals("review_fix", edge.loopId)
     assertEquals(1, edge.perEdgeCap)
+    assertEquals(FeatureTaskRuntimeCapExhaustionBehavior.ADVANCE, edge.capExhaustionBehavior)
     assertEquals(FeatureTaskRuntimeVerdict.CHANGES_REQUESTED, edge.triggeringVerdict)
     // The backward destination precedes its source so the reopened span includes review (re-review leg).
     val ids = transitions.forwardPhaseIds
@@ -160,23 +162,26 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
   }
 
   @Test
-  fun `the audit_gap backward edge reopens the plan-through-audit span on gaps_found capped at 2`() {
+  fun `the audit_gap backward edge reopens implement-through-audit without planning and without a cap`() {
     val def = FeatureTaskRuntimePhaseWorkflowDefinition
     val transitions = def.transitions
     assertEquals(2, transitions.backwardEdges.size)
     val edge = transitions.backwardEdges.single { it.loopId == def.AUDIT_GAP_LOOP_ID }
     assertEquals(def.PHASE_AUDIT, edge.fromPhaseId)
-    assertEquals(def.PHASE_PLAN, edge.destinationPhaseId)
+    assertEquals(def.PHASE_IMPLEMENT, edge.destinationPhaseId)
     assertEquals("audit_gap", edge.loopId)
-    assertEquals(2, edge.perEdgeCap)
+    assertEquals(null, edge.perEdgeCap)
     assertEquals(FeatureTaskRuntimeVerdict.GAPS_FOUND, edge.triggeringVerdict)
-    // The reopened [plan, audit] span contains the mutating implement phase (re-plan then re-implement).
+    // The reopened [implement, audit] span contains remediation but excludes immutable planning.
     val ids = transitions.forwardPhaseIds
     assertTrue(ids.indexOf(edge.destinationPhaseId) < ids.indexOf(edge.fromPhaseId))
     assertTrue(
       ids.subList(ids.indexOf(edge.destinationPhaseId), ids.indexOf(edge.fromPhaseId) + 1)
         .any(def::isMutatingPhase),
     )
+    val reopenedPhaseIds = ids.subList(ids.indexOf(edge.destinationPhaseId), ids.indexOf(edge.fromPhaseId) + 1)
+    assertTrue(def.PHASE_PREPLAN !in reopenedPhaseIds)
+    assertTrue(def.PHASE_PLAN !in reopenedPhaseIds)
   }
 
   @Test

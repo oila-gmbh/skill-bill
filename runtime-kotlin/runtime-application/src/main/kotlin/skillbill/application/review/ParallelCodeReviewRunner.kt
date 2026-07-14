@@ -12,6 +12,7 @@ import skillbill.application.scaffold.ScaffoldCatalogService
 import skillbill.application.workflow.repoRoot
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
+import skillbill.ports.agentrun.model.AgentRunTokenOwnership
 import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
 import skillbill.ports.diff.DiffResolverPort
@@ -22,7 +23,12 @@ import skillbill.ports.review.model.ParallelReviewLaneOutcome
 import skillbill.ports.review.model.ParallelReviewLaneRunRequest
 import skillbill.review.ParallelReviewFindingParser
 import skillbill.review.ParallelReviewMerger
+import skillbill.review.context.model.ProviderTokenUsage
+import skillbill.review.context.model.REVIEW_CONTEXT_BUDGET_EXCEEDED
+import skillbill.review.context.model.ReviewContextBudgetPolicy
+import skillbill.review.context.model.TokenOwnership
 import skillbill.review.model.ParallelReviewLaneResult
+import java.nio.charset.StandardCharsets
 import java.nio.file.Path
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
@@ -45,7 +51,7 @@ class ParallelCodeReviewRunner(
 
     val diffText = resolveDiff(request)
     val stack = detectStack(diffText, request.repoRoot)
-    val prompt = buildPrompt(stack, diffText, request.codeReviewMode)
+    val prompt = buildParentReviewPrompt(diffText, stack, request.codeReviewMode)
 
     val timeoutSec = request.timeout?.inWholeSeconds ?: (DEFAULT_TIMEOUT_MINUTES * SECONDS_PER_MINUTE)
     val laneRunResult = parallelLaneRunner.runTwoLanes(
@@ -70,8 +76,8 @@ class ParallelCodeReviewRunner(
     val mergeResult = ParallelReviewMerger.merge(lane1Result, lane2Result)
     return ParallelCodeReviewResult(
       mergeResult = mergeResult,
-      lane1 = ParallelReviewLaneStatus(agent1.id, outcome1.success, outcome1.failureReason),
-      lane2 = ParallelReviewLaneStatus(agent2.id, outcome2.success, outcome2.failureReason),
+      lane1 = ParallelReviewLaneStatus(agent1.id, outcome1.success, outcome1.failureReason, outcome1.tokenUsage),
+      lane2 = ParallelReviewLaneStatus(agent2.id, outcome2.success, outcome2.failureReason, outcome2.tokenUsage),
     )
   }
 
@@ -161,37 +167,25 @@ class ParallelCodeReviewRunner(
     return if (best != null && best.value > 0) best.key.slug else null
   }
 
-  private fun buildPrompt(
-    stack: String?,
+  private fun buildParentReviewPrompt(
     diffText: String,
+    stack: String?,
     codeReviewMode: skillbill.workflow.model.CodeReviewExecutionMode,
   ): String = buildString {
+    appendLine("Run one complete bill-code-review parent review.")
+    appendLine("Execution mode: ${codeReviewMode.wireValue}")
+    appendLine("Detected stack: ${stack ?: "generic"}")
+    appendLine("Use the exact diff below as the authoritative review scope; do not rediscover or replace it.")
     appendLine(
-      "You are driving one compact parent lane of a parallel code review. Treat the detected stack " +
-        "and exact diff below as pre-resolved authoritative inputs. Do not use parallel mode.",
+      "Route all required baseline and signal-relevant rubrics. Governed specialists, if selected, " +
+        "must be launched through the native bounded-context boundary.",
     )
-    appendLine(
-      "Run bill-code-review mode:${codeReviewMode.wireValue}; do not reinterpret it or launch parallel " +
-        "review recursively.",
-    )
-    appendLine(
-      "Prepare one shared review-context packet, then use the routed pack's Diff-Signal Routing Table, " +
-        "retain required baseline layers, and launch only signal-relevant non-empty specialist lanes.",
-    )
-    appendLine(
-      "Give each worker only the shared packet, its assignment, and its applicable rubric; workers must " +
-        "not repeat repository, scope, stack, routing, or guidance discovery.",
-    )
-    appendLine()
-    appendLine("The dominant stack is ${stack ?: "unknown"} (pre-resolved detected stack).")
-    appendLine()
     appendLine(
       "Return only a risk register in F-XXX bullet format, one finding per line: " +
         "- [F-NNN] Blocker|Major|Minor|Nit | High|Medium|Low | file:line | description",
     )
     appendLine()
-    appendLine("Diff:")
-    append(diffText)
+    append(diffText.replace("\r\n", "\n"))
   }
 
   private fun launchLane(
@@ -215,8 +209,19 @@ class ParallelCodeReviewRunner(
     )
     return when (outcome) {
       is AgentRunLaunchFacts -> {
-        val reason = laneFailureReason(outcome)
-        ParallelReviewLaneOutcome(success = reason == null, rawOutput = outcome.stdout, failureReason = reason)
+        val resultBytes = outcome.stdout.toByteArray(StandardCharsets.UTF_8).size.toLong()
+        val maxLaneResultBytes = ReviewContextBudgetPolicy.DEFAULT.maxLaneResultBytes
+        val reason = laneFailureReason(outcome) ?: if (resultBytes > maxLaneResultBytes) {
+          "$REVIEW_CONTEXT_BUDGET_EXCEEDED: lane_result_bytes $resultBytes > $maxLaneResultBytes"
+        } else {
+          null
+        }
+        ParallelReviewLaneOutcome(
+          success = reason == null,
+          rawOutput = outcome.stdout,
+          failureReason = reason,
+          tokenUsage = providerTokenUsage(outcome),
+        )
       }
       is UnsupportedAgentRunLaunch ->
         ParallelReviewLaneOutcome(
@@ -225,6 +230,29 @@ class ParallelCodeReviewRunner(
           failureReason = "unsupported agent: ${outcome.reason}",
         )
     }
+  }
+
+  private fun providerTokenUsage(outcome: AgentRunLaunchFacts): ProviderTokenUsage? {
+    val values = listOf(
+      outcome.inputTokens,
+      outcome.cachedInputTokens,
+      outcome.outputTokens,
+      outcome.reasoningTokens,
+      outcome.totalTokens,
+    )
+    if (values.none { it != null }) return null
+    return ProviderTokenUsage(
+      inputTokens = outcome.inputTokens,
+      cachedInputTokens = outcome.cachedInputTokens,
+      outputTokens = outcome.outputTokens,
+      reasoningTokens = outcome.reasoningTokens,
+      totalTokens = outcome.totalTokens,
+      ownership = if (outcome.tokenOwnership == AgentRunTokenOwnership.INCLUSIVE) {
+        TokenOwnership.INCLUSIVE
+      } else {
+        TokenOwnership.DIRECT
+      },
+    )
   }
 
   // Maps a completed launch to a human-readable failure reason, or null when the lane succeeded.

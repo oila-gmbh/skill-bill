@@ -6,7 +6,7 @@ package skillbill.workflow.taskruntime.model
  * declaration rather than hardcoding loop topology, so backward edges (the remediation loops) are
  * data, not bespoke branches. The forward pipeline is the ordered
  * [FeatureTaskRuntimeTransitionDeclaration.forwardPhaseIds]; the default forward edge from any phase
- * is the next index. Backward edges are declared explicitly and are bounded by a per-edge cap.
+ * is the next index. Backward edges are declared explicitly and may carry a per-edge cap.
  */
 
 /** The next transition target computed for a settled phase. */
@@ -48,23 +48,32 @@ sealed interface FeatureTaskRuntimeNextPhase {
   }
 }
 
+enum class FeatureTaskRuntimeCapExhaustionBehavior {
+  BLOCK,
+  ADVANCE,
+}
+
 /**
  * One declared backward edge: when [fromPhaseId] settles with [triggeringVerdict], the run re-enters
- * [destinationPhaseId], bounded by [perEdgeCap] re-entries. [loopId] names the loop for durable
- * accounting and loud blocking.
+ * [destinationPhaseId]. [perEdgeCap] bounds re-entries when present; `null` allows reconciliation to
+ * continue until the triggering verdict clears. [loopId] names the loop for durable accounting.
  */
 data class FeatureTaskRuntimeBackwardEdge(
   val fromPhaseId: String,
   val triggeringVerdict: FeatureTaskRuntimeVerdict,
   val destinationPhaseId: String,
   val loopId: String,
-  val perEdgeCap: Int,
+  val perEdgeCap: Int?,
+  val capExhaustionBehavior: FeatureTaskRuntimeCapExhaustionBehavior =
+    FeatureTaskRuntimeCapExhaustionBehavior.BLOCK,
 ) {
   init {
     require(fromPhaseId.isNotBlank()) { "FeatureTaskRuntimeBackwardEdge.fromPhaseId must be non-blank." }
     require(destinationPhaseId.isNotBlank()) { "FeatureTaskRuntimeBackwardEdge.destinationPhaseId must be non-blank." }
     require(loopId.isNotBlank()) { "FeatureTaskRuntimeBackwardEdge.loopId must be non-blank." }
-    require(perEdgeCap >= 1) { "FeatureTaskRuntimeBackwardEdge.perEdgeCap must be >= 1, was $perEdgeCap." }
+    require(perEdgeCap == null || perEdgeCap >= 1) {
+      "FeatureTaskRuntimeBackwardEdge.perEdgeCap must be null or >= 1, was $perEdgeCap."
+    }
   }
 }
 

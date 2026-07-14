@@ -32,6 +32,14 @@ object McpToolDispatcher {
       "feature_task_prose_finished" to ::featureImplementFinished,
       "feature_task_prose_started" to ::featureImplementStarted,
       "feature_task_prose_stats" to { _, context -> McpRuntime.featureImplementStats(context) },
+      "feature_task_continuation_lookup" to { arguments, context ->
+        McpWorkflowRuntime.featureTaskContinuationLookup(
+          issueKey = arguments.string("issue_key"),
+          repositoryIdentity = arguments.string("repository_identity"),
+          workflowId = arguments.optionalString("workflow_id"),
+          context = context,
+        )
+      },
       "feature_task_prose_workflow_continue" to
         { arguments, context -> workflowContinue(WorkflowFamilyKind.TASK_PROSE, arguments, context) },
       "feature_task_prose_workflow_get" to

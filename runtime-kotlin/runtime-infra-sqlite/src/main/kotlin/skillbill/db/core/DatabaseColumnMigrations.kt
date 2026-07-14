@@ -74,16 +74,23 @@ internal object DatabaseColumnMigrations {
   }
 
   fun healWorkListMetadata(connection: Connection) {
-    applyWorkListMetadata(connection, recoverIssueKeys = false)
+    connection.inImmediateTransaction {
+      applyWorkListMetadata(this, recoverIssueKeys = false)
+    }
   }
 
   private fun applyWorkListMetadata(connection: Connection, recoverIssueKeys: Boolean) {
     val workflowColumnsHealed = ensureWorkListWorkflowColumns(connection)
     val goalColumnsHealed = ensureGoalWorkListColumns(connection)
     if (recoverIssueKeys || workflowColumnsHealed || goalColumnsHealed) {
-      recoverRuntimeWorkflowIssueKeys(connection)
-      recoverGoalContinuationWorkflowIssueKeys(connection)
+      recoverWorkListIssueKeys(connection)
     }
+  }
+
+  fun recoverWorkListIssueKeys(connection: Connection) {
+    recoverRuntimeWorkflowIssueKeys(connection)
+    recoverGoalContinuationWorkflowIssueKeys(connection)
+    recoverDecompositionWorkflowIssueKeys(connection)
   }
 
   private fun ensureWorkListWorkflowColumns(connection: Connection): Boolean {
@@ -198,6 +205,22 @@ internal object DatabaseColumnMigrations {
               OR (mode = 'prose' AND json_type(artifacts_json, '$.goal_continuation.enabled') = 'true')
             )
           ELSE 0 END
+        """.trimIndent(),
+      )
+    }
+  }
+
+  private fun recoverDecompositionWorkflowIssueKeys(connection: Connection) {
+    connection.createStatement().use { statement ->
+      statement.execute(
+        """
+        UPDATE feature_task_workflows
+        SET issue_key = trim(json_extract(artifacts_json, '$.decomposition_runtime.issue_key'))
+        WHERE (issue_key IS NULL OR issue_key = '')
+          AND json_valid(artifacts_json)
+          AND json_type(artifacts_json, '$.decomposition_runtime') = 'object'
+          AND json_type(artifacts_json, '$.decomposition_runtime.issue_key') = 'text'
+          AND NULLIF(trim(json_extract(artifacts_json, '$.decomposition_runtime.issue_key')), '') IS NOT NULL
         """.trimIndent(),
       )
     }
