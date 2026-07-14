@@ -24,15 +24,21 @@ val canonicalPlatformPackSchemaPath: String =
     .resolve("orchestration/contracts/platform-pack-schema.yaml")
     .absolutePath
 
-val canonicalReviewContextSchemaPath: String = rootProject.projectDir.parentFile
-  .resolve("orchestration/contracts/review-context-schema.yaml").absolutePath
-val copyReviewContextSchema = tasks.register<Copy>("copyReviewContextSchema") {
-  val schemaPath = canonicalReviewContextSchemaPath
-  from(schemaPath)
-  into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/contracts"))
-  inputs.file(schemaPath)
-  doFirst { require(File(schemaPath).exists()) { "SKILL-125: canonical review-context schema is missing at $schemaPath." } }
-}
+val canonicalReviewContextSchemaPath: String =
+  rootProject.projectDir.parentFile
+    .resolve("orchestration/contracts/review-context-schema.yaml").absolutePath
+val copyReviewContextSchema =
+  tasks.register<Copy>("copyReviewContextSchema") {
+    val schemaPath = canonicalReviewContextSchemaPath
+    from(schemaPath)
+    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/contracts"))
+    inputs.file(schemaPath)
+    doFirst {
+      require(File(schemaPath).exists()) {
+        "SKILL-125: canonical review-context schema is missing at $schemaPath."
+      }
+    }
+  }
 
 val copyPlatformPackSchema =
   tasks.register<Copy>("copyPlatformPackSchema") {

@@ -2,10 +2,10 @@ package skillbill.launcher
 
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.MODEL_DIRECTIVE_CAPABLE_AGENTS
+import skillbill.launcher.agentrun.AgentRunOutputDecoder
 import skillbill.launcher.agentrun.ClaudeAgentRunCommandBuilder
 import skillbill.launcher.agentrun.CodexAgentRunCommandBuilder
 import skillbill.launcher.agentrun.JunieAgentRunCommandBuilder
-import skillbill.launcher.agentrun.AgentRunOutputDecoder
 import skillbill.ports.agentrun.model.ConversationIsolation
 import skillbill.ports.agentrun.model.SkillRunRequest
 import java.nio.file.Path
@@ -18,7 +18,8 @@ class AgentRunCommandBuildersTest {
   @Test
   fun `structured output decoders preserve provider token dimensions`() {
     val claude = AgentRunOutputDecoder.CLAUDE_JSON.decode(
-      """{"result":"done","usage":{"input_tokens":100,"cache_read_input_tokens":40,"output_tokens":20,"total_tokens":120}}""",
+      """{"result":"done","usage":{"input_tokens":100,"cache_read_input_tokens":40,""" +
+        """"output_tokens":20,"total_tokens":120}}""",
     )
     assertEquals("done", claude.text)
     assertEquals(100, claude.inputTokens)
@@ -34,6 +35,7 @@ class AgentRunCommandBuildersTest {
     assertEquals(5, codex.reasoningTokens)
     assertEquals(100, codex.totalTokens)
   }
+
   @Test
   fun `claude renders exact commands for each directive shape`() {
     val builder = ClaudeAgentRunCommandBuilder()
@@ -165,7 +167,12 @@ class AgentRunCommandBuildersTest {
   fun `headless process builders reject governed specialist isolation`() {
     val isolated = request().copy(conversationIsolation = ConversationIsolation.NONE)
 
-    listOf(ClaudeAgentRunCommandBuilder(), CodexAgentRunCommandBuilder(), JunieAgentRunCommandBuilder()).forEach { builder ->
+    val builders = listOf(
+      ClaudeAgentRunCommandBuilder(),
+      CodexAgentRunCommandBuilder(),
+      JunieAgentRunCommandBuilder(),
+    )
+    builders.forEach { builder ->
       val failure = assertFailsWith<IllegalArgumentException> { builder.build(isolated) }
       assertTrue(failure.message.orEmpty().contains("native specialist-launch adapter"))
     }

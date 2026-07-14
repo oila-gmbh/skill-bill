@@ -12,7 +12,7 @@ import skillbill.application.scaffold.ScaffoldCatalogService
 import skillbill.application.workflow.repoRoot
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
-import skillbill.ports.agentrun.model.ConversationIsolation
+import skillbill.ports.agentrun.model.AgentRunTokenOwnership
 import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
 import skillbill.ports.diff.DiffResolverPort
@@ -23,18 +23,13 @@ import skillbill.ports.review.model.ParallelReviewLaneOutcome
 import skillbill.ports.review.model.ParallelReviewLaneRunRequest
 import skillbill.review.ParallelReviewFindingParser
 import skillbill.review.ParallelReviewMerger
+import skillbill.review.context.model.ProviderTokenUsage
+import skillbill.review.context.model.REVIEW_CONTEXT_BUDGET_EXCEEDED
+import skillbill.review.context.model.ReviewContextBudgetPolicy
+import skillbill.review.context.model.TokenOwnership
 import skillbill.review.model.ParallelReviewLaneResult
-import skillbill.review.context.GovernedReviewLaunch
-import skillbill.review.context.REVIEW_CONTEXT_BUDGET_EXCEEDED
-import skillbill.review.context.ProviderTokenUsage
-import skillbill.review.context.ReviewAssignment
-import skillbill.review.context.ReviewChangedHunk
-import skillbill.review.context.ReviewContextBudgetPolicy
-import skillbill.review.context.ReviewContextPacket
-import skillbill.review.context.TokenOwnership
 import java.nio.charset.StandardCharsets
 import java.nio.file.Path
-import java.security.MessageDigest
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
@@ -56,15 +51,13 @@ class ParallelCodeReviewRunner(
 
     val diffText = resolveDiff(request)
     val stack = detectStack(diffText, request.repoRoot)
-    val packet = preparePacket(request, stack, diffText, listOf(agent1.id, agent2.id))
-    val prompt1 = buildPrompt(packet, agent1.id, request.codeReviewMode)
-    val prompt2 = buildPrompt(packet, agent2.id, request.codeReviewMode)
+    val prompt = buildParentReviewPrompt(diffText, stack, request.codeReviewMode)
 
     val timeoutSec = request.timeout?.inWholeSeconds ?: (DEFAULT_TIMEOUT_MINUTES * SECONDS_PER_MINUTE)
     val laneRunResult = parallelLaneRunner.runTwoLanes(
       ParallelReviewLaneRunRequest(
-        lane1 = { launchLane(agent1.id, prompt1, request) },
-        lane2 = { launchLane(agent2.id, prompt2, request, request.agent2Model) },
+        lane1 = { launchLane(agent1.id, prompt, request) },
+        lane2 = { launchLane(agent2.id, prompt, request, request.agent2Model) },
         timeout = (timeoutSec + TIMEOUT_BUFFER_SECONDS).seconds,
       ),
     )
@@ -174,86 +167,26 @@ class ParallelCodeReviewRunner(
     return if (best != null && best.value > 0) best.key.slug else null
   }
 
-  private fun preparePacket(
-    request: ParallelCodeReviewRequest,
-    stack: String?,
+  private fun buildParentReviewPrompt(
     diffText: String,
-    selectedLanes: List<String>,
-  ): ReviewContextPacket {
-    val normalizedDiff = diffText.replace("\r\n", "\n")
-    val paths = DIFF_PATH_PATTERN.findAll(normalizedDiff).map { it.groupValues[1] }.distinct().sorted().toList()
-    val digest = sha256(normalizedDiff)
-    val baseRevision = if (request.suppliedDiff != null || request.suppliedDiffPath != null) "supplied-diff" else request.scope.name.lowercase()
-    val headRevision = "working-tree"
-    val packet = ReviewContextPacket(
-      reviewId = "parallel-${digest.take(16)}",
-      repositoryIdentity = request.repoRoot.toAbsolutePath().normalize().toString(),
-      baseRevision = baseRevision,
-      headRevision = headRevision,
-      status = request.scope.name.lowercase(),
-      stack = stack,
-      pack = stack,
-      addOns = emptyList(),
-      selectedLanes = selectedLanes,
-      changedHunks = paths.map { path -> ReviewChangedHunk(path, 0, 0, 0, 0, diffForPath(normalizedDiff, path)) },
-    )
-    require(packet.canonicalBytes <= ReviewContextBudgetPolicy.DEFAULT.maxParentPacketBytes) {
-      "Review parent packet exceeds max_parent_packet_bytes."
-    }
-    return packet
-  }
-
-  private fun buildPrompt(
-    packet: ReviewContextPacket,
-    lane: String,
+    stack: String?,
     codeReviewMode: skillbill.workflow.model.CodeReviewExecutionMode,
-  ): String {
-    val assignment = ReviewAssignment(
-      reviewId = packet.reviewId,
-      packetDigest = packet.digest,
-      lane = lane,
-      baseRevision = packet.baseRevision,
-      headRevision = packet.headRevision,
-      assignedPaths = packet.changedHunks.map { it.path },
-      assignedHunks = packet.changedHunks.map { it.content },
-      evidenceTargets = packet.changedHunks.map { it.path },
+  ): String = buildString {
+    appendLine("Run one complete bill-code-review parent review.")
+    appendLine("Execution mode: ${codeReviewMode.wireValue}")
+    appendLine("Detected stack: ${stack ?: "generic"}")
+    appendLine("Use the exact diff below as the authoritative review scope; do not rediscover or replace it.")
+    appendLine(
+      "Route all required baseline and signal-relevant rubrics. Governed specialists, if selected, " +
+        "must be launched through the native bounded-context boundary.",
     )
-    val launch = GovernedReviewLaunch(
-      assignment = assignment,
-      specialistContract = "Review only the bounded assignment and report concrete findings with provenance.",
-      rubric = "Apply the routed ${packet.stack ?: "generic"} review rubric selected by bill-code-review.",
-      brokerId = "parallel-${assignment.digest.take(16)}",
-      budget = ReviewContextBudgetPolicy.DEFAULT,
+    appendLine(
+      "Return only a risk register in F-XXX bullet format, one finding per line: " +
+        "- [F-NNN] Blocker|Major|Minor|Nit | High|Medium|Low | file:line | description",
     )
-    if (lane == "codex") launch.requireCodexForkTurns("none")
-    launch.budgetOutcomeOrNull()?.let { throw UsageValidationException("${it.type}: ${it.budgetKind} ${it.observedValue} > ${it.configuredLimit}") }
-    return buildString {
-      appendLine("Governed specialist review contract")
-      appendLine("Execution mode: ${codeReviewMode.wireValue}")
-      appendLine(
-        "Return only a risk register in F-XXX bullet format, one finding per line: " +
-          "- [F-NNN] Blocker|Major|Minor|Nit | High|Medium|Low | file:line | description",
-      )
-      appendLine()
-      appendLine(launch.canonicalPayload)
-      appendLine(
-        "Read only these assigned paths and their direct dependencies. Do not run git status, git diff, " +
-          "merge-base, stack discovery, or broad repository searches.",
-      )
-      appendLine("All assigned changed hunks are included above; unrelated diff is absent from this launch payload.")
-    }
+    appendLine()
+    append(diffText.replace("\r\n", "\n"))
   }
-
-  private fun diffForPath(diffText: String, path: String): String {
-    val marker = "diff --git "
-    return diffText.split(marker).firstOrNull { section -> section.contains("+++ b/$path\n") }
-      ?.let { "$marker$it" }
-      ?: diffText
-  }
-
-  private fun sha256(value: String): String = MessageDigest.getInstance("SHA-256")
-    .digest(value.toByteArray(StandardCharsets.UTF_8))
-    .joinToString("") { byte -> "%02x".format(byte) }
 
   private fun launchLane(
     agentId: String,
@@ -271,38 +204,24 @@ class ParallelCodeReviewRunner(
           timeout = request.timeout ?: DEFAULT_TIMEOUT_MINUTES.minutes,
           promptOverride = prompt,
           modelOverride = modelOverride,
-          conversationIsolation = ConversationIsolation.NONE,
         ),
       ),
     )
     return when (outcome) {
       is AgentRunLaunchFacts -> {
         val resultBytes = outcome.stdout.toByteArray(StandardCharsets.UTF_8).size.toLong()
-        val reason = laneFailureReason(outcome) ?: if (resultBytes > ReviewContextBudgetPolicy.DEFAULT.maxLaneResultBytes) {
-          "$REVIEW_CONTEXT_BUDGET_EXCEEDED: lane_result_bytes $resultBytes > ${ReviewContextBudgetPolicy.DEFAULT.maxLaneResultBytes}"
+        val maxLaneResultBytes = ReviewContextBudgetPolicy.DEFAULT.maxLaneResultBytes
+        val reason = laneFailureReason(outcome) ?: if (resultBytes > maxLaneResultBytes) {
+          "$REVIEW_CONTEXT_BUDGET_EXCEEDED: lane_result_bytes $resultBytes > $maxLaneResultBytes"
         } else {
           null
         }
-        val usage = if (listOf(
-            outcome.inputTokens,
-            outcome.cachedInputTokens,
-            outcome.outputTokens,
-            outcome.reasoningTokens,
-            outcome.totalTokens,
-          ).any { it != null }
-        ) {
-          ProviderTokenUsage(
-            inputTokens = outcome.inputTokens,
-            cachedInputTokens = outcome.cachedInputTokens,
-            outputTokens = outcome.outputTokens,
-            reasoningTokens = outcome.reasoningTokens,
-            totalTokens = outcome.totalTokens,
-            ownership = if (outcome.tokenOwnership == "inclusive") TokenOwnership.INCLUSIVE else TokenOwnership.DIRECT,
-          )
-        } else {
-          null
-        }
-        ParallelReviewLaneOutcome(success = reason == null, rawOutput = outcome.stdout, failureReason = reason, tokenUsage = usage)
+        ParallelReviewLaneOutcome(
+          success = reason == null,
+          rawOutput = outcome.stdout,
+          failureReason = reason,
+          tokenUsage = providerTokenUsage(outcome),
+        )
       }
       is UnsupportedAgentRunLaunch ->
         ParallelReviewLaneOutcome(
@@ -311,6 +230,29 @@ class ParallelCodeReviewRunner(
           failureReason = "unsupported agent: ${outcome.reason}",
         )
     }
+  }
+
+  private fun providerTokenUsage(outcome: AgentRunLaunchFacts): ProviderTokenUsage? {
+    val values = listOf(
+      outcome.inputTokens,
+      outcome.cachedInputTokens,
+      outcome.outputTokens,
+      outcome.reasoningTokens,
+      outcome.totalTokens,
+    )
+    if (values.none { it != null }) return null
+    return ProviderTokenUsage(
+      inputTokens = outcome.inputTokens,
+      cachedInputTokens = outcome.cachedInputTokens,
+      outputTokens = outcome.outputTokens,
+      reasoningTokens = outcome.reasoningTokens,
+      totalTokens = outcome.totalTokens,
+      ownership = if (outcome.tokenOwnership == AgentRunTokenOwnership.INCLUSIVE) {
+        TokenOwnership.INCLUSIVE
+      } else {
+        TokenOwnership.DIRECT
+      },
+    )
   }
 
   // Maps a completed launch to a human-readable failure reason, or null when the lane succeeded.

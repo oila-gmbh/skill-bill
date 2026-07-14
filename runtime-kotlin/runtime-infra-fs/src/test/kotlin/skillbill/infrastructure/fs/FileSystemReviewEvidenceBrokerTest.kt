@@ -1,9 +1,9 @@
 package skillbill.infrastructure.fs
 
-import skillbill.ports.review.ReviewEvidenceRequest
-import skillbill.review.context.REVIEW_CONTEXT_BUDGET_EXCEEDED
-import skillbill.review.context.ReviewAssignment
-import skillbill.review.context.ReviewContextBudgetPolicy
+import skillbill.ports.review.model.ReviewEvidenceRequest
+import skillbill.review.context.model.REVIEW_CONTEXT_BUDGET_EXCEEDED
+import skillbill.review.context.model.ReviewAssignment
+import skillbill.review.context.model.ReviewContextBudgetPolicy
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -14,7 +14,12 @@ class FileSystemReviewEvidenceBrokerTest {
   @Test fun `assigned reads are bounded and excessive evidence terminates typed`() {
     val root = Files.createTempDirectory("review-evidence")
     Files.writeString(root.resolve("A.kt"), "assigned")
-    val broker = FileSystemReviewEvidenceBroker(root, assignment(listOf("A.kt")), emptySet(), policy(result = 4, cumulative = 8))
+    val broker = FileSystemReviewEvidenceBroker(
+      root,
+      assignment(listOf("A.kt")),
+      emptySet(),
+      policy(result = 4, cumulative = 8),
+    )
     val result = broker.read(ReviewEvidenceRequest("security", "A.kt"))
     assertEquals(REVIEW_CONTEXT_BUDGET_EXCEEDED, result.budgetExceeded?.type)
     assertEquals(null, result.content)
@@ -46,7 +51,15 @@ class FileSystemReviewEvidenceBrokerTest {
     assertEquals("dep", broker.read(ReviewEvidenceRequest("security", "B.kt")).content)
   }
 
-  private fun assignment(paths: List<String>) = ReviewAssignment("review", "a".repeat(64), "security", "base", "head", paths, emptyList())
+  private fun assignment(paths: List<String>) = ReviewAssignment(
+    "review",
+    "a".repeat(64),
+    "security",
+    "base",
+    "head",
+    paths,
+    emptyList(),
+  )
   private fun policy(result: Long = 100, cumulative: Long = 200, expansions: Int = 1) = ReviewContextBudgetPolicy(
     maxParentPacketBytes = 1_000,
     maxLaneLaunchBytes = 500,

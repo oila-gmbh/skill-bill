@@ -1,6 +1,6 @@
 package skillbill.ports.review.model
 
-import skillbill.review.context.ProviderTokenUsage
+import skillbill.review.context.model.ProviderTokenUsage
 import kotlin.time.Duration
 
 data class ParallelReviewLaneRunRequest(

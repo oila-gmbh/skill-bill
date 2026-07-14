@@ -1,7 +1,7 @@
 package skillbill.application.model
 
+import skillbill.review.context.model.ProviderTokenUsage
 import skillbill.review.model.ParallelReviewMergeResult
-import skillbill.review.context.ProviderTokenUsage
 import skillbill.workflow.model.CodeReviewExecutionMode
 import java.nio.file.Path
 import kotlin.time.Duration

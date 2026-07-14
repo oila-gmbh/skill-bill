@@ -176,17 +176,25 @@ data class AgentRunLaunchFacts(
   val outputTokens: Long? = null,
   val reasoningTokens: Long? = null,
   val totalTokens: Long? = null,
-  val tokenOwnership: String = "direct",
+  val tokenOwnership: AgentRunTokenOwnership = AgentRunTokenOwnership.DIRECT,
 ) : AgentRunLaunchOutcome {
   init {
     require(!timedOut || exitStatus == null) { "timedOut launch facts must not report an exitStatus." }
     require(!interrupted || exitStatus == null) { "interrupted launch facts must not report an exitStatus." }
     require(!spawnFailed || exitStatus == null) { "spawnFailed launch facts must not report an exitStatus." }
-    require(listOf(inputTokens, cachedInputTokens, outputTokens, reasoningTokens, totalTokens).all { it == null || it >= 0 }) {
+    require(
+      listOf(inputTokens, cachedInputTokens, outputTokens, reasoningTokens, totalTokens).all {
+        it == null || it >= 0
+      },
+    ) {
       "Provider token values cannot be negative."
     }
-    require(tokenOwnership == "direct" || tokenOwnership == "inclusive") { "Token ownership must be direct or inclusive." }
   }
+}
+
+enum class AgentRunTokenOwnership {
+  DIRECT,
+  INCLUSIVE,
 }
 
 data class UnsupportedAgentRunLaunch(

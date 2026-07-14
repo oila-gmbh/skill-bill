@@ -1,11 +1,13 @@
-@file:Suppress("MaxLineLength")
-
-package skillbill.review.context
+package skillbill.review.context.model
 
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 
 const val REVIEW_CONTEXT_BUDGET_EXCEEDED: String = "review_context_budget_exceeded"
+
+enum class ResolvedReviewExecutionMode { INLINE, DELEGATED }
+
+data class ReviewAutoEligibility(val oversized: Boolean, val highRisk: Boolean, val layeredStack: Boolean)
 
 data class ProviderTokenThresholds(
   val inputTokens: Long = 64_000,
@@ -17,7 +19,9 @@ data class ProviderTokenThresholds(
   init {
     val dimensions = listOf(inputTokens, cachedInputTokens, outputTokens, reasoningTokens, totalTokens)
     require(dimensions.all { it > 0 }) { "Provider token thresholds must be positive." }
-    require(totalTokens >= dimensions.dropLast(1).max()) { "Total-token threshold must be at least every individual threshold." }
+    require(totalTokens >= dimensions.dropLast(1).max()) {
+      "Total-token threshold must be at least every individual threshold."
+    }
   }
 }
 
@@ -31,13 +35,24 @@ data class ReviewContextBudgetPolicy(
   val providerTokenThresholds: ProviderTokenThresholds = ProviderTokenThresholds(),
 ) {
   init {
-    require(listOf(maxParentPacketBytes, maxLaneLaunchBytes, maxLaneEvidenceBytes, maxEvidenceResultBytes, maxLaneResultBytes).all { it > 0 }) { "Review-context byte limits must be positive." }
+    val byteLimits = listOf(
+      maxParentPacketBytes,
+      maxLaneLaunchBytes,
+      maxLaneEvidenceBytes,
+      maxEvidenceResultBytes,
+      maxLaneResultBytes,
+    )
+    require(byteLimits.all { it > 0 }) { "Review-context byte limits must be positive." }
     require(maxAssignmentExpansions >= 0) { "Assignment expansions cannot be negative." }
-    require(maxEvidenceResultBytes <= maxLaneEvidenceBytes) { "Evidence-result bytes cannot exceed cumulative lane-evidence bytes." }
+    require(maxEvidenceResultBytes <= maxLaneEvidenceBytes) {
+      "Evidence-result bytes cannot exceed cumulative lane-evidence bytes."
+    }
     require(maxLaneLaunchBytes <= maxParentPacketBytes) { "Lane-launch bytes cannot exceed parent-packet bytes." }
   }
 
-  companion object { val DEFAULT: ReviewContextBudgetPolicy = ReviewContextBudgetPolicy() }
+  companion object {
+    val DEFAULT: ReviewContextBudgetPolicy = ReviewContextBudgetPolicy()
+  }
 }
 
 enum class TokenOwnership { DIRECT, INCLUSIVE }
@@ -51,23 +66,38 @@ data class ProviderTokenUsage(
   val ownership: TokenOwnership = TokenOwnership.DIRECT,
 ) {
   init {
-    require(listOf(inputTokens, cachedInputTokens, outputTokens, reasoningTokens, totalTokens).all { it == null || it >= 0 })
+    require(
+      listOf(inputTokens, cachedInputTokens, outputTokens, reasoningTokens, totalTokens).all {
+        it == null || it >= 0
+      },
+    )
     require(cachedInputTokens == null || inputTokens != null) { "Cached-input tokens require input tokens." }
     require(cachedInputTokens == null || cachedInputTokens <= inputTokens!!) {
       "Cached-input tokens cannot exceed input tokens."
     }
   }
   val freshTokenApproximation: Long?
-    get() = if (inputTokens == null && outputTokens == null) null else (inputTokens ?: 0) - (cachedInputTokens ?: 0) + (outputTokens ?: 0)
+    get() = if (inputTokens == null && outputTokens == null) {
+      null
+    } else {
+      (inputTokens ?: 0) - (cachedInputTokens ?: 0) + (outputTokens ?: 0)
+    }
 }
 
 data class ReviewTreeUsage(val node: ProviderTokenUsage, val children: List<ReviewTreeUsage> = emptyList()) {
-  fun aggregate(): ProviderTokenUsage = if (node.ownership == TokenOwnership.INCLUSIVE) node else children.fold(node) { total, child -> total.plus(child.aggregate()) }
+  fun aggregate(): ProviderTokenUsage = if (node.ownership == TokenOwnership.INCLUSIVE) {
+    node
+  } else {
+    children.fold(node) { total, child -> total.plus(child.aggregate()) }
+  }
 }
 
 private fun ProviderTokenUsage.plus(other: ProviderTokenUsage): ProviderTokenUsage = ProviderTokenUsage(
-  inputTokens = inputTokens.add(other.inputTokens), cachedInputTokens = cachedInputTokens.add(other.cachedInputTokens),
-  outputTokens = outputTokens.add(other.outputTokens), reasoningTokens = reasoningTokens.add(other.reasoningTokens), totalTokens = totalTokens.add(other.totalTokens),
+  inputTokens = inputTokens.add(other.inputTokens),
+  cachedInputTokens = cachedInputTokens.add(other.cachedInputTokens),
+  outputTokens = outputTokens.add(other.outputTokens),
+  reasoningTokens = reasoningTokens.add(other.reasoningTokens),
+  totalTokens = totalTokens.add(other.totalTokens),
 )
 private fun Long?.add(other: Long?): Long? = if (this == null && other == null) null else (this ?: 0) + (other ?: 0)
 
@@ -89,7 +119,21 @@ data class ReviewAssignment(
     require(assignedPaths.distinct().size == assignedPaths.size) { "Assigned paths must be unique." }
     assignedPaths.forEach(::requireRepositoryRelativePath)
   }
-  val digest: String get() = sha256(listOf(reviewId, packetDigest, lane, baseRevision, headRevision, assignedPaths.sorted().joinToString("\u001f"), assignedHunks.sorted().joinToString("\u001f"), criteriaReferences.sorted().joinToString("\u001f"), matchedRules.sorted().joinToString("\u001f"), evidenceTargets.sorted().joinToString("\u001f")).joinToString("\n").replace("\r\n", "\n"))
+  val digest: String
+    get() = sha256(
+      listOf(
+        reviewId,
+        packetDigest,
+        lane,
+        baseRevision,
+        headRevision,
+        assignedPaths.sorted().joinToString("\u001f"),
+        assignedHunks.sorted().joinToString("\u001f"),
+        criteriaReferences.sorted().joinToString("\u001f"),
+        matchedRules.sorted().joinToString("\u001f"),
+        evidenceTargets.sorted().joinToString("\u001f"),
+      ).joinToString("\n").replace("\r\n", "\n"),
+    )
 }
 
 data class ReviewChangedHunk(
@@ -140,7 +184,14 @@ data class ReviewContextPacket(
     addOns.sorted().joinToString("\u001f"),
     selectedLanes.sorted().joinToString("\u001f"),
     changedHunks.sortedWith(compareBy(ReviewChangedHunk::path, ReviewChangedHunk::newStart)).joinToString("\u001e") {
-      listOf(it.path.replace('\\', '/'), it.oldStart, it.oldCount, it.newStart, it.newCount, it.content.replace("\r\n", "\n")).joinToString("\u001f")
+      listOf(
+        it.path.replace('\\', '/'),
+        it.oldStart,
+        it.oldCount,
+        it.newStart,
+        it.newCount,
+        it.content.replace("\r\n", "\n"),
+      ).joinToString("\u001f")
     },
   ).joinToString("\n")
 }
@@ -185,29 +236,44 @@ data class GovernedReviewLaunch(
     assignment.matchedRules.sorted().forEach { appendLine("  - $it") }
     appendLine("evidence_targets:")
     assignment.evidenceTargets.sorted().forEach { appendLine("  - $it") }
-    appendLine("budgets: launch=${budget.maxLaneLaunchBytes}, evidence=${budget.maxLaneEvidenceBytes}, result=${budget.maxLaneResultBytes}, expansions=${budget.maxAssignmentExpansions}")
+    appendLine(
+      "budgets: launch=${budget.maxLaneLaunchBytes}, evidence=${budget.maxLaneEvidenceBytes}, " +
+        "result=${budget.maxLaneResultBytes}, expansions=${budget.maxAssignmentExpansions}",
+    )
   }.trimEnd()
 
   fun budgetOutcomeOrNull(): ReviewContextBudgetExceeded? {
     val observed = canonicalPayload.toByteArray(StandardCharsets.UTF_8).size.toLong()
-    return if (observed > budget.maxLaneLaunchBytes) ReviewContextBudgetExceeded(
-      lane = assignment.lane,
-      budgetKind = "lane_launch_bytes",
-      configuredLimit = budget.maxLaneLaunchBytes,
-      observedValue = observed,
-      packetDigest = assignment.packetDigest,
-      assignmentDigest = assignment.digest,
-      enforceable = true,
-    ) else null
+    return if (observed > budget.maxLaneLaunchBytes) {
+      ReviewContextBudgetExceeded(
+        lane = assignment.lane,
+        budgetKind = "lane_launch_bytes",
+        configuredLimit = budget.maxLaneLaunchBytes,
+        observedValue = observed,
+        packetDigest = assignment.packetDigest,
+        assignmentDigest = assignment.digest,
+        enforceable = true,
+      )
+    } else {
+      null
+    }
   }
 }
 
 data class ReviewContextBudgetExceeded(
-  val lane: String, val budgetKind: String, val configuredLimit: Long, val observedValue: Long,
-  val packetDigest: String, val assignmentDigest: String, val enforceable: Boolean,
+  val lane: String,
+  val budgetKind: String,
+  val configuredLimit: Long,
+  val observedValue: Long,
+  val packetDigest: String,
+  val assignmentDigest: String,
+  val enforceable: Boolean,
 ) {
   val type: String = REVIEW_CONTEXT_BUDGET_EXCEEDED
-  init { require(lane.isNotBlank() && budgetKind.isNotBlank()); require(configuredLimit >= 0 && observedValue > configuredLimit) }
+  init {
+    require(lane.isNotBlank() && budgetKind.isNotBlank())
+    require(configuredLimit >= 0 && observedValue > configuredLimit)
+  }
 }
 
 fun requireRepositoryRelativePath(path: String) {
@@ -216,4 +282,6 @@ fun requireRepositoryRelativePath(path: String) {
   require(normalized.split('/').none { it == ".." }) { "Review paths cannot traverse outside the repository." }
 }
 
-private fun sha256(value: String): String = MessageDigest.getInstance("SHA-256").digest(value.toByteArray(StandardCharsets.UTF_8)).joinToString("") { byte -> "%02x".format(byte) }
+private fun sha256(value: String): String = MessageDigest.getInstance("SHA-256")
+  .digest(value.toByteArray(StandardCharsets.UTF_8))
+  .joinToString("") { byte -> "%02x".format(byte) }

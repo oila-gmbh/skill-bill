@@ -1,7 +1,7 @@
 package skillbill.config.model
 
 import skillbill.install.model.InstallAgent
-import skillbill.review.context.ReviewContextBudgetPolicy
+import skillbill.review.context.model.ReviewContextBudgetPolicy
 
 /** Spec source mode: `local` reads specs from the working tree, `linear` sources them from Linear. */
 enum class SpecType(

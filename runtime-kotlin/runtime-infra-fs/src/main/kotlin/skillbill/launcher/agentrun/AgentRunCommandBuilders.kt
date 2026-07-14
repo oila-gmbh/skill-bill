@@ -141,7 +141,8 @@ internal fun launchPrompt(request: SkillRunRequest): String = requireNotNull(req
 
 private fun requireProcessLaunch(request: SkillRunRequest) {
   require(request.conversationIsolation == null) {
-    "Governed specialist isolation cannot be projected by a headless process launch; use the native specialist-launch adapter."
+    "Governed specialist isolation cannot be projected by a headless process launch; " +
+      "use the native specialist-launch adapter."
   }
 }
 
