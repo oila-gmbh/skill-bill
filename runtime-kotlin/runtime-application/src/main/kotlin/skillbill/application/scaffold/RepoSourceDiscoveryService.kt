@@ -12,6 +12,8 @@ class RepoSourceDiscoveryService(
 ) {
   fun discoverAgentAddons(repoRoot: Path) = gateway.discoverAgentAddons(repoRoot)
 
+  fun inspectAgentAddons(repoRoot: Path) = gateway.inspectAgentAddons(repoRoot)
+
   fun discoverGovernedAddonFiles(repoRoot: Path) = gateway.discoverGovernedAddonFiles(repoRoot)
 
   fun discoverGeneratedArtifactFiles(repoRoot: Path) = gateway.discoverGeneratedArtifactFiles(repoRoot)

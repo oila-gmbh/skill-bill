@@ -624,6 +624,27 @@ Agent add-ons are a separate user-owned extension surface under
 slug, description, target agent ids, and consumers; `content.md` is the only
 ordinary instruction body.
 
+The manifest is strict: `contract_version: "1.0"`, a canonical `slug`, a
+single-line `description`, one or more `agent_ids`, and one or more supported
+`consumers`. Invocation is explicit, for example
+`/bill-feature SKILL-122 agent-addon:execution-budget`. The receiving agent must
+be declared; `execution-budget` supports Codex only. With no `agent-addon:`
+token the feature workflow is unchanged.
+
+Selected add-ons are additive and remain below user intent, `AGENTS.md`,
+governed skill instructions, and repository contracts. Rendering and install
+staging create consumer-owned `agent-addon-<slug>.md` pointers outside the
+authored source; never edit or commit those generated files. This differs from
+platform add-ons, which are pack-owned files under
+`platform-packs/<slug>/addons/` and are selected by platform routing.
+
+Durable workflow state records the ordered slug, canonical manifest identity,
+and content digest. Resume reuses that exact selection and fails loudly when
+the source is missing or changed instead of silently substituting content.
+Agent add-ons should not automatically activate or configure themselves for a
+specific model version, and must not prescribe manual context-window or
+compaction controls.
+
 Generated `SKILL.md` wrappers, support pointers, provider-native output
 directories, native-agent sources, and arbitrary sidecars are forbidden in an
 agent add-on source directory. Agent add-ons are distinct from governed skills

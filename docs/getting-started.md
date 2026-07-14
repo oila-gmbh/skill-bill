@@ -547,3 +547,10 @@ scripts/validate_agent_configs
 - [Review Telemetry](review-telemetry.md)
 - `orchestration/shell-content-contract/PLAYBOOK.md`
 - `orchestration/workflow-contract/PLAYBOOK.md`
+# Agent add-ons
+
+Agent add-ons are explicit, agent-compatible extensions. For Codex, invoke the
+execution boundary guidance with
+`/bill-feature <ISSUE_KEY> agent-addon:execution-budget`; omit the token for the
+unchanged baseline workflow. See [Agent add-on authored sources](skill-source-generation.md#agent-add-on-authored-sources)
+for precedence, source shape, staging, and resume guarantees.

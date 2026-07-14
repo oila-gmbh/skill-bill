@@ -1,0 +1,7 @@
+contract_version: "1.0"
+slug: execution-budget
+description: Keeps feature work within the stopping boundary explicitly set by the user.
+agent_ids:
+  - codex
+consumers:
+  - bill-feature

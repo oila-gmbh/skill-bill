@@ -40,7 +40,7 @@ class RuntimeRepoBrowserServiceTest {
       },
     )
     assertTrue(flattened.any { it.kind == TreeItemKind.ADD_ON && it.label == "tracing-otel" })
-    val addonGroup = tree.single { it.kind == TreeItemKind.GROUP && it.label == "Add-ons" }
+    val addonGroup = tree.single { it.kind == TreeItemKind.GROUP && it.label == "Platform Add-ons" }
     val kotlinAddons = addonGroup.children.single { it.kind == TreeItemKind.GROUP && it.label == "kotlin" }
     assertTrue(kotlinAddons.children.any { it.kind == TreeItemKind.ADD_ON && it.label == "tracing-otel" })
     assertTrue(flattened.any { it.kind == TreeItemKind.NATIVE_AGENT && it.label == "agent" })
@@ -178,7 +178,7 @@ class RuntimeRepoBrowserServiceTest {
     assertEquals("{\n  \"external_addon_sources\": []\n}\n", document.text)
     assertFalse(Files.exists(configPath))
     assertTrue(
-      tree.single { it.kind == TreeItemKind.GROUP && it.label == "Add-ons" }.children.none {
+      tree.single { it.kind == TreeItemKind.GROUP && it.label == "Platform Add-ons" }.children.none {
         it.kind == TreeItemKind.CONFIG
       },
     )
@@ -284,7 +284,7 @@ class RuntimeRepoBrowserServiceTest {
     service.externalAddonSourcesResolver = { listOf(ExternalAddonSource(externalDir, "kotlin")) }
     val session = service.open(repo.toString())
 
-    val addonGroup = service.treeFor(session).single { it.kind == TreeItemKind.GROUP && it.label == "Add-ons" }
+    val addonGroup = service.treeFor(session).single { it.kind == TreeItemKind.GROUP && it.label == "Platform Add-ons" }
     val kotlinAddons = addonGroup.children.single { it.kind == TreeItemKind.GROUP && it.label == "kotlin" }
     val externalItem = kotlinAddons.children.single { it.label == "observability" }
     val document = service.loadDocument(session, externalItem.id)
@@ -313,7 +313,7 @@ class RuntimeRepoBrowserServiceTest {
     service.externalAddonSourcesResolver = { listOf(ExternalAddonSource(externalDir, "kotlin")) }
     val session = service.open(repo.toString())
 
-    val addonGroup = service.treeFor(session).single { it.kind == TreeItemKind.GROUP && it.label == "Add-ons" }
+    val addonGroup = service.treeFor(session).single { it.kind == TreeItemKind.GROUP && it.label == "Platform Add-ons" }
     val kotlinAddons = addonGroup.children.single { it.kind == TreeItemKind.GROUP && it.label == "kotlin" }
     val tracingItems = kotlinAddons.children.filter { it.label == "tracing-otel" }
 
@@ -328,7 +328,7 @@ class RuntimeRepoBrowserServiceTest {
     service.externalAddonSourcesResolver = { throw IllegalStateException("bad external config") }
 
     val session = service.open(repo.toString())
-    val addonGroup = service.treeFor(session).single { it.kind == TreeItemKind.GROUP && it.label == "Add-ons" }
+    val addonGroup = service.treeFor(session).single { it.kind == TreeItemKind.GROUP && it.label == "Platform Add-ons" }
     val kotlinAddons = addonGroup.children.single { it.kind == TreeItemKind.GROUP && it.label == "kotlin" }
     val packOwned = kotlinAddons.children.single { it.label == "tracing-otel" }
 

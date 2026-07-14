@@ -84,6 +84,11 @@ internal data class SelectionDetail(
       readOnlyReason = if (canEdit()) null else readOnlyReasonForDocument(),
       content = content,
       generatedArtifacts = generatedArtifacts,
+      description = metadata?.description,
+      supportedAgents = metadata?.supportedAgents.orEmpty(),
+      consumers = metadata?.consumers.orEmpty(),
+      manifestPath = metadata?.manifestPath,
+      diagnostics = metadata?.diagnostics.orEmpty(),
     )
   }
 
@@ -109,7 +114,7 @@ internal data class SelectionDetail(
       kind == SKILL_BILL_CONFIG_KIND ->
         !Files.exists(contentFile, LinkOption.NOFOLLOW_LINKS) ||
           Files.isRegularFile(contentFile, LinkOption.NOFOLLOW_LINKS)
-      kind == "add-on" -> Files.isRegularFile(contentFile, LinkOption.NOFOLLOW_LINKS)
+      kind == "add-on" || kind == "agent-addon" -> Files.isRegularFile(contentFile, LinkOption.NOFOLLOW_LINKS)
       skillName != null && (kind == "horizontal skill" || kind == "platform pack skill") ->
         Files.isRegularFile(contentFile, LinkOption.NOFOLLOW_LINKS) &&
           isAuthoredContentFile(contentFile)

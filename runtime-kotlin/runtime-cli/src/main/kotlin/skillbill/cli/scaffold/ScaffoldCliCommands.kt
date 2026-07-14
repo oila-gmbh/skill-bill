@@ -176,7 +176,7 @@ class InstallTopLevelCommands(
 class ListSkillsCommand(
   private val state: CliRunState,
   private val scaffoldService: ScaffoldService,
-) : DocumentedCliCommand("list", "List content-managed skills and their authoring status.") {
+) : DocumentedCliCommand("list", "List governed skills and agent add-ons with their authoring and validation status.") {
   private val repoRoot by option(
     "--repo-root",
     help = "Repo root to inspect. Defaults to the current working directory.",
@@ -184,7 +184,7 @@ class ListSkillsCommand(
     .default(".")
   private val skillNames by option(
     "--skill-name",
-    help = "Optional content-managed skill name to include. Repeat to target multiple skills.",
+    help = "Optional governed skill or agent-addon:<slug> identity. Repeat to target multiple entries.",
   ).multiple()
   private val format by formatOption()
 
@@ -202,7 +202,7 @@ class ShowSkillCommand(
   private val scaffoldService: ScaffoldService,
 ) : DocumentedCliCommand(
   "show",
-  "Show one content-managed skill with section status, drift, and recommended next commands.",
+  "Show one governed skill or agent-addon:<slug> with authored source and metadata.",
 ) {
   private val skillName by argument(help = "Governed skill name to inspect.")
   private val repoRoot by option(

@@ -2,6 +2,7 @@ package skillbill.infrastructure.fs
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.agentaddon.AgentAddonDeliveryResolver
+import skillbill.agentaddon.inspectAgentAddons as inspectFsAgentAddons
 import skillbill.agentaddon.model.AgentAddonCatalogueEntry
 import skillbill.nativeagent.composition.NativeAgentCompositionDirective
 import skillbill.nativeagent.composition.NativeAgentCompositionKind
@@ -255,6 +256,8 @@ class FileSystemScaffoldCatalogGateway : ScaffoldCatalogGateway {
 @Inject
 class FileSystemRepoSourceDiscoveryGateway : RepoSourceDiscoveryGateway {
   override fun discoverAgentAddons(repoRoot: Path) = AgentAddonDeliveryResolver().catalogue(repoRoot)
+
+  override fun inspectAgentAddons(repoRoot: Path) = inspectFsAgentAddons(repoRoot)
 
   override fun discoverGovernedAddonFiles(repoRoot: Path) = discoverFsGovernedAddonFiles(repoRoot)
 

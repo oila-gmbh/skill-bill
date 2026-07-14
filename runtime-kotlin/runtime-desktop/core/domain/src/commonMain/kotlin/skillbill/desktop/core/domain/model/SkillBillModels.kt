@@ -119,6 +119,8 @@ data class SkillBillTreeItemMetadata(
   val description: String? = null,
   val supportedAgents: List<String> = emptyList(),
   val consumers: List<String> = emptyList(),
+  val manifestPath: String? = null,
+  val diagnostics: List<String> = emptyList(),
 )
 
 data class RepoLoadStatus(
@@ -252,6 +254,11 @@ data class EditorPlaceholder(
   val saveErrorMessage: String? = null,
   val readOnlyReason: String? = null,
   val generatedArtifacts: List<GeneratedArtifactDetail> = emptyList(),
+  val description: String? = null,
+  val supportedAgents: List<String> = emptyList(),
+  val consumers: List<String> = emptyList(),
+  val manifestPath: String? = null,
+  val diagnostics: List<String> = emptyList(),
 ) {
   companion object {
     val empty: EditorPlaceholder =

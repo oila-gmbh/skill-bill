@@ -3,6 +3,7 @@ package skillbill.agentaddon
 import skillbill.error.InvalidAgentAddonSchemaError
 import skillbill.error.MissingAgentAddonDeclarationError
 import skillbill.install.model.InstallAgent
+import skillbill.testing.repoRootFromTest
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -11,6 +12,26 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 class AgentAddonSourceLoaderTest {
+  @Test
+  fun `shipped execution budget declaration has governed source shape and guidance`() {
+    val repo = repoRootFromTest()
+    val declaration = requireAgentAddon(repo, "execution-budget")
+    val content = Files.readString(declaration.contentPath)
+
+    assertEquals("1.0", declaration.contractVersion)
+    assertEquals(listOf(InstallAgent.CODEX), declaration.agents)
+    assertEquals(listOf("bill-feature"), declaration.consumers.map { it.id })
+    assertEquals(
+      listOf("agent-addon.yaml", "content.md"),
+      Files.list(declaration.addonRoot).use { files -> files.map { it.fileName.toString() }.sorted().toList() },
+    )
+    assertTrue(content.contains("stopping boundary"))
+    assertTrue(content.contains("PR babysitting"))
+    assertTrue(content.contains("compact, durable hand-offs"))
+    assertTrue(content.contains("Delegate only when the user explicitly requests delegation"))
+    assertTrue(!content.contains("SKILL.md") && !content.contains("context window"))
+  }
+
   @Test
   fun `absent and empty roots are valid`() {
     val repo = Files.createTempDirectory("agent-addon-empty")

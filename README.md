@@ -145,3 +145,10 @@ customization materials may be modified for permitted use, but public
 redistribution is not granted. User-authored materials and generated outputs
 remain the user's, subject to protected Skill Bill material and third-party
 rights.
+# Agent add-ons
+
+Agent add-ons are distinct from platform-pack add-ons and are selected
+explicitly with an `agent-addon:<slug>` token. The shipped
+`execution-budget` add-on supports Codex feature work. Its two-file authored
+source, compatibility, precedence, staging, and resume behavior are documented
+in [the source-generation guide](docs/skill-source-generation.md#agent-add-on-authored-sources).

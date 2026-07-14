@@ -35,6 +35,22 @@ data class AgentAddonCatalogueEntry(
   val consumers: List<String>,
   val manifestPath: Path,
   val contentPath: Path,
+  val validationStatus: String = "valid",
+  val diagnostics: List<String> = emptyList(),
+)
+
+data class InvalidAgentAddonCatalogueEntry(
+  val identity: String,
+  val slug: String,
+  val manifestPath: Path,
+  val contentPath: Path,
+  val validationStatus: String = "invalid",
+  val diagnostics: List<String>,
+)
+
+data class AgentAddonCatalogueInspection(
+  val entries: List<AgentAddonCatalogueEntry>,
+  val invalidEntries: List<InvalidAgentAddonCatalogueEntry>,
 )
 
 data class PersistedAgentAddonSelectionEntry(

@@ -60,15 +60,7 @@ class AgentAddonDeliveryResolver {
   }
 
   fun catalogue(repoRoot: Path): List<AgentAddonCatalogueEntry> = discoverAgentAddons(repoRoot).map { declaration ->
-    AgentAddonCatalogueEntry(
-      identity = "agent-addon:${declaration.slug}",
-      slug = declaration.slug,
-      description = declaration.description,
-      agentIds = declaration.agents.map { it.id },
-      consumers = declaration.consumers.map { it.id },
-      manifestPath = declaration.manifestPath,
-      contentPath = declaration.contentPath,
-    )
+    declaration.toCatalogueEntry()
   }
 
   private fun validateTarget(root: Path, slug: String, path: Path): Path {

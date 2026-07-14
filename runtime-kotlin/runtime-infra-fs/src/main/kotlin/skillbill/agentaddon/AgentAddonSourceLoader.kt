@@ -3,6 +3,9 @@ package skillbill.agentaddon
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
 import skillbill.agentaddon.model.AgentAddonConsumer
 import skillbill.agentaddon.model.AgentAddonDeclaration
+import skillbill.agentaddon.model.AgentAddonCatalogueEntry
+import skillbill.agentaddon.model.AgentAddonCatalogueInspection
+import skillbill.agentaddon.model.InvalidAgentAddonCatalogueEntry
 import skillbill.error.MissingAgentAddonDeclarationError
 import skillbill.install.model.InstallAgent
 import java.nio.file.Files
@@ -36,6 +39,46 @@ fun discoverAgentAddons(
     candidates.sortedBy { it.slug }
   }
 }
+
+fun inspectAgentAddons(
+  repoRoot: Path,
+  schemaValidator: AgentAddonSchemaValidator = AgentAddonSchemaValidator(),
+): AgentAddonCatalogueInspection {
+  val root = repoRoot.toAbsolutePath().normalize().resolve(AGENT_ADDONS_DIRECTORY)
+  if (!Files.exists(root)) return AgentAddonCatalogueInspection(emptyList(), emptyList())
+  val entries = mutableListOf<AgentAddonCatalogueEntry>()
+  val invalidEntries = mutableListOf<InvalidAgentAddonCatalogueEntry>()
+  Files.list(root).use { stream ->
+    stream.filter { !it.name.startsWith(".") }.sorted().forEach { sourceRoot ->
+      val manifest = sourceRoot.resolve(MANIFEST_FILE)
+      val content = sourceRoot.resolve(CONTENT_FILE)
+      runCatching { parseSource(sourceRoot, schemaValidator) }
+        .onSuccess { declaration ->
+          entries += declaration.toCatalogueEntry()
+        }
+        .onFailure { error ->
+          invalidEntries += InvalidAgentAddonCatalogueEntry(
+            identity = "agent-addon:${sourceRoot.name}",
+            slug = sourceRoot.name,
+            manifestPath = manifest,
+            contentPath = content,
+            diagnostics = listOf(error.message ?: "Agent add-on declaration is invalid."),
+          )
+        }
+    }
+  }
+  return AgentAddonCatalogueInspection(entries.sortedBy { it.slug }, invalidEntries.sortedBy { it.slug })
+}
+
+internal fun AgentAddonDeclaration.toCatalogueEntry() = AgentAddonCatalogueEntry(
+  identity = "agent-addon:$slug",
+  slug = slug,
+  description = description,
+  agentIds = agents.map { it.id },
+  consumers = consumers.map { it.id },
+  manifestPath = manifestPath,
+  contentPath = contentPath,
+)
 
 fun requireAgentAddon(repoRoot: Path, slug: String): AgentAddonDeclaration =
   discoverAgentAddons(repoRoot).firstOrNull { it.slug == slug }
