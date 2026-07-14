@@ -1,5 +1,13 @@
 # Review telemetry
 
+## Bounded delegated-review accounting
+
+Delegated reviews enforce byte, evidence-read, result-size, and assignment-expansion limits before or during a lane. The named `ReviewContextBudgetPolicy.DEFAULT` policy uses 524288 parent-packet bytes, 65536 lane-launch bytes, 262144 cumulative lane-evidence bytes, 65536 bytes per evidence result and lane result, and three assignment expansions. Repositories may override individual values through the strict `review_context_budget` object in `.skill-bill/config.yaml`; malformed, negative, unknown, or inconsistent nested values fail before launch.
+
+Provider usage reports input, cached-input, output, reasoning, and total tokens independently when available. Fresh-token approximation is `max(input - cached_input, 0) + output`. Direct usage owns only one session; inclusive usage already contains descendants and is not added to child totals again. Providers without reliable live cancellation classify threshold excess after completion as `budget_regression`, distinct from enforceable `review_context_budget_exceeded` outcomes.
+
+Durable output and telemetry retain only numeric accounting, lane identifiers, packet and assignment digests, enforcement classification, and terminal outcomes. Prompts, diffs, source, project guidance, and tool output remain transient.
+
 Skill Bill can record a measurement loop for code-review usefulness. Telemetry uses a three-level model selected during install: `off`, `anonymous` (default), or `full`.
 
 - each top-level review session should expose a `Review session ID: ...` using `rvs-<uuid4>` (e.g. `rvs-550e8400-e29b-41d4-a716-446655440000`)

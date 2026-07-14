@@ -15,6 +15,15 @@ class InvalidManifestSchemaError(
   cause: Throwable? = null,
 ) : ShellContentContractException(message, cause)
 
+class InvalidReviewContextSchemaError(
+  val sourceLabel: String,
+  val reason: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Review context '${sourceLabel.ifBlank { "<unknown>" }}' fails schema validation: $reason",
+  cause,
+)
+
 /**
  * SKILL-48 Subtask 2a: surfaced when a `WorkflowStateSnapshot` fails the
  * canonical `orchestration/contracts/workflow-state-schema.yaml` Draft

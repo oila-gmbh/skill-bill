@@ -1,0 +1,52 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: https://skill-bill.dev/contracts/review-context-schema.yaml
+title: Review context contract
+description: Bounded immutable context exchanged by delegated review participants.
+type: object
+additionalProperties: false
+required: [contract_version, kind, review_id, packet_digest]
+properties:
+  contract_version: { const: "0.1" }
+  kind: { enum: [parent_packet, assignment, launch, budget_outcome, accounting_summary] }
+  review_id: { type: string, minLength: 1 }
+  packet_digest: { type: string, pattern: "^[a-f0-9]{64}$" }
+  assignment_digest: { type: string, pattern: "^[a-f0-9]{64}$" }
+  lane: { type: string, minLength: 1 }
+  base_revision: { type: string, minLength: 1 }
+  head_revision: { type: string, minLength: 1 }
+  assigned_paths:
+    type: array
+    uniqueItems: true
+    items: { type: string, minLength: 1, pattern: "^(?!/)(?!.*(?:^|/)\.\.(?:/|$)).+$" }
+  assigned_hunks:
+    type: array
+    uniqueItems: true
+    items: { type: string, minLength: 1 }
+  criteria_references:
+    type: array
+    uniqueItems: true
+    items: { type: string, minLength: 1 }
+  matched_rules:
+    type: array
+    uniqueItems: true
+    items: { type: string, minLength: 1 }
+  evidence_targets:
+    type: array
+    uniqueItems: true
+    items: { type: string, minLength: 1 }
+  terminal_outcome: { enum: [completed, review_context_budget_exceeded, budget_regression, failed] }
+  accounting:
+    type: object
+    additionalProperties: false
+    properties:
+      input_tokens: { type: integer, minimum: 0 }
+      cached_input_tokens: { type: integer, minimum: 0 }
+      output_tokens: { type: integer, minimum: 0 }
+      reasoning_tokens: { type: integer, minimum: 0 }
+      total_tokens: { type: integer, minimum: 0 }
+      fresh_token_approximation: { type: integer, minimum: 0 }
+x-coherence-checks:
+  - Digests are SHA-256 over canonical UTF-8 serialization with digest fields omitted.
+  - Assignment revisions equal their parent packet revisions.
+  - Lanes paths and hunks are unique and repository-relative paths cannot traverse.
+  - Durable projections omit prompt diff source project-guidance and tool-output bodies.

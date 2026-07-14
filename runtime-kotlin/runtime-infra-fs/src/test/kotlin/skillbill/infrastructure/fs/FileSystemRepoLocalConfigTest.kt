@@ -123,6 +123,54 @@ class FileSystemRepoLocalConfigTest {
   }
 
   @Test
+  fun `review context budget overrides merge over governed defaults`() {
+    val repoRoot = writeConfig(
+      """
+      review_context_budget:
+        max_parent_packet_bytes: 600000
+        max_lane_launch_bytes: 60000
+        max_assignment_expansions: 1
+        provider_token_thresholds:
+          total_tokens: 100000
+      """.trimIndent(),
+    )
+    val budget = adapter.readRepoLocalConfig(ReadRepoLocalConfigRequest(repoRoot)).config.reviewContextBudget
+    assertEquals(600_000, budget.maxParentPacketBytes)
+    assertEquals(60_000, budget.maxLaneLaunchBytes)
+    assertEquals(1, budget.maxAssignmentExpansions)
+    assertEquals(64_000, budget.providerTokenThresholds.inputTokens)
+    assertEquals(100_000, budget.providerTokenThresholds.totalTokens)
+  }
+
+  @Test
+  fun `review context budget rejects unknown nested keys before launch`() {
+    val repoRoot = writeConfig(
+      """
+      review_context_budget:
+        silently_truncate: true
+      """.trimIndent(),
+    )
+    val error = assertFailsWith<MalformedRepoLocalConfigError> {
+      adapter.readRepoLocalConfig(ReadRepoLocalConfigRequest(repoRoot))
+    }
+    assertEquals("review_context_budget.silently_truncate", error.key)
+  }
+
+  @Test
+  fun `review context budget rejects inconsistent limits before launch`() {
+    val repoRoot = writeConfig(
+      """
+      review_context_budget:
+        max_lane_evidence_bytes: 10
+        max_evidence_result_bytes: 11
+      """.trimIndent(),
+    )
+    assertFailsWith<MalformedRepoLocalConfigError> {
+      adapter.readRepoLocalConfig(ReadRepoLocalConfigRequest(repoRoot))
+    }
+  }
+
+  @Test
   fun `ignores execution matrix because it belongs to the machine config`() {
     val repoRoot = writeConfig(
       """

@@ -17,17 +17,16 @@ with `mode:inline` when a governed feature-task caller supplies the exact
 remediation delta since its checkpoint. Reject it with another mode, a full
 branch/PR scope, or no bounded remediation scope.
 
-`auto` preserves the shell contract's existing eligibility decision. `inline`
-is allowed only after every shared eligibility condition passes; otherwise stop
-with the failed reasons and state that delegated review is required. Do not
-silently replace it. `delegated` always runs the normal routed delegated path,
+`auto` alone applies the shell contract's eligibility decision. `inline`
+always runs the complete routed review in the current agent context, regardless
+of size or risk, without spawning specialists or fabricating lane totals.
+`delegated` always runs the normal routed delegated path,
 including specialist selection; inability to launch required workers blocks
 loudly and never falls back to inline. Report both requested mode and resolved
 execution mode in the normal review metadata.
 
-`context:feature-remediation` is the sole exception to normal inline-selection
-eligibility. The feature workflow has already reserved its one later review
-pass and requires it inline. Review the bounded remediation delta in this
+`context:feature-remediation` bounds the feature workflow's reserved later
+inline review pass. Review the bounded remediation delta in this
 session, apply every signal-relevant baseline and specialist rubric, and treat
 high-risk signals as required coverage rather than grounds to refuse or
 delegate. Finding severity, evidence, and approval rules remain unchanged.
@@ -130,7 +129,7 @@ Rules:
 - Run the full routed review using the routed pack's Diff-Signal Routing Table: retain required baseline layers, add only signal-relevant specialists, and drop empty lanes.
 - Invoke `bill-code-review mode:<selected-mode>` for this lane. Preserve the caller's selected mode; do not replace it with `auto`.
 - Do NOT pass parallel:<agent> to bill-code-review — you are already lane 2; recursion is not allowed.
-- Spawn each specialist as an isolated-context subagent using your agent's native subagent mechanism (see Agent-specific instructions below). What matters is that each specialist reasons in its own context window — not that it runs as a separate OS process.
+- Spawn each specialist as an isolated-context subagent using your agent's native subagent mechanism (see Agent-specific instructions below). For Codex, every governed specialist launch MUST set `fork_turns: "none"`; omission or any inherited-turn value is a contract failure. Give the child only its compact specialist contract, applicable rubric, immutable review identifiers, assigned files/hunks, relevant criteria references, matched project rules, and named evidence targets. Never include the parent transcript, full feature-task briefing, unrelated criteria/rubrics, or unrelated diff.
 - When all subagents complete, collect their findings and output ONLY the concatenated Risk Register, one finding per line:
   - [F-NNN] Severity | Confidence | file:line | description
   Severity: Blocker, Major, Minor, Nit. Confidence: High, Medium, Low.
@@ -141,7 +140,7 @@ Rules:
 Invoke `/bill-code-review` as a slash command — it handles all specialist routing automatically.
 
 **If you are `codex`:**
-Spawn one isolated-context subagent per specialist domain below using your native `SpawnAgent` mechanism — the same primitive Codex uses for parallel subagents. Do **not** shell out to `codex exec` subprocesses; the native subagent already gives each specialist its own context window, which is the only isolation this review needs. Run all subagents in parallel from the repo root and wait for them to complete.
+Spawn one isolated-context subagent per specialist domain below using your native `SpawnAgent` mechanism with `fork_turns: "none"`. Omitted or inherited turns are forbidden. Do **not** shell out to `codex exec` subprocesses. Run selected subagents in deterministic waves. Specialists use the bounded evidence surface and must not run repository status, scope discovery, or broad branch-diff commands.
 
 Prepare the compact shared review-context packet from `review-delegation.md` once. Derive specialist domains from the routed platform pack's Diff-Signal Routing Table, including required baseline layers, and spawn only selected non-empty lanes. Give each worker the shared packet, its lane assignment, and only its applicable rubric. Packet facts are authoritative; workers must not repeat repository, scope, stack, routing, or guidance discovery.
 

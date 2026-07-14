@@ -1,6 +1,7 @@
 package skillbill.config.model
 
 import skillbill.install.model.InstallAgent
+import skillbill.review.context.ReviewContextBudgetPolicy
 
 /** Spec source mode: `local` reads specs from the working tree, `linear` sources them from Linear. */
 enum class SpecType(
@@ -41,6 +42,7 @@ enum class RepoLocalConfigKey(
 data class RepoLocalConfig(
   val specType: SpecType,
   val codeReviewParallelAgent: String,
+  val reviewContextBudget: ReviewContextBudgetPolicy = ReviewContextBudgetPolicy.DEFAULT,
 ) {
   companion object {
     const val NO_PARALLEL_AGENT: String = "none"
@@ -48,6 +50,7 @@ data class RepoLocalConfig(
     fun defaults(): RepoLocalConfig = RepoLocalConfig(
       specType = SpecType.LOCAL,
       codeReviewParallelAgent = NO_PARALLEL_AGENT,
+      reviewContextBudget = ReviewContextBudgetPolicy.DEFAULT,
     )
   }
 }

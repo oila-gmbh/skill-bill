@@ -1,3 +1,5 @@
+@file:Suppress("MaxLineLength")
+
 package skillbill.ports.agentrun.model
 
 import skillbill.goalrunner.model.GoalRunnerLivenessState
@@ -164,11 +166,21 @@ data class AgentRunLaunchFacts(
   val liveness: AgentRunLivenessSnapshot? = null,
   val childSessionPath: String? = null,
   val childSessionId: String? = null,
+  val inputTokens: Long? = null,
+  val cachedInputTokens: Long? = null,
+  val outputTokens: Long? = null,
+  val reasoningTokens: Long? = null,
+  val totalTokens: Long? = null,
+  val tokenOwnership: String = "direct",
 ) : AgentRunLaunchOutcome {
   init {
     require(!timedOut || exitStatus == null) { "timedOut launch facts must not report an exitStatus." }
     require(!interrupted || exitStatus == null) { "interrupted launch facts must not report an exitStatus." }
     require(!spawnFailed || exitStatus == null) { "spawnFailed launch facts must not report an exitStatus." }
+    require(listOf(inputTokens, cachedInputTokens, outputTokens, reasoningTokens, totalTokens).all { it == null || it >= 0 }) {
+      "Provider token values cannot be negative."
+    }
+    require(tokenOwnership == "direct" || tokenOwnership == "inclusive") { "Token ownership must be direct or inclusive." }
   }
 }
 
