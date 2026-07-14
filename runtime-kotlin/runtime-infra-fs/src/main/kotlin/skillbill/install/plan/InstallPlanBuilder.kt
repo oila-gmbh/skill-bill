@@ -18,6 +18,7 @@ import skillbill.install.model.validateInstallPlanWireSnapshot
 import skillbill.install.policy.InstallPlanPolicy
 import skillbill.install.staging.GeneratedSupportPointer
 import skillbill.install.staging.InternalStagingPreparation
+import skillbill.install.staging.agentAddonPointersForSkill
 import skillbill.install.staging.applicablePointers
 import skillbill.install.staging.authoredFilesFor
 import skillbill.install.staging.computeInstallContentHash
@@ -25,6 +26,7 @@ import skillbill.install.staging.generatedSupportPointersFor
 import skillbill.install.staging.installedSkillStagingDir
 import skillbill.install.staging.installedSkillsCacheRoot
 import skillbill.install.staging.prepareInternalStaging
+import skillbill.install.staging.validateAgentAddonPointerNamespace
 import skillbill.install.support.claudeSkillTargets
 import skillbill.ports.install.plan.model.InstallPlanningFacts
 import skillbill.scaffold.model.PlatformManifest
@@ -197,12 +199,21 @@ private fun buildStagingIntent(
         internal.supportPointers,
         internal.sidecarNames,
       )
+      val agentAddonPointers = agentAddonPointersForSkill(request.repoRoot, skill.name)
+      validateAgentAddonPointerNamespace(
+        skill.name,
+        authored.map { it.fileName.toString() } + internal.sidecarNames +
+          applicablePointers.map { it.second.name } + internal.supportPointers.map { it.name } +
+          listOf("SKILL.md", ".content-hash"),
+        agentAddonPointers,
+      )
       val contentHash = computeInstallContentHash(
         sourceSkillDir = skill.sourceDir,
         authored = authored,
         applicablePointers = applicablePointers,
         generatedSupportPointers = internal.supportPointers,
         internalChildren = internal.children,
+        agentAddonPointers = agentAddonPointers,
       )
       InstallStagingPathIntent(
         skillName = skill.name,

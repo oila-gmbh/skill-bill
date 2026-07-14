@@ -1,7 +1,7 @@
 package skillbill.infrastructure.fs
 
-import skillbill.agentaddon.discoverAgentAddons
 import me.tatarka.inject.annotations.Inject
+import skillbill.agentaddon.discoverAgentAddons
 import skillbill.error.InvalidScaffoldPayloadError
 import skillbill.error.MissingRequiredSectionError
 import skillbill.ports.scaffold.repo.ScaffoldRepoValidationPort
@@ -13,8 +13,8 @@ import skillbill.scaffold.model.CodeReviewBaselineLayer
 import skillbill.scaffold.platformpack.declaredCodeReviewSkillNames
 import skillbill.scaffold.platformpack.loadPlatformPack
 import skillbill.scaffold.platformpack.unsupportedCompositionModeReason
-import skillbill.scaffold.policy.SKILL_KIND_HORIZONTAL
 import skillbill.scaffold.policy.SKILL_KIND_AGENT_ADDON
+import skillbill.scaffold.policy.SKILL_KIND_HORIZONTAL
 import skillbill.scaffold.runtime.CONTENT_BODY_FILENAME
 import skillbill.scaffold.runtime.ScaffoldPlan
 import skillbill.scaffold.runtime.displayNameFromSlug

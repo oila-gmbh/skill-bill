@@ -2,10 +2,7 @@
 
 package skillbill.install.staging
 
-import skillbill.agentaddon.AgentAddonDeliveryResolver
 import skillbill.agentaddon.AgentAddonPointer
-import skillbill.agentaddon.model.AgentAddonConsumer
-import skillbill.error.AgentAddonPointerCollisionError
 import skillbill.install.model.InstallPlanSkill
 import skillbill.install.model.RenderedSkill
 import skillbill.install.support.writeRenderedSupportPointerFiles
@@ -250,11 +247,7 @@ internal fun stageInstalledSkill(
   val resolvedSource = sourceSkillDir.toAbsolutePath().normalize()
   val resolvedRepoRoot = repoRoot.toAbsolutePath().normalize()
   val skillName = resolvedSource.fileName.toString()
-  val agentAddonPointers = if (skillName == AgentAddonConsumer.BILL_FEATURE.id) {
-    AgentAddonDeliveryResolver().resolve(resolvedRepoRoot, AgentAddonConsumer.BILL_FEATURE)
-  } else {
-    emptyList()
-  }
+  val agentAddonPointers = agentAddonPointersForSkill(resolvedRepoRoot, skillName)
   val target: AuthoringTarget = resolveTarget(resolvedRepoRoot, skillName)
   val selectedManifests = manifests.orEmpty().filter { manifest -> manifest.slug in selectedPlatformSlugs }
   val pointers = applicablePointers(resolvedRepoRoot, resolvedSource, manifests)
@@ -406,19 +399,6 @@ private fun buildFreshInstallStaging(inputs: FreshInstallInputs): RenderedSkill 
     )
     cleanupInstallStagingOnFailure(tempDir, inputs.finalStagingDir, promoted)
     throw error
-  }
-}
-
-private fun validateAgentAddonPointerNamespace(
-  skillName: String,
-  reservedNames: Set<String>,
-  pointers: List<AgentAddonPointer>,
-) {
-  val claimed = reservedNames.map(::portableFileName).toMutableSet()
-  pointers.forEach { pointer ->
-    if (!claimed.add(portableFileName(pointer.name))) {
-      throw AgentAddonPointerCollisionError("$skillName/${pointer.name}")
-    }
   }
 }
 

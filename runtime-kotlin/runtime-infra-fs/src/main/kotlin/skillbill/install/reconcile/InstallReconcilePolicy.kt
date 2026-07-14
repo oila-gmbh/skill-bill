@@ -22,10 +22,14 @@ import skillbill.install.model.WindowsSymlinkPreflight
 import skillbill.install.model.WindowsSymlinkPreflightState
 import skillbill.install.plan.discoverPlatformManifests
 import skillbill.install.plan.enumerateInstallPlanSkills
+import skillbill.install.staging.InternalStagingPreparation
+import skillbill.install.staging.agentAddonPointersForSkill
 import skillbill.install.staging.applicablePointers
 import skillbill.install.staging.authoredFilesFor
 import skillbill.install.staging.computeInstallContentHash
 import skillbill.install.staging.generatedSupportPointersFor
+import skillbill.install.staging.prepareInternalStaging
+import skillbill.install.staging.validateAgentAddonPointerNamespace
 import skillbill.scaffold.model.PlatformManifest
 import java.io.File
 import java.nio.file.Files
@@ -229,9 +233,12 @@ internal fun enumerateSkills(roots: ReconcileSourceRoots, home: Path): Map<Strin
   // Reuse the approved builder seam for skill enumeration so this policy never
   // references the domain InstallPlanPolicy directly (adapter-ownership rule).
   val skills = enumerateInstallPlanSkills(request)
+  val selectedPackSkills = skills.filter { candidate ->
+    candidate.kind == InstallPlanSkillKind.PLATFORM_PACK && candidate.internalFor != null
+  }
   return skills.associate { skill ->
     skillRelativePath(roots, skill) to ReconcileSkillEntry(
-      hash = reconcileSkillHash(roots, skill, platformManifests),
+      hash = reconcileSkillHash(roots, skill, platformManifests, selectedPackSkills),
       sourceDir = skill.sourceDir.toAbsolutePath().normalize(),
     )
   }
@@ -241,6 +248,7 @@ private fun reconcileSkillHash(
   roots: ReconcileSourceRoots,
   skill: InstallPlanSkill,
   platformManifests: List<PlatformManifest>,
+  selectedPackSkills: List<InstallPlanSkill>,
 ): String {
   val applicablePointers = applicablePointers(roots.repoRoot, skill.sourceDir, platformManifests)
   val supportPointers = generatedSupportPointersFor(
@@ -250,8 +258,41 @@ private fun reconcileSkillHash(
     skillsRoot = roots.skillsRoot,
     selectedPlatformManifests = platformManifests,
   )
-  val authored = authoredFilesFor(skill.sourceDir, applicablePointers, supportPointers)
-  return computeInstallContentHash(skill.sourceDir, authored, applicablePointers, supportPointers)
+  val internal = prepareInternalStaging(
+    InternalStagingPreparation(
+      repoRoot = roots.repoRoot,
+      parentSourceDir = skill.sourceDir,
+      parentSkillName = skill.name,
+      skillsRoot = roots.skillsRoot,
+      selectedPackSkills = selectedPackSkills,
+      platformManifests = platformManifests,
+      selectedPlatformManifests = platformManifests,
+      parentSupportPointers = supportPointers,
+      parentPointerNames = applicablePointers.map { it.second.name }.toSet(),
+    ),
+  )
+  val authored = authoredFilesFor(
+    skill.sourceDir,
+    applicablePointers,
+    internal.supportPointers,
+    internal.sidecarNames,
+  )
+  val agentAddonPointers = agentAddonPointersForSkill(roots.repoRoot, skill.name)
+  validateAgentAddonPointerNamespace(
+    skill.name,
+    authored.map { it.fileName.toString() } + internal.sidecarNames +
+      applicablePointers.map { it.second.name } + internal.supportPointers.map { it.name } +
+      listOf("SKILL.md", ".content-hash"),
+    agentAddonPointers,
+  )
+  return computeInstallContentHash(
+    skill.sourceDir,
+    authored,
+    applicablePointers,
+    internal.supportPointers,
+    internal.children,
+    agentAddonPointers = agentAddonPointers,
+  )
 }
 
 /**

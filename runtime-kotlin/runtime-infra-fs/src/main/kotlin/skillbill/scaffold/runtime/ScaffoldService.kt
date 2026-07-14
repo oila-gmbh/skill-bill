@@ -12,13 +12,13 @@
 package skillbill.scaffold.runtime
 
 import skillbill.agentaddon.model.AgentAddonConsumer
-import skillbill.install.model.InstallAgent
 import skillbill.error.InvalidScaffoldPayloadError
 import skillbill.error.MissingPlatformPackError
 import skillbill.error.ScaffoldRollbackError
 import skillbill.error.SkillAlreadyExistsError
 import skillbill.error.UnknownPreShellFamilyError
 import skillbill.error.UnknownSkillKindError
+import skillbill.install.model.InstallAgent
 import skillbill.install.model.InstallPlanSkill
 import skillbill.install.model.InstallPlanSkillKind
 import skillbill.install.model.InstallTransaction

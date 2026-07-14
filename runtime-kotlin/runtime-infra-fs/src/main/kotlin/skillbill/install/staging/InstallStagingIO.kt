@@ -80,8 +80,8 @@ internal fun reuseInstallStaging(
   val finalRoot = finalStagingDir.toAbsolutePath().normalize()
   val pointerRelativePaths = (
     applicablePointers.map { (_, spec) -> spec.name } +
-      generatedSupportPointers.map { pointer -> pointer.name }
-      + agentAddonPointerNames
+      generatedSupportPointers.map { pointer -> pointer.name } +
+      agentAddonPointerNames
     ).map { name -> Path.of(name) }.toSet()
   val sidecarRelativePaths = internalSidecarNames.map { name -> Path.of(name) }.toSet()
   val authoredCopied = staged.filter { path ->

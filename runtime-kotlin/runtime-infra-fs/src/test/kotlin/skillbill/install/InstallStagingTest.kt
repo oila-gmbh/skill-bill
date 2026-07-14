@@ -377,7 +377,10 @@ class InstallStagingTest {
     val unrelated = repo.resolve("skills/bill-unrelated")
     Files.createDirectories(feature)
     Files.createDirectories(unrelated)
-    Files.writeString(feature.resolve("content.md"), "---\nname: bill-feature\ndescription: Feature router.\n---\n\nBody.\n")
+    Files.writeString(
+      feature.resolve("content.md"),
+      "---\nname: bill-feature\ndescription: Feature router.\n---\n\nBody.\n",
+    )
     Files.writeString(unrelated.resolve("content.md"), "---\nname: bill-unrelated\ndescription: Other.\n---\n\nBody.\n")
     SkillClassFixtures.seedShippedSkillClasses(repo)
     val targets = supportingFileTargets(repo)

@@ -34,7 +34,11 @@ class AgentAddonDeliveryResolver {
         val content = validateTarget(canonicalRoot, declaration.slug, declaration.contentPath)
         val name = "agent-addon-${declaration.slug}.md"
         if (canonicalRoot.relativize(content).toString().replace(File.separatorChar, '/') == name) {
-          throw InvalidAgentAddonDeliveryTargetError(declaration.slug, content.toString(), "self-reference is forbidden")
+          throw InvalidAgentAddonDeliveryTargetError(
+            declaration.slug,
+            content.toString(),
+            "self-reference is forbidden",
+          )
         }
         val contentBytes = Files.readAllBytes(content)
         AgentAddonPointer(

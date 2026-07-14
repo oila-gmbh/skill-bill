@@ -1,8 +1,8 @@
 package skillbill.infrastructure.fs
 
+import me.tatarka.inject.annotations.Inject
 import skillbill.agentaddon.AgentAddonDeliveryResolver
 import skillbill.agentaddon.model.AgentAddonCatalogueEntry
-import me.tatarka.inject.annotations.Inject
 import skillbill.nativeagent.composition.NativeAgentCompositionDirective
 import skillbill.nativeagent.composition.NativeAgentCompositionKind
 import skillbill.nativeagent.composition.NativeAgentSource
@@ -51,7 +51,11 @@ class FileSystemScaffoldGateway(
     val addons = AgentAddonDeliveryResolver().catalogue(repoRoot)
       .filter { skillNames.isEmpty() || it.identity in addonNames }
       .map { it.toSkillStatus(repoRoot, "none") }
-    val governedSkills = if (skillNames.isEmpty()) result.skills else result.skills.filter { it.skillName in governedNames }
+    val governedSkills = if (skillNames.isEmpty()) {
+      result.skills
+    } else {
+      result.skills.filter { it.skillName in governedNames }
+    }
     val skills = governedSkills + addons
     return ScaffoldListResult(
       repoRoot = result.repoRoot,
@@ -60,14 +64,13 @@ class FileSystemScaffoldGateway(
     )
   }
 
-  override fun show(repoRoot: Path, skillName: String, contentMode: String): ScaffoldShowResult =
-    ScaffoldShowResult(
-      status = if (skillName.startsWith(AGENT_ADDON_PREFIX)) {
-        requireAgentAddonEntry(repoRoot, skillName).toSkillStatus(repoRoot, contentMode)
-      } else {
-        AuthoringOperations.show(repoRoot, skillName, contentMode)
-      },
-    )
+  override fun show(repoRoot: Path, skillName: String, contentMode: String): ScaffoldShowResult = ScaffoldShowResult(
+    status = if (skillName.startsWith(AGENT_ADDON_PREFIX)) {
+      requireAgentAddonEntry(repoRoot, skillName).toSkillStatus(repoRoot, contentMode)
+    } else {
+      AuthoringOperations.show(repoRoot, skillName, contentMode)
+    },
+  )
 
   override fun explain(repoRoot: Path, skillName: String?): ScaffoldExplainResult {
     if (skillName?.startsWith(AGENT_ADDON_PREFIX) == true) {
@@ -78,7 +81,10 @@ class FileSystemScaffoldGateway(
         generatedSurface = listOf("agent-addon-<slug>.md install pointers"),
         governedSidecars = emptyList(),
         normalWorkflow = listOf("skill-bill show $skillName", "skill-bill validate", "skill-bill render bill-feature"),
-        notes = listOf("Supported agents: ${addon.agentIds.joinToString()}", "Consumers: ${addon.consumers.joinToString()}"),
+        notes = listOf(
+          "Supported agents: ${addon.agentIds.joinToString()}",
+          "Consumers: ${addon.consumers.joinToString()}",
+        ),
         skill = ScaffoldExplainSkill(
           skillName = addon.identity,
           contentFile = addon.contentPath.toString(),
