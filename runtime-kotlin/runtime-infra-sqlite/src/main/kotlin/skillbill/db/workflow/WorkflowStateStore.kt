@@ -71,7 +71,11 @@ private class FeatureTaskWorkflowStateStore(
       SET workflow_status = 'running', updated_at = CURRENT_TIMESTAMP
       WHERE workflow_id = ?
         AND mode = 'runtime'
-        AND workflow_status NOT IN ('running', 'completed', 'failed', 'abandoned')
+        AND workflow_status NOT IN ('completed', 'failed', 'abandoned')
+        AND NOT EXISTS (
+          SELECT 1 FROM feature_task_runtime_worker_leases lease
+          WHERE lease.workflow_id = feature_task_workflows.workflow_id
+        )
         AND ((updated_at IS NULL AND ? IS NULL) OR updated_at = ?)
       """.trimIndent(),
     ).use { statement ->

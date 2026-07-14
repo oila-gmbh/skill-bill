@@ -4237,6 +4237,73 @@ internal class RecordingLifecycleTelemetryRepository : LifecycleTelemetryReposit
 }
 
 internal class InMemoryRuntimeWorkflowRepository : WorkflowStateRepository {
+  private var workerOwnership: skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership? = null
+
+  fun seedWorkerOwnership(ownership: skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership) {
+    workerOwnership = ownership
+  }
+
+  override fun getFeatureTaskRuntimeWorkerOwnership(workflowId: String) =
+    synchronized(this) { workerOwnership?.takeIf { it.workflowId == workflowId } }
+
+  override fun acquireFeatureTaskRuntimeWorker(
+    ownership: skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership,
+    expectedUpdatedAt: String?,
+  ): Boolean = synchronized(this) {
+    if (workerOwnership != null || taskRuntimeRows[ownership.workflowId]?.updatedAt != expectedUpdatedAt) return false
+    workerOwnership = ownership
+    true
+  }
+
+  override fun reserveFeatureTaskRuntimeWorkerTakeover(
+    workflowId: String,
+    expectedOwnerToken: String,
+    expectedGeneration: Long,
+  ): Boolean = synchronized(this) {
+    val current = workerOwnership ?: return false
+    if (
+      current.workflowId != workflowId || current.ownerToken != expectedOwnerToken ||
+      current.generation != expectedGeneration ||
+      current.leaseState != skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerLeaseState.ACTIVE
+    ) return false
+    workerOwnership = current.copy(
+      leaseState = skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerLeaseState.TAKEOVER_RESERVED,
+    )
+    true
+  }
+
+  override fun transferFeatureTaskRuntimeWorker(
+    ownership: skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership,
+    expectedOwnerToken: String,
+    expectedGeneration: Long,
+  ): Boolean = synchronized(this) {
+    val current = workerOwnership ?: return false
+    if (
+      current.ownerToken != expectedOwnerToken || current.generation != expectedGeneration ||
+      current.leaseState != skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerLeaseState.TAKEOVER_RESERVED
+    ) return false
+    workerOwnership = ownership
+    true
+  }
+
+  override fun heartbeatFeatureTaskRuntimeWorker(
+    ownership: skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership,
+  ): Boolean = synchronized(this) {
+    val current = workerOwnership ?: return false
+    if (current.ownerToken != ownership.ownerToken || current.generation != ownership.generation) return false
+    workerOwnership = ownership
+    true
+  }
+
+  override fun releaseFeatureTaskRuntimeWorker(workflowId: String, ownerToken: String, generation: Long): Boolean =
+    synchronized(this) {
+      val current = workerOwnership ?: return false
+      if (current.workflowId != workflowId || current.ownerToken != ownerToken || current.generation != generation) {
+        return false
+      }
+      workerOwnership = null
+      true
+    }
   override fun saveFeatureTaskExecutionIdentity(
     identity: skillbill.ports.persistence.model.FeatureTaskExecutionIdentity,
   ) = Unit

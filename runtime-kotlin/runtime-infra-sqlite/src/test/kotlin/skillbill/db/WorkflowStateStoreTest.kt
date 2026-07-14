@@ -35,7 +35,7 @@ class WorkflowStateStoreTest {
         workflowName = "bill-feature-task-runtime",
         currentStepId = "implement",
         mode = FeatureTaskWorkflowMode.RUNTIME,
-      ).copy(workflowStatus = "paused")
+      ).copy(workflowStatus = "running")
       store.saveFeatureTaskRuntimeWorkflow(row)
       val updatedAt = assertNotNull(store.getFeatureTaskRuntimeWorkflow(row.workflowId)).updatedAt
       val initial = workerOwnership(row.workflowId, generation = 1, ownerToken = "owner-token-0001")

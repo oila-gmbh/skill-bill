@@ -20,6 +20,7 @@ import skillbill.application.featuretask.FeatureTaskRuntimeAgentResolver
 import skillbill.application.featuretask.FeatureTaskRuntimeModelResolver
 import skillbill.application.featuretask.FeatureTaskRuntimeRunner
 import skillbill.application.featuretask.FeatureTaskRuntimeStatusService
+import skillbill.application.featuretask.FeatureTaskRuntimeWorkerCoordinator
 import skillbill.application.featuretask.model.FeatureTaskContinuationCandidate
 import skillbill.application.featuretask.model.FeatureTaskContinuationLookupResult
 import skillbill.application.model.FeatureTaskRuntimeAgentAssignment
@@ -62,6 +63,7 @@ import kotlin.time.Duration.Companion.minutes
 @Inject
 data class FeatureTaskRuntimeRunDependencies(
   val runner: FeatureTaskRuntimeRunner,
+  val workerCoordinator: FeatureTaskRuntimeWorkerCoordinator,
   val runInvariantsSource: FeatureTaskRuntimeRunInvariantsSource,
   val specPathResolver: FeatureSpecPathResolverPort,
   val configResolutionService: ConfigResolutionService,
@@ -187,26 +189,28 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
     val goalContinuation = parseGoalContinuationContext(requestedReviewMode)
     val prepared = prepareRuntimeRun(deps)
     val resolvedWorkflowId = workflowId()
-    val report = deps.runner.run(
-      FeatureTaskRuntimeRunRequest(
-        issueKey = issueKey,
-        workflowId = resolvedWorkflowId,
-        sessionId =
-        "${FeatureTaskRuntimePhaseWorkflowDefinition.definition.defaultSessionPrefix}-$resolvedWorkflowId",
-        runInvariants = deps.runInvariantsSource.read(Path.of(specPath)),
-        invokedAgentId = prepared.invokedAgentId,
-        agentAssignment = prepared.agentAssignment,
-        modelAssignment = prepared.modelAssignment,
-        environment = state.environment,
-        dbPathOverride = state.dbOverride,
-        repoRoot = prepared.repoRoot,
-        timeout = maxWallClockMinutes?.minutes,
-        parallelReviewAgent = parallelReviewAgent?.takeIf(String::isNotBlank),
-        requestedCodeReviewMode = requestedReviewMode,
-        goalContinuation = goalContinuation,
-        eventSink = runtimeRunEventSink(state, monitor),
-      ),
-    )
+    val report = deps.workerCoordinator.runOwned(resolvedWorkflowId, state.dbOverride) {
+      deps.runner.run(
+        FeatureTaskRuntimeRunRequest(
+          issueKey = issueKey,
+          workflowId = resolvedWorkflowId,
+          sessionId =
+          "${FeatureTaskRuntimePhaseWorkflowDefinition.definition.defaultSessionPrefix}-$resolvedWorkflowId",
+          runInvariants = deps.runInvariantsSource.read(Path.of(specPath)),
+          invokedAgentId = prepared.invokedAgentId,
+          agentAssignment = prepared.agentAssignment,
+          modelAssignment = prepared.modelAssignment,
+          environment = state.environment,
+          dbPathOverride = state.dbOverride,
+          repoRoot = prepared.repoRoot,
+          timeout = maxWallClockMinutes?.minutes,
+          parallelReviewAgent = parallelReviewAgent?.takeIf(String::isNotBlank),
+          requestedCodeReviewMode = requestedReviewMode,
+          goalContinuation = goalContinuation,
+          eventSink = runtimeRunEventSink(state, monitor),
+        ),
+      )
+    }
     val payload = report.toRuntimeRunCliMap()
     state.completeText(runtimeRunText(payload), payload, exitCode = payload.runtimeRunExitCode())
   }
@@ -710,8 +714,7 @@ private fun verifyRuntimeResume(
   val result = lookupService.lookup(issueKey, repositoryIdentity(effectiveRoot), workflowId, state.dbOverride)
   val candidate = when (result) {
     is FeatureTaskContinuationLookupResult.Resumable -> result.candidate
-    is FeatureTaskContinuationLookupResult.AlreadyRunning ->
-      throw UsageError("Workflow '$workflowId' is already running; no phase was launched.")
+    is FeatureTaskContinuationLookupResult.AlreadyRunning -> result.candidate
     is FeatureTaskContinuationLookupResult.TerminalOnly ->
       throw UsageError("Workflow '$workflowId' is terminal and cannot be resumed; no phase was launched.")
     else -> throw UsageError("Workflow '$workflowId' is not a resumable runtime workflow.")
@@ -721,25 +724,6 @@ private fun verifyRuntimeResume(
   }
   if (candidate.governedSpecPath != governedSpecPath(effectiveRoot, Path.of(specPath))) {
     throw UsageError("Workflow '$workflowId' was persisted with a different governed spec path.")
-  }
-  if (!lookupService.claim(candidate, state.dbOverride)) {
-    val concurrent = lookupService.lookup(
-      issueKey,
-      repositoryIdentity(effectiveRoot),
-      workflowId,
-      state.dbOverride,
-    )
-    if (concurrent is FeatureTaskContinuationLookupResult.AlreadyRunning) {
-      val running = concurrent.candidate
-      val liveness = running.liveness?.let {
-        "; liveness=${it.classification}, last_evidence_at=${it.lastEvidenceAt}"
-      }.orEmpty()
-      throw UsageError(
-        "Workflow '${running.workflowId}' is already running in ${running.mode.wireValue} mode at " +
-          "'${running.currentStep}'$liveness; no phase was launched.",
-      )
-    }
-    throw UsageError("Workflow '$workflowId' changed before it could be claimed; no phase was launched.")
   }
 }
 
