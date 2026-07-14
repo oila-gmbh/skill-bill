@@ -39,7 +39,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
   // (the finished-event review-fix iteration count) reference the same loop the backward edge mints.
   const val REVIEW_FIX_LOOP_ID: String = "review_fix"
 
-  // The M2 audit->plan re-plan/re-implement loop id, named once so durable accounting and telemetry
+  // The audit->implement remediation loop id, named once so durable accounting and telemetry
   // (the finished-event audit-gap iteration count) reference the same loop the backward edge mints.
   const val AUDIT_GAP_LOOP_ID: String = "audit_gap"
 
@@ -106,7 +106,9 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
     mapOf(
       PHASE_PREPLAN to "Re-run the preplan phase from the run-invariants, then persist the validated digest output.",
       PHASE_PLAN to "Resume planning from the latest preplan digest, then persist the validated plan output.",
-      PHASE_IMPLEMENT to "Resume implementation from the latest plan output, then persist the validated output.",
+      PHASE_IMPLEMENT to
+        "Resume implementation reconciliation from the immutable initial preplan and plan outputs when an " +
+        "audit-gap loop is active, then persist the validated output.",
       PHASE_IMPLEMENT_FIX to
         "Resume the implement-fix phase from the latest review findings, reconciling the current tree, " +
         "then persist the validated output.",
@@ -152,9 +154,9 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
    * never launches a fix. A `review` `changes_requested` verdict reopens the `[implement_fix, review]`
    * span (the backward destination precedes the source), bounded at one review->fix iteration; an
    * `approved` verdict or exhaustion of that remediation budget advances to `audit`. An audit
-   * `gaps_found` verdict reopens the wider
-   * `[plan, audit]` span — which contains the mutating `implement` phase — to re-plan then
-   * re-implement against the failing criteria and re-pass through `review` (incl. its `review_fix`
+   * `gaps_found` verdict reopens the
+   * `[implement, audit]` span to reconcile implementation against the failing criteria using the
+   * immutable initial planning context and re-pass through `review` (incl. its `review_fix`
    * loop) before re-`audit`. Audit-gap reconciliation is unbounded because each new audit verdict is
    * the authority on whether implementation is complete; the first `satisfied` verdict advances to
    * `validate`.
@@ -174,7 +176,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
         FeatureTaskRuntimeBackwardEdge(
           fromPhaseId = PHASE_AUDIT,
           triggeringVerdict = FeatureTaskRuntimeVerdict.GAPS_FOUND,
-          destinationPhaseId = PHASE_PLAN,
+          destinationPhaseId = PHASE_IMPLEMENT,
           loopId = AUDIT_GAP_LOOP_ID,
           perEdgeCap = null,
         ),

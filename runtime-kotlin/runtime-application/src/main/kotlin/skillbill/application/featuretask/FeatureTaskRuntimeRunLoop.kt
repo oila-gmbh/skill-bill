@@ -78,10 +78,34 @@ internal class FeatureTaskRuntimeRunLoop(
   private var blocked: FeatureTaskRuntimeRunReport.Blocked? = null
   private var decomposed: FeatureTaskRuntimeRunReport.Decomposed? = null
 
-  private var pendingReentry: PendingReentry? = null
+  private var pendingReentry: PendingReentry? = resumedReentry()
+  private var activeReentry: PendingReentry? = pendingReentry
+
+  private fun resumedReentry(): PendingReentry? {
+    val (loopId, reentry) = state.latestInFlightReentry() ?: return null
+    state.recordEdgeIteration(loopId, reentry.edgeIteration)
+    return PendingReentry(
+      phaseId = reentry.destinationPhaseId,
+      loopId = loopId,
+      edgeIteration = reentry.edgeIteration,
+      drivingVerdict = reentry.drivingVerdict,
+      reentryGapCriteria = if (loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID) {
+        state.unmetAuditCriteria(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT)
+      } else {
+        emptyList()
+      },
+    )
+  }
 
   fun drive() {
-    var phaseId: String? = transitions.forwardPhaseIds.first()
+    val resumedReentry = pendingReentry
+    if (resumedReentry?.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID) {
+      state.auditGapPlanningContextError()?.let { reason ->
+        blockInvalidAuditGapRecovery(resumedReentry, reason)
+        return
+      }
+    }
+    var phaseId: String? = resumedReentry?.phaseId ?: transitions.forwardPhaseIds.first()
     while (phaseId != null) {
       val settled = advance(phaseId)
       val completedPhaseId = settled.completedPhaseId
@@ -188,17 +212,23 @@ internal class FeatureTaskRuntimeRunLoop(
   }.fold(
     onSuccess = { reviewState ->
       reviewState?.takeIf { it.reviewCapReached || it.reviewSkippedByUser || it.completedPassCount >= 2 }
-        ?.let(::settleCarriedForwardGoalReview)
+        ?.let {
+          settleCarriedForwardGoalReview(
+            it,
+            activeReentry,
+          )
+        }
     },
     onFailure = { error -> blockCarriedForwardReview(error.message.orEmpty()) },
   )
 
   private fun settleCarriedForwardGoalReview(
     reviewState: skillbill.workflow.taskruntime.model.GoalSubtaskReviewState,
+    reentry: PendingReentry?,
   ): PhaseSettlement =
     runCatching { goalContinuationRecorder.lastGoalReviewResult(request.workflowId, request.dbPathOverride) }.fold(
       onSuccess = { rawResult ->
-        rawResult?.let { validateCarriedForwardGoalReview(it, reviewState) }
+        rawResult?.let { validateCarriedForwardGoalReview(it, reviewState, reentry) }
           ?: blockCarriedForwardReview("missing")
       },
       onFailure = { error -> blockCarriedForwardReview(error.message.orEmpty()) },
@@ -207,12 +237,13 @@ internal class FeatureTaskRuntimeRunLoop(
   private fun validateCarriedForwardGoalReview(
     rawResult: String,
     reviewState: skillbill.workflow.taskruntime.model.GoalSubtaskReviewState,
+    reentry: PendingReentry?,
   ): PhaseSettlement = runCatching {
     outputValidator.validateAndReadPhaseOutput(
       rawResult,
       sourceLabel = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
     )
-    recordCarriedForwardGoalReview(rawResult)
+    recordCarriedForwardGoalReview(rawResult, reentry)
   }.fold(
     onSuccess = {
       PhaseSettlement.completed(
@@ -223,14 +254,14 @@ internal class FeatureTaskRuntimeRunLoop(
     onFailure = { error -> blockCarriedForwardReview(error.message.orEmpty()) },
   )
 
-  private fun recordCarriedForwardGoalReview(rawResult: String) {
+  private fun recordCarriedForwardGoalReview(rawResult: String, reentry: PendingReentry?) {
     val phaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW
     if (state.isComplete(phaseId)) {
       return
     }
     val iteration = state.nextIteration(phaseId)
     val priorRecord = state.recordFor(phaseId)
-    recorder.recordPhaseState(
+    recorder.recordCompletedPhase(
       FeatureTaskRuntimePhaseStateRequest(
         workflowId = request.workflowId,
         phaseId = phaseId,
@@ -239,9 +270,12 @@ internal class FeatureTaskRuntimeRunLoop(
         resolvedAgentId = priorRecord?.resolvedAgentId ?: "user-directed",
         finished = true,
         outputArtifact = rawResult,
+        loopId = reentry?.loopId,
+        edgeIteration = reentry?.edgeIteration,
       ),
       request.dbPathOverride,
     )
+    if (reentry != null) pendingReentry = null
     state.recordCompleted(FeatureTaskRuntimePhaseOutput(phaseId, iteration, rawResult))
   }
 
@@ -365,6 +399,7 @@ internal class FeatureTaskRuntimeRunLoop(
       edgeIteration = edgeIteration,
       drivingVerdict = edge.triggeringVerdict,
     )
+    activeReentry = pendingReentry
     return edge.destinationPhaseId
   }
 
@@ -384,6 +419,7 @@ internal class FeatureTaskRuntimeRunLoop(
       emptyList()
     }
     pendingReentry = PendingReentry(destinationPhaseId, loopId, edgeIteration, verdict, reentryGapCriteria)
+    activeReentry = pendingReentry
     observability.loopEdge(destinationPhaseId, loopId, edgeIteration, verdict)
   }
 
@@ -428,14 +464,46 @@ internal class FeatureTaskRuntimeRunLoop(
       edge.perEdgeCap?.let { iteration >= it } == true
 
   private fun runPhaseFor(phaseId: String): String? {
-    val reentry = pendingReentry?.takeIf { it.phaseId == phaseId }
-    pendingReentry = null
+    val briefingReentry = pendingReentry?.takeIf { it.phaseId == phaseId }
+    if (briefingReentry != null) pendingReentry = null
+    val reentry = briefingReentry ?: activeReentry?.takeIf { active ->
+      transitions.backwardEdges
+        .firstOrNull { it.loopId == active.loopId }
+        ?.let { edge -> phaseId in spanBetween(edge.destinationPhaseId, edge.fromPhaseId) } == true
+    }?.copy(phaseId = phaseId, reentryGapCriteria = emptyList())
     val outcome = runPhase(phaseId, request, state, observability, specSource, reentry, phaseTokenAccumulator)
     return outcome.blockedReason ?: run {
       val completedOutput = requireNotNull(outcome.completedOutput)
       state.recordCompleted(completedOutput)
       applyPlanningStop(phaseId, completedOutput)
     }
+  }
+
+  private fun blockInvalidAuditGapRecovery(reentry: PendingReentry, reason: String) {
+    val phaseId = reentry.phaseId
+    val resolvedAgentId = FeatureTaskRuntimeAgentResolver.resolve(
+      phaseId = phaseId,
+      assignment = request.agentAssignment,
+      invokedAgentId = request.invokedAgentId,
+    ).resolvedAgentId
+    val attempt = state.nextIteration(phaseId)
+    recorder.recordPhaseState(
+      FeatureTaskRuntimePhaseStateRequest(
+        workflowId = request.workflowId,
+        phaseId = phaseId,
+        status = STATUS_BLOCKED,
+        attemptCount = attempt,
+        resolvedAgentId = resolvedAgentId,
+        finished = false,
+        blockedReason = reason,
+        failureDisposition = FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
+        loopId = reentry.loopId,
+        edgeIteration = reentry.edgeIteration,
+      ),
+      request.dbPathOverride,
+    )
+    observability.blocked(phaseId, resolvedAgentId, attempt, reason)
+    blockAt(phaseId, reason)
   }
 
   private fun applyPlanningStop(phaseId: String, planOutput: FeatureTaskRuntimePhaseOutput): String? {
@@ -655,17 +723,29 @@ internal class FeatureTaskRuntimeRunLoop(
     reentry: PendingReentry?,
     phaseTokenAccumulator: MutableMap<String, Pair<Int, Int>>? = null,
   ): PhaseOutcome {
-    completedReviewBudgetOutput(phaseId, state)?.let { output ->
-      return PhaseOutcome.completed(output)
-    }
+    val completedReviewBudgetOutput = completedReviewBudgetOutput(phaseId, state)
     val resolvedAgent = FeatureTaskRuntimeAgentResolver.resolve(
       phaseId = phaseId,
       assignment = request.agentAssignment,
       invokedAgentId = request.invokedAgentId,
     )
+    val declaration = phaseDeclaration(phaseId, request.runInvariants.featureSize).let { declaration ->
+      if (phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT &&
+        reentry?.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID
+      ) {
+        declaration.copy(
+          consumedUpstreamPhaseIds = listOf(
+            FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN,
+            FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN,
+          ),
+        )
+      } else {
+        declaration
+      }
+    }
     val run = PhaseRun(
       phaseId = phaseId,
-      declaration = phaseDeclaration(phaseId, request.runInvariants.featureSize),
+      declaration = declaration,
       resolvedAgent = resolvedAgent,
       modelDirective = FeatureTaskRuntimeModelResolver.resolve(
         phaseId,
@@ -676,6 +756,23 @@ internal class FeatureTaskRuntimeRunLoop(
       specSource = specSource,
       reentry = reentry,
     )
+    completedReviewBudgetOutput?.let { output ->
+      if (isGoalContinuationRun(request) && reentry != null) {
+        val iteration = state.nextIteration(phaseId)
+        val phaseState = phaseStateRequest(
+          run,
+          iteration,
+          STATUS_COMPLETED,
+          finished = true,
+          outputArtifact = output.payload,
+        )
+        state.reserveReviewPass(phaseState.reviewPassNumber)
+        recorder.recordCompletedPhase(phaseState, request.dbPathOverride)
+        observability.completed(phaseId, resolvedAgent.resolvedAgentId, iteration)
+        return PhaseOutcome.completed(FeatureTaskRuntimePhaseOutput(phaseId, iteration, output.payload))
+      }
+      return PhaseOutcome.completed(output)
+    }
     preLaunchBlock(run, state, observability)?.let { return it }
     return when (val prepared = prepareGoalReviewRun(run, observability)) {
       is GoalReviewRunReady -> runPhaseAttempts(prepared.run, state, observability, phaseTokenAccumulator)
@@ -803,7 +900,9 @@ internal class FeatureTaskRuntimeRunLoop(
       )
     }
     val iteration = state.nextIteration(run.phaseId)
-    persistPhase(run, iteration, STATUS_COMPLETED, finished = true, outputArtifact = output)
+    val phaseState = phaseStateRequest(run, iteration, STATUS_COMPLETED, finished = true, outputArtifact = output)
+    state.reserveReviewPass(phaseState.reviewPassNumber)
+    recorder.recordCompletedPhase(phaseState, run.request.dbPathOverride)
     observability.completed(run.phaseId, run.resolvedAgent.resolvedAgentId, iteration)
     return PhaseOutcome.completed(FeatureTaskRuntimePhaseOutput(run.phaseId, iteration, output))
   }
@@ -826,13 +925,22 @@ internal class FeatureTaskRuntimeRunLoop(
       }
       PreLaunchBlock(nextIteration, reason, durable)
     }
-    val missing = persisted ?: missingUpstream(run.declaration, state.outputs())?.let { missingIds ->
-      PreLaunchBlock(
-        1,
-        "Phase '${run.phaseId}' requires upstream output(s) ${missingIds.joinToString()} that are not " +
-          "present; the runtime blocks rather than launching the phase blind.",
-      )
+    val invalidPlanningContext = if (
+      run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT &&
+      run.reentry?.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID
+    ) {
+      state.auditGapPlanningContextError()?.let { reason -> PreLaunchBlock(state.nextIteration(run.phaseId), reason) }
+    } else {
+      null
     }
+    val missing = persisted ?: invalidPlanningContext
+      ?: missingUpstream(run.declaration, state.outputs())?.let { missingIds ->
+        PreLaunchBlock(
+          1,
+          "Phase '${run.phaseId}' requires upstream output(s) ${missingIds.joinToString()} that are not " +
+            "present; the runtime blocks rather than launching the phase blind.",
+        )
+      }
     return missing?.let { preLaunch ->
       val durable = preLaunch.durableRecord
       blockAndPersist(
@@ -1082,16 +1190,19 @@ internal class FeatureTaskRuntimeRunLoop(
         return AttemptResult.settled(outcome)
       }
     } else {
-      persistPhase(
-        run,
-        iteration,
-        STATUS_COMPLETED,
-        finished = true,
-        outputArtifact = outputText,
-        fileManifest = fileManifest,
+      recorder.recordCompletedPhase(
+        phaseStateRequest(
+          run,
+          iteration,
+          STATUS_COMPLETED,
+          finished = true,
+          outputArtifact = outputText,
+          fileManifest = fileManifest,
+        ),
+        run.request.dbPathOverride,
       )
     }
-    observability.completed(run.phaseId, run.resolvedAgent.resolvedAgentId, iteration)
+    observability.completedEvent(run.phaseId, run.resolvedAgent.resolvedAgentId, iteration)
     return AttemptResult.settled(
       PhaseOutcome.completed(FeatureTaskRuntimePhaseOutput(run.phaseId, iteration, outputText)),
     )

@@ -1,5 +1,6 @@
 package skillbill.application.featuretask
 
+import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeBackwardEdge
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
@@ -15,6 +16,7 @@ internal class FeatureTaskRuntimeRunState(
   private val initialRecords: Map<String, FeatureTaskRuntimePhaseRecord>,
   private val transitions: FeatureTaskRuntimeTransitionDeclaration,
   private val initialLedger: List<FeatureTaskRuntimePhaseLedgerEntry> = emptyList(),
+  private val outputValidator: FeatureTaskRuntimePhaseOutputValidator,
 ) {
   private val inFlightReentries: Map<String, InFlightReentry> = reconstructInFlightReentries()
 
@@ -64,8 +66,14 @@ internal class FeatureTaskRuntimeRunState(
   // The per-edge iteration counter, keyed by loop id, DISTINCT from persistedAttemptCounts. Seeded
   // from the durable per-phase records' edge context (the resume watermark) so the cap survives
   // crashes; advanced as the runtime mints each backward-edge re-entry within the live run.
-  private val edgeIterationByLoop: MutableMap<String, Int> = initialRecords.values
-    .mapNotNull { record -> record.loopId?.let { loopId -> record.edgeIteration?.let { loopId to it } } }
+  private val edgeIterationByLoop: MutableMap<String, Int> = (
+    initialRecords.values
+      .mapNotNull { record -> record.loopId?.let { loopId -> record.edgeIteration?.let { loopId to it } } } +
+      initialLedger.mapNotNull { entry ->
+        entry.takeIf { it.action == FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE }
+          ?.loopId?.let { loopId -> entry.edgeIteration?.let { loopId to it } }
+      }
+    )
     .groupBy({ it.first }, { it.second })
     .mapValues { (_, iterations) -> iterations.max() }
     .toMutableMap()
@@ -105,6 +113,37 @@ internal class FeatureTaskRuntimeRunState(
   }
 
   fun isLoopLiveClaimed(loopId: String): Boolean = loopId in liveClaimedLoops
+
+  fun inFlightReentry(loopId: String): InFlightReentry? = inFlightReentries[loopId]
+
+  fun latestInFlightReentry(): Pair<String, InFlightReentry>? =
+    inFlightReentries.maxByOrNull { (_, reentry) -> reentry.edgeSequenceNumber }?.toPair()
+
+  fun auditGapPlanningContextError(): String? {
+    val planningPhaseIds = listOf(
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN,
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN,
+    )
+    planningPhaseIds.forEach { phaseId ->
+      val record = initialRecords[phaseId]
+      val output = outputFor(phaseId)
+      if (output == null || record?.status?.let { it != STATUS_COMPLETED } == true) {
+        return "Audit-gap remediation requires a valid completed original '$phaseId' output."
+      }
+      val validatedOutput = runCatching {
+        outputValidator.validateAndReadPhaseOutput(output.payload, sourceLabel = "persisted $phaseId")
+      }.getOrNull()
+      if (validatedOutput == null || validatedOutput["phase_id"] != phaseId) {
+        return "Audit-gap remediation requires a valid completed original '$phaseId' output."
+      }
+      if (record?.loopId != null || record?.edgeIteration != null) {
+        return "Audit-gap remediation cannot prove original planning-context identity because '$phaseId' " +
+          "carries legacy backward-edge metadata. Migrate or restart this experimental durable workflow; " +
+          "the runtime will not regenerate or silently reuse overwritten planning context."
+      }
+    }
+    return null
+  }
 
   // A backward edge re-enters the phase: drop its completed marker so the driver relaunches it.
   // Its prior validated output stays in `outputs` so latest-iteration resolution still works.
@@ -156,28 +195,38 @@ internal class FeatureTaskRuntimeRunState(
 
   private fun reconstructInFlightReentries(): Map<String, InFlightReentry> = buildMap {
     transitions.backwardEdges.forEach { edge ->
-      if (edge.destinationPhaseId in transitions.loopOnlyPhaseIds) {
-        return@forEach
-      }
       val latestEdge = initialLedger
         .filter { ledger ->
           ledger.action == FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE && ledger.loopId == edge.loopId
         }
         .maxByOrNull { it.sequenceNumber }
         ?: return@forEach
-      val destination = initialRecords[edge.destinationPhaseId]
-      if (destination?.loopId != edge.loopId || destination.edgeIteration != latestEdge.edgeIteration) {
-        return@forEach
-      }
       val completedAfterEdge = initialLedger
         .asSequence()
         .filter { it.sequenceNumber > latestEdge.sequenceNumber }
         .filter { it.action == FeatureTaskRuntimePhaseLedgerAction.COMPLETE }
         .map { it.phaseId }
-        .toSet()
+        .toMutableSet()
+      initialRecords.values
+        .filter { record ->
+          record.status == STATUS_COMPLETED &&
+            record.loopId == edge.loopId &&
+            record.edgeIteration == latestEdge.edgeIteration
+        }
+        .mapTo(completedAfterEdge) { it.phaseId }
       val span = reopenedSpan(edge)
       if (span.any { phaseId -> phaseId !in completedAfterEdge }) {
-        put(edge.loopId, InFlightReentry(span, completedAfterEdge))
+        put(
+          edge.loopId,
+          InFlightReentry(
+            destinationPhaseId = edge.destinationPhaseId,
+            edgeIteration = requireNotNull(latestEdge.edgeIteration),
+            drivingVerdict = edge.triggeringVerdict,
+            span = span,
+            completedAfterEdge = completedAfterEdge,
+            edgeSequenceNumber = latestEdge.sequenceNumber,
+          ),
+        )
       }
     }
   }
@@ -257,7 +306,11 @@ internal class FeatureTaskRuntimeRunState(
     FeatureTaskRuntimePhaseWorkflowDefinition.definition.stepIds.filter { it in completed }
 }
 
-private data class InFlightReentry(
+internal data class InFlightReentry(
+  val destinationPhaseId: String,
+  val edgeIteration: Int,
+  val drivingVerdict: FeatureTaskRuntimeVerdict,
   val span: List<String>,
   val completedAfterEdge: Set<String>,
+  val edgeSequenceNumber: Int,
 )

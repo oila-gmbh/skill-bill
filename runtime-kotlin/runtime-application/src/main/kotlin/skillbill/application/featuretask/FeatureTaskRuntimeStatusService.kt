@@ -58,7 +58,7 @@ class FeatureTaskRuntimeStatusService(
         // destination, so reporting a never-run one as current would mislead operators. A loop-only
         // phase that is actually running or blocked mid-loop still surfaces. A run with no incomplete
         // non-loop-only phase reports none (a completed run is terminal).
-        phases.firstOrNull {
+        currentReentryPhaseId(records, ledger) ?: phases.firstOrNull {
           it.status != STATUS_COMPLETED &&
             !(it.phaseId in LOOP_ONLY_PHASE_IDS && it.status == STATUS_PENDING)
         }?.phaseId
@@ -93,6 +93,43 @@ class FeatureTaskRuntimeStatusService(
       entries.maxByOrNull { it.sequenceNumber }?.action == FeatureTaskRuntimePhaseLedgerAction.BLOCKED
     }
     .keys
+
+  private fun currentReentryPhaseId(
+    records: Map<String, FeatureTaskRuntimePhaseRecord>,
+    ledger: List<FeatureTaskRuntimePhaseLedgerEntry>,
+  ): String? {
+    val edge = FeatureTaskRuntimePhaseWorkflowDefinition.transitions.backwardEdges
+      .mapNotNull { declaration ->
+        ledger
+          .filter {
+            it.action == FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE && it.loopId == declaration.loopId
+          }
+          .maxByOrNull { it.sequenceNumber }
+          ?.let { declaration to it }
+      }
+      .maxByOrNull { (_, entry) -> entry.sequenceNumber }
+      ?: return null
+    val (declaration, edgeEntry) = edge
+    val destinationIndex = FeatureTaskRuntimePhaseWorkflowDefinition.transitions.forwardPhaseIds
+      .indexOf(declaration.destinationPhaseId)
+    val sourceIndex = FeatureTaskRuntimePhaseWorkflowDefinition.transitions.forwardPhaseIds
+      .indexOf(declaration.fromPhaseId)
+    val reopenedSpan = FeatureTaskRuntimePhaseWorkflowDefinition.transitions.forwardPhaseIds
+      .subList(destinationIndex, sourceIndex + 1)
+    val completedAfterEdge = ledger
+      .asSequence()
+      .filter { it.sequenceNumber > edgeEntry.sequenceNumber }
+      .filter { it.action == FeatureTaskRuntimePhaseLedgerAction.COMPLETE }
+      .mapTo(mutableSetOf()) { it.phaseId }
+    records.values
+      .filter {
+        it.status == STATUS_COMPLETED &&
+          it.loopId == declaration.loopId &&
+          it.edgeIteration == edgeEntry.edgeIteration
+      }
+      .mapTo(completedAfterEdge) { it.phaseId }
+    return reopenedSpan.firstOrNull { it !in completedAfterEdge }
+  }
 
   private fun FeatureTaskRuntimePhaseRecord?.toPhaseStatus(
     phaseId: String,

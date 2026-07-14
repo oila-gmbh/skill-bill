@@ -16,7 +16,7 @@ Durable workflow rows use the public workflow identity `bill-feature-task` with
 names are compatibility aliases for that mode, not a separate authoritative
 workflow family.
 
-The workflow database is the continuation authority. Resume keeps the existing workflow id and validates the issue key, canonical repository identity, persisted governed spec path, and runtime mode before branch preparation or phase launch. Completed durable phases remain skipped. Implementation hydrates from the completed `plan`; `preplan_digest` is planning-only recovery context and is not an implementation input.
+The workflow database is the continuation authority. Resume keeps the existing workflow id and validates the issue key, canonical repository identity, persisted governed spec path, and runtime mode before branch preparation or phase launch. Completed durable phases remain skipped. Initial implementation hydrates from the completed `plan`. Audit-gap implementation remediation reuses the original completed `preplan` and `plan` outputs; neither planning phase is relaunched or overwritten.
 
 `bill-feature-task-runtime` consumes the normalized, router-confirmed run and
 launches the runtime command. It does **not** re-implement phase orchestration
@@ -144,7 +144,7 @@ Each `implement_fix` launch and re-`review` carries the `review_fix` loop id
 and iteration in the ledger and status output, and finished telemetry reflects
 the review-fix iteration count.
 
-## Audit-gap re-plan/re-implement loop
+## Audit-gap context-reuse implementation-remediation loop
 
 The runtime closes a second, wider remediation loop around `audit`. The
 `audit` phase emits a structured verdict derived from the acceptance criteria it
@@ -153,17 +153,17 @@ more remain unmet. The runtime evaluates that verdict — prose alone cannot
 advance past an unmet acceptance criterion.
 
 - On `satisfied`, the run advances to `validate`.
-- On `gaps_found`, the runtime takes a backward edge re-entering `plan`, then
-  `implement`, then `review`, then `audit`. The handoff into the re-entered
-  `plan` and `implement` is scoped to the failing criteria the audit carried, so
+- On `gaps_found`, the runtime takes a backward edge re-entering `implement`,
+  then `review`, then `audit`. The implementation handoff contains the immutable
+  original `preplan` and `plan` outputs plus only the latest failing criteria, so
   the loop addresses the gaps rather than redoing settled content. This
-  `audit` → `plan` → `implement` → `review` → `audit` cycle has no fixed
+  `audit` → `implement` → `review` → `audit` cycle has no fixed
   iteration cap. Its durable counter records progress and recovery state but
   never turns a valid `gaps_found` verdict into a permanent policy block. The
   first `satisfied` verdict advances the run to `validate`.
 
 The re-entered `implement` is idempotent: it reconciles the working tree toward
-the updated plan without double-applying, and a crash mid-loopback resumes at the
+the original plan without double-applying, and a crash mid-loopback resumes at the
 correct phase and iteration while preserving the `audit_gap` watermark.
 
 The two loops compose under one durable two-pass review budget. The initial

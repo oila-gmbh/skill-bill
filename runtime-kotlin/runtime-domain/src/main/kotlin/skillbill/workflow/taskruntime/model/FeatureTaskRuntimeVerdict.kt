@@ -43,7 +43,7 @@ data class FeatureTaskRuntimeVerdict(
 
     /**
      * An audit verdict carrying unmet acceptance criteria: the run takes the `audit_gap` backward edge
-     * to the `plan` phase to re-plan then re-implement against the failing criteria.
+     * to `implement` to reconcile against the failing criteria using the initial planning context.
      */
     val GAPS_FOUND: FeatureTaskRuntimeVerdict = FeatureTaskRuntimeVerdict("gaps_found")
 

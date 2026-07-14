@@ -310,12 +310,12 @@ class FeatureTaskRuntimeTransitionFunctionTest {
 
   // --- two independent backward edges (review_fix + audit_gap composition) ----------------------
 
-  // A pipeline carrying both the loop-only review_fix edge and a wider audit->plan audit_gap edge, so
+  // A pipeline carrying both the loop-only review_fix edge and an audit->implement audit_gap edge, so
   // each edge routes from its own source on its own verdict with its own per-edge iteration count.
   private val auditGapEdge = FeatureTaskRuntimeBackwardEdge(
     fromPhaseId = "audit",
     triggeringVerdict = FeatureTaskRuntimeVerdict.GAPS_FOUND,
-    destinationPhaseId = "plan",
+    destinationPhaseId = "impl",
     loopId = "audit_gap",
     perEdgeCap = null,
   )
@@ -349,7 +349,7 @@ class FeatureTaskRuntimeTransitionFunctionTest {
         edgeIterationCount = 0,
       ),
     )
-    assertEquals("plan", auditGap.phaseId)
+    assertEquals("impl", auditGap.phaseId)
     assertEquals("audit_gap", auditGap.loopId)
     assertEquals(1, auditGap.edgeIteration)
   }
@@ -371,7 +371,7 @@ class FeatureTaskRuntimeTransitionFunctionTest {
       edgeIterationCount = 100,
     )
     val next = assertIs<FeatureTaskRuntimeNextPhase.Next>(reentry)
-    assertEquals("plan", next.phaseId)
+    assertEquals("impl", next.phaseId)
     assertEquals("audit_gap", next.loopId)
     assertEquals(101, next.edgeIteration)
   }

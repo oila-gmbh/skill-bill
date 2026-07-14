@@ -2288,6 +2288,34 @@ class FeatureTaskRuntimeReviewFixLoopTest {
     assertTrue(launched.none { it == "implement_fix" })
   }
 
+  @Test
+  fun `ledger-only review fix resumes at implement fix without consuming the edge`() {
+    val harness = runnerHarness(
+      launcher = RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        facts(if (phaseId == "review") reviewFindingsOutput(changesRequested = false) else validJsonOutput(phaseId))
+      },
+    )
+    harness.seedPhase("preplan", "completed", 1, INVOKED_AGENT, PREPLAN_OUTPUT)
+    harness.seedPhase("plan", "completed", 1, INVOKED_AGENT, PLAN_OUTPUT)
+    harness.seedPhase("implement", "completed", 1, INVOKED_AGENT, IMPLEMENT_OUTPUT)
+    harness.seedReviewPhase("completed", 1, reviewFindingsOutput(changesRequested = true), 1)
+    harness.seedLoopEdge("implement_fix", "review_fix", 1)
+
+    val report = harness.runner.run(harness.request())
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    val launched = harness.launchedPromptPhaseOrder()
+    assertEquals("implement_fix", launched.first())
+    assertTrue(launched.none { it == "preplan" || it == "plan" })
+    assertEquals(
+      listOf(1),
+      harness.recorder.loadPhaseLedger(WORKFLOW_ID).orEmpty()
+        .filter { it.action == FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE && it.loopId == "review_fix" }
+        .mapNotNull { it.edgeIteration },
+    )
+  }
+
   // (i) AC5/SKILL-85-F-001: a crash during the reserved inline pass after its same-phase attempt count
   // accrued beyond the schema budget must resume that same pass rather than prematurely block.
   @Test
@@ -3262,6 +3290,21 @@ internal class RunnerHarness(
         resolvedAgentId = agentId,
         finished = status == "completed",
         outputArtifact = outputArtifact,
+        loopId = loopId,
+        edgeIteration = edgeIteration,
+      ),
+    )
+  }
+
+  fun seedLoopEdge(phaseId: String, loopId: String, edgeIteration: Int) {
+    recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    recorder.appendLedgerEntry(
+      skillbill.application.model.FeatureTaskRuntimePhaseLedgerRequest(
+        workflowId = WORKFLOW_ID,
+        action = FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE,
+        phaseId = phaseId,
+        attemptCount = edgeIteration,
+        resolvedAgentId = INVOKED_AGENT,
         loopId = loopId,
         edgeIteration = edgeIteration,
       ),
