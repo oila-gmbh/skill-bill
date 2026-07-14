@@ -48,7 +48,7 @@ class FeatureTaskRuntimeWorkerCoordinator(
     val row = database.read(dbOverride) { it.workflowStates.getFeatureTaskRuntimeWorkflow(workflowId) }
       ?: throw InvalidWorkflowStateSchemaError("Feature-task runtime worker workflow '$workflowId' is missing.")
     val ownership = newOwnership(workflowId, generation = 1, phaseId = row.currentStepId, phaseAttempt = 1)
-    val acquired = database.transaction(dbOverride) {
+    val acquired = database.read(dbOverride) {
       it.workflowStates.acquireFeatureTaskRuntimeWorker(ownership, row.updatedAt)
     }
     if (!acquired) error("Workflow '$workflowId' changed before worker ownership could be acquired.")
