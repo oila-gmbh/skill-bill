@@ -10,12 +10,14 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewFinding
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.contracts.JsonSupport
+import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
 
 @Suppress("TooManyFunctions")
 internal class FeatureTaskRuntimeRunState(
   private val initialRecords: Map<String, FeatureTaskRuntimePhaseRecord>,
   private val transitions: FeatureTaskRuntimeTransitionDeclaration,
   private val initialLedger: List<FeatureTaskRuntimePhaseLedgerEntry> = emptyList(),
+  private val outputValidator: FeatureTaskRuntimePhaseOutputValidator,
 ) {
   private val inFlightReentries: Map<String, InFlightReentry> = reconstructInFlightReentries()
 
@@ -126,7 +128,10 @@ internal class FeatureTaskRuntimeRunState(
       if (output == null || record?.status?.let { it != STATUS_COMPLETED } == true) {
         return "Audit-gap remediation requires a valid completed original '$phaseId' output."
       }
-      if (JsonSupport.parseObjectOrNull(output.payload) == null) {
+      val validatedOutput = runCatching {
+        outputValidator.validateAndReadPhaseOutput(output.payload, sourceLabel = "persisted $phaseId")
+      }.getOrNull()
+      if (validatedOutput == null || validatedOutput["phase_id"] != phaseId) {
         return "Audit-gap remediation requires a valid completed original '$phaseId' output."
       }
       if (record?.loopId != null || record?.edgeIteration != null) {

@@ -250,8 +250,8 @@ class FeatureTaskRuntimeAuditGapLoopTest {
   @Test
   fun `m2 high-iteration audit_gap loop keeps reconciling on resume`() {
     val harness = runnerHarness(launcher = auditGapLauncher(convergeOnAudit = 99))
-    harness.seedPhase("preplan", "completed", 1, INVOKED_AGENT, """{"preplan":"done"}""")
-    harness.seedPhase("plan", "completed", 1, INVOKED_AGENT, """{"plan":"done"}""")
+    harness.seedPhase("preplan", "completed", 1, INVOKED_AGENT, validJsonOutput("preplan"))
+    harness.seedPhase("plan", "completed", 1, INVOKED_AGENT, validJsonOutput("plan"))
     harness.seedPhase("implement", "completed", 1, INVOKED_AGENT, validJsonOutput("implement"))
     harness.seedPhase("review", "completed", 1, INVOKED_AGENT, validJsonOutput("review"))
     harness.seedReentryPhase("audit", "completed", 2, INVOKED_AGENT, auditGapsOutput(), "audit_gap", 2)
@@ -268,8 +268,8 @@ class FeatureTaskRuntimeAuditGapLoopTest {
   @Test
   fun `legacy audit-to-plan record blocks instead of reusing overwritten planning context`() {
     val harness = runnerHarness(launcher = auditGapLauncher(convergeOnAudit = 2))
-    harness.seedPhase("preplan", "completed", 1, INVOKED_AGENT, """{"preplan":"done"}""")
-    harness.seedReentryPhase("plan", "completed", 2, INVOKED_AGENT, """{"plan":"legacy"}""", "audit_gap", 1)
+    harness.seedPhase("preplan", "completed", 1, INVOKED_AGENT, validJsonOutput("preplan"))
+    harness.seedReentryPhase("plan", "completed", 2, INVOKED_AGENT, validJsonOutput("plan"), "audit_gap", 1)
     harness.seedPhase("implement", "completed", 1, INVOKED_AGENT, validJsonOutput("implement"))
     harness.seedPhase("review", "completed", 1, INVOKED_AGENT, validJsonOutput("review"))
     harness.seedReentryPhase("audit", "completed", 2, INVOKED_AGENT, auditGapsOutput(), "audit_gap", 1)
@@ -284,8 +284,8 @@ class FeatureTaskRuntimeAuditGapLoopTest {
   @Test
   fun `m2 formerly blocked audit resumes reconciliation and preserves the branch`() {
     val harness = runnerHarness(launcher = auditGapLauncher(convergeOnAudit = 99))
-    harness.seedPhase("preplan", "completed", 1, INVOKED_AGENT, """{"preplan":"done"}""")
-    harness.seedPhase("plan", "completed", 1, INVOKED_AGENT, """{"plan":"done"}""")
+    harness.seedPhase("preplan", "completed", 1, INVOKED_AGENT, validJsonOutput("preplan"))
+    harness.seedPhase("plan", "completed", 1, INVOKED_AGENT, validJsonOutput("plan"))
     harness.seedPhase("implement", "completed", 3, INVOKED_AGENT, validJsonOutput("implement"))
     harness.seedPhase("review", "completed", 2, INVOKED_AGENT, validJsonOutput("review"))
     harness.seedReentryPhase("audit", "blocked", 3, INVOKED_AGENT, auditGapsOutput(), "audit_gap", 2)
@@ -348,6 +348,43 @@ class FeatureTaskRuntimeAuditGapLoopTest {
           .none { it.action == FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE && it.loopId == "audit_gap" },
       )
     }
+  }
+
+  @Test
+  fun `inferred gaps_found rejects malformed unmet criteria before remediation`() {
+    val malformedInferredOutput =
+      """{"contract_version":"0.1","phase_id":"audit","status":"completed","summary":"gap",""" +
+        """"produced_outputs":{"unmet_criteria":[{"message":"AC4"},{}]}}"""
+    val harness = runnerHarness(
+      launcher = RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        facts(if (phaseId == "audit") malformedInferredOutput else validJsonOutput(phaseId))
+      },
+    )
+
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+
+    assertEquals("audit", blocked.lastIncompletePhase)
+    assertTrue(
+      harness.recorder.loadPhaseLedger(WORKFLOW_ID).orEmpty()
+        .none { it.action == FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE && it.loopId == "audit_gap" },
+    )
+  }
+
+  @Test
+  fun `audit-gap recovery rejects incompatible persisted planning output`() {
+    val harness = runnerHarness(launcher = auditGapLauncher(convergeOnAudit = 2))
+    harness.seedPhase("preplan", "completed", 1, INVOKED_AGENT, validJsonOutput("plan"))
+    harness.seedPhase("plan", "completed", 1, INVOKED_AGENT, validJsonOutput("plan"))
+    harness.seedPhase("implement", "completed", 1, INVOKED_AGENT, validJsonOutput("implement"))
+    harness.seedPhase("review", "completed", 1, INVOKED_AGENT, validJsonOutput("review"))
+    harness.seedReentryPhase("audit", "completed", 2, INVOKED_AGENT, auditGapsOutput(), "audit_gap", 1)
+
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+
+    assertEquals("implement", blocked.lastIncompletePhase)
+    assertContains(blocked.blockedReason, "valid completed original 'preplan' output")
+    assertTrue(harness.launchedPromptPhaseOrder().isEmpty())
   }
 
   private fun invalidGapsFoundOutput(producedOutputs: String): String =

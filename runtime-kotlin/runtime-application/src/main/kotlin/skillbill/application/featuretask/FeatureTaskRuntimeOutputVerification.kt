@@ -31,10 +31,11 @@ internal object FeatureTaskRuntimeOutputVerification {
 
   fun auditGapPayloadError(outputObject: Map<String, Any?>): String? {
     val wireVerdict = outputObject["verdict"] as? String
-    if (wireVerdict != FeatureTaskRuntimeVerdict.GAPS_FOUND.wireValue) return null
     val producedOutputs = JsonSupport.anyToStringAnyMap(outputObject["produced_outputs"])
     val raw = producedOutputs?.get(FeatureTaskRuntimeVerificationSignalKeys.AUDIT_UNMET_CRITERIA)
       ?: producedOutputs?.get(FeatureTaskRuntimeVerificationSignalKeys.AUDIT_FAILING_CRITERIA_ALIAS)
+    val criteriaDriveGapsFound = (raw as? List<*>)?.isNotEmpty() == true
+    if (wireVerdict != FeatureTaskRuntimeVerdict.GAPS_FOUND.wireValue && !criteriaDriveGapsFound) return null
     val entries = raw as? List<*>
       ?: return "Audit verdict 'gaps_found' requires a non-empty produced_outputs.unmet_criteria array."
     if (entries.isEmpty() || entries.any { auditGapMessage(it) == null }) {

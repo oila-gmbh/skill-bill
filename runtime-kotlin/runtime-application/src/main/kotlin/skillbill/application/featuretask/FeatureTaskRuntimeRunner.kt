@@ -125,6 +125,7 @@ class FeatureTaskRuntimeRunner(
         recorder.loadPhaseRecords(runRequest.workflowId, runRequest.dbPathOverride).orEmpty(),
         transitions,
         recorder.loadPhaseLedger(runRequest.workflowId, runRequest.dbPathOverride).orEmpty(),
+        outputValidator,
       )
       val loop = FeatureTaskRuntimeRunLoop(
         FeatureTaskRuntimeRunLoopDependencies(
