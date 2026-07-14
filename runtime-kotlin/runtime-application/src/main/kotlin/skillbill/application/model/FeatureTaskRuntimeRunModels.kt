@@ -62,6 +62,8 @@ data class FeatureTaskRuntimeGoalContinuationContext(
   val codeReviewMode: CodeReviewExecutionMode? = null,
   val parallelReviewAgent: String? = null,
   val reviewBaseline: GoalSubtaskReviewBaseline? = null,
+  val agentAddonSelection: skillbill.agentaddon.model.AgentAddonSelection =
+    skillbill.agentaddon.model.AgentAddonSelection(),
 ) {
   init {
     require(parentIssueKey.isNotBlank()) { "parentIssueKey is required." }

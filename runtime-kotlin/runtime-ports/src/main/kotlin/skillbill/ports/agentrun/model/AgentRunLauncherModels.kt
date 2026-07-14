@@ -2,6 +2,7 @@
 
 package skillbill.ports.agentrun.model
 
+import skillbill.agentaddon.model.AgentAddonSelection
 import skillbill.goalrunner.model.GoalRunnerLivenessState
 import skillbill.install.model.InstallAgent
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
@@ -61,6 +62,7 @@ data class SkillRunGoalContinuationContext(
   val codeReviewMode: CodeReviewExecutionMode = CodeReviewExecutionMode.AUTO,
   val parallelReviewAgent: String? = null,
   val reviewBaseline: GoalSubtaskReviewBaseline? = null,
+  val agentAddonSelection: AgentAddonSelection = AgentAddonSelection(),
 ) {
   init {
     require(parentIssueKey.isNotBlank()) { "parentIssueKey is required." }

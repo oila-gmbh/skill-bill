@@ -1,6 +1,7 @@
 package skillbill.agentaddon
 
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
+import me.tatarka.inject.annotations.Inject
 import skillbill.agentaddon.model.AgentAddonConsumer
 import skillbill.agentaddon.model.AgentAddonSelection
 import skillbill.agentaddon.model.HydratedAgentAddonSelection
@@ -13,7 +14,6 @@ import skillbill.ports.agentaddon.AgentAddonSelectionPort
 import java.nio.file.Files
 import java.nio.file.Path
 import java.security.MessageDigest
-import me.tatarka.inject.annotations.Inject
 
 @Inject
 class AgentAddonSelectionResolver : AgentAddonSelectionPort {
@@ -24,6 +24,11 @@ class AgentAddonSelectionResolver : AgentAddonSelectionPort {
     receivingAgentIds: List<String>,
   ): HydratedAgentAddonSelection {
     validateRequestedSlugs(requestedSlugs)
+    if (requestedSlugs.isNotEmpty() && receivingAgentIds.isEmpty()) {
+      throw InvalidAgentAddonSelectionError(
+        "A non-empty agent add-on selection requires at least one receiving agent.",
+      )
+    }
     val receivingAgents = receivingAgentIds.map(::parseAgent)
     val catalogue = discoverAgentAddons(repoRoot).associateBy { it.slug }
     return HydratedAgentAddonSelection(
@@ -47,6 +52,11 @@ class AgentAddonSelectionResolver : AgentAddonSelectionPort {
     consumer: AgentAddonConsumer,
     receivingAgentIds: List<String>,
   ): HydratedAgentAddonSelection {
+    if (selection.entries.isNotEmpty() && receivingAgentIds.isEmpty()) {
+      throw InvalidAgentAddonSelectionError(
+        "A non-empty agent add-on selection requires at least one receiving agent.",
+      )
+    }
     val receivingAgents = receivingAgentIds.map(::parseAgent)
     return HydratedAgentAddonSelection(
       selection.entries.map { recorded ->

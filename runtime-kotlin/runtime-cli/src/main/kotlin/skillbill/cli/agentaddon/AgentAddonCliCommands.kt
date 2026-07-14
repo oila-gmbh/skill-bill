@@ -78,8 +78,14 @@ class AgentAddonResolveSelectionCommand(
 class AgentAddonVerifySelectionCommand(
   private val resolver: AgentAddonSelectionPort,
   private val state: CliRunState,
-) : DocumentedCliCommand("verify-selection", "Verify persisted identities and render the guarded prompt section.") {
-  private val selectionJson by option("--selection-json", help = "Strict resolved selection JSON.").default(EMPTY_SELECTION)
+) : DocumentedCliCommand(
+  "verify-selection",
+  "Verify persisted identities and render the guarded prompt section.",
+) {
+  private val selectionJson by option(
+    "--selection-json",
+    help = "Strict resolved selection JSON.",
+  ).default(EMPTY_SELECTION)
   private val receivingAgents by option("--receiving-agent").multiple()
   private val format by formatOption()
 
@@ -93,7 +99,14 @@ class AgentAddonVerifySelectionCommand(
       state.complete(
         linkedMapOf(
           "contract_version" to "0.1",
-          "entries" to hydrated.entries.map { it.persisted.slug },
+          "entries" to hydrated.entries.map { entry ->
+            linkedMapOf(
+              "slug" to entry.persisted.slug,
+              "source_identity" to entry.persisted.sourceIdentity,
+              "content_sha256" to entry.persisted.contentSha256,
+              "description" to entry.description,
+            )
+          },
           "prompt_section" to AgentAddonPromptFormatter.format(hydrated),
         ),
         format,

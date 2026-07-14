@@ -4,9 +4,9 @@ package skillbill.cli.core
 
 import com.github.ajalt.clikt.core.CliktCommand
 import me.tatarka.inject.annotations.Inject
+import skillbill.cli.agentaddon.AgentAddonCommand
 import skillbill.cli.codereview.CodeReviewMergeCommand
 import skillbill.cli.codereview.CodeReviewParallelCommand
-import skillbill.cli.agentaddon.AgentAddonCommand
 import skillbill.cli.config.ConfigCommand
 import skillbill.cli.featuretask.FeatureTaskRuntimeDeprecatedRunCommand
 import skillbill.cli.featuretask.FeatureTaskRuntimeRunCommand

@@ -1,5 +1,6 @@
 package skillbill.launcher.agentrun
 
+import com.fasterxml.jackson.databind.ObjectMapper
 import skillbill.install.model.InstallAgent
 import skillbill.launcher.process.AgentRunIdlePolicy
 import skillbill.ports.agentrun.model.SkillRunGoalContinuationContext
@@ -215,5 +216,22 @@ private fun MutableList<String>.addGoalContinuationArguments(context: SkillRunGo
       add("--goal-baseline-untracked-path")
       add(path)
     }
+  }
+  if (context.agentAddonSelection.entries.isNotEmpty()) {
+    add("--agent-addon-selection-json")
+    add(
+      ObjectMapper().writeValueAsString(
+        linkedMapOf(
+          "contract_version" to "0.1",
+          "entries" to context.agentAddonSelection.entries.map { entry ->
+            linkedMapOf(
+              "slug" to entry.slug,
+              "source_identity" to entry.sourceIdentity,
+              "content_sha256" to entry.contentSha256,
+            )
+          },
+        ),
+      ),
+    )
   }
 }

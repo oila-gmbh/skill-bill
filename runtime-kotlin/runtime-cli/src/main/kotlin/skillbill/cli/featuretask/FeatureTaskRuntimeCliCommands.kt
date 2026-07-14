@@ -14,6 +14,10 @@ import com.github.ajalt.clikt.parameters.options.required
 import com.github.ajalt.clikt.parameters.types.int
 import com.github.ajalt.clikt.parameters.types.restrictTo
 import me.tatarka.inject.annotations.Inject
+import skillbill.agentaddon.model.AgentAddonConsumer
+import skillbill.agentaddon.model.AgentAddonSelection
+import skillbill.agentaddon.model.HydratedAgentAddonSelection
+import skillbill.agentaddon.model.PersistedAgentAddonSelectionEntry
 import skillbill.application.config.ConfigResolutionService
 import skillbill.application.featuretask.FeatureTaskContinuationLookupService
 import skillbill.application.featuretask.FeatureTaskRuntimeAgentResolver
@@ -37,10 +41,6 @@ import skillbill.application.model.WorkflowFamilyKind
 import skillbill.application.model.WorkflowOpenResult
 import skillbill.application.model.WorkflowUpdateResult
 import skillbill.application.workflow.WorkflowService
-import skillbill.agentaddon.model.AgentAddonConsumer
-import skillbill.agentaddon.model.AgentAddonSelection
-import skillbill.agentaddon.model.HydratedAgentAddonSelection
-import skillbill.agentaddon.model.PersistedAgentAddonSelectionEntry
 import skillbill.cli.core.CliRunState
 import skillbill.cli.core.DocumentedCliCommand
 import skillbill.cli.core.formatOption
@@ -51,8 +51,8 @@ import skillbill.config.model.PhaseModelDirective
 import skillbill.contracts.JsonSupport
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.InvokingAgentContextResolver
-import skillbill.ports.featurespec.FeatureSpecPathResolverPort
 import skillbill.ports.agentaddon.AgentAddonSelectionPort
+import skillbill.ports.featurespec.FeatureSpecPathResolverPort
 import skillbill.ports.featurespec.model.FeatureSpecPathResolveInput
 import skillbill.ports.featurespec.model.FeatureSpecPathResolveResult
 import skillbill.ports.persistence.model.FeatureTaskRouteScope
@@ -263,9 +263,14 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
       addAll(parsePhaseAgents(phaseAgents).values)
       agentOverride?.takeIf(String::isNotBlank)?.let(::add)
       parallelReviewAgent?.takeIf(String::isNotBlank)?.let(::add)
+      deps.configResolutionService.resolveCodeReviewParallelAgent(repoRoot, parallelReviewAgent)
+        .takeUnless { it == "none" }
+        ?.let(::add)
     }.distinct()
     val persistedSelection = parseAgentAddonSelection(agentAddonSelectionJson)
-    val hydratedSelection = if (persistedSelection.entries.isEmpty()) HydratedAgentAddonSelection() else {
+    val hydratedSelection = if (persistedSelection.entries.isEmpty()) {
+      HydratedAgentAddonSelection()
+    } else {
       deps.agentAddonSelectionPort.verifyPersisted(
         persistedSelection,
         AgentAddonConsumer.BILL_FEATURE,
@@ -905,32 +910,40 @@ private data class PreparedRuntimeRun(
 internal fun parseAgentAddonSelection(raw: String?): AgentAddonSelection {
   if (raw == null) return AgentAddonSelection()
   val root = JsonSupport.parseObjectOrNull(raw)
-    ?: throw UsageError("--agent-addon-selection-json must be a JSON object.")
+    ?: invalidAgentAddonSelection("--agent-addon-selection-json must be a JSON object.")
   val map = JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(root))
-    ?: throw UsageError("--agent-addon-selection-json must decode to an object.")
+    ?: invalidAgentAddonSelection("--agent-addon-selection-json must decode to an object.")
   if (map.keys != setOf("contract_version", "entries") || map["contract_version"] != "0.1") {
-    throw UsageError("Agent add-on selection must contain only contract_version=0.1 and entries.")
+    invalidAgentAddonSelection("Agent add-on selection must contain only contract_version=0.1 and entries.")
   }
   val entries = map["entries"] as? List<*>
-    ?: throw UsageError("Agent add-on selection entries must be an ordered array.")
+    ?: invalidAgentAddonSelection("Agent add-on selection entries must be an ordered array.")
   return try {
-    AgentAddonSelection(entries.mapIndexed { index, valueEntry ->
-      val entry = JsonSupport.anyToStringAnyMap(valueEntry)
-        ?: throw UsageError("Agent add-on selection entry $index must be an object.")
-      if (entry.keys != setOf("slug", "source_identity", "content_sha256")) {
-        throw UsageError("Agent add-on selection entry $index has unsupported or missing fields.")
-      }
-      PersistedAgentAddonSelectionEntry(
-        slug = entry["slug"] as? String ?: throw UsageError("Entry $index slug is required."),
-        sourceIdentity = entry["source_identity"] as? String
-          ?: throw UsageError("Entry $index source_identity is required."),
-        contentSha256 = entry["content_sha256"] as? String
-          ?: throw UsageError("Entry $index content_sha256 is required."),
-      )
-    })
+    AgentAddonSelection(
+      entries.mapIndexed { index, valueEntry ->
+        val entry = JsonSupport.anyToStringAnyMap(valueEntry)
+          ?: invalidAgentAddonSelection("Agent add-on selection entry $index must be an object.")
+        val persistedKeys = setOf("slug", "source_identity", "content_sha256")
+        if (!entry.keys.containsAll(persistedKeys) || entry.keys.any { it !in persistedKeys + "description" }) {
+          invalidAgentAddonSelection("Agent add-on selection entry $index has unsupported or missing fields.")
+        }
+        PersistedAgentAddonSelectionEntry(
+          slug = entry["slug"] as? String
+            ?: invalidAgentAddonSelection("Entry $index slug is required."),
+          sourceIdentity = entry["source_identity"] as? String
+            ?: invalidAgentAddonSelection("Entry $index source_identity is required."),
+          contentSha256 = entry["content_sha256"] as? String
+            ?: invalidAgentAddonSelection("Entry $index content_sha256 is required."),
+        )
+      },
+    )
   } catch (error: IllegalArgumentException) {
-    throw UsageError("Invalid agent add-on selection: ${error.message}")
+    invalidAgentAddonSelection("Invalid agent add-on selection: ${error.message}", error)
   }
+}
+
+private fun invalidAgentAddonSelection(message: String, cause: Throwable? = null): Nothing {
+  throw UsageError(message).apply { cause?.let(::initCause) }
 }
 
 private fun resolveInvokedRuntimeAgentId(explicitAgent: String?, environment: Map<String, String>): String =

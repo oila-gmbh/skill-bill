@@ -1,11 +1,13 @@
 package skillbill.ports.goalrunner.model
 
+import skillbill.agentaddon.model.AgentAddonSelection
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.workflow.model.CodeReviewExecutionMode
 
 data class GoalRunnerReviewPolicy(
   val codeReviewMode: CodeReviewExecutionMode,
   val parallelReviewAgent: String? = null,
+  val agentAddonSelection: AgentAddonSelection = AgentAddonSelection(),
 ) {
   init {
     parallelReviewAgent?.let { require(it.isNotBlank()) { "parallelReviewAgent must not be blank." } }

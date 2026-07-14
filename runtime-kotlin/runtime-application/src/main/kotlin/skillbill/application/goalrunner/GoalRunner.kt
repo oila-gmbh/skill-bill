@@ -94,47 +94,15 @@ class GoalRunner(
 
   private fun prepareRun(state: GoalRunnerManifestState, request: GoalRunnerRunRequest): GoalRunPreparation {
     val persistedReviewPolicy = manifestStore.reviewPolicy(state.parentWorkflowId, request.dbPathOverride)
-    if (persistedReviewPolicy != null && request.codeReviewMode != null &&
-      persistedReviewPolicy.codeReviewMode != request.codeReviewMode
-    ) {
-      return GoalRunPreparation.PreparationBlocked(
-        stopped(
-          issueKey = request.issueKey,
-          attempted = emptyList(),
-          subtaskId = 0,
-          reason = GoalRunnerStopReason.BLOCKED,
-          blockedReason =
-          "Cannot change code-review mode on goal resume: parent workflow " +
-            "'${state.parentWorkflowId}' is pinned to '${persistedReviewPolicy.codeReviewMode.wireValue}', " +
-            "not '${request.codeReviewMode.wireValue}'.",
-          workflowId = state.parentWorkflowId,
-          lastResumableStep = "preplan",
-        ),
-      )
-    }
-    if (persistedReviewPolicy != null && request.parallelReviewAgent != null &&
-      persistedReviewPolicy.parallelReviewAgent != request.parallelReviewAgent
-    ) {
-      return GoalRunPreparation.PreparationBlocked(
-        stopped(
-          issueKey = request.issueKey,
-          attempted = emptyList(),
-          subtaskId = 0,
-          reason = GoalRunnerStopReason.BLOCKED,
-          blockedReason =
-          "Cannot change parallel-review agent on goal resume: parent workflow " +
-            "'${state.parentWorkflowId}' is pinned to " +
-            "'${persistedReviewPolicy.parallelReviewAgent ?: "none"}', not '${request.parallelReviewAgent}'.",
-          workflowId = state.parentWorkflowId,
-          lastResumableStep = "preplan",
-        ),
-      )
+    persistedReviewPolicy?.let { policy ->
+      reviewPolicyMismatch(state, request, policy)?.let { return it }
     }
     val effectiveReviewPolicy = persistedReviewPolicy ?: manifestStore.persistReviewPolicy(
       parentWorkflowId = state.parentWorkflowId,
       policy = GoalRunnerReviewPolicy(
         codeReviewMode = request.codeReviewMode ?: CodeReviewExecutionMode.AUTO,
         parallelReviewAgent = request.parallelReviewAgent,
+        agentAddonSelection = request.agentAddonSelection.persisted,
       ),
       dbPathOverride = request.dbPathOverride,
     )
@@ -143,6 +111,35 @@ class GoalRunner(
       request.copy(
         codeReviewMode = effectiveReviewPolicy.codeReviewMode,
         parallelReviewAgent = effectiveReviewPolicy.parallelReviewAgent,
+      ),
+    )
+  }
+
+  private fun reviewPolicyMismatch(
+    state: GoalRunnerManifestState,
+    request: GoalRunnerRunRequest,
+    policy: GoalRunnerReviewPolicy,
+  ): GoalRunPreparation.PreparationBlocked? {
+    val reason = when {
+      request.codeReviewMode != null && policy.codeReviewMode != request.codeReviewMode ->
+        "Cannot change code-review mode on goal resume: parent workflow '${state.parentWorkflowId}' " +
+          "is pinned to '${policy.codeReviewMode.wireValue}', not '${request.codeReviewMode.wireValue}'."
+      request.parallelReviewAgent != null && policy.parallelReviewAgent != request.parallelReviewAgent ->
+        "Cannot change parallel-review agent on goal resume: parent workflow '${state.parentWorkflowId}' " +
+          "is pinned to '${policy.parallelReviewAgent ?: "none"}', not '${request.parallelReviewAgent}'."
+      policy.agentAddonSelection != request.agentAddonSelection.persisted ->
+        "Cannot drop or replace the durable agent add-on selection on goal resume."
+      else -> return null
+    }
+    return GoalRunPreparation.PreparationBlocked(
+      stopped(
+        issueKey = request.issueKey,
+        attempted = emptyList(),
+        subtaskId = 0,
+        reason = GoalRunnerStopReason.BLOCKED,
+        blockedReason = reason,
+        workflowId = state.parentWorkflowId,
+        lastResumableStep = "preplan",
       ),
     )
   }

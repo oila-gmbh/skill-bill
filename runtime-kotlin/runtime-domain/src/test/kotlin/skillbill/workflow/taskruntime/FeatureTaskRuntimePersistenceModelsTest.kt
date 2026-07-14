@@ -1,5 +1,7 @@
 package skillbill.workflow.taskruntime
 
+import skillbill.agentaddon.model.AgentAddonSelection
+import skillbill.agentaddon.model.PersistedAgentAddonSelectionEntry
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.model.appendBoundedHistoryBySequence
@@ -49,6 +51,15 @@ class FeatureTaskRuntimePersistenceModelsTest {
       parentWorkflowId = "wfl-parent",
       codeReviewMode = CodeReviewExecutionMode.DELEGATED,
       parallelReviewAgent = "claude",
+      agentAddonSelection = AgentAddonSelection(
+        listOf(
+          PersistedAgentAddonSelectionEntry(
+            "helper",
+            "/repo/agent-addons/helper/agent-addon.yaml",
+            "a".repeat(64),
+          ),
+        ),
+      ),
     )
 
     assertEquals(artifact, FeatureTaskRuntimeGoalContinuationArtifact.fromArtifactMap(artifact.toArtifactMap()))

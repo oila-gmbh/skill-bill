@@ -41,6 +41,9 @@ class AgentAddonSelectionResolverTest {
     assertFailsWith<InvalidAgentAddonSelectionError> {
       resolver.resolveInitial(repo, listOf("helper"), AgentAddonConsumer.BILL_FEATURE, listOf("claude"))
     }
+    assertFailsWith<InvalidAgentAddonSelectionError> {
+      resolver.resolveInitial(repo, listOf("helper"), AgentAddonConsumer.BILL_FEATURE, emptyList())
+    }
   }
 
   @Test

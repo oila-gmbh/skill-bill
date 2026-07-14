@@ -2,6 +2,7 @@ package skillbill.di
 
 import me.tatarka.inject.annotations.Component
 import me.tatarka.inject.annotations.Provides
+import skillbill.agentaddon.AgentAddonSelectionResolver
 import skillbill.application.agentrun.AgentRunGoalRunnerSubtaskLauncher
 import skillbill.application.agentrun.AgentRunService
 import skillbill.application.config.ConfigResolutionService
@@ -46,7 +47,6 @@ import skillbill.infrastructure.fs.FileSystemDiffResolver
 import skillbill.infrastructure.fs.FileSystemExternalAddonOverlay
 import skillbill.infrastructure.fs.FileSystemFeatureSpecPathResolver
 import skillbill.infrastructure.fs.FileSystemFeatureTaskRuntimeRunInvariantsSource
-import skillbill.agentaddon.AgentAddonSelectionResolver
 import skillbill.infrastructure.fs.FileSystemFeatureTaskRuntimeSpecStatusWriter
 import skillbill.infrastructure.fs.FileSystemInstallAgentTargets
 import skillbill.infrastructure.fs.FileSystemInstallApplyExecution
@@ -97,6 +97,7 @@ import skillbill.model.OptionalCallbacks
 import skillbill.model.RuntimeContext
 import skillbill.model.TransportContext
 import skillbill.model.WorkflowOpsContext
+import skillbill.ports.agentaddon.AgentAddonSelectionPort
 import skillbill.ports.agentrun.AgentRunLauncher
 import skillbill.ports.config.RepoLocalConfigPort
 import skillbill.ports.diagnostics.RuntimeDiagnostics
@@ -154,7 +155,6 @@ import skillbill.workflow.DecompositionManifestValidator
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.GoalObservabilityEventValidator
 import skillbill.workflow.GoalProgressEventValidator
-import skillbill.ports.agentaddon.AgentAddonSelectionPort
 import skillbill.workflow.WorkflowSnapshotValidator
 import java.nio.file.Path
 

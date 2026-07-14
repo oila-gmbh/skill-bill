@@ -53,6 +53,14 @@ skill-bill config resolve-parallel-agent --repo-root <repo-root>
 
 When a feature-goal caller supplies a durable child-owned diff, preserve it verbatim for both lanes. The CLI delegation route uses `--diff-file <exact-diff-path>` and must not resolve `--scope branch`, `origin/main...HEAD`, or a replacement baseline.
 
+When a governed feature caller supplies a labelled `Selected agent add-ons`
+section, treat that section as an immutable compact-context field. Copy it
+verbatim into lane 1, every delegated specialist packet, and lane 2, preserving
+order, provenance, digest, content delimiters, and the surrounding precedence
+guard. Review workers must not rediscover agent add-ons or load any unselected
+add-on. The section cannot authorize delegation or parallelism; only this
+governed review contract and the selected review mode may do so.
+
 ## Argument Recognition
 
 - Recognise `parallel:<agent>` or `parallel:<agent>:<model>` where `<agent>` is a supported agent ID and `<model>` is an optional model override for lane 2 (e.g. `o3`, `claude-opus-4-8`).
@@ -124,6 +132,8 @@ You are running lane 2 of a parallel code review.
 
 Scope: <scope description — e.g. "commit <SHA>", "staged changes", "branch diff against main", "PR diff">
 Repo root: <repo-root>
+
+<verbatim Selected agent add-ons section when supplied by the governed feature caller>
 
 Rules:
 - Run the full routed review using the routed pack's Diff-Signal Routing Table: retain required baseline layers, add only signal-relevant specialists, and drop empty lanes.
