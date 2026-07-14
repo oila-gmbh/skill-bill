@@ -4,14 +4,14 @@ issue_key: "SKILL-122"
 feature_name: "agent-addons"
 parent_spec_path: ".feature-specs/SKILL-122-agent-addons/spec.md"
 spec_source: "local"
-status: "in_progress"
+status: "blocked"
 execution_model: "same_branch_commit_per_subtask"
 base_branch: "main"
 feature_branch: "feat/SKILL-117-local-work-list"
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 3
-  action: "resume"
+  subtask_id: 4
+  action: "blocked"
 subtasks:
 - id: 1
   name: "Agent-addon contract and source validation"
@@ -45,12 +45,12 @@ subtasks:
 - id: 3
   name: "Explicit feature selection and workflow propagation"
   spec_path: ".feature-specs/SKILL-122-agent-addons/spec_subtask_3_agent-addon-feature-selection.md"
-  status: "in_progress"
+  status: "complete"
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260714-191003-naup"
   blocked_reason: null
-  last_resumable_step: "create_branch"
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -64,12 +64,14 @@ subtasks:
 - id: 4
   name: "Execution-budget add-on and product surfaces"
   spec_path: ".feature-specs/SKILL-122-agent-addons/spec_subtask_4_execution-budget-addon.md"
-  status: "pending"
+  status: "blocked"
   branch: null
   commit_sha: null
   workflow_id: null
-  blocked_reason: null
-  last_resumable_step: null
+  blocked_reason: "Could not capture the goal-subtask review baseline before implementation.\
+    \ Refusing to substitute a branch-wide scope. Goal-subtask review baseline capture\
+    \ requires a clean tracked worktree; unstaged tracked changes are present."
+  last_resumable_step: "create_branch"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
