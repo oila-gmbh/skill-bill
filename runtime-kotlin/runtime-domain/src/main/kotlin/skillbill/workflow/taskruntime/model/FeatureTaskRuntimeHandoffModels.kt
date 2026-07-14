@@ -1,5 +1,6 @@
 package skillbill.workflow.taskruntime.model
 
+import skillbill.agentaddon.model.AgentAddonSelection
 import skillbill.workflow.model.CodeReviewExecutionMode
 
 /**
@@ -26,6 +27,8 @@ data class FeatureTaskRuntimeRunInvariants(
   val mandatesAndOverrides: List<String>,
   /** Immutable requested review policy, carried to every initial and repeat review launch. */
   val codeReviewMode: CodeReviewExecutionMode = CodeReviewExecutionMode.AUTO,
+  /** Ordered immutable add-on identities. Content is verified and hydrated before every launch. */
+  val agentAddonSelection: AgentAddonSelection = AgentAddonSelection(),
 ) {
   init {
     require(specReference.isNotBlank()) {

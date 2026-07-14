@@ -41,7 +41,17 @@ Workflow-state rules:
 - `feature_task_prose_workflow_update` returns a compact acknowledgement by default: status, workflow id/status, current step id, updated step ids, updated artifact keys, db path, and read-only full-state guidance. It does not return the full durable artifact map; use `feature_task_prose_workflow_get` or `workflow show` for explicit read-only full-state inspection.
 - Follow the detailed per-phase briefing contracts in the inline reference sections below. Do not invent prose-only handoffs when a structured artifact exists.
 
-Stable step ids: `assess`, `create_branch`, `preplan`, `plan`, `implement`, `review`, `audit`, `validate`, `write_history`, `commit_push`, `pr_description`, `finish`. Stable artifact names: `assessment`, `branch`, `preplan_digest`, `plan`, `implementation_summary`, `review_result`, `audit_report`, `validation_result`, `history_result`, `commit_push_result`, `pr_result`.
+Stable step ids: `assess`, `create_branch`, `preplan`, `plan`, `implement`, `review`, `audit`, `validate`, `write_history`, `commit_push`, `pr_description`, `finish`. Stable artifact names: `assessment`, `branch`, `agent_addon_selection`, `preplan_digest`, `plan`, `implementation_summary`, `review_result`, `audit_report`, `validation_result`, `history_result`, `commit_push_result`, `pr_result`.
+
+When the entry authority supplies an agent add-on selection, persist its ordered
+structured `agent_addon_selection` immediately after the workflow opens. Before
+every initial phase, retry, review-fix, audit re-entry, or continuation, invoke
+the identity-based verify/render boundary and copy its returned section
+verbatim into the phase prompt. Never rediscover the catalogue or reconstruct
+the selection from chat history. Omission on continuation inherits the durable
+selection; missing sources, digest drift, or a changed receiving agent fail
+before phase work. An empty selection adds no artifact content and no prompt
+section, preserving legacy prose behaviour.
 
 Phase-to-artifact mapping: Step 1 -> `assessment`; Step 1b -> `branch`; Step 2 -> `preplan_digest`; Step 3 -> `plan` (implementation plan or decomposition package); Step 4 -> `implementation_summary`; Step 5 -> `review_result`; Step 6 -> `audit_report`; Step 6b -> `validation_result`; Step 7 -> `history_result`; Step 8 -> `commit_push_result`; Step 9 -> `pr_result`.
 

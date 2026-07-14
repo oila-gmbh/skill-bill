@@ -37,6 +37,10 @@ import skillbill.application.model.WorkflowFamilyKind
 import skillbill.application.model.WorkflowOpenResult
 import skillbill.application.model.WorkflowUpdateResult
 import skillbill.application.workflow.WorkflowService
+import skillbill.agentaddon.model.AgentAddonConsumer
+import skillbill.agentaddon.model.AgentAddonSelection
+import skillbill.agentaddon.model.HydratedAgentAddonSelection
+import skillbill.agentaddon.model.PersistedAgentAddonSelectionEntry
 import skillbill.cli.core.CliRunState
 import skillbill.cli.core.DocumentedCliCommand
 import skillbill.cli.core.formatOption
@@ -44,9 +48,11 @@ import skillbill.cli.core.refuseRuntimeRefusedAgents
 import skillbill.cli.core.refuseUnsupportedModelDirectives
 import skillbill.cli.workflow.toCliMap
 import skillbill.config.model.PhaseModelDirective
+import skillbill.contracts.JsonSupport
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.InvokingAgentContextResolver
 import skillbill.ports.featurespec.FeatureSpecPathResolverPort
+import skillbill.ports.agentaddon.AgentAddonSelectionPort
 import skillbill.ports.featurespec.model.FeatureSpecPathResolveInput
 import skillbill.ports.featurespec.model.FeatureSpecPathResolveResult
 import skillbill.ports.persistence.model.FeatureTaskRouteScope
@@ -68,6 +74,7 @@ data class FeatureTaskRuntimeRunDependencies(
   val runInvariantsSource: FeatureTaskRuntimeRunInvariantsSource,
   val specPathResolver: FeatureSpecPathResolverPort,
   val configResolutionService: ConfigResolutionService,
+  val agentAddonSelectionPort: AgentAddonSelectionPort,
   val state: CliRunState,
 )
 
@@ -150,6 +157,10 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
     help = "Open the run under this exact workflow id instead of minting a new one. Used by the goal " +
       "driver's open-with-assigned-id path for a first runtime subtask run (distinct from resume).",
   )
+  protected val agentAddonSelectionJson by option(
+    "--agent-addon-selection-json",
+    help = "Already-resolved ordered agent add-on selection JSON. Raw agent-addon tokens are not accepted here.",
+  )
 
   protected fun resolveRunWorkflowId(
     workflowService: WorkflowService,
@@ -203,7 +214,9 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
           workflowId = resolvedWorkflowId,
           sessionId =
           "${FeatureTaskRuntimePhaseWorkflowDefinition.definition.defaultSessionPrefix}-$resolvedWorkflowId",
-          runInvariants = deps.runInvariantsSource.read(Path.of(specPath)),
+          runInvariants = deps.runInvariantsSource.read(Path.of(specPath)).copy(
+            agentAddonSelection = prepared.agentAddonSelection.persisted,
+          ),
           invokedAgentId = prepared.invokedAgentId,
           agentAssignment = prepared.agentAssignment,
           modelAssignment = prepared.modelAssignment,
@@ -214,6 +227,7 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
           parallelReviewAgent = parallelReviewAgent?.takeIf(String::isNotBlank),
           requestedCodeReviewMode = requestedReviewMode,
           goalContinuation = goalContinuation,
+          agentAddonSelection = prepared.agentAddonSelection,
           eventSink = runtimeRunEventSink(state, monitor),
         ),
       )
@@ -244,7 +258,21 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
       }
     }.toMap()
     refuseUnsupportedModelDirectives(directives, resolvedAgentIds)
-    return PreparedRuntimeRun(repoRoot, invokedAgentId, agentAssignment, modelAssignment)
+    val receivingAgents = buildList {
+      addAll(resolvedAgentIds.values)
+      addAll(parsePhaseAgents(phaseAgents).values)
+      agentOverride?.takeIf(String::isNotBlank)?.let(::add)
+      parallelReviewAgent?.takeIf(String::isNotBlank)?.let(::add)
+    }.distinct()
+    val persistedSelection = parseAgentAddonSelection(agentAddonSelectionJson)
+    val hydratedSelection = if (persistedSelection.entries.isEmpty()) HydratedAgentAddonSelection() else {
+      deps.agentAddonSelectionPort.verifyPersisted(
+        persistedSelection,
+        AgentAddonConsumer.BILL_FEATURE,
+        receivingAgents,
+      )
+    }
+    return PreparedRuntimeRun(repoRoot, invokedAgentId, agentAssignment, modelAssignment, hydratedSelection)
   }
 
   protected fun resolveSpecPath(
@@ -871,7 +899,39 @@ private data class PreparedRuntimeRun(
   val invokedAgentId: String,
   val agentAssignment: FeatureTaskRuntimeAgentAssignment,
   val modelAssignment: FeatureTaskRuntimeModelAssignment,
+  val agentAddonSelection: HydratedAgentAddonSelection,
 )
+
+internal fun parseAgentAddonSelection(raw: String?): AgentAddonSelection {
+  if (raw == null) return AgentAddonSelection()
+  val root = JsonSupport.parseObjectOrNull(raw)
+    ?: throw UsageError("--agent-addon-selection-json must be a JSON object.")
+  val map = JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(root))
+    ?: throw UsageError("--agent-addon-selection-json must decode to an object.")
+  if (map.keys != setOf("contract_version", "entries") || map["contract_version"] != "0.1") {
+    throw UsageError("Agent add-on selection must contain only contract_version=0.1 and entries.")
+  }
+  val entries = map["entries"] as? List<*>
+    ?: throw UsageError("Agent add-on selection entries must be an ordered array.")
+  return try {
+    AgentAddonSelection(entries.mapIndexed { index, valueEntry ->
+      val entry = JsonSupport.anyToStringAnyMap(valueEntry)
+        ?: throw UsageError("Agent add-on selection entry $index must be an object.")
+      if (entry.keys != setOf("slug", "source_identity", "content_sha256")) {
+        throw UsageError("Agent add-on selection entry $index has unsupported or missing fields.")
+      }
+      PersistedAgentAddonSelectionEntry(
+        slug = entry["slug"] as? String ?: throw UsageError("Entry $index slug is required."),
+        sourceIdentity = entry["source_identity"] as? String
+          ?: throw UsageError("Entry $index source_identity is required."),
+        contentSha256 = entry["content_sha256"] as? String
+          ?: throw UsageError("Entry $index content_sha256 is required."),
+      )
+    })
+  } catch (error: IllegalArgumentException) {
+    throw UsageError("Invalid agent add-on selection: ${error.message}")
+  }
+}
 
 private fun resolveInvokedRuntimeAgentId(explicitAgent: String?, environment: Map<String, String>): String =
   explicitAgent?.takeIf(String::isNotBlank)

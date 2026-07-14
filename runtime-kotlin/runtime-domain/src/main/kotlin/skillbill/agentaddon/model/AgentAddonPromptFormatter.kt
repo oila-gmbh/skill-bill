@@ -1,6 +1,9 @@
 package skillbill.agentaddon.model
 
 object AgentAddonPromptFormatter {
+  private const val BEGIN = "<<<SKILL-BILL-SELECTED-AGENT-ADDON-CONTENT>>>"
+  private const val END = "<<<SKILL-BILL-END-SELECTED-AGENT-ADDON-CONTENT>>>"
+
   fun format(selection: HydratedAgentAddonSelection): String {
     if (selection.entries.isEmpty()) return ""
     val guard = """
@@ -16,9 +19,13 @@ object AgentAddonPromptFormatter {
         appendLine("### ${index + 1}. ${entry.persisted.slug}")
         appendLine("Source: ${entry.persisted.sourceIdentity}")
         appendLine("SHA-256: ${entry.persisted.contentSha256}")
-        appendLine("--- begin selected add-on content ---")
-        appendLine(entry.content.trimEnd())
-        appendLine("--- end selected add-on content ---")
+        require(!entry.content.contains(BEGIN) && !entry.content.contains(END)) {
+          "Agent add-on '${entry.persisted.slug}' contains a reserved prompt delimiter."
+        }
+        appendLine(BEGIN)
+        append(entry.content)
+        if (!entry.content.endsWith("\n")) appendLine()
+        appendLine(END)
       }
     }.trimEnd()
   }

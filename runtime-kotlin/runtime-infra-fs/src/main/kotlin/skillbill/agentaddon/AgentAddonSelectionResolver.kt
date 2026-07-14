@@ -9,12 +9,15 @@ import skillbill.agentaddon.model.PersistedAgentAddonSelectionEntry
 import skillbill.error.AgentAddonSelectionDriftError
 import skillbill.error.InvalidAgentAddonSelectionError
 import skillbill.install.model.InstallAgent
+import skillbill.ports.agentaddon.AgentAddonSelectionPort
 import java.nio.file.Files
 import java.nio.file.Path
 import java.security.MessageDigest
+import me.tatarka.inject.annotations.Inject
 
-class AgentAddonSelectionResolver {
-  fun resolveInitial(
+@Inject
+class AgentAddonSelectionResolver : AgentAddonSelectionPort {
+  override fun resolveInitial(
     repoRoot: Path,
     requestedSlugs: List<String>,
     consumer: AgentAddonConsumer,
@@ -39,7 +42,7 @@ class AgentAddonSelectionResolver {
   }
 
   @Suppress("ThrowsCount") // Each identity or digest contract breach must retain its actionable typed failure.
-  fun verifyPersisted(
+  override fun verifyPersisted(
     selection: AgentAddonSelection,
     consumer: AgentAddonConsumer,
     receivingAgentIds: List<String>,

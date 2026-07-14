@@ -46,6 +46,7 @@ import skillbill.infrastructure.fs.FileSystemDiffResolver
 import skillbill.infrastructure.fs.FileSystemExternalAddonOverlay
 import skillbill.infrastructure.fs.FileSystemFeatureSpecPathResolver
 import skillbill.infrastructure.fs.FileSystemFeatureTaskRuntimeRunInvariantsSource
+import skillbill.agentaddon.AgentAddonSelectionResolver
 import skillbill.infrastructure.fs.FileSystemFeatureTaskRuntimeSpecStatusWriter
 import skillbill.infrastructure.fs.FileSystemInstallAgentTargets
 import skillbill.infrastructure.fs.FileSystemInstallApplyExecution
@@ -153,6 +154,7 @@ import skillbill.workflow.DecompositionManifestValidator
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.GoalObservabilityEventValidator
 import skillbill.workflow.GoalProgressEventValidator
+import skillbill.ports.agentaddon.AgentAddonSelectionPort
 import skillbill.workflow.WorkflowSnapshotValidator
 import java.nio.file.Path
 
@@ -429,6 +431,10 @@ abstract class RuntimeComponent(
   internal fun featureTaskRuntimeRunInvariantsSource(
     adapter: FileSystemFeatureTaskRuntimeRunInvariantsSource,
   ): FeatureTaskRuntimeRunInvariantsSource = adapter
+
+  @Provides
+  @JvmSynthetic
+  fun agentAddonSelectionPort(): AgentAddonSelectionPort = AgentAddonSelectionResolver()
 
   @Provides
   @JvmSynthetic
