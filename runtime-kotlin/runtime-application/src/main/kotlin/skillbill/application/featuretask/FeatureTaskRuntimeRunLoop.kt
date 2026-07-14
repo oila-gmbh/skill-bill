@@ -94,7 +94,14 @@ internal class FeatureTaskRuntimeRunLoop(
   }
 
   fun drive() {
-    var phaseId: String? = transitions.forwardPhaseIds.first()
+    val resumedReentry = pendingReentry
+    if (resumedReentry != null) {
+      state.auditGapPlanningContextError()?.let { reason ->
+        blockInvalidAuditGapRecovery(resumedReentry, reason)
+        return
+      }
+    }
+    var phaseId: String? = resumedReentry?.phaseId ?: transitions.forwardPhaseIds.first()
     while (phaseId != null) {
       val settled = advance(phaseId)
       val completedPhaseId = settled.completedPhaseId
@@ -442,13 +449,40 @@ internal class FeatureTaskRuntimeRunLoop(
 
   private fun runPhaseFor(phaseId: String): String? {
     val reentry = pendingReentry?.takeIf { it.phaseId == phaseId }
-    pendingReentry = null
+    if (reentry != null) pendingReentry = null
     val outcome = runPhase(phaseId, request, state, observability, specSource, reentry, phaseTokenAccumulator)
     return outcome.blockedReason ?: run {
       val completedOutput = requireNotNull(outcome.completedOutput)
       state.recordCompleted(completedOutput)
       applyPlanningStop(phaseId, completedOutput)
     }
+  }
+
+  private fun blockInvalidAuditGapRecovery(reentry: PendingReentry, reason: String) {
+    val phaseId = reentry.phaseId
+    val resolvedAgentId = FeatureTaskRuntimeAgentResolver.resolve(
+      phaseId = phaseId,
+      assignment = request.agentAssignment,
+      invokedAgentId = request.invokedAgentId,
+    ).resolvedAgentId
+    val attempt = state.nextIteration(phaseId)
+    recorder.recordPhaseState(
+      FeatureTaskRuntimePhaseStateRequest(
+        workflowId = request.workflowId,
+        phaseId = phaseId,
+        status = STATUS_BLOCKED,
+        attemptCount = attempt,
+        resolvedAgentId = resolvedAgentId,
+        finished = false,
+        blockedReason = reason,
+        failureDisposition = FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
+        loopId = reentry.loopId,
+        edgeIteration = reentry.edgeIteration,
+      ),
+      request.dbPathOverride,
+    )
+    observability.blocked(phaseId, resolvedAgentId, attempt, reason)
+    blockAt(phaseId, reason)
   }
 
   private fun applyPlanningStop(phaseId: String, planOutput: FeatureTaskRuntimePhaseOutput): String? {
@@ -857,11 +891,12 @@ internal class FeatureTaskRuntimeRunLoop(
       run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT &&
       run.reentry?.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID
     ) {
-      state.auditGapPlanningContextError()?.let { reason -> PreLaunchBlock(1, reason) }
+      state.auditGapPlanningContextError()?.let { reason -> PreLaunchBlock(state.nextIteration(run.phaseId), reason) }
     } else {
       null
     }
-    val missing = persisted ?: invalidPlanningContext ?: missingUpstream(run.declaration, state.outputs())?.let { missingIds ->
+    val missing = persisted ?: invalidPlanningContext
+      ?: missingUpstream(run.declaration, state.outputs())?.let { missingIds ->
       PreLaunchBlock(
         1,
         "Phase '${run.phaseId}' requires upstream output(s) ${missingIds.joinToString()} that are not " +
@@ -1117,16 +1152,23 @@ internal class FeatureTaskRuntimeRunLoop(
         return AttemptResult.settled(outcome)
       }
     } else {
-      persistPhase(
-        run,
-        iteration,
-        STATUS_COMPLETED,
-        finished = true,
-        outputArtifact = outputText,
-        fileManifest = fileManifest,
+      recorder.recordCompletedPhase(
+        phaseStateRequest(
+          run,
+          iteration,
+          STATUS_COMPLETED,
+          finished = true,
+          outputArtifact = outputText,
+          fileManifest = fileManifest,
+        ),
+        run.request.dbPathOverride,
       )
     }
-    observability.completed(run.phaseId, run.resolvedAgent.resolvedAgentId, iteration)
+    if (isGoalReviewRun(run)) {
+      observability.completed(run.phaseId, run.resolvedAgent.resolvedAgentId, iteration)
+    } else {
+      observability.completedEvent(run.phaseId, run.resolvedAgent.resolvedAgentId, iteration)
+    }
     return AttemptResult.settled(
       PhaseOutcome.completed(FeatureTaskRuntimePhaseOutput(run.phaseId, iteration, outputText)),
     )

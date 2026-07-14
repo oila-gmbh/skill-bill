@@ -89,6 +89,46 @@ class FeatureTaskRuntimePhaseRecorder(
       true
     }
 
+  fun recordCompletedPhase(request: FeatureTaskRuntimePhaseStateRequest, dbOverride: String? = null): Boolean {
+    require(request.status == "completed" && request.finished)
+    return database.transaction(dbOverride) { unitOfWork ->
+      val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, request.workflowId)
+        ?: return@transaction false
+      val artifacts = decodeArtifacts(record.artifactsJson)
+      val existingRecords = phaseRecordsFrom(artifacts)
+      val updatedRecords = LinkedHashMap(existingRecords).apply {
+        put(request.phaseId, phaseRecordFor(request, existingRecords[request.phaseId], Instant.now().toString()))
+      }
+      val ledger = phaseLedgerFrom(artifacts)
+      val completion = FeatureTaskRuntimePhaseLedgerEntry(
+        action = skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction.COMPLETE,
+        sequenceNumber = (ledger.maxOfOrNull { it.sequenceNumber } ?: -1) + 1,
+        timestamp = Instant.now().toString(),
+        phaseId = request.phaseId,
+        attemptCount = request.attemptCount,
+        resolvedAgentId = request.resolvedAgentId,
+        loopId = request.loopId,
+        edgeIteration = request.edgeIteration,
+      )
+      val updatedLedger = appendBoundedHistoryBySequence(
+        ledger.map { it.toArtifactMap() },
+        completion.toArtifactMap(),
+        FEATURE_TASK_RUNTIME_PHASE_LEDGER_LIMIT,
+      )
+      persistPatch(
+        unitOfWork.workflowStates,
+        record,
+        mapOf(
+          FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY to
+            updatedRecords.mapValues { (_, value) -> value.toArtifactMap() },
+          FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY to updatedLedger,
+        ),
+        WorkflowRowAdvance(request.phaseId, workflowStatusFor(request), stepUpdatesFrom(updatedRecords)),
+      )
+      true
+    }
+  }
+
   internal fun completeGoalReviewPhase(
     completion: GoalReviewPhaseCompletionRequest,
     dbOverride: String? = null,

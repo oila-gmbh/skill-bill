@@ -9,6 +9,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewFinding
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
+import skillbill.contracts.JsonSupport
 
 @Suppress("TooManyFunctions")
 internal class FeatureTaskRuntimeRunState(
@@ -125,6 +126,9 @@ internal class FeatureTaskRuntimeRunState(
       if (output == null || record?.status?.let { it != STATUS_COMPLETED } == true) {
         return "Audit-gap remediation requires a valid completed original '$phaseId' output."
       }
+      if (JsonSupport.parseObjectOrNull(output.payload) == null) {
+        return "Audit-gap remediation requires a valid completed original '$phaseId' output."
+      }
       if (record?.loopId != null || record?.edgeIteration != null) {
         return "Audit-gap remediation cannot prove original planning-context identity because '$phaseId' " +
           "carries legacy backward-edge metadata. Migrate or restart this experimental durable workflow; " +
@@ -198,7 +202,14 @@ internal class FeatureTaskRuntimeRunState(
         .filter { it.sequenceNumber > latestEdge.sequenceNumber }
         .filter { it.action == FeatureTaskRuntimePhaseLedgerAction.COMPLETE }
         .map { it.phaseId }
-        .toSet()
+        .toMutableSet()
+      initialRecords.values
+        .filter { record ->
+          record.status == STATUS_COMPLETED &&
+            record.loopId == edge.loopId &&
+            record.edgeIteration == latestEdge.edgeIteration
+        }
+        .mapTo(completedAfterEdge) { it.phaseId }
       val span = reopenedSpan(edge)
       if (span.any { phaseId -> phaseId !in completedAfterEdge }) {
         put(

@@ -110,14 +110,7 @@ internal class FeatureTaskRuntimeRunObservability(
   }
 
   fun completed(phaseId: String, resolvedAgentId: String, attemptCount: Int) {
-    request.eventSink.emit(
-      FeatureTaskRuntimeRunEvent.PhaseCompleted(
-        workflowId = request.workflowId,
-        phaseId = phaseId,
-        resolvedAgentId = resolvedAgentId,
-        attemptCount = attemptCount,
-      ),
-    )
+    completedEvent(phaseId, resolvedAgentId, attemptCount)
     appendLedger(
       FeatureTaskRuntimePhaseLedgerRequest(
         workflowId = request.workflowId,
@@ -125,6 +118,17 @@ internal class FeatureTaskRuntimeRunObservability(
         phaseId = phaseId,
         attemptCount = attemptCount,
         resolvedAgentId = resolvedAgentId,
+      ),
+    )
+  }
+
+  fun completedEvent(phaseId: String, resolvedAgentId: String, attemptCount: Int) {
+    request.eventSink.emit(
+      FeatureTaskRuntimeRunEvent.PhaseCompleted(
+        workflowId = request.workflowId,
+        phaseId = phaseId,
+        resolvedAgentId = resolvedAgentId,
+        attemptCount = attemptCount,
       ),
     )
   }

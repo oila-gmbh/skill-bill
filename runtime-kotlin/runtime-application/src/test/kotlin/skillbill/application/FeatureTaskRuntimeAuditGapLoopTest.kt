@@ -322,6 +322,38 @@ class FeatureTaskRuntimeAuditGapLoopTest {
     assertTrue(harness.launchedPromptPhaseOrder().none { it == "validate" })
   }
 
+  @Test
+  fun `gaps_found rejects absent empty and malformed unmet criteria before remediation`() {
+    val invalidAuditOutputs = listOf(
+      invalidGapsFoundOutput("{}"),
+      invalidGapsFoundOutput("{\"unmet_criteria\":[]}"),
+      invalidGapsFoundOutput("{\"unmet_criteria\":[{\"message\":\"AC4\"},{}]}"),
+    )
+    invalidAuditOutputs.forEach { auditOutput ->
+      val harness = runnerHarness(
+        launcher = RuntimeRecordingLauncher { request ->
+          val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+          facts(if (phaseId == "audit") auditOutput else validJsonOutput(phaseId))
+        },
+      )
+
+      val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(
+        harness.runner.run(harness.request()),
+      )
+
+      assertEquals("audit", blocked.lastIncompletePhase)
+      assertTrue(harness.launchedPromptPhaseOrder().count { it == "implement" } == 1)
+      assertTrue(
+        harness.recorder.loadPhaseLedger(WORKFLOW_ID).orEmpty()
+          .none { it.action == FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE && it.loopId == "audit_gap" },
+      )
+    }
+  }
+
+  private fun invalidGapsFoundOutput(producedOutputs: String): String =
+    """{"contract_version":"0.1","phase_id":"audit","status":"completed","verdict":"gaps_found",""" +
+      """"summary":"gap","produced_outputs":$producedOutputs}"""
+
   // (k) AC7: finished telemetry reflects the audit-gap iteration count (>0 when the loop ran, 0 clean).
   @Test
   fun `m2 finished telemetry reflects the audit-gap iteration count`() {

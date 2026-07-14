@@ -29,6 +29,21 @@ internal object FeatureTaskRuntimeOutputVerification {
   fun unmetAuditCriteria(output: FeatureTaskRuntimePhaseOutput?): List<String> =
     output?.let(::outputObject)?.let(::auditVerdictFrom)?.unmetCriteria?.map { it.message }.orEmpty()
 
+  fun auditGapPayloadError(outputObject: Map<String, Any?>): String? {
+    val wireVerdict = outputObject["verdict"] as? String
+    if (wireVerdict != FeatureTaskRuntimeVerdict.GAPS_FOUND.wireValue) return null
+    val producedOutputs = JsonSupport.anyToStringAnyMap(outputObject["produced_outputs"])
+    val raw = producedOutputs?.get(FeatureTaskRuntimeVerificationSignalKeys.AUDIT_UNMET_CRITERIA)
+      ?: producedOutputs?.get(FeatureTaskRuntimeVerificationSignalKeys.AUDIT_FAILING_CRITERIA_ALIAS)
+    val entries = raw as? List<*>
+      ?: return "Audit verdict 'gaps_found' requires a non-empty produced_outputs.unmet_criteria array."
+    if (entries.isEmpty() || entries.any { auditGapMessage(it) == null }) {
+      return "Audit verdict 'gaps_found' requires every produced_outputs.unmet_criteria entry " +
+        "to carry a non-blank message."
+    }
+    return null
+  }
+
   private fun reviewVerdict(
     outputObject: Map<String, Any?>?,
     wireVerdict: FeatureTaskRuntimeVerdict?,
@@ -74,16 +89,15 @@ internal object FeatureTaskRuntimeOutputVerification {
         ?: producedOutputs?.get(FeatureTaskRuntimeVerificationSignalKeys.AUDIT_FAILING_CRITERIA_ALIAS)
       ) as? List<*>
       ?: return null
-    val gaps = gapsRaw.mapNotNull { entry ->
-      val message = (entry as? String)?.takeIf(String::isNotBlank)
-        ?: JsonSupport.anyToStringAnyMap(entry)?.let { map ->
-          ((map["message"] ?: map["criterion"]) as? String)?.takeIf(String::isNotBlank)
-        }
-        ?: return@mapNotNull null
-      FeatureTaskRuntimeAuditCriterionGap(message)
-    }
+    val gaps = gapsRaw.mapNotNull { entry -> auditGapMessage(entry)?.let(::FeatureTaskRuntimeAuditCriterionGap) }
     return FeatureTaskRuntimeAuditVerdict(gaps)
   }
+
+  private fun auditGapMessage(entry: Any?): String? =
+    (entry as? String)?.takeIf(String::isNotBlank)
+      ?: JsonSupport.anyToStringAnyMap(entry)?.let { map ->
+        ((map["message"] ?: map["criterion"]) as? String)?.takeIf(String::isNotBlank)
+      }
 
   private fun outputObject(output: FeatureTaskRuntimePhaseOutput): Map<String, Any?>? =
     JsonSupport.parseObjectOrNull(output.payload)
