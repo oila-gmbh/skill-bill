@@ -53,6 +53,12 @@ fun discoverGeneratedArtifactFiles(repoRoot: Path): List<GeneratedArtifactFile> 
           path = artifact,
           reason = "Generated provider-specific native-agent output.",
         )
+      } +
+      discoverAgentAddonGeneratedArtifacts(root).map { artifact ->
+        GeneratedArtifactFile(
+          path = artifact,
+          reason = "Generated agent add-on output. Author only agent-addon.yaml and content.md.",
+        )
       }
     )
     .distinctBy { artifact -> artifact.path.toAbsolutePath().normalize() }
@@ -93,7 +99,32 @@ internal fun validateGeneratedArtifactGuard(
     issues += "$relative: committed generated supporting pointer file is not allowed; " +
       "render supporting pointers only for install/output targets"
   }
+  discoverAgentAddonGeneratedArtifacts(root).forEach { artifact ->
+    val relative = displayGuardPath(root, artifact)
+    if (shouldValidateCommittedArtifact(relative, trackedFiles)) {
+      issues += "$relative: committed generated agent add-on output is not allowed; " +
+        "author only agent-addon.yaml and content.md"
+    }
+  }
   return GeneratedArtifactGuardReport(issues.sorted())
+}
+
+private fun discoverAgentAddonGeneratedArtifacts(root: Path): List<Path> {
+  val addonsRoot = root.resolve("agent-addons")
+  if (!addonsRoot.isDirectory()) return emptyList()
+  val generatedNames = setOf(
+    "SKILL.md",
+    "shell-ceremony.md",
+    "telemetry-contract.md",
+    "stack-routing.md",
+    "claude-agents",
+    "codex-agents",
+    "opencode-agents",
+    "junie-agents",
+  )
+  return Files.walk(addonsRoot).use { stream ->
+    stream.filter { it.name in generatedNames }.sorted().toList()
+  }
 }
 
 private fun shouldValidateCommittedArtifact(relativePath: String, trackedFiles: Set<String>?): Boolean =

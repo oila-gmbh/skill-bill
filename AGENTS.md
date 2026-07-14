@@ -7,9 +7,10 @@ skill-bill governs authoring, routing, validation, installation, and measurement
 Non-negotiable contracts:
 
 - Authored governed skill source is `content.md`, except for documented governed sidecar contracts; generated `SKILL.md` wrappers are runtime/install output.
-- Source skill directories under `skills/<skill>/` contain `content.md`, optional `native-agents/`, and explicit authored sidecars only when a documented governed contract allows them.
+- Skill sources use `skills/<skill>/content.md`, optional `native-agents/`, and contract-authorized sidecars.
 - Platform behavior lives in manifest-declared platform packs under `platform-packs/<slug>/`.
-- `orchestration/` is the shared source of truth for routing, review, delegation, telemetry, workflow, and shell contracts.
+- `orchestration/` owns shared routing, review, delegation, telemetry, workflow, and shell contracts.
+- `agent-addons/<slug>/` contains only user-owned `agent-addon.yaml` and `content.md`.
 - Generated support pointer files, provider-specific native-agent outputs, and installed staging artifacts are not committed.
 - Discovery, install, routing, validation, and desktop surfaces stay dynamic and manifest-driven.
 - Missing manifests, wrong contract versions, missing content files, and missing required sections fail loudly with typed errors.

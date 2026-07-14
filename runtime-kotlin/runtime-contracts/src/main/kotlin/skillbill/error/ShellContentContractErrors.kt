@@ -15,6 +15,22 @@ class InvalidManifestSchemaError(
   cause: Throwable? = null,
 ) : ShellContentContractException(message, cause)
 
+class InvalidAgentAddonSchemaError(
+  val sourceLabel: String,
+  val reason: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Agent add-on '${sourceLabel.ifBlank { "<unknown>" }}' fails schema validation: $reason",
+  cause,
+)
+
+class MissingAgentAddonDeclarationError(
+  val slug: String,
+  val expectedRoot: String,
+) : ShellContentContractException(
+  "Required agent add-on '$slug' was not found under '$expectedRoot'.",
+)
+
 class InvalidReviewContextSchemaError(
   val sourceLabel: String,
   val reason: String,

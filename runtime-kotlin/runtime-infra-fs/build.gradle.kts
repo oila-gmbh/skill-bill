@@ -7,8 +7,8 @@ plugins {
 
 dependencies {
   api(project(":runtime-ports"))
+  api(project(":runtime-domain"))
   implementation(project(":runtime-contracts"))
-  implementation(project(":runtime-domain"))
   implementation(libs.kotlin.inject.runtime)
   implementation(libs.snakeyaml)
   implementation(libs.json.schema.validator)
@@ -23,6 +23,24 @@ val canonicalPlatformPackSchemaPath: String =
   rootProject.projectDir.parentFile
     .resolve("orchestration/contracts/platform-pack-schema.yaml")
     .absolutePath
+
+val canonicalAgentAddonSchemaPath: String =
+  rootProject.projectDir.parentFile
+    .resolve("orchestration/contracts/agent-addon-schema.yaml")
+    .absolutePath
+
+val copyAgentAddonSchema =
+  tasks.register<Copy>("copyAgentAddonSchema") {
+    val schemaPath = canonicalAgentAddonSchemaPath
+    from(schemaPath)
+    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/contracts"))
+    inputs.file(schemaPath)
+    doFirst {
+      require(File(schemaPath).exists()) {
+        "SKILL-122: canonical agent-addon schema is missing at $schemaPath."
+      }
+    }
+  }
 
 val canonicalReviewContextSchemaPath: String =
   rootProject.projectDir.parentFile
@@ -252,6 +270,7 @@ sourceSets.named("main") {
 }
 
 tasks.named("processResources") {
+  dependsOn(copyAgentAddonSchema)
   dependsOn(copyReviewContextSchema)
   dependsOn(copyPlatformPackSchema)
   dependsOn(copyNativeAgentCompositionSchema)
@@ -267,6 +286,7 @@ tasks.named("processResources") {
 }
 
 tasks.named("processTestResources") {
+  dependsOn(copyAgentAddonSchema)
   dependsOn(copyReviewContextSchema)
   dependsOn(copyPlatformPackSchema)
   dependsOn(copyNativeAgentCompositionSchema)

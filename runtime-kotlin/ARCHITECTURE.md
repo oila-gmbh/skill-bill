@@ -37,9 +37,9 @@ runtime-core
   `skillbill.error` runtime exception taxonomy. It no longer owns the JSON-Schema
   validators or their schema-resource copy tasks; those moved to
   `runtime-infra-fs` (see below).
-- `runtime-domain`: pure learning, review, telemetry, workflow, install-plan,
-  scaffold, and skill-remove models/rules. Public domain data types live in
-  area-owned `model` packages.
+- `runtime-domain`: pure agent-add-on, learning, review, telemetry, workflow,
+  install-plan, scaffold, and skill-remove models/rules. Public domain data
+  types live in area-owned `model` packages.
 - `runtime-ports`: `skillbill.model.RuntimeContext`, persistence sessions,
   repositories, gateway interfaces, telemetry port interfaces, workflow git
   operations, decomposition-manifest file-store ports, port-owned model types,
@@ -59,7 +59,8 @@ runtime-core
   repo validation, native-agent rendering/linking, launcher MCP registration,
   git workflow operations, decomposition-manifest file storage, and
   skill-remove filesystem cascades. It also owns the concrete JSON-Schema
-  validators (`InstallPlanSchemaValidator`, `WorkflowStateSchemaValidator` /
+  validators (`AgentAddonSchemaValidator`, `InstallPlanSchemaValidator`,
+  `WorkflowStateSchemaValidator` /
   `CanonicalWorkflowStateSchemaValidator`, `DecompositionManifestSchemaValidator`,
   and the `DecompositionManifestCoherenceValidator`) plus their schema-resource
   copy tasks (`copyInstallPlanSchema`, `copyWorkflowStateSchema`,
@@ -185,6 +186,9 @@ runtime-ports
   name is retained on the moved validators to preserve their classpath resource
   paths and import compatibility (recorded in `agent/decisions.md` 2026-06-12).
 - `skillbill.error`: runtime exception taxonomy.
+- `skillbill.agentaddon` and `skillbill.agentaddon.model`: governed agent-add-on
+  filesystem discovery and schema validation owned by `runtime-infra-fs`, plus
+  typed declaration models owned by `runtime-domain`.
 - `skillbill.workflow` and `skillbill.workflow.model`: pure workflow engine,
   workflow definitions, decomposition manifest codec, wire-map conversion, and
   workflow/decomposition models owned by `runtime-domain`.
@@ -544,6 +548,7 @@ runtime-ports
 The subsystem package set is:
 
 ```text
+skillbill.agentaddon
 skillbill.application
 skillbill.boundary
 skillbill.cli

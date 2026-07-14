@@ -22,6 +22,19 @@ class GeneratedArtifactGuardTest {
   }
 
   @Test
+  fun `guard rejects generated agent addon output`() {
+    val repoRoot = tempRoot.resolve("agent-addon-output")
+    val addon = repoRoot.resolve("agent-addons/review-helper")
+    Files.createDirectories(addon)
+    Files.writeString(addon.resolve("SKILL.md"), "generated")
+
+    val report = validateGeneratedArtifactGuard(repoRoot)
+
+    assertFalse(report.passed)
+    assertTrue(report.issues.single().contains("generated agent add-on output"))
+  }
+
+  @Test
   fun `guard remains dormant when source tree has no generated outputs`() {
     val repoRoot = tempRoot.resolve("baseline-repo")
     val skillDir = repoRoot.resolve("skills/bill-code-review")

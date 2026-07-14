@@ -4,24 +4,25 @@ issue_key: "SKILL-122"
 feature_name: "agent-addons"
 parent_spec_path: ".feature-specs/SKILL-122-agent-addons/spec.md"
 spec_source: "local"
-status: "pending"
+status: "blocked"
 execution_model: "same_branch_commit_per_subtask"
 base_branch: "main"
 feature_branch: "feat/SKILL-117-local-work-list"
 stack_branches: []
 current_subtask_intent:
   subtask_id: 1
-  action: "start"
+  action: "blocked"
 subtasks:
 - id: 1
   name: "Agent-addon contract and source validation"
   spec_path: ".feature-specs/SKILL-122-agent-addons/spec_subtask_1_agent-addon-contract.md"
-  status: "pending"
+  status: "blocked"
   branch: null
   commit_sha: null
-  workflow_id: null
-  blocked_reason: null
-  last_resumable_step: null
+  workflow_id: "wftr-20260714-133556-h6fn"
+  blocked_reason: "Goal-subtask review state or durable raw evidence is malformed:\
+    \ [SQLITE_BUSY] The database file is locked (database is locked)"
+  last_resumable_step: "review"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []

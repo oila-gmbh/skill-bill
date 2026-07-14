@@ -615,3 +615,16 @@ Do not:
   `junie-agents/`
 - manually edit generated runtime staging directories as source
 - rely on direct source symlinks for content-managed skills
+
+# Agent add-on authored sources
+
+Agent add-ons are a separate user-owned extension surface under
+`agent-addons/<slug>/`. Each source directory contains exactly
+`agent-addon.yaml` and `content.md`. The manifest declares the contract version,
+slug, description, target agent ids, and consumers; `content.md` is the only
+ordinary instruction body.
+
+Generated `SKILL.md` wrappers, support pointers, provider-native output
+directories, native-agent sources, and arbitrary sidecars are forbidden in an
+agent add-on source directory. Agent add-ons are distinct from governed skills
+under `skills/` and pack-owned add-ons under `platform-packs/<slug>/addons/`.
