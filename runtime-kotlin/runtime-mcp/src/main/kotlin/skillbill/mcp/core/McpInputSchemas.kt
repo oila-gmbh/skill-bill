@@ -42,11 +42,14 @@ internal fun workflowIdSchema(): Map<String, Any?> = objectSchema(
   properties = mapOf("workflow_id" to stringSchema()),
 )
 
-internal fun workflowOpenSchema(): Map<String, Any?> = objectSchema(
+internal fun workflowOpenSchema(required: List<String> = emptyList()): Map<String, Any?> = objectSchema(
+  required = required,
   properties = mapOf(
     "session_id" to stringSchema(),
     "current_step_id" to stringSchema(),
     "issue_key" to stringSchema(),
+    "repository_identity" to stringSchema(),
+    "governed_spec_path" to stringSchema(),
   ),
 )
 

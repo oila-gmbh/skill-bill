@@ -33,6 +33,63 @@ internal object DatabaseMigrations {
         name = "recover-work-list-issue-keys",
         operation = DatabaseColumnMigrations::recoverWorkListIssueKeys,
       ),
+      DatabaseMigration(
+        version = 6,
+        name = "add-feature-task-execution-identities",
+        operation = { connection ->
+          connection.createStatement().use { statement ->
+            statement.execute(
+              """
+              CREATE TABLE IF NOT EXISTS feature_task_execution_identities (
+                workflow_id TEXT PRIMARY KEY,
+                contract_version TEXT NOT NULL CHECK (contract_version = '0.1'),
+                normalized_issue_key TEXT NOT NULL,
+                repository_identity TEXT NOT NULL,
+                governed_spec_path TEXT NOT NULL,
+                mode TEXT NOT NULL CHECK (mode IN ('prose', 'runtime')),
+                route_scope TEXT NOT NULL CHECK (route_scope IN ('standalone', 'goal_child')),
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (workflow_id) REFERENCES feature_task_workflows(workflow_id) ON DELETE CASCADE
+              )
+              """.trimIndent(),
+            )
+            statement.execute(
+              """
+              CREATE INDEX IF NOT EXISTS idx_feature_task_identity_lookup
+                ON feature_task_execution_identities(normalized_issue_key, repository_identity, route_scope)
+              """.trimIndent(),
+            )
+          }
+        },
+      ),
+      DatabaseMigration(
+        version = 7,
+        name = "add-feature-task-runtime-worker-leases",
+        operation = { connection ->
+          connection.createStatement().use { statement ->
+            statement.execute(
+              """
+              CREATE TABLE IF NOT EXISTS feature_task_runtime_worker_leases (
+                workflow_id TEXT PRIMARY KEY,
+                contract_version TEXT NOT NULL CHECK (contract_version = '0.1'),
+                generation INTEGER NOT NULL CHECK (generation > 0),
+                owner_token TEXT NOT NULL,
+                host_identity TEXT NOT NULL,
+                boot_identity TEXT NOT NULL,
+                pid INTEGER NOT NULL CHECK (pid > 0),
+                process_birth_token TEXT NOT NULL,
+                lease_state TEXT NOT NULL CHECK (lease_state IN ('active', 'takeover_reserved')),
+                heartbeat_at TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                phase_id TEXT NOT NULL,
+                phase_attempt INTEGER NOT NULL CHECK (phase_attempt > 0),
+                FOREIGN KEY (workflow_id) REFERENCES feature_task_workflows(workflow_id) ON DELETE CASCADE
+              )
+              """.trimIndent(),
+            )
+          }
+        },
+      ),
     ).also(::requireDeterministicMigrations)
 
   fun apply(connection: Connection) {

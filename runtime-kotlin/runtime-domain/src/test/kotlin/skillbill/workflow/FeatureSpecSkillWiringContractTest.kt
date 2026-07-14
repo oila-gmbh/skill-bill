@@ -13,7 +13,7 @@ class FeatureSpecSkillWiringContractTest {
     val content = Files.readString(repoRootFromTest().resolve("skills/bill-feature/content.md"))
 
     assertContains(content, "name: bill-feature")
-    assertContains(content, "Always invoke `bill-feature-spec` first")
+    assertContains(content, "For `no_match`, invoke `bill-feature-spec` first")
     assertContains(content, "Treat its selected mode as authoritative for dispatch")
     assertContains(content, "## Direct Dispatch When Governed Artifacts Exist")
     assertContains(content, "For `single_spec` output")
@@ -23,6 +23,27 @@ class FeatureSpecSkillWiringContractTest {
     assertContains(content, "For `decomposed` output")
     assertContains(content, "Read the file `bill-feature-goal.md` located in this skill's own installed directory")
     assertContains(content, "Do not ask an extra confirmation before dispatching to the goal sidecar")
+  }
+
+  @Test
+  fun `bill feature continuation routes DB first without a second confirmation or replacement workflow`() {
+    val feature = Files.readString(repoRootFromTest().resolve("skills/bill-feature/content.md"))
+    val task = Files.readString(repoRootFromTest().resolve("skills/bill-feature-task/content.md"))
+    val runtime = Files.readString(repoRootFromTest().resolve("skills/bill-feature-task-runtime/content.md"))
+    val prose = Files.readString(repoRootFromTest().resolve("skills/bill-feature-task-prose/content.md"))
+
+    assertContains(feature, "Before discovering or preparing governed artifacts, perform the read-only")
+    assertContains(feature, "The workflow database and immutable execution identity are authoritative")
+    assertContains(feature, "Handle `resumable`, `already_running`, `ambiguous`, and `terminal_only`")
+    assertContains(feature, "Only `no_match` may continue below")
+    assertContains(feature, "workflow-id:<id>")
+    assertContains(task, "use continuation mode")
+    assertContains(task, "Never open a replacement row or mutate state during lookup")
+    assertEquals(1, countOccurrences(task, "Ask exactly one confirmation question"))
+    assertContains(runtime, "skill-bill feature-task resume <workflow_id> <issue_key> <spec_path>")
+    assertContains(runtime, "deterministically skips\nalready-complete phases")
+    assertContains(prose, "feature_task_prose_workflow_continue")
+    assertContains(prose, "Do not open a new workflow when continuing an existing run")
   }
 
   @Test

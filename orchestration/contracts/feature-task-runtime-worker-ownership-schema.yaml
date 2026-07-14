@@ -1,0 +1,62 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: https://skill-bill.dev/contracts/feature-task-runtime-worker-ownership-schema.yaml
+title: Feature Task Runtime Worker Ownership
+description: Mutable, fenced ownership evidence for a feature-task runtime worker.
+type: object
+additionalProperties: false
+required:
+  - contract_version
+  - workflow_id
+  - generation
+  - owner_token
+  - host_identity
+  - boot_identity
+  - pid
+  - process_birth_token
+  - lease_state
+  - heartbeat_at
+  - expires_at
+  - phase_id
+  - phase_attempt
+properties:
+  contract_version:
+    const: "0.1"
+  workflow_id:
+    type: string
+    minLength: 1
+  generation:
+    type: integer
+    minimum: 1
+  owner_token:
+    type: string
+    minLength: 16
+  host_identity:
+    type: string
+    minLength: 1
+  boot_identity:
+    type: string
+    minLength: 1
+  pid:
+    type: integer
+    minimum: 1
+  process_birth_token:
+    type: string
+    minLength: 1
+  lease_state:
+    enum: [active, takeover_reserved]
+  heartbeat_at:
+    type: string
+    format: date-time
+  expires_at:
+    type: string
+    format: date-time
+  phase_id:
+    type: string
+    minLength: 1
+  phase_attempt:
+    type: integer
+    minimum: 1
+x-coherence-checks:
+  - expires_at must be later than heartbeat_at
+  - owner_token and generation fence every heartbeat, phase write, transfer, and release
+  - pid is live only when host, boot, and process_birth_token all match

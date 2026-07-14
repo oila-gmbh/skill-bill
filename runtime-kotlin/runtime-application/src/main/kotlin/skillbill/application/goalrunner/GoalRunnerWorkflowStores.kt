@@ -8,6 +8,7 @@ import skillbill.application.decomposition.DecompositionManifestWriter
 import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.decomposition.encodeDecompositionManifestMap
 import skillbill.application.decomposition.loadManifestOrNull
+import skillbill.application.featuretask.FeatureTaskExecutionIdentityPolicy
 import skillbill.application.normalizeRequiredIssueKey
 import skillbill.application.workflow.WorkflowFamily
 import skillbill.application.workflow.decompositionRuntime
@@ -47,6 +48,8 @@ import skillbill.ports.goalrunner.model.GoalRunnerWorkflowProgress
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.persistence.WorkflowStateRepository
+import skillbill.ports.persistence.model.FeatureTaskExecutionIdentity
+import skillbill.ports.persistence.model.FeatureTaskRouteScope
 import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import skillbill.ports.workflow.DecompositionManifestFileStore
 import skillbill.ports.workflow.NoopWorkflowGitOperations
@@ -169,6 +172,16 @@ class WorkflowGoalRunnerManifestStore(
       unitOfWork.workflowStates,
       childUpdated.toRecord().copy(issueKey = normalizeRequiredIssueKey(state.manifest.issueKey)),
     )
+    val identity = FeatureTaskExecutionIdentity(
+      workflowId = setup.workflowId,
+      normalizedIssueKey = setup.normalizedIssueKey,
+      repositoryIdentity = setup.repositoryIdentity,
+      governedSpecPath = setup.governedSpecPath,
+      mode = FeatureTaskWorkflowMode.RUNTIME,
+      routeScope = FeatureTaskRouteScope.GOAL_CHILD,
+    )
+    FeatureTaskExecutionIdentityPolicy.validate(identity)
+    unitOfWork.workflowStates.saveFeatureTaskExecutionIdentity(identity)
     val refreshedParent =
       WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, parentUpdated.workflowId) ?: parentUpdated
     return SavedGoalChildWorkflow(

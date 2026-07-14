@@ -28,6 +28,7 @@ import skillbill.workflow.model.GoalObservabilitySelectedDiffHunk
 import skillbill.workflow.model.GoalObservabilitySelectedDiffHunks
 import java.nio.file.Files
 import java.nio.file.Path
+import java.sql.DriverManager
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -197,6 +198,29 @@ class CliGoalRuntimeTest {
     assertContains(liveStderr.toString(), "child-1-stderr")
     assertEquals(listOf(null, null), launcher.requests.map { it.skillRunRequest.timeout })
     assertEquals(1, fixture.pullRequests.requests.size)
+    DriverManager.getConnection("jdbc:sqlite:${fixture.dbPath}").use { connection ->
+      connection.prepareStatement(
+        "SELECT normalized_issue_key, governed_spec_path, route_scope " +
+          "FROM feature_task_execution_identities ORDER BY governed_spec_path",
+      ).use { statement ->
+        statement.executeQuery().use { rows ->
+          val identities = buildList {
+            while (rows.next()) {
+              add(Triple(rows.getString(1), rows.getString(2), rows.getString(3)))
+            }
+          }
+          assertEquals(2, identities.size)
+          assertTrue(identities.all { it.first == "SKILL-901" && it.third == "goal_child" })
+          assertEquals(
+            listOf(
+              ".feature-specs/SKILL-901-goal/spec_subtask_1_part.md",
+              ".feature-specs/SKILL-901-goal/spec_subtask_2_part.md",
+            ),
+            identities.map { it.second },
+          )
+        }
+      }
+    }
   }
 
   @Test

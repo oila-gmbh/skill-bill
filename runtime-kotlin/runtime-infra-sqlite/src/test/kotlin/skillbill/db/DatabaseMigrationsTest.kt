@@ -60,6 +60,8 @@ class DatabaseMigrationsTest {
         3 to "add-goal-telemetry-tables",
         4 to "add-work-list-state-metadata",
         5 to "recover-work-list-issue-keys",
+        6 to "add-feature-task-execution-identities",
+        7 to "add-feature-task-runtime-worker-leases",
       ),
       migrationDefinitions,
     )

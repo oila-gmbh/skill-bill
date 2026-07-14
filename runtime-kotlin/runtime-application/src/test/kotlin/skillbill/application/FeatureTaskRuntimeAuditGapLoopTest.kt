@@ -3,6 +3,7 @@ package skillbill.application
 import skillbill.application.model.FeatureTaskRuntimeRunReport
 import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -66,7 +67,7 @@ class FeatureTaskRuntimeAuditGapLoopTest {
   }
 
   @Test
-  fun `m2 audit re-entry retains the selected review mode`() {
+  fun `m2 audit re-entry uses the bounded inline remediation review mode`() {
     val harness = runnerHarness(launcher = auditGapLauncher(convergeOnAudit = 2))
 
     val report = harness.runner.run(
@@ -79,7 +80,7 @@ class FeatureTaskRuntimeAuditGapLoopTest {
       .filter { it.contains("Phase: review") }
     assertEquals(2, reviewPrompts.size)
     assertContains(reviewPrompts[0], "bill-code-review mode:delegated")
-    assertContains(reviewPrompts[1], "bill-code-review mode:delegated")
+    assertContains(reviewPrompts[1], "bill-code-review mode:inline")
   }
 
   // (c) AC2: convergence on the last allowed (2nd) iteration still advances.
@@ -98,32 +99,22 @@ class FeatureTaskRuntimeAuditGapLoopTest {
     assertEquals(listOf(1, 2), loopEdges.mapNotNull { it.edgeIteration })
   }
 
-  // (d) AC6: two unsuccessful iterations block loudly with audit_gap + iteration + unmet criteria,
-  // never advancing to validate.
   @Test
-  fun `m2 cap exhaustion blocks loudly with audit_gap iteration and unmet criteria`() {
+  fun `m2 audit gaps continue until a later audit satisfies the criteria`() {
     val harness = runnerHarness(launcher = auditGapLauncher(convergeOnAudit = 99))
 
     val report = harness.runner.run(harness.request())
 
-    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
-    assertEquals("audit", blocked.lastIncompletePhase)
-    assertContains(blocked.blockedReason, "audit_gap")
-    assertContains(blocked.blockedReason, "2")
-    assertContains(blocked.blockedReason, "gaps_found")
-    assertContains(blocked.blockedReason, AUDIT_GAP_MESSAGE)
-    // Never advanced to validate on unmet acceptance criteria.
-    assertTrue(harness.launchedPromptPhaseOrder().none { it == "validate" })
-    // The audit_gap edge has perEdgeCap=2: it fires twice (two re-plans), so plan launches the initial
-    // pass plus the two re-plans before the third audit trips the cap and blocks.
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
     val launched = harness.launchedPromptPhaseOrder()
-    assertEquals(3, launched.count { it == "plan" }, "plan ran the initial pass plus cap re-plans")
-    assertEquals(3, launched.count { it == "audit" }, "audit ran cap+1 times: the last triggers the block")
-    // Durable terminal blocked record carries the structured loop context.
+    assertEquals(99, launched.count { it == "plan" })
+    assertEquals(99, launched.count { it == "audit" })
+    assertTrue(launched.any { it == "validate" })
     val auditRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["audit"])
-    assertEquals("blocked", auditRecord.status)
-    assertEquals("audit_gap", auditRecord.loopId)
-    assertEquals(2, auditRecord.edgeIteration)
+    assertEquals("completed", auditRecord.status)
+    val loopEdges = harness.recorder.loadPhaseLedger(WORKFLOW_ID).orEmpty()
+      .filter { it.action == FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE && it.loopId == "audit_gap" }
+    assertEquals(98, loopEdges.maxOf { requireNotNull(it.edgeIteration) })
   }
 
   // (f) AC5: M1 and M2 compose with independent counters. The re-run after an audit gap passes through
@@ -199,8 +190,8 @@ class FeatureTaskRuntimeAuditGapLoopTest {
     assertContains(blocked.blockedReason, "reconcil")
   }
 
-  // (h) AC4: a crash mid-loopback (the audit-gap re-implement spawn-fails) resumes at the correct phase
-  // with the audit_gap watermark preserved, then converges.
+  // (h) AC4: a crash mid-loopback (the audit-gap re-implement spawn-fails) resumes the unfinished
+  // reentry span without reusing the audit verdict that caused it, then converges.
   @Test
   fun `m2 crash during the re-implement resumes with the loop context preserved and converges`() {
     var implementLaunches = 0
@@ -233,11 +224,8 @@ class FeatureTaskRuntimeAuditGapLoopTest {
     assertEquals("audit_gap", planRecord.loopId)
     assertEquals(1, planRecord.edgeIteration)
 
-    // Run 2 (resume): the crash heals; on resume the completed-but-still-gaps audit re-settles its
-    // verdict and fires a SECOND audit-gap iteration from the PRESERVED watermark (edge 2, not a reset
-    // back to 1), the re-audit is then satisfied, and the run completes. The two-iteration ledger makes
-    // the cross-crash de-duplication load-bearing: the iterations advance monotonically, never repeat,
-    // and stay within the cap of 2 — a watermark reset on resume would have re-fired iteration 1.
+    // Run 2 (resume): the crash heals; review and audit from before edge 1 are stale and must rerun.
+    // The satisfied re-audit completes edge 1 without minting edge 2.
     crashOnReImplement = false
     val resumeReport = harness.runner.run(harness.request())
     assertIs<FeatureTaskRuntimeRunReport.Completed>(resumeReport)
@@ -245,18 +233,17 @@ class FeatureTaskRuntimeAuditGapLoopTest {
       .filter { it.action == FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE && it.loopId == "audit_gap" }
       .mapNotNull { it.edgeIteration }
     assertEquals(
-      listOf(1, 2),
+      listOf(1),
       edgeIterations,
-      "the watermark is preserved across the crash: edge 2 follows edge 1, never reset",
+      "resume finishes the in-flight edge instead of reusing its stale driving verdict",
     )
+    assertEquals(2, auditLaunches, "the original audit and the resumed re-audit both ran")
+    assertEquals(2, harness.launchedPromptPhaseOrder().count { it == "review" })
   }
 
-  // (i) AC6: an audit_gap loop that already burned its cap re-blocks on resume without relaunching.
   @Test
-  fun `m2 cap-exhausted audit_gap loop re-blocks on resume without relaunching`() {
+  fun `m2 high-iteration audit_gap loop keeps reconciling on resume`() {
     val harness = runnerHarness(launcher = auditGapLauncher(convergeOnAudit = 99))
-    // Seed a loop that already burned its cap: the plan phase carries the audit_gap watermark at the
-    // perEdgeCap (2), and the audit carries a gaps_found output, modelling a prior exhausted run.
     harness.seedPhase("preplan", "completed", 1, INVOKED_AGENT, """{"preplan":"done"}""")
     harness.seedReentryPhase("plan", "completed", 2, INVOKED_AGENT, """{"plan":"done"}""", "audit_gap", 2)
     harness.seedPhase("implement", "completed", 1, INVOKED_AGENT, validJsonOutput("implement"))
@@ -265,16 +252,26 @@ class FeatureTaskRuntimeAuditGapLoopTest {
 
     val report = harness.runner.run(harness.request())
 
-    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
-    assertContains(blocked.blockedReason, "audit_gap")
-    assertContains(blocked.blockedReason, "2")
-    // "without relaunching": the cap-exhausted audit_gap loop's own phases (its destination plan and
-    // source audit) must NOT relaunch on resume — the run re-blocks before re-entering them, and never
-    // advances to validate.
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
     val launched = harness.launchedPromptPhaseOrder()
-    assertTrue(launched.none { it == "plan" }, "the cap-exhausted loop's plan never relaunches on resume")
-    assertTrue(launched.none { it == "audit" }, "the cap-exhausted loop's audit never relaunches on resume")
-    assertTrue(launched.none { it == "validate" })
+    assertTrue(launched.any { it == "plan" })
+    assertTrue(launched.any { it == "audit" })
+    assertTrue(launched.any { it == "validate" })
+  }
+
+  @Test
+  fun `m2 formerly blocked audit resumes reconciliation and preserves the branch`() {
+    val harness = runnerHarness(launcher = auditGapLauncher(convergeOnAudit = 99))
+    harness.seedPhase("preplan", "completed", 1, INVOKED_AGENT, """{"preplan":"done"}""")
+    harness.seedReentryPhase("plan", "completed", 3, INVOKED_AGENT, """{"plan":"done"}""", "audit_gap", 2)
+    harness.seedPhase("implement", "completed", 3, INVOKED_AGENT, validJsonOutput("implement"))
+    harness.seedPhase("review", "completed", 2, INVOKED_AGENT, validJsonOutput("review"))
+    harness.seedReentryPhase("audit", "blocked", 3, INVOKED_AGENT, auditGapsOutput(), "audit_gap", 2)
+    harness.recorder.recordResolvedBranch(WORKFLOW_ID, FeatureTaskRuntimeResolvedBranch("feat/persisted-branch"))
+
+    val report = assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
+
+    assertEquals("feat/persisted-branch", report.resolvedBranch)
   }
 
   // (j) AC1: an audit that reports completed without ANY verification signal (no verdict, no
@@ -316,13 +313,9 @@ class FeatureTaskRuntimeAuditGapLoopTest {
     assertEquals(0, clean.lifecycle.finishedRecords.single().auditGapIterationCount)
   }
 
-  // (l) AC5/SKILL-85-F-001: the review_fix per-iteration reset is DURABLE across a crash. The pre-gap
-  // pass consumes the single review-fix allowance, the audit_gap edge then fires, and the
-  // run crashes after the reset but before the reopened span re-runs. On resume the cleared watermark
-  // must NOT be re-imported from the durable per-phase records: the resumed audit-gap iteration gets a
-  // preserved two-pass budget, so resume cannot launch a third review.
+  // (l) AC17: audit-gap re-entry does not replenish the globally bounded review-fix budget.
   @Test
-  fun `m2 audit-gap reset of review_fix survives a crash and grants a fresh per-iteration budget`() {
+  fun `m2 audit-gap reentry preserves exhausted review_fix budget across a crash`() {
     var auditLaunches = 0
     var implementLaunches = 0
     var reviewFixesThisSegment = 0
@@ -366,12 +359,6 @@ class FeatureTaskRuntimeAuditGapLoopTest {
       .filter { it.action == FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE && it.loopId == "review_fix" }
       .mapNotNull { it.edgeIteration }
     assertEquals(listOf(1), preGapReviewFix, "review-fix consumed the single remaining review pass")
-    // The reset durably cleared the nested loop's per-phase watermark: review/implement_fix no longer
-    // carry stale review_fix context that resume reconstruction would otherwise re-import.
-    val records = harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()
-    assertEquals(null, requireNotNull(records["review"]).loopId, "the reset cleared review's stale review_fix context")
-    assertEquals(null, requireNotNull(records["implement_fix"]).loopId)
-
     // Run 2 (resume): the crash heals and the durable budget prevents any third review launch.
     crashOnReImplement = false
     val resumeReport = harness.runner.run(harness.request())
@@ -421,7 +408,7 @@ internal fun auditSatisfiedOutput(): String = """
 """.trimIndent()
 
 // The real M2 audit_gap launcher: audit returns gaps_found until [convergeOnAudit] (1-based audit
-// launch index at which it first reports satisfied); a value above the cap never converges. Every other
+// launch index at which it first reports satisfied). Every other
 // phase returns its schema-valid reconciled output (review carries an empty findings array so its own
 // gate passes and the re-run advances through review without a review_fix detour).
 internal fun auditGapLauncher(convergeOnAudit: Int): RuntimeRecordingLauncher {

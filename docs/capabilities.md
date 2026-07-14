@@ -135,6 +135,15 @@ Every module/package has its own `agent/decisions.md` and `agent/history.md`. Th
 
 Every skill that matters emits typed telemetry, not just log lines.
 
+Feature-task runs also use validated, immutable execution identity for
+database-first continuation. Identity binds the normalized issue key to the
+canonical repository, persisted mode, governed spec path, and route scope, so
+equal issue keys in separate clones cannot collide. Lookup distinguishes no
+match, resumable, already running, ambiguous, and terminal-only results without
+mutating state or treating `spec.md` as a duplicate planning ledger.
+
+Runtime process ownership is a separate fenced lease, never part of the immutable identity or governed spec. Exact host, boot, PID, and process-birth evidence protects takeover from PID reuse and cross-host mistakes; owner tokens and generations prevent concurrent reclaimers or displaced workers from writing progress.
+
 - **Per-skill start/finish pairs** with stable session ids: `feature_task_prose_started/_finished`, `feature_verify_started/_finished`, `quality_check_started/_finished`, `review_stats`, `pr_description_generated`, `import_review`, `triage_findings`, `resolve_learnings`, plus aggregate views (`feature_task_prose_stats`, `feature_verify_stats`, `telemetry_remote_stats`, `telemetry_proxy_capabilities`).
 - **Orchestrator/child relationship is modeled**: orchestrated subagents call their own `*_finished` with `orchestrated=true` and return a `telemetry_payload`; the orchestrator assembles a parent/child tree. You can see the whole run as a tree, not a flat stream.
 - **Separated from workflow state, on purpose**: workflow state persists even when telemetry returns `status: skipped`. Telemetry is observability; workflow state is correctness. They never get confused.

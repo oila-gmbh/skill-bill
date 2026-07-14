@@ -128,11 +128,37 @@ open class WorkflowOpenCommand(
   private val sessionId by option("--session-id", help = "Optional workflow telemetry session id.").default("")
   private val currentStepId by option("--current-step-id", help = "Initial workflow step id.")
   private val issueKey by option("--issue-key", help = "Optional normalized issue key for work inventory.")
+  private val repositoryIdentity by option("--repository-identity", help = "Immutable canonical repository identity.")
+  private val governedSpecPath by option("--governed-spec-path", help = "Repository-relative governed spec path.")
   private val format by formatOption()
 
   override fun run() {
+    val hasFeatureTaskIdentityInput = listOf(issueKey, repositoryIdentity, governedSpecPath).any { it != null }
+    val opened = if (kind == WorkflowFamilyKind.TASK_PROSE && hasFeatureTaskIdentityInput) {
+      service.openFeatureTask(
+        kind = kind,
+        sessionId = sessionId,
+        currentStepId = currentStepId,
+        dbOverride = state.dbOverride,
+        issueKey = requireNotNull(issueKey) { "Feature-task workflow opens require --issue-key." },
+        repositoryIdentity = requireNotNull(repositoryIdentity) {
+          "Feature-task workflow opens require --repository-identity."
+        },
+        governedSpecPath = requireNotNull(governedSpecPath) {
+          "Feature-task workflow opens require --governed-spec-path."
+        },
+      )
+    } else {
+      service.open(
+        kind,
+        sessionId,
+        currentStepId,
+        state.dbOverride,
+        issueKey,
+      )
+    }
     val payload =
-      service.open(kind, sessionId, currentStepId, state.dbOverride, issueKey)
+      opened
         .toCliMap(service.goalObservabilityEventValidator)
     state.complete(payload, format, exitCode = payload.exitCode())
   }

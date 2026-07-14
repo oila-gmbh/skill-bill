@@ -5,7 +5,10 @@ import skillbill.db.core.DatabaseRuntime
 import skillbill.db.core.DbConstants
 import skillbill.db.workflow.WorkflowStateRow
 import skillbill.db.workflow.WorkflowStateStore
+import skillbill.error.InvalidFeatureTaskRuntimeWorkerOwnershipSchemaError
 import skillbill.error.InvalidWorkflowStateSchemaError
+import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerLeaseState
+import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import java.nio.file.Files
 import java.sql.Connection
@@ -21,6 +24,102 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class WorkflowStateStoreTest {
+  @Test
+  fun `runtime worker ownership is acquired fenced transferred heartbeated and released`() {
+    val dbPath = Files.createTempDirectory("runtime-worker-lease").resolve("metrics.db")
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val store = WorkflowStateStore(connection)
+      val row = workflowRow(
+        workflowId = "wfl-worker",
+        sessionId = "ftr-worker",
+        workflowName = "bill-feature-task-runtime",
+        currentStepId = "implement",
+        mode = FeatureTaskWorkflowMode.RUNTIME,
+      ).copy(workflowStatus = "running")
+      store.saveFeatureTaskRuntimeWorkflow(row)
+      val updatedAt = assertNotNull(store.getFeatureTaskRuntimeWorkflow(row.workflowId)).updatedAt
+      val initial = workerOwnership(row.workflowId, generation = 1, ownerToken = "owner-token-0001")
+
+      assertTrue(store.acquireFeatureTaskRuntimeWorker(initial, updatedAt))
+      assertEquals(initial, store.getFeatureTaskRuntimeWorkerOwnership(row.workflowId))
+      assertTrue(store.reserveFeatureTaskRuntimeWorkerTakeover(row.workflowId, initial.ownerToken, 1))
+      val replacement = workerOwnership(row.workflowId, generation = 2, ownerToken = "owner-token-0002")
+      assertTrue(store.transferFeatureTaskRuntimeWorker(replacement, initial.ownerToken, 1))
+      assertEquals(replacement, store.getFeatureTaskRuntimeWorkerOwnership(row.workflowId))
+      assertTrue(store.heartbeatFeatureTaskRuntimeWorker(replacement.copy(heartbeatAt = "2026-07-14T10:01:00Z")))
+      assertTrue(store.releaseFeatureTaskRuntimeWorker(row.workflowId, replacement.ownerToken, 2))
+      assertEquals(null, store.getFeatureTaskRuntimeWorkerOwnership(row.workflowId))
+    }
+  }
+
+  @Test
+  fun `runtime worker takeover reservation is single caller CAS`() {
+    val dbPath = Files.createTempDirectory("runtime-worker-contention").resolve("metrics.db")
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val store = WorkflowStateStore(connection)
+      val row = workflowRow(
+        workflowId = "wfl-contention",
+        sessionId = "ftr-contention",
+        workflowName = "bill-feature-task-runtime",
+        currentStepId = "implement",
+        mode = FeatureTaskWorkflowMode.RUNTIME,
+      ).copy(workflowStatus = "paused")
+      store.saveFeatureTaskRuntimeWorkflow(row)
+      val updatedAt = assertNotNull(store.getFeatureTaskRuntimeWorkflow(row.workflowId)).updatedAt
+      val ownership = workerOwnership(row.workflowId, generation = 4, ownerToken = "owner-token-0004")
+      assertTrue(store.acquireFeatureTaskRuntimeWorker(ownership, updatedAt))
+
+      assertTrue(store.reserveFeatureTaskRuntimeWorkerTakeover(row.workflowId, ownership.ownerToken, 4))
+      assertEquals(false, store.reserveFeatureTaskRuntimeWorkerTakeover(row.workflowId, ownership.ownerToken, 4))
+    }
+  }
+
+  @Test
+  fun `runtime worker ownership rejects malformed and inverted lease timestamps at read seam`() {
+    val dbPath = Files.createTempDirectory("runtime-worker-invalid-lease").resolve("metrics.db")
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val store = WorkflowStateStore(connection)
+      val row = workflowRow(
+        workflowId = "wfl-invalid-lease",
+        sessionId = "ftr-invalid-lease",
+        workflowName = "bill-feature-task-runtime",
+        currentStepId = "implement",
+        mode = FeatureTaskWorkflowMode.RUNTIME,
+      ).copy(workflowStatus = "paused")
+      store.saveFeatureTaskRuntimeWorkflow(row)
+      val updatedAt = assertNotNull(store.getFeatureTaskRuntimeWorkflow(row.workflowId)).updatedAt
+      assertTrue(
+        store.acquireFeatureTaskRuntimeWorker(
+          workerOwnership(row.workflowId, generation = 1, ownerToken = "owner-token-0001"),
+          updatedAt,
+        ),
+      )
+
+      connection.prepareStatement(
+        "UPDATE feature_task_runtime_worker_leases SET heartbeat_at = ? WHERE workflow_id = ?",
+      ).use {
+        it.setString(1, "not-an-instant")
+        it.setString(2, row.workflowId)
+        it.executeUpdate()
+      }
+      assertFailsWith<InvalidFeatureTaskRuntimeWorkerOwnershipSchemaError> {
+        store.getFeatureTaskRuntimeWorkerOwnership(row.workflowId)
+      }
+
+      connection.prepareStatement(
+        "UPDATE feature_task_runtime_worker_leases SET heartbeat_at = ?, expires_at = ? WHERE workflow_id = ?",
+      ).use {
+        it.setString(1, "2026-07-14T10:05:00Z")
+        it.setString(2, "2026-07-14T10:05:00Z")
+        it.setString(3, row.workflowId)
+        it.executeUpdate()
+      }
+      assertFailsWith<InvalidFeatureTaskRuntimeWorkerOwnershipSchemaError> {
+        store.getFeatureTaskRuntimeWorkerOwnership(row.workflowId)
+      }
+    }
+  }
+
   @Test
   fun `feature task runtime table contract version default matches schema contract version const`() {
     // Pin the table default to the validator's schema version so a future
@@ -478,6 +577,25 @@ class WorkflowStateStoreTest {
     }
   }
 }
+
+private fun workerOwnership(
+  workflowId: String,
+  generation: Long,
+  ownerToken: String,
+): FeatureTaskRuntimeWorkerOwnership = FeatureTaskRuntimeWorkerOwnership(
+  workflowId = workflowId,
+  generation = generation,
+  ownerToken = ownerToken,
+  hostIdentity = "host-a",
+  bootIdentity = "boot-a",
+  pid = 1234,
+  processBirthToken = "birth-1234",
+  leaseState = FeatureTaskRuntimeWorkerLeaseState.ACTIVE,
+  heartbeatAt = "2026-07-14T10:00:00Z",
+  expiresAt = "2026-07-14T10:05:00Z",
+  phaseId = "implement",
+  phaseAttempt = 1,
+)
 
 private val taskRuntimeArtifactsJson: String =
   """

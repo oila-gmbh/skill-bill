@@ -180,6 +180,43 @@ val canonicalFeatureTaskRuntimePhaseOutputSchemaPath: String =
     .resolve("orchestration/contracts/feature-task-runtime-phase-output-schema.yaml")
     .absolutePath
 
+val canonicalFeatureTaskExecutionIdentitySchemaPath: String =
+  rootProject.projectDir.parentFile
+    .resolve("orchestration/contracts/feature-task-execution-identity-schema.yaml")
+    .absolutePath
+
+val canonicalFeatureTaskRuntimeWorkerOwnershipSchemaPath: String =
+  rootProject.projectDir.parentFile
+    .resolve("orchestration/contracts/feature-task-runtime-worker-ownership-schema.yaml")
+    .absolutePath
+
+val copyFeatureTaskRuntimeWorkerOwnershipSchema =
+  tasks.register<Copy>("copyFeatureTaskRuntimeWorkerOwnershipSchema") {
+    val schemaPath = canonicalFeatureTaskRuntimeWorkerOwnershipSchemaPath
+    from(schemaPath)
+    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/contracts"))
+    inputs.file(schemaPath)
+    doFirst {
+      require(File(schemaPath).exists()) {
+        "SKILL-120: canonical feature-task runtime worker-ownership schema is missing " +
+          "at $schemaPath."
+      }
+    }
+  }
+
+val copyFeatureTaskExecutionIdentitySchema =
+  tasks.register<Copy>("copyFeatureTaskExecutionIdentitySchema") {
+    val schemaPath = canonicalFeatureTaskExecutionIdentitySchemaPath
+    from(schemaPath)
+    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/contracts"))
+    inputs.file(schemaPath)
+    doFirst {
+      require(File(schemaPath).exists()) {
+        "SKILL-120: canonical feature-task execution-identity schema is missing at $schemaPath."
+      }
+    }
+  }
+
 val copyFeatureTaskRuntimePhaseOutputSchema =
   tasks.register<Copy>("copyFeatureTaskRuntimePhaseOutputSchema") {
     val schemaPath = canonicalFeatureTaskRuntimePhaseOutputSchemaPath
@@ -208,6 +245,8 @@ tasks.named("processResources") {
   dependsOn(copyGoalProgressEventSchema)
   dependsOn(copyGoalSubtaskReviewStateSchema)
   dependsOn(copyFeatureTaskRuntimePhaseOutputSchema)
+  dependsOn(copyFeatureTaskExecutionIdentitySchema)
+  dependsOn(copyFeatureTaskRuntimeWorkerOwnershipSchema)
 }
 
 tasks.named("processTestResources") {
@@ -220,6 +259,8 @@ tasks.named("processTestResources") {
   dependsOn(copyGoalProgressEventSchema)
   dependsOn(copyGoalSubtaskReviewStateSchema)
   dependsOn(copyFeatureTaskRuntimePhaseOutputSchema)
+  dependsOn(copyFeatureTaskExecutionIdentitySchema)
+  dependsOn(copyFeatureTaskRuntimeWorkerOwnershipSchema)
 }
 
 tasks.withType<Test>().configureEach {

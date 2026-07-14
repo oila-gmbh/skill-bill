@@ -59,15 +59,20 @@ class WorkflowCompactContinuationTest {
     assertEquals("bill-feature-task", compact.skillName)
     assertEquals("implement", compact.resumeStepId)
     assertEquals("Step 4: Execute Plan", compact.resumeStepLabel)
-    assertEquals(listOf("plan", "preplan_digest"), compact.requiredArtifactKeys)
+    assertEquals(listOf("plan"), compact.requiredArtifactKeys)
     assertEquals(listOf("branch", "plan", "preplan_digest"), compact.availableArtifactKeys)
-    assertEquals(listOf("branch"), compact.omittedArtifactKeys)
+    assertEquals(listOf("branch", "preplan_digest"), compact.omittedArtifactKeys)
     assertTrue(compact.continuationBrief.contains(opened.workflowId))
     assertTrue(compact.continuationEntryPrompt.contains("Continue status: reopened"))
     assertTrue(compact.continuationBrief.contains("`current_step_artifacts`"))
-    assertTrue(compact.continuationEntryPrompt.contains("Current-step artifacts: plan, preplan_digest"))
+    assertTrue(compact.continuationEntryPrompt.contains("Current-step artifacts: plan"))
+    assertFalse(compact.continuationEntryPrompt.contains("Current-step artifacts: plan, preplan_digest"))
     assertTrue(compact.continuationEntryPrompt.contains("Omitted artifact keys: branch"))
-    assertTrue(compact.continuationBrief.contains("Omitted artifact keys (branch) require read-only inspection"))
+    assertTrue(
+      compact.continuationBrief.contains(
+        "Omitted artifact keys (branch, preplan_digest) require read-only inspection",
+      ),
+    )
     assertFalse(compact.continuationBrief.contains("`step_artifacts`"))
     assertFalse(compact.continuationEntryPrompt.contains("Recovered artifacts:"))
     val planSummary = compact.currentStepArtifacts.single { it.key == "plan" }
@@ -110,7 +115,8 @@ class WorkflowCompactContinuationTest {
     assertTrue(planSummary.truncated)
     assertTrue(planSummary.omitted)
     assertEquals("artifact_exceeds_inline_limit", planSummary.omissionReason)
-    assertTrue(standard.view.compact.continuationEntryPrompt.contains("Current-step artifacts: plan, preplan_digest"))
+    assertTrue(standard.view.compact.continuationEntryPrompt.contains("Current-step artifacts: plan"))
+    assertFalse(standard.view.compact.continuationEntryPrompt.contains("Current-step artifacts: plan, preplan_digest"))
     assertFalse(standard.view.compact.continuationEntryPrompt.contains("Recovered artifacts:"))
   }
 
