@@ -12,6 +12,7 @@ import skillbill.application.scaffold.ScaffoldCatalogService
 import skillbill.application.workflow.repoRoot
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
+import skillbill.ports.agentrun.model.ConversationIsolation
 import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
 import skillbill.ports.diff.DiffResolverPort
@@ -227,25 +228,8 @@ class ParallelCodeReviewRunner(
     if (lane == "codex") launch.requireCodexForkTurns("none")
     launch.budgetOutcomeOrNull()?.let { throw UsageValidationException("${it.type}: ${it.budgetKind} ${it.observedValue} > ${it.configuredLimit}") }
     return buildString {
-      appendLine(
-        "You are driving one compact parent lane of a parallel code review. Treat the detected stack " +
-          "and bounded assignment below as pre-resolved authoritative inputs. Do not use parallel mode.",
-      )
-      appendLine(
-        "Run bill-code-review mode:${codeReviewMode.wireValue}; do not reinterpret it or launch parallel " +
-          "review recursively.",
-      )
-      appendLine(
-        "Prepare one shared review-context packet, then use the routed pack's Diff-Signal Routing Table, " +
-          "retain required baseline layers, and launch only signal-relevant non-empty specialist lanes.",
-      )
-      appendLine(
-        "Give each worker only the shared packet, its assignment, and its applicable rubric; workers must " +
-          "not repeat repository, scope, stack, routing, or guidance discovery.",
-      )
-      appendLine()
-      appendLine("The dominant stack is ${packet.stack ?: "unknown"} (pre-resolved detected stack).")
-      appendLine()
+      appendLine("Governed specialist review contract")
+      appendLine("Execution mode: ${codeReviewMode.wireValue}")
       appendLine(
         "Return only a risk register in F-XXX bullet format, one finding per line: " +
           "- [F-NNN] Blocker|Major|Minor|Nit | High|Medium|Low | file:line | description",
@@ -287,6 +271,7 @@ class ParallelCodeReviewRunner(
           timeout = request.timeout ?: DEFAULT_TIMEOUT_MINUTES.minutes,
           promptOverride = prompt,
           modelOverride = modelOverride,
+          conversationIsolation = ConversationIsolation.NONE,
         ),
       ),
     )

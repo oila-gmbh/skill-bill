@@ -6,6 +6,7 @@ import skillbill.launcher.agentrun.ClaudeAgentRunCommandBuilder
 import skillbill.launcher.agentrun.CodexAgentRunCommandBuilder
 import skillbill.launcher.agentrun.JunieAgentRunCommandBuilder
 import skillbill.launcher.agentrun.AgentRunOutputDecoder
+import skillbill.ports.agentrun.model.ConversationIsolation
 import skillbill.ports.agentrun.model.SkillRunRequest
 import java.nio.file.Path
 import kotlin.test.Test
@@ -158,6 +159,16 @@ class AgentRunCommandBuildersTest {
     ).command
 
     assertEquals(InstallAgent.JUNIE.id, command.first())
+  }
+
+  @Test
+  fun `headless process builders reject governed specialist isolation`() {
+    val isolated = request().copy(conversationIsolation = ConversationIsolation.NONE)
+
+    listOf(ClaudeAgentRunCommandBuilder(), CodexAgentRunCommandBuilder(), JunieAgentRunCommandBuilder()).forEach { builder ->
+      val failure = assertFailsWith<IllegalArgumentException> { builder.build(isolated) }
+      assertTrue(failure.message.orEmpty().contains("native specialist-launch adapter"))
+    }
   }
 
   private fun request(model: String? = null, effort: String? = null): SkillRunRequest = SkillRunRequest(

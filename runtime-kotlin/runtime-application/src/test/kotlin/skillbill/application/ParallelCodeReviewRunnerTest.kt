@@ -9,6 +9,7 @@ import skillbill.application.scaffold.ScaffoldCatalogService
 import skillbill.application.workflow.repoRoot
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
+import skillbill.ports.agentrun.model.ConversationIsolation
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
 import skillbill.ports.diff.DiffResolverPort
@@ -227,10 +228,10 @@ class ParallelCodeReviewRunnerTest {
       assertContains(prompt, "base_revision: supplied-diff")
       assertContains(prompt, "head_revision: working-tree")
       assertContains(prompt, "unrelated diff is absent")
-      assertContains(prompt, "dominant stack is kotlin (pre-resolved detected stack)")
-      assertContains(prompt, "Prepare one shared review-context packet")
-      assertContains(prompt, "workers must not repeat repository, scope, stack, routing, or guidance discovery")
-      assertContains(prompt, "launch only signal-relevant non-empty specialist lanes")
+      assertContains(prompt, "routed kotlin review rubric")
+      assertEquals(ConversationIsolation.NONE, request.skillRunRequest.conversationIsolation)
+      assertFalse(prompt.contains("Prepare one shared review-context packet"))
+      assertFalse(prompt.contains("launch only signal-relevant non-empty specialist lanes"))
       assertFalse(prompt.contains("## Specialist:"), "flattened specialist rubric bodies must stay out of lane prompts")
       assertFalse(prompt.contains("Apply all of the following specialist review rubrics"))
     }
@@ -477,7 +478,7 @@ class ParallelCodeReviewRunnerTest {
 
     assertTrue(
       launcher.requests.all { request ->
-        request.skillRunRequest.promptOverride.orEmpty().contains("dominant stack is typescript")
+        request.skillRunRequest.promptOverride.orEmpty().contains("routed typescript review rubric")
       },
     )
   }

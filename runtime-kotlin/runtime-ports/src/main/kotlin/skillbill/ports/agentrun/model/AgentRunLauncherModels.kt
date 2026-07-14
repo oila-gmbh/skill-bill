@@ -27,6 +27,7 @@ data class SkillRunRequest(
   val modelOverride: String? = null,
   val effortOverride: String? = null,
   val goalContinuation: SkillRunGoalContinuationContext? = null,
+  val conversationIsolation: ConversationIsolation? = null,
 ) {
   init {
     require(issueKey.isNotBlank()) { "issueKey is required." }
@@ -41,6 +42,10 @@ data class SkillRunRequest(
       require(idleTimeout.isPositive()) { "progressIdleTimeout must be positive." }
     }
   }
+}
+
+enum class ConversationIsolation(val forkTurns: String) {
+  NONE("none"),
 }
 
 data class SkillRunGoalContinuationContext(
