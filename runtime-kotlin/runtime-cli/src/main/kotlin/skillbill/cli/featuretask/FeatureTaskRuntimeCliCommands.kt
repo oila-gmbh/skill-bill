@@ -49,6 +49,7 @@ import skillbill.install.model.InvokingAgentContextResolver
 import skillbill.ports.featurespec.FeatureSpecPathResolverPort
 import skillbill.ports.featurespec.model.FeatureSpecPathResolveInput
 import skillbill.ports.featurespec.model.FeatureSpecPathResolveResult
+import skillbill.ports.persistence.model.FeatureTaskRouteScope
 import skillbill.ports.taskruntime.FeatureTaskRuntimeRunInvariantsSource
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.workflow.model.CodeReviewExecutionMode
@@ -157,7 +158,13 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
     specPath: String,
     repoRoot: String,
   ): String = explicitWorkflowId?.takeIf(String::isNotBlank)
-    ?: openRuntimeWorkflowId(workflowService, state, issueKey, specPath, repoRoot)
+    ?: workflowService.openRuntimeWorkflowId(
+      state,
+      issueKey,
+      specPath,
+      repoRoot,
+      if (goalParentIssueKey != null) FeatureTaskRouteScope.GOAL_CHILD else FeatureTaskRouteScope.STANDALONE,
+    )
 
   // Refuses before a workflow is opened, a branch resolved, or a phase spawned: opencode is
   // prose-only because its foreground Bash tool is hard-killed at 120s and per-phase output
@@ -481,7 +488,15 @@ class FeatureTaskRuntimeResumeCommand(
 
   override fun run() {
     validateRuntimeRunConfiguration(deps)
-    verifyRuntimeResume(lookupService, deps.state, workflowId, issueKey, specPath, repoRoot ?: ".")
+    verifyRuntimeResume(
+      lookupService,
+      deps.state,
+      workflowId,
+      issueKey,
+      specPath,
+      repoRoot ?: ".",
+      goalParentIssueKey != null,
+    )
     executeRuntimeRun(
       deps = deps,
       issueKey = requireNotNull(issueKey),
@@ -586,7 +601,15 @@ class FeatureTaskRuntimeDeprecatedRunCommand(
       deps = deps,
       issueKey = runIssueKey,
       specPath = runSpecPath,
-      workflowId = { openRuntimeWorkflowId(workflowService, deps.state, runIssueKey, runSpecPath, repoRoot ?: ".") },
+      workflowId = {
+        workflowService.openRuntimeWorkflowId(
+          deps.state,
+          runIssueKey,
+          runSpecPath,
+          repoRoot ?: ".",
+          if (goalParentIssueKey != null) FeatureTaskRouteScope.GOAL_CHILD else FeatureTaskRouteScope.STANDALONE,
+        )
+      },
     )
   }
 }
@@ -608,7 +631,15 @@ class FeatureTaskRuntimeDeprecatedExplicitRunCommand(
       deps = deps,
       issueKey = issueKey,
       specPath = runSpecPath,
-      workflowId = { openRuntimeWorkflowId(workflowService, deps.state, issueKey, runSpecPath, repoRoot ?: ".") },
+      workflowId = {
+        workflowService.openRuntimeWorkflowId(
+          deps.state,
+          issueKey,
+          runSpecPath,
+          repoRoot ?: ".",
+          if (goalParentIssueKey != null) FeatureTaskRouteScope.GOAL_CHILD else FeatureTaskRouteScope.STANDALONE,
+        )
+      },
     )
   }
 }
@@ -647,25 +678,34 @@ class FeatureTaskRuntimeDeprecatedResumeCommand(
       issueKey = issueKey,
       specPath = specPath,
       workflowId = {
-        verifyRuntimeResume(lookupService, deps.state, workflowId, issueKey, specPath, repoRoot ?: ".")
+        verifyRuntimeResume(
+          lookupService,
+          deps.state,
+          workflowId,
+          issueKey,
+          specPath,
+          repoRoot ?: ".",
+          goalParentIssueKey != null,
+        )
         workflowId
       },
     )
   }
 }
 
-private fun openRuntimeWorkflowId(
-  workflowService: WorkflowService,
+private fun WorkflowService.openRuntimeWorkflowId(
   state: CliRunState,
   issueKey: String?,
   specPath: String,
   repoRoot: String,
+  routeScope: FeatureTaskRouteScope,
 ): String = when (
-  val opened = workflowService.openFeatureTask(
+  val opened = openFeatureTask(
     WorkflowFamilyKind.TASK_RUNTIME,
     issueKey = requireNotNull(issueKey),
     repositoryIdentity = repositoryIdentity(Path.of(repoRoot)),
     governedSpecPath = governedSpecPath(Path.of(repoRoot), Path.of(specPath)),
+    routeScope = routeScope,
     dbOverride = state.dbOverride,
   )
 ) {
@@ -709,9 +749,15 @@ private fun verifyRuntimeResume(
   issueKey: String,
   specPath: String,
   repoRoot: String,
+  goalChild: Boolean,
 ) {
   val effectiveRoot = resumeRepositoryRoot(repoRoot, Path.of(specPath))
-  val result = lookupService.lookup(issueKey, repositoryIdentity(effectiveRoot), workflowId, state.dbOverride)
+  val identity = repositoryIdentity(effectiveRoot)
+  val result = if (goalChild) {
+    lookupService.lookupGoalChild(issueKey, identity, workflowId, state.dbOverride)
+  } else {
+    lookupService.lookup(issueKey, identity, workflowId, state.dbOverride)
+  }
   val candidate = when (result) {
     is FeatureTaskContinuationLookupResult.Resumable -> result.candidate
     is FeatureTaskContinuationLookupResult.AlreadyRunning -> result.candidate

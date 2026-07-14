@@ -56,18 +56,15 @@ private fun EnvironmentContext.withProcessDefaults(): EnvironmentContext {
   }
 }
 
+@Suppress("TooGenericExceptionCaught")
 private fun <T> Connection.inTransaction(block: () -> T): T {
-  val previousAutoCommit = autoCommit
-  autoCommit = false
-  try {
-    val outcome = runCatching(block)
-    if (outcome.isSuccess) {
-      commit()
-    } else {
-      rollback()
-    }
-    return outcome.getOrThrow()
-  } finally {
-    autoCommit = previousAutoCommit
+  createStatement().use { it.execute("BEGIN IMMEDIATE") }
+  return try {
+    val result = block()
+    createStatement().use { it.execute("COMMIT") }
+    result
+  } catch (error: Throwable) {
+    runCatching { createStatement().use { it.execute("ROLLBACK") } }
+    throw error
   }
 }

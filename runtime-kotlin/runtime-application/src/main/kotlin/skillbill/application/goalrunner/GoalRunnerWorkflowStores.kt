@@ -75,6 +75,7 @@ import skillbill.workflow.model.WorkflowStepState
 import skillbill.workflow.model.WorkflowUpdateInput
 import skillbill.workflow.model.appendBoundedHistoryBySequence
 import skillbill.workflow.model.goalObservabilityLatestEventFromArtifacts
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
@@ -1219,7 +1220,7 @@ private fun validatedGoalReviewPasses(
     val rawResult = review.rawResults.getValue(pass.passNumber.toString())
     val output = phaseOutputValidator.validateAndReadPhaseOutput(
       rawResult,
-      "goal review pass ${pass.passNumber}",
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
     )
     val findings = GoalSubtaskReviewSummaryReducer.fromOutput(output)
     val outcome = GoalSubtaskReviewSummaryReducer.outcomeFor(output, findings)

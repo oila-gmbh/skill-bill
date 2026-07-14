@@ -41,7 +41,9 @@ private const val CLAIM_EXPECTED_UPDATED_AT_NULL_INDEX: Int = 2
 private const val CLAIM_EXPECTED_UPDATED_AT_INDEX: Int = 3
 private const val LOOKUP_WORKFLOW_ISSUE_KEY_INDEX: Int = 1
 private const val LOOKUP_IDENTITY_ISSUE_KEY_INDEX: Int = 2
-private const val LOOKUP_REPOSITORY_IDENTITY_INDEX: Int = 3
+private const val LOOKUP_LEGACY_ROUTE_SCOPE_INDEX: Int = 3
+private const val LOOKUP_REPOSITORY_IDENTITY_INDEX: Int = 4
+private const val LOOKUP_ROUTE_SCOPE_INDEX: Int = 5
 private const val MINIMUM_OWNER_TOKEN_LENGTH: Int = 16
 
 /**
@@ -212,6 +214,25 @@ private class FeatureTaskWorkflowStateStore(
   override fun findStandaloneFeatureTaskCandidates(
     normalizedIssueKey: String,
     repositoryIdentity: String,
+  ): List<FeatureTaskWorkflowCandidate> = findFeatureTaskCandidates(
+    normalizedIssueKey,
+    repositoryIdentity,
+    "standalone",
+  )
+
+  override fun findGoalChildFeatureTaskCandidates(
+    normalizedIssueKey: String,
+    repositoryIdentity: String,
+  ): List<FeatureTaskWorkflowCandidate> = findFeatureTaskCandidates(
+    normalizedIssueKey,
+    repositoryIdentity,
+    "goal_child",
+  )
+
+  private fun findFeatureTaskCandidates(
+    normalizedIssueKey: String,
+    repositoryIdentity: String,
+    routeScope: String,
   ): List<FeatureTaskWorkflowCandidate> = connection.prepareStatement(
     """
     SELECT workflows.workflow_id
@@ -221,20 +242,23 @@ private class FeatureTaskWorkflowStateStore(
     WHERE (UPPER(workflows.issue_key) = ? OR identities.normalized_issue_key = ?)
       AND (
         (
-          identities.workflow_id IS NULL
+          ? = 'standalone'
+          AND identities.workflow_id IS NULL
           AND (
             workflows.mode = 'runtime'
             OR workflows.artifacts_json NOT LIKE '%"decomposition_runtime"%'
           )
         )
-        OR (identities.repository_identity = ? AND identities.route_scope = 'standalone')
+        OR (identities.repository_identity = ? AND identities.route_scope = ?)
       )
     ORDER BY identities.created_at, workflows.workflow_id
     """.trimIndent(),
   ).use { statement ->
     statement.setString(LOOKUP_WORKFLOW_ISSUE_KEY_INDEX, normalizedIssueKey)
     statement.setString(LOOKUP_IDENTITY_ISSUE_KEY_INDEX, normalizedIssueKey)
+    statement.setString(LOOKUP_LEGACY_ROUTE_SCOPE_INDEX, routeScope)
     statement.setString(LOOKUP_REPOSITORY_IDENTITY_INDEX, repositoryIdentity)
+    statement.setString(LOOKUP_ROUTE_SCOPE_INDEX, routeScope)
     statement.executeQuery().use { rows ->
       buildList {
         while (rows.next()) {

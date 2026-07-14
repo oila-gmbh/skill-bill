@@ -28,6 +28,12 @@ interface FeatureTaskWorkflowStateRepository {
     repositoryIdentity: String,
   ): List<FeatureTaskWorkflowCandidate>
 
+  fun findGoalChildFeatureTaskCandidates(
+    normalizedIssueKey: String,
+    repositoryIdentity: String,
+  ): List<FeatureTaskWorkflowCandidate> =
+    error("Goal-child feature-task lookup is not implemented by this persistence adapter.")
+
   fun claimFeatureTaskContinuation(workflowId: String, expectedUpdatedAt: String?): Boolean =
     error("Feature-task continuation claiming is not implemented by this persistence adapter.")
 

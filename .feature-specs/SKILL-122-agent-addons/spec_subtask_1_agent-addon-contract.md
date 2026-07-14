@@ -1,5 +1,5 @@
 ---
-status: Blocked
+status: Complete
 issue_key: SKILL-122
 subtask_id: 1
 ---

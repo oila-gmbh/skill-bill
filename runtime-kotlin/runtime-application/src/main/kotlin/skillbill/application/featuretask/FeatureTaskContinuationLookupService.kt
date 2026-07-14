@@ -33,14 +33,51 @@ class FeatureTaskContinuationLookupService(
     repositoryIdentity: String,
     workflowId: String? = null,
     dbOverride: String? = null,
+  ): FeatureTaskContinuationLookupResult = lookup(
+    issueKey,
+    repositoryIdentity,
+    workflowId,
+    dbOverride,
+    FeatureTaskRouteScope.STANDALONE,
+  )
+
+  fun lookupGoalChild(
+    issueKey: String,
+    repositoryIdentity: String,
+    workflowId: String,
+    dbOverride: String? = null,
+  ): FeatureTaskContinuationLookupResult = lookup(
+    issueKey,
+    repositoryIdentity,
+    workflowId,
+    dbOverride,
+    FeatureTaskRouteScope.GOAL_CHILD,
+  )
+
+  private fun lookup(
+    issueKey: String,
+    repositoryIdentity: String,
+    workflowId: String?,
+    dbOverride: String?,
+    routeScope: FeatureTaskRouteScope,
   ): FeatureTaskContinuationLookupResult = database.read(dbOverride) { unitOfWork ->
     val normalizedIssueKey = FeatureTaskExecutionIdentityPolicy.validateLookupRequest(issueKey, repositoryIdentity)
-    val candidates = unitOfWork.workflowStates.findStandaloneFeatureTaskCandidates(
-      normalizedIssueKey,
-      repositoryIdentity,
-    )
+    val candidates = when (routeScope) {
+      FeatureTaskRouteScope.STANDALONE -> unitOfWork.workflowStates.findStandaloneFeatureTaskCandidates(
+        normalizedIssueKey,
+        repositoryIdentity,
+      )
+      FeatureTaskRouteScope.GOAL_CHILD -> unitOfWork.workflowStates.findGoalChildFeatureTaskCandidates(
+        normalizedIssueKey,
+        repositoryIdentity,
+      )
+    }
     val validated = candidates.map {
-      it to project(it, unitOfWork.workflowStates.getFeatureTaskRuntimeWorkerOwnership(it.workflow.workflowId))
+      it to project(
+        it,
+        unitOfWork.workflowStates.getFeatureTaskRuntimeWorkerOwnership(it.workflow.workflowId),
+        routeScope,
+      )
     }
     val selected = workflowId?.let { selector ->
       listOf(
@@ -57,13 +94,17 @@ class FeatureTaskContinuationLookupService(
   private fun project(
     candidate: FeatureTaskWorkflowCandidate,
     ownership: FeatureTaskRuntimeWorkerOwnership?,
+    routeScope: FeatureTaskRouteScope,
   ): FeatureTaskContinuationCandidate {
     val identity = requireNotNull(candidate.identity) {
       invalidIdentity(candidate, "missing immutable execution identity")
     }
     FeatureTaskExecutionIdentityPolicy.validate(identity)
-    if (identity.routeScope != FeatureTaskRouteScope.STANDALONE) {
-      invalidIdentity(candidate, "standalone lookup returned route_scope '${identity.routeScope.wireValue}'")
+    if (identity.routeScope != routeScope) {
+      invalidIdentity(
+        candidate,
+        "${routeScope.wireValue} lookup returned route_scope '${identity.routeScope.wireValue}'",
+      )
     }
     if (identityConflictsWithWorkflow(identity, candidate)) {
       invalidIdentity(candidate, "immutable identity conflicts with workflow snapshot")
