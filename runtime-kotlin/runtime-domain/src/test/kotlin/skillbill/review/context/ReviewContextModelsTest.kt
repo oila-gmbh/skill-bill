@@ -5,6 +5,7 @@ package skillbill.review.context
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertTrue
 import skillbill.workflow.model.CodeReviewExecutionMode
 
 class ReviewContextModelsTest {
@@ -15,6 +16,27 @@ class ReviewContextModelsTest {
     assertEquals(value(listOf("b.kt", "a.kt"), listOf("2", "1")).digest, value(listOf("a.kt", "b.kt"), listOf("1", "2")).digest)
   }
   @Test fun `paths reject traversal`() { assertFailsWith<IllegalArgumentException> { ReviewAssignment("review", "a".repeat(64), "security", "base", "head", listOf("../secret"), emptyList()) } }
+  @Test fun `packet digest normalizes ordering separators and line endings`() {
+    fun packet(path: String, status: String) = ReviewContextPacket(
+      "review", "repo", "base", "head", status, "kotlin", "kotlin", listOf("z", "a"), listOf("testing"),
+      listOf(ReviewChangedHunk(path, 1, 1, 1, 1, "+line\r\n")),
+    )
+    assertEquals(packet("src\\A.kt", "clean\r\n").digest, packet("src/A.kt", "clean\n").digest)
+  }
+  @Test fun `governed Codex launches reject inherited and omitted turns`() {
+    val assignment = ReviewAssignment("review", "a".repeat(64), "security", "base", "head", listOf("A.kt"), listOf("@@ -1 +1 @@"))
+    val launch = GovernedReviewLaunch(assignment, "contract", "rubric", "broker", ReviewContextBudgetPolicy.DEFAULT)
+    launch.requireCodexForkTurns("none")
+    assertFailsWith<IllegalArgumentException> { launch.requireCodexForkTurns(null) }
+    assertFailsWith<IllegalArgumentException> { launch.requireCodexForkTurns("all") }
+    assertTrue("parent transcript" !in launch.canonicalPayload)
+  }
+  @Test fun `oversized compact launch returns typed budget evidence`() {
+    val assignment = ReviewAssignment("review", "a".repeat(64), "security", "base", "head", listOf("A.kt"), emptyList())
+    val policy = ReviewContextBudgetPolicy(maxParentPacketBytes = 10_000, maxLaneLaunchBytes = 10, maxLaneEvidenceBytes = 100, maxEvidenceResultBytes = 50, maxLaneResultBytes = 50)
+    val outcome = GovernedReviewLaunch(assignment, "contract", "rubric", "broker", policy).budgetOutcomeOrNull()
+    assertEquals(REVIEW_CONTEXT_BUDGET_EXCEEDED, outcome?.type)
+  }
   @Test fun `inclusive parent is not double counted`() {
     val parent = ProviderTokenUsage(inputTokens = 100, outputTokens = 10, ownership = TokenOwnership.INCLUSIVE)
     assertEquals(parent, ReviewTreeUsage(parent, listOf(ReviewTreeUsage(ProviderTokenUsage(inputTokens = 50)))).aggregate())

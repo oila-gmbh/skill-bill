@@ -171,6 +171,22 @@ class FileSystemRepoLocalConfigTest {
   }
 
   @Test
+  fun `review context budget rejects explicit null fractional and narrowing values`() {
+    listOf(
+      "review_context_budget: null",
+      "review_context_budget:\n  max_lane_launch_bytes: 1.5",
+      "review_context_budget:\n  max_assignment_expansions: 2147483648",
+      "review_context_budget:\n  provider_token_thresholds: null",
+      "review_context_budget:\n  max_lane_launch_bytes: null",
+    ).forEach { content ->
+      val repoRoot = writeConfig(content)
+      assertFailsWith<MalformedRepoLocalConfigError>(content) {
+        adapter.readRepoLocalConfig(ReadRepoLocalConfigRequest(repoRoot))
+      }
+    }
+  }
+
+  @Test
   fun `ignores execution matrix because it belongs to the machine config`() {
     val repoRoot = writeConfig(
       """

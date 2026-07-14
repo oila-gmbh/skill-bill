@@ -40,11 +40,15 @@ class FileSystemRepoLocalConfig : RepoLocalConfigPort {
     codeReviewParallelAgent = parseKnownKey(path, raw, RepoLocalConfigKey.CODE_REVIEW_PARALLEL_AGENT) { value ->
       parseCodeReviewParallelAgent(value)
     } ?: RepoLocalConfig.defaults().codeReviewParallelAgent,
-    reviewContextBudget = parseReviewContextBudget(path, raw["review_context_budget"]),
+    reviewContextBudget = if (raw.containsKey("review_context_budget")) {
+      parseReviewContextBudget(path, raw["review_context_budget"])
+    } else {
+      ReviewContextBudgetPolicy.DEFAULT
+    },
   )
 
   private fun parseReviewContextBudget(path: Path, value: Any?): ReviewContextBudgetPolicy {
-    if (value == null) return ReviewContextBudgetPolicy.DEFAULT
+    if (value == null) malformedBudget(path, "review_context_budget", value, "must be a mapping, not null.")
     val raw = value as? Map<*, *> ?: malformedBudget(path, "review_context_budget", value, "must be a mapping.")
     val allowed = setOf(
       "max_parent_packet_bytes", "max_lane_launch_bytes", "max_lane_evidence_bytes",
@@ -53,15 +57,26 @@ class FileSystemRepoLocalConfig : RepoLocalConfigPort {
     val unknown = raw.keys.map { it.toString() }.filterNot(allowed::contains)
     if (unknown.isNotEmpty()) malformedBudget(path, "review_context_budget.${unknown.first()}", raw[unknown.first()], "is not a recognized key.")
     val defaults = ReviewContextBudgetPolicy.DEFAULT
-    val tokenRaw = raw["provider_token_thresholds"]?.let { nested ->
-      nested as? Map<*, *> ?: malformedBudget(path, "review_context_budget.provider_token_thresholds", nested, "must be a mapping.")
-    } ?: emptyMap<Any?, Any?>()
+    val tokenRaw = if (raw.containsKey("provider_token_thresholds")) {
+      val nested = raw["provider_token_thresholds"]
+        ?: malformedBudget(path, "review_context_budget.provider_token_thresholds", null, "must be a mapping, not null.")
+      nested as? Map<*, *>
+        ?: malformedBudget(path, "review_context_budget.provider_token_thresholds", nested, "must be a mapping.")
+    } else {
+      emptyMap<Any?, Any?>()
+    }
     val tokenAllowed = setOf("input_tokens", "cached_input_tokens", "output_tokens", "reasoning_tokens", "total_tokens")
     val tokenUnknown = tokenRaw.keys.map { it.toString() }.filterNot(tokenAllowed::contains)
     if (tokenUnknown.isNotEmpty()) malformedBudget(path, "review_context_budget.provider_token_thresholds.${tokenUnknown.first()}", tokenRaw[tokenUnknown.first()], "is not a recognized key.")
-    fun long(source: Map<*, *>, key: String, fallback: Long): Long {
-      val rawValue = source[key] ?: return fallback
-      return (rawValue as? Number)?.toLong() ?: malformedBudget(path, "review_context_budget.$key", rawValue, "must be an integer.")
+    fun long(source: Map<*, *>, key: String, fallback: Long, prefix: String = "review_context_budget"): Long {
+      if (!source.containsKey(key)) return fallback
+      val rawValue = source[key] ?: malformedBudget(path, "$prefix.$key", null, "must be an integer, not null.")
+      return when (rawValue) {
+        is Byte, is Short, is Int, is Long -> (rawValue as Number).toLong()
+        is java.math.BigInteger -> rawValue.longValueExactOrNull()
+          ?: malformedBudget(path, "$prefix.$key", rawValue, "is outside the signed 64-bit integer range.")
+        else -> malformedBudget(path, "$prefix.$key", rawValue, "must be an exact integer.")
+      }
     }
     return try {
       ReviewContextBudgetPolicy(
@@ -70,13 +85,18 @@ class FileSystemRepoLocalConfig : RepoLocalConfigPort {
         maxLaneEvidenceBytes = long(raw, "max_lane_evidence_bytes", defaults.maxLaneEvidenceBytes),
         maxEvidenceResultBytes = long(raw, "max_evidence_result_bytes", defaults.maxEvidenceResultBytes),
         maxLaneResultBytes = long(raw, "max_lane_result_bytes", defaults.maxLaneResultBytes),
-        maxAssignmentExpansions = long(raw, "max_assignment_expansions", defaults.maxAssignmentExpansions.toLong()).toInt(),
+        maxAssignmentExpansions = long(raw, "max_assignment_expansions", defaults.maxAssignmentExpansions.toLong()).let { parsed ->
+          if (parsed !in Int.MIN_VALUE.toLong()..Int.MAX_VALUE.toLong()) {
+            malformedBudget(path, "review_context_budget.max_assignment_expansions", parsed, "is outside the signed 32-bit integer range.")
+          }
+          parsed.toInt()
+        },
         providerTokenThresholds = ProviderTokenThresholds(
-          inputTokens = long(tokenRaw, "input_tokens", defaults.providerTokenThresholds.inputTokens),
-          cachedInputTokens = long(tokenRaw, "cached_input_tokens", defaults.providerTokenThresholds.cachedInputTokens),
-          outputTokens = long(tokenRaw, "output_tokens", defaults.providerTokenThresholds.outputTokens),
-          reasoningTokens = long(tokenRaw, "reasoning_tokens", defaults.providerTokenThresholds.reasoningTokens),
-          totalTokens = long(tokenRaw, "total_tokens", defaults.providerTokenThresholds.totalTokens),
+          inputTokens = long(tokenRaw, "input_tokens", defaults.providerTokenThresholds.inputTokens, "review_context_budget.provider_token_thresholds"),
+          cachedInputTokens = long(tokenRaw, "cached_input_tokens", defaults.providerTokenThresholds.cachedInputTokens, "review_context_budget.provider_token_thresholds"),
+          outputTokens = long(tokenRaw, "output_tokens", defaults.providerTokenThresholds.outputTokens, "review_context_budget.provider_token_thresholds"),
+          reasoningTokens = long(tokenRaw, "reasoning_tokens", defaults.providerTokenThresholds.reasoningTokens, "review_context_budget.provider_token_thresholds"),
+          totalTokens = long(tokenRaw, "total_tokens", defaults.providerTokenThresholds.totalTokens, "review_context_budget.provider_token_thresholds"),
         ),
       )
     } catch (error: IllegalArgumentException) {
@@ -136,3 +156,9 @@ internal fun configPath(repoRoot: Path): Path = repoRoot
   .normalize()
 
 internal const val REPO_LOCAL_CONFIG_FILE_NAME: String = "config.yaml"
+
+private fun java.math.BigInteger.longValueExactOrNull(): Long? = try {
+  longValueExact()
+} catch (@Suppress("SwallowedException") ignored: ArithmeticException) {
+  null
+}

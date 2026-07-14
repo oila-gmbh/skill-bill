@@ -5,6 +5,7 @@ import skillbill.install.model.MODEL_DIRECTIVE_CAPABLE_AGENTS
 import skillbill.launcher.agentrun.ClaudeAgentRunCommandBuilder
 import skillbill.launcher.agentrun.CodexAgentRunCommandBuilder
 import skillbill.launcher.agentrun.JunieAgentRunCommandBuilder
+import skillbill.launcher.agentrun.AgentRunOutputDecoder
 import skillbill.ports.agentrun.model.SkillRunRequest
 import java.nio.file.Path
 import kotlin.test.Test
@@ -14,6 +15,25 @@ import kotlin.test.assertTrue
 
 class AgentRunCommandBuildersTest {
   @Test
+  fun `structured output decoders preserve provider token dimensions`() {
+    val claude = AgentRunOutputDecoder.CLAUDE_JSON.decode(
+      """{"result":"done","usage":{"input_tokens":100,"cache_read_input_tokens":40,"output_tokens":20,"total_tokens":120}}""",
+    )
+    assertEquals("done", claude.text)
+    assertEquals(100, claude.inputTokens)
+    assertEquals(40, claude.cachedInputTokens)
+    assertEquals(20, claude.outputTokens)
+    val codex = AgentRunOutputDecoder.CODEX_JSONL.decode(
+      """
+      {"item":{"text":"finding"}}
+      {"usage":{"input_tokens":90,"cached_input_tokens":30,"output_tokens":10,"reasoning_tokens":5,"total_tokens":100}}
+      """.trimIndent(),
+    )
+    assertEquals("finding", codex.text)
+    assertEquals(5, codex.reasoningTokens)
+    assertEquals(100, codex.totalTokens)
+  }
+  @Test
   fun `claude renders exact commands for each directive shape`() {
     val builder = ClaudeAgentRunCommandBuilder()
 
@@ -22,7 +42,7 @@ class AgentRunCommandBuildersTest {
         "claude",
         "--print",
         "--output-format",
-        "text",
+        "json",
         "--model",
         "claude-opus",
         "--effort",
@@ -38,7 +58,7 @@ class AgentRunCommandBuildersTest {
         "claude",
         "--print",
         "--output-format",
-        "text",
+        "json",
         "--model",
         "claude-opus",
         "--dangerously-skip-permissions",
@@ -52,7 +72,7 @@ class AgentRunCommandBuildersTest {
         "claude",
         "--print",
         "--output-format",
-        "text",
+        "json",
         "--dangerously-skip-permissions",
         "--add-dir",
         "/tmp/skillbill-agent-run",
@@ -69,6 +89,7 @@ class AgentRunCommandBuildersTest {
       listOf(
         "codex",
         "exec",
+        "--json",
         "--cd",
         "/tmp/skillbill-agent-run",
         "--dangerously-bypass-approvals-and-sandbox",
@@ -85,6 +106,7 @@ class AgentRunCommandBuildersTest {
       listOf(
         "codex",
         "exec",
+        "--json",
         "--cd",
         "/tmp/skillbill-agent-run",
         "--dangerously-bypass-approvals-and-sandbox",
@@ -99,6 +121,7 @@ class AgentRunCommandBuildersTest {
       listOf(
         "codex",
         "exec",
+        "--json",
         "--cd",
         "/tmp/skillbill-agent-run",
         "--dangerously-bypass-approvals-and-sandbox",

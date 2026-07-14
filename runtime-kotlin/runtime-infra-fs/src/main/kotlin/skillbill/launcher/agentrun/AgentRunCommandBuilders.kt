@@ -20,6 +20,7 @@ data class AgentRunCommand(
 
 interface AgentRunCommandBuilder {
   val agent: InstallAgent
+  val outputDecoder: AgentRunOutputDecoder get() = AgentRunOutputDecoder.PLAIN
   fun build(request: SkillRunRequest): AgentRunCommand
 }
 
@@ -42,6 +43,7 @@ internal fun goalContinuationEnvironment(request: SkillRunRequest): Map<String, 
 
 class ClaudeAgentRunCommandBuilder : AgentRunCommandBuilder {
   override val agent: InstallAgent = InstallAgent.CLAUDE
+  override val outputDecoder: AgentRunOutputDecoder = AgentRunOutputDecoder.CLAUDE_JSON
 
   override fun build(request: SkillRunRequest): AgentRunCommand =
     goalContinuationCommand(request, agent) ?: AgentRunCommand(
@@ -49,7 +51,7 @@ class ClaudeAgentRunCommandBuilder : AgentRunCommandBuilder {
         add("claude")
         add("--print")
         add("--output-format")
-        add("text")
+        add("json")
         request.modelOverride?.let {
           add("--model")
           add(it)
@@ -71,12 +73,14 @@ class ClaudeAgentRunCommandBuilder : AgentRunCommandBuilder {
 
 class CodexAgentRunCommandBuilder : AgentRunCommandBuilder {
   override val agent: InstallAgent = InstallAgent.CODEX
+  override val outputDecoder: AgentRunOutputDecoder = AgentRunOutputDecoder.CODEX_JSONL
 
   override fun build(request: SkillRunRequest): AgentRunCommand =
     goalContinuationCommand(request, agent) ?: AgentRunCommand(
       command = buildList {
         add("codex")
         add("exec")
+        add("--json")
         add("--cd")
         add(request.repoRoot.toString())
         add("--dangerously-bypass-approvals-and-sandbox")

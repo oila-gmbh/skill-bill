@@ -23,7 +23,9 @@ import skillbill.ports.review.model.ParallelReviewLaneRunRequest
 import skillbill.review.ParallelReviewFindingParser
 import skillbill.review.ParallelReviewMerger
 import skillbill.review.model.ParallelReviewLaneResult
+import java.nio.charset.StandardCharsets
 import java.nio.file.Path
+import java.security.MessageDigest
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
@@ -165,33 +167,45 @@ class ParallelCodeReviewRunner(
     stack: String?,
     diffText: String,
     codeReviewMode: skillbill.workflow.model.CodeReviewExecutionMode,
-  ): String = buildString {
-    appendLine(
-      "You are driving one compact parent lane of a parallel code review. Treat the detected stack " +
-        "and exact diff below as pre-resolved authoritative inputs. Do not use parallel mode.",
-    )
-    appendLine(
-      "Run bill-code-review mode:${codeReviewMode.wireValue}; do not reinterpret it or launch parallel " +
-        "review recursively.",
-    )
-    appendLine(
-      "Prepare one shared review-context packet, then use the routed pack's Diff-Signal Routing Table, " +
-        "retain required baseline layers, and launch only signal-relevant non-empty specialist lanes.",
-    )
-    appendLine(
-      "Give each worker only the shared packet, its assignment, and its applicable rubric; workers must " +
-        "not repeat repository, scope, stack, routing, or guidance discovery.",
-    )
-    appendLine()
-    appendLine("The dominant stack is ${stack ?: "unknown"} (pre-resolved detected stack).")
-    appendLine()
-    appendLine(
-      "Return only a risk register in F-XXX bullet format, one finding per line: " +
-        "- [F-NNN] Blocker|Major|Minor|Nit | High|Medium|Low | file:line | description",
-    )
-    appendLine()
-    appendLine("Diff:")
-    append(diffText)
+  ): String {
+    val changedPaths = DIFF_PATH_PATTERN.findAll(diffText).map { it.groupValues[1] }.distinct().sorted().toList()
+    val diffDigest = MessageDigest.getInstance("SHA-256")
+      .digest(diffText.replace("\r\n", "\n").toByteArray(StandardCharsets.UTF_8))
+      .joinToString("") { byte -> "%02x".format(byte) }
+    return buildString {
+      appendLine(
+        "You are driving one compact parent lane of a parallel code review. Treat the detected stack " +
+          "and bounded assignment below as pre-resolved authoritative inputs. Do not use parallel mode.",
+      )
+      appendLine(
+        "Run bill-code-review mode:${codeReviewMode.wireValue}; do not reinterpret it or launch parallel " +
+          "review recursively.",
+      )
+      appendLine(
+        "Prepare one shared review-context packet, then use the routed pack's Diff-Signal Routing Table, " +
+          "retain required baseline layers, and launch only signal-relevant non-empty specialist lanes.",
+      )
+      appendLine(
+        "Give each worker only the shared packet, its assignment, and its applicable rubric; workers must " +
+          "not repeat repository, scope, stack, routing, or guidance discovery.",
+      )
+      appendLine()
+      appendLine("The dominant stack is ${stack ?: "unknown"} (pre-resolved detected stack).")
+      appendLine()
+      appendLine(
+        "Return only a risk register in F-XXX bullet format, one finding per line: " +
+          "- [F-NNN] Blocker|Major|Minor|Nit | High|Medium|Low | file:line | description",
+      )
+      appendLine()
+      appendLine("Review packet digest: $diffDigest")
+      appendLine("Assigned changed paths:")
+      changedPaths.forEach { appendLine("- $it") }
+      appendLine(
+        "Read only these assigned paths and their direct dependencies. Do not run git status, git diff, " +
+          "merge-base, stack discovery, or broad repository searches.",
+      )
+      appendLine("The complete diff is intentionally absent from this launch payload.")
+    }
   }
 
   private fun launchLane(

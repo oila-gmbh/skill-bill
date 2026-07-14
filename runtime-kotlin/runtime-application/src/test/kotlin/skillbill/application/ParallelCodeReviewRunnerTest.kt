@@ -222,7 +222,9 @@ class ParallelCodeReviewRunnerTest {
     assertEquals(2, launcher.requests.size)
     launcher.requests.forEach { request ->
       val prompt = request.skillRunRequest.promptOverride.orEmpty()
-      assertContains(prompt, exactDiff)
+      assertFalse(prompt.contains(exactDiff), "the complete diff must stay out of lane prompts")
+      assertContains(prompt, "Assigned changed paths:\n- Child.kt")
+      assertContains(prompt, "complete diff is intentionally absent")
       assertContains(prompt, "dominant stack is kotlin (pre-resolved detected stack)")
       assertContains(prompt, "Prepare one shared review-context packet")
       assertContains(prompt, "workers must not repeat repository, scope, stack, routing, or guidance discovery")
