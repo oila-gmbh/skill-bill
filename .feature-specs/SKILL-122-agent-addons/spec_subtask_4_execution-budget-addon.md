@@ -1,5 +1,5 @@
 ---
-status: In Progress
+status: Complete
 issue_key: SKILL-122
 subtask_id: 4
 ---
