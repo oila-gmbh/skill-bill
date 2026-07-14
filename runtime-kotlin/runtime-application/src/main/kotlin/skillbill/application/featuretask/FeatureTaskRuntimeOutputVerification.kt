@@ -94,11 +94,10 @@ internal object FeatureTaskRuntimeOutputVerification {
     return FeatureTaskRuntimeAuditVerdict(gaps)
   }
 
-  private fun auditGapMessage(entry: Any?): String? =
-    (entry as? String)?.takeIf(String::isNotBlank)
-      ?: JsonSupport.anyToStringAnyMap(entry)?.let { map ->
-        ((map["message"] ?: map["criterion"]) as? String)?.takeIf(String::isNotBlank)
-      }
+  private fun auditGapMessage(entry: Any?): String? = (entry as? String)?.takeIf(String::isNotBlank)
+    ?: JsonSupport.anyToStringAnyMap(entry)?.let { map ->
+      ((map["message"] ?: map["criterion"]) as? String)?.takeIf(String::isNotBlank)
+    }
 
   private fun outputObject(output: FeatureTaskRuntimePhaseOutput): Map<String, Any?>? =
     JsonSupport.parseObjectOrNull(output.payload)

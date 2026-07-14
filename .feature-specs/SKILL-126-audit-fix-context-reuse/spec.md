@@ -47,4 +47,3 @@ Audit-gap remediation in both standalone feature-task runs and goal-child task r
 - Add application/runtime tests proving persisted preplan and plan artifacts are reused across repeated audit gaps and resume.
 - Add goal-child coverage proving parity with standalone task workflows.
 - Run the affected Gradle test suites, then route repository validation through `bill-code-check`.
-

@@ -179,8 +179,9 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
       ids.subList(ids.indexOf(edge.destinationPhaseId), ids.indexOf(edge.fromPhaseId) + 1)
         .any(def::isMutatingPhase),
     )
-    assertTrue(def.PHASE_PREPLAN !in ids.subList(ids.indexOf(edge.destinationPhaseId), ids.indexOf(edge.fromPhaseId) + 1))
-    assertTrue(def.PHASE_PLAN !in ids.subList(ids.indexOf(edge.destinationPhaseId), ids.indexOf(edge.fromPhaseId) + 1))
+    val reopenedPhaseIds = ids.subList(ids.indexOf(edge.destinationPhaseId), ids.indexOf(edge.fromPhaseId) + 1)
+    assertTrue(def.PHASE_PREPLAN !in reopenedPhaseIds)
+    assertTrue(def.PHASE_PLAN !in reopenedPhaseIds)
   }
 
   @Test

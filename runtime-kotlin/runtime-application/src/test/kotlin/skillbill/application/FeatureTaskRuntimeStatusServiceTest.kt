@@ -26,9 +26,9 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction.BLOCKED
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction.COMPLETE
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction.RESUME
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction.START
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
 import java.nio.file.Path
 import kotlin.test.Test
@@ -142,8 +142,7 @@ class FeatureTaskRuntimeStatusServiceTest {
     harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
     listOf("preplan", "plan", "implement", "review", "audit")
       .forEach { harness.recordCompleted(it, attemptCount = 1) }
-    harness.recordLedger(
-      action = LOOP_EDGE,
+    harness.recordLoopEdge(
       phaseId = "implement",
       attemptCount = 1,
       loopId = "audit_gap",
@@ -163,8 +162,7 @@ class FeatureTaskRuntimeStatusServiceTest {
     harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
     listOf("preplan", "plan", "implement", "review")
       .forEach { harness.recordCompleted(it, attemptCount = 1) }
-    harness.recordLedger(
-      action = LOOP_EDGE,
+    harness.recordLoopEdge(
       phaseId = "implement_fix",
       attemptCount = 1,
       loopId = "review_fix",
@@ -433,8 +431,6 @@ class FeatureTaskRuntimeStatusServiceTest {
       phaseId: String,
       attemptCount: Int,
       resolvedAgentId: String = "claude",
-      loopId: String? = null,
-      edgeIteration: Int? = null,
     ) = recorder.appendLedgerEntry(
       FeatureTaskRuntimePhaseLedgerRequest(
         workflowId = WORKFLOW_ID,
@@ -442,9 +438,25 @@ class FeatureTaskRuntimeStatusServiceTest {
         phaseId = phaseId,
         attemptCount = attemptCount,
         resolvedAgentId = resolvedAgentId,
+        blockedReason = if (action == FeatureTaskRuntimePhaseLedgerAction.BLOCKED) "fix loop exhausted" else null,
+      ),
+    )
+
+    fun recordLoopEdge(
+      phaseId: String,
+      attemptCount: Int,
+      loopId: String,
+      edgeIteration: Int,
+      resolvedAgentId: String = "claude",
+    ) = recorder.appendLedgerEntry(
+      FeatureTaskRuntimePhaseLedgerRequest(
+        workflowId = WORKFLOW_ID,
+        action = LOOP_EDGE,
+        phaseId = phaseId,
+        attemptCount = attemptCount,
+        resolvedAgentId = resolvedAgentId,
         loopId = loopId,
         edgeIteration = edgeIteration,
-        blockedReason = if (action == FeatureTaskRuntimePhaseLedgerAction.BLOCKED) "fix loop exhausted" else null,
       ),
     )
 

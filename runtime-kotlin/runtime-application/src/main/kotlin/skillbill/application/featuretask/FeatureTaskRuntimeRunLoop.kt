@@ -935,12 +935,12 @@ internal class FeatureTaskRuntimeRunLoop(
     }
     val missing = persisted ?: invalidPlanningContext
       ?: missingUpstream(run.declaration, state.outputs())?.let { missingIds ->
-      PreLaunchBlock(
-        1,
-        "Phase '${run.phaseId}' requires upstream output(s) ${missingIds.joinToString()} that are not " +
-          "present; the runtime blocks rather than launching the phase blind.",
-      )
-    }
+        PreLaunchBlock(
+          1,
+          "Phase '${run.phaseId}' requires upstream output(s) ${missingIds.joinToString()} that are not " +
+            "present; the runtime blocks rather than launching the phase blind.",
+        )
+      }
     return missing?.let { preLaunch ->
       val durable = preLaunch.durableRecord
       blockAndPersist(
@@ -1202,11 +1202,7 @@ internal class FeatureTaskRuntimeRunLoop(
         run.request.dbPathOverride,
       )
     }
-    if (isGoalReviewRun(run)) {
-      observability.completed(run.phaseId, run.resolvedAgent.resolvedAgentId, iteration)
-    } else {
-      observability.completedEvent(run.phaseId, run.resolvedAgent.resolvedAgentId, iteration)
-    }
+    observability.completedEvent(run.phaseId, run.resolvedAgent.resolvedAgentId, iteration)
     return AttemptResult.settled(
       PhaseOutcome.completed(FeatureTaskRuntimePhaseOutput(run.phaseId, iteration, outputText)),
     )

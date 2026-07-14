@@ -133,14 +133,7 @@ class FeatureTaskRuntimePhaseRecorder(
     completion: GoalReviewPhaseCompletionRequest,
     dbOverride: String? = null,
   ): Boolean {
-    val request = completion.phaseState
-    require(request.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW) {
-      "Goal review completion can only persist the review phase."
-    }
-    require(request.status == "completed" && request.finished) {
-      "Goal review completion must persist a finished completed review phase."
-    }
-    require(completion.rawReviewResult.isNotBlank()) { "Goal-subtask review pass result must be non-blank." }
+    val request = validatedGoalReviewPhaseState(completion)
     return database.transaction(dbOverride) { unitOfWork ->
       val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, request.workflowId)
         ?: return@transaction false
@@ -191,6 +184,20 @@ class FeatureTaskRuntimePhaseRecorder(
       )
       true
     }
+  }
+
+  private fun validatedGoalReviewPhaseState(
+    completion: GoalReviewPhaseCompletionRequest,
+  ): FeatureTaskRuntimePhaseStateRequest {
+    val request = completion.phaseState
+    require(request.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW) {
+      "Goal review completion can only persist the review phase."
+    }
+    require(request.status == "completed" && request.finished) {
+      "Goal review completion must persist a finished completed review phase."
+    }
+    require(completion.rawReviewResult.isNotBlank()) { "Goal-subtask review pass result must be non-blank." }
+    return request
   }
 
   /**
