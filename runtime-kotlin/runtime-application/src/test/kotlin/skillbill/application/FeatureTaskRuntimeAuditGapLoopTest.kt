@@ -10,8 +10,8 @@ import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
-// SKILL-85 Subtask 5 (M2): the audit-gap re-plan/re-implement loopback exercised over the production
-// transition topology (audit --gaps_found--> plan -> implement -> review -> audit, capped at 2), with a
+// The audit-gap context-reuse loop exercised over the production transition topology
+// (audit --gaps_found--> implement -> review -> audit), with a
 // fake launcher. Mirrors the M1 review_fix matrix in FeatureTaskRuntimeRunnerTest, reusing its shared
 // package-internal harness/launcher/output helpers.
 class FeatureTaskRuntimeAuditGapLoopTest {
@@ -45,21 +45,26 @@ class FeatureTaskRuntimeAuditGapLoopTest {
     assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
     val launched = harness.launchedPromptPhaseOrder()
     assertEquals(2, launched.count { it == "audit" }, "initial audit + one re-audit")
-    assertEquals(2, launched.count { it == "plan" }, "the re-plan re-enters plan once")
+    assertEquals(1, launched.count { it == "plan" }, "the original plan remains immutable")
     assertEquals(2, launched.count { it == "implement" }, "the re-implement re-enters implement once")
     assertEquals(2, launched.count { it == "review" }, "the re-run passes back through review")
     // The reopened span runs plan -> implement -> review -> audit after the first audit.
     val firstAudit = launched.indexOf("audit")
-    val rePlan = launched.withIndex().first { (index, phase) -> phase == "plan" && index > firstAudit }.index
-    val reImplement = launched.withIndex().first { (index, phase) -> phase == "implement" && index > rePlan }.index
-    assertTrue(reImplement > rePlan, "the re-implement runs after the re-plan")
-    // (e) the re-entered plan AND implement briefings carry the failing criteria and driving verdict.
+    val reImplement = launched.withIndex().first { (index, phase) -> phase == "implement" && index > firstAudit }.index
+    assertTrue(reImplement > firstAudit, "implementation remediation runs directly after the audit gap")
+    // (e) the re-entered implement briefing carries immutable planning context and the latest gaps.
     val briefings = harness.recorder.loadPhaseBriefings(WORKFLOW_ID).orEmpty()
     val planBriefing = requireNotNull(briefings["plan"]).briefingText
     val implementBriefing = requireNotNull(briefings["implement"]).briefingText
-    assertContains(planBriefing, AUDIT_GAP_MESSAGE)
-    assertContains(planBriefing, "driving_verdict: gaps_found")
+    assertTrue(!planBriefing.contains(AUDIT_GAP_MESSAGE))
     assertContains(implementBriefing, AUDIT_GAP_MESSAGE)
+    assertContains(implementBriefing, "### from: preplan")
+    assertContains(implementBriefing, "### from: plan")
+    val planningRecords = harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()
+    assertEquals(1, requireNotNull(planningRecords["preplan"]).attemptCount)
+    assertEquals(1, requireNotNull(planningRecords["plan"]).attemptCount)
+    assertEquals(null, planningRecords.getValue("preplan").loopId)
+    assertEquals(null, planningRecords.getValue("plan").loopId)
     // (AC7) the audit_gap loop edge is recorded once with iteration 1.
     val loopEdges = harness.recorder.loadPhaseLedger(WORKFLOW_ID).orEmpty()
       .filter { it.action == FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE && it.loopId == "audit_gap" }
@@ -93,7 +98,7 @@ class FeatureTaskRuntimeAuditGapLoopTest {
     assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
     val launched = harness.launchedPromptPhaseOrder()
     assertEquals(3, launched.count { it == "audit" }, "initial audit + two re-audits")
-    assertEquals(3, launched.count { it == "plan" }, "two re-plans before converging")
+    assertEquals(1, launched.count { it == "plan" }, "planning is not regenerated")
     val loopEdges = harness.recorder.loadPhaseLedger(WORKFLOW_ID).orEmpty()
       .filter { it.action == FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE && it.loopId == "audit_gap" }
     assertEquals(listOf(1, 2), loopEdges.mapNotNull { it.edgeIteration })
@@ -107,7 +112,7 @@ class FeatureTaskRuntimeAuditGapLoopTest {
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
     val launched = harness.launchedPromptPhaseOrder()
-    assertEquals(99, launched.count { it == "plan" })
+    assertEquals(1, launched.count { it == "plan" })
     assertEquals(99, launched.count { it == "audit" })
     assertTrue(launched.any { it == "validate" })
     val auditRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["audit"])
@@ -214,15 +219,16 @@ class FeatureTaskRuntimeAuditGapLoopTest {
       },
     )
 
-    // Run 1: the gaps_found audit fires the edge (iteration 1) -> re-plan -> re-implement crashes.
+    // Run 1: the gaps_found audit fires the edge (iteration 1) -> implementation remediation crashes.
     val firstReport = harness.runner.run(harness.request())
     val firstBlocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(firstReport)
     assertEquals("implement", firstBlocked.lastIncompletePhase)
-    // The edge destination (plan) carries the audit_gap watermark the resume reconstruction relies on;
-    // the durable ledger likewise records iteration 1, so the cap is never reset on resume.
+    // The original plan stays untouched; the implement destination and durable ledger carry iteration 1.
     val planRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["plan"])
-    assertEquals("audit_gap", planRecord.loopId)
-    assertEquals(1, planRecord.edgeIteration)
+    assertEquals(null, planRecord.loopId)
+    val implementRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["implement"])
+    assertEquals("audit_gap", implementRecord.loopId)
+    assertEquals(1, implementRecord.edgeIteration)
 
     // Run 2 (resume): the crash heals; review and audit from before edge 1 are stale and must rerun.
     // The satisfied re-audit completes edge 1 without minting edge 2.
@@ -245,7 +251,7 @@ class FeatureTaskRuntimeAuditGapLoopTest {
   fun `m2 high-iteration audit_gap loop keeps reconciling on resume`() {
     val harness = runnerHarness(launcher = auditGapLauncher(convergeOnAudit = 99))
     harness.seedPhase("preplan", "completed", 1, INVOKED_AGENT, """{"preplan":"done"}""")
-    harness.seedReentryPhase("plan", "completed", 2, INVOKED_AGENT, """{"plan":"done"}""", "audit_gap", 2)
+    harness.seedPhase("plan", "completed", 1, INVOKED_AGENT, """{"plan":"done"}""")
     harness.seedPhase("implement", "completed", 1, INVOKED_AGENT, validJsonOutput("implement"))
     harness.seedPhase("review", "completed", 1, INVOKED_AGENT, validJsonOutput("review"))
     harness.seedReentryPhase("audit", "completed", 2, INVOKED_AGENT, auditGapsOutput(), "audit_gap", 2)
@@ -254,16 +260,32 @@ class FeatureTaskRuntimeAuditGapLoopTest {
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
     val launched = harness.launchedPromptPhaseOrder()
-    assertTrue(launched.any { it == "plan" })
+    assertTrue(launched.none { it == "plan" })
     assertTrue(launched.any { it == "audit" })
     assertTrue(launched.any { it == "validate" })
+  }
+
+  @Test
+  fun `legacy audit-to-plan record blocks instead of reusing overwritten planning context`() {
+    val harness = runnerHarness(launcher = auditGapLauncher(convergeOnAudit = 2))
+    harness.seedPhase("preplan", "completed", 1, INVOKED_AGENT, """{"preplan":"done"}""")
+    harness.seedReentryPhase("plan", "completed", 2, INVOKED_AGENT, """{"plan":"legacy"}""", "audit_gap", 1)
+    harness.seedPhase("implement", "completed", 1, INVOKED_AGENT, validJsonOutput("implement"))
+    harness.seedPhase("review", "completed", 1, INVOKED_AGENT, validJsonOutput("review"))
+    harness.seedReentryPhase("audit", "completed", 2, INVOKED_AGENT, auditGapsOutput(), "audit_gap", 1)
+
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+
+    assertEquals("implement", blocked.lastIncompletePhase)
+    assertContains(blocked.blockedReason, "cannot prove original planning-context identity")
+    assertTrue(harness.launchedPromptPhaseOrder().none { it == "preplan" || it == "plan" })
   }
 
   @Test
   fun `m2 formerly blocked audit resumes reconciliation and preserves the branch`() {
     val harness = runnerHarness(launcher = auditGapLauncher(convergeOnAudit = 99))
     harness.seedPhase("preplan", "completed", 1, INVOKED_AGENT, """{"preplan":"done"}""")
-    harness.seedReentryPhase("plan", "completed", 3, INVOKED_AGENT, """{"plan":"done"}""", "audit_gap", 2)
+    harness.seedPhase("plan", "completed", 1, INVOKED_AGENT, """{"plan":"done"}""")
     harness.seedPhase("implement", "completed", 3, INVOKED_AGENT, validJsonOutput("implement"))
     harness.seedPhase("review", "completed", 2, INVOKED_AGENT, validJsonOutput("review"))
     harness.seedReentryPhase("audit", "blocked", 3, INVOKED_AGENT, auditGapsOutput(), "audit_gap", 2)
@@ -381,7 +403,7 @@ class FeatureTaskRuntimeAuditGapLoopTest {
   }
 }
 
-// The unique unmet-criterion message a gaps_found audit carries, so the re-plan/re-implement briefing
+// The unique unmet-criterion message a gaps_found audit carries, so the implementation-remediation briefing
 // and a cap-exhaustion block can be asserted to contain it.
 internal const val AUDIT_GAP_MESSAGE = "AC-2 acceptance criterion is not yet implemented"
 

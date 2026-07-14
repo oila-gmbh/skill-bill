@@ -124,8 +124,8 @@ properties:
       handoff. For `audit` the values are `satisfied` (every acceptance criterion
       met) or `gaps_found` (one or more unmet); the runtime classifies the verdict
       from the failing criteria, which travel inside `produced_outputs` (an
-      `unmet_criteria` array of message entries) and scope the re-plan/re-implement
-      handoff on the `audit_gap` backward edge. Either absent (not set) or a
+      `unmet_criteria` array of message entries) and scope the context-reuse implementation
+      remediation handoff on the `audit_gap` backward edge. Either absent (not set) or a
       non-empty string; `null` is not a valid value. This field is additive and
       optional — existing phase outputs that omit it still validate — so the
       contract_version is unchanged.

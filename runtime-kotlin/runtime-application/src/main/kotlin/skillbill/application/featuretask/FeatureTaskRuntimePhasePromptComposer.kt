@@ -355,7 +355,9 @@ object FeatureTaskRuntimePhasePromptComposer {
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT to
       "Reconcile the repository to the intended state the upstream plan output describes: make the " +
       "changes it specifies, treating any already-applied change as a no-op. See the mutating-phase " +
-      "idempotency contract below.",
+      "idempotency contract below. When the briefing carries audit_gaps, reuse its immutable initial " +
+      "preplan and plan outputs and change only what the latest listed gaps require; do not regenerate " +
+      "planning, expand scope, or disturb settled implementation.",
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX to
       "Address the carried review Blocker/Major findings on the CURRENT working tree as incremental " +
       "reconciliation: fix exactly those findings using the review findings, the latest implement " +

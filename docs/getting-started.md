@@ -476,9 +476,10 @@ records, but it must match the same issue and repository.
 
 The governed `spec.md` is the feature contract, not a workflow checkpoint.
 Pre-planning, planning, and later phase outputs remain in durable workflow
-state. In particular, implementation continuation receives the completed
-`plan`; it does not receive `preplan_digest` unless the durable loop returns to
-planning recovery.
+state. Initial implementation continuation receives the completed `plan`.
+When audit finds gaps, implementation remediation receives the immutable
+original completed `preplan` and `plan` outputs plus the latest unmet criteria;
+the runtime does not relaunch or overwrite either planning phase.
 
 `workflow continue` and `workflow show` are different surfaces:
 

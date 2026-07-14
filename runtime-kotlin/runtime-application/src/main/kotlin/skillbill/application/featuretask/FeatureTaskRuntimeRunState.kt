@@ -64,8 +64,14 @@ internal class FeatureTaskRuntimeRunState(
   // The per-edge iteration counter, keyed by loop id, DISTINCT from persistedAttemptCounts. Seeded
   // from the durable per-phase records' edge context (the resume watermark) so the cap survives
   // crashes; advanced as the runtime mints each backward-edge re-entry within the live run.
-  private val edgeIterationByLoop: MutableMap<String, Int> = initialRecords.values
-    .mapNotNull { record -> record.loopId?.let { loopId -> record.edgeIteration?.let { loopId to it } } }
+  private val edgeIterationByLoop: MutableMap<String, Int> = (
+    initialRecords.values
+      .mapNotNull { record -> record.loopId?.let { loopId -> record.edgeIteration?.let { loopId to it } } } +
+      initialLedger.mapNotNull { entry ->
+        entry.takeIf { it.action == FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE }
+          ?.loopId?.let { loopId -> entry.edgeIteration?.let { loopId to it } }
+      }
+    )
     .groupBy({ it.first }, { it.second })
     .mapValues { (_, iterations) -> iterations.max() }
     .toMutableMap()
@@ -105,6 +111,28 @@ internal class FeatureTaskRuntimeRunState(
   }
 
   fun isLoopLiveClaimed(loopId: String): Boolean = loopId in liveClaimedLoops
+
+  fun inFlightReentry(loopId: String): InFlightReentry? = inFlightReentries[loopId]
+
+  fun auditGapPlanningContextError(): String? {
+    val planningPhaseIds = listOf(
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN,
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN,
+    )
+    planningPhaseIds.forEach { phaseId ->
+      val record = initialRecords[phaseId]
+      val output = outputFor(phaseId)
+      if (output == null || record?.status?.let { it != STATUS_COMPLETED } == true) {
+        return "Audit-gap remediation requires a valid completed original '$phaseId' output."
+      }
+      if (record?.loopId != null || record?.edgeIteration != null) {
+        return "Audit-gap remediation cannot prove original planning-context identity because '$phaseId' " +
+          "carries legacy backward-edge metadata. Migrate or restart this experimental durable workflow; " +
+          "the runtime will not regenerate or silently reuse overwritten planning context."
+      }
+    }
+    return null
+  }
 
   // A backward edge re-enters the phase: drop its completed marker so the driver relaunches it.
   // Its prior validated output stays in `outputs` so latest-iteration resolution still works.
@@ -165,10 +193,6 @@ internal class FeatureTaskRuntimeRunState(
         }
         .maxByOrNull { it.sequenceNumber }
         ?: return@forEach
-      val destination = initialRecords[edge.destinationPhaseId]
-      if (destination?.loopId != edge.loopId || destination.edgeIteration != latestEdge.edgeIteration) {
-        return@forEach
-      }
       val completedAfterEdge = initialLedger
         .asSequence()
         .filter { it.sequenceNumber > latestEdge.sequenceNumber }
@@ -177,7 +201,16 @@ internal class FeatureTaskRuntimeRunState(
         .toSet()
       val span = reopenedSpan(edge)
       if (span.any { phaseId -> phaseId !in completedAfterEdge }) {
-        put(edge.loopId, InFlightReentry(span, completedAfterEdge))
+        put(
+          edge.loopId,
+          InFlightReentry(
+            destinationPhaseId = edge.destinationPhaseId,
+            edgeIteration = requireNotNull(latestEdge.edgeIteration),
+            drivingVerdict = edge.triggeringVerdict,
+            span = span,
+            completedAfterEdge = completedAfterEdge,
+          ),
+        )
       }
     }
   }
@@ -257,7 +290,10 @@ internal class FeatureTaskRuntimeRunState(
     FeatureTaskRuntimePhaseWorkflowDefinition.definition.stepIds.filter { it in completed }
 }
 
-private data class InFlightReentry(
+internal data class InFlightReentry(
+  val destinationPhaseId: String,
+  val edgeIteration: Int,
+  val drivingVerdict: FeatureTaskRuntimeVerdict,
   val span: List<String>,
   val completedAfterEdge: Set<String>,
 )

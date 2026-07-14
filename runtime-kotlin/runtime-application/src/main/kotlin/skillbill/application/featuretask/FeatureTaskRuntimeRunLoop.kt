@@ -78,7 +78,20 @@ internal class FeatureTaskRuntimeRunLoop(
   private var blocked: FeatureTaskRuntimeRunReport.Blocked? = null
   private var decomposed: FeatureTaskRuntimeRunReport.Decomposed? = null
 
-  private var pendingReentry: PendingReentry? = null
+  private var pendingReentry: PendingReentry? = resumedAuditGapReentry()
+
+  private fun resumedAuditGapReentry(): PendingReentry? {
+    val loopId = FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID
+    val reentry = state.inFlightReentry(loopId) ?: return null
+    state.recordEdgeIteration(loopId, reentry.edgeIteration)
+    return PendingReentry(
+      phaseId = reentry.destinationPhaseId,
+      loopId = loopId,
+      edgeIteration = reentry.edgeIteration,
+      drivingVerdict = reentry.drivingVerdict,
+      reentryGapCriteria = state.unmetAuditCriteria(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT),
+    )
+  }
 
   fun drive() {
     var phaseId: String? = transitions.forwardPhaseIds.first()
@@ -663,9 +676,23 @@ internal class FeatureTaskRuntimeRunLoop(
       assignment = request.agentAssignment,
       invokedAgentId = request.invokedAgentId,
     )
+    val declaration = phaseDeclaration(phaseId, request.runInvariants.featureSize).let { declaration ->
+      if (phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT &&
+        reentry?.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID
+      ) {
+        declaration.copy(
+          consumedUpstreamPhaseIds = listOf(
+            FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN,
+            FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN,
+          ),
+        )
+      } else {
+        declaration
+      }
+    }
     val run = PhaseRun(
       phaseId = phaseId,
-      declaration = phaseDeclaration(phaseId, request.runInvariants.featureSize),
+      declaration = declaration,
       resolvedAgent = resolvedAgent,
       modelDirective = FeatureTaskRuntimeModelResolver.resolve(
         phaseId,
@@ -826,7 +853,15 @@ internal class FeatureTaskRuntimeRunLoop(
       }
       PreLaunchBlock(nextIteration, reason, durable)
     }
-    val missing = persisted ?: missingUpstream(run.declaration, state.outputs())?.let { missingIds ->
+    val invalidPlanningContext = if (
+      run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT &&
+      run.reentry?.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID
+    ) {
+      state.auditGapPlanningContextError()?.let { reason -> PreLaunchBlock(1, reason) }
+    } else {
+      null
+    }
+    val missing = persisted ?: invalidPlanningContext ?: missingUpstream(run.declaration, state.outputs())?.let { missingIds ->
       PreLaunchBlock(
         1,
         "Phase '${run.phaseId}' requires upstream output(s) ${missingIds.joinToString()} that are not " +
