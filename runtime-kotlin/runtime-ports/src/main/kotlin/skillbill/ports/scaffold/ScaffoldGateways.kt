@@ -1,5 +1,6 @@
 package skillbill.ports.scaffold
 
+import skillbill.agentaddon.model.AgentAddonCatalogueEntry
 import skillbill.ports.scaffold.catalog.model.ScaffoldExplainResult
 import skillbill.ports.scaffold.catalog.model.ScaffoldListResult
 import skillbill.ports.scaffold.catalog.model.ScaffoldShowResult
@@ -70,6 +71,8 @@ interface ScaffoldCatalogGateway {
 }
 
 interface RepoSourceDiscoveryGateway {
+  fun discoverAgentAddons(repoRoot: Path): List<AgentAddonCatalogueEntry>
+
   fun discoverGovernedAddonFiles(repoRoot: Path): List<GovernedAddonFile>
 
   fun discoverGeneratedArtifactFiles(repoRoot: Path): List<GeneratedArtifactFile>

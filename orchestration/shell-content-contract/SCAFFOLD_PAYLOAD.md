@@ -36,6 +36,8 @@ Every payload MUST include:
     and a freshly rendered `platform.yaml`.
   - `"add-on"` — placed at `platform-packs/<platform>/addons/<name>.md` (flat; no
     sub-directory) unless `addon_location_path` is provided.
+  - `"agent-addon"` — creates `agent-addons/<slug>/agent-addon.yaml` and
+    `agent-addons/<slug>/content.md` as one atomic scaffold transaction.
 - `name` — the canonical `bill-...` slug for a new horizontal skill. For
   `platform-pack`, the scaffolder derives canonical names when this key is
   omitted; if provided, the value must still match the canonical shape.
@@ -62,6 +64,10 @@ removable.
   missing positive-dominance, adjacent-pack disambiguation, or
   generated/vendored exclusion rule so the emitted manifest conforms to the
   review structure standard.
+- `slug`, `description`, `agent_ids`, and `consumers` — required for
+  `agent-addon`. Slugs use lowercase kebab-case, agents must come from the
+  install-agent registry, and consumers must come from the agent-addon consumer
+  registry. The current consumer is `bill-feature`.
 
 ## Optional Keys
 

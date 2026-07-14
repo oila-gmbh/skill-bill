@@ -31,6 +31,16 @@ class MissingAgentAddonDeclarationError(
   "Required agent add-on '$slug' was not found under '$expectedRoot'.",
 )
 
+class InvalidAgentAddonDeliveryTargetError(
+  val slug: String,
+  val target: String,
+  val reason: String,
+) : ShellContentContractException("Agent add-on '$slug' has invalid delivery target '$target': $reason")
+
+class AgentAddonPointerCollisionError(
+  val pointerName: String,
+) : ShellContentContractException("Agent add-on pointer '$pointerName' collides in the portable staging namespace.")
+
 class InvalidReviewContextSchemaError(
   val sourceLabel: String,
   val reason: String,

@@ -20,6 +20,7 @@ const val SKILL_KIND_PLATFORM_OVERRIDE_PILOTED: String = "platform-override-pilo
 const val SKILL_KIND_PLATFORM_PACK: String = "platform-pack"
 const val SKILL_KIND_CODE_REVIEW_AREA: String = "code-review-area"
 const val SKILL_KIND_ADD_ON: String = "add-on"
+const val SKILL_KIND_AGENT_ADDON: String = "agent-addon"
 
 /**
  * Closed set of legacy scaffold kinds still understood by compatibility internals and typed
@@ -32,11 +33,12 @@ val SUPPORTED_SKILL_KINDS: Set<String> =
     SKILL_KIND_PLATFORM_PACK,
     SKILL_KIND_CODE_REVIEW_AREA,
     SKILL_KIND_ADD_ON,
+    SKILL_KIND_AGENT_ADDON,
   )
 
 /** Kinds that can be created through current scaffold entry points. */
 val ACTIVE_CREATION_SKILL_KINDS: Set<String> =
-  setOf(SKILL_KIND_HORIZONTAL, SKILL_KIND_PLATFORM_PACK, SKILL_KIND_ADD_ON)
+  setOf(SKILL_KIND_HORIZONTAL, SKILL_KIND_PLATFORM_PACK, SKILL_KIND_ADD_ON, SKILL_KIND_AGENT_ADDON)
 
 /** Retired partial scaffold creation kinds. Legacy source handling remains supported. */
 val RETIRED_PARTIAL_SCAFFOLD_KINDS: Set<String> =

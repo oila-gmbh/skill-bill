@@ -530,6 +530,20 @@ private fun WizardForm(state: ScaffoldWizardState, callbacks: ScaffoldWizardCall
         )
       }
     }
+    ScaffoldKind.AGENT_ADDON -> {
+      TextFieldRow(
+        label = stringResource(Res.string.scaffold_add_on_name),
+        value = fields.name,
+        enabled = !state.busy,
+        onValueChanged = { value -> callbacks.onFormChanged { it.copy(name = value) } },
+      )
+      TextFieldRow(
+        label = stringResource(Res.string.scaffold_description),
+        value = fields.description,
+        enabled = !state.busy,
+        onValueChanged = { value -> callbacks.onFormChanged { it.copy(description = value) } },
+      )
+    }
   }
 }
 

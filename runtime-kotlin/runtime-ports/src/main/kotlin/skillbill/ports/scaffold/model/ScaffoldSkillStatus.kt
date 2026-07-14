@@ -31,6 +31,12 @@ data class ScaffoldSkillStatus(
   val contentPreview: String? = null,
   val content: String? = null,
   val issues: List<String>? = null,
+  val category: String = "skill",
+  val slug: String? = null,
+  val description: String? = null,
+  val supportedAgents: List<String> = emptyList(),
+  val consumers: List<String> = emptyList(),
+  val manifestFile: String? = null,
 )
 
 /**

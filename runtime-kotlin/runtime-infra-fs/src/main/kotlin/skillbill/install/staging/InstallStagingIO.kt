@@ -2,6 +2,7 @@
 
 package skillbill.install.staging
 
+import skillbill.agentaddon.AgentAddonPointer
 import skillbill.install.model.RenderedSkill
 import skillbill.scaffold.authoring.AuthoringTarget
 import skillbill.scaffold.authoring.normalizeMarkdownLineEndings
@@ -61,6 +62,7 @@ internal fun reuseInstallStaging(
   applicablePointers: List<Pair<PlatformManifest, PointerSpec>>,
   generatedSupportPointers: List<GeneratedSupportPointer> = emptyList(),
   internalSidecarNames: Set<String> = emptySet(),
+  agentAddonPointerNames: List<String> = emptyList(),
 ): RenderedSkill {
   val skillFile = finalStagingDir.resolve(INSTALL_STAGING_SKILL_FILENAME)
   val skillFileNormalized = skillFile.toAbsolutePath().normalize()
@@ -79,6 +81,7 @@ internal fun reuseInstallStaging(
   val pointerRelativePaths = (
     applicablePointers.map { (_, spec) -> spec.name } +
       generatedSupportPointers.map { pointer -> pointer.name }
+      + agentAddonPointerNames
     ).map { name -> Path.of(name) }.toSet()
   val sidecarRelativePaths = internalSidecarNames.map { name -> Path.of(name) }.toSet()
   val authoredCopied = staged.filter { path ->
@@ -102,6 +105,16 @@ internal fun reuseInstallStaging(
     renderedSidecarFiles = sidecarFiles,
   )
 }
+
+internal fun writeAgentAddonPointerFiles(tempDir: Path, pointers: List<AgentAddonPointer>): List<Path> =
+  pointers.sortedBy { it.slug }.map { pointer ->
+    val destination = tempDir.resolve(pointer.name).normalize()
+    require(destination.parent == tempDir.toAbsolutePath().normalize()) {
+      "Agent add-on pointer '${pointer.name}' escapes staging dir '$tempDir'."
+    }
+    Files.write(destination, pointer.renderedBytes)
+    destination
+  }
 
 internal fun copyAuthoredIntoStaging(sourceSkillDir: Path, tempDir: Path, authored: List<Path>): List<Path> {
   val copied = mutableListOf<Path>()

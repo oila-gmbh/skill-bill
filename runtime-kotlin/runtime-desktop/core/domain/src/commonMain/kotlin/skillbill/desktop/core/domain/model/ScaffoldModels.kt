@@ -14,6 +14,7 @@ enum class ScaffoldKind(
   PLATFORM_OVERRIDE_PILOTED("platform-override-piloted", "Platform override for piloted family", false),
   CODE_REVIEW_AREA("code-review-area", "Code-review area", false),
   ADD_ON("add-on", "Add-on", true),
+  AGENT_ADDON("agent-addon", "Agent add-on", true),
   ;
 
   companion object {
@@ -168,6 +169,25 @@ sealed class ScaffoldPayload {
       if (description.isNotBlank()) target["description"] = description
       body?.let { target["body"] = it }
       addonLocationPath?.let { target["addon_location_path"] = it }
+    }
+  }
+
+  data class AgentAddon(
+    val slug: String,
+    val description: String,
+    val agentIds: List<String>,
+    val consumers: List<String>,
+    val contentBody: String? = null,
+    override val repoRoot: String? = null,
+  ) : ScaffoldPayload() {
+    override val kind: ScaffoldKind = ScaffoldKind.AGENT_ADDON
+
+    override fun fillContractFields(target: MutableMap<String, Any?>) {
+      target["slug"] = slug
+      target["description"] = description
+      target["agent_ids"] = agentIds
+      target["consumers"] = consumers
+      contentBody?.let { target["content_body"] = it }
     }
   }
 }

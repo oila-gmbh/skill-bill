@@ -2,6 +2,10 @@
 
 package skillbill.install.staging
 
+import skillbill.agentaddon.AgentAddonDeliveryResolver
+import skillbill.agentaddon.AgentAddonPointer
+import skillbill.agentaddon.model.AgentAddonConsumer
+import skillbill.error.AgentAddonPointerCollisionError
 import skillbill.install.model.InstallPlanSkill
 import skillbill.install.model.RenderedSkill
 import skillbill.install.support.writeRenderedSupportPointerFiles
@@ -36,6 +40,7 @@ private data class FreshInstallInputs(
   val contentHash: String,
   val finalStagingDir: Path,
   val internalChildren: List<InternalSidecarTarget>,
+  val agentAddonPointers: List<AgentAddonPointer>,
 )
 
 internal data class StagedSymlinkTargetInput(
@@ -149,6 +154,7 @@ internal fun computeInstallContentHash(
   applicablePointers: List<Pair<PlatformManifest, PointerSpec>>,
   generatedSupportPointers: List<GeneratedSupportPointer> = emptyList(),
   internalChildren: List<InternalSidecarTarget> = emptyList(),
+  agentAddonPointers: List<AgentAddonPointer> = emptyList(),
 ): String {
   val digest = MessageDigest.getInstance("SHA-256")
   val newline = byteArrayOf('\n'.code.toByte())
@@ -211,6 +217,22 @@ internal fun computeInstallContentHash(
         }
       }
   }
+  if (agentAddonPointers.isNotEmpty()) {
+    digest.update("--agent-addons--".toByteArray(StandardCharsets.UTF_8))
+    digest.update(newline)
+    agentAddonPointers.sortedBy { it.slug }.forEach { pointer ->
+      val declaration = "${pointer.consumer.id}|${pointer.slug}|${pointer.name}|" +
+        "${pointer.manifestRelativePath}|${pointer.contentRelativePath}"
+      digest.update(declaration.toByteArray(StandardCharsets.UTF_8))
+      digest.update(newline)
+      digest.update(pointer.manifestBytes)
+      digest.update(newline)
+      digest.update(pointer.contentBytes)
+      digest.update(newline)
+      digest.update(pointer.renderedBytes)
+      digest.update(newline)
+    }
+  }
   val hashBytes = digest.digest()
   return hashBytes.take(INSTALL_CACHE_KEY_BYTES).joinToString("") { byte -> "%02x".format(byte) }
 }
@@ -228,6 +250,11 @@ internal fun stageInstalledSkill(
   val resolvedSource = sourceSkillDir.toAbsolutePath().normalize()
   val resolvedRepoRoot = repoRoot.toAbsolutePath().normalize()
   val skillName = resolvedSource.fileName.toString()
+  val agentAddonPointers = if (skillName == AgentAddonConsumer.BILL_FEATURE.id) {
+    AgentAddonDeliveryResolver().resolve(resolvedRepoRoot, AgentAddonConsumer.BILL_FEATURE)
+  } else {
+    emptyList()
+  }
   val target: AuthoringTarget = resolveTarget(resolvedRepoRoot, skillName)
   val selectedManifests = manifests.orEmpty().filter { manifest -> manifest.slug in selectedPlatformSlugs }
   val pointers = applicablePointers(resolvedRepoRoot, resolvedSource, manifests)
@@ -262,18 +289,25 @@ internal fun stageInstalledSkill(
     generatedSupportPointers = internal.supportPointers,
     excludedSidecarNames = internal.sidecarNames,
   )
+  validateAgentAddonPointerNamespace(
+    skillName,
+    authored.map { it.fileName.toString() }.toSet() + internal.sidecarNames +
+      pointers.map { it.second.name } + internal.supportPointers.map { it.name } + setOf("SKILL.md", ".content-hash"),
+    agentAddonPointers,
+  )
   val contentHash = computeInstallContentHash(
     sourceSkillDir = resolvedSource,
     authored = authored,
     applicablePointers = pointers,
     generatedSupportPointers = internal.supportPointers,
     internalChildren = internal.children,
+    agentAddonPointers = agentAddonPointers,
   )
   val finalStagingDir = installedSkillStagingDir(home, resolvedSource, contentHash)
 
   // Idempotent reuse: same hash, marker intact, SKILL.md and every expected sidecar present.
   val expectedStagedNames = internal.sidecarNames + pointers.map { (_, pointer) -> pointer.name } +
-    internal.supportPointers.map { pointer -> pointer.name }
+    internal.supportPointers.map { pointer -> pointer.name } + agentAddonPointers.map { it.name }
   if (isReusableInstallStaging(finalStagingDir, contentHash, expectedStagedNames)) {
     log.fine(
       "stageInstalledSkill reuse=true skill=$skillName hash=$contentHash dir=$finalStagingDir",
@@ -285,6 +319,7 @@ internal fun stageInstalledSkill(
       applicablePointers = pointers,
       generatedSupportPointers = internal.supportPointers,
       internalSidecarNames = internal.sidecarNames,
+      agentAddonPointerNames = agentAddonPointers.map { it.name },
     )
   }
   log.fine(
@@ -303,6 +338,7 @@ internal fun stageInstalledSkill(
       contentHash = contentHash,
       finalStagingDir = finalStagingDir,
       internalChildren = internal.children,
+      agentAddonPointers = agentAddonPointers,
     ),
   )
 }
@@ -323,6 +359,7 @@ private fun buildFreshInstallStaging(inputs: FreshInstallInputs): RenderedSkill 
       tempDir = tempDir,
       pointers = inputs.supportPointers,
     )
+    val agentAddonFilesInTemp = writeAgentAddonPointerFiles(tempDir, inputs.agentAddonPointers)
     val sidecarFilesInTemp = writeInternalSidecarFiles(
       tempDir = tempDir,
       parentSourceDir = inputs.sourceSkillDir,
@@ -339,7 +376,7 @@ private fun buildFreshInstallStaging(inputs: FreshInstallInputs): RenderedSkill 
     promoteInstallStagingDir(tempDir, inputs.finalStagingDir)
     promoted = true
     val finalSkillFile = inputs.finalStagingDir.resolve(tempDir.relativize(skillFileInTemp))
-    val finalPointerFiles = (pointerFilesInTemp + supportPointerFilesInTemp)
+    val finalPointerFiles = (pointerFilesInTemp + supportPointerFilesInTemp + agentAddonFilesInTemp)
       .map { p -> inputs.finalStagingDir.resolve(tempDir.relativize(p)) }
     val finalCopied = copiedInTemp.map { p -> inputs.finalStagingDir.resolve(tempDir.relativize(p)) }
     val finalSidecars = sidecarFilesInTemp.map { p -> inputs.finalStagingDir.resolve(tempDir.relativize(p)) }
@@ -369,6 +406,19 @@ private fun buildFreshInstallStaging(inputs: FreshInstallInputs): RenderedSkill 
     )
     cleanupInstallStagingOnFailure(tempDir, inputs.finalStagingDir, promoted)
     throw error
+  }
+}
+
+private fun validateAgentAddonPointerNamespace(
+  skillName: String,
+  reservedNames: Set<String>,
+  pointers: List<AgentAddonPointer>,
+) {
+  val claimed = reservedNames.map(::portableFileName).toMutableSet()
+  pointers.forEach { pointer ->
+    if (!claimed.add(portableFileName(pointer.name))) {
+      throw AgentAddonPointerCollisionError("$skillName/${pointer.name}")
+    }
   }
 }
 

@@ -26,3 +26,13 @@ data class AgentAddonDeclaration(
   val contentPath: Path,
   val canonicalSourceIdentity: Path,
 )
+
+data class AgentAddonCatalogueEntry(
+  val identity: String,
+  val slug: String,
+  val description: String,
+  val agentIds: List<String>,
+  val consumers: List<String>,
+  val manifestPath: Path,
+  val contentPath: Path,
+)

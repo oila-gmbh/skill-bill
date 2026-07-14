@@ -29,6 +29,7 @@ internal class SkillTreeBuilder(
     val authoredSkills = loadAuthoredSkills(root, repoToken, selections, baselineModifiedResolver)
     val configuration = listOf(loadConfiguration(root, repoToken, selections, skillBillConfigPathResolver))
     val addons = loadAddons(root, repoToken, selections, externalAddonSourcesResolver)
+    val agentAddons = loadAgentAddons(root, repoToken, selections)
     val nativeAgents = loadNativeAgents(root, repoToken, selections)
     val generatedArtifacts = loadGeneratedArtifacts(root, repoToken, selections)
 
@@ -37,11 +38,47 @@ internal class SkillTreeBuilder(
       group(selectionId(repoToken, "platform-pack-skills"), "Platform Packs", authoredSkills.platform),
       group(selectionId(repoToken, "configuration"), "Configuration", configuration),
       group(selectionId(repoToken, "addons"), "Add-ons", addons),
+      group(selectionId(repoToken, "agent-addons"), "Agent Add-ons", agentAddons),
       group(selectionId(repoToken, "native-agents"), "Native Agents", nativeAgents),
       group(selectionId(repoToken, "generated-artifacts"), "Generated Artifacts", generatedArtifacts),
     )
     return TreeBuildResult(items = groups, selections = selections)
   }
+
+  private fun loadAgentAddons(
+    root: Path,
+    repoToken: String,
+    selections: MutableMap<String, SelectionDetail>,
+  ): List<SkillBillTreeItem> = repoSourceDiscoveryService.discoverAgentAddons(root).map { addon ->
+    val id = selectionId(repoToken, addon.identity)
+    val authoredPath = relativePath(root, addon.contentPath)
+    val metadata = SkillBillTreeItemMetadata(
+      kind = "agent-addon",
+      description = addon.description,
+      supportedAgents = addon.agentIds,
+      consumers = addon.consumers,
+    )
+    selections[id] = SelectionDetail(
+      repoToken = repoToken,
+      title = addon.slug,
+      detail = addon.description,
+      kind = "agent-addon",
+      authoredPath = authoredPath,
+      status = "authored",
+      contentFile = addon.contentPath,
+      editable = true,
+      metadata = metadata,
+    )
+    SkillBillTreeItem(
+      id = id,
+      label = addon.slug,
+      kind = TreeItemKind.AGENT_ADDON,
+      authoredPath = authoredPath,
+      status = "authored",
+      editable = true,
+      metadata = metadata,
+    )
+  }.sortedBy { item -> item.label }
 
   private fun loadConfiguration(
     root: Path,

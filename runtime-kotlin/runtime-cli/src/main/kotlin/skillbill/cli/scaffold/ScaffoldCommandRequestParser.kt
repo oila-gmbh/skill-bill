@@ -9,6 +9,7 @@ import skillbill.error.UnknownSkillKindError
 import skillbill.scaffold.model.command.ACTIVE_SCAFFOLD_COMMAND_KINDS
 import skillbill.scaffold.model.command.RoutingSignalsInput
 import skillbill.scaffold.model.command.SCAFFOLD_COMMAND_KIND_ADD_ON
+import skillbill.scaffold.model.command.SCAFFOLD_COMMAND_KIND_AGENT_ADDON
 import skillbill.scaffold.model.command.SCAFFOLD_COMMAND_KIND_HORIZONTAL
 import skillbill.scaffold.model.command.SCAFFOLD_COMMAND_KIND_PLATFORM_PACK
 import skillbill.scaffold.model.command.SCAFFOLD_COMMAND_PAYLOAD_VERSION
@@ -36,6 +37,7 @@ fun parseScaffoldCommandRequest(payload: Map<String, Any?>): ScaffoldCommandRequ
     SCAFFOLD_COMMAND_KIND_HORIZONTAL -> parseHorizontal(payload, version, repoRoot)
     SCAFFOLD_COMMAND_KIND_PLATFORM_PACK -> parsePlatformPack(payload, version, repoRoot)
     SCAFFOLD_COMMAND_KIND_ADD_ON -> parseAddOn(payload, version, repoRoot)
+    SCAFFOLD_COMMAND_KIND_AGENT_ADDON -> parseAgentAddon(payload, version, repoRoot)
     else -> throw UnknownSkillKindError("Scaffold payload declares unsupported kind '$kind'.")
   }
 }
@@ -140,3 +142,17 @@ private fun parseAddOn(payload: Map<String, Any?>, version: String, repoRoot: St
     scaffoldPayloadVersion = version,
     repoRoot = repoRoot,
   )
+
+private fun parseAgentAddon(
+  payload: Map<String, Any?>,
+  version: String,
+  repoRoot: String?,
+): ScaffoldCommandRequest.AgentAddon = ScaffoldCommandRequest.AgentAddon(
+  slug = requireString(payload, "slug"),
+  description = requireString(payload, "description"),
+  agentIds = parseStringList(payload, "agent_ids"),
+  consumers = parseStringList(payload, "consumers"),
+  contentBody = optionalString(payload, "content_body"),
+  scaffoldPayloadVersion = version,
+  repoRoot = repoRoot,
+)
