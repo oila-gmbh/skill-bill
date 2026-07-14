@@ -313,13 +313,9 @@ class FeatureTaskRuntimeAuditGapLoopTest {
     assertEquals(0, clean.lifecycle.finishedRecords.single().auditGapIterationCount)
   }
 
-  // (l) AC5/SKILL-85-F-001: the review_fix per-iteration reset is DURABLE across a crash. The pre-gap
-  // pass consumes the single review-fix allowance, the audit_gap edge then fires, and the
-  // run crashes after the reset but before the reopened span re-runs. On resume the cleared watermark
-  // must NOT be re-imported from the durable per-phase records: the resumed audit-gap iteration gets a
-  // preserved two-pass budget, so resume cannot launch a third review.
+  // (l) AC17: audit-gap re-entry does not replenish the globally bounded review-fix budget.
   @Test
-  fun `m2 audit-gap reset of review_fix survives a crash and grants a fresh per-iteration budget`() {
+  fun `m2 audit-gap reentry preserves exhausted review_fix budget across a crash`() {
     var auditLaunches = 0
     var implementLaunches = 0
     var reviewFixesThisSegment = 0
@@ -363,12 +359,6 @@ class FeatureTaskRuntimeAuditGapLoopTest {
       .filter { it.action == FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE && it.loopId == "review_fix" }
       .mapNotNull { it.edgeIteration }
     assertEquals(listOf(1), preGapReviewFix, "review-fix consumed the single remaining review pass")
-    // The reset durably cleared the nested loop's per-phase watermark: review/implement_fix no longer
-    // carry stale review_fix context that resume reconstruction would otherwise re-import.
-    val records = harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()
-    assertEquals(null, requireNotNull(records["review"]).loopId, "the reset cleared review's stale review_fix context")
-    assertEquals(null, requireNotNull(records["implement_fix"]).loopId)
-
     // Run 2 (resume): the crash heals and the durable budget prevents any third review launch.
     crashOnReImplement = false
     val resumeReport = harness.runner.run(harness.request())

@@ -312,9 +312,6 @@ internal class FeatureTaskRuntimeRunLoop(
     }
   }
 
-  private fun nestedLoopSpan(edge: FeatureTaskRuntimeBackwardEdge): List<String> =
-    spanBetween(edge.destinationPhaseId, edge.fromPhaseId)
-
   private fun establishRemediationCheckpoint(precedingPhaseId: String): Boolean {
     val branch = resolvedBranch ?: return true
     if (FeatureTaskRuntimeBranchSetup.protectedBranchName(branch) != null) {
@@ -380,12 +377,6 @@ internal class FeatureTaskRuntimeRunLoop(
   ) {
     val reopenedSpan = spanBetween(destinationPhaseId, edge.fromPhaseId)
     reopenedSpan.forEach(state::reopenForReentry)
-    transitions.backwardEdges
-      .filter { it.loopId != loopId && it.fromPhaseId in reopenedSpan }
-      .forEach { nested ->
-        state.resetEdgeIteration(nested.loopId)
-        recorder.clearBackwardEdgeContext(request.workflowId, nestedLoopSpan(nested), request.dbPathOverride)
-      }
     state.recordEdgeIteration(loopId, edgeIteration)
     val reentryGapCriteria = if (loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID) {
       state.unmetAuditCriteria(edge.fromPhaseId)

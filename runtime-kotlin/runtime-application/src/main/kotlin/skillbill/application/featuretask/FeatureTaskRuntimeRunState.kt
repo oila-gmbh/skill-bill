@@ -104,16 +104,6 @@ internal class FeatureTaskRuntimeRunState(
     liveClaimedLoops += loopId
   }
 
-  // Clears a nested loop's live per-edge counter so its next fire restarts at iteration 1. Used when a
-  // wider backward edge reopens a span containing the nested loop's source: that re-run is a FRESH
-  // verification cycle, so the nested cap (e.g. review_fix) counts within the new outer iteration, not
-  // across the whole run (AC5 — the review_fix counter resets per audit-gap iteration; the audit_gap
-  // counter is independent and never reset).
-  fun resetEdgeIteration(loopId: String) {
-    edgeIterationByLoop.remove(loopId)
-    liveClaimedLoops.remove(loopId)
-  }
-
   fun isLoopLiveClaimed(loopId: String): Boolean = loopId in liveClaimedLoops
 
   // A backward edge re-enters the phase: drop its completed marker so the driver relaunches it.

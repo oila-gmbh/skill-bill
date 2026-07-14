@@ -5,6 +5,7 @@ import skillbill.db.core.DatabaseRuntime
 import skillbill.db.core.DbConstants
 import skillbill.db.workflow.WorkflowStateRow
 import skillbill.db.workflow.WorkflowStateStore
+import skillbill.error.InvalidFeatureTaskRuntimeWorkerOwnershipSchemaError
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerLeaseState
@@ -70,6 +71,52 @@ class WorkflowStateStoreTest {
 
       assertTrue(store.reserveFeatureTaskRuntimeWorkerTakeover(row.workflowId, ownership.ownerToken, 4))
       assertEquals(false, store.reserveFeatureTaskRuntimeWorkerTakeover(row.workflowId, ownership.ownerToken, 4))
+    }
+  }
+
+  @Test
+  fun `runtime worker ownership rejects malformed and inverted lease timestamps at read seam`() {
+    val dbPath = Files.createTempDirectory("runtime-worker-invalid-lease").resolve("metrics.db")
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val store = WorkflowStateStore(connection)
+      val row = workflowRow(
+        workflowId = "wfl-invalid-lease",
+        sessionId = "ftr-invalid-lease",
+        workflowName = "bill-feature-task-runtime",
+        currentStepId = "implement",
+        mode = FeatureTaskWorkflowMode.RUNTIME,
+      ).copy(workflowStatus = "paused")
+      store.saveFeatureTaskRuntimeWorkflow(row)
+      val updatedAt = assertNotNull(store.getFeatureTaskRuntimeWorkflow(row.workflowId)).updatedAt
+      assertTrue(
+        store.acquireFeatureTaskRuntimeWorker(
+          workerOwnership(row.workflowId, generation = 1, ownerToken = "owner-token-0001"),
+          updatedAt,
+        ),
+      )
+
+      connection.prepareStatement(
+        "UPDATE feature_task_runtime_worker_leases SET heartbeat_at = ? WHERE workflow_id = ?",
+      ).use {
+        it.setString(1, "not-an-instant")
+        it.setString(2, row.workflowId)
+        it.executeUpdate()
+      }
+      assertFailsWith<InvalidFeatureTaskRuntimeWorkerOwnershipSchemaError> {
+        store.getFeatureTaskRuntimeWorkerOwnership(row.workflowId)
+      }
+
+      connection.prepareStatement(
+        "UPDATE feature_task_runtime_worker_leases SET heartbeat_at = ?, expires_at = ? WHERE workflow_id = ?",
+      ).use {
+        it.setString(1, "2026-07-14T10:05:00Z")
+        it.setString(2, "2026-07-14T10:05:00Z")
+        it.setString(3, row.workflowId)
+        it.executeUpdate()
+      }
+      assertFailsWith<InvalidFeatureTaskRuntimeWorkerOwnershipSchemaError> {
+        store.getFeatureTaskRuntimeWorkerOwnership(row.workflowId)
+      }
     }
   }
   @Test

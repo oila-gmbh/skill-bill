@@ -22,6 +22,8 @@ import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import skillbill.ports.persistence.model.FeatureVerifySessionSummary
 import skillbill.ports.persistence.model.WorkflowStateRecord
 import java.sql.Connection
+import java.time.Instant
+import java.time.format.DateTimeParseException
 
 typealias WorkflowStateRow = WorkflowStateRecord
 
@@ -323,6 +325,8 @@ private fun Connection.featureTaskRuntimeWorkerOwnership(workflowId: String): Fe
   }
 
 private fun validateWorkerOwnership(ownership: FeatureTaskRuntimeWorkerOwnership) {
+  val heartbeatAt = parseOwnershipInstant(ownership, "heartbeat_at", ownership.heartbeatAt)
+  val expiresAt = parseOwnershipInstant(ownership, "expires_at", ownership.expiresAt)
   val failure = when {
     ownership.contractVersion != skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_WORKER_OWNERSHIP_CONTRACT_VERSION ->
       "unsupported contract_version '${ownership.contractVersion}'"
@@ -331,9 +335,23 @@ private fun validateWorkerOwnership(ownership: FeatureTaskRuntimeWorkerOwnership
     ownership.hostIdentity.isBlank() || ownership.bootIdentity.isBlank() -> "host and boot identity are required"
     ownership.pid < 1 || ownership.processBirthToken.isBlank() -> "exact process identity is required"
     ownership.phaseId.isBlank() || ownership.phaseAttempt < 1 -> "phase coordinates are invalid"
+    !expiresAt.isAfter(heartbeatAt) -> "expires_at must be later than heartbeat_at"
     else -> null
   }
   failure?.let { throw InvalidFeatureTaskRuntimeWorkerOwnershipSchemaError(ownership.workflowId, it) }
+}
+
+private fun parseOwnershipInstant(
+  ownership: FeatureTaskRuntimeWorkerOwnership,
+  field: String,
+  value: String,
+): Instant = try {
+  Instant.parse(value)
+} catch (_: DateTimeParseException) {
+  throw InvalidFeatureTaskRuntimeWorkerOwnershipSchemaError(
+    ownership.workflowId,
+    "$field must be an RFC 3339 instant",
+  )
 }
 
 private fun Connection.featureTaskIdentity(workflowId: String): FeatureTaskExecutionIdentity? = prepareStatement(
