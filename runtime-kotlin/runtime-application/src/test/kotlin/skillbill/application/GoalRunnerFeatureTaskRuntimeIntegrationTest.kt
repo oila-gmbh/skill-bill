@@ -64,6 +64,55 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
     assertEquals(CodeReviewExecutionMode.DELEGATED, runtime.runInvariantsStore.resolve(workflowId)?.codeReviewMode)
     assertTrue(outcomes.acknowledgedReviewPasses.all { (_, passNumber) -> passNumber <= 2 })
   }
+
+  @Test
+  fun `goal child audit gap reuses initial planning context and resumes at implement`() {
+    val workflowId = WORKFLOW_ID
+    val outcomes = RecordingOutcomeStore().apply { seedReviewState(workflowId) }
+    val phaseLauncher = auditGapLauncher(convergeOnAudit = 2)
+    val runtime = runnerHarness(
+      launcher = phaseLauncher,
+      runtimeConfig = RuntimeHarnessConfig(
+        branchSetup = BranchSetupTestConfig(
+          gitOperations = RecordingWorkflowGitOperations(currentBranchValue = "feat/SKILL-126-goal"),
+        ),
+      ),
+    )
+    val goalRunner = GoalRunner(
+      manifestStore = InMemoryGoalManifestStore(manifest(subtaskCount = 1).withWorkflowId(1, workflowId)),
+      subtaskLauncher = RuntimeChildLauncher(runtime.runner, runtime.request(), outcomes),
+      outcomeStore = outcomes,
+      pullRequestPort = RecordingPullRequestPort(),
+    )
+
+    val report = goalRunner.run(
+      GoalRunnerRunRequest(
+        issueKey = "SKILL-56",
+        repoRoot = runtime.request().repoRoot,
+        invokedAgentId = INVOKED_AGENT,
+      ),
+    )
+
+    assertIs<GoalRunnerRunReport.Completed>(report)
+    val launched = phaseLauncher.requests.map {
+      phaseIdFromPrompt(requireNotNull(it.skillRunRequest.promptOverride))
+    }
+    assertEquals(1, launched.count { it == "preplan" })
+    assertEquals(1, launched.count { it == "plan" })
+    assertEquals(2, launched.count { it == "implement" })
+    val remediationPrompt = phaseLauncher.requests
+      .map { requireNotNull(it.skillRunRequest.promptOverride) }
+      .filter { it.contains("Phase: implement") }
+      .last()
+    assertContains(remediationPrompt, "### from: preplan")
+    assertContains(remediationPrompt, "### from: plan")
+    assertContains(remediationPrompt, "AC-2 acceptance criterion is not yet implemented")
+    val planningRecords = runtime.recorder.loadPhaseRecords(workflowId).orEmpty()
+    assertEquals(1, planningRecords.getValue("preplan").attemptCount)
+    assertEquals(1, planningRecords.getValue("plan").attemptCount)
+    assertEquals(null, planningRecords.getValue("preplan").loopId)
+    assertEquals(null, planningRecords.getValue("plan").loopId)
+  }
 }
 
 private class RuntimeChildLauncher(
