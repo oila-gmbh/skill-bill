@@ -21,8 +21,10 @@ class FileSystemReviewEvidenceBroker(
   private val root = repoRoot.toRealPath()
   private var cumulativeBytes = 0L
   private val expansions = linkedSetOf<String>()
+  private var terminalOutcome: ReviewContextBudgetExceeded? = null
 
   override fun read(request: ReviewEvidenceRequest): ReviewEvidenceResult {
+    terminalOutcome?.let { return terminalResult(it) }
     require(request.lane == assignment.lane) { "Evidence lane does not own this assignment." }
     requireRepositoryRelativePath(request.path)
     val normalized = request.path.replace('\\', '/')
@@ -51,5 +53,26 @@ class FileSystemReviewEvidenceBroker(
     cumulativeBytes = cumulativeBytes,
     expansionCount = expansions.size,
     budgetExceeded = ReviewContextBudgetExceeded(assignment.lane, kind, limit, observed, assignment.packetDigest, assignment.digest, true),
-  ).also { check(it.budgetExceeded?.type == REVIEW_CONTEXT_BUDGET_EXCEEDED) }
+  ).also {
+    check(it.budgetExceeded?.type == REVIEW_CONTEXT_BUDGET_EXCEEDED)
+    terminalOutcome = it.budgetExceeded
+  }
+
+  fun validateLaneResult(result: String): ReviewContextBudgetExceeded? {
+    terminalOutcome?.let { return it }
+    val observed = result.toByteArray(StandardCharsets.UTF_8).size.toLong()
+    return if (observed > budget.maxLaneResultBytes) {
+      exceeded("lane_result_bytes", budget.maxLaneResultBytes, observed).budgetExceeded
+    } else {
+      null
+    }
+  }
+
+  private fun terminalResult(outcome: ReviewContextBudgetExceeded): ReviewEvidenceResult = ReviewEvidenceResult(
+    content = null,
+    bytes = 0,
+    cumulativeBytes = cumulativeBytes,
+    expansionCount = expansions.size,
+    budgetExceeded = outcome,
+  )
 }

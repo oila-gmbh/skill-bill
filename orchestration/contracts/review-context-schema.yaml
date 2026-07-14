@@ -96,7 +96,7 @@ $defs:
   budget:
     type: object
     additionalProperties: false
-    required: [max_parent_packet_bytes, max_lane_launch_bytes, max_lane_evidence_bytes, max_evidence_result_bytes, max_lane_result_bytes, max_assignment_expansions]
+    required: [max_parent_packet_bytes, max_lane_launch_bytes, max_lane_evidence_bytes, max_evidence_result_bytes, max_lane_result_bytes, max_assignment_expansions, provider_token_thresholds]
     properties:
       max_parent_packet_bytes: { type: integer, minimum: 1 }
       max_lane_launch_bytes: { type: integer, minimum: 1 }
@@ -104,6 +104,17 @@ $defs:
       max_evidence_result_bytes: { type: integer, minimum: 1 }
       max_lane_result_bytes: { type: integer, minimum: 1 }
       max_assignment_expansions: { type: integer, minimum: 0 }
+      provider_token_thresholds: { $ref: "#/$defs/provider_token_thresholds" }
+  provider_token_thresholds:
+    type: object
+    additionalProperties: false
+    required: [input_tokens, cached_input_tokens, output_tokens, reasoning_tokens, total_tokens]
+    properties:
+      input_tokens: { type: integer, minimum: 1 }
+      cached_input_tokens: { type: integer, minimum: 1 }
+      output_tokens: { type: integer, minimum: 1 }
+      reasoning_tokens: { type: integer, minimum: 1 }
+      total_tokens: { type: integer, minimum: 1 }
   budget_outcome:
     type: object
     additionalProperties: false
@@ -123,6 +134,7 @@ $defs:
   usage:
     type: object
     additionalProperties: false
+    minProperties: 1
     properties:
       input_tokens: { type: integer, minimum: 0 }
       cached_input_tokens: { type: integer, minimum: 0 }

@@ -8,6 +8,7 @@ import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertSame
 
 class FileSystemReviewEvidenceBrokerTest {
   @Test fun `assigned reads are bounded and excessive evidence terminates typed`() {
@@ -17,6 +18,16 @@ class FileSystemReviewEvidenceBrokerTest {
     val result = broker.read(ReviewEvidenceRequest("security", "A.kt"))
     assertEquals(REVIEW_CONTEXT_BUDGET_EXCEEDED, result.budgetExceeded?.type)
     assertEquals(null, result.content)
+    val repeated = broker.read(ReviewEvidenceRequest("security", "A.kt"))
+    assertSame(result.budgetExceeded, repeated.budgetExceeded)
+  }
+
+  @Test fun `lane result excess terminates subsequent evidence`() {
+    val root = Files.createTempDirectory("review-result")
+    Files.writeString(root.resolve("A.kt"), "ok")
+    val broker = FileSystemReviewEvidenceBroker(root, assignment(listOf("A.kt")), emptySet(), policy())
+    assertEquals("lane_result_bytes", broker.validateLaneResult("x".repeat(101))?.budgetKind)
+    assertEquals("lane_result_bytes", broker.read(ReviewEvidenceRequest("security", "A.kt")).budgetExceeded?.budgetKind)
   }
 
   @Test fun `out of assignment reads require reason and consume expansion`() {

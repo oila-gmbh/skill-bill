@@ -5,11 +5,17 @@ package skillbill.review.context
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 import skillbill.workflow.model.CodeReviewExecutionMode
 
 class ReviewContextModelsTest {
   @Test fun `default budget is governed`() { assertEquals(524_288, ReviewContextBudgetPolicy.DEFAULT.maxParentPacketBytes); assertEquals(96_000, ReviewContextBudgetPolicy.DEFAULT.providerTokenThresholds.totalTokens) }
+
+  @Test fun `cached input cannot exceed or exist without input`() {
+    assertFailsWith<IllegalArgumentException> { ProviderTokenUsage(cachedInputTokens = 1) }
+    assertFailsWith<IllegalArgumentException> { ProviderTokenUsage(inputTokens = 1, cachedInputTokens = 2) }
+  }
   @Test fun `inconsistent budgets loud fail`() { assertFailsWith<IllegalArgumentException> { ReviewContextBudgetPolicy(maxLaneEvidenceBytes = 10, maxEvidenceResultBytes = 11) } }
   @Test fun `assignment digest is stable`() {
     fun value(paths: List<String>, criteria: List<String>) = ReviewAssignment("review", "a".repeat(64), "security", "base", "head", paths, listOf("hunk"), criteria)

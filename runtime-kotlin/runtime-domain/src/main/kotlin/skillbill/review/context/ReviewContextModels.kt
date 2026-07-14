@@ -50,9 +50,15 @@ data class ProviderTokenUsage(
   val totalTokens: Long? = null,
   val ownership: TokenOwnership = TokenOwnership.DIRECT,
 ) {
-  init { require(listOf(inputTokens, cachedInputTokens, outputTokens, reasoningTokens, totalTokens).all { it == null || it >= 0 }) }
+  init {
+    require(listOf(inputTokens, cachedInputTokens, outputTokens, reasoningTokens, totalTokens).all { it == null || it >= 0 })
+    require(cachedInputTokens == null || inputTokens != null) { "Cached-input tokens require input tokens." }
+    require(cachedInputTokens == null || cachedInputTokens <= inputTokens!!) {
+      "Cached-input tokens cannot exceed input tokens."
+    }
+  }
   val freshTokenApproximation: Long?
-    get() = if (inputTokens == null && outputTokens == null) null else ((inputTokens ?: 0) - (cachedInputTokens ?: 0)).coerceAtLeast(0) + (outputTokens ?: 0)
+    get() = if (inputTokens == null && outputTokens == null) null else (inputTokens ?: 0) - (cachedInputTokens ?: 0) + (outputTokens ?: 0)
 }
 
 data class ReviewTreeUsage(val node: ProviderTokenUsage, val children: List<ReviewTreeUsage> = emptyList()) {
