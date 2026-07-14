@@ -2,7 +2,6 @@ package skillbill.infrastructure.fs
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.agentaddon.AgentAddonDeliveryResolver
-import skillbill.agentaddon.inspectAgentAddons as inspectFsAgentAddons
 import skillbill.agentaddon.model.AgentAddonCatalogueEntry
 import skillbill.nativeagent.composition.NativeAgentCompositionDirective
 import skillbill.nativeagent.composition.NativeAgentCompositionKind
@@ -33,6 +32,7 @@ import skillbill.scaffold.catalog.ScaffoldCatalog
 import skillbill.scaffold.model.command.ScaffoldCommandRequest
 import skillbill.scaffold.runtime.scaffold
 import java.nio.file.Path
+import skillbill.agentaddon.inspectAgentAddons as inspectFsAgentAddons
 import skillbill.nativeagent.composition.parseNativeAgentSourceFile as parseFsNativeAgentSourceFile
 import skillbill.nativeagent.composition.renderComposedNativeAgentSource as renderFsComposedNativeAgentSource
 import skillbill.nativeagent.composition.renderNativeAgentSource as renderFsNativeAgentSource
@@ -51,7 +51,12 @@ class FileSystemScaffoldGateway(
     val addonNames = skillNames.filter { it.startsWith(AGENT_ADDON_PREFIX) }
     val governedNames = skillNames.filterNot { it.startsWith(AGENT_ADDON_PREFIX) }
     val result = AuthoringOperations.list(repoRoot, governedNames)
-    val addons = AgentAddonDeliveryResolver().catalogue(repoRoot)
+    val addonCatalogue = if (skillNames.isEmpty()) {
+      inspectFsAgentAddons(repoRoot).entries
+    } else {
+      AgentAddonDeliveryResolver().catalogue(repoRoot)
+    }
+    val addons = addonCatalogue
       .filter { skillNames.isEmpty() || it.identity in addonNames }
       .map { it.toSkillStatus(repoRoot, "none") }
     val governedSkills = if (skillNames.isEmpty()) {

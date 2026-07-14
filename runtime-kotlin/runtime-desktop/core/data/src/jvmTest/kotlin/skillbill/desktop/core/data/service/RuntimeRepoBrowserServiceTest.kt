@@ -141,6 +141,53 @@ class RuntimeRepoBrowserServiceTest {
   }
 
   @Test
+  fun `agent add-on selection exposes complete read-only metadata and reachable manifest`() {
+    val repo = seedRepo("agent-addon-selection")
+    writeAgentAddon(repo, "execution-budget")
+    val service = RuntimeRepoBrowserService()
+
+    val session = service.open(repo.toString())
+    val group = service.treeFor(session).single { it.label == "Agent Add-ons" }
+    val addon = group.children.single { it.label == "execution-budget" }
+    val detail = service.describeSelection(addon.id)
+
+    assertEquals(TreeItemKind.AGENT_ADDON, addon.kind)
+    assertFalse(addon.editable)
+    assertEquals("Execution budget description that must remain fully visible.", detail.description)
+    assertEquals(listOf("codex"), detail.supportedAgents)
+    assertEquals(listOf("bill-feature"), detail.consumers)
+    assertEquals("agent-addons/execution-budget/content.md", detail.authoredPath)
+    assertEquals("agent-addons/execution-budget/agent-addon.yaml", detail.manifestPath)
+    assertEquals("valid", detail.status)
+    assertTrue(detail.content.orEmpty().contains("Execution budget guidance."))
+    val manifest = addon.children.single()
+    assertEquals("agent-addon.yaml", manifest.label)
+    assertEquals("agent-addons/execution-budget/agent-addon.yaml", manifest.authoredPath)
+    assertTrue(service.describeSelection(manifest.id).content.orEmpty().contains("slug: execution-budget"))
+  }
+
+  @Test
+  fun `agent add-on tree keeps valid declarations beside invalid catalogue identities`() {
+    val repo = seedRepo("agent-addon-mixed")
+    writeAgentAddon(repo, "valid-addon")
+    writeAgentAddon(repo, "wrong-directory")
+    Files.writeString(
+      repo.resolve("agent-addons/wrong-directory/agent-addon.yaml"),
+      Files.readString(repo.resolve("agent-addons/wrong-directory/agent-addon.yaml"))
+        .replace("slug: wrong-directory", "slug: declared-slug"),
+    )
+    val service = RuntimeRepoBrowserService()
+
+    val session = service.open(repo.toString())
+    val group = service.treeFor(session).single { it.label == "Agent Add-ons" }
+
+    assertEquals(listOf("valid-addon", "wrong-directory"), group.children.map { it.label })
+    assertEquals("valid", group.children.first().status)
+    assertEquals("invalid", group.children.last().status)
+    assertTrue(service.describeSelection(group.children.last().id).diagnostics.any { it.contains("source directory") })
+  }
+
+  @Test
   fun `selected governed skill loads full editable content document`() {
     val repo = seedRepo("authoring-document")
     val service = RuntimeRepoBrowserService()
@@ -763,6 +810,22 @@ class RuntimeRepoBrowserServiceTest {
         |$body
       """.trimMargin(),
     )
+  }
+
+  private fun writeAgentAddon(repo: Path, slug: String) {
+    val root = repo.resolve("agent-addons/$slug")
+    Files.createDirectories(root)
+    Files.writeString(
+      root.resolve("agent-addon.yaml"),
+      """
+        |contract_version: "1.0"
+        |slug: $slug
+        |description: Execution budget description that must remain fully visible.
+        |agent_ids: [codex]
+        |consumers: [bill-feature]
+      """.trimMargin(),
+    )
+    Files.writeString(root.resolve("content.md"), "## Guidance\n\nExecution budget guidance.\n")
   }
 
   private fun writeQualityCheckWithGeneratedSupportPointer(repo: Path) {

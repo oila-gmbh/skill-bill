@@ -52,35 +52,61 @@ internal class SkillTreeBuilder(
   ): List<SkillBillTreeItem> {
     val inspection = repoSourceDiscoveryService.inspectAgentAddons(root)
     val valid = inspection.entries.map { addon ->
-    val id = selectionId(repoToken, addon.identity)
-    val authoredPath = relativePath(root, addon.contentPath)
-    val metadata = SkillBillTreeItemMetadata(
-      kind = "agent-addon",
-      description = addon.description,
-      supportedAgents = addon.agentIds,
-      consumers = addon.consumers,
-      manifestPath = relativePath(root, addon.manifestPath),
-    )
-    selections[id] = SelectionDetail(
-      repoToken = repoToken,
-      title = addon.slug,
-      detail = addon.description,
-      kind = "agent-addon",
-      authoredPath = authoredPath,
-      status = addon.validationStatus,
-      contentFile = addon.contentPath,
-      editable = true,
-      metadata = metadata,
-    )
-    SkillBillTreeItem(
-      id = id,
-      label = addon.slug,
-      kind = TreeItemKind.AGENT_ADDON,
-      authoredPath = authoredPath,
-      status = addon.validationStatus,
-      editable = true,
-      metadata = metadata,
-    )
+      val id = selectionId(repoToken, addon.identity)
+      val authoredPath = relativePath(root, addon.contentPath)
+      val manifestPath = relativePath(root, addon.manifestPath)
+      val manifestId = selectionId(repoToken, "${addon.identity}:manifest")
+      val metadata = SkillBillTreeItemMetadata(
+        kind = "agent-addon",
+        description = addon.description,
+        supportedAgents = addon.agentIds,
+        consumers = addon.consumers,
+        manifestPath = manifestPath,
+      )
+      selections[id] = SelectionDetail(
+        repoToken = repoToken,
+        title = addon.slug,
+        detail = addon.description,
+        kind = "agent-addon",
+        authoredPath = authoredPath,
+        status = addon.validationStatus,
+        contentFile = addon.contentPath,
+        editable = false,
+        metadata = metadata,
+      )
+      selections[manifestId] = SelectionDetail(
+        repoToken = repoToken,
+        title = "agent-addon.yaml",
+        detail = "Agent add-on manifest.",
+        kind = "agent-addon manifest",
+        authoredPath = manifestPath,
+        status = addon.validationStatus,
+        contentFile = addon.manifestPath,
+        editable = false,
+        readOnlyLabel = READ_ONLY_LABEL,
+        metadata = metadata,
+      )
+      SkillBillTreeItem(
+        id = id,
+        label = addon.slug,
+        kind = TreeItemKind.AGENT_ADDON,
+        authoredPath = authoredPath,
+        status = addon.validationStatus,
+        editable = false,
+        metadata = metadata,
+        children = listOf(
+          SkillBillTreeItem(
+            id = manifestId,
+            label = "agent-addon.yaml",
+            kind = TreeItemKind.GENERATED_ARTIFACT,
+            authoredPath = manifestPath,
+            status = addon.validationStatus,
+            editable = false,
+            readOnlyLabel = READ_ONLY_LABEL,
+            metadata = metadata,
+          ),
+        ),
+      )
     }
     val invalid = inspection.invalidEntries.map { addon ->
       val id = selectionId(repoToken, addon.identity)

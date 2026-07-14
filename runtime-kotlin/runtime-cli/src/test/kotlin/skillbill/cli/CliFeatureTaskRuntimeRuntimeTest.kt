@@ -41,6 +41,68 @@ import kotlin.time.Duration.Companion.minutes
 @Suppress("LargeClass")
 class CliFeatureTaskRuntimeRuntimeTest {
   @Test
+  fun `real feature invocation delivers selected agent add-on to every phase`() {
+    val selectedFixture = runtimeFixture().also { writeExecutionBudgetAddon(it.tempDir) }
+    val resolvedSelection = resolvedSelectionJson(selectedFixture, "codex")
+    val selectedLauncher = RecordingPhaseLauncher()
+
+    val selected = CliRuntime.run(
+      selectedFixture.runCommand(
+        extra = listOf("--agent", "codex", "--agent-addon-selection-json", resolvedSelection),
+      ),
+      selectedFixture.context(selectedLauncher),
+    )
+
+    assertEquals(0, selected.exitCode, selected.stdout)
+    assertEquals(ALL_PHASES.size, selectedLauncher.requests.size)
+    val manifestPath =
+      selectedFixture.tempDir
+        .resolve("agent-addons/execution-budget/agent-addon.yaml")
+        .toRealPath()
+        .toString()
+    selectedLauncher.requests.forEach { request ->
+      val prompt = request.skillRunRequest.promptOverride.orEmpty()
+      assertContains(prompt, "### 1. execution-budget")
+      assertContains(prompt, "Execution budget fixture guidance.")
+      assertContains(prompt, manifestPath)
+    }
+  }
+
+  @Test
+  fun `real feature invocation rejects unsupported agent before execution`() {
+    val unsupportedFixture = runtimeFixture().also { writeExecutionBudgetAddon(it.tempDir) }
+    val unsupportedSelection = resolvedSelectionJson(unsupportedFixture, "codex")
+    val unsupportedLauncher = RecordingPhaseLauncher()
+    val unsupported = assertFailsWith<skillbill.error.InvalidAgentAddonSelectionError> {
+      CliRuntime.run(
+        unsupportedFixture.runCommand(
+          extra = listOf("--agent", "claude", "--agent-addon-selection-json", unsupportedSelection),
+        ),
+        unsupportedFixture.context(unsupportedLauncher),
+      )
+    }
+    assertContains(unsupported.message.orEmpty(), "incompatible with receiving agent 'claude'")
+    assertEquals(emptyList(), unsupportedLauncher.requests)
+    assertFalse(Files.exists(unsupportedFixture.dbPath), "workflow database must not be created")
+  }
+
+  @Test
+  fun `real feature invocation without agent add-on keeps prompts unchanged`() {
+    val baselineFixture = runtimeFixture().also { writeExecutionBudgetAddon(it.tempDir) }
+    val baselineLauncher = RecordingPhaseLauncher()
+    val baseline = CliRuntime.run(
+      baselineFixture.runCommand(extra = listOf("--agent", "codex")),
+      baselineFixture.context(baselineLauncher),
+    )
+    assertEquals(0, baseline.exitCode, baseline.stdout)
+    assertTrue(
+      baselineLauncher.requests.all { request ->
+        !request.skillRunRequest.promptOverride.orEmpty().contains("Agent add-on:")
+      },
+    )
+  }
+
+  @Test
   fun `feature-task command registers run status resume and abandon`() {
     val help = CliRuntime.run(listOf("feature-task", "--help"), CliRuntimeContext())
 
@@ -1547,6 +1609,37 @@ private fun runtimeFixture(specFileName: String = "spec.md"): FeatureTaskRuntime
     dbPath = tempDir.resolve("metrics.db"),
     specPath = specPath,
   )
+}
+
+private fun writeExecutionBudgetAddon(repo: Path) {
+  val root = repo.resolve("agent-addons/execution-budget")
+  Files.createDirectories(root)
+  Files.writeString(
+    root.resolve("agent-addon.yaml"),
+    """
+      |contract_version: "1.0"
+      |slug: execution-budget
+      |description: Execution budget fixture.
+      |agent_ids: [codex]
+      |consumers: [bill-feature]
+    """.trimMargin(),
+  )
+  Files.writeString(root.resolve("content.md"), "## Boundary\n\nExecution budget fixture guidance.\n")
+}
+
+private fun resolvedSelectionJson(fixture: FeatureTaskRuntimeCliFixture, receivingAgent: String): String {
+  val result = CliRuntime.run(
+    listOf(
+      "agent-addon", "resolve-selection",
+      "--repo-root", fixture.tempDir.toString(),
+      "--token", "agent-addon:execution-budget",
+      "--receiving-agent", receivingAgent,
+      "--format", "json",
+    ),
+    fixture.context(RecordingPhaseLauncher()),
+  )
+  assertEquals(0, result.exitCode, result.stdout)
+  return result.stdout.trim()
 }
 
 private val PHASE_LINE = Regex("^Phase: ([a-z_-]+) ", setOf(RegexOption.MULTILINE))

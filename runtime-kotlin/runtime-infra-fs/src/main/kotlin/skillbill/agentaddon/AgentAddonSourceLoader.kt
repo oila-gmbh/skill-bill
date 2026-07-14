@@ -1,10 +1,10 @@
 package skillbill.agentaddon
 
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
-import skillbill.agentaddon.model.AgentAddonConsumer
-import skillbill.agentaddon.model.AgentAddonDeclaration
 import skillbill.agentaddon.model.AgentAddonCatalogueEntry
 import skillbill.agentaddon.model.AgentAddonCatalogueInspection
+import skillbill.agentaddon.model.AgentAddonConsumer
+import skillbill.agentaddon.model.AgentAddonDeclaration
 import skillbill.agentaddon.model.InvalidAgentAddonCatalogueEntry
 import skillbill.error.MissingAgentAddonDeclarationError
 import skillbill.install.model.InstallAgent
@@ -66,6 +66,33 @@ fun inspectAgentAddons(
           )
         }
     }
+  }
+  val incoherent = mutableMapOf<Path, MutableList<String>>()
+  entries.filter { it.manifestPath.parent.name != it.slug }.forEach { entry ->
+    incoherent.getOrPut(entry.manifestPath) { mutableListOf() } +=
+      "source directory '${entry.manifestPath.parent.name}' must match slug '${entry.slug}'"
+  }
+  entries.groupBy { it.slug }.filterValues { it.size > 1 }.forEach { (slug, duplicates) ->
+    duplicates.forEach { entry ->
+      incoherent.getOrPut(entry.manifestPath) { mutableListOf() } += "duplicate slug '$slug'"
+    }
+  }
+  entries.groupBy { it.manifestPath.toRealPath() }.filterValues { it.size > 1 }.forEach { (identity, duplicates) ->
+    duplicates.forEach { entry ->
+      incoherent.getOrPut(entry.manifestPath) { mutableListOf() } += "duplicate canonical source identity '$identity'"
+    }
+  }
+  entries.removeAll { entry ->
+    incoherent[entry.manifestPath]?.let { diagnostics ->
+      invalidEntries += InvalidAgentAddonCatalogueEntry(
+        identity = "agent-addon:${entry.manifestPath.parent.name}",
+        slug = entry.manifestPath.parent.name,
+        manifestPath = entry.manifestPath,
+        contentPath = entry.contentPath,
+        diagnostics = diagnostics,
+      )
+      true
+    } ?: false
   }
   return AgentAddonCatalogueInspection(entries.sortedBy { it.slug }, invalidEntries.sortedBy { it.slug })
 }

@@ -117,6 +117,27 @@ class AgentAddonSourceLoaderTest {
   }
 
   @Test
+  fun `tolerant inspection retains valid entries and reports catalogue coherence failures`() {
+    val repo = Files.createTempDirectory("agent-addon-inspection-coherence")
+    writeAddon(repo, "valid-addon", listOf("codex"))
+    val duplicate = AddonOverrides(manifestSlug = "shared-slug")
+    writeAddon(repo, "first-directory", listOf("codex"), duplicate)
+    writeAddon(repo, "second-directory", listOf("codex"), duplicate)
+
+    val inspection = inspectAgentAddons(repo)
+
+    assertEquals(listOf("valid-addon"), inspection.entries.map { it.slug })
+    assertEquals(2, inspection.invalidEntries.size)
+    assertTrue(
+      inspection.invalidEntries.all { entry ->
+        entry.validationStatus == "invalid" &&
+          entry.diagnostics.any { it.contains("duplicate slug 'shared-slug'") } &&
+          entry.diagnostics.any { it.contains("source directory") }
+      },
+    )
+  }
+
+  @Test
   fun `missing content is rejected`() {
     val repo = Files.createTempDirectory("agent-addon-missing-content")
     val root = writeAddon(repo, "fixture", listOf("codex"))
