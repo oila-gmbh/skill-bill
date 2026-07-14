@@ -67,7 +67,7 @@ class FeatureTaskRuntimeAuditGapLoopTest {
   }
 
   @Test
-  fun `m2 audit re-entry uses selected mode once then inline`() {
+  fun `m2 audit re-entry uses the bounded inline remediation review mode`() {
     val harness = runnerHarness(launcher = auditGapLauncher(convergeOnAudit = 2))
 
     val report = harness.runner.run(

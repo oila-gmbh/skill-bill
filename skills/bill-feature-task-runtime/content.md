@@ -167,9 +167,9 @@ the updated plan without double-applying, and a crash mid-loopback resumes at th
 correct phase and iteration while preserving the `audit_gap` watermark.
 
 The two loops compose under one durable two-pass review budget. The initial
-review may use the selected mode. The first later review reached by either a
-review-fix or audit-gap path consumes pass two and runs inline. Later audit-gap
-iterations reuse the completed pass-two result rather than launching a third
+review and the first later review reached by either a review-fix or audit-gap
+path use the run-selected mode. That later review consumes pass two; later
+audit-gap iterations reuse its completed result rather than launching a third
 review. Each backward edge carries the `audit_gap` loop id and iteration in the
 ledger and status output, and finished telemetry reflects the audit-gap
 iteration count alongside the review-fix count.

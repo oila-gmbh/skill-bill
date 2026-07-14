@@ -74,28 +74,23 @@ internal object DatabaseColumnMigrations {
   }
 
   fun healWorkListMetadata(connection: Connection) {
-    if (workListMetadataRequiresHealing(connection)) {
-      applyWorkListMetadata(connection, recoverIssueKeys = true)
+    connection.inImmediateTransaction {
+      applyWorkListMetadata(this, recoverIssueKeys = false)
     }
-  }
-
-  private fun workListMetadataRequiresHealing(connection: Connection): Boolean {
-    val workflowTables = listOf("feature_task_workflows", "feature_verify_workflows")
-    val requiredColumns = setOf("issue_key", "state_entered_at", "state_entered_at_estimated")
-    return workflowTables.any { tableName -> !tableColumnNames(connection, tableName).containsAll(requiredColumns) } ||
-      (
-        tableExists(connection, "goal_issue_progress") &&
-          !tableColumnNames(connection, "goal_issue_progress").containsAll(requiredColumns - "issue_key")
-        )
   }
 
   private fun applyWorkListMetadata(connection: Connection, recoverIssueKeys: Boolean) {
     val workflowColumnsHealed = ensureWorkListWorkflowColumns(connection)
     val goalColumnsHealed = ensureGoalWorkListColumns(connection)
     if (recoverIssueKeys || workflowColumnsHealed || goalColumnsHealed) {
-      recoverRuntimeWorkflowIssueKeys(connection)
-      recoverGoalContinuationWorkflowIssueKeys(connection)
+      recoverWorkListIssueKeys(connection)
     }
+  }
+
+  fun recoverWorkListIssueKeys(connection: Connection) {
+    recoverRuntimeWorkflowIssueKeys(connection)
+    recoverGoalContinuationWorkflowIssueKeys(connection)
+    recoverDecompositionWorkflowIssueKeys(connection)
   }
 
   private fun ensureWorkListWorkflowColumns(connection: Connection): Boolean {
@@ -210,6 +205,22 @@ internal object DatabaseColumnMigrations {
               OR (mode = 'prose' AND json_type(artifacts_json, '$.goal_continuation.enabled') = 'true')
             )
           ELSE 0 END
+        """.trimIndent(),
+      )
+    }
+  }
+
+  private fun recoverDecompositionWorkflowIssueKeys(connection: Connection) {
+    connection.createStatement().use { statement ->
+      statement.execute(
+        """
+        UPDATE feature_task_workflows
+        SET issue_key = trim(json_extract(artifacts_json, '$.decomposition_runtime.issue_key'))
+        WHERE (issue_key IS NULL OR issue_key = '')
+          AND json_valid(artifacts_json)
+          AND json_type(artifacts_json, '$.decomposition_runtime') = 'object'
+          AND json_type(artifacts_json, '$.decomposition_runtime.issue_key') = 'text'
+          AND NULLIF(trim(json_extract(artifacts_json, '$.decomposition_runtime.issue_key')), '') IS NOT NULL
         """.trimIndent(),
       )
     }

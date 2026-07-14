@@ -2151,7 +2151,7 @@ class FeatureTaskRuntimeReviewFixLoopTest {
     assertEquals(launchCount, harness.launcher.requests.size)
   }
 
-  // (c) AC3/AC10: convergence on the only allowed inline re-review still advances to audit.
+  // (c) AC3/AC10: convergence on the only allowed re-review still advances to audit.
   @Test
   fun `m1 converges on the last allowed iteration and advances`() {
     val harness = runnerHarness(launcher = reviewFixLauncher(convergeOnReview = 2))

@@ -59,8 +59,9 @@ class DatabaseMigrationsTest {
         2 to "normalize-feedback-event-outcomes",
         3 to "add-goal-telemetry-tables",
         4 to "add-work-list-state-metadata",
-        5 to "add-feature-task-execution-identities",
-        6 to "add-feature-task-runtime-worker-leases",
+        5 to "recover-work-list-issue-keys",
+        6 to "add-feature-task-execution-identities",
+        7 to "add-feature-task-runtime-worker-leases",
       ),
       migrationDefinitions,
     )
@@ -469,6 +470,37 @@ class DatabaseMigrationsTest {
         null,
         nullableTableColumnValue(connection, "feature_task_workflows", "workflow_id", "wftr-number-key", "issue_key"),
       )
+    }
+  }
+
+  @Test
+  fun `migration after v4 recovers imported decomposition parent issue keys`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-db-v5-issue-key-recovery").resolve("metrics.db")
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      connection.createStatement().use { statement ->
+        statement.executeUpdate("DELETE FROM schema_migrations WHERE version = 5")
+        statement.executeUpdate(
+          """
+          INSERT INTO feature_task_workflows (
+            workflow_id, mode, contract_version, workflow_status, artifacts_json,
+            started_at, state_entered_at, state_entered_at_estimated
+          ) VALUES (
+            'wfl-imported-parent', 'prose', '0.1', 'abandoned',
+            '{"decomposition_runtime":{"issue_key":" SKILL-117 ","status":"in_progress"}}',
+            '2026-05-01T10:00:00Z', '2026-05-01T10:00:00Z', 0
+          )
+          """.trimIndent(),
+        )
+      }
+    }
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      assertEquals(
+        "SKILL-117",
+        tableColumnValue(connection, "feature_task_workflows", "workflow_id", "wfl-imported-parent", "issue_key"),
+      )
+      assertNotNull(migrationRows(connection).singleOrNull { row -> row.version == 5 })
     }
   }
 

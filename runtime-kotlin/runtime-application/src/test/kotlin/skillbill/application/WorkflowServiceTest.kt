@@ -2367,6 +2367,54 @@ internal class InMemoryWorkflowStates : WorkflowStateRepository {
 
 class DecompositionDiskBootstrapTest {
   @Test
+  fun `invalid decomposition issue key fails before branch checkout`() {
+    val invalidIssueKey = "S".repeat(129)
+    val manifest = DecompositionManifest(
+      issueKey = invalidIssueKey,
+      featureName = "invalid-issue-key",
+      parentSpecPath = ".feature-specs/invalid/spec.md",
+      status = "in_progress",
+      executionModel = DecompositionExecutionModel.SAME_BRANCH_COMMIT_PER_SUBTASK,
+      baseBranch = "main",
+      featureBranch = "feat/invalid-issue-key",
+      currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 1, action = "implement"),
+      subtasks = listOf(
+        DecompositionSubtask(
+          id = 1,
+          name = "first-subtask",
+          specPath = ".feature-specs/invalid/spec_subtask_1.md",
+          status = "pending",
+        ),
+      ),
+    )
+    val workflows = InMemoryWorkflowStates()
+    workflows.saveFeatureImplementWorkflow(
+      workflowRecord(
+        workflowId = "wfl-invalid-issue-key",
+        artifactsPatch = mapOf(
+          "plan" to mapOf("mode" to "decompose"),
+          DECOMPOSITION_RUNTIME_ARTIFACT_KEY to
+            encodeDecompositionManifestMap(manifest, testDecompositionManifestValidator),
+        ),
+      ),
+    )
+    val gitOperations = RecordingWorkflowGitOperations()
+    val continuation = DecompositionWorkflowContinuation(
+      engine = testWorkflowEngine,
+      gitOperations = gitOperations,
+      validator = testDecompositionManifestValidator,
+    )
+
+    assertFailsWith<IllegalArgumentException> {
+      FakeDatabaseSessionFactory(workflows).transaction<ContinuationStepResult>(null) { unitOfWork ->
+        continuation.continueDecomposedParentByIssueKey(invalidIssueKey, unitOfWork)
+      }
+    }
+
+    assertTrue(gitOperations.checkoutCalls.isEmpty())
+  }
+
+  @Test
   fun `continueDecomposedParentByIssueKey bootstraps from disk when no DB parent row exists`() {
     val repoRoot = Files.createTempDirectory("skillbill-disk-bootstrap")
     val manifestPath = repoRoot.resolve(".feature-specs/SKILL-TEST-feature/decomposition-manifest.yaml")

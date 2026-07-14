@@ -30,6 +30,11 @@ internal object DatabaseMigrations {
       ),
       DatabaseMigration(
         version = 5,
+        name = "recover-work-list-issue-keys",
+        operation = DatabaseColumnMigrations::recoverWorkListIssueKeys,
+      ),
+      DatabaseMigration(
+        version = 6,
         name = "add-feature-task-execution-identities",
         operation = { connection ->
           connection.createStatement().use { statement ->
@@ -58,7 +63,7 @@ internal object DatabaseMigrations {
         },
       ),
       DatabaseMigration(
-        version = 6,
+        version = 7,
         name = "add-feature-task-runtime-worker-leases",
         operation = { connection ->
           connection.createStatement().use { statement ->
