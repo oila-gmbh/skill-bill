@@ -17,12 +17,8 @@ import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
-import java.security.MessageDigest
 import java.util.logging.Level
 import java.util.logging.Logger
-
-private const val INSTALL_CACHE_KEY_BYTES = 8
-private const val INSTALL_STAGING_RECIPE_VERSION = "install-staging-v4-internal-authored-companions"
 
 private val log: Logger = Logger.getLogger("skillbill.install.InstallStaging")
 
@@ -145,95 +141,6 @@ private fun requireWithinSource(path: Path, resolvedSourceSkillDir: Path) {
   }
 }
 
-internal fun computeInstallContentHash(
-  sourceSkillDir: Path,
-  authored: List<Path>,
-  applicablePointers: List<Pair<PlatformManifest, PointerSpec>>,
-  generatedSupportPointers: List<GeneratedSupportPointer> = emptyList(),
-  internalChildren: List<InternalSidecarTarget> = emptyList(),
-  agentAddonPointers: List<AgentAddonPointer> = emptyList(),
-): String {
-  val digest = MessageDigest.getInstance("SHA-256")
-  val newline = byteArrayOf('\n'.code.toByte())
-  digest.update(INSTALL_STAGING_RECIPE_VERSION.toByteArray(StandardCharsets.UTF_8))
-  digest.update(newline)
-  authored.forEach { file ->
-    val rel = sourceSkillDir.relativize(file).toString().replace(File.separatorChar, '/')
-    digest.update(rel.toByteArray(StandardCharsets.UTF_8))
-    digest.update(newline)
-    digest.update(Files.readAllBytes(file))
-    digest.update(newline)
-  }
-  digest.update("--pointers--".toByteArray(StandardCharsets.UTF_8))
-  digest.update(newline)
-  applicablePointers
-    .sortedWith(compareBy({ it.second.skillRelativeDir }, { it.second.name }))
-    .forEach { (manifest, spec) ->
-      val line = "${spec.skillRelativeDir}|${spec.name}|${spec.target}"
-      digest.update(line.toByteArray(StandardCharsets.UTF_8))
-      digest.update(newline)
-      val repoRoot = manifest.packRoot.toAbsolutePath().normalize().parent?.parent
-        ?: error("Platform pack '${manifest.slug}' root '${manifest.packRoot}' has no repo root parent.")
-      val targetFile = repoRoot.resolve(spec.target).normalize()
-      require(targetFile.startsWith(repoRoot)) {
-        "Pointer '${spec.name}' under '${spec.skillRelativeDir}' targets '${spec.target}' outside repoRoot '$repoRoot'."
-      }
-      require(Files.isRegularFile(targetFile, LinkOption.NOFOLLOW_LINKS)) {
-        "Pointer '${spec.name}' under '${spec.skillRelativeDir}' targets '${spec.target}' " +
-          "which does not exist at '$targetFile'."
-      }
-      digest.update(Files.readAllBytes(targetFile))
-      digest.update(newline)
-    }
-  generatedSupportPointers
-    .sortedBy { it.name }
-    .forEach { pointer ->
-      // Hash the inlined canonical content, not the target path, so editing the orchestration doc
-      // invalidates the cache and re-inlines on the next install.
-      digest.update("${pointer.name}|".toByteArray(StandardCharsets.UTF_8))
-      digest.update(Files.readAllBytes(pointer.target))
-      digest.update(newline)
-    }
-  // SKILL-102 (PD2): fold the rendered sidecar wrapper bytes into the parent's content hash so
-  // editing a child's content.md (or the renderer) invalidates the parent's cache entry. The
-  // section is appended ONLY when there is at least one internal child, so repos with no internal
-  // skills produce byte-identical hashes to before this change (criterion 7).
-  if (internalChildren.isNotEmpty()) {
-    digest.update("--internal-sidecars--".toByteArray(StandardCharsets.UTF_8))
-    digest.update(newline)
-    internalChildren
-      .sortedBy { child -> child.skillName }
-      .forEach { child ->
-        digest.update("${child.skillName}.md|".toByteArray(StandardCharsets.UTF_8))
-        digest.update(child.renderedWrapper.toByteArray(StandardCharsets.UTF_8))
-        digest.update(newline)
-        child.authoredCompanions.sortedBy { companion -> companion.name }.forEach { companion ->
-          digest.update("${companion.name}|".toByteArray(StandardCharsets.UTF_8))
-          digest.update(companion.bytes)
-          digest.update(newline)
-        }
-      }
-  }
-  if (agentAddonPointers.isNotEmpty()) {
-    digest.update("--agent-addons--".toByteArray(StandardCharsets.UTF_8))
-    digest.update(newline)
-    agentAddonPointers.sortedBy { it.slug }.forEach { pointer ->
-      val declaration = "${pointer.consumer.id}|${pointer.slug}|${pointer.name}|" +
-        "${pointer.manifestRelativePath}|${pointer.contentRelativePath}"
-      digest.update(declaration.toByteArray(StandardCharsets.UTF_8))
-      digest.update(newline)
-      digest.update(pointer.manifestBytes)
-      digest.update(newline)
-      digest.update(pointer.contentBytes)
-      digest.update(newline)
-      digest.update(pointer.renderedBytes)
-      digest.update(newline)
-    }
-  }
-  val hashBytes = digest.digest()
-  return hashBytes.take(INSTALL_CACHE_KEY_BYTES).joinToString("") { byte -> "%02x".format(byte) }
-}
-
 @Suppress("LongParameterList", "LongMethod") // cohesive staging entry: each parameter is a distinct staging-cache input
 internal fun stageInstalledSkill(
   repoRoot: Path,
@@ -284,17 +191,19 @@ internal fun stageInstalledSkill(
   )
   validateAgentAddonPointerNamespace(
     skillName,
-    authored.map { it.fileName.toString() }.toSet() + internal.sidecarNames +
+    authoredStagingNames(resolvedSource, authored).toSet() + internal.sidecarNames +
       pointers.map { it.second.name } + internal.supportPointers.map { it.name } + setOf("SKILL.md", ".content-hash"),
     agentAddonPointers,
   )
   val contentHash = computeInstallContentHash(
-    sourceSkillDir = resolvedSource,
-    authored = authored,
-    applicablePointers = pointers,
-    generatedSupportPointers = internal.supportPointers,
-    internalChildren = internal.children,
-    agentAddonPointers = agentAddonPointers,
+    InstallContentHashInputs(
+      sourceSkillDir = resolvedSource,
+      authored = authored,
+      applicablePointers = pointers,
+      generatedSupportPointers = internal.supportPointers,
+      internalChildren = internal.children,
+      agentAddonPointers = agentAddonPointers,
+    ),
   )
   val finalStagingDir = installedSkillStagingDir(home, resolvedSource, contentHash)
 

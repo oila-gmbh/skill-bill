@@ -72,21 +72,27 @@ class AgentAddonDeliveryResolver {
   }
 
   private fun validateTarget(root: Path, slug: String, path: Path): Path {
-    if (path.isAbsolute && !path.toAbsolutePath().normalize().startsWith(root)) {
-      throw InvalidAgentAddonDeliveryTargetError(slug, path.toString(), "absolute path escapes repository root")
-    }
+    requireValidTarget(
+      !path.isAbsolute || path.toAbsolutePath().normalize().startsWith(root),
+      slug,
+      path,
+      "absolute path escapes repository root",
+    )
     val normalized = path.toAbsolutePath().normalize()
-    if (!normalized.startsWith(root)) {
-      throw InvalidAgentAddonDeliveryTargetError(slug, path.toString(), "path escapes repository root")
-    }
-    if (!Files.isRegularFile(normalized, LinkOption.NOFOLLOW_LINKS)) {
-      throw InvalidAgentAddonDeliveryTargetError(slug, path.toString(), "target must be a regular repository file")
-    }
+    requireValidTarget(normalized.startsWith(root), slug, path, "path escapes repository root")
+    requireValidTarget(
+      Files.isRegularFile(normalized, LinkOption.NOFOLLOW_LINKS),
+      slug,
+      path,
+      "target must be a regular repository file",
+    )
     val real = normalized.toRealPath()
-    if (!real.startsWith(root)) {
-      throw InvalidAgentAddonDeliveryTargetError(slug, path.toString(), "real path escapes repository root")
-    }
+    requireValidTarget(real.startsWith(root), slug, path, "real path escapes repository root")
     return real
+  }
+
+  private fun requireValidTarget(valid: Boolean, slug: String, path: Path, reason: String) {
+    if (!valid) throw InvalidAgentAddonDeliveryTargetError(slug, path.toString(), reason)
   }
 
   private fun relative(root: Path, path: Path): String = root.relativize(path).normalize().toString()

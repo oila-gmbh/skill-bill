@@ -59,6 +59,9 @@ fun discoverGeneratedArtifactFiles(repoRoot: Path): List<GeneratedArtifactFile> 
           path = artifact,
           reason = "Generated agent add-on output. Author only agent-addon.yaml and content.md.",
         )
+      } +
+      discoverGeneratedAgentAddonPointersUnderSkills(root).map { artifact ->
+        GeneratedArtifactFile(path = artifact, reason = "Generated agent add-on install pointer.")
       }
     )
     .distinctBy { artifact -> artifact.path.toAbsolutePath().normalize() }
@@ -106,25 +109,13 @@ internal fun validateGeneratedArtifactGuard(
         "author only agent-addon.yaml and content.md"
     }
   }
-  return GeneratedArtifactGuardReport(issues.sorted())
-}
-
-private fun discoverAgentAddonGeneratedArtifacts(root: Path): List<Path> {
-  val addonsRoot = root.resolve("agent-addons")
-  if (!addonsRoot.isDirectory()) return emptyList()
-  val generatedNames = setOf(
-    "SKILL.md",
-    "shell-ceremony.md",
-    "telemetry-contract.md",
-    "stack-routing.md",
-    "claude-agents",
-    "codex-agents",
-    "opencode-agents",
-    "junie-agents",
-  )
-  return Files.walk(addonsRoot).use { stream ->
-    stream.filter { it.name in generatedNames }.sorted().toList()
+  discoverGeneratedAgentAddonPointersUnderSkills(root).forEach { artifact ->
+    val relative = displayGuardPath(root, artifact)
+    if (shouldValidateCommittedArtifact(relative, trackedFiles)) {
+      issues += "$relative: committed generated agent add-on pointer is not allowed; render it only for install targets"
+    }
   }
+  return GeneratedArtifactGuardReport(issues.sorted())
 }
 
 private fun shouldValidateCommittedArtifact(relativePath: String, trackedFiles: Set<String>?): Boolean =

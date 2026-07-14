@@ -11,6 +11,7 @@
 
 package skillbill.scaffold.runtime
 
+import skillbill.agentaddon.AgentAddonSchemaValidator
 import skillbill.agentaddon.model.AgentAddonConsumer
 import skillbill.error.InvalidScaffoldPayloadError
 import skillbill.error.MissingPlatformPackError
@@ -526,21 +527,40 @@ private fun planAgentAddon(payload: Map<String, Any?>, repoRoot: Path): Scaffold
   val description = requireString(payload, "description")
   val agentIds = skillbill.scaffold.payload.requireStringListPayload(payload["agent_ids"], "agent_ids")
   val consumers = skillbill.scaffold.payload.requireStringListPayload(payload["consumers"], "consumers")
+  AgentAddonSchemaValidator().validate(
+    mapOf(
+      "contract_version" to "1.0",
+      "slug" to slug,
+      "description" to description,
+      "agent_ids" to agentIds,
+      "consumers" to consumers,
+    ),
+    "agent-addon scaffold payload",
+  )
+  if (description != description.trim() || '\n' in description || '\r' in description) {
+    throw InvalidScaffoldPayloadError(
+      "Scaffold payload field 'description' must be trimmed and single-line for an agent add-on.",
+    )
+  }
   agentIds.forEach { id ->
     try {
       InstallAgent.fromId(id)
     } catch (error: IllegalArgumentException) {
-      throw InvalidScaffoldPayloadError(error.message ?: "Unknown agent '$id'.")
+      throw InvalidScaffoldPayloadError(error.message ?: "Unknown agent '$id'.", error)
     }
   }
   consumers.forEach { id ->
     try {
       AgentAddonConsumer.fromId(id)
     } catch (error: IllegalArgumentException) {
-      throw InvalidScaffoldPayloadError(error.message ?: "Unknown agent add-on consumer '$id'.")
+      throw InvalidScaffoldPayloadError(error.message ?: "Unknown agent add-on consumer '$id'.", error)
     }
   }
-  val root = repoRoot.resolve("agent-addons").resolve(slug)
+  val agentAddonsRoot = repoRoot.resolve("agent-addons").toAbsolutePath().normalize()
+  val root = agentAddonsRoot.resolve(slug).normalize()
+  if (!root.startsWith(agentAddonsRoot)) {
+    throw InvalidScaffoldPayloadError("Scaffold payload field 'slug' escapes the agent-addons root.")
+  }
   return ScaffoldPlan(
     kind = SKILL_KIND_AGENT_ADDON,
     skillName = slug,

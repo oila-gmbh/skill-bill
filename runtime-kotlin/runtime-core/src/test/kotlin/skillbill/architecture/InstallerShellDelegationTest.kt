@@ -131,8 +131,8 @@ class InstallerShellDelegationTest {
 
   @Test
   fun `installer copy-in materializes self-contained source so deleting the clone keeps skills resolving`() {
-    // SKILL-76 AC-1/AC-3: copy_in_authored_source copies skills/, platform-packs/, and the
-    // WHOLE orchestration/ tree into $HOME/.skill-bill as REAL files BEFORE skill linking.
+    // SKILL-76 AC-1/AC-3: copy_in_authored_source copies skills/, platform-packs/, agent-addons/,
+    // and the WHOLE orchestration/ tree into $HOME/.skill-bill as REAL files BEFORE skill linking.
     // After a successful install, deleting the clone must leave the copied source resolvable.
     val run = runInstallerShell(input = "1\ncopilot\nbase only\noff\nskip\n")
 
@@ -152,6 +152,10 @@ class InstallerShellDelegationTest {
       Files.isRegularFile(run.home.resolve(".skill-bill/orchestration/review-orchestrator/PLAYBOOK.md")),
       "AC-3: copied orchestration playbook must survive clone deletion",
     )
+    assertTrue(
+      Files.isRegularFile(run.home.resolve(".skill-bill/agent-addons/review-helper/content.md")),
+      "AC-3: copied agent add-on source must survive clone deletion",
+    )
   }
 
   private fun assertCopyInPopulatedRealFiles(run: InstallerShellRun) {
@@ -159,7 +163,8 @@ class InstallerShellDelegationTest {
     val skills = stateDir.resolve("skills")
     val packs = stateDir.resolve("platform-packs")
     val orchestration = stateDir.resolve("orchestration")
-    listOf(skills, packs, orchestration).forEach { dir ->
+    val agentAddons = stateDir.resolve("agent-addons")
+    listOf(skills, packs, orchestration, agentAddons).forEach { dir ->
       assertTrue(Files.isDirectory(dir), "copy-in must create real directory $dir")
       assertFalse(Files.isSymbolicLink(dir), "copy-in must create REAL files, not a symlink: $dir")
     }
@@ -171,13 +176,17 @@ class InstallerShellDelegationTest {
       Files.isRegularFile(orchestration.resolve("review-orchestrator/PLAYBOOK.md")),
       "copy-in must materialize the WHOLE orchestration tree under the copy",
     )
+    assertTrue(
+      Files.isRegularFile(agentAddons.resolve("review-helper/content.md")),
+      "copy-in must materialize agent add-on source under the copy",
+    )
   }
 
   @Test
   fun `pre-install wipe preserves copied source reserved baseline and state dbs`() {
     // SKILL-76 AC-5: when install.sh execs uninstall.sh as the pre-install step it sets
     // SKILL_BILL_PRESERVE_SOURCE_ON_WIPE=1. uninstall.sh must then PRESERVE skills/,
-    // platform-packs/, orchestration/, durable *.db state, and the reserved
+    // platform-packs/, orchestration/, agent-addons/, durable *.db state, and the reserved
     // baseline-manifest path, while still clearing runtime/ and installed-skills/.
     val fixtures = seedStateDirForWipe()
     val run = runUninstaller(fixtures, preserveSource = true, goalContinuation = false)
@@ -455,6 +464,7 @@ class InstallerShellDelegationTest {
     // SKILL-76: copy_in_authored_source needs real skills/, platform-packs/, and the
     // WHOLE orchestration/ tree to exist in the clone so it can copy them into the COPY.
     InstallerShellFixtures.seedAuthoredSource(repoRoot)
+    InstallerShellFixtures.seedAgentAddon(repoRoot)
     InstallerShellFixtures.seedInstallerPlatformPack(repoRoot, "kmp")
     InstallerShellFixtures.seedInstallerPlatformPack(repoRoot, "kotlin")
     InstallerShellFixtures.seedInstallerPlatformPack(repoRoot, "python")
@@ -794,6 +804,24 @@ internal fun parseRuntimeCalls(logPath: Path): List<List<String>> {
 }
 
 internal object InstallerShellFixtures {
+  fun seedAgentAddon(repoRoot: Path) {
+    val agentAddon = repoRoot.resolve("agent-addons/review-helper")
+    Files.createDirectories(agentAddon)
+    Files.writeString(
+      agentAddon.resolve("agent-addon.yaml"),
+      """
+      contract_version: "1.0"
+      slug: review-helper
+      description: Review helper
+      agent_ids:
+        - codex
+      consumers:
+        - bill-feature
+      """.trimIndent() + "\n",
+    )
+    Files.writeString(agentAddon.resolve("content.md"), "Review helper.\n")
+  }
+
   // SKILL-76 subtask 2: the installer drives `install reconcile` (compute) then
   // `install reconcile --apply`. The fake CLI cannot compute real hashes, so it emits the
   // controlled LINE-ORIENTED machine report install.sh consumes, and on --apply performs a
@@ -817,8 +845,10 @@ internal object InstallerShellFixtures {
     |  if printf '%s ' "${'$'}@" | grep -q -- '--accept-conflicts'; then accept_conflicts=1; fi
     |  cand_skills="${'$'}home/.skill-bill/.candidate-source/skills"
     |  cand_packs="${'$'}home/.skill-bill/.candidate-source/platform-packs"
+    |  cand_agent_addons="${'$'}home/.skill-bill/.candidate-source/agent-addons"
     |  live_skills="${'$'}home/.skill-bill/skills"
     |  live_packs="${'$'}home/.skill-bill/platform-packs"
+    |  live_agent_addons="${'$'}home/.skill-bill/agent-addons"
     |  conflict="${'$'}{SKILL_BILL_FAKE_RECONCILE_CONFLICTS:-}"
     |  keeplocal="${'$'}{SKILL_BILL_FAKE_KEEPLOCAL:-}"
     |  if [[ "${'$'}applying" -eq 1 ]]; then
@@ -841,6 +871,16 @@ internal object InstallerShellFixtures {
     |    if [[ -d "${'$'}cand_packs" ]]; then
     |      mkdir -p "${'$'}live_packs"
     |      cp -R "${'$'}cand_packs/." "${'$'}live_packs/"
+    |    fi
+    |    if [[ -d "${'$'}cand_agent_addons" ]]; then
+    |      mkdir -p "${'$'}live_agent_addons"
+    |      for addon_dir in "${'$'}cand_agent_addons"/*/; do
+    |        [[ -d "${'$'}addon_dir" ]] || continue
+    |        name="${'$'}(basename "${'$'}addon_dir")"
+    |        if [[ "agent-addons/${'$'}name" == "${'$'}keeplocal" ]]; then continue; fi
+    |        rm -rf "${'$'}live_agent_addons/${'$'}name"
+    |        cp -R "${'$'}addon_dir" "${'$'}live_agent_addons/${'$'}name"
+    |      done
     |    fi
     |    printf '%s\n' '{"version":"1.0"}' > "${'$'}home/.skill-bill/baseline-manifest.json"
     |    if [[ -n "${'$'}conflict" ]]; then

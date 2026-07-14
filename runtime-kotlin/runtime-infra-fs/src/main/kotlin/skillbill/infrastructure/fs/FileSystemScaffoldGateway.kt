@@ -40,6 +40,8 @@ import skillbill.ports.scaffold.model.GeneratedArtifactFile as PortGeneratedArti
 import skillbill.scaffold.platformpack.discoverGovernedAddonFiles as discoverFsGovernedAddonFiles
 import skillbill.scaffold.pointer.discoverGeneratedArtifactFiles as discoverFsGeneratedArtifactFiles
 
+private const val CONTENT_PREVIEW_MAX_CHARS = 500
+
 @Inject
 class FileSystemScaffoldGateway(
   private val scaffoldOrchestrator: FileSystemScaffoldOrchestrator,
@@ -208,7 +210,7 @@ private fun AgentAddonCatalogueEntry.toSkillStatus(repoRoot: Path, contentMode: 
     sectionCount = 0,
     sections = emptyList(),
     recommendedCommands = listOf("skill-bill validate", "skill-bill render bill-feature"),
-    contentPreview = if (contentMode == "preview") contentText.take(500) else null,
+    contentPreview = if (contentMode == "preview") contentText.take(CONTENT_PREVIEW_MAX_CHARS) else null,
     content = if (contentMode == "full") contentText else null,
     category = "agent-addon",
     slug = slug,

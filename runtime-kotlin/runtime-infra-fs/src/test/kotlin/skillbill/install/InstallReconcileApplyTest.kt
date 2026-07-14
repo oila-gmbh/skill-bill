@@ -97,6 +97,43 @@ class InstallReconcileApplyTest : InstallApplyTestSupport() {
   }
 
   @Test
+  fun `locally edited and locally authored agent addons survive reconciliation`() {
+    val upstream = seedRepo("apply-upstream")
+    val local = seedRepo("apply-local")
+    seedAgentAddon(upstream, "review-helper", "UPSTREAM\n")
+    seedAgentAddon(local, "review-helper", "UPSTREAM\n")
+    val home = home()
+    val baseline = baselineFromUpstream(upstream, home)
+    Files.writeString(local.resolve("agent-addons/review-helper/content.md"), "LOCAL EDIT\n")
+    seedAgentAddon(local, "local-helper", "LOCAL ONLY\n")
+
+    val output = applyReconciliation(roots(upstream), roots(local), home, baseline, acceptConflicts = false)
+
+    assertEquals("LOCAL EDIT\n", Files.readString(local.resolve("agent-addons/review-helper/content.md")))
+    assertEquals("LOCAL ONLY\n", Files.readString(local.resolve("agent-addons/local-helper/content.md")))
+    assertFalse(output.installedPaths.contains("agent-addons/review-helper"))
+    assertFalse(output.installedPaths.contains("agent-addons/local-helper"))
+  }
+
+  private fun seedAgentAddon(repo: Path, slug: String, body: String) {
+    val root = repo.resolve("agent-addons/$slug")
+    Files.createDirectories(root)
+    Files.writeString(
+      root.resolve("agent-addon.yaml"),
+      """
+      contract_version: "1.0"
+      slug: $slug
+      description: Test helper
+      agent_ids:
+        - codex
+      consumers:
+        - bill-feature
+      """.trimIndent() + "\n",
+    )
+    Files.writeString(root.resolve("content.md"), body)
+  }
+
+  @Test
   fun `new-upstream installs a skill into a missing live tree`() {
     val upstream = seedRepo("apply-upstream")
     // Empty local tree (first install): no skills dir yet.

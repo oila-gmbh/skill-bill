@@ -6,10 +6,12 @@ import skillbill.install.model.InstallPlanSkillKind
 import skillbill.install.model.InstallStagingPathIntent
 import skillbill.install.model.RenderedSkill
 import skillbill.install.staging.GeneratedSupportPointer
+import skillbill.install.staging.InstallContentHashInputs
 import skillbill.install.staging.InternalStagingPreparation
 import skillbill.install.staging.agentAddonPointersForSkill
 import skillbill.install.staging.applicablePointers
 import skillbill.install.staging.authoredFilesFor
+import skillbill.install.staging.authoredStagingNames
 import skillbill.install.staging.computeInstallContentHash
 import skillbill.install.staging.generatedSupportPointersFor
 import skillbill.install.staging.installedSkillStagingDir
@@ -77,17 +79,19 @@ private fun materializeValidatedPlannedStaging(inputs: PlannedStagingMaterializa
   val agentAddonPointers = agentAddonPointersForSkill(plan.request.repoRoot, skill.name)
   validateAgentAddonPointerNamespace(
     skill.name,
-    authored.map { it.fileName.toString() } + internal.sidecarNames + pointers.map { it.second.name } +
+    authoredStagingNames(inputs.resolvedSource, authored) + internal.sidecarNames + pointers.map { it.second.name } +
       internal.supportPointers.map { it.name } + listOf("SKILL.md", ".content-hash"),
     agentAddonPointers,
   )
   val currentHash = computeInstallContentHash(
-    sourceSkillDir = inputs.resolvedSource,
-    authored = authored,
-    applicablePointers = pointers,
-    generatedSupportPointers = internal.supportPointers,
-    internalChildren = internal.children,
-    agentAddonPointers = agentAddonPointers,
+    InstallContentHashInputs(
+      sourceSkillDir = inputs.resolvedSource,
+      authored = authored,
+      applicablePointers = pointers,
+      generatedSupportPointers = internal.supportPointers,
+      internalChildren = internal.children,
+      agentAddonPointers = agentAddonPointers,
+    ),
   )
   require(currentHash == intent.contentHash) {
     "Planned staging for '${skill.name}' expected hash '${intent.contentHash}' but current source resolves " +

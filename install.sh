@@ -932,6 +932,7 @@ SKILL_BILL_CANDIDATE_ROOT="$SKILL_BILL_STATE_DIR/.candidate-source"
 SKILL_BILL_CANDIDATE_SKILLS="$SKILL_BILL_CANDIDATE_ROOT/skills"
 SKILL_BILL_CANDIDATE_PLATFORM_PACKS="$SKILL_BILL_CANDIDATE_ROOT/platform-packs"
 SKILL_BILL_CANDIDATE_ORCHESTRATION="$SKILL_BILL_CANDIDATE_ROOT/orchestration"
+SKILL_BILL_CANDIDATE_AGENT_ADDONS="$SKILL_BILL_CANDIDATE_ROOT/agent-addons"
 SKILL_BILL_BASELINE_MANIFEST="$SKILL_BILL_STATE_DIR/baseline-manifest.json"
 
 # Stage one source tree into a candidate dir without touching the live target.
@@ -964,6 +965,11 @@ copy_in_authored_source() {
   stage_authored_candidate "$SKILLS_DIR" "$SKILL_BILL_CANDIDATE_SKILLS" "skills source"
   stage_authored_candidate "$PLATFORM_PACKS_DIR" "$SKILL_BILL_CANDIDATE_PLATFORM_PACKS" "platform-packs source"
   stage_authored_candidate "$PLUGIN_DIR/orchestration" "$SKILL_BILL_CANDIDATE_ORCHESTRATION" "orchestration source"
+  if [[ -d "$PLUGIN_DIR/agent-addons" ]]; then
+    stage_authored_candidate "$PLUGIN_DIR/agent-addons" "$SKILL_BILL_CANDIDATE_AGENT_ADDONS" "agent-addons source"
+  else
+    mkdir -p "$SKILL_BILL_CANDIDATE_AGENT_ADDONS"
+  fi
   ok "Authored source candidates staged under $SKILL_BILL_STATE_DIR"
 }
 

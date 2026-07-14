@@ -79,6 +79,24 @@ class InstallerShellReconcileTest {
   }
 
   @Test
+  fun `reinstall preserves a user-edited agent addon`() {
+    val first = runInstallerShellRaw(input = "1\ncopilot\nbase only\noff\nskip\n", conflictPath = null)
+    assertEquals(0, first.exitCode, first.output)
+    val liveAddon = first.home.resolve(".skill-bill/agent-addons/review-helper/content.md")
+    Files.writeString(liveAddon, "USER AGENT ADDON EDIT\n")
+
+    val second = runInstallerShellRaw(
+      input = "1\ncopilot\nbase only\noff\nskip\n",
+      conflictPath = null,
+      reuse = first,
+      scenario = ReconcileScenario(keepLocalPath = "agent-addons/review-helper"),
+    )
+
+    assertEquals(0, second.exitCode, second.output)
+    assertEquals("USER AGENT ADDON EDIT\n", Files.readString(liveAddon))
+  }
+
+  @Test
   fun `untouched local adopts new upstream and refreshes the baseline (AC-6)`() {
     // SKILL-76 AC-6: a local skill the user never edited (local == baseline) must adopt the
     // changed upstream on reinstall — the live bytes become the new upstream bytes and the
@@ -305,6 +323,7 @@ class InstallerShellReconcileTest {
     Files.writeString(repoRoot.resolve("install.sh"), Files.readString(runtimeRoot.parent.resolve("install.sh")))
     repoRoot.resolve("install.sh").toFile().setExecutable(true)
     InstallerShellFixtures.seedAuthoredSource(repoRoot)
+    InstallerShellFixtures.seedAgentAddon(repoRoot)
     InstallerShellFixtures.seedInstallerPlatformPack(repoRoot, "kotlin")
     InstallerShellFixtures.seedInstallerRuntime(repoRoot)
     // Lets an AC-6 adopt test bump the upstream skill body before the second install so the

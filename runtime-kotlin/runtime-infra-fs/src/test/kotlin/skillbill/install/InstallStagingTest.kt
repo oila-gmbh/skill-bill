@@ -382,6 +382,8 @@ class InstallStagingTest {
       "---\nname: bill-feature\ndescription: Feature router.\n---\n\nBody.\n",
     )
     Files.writeString(unrelated.resolve("content.md"), "---\nname: bill-unrelated\ndescription: Other.\n---\n\nBody.\n")
+    Files.createDirectories(feature.resolve("references"))
+    Files.writeString(feature.resolve("references/agent-addon-review-helper.md"), "Authored nested reference.\n")
     SkillClassFixtures.seedShippedSkillClasses(repo)
     val targets = supportingFileTargets(repo)
     requiredSupportingFilesForSkill("bill-feature", repo).map(targets::getValue).forEach { target ->
@@ -400,6 +402,10 @@ class InstallStagingTest {
     val firstFeature = stageInstalledSkill(repo, feature, home)
     val firstUnrelated = stageInstalledSkill(repo, unrelated, home)
     assertEquals("Addon body.\n", Files.readString(firstFeature.stagingDir.resolve("agent-addon-review-helper.md")))
+    assertEquals(
+      "Authored nested reference.\n",
+      Files.readString(firstFeature.stagingDir.resolve("references/agent-addon-review-helper.md")),
+    )
 
     Files.writeString(addon.resolve("content.md"), "Changed addon body.\n")
     val secondFeature = stageInstalledSkill(repo, feature, home)

@@ -4,6 +4,7 @@ import skillbill.agentaddon.AgentAddonDeliveryResolver
 import skillbill.agentaddon.AgentAddonPointer
 import skillbill.agentaddon.model.AgentAddonConsumer
 import skillbill.error.AgentAddonPointerCollisionError
+import java.io.File
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
@@ -53,3 +54,11 @@ internal fun validateAgentAddonPointerNamespace(
     }
   }
 }
+
+internal fun authoredStagingNames(sourceSkillDir: Path, authored: Collection<Path>): List<String> =
+  authored.map { path ->
+    sourceSkillDir.toAbsolutePath().normalize()
+      .relativize(path.toAbsolutePath().normalize())
+      .toString()
+      .replace(File.separatorChar, '/')
+  }

@@ -720,6 +720,29 @@ class ScaffoldAuthoringParityTest {
       Files.list(addonRoot).use { files -> files.map { it.fileName.toString() }.toList().toSet() },
     )
   }
+
+  @Test
+  fun `agent addon rejects path traversal slug before filesystem mutation`() = withIsolatedUserHome {
+    val repo = seedRepo()
+    seedBaseSkill(repo, "bill-feature")
+    val before = snapshotTree(repo)
+
+    assertFailsWith<skillbill.error.InvalidAgentAddonSchemaError> {
+      scaffold(
+        payload(
+          repo,
+          "agent-addon",
+          "slug" to "../escaped",
+          "description" to "Review helper",
+          "agent_ids" to listOf("codex"),
+          "consumers" to listOf("bill-feature"),
+        ),
+      )
+    }
+
+    assertEquals(before, snapshotTree(repo))
+    assertFalse(Files.exists(repo.parent.resolve("escaped")))
+  }
 }
 
 class PlatformPackNativeAgentScaffoldTest {
