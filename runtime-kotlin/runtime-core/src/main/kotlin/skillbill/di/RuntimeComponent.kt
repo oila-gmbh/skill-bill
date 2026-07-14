@@ -81,10 +81,10 @@ import skillbill.infrastructure.fs.GitWorkflowGitOperations
 import skillbill.infrastructure.fs.GoalObservabilityEventValidatorAdapter
 import skillbill.infrastructure.fs.GoalProgressEventValidatorAdapter
 import skillbill.infrastructure.fs.InstallPlanWireValidatorAdapter
+import skillbill.infrastructure.fs.JdkFeatureTaskRuntimeWorkerSupervisor
 import skillbill.infrastructure.fs.JdkParallelReviewLaneRunner
 import skillbill.infrastructure.fs.JdkRuntimeDiagnostics
 import skillbill.infrastructure.fs.JdkRuntimeTimingPort
-import skillbill.infrastructure.fs.JdkFeatureTaskRuntimeWorkerSupervisor
 import skillbill.infrastructure.fs.WorkflowSnapshotValidatorInfraAdapter
 import skillbill.infrastructure.http.HttpTelemetryClient
 import skillbill.infrastructure.http.JdkHttpRequester
@@ -135,8 +135,8 @@ import skillbill.ports.scaffold.source.ScaffoldSourceLoaderPort
 import skillbill.ports.scaffold.staging.ScaffoldGeneratedStagingPort
 import skillbill.ports.system.UninstallFileSystemGateway
 import skillbill.ports.taskruntime.FeatureTaskRuntimeRunInvariantsSource
-import skillbill.ports.taskruntime.FeatureTaskRuntimeWorkerSupervisor
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSpecStatusWriter
+import skillbill.ports.taskruntime.FeatureTaskRuntimeWorkerSupervisor
 import skillbill.ports.telemetry.TelemetryClient
 import skillbill.ports.telemetry.TelemetryConfigStore
 import skillbill.ports.telemetry.TelemetryLevelMutator

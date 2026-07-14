@@ -7,9 +7,9 @@ import skillbill.db.workflow.WorkflowStateRow
 import skillbill.db.workflow.WorkflowStateStore
 import skillbill.error.InvalidFeatureTaskRuntimeWorkerOwnershipSchemaError
 import skillbill.error.InvalidWorkflowStateSchemaError
-import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerLeaseState
 import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership
+import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import java.nio.file.Files
 import java.sql.Connection
 import java.sql.DriverManager
@@ -119,6 +119,7 @@ class WorkflowStateStoreTest {
       }
     }
   }
+
   @Test
   fun `feature task runtime table contract version default matches schema contract version const`() {
     // Pin the table default to the validator's schema version so a future

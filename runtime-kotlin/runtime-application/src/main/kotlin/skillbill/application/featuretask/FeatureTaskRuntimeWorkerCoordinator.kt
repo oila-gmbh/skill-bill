@@ -5,13 +5,11 @@ import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerLeaseState
 import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership
-import skillbill.ports.taskruntime.FeatureTaskRuntimeProcessInspection
 import skillbill.ports.taskruntime.FeatureTaskRuntimeWorkerSupervisor
+import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessInspection
 import java.time.Duration
 import java.time.Instant
 import java.util.UUID
-import java.util.concurrent.Executors
-import java.util.concurrent.TimeUnit
 
 @Inject
 class FeatureTaskRuntimeWorkerCoordinator(
@@ -20,19 +18,11 @@ class FeatureTaskRuntimeWorkerCoordinator(
 ) {
   fun <T> runOwned(workflowId: String, dbOverride: String?, block: () -> T): T {
     val ownership = acquireOrRecover(workflowId, dbOverride)
-    val heartbeats = Executors.newSingleThreadScheduledExecutor { runnable ->
-      Thread(runnable, "skill-bill-worker-heartbeat").apply { isDaemon = true }
-    }
-    heartbeats.scheduleAtFixedRate(
-      { heartbeat(ownership, dbOverride) },
-      HEARTBEAT_SECONDS,
-      HEARTBEAT_SECONDS,
-      TimeUnit.SECONDS,
-    )
+    val heartbeats = supervisor.startHeartbeat(HEARTBEAT_SECONDS) { heartbeat(ownership, dbOverride) }
     return try {
       block()
     } finally {
-      heartbeats.shutdownNow()
+      heartbeats.stop()
       database.transaction(dbOverride) {
         it.workflowStates.releaseFeatureTaskRuntimeWorker(workflowId, ownership.ownerToken, ownership.generation)
       }
@@ -90,7 +80,7 @@ class FeatureTaskRuntimeWorkerCoordinator(
     supervisor.terminateGracefully(existing)
     repeat(GRACE_POLLS) {
       if (supervisor.inspect(existing) == FeatureTaskRuntimeProcessInspection.NotRunning) return
-      Thread.sleep(GRACE_POLL_MILLIS)
+      supervisor.pause(GRACE_POLL_MILLIS)
     }
     if (supervisor.inspect(existing) == FeatureTaskRuntimeProcessInspection.ExactLive) {
       supervisor.terminateForcibly(existing)

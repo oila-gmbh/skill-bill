@@ -1,5 +1,5 @@
 ---
-status: Ready
+status: Complete
 ---
 
 # SKILL-120 - DB-first feature continuation

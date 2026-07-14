@@ -1,6 +1,8 @@
 package skillbill.ports.taskruntime
 
 import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership
+import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessIdentity
+import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessInspection
 
 interface FeatureTaskRuntimeWorkerSupervisor {
   fun currentProcess(): FeatureTaskRuntimeProcessIdentity
@@ -10,18 +12,12 @@ interface FeatureTaskRuntimeWorkerSupervisor {
   fun terminateGracefully(ownership: FeatureTaskRuntimeWorkerOwnership): Boolean
 
   fun terminateForcibly(ownership: FeatureTaskRuntimeWorkerOwnership): Boolean
+
+  fun startHeartbeat(intervalSeconds: Long, heartbeat: () -> Unit): FeatureTaskRuntimeHeartbeat
+
+  fun pause(durationMillis: Long)
 }
 
-data class FeatureTaskRuntimeProcessIdentity(
-  val hostIdentity: String,
-  val bootIdentity: String,
-  val pid: Long,
-  val processBirthToken: String,
-)
-
-sealed interface FeatureTaskRuntimeProcessInspection {
-  data object ExactLive : FeatureTaskRuntimeProcessInspection
-  data object NotRunning : FeatureTaskRuntimeProcessInspection
-  data class OwnershipMismatch(val reason: String) : FeatureTaskRuntimeProcessInspection
-  data class Unsupported(val reason: String) : FeatureTaskRuntimeProcessInspection
+fun interface FeatureTaskRuntimeHeartbeat {
+  fun stop()
 }

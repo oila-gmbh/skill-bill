@@ -15,6 +15,7 @@ import skillbill.ports.persistence.model.WorkflowStateRecord
  */
 interface WorkflowStateRepository :
   FeatureTaskWorkflowStateRepository,
+  FeatureTaskRuntimeWorkerRepository,
   FeatureImplementWorkflowStateRepository,
   FeatureVerifyWorkflowStateRepository,
   FeatureTaskRuntimeWorkflowStateRepository
@@ -29,31 +30,6 @@ interface FeatureTaskWorkflowStateRepository {
 
   fun claimFeatureTaskContinuation(workflowId: String, expectedUpdatedAt: String?): Boolean =
     error("Feature-task continuation claiming is not implemented by this persistence adapter.")
-
-  fun getFeatureTaskRuntimeWorkerOwnership(workflowId: String): FeatureTaskRuntimeWorkerOwnership? = null
-
-  fun acquireFeatureTaskRuntimeWorker(
-    ownership: FeatureTaskRuntimeWorkerOwnership,
-    expectedUpdatedAt: String?,
-  ): Boolean = error("Feature-task runtime worker acquisition is not implemented by this persistence adapter.")
-
-  fun reserveFeatureTaskRuntimeWorkerTakeover(
-    workflowId: String,
-    expectedOwnerToken: String,
-    expectedGeneration: Long,
-  ): Boolean = error("Feature-task runtime worker takeover is not implemented by this persistence adapter.")
-
-  fun transferFeatureTaskRuntimeWorker(
-    ownership: FeatureTaskRuntimeWorkerOwnership,
-    expectedOwnerToken: String,
-    expectedGeneration: Long,
-  ): Boolean = error("Feature-task runtime worker transfer is not implemented by this persistence adapter.")
-
-  fun heartbeatFeatureTaskRuntimeWorker(ownership: FeatureTaskRuntimeWorkerOwnership): Boolean =
-    error("Feature-task runtime worker heartbeat is not implemented by this persistence adapter.")
-
-  fun releaseFeatureTaskRuntimeWorker(workflowId: String, ownerToken: String, generation: Long): Boolean =
-    error("Feature-task runtime worker release is not implemented by this persistence adapter.")
 
   fun saveFeatureTaskWorkflow(row: WorkflowStateRecord, mode: FeatureTaskWorkflowMode) {
     when (mode) {
@@ -92,6 +68,34 @@ interface FeatureTaskWorkflowStateRepository {
     FeatureTaskWorkflowMode.RUNTIME ->
       (this as FeatureTaskRuntimeWorkflowStateRepository).latestFeatureTaskRuntimeWorkflow()
   }
+}
+
+interface FeatureTaskRuntimeWorkerRepository {
+
+  fun getFeatureTaskRuntimeWorkerOwnership(workflowId: String): FeatureTaskRuntimeWorkerOwnership? = null
+
+  fun acquireFeatureTaskRuntimeWorker(
+    ownership: FeatureTaskRuntimeWorkerOwnership,
+    expectedUpdatedAt: String?,
+  ): Boolean = error("Feature-task runtime worker acquisition is not implemented by this persistence adapter.")
+
+  fun reserveFeatureTaskRuntimeWorkerTakeover(
+    workflowId: String,
+    expectedOwnerToken: String,
+    expectedGeneration: Long,
+  ): Boolean = error("Feature-task runtime worker takeover is not implemented by this persistence adapter.")
+
+  fun transferFeatureTaskRuntimeWorker(
+    ownership: FeatureTaskRuntimeWorkerOwnership,
+    expectedOwnerToken: String,
+    expectedGeneration: Long,
+  ): Boolean = error("Feature-task runtime worker transfer is not implemented by this persistence adapter.")
+
+  fun heartbeatFeatureTaskRuntimeWorker(ownership: FeatureTaskRuntimeWorkerOwnership): Boolean =
+    error("Feature-task runtime worker heartbeat is not implemented by this persistence adapter.")
+
+  fun releaseFeatureTaskRuntimeWorker(workflowId: String, ownerToken: String, generation: Long): Boolean =
+    error("Feature-task runtime worker release is not implemented by this persistence adapter.")
 }
 
 interface FeatureImplementWorkflowStateRepository {

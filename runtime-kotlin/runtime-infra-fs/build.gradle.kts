@@ -198,7 +198,8 @@ val copyFeatureTaskRuntimeWorkerOwnershipSchema =
     inputs.file(schemaPath)
     doFirst {
       require(File(schemaPath).exists()) {
-        "SKILL-120: canonical feature-task runtime worker-ownership schema is missing at $schemaPath."
+        "SKILL-120: canonical feature-task runtime worker-ownership schema is missing " +
+          "at $schemaPath."
       }
     }
   }

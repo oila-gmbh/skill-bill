@@ -1,7 +1,11 @@
 package skillbill.cli
 
+import skillbill.application.model.WorkflowFamilyKind
+import skillbill.application.model.WorkflowOpenResult
 import skillbill.cli.core.CliRuntime
 import skillbill.cli.model.CliRuntimeContext
+import skillbill.di.RuntimeComponent
+import skillbill.di.create
 import skillbill.error.MalformedMachineConfigError
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.AgentRunLauncher
@@ -29,6 +33,7 @@ import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.minutes
@@ -1379,6 +1384,86 @@ class CliFeatureTaskRuntimeSpecLookupTest {
     assertContains(resume.stdout, "is terminal and cannot be resumed")
     assertEquals(emptyList(), resumeLauncher.requests, resume.stdout)
   }
+
+  @Test
+  fun `feature-task runtime router resumes existing post-plan workflow at implement`() {
+    val fixture = runtimeFixture()
+    val interruptedLauncher = InterruptAtImplementLauncher()
+    val firstRun = CliRuntime.run(
+      fixture.runCommand(extra = listOf("--agent", "codex")),
+      fixture.context(interruptedLauncher),
+    )
+    assertEquals(1, firstRun.exitCode, firstRun.stdout)
+    val workflowId = firstRun.stdout.lines().single { it.startsWith("workflow_id:") }.substringAfter(":").trim()
+    assertEquals(listOf("preplan", "plan", "implement"), interruptedLauncher.phaseOrder())
+
+    val resumedLauncher = RecordingPhaseLauncher()
+    val resumed = CliRuntime.run(
+      listOf(
+        "--db",
+        fixture.dbPath.toString(),
+        "feature-task",
+        "resume",
+        workflowId,
+        "SKILL-650",
+        fixture.specPath.toString(),
+        "--repo-root",
+        fixture.tempDir.toString(),
+        "--agent",
+        "codex",
+      ),
+      fixture.context(resumedLauncher),
+    )
+
+    assertEquals(0, resumed.exitCode, resumed.stdout)
+    assertContains(resumed.stdout, "workflow_id: $workflowId")
+    assertEquals(
+      listOf("implement", "review", "audit", "validate", "write_history", "commit_push", "pr"),
+      resumedLauncher.requests.map { phaseIdFromPrompt(it.skillRunRequest.promptOverride.orEmpty()) },
+    )
+    val implementPrompt = resumedLauncher.requests.first().skillRunRequest.promptOverride.orEmpty()
+    assertContains(implementPrompt, "### from: plan")
+    assertFalse(implementPrompt.contains("### from: preplan"), implementPrompt)
+    assertFalse(implementPrompt.contains("preplan_digest"), implementPrompt)
+  }
+
+  @Test
+  fun `feature-task runtime router rejects persisted prose mode before launch`() {
+    val fixture = runtimeFixture()
+    val component = RuntimeComponent::class.create(fixture.context(RecordingPhaseLauncher()).toRuntimeContext())
+    val opened = assertIs<WorkflowOpenResult.Ok>(
+      component.workflowService.openFeatureTask(
+        kind = WorkflowFamilyKind.TASK_PROSE,
+        currentStepId = "implement",
+        dbOverride = fixture.dbPath.toString(),
+        issueKey = "SKILL-650",
+        repositoryIdentity = "repo-root-realpath-v1:${fixture.tempDir.toRealPath()}",
+        governedSpecPath = ".feature-specs/SKILL-650-runtime/spec.md",
+      ),
+    )
+    val resumeLauncher = RecordingPhaseLauncher()
+
+    val resumed = CliRuntime.run(
+      listOf(
+        "--db",
+        fixture.dbPath.toString(),
+        "feature-task",
+        "resume",
+        opened.workflowId,
+        "SKILL-650",
+        fixture.specPath.toString(),
+        "--repo-root",
+        fixture.tempDir.toString(),
+        "--agent",
+        "codex",
+      ),
+      fixture.context(resumeLauncher),
+    )
+
+    assertEquals(1, resumed.exitCode, resumed.stdout)
+    assertContains(resumed.stdout, "was persisted in prose mode")
+    assertEquals(emptyList(), resumeLauncher.requests)
+  }
 }
 
 private data class FeatureTaskRuntimeCliFixture(
@@ -1507,7 +1592,7 @@ private class RecordingPhaseLauncher(
     return launchIndex < limit && phaseId == "review"
   }
 
-  private companion object {
+  companion object {
     // Missing the required status/summary/produced_outputs fields, so the per-phase
     // output validator rejects it and the runner never marks the phase complete.
     val INVALID_PHASE_OUTPUT =
@@ -1545,6 +1630,8 @@ private class RecordingPhaseLauncher(
         """.trimIndent().prependIndent("  ")
       return "$base\n$reconciliationReport"
     }
+
+    fun validPhaseOutputForTest(phaseId: String): String = validPhaseOutput(phaseId)
 
     val DECOMPOSE_PLAN_OUTPUT: String = """
       {
@@ -1587,6 +1674,37 @@ private class RecordingPhaseLauncher(
         }
       }
     """.trimIndent()
+  }
+}
+
+private class InterruptAtImplementLauncher : AgentRunLauncher {
+  val requests: MutableList<AgentRunLaunchRequest> = mutableListOf()
+
+  override fun launch(request: AgentRunLaunchRequest): AgentRunLaunchOutcome {
+    requests += request
+    val phaseId = phaseIdFromPrompt(request.skillRunRequest.promptOverride.orEmpty())
+    if (phaseId == "implement") {
+      return AgentRunLaunchFacts(
+        agent = InstallAgent.CODEX,
+        exitStatus = null,
+        stdout = "",
+        stderr = "interrupted after completed planning",
+        timedOut = false,
+        spawnFailed = true,
+      )
+    }
+    return AgentRunLaunchFacts(
+      agent = InstallAgent.CODEX,
+      exitStatus = 0,
+      stdout = RecordingPhaseLauncher.validPhaseOutputForTest(phaseId),
+      stderr = "",
+      timedOut = false,
+      spawnFailed = false,
+    )
+  }
+
+  fun phaseOrder(): List<String> = requests.map {
+    phaseIdFromPrompt(it.skillRunRequest.promptOverride.orEmpty())
   }
 }
 

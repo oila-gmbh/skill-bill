@@ -3,9 +3,10 @@ package skillbill.application
 import skillbill.application.featuretask.FeatureTaskRuntimeWorkerCoordinator
 import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerLeaseState
 import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership
-import skillbill.ports.taskruntime.FeatureTaskRuntimeProcessIdentity
-import skillbill.ports.taskruntime.FeatureTaskRuntimeProcessInspection
+import skillbill.ports.taskruntime.FeatureTaskRuntimeHeartbeat
 import skillbill.ports.taskruntime.FeatureTaskRuntimeWorkerSupervisor
+import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessIdentity
+import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessInspection
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -99,6 +100,10 @@ private class FakeWorkerSupervisor(
     inspection = FeatureTaskRuntimeProcessInspection.NotRunning
     return true
   }
+
+  override fun startHeartbeat(intervalSeconds: Long, heartbeat: () -> Unit) = FeatureTaskRuntimeHeartbeat {}
+
+  override fun pause(durationMillis: Long) = Unit
 }
 
 private fun ownership() = FeatureTaskRuntimeWorkerOwnership(

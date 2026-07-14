@@ -49,6 +49,8 @@ import skillbill.ports.persistence.TelemetryReconciliationRepository
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.persistence.WorkflowStateRepository
 import skillbill.ports.persistence.model.FeatureImplementSessionSummary
+import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerLeaseState
+import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.persistence.model.FeatureVerifySessionSummary
 import skillbill.ports.persistence.model.WorkflowStateRecord
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSpecStatusWriter
@@ -4236,8 +4238,17 @@ internal class RecordingLifecycleTelemetryRepository : LifecycleTelemetryReposit
     error("unused")
 }
 
+private fun FeatureTaskRuntimeWorkerOwnership.matchesActiveOwnership(
+  workflowId: String,
+  ownerToken: String,
+  generation: Long,
+): Boolean = this.workflowId == workflowId &&
+  this.ownerToken == ownerToken &&
+  this.generation == generation &&
+  leaseState == FeatureTaskRuntimeWorkerLeaseState.ACTIVE
+
 internal class InMemoryRuntimeWorkflowRepository : WorkflowStateRepository {
-  private var workerOwnership: skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership? = null
+  private var workerOwnership: FeatureTaskRuntimeWorkerOwnership? = null
 
   fun seedWorkerOwnership(ownership: skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership) {
     workerOwnership = ownership
@@ -4261,11 +4272,7 @@ internal class InMemoryRuntimeWorkflowRepository : WorkflowStateRepository {
     expectedGeneration: Long,
   ): Boolean = synchronized(this) {
     val current = workerOwnership ?: return false
-    if (
-      current.workflowId != workflowId || current.ownerToken != expectedOwnerToken ||
-      current.generation != expectedGeneration ||
-      current.leaseState != skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerLeaseState.ACTIVE
-    ) return false
+    if (!current.matchesActiveOwnership(workflowId, expectedOwnerToken, expectedGeneration)) return false
     workerOwnership = current.copy(
       leaseState = skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerLeaseState.TAKEOVER_RESERVED,
     )
@@ -4281,7 +4288,9 @@ internal class InMemoryRuntimeWorkflowRepository : WorkflowStateRepository {
     if (
       current.ownerToken != expectedOwnerToken || current.generation != expectedGeneration ||
       current.leaseState != skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerLeaseState.TAKEOVER_RESERVED
-    ) return false
+    ) {
+      return false
+    }
     workerOwnership = ownership
     true
   }

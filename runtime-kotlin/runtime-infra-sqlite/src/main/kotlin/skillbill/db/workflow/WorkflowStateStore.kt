@@ -8,6 +8,7 @@ import skillbill.error.InvalidFeatureTaskExecutionIdentitySchemaError
 import skillbill.error.InvalidFeatureTaskRuntimeWorkerOwnershipSchemaError
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.ports.persistence.FeatureImplementWorkflowStateRepository
+import skillbill.ports.persistence.FeatureTaskRuntimeWorkerRepository
 import skillbill.ports.persistence.FeatureTaskRuntimeWorkflowStateRepository
 import skillbill.ports.persistence.FeatureTaskWorkflowStateRepository
 import skillbill.ports.persistence.FeatureVerifyWorkflowStateRepository
@@ -41,23 +42,29 @@ private const val CLAIM_EXPECTED_UPDATED_AT_INDEX: Int = 3
 private const val LOOKUP_WORKFLOW_ISSUE_KEY_INDEX: Int = 1
 private const val LOOKUP_IDENTITY_ISSUE_KEY_INDEX: Int = 2
 private const val LOOKUP_REPOSITORY_IDENTITY_INDEX: Int = 3
+private const val MINIMUM_OWNER_TOKEN_LENGTH: Int = 16
 
 /**
  * SQLite-backed [WorkflowStateRepository]. Delegates each per-family capability
  * interface to a small implementer sharing the connection, so no single class
  * crosses the detekt `TooManyFunctions` threshold.
  */
-class WorkflowStateStore(
-  private val connection: Connection,
+class WorkflowStateStore private constructor(
+  connection: Connection,
+  featureTaskStore: FeatureTaskWorkflowStateStore,
 ) : WorkflowStateRepository,
-  FeatureTaskWorkflowStateRepository by FeatureTaskWorkflowStateStore(connection),
+  FeatureTaskWorkflowStateRepository by featureTaskStore,
+  FeatureTaskRuntimeWorkerRepository by featureTaskStore,
   FeatureImplementWorkflowStateRepository by FeatureImplementWorkflowStateStore(connection),
   FeatureVerifyWorkflowStateRepository by FeatureVerifyWorkflowStateStore(connection),
-  FeatureTaskRuntimeWorkflowStateRepository by FeatureTaskRuntimeWorkflowStateStore(connection)
+  FeatureTaskRuntimeWorkflowStateRepository by FeatureTaskRuntimeWorkflowStateStore(connection) {
+  constructor(connection: Connection) : this(connection, FeatureTaskWorkflowStateStore(connection))
+}
 
 private class FeatureTaskWorkflowStateStore(
   private val connection: Connection,
-) : FeatureTaskWorkflowStateRepository {
+) : FeatureTaskWorkflowStateRepository,
+  FeatureTaskRuntimeWorkerRepository {
   override fun getFeatureTaskRuntimeWorkerOwnership(workflowId: String): FeatureTaskRuntimeWorkerOwnership? =
     connection.featureTaskRuntimeWorkerOwnership(workflowId)
 
@@ -79,9 +86,10 @@ private class FeatureTaskWorkflowStateStore(
         AND ((updated_at IS NULL AND ? IS NULL) OR updated_at = ?)
       """.trimIndent(),
     ).use { statement ->
-      statement.setString(1, ownership.workflowId)
-      statement.setString(2, expectedUpdatedAt)
-      statement.setString(3, expectedUpdatedAt)
+      var parameterIndex = 1
+      statement.setString(parameterIndex++, ownership.workflowId)
+      statement.setString(parameterIndex++, expectedUpdatedAt)
+      statement.setString(parameterIndex, expectedUpdatedAt)
       statement.executeUpdate() == 1
     }
     if (claimed) insertWorkerOwnership(ownership)
@@ -99,9 +107,10 @@ private class FeatureTaskWorkflowStateStore(
     WHERE workflow_id = ? AND owner_token = ? AND generation = ? AND lease_state = 'active'
     """.trimIndent(),
   ).use { statement ->
-    statement.setString(1, workflowId)
-    statement.setString(2, expectedOwnerToken)
-    statement.setLong(3, expectedGeneration)
+    var parameterIndex = 1
+    statement.setString(parameterIndex++, workflowId)
+    statement.setString(parameterIndex++, expectedOwnerToken)
+    statement.setLong(parameterIndex, expectedGeneration)
     statement.executeUpdate() == 1
   }
 
@@ -118,10 +127,10 @@ private class FeatureTaskWorkflowStateStore(
     WHERE workflow_id = ? AND owner_token = ? AND generation = ? AND lease_state = 'takeover_reserved'
     """.trimIndent(),
   ).use { statement ->
-    statement.bindOwnership(ownership, includeWorkflowId = false)
-    statement.setString(13, ownership.workflowId)
-    statement.setString(14, expectedOwnerToken)
-    statement.setLong(15, expectedGeneration)
+    var parameterIndex = statement.bindOwnership(ownership, includeWorkflowId = false)
+    statement.setString(parameterIndex++, ownership.workflowId)
+    statement.setString(parameterIndex++, expectedOwnerToken)
+    statement.setLong(parameterIndex, expectedGeneration)
     statement.executeUpdate() == 1
   }
 
@@ -133,13 +142,14 @@ private class FeatureTaskWorkflowStateStore(
       WHERE workflow_id = ? AND owner_token = ? AND generation = ? AND lease_state = 'active'
       """.trimIndent(),
     ).use { statement ->
-      statement.setString(1, ownership.heartbeatAt)
-      statement.setString(2, ownership.expiresAt)
-      statement.setString(3, ownership.phaseId)
-      statement.setInt(4, ownership.phaseAttempt)
-      statement.setString(5, ownership.workflowId)
-      statement.setString(6, ownership.ownerToken)
-      statement.setLong(7, ownership.generation)
+      var parameterIndex = 1
+      statement.setString(parameterIndex++, ownership.heartbeatAt)
+      statement.setString(parameterIndex++, ownership.expiresAt)
+      statement.setString(parameterIndex++, ownership.phaseId)
+      statement.setInt(parameterIndex++, ownership.phaseAttempt)
+      statement.setString(parameterIndex++, ownership.workflowId)
+      statement.setString(parameterIndex++, ownership.ownerToken)
+      statement.setLong(parameterIndex, ownership.generation)
       statement.executeUpdate() == 1
     }
 
@@ -147,9 +157,10 @@ private class FeatureTaskWorkflowStateStore(
     connection.prepareStatement(
       "DELETE FROM feature_task_runtime_worker_leases WHERE workflow_id = ? AND owner_token = ? AND generation = ?",
     ).use { statement ->
-      statement.setString(1, workflowId)
-      statement.setString(2, ownerToken)
-      statement.setLong(3, generation)
+      var parameterIndex = 1
+      statement.setString(parameterIndex++, workflowId)
+      statement.setString(parameterIndex++, ownerToken)
+      statement.setLong(parameterIndex, generation)
       statement.executeUpdate() == 1
     }
 
@@ -281,7 +292,7 @@ private fun Connection.insertWorkerOwnership(ownership: FeatureTaskRuntimeWorker
 private fun java.sql.PreparedStatement.bindOwnership(
   ownership: FeatureTaskRuntimeWorkerOwnership,
   includeWorkflowId: Boolean,
-) {
+): Int {
   var index = 1
   if (includeWorkflowId) setString(index++, ownership.workflowId)
   setString(index++, ownership.contractVersion)
@@ -295,7 +306,8 @@ private fun java.sql.PreparedStatement.bindOwnership(
   setString(index++, ownership.heartbeatAt)
   setString(index++, ownership.expiresAt)
   setString(index++, ownership.phaseId)
-  setInt(index, ownership.phaseAttempt)
+  setInt(index++, ownership.phaseAttempt)
+  return index
 }
 
 private fun Connection.featureTaskRuntimeWorkerOwnership(workflowId: String): FeatureTaskRuntimeWorkerOwnership? =
@@ -303,30 +315,39 @@ private fun Connection.featureTaskRuntimeWorkerOwnership(workflowId: String): Fe
     statement.setString(1, workflowId)
     statement.executeQuery().use { row ->
       if (!row.next()) return null
-      try {
-        FeatureTaskRuntimeWorkerOwnership(
-          workflowId = row.getString("workflow_id"),
-          contractVersion = row.getString("contract_version"),
-          generation = row.getLong("generation"),
-          ownerToken = row.getString("owner_token"),
-          hostIdentity = row.getString("host_identity"),
-          bootIdentity = row.getString("boot_identity"),
-          pid = row.getLong("pid"),
-          processBirthToken = row.getString("process_birth_token"),
-          leaseState = FeatureTaskRuntimeWorkerLeaseState.entries.single {
-            it.wireValue == row.getString("lease_state")
-          },
-          heartbeatAt = row.getString("heartbeat_at"),
-          expiresAt = row.getString("expires_at"),
-          phaseId = row.getString("phase_id"),
-          phaseAttempt = row.getInt("phase_attempt"),
-        ).also(::validateWorkerOwnership)
-      } catch (failure: RuntimeException) {
-        if (failure is InvalidFeatureTaskRuntimeWorkerOwnershipSchemaError) throw failure
-        throw InvalidFeatureTaskRuntimeWorkerOwnershipSchemaError(workflowId, failure.message ?: "malformed row")
-      }
+      FeatureTaskRuntimeWorkerOwnership(
+        workflowId = row.requiredWorkerOwnershipString(workflowId, "workflow_id"),
+        contractVersion = row.requiredWorkerOwnershipString(workflowId, "contract_version"),
+        generation = row.getLong("generation"),
+        ownerToken = row.requiredWorkerOwnershipString(workflowId, "owner_token"),
+        hostIdentity = row.requiredWorkerOwnershipString(workflowId, "host_identity"),
+        bootIdentity = row.requiredWorkerOwnershipString(workflowId, "boot_identity"),
+        pid = row.getLong("pid"),
+        processBirthToken = row.requiredWorkerOwnershipString(workflowId, "process_birth_token"),
+        leaseState = decodeWorkerLeaseState(
+          workflowId,
+          row.requiredWorkerOwnershipString(workflowId, "lease_state"),
+        ),
+        heartbeatAt = row.requiredWorkerOwnershipString(workflowId, "heartbeat_at"),
+        expiresAt = row.requiredWorkerOwnershipString(workflowId, "expires_at"),
+        phaseId = row.requiredWorkerOwnershipString(workflowId, "phase_id"),
+        phaseAttempt = row.getInt("phase_attempt"),
+      ).also(::validateWorkerOwnership)
     }
   }
+
+private fun java.sql.ResultSet.requiredWorkerOwnershipString(workflowId: String, column: String): String =
+  getString(column) ?: throw InvalidFeatureTaskRuntimeWorkerOwnershipSchemaError(
+    workflowId,
+    "$column is required",
+  )
+
+private fun decodeWorkerLeaseState(workflowId: String, value: String): FeatureTaskRuntimeWorkerLeaseState =
+  FeatureTaskRuntimeWorkerLeaseState.entries.singleOrNull { it.wireValue == value }
+    ?: throw InvalidFeatureTaskRuntimeWorkerOwnershipSchemaError(
+      workflowId,
+      "lease_state '$value' is not supported",
+    )
 
 private fun validateWorkerOwnership(ownership: FeatureTaskRuntimeWorkerOwnership) {
   val heartbeatAt = parseOwnershipInstant(ownership, "heartbeat_at", ownership.heartbeatAt)
@@ -335,7 +356,8 @@ private fun validateWorkerOwnership(ownership: FeatureTaskRuntimeWorkerOwnership
     ownership.contractVersion != skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_WORKER_OWNERSHIP_CONTRACT_VERSION ->
       "unsupported contract_version '${ownership.contractVersion}'"
     ownership.generation < 1 -> "generation must be positive"
-    ownership.ownerToken.length < 16 -> "owner_token must contain at least 16 characters"
+    ownership.ownerToken.length < MINIMUM_OWNER_TOKEN_LENGTH ->
+      "owner_token must contain at least $MINIMUM_OWNER_TOKEN_LENGTH characters"
     ownership.hostIdentity.isBlank() || ownership.bootIdentity.isBlank() -> "host and boot identity are required"
     ownership.pid < 1 || ownership.processBirthToken.isBlank() -> "exact process identity is required"
     ownership.phaseId.isBlank() || ownership.phaseAttempt < 1 -> "phase coordinates are invalid"
