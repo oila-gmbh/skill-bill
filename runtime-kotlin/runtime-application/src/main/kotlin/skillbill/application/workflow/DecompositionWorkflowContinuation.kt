@@ -6,9 +6,9 @@ import skillbill.application.decomposition.DECOMPOSITION_RUNTIME_ARTIFACT_KEY
 import skillbill.application.decomposition.encodeDecompositionManifestMap
 import skillbill.application.decomposition.loadManifestOrNull
 import skillbill.application.decomposition.withBlockedSubtask
-import skillbill.application.normalizeRequiredIssueKey
 import skillbill.application.model.GoalContinuationOutcome
 import skillbill.application.model.WorkflowContinueResult
+import skillbill.application.normalizeRequiredIssueKey
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.workflow.DecompositionManifestFileStore
 import skillbill.ports.workflow.UnavailableDecompositionManifestFileStore

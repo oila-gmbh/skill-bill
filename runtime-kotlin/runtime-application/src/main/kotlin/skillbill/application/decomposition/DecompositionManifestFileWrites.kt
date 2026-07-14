@@ -57,17 +57,22 @@ fun writeDecompositionManifestText(target: Path, content: String, fileStore: Dec
   fileStore.writeTextAtomically(target, content)
 }
 
-fun projectDecompositionSpecStatus(target: Path, status: String, fileStore: DecompositionManifestFileStore) {
+fun projectDecompositionSpecStatus(
+  target: Path,
+  status: String,
+  fileStore: DecompositionManifestFileStore,
+  pendingStatus: String = "Pending",
+) {
   if (!fileStore.isRegularFile(target)) {
     return
   }
-  val projected = projectStatus(fileStore.readText(target), status)
+  val projected = projectStatus(fileStore.readText(target), status, pendingStatus)
   fileStore.writeTextAtomically(target, projected)
 }
 
-private fun projectStatus(text: String, status: String): String {
+private fun projectStatus(text: String, status: String, pendingStatus: String): String {
   val humanStatus = when (status) {
-    "pending" -> "Pending"
+    "pending" -> pendingStatus
     "in_progress" -> "In Progress"
     "blocked" -> "Blocked"
     "complete" -> "Complete"
