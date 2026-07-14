@@ -46,7 +46,7 @@ table:
 | Lookup result | Router behaviour |
 | --- | --- |
 | Exactly one resumable workflow | Present the existing single confirmation gate as a continuation confirmation, then resume that workflow at its durable next step. Once `plan` is complete, implementation receives the plan and not the pre-planning digest; completed `preplan` and `plan` steps are skipped. |
-| A workflow is already running | Report its workflow ID, mode, current step, and liveness/status; do not launch a competing run or replay any phase. |
+| A workflow is already running | Report its workflow ID, mode, current step, and liveness/status. After the existing confirmation gate, continuation takes over that same workflow ID: terminate an exactly identified live worker, or atomically reclaim an orphaned running row when no matching worker exists, then rerun only the incomplete phase. |
 | No non-terminal workflow | Preserve today’s normal spec-preparation/direct-dispatch behaviour. |
 | More than one eligible workflow | Loud-fail with the candidate IDs and concise state summaries; require an explicit workflow selection rather than choosing “latest”. |
 | Only terminal workflows | Report the terminal result and do not silently start a replacement workflow. A new implementation attempt requires explicit restart/new-run intent. |
@@ -160,6 +160,17 @@ options retain their existing pinning/validation behaviour.
     with the latest review findings preserved as durable evidence. The cap
     prevents further review-fix retries; it does not prevent later phases from
     running.
+18. A confirmed continuation can recover a workflow stranded in `running`
+    without abandoning it or opening a replacement workflow. Runtime worker
+    ownership is durably identifiable using evidence strong enough to avoid
+    PID-reuse and cross-host mistakes. If the exact worker is alive, takeover
+    terminates it gracefully and escalates only when required; if no matching
+    worker is alive, continuation atomically reclaims the orphaned row. Both
+    paths retain the workflow and session IDs, preserve completed phases and
+    artifacts, increment/restart only the incomplete phase attempt, and use a
+    compare-and-set or lease transition so concurrent callers cannot both
+    resume it. Tests cover live-worker takeover, orphan reclaim, PID-reuse or
+    ownership mismatch rejection, and concurrent reclaim contention.
 
 ## Non-Goals
 
@@ -184,7 +195,7 @@ options retain their existing pinning/validation behaviour.
   malformed or legacy-incompatible durable records must loud-fail at a normal
   read seam in line with the runtime-contract policy.
 - Keep lookup read-only. Only the normal, confirmed continuation path may
-  reopen/advance a resumable workflow.
+  reopen/advance a resumable workflow or take over a running workflow.
 - Maintain strict repository isolation even when the default local database is
   shared across many repositories.
 - Preserve bounded continuation artifacts: router decisions may inspect concise

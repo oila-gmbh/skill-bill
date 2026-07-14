@@ -8,6 +8,8 @@ Feature-task continuation is repository-scoped and database-authoritative. At wo
 
 The feature `spec.md` remains the governed product contract; it is not a mutable workflow ledger. Pre-planning, planning, phase outputs, and the phase ledger remain durable database artifacts. Implementation continuation is hydrated from the completed `plan` only. `preplan_digest` remains available for planning recovery or an explicit loop back to planning.
 
+Runtime worker ownership is mutable state kept separately from immutable execution identity. A worker lease records a random owner token, monotonic fencing generation, host and boot identity, PID plus process-birth evidence, heartbeat/expiry, and the incomplete phase attempt. Every heartbeat, phase write, takeover reservation, transfer, and release must match both token and generation. Process liveness is exact only when host, boot, PID, and birth evidence agree; unverifiable or mismatched ownership must fail loudly instead of terminating a process or creating a replacement workflow. Confirmed takeover first reserves ownership with compare-and-set, then requests graceful shutdown and escalates only while the same process identity remains live.
+
 The runtime uses a hexagonal JVM graph with entry adapters at the outside,
 application use cases in the orchestration layer, ports as the dependency
 boundary, domain models and rules below the ports, and concrete infrastructure

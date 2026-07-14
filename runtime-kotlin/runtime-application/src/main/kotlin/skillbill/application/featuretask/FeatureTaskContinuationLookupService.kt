@@ -8,6 +8,7 @@ import skillbill.application.workflow.toSnapshot
 import skillbill.error.InvalidFeatureTaskExecutionIdentitySchemaError
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.model.FeatureTaskRouteScope
+import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.persistence.model.FeatureTaskWorkflowCandidate
 import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import skillbill.workflow.WorkflowEngine
@@ -38,8 +39,9 @@ class FeatureTaskContinuationLookupService(
       normalizedIssueKey,
       repositoryIdentity,
     )
-    val validated = candidates
-      .map { it to project(it) }
+    val validated = candidates.map {
+      it to project(it, unitOfWork.workflowStates.getFeatureTaskRuntimeWorkerOwnership(it.workflow.workflowId))
+    }
     val selected = workflowId?.let { selector ->
       listOf(
         validated.singleOrNull { it.first.workflow.workflowId == selector }
@@ -52,7 +54,10 @@ class FeatureTaskContinuationLookupService(
     classify(selected.map { it.second })
   }
 
-  private fun project(candidate: FeatureTaskWorkflowCandidate): FeatureTaskContinuationCandidate {
+  private fun project(
+    candidate: FeatureTaskWorkflowCandidate,
+    ownership: FeatureTaskRuntimeWorkerOwnership?,
+  ): FeatureTaskContinuationCandidate {
     val identity = requireNotNull(candidate.identity) {
       invalidIdentity(candidate, "missing immutable execution identity")
     }
@@ -77,10 +82,17 @@ class FeatureTaskContinuationLookupService(
       governedSpecPath = identity.governedSpecPath,
       updatedAt = candidate.workflow.updatedAt,
       liveness = if (status == "running") {
-        FeatureTaskContinuationLiveness(
-          classification = "durable_activity_only",
+        ownership?.let {
+          FeatureTaskContinuationLiveness(
+            classification = "worker_ownership_recorded",
+            lastEvidenceAt = it.heartbeatAt,
+            evidence = "Runtime worker ownership is fenced at generation ${it.generation}; exact process liveness " +
+              "must be verified before takeover.",
+          )
+        } ?: FeatureTaskContinuationLiveness(
+          classification = "ownership_unavailable",
           lastEvidenceAt = candidate.workflow.updatedAt,
-          evidence = "The durable workflow snapshot is running; no process-supervisor evidence is available.",
+          evidence = "The workflow is running without verifiable worker ownership; operator repair is required.",
         )
       } else {
         null

@@ -3,7 +3,9 @@
 package skillbill.db.workflow
 
 import skillbill.db.core.DbConstants
+import skillbill.db.core.inImmediateTransaction
 import skillbill.error.InvalidFeatureTaskExecutionIdentitySchemaError
+import skillbill.error.InvalidFeatureTaskRuntimeWorkerOwnershipSchemaError
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.ports.persistence.FeatureImplementWorkflowStateRepository
 import skillbill.ports.persistence.FeatureTaskRuntimeWorkflowStateRepository
@@ -13,6 +15,8 @@ import skillbill.ports.persistence.WorkflowStateRepository
 import skillbill.ports.persistence.model.FeatureImplementSessionSummary
 import skillbill.ports.persistence.model.FeatureTaskExecutionIdentity
 import skillbill.ports.persistence.model.FeatureTaskRouteScope
+import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerLeaseState
+import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.persistence.model.FeatureTaskWorkflowCandidate
 import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import skillbill.ports.persistence.model.FeatureVerifySessionSummary
@@ -52,6 +56,97 @@ class WorkflowStateStore(
 private class FeatureTaskWorkflowStateStore(
   private val connection: Connection,
 ) : FeatureTaskWorkflowStateRepository {
+  override fun getFeatureTaskRuntimeWorkerOwnership(workflowId: String): FeatureTaskRuntimeWorkerOwnership? =
+    connection.featureTaskRuntimeWorkerOwnership(workflowId)
+
+  override fun acquireFeatureTaskRuntimeWorker(
+    ownership: FeatureTaskRuntimeWorkerOwnership,
+    expectedUpdatedAt: String?,
+  ): Boolean = connection.inImmediateTransaction {
+    val claimed = prepareStatement(
+      """
+      UPDATE feature_task_workflows
+      SET workflow_status = 'running', updated_at = CURRENT_TIMESTAMP
+      WHERE workflow_id = ?
+        AND mode = 'runtime'
+        AND workflow_status NOT IN ('running', 'completed', 'failed', 'abandoned')
+        AND ((updated_at IS NULL AND ? IS NULL) OR updated_at = ?)
+      """.trimIndent(),
+    ).use { statement ->
+      statement.setString(1, ownership.workflowId)
+      statement.setString(2, expectedUpdatedAt)
+      statement.setString(3, expectedUpdatedAt)
+      statement.executeUpdate() == 1
+    }
+    if (claimed) insertWorkerOwnership(ownership)
+    claimed
+  }
+
+  override fun reserveFeatureTaskRuntimeWorkerTakeover(
+    workflowId: String,
+    expectedOwnerToken: String,
+    expectedGeneration: Long,
+  ): Boolean = connection.prepareStatement(
+    """
+    UPDATE feature_task_runtime_worker_leases
+    SET lease_state = 'takeover_reserved'
+    WHERE workflow_id = ? AND owner_token = ? AND generation = ? AND lease_state = 'active'
+    """.trimIndent(),
+  ).use { statement ->
+    statement.setString(1, workflowId)
+    statement.setString(2, expectedOwnerToken)
+    statement.setLong(3, expectedGeneration)
+    statement.executeUpdate() == 1
+  }
+
+  override fun transferFeatureTaskRuntimeWorker(
+    ownership: FeatureTaskRuntimeWorkerOwnership,
+    expectedOwnerToken: String,
+    expectedGeneration: Long,
+  ): Boolean = connection.prepareStatement(
+    """
+    UPDATE feature_task_runtime_worker_leases SET
+      contract_version = ?, generation = ?, owner_token = ?, host_identity = ?, boot_identity = ?,
+      pid = ?, process_birth_token = ?, lease_state = ?, heartbeat_at = ?, expires_at = ?,
+      phase_id = ?, phase_attempt = ?
+    WHERE workflow_id = ? AND owner_token = ? AND generation = ? AND lease_state = 'takeover_reserved'
+    """.trimIndent(),
+  ).use { statement ->
+    statement.bindOwnership(ownership, includeWorkflowId = false)
+    statement.setString(13, ownership.workflowId)
+    statement.setString(14, expectedOwnerToken)
+    statement.setLong(15, expectedGeneration)
+    statement.executeUpdate() == 1
+  }
+
+  override fun heartbeatFeatureTaskRuntimeWorker(ownership: FeatureTaskRuntimeWorkerOwnership): Boolean =
+    connection.prepareStatement(
+      """
+      UPDATE feature_task_runtime_worker_leases
+      SET heartbeat_at = ?, expires_at = ?, phase_id = ?, phase_attempt = ?
+      WHERE workflow_id = ? AND owner_token = ? AND generation = ? AND lease_state = 'active'
+      """.trimIndent(),
+    ).use { statement ->
+      statement.setString(1, ownership.heartbeatAt)
+      statement.setString(2, ownership.expiresAt)
+      statement.setString(3, ownership.phaseId)
+      statement.setInt(4, ownership.phaseAttempt)
+      statement.setString(5, ownership.workflowId)
+      statement.setString(6, ownership.ownerToken)
+      statement.setLong(7, ownership.generation)
+      statement.executeUpdate() == 1
+    }
+
+  override fun releaseFeatureTaskRuntimeWorker(workflowId: String, ownerToken: String, generation: Long): Boolean =
+    connection.prepareStatement(
+      "DELETE FROM feature_task_runtime_worker_leases WHERE workflow_id = ? AND owner_token = ? AND generation = ?",
+    ).use { statement ->
+      statement.setString(1, workflowId)
+      statement.setString(2, ownerToken)
+      statement.setLong(3, generation)
+      statement.executeUpdate() == 1
+    }
+
   override fun claimFeatureTaskContinuation(workflowId: String, expectedUpdatedAt: String?): Boolean =
     connection.prepareStatement(
       """
@@ -161,6 +256,84 @@ private class FeatureTaskWorkflowStateStore(
 
   override fun latestFeatureTaskWorkflow(mode: FeatureTaskWorkflowMode): WorkflowStateRecord? =
     listFeatureTaskWorkflows(mode, 1).firstOrNull()
+}
+
+private fun Connection.insertWorkerOwnership(ownership: FeatureTaskRuntimeWorkerOwnership) {
+  prepareStatement(
+    """
+    INSERT INTO feature_task_runtime_worker_leases (
+      workflow_id, contract_version, generation, owner_token, host_identity, boot_identity, pid,
+      process_birth_token, lease_state, heartbeat_at, expires_at, phase_id, phase_attempt
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """.trimIndent(),
+  ).use { statement ->
+    statement.bindOwnership(ownership, includeWorkflowId = true)
+    statement.executeUpdate()
+  }
+}
+
+private fun java.sql.PreparedStatement.bindOwnership(
+  ownership: FeatureTaskRuntimeWorkerOwnership,
+  includeWorkflowId: Boolean,
+) {
+  var index = 1
+  if (includeWorkflowId) setString(index++, ownership.workflowId)
+  setString(index++, ownership.contractVersion)
+  setLong(index++, ownership.generation)
+  setString(index++, ownership.ownerToken)
+  setString(index++, ownership.hostIdentity)
+  setString(index++, ownership.bootIdentity)
+  setLong(index++, ownership.pid)
+  setString(index++, ownership.processBirthToken)
+  setString(index++, ownership.leaseState.wireValue)
+  setString(index++, ownership.heartbeatAt)
+  setString(index++, ownership.expiresAt)
+  setString(index++, ownership.phaseId)
+  setInt(index, ownership.phaseAttempt)
+}
+
+private fun Connection.featureTaskRuntimeWorkerOwnership(workflowId: String): FeatureTaskRuntimeWorkerOwnership? =
+  prepareStatement("SELECT * FROM feature_task_runtime_worker_leases WHERE workflow_id = ?").use { statement ->
+    statement.setString(1, workflowId)
+    statement.executeQuery().use { row ->
+      if (!row.next()) return null
+      try {
+        FeatureTaskRuntimeWorkerOwnership(
+          workflowId = row.getString("workflow_id"),
+          contractVersion = row.getString("contract_version"),
+          generation = row.getLong("generation"),
+          ownerToken = row.getString("owner_token"),
+          hostIdentity = row.getString("host_identity"),
+          bootIdentity = row.getString("boot_identity"),
+          pid = row.getLong("pid"),
+          processBirthToken = row.getString("process_birth_token"),
+          leaseState = FeatureTaskRuntimeWorkerLeaseState.entries.single {
+            it.wireValue == row.getString("lease_state")
+          },
+          heartbeatAt = row.getString("heartbeat_at"),
+          expiresAt = row.getString("expires_at"),
+          phaseId = row.getString("phase_id"),
+          phaseAttempt = row.getInt("phase_attempt"),
+        ).also(::validateWorkerOwnership)
+      } catch (failure: RuntimeException) {
+        if (failure is InvalidFeatureTaskRuntimeWorkerOwnershipSchemaError) throw failure
+        throw InvalidFeatureTaskRuntimeWorkerOwnershipSchemaError(workflowId, failure.message ?: "malformed row")
+      }
+    }
+  }
+
+private fun validateWorkerOwnership(ownership: FeatureTaskRuntimeWorkerOwnership) {
+  val failure = when {
+    ownership.contractVersion != skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_WORKER_OWNERSHIP_CONTRACT_VERSION ->
+      "unsupported contract_version '${ownership.contractVersion}'"
+    ownership.generation < 1 -> "generation must be positive"
+    ownership.ownerToken.length < 16 -> "owner_token must contain at least 16 characters"
+    ownership.hostIdentity.isBlank() || ownership.bootIdentity.isBlank() -> "host and boot identity are required"
+    ownership.pid < 1 || ownership.processBirthToken.isBlank() -> "exact process identity is required"
+    ownership.phaseId.isBlank() || ownership.phaseAttempt < 1 -> "phase coordinates are invalid"
+    else -> null
+  }
+  failure?.let { throw InvalidFeatureTaskRuntimeWorkerOwnershipSchemaError(ownership.workflowId, it) }
 }
 
 private fun Connection.featureTaskIdentity(workflowId: String): FeatureTaskExecutionIdentity? = prepareStatement(

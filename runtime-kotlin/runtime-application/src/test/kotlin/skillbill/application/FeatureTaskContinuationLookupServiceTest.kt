@@ -90,7 +90,7 @@ class FeatureTaskContinuationLookupServiceTest {
       fixture.lookup.lookup("SKILL-120", REPOSITORY_A, candidate.workflowId),
     )
     assertEquals(candidate.workflowId, running.candidate.workflowId)
-    assertEquals("durable_activity_only", running.candidate.liveness?.classification)
+    assertEquals("ownership_unavailable", running.candidate.liveness?.classification)
   }
 
   @Test

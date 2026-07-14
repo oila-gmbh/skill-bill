@@ -83,6 +83,15 @@ class InvalidFeatureTaskExecutionIdentitySchemaError(
   cause,
 )
 
+class InvalidFeatureTaskRuntimeWorkerOwnershipSchemaError(
+  val sourceLabel: String,
+  val reason: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Feature-task runtime worker ownership '${sourceLabel.ifBlank { "<unknown>" }}' fails schema validation: $reason",
+  cause,
+)
+
 /**
  * SKILL-48 Subtask 2b: surfaced when an `InstallPlan` wire payload fails
  * the canonical `orchestration/contracts/install-plan-schema.yaml` Draft

@@ -18,6 +18,7 @@ internal object DatabaseSchema {
       "feature_task_runtime_sessions",
       "feature_task_workflows",
       "feature_task_execution_identities",
+      "feature_task_runtime_worker_leases",
       "feature_verify_workflows",
       "goal_run_sessions",
       "goal_subtask_events",
@@ -284,6 +285,24 @@ internal object DatabaseSchema {
       """
       CREATE INDEX IF NOT EXISTS idx_feature_task_identity_lookup
         ON feature_task_execution_identities(normalized_issue_key, repository_identity, route_scope)
+      """.trimIndent(),
+      """
+      CREATE TABLE IF NOT EXISTS feature_task_runtime_worker_leases (
+        workflow_id TEXT PRIMARY KEY,
+        contract_version TEXT NOT NULL,
+        generation INTEGER NOT NULL CHECK (generation > 0),
+        owner_token TEXT NOT NULL,
+        host_identity TEXT NOT NULL,
+        boot_identity TEXT NOT NULL,
+        pid INTEGER NOT NULL CHECK (pid > 0),
+        process_birth_token TEXT NOT NULL,
+        lease_state TEXT NOT NULL CHECK (lease_state IN ('active', 'takeover_reserved')),
+        heartbeat_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        phase_id TEXT NOT NULL,
+        phase_attempt INTEGER NOT NULL CHECK (phase_attempt > 0),
+        FOREIGN KEY (workflow_id) REFERENCES feature_task_workflows(workflow_id) ON DELETE CASCADE
+      )
       """.trimIndent(),
       """
       CREATE TABLE IF NOT EXISTS feature_verify_workflows (

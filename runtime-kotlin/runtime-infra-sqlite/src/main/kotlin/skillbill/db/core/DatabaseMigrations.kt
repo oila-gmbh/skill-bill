@@ -57,6 +57,34 @@ internal object DatabaseMigrations {
           }
         },
       ),
+      DatabaseMigration(
+        version = 6,
+        name = "add-feature-task-runtime-worker-leases",
+        operation = { connection ->
+          connection.createStatement().use { statement ->
+            statement.execute(
+              """
+              CREATE TABLE IF NOT EXISTS feature_task_runtime_worker_leases (
+                workflow_id TEXT PRIMARY KEY,
+                contract_version TEXT NOT NULL CHECK (contract_version = '0.1'),
+                generation INTEGER NOT NULL CHECK (generation > 0),
+                owner_token TEXT NOT NULL,
+                host_identity TEXT NOT NULL,
+                boot_identity TEXT NOT NULL,
+                pid INTEGER NOT NULL CHECK (pid > 0),
+                process_birth_token TEXT NOT NULL,
+                lease_state TEXT NOT NULL CHECK (lease_state IN ('active', 'takeover_reserved')),
+                heartbeat_at TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                phase_id TEXT NOT NULL,
+                phase_attempt INTEGER NOT NULL CHECK (phase_attempt > 0),
+                FOREIGN KEY (workflow_id) REFERENCES feature_task_workflows(workflow_id) ON DELETE CASCADE
+              )
+              """.trimIndent(),
+            )
+          }
+        },
+      ),
     ).also(::requireDeterministicMigrations)
 
   fun apply(connection: Connection) {
