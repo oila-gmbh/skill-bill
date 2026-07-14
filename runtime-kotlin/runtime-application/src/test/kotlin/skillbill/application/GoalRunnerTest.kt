@@ -774,6 +774,44 @@ class GoalRunnerTest {
   )
 }
 
+class GoalRunnerRepositoryPathTest {
+  @Test
+  fun `absolute spec path through a repository alias stays inside the canonical repository`() {
+    val canonicalRepository = Files.createTempDirectory("skillbill-goal-canonical")
+    val repositoryAlias = Files.createTempDirectory("skillbill-goal-alias-parent").resolve("repository")
+    Files.createSymbolicLink(repositoryAlias, canonicalRepository)
+    val aliasedSpec = repositoryAlias.resolve(".feature-specs/SKILL-56-goal/spec_subtask_1.md")
+    Files.createDirectories(aliasedSpec.parent)
+    Files.writeString(aliasedSpec, "# Subtask 1")
+    val manifest = manifest(subtaskCount = 1)
+    val store = InMemoryGoalManifestStore(
+      manifest = manifest.copy(
+        subtasks = listOf(manifest.subtasks.single().copy(specPath = aliasedSpec.toString())),
+      ),
+    )
+    val outcomes = RecordingOutcomeStore()
+    val launcher = RecordingSubtaskLauncher {
+      store.mutate { current -> current.withWorkflowId(1, "wfl-1") }
+      outcomes["wfl-1"] = completeOutcome(1)
+      launchFacts()
+    }
+
+    val report = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort()).run(
+      GoalRunnerRunRequest(
+        issueKey = "SKILL-56",
+        repoRoot = repositoryAlias,
+        invokedAgentId = "claude",
+      ),
+    )
+
+    assertIs<GoalRunnerRunReport.Completed>(report)
+    assertEquals(
+      ".feature-specs/SKILL-56-goal/spec_subtask_1.md",
+      store.newChildWorkflowSetups.single().governedSpecPath,
+    )
+  }
+}
+
 class GoalRunnerNoTerminalOutcomeDiagnosisTest {
   @Test
   fun `non-zero child exit reports exit status and stderr tail without retry`() {

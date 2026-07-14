@@ -519,9 +519,10 @@ class GoalRunner(
     ) { "Goal subtask '$subtaskId' has no governed spec path." }
     val canonicalRepository = runCatching { request.repoRoot.toRealPath() }
       .getOrElse { request.repoRoot.toAbsolutePath().normalize() }
-    val resolvedSpecPath = Path.of(rawSpecPath).let { path ->
+    val lexicalSpecPath = Path.of(rawSpecPath).let { path ->
       (if (path.isAbsolute) path else canonicalRepository.resolve(path)).toAbsolutePath().normalize()
     }
+    val resolvedSpecPath = runCatching { lexicalSpecPath.toRealPath() }.getOrElse { lexicalSpecPath }
     check(resolvedSpecPath.startsWith(canonicalRepository)) {
       "Goal subtask '$subtaskId' governed spec path escapes repository '$canonicalRepository'."
     }
