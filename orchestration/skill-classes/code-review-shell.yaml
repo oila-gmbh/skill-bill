@@ -31,7 +31,7 @@ sections:
       Inspect both the changed files and repo markers before routing.
 
       Resolve the scope before routing. If the caller asks for staged changes, route and review only the staged diff; do not let unstaged edits expand the findings beyond repo-marker stack detection.
-      Recognize at most one `mode:auto|inline|delegated` argument. Omission resolves to `auto`; malformed, repeated, unknown, or conflicting values fail before review work begins. An explicit `inline` request must pass every eligibility rule or fail with the reasons and the statement that delegated review is required. An explicit `delegated` request always follows delegated routing and must never fall back inline if workers are unavailable.
+      Recognize at most one `mode:auto|inline|delegated` argument. Omission resolves to `auto`; malformed, repeated, unknown, or conflicting values fail before review work begins. Apply size and risk eligibility only to `auto`. An explicit `inline` request runs the complete routed review in the current context regardless of size or risk, without spawning specialists or fabricating lane totals. An explicit `delegated` request always follows delegated routing and must never fall back inline if workers are unavailable.
 
   - heading: Local Review Learnings
     body: |

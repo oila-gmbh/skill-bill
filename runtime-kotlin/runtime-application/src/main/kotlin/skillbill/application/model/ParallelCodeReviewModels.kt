@@ -1,5 +1,6 @@
 package skillbill.application.model
 
+import skillbill.review.context.model.ProviderTokenUsage
 import skillbill.review.model.ParallelReviewMergeResult
 import skillbill.workflow.model.CodeReviewExecutionMode
 import java.nio.file.Path
@@ -36,6 +37,7 @@ data class ParallelReviewLaneStatus(
   val agentId: String,
   val success: Boolean,
   val failureReason: String? = null,
+  val tokenUsage: ProviderTokenUsage? = null,
 )
 
 data class ParallelCodeReviewMergeRequest(
