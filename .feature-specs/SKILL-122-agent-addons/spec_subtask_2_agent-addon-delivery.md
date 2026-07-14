@@ -1,5 +1,5 @@
 ---
-status: Blocked
+status: Ready for implementation
 issue_key: SKILL-122
 subtask_id: 2
 ---
