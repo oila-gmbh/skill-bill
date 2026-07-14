@@ -1,6 +1,7 @@
 package skillbill.application
 
 import skillbill.application.model.FeatureTaskRuntimeRunReport
+import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
@@ -69,6 +70,23 @@ class FeatureTaskRuntimeAuditGapLoopTest {
     val loopEdges = harness.recorder.loadPhaseLedger(WORKFLOW_ID).orEmpty()
       .filter { it.action == FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE && it.loopId == "audit_gap" }
     assertEquals(listOf(1), loopEdges.mapNotNull { it.edgeIteration })
+  }
+
+  @Test
+  fun `audit gap validates persisted planning outputs against their phase identities`() {
+    val identityCheckingValidator = object : FeatureTaskRuntimePhaseOutputValidator {
+      override fun validatePhaseOutputText(phaseOutputText: String, sourceLabel: String) {
+        val phaseId = requireNotNull(Regex("\\\"phase_id\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"").find(phaseOutputText))
+          .groupValues[1]
+        require(sourceLabel == phaseId)
+      }
+    }
+    val harness = runnerHarness(
+      launcher = auditGapLauncher(convergeOnAudit = 2),
+      validator = identityCheckingValidator,
+    )
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
   }
 
   @Test

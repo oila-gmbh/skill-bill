@@ -4,14 +4,14 @@ issue_key: "SKILL-122"
 feature_name: "agent-addons"
 parent_spec_path: ".feature-specs/SKILL-122-agent-addons/spec.md"
 spec_source: "local"
-status: "in_progress"
+status: "blocked"
 execution_model: "same_branch_commit_per_subtask"
 base_branch: "main"
 feature_branch: "feat/SKILL-117-local-work-list"
 stack_branches: []
 current_subtask_intent:
   subtask_id: 2
-  action: "resume"
+  action: "blocked"
 subtasks:
 - id: 1
   name: "Agent-addon contract and source validation"
@@ -21,7 +21,7 @@ subtasks:
   commit_sha: null
   workflow_id: "wftr-20260714-133556-h6fn"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -29,12 +29,14 @@ subtasks:
 - id: 2
   name: "Agent-addon discovery, staging, and scaffold delivery"
   spec_path: ".feature-specs/SKILL-122-agent-addons/spec_subtask_2_agent-addon-delivery.md"
-  status: "pending"
+  status: "blocked"
   branch: null
   commit_sha: null
-  workflow_id: "wftr-20260714-153727-7zpk"
-  blocked_reason: null
-  last_resumable_step: null
+  workflow_id: null
+  blocked_reason: "Could not capture the goal-subtask review baseline before implementation.\
+    \ Refusing to substitute a branch-wide scope. Goal-subtask review baseline capture\
+    \ requires a clean tracked worktree; unstaged tracked changes are present."
+  last_resumable_step: "create_branch"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []

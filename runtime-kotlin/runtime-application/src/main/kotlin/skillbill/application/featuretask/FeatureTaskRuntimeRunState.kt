@@ -131,7 +131,7 @@ internal class FeatureTaskRuntimeRunState(
         return "Audit-gap remediation requires a valid completed original '$phaseId' output."
       }
       val validatedOutput = runCatching {
-        outputValidator.validateAndReadPhaseOutput(output.payload, sourceLabel = "persisted $phaseId")
+        outputValidator.validateAndReadPhaseOutput(output.payload, sourceLabel = phaseId)
       }.getOrNull()
       if (validatedOutput == null || validatedOutput["phase_id"] != phaseId) {
         return "Audit-gap remediation requires a valid completed original '$phaseId' output."
