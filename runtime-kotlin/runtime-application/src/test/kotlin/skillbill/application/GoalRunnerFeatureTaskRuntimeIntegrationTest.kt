@@ -112,6 +112,11 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
     assertEquals(1, planningRecords.getValue("plan").attemptCount)
     assertEquals(null, planningRecords.getValue("preplan").loopId)
     assertEquals(null, planningRecords.getValue("plan").loopId)
+    val reviewCompletions = runtime.recorder.loadPhaseLedger(workflowId).orEmpty()
+      .filter { it.action == skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction.COMPLETE }
+      .filter { it.phaseId == "review" }
+    assertTrue(reviewCompletions.isNotEmpty())
+    assertTrue(reviewCompletions.any { it.loopId == "audit_gap" && it.edgeIteration == 1 })
   }
 }
 

@@ -117,6 +117,9 @@ internal class FeatureTaskRuntimeRunState(
 
   fun inFlightReentry(loopId: String): InFlightReentry? = inFlightReentries[loopId]
 
+  fun latestInFlightReentry(): Pair<String, InFlightReentry>? =
+    inFlightReentries.maxByOrNull { (_, reentry) -> reentry.edgeSequenceNumber }?.toPair()
+
   fun auditGapPlanningContextError(): String? {
     val planningPhaseIds = listOf(
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN,
@@ -193,9 +196,6 @@ internal class FeatureTaskRuntimeRunState(
 
   private fun reconstructInFlightReentries(): Map<String, InFlightReentry> = buildMap {
     transitions.backwardEdges.forEach { edge ->
-      if (edge.destinationPhaseId in transitions.loopOnlyPhaseIds) {
-        return@forEach
-      }
       val latestEdge = initialLedger
         .filter { ledger ->
           ledger.action == FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE && ledger.loopId == edge.loopId
@@ -225,6 +225,7 @@ internal class FeatureTaskRuntimeRunState(
             drivingVerdict = edge.triggeringVerdict,
             span = span,
             completedAfterEdge = completedAfterEdge,
+            edgeSequenceNumber = latestEdge.sequenceNumber,
           ),
         )
       }
@@ -312,4 +313,5 @@ internal data class InFlightReentry(
   val drivingVerdict: FeatureTaskRuntimeVerdict,
   val span: List<String>,
   val completedAfterEdge: Set<String>,
+  val edgeSequenceNumber: Int,
 )

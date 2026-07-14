@@ -110,7 +110,6 @@ class FeatureTaskRuntimeStatusService(
       .maxByOrNull { (_, entry) -> entry.sequenceNumber }
       ?: return null
     val (declaration, edgeEntry) = edge
-    if (declaration.destinationPhaseId in LOOP_ONLY_PHASE_IDS) return null
     val destinationIndex = FeatureTaskRuntimePhaseWorkflowDefinition.transitions.forwardPhaseIds
       .indexOf(declaration.destinationPhaseId)
     val sourceIndex = FeatureTaskRuntimePhaseWorkflowDefinition.transitions.forwardPhaseIds

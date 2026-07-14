@@ -156,6 +156,22 @@ class FeatureTaskRuntimePhaseRecorder(
       val existingRecords = phaseRecordsFrom(artifacts)
       val phaseRecord = phaseRecordFor(request, existingRecords[request.phaseId], Instant.now().toString())
       val updatedRecords = LinkedHashMap(existingRecords).apply { put(request.phaseId, phaseRecord) }
+      val ledger = phaseLedgerFrom(artifacts)
+      val completionEntry = FeatureTaskRuntimePhaseLedgerEntry(
+        action = skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction.COMPLETE,
+        sequenceNumber = (ledger.maxOfOrNull { it.sequenceNumber } ?: -1) + 1,
+        timestamp = Instant.now().toString(),
+        phaseId = request.phaseId,
+        attemptCount = request.attemptCount,
+        resolvedAgentId = request.resolvedAgentId,
+        loopId = request.loopId,
+        edgeIteration = request.edgeIteration,
+      )
+      val updatedLedger = appendBoundedHistoryBySequence(
+        ledger.map { it.toArtifactMap() },
+        completionEntry.toArtifactMap(),
+        FEATURE_TASK_RUNTIME_PHASE_LEDGER_LIMIT,
+      )
       persistPatch(
         unitOfWork.workflowStates,
         record,
@@ -165,6 +181,7 @@ class FeatureTaskRuntimePhaseRecorder(
             (reviewArtifacts.rawResults + (passNumber to completion.rawReviewResult)),
           FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY to
             updatedRecords.mapValues { (_, value) -> value.toArtifactMap() },
+          FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY to updatedLedger,
         ),
         WorkflowRowAdvance(
           currentStepId = request.phaseId,

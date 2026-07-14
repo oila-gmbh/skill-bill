@@ -158,6 +158,27 @@ class FeatureTaskRuntimeStatusServiceTest {
   }
 
   @Test
+  fun `ledger-only review fix projects implement fix as current`() {
+    val harness = statusHarness()
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    listOf("preplan", "plan", "implement", "review")
+      .forEach { harness.recordCompleted(it, attemptCount = 1) }
+    harness.recordLedger(
+      action = LOOP_EDGE,
+      phaseId = "implement_fix",
+      attemptCount = 1,
+      loopId = "review_fix",
+      edgeIteration = 1,
+    )
+
+    val projection = requireNotNull(
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+    )
+
+    assertEquals("implement_fix", projection.currentPhaseId)
+  }
+
+  @Test
   fun `projection surfaces the durable resolved feature branch`() {
     val harness = statusHarness()
     harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
