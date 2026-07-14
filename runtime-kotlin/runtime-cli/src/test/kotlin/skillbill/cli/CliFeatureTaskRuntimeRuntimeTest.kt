@@ -42,8 +42,12 @@ import kotlin.time.Duration.Companion.minutes
 class CliFeatureTaskRuntimeRuntimeTest {
   @Test
   fun `real feature invocation delivers selected agent add-on to every phase`() {
-    val selectedFixture = runtimeFixture().also { writeExecutionBudgetAddon(it.tempDir) }
-    val resolvedSelection = resolvedSelectionJson(selectedFixture, "codex")
+    val selectedFixture = runtimeFixture().also {
+      writeAgentAddon(it.tempDir, "first-helper", "First selected guidance.")
+      writeAgentAddon(it.tempDir, "middle-unselected", "UNSELECTED SENTINEL")
+      writeAgentAddon(it.tempDir, "last-helper", "Last selected guidance.")
+    }
+    val resolvedSelection = resolvedSelectionJson(selectedFixture, "codex", "first-helper", "last-helper")
     val selectedLauncher = RecordingPhaseLauncher()
 
     val selected = CliRuntime.run(
@@ -55,16 +59,19 @@ class CliFeatureTaskRuntimeRuntimeTest {
 
     assertEquals(0, selected.exitCode, selected.stdout)
     assertEquals(ALL_PHASES.size, selectedLauncher.requests.size)
-    val manifestPath =
-      selectedFixture.tempDir
-        .resolve("agent-addons/execution-budget/agent-addon.yaml")
-        .toRealPath()
-        .toString()
+    val firstManifest = selectedFixture.tempDir.resolve("agent-addons/first-helper/agent-addon.yaml").toRealPath().toString()
+    val lastManifest = selectedFixture.tempDir.resolve("agent-addons/last-helper/agent-addon.yaml").toRealPath().toString()
     selectedLauncher.requests.forEach { request ->
       val prompt = request.skillRunRequest.promptOverride.orEmpty()
-      assertContains(prompt, "### 1. execution-budget")
-      assertContains(prompt, "Execution budget fixture guidance.")
-      assertContains(prompt, manifestPath)
+      assertContains(prompt, "### 1. first-helper")
+      assertContains(prompt, "### 2. last-helper")
+      assertContains(prompt, "First selected guidance.")
+      assertContains(prompt, "Last selected guidance.")
+      assertContains(prompt, firstManifest)
+      assertContains(prompt, lastManifest)
+      assertFalse(prompt.contains("middle-unselected"), prompt)
+      assertFalse(prompt.contains("UNSELECTED SENTINEL"), prompt)
+      assertTrue(prompt.indexOf("### 1. first-helper") < prompt.indexOf("### 2. last-helper"), prompt)
     }
   }
 
@@ -1611,31 +1618,40 @@ private fun runtimeFixture(specFileName: String = "spec.md"): FeatureTaskRuntime
   )
 }
 
-private fun writeExecutionBudgetAddon(repo: Path) {
-  val root = repo.resolve("agent-addons/execution-budget")
+private fun writeExecutionBudgetAddon(repo: Path) =
+  writeAgentAddon(repo, "execution-budget", "Execution budget fixture guidance.")
+
+private fun writeAgentAddon(repo: Path, slug: String, guidance: String) {
+  val root = repo.resolve("agent-addons/$slug")
   Files.createDirectories(root)
   Files.writeString(
     root.resolve("agent-addon.yaml"),
     """
       |contract_version: "1.0"
-      |slug: execution-budget
-      |description: Execution budget fixture.
+      |slug: $slug
+      |description: $slug fixture.
       |agent_ids: [codex]
       |consumers: [bill-feature]
     """.trimMargin(),
   )
-  Files.writeString(root.resolve("content.md"), "## Boundary\n\nExecution budget fixture guidance.\n")
+  Files.writeString(root.resolve("content.md"), "## Boundary\n\n$guidance\n")
 }
 
-private fun resolvedSelectionJson(fixture: FeatureTaskRuntimeCliFixture, receivingAgent: String): String {
+private fun resolvedSelectionJson(
+  fixture: FeatureTaskRuntimeCliFixture,
+  receivingAgent: String,
+  vararg slugs: String = arrayOf("execution-budget"),
+): String {
   val result = CliRuntime.run(
-    listOf(
+    buildList {
+      addAll(listOf(
       "agent-addon", "resolve-selection",
       "--repo-root", fixture.tempDir.toString(),
-      "--token", "agent-addon:execution-budget",
       "--receiving-agent", receivingAgent,
       "--format", "json",
-    ),
+      ))
+      slugs.forEach { slug -> addAll(listOf("--token", "agent-addon:$slug")) }
+    },
     fixture.context(RecordingPhaseLauncher()),
   )
   assertEquals(0, result.exitCode, result.stdout)

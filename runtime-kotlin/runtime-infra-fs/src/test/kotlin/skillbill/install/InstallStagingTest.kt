@@ -413,6 +413,16 @@ class InstallStagingTest {
 
     assertTrue(firstFeature.contentHash != secondFeature.contentHash)
     assertEquals(firstUnrelated.contentHash, secondUnrelated.contentHash)
+
+    Files.writeString(
+      addon.resolve("agent-addon.yaml"),
+      Files.readString(addon.resolve("agent-addon.yaml")).replace("Review helper", "Updated review helper"),
+    )
+    val thirdFeature = stageInstalledSkill(repo, feature, home)
+    val thirdUnrelated = stageInstalledSkill(repo, unrelated, home)
+
+    assertTrue(secondFeature.contentHash != thirdFeature.contentHash)
+    assertEquals(secondUnrelated.contentHash, thirdUnrelated.contentHash)
   }
 
   @Test
