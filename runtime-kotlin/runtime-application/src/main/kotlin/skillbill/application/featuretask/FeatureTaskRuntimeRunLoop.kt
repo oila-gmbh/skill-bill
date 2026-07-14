@@ -1432,6 +1432,7 @@ internal class FeatureTaskRuntimeRunLoop(
             specSource = run.specSource,
             priorSchemaFailure = priorSchemaFailure,
             specReference = run.request.runInvariants.specReference,
+            agentAddonSelection = run.request.agentAddonSelection,
           ),
         ),
       ),

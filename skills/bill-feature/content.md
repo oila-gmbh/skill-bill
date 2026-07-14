@@ -26,6 +26,22 @@ before resolving the automatic policy.
 
 ## Update Check
 
+## Agent add-on selection
+
+Accept zero or more ordered `agent-addon:<slug>` arguments alongside the existing
+mode, review, parallel-review, agent, agent-override, and phase-agent arguments.
+Omission preserves existing behaviour. Before spec preparation, confirmation,
+workflow creation, or child launch, call the read-only `agent-addon
+resolve-selection` boundary once with every receiving agent assignment. Reject
+empty or malformed values, duplicates, unknown sources, unsupported consumers,
+and incompatible agents. Preserve caller order.
+
+After resolution, forward only the structured selection object containing slug,
+canonical manifest source identity, content digest, and confirmation description.
+No downstream router or worker may parse the original tokens or rediscover the
+catalogue. A continuation with no token inherits its durable selection; an
+explicit continuation selection must exactly match it.
+
 Call `mcp__skill-bill__update_check` before any other action.
 
 When the tool returns `status: "update_available"`:

@@ -33,6 +33,7 @@ Consume the router-confirmed run:
 - the agent currently executing this skill
 - the parallel review agent (from args as `parallel-review:<agent>`; absent when not provided)
 - the normalized review selection from `code-review:auto|inline|delegated`
+- the already-resolved ordered agent add-on selection, if present
 
 The `bill-feature-task` router has already rejected invalid review-selection
 tokens and presented the only confirmation gate. Do not reparse, default, or
@@ -68,6 +69,10 @@ skill-bill feature-task run <issue_key> <spec_path> --agent <currently-executing
 
 Append `--parallel-review-agent <agent>` when `parallel-review:<agent>` was passed to this skill.
 Append `--code-review-mode <auto|inline|delegated>` using the resolved selection.
+Append `--agent-addon-selection-json <structured-json>` when a selection was
+provided. Do not parse, reorder, or rediscover it. Runtime preparation verifies
+each recorded source identity and exact-byte digest before workflow, branch, or
+phase side effects and injects only verified selected content into prompts.
 
 Always pass `--agent` set to the agent currently running this skill (for example
 `claude` from Claude Code, `codex` from Codex, `opencode` from OpenCode), so the

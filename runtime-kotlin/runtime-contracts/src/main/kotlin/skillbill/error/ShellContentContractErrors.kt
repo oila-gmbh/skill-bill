@@ -41,6 +41,15 @@ class AgentAddonPointerCollisionError(
   val pointerName: String,
 ) : ShellContentContractException("Agent add-on pointer '$pointerName' collides in the portable staging namespace.")
 
+class InvalidAgentAddonSelectionError(message: String) : ShellContentContractException(message)
+
+class AgentAddonSelectionDriftError(
+  val slug: String,
+  val sourceIdentity: String,
+) : ShellContentContractException(
+  "Selected agent add-on '$slug' changed at '$sourceIdentity'; start a new run to accept the new content.",
+)
+
 class InvalidReviewContextSchemaError(
   val sourceLabel: String,
   val reason: String,
