@@ -1375,7 +1375,7 @@ current_telemetry_level_from_config() {
   local telemetry_level
 
   if ! output="$(run_selection_runtime_cli telemetry status 2>/dev/null)"; then
-    return 1
+    return 2
   fi
 
   config_path="$(printf '%s\n' "$output" | awk -F': ' '$1 == "config_path" { print $2; exit }')"
@@ -1384,10 +1384,11 @@ current_telemetry_level_from_config() {
     anonymous|full|off)
       ;;
     *)
-      return 1
+      return 2
       ;;
   esac
-  [[ -n "$config_path" && -f "$config_path" ]] || return 1
+  [[ -n "$config_path" ]] || return 2
+  [[ -f "$config_path" ]] || return 1
   printf '%s\n' "$telemetry_level"
 }
 
@@ -2474,6 +2475,12 @@ replay_last_install_selection() {
       info "Preserving current telemetry config level '$value' instead of saved install selection '$TELEMETRY_LEVEL'."
     fi
     TELEMETRY_LEVEL="$value"
+  else
+    telemetry_config_status=$?
+    if [[ "$telemetry_config_status" -ne 1 ]]; then
+      err "Cannot reuse saved install selections: current telemetry configuration could not be read or validated."
+      exit 1
+    fi
   fi
 
   if [[ ${#AGENT_NAMES[@]} -eq 0 ]]; then

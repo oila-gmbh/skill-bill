@@ -89,7 +89,10 @@ interface GoalSubtaskReviewGitOperations {
     repoRoot: Path,
     baseline: GoalSubtaskReviewBaseline,
     expectedBranch: String,
-  ): GoalSubtaskReviewBaselineResult
+  ): GoalSubtaskReviewBaselineResult = GoalSubtaskReviewBaselineResult(
+    status = "error",
+    error = "Goal-subtask review baseline recovery is not supported by this git adapter.",
+  )
 }
 
 interface GoalSubtaskReviewGitOperationsProvider {

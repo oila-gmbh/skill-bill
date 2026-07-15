@@ -19,6 +19,7 @@ import skillbill.application.model.WorkflowUpdateResult
 import skillbill.application.normalizeIssueKey
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.JsonSupport
+import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.persistence.WorkflowStateRepository
@@ -638,12 +639,26 @@ private fun decodeFeatureTaskRuntimePhaseRecords(
 private fun decodeFeatureTaskRuntimePhaseLedger(
   artifacts: Map<String, Any?>,
 ): List<FeatureTaskRuntimePhaseLedgerEntry> {
-  val raw = artifacts[FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY] as? List<*> ?: return emptyList()
-  return raw.map { value ->
-    FeatureTaskRuntimePhaseLedgerEntry.fromArtifactMap(
-      JsonSupport.anyToStringAnyMap(value)
-        ?: throw IllegalArgumentException("Feature-task-runtime phase ledger entry is malformed."),
+  if (FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY !in artifacts) return emptyList()
+  val raw = artifacts[FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY] as? List<*>
+    ?: throw InvalidWorkflowStateSchemaError(
+      "Workflow artifact '$FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY' must decode to a JSON array.",
     )
+  return raw.map { value ->
+    val entry = JsonSupport.anyToStringAnyMap(value)
+      ?: throw InvalidWorkflowStateSchemaError(
+        "Workflow artifact '$FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY' contains a malformed entry.",
+      )
+    try {
+      FeatureTaskRuntimePhaseLedgerEntry.fromArtifactMap(entry)
+    } catch (error: InvalidWorkflowStateSchemaError) {
+      throw error
+    } catch (error: IllegalArgumentException) {
+      throw InvalidWorkflowStateSchemaError(
+        "Workflow artifact '$FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY' contains a malformed entry.",
+        error,
+      )
+    }
   }
 }
 

@@ -66,7 +66,7 @@ data class ResolvedRequiredArtifact(
   val value: Any?,
 )
 
-interface RequiredArtifactPresenceResolver {
+fun interface RequiredArtifactPresenceResolver {
   /**
    * Returns the subset of [requiredArtifacts] (upstream phase/artifact ids the [resumeStepId]
    * consumes) that are NOT present for [snapshot], preserving [requiredArtifacts] order.

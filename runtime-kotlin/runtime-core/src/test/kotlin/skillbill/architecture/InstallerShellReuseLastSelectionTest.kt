@@ -52,6 +52,19 @@ class InstallerShellReuseLastSelectionTest {
   }
 
   @Test
+  fun `installer shell reuse aborts when current telemetry config cannot be read`() {
+    val run = runInstaller(
+      extraArgs = listOf("--reuse-last-selection"),
+      telemetryStatusFails = true,
+      skipPreinstallUninstall = false,
+    )
+
+    assertFalse(run.exitCode == 0, "installer should fail. Output:\n${run.output}")
+    assertContains(run.output, "current telemetry configuration could not be read or validated")
+    assertFalse(run.output.contains("Pre-install cleanup"), "cleanup must not run after telemetry read failure")
+  }
+
+  @Test
   fun `installer shell rejects desktop-only with reuse-last-selection`() {
     val run = runInstaller(
       extraArgs = listOf("--desktop-app-only", "--reuse-last-selection"),
@@ -83,6 +96,7 @@ class InstallerShellReuseLastSelectionTest {
     skipPreinstallUninstall: Boolean = true,
     replayTelemetryLevel: String = "full",
     currentTelemetryLevel: String? = null,
+    telemetryStatusFails: Boolean = false,
   ): InstallerRun {
     val testRepo = Files.createTempDirectory("skillbill-installer-reuse-repo")
     val home = Files.createTempDirectory("skillbill-installer-reuse-home")
@@ -107,6 +121,7 @@ class InstallerShellReuseLastSelectionTest {
         environment()["SKILL_BILL_TEST_REUSE_SELECTION"] = reuseSelection
         environment()["SKILL_BILL_TEST_REPLAY_TELEMETRY"] = replayTelemetryLevel
         currentTelemetryLevel?.let { environment()["SKILL_BILL_TEST_CURRENT_TELEMETRY"] = it }
+        if (telemetryStatusFails) environment()["SKILL_BILL_TEST_TELEMETRY_STATUS_FAILS"] = "1"
         if (skipPreinstallUninstall) {
           environment()["SKILL_BILL_SKIP_PREINSTALL_UNINSTALL"] = "1"
         }
@@ -185,6 +200,7 @@ class InstallerShellReuseLastSelectionTest {
     |  exit 0
     |fi
     |if [[ "${'$'}{1:-}" == "telemetry" && "${'$'}{2:-}" == "status" ]]; then
+    |  [[ "${'$'}{SKILL_BILL_TEST_TELEMETRY_STATUS_FAILS:-0}" == "1" ]] && exit 2
     |  printf 'config_path: %s\n' "${'$'}home/.config/skill-bill/config.json"
     |  printf 'telemetry_level: %s\n' "${'$'}{SKILL_BILL_TEST_CURRENT_TELEMETRY:-anonymous}"
     |  exit 0

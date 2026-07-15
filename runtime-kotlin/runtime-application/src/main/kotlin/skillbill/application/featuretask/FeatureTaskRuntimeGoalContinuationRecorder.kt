@@ -214,23 +214,24 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
     )
     if (!recovered.ok) return null
     val recoveredBaseline = requireNotNull(recovered.baseline)
-    val replacement = replaceGoalReviewBaseline(workflowId, state, recoveredBaseline, dbOverride) ?: return null
     val rebuilt = gitOperations.buildGoalSubtaskReviewInput(
       repoRoot,
-      GoalSubtaskReviewBaseline(replacement.reviewBaseSha, replacement.baselineUntrackedPaths),
+      recoveredBaseline,
       continuation.goalBranch,
     )
     check(rebuilt.ok) {
-      "Recovered goal-subtask review base '${replacement.reviewBaseSha}' could not materialize review input " +
+      "Recovered goal-subtask review base '${recoveredBaseline.reviewBaseSha}' could not materialize review input " +
         "after replacing incompatible base '${state.reviewBaseSha}': ${rebuilt.error.ifBlank { failureMessage }}"
     }
-    return requireNotNull(rebuilt.input)
+    val input = requireNotNull(rebuilt.input)
+    return persistRecoveredGoalReviewInput(workflowId, state, recoveredBaseline, input, dbOverride)?.let { input }
   }
 
-  private fun replaceGoalReviewBaseline(
+  private fun persistRecoveredGoalReviewInput(
     workflowId: String,
     current: GoalSubtaskReviewState,
     baseline: GoalSubtaskReviewBaseline,
+    input: GoalSubtaskReviewInput,
     dbOverride: String?,
   ): GoalSubtaskReviewState? = database.transaction(dbOverride) { unitOfWork ->
     val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@transaction null
@@ -242,12 +243,18 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
     val replaced = latest.copy(
       reviewBaseSha = baseline.reviewBaseSha,
       baselineUntrackedPaths = baseline.baselineUntrackedPaths.distinct().sorted(),
-      reviewInputArtifact = null,
+      reviewInputArtifact = GOAL_SUBTASK_REVIEW_INPUT_ARTIFACT_KEY,
     )
+    check(input.reviewBaseSha == replaced.reviewBaseSha) {
+      "Recovered goal-subtask review input does not match the replacement baseline."
+    }
     savePatch(
       record,
       unitOfWork.workflowStates,
-      mapOf(GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY to replaced.toArtifactMap()),
+      mapOf(
+        GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY to replaced.toArtifactMap(),
+        GOAL_SUBTASK_REVIEW_INPUT_ARTIFACT_KEY to input.toArtifactMap(),
+      ),
     )
     replaced
   }
@@ -385,6 +392,7 @@ private fun GoalSubtaskReviewState.canRecoverReviewBase(): Boolean =
   completedPassCount == 0 &&
     passResults.isEmpty() &&
     emittedPassCount == 0 &&
+    reviewInputArtifact == null &&
     disposition == GoalSubtaskReviewDisposition.PENDING
 
 private fun GoalSubtaskReviewState.matches(
