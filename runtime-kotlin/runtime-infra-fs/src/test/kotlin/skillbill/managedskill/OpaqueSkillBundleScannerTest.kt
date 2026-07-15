@@ -62,6 +62,15 @@ class OpaqueSkillBundleScannerTest {
   }
 
   @Test
+  fun `accepts quoted exclamation marks but rejects numeric tags`() {
+    val root = Files.createTempDirectory("opaque-skill")
+    root.resolve("SKILL.md").writeText("---\nname: sample-skill\ndescription: \"Works!\"\n---")
+    assertEquals("Works!", scanner.scan(root, emptySet()).description)
+    root.resolve("SKILL.md").writeText("---\nname: sample-skill\ndescription: Sample\nmetadata: !42 value\n---")
+    assertFailsWith<InvalidOpaqueSkillBundleException> { scanner.scan(root, emptySet()) }
+  }
+
+  @Test
   fun `returns captured bytes rather than mutable live paths`() {
     val root = Files.createTempDirectory("opaque-skill")
     val support = root.resolve("notes.txt")

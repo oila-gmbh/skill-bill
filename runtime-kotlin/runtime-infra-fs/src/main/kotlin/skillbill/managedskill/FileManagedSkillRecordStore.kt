@@ -11,17 +11,22 @@ import skillbill.managedskill.model.ManagedSkillRecord
 import skillbill.managedskill.model.ManagedSkillSourceKind
 import java.nio.file.Files
 import java.nio.file.Path
-import java.nio.file.StandardCopyOption.ATOMIC_MOVE
-import java.nio.file.StandardCopyOption.REPLACE_EXISTING
 import java.nio.channels.FileChannel
+import java.nio.channels.SeekableByteChannel
 import java.nio.file.LinkOption.NOFOLLOW_LINKS
 import java.nio.file.StandardOpenOption.CREATE
+import java.nio.file.StandardOpenOption.CREATE_NEW
 import java.nio.file.StandardOpenOption.READ
 import java.nio.file.StandardOpenOption.WRITE
+import java.nio.file.SecureDirectoryStream
 import java.security.MessageDigest
 import java.time.Instant
 
 class FileManagedSkillRecordStore(stateRoot: Path) {
+  companion object {
+    const val EXPECTED_ABSENT = "absent"
+    private const val MAX_RECORD_BYTES = 1024 * 1024
+  }
   private val stateRoot = stateRoot.toAbsolutePath().normalize()
   private val mapper = ObjectMapper().enable(JsonParser.Feature.STRICT_DUPLICATE_DETECTION)
     .enable(SerializationFeature.INDENT_OUTPUT)
@@ -74,16 +79,17 @@ class FileManagedSkillRecordStore(stateRoot: Path) {
     ManagedSkillRecordSchemaValidator.validate(raw, path.toString())
     validateRecordPaths(record, path)
     createConfinedDirectories(path.parent)
-    val lockPath = path.parent.resolve(".record.lock")
-    rejectLinkOrNonRegular(lockPath)
-    FileChannel.open(lockPath, CREATE, WRITE).use { lockChannel ->
-      lockChannel.lock().use {
-        rejectLinkOrNonRegular(path)
-        val currentDigest = if (Files.exists(path, NOFOLLOW_LINKS)) digest(readNoFollow(path)) else null
-        if (expectedDigest != null && currentDigest != expectedDigest) {
-          throw IllegalStateException("Managed skill record changed after preview.")
+    secureDirectory(path.parent).use { directory ->
+      val lockChannel = directory.newByteChannel(Path.of(".record.lock"), setOf(CREATE, WRITE, NOFOLLOW_LINKS)) as? FileChannel
+        ?: throw IllegalStateException("Secure managed-record locking is unavailable.")
+      lockChannel.use {
+        it.lock().use {
+          val currentDigest = readSecureIfPresent(directory, Path.of("record.json"), path)?.let(::digest)
+          if (expectedDigest != null && expectedDigest != currentDigest && !(expectedDigest == EXPECTED_ABSENT && currentDigest == null)) {
+            throw IllegalStateException("Managed skill record changed after preview.")
+          }
+          publish(directory, Path.of("record.json"), mapper.writeValueAsBytes(raw))
         }
-        publish(path, mapper.writeValueAsBytes(raw))
       }
     }
   }
@@ -95,22 +101,51 @@ class FileManagedSkillRecordStore(stateRoot: Path) {
     return if (Files.exists(path, NOFOLLOW_LINKS)) digest(readNoFollow(path)) else null
   }
 
-  private fun publish(path: Path, bytes: ByteArray) {
-    val temporary = Files.createTempFile(path.parent, ".record-", ".json")
+  private fun publish(directory: SecureDirectoryStream<Path>, target: Path, bytes: ByteArray) {
+    val temporary = Path.of(".record-${java.util.UUID.randomUUID()}.json")
     try {
-      FileChannel.open(temporary, WRITE).use { channel ->
-        channel.write(java.nio.ByteBuffer.wrap(bytes))
-        channel.force(true)
+      val channel = directory.newByteChannel(temporary, setOf(CREATE_NEW, WRITE, NOFOLLOW_LINKS)) as? FileChannel
+        ?: throw IllegalStateException("Secure atomic managed-record publication is unavailable.")
+      channel.use {
+        val buffer = java.nio.ByteBuffer.wrap(bytes)
+        while (buffer.hasRemaining()) it.write(buffer)
+        it.force(true)
       }
       try {
-        Files.move(temporary, path, ATOMIC_MOVE, REPLACE_EXISTING)
+        directory.move(temporary, directory, target)
       } catch (error: java.nio.file.AtomicMoveNotSupportedException) {
         throw IllegalStateException("Atomic managed-record publication is unavailable.", error)
       }
-      FileChannel.open(path.parent, READ).use { it.force(true) }
     } finally {
-      Files.deleteIfExists(temporary)
+      try { directory.deleteFile(temporary) } catch (_: java.nio.file.NoSuchFileException) { }
     }
+  }
+
+  private fun secureDirectory(path: Path): SecureDirectoryStream<Path> {
+    val stream = Files.newDirectoryStream(path)
+    return stream as? SecureDirectoryStream<Path> ?: run {
+      stream.close()
+      throw IllegalStateException("Secure managed-record operations are unavailable on this filesystem.")
+    }
+  }
+
+  private fun readSecureIfPresent(
+    directory: SecureDirectoryStream<Path>,
+    name: Path,
+    displayPath: Path,
+  ): ByteArray? = try {
+    val view = directory.getFileAttributeView(
+      name, java.nio.file.attribute.BasicFileAttributeView::class.java, NOFOLLOW_LINKS,
+    ) ?: return null
+    val attributes = view.readAttributes()
+    if (!attributes.isRegularFile || attributes.isSymbolicLink || attributes.size() > MAX_RECORD_BYTES) {
+      throw InvalidManagedSkillRecordSchemaError(displayPath.toString(), "managed record must be a bounded regular file")
+    }
+    directory.newByteChannel(name, setOf(READ, NOFOLLOW_LINKS)).use {
+      readBounded(it, attributes.size().toInt(), displayPath)
+    }
+  } catch (_: java.nio.file.NoSuchFileException) {
+    null
   }
 
   private fun mapRecord(raw: Map<String, Any?>, path: Path): ManagedSkillRecord = try {
@@ -194,19 +229,30 @@ class FileManagedSkillRecordStore(stateRoot: Path) {
   }
 
   private fun readNoFollow(path: Path): ByteArray = try {
+    val attributes = Files.readAttributes(path, java.nio.file.attribute.BasicFileAttributes::class.java, NOFOLLOW_LINKS)
+    if (!attributes.isRegularFile || attributes.isSymbolicLink || attributes.size() > MAX_RECORD_BYTES) {
+      throw InvalidManagedSkillRecordSchemaError(path.toString(), "managed record must be a bounded regular file")
+    }
     FileChannel.open(path, READ, NOFOLLOW_LINKS).use { channel ->
       val size = channel.size()
-      if (size > Int.MAX_VALUE) throw IllegalArgumentException("managed record is too large")
-      val buffer = java.nio.ByteBuffer.allocate(size.toInt())
-      while (buffer.hasRemaining()) {
-        if (channel.read(buffer) < 0) break
-      }
-      buffer.array().copyOf(buffer.position())
+      if (size < 0 || size > MAX_RECORD_BYTES) throw IllegalArgumentException("managed record is too large")
+      readBounded(channel, size.toInt(), path)
     }
   } catch (error: InvalidManagedSkillRecordSchemaError) {
     throw error
   } catch (error: Exception) {
     throw InvalidManagedSkillRecordSchemaError(path.toString(), "record cannot be read without following links", error)
+  }
+
+  private fun readBounded(channel: SeekableByteChannel, expectedSize: Int, path: Path): ByteArray {
+    val buffer = java.nio.ByteBuffer.allocate(expectedSize)
+    while (buffer.hasRemaining()) {
+      if (channel.read(buffer) < 0) break
+    }
+    if (buffer.hasRemaining() || channel.read(java.nio.ByteBuffer.allocate(1)) >= 0) {
+      throw InvalidManagedSkillRecordSchemaError(path.toString(), "managed record changed size while being read")
+    }
+    return buffer.array()
   }
 
   private fun createConfinedDirectories(directory: Path) {

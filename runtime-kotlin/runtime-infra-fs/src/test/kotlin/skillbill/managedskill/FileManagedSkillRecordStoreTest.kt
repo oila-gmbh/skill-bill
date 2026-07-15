@@ -95,6 +95,21 @@ class FileManagedSkillRecordStoreTest {
     assertFailsWith<IllegalStateException> { store.write(record, "0".repeat(64)) }
   }
 
+  @Test
+  fun `compare and swap can require an absent record`() {
+    val root = Files.createTempDirectory("managed-records")
+    val store = FileManagedSkillRecordStore(root)
+    val now = Instant.parse("2026-07-15T12:00:00Z")
+    val record = ManagedSkillRecord(
+      name = "sample-skill", sourceKind = ManagedSkillSourceKind.DIRECTORY,
+      sourcePath = store.sourceRoot("sample-skill"), activeContentHash = "a".repeat(64),
+      selectedTargets = setOf(AgentSkillTargetId("claude", root.resolve("claude").toAbsolutePath())),
+      importedAt = now, updatedAt = now,
+    )
+    store.write(record, FileManagedSkillRecordStore.EXPECTED_ABSENT)
+    assertFailsWith<IllegalStateException> { store.write(record, FileManagedSkillRecordStore.EXPECTED_ABSENT) }
+  }
+
   private fun validWire(root: java.nio.file.Path, name: String): String = """{
     "contract_version":"0.1","name":"$name","source_kind":"directory",
     "source_path":"${root.resolve("managed-skills/$name/source")}",
