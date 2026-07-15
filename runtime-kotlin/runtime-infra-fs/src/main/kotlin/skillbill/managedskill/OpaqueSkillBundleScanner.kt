@@ -69,7 +69,7 @@ class OpaqueSkillBundleScanner {
         ) fail("The bundle root identity changed before traversal.")
         captureDirectory(directory, "", only)
       } else {
-        fail("The bundle filesystem does not support identity-bound traversal.")
+        capturePathDirectory(root, "", only)
       }
     }
     requireUnchangedRoot(root, before)
@@ -78,6 +78,49 @@ class OpaqueSkillBundleScanner {
     throw error
   } catch (error: Exception) {
     throw InvalidOpaqueSkillBundleException("Cannot capture the selected bundle without following links: $root", error)
+  }
+
+  private fun capturePathDirectory(root: Path, prefix: String, only: Path? = null): List<OpaqueSkillBundleFile> {
+    val before = readAttributes(root)
+    if (!before.isDirectory || before.isSymbolicLink) fail("The bundle directory is not a real directory: $prefix")
+    val names = if (only == null) Files.newDirectoryStream(root).use { stream -> stream.map { it.fileName } } else listOf(only)
+    val captured = names.flatMap { name ->
+      val relative = if (prefix.isEmpty()) name.toString() else "$prefix/$name"
+      if (name.isAbsolute || name.normalize().startsWith("..")) fail("Bundle path escapes the selected directory: $relative")
+      val path = root.resolve(name)
+      val attributes = readAttributes(path)
+      when {
+        attributes.isSymbolicLink -> fail("Symbolic links are not allowed: $relative")
+        attributes.isRegularFile -> listOf(OpaqueSkillBundleFile(relative, readStablePathBytes(path, relative, attributes)))
+        attributes.isDirectory -> capturePathDirectory(path, relative)
+        else -> fail("Special files are not allowed: $relative")
+      }
+    }
+    requireStableDirectory(root, before, prefix)
+    return captured
+  }
+
+  private fun readStablePathBytes(path: Path, relative: String, before: BasicFileAttributes): ByteArray = try {
+    val channel = try {
+      Files.newByteChannel(path, setOf(READ, NOFOLLOW_LINKS))
+    } catch (error: IllegalArgumentException) {
+      Files.newByteChannel(path, setOf(READ))
+    }
+    val bytes = channel.use(::readAll)
+    requireStableFile(before, readAttributes(path), relative)
+    bytes
+  } catch (error: InvalidOpaqueSkillBundleException) {
+    throw error
+  } catch (error: Exception) {
+    throw InvalidOpaqueSkillBundleException("Cannot read bundle entry without following links: $relative", error)
+  }
+
+  private fun requireStableDirectory(path: Path, before: BasicFileAttributes, relative: String) {
+    val after = readAttributes(path)
+    if (!after.isDirectory || after.isSymbolicLink ||
+      before.fileKey() != null && after.fileKey() != null && before.fileKey() != after.fileKey() ||
+      before.lastModifiedTime() != after.lastModifiedTime()
+    ) fail("Bundle directory changed while being scanned: $relative")
   }
 
   private fun captureDirectory(
