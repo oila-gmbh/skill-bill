@@ -7,15 +7,15 @@ base_branch: main
 feature_branch: feat/SKILL-123-skill-toolset
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 1
+  subtask_id: 2
   action: start
 subtasks:
   - id: 1
     name: "Foundation contracts and opaque bundle scanning"
     spec_path: ".feature-specs/SKILL-123-skill-toolset/spec_subtask_1_foundation_contracts_scanner.md"
-    status: pending
+    status: complete
     branch: null
-    commit_sha: null
+    commit_sha: d99283cad471ab79b8d19894c1a46ae1a20f94e9
     workflow_id: null
     blocked_reason: null
     last_resumable_step: null
