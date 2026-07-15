@@ -8,6 +8,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotEquals
 import java.nio.file.Files
+import java.net.URI
 
 class OpaqueSkillBundleScannerTest {
   private val scanner = OpaqueSkillBundleScanner()
@@ -89,5 +90,20 @@ class OpaqueSkillBundleScannerTest {
     val returned = bundle.files.single { it.relativePath == "notes.txt" }.content
     returned[0] = 'X'.code.toByte()
     assertEquals("before", bundle.files.single { it.relativePath == "notes.txt" }.content.toString(Charsets.UTF_8))
+  }
+
+  @Test
+  fun `scans providers without secure directory streams`() {
+    val archive = Files.createTempFile("opaque-skill", ".zip")
+    Files.delete(archive)
+    Files.newFileSystem(URI.create("jar:${archive.toUri()}"), mapOf("create" to "true")).use { fileSystem ->
+      val root = fileSystem.getPath("/")
+      root.resolve("SKILL.md").writeText("---\nname: sample-skill\ndescription: Sample\n---")
+      root.resolve("notes.txt").writeText("support")
+
+      val bundle = scanner.scan(root, emptySet())
+
+      assertEquals(listOf("SKILL.md", "notes.txt"), bundle.files.map { it.relativePath })
+    }
   }
 }

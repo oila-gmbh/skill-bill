@@ -5,6 +5,7 @@ import skillbill.managedskill.model.AgentSkillTargetId
 import skillbill.managedskill.model.ManagedSkillRecord
 import skillbill.managedskill.model.ManagedSkillSourceKind
 import java.nio.file.Files
+import java.nio.file.AtomicMoveNotSupportedException
 import java.time.Instant
 import kotlin.io.path.writeText
 import kotlin.test.Test
@@ -148,6 +149,41 @@ class FileManagedSkillRecordStoreTest {
     )
     store.write(record, FileManagedSkillRecordStore.EXPECTED_ABSENT)
     assertFailsWith<IllegalStateException> { store.write(record, FileManagedSkillRecordStore.EXPECTED_ABSENT) }
+  }
+
+  @Test
+  fun `refuses publication when atomic replacement is unavailable`() {
+    val root = Files.createTempDirectory("managed-records")
+    val store = FileManagedSkillRecordStore(root, atomicReplace = { source, target ->
+      throw AtomicMoveNotSupportedException(source.toString(), target.toString(), "unsupported")
+    })
+    val now = Instant.parse("2026-07-15T12:00:00Z")
+    val record = ManagedSkillRecord(
+      name = "sample-skill", sourceKind = ManagedSkillSourceKind.DIRECTORY,
+      sourcePath = store.sourceRoot("sample-skill"), activeContentHash = "a".repeat(64),
+      selectedTargets = setOf(AgentSkillTargetId("claude", root.resolve("claude").toAbsolutePath())),
+      importedAt = now, updatedAt = now,
+    )
+
+    assertFailsWith<IllegalStateException> { store.write(record) }
+    assertEquals(false, Files.exists(store.recordPath(record.name)))
+  }
+
+  @Test
+  fun `forces the containing directory after atomic replacement`() {
+    val root = Files.createTempDirectory("managed-records")
+    var forcedDirectory: java.nio.file.Path? = null
+    val store = FileManagedSkillRecordStore(root, forceDirectory = { forcedDirectory = it })
+    val now = Instant.parse("2026-07-15T12:00:00Z")
+    val record = ManagedSkillRecord(
+      name = "sample-skill", sourceKind = ManagedSkillSourceKind.DIRECTORY,
+      sourcePath = store.sourceRoot("sample-skill"), activeContentHash = "a".repeat(64),
+      selectedTargets = setOf(AgentSkillTargetId("claude", root.resolve("claude").toAbsolutePath())),
+      importedAt = now, updatedAt = now,
+    )
+
+    store.write(record)
+    assertEquals(store.recordPath(record.name).parent, forcedDirectory)
   }
 
   private fun validWire(root: java.nio.file.Path, name: String): String = """{
