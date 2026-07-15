@@ -63,6 +63,20 @@ class FileManagedSkillRecordStoreTest {
   }
 
   @Test
+  fun `public path reads require the canonical managed record layout`() {
+    val root = Files.createTempDirectory("managed-records")
+    val store = FileManagedSkillRecordStore(root)
+    val outsideShape = root.resolve("record.json")
+    outsideShape.writeText("{}")
+    assertFailsWith<InvalidManagedSkillRecordSchemaError> { store.readPath(outsideShape) }
+
+    val misplaced = store.recordPath("expected")
+    Files.createDirectories(misplaced.parent)
+    misplaced.writeText(validWire(root, "other"))
+    assertFailsWith<InvalidManagedSkillRecordSchemaError> { store.readPath(misplaced) }
+  }
+
+  @Test
   fun `requires compare and swap when an expected digest is supplied`() {
     val root = Files.createTempDirectory("managed-records")
     val store = FileManagedSkillRecordStore(root)
@@ -80,4 +94,12 @@ class FileManagedSkillRecordStoreTest {
     assertNotNull(store.digest(record.name))
     assertFailsWith<IllegalStateException> { store.write(record, "0".repeat(64)) }
   }
+
+  private fun validWire(root: java.nio.file.Path, name: String): String = """{
+    "contract_version":"0.1","name":"$name","source_kind":"directory",
+    "source_path":"${root.resolve("managed-skills/$name/source")}",
+    "active_content_hash":"${"a".repeat(64)}",
+    "selected_targets":[{"provider":"codex","skills_path":"${root.resolve("codex")}"}],
+    "imported_at":"2026-07-15T12:00:00Z","updated_at":"2026-07-15T12:00:00Z"
+  }"""
 }

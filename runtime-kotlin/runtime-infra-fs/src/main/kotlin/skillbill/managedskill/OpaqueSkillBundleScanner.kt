@@ -80,6 +80,13 @@ class OpaqueSkillBundleScanner {
     val end = lines.drop(1).indexOfFirst { it.trim() == "---" }
     if (end < 0) fail("SKILL.md frontmatter is not terminated.")
     val yaml = lines.subList(1, end + 1).joinToString("\n")
+    if (Regex("(?m)(?:^|[\\s:,{}\\[])&[A-Za-z0-9_-]+").containsMatchIn(yaml) ||
+      Regex("(?m)(?:^|[\\s:,{}\\[])\\*[A-Za-z0-9_-]+").containsMatchIn(yaml) ||
+      Regex("(?m)^\\s*<<\\s*:").containsMatchIn(yaml) ||
+      Regex("(?m)!{1,2}[A-Za-z]").containsMatchIn(yaml)
+    ) {
+      fail("SKILL.md frontmatter must not contain aliases, merges, or custom tags.")
+    }
     val mapper = YAMLMapper.builder().enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION).build()
     val node = try { mapper.readTree(yaml) } catch (error: Exception) {
       throw InvalidOpaqueSkillBundleException("SKILL.md frontmatter is invalid YAML.", error)
@@ -88,7 +95,19 @@ class OpaqueSkillBundleScanner {
     if (!node.path("name").isTextual || !node.path("description").isTextual) {
       fail("SKILL.md frontmatter name and description must be strings.")
     }
+    if (containsNestedOwnershipName(node)) fail("SKILL.md frontmatter must not contain a nested name key.")
     return node
+  }
+
+  private fun containsNestedOwnershipName(root: JsonNode): Boolean {
+    fun visit(node: JsonNode, depth: Int): Boolean = when {
+      node.isObject -> node.fields().asSequence().any { (key, value) ->
+        (depth > 0 && key == "name") || visit(value, depth + 1)
+      }
+      node.isArray -> node.elements().asSequence().any { visit(it, depth + 1) }
+      else -> false
+    }
+    return root.fields().asSequence().any { (_, value) -> visit(value, 1) }
   }
 
   private fun readAttributes(path: Path): BasicFileAttributes = try {
@@ -111,7 +130,10 @@ class OpaqueSkillBundleScanner {
       output.toByteArray()
     }
     val after = readAttributes(path)
-    if (before.fileKey() != after.fileKey() || before.size() != after.size() || before.lastModifiedTime() != after.lastModifiedTime()) {
+    if (!after.isRegularFile || after.isSymbolicLink ||
+      (before.fileKey() != null && after.fileKey() != null && before.fileKey() != after.fileKey()) ||
+      before.size() != after.size() || before.lastModifiedTime() != after.lastModifiedTime()
+    ) {
       fail("Bundle entry changed while being read: $path")
     }
     bytes

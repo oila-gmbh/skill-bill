@@ -36,12 +36,23 @@ class FileManagedSkillRecordStore(stateRoot: Path) {
     return readPath(recordPath(safeName), safeName)
   }
 
-  fun readPath(path: Path): ManagedSkillRecord = readPath(path, null)
+  fun readPath(path: Path): ManagedSkillRecord {
+    val confinedPath = requireConfined(path)
+    val managedRoot = stateRoot.resolve("managed-skills")
+    val relative = try { managedRoot.relativize(confinedPath) } catch (error: IllegalArgumentException) {
+      throw InvalidManagedSkillRecordSchemaError(path.toString(), "record path is outside managed-skills", error)
+    }
+    if (!confinedPath.startsWith(managedRoot) || relative.nameCount != 2 || relative.fileName.toString() != "record.json") {
+      throw InvalidManagedSkillRecordSchemaError(path.toString(), "record path must be managed-skills/<name>/record.json")
+    }
+    return readPath(confinedPath, safeName(relative.getName(0).toString()))
+  }
 
   private fun readPath(path: Path, expectedName: String?): ManagedSkillRecord {
     val confinedPath = requireConfined(path)
+    requireRealAncestors(confinedPath.parent)
     val raw = try {
-      mapper.readValue(Files.readString(confinedPath), object : TypeReference<Map<String, Any?>>() {})
+      mapper.readValue(readNoFollow(confinedPath), object : TypeReference<Map<String, Any?>>() {})
     } catch (error: InvalidManagedSkillRecordSchemaError) {
       throw error
     } catch (error: Exception) {
@@ -57,15 +68,18 @@ class FileManagedSkillRecordStore(stateRoot: Path) {
   }
 
   fun write(record: ManagedSkillRecord, expectedDigest: String? = null) {
-    val path = recordPath(record.name)
+    val name = safeName(record.name)
+    val path = recordPath(name)
     val raw = record.toWire()
     ManagedSkillRecordSchemaValidator.validate(raw, path.toString())
     validateRecordPaths(record, path)
     createConfinedDirectories(path.parent)
     val lockPath = path.parent.resolve(".record.lock")
+    rejectLinkOrNonRegular(lockPath)
     FileChannel.open(lockPath, CREATE, WRITE).use { lockChannel ->
       lockChannel.lock().use {
-        val currentDigest = if (Files.exists(path, NOFOLLOW_LINKS)) digest(Files.readAllBytes(path)) else null
+        rejectLinkOrNonRegular(path)
+        val currentDigest = if (Files.exists(path, NOFOLLOW_LINKS)) digest(readNoFollow(path)) else null
         if (expectedDigest != null && currentDigest != expectedDigest) {
           throw IllegalStateException("Managed skill record changed after preview.")
         }
@@ -76,7 +90,9 @@ class FileManagedSkillRecordStore(stateRoot: Path) {
 
   fun digest(name: String): String? {
     val path = recordPath(name)
-    return if (Files.exists(path, NOFOLLOW_LINKS)) digest(Files.readAllBytes(path)) else null
+    requireRealAncestors(path.parent)
+    rejectLinkOrNonRegular(path)
+    return if (Files.exists(path, NOFOLLOW_LINKS)) digest(readNoFollow(path)) else null
   }
 
   private fun publish(path: Path, bytes: ByteArray) {
@@ -106,6 +122,9 @@ class FileManagedSkillRecordStore(stateRoot: Path) {
       }
       if (!target.isAbsolute || target != target.normalize()) throw IllegalArgumentException("target path must be absolute and normalized")
       AgentSkillTargetId(it.getValue("provider"), target)
+    }
+    if (targets.size != (raw.getValue("selected_targets") as List<*>).size) {
+      throw IllegalArgumentException("selected targets contain duplicate canonical identities")
     }
     ManagedSkillRecord(
       name = raw.getValue("name") as String,
@@ -149,6 +168,45 @@ class FileManagedSkillRecordStore(stateRoot: Path) {
     val normalized = path.toAbsolutePath().normalize()
     if (!normalized.startsWith(stateRoot)) throw InvalidManagedSkillRecordSchemaError(path.toString(), "path escapes managed state root")
     return normalized
+  }
+
+  private fun requireRealAncestors(directory: Path) {
+    var current = stateRoot.root
+    stateRoot.forEach { segment ->
+      current = current.resolve(segment)
+      if (Files.exists(current, NOFOLLOW_LINKS) && (Files.isSymbolicLink(current) || !Files.isDirectory(current, NOFOLLOW_LINKS))) {
+        throw InvalidManagedSkillRecordSchemaError(current.toString(), "managed state parent is not a real directory")
+      }
+    }
+    if (!directory.startsWith(stateRoot)) throw InvalidManagedSkillRecordSchemaError(directory.toString(), "path escapes managed state root")
+    stateRoot.relativize(directory).forEach { segment ->
+      current = current.resolve(segment)
+      if (!Files.exists(current, NOFOLLOW_LINKS) || Files.isSymbolicLink(current) || !Files.isDirectory(current, NOFOLLOW_LINKS)) {
+        throw InvalidManagedSkillRecordSchemaError(current.toString(), "managed state parent is not a real directory")
+      }
+    }
+  }
+
+  private fun rejectLinkOrNonRegular(path: Path) {
+    if (Files.exists(path, NOFOLLOW_LINKS) && (Files.isSymbolicLink(path) || !Files.isRegularFile(path, NOFOLLOW_LINKS))) {
+      throw InvalidManagedSkillRecordSchemaError(path.toString(), "managed record is not a regular file")
+    }
+  }
+
+  private fun readNoFollow(path: Path): ByteArray = try {
+    FileChannel.open(path, READ, NOFOLLOW_LINKS).use { channel ->
+      val size = channel.size()
+      if (size > Int.MAX_VALUE) throw IllegalArgumentException("managed record is too large")
+      val buffer = java.nio.ByteBuffer.allocate(size.toInt())
+      while (buffer.hasRemaining()) {
+        if (channel.read(buffer) < 0) break
+      }
+      buffer.array().copyOf(buffer.position())
+    }
+  } catch (error: InvalidManagedSkillRecordSchemaError) {
+    throw error
+  } catch (error: Exception) {
+    throw InvalidManagedSkillRecordSchemaError(path.toString(), "record cannot be read without following links", error)
   }
 
   private fun createConfinedDirectories(directory: Path) {

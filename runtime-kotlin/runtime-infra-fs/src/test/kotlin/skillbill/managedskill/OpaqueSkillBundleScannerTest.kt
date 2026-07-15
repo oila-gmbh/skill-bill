@@ -48,6 +48,17 @@ class OpaqueSkillBundleScannerTest {
     assertFailsWith<InvalidOpaqueSkillBundleException> { scanner.scan(root, setOf("protected")) }
     root.resolve("SKILL.md").writeText("---\nmetadata:\n  name: sample-skill\ndescription: Sample\n---")
     assertFailsWith<InvalidOpaqueSkillBundleException> { scanner.scan(root, emptySet()) }
+    root.resolve("SKILL.md").writeText("---\nname: sample-skill\ndescription: Sample\nmetadata:\n  name: nested\n---")
+    assertFailsWith<InvalidOpaqueSkillBundleException> { scanner.scan(root, emptySet()) }
+  }
+
+  @Test
+  fun `rejects aliases merges and custom tags`() {
+    val root = Files.createTempDirectory("opaque-skill")
+    root.resolve("SKILL.md").writeText("---\nname: &owned sample-skill\ndescription: Sample\ncopy: *owned\n---")
+    assertFailsWith<InvalidOpaqueSkillBundleException> { scanner.scan(root, emptySet()) }
+    root.resolve("SKILL.md").writeText("---\nname: sample-skill\ndescription: Sample\nmetadata: !custom value\n---")
+    assertFailsWith<InvalidOpaqueSkillBundleException> { scanner.scan(root, emptySet()) }
   }
 
   @Test
@@ -58,6 +69,9 @@ class OpaqueSkillBundleScannerTest {
     support.writeText("before")
     val bundle = scanner.scan(root, emptySet())
     support.writeText("after")
+    assertEquals("before", bundle.files.single { it.relativePath == "notes.txt" }.content.toString(Charsets.UTF_8))
+    val returned = bundle.files.single { it.relativePath == "notes.txt" }.content
+    returned[0] = 'X'.code.toByte()
     assertEquals("before", bundle.files.single { it.relativePath == "notes.txt" }.content.toString(Charsets.UTF_8))
   }
 }

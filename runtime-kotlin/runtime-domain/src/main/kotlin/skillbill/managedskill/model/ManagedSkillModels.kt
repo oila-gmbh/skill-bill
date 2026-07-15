@@ -2,6 +2,8 @@ package skillbill.managedskill.model
 
 import java.nio.file.Path
 import java.time.Instant
+import java.util.Collections
+import java.util.Locale
 
 const val MANAGED_SKILL_RECORD_CONTRACT_VERSION: String = "0.1"
 
@@ -11,10 +13,12 @@ enum class MachineSkillHealth { HEALTHY, MISSING, BROKEN_LINK, DIVERGENT, CORRUP
 enum class MachineSkillMutationKind { INSTALL, UPDATE, ADOPT, EDIT, MANAGE_TARGETS, REPAIR, DELETE }
 
 class AgentSkillTargetId(provider: String, skillsPath: Path) {
-  val provider: String = provider.trim()
-  val skillsPath: Path = skillsPath.toAbsolutePath().normalize()
+  val provider: String = provider.trim().lowercase(Locale.ROOT)
+  val skillsPath: Path = skillsPath.normalize()
   init {
-    require(this.provider.isNotBlank()) { "Agent provider must not be blank." }
+    require(this.provider.matches(Regex("^[a-z0-9][a-z0-9-]{0,62}$"))) {
+      "Agent provider must be a lowercase safe identifier."
+    }
     require(skillsPath.isAbsolute) { "Agent target path must be absolute." }
   }
 
@@ -43,21 +47,26 @@ data class ManagedSkillRecord(
   }
 }
 
-data class OpaqueSkillBundleFile(val relativePath: String, val content: ByteArray) {
-  override fun equals(other: Any?): Boolean =
-    other is OpaqueSkillBundleFile && relativePath == other.relativePath && content.contentEquals(other.content)
+class OpaqueSkillBundleFile(val relativePath: String, content: ByteArray) {
+  private val capturedContent = content.copyOf()
+  val content: ByteArray get() = capturedContent.copyOf()
 
-  override fun hashCode(): Int = 31 * relativePath.hashCode() + content.contentHashCode()
+  override fun equals(other: Any?): Boolean =
+    other is OpaqueSkillBundleFile && relativePath == other.relativePath && capturedContent.contentEquals(other.capturedContent)
+
+  override fun hashCode(): Int = 31 * relativePath.hashCode() + capturedContent.contentHashCode()
 }
 
-data class OpaqueSkillBundle(
+class OpaqueSkillBundle(
   val name: String,
   val description: String,
   val source: Path,
-  val files: List<OpaqueSkillBundleFile>,
+  files: List<OpaqueSkillBundleFile>,
   val totalBytes: Long,
   val contentHash: String,
-)
+) {
+  val files: List<OpaqueSkillBundleFile> = Collections.unmodifiableList(files.toList())
+}
 
 data class MachineSkillMutation(
   val path: Path,
