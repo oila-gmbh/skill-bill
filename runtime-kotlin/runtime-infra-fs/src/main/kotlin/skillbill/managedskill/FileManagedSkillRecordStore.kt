@@ -19,8 +19,6 @@ import java.nio.file.StandardOpenOption.CREATE
 import java.nio.file.StandardOpenOption.CREATE_NEW
 import java.nio.file.StandardOpenOption.READ
 import java.nio.file.StandardOpenOption.WRITE
-import java.nio.file.StandardCopyOption.ATOMIC_MOVE
-import java.nio.file.StandardCopyOption.REPLACE_EXISTING
 import java.security.MessageDigest
 import java.time.Instant
 
@@ -284,12 +282,10 @@ class FileManagedSkillRecordStore private constructor(
     return Files.newDirectoryStream(stateRoot).use { rootStream ->
       val secureRoot = rootStream as? SecureDirectoryStream<Path>
       if (secureRoot == null) {
-        requireStableStateRoot()
-        val recordDirectory = PathRecordDirectory(directory)
-        return block(recordDirectory, directory).also {
-          requireRealAncestors(directory)
-          requireStableStateRoot()
-        }
+        throw InvalidManagedSkillRecordSchemaError(
+          stateRoot.toString(),
+          "managed records require identity-bound directory access",
+        )
       }
       val openedRoot = secureRoot.getFileAttributeView(
         Path.of("."),
@@ -338,37 +334,6 @@ class FileManagedSkillRecordStore private constructor(
 
     override fun atomicMove(source: Path, target: Path) = directory.move(source, directory, target)
     override fun deleteFile(name: Path) = directory.deleteFile(name)
-  }
-
-  private class PathRecordDirectory(
-    private val directory: Path,
-  ) : RecordDirectory {
-    private fun resolve(name: Path): Path {
-      if (name.isAbsolute || name.nameCount != 1 || name.normalize() != name) {
-        throw IllegalArgumentException("record entry must be a single relative name")
-      }
-      return directory.resolve(directory.fileSystem.getPath(name.toString()))
-    }
-
-    override fun attributes(name: Path) = Files.readAttributes(
-      resolve(name),
-      java.nio.file.attribute.BasicFileAttributes::class.java,
-      NOFOLLOW_LINKS,
-    )
-
-    override fun newByteChannel(name: Path, options: Set<java.nio.file.OpenOption>): SeekableByteChannel {
-      val path = resolve(name)
-      return try {
-        Files.newByteChannel(path, options)
-      } catch (_: IllegalArgumentException) {
-        Files.newByteChannel(path, options - NOFOLLOW_LINKS)
-      }
-    }
-
-    override fun atomicMove(source: Path, target: Path) =
-      Files.move(resolve(source), resolve(target), ATOMIC_MOVE, REPLACE_EXISTING).let { Unit }
-
-    override fun deleteFile(name: Path) = Files.delete(resolve(name))
   }
 
   private fun requireStableStateRoot() {
