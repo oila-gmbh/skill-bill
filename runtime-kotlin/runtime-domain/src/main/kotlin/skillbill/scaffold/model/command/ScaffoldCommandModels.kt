@@ -107,6 +107,16 @@ sealed class ScaffoldCommandRequest {
     override val scaffoldPayloadVersion: String,
     override val repoRoot: String? = null,
   ) : ScaffoldCommandRequest()
+
+  data class AgentAddon(
+    val slug: String,
+    val description: String,
+    val agentIds: List<String>,
+    val consumers: List<String>,
+    val contentBody: String? = null,
+    override val scaffoldPayloadVersion: String,
+    override val repoRoot: String? = null,
+  ) : ScaffoldCommandRequest()
 }
 
 /**

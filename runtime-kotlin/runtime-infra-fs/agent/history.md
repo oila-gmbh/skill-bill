@@ -1,5 +1,27 @@
 # Boundary History — runtime-kotlin/runtime-infra-fs
 
+## [2026-07-14] SKILL-122 agent add-on delivery and scaffolding
+Areas: runtime-infra-fs/{agentaddon,install,scaffold}, runtime-cli/scaffold, runtime-desktop/feature/skillbill, install.sh, uninstall.sh
+- Agent-addon delivery discovers validated declarations dynamically and generates deterministic consumer pointers for `bill-feature` and its internal sidecars only in staged output; targets must remain regular repository files and collisions, self-reference, malformed paths, or missing targets loud-fail before promotion.
+- `InstallStagingIntentBuilder` is the reusable staging composition seam shared by plan, apply, and direct staging; `InstallContentHash` folds manifests, bodies, and generated pointers into only the affected installed-skill identities. reusable
+- Authored-path namespace checks use normalized staging-relative paths, so nested source basenames do not falsely collide with flat generated pointers; generated `agent-addon-*.md` files committed under skills are rejected.
+- Normal install and reconciliation now preserve the `agent-addons` source tree, including deterministic empty-tree handling, without changing platform-pack overlays, selection, or source-generation behavior.
+- The `agent-addon` payload and CLI/desktop wizard create only `agent-addon.yaml` plus `content.md`; dry-run reports both paths and render, validation, or install failure participates in byte-for-byte scaffold rollback.
+- Known limit: local install refresh remains deferred while the feature-task runtime workflow store is active; the runtime guard must not be bypassed.
+Feature flag: N/A
+Acceptance criteria: 7/7 implemented
+
+## [2026-07-14] SKILL-122 agent add-on contract
+Areas: orchestration/contracts, runtime-contracts, runtime-domain/agentaddon, runtime-infra-fs/{agentaddon,scaffold,validation}, docs
+- Agent add-ons are user-owned `agent-addons/<slug>/agent-addon.yaml` plus `content.md`; the Draft 2020-12 schema pins contract 1.0, stays strict, documents cross-field coherence checks, and is copied onto the runtime classpath with configuration-cache-safe task inputs and an execution-time existence guard. reusable
+- `AgentAddonSourceLoader` discovers declarations in deterministic slug order, treats a missing or empty root as valid, and exposes a required lookup that raises `MissingAgentAddonDeclarationError` only when a caller demands an absent declaration. reusable
+- Parse and discovery failures surface through typed `InvalidAgentAddonSchemaError` variants, including malformed roots, schema drift, slug/source mismatch, content-file violations, duplicate identities, descriptions, consumers, and agents.
+- Agent ids are validated through the existing `InstallAgent` registry; contract 1.0 intentionally accepts only `bill-feature` as a consumer.
+- Repository validation and generated-artifact guards include agent add-ons while leaving skills, platform packs, and pack add-ons unchanged when the root is absent.
+- Known limit: this contract establishes declaration/discovery/validation only; applying agent add-ons during feature execution is follow-up behavior.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
 ## [2026-07-12] SKILL-118 unified use license
 Areas: LICENSE and policy docs, GitHub release workflow, scripts, runtime-kotlin/{build-logic,runtime-application,runtime-cli,runtime-ports,runtime-infra-fs,runtime-desktop}
 - `LicenseRef-Skill-Bill-Use-1.0` governs v0.1.2 prereleases distributed with it, v0.1.2, and later releases: lawful commercial use is free before stable v1.0.0; afterwards personal and qualifying open-source-project use remain free while other commercial use requires a purchased agreement. reusable

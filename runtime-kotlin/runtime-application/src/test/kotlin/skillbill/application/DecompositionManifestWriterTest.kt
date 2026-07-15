@@ -184,6 +184,39 @@ class DecompositionManifestWriterTest {
   }
 
   @Test
+  fun `pending runtime projection restores blocked subtask spec readiness`() {
+    val repoRoot = Files.createTempDirectory("skillbill-runtime-reset-projection")
+    val parentSpecPath = repoRoot.resolve(".feature-specs/SKILL-51-decomposition/spec.md")
+    val subtaskSpec = parentSpecPath.parent.resolve("spec_subtask_1_foundation.md")
+    Files.createDirectories(parentSpecPath.parent)
+    Files.writeString(parentSpecPath, "---\nstatus: Blocked\n---\n\n# Parent spec\n")
+    Files.writeString(subtaskSpec, "---\nstatus: Blocked\n---\n\n# Foundation\n")
+    val initial = writeIfDecomposed(
+      DecompositionManifestWriteRequest(
+        repoRoot = repoRoot,
+        parentSpecPath = parentSpecPath,
+        planningResult = decompositionPlan(parentSpecPath),
+        baseBranch = "main",
+        featureBranch = "feature/SKILL-51-decomposition",
+      ),
+    )
+    assertNotNull(initial)
+    val reset = initial.manifest.copy(
+      status = "pending",
+      subtasks = initial.manifest.subtasks.map { subtask -> subtask.copy(status = "pending") },
+    )
+
+    val result = writeProjectionFromWorkflowState(
+      repoRoot,
+      JsonSupport.mapToJsonString(mapOf(DECOMPOSITION_RUNTIME_ARTIFACT_KEY to reset.toWireMap())),
+    )
+
+    assertNotNull(result)
+    assertContains(Files.readString(parentSpecPath), "status: Pending")
+    assertContains(Files.readString(subtaskSpec), "status: Ready for implementation")
+  }
+
+  @Test
   fun `runtime update with explicit unmatched spec path does not fall back to current subtask`() {
     val repoRoot = Files.createTempDirectory("skillbill-runtime-unmatched-spec")
     val parentSpecPath = repoRoot.resolve(".feature-specs/SKILL-51-decomposition/spec.md")

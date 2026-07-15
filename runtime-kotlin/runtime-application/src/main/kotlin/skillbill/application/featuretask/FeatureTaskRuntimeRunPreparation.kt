@@ -67,6 +67,15 @@ internal class FeatureTaskRuntimeRunPreparation(
     request.goalContinuation != null -> newGoalContinuationConflict(request, selectedMode)
     else -> requestedResumeModeConflict(request, persistedInvariants)
   } ?: goalContinuationInvariantConflict(request, persistedInvariants, initial, selectedMode)
+    ?: persistedAgentAddonSelectionConflict(request, persistedInvariants)
+
+  private fun persistedAgentAddonSelectionConflict(
+    request: FeatureTaskRuntimeRunRequest,
+    persistedInvariants: FeatureTaskRuntimeRunInvariants?,
+  ): String? = persistedInvariants
+    ?.agentAddonSelection
+    ?.takeIf { it != request.agentAddonSelection.persisted }
+    ?.let { "Cannot drop or replace the workflow's durable agent add-on selection on resume." }
 
   private fun persistedContinuationConflict(
     request: FeatureTaskRuntimeRunRequest,
@@ -113,6 +122,8 @@ internal class FeatureTaskRuntimeRunPreparation(
           parentWorkflowId = context.parentWorkflowId,
           codeReviewMode = selectedMode,
           parallelReviewAgent = context.parallelReviewAgent ?: request.parallelReviewAgent,
+          agentAddonSelection = context.agentAddonSelection.takeUnless { it.entries.isEmpty() }
+            ?: request.agentAddonSelection.persisted,
         ),
         reviewBaseline = requireNotNull(context.reviewBaseline),
       ),
@@ -206,6 +217,7 @@ private fun goalContinuationContext(
   codeReviewMode = continuation.codeReviewMode,
   parallelReviewAgent = continuation.parallelReviewAgent,
   reviewBaseline = baseline,
+  agentAddonSelection = continuation.agentAddonSelection,
 )
 
 private fun blocked(

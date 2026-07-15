@@ -615,3 +615,52 @@ Do not:
   `junie-agents/`
 - manually edit generated runtime staging directories as source
 - rely on direct source symlinks for content-managed skills
+
+# Agent add-on authored sources
+
+Agent add-ons are a separate user-owned extension surface under
+`agent-addons/<slug>/`. Each source directory contains exactly
+`agent-addon.yaml` and `content.md`. The manifest declares the contract version,
+slug, description, target agent ids, and consumers; `content.md` is the only
+ordinary instruction body.
+
+Agent add-ons may also be sourced from external add-on roots declared in the
+shared machine-global `external_addon_sources` config. Use
+`kind: "agent-addon"` and point `path` at a directory containing the same
+`<slug>/agent-addon.yaml` plus `<slug>/content.md` source shape. Legacy platform
+entries without `kind` remain platform-pack add-ons; new platform entries may
+use `kind: "platform-pack"`.
+
+```json
+{
+  "external_addon_sources": [
+    { "kind": "agent-addon", "path": "~/dev/personal-agent-addons" }
+  ]
+}
+```
+
+The manifest is strict: `contract_version: "1.0"`, a canonical `slug`, a
+single-line `description`, one or more `agent_ids`, and one or more supported
+`consumers`. Invocation is explicit, for example
+`/bill-feature SKILL-122 agent-addon:execution-budget`. The receiving agent must
+be declared; `execution-budget` supports Codex only. With no `agent-addon:`
+token the feature workflow is unchanged.
+
+Selected add-ons are additive and remain below user intent, `AGENTS.md`,
+governed skill instructions, and repository contracts. Rendering and install
+staging create consumer-owned `agent-addon-<slug>.md` pointers outside the
+authored source; never edit or commit those generated files. This differs from
+platform add-ons, which are pack-owned files under
+`platform-packs/<slug>/addons/` and are selected by platform routing.
+
+Durable workflow state records the ordered slug, canonical manifest identity,
+and content digest. Resume reuses that exact selection and fails loudly when
+the source is missing or changed instead of silently substituting content.
+Agent add-ons should not automatically activate or configure themselves for a
+specific model version, and must not prescribe manual context-window or
+compaction controls.
+
+Generated `SKILL.md` wrappers, support pointers, provider-native output
+directories, native-agent sources, and arbitrary sidecars are forbidden in an
+agent add-on source directory. Agent add-ons are distinct from governed skills
+under `skills/` and pack-owned add-ons under `platform-packs/<slug>/addons/`.

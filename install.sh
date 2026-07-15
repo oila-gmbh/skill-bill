@@ -932,6 +932,7 @@ SKILL_BILL_CANDIDATE_ROOT="$SKILL_BILL_STATE_DIR/.candidate-source"
 SKILL_BILL_CANDIDATE_SKILLS="$SKILL_BILL_CANDIDATE_ROOT/skills"
 SKILL_BILL_CANDIDATE_PLATFORM_PACKS="$SKILL_BILL_CANDIDATE_ROOT/platform-packs"
 SKILL_BILL_CANDIDATE_ORCHESTRATION="$SKILL_BILL_CANDIDATE_ROOT/orchestration"
+SKILL_BILL_CANDIDATE_AGENT_ADDONS="$SKILL_BILL_CANDIDATE_ROOT/agent-addons"
 SKILL_BILL_BASELINE_MANIFEST="$SKILL_BILL_STATE_DIR/baseline-manifest.json"
 
 # Stage one source tree into a candidate dir without touching the live target.
@@ -964,6 +965,11 @@ copy_in_authored_source() {
   stage_authored_candidate "$SKILLS_DIR" "$SKILL_BILL_CANDIDATE_SKILLS" "skills source"
   stage_authored_candidate "$PLATFORM_PACKS_DIR" "$SKILL_BILL_CANDIDATE_PLATFORM_PACKS" "platform-packs source"
   stage_authored_candidate "$PLUGIN_DIR/orchestration" "$SKILL_BILL_CANDIDATE_ORCHESTRATION" "orchestration source"
+  if [[ -d "$PLUGIN_DIR/agent-addons" ]]; then
+    stage_authored_candidate "$PLUGIN_DIR/agent-addons" "$SKILL_BILL_CANDIDATE_AGENT_ADDONS" "agent-addons source"
+  else
+    mkdir -p "$SKILL_BILL_CANDIDATE_AGENT_ADDONS"
+  fi
   ok "Authored source candidates staged under $SKILL_BILL_STATE_DIR"
 }
 
@@ -1361,6 +1367,29 @@ run_selection_runtime_cli() {
     exit 1
   fi
   SKILL_BILL_RUNTIME_EXECUTABLE="$runtime_bin" "$runtime_bin" --home "$HOME" "$@"
+}
+
+current_telemetry_level_from_config() {
+  local output
+  local config_path
+  local telemetry_level
+
+  if ! output="$(run_selection_runtime_cli telemetry status 2>/dev/null)"; then
+    return 2
+  fi
+
+  config_path="$(printf '%s\n' "$output" | awk -F': ' '$1 == "config_path" { print $2; exit }')"
+  telemetry_level="$(printf '%s\n' "$output" | awk -F': ' '$1 == "telemetry_level" { print $2; exit }')"
+  case "$telemetry_level" in
+    anonymous|full|off)
+      ;;
+    *)
+      return 2
+      ;;
+  esac
+  [[ -n "$config_path" ]] || return 2
+  [[ -f "$config_path" ]] || return 1
+  printf '%s\n' "$telemetry_level"
 }
 
 path_contains_dir() {
@@ -2440,6 +2469,19 @@ replay_last_install_selection() {
         ;;
     esac
   done <<< "$output"
+
+  if value="$(current_telemetry_level_from_config)"; then
+    if [[ "$value" != "$TELEMETRY_LEVEL" ]]; then
+      info "Preserving current telemetry config level '$value' instead of saved install selection '$TELEMETRY_LEVEL'."
+    fi
+    TELEMETRY_LEVEL="$value"
+  else
+    telemetry_config_status=$?
+    if [[ "$telemetry_config_status" -ne 1 ]]; then
+      err "Cannot reuse saved install selections: current telemetry configuration could not be read or validated."
+      exit 1
+    fi
+  fi
 
   if [[ ${#AGENT_NAMES[@]} -eq 0 ]]; then
     err "Cannot reuse saved install selections: saved selection has no agents."

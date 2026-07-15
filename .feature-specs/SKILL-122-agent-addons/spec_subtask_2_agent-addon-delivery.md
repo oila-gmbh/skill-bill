@@ -1,5 +1,5 @@
 ---
-status: Ready for implementation
+status: Complete
 issue_key: SKILL-122
 subtask_id: 2
 ---

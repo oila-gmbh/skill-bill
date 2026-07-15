@@ -1,5 +1,6 @@
 package skillbill.application.model
 
+import skillbill.agentaddon.model.HydratedAgentAddonSelection
 import skillbill.ports.agentrun.model.AgentRunOutputSink
 import skillbill.ports.workflow.model.DEFAULT_SELECTED_DIFF_MAX_BYTES
 import skillbill.ports.workflow.model.DEFAULT_SELECTED_DIFF_MAX_HUNKS
@@ -23,6 +24,7 @@ data class GoalRunnerRunRequest(
   val codeReviewMode: CodeReviewExecutionMode? = null,
   /** Null means reuse the parent goal's durable parallel lane, or run one lane for a new parent. */
   val parallelReviewAgent: String? = null,
+  val agentAddonSelection: HydratedAgentAddonSelection = HydratedAgentAddonSelection(),
   val observabilitySequenceStart: Int = DEFAULT_GOAL_OBSERVABILITY_SEQUENCE_START,
 ) {
   init {

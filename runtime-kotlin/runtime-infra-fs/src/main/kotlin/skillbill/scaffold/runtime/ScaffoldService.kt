@@ -11,12 +11,15 @@
 
 package skillbill.scaffold.runtime
 
+import skillbill.agentaddon.AgentAddonSchemaValidator
+import skillbill.agentaddon.model.AgentAddonConsumer
 import skillbill.error.InvalidScaffoldPayloadError
 import skillbill.error.MissingPlatformPackError
 import skillbill.error.ScaffoldRollbackError
 import skillbill.error.SkillAlreadyExistsError
 import skillbill.error.UnknownPreShellFamilyError
 import skillbill.error.UnknownSkillKindError
+import skillbill.install.model.InstallAgent
 import skillbill.install.model.InstallPlanSkill
 import skillbill.install.model.InstallPlanSkillKind
 import skillbill.install.model.InstallTransaction
@@ -38,6 +41,7 @@ import skillbill.scaffold.model.ScaffoldResult
 import skillbill.scaffold.platformpack.discoverPlatformPackManifests
 import skillbill.scaffold.platformpack.loadPlatformPack
 import skillbill.scaffold.policy.SKILL_KIND_ADD_ON
+import skillbill.scaffold.policy.SKILL_KIND_AGENT_ADDON
 import skillbill.scaffold.policy.SKILL_KIND_CODE_REVIEW_AREA
 import skillbill.scaffold.policy.SKILL_KIND_HORIZONTAL
 import skillbill.scaffold.policy.SKILL_KIND_PLATFORM_OVERRIDE_PILOTED
@@ -105,6 +109,8 @@ internal data class ScaffoldPlan(
   val contentBody: String? = null,
   val addonBody: String? = null,
   val addonConsumerSkillDirs: List<String> = emptyList(),
+  val agentIds: List<String> = emptyList(),
+  val agentAddonConsumers: List<String> = emptyList(),
   val externalAddonLocationPath: Path? = null,
   val baselineLayers: List<CodeReviewBaselineLayer> = emptyList(),
   val subagentSpecialists: List<String> = emptyList(),
@@ -249,6 +255,10 @@ private fun planScaffold(
   SKILL_KIND_ADD_ON -> {
     policyRejectBaselineLayersForNonPlatformPack(payload, kind)
     planAddOn(payload, repoRoot, adapters)
+  }
+  SKILL_KIND_AGENT_ADDON -> {
+    policyRejectBaselineLayersForNonPlatformPack(payload, kind)
+    planAgentAddon(payload, repoRoot)
   }
   else -> throw UnknownSkillKindError("Scaffold payload declares unsupported kind '$kind'.")
 }
@@ -512,6 +522,63 @@ private fun planAddOn(payload: Map<String, Any?>, repoRoot: Path, adapters: Scaf
   )
 }
 
+private fun planAgentAddon(payload: Map<String, Any?>, repoRoot: Path): ScaffoldPlan {
+  val slug = requireString(payload, "slug")
+  val description = requireString(payload, "description")
+  val agentIds = skillbill.scaffold.payload.requireStringListPayload(payload["agent_ids"], "agent_ids")
+  val consumers = skillbill.scaffold.payload.requireStringListPayload(payload["consumers"], "consumers")
+  AgentAddonSchemaValidator().validate(
+    mapOf(
+      "contract_version" to "1.0",
+      "slug" to slug,
+      "description" to description,
+      "agent_ids" to agentIds,
+      "consumers" to consumers,
+    ),
+    "agent-addon scaffold payload",
+  )
+  if (description != description.trim() || '\n' in description || '\r' in description) {
+    throw InvalidScaffoldPayloadError(
+      "Scaffold payload field 'description' must be trimmed and single-line for an agent add-on.",
+    )
+  }
+  agentIds.forEach { id ->
+    try {
+      InstallAgent.fromId(id)
+    } catch (error: IllegalArgumentException) {
+      throw InvalidScaffoldPayloadError(error.message ?: "Unknown agent '$id'.", error)
+    }
+  }
+  consumers.forEach { id ->
+    try {
+      AgentAddonConsumer.fromId(id)
+    } catch (error: IllegalArgumentException) {
+      throw InvalidScaffoldPayloadError(error.message ?: "Unknown agent add-on consumer '$id'.", error)
+    }
+  }
+  val agentAddonsRoot = repoRoot.resolve("agent-addons").toAbsolutePath().normalize()
+  val root = agentAddonsRoot.resolve(slug).normalize()
+  if (!root.startsWith(agentAddonsRoot)) {
+    throw InvalidScaffoldPayloadError("Scaffold payload field 'slug' escapes the agent-addons root.")
+  }
+  return ScaffoldPlan(
+    kind = SKILL_KIND_AGENT_ADDON,
+    skillName = slug,
+    skillPath = root,
+    skillFile = root.resolve("agent-addon.yaml"),
+    contentFile = root.resolve("content.md"),
+    family = "agent-addon",
+    platform = "",
+    area = "",
+    isShelled = false,
+    notes = listOf("Agent add-on '$slug' will be delivered to its declared consumers during install rendering."),
+    description = description,
+    contentBody = payload["content_body"] as? String,
+    agentIds = agentIds,
+    agentAddonConsumers = consumers,
+  )
+}
+
 // SKILL-52.1 subtask 3 (AC1): `resolveAddonConsumerSkillDirs` and `validateAddonConsumerSkillDir`
 // now live on `FileSystemScaffoldSourceLoader`. Callsites delegate to
 // `scaffoldSourceLoader.resolveAddonConsumerSkillDirs(...)`.
@@ -551,7 +618,10 @@ private fun createPlatformPack(txn: ScaffoldTransaction, plan: ScaffoldPlan, rep
 }
 
 private fun stageSingleScaffold(txn: ScaffoldTransaction, plan: ScaffoldPlan, repoRoot: Path): ScaffoldExecutionResult {
-  if (plan.kind == SKILL_KIND_ADD_ON) {
+  if (plan.kind == SKILL_KIND_AGENT_ADDON) {
+    stageFile(txn, plan.skillFile, renderAgentAddonManifest(plan))
+    stageFile(txn, requireNotNull(plan.contentFile), plan.contentBody ?: "# ${plan.skillName}\n")
+  } else if (plan.kind == SKILL_KIND_ADD_ON) {
     stageFile(txn, plan.skillFile, renderAddonBody(plan.skillName, plan.description, plan.addonBody))
   } else {
     plan.contentFile?.let { content ->
@@ -581,6 +651,18 @@ private fun stageSingleScaffold(txn: ScaffoldTransaction, plan: ScaffoldPlan, re
     notes = emptyList(),
   )
 }
+
+private fun renderAgentAddonManifest(plan: ScaffoldPlan): String = buildString {
+  appendLine("contract_version: \"1.0\"")
+  appendLine("slug: ${plan.skillName}")
+  appendLine("description: ${yamlScalar(plan.description)}")
+  appendLine("agent_ids:")
+  plan.agentIds.forEach { appendLine("  - $it") }
+  appendLine("consumers:")
+  plan.agentAddonConsumers.forEach { appendLine("  - $it") }
+}
+
+private fun yamlScalar(value: String): String = "\"${value.replace("\\", "\\\\").replace("\"", "\\\"")}\""
 
 private fun renderContentSheet(plan: ScaffoldPlan): String = renderContentBody(
   skillContext(plan),
@@ -724,6 +806,7 @@ private fun previewCreatedFiles(plan: ScaffoldPlan): List<Path> = when (plan.kin
   } else {
     listOf(plan.skillFile)
   }
+  SKILL_KIND_AGENT_ADDON -> listOf(plan.skillFile, requireNotNull(plan.contentFile))
   else -> buildList {
     plan.contentFile?.let(::add)
     addAll(previewSubagentStubFiles(plan))
@@ -812,6 +895,7 @@ private fun performInstall(
   val internalPlatformSkills = internalPlatformInstallSkills(plan)
   val installPaths = when (plan.kind) {
     SKILL_KIND_ADD_ON -> emptyList()
+    SKILL_KIND_AGENT_ADDON -> plan.agentAddonConsumers.map { consumer -> repoRoot.resolve("skills").resolve(consumer) }
     SKILL_KIND_PLATFORM_PACK -> platformPackInstallPaths(plan, repoRoot, internalPlatformSkills)
     else -> listOf(plan.skillPath)
   }
@@ -835,6 +919,7 @@ private fun performInstall(
     plan.kind == SKILL_KIND_ADD_ON -> listOf(
       ADD_ON_INSTALL_NOTE,
     )
+    plan.kind == SKILL_KIND_AGENT_ADDON -> listOf("Agent add-on consumers rendered and installed atomically.")
     agents.isEmpty() -> listOf(
       noAgentsNote(),
     )

@@ -58,8 +58,14 @@ data class GoalSubtaskReviewInputResult(
   val status: String,
   val input: GoalSubtaskReviewInput? = null,
   val error: String = "",
+  val failureReason: GoalSubtaskReviewInputFailureReason? = null,
 ) {
   val ok: Boolean get() = status == "ok" && input != null
+}
+
+enum class GoalSubtaskReviewInputFailureReason {
+  BASE_MISSING,
+  BASE_NOT_ANCESTOR,
 }
 
 private val GOAL_REVIEW_GIT_SHA = Regex("^[0-9a-f]{40}(?:[0-9a-f]{24})?$")

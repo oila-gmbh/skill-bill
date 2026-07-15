@@ -7,6 +7,21 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class RuntimeDesktopBoundaryTest {
+  @Test
+  fun `desktop production sources do not special case the shipped agent addon slug`() {
+    val desktopSources = Files.walk(runtimeRoot.resolve("runtime-desktop")).use { paths ->
+      paths
+        .filter(Files::isRegularFile)
+        .filter { path -> path.toString().contains("/src/") && !path.toString().contains("Test/") }
+        .filter { path -> path.fileName.toString().endsWith(".kt") }
+        .toList()
+    }
+
+    val specialCases = desktopSources.filter { path -> Files.readString(path).contains("execution-budget") }
+
+    assertTrue(specialCases.isEmpty(), "desktop production must discover agent add-ons dynamically: $specialCases")
+  }
+
   private val runtimeRoot: Path =
     Path.of("").toAbsolutePath().normalize().let { workingDir ->
       if (workingDir.fileName.toString().startsWith("runtime-")) {

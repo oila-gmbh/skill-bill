@@ -370,6 +370,70 @@ class InstallStagingTest {
   }
 
   @Test
+  fun `bill feature stages dynamic agent addon pointer and addon edits invalidate only its hash`() {
+    val repo = Files.createTempDirectory("skillbill-agent-addon-staging").also(tempDirs::add)
+    val home = Files.createTempDirectory("skillbill-agent-addon-home").also(tempDirs::add)
+    val feature = repo.resolve("skills/bill-feature")
+    val unrelated = repo.resolve("skills/bill-unrelated")
+    Files.createDirectories(feature)
+    Files.createDirectories(unrelated)
+    Files.writeString(
+      feature.resolve("content.md"),
+      "---\nname: bill-feature\ndescription: Feature router.\n---\n\nBody.\n",
+    )
+    Files.writeString(unrelated.resolve("content.md"), "---\nname: bill-unrelated\ndescription: Other.\n---\n\nBody.\n")
+    Files.createDirectories(feature.resolve("references"))
+    Files.writeString(feature.resolve("references/agent-addon-review-helper.md"), "Authored nested reference.\n")
+    SkillClassFixtures.seedShippedSkillClasses(repo)
+    val targets = supportingFileTargets(repo)
+    requiredSupportingFilesForSkill("bill-feature", repo).map(targets::getValue).forEach { target ->
+      Files.createDirectories(target.parent)
+      Files.writeString(target, "support\n")
+    }
+    val addon = repo.resolve("agent-addons/review-helper")
+    Files.createDirectories(addon)
+    Files.writeString(
+      addon.resolve("agent-addon.yaml"),
+      "contract_version: \"1.0\"\nslug: review-helper\ndescription: Review helper\n" +
+        "agent_ids:\n  - codex\nconsumers:\n  - bill-feature\n",
+    )
+    Files.writeString(addon.resolve("content.md"), "Addon body.\n")
+
+    val firstFeature = stageInstalledSkill(repo, feature, home)
+    val firstUnrelated = stageInstalledSkill(repo, unrelated, home)
+    assertEquals("Addon body.\n", Files.readString(firstFeature.stagingDir.resolve("agent-addon-review-helper.md")))
+    assertEquals(
+      "Authored nested reference.\n",
+      Files.readString(firstFeature.stagingDir.resolve("references/agent-addon-review-helper.md")),
+    )
+
+    Files.writeString(addon.resolve("content.md"), "Changed addon body.\n")
+    val secondFeature = stageInstalledSkill(repo, feature, home)
+    val secondUnrelated = stageInstalledSkill(repo, unrelated, home)
+
+    assertTrue(firstFeature.contentHash != secondFeature.contentHash)
+    assertEquals(firstUnrelated.contentHash, secondUnrelated.contentHash)
+    assertEquals(
+      "Changed addon body.\n",
+      Files.readString(secondFeature.stagingDir.resolve("agent-addon-review-helper.md")),
+    )
+
+    Files.writeString(
+      addon.resolve("agent-addon.yaml"),
+      Files.readString(addon.resolve("agent-addon.yaml")).replace("Review helper", "Updated review helper"),
+    )
+    val thirdFeature = stageInstalledSkill(repo, feature, home)
+    val thirdUnrelated = stageInstalledSkill(repo, unrelated, home)
+
+    assertTrue(secondFeature.contentHash != thirdFeature.contentHash)
+    assertEquals(secondUnrelated.contentHash, thirdUnrelated.contentHash)
+    assertEquals(
+      "Changed addon body.\n",
+      Files.readString(thirdFeature.stagingDir.resolve("agent-addon-review-helper.md")),
+    )
+  }
+
+  @Test
   fun `cache root is under tempHome dot skill-bill installed-skills outside the repo`() {
     val fixture = setupFixture()
 

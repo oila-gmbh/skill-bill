@@ -312,4 +312,20 @@ class McpScaffoldCommandRequestParserTest {
     assertTrue("routing_signals.tie_breakers" in message, "Got: $message")
     assertTrue("must be a list of strings" in message, "Got: $message")
   }
+
+  @Test
+  fun `agent-addon payload parses all governed fields`() {
+    val request = parseMcpScaffoldCommandRequest(
+      mapOf(
+        "scaffold_payload_version" to "1.0",
+        "kind" to "agent-addon",
+        "slug" to "review-helper",
+        "description" to "Review helper",
+        "agent_ids" to listOf("codex"),
+        "consumers" to listOf("bill-feature"),
+      ),
+    ) as ScaffoldCommandRequest.AgentAddon
+    assertEquals("review-helper", request.slug)
+    assertEquals(listOf("bill-feature"), request.consumers)
+  }
 }

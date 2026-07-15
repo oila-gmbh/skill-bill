@@ -109,6 +109,29 @@ class CliScaffoldRuntimeTest {
   }
 
   @Test
+  fun `new agent addon wizard plans both governed source files`() {
+    val tempDir = Files.createTempDirectory("skillbill-cli-scaffold-agent-addon-wizard")
+    val liveStdout = StringBuilder()
+    val result =
+      CliRuntime.run(
+        listOf("new", "--dry-run", "--format", "json"),
+        CliRuntimeContext(
+          stdinText = listOf("4", "review-helper", "Review helper", "codex", "bill-feature").joinToString("\n"),
+          userHome = tempDir,
+          liveStdout = { liveStdout.append(it) },
+        ),
+      )
+    val payload = decodeJsonObject(result.stdout)
+    val createdFiles = payload["created_files"]?.jsonArray.orEmpty().map { it.jsonPrimitive.content }
+
+    assertEquals(0, result.exitCode, result.stdout)
+    assertEquals("ok", payload.stringValue("status"))
+    assertTrue(createdFiles.any { it.endsWith("agent-addons/review-helper/agent-addon.yaml") })
+    assertTrue(createdFiles.any { it.endsWith("agent-addons/review-helper/content.md") })
+    assertContains(liveStdout.toString(), "Supported agents:")
+  }
+
+  @Test
   fun `new platform pack wizard explains built-in routing presets and accepts blank override`() {
     val tempDir = Files.createTempDirectory("skillbill-cli-scaffold-java-preset")
     val liveStdout = StringBuilder()

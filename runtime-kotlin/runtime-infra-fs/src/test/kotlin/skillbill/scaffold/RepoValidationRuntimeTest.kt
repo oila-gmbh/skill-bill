@@ -18,6 +18,22 @@ import kotlin.test.assertTrue
 @Suppress("LargeClass")
 class RepoValidationRuntimeTest {
   @Test
+  fun `repository validation surfaces malformed agent addon without changing report counts`() {
+    val repoRoot = Files.createTempDirectory("skillbill-agent-addon-validation")
+    val addon = repoRoot.resolve("agent-addons/review-helper")
+    Files.createDirectories(addon)
+    Files.writeString(addon.resolve("agent-addon.yaml"), "contract_version: [")
+    Files.writeString(addon.resolve("content.md"), "# Fixture\n")
+
+    val report = RepoValidationRuntime.validateRepo(repoRoot)
+
+    assertTrue(report.issues.any { it.startsWith("agent-addons:") })
+    assertEquals(0, report.skillCount)
+    assertEquals(0, report.addonCount)
+    assertEquals(0, report.platformPackCount)
+  }
+
+  @Test
   fun `release refs preserve semver metadata`() {
     val stable = RepoValidationRuntime.parseReleaseRef("refs/tags/v1.2.3")
     assertEquals("v1.2.3", stable.tag)

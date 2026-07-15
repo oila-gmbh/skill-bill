@@ -42,6 +42,16 @@ the confirmation gate and carry it unchanged through runtime and prose child
 launches. The parent persists this lane selection with the review mode, and a
 resume must reuse it rather than silently dropping or changing the second lane.
 
+Receive the already-resolved ordered agent add-on selection from `bill-feature`;
+do not parse raw `agent-addon:` tokens here. Show its slugs and descriptions in
+caller order in the existing single confirmation, persist the structured
+selection with the parent policy, and forward it unchanged to every runtime or
+prose child and child continuation artifact. Before parent persistence or child
+setup, validate the effective run agent, every explicit phase assignment, and
+the resolved parallel-review lane. A resumed omission inherits the durable
+selection exactly; any mismatch, missing source, digest drift, or incompatible
+new receiving agent fails before selecting or launching a child.
+
 For a prose-goal resume, an omitted `code-review:` or `parallel-review:` token
 inherits the durable parent selection. An explicit resumed mode or lane must
 match that selection exactly; reject an incompatible value before selecting or

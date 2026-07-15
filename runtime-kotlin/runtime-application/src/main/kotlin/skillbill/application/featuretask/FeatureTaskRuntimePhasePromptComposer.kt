@@ -1,5 +1,7 @@
 package skillbill.application.featuretask
 
+import skillbill.agentaddon.model.AgentAddonPromptFormatter
+import skillbill.agentaddon.model.HydratedAgentAddonSelection
 import skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing
 import skillbill.ports.workflow.model.GoalSubtaskReviewInput
 import skillbill.workflow.model.CodeReviewExecutionMode
@@ -28,6 +30,7 @@ object FeatureTaskRuntimePhasePromptComposer {
     specSource: SpecSource = SpecSource.LOCAL,
     priorSchemaFailure: String? = null,
     specReference: String? = null,
+    agentAddonSelection: HydratedAgentAddonSelection = HydratedAgentAddonSelection(),
   ): String {
     require(issueKey.isNotBlank()) { "issueKey is required to compose a phase prompt." }
     return listOf(
@@ -44,6 +47,7 @@ object FeatureTaskRuntimePhasePromptComposer {
       ),
       commitExclusionDirective(briefing.phaseId, issueKey, specSource),
       specCommitInclusionDirective(briefing.phaseId, specReference, specSource),
+      AgentAddonPromptFormatter.format(agentAddonSelection),
       briefing.briefingText,
       retryCorrectionDirective(briefing.phaseId, priorSchemaFailure),
       outputContract(briefing.phaseId),
@@ -339,6 +343,13 @@ object FeatureTaskRuntimePhasePromptComposer {
       This run is already executing one governed decomposed subtask. Do not propose or emit a new
       decomposition package in the plan phase. Produce an implementable single-subtask plan for the
       current spec; `produced_outputs.mode` must not be "decompose".
+      Never include installer, uninstall, or install-sync commands in the plan: do not plan to run
+      `./install.sh`, `./uninstall.sh`, `skill-bill install`, `skill-bill install apply`, or any
+      equivalent install refresh inside a goal-continuation child. If an acceptance criterion asks for
+      install refresh and the refresh has already happened outside the child, satisfy that criterion by
+      adding read-only installed-artifact inspection to the validation evidence instead of blocking or
+      retrying the forbidden command. If the refresh has not happened, return a blocked plan that says
+      it needs operator action outside goal-continuation rather than attempting the install here.
     """.trimIndent()
   }
 

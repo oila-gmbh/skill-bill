@@ -29,6 +29,7 @@ internal class SkillTreeBuilder(
     val authoredSkills = loadAuthoredSkills(root, repoToken, selections, baselineModifiedResolver)
     val configuration = listOf(loadConfiguration(root, repoToken, selections, skillBillConfigPathResolver))
     val addons = loadAddons(root, repoToken, selections, externalAddonSourcesResolver)
+    val agentAddons = loadAgentAddons(root, repoToken, selections)
     val nativeAgents = loadNativeAgents(root, repoToken, selections)
     val generatedArtifacts = loadGeneratedArtifacts(root, repoToken, selections)
 
@@ -36,11 +37,105 @@ internal class SkillTreeBuilder(
       group(selectionId(repoToken, "horizontal-skills"), "Horizontal Skills", authoredSkills.horizontal),
       group(selectionId(repoToken, "platform-pack-skills"), "Platform Packs", authoredSkills.platform),
       group(selectionId(repoToken, "configuration"), "Configuration", configuration),
-      group(selectionId(repoToken, "addons"), "Add-ons", addons),
+      group(selectionId(repoToken, "addons"), "Platform Add-ons", addons),
+      group(selectionId(repoToken, "agent-addons"), "Agent Add-ons", agentAddons),
       group(selectionId(repoToken, "native-agents"), "Native Agents", nativeAgents),
       group(selectionId(repoToken, "generated-artifacts"), "Generated Artifacts", generatedArtifacts),
     )
     return TreeBuildResult(items = groups, selections = selections)
+  }
+
+  private fun loadAgentAddons(
+    root: Path,
+    repoToken: String,
+    selections: MutableMap<String, SelectionDetail>,
+  ): List<SkillBillTreeItem> {
+    val inspection = repoSourceDiscoveryService.inspectAgentAddons(root)
+    val valid = inspection.entries.map { addon ->
+      val id = selectionId(repoToken, addon.identity)
+      val authoredPath = relativePath(root, addon.contentPath)
+      val manifestPath = relativePath(root, addon.manifestPath)
+      val manifestId = selectionId(repoToken, "${addon.identity}:manifest")
+      val metadata = SkillBillTreeItemMetadata(
+        kind = "agent-addon",
+        description = addon.description,
+        supportedAgents = addon.agentIds,
+        consumers = addon.consumers,
+        manifestPath = manifestPath,
+      )
+      selections[id] = SelectionDetail(
+        repoToken = repoToken,
+        title = addon.slug,
+        detail = addon.description,
+        kind = "agent-addon",
+        authoredPath = authoredPath,
+        status = addon.validationStatus,
+        contentFile = addon.contentPath,
+        editable = false,
+        metadata = metadata,
+      )
+      selections[manifestId] = SelectionDetail(
+        repoToken = repoToken,
+        title = "agent-addon.yaml",
+        detail = "Agent add-on manifest.",
+        kind = "agent-addon manifest",
+        authoredPath = manifestPath,
+        status = addon.validationStatus,
+        contentFile = addon.manifestPath,
+        editable = false,
+        readOnlyLabel = READ_ONLY_LABEL,
+        metadata = metadata,
+      )
+      SkillBillTreeItem(
+        id = id,
+        label = addon.slug,
+        kind = TreeItemKind.AGENT_ADDON,
+        authoredPath = authoredPath,
+        status = addon.validationStatus,
+        editable = false,
+        metadata = metadata,
+        children = listOf(
+          SkillBillTreeItem(
+            id = manifestId,
+            label = "agent-addon.yaml",
+            kind = TreeItemKind.GENERATED_ARTIFACT,
+            authoredPath = manifestPath,
+            status = addon.validationStatus,
+            editable = false,
+            readOnlyLabel = READ_ONLY_LABEL,
+            metadata = metadata,
+          ),
+        ),
+      )
+    }
+    val invalid = inspection.invalidEntries.map { addon ->
+      val id = selectionId(repoToken, addon.identity)
+      val metadata = SkillBillTreeItemMetadata(
+        kind = "agent-addon",
+        manifestPath = relativePath(root, addon.manifestPath),
+        diagnostics = addon.diagnostics,
+      )
+      selections[id] = SelectionDetail(
+        repoToken = repoToken,
+        title = addon.slug,
+        detail = addon.diagnostics.joinToString("; "),
+        kind = "agent-addon",
+        authoredPath = relativePath(root, addon.contentPath),
+        status = addon.validationStatus,
+        editable = false,
+        metadata = metadata,
+      )
+      SkillBillTreeItem(
+        id = id,
+        label = addon.slug,
+        kind = TreeItemKind.AGENT_ADDON,
+        authoredPath = relativePath(root, addon.contentPath),
+        status = addon.validationStatus,
+        editable = false,
+        metadata = metadata,
+      )
+    }
+    return (valid + invalid).sortedBy { it.label }
   }
 
   private fun loadConfiguration(

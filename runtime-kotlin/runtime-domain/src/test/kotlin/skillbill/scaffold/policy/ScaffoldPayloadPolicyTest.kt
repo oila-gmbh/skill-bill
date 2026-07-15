@@ -23,7 +23,7 @@ class ScaffoldPayloadPolicyTest {
   @Test
   fun `active creation kinds exclude retired partial scaffold kinds`() {
     assertEquals(
-      setOf(SKILL_KIND_HORIZONTAL, SKILL_KIND_PLATFORM_PACK, SKILL_KIND_ADD_ON),
+      setOf(SKILL_KIND_HORIZONTAL, SKILL_KIND_PLATFORM_PACK, SKILL_KIND_ADD_ON, SKILL_KIND_AGENT_ADDON),
       ACTIVE_CREATION_SKILL_KINDS,
     )
     assertEquals(true, SKILL_KIND_PLATFORM_OVERRIDE_PILOTED !in ACTIVE_CREATION_SKILL_KINDS)

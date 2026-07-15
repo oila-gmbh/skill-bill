@@ -61,6 +61,11 @@ data class WorkflowContinueDecision(
  * generic resume gate reads its authoritative state rather than the top-level key. Pure
  * domain function: no JDBC/HTTP/Files and no clock/random.
  */
+data class ResolvedRequiredArtifact(
+  val present: Boolean,
+  val value: Any?,
+)
+
 fun interface RequiredArtifactPresenceResolver {
   /**
    * Returns the subset of [requiredArtifacts] (upstream phase/artifact ids the [resumeStepId]
@@ -72,6 +77,12 @@ fun interface RequiredArtifactPresenceResolver {
     requiredArtifacts: List<String>,
   ): List<String>
 
+  fun resolveRequiredArtifact(snapshot: WorkflowSnapshotView, artifactKey: String): ResolvedRequiredArtifact =
+    ResolvedRequiredArtifact(
+      present = snapshot.artifacts.containsKey(artifactKey),
+      value = snapshot.artifacts[artifactKey],
+    )
+
   companion object {
     /**
      * Top-level-key presence: an upstream id is present iff the durable artifacts map carries
@@ -79,8 +90,12 @@ fun interface RequiredArtifactPresenceResolver {
      * every family that does not override it.
      */
     val DEFAULT: RequiredArtifactPresenceResolver =
-      RequiredArtifactPresenceResolver { snapshot, _, requiredArtifacts ->
-        requiredArtifacts.filterNot(snapshot.artifacts::containsKey)
+      object : RequiredArtifactPresenceResolver {
+        override fun missingRequiredArtifacts(
+          snapshot: WorkflowSnapshotView,
+          resumeStepId: String,
+          requiredArtifacts: List<String>,
+        ): List<String> = requiredArtifacts.filterNot(snapshot.artifacts::containsKey)
       }
   }
 }

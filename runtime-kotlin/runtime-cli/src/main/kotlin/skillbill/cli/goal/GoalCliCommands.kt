@@ -12,6 +12,8 @@ import com.github.ajalt.clikt.parameters.options.multiple
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.types.int
 import me.tatarka.inject.annotations.Inject
+import skillbill.agentaddon.model.AgentAddonConsumer
+import skillbill.agentaddon.model.HydratedAgentAddonSelection
 import skillbill.application.goalrunner.GoalRunner
 import skillbill.application.goalrunner.GoalRunnerStatusService
 import skillbill.application.model.DEFAULT_GOAL_EVENT_SEQUENCE_START
@@ -24,11 +26,13 @@ import skillbill.application.system.RuntimeProvenanceService
 import skillbill.cli.core.CliRunState
 import skillbill.cli.core.DocumentedCliCommand
 import skillbill.cli.core.refuseRuntimeRefusedAgents
+import skillbill.cli.featuretask.parseAgentAddonSelection
 import skillbill.contracts.system.RuntimeProvenanceContract
 import skillbill.goalrunner.model.GoalRunnerRunReport
 import skillbill.goalrunner.model.GoalRunnerStatusProjection
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.InvokingAgentContextResolver
+import skillbill.ports.agentaddon.AgentAddonSelectionPort
 import skillbill.ports.agentrun.model.AgentRunOutputSink
 import skillbill.ports.agentrun.model.AgentRunOutputStream
 import skillbill.ports.workflow.model.DEFAULT_SELECTED_DIFF_MAX_BYTES
@@ -39,12 +43,18 @@ import java.nio.file.Path
 import kotlin.time.Duration.Companion.minutes
 
 @Inject
+class GoalRunSubcommands(
+  val status: GoalStatusCommand,
+  val watch: GoalWatchCommand,
+  val reset: GoalResetCommand,
+)
+
+@Inject
 class GoalRunCommand(
   private val goalRunner: GoalRunner,
   private val runtimeProvenanceService: RuntimeProvenanceService,
-  goalStatusCommand: GoalStatusCommand,
-  goalWatchCommand: GoalWatchCommand,
-  goalResetCommand: GoalResetCommand,
+  private val agentAddonSelectionPort: AgentAddonSelectionPort,
+  goalRunSubcommands: GoalRunSubcommands,
   private val state: CliRunState,
 ) : DocumentedCliCommand("goal", "Run a decomposed goal in the foreground.") {
   private val issueKey by argument(help = "Parent issue key for the decomposed goal.").optional()
@@ -68,6 +78,10 @@ class GoalRunCommand(
     "Run every child review with a second parallel agent lane. " +
       "Supported agents: ${InstallAgent.supportedIds.joinToString()}.",
   )
+  private val agentAddonSelectionJson by option(
+    "--agent-addon-selection-json",
+    help = "Already-resolved ordered agent add-on selection JSON. Raw agent-addon tokens are not accepted here.",
+  )
   private val maxWallClockMinutes by option(
     "--max-wall-clock-minutes",
     "--timeout-minutes",
@@ -90,7 +104,7 @@ class GoalRunCommand(
   override val invokeWithoutSubcommand: Boolean = true
 
   init {
-    subcommands(goalStatusCommand, goalWatchCommand, goalResetCommand)
+    subcommands(goalRunSubcommands.status, goalRunSubcommands.watch, goalRunSubcommands.reset)
   }
 
   override fun run() {
@@ -108,6 +122,22 @@ class GoalRunCommand(
       ),
     )
     val runIssueKey = issueKey ?: throw UsageError("issue_key is required for goal run.")
+    val invokedAgentId = resolveInvokedAgentId(agent, state.environment)
+    val receivingAgents = listOfNotNull(
+      invokedAgentId,
+      agentOverride?.takeIf(String::isNotBlank),
+      parallelReviewAgent?.takeIf(String::isNotBlank),
+    ).distinct()
+    val persistedSelection = parseAgentAddonSelection(agentAddonSelectionJson)
+    val hydratedSelection = if (persistedSelection.entries.isEmpty()) {
+      HydratedAgentAddonSelection()
+    } else {
+      agentAddonSelectionPort.verifyPersisted(
+        persistedSelection,
+        AgentAddonConsumer.BILL_FEATURE,
+        receivingAgents,
+      )
+    }
     val presenter = GoalRunPresenter(
       issueKey = runIssueKey,
       state = state,
@@ -124,7 +154,7 @@ class GoalRunCommand(
       GoalRunnerRunRequest(
         issueKey = runIssueKey,
         repoRoot = repoRoot?.let(Path::of) ?: Path.of("").toAbsolutePath().normalize(),
-        invokedAgentId = resolveInvokedAgentId(agent, state.environment),
+        invokedAgentId = invokedAgentId,
         configuredAgentOverrideId = agentOverride,
         dbPathOverride = state.dbOverride,
         timeout = maxWallClockMinutes?.minutes,
@@ -133,6 +163,7 @@ class GoalRunCommand(
         eventSink = presenter.eventSink(),
         codeReviewMode = parseCodeReviewMode(codeReviewMode),
         parallelReviewAgent = parallelReviewAgent?.takeIf(String::isNotBlank),
+        agentAddonSelection = hydratedSelection,
       ),
     )
     val payload = report.toGoalRunCliMap()

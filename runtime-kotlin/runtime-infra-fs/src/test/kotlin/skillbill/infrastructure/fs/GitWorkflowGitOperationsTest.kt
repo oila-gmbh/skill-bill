@@ -3,7 +3,9 @@ package skillbill.infrastructure.fs
 import skillbill.ports.workflow.buildGoalSubtaskReviewInput
 import skillbill.ports.workflow.captureGoalSubtaskReviewBaseline
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
+import skillbill.ports.workflow.model.GoalSubtaskReviewInputFailureReason
 import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksRequest
+import skillbill.ports.workflow.recoverGoalSubtaskReviewBaseline
 import skillbill.ports.workflow.runtimePhaseChangedPathsBetweenCommits
 import skillbill.ports.workflow.runtimePhaseHeadCommit
 import java.nio.file.Files
@@ -513,6 +515,53 @@ class GitWorkflowGitOperationsTest {
     assertFalse(result.ok)
     assertContains(result.error, "Persisted review base")
     assertFalse("origin/main" in result.error)
+  }
+
+  @Test
+  fun `goal review baseline recovery reanchors rewritten child branch to branch base`() {
+    val repoRoot = Files.createTempDirectory("skillbill-goal-review-recover-base")
+    val remoteRoot = Files.createTempDirectory("skillbill-goal-review-recover-remote")
+    git(remoteRoot, "init", "--bare")
+    git(repoRoot, "init", "-b", "main")
+    git(repoRoot, "config", "user.email", "skill-bill@example.test")
+    git(repoRoot, "config", "user.name", "Skill Bill")
+    git(repoRoot, "remote", "add", "origin", remoteRoot.toString())
+    Files.writeString(repoRoot.resolve("tracked.txt"), "base\n")
+    git(repoRoot, "add", ".")
+    git(repoRoot, "commit", "-m", "initial")
+    git(repoRoot, "checkout", "-b", "feat/demo")
+    git(repoRoot, "push", "-u", "origin", "feat/demo")
+    Files.writeString(repoRoot.resolve("tracked.txt"), "old review base\n")
+    git(repoRoot, "commit", "-am", "old review base")
+    val oldBaseline = git(repoRoot, "rev-parse", "HEAD")
+    Files.writeString(repoRoot.resolve("tracked.txt"), "old reviewed change\n")
+    git(repoRoot, "commit", "-am", "old reviewed change")
+    git(repoRoot, "reset", "--hard", "origin/feat/demo")
+    Files.writeString(repoRoot.resolve("tracked.txt"), "new reviewed change\n")
+    git(repoRoot, "commit", "-am", "new reviewed change")
+
+    val unsafe = GitWorkflowGitOperations().buildGoalSubtaskReviewInput(
+      repoRoot,
+      GoalSubtaskReviewBaseline(oldBaseline, emptyList()),
+      "feat/demo",
+    )
+    val recovered = GitWorkflowGitOperations().recoverGoalSubtaskReviewBaseline(
+      repoRoot,
+      GoalSubtaskReviewBaseline(oldBaseline, emptyList()),
+      "feat/demo",
+    )
+    val input = GitWorkflowGitOperations().buildGoalSubtaskReviewInput(
+      repoRoot,
+      requireNotNull(recovered.baseline),
+      "feat/demo",
+    )
+
+    assertFalse(unsafe.ok)
+    assertEquals(GoalSubtaskReviewInputFailureReason.BASE_NOT_ANCESTOR, unsafe.failureReason)
+    assertTrue(recovered.ok, recovered.error)
+    assertTrue(input.ok, input.error)
+    assertContains(requireNotNull(input.input).reviewText, "new reviewed change")
+    assertFalse("old reviewed change" in requireNotNull(input.input).reviewText)
   }
 
   @Test

@@ -101,6 +101,7 @@ enum class TreeItemKind {
   SKILL,
   PLATFORM_PACK,
   ADD_ON,
+  AGENT_ADDON,
   CONFIG,
   NATIVE_AGENT,
   GENERATED_ARTIFACT,
@@ -115,6 +116,11 @@ data class SkillBillTreeItemMetadata(
   val family: String? = null,
   val area: String? = null,
   val externalSourcePath: String? = null,
+  val description: String? = null,
+  val supportedAgents: List<String> = emptyList(),
+  val consumers: List<String> = emptyList(),
+  val manifestPath: String? = null,
+  val diagnostics: List<String> = emptyList(),
 )
 
 data class RepoLoadStatus(
@@ -248,6 +254,11 @@ data class EditorPlaceholder(
   val saveErrorMessage: String? = null,
   val readOnlyReason: String? = null,
   val generatedArtifacts: List<GeneratedArtifactDetail> = emptyList(),
+  val description: String? = null,
+  val supportedAgents: List<String> = emptyList(),
+  val consumers: List<String> = emptyList(),
+  val manifestPath: String? = null,
+  val diagnostics: List<String> = emptyList(),
 ) {
   companion object {
     val empty: EditorPlaceholder =

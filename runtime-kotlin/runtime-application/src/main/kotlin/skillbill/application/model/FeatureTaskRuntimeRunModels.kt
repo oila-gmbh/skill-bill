@@ -1,5 +1,6 @@
 package skillbill.application.model
 
+import skillbill.agentaddon.model.HydratedAgentAddonSelection
 import skillbill.application.decomposition.decompositionManifestPath
 import skillbill.application.decomposition.parentSpecPath
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
@@ -32,6 +33,8 @@ data class FeatureTaskRuntimeRunRequest(
   val requestedCodeReviewMode: CodeReviewExecutionMode? = null,
   /** Present only for non-interactive goal-runner continuation children. */
   val goalContinuation: FeatureTaskRuntimeGoalContinuationContext? = null,
+  /** Already identity-verified selection; workers never discover or reparse add-on sources. */
+  val agentAddonSelection: HydratedAgentAddonSelection = HydratedAgentAddonSelection(),
   val eventSink: FeatureTaskRuntimeRunEventSink = FeatureTaskRuntimeRunEventSink.NONE,
   /**
    * Test-only seam for a synthetic cyclic topology. Null in production, where the runner uses the
@@ -59,6 +62,8 @@ data class FeatureTaskRuntimeGoalContinuationContext(
   val codeReviewMode: CodeReviewExecutionMode? = null,
   val parallelReviewAgent: String? = null,
   val reviewBaseline: GoalSubtaskReviewBaseline? = null,
+  val agentAddonSelection: skillbill.agentaddon.model.AgentAddonSelection =
+    skillbill.agentaddon.model.AgentAddonSelection(),
 ) {
   init {
     require(parentIssueKey.isNotBlank()) { "parentIssueKey is required." }

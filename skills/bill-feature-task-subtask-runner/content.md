@@ -6,6 +6,12 @@ description: Level-1 subtask-agent for bill-feature-goal mode:prose. Runs exactl
 
 # Feature Task Subtask Runner
 
+Receive only the parent's immutable structured agent add-on selection. Verify
+its recorded source identities and digests before child execution, then forward
+the canonical rendered section unchanged to every phase and review lane. Never
+parse raw selection tokens, discover the add-on catalogue, reorder entries, or
+silently drop an incompatible selection.
+
 `bill-feature-task-subtask-runner` is the Level-1 subtask-agent type for
 `bill-feature-goal mode:prose`. It is not invoked directly via the Skill tool.
 The `mode:prose` goal orchestrator spawns it via the Agent tool for each

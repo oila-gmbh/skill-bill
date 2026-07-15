@@ -130,6 +130,7 @@ internal fun markerFor(kind: TreeItemKind): String = when (kind) {
   TreeItemKind.SKILL -> "sk"
   TreeItemKind.PLATFORM_PACK -> "pk"
   TreeItemKind.ADD_ON -> "ad"
+  TreeItemKind.AGENT_ADDON -> "aa"
   TreeItemKind.CONFIG -> "cf"
   TreeItemKind.NATIVE_AGENT -> "ag"
   TreeItemKind.GENERATED_ARTIFACT -> "gn"

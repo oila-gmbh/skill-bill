@@ -2,6 +2,7 @@
 
 package skillbill.install.reconcile
 
+import skillbill.agentaddon.discoverAgentAddons
 import skillbill.error.ReconciliationConflictError
 import skillbill.install.model.BaselineManifest
 import skillbill.install.model.InstallAgentSelection
@@ -22,14 +23,22 @@ import skillbill.install.model.WindowsSymlinkPreflight
 import skillbill.install.model.WindowsSymlinkPreflightState
 import skillbill.install.plan.discoverPlatformManifests
 import skillbill.install.plan.enumerateInstallPlanSkills
+import skillbill.install.staging.INSTALL_CACHE_KEY_BYTES
+import skillbill.install.staging.InstallContentHashInputs
+import skillbill.install.staging.InternalStagingPreparation
+import skillbill.install.staging.agentAddonPointersForSkill
 import skillbill.install.staging.applicablePointers
 import skillbill.install.staging.authoredFilesFor
+import skillbill.install.staging.authoredStagingNames
 import skillbill.install.staging.computeInstallContentHash
 import skillbill.install.staging.generatedSupportPointersFor
+import skillbill.install.staging.prepareInternalStaging
+import skillbill.install.staging.validateAgentAddonPointerNamespace
 import skillbill.scaffold.model.PlatformManifest
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.Path
+import java.security.MessageDigest
 
 /**
  * SKILL-76 Subtask 2: per-skill reconcile hash-compare POLICY. Kept in
@@ -221,26 +230,51 @@ private fun classifyNoBaseline(
  * APPLY can replace the live dir from the upstream dir without rebuilding paths.
  */
 internal fun enumerateSkills(roots: ReconcileSourceRoots, home: Path): Map<String, ReconcileSkillEntry> {
-  if (!Files.isDirectory(roots.skillsRoot)) {
-    return emptyMap()
+  val skillEntries = if (Files.isDirectory(roots.skillsRoot)) {
+    val request = reconcileEnumerationRequest(roots, home)
+    val platformManifests = discoverPlatformManifests(roots.platformPacksRoot)
+    // Reuse the approved builder seam for skill enumeration so this policy never
+    // references the domain InstallPlanPolicy directly (adapter-ownership rule).
+    val skills = enumerateInstallPlanSkills(request)
+    val selectedPackSkills = skills.filter { candidate ->
+      candidate.kind == InstallPlanSkillKind.PLATFORM_PACK && candidate.internalFor != null
+    }
+    skills.associate { skill ->
+      skillRelativePath(roots, skill) to ReconcileSkillEntry(
+        hash = reconcileSkillHash(roots, skill, platformManifests, selectedPackSkills),
+        sourceDir = skill.sourceDir.toAbsolutePath().normalize(),
+      )
+    }
+  } else {
+    emptyMap()
   }
-  val request = reconcileEnumerationRequest(roots, home)
-  val platformManifests = discoverPlatformManifests(roots.platformPacksRoot)
-  // Reuse the approved builder seam for skill enumeration so this policy never
-  // references the domain InstallPlanPolicy directly (adapter-ownership rule).
-  val skills = enumerateInstallPlanSkills(request)
-  return skills.associate { skill ->
-    skillRelativePath(roots, skill) to ReconcileSkillEntry(
-      hash = reconcileSkillHash(roots, skill, platformManifests),
-      sourceDir = skill.sourceDir.toAbsolutePath().normalize(),
+  return skillEntries + agentAddonEntries(roots)
+}
+
+private fun agentAddonEntries(roots: ReconcileSourceRoots): Map<String, ReconcileSkillEntry> =
+  discoverAgentAddons(roots.repoRoot).associate { declaration ->
+    "agent-addons/${declaration.slug}" to ReconcileSkillEntry(
+      hash = hashAgentAddonSource(declaration.manifestPath, declaration.contentPath),
+      sourceDir = declaration.addonRoot.toAbsolutePath().normalize(),
     )
   }
+
+private fun hashAgentAddonSource(manifestPath: Path, contentPath: Path): String {
+  val digest = MessageDigest.getInstance("SHA-256")
+  listOf("agent-addon.yaml" to manifestPath, "content.md" to contentPath).forEach { (name, path) ->
+    digest.update(name.toByteArray(Charsets.UTF_8))
+    digest.update(0)
+    digest.update(Files.readAllBytes(path))
+    digest.update(0)
+  }
+  return digest.digest().take(INSTALL_CACHE_KEY_BYTES).joinToString("") { byte -> "%02x".format(byte) }
 }
 
 private fun reconcileSkillHash(
   roots: ReconcileSourceRoots,
   skill: InstallPlanSkill,
   platformManifests: List<PlatformManifest>,
+  selectedPackSkills: List<InstallPlanSkill>,
 ): String {
   val applicablePointers = applicablePointers(roots.repoRoot, skill.sourceDir, platformManifests)
   val supportPointers = generatedSupportPointersFor(
@@ -250,8 +284,43 @@ private fun reconcileSkillHash(
     skillsRoot = roots.skillsRoot,
     selectedPlatformManifests = platformManifests,
   )
-  val authored = authoredFilesFor(skill.sourceDir, applicablePointers, supportPointers)
-  return computeInstallContentHash(skill.sourceDir, authored, applicablePointers, supportPointers)
+  val internal = prepareInternalStaging(
+    InternalStagingPreparation(
+      repoRoot = roots.repoRoot,
+      parentSourceDir = skill.sourceDir,
+      parentSkillName = skill.name,
+      skillsRoot = roots.skillsRoot,
+      selectedPackSkills = selectedPackSkills,
+      platformManifests = platformManifests,
+      selectedPlatformManifests = platformManifests,
+      parentSupportPointers = supportPointers,
+      parentPointerNames = applicablePointers.map { it.second.name }.toSet(),
+    ),
+  )
+  val authored = authoredFilesFor(
+    skill.sourceDir,
+    applicablePointers,
+    internal.supportPointers,
+    internal.sidecarNames,
+  )
+  val agentAddonPointers = agentAddonPointersForSkill(roots.repoRoot, skill.name)
+  validateAgentAddonPointerNamespace(
+    skill.name,
+    authoredStagingNames(skill.sourceDir, authored) + internal.sidecarNames +
+      applicablePointers.map { it.second.name } + internal.supportPointers.map { it.name } +
+      listOf("SKILL.md", ".content-hash"),
+    agentAddonPointers,
+  )
+  return computeInstallContentHash(
+    InstallContentHashInputs(
+      sourceSkillDir = skill.sourceDir,
+      authored = authored,
+      applicablePointers = applicablePointers,
+      generatedSupportPointers = internal.supportPointers,
+      internalChildren = internal.children,
+      agentAddonPointers = agentAddonPointers,
+    ),
+  )
 }
 
 /**

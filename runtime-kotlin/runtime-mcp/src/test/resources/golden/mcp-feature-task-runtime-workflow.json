@@ -233,7 +233,7 @@
     "available_artifacts": ["feature_task_runtime_phase_ledger", "feature_task_runtime_phase_records"],
     "missing_artifacts": [],
     "current_step_artifacts": [
-      {"key": "plan", "present": false, "inline": false, "size_bytes": null, "value": null, "preview": null, "truncated": false, "omitted": true, "omission_reason": "missing_required_artifact"}
+      {"key": "plan", "present": true, "inline": true, "size_bytes": 149, "value": "{\"contract_version\":\"0.1\",\"phase_id\":\"plan\",\"status\":\"completed\",\"summary\":\"planned\",\"produced_outputs\":{\"tasks\":[\"task-1\"]}}", "preview": null, "truncated": false, "omitted": false, "omission_reason": null}
     ],
     "omitted_artifact_keys": ["feature_task_runtime_phase_ledger", "feature_task_runtime_phase_records"],
     "continuation_brief": "Resume `bill-feature-task` workflow `<WORKFLOW_ID>` from `Phase 3: Implement` (`implement`). Follow the normal step instructions in `skills/bill-feature-task/content.md`. Use `current_step_artifacts` in this compact payload (plan) as authoritative current-step context instead of reconstructing prior context from chat history. Omitted artifact keys (feature_task_runtime_phase_ledger, feature_task_runtime_phase_records) require read-only inspection with `workflow show` when needed. Workflow activation status: `already_running`. Next action: Resume implementation reconciliation from the immutable initial preplan and plan outputs when an audit-gap loop is active, then persist the validated output.",

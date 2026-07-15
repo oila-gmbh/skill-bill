@@ -84,6 +84,17 @@ internal fun InspectorPane(
         KeyValueRow("kind", editor.kind ?: "none")
         KeyValueRow("authored path", editor.authoredPath ?: "-")
         KeyValueRow("status", editor.status ?: "-", tone = toneForStatus(editor.status))
+        editor.description?.let { KeyValueRow("description", it) }
+        if (editor.supportedAgents.isNotEmpty()) KeyValueRow("supported agents", editor.supportedAgents.joinToString())
+        if (editor.consumers.isNotEmpty()) KeyValueRow("consumers", editor.consumers.joinToString())
+        editor.manifestPath?.let { KeyValueRow("manifest path", it) }
+        if (editor.diagnostics.isNotEmpty()) {
+          KeyValueRow(
+            "diagnostics",
+            editor.diagnostics.joinToString("; "),
+            Tone.Error,
+          )
+        }
         KeyValueRow("mode", editor.readOnlyLabel ?: if (editor.editable) "editable" else "read-only")
         KeyValueRow(
           "draft",
@@ -198,7 +209,7 @@ private fun InspectorSection(
 @Composable
 private fun KeyValueRow(key: String, value: String, tone: Tone = Tone.Neutral) {
   Row(
-    modifier = Modifier.fillMaxWidth().height(SkillBillDimens.controlHeightMd),
+    modifier = Modifier.fillMaxWidth().padding(vertical = SkillBillDimens.padXs),
     verticalAlignment = Alignment.CenterVertically,
   ) {
     LabelText(key, modifier = Modifier.weight(1f))
@@ -206,8 +217,7 @@ private fun KeyValueRow(key: String, value: String, tone: Tone = Tone.Neutral) {
       text = value,
       color = SkillBillTheme.frameTokens.status.contentColorFor(tone),
       style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-      maxLines = 1,
-      overflow = TextOverflow.Ellipsis,
+      modifier = Modifier.weight(2f),
     )
   }
 }

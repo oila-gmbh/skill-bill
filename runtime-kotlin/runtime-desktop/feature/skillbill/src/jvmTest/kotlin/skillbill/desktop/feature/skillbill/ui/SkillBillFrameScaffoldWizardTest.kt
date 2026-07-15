@@ -459,10 +459,11 @@ class SkillBillFrameScaffoldWizardTest {
   @Test
   fun `display labels are stable per active creation ScaffoldKind`() {
     val labels = ScaffoldKind.activeCreationValues().map { it.displayLabel }.toSet()
-    assertEquals(3, labels.size)
+    assertEquals(4, labels.size)
     assertTrue(labels.contains("Horizontal skill"))
     assertTrue(labels.contains("Platform pack"))
     assertTrue(labels.contains("Add-on"))
+    assertTrue(labels.contains("Agent add-on"))
   }
 
   @Test

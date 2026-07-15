@@ -43,6 +43,27 @@ class FeatureTaskRuntimeResumeGateTest {
   }
 
   @Test
+  fun `runtime compact continuation exposes completed upstream phase output under logical phase key`() {
+    val record = runtimeSnapshot(
+      currentStepId = "plan",
+      stepsJson = stepsJson("preplan" to "completed", "plan" to "running"),
+      phaseRecordStatuses = mapOf("preplan" to "completed"),
+      phaseRecordOutputs = mapOf("preplan" to """{"preplan_digest":"bounded"}"""),
+    )
+
+    val decision = engine.continueDecision(runtimeDefinition, record)
+
+    assertEquals(emptyList(), decision.view.resume.missingArtifacts)
+    assertEquals(listOf("preplan"), decision.view.stepArtifactKeys)
+    assertEquals("""{"preplan_digest":"bounded"}""", decision.view.stepArtifacts["preplan"])
+    val compactPreplan = decision.view.compact.currentStepArtifacts.single { it.key == "preplan" }
+    assertTrue(compactPreplan.present)
+    assertFalse(compactPreplan.omitted)
+    assertEquals("""{"preplan_digest":"bounded"}""", compactPreplan.value)
+    assertEquals(null, compactPreplan.omissionReason)
+  }
+
+  @Test
   fun `runtime resume gate reports missing upstream when its phase record is not completed`() {
     val record = runtimeSnapshot(
       currentStepId = "plan",
@@ -177,6 +198,7 @@ class FeatureTaskRuntimeResumeGateTest {
     currentStepId: String,
     stepsJson: String,
     phaseRecordStatuses: Map<String, String>,
+    phaseRecordOutputs: Map<String, String> = emptyMap(),
     workflowStatus: String = "running",
   ): WorkflowStateSnapshot = WorkflowStateSnapshot(
     workflowId = "wftr-test",
@@ -186,7 +208,7 @@ class FeatureTaskRuntimeResumeGateTest {
     workflowStatus = workflowStatus,
     currentStepId = currentStepId,
     stepsJson = stepsJson,
-    artifactsJson = phaseRecordsArtifactsJson(phaseRecordStatuses),
+    artifactsJson = phaseRecordsArtifactsJson(phaseRecordStatuses, phaseRecordOutputs),
     startedAt = "2026-06-18T10:00:00Z",
     updatedAt = "2026-06-18T10:05:00Z",
     finishedAt = null,
@@ -217,14 +239,23 @@ class FeatureTaskRuntimeResumeGateTest {
       """{"step_id":"$stepId","status":"$status","attempt_count":1}"""
     }
 
-  private fun phaseRecordsArtifactsJson(phaseRecordStatuses: Map<String, String>): String {
+  private fun phaseRecordsArtifactsJson(
+    phaseRecordStatuses: Map<String, String>,
+    phaseRecordOutputs: Map<String, String> = emptyMap(),
+  ): String {
     val records = phaseRecordStatuses.entries.joinToString(",") { (phaseId, status) ->
       val finishedAt = if (status == "completed") ""","finished_at":"2026-06-18T10:04:00Z"""" else ""
+      val outputArtifact = phaseRecordOutputs[phaseId]
+        ?.let { ""","output_artifact":${jsonStringLiteral(it)}""" }
+        .orEmpty()
       """"$phaseId":{"phase_id":"$phaseId","status":"$status","attempt_count":1,""" +
-        """"started_at":"2026-06-18T10:00:00Z","resolved_agent_id":"agent-$phaseId"$finishedAt}"""
+        """"started_at":"2026-06-18T10:00:00Z","resolved_agent_id":"agent-$phaseId"$finishedAt$outputArtifact}"""
     }
     return """{"feature_task_runtime_phase_records":{$records}}"""
   }
+
+  private fun jsonStringLiteral(value: String): String =
+    value.replace("\\", "\\\\").replace("\"", "\\\"").let { """"$it"""" }
 
   private object NoopWorkflowSnapshotValidator : WorkflowSnapshotValidator {
     override fun validate(snapshot: Map<String, Any?>, slug: String) = Unit

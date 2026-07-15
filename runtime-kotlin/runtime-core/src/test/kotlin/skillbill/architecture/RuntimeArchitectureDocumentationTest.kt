@@ -84,6 +84,7 @@ class RuntimeArchitectureDocumentationTest {
   fun `runtime module declares final package boundaries`() {
     assertEquals(
       setOf(
+        "skillbill.agentaddon",
         "skillbill.application",
         "skillbill.boundary",
         "skillbill.cli",

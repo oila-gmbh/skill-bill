@@ -47,6 +47,27 @@ class FeatureSpecSkillWiringContractTest {
   }
 
   @Test
+  fun `feature family forwards one ordered structured agent addon selection without a second gate`() {
+    val feature = Files.readString(repoRootFromTest().resolve("skills/bill-feature/content.md"))
+    val task = Files.readString(repoRootFromTest().resolve("skills/bill-feature-task/content.md"))
+    val goal = Files.readString(repoRootFromTest().resolve("skills/bill-feature-goal/content.md"))
+    val prose = Files.readString(repoRootFromTest().resolve("skills/bill-feature-task-prose/content.md"))
+    val runtime = Files.readString(repoRootFromTest().resolve("skills/bill-feature-task-runtime/content.md"))
+
+    assertContains(feature, "Accept zero or more ordered `agent-addon:<slug>` arguments")
+    assertContains(feature, "canonical manifest source identity, content digest, and confirmation description")
+    assertContains(feature, "No downstream router or worker may parse the original tokens or rediscover")
+    assertContains(task, "selected agent add-on slugs and manifest descriptions in caller order, or `none`")
+    assertEquals(1, countOccurrences(task, "Ask exactly one confirmation question"))
+    assertContains(goal, "Show its slugs and descriptions in\ncaller order in the existing single confirmation")
+    assertContains(goal, "forward it unchanged to every runtime or\nprose child and child continuation artifact")
+    assertContains(prose, "Before\nevery initial phase, retry, review-fix, audit re-entry, or continuation")
+    assertContains(prose, "An empty selection adds no artifact content and no prompt\nsection")
+    assertContains(runtime, "Do not parse, reorder, or rediscover it")
+    assertFalse(runtime.contains("## Single Confirmation Gate"))
+  }
+
+  @Test
   fun `bill feature spec content defines governed intake and modes`() {
     val content = Files.readString(repoRootFromTest().resolve("skills/bill-feature-spec/content.md"))
 

@@ -98,7 +98,7 @@ Installed skills are symlinks to rendered staging directories under `~/.skill-bi
 
 ### Config That Survives Installs
 
-Your `config.json` (telemetry choices, `install_id`, and `external_addon_sources`) lives at the durable path **`~/.config/skill-bill/config.json`**. That location is **outside** the `~/.skill-bill/` tree that installs wipe, so it survives every `./install.sh` and update automatically — no environment variable required.
+Your `config.json` (telemetry choices, `install_id`, and shared `external_addon_sources` for platform-pack and agent add-ons) lives at the durable path **`~/.config/skill-bill/config.json`**. That location is **outside** the `~/.skill-bill/` tree that installs wipe, so it survives every `./install.sh` and update automatically — no environment variable required.
 
 Feature-task model and effort preferences also belong in this machine-wide JSON file under `execution_matrix`; they apply to every repository you run on this machine.
 
@@ -547,3 +547,10 @@ scripts/validate_agent_configs
 - [Review Telemetry](review-telemetry.md)
 - `orchestration/shell-content-contract/PLAYBOOK.md`
 - `orchestration/workflow-contract/PLAYBOOK.md`
+# Agent add-ons
+
+Agent add-ons are explicit, agent-compatible extensions. For Codex, invoke the
+execution boundary guidance with
+`/bill-feature <ISSUE_KEY> agent-addon:execution-budget`; omit the token for the
+unchanged baseline workflow. See [Agent add-on authored sources](skill-source-generation.md#agent-add-on-authored-sources)
+for precedence, source shape, staging, and resume guarantees.

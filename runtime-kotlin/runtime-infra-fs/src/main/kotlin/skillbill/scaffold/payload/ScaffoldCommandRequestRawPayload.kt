@@ -2,6 +2,7 @@ package skillbill.scaffold.payload
 
 import skillbill.scaffold.model.command.ScaffoldCommandRequest
 import skillbill.scaffold.policy.SKILL_KIND_ADD_ON
+import skillbill.scaffold.policy.SKILL_KIND_AGENT_ADDON
 import skillbill.scaffold.policy.SKILL_KIND_CODE_REVIEW_AREA
 import skillbill.scaffold.policy.SKILL_KIND_HORIZONTAL
 import skillbill.scaffold.policy.SKILL_KIND_PLATFORM_OVERRIDE_PILOTED
@@ -33,8 +34,18 @@ internal fun ScaffoldCommandRequest.toRawScaffoldPayload(): Map<String, Any?> {
     is ScaffoldCommandRequest.PlatformOverride -> appendPlatformOverrideFields(base)
     is ScaffoldCommandRequest.CodeReviewArea -> appendCodeReviewAreaFields(base)
     is ScaffoldCommandRequest.AddOn -> appendAddOnFields(base)
+    is ScaffoldCommandRequest.AgentAddon -> appendAgentAddonFields(base)
   }
   return base
+}
+
+private fun ScaffoldCommandRequest.AgentAddon.appendAgentAddonFields(base: MutableMap<String, Any?>) {
+  base["kind"] = SKILL_KIND_AGENT_ADDON
+  base["slug"] = slug
+  base["description"] = description
+  base["agent_ids"] = agentIds
+  base["consumers"] = consumers
+  contentBody?.let { base["content_body"] = it }
 }
 
 private fun ScaffoldCommandRequest.HorizontalSkill.appendHorizontalFields(base: MutableMap<String, Any?>) {

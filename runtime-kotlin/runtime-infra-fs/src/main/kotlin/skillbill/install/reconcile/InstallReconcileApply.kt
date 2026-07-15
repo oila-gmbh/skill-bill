@@ -127,6 +127,7 @@ private fun outcomeInstallsUpstream(outcome: SkillReconciliationOutcome): Boolea
 
 private const val SKILLS_PREFIX = "skills/"
 private const val PLATFORM_PACKS_PREFIX = "platform-packs/"
+private const val AGENT_ADDONS_PREFIX = "agent-addons/"
 
 /**
  * Resolve the live (target) skill dir for a skill-relative path under the LOCAL roots.
@@ -138,6 +139,8 @@ private fun liveSkillDir(local: ReconcileSourceRoots, skillRelativePath: String)
     local.skillsRoot.resolve(skillRelativePath.removePrefix(SKILLS_PREFIX))
   skillRelativePath.startsWith(PLATFORM_PACKS_PREFIX) ->
     local.platformPacksRoot.resolve(skillRelativePath.removePrefix(PLATFORM_PACKS_PREFIX))
+  skillRelativePath.startsWith(AGENT_ADDONS_PREFIX) ->
+    local.repoRoot.resolve(AGENT_ADDONS_PREFIX).resolve(skillRelativePath.removePrefix(AGENT_ADDONS_PREFIX))
   else -> throw ReconciliationConflictError(
     skillRelativePath = skillRelativePath,
     reason = "unrecognized skill-relative category prefix.",

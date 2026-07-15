@@ -2,6 +2,7 @@
 
 package skillbill.scaffold.runtime
 
+import skillbill.agentaddon.discoverAgentAddons
 import skillbill.error.InvalidSkillMdShapeError
 import skillbill.error.ShellContentContractException
 import skillbill.nativeagent.composition.NATIVE_AGENT_SOURCE_DIR
@@ -193,6 +194,7 @@ object RepoValidationRuntime {
     validateSkillOverrides(root.resolve(".agents/skill-overrides.md"), skillNames, required = false, issues)
     validateSupportingTargets(root, skillFiles.keys + platformSkillFiles.keys, issues)
     validateFeatureAddonDeclarations(root, issues)
+    validateAgentAddons(root, issues)
     validateWorkflowContracts(root, issues)
     validateOrchestrationPlaybooks(root, issues)
     validateNoInlineTelemetryContractDrift(root, issues)
@@ -214,6 +216,14 @@ object RepoValidationRuntime {
       platformPackCount = platformPacks,
       nativeAgentCount = nativeAgentSources.size,
     )
+  }
+
+  private fun validateAgentAddons(root: Path, issues: MutableList<String>) {
+    try {
+      discoverAgentAddons(root)
+    } catch (error: ShellContentContractException) {
+      issues += "agent-addons: ${error.message}"
+    }
   }
 
   private fun validateSpecialistContractParity(root: Path, issues: MutableList<String>) {

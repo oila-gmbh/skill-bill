@@ -26,6 +26,22 @@ before resolving the automatic policy.
 
 ## Update Check
 
+## Agent add-on selection
+
+Accept zero or more ordered `agent-addon:<slug>` arguments alongside the existing
+mode, review, parallel-review, agent, agent-override, and phase-agent arguments.
+Omission preserves existing behaviour. Before spec preparation, confirmation,
+workflow creation, or child launch, call the read-only `agent-addon
+resolve-selection` boundary once with every receiving agent assignment. Reject
+empty or malformed values, duplicates, unknown sources, unsupported consumers,
+and incompatible agents. Preserve caller order.
+
+After resolution, forward only the structured selection object containing slug,
+canonical manifest source identity, content digest, and confirmation description.
+No downstream router or worker may parse the original tokens or rediscover the
+catalogue. A continuation with no token inherits its durable selection; an
+explicit continuation selection must exactly match it.
+
 Call `mcp__skill-bill__update_check` before any other action.
 
 When the tool returns `status: "update_available"`:
@@ -69,13 +85,13 @@ Before running spec preparation, check `.feature-specs/{ISSUE_KEY}-*/` for the i
 
 For `single_spec` output (or the direct-dispatch route above when only a `spec.md` exists):
 
-- Read the file `bill-feature-task.md` located in this skill's own installed directory (a sibling of this `SKILL.md`) and execute its instructions in the current session with args: `<issue-key> mode:<mode> parallel-review:<agent> code-review:<explicit-mode> workflow-id:<id> .feature-specs/{ISSUE_KEY}-{feature-name}/spec.md`, including `workflow-id:<id>` only for a validated resumable lookup result, omitting `parallel-review:<agent>` when the caller did not provide it, and omitting the `code-review:` token when the caller did not provide it. For continuation, use the persisted mode and spec path rather than rediscovering or preparing them. Do not use the Skill tool for this — `bill-feature-task` is an internal skill and is not listed. When exactly one governed `.feature-specs/{ISSUE_KEY}-*/spec.md` exists, the issue key alone is enough only for the `no_match` path.
+- Read the file `bill-feature-task.md` located in this skill's own installed directory (a sibling of this `SKILL.md`) and execute its instructions in the current session with args: `<issue-key> mode:<mode> parallel-review:<agent> code-review:<explicit-mode> workflow-id:<id> agent-addon-selection:<structured-selection> .feature-specs/{ISSUE_KEY}-{feature-name}/spec.md`, including `workflow-id:<id>` only for a validated resumable lookup result, including the structured selection only when non-empty, omitting `parallel-review:<agent>` when the caller did not provide it, and omitting the `code-review:` token when the caller did not provide it. The structured selection is the resolver output, not a reconstructed token list. For continuation, use the persisted mode, spec path, and add-on selection rather than rediscovering or preparing them. Do not use the Skill tool for this — `bill-feature-task` is an internal skill and is not listed. When exactly one governed `.feature-specs/{ISSUE_KEY}-*/spec.md` exists, the issue key alone is enough only for the `no_match` path.
 - Do not dispatch to the goal sidecar.
 - Let the task sidecar own implementation, review, validation, history, and PR description behavior.
 
 For `decomposed` output (or the direct-dispatch route above when a `decomposition-manifest.yaml` exists):
 
-  - Read the file `bill-feature-goal.md` located in this skill's own installed directory (a sibling of this `SKILL.md`) and execute its instructions in the current session with args: `<issue-key> mode:<mode> parallel-review:<agent> code-review:<explicit-mode>`, omitting `parallel-review:<agent>` when the caller did not provide it and omitting the `code-review:` token when the caller did not provide it. Do not use the Skill tool for this — `bill-feature-goal` is an internal skill and is not listed.
+  - Read the file `bill-feature-goal.md` located in this skill's own installed directory (a sibling of this `SKILL.md`) and execute its instructions in the current session with args: `<issue-key> mode:<mode> parallel-review:<agent> code-review:<explicit-mode> agent-addon-selection:<structured-selection>`, including the structured resolver output only when non-empty, omitting `parallel-review:<agent>` when the caller did not provide it and omitting the `code-review:` token when the caller did not provide it. Do not reconstruct raw add-on tokens. Do not use the Skill tool for this — `bill-feature-goal` is an internal skill and is not listed.
 - Do not ask an extra confirmation before dispatching to the goal sidecar; the goal sidecar owns the one confirmation gate before starting `skill-bill goal`.
 - Treat `skill-bill goal <issue_key>` as runtime behavior with durable workflow state, not as spec authoring.
 

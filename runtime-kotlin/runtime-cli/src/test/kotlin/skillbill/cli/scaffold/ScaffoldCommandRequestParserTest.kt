@@ -250,4 +250,22 @@ class ScaffoldCommandRequestParserTest {
     assertTrue("baseline_layers[0].scope" in message, "Got: $message")
     assertTrue("bogus-scope" in message, "Got: $message")
   }
+
+  @Test
+  fun `agent-addon payload parses all governed fields`() {
+    val request = parseScaffoldCommandRequest(
+      mapOf(
+        "scaffold_payload_version" to "1.0",
+        "kind" to "agent-addon",
+        "slug" to "review-helper",
+        "description" to "Review helper",
+        "agent_ids" to listOf("codex", "claude"),
+        "consumers" to listOf("bill-feature"),
+        "content_body" to "Use the helper.",
+      ),
+    ) as ScaffoldCommandRequest.AgentAddon
+    assertEquals("review-helper", request.slug)
+    assertEquals(listOf("codex", "claude"), request.agentIds)
+    assertEquals(listOf("bill-feature"), request.consumers)
+  }
 }

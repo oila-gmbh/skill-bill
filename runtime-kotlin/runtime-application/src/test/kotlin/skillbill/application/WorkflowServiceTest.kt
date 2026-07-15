@@ -2317,6 +2317,19 @@ internal class InMemoryWorkflowStates : WorkflowStateRepository {
     }
     .map { row -> FeatureTaskWorkflowCandidate(identities[row.workflowId], row) }
 
+  override fun findGoalChildFeatureTaskCandidates(
+    normalizedIssueKey: String,
+    repositoryIdentity: String,
+  ): List<FeatureTaskWorkflowCandidate> = (implement.values + taskRuntime.values)
+    .filter { row ->
+      identities[row.workflowId]?.let { identity ->
+        identity.normalizedIssueKey == normalizedIssueKey &&
+          identity.repositoryIdentity == repositoryIdentity &&
+          identity.routeScope == FeatureTaskRouteScope.GOAL_CHILD
+      } ?: false
+    }
+    .map { row -> FeatureTaskWorkflowCandidate(identities[row.workflowId], row) }
+
   override fun claimFeatureTaskContinuation(workflowId: String, expectedUpdatedAt: String?): Boolean {
     val rows = if (workflowId in implement) implement else taskRuntime
     val existing = rows[workflowId] ?: return false

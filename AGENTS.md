@@ -7,9 +7,10 @@ skill-bill governs authoring, routing, validation, installation, and measurement
 Non-negotiable contracts:
 
 - Authored governed skill source is `content.md`, except for documented governed sidecar contracts; generated `SKILL.md` wrappers are runtime/install output.
-- Source skill directories under `skills/<skill>/` contain `content.md`, optional `native-agents/`, and explicit authored sidecars only when a documented governed contract allows them.
+- Skill sources use `skills/<skill>/content.md`, optional `native-agents/`, and contract-authorized sidecars.
 - Platform behavior lives in manifest-declared platform packs under `platform-packs/<slug>/`.
-- `orchestration/` is the shared source of truth for routing, review, delegation, telemetry, workflow, and shell contracts.
+- `orchestration/` owns shared routing, review, delegation, telemetry, workflow, and shell contracts.
+- `agent-addons/<slug>/` contains only user-owned `agent-addon.yaml` and `content.md`.
 - Generated support pointer files, provider-specific native-agent outputs, and installed staging artifacts are not committed.
 - Discovery, install, routing, validation, and desktop surfaces stay dynamic and manifest-driven.
 - Missing manifests, wrong contract versions, missing content files, and missing required sections fail loudly with typed errors.
@@ -19,14 +20,6 @@ Non-negotiable contracts:
 `bill-feature-task` is the feature-task router: it accepts `mode:runtime` (default) or `mode:prose`, presents one confirmation gate, then delegates. `bill-feature-task-prose` runs the full phase loop in-session. `bill-feature-task-runtime` launches the foreground `skill-bill feature-task` driver with durable workflow state, telemetry, platform packs, add-ons, and native subagents.
 
 Bundled skills and packs are defaults, not the framework boundary. Teams may replace them while retaining governed source shape, generated-output boundaries, manifests, install staging, validators, dynamic discovery, and loud-fail behavior.
-
-## Subagent Policy
-
-Use subagents only when the user explicitly requests them or an invoked skill's
-governed contract selects delegated execution. For `bill-code-review`,
-`mode:auto` may choose inline or delegated; explicit `mode:inline` or
-`mode:delegated` wins. Otherwise do not infer permission from task size,
-runtime defaults, or model preference; work inline or ask the user.
 
 ## Taxonomy
 

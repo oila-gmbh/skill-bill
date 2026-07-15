@@ -10,6 +10,7 @@ import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.WorkflowContracts
 import skillbill.error.InvalidWorkflowStateSchemaError
+import skillbill.workflow.model.ResolvedRequiredArtifact
 import skillbill.workflow.model.WorkflowCompactContinueView
 import skillbill.workflow.model.WorkflowContinuationArtifactSummary
 import skillbill.workflow.model.WorkflowContinueDecision
@@ -223,8 +224,10 @@ class WorkflowEngine(private val schemaValidator: WorkflowSnapshotValidator) {
     val actualContinueStatus = continueStatusFor(snapshot, resume, currentStep)
     val continueStatus = continueStatusOverride ?: actualContinueStatus
     val workflowStatusBeforeContinue = workflowStatusBeforeContinueOverride ?: snapshot.workflowStatus
-    val stepArtifactKeys = continueArtifactKeys(definition, resume.resumeStepId, snapshot.artifacts)
-    val stepArtifacts = stepArtifactKeys.associateWith { snapshot.artifacts.getValue(it) }
+    val stepArtifactKeys = continueArtifactKeys(definition, resume.resumeStepId, snapshot)
+    val stepArtifacts = stepArtifactKeys.associateWith { key ->
+      resolvedArtifactValue(definition, snapshot, key).value
+    }
     val currentStepArtifactKeys = resume.requiredArtifacts
     val omittedArtifactKeys = resume.availableArtifacts.filterNot(currentStepArtifactKeys::contains)
     val extraFields =
@@ -537,21 +540,28 @@ class WorkflowEngine(private val schemaValidator: WorkflowSnapshotValidator) {
     private fun continueArtifactKeys(
       definition: WorkflowDefinition,
       resumeStepId: String,
-      artifacts: Map<String, Any?>,
+      snapshot: WorkflowSnapshotView,
     ): List<String> {
       val keys = mutableListOf<String>()
       definition.continuationArtifactOrder.forEach { key ->
-        if (key in artifacts) {
+        if (key in snapshot.artifacts) {
           keys += key
         }
       }
       definition.requiredArtifactsByStep[resumeStepId].orEmpty().forEach { key ->
-        if (key in artifacts && key !in keys) {
+        if (key !in keys && resolvedArtifactValue(definition, snapshot, key).present) {
           keys += key
         }
       }
       return keys
     }
+
+    private fun resolvedArtifactValue(definition: WorkflowDefinition, snapshot: WorkflowSnapshotView, key: String) =
+      if (key in snapshot.artifacts) {
+        ResolvedRequiredArtifact(present = true, value = snapshot.artifacts[key])
+      } else {
+        definition.requiredArtifactPresenceResolver.resolveRequiredArtifact(snapshot, key)
+      }
 
     private fun compactContinueView(
       definition: WorkflowDefinition,
@@ -568,7 +578,8 @@ class WorkflowEngine(private val schemaValidator: WorkflowSnapshotValidator) {
       val availableKeys = resume.availableArtifacts
       val currentStepArtifactKeys = requiredKeys
       val currentStepArtifacts = currentStepArtifactKeys.map { key ->
-        artifactSummary(key, snapshot.artifacts[key], key in snapshot.artifacts)
+        val resolved = resolvedArtifactValue(definition, snapshot, key)
+        artifactSummary(key, resolved.value, resolved.present)
       }
       val omittedKeys = availableKeys.filterNot(currentStepArtifactKeys::contains)
       return WorkflowCompactContinueView(

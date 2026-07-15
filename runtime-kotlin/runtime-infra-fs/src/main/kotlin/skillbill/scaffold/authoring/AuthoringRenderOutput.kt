@@ -1,11 +1,14 @@
 package skillbill.scaffold.authoring
 
+import skillbill.agentaddon.AgentAddonDeliveryResolver
+import skillbill.agentaddon.model.AgentAddonConsumer
 import skillbill.error.ContractVersionMismatchError
 import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.model.PointerSpec
 import skillbill.scaffold.platformpack.loadPlatformManifest
 import skillbill.scaffold.pointer.renderPointer
 import skillbill.scaffold.runtime.SHELL_CONTRACT_VERSION
+import java.nio.charset.StandardCharsets
 import java.nio.file.Path
 
 private const val PLATFORM_PACK_SKILL_MIN_PARTS = 3
@@ -69,6 +72,10 @@ internal fun renderAuthoringTarget(repoRoot: Path, target: AuthoringTarget): Aut
 }
 
 private fun renderPointerBlocks(repoRoot: Path, target: AuthoringTarget): List<AuthoringRenderBlock> {
+  return renderPlatformPointerBlocks(repoRoot, target) + renderAgentAddonPointerBlocks(repoRoot, target)
+}
+
+private fun renderPlatformPointerBlocks(repoRoot: Path, target: AuthoringTarget): List<AuthoringRenderBlock> {
   val packRoot = targetPlatformPackRoot(repoRoot, target) ?: return emptyList()
   val pack = loadPlatformManifest(packRoot)
   requireMatchingRenderContractVersion(pack)
@@ -78,6 +85,20 @@ private fun renderPointerBlocks(repoRoot: Path, target: AuthoringTarget): List<A
     // deterministic writes, but render output mirrors the author-declared manifest sequence.
     .filter { spec -> spec.skillRelativeDir == skillRelativeDir }
     .map { spec -> renderPointerBlock(repoRoot, pack, spec) }
+}
+
+private fun renderAgentAddonPointerBlocks(repoRoot: Path, target: AuthoringTarget): List<AuthoringRenderBlock> {
+  val consumer = runCatching { AgentAddonConsumer.fromId(target.internalFor ?: target.skillName) }.getOrNull()
+    ?: return emptyList()
+  val consumerTarget = if (target.skillName == consumer.id) target else resolveTarget(repoRoot, consumer.id)
+  val outputDir = consumerTarget.skillFile.parent
+  return AgentAddonDeliveryResolver().resolve(repoRoot, consumer).map { pointer ->
+    val outputFile = outputDir.resolve(pointer.name)
+    AuthoringRenderBlock(
+      header = "===== pointer: ${normalizedRelativePath(repoRoot, outputFile)} =====",
+      content = pointer.renderedBytes.toString(StandardCharsets.UTF_8),
+    )
+  }
 }
 
 private fun renderPointerBlock(repoRoot: Path, pack: PlatformManifest, spec: PointerSpec): AuthoringRenderBlock {

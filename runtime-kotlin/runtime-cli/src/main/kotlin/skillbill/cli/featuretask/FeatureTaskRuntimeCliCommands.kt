@@ -14,6 +14,10 @@ import com.github.ajalt.clikt.parameters.options.required
 import com.github.ajalt.clikt.parameters.types.int
 import com.github.ajalt.clikt.parameters.types.restrictTo
 import me.tatarka.inject.annotations.Inject
+import skillbill.agentaddon.model.AgentAddonConsumer
+import skillbill.agentaddon.model.AgentAddonSelection
+import skillbill.agentaddon.model.HydratedAgentAddonSelection
+import skillbill.agentaddon.model.PersistedAgentAddonSelectionEntry
 import skillbill.application.config.ConfigResolutionService
 import skillbill.application.featuretask.FeatureTaskContinuationLookupService
 import skillbill.application.featuretask.FeatureTaskRuntimeAgentResolver
@@ -44,11 +48,14 @@ import skillbill.cli.core.refuseRuntimeRefusedAgents
 import skillbill.cli.core.refuseUnsupportedModelDirectives
 import skillbill.cli.workflow.toCliMap
 import skillbill.config.model.PhaseModelDirective
+import skillbill.contracts.JsonSupport
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.InvokingAgentContextResolver
+import skillbill.ports.agentaddon.AgentAddonSelectionPort
 import skillbill.ports.featurespec.FeatureSpecPathResolverPort
 import skillbill.ports.featurespec.model.FeatureSpecPathResolveInput
 import skillbill.ports.featurespec.model.FeatureSpecPathResolveResult
+import skillbill.ports.persistence.model.FeatureTaskRouteScope
 import skillbill.ports.taskruntime.FeatureTaskRuntimeRunInvariantsSource
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.workflow.model.CodeReviewExecutionMode
@@ -67,6 +74,7 @@ data class FeatureTaskRuntimeRunDependencies(
   val runInvariantsSource: FeatureTaskRuntimeRunInvariantsSource,
   val specPathResolver: FeatureSpecPathResolverPort,
   val configResolutionService: ConfigResolutionService,
+  val agentAddonSelectionPort: AgentAddonSelectionPort,
   val state: CliRunState,
 )
 
@@ -149,6 +157,10 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
     help = "Open the run under this exact workflow id instead of minting a new one. Used by the goal " +
       "driver's open-with-assigned-id path for a first runtime subtask run (distinct from resume).",
   )
+  protected val agentAddonSelectionJson by option(
+    "--agent-addon-selection-json",
+    help = "Already-resolved ordered agent add-on selection JSON. Raw agent-addon tokens are not accepted here.",
+  )
 
   protected fun resolveRunWorkflowId(
     workflowService: WorkflowService,
@@ -157,7 +169,13 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
     specPath: String,
     repoRoot: String,
   ): String = explicitWorkflowId?.takeIf(String::isNotBlank)
-    ?: openRuntimeWorkflowId(workflowService, state, issueKey, specPath, repoRoot)
+    ?: workflowService.openRuntimeWorkflowId(
+      state,
+      issueKey,
+      specPath,
+      repoRoot,
+      if (goalParentIssueKey != null) FeatureTaskRouteScope.GOAL_CHILD else FeatureTaskRouteScope.STANDALONE,
+    )
 
   // Refuses before a workflow is opened, a branch resolved, or a phase spawned: opencode is
   // prose-only because its foreground Bash tool is hard-killed at 120s and per-phase output
@@ -196,7 +214,9 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
           workflowId = resolvedWorkflowId,
           sessionId =
           "${FeatureTaskRuntimePhaseWorkflowDefinition.definition.defaultSessionPrefix}-$resolvedWorkflowId",
-          runInvariants = deps.runInvariantsSource.read(Path.of(specPath)),
+          runInvariants = deps.runInvariantsSource.read(Path.of(specPath)).copy(
+            agentAddonSelection = prepared.agentAddonSelection.persisted,
+          ),
           invokedAgentId = prepared.invokedAgentId,
           agentAssignment = prepared.agentAssignment,
           modelAssignment = prepared.modelAssignment,
@@ -207,6 +227,7 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
           parallelReviewAgent = parallelReviewAgent?.takeIf(String::isNotBlank),
           requestedCodeReviewMode = requestedReviewMode,
           goalContinuation = goalContinuation,
+          agentAddonSelection = prepared.agentAddonSelection,
           eventSink = runtimeRunEventSink(state, monitor),
         ),
       )
@@ -237,7 +258,26 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
       }
     }.toMap()
     refuseUnsupportedModelDirectives(directives, resolvedAgentIds)
-    return PreparedRuntimeRun(repoRoot, invokedAgentId, agentAssignment, modelAssignment)
+    val receivingAgents = buildList {
+      addAll(resolvedAgentIds.values)
+      addAll(parsePhaseAgents(phaseAgents).values)
+      agentOverride?.takeIf(String::isNotBlank)?.let(::add)
+      parallelReviewAgent?.takeIf(String::isNotBlank)?.let(::add)
+      deps.configResolutionService.resolveCodeReviewParallelAgent(repoRoot, parallelReviewAgent)
+        .takeUnless { it == "none" }
+        ?.let(::add)
+    }.distinct()
+    val persistedSelection = parseAgentAddonSelection(agentAddonSelectionJson)
+    val hydratedSelection = if (persistedSelection.entries.isEmpty()) {
+      HydratedAgentAddonSelection()
+    } else {
+      deps.agentAddonSelectionPort.verifyPersisted(
+        persistedSelection,
+        AgentAddonConsumer.BILL_FEATURE,
+        receivingAgents,
+      )
+    }
+    return PreparedRuntimeRun(repoRoot, invokedAgentId, agentAssignment, modelAssignment, hydratedSelection)
   }
 
   protected fun resolveSpecPath(
@@ -339,6 +379,7 @@ class FeatureTaskRuntimeRunCommand(
   featureTaskRuntimeStatusCommand: FeatureTaskRuntimeStatusCommand,
   featureTaskRuntimeResumeCommand: FeatureTaskRuntimeResumeCommand,
   featureTaskRuntimeAbandonCommand: FeatureTaskRuntimeAbandonCommand,
+  featureTaskRuntimeRetryBlockedCommand: FeatureTaskRuntimeRetryBlockedCommand,
   featureTaskRuntimeRepairIdentityCommand: FeatureTaskRuntimeRepairIdentityCommand,
   featureTaskLookupCommand: FeatureTaskLookupCommand,
 ) : FeatureTaskRuntimePhaseAgentCommand(
@@ -356,6 +397,7 @@ class FeatureTaskRuntimeRunCommand(
       featureTaskRuntimeStatusCommand,
       featureTaskRuntimeResumeCommand,
       featureTaskRuntimeAbandonCommand,
+      featureTaskRuntimeRetryBlockedCommand,
       featureTaskRuntimeRepairIdentityCommand,
       featureTaskLookupCommand,
     )
@@ -481,7 +523,15 @@ class FeatureTaskRuntimeResumeCommand(
 
   override fun run() {
     validateRuntimeRunConfiguration(deps)
-    verifyRuntimeResume(lookupService, deps.state, workflowId, issueKey, specPath, repoRoot ?: ".")
+    verifyRuntimeResume(
+      lookupService,
+      deps.state,
+      workflowId,
+      issueKey,
+      specPath,
+      repoRoot ?: ".",
+      goalParentIssueKey != null,
+    )
     executeRuntimeRun(
       deps = deps,
       issueKey = requireNotNull(issueKey),
@@ -505,6 +555,25 @@ class FeatureTaskRuntimeAbandonCommand(
 
   override fun run() {
     val result = workflowService.abandonFeatureTaskRuntime(workflowId, reason, state.dbOverride)
+    state.complete(result.toCliMap(), format, exitCode = if (result is WorkflowUpdateResult.Error) 1 else 0)
+  }
+}
+
+@Inject
+class FeatureTaskRuntimeRetryBlockedCommand(
+  private val workflowService: WorkflowService,
+  private val state: CliRunState,
+) : DocumentedCliCommand(
+  "retry-blocked",
+  "Reopen one blocked runtime phase after an operator-applied fix.",
+) {
+  private val workflowId by argument(help = "Exact runtime workflow id whose blocked phase should be retried.")
+  private val phaseId by option("--phase", help = "Blocked runtime phase to reopen.").required()
+  private val reason by option("--reason", help = "Required operator reason recorded with the retry.").required()
+  private val format by formatOption()
+
+  override fun run() {
+    val result = workflowService.retryBlockedFeatureTaskRuntimePhase(workflowId, phaseId, reason, state.dbOverride)
     state.complete(result.toCliMap(), format, exitCode = if (result is WorkflowUpdateResult.Error) 1 else 0)
   }
 }
@@ -586,7 +655,15 @@ class FeatureTaskRuntimeDeprecatedRunCommand(
       deps = deps,
       issueKey = runIssueKey,
       specPath = runSpecPath,
-      workflowId = { openRuntimeWorkflowId(workflowService, deps.state, runIssueKey, runSpecPath, repoRoot ?: ".") },
+      workflowId = {
+        workflowService.openRuntimeWorkflowId(
+          deps.state,
+          runIssueKey,
+          runSpecPath,
+          repoRoot ?: ".",
+          if (goalParentIssueKey != null) FeatureTaskRouteScope.GOAL_CHILD else FeatureTaskRouteScope.STANDALONE,
+        )
+      },
     )
   }
 }
@@ -608,7 +685,15 @@ class FeatureTaskRuntimeDeprecatedExplicitRunCommand(
       deps = deps,
       issueKey = issueKey,
       specPath = runSpecPath,
-      workflowId = { openRuntimeWorkflowId(workflowService, deps.state, issueKey, runSpecPath, repoRoot ?: ".") },
+      workflowId = {
+        workflowService.openRuntimeWorkflowId(
+          deps.state,
+          issueKey,
+          runSpecPath,
+          repoRoot ?: ".",
+          if (goalParentIssueKey != null) FeatureTaskRouteScope.GOAL_CHILD else FeatureTaskRouteScope.STANDALONE,
+        )
+      },
     )
   }
 }
@@ -647,25 +732,34 @@ class FeatureTaskRuntimeDeprecatedResumeCommand(
       issueKey = issueKey,
       specPath = specPath,
       workflowId = {
-        verifyRuntimeResume(lookupService, deps.state, workflowId, issueKey, specPath, repoRoot ?: ".")
+        verifyRuntimeResume(
+          lookupService,
+          deps.state,
+          workflowId,
+          issueKey,
+          specPath,
+          repoRoot ?: ".",
+          goalParentIssueKey != null,
+        )
         workflowId
       },
     )
   }
 }
 
-private fun openRuntimeWorkflowId(
-  workflowService: WorkflowService,
+private fun WorkflowService.openRuntimeWorkflowId(
   state: CliRunState,
   issueKey: String?,
   specPath: String,
   repoRoot: String,
+  routeScope: FeatureTaskRouteScope,
 ): String = when (
-  val opened = workflowService.openFeatureTask(
+  val opened = openFeatureTask(
     WorkflowFamilyKind.TASK_RUNTIME,
     issueKey = requireNotNull(issueKey),
     repositoryIdentity = repositoryIdentity(Path.of(repoRoot)),
     governedSpecPath = governedSpecPath(Path.of(repoRoot), Path.of(specPath)),
+    routeScope = routeScope,
     dbOverride = state.dbOverride,
   )
 ) {
@@ -709,9 +803,15 @@ private fun verifyRuntimeResume(
   issueKey: String,
   specPath: String,
   repoRoot: String,
+  goalChild: Boolean,
 ) {
   val effectiveRoot = resumeRepositoryRoot(repoRoot, Path.of(specPath))
-  val result = lookupService.lookup(issueKey, repositoryIdentity(effectiveRoot), workflowId, state.dbOverride)
+  val identity = repositoryIdentity(effectiveRoot)
+  val result = if (goalChild) {
+    lookupService.lookupGoalChild(issueKey, identity, workflowId, state.dbOverride)
+  } else {
+    lookupService.lookup(issueKey, identity, workflowId, state.dbOverride)
+  }
   val candidate = when (result) {
     is FeatureTaskContinuationLookupResult.Resumable -> result.candidate
     is FeatureTaskContinuationLookupResult.AlreadyRunning -> result.candidate
@@ -825,7 +925,47 @@ private data class PreparedRuntimeRun(
   val invokedAgentId: String,
   val agentAssignment: FeatureTaskRuntimeAgentAssignment,
   val modelAssignment: FeatureTaskRuntimeModelAssignment,
+  val agentAddonSelection: HydratedAgentAddonSelection,
 )
+
+internal fun parseAgentAddonSelection(raw: String?): AgentAddonSelection {
+  if (raw == null) return AgentAddonSelection()
+  val root = JsonSupport.parseObjectOrNull(raw)
+    ?: invalidAgentAddonSelection("--agent-addon-selection-json must be a JSON object.")
+  val map = JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(root))
+    ?: invalidAgentAddonSelection("--agent-addon-selection-json must decode to an object.")
+  if (map.keys != setOf("contract_version", "entries") || map["contract_version"] != "0.1") {
+    invalidAgentAddonSelection("Agent add-on selection must contain only contract_version=0.1 and entries.")
+  }
+  val entries = map["entries"] as? List<*>
+    ?: invalidAgentAddonSelection("Agent add-on selection entries must be an ordered array.")
+  return try {
+    AgentAddonSelection(
+      entries.mapIndexed { index, valueEntry ->
+        val entry = JsonSupport.anyToStringAnyMap(valueEntry)
+          ?: invalidAgentAddonSelection("Agent add-on selection entry $index must be an object.")
+        val persistedKeys = setOf("slug", "source_identity", "content_sha256")
+        if (!entry.keys.containsAll(persistedKeys) || entry.keys.any { it !in persistedKeys + "description" }) {
+          invalidAgentAddonSelection("Agent add-on selection entry $index has unsupported or missing fields.")
+        }
+        PersistedAgentAddonSelectionEntry(
+          slug = entry["slug"] as? String
+            ?: invalidAgentAddonSelection("Entry $index slug is required."),
+          sourceIdentity = entry["source_identity"] as? String
+            ?: invalidAgentAddonSelection("Entry $index source_identity is required."),
+          contentSha256 = entry["content_sha256"] as? String
+            ?: invalidAgentAddonSelection("Entry $index content_sha256 is required."),
+        )
+      },
+    )
+  } catch (error: IllegalArgumentException) {
+    invalidAgentAddonSelection("Invalid agent add-on selection: ${error.message}", error)
+  }
+}
+
+private fun invalidAgentAddonSelection(message: String, cause: Throwable? = null): Nothing {
+  throw UsageError(message).apply { cause?.let(::initCause) }
+}
 
 private fun resolveInvokedRuntimeAgentId(explicitAgent: String?, environment: Map<String, String>): String =
   explicitAgent?.takeIf(String::isNotBlank)

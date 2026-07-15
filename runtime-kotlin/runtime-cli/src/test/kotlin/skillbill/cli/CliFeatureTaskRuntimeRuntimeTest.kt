@@ -16,6 +16,7 @@ import skillbill.ports.workflow.GoalSubtaskReviewGitOperations
 import skillbill.ports.workflow.GoalSubtaskReviewGitOperationsProvider
 import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
+import skillbill.ports.workflow.model.GoalSubtaskReviewBaselineResult
 import skillbill.ports.workflow.model.GoalSubtaskReviewInput
 import skillbill.ports.workflow.model.GoalSubtaskReviewInputResult
 import skillbill.ports.workflow.model.WorkflowGitOperationResult
@@ -41,6 +42,230 @@ import kotlin.time.Duration.Companion.minutes
 @Suppress("LargeClass")
 class CliFeatureTaskRuntimeRuntimeTest {
   @Test
+  fun `real feature invocation preserves ordered selected agent add-ons through retry`() {
+    val selectedFixture = runtimeFixture().also {
+      writeAgentAddon(it.tempDir, "first-helper", "First selected guidance.")
+      writeAgentAddon(it.tempDir, "middle-unselected", "UNSELECTED SENTINEL")
+      writeAgentAddon(it.tempDir, "last-helper", "Last selected guidance.")
+    }
+    val resolvedSelection = resolvedSelectionJson(selectedFixture, "codex", "first-helper", "last-helper")
+    val selectedLauncher = RecordingPhaseLauncher(invalidReviewUntilLaunchIndex = 4)
+
+    val selected = CliRuntime.run(
+      selectedFixture.runCommand(
+        extra = listOf("--agent", "codex", "--agent-addon-selection-json", resolvedSelection),
+      ),
+      selectedFixture.context(selectedLauncher),
+    )
+
+    assertEquals(0, selected.exitCode, selected.stdout)
+    assertEquals(ALL_PHASES.size + 1, selectedLauncher.requests.size)
+    val firstManifest = selectedFixture.tempDir.resolve(
+      "agent-addons/first-helper/agent-addon.yaml",
+    ).toRealPath().toString()
+    val lastManifest = selectedFixture.tempDir.resolve(
+      "agent-addons/last-helper/agent-addon.yaml",
+    ).toRealPath().toString()
+    selectedLauncher.requests.forEach { request ->
+      val prompt = request.skillRunRequest.promptOverride.orEmpty()
+      assertContains(prompt, "### 1. first-helper")
+      assertContains(prompt, "### 2. last-helper")
+      assertContains(prompt, "First selected guidance.")
+      assertContains(prompt, "Last selected guidance.")
+      assertContains(prompt, firstManifest)
+      assertContains(prompt, lastManifest)
+      assertFalse(prompt.contains("middle-unselected"), prompt)
+      assertFalse(prompt.contains("UNSELECTED SENTINEL"), prompt)
+      assertTrue(prompt.indexOf("### 1. first-helper") < prompt.indexOf("### 2. last-helper"), prompt)
+    }
+    val reviewPrompts = selectedLauncher.requests
+      .map { it.skillRunRequest.promptOverride.orEmpty() }
+      .filter { phaseIdFromPrompt(it) == "review" }
+    assertEquals(2, reviewPrompts.size)
+    assertEquals(selectedAgentAddonSection(reviewPrompts.first()), selectedAgentAddonSection(reviewPrompts.last()))
+  }
+
+  @Test
+  fun `resume preserves exact ordered agent add-ons and rejects altered selection before launch`() {
+    val fixture = runtimeFixture().also {
+      writeAgentAddon(it.tempDir, "first-helper", "First selected guidance.")
+      writeAgentAddon(it.tempDir, "last-helper", "Last selected guidance.")
+      writeAgentAddon(it.tempDir, "replacement-helper", "Replacement guidance.")
+    }
+    val orderedSelection = resolvedSelectionJson(fixture, "codex", "first-helper", "last-helper")
+    val interruptedLauncher = InterruptAtImplementLauncher()
+    val firstRun = CliRuntime.run(
+      fixture.runCommand(
+        extra = listOf("--agent", "codex", "--agent-addon-selection-json", orderedSelection),
+      ),
+      fixture.context(interruptedLauncher),
+    )
+    assertEquals(1, firstRun.exitCode, firstRun.stdout)
+    val workflowId = firstRun.stdout.lines().single { it.startsWith("workflow_id:") }.substringAfter(":").trim()
+    assertAlteredAgentAddonSelectionsRejected(fixture, workflowId)
+
+    val resumeFixture = runtimeFixture().also {
+      writeAgentAddon(it.tempDir, "first-helper", "First selected guidance.")
+      writeAgentAddon(it.tempDir, "middle-unselected", "UNSELECTED RESUME SENTINEL")
+      writeAgentAddon(it.tempDir, "last-helper", "Last selected guidance.")
+    }
+    val resumeSelection = resolvedSelectionJson(resumeFixture, "codex", "first-helper", "last-helper")
+    val resumeInterruptedLauncher = InterruptAtImplementLauncher()
+    val resumableRun = CliRuntime.run(
+      resumeFixture.runCommand(
+        extra = listOf("--agent", "codex", "--agent-addon-selection-json", resumeSelection),
+      ),
+      resumeFixture.context(resumeInterruptedLauncher),
+    )
+    assertEquals(1, resumableRun.exitCode, resumableRun.stdout)
+    val resumableWorkflowId = resumableRun.stdout.lines()
+      .single { it.startsWith("workflow_id:") }
+      .substringAfter(":")
+      .trim()
+    val resumedLauncher = RecordingPhaseLauncher()
+    val resumed = CliRuntime.run(
+      resumeFixture.resumeCommand(resumableWorkflowId, resumeSelection),
+      resumeFixture.context(resumedLauncher),
+    )
+    assertEquals(0, resumed.exitCode, resumed.stdout)
+    assertEquals(ALL_PHASES.dropWhile { it != "implement" }, resumedLauncher.phaseOrder())
+    resumedLauncher.requests.forEach { request ->
+      val prompt = request.skillRunRequest.promptOverride.orEmpty()
+      assertContains(prompt, "### 1. first-helper")
+      assertContains(prompt, "### 2. last-helper")
+      assertTrue(prompt.indexOf("### 1. first-helper") < prompt.indexOf("### 2. last-helper"), prompt)
+      assertFalse(prompt.contains("middle-unselected"), prompt)
+      assertFalse(prompt.contains("UNSELECTED RESUME SENTINEL"), prompt)
+    }
+  }
+
+  private fun assertAlteredAgentAddonSelectionsRejected(fixture: FeatureTaskRuntimeCliFixture, workflowId: String) {
+    val alteredSelections = listOf(
+      "reordered" to resolvedSelectionJson(fixture, "codex", "last-helper", "first-helper"),
+      "dropped" to resolvedSelectionJson(fixture, "codex", "first-helper"),
+      "empty" to """{"contract_version":"0.1","entries":[]}""",
+      "replaced identity" to resolvedSelectionJson(fixture, "codex", "replacement-helper", "last-helper"),
+    )
+    alteredSelections.forEach { (case, alteredSelection) ->
+      val rejectedLauncher = RecordingPhaseLauncher()
+      val rejected = CliRuntime.run(
+        fixture.resumeCommand(workflowId, alteredSelection),
+        fixture.context(rejectedLauncher),
+      )
+      assertEquals(1, rejected.exitCode, "$case: ${rejected.stdout}")
+      assertContains(
+        rejected.stdout,
+        "Cannot drop or replace the workflow's durable agent add-on selection",
+        message = case,
+      )
+      assertEquals(emptyList(), rejectedLauncher.requests, case)
+    }
+  }
+
+  @Test
+  fun `real feature invocation rejects unsupported agent before execution`() {
+    val unsupportedFixture = runtimeFixture().also { writeExecutionBudgetAddon(it.tempDir) }
+    val unsupportedSelection = resolvedSelectionJson(unsupportedFixture, "codex")
+    val unsupportedLauncher = RecordingPhaseLauncher()
+    val unsupported = assertFailsWith<skillbill.error.InvalidAgentAddonSelectionError> {
+      CliRuntime.run(
+        unsupportedFixture.runCommand(
+          extra = listOf("--agent", "claude", "--agent-addon-selection-json", unsupportedSelection),
+        ),
+        unsupportedFixture.context(unsupportedLauncher),
+      )
+    }
+    assertContains(unsupported.message.orEmpty(), "incompatible with receiving agent 'claude'")
+    assertEquals(emptyList(), unsupportedLauncher.requests)
+    assertFalse(Files.exists(unsupportedFixture.dbPath), "workflow database must not be created")
+  }
+
+  @Test
+  fun `selected agent add-on accepts compatible runtime override routes`() {
+    val cases = listOf(
+      "run-wide override" to listOf("--agent-override", "codex"),
+      "phase override" to listOf("--phase-agent", "plan=codex"),
+      "delegated parallel review" to listOf(
+        "--code-review-mode",
+        "delegated",
+        "--parallel-review-agent",
+        "codex",
+      ),
+    )
+
+    cases.forEach { (case, overrideArgs) ->
+      val fixture = runtimeFixture().also { writeExecutionBudgetAddon(it.tempDir) }
+      val selection = resolvedSelectionJson(fixture, "codex")
+      val launcher = RecordingPhaseLauncher()
+
+      val result = CliRuntime.run(
+        fixture.runCommand(
+          extra = listOf("--agent", "codex", "--agent-addon-selection-json", selection) + overrideArgs,
+        ),
+        fixture.context(launcher),
+      )
+
+      assertEquals(0, result.exitCode, "$case: ${result.stdout}")
+      assertEquals(ALL_PHASES.size, launcher.requests.size, case)
+      assertTrue(
+        launcher.requests.all { request ->
+          request.skillRunRequest.promptOverride.orEmpty().contains("### 1. execution-budget")
+        },
+        case,
+      )
+    }
+  }
+
+  @Test
+  fun `selected agent add-on rejects incompatible runtime override routes before workflow creation`() {
+    val cases = listOf(
+      "run-wide override" to listOf("--agent-override", "claude"),
+      "phase override" to listOf("--phase-agent", "plan=claude"),
+      "delegated parallel review" to listOf(
+        "--code-review-mode",
+        "delegated",
+        "--parallel-review-agent",
+        "claude",
+      ),
+    )
+
+    cases.forEach { (case, overrideArgs) ->
+      val fixture = runtimeFixture().also { writeExecutionBudgetAddon(it.tempDir) }
+      val selection = resolvedSelectionJson(fixture, "codex")
+      val launcher = RecordingPhaseLauncher()
+
+      val failure = assertFailsWith<skillbill.error.InvalidAgentAddonSelectionError>(case) {
+        CliRuntime.run(
+          fixture.runCommand(
+            extra = listOf("--agent", "codex", "--agent-addon-selection-json", selection) + overrideArgs,
+          ),
+          fixture.context(launcher),
+        )
+      }
+
+      assertContains(failure.message.orEmpty(), "incompatible with receiving agent 'claude'", message = case)
+      assertEquals(emptyList(), launcher.requests, case)
+      assertFalse(Files.exists(fixture.dbPath), "$case must fail before workflow database creation")
+    }
+  }
+
+  @Test
+  fun `real feature invocation without agent add-on keeps prompts unchanged`() {
+    val baselineFixture = runtimeFixture().also { writeExecutionBudgetAddon(it.tempDir) }
+    val baselineLauncher = RecordingPhaseLauncher()
+    val baseline = CliRuntime.run(
+      baselineFixture.runCommand(extra = listOf("--agent", "codex")),
+      baselineFixture.context(baselineLauncher),
+    )
+    assertEquals(0, baseline.exitCode, baseline.stdout)
+    assertTrue(
+      baselineLauncher.requests.all { request ->
+        !request.skillRunRequest.promptOverride.orEmpty().contains("Agent add-on:")
+      },
+    )
+  }
+
+  @Test
   fun `feature-task command registers run status resume and abandon`() {
     val help = CliRuntime.run(listOf("feature-task", "--help"), CliRuntimeContext())
 
@@ -50,6 +275,7 @@ class CliFeatureTaskRuntimeRuntimeTest {
     assertContains(help.stdout, "status")
     assertContains(help.stdout, "resume")
     assertContains(help.stdout, "abandon")
+    assertContains(help.stdout, "retry-blocked")
     assertContains(help.stdout, "repair-identity")
     // The documented explicit `run` form is a real subcommand, not a misparsed positional.
     assertContains(help.stdout, "explicit form")
@@ -727,6 +953,56 @@ class CliFeatureTaskRuntimeRuntimeTest {
     assertContains(status.stdout, "current_phase: implement")
     assertContains(status.stdout, "phase: id=plan status=completed")
     assertContains(status.stdout, "phase: id=implement status=blocked")
+  }
+
+  @Test
+  fun `feature-task retry-blocked reopens a blocked runtime phase for resume`() {
+    val fixture = runtimeFixture()
+    val blockedLauncher = RecordingPhaseLauncher(invalidFromLaunchIndex = 2)
+    val blocked = CliRuntime.run(
+      fixture.runCommand(extra = listOf("--agent", "codex")),
+      fixture.context(blockedLauncher),
+    )
+    assertEquals(1, blocked.exitCode, blocked.stdout)
+    val workflowId = blocked.stdout.lines().single { it.startsWith("workflow_id:") }.substringAfter(":").trim()
+
+    val retry = CliRuntime.run(
+      listOf(
+        "--db",
+        fixture.dbPath.toString(),
+        "feature-task",
+        "retry-blocked",
+        workflowId,
+        "--phase",
+        "implement",
+        "--reason",
+        "Operator applied the external fix; retry the blocked phase.",
+      ),
+      fixture.context(RecordingPhaseLauncher()),
+    )
+    assertEquals(0, retry.exitCode, retry.stdout)
+    assertContains(retry.stdout, "workflow_status: running")
+    assertContains(retry.stdout, "current_step_id: implement")
+
+    val status = CliRuntime.run(
+      listOf("--db", fixture.dbPath.toString(), "feature-task", "status", workflowId),
+      fixture.context(RecordingPhaseLauncher()),
+    )
+    assertEquals(0, status.exitCode, status.stdout)
+    assertContains(status.stdout, "blocked: 0")
+    assertContains(status.stdout, "current_phase: implement")
+    assertContains(status.stdout, "phase: id=implement status=pending")
+
+    val resumedLauncher = RecordingPhaseLauncher()
+    val resumed = CliRuntime.run(
+      fixture.resumeCommand(workflowId),
+      fixture.context(resumedLauncher),
+    )
+    assertEquals(0, resumed.exitCode, resumed.stdout)
+    assertEquals(
+      listOf("implement", "review", "audit", "validate", "write_history", "commit_push", "pr"),
+      resumedLauncher.phaseOrder(),
+    )
   }
 
   @Test
@@ -1499,6 +1775,28 @@ private data class FeatureTaskRuntimeCliFixture(
     add(tempDir.toString())
     addAll(extra)
   }
+
+  fun resumeCommand(workflowId: String, selectionJson: String? = null): List<String> = buildList {
+    addAll(
+      listOf(
+        "--db",
+        dbPath.toString(),
+        "feature-task",
+        "resume",
+        workflowId,
+        "SKILL-650",
+        specPath.toString(),
+        "--repo-root",
+        tempDir.toString(),
+        "--agent",
+        "codex",
+      ),
+    )
+    selectionJson?.let {
+      add("--agent-addon-selection-json")
+      add(it)
+    }
+  }
 }
 
 private fun featureTaskCommand(fixture: FeatureTaskRuntimeCliFixture, command: String): List<String> = listOf(
@@ -1549,10 +1847,60 @@ private fun runtimeFixture(specFileName: String = "spec.md"): FeatureTaskRuntime
   )
 }
 
+private fun writeExecutionBudgetAddon(repo: Path) =
+  writeAgentAddon(repo, "execution-budget", "Execution budget fixture guidance.")
+
+private fun writeAgentAddon(repo: Path, slug: String, guidance: String) {
+  val root = repo.resolve("agent-addons/$slug")
+  Files.createDirectories(root)
+  Files.writeString(
+    root.resolve("agent-addon.yaml"),
+    """
+      |contract_version: "1.0"
+      |slug: $slug
+      |description: $slug fixture.
+      |agent_ids: [codex]
+      |consumers: [bill-feature]
+    """.trimMargin(),
+  )
+  Files.writeString(root.resolve("content.md"), "## Boundary\n\n$guidance\n")
+}
+
+private fun resolvedSelectionJson(
+  fixture: FeatureTaskRuntimeCliFixture,
+  receivingAgent: String,
+  vararg slugs: String = arrayOf("execution-budget"),
+): String {
+  val result = CliRuntime.run(
+    buildList {
+      addAll(
+        listOf(
+          "agent-addon",
+          "resolve-selection",
+          "--repo-root",
+          fixture.tempDir.toString(),
+          "--receiving-agent",
+          receivingAgent,
+          "--format",
+          "json",
+        ),
+      )
+      slugs.forEach { slug -> addAll(listOf("--token", "agent-addon:$slug")) }
+    },
+    fixture.context(RecordingPhaseLauncher()),
+  )
+  assertEquals(0, result.exitCode, result.stdout)
+  return result.stdout.trim()
+}
+
 private val PHASE_LINE = Regex("^Phase: ([a-z_-]+) ", setOf(RegexOption.MULTILINE))
 
 private fun phaseIdFromPrompt(prompt: String): String =
   PHASE_LINE.find(prompt)?.groupValues?.get(1) ?: error("Prompt did not contain a phase header: $prompt")
+
+private fun selectedAgentAddonSection(prompt: String): String = prompt
+  .substringAfter("## Selected agent add-ons")
+  .substringBefore("# Feature-task-runtime phase briefing")
 
 // Returns one schema-valid phase output per launch. The delivered prompt pins the runtime phase,
 // so the test double reads that phase id and echoes it back in the validated output.
@@ -1564,6 +1912,10 @@ private class RecordingPhaseLauncher(
   private val decomposePlan: Boolean = false,
 ) : AgentRunLauncher {
   val requests: MutableList<AgentRunLaunchRequest> = mutableListOf()
+
+  fun phaseOrder(): List<String> = requests.map {
+    phaseIdFromPrompt(it.skillRunRequest.promptOverride.orEmpty())
+  }
 
   override fun launch(request: AgentRunLaunchRequest): AgentRunLaunchOutcome {
     val launchIndex = requests.size
@@ -1787,6 +2139,15 @@ private class FakeRuntimeGitOperations(
           trackedDelta = "",
           ownedUntrackedPatches = "",
         ),
+      )
+
+      override fun recoverBaseline(
+        repoRoot: Path,
+        baseline: GoalSubtaskReviewBaseline,
+        expectedBranch: String,
+      ): GoalSubtaskReviewBaselineResult = GoalSubtaskReviewBaselineResult(
+        status = "error",
+        error = "Goal review baseline recovery is not used by this runtime CLI fixture.",
       )
     }
 }

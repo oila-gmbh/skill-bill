@@ -1,0 +1,229 @@
+package skillbill.agentaddon
+
+import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
+import skillbill.agentaddon.model.AgentAddonCatalogueEntry
+import skillbill.agentaddon.model.AgentAddonCatalogueInspection
+import skillbill.agentaddon.model.AgentAddonConsumer
+import skillbill.agentaddon.model.AgentAddonDeclaration
+import skillbill.agentaddon.model.InvalidAgentAddonCatalogueEntry
+import skillbill.error.MissingAgentAddonDeclarationError
+import skillbill.install.model.InstallAgent
+import java.nio.file.Files
+import java.nio.file.LinkOption
+import java.nio.file.NoSuchFileException
+import java.nio.file.Path
+import java.nio.file.attribute.BasicFileAttributes
+import kotlin.io.path.name
+
+private const val AGENT_ADDONS_DIRECTORY = "agent-addons"
+private const val MANIFEST_FILE = "agent-addon.yaml"
+private const val CONTENT_FILE = "content.md"
+private val allowedEntries = setOf(MANIFEST_FILE, CONTENT_FILE)
+
+fun discoverAgentAddons(
+  repoRoot: Path,
+  externalSourceRoots: List<Path> = emptyList(),
+  schemaValidator: AgentAddonSchemaValidator = AgentAddonSchemaValidator(),
+): List<AgentAddonDeclaration> {
+  val repoAddonRoot = repoRoot.toAbsolutePath().normalize().resolve(AGENT_ADDONS_DIRECTORY)
+  val sourceRoots = listOf(AgentAddonSourceRoot(repoAddonRoot, required = false)) +
+    externalSourceRoots.map { root -> AgentAddonSourceRoot(root.toAbsolutePath().normalize(), required = true) }
+  val candidates = sourceRoots.flatMap { sourceRoot ->
+    discoverAgentAddonRoot(sourceRoot, schemaValidator)
+  }
+  validateSourceCoherence(candidates)
+  return candidates.sortedBy { it.slug }
+}
+
+fun inspectAgentAddons(
+  repoRoot: Path,
+  externalSourceRoots: List<Path> = emptyList(),
+  schemaValidator: AgentAddonSchemaValidator = AgentAddonSchemaValidator(),
+): AgentAddonCatalogueInspection {
+  val roots = listOf(repoRoot.toAbsolutePath().normalize().resolve(AGENT_ADDONS_DIRECTORY)) +
+    externalSourceRoots.map { it.toAbsolutePath().normalize() }
+  val entries = mutableListOf<AgentAddonCatalogueEntry>()
+  val invalidEntries = mutableListOf<InvalidAgentAddonCatalogueEntry>()
+  roots.forEach { root ->
+    if (Files.exists(root)) {
+      Files.list(root).use { stream ->
+        stream.filter { !it.name.startsWith(".") }.sorted().forEach { sourceRoot ->
+          val manifest = sourceRoot.resolve(MANIFEST_FILE)
+          val content = sourceRoot.resolve(CONTENT_FILE)
+          runCatching { parseSource(sourceRoot, schemaValidator) }
+            .onSuccess { declaration ->
+              entries += declaration.toCatalogueEntry()
+            }
+            .onFailure { error ->
+              invalidEntries += InvalidAgentAddonCatalogueEntry(
+                identity = "agent-addon:${sourceRoot.name}",
+                slug = sourceRoot.name,
+                manifestPath = manifest,
+                contentPath = content,
+                diagnostics = listOf(error.message ?: "Agent add-on declaration is invalid."),
+              )
+            }
+        }
+      }
+    }
+  }
+  val incoherent = mutableMapOf<Path, MutableList<String>>()
+  entries.filter { it.manifestPath.parent.name != it.slug }.forEach { entry ->
+    incoherent.getOrPut(entry.manifestPath) { mutableListOf() } +=
+      "source directory '${entry.manifestPath.parent.name}' must match slug '${entry.slug}'"
+  }
+  entries.groupBy { it.slug }.filterValues { it.size > 1 }.forEach { (slug, duplicates) ->
+    duplicates.forEach { entry ->
+      incoherent.getOrPut(entry.manifestPath) { mutableListOf() } += "duplicate slug '$slug'"
+    }
+  }
+  entries.groupBy { it.manifestPath.toRealPath() }.filterValues { it.size > 1 }.forEach { (identity, duplicates) ->
+    duplicates.forEach { entry ->
+      incoherent.getOrPut(entry.manifestPath) { mutableListOf() } += "duplicate canonical source identity '$identity'"
+    }
+  }
+  entries.removeAll { entry ->
+    incoherent[entry.manifestPath]?.let { diagnostics ->
+      invalidEntries += InvalidAgentAddonCatalogueEntry(
+        identity = "agent-addon:${entry.manifestPath.parent.name}",
+        slug = entry.manifestPath.parent.name,
+        manifestPath = entry.manifestPath,
+        contentPath = entry.contentPath,
+        diagnostics = diagnostics,
+      )
+      true
+    } ?: false
+  }
+  return AgentAddonCatalogueInspection(entries.sortedBy { it.slug }, invalidEntries.sortedBy { it.slug })
+}
+
+internal fun AgentAddonDeclaration.toCatalogueEntry() = AgentAddonCatalogueEntry(
+  identity = "agent-addon:$slug",
+  slug = slug,
+  description = description,
+  agentIds = agents.map { it.id },
+  consumers = consumers.map { it.id },
+  manifestPath = manifestPath,
+  contentPath = contentPath,
+)
+
+fun requireAgentAddon(repoRoot: Path, slug: String): AgentAddonDeclaration =
+  discoverAgentAddons(repoRoot).firstOrNull { it.slug == slug }
+    ?: throw MissingAgentAddonDeclarationError(slug, repoRoot.resolve(AGENT_ADDONS_DIRECTORY).toString())
+
+private fun discoverAgentAddonRoot(
+  sourceRoot: AgentAddonSourceRoot,
+  schemaValidator: AgentAddonSchemaValidator,
+): List<AgentAddonDeclaration> {
+  val rootLabel = sourceRoot.path.toString()
+  return sourceOperation(rootLabel, "agent add-on root cannot be read") {
+    val rootAttributes = try {
+      Files.readAttributes(sourceRoot.path, BasicFileAttributes::class.java, LinkOption.NOFOLLOW_LINKS)
+    } catch (_: NoSuchFileException) {
+      null
+    }
+      ?: if (sourceRoot.required) {
+        invalid(rootLabel, "agent add-on root must exist")
+      } else {
+        return@sourceOperation emptyList()
+      }
+    if (!rootAttributes.isDirectory) {
+      invalid(rootLabel, "agent add-on root must be a directory")
+    }
+    val sourceDirectories = Files.list(sourceRoot.path).use { stream ->
+      stream.filter { !it.name.startsWith(".") }.sorted().toList()
+    }
+    sourceDirectories.map { parseSource(it, schemaValidator) }
+  }
+}
+
+private fun parseSource(sourceRoot: Path, validator: AgentAddonSchemaValidator): AgentAddonDeclaration {
+  val manifest = sourceRoot.resolve(MANIFEST_FILE)
+  val content = sourceRoot.resolve(CONTENT_FILE)
+  val sourceLabel = manifest.toString()
+  return sourceOperation(sourceLabel, "manifest cannot be parsed") {
+    if (!Files.isDirectory(sourceRoot)) invalid(sourceLabel, "source entry must be a directory")
+    requireRegularFile(manifest, sourceLabel)
+    requireRegularFile(content, sourceLabel)
+    val extras = unexpectedEntries(sourceRoot)
+    if (extras.isNotEmpty()) {
+      invalid(
+        sourceLabel,
+        "only $MANIFEST_FILE and $CONTENT_FILE are allowed; found ${extras.joinToString()}",
+      )
+    }
+    val parsed: Any? = YAMLMapper().readValue(Files.readString(manifest), Any::class.java)
+    if (parsed !is Map<*, *>) invalid(sourceLabel, "manifest must be a top-level mapping")
+    @Suppress("UNCHECKED_CAST")
+    val values = parsed as Map<String, Any?>
+    validator.validate(values, sourceLabel)
+    val slug = values.string("slug", sourceLabel)
+    val description = values.string("description", sourceLabel)
+    val violations = mutableListOf<String>()
+    if (!description.isValidDescription()) {
+      violations += "description must be non-blank, trimmed, and single-line"
+    }
+    val agentIds = values.stringList("agent_ids", sourceLabel)
+    val agents = agentIds.map { id ->
+      runCatching { InstallAgent.fromId(id) }.getOrElse {
+        violations += "unknown agent id '$id'; supported: ${InstallAgent.supportedIds.joinToString()}"
+        null
+      }
+    }.filterNotNull()
+    val consumerIds = values.stringList("consumers", sourceLabel)
+    val consumers = consumerIds.map { id ->
+      runCatching { AgentAddonConsumer.fromId(id) }.getOrElse {
+        violations += it.message ?: "unknown consumer '$id'"
+        null
+      }
+    }.filterNotNull()
+    if (violations.isNotEmpty()) invalid(sourceLabel, violations.joinToString("; "))
+    AgentAddonDeclaration(
+      contractVersion = values.string("contract_version", sourceLabel),
+      slug = slug,
+      description = description,
+      agents = agents,
+      consumers = consumers,
+      addonRoot = sourceRoot,
+      manifestPath = manifest,
+      contentPath = content,
+      canonicalSourceIdentity = manifest.toRealPath(),
+    )
+  }
+}
+
+private fun validateSourceCoherence(candidates: List<AgentAddonDeclaration>) {
+  val violations = mutableListOf<String>()
+  candidates.filter { it.addonRoot.name != it.slug }.forEach { declaration ->
+    violations += "${declaration.manifestPath}: source directory '${declaration.addonRoot.name}' " +
+      "must match slug '${declaration.slug}'"
+  }
+  candidates.groupBy { it.slug }.filterValues { it.size > 1 }.forEach { (slug, declarations) ->
+    violations += "duplicate slug '$slug' declared by " +
+      declarations.joinToString { it.manifestPath.toString() }
+  }
+  candidates.groupBy { it.canonicalSourceIdentity }.filterValues { it.size > 1 }.forEach { (identity, _) ->
+    violations += "duplicate canonical source identity '$identity'"
+  }
+  if (violations.isNotEmpty()) invalid(AGENT_ADDONS_DIRECTORY, violations.sorted().joinToString("; "))
+}
+
+private data class AgentAddonSourceRoot(
+  val path: Path,
+  val required: Boolean,
+)
+
+private fun unexpectedEntries(sourceRoot: Path): List<String> = Files.list(sourceRoot).use { stream ->
+  stream.map { it.name }.filter { it !in allowedEntries }.sorted().toList()
+}
+
+private fun String.isValidDescription(): Boolean {
+  if (isBlank() || this != trim()) return false
+  return '\n' !in this && '\r' !in this
+}
+
+private fun requireRegularFile(path: Path, sourceLabel: String) {
+  if (!Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)) {
+    invalid(sourceLabel, "${path.name} must be a regular file")
+  }
+}

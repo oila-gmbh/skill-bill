@@ -40,7 +40,7 @@ class RuntimeRepoBrowserServiceTest {
       },
     )
     assertTrue(flattened.any { it.kind == TreeItemKind.ADD_ON && it.label == "tracing-otel" })
-    val addonGroup = tree.single { it.kind == TreeItemKind.GROUP && it.label == "Add-ons" }
+    val addonGroup = tree.single { it.kind == TreeItemKind.GROUP && it.label == "Platform Add-ons" }
     val kotlinAddons = addonGroup.children.single { it.kind == TreeItemKind.GROUP && it.label == "kotlin" }
     assertTrue(kotlinAddons.children.any { it.kind == TreeItemKind.ADD_ON && it.label == "tracing-otel" })
     assertTrue(flattened.any { it.kind == TreeItemKind.NATIVE_AGENT && it.label == "agent" })
@@ -141,6 +141,76 @@ class RuntimeRepoBrowserServiceTest {
   }
 
   @Test
+  fun `agent add-on selection exposes complete read-only metadata and reachable manifest`() {
+    val repo = seedRepo("agent-addon-selection")
+    writeAgentAddon(repo, "review-compass")
+    val service = RuntimeRepoBrowserService()
+
+    val session = service.open(repo.toString())
+    val group = service.treeFor(session).single { it.label == "Agent Add-ons" }
+    val addon = group.children.single { it.label == "review-compass" }
+    val detail = service.describeSelection(addon.id)
+
+    assertEquals(TreeItemKind.AGENT_ADDON, addon.kind)
+    assertFalse(addon.editable)
+    assertEquals("review-compass description that must remain fully visible.", detail.description)
+    assertEquals(listOf("codex"), detail.supportedAgents)
+    assertEquals(listOf("bill-feature"), detail.consumers)
+    assertEquals("agent-addons/review-compass/content.md", detail.authoredPath)
+    assertEquals("agent-addons/review-compass/agent-addon.yaml", detail.manifestPath)
+    assertEquals("valid", detail.status)
+    assertTrue(detail.content.orEmpty().contains("review-compass guidance."))
+    val manifest = addon.children.single()
+    assertEquals("agent-addon.yaml", manifest.label)
+    assertEquals("agent-addons/review-compass/agent-addon.yaml", manifest.authoredPath)
+    assertTrue(service.describeSelection(manifest.id).content.orEmpty().contains("slug: review-compass"))
+  }
+
+  @Test
+  fun `reopen refreshes added edited removed and invalid agent add-ons without stale catalogue entries`() {
+    val repo = seedRepo("agent-addon-refresh")
+    writeAgentAddon(repo, "alpha-helper")
+    val service = RuntimeRepoBrowserService()
+
+    service.open(repo.toString())
+    writeAgentAddon(repo, "beta-helper")
+    Files.writeString(repo.resolve("agent-addons/alpha-helper/content.md"), "## Guidance\n\nEdited alpha guidance.\n")
+    val refreshed = service.open(repo.toString())
+    val refreshedGroup = service.treeFor(refreshed).single { it.label == "Agent Add-ons" }
+    assertEquals(listOf("alpha-helper", "beta-helper"), refreshedGroup.children.map { it.label })
+    assertTrue(service.describeSelection(refreshedGroup.children.first().id).content.orEmpty().contains("Edited alpha"))
+
+    repo.resolve("agent-addons/alpha-helper").toFile().deleteRecursively()
+    Files.writeString(repo.resolve("agent-addons/beta-helper/agent-addon.yaml"), "contract_version: [")
+    val invalidated = service.open(repo.toString())
+    val invalidatedGroup = service.treeFor(invalidated).single { it.label == "Agent Add-ons" }
+    assertEquals(listOf("beta-helper"), invalidatedGroup.children.map { it.label })
+    assertEquals("invalid", invalidatedGroup.children.single().status)
+    assertTrue(service.describeSelection(invalidatedGroup.children.single().id).diagnostics.isNotEmpty())
+  }
+
+  @Test
+  fun `agent add-on tree keeps valid declarations beside invalid catalogue identities`() {
+    val repo = seedRepo("agent-addon-mixed")
+    writeAgentAddon(repo, "valid-addon")
+    writeAgentAddon(repo, "wrong-directory")
+    Files.writeString(
+      repo.resolve("agent-addons/wrong-directory/agent-addon.yaml"),
+      Files.readString(repo.resolve("agent-addons/wrong-directory/agent-addon.yaml"))
+        .replace("slug: wrong-directory", "slug: declared-slug"),
+    )
+    val service = RuntimeRepoBrowserService()
+
+    val session = service.open(repo.toString())
+    val group = service.treeFor(session).single { it.label == "Agent Add-ons" }
+
+    assertEquals(listOf("valid-addon", "wrong-directory"), group.children.map { it.label })
+    assertEquals("valid", group.children.first().status)
+    assertEquals("invalid", group.children.last().status)
+    assertTrue(service.describeSelection(group.children.last().id).diagnostics.any { it.contains("source directory") })
+  }
+
+  @Test
   fun `selected governed skill loads full editable content document`() {
     val repo = seedRepo("authoring-document")
     val service = RuntimeRepoBrowserService()
@@ -178,7 +248,7 @@ class RuntimeRepoBrowserServiceTest {
     assertEquals("{\n  \"external_addon_sources\": []\n}\n", document.text)
     assertFalse(Files.exists(configPath))
     assertTrue(
-      tree.single { it.kind == TreeItemKind.GROUP && it.label == "Add-ons" }.children.none {
+      tree.single { it.kind == TreeItemKind.GROUP && it.label == "Platform Add-ons" }.children.none {
         it.kind == TreeItemKind.CONFIG
       },
     )
@@ -284,7 +354,7 @@ class RuntimeRepoBrowserServiceTest {
     service.externalAddonSourcesResolver = { listOf(ExternalAddonSource(externalDir, "kotlin")) }
     val session = service.open(repo.toString())
 
-    val addonGroup = service.treeFor(session).single { it.kind == TreeItemKind.GROUP && it.label == "Add-ons" }
+    val addonGroup = service.treeFor(session).single { it.kind == TreeItemKind.GROUP && it.label == "Platform Add-ons" }
     val kotlinAddons = addonGroup.children.single { it.kind == TreeItemKind.GROUP && it.label == "kotlin" }
     val externalItem = kotlinAddons.children.single { it.label == "observability" }
     val document = service.loadDocument(session, externalItem.id)
@@ -313,7 +383,7 @@ class RuntimeRepoBrowserServiceTest {
     service.externalAddonSourcesResolver = { listOf(ExternalAddonSource(externalDir, "kotlin")) }
     val session = service.open(repo.toString())
 
-    val addonGroup = service.treeFor(session).single { it.kind == TreeItemKind.GROUP && it.label == "Add-ons" }
+    val addonGroup = service.treeFor(session).single { it.kind == TreeItemKind.GROUP && it.label == "Platform Add-ons" }
     val kotlinAddons = addonGroup.children.single { it.kind == TreeItemKind.GROUP && it.label == "kotlin" }
     val tracingItems = kotlinAddons.children.filter { it.label == "tracing-otel" }
 
@@ -328,7 +398,7 @@ class RuntimeRepoBrowserServiceTest {
     service.externalAddonSourcesResolver = { throw IllegalStateException("bad external config") }
 
     val session = service.open(repo.toString())
-    val addonGroup = service.treeFor(session).single { it.kind == TreeItemKind.GROUP && it.label == "Add-ons" }
+    val addonGroup = service.treeFor(session).single { it.kind == TreeItemKind.GROUP && it.label == "Platform Add-ons" }
     val kotlinAddons = addonGroup.children.single { it.kind == TreeItemKind.GROUP && it.label == "kotlin" }
     val packOwned = kotlinAddons.children.single { it.label == "tracing-otel" }
 
@@ -763,6 +833,22 @@ class RuntimeRepoBrowserServiceTest {
         |$body
       """.trimMargin(),
     )
+  }
+
+  private fun writeAgentAddon(repo: Path, slug: String) {
+    val root = repo.resolve("agent-addons/$slug")
+    Files.createDirectories(root)
+    Files.writeString(
+      root.resolve("agent-addon.yaml"),
+      """
+        |contract_version: "1.0"
+        |slug: $slug
+        |description: $slug description that must remain fully visible.
+        |agent_ids: [codex]
+        |consumers: [bill-feature]
+      """.trimMargin(),
+    )
+    Files.writeString(root.resolve("content.md"), "## Guidance\n\n$slug guidance.\n")
   }
 
   private fun writeQualityCheckWithGeneratedSupportPointer(repo: Path) {

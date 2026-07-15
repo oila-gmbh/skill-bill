@@ -1293,6 +1293,15 @@ private object GoalTestWorkflowGitOperations : WorkflowGitOperations, GoalSubtas
 
       override fun buildInput(repoRoot: Path, baseline: GoalSubtaskReviewBaseline, expectedBranch: String): Nothing =
         error("Goal review input is not used by this goal CLI fixture.")
+
+      override fun recoverBaseline(
+        repoRoot: Path,
+        baseline: GoalSubtaskReviewBaseline,
+        expectedBranch: String,
+      ): GoalSubtaskReviewBaselineResult = GoalSubtaskReviewBaselineResult(
+        status = "error",
+        error = "Goal review baseline recovery is not used by this goal CLI fixture.",
+      )
     }
 
   override fun createCommit(repoRoot: Path, message: String): WorkflowGitOperationResult =

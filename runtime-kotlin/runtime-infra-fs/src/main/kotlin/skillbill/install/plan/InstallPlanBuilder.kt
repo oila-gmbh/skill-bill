@@ -8,29 +8,14 @@ import skillbill.install.model.InstallAgentTargetSource
 import skillbill.install.model.InstallPlan
 import skillbill.install.model.InstallPlanRequest
 import skillbill.install.model.InstallPlanSkill
-import skillbill.install.model.InstallPlanSkillKind
 import skillbill.install.model.InstallPlatformPackSnapshot
 import skillbill.install.model.InstallPlatformSkillMaterializationRequest
 import skillbill.install.model.InstallPolicyInput
-import skillbill.install.model.InstallStagingIntent
-import skillbill.install.model.InstallStagingPathIntent
 import skillbill.install.model.validateInstallPlanWireSnapshot
 import skillbill.install.policy.InstallPlanPolicy
-import skillbill.install.staging.GeneratedSupportPointer
-import skillbill.install.staging.InternalStagingPreparation
-import skillbill.install.staging.applicablePointers
-import skillbill.install.staging.authoredFilesFor
-import skillbill.install.staging.computeInstallContentHash
-import skillbill.install.staging.generatedSupportPointersFor
-import skillbill.install.staging.installedSkillStagingDir
-import skillbill.install.staging.installedSkillsCacheRoot
-import skillbill.install.staging.prepareInternalStaging
 import skillbill.install.support.claudeSkillTargets
 import skillbill.ports.install.plan.model.InstallPlanningFacts
 import skillbill.scaffold.model.PlatformManifest
-import skillbill.scaffold.model.PointerSpec
-import java.nio.file.Files
-import java.nio.file.LinkOption
 import java.nio.file.Path
 
 internal fun buildInstallPlan(request: InstallPlanRequest): InstallPlan {
@@ -39,7 +24,7 @@ internal fun buildInstallPlan(request: InstallPlanRequest): InstallPlan {
   val policyInput = buildInstallPolicyInput(request, platformManifests)
   val draft = InstallPlanPolicy.buildPlanDraft(policyInput)
   validateInstallPlanInternalSkills(draft.skills)
-  val staging = buildStagingIntent(request, draft.skills, platformManifests)
+  val staging = buildInstallStagingIntent(request, draft.skills, platformManifests)
   val plan = draft.toInstallPlan(staging)
   // SKILL-48 Subtask 2b: validate the install-plan wire shape at the
   // builder seam. The CLI emission boundary validates again — both
@@ -144,130 +129,6 @@ internal fun materializeSelectedPlatformSkills(
       },
       baselineLayers = manifest.codeReviewComposition?.baselineLayers.orEmpty(),
     )
-  }
-}
-
-internal fun buildInstallStagingIntent(
-  request: InstallPlanRequest,
-  draftSkills: List<InstallPlanSkill>,
-  platformManifests: List<PlatformManifest>,
-): InstallStagingIntent {
-  return buildStagingIntent(request, draftSkills, platformManifests)
-}
-
-private fun buildStagingIntent(
-  request: InstallPlanRequest,
-  skills: List<InstallPlanSkill>,
-  platformManifests: List<PlatformManifest>,
-): InstallStagingIntent {
-  val stagingRoot = installedSkillsCacheRoot(request.home)
-  val selectedPackSkills = skills.filter { skill ->
-    skill.kind == InstallPlanSkillKind.PLATFORM_PACK && skill.internalFor != null
-  }
-  val selectedPlatformSlugs = selectedPlatformSlugs(skills, platformManifests)
-  val selectedPlatformManifests = platformManifests.filter { manifest -> manifest.slug in selectedPlatformSlugs }
-  return InstallStagingIntent(
-    root = stagingRoot,
-    skillPaths = skills.filter { skill -> skill.internalFor == null }.map { skill ->
-      val applicablePointers = applicablePointers(request.repoRoot, skill.sourceDir, platformManifests)
-      val supportPointers = generatedSupportPointersFor(
-        repoRoot = request.repoRoot,
-        sourceSkillDir = skill.sourceDir,
-        skillName = skill.name,
-        skillsRoot = request.targetPaths.skillsRoot,
-        selectedPlatformManifests = selectedPlatformManifests,
-      )
-      val internal = prepareInternalStaging(
-        InternalStagingPreparation(
-          repoRoot = request.repoRoot,
-          parentSourceDir = skill.sourceDir,
-          parentSkillName = skill.name,
-          skillsRoot = request.targetPaths.skillsRoot,
-          selectedPackSkills = selectedPackSkills,
-          platformManifests = platformManifests,
-          selectedPlatformManifests = selectedPlatformManifests,
-          parentSupportPointers = supportPointers,
-          parentPointerNames = applicablePointers.map { (_, pointer) -> pointer.name }.toSet(),
-        ),
-      )
-      validatePointerInputs(request.repoRoot, skill.sourceDir, applicablePointers, internal.supportPointers)
-      val authored = authoredFilesFor(
-        skill.sourceDir,
-        applicablePointers,
-        internal.supportPointers,
-        internal.sidecarNames,
-      )
-      val contentHash = computeInstallContentHash(
-        sourceSkillDir = skill.sourceDir,
-        authored = authored,
-        applicablePointers = applicablePointers,
-        generatedSupportPointers = internal.supportPointers,
-        internalChildren = internal.children,
-      )
-      InstallStagingPathIntent(
-        skillName = skill.name,
-        sourceDir = skill.sourceDir,
-        stagingRoot = stagingRoot,
-        stagingDir = installedSkillStagingDir(request.home, skill.sourceDir, contentHash),
-        contentHash = contentHash,
-      )
-    },
-  )
-}
-
-private fun validatePointerInputs(
-  repoRoot: Path,
-  sourceSkillDir: Path,
-  applicablePointers: List<Pair<PlatformManifest, PointerSpec>>,
-  supportPointers: List<GeneratedSupportPointer>,
-) {
-  val resolvedRepoRoot = repoRoot.toAbsolutePath().normalize()
-  val realRepoRoot = repoRoot.toRealPath()
-  val resolvedSource = sourceSkillDir.toAbsolutePath().normalize()
-  applicablePointers.forEach { (manifest, spec) ->
-    val resolvedPackRoot = manifest.packRoot.toAbsolutePath().normalize()
-    val pointerDir = resolvedPackRoot.resolve(spec.skillRelativeDir).normalize()
-    val pointerFile = pointerDir.resolve(spec.name).normalize()
-    val targetFile = resolvedRepoRoot.resolve(spec.target).normalize()
-    require(targetFile.startsWith(resolvedRepoRoot)) {
-      "Pointer '${spec.name}' target '${spec.target}' escapes repoRoot '$resolvedRepoRoot'."
-    }
-    require(pointerFile.startsWith(resolvedRepoRoot)) {
-      "Pointer '${spec.name}' under '${spec.skillRelativeDir}' escapes repoRoot '$resolvedRepoRoot'."
-    }
-    require(Files.isRegularFile(targetFile, LinkOption.NOFOLLOW_LINKS)) {
-      "Pointer '${spec.name}' under '${spec.skillRelativeDir}' targets '${spec.target}' " +
-        "which does not exist at '$targetFile'."
-    }
-    val realTargetFile = targetFile.toRealPath()
-    require(realTargetFile.startsWith(realRepoRoot)) {
-      "Pointer '${spec.name}' target '${spec.target}' escapes repoRoot '$resolvedRepoRoot' " +
-        "through real path '$realTargetFile'."
-    }
-    require(pointerFile != targetFile) {
-      "Pointer '${spec.name}' under '${spec.skillRelativeDir}' resolves to itself at '$pointerFile'."
-    }
-  }
-  supportPointers.forEach { pointer ->
-    val targetFile = pointer.target.toAbsolutePath().normalize()
-    val pointerFile = resolvedSource.resolve(pointer.name).normalize()
-    require(pointerFile.startsWith(resolvedSource)) {
-      "Supporting pointer '${pointer.name}' staging path '$pointerFile' escapes source skill dir '$resolvedSource'."
-    }
-    require(targetFile.startsWith(resolvedRepoRoot)) {
-      "Supporting pointer '${pointer.name}' target '$targetFile' escapes repoRoot '$resolvedRepoRoot'."
-    }
-    require(Files.isRegularFile(targetFile, LinkOption.NOFOLLOW_LINKS)) {
-      "Supporting pointer '${pointer.name}' targets '$targetFile' which does not exist."
-    }
-    val realTargetFile = targetFile.toRealPath()
-    require(realTargetFile.startsWith(realRepoRoot)) {
-      "Supporting pointer '${pointer.name}' target '$targetFile' escapes repoRoot '$resolvedRepoRoot' " +
-        "through real path '$realTargetFile'."
-    }
-    require(pointerFile != targetFile) {
-      "Supporting pointer '${pointer.name}' resolves to itself at '$targetFile'."
-    }
   }
 }
 

@@ -100,6 +100,7 @@ class RuntimeModuleSmokeTest {
   private companion object {
     val expectedSubsystemPackages: Set<String> =
       setOf(
+        "skillbill.agentaddon",
         "skillbill.application",
         "skillbill.boundary",
         "skillbill.cli",

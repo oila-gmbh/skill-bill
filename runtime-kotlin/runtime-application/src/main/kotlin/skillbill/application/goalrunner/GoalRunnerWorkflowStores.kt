@@ -75,6 +75,7 @@ import skillbill.workflow.model.WorkflowStepState
 import skillbill.workflow.model.WorkflowUpdateInput
 import skillbill.workflow.model.appendBoundedHistoryBySequence
 import skillbill.workflow.model.goalObservabilityLatestEventFromArtifacts
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
@@ -344,6 +345,18 @@ class WorkflowGoalRunnerManifestStore(
             GOAL_REVIEW_POLICY_ARTIFACT_KEY to buildMap {
               put("code_review_mode", policy.codeReviewMode.wireValue)
               policy.parallelReviewAgent?.let { put("parallel_review_agent", it) }
+              if (policy.agentAddonSelection.entries.isNotEmpty()) {
+                put(
+                  "agent_addon_selection",
+                  policy.agentAddonSelection.entries.map { entry ->
+                    linkedMapOf(
+                      "slug" to entry.slug,
+                      "source_identity" to entry.sourceIdentity,
+                      "content_sha256" to entry.contentSha256,
+                    )
+                  },
+                )
+              }
             },
           ),
           sessionId = record.sessionId.orEmpty(),
@@ -494,7 +507,7 @@ private fun reviewPolicyFromArtifacts(artifacts: Map<String, Any?>): GoalRunnerR
   val raw = artifacts[GOAL_REVIEW_POLICY_ARTIFACT_KEY] ?: return null
   val policy = JsonSupport.anyToStringAnyMap(raw)
     ?: error("Goal review policy artifact '$GOAL_REVIEW_POLICY_ARTIFACT_KEY' must be a map.")
-  val allowedKeys = setOf("code_review_mode", "parallel_review_agent")
+  val allowedKeys = setOf("code_review_mode", "parallel_review_agent", "agent_addon_selection")
   policy.keys.forEach { key ->
     require(key in allowedKeys) {
       "Goal review policy artifact '$GOAL_REVIEW_POLICY_ARTIFACT_KEY' has unsupported field '$key'."
@@ -513,7 +526,29 @@ private fun reviewPolicyFromArtifacts(artifacts: Map<String, Any?>): GoalRunnerR
       ?: error("Goal review policy artifact has a blank parallel_review_agent.")
     else -> error("Goal review policy artifact parallel_review_agent must be a string.")
   }
-  return GoalRunnerReviewPolicy(codeReviewMode, parallelReviewAgent)
+  val agentAddonSelection = decodeGoalAgentAddonSelection(policy["agent_addon_selection"])
+  return GoalRunnerReviewPolicy(codeReviewMode, parallelReviewAgent, agentAddonSelection)
+}
+
+private fun decodeGoalAgentAddonSelection(raw: Any?): skillbill.agentaddon.model.AgentAddonSelection {
+  val values = raw ?: return skillbill.agentaddon.model.AgentAddonSelection()
+  val entries = values as? List<*> ?: error("Goal review policy agent_addon_selection must be a list.")
+  return skillbill.agentaddon.model.AgentAddonSelection(
+    entries.mapIndexed { index, value ->
+      val entry = JsonSupport.anyToStringAnyMap(value)
+        ?: error("Goal review policy agent_addon_selection entry $index must be a map.")
+      check(entry.keys == setOf("slug", "source_identity", "content_sha256")) {
+        "Goal review policy agent_addon_selection entry $index has invalid fields."
+      }
+      skillbill.agentaddon.model.PersistedAgentAddonSelectionEntry(
+        entry["slug"] as? String ?: error("Goal review policy add-on entry $index is missing slug."),
+        entry["source_identity"] as? String
+          ?: error("Goal review policy add-on entry $index is missing source_identity."),
+        entry["content_sha256"] as? String
+          ?: error("Goal review policy add-on entry $index is missing content_sha256."),
+      )
+    },
+  )
 }
 
 private data class SavedManifestProjection(
@@ -1219,7 +1254,7 @@ private fun validatedGoalReviewPasses(
     val rawResult = review.rawResults.getValue(pass.passNumber.toString())
     val output = phaseOutputValidator.validateAndReadPhaseOutput(
       rawResult,
-      "goal review pass ${pass.passNumber}",
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
     )
     val findings = GoalSubtaskReviewSummaryReducer.fromOutput(output)
     val outcome = GoalSubtaskReviewSummaryReducer.outcomeFor(output, findings)

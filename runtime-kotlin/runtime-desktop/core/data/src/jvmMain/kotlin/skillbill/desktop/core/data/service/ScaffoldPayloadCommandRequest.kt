@@ -60,6 +60,15 @@ internal fun ScaffoldPayload.toCommandRequest(): ScaffoldCommandRequest = when (
     scaffoldPayloadVersion = ScaffoldPayload.SCAFFOLD_PAYLOAD_VERSION,
     repoRoot = repoRoot,
   )
+  is ScaffoldPayload.AgentAddon -> ScaffoldCommandRequest.AgentAddon(
+    slug = slug,
+    description = description,
+    agentIds = agentIds,
+    consumers = consumers,
+    contentBody = contentBody,
+    scaffoldPayloadVersion = ScaffoldPayload.SCAFFOLD_PAYLOAD_VERSION,
+    repoRoot = repoRoot,
+  )
 }
 
 /**

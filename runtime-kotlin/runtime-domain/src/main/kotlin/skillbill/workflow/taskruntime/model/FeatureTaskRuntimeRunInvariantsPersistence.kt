@@ -1,5 +1,7 @@
 package skillbill.workflow.taskruntime.model
 
+import skillbill.agentaddon.model.AgentAddonSelection
+import skillbill.agentaddon.model.PersistedAgentAddonSelectionEntry
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.workflow.model.CodeReviewExecutionMode
@@ -17,6 +19,13 @@ fun FeatureTaskRuntimeRunInvariants.toArtifactMap(): Map<String, Any?> = linkedM
   "acceptance_criteria" to acceptanceCriteria,
   "mandates_and_overrides" to mandatesAndOverrides,
   "code_review_mode" to codeReviewMode.wireValue,
+  "agent_addon_selection" to agentAddonSelection.entries.map { entry ->
+    linkedMapOf(
+      "slug" to entry.slug,
+      "source_identity" to entry.sourceIdentity,
+      "content_sha256" to entry.contentSha256,
+    )
+  },
 )
 
 /** Strict decode of the durable run-invariants artifact. */
@@ -28,7 +37,47 @@ fun featureTaskRuntimeRunInvariantsFromArtifactMap(raw: Map<String, Any?>): Feat
     acceptanceCriteria = raw.requireInvariantStringListField("acceptance_criteria"),
     mandatesAndOverrides = raw.requireInvariantStringListField("mandates_and_overrides"),
     codeReviewMode = raw.requireCodeReviewModeField("code_review_mode"),
+    agentAddonSelection = raw.optionalAgentAddonSelection(),
   )
+
+private fun Map<String, Any?>.optionalAgentAddonSelection(): AgentAddonSelection {
+  val value = this["agent_addon_selection"] ?: return AgentAddonSelection()
+  val entries = value as? List<*>
+    ?: runInvariantSchemaError("Feature-task-runtime artifact field 'agent_addon_selection' must decode to a list.")
+  return try {
+    AgentAddonSelection(
+      entries.mapIndexed { index, rawEntry ->
+        val entry = rawEntry as? Map<*, *>
+          ?: runInvariantSchemaError("Agent add-on selection entry $index must decode to a map.")
+        val keys = entry.keys.map {
+          it as? String
+            ?: runInvariantSchemaError("Agent add-on selection entry $index has a non-string field.")
+        }.toSet()
+        val expected = setOf("slug", "source_identity", "content_sha256")
+        if (keys != expected) {
+          runInvariantSchemaError(
+            "Agent add-on selection entry $index fields must be exactly ${expected.sorted()}.",
+          )
+        }
+        PersistedAgentAddonSelectionEntry(
+          slug = entry["slug"] as? String ?: runInvariantSchemaError(
+            "Agent add-on selection entry $index slug is invalid.",
+          ),
+          sourceIdentity = entry["source_identity"] as? String
+            ?: runInvariantSchemaError(
+              "Agent add-on selection entry $index source_identity is invalid.",
+            ),
+          contentSha256 = entry["content_sha256"] as? String
+            ?: runInvariantSchemaError(
+              "Agent add-on selection entry $index content_sha256 is invalid.",
+            ),
+        )
+      },
+    )
+  } catch (error: IllegalArgumentException) {
+    throw InvalidWorkflowStateSchemaError("Agent add-on selection is invalid: ${error.message}", error)
+  }
+}
 
 private fun Map<String, Any?>.requireInvariantStringField(key: String): String {
   val value = this[key] ?: runInvariantSchemaError("Feature-task-runtime artifact map is missing field '$key'.")

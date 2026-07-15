@@ -55,6 +55,7 @@ import skillbill.cli.model.CliFormat
 import skillbill.contracts.JsonSupport
 import skillbill.error.SkillBillRuntimeException
 import skillbill.install.model.ExternalAddonSource
+import skillbill.install.model.InstallAgent
 import skillbill.ports.scaffold.model.ScaffoldRenderResult
 import skillbill.scaffold.model.command.ScaffoldCommandRequest
 import skillbill.scaffold.model.command.isRetiredPartialScaffoldCommandKindAlias
@@ -175,7 +176,7 @@ class InstallTopLevelCommands(
 class ListSkillsCommand(
   private val state: CliRunState,
   private val scaffoldService: ScaffoldService,
-) : DocumentedCliCommand("list", "List content-managed skills and their authoring status.") {
+) : DocumentedCliCommand("list", "List governed skills and agent add-ons with their authoring and validation status.") {
   private val repoRoot by option(
     "--repo-root",
     help = "Repo root to inspect. Defaults to the current working directory.",
@@ -183,7 +184,7 @@ class ListSkillsCommand(
     .default(".")
   private val skillNames by option(
     "--skill-name",
-    help = "Optional content-managed skill name to include. Repeat to target multiple skills.",
+    help = "Optional governed skill or agent-addon:<slug> identity. Repeat to target multiple entries.",
   ).multiple()
   private val format by formatOption()
 
@@ -201,7 +202,7 @@ class ShowSkillCommand(
   private val scaffoldService: ScaffoldService,
 ) : DocumentedCliCommand(
   "show",
-  "Show one content-managed skill with section status, drift, and recommended next commands.",
+  "Show one governed skill or agent-addon:<slug> with authored source and metadata.",
 ) {
   private val skillName by argument(help = "Governed skill name to inspect.")
   private val repoRoot by option(
@@ -716,7 +717,7 @@ private fun collectAssistedScaffoldWizardPayload(
 ): Map<String, Any?> {
   state.liveStdout(
     "Skill Bill assisted scaffold wizard\n" +
-      "Kind: 1 horizontal, 2 platform-pack, 3 add-on\n\n",
+      "Kind: 1 horizontal, 2 platform-pack, 3 add-on, 4 agent-addon\n\n",
   )
   val kind = normalizeWizardKind(promptRequired(state, "Kind"))
   val agent =
@@ -739,12 +740,13 @@ private fun collectScaffoldWizardPayload(
 ): Map<String, Any?> {
   state.liveStdout(
     "Skill Bill scaffold wizard\n" +
-      "Kind: 1 horizontal, 2 platform-pack, 3 add-on\n\n",
+      "Kind: 1 horizontal, 2 platform-pack, 3 add-on, 4 agent-addon\n\n",
   )
   return when (val kind = normalizeWizardKind(promptRequired(state, "Kind"))) {
     "horizontal" -> horizontalWizardPayload(state)
     "platform-pack" -> platformPackWizardPayload(state, scaffoldCatalogService.platformPackPresets())
     "add-on" -> addOnWizardPayload(state)
+    "agent-addon" -> agentAddonWizardPayload(state)
     else -> throw IllegalArgumentException("Unsupported scaffold wizard kind '$kind'.")
   }
 }
@@ -753,6 +755,15 @@ private fun horizontalWizardPayload(state: CliRunState): Map<String, Any?> = bui
   putScaffoldBase("horizontal")
   put("name", normalizeBillSkillName(promptRequired(state, "Skill name")))
   promptOptional(state, "Description").ifNotBlank { description -> put("description", description) }
+}
+
+private fun agentAddonWizardPayload(state: CliRunState): Map<String, Any?> = buildMap {
+  putScaffoldBase("agent-addon")
+  put("slug", promptRequired(state, "Agent add-on slug"))
+  put("description", promptRequired(state, "Description"))
+  state.liveStdout("Supported agents: ${InstallAgent.supportedIds.joinToString(", ")}\n")
+  put("agent_ids", requiredCommaSeparated(state, "Agent IDs (comma-separated)"))
+  put("consumers", requiredCommaSeparated(state, "Consumers (comma-separated, supported: bill-feature)"))
 }
 
 private fun platformPackWizardPayload(
@@ -812,12 +823,18 @@ private fun normalizeWizardKind(value: String): String = when (value.trim().lowe
   "1", "horizontal", "skill" -> "horizontal"
   "2", "platform", "platform-pack", "pack" -> "platform-pack"
   "3", "add-on", "addon" -> "add-on"
+  "4", "agent-addon", "agent-addon-skill" -> "agent-addon"
   else -> if (isRetiredPartialScaffoldCommandKindAlias(value)) {
     rejectRetiredPartialScaffoldCommandKind(value)
   } else {
     value
   }
 }
+
+private fun requiredCommaSeparated(state: CliRunState, label: String): List<String> =
+  parseCommaSeparated(promptRequired(state, label)).also { values ->
+    require(values.isNotEmpty()) { "Missing required scaffold wizard value: $label." }
+  }
 
 private fun normalizeAddOnLocationMode(value: String): String = when (value.trim().lowercase()) {
   "1", "native", "pack", "pack-owned" -> "native"

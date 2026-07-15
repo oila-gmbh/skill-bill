@@ -22,6 +22,44 @@ class GeneratedArtifactGuardTest {
   }
 
   @Test
+  fun `guard rejects generated agent addon output`() {
+    val repoRoot = tempRoot.resolve("agent-addon-output")
+    val addon = repoRoot.resolve("agent-addons/review-helper")
+    Files.createDirectories(addon)
+    Files.writeString(addon.resolve("SKILL.md"), "generated")
+
+    val report = validateGeneratedArtifactGuard(repoRoot)
+
+    assertFalse(report.passed)
+    assertTrue(report.issues.single().contains("generated agent add-on output"))
+  }
+
+  @Test
+  fun `guard rejects generated agent addon pointer under governed skills`() {
+    val repoRoot = tempRoot.resolve("agent-addon-pointer-output")
+    val skill = repoRoot.resolve("skills/bill-feature")
+    Files.createDirectories(skill)
+    Files.writeString(skill.resolve("agent-addon-review-helper.md"), "generated")
+
+    val report = validateGeneratedArtifactGuard(repoRoot)
+
+    assertFalse(report.passed)
+    assertTrue(report.issues.single().contains("generated agent add-on pointer"))
+  }
+
+  @Test
+  fun `guard allows nested authored file whose basename resembles an agent addon pointer`() {
+    val repoRoot = tempRoot.resolve("nested-agent-addon-reference")
+    val references = repoRoot.resolve("skills/bill-feature/references")
+    Files.createDirectories(references)
+    Files.writeString(references.resolve("agent-addon-review-helper.md"), "authored")
+
+    val report = validateGeneratedArtifactGuard(repoRoot)
+
+    assertTrue(report.passed, report.issues.toString())
+  }
+
+  @Test
   fun `guard remains dormant when source tree has no generated outputs`() {
     val repoRoot = tempRoot.resolve("baseline-repo")
     val skillDir = repoRoot.resolve("skills/bill-code-review")

@@ -1,3 +1,13 @@
+## [2026-07-14] SKILL-122 subtask 4 execution-budget agent add-on
+Areas: agent-addons/execution-budget, runtime-kotlin/runtime-infra-fs, runtime-kotlin/runtime-desktop, runtime-kotlin/runtime-cli, docs
+- Added the Codex-only `execution-budget` agent add-on for `bill-feature`, with concise authored guidance that preserves user stopping boundaries, scoped hand-offs, and the existing explicit-delegation rule.
+- Agent add-on catalogue/desktop inspection uses tolerant discovery so valid entries remain visible beside invalid sources; strict runtime resolution remains unchanged and fails unsupported-agent selection before workflow creation. reusable
+- Desktop extension browsing distinguishes Agent Add-ons from platform add-ons and exposes authored content, complete manifest metadata, validation state, source path, and a read-only manifest document without slug-specific discovery. reusable
+- Real feature-task coverage proves selected guidance and provenance reach launched phases, while unsupported-agent selection fails early and omitted selection leaves prompts unchanged.
+- Known limit: `execution-budget` supports only Codex and must be explicitly selected; it does not alter workflow gates, terminal phases, model settings, or context/compaction behavior.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
 ## [2026-07-03] SKILL-100 subtask 3 cli-shell-schema
 Areas: install.sh, uninstall.sh, runtime-kotlin/runtime-application (InstallAgentService), runtime-kotlin/runtime-cli (InstallCliCommands, ScaffoldCliCommands), runtime-kotlin/runtime-core (InstallerShellDelegationTest)
 - Completed zcode native-agent CLI/shell/schema wiring on top of subtasks 1-2 (enum/path fan-out, MCP+runtime): added `InstallZcodeAgentsPathCommand`/`InstallLinkZcodeAgentsCommand`/`InstallUnlinkZcodeAgentsCommand` modeled 1:1 on the junie equivalents, registered as `InstallTopLevelCommands` subcommands. reusable

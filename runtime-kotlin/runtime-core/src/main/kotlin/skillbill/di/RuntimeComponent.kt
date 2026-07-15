@@ -2,6 +2,7 @@ package skillbill.di
 
 import me.tatarka.inject.annotations.Component
 import me.tatarka.inject.annotations.Provides
+import skillbill.agentaddon.AgentAddonSelectionResolver
 import skillbill.application.agentrun.AgentRunGoalRunnerSubtaskLauncher
 import skillbill.application.agentrun.AgentRunService
 import skillbill.application.config.ConfigResolutionService
@@ -40,6 +41,7 @@ import skillbill.domain.skillremove.SkillRemoveFileSystem
 import skillbill.infrastructure.fs.DecompositionManifestValidatorAdapter
 import skillbill.infrastructure.fs.FeatureTaskRuntimePhaseOutputValidatorAdapter
 import skillbill.infrastructure.fs.FileExternalAddonSourceConfigStore
+import skillbill.infrastructure.fs.FileExternalAgentAddonSourceConfigStore
 import skillbill.infrastructure.fs.FileSystemBaselineManifestPersistence
 import skillbill.infrastructure.fs.FileSystemDecompositionManifestFileStore
 import skillbill.infrastructure.fs.FileSystemDiffResolver
@@ -96,6 +98,8 @@ import skillbill.model.OptionalCallbacks
 import skillbill.model.RuntimeContext
 import skillbill.model.TransportContext
 import skillbill.model.WorkflowOpsContext
+import skillbill.ports.agentaddon.AgentAddonSelectionPort
+import skillbill.ports.agentaddon.ExternalAgentAddonSourceConfigPort
 import skillbill.ports.agentrun.AgentRunLauncher
 import skillbill.ports.config.RepoLocalConfigPort
 import skillbill.ports.diagnostics.RuntimeDiagnostics
@@ -432,6 +436,16 @@ abstract class RuntimeComponent(
 
   @Provides
   @JvmSynthetic
+  fun agentAddonSelectionPort(): AgentAddonSelectionPort = AgentAddonSelectionResolver()
+
+  @Provides
+  @JvmSynthetic
+  internal fun externalAgentAddonSourceConfigPort(
+    store: FileExternalAgentAddonSourceConfigStore,
+  ): ExternalAgentAddonSourceConfigPort = store
+
+  @Provides
+  @JvmSynthetic
   internal fun featureTaskRuntimeWorkerSupervisor(
     adapter: JdkFeatureTaskRuntimeWorkerSupervisor,
   ): FeatureTaskRuntimeWorkerSupervisor = adapter
@@ -515,6 +529,7 @@ abstract class RuntimeComponent(
   // Exposed as a pre-built object so the CLI consumer need not resolve the infra-fs
   // RepoLocalConfigPort adapter type, which is not on the CLI module's compile classpath.
   abstract val configResolutionService: ConfigResolutionService
+  abstract val externalAgentAddonSourceConfigPort: ExternalAgentAddonSourceConfigPort
   abstract val installService: InstallService
   abstract val externalAddonOverlayService: ExternalAddonOverlayService
   abstract val agentRunService: AgentRunService

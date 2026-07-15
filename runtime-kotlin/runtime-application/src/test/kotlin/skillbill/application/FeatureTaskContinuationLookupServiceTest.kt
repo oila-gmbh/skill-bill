@@ -148,7 +148,7 @@ class FeatureTaskContinuationLookupServiceTest {
   @Test
   fun `goal-child identity stays outside standalone continuation lookup`() {
     val fixture = fixture()
-    assertIs<WorkflowOpenResult.Ok>(
+    val opened = assertIs<WorkflowOpenResult.Ok>(
       fixture.service.openFeatureTask(
         kind = WorkflowFamilyKind.TASK_RUNTIME,
         issueKey = "SKILL-120",
@@ -161,6 +161,20 @@ class FeatureTaskContinuationLookupServiceTest {
     assertIs<FeatureTaskContinuationLookupResult.NoMatch>(
       fixture.lookup.lookup("SKILL-120", REPOSITORY_A),
     )
+    fixture.service.update(
+      WorkflowFamilyKind.TASK_RUNTIME,
+      WorkflowUpdateRequest(
+        workflowId = opened.workflowId,
+        workflowStatus = "blocked",
+        currentStepId = "preplan",
+        sessionId = "",
+      ),
+    )
+
+    val resumable = assertIs<FeatureTaskContinuationLookupResult.Resumable>(
+      fixture.lookup.lookupGoalChild("SKILL-120", REPOSITORY_A, opened.workflowId),
+    )
+    assertEquals(opened.workflowId, resumable.candidate.workflowId)
   }
 
   private fun fixture(): Fixture {

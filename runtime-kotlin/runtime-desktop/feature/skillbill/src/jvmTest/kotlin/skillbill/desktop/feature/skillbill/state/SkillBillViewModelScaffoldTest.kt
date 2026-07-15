@@ -983,6 +983,7 @@ class SkillBillViewModelScaffoldTest {
     ScaffoldKind.PLATFORM_OVERRIDE_PILOTED -> fields.copy(platform = "java", family = "code-review", description = "d")
     ScaffoldKind.CODE_REVIEW_AREA -> fields.copy(platform = "java", area = "security", description = "d")
     ScaffoldKind.ADD_ON -> fields.copy(name = "bill-addon", platform = "java", description = "d")
+    ScaffoldKind.AGENT_ADDON -> fields.copy(name = "review-helper", description = "d")
   }
 
   private fun baselineCatalog(

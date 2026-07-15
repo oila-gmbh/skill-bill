@@ -1,6 +1,7 @@
 package skillbill.infrastructure.fs
 
 import me.tatarka.inject.annotations.Inject
+import skillbill.agentaddon.discoverAgentAddons
 import skillbill.error.InvalidScaffoldPayloadError
 import skillbill.error.MissingRequiredSectionError
 import skillbill.ports.scaffold.repo.ScaffoldRepoValidationPort
@@ -12,6 +13,7 @@ import skillbill.scaffold.model.CodeReviewBaselineLayer
 import skillbill.scaffold.platformpack.declaredCodeReviewSkillNames
 import skillbill.scaffold.platformpack.loadPlatformPack
 import skillbill.scaffold.platformpack.unsupportedCompositionModeReason
+import skillbill.scaffold.policy.SKILL_KIND_AGENT_ADDON
 import skillbill.scaffold.policy.SKILL_KIND_HORIZONTAL
 import skillbill.scaffold.runtime.CONTENT_BODY_FILENAME
 import skillbill.scaffold.runtime.ScaffoldPlan
@@ -125,6 +127,10 @@ class FileSystemScaffoldRepoValidation : ScaffoldRepoValidationPort {
    * `skillbill.scaffold.ScaffoldService.kt`.
    */
   internal fun validateScaffold(plan: ScaffoldPlan, repoRoot: Path) {
+    if (plan.kind == SKILL_KIND_AGENT_ADDON) {
+      discoverAgentAddons(repoRoot)
+      return
+    }
     if (plan.kind == SKILL_KIND_HORIZONTAL) {
       val issues = validateTarget(plannedAuthoringTarget(plan), repoRoot)
       if (issues.isNotEmpty()) {

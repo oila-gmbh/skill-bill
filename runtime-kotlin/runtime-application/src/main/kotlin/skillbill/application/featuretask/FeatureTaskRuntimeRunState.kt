@@ -131,7 +131,7 @@ internal class FeatureTaskRuntimeRunState(
         return "Audit-gap remediation requires a valid completed original '$phaseId' output."
       }
       val validatedOutput = runCatching {
-        outputValidator.validateAndReadPhaseOutput(output.payload, sourceLabel = "persisted $phaseId")
+        outputValidator.validateAndReadPhaseOutput(output.payload, sourceLabel = phaseId)
       }.getOrNull()
       if (validatedOutput == null || validatedOutput["phase_id"] != phaseId) {
         return "Audit-gap remediation requires a valid completed original '$phaseId' output."
@@ -160,6 +160,27 @@ internal class FeatureTaskRuntimeRunState(
   // schema-retry budget counts only attempts within this visit, not backward-edge re-visits.
   fun fixLoopIterationFor(phaseId: String, absoluteIteration: Int): Int =
     absoluteIteration - (fixLoopBudgetBaseByPhase[phaseId] ?: 0)
+
+  fun restartAttemptBudget(phaseId: String) {
+    fixLoopBudgetBaseByPhase[phaseId] = maxOf(nextIteration(phaseId) - 1, 0)
+  }
+
+  fun legacyReviewPreparationRetryConsumedBudget(phaseId: String, currentReason: String): Boolean {
+    if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW ||
+      !currentReason.startsWith("Phase 'review' exhausted the bounded fix loop")
+    ) {
+      return false
+    }
+    val recentBlocks = initialLedger
+      .filter { entry ->
+        entry.phaseId == phaseId && entry.action == FeatureTaskRuntimePhaseLedgerAction.BLOCKED
+      }
+      .sortedByDescending(FeatureTaskRuntimePhaseLedgerEntry::sequenceNumber)
+      .take(2)
+    return recentBlocks.firstOrNull()?.blockedReason == currentReason &&
+      recentBlocks.getOrNull(1)?.blockedReason
+        ?.startsWith("Goal-subtask review state or durable raw evidence is malformed: [SQLITE_BUSY]") == true
+  }
 
   // Resume reconstruction of the per-visit budget baselines (see fixLoopBudgetBaseByPhase). For every
   // backward edge whose loop durably fired (a per-edge watermark exists), seed each non-completed

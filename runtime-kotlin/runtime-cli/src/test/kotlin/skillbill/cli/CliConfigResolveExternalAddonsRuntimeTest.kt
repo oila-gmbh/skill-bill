@@ -63,6 +63,56 @@ class CliConfigResolveExternalAddonsRuntimeTest {
   }
 
   @Test
+  fun `platform resolver ignores shared config agent add-on entries`() {
+    val home = Files.createTempDirectory("ext-addon-agent-entry")
+    val ios = Files.createDirectories(home.resolve("private/ios"))
+    val agentAddons = Files.createDirectories(home.resolve("private/agent-addons"))
+    writeConfig(
+      home,
+      mapOf(
+        "external_addon_sources" to
+          listOf(
+            mapOf("kind" to "agent-addon", "path" to agentAddons.toString()),
+            mapOf("kind" to "platform-pack", "path" to ios.toString(), "platform" to "ios"),
+          ),
+      ),
+    )
+
+    val result = CliRuntime.run(
+      listOf("config", "resolve-external-addons"),
+      CliRuntimeContext(userHome = home, environment = mapOf(CONFIG_ENVIRONMENT_KEY to configPath(home).toString())),
+    )
+
+    assertEquals(0, result.exitCode, result.stdout)
+    assertEquals("ios\t$ios\n", result.stdout)
+  }
+
+  @Test
+  fun `config resolve-external-agent-addons lists agent add-on source roots`() {
+    val home = Files.createTempDirectory("ext-agent-addon-valid")
+    val ios = Files.createDirectories(home.resolve("private/ios"))
+    val agentAddons = Files.createDirectories(home.resolve("private/agent-addons"))
+    writeConfig(
+      home,
+      mapOf(
+        "external_addon_sources" to
+          listOf(
+            mapOf("path" to ios.toString(), "platform" to "ios"),
+            mapOf("kind" to "agent-addon", "path" to agentAddons.toString()),
+          ),
+      ),
+    )
+
+    val result = CliRuntime.run(
+      listOf("config", "resolve-external-agent-addons"),
+      CliRuntimeContext(userHome = home, environment = mapOf(CONFIG_ENVIRONMENT_KEY to configPath(home).toString())),
+    )
+
+    assertEquals(0, result.exitCode, result.stdout)
+    assertEquals("$agentAddons\n", result.stdout)
+  }
+
+  @Test
   fun `malformed machine-global config exits non-zero`() {
     val home = Files.createTempDirectory("ext-addon-malformed")
     Files.createDirectories(home.resolve(".skill-bill"))

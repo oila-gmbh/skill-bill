@@ -4,6 +4,7 @@ package skillbill.cli.core
 
 import com.github.ajalt.clikt.core.CliktCommand
 import me.tatarka.inject.annotations.Inject
+import skillbill.cli.agentaddon.AgentAddonCommand
 import skillbill.cli.codereview.CodeReviewMergeCommand
 import skillbill.cli.codereview.CodeReviewParallelCommand
 import skillbill.cli.config.ConfigCommand
@@ -61,6 +62,7 @@ class UtilityCliCommandGroup(
   codeReviewMergeCommand: CodeReviewMergeCommand,
   configCommand: ConfigCommand,
   workCommands: WorkTopLevelCommands,
+  agentAddonCommand: AgentAddonCommand,
 ) {
   val commands: List<CliktCommand> =
     workflowCommands.commands + repoValidationCommands.commands + listOf(
@@ -77,6 +79,7 @@ class UtilityCliCommandGroup(
       codeReviewMergeCommand,
       configCommand,
       workCommands.command,
+      agentAddonCommand,
     )
 }
 

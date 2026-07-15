@@ -108,12 +108,11 @@ internal fun projectCurrentSubtaskStatus(
     fileStore,
   )
   manifest.subtasks.forEach { subtask ->
-    if (subtask.status != "pending") {
-      projectDecompositionSpecStatus(
-        resolvedParentSpecPath(repoRoot, Path.of(subtask.specPath)),
-        subtask.status,
-        fileStore,
-      )
-    }
+    projectDecompositionSpecStatus(
+      resolvedParentSpecPath(repoRoot, Path.of(subtask.specPath)),
+      subtask.status,
+      fileStore,
+      pendingStatus = "Ready for implementation",
+    )
   }
 }

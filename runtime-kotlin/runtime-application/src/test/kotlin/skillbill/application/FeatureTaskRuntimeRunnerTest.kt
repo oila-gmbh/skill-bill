@@ -63,7 +63,9 @@ import skillbill.ports.workflow.RuntimePhaseFileManifestGitOperationsProvider
 import skillbill.ports.workflow.SpecScratchStore
 import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
+import skillbill.ports.workflow.model.GoalSubtaskReviewBaselineResult
 import skillbill.ports.workflow.model.GoalSubtaskReviewInput
+import skillbill.ports.workflow.model.GoalSubtaskReviewInputFailureReason
 import skillbill.ports.workflow.model.GoalSubtaskReviewInputResult
 import skillbill.ports.workflow.model.WorkflowGitOperationResult
 import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksRequest
@@ -1527,6 +1529,31 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
     val resumed = requireNotNull(harness.goalContinuationRecorder.reviewState(WORKFLOW_ID))
     assertEquals(1, resumed.completedPassCount)
     assertEquals(null, resumed.reservedPassNumber)
+  }
+
+  @Test
+  fun `goal review recovers an incompatible baseline before review evidence exists`() {
+    val repoRoot = Files.createTempDirectory("skillbill-runtime-goal-review-recover")
+    val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
+    val recoveredBaseline = GoalSubtaskReviewBaseline("1".repeat(40), listOf("preexisting.tmp"))
+    git.goalReviewBuildResults += GoalSubtaskReviewInputResult(
+      status = "error",
+      error = "Persisted review base '${"0".repeat(40)}' is not an ancestor of current HEAD.",
+      failureReason = GoalSubtaskReviewInputFailureReason.BASE_NOT_ANCESTOR,
+    )
+    git.goalReviewRecoveredBaseline = recoveredBaseline
+    val harness = goalContinuationHarness(repoRoot, git, goalContinuationLauncher(validJsonOutput("commit_push")))
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
+
+    val state = requireNotNull(harness.goalContinuationRecorder.reviewState(WORKFLOW_ID))
+    assertEquals(recoveredBaseline.reviewBaseSha, state.reviewBaseSha)
+    assertEquals(recoveredBaseline.baselineUntrackedPaths, state.baselineUntrackedPaths)
+    assertEquals(1, git.goalReviewRecoverCalls)
+    assertEquals(
+      listOf("0".repeat(40), recoveredBaseline.reviewBaseSha),
+      git.goalReviewBuildInputs.map { it.reviewBaseSha },
+    )
   }
 
   @Test
@@ -4049,6 +4076,10 @@ internal class RecordingWorkflowGitOperations(
   // overrides the result to model a failed staging.
   var stageAllCalls: Int = 0
   var stageAllResult: WorkflowGitOperationResult? = null
+  val goalReviewBuildInputs = mutableListOf<GoalSubtaskReviewBaseline>()
+  val goalReviewBuildResults = ArrayDeque<GoalSubtaskReviewInputResult>()
+  var goalReviewRecoveredBaseline: GoalSubtaskReviewBaseline? = null
+  var goalReviewRecoverCalls: Int = 0
 
   data class CheckoutCall(val branch: String, val baseBranch: String?)
 
@@ -4153,15 +4184,28 @@ internal class RecordingWorkflowGitOperations(
         repoRoot: Path,
         baseline: GoalSubtaskReviewBaseline,
         expectedBranch: String,
-      ): GoalSubtaskReviewInputResult = GoalSubtaskReviewInputResult(
-        status = "ok",
-        input = GoalSubtaskReviewInput(
-          reviewBaseSha = baseline.reviewBaseSha,
-          currentHeadSha = baseline.reviewBaseSha,
-          trackedDelta = "",
-          ownedUntrackedPatches = "",
-        ),
-      )
+      ): GoalSubtaskReviewInputResult {
+        goalReviewBuildInputs += baseline
+        return goalReviewBuildResults.removeFirstOrNull() ?: GoalSubtaskReviewInputResult(
+          status = "ok",
+          input = GoalSubtaskReviewInput(
+            reviewBaseSha = baseline.reviewBaseSha,
+            currentHeadSha = baseline.reviewBaseSha,
+            trackedDelta = "",
+            ownedUntrackedPatches = "",
+          ),
+        )
+      }
+
+      override fun recoverBaseline(
+        repoRoot: Path,
+        baseline: GoalSubtaskReviewBaseline,
+        expectedBranch: String,
+      ): GoalSubtaskReviewBaselineResult {
+        goalReviewRecoverCalls++
+        return goalReviewRecoveredBaseline?.let { GoalSubtaskReviewBaselineResult(status = "ok", baseline = it) }
+          ?: GoalSubtaskReviewBaselineResult(status = "error", error = "no recovered baseline configured")
+      }
     }
 }
 

@@ -691,6 +691,58 @@ class ScaffoldAuthoringParityTest {
     assertEquals("keep me", Files.readString(unrelated))
     assertFalse(Files.exists(repo.resolve("platform-packs/kotlin/code-review/bill-kotlin-code-review-performance")))
   }
+
+  @Test
+  fun `agent addon dry run plans two files and execute creates only governed sources`() = withIsolatedUserHome {
+    val repo = seedRepo()
+    seedBaseSkill(repo, "bill-feature")
+    val request = payload(
+      repo,
+      "agent-addon",
+      "slug" to "review-helper",
+      "description" to "Review helper",
+      "agent_ids" to listOf("codex"),
+      "consumers" to listOf("bill-feature"),
+      "content_body" to "Use the review helper.\n",
+    )
+
+    val preview = scaffold(request, dryRun = true)
+    assertEquals(2, preview.createdFiles.size)
+    assertFalse(Files.exists(repo.resolve("agent-addons/review-helper")))
+
+    val result = scaffold(request)
+    val addonRoot = repo.resolve("agent-addons/review-helper")
+    assertEquals(2, result.createdFiles.size)
+    assertTrue(Files.isRegularFile(addonRoot.resolve("agent-addon.yaml")))
+    assertEquals("Use the review helper.\n", Files.readString(addonRoot.resolve("content.md")))
+    assertEquals(
+      setOf("agent-addon.yaml", "content.md"),
+      Files.list(addonRoot).use { files -> files.map { it.fileName.toString() }.toList().toSet() },
+    )
+  }
+
+  @Test
+  fun `agent addon rejects path traversal slug before filesystem mutation`() = withIsolatedUserHome {
+    val repo = seedRepo()
+    seedBaseSkill(repo, "bill-feature")
+    val before = snapshotTree(repo)
+
+    assertFailsWith<skillbill.error.InvalidAgentAddonSchemaError> {
+      scaffold(
+        payload(
+          repo,
+          "agent-addon",
+          "slug" to "../escaped",
+          "description" to "Review helper",
+          "agent_ids" to listOf("codex"),
+          "consumers" to listOf("bill-feature"),
+        ),
+      )
+    }
+
+    assertEquals(before, snapshotTree(repo))
+    assertFalse(Files.exists(repo.parent.resolve("escaped")))
+  }
 }
 
 class PlatformPackNativeAgentScaffoldTest {

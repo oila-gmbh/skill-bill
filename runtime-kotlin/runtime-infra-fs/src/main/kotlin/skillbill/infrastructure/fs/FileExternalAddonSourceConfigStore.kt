@@ -33,7 +33,7 @@ class FileExternalAddonSourceConfigStore : ExternalAddonSourceConfigPort {
         "External addon config at '$configPath': 'external_addon_sources' must be a list of {path, platform} entries.",
       )
     }
-    val sources = raw.mapIndexed { index, entry -> parseEntry(configPath, request.userHome, index, entry) }
+    val sources = raw.mapIndexedNotNull { index, entry -> parseEntry(configPath, request.userHome, index, entry) }
     return ExternalAddonSourceConfigResult(sources)
   }
 
@@ -48,7 +48,7 @@ class FileExternalAddonSourceConfigStore : ExternalAddonSourceConfigPort {
     }
     val payload = existing?.payload?.toMutableMap() ?: mutableMapOf()
     val rawSources = rawExternalAddonSources(configPath, payload)
-    val existingSources = rawSources.mapIndexed { index, entry ->
+    val existingSources = rawSources.mapIndexedNotNull { index, entry ->
       parseEntry(configPath, request.userHome, index, entry)
     }
     val registeredSource = request.source.normalized()
@@ -80,11 +80,19 @@ class FileExternalAddonSourceConfigStore : ExternalAddonSourceConfigPort {
     return raw
   }
 
-  private fun parseEntry(configPath: Path, userHome: Path, index: Int, entry: Any?): ExternalAddonSource {
+  private fun parseEntry(configPath: Path, userHome: Path, index: Int, entry: Any?): ExternalAddonSource? {
     val map = entry as? Map<*, *>
       ?: throw ExternalAddonConfigError(
         "External addon config at '$configPath': 'external_addon_sources[$index]' must be a mapping.",
       )
+    val kind = (map["kind"] as? String)?.trim()
+    if (kind == "agent-addon") return null
+    if (kind != null && kind != "platform-pack") {
+      throw ExternalAddonConfigError(
+        "External addon config at '$configPath': 'external_addon_sources[$index].kind' " +
+          "must be 'platform-pack' or 'agent-addon'.",
+      )
+    }
     val rawPath = (map["path"] as? String)?.takeIf(String::isNotBlank)
       ?: throw ExternalAddonConfigError(
         "External addon config at '$configPath': 'external_addon_sources[$index].path' must be a non-empty string.",

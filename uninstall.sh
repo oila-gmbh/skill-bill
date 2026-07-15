@@ -701,7 +701,7 @@ remove_state_dir_full() {
 # install.sh's run_pre_install_uninstall): clear runtime binaries and
 # installed-skills staging so generator changes land on the next install, while
 # PRESERVING the copied-in self-contained source set and durable state DBs:
-#   - skills/, platform-packs/, orchestration/
+#   - skills/, platform-packs/, orchestration/, agent-addons/
 #   - *.db workflow / telemetry / review stores
 #   - the RESERVED baseline-manifest path (subtask-2 seam) below
 # An explicit ./uninstall.sh leaves this flag unset and fully removes
@@ -718,6 +718,7 @@ remove_state_dir_preserving_source() {
     "skills"
     "platform-packs"
     "orchestration"
+    "agent-addons"
     "baseline-manifest.json"
   )
 

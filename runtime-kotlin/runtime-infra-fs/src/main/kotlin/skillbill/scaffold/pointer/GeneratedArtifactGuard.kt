@@ -53,6 +53,15 @@ fun discoverGeneratedArtifactFiles(repoRoot: Path): List<GeneratedArtifactFile> 
           path = artifact,
           reason = "Generated provider-specific native-agent output.",
         )
+      } +
+      discoverAgentAddonGeneratedArtifacts(root).map { artifact ->
+        GeneratedArtifactFile(
+          path = artifact,
+          reason = "Generated agent add-on output. Author only agent-addon.yaml and content.md.",
+        )
+      } +
+      discoverGeneratedAgentAddonPointersUnderSkills(root).map { artifact ->
+        GeneratedArtifactFile(path = artifact, reason = "Generated agent add-on install pointer.")
       }
     )
     .distinctBy { artifact -> artifact.path.toAbsolutePath().normalize() }
@@ -92,6 +101,19 @@ internal fun validateGeneratedArtifactGuard(
     }
     issues += "$relative: committed generated supporting pointer file is not allowed; " +
       "render supporting pointers only for install/output targets"
+  }
+  discoverAgentAddonGeneratedArtifacts(root).forEach { artifact ->
+    val relative = displayGuardPath(root, artifact)
+    if (shouldValidateCommittedArtifact(relative, trackedFiles)) {
+      issues += "$relative: committed generated agent add-on output is not allowed; " +
+        "author only agent-addon.yaml and content.md"
+    }
+  }
+  discoverGeneratedAgentAddonPointersUnderSkills(root).forEach { artifact ->
+    val relative = displayGuardPath(root, artifact)
+    if (shouldValidateCommittedArtifact(relative, trackedFiles)) {
+      issues += "$relative: committed generated agent add-on pointer is not allowed; render it only for install targets"
+    }
   }
   return GeneratedArtifactGuardReport(issues.sorted())
 }

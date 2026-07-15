@@ -6,9 +6,12 @@ import skillbill.install.model.InstallPlanSkillKind
 import skillbill.install.model.InstallStagingPathIntent
 import skillbill.install.model.RenderedSkill
 import skillbill.install.staging.GeneratedSupportPointer
+import skillbill.install.staging.InstallContentHashInputs
 import skillbill.install.staging.InternalStagingPreparation
+import skillbill.install.staging.agentAddonPointersForSkill
 import skillbill.install.staging.applicablePointers
 import skillbill.install.staging.authoredFilesFor
+import skillbill.install.staging.authoredStagingNames
 import skillbill.install.staging.computeInstallContentHash
 import skillbill.install.staging.generatedSupportPointersFor
 import skillbill.install.staging.installedSkillStagingDir
@@ -17,6 +20,7 @@ import skillbill.install.staging.isReusableInstallStaging
 import skillbill.install.staging.prepareInternalStaging
 import skillbill.install.staging.reuseInstallStaging
 import skillbill.install.staging.stageInstalledSkill
+import skillbill.install.staging.validateAgentAddonPointerNamespace
 import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.model.PointerSpec
 import java.nio.file.Path
@@ -72,19 +76,29 @@ private fun materializeValidatedPlannedStaging(inputs: PlannedStagingMaterializa
   val selectedPackSkills = selectedInternalPackSkills(plan)
   val internal = plannedInternalStaging(inputs, pointers, supportPointers, selectedPackSkills)
   val authored = authoredFilesFor(inputs.resolvedSource, pointers, internal.supportPointers, internal.sidecarNames)
+  val agentAddonPointers = agentAddonPointersForSkill(plan.request.repoRoot, skill.name)
+  validateAgentAddonPointerNamespace(
+    skill.name,
+    authoredStagingNames(inputs.resolvedSource, authored) + internal.sidecarNames + pointers.map { it.second.name } +
+      internal.supportPointers.map { it.name } + listOf("SKILL.md", ".content-hash"),
+    agentAddonPointers,
+  )
   val currentHash = computeInstallContentHash(
-    sourceSkillDir = inputs.resolvedSource,
-    authored = authored,
-    applicablePointers = pointers,
-    generatedSupportPointers = internal.supportPointers,
-    internalChildren = internal.children,
+    InstallContentHashInputs(
+      sourceSkillDir = inputs.resolvedSource,
+      authored = authored,
+      applicablePointers = pointers,
+      generatedSupportPointers = internal.supportPointers,
+      internalChildren = internal.children,
+      agentAddonPointers = agentAddonPointers,
+    ),
   )
   require(currentHash == intent.contentHash) {
     "Planned staging for '${skill.name}' expected hash '${intent.contentHash}' but current source resolves " +
       "to '$currentHash'. Re-run planInstall before applyInstall."
   }
   val expectedStagedNames = internal.sidecarNames + pointers.map { (_, pointer) -> pointer.name } +
-    internal.supportPointers.map { pointer -> pointer.name }
+    internal.supportPointers.map { pointer -> pointer.name } + agentAddonPointers.map { it.name }
   if (isReusableInstallStaging(inputs.expectedStagingDir, intent.contentHash, expectedStagedNames)) {
     return reuseInstallStaging(
       sourceSkillDir = inputs.resolvedSource,
@@ -93,6 +107,7 @@ private fun materializeValidatedPlannedStaging(inputs: PlannedStagingMaterializa
       applicablePointers = pointers,
       generatedSupportPointers = internal.supportPointers,
       internalSidecarNames = internal.sidecarNames,
+      agentAddonPointerNames = agentAddonPointers.map { it.name },
     )
   }
   val staged = stageInstalledSkill(

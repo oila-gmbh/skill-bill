@@ -1,5 +1,7 @@
 package skillbill.workflow.taskruntime.model
 
+import skillbill.agentaddon.model.AgentAddonSelection
+import skillbill.agentaddon.model.PersistedAgentAddonSelectionEntry
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.workflow.model.CodeReviewExecutionMode
@@ -12,6 +14,7 @@ data class FeatureTaskRuntimeGoalContinuationArtifact(
   val parentWorkflowId: String? = null,
   val codeReviewMode: CodeReviewExecutionMode,
   val parallelReviewAgent: String? = null,
+  val agentAddonSelection: AgentAddonSelection = AgentAddonSelection(),
 ) {
   init {
     require(issueKey.isNotBlank()) { "FeatureTaskRuntimeGoalContinuationArtifact.issueKey must be non-blank." }
@@ -32,6 +35,18 @@ data class FeatureTaskRuntimeGoalContinuationArtifact(
   ).apply {
     parentWorkflowId?.let { put("parent_workflow_id", it) }
     parallelReviewAgent?.let { put("parallel_review_agent", it) }
+    if (agentAddonSelection.entries.isNotEmpty()) {
+      put(
+        "agent_addon_selection",
+        agentAddonSelection.entries.map { entry ->
+          linkedMapOf(
+            "slug" to entry.slug,
+            "source_identity" to entry.sourceIdentity,
+            "content_sha256" to entry.contentSha256,
+          )
+        },
+      )
+    }
   }
 
   companion object {
@@ -46,6 +61,7 @@ data class FeatureTaskRuntimeGoalContinuationArtifact(
         parentWorkflowId = raw.optionalStringField("parent_workflow_id"),
         codeReviewMode = raw.requireGoalContinuationCodeReviewMode(),
         parallelReviewAgent = raw.optionalStringField("parallel_review_agent"),
+        agentAddonSelection = raw.optionalGoalAgentAddonSelection(),
       )
     }
   }
@@ -59,7 +75,41 @@ private val goalContinuationKeys: Set<String> = setOf(
   "parent_workflow_id",
   "code_review_mode",
   "parallel_review_agent",
+  "agent_addon_selection",
 )
+
+private fun Map<String, Any?>.optionalGoalAgentAddonSelection(): AgentAddonSelection {
+  val rawEntries = this["agent_addon_selection"] ?: return AgentAddonSelection()
+  val entries = rawEntries as? List<*>
+    ?: goalContinuationSchemaError("Goal-continuation agent_addon_selection must be a list.")
+  return try {
+    AgentAddonSelection(
+      entries.mapIndexed(::parseGoalAgentAddonEntry),
+    )
+  } catch (error: IllegalArgumentException) {
+    goalContinuationSchemaError("Goal-continuation agent_addon_selection is invalid.", error)
+  }
+}
+
+private fun parseGoalAgentAddonEntry(index: Int, value: Any?): PersistedAgentAddonSelectionEntry {
+  val entry = value as? Map<*, *>
+    ?: goalContinuationSchemaError("Goal-continuation agent_addon_selection entry $index is invalid.")
+  if (entry.keys != setOf("slug", "source_identity", "content_sha256")) {
+    goalContinuationSchemaError("Goal-continuation agent_addon_selection entry $index has invalid fields.")
+  }
+  return PersistedAgentAddonSelectionEntry(
+    entry["slug"] as? String
+      ?: goalContinuationSchemaError("Goal-continuation add-on entry $index is missing slug."),
+    entry["source_identity"] as? String
+      ?: goalContinuationSchemaError("Goal-continuation add-on entry $index is missing source_identity."),
+    entry["content_sha256"] as? String
+      ?: goalContinuationSchemaError("Goal-continuation add-on entry $index is missing content_sha256."),
+  )
+}
+
+private fun goalContinuationSchemaError(detail: String, cause: Throwable? = null): Nothing {
+  throw InvalidWorkflowStateSchemaError(detail, cause)
+}
 
 private fun rejectUnknownGoalContinuationKeys(raw: Map<String, Any?>) {
   raw.keys.firstOrNull { it !in goalContinuationKeys }?.let { key ->

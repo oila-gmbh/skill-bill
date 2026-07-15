@@ -38,6 +38,12 @@ internal fun ScaffoldSkillStatus.toWireMap(): Map<String, Any?> {
   contentPreview?.let { map["content_preview"] = it }
   content?.let { map["content"] = it }
   issues?.let { map["issues"] = it }
+  if (category != "skill") map["category"] = category
+  slug?.let { map["slug"] = it }
+  description?.let { map["description"] = it }
+  if (supportedAgents.isNotEmpty()) map["supported_agents"] = supportedAgents
+  if (consumers.isNotEmpty()) map["consumers"] = consumers
+  manifestFile?.let { map["manifest_file"] = it }
   return map
 }
 

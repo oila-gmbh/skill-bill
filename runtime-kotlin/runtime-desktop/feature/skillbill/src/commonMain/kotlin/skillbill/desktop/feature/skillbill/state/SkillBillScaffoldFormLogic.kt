@@ -94,6 +94,10 @@ internal fun validateScaffoldWizard(wizard: ScaffoldWizardState): List<ScaffoldV
         add(ScaffoldValidationMessage(ScaffoldValidationId.ADD_ON_LOCATION_PATH_REQUIRED))
       }
     }
+    ScaffoldKind.AGENT_ADDON -> {
+      if (fields.name.isBlank()) add(ScaffoldValidationMessage(ScaffoldValidationId.ADD_ON_NAME_REQUIRED))
+      if (fields.description.isBlank()) add(ScaffoldValidationMessage(ScaffoldValidationId.SKILL_NAME_REQUIRED))
+    }
   }
 }
 
@@ -261,6 +265,18 @@ internal fun buildScaffoldPayload(wizard: ScaffoldWizardState, repoRoot: String?
         description = fields.description.trim(),
         addonLocationPath = fields.addonLocationPath.trim()
           .takeIf { fields.addonLocationMode == ScaffoldAddOnLocationMode.EXTERNAL && it.isNotBlank() },
+      )
+    }
+    ScaffoldKind.AGENT_ADDON -> if (fields.name.isBlank() || fields.description.isBlank()) {
+      null
+    } else {
+      ScaffoldPayload.AgentAddon(
+        repoRoot = root,
+        slug = fields.name.trim(),
+        description = fields.description.trim(),
+        agentIds = listOf("codex"),
+        consumers = listOf("bill-feature"),
+        contentBody = fields.contentBody.takeIf { it.isNotBlank() },
       )
     }
   }

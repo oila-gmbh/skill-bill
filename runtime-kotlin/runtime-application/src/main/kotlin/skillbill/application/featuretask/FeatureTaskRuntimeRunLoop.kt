@@ -820,7 +820,8 @@ internal class FeatureTaskRuntimeRunLoop(
       blockedGoalReviewRun(
         run,
         observability,
-        "Goal-subtask review state or durable raw evidence is malformed: ${error.message.orEmpty()}",
+        goalReviewPreparationFailure("reservation", error),
+        goalReviewPreparationDisposition(error),
       )
     },
   )
@@ -852,17 +853,33 @@ internal class FeatureTaskRuntimeRunLoop(
       blockedGoalReviewRun(
         run,
         observability,
-        "Goal-subtask review state or durable raw evidence is malformed: ${error.message.orEmpty()}",
+        goalReviewPreparationFailure("input persistence", error),
+        goalReviewPreparationDisposition(error),
       )
     },
   )
+
+  private fun goalReviewPreparationFailure(stage: String, error: Throwable): String {
+    val location = error.stackTrace.firstOrNull { frame -> frame.className.startsWith("skillbill.") }
+      ?.let { frame -> " at ${frame.className}.${frame.methodName}:${frame.lineNumber}" }
+      .orEmpty()
+    return "Goal-subtask review $stage failed$location: ${error.message.orEmpty()}"
+  }
+
+  private fun goalReviewPreparationDisposition(error: Throwable): FeatureTaskRuntimeFailureDisposition =
+    if ("[SQLITE_BUSY]" in error.message.orEmpty()) {
+      FeatureTaskRuntimeFailureDisposition.RETRYABLE
+    } else {
+      FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION
+    }
 
   private fun blockedGoalReviewRun(
     run: PhaseRun,
     observability: FeatureTaskRuntimeRunObservability,
     reason: String,
+    failureDisposition: FeatureTaskRuntimeFailureDisposition = FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
   ): GoalReviewRunPreparation {
-    blockAndPersist(run, 1, reason, observability)
+    blockAndPersist(run, 1, reason, observability, failureDisposition = failureDisposition)
     return GoalReviewRunPreparation.Blocked
   }
 
@@ -915,9 +932,12 @@ internal class FeatureTaskRuntimeRunLoop(
     val persisted = state.persistedBlockedReason(run.phaseId)?.let { persistedReason ->
       val nextIteration = state.nextIteration(run.phaseId)
       val durable = state.recordFor(run.phaseId)
-      val retryOnResume = durable?.failureDisposition?.retryOnResume
-        ?: FeatureTaskRuntimeFixLoopPolicy.participatesInFixLoop(run.phaseId)
-      if (retryOnResume) {
+      val retryReviewPreparation = isRetryableGoalReviewPreparation(run.phaseId, persistedReason) ||
+        state.legacyReviewPreparationRetryConsumedBudget(run.phaseId, persistedReason)
+      if (retryReviewPreparation) {
+        state.restartAttemptBudget(run.phaseId)
+      }
+      if (shouldRetryPersistedBlock(run.phaseId, durable, retryReviewPreparation)) {
         return@let null
       }
       val reason = persistedReason.ifBlank {
@@ -959,6 +979,25 @@ internal class FeatureTaskRuntimeRunLoop(
       )
     }
   }
+
+  private fun isRetryableGoalReviewPreparation(phaseId: String, reason: String): Boolean {
+    if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW) return false
+    val legacyDatabaseContention =
+      reason.startsWith("Goal-subtask review state or durable raw evidence is malformed:") &&
+        "[SQLITE_BUSY]" in reason
+    return legacyDatabaseContention ||
+      "[SQLITE_BUSY]" in reason && (
+        reason.startsWith("Goal-subtask review reservation failed") ||
+          reason.startsWith("Goal-subtask review input persistence failed")
+        )
+  }
+
+  private fun shouldRetryPersistedBlock(
+    phaseId: String,
+    durable: FeatureTaskRuntimePhaseRecord?,
+    retryReviewPreparation: Boolean,
+  ): Boolean = retryReviewPreparation || durable?.failureDisposition?.retryOnResume
+    ?: FeatureTaskRuntimeFixLoopPolicy.participatesInFixLoop(phaseId)
 
   private fun runPhaseAttempts(
     run: PhaseRun,
@@ -1393,6 +1432,7 @@ internal class FeatureTaskRuntimeRunLoop(
             specSource = run.specSource,
             priorSchemaFailure = priorSchemaFailure,
             specReference = run.request.runInvariants.specReference,
+            agentAddonSelection = run.request.agentAddonSelection,
           ),
         ),
       ),
