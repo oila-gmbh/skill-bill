@@ -21,14 +21,6 @@ Non-negotiable contracts:
 
 Bundled skills and packs are defaults, not the framework boundary. Teams may replace them while retaining governed source shape, generated-output boundaries, manifests, install staging, validators, dynamic discovery, and loud-fail behavior.
 
-## Subagent Policy
-
-Use subagents only when the user explicitly requests them or an invoked skill's
-governed contract selects delegated execution. For `bill-code-review`,
-`mode:auto` may choose inline or delegated; explicit `mode:inline` or
-`mode:delegated` wins. Otherwise do not infer permission from task size,
-runtime defaults, or model preference; work inline or ask the user.
-
 ## Taxonomy
 
 - `skills/`: canonical user-facing skill sources.

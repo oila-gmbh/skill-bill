@@ -42,8 +42,10 @@ class InstallerShellReuseLastSelectionTest {
   fun `installer shell reuse preserves current telemetry config over stale saved selection`() {
     val run = runInstaller(
       extraArgs = listOf("--reuse-last-selection"),
-      replayTelemetryLevel = "anonymous",
-      currentTelemetryLevel = "full",
+      options = InstallerRunOptions(
+        replayTelemetryLevel = "anonymous",
+        currentTelemetryLevel = "full",
+      ),
     )
 
     assertEquals(0, run.exitCode, run.output)
@@ -55,8 +57,10 @@ class InstallerShellReuseLastSelectionTest {
   fun `installer shell reuse aborts when current telemetry config cannot be read`() {
     val run = runInstaller(
       extraArgs = listOf("--reuse-last-selection"),
-      telemetryStatusFails = true,
-      skipPreinstallUninstall = false,
+      options = InstallerRunOptions(
+        telemetryStatusFails = true,
+        skipPreinstallUninstall = false,
+      ),
     )
 
     assertFalse(run.exitCode == 0, "installer should fail. Output:\n${run.output}")
@@ -68,7 +72,7 @@ class InstallerShellReuseLastSelectionTest {
   fun `installer shell rejects desktop-only with reuse-last-selection`() {
     val run = runInstaller(
       extraArgs = listOf("--desktop-app-only", "--reuse-last-selection"),
-      skipPreinstallUninstall = false,
+      options = InstallerRunOptions(skipPreinstallUninstall = false),
     )
 
     assertFalse(run.exitCode == 0, "installer should fail. Output:\n${run.output}")
@@ -80,8 +84,10 @@ class InstallerShellReuseLastSelectionTest {
   fun `installer shell reuse failure exits before cleanup`() {
     val run = runInstaller(
       extraArgs = listOf("--reuse-last-selection"),
-      reuseSelection = "missing",
-      skipPreinstallUninstall = false,
+      options = InstallerRunOptions(
+        reuseSelection = "missing",
+        skipPreinstallUninstall = false,
+      ),
     )
 
     assertFalse(run.exitCode == 0, "installer should fail. Output:\n${run.output}")
@@ -92,21 +98,17 @@ class InstallerShellReuseLastSelectionTest {
 
   private fun runInstaller(
     extraArgs: List<String>,
-    reuseSelection: String = "ok",
-    skipPreinstallUninstall: Boolean = true,
-    replayTelemetryLevel: String = "full",
-    currentTelemetryLevel: String? = null,
-    telemetryStatusFails: Boolean = false,
+    options: InstallerRunOptions = InstallerRunOptions(),
   ): InstallerRun {
     val testRepo = Files.createTempDirectory("skillbill-installer-reuse-repo")
     val home = Files.createTempDirectory("skillbill-installer-reuse-home")
     val binDir = Files.createTempDirectory("skillbill-installer-reuse-bin")
     val logPath = Files.createTempFile("skillbill-installer-reuse-runtime", ".log")
     seedRepo(testRepo)
-    if (currentTelemetryLevel != null) {
+    if (options.currentTelemetryLevel != null) {
       val configPath = home.resolve(".config/skill-bill/config.json")
       Files.createDirectories(configPath.parent)
-      Files.writeString(configPath, """{"telemetry":{"level":"$currentTelemetryLevel"}}""")
+      Files.writeString(configPath, """{"telemetry":{"level":"${options.currentTelemetryLevel}"}}""")
     }
 
     val command = mutableListOf("bash", testRepo.resolve("install.sh").toString()).apply { addAll(extraArgs) }
@@ -118,11 +120,11 @@ class InstallerShellReuseLastSelectionTest {
         environment()["SKILL_BILL_BIN_DIR"] = binDir.toString()
         environment()["SKILL_BILL_SKIP_RUNTIME_DISTRIBUTION_BUILD"] = "1"
         environment()["SKILL_BILL_TEST_RUNTIME_LOG"] = logPath.toString()
-        environment()["SKILL_BILL_TEST_REUSE_SELECTION"] = reuseSelection
-        environment()["SKILL_BILL_TEST_REPLAY_TELEMETRY"] = replayTelemetryLevel
-        currentTelemetryLevel?.let { environment()["SKILL_BILL_TEST_CURRENT_TELEMETRY"] = it }
-        if (telemetryStatusFails) environment()["SKILL_BILL_TEST_TELEMETRY_STATUS_FAILS"] = "1"
-        if (skipPreinstallUninstall) {
+        environment()["SKILL_BILL_TEST_REUSE_SELECTION"] = options.reuseSelection
+        environment()["SKILL_BILL_TEST_REPLAY_TELEMETRY"] = options.replayTelemetryLevel
+        options.currentTelemetryLevel?.let { environment()["SKILL_BILL_TEST_CURRENT_TELEMETRY"] = it }
+        if (options.telemetryStatusFails) environment()["SKILL_BILL_TEST_TELEMETRY_STATUS_FAILS"] = "1"
+        if (options.skipPreinstallUninstall) {
           environment()["SKILL_BILL_SKIP_PREINSTALL_UNINSTALL"] = "1"
         }
         environment().remove("DISPLAY")
@@ -276,5 +278,13 @@ class InstallerShellReuseLastSelectionTest {
     val output: String,
     val exitCode: Int,
     val applyArgs: List<String>,
+  )
+
+  private data class InstallerRunOptions(
+    val reuseSelection: String = "ok",
+    val skipPreinstallUninstall: Boolean = true,
+    val replayTelemetryLevel: String = "full",
+    val currentTelemetryLevel: String? = null,
+    val telemetryStatusFails: Boolean = false,
   )
 }

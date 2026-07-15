@@ -1550,7 +1550,10 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
     assertEquals(recoveredBaseline.reviewBaseSha, state.reviewBaseSha)
     assertEquals(recoveredBaseline.baselineUntrackedPaths, state.baselineUntrackedPaths)
     assertEquals(1, git.goalReviewRecoverCalls)
-    assertEquals(listOf("0".repeat(40), recoveredBaseline.reviewBaseSha), git.goalReviewBuildInputs.map { it.reviewBaseSha })
+    assertEquals(
+      listOf("0".repeat(40), recoveredBaseline.reviewBaseSha),
+      git.goalReviewBuildInputs.map { it.reviewBaseSha },
+    )
   }
 
   @Test

@@ -413,7 +413,10 @@ class InstallStagingTest {
 
     assertTrue(firstFeature.contentHash != secondFeature.contentHash)
     assertEquals(firstUnrelated.contentHash, secondUnrelated.contentHash)
-    assertEquals("Changed addon body.\n", Files.readString(secondFeature.stagingDir.resolve("agent-addon-review-helper.md")))
+    assertEquals(
+      "Changed addon body.\n",
+      Files.readString(secondFeature.stagingDir.resolve("agent-addon-review-helper.md")),
+    )
 
     Files.writeString(
       addon.resolve("agent-addon.yaml"),
@@ -424,7 +427,10 @@ class InstallStagingTest {
 
     assertTrue(secondFeature.contentHash != thirdFeature.contentHash)
     assertEquals(secondUnrelated.contentHash, thirdUnrelated.contentHash)
-    assertEquals("Changed addon body.\n", Files.readString(thirdFeature.stagingDir.resolve("agent-addon-review-helper.md")))
+    assertEquals(
+      "Changed addon body.\n",
+      Files.readString(thirdFeature.stagingDir.resolve("agent-addon-review-helper.md")),
+    )
   }
 
   @Test

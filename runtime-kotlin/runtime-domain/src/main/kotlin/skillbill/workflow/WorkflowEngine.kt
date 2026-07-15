@@ -10,12 +10,12 @@ import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.WorkflowContracts
 import skillbill.error.InvalidWorkflowStateSchemaError
+import skillbill.workflow.model.ResolvedRequiredArtifact
 import skillbill.workflow.model.WorkflowCompactContinueView
 import skillbill.workflow.model.WorkflowContinuationArtifactSummary
 import skillbill.workflow.model.WorkflowContinueDecision
 import skillbill.workflow.model.WorkflowContinueView
 import skillbill.workflow.model.WorkflowDefinition
-import skillbill.workflow.model.ResolvedRequiredArtifact
 import skillbill.workflow.model.WorkflowResumeView
 import skillbill.workflow.model.WorkflowSnapshotView
 import skillbill.workflow.model.WorkflowStateSnapshot
@@ -556,11 +556,7 @@ class WorkflowEngine(private val schemaValidator: WorkflowSnapshotValidator) {
       return keys
     }
 
-    private fun resolvedArtifactValue(
-      definition: WorkflowDefinition,
-      snapshot: WorkflowSnapshotView,
-      key: String,
-    ) =
+    private fun resolvedArtifactValue(definition: WorkflowDefinition, snapshot: WorkflowSnapshotView, key: String) =
       if (key in snapshot.artifacts) {
         ResolvedRequiredArtifact(present = true, value = snapshot.artifacts[key])
       } else {

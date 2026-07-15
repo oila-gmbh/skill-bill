@@ -102,27 +102,7 @@ class CliFeatureTaskRuntimeRuntimeTest {
     )
     assertEquals(1, firstRun.exitCode, firstRun.stdout)
     val workflowId = firstRun.stdout.lines().single { it.startsWith("workflow_id:") }.substringAfter(":").trim()
-
-    val alteredSelections = listOf(
-      "reordered" to resolvedSelectionJson(fixture, "codex", "last-helper", "first-helper"),
-      "dropped" to resolvedSelectionJson(fixture, "codex", "first-helper"),
-      "empty" to """{"contract_version":"0.1","entries":[]}""",
-      "replaced identity" to resolvedSelectionJson(fixture, "codex", "replacement-helper", "last-helper"),
-    )
-    alteredSelections.forEach { (case, alteredSelection) ->
-      val rejectedLauncher = RecordingPhaseLauncher()
-      val rejected = CliRuntime.run(
-        fixture.resumeCommand(workflowId, alteredSelection),
-        fixture.context(rejectedLauncher),
-      )
-      assertEquals(1, rejected.exitCode, "$case: ${rejected.stdout}")
-      assertContains(
-        rejected.stdout,
-        "Cannot drop or replace the workflow's durable agent add-on selection",
-        message = case,
-      )
-      assertEquals(emptyList(), rejectedLauncher.requests, case)
-    }
+    assertAlteredAgentAddonSelectionsRejected(fixture, workflowId)
 
     val resumeFixture = runtimeFixture().also {
       writeAgentAddon(it.tempDir, "first-helper", "First selected guidance.")
@@ -159,6 +139,29 @@ class CliFeatureTaskRuntimeRuntimeTest {
     }
   }
 
+  private fun assertAlteredAgentAddonSelectionsRejected(fixture: FeatureTaskRuntimeCliFixture, workflowId: String) {
+    val alteredSelections = listOf(
+      "reordered" to resolvedSelectionJson(fixture, "codex", "last-helper", "first-helper"),
+      "dropped" to resolvedSelectionJson(fixture, "codex", "first-helper"),
+      "empty" to """{"contract_version":"0.1","entries":[]}""",
+      "replaced identity" to resolvedSelectionJson(fixture, "codex", "replacement-helper", "last-helper"),
+    )
+    alteredSelections.forEach { (case, alteredSelection) ->
+      val rejectedLauncher = RecordingPhaseLauncher()
+      val rejected = CliRuntime.run(
+        fixture.resumeCommand(workflowId, alteredSelection),
+        fixture.context(rejectedLauncher),
+      )
+      assertEquals(1, rejected.exitCode, "$case: ${rejected.stdout}")
+      assertContains(
+        rejected.stdout,
+        "Cannot drop or replace the workflow's durable agent add-on selection",
+        message = case,
+      )
+      assertEquals(emptyList(), rejectedLauncher.requests, case)
+    }
+  }
+
   @Test
   fun `real feature invocation rejects unsupported agent before execution`() {
     val unsupportedFixture = runtimeFixture().also { writeExecutionBudgetAddon(it.tempDir) }
@@ -175,6 +178,75 @@ class CliFeatureTaskRuntimeRuntimeTest {
     assertContains(unsupported.message.orEmpty(), "incompatible with receiving agent 'claude'")
     assertEquals(emptyList(), unsupportedLauncher.requests)
     assertFalse(Files.exists(unsupportedFixture.dbPath), "workflow database must not be created")
+  }
+
+  @Test
+  fun `selected agent add-on accepts compatible runtime override routes`() {
+    val cases = listOf(
+      "run-wide override" to listOf("--agent-override", "codex"),
+      "phase override" to listOf("--phase-agent", "plan=codex"),
+      "delegated parallel review" to listOf(
+        "--code-review-mode",
+        "delegated",
+        "--parallel-review-agent",
+        "codex",
+      ),
+    )
+
+    cases.forEach { (case, overrideArgs) ->
+      val fixture = runtimeFixture().also { writeExecutionBudgetAddon(it.tempDir) }
+      val selection = resolvedSelectionJson(fixture, "codex")
+      val launcher = RecordingPhaseLauncher()
+
+      val result = CliRuntime.run(
+        fixture.runCommand(
+          extra = listOf("--agent", "codex", "--agent-addon-selection-json", selection) + overrideArgs,
+        ),
+        fixture.context(launcher),
+      )
+
+      assertEquals(0, result.exitCode, "$case: ${result.stdout}")
+      assertEquals(ALL_PHASES.size, launcher.requests.size, case)
+      assertTrue(
+        launcher.requests.all { request ->
+          request.skillRunRequest.promptOverride.orEmpty().contains("### 1. execution-budget")
+        },
+        case,
+      )
+    }
+  }
+
+  @Test
+  fun `selected agent add-on rejects incompatible runtime override routes before workflow creation`() {
+    val cases = listOf(
+      "run-wide override" to listOf("--agent-override", "claude"),
+      "phase override" to listOf("--phase-agent", "plan=claude"),
+      "delegated parallel review" to listOf(
+        "--code-review-mode",
+        "delegated",
+        "--parallel-review-agent",
+        "claude",
+      ),
+    )
+
+    cases.forEach { (case, overrideArgs) ->
+      val fixture = runtimeFixture().also { writeExecutionBudgetAddon(it.tempDir) }
+      val selection = resolvedSelectionJson(fixture, "codex")
+      val launcher = RecordingPhaseLauncher()
+
+      val failure = assertFailsWith<skillbill.error.InvalidAgentAddonSelectionError>(case) {
+        CliRuntime.run(
+          fixture.runCommand(
+            extra = listOf("--agent", "codex", "--agent-addon-selection-json", selection) + overrideArgs,
+          ),
+          fixture.context(launcher),
+        )
+      }
+
+      assertContains(failure.message.orEmpty(), "incompatible with receiving agent 'claude'", message = case)
+      assertEquals(emptyList(), launcher.requests, case)
+      assertFalse(Files.exists(fixture.dbPath), "$case must fail before workflow database creation")
+    }
   }
 
   @Test

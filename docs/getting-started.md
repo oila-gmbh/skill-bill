@@ -98,7 +98,7 @@ Installed skills are symlinks to rendered staging directories under `~/.skill-bi
 
 ### Config That Survives Installs
 
-Your `config.json` (telemetry choices, `install_id`, and `external_addon_sources`) lives at the durable path **`~/.config/skill-bill/config.json`**. That location is **outside** the `~/.skill-bill/` tree that installs wipe, so it survives every `./install.sh` and update automatically — no environment variable required.
+Your `config.json` (telemetry choices, `install_id`, and shared `external_addon_sources` for platform-pack and agent add-ons) lives at the durable path **`~/.config/skill-bill/config.json`**. That location is **outside** the `~/.skill-bill/` tree that installs wipe, so it survives every `./install.sh` and update automatically — no environment variable required.
 
 Feature-task model and effort preferences also belong in this machine-wide JSON file under `execution_matrix`; they apply to every repository you run on this machine.
 

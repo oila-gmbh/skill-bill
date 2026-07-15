@@ -1,9 +1,9 @@
 # External Addon Sources
 
-External addon sources let you overlay private or team-specific review add-ons onto an
-installed platform pack **without forking the pack or committing the add-on into this repo**.
-The add-on content lives in a directory you own; Skill Bill merges it into the installed pack
-during every install.
+External addon sources let you keep private or team-specific add-on content
+outside this repo. Platform-pack add-ons are merged into installed packs during
+install. Agent add-ons are discovered from configured external source roots at
+selection time.
 
 Use [Getting Started](getting-started.md) for install and full CLI coverage, and
 [Getting Started for Teams](getting-started-for-teams.md) for the broader customization model.
@@ -13,7 +13,8 @@ External addons are the lightest way to ship an add-on that must stay outside th
 
 Reach for an external addon source when all of these hold:
 
-- The add-on extends an **existing installed pack** (e.g. `ios`, `kotlin`, `python`), not a new stack.
+- The add-on extends an **existing installed pack** (e.g. `ios`, `kotlin`, `python`) or an
+  agent-scoped workflow through `agent-addon:<slug>`.
 - The content is **private or team-specific** and should not live in the public repo.
 - You want it applied automatically on install, the same way pack-owned add-ons are.
 
@@ -45,20 +46,37 @@ Sources are declared in the machine-global config file:
   durable location that survives installs (see [Persisting Config Across Installs](#persisting-config-across-installs))
 - Override with the `SKILL_BILL_CONFIG_PATH` environment variable (supports `~` expansion)
 
-Add an `external_addon_sources` array. Each entry is a `{ path, platform }` object:
+Add an `external_addon_sources` array. Platform-pack entries may use the legacy
+`{ path, platform }` form or the explicit `{ kind: "platform-pack", path,
+platform }` form. Agent add-on entries use `{ kind: "agent-addon", path }`:
 
 ```json
 {
   "external_addon_sources": [
-    { "path": "~/dev/acme-review-addon", "platform": "ios" }
+    { "kind": "platform-pack", "path": "~/dev/acme-review-addon", "platform": "ios" },
+    { "kind": "agent-addon", "path": "~/dev/personal-agent-addons" }
   ]
 }
 ```
 
 | Field | Meaning |
 |-------|---------|
-| `path` | Directory containing `addon-manifest.yaml` and the referenced `.md` files. Supports `~`; relative paths resolve against the current working directory. Must exist and be a directory. |
-| `platform` | The platform-pack slug to overlay onto (e.g. `ios`). If that pack is not installed, the source is skipped with a warning, not treated as an error. |
+| `kind` | Optional for legacy platform-pack entries. Supported values: `platform-pack`, `agent-addon`. |
+| `path` | Source directory. Platform-pack sources contain `addon-manifest.yaml` and referenced `.md` files. Agent add-on sources contain one or more `<slug>/agent-addon.yaml` and `<slug>/content.md` directories. Supports `~`; relative paths resolve against the current working directory. Must exist and be a directory. |
+| `platform` | Required for platform-pack sources. The platform-pack slug to overlay onto (e.g. `ios`). If that pack is not installed, the source is skipped with a warning, not treated as an error. Omit for `agent-addon` sources. |
+
+For `agent-addon` sources, `path` points at a root containing one or more
+agent add-on source directories:
+
+```
+personal-agent-addons/
+├── codex-subagent-policy/
+│   ├── agent-addon.yaml
+│   └── content.md
+└── execution-budget-local/
+    ├── agent-addon.yaml
+    └── content.md
+```
 
 `external_addon_sources` shares `config.json` with telemetry settings; other keys in the file are
 left untouched.
@@ -205,6 +223,7 @@ Overlay a private `acme` review add-on onto the installed `ios` pack.
 | Command | Purpose |
 |---------|---------|
 | `skill-bill config resolve-external-addons` | Read-only. Lists resolved `platform<TAB>path` entries from the config, or fails loudly on a malformed config. |
+| `skill-bill config resolve-external-agent-addons` | Read-only. Lists resolved external agent add-on roots from the same config, or fails loudly on malformed config. |
 | `skill-bill install apply-external-addons` | Applies the overlay onto installed packs. Runs automatically during `./install.sh`; you rarely invoke it directly. Options: `--repo-root` (default `.`) and `--platform-packs` (default `<repo-root>/platform-packs`). |
 
 ## Guarantees And Failure Modes

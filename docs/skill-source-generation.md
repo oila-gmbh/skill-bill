@@ -624,6 +624,21 @@ Agent add-ons are a separate user-owned extension surface under
 slug, description, target agent ids, and consumers; `content.md` is the only
 ordinary instruction body.
 
+Agent add-ons may also be sourced from external add-on roots declared in the
+shared machine-global `external_addon_sources` config. Use
+`kind: "agent-addon"` and point `path` at a directory containing the same
+`<slug>/agent-addon.yaml` plus `<slug>/content.md` source shape. Legacy platform
+entries without `kind` remain platform-pack add-ons; new platform entries may
+use `kind: "platform-pack"`.
+
+```json
+{
+  "external_addon_sources": [
+    { "kind": "agent-addon", "path": "~/dev/personal-agent-addons" }
+  ]
+}
+```
+
 The manifest is strict: `contract_version: "1.0"`, a canonical `slug`, a
 single-line `description`, one or more `agent_ids`, and one or more supported
 `consumers`. Invocation is explicit, for example

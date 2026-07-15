@@ -245,7 +245,9 @@ class FeatureTaskRuntimeResumeGateTest {
   ): String {
     val records = phaseRecordStatuses.entries.joinToString(",") { (phaseId, status) ->
       val finishedAt = if (status == "completed") ""","finished_at":"2026-06-18T10:04:00Z"""" else ""
-      val outputArtifact = phaseRecordOutputs[phaseId]?.let { ""","output_artifact":${jsonStringLiteral(it)}""" }.orEmpty()
+      val outputArtifact = phaseRecordOutputs[phaseId]
+        ?.let { ""","output_artifact":${jsonStringLiteral(it)}""" }
+        .orEmpty()
       """"$phaseId":{"phase_id":"$phaseId","status":"$status","attempt_count":1,""" +
         """"started_at":"2026-06-18T10:00:00Z","resolved_agent_id":"agent-$phaseId"$finishedAt$outputArtifact}"""
     }

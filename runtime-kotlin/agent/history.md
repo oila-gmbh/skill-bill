@@ -1,3 +1,13 @@
+## [2026-07-15] SKILL-122 agent add-on integration validation
+Areas: runtime-kotlin/runtime-{application,cli,core,domain,infra-fs,mcp}
+- Cross-boundary tests lock ordered agent add-on selection through runtime, goal continuation, retry/resume, staging invalidation, and compatible run-wide, phase, and delegated parallel-review overrides.
+- Incompatible receiving-agent overrides fail before phase launch or workflow creation; selected content cannot be dropped, reordered, or replaced, while omission preserves existing behavior.
+- Install-staging and architecture coverage keep generated pointers out of governed sources and preserve platform-pack and external platform-add-on flows.
+- Pattern: prove extension integrity at each persistence, prompt, override, and generated-source boundary, including negative assertions for launch and database side effects. reusable
+- Validation cleanup extracted typed retry state and shared decoders while retaining loud-fail workflow artifact behavior; the complete repository quality gate passes without fallback.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
 ## [2026-07-14] SKILL-122 ordered agent add-on feature selection
 Areas: runtime-kotlin/runtime-{application,cli,core,domain,infra-fs,ports}, skills/bill-feature, skills/bill-code-review
 - Feature routing resolves zero or more ordered `agent-addon:<slug>` selections before confirmation, validates every effective and phase-specific receiving agent including parallel review, and rejects malformed, duplicate, missing, unknown, unsupported, or incompatible choices without launch side effects.

@@ -189,7 +189,17 @@ private fun recoveredBaselineSnapshot(
   val head = branch?.let {
     goalReviewGitValue(repoRoot, "rev-parse", "HEAD")?.trim()?.takeIf(String::isNotBlank)
   }
-  val base = head?.let { recoverableBranchBase(repoRoot, it) }
+  val base = head?.let { currentHead ->
+    listOf("origin/main", "main")
+      .filter { runGitCommand(repoRoot, "rev-parse", "--verify", "--quiet", it).ok }
+      .distinct()
+      .firstNotNullOfOrNull { candidate ->
+        goalReviewGitValue(repoRoot, "merge-base", candidate, currentHead)
+          ?.trim()
+          ?.takeIf(String::isNotBlank)
+          ?.takeIf { runGitCommand(repoRoot, "merge-base", "--is-ancestor", it, currentHead).ok }
+      }
+  }
   val error = when {
     branch == null ->
       "Goal-subtask review baseline recovery must run on durable child branch '$expectedBranch'."
@@ -212,19 +222,6 @@ private fun recoveredBaselineSnapshot(
         recoveredBaseSha = requireNotNull(base),
       ),
     )
-  }
-}
-
-private fun recoverableBranchBase(repoRoot: Path, head: String): String? {
-  val candidates = listOfNotNull(
-    "origin/main".takeIf { runGitCommand(repoRoot, "rev-parse", "--verify", "--quiet", it).ok },
-    "main".takeIf { runGitCommand(repoRoot, "rev-parse", "--verify", "--quiet", it).ok },
-  ).distinct()
-  return candidates.firstNotNullOfOrNull { candidate ->
-    goalReviewGitValue(repoRoot, "merge-base", candidate, head)
-      ?.trim()
-      ?.takeIf(String::isNotBlank)
-      ?.takeIf { runGitCommand(repoRoot, "merge-base", "--is-ancestor", it, head).ok }
   }
 }
 
@@ -296,7 +293,7 @@ private fun reviewInputFailure(
     GoalReviewInputFailure(
       "Persisted review base '${baseline.reviewBaseSha}' is not an existing commit: " +
         material.baseExists?.error.orEmpty(),
-      material.baseExists?.takeIf(::isDefinitiveMissingObject)?.let {
+      material.baseExists?.takeIf(isDefinitiveMissingObject)?.let {
         GoalSubtaskReviewInputFailureReason.BASE_MISSING
       },
     )
@@ -304,7 +301,7 @@ private fun reviewInputFailure(
     GoalReviewInputFailure(
       "Persisted review base '${baseline.reviewBaseSha}' is not an ancestor of current HEAD; " +
         "refusing a broader review scope.",
-      material.baseIsAncestor?.takeIf(::isDefinitiveNonAncestor)?.let {
+      material.baseIsAncestor?.takeIf(isDefinitiveNonAncestor)?.let {
         GoalSubtaskReviewInputFailureReason.BASE_NOT_ANCESTOR
       },
     )
@@ -320,11 +317,11 @@ private fun reviewInputFailure(
   else -> null
 }
 
-private fun isDefinitiveMissingObject(result: skillbill.ports.workflow.model.WorkflowGitOperationResult): Boolean =
-  result.status == "error" && result.error.contains("exit code 128")
+private val isDefinitiveMissingObject: (skillbill.ports.workflow.model.WorkflowGitOperationResult) -> Boolean =
+  { result -> result.status == "error" && result.error.contains("exit code 128") }
 
-private fun isDefinitiveNonAncestor(result: skillbill.ports.workflow.model.WorkflowGitOperationResult): Boolean =
-  result.status == "error" && result.error.contains("exit code 1")
+private val isDefinitiveNonAncestor: (skillbill.ports.workflow.model.WorkflowGitOperationResult) -> Boolean =
+  { result -> result.status == "error" && result.error.contains("exit code 1") }
 
 private fun GoalReviewInputMaterial.toSnapshot(): GoalReviewInputSnapshot = GoalReviewInputSnapshot(
   branch = requireNotNull(branch),

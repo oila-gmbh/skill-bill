@@ -54,6 +54,36 @@ class AgentAddonSourceLoaderTest {
   }
 
   @Test
+  fun `discovery includes external agent add-on roots`() {
+    val repo = Files.createTempDirectory("agent-addon-external-repo")
+    val external = Files.createTempDirectory("agent-addon-external-root")
+    writeAddon(repo, "repo-addon", listOf("codex"))
+    writeAddon(external, "external-addon", listOf("codex"))
+
+    val declarations = discoverAgentAddons(repo, listOf(external.resolve("agent-addons")))
+
+    assertEquals(listOf("external-addon", "repo-addon"), declarations.map { it.slug })
+    assertTrue(
+      declarations.first { it.slug == "external-addon" }.manifestPath
+        .startsWith(external.resolve("agent-addons")),
+    )
+  }
+
+  @Test
+  fun `external roots share duplicate slug validation with repo root`() {
+    val repo = Files.createTempDirectory("agent-addon-external-duplicate-repo")
+    val external = Files.createTempDirectory("agent-addon-external-duplicate-root")
+    writeAddon(repo, "shared", listOf("codex"))
+    writeAddon(external, "shared", listOf("codex"))
+
+    val error = assertFailsWith<InvalidAgentAddonSchemaError> {
+      discoverAgentAddons(repo, listOf(external.resolve("agent-addons")))
+    }
+
+    assertTrue(error.reason.contains("duplicate slug 'shared'"), error.reason)
+  }
+
+  @Test
   fun `required lookup reports a typed missing declaration`() {
     val repo = Files.createTempDirectory("agent-addon-required")
     assertFailsWith<MissingAgentAddonDeclarationError> { requireAgentAddon(repo, "missing") }

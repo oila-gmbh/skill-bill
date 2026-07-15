@@ -4,8 +4,8 @@ import skillbill.ports.workflow.buildGoalSubtaskReviewInput
 import skillbill.ports.workflow.captureGoalSubtaskReviewBaseline
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.model.GoalSubtaskReviewInputFailureReason
-import skillbill.ports.workflow.recoverGoalSubtaskReviewBaseline
 import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksRequest
+import skillbill.ports.workflow.recoverGoalSubtaskReviewBaseline
 import skillbill.ports.workflow.runtimePhaseChangedPathsBetweenCommits
 import skillbill.ports.workflow.runtimePhaseHeadCommit
 import java.nio.file.Files

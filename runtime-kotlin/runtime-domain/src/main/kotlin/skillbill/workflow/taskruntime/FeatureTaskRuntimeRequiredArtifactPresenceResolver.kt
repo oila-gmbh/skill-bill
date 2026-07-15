@@ -34,10 +34,7 @@ object FeatureTaskRuntimeRequiredArtifactPresenceResolver : RequiredArtifactPres
     return requiredArtifacts.filterNot(completedPhaseIds::contains)
   }
 
-  override fun resolveRequiredArtifact(
-    snapshot: WorkflowSnapshotView,
-    artifactKey: String,
-  ): ResolvedRequiredArtifact {
+  override fun resolveRequiredArtifact(snapshot: WorkflowSnapshotView, artifactKey: String): ResolvedRequiredArtifact {
     val record = decodePhaseRecords(snapshot)[artifactKey]
       ?: return ResolvedRequiredArtifact(present = false, value = null)
     if (record.status != PHASE_STATUS_COMPLETED) {

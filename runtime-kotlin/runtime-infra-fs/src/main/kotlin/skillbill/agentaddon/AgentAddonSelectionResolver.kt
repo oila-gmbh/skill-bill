@@ -22,6 +22,7 @@ class AgentAddonSelectionResolver : AgentAddonSelectionPort {
     requestedSlugs: List<String>,
     consumer: AgentAddonConsumer,
     receivingAgentIds: List<String>,
+    externalSourceRoots: List<Path>,
   ): HydratedAgentAddonSelection {
     validateRequestedSlugs(requestedSlugs)
     if (requestedSlugs.isNotEmpty() && receivingAgentIds.isEmpty()) {
@@ -30,7 +31,7 @@ class AgentAddonSelectionResolver : AgentAddonSelectionPort {
       )
     }
     val receivingAgents = receivingAgentIds.map(::parseAgent)
-    val catalogue = discoverAgentAddons(repoRoot).associateBy { it.slug }
+    val catalogue = discoverAgentAddons(repoRoot, externalSourceRoots).associateBy { it.slug }
     return HydratedAgentAddonSelection(
       requestedSlugs.map { slug ->
         val declaration = catalogue[slug]

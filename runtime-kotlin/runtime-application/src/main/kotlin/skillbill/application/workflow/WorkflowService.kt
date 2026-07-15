@@ -323,78 +323,102 @@ class WorkflowService(
         "Unknown runtime phase '$normalizedPhaseId'. Allowed: ${family.definition.stepIds.joinToString()}.",
       )
     }
+    val request = BlockedPhaseRetryRequest(workflowId, normalizedPhaseId, normalizedReason)
     return database.transaction(dbOverride) { unitOfWork ->
-      val existing = family.get(unitOfWork.workflowStates, workflowId)
-        ?: return@transaction WorkflowUpdateResult.Error(
-          workflowId,
-          "Unknown runtime workflow_id '$workflowId'.",
-          unitOfWork.dbPath.toString(),
-        )
-      if (existing.workflowStatus in family.definition.terminalStatuses) {
-        return@transaction WorkflowUpdateResult.Error(
-          workflowId,
-          "Runtime workflow '$workflowId' is already terminal with status '${existing.workflowStatus}'.",
-          unitOfWork.dbPath.toString(),
-        )
-      }
-      val artifacts = decodeWorkflowArtifacts(existing.artifactsJson)
-      val phaseRecords = decodeFeatureTaskRuntimePhaseRecords(artifacts)
-      val ledger = decodeFeatureTaskRuntimePhaseLedger(artifacts)
-      val blockedRecord = phaseRecords[normalizedPhaseId]
-        ?: return@transaction WorkflowUpdateResult.Error(
-          workflowId,
-          "Runtime workflow '$workflowId' has no durable phase record for '$normalizedPhaseId'.",
-          unitOfWork.dbPath.toString(),
-        )
-      if (blockedRecord.status != "blocked") {
-        return@transaction WorkflowUpdateResult.Error(
-          workflowId,
-          "Runtime workflow '$workflowId' phase '$normalizedPhaseId' is '${blockedRecord.status}', not blocked.",
-          unitOfWork.dbPath.toString(),
-        )
-      }
-      val updatedRecords = LinkedHashMap(phaseRecords).apply {
-        remove(normalizedPhaseId)
-      }
-      val retryEntry = FeatureTaskRuntimePhaseLedgerEntry(
-        action = FeatureTaskRuntimePhaseLedgerAction.RETRY,
-        sequenceNumber = (ledger.maxOfOrNull { it.sequenceNumber } ?: -1) + 1,
-        timestamp = OffsetDateTime.now(ZoneOffset.UTC).toString(),
-        phaseId = normalizedPhaseId,
-        attemptCount = blockedRecord.attemptCount,
-        resolvedAgentId = blockedRecord.resolvedAgentId,
-      )
-      val input = WorkflowUpdateInput(
-        workflowStatus = "running",
-        currentStepId = normalizedPhaseId,
-        stepUpdates = listOf(
-          mapOf(
-            "step_id" to normalizedPhaseId,
-            "status" to "pending",
-            "attempt_count" to 0,
-          ),
-        ),
-        artifactsPatch = mapOf(
-          FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY to
-            updatedRecords.mapValues { (_, record) -> record.toArtifactMap() },
-          FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY to
-            (ledger.map { it.toArtifactMap() } + retryEntry.toArtifactMap()).takeLast(
-              FEATURE_TASK_RUNTIME_PHASE_LEDGER_LIMIT,
-            ),
-          FEATURE_TASK_RUNTIME_OPERATOR_BLOCK_RETRY_ARTIFACT_KEY to mapOf(
-            "phase_id" to normalizedPhaseId,
-            "reason" to normalizedReason,
-            "retried_at" to OffsetDateTime.now(ZoneOffset.UTC).toString(),
-            "previous_blocked_reason" to blockedRecord.blockedReason,
-            "previous_blocked_record" to blockedRecord.toArtifactMap(),
-          ),
-        ),
-        sessionId = "",
-      )
-      val updated = engine.updateRecord(family.definition, existing, input)
-      family.save(unitOfWork.workflowStates, updated)
-      updateOk(family.definition, updated, input, unitOfWork.dbPath.toString())
+      retryBlockedFeatureTaskRuntimePhaseInTransaction(unitOfWork, request)
     }
+  }
+
+  private fun retryBlockedFeatureTaskRuntimePhaseInTransaction(
+    unitOfWork: UnitOfWork,
+    request: BlockedPhaseRetryRequest,
+  ): WorkflowUpdateResult {
+    val family = WorkflowFamily.TASK_RUNTIME
+    val existing = family.get(unitOfWork.workflowStates, request.workflowId)
+      ?: return WorkflowUpdateResult.Error(
+        request.workflowId,
+        "Unknown runtime workflow_id '${request.workflowId}'.",
+        unitOfWork.dbPath.toString(),
+      )
+    if (existing.workflowStatus in family.definition.terminalStatuses) {
+      return WorkflowUpdateResult.Error(
+        request.workflowId,
+        "Runtime workflow '${request.workflowId}' is already terminal with status '${existing.workflowStatus}'.",
+        unitOfWork.dbPath.toString(),
+      )
+    }
+    val artifacts = decodeWorkflowArtifacts(existing.artifactsJson)
+    val phaseRecords = decodeFeatureTaskRuntimePhaseRecords(artifacts)
+    val ledger = FeatureTaskRuntimePhaseLedgerDecoder.decode(artifacts)
+    val blockedRecord = phaseRecords[request.phaseId]
+      ?: return WorkflowUpdateResult.Error(
+        request.workflowId,
+        "Runtime workflow '${request.workflowId}' has no durable phase record for '${request.phaseId}'.",
+        unitOfWork.dbPath.toString(),
+      )
+    return if (blockedRecord.status != "blocked") {
+      WorkflowUpdateResult.Error(
+        request.workflowId,
+        "Runtime workflow '${request.workflowId}' phase '${request.phaseId}' is " +
+          "'${blockedRecord.status}', not blocked.",
+        unitOfWork.dbPath.toString(),
+      )
+    } else {
+      persistBlockedPhaseRetry(
+        unitOfWork,
+        existing,
+        request,
+        BlockedPhaseRetryState(phaseRecords, ledger, blockedRecord),
+      )
+    }
+  }
+
+  private fun persistBlockedPhaseRetry(
+    unitOfWork: UnitOfWork,
+    existing: WorkflowStateSnapshot,
+    request: BlockedPhaseRetryRequest,
+    state: BlockedPhaseRetryState,
+  ): WorkflowUpdateResult {
+    val updatedRecords = LinkedHashMap(state.phaseRecords).apply { remove(request.phaseId) }
+    val retryEntry = FeatureTaskRuntimePhaseLedgerEntry(
+      action = FeatureTaskRuntimePhaseLedgerAction.RETRY,
+      sequenceNumber = (state.ledger.maxOfOrNull { it.sequenceNumber } ?: -1) + 1,
+      timestamp = OffsetDateTime.now(ZoneOffset.UTC).toString(),
+      phaseId = request.phaseId,
+      attemptCount = state.blockedRecord.attemptCount,
+      resolvedAgentId = state.blockedRecord.resolvedAgentId,
+    )
+    val input = WorkflowUpdateInput(
+      workflowStatus = "running",
+      currentStepId = request.phaseId,
+      stepUpdates = listOf(
+        mapOf(
+          "step_id" to request.phaseId,
+          "status" to "pending",
+          "attempt_count" to 0,
+        ),
+      ),
+      artifactsPatch = mapOf(
+        FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY to
+          updatedRecords.mapValues { (_, record) -> record.toArtifactMap() },
+        FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY to
+          (state.ledger.map { it.toArtifactMap() } + retryEntry.toArtifactMap()).takeLast(
+            FEATURE_TASK_RUNTIME_PHASE_LEDGER_LIMIT,
+          ),
+        FEATURE_TASK_RUNTIME_OPERATOR_BLOCK_RETRY_ARTIFACT_KEY to mapOf(
+          "phase_id" to request.phaseId,
+          "reason" to request.reason,
+          "retried_at" to OffsetDateTime.now(ZoneOffset.UTC).toString(),
+          "previous_blocked_reason" to state.blockedRecord.blockedReason,
+          "previous_blocked_record" to state.blockedRecord.toArtifactMap(),
+        ),
+      ),
+      sessionId = "",
+    )
+    val family = WorkflowFamily.TASK_RUNTIME
+    val updated = engine.updateRecord(family.definition, existing, input)
+    family.save(unitOfWork.workflowStates, updated)
+    return updateOk(family.definition, updated, input, unitOfWork.dbPath.toString())
   }
 
   @Suppress("LongMethod", "LongParameterList")
@@ -606,6 +630,18 @@ private fun WorkflowEngine.syncDecompositionParentRuntime(
   }
 }
 
+private data class BlockedPhaseRetryRequest(
+  val workflowId: String,
+  val phaseId: String,
+  val reason: String,
+)
+
+private data class BlockedPhaseRetryState(
+  val phaseRecords: Map<String, FeatureTaskRuntimePhaseRecord>,
+  val ledger: List<FeatureTaskRuntimePhaseLedgerEntry>,
+  val blockedRecord: FeatureTaskRuntimePhaseRecord,
+)
+
 private const val DEFAULT_LIST_LIMIT: Int = 20
 private const val MAX_ABANDONMENT_REASON_LENGTH: Int = 1000
 private const val FEATURE_TASK_RUNTIME_OPERATOR_ABANDONMENT_ARTIFACT_KEY: String = "operator_abandonment"
@@ -636,30 +672,29 @@ private fun decodeFeatureTaskRuntimePhaseRecords(
   }
 }
 
-private fun decodeFeatureTaskRuntimePhaseLedger(
-  artifacts: Map<String, Any?>,
-): List<FeatureTaskRuntimePhaseLedgerEntry> {
-  if (FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY !in artifacts) return emptyList()
-  val raw = artifacts[FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY] as? List<*>
-    ?: throw InvalidWorkflowStateSchemaError(
-      "Workflow artifact '$FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY' must decode to a JSON array.",
-    )
-  return raw.map { value ->
-    val entry = JsonSupport.anyToStringAnyMap(value)
-      ?: throw InvalidWorkflowStateSchemaError(
-        "Workflow artifact '$FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY' contains a malformed entry.",
-      )
-    try {
-      FeatureTaskRuntimePhaseLedgerEntry.fromArtifactMap(entry)
-    } catch (error: InvalidWorkflowStateSchemaError) {
-      throw error
-    } catch (error: IllegalArgumentException) {
-      throw InvalidWorkflowStateSchemaError(
-        "Workflow artifact '$FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY' contains a malformed entry.",
-        error,
-      )
+private object FeatureTaskRuntimePhaseLedgerDecoder {
+  fun decode(artifacts: Map<String, Any?>): List<FeatureTaskRuntimePhaseLedgerEntry> {
+    if (FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY !in artifacts) return emptyList()
+    val raw = artifacts[FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY] as? List<*>
+      ?: invalid("must decode to a JSON array")
+    return raw.map { value ->
+      val entry = JsonSupport.anyToStringAnyMap(value) ?: invalid("contains a malformed entry")
+      try {
+        FeatureTaskRuntimePhaseLedgerEntry.fromArtifactMap(entry)
+      } catch (error: InvalidWorkflowStateSchemaError) {
+        rethrow(error)
+      } catch (error: IllegalArgumentException) {
+        invalid("contains a malformed entry", error)
+      }
     }
   }
+
+  private fun invalid(reason: String, cause: Throwable? = null): Nothing = throw InvalidWorkflowStateSchemaError(
+    "Workflow artifact '$FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY' $reason.",
+    cause,
+  )
+
+  private fun rethrow(error: InvalidWorkflowStateSchemaError): Nothing = throw error
 }
 
 private fun WorkflowUpdateRequest.toWorkflowUpdateInput(): WorkflowUpdateInput = WorkflowUpdateInput(

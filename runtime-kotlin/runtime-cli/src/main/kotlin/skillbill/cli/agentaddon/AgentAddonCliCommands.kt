@@ -15,6 +15,8 @@ import skillbill.cli.core.formatOption
 import skillbill.cli.featuretask.parseAgentAddonSelection
 import skillbill.error.ShellContentContractException
 import skillbill.ports.agentaddon.AgentAddonSelectionPort
+import skillbill.ports.agentaddon.ExternalAgentAddonSourceConfigPort
+import skillbill.ports.agentaddon.model.ExternalAgentAddonSourceConfigRequest
 import java.nio.file.Path
 
 @Inject
@@ -30,6 +32,7 @@ class AgentAddonCommand(
 @Inject
 class AgentAddonResolveSelectionCommand(
   private val resolver: AgentAddonSelectionPort,
+  private val externalSourceConfig: ExternalAgentAddonSourceConfigPort,
   private val state: CliRunState,
 ) : DocumentedCliCommand("resolve-selection", "Resolve ordered agent-addon:<slug> tokens without side effects.") {
   private val tokens by option("--token", help = "Ordered agent-addon:<slug> token.").multiple()
@@ -50,6 +53,9 @@ class AgentAddonResolveSelectionCommand(
         slugs,
         AgentAddonConsumer.BILL_FEATURE,
         receivingAgents,
+        externalSourceConfig.readExternalAgentAddonSources(
+          ExternalAgentAddonSourceConfigRequest(state.userHome, state.environment),
+        ).sources.map { it.path },
       )
       linkedMapOf(
         "contract_version" to "0.1",

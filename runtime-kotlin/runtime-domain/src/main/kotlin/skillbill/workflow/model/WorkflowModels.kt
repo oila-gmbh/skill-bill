@@ -95,8 +95,7 @@ fun interface RequiredArtifactPresenceResolver {
           snapshot: WorkflowSnapshotView,
           resumeStepId: String,
           requiredArtifacts: List<String>,
-        ): List<String> =
-          requiredArtifacts.filterNot(snapshot.artifacts::containsKey)
+        ): List<String> = requiredArtifacts.filterNot(snapshot.artifacts::containsKey)
       }
   }
 }

@@ -4,14 +4,14 @@ issue_key: "SKILL-122"
 feature_name: "agent-addons"
 parent_spec_path: ".feature-specs/SKILL-122-agent-addons/spec.md"
 spec_source: "local"
-status: "blocked"
+status: "complete"
 execution_model: "same_branch_commit_per_subtask"
 base_branch: "main"
 feature_branch: "feat/SKILL-122-agent-addons"
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 5
-  action: "blocked"
+  subtask_id: 0
+  action: "complete"
 subtasks:
 - id: 1
   name: "Agent-addon contract and source validation"
@@ -83,16 +83,12 @@ subtasks:
 - id: 5
   name: "Cross-boundary validation and install refresh"
   spec_path: ".feature-specs/SKILL-122-agent-addons/spec_subtask_5_agent-addon-integration-validation.md"
-  status: "blocked"
+  status: "complete"
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260715-045426-fjwt"
-  blocked_reason: "Feature-task-runtime could not re-attach to the persisted feature\
-    \ branch 'feat/SKILL-117-local-work-list': it no longer exists in the repository\
-    \ (HEAD is on 'feat/SKILL-122-agent-addons'). Refusing to create a new, divergent\
-    \ branch in its place or run file-mutating phases on the default branch; restore\
-    \ or recreate 'feat/SKILL-117-local-work-list' before resuming."
-  last_resumable_step: "review"
+  blocked_reason: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []

@@ -1,5 +1,5 @@
 ---
-status: Blocked
+status: Complete
 issue_key: SKILL-122
 source: inline user request
 ---

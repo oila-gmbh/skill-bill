@@ -47,6 +47,24 @@ class AgentAddonSelectionResolverTest {
   }
 
   @Test
+  fun `initial resolution can select from external agent add-on roots`() {
+    val repo = Files.createTempDirectory("addon-selection-external-repo")
+    val external = Files.createTempDirectory("addon-selection-external-root")
+    writeAddon(external, "external-helper", "External", "codex", "external content")
+
+    val selection = AgentAddonSelectionResolver().resolveInitial(
+      repo,
+      listOf("external-helper"),
+      AgentAddonConsumer.BILL_FEATURE,
+      listOf("codex"),
+      listOf(external.resolve("agent-addons")),
+    )
+
+    assertEquals(listOf("external-helper"), selection.entries.map { it.persisted.slug })
+    assertEquals("external content", selection.entries.single().content)
+  }
+
+  @Test
   fun `resume loads recorded identity directly and rejects digest drift`() {
     val repo = Files.createTempDirectory("addon-selection-resume")
     val content = writeAddon(repo, "helper", "Helper", "codex", "original")

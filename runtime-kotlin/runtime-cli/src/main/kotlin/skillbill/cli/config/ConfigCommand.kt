@@ -21,12 +21,18 @@ class ConfigCommand(
   resolveSpecTypeCommand: ConfigResolveSpecTypeCommand,
   resolveParallelAgentCommand: ConfigResolveParallelAgentCommand,
   resolveExternalAddonsCommand: ConfigResolveExternalAddonsCommand,
+  resolveExternalAgentAddonsCommand: ConfigResolveExternalAgentAddonsCommand,
 ) : DocumentedNoOpCliCommand(
   "config",
   "Inspect resolved repo-local configuration (.skill-bill/config.yaml).",
 ) {
   init {
-    subcommands(resolveSpecTypeCommand, resolveParallelAgentCommand, resolveExternalAddonsCommand)
+    subcommands(
+      resolveSpecTypeCommand,
+      resolveParallelAgentCommand,
+      resolveExternalAddonsCommand,
+      resolveExternalAgentAddonsCommand,
+    )
   }
 }
 

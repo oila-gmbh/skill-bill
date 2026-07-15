@@ -11,6 +11,7 @@ interface AgentAddonSelectionPort {
     requestedSlugs: List<String>,
     consumer: AgentAddonConsumer,
     receivingAgentIds: List<String>,
+    externalSourceRoots: List<Path> = emptyList(),
   ): HydratedAgentAddonSelection
 
   fun verifyPersisted(

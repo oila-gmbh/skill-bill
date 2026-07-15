@@ -181,14 +181,14 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
       requireNotNull(result.input)
     } else {
       recoverGoalReviewInput(
-        workflowId = workflowId,
-        state = state,
-        continuation = continuation,
-        failureReason = result.failureReason,
-        failureMessage = result.error,
-        gitOperations = gitOperations,
-        repoRoot = repoRoot,
-        dbOverride = dbOverride,
+        GoalReviewInputRecoveryRequest(
+          workflowId = workflowId,
+          state = state,
+          continuation = continuation,
+          failureReason = result.failureReason,
+          failureMessage = result.error,
+          execution = GoalReviewInputRecoveryExecution(gitOperations, repoRoot, dbOverride),
+        ),
       ) ?: return GoalSubtaskReviewInputBlocked(result.error)
     }
     val persisted = persistGoalReviewInput(workflowId, input, dbOverride)
@@ -196,35 +196,33 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
     return GoalSubtaskReviewInputReady(persisted, input)
   }
 
-  private fun recoverGoalReviewInput(
-    workflowId: String,
-    state: GoalSubtaskReviewState,
-    continuation: FeatureTaskRuntimeGoalContinuationArtifact,
-    failureReason: GoalSubtaskReviewInputFailureReason?,
-    failureMessage: String,
-    gitOperations: WorkflowGitOperations,
-    repoRoot: java.nio.file.Path,
-    dbOverride: String?,
-  ): GoalSubtaskReviewInput? {
-    if (failureReason !in recoverableReviewBaseFailures || !state.canRecoverReviewBase()) return null
-    val recovered = gitOperations.recoverGoalSubtaskReviewBaseline(
-      repoRoot,
-      GoalSubtaskReviewBaseline(state.reviewBaseSha, state.baselineUntrackedPaths),
-      continuation.goalBranch,
+  private fun recoverGoalReviewInput(request: GoalReviewInputRecoveryRequest): GoalSubtaskReviewInput? {
+    if (request.failureReason !in recoverableReviewBaseFailures || !request.state.canRecoverReviewBase()) return null
+    val recovered = request.execution.gitOperations.recoverGoalSubtaskReviewBaseline(
+      request.execution.repoRoot,
+      GoalSubtaskReviewBaseline(request.state.reviewBaseSha, request.state.baselineUntrackedPaths),
+      request.continuation.goalBranch,
     )
     if (!recovered.ok) return null
     val recoveredBaseline = requireNotNull(recovered.baseline)
-    val rebuilt = gitOperations.buildGoalSubtaskReviewInput(
-      repoRoot,
+    val rebuilt = request.execution.gitOperations.buildGoalSubtaskReviewInput(
+      request.execution.repoRoot,
       recoveredBaseline,
-      continuation.goalBranch,
+      request.continuation.goalBranch,
     )
     check(rebuilt.ok) {
       "Recovered goal-subtask review base '${recoveredBaseline.reviewBaseSha}' could not materialize review input " +
-        "after replacing incompatible base '${state.reviewBaseSha}': ${rebuilt.error.ifBlank { failureMessage }}"
+        "after replacing incompatible base '${request.state.reviewBaseSha}': " +
+        rebuilt.error.ifBlank { request.failureMessage }
     }
     val input = requireNotNull(rebuilt.input)
-    return persistRecoveredGoalReviewInput(workflowId, state, recoveredBaseline, input, dbOverride)?.let { input }
+    return persistRecoveredGoalReviewInput(
+      request.workflowId,
+      request.state,
+      recoveredBaseline,
+      input,
+      request.execution.dbOverride,
+    )?.let { input }
   }
 
   private fun persistRecoveredGoalReviewInput(
@@ -269,24 +267,25 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
       rawReviewResultsFromArtifacts(artifacts, state)[passNumber.toString()]
     }
 
-  private fun savePatch(
-    record: skillbill.workflow.model.WorkflowStateSnapshot,
-    workflowStates: skillbill.ports.persistence.WorkflowStateRepository,
-    patch: Map<String, Any?>,
-  ) {
-    val updated = engine.updateRecord(
-      WorkflowFamily.TASK_RUNTIME.definition,
-      record,
-      WorkflowUpdateInput(
-        workflowStatus = record.workflowStatus,
-        currentStepId = record.currentStepId,
-        stepUpdates = null,
-        artifactsPatch = patch,
-        sessionId = record.sessionId.orEmpty(),
-      ),
-    )
-    WorkflowFamily.TASK_RUNTIME.save(workflowStates, updated)
-  }
+  private val savePatch =
+    fun(
+      record: skillbill.workflow.model.WorkflowStateSnapshot,
+      workflowStates: skillbill.ports.persistence.WorkflowStateRepository,
+      patch: Map<String, Any?>,
+    ) {
+      val updated = engine.updateRecord(
+        WorkflowFamily.TASK_RUNTIME.definition,
+        record,
+        WorkflowUpdateInput(
+          workflowStatus = record.workflowStatus,
+          currentStepId = record.currentStepId,
+          stepUpdates = null,
+          artifactsPatch = patch,
+          sessionId = record.sessionId.orEmpty(),
+        ),
+      )
+      WorkflowFamily.TASK_RUNTIME.save(workflowStates, updated)
+    }
 }
 
 internal data class GoalContinuationStateRecordRequest(
@@ -303,6 +302,21 @@ internal data class GoalReviewPassCompletionRequest(
   val unresolvedFindingCount: Int,
   val findings: List<GoalSubtaskReviewCompactFinding>,
   val rawReviewResult: String,
+)
+
+private data class GoalReviewInputRecoveryRequest(
+  val workflowId: String,
+  val state: GoalSubtaskReviewState,
+  val continuation: FeatureTaskRuntimeGoalContinuationArtifact,
+  val failureReason: GoalSubtaskReviewInputFailureReason?,
+  val failureMessage: String,
+  val execution: GoalReviewInputRecoveryExecution,
+)
+
+private data class GoalReviewInputRecoveryExecution(
+  val gitOperations: WorkflowGitOperations,
+  val repoRoot: java.nio.file.Path,
+  val dbOverride: String?,
 )
 
 private fun continuationPatch(
@@ -388,12 +402,11 @@ private fun continuationFromArtifacts(artifacts: Map<String, Any?>): FeatureTask
 private fun reviewStateFromArtifacts(artifacts: Map<String, Any?>): GoalSubtaskReviewState? =
   GoalSubtaskReviewArtifactDecoder.decode(artifacts)?.state
 
-private fun GoalSubtaskReviewState.canRecoverReviewBase(): Boolean =
-  completedPassCount == 0 &&
-    passResults.isEmpty() &&
-    emittedPassCount == 0 &&
-    reviewInputArtifact == null &&
-    disposition == GoalSubtaskReviewDisposition.PENDING
+private fun GoalSubtaskReviewState.canRecoverReviewBase(): Boolean = completedPassCount == 0 &&
+  passResults.isEmpty() &&
+  emittedPassCount == 0 &&
+  reviewInputArtifact == null &&
+  disposition == GoalSubtaskReviewDisposition.PENDING
 
 private fun GoalSubtaskReviewState.matches(
   baseline: GoalSubtaskReviewBaseline,
