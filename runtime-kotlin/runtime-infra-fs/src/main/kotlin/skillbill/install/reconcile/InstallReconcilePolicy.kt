@@ -23,6 +23,7 @@ import skillbill.install.model.WindowsSymlinkPreflight
 import skillbill.install.model.WindowsSymlinkPreflightState
 import skillbill.install.plan.discoverPlatformManifests
 import skillbill.install.plan.enumerateInstallPlanSkills
+import skillbill.install.staging.INSTALL_CACHE_KEY_BYTES
 import skillbill.install.staging.InstallContentHashInputs
 import skillbill.install.staging.InternalStagingPreparation
 import skillbill.install.staging.agentAddonPointersForSkill
@@ -266,7 +267,7 @@ private fun hashAgentAddonSource(manifestPath: Path, contentPath: Path): String 
     digest.update(Files.readAllBytes(path))
     digest.update(0)
   }
-  return digest.digest().joinToString("") { byte -> "%02x".format(byte) }
+  return digest.digest().take(INSTALL_CACHE_KEY_BYTES).joinToString("") { byte -> "%02x".format(byte) }
 }
 
 private fun reconcileSkillHash(

@@ -379,6 +379,7 @@ class FeatureTaskRuntimeRunCommand(
   featureTaskRuntimeStatusCommand: FeatureTaskRuntimeStatusCommand,
   featureTaskRuntimeResumeCommand: FeatureTaskRuntimeResumeCommand,
   featureTaskRuntimeAbandonCommand: FeatureTaskRuntimeAbandonCommand,
+  featureTaskRuntimeRetryBlockedCommand: FeatureTaskRuntimeRetryBlockedCommand,
   featureTaskRuntimeRepairIdentityCommand: FeatureTaskRuntimeRepairIdentityCommand,
   featureTaskLookupCommand: FeatureTaskLookupCommand,
 ) : FeatureTaskRuntimePhaseAgentCommand(
@@ -396,6 +397,7 @@ class FeatureTaskRuntimeRunCommand(
       featureTaskRuntimeStatusCommand,
       featureTaskRuntimeResumeCommand,
       featureTaskRuntimeAbandonCommand,
+      featureTaskRuntimeRetryBlockedCommand,
       featureTaskRuntimeRepairIdentityCommand,
       featureTaskLookupCommand,
     )
@@ -553,6 +555,25 @@ class FeatureTaskRuntimeAbandonCommand(
 
   override fun run() {
     val result = workflowService.abandonFeatureTaskRuntime(workflowId, reason, state.dbOverride)
+    state.complete(result.toCliMap(), format, exitCode = if (result is WorkflowUpdateResult.Error) 1 else 0)
+  }
+}
+
+@Inject
+class FeatureTaskRuntimeRetryBlockedCommand(
+  private val workflowService: WorkflowService,
+  private val state: CliRunState,
+) : DocumentedCliCommand(
+  "retry-blocked",
+  "Reopen one blocked runtime phase after an operator-applied fix.",
+) {
+  private val workflowId by argument(help = "Exact runtime workflow id whose blocked phase should be retried.")
+  private val phaseId by option("--phase", help = "Blocked runtime phase to reopen.").required()
+  private val reason by option("--reason", help = "Required operator reason recorded with the retry.").required()
+  private val format by formatOption()
+
+  override fun run() {
+    val result = workflowService.retryBlockedFeatureTaskRuntimePhase(workflowId, phaseId, reason, state.dbOverride)
     state.complete(result.toCliMap(), format, exitCode = if (result is WorkflowUpdateResult.Error) 1 else 0)
   }
 }

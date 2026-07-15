@@ -215,6 +215,22 @@ class InstallReconcileTest : InstallApplyTestSupport() {
   }
 
   @Test
+  fun `agent addon reconcile hashes use baseline manifest hash width`() {
+    val upstream = seedRepo("reconcile-upstream")
+    val local = seedRepo("reconcile-local")
+    val home = home()
+    seedAgentAddon(upstream, "execution-budget", "UPSTREAM ADDON\n")
+
+    val plan = emptyBaselinePlan(upstream, local, home)
+
+    val addon = assertIs<SkillReconciliationOutcome.NewUpstream>(outcomeFor(plan, "agent-addons/execution-budget"))
+    assertTrue(
+      Regex("^[0-9a-f]{16}$").matches(addon.upstreamHash),
+      "agent add-on baseline hashes must use the same 16-hex width as skill hashes: ${addon.upstreamHash}",
+    )
+  }
+
+  @Test
   fun `identical inputs are idempotent with no conflicts and no refresh`() {
     val upstream = seedRepo("reconcile-upstream")
     val local = seedRepo("reconcile-local")
@@ -260,5 +276,23 @@ class InstallReconcileTest : InstallApplyTestSupport() {
     persistence.writeBaseline(WriteBaselineManifestRequest(home, readBack.manifest))
     val secondBytes = Files.readAllBytes(writeResult.path)
     assertTrue(firstBytes.contentEquals(secondBytes), "no-change rewrite must be byte-identical")
+  }
+
+  private fun seedAgentAddon(repo: Path, slug: String, body: String) {
+    val root = repo.resolve("agent-addons/$slug")
+    Files.createDirectories(root)
+    Files.writeString(
+      root.resolve("agent-addon.yaml"),
+      """
+      contract_version: "1.0"
+      slug: $slug
+      description: Test helper
+      agent_ids:
+        - codex
+      consumers:
+        - bill-feature
+      """.trimIndent() + "\n",
+    )
+    Files.writeString(root.resolve("content.md"), body)
   }
 }

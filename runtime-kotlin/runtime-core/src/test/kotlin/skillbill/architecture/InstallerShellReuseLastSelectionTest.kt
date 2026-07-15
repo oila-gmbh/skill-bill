@@ -39,6 +39,19 @@ class InstallerShellReuseLastSelectionTest {
   }
 
   @Test
+  fun `installer shell reuse preserves current telemetry config over stale saved selection`() {
+    val run = runInstaller(
+      extraArgs = listOf("--reuse-last-selection"),
+      replayTelemetryLevel = "anonymous",
+      currentTelemetryLevel = "full",
+    )
+
+    assertEquals(0, run.exitCode, run.output)
+    assertContains(run.output, "Preserving current telemetry config level 'full'")
+    assertEquals("full", run.applyArgs[run.applyArgs.indexOf("--telemetry") + 1])
+  }
+
+  @Test
   fun `installer shell rejects desktop-only with reuse-last-selection`() {
     val run = runInstaller(
       extraArgs = listOf("--desktop-app-only", "--reuse-last-selection"),
@@ -68,12 +81,19 @@ class InstallerShellReuseLastSelectionTest {
     extraArgs: List<String>,
     reuseSelection: String = "ok",
     skipPreinstallUninstall: Boolean = true,
+    replayTelemetryLevel: String = "full",
+    currentTelemetryLevel: String? = null,
   ): InstallerRun {
     val testRepo = Files.createTempDirectory("skillbill-installer-reuse-repo")
     val home = Files.createTempDirectory("skillbill-installer-reuse-home")
     val binDir = Files.createTempDirectory("skillbill-installer-reuse-bin")
     val logPath = Files.createTempFile("skillbill-installer-reuse-runtime", ".log")
     seedRepo(testRepo)
+    if (currentTelemetryLevel != null) {
+      val configPath = home.resolve(".config/skill-bill/config.json")
+      Files.createDirectories(configPath.parent)
+      Files.writeString(configPath, """{"telemetry":{"level":"$currentTelemetryLevel"}}""")
+    }
 
     val command = mutableListOf("bash", testRepo.resolve("install.sh").toString()).apply { addAll(extraArgs) }
     val process = ProcessBuilder(command)
@@ -85,6 +105,8 @@ class InstallerShellReuseLastSelectionTest {
         environment()["SKILL_BILL_SKIP_RUNTIME_DISTRIBUTION_BUILD"] = "1"
         environment()["SKILL_BILL_TEST_RUNTIME_LOG"] = logPath.toString()
         environment()["SKILL_BILL_TEST_REUSE_SELECTION"] = reuseSelection
+        environment()["SKILL_BILL_TEST_REPLAY_TELEMETRY"] = replayTelemetryLevel
+        currentTelemetryLevel?.let { environment()["SKILL_BILL_TEST_CURRENT_TELEMETRY"] = it }
         if (skipPreinstallUninstall) {
           environment()["SKILL_BILL_SKIP_PREINSTALL_UNINSTALL"] = "1"
         }
@@ -159,7 +181,12 @@ class InstallerShellReuseLastSelectionTest {
     |  fi
     |  printf '%s\n' "SLF4J(W): No SLF4J providers were found." >&2
     |  printf 'agent\tcodex\t%s\n' "${'$'}home/agent-targets/codex"
-    |  printf 'platform-mode\tselected\nplatform\tkotlin\ntelemetry\tfull\nmcp\tregister\n'
+    |  printf 'platform-mode\tselected\nplatform\tkotlin\ntelemetry\t%s\nmcp\tregister\n' "${'$'}{SKILL_BILL_TEST_REPLAY_TELEMETRY:-full}"
+    |  exit 0
+    |fi
+    |if [[ "${'$'}{1:-}" == "telemetry" && "${'$'}{2:-}" == "status" ]]; then
+    |  printf 'config_path: %s\n' "${'$'}home/.config/skill-bill/config.json"
+    |  printf 'telemetry_level: %s\n' "${'$'}{SKILL_BILL_TEST_CURRENT_TELEMETRY:-anonymous}"
     |  exit 0
     |fi
     |if [[ "${'$'}{1:-}" == "install" && "${'$'}{2:-}" == "apply" ]]; then

@@ -1369,6 +1369,28 @@ run_selection_runtime_cli() {
   SKILL_BILL_RUNTIME_EXECUTABLE="$runtime_bin" "$runtime_bin" --home "$HOME" "$@"
 }
 
+current_telemetry_level_from_config() {
+  local output
+  local config_path
+  local telemetry_level
+
+  if ! output="$(run_selection_runtime_cli telemetry status 2>/dev/null)"; then
+    return 1
+  fi
+
+  config_path="$(printf '%s\n' "$output" | awk -F': ' '$1 == "config_path" { print $2; exit }')"
+  telemetry_level="$(printf '%s\n' "$output" | awk -F': ' '$1 == "telemetry_level" { print $2; exit }')"
+  case "$telemetry_level" in
+    anonymous|full|off)
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+  [[ -n "$config_path" && -f "$config_path" ]] || return 1
+  printf '%s\n' "$telemetry_level"
+}
+
 path_contains_dir() {
   local candidate="$1"
   case ":${PATH:-}:" in
@@ -2446,6 +2468,13 @@ replay_last_install_selection() {
         ;;
     esac
   done <<< "$output"
+
+  if value="$(current_telemetry_level_from_config)"; then
+    if [[ "$value" != "$TELEMETRY_LEVEL" ]]; then
+      info "Preserving current telemetry config level '$value' instead of saved install selection '$TELEMETRY_LEVEL'."
+    fi
+    TELEMETRY_LEVEL="$value"
+  fi
 
   if [[ ${#AGENT_NAMES[@]} -eq 0 ]]; then
     err "Cannot reuse saved install selections: saved selection has no agents."
