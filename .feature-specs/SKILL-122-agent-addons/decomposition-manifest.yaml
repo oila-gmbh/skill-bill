@@ -87,8 +87,11 @@ subtasks:
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260715-045426-fjwt"
-  blocked_reason: "Persisted review base 'f31ae4874d31b558dbaf0a4feafd6e4be3338953'\
-    \ is not an ancestor of current HEAD; refusing a broader review scope."
+  blocked_reason: "Feature-task-runtime could not re-attach to the persisted feature\
+    \ branch 'feat/SKILL-117-local-work-list': it no longer exists in the repository\
+    \ (HEAD is on 'feat/SKILL-122-agent-addons'). Refusing to create a new, divergent\
+    \ branch in its place or run file-mutating phases on the default branch; restore\
+    \ or recreate 'feat/SKILL-117-local-work-list' before resuming."
   last_resumable_step: "review"
   linear_issue_id: null
   finalizing_agent_id: null
