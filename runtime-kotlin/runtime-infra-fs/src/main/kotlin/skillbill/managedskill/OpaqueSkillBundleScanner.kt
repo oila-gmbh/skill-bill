@@ -69,11 +69,7 @@ class OpaqueSkillBundleScanner {
         ) fail("The bundle root identity changed before traversal.")
         captureDirectory(directory, "", only)
       } else {
-        val opened = readAttributes(root)
-        if (!opened.isDirectory || opened.isSymbolicLink ||
-          before.fileKey() != null && opened.fileKey() != null && before.fileKey() != opened.fileKey()
-        ) fail("The bundle root identity changed before traversal.")
-        captureDirectoryPortable(root, "", only)
+        fail("Bundle scanning requires identity-bound directory access on this filesystem.")
       }
     }
     requireUnchangedRoot(root, before)
@@ -101,33 +97,6 @@ class OpaqueSkillBundleScanner {
         else -> fail("Special files are not allowed: $relative")
       }
     }
-  }
-
-  private fun captureDirectoryPortable(root: Path, prefix: String, only: Path? = null): List<OpaqueSkillBundleFile> {
-    val directory = if (prefix.isEmpty()) root else root.resolve(prefix)
-    val directoryAttributes = readAttributes(directory)
-    if (!directoryAttributes.isDirectory || directoryAttributes.isSymbolicLink) fail("The bundle directory is not real: $directory")
-    val names = if (only != null) listOf(only) else Files.newDirectoryStream(directory).use { stream ->
-      stream.map { it.fileName }
-    }
-    val captured = names.flatMap { name ->
-      val relative = if (prefix.isEmpty()) name.toString() else "$prefix/$name"
-      if (name.isAbsolute || name.normalize().startsWith("..")) fail("Bundle path escapes the selected directory: $relative")
-      val path = directory.resolve(name)
-      val attributes = readAttributes(path)
-      when {
-        attributes.isSymbolicLink -> fail("Symbolic links are not allowed: $relative")
-        attributes.isRegularFile -> listOf(OpaqueSkillBundleFile(relative, readStableBytes(path, relative, attributes)))
-        attributes.isDirectory -> captureDirectoryPortable(root, relative)
-        else -> fail("Special files are not allowed: $relative")
-      }
-    }
-    val after = readAttributes(directory)
-    if (!after.isDirectory || after.isSymbolicLink ||
-      directoryAttributes.fileKey() != null && after.fileKey() != null && directoryAttributes.fileKey() != after.fileKey() ||
-      directoryAttributes.lastModifiedTime() != after.lastModifiedTime()
-    ) fail("The bundle directory changed while being scanned: $directory")
-    return captured
   }
 
   private fun parseFrontmatter(text: String): JsonNode {
@@ -218,38 +187,6 @@ class OpaqueSkillBundleScanner {
     throw error
   } catch (error: Exception) {
     throw InvalidOpaqueSkillBundleException("Cannot read bundle entry without following links: $relative", error)
-  }
-
-  private fun readStableBytes(path: Path, relative: String, before: BasicFileAttributes): ByteArray = try {
-    if (!before.isRegularFile || before.isSymbolicLink) fail("Bundle entry changed type while being read: $relative")
-    val bytes = openPortableReadChannel(path).use { channel -> readAll(channel) }
-    val after = readAttributes(path)
-    requireStableFile(before, after, relative)
-    bytes
-  } catch (error: InvalidOpaqueSkillBundleException) {
-    throw error
-  } catch (error: Exception) {
-    throw InvalidOpaqueSkillBundleException("Cannot read bundle entry without following links: $relative", error)
-  }
-
-  private fun openPortableReadChannel(path: Path): java.nio.channels.SeekableByteChannel = try {
-    Files.newByteChannel(path, setOf(READ, NOFOLLOW_LINKS))
-  } catch (unsupportedOption: IllegalArgumentException) {
-    openWhenSymbolicLinksAreUnsupported(path, unsupportedOption)
-  } catch (unsupportedOption: UnsupportedOperationException) {
-    openWhenSymbolicLinksAreUnsupported(path, unsupportedOption)
-  }
-
-  private fun openWhenSymbolicLinksAreUnsupported(
-    path: Path,
-    unsupportedOption: RuntimeException,
-  ): java.nio.channels.SeekableByteChannel = try {
-    Files.readSymbolicLink(path)
-    throw InvalidOpaqueSkillBundleException("Symbolic links are not allowed: $path")
-  } catch (_: UnsupportedOperationException) {
-    Files.newByteChannel(path, setOf(READ))
-  } catch (supportedLinks: java.nio.file.NotLinkException) {
-    throw unsupportedOption
   }
 
   private fun requireStableFile(before: BasicFileAttributes, after: BasicFileAttributes, relative: String) {

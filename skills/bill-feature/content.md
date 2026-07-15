@@ -65,9 +65,13 @@ If the issue key is missing, stop and ask for it. Do not invent one.
 
 ## Prepare Spec
 
-Before discovering or preparing governed artifacts, perform the read-only, repository-scoped continuation lookup for the normalized issue key and current canonical Git root. The workflow database and immutable execution identity are authoritative; `spec.md` is the governed feature contract, not a planning checkpoint.
+Before preparing new governed artifacts, perform read-only artifact discovery for `.feature-specs/{ISSUE_KEY}-*/`. This discovery only classifies already-governed artifacts; it must not write, repair, or synthesize files.
 
-Handle `resumable`, `already_running`, `ambiguous`, and `terminal_only` before new-work preparation. For `resumable`, dispatch directly to the task sidecar with the persisted workflow id, mode, and spec path. Report and stop for running or terminal rows, and report every ambiguous candidate rather than selecting by recency. Only `no_match` may continue below. A malformed request, identity/snapshot/version error, selector mismatch, or explicit mode conflict must loud-fail rather than becoming `no_match`.
+When exactly one existing artifact directory contains a `decomposition-manifest.yaml`, dispatch directly to the goal sidecar before running the standalone feature-task continuation lookup. The goal runtime owns decomposed parent and child continuation state; a stale or terminal standalone feature-task row for the same issue must not block an existing decomposed goal.
+
+When no decomposed artifact exists, perform the read-only, repository-scoped standalone feature-task continuation lookup for the normalized issue key and current canonical Git root. The workflow database and immutable execution identity are authoritative for single-spec feature-task continuation; `spec.md` is the governed feature contract, not a planning checkpoint.
+
+Handle `resumable`, `already_running`, `ambiguous`, and `terminal_only` before single-spec dispatch or new-work preparation. For `resumable`, dispatch directly to the task sidecar with the persisted workflow id, mode, and spec path. Report and stop for running or terminal standalone rows, and report every ambiguous standalone candidate rather than selecting by recency. Only `no_match` may continue below. A malformed request, identity/snapshot/version error, selector mismatch, or explicit mode conflict must loud-fail rather than becoming `no_match`.
 
 For `no_match`, invoke `bill-feature-spec` first in the current session unless the direct-dispatch rules below find existing governed artifacts. Do not write spec artifacts directly and do not fork spec-preparation logic.
 

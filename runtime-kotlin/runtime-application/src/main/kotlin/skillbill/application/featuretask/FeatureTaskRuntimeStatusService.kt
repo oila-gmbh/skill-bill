@@ -53,12 +53,13 @@ class FeatureTaskRuntimeStatusService(
       if (terminalDecomposeRecorded) {
         null
       } else {
+        phases.firstOrNull { it.status == STATUS_RUNNING || it.status == STATUS_BLOCKED }?.phaseId ?:
         // Skip a loop-only phase (e.g. implement_fix) only while it is still pending: it is
         // permanently pending on a clean forward run and is reached only as a backward-edge
         // destination, so reporting a never-run one as current would mislead operators. A loop-only
         // phase that is actually running or blocked mid-loop still surfaces. A run with no incomplete
         // non-loop-only phase reports none (a completed run is terminal).
-        currentReentryPhaseId(records, ledger) ?: phases.firstOrNull {
+          currentReentryPhaseId(records, ledger) ?: phases.firstOrNull {
           it.status != STATUS_COMPLETED &&
             !(it.phaseId in LOOP_ONLY_PHASE_IDS && it.status == STATUS_PENDING)
         }?.phaseId
@@ -158,6 +159,7 @@ class FeatureTaskRuntimeStatusService(
 
   private companion object {
     const val STATUS_PENDING = "pending"
+    const val STATUS_RUNNING = "running"
     const val STATUS_COMPLETED = "completed"
     const val STATUS_BLOCKED = "blocked"
     val TERMINAL_PHASE_STATUSES = setOf(STATUS_COMPLETED, STATUS_BLOCKED)

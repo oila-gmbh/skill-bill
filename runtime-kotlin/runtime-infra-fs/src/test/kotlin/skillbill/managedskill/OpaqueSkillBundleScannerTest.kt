@@ -94,7 +94,7 @@ class OpaqueSkillBundleScannerTest {
   }
 
   @Test
-  fun `scans providers without secure directory streams`() {
+  fun `rejects providers without identity-bound directory streams`() {
     val archive = Files.createTempFile("opaque-skill", ".zip")
     Files.delete(archive)
     FileSystems.newFileSystem(URI.create("jar:${archive.toUri()}"), mapOf("create" to "true")).use { fileSystem ->
@@ -102,9 +102,7 @@ class OpaqueSkillBundleScannerTest {
       root.resolve("SKILL.md").writeText("---\nname: sample-skill\ndescription: Sample\n---")
       root.resolve("notes.txt").writeText("support")
 
-      val bundle = scanner.scan(root, emptySet())
-
-      assertEquals(listOf("SKILL.md", "notes.txt"), bundle.files.map { it.relativePath })
+      assertFailsWith<InvalidOpaqueSkillBundleException> { scanner.scan(root, emptySet()) }
     }
   }
 }

@@ -177,6 +177,27 @@ class FeatureTaskRuntimeStatusServiceTest {
   }
 
   @Test
+  fun `durable running phase wins over inferred loop reentry`() {
+    val harness = statusHarness()
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    listOf("preplan", "plan", "implement", "implement_fix", "review")
+      .forEach { harness.recordCompleted(it, attemptCount = 1) }
+    harness.recordLoopEdge(
+      phaseId = "implement_fix",
+      attemptCount = 1,
+      loopId = "review_fix",
+      edgeIteration = 1,
+    )
+    harness.recordRunning("audit", attemptCount = 2)
+
+    val projection = requireNotNull(
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+    )
+
+    assertEquals("audit", projection.currentPhaseId)
+  }
+
+  @Test
   fun `projection surfaces the durable resolved feature branch`() {
     val harness = statusHarness()
     harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)

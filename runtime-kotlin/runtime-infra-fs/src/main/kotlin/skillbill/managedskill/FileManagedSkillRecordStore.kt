@@ -19,18 +19,32 @@ import java.nio.file.StandardOpenOption.CREATE
 import java.nio.file.StandardOpenOption.CREATE_NEW
 import java.nio.file.StandardOpenOption.READ
 import java.nio.file.StandardOpenOption.WRITE
-import java.nio.file.StandardCopyOption.ATOMIC_MOVE
-import java.nio.file.StandardCopyOption.REPLACE_EXISTING
 import java.security.MessageDigest
 import java.time.Instant
 
-class FileManagedSkillRecordStore(
+class FileManagedSkillRecordStore private constructor(
   stateRoot: Path,
-  private val atomicReplace: ((Path, Path) -> Unit)? = null,
+  private val atomicReplace: ((Path, Path) -> Unit)?,
   private val forceDirectory: (Path) -> Unit = { directory ->
     FileChannel.open(directory, READ).use { it.force(true) }
   },
+  @Suppress("UNUSED_PARAMETER") publicationTestSeam: Unit,
 ) {
+  constructor(
+    stateRoot: Path,
+    forceDirectory: (Path) -> Unit = { directory ->
+      FileChannel.open(directory, READ).use { it.force(true) }
+    },
+  ) : this(stateRoot, null, forceDirectory, Unit)
+
+  internal constructor(
+    stateRoot: Path,
+    atomicReplace: (Path, Path) -> Unit,
+    forceDirectory: (Path) -> Unit = { directory ->
+      FileChannel.open(directory, READ).use { it.force(true) }
+    },
+  ) : this(stateRoot, atomicReplace, forceDirectory, Unit)
+
   companion object {
     const val EXPECTED_ABSENT = "absent"
     private const val MAX_RECORD_BYTES = 1024 * 1024
@@ -268,8 +282,10 @@ class FileManagedSkillRecordStore(
     return Files.newDirectoryStream(stateRoot).use { rootStream ->
       val secureRoot = rootStream as? SecureDirectoryStream<Path>
       if (secureRoot == null) {
-        val access = PortableRecordDirectory(directory)
-        return block(access, directory).also { requireStableStateRoot() }
+        throw InvalidManagedSkillRecordSchemaError(
+          directory.toString(),
+          "managed records require identity-bound directory access on this filesystem",
+        )
       }
       val openedRoot = secureRoot.getFileAttributeView(
         Path.of("."),
@@ -318,55 +334,6 @@ class FileManagedSkillRecordStore(
 
     override fun atomicMove(source: Path, target: Path) = directory.move(source, directory, target)
     override fun deleteFile(name: Path) = directory.deleteFile(name)
-  }
-
-  private inner class PortableRecordDirectory(
-    private val directory: Path,
-  ) : RecordDirectory {
-    private val identity = Files.readAttributes(
-      directory,
-      java.nio.file.attribute.BasicFileAttributes::class.java,
-      NOFOLLOW_LINKS,
-    ).also {
-      if (!it.isDirectory || it.isSymbolicLink) {
-        throw InvalidManagedSkillRecordSchemaError(directory.toString(), "managed record directory is not a real directory")
-      }
-    }.fileKey()
-
-    override fun attributes(name: Path): java.nio.file.attribute.BasicFileAttributes {
-      requireStableDirectory()
-      return Files.readAttributes(resolve(name), java.nio.file.attribute.BasicFileAttributes::class.java, NOFOLLOW_LINKS)
-    }
-
-    override fun newByteChannel(name: Path, options: Set<java.nio.file.OpenOption>): SeekableByteChannel {
-      requireStableDirectory()
-      return Files.newByteChannel(resolve(name), options)
-    }
-
-    override fun atomicMove(source: Path, target: Path) {
-      requireStableDirectory()
-      Files.move(resolve(source), resolve(target), ATOMIC_MOVE, REPLACE_EXISTING)
-      requireStableDirectory()
-    }
-
-    override fun deleteFile(name: Path) {
-      Files.delete(resolve(name))
-    }
-
-    private fun resolve(name: Path): Path {
-      if (name.isAbsolute || name.nameCount != 1) {
-        throw InvalidManagedSkillRecordSchemaError(name.toString(), "managed record entry name is unsafe")
-      }
-      return directory.resolve(name)
-    }
-
-    private fun requireStableDirectory() {
-      requireRealAncestors(directory)
-      val current = Files.readAttributes(directory, java.nio.file.attribute.BasicFileAttributes::class.java, NOFOLLOW_LINKS)
-      if (!current.isDirectory || current.isSymbolicLink ||
-        identity != null && current.fileKey() != null && identity != current.fileKey()
-      ) throw InvalidManagedSkillRecordSchemaError(directory.toString(), "managed record directory identity changed")
-    }
   }
 
   private fun requireStableStateRoot() {

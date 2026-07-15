@@ -6,6 +6,8 @@ import skillbill.managedskill.model.ManagedSkillRecord
 import skillbill.managedskill.model.ManagedSkillSourceKind
 import java.nio.file.Files
 import java.nio.file.AtomicMoveNotSupportedException
+import java.nio.file.FileSystems
+import java.net.URI
 import java.time.Instant
 import kotlin.io.path.writeText
 import kotlin.test.Test
@@ -14,6 +16,25 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 
 class FileManagedSkillRecordStoreTest {
+  @Test
+  fun `rejects providers without identity-bound directory streams`() {
+    val archive = Files.createTempFile("managed-records", ".zip")
+    Files.delete(archive)
+    FileSystems.newFileSystem(URI.create("jar:${archive.toUri()}"), mapOf("create" to "true")).use { fileSystem ->
+      val root = fileSystem.getPath("/")
+      val store = FileManagedSkillRecordStore(root)
+      val now = Instant.parse("2026-07-15T12:00:00Z")
+      val record = ManagedSkillRecord(
+        name = "sample-skill", sourceKind = ManagedSkillSourceKind.DIRECTORY,
+        sourcePath = store.sourceRoot("sample-skill"), activeContentHash = "a".repeat(64),
+        selectedTargets = setOf(AgentSkillTargetId("claude", root.resolve("claude").toAbsolutePath())),
+        importedAt = now, updatedAt = now,
+      )
+
+      assertFailsWith<InvalidManagedSkillRecordSchemaError> { store.write(record) }
+    }
+  }
+
   @Test
   fun `round trips a validated record with multiple provider paths`() {
     val root = Files.createTempDirectory("managed-records")
