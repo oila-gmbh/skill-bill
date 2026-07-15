@@ -11,12 +11,17 @@ import skillbill.managedskill.model.MANAGED_SKILL_RECORD_CONTRACT_VERSION
 object ManagedSkillRecordSchemaValidator {
   private val mapper = ObjectMapper()
   private val schema by lazy {
-    val resource = checkNotNull(javaClass.getResourceAsStream(MANAGED_SKILL_RECORD_SCHEMA_RESOURCE)) {
-      "Missing managed-skill record schema resource."
+    try {
+      val resource = javaClass.getResourceAsStream(MANAGED_SKILL_RECORD_SCHEMA_RESOURCE)
+        ?: throw InvalidManagedSkillRecordSchemaError("classpath schema", "schema resource is missing")
+      val yaml = resource.use { YAMLMapper().readTree(it) }
+      assertIdentity(yaml)
+      JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V202012).getSchema(yaml)
+    } catch (error: InvalidManagedSkillRecordSchemaError) {
+      throw error
+    } catch (error: Exception) {
+      throw InvalidManagedSkillRecordSchemaError("classpath schema", "schema cannot be loaded or compiled", error)
     }
-    val yaml = YAMLMapper().readTree(resource)
-    assertIdentity(yaml)
-    JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V202012).getSchema(yaml)
   }
 
   fun validate(record: Map<String, Any?>, sourceLabel: String) {
@@ -40,4 +45,3 @@ object ManagedSkillRecordSchemaValidator {
     }
   }
 }
-

@@ -19,7 +19,7 @@ class OpaqueSkillBundleScannerTest {
     root.resolve("notes.txt").writeText("support")
     val first = scanner.scan(root, setOf("bill-code-review"))
     val second = scanner.scan(root, setOf("bill-code-review"))
-    assertEquals(listOf("SKILL.md", "notes.txt"), first.files.map { root.relativize(it).toString() })
+    assertEquals(listOf("SKILL.md", "notes.txt"), first.files.map { it.relativePath })
     assertEquals(first.contentHash, second.contentHash)
     root.resolve("notes.txt").writeText("changed")
     assertNotEquals(first.contentHash, scanner.scan(root, emptySet()).contentHash)
@@ -39,5 +39,25 @@ class OpaqueSkillBundleScannerTest {
     val root = Files.createTempDirectory("opaque-skill")
     root.resolve("SKILL.md").writeText("---\nname: protected\ndescription: Sample\n---")
     assertFailsWith<IllegalArgumentException> { scanner.scan(root, setOf("PROTECTED")) }
+  }
+
+  @Test
+  fun `rejects duplicate and nested frontmatter ownership keys`() {
+    val root = Files.createTempDirectory("opaque-skill")
+    root.resolve("SKILL.md").writeText("---\nname: protected\nname: sample-skill\ndescription: Sample\n---")
+    assertFailsWith<InvalidOpaqueSkillBundleException> { scanner.scan(root, setOf("protected")) }
+    root.resolve("SKILL.md").writeText("---\nmetadata:\n  name: sample-skill\ndescription: Sample\n---")
+    assertFailsWith<InvalidOpaqueSkillBundleException> { scanner.scan(root, emptySet()) }
+  }
+
+  @Test
+  fun `returns captured bytes rather than mutable live paths`() {
+    val root = Files.createTempDirectory("opaque-skill")
+    val support = root.resolve("notes.txt")
+    root.resolve("SKILL.md").writeText("---\nname: sample-skill\ndescription: Sample\n---")
+    support.writeText("before")
+    val bundle = scanner.scan(root, emptySet())
+    support.writeText("after")
+    assertEquals("before", bundle.files.single { it.relativePath == "notes.txt" }.content.toString(Charsets.UTF_8))
   }
 }

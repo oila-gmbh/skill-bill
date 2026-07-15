@@ -10,6 +10,7 @@ import kotlin.io.path.writeText
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNotNull
 
 class FileManagedSkillRecordStoreTest {
   @Test
@@ -20,7 +21,7 @@ class FileManagedSkillRecordStoreTest {
     val record = ManagedSkillRecord(
       name = "sample-skill",
       sourceKind = ManagedSkillSourceKind.DIRECTORY,
-      sourcePath = root.resolve("import"),
+      sourcePath = store.sourceRoot("sample-skill"),
       activeContentHash = "a".repeat(64),
       selectedTargets = setOf(
         AgentSkillTargetId("claude", root.resolve("claude-one").toAbsolutePath()),
@@ -41,5 +42,42 @@ class FileManagedSkillRecordStoreTest {
     Files.createDirectories(path.parent)
     path.writeText("{\"contract_version\":\"0.1\",\"name\":\"bad\"}")
     assertFailsWith<InvalidManagedSkillRecordSchemaError> { store.read("bad") }
+  }
+
+  @Test
+  fun `rejects unsafe names before creating directories`() {
+    val root = Files.createTempDirectory("managed-records")
+    val store = FileManagedSkillRecordStore(root)
+    assertFailsWith<InvalidManagedSkillRecordSchemaError> { store.recordPath("../escape") }
+    assertEquals(false, Files.exists(root.resolve("managed-skills")))
+  }
+
+  @Test
+  fun `rejects duplicate keys and a record name that differs from its path`() {
+    val root = Files.createTempDirectory("managed-records")
+    val store = FileManagedSkillRecordStore(root)
+    val path = store.recordPath("expected")
+    Files.createDirectories(path.parent)
+    path.writeText("""{"contract_version":"0.1","name":"expected","name":"other"}""")
+    assertFailsWith<InvalidManagedSkillRecordSchemaError> { store.read("expected") }
+  }
+
+  @Test
+  fun `requires compare and swap when an expected digest is supplied`() {
+    val root = Files.createTempDirectory("managed-records")
+    val store = FileManagedSkillRecordStore(root)
+    val now = Instant.parse("2026-07-15T12:00:00Z")
+    val record = ManagedSkillRecord(
+      name = "sample-skill",
+      sourceKind = ManagedSkillSourceKind.DIRECTORY,
+      sourcePath = store.sourceRoot("sample-skill"),
+      activeContentHash = "a".repeat(64),
+      selectedTargets = setOf(AgentSkillTargetId("claude", root.resolve("claude").toAbsolutePath())),
+      importedAt = now,
+      updatedAt = now,
+    )
+    store.write(record)
+    assertNotNull(store.digest(record.name))
+    assertFailsWith<IllegalStateException> { store.write(record, "0".repeat(64)) }
   }
 }
