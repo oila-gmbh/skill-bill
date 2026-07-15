@@ -7,6 +7,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotEquals
+import java.nio.file.FileSystems
 import java.nio.file.Files
 import java.net.URI
 
@@ -96,7 +97,7 @@ class OpaqueSkillBundleScannerTest {
   fun `scans providers without secure directory streams`() {
     val archive = Files.createTempFile("opaque-skill", ".zip")
     Files.delete(archive)
-    Files.newFileSystem(URI.create("jar:${archive.toUri()}"), mapOf("create" to "true")).use { fileSystem ->
+    FileSystems.newFileSystem(URI.create("jar:${archive.toUri()}"), mapOf("create" to "true")).use { fileSystem ->
       val root = fileSystem.getPath("/")
       root.resolve("SKILL.md").writeText("---\nname: sample-skill\ndescription: Sample\n---")
       root.resolve("notes.txt").writeText("support")
