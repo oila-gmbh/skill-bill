@@ -84,6 +84,12 @@ interface GoalSubtaskReviewGitOperations {
     baseline: GoalSubtaskReviewBaseline,
     expectedBranch: String,
   ): GoalSubtaskReviewInputResult
+
+  fun recoverBaseline(
+    repoRoot: Path,
+    baseline: GoalSubtaskReviewBaseline,
+    expectedBranch: String,
+  ): GoalSubtaskReviewBaselineResult
 }
 
 interface GoalSubtaskReviewGitOperationsProvider {
@@ -105,6 +111,15 @@ private object UnavailableGoalSubtaskReviewGitOperations : GoalSubtaskReviewGitO
     status = "error",
     error = "Goal-subtask review input requires a git adapter.",
   )
+
+  override fun recoverBaseline(
+    repoRoot: Path,
+    baseline: GoalSubtaskReviewBaseline,
+    expectedBranch: String,
+  ): GoalSubtaskReviewBaselineResult = GoalSubtaskReviewBaselineResult(
+    status = "error",
+    error = "Goal-subtask review baseline recovery requires a git adapter.",
+  )
 }
 
 fun WorkflowGitOperations.captureGoalSubtaskReviewBaseline(
@@ -117,6 +132,12 @@ fun WorkflowGitOperations.buildGoalSubtaskReviewInput(
   baseline: GoalSubtaskReviewBaseline,
   expectedBranch: String,
 ): GoalSubtaskReviewInputResult = reviewOperations().buildInput(repoRoot, baseline, expectedBranch)
+
+fun WorkflowGitOperations.recoverGoalSubtaskReviewBaseline(
+  repoRoot: Path,
+  baseline: GoalSubtaskReviewBaseline,
+  expectedBranch: String,
+): GoalSubtaskReviewBaselineResult = reviewOperations().recoverBaseline(repoRoot, baseline, expectedBranch)
 
 private fun WorkflowGitOperations.reviewOperations(): GoalSubtaskReviewGitOperations =
   (this as? GoalSubtaskReviewGitOperationsProvider)?.goalSubtaskReviewOperations
@@ -200,4 +221,14 @@ private object NoopGoalSubtaskReviewGitOperations : GoalSubtaskReviewGitOperatio
       ownedUntrackedPatches = "",
     ),
   )
+
+  override fun recoverBaseline(
+    repoRoot: Path,
+    baseline: GoalSubtaskReviewBaseline,
+    expectedBranch: String,
+  ): GoalSubtaskReviewBaselineResult = if (expectedBranch.isBlank()) {
+    GoalSubtaskReviewBaselineResult(status = "error", error = "Goal-subtask durable child branch is required.")
+  } else {
+    GoalSubtaskReviewBaselineResult(status = "ok", baseline = baseline)
+  }
 }

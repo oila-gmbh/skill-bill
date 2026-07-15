@@ -1,3 +1,9 @@
+## [2026-07-15] Full local installs are the default for maintainer work
+Context: Non-interactive `./install.sh --from-source` falls back to detected agents, base-only platform packs, and anonymous telemetry, which can leave follow-up validation without routed platform-pack coverage or full diagnostic telemetry.
+Decision: Maintainer install refreshes in this repo should use the full install shape: detected agents, every platform pack (`platform-mode=all`), MCP registration, and full telemetry unless the user explicitly asks for a narrower install.
+Reason: Skill Bill features often touch routing, staging, telemetry, platform-pack sidecars, and generated installed output; base-only or anonymous installs can make validation evidence incomplete or cause later workflow confusion.
+Alternatives considered: Relying on the installer prompt defaults of base-only/anonymous was rejected because this workspace uses install refreshes as validation evidence, not just minimal local setup.
+
 ## [2026-06-03] feature-task-runtime-promote-kill-criterion-pointer
 Context: SKILL-65 shipped `feature-task-runtime` as an experimental, additive capability alongside `bill-feature-task`. AC3 required a written promote/kill criterion with a SINGLE authoritative source so the experiment could not become permanent dual maintenance. On 2026-06-05, the maintainer recorded the promote decision in that authoritative source, and SKILL-67 executes it.
 Decision: The authoritative promote/kill criterion and recorded promote decision live ONLY in the parent spec `.feature-specs/SKILL-65-experimental-feature-task-runtime/spec.md` under "Promote / Kill Criterion (Authoritative)". This entry is a pointer; it intentionally does NOT restate the rule or decision details, to avoid dual maintenance. SKILL-67 is the execution feature for the recorded promote decision.

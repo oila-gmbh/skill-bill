@@ -4,14 +4,14 @@ issue_key: "SKILL-122"
 feature_name: "agent-addons"
 parent_spec_path: ".feature-specs/SKILL-122-agent-addons/spec.md"
 spec_source: "local"
-status: "in_progress"
+status: "blocked"
 execution_model: "same_branch_commit_per_subtask"
 base_branch: "main"
-feature_branch: "feat/SKILL-117-local-work-list"
+feature_branch: "feat/SKILL-122-agent-addons"
 stack_branches: []
 current_subtask_intent:
   subtask_id: 5
-  action: "resume"
+  action: "blocked"
 subtasks:
 - id: 1
   name: "Agent-addon contract and source validation"
@@ -83,12 +83,13 @@ subtasks:
 - id: 5
   name: "Cross-boundary validation and install refresh"
   spec_path: ".feature-specs/SKILL-122-agent-addons/spec_subtask_5_agent-addon-integration-validation.md"
-  status: "in_progress"
+  status: "blocked"
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260715-045426-fjwt"
-  blocked_reason: null
-  last_resumable_step: "create_branch"
+  blocked_reason: "Persisted review base 'f31ae4874d31b558dbaf0a4feafd6e4be3338953'\
+    \ is not an ancestor of current HEAD; refusing a broader review scope."
+  last_resumable_step: "review"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []

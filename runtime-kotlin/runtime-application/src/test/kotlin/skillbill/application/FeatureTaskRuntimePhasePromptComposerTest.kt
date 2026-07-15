@@ -168,6 +168,21 @@ class FeatureTaskRuntimePhasePromptComposerTest {
   }
 
   @Test
+  fun `goal-continuation plan forbids install refresh commands and uses existing install evidence`() {
+    val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor("plan"),
+      suppressDecomposition = true,
+    )
+
+    assertContains(prompt, "Goal-continuation planning constraint")
+    assertContains(prompt, "Never include installer, uninstall, or install-sync commands in the plan")
+    assertContains(prompt, "`./install.sh`")
+    assertContains(prompt, "read-only installed-artifact inspection")
+    assertContains(prompt, "operator action outside goal-continuation")
+  }
+
+  @Test
   fun `forbids unrequested cross-issue governed specs`() {
     val prompt = FeatureTaskRuntimePhasePromptComposer.compose(ISSUE_KEY, briefingFor("implement"))
 

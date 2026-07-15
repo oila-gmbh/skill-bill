@@ -2317,6 +2317,15 @@ private fun readyGoalReviewOperations(baselineError: String? = null): GoalSubtas
         ownedUntrackedPatches = "",
       ),
     )
+
+    override fun recoverBaseline(
+      repoRoot: Path,
+      baseline: GoalSubtaskReviewBaseline,
+      expectedBranch: String,
+    ): GoalSubtaskReviewBaselineResult = GoalSubtaskReviewBaselineResult(
+      status = "error",
+      error = "Goal review baseline recovery is not used by this goal runner fixture.",
+    )
   }
 
 private class RecordingTimingPort(

@@ -16,6 +16,7 @@ import skillbill.ports.workflow.GoalSubtaskReviewGitOperations
 import skillbill.ports.workflow.GoalSubtaskReviewGitOperationsProvider
 import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
+import skillbill.ports.workflow.model.GoalSubtaskReviewBaselineResult
 import skillbill.ports.workflow.model.GoalSubtaskReviewInput
 import skillbill.ports.workflow.model.GoalSubtaskReviewInputResult
 import skillbill.ports.workflow.model.WorkflowGitOperationResult
@@ -2066,6 +2067,15 @@ private class FakeRuntimeGitOperations(
           trackedDelta = "",
           ownedUntrackedPatches = "",
         ),
+      )
+
+      override fun recoverBaseline(
+        repoRoot: Path,
+        baseline: GoalSubtaskReviewBaseline,
+        expectedBranch: String,
+      ): GoalSubtaskReviewBaselineResult = GoalSubtaskReviewBaselineResult(
+        status = "error",
+        error = "Goal review baseline recovery is not used by this runtime CLI fixture.",
       )
     }
 }
