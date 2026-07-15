@@ -11,7 +11,7 @@ feature_branch: "feat/SKILL-123-skill-toolset"
 stack_branches: []
 current_subtask_intent:
   subtask_id: 1
-  action: "start"
+  action: "resume"
 subtasks:
 - id: 1
   name: "Foundation contracts and opaque bundle scanning"
