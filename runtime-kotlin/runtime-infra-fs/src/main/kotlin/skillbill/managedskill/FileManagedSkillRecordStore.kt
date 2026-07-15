@@ -9,12 +9,14 @@ import skillbill.error.InvalidManagedSkillRecordSchemaError
 import skillbill.managedskill.model.AgentSkillTargetId
 import skillbill.managedskill.model.ManagedSkillRecord
 import skillbill.managedskill.model.ManagedSkillSourceKind
-import java.nio.file.Files
-import java.nio.file.Path
-import java.nio.file.SecureDirectoryStream
 import java.nio.channels.FileChannel
 import java.nio.channels.SeekableByteChannel
+import java.nio.file.Files
 import java.nio.file.LinkOption.NOFOLLOW_LINKS
+import java.nio.file.Path
+import java.nio.file.SecureDirectoryStream
+import java.nio.file.StandardCopyOption.ATOMIC_MOVE
+import java.nio.file.StandardCopyOption.REPLACE_EXISTING
 import java.nio.file.StandardOpenOption.CREATE
 import java.nio.file.StandardOpenOption.CREATE_NEW
 import java.nio.file.StandardOpenOption.READ
@@ -57,9 +59,11 @@ class FileManagedSkillRecordStore(stateRoot: Path) {
     val confinedPath = requireConfined(path)
     requireRealAncestors(confinedPath.parent)
     val raw = try {
-      withSecureDirectory(confinedPath.parent) { directory ->
-        mapper.readValue(readNoFollow(directory, confinedPath.fileName, confinedPath), object : TypeReference<Map<String, Any?>>() {})
-      }
+      withDirectory(
+        confinedPath.parent,
+        secure = { directory -> readNoFollow(directory, confinedPath.fileName, confinedPath) },
+        fallback = { readNoFollow(confinedPath) },
+      ).let { mapper.readValue(it, object : TypeReference<Map<String, Any?>>() {}) }
     } catch (error: InvalidManagedSkillRecordSchemaError) {
       throw error
     } catch (error: Exception) {
@@ -82,31 +86,39 @@ class FileManagedSkillRecordStore(stateRoot: Path) {
     validateRecordPaths(record, path)
     createConfinedDirectories(path.parent)
     requireRealAncestors(path.parent)
-    withSecureDirectory(path.parent) { directory ->
-      val lockChannel = directory.newByteChannel(Path.of(".record.lock"), setOf(CREATE, WRITE, NOFOLLOW_LINKS))
-      if (lockChannel !is FileChannel) {
-        lockChannel.close()
-        throw InvalidManagedSkillRecordSchemaError(path.toString(), "filesystem cannot provide an operation-bound record lock")
-      }
-      lockChannel.use {
-      lockChannel.lock().use {
-        val recordName = path.fileName
-        val currentDigest = if (secureExists(directory, recordName, path)) digest(readNoFollow(directory, recordName, path)) else null
-        if (expectedDigest != null && expectedDigest != currentDigest && !(expectedDigest == EXPECTED_ABSENT && currentDigest == null)) {
-          throw IllegalStateException("Managed skill record changed after preview.")
+    withDirectory(
+      path.parent,
+      secure = { directory ->
+        val lockChannel = directory.newByteChannel(Path.of(".record.lock"), setOf(CREATE, WRITE, NOFOLLOW_LINKS))
+        if (lockChannel !is FileChannel) {
+          lockChannel.close()
+          throw InvalidManagedSkillRecordSchemaError(path.toString(), "filesystem cannot provide an operation-bound record lock")
         }
-        publish(directory, recordName, path, mapper.writeValueAsBytes(raw))
-      }
-      }
-    }
+        lockChannel.use {
+          lockChannel.lock().use {
+            val recordName = path.fileName
+            val currentDigest = if (secureExists(directory, recordName, path)) digest(readNoFollow(directory, recordName, path)) else null
+            if (expectedDigest != null && expectedDigest != currentDigest && !(expectedDigest == EXPECTED_ABSENT && currentDigest == null)) {
+              throw IllegalStateException("Managed skill record changed after preview.")
+            }
+            publish(directory, recordName, path, mapper.writeValueAsBytes(raw))
+          }
+        }
+      },
+      fallback = { writeFallback(path, raw, expectedDigest) },
+    )
   }
 
   fun digest(name: String): String? {
     val path = recordPath(name)
     requireRealAncestors(path.parent)
-    return withSecureDirectory(path.parent) { directory ->
-      if (secureExists(directory, path.fileName, path)) digest(readNoFollow(directory, path.fileName, path)) else null
-    }
+    return withDirectory(
+      path.parent,
+      secure = { directory ->
+        if (secureExists(directory, path.fileName, path)) digest(readNoFollow(directory, path.fileName, path)) else null
+      },
+      fallback = { if (Files.exists(path, NOFOLLOW_LINKS)) digest(readNoFollow(path)) else null },
+    )
   }
 
   private fun publish(directory: SecureDirectoryStream<Path>, targetName: Path, target: Path, bytes: ByteArray) {
@@ -122,8 +134,47 @@ class FileManagedSkillRecordStore(stateRoot: Path) {
       } catch (error: Exception) {
         throw IllegalStateException("Atomic managed-record publication is unavailable.", error)
       }
+      forceDirectory(target.parent)
     } finally {
       try { directory.deleteFile(temporaryName) } catch (_: java.nio.file.NoSuchFileException) { }
+    }
+  }
+
+  private fun writeFallback(path: Path, raw: Map<String, Any?>, expectedDigest: String?) {
+    val lockPath = path.resolveSibling(".record.lock")
+    FileChannel.open(lockPath, CREATE, WRITE, NOFOLLOW_LINKS).use { lockChannel ->
+      lockChannel.lock().use {
+        val currentDigest = if (Files.exists(path, NOFOLLOW_LINKS)) digest(readNoFollow(path)) else null
+        if (expectedDigest != null && expectedDigest != currentDigest && !(expectedDigest == EXPECTED_ABSENT && currentDigest == null)) {
+          throw IllegalStateException("Managed skill record changed after preview.")
+        }
+        val temporary = path.resolveSibling(".record-${java.util.UUID.randomUUID()}.json")
+        try {
+          FileChannel.open(temporary, CREATE_NEW, WRITE, NOFOLLOW_LINKS).use { channel ->
+            val buffer = java.nio.ByteBuffer.wrap(mapper.writeValueAsBytes(raw))
+            while (buffer.hasRemaining()) channel.write(buffer)
+            channel.force(true)
+          }
+          try {
+            Files.move(temporary, path, ATOMIC_MOVE, REPLACE_EXISTING)
+          } catch (error: Exception) {
+            throw IllegalStateException("Atomic managed-record publication is unavailable.", error)
+          }
+          forceDirectory(path.parent)
+        } finally {
+          Files.deleteIfExists(temporary)
+        }
+      }
+    }
+  }
+
+  private fun forceDirectory(directory: Path) {
+    try {
+      FileChannel.open(directory, READ).use { it.force(true) }
+    } catch (error: java.nio.file.FileSystemException) {
+      if (!System.getProperty("os.name").startsWith("Windows", ignoreCase = true)) throw error
+    } catch (error: UnsupportedOperationException) {
+      if (!System.getProperty("os.name").startsWith("Windows", ignoreCase = true)) throw error
     }
   }
 
@@ -226,26 +277,57 @@ class FileManagedSkillRecordStore(stateRoot: Path) {
     false
   }
 
-  private fun <T> withSecureDirectory(path: Path, block: (SecureDirectoryStream<Path>) -> T): T {
+  private fun <T> withDirectory(
+    path: Path,
+    secure: (SecureDirectoryStream<Path>) -> T,
+    fallback: () -> T,
+  ): T {
     requireRealAncestors(path)
     val before = Files.readAttributes(path, java.nio.file.attribute.BasicFileAttributes::class.java, NOFOLLOW_LINKS)
     return Files.newDirectoryStream(path).use { stream ->
-      if (stream !is SecureDirectoryStream<Path>) {
-        throw InvalidManagedSkillRecordSchemaError(path.toString(), "filesystem cannot bind managed-record operations to a stable directory")
-      }
+      if (stream !is SecureDirectoryStream<Path>) return@use fallbackChecked(path, before, fallback)
       val opened = stream.getFileAttributeView(Path.of("."), java.nio.file.attribute.BasicFileAttributeView::class.java, NOFOLLOW_LINKS).readAttributes()
       if (before.fileKey() == null || opened.fileKey() == null || before.fileKey() != opened.fileKey() ||
         !opened.isDirectory || opened.isSymbolicLink
       ) {
         throw InvalidManagedSkillRecordSchemaError(path.toString(), "managed-record directory identity changed while being opened")
       }
-      val result = block(stream)
+      val result = secure(stream)
       val after = Files.readAttributes(path, java.nio.file.attribute.BasicFileAttributes::class.java, NOFOLLOW_LINKS)
       if (after.fileKey() != opened.fileKey() || !after.isDirectory || after.isSymbolicLink) {
         throw InvalidManagedSkillRecordSchemaError(path.toString(), "managed-record directory identity changed during the operation")
       }
       result
     }
+  }
+
+  private fun <T> fallbackChecked(path: Path, before: java.nio.file.attribute.BasicFileAttributes, block: () -> T): T {
+    if (!before.isDirectory || before.isSymbolicLink) {
+      throw InvalidManagedSkillRecordSchemaError(path.toString(), "managed-record directory is not a real directory")
+    }
+    val result = block()
+    val after = Files.readAttributes(path, java.nio.file.attribute.BasicFileAttributes::class.java, NOFOLLOW_LINKS)
+    if (!after.isDirectory || after.isSymbolicLink ||
+      (before.fileKey() != null && after.fileKey() != null && before.fileKey() != after.fileKey())
+    ) throw InvalidManagedSkillRecordSchemaError(path.toString(), "managed-record directory identity changed during the operation")
+    return result
+  }
+
+  private fun readNoFollow(path: Path): ByteArray = try {
+    val before = Files.readAttributes(path, java.nio.file.attribute.BasicFileAttributes::class.java, NOFOLLOW_LINKS)
+    if (!before.isRegularFile || before.isSymbolicLink || before.size() > MAX_RECORD_BYTES) {
+      throw InvalidManagedSkillRecordSchemaError(path.toString(), "managed record must be a bounded regular file")
+    }
+    val bytes = FileChannel.open(path, READ, NOFOLLOW_LINKS).use { readBounded(it, it.size().toInt(), path) }
+    val after = Files.readAttributes(path, java.nio.file.attribute.BasicFileAttributes::class.java, NOFOLLOW_LINKS)
+    if (!after.isRegularFile || after.isSymbolicLink || before.size() != after.size() ||
+      (before.fileKey() != null && after.fileKey() != null && before.fileKey() != after.fileKey())
+    ) throw InvalidManagedSkillRecordSchemaError(path.toString(), "managed record changed while being read")
+    bytes
+  } catch (error: InvalidManagedSkillRecordSchemaError) {
+    throw error
+  } catch (error: Exception) {
+    throw InvalidManagedSkillRecordSchemaError(path.toString(), "record cannot be read without following links", error)
   }
 
   private fun readBounded(channel: SeekableByteChannel, expectedSize: Int, path: Path): ByteArray {
