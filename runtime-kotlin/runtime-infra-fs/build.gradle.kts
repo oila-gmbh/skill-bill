@@ -29,6 +29,24 @@ val canonicalAgentAddonSchemaPath: String =
     .resolve("orchestration/contracts/agent-addon-schema.yaml")
     .absolutePath
 
+val canonicalManagedSkillRecordSchemaPath: String =
+  rootProject.projectDir.parentFile
+    .resolve("orchestration/contracts/managed-skill-record-schema.yaml")
+    .absolutePath
+
+val copyManagedSkillRecordSchema =
+  tasks.register<Copy>("copyManagedSkillRecordSchema") {
+    val schemaPath = canonicalManagedSkillRecordSchemaPath
+    from(schemaPath)
+    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/contracts"))
+    inputs.file(schemaPath)
+    doFirst {
+      require(File(schemaPath).exists()) {
+        "SKILL-123: canonical managed-skill record schema is missing at $schemaPath."
+      }
+    }
+  }
+
 val copyAgentAddonSchema =
   tasks.register<Copy>("copyAgentAddonSchema") {
     val schemaPath = canonicalAgentAddonSchemaPath
@@ -270,6 +288,7 @@ sourceSets.named("main") {
 }
 
 tasks.named("processResources") {
+  dependsOn(copyManagedSkillRecordSchema)
   dependsOn(copyAgentAddonSchema)
   dependsOn(copyReviewContextSchema)
   dependsOn(copyPlatformPackSchema)
@@ -286,6 +305,7 @@ tasks.named("processResources") {
 }
 
 tasks.named("processTestResources") {
+  dependsOn(copyManagedSkillRecordSchema)
   dependsOn(copyAgentAddonSchema)
   dependsOn(copyReviewContextSchema)
   dependsOn(copyPlatformPackSchema)

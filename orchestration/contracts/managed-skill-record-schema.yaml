@@ -1,0 +1,50 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: https://skill-bill.dev/contracts/managed-skill-record-schema.yaml
+title: Managed skill record
+description: Durable machine-scoped ownership record for an imported runtime skill.
+type: object
+additionalProperties: false
+required:
+  - contract_version
+  - name
+  - source_kind
+  - source_path
+  - active_content_hash
+  - selected_targets
+  - imported_at
+  - updated_at
+properties:
+  contract_version:
+    const: "0.1"
+  name:
+    type: string
+    pattern: "^[a-z0-9][a-z0-9-]{0,62}$"
+  source_kind:
+    enum: [file, directory, adopted]
+  source_path:
+    type: string
+    minLength: 1
+  active_content_hash:
+    type: string
+    pattern: "^[a-f0-9]{64}$"
+  selected_targets:
+    type: array
+    uniqueItems: true
+    items:
+      type: object
+      additionalProperties: false
+      required: [provider, skills_path]
+      properties:
+        provider:
+          type: string
+          minLength: 1
+        skills_path:
+          type: string
+          minLength: 1
+  imported_at:
+    type: string
+    format: date-time
+  updated_at:
+    type: string
+    format: date-time
+

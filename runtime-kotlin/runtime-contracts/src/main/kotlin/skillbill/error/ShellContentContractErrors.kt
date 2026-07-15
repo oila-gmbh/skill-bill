@@ -155,6 +155,15 @@ class InvalidInstallPlanSchemaError(
   cause,
 )
 
+class InvalidManagedSkillRecordSchemaError(
+  val sourceLabel: String,
+  val reason: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Managed skill record '${sourceLabel.ifBlank { "<unknown>" }}' fails schema validation: $reason",
+  cause,
+)
+
 /**
  * SKILL-48 Subtask 2c: surfaced when a native-agent composition source
  * fails the canonical
