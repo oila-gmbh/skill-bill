@@ -71,6 +71,13 @@ class OpaqueSkillBundleScannerTest {
   }
 
   @Test
+  fun `translates malformed event parser input to the bundle exception`() {
+    val root = Files.createTempDirectory("opaque-skill")
+    root.resolve("SKILL.md").writeText("---\nname: sample-skill\ndescription: Sample\nmetadata: [unterminated\n---")
+    assertFailsWith<InvalidOpaqueSkillBundleException> { scanner.scan(root, emptySet()) }
+  }
+
+  @Test
   fun `returns captured bytes rather than mutable live paths`() {
     val root = Files.createTempDirectory("opaque-skill")
     val support = root.resolve("notes.txt")

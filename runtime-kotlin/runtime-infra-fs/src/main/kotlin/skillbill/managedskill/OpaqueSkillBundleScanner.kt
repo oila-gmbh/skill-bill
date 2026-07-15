@@ -58,13 +58,37 @@ class OpaqueSkillBundleScanner {
     return OpaqueSkillBundle(name, description, absoluteSource, captured, totalBytes, digest.digest().toHex())
   }
 
-  private fun captureSecure(root: Path, only: Path?): List<OpaqueSkillBundleFile> {
+  private fun captureSecure(root: Path, only: Path?): List<OpaqueSkillBundleFile> = try {
+    val before = readAttributes(root)
+    if (!before.isDirectory || before.isSymbolicLink) fail("The bundle root is not a real directory.")
     val stream = Files.newDirectoryStream(root)
-    if (stream !is SecureDirectoryStream<Path>) {
-      stream.close()
-      fail("Secure bundle capture is unavailable on this filesystem.")
+    val captured = stream.use { directory ->
+      if (directory is SecureDirectoryStream<Path>) captureDirectory(directory, "", only)
+      else captureDirectoryPortable(root, "", only)
     }
-    return stream.use { directory -> captureDirectory(directory, "", only) }
+    requireUnchangedRoot(root, before)
+    captured
+  } catch (error: InvalidOpaqueSkillBundleException) {
+    throw error
+  } catch (error: Exception) {
+    throw InvalidOpaqueSkillBundleException("Cannot capture the selected bundle without following links: $root", error)
+  }
+
+  private fun captureDirectoryPortable(root: Path, prefix: String, only: Path? = null): List<OpaqueSkillBundleFile> {
+    val directory = if (prefix.isEmpty()) root else root.resolve(prefix)
+    val entries = if (only == null) Files.newDirectoryStream(directory).use { stream -> stream.map { it.fileName } } else listOf(only)
+    return entries.flatMap { name ->
+      val relative = if (prefix.isEmpty()) name.toString() else "$prefix/$name"
+      if (name.isAbsolute || name.normalize().startsWith("..")) fail("Bundle path escapes the selected directory: $relative")
+      val path = directory.resolve(name)
+      val attributes = readAttributes(path)
+      when {
+        attributes.isSymbolicLink -> fail("Symbolic links are not allowed: $relative")
+        attributes.isRegularFile -> listOf(OpaqueSkillBundleFile(relative, readStableBytes(path, relative, attributes)))
+        attributes.isDirectory -> captureDirectoryPortable(root, relative)
+        else -> fail("Special files are not allowed: $relative")
+      }
+    }
   }
 
   private fun captureDirectory(
@@ -110,17 +134,33 @@ class OpaqueSkillBundleScanner {
   }
 
   private fun rejectYamlOwnershipSyntax(yaml: String) {
-    val parser = ParserImpl(StreamReader(yaml), LoaderOptions())
-    while (parser.peekEvent() != null) {
-      val event = parser.event
-      val explicitTag = when (event) {
-        is ScalarEvent -> event.tag
-        is CollectionStartEvent -> event.tag
-        else -> null
+    try {
+      val parser = ParserImpl(StreamReader(yaml), LoaderOptions())
+      while (parser.peekEvent() != null) {
+        val event = parser.event
+        val explicitTag = when (event) {
+          is ScalarEvent -> event.tag
+          is CollectionStartEvent -> event.tag
+          else -> null
+        }
+        if (event is AliasEvent || event is NodeEvent && (event.anchor != null || explicitTag != null)) {
+          fail("SKILL.md frontmatter must not contain aliases, anchors, or custom tags.")
+        }
       }
-      if (event is AliasEvent || event is NodeEvent && (event.anchor != null || explicitTag != null)) {
-        fail("SKILL.md frontmatter must not contain aliases, anchors, or custom tags.")
-      }
+    } catch (error: InvalidOpaqueSkillBundleException) {
+      throw error
+    } catch (error: Exception) {
+      throw InvalidOpaqueSkillBundleException("SKILL.md frontmatter is invalid YAML.", error)
+    }
+  }
+
+  private fun requireUnchangedRoot(root: Path, before: BasicFileAttributes) {
+    val after = readAttributes(root)
+    if (!after.isDirectory || after.isSymbolicLink ||
+      (before.fileKey() != null && after.fileKey() != null && before.fileKey() != after.fileKey()) ||
+      before.lastModifiedTime() != after.lastModifiedTime()
+    ) {
+      fail("The bundle root changed while being scanned.")
     }
   }
 
@@ -171,6 +211,30 @@ class OpaqueSkillBundleScanner {
     ) {
       fail("Bundle entry changed while being read: $relative")
     }
+    bytes
+  } catch (error: InvalidOpaqueSkillBundleException) {
+    throw error
+  } catch (error: Exception) {
+    throw InvalidOpaqueSkillBundleException("Cannot read bundle entry without following links: $relative", error)
+  }
+
+  private fun readStableBytes(path: Path, relative: String, before: BasicFileAttributes): ByteArray = try {
+    if (!before.isRegularFile || before.isSymbolicLink) fail("Bundle entry changed type while being read: $relative")
+    val bytes = java.nio.channels.FileChannel.open(path, READ, NOFOLLOW_LINKS).use { channel ->
+      val output = java.io.ByteArrayOutputStream()
+      val buffer = ByteBuffer.allocate(8192)
+      while (channel.read(buffer) >= 0) {
+        buffer.flip()
+        output.write(buffer.array(), 0, buffer.remaining())
+        buffer.clear()
+      }
+      output.toByteArray()
+    }
+    val after = readAttributes(path)
+    if (!after.isRegularFile || after.isSymbolicLink ||
+      (before.fileKey() != null && after.fileKey() != null && before.fileKey() != after.fileKey()) ||
+      before.size() != after.size() || before.lastModifiedTime() != after.lastModifiedTime()
+    ) fail("Bundle entry changed while being read: $relative")
     bytes
   } catch (error: InvalidOpaqueSkillBundleException) {
     throw error
