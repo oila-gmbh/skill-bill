@@ -8,7 +8,7 @@ description: Use when you want a generic code-review entry point that detects th
 ## Review mode argument
 
 Recognize at most one `mode:auto`, `mode:inline`, or `mode:delegated` argument.
-Omission means `mode:auto`.
+Omission means `mode:delegated`.
 Reject malformed, unknown, duplicate, or conflicting values before resolving
 scope, starting a lane, or importing telemetry.
 
@@ -17,7 +17,7 @@ with `mode:inline` when a governed feature-task caller supplies the exact
 remediation delta since its checkpoint. Reject it with another mode, a full
 branch/PR scope, or no bounded remediation scope.
 
-`auto` alone applies the shell contract's eligibility decision. `inline`
+Explicit `auto` applies the shell contract's eligibility decision. `inline`
 always runs the complete routed review in the current agent context, regardless
 of size or risk, without spawning specialists or fabricating lane totals.
 `delegated` always runs the normal routed delegated path,

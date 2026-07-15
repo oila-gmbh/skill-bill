@@ -77,7 +77,7 @@ Continuation-mode rules:
 
 Obtain the normalized `code-review:auto|inline|delegated` selection from the
 entry authority. For an interactive single-task run, `bill-feature-task`
-resolves omission to `auto` and rejects malformed, unknown, repeated, and
+resolves omission to `delegated` and rejects malformed, unknown, repeated, and
 conflicting tokens before its sole confirmation gate. For a non-interactive
 goal continuation, durable goal and child workflow state supply the immutable
 selection. This sidecar must not reparse the token, present another gate, or

@@ -52,7 +52,7 @@ class AgentRunGoalContinuationCommandTest {
         "--goal-last-resumable-step",
         "implement",
         "--code-review-mode",
-        "auto",
+        "delegated",
         "--agent",
         "claude",
       ),
@@ -62,7 +62,7 @@ class AgentRunGoalContinuationCommandTest {
     assertFalse(request.command.any { value -> "bill-feature-task" in value })
     assertFalse(request.command.any { value -> value == "claude" && request.command.indexOf(value) == 0 })
     assertEquals("1", request.environment["SKILL_BILL_GOAL_CONTINUATION"])
-    assertEquals("auto", request.environment["SKILL_BILL_CODE_REVIEW_MODE"])
+    assertEquals("delegated", request.environment["SKILL_BILL_CODE_REVIEW_MODE"])
     assertTrue(request.inheritEnvironment)
   }
 
@@ -96,7 +96,7 @@ class AgentRunGoalContinuationCommandTest {
         "--goal-last-resumable-step",
         "implement",
         "--code-review-mode",
-        "auto",
+        "delegated",
         "--agent",
         "claude",
       ),

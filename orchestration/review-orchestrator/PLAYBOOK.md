@@ -36,7 +36,7 @@ Do not reference this repo-relative path directly from installable skills — us
 
 ## Shared Execution Mode Contract
 
-- `bill-code-review` accepts exactly one canonical caller argument: `mode:auto`, `mode:inline`, or `mode:delegated`. Omission is `mode:auto`.
+- `bill-code-review` accepts exactly one canonical caller argument: `mode:auto`, `mode:inline`, or `mode:delegated`. Omission is `mode:delegated`; callers must pass `mode:auto` explicitly to use eligibility-based selection.
 - It also accepts at most one governed caller context, `context:feature-remediation`. This context is valid only with `mode:inline` for a bounded feature-task re-review of the remediation delta since its checkpoint. Reject it with any other mode or scope.
 - Reject malformed, unknown, repeated, or conflicting `mode:` arguments before scope resolution or review launch. The requested mode is review-run metadata and is forwarded unchanged to parallel lanes and review re-runs.
 - `auto` preserves the selection rules below without changing thresholds, routing, risk classification, specialist selection, telemetry, add-ons, or output formatting.

@@ -60,7 +60,7 @@ The Gradle command validates the Kotlin runtime for maintainers. It is not how i
 
 Start with `/bill-feature` when introducing Skill Bill to a team, or `/bill-feature-spec` when you want a prep-only session before implementation. The other commands are reusable phases inside that workflow and direct shortcuts when the team only needs one phase. The commands route by dominant stack first, then apply platform-pack behavior and add-ons.
 
-For a standalone review, use `/bill-code-review mode:inline` to run the complete routed review in the current context regardless of size or risk, or `/bill-code-review mode:delegated` to require delegated routing. Omit the argument for automatic eligibility-based selection. Feature callers instead use `/bill-feature <issue-key> code-review:inline|delegated`; `mode:runtime|prose` remains the independent feature-engine selector.
+For a standalone review, use `/bill-code-review mode:inline` to run the complete routed review in the current context regardless of size or risk, or `/bill-code-review mode:delegated` to require delegated routing. Omit the argument for delegated review, or pass `mode:auto` explicitly for automatic eligibility-based selection. Feature callers instead use `/bill-feature <issue-key> code-review:auto|inline|delegated`; `mode:runtime|prose` remains the independent feature-engine selector.
 
 ## Runtime Expectations
 

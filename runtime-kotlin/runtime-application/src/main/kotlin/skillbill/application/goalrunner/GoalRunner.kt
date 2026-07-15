@@ -100,7 +100,7 @@ class GoalRunner(
     val effectiveReviewPolicy = persistedReviewPolicy ?: manifestStore.persistReviewPolicy(
       parentWorkflowId = state.parentWorkflowId,
       policy = GoalRunnerReviewPolicy(
-        codeReviewMode = request.codeReviewMode ?: CodeReviewExecutionMode.AUTO,
+        codeReviewMode = request.codeReviewMode ?: CodeReviewExecutionMode.DEFAULT,
         parallelReviewAgent = request.parallelReviewAgent,
         agentAddonSelection = request.agentAddonSelection.persisted,
       ),
@@ -541,7 +541,7 @@ class GoalRunner(
           governedSpecPath = governedSpecPath,
           reviewBaseline = reviewBaseline,
           reviewPolicy = GoalRunnerReviewPolicy(
-            codeReviewMode = request.codeReviewMode ?: CodeReviewExecutionMode.AUTO,
+            codeReviewMode = request.codeReviewMode ?: CodeReviewExecutionMode.DEFAULT,
             parallelReviewAgent = request.parallelReviewAgent,
           ),
         ),
@@ -1148,7 +1148,7 @@ internal class GoalRunnerLaunchReconciler(
         lastResumableStep = subtask.lastResumableStep?.takeIf(String::isNotBlank),
         childWorkflowId = childWorkflowId,
         assignedWorkflowId = assignedWorkflowId,
-        codeReviewMode = request.codeReviewMode ?: CodeReviewExecutionMode.AUTO,
+        codeReviewMode = request.codeReviewMode ?: CodeReviewExecutionMode.DEFAULT,
         parallelReviewAgent = request.parallelReviewAgent,
         reviewBaseline = state.manifest.workflowIdFor(subtaskId)
           ?.let { workflowId -> outcomeStore.goalSubtaskReviewState(workflowId, request.dbPathOverride) }

@@ -99,7 +99,7 @@ Maintained packs share one exemption-free substance gate: every effective specia
 /bill-code-review mode:delegated
 ```
 
-Omit `mode:` (or use `mode:auto`) to keep automatic selection. Feature workflows use a separate caller-facing spelling—`/bill-feature <issue-key> code-review:inline|delegated`—and translate it to the standalone review mode internally. The `mode:runtime|prose` argument on `/bill-feature` selects the feature execution engine, not the review strategy.
+Omit `mode:` to use delegated review, or pass `mode:auto` explicitly for automatic eligibility-based selection. Feature workflows use a separate caller-facing spelling—`/bill-feature <issue-key> code-review:auto|inline|delegated`—and translate it to the standalone review mode internally. The `mode:runtime|prose` argument on `/bill-feature` selects the feature execution engine, not the review strategy.
 
 **Full skill catalog:**
 

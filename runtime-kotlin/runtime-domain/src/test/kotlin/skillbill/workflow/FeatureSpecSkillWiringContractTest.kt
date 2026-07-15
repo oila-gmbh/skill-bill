@@ -130,9 +130,9 @@ class FeatureSpecSkillWiringContractTest {
 
     assertContains(feature, "zero or one `code-review:auto`, `code-review:inline`, or")
     assertContains(feature, "Reject a malformed, unknown, repeated, or conflicting")
-    assertContains(feature, "When omitted, do not synthesize `code-review:auto`")
+    assertContains(feature, "When omitted, do not synthesize a `code-review:` token")
     assertContains(feature, "omitting the `code-review:` token when the caller did not provide it")
-    assertContains(task, "the requested code-review selection, showing `auto (default)` when omitted")
+    assertContains(task, "the requested code-review selection, showing `delegated (default)` when omitted")
     assertEquals(1, countOccurrences(task, "Ask exactly one confirmation question"))
     assertContains(task, "not repeat intake or present another confirmation gate")
     assertContains(runtime, "The `bill-feature-task` router has already rejected invalid review-selection")

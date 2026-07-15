@@ -33,7 +33,7 @@ If the issue key is missing, stop and ask for it. If the spec path is missing, s
 
 Parse the mode, `parallel-review:<agent>`, and at most one `workflow-id:<id>` from args before presenting the confirmation gate. Reject empty, duplicate, or conflicting workflow selectors. If a selector is present, use the persisted mode and governed spec path supplied by the lookup and reject any explicit conflicting mode. If no mode arg is provided, resolve the mode to `runtime` only for a new run; continuation inherits its persisted mode.
 
-Also parse exactly one optional `code-review:auto|inline|delegated` token. Omission resolves to `auto`; malformed, unknown, duplicate, or conflicting values fail before confirmation, workflow opening, or delegation. Forward the resolved selection unchanged to either sidecar.
+Also parse exactly one optional `code-review:auto|inline|delegated` token. Omission resolves to `delegated`; malformed, unknown, duplicate, or conflicting values fail before confirmation, workflow opening, or delegation. Forward the resolved selection unchanged to either sidecar.
 
 **opencode and zcode are prose-only.** When the agent currently executing this skill is opencode or zcode, prose is the implicit default and runtime mode is unsupported: opencode's foreground Bash tool is hard-killed at 120s before a phase can finish and per-phase output cannot be harvested back; zcode's foreground runtime exceeds the Bash execution ceiling and a detached zcode child emits no harvestable output before the supervisor kills it as unresponsive. On opencode or zcode: with no mode arg, resolve to `prose` (no need to pass `mode:prose`); with an explicit `mode:runtime`, stop and emit the actionable refusal and do NOT delegate to `bill-feature-task-runtime`:
 
@@ -49,7 +49,7 @@ Present one concise confirmation that includes:
 - the agent that will run each phase, including any explicit override
 - the resolved mode: show `runtime (default)` when the mode was not specified, `runtime` when explicitly set, or `prose` when `mode:prose` was passed
 - the parallel review agent when `parallel-review:<agent>` was passed, or `none` otherwise
-- the requested code-review selection, showing `auto (default)` when omitted
+- the requested code-review selection, showing `delegated (default)` when omitted
 - selected agent add-on slugs and manifest descriptions in caller order, or `none`
 
 Ask exactly one confirmation question: whether to proceed with the selected mode.

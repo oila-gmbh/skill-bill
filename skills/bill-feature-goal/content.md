@@ -31,7 +31,7 @@ convention:
 Resolve the mode to `runtime` when no `mode:` argument is supplied.
 
 Accept at most one `code-review:auto`, `code-review:inline`, or
-`code-review:delegated` token. Omission resolves to `auto`; malformed, unknown,
+`code-review:delegated` token. Omission resolves to `delegated`; malformed, unknown,
 duplicate, or conflicting values fail before confirmation or goal launch. The
 selected mode is immutable for the parent and every child: a resume reuses it,
 and an attempted explicit change must fail loudly before launching a subtask.
@@ -111,7 +111,7 @@ Then present a concise proposal that includes:
 - the agent that will be used for child runs, including any explicit override
 - the resolved mode: show `runtime (default)` when the mode was not specified, `runtime` when explicitly set, or `prose` when `mode:prose` was passed
 - the parallel review agent when `parallel-review:<agent>` was passed, or `none` otherwise
-- the requested code-review selection, showing `auto (default)` when omitted
+- the requested code-review selection, showing `delegated (default)` when omitted
 
 Ask one confirmation question: whether to proceed with this decomposition and start the goal loop in the resolved mode.
 

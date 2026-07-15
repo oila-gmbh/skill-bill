@@ -26,7 +26,7 @@ data class FeatureTaskRuntimeRunInvariants(
   /** Mandates and overrides that must reach every phase verbatim. */
   val mandatesAndOverrides: List<String>,
   /** Immutable requested review policy, carried to every initial and repeat review launch. */
-  val codeReviewMode: CodeReviewExecutionMode = CodeReviewExecutionMode.AUTO,
+  val codeReviewMode: CodeReviewExecutionMode = CodeReviewExecutionMode.DEFAULT,
   /** Ordered immutable add-on identities. Content is verified and hydrated before every launch. */
   val agentAddonSelection: AgentAddonSelection = AgentAddonSelection(),
 ) {

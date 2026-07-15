@@ -59,7 +59,7 @@ data class SkillRunGoalContinuationContext(
   val lastResumableStep: String? = null,
   val childWorkflowId: String? = null,
   val assignedWorkflowId: String? = null,
-  val codeReviewMode: CodeReviewExecutionMode = CodeReviewExecutionMode.AUTO,
+  val codeReviewMode: CodeReviewExecutionMode = CodeReviewExecutionMode.DEFAULT,
   val parallelReviewAgent: String? = null,
   val reviewBaseline: GoalSubtaskReviewBaseline? = null,
   val agentAddonSelection: AgentAddonSelection = AgentAddonSelection(),

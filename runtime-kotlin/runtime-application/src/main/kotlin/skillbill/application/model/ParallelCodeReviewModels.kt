@@ -15,7 +15,7 @@ data class ParallelCodeReviewRequest(
   val scope: ParallelReviewScope,
   val repoRoot: Path,
   val timeout: Duration?,
-  val codeReviewMode: CodeReviewExecutionMode = CodeReviewExecutionMode.AUTO,
+  val codeReviewMode: CodeReviewExecutionMode = CodeReviewExecutionMode.DEFAULT,
   val suppliedDiff: String? = null,
   val suppliedDiffPath: Path? = null,
 ) {

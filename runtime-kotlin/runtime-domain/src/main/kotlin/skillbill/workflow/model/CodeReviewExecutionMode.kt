@@ -8,6 +8,8 @@ enum class CodeReviewExecutionMode(val wireValue: String) {
   ;
 
   companion object {
+    val DEFAULT: CodeReviewExecutionMode = DELEGATED
+
     fun fromWire(value: String): CodeReviewExecutionMode = entries.firstOrNull { it.wireValue == value }
       ?: throw IllegalArgumentException(
         "Unknown code-review execution mode '$value'. Allowed: ${entries.joinToString { it.wireValue }}.",

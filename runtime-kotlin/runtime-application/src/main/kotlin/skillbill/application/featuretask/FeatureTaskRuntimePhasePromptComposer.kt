@@ -24,7 +24,7 @@ object FeatureTaskRuntimePhasePromptComposer {
     briefing: FeatureTaskRuntimePhaseLaunchBriefing,
     suppressDecomposition: Boolean = false,
     parallelReviewAgent: String? = null,
-    codeReviewMode: CodeReviewExecutionMode = CodeReviewExecutionMode.AUTO,
+    codeReviewMode: CodeReviewExecutionMode = CodeReviewExecutionMode.DEFAULT,
     reviewPassNumber: Int? = null,
     goalSubtaskReviewInput: GoalSubtaskReviewInput? = null,
     specSource: SpecSource = SpecSource.LOCAL,

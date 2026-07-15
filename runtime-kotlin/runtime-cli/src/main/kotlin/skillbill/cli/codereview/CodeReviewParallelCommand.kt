@@ -62,8 +62,8 @@ class CodeReviewParallelCommand(
   )
   private val codeReviewMode by option(
     "--execution-mode",
-    help = "Shared execution mode for both lanes: auto, inline, or delegated.",
-  ).default("auto")
+    help = "Shared execution mode for both lanes: delegated (default), auto, or inline.",
+  ).default(CodeReviewExecutionMode.DEFAULT.wireValue)
 
   override fun run() {
     val resolvedAgent1 = resolveAgent1()
