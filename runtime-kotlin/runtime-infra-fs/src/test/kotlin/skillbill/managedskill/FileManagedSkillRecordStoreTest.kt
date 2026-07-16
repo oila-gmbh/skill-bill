@@ -17,7 +17,7 @@ import kotlin.test.assertNotNull
 
 class FileManagedSkillRecordStoreTest {
   @Test
-  fun `rejects providers without identity-bound directory streams`() {
+  fun `fails closed on providers without identity-bound directory streams`() {
     val archive = Files.createTempFile("managed-records", ".zip")
     Files.delete(archive)
     FileSystems.newFileSystem(URI.create("jar:${archive.toUri()}"), mapOf("create" to "true")).use { fileSystem ->

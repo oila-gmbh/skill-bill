@@ -48,7 +48,7 @@ class FeatureTaskRuntimeStatusService(
       records[phaseId].toPhaseStatus(phaseId, blocked = phaseId in blockedPhaseIds)
     }
     val terminalDecomposeRecorded = decomposeTerminal != null
-    val hasRunningPhase = phases.any { it.status == STATUS_RUNNING }
+    val runningPhase = phases.firstOrNull { it.status == STATUS_RUNNING }
     return FeatureTaskRuntimeStatusProjection(
       workflowId = request.workflowId,
       featureSize = runInvariantsStore.resolve(request.workflowId, request.dbPathOverride)?.featureSize?.name,
@@ -85,23 +85,23 @@ class FeatureTaskRuntimeStatusService(
           subtaskSpecPaths = it.subtaskSpecPaths,
         )
       },
-      workerLease = workerLeaseStatus(request, hasRunningPhase),
+      workerLease = workerLeaseStatus(request, runningPhase),
     )
   }
 
   private fun workerLeaseStatus(
     request: FeatureTaskRuntimeStatusRequest,
-    hasRunningPhase: Boolean,
+    runningPhase: FeatureTaskRuntimePhaseStatus?,
   ): FeatureTaskRuntimeWorkerLeaseStatus? {
     val ownership = database.read(request.dbPathOverride) {
       it.workflowStates.getFeatureTaskRuntimeWorkerOwnership(request.workflowId)
     }
     if (ownership == null) {
-      return if (hasRunningPhase) {
+      return if (runningPhase != null) {
         FeatureTaskRuntimeWorkerLeaseStatus(
           liveness = WORKER_LIVENESS_MISSING,
-          phaseId = "",
-          phaseAttempt = 0,
+          phaseId = runningPhase.phaseId,
+          phaseAttempt = runningPhase.attemptCount,
           leaseState = "",
           heartbeatAt = "",
           expiresAt = "",
@@ -110,18 +110,20 @@ class FeatureTaskRuntimeStatusService(
         null
       }
     }
-    return ownership.toStatus()
+    return ownership.toStatus(runningPhase)
   }
 
-  private fun FeatureTaskRuntimeWorkerOwnership.toStatus(): FeatureTaskRuntimeWorkerLeaseStatus =
+  private fun FeatureTaskRuntimeWorkerOwnership.toStatus(
+    runningPhase: FeatureTaskRuntimePhaseStatus?,
+  ): FeatureTaskRuntimeWorkerLeaseStatus =
     FeatureTaskRuntimeWorkerLeaseStatus(
       liveness = when {
         leaseState == FeatureTaskRuntimeWorkerLeaseState.TAKEOVER_RESERVED -> WORKER_LIVENESS_TAKEOVER_RESERVED
         Instant.parse(expiresAt).isBefore(Instant.now()) -> WORKER_LIVENESS_EXPIRED
         else -> WORKER_LIVENESS_ACTIVE
       },
-      phaseId = phaseId,
-      phaseAttempt = phaseAttempt,
+      phaseId = runningPhase?.phaseId ?: phaseId,
+      phaseAttempt = runningPhase?.attemptCount ?: phaseAttempt,
       leaseState = leaseState.wireValue,
       heartbeatAt = heartbeatAt,
       expiresAt = expiresAt,

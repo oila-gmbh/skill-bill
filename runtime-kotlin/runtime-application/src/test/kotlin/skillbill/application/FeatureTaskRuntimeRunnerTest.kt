@@ -1214,7 +1214,7 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
         harness.recorder,
         harness.runInvariantsStore,
         harness.decomposeTerminalRecorder,
-        harness.database,
+        RuntimeFakeDatabaseSessionFactory(harness.repository),
       )
         .status(FeatureTaskRuntimeStatusRequest(WORKFLOW_ID)),
     )
@@ -2717,7 +2717,7 @@ class FeatureTaskRuntimeBranchSetupRunnerTest {
         harness.recorder,
         harness.runInvariantsStore,
         harness.decomposeTerminalRecorder,
-        harness.database,
+        RuntimeFakeDatabaseSessionFactory(harness.repository),
       )
         .status(FeatureTaskRuntimeStatusRequest(WORKFLOW_ID)),
     )
@@ -2789,7 +2789,7 @@ class FeatureTaskRuntimeBranchSetupRunnerTest {
         harness.recorder,
         harness.runInvariantsStore,
         harness.decomposeTerminalRecorder,
-        harness.database,
+        RuntimeFakeDatabaseSessionFactory(harness.repository),
       )
         .status(FeatureTaskRuntimeStatusRequest(WORKFLOW_ID)),
     )

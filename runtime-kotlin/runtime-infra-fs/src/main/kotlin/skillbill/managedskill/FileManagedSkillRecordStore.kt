@@ -26,14 +26,14 @@ class FileManagedSkillRecordStore private constructor(
   stateRoot: Path,
   private val atomicReplace: ((Path, Path) -> Unit)?,
   private val forceDirectory: (Path) -> Unit = { directory ->
-    FileChannel.open(directory, READ).use { it.force(true) }
+    forceDirectoryIfSupported(directory)
   },
   @Suppress("UNUSED_PARAMETER") publicationTestSeam: Unit,
 ) {
   constructor(
     stateRoot: Path,
     forceDirectory: (Path) -> Unit = { directory ->
-      FileChannel.open(directory, READ).use { it.force(true) }
+      forceDirectoryIfSupported(directory)
     },
   ) : this(stateRoot, null, forceDirectory, Unit)
 
@@ -41,7 +41,7 @@ class FileManagedSkillRecordStore private constructor(
     stateRoot: Path,
     atomicReplace: (Path, Path) -> Unit,
     forceDirectory: (Path) -> Unit = { directory ->
-      FileChannel.open(directory, READ).use { it.force(true) }
+      forceDirectoryIfSupported(directory)
     },
   ) : this(stateRoot, atomicReplace, forceDirectory, Unit)
 
@@ -123,7 +123,6 @@ class FileManagedSkillRecordStore private constructor(
     val raw = record.toWire()
     ManagedSkillRecordSchemaValidator.validate(raw, path.toString())
     validateRecordPaths(record, path)
-    requireIdentityBoundProvider()
     createConfinedDirectories(path.parent)
     requireRealAncestors(path.parent)
     withRecordDirectory(name) { directory, displayDirectory ->
@@ -282,38 +281,31 @@ class FileManagedSkillRecordStore private constructor(
     requireStableStateRoot()
     return Files.newDirectoryStream(stateRoot).use { rootStream ->
       val secureRoot = rootStream as? SecureDirectoryStream<Path>
-      if (secureRoot == null) {
-        throw InvalidManagedSkillRecordSchemaError(
-          stateRoot.toString(),
-          "managed records require identity-bound directory access from the filesystem provider",
-        )
-      }
-      val openedRoot = secureRoot.getFileAttributeView(
-        Path.of("."),
-        java.nio.file.attribute.BasicFileAttributeView::class.java,
-        NOFOLLOW_LINKS,
-      ).readAttributes()
-      if (!openedRoot.isDirectory || openedRoot.isSymbolicLink || stateRootIdentity == null ||
-        openedRoot.fileKey() == null || openedRoot.fileKey() != stateRootIdentity
-      ) {
-        throw InvalidManagedSkillRecordSchemaError(stateRoot.toString(), "managed state root identity changed before secure access")
-      }
-      secureRoot.newDirectoryStream(Path.of("managed-skills"), NOFOLLOW_LINKS).use { managed ->
-        managed.newDirectoryStream(Path.of(name), NOFOLLOW_LINKS).use { recordDirectory ->
-          block(SecureRecordDirectory(recordDirectory), directory)
+      if (secureRoot != null) {
+        val openedRoot = secureRoot.getFileAttributeView(
+          Path.of("."),
+          java.nio.file.attribute.BasicFileAttributeView::class.java,
+          NOFOLLOW_LINKS,
+        ).readAttributes()
+        if (!openedRoot.isDirectory || openedRoot.isSymbolicLink ||
+          stateRootIdentity != null && openedRoot.fileKey() != null && openedRoot.fileKey() != stateRootIdentity
+        ) {
+          throw InvalidManagedSkillRecordSchemaError(stateRoot.toString(), "managed state root identity changed before secure access")
         }
-      }.also { requireStableStateRoot() }
-    }
-  }
-
-  private fun requireIdentityBoundProvider() {
-    Files.newDirectoryStream(stateRoot).use { directory ->
-      if (directory !is SecureDirectoryStream<Path>) {
+        secureRoot.newDirectoryStream(Path.of("managed-skills"), NOFOLLOW_LINKS).use { managed ->
+          managed.newDirectoryStream(Path.of(name), NOFOLLOW_LINKS).use { recordDirectory ->
+            block(SecureRecordDirectory(recordDirectory), directory)
+          }
+        }
+      } else {
         throw InvalidManagedSkillRecordSchemaError(
           stateRoot.toString(),
-          "managed records require identity-bound directory access from the filesystem provider",
+          "managed record access requires identity-bound directory handles",
         )
       }
+    }.also {
+      requireRealAncestors(directory)
+      requireStableStateRoot()
     }
   }
 
@@ -393,6 +385,14 @@ class FileManagedSkillRecordStore private constructor(
   }
 
   private fun digest(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+}
+
+private fun forceDirectoryIfSupported(directory: Path) {
+  try {
+    FileChannel.open(directory, READ).use { it.force(true) }
+  } catch (_: UnsupportedOperationException) {
+  } catch (_: java.nio.file.FileSystemException) {
+  }
 }
 
 private fun ManagedSkillRecord.toWire(): Map<String, Any?> = linkedMapOf(

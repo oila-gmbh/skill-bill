@@ -94,7 +94,7 @@ class OpaqueSkillBundleScannerTest {
   }
 
   @Test
-  fun `rejects providers without identity-bound directory streams`() {
+  fun `fails closed on providers without identity-bound directory streams`() {
     val archive = Files.createTempFile("opaque-skill", ".zip")
     Files.delete(archive)
     FileSystems.newFileSystem(URI.create("jar:${archive.toUri()}"), mapOf("create" to "true")).use { fileSystem ->

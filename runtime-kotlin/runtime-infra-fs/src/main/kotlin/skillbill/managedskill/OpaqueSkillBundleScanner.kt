@@ -64,12 +64,14 @@ class OpaqueSkillBundleScanner {
     val captured = Files.newDirectoryStream(root).use { directory ->
       if (directory is SecureDirectoryStream<Path>) {
         val opened = secureAttributes(directory, Path.of("."))
-        if (!opened.isDirectory || opened.isSymbolicLink || before.fileKey() == null ||
-          before.fileKey() != opened.fileKey()
+        val pathAfterOpen = readAttributes(root)
+        if (!opened.isDirectory || opened.isSymbolicLink || pathAfterOpen.isSymbolicLink ||
+          before.fileKey() != null && opened.fileKey() != null && before.fileKey() != opened.fileKey() ||
+          opened.fileKey() != null && pathAfterOpen.fileKey() != null && opened.fileKey() != pathAfterOpen.fileKey()
         ) fail("The bundle root identity changed before traversal.")
         captureDirectory(directory, "", only)
       } else {
-        fail("The filesystem provider cannot capture bundles through identity-bound directory access.")
+        fail("Bundle capture requires identity-bound directory handles.")
       }
     }
     requireUnchangedRoot(root, before)
