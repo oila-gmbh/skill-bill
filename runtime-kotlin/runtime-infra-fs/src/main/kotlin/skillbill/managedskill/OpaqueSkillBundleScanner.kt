@@ -7,6 +7,7 @@ import skillbill.managedskill.model.OpaqueSkillBundle
 import skillbill.managedskill.model.OpaqueSkillBundleFile
 import skillbill.managedskill.model.requireSafeManagedSkillName
 import java.nio.ByteBuffer
+import java.nio.file.FileSystems
 import java.nio.file.Files
 import java.nio.file.LinkOption.NOFOLLOW_LINKS
 import java.nio.file.Path
@@ -75,6 +76,7 @@ class OpaqueSkillBundleScanner private constructor(
     beforeRootOpen(root)
     val parentPath = root.parent
     val captured = if (parentPath == null) {
+      requireNonDefaultPathFallback(root)
       capturePathDirectory(root, before, only)
     } else {
       Files.newDirectoryStream(parentPath).use { parent ->
@@ -85,6 +87,7 @@ class OpaqueSkillBundleScanner private constructor(
             captureDirectory(SecureBundleDirectory(opened), "", only)
           }
         } else {
+          requireNonDefaultPathFallback(root)
           capturePathDirectory(root, before, only)
         }
       }
@@ -95,6 +98,12 @@ class OpaqueSkillBundleScanner private constructor(
     throw error
   } catch (error: Exception) {
     throw InvalidOpaqueSkillBundleException("Cannot capture the selected bundle without following links: $root", error)
+  }
+
+  private fun requireNonDefaultPathFallback(root: Path) {
+    if (root.fileSystem == FileSystems.getDefault()) {
+      fail("The selected filesystem does not support secure bundle traversal.")
+    }
   }
 
   private fun capturePathDirectory(
@@ -263,7 +272,8 @@ class OpaqueSkillBundleScanner private constructor(
     }
 
     override fun newByteChannel(name: Path): SeekableByteChannel = checked {
-      Files.newByteChannel(resolve(name), setOf(READ))
+      val options = if (path.fileSystem == FileSystems.getDefault()) setOf(READ, NOFOLLOW_LINKS) else setOf(READ)
+      Files.newByteChannel(resolve(name), options)
     }
 
     override fun openDirectory(name: Path): BundleDirectory = checked {

@@ -6,8 +6,6 @@ import skillbill.managedskill.model.ManagedSkillRecord
 import skillbill.managedskill.model.ManagedSkillSourceKind
 import java.nio.file.Files
 import java.nio.file.AtomicMoveNotSupportedException
-import java.nio.file.FileSystems
-import java.net.URI
 import java.time.Instant
 import kotlin.io.path.writeText
 import kotlin.test.Test
@@ -17,18 +15,25 @@ import kotlin.test.assertNotNull
 
 class FileManagedSkillRecordStoreTest {
   @Test
-  fun `rejects managed record access without identity-bound directory streams`() {
-    val archive = Files.createTempFile("managed-records", ".zip")
-    Files.delete(archive)
-    FileSystems.newFileSystem(URI.create("jar:${archive.toUri()}"), mapOf("create" to "true")).use { fileSystem ->
-      val root = fileSystem.getPath("/")
-      val store = FileManagedSkillRecordStore(root)
-      val path = store.recordPath("sample-skill")
-      Files.createDirectories(path.parent)
-      path.writeText(validWire(root, "sample-skill"))
-      assertFailsWith<InvalidManagedSkillRecordSchemaError> { store.read("sample-skill") }
-      assertFailsWith<InvalidManagedSkillRecordSchemaError> { store.digest("sample-skill") }
-    }
+  fun `round trips records without secure directory streams`() {
+    val root = Files.createTempDirectory("managed-records-fallback")
+    val store = FileManagedSkillRecordStore(root, useSecureDirectoryStreams = false)
+    val now = Instant.parse("2026-07-15T12:00:00Z")
+    val record = ManagedSkillRecord(
+      name = "sample-skill",
+      sourceKind = ManagedSkillSourceKind.DIRECTORY,
+      sourcePath = store.sourceRoot("sample-skill"),
+      activeContentHash = "a".repeat(64),
+      selectedTargets = setOf(AgentSkillTargetId("codex", root.resolve("codex"))),
+      importedAt = now,
+      updatedAt = now,
+    )
+    store.write(record)
+    assertEquals(record, store.read("sample-skill"))
+    val digest = assertNotNull(store.digest("sample-skill"))
+    val replacement = record.copy(activeContentHash = "b".repeat(64), updatedAt = now.plusSeconds(1))
+    store.write(replacement, digest)
+    assertEquals(replacement, store.read("sample-skill"))
   }
 
   @Test

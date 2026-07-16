@@ -33,6 +33,7 @@ class FileManagedSkillRecordStore private constructor(
   private val forceDirectory: (Path) -> Unit = { directory ->
     forceDirectoryIfSupported(directory)
   },
+  private val useSecureDirectoryStreams: Boolean,
   @Suppress("UNUSED_PARAMETER") publicationTestSeam: Unit,
 ) {
   constructor(
@@ -40,7 +41,7 @@ class FileManagedSkillRecordStore private constructor(
     forceDirectory: (Path) -> Unit = { directory ->
       forceDirectoryIfSupported(directory)
     },
-  ) : this(stateRoot, null, forceDirectory, Unit)
+  ) : this(stateRoot, null, forceDirectory, true, Unit)
 
   internal constructor(
     stateRoot: Path,
@@ -48,7 +49,12 @@ class FileManagedSkillRecordStore private constructor(
     forceDirectory: (Path) -> Unit = { directory ->
       forceDirectoryIfSupported(directory)
     },
-  ) : this(stateRoot, atomicReplace, forceDirectory, Unit)
+  ) : this(stateRoot, atomicReplace, forceDirectory, true, Unit)
+
+  internal constructor(
+    stateRoot: Path,
+    useSecureDirectoryStreams: Boolean,
+  ) : this(stateRoot, null, { directory -> forceDirectoryIfSupported(directory) }, useSecureDirectoryStreams, Unit)
 
   companion object {
     const val EXPECTED_ABSENT = "absent"
@@ -290,7 +296,7 @@ class FileManagedSkillRecordStore private constructor(
     requireStableStateRoot()
     return Files.newDirectoryStream(stateRoot).use { rootStream ->
       val secureRoot = rootStream as? SecureDirectoryStream<Path>
-      if (secureRoot != null) {
+      if (useSecureDirectoryStreams && secureRoot != null) {
         val openedRoot = secureRoot.getFileAttributeView(
           Path.of("."),
           java.nio.file.attribute.BasicFileAttributeView::class.java,
@@ -307,10 +313,7 @@ class FileManagedSkillRecordStore private constructor(
           }
         }
       } else {
-        throw InvalidManagedSkillRecordSchemaError(
-          directory.toString(),
-          "the filesystem cannot provide identity-bound managed record access",
-        )
+        block(PathRecordDirectory(directory), directory)
       }
     }.also {
       requireRealAncestors(directory)
@@ -347,6 +350,58 @@ class FileManagedSkillRecordStore private constructor(
 
     override fun atomicMove(source: Path, target: Path) = directory.move(source, directory, target)
     override fun deleteFile(name: Path) = directory.deleteFile(name)
+  }
+
+  private class PathRecordDirectory(
+    private val directory: Path,
+  ) : RecordDirectory {
+    private val identity = directoryAttributes()
+
+    override fun attributes(name: Path) = checked {
+      Files.readAttributes(resolve(name), java.nio.file.attribute.BasicFileAttributes::class.java, NOFOLLOW_LINKS)
+    }
+
+    override fun newByteChannel(name: Path, options: Set<java.nio.file.OpenOption>) = checked {
+      Files.newByteChannel(resolve(name), options + NOFOLLOW_LINKS)
+    }
+
+    override fun atomicMove(source: Path, target: Path) = checked {
+      Files.move(resolve(source), resolve(target), ATOMIC_MOVE, REPLACE_EXISTING)
+      Unit
+    }
+
+    override fun deleteFile(name: Path) = checked {
+      Files.delete(resolve(name))
+    }
+
+    private fun resolve(name: Path): Path {
+      if (name.isAbsolute || name.nameCount != 1 || name.normalize() != name || name.toString() == "." || name.toString() == "..") {
+        throw InvalidManagedSkillRecordSchemaError(name.toString(), "managed record entry escapes its directory")
+      }
+      return directory.resolve(name)
+    }
+
+    private inline fun <T> checked(operation: () -> T): T {
+      requireIdentity()
+      return operation().also { requireIdentity() }
+    }
+
+    private fun requireIdentity() {
+      val actual = directoryAttributes()
+      if (identity.fileKey() != null && actual.fileKey() != null && identity.fileKey() != actual.fileKey()) {
+        throw InvalidManagedSkillRecordSchemaError(directory.toString(), "managed record directory identity changed")
+      }
+    }
+
+    private fun directoryAttributes() = Files.readAttributes(
+      directory,
+      java.nio.file.attribute.BasicFileAttributes::class.java,
+      NOFOLLOW_LINKS,
+    ).also {
+      if (!it.isDirectory || it.isSymbolicLink) {
+        throw InvalidManagedSkillRecordSchemaError(directory.toString(), "managed record directory is not a real directory")
+      }
+    }
   }
 
   private fun requireStableStateRoot() {
