@@ -129,8 +129,13 @@ internal fun InspectorPane(
           detail.targets.forEach { target ->
             KeyValueRow(
               "${target.provider} link",
-              "${target.state.lowercase()} · ${target.detectionStatus.lowercase()} · ${target.path}",
-              if (target.state == "PRESENT") Tone.Success else Tone.Warning,
+              "${target.state.lowercase()} · ${target.detectionStatus.lowercase()} · " +
+                "${target.linkHealth.joinToString().ifBlank { "unknown" }.lowercase()} · ${target.path}",
+              if (target.state == "PRESENT" && target.linkHealth.all { it == "HEALTHY" }) {
+                Tone.Success
+              } else {
+                Tone.Warning
+              },
             )
             target.occurrencePaths.forEach { path -> KeyValueRow("occurrence", path) }
           }

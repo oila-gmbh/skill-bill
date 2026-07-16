@@ -22,7 +22,7 @@ internal class SkillBillMachineToolsController(private val state: SkillBillViewS
 
   fun detailFor(logicalKey: String): MachineSkillManagerDetail? = inventoryDetails[logicalKey]
   fun dispatch(action: MachineToolAction) {
-    invalidatePendingCompletions()
+    invalidateSurfaceCompletions()
     update {
       when (action) {
         MachineToolAction.OPEN_CATALOG -> copy(surface = MachineToolsSurface.CATALOG)
@@ -33,7 +33,7 @@ internal class SkillBillMachineToolsController(private val state: SkillBillViewS
   }
 
   fun dismiss() {
-    invalidatePendingCompletions()
+    invalidateSurfaceCompletions()
     update { copy(surface = null) }
   }
 
@@ -222,10 +222,9 @@ internal class SkillBillMachineToolsController(private val state: SkillBillViewS
   fun finishMutation() = update { copy(machineMutationBusy = false) }
   fun acknowledgePostMortem() = update { copy(postMortem = null) }
 
-  private fun invalidatePendingCompletions() {
+  private fun invalidateSurfaceCompletions() {
     sourceToken++
     previewToken++
-    inventoryToken++
   }
 
   private fun update(transform: MachineToolsState.() -> MachineToolsState) {

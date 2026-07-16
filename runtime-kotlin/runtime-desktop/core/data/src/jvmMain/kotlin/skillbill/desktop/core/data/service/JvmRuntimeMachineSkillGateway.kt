@@ -240,6 +240,7 @@ class JvmRuntimeMachineSkillGateway(
             state = if (presence.present) "PRESENT" else "ABSENT",
             contentIdentity = presence.occurrences.mapNotNull { it.contentHash }.distinct().singleOrNull(),
             occurrencePaths = presence.occurrences.map { it.path.toString() },
+            linkHealth = presence.occurrences.map { it.linkHealth.name },
           )
         },
         validationIssues = row.issues.map { "${it.code}: ${it.message}" },

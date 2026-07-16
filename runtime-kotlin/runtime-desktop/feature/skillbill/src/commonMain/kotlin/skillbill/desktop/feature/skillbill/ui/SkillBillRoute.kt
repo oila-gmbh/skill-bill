@@ -129,8 +129,15 @@ fun SkillBillRoute(
       DirtyEditorPromptReason.SELECTION_CHANGE -> {
         val selected = state.selectedTreeItemId
         if (selected != null && selected != previousSelection) {
-          state = viewModel.state()
-          onSourceRouteSelected(selected)
+          if (selected.startsWith("${skillbill.desktop.feature.skillbill.state.MACHINE_SKILLS_ROOT_ID}:skill:")) {
+            coroutineScope.launch {
+              state = withContext(dispatcherProvider.default) { viewModel.openMachineSkillTreeItem(selected) }
+              state.selectedTreeItemId?.let(onSourceRouteSelected)
+            }
+          } else {
+            state = viewModel.state()
+            onSourceRouteSelected(selected)
+          }
         }
       }
       DirtyEditorPromptReason.REFRESH -> {
@@ -521,6 +528,14 @@ fun SkillBillRoute(
     onMoveTreeSelection = { delta ->
       if (canStartRepoScopedAction()) {
         state = viewModel.moveSelection(delta)
+        state.selectedTreeItemId
+          ?.takeIf { it.startsWith("${skillbill.desktop.feature.skillbill.state.MACHINE_SKILLS_ROOT_ID}:skill:") }
+          ?.let { selected ->
+            coroutineScope.launch {
+              state = withContext(dispatcherProvider.default) { viewModel.openMachineSkillTreeItem(selected) }
+              state.selectedTreeItemId?.let(onSourceRouteSelected)
+            }
+          }
       }
     },
     onWorkToggled = ::runWorkToggle,

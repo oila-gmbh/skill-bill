@@ -32,7 +32,11 @@ internal class SkillBillEditorController(
       currentState = createState()
       return currentState
     }
-    loadEditorForSelection()
+    if (managedEditorBase != null && loadedEditorDocument != null) {
+      editorDraftText = loadedEditorDocument?.text.orEmpty()
+    } else {
+      loadEditorForSelection()
+    }
     editorSaveErrorMessage = null
     dirtyEditorPrompt = null
     currentState = createState()

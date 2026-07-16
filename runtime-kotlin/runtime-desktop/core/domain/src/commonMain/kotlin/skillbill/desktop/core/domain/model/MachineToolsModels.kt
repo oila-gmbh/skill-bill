@@ -86,6 +86,7 @@ data class MachineSkillTargetDetail(
   val state: String,
   val contentIdentity: String? = null,
   val occurrencePaths: List<String> = emptyList(),
+  val linkHealth: List<String> = emptyList(),
 )
 
 data class MachineSkillManagerRow(

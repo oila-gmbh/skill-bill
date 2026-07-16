@@ -113,6 +113,7 @@ class SkillBillViewModel(
     if (detail.ownership.equals("MANAGED", true) && recordIdentity != null && contentIdentity != null) {
       runCatching { machineSkillGateway.openManagedEdit(logicalKey, recordIdentity, contentIdentity) }
         .onSuccess { edit ->
+          if (viewState.selectedTreeItemId != itemId) return@onSuccess
           viewState.loadMachineEditorDocument(
             AuthoredContentDocument(itemId, detail.name, detail.name, "Third-party runtime skill",
               detail.canonicalManagedSourcePath, edit.markdown, detail.validationIssues.isEmpty(),
@@ -122,6 +123,7 @@ class SkillBillViewModel(
           )
         }
         .onFailure { error ->
+          if (viewState.selectedTreeItemId != itemId) return@onFailure
           viewState.loadMachineEditorDocument(
             AuthoredContentDocument(itemId, detail.name, detail.name, "Third-party runtime skill",
               detail.canonicalManagedSourcePath, "", false,

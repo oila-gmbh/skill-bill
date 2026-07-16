@@ -74,7 +74,7 @@ class MachineToolsControllerTest {
   }
 
   @Test
-  fun `target and surface changes invalidate pending completions`() {
+  fun `target changes invalidate previews but surface changes preserve shared inventory refresh`() {
     val viewState = SkillBillViewState(FakeAuthoringGateway(), null)
     val controller = SkillBillMachineToolsController(viewState)
     controller.sourceInspected(source("demo"), listOf(MachineSkillTargetOption("codex", "codex", "/target", true)))
@@ -87,7 +87,16 @@ class MachineToolsControllerTest {
     val inventory = controller.beginInventoryRefresh()
     controller.dispatch(MachineToolAction.INSTALL_SKILL)
     controller.inventoryRefreshed(inventory, emptyList(), null)
-    assertTrue(viewState.currentState.machineTools.manager.loading)
+    assertFalse(viewState.currentState.machineTools.manager.loading)
+
+    val dismissedInventory = controller.beginInventoryRefresh()
+    controller.dismiss()
+    controller.inventoryRefreshed(
+      dismissedInventory,
+      listOf(MachineSkillManagerRow("demo", "Demo", "MANAGED", "HEALTHY", setOf("codex"))),
+      null,
+    )
+    assertEquals(listOf("demo"), viewState.currentState.machineTools.manager.rows.map { it.logicalKey })
   }
 
   @Test
