@@ -12,6 +12,71 @@ enum class MachineSkillOwnership { PRODUCT, MANAGED, UNMANAGED, CONFLICT }
 enum class MachineSkillHealth { HEALTHY, MISSING, BROKEN_LINK, DIVERGENT, CORRUPT, HASH_MISMATCH, ORPHAN }
 enum class MachineSkillMutationKind { INSTALL, UPDATE, ADOPT, EDIT, MANAGE_TARGETS, REPAIR, DELETE }
 
+enum class MachineSkillEntryKind { FILE, DIRECTORY, SYMLINK, OTHER, ABSENT }
+enum class MachineSkillLinkHealth { NOT_A_LINK, HEALTHY, BROKEN, EXTERNAL, EXPECTED_BROKEN, EXPECTED_MISMATCH }
+enum class MachineSkillIssueSeverity { INFO, WARNING, ERROR }
+
+data class MachineSkillIssue(
+  val code: String,
+  val message: String,
+  val severity: MachineSkillIssueSeverity = MachineSkillIssueSeverity.WARNING,
+)
+
+data class AgentSkillTargetState(
+  val id: AgentSkillTargetId,
+  val displayName: String,
+  val detected: Boolean,
+  val selected: Boolean,
+  val directoryPresent: Boolean,
+  val issues: List<MachineSkillIssue> = emptyList(),
+)
+
+data class MachineSkillOccurrence(
+  val target: AgentSkillTargetId,
+  val rawName: String,
+  val path: Path,
+  val entryKind: MachineSkillEntryKind,
+  val ownership: MachineSkillOwnership,
+  val linkHealth: MachineSkillLinkHealth,
+  val contentHash: String? = null,
+  val provenance: Set<String> = emptySet(),
+  val issues: List<MachineSkillIssue> = emptyList(),
+)
+
+data class MachineSkillTargetPresence(
+  val target: AgentSkillTargetId,
+  val present: Boolean,
+  val occurrences: List<MachineSkillOccurrence> = emptyList(),
+)
+
+data class MachineSkillInventoryRow(
+  val normalizedName: String,
+  val displayName: String,
+  val ownership: MachineSkillOwnership,
+  val health: MachineSkillHealth,
+  val targetPresence: List<MachineSkillTargetPresence>,
+  val contentHashes: Set<String>,
+  val divergent: Boolean,
+  val issues: List<MachineSkillIssue> = emptyList(),
+)
+
+data class MachineSkillInventoryDiagnostic(
+  val kind: String,
+  val path: Path?,
+  val message: String,
+)
+
+data class MachineSkillInventorySnapshot(
+  val targets: List<AgentSkillTargetState>,
+  val rows: List<MachineSkillInventoryRow>,
+  val productDiagnostics: List<MachineSkillOccurrence> = emptyList(),
+  val diagnostics: List<MachineSkillInventoryDiagnostic> = emptyList(),
+)
+
+fun normalizeManagedSkillName(rawName: String): String? = rawName.trim().lowercase(Locale.ROOT).takeIf {
+  runCatching { requireSafeManagedSkillName(it) }.isSuccess
+}
+
 class AgentSkillTargetId(provider: String, skillsPath: Path) {
   val provider: String = provider.trim().lowercase(Locale.ROOT)
   val skillsPath: Path = skillsPath.normalize()

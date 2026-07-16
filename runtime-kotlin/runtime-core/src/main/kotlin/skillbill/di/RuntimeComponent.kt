@@ -19,6 +19,7 @@ import skillbill.application.goalrunner.WorkflowGoalRunnerOutcomeStore
 import skillbill.application.install.ExternalAddonOverlayService
 import skillbill.application.install.InstallService
 import skillbill.application.learning.LearningService
+import skillbill.application.managedskill.MachineSkillInventoryService
 import skillbill.application.review.ParallelCodeReviewRunner
 import skillbill.application.review.ReviewService
 import skillbill.application.scaffold.InstallAgentService
@@ -61,6 +62,7 @@ import skillbill.infrastructure.fs.FileSystemInstallSelectionPersistence
 import skillbill.infrastructure.fs.FileSystemInstallSkillLink
 import skillbill.infrastructure.fs.FileSystemInstallStagingIntent
 import skillbill.infrastructure.fs.FileSystemInstalledWorkspaceBaselineStatus
+import skillbill.managedskill.FileSystemMachineSkillInventory
 import skillbill.infrastructure.fs.FileSystemRepoLocalConfig
 import skillbill.infrastructure.fs.FileSystemRepoSourceDiscoveryGateway
 import skillbill.infrastructure.fs.FileSystemRepoValidationGateway
@@ -124,6 +126,7 @@ import skillbill.ports.install.plan.InstallStagingIntentPort
 import skillbill.ports.install.reconcile.InstallReconcileApplyPort
 import skillbill.ports.install.reconcile.InstallReconcilePort
 import skillbill.ports.install.selection.InstallSelectionPersistencePort
+import skillbill.ports.managedskill.MachineSkillInventoryPort
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.review.ParallelReviewLaneRunner
 import skillbill.ports.review.ReviewAttributionPort
@@ -290,6 +293,10 @@ abstract class RuntimeComponent(
   @Provides
   @JvmSynthetic
   internal fun installAgentTargetPort(adapter: FileSystemInstallAgentTargets): InstallAgentTargetPort = adapter
+
+  @Provides
+  @JvmSynthetic
+  internal fun machineSkillInventoryPort(adapter: FileSystemMachineSkillInventory): MachineSkillInventoryPort = adapter
 
   @Provides
   @JvmSynthetic
@@ -548,6 +555,7 @@ abstract class RuntimeComponent(
   abstract val installSelectionPersistencePort: InstallSelectionPersistencePort
   abstract val installedWorkspaceBaselineStatusPort: InstalledWorkspaceBaselineStatusPort
   abstract val learningService: LearningService
+  abstract val machineSkillInventoryService: MachineSkillInventoryService
   abstract val lifecycleTelemetryService: LifecycleTelemetryService
   abstract val mcpRegistrationService: McpRegistrationService
   abstract val nativeAgentInstallService: NativeAgentInstallService

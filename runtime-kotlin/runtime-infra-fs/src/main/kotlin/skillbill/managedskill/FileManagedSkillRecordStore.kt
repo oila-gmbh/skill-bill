@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.SerializationFeature
 import skillbill.managedskill.model.ManagedSkillRecord
 import java.nio.file.Path
+import java.nio.file.Files
+import java.nio.file.LinkOption.NOFOLLOW_LINKS
 
 class FileManagedSkillRecordStore private constructor(
   private val context: ManagedSkillRecordStoreContext,
@@ -53,6 +55,15 @@ class FileManagedSkillRecordStore private constructor(
       ManagedSkillRecordStoreContext(stateRoot, null, ::forceDirectoryIfSupported, true),
       Unit,
     )
+
+    internal fun openReadOnly(homeDirectory: Path): FileManagedSkillRecordStore? {
+      val stateRoot = homeDirectory.toAbsolutePath().normalize().resolve(".skill-bill")
+      return if (Files.isDirectory(stateRoot, NOFOLLOW_LINKS) && !Files.isSymbolicLink(stateRoot)) {
+        fromStateRoot(stateRoot)
+      } else {
+        null
+      }
+    }
   }
 
   fun recordPath(name: String): Path = context.recordPath(name)
@@ -68,7 +79,33 @@ class FileManagedSkillRecordStore private constructor(
   fun write(record: ManagedSkillRecord, expectedDigest: String? = null) = context.write(record, expectedDigest)
 
   fun digest(name: String): String? = context.digest(name)
+
+  fun listRecords(): List<ManagedSkillRecordDiscovery> {
+    val directory = context.stateRoot.resolve("managed-skills")
+    if (!Files.isDirectory(directory, NOFOLLOW_LINKS)) return emptyList()
+    return Files.newDirectoryStream(directory).use { entries ->
+      entries.map { entry ->
+        val path = entry.resolve("record.json")
+        runCatching { ManagedSkillRecordDiscovery(path, readPath(path), null) }
+          .getOrElse { error -> ManagedSkillRecordDiscovery(entry, null, error.message ?: error::class.java.name) }
+      }.sortedBy { it.path.fileName.toString() }
+    }
+  }
+
+  fun listSnapshotPaths(): List<Path> {
+    val directory = context.stateRoot.resolve("installed-skills")
+    if (!Files.isDirectory(directory, NOFOLLOW_LINKS)) return emptyList()
+    return Files.newDirectoryStream(directory).use { entries ->
+      entries.map(Path::toAbsolutePath).map(Path::normalize).sortedBy(Path::toString)
+    }
+  }
 }
+
+data class ManagedSkillRecordDiscovery(
+  val path: Path,
+  val record: ManagedSkillRecord?,
+  val error: String?,
+)
 
 internal class ManagedSkillRecordStoreContext(
   stateRoot: Path,
