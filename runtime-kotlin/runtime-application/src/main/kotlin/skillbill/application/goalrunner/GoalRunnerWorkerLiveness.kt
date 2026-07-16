@@ -23,10 +23,7 @@ internal fun workerLivenessSignal(
     .toStaleWorkerSignal(runningPhase.phaseId, runningPhase.attemptCount)
 }
 
-private fun FeatureTaskRuntimeWorkerOwnership?.toStaleWorkerSignal(
-  phaseId: String,
-  attemptCount: Int,
-): String? = when {
+private fun FeatureTaskRuntimeWorkerOwnership?.toStaleWorkerSignal(phaseId: String, attemptCount: Int): String? = when {
   this == null -> "worker_liveness=missing; phase=$phaseId; attempt=$attemptCount"
   leaseState == FeatureTaskRuntimeWorkerLeaseState.TAKEOVER_RESERVED ->
     "worker_liveness=takeover_reserved; phase=$phaseId; attempt=$attemptCount; expires_at=$expiresAt"

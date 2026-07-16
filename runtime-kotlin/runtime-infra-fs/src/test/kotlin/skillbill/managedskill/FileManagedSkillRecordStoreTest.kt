@@ -4,8 +4,8 @@ import skillbill.error.InvalidManagedSkillRecordSchemaError
 import skillbill.managedskill.model.AgentSkillTargetId
 import skillbill.managedskill.model.ManagedSkillRecord
 import skillbill.managedskill.model.ManagedSkillSourceKind
-import java.nio.file.Files
 import java.nio.file.AtomicMoveNotSupportedException
+import java.nio.file.Files
 import java.time.Instant
 import kotlin.io.path.writeText
 import kotlin.test.Test
@@ -139,10 +139,13 @@ class FileManagedSkillRecordStoreTest {
     val store = store(root)
     val now = Instant.parse("2026-07-15T12:00:00Z")
     val record = ManagedSkillRecord(
-      name = "sample-skill", sourceKind = ManagedSkillSourceKind.DIRECTORY,
-      sourcePath = store.sourceRoot("sample-skill"), activeContentHash = "a".repeat(64),
+      name = "sample-skill",
+      sourceKind = ManagedSkillSourceKind.DIRECTORY,
+      sourcePath = store.sourceRoot("sample-skill"),
+      activeContentHash = "a".repeat(64),
       selectedTargets = setOf(AgentSkillTargetId("claude", root.resolve("claude").toAbsolutePath())),
-      importedAt = now, updatedAt = now,
+      importedAt = now,
+      updatedAt = now,
     )
     store.write(record)
     val digest = assertNotNull(store.digest(record.name))
@@ -157,18 +160,23 @@ class FileManagedSkillRecordStoreTest {
     val store = store(root)
     val path = store.recordPath("sample-skill")
     Files.createDirectories(path.parent)
-    path.writeText(validWire(root, "sample-skill").replace(
-      "\"name\":\"sample-skill\"",
-      "\"name\":\"sample-skill\",\"name\":\"sample-skill\"",
-    ))
+    path.writeText(
+      validWire(root, "sample-skill").replace(
+        "\"name\":\"sample-skill\"",
+        "\"name\":\"sample-skill\",\"name\":\"sample-skill\"",
+      ),
+    )
     assertFailsWith<InvalidManagedSkillRecordSchemaError> { store.digest("sample-skill") }
 
     val now = Instant.parse("2026-07-15T12:00:00Z")
     val replacement = ManagedSkillRecord(
-      name = "sample-skill", sourceKind = ManagedSkillSourceKind.DIRECTORY,
-      sourcePath = store.sourceRoot("sample-skill"), activeContentHash = "b".repeat(64),
+      name = "sample-skill",
+      sourceKind = ManagedSkillSourceKind.DIRECTORY,
+      sourcePath = store.sourceRoot("sample-skill"),
+      activeContentHash = "b".repeat(64),
       selectedTargets = setOf(AgentSkillTargetId("claude", root.resolve("claude").toAbsolutePath())),
-      importedAt = now, updatedAt = now,
+      importedAt = now,
+      updatedAt = now,
     )
     assertFailsWith<InvalidManagedSkillRecordSchemaError> { store.write(replacement, "0".repeat(64)) }
   }
@@ -179,10 +187,13 @@ class FileManagedSkillRecordStoreTest {
     val store = store(root)
     val now = Instant.parse("2026-07-15T12:00:00Z")
     val record = ManagedSkillRecord(
-      name = "sample-skill", sourceKind = ManagedSkillSourceKind.DIRECTORY,
-      sourcePath = store.sourceRoot("sample-skill"), activeContentHash = "a".repeat(64),
+      name = "sample-skill",
+      sourceKind = ManagedSkillSourceKind.DIRECTORY,
+      sourcePath = store.sourceRoot("sample-skill"),
+      activeContentHash = "a".repeat(64),
       selectedTargets = setOf(AgentSkillTargetId("claude", root.resolve("claude").toAbsolutePath())),
-      importedAt = now, updatedAt = now,
+      importedAt = now,
+      updatedAt = now,
     )
     store.write(record, FileManagedSkillRecordStore.EXPECTED_ABSENT)
     assertFailsWith<IllegalStateException> { store.write(record, FileManagedSkillRecordStore.EXPECTED_ABSENT) }
@@ -196,10 +207,13 @@ class FileManagedSkillRecordStoreTest {
     })
     val now = Instant.parse("2026-07-15T12:00:00Z")
     val record = ManagedSkillRecord(
-      name = "sample-skill", sourceKind = ManagedSkillSourceKind.DIRECTORY,
-      sourcePath = store.sourceRoot("sample-skill"), activeContentHash = "a".repeat(64),
+      name = "sample-skill",
+      sourceKind = ManagedSkillSourceKind.DIRECTORY,
+      sourcePath = store.sourceRoot("sample-skill"),
+      activeContentHash = "a".repeat(64),
       selectedTargets = setOf(AgentSkillTargetId("claude", root.resolve("claude").toAbsolutePath())),
-      importedAt = now, updatedAt = now,
+      importedAt = now,
+      updatedAt = now,
     )
 
     assertFailsWith<IllegalStateException> { store.write(record) }
@@ -213,14 +227,37 @@ class FileManagedSkillRecordStoreTest {
     val store = FileManagedSkillRecordStore(root, forceDirectory = { forcedDirectory = it })
     val now = Instant.parse("2026-07-15T12:00:00Z")
     val record = ManagedSkillRecord(
-      name = "sample-skill", sourceKind = ManagedSkillSourceKind.DIRECTORY,
-      sourcePath = store.sourceRoot("sample-skill"), activeContentHash = "a".repeat(64),
+      name = "sample-skill",
+      sourceKind = ManagedSkillSourceKind.DIRECTORY,
+      sourcePath = store.sourceRoot("sample-skill"),
+      activeContentHash = "a".repeat(64),
       selectedTargets = setOf(AgentSkillTargetId("claude", root.resolve("claude").toAbsolutePath())),
-      importedAt = now, updatedAt = now,
+      importedAt = now,
+      updatedAt = now,
     )
 
     store.write(record)
     assertEquals(store.recordPath(record.name).parent, forcedDirectory)
+  }
+
+  @Test
+  fun `forces home after creating the managed state root`() {
+    val home = Files.createTempDirectory("managed-home")
+    val forcedDirectories = mutableListOf<java.nio.file.Path>()
+
+    FileManagedSkillRecordStore(home, forceDirectory = { forcedDirectories.add(it) })
+
+    assertEquals(listOf(home.toAbsolutePath().normalize()), forcedDirectories)
+  }
+
+  @Test
+  fun `accepts an existing valid managed state root`() {
+    val home = Files.createTempDirectory("managed-home")
+    val stateRoot = home.resolve(".skill-bill")
+    Files.createDirectory(stateRoot)
+    val store = FileManagedSkillRecordStore(home)
+
+    assertEquals(stateRoot.resolve("managed-skills/sample-skill/record.json"), store.recordPath("sample-skill"))
   }
 
   private fun validWire(root: java.nio.file.Path, name: String): String = """{

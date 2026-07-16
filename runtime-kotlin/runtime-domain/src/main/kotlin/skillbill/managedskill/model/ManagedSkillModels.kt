@@ -52,7 +52,9 @@ class OpaqueSkillBundleFile(val relativePath: String, content: ByteArray) {
   val content: ByteArray get() = capturedContent.copyOf()
 
   override fun equals(other: Any?): Boolean =
-    other is OpaqueSkillBundleFile && relativePath == other.relativePath && capturedContent.contentEquals(other.capturedContent)
+    other is OpaqueSkillBundleFile && relativePath == other.relativePath && capturedContent.contentEquals(
+      other.capturedContent,
+    )
 
   override fun hashCode(): Int = 31 * relativePath.hashCode() + capturedContent.contentHashCode()
 }

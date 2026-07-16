@@ -189,6 +189,9 @@ runtime-ports
 - `skillbill.agentaddon` and `skillbill.agentaddon.model`: governed agent-add-on
   filesystem discovery and schema validation owned by `runtime-infra-fs`, plus
   typed declaration models owned by `runtime-domain`.
+- `skillbill.managedskill` and `skillbill.managedskill.model`: managed-skill
+  record storage and opaque bundle capture owned by `runtime-infra-fs`, plus
+  immutable identity and record models owned by `runtime-domain`.
 - `skillbill.workflow` and `skillbill.workflow.model`: pure workflow engine,
   workflow definitions, decomposition manifest codec, wire-map conversion, and
   workflow/decomposition models owned by `runtime-domain`.
@@ -565,6 +568,7 @@ skillbill.install
 skillbill.infrastructure
 skillbill.launcher
 skillbill.learnings
+skillbill.managedskill
 skillbill.mcp
 skillbill.model
 skillbill.nativeagent

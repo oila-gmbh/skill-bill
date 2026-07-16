@@ -46,6 +46,7 @@ object RuntimeModule {
       "skillbill.telemetry",
       "skillbill.review",
       "skillbill.learnings",
+      "skillbill.managedskill",
       "skillbill.ports",
       "skillbill.infrastructure",
       "skillbill.workflow.implement",

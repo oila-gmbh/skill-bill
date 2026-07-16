@@ -60,12 +60,12 @@ class FeatureTaskRuntimeStatusService(
       if (terminalDecomposeRecorded) {
         null
       } else {
-        phases.firstOrNull { it.status == STATUS_RUNNING || it.status == STATUS_BLOCKED }?.phaseId ?:
-        // Skip a loop-only phase (e.g. implement_fix) only while it is still pending: it is
-        // permanently pending on a clean forward run and is reached only as a backward-edge
-        // destination, so reporting a never-run one as current would mislead operators. A loop-only
-        // phase that is actually running or blocked mid-loop still surfaces. A run with no incomplete
-        // non-loop-only phase reports none (a completed run is terminal).
+        phases.firstOrNull { it.status == STATUS_RUNNING || it.status == STATUS_BLOCKED }?.phaseId
+          ?: // Skip a loop-only phase (e.g. implement_fix) only while it is still pending: it is
+          // permanently pending on a clean forward run and is reached only as a backward-edge
+          // destination, so reporting a never-run one as current would mislead operators. A loop-only
+          // phase that is actually running or blocked mid-loop still surfaces. A run with no incomplete
+          // non-loop-only phase reports none (a completed run is terminal).
           currentReentryPhaseId(records, ledger) ?: phases.firstOrNull {
           it.status != STATUS_COMPLETED &&
             !(it.phaseId in LOOP_ONLY_PHASE_IDS && it.status == STATUS_PENDING)
@@ -115,19 +115,18 @@ class FeatureTaskRuntimeStatusService(
 
   private fun FeatureTaskRuntimeWorkerOwnership.toStatus(
     runningPhase: FeatureTaskRuntimePhaseStatus?,
-  ): FeatureTaskRuntimeWorkerLeaseStatus =
-    FeatureTaskRuntimeWorkerLeaseStatus(
-      liveness = when {
-        leaseState == FeatureTaskRuntimeWorkerLeaseState.TAKEOVER_RESERVED -> WORKER_LIVENESS_TAKEOVER_RESERVED
-        Instant.parse(expiresAt).isBefore(Instant.now()) -> WORKER_LIVENESS_EXPIRED
-        else -> WORKER_LIVENESS_ACTIVE
-      },
-      phaseId = runningPhase?.phaseId ?: phaseId,
-      phaseAttempt = runningPhase?.attemptCount ?: phaseAttempt,
-      leaseState = leaseState.wireValue,
-      heartbeatAt = heartbeatAt,
-      expiresAt = expiresAt,
-    )
+  ): FeatureTaskRuntimeWorkerLeaseStatus = FeatureTaskRuntimeWorkerLeaseStatus(
+    liveness = when {
+      leaseState == FeatureTaskRuntimeWorkerLeaseState.TAKEOVER_RESERVED -> WORKER_LIVENESS_TAKEOVER_RESERVED
+      Instant.parse(expiresAt).isBefore(Instant.now()) -> WORKER_LIVENESS_EXPIRED
+      else -> WORKER_LIVENESS_ACTIVE
+    },
+    phaseId = runningPhase?.phaseId ?: phaseId,
+    phaseAttempt = runningPhase?.attemptCount ?: phaseAttempt,
+    leaseState = leaseState.wireValue,
+    heartbeatAt = heartbeatAt,
+    expiresAt = expiresAt,
+  )
 
   // Supplementary ledger-derived blocked-ness: a phase is blocked when its newest ledger entry is
   // BLOCKED and no durable blocked record already covers it; a later entry from a resumed run

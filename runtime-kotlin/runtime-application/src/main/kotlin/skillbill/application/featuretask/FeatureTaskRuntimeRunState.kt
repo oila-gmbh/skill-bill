@@ -269,11 +269,10 @@ internal class FeatureTaskRuntimeRunState(
   fun unmetAuditCriteria(phaseId: String): List<String> =
     FeatureTaskRuntimeOutputVerification.unmetAuditCriteria(outputFor(phaseId))
 
-  fun previousUnmetAuditCriteria(phaseId: String): List<List<String>> =
-    outputs.filter { it.phaseId == phaseId }
-      .sortedByDescending { it.iteration }
-      .drop(1)
-      .map(FeatureTaskRuntimeOutputVerification::unmetAuditCriteria)
+  fun previousUnmetAuditCriteria(phaseId: String): List<List<String>> = outputs.filter { it.phaseId == phaseId }
+    .sortedByDescending { it.iteration }
+    .drop(1)
+    .map(FeatureTaskRuntimeOutputVerification::unmetAuditCriteria)
 
   fun auditDecisionConflict(phaseId: String): String? =
     FeatureTaskRuntimeOutputVerification.auditDecisionConflict(outputFor(phaseId))

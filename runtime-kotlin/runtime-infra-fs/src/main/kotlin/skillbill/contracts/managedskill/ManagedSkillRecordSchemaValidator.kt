@@ -12,17 +12,13 @@ import skillbill.managedskill.model.MANAGED_SKILL_RECORD_CONTRACT_VERSION
 object ManagedSkillRecordSchemaValidator {
   private val mapper = ObjectMapper()
   private val schema by lazy {
-    try {
+    managedSkillSchemaOperation {
       val resource = javaClass.getResourceAsStream(MANAGED_SKILL_RECORD_SCHEMA_RESOURCE)
         ?: throw InvalidManagedSkillRecordSchemaError("classpath schema", "schema resource is missing")
       val yaml = resource.use { YAMLMapper().readTree(it) }
       assertIdentity(yaml)
       val config = SchemaValidatorsConfig.builder().formatAssertionsEnabled(true).build()
       JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V202012).getSchema(yaml, config)
-    } catch (error: InvalidManagedSkillRecordSchemaError) {
-      throw error
-    } catch (error: Exception) {
-      throw InvalidManagedSkillRecordSchemaError("classpath schema", "schema cannot be loaded or compiled", error)
     }
   }
 
@@ -45,5 +41,17 @@ object ManagedSkillRecordSchemaValidator {
         "identity/version mismatch: id='$id', version='$version'",
       )
     }
+  }
+}
+
+private inline fun <T> managedSkillSchemaOperation(operation: () -> T): T = runCatching(operation).getOrElse { error ->
+  when (error) {
+    is InvalidManagedSkillRecordSchemaError -> throw error
+    is Exception -> throw InvalidManagedSkillRecordSchemaError(
+      "classpath schema",
+      "schema cannot be loaded or compiled",
+      error,
+    )
+    else -> throw error
   }
 }

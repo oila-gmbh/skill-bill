@@ -1,5 +1,8 @@
 package skillbill.managedskill
 
+import java.net.URI
+import java.nio.file.FileSystems
+import java.nio.file.Files
 import kotlin.io.path.createDirectory
 import kotlin.io.path.createSymbolicLinkPointingTo
 import kotlin.io.path.writeText
@@ -7,9 +10,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotEquals
-import java.nio.file.FileSystems
-import java.nio.file.Files
-import java.net.URI
 
 class OpaqueSkillBundleScannerTest {
   private val scanner = OpaqueSkillBundleScanner()

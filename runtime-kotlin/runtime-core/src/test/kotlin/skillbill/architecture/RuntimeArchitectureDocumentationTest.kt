@@ -101,6 +101,7 @@ class RuntimeArchitectureDocumentationTest {
         "skillbill.infrastructure",
         "skillbill.launcher",
         "skillbill.learnings",
+        "skillbill.managedskill",
         "skillbill.mcp",
         "skillbill.model",
         "skillbill.nativeagent",
