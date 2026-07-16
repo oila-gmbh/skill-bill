@@ -5,6 +5,7 @@ import skillbill.desktop.core.domain.model.ConfirmDeletionState
 import skillbill.desktop.core.domain.model.DirtyEditorPrompt
 import skillbill.desktop.core.domain.model.EditorPlaceholder
 import skillbill.desktop.core.domain.model.FirstRunSetupState
+import skillbill.desktop.core.domain.model.MachineToolsState
 import skillbill.desktop.core.domain.model.PartialMutationPostMortem
 import skillbill.desktop.core.domain.model.RepoLoadStatus
 import skillbill.desktop.core.domain.model.RepoSession
@@ -13,7 +14,6 @@ import skillbill.desktop.core.domain.model.SkillBillBusyOperation
 import skillbill.desktop.core.domain.model.SkillBillState
 import skillbill.desktop.core.domain.model.SkillBillStatusBar
 import skillbill.desktop.core.domain.model.SkillBillTreeItem
-import skillbill.desktop.core.domain.model.MachineToolsState
 import skillbill.desktop.core.domain.model.ValidateAgentConfigsSummary
 import skillbill.desktop.core.domain.model.WorkListState
 import skillbill.desktop.core.domain.service.AuthoringGateway

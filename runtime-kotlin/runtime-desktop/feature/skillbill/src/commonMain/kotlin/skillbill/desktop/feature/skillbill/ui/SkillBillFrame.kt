@@ -18,22 +18,22 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.focus.FocusRequester
 import skillbill.desktop.core.designsystem.SkillBillColor
 import skillbill.desktop.core.designsystem.SkillBillMetrics
 import skillbill.desktop.core.designsystem.SkillBillTheme
 import skillbill.desktop.core.designsystem.YamlSyntaxColors
 import skillbill.desktop.core.domain.model.CommandPaletteResult
 import skillbill.desktop.core.domain.model.EditorPlaceholder
+import skillbill.desktop.core.domain.model.MachineToolAction
 import skillbill.desktop.core.domain.model.RepoLoadState
 import skillbill.desktop.core.domain.model.ScaffoldKind
 import skillbill.desktop.core.domain.model.SkillBillState
 import skillbill.desktop.core.domain.model.SkillBillTreeItem
-import skillbill.desktop.core.domain.model.MachineToolAction
 
 internal val NavigationPaneResizeHandleWidth = SkillBillMetrics.navigationPaneResizeHandleWidth
 

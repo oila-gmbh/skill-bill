@@ -7,6 +7,10 @@ import skillbill.desktop.core.domain.model.DesktopSkillRemovalResult
 import skillbill.desktop.core.domain.model.DesktopSkillRemovalTarget
 import skillbill.desktop.core.domain.model.FirstRunSetupState
 import skillbill.desktop.core.domain.model.FirstRunTelemetryLevel
+import skillbill.desktop.core.domain.model.MachineSkillHealthFilter
+import skillbill.desktop.core.domain.model.MachineSkillInstallStep
+import skillbill.desktop.core.domain.model.MachineSkillOwnershipFilter
+import skillbill.desktop.core.domain.model.MachineToolAction
 import skillbill.desktop.core.domain.model.ScaffoldBaselineLayerForm
 import skillbill.desktop.core.domain.model.ScaffoldCatalogSnapshot
 import skillbill.desktop.core.domain.model.ScaffoldKind
@@ -16,23 +20,19 @@ import skillbill.desktop.core.domain.model.ScaffoldWizardFormFields
 import skillbill.desktop.core.domain.model.SkillBillBusyOperation
 import skillbill.desktop.core.domain.model.SkillBillState
 import skillbill.desktop.core.domain.model.ValidateAgentConfigsSummary
-import skillbill.desktop.core.domain.model.MachineToolAction
-import skillbill.desktop.core.domain.model.MachineSkillHealthFilter
-import skillbill.desktop.core.domain.model.MachineSkillInstallStep
-import skillbill.desktop.core.domain.model.MachineSkillOwnershipFilter
 import skillbill.desktop.core.domain.service.AuthoringGateway
 import skillbill.desktop.core.domain.service.DesktopFirstRunGateway
 import skillbill.desktop.core.domain.service.EmptyWorkListGateway
 import skillbill.desktop.core.domain.service.InstalledWorkspaceLocator
+import skillbill.desktop.core.domain.service.MachineSkillSourceChoice
 import skillbill.desktop.core.domain.service.RecentRepoRepository
 import skillbill.desktop.core.domain.service.RepoSessionService
+import skillbill.desktop.core.domain.service.RuntimeMachineSkillGateway
 import skillbill.desktop.core.domain.service.RuntimeScaffoldGateway
 import skillbill.desktop.core.domain.service.RuntimeSkillRemoveGateway
 import skillbill.desktop.core.domain.service.SkillTreeService
-import skillbill.desktop.core.domain.service.WorkListGateway
-import skillbill.desktop.core.domain.service.RuntimeMachineSkillGateway
 import skillbill.desktop.core.domain.service.UnavailableRuntimeMachineSkillGateway
-import skillbill.desktop.core.domain.service.MachineSkillSourceChoice
+import skillbill.desktop.core.domain.service.WorkListGateway
 import software.amazon.lastmile.kotlin.inject.anvil.SingleIn
 
 @Inject
@@ -206,19 +206,80 @@ class SkillBillViewModel(
     viewState.currentState
   }
 
-  fun updateMachineSkillOwnershipFilter(filter: MachineSkillOwnershipFilter): SkillBillState = machineToolsController.run {
-    updateOwnershipFilter(filter)
-    viewState.currentState
-  }
+  fun updateMachineSkillOwnershipFilter(filter: MachineSkillOwnershipFilter): SkillBillState =
+    machineToolsController.run {
+      updateOwnershipFilter(filter)
+      viewState.currentState
+    }
 
   fun updateMachineSkillHealthFilter(filter: MachineSkillHealthFilter): SkillBillState = machineToolsController.run {
     updateHealthFilter(filter)
     viewState.currentState
   }
 
+  fun updateMachineSkillAgentFilter(agent: String?): SkillBillState = machineToolsController.run {
+    updateAgentFilter(agent)
+    viewState.currentState
+  }
+
   fun selectMachineSkill(name: String): SkillBillState = machineToolsController.run {
     selectManagerSkill(name)
     viewState.currentState
+  }
+
+  fun beginMachineSkillManagerAction(action: String): SkillBillState = machineToolsController.run {
+    beginManagerAction(action)
+    viewState.currentState
+  }
+
+  fun selectMachineSkillAuthoritativeSource(path: String): SkillBillState = machineToolsController.run {
+    selectAuthoritativeSource(path)
+    viewState.currentState
+  }
+
+  fun toggleMachineSkillManagerTarget(id: String): SkillBillState = machineToolsController.run {
+    toggleManagerTarget(id)
+    viewState.currentState
+  }
+
+  suspend fun previewMachineSkillManagerAction(): SkillBillState {
+    val manager = viewState.machineTools.manager
+    val name = manager.selectedName ?: return viewState.currentState
+    val action = manager.pendingAction ?: return viewState.currentState
+    runCatching {
+      machineSkillGateway.previewManagerAction(
+        action,
+        name,
+        manager.authoritativeSource,
+        manager.replacementTargetIds,
+      )
+    }.onSuccess { machineToolsController.managerPreviewReady(it.planId, it.operations) }
+      .onFailure { machineToolsController.managerActionFailed(it.message ?: "$action preview failed.") }
+    return viewState.currentState
+  }
+
+  suspend fun applyMachineSkillManagerAction(): SkillBillState {
+    val planId = viewState.machineTools.manager.actionPlanId ?: return viewState.currentState
+    if (!machineToolsController.beginMutation()) return viewState.currentState
+    return try {
+      runCatching { machineSkillGateway.apply(planId) }
+        .onSuccess {
+          machineToolsController.managerActionFinished()
+          refreshMachineSkillInventory()
+        }
+        .onFailure { machineToolsController.managerActionFailed(it.message ?: "Manager action failed.") }
+      viewState.currentState
+    } finally {
+      machineToolsController.finishMutation()
+    }
+  }
+
+  suspend fun revealMachineSkillSource(): SkillBillState {
+    val name = viewState.machineTools.manager.selectedName ?: return viewState.currentState
+    machineSkillGateway.revealSource(name).onFailure {
+      machineToolsController.managerActionFailed(it.message ?: "Reveal source failed.")
+    }
+    return viewState.currentState
   }
 
   suspend fun chooseMachineSkillSource(): SkillBillState {
@@ -275,9 +336,9 @@ class SkillBillViewModel(
       runCatching { machineSkillGateway.apply(planId) }
         .onSuccess { result ->
           machineToolsController.mutationFinished(result.results, result.postMortem)
-          refreshMachineSkillInventory()
         }
         .onFailure { machineToolsController.mutationFailed(it.message ?: "Machine-skill mutation failed.") }
+      refreshMachineSkillInventory()
       viewState.currentState
     } finally {
       machineToolsController.finishMutation()

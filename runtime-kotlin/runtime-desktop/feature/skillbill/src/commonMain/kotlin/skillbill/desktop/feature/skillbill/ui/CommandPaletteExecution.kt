@@ -2,8 +2,8 @@ package skillbill.desktop.feature.skillbill.ui
 
 import skillbill.desktop.core.domain.model.CommandPaletteAction
 import skillbill.desktop.core.domain.model.CommandPaletteResult
-import skillbill.desktop.core.domain.model.ScaffoldKind
 import skillbill.desktop.core.domain.model.MachineToolAction
+import skillbill.desktop.core.domain.model.ScaffoldKind
 
 internal data class CommandPaletteActions(
   val selectTreeItem: (String) -> Unit,

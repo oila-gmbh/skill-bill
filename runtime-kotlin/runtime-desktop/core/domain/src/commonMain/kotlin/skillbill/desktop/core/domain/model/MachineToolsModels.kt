@@ -79,11 +79,13 @@ data class MachineSkillInstallState(
 }
 
 data class MachineSkillTargetDetail(
+  val id: String,
   val provider: String,
   val path: String,
   val detectionStatus: String,
   val state: String,
   val contentIdentity: String? = null,
+  val occurrencePaths: List<String> = emptyList(),
 )
 
 data class MachineSkillManagerRow(
@@ -119,6 +121,11 @@ data class MachineSkillManagerState(
   val detail: MachineSkillManagerDetail? = null,
   val loading: Boolean = false,
   val error: String? = null,
+  val pendingAction: String? = null,
+  val authoritativeSource: String? = null,
+  val replacementTargetIds: Set<String> = emptySet(),
+  val actionPlanId: String? = null,
+  val actionPreview: List<MachineSkillPreviewLine> = emptyList(),
 )
 
 data class MachineToolsState(

@@ -89,64 +89,108 @@ class JvmRuntimeMachineSkillGateway(
 
   override suspend fun apply(planId: String): MachineSkillApplyPresentation =
     runtimeServices.machineSkillToolsFacade.apply(planId).let { result ->
-      MachineSkillApplyPresentation(result.outcomes.map { outcome ->
-        skillbill.desktop.core.domain.model.MachineSkillTargetResult(
-          outcome.target?.stableIdentity ?: outcome.path?.toString() ?: result.skillName,
-          outcome.kind.name,
-          outcome.detail,
-        )
-      })
+      MachineSkillApplyPresentation(
+        result.outcomes.map { outcome ->
+          skillbill.desktop.core.domain.model.MachineSkillTargetResult(
+            outcome.target?.stableIdentity ?: outcome.path?.toString() ?: result.skillName,
+            outcome.kind.name,
+            outcome.detail,
+          )
+        },
+      )
     }
+
+  override suspend fun previewManagerAction(
+    action: String,
+    name: String,
+    authoritativeSource: String?,
+    targetIds: Set<String>,
+  ): MachineSkillPreviewPresentation {
+    val targets = runtimeServices.machineSkillToolsFacade.installTargets(name)
+      .map { it.id }.filter { it.stableIdentity in targetIds }.toSet()
+    val preview = runtimeServices.machineSkillToolsFacade.previewManagerAction(
+      action,
+      name,
+      authoritativeSource?.let(Path::of),
+      targets,
+    )
+    val prepared = requireNotNull(preview.prepared) {
+      preview.outcomes.joinToString { "${it.code}: ${it.detail}" }.ifEmpty { "$action preview was blocked." }
+    }
+    return MachineSkillPreviewPresentation(
+      prepared.plan.planId,
+      prepared.plan.mutations.map { mutation ->
+        skillbill.desktop.core.domain.model.MachineSkillPreviewLine(
+          mutation.operation.name,
+          mutation.path.toString(),
+          mutation.outcome.name,
+        )
+      },
+      prepared.plan.warnings.map { it.message } + preview.outcomes.map { it.detail },
+    )
+  }
 
   override suspend fun inventory(): MachineSkillInventoryPresentation = mapInventory(
     runtimeServices.machineSkillToolsFacade.inventory(),
   )
 
   override suspend fun refreshInventory(): MachineSkillInventoryPresentation = mapInventory(
-    runtimeServices.machineSkillToolsFacade.refreshInventory(),
+    runtimeServices.machineSkillToolsFacade.inventory(),
   )
 
-  override suspend fun revealSource(skillName: String): Result<Unit> =
-    runCatching {
-      val source = requireNotNull(runtimeServices.machineSkillToolsFacade.canonicalSource(skillName)) {
-        "Managed source is unavailable."
-      }
-      Desktop.getDesktop().open(source.toFile())
+  override suspend fun revealSource(skillName: String): Result<Unit> = runCatching {
+    val source = requireNotNull(runtimeServices.machineSkillToolsFacade.managedDetails(skillName).canonicalSource) {
+      "Managed source is unavailable."
     }
+    Desktop.getDesktop().open(source.toFile())
+  }
 
   override suspend fun acknowledgePostMortem(): Result<Unit> = Result.success(Unit)
 
-  private fun mapInventory(snapshot: skillbill.managedskill.model.MachineSkillInventorySnapshot): MachineSkillInventoryPresentation {
+  private fun mapInventory(
+    snapshot: skillbill.managedskill.model.MachineSkillInventorySnapshot,
+  ): MachineSkillInventoryPresentation {
     val rows = snapshot.rows.map { row ->
       MachineSkillManagerRow(
         name = row.displayName,
-        description = "",
+        description = runtimeServices.machineSkillToolsFacade.description(
+          row.normalizedName,
+          row.targetPresence.flatMap { it.occurrences }.map { it.path },
+        ),
         ownership = row.ownership.name,
         health = row.health.name,
         agents = row.targetPresence.filter { it.present }.map { it.target.provider }.toSet(),
       )
     }
     val details = snapshot.rows.associate { row ->
-      val record = runtimeServices.machineSkillToolsFacade.managedRecord(row.normalizedName)
+      val managed = runtimeServices.machineSkillToolsFacade.managedDetails(row.normalizedName)
+      val record = managed.record
       val latest = runtimeServices.machineSkillToolsFacade.latestResult(row.normalizedName)
       row.displayName to MachineSkillManagerDetail(
         name = row.displayName,
-        description = "",
+        description = runtimeServices.machineSkillToolsFacade.description(
+          row.normalizedName,
+          row.targetPresence.flatMap { it.occurrences }.map { it.path },
+        ),
         ownership = row.ownership.name,
         provenance = row.targetPresence.flatMap { it.occurrences }.flatMap { it.provenance }.distinct(),
-        canonicalManagedSourcePath = record?.let {
-          runtimeServices.machineSkillToolsFacade.canonicalSource(row.normalizedName)?.toString()
-        },
+        canonicalManagedSourcePath = managed.canonicalSource?.toString(),
         activeSnapshotHash = record?.activeContentHash,
-        recordIdentity = record?.let { runtimeServices.machineSkillToolsFacade.managedRecordDigest(row.normalizedName) },
+        recordIdentity = managed.recordDigest,
         contentIdentity = row.contentHashes.singleOrNull(),
         targets = row.targetPresence.map { presence ->
           MachineSkillTargetDetail(
+            id = presence.target.stableIdentity,
             provider = presence.target.provider,
             path = presence.target.skillsPath.toString(),
-            detectionStatus = if (snapshot.targets.any { it.id == presence.target && it.detected }) "DETECTED" else "NOT_DETECTED",
+            detectionStatus = if (snapshot.targets.any { it.id == presence.target && it.detected }) {
+              "DETECTED"
+            } else {
+              "NOT_DETECTED"
+            },
             state = if (presence.present) "PRESENT" else "ABSENT",
             contentIdentity = presence.occurrences.mapNotNull { it.contentHash }.distinct().singleOrNull(),
+            occurrencePaths = presence.occurrences.map { it.path.toString() },
           )
         },
         validationIssues = row.issues.map { "${it.code}: ${it.message}" },

@@ -1,5 +1,16 @@
 # SkillBill desktop feature — history
 
+## [2026-07-16] SKILL-123 desktop machine-skill tools (subtask 5)
+Areas: runtime-application/managedskill, runtime-core/di, runtime-desktop/core/domain, runtime-desktop/core/data, runtime-desktop/feature/skillbill
+- Added an accessible Tools toolbar dialog and command-palette actions for installing and managing machine skills without an open writable repository; all entry points dispatch through the same presentation-safe controller actions.
+- Install uses shared JVM/application services for source inspection, conflict-aware target defaults, exact immutable previews, serialized apply, per-target results, and inventory refresh. The startup-frozen target catalog includes undetected providers, and prepared previews use a synchronized access-ordered store capped at 32. reusable
+- Manager inventory is grouped by non-product skill name with ownership, health, and agent filters; details expose provenance, source/snapshot/content identities, target state, validation issues, and the latest mutation result.
+- Managed edit, reveal, target-change, repair, and delete actions require application-backed preview/confirmation; unmanaged adoption requires explicit authoritative-source and replacement-target choices. reusable
+- Controller transitions clear stale inspection/apply state, reject stale completions, and publish the global machine-mutation busy state before suspension while leaving repository browsing independent. reusable
+- Known limitation: prepared mutation previews are process-local and expire through the bounded cache; supported target identities are frozen for the desktop process lifetime.
+Feature flag: N/A
+Acceptance criteria: 16/16 implemented
+
 ## [2026-06-11] SKILL-79 desktop installed-content editor (git/repo chrome removed)
 Areas: runtime-desktop/feature/skillbill, runtime-desktop/core/domain, runtime-desktop/core/data
 - The app is now a content.md editor over the installed skill tree, not a git-repo dev tool. All Changes/History/Console/Validate/Render dock tabs, the publish flow, and their toolbar buttons are gone; ~2500 lines removed from SkillBillFrame.kt. Toolbar is Refresh/Install/Open-installed/New-scaffold only.

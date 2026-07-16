@@ -539,12 +539,30 @@ fun SkillBillRoute(
       setInstallStep = { step -> state = viewModel.setMachineSkillInstallStep(step) },
       preview = { coroutineScope.launch { state = viewModel.previewMachineSkillInstall() } },
       apply = { coroutineScope.launch { state = viewModel.applyMachineSkillInstall() } },
-      retry = { state = viewModel.setMachineSkillInstallStep(skillbill.desktop.core.domain.model.MachineSkillInstallStep.TARGETS) },
+      retry = {
+        state = viewModel.setMachineSkillInstallStep(
+          skillbill.desktop.core.domain.model.MachineSkillInstallStep.TARGETS,
+        )
+      },
       acknowledge = { coroutineScope.launch { state = viewModel.acknowledgeMachineSkillPostMortem() } },
       updateQuery = { query -> state = viewModel.updateMachineSkillManagerQuery(query) },
       updateOwnership = { filter -> state = viewModel.updateMachineSkillOwnershipFilter(filter) },
       updateHealth = { filter -> state = viewModel.updateMachineSkillHealthFilter(filter) },
+      updateAgent = { agent -> state = viewModel.updateMachineSkillAgentFilter(agent) },
       selectSkill = { name -> state = viewModel.selectMachineSkill(name) },
+      managerAction = { action ->
+        if (action == skillbill.desktop.feature.skillbill.ui.MachineSkillManagerAction.REVEAL ||
+          action == skillbill.desktop.feature.skillbill.ui.MachineSkillManagerAction.EDIT
+        ) {
+          coroutineScope.launch { state = viewModel.revealMachineSkillSource() }
+        } else {
+          state = viewModel.beginMachineSkillManagerAction(action.name)
+        }
+      },
+      selectAuthority = { path -> state = viewModel.selectMachineSkillAuthoritativeSource(path) },
+      toggleManagerTarget = { id -> state = viewModel.toggleMachineSkillManagerTarget(id) },
+      previewManagerAction = { coroutineScope.launch { state = viewModel.previewMachineSkillManagerAction() } },
+      applyManagerAction = { coroutineScope.launch { state = viewModel.applyMachineSkillManagerAction() } },
     ),
     scaffoldWizardCallbacks = ScaffoldWizardCallbacks(
       onSelectKind = { kind ->

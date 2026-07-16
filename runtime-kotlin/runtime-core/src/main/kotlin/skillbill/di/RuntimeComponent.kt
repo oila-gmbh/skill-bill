@@ -118,6 +118,7 @@ import skillbill.ports.goalrunner.GoalRunnerWorkflowOutcomeStore
 import skillbill.ports.install.addon.ExternalAddonOverlayPort
 import skillbill.ports.install.addon.ExternalAddonSourceConfigPort
 import skillbill.ports.install.agent.InstallAgentTargetPort
+import skillbill.ports.install.agent.model.DetectInstallAgentTargetsRequest
 import skillbill.ports.install.apply.InstallApplyExecutionPort
 import skillbill.ports.install.baseline.BaselineManifestPersistencePort
 import skillbill.ports.install.baseline.InstalledWorkspaceBaselineStatusPort
@@ -133,7 +134,6 @@ import skillbill.ports.install.selection.InstallSelectionPersistencePort
 import skillbill.ports.managedskill.MachineSkillInventoryPort
 import skillbill.ports.managedskill.MachineSkillTransactionPort
 import skillbill.ports.managedskill.MachineSkillWorkspacePort
-import skillbill.ports.install.agent.model.DetectInstallAgentTargetsRequest
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.review.ParallelReviewLaneRunner
 import skillbill.ports.review.ReviewAttributionPort

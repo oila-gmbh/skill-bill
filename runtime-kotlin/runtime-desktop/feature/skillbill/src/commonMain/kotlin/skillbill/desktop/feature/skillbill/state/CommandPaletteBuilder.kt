@@ -205,9 +205,33 @@ private fun machineToolCandidates(state: SkillBillState): List<PaletteCandidate>
     sortGroup = 0,
   )
   return listOf(
-    candidate("command.open-tools", "Open Tools", "Browse machine-level skill tools", "tl", CommandPaletteAction.OPEN_TOOLS, -1, false),
-    candidate("command.install-skill-to-agents", "Install skill to agents", "Install a SKILL.md bundle", "in", CommandPaletteAction.INSTALL_SKILL_TO_AGENTS, -2, true),
-    candidate("command.manage-installed-skills", "Manage installed skills", "Inspect and maintain machine skills", "mg", CommandPaletteAction.MANAGE_INSTALLED_SKILLS, -3, false),
+    candidate(
+      "command.open-tools",
+      "Open Tools",
+      "Browse machine-level skill tools",
+      "tl",
+      CommandPaletteAction.OPEN_TOOLS,
+      -1,
+      false,
+    ),
+    candidate(
+      "command.install-skill-to-agents",
+      "Install skill to agents",
+      "Install a SKILL.md bundle",
+      "in",
+      CommandPaletteAction.INSTALL_SKILL_TO_AGENTS,
+      -2,
+      true,
+    ),
+    candidate(
+      "command.manage-installed-skills",
+      "Manage installed skills",
+      "Inspect and maintain machine skills",
+      "mg",
+      CommandPaletteAction.MANAGE_INSTALLED_SKILLS,
+      -3,
+      false,
+    ),
   )
 }
 

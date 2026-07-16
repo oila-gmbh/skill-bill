@@ -35,6 +35,12 @@ interface RuntimeMachineSkillGateway {
   suspend fun assessInstallTargets(sourcePath: String): List<MachineSkillTargetOption>
   suspend fun previewInstall(sourcePath: String, targetIds: Set<String>): MachineSkillPreviewPresentation
   suspend fun apply(planId: String): MachineSkillApplyPresentation
+  suspend fun previewManagerAction(
+    action: String,
+    name: String,
+    authoritativeSource: String?,
+    targetIds: Set<String>,
+  ): MachineSkillPreviewPresentation
   suspend fun inventory(): MachineSkillInventoryPresentation
   suspend fun refreshInventory(): MachineSkillInventoryPresentation
   suspend fun revealSource(skillName: String): Result<Unit>
@@ -48,8 +54,17 @@ object UnavailableRuntimeMachineSkillGateway : RuntimeMachineSkillGateway {
   override suspend fun assessInstallTargets(sourcePath: String) = unavailable()
   override suspend fun previewInstall(sourcePath: String, targetIds: Set<String>) = unavailable()
   override suspend fun apply(planId: String) = unavailable()
+  override suspend fun previewManagerAction(
+    action: String,
+    name: String,
+    authoritativeSource: String?,
+    targetIds: Set<String>,
+  ) = unavailable()
   override suspend fun inventory() = unavailable()
   override suspend fun refreshInventory() = unavailable()
-  override suspend fun revealSource(skillName: String): Result<Unit> = Result.failure(IllegalStateException("Machine-skill gateway is unavailable."))
-  override suspend fun acknowledgePostMortem(): Result<Unit> = Result.failure(IllegalStateException("Machine-skill gateway is unavailable."))
+  override suspend fun revealSource(skillName: String): Result<Unit> =
+    Result.failure(IllegalStateException("Machine-skill gateway is unavailable."))
+  override suspend fun acknowledgePostMortem(): Result<Unit> = Result.failure(
+    IllegalStateException("Machine-skill gateway is unavailable."),
+  )
 }

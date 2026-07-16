@@ -1,16 +1,17 @@
 package skillbill.desktop.feature.skillbill.state
 
+import skillbill.desktop.core.domain.model.MachineSkillManagerRow
+import skillbill.desktop.core.domain.model.MachineSkillPreviewLine
+import skillbill.desktop.core.domain.model.MachineSkillSourceSummary
+import skillbill.desktop.core.domain.model.MachineSkillTargetOption
+import skillbill.desktop.core.domain.model.MachineToolAction
+import skillbill.desktop.core.domain.model.MachineToolsSurface
+import skillbill.desktop.core.testing.FakeAuthoringGateway
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import skillbill.desktop.core.domain.model.MachineSkillSourceSummary
-import skillbill.desktop.core.domain.model.MachineSkillPreviewLine
-import skillbill.desktop.core.domain.model.MachineSkillTargetOption
-import skillbill.desktop.core.domain.model.MachineToolAction
-import skillbill.desktop.core.domain.model.MachineToolsSurface
-import skillbill.desktop.core.testing.FakeAuthoringGateway
 
 class MachineToolsControllerTest {
   @Test
@@ -63,7 +64,12 @@ class MachineToolsControllerTest {
     val currentPreview = controller.beginPreview()
     controller.previewReady(stalePreview, "old", emptyList(), emptyList())
     assertNull(viewState.currentState.machineTools.install.planId)
-    controller.previewReady(currentPreview, "new", listOf(MachineSkillPreviewLine("CREATE", "/target", "link")), emptyList())
+    controller.previewReady(
+      currentPreview,
+      "new",
+      listOf(MachineSkillPreviewLine("CREATE", "/target", "link")),
+      emptyList(),
+    )
     assertEquals("new", viewState.currentState.machineTools.install.planId)
   }
 
@@ -82,6 +88,27 @@ class MachineToolsControllerTest {
     controller.dispatch(MachineToolAction.INSTALL_SKILL)
     controller.inventoryRefreshed(inventory, emptyList(), null)
     assertTrue(viewState.currentState.machineTools.manager.loading)
+  }
+
+  @Test
+  fun `source retry clears stale bundle and failures and agent filter is retained`() {
+    val viewState = SkillBillViewState(FakeAuthoringGateway(), null)
+    val controller = SkillBillMachineToolsController(viewState)
+    controller.sourceInspected(source("old"), emptyList())
+    val token = controller.beginSourceInspection()
+    assertNull(viewState.currentState.machineTools.install.source)
+    controller.sourceFailed(token, "broken")
+    assertNull(viewState.currentState.machineTools.install.source)
+    controller.sourceInspected(controller.beginSourceInspection(), source("new"), emptyList())
+    assertNull(viewState.currentState.machineTools.install.error)
+
+    controller.inventoryRefreshed(
+      controller.beginInventoryRefresh(),
+      listOf(MachineSkillManagerRow("demo", "Demo", "MANAGED", "HEALTHY", setOf("codex"))),
+      null,
+    )
+    controller.updateAgentFilter("codex")
+    assertEquals("codex", viewState.currentState.machineTools.manager.agentFilter)
   }
 
   private fun source(name: String) = MachineSkillSourceSummary(name, name, "/tmp/$name", 1, 1, name)
