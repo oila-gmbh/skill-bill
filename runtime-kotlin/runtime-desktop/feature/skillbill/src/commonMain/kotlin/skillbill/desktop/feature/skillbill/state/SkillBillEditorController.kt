@@ -60,6 +60,7 @@ internal class SkillBillEditorController(
       session = currentSession,
       treeItemId = selectedTreeItemId,
       body = editorDraftText,
+      managedEdit = managedEditorBase?.copy(markdown = editorDraftText),
     )
   }
 

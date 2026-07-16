@@ -27,7 +27,8 @@ data class MachineSkillPreviewPresentation(
 data class MachineSkillApplyPresentation(
   val results: List<MachineSkillTargetResult>,
   val postMortem: String? = null,
-  val inventory: MachineSkillInventoryPresentation,
+  val inventory: MachineSkillInventoryPresentation? = null,
+  val inventoryError: String? = null,
 )
 
 data class ManagedMachineSkillEditPresentation(

@@ -19,6 +19,8 @@ internal class SkillBillMachineToolsController(private val state: SkillBillViewS
   private var previewToken = 0L
   private var inventoryToken = 0L
   private var inventoryDetails: Map<String, MachineSkillManagerDetail> = emptyMap()
+
+  fun detailFor(logicalKey: String): MachineSkillManagerDetail? = inventoryDetails[logicalKey]
   fun dispatch(action: MachineToolAction) {
     invalidatePendingCompletions()
     update {
@@ -203,7 +205,6 @@ internal class SkillBillMachineToolsController(private val state: SkillBillViewS
     )
   }
   fun selectManagerSkill(name: String) {
-    inventoryToken++
     update { copy(manager = manager.copy(selectedName = name, detail = inventoryDetails[name])) }
   }
 

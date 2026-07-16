@@ -19,6 +19,7 @@ import skillbill.desktop.core.domain.model.ScaffoldRunResult
 import skillbill.desktop.core.domain.model.ScaffoldWizardFormFields
 import skillbill.desktop.core.domain.model.SkillBillBusyOperation
 import skillbill.desktop.core.domain.model.SkillBillState
+import skillbill.desktop.core.domain.model.AuthoredContentDocument
 import skillbill.desktop.core.domain.model.ValidateAgentConfigsSummary
 import skillbill.desktop.core.domain.service.AuthoringGateway
 import skillbill.desktop.core.domain.service.DesktopFirstRunGateway
@@ -102,6 +103,46 @@ class SkillBillViewModel(
 
   fun selectTreeItem(itemId: String): SkillBillState = repoController.selectTreeItem(itemId)
 
+  suspend fun openMachineSkillTreeItem(itemId: String): SkillBillState {
+    val selected = repoController.selectTreeItem(itemId)
+    if (selected.selectedTreeItemId != itemId || !itemId.startsWith("$MACHINE_SKILLS_ROOT_ID:skill:")) return selected
+    val logicalKey = itemId.substringAfterLast(":skill:")
+    val detail = machineToolsController.detailFor(logicalKey) ?: return selected
+    val recordIdentity = detail.recordIdentity
+    val contentIdentity = detail.contentIdentity
+    if (detail.ownership.equals("MANAGED", true) && recordIdentity != null && contentIdentity != null) {
+      runCatching { machineSkillGateway.openManagedEdit(logicalKey, recordIdentity, contentIdentity) }
+        .onSuccess { edit ->
+          viewState.loadMachineEditorDocument(
+            AuthoredContentDocument(itemId, detail.name, detail.name, "Third-party runtime skill",
+              detail.canonicalManagedSourcePath, edit.markdown, detail.validationIssues.isEmpty(),
+              detail.validationIssues.takeIf { it.isNotEmpty() }?.joinToString("\n")),
+            edit,
+          )
+        }
+        .onFailure { error ->
+          viewState.loadMachineEditorDocument(
+            AuthoredContentDocument(itemId, detail.name, detail.name, "Third-party runtime skill",
+              detail.canonicalManagedSourcePath, "", false,
+              "Managed runtime skill could not be opened: ${error.message}"),
+          )
+        }
+    } else {
+      val occurrences = detail.targets.flatMap { it.occurrencePaths }
+      val guidance = if (detail.ownership.contains("DIVERG", true) || occurrences.size > 1) {
+        "Choose which agent copy to inspect or adopt in Manage installed skills."
+      } else {
+        "Adopt this unmanaged skill from Manage installed skills to edit it safely."
+      }
+      viewState.loadMachineEditorDocument(
+        AuthoredContentDocument(itemId, detail.name, detail.name, "Third-party runtime skill",
+          occurrences.singleOrNull(), listOf(detail.description, occurrences.joinToString("\n"), guidance)
+            .filter { it.isNotBlank() }.joinToString("\n\n"), false, guidance),
+      )
+    }
+    return viewState.currentState
+  }
+
   fun resolveGeneratedArtifactTreeItemId(artifactPath: String): String? =
     repoController.resolveGeneratedArtifactTreeItemId(artifactPath)
 
@@ -162,7 +203,31 @@ class SkillBillViewModel(
 
   fun runSaveEditor(request: EditorSaveRequest): EditorSaveResult = editorController.runSaveEditor(request)
 
-  fun finishSaveEditor(result: EditorSaveResult): SkillBillState = editorController.finishSaveEditor(result)
+  suspend fun runManagedSaveEditor(request: EditorSaveRequest): EditorSaveResult {
+    val managedEdit = requireNotNull(request.managedEdit)
+    return runCatching {
+      val preview = machineSkillGateway.previewManagedEdit(managedEdit)
+      val applied = machineSkillGateway.apply(preview.planId)
+      EditorSaveResult(
+        request,
+        skillbill.desktop.core.domain.model.AuthoringSaveResult(
+          success = true,
+          document = viewState.loadedEditorDocument?.copy(text = request.body),
+        ),
+        applied.inventory,
+      )
+    }.getOrElse { error ->
+      EditorSaveResult(request, skillbill.desktop.core.domain.model.AuthoringSaveResult.failed(viewState.describe(error)))
+    }
+  }
+
+  fun finishSaveEditor(result: EditorSaveResult): SkillBillState {
+    val state = editorController.finishSaveEditor(result)
+    val inventory = result.inventory ?: return state
+    val token = machineToolsController.beginInventoryRefresh()
+    acceptMachineSkillInventory(token, inventory)
+    return viewState.currentState
+  }
 
   fun cancelDirtyEditorPrompt(): SkillBillState = editorController.cancelDirtyEditorPrompt()
 
@@ -261,11 +326,13 @@ class SkillBillViewModel(
   suspend fun applyMachineSkillManagerAction(): SkillBillState {
     val planId = viewState.machineTools.manager.actionPlanId ?: return viewState.currentState
     if (!machineToolsController.beginMutation()) return viewState.currentState
+    val inventoryToken = machineToolsController.beginInventoryRefresh()
     return try {
       runCatching { machineSkillGateway.apply(planId) }
         .onSuccess { result ->
           machineToolsController.managerActionFinished()
-          acceptMachineSkillInventory(result.inventory)
+          result.inventory?.let { acceptMachineSkillInventory(inventoryToken, it) }
+          result.inventoryError?.let { machineToolsController.inventoryFailed(inventoryToken, it) }
         }
         .onFailure { machineToolsController.managerActionFailed(it.message ?: "Manager action failed.") }
       viewState.currentState
@@ -332,11 +399,13 @@ class SkillBillViewModel(
   suspend fun applyMachineSkillInstall(): SkillBillState {
     val planId = viewState.machineTools.install.planId ?: return viewState.currentState
     if (!machineToolsController.beginMutation()) return viewState.currentState
+    val inventoryToken = machineToolsController.beginInventoryRefresh()
     return try {
       runCatching { machineSkillGateway.apply(planId) }
         .onSuccess { result ->
           machineToolsController.mutationFinished(result.results, result.postMortem)
-          acceptMachineSkillInventory(result.inventory)
+          result.inventory?.let { acceptMachineSkillInventory(inventoryToken, it) }
+          result.inventoryError?.let { machineToolsController.inventoryFailed(inventoryToken, it) }
         }
         .onFailure { machineToolsController.mutationFailed(it.message ?: "Machine-skill mutation failed.") }
       viewState.currentState
@@ -351,8 +420,10 @@ class SkillBillViewModel(
     return viewState.currentState
   }
 
-  private fun acceptMachineSkillInventory(inventory: skillbill.desktop.core.domain.service.MachineSkillInventoryPresentation) {
-    val token = machineToolsController.beginInventoryRefresh()
+  private fun acceptMachineSkillInventory(
+    token: Long,
+    inventory: skillbill.desktop.core.domain.service.MachineSkillInventoryPresentation,
+  ) {
     val selected = viewState.machineTools.manager.selectedName
     machineToolsController.inventoryRefreshed(
       token,

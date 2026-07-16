@@ -111,5 +111,21 @@ class MachineToolsControllerTest {
     assertEquals("codex", viewState.currentState.machineTools.manager.agentFilter)
   }
 
+  @Test
+  fun `manager selection does not invalidate shared inventory refresh`() {
+    val viewState = SkillBillViewState(FakeAuthoringGateway(), null)
+    val controller = SkillBillMachineToolsController(viewState)
+    val token = controller.beginInventoryRefresh()
+
+    controller.selectManagerSkill("demo")
+    controller.inventoryRefreshed(
+      token,
+      listOf(MachineSkillManagerRow("demo", "Demo", "MANAGED", "HEALTHY", setOf("codex"))),
+      null,
+    )
+
+    assertEquals(listOf("demo"), viewState.currentState.machineTools.manager.rows.map { it.name })
+  }
+
   private fun source(name: String) = MachineSkillSourceSummary(name, name, "/tmp/$name", 1, 1, name)
 }

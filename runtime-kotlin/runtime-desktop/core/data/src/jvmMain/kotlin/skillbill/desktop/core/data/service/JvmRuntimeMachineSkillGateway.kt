@@ -18,6 +18,8 @@ import software.amazon.lastmile.kotlin.inject.anvil.SingleIn
 import java.awt.Desktop
 import java.nio.file.Path
 import javax.swing.JFileChooser
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 @Inject
 @SingleIn(UserScope::class)
@@ -88,8 +90,9 @@ class JvmRuntimeMachineSkillGateway(
       )
     }
 
-  override suspend fun apply(planId: String): MachineSkillApplyPresentation =
+  override suspend fun apply(planId: String): MachineSkillApplyPresentation = withContext(Dispatchers.IO) {
     runtimeServices.machineSkillToolsFacade.apply(planId).let { result ->
+      val mappedInventory = runCatching { mapInventory(runtimeServices.machineSkillToolsFacade.inventory()) }
       MachineSkillApplyPresentation(
         result.outcomes.map { outcome ->
           skillbill.desktop.core.domain.model.MachineSkillTargetResult(
@@ -98,9 +101,11 @@ class JvmRuntimeMachineSkillGateway(
             outcome.detail,
           )
         },
-        inventory = mapInventory(runtimeServices.machineSkillToolsFacade.inventory()),
+        inventory = mappedInventory.getOrNull(),
+        inventoryError = mappedInventory.exceptionOrNull()?.message,
       )
     }
+  }
 
   override suspend fun openManagedEdit(
     name: String,
@@ -206,7 +211,7 @@ class JvmRuntimeMachineSkillGateway(
       val managed = runtimeServices.machineSkillToolsFacade.managedDetails(row.normalizedName)
       val record = managed.record
       val latest = runtimeServices.machineSkillToolsFacade.latestResult(row.normalizedName)
-      row.displayName to MachineSkillManagerDetail(
+      row.normalizedName to MachineSkillManagerDetail(
         name = row.displayName,
         description = runtimeServices.machineSkillToolsFacade.description(
           row.normalizedName,

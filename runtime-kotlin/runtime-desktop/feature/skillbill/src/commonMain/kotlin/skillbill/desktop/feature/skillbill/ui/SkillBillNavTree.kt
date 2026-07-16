@@ -50,6 +50,7 @@ import skillbill.desktop.core.designsystem.SkillBillMetrics
 import skillbill.desktop.core.designsystem.SkillBillTheme
 import skillbill.desktop.core.designsystem.SkillBillTypeStyles
 import skillbill.desktop.core.domain.model.SkillBillTreeItem
+import skillbill.desktop.core.domain.model.TreeItemKind
 
 private const val TREE_TEXT_ALPHA_DISABLED = 0.42f
 private const val TREE_TEXT_ALPHA_OPEN = 0.96f
@@ -126,7 +127,7 @@ internal fun NavGroup(
         letterSpacing = 0.sp,
         modifier = Modifier.weight(1f),
       )
-      Text(text = group.children.size.toString(), color = iconTint, style = MaterialTheme.typography.labelSmall)
+      Text(text = group.status ?: group.children.size.toString(), color = iconTint, style = MaterialTheme.typography.labelSmall)
       DropdownMenu(
         expanded = menuExpanded,
         onDismissRequest = { menuExpanded = false },
@@ -209,7 +210,7 @@ private fun NavTreeNode(
         stateDescription = rowStateDescription
       }
       .combinedClickable(
-        enabled = enabled,
+        enabled = enabled && node.kind != TreeItemKind.PLACEHOLDER,
         role = Role.Button,
         onDoubleClick = {
           if (expandable) {

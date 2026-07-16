@@ -343,7 +343,7 @@ internal class SkillBillRepoController(
     selectedTreeItemId = request.previousSelection?.takeIf { containsTreeItem(it) }
     expandedNodeIds = reconcileExpandedNodeIds(
       request.previousExpandedNodeIds,
-      loadedTreeItems,
+      treeItems,
       preserveExpansion = true,
     )
     busyOperation = null
@@ -367,7 +367,7 @@ internal class SkillBillRepoController(
         ?.takeIf { containsTreeItem(it) }
     resetEditorDocument()
     expandedNodeIds =
-      reconcileExpandedNodeIds(request.previousExpandedNodeIds, loadedTreeItems, preserveSameRepoUi)
+      reconcileExpandedNodeIds(request.previousExpandedNodeIds, treeItems, preserveSameRepoUi)
     busyOperation = null
     activeScaffoldToken += 1
     confirmDeletion = null

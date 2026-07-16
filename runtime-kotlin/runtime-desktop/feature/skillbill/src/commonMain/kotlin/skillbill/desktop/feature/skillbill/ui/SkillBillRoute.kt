@@ -51,7 +51,9 @@ fun SkillBillRoute(
     state = viewModel.state()
     if (request != null) {
       coroutineScope.launch {
-        val result = withContext(dispatcherProvider.default) { viewModel.runSaveEditor(request) }
+        val result = withContext(dispatcherProvider.default) {
+          if (request.managedEdit == null) viewModel.runSaveEditor(request) else viewModel.runManagedSaveEditor(request)
+        }
         state = viewModel.finishSaveEditor(result)
       }
     }
@@ -176,6 +178,13 @@ fun SkillBillRoute(
 
   fun runTreeItemSelection(itemId: String) {
     if (canStartRepoScopedAction()) {
+      if (itemId.startsWith("${skillbill.desktop.feature.skillbill.state.MACHINE_SKILLS_ROOT_ID}:skill:")) {
+        coroutineScope.launch {
+          state = withContext(dispatcherProvider.default) { viewModel.openMachineSkillTreeItem(itemId) }
+          state.selectedTreeItemId?.let(onSourceRouteSelected)
+        }
+        return
+      }
       val previousSelection = state.selectedTreeItemId
       state = viewModel.selectTreeItem(itemId)
       if (state.selectedTreeItemId != previousSelection) {
@@ -206,6 +215,7 @@ fun SkillBillRoute(
     state = viewModel.state()
     val result = withContext(dispatcherProvider.default) { viewModel.runStartup(request) }
     state = viewModel.finishStartup(result)
+    state = withContext(dispatcherProvider.default) { viewModel.refreshMachineSkillInventory() }
   }
 
   fun runRefresh() {
@@ -213,6 +223,9 @@ fun SkillBillRoute(
       state = viewModel.beginRefresh()
       if (state.dirtyEditorPrompt == null) {
         runRefreshLoad()
+        coroutineScope.launch {
+          state = withContext(dispatcherProvider.default) { viewModel.refreshMachineSkillInventory() }
+        }
       }
     }
   }
@@ -495,7 +508,14 @@ fun SkillBillRoute(
     onTreeItemSelected = ::runTreeItemSelection,
     onTreeItemExpandedToggled = { itemId ->
       if (canStartRepoScopedAction()) {
+        val expandingMachineRoot = itemId == skillbill.desktop.feature.skillbill.state.MACHINE_SKILLS_ROOT_ID &&
+          itemId !in state.expandedNodeIds
         state = viewModel.toggleExpanded(itemId)
+        if (expandingMachineRoot) {
+          coroutineScope.launch {
+            state = withContext(dispatcherProvider.default) { viewModel.refreshMachineSkillInventory() }
+          }
+        }
       }
     },
     onMoveTreeSelection = { delta ->
