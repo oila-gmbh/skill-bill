@@ -10,6 +10,7 @@ import skillbill.desktop.core.domain.model.MachineSkillTargetDetail
 import skillbill.desktop.core.domain.model.MachineSkillTargetOption
 import skillbill.desktop.core.domain.service.MachineSkillApplyPresentation
 import skillbill.desktop.core.domain.service.MachineSkillInventoryPresentation
+import skillbill.desktop.core.domain.service.ManagedMachineSkillEditPresentation
 import skillbill.desktop.core.domain.service.MachineSkillPreviewPresentation
 import skillbill.desktop.core.domain.service.MachineSkillSourceChoice
 import skillbill.desktop.core.domain.service.RuntimeMachineSkillGateway
@@ -97,6 +98,44 @@ class JvmRuntimeMachineSkillGateway(
             outcome.detail,
           )
         },
+        inventory = mapInventory(runtimeServices.machineSkillToolsFacade.inventory()),
+      )
+    }
+
+  override suspend fun openManagedEdit(
+    name: String,
+    recordIdentity: String,
+    sourceIdentity: String,
+  ): ManagedMachineSkillEditPresentation =
+    runtimeServices.machineSkillToolsFacade.openEdit(name, recordIdentity, sourceIdentity).let { edit ->
+      ManagedMachineSkillEditPresentation(
+        edit.name,
+        edit.skillMarkdown,
+        edit.recordDigest,
+        edit.sourceHash,
+      )
+    }
+
+  override suspend fun previewManagedEdit(edit: ManagedMachineSkillEditPresentation): MachineSkillPreviewPresentation =
+    runtimeServices.machineSkillToolsFacade.previewEdit(
+      edit.name,
+      edit.recordIdentity,
+      edit.sourceIdentity,
+      edit.markdown,
+    ).let { preview ->
+      val prepared = requireNotNull(preview.prepared) {
+        preview.outcomes.joinToString { "${it.code}: ${it.detail}" }.ifEmpty { "Edit preview was blocked." }
+      }
+      MachineSkillPreviewPresentation(
+        prepared.plan.planId,
+        prepared.plan.mutations.map { mutation ->
+          skillbill.desktop.core.domain.model.MachineSkillPreviewLine(
+            mutation.operation.name,
+            mutation.path.toString(),
+            mutation.outcome.name,
+          )
+        },
+        prepared.plan.warnings.map { it.message } + preview.outcomes.map { it.detail },
       )
     }
 
@@ -160,6 +199,7 @@ class JvmRuntimeMachineSkillGateway(
         ownership = row.ownership.name,
         health = row.health.name,
         agents = row.targetPresence.filter { it.present }.map { it.target.provider }.toSet(),
+        logicalKey = row.normalizedName,
       )
     }
     val details = snapshot.rows.associate { row ->

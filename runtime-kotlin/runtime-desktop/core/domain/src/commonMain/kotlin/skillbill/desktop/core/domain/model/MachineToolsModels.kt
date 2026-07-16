@@ -94,6 +94,7 @@ data class MachineSkillManagerRow(
   val ownership: String,
   val health: String,
   val agents: Set<String>,
+  val logicalKey: String = name,
 )
 
 data class MachineSkillManagerDetail(

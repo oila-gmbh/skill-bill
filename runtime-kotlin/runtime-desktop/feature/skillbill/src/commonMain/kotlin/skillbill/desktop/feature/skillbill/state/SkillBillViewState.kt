@@ -14,6 +14,8 @@ import skillbill.desktop.core.domain.model.SkillBillBusyOperation
 import skillbill.desktop.core.domain.model.SkillBillState
 import skillbill.desktop.core.domain.model.SkillBillStatusBar
 import skillbill.desktop.core.domain.model.SkillBillTreeItem
+import skillbill.desktop.core.domain.model.SkillBillTreeItemMetadata
+import skillbill.desktop.core.domain.model.TreeItemKind
 import skillbill.desktop.core.domain.model.ValidateAgentConfigsSummary
 import skillbill.desktop.core.domain.model.WorkListState
 import skillbill.desktop.core.domain.service.AuthoringGateway
@@ -26,7 +28,9 @@ internal class SkillBillViewState(
   var normalizedInstalledWorkspaceRoot: String? = null
   var repoPathText: String = ""
   var currentSession: RepoSession? = null
-  var treeItems: List<SkillBillTreeItem> = emptyList()
+  var repositoryTreeItems: List<SkillBillTreeItem> = emptyList()
+  val treeItems: List<SkillBillTreeItem>
+    get() = repositoryTreeItems + machineSkillsRoot()
   var selectedTreeItemId: String? = null
   var expandedNodeIds: Set<String> = emptySet()
   var busyOperation: SkillBillBusyOperation? = null
@@ -186,7 +190,7 @@ internal class SkillBillViewState(
   }
 
   private fun statusBarFor(repoPath: String?, editor: EditorPlaceholder): SkillBillStatusBar = SkillBillStatusBar(
-    targetCount = treeItems.flatten().count { it.children.isEmpty() },
+    targetCount = repositoryTreeItems.flatten().count { it.children.isEmpty() },
     repoPathLabel = repoPath ?: "no repo",
     readOnlyModeLabel = when {
       isEditorDirty() -> "dirty"
@@ -198,9 +202,63 @@ internal class SkillBillViewState(
 
   fun containsTreeItem(itemId: String): Boolean = treeItems.flatten().any { item -> item.id == itemId }
 
+  private fun machineSkillsRoot(): SkillBillTreeItem {
+    val manager = machineTools.manager
+    val rows = manager.rows.distinctBy { it.logicalKey }
+    val children = when {
+      manager.loading && rows.isEmpty() -> listOf(machinePlaceholder("loading", "Loading third-party skills…"))
+      manager.error != null && rows.isEmpty() -> listOf(machinePlaceholder("error", manager.error ?: "Inventory failed"))
+      rows.isEmpty() -> listOf(machinePlaceholder("empty", "No third-party skills found"))
+      else -> rows.map { row ->
+        SkillBillTreeItem(
+          id = "$MACHINE_SKILLS_ROOT_ID:skill:${row.logicalKey}",
+          label = row.name,
+          kind = TreeItemKind.SKILL,
+          status = machineSkillStatus(row.ownership, row.health),
+          editable = row.ownership.equals("MANAGED", ignoreCase = true),
+          readOnlyLabel = if (row.ownership.equals("MANAGED", ignoreCase = true)) null else "RO",
+          metadata = SkillBillTreeItemMetadata(
+            skillName = row.name,
+            kind = "Third-party runtime skill",
+            description = row.description,
+            supportedAgents = row.agents.sorted(),
+          ),
+          external = true,
+        )
+      }
+    }
+    return SkillBillTreeItem(
+      id = MACHINE_SKILLS_ROOT_ID,
+      label = "Third-Party Skills",
+      kind = TreeItemKind.GROUP,
+      status = rows.size.toString(),
+      editable = false,
+      children = children,
+      external = true,
+    )
+  }
+
+  private fun machinePlaceholder(id: String, label: String) = SkillBillTreeItem(
+    id = "$MACHINE_SKILLS_ROOT_ID:$id",
+    label = label,
+    kind = TreeItemKind.PLACEHOLDER,
+    editable = false,
+    external = true,
+  )
+
+  private fun machineSkillStatus(ownership: String, health: String): String = when {
+    ownership.equals("CONFLICT", ignoreCase = true) -> "conflict"
+    health.contains("BROKEN", ignoreCase = true) -> "broken"
+    health.contains("DIVERG", ignoreCase = true) -> "divergent"
+    ownership.equals("MANAGED", ignoreCase = true) -> "managed"
+    else -> "unmanaged"
+  }
+
   fun describe(error: Throwable): String {
     val message = error.message
     val name = error::class.simpleName ?: error::class.qualifiedName ?: "Throwable"
     return if (message.isNullOrBlank()) name else "$name: $message"
   }
 }
+
+internal const val MACHINE_SKILLS_ROOT_ID = "machine:third-party-skills"

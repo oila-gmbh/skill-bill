@@ -10,12 +10,14 @@ import skillbill.install.model.InstallAgent
 import skillbill.managedskill.model.AdoptMachineSkillRequest
 import skillbill.managedskill.model.AgentSkillTargetId
 import skillbill.managedskill.model.DeleteMachineSkillRequest
+import skillbill.managedskill.model.EditMachineSkillRequest
 import skillbill.managedskill.model.InstallMachineSkillRequest
 import skillbill.managedskill.model.MachineSkillOperationPreview
 import skillbill.managedskill.model.MachineSkillOperationResult
 import skillbill.managedskill.model.ManageMachineSkillTargetsRequest
 import skillbill.managedskill.model.NoFollowEntryKind
 import skillbill.managedskill.model.RepairMachineSkillRequest
+import skillbill.managedskill.model.SaveMachineSkillEditRequest
 import skillbill.model.EnvironmentContext
 import skillbill.ports.managedskill.MachineSkillWorkspacePort
 import java.nio.file.Path
@@ -87,6 +89,16 @@ class MachineSkillToolsFacade(
   }.also { preview ->
     preview.prepared?.plan?.planId?.let { synchronized(prepared) { prepared[it] = preview } }
   }
+
+  fun openEdit(name: String, recordDigest: String, sourceHash: String) =
+    operations.openEdit(EditMachineSkillRequest(name, recordDigest, sourceHash))
+
+  fun previewEdit(name: String, recordDigest: String, sourceHash: String, markdown: String) =
+    operations.previewEdit(
+      SaveMachineSkillEditRequest(EditMachineSkillRequest(name, recordDigest, sourceHash), markdown),
+    ).also { preview ->
+      preview.prepared?.plan?.planId?.let { synchronized(prepared) { prepared[it] = preview } }
+    }
 
   suspend fun apply(planId: String): MachineSkillOperationResult {
     val preview = synchronized(prepared) { prepared.remove(planId) }

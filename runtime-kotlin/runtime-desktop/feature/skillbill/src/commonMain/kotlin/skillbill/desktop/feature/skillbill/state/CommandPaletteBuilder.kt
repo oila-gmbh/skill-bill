@@ -268,7 +268,7 @@ private fun scaffoldDisabledReason(state: SkillBillState): StringResource? = whe
 }
 
 private fun treeCandidates(state: SkillBillState, blockedByBusy: StringResource?): List<PaletteCandidate> =
-  state.treeItems.flattenPaletteTree().mapIndexed { index, item ->
+  state.treeItems.filterNot { it.external }.flattenPaletteTree().mapIndexed { index, item ->
     PaletteCandidate(
       result = CommandPaletteResult(
         id = item.id,

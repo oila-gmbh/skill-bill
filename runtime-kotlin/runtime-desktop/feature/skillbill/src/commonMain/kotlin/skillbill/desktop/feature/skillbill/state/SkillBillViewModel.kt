@@ -263,9 +263,9 @@ class SkillBillViewModel(
     if (!machineToolsController.beginMutation()) return viewState.currentState
     return try {
       runCatching { machineSkillGateway.apply(planId) }
-        .onSuccess {
+        .onSuccess { result ->
           machineToolsController.managerActionFinished()
-          refreshMachineSkillInventory()
+          acceptMachineSkillInventory(result.inventory)
         }
         .onFailure { machineToolsController.managerActionFailed(it.message ?: "Manager action failed.") }
       viewState.currentState
@@ -336,9 +336,9 @@ class SkillBillViewModel(
       runCatching { machineSkillGateway.apply(planId) }
         .onSuccess { result ->
           machineToolsController.mutationFinished(result.results, result.postMortem)
+          acceptMachineSkillInventory(result.inventory)
         }
         .onFailure { machineToolsController.mutationFailed(it.message ?: "Machine-skill mutation failed.") }
-      refreshMachineSkillInventory()
       viewState.currentState
     } finally {
       machineToolsController.finishMutation()
@@ -349,6 +349,17 @@ class SkillBillViewModel(
     machineSkillGateway.acknowledgePostMortem().getOrThrow()
     machineToolsController.acknowledgePostMortem()
     return viewState.currentState
+  }
+
+  private fun acceptMachineSkillInventory(inventory: skillbill.desktop.core.domain.service.MachineSkillInventoryPresentation) {
+    val token = machineToolsController.beginInventoryRefresh()
+    val selected = viewState.machineTools.manager.selectedName
+    machineToolsController.inventoryRefreshed(
+      token,
+      inventory.rows,
+      selected?.let(inventory.details::get),
+      inventory.details,
+    )
   }
 
   fun updateCommandPaletteQuery(query: String): SkillBillState = with(viewState) {

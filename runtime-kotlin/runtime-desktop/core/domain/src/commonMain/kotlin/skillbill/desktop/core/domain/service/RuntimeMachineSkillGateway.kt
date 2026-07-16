@@ -27,6 +27,14 @@ data class MachineSkillPreviewPresentation(
 data class MachineSkillApplyPresentation(
   val results: List<MachineSkillTargetResult>,
   val postMortem: String? = null,
+  val inventory: MachineSkillInventoryPresentation,
+)
+
+data class ManagedMachineSkillEditPresentation(
+  val name: String,
+  val markdown: String,
+  val recordIdentity: String,
+  val sourceIdentity: String,
 )
 
 interface RuntimeMachineSkillGateway {
@@ -43,6 +51,12 @@ interface RuntimeMachineSkillGateway {
   ): MachineSkillPreviewPresentation
   suspend fun inventory(): MachineSkillInventoryPresentation
   suspend fun refreshInventory(): MachineSkillInventoryPresentation
+  suspend fun openManagedEdit(
+    name: String,
+    recordIdentity: String,
+    sourceIdentity: String,
+  ): ManagedMachineSkillEditPresentation
+  suspend fun previewManagedEdit(edit: ManagedMachineSkillEditPresentation): MachineSkillPreviewPresentation
   suspend fun revealSource(skillName: String): Result<Unit>
   suspend fun acknowledgePostMortem(): Result<Unit>
 }
@@ -62,6 +76,8 @@ object UnavailableRuntimeMachineSkillGateway : RuntimeMachineSkillGateway {
   ) = unavailable()
   override suspend fun inventory() = unavailable()
   override suspend fun refreshInventory() = unavailable()
+  override suspend fun openManagedEdit(name: String, recordIdentity: String, sourceIdentity: String) = unavailable()
+  override suspend fun previewManagedEdit(edit: ManagedMachineSkillEditPresentation) = unavailable()
   override suspend fun revealSource(skillName: String): Result<Unit> =
     Result.failure(IllegalStateException("Machine-skill gateway is unavailable."))
   override suspend fun acknowledgePostMortem(): Result<Unit> = Result.failure(

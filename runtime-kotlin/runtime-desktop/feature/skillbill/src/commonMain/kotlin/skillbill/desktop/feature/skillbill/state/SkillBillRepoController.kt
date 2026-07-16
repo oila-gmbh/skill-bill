@@ -338,7 +338,7 @@ internal class SkillBillRepoController(
     val loadedTreeItems = result.treeItems
     val preserveDirtyEditor = isEditorDirty()
     currentSession = session
-    treeItems = loadedTreeItems
+    repositoryTreeItems = loadedTreeItems
     repoPathText = session.repoPath.ifBlank { request.repoPath }
     selectedTreeItemId = request.previousSelection?.takeIf { containsTreeItem(it) }
     expandedNodeIds = reconcileExpandedNodeIds(
@@ -357,7 +357,7 @@ internal class SkillBillRepoController(
     val session = result.session
     val loadedTreeItems = result.treeItems
     currentSession = session
-    treeItems = loadedTreeItems
+    repositoryTreeItems = loadedTreeItems
     repoPathText = session.repoPath.ifBlank { request.repoPath }
     val sameRepo = session.isRecognizedSkillBillRepo && request.previousRepoPath == session.repoPath
     val preserveSameRepoUi = request.preserveSelection && sameRepo
