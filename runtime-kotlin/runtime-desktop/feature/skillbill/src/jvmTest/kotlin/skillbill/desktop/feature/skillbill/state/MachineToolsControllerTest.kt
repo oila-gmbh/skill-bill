@@ -170,5 +170,38 @@ class MachineToolsControllerTest {
     assertEquals("divergent", root.children.single().status)
   }
 
+  @Test
+  fun `navigator projects every concise ownership and health state`() {
+    val viewState = SkillBillViewState(FakeAuthoringGateway(), null)
+    val controller = SkillBillMachineToolsController(viewState)
+    controller.inventoryRefreshed(
+      controller.beginInventoryRefresh(),
+      listOf(
+        MachineSkillManagerRow("managed", "Managed", "MANAGED", "HEALTHY", setOf("codex")),
+        MachineSkillManagerRow("unmanaged", "Unmanaged", "UNMANAGED", "HEALTHY", setOf("codex")),
+        MachineSkillManagerRow("conflict", "Conflict", "CONFLICT", "HEALTHY", setOf("codex")),
+        MachineSkillManagerRow("broken", "Broken", "MANAGED", "BROKEN_LINK", setOf("codex")),
+        MachineSkillManagerRow("divergent", "Divergent", "UNMANAGED", "HEALTHY", setOf("codex"), divergent = true),
+      ),
+      null,
+    )
+
+    val states = viewState.currentState.treeItems
+      .single { it.id == MACHINE_SKILLS_ROOT_ID }
+      .children
+      .associate { it.label to it.status }
+
+    assertEquals(
+      mapOf(
+        "managed" to "managed",
+        "unmanaged" to "unmanaged",
+        "conflict" to "conflict",
+        "broken" to "broken",
+        "divergent" to "divergent",
+      ),
+      states,
+    )
+  }
+
   private fun source(name: String) = MachineSkillSourceSummary(name, name, "/tmp/$name", 1, 1, name)
 }

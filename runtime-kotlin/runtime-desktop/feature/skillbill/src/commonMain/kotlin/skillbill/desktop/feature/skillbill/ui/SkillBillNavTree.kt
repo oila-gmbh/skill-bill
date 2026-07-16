@@ -214,6 +214,7 @@ private fun NavTreeNode(
       else -> TREE_TEXT_ALPHA_DEFAULT
     }
   val rowStateDescription = stringResource(treeRowStateDescriptionRes(open))
+  val machineSkillState = node.status?.takeIf { node.id.startsWith("machine:third-party-skills:skill:") }
   Row(
     modifier =
     Modifier
@@ -224,7 +225,7 @@ private fun NavTreeNode(
       .background(rowBackground)
       .semantics {
         this.selected = selected
-        stateDescription = rowStateDescription
+        stateDescription = listOfNotNull(rowStateDescription, machineSkillState).joinToString(", ")
       }
       .combinedClickable(
         enabled = enabled && node.kind != TreeItemKind.PLACEHOLDER,
@@ -278,6 +279,14 @@ private fun NavTreeNode(
       Text(
         text = "EXT",
         color = SkillBillTheme.frameTokens.primary,
+        style = SkillBillTypeStyles.caption.copy(fontFamily = FontFamily.Monospace),
+        modifier = Modifier.padding(end = SkillBillDimens.padLg),
+      )
+    }
+    if (machineSkillState != null) {
+      Text(
+        text = machineSkillState,
+        color = SkillBillTheme.frameTokens.subtle,
         style = SkillBillTypeStyles.caption.copy(fontFamily = FontFamily.Monospace),
         modifier = Modifier.padding(end = SkillBillDimens.padLg),
       )

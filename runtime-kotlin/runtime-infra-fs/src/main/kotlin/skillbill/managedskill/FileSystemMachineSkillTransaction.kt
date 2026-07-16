@@ -22,11 +22,14 @@ import java.util.UUID
 class FileSystemMachineSkillTransaction(
   home: Path,
   targetRoots: List<Path>,
+  capabilityProbe: NativeSymlinkCapabilityProbe? = null,
 ) : MachineSkillTransactionPort {
   private val normalizedHome = home.toAbsolutePath().normalize()
   private val stateRoot = normalizedHome.resolve(".skill-bill")
   private val store = FileManagedSkillRecordStore(normalizedHome)
-  private val inspector = FileSystemMachineSkillMutationInspector(normalizedHome, targetRoots)
+  private val inspector = capabilityProbe?.let {
+    FileSystemMachineSkillMutationInspector(normalizedHome, targetRoots, it)
+  } ?: FileSystemMachineSkillMutationInspector(normalizedHome, targetRoots)
   private val postMortems = FileMachineSkillPostMortemStore(normalizedHome)
 
   override fun currentPreconditions(plan: MachineSkillMutationPlan): MachineSkillPreconditions {
