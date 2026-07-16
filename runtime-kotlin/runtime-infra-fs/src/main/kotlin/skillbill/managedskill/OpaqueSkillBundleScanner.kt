@@ -72,7 +72,7 @@ class OpaqueSkillBundleScanner private constructor(
     beforeRootOpen(root)
     val parentPath = root.parent
     val captured = if (parentPath == null) {
-      captureDirectory(PathBundleDirectory(root, before), "", only)
+      capturePathDirectory(root, before, only)
     } else {
       Files.newDirectoryStream(parentPath).use { parent ->
         if (parent is SecureDirectoryStream<Path>) {
@@ -82,7 +82,7 @@ class OpaqueSkillBundleScanner private constructor(
             captureDirectory(SecureBundleDirectory(opened), "", only)
           }
         } else {
-          captureDirectory(PathBundleDirectory(root, before), "", only)
+          capturePathDirectory(root, before, only)
         }
       }
     }
@@ -92,6 +92,17 @@ class OpaqueSkillBundleScanner private constructor(
     throw error
   } catch (error: Exception) {
     throw InvalidOpaqueSkillBundleException("Cannot capture the selected bundle without following links: $root", error)
+  }
+
+  private fun capturePathDirectory(
+    root: Path,
+    attributes: BasicFileAttributes,
+    only: Path?,
+  ): List<OpaqueSkillBundleFile> {
+    if (root.fileSystem.provider().scheme != "jar") {
+      fail("The filesystem cannot provide identity-bound bundle traversal.")
+    }
+    return captureDirectory(ArchiveBundleDirectory(root, attributes), "", only)
   }
 
   private fun captureDirectory(
@@ -239,7 +250,7 @@ class OpaqueSkillBundleScanner private constructor(
     override fun close() = stream.close()
   }
 
-  private class PathBundleDirectory(
+  private class ArchiveBundleDirectory(
     private val path: Path,
     private val identity: BasicFileAttributes,
   ) : BundleDirectory {
@@ -252,7 +263,7 @@ class OpaqueSkillBundleScanner private constructor(
     }
 
     override fun newByteChannel(name: Path): SeekableByteChannel = checked {
-      Files.newByteChannel(resolve(name), setOf(READ, NOFOLLOW_LINKS))
+      Files.newByteChannel(resolve(name), setOf(READ))
     }
 
     override fun openDirectory(name: Path): BundleDirectory = checked {
@@ -261,7 +272,7 @@ class OpaqueSkillBundleScanner private constructor(
       if (!attributes.isDirectory || attributes.isSymbolicLink) {
         throw InvalidOpaqueSkillBundleException("Symbolic links are not allowed: $name")
       }
-      PathBundleDirectory(child, attributes)
+      ArchiveBundleDirectory(child, attributes)
     }
 
     private fun resolve(name: Path): Path {
