@@ -50,6 +50,7 @@ data class EditorSaveResult(
   val request: EditorSaveRequest,
   val result: AuthoringSaveResult,
   val inventory: skillbill.desktop.core.domain.service.MachineSkillInventoryPresentation? = null,
+  val renewedManagedEdit: skillbill.desktop.core.domain.service.ManagedMachineSkillEditPresentation? = null,
 )
 
 enum class ScaffoldRunMode {

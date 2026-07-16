@@ -127,5 +127,39 @@ class MachineToolsControllerTest {
     assertEquals(listOf("demo"), viewState.currentState.machineTools.manager.rows.map { it.name })
   }
 
+  @Test
+  fun `inventory failure clears loading and preserves the last accepted rows`() {
+    val viewState = SkillBillViewState(FakeAuthoringGateway(), null)
+    val controller = SkillBillMachineToolsController(viewState)
+    controller.inventoryRefreshed(
+      controller.beginInventoryRefresh(),
+      listOf(MachineSkillManagerRow("demo", "Demo", "UNMANAGED", "HEALTHY", setOf("codex"))),
+      null,
+    )
+
+    controller.inventoryFailed(controller.beginInventoryRefresh(), "refresh failed")
+
+    assertFalse(viewState.currentState.machineTools.manager.loading)
+    assertEquals("refresh failed", viewState.currentState.machineTools.manager.error)
+    assertEquals(listOf("demo"), viewState.currentState.machineTools.manager.rows.map { it.logicalKey })
+  }
+
+  @Test
+  fun `divergent logical row stays deduplicated and requires occurrence guidance`() {
+    val viewState = SkillBillViewState(FakeAuthoringGateway(), null)
+    val controller = SkillBillMachineToolsController(viewState)
+    controller.inventoryRefreshed(
+      controller.beginInventoryRefresh(),
+      listOf(
+        MachineSkillManagerRow("Demo", "Demo", "UNMANAGED", "HEALTHY", setOf("codex", "claude"), "demo", true),
+      ),
+      null,
+    )
+
+    val root = viewState.currentState.treeItems.single { it.id == MACHINE_SKILLS_ROOT_ID }
+    assertEquals("1", root.status)
+    assertEquals("divergent", root.children.single().status)
+  }
+
   private fun source(name: String) = MachineSkillSourceSummary(name, name, "/tmp/$name", 1, 1, name)
 }

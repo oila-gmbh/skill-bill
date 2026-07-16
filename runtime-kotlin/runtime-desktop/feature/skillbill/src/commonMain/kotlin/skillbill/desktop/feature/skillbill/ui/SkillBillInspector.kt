@@ -118,6 +118,41 @@ internal fun InspectorPane(
         KeyValueRow("add-ons", repoStatus.addonCount.toString())
         KeyValueRow("native agents", repoStatus.nativeAgentCount.toString())
       }
+      editor.machineSkillDetail?.let { detail ->
+        InspectorSection(title = "Machine ownership and health", marker = "ms") {
+          KeyValueRow("ownership", detail.ownership)
+          KeyValueRow("canonical source", detail.canonicalManagedSourcePath ?: "unmanaged")
+          KeyValueRow("active snapshot", detail.activeSnapshotHash ?: "none")
+          KeyValueRow("installed agents", detail.targets.filter { it.state == "PRESENT" }
+            .joinToString { it.provider }.ifBlank { "none" })
+          KeyValueRow("provenance", detail.provenance.joinToString().ifBlank { "unknown" })
+          detail.targets.forEach { target ->
+            KeyValueRow(
+              "${target.provider} link",
+              "${target.state.lowercase()} · ${target.detectionStatus.lowercase()} · ${target.path}",
+              if (target.state == "PRESENT") Tone.Success else Tone.Warning,
+            )
+            target.occurrencePaths.forEach { path -> KeyValueRow("occurrence", path) }
+          }
+          if (detail.validationIssues.isEmpty()) {
+            KeyValueRow("conflicts", "none")
+          } else {
+            KeyValueRow("conflicts", detail.validationIssues.joinToString("; "), Tone.Error)
+          }
+          if (detail.ownership != "MANAGED") {
+            val occurrenceCount = detail.targets.sumOf { it.occurrencePaths.size }
+            KeyValueRow(
+              "adoption",
+              if (occurrenceCount > 1) {
+                "Choose one occurrence in Manage installed skills before inspection or adoption."
+              } else {
+                "Open Manage installed skills to adopt this read-only copy."
+              },
+              Tone.Warning,
+            )
+          }
+        }
+      }
       val artifactsForInspector: List<GeneratedArtifactDetail> = editor.generatedArtifacts
       InspectorSection(
         title = stringResource(Res.string.inspector_generated_artifacts),

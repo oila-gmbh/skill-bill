@@ -38,6 +38,7 @@ internal class SkillBillViewState(
   var activeOperationToken = 0L
   var loadedEditorDocument: AuthoredContentDocument? = null
   var managedEditorBase: ManagedMachineSkillEditPresentation? = null
+  var machineEditorDetail: skillbill.desktop.core.domain.model.MachineSkillManagerDetail? = null
   var editorSelectionId: String? = null
   var editorDraftText: String = ""
   var editorSaveInProgress: Boolean = false
@@ -158,6 +159,7 @@ internal class SkillBillViewState(
         saveInProgress = editorSaveInProgress,
         saveErrorMessage = editorSaveErrorMessage ?: document.runtimeErrorMessage,
         readOnlyReason = document.readOnlyReason,
+        machineSkillDetail = machineEditorDetail,
       )
     }
   }
@@ -197,6 +199,7 @@ internal class SkillBillViewState(
   fun loadMachineEditorDocument(
     document: AuthoredContentDocument,
     managedEdit: ManagedMachineSkillEditPresentation? = null,
+    detail: skillbill.desktop.core.domain.model.MachineSkillManagerDetail? = null,
   ) {
     loadedEditorDocument = document
     editorSelectionId = selectedTreeItemId
@@ -205,12 +208,14 @@ internal class SkillBillViewState(
     editorSaveErrorMessage = document.runtimeErrorMessage
     dirtyEditorPrompt = null
     managedEditorBase = managedEdit
+    machineEditorDetail = detail
     currentState = createState()
   }
 
   fun resetEditorDocument() {
     loadedEditorDocument = null
     managedEditorBase = null
+    machineEditorDetail = null
     editorSelectionId = null
     editorDraftText = ""
     editorSaveInProgress = false
@@ -257,7 +262,7 @@ internal class SkillBillViewState(
   }
 
   private fun machineSkillItem(row: skillbill.desktop.core.domain.model.MachineSkillManagerRow): SkillBillTreeItem {
-    val status = machineSkillStatus(row.ownership, row.health)
+    val status = machineSkillStatus(row.ownership, row.health, row.divergent)
     val editable = status == "managed" && row.health.equals("HEALTHY", ignoreCase = true)
     return SkillBillTreeItem(
       id = "$MACHINE_SKILLS_ROOT_ID:skill:${row.logicalKey}",
@@ -284,9 +289,9 @@ internal class SkillBillViewState(
     external = true,
   )
 
-  private fun machineSkillStatus(ownership: String, health: String): String = when {
+  private fun machineSkillStatus(ownership: String, health: String, divergent: Boolean): String = when {
     ownership.equals("CONFLICT", ignoreCase = true) -> "conflict"
-    health.contains("DIVERG", ignoreCase = true) -> "divergent"
+    divergent || health.contains("DIVERG", ignoreCase = true) -> "divergent"
     health.contains("BROKEN", ignoreCase = true) || health.contains("MISSING", ignoreCase = true) ||
       health.contains("CORRUPT", ignoreCase = true) || health.contains("MISMATCH", ignoreCase = true) ||
       health.contains("ORPHAN", ignoreCase = true) -> "broken"

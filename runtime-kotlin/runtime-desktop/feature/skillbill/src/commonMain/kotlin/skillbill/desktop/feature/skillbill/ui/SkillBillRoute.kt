@@ -571,10 +571,16 @@ fun SkillBillRoute(
       updateAgent = { agent -> state = viewModel.updateMachineSkillAgentFilter(agent) },
       selectSkill = { name -> state = viewModel.selectMachineSkill(name) },
       managerAction = { action ->
-        if (action == skillbill.desktop.feature.skillbill.ui.MachineSkillManagerAction.REVEAL ||
-          action == skillbill.desktop.feature.skillbill.ui.MachineSkillManagerAction.EDIT
-        ) {
+        if (action == skillbill.desktop.feature.skillbill.ui.MachineSkillManagerAction.REVEAL) {
           coroutineScope.launch { state = viewModel.revealMachineSkillSource() }
+        } else if (action == skillbill.desktop.feature.skillbill.ui.MachineSkillManagerAction.EDIT) {
+          coroutineScope.launch {
+            val name = state.machineTools.manager.selectedName
+            if (name != null) {
+              state = viewModel.openMachineSkillTreeItem("machine:third-party-skills:skill:$name")
+              state = viewModel.dismissMachineTools()
+            }
+          }
         } else {
           state = viewModel.beginMachineSkillManagerAction(action.name)
         }

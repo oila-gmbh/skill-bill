@@ -26,6 +26,8 @@ data class MachineSkillPreviewPresentation(
 
 data class MachineSkillApplyPresentation(
   val results: List<MachineSkillTargetResult>,
+  val successful: Boolean,
+  val failureMessage: String? = null,
   val postMortem: String? = null,
   val inventory: MachineSkillInventoryPresentation? = null,
   val inventoryError: String? = null,

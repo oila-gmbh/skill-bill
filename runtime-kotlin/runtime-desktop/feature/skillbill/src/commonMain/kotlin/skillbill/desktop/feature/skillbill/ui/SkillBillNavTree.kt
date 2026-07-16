@@ -101,6 +101,7 @@ internal fun NavGroup(
           this.selected = selected
           this.contentDescription = toggleGroupCd
           this.role = Role.Button
+          stateDescription = if (expanded) "expanded" else "collapsed"
         }
         .clickable(enabled = enabled, role = Role.Button) { onNodeExpandedToggled(group.id) }
         // SKILL-46: synthetic PLATFORM_PACK group nodes (id `platform:<slug>`) also support

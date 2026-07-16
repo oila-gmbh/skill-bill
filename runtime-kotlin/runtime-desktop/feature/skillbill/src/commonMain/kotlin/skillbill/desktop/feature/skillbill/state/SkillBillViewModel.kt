@@ -118,6 +118,7 @@ class SkillBillViewModel(
               detail.canonicalManagedSourcePath, edit.markdown, detail.validationIssues.isEmpty(),
               detail.validationIssues.takeIf { it.isNotEmpty() }?.joinToString("\n")),
             edit,
+            detail,
           )
         }
         .onFailure { error ->
@@ -125,6 +126,7 @@ class SkillBillViewModel(
             AuthoredContentDocument(itemId, detail.name, detail.name, "Third-party runtime skill",
               detail.canonicalManagedSourcePath, "", false,
               "Managed runtime skill could not be opened: ${error.message}"),
+            detail = detail,
           )
         }
     } else {
@@ -138,6 +140,7 @@ class SkillBillViewModel(
         AuthoredContentDocument(itemId, detail.name, detail.name, "Third-party runtime skill",
           occurrences.singleOrNull(), listOf(detail.description, occurrences.joinToString("\n"), guidance)
             .filter { it.isNotBlank() }.joinToString("\n\n"), false, guidance),
+        detail = detail,
       )
     }
     return viewState.currentState
@@ -208,13 +211,26 @@ class SkillBillViewModel(
     return runCatching {
       val preview = machineSkillGateway.previewManagedEdit(managedEdit)
       val applied = machineSkillGateway.apply(preview.planId)
+      check(applied.successful) { applied.failureMessage ?: "Managed runtime skill edit was not applied." }
+      val inventory = requireNotNull(applied.inventory) {
+        applied.inventoryError ?: "Managed runtime skill was saved, but inventory refresh failed."
+      }
+      val detail = requireNotNull(inventory.details[managedEdit.name]) {
+        "Managed runtime skill disappeared after save."
+      }
+      val renewed = machineSkillGateway.openManagedEdit(
+        managedEdit.name,
+        requireNotNull(detail.recordIdentity) { "Managed edit precondition record is unavailable after save." },
+        requireNotNull(detail.contentIdentity) { "Managed edit precondition source is unavailable after save." },
+      )
       EditorSaveResult(
         request,
         skillbill.desktop.core.domain.model.AuthoringSaveResult(
           success = true,
           document = viewState.loadedEditorDocument?.copy(text = request.body),
         ),
-        applied.inventory,
+        inventory,
+        renewed,
       )
     }.getOrElse { error ->
       EditorSaveResult(request, skillbill.desktop.core.domain.model.AuthoringSaveResult.failed(viewState.describe(error)))
@@ -330,11 +346,18 @@ class SkillBillViewModel(
     return try {
       runCatching { machineSkillGateway.apply(planId) }
         .onSuccess { result ->
-          machineToolsController.managerActionFinished()
+          if (result.successful) {
+            machineToolsController.managerActionFinished()
+          } else {
+            machineToolsController.managerActionFailed(result.failureMessage ?: "Manager action was not applied.")
+          }
           result.inventory?.let { acceptMachineSkillInventory(inventoryToken, it) }
           result.inventoryError?.let { machineToolsController.inventoryFailed(inventoryToken, it) }
         }
-        .onFailure { machineToolsController.managerActionFailed(it.message ?: "Manager action failed.") }
+        .onFailure {
+          machineToolsController.inventoryFailed(inventoryToken, it.message ?: "Inventory refresh failed.")
+          machineToolsController.managerActionFailed(it.message ?: "Manager action failed.")
+        }
       viewState.currentState
     } finally {
       machineToolsController.finishMutation()
@@ -403,11 +426,18 @@ class SkillBillViewModel(
     return try {
       runCatching { machineSkillGateway.apply(planId) }
         .onSuccess { result ->
-          machineToolsController.mutationFinished(result.results, result.postMortem)
+          if (result.successful) {
+            machineToolsController.mutationFinished(result.results, result.postMortem)
+          } else {
+            machineToolsController.mutationFailed(result.failureMessage ?: "Machine-skill mutation was not applied.")
+          }
           result.inventory?.let { acceptMachineSkillInventory(inventoryToken, it) }
           result.inventoryError?.let { machineToolsController.inventoryFailed(inventoryToken, it) }
         }
-        .onFailure { machineToolsController.mutationFailed(it.message ?: "Machine-skill mutation failed.") }
+        .onFailure {
+          machineToolsController.inventoryFailed(inventoryToken, it.message ?: "Inventory refresh failed.")
+          machineToolsController.mutationFailed(it.message ?: "Machine-skill mutation failed.")
+        }
       viewState.currentState
     } finally {
       machineToolsController.finishMutation()

@@ -251,7 +251,7 @@ private fun SkillManager(state: MachineToolsState, callbacks: MachineToolsCallba
     }.forEach { row ->
       Text(
         "${row.name} · ${row.ownership} · ${row.health} · ${row.agents.sorted().joinToString()}",
-        Modifier.clickable { callbacks.selectSkill(row.name) }.semantics { role = Role.Button },
+        Modifier.clickable { callbacks.selectSkill(row.logicalKey) }.semantics { role = Role.Button },
       )
     }
     manager.detail?.let { detail ->

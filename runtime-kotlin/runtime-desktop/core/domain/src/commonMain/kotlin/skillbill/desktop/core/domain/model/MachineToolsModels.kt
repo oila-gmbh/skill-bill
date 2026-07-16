@@ -95,6 +95,7 @@ data class MachineSkillManagerRow(
   val health: String,
   val agents: Set<String>,
   val logicalKey: String = name,
+  val divergent: Boolean = false,
 )
 
 data class MachineSkillManagerDetail(

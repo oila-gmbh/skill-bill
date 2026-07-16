@@ -263,6 +263,7 @@ data class EditorPlaceholder(
   val consumers: List<String> = emptyList(),
   val manifestPath: String? = null,
   val diagnostics: List<String> = emptyList(),
+  val machineSkillDetail: MachineSkillManagerDetail? = null,
 ) {
   companion object {
     val empty: EditorPlaceholder =

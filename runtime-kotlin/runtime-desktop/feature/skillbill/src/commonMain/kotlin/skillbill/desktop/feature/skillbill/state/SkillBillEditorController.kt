@@ -85,6 +85,7 @@ internal class SkillBillEditorController(
       editorDraftText = savedDocument.text
       editorSaveErrorMessage = null
       dirtyEditorPrompt = null
+      managedEditorBase = result.renewedManagedEdit ?: managedEditorBase
       if (savedDocument.kind == "skill-bill config") {
         repoController.openRepo(currentSession?.repoPath ?: repoPathText, preserveSelection = true)
       }

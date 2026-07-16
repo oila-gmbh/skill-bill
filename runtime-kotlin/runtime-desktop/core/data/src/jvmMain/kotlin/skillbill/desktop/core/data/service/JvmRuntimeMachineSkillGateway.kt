@@ -93,6 +93,7 @@ class JvmRuntimeMachineSkillGateway(
   override suspend fun apply(planId: String): MachineSkillApplyPresentation = withContext(Dispatchers.IO) {
     runtimeServices.machineSkillToolsFacade.apply(planId).let { result ->
       val mappedInventory = runCatching { mapInventory(runtimeServices.machineSkillToolsFacade.inventory()) }
+      val failedOutcomes = result.outcomes.filter { it.kind.name in setOf("FAILED", "BLOCKED", "CONFLICT") }
       MachineSkillApplyPresentation(
         result.outcomes.map { outcome ->
           skillbill.desktop.core.domain.model.MachineSkillTargetResult(
@@ -101,6 +102,8 @@ class JvmRuntimeMachineSkillGateway(
             outcome.detail,
           )
         },
+        successful = failedOutcomes.isEmpty(),
+        failureMessage = failedOutcomes.joinToString("; ") { "${it.code}: ${it.detail}" }.ifBlank { null },
         inventory = mappedInventory.getOrNull(),
         inventoryError = mappedInventory.exceptionOrNull()?.message,
       )
@@ -205,6 +208,7 @@ class JvmRuntimeMachineSkillGateway(
         health = row.health.name,
         agents = row.targetPresence.filter { it.present }.map { it.target.provider }.toSet(),
         logicalKey = row.normalizedName,
+        divergent = row.divergent,
       )
     }
     val details = snapshot.rows.associate { row ->
