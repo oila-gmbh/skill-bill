@@ -77,6 +77,7 @@ private fun commandPaletteCandidates(state: SkillBillState): List<PaletteCandida
 }
 
 private fun commandCandidates(state: SkillBillState, blockedByBusy: StringResource?): List<PaletteCandidate> {
+  val machineTools = machineToolCandidates(state)
   val openRepository = PaletteCandidate(
     result = CommandPaletteResult(
       id = "command.open-repository",
@@ -92,7 +93,7 @@ private fun commandCandidates(state: SkillBillState, blockedByBusy: StringResour
     sortGroup = 0,
   )
   if (state.selectedRepoPath == null && state.repoStatus.state == RepoLoadState.EMPTY) {
-    return listOf(openRepository)
+    return listOf(openRepository) + machineTools
   }
   return listOf(
     openRepository,
@@ -173,6 +174,40 @@ private fun commandCandidates(state: SkillBillState, blockedByBusy: StringResour
       keywords = listOf("new", "scaffold", "add-on", "addon", "create"),
       rankOffset = -10,
     ),
+  ) + machineTools
+}
+
+private fun machineToolCandidates(state: SkillBillState): List<PaletteCandidate> {
+  fun candidate(
+    id: String,
+    title: String,
+    subtitle: String,
+    marker: String,
+    action: CommandPaletteAction,
+    rank: Int,
+    mutating: Boolean,
+  ) = PaletteCandidate(
+    result = CommandPaletteResult(
+      id = id,
+      title = title,
+      subtitle = subtitle,
+      marker = marker,
+      kind = CommandPaletteResultKind.COMMAND,
+      action = action,
+      disabledReasonRes = if (mutating && state.machineTools.machineMutationBusy) {
+        Res.string.command_disabled_wait_for_setup
+      } else {
+        null
+      },
+    ),
+    keywords = listOf("tools", "machine", "skills", title, subtitle),
+    baseRank = COMMAND_BASE_RANK + rank,
+    sortGroup = 0,
+  )
+  return listOf(
+    candidate("command.open-tools", "Open Tools", "Browse machine-level skill tools", "tl", CommandPaletteAction.OPEN_TOOLS, -1, false),
+    candidate("command.install-skill-to-agents", "Install skill to agents", "Install a SKILL.md bundle", "in", CommandPaletteAction.INSTALL_SKILL_TO_AGENTS, -2, true),
+    candidate("command.manage-installed-skills", "Manage installed skills", "Inspect and maintain machine skills", "mg", CommandPaletteAction.MANAGE_INSTALLED_SKILLS, -3, false),
   )
 }
 

@@ -1,6 +1,7 @@
 package skillbill.application.managedskill
 
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.withContext
 import skillbill.managedskill.model.MachineSkillApplyResult
 import skillbill.managedskill.model.MachineSkillPreconditions
@@ -10,6 +11,15 @@ import skillbill.ports.managedskill.MachineSkillTransactionPort
 
 class MachineSkillMutationCoordinator(private val transaction: MachineSkillTransactionPort) {
   suspend fun apply(prepared: PreparedMachineSkillMutation): MachineSkillApplyResult {
+    if (!mutationGuard.tryLock()) return MachineSkillApplyResult.Blocked("machine-skill-mutation-in-progress")
+    return try {
+      applyGuarded(prepared)
+    } finally {
+      mutationGuard.unlock()
+    }
+  }
+
+  private suspend fun applyGuarded(prepared: PreparedMachineSkillMutation): MachineSkillApplyResult {
     val plan = prepared.plan
     val current = transaction.currentPreconditions(plan)
     val stale = compare(plan.preconditions, current)
@@ -20,6 +30,10 @@ class MachineSkillMutationCoordinator(private val transaction: MachineSkillTrans
       withContext(NonCancellable) { transaction.recoverIncompleteTransactions() }
       throw cancelled
     }
+  }
+
+  private companion object {
+    val mutationGuard = Mutex()
   }
 
   private fun compare(

@@ -854,13 +854,21 @@ class SkillBillViewModelTest {
   }
 
   @Test
-  fun `palette empty repo state only exposes repo session commands`() {
+  fun `palette empty repo state exposes repository and machine tool commands`() {
     val viewModel = newViewModel()
 
     val state = viewModel.openCommandPalette()
 
-    assertEquals(listOf("command.open-repository"), state.commandPalette.results.map { it.id })
-    assertTrue(state.commandPalette.results.single().enabled)
+    assertEquals(
+      setOf(
+        "command.open-repository",
+        "command.open-tools",
+        "command.install-skill-to-agents",
+        "command.manage-installed-skills",
+      ),
+      state.commandPalette.results.map { it.id }.toSet(),
+    )
+    assertTrue(state.commandPalette.results.all { it.enabled })
   }
 
   @Test

@@ -22,6 +22,7 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.focus.FocusRequester
 import skillbill.desktop.core.designsystem.SkillBillColor
 import skillbill.desktop.core.designsystem.SkillBillMetrics
 import skillbill.desktop.core.designsystem.SkillBillTheme
@@ -32,6 +33,7 @@ import skillbill.desktop.core.domain.model.RepoLoadState
 import skillbill.desktop.core.domain.model.ScaffoldKind
 import skillbill.desktop.core.domain.model.SkillBillState
 import skillbill.desktop.core.domain.model.SkillBillTreeItem
+import skillbill.desktop.core.domain.model.MachineToolAction
 
 internal val NavigationPaneResizeHandleWidth = SkillBillMetrics.navigationPaneResizeHandleWidth
 
@@ -104,6 +106,8 @@ fun SkillBillFrame(
   onCommandPaletteExecuteSelected: () -> Unit,
   onCommandPaletteExecuteResult: (CommandPaletteResult) -> Unit,
   onOpenScaffoldWizard: (ScaffoldKind) -> Unit,
+  onMachineToolAction: (MachineToolAction) -> Unit = {},
+  onMachineToolsDismiss: () -> Unit = {},
   scaffoldWizardCallbacks: ScaffoldWizardCallbacks,
   firstRunSetupCallbacks: FirstRunSetupCallbacks,
   // SKILL-46: right-click → Delete… dialog. The route owns target resolution from the node id so
@@ -116,6 +120,7 @@ fun SkillBillFrame(
     mutableStateOf(SkillBillMetrics.treePaneWidth.coerceNavigationPaneWidth())
   }
   var openEditorTabs by remember { mutableStateOf<List<OpenEditorTab>>(emptyList()) }
+  val toolsFocusRequester = remember { FocusRequester() }
   val canActivateRepoScopedAction = state.busyOperation == null
   val frameAcceleratorPredicates = SkillBillAcceleratorPredicates(
     busyOperationActive = state.busyOperation != null,
@@ -203,6 +208,8 @@ fun SkillBillFrame(
           state.repoStatus.state == RepoLoadState.LOADED &&
           state.busyOperation == null &&
           state.scaffoldWizard == null,
+        onToolsOpen = { onMachineToolAction(MachineToolAction.OPEN_CATALOG) },
+        toolsFocusRequester = toolsFocusRequester,
       )
       Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
         NavigationPane(
@@ -299,6 +306,16 @@ fun SkillBillFrame(
       ConfirmDeletionDialog(
         state = confirmation,
         callbacks = confirmDeletionCallbacks,
+      )
+    }
+    state.machineTools.surface?.let {
+      MachineToolsDialog(
+        state = state.machineTools,
+        onAction = onMachineToolAction,
+        onDismiss = {
+          onMachineToolsDismiss()
+          toolsFocusRequester.requestFocus()
+        },
       )
     }
   }

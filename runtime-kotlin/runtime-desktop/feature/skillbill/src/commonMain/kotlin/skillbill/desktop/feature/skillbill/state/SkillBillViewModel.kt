@@ -16,6 +16,7 @@ import skillbill.desktop.core.domain.model.ScaffoldWizardFormFields
 import skillbill.desktop.core.domain.model.SkillBillBusyOperation
 import skillbill.desktop.core.domain.model.SkillBillState
 import skillbill.desktop.core.domain.model.ValidateAgentConfigsSummary
+import skillbill.desktop.core.domain.model.MachineToolAction
 import skillbill.desktop.core.domain.service.AuthoringGateway
 import skillbill.desktop.core.domain.service.DesktopFirstRunGateway
 import skillbill.desktop.core.domain.service.EmptyWorkListGateway
@@ -61,6 +62,7 @@ class SkillBillViewModel(
   )
   private val removalController = SkillBillRemovalController(viewState, skillRemoveGateway)
   private val workController = SkillBillWorkController(viewState, workListGateway)
+  private val machineToolsController = SkillBillMachineToolsController(viewState)
 
   private fun computeInitialFirstRunSetup(): FirstRunSetupState? {
     if (desktopPreferenceStore.firstRunPreferences.value.completed || firstRunGateway.hasExistingInstall()) {
@@ -170,6 +172,16 @@ class SkillBillViewModel(
     commandPaletteOpen = false
     currentState = createState()
     currentState
+  }
+
+  fun dispatchMachineTool(action: MachineToolAction): SkillBillState {
+    machineToolsController.dispatch(action)
+    return viewState.currentState
+  }
+
+  fun dismissMachineTools(): SkillBillState {
+    machineToolsController.dismiss()
+    return viewState.currentState
   }
 
   fun updateCommandPaletteQuery(query: String): SkillBillState = with(viewState) {

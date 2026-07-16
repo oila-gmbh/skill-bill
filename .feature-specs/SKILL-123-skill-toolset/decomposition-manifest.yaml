@@ -4,14 +4,14 @@ issue_key: "SKILL-123"
 feature_name: "skill-toolset"
 parent_spec_path: ".feature-specs/SKILL-123-skill-toolset/spec.md"
 spec_source: "local"
-status: "in_progress"
+status: "blocked"
 execution_model: "same_branch_commit_per_subtask"
 base_branch: "main"
 feature_branch: "feat/SKILL-123-skill-toolset"
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 4
-  action: "start"
+  subtask_id: 5
+  action: "blocked"
 subtasks:
 - id: 1
   name: "Foundation contracts and opaque bundle scanning"
@@ -61,12 +61,12 @@ subtasks:
 - id: 4
   name: "Machine skill application services"
   spec_path: ".feature-specs/SKILL-123-skill-toolset/spec_subtask_4_services.md"
-  status: "pending"
+  status: "complete"
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260716-135652-e5qv"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -77,12 +77,14 @@ subtasks:
 - id: 5
   name: "Desktop Tools catalog, install wizard, and manager"
   spec_path: ".feature-specs/SKILL-123-skill-toolset/spec_subtask_5_desktop_tools.md"
-  status: "pending"
+  status: "blocked"
   branch: null
   commit_sha: null
-  workflow_id: null
-  blocked_reason: null
-  last_resumable_step: null
+  workflow_id: "wftr-20260716-151846-lzwc"
+  blocked_reason: "Phase 'plan' introduced governed specification changes for another\
+    \ issue: .feature-specs/SKILL-127-agent-addon-activation-manifest/. Cross-issue\
+    \ spec creation is not permitted in a feature-task phase."
+  last_resumable_step: "plan"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []

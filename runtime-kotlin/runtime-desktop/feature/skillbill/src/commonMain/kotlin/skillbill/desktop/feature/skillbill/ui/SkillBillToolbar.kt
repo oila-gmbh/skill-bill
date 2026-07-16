@@ -32,6 +32,8 @@ import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import dev.skillbill.designsystem.generated.resources.Res
 import dev.skillbill.designsystem.generated.resources.accelerator_refresh
 import dev.skillbill.designsystem.generated.resources.toolbar_back
@@ -72,6 +74,8 @@ internal fun WorkspaceToolbar(
   readOnlyModeLabel: String,
   busyOperation: SkillBillBusyOperation?,
   scaffoldEnabled: Boolean,
+  onToolsOpen: () -> Unit = {},
+  toolsFocusRequester: FocusRequester = FocusRequester(),
 ) {
   val busy = busyOperation != null
   Row(
@@ -115,6 +119,12 @@ internal fun WorkspaceToolbar(
       onClick = onReturnToInstalledWorkspace,
     )
     NewScaffoldMenuButton(enabled = scaffoldEnabled, onOpenScaffoldWizard = onOpenScaffoldWizard)
+    ToolbarButton(
+      label = "Tools",
+      marker = "tl",
+      onClick = onToolsOpen,
+      modifier = Modifier.focusRequester(toolsFocusRequester),
+    )
     ToolbarDivider()
     // F-X-901 (AC6): file editability is a status indicator, not a toggle. Render as a status chip
     // without click semantics.
@@ -157,6 +167,7 @@ internal fun ToolbarButton(
   enabled: Boolean = true,
   contentDescription: String = label,
   acceleratorLabel: String? = null,
+  modifier: Modifier = Modifier,
 ) {
   val background = if (primary) SkillBillTheme.frameTokens.primary else SkillBillTheme.frameTokens.raised
   val foreground =
@@ -169,7 +180,7 @@ internal fun ToolbarButton(
   AcceleratorTooltip(label = label, acceleratorLabel = acceleratorLabel) {
     Row(
       modifier =
-      Modifier
+      modifier
         .height(SkillBillDimens.controlHeightMd)
         .padding(end = SkillBillDimens.padMd)
         .alpha(if (enabled) 1f else DISABLED_BUTTON_ALPHA)

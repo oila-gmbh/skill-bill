@@ -432,6 +432,7 @@ fun SkillBillRoute(
         },
         openInstallSetup = ::runInstallSetup,
         openScaffoldWizard = ::runOpenScaffoldWizard,
+        openMachineTool = { action -> state = viewModel.dispatchMachineTool(action) },
       ),
     )
     if (executed) {
@@ -523,6 +524,8 @@ fun SkillBillRoute(
     onCommandPaletteExecuteSelected = ::runSelectedPaletteResult,
     onCommandPaletteExecuteResult = ::runPaletteResult,
     onOpenScaffoldWizard = ::runOpenScaffoldWizard,
+    onMachineToolAction = { action -> state = viewModel.dispatchMachineTool(action) },
+    onMachineToolsDismiss = { state = viewModel.dismissMachineTools() },
     scaffoldWizardCallbacks = ScaffoldWizardCallbacks(
       onSelectKind = { kind ->
         state = viewModel.selectScaffoldWizardKind(kind)
