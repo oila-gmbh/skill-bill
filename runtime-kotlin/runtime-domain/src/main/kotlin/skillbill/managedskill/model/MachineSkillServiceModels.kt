@@ -47,3 +47,8 @@ data class RepairMachineSkillRequest(val name: String)
 data class DeleteMachineSkillRequest(val name: String)
 data class ConfirmMachineSkillDeleteRequest(val preview: MachineSkillOperationPreview, val confirmedPlanId: String)
 data class OpenMachineSkillEdit(val name: String, val skillMarkdown: String, val recordDigest: String, val sourceHash: String)
+
+data class RefreshMachineSkillsResult(
+  val snapshot: MachineSkillInventorySnapshot,
+  val outcomes: List<MachineSkillServiceOutcome>,
+)

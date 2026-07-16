@@ -20,6 +20,7 @@ import skillbill.application.install.ExternalAddonOverlayService
 import skillbill.application.install.InstallService
 import skillbill.application.learning.LearningService
 import skillbill.application.managedskill.MachineSkillInventoryService
+import skillbill.application.managedskill.MachineSkillRefreshService
 import skillbill.application.review.ParallelCodeReviewRunner
 import skillbill.application.review.ReviewService
 import skillbill.application.scaffold.InstallAgentService
@@ -556,6 +557,7 @@ abstract class RuntimeComponent(
   abstract val installedWorkspaceBaselineStatusPort: InstalledWorkspaceBaselineStatusPort
   abstract val learningService: LearningService
   abstract val machineSkillInventoryService: MachineSkillInventoryService
+  abstract val machineSkillRefreshService: MachineSkillRefreshService
   abstract val lifecycleTelemetryService: LifecycleTelemetryService
   abstract val mcpRegistrationService: McpRegistrationService
   abstract val nativeAgentInstallService: NativeAgentInstallService
