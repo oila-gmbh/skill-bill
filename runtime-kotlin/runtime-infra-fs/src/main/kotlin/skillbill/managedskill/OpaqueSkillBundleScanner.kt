@@ -70,20 +70,15 @@ class OpaqueSkillBundleScanner private constructor(
     val before = readAttributes(root)
     if (!before.isDirectory || before.isSymbolicLink) fail("The bundle root is not a real directory.")
     beforeRootOpen(root)
-    val parentPath = root.parent
-    val captured = if (parentPath == null) {
-      requireSameDirectory(root, before, readAttributes(root))
-      captureDirectory(PathBundleDirectory(root, before.fileKey()), "", only)
-    } else Files.newDirectoryStream(parentPath).use { parent ->
-      if (parent is SecureDirectoryStream<Path>) {
-        parent.newDirectoryStream(root.fileName, NOFOLLOW_LINKS).use { opened ->
-          val openedAttributes = secureAttributes(opened, Path.of("."))
-          requireSameDirectory(root, before, openedAttributes)
-          captureDirectory(SecureBundleDirectory(opened), "", only)
-        }
-      } else {
-        requireSameDirectory(root, before, readAttributes(root))
-        captureDirectory(PathBundleDirectory(root, before.fileKey()), "", only)
+    val parentPath = root.parent ?: fail("The bundle root cannot be opened through an identity-bound parent directory.")
+    val captured = Files.newDirectoryStream(parentPath).use { parent ->
+      if (parent !is SecureDirectoryStream<Path>) {
+        fail("The filesystem does not support identity-bound bundle traversal.")
+      }
+      parent.newDirectoryStream(root.fileName, NOFOLLOW_LINKS).use { opened ->
+        val openedAttributes = secureAttributes(opened, Path.of("."))
+        requireSameDirectory(root, before, openedAttributes)
+        captureDirectory(SecureBundleDirectory(opened), "", only)
       }
     }
     requireUnchangedRoot(root, before)
@@ -237,46 +232,6 @@ class OpaqueSkillBundleScanner private constructor(
     override fun newByteChannel(name: Path) = stream.newByteChannel(name, setOf(READ, NOFOLLOW_LINKS))
     override fun openDirectory(name: Path) = SecureBundleDirectory(stream.newDirectoryStream(name, NOFOLLOW_LINKS))
     override fun close() = stream.close()
-  }
-
-  private inner class PathBundleDirectory(
-    private val path: Path,
-    private val identity: Any?,
-  ) : BundleDirectory {
-    override fun names(): List<Path> = checked {
-      Files.newDirectoryStream(path).use { entries -> entries.map { it.fileName } }
-    }
-    override fun attributes(name: Path): BasicFileAttributes = checked { readAttributes(resolve(name)) }
-    override fun newByteChannel(name: Path): SeekableByteChannel = checked {
-      val resolved = resolve(name)
-      try {
-        Files.newByteChannel(resolved, setOf(READ, NOFOLLOW_LINKS))
-      } catch (_: UnsupportedOperationException) {
-        Files.newByteChannel(resolved, setOf(READ))
-      } catch (_: IllegalArgumentException) {
-        Files.newByteChannel(resolved, setOf(READ))
-      }
-    }
-    override fun openDirectory(name: Path): BundleDirectory = checked {
-      val child = resolve(name)
-      val attributes = readAttributes(child)
-      if (!attributes.isDirectory || attributes.isSymbolicLink) fail("Bundle entry is not a real directory: $name")
-      PathBundleDirectory(child, attributes.fileKey())
-    }
-    private fun resolve(name: Path): Path {
-      if (name.isAbsolute || name.nameCount != 1 || name.normalize().startsWith("..")) fail("Bundle path escapes the selected directory: $name")
-      return path.resolve(name.toString())
-    }
-    private inline fun <T> checked(operation: () -> T): T {
-      requireIdentity()
-      return operation().also { requireIdentity() }
-    }
-    private fun requireIdentity() {
-      val attributes = readAttributes(path)
-      if (!attributes.isDirectory || attributes.isSymbolicLink ||
-        identity != null && attributes.fileKey() != null && identity != attributes.fileKey()
-      ) fail("Bundle directory identity changed while being scanned: $path")
-    }
   }
 
   private fun fail(message: String): Nothing = throw InvalidOpaqueSkillBundleException(message)
