@@ -108,6 +108,7 @@ fun SkillBillFrame(
   onOpenScaffoldWizard: (ScaffoldKind) -> Unit,
   onMachineToolAction: (MachineToolAction) -> Unit = {},
   onMachineToolsDismiss: () -> Unit = {},
+  machineToolsCallbacks: MachineToolsCallbacks = MachineToolsCallbacks(),
   scaffoldWizardCallbacks: ScaffoldWizardCallbacks,
   firstRunSetupCallbacks: FirstRunSetupCallbacks,
   // SKILL-46: right-click → Delete… dialog. The route owns target resolution from the node id so
@@ -312,6 +313,7 @@ fun SkillBillFrame(
       MachineToolsDialog(
         state = state.machineTools,
         onAction = onMachineToolAction,
+        callbacks = machineToolsCallbacks,
         onDismiss = {
           onMachineToolsDismiss()
           toolsFocusRequester.requestFocus()

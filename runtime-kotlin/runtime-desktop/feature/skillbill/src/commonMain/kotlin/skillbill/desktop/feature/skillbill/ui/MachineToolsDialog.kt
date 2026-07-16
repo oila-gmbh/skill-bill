@@ -13,6 +13,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -23,6 +25,8 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.testTag
@@ -33,12 +37,32 @@ import skillbill.desktop.core.domain.model.MachineToolDescriptor
 import skillbill.desktop.core.domain.model.MachineToolMutationRisk
 import skillbill.desktop.core.domain.model.MachineToolsState
 import skillbill.desktop.core.domain.model.MachineToolsSurface
+import skillbill.desktop.core.domain.model.MachineSkillHealthFilter
+import skillbill.desktop.core.domain.model.MachineSkillOwnershipFilter
+
+enum class MachineSkillManagerAction { EDIT, MANAGE_AGENTS, REVEAL, REPAIR, DELETE, ADOPT }
+
+data class MachineToolsCallbacks(
+  val chooseSource: () -> Unit = {},
+  val toggleTarget: (String) -> Unit = {},
+  val setInstallStep: (MachineSkillInstallStep) -> Unit = {},
+  val preview: () -> Unit = {},
+  val apply: () -> Unit = {},
+  val retry: () -> Unit = {},
+  val acknowledge: () -> Unit = {},
+  val updateQuery: (String) -> Unit = {},
+  val updateOwnership: (MachineSkillOwnershipFilter) -> Unit = {},
+  val updateHealth: (MachineSkillHealthFilter) -> Unit = {},
+  val selectSkill: (String) -> Unit = {},
+  val managerAction: (MachineSkillManagerAction) -> Unit = {},
+)
 
 @Composable
 internal fun MachineToolsDialog(
   state: MachineToolsState,
   onAction: (MachineToolAction) -> Unit,
   onDismiss: () -> Unit,
+  callbacks: MachineToolsCallbacks = MachineToolsCallbacks(),
 ) {
   AlertDialog(
     onDismissRequest = onDismiss,
@@ -46,8 +70,8 @@ internal fun MachineToolsDialog(
     text = {
       when (state.surface) {
         MachineToolsSurface.CATALOG -> ToolCatalog(state, onAction)
-        MachineToolsSurface.INSTALL -> InstallWizard(state)
-        MachineToolsSurface.MANAGER -> SkillManager(state)
+        MachineToolsSurface.INSTALL -> InstallWizard(state, callbacks)
+        MachineToolsSurface.MANAGER -> SkillManager(state, callbacks)
         null -> Unit
       }
     },
@@ -112,13 +136,14 @@ private fun ToolCatalog(state: MachineToolsState, onAction: (MachineToolAction) 
 }
 
 @Composable
-private fun InstallWizard(state: MachineToolsState) {
+private fun InstallWizard(state: MachineToolsState, callbacks: MachineToolsCallbacks) {
   val install = state.install
   Column(verticalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingLg)) {
     Text("Source · Targets · Preview · Apply · Results", style = MaterialTheme.typography.labelLarge)
     when (install.step) {
       MachineSkillInstallStep.SOURCE -> {
         Text("Choose a SKILL.md file or a directory containing one.")
+        Button(onClick = callbacks.chooseSource) { Text("Choose source") }
         install.source?.let {
           Text("${it.skillName} — ${it.description}")
           Text("${it.sourcePath} · ${it.includedFileCount} files · ${it.totalBytes} bytes")
@@ -126,29 +151,55 @@ private fun InstallWizard(state: MachineToolsState) {
         }
       }
       MachineSkillInstallStep.TARGETS -> install.targets.forEach {
-        Text("${if (it.selected) "[x]" else "[ ]"} ${it.provider} · ${it.path} · ${if (it.detected) "detected" else "not detected"}${it.conflict?.let { issue -> " · $issue" }.orEmpty()}")
+        Row(Modifier.clickable(enabled = it.conflict == null) { callbacks.toggleTarget(it.id) }) {
+          Checkbox(checked = it.selected, onCheckedChange = { _ -> callbacks.toggleTarget(it.id) }, enabled = it.conflict == null)
+          Text("${it.provider} · ${it.path} · ${if (it.detected) "detected" else "not detected"}${it.conflict?.let { issue -> " · $issue" }.orEmpty()}")
+        }
       }
       MachineSkillInstallStep.PREVIEW -> {
         Text("Plan ${install.planId ?: "unavailable"}")
         install.preview.forEach { Text("${it.operation} ${it.path} — ${it.detail}") }
         install.warnings.forEach { Text("Warning: $it") }
       }
-      MachineSkillInstallStep.APPLYING -> Text("Applying machine-skill mutation…")
-      MachineSkillInstallStep.RESULTS -> install.results.forEach { Text("${it.targetId}: ${it.outcome} — ${it.detail}") }
+      MachineSkillInstallStep.APPLYING -> Text("Applying machine-skill mutation…", Modifier.semantics { liveRegion = LiveRegionMode.Polite })
+      MachineSkillInstallStep.RESULTS -> Column(Modifier.semantics { liveRegion = LiveRegionMode.Polite }) {
+        install.results.forEach { Text("${it.targetId}: ${it.outcome} — ${it.detail}") }
+        Button(onClick = callbacks.retry) { Text("Retry") }
+      }
     }
-    install.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+    install.error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Assertive }) }
+    when (install.step) {
+      MachineSkillInstallStep.SOURCE -> Button(onClick = { callbacks.setInstallStep(MachineSkillInstallStep.TARGETS) }, enabled = install.canContinue) { Text("Continue") }
+      MachineSkillInstallStep.TARGETS -> Button(onClick = callbacks.preview, enabled = install.canPreview) { Text("Preview") }
+      MachineSkillInstallStep.PREVIEW -> Button(onClick = callbacks.apply, enabled = install.planId != null && !state.machineMutationBusy) { Text("Apply") }
+      else -> Unit
+    }
+    state.postMortem?.let {
+      Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Assertive })
+      Button(onClick = callbacks.acknowledge) { Text("Acknowledge") }
+    }
   }
 }
 
 @Composable
-private fun SkillManager(state: MachineToolsState) {
+private fun SkillManager(state: MachineToolsState, callbacks: MachineToolsCallbacks) {
   val manager = state.manager
   Column(verticalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingLg)) {
-    Text("Search: ${manager.query.ifBlank { "all skills" }}")
-    Text("Ownership: ${manager.ownershipFilter} · Health: ${manager.healthFilter} · Agent: ${manager.agentFilter ?: "all"}")
-    if (manager.loading) Text("Refreshing inventory…")
-    manager.rows.forEach { row ->
-      Text("${row.name} · ${row.ownership} · ${row.health} · ${row.agents.sorted().joinToString()}")
+    OutlinedTextField(value = manager.query, onValueChange = callbacks.updateQuery, label = { Text("Search skills") })
+    Row(horizontalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingMd)) {
+      OutlinedButton(onClick = { callbacks.updateOwnership(manager.ownershipFilter.nextFilter()) }) { Text("Ownership: ${manager.ownershipFilter}") }
+      OutlinedButton(onClick = { callbacks.updateHealth(manager.healthFilter.nextFilter()) }) { Text("Health: ${manager.healthFilter}") }
+    }
+    if (manager.loading) Text("Refreshing inventory…", Modifier.semantics { liveRegion = LiveRegionMode.Polite })
+    manager.rows.filter { row ->
+      row.name.contains(manager.query, ignoreCase = true) &&
+        (manager.ownershipFilter == MachineSkillOwnershipFilter.ALL || row.ownership == manager.ownershipFilter.name) &&
+        (manager.healthFilter == MachineSkillHealthFilter.ALL || (manager.healthFilter == MachineSkillHealthFilter.HEALTHY) == (row.health == "HEALTHY"))
+    }.forEach { row ->
+      Text(
+        "${row.name} · ${row.ownership} · ${row.health} · ${row.agents.sorted().joinToString()}",
+        Modifier.clickable { callbacks.selectSkill(row.name) }.semantics { role = Role.Button },
+      )
     }
     manager.detail?.let { detail ->
       Text(detail.name, style = MaterialTheme.typography.titleMedium)
@@ -160,17 +211,27 @@ private fun SkillManager(state: MachineToolsState) {
       detail.validationIssues.forEach { Text(it, color = MaterialTheme.colorScheme.error) }
       if (detail.ownership == "MANAGED") {
         Row(horizontalArrangement = Arrangement.spacedBy(SkillBillDimens.spacingMd)) {
-          Button(onClick = {}) { Text("Edit") }
-          Button(onClick = {}) { Text("Manage agents") }
-          Button(onClick = {}) { Text("Reveal source") }
-          if (detail.repairAvailable) Button(onClick = {}) { Text("Repair") }
-          Button(onClick = {}) { Text("Delete") }
+          Button(onClick = { callbacks.managerAction(MachineSkillManagerAction.EDIT) }) { Text("Edit") }
+          Button(onClick = { callbacks.managerAction(MachineSkillManagerAction.MANAGE_AGENTS) }) { Text("Manage agents") }
+          Button(onClick = { callbacks.managerAction(MachineSkillManagerAction.REVEAL) }) { Text("Reveal source") }
+          if (detail.repairAvailable) Button(onClick = { callbacks.managerAction(MachineSkillManagerAction.REPAIR) }) { Text("Repair") }
+          Button(onClick = { callbacks.managerAction(MachineSkillManagerAction.DELETE) }) { Text("Delete") }
         }
       } else {
         Text("Read-only until adopted. Divergent copies require an authoritative source and replacement targets.")
-        Button(onClick = {}) { Text("Adopt") }
+        Button(onClick = { callbacks.managerAction(MachineSkillManagerAction.ADOPT) }) { Text("Adopt") }
       }
     }
-    manager.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+    manager.error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Assertive }) }
   }
+}
+
+private fun MachineSkillOwnershipFilter.nextFilter(): MachineSkillOwnershipFilter {
+  val values = MachineSkillOwnershipFilter.values()
+  return values[(ordinal + 1) % values.size]
+}
+
+private fun MachineSkillHealthFilter.nextFilter(): MachineSkillHealthFilter {
+  val values = MachineSkillHealthFilter.values()
+  return values[(ordinal + 1) % values.size]
 }

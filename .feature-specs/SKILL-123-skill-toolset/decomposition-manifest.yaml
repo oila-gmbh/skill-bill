@@ -81,10 +81,8 @@ subtasks:
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260716-151846-lzwc"
-  blocked_reason: "Phase 'plan' introduced governed specification changes for another\
-    \ issue: .feature-specs/SKILL-127-agent-addon-activation-manifest/. Cross-issue\
-    \ spec creation is not permitted in a feature-task phase."
-  last_resumable_step: "plan"
+  blocked_reason: "Subtask 5 timed out before reaching a terminal workflow-store outcome."
+  last_resumable_step: "audit"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []

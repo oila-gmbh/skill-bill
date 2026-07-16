@@ -17,6 +17,9 @@ import skillbill.desktop.core.domain.model.SkillBillBusyOperation
 import skillbill.desktop.core.domain.model.SkillBillState
 import skillbill.desktop.core.domain.model.ValidateAgentConfigsSummary
 import skillbill.desktop.core.domain.model.MachineToolAction
+import skillbill.desktop.core.domain.model.MachineSkillHealthFilter
+import skillbill.desktop.core.domain.model.MachineSkillInstallStep
+import skillbill.desktop.core.domain.model.MachineSkillOwnershipFilter
 import skillbill.desktop.core.domain.service.AuthoringGateway
 import skillbill.desktop.core.domain.service.DesktopFirstRunGateway
 import skillbill.desktop.core.domain.service.EmptyWorkListGateway
@@ -27,6 +30,9 @@ import skillbill.desktop.core.domain.service.RuntimeScaffoldGateway
 import skillbill.desktop.core.domain.service.RuntimeSkillRemoveGateway
 import skillbill.desktop.core.domain.service.SkillTreeService
 import skillbill.desktop.core.domain.service.WorkListGateway
+import skillbill.desktop.core.domain.service.RuntimeMachineSkillGateway
+import skillbill.desktop.core.domain.service.UnavailableRuntimeMachineSkillGateway
+import skillbill.desktop.core.domain.service.MachineSkillSourceChoice
 import software.amazon.lastmile.kotlin.inject.anvil.SingleIn
 
 @Inject
@@ -41,6 +47,7 @@ class SkillBillViewModel(
   private val desktopPreferenceStore: DesktopPreferenceStore,
   private val skillRemoveGateway: RuntimeSkillRemoveGateway,
   private val installedWorkspaceLocator: InstalledWorkspaceLocator,
+  private val machineSkillGateway: RuntimeMachineSkillGateway = UnavailableRuntimeMachineSkillGateway,
   private val workListGateway: WorkListGateway = EmptyWorkListGateway,
 ) {
   private val viewState = SkillBillViewState(authoringGateway, computeInitialFirstRunSetup())
@@ -181,6 +188,85 @@ class SkillBillViewModel(
 
   fun dismissMachineTools(): SkillBillState {
     machineToolsController.dismiss()
+    return viewState.currentState
+  }
+
+  fun toggleMachineSkillTarget(id: String): SkillBillState = machineToolsController.run {
+    toggleTarget(id)
+    viewState.currentState
+  }
+
+  fun setMachineSkillInstallStep(step: MachineSkillInstallStep): SkillBillState = machineToolsController.run {
+    setInstallStep(step)
+    viewState.currentState
+  }
+
+  fun updateMachineSkillManagerQuery(query: String): SkillBillState = machineToolsController.run {
+    updateManagerQuery(query)
+    viewState.currentState
+  }
+
+  fun updateMachineSkillOwnershipFilter(filter: MachineSkillOwnershipFilter): SkillBillState = machineToolsController.run {
+    updateOwnershipFilter(filter)
+    viewState.currentState
+  }
+
+  fun updateMachineSkillHealthFilter(filter: MachineSkillHealthFilter): SkillBillState = machineToolsController.run {
+    updateHealthFilter(filter)
+    viewState.currentState
+  }
+
+  fun selectMachineSkill(name: String): SkillBillState = machineToolsController.run {
+    selectManagerSkill(name)
+    viewState.currentState
+  }
+
+  suspend fun chooseMachineSkillSource(): SkillBillState {
+    val token = machineToolsController.beginSourceInspection()
+    when (val choice = machineSkillGateway.chooseSource()) {
+      MachineSkillSourceChoice.Cancelled -> Unit
+      is MachineSkillSourceChoice.Failed -> machineToolsController.finishMutation()
+      is MachineSkillSourceChoice.Selected -> {
+        val source = machineSkillGateway.inspectSource(choice.path)
+        val targets = machineSkillGateway.assessInstallTargets(choice.path)
+        machineToolsController.sourceInspected(token, source, targets)
+      }
+    }
+    return viewState.currentState
+  }
+
+  suspend fun refreshMachineSkillInventory(): SkillBillState {
+    val token = machineToolsController.beginInventoryRefresh()
+    val inventory = machineSkillGateway.refreshInventory()
+    val selected = viewState.machineTools.manager.selectedName
+    machineToolsController.inventoryRefreshed(token, inventory.rows, selected?.let(inventory.details::get))
+    return viewState.currentState
+  }
+
+  suspend fun previewMachineSkillInstall(): SkillBillState {
+    val install = viewState.machineTools.install
+    val source = install.source ?: return viewState.currentState
+    val token = machineToolsController.beginPreview()
+    val preview = machineSkillGateway.previewInstall(source.sourcePath, install.targets.filter { it.selected }.map { it.id }.toSet())
+    machineToolsController.previewReady(token, preview.planId, preview.operations, preview.warnings)
+    return viewState.currentState
+  }
+
+  suspend fun applyMachineSkillInstall(): SkillBillState {
+    val planId = viewState.machineTools.install.planId ?: return viewState.currentState
+    if (!machineToolsController.beginMutation()) return viewState.currentState
+    return try {
+      val result = machineSkillGateway.apply(planId)
+      machineToolsController.mutationFinished(result.results, result.postMortem)
+      refreshMachineSkillInventory()
+    } finally {
+      machineToolsController.finishMutation()
+    }
+  }
+
+  suspend fun acknowledgeMachineSkillPostMortem(): SkillBillState {
+    machineSkillGateway.acknowledgePostMortem().getOrThrow()
+    machineToolsController.acknowledgePostMortem()
     return viewState.currentState
   }
 

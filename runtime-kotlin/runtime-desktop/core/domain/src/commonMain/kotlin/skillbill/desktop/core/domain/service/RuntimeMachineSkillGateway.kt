@@ -40,3 +40,16 @@ interface RuntimeMachineSkillGateway {
   suspend fun revealSource(skillName: String): Result<Unit>
   suspend fun acknowledgePostMortem(): Result<Unit>
 }
+
+object UnavailableRuntimeMachineSkillGateway : RuntimeMachineSkillGateway {
+  private fun unavailable(): Nothing = error("Machine-skill gateway is unavailable.")
+  override suspend fun chooseSource() = unavailable()
+  override suspend fun inspectSource(path: String) = unavailable()
+  override suspend fun assessInstallTargets(sourcePath: String) = unavailable()
+  override suspend fun previewInstall(sourcePath: String, targetIds: Set<String>) = unavailable()
+  override suspend fun apply(planId: String) = unavailable()
+  override suspend fun inventory() = unavailable()
+  override suspend fun refreshInventory() = unavailable()
+  override suspend fun revealSource(skillName: String): Result<Unit> = Result.failure(IllegalStateException("Machine-skill gateway is unavailable."))
+  override suspend fun acknowledgePostMortem(): Result<Unit> = Result.failure(IllegalStateException("Machine-skill gateway is unavailable."))
+}

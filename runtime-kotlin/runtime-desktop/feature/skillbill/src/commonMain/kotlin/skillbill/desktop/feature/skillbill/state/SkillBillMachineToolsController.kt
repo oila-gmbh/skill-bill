@@ -19,15 +19,21 @@ internal class SkillBillMachineToolsController(private val state: SkillBillViewS
   private var sourceToken = 0L
   private var previewToken = 0L
   private var inventoryToken = 0L
-  fun dispatch(action: MachineToolAction) = update {
-    when (action) {
-      MachineToolAction.OPEN_CATALOG -> copy(surface = MachineToolsSurface.CATALOG)
-      MachineToolAction.INSTALL_SKILL -> copy(surface = MachineToolsSurface.INSTALL)
-      MachineToolAction.MANAGE_SKILLS -> copy(surface = MachineToolsSurface.MANAGER)
+  fun dispatch(action: MachineToolAction) {
+    invalidatePendingCompletions()
+    update {
+      when (action) {
+        MachineToolAction.OPEN_CATALOG -> copy(surface = MachineToolsSurface.CATALOG)
+        MachineToolAction.INSTALL_SKILL -> copy(surface = MachineToolsSurface.INSTALL)
+        MachineToolAction.MANAGE_SKILLS -> copy(surface = MachineToolsSurface.MANAGER)
+      }
     }
   }
 
-  fun dismiss() = update { copy(surface = null) }
+  fun dismiss() {
+    invalidatePendingCompletions()
+    update { copy(surface = null) }
+  }
 
   fun beginSourceInspection(): Long = ++sourceToken
 
@@ -40,6 +46,7 @@ internal class SkillBillMachineToolsController(private val state: SkillBillViewS
   }
 
   fun sourceInspected(source: MachineSkillSourceSummary, targets: List<MachineSkillTargetOption>) = update {
+    previewToken++
     copy(
       install = MachineSkillInstallState(
         step = MachineSkillInstallStep.SOURCE,
@@ -49,17 +56,23 @@ internal class SkillBillMachineToolsController(private val state: SkillBillViewS
     )
   }
 
-  fun toggleTarget(id: String) = update {
-    copy(install = install.copy(
-      targets = install.targets.map { target ->
-        if (target.id == id && target.conflict == null) target.copy(selected = !target.selected) else target
-      },
-      planId = null,
-      preview = emptyList(),
-    ))
+  fun toggleTarget(id: String) {
+    previewToken++
+    update {
+      copy(install = install.copy(
+        targets = install.targets.map { target ->
+          if (target.id == id && target.conflict == null) target.copy(selected = !target.selected) else target
+        },
+        planId = null,
+        preview = emptyList(),
+      ))
+    }
   }
 
-  fun setInstallStep(step: MachineSkillInstallStep) = update { copy(install = install.copy(step = step)) }
+  fun setInstallStep(step: MachineSkillInstallStep) {
+    if (step != MachineSkillInstallStep.PREVIEW) previewToken++
+    update { copy(install = install.copy(step = step)) }
+  }
 
   fun beginPreview(): Long = ++previewToken
 
@@ -98,7 +111,10 @@ internal class SkillBillMachineToolsController(private val state: SkillBillViewS
   fun updateHealthFilter(filter: MachineSkillHealthFilter) = update {
     copy(manager = manager.copy(healthFilter = filter))
   }
-  fun selectManagerSkill(name: String) = update { copy(manager = manager.copy(selectedName = name)) }
+  fun selectManagerSkill(name: String) {
+    inventoryToken++
+    update { copy(manager = manager.copy(selectedName = name, detail = null)) }
+  }
 
   fun beginMutation(): Boolean {
     if (state.machineTools.machineMutationBusy) return false
@@ -108,6 +124,12 @@ internal class SkillBillMachineToolsController(private val state: SkillBillViewS
 
   fun finishMutation() = update { copy(machineMutationBusy = false) }
   fun acknowledgePostMortem() = update { copy(postMortem = null) }
+
+  private fun invalidatePendingCompletions() {
+    sourceToken++
+    previewToken++
+    inventoryToken++
+  }
 
   private fun update(transform: MachineToolsState.() -> MachineToolsState) {
     state.machineTools = state.machineTools.transform()

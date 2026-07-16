@@ -524,8 +524,28 @@ fun SkillBillRoute(
     onCommandPaletteExecuteSelected = ::runSelectedPaletteResult,
     onCommandPaletteExecuteResult = ::runPaletteResult,
     onOpenScaffoldWizard = ::runOpenScaffoldWizard,
-    onMachineToolAction = { action -> state = viewModel.dispatchMachineTool(action) },
+    onMachineToolAction = { action ->
+      state = viewModel.dispatchMachineTool(action)
+      if (action == skillbill.desktop.core.domain.model.MachineToolAction.MANAGE_SKILLS) {
+        coroutineScope.launch { state = viewModel.refreshMachineSkillInventory() }
+      }
+    },
     onMachineToolsDismiss = { state = viewModel.dismissMachineTools() },
+    machineToolsCallbacks = MachineToolsCallbacks(
+      chooseSource = {
+        coroutineScope.launch { state = viewModel.chooseMachineSkillSource() }
+      },
+      toggleTarget = { id -> state = viewModel.toggleMachineSkillTarget(id) },
+      setInstallStep = { step -> state = viewModel.setMachineSkillInstallStep(step) },
+      preview = { coroutineScope.launch { state = viewModel.previewMachineSkillInstall() } },
+      apply = { coroutineScope.launch { state = viewModel.applyMachineSkillInstall() } },
+      retry = { state = viewModel.setMachineSkillInstallStep(skillbill.desktop.core.domain.model.MachineSkillInstallStep.TARGETS) },
+      acknowledge = { coroutineScope.launch { state = viewModel.acknowledgeMachineSkillPostMortem() } },
+      updateQuery = { query -> state = viewModel.updateMachineSkillManagerQuery(query) },
+      updateOwnership = { filter -> state = viewModel.updateMachineSkillOwnershipFilter(filter) },
+      updateHealth = { filter -> state = viewModel.updateMachineSkillHealthFilter(filter) },
+      selectSkill = { name -> state = viewModel.selectMachineSkill(name) },
+    ),
     scaffoldWizardCallbacks = ScaffoldWizardCallbacks(
       onSelectKind = { kind ->
         state = viewModel.selectScaffoldWizardKind(kind)

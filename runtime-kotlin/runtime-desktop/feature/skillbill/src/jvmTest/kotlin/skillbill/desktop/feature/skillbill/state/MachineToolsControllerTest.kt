@@ -67,5 +67,22 @@ class MachineToolsControllerTest {
     assertEquals("new", viewState.currentState.machineTools.install.planId)
   }
 
+  @Test
+  fun `target and surface changes invalidate pending completions`() {
+    val viewState = SkillBillViewState(FakeAuthoringGateway(), null)
+    val controller = SkillBillMachineToolsController(viewState)
+    controller.sourceInspected(source("demo"), listOf(MachineSkillTargetOption("codex", "codex", "/target", true)))
+    val preview = controller.beginPreview()
+
+    controller.toggleTarget("codex")
+    controller.previewReady(preview, "stale", emptyList(), emptyList())
+    assertNull(viewState.currentState.machineTools.install.planId)
+
+    val inventory = controller.beginInventoryRefresh()
+    controller.dispatch(MachineToolAction.INSTALL_SKILL)
+    controller.inventoryRefreshed(inventory, emptyList(), null)
+    assertTrue(viewState.currentState.machineTools.manager.loading)
+  }
+
   private fun source(name: String) = MachineSkillSourceSummary(name, name, "/tmp/$name", 1, 1, name)
 }
