@@ -1,3 +1,14 @@
+## [2026-07-16] SKILL-123 transactional machine-skill mutation previews
+Areas: runtime-kotlin/runtime-{application,contracts,domain,infra-fs,ports}, orchestration/contracts
+- Immutable preview plans capture exact source, record, snapshot, and agent-link outcomes plus no-follow path/link identity, digests, bundle and target identity, ownership, references, conflicts, warnings, and symlink capability.
+- Apply compares every captured observation immediately before mutation and rejects stale plans before writes; guarded link changes require expected type, target, identity, and Skill Bill ownership. reusable
+- Managed sources and immutable content-addressed snapshots stage and verify bytes before promotion; identical snapshots are reused only after verification, and cleanup preserves every discovered or recorded reference. reusable
+- Strict versioned journal and machine-skill post-mortem contracts support reverse-order recovery and actionable durable evidence when complete rollback cannot be proven. reusable
+- Pattern: separate pure deterministic planning from precondition revalidation and journaled execution, with filesystem adapters enforcing no-follow inspection and ownership-aware destructive operations. reusable
+- Known limit: Windows hosts require symlink capability through elevation or Developer Mode; there is intentionally no copy fallback.
+Feature flag: N/A
+Acceptance criteria: 10/10 implemented
+
 ## [2026-07-16] SKILL-123 machine skill discovery and inventory
 Areas: runtime-kotlin/runtime-{application,core,domain,infra-fs}
 - Detector-backed inventory preserves provider-plus-normalized-path target identity across multiple profiles and selected-but-undetected targets, then groups case-normalized non-product skills into deterministic logical rows.

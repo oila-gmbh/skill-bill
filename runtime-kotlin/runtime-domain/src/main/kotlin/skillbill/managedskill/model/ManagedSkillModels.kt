@@ -160,20 +160,6 @@ class OpaqueSkillBundle(
   val files: List<OpaqueSkillBundleFile> = Collections.unmodifiableList(files.toList())
 }
 
-data class MachineSkillMutation(
-  val path: Path,
-  val action: String,
-  val expectedType: String?,
-  val expectedLinkTarget: Path? = null,
-)
-
-data class MachineSkillMutationPlan(
-  val kind: MachineSkillMutationKind,
-  val skillName: String,
-  val mutations: List<MachineSkillMutation>,
-  val recordDigest: String?,
-)
-
 fun requireSafeManagedSkillName(name: String, protectedNames: Set<String> = emptySet()): String {
   require(name.matches(Regex("^[a-z0-9][a-z0-9-]{0,62}$"))) {
     "Skill name must be a lowercase safe path segment containing only letters, digits, and hyphens."

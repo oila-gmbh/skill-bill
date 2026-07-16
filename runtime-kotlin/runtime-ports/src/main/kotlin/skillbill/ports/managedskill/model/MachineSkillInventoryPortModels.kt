@@ -16,3 +16,5 @@ data class InventoryTarget(
   val displayName: String,
   val issues: List<String> = emptyList(),
 )
+
+data class SnapshotReferenceDiscovery(val references: Set<Path>, val complete: Boolean, val warnings: List<String>)

@@ -10,8 +10,8 @@ base_branch: "main"
 feature_branch: "feat/SKILL-123-skill-toolset"
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 2
-  action: "start"
+  subtask_id: 3
+  action: "resume"
 subtasks:
 - id: 1
   name: "Foundation contracts and opaque bundle scanning"
@@ -29,12 +29,12 @@ subtasks:
 - id: 2
   name: "Discovery, product classification, and inventory"
   spec_path: ".feature-specs/SKILL-123-skill-toolset/spec_subtask_2_discovery_inventory.md"
-  status: "pending"
+  status: "complete"
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260716-110842-8cud"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -45,12 +45,12 @@ subtasks:
 - id: 3
   name: "Mutation preview, preconditions, and transaction executor"
   spec_path: ".feature-specs/SKILL-123-skill-toolset/spec_subtask_3_preview_transactions.md"
-  status: "pending"
+  status: "in_progress"
   branch: null
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wftr-20260716-122654-9bbs"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "create_branch"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []

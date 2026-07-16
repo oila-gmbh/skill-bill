@@ -422,7 +422,7 @@ class GitWorkflowGitOperationsTest {
   }
 
   @Test
-  fun `goal review baseline capture rejects staged tracked changes`() {
+  fun `goal review baseline capture adopts staged tracked changes into child input`() {
     val repoRoot = Files.createTempDirectory("skillbill-goal-review-baseline-staged")
     git(repoRoot, "init")
     git(repoRoot, "config", "user.email", "skill-bill@example.test")
@@ -433,17 +433,25 @@ class GitWorkflowGitOperationsTest {
     Files.writeString(repoRoot.resolve("tracked.txt"), "staged\n")
     git(repoRoot, "add", "tracked.txt")
 
-    val result = GitWorkflowGitOperations().captureGoalSubtaskReviewBaseline(
+    val operations = GitWorkflowGitOperations()
+    val result = operations.captureGoalSubtaskReviewBaseline(
       repoRoot,
       git(repoRoot, "branch", "--show-current"),
     )
+    val input = operations.buildGoalSubtaskReviewInput(
+      repoRoot,
+      requireNotNull(result.baseline),
+      git(repoRoot, "branch", "--show-current"),
+    )
 
-    assertFalse(result.ok)
-    assertContains(result.error, "staged tracked changes")
+    assertTrue(result.ok, result.error)
+    assertEquals(git(repoRoot, "rev-parse", "HEAD"), result.baseline?.reviewBaseSha)
+    assertTrue(input.ok, input.error)
+    assertContains(requireNotNull(input.input).reviewText, "staged")
   }
 
   @Test
-  fun `goal review baseline capture rejects unstaged tracked changes`() {
+  fun `goal review baseline capture adopts unstaged tracked changes into child input`() {
     val repoRoot = Files.createTempDirectory("skillbill-goal-review-baseline-unstaged")
     git(repoRoot, "init")
     git(repoRoot, "config", "user.email", "skill-bill@example.test")
@@ -453,13 +461,68 @@ class GitWorkflowGitOperationsTest {
     git(repoRoot, "commit", "-m", "initial")
     Files.writeString(repoRoot.resolve("tracked.txt"), "unstaged\n")
 
+    val operations = GitWorkflowGitOperations()
+    val result = operations.captureGoalSubtaskReviewBaseline(
+      repoRoot,
+      git(repoRoot, "branch", "--show-current"),
+    )
+    val input = operations.buildGoalSubtaskReviewInput(
+      repoRoot,
+      requireNotNull(result.baseline),
+      git(repoRoot, "branch", "--show-current"),
+    )
+
+    assertTrue(result.ok, result.error)
+    assertEquals(git(repoRoot, "rev-parse", "HEAD"), result.baseline?.reviewBaseSha)
+    assertTrue(input.ok, input.error)
+    assertContains(requireNotNull(input.input).reviewText, "unstaged")
+  }
+
+  @Test
+  fun `goal review baseline capture allows runtime projection drift`() {
+    val repoRoot = Files.createTempDirectory("skillbill-goal-review-baseline-projection")
+    git(repoRoot, "init")
+    git(repoRoot, "config", "user.email", "skill-bill@example.test")
+    git(repoRoot, "config", "user.name", "Skill Bill")
+    val manifestPath = repoRoot.resolve(".feature-specs/SKILL-123-demo/decomposition-manifest.yaml")
+    Files.createDirectories(manifestPath.parent)
+    Files.writeString(manifestPath, "status: in_progress\n")
+    Files.writeString(repoRoot.resolve("tracked.txt"), "base\n")
+    git(repoRoot, "add", ".")
+    git(repoRoot, "commit", "-m", "initial")
+    Files.writeString(manifestPath, "status: blocked\n")
+
     val result = GitWorkflowGitOperations().captureGoalSubtaskReviewBaseline(
       repoRoot,
       git(repoRoot, "branch", "--show-current"),
     )
 
-    assertFalse(result.ok)
-    assertContains(result.error, "unstaged tracked changes")
+    assertTrue(result.ok, result.error)
+    assertEquals(git(repoRoot, "rev-parse", "HEAD"), result.baseline?.reviewBaseSha)
+  }
+
+  @Test
+  fun `goal review baseline capture allows unrelated drift`() {
+    val repoRoot = Files.createTempDirectory("skillbill-goal-review-baseline-projection-unrelated")
+    git(repoRoot, "init")
+    git(repoRoot, "config", "user.email", "skill-bill@example.test")
+    git(repoRoot, "config", "user.name", "Skill Bill")
+    val manifestPath = repoRoot.resolve(".feature-specs/SKILL-123-demo/decomposition-manifest.yaml")
+    Files.createDirectories(manifestPath.parent)
+    Files.writeString(manifestPath, "status: in_progress\n")
+    Files.writeString(repoRoot.resolve("tracked.txt"), "base\n")
+    git(repoRoot, "add", ".")
+    git(repoRoot, "commit", "-m", "initial")
+    Files.writeString(manifestPath, "status: blocked\n")
+    Files.writeString(repoRoot.resolve("tracked.txt"), "unrelated\n")
+
+    val result = GitWorkflowGitOperations().captureGoalSubtaskReviewBaseline(
+      repoRoot,
+      git(repoRoot, "branch", "--show-current"),
+    )
+
+    assertTrue(result.ok, result.error)
+    assertEquals(git(repoRoot, "rev-parse", "HEAD"), result.baseline?.reviewBaseSha)
   }
 
   @Test

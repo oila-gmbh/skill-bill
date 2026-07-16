@@ -15,6 +15,12 @@ class InvalidManifestSchemaError(
   cause: Throwable? = null,
 ) : ShellContentContractException(message, cause)
 
+class InvalidMachineSkillTransactionSchemaError(message: String, cause: Throwable? = null) :
+  ShellContentContractException(message, cause)
+
+class InvalidMachineSkillPostMortemSchemaError(message: String, cause: Throwable? = null) :
+  ShellContentContractException(message, cause)
+
 class InvalidAgentAddonSchemaError(
   val sourceLabel: String,
   val reason: String,

@@ -47,6 +47,24 @@ val copyManagedSkillRecordSchema =
     }
   }
 
+val machineSkillTransactionSchemas =
+  listOf(
+    rootProject.projectDir.parentFile.resolve(
+      "orchestration/contracts/machine-skill-transaction-journal-schema.yaml",
+    ).absolutePath,
+    rootProject.projectDir.parentFile.resolve(
+      "orchestration/contracts/machine-skill-post-mortem-schema.yaml",
+    ).absolutePath,
+  )
+val copyMachineSkillTransactionSchemas =
+  tasks.register<Copy>("copyMachineSkillTransactionSchemas") {
+    val schemaPaths = machineSkillTransactionSchemas
+    schemaPaths.forEach { inputs.file(it) }
+    from(schemaPaths)
+    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/contracts"))
+    doFirst { schemaPaths.forEach { require(File(it).exists()) } }
+  }
+
 val copyAgentAddonSchema =
   tasks.register<Copy>("copyAgentAddonSchema") {
     val schemaPath = canonicalAgentAddonSchemaPath
@@ -289,6 +307,7 @@ sourceSets.named("main") {
 
 tasks.named("processResources") {
   dependsOn(copyManagedSkillRecordSchema)
+  dependsOn(copyMachineSkillTransactionSchemas)
   dependsOn(copyAgentAddonSchema)
   dependsOn(copyReviewContextSchema)
   dependsOn(copyPlatformPackSchema)

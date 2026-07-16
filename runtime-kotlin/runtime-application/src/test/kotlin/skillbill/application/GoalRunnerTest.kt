@@ -2297,12 +2297,13 @@ private class RecordingGitOperations(
 
 private fun readyGoalReviewOperations(baselineError: String? = null): GoalSubtaskReviewGitOperations =
   object : GoalSubtaskReviewGitOperations {
-    override fun captureBaseline(repoRoot: Path, expectedBranch: String): GoalSubtaskReviewBaselineResult =
-      baselineError?.let { GoalSubtaskReviewBaselineResult(status = "error", error = it) }
+    override fun captureBaseline(repoRoot: Path, expectedBranch: String): GoalSubtaskReviewBaselineResult {
+      return baselineError?.let { GoalSubtaskReviewBaselineResult(status = "error", error = it) }
         ?: GoalSubtaskReviewBaselineResult(
           status = "ok",
           baseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
         )
+    }
 
     override fun buildInput(
       repoRoot: Path,
