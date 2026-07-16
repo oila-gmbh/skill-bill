@@ -17,21 +17,17 @@ import kotlin.test.assertNotNull
 
 class FileManagedSkillRecordStoreTest {
   @Test
-  fun `fails closed on providers without identity-bound directory streams`() {
+  fun `reads valid records on providers without secure directory streams`() {
     val archive = Files.createTempFile("managed-records", ".zip")
     Files.delete(archive)
     FileSystems.newFileSystem(URI.create("jar:${archive.toUri()}"), mapOf("create" to "true")).use { fileSystem ->
       val root = fileSystem.getPath("/")
       val store = FileManagedSkillRecordStore(root)
-      val now = Instant.parse("2026-07-15T12:00:00Z")
-      val record = ManagedSkillRecord(
-        name = "sample-skill", sourceKind = ManagedSkillSourceKind.DIRECTORY,
-        sourcePath = store.sourceRoot("sample-skill"), activeContentHash = "a".repeat(64),
-        selectedTargets = setOf(AgentSkillTargetId("claude", root.resolve("claude").toAbsolutePath())),
-        importedAt = now, updatedAt = now,
-      )
-
-      assertFailsWith<InvalidManagedSkillRecordSchemaError> { store.write(record) }
+      val path = store.recordPath("sample-skill")
+      Files.createDirectories(path.parent)
+      path.writeText(validWire(root, "sample-skill"))
+      assertEquals("sample-skill", store.read("sample-skill").name)
+      assertNotNull(store.digest("sample-skill"))
     }
   }
 

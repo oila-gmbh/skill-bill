@@ -94,7 +94,7 @@ class OpaqueSkillBundleScannerTest {
   }
 
   @Test
-  fun `fails closed on providers without identity-bound directory streams`() {
+  fun `scans providers without secure directory streams`() {
     val archive = Files.createTempFile("opaque-skill", ".zip")
     Files.delete(archive)
     FileSystems.newFileSystem(URI.create("jar:${archive.toUri()}"), mapOf("create" to "true")).use { fileSystem ->
@@ -102,7 +102,23 @@ class OpaqueSkillBundleScannerTest {
       root.resolve("SKILL.md").writeText("---\nname: sample-skill\ndescription: Sample\n---")
       root.resolve("notes.txt").writeText("support")
 
-      assertFailsWith<InvalidOpaqueSkillBundleException> { scanner.scan(root, emptySet()) }
+      val bundle = scanner.scan(root, emptySet())
+      assertEquals("sample-skill", bundle.name)
+      assertEquals(listOf("SKILL.md", "notes.txt"), bundle.files.map { it.relativePath })
     }
+  }
+
+  @Test
+  fun `rejects a root replaced before its identity bound handle is opened`() {
+    val parent = Files.createTempDirectory("opaque-root-swap")
+    val root = parent.resolve("selected").createDirectory()
+    root.resolve("SKILL.md").writeText("---\nname: original\ndescription: Original\n---")
+    val scanner = OpaqueSkillBundleScanner { selected ->
+      Files.move(selected, parent.resolve("displaced"))
+      selected.createDirectory()
+      selected.resolve("SKILL.md").writeText("---\nname: replacement\ndescription: Replacement\n---")
+    }
+
+    assertFailsWith<InvalidOpaqueSkillBundleException> { scanner.scan(root, emptySet()) }
   }
 }
