@@ -19,6 +19,7 @@ internal class SkillBillMachineToolsController(private val state: SkillBillViewS
   private var sourceToken = 0L
   private var previewToken = 0L
   private var inventoryToken = 0L
+  private var inventoryDetails: Map<String, MachineSkillManagerDetail> = emptyMap()
   fun dispatch(action: MachineToolAction) {
     invalidatePendingCompletions()
     update {
@@ -56,6 +57,10 @@ internal class SkillBillMachineToolsController(private val state: SkillBillViewS
     )
   }
 
+  fun sourceFailed(token: Long, message: String) {
+    if (token == sourceToken) update { copy(install = install.copy(error = message)) }
+  }
+
   fun toggleTarget(id: String) {
     previewToken++
     update {
@@ -81,6 +86,10 @@ internal class SkillBillMachineToolsController(private val state: SkillBillViewS
     update { copy(install = install.copy(step = MachineSkillInstallStep.PREVIEW, planId = planId, preview = preview, warnings = warnings)) }
   }
 
+  fun previewFailed(token: Long, message: String) {
+    if (token == previewToken) update { copy(install = install.copy(error = message, planId = null)) }
+  }
+
   fun mutationFinished(results: List<MachineSkillTargetResult>, postMortem: String?) = update {
     copy(
       machineMutationBusy = false,
@@ -99,9 +108,19 @@ internal class SkillBillMachineToolsController(private val state: SkillBillViewS
     token: Long,
     rows: List<MachineSkillManagerRow>,
     selectedDetail: MachineSkillManagerDetail?,
+    details: Map<String, MachineSkillManagerDetail> = emptyMap(),
   ) {
     if (token != inventoryToken) return
+    inventoryDetails = details
     update { copy(manager = manager.copy(rows = rows, detail = selectedDetail, loading = false)) }
+  }
+
+  fun inventoryFailed(token: Long, message: String) {
+    if (token == inventoryToken) update { copy(manager = manager.copy(loading = false, error = message)) }
+  }
+
+  fun mutationFailed(message: String) = update {
+    copy(machineMutationBusy = false, install = install.copy(step = MachineSkillInstallStep.RESULTS, error = message))
   }
 
   fun updateManagerQuery(query: String) = update { copy(manager = manager.copy(query = query)) }
@@ -113,7 +132,7 @@ internal class SkillBillMachineToolsController(private val state: SkillBillViewS
   }
   fun selectManagerSkill(name: String) {
     inventoryToken++
-    update { copy(manager = manager.copy(selectedName = name, detail = null)) }
+    update { copy(manager = manager.copy(selectedName = name, detail = inventoryDetails[name])) }
   }
 
   fun beginMutation(): Boolean {

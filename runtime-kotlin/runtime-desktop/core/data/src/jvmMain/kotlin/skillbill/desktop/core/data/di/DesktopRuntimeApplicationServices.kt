@@ -11,6 +11,7 @@ import skillbill.application.scaffold.SkillRemoveService
 import skillbill.application.work.WorkListService
 import skillbill.application.managedskill.MachineSkillInventoryService
 import skillbill.application.managedskill.MachineSkillRefreshService
+import skillbill.application.managedskill.MachineSkillToolsFacade
 import skillbill.application.scaffold.InstallAgentService
 import skillbill.desktop.core.common.di.UserScope
 import skillbill.di.RuntimeComponent
@@ -66,6 +67,9 @@ class DesktopRuntimeApplicationServices {
   val machineSkillRefreshService: MachineSkillRefreshService
     get() = services.machineSkillRefreshService
 
+  val machineSkillToolsFacade: MachineSkillToolsFacade
+    get() = services.machineSkillToolsFacade
+
   val installAgentService: InstallAgentService
     get() = services.installAgentService
 
@@ -117,6 +121,7 @@ private data class DesktopRuntimeApplicationServiceBundle(
   val workListService: WorkListService,
   val machineSkillInventoryService: MachineSkillInventoryService,
   val machineSkillRefreshService: MachineSkillRefreshService,
+  val machineSkillToolsFacade: MachineSkillToolsFacade,
   val installAgentService: InstallAgentService,
 )
 
@@ -134,6 +139,7 @@ private fun buildDesktopRuntimeApplicationServices(home: Path): DesktopRuntimeAp
     workListService = component.workListService,
     machineSkillInventoryService = component.machineSkillInventoryService,
     machineSkillRefreshService = component.machineSkillRefreshService,
+    machineSkillToolsFacade = component.machineSkillToolsFacade,
     installAgentService = component.installAgentService,
   )
 }

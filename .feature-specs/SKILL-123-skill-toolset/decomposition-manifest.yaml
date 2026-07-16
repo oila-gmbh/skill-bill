@@ -80,9 +80,10 @@ subtasks:
   status: "blocked"
   branch: null
   commit_sha: null
-  workflow_id: "wftr-20260716-151846-lzwc"
-  blocked_reason: "Subtask 5 timed out before reaching a terminal workflow-store outcome."
-  last_resumable_step: "audit"
+  workflow_id: "wftr-20260716-161014-m7rt"
+  blocked_reason: "Goal status reconciliation closed stale running child 'wftr-20260716-161014-m7rt'\
+    \ for issue 'SKILL-123' subtask 5 in favor of authoritative blocked workflow 'wftr-20260716-151846-lzwc'."
+  last_resumable_step: "preplan"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []

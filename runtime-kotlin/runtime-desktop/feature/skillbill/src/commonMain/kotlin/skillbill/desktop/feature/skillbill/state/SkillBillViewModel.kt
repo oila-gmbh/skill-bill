@@ -223,23 +223,37 @@ class SkillBillViewModel(
 
   suspend fun chooseMachineSkillSource(): SkillBillState {
     val token = machineToolsController.beginSourceInspection()
-    when (val choice = machineSkillGateway.chooseSource()) {
-      MachineSkillSourceChoice.Cancelled -> Unit
-      is MachineSkillSourceChoice.Failed -> machineToolsController.finishMutation()
-      is MachineSkillSourceChoice.Selected -> {
-        val source = machineSkillGateway.inspectSource(choice.path)
-        val targets = machineSkillGateway.assessInstallTargets(choice.path)
-        machineToolsController.sourceInspected(token, source, targets)
+    runCatching {
+      when (val choice = machineSkillGateway.chooseSource()) {
+        MachineSkillSourceChoice.Cancelled -> Unit
+        is MachineSkillSourceChoice.Failed -> machineToolsController.sourceFailed(token, choice.message)
+        is MachineSkillSourceChoice.Selected -> {
+          val source = machineSkillGateway.inspectSource(choice.path)
+          val targets = if (source.validationIssues.isEmpty()) {
+            machineSkillGateway.assessInstallTargets(choice.path)
+          } else {
+            emptyList()
+          }
+          machineToolsController.sourceInspected(token, source, targets)
+        }
       }
-    }
+    }.onFailure { machineToolsController.sourceFailed(token, it.message ?: "Source inspection failed.") }
     return viewState.currentState
   }
 
   suspend fun refreshMachineSkillInventory(): SkillBillState {
     val token = machineToolsController.beginInventoryRefresh()
-    val inventory = machineSkillGateway.refreshInventory()
-    val selected = viewState.machineTools.manager.selectedName
-    machineToolsController.inventoryRefreshed(token, inventory.rows, selected?.let(inventory.details::get))
+    runCatching { machineSkillGateway.refreshInventory() }
+      .onSuccess { inventory ->
+        val selected = viewState.machineTools.manager.selectedName
+        machineToolsController.inventoryRefreshed(
+          token,
+          inventory.rows,
+          selected?.let(inventory.details::get),
+          inventory.details,
+        )
+      }
+      .onFailure { machineToolsController.inventoryFailed(token, it.message ?: "Inventory refresh failed.") }
     return viewState.currentState
   }
 
@@ -247,8 +261,10 @@ class SkillBillViewModel(
     val install = viewState.machineTools.install
     val source = install.source ?: return viewState.currentState
     val token = machineToolsController.beginPreview()
-    val preview = machineSkillGateway.previewInstall(source.sourcePath, install.targets.filter { it.selected }.map { it.id }.toSet())
-    machineToolsController.previewReady(token, preview.planId, preview.operations, preview.warnings)
+    val selectedTargets = install.targets.filter { it.selected }.map { it.id }.toSet()
+    runCatching { machineSkillGateway.previewInstall(source.sourcePath, selectedTargets) }
+      .onSuccess { machineToolsController.previewReady(token, it.planId, it.operations, it.warnings) }
+      .onFailure { machineToolsController.previewFailed(token, it.message ?: "Install preview failed.") }
     return viewState.currentState
   }
 
@@ -256,9 +272,13 @@ class SkillBillViewModel(
     val planId = viewState.machineTools.install.planId ?: return viewState.currentState
     if (!machineToolsController.beginMutation()) return viewState.currentState
     return try {
-      val result = machineSkillGateway.apply(planId)
-      machineToolsController.mutationFinished(result.results, result.postMortem)
-      refreshMachineSkillInventory()
+      runCatching { machineSkillGateway.apply(planId) }
+        .onSuccess { result ->
+          machineToolsController.mutationFinished(result.results, result.postMortem)
+          refreshMachineSkillInventory()
+        }
+        .onFailure { machineToolsController.mutationFailed(it.message ?: "Machine-skill mutation failed.") }
+      viewState.currentState
     } finally {
       machineToolsController.finishMutation()
     }

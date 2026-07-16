@@ -3,12 +3,14 @@ package skillbill.application.managedskill
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.withContext
+import me.tatarka.inject.annotations.Inject
 import skillbill.managedskill.model.MachineSkillApplyResult
 import skillbill.managedskill.model.MachineSkillPreconditions
 import skillbill.managedskill.model.PreparedMachineSkillMutation
 import skillbill.managedskill.model.StalePrecondition
 import skillbill.ports.managedskill.MachineSkillTransactionPort
 
+@Inject
 class MachineSkillMutationCoordinator(private val transaction: MachineSkillTransactionPort) {
   suspend fun apply(prepared: PreparedMachineSkillMutation): MachineSkillApplyResult {
     if (!mutationGuard.tryLock()) return MachineSkillApplyResult.Blocked("machine-skill-mutation-in-progress")

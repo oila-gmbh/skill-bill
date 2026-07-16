@@ -2,6 +2,7 @@
 
 package skillbill.application.managedskill
 
+import me.tatarka.inject.annotations.Inject
 import skillbill.managedskill.model.AdoptMachineSkillRequest
 import skillbill.managedskill.model.AgentSkillTargetId
 import skillbill.managedskill.model.BundleIdentity
@@ -33,6 +34,7 @@ import skillbill.ports.managedskill.MachineSkillWorkspacePort
 import java.nio.file.Path
 import java.time.Clock
 
+@Inject
 class MachineSkillOperationService(
   private val workspace: MachineSkillWorkspacePort,
   clock: Clock = Clock.systemUTC(),
