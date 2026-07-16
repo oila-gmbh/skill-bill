@@ -6,15 +6,17 @@ import skillbill.managedskill.model.MachineSkillApplyResult
 import skillbill.managedskill.model.MachineSkillMutationPlan
 import skillbill.managedskill.model.MachineSkillPreconditions
 import skillbill.managedskill.model.StalePrecondition
+import skillbill.managedskill.model.PreparedMachineSkillMutation
 import skillbill.ports.managedskill.MachineSkillTransactionPort
 
 class MachineSkillMutationCoordinator(private val transaction: MachineSkillTransactionPort) {
-  suspend fun apply(plan: MachineSkillMutationPlan): MachineSkillApplyResult {
+  suspend fun apply(prepared: PreparedMachineSkillMutation): MachineSkillApplyResult {
+    val plan = prepared.plan
     val current = transaction.currentPreconditions(plan)
     val stale = compare(plan.preconditions, current)
     if (stale.isNotEmpty()) return MachineSkillApplyResult.Stale(stale)
     return try {
-      transaction.apply(plan)
+      transaction.apply(prepared)
     } catch (cancelled: kotlinx.coroutines.CancellationException) {
       withContext(NonCancellable) { transaction.recoverIncompleteTransactions() }
       throw cancelled

@@ -9,10 +9,11 @@ import java.nio.file.StandardCopyOption.ATOMIC_MOVE
 
 data class PromotedMachineSkillSource(val destination: Path, val backup: Path?)
 
-class MachineSkillSourcePublication(private val managedSourcesRoot: Path) {
+class MachineSkillSourcePublication(private val managedSkillsRoot: Path) {
   fun stage(bundle: OpaqueSkillBundle): Path {
-    Files.createDirectories(managedSourcesRoot)
-    val staging = Files.createTempDirectory(managedSourcesRoot, ".${bundle.name}-staging-")
+    val skillRoot = managedSkillsRoot.resolve(bundle.name)
+    Files.createDirectories(skillRoot)
+    val staging = Files.createTempDirectory(skillRoot, ".source-staging-")
     bundle.files.forEach { file ->
       val output = staging.resolve(file.relativePath).normalize()
       require(output.startsWith(staging))
@@ -31,10 +32,10 @@ class MachineSkillSourcePublication(private val managedSourcesRoot: Path) {
   }
 
   fun promote(name: String, staging: Path): PromotedMachineSkillSource {
-    val destination = managedSourcesRoot.resolve(name)
+    val destination = managedSkillsRoot.resolve(name).resolve("source")
     val backup =
       if (Files.exists(destination, NOFOLLOW_LINKS)) {
-        destination.resolveSibling(".$name-backup-${System.nanoTime()}")
+        destination.resolveSibling(".source-backup-${System.nanoTime()}")
       } else {
         null
       }

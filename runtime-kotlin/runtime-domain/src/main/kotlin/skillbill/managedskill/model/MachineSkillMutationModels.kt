@@ -93,6 +93,8 @@ class MachineSkillMutationPlan(
           .append(it.outcome)
           .append(':')
           .append(it.path)
+          .append(':')
+          .append(it.desiredLinkTarget)
           .append(';')
       }
       preconditions.observations.sortedBy { it.path.toString() }.forEach {
@@ -111,10 +113,28 @@ class MachineSkillMutationPlan(
         .append('|')
         .append(preconditions.candidateBundle)
       preconditions.targetIdentities.sorted().forEach(::append)
+      preconditions.ownershipProofs.entries.sortedBy { it.key.toString() }.forEach { append(it.key).append(it.value) }
       preconditions.snapshotReferences.map(Path::toString).sorted().forEach(::append)
       append(preconditions.referenceDiscoveryComplete).append('|').append(preconditions.symlinkCapability)
+      conflicts.forEach { append(it.code).append(it.path).append(it.message) }
+      warnings.forEach { append(it.code).append(it.path).append(it.message) }
     }
     return MessageDigest.getInstance("SHA-256").digest(canonical.toByteArray()).joinToString("") { "%02x".format(it) }
+  }
+}
+
+data class PreparedMachineSkillMutation(
+  val plan: MachineSkillMutationPlan,
+  val candidate: OpaqueSkillBundle? = null,
+  val desiredRecord: ManagedSkillRecord? = null,
+  val snapshotsToRemove: Set<Path> = emptySet(),
+) {
+  init {
+    require(candidate == null || candidate.name == plan.skillName)
+    require(desiredRecord == null || desiredRecord.name == plan.skillName)
+    require(candidate == null || plan.preconditions.candidateBundle == BundleIdentity(
+      candidate.name, candidate.contentHash, candidate.totalBytes, candidate.files.size,
+    ))
   }
 }
 
