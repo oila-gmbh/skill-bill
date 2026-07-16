@@ -248,7 +248,14 @@ class OpaqueSkillBundleScanner private constructor(
     }
     override fun attributes(name: Path): BasicFileAttributes = checked { readAttributes(resolve(name)) }
     override fun newByteChannel(name: Path): SeekableByteChannel = checked {
-      Files.newByteChannel(resolve(name), setOf(READ, NOFOLLOW_LINKS))
+      val resolved = resolve(name)
+      try {
+        Files.newByteChannel(resolved, setOf(READ, NOFOLLOW_LINKS))
+      } catch (_: UnsupportedOperationException) {
+        Files.newByteChannel(resolved, setOf(READ))
+      } catch (_: IllegalArgumentException) {
+        Files.newByteChannel(resolved, setOf(READ))
+      }
     }
     override fun openDirectory(name: Path): BundleDirectory = checked {
       val child = resolve(name)
@@ -258,7 +265,7 @@ class OpaqueSkillBundleScanner private constructor(
     }
     private fun resolve(name: Path): Path {
       if (name.isAbsolute || name.nameCount != 1 || name.normalize().startsWith("..")) fail("Bundle path escapes the selected directory: $name")
-      return path.resolve(name)
+      return path.resolve(name.toString())
     }
     private inline fun <T> checked(operation: () -> T): T {
       requireIdentity()

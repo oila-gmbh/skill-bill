@@ -194,7 +194,7 @@ class FileManagedSkillRecordStore private constructor(
     ManagedSkillRecord(
       name = raw.getValue("name") as String,
       sourceKind = ManagedSkillSourceKind.valueOf((raw.getValue("source_kind") as String).uppercase()),
-      sourcePath = Path.of(raw.getValue("source_path") as String).also {
+      sourcePath = stateRoot.fileSystem.getPath(raw.getValue("source_path") as String).also {
         if (!it.isAbsolute || it != it.normalize()) throw IllegalArgumentException("source path must be absolute and normalized")
       },
       activeContentHash = raw.getValue("active_content_hash") as String,
@@ -349,7 +349,14 @@ class FileManagedSkillRecordStore private constructor(
     }
 
     override fun newByteChannel(name: Path, options: Set<java.nio.file.OpenOption>): SeekableByteChannel = checked {
-      Files.newByteChannel(resolve(name), options)
+      val resolved = resolve(name)
+      try {
+        Files.newByteChannel(resolved, options)
+      } catch (_: UnsupportedOperationException) {
+        Files.newByteChannel(resolved, options - NOFOLLOW_LINKS)
+      } catch (_: IllegalArgumentException) {
+        Files.newByteChannel(resolved, options - NOFOLLOW_LINKS)
+      }
     }
 
     override fun atomicMove(source: Path, target: Path) = checked {
@@ -366,7 +373,7 @@ class FileManagedSkillRecordStore private constructor(
       if (name.isAbsolute || name.nameCount != 1 || name.normalize().startsWith("..")) {
         throw InvalidManagedSkillRecordSchemaError(name.toString(), "record entry escapes its managed directory")
       }
-      return directory.resolve(name)
+      return directory.resolve(name.toString())
     }
 
     private inline fun <T> checked(operation: () -> T): T {
