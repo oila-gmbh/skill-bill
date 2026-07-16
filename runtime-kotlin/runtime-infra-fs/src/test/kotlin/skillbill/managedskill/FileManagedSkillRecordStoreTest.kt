@@ -17,7 +17,7 @@ import kotlin.test.assertNotNull
 
 class FileManagedSkillRecordStoreTest {
   @Test
-  fun `reads valid records on providers without secure directory streams`() {
+  fun `rejects record access on providers without secure directory streams`() {
     val archive = Files.createTempFile("managed-records", ".zip")
     Files.delete(archive)
     FileSystems.newFileSystem(URI.create("jar:${archive.toUri()}"), mapOf("create" to "true")).use { fileSystem ->
@@ -26,8 +26,8 @@ class FileManagedSkillRecordStoreTest {
       val path = store.recordPath("sample-skill")
       Files.createDirectories(path.parent)
       path.writeText(validWire(root, "sample-skill"))
-      assertEquals("sample-skill", store.read("sample-skill").name)
-      assertNotNull(store.digest("sample-skill"))
+      assertFailsWith<InvalidManagedSkillRecordSchemaError> { store.read("sample-skill") }
+      assertFailsWith<InvalidManagedSkillRecordSchemaError> { store.digest("sample-skill") }
     }
   }
 

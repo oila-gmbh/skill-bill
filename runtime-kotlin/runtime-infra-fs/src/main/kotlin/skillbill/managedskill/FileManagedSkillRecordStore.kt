@@ -19,8 +19,6 @@ import java.nio.file.StandardOpenOption.CREATE
 import java.nio.file.StandardOpenOption.CREATE_NEW
 import java.nio.file.StandardOpenOption.READ
 import java.nio.file.StandardOpenOption.WRITE
-import java.nio.file.StandardCopyOption.ATOMIC_MOVE
-import java.nio.file.StandardCopyOption.REPLACE_EXISTING
 import java.security.MessageDigest
 import java.time.Instant
 
@@ -300,7 +298,10 @@ class FileManagedSkillRecordStore private constructor(
           }
         }
       } else {
-        block(PathRecordDirectory(directory), directory)
+        throw InvalidManagedSkillRecordSchemaError(
+          stateRoot.toString(),
+          "managed record access requires identity-bound directory operations",
+        )
       }
     }.also {
       requireRealAncestors(directory)
@@ -337,49 +338,6 @@ class FileManagedSkillRecordStore private constructor(
 
     override fun atomicMove(source: Path, target: Path) = directory.move(source, directory, target)
     override fun deleteFile(name: Path) = directory.deleteFile(name)
-  }
-
-  private class PathRecordDirectory(
-    private val directory: Path,
-  ) : RecordDirectory {
-    private val identity = stableDirectoryIdentity(directory)
-
-    override fun attributes(name: Path): java.nio.file.attribute.BasicFileAttributes = checked {
-      Files.readAttributes(resolve(name), java.nio.file.attribute.BasicFileAttributes::class.java, NOFOLLOW_LINKS)
-    }
-
-    override fun newByteChannel(name: Path, options: Set<java.nio.file.OpenOption>): SeekableByteChannel = checked {
-      val resolved = resolve(name)
-      try {
-        Files.newByteChannel(resolved, options)
-      } catch (_: UnsupportedOperationException) {
-        Files.newByteChannel(resolved, options - NOFOLLOW_LINKS)
-      } catch (_: IllegalArgumentException) {
-        Files.newByteChannel(resolved, options - NOFOLLOW_LINKS)
-      }
-    }
-
-    override fun atomicMove(source: Path, target: Path) = checked {
-      Files.move(resolve(source), resolve(target), ATOMIC_MOVE, REPLACE_EXISTING)
-      Unit
-    }
-
-    override fun deleteFile(name: Path) = checked {
-      Files.delete(resolve(name))
-      Unit
-    }
-
-    private fun resolve(name: Path): Path {
-      if (name.isAbsolute || name.nameCount != 1 || name.normalize().startsWith("..")) {
-        throw InvalidManagedSkillRecordSchemaError(name.toString(), "record entry escapes its managed directory")
-      }
-      return directory.resolve(name.toString())
-    }
-
-    private inline fun <T> checked(operation: () -> T): T {
-      requireDirectoryIdentity(directory, identity)
-      return operation().also { requireDirectoryIdentity(directory, identity) }
-    }
   }
 
   private fun requireStableStateRoot() {
@@ -427,23 +385,6 @@ class FileManagedSkillRecordStore private constructor(
   }
 
   private fun digest(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
-}
-
-private fun stableDirectoryIdentity(path: Path): Any? {
-  val attributes = Files.readAttributes(path, java.nio.file.attribute.BasicFileAttributes::class.java, NOFOLLOW_LINKS)
-  if (!attributes.isDirectory || attributes.isSymbolicLink) {
-    throw InvalidManagedSkillRecordSchemaError(path.toString(), "managed record directory is not a real directory")
-  }
-  return attributes.fileKey()
-}
-
-private fun requireDirectoryIdentity(path: Path, identity: Any?) {
-  val attributes = Files.readAttributes(path, java.nio.file.attribute.BasicFileAttributes::class.java, NOFOLLOW_LINKS)
-  if (!attributes.isDirectory || attributes.isSymbolicLink ||
-    identity != null && attributes.fileKey() != null && identity != attributes.fileKey()
-  ) {
-    throw InvalidManagedSkillRecordSchemaError(path.toString(), "managed record directory identity changed")
-  }
 }
 
 private fun forceDirectoryIfSupported(directory: Path) {
