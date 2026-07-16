@@ -4,24 +4,29 @@ issue_key: "SKILL-123"
 feature_name: "skill-toolset"
 parent_spec_path: ".feature-specs/SKILL-123-skill-toolset/spec.md"
 spec_source: "local"
-status: "in_progress"
+status: "blocked"
 execution_model: "same_branch_commit_per_subtask"
 base_branch: "main"
 feature_branch: "feat/SKILL-123-skill-toolset"
 stack_branches: []
 current_subtask_intent:
   subtask_id: 1
-  action: "start"
+  action: "blocked"
 subtasks:
 - id: 1
   name: "Foundation contracts and opaque bundle scanning"
   spec_path: ".feature-specs/SKILL-123-skill-toolset/spec_subtask_1_foundation_contracts_scanner.md"
-  status: "pending"
+  status: "blocked"
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260715-184758-561q"
-  blocked_reason: null
-  last_resumable_step: null
+  blocked_reason: "review_loop_conflict: audit reported the same unmet criteria after\
+    \ remediation; stopping the audit_gap loop for human/spec reconciliation. unmet_criteria=Acceptance\
+    \ criterion 5 is unmet: the non-SecureDirectoryStream fallback opens and traverses\
+    \ the bundle root through raceable pathname operations, so concurrent root-to-symlink\
+    \ substitution can capture files outside the selected bundle despite before-and-after\
+    \ identity checks."
+  last_resumable_step: "audit"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []

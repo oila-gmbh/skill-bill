@@ -28,11 +28,18 @@ class InvalidOpaqueSkillBundleException(message: String, cause: Throwable? = nul
 
 class OpaqueSkillBundleScanner private constructor(
   private val beforeRootOpen: (Path) -> Unit,
+  private val useSecureDirectoryStreams: Boolean,
+  private val allowOrdinaryFileFallback: Boolean,
   @Suppress("UNUSED_PARAMETER") rootOpenTestSeam: Unit,
 ) {
-  constructor() : this({}, Unit)
+  constructor() : this({}, true, false, Unit)
 
-  internal constructor(beforeRootOpen: (Path) -> Unit) : this(beforeRootOpen, Unit)
+  internal constructor(beforeRootOpen: (Path) -> Unit) : this(beforeRootOpen, true, false, Unit)
+
+  internal constructor(
+    useSecureDirectoryStreams: Boolean,
+    allowOrdinaryFileFallback: Boolean = false,
+  ) : this({}, useSecureDirectoryStreams, allowOrdinaryFileFallback, Unit)
 
   fun scan(source: Path, protectedNames: Set<String>): OpaqueSkillBundle {
     val absoluteSource = source.toAbsolutePath().normalize()
@@ -75,7 +82,7 @@ class OpaqueSkillBundleScanner private constructor(
       capturePathDirectory(root, before, only)
     } else {
       Files.newDirectoryStream(parentPath).use { parent ->
-        if (parent is SecureDirectoryStream<Path>) {
+        if (useSecureDirectoryStreams && parent is SecureDirectoryStream<Path>) {
           parent.newDirectoryStream(root.fileName, NOFOLLOW_LINKS).use { opened ->
             val openedAttributes = secureAttributes(opened, Path.of("."))
             requireSameDirectory(root, before, openedAttributes)
@@ -99,10 +106,11 @@ class OpaqueSkillBundleScanner private constructor(
     attributes: BasicFileAttributes,
     only: Path?,
   ): List<OpaqueSkillBundleFile> {
-    if (root.fileSystem.provider().scheme != "jar") {
+    val scheme = root.fileSystem.provider().scheme
+    if (scheme != "jar" && !allowsOrdinaryFileFallback(root)) {
       fail("The filesystem cannot provide identity-bound bundle traversal.")
     }
-    return captureDirectory(ArchiveBundleDirectory(root, attributes), "", only)
+    return captureDirectory(PathBundleDirectory(root, attributes, noFollowChannels = scheme != "jar"), "", only)
   }
 
   private fun captureDirectory(
@@ -250,10 +258,24 @@ class OpaqueSkillBundleScanner private constructor(
     override fun close() = stream.close()
   }
 
-  private class ArchiveBundleDirectory(
+  private fun allowsOrdinaryFileFallback(root: Path): Boolean {
+    return allowOrdinaryFileFallback || (
+      root.fileSystem.provider().scheme == "file" &&
+        System.getProperty("os.name").contains("windows", ignoreCase = true)
+      )
+  }
+
+  private class PathBundleDirectory(
     private val path: Path,
     private val identity: BasicFileAttributes,
+    private val noFollowChannels: Boolean,
   ) : BundleDirectory {
+    init {
+      if (noFollowChannels && identity.fileKey() == null) {
+        throw InvalidOpaqueSkillBundleException("The filesystem cannot provide stable bundle directory identity: $path")
+      }
+    }
+
     override fun names(): List<Path> = checked {
       Files.newDirectoryStream(path).use { entries -> entries.map { it.fileName } }
     }
@@ -263,7 +285,8 @@ class OpaqueSkillBundleScanner private constructor(
     }
 
     override fun newByteChannel(name: Path): SeekableByteChannel = checked {
-      Files.newByteChannel(resolve(name), setOf(READ))
+      val options = if (noFollowChannels) setOf(READ, NOFOLLOW_LINKS) else setOf(READ)
+      Files.newByteChannel(resolve(name), options)
     }
 
     override fun openDirectory(name: Path): BundleDirectory = checked {
@@ -272,7 +295,7 @@ class OpaqueSkillBundleScanner private constructor(
       if (!attributes.isDirectory || attributes.isSymbolicLink) {
         throw InvalidOpaqueSkillBundleException("Symbolic links are not allowed: $name")
       }
-      ArchiveBundleDirectory(child, attributes)
+      PathBundleDirectory(child, attributes, noFollowChannels)
     }
 
     private fun resolve(name: Path): Path {
@@ -292,6 +315,7 @@ class OpaqueSkillBundleScanner private constructor(
     private fun requireIdentity() {
       val actual = Files.readAttributes(path, BasicFileAttributes::class.java, NOFOLLOW_LINKS)
       if (!actual.isDirectory || actual.isSymbolicLink ||
+        noFollowChannels && actual.fileKey() == null ||
         identity.fileKey() != null && actual.fileKey() != null && identity.fileKey() != actual.fileKey()
       ) {
         throw InvalidOpaqueSkillBundleException("The bundle directory identity changed during traversal: $path")
