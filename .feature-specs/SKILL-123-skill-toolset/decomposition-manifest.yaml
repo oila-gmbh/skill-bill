@@ -4,14 +4,14 @@ issue_key: "SKILL-123"
 feature_name: "skill-toolset"
 parent_spec_path: ".feature-specs/SKILL-123-skill-toolset/spec.md"
 spec_source: "local"
-status: "in_progress"
+status: "complete"
 execution_model: "same_branch_commit_per_subtask"
 base_branch: "main"
 feature_branch: "feat/SKILL-123-skill-toolset"
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 6
-  action: "start"
+  subtask_id: 0
+  action: "complete"
 subtasks:
 - id: 1
   name: "Foundation contracts and opaque bundle scanning"
@@ -93,12 +93,12 @@ subtasks:
 - id: 6
   name: "Third-Party Skills navigator and full validation"
   spec_path: ".feature-specs/SKILL-123-skill-toolset/spec_subtask_6_navigator_validation.md"
-  status: "pending"
+  status: "complete"
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260716-173245-9zus"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []

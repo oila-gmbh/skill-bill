@@ -16,6 +16,19 @@ class OpaqueSkillBundleScannerTest {
   private val scanner = OpaqueSkillBundleScanner()
 
   @Test
+  fun `imports a standalone SKILL markdown file without sibling files`() {
+    val root = Files.createTempDirectory("opaque-skill-file")
+    val skill = root.resolve("SKILL.md")
+    skill.writeText("---\nname: standalone-skill\ndescription: Standalone\n---\nBody")
+    root.resolve("ignored.txt").writeText("not part of the selected file")
+
+    val bundle = scanner.scan(skill, emptySet())
+
+    assertEquals("standalone-skill", bundle.name)
+    assertEquals(listOf("SKILL.md"), bundle.files.map { it.relativePath })
+  }
+
+  @Test
   fun `scans root skill and supporting files deterministically`() {
     val root = Files.createTempDirectory("opaque-skill")
     root.resolve("SKILL.md").writeText("---\nname: sample-skill\ndescription: Sample\n---\nBody")

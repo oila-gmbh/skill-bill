@@ -113,7 +113,9 @@ class SkillBillViewModel(
     if (detail.ownership.equals("MANAGED", true) && recordIdentity != null && contentIdentity != null) {
       runCatching { machineSkillGateway.openManagedEdit(logicalKey, recordIdentity, contentIdentity) }
         .onSuccess { edit ->
-          if (viewState.selectedTreeItemId != itemId) return@onSuccess
+          if (!machineEditorOpenStillCurrent(itemId, logicalKey, recordIdentity, contentIdentity)) {
+            return@onSuccess
+          }
           viewState.loadMachineEditorDocument(
             AuthoredContentDocument(
               itemId,
@@ -130,7 +132,9 @@ class SkillBillViewModel(
           )
         }
         .onFailure { error ->
-          if (viewState.selectedTreeItemId != itemId) return@onFailure
+          if (!machineEditorOpenStillCurrent(itemId, logicalKey, recordIdentity, contentIdentity)) {
+            return@onFailure
+          }
           viewState.loadMachineEditorDocument(
             AuthoredContentDocument(
               itemId,
@@ -168,6 +172,18 @@ class SkillBillViewModel(
       )
     }
     return viewState.currentState
+  }
+
+  private fun machineEditorOpenStillCurrent(
+    itemId: String,
+    logicalKey: String,
+    recordIdentity: String,
+    contentIdentity: String,
+  ): Boolean {
+    val currentDetail = machineToolsController.detailFor(logicalKey)
+    return viewState.selectedTreeItemId == itemId &&
+      currentDetail?.recordIdentity == recordIdentity &&
+      currentDetail.contentIdentity == contentIdentity
   }
 
   fun resolveGeneratedArtifactTreeItemId(artifactPath: String): String? =
@@ -269,6 +285,10 @@ class SkillBillViewModel(
     val inventory = result.inventory ?: return state
     val token = machineToolsController.beginInventoryRefresh()
     acceptMachineSkillInventory(token, inventory)
+    val managedName = result.request.managedEdit?.name
+    if (managedName != null) {
+      viewState.refreshMachineEditorDetail(inventory.details[managedName])
+    }
     return viewState.currentState
   }
 

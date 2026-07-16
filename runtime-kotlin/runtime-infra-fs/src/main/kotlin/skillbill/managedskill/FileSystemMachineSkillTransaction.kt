@@ -37,7 +37,7 @@ class FileSystemMachineSkillTransaction(
     val record = runCatching { store.read(plan.skillName) }.getOrNull()
     return plan.preconditions.copy(
       observations = inspector.observe(plan.preconditions.observations.map { it.path }),
-      recordDigest = store.digest(plan.skillName),
+      recordDigest = runCatching { store.digest(plan.skillName) }.getOrNull(),
       recordContractVersion = record?.contractVersion,
       activeHash = record?.activeContentHash,
       snapshotReferences = references.references,
@@ -97,7 +97,7 @@ class FileSystemMachineSkillTransaction(
   }
 
   private fun validationFailure(prepared: PreparedMachineSkillMutation): String? = when {
-    currentPreconditions(prepared.plan) != prepared.plan.preconditions -> {
+    !preconditionsMatch(prepared.plan.preconditions, currentPreconditions(prepared.plan)) -> {
       "Mutation preconditions changed before the first write"
     }
     prepared.plan.conflicts.isNotEmpty() || prepared.plan.mutations.any {
@@ -108,6 +108,10 @@ class FileSystemMachineSkillTransaction(
       "Symbolic links are unavailable; on Windows enable Developer Mode or run elevated"
     else -> null
   }
+
+  private fun preconditionsMatch(expected: MachineSkillPreconditions, actual: MachineSkillPreconditions): Boolean =
+    expected.copy(observations = emptyList()) == actual.copy(observations = emptyList()) &&
+      expected.observations.toSet() == actual.observations.toSet()
 }
 
 private class MachineSkillTransactionExecution(

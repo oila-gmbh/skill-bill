@@ -67,7 +67,7 @@ private class FileSystemMachineSkillRecords(
 ) : MachineSkillRecordWorkspacePort {
   override fun readRecord(name: String): ManagedSkillRecord? = runCatching { store.read(name) }.getOrNull()
 
-  override fun recordDigest(name: String): String? = store.digest(name)
+  override fun recordDigest(name: String): String? = runCatching { store.digest(name) }.getOrNull()
 
   override fun sourceRoot(name: String): Path = store.sourceRoot(name)
 

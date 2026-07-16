@@ -1,5 +1,16 @@
 # SkillBill desktop feature — history
 
+## [2026-07-16] SKILL-123 third-party skills navigator (subtask 6)
+Areas: runtime-desktop/feature/skillbill, runtime-core, runtime-application/managedskill, runtime-infra-fs/managedskill
+- Added a session-collapsible, accessible Third-Party Skills navigator group that is independent of repository state, deduplicates non-product machine inventory by skill name, and exposes empty, ownership, health, conflict, and divergence states.
+- Navigator expansion and refresh share the manager's stale-protected inventory snapshot; successful install, adoption, edit, retarget, repair, and delete publish one result to both surfaces. reusable
+- Managed selection opens the canonical runtime `SKILL.md` with a distinct third-party label and reuses validate-restage-retarget saving; unmanaged and divergent selections remain read-only with source-choice and adoption guidance.
+- Inspector state follows machine selection and accepted managed saves while repository selection clears it, preserving canonical source/snapshot, installed-target, link-health, and conflict details.
+- Filesystem transactions now handle first-install digests and order-insensitive preconditions correctly; end-to-end coverage composes application and filesystem adapters in runtime-core to preserve Gradle module layering.
+- Known limitation: machine target discovery remains frozen for the desktop process lifetime, as established by the shared manager inventory contract.
+Feature flag: N/A
+Acceptance criteria: 13/13 implemented
+
 ## [2026-07-16] SKILL-123 desktop machine-skill tools (subtask 5)
 Areas: runtime-application/managedskill, runtime-core/di, runtime-desktop/core/domain, runtime-desktop/core/data, runtime-desktop/feature/skillbill
 - Added an accessible Tools toolbar dialog and command-palette actions for installing and managing machine skills without an open writable repository; all entry points dispatch through the same presentation-safe controller actions.

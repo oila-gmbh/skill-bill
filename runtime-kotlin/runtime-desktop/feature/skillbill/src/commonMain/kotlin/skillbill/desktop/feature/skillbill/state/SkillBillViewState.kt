@@ -166,6 +166,7 @@ internal class SkillBillViewState(
 
   fun loadEditorForSelection() {
     managedEditorBase = null
+    machineEditorDetail = null
     val selection = selectedTreeItemId
     if (selection == null || !containsTreeItem(selection)) {
       resetEditorDocument()
@@ -215,13 +216,19 @@ internal class SkillBillViewState(
     managedEdit: ManagedMachineSkillEditPresentation? = null,
     detail: skillbill.desktop.core.domain.model.MachineSkillManagerDetail? = null,
   ) {
+    if (document.treeItemId != selectedTreeItemId) return
     loadedEditorDocument = document
-    editorSelectionId = selectedTreeItemId
+    editorSelectionId = document.treeItemId
     editorDraftText = document.text
     editorSaveInProgress = false
     editorSaveErrorMessage = document.runtimeErrorMessage
     dirtyEditorPrompt = null
     managedEditorBase = managedEdit
+    machineEditorDetail = detail
+    currentState = createState()
+  }
+
+  fun refreshMachineEditorDetail(detail: skillbill.desktop.core.domain.model.MachineSkillManagerDetail?) {
     machineEditorDetail = detail
     currentState = createState()
   }
