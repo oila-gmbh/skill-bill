@@ -1,6 +1,8 @@
 package skillbill.managedskill
 
 import skillbill.managedskill.model.MachineSkillApplyResult
+import skillbill.managedskill.model.MachineSkillMutation
+import skillbill.managedskill.model.MachineSkillMutationPlan
 import skillbill.managedskill.model.MachineSkillOperation
 import skillbill.managedskill.model.MachineSkillOutcome
 import skillbill.managedskill.model.MachineSkillPreconditions
@@ -23,7 +25,7 @@ class FileSystemMachineSkillTransaction(
   private val store = FileManagedSkillRecordStore(normalizedHome)
   private val inspector = FileSystemMachineSkillMutationInspector(normalizedHome, targetRoots)
 
-  override fun currentPreconditions(plan: skillbill.managedskill.model.MachineSkillMutationPlan): MachineSkillPreconditions {
+  override fun currentPreconditions(plan: MachineSkillMutationPlan): MachineSkillPreconditions {
     val references = inspector.snapshotReferences()
     val record = runCatching { store.read(plan.skillName) }.getOrNull()
     return plan.preconditions.copy(
@@ -38,94 +40,164 @@ class FileSystemMachineSkillTransaction(
   }
 
   override fun apply(prepared: PreparedMachineSkillMutation): MachineSkillApplyResult {
-    val plan = prepared.plan
-    if (currentPreconditions(plan) != plan.preconditions) {
-      return MachineSkillApplyResult.Blocked("Mutation preconditions changed before the first write")
-    }
-    if (plan.conflicts.isNotEmpty() || plan.mutations.any { it.outcome in setOf(MachineSkillOutcome.CONFLICT, MachineSkillOutcome.BLOCKED) }) {
-      return MachineSkillApplyResult.Blocked("Mutation contains conflicts or blocked outcomes")
-    }
-    if (plan.mutations.any { it.resource == MachineSkillResourceKind.AGENT_LINK } &&
-      inspector.symlinkCapability() != SymlinkCapability.AVAILABLE
-    ) return MachineSkillApplyResult.Blocked("Symbolic links are unavailable")
-
-    val sourcePublication = MachineSkillSourcePublication(stateRoot.resolve("managed-skills"))
-    var stagedSource: Path? = null
-    var promotedSource: PromotedMachineSkillSource? = null
-    var createdSnapshot: Path? = null
-    val linkBackups = mutableListOf<Pair<Path, Path?>>()
-    val resourceBackups = mutableListOf<Pair<Path, Path>>()
-    val expectedDigest = plan.preconditions.recordDigest ?: FileManagedSkillRecordStore.EXPECTED_ABSENT
-    val previousRecord = runCatching { store.read(plan.skillName) }.getOrNull()
-    var recordWritten = false
-    try {
-      val candidate = prepared.candidate
-      if (candidate != null) {
-        val destination = stateRoot.resolve("installed-skills/${candidate.name}-${candidate.contentHash}")
-        val existed = Files.exists(destination, NOFOLLOW_LINKS)
-        val published = MachineSkillSnapshotPublication(stateRoot.resolve("installed-skills")).publish(candidate)
-        createdSnapshot = published.takeUnless { existed }
-      }
-      if (candidate != null && plan.mutations.any { it.resource == MachineSkillResourceKind.MANAGED_SOURCE && it.outcome != MachineSkillOutcome.UNCHANGED }) {
-        stagedSource = sourcePublication.stage(candidate)
-        promotedSource = sourcePublication.promote(plan.skillName, stagedSource)
-        stagedSource = null
-      }
-      plan.mutations.filter {
-        it.operation == MachineSkillOperation.REMOVE && it.resource in setOf(
-          MachineSkillResourceKind.MANAGED_SOURCE,
-          MachineSkillResourceKind.RECORD,
-        )
-      }.forEach { mutation ->
-        val current = inspector.observe(listOf(mutation.path)).single()
-        require(current == mutation.expected) { "Managed resource changed before deletion: ${mutation.path}" }
-        if (Files.exists(mutation.path, NOFOLLOW_LINKS)) {
-          val backup = mutation.path.resolveSibling(".${mutation.path.fileName}.backup-${System.nanoTime()}")
-          Files.move(mutation.path, backup, ATOMIC_MOVE)
-          resourceBackups += mutation.path to backup
-        }
-      }
-      plan.mutations.filter { it.resource == MachineSkillResourceKind.AGENT_LINK }.forEach { mutation ->
-        if (mutation.outcome in setOf(MachineSkillOutcome.UNCHANGED, MachineSkillOutcome.SKIPPED, MachineSkillOutcome.WARNING)) return@forEach
-        val current = inspector.observe(listOf(mutation.path)).single()
-        require(current == mutation.expected) { "Agent link changed before activation: ${mutation.path}" }
-        val backup = if (current.kind == NoFollowEntryKind.ABSENT) null else mutation.path.resolveSibling(".${mutation.path.fileName}.backup-${System.nanoTime()}")
-        if (backup != null) Files.move(mutation.path, backup, ATOMIC_MOVE)
-        linkBackups += mutation.path to backup
-        if (mutation.operation != MachineSkillOperation.REMOVE) {
-          val target = requireNotNull(mutation.desiredLinkTarget)
-          Files.createDirectories(mutation.path.parent)
-          Files.createSymbolicLink(mutation.path, target)
-        }
-      }
-      prepared.desiredRecord?.let { store.write(it, expectedDigest); recordWritten = true }
-      promotedSource?.let(sourcePublication::commit)
-      linkBackups.mapNotNull { it.second }.forEach(::deleteTree)
-      resourceBackups.map { it.second }.forEach(::deleteTree)
-      prepared.snapshotsToRemove.forEach { snapshot -> runCatching { deleteTree(snapshot) } }
-      return MachineSkillApplyResult.Applied(plan.planId)
-    } catch (failure: Exception) {
-      linkBackups.asReversed().forEach { (path, backup) ->
-        runCatching { Files.deleteIfExists(path); if (backup != null) Files.move(backup, path, ATOMIC_MOVE) }
-      }
-      promotedSource?.let { runCatching { sourcePublication.rollback(it) } }
-      resourceBackups.asReversed().forEach { (path, backup) ->
-        runCatching { if (Files.exists(backup, NOFOLLOW_LINKS)) Files.move(backup, path, ATOMIC_MOVE) }
-      }
-      if (recordWritten) runCatching {
-        if (previousRecord == null) Files.deleteIfExists(store.recordPath(plan.skillName))
-        else store.write(previousRecord, store.digest(plan.skillName))
-      }
-      createdSnapshot?.let { runCatching { deleteTree(it) } }
-      stagedSource?.let { runCatching { deleteTree(it) } }
-      return MachineSkillApplyResult.Blocked(failure.message ?: failure::class.java.simpleName)
+    validationFailure(prepared)?.let { return MachineSkillApplyResult.Blocked(it) }
+    val execution = MachineSkillTransactionExecution(stateRoot, store, inspector, prepared)
+    return runCatching {
+      execution.execute()
+      MachineSkillApplyResult.Applied(prepared.plan.planId)
+    }.getOrElse { failure ->
+      execution.rollback()
+      MachineSkillApplyResult.Blocked(failure.message ?: failure::class.java.simpleName)
     }
   }
 
   override fun recoverIncompleteTransactions(): List<String> = emptyList()
 
-  private fun deleteTree(path: Path) {
-    if (!Files.exists(path, NOFOLLOW_LINKS)) return
-    Files.walk(path).use { paths -> paths.sorted(Comparator.reverseOrder()).forEach(Files::deleteIfExists) }
+  private fun validationFailure(prepared: PreparedMachineSkillMutation): String? = when {
+    currentPreconditions(prepared.plan) != prepared.plan.preconditions -> {
+      "Mutation preconditions changed before the first write"
+    }
+    prepared.plan.conflicts.isNotEmpty() || prepared.plan.mutations.any {
+      it.outcome in setOf(MachineSkillOutcome.CONFLICT, MachineSkillOutcome.BLOCKED)
+    } -> "Mutation contains conflicts or blocked outcomes"
+    prepared.plan.mutations.any { it.resource == MachineSkillResourceKind.AGENT_LINK } &&
+      inspector.symlinkCapability() != SymlinkCapability.AVAILABLE -> "Symbolic links are unavailable"
+    else -> null
   }
+}
+
+private class MachineSkillTransactionExecution(
+  private val stateRoot: Path,
+  private val store: FileManagedSkillRecordStore,
+  private val inspector: FileSystemMachineSkillMutationInspector,
+  private val prepared: PreparedMachineSkillMutation,
+) {
+  private val plan = prepared.plan
+  private val sourcePublication = MachineSkillSourcePublication(stateRoot.resolve("managed-skills"))
+  private var stagedSource: Path? = null
+  private var promotedSource: PromotedMachineSkillSource? = null
+  private var createdSnapshot: Path? = null
+  private val linkBackups = mutableListOf<Pair<Path, Path?>>()
+  private val resourceBackups = mutableListOf<Pair<Path, Path>>()
+  private val expectedDigest = plan.preconditions.recordDigest ?: FileManagedSkillRecordStore.EXPECTED_ABSENT
+  private val previousRecord = runCatching { store.read(plan.skillName) }.getOrNull()
+  private var recordWritten = false
+
+  fun execute() {
+    publishSnapshot()
+    publishSource()
+    backupRemovedResources()
+    activateLinks()
+    writeRecord()
+    commit()
+  }
+
+  fun rollback() {
+    linkBackups.asReversed().forEach { (path, backup) ->
+      runCatching {
+        Files.deleteIfExists(path)
+        if (backup != null) Files.move(backup, path, ATOMIC_MOVE)
+      }
+    }
+    promotedSource?.let { runCatching { sourcePublication.rollback(it) } }
+    resourceBackups.asReversed().forEach { (path, backup) ->
+      runCatching {
+        if (Files.exists(backup, NOFOLLOW_LINKS)) Files.move(backup, path, ATOMIC_MOVE)
+      }
+    }
+    restoreRecord()
+    createdSnapshot?.let { runCatching { deleteMachineSkillTree(it) } }
+    stagedSource?.let { runCatching { deleteMachineSkillTree(it) } }
+  }
+
+  private fun publishSnapshot() {
+    val candidate = prepared.candidate ?: return
+    val destination = stateRoot.resolve("installed-skills/${candidate.name}-${candidate.contentHash}")
+    val existed = Files.exists(destination, NOFOLLOW_LINKS)
+    val published = MachineSkillSnapshotPublication(stateRoot.resolve("installed-skills")).publish(candidate)
+    createdSnapshot = published.takeUnless { existed }
+  }
+
+  private fun publishSource() {
+    val candidate = prepared.candidate ?: return
+    val sourceChanges = plan.mutations.any {
+      it.resource == MachineSkillResourceKind.MANAGED_SOURCE && it.outcome != MachineSkillOutcome.UNCHANGED
+    }
+    if (!sourceChanges) return
+    stagedSource = sourcePublication.stage(candidate)
+    promotedSource = sourcePublication.promote(plan.skillName, requireNotNull(stagedSource))
+    stagedSource = null
+  }
+
+  private fun backupRemovedResources() {
+    plan.mutations.filter { mutation ->
+      mutation.operation == MachineSkillOperation.REMOVE &&
+        mutation.resource in setOf(MachineSkillResourceKind.MANAGED_SOURCE, MachineSkillResourceKind.RECORD)
+    }.forEach { mutation ->
+      val current = inspector.observe(listOf(mutation.path)).single()
+      require(current == mutation.expected) { "Managed resource changed before deletion: ${mutation.path}" }
+      if (Files.exists(mutation.path, NOFOLLOW_LINKS)) {
+        val backup = mutation.path.resolveSibling(".${mutation.path.fileName}.backup-${System.nanoTime()}")
+        Files.move(mutation.path, backup, ATOMIC_MOVE)
+        resourceBackups += mutation.path to backup
+      }
+    }
+  }
+
+  private fun activateLinks() {
+    plan.mutations.filter { it.resource == MachineSkillResourceKind.AGENT_LINK }
+      .filterNot(::linkMutationNeedsNoWrite)
+      .forEach { mutation ->
+        val current = inspector.observe(listOf(mutation.path)).single()
+        require(current == mutation.expected) { "Agent link changed before activation: ${mutation.path}" }
+        val backup = current.takeUnless { it.kind == NoFollowEntryKind.ABSENT }?.let {
+          mutation.path.resolveSibling(".${mutation.path.fileName}.backup-${System.nanoTime()}")
+        }
+        if (backup != null) Files.move(mutation.path, backup, ATOMIC_MOVE)
+        linkBackups += mutation.path to backup
+        if (mutation.operation != MachineSkillOperation.REMOVE) {
+          Files.createDirectories(mutation.path.parent)
+          Files.createSymbolicLink(mutation.path, requireNotNull(mutation.desiredLinkTarget))
+        }
+      }
+  }
+
+  private fun writeRecord() {
+    prepared.desiredRecord?.let {
+      store.write(it, expectedDigest)
+      recordWritten = true
+    }
+  }
+
+  private fun commit() {
+    promotedSource?.let(sourcePublication::commit)
+    linkBackups.mapNotNull { it.second }.forEach(::deleteMachineSkillTree)
+    resourceBackups.map { it.second }.forEach(::deleteMachineSkillTree)
+    prepared.snapshotsToRemove.forEach { snapshot -> runCatching { deleteMachineSkillTree(snapshot) } }
+  }
+
+  private fun restoreRecord() {
+    if (!recordWritten) return
+    runCatching {
+      if (previousRecord == null) {
+        Files.deleteIfExists(store.recordPath(plan.skillName))
+      } else {
+        store.write(previousRecord, store.digest(plan.skillName))
+      }
+    }
+  }
+}
+
+private fun linkMutationNeedsNoWrite(mutation: MachineSkillMutation): Boolean {
+  val outcomes = setOf(
+    MachineSkillOutcome.UNCHANGED,
+    MachineSkillOutcome.SKIPPED,
+    MachineSkillOutcome.WARNING,
+  )
+  return mutation.outcome in outcomes
+}
+
+private fun deleteMachineSkillTree(path: Path) {
+  if (!Files.exists(path, NOFOLLOW_LINKS)) return
+  Files.walk(path).use { paths -> paths.sorted(Comparator.reverseOrder()).forEach(Files::deleteIfExists) }
 }

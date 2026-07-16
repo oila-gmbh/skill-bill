@@ -3,7 +3,15 @@ package skillbill.managedskill.model
 import java.nio.file.Path
 
 enum class MachineSkillServiceOutcomeKind {
-  CREATED, UNCHANGED, RETARGETED, REMOVED, SKIPPED, WARNING, FAILED, CONFLICT, BLOCKED
+  CREATED,
+  UNCHANGED,
+  RETARGETED,
+  REMOVED,
+  SKIPPED,
+  WARNING,
+  FAILED,
+  CONFLICT,
+  BLOCKED,
 }
 
 data class MachineSkillServiceOutcome(
@@ -46,7 +54,12 @@ data class AdoptMachineSkillRequest(
 data class RepairMachineSkillRequest(val name: String)
 data class DeleteMachineSkillRequest(val name: String)
 data class ConfirmMachineSkillDeleteRequest(val preview: MachineSkillOperationPreview, val confirmedPlanId: String)
-data class OpenMachineSkillEdit(val name: String, val skillMarkdown: String, val recordDigest: String, val sourceHash: String)
+data class OpenMachineSkillEdit(
+  val name: String,
+  val skillMarkdown: String,
+  val recordDigest: String,
+  val sourceHash: String,
+)
 
 data class RefreshMachineSkillsResult(
   val snapshot: MachineSkillInventorySnapshot,

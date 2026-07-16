@@ -1,3 +1,13 @@
+## [2026-07-16] SKILL-123 machine-skill application services
+Areas: runtime-kotlin/runtime-{application,domain,infra-fs,ports}
+- Shared lifecycle services plan install, update, edit, adoption, target reconciliation, repair, delete, and refresh through typed per-target outcomes without leaking ownership or path policy into presentation code.
+- Target mutations are confined to configured discovered roots; adoption replaces only explicitly selected equivalent copies, while divergent or unhealthy state remains blocked or diagnostic.
+- Snapshot health verifies captured bytes and the content-hash marker independently; delete discovers all owned links and removes only snapshots unreferenced by remaining records or links. reusable
+- Pattern: build immutable typed preview contexts at the application boundary, then delegate guarded publication, activation, commit, and rollback steps to cohesive filesystem transaction ports. reusable
+- Known limitation: durable recovery of interrupted filesystem transactions remains unimplemented, so complete prior-state restoration after a process crash is not yet proven for update and edit.
+Feature flag: N/A
+Acceptance criteria: 9/11 fully implemented
+
 ## [2026-07-16] SKILL-123 transactional machine-skill mutation previews
 Areas: runtime-kotlin/runtime-{application,contracts,domain,infra-fs,ports}, orchestration/contracts
 - Immutable preview plans capture exact source, record, snapshot, and agent-link outcomes plus no-follow path/link identity, digests, bundle and target identity, ownership, references, conflicts, warnings, and symlink capability.

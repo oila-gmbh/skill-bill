@@ -1,3 +1,5 @@
+@file:Suppress("ktlint:standard:max-line-length")
+
 package skillbill.application.managedskill
 
 import me.tatarka.inject.annotations.Inject
@@ -11,11 +13,28 @@ class MachineSkillRefreshService(private val inventoryService: MachineSkillInven
   suspend fun refresh(request: MachineSkillInventoryRequest): RefreshMachineSkillsResult {
     val snapshot = inventoryService.inventory(request)
     val rowOutcomes = snapshot.rows.map { row ->
-      val kind = if (row.issues.isEmpty()) MachineSkillServiceOutcomeKind.UNCHANGED else MachineSkillServiceOutcomeKind.WARNING
-      MachineSkillServiceOutcome(kind, "inventory-${kind.name.lowercase()}", row.issues.joinToString { it.message }.ifEmpty { "Inventory refreshed" }, row.normalizedName)
+      val kind = if (row.issues.isEmpty()) {
+        MachineSkillServiceOutcomeKind.UNCHANGED
+      } else {
+        MachineSkillServiceOutcomeKind.WARNING
+      }
+      MachineSkillServiceOutcome(
+        kind,
+        "inventory-${kind.name.lowercase()}",
+        row.issues.joinToString {
+          it.message
+        }.ifEmpty { "Inventory refreshed" },
+        row.normalizedName,
+      )
     }
     val diagnostics = snapshot.diagnostics.map { diagnostic ->
-      MachineSkillServiceOutcome(MachineSkillServiceOutcomeKind.WARNING, diagnostic.kind, diagnostic.message, "inventory", path = diagnostic.path)
+      MachineSkillServiceOutcome(
+        MachineSkillServiceOutcomeKind.WARNING,
+        diagnostic.kind,
+        diagnostic.message,
+        "inventory",
+        path = diagnostic.path,
+      )
     }
     return RefreshMachineSkillsResult(snapshot, rowOutcomes + diagnostics)
   }

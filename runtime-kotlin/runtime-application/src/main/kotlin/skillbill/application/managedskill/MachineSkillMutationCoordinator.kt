@@ -3,10 +3,9 @@ package skillbill.application.managedskill
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import skillbill.managedskill.model.MachineSkillApplyResult
-import skillbill.managedskill.model.MachineSkillMutationPlan
 import skillbill.managedskill.model.MachineSkillPreconditions
-import skillbill.managedskill.model.StalePrecondition
 import skillbill.managedskill.model.PreparedMachineSkillMutation
+import skillbill.managedskill.model.StalePrecondition
 import skillbill.ports.managedskill.MachineSkillTransactionPort
 
 class MachineSkillMutationCoordinator(private val transaction: MachineSkillTransactionPort) {

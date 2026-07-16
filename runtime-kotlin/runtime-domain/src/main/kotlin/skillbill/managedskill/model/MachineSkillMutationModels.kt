@@ -132,9 +132,14 @@ data class PreparedMachineSkillMutation(
   init {
     require(candidate == null || candidate.name == plan.skillName)
     require(desiredRecord == null || desiredRecord.name == plan.skillName)
-    require(candidate == null || plan.preconditions.candidateBundle == BundleIdentity(
-      candidate.name, candidate.contentHash, candidate.totalBytes, candidate.files.size,
-    ))
+    require(
+      candidate == null || plan.preconditions.candidateBundle == BundleIdentity(
+        candidate.name,
+        candidate.contentHash,
+        candidate.totalBytes,
+        candidate.files.size,
+      ),
+    )
   }
 }
 

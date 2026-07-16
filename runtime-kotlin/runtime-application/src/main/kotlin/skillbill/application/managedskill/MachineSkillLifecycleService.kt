@@ -14,7 +14,11 @@ import skillbill.managedskill.model.MachineSkillServiceOutcomeKind
 class MachineSkillLifecycleService(private val coordinator: MachineSkillMutationCoordinator) {
   suspend fun apply(preview: MachineSkillOperationPreview): MachineSkillOperationResult {
     val prepared = preview.prepared
-      ?: return result(preview, null, preview.outcomes + outcome(preview, MachineSkillServiceOutcomeKind.BLOCKED, "preview-blocked"))
+      ?: return result(
+        preview,
+        null,
+        preview.outcomes + outcome(preview, MachineSkillServiceOutcomeKind.BLOCKED, "preview-blocked"),
+      )
     return when (val applied = coordinator.apply(prepared)) {
       is MachineSkillApplyResult.Applied -> result(preview, applied.planId, outcomes(preview))
       is MachineSkillApplyResult.Stale -> result(
@@ -40,7 +44,13 @@ class MachineSkillLifecycleService(private val coordinator: MachineSkillMutation
 
   suspend fun confirmDelete(request: ConfirmMachineSkillDeleteRequest): MachineSkillOperationResult {
     val preview = request.preview
-    require(preview.operation == MachineSkillMutationKind.DELETE) { "Confirmation is not for a delete preview" }
+    if (preview.operation != MachineSkillMutationKind.DELETE) {
+      return result(
+        preview,
+        null,
+        listOf(outcome(preview, MachineSkillServiceOutcomeKind.BLOCKED, "confirmation-not-delete")),
+      )
+    }
     val planId = preview.prepared?.plan?.planId
     if (planId == null || request.confirmedPlanId != planId) {
       return result(
@@ -64,7 +74,13 @@ class MachineSkillLifecycleService(private val coordinator: MachineSkillMutation
         MachineSkillOutcome.SKIPPED -> MachineSkillServiceOutcomeKind.SKIPPED
         MachineSkillOutcome.BLOCKED -> MachineSkillServiceOutcomeKind.BLOCKED
       }
-      MachineSkillServiceOutcome(kind, mutation.outcome.name.lowercase(), mutation.operation.name, preview.skillName, path = mutation.path)
+      MachineSkillServiceOutcome(
+        kind,
+        mutation.outcome.name.lowercase(),
+        mutation.operation.name,
+        preview.skillName,
+        path = mutation.path,
+      )
     } + preview.outcomes
 
   private fun outcome(
