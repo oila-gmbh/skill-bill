@@ -31,7 +31,18 @@ class OpaqueSkillBundleScanner private constructor(
 internal class OpaqueSkillBundleScanContext(
   val beforeRootOpen: (Path) -> Unit,
   val useSecureDirectoryStreams: Boolean,
+  val limits: OpaqueSkillBundleScanLimits = OpaqueSkillBundleScanLimits(),
 )
+
+internal data class OpaqueSkillBundleScanLimits(
+  val maxDepth: Int = 32,
+  val maxFiles: Int = 2_000,
+  val maxFileBytes: Long = DEFAULT_MAX_FILE_BYTES,
+  val maxTotalBytes: Long = DEFAULT_MAX_TOTAL_BYTES,
+)
+
+private const val DEFAULT_MAX_FILE_BYTES = 4_194_304L
+private const val DEFAULT_MAX_TOTAL_BYTES = 33_554_432L
 
 private fun OpaqueSkillBundleScanContext.scan(source: Path, protectedNames: Set<String>): OpaqueSkillBundle {
   val absoluteSource = source.toAbsolutePath().normalize()

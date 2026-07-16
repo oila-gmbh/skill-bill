@@ -15,7 +15,7 @@ internal fun OpaqueSkillBundleScanContext.captureSecure(root: Path, only: Path?)
     val before = readBundleAttributes(root)
     requireRealBundleDirectory(before)
     beforeRootOpen(root)
-    val captured = captureFromParent(root, before, only)
+    val captured = captureFromParent(root, before, only, BundleCaptureBudget(limits))
     requireUnchangedRoot(root, before)
     captured
   }
@@ -24,21 +24,22 @@ private fun OpaqueSkillBundleScanContext.captureFromParent(
   root: Path,
   before: BasicFileAttributes,
   only: Path?,
+  budget: BundleCaptureBudget,
 ): List<OpaqueSkillBundleFile> {
   val parentPath = root.parent
   if (parentPath == null) {
     requireNonDefaultPathFallback(root)
-    return capturePathDirectory(root, before, only)
+    return capturePathDirectory(root, before, only, budget)
   }
   return Files.newDirectoryStream(parentPath).use { parent ->
     if (useSecureDirectoryStreams && parent is SecureDirectoryStream<Path>) {
       parent.newDirectoryStream(root.fileName, NOFOLLOW_LINKS).use { opened ->
         requireSameDirectory(root, before, secureBundleAttributes(opened, Path.of(".")))
-        captureDirectory(SecureBundleDirectory(opened), "", only)
+        captureDirectory(SecureBundleDirectory(opened), "", only, budget)
       }
     } else {
       requireNonDefaultPathFallback(root)
-      capturePathDirectory(root, before, only)
+      capturePathDirectory(root, before, only, budget)
     }
   }
 }
@@ -59,18 +60,25 @@ private fun capturePathDirectory(
   root: Path,
   attributes: BasicFileAttributes,
   only: Path?,
-): List<OpaqueSkillBundleFile> = captureDirectory(PathBundleDirectory(root, attributes), "", only)
+  budget: BundleCaptureBudget,
+): List<OpaqueSkillBundleFile> = captureDirectory(PathBundleDirectory(root, attributes), "", only, budget)
 
 private fun captureDirectory(
   directory: BundleDirectory,
   prefix: String,
-  only: Path? = null,
+  only: Path?,
+  budget: BundleCaptureBudget,
 ): List<OpaqueSkillBundleFile> {
   val names = if (only == null) directory.names() else listOf(only)
-  return names.flatMap { name -> captureEntry(directory, prefix, name) }
+  return names.flatMap { name -> captureEntry(directory, prefix, name, budget) }
 }
 
-private fun captureEntry(directory: BundleDirectory, prefix: String, name: Path): List<OpaqueSkillBundleFile> {
+private fun captureEntry(
+  directory: BundleDirectory,
+  prefix: String,
+  name: Path,
+  budget: BundleCaptureBudget,
+): List<OpaqueSkillBundleFile> {
   val relative = if (prefix.isEmpty()) name.toString() else "$prefix/$name"
   if (name.isAbsolute || name.normalize().startsWith("..")) {
     invalidBundle("Bundle path escapes the selected directory: $relative")
@@ -78,11 +86,31 @@ private fun captureEntry(directory: BundleDirectory, prefix: String, name: Path)
   val attributes = directory.attributes(name)
   return when {
     attributes.isSymbolicLink -> invalidBundle("Symbolic links are not allowed: $relative")
-    attributes.isRegularFile -> listOf(
-      OpaqueSkillBundleFile(relative, readStableBytes(directory, name, relative, attributes)),
-    )
-    attributes.isDirectory -> directory.openDirectory(name).use { captureDirectory(it, relative) }
+    attributes.isRegularFile -> {
+      budget.acceptFile(relative, attributes.size())
+      listOf(OpaqueSkillBundleFile(relative, readStableBytes(directory, name, relative, attributes)))
+    }
+    attributes.isDirectory -> {
+      budget.acceptDepth(relative)
+      directory.openDirectory(name).use { captureDirectory(it, relative, null, budget) }
+    }
     else -> invalidBundle("Special files are not allowed: $relative")
+  }
+}
+
+private class BundleCaptureBudget(private val limits: OpaqueSkillBundleScanLimits) {
+  private var files = 0
+  private var totalBytes = 0L
+
+  fun acceptDepth(relative: String) {
+    if (relative.count { it == '/' } + 1 > limits.maxDepth) invalidBundle("Bundle exceeds maximum depth.")
+  }
+
+  fun acceptFile(relative: String, bytes: Long) {
+    if (++files > limits.maxFiles) invalidBundle("Bundle exceeds maximum file count.")
+    if (bytes > limits.maxFileBytes) invalidBundle("Bundle file exceeds maximum size: $relative")
+    totalBytes += bytes
+    if (totalBytes > limits.maxTotalBytes) invalidBundle("Bundle exceeds maximum total size.")
   }
 }
 

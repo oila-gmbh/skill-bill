@@ -18,6 +18,7 @@ import kotlin.io.path.createDirectories
 import kotlin.io.path.createTempDirectory
 import kotlin.io.path.writeText
 import kotlin.test.Test
+import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
@@ -98,16 +99,121 @@ class FileSystemMachineSkillInventoryTest {
     assertTrue(snapshotResult.diagnostics.none { it.kind == "CORRUPT_RECORD" })
   }
 
+  @Test
+  fun `record without installed links remains visible as missing`() {
+    val home = createTempDirectory("inventory-missing")
+    val root = home.resolve("agent/skills").createDirectories()
+    val targetId = AgentSkillTargetId("codex", root)
+    val store = FileManagedSkillRecordStore(home)
+    val source = store.sourceRoot("missing-demo")
+    writeSkill(source, "managed")
+    val hash = OpaqueSkillBundleScanner().scan(source, emptySet()).contentHash
+    val now = Instant.parse("2026-01-01T00:00:00Z")
+    val record = ManagedSkillRecord(
+      "missing-demo",
+      ManagedSkillSourceKind.DIRECTORY,
+      source,
+      hash,
+      setOf(targetId),
+      now,
+      now,
+    )
+    store.write(record, FileManagedSkillRecordStore.EXPECTED_ABSENT)
+
+    val result = FileSystemMachineSkillInventory(emptyBaseline).read(
+      ReadMachineSkillInventoryRequest(home, listOf(InventoryTarget(targetId, true, true, "Codex")), false),
+    )
+
+    assertEquals("missing-demo", result.rows.single().normalizedName)
+    assertEquals(skillbill.managedskill.model.MachineSkillHealth.MISSING, result.rows.single().health)
+    assertFalse(result.rows.single().targetPresence.single().present)
+  }
+
+  @Test
+  fun `scan failures are corrupt facts and external staging lookalikes are not product`() {
+    val home = createTempDirectory("inventory-invalid")
+    val root = home.resolve("agent/skills").createDirectories()
+    root.resolve("malformed").createDirectories().resolve("not-skill.txt").writeText("x")
+    val external = home.resolve("external/lookalike-hash").createDirectories()
+    external.resolve(".content-hash").writeText("hash")
+    Files.createSymbolicLink(root.resolve("lookalike"), external)
+    val target = InventoryTarget(AgentSkillTargetId("codex", root), true, false, "Codex")
+
+    val result = FileSystemMachineSkillInventory(emptyBaseline).read(
+      ReadMachineSkillInventoryRequest(home, listOf(target), true),
+    )
+
+    assertTrue(result.productDiagnostics.isEmpty())
+    assertEquals(setOf("lookalike", "malformed"), result.rows.map { it.normalizedName }.toSet())
+    assertContains(result.rows.single { it.normalizedName == "malformed" }.issues.map { it.code }, "INVALID_BUNDLE")
+  }
+
+  @Test
+  fun `unstable expected leaf and linked source do not prove healthy ownership`() {
+    val home = createTempDirectory("inventory-untrusted")
+    val root = home.resolve("agent/skills").createDirectories()
+    val targetId = AgentSkillTargetId("codex", root)
+    val store = FileManagedSkillRecordStore(home)
+    val externalSource = home.resolve("external/source")
+    writeSkill(externalSource, "external")
+    val sourceLink = store.sourceRoot("managed-demo")
+    sourceLink.parent.createDirectories()
+    Files.createSymbolicLink(sourceLink, externalSource)
+    val hash = OpaqueSkillBundleScanner().scan(externalSource, emptySet()).contentHash
+    val expected = store.snapshotRoot("managed-demo", hash)
+    expected.parent.createDirectories()
+    Files.createSymbolicLink(expected, externalSource)
+    Files.createSymbolicLink(root.resolve("managed-demo"), expected)
+    val now = Instant.parse("2026-01-01T00:00:00Z")
+    val record = ManagedSkillRecord(
+      "managed-demo",
+      ManagedSkillSourceKind.DIRECTORY,
+      sourceLink,
+      hash,
+      setOf(targetId),
+      now,
+      now,
+    )
+    store.write(record, FileManagedSkillRecordStore.EXPECTED_ABSENT)
+
+    val result = FileSystemMachineSkillInventory(emptyBaseline).read(
+      ReadMachineSkillInventoryRequest(home, listOf(InventoryTarget(targetId, true, true, "Codex")), false),
+    )
+
+    assertEquals(MachineSkillOwnership.CONFLICT, result.rows.single().ownership)
+    assertContains(result.rows.single().issues.map { it.code }, "INVALID_SOURCE")
+  }
+
+  @Test
+  fun `invalid state root is reported loudly`() {
+    val home = createTempDirectory("inventory-state")
+    val targetRoot = home.resolve("agent/skills").createDirectories()
+    Files.createSymbolicLink(home.resolve(".skill-bill"), home.resolve("elsewhere"))
+
+    val result = FileSystemMachineSkillInventory(emptyBaseline).read(
+      ReadMachineSkillInventoryRequest(
+        home,
+        listOf(InventoryTarget(AgentSkillTargetId("codex", targetRoot), true, false, "Codex")),
+        false,
+      ),
+    )
+
+    assertContains(result.diagnostics.map { it.kind }, "INVALID_STATE_ROOT")
+  }
+
   private fun writeSkill(path: java.nio.file.Path, description: String) {
     path.createDirectories()
     path.resolve("SKILL.md").writeText(
-      "---\nname: ${path.fileName.toString().lowercase()}\ndescription: $description\n---\n\n## Guidance\n\n$description\n",
+      "---\nname: ${path.fileName.toString().lowercase()}\n" +
+        "description: $description\n---\n\n## Guidance\n\n$description\n",
     )
   }
 
   private fun baselineWith(path: String): BaselineManifestPersistencePort = object : BaselineManifestPersistencePort {
-    override fun readBaseline(request: ReadBaselineManifestRequest) =
-      ReadBaselineManifestResult(BaselineManifest.of(BaselineManifest.CONTRACT_VERSION, mapOf(path to "a".repeat(64))), true)
+    override fun readBaseline(request: ReadBaselineManifestRequest) = ReadBaselineManifestResult(
+      BaselineManifest.of(BaselineManifest.CONTRACT_VERSION, mapOf(path to "a".repeat(64))),
+      true,
+    )
     override fun writeBaseline(request: WriteBaselineManifestRequest): WriteBaselineManifestResult = error("read only")
   }
 

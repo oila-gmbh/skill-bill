@@ -5,6 +5,7 @@ import java.nio.file.FileSystems
 import java.nio.file.Files
 import kotlin.io.path.createDirectory
 import kotlin.io.path.createSymbolicLinkPointingTo
+import kotlin.io.path.writeBytes
 import kotlin.io.path.writeText
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -141,6 +142,15 @@ class OpaqueSkillBundleScannerTest {
       selected.createDirectory()
       selected.resolve("SKILL.md").writeText("---\nname: replacement\ndescription: Replacement\n---")
     }
+
+    assertFailsWith<InvalidOpaqueSkillBundleException> { scanner.scan(root, emptySet()) }
+  }
+
+  @Test
+  fun `rejects bundles whose files exceed the capture budget`() {
+    val root = Files.createTempDirectory("opaque-skill-budget")
+    root.resolve("SKILL.md").writeText("---\nname: sample-skill\ndescription: Sample\n---")
+    root.resolve("oversized.bin").writeBytes(ByteArray(4 * 1024 * 1024 + 1))
 
     assertFailsWith<InvalidOpaqueSkillBundleException> { scanner.scan(root, emptySet()) }
   }

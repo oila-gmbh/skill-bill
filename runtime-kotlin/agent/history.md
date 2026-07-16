@@ -1,3 +1,13 @@
+## [2026-07-16] SKILL-123 machine skill discovery and inventory
+Areas: runtime-kotlin/runtime-{application,core,domain,infra-fs}
+- Detector-backed inventory preserves provider-plus-normalized-path target identity across multiple profiles and selected-but-undetected targets, then groups case-normalized non-product skills into deterministic logical rows.
+- Product classification uses active installation and protected product metadata, including `.bill-shared`; a `bill-*` name alone never establishes product ownership.
+- Managed ownership requires both a managed record and the exact expected snapshot link; regular files, directories, external links, corrupt records, missing sources, hash drift, broken links, and orphan snapshots remain read-only diagnostics.
+- Pattern: compose immutable inventory from shared detector, record-store, bundle-scanner, target-identity, and hash primitives, preserving per-target provenance, validation, link health, collisions, and divergent content. reusable
+- Known limit: this boundary discovers and classifies only; mutation previews, repair, adoption, updates, deletion, UI, and CLI management remain later subtasks.
+Feature flag: N/A
+Acceptance criteria: 9/9 implemented
+
 ## [2026-07-15] SKILL-122 agent add-on integration validation
 Areas: runtime-kotlin/runtime-{application,cli,core,domain,infra-fs,mcp}
 - Cross-boundary tests lock ordered agent add-on selection through runtime, goal continuation, retry/resume, staging invalidation, and compatible run-wide, phase, and delegated parallel-review overrides.

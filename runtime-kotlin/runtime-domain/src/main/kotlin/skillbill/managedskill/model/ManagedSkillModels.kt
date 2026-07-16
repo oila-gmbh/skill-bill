@@ -66,12 +66,37 @@ data class MachineSkillInventoryDiagnostic(
   val message: String,
 )
 
-data class MachineSkillInventorySnapshot(
-  val targets: List<AgentSkillTargetState>,
-  val rows: List<MachineSkillInventoryRow>,
-  val productDiagnostics: List<MachineSkillOccurrence> = emptyList(),
-  val diagnostics: List<MachineSkillInventoryDiagnostic> = emptyList(),
+class MachineSkillInventorySnapshot(
+  targets: List<AgentSkillTargetState>,
+  rows: List<MachineSkillInventoryRow>,
+  productDiagnostics: List<MachineSkillOccurrence> = emptyList(),
+  diagnostics: List<MachineSkillInventoryDiagnostic> = emptyList(),
+) {
+  val targets: List<AgentSkillTargetState> =
+    immutableList(targets.map { it.copy(issues = immutableList(it.issues.toList())) })
+  val rows: List<MachineSkillInventoryRow> = immutableList(
+    rows.map { row ->
+      row.copy(
+        targetPresence = immutableList(
+          row.targetPresence.map { presence ->
+            presence.copy(occurrences = immutableList(presence.occurrences.map(::copyOccurrence)))
+          },
+        ),
+        contentHashes = Collections.unmodifiableSet(row.contentHashes.toSet()),
+        issues = immutableList(row.issues.toList()),
+      )
+    },
+  )
+  val productDiagnostics: List<MachineSkillOccurrence> = immutableList(productDiagnostics.map(::copyOccurrence))
+  val diagnostics: List<MachineSkillInventoryDiagnostic> = immutableList(diagnostics.toList())
+}
+
+private fun copyOccurrence(value: MachineSkillOccurrence) = value.copy(
+  provenance = Collections.unmodifiableSet(value.provenance.toSet()),
+  issues = immutableList(value.issues.toList()),
 )
+
+private fun <T> immutableList(values: List<T>): List<T> = Collections.unmodifiableList(values)
 
 fun normalizeManagedSkillName(rawName: String): String? = rawName.trim().lowercase(Locale.ROOT).takeIf {
   runCatching { requireSafeManagedSkillName(it) }.isSuccess

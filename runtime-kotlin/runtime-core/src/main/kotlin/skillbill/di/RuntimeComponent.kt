@@ -62,7 +62,6 @@ import skillbill.infrastructure.fs.FileSystemInstallSelectionPersistence
 import skillbill.infrastructure.fs.FileSystemInstallSkillLink
 import skillbill.infrastructure.fs.FileSystemInstallStagingIntent
 import skillbill.infrastructure.fs.FileSystemInstalledWorkspaceBaselineStatus
-import skillbill.managedskill.FileSystemMachineSkillInventory
 import skillbill.infrastructure.fs.FileSystemRepoLocalConfig
 import skillbill.infrastructure.fs.FileSystemRepoSourceDiscoveryGateway
 import skillbill.infrastructure.fs.FileSystemRepoValidationGateway
@@ -95,6 +94,7 @@ import skillbill.infrastructure.http.JdkHttpRequester
 import skillbill.infrastructure.sqlite.SQLiteDatabaseSessionFactory
 import skillbill.install.model.InstallPlanWireValidator
 import skillbill.launcher.agentrun.FileSystemAgentRunLauncher
+import skillbill.managedskill.FileSystemMachineSkillInventory
 import skillbill.model.EnvironmentContext
 import skillbill.model.OptionalCallbacks
 import skillbill.model.RuntimeContext

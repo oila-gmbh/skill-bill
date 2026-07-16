@@ -4,9 +4,9 @@ import com.fasterxml.jackson.core.JsonParser
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.SerializationFeature
 import skillbill.managedskill.model.ManagedSkillRecord
-import java.nio.file.Path
 import java.nio.file.Files
 import java.nio.file.LinkOption.NOFOLLOW_LINKS
+import java.nio.file.Path
 
 class FileManagedSkillRecordStore private constructor(
   private val context: ManagedSkillRecordStoreContext,
@@ -58,11 +58,16 @@ class FileManagedSkillRecordStore private constructor(
 
     internal fun openReadOnly(homeDirectory: Path): FileManagedSkillRecordStore? {
       val stateRoot = homeDirectory.toAbsolutePath().normalize().resolve(".skill-bill")
-      return if (Files.isDirectory(stateRoot, NOFOLLOW_LINKS) && !Files.isSymbolicLink(stateRoot)) {
-        fromStateRoot(stateRoot)
-      } else {
-        null
+      if (Files.notExists(stateRoot, NOFOLLOW_LINKS)) return null
+      val attributes = Files.readAttributes(
+        stateRoot,
+        java.nio.file.attribute.BasicFileAttributes::class.java,
+        NOFOLLOW_LINKS,
+      )
+      require(attributes.isDirectory && !attributes.isSymbolicLink) {
+        "Managed state root is not a real directory: $stateRoot"
       }
+      return fromStateRoot(stateRoot)
     }
   }
 
