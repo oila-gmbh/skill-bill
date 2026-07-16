@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
 import com.networknt.schema.JsonSchemaFactory
+import com.networknt.schema.SchemaValidatorsConfig
 import com.networknt.schema.SpecVersion
 import skillbill.error.InvalidManagedSkillRecordSchemaError
 import skillbill.managedskill.model.MANAGED_SKILL_RECORD_CONTRACT_VERSION
@@ -16,7 +17,8 @@ object ManagedSkillRecordSchemaValidator {
         ?: throw InvalidManagedSkillRecordSchemaError("classpath schema", "schema resource is missing")
       val yaml = resource.use { YAMLMapper().readTree(it) }
       assertIdentity(yaml)
-      JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V202012).getSchema(yaml)
+      val config = SchemaValidatorsConfig.builder().formatAssertionsEnabled(true).build()
+      JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V202012).getSchema(yaml, config)
     } catch (error: InvalidManagedSkillRecordSchemaError) {
       throw error
     } catch (error: Exception) {

@@ -14,6 +14,21 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 
 class FileManagedSkillRecordStoreTest {
+  private fun store(root: java.nio.file.Path) = FileManagedSkillRecordStore.fromStateRoot(root)
+
+  @Test
+  fun `production construction derives managed roots from home`() {
+    val home = Files.createTempDirectory("managed-records-home")
+    val store = FileManagedSkillRecordStore(home)
+
+    assertEquals(home.resolve(".skill-bill/managed-skills/sample-skill/record.json"), store.recordPath("sample-skill"))
+    assertEquals(home.resolve(".skill-bill/managed-skills/sample-skill/source"), store.sourceRoot("sample-skill"))
+    assertEquals(
+      home.resolve(".skill-bill/installed-skills/sample-skill-${"a".repeat(64)}"),
+      store.snapshotRoot("sample-skill", "a".repeat(64)),
+    )
+  }
+
   @Test
   fun `round trips records without secure directory streams`() {
     val root = Files.createTempDirectory("managed-records-fallback")
@@ -39,7 +54,7 @@ class FileManagedSkillRecordStoreTest {
   @Test
   fun `round trips a validated record with multiple provider paths`() {
     val root = Files.createTempDirectory("managed-records")
-    val store = FileManagedSkillRecordStore(root)
+    val store = store(root)
     val now = Instant.parse("2026-07-15T12:00:00Z")
     val record = ManagedSkillRecord(
       name = "sample-skill",
@@ -60,7 +75,7 @@ class FileManagedSkillRecordStoreTest {
   @Test
   fun `every read rejects an invalid record loudly`() {
     val root = Files.createTempDirectory("managed-records")
-    val store = FileManagedSkillRecordStore(root)
+    val store = store(root)
     val path = store.recordPath("bad")
     Files.createDirectories(path.parent)
     path.writeText("{\"contract_version\":\"0.1\",\"name\":\"bad\"}")
@@ -70,7 +85,7 @@ class FileManagedSkillRecordStoreTest {
   @Test
   fun `rejects unsafe names before creating directories`() {
     val root = Files.createTempDirectory("managed-records")
-    val store = FileManagedSkillRecordStore(root)
+    val store = store(root)
     assertFailsWith<InvalidManagedSkillRecordSchemaError> { store.recordPath("../escape") }
     assertEquals(false, Files.exists(root.resolve("managed-skills")))
   }
@@ -78,7 +93,7 @@ class FileManagedSkillRecordStoreTest {
   @Test
   fun `rejects duplicate keys and a record name that differs from its path`() {
     val root = Files.createTempDirectory("managed-records")
-    val store = FileManagedSkillRecordStore(root)
+    val store = store(root)
     val path = store.recordPath("expected")
     Files.createDirectories(path.parent)
     path.writeText("""{"contract_version":"0.1","name":"expected","name":"other"}""")
@@ -88,7 +103,7 @@ class FileManagedSkillRecordStoreTest {
   @Test
   fun `public path reads require the canonical managed record layout`() {
     val root = Files.createTempDirectory("managed-records")
-    val store = FileManagedSkillRecordStore(root)
+    val store = store(root)
     val outsideShape = root.resolve("record.json")
     outsideShape.writeText("{}")
     assertFailsWith<InvalidManagedSkillRecordSchemaError> { store.readPath(outsideShape) }
@@ -102,7 +117,7 @@ class FileManagedSkillRecordStoreTest {
   @Test
   fun `requires compare and swap when an expected digest is supplied`() {
     val root = Files.createTempDirectory("managed-records")
-    val store = FileManagedSkillRecordStore(root)
+    val store = store(root)
     val now = Instant.parse("2026-07-15T12:00:00Z")
     val record = ManagedSkillRecord(
       name = "sample-skill",
@@ -121,7 +136,7 @@ class FileManagedSkillRecordStoreTest {
   @Test
   fun `matching digest atomically replaces the current record`() {
     val root = Files.createTempDirectory("managed-records")
-    val store = FileManagedSkillRecordStore(root)
+    val store = store(root)
     val now = Instant.parse("2026-07-15T12:00:00Z")
     val record = ManagedSkillRecord(
       name = "sample-skill", sourceKind = ManagedSkillSourceKind.DIRECTORY,
@@ -139,7 +154,7 @@ class FileManagedSkillRecordStoreTest {
   @Test
   fun `digest and compare and swap reject duplicate key records`() {
     val root = Files.createTempDirectory("managed-records")
-    val store = FileManagedSkillRecordStore(root)
+    val store = store(root)
     val path = store.recordPath("sample-skill")
     Files.createDirectories(path.parent)
     path.writeText(validWire(root, "sample-skill").replace(
@@ -161,7 +176,7 @@ class FileManagedSkillRecordStoreTest {
   @Test
   fun `compare and swap can require an absent record`() {
     val root = Files.createTempDirectory("managed-records")
-    val store = FileManagedSkillRecordStore(root)
+    val store = store(root)
     val now = Instant.parse("2026-07-15T12:00:00Z")
     val record = ManagedSkillRecord(
       name = "sample-skill", sourceKind = ManagedSkillSourceKind.DIRECTORY,

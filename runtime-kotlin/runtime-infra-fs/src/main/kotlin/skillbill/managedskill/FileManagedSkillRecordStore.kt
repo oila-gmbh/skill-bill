@@ -37,11 +37,11 @@ class FileManagedSkillRecordStore private constructor(
   @Suppress("UNUSED_PARAMETER") publicationTestSeam: Unit,
 ) {
   constructor(
-    stateRoot: Path,
+    homeDirectory: Path,
     forceDirectory: (Path) -> Unit = { directory ->
       forceDirectoryIfSupported(directory)
     },
-  ) : this(stateRoot, null, forceDirectory, true, Unit)
+  ) : this(managedStateRoot(homeDirectory), null, forceDirectory, true, Unit)
 
   internal constructor(
     stateRoot: Path,
@@ -60,6 +60,9 @@ class FileManagedSkillRecordStore private constructor(
     const val EXPECTED_ABSENT = "absent"
     private const val MAX_RECORD_BYTES = 1024 * 1024
     private val processLocks = ConcurrentHashMap<String, ReentrantLock>()
+
+    internal fun fromStateRoot(stateRoot: Path): FileManagedSkillRecordStore =
+      FileManagedSkillRecordStore(stateRoot, null, { directory -> forceDirectoryIfSupported(directory) }, true, Unit)
   }
   private val stateRoot = stateRoot.toAbsolutePath().normalize()
   private val stateRootIdentity = Files.readAttributes(
@@ -457,6 +460,28 @@ private fun forceDirectoryIfSupported(directory: Path) {
   } catch (_: UnsupportedOperationException) {
   } catch (_: java.nio.file.FileSystemException) {
   }
+}
+
+private fun managedStateRoot(homeDirectory: Path): Path {
+  val home = homeDirectory.toAbsolutePath().normalize()
+  val attributes = Files.readAttributes(home, java.nio.file.attribute.BasicFileAttributes::class.java, NOFOLLOW_LINKS)
+  if (!attributes.isDirectory || attributes.isSymbolicLink) {
+    throw InvalidManagedSkillRecordSchemaError(home.toString(), "home directory is not a real directory")
+  }
+  val stateRoot = home.resolve(".skill-bill")
+  if (Files.exists(stateRoot, NOFOLLOW_LINKS)) {
+    val stateAttributes = Files.readAttributes(
+      stateRoot,
+      java.nio.file.attribute.BasicFileAttributes::class.java,
+      NOFOLLOW_LINKS,
+    )
+    if (!stateAttributes.isDirectory || stateAttributes.isSymbolicLink) {
+      throw InvalidManagedSkillRecordSchemaError(stateRoot.toString(), "managed state root is not a real directory")
+    }
+  } else {
+    Files.createDirectory(stateRoot)
+  }
+  return stateRoot
 }
 
 private fun ManagedSkillRecord.toWire(): Map<String, Any?> = linkedMapOf(
