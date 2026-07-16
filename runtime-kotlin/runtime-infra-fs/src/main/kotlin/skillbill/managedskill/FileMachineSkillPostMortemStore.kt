@@ -38,4 +38,19 @@ class FileMachineSkillPostMortemStore(home: Path) {
     write(updated)
     return updated
   }
+
+  fun unacknowledgedIds(): List<String> {
+    if (!Files.isDirectory(root)) return emptyList()
+    return Files.list(root).use { paths ->
+      paths.filter { it.fileName.toString().endsWith(".json") }
+        .map { path ->
+          runCatching {
+            val node = Files.newInputStream(path).use(mapper::readTree)
+            MachineSkillPostMortemSchemaValidator.validate(node, path.toString())
+            node.takeIf { it.path("acknowledgement_status").asText() == "unacknowledged" }
+              ?.path("post_mortem_id")?.asText()
+          }.getOrNull()
+        }.filter { it != null }.map { requireNotNull(it) }.sorted().toList()
+    }
+  }
 }

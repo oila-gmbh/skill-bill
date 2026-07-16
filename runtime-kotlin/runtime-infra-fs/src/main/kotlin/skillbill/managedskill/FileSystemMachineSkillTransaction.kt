@@ -1,5 +1,6 @@
 package skillbill.managedskill
 
+import com.fasterxml.jackson.databind.ObjectMapper
 import skillbill.managedskill.model.MachineSkillApplyResult
 import skillbill.managedskill.model.MachineSkillMutation
 import skillbill.managedskill.model.MachineSkillMutationPlan
@@ -15,6 +16,8 @@ import java.nio.file.Files
 import java.nio.file.LinkOption.NOFOLLOW_LINKS
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption.ATOMIC_MOVE
+import java.time.Instant
+import java.util.UUID
 
 class FileSystemMachineSkillTransaction(
   home: Path,
@@ -24,6 +27,7 @@ class FileSystemMachineSkillTransaction(
   private val stateRoot = normalizedHome.resolve(".skill-bill")
   private val store = FileManagedSkillRecordStore(normalizedHome)
   private val inspector = FileSystemMachineSkillMutationInspector(normalizedHome, targetRoots)
+  private val postMortems = FileMachineSkillPostMortemStore(normalizedHome)
 
   override fun currentPreconditions(plan: MachineSkillMutationPlan): MachineSkillPreconditions {
     val references = inspector.snapshotReferences()
@@ -46,12 +50,48 @@ class FileSystemMachineSkillTransaction(
       execution.execute()
       MachineSkillApplyResult.Applied(prepared.plan.planId)
     }.getOrElse { failure ->
-      execution.rollback()
-      MachineSkillApplyResult.Blocked(failure.message ?: failure::class.java.simpleName)
+      val rollbackFailures = execution.rollback()
+      val reason = failure.message ?: failure::class.java.simpleName
+      if (rollbackFailures.isEmpty()) {
+        MachineSkillApplyResult.Blocked(reason)
+      } else {
+        val id = persistPostMortem(prepared, reason, rollbackFailures)
+        MachineSkillApplyResult.Blocked("$reason; rollback incomplete; post-mortem $id")
+      }
     }
   }
 
-  override fun recoverIncompleteTransactions(): List<String> = emptyList()
+  override fun recoverIncompleteTransactions(): List<String> = postMortems.unacknowledgedIds()
+
+  private fun persistPostMortem(
+    prepared: PreparedMachineSkillMutation,
+    failure: String,
+    rollbackFailures: List<String>,
+  ): String {
+    val id = UUID.randomUUID().toString()
+    val mapper = ObjectMapper()
+    val node = mapper.createObjectNode().apply {
+      put("contract_version", "0.1")
+      put("post_mortem_id", id)
+      put("plan_id", prepared.plan.planId)
+      put("created_at", Instant.now().toString())
+      put("acknowledgement_status", "unacknowledged")
+      putArray("affected_paths").also { array ->
+        prepared.plan.mutations.map {
+          it.path.toString()
+        }.distinct().forEach(array::add)
+      }
+      putArray("attempted_operations").also { array ->
+        prepared.plan.mutations.forEach { array.add("${it.operation}:${it.resource}:${it.path}") }
+      }
+      putArray("rollback_evidence").also { array -> rollbackFailures.forEach(array::add) }
+      putArray("recovery_actions").add(
+        "Inspect affected paths before retrying plan ${prepared.plan.planId}: $failure",
+      )
+    }
+    postMortems.write(node)
+    return id
+  }
 
   private fun validationFailure(prepared: PreparedMachineSkillMutation): String? = when {
     currentPreconditions(prepared.plan) != prepared.plan.preconditions -> {
@@ -61,7 +101,8 @@ class FileSystemMachineSkillTransaction(
       it.outcome in setOf(MachineSkillOutcome.CONFLICT, MachineSkillOutcome.BLOCKED)
     } -> "Mutation contains conflicts or blocked outcomes"
     prepared.plan.mutations.any { it.resource == MachineSkillResourceKind.AGENT_LINK } &&
-      inspector.symlinkCapability() != SymlinkCapability.AVAILABLE -> "Symbolic links are unavailable"
+      inspector.symlinkCapability() != SymlinkCapability.AVAILABLE ->
+      "Symbolic links are unavailable; on Windows enable Developer Mode or run elevated"
     else -> null
   }
 }
@@ -92,22 +133,31 @@ private class MachineSkillTransactionExecution(
     commit()
   }
 
-  fun rollback() {
+  fun rollback(): List<String> {
+    val failures = mutableListOf<String>()
+    fun restore(description: String, action: () -> Unit) {
+      runCatching(
+        action,
+      ).exceptionOrNull()?.let {
+        failures += "$description: ${it.message ?: it::class.java.simpleName}"
+      }
+    }
     linkBackups.asReversed().forEach { (path, backup) ->
-      runCatching {
+      restore("restore link $path") {
         Files.deleteIfExists(path)
         if (backup != null) Files.move(backup, path, ATOMIC_MOVE)
       }
     }
-    promotedSource?.let { runCatching { sourcePublication.rollback(it) } }
+    promotedSource?.let { restore("restore managed source") { sourcePublication.rollback(it) } }
     resourceBackups.asReversed().forEach { (path, backup) ->
-      runCatching {
+      restore("restore resource $path") {
         if (Files.exists(backup, NOFOLLOW_LINKS)) Files.move(backup, path, ATOMIC_MOVE)
       }
     }
-    restoreRecord()
-    createdSnapshot?.let { runCatching { deleteMachineSkillTree(it) } }
-    stagedSource?.let { runCatching { deleteMachineSkillTree(it) } }
+    restore("restore record") { restoreRecord() }
+    createdSnapshot?.let { restore("remove snapshot $it") { deleteMachineSkillTree(it) } }
+    stagedSource?.let { restore("remove staged source $it") { deleteMachineSkillTree(it) } }
+    return failures
   }
 
   private fun publishSnapshot() {
@@ -178,12 +228,10 @@ private class MachineSkillTransactionExecution(
 
   private fun restoreRecord() {
     if (!recordWritten) return
-    runCatching {
-      if (previousRecord == null) {
-        Files.deleteIfExists(store.recordPath(plan.skillName))
-      } else {
-        store.write(previousRecord, store.digest(plan.skillName))
-      }
+    if (previousRecord == null) {
+      Files.deleteIfExists(store.recordPath(plan.skillName))
+    } else {
+      store.write(previousRecord, store.digest(plan.skillName))
     }
   }
 }

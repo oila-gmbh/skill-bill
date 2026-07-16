@@ -11,6 +11,7 @@ import java.nio.file.Files
 import java.nio.file.LinkOption.NOFOLLOW_LINKS
 import java.nio.file.Path
 import java.nio.file.attribute.BasicFileAttributes
+import kotlin.io.path.createTempDirectory
 
 fun interface NativeSymlinkCapabilityProbe {
   fun capability(): SymlinkCapability
@@ -20,7 +21,7 @@ class FileSystemMachineSkillMutationInspector(
   private val home: Path,
   private val targets: List<Path>,
   private val capabilityProbe: NativeSymlinkCapabilityProbe =
-    NativeSymlinkCapabilityProbe { SymlinkCapability.AVAILABLE },
+    NativeSymlinkCapabilityProbe(::nativeSymlinkCapability),
 ) : MachineSkillMutationInspectorPort {
   override fun observe(paths: Collection<Path>): List<PathObservation> =
     paths.distinct().sortedBy(Path::toString).map(::observe)
@@ -77,5 +78,22 @@ class FileSystemMachineSkillMutationInspector(
       }
     }
     return SnapshotReferenceDiscovery((fromRecords + fromLinks).toSet(), warnings.isEmpty(), warnings)
+  }
+}
+
+private fun nativeSymlinkCapability(): SymlinkCapability {
+  if (!System.getProperty("os.name").startsWith("Windows", ignoreCase = true)) {
+    return SymlinkCapability.AVAILABLE
+  }
+  val directory = createTempDirectory("skill-bill-symlink-preflight-")
+  return try {
+    val target = directory.resolve("target")
+    Files.createDirectory(target)
+    Files.createSymbolicLink(directory.resolve("link"), target)
+    SymlinkCapability.AVAILABLE
+  } catch (_: Exception) {
+    SymlinkCapability.UNAVAILABLE
+  } finally {
+    runCatching { Files.walk(directory).use { it.sorted(Comparator.reverseOrder()).forEach(Files::deleteIfExists) } }
   }
 }
