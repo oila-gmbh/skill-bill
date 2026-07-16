@@ -130,7 +130,8 @@ class FeatureTaskRuntimeAuditGapLoopTest {
 
     val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
     assertEquals("audit", blocked.lastIncompletePhase)
-    assertContains(blocked.blockedReason, "review_loop_conflict")
+    assertContains(blocked.blockedReason, "audit_gap_respec_suggested")
+    assertContains(blocked.blockedReason, "decompose the current subtask")
     val launched = harness.launchedPromptPhaseOrder()
     assertEquals(1, launched.count { it == "plan" })
     assertEquals(3, launched.count { it == "audit" })
@@ -339,7 +340,8 @@ class FeatureTaskRuntimeAuditGapLoopTest {
 
     val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
     assertEquals("audit", blocked.lastIncompletePhase)
-    assertContains(blocked.blockedReason, "review_loop_conflict")
+    assertContains(blocked.blockedReason, "audit_gap_respec_suggested")
+    assertContains(blocked.blockedReason, "latest audit evidence")
     val launched = harness.launchedPromptPhaseOrder()
     assertTrue(launched.none { it == "plan" })
     assertTrue(launched.none { it == "validate" })
@@ -387,7 +389,7 @@ class FeatureTaskRuntimeAuditGapLoopTest {
     harness.seedPhase("plan", "completed", 1, INVOKED_AGENT, validJsonOutput("plan"))
     harness.seedPhase("implement", "completed", 3, INVOKED_AGENT, validJsonOutput("implement"))
     harness.seedPhase("review", "completed", 2, INVOKED_AGENT, validJsonOutput("review"))
-    harness.seedReentryPhase("audit", "blocked", 3, INVOKED_AGENT, auditGapsOutput(), "audit_gap", 2)
+    harness.seedReentryPhase("audit", "blocked", 2, INVOKED_AGENT, auditGapsOutput(), "audit_gap", 1)
     harness.recorder.recordResolvedBranch(WORKFLOW_ID, FeatureTaskRuntimeResolvedBranch("feat/persisted-branch"))
 
     val report = assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))

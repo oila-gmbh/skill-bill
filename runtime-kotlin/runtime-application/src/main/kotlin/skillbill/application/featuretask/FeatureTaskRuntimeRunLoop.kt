@@ -353,7 +353,8 @@ internal class FeatureTaskRuntimeRunLoop(
       .count { prior -> auditGapFingerprint(prior) == latestFingerprint }
     if (latestFingerprint.isNotEmpty() && matchingPriorCount >= 2) {
       return "review_loop_conflict: audit reported the same unmet criteria after remediation; " +
-        "stopping the audit_gap loop for human/spec reconciliation. unmet_criteria=${latest.joinToString(" | ")}"
+        "stopping the audit_gap loop so the current subtask can be re-specified into smaller executable " +
+        "subtasks. unmet_criteria=${latest.joinToString(" | ")}"
     }
     return null
   }
@@ -754,6 +755,13 @@ internal class FeatureTaskRuntimeRunLoop(
       ""
     } else {
       " Unmet criteria: " + unmetCriteria.joinToString("; ") + "."
+    }
+    if (loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID) {
+      return "audit_gap_respec_suggested: Audit gaps found are too large to fix inline after " +
+        "$edgeIteration audit remediation loop(s) with verdict '${verdict.wireValue}'. Ask the user whether " +
+        "to decompose the current subtask and start a new execution loop. If approved, run bill-feature-spec " +
+        "against the current subtask spec with this blocked workflow id, latest audit evidence, and unmet " +
+        "criteria so it can produce smaller executable subtasks." + criteriaSuffix
     }
     return "Backward-edge loop '$loopId' exhausted its per-edge cap after $edgeIteration iteration(s) with the " +
       "verdict '${verdict.wireValue}' still unresolved; the run blocks rather than re-entering past the cap." +
