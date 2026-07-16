@@ -315,6 +315,10 @@ internal class FeatureTaskRuntimeRunLoop(
       }
       is FeatureTaskRuntimeNextPhase.Next -> {
         transition.loopId?.let { loopId ->
+          auditGapLoopGuardReason(phaseId, loopId)?.let { reason ->
+            blockLoopConflict(phaseId, loopId, requireNotNull(transition.edgeIteration), reason)
+            return null
+          }
           if (reentersMutatingPhase(requireNotNull(edge), transition.phaseId) &&
             !establishRemediationCheckpoint(phaseId)
           ) {
@@ -331,6 +335,70 @@ internal class FeatureTaskRuntimeRunLoop(
         transition.phaseId
       }
     }
+  }
+
+  private fun auditGapLoopGuardReason(phaseId: String, loopId: String): String? {
+    if (
+      phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT ||
+      loopId != FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID
+    ) {
+      return null
+    }
+    state.auditDecisionConflict(phaseId)?.let { conflict ->
+      return "policy_conflict: audit reported a spec/decision conflict instead of a remediable gap: $conflict"
+    }
+    val latest = state.unmetAuditCriteria(phaseId)
+    val latestFingerprint = auditGapFingerprint(latest)
+    val matchingPriorCount = state.previousUnmetAuditCriteria(phaseId)
+      .count { prior -> auditGapFingerprint(prior) == latestFingerprint }
+    if (latestFingerprint.isNotEmpty() && matchingPriorCount >= 2) {
+      return "review_loop_conflict: audit reported the same unmet criteria after remediation; " +
+        "stopping the audit_gap loop for human/spec reconciliation. unmet_criteria=${latest.joinToString(" | ")}"
+    }
+    return null
+  }
+
+  private fun auditGapFingerprint(criteria: List<String>): Set<String> =
+    criteria.mapNotNull(::auditGapFingerprintEntry).toSet()
+
+  private fun auditGapFingerprintEntry(criteria: String): String? {
+    val normalized = criteria.trim().lowercase().replace(Regex("\\s+"), " ")
+    if (normalized.isBlank()) return null
+    val criterion = Regex("\\b(?:ac|criterion)\\s*#?\\s*(\\d+)\\b")
+      .find(normalized)
+      ?.groupValues
+      ?.get(1)
+    return criterion?.let { "criterion:$it" } ?: normalized
+  }
+
+  private fun blockLoopConflict(phaseId: String, loopId: String, edgeIteration: Int, reason: String) {
+    val resolvedAgent = FeatureTaskRuntimeAgentResolver.resolve(
+      phaseId = phaseId,
+      assignment = request.agentAssignment,
+      invokedAgentId = request.invokedAgentId,
+    )
+    val run = PhaseRun(
+      phaseId = phaseId,
+      declaration = phaseDeclaration(phaseId, request.runInvariants.featureSize),
+      resolvedAgent = resolvedAgent,
+      modelDirective = FeatureTaskRuntimeModelResolver.resolve(
+        phaseId,
+        resolvedAgent.resolvedAgentId,
+        request.modelAssignment,
+      ),
+      request = request,
+      specSource = specSource,
+    )
+    blockAndPersist(
+      run,
+      state.nextIteration(phaseId),
+      reason,
+      observability,
+      loopId = loopId,
+      edgeIteration = edgeIteration,
+      failureDisposition = FeatureTaskRuntimeFailureDisposition.NON_RETRYABLE_POLICY_CONFLICT,
+    )
+    blockAt(phaseId, reason)
   }
 
   private fun reentersMutatingPhase(edge: FeatureTaskRuntimeBackwardEdge, destinationPhaseId: String): Boolean =

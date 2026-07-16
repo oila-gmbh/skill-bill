@@ -1079,6 +1079,16 @@ private fun FeatureTaskRuntimeStatusProjection?.toRuntimeStatusCliMap(workflowId
       "current_phase" to it.currentPhaseId,
       "resolved_branch" to it.resolvedBranch,
       "finalizing_agent_id" to it.finalizingAgentId,
+      "worker_lease" to it.workerLease?.let { worker ->
+        linkedMapOf(
+          "liveness" to worker.liveness,
+          "phase_id" to worker.phaseId,
+          "phase_attempt" to worker.phaseAttempt,
+          "lease_state" to worker.leaseState,
+          "heartbeat_at" to worker.heartbeatAt,
+          "expires_at" to worker.expiresAt,
+        )
+      },
       "decompose_terminal" to it.decomposeTerminal?.let { terminal ->
         linkedMapOf(
           "reason" to terminal.reason,
@@ -1101,6 +1111,7 @@ private fun FeatureTaskRuntimeStatusProjection?.toRuntimeStatusCliMap(workflowId
     "current_phase" to null,
     "resolved_branch" to null,
     "finalizing_agent_id" to null,
+    "worker_lease" to null,
     "decompose_terminal" to null,
     "phases" to emptyList<Map<String, Any?>>(),
   )
@@ -1123,6 +1134,12 @@ private fun runtimeStatusText(payload: Map<String, Any?>): String = buildString 
   appendLine("pending: ${payload["pending_count"]}")
   appendLine("blocked: ${payload["blocked_count"]}")
   appendLine("current_phase: ${payload["current_phase"] ?: "none"}")
+  (payload["worker_lease"] as? Map<*, *>)?.let { worker ->
+    appendLine(
+      "worker_liveness: ${worker["liveness"]} phase=${worker["phase_id"]} " +
+        "attempt=${worker["phase_attempt"]} expires_at=${worker["expires_at"]}",
+    )
+  }
   appendLine("resolved_branch: ${payload["resolved_branch"] ?: "none"}")
   appendLine("finalizing_agent: ${payload["finalizing_agent_id"] ?: "none"}")
   (payload["decompose_terminal"] as? Map<*, *>)?.let { terminal ->

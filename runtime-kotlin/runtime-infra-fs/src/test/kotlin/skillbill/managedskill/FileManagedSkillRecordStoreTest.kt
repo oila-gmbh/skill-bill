@@ -17,7 +17,7 @@ import kotlin.test.assertNotNull
 
 class FileManagedSkillRecordStoreTest {
   @Test
-  fun `requires provider locking even without identity-bound directory streams`() {
+  fun `rejects providers without identity-bound directory streams`() {
     val archive = Files.createTempFile("managed-records", ".zip")
     Files.delete(archive)
     FileSystems.newFileSystem(URI.create("jar:${archive.toUri()}"), mapOf("create" to "true")).use { fileSystem ->
@@ -31,7 +31,7 @@ class FileManagedSkillRecordStoreTest {
         importedAt = now, updatedAt = now,
       )
 
-      assertFailsWith<IllegalStateException> { store.write(record) }
+      assertFailsWith<InvalidManagedSkillRecordSchemaError> { store.write(record) }
     }
   }
 

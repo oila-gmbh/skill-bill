@@ -7,10 +7,15 @@ import skillbill.application.model.FeatureTaskRuntimeDecomposeTerminalStatus
 import skillbill.application.model.FeatureTaskRuntimePhaseStatus
 import skillbill.application.model.FeatureTaskRuntimeStatusProjection
 import skillbill.application.model.FeatureTaskRuntimeStatusRequest
+import skillbill.application.model.FeatureTaskRuntimeWorkerLeaseStatus
+import skillbill.ports.persistence.DatabaseSessionFactory
+import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerLeaseState
+import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
+import java.time.Instant
 
 /**
  * Read-only status service that projects durable per-phase records and the ledger into a typed
@@ -22,6 +27,7 @@ class FeatureTaskRuntimeStatusService(
   private val recorder: FeatureTaskRuntimePhaseRecorder,
   private val runInvariantsStore: FeatureTaskRuntimeRunInvariantsStore,
   private val decomposeTerminalRecorder: FeatureTaskRuntimeDecomposeTerminalRecorder,
+  private val database: DatabaseSessionFactory,
 ) {
   /**
    * Projects the read-only status. Returns null only when the workflow row is absent,
@@ -42,6 +48,7 @@ class FeatureTaskRuntimeStatusService(
       records[phaseId].toPhaseStatus(phaseId, blocked = phaseId in blockedPhaseIds)
     }
     val terminalDecomposeRecorded = decomposeTerminal != null
+    val hasRunningPhase = phases.any { it.status == STATUS_RUNNING }
     return FeatureTaskRuntimeStatusProjection(
       workflowId = request.workflowId,
       featureSize = runInvariantsStore.resolve(request.workflowId, request.dbPathOverride)?.featureSize?.name,
@@ -78,8 +85,47 @@ class FeatureTaskRuntimeStatusService(
           subtaskSpecPaths = it.subtaskSpecPaths,
         )
       },
+      workerLease = workerLeaseStatus(request, hasRunningPhase),
     )
   }
+
+  private fun workerLeaseStatus(
+    request: FeatureTaskRuntimeStatusRequest,
+    hasRunningPhase: Boolean,
+  ): FeatureTaskRuntimeWorkerLeaseStatus? {
+    val ownership = database.read(request.dbPathOverride) {
+      it.workflowStates.getFeatureTaskRuntimeWorkerOwnership(request.workflowId)
+    }
+    if (ownership == null) {
+      return if (hasRunningPhase) {
+        FeatureTaskRuntimeWorkerLeaseStatus(
+          liveness = WORKER_LIVENESS_MISSING,
+          phaseId = "",
+          phaseAttempt = 0,
+          leaseState = "",
+          heartbeatAt = "",
+          expiresAt = "",
+        )
+      } else {
+        null
+      }
+    }
+    return ownership.toStatus()
+  }
+
+  private fun FeatureTaskRuntimeWorkerOwnership.toStatus(): FeatureTaskRuntimeWorkerLeaseStatus =
+    FeatureTaskRuntimeWorkerLeaseStatus(
+      liveness = when {
+        leaseState == FeatureTaskRuntimeWorkerLeaseState.TAKEOVER_RESERVED -> WORKER_LIVENESS_TAKEOVER_RESERVED
+        Instant.parse(expiresAt).isBefore(Instant.now()) -> WORKER_LIVENESS_EXPIRED
+        else -> WORKER_LIVENESS_ACTIVE
+      },
+      phaseId = phaseId,
+      phaseAttempt = phaseAttempt,
+      leaseState = leaseState.wireValue,
+      heartbeatAt = heartbeatAt,
+      expiresAt = expiresAt,
+    )
 
   // Supplementary ledger-derived blocked-ness: a phase is blocked when its newest ledger entry is
   // BLOCKED and no durable blocked record already covers it; a later entry from a resumed run
@@ -162,6 +208,10 @@ class FeatureTaskRuntimeStatusService(
     const val STATUS_RUNNING = "running"
     const val STATUS_COMPLETED = "completed"
     const val STATUS_BLOCKED = "blocked"
+    const val WORKER_LIVENESS_ACTIVE = "active"
+    const val WORKER_LIVENESS_EXPIRED = "expired"
+    const val WORKER_LIVENESS_MISSING = "missing"
+    const val WORKER_LIVENESS_TAKEOVER_RESERVED = "takeover_reserved"
     val TERMINAL_PHASE_STATUSES = setOf(STATUS_COMPLETED, STATUS_BLOCKED)
 
     // Loop-only phases (backward-edge destinations the forward edge skips) are never the current

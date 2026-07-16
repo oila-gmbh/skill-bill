@@ -19,6 +19,8 @@ import skillbill.ports.persistence.TelemetryReconciliationRepository
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.persistence.WorkflowStateRepository
 import skillbill.ports.persistence.model.FeatureImplementSessionSummary
+import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerLeaseState
+import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.persistence.model.FeatureVerifySessionSummary
 import skillbill.ports.persistence.model.WorkflowStateRecord
 import skillbill.workflow.WorkflowSnapshotValidator
@@ -113,6 +115,38 @@ class FeatureTaskRuntimeStatusServiceTest {
 
     assertEquals(0, projection.blockedCount)
     assertEquals("running", projection.phases.single { it.phaseId == "implement" }.status)
+  }
+
+  @Test
+  fun `running phase reports expired worker lease liveness`() {
+    val harness = statusHarness()
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    harness.recordRunning("audit", attemptCount = 3)
+    harness.seedWorkerOwnership(
+      FeatureTaskRuntimeWorkerOwnership(
+        workflowId = WORKFLOW_ID,
+        generation = 1,
+        ownerToken = "expired-owner-token",
+        hostIdentity = "host",
+        bootIdentity = "boot",
+        pid = 123,
+        processBirthToken = "birth-123",
+        leaseState = FeatureTaskRuntimeWorkerLeaseState.ACTIVE,
+        heartbeatAt = "2026-07-14T10:00:00Z",
+        expiresAt = "2026-07-14T10:00:30Z",
+        phaseId = "audit",
+        phaseAttempt = 3,
+      ),
+    )
+
+    val projection = requireNotNull(
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+    )
+
+    val lease = requireNotNull(projection.workerLease)
+    assertEquals("expired", lease.liveness)
+    assertEquals("audit", lease.phaseId)
+    assertEquals(3, lease.phaseAttempt)
   }
 
   @Test
@@ -397,7 +431,8 @@ class FeatureTaskRuntimeStatusServiceTest {
       recorder,
       decomposeTerminalRecorder,
       runInvariantsStore,
-      FeatureTaskRuntimeStatusService(recorder, runInvariantsStore, decomposeTerminalRecorder),
+      FeatureTaskRuntimeStatusService(recorder, runInvariantsStore, decomposeTerminalRecorder, database),
+      repository,
     )
   }
 
@@ -406,7 +441,12 @@ class FeatureTaskRuntimeStatusServiceTest {
     val decomposeTerminalRecorder: FeatureTaskRuntimeDecomposeTerminalRecorder,
     val runInvariantsStore: FeatureTaskRuntimeRunInvariantsStore,
     val service: FeatureTaskRuntimeStatusService,
+    private val repository: StatusInMemoryWorkflowRepository,
   ) {
+    fun seedWorkerOwnership(ownership: FeatureTaskRuntimeWorkerOwnership) {
+      repository.seedWorkerOwnership(ownership)
+    }
+
     fun recordRunning(phaseId: String, attemptCount: Int, resolvedAgentId: String = "claude") =
       recorder.recordPhaseState(
         FeatureTaskRuntimePhaseStateRequest(
@@ -529,6 +569,15 @@ private class StatusFakeDatabaseSessionFactory(
 }
 
 private class StatusInMemoryWorkflowRepository : WorkflowStateRepository {
+  private var workerOwnership: FeatureTaskRuntimeWorkerOwnership? = null
+
+  fun seedWorkerOwnership(ownership: FeatureTaskRuntimeWorkerOwnership) {
+    workerOwnership = ownership
+  }
+
+  override fun getFeatureTaskRuntimeWorkerOwnership(workflowId: String): FeatureTaskRuntimeWorkerOwnership? =
+    workerOwnership?.takeIf { it.workflowId == workflowId }
+
   override fun saveFeatureTaskExecutionIdentity(
     identity: skillbill.ports.persistence.model.FeatureTaskExecutionIdentity,
   ) = Unit

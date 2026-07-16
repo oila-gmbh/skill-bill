@@ -15,8 +15,6 @@ import java.nio.file.Files
 import java.nio.file.LinkOption.NOFOLLOW_LINKS
 import java.nio.file.Path
 import java.nio.file.SecureDirectoryStream
-import java.nio.file.StandardCopyOption.ATOMIC_MOVE
-import java.nio.file.StandardCopyOption.REPLACE_EXISTING
 import java.nio.file.StandardOpenOption.CREATE
 import java.nio.file.StandardOpenOption.CREATE_NEW
 import java.nio.file.StandardOpenOption.READ
@@ -125,6 +123,7 @@ class FileManagedSkillRecordStore private constructor(
     val raw = record.toWire()
     ManagedSkillRecordSchemaValidator.validate(raw, path.toString())
     validateRecordPaths(record, path)
+    requireIdentityBoundProvider()
     createConfinedDirectories(path.parent)
     requireRealAncestors(path.parent)
     withRecordDirectory(name) { directory, displayDirectory ->
@@ -284,12 +283,10 @@ class FileManagedSkillRecordStore private constructor(
     return Files.newDirectoryStream(stateRoot).use { rootStream ->
       val secureRoot = rootStream as? SecureDirectoryStream<Path>
       if (secureRoot == null) {
-        requireStableStateRoot()
-        val fallback = PathRecordDirectory(directory)
-        return block(fallback, directory).also {
-          fallback.requireStable()
-          requireStableStateRoot()
-        }
+        throw InvalidManagedSkillRecordSchemaError(
+          stateRoot.toString(),
+          "managed records require identity-bound directory access from the filesystem provider",
+        )
       }
       val openedRoot = secureRoot.getFileAttributeView(
         Path.of("."),
@@ -306,6 +303,17 @@ class FileManagedSkillRecordStore private constructor(
           block(SecureRecordDirectory(recordDirectory), directory)
         }
       }.also { requireStableStateRoot() }
+    }
+  }
+
+  private fun requireIdentityBoundProvider() {
+    Files.newDirectoryStream(stateRoot).use { directory ->
+      if (directory !is SecureDirectoryStream<Path>) {
+        throw InvalidManagedSkillRecordSchemaError(
+          stateRoot.toString(),
+          "managed records require identity-bound directory access from the filesystem provider",
+        )
+      }
     }
   }
 
@@ -338,58 +346,6 @@ class FileManagedSkillRecordStore private constructor(
 
     override fun atomicMove(source: Path, target: Path) = directory.move(source, directory, target)
     override fun deleteFile(name: Path) = directory.deleteFile(name)
-  }
-
-  private class PathRecordDirectory(
-    private val directory: Path,
-  ) : RecordDirectory {
-    private val identity = attributesOf(directory).also {
-      if (!it.isDirectory || it.isSymbolicLink) throw IllegalStateException("Managed-record directory is not stable.")
-    }
-
-    fun requireStable() {
-      val current = attributesOf(directory)
-      if (!current.isDirectory || current.isSymbolicLink ||
-        identity.fileKey() != null && current.fileKey() != null && identity.fileKey() != current.fileKey()
-      ) throw IllegalStateException("Managed-record directory identity changed.")
-    }
-
-    override fun attributes(name: Path): java.nio.file.attribute.BasicFileAttributes {
-      requireStable()
-      return attributesOf(resolve(name)).also { requireStable() }
-    }
-
-    override fun newByteChannel(name: Path, options: Set<java.nio.file.OpenOption>): SeekableByteChannel {
-      requireStable()
-      val path = resolve(name)
-      return try {
-        Files.newByteChannel(path, options)
-      } catch (error: IllegalArgumentException) {
-        Files.newByteChannel(path, options - NOFOLLOW_LINKS)
-      }
-    }
-
-    override fun atomicMove(source: Path, target: Path) {
-      requireStable()
-      Files.move(resolve(source), resolve(target), ATOMIC_MOVE, REPLACE_EXISTING)
-      requireStable()
-    }
-
-    override fun deleteFile(name: Path) {
-      requireStable()
-      Files.delete(resolve(name))
-      requireStable()
-    }
-
-    private companion object {
-      fun attributesOf(path: Path) = Files.readAttributes(
-        path,
-        java.nio.file.attribute.BasicFileAttributes::class.java,
-        NOFOLLOW_LINKS,
-      )
-    }
-
-    private fun resolve(name: Path): Path = directory.resolve(name.toString())
   }
 
   private fun requireStableStateRoot() {

@@ -40,9 +40,19 @@ data class FeatureTaskRuntimeStatusProjection(
   /**
    * The ledger-derived finalizing agent (Seam A rollup), computed even for a single-spec run where
    * no goal-continuation outcome is persisted. Null when no terminal agent attribution exists yet.
-   */
+  */
   val finalizingAgentId: String? = null,
   val decomposeTerminal: FeatureTaskRuntimeDecomposeTerminalStatus? = null,
+  val workerLease: FeatureTaskRuntimeWorkerLeaseStatus? = null,
+)
+
+data class FeatureTaskRuntimeWorkerLeaseStatus(
+  val liveness: String,
+  val phaseId: String,
+  val phaseAttempt: Int,
+  val leaseState: String,
+  val heartbeatAt: String,
+  val expiresAt: String,
 )
 
 data class FeatureTaskRuntimeDecomposeTerminalStatus(
