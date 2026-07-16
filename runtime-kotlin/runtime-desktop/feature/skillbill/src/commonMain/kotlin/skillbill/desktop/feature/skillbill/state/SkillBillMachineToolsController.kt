@@ -21,6 +21,7 @@ internal class SkillBillMachineToolsController(private val state: SkillBillViewS
   private var inventoryDetails: Map<String, MachineSkillManagerDetail> = emptyMap()
 
   fun detailFor(logicalKey: String): MachineSkillManagerDetail? = inventoryDetails[logicalKey]
+  fun selectedAuthoritativeSource(): String? = state.machineTools.manager.authoritativeSource
   fun dispatch(action: MachineToolAction) {
     invalidateSurfaceCompletions()
     update {

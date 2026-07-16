@@ -525,6 +525,13 @@ fun SkillBillRoute(
         }
       }
     },
+    onMachineSkillsRefreshed = {
+      if (canStartRepoScopedAction()) {
+        coroutineScope.launch {
+          state = withContext(dispatcherProvider.default) { viewModel.refreshMachineSkillInventory() }
+        }
+      }
+    },
     onMoveTreeSelection = { delta ->
       if (canStartRepoScopedAction()) {
         state = viewModel.moveSelection(delta)
@@ -586,7 +593,10 @@ fun SkillBillRoute(
       updateAgent = { agent -> state = viewModel.updateMachineSkillAgentFilter(agent) },
       selectSkill = { name -> state = viewModel.selectMachineSkill(name) },
       managerAction = { action ->
-        if (action == skillbill.desktop.feature.skillbill.ui.MachineSkillManagerAction.REVEAL) {
+        if (action == skillbill.desktop.feature.skillbill.ui.MachineSkillManagerAction.INSPECT) {
+          state = viewModel.inspectSelectedMachineSkillOccurrence()
+          state.selectedTreeItemId?.let(onSourceRouteSelected)
+        } else if (action == skillbill.desktop.feature.skillbill.ui.MachineSkillManagerAction.REVEAL) {
           coroutineScope.launch { state = viewModel.revealMachineSkillSource() }
         } else if (action == skillbill.desktop.feature.skillbill.ui.MachineSkillManagerAction.EDIT) {
           coroutineScope.launch {

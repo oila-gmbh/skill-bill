@@ -23,6 +23,7 @@ import skillbill.ports.managedskill.MachineSkillWorkspacePort
 import java.nio.file.Path
 
 @Inject
+@Suppress("TooManyFunctions")
 class MachineSkillToolsFacade(
   private val environment: EnvironmentContext,
   private val installAgents: InstallAgentService,
@@ -93,12 +94,11 @@ class MachineSkillToolsFacade(
   fun openEdit(name: String, recordDigest: String, sourceHash: String) =
     operations.openEdit(EditMachineSkillRequest(name, recordDigest, sourceHash))
 
-  fun previewEdit(name: String, recordDigest: String, sourceHash: String, markdown: String) =
-    operations.previewEdit(
-      SaveMachineSkillEditRequest(EditMachineSkillRequest(name, recordDigest, sourceHash), markdown),
-    ).also { preview ->
-      preview.prepared?.plan?.planId?.let { synchronized(prepared) { prepared[it] = preview } }
-    }
+  fun previewEdit(name: String, recordDigest: String, sourceHash: String, markdown: String) = operations.previewEdit(
+    SaveMachineSkillEditRequest(EditMachineSkillRequest(name, recordDigest, sourceHash), markdown),
+  ).also { preview ->
+    preview.prepared?.plan?.planId?.let { synchronized(prepared) { prepared[it] = preview } }
+  }
 
   suspend fun apply(planId: String): MachineSkillOperationResult {
     val preview = synchronized(prepared) { prepared.remove(planId) }

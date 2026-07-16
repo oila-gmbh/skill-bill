@@ -3,6 +3,7 @@ package skillbill.desktop.feature.skillbill.state
 import me.tatarka.inject.annotations.Inject
 import skillbill.desktop.core.common.di.ScreenScope
 import skillbill.desktop.core.datastore.DesktopPreferenceStore
+import skillbill.desktop.core.domain.model.AuthoredContentDocument
 import skillbill.desktop.core.domain.model.DesktopSkillRemovalResult
 import skillbill.desktop.core.domain.model.DesktopSkillRemovalTarget
 import skillbill.desktop.core.domain.model.FirstRunSetupState
@@ -19,7 +20,6 @@ import skillbill.desktop.core.domain.model.ScaffoldRunResult
 import skillbill.desktop.core.domain.model.ScaffoldWizardFormFields
 import skillbill.desktop.core.domain.model.SkillBillBusyOperation
 import skillbill.desktop.core.domain.model.SkillBillState
-import skillbill.desktop.core.domain.model.AuthoredContentDocument
 import skillbill.desktop.core.domain.model.ValidateAgentConfigsSummary
 import skillbill.desktop.core.domain.service.AuthoringGateway
 import skillbill.desktop.core.domain.service.DesktopFirstRunGateway
@@ -115,9 +115,16 @@ class SkillBillViewModel(
         .onSuccess { edit ->
           if (viewState.selectedTreeItemId != itemId) return@onSuccess
           viewState.loadMachineEditorDocument(
-            AuthoredContentDocument(itemId, detail.name, detail.name, "Third-party runtime skill",
-              detail.canonicalManagedSourcePath, edit.markdown, detail.validationIssues.isEmpty(),
-              detail.validationIssues.takeIf { it.isNotEmpty() }?.joinToString("\n")),
+            AuthoredContentDocument(
+              itemId,
+              detail.name,
+              detail.name,
+              "Third-party runtime skill",
+              detail.canonicalManagedSourcePath,
+              edit.markdown,
+              detail.validationIssues.isEmpty(),
+              detail.validationIssues.takeIf { it.isNotEmpty() }?.joinToString("\n"),
+            ),
             edit,
             detail,
           )
@@ -125,9 +132,16 @@ class SkillBillViewModel(
         .onFailure { error ->
           if (viewState.selectedTreeItemId != itemId) return@onFailure
           viewState.loadMachineEditorDocument(
-            AuthoredContentDocument(itemId, detail.name, detail.name, "Third-party runtime skill",
-              detail.canonicalManagedSourcePath, "", false,
-              "Managed runtime skill could not be opened: ${error.message}"),
+            AuthoredContentDocument(
+              itemId,
+              detail.name,
+              detail.name,
+              "Third-party runtime skill",
+              detail.canonicalManagedSourcePath,
+              "",
+              false,
+              "Managed runtime skill could not be opened: ${error.message}",
+            ),
             detail = detail,
           )
         }
@@ -139,9 +153,17 @@ class SkillBillViewModel(
         "Adopt this unmanaged skill from Manage installed skills to edit it safely."
       }
       viewState.loadMachineEditorDocument(
-        AuthoredContentDocument(itemId, detail.name, detail.name, "Third-party runtime skill",
-          occurrences.singleOrNull(), listOf(detail.description, occurrences.joinToString("\n"), guidance)
-            .filter { it.isNotBlank() }.joinToString("\n\n"), false, guidance),
+        AuthoredContentDocument(
+          itemId,
+          detail.name,
+          detail.name,
+          "Third-party runtime skill",
+          occurrences.singleOrNull(),
+          listOf(detail.description, occurrences.joinToString("\n"), guidance)
+            .filter { it.isNotBlank() }.joinToString("\n\n"),
+          false,
+          guidance,
+        ),
         detail = detail,
       )
     }
@@ -235,7 +257,10 @@ class SkillBillViewModel(
         renewed,
       )
     }.getOrElse { error ->
-      EditorSaveResult(request, skillbill.desktop.core.domain.model.AuthoringSaveResult.failed(viewState.describe(error)))
+      EditorSaveResult(
+        request,
+        skillbill.desktop.core.domain.model.AuthoringSaveResult.failed(viewState.describe(error)),
+      )
     }
   }
 
@@ -371,6 +396,32 @@ class SkillBillViewModel(
     machineSkillGateway.revealSource(name).onFailure {
       machineToolsController.managerActionFailed(it.message ?: "Reveal source failed.")
     }
+    return viewState.currentState
+  }
+
+  fun inspectSelectedMachineSkillOccurrence(): SkillBillState {
+    val manager = viewState.machineTools.manager
+    val detail = manager.detail ?: return viewState.currentState
+    val occurrence = machineToolsController.selectedAuthoritativeSource() ?: return viewState.currentState
+    val logicalKey = manager.selectedName ?: return viewState.currentState
+    val itemId = "$MACHINE_SKILLS_ROOT_ID:skill:$logicalKey"
+    repoController.selectTreeItem(itemId)
+    val guidance = "Read-only installed copy. Adopt this occurrence from Manage installed skills to edit it safely."
+    viewState.loadMachineEditorDocument(
+      AuthoredContentDocument(
+        itemId,
+        detail.name,
+        detail.name,
+        "Third-party runtime skill",
+        occurrence,
+        listOf(detail.description, "Selected occurrence: $occurrence", guidance)
+          .filter(String::isNotBlank)
+          .joinToString("\n\n"),
+        false,
+        guidance,
+      ),
+      detail = detail,
+    )
     return viewState.currentState
   }
 

@@ -42,7 +42,7 @@ import skillbill.desktop.core.domain.model.MachineToolMutationRisk
 import skillbill.desktop.core.domain.model.MachineToolsState
 import skillbill.desktop.core.domain.model.MachineToolsSurface
 
-enum class MachineSkillManagerAction { EDIT, MANAGE_AGENTS, REVEAL, REPAIR, DELETE, ADOPT }
+enum class MachineSkillManagerAction { EDIT, MANAGE_AGENTS, REVEAL, REPAIR, DELETE, ADOPT, INSPECT }
 
 data class MachineToolsCallbacks(
   val chooseSource: () -> Unit = {},
@@ -288,6 +288,20 @@ private fun SkillManager(state: MachineToolsState, callbacks: MachineToolsCallba
         }
       } else {
         Text("Read-only until adopted. Divergent copies require an authoritative source and replacement targets.")
+        if (detail.targets.sumOf { it.occurrencePaths.size } > 1) {
+          Text("Choose an installed agent copy to inspect")
+          detail.targets
+            .flatMap { target -> target.occurrencePaths.map { target.provider to it } }
+            .forEach { (agent, path) ->
+              OutlinedButton(onClick = { callbacks.selectAuthority(path) }) {
+                Text(if (manager.authoritativeSource == path) "Selected: $agent · $path" else "$agent · $path")
+              }
+            }
+          Button(
+            onClick = { callbacks.managerAction(MachineSkillManagerAction.INSPECT) },
+            enabled = manager.authoritativeSource != null,
+          ) { Text("Inspect selected copy") }
+        }
         Button(onClick = { callbacks.managerAction(MachineSkillManagerAction.ADOPT) }) { Text("Adopt") }
       }
       manager.pendingAction?.let { action ->

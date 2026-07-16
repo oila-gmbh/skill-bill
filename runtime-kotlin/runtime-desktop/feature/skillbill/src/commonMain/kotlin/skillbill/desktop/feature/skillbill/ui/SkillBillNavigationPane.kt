@@ -124,6 +124,7 @@ internal fun NavigationPane(
   onNodeOpened: (String) -> Unit,
   onNodeExpandedToggled: (String) -> Unit,
   onMoveSelection: (Int) -> Unit,
+  onMachineSkillsRefreshed: () -> Unit = {},
   onShowContextMenu: (SkillBillTreeItem) -> Unit = {},
   workList: WorkListState = WorkListState(),
   workEnabled: Boolean = true,
@@ -163,6 +164,7 @@ internal fun NavigationPane(
         onNodeSelected = onNodeSelected,
         onNodeOpened = onNodeOpened,
         onNodeExpandedToggled = onNodeExpandedToggled,
+        onMachineSkillsRefreshed = onMachineSkillsRefreshed,
         onMoveSelection = onMoveSelection,
         onShowContextMenu = onShowContextMenu,
       )
@@ -219,6 +221,7 @@ private fun TreeNavigation(
   onNodeSelected: (String) -> Unit,
   onNodeOpened: (String) -> Unit,
   onNodeExpandedToggled: (String) -> Unit,
+  onMachineSkillsRefreshed: () -> Unit,
   onMoveSelection: (Int) -> Unit,
   onShowContextMenu: (SkillBillTreeItem) -> Unit,
 ) {
@@ -272,6 +275,7 @@ private fun TreeNavigation(
         onNodeSelected = onNodeSelected,
         onNodeOpened = onNodeOpened,
         onNodeExpandedToggled = onNodeExpandedToggled,
+        onRefresh = onMachineSkillsRefreshed.takeIf { group.id == "machine:third-party-skills" },
         onShowContextMenu = onShowContextMenu,
       )
     }

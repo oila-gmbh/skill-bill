@@ -67,6 +67,7 @@ internal fun NavGroup(
   onNodeSelected: (String) -> Unit,
   onNodeOpened: (String) -> Unit,
   onNodeExpandedToggled: (String) -> Unit,
+  onRefresh: (() -> Unit)? = null,
   onShowContextMenu: (SkillBillTreeItem) -> Unit = {},
 ) {
   val selected = selectedNodeId == group.id
@@ -128,7 +129,22 @@ internal fun NavGroup(
         letterSpacing = 0.sp,
         modifier = Modifier.weight(1f),
       )
-      Text(text = group.status ?: group.children.size.toString(), color = iconTint, style = MaterialTheme.typography.labelSmall)
+      Text(
+        text = group.status ?: group.children.size.toString(),
+        color = iconTint,
+        style = MaterialTheme.typography.labelSmall,
+      )
+      onRefresh?.let { refresh ->
+        Text(
+          text = "Refresh",
+          modifier = Modifier
+            .semantics { contentDescription = "Refresh Third-Party Skills" }
+            .clickable(enabled = enabled, role = Role.Button) { refresh() }
+            .padding(horizontal = SkillBillDimens.padSm),
+          color = iconTint,
+          style = MaterialTheme.typography.labelSmall,
+        )
+      }
       DropdownMenu(
         expanded = menuExpanded,
         onDismissRequest = { menuExpanded = false },

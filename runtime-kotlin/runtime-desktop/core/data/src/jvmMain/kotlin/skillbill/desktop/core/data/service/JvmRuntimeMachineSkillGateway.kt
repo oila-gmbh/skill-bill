@@ -1,5 +1,7 @@
 package skillbill.desktop.core.data.service
 
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import me.tatarka.inject.annotations.Inject
 import skillbill.desktop.core.common.di.UserScope
 import skillbill.desktop.core.data.di.DesktopRuntimeApplicationServices
@@ -10,16 +12,14 @@ import skillbill.desktop.core.domain.model.MachineSkillTargetDetail
 import skillbill.desktop.core.domain.model.MachineSkillTargetOption
 import skillbill.desktop.core.domain.service.MachineSkillApplyPresentation
 import skillbill.desktop.core.domain.service.MachineSkillInventoryPresentation
-import skillbill.desktop.core.domain.service.ManagedMachineSkillEditPresentation
 import skillbill.desktop.core.domain.service.MachineSkillPreviewPresentation
 import skillbill.desktop.core.domain.service.MachineSkillSourceChoice
+import skillbill.desktop.core.domain.service.ManagedMachineSkillEditPresentation
 import skillbill.desktop.core.domain.service.RuntimeMachineSkillGateway
 import software.amazon.lastmile.kotlin.inject.anvil.SingleIn
 import java.awt.Desktop
 import java.nio.file.Path
 import javax.swing.JFileChooser
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 
 @Inject
 @SingleIn(UserScope::class)

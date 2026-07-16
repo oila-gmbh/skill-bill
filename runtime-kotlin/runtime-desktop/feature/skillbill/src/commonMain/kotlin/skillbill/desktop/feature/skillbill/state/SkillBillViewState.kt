@@ -174,16 +174,30 @@ internal class SkillBillViewState(
     val document = if (selection.startsWith("$MACHINE_SKILLS_ROOT_ID:skill:")) {
       val logicalKey = selection.substringAfterLast(":skill:")
       machineTools.manager.rows.firstOrNull { it.logicalKey == logicalKey }?.let { row ->
-          val guidance = if (row.health.contains("DIVERG", true)) {
-            "Choose an installed agent copy to inspect or adopt from Manage installed skills."
-          } else {
-            "Use Manage installed skills to inspect occurrences or adopt this skill."
-          }
-          AuthoredContentDocument(selection, row.name, row.name, "Third-party runtime skill", null,
-            "${row.description}\n\n$guidance", false, guidance)
-        } ?: AuthoredContentDocument(
-        selection, logicalKey, logicalKey, "Third-party runtime skill", null,
-        "Loading machine skill details…", false, "Machine inventory details are loading.",
+        val guidance = if (row.health.contains("DIVERG", true)) {
+          "Choose an installed agent copy to inspect or adopt from Manage installed skills."
+        } else {
+          "Use Manage installed skills to inspect occurrences or adopt this skill."
+        }
+        AuthoredContentDocument(
+          selection,
+          row.name,
+          row.name,
+          "Third-party runtime skill",
+          null,
+          "${row.description}\n\n$guidance",
+          false,
+          guidance,
+        )
+      } ?: AuthoredContentDocument(
+        selection,
+        logicalKey,
+        logicalKey,
+        "Third-party runtime skill",
+        null,
+        "Loading machine skill details…",
+        false,
+        "Machine inventory details are loading.",
       )
     } else {
       authoringGateway.loadDocument(currentSession, selection)
@@ -245,8 +259,12 @@ internal class SkillBillViewState(
     val manager = machineTools.manager
     val rows = manager.rows.distinctBy { it.logicalKey }
     val children = when {
-      manager.loading -> listOf(machinePlaceholder("loading", "Loading third-party skills…")) + rows.map(::machineSkillItem)
-      manager.error != null -> listOf(machinePlaceholder("error", manager.error ?: "Inventory failed")) + rows.map(::machineSkillItem)
+      manager.loading -> listOf(
+        machinePlaceholder("loading", "Loading third-party skills…"),
+      ) + rows.map(::machineSkillItem)
+      manager.error != null -> listOf(
+        machinePlaceholder("error", manager.error ?: "Inventory failed"),
+      ) + rows.map(::machineSkillItem)
       rows.isEmpty() -> listOf(machinePlaceholder("empty", "No third-party skills found"))
       else -> rows.map(::machineSkillItem)
     }

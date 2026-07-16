@@ -111,6 +111,7 @@ fun SkillBillFrame(
   machineToolsCallbacks: MachineToolsCallbacks = MachineToolsCallbacks(),
   scaffoldWizardCallbacks: ScaffoldWizardCallbacks,
   firstRunSetupCallbacks: FirstRunSetupCallbacks,
+  onMachineSkillsRefreshed: () -> Unit = {},
   // SKILL-46: right-click → Delete… dialog. The route owns target resolution from the node id so
   // the frame stays free of repo/skill semantics.
   onShowDeleteContextMenu: (SkillBillTreeItem) -> Unit = {},
@@ -230,6 +231,7 @@ fun SkillBillFrame(
           onNodeSelected = onTreeItemSelected,
           onNodeOpened = onTreeItemSelected,
           onNodeExpandedToggled = onTreeItemExpandedToggled,
+          onMachineSkillsRefreshed = onMachineSkillsRefreshed,
           onMoveSelection = onMoveTreeSelection,
           onShowContextMenu = onShowDeleteContextMenu,
           workList = state.workList,

@@ -123,8 +123,11 @@ internal fun InspectorPane(
           KeyValueRow("ownership", detail.ownership)
           KeyValueRow("canonical source", detail.canonicalManagedSourcePath ?: "unmanaged")
           KeyValueRow("active snapshot", detail.activeSnapshotHash ?: "none")
-          KeyValueRow("installed agents", detail.targets.filter { it.state == "PRESENT" }
-            .joinToString { it.provider }.ifBlank { "none" })
+          KeyValueRow(
+            "installed agents",
+            detail.targets.filter { it.state == "PRESENT" }
+              .joinToString { it.provider }.ifBlank { "none" },
+          )
           KeyValueRow("provenance", detail.provenance.joinToString().ifBlank { "unknown" })
           detail.targets.forEach { target ->
             KeyValueRow(
