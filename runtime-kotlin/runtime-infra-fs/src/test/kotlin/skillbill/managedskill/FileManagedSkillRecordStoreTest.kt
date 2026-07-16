@@ -17,7 +17,7 @@ import kotlin.test.assertNotNull
 
 class FileManagedSkillRecordStoreTest {
   @Test
-  fun `reads digests compares and publishes on providers without secure directory streams`() {
+  fun `rejects managed record access without identity-bound directory streams`() {
     val archive = Files.createTempFile("managed-records", ".zip")
     Files.delete(archive)
     FileSystems.newFileSystem(URI.create("jar:${archive.toUri()}"), mapOf("create" to "true")).use { fileSystem ->
@@ -26,13 +26,8 @@ class FileManagedSkillRecordStoreTest {
       val path = store.recordPath("sample-skill")
       Files.createDirectories(path.parent)
       path.writeText(validWire(root, "sample-skill"))
-      val digest = assertNotNull(store.digest("sample-skill"))
-      assertEquals("sample-skill", store.read("sample-skill").name)
-      val current = store.read("sample-skill")
-      val replacement = current.copy(activeContentHash = "b".repeat(64), updatedAt = current.updatedAt.plusSeconds(1))
-      store.write(replacement, digest)
-      assertEquals(replacement, store.read("sample-skill"))
-      assertFailsWith<IllegalStateException> { store.write(current, digest) }
+      assertFailsWith<InvalidManagedSkillRecordSchemaError> { store.read("sample-skill") }
+      assertFailsWith<InvalidManagedSkillRecordSchemaError> { store.digest("sample-skill") }
     }
   }
 

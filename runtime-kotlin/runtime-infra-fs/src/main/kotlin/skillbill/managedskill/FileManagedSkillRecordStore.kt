@@ -307,7 +307,10 @@ class FileManagedSkillRecordStore private constructor(
           }
         }
       } else {
-        block(PathRecordDirectory(directory), directory)
+        throw InvalidManagedSkillRecordSchemaError(
+          directory.toString(),
+          "the filesystem cannot provide identity-bound managed record access",
+        )
       }
     }.also {
       requireRealAncestors(directory)
@@ -344,56 +347,6 @@ class FileManagedSkillRecordStore private constructor(
 
     override fun atomicMove(source: Path, target: Path) = directory.move(source, directory, target)
     override fun deleteFile(name: Path) = directory.deleteFile(name)
-  }
-
-  private class PathRecordDirectory(private val directory: Path) : RecordDirectory {
-    private val identity = stableDirectoryAttributes()
-
-    override fun attributes(name: Path) = checked {
-      Files.readAttributes(resolve(name), java.nio.file.attribute.BasicFileAttributes::class.java, NOFOLLOW_LINKS)
-    }
-
-    override fun newByteChannel(name: Path, options: Set<java.nio.file.OpenOption>) = checked {
-      val supportedOptions = if (directory.fileSystem.provider().scheme == "jar") options - NOFOLLOW_LINKS else options
-      Files.newByteChannel(resolve(name), supportedOptions)
-    }
-
-    override fun atomicMove(source: Path, target: Path) {
-      checked {
-        Files.move(resolve(source), resolve(target), ATOMIC_MOVE, REPLACE_EXISTING)
-      }
-    }
-
-    override fun deleteFile(name: Path) = checked { Files.delete(resolve(name)) }
-
-    private fun resolve(name: Path): Path {
-      if (name.isAbsolute || name.nameCount != 1 || name.normalize() != name || name.toString() == "." || name.toString() == "..") {
-        throw InvalidManagedSkillRecordSchemaError(name.toString(), "managed record entry name is unsafe")
-      }
-      return directory.resolve(directory.fileSystem.getPath(name.toString()))
-    }
-
-    private inline fun <T> checked(operation: () -> T): T {
-      requireIdentity()
-      return operation().also { requireIdentity() }
-    }
-
-    private fun stableDirectoryAttributes() = Files.readAttributes(
-      directory,
-      java.nio.file.attribute.BasicFileAttributes::class.java,
-      NOFOLLOW_LINKS,
-    ).also {
-      if (!it.isDirectory || it.isSymbolicLink) {
-        throw InvalidManagedSkillRecordSchemaError(directory.toString(), "managed record directory is not a real directory")
-      }
-    }
-
-    private fun requireIdentity() {
-      val actual = stableDirectoryAttributes()
-      if (identity.fileKey() != null && actual.fileKey() != null && identity.fileKey() != actual.fileKey()) {
-        throw InvalidManagedSkillRecordSchemaError(directory.toString(), "managed record directory identity changed")
-      }
-    }
   }
 
   private fun requireStableStateRoot() {

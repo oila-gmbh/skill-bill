@@ -109,26 +109,24 @@ class OpaqueSkillBundleScannerTest {
   }
 
   @Test
-  fun `rejects ordinary file provider directory when secure traversal is unavailable`() {
+  fun `scans ordinary file provider directory when secure traversal is unavailable`() {
     val root = Files.createTempDirectory("opaque-skill-fallback")
     root.resolve("SKILL.md").writeText("---\nname: sample-skill\ndescription: Sample\n---")
     root.resolve("notes.txt").writeText("support")
 
-    assertFailsWith<InvalidOpaqueSkillBundleException> {
-      OpaqueSkillBundleScanner(useSecureDirectoryStreams = false).scan(root, emptySet())
-    }
+    val bundle = OpaqueSkillBundleScanner(useSecureDirectoryStreams = false).scan(root, emptySet())
+    assertEquals(listOf("SKILL.md", "notes.txt"), bundle.files.map { it.relativePath })
   }
 
   @Test
-  fun `rejects ordinary file provider skill file when secure traversal is unavailable`() {
+  fun `scans ordinary file provider skill file when secure traversal is unavailable`() {
     val root = Files.createTempDirectory("opaque-skill-file-fallback")
     val skill = root.resolve("SKILL.md")
     skill.writeText("---\nname: sample-skill\ndescription: Sample\n---")
     root.resolve("notes.txt").writeText("not selected")
 
-    assertFailsWith<InvalidOpaqueSkillBundleException> {
-      OpaqueSkillBundleScanner(useSecureDirectoryStreams = false).scan(skill, emptySet())
-    }
+    val bundle = OpaqueSkillBundleScanner(useSecureDirectoryStreams = false).scan(skill, emptySet())
+    assertEquals(listOf("SKILL.md"), bundle.files.map { it.relativePath })
   }
 
   @Test

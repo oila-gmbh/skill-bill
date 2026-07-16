@@ -102,10 +102,6 @@ class OpaqueSkillBundleScanner private constructor(
     attributes: BasicFileAttributes,
     only: Path?,
   ): List<OpaqueSkillBundleFile> {
-    val scheme = root.fileSystem.provider().scheme
-    if (scheme != "jar") {
-      fail("The filesystem cannot provide identity-bound bundle traversal.")
-    }
     return captureDirectory(PathBundleDirectory(root, attributes), "", only)
   }
 
@@ -276,7 +272,7 @@ class OpaqueSkillBundleScanner private constructor(
       if (!attributes.isDirectory || attributes.isSymbolicLink) {
         throw InvalidOpaqueSkillBundleException("Symbolic links are not allowed: $name")
       }
-      PathBundleDirectory(child, attributes, noFollowChannels)
+      PathBundleDirectory(child, attributes)
     }
 
     private fun resolve(name: Path): Path {
