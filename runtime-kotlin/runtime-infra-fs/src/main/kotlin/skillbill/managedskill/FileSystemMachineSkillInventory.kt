@@ -150,6 +150,7 @@ private fun scanOccurrence(
   }
   val expected = record?.let { store?.snapshotRoot(it.name, it.activeContentHash) }
   val product = rawName == ".bill-shared" || rawName in baselineNames ||
+    isVerifiedProductPackView(path) ||
     (resolved != null && isVerifiedProductStaging(resolved, store, rawName))
   val exactExpectedLink = expected != null && resolved == expected
   val exists = resolved?.let { Files.exists(it, NOFOLLOW_LINKS) } ?: true
@@ -263,20 +264,29 @@ private fun aggregate(
 
 private fun productNameFromBaselinePath(path: String): String? {
   val parts = path.replace('\\', '/').split('/').filter(String::isNotBlank)
-  val skills = parts.indexOf("skills")
-  return if (skills >= 0) parts.getOrNull(skills + 1) else null
+  val sourceParts = if (parts.lastOrNull() == "content.md") parts.dropLast(1) else parts
+  return when (sourceParts.firstOrNull()) {
+    "skills" -> sourceParts.getOrNull(1)
+    "platform-packs" -> sourceParts.lastOrNull()
+    else -> null
+  }
 }
 
 private fun isVerifiedProductStaging(path: Path): Boolean = Files.isDirectory(path, NOFOLLOW_LINKS) &&
   !Files.isSymbolicLink(path) && Files.isRegularFile(path.resolve(".content-hash"), NOFOLLOW_LINKS)
 
+private fun isVerifiedProductPackView(path: Path): Boolean = Files.isDirectory(path, NOFOLLOW_LINKS) &&
+  !Files.isSymbolicLink(path) && Files.isRegularFile(path.resolve(".skill-bill-install"), NOFOLLOW_LINKS)
+
 private fun isVerifiedProductStaging(path: Path, store: FileManagedSkillRecordStore?, rawName: String): Boolean {
   if (store == null || !isVerifiedProductStaging(path)) return false
-  val installedRoot = store.snapshotRoot("probe", "hash").parent
+  val installedRoot = store.snapshotRoot("probe", "0".repeat(SHA_256_HEX_LENGTH)).parent
   if (path.parent != installedRoot || !path.fileName.toString().startsWith("$rawName-")) return false
   val suffix = path.fileName.toString().removePrefix("$rawName-")
   return runCatching { Files.readString(path.resolve(".content-hash")).trim() == suffix }.getOrDefault(false)
 }
+
+private const val SHA_256_HEX_LENGTH = 64
 
 private fun validateManagedSource(record: ManagedSkillRecord, issues: MutableList<MachineSkillIssue>) {
   val attributes = runCatching {

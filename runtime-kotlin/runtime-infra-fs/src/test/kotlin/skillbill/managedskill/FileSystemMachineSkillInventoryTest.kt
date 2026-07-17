@@ -48,12 +48,17 @@ class FileSystemMachineSkillInventoryTest {
   }
 
   @Test
-  fun `product evidence excludes metadata names and bill prefix alone proves nothing`() {
+  fun `product evidence covers base skills platform skills and managed pack views`() {
     val home = createTempDirectory("inventory-products")
     val root = home.resolve("skills").createDirectories()
     writeSkill(root.resolve("product-without-prefix"), "product")
+    writeSkill(root.resolve("pack-product"), "pack product")
     writeSkill(root.resolve("bill-third-party"), "third party")
-    val baseline = baselineWith("skills/product-without-prefix/content.md")
+    root.resolve("platform-packs").createDirectories().resolve(".skill-bill-install").writeText("")
+    val baseline = baselineWith(
+      "skills/product-without-prefix/content.md",
+      "platform-packs/kotlin/code-review/pack-product",
+    )
     val adapter = FileSystemMachineSkillInventory(baseline)
     val target = InventoryTarget(AgentSkillTargetId("codex", root), true, false, "Codex")
 
@@ -62,7 +67,29 @@ class FileSystemMachineSkillInventoryTest {
 
     assertEquals(listOf("bill-third-party"), ordinary.rows.map { it.normalizedName })
     assertFalse(ordinary.productDiagnostics.isNotEmpty())
-    assertEquals("product-without-prefix", diagnostic.productDiagnostics.single().rawName)
+    assertEquals(
+      setOf("pack-product", "platform-packs", "product-without-prefix"),
+      diagnostic.productDiagnostics.map { it.rawName }.toSet(),
+    )
+  }
+
+  @Test
+  fun `active product staging is excluded when baseline metadata is unavailable`() {
+    val home = createTempDirectory("inventory-active-product")
+    val root = home.resolve("skills").createDirectories()
+    val hash = "a".repeat(16)
+    val staged = home.resolve(".skill-bill/installed-skills/bill-product-$hash")
+    writeSkill(staged, "product")
+    staged.resolve(".content-hash").writeText(hash)
+    Files.createSymbolicLink(root.resolve("bill-product"), staged)
+    val target = InventoryTarget(AgentSkillTargetId("codex", root), true, false, "Codex")
+
+    val result = FileSystemMachineSkillInventory(emptyBaseline).read(
+      ReadMachineSkillInventoryRequest(home, listOf(target), true),
+    )
+
+    assertTrue(result.rows.isEmpty())
+    assertEquals("bill-product", result.productDiagnostics.single().rawName)
   }
 
   @Test
@@ -209,13 +236,16 @@ class FileSystemMachineSkillInventoryTest {
     )
   }
 
-  private fun baselineWith(path: String): BaselineManifestPersistencePort = object : BaselineManifestPersistencePort {
-    override fun readBaseline(request: ReadBaselineManifestRequest) = ReadBaselineManifestResult(
-      BaselineManifest.of(BaselineManifest.CONTRACT_VERSION, mapOf(path to "a".repeat(64))),
-      true,
-    )
-    override fun writeBaseline(request: WriteBaselineManifestRequest): WriteBaselineManifestResult = error("read only")
-  }
+  private fun baselineWith(vararg paths: String): BaselineManifestPersistencePort =
+    object : BaselineManifestPersistencePort {
+      override fun readBaseline(request: ReadBaselineManifestRequest) = ReadBaselineManifestResult(
+        BaselineManifest.of(BaselineManifest.CONTRACT_VERSION, paths.associateWith { "a".repeat(64) }),
+        true,
+      )
+
+      override fun writeBaseline(request: WriteBaselineManifestRequest): WriteBaselineManifestResult =
+        error("read only")
+    }
 
   private val emptyBaseline = baselineWith("unrelated/path")
 }

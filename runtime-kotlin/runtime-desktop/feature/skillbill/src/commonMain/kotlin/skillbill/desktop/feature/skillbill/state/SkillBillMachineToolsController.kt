@@ -162,12 +162,19 @@ internal class SkillBillMachineToolsController(private val state: SkillBillViewS
   }
   fun updateAgentFilter(agent: String?) = update { copy(manager = manager.copy(agentFilter = agent)) }
   fun beginManagerAction(action: String) = update {
-    val selected = manager.detail?.targets.orEmpty().filter { it.state == "PRESENT" }.map { it.id }.toSet()
+    val presentTargets = manager.detail?.targets.orEmpty().filter { it.state == "PRESENT" }
+    val presentTargetIds = presentTargets.map { it.id }.toSet()
+    val occurrencePaths = presentTargets.flatMap { it.occurrencePaths }
+    val unambiguousAdoption = action == "ADOPT" && occurrencePaths.size == 1
     copy(
       manager = manager.copy(
         pendingAction = action,
-        authoritativeSource = null,
-        replacementTargetIds = if (action == "MANAGE_AGENTS") selected else emptySet(),
+        authoritativeSource = occurrencePaths.singleOrNull().takeIf { unambiguousAdoption },
+        replacementTargetIds = when {
+          action == "MANAGE_AGENTS" -> presentTargetIds
+          unambiguousAdoption -> presentTargetIds
+          else -> emptySet()
+        },
         actionPlanId = null,
         actionPreview = emptyList(),
         error = null,

@@ -506,6 +506,11 @@ fun SkillBillRoute(
         state = viewModel.revertEditorDraft()
       }
     },
+    onAdoptMachineSkill = {
+      if (canStartRepoScopedAction()) {
+        state = viewModel.beginSelectedMachineSkillAdoption()
+      }
+    },
     onDirtyPromptDiscard = {
       runDiscardedDirtyPrompt()
     },

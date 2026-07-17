@@ -319,6 +319,18 @@ class SkillBillViewModel(
     return viewState.currentState
   }
 
+  fun beginSelectedMachineSkillAdoption(): SkillBillState {
+    val itemId = viewState.selectedTreeItemId ?: return viewState.currentState
+    if (!itemId.startsWith("$MACHINE_SKILLS_ROOT_ID:skill:")) return viewState.currentState
+    val logicalKey = itemId.substringAfterLast(":skill:")
+    val detail = machineToolsController.detailFor(logicalKey) ?: return viewState.currentState
+    if (detail.ownership.equals("MANAGED", ignoreCase = true)) return viewState.currentState
+    machineToolsController.dispatch(MachineToolAction.MANAGE_SKILLS)
+    machineToolsController.selectManagerSkill(logicalKey)
+    machineToolsController.beginManagerAction("ADOPT")
+    return viewState.currentState
+  }
+
   fun toggleMachineSkillTarget(id: String): SkillBillState = machineToolsController.run {
     toggleTarget(id)
     viewState.currentState

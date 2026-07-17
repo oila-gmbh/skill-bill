@@ -15,6 +15,7 @@ import skillbill.desktop.core.domain.model.MachineSkillSourceSummary
 import skillbill.desktop.core.domain.model.MachineSkillTargetDetail
 import skillbill.desktop.core.domain.model.MachineSkillTargetOption
 import skillbill.desktop.core.domain.model.MachineSkillTargetResult
+import skillbill.desktop.core.domain.model.MachineToolsSurface
 import skillbill.desktop.core.domain.service.DesktopFirstRunGateway
 import skillbill.desktop.core.domain.service.MachineSkillApplyPresentation
 import skillbill.desktop.core.domain.service.MachineSkillInventoryPresentation
@@ -38,6 +39,40 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class SkillBillViewModelMachineSkillTest {
+  @Test
+  fun `unmanaged navigator skill opens an adoption plan with unambiguous choices selected`() = runBlocking {
+    val detail = machineDetail("demo", "", "").copy(
+      ownership = "UNMANAGED",
+      canonicalManagedSourcePath = null,
+      activeSnapshotHash = null,
+      recordIdentity = null,
+      contentIdentity = "content-demo",
+      provenance = emptyList(),
+      targets = listOf(
+        MachineSkillTargetDetail(
+          id = "codex-demo",
+          provider = "codex",
+          path = "/home/tester/.codex/skills",
+          detectionStatus = "DETECTED",
+          state = "PRESENT",
+          occurrencePaths = listOf("/home/tester/.codex/skills/demo"),
+          linkHealth = listOf("NOT_A_LINK"),
+        ),
+      ),
+    )
+    val viewModel = machineViewModel(FakeMachineSkillGateway(machineInventory(detail)))
+    viewModel.refreshMachineSkillInventory()
+    viewModel.openMachineSkillTreeItem(machineItemId("demo"))
+
+    val state = viewModel.beginSelectedMachineSkillAdoption()
+
+    assertEquals(MachineToolsSurface.MANAGER, state.machineTools.surface)
+    assertEquals("demo", state.machineTools.manager.selectedName)
+    assertEquals("ADOPT", state.machineTools.manager.pendingAction)
+    assertEquals("/home/tester/.codex/skills/demo", state.machineTools.manager.authoritativeSource)
+    assertEquals(setOf("codex-demo"), state.machineTools.manager.replacementTargetIds)
+  }
+
   @Test
   fun `managed save failure preserves the draft and reports the apply outcome`() = runBlocking {
     val gateway = FakeMachineSkillGateway(machineInventory(machineDetail("demo", "record-1", "content-1")))
