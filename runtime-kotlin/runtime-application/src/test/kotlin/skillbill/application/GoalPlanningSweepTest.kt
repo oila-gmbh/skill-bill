@@ -15,6 +15,8 @@ import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.agentrun.model.AgentRunOutputSink
 import skillbill.ports.agentrun.model.AgentRunOutputStream
 import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
+import skillbill.ports.goalrunner.GoalPlanningContextDiscovery
+import skillbill.ports.goalrunner.model.GoalPlanningContext
 import skillbill.ports.goalrunner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.persistence.DatabaseSessionFactory
@@ -81,6 +83,19 @@ class GoalPlanningSweepTest {
   }
 
   @Test
+  fun `non-skipped subtask with an allocated workflow remains planning eligible`() {
+    val harness = sweepHarness { phase, _, _ -> validPhaseOutcome(phase) }
+    val allocated = manifest(subtaskCount = 1).let { manifest ->
+      manifest.copy(subtasks = manifest.subtasks.map { it.copy(workflowId = "wfl-child") })
+    }
+
+    val outcome = harness.sweep.prepare(harness.stateFor(allocated), harness.request())
+
+    assertIs<GoalPlanningSweepOutcome.PreparedAll>(outcome)
+    assertEquals(listOf("preplan", "plan"), harness.launcher.phases)
+  }
+
+  @Test
   fun `planning emits a progress line per phase in caller order`() {
     val harness = sweepHarness { phase, _, _ -> validPhaseOutcome(phase) }
     val progress = mutableListOf<String>()
@@ -116,6 +131,7 @@ class GoalPlanningSweepTest {
       runOneLauncher,
       fixtures.invariantsSource,
       fixtures.manifestFileStore,
+      fakeContextDiscovery,
     )
 
     val stoppedRunOne = runOne.prepare(fixtures.stateFor(manifest(subtaskCount = 2)), fixtures.request())
@@ -132,6 +148,7 @@ class GoalPlanningSweepTest {
       runTwoLauncher,
       fixtures.invariantsSource,
       fixtures.manifestFileStore,
+      fakeContextDiscovery,
     )
 
     val outcome = runTwo.prepare(fixtures.stateFor(manifest(subtaskCount = 2)), fixtures.request())
@@ -152,6 +169,31 @@ class GoalPlanningSweepTest {
     val stopped = assertIs<GoalPlanningSweepOutcome.Stopped>(outcome)
     assertEquals(1, stopped.currentSubtaskId)
     assertEquals("preplan", stopped.lastResumableStep)
+    assertEquals(0, harness.preparedCount())
+  }
+
+  @Test
+  fun `schema valid blocked payload is never checkpointed as prepared`() {
+    val harness = sweepHarness { phase, _, _ ->
+      launchFacts(stdout = phasePayload(phase).replace("\"completed\"", "\"blocked\""))
+    }
+
+    val outcome = harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 1)), harness.request())
+
+    val stopped = assertIs<GoalPlanningSweepOutcome.Stopped>(outcome)
+    assertEquals("preplan", stopped.lastResumableStep)
+    assertEquals(0, harness.preparedCount())
+  }
+
+  @Test
+  fun `failed launch cannot pass output gate with stale stdout`() {
+    val harness = sweepHarness { phase, _, _ ->
+      launchFacts(stdout = phasePayload(phase)).copy(exitStatus = 1)
+    }
+
+    val outcome = harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 1)), harness.request())
+
+    assertIs<GoalPlanningSweepOutcome.Stopped>(outcome)
     assertEquals(0, harness.preparedCount())
   }
 
@@ -191,6 +233,7 @@ class GoalPlanningSweepTest {
       sharedLauncher,
       fixtures.invariantsSource,
       fixtures.manifestFileStore,
+      fakeContextDiscovery,
     )
     val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 2))
     val runner = GoalRunner(
@@ -257,6 +300,7 @@ class GoalPlanningSweepTest {
       launcher,
       FakeInvariantsSource(),
       ThrowingManifestFileStore(),
+      fakeContextDiscovery,
     )
     val state = GoalRunnerManifestState(
       parentWorkflowId = "wfl-parent",
@@ -282,22 +326,13 @@ class GoalPlanningSweepTest {
   @Test
   fun `incompatible provenance on a prepared row stops before mutation instead of silently reusing the stale plan`() {
     val harness = sweepHarness { phase, _, _ -> validPhaseOutcome(phase) }
-    val staleRecord = GoalPlanningPreparationRecord(
-      parentGoalWorkflowId = "wfl-parent",
-      normalizedIssueKey = "SKILL-56",
-      repositoryIdentity = "repo-root-realpath-v1:stale",
-      subtaskId = 1,
-      governedSubSpecPath = ".feature-specs/SKILL-56-goal/spec_subtask_1.md",
-      preparationStatus = GoalPlanningPreparationState.PREPARED,
-      provenance = GoalPlanningPreparationProvenance(
-        parentSpecHash = "stale-parent-spec-hash",
-        subSpecHash = "stale-sub-spec-hash",
-        decompositionManifestHash = "stale-manifest-hash",
-      ),
-      preplanPayload = phasePayload("preplan"),
-      planPayload = phasePayload("plan"),
+    harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 1)), harness.request())
+    val prepared = requireNotNull(harness.recordFor(1))
+    val staleRecord = prepared.copy(
+      provenance = prepared.provenance.copy(parentSpecHash = "stale-parent-spec-hash"),
     )
     harness.fixtures.database.repository.markPrepared(staleRecord)
+    val launchCountBeforeResume = harness.launcher.requests.size
 
     val outcome = harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 2)), harness.request())
 
@@ -306,7 +341,7 @@ class GoalPlanningSweepTest {
     assertEquals("preplan", stopped.lastResumableStep)
     assertTrue(stopped.blockedReason.contains("incompatible"))
     assertEquals(
-      0,
+      launchCountBeforeResume,
       harness.launcher.requests.size,
       "no planning launch occurs once incompatible provenance is rejected",
     )
@@ -605,6 +640,15 @@ private fun sweepHarness(
     launcher,
     fixtures.invariantsSource,
     fixtures.manifestFileStore,
+    fakeContextDiscovery,
   )
   return SweepHarness(fixtures, launcher, sweep)
+}
+
+private val fakeContextDiscovery = GoalPlanningContextDiscovery {
+  GoalPlanningContext(
+    platformPacks = mapOf("platform-packs/kotlin/platform.yaml" to "contract_version: '1.2'"),
+    boundaryMemory = mapOf("platform-packs/kotlin/agent/history.md" to "history"),
+    validationGuidance = "Run focused Gradle checks.",
+  )
 }

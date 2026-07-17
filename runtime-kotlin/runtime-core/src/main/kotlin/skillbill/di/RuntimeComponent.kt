@@ -12,6 +12,7 @@ import skillbill.application.featuretask.FeatureTaskRuntimeRunner
 import skillbill.application.featuretask.FeatureTaskRuntimeStatusService
 import skillbill.application.featuretask.FeatureTaskRuntimeWorkerCoordinator
 import skillbill.application.goalrunner.DefaultGoalPlanningSweep
+import skillbill.goalplanning.FileSystemGoalPlanningContextDiscovery
 import skillbill.application.goalrunner.GoalLifecycleTelemetryEmitter
 import skillbill.application.goalrunner.GoalPlanningSweep
 import skillbill.application.goalrunner.GoalRunner
@@ -112,6 +113,7 @@ import skillbill.ports.featurespec.FeatureSpecPathResolverPort
 import skillbill.ports.goalrunner.GoalPullRequestPort
 import skillbill.ports.goalrunner.GoalRunnerManifestStore
 import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
+import skillbill.ports.goalrunner.GoalPlanningContextDiscovery
 import skillbill.ports.goalrunner.GoalRunnerWorkflowOutcomeStore
 import skillbill.ports.install.addon.ExternalAddonOverlayPort
 import skillbill.ports.install.addon.ExternalAddonSourceConfigPort
@@ -319,6 +321,12 @@ abstract class RuntimeComponent(
   @Provides
   @JvmSynthetic
   internal fun goalPlanningSweep(sweep: DefaultGoalPlanningSweep): GoalPlanningSweep = sweep
+
+  @Provides
+  @JvmSynthetic
+  internal fun goalPlanningContextDiscovery(
+    adapter: FileSystemGoalPlanningContextDiscovery,
+  ): GoalPlanningContextDiscovery = adapter
 
   // SKILL-66 Subtask 3: GoalRunner reaches lifecycle-telemetry emission only
   // through the application-owned GoalLifecycleTelemetryEmitter seam (backed by
