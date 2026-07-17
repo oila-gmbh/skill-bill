@@ -19,8 +19,8 @@ import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.agentrun.model.AgentRunOutputStream
 import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
-import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.GoalPlanningContextDiscovery
+import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.persistence.DatabaseSessionFactory
@@ -86,12 +86,24 @@ class DefaultGoalPlanningSweep(
         record.subtaskId,
       )
     }
-    val recoveredPacket = prepared.firstOrNull()?.let(::planningPacketFrom)
-    if (prepared.isNotEmpty() && recoveredPacket == null) {
-      return preSweepStopped(request, "Goal planning prepared rows do not contain a valid shared context packet.")
+    val recoveredPackets = prepared.map { record ->
+      val packet = planningPacketFrom(record) ?: return preSweepStopped(
+        request,
+        "Goal planning subtask '${record.subtaskId}' prepared row does not contain a valid shared context packet.",
+        record.subtaskId,
+      )
+      record.subtaskId to packet
+    }
+    val recoveredPacket = recoveredPackets.firstOrNull()?.second
+    recoveredPackets.drop(1).firstOrNull { (_, packet) -> packet != recoveredPacket }?.let { (subtaskId, _) ->
+      return preSweepStopped(
+        request,
+        "Goal planning subtask '$subtaskId' prepared row contains an inconsistent shared context packet.",
+        subtaskId,
+      )
     }
     val shared = runCatching { gatherSharedContext(state, request, recoveredPacket) }.getOrElse { error ->
-      return preSweepStopped(request, sharedContextReason(error))
+      return preSweepStopped(request, sharedContextReason(error), prepared.firstOrNull()?.subtaskId ?: 0)
     }
     val subtasksById = state.manifest.subtasks.associateBy(DecompositionSubtask::id)
     val orderedNonSkippedIds = state.manifest.subtasks
@@ -211,19 +223,19 @@ class DefaultGoalPlanningSweep(
       ),
     )
     val stdout = stdoutFor(outcome)
-      ?: return GoalPlanningPhaseProduction.Stopped(stopped(shared, subtask.id, exhaustedReason(outcome), phaseId))
+      ?: return GoalPlanningPhaseProduction.Stopped(stopped(shared, subtask.id, exhaustedReason(outcome)))
     return runCatching { outputValidator.validateAndReadPhaseOutput(stdout, phaseId) }.fold(
       onSuccess = { payload ->
         if (payload["status"] != "completed") {
           GoalPlanningPhaseProduction.Stopped(
-            stopped(shared, subtask.id, unsuccessfulStatusReason(phaseId, payload["status"]), phaseId),
+            stopped(shared, subtask.id, unsuccessfulStatusReason(phaseId, payload["status"])),
           )
         } else {
           GoalPlanningPhaseProduction.Captured(JsonSupport.mapToJsonString(payload))
         }
       },
       onFailure = { error ->
-        GoalPlanningPhaseProduction.Stopped(stopped(shared, subtask.id, malformedReason(phaseId, error), phaseId))
+        GoalPlanningPhaseProduction.Stopped(stopped(shared, subtask.id, malformedReason(phaseId, error)))
       },
     )
   }
@@ -253,24 +265,19 @@ class DefaultGoalPlanningSweep(
         "platform_packs" to discovered.platformPacks,
         "boundary_memory" to discovered.boundaryMemory,
         "validation_guidance" to discovered.validationGuidance.take(MAX_GOVERNED_CONTEXT_CHARS),
-        "ordered_subtasks" to state.manifest.subtasks.map { subtask ->
-          linkedMapOf(
-            "id" to subtask.id,
-            "name" to subtask.name,
-            "spec_path" to subtask.specPath,
-            "dependencies" to subtask.dependencies.map { dependency ->
-              linkedMapOf("subtask_id" to dependency.subtaskId, "optional" to dependency.optional)
-            },
-          )
-        },
+        "ordered_subtasks" to planningSubtasks(state.manifest.subtasks),
       )
       packet + ("integrity_sha256" to packetDigest(packet))
     }
-    require(planningPacket["packet_version"] == SHARED_CONTEXT_PACKET_VERSION)
-    require(planningPacket["repository_identity"] == repositoryIdentity)
-    require(planningPacket["normalized_issue_key"] == state.manifest.issueKey.trim().uppercase())
-    require(JsonSupport.mapToJsonString(planningPacket).length <= MAX_SHARED_CONTEXT_PACKET_CHARS)
-    require(planningPacket["integrity_sha256"] == packetDigest(planningPacket - "integrity_sha256"))
+    validatePlanningPacket(
+      packet = planningPacket,
+      repositoryIdentity = repositoryIdentity,
+      normalizedIssueKey = state.manifest.issueKey.trim().uppercase(),
+      parentSpecPath = parentSpecGoverningPath,
+      parentSpec = parentSpec,
+      decomposition = decomposition,
+      subtasks = state.manifest.subtasks,
+    )
     return GoalPlanningSharedContext(
       issueKey = request.issueKey,
       normalizedIssueKey = state.manifest.issueKey.trim().uppercase(),
@@ -301,16 +308,8 @@ class DefaultGoalPlanningSweep(
         ?.specPath
         ?.let { path -> resolvedSubSpecPath(shared.repoRoot, path) }
         ?.let { path -> shared.repoRoot.relativize(path).joinToString("/") }
-      val subtask = record.governedSubSpecPath.takeIf(String::isNotBlank)?.let { path ->
-        resolvedSubSpecPath(shared.repoRoot, path)
-      }
-      val subSpecHashMismatch = subtask
-        ?.takeIf(manifestFileStore::isRegularFile)
-        ?.let { path ->
-          val currentHash = runCatching { sha256HexUtf8(manifestFileStore.readText(path)) }.getOrNull()
-          currentHash == null || record.provenance.subSpecHash != currentHash
-        }
-        ?: false
+      val manifestSubtask = state.manifest.subtasks.singleOrNull { it.id == record.subtaskId }
+      val subSpecHashMismatch = subSpecHashMismatch(shared, state, manifestSubtask, record)
       record.normalizedIssueKey != shared.normalizedIssueKey ||
         record.repositoryIdentity != shared.repositoryIdentity ||
         record.governedSubSpecPath != expectedPath ||
@@ -327,14 +326,13 @@ class DefaultGoalPlanningSweep(
     request: GoalRunnerRunRequest,
     reason: String,
     currentSubtaskId: Int = 0,
-  ): GoalPlanningSweepOutcome.Stopped =
-    GoalPlanningSweepOutcome.Stopped(
-      issueKey = request.issueKey,
-      currentSubtaskId = currentSubtaskId,
-      reason = GoalRunnerStopReason.BLOCKED,
-      blockedReason = reason,
-      lastResumableStep = PHASE_PREPLAN,
-    )
+  ): GoalPlanningSweepOutcome.Stopped = GoalPlanningSweepOutcome.Stopped(
+    issueKey = request.issueKey,
+    currentSubtaskId = currentSubtaskId,
+    reason = GoalRunnerStopReason.BLOCKED,
+    blockedReason = reason,
+    lastResumableStep = PHASE_PREPLAN,
+  )
 
   private fun sharedContextReason(error: Throwable): String =
     "Goal planning shared context could not be gathered: ${error.message.orEmpty()}"
@@ -349,7 +347,11 @@ class DefaultGoalPlanningSweep(
 
   private fun stdoutFor(outcome: AgentRunLaunchOutcome): String? = when (outcome) {
     is AgentRunLaunchFacts -> outcome.stdout.takeIf { stdout ->
-      !outcome.spawnFailed && !outcome.timedOut && !outcome.interrupted && outcome.exitStatus == 0 && stdout.isNotBlank()
+      !outcome.spawnFailed &&
+        !outcome.timedOut &&
+        !outcome.interrupted &&
+        outcome.exitStatus == 0 &&
+        stdout.isNotBlank()
     }
     is UnsupportedAgentRunLaunch -> null
   }
@@ -368,7 +370,7 @@ class DefaultGoalPlanningSweep(
   }
 
   private fun malformedReason(phaseId: String, error: Throwable): String =
-      "Goal planning '$phaseId' output failed the schema gate and could not be prepared: ${error.message.orEmpty()}"
+    "Goal planning '$phaseId' output failed the schema gate and could not be prepared: ${error.message.orEmpty()}"
 
   private fun unsuccessfulStatusReason(phaseId: String, status: Any?): String =
     "Goal planning '$phaseId' stopped with status '${status ?: "missing"}'; the pair was not checkpointed."
@@ -391,6 +393,69 @@ class DefaultGoalPlanningSweep(
       ?.let(JsonSupport::anyToStringAnyMap)
       ?.get(SHARED_CONTEXT_FIELD)
       ?.let(JsonSupport::anyToStringAnyMap)
+
+  private fun validatePlanningPacket(
+    packet: Map<String, Any?>,
+    repositoryIdentity: String,
+    normalizedIssueKey: String,
+    parentSpecPath: String,
+    parentSpec: String,
+    decomposition: String,
+    subtasks: List<DecompositionSubtask>,
+  ) {
+    require(packet.keys == SHARED_CONTEXT_PACKET_FIELDS) { "shared context packet fields are invalid" }
+    require(packet["packet_version"] == SHARED_CONTEXT_PACKET_VERSION) { "shared context packet version is invalid" }
+    require(packet["repository_identity"] == repositoryIdentity) { "shared context repository identity is invalid" }
+    require(packet["normalized_issue_key"] == normalizedIssueKey) { "shared context issue key is invalid" }
+    require(packet["parent_spec_path"] == parentSpecPath) { "shared context parent spec path is invalid" }
+    require(packet["parent_spec"] == parentSpec.take(MAX_GOVERNED_CONTEXT_CHARS)) {
+      "shared context parent spec is invalid"
+    }
+    require(packet["decomposition_manifest"] == decomposition.take(MAX_GOVERNED_CONTEXT_CHARS)) {
+      "shared context decomposition manifest is invalid"
+    }
+    require(isStringMap(packet["platform_packs"])) { "shared context platform packs are invalid" }
+    require(isStringMap(packet["boundary_memory"])) { "shared context boundary memory is invalid" }
+    require(packet["validation_guidance"] is String) { "shared context validation guidance is invalid" }
+    require(packet["ordered_subtasks"] == planningSubtasks(subtasks)) { "shared context ordered subtasks are invalid" }
+    require(JsonSupport.mapToJsonString(packet).length <= MAX_SHARED_CONTEXT_PACKET_CHARS) {
+      "shared context packet exceeds the size limit"
+    }
+    require(packet["integrity_sha256"] == packetDigest(packet - "integrity_sha256")) {
+      "shared context packet integrity is invalid"
+    }
+  }
+
+  private fun planningSubtasks(subtasks: List<DecompositionSubtask>): List<Map<String, Any?>> =
+    subtasks.map { subtask ->
+      linkedMapOf(
+        "id" to subtask.id,
+        "name" to subtask.name,
+        "spec_path" to subtask.specPath,
+        "dependencies" to subtask.dependencies.map { dependency ->
+          linkedMapOf("subtask_id" to dependency.subtaskId, "optional" to dependency.optional)
+        },
+      )
+    }
+
+  private fun isStringMap(value: Any?): Boolean =
+    value is Map<*, *> && value.keys.all { it is String } && value.values.all { it is String }
+
+  private fun subSpecHashMismatch(
+    shared: GoalPlanningSharedContext,
+    state: GoalRunnerManifestState,
+    manifestSubtask: DecompositionSubtask?,
+    record: GoalPlanningPreparationRecord,
+  ): Boolean {
+    val path = record.governedSubSpecPath.takeIf(String::isNotBlank)
+      ?.let { resolvedSubSpecPath(shared.repoRoot, it) }
+      ?: return true
+    if (!manifestFileStore.isRegularFile(path)) {
+      return state.manifest.specSource != SpecSource.LINEAR || manifestSubtask?.status != "complete"
+    }
+    val currentHash = runCatching { sha256HexUtf8(manifestFileStore.readText(path)) }.getOrNull()
+    return currentHash == null || record.provenance.subSpecHash != currentHash
+  }
 
   private fun packetDigest(packet: Map<String, Any?>): String = sha256HexUtf8(JsonSupport.mapToJsonString(packet))
 
@@ -479,5 +544,18 @@ class DefaultGoalPlanningSweep(
     const val SHARED_CONTEXT_PACKET_VERSION = "0.1"
     const val MAX_GOVERNED_CONTEXT_CHARS = 65_536
     const val MAX_SHARED_CONTEXT_PACKET_CHARS = 524_288
+    val SHARED_CONTEXT_PACKET_FIELDS = setOf(
+      "packet_version",
+      "repository_identity",
+      "normalized_issue_key",
+      "parent_spec_path",
+      "parent_spec",
+      "decomposition_manifest",
+      "platform_packs",
+      "boundary_memory",
+      "validation_guidance",
+      "ordered_subtasks",
+      "integrity_sha256",
+    )
   }
 }

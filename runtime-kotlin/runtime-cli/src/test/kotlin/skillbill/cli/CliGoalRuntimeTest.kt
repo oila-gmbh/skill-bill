@@ -480,7 +480,8 @@ class CliGoalRuntimeTest {
     assertContains(watch.stdout, "watch_observability: index=1 phase=implement role=phase_subagent")
     assertContains(watch.stdout, "sequence=12")
     assertEquals(1, resumed.exitCode, resumed.stdout)
-    assertTrue(launcher.requests.isEmpty())
+    assertEquals(2, launcher.requests.size)
+    assertTrue(launcher.childLaunches.isEmpty())
     assertContains(resumed.stdout, "Could not capture the goal-subtask review baseline")
   }
 

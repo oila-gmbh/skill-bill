@@ -1,5 +1,6 @@
 package skillbill.application
 
+import skillbill.application.featuretask.sha256HexUtf8
 import skillbill.application.goalrunner.DefaultGoalPlanningSweep
 import skillbill.application.goalrunner.GoalRunner
 import skillbill.application.model.GoalPlanningSweepOutcome
@@ -14,8 +15,8 @@ import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.agentrun.model.AgentRunOutputSink
 import skillbill.ports.agentrun.model.AgentRunOutputStream
-import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.GoalPlanningContextDiscovery
+import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.model.GoalPlanningContext
 import skillbill.ports.goalrunner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
@@ -29,15 +30,14 @@ import skillbill.ports.persistence.TelemetryOutboxRepository
 import skillbill.ports.persistence.TelemetryReconciliationRepository
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.persistence.WorkflowStateRepository
-import skillbill.ports.persistence.model.GoalPlanningPreparationProvenance
 import skillbill.ports.persistence.model.GoalPlanningPreparationRecord
-import skillbill.ports.persistence.model.GoalPlanningPreparationState
 import skillbill.ports.persistence.model.GoalPlanningPreparationStatus
 import skillbill.ports.taskruntime.FeatureTaskRuntimeRunInvariantsSource
 import skillbill.ports.workflow.DecompositionManifestFileStore
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.NoopGoalPlanningPreparationEnvelopeValidator
 import skillbill.workflow.model.DecompositionManifest
+import skillbill.workflow.model.SpecSource
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
 import java.nio.file.Files
@@ -106,12 +106,17 @@ class GoalPlanningSweepTest {
   @Test
   fun `resume accepts a completed prepared pair after its scratch spec is deleted`() {
     val harness = sweepHarness { phase, _, _ -> validPhaseOutcome(phase) }
-    val initial = manifest(subtaskCount = 2)
+    val initial = manifest(subtaskCount = 2).copy(specSource = SpecSource.LINEAR)
     harness.sweep.prepare(harness.stateFor(initial), harness.request())
     harness.manifestFileStore.remove("spec_subtask_1.md")
     val launchCount = harness.launcher.requests.size
+    val resumed = initial.copy(
+      subtasks = initial.subtasks.map { subtask ->
+        if (subtask.id == 1) subtask.copy(status = "complete") else subtask
+      },
+    )
 
-    val outcome = harness.sweep.prepare(harness.stateFor(initial), harness.request())
+    val outcome = harness.sweep.prepare(harness.stateFor(resumed), harness.request())
 
     assertIs<GoalPlanningSweepOutcome.PreparedAll>(outcome)
     assertEquals(launchCount, harness.launcher.requests.size)
@@ -190,7 +195,8 @@ class GoalPlanningSweepTest {
       discovery,
     )
 
-    val stoppedRunOne = runOne.prepare(fixtures.stateFor(manifest(subtaskCount = 2)), fixtures.request())
+    val initial = manifest(subtaskCount = 2).copy(specSource = SpecSource.LINEAR)
+    val stoppedRunOne = runOne.prepare(fixtures.stateFor(initial), fixtures.request())
     val stopped = assertIs<GoalPlanningSweepOutcome.Stopped>(stoppedRunOne)
     assertEquals(2, stopped.currentSubtaskId)
     assertEquals(1, fixtures.preparedCount())
@@ -208,7 +214,12 @@ class GoalPlanningSweepTest {
       discovery,
     )
 
-    val outcome = runTwo.prepare(fixtures.stateFor(manifest(subtaskCount = 2)), fixtures.request())
+    val resumed = initial.copy(
+      subtasks = initial.subtasks.map { subtask ->
+        if (subtask.id == 1) subtask.copy(status = "complete") else subtask
+      },
+    )
+    val outcome = runTwo.prepare(fixtures.stateFor(resumed), fixtures.request())
 
     assertIs<GoalPlanningSweepOutcome.PreparedAll>(outcome)
     assertEquals(2, runTwoLauncher.requests.size)
@@ -240,6 +251,26 @@ class GoalPlanningSweepTest {
 
     val stopped = assertIs<GoalPlanningSweepOutcome.Stopped>(outcome)
     assertEquals("preplan", stopped.lastResumableStep)
+    assertEquals(0, harness.preparedCount())
+  }
+
+  @Test
+  fun `plan failure restarts the uncheckpointed pair from preplan`() {
+    val harness = sweepHarness { phase, _, _ ->
+      val payload = if (phase == "plan") {
+        phasePayload(phase).replace("\"completed\"", "\"failed\"")
+      } else {
+        phasePayload(phase)
+      }
+      launchFacts(stdout = payload)
+    }
+
+    val outcome = harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 1)), harness.request())
+
+    val stopped = assertIs<GoalPlanningSweepOutcome.Stopped>(outcome)
+    assertEquals(1, stopped.currentSubtaskId)
+    assertEquals("preplan", stopped.lastResumableStep)
+    assertTrue(stopped.blockedReason.contains("'plan' stopped"))
     assertEquals(0, harness.preparedCount())
   }
 
@@ -392,7 +423,7 @@ class GoalPlanningSweepTest {
     harness.fixtures.database.repository.markPrepared(staleRecord)
     val launchCountBeforeResume = harness.launcher.requests.size
 
-    val outcome = harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 2)), harness.request())
+    val outcome = harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 1)), harness.request())
 
     val stopped = assertIs<GoalPlanningSweepOutcome.Stopped>(outcome)
     assertEquals(1, stopped.currentSubtaskId)
@@ -404,7 +435,103 @@ class GoalPlanningSweepTest {
       "no planning launch occurs once incompatible provenance is rejected",
     )
   }
+
+  @Test
+  fun `recovered shared packet requires every governed context field even with valid integrity`() {
+    val harness = sweepHarness { phase, _, _ -> validPhaseOutcome(phase) }
+    val state = harness.stateFor(manifest(subtaskCount = 1))
+    harness.sweep.prepare(state, harness.request())
+    val prepared = requireNotNull(harness.recordFor(1))
+    harness.fixtures.database.repository.markPrepared(
+      prepared.withSharedPacket { packet -> packet - "validation_guidance" },
+    )
+
+    val outcome = harness.sweep.prepare(state, harness.request())
+
+    val stopped = assertIs<GoalPlanningSweepOutcome.Stopped>(outcome)
+    assertEquals(1, stopped.currentSubtaskId)
+    assertTrue(stopped.blockedReason.contains("shared context could not be gathered"))
+  }
+
+  @Test
+  fun `recovered prepared rows must carry one identical shared packet`() {
+    val harness = sweepHarness { phase, _, _ -> validPhaseOutcome(phase) }
+    val state = harness.stateFor(manifest(subtaskCount = 2))
+    harness.sweep.prepare(state, harness.request())
+    val second = requireNotNull(harness.recordFor(2))
+    harness.fixtures.database.repository.markPrepared(
+      second.withSharedPacket { packet -> packet + ("validation_guidance" to "different valid guidance") },
+    )
+
+    val outcome = harness.sweep.prepare(state, harness.request())
+
+    val stopped = assertIs<GoalPlanningSweepOutcome.Stopped>(outcome)
+    assertEquals(2, stopped.currentSubtaskId)
+    assertTrue(stopped.blockedReason.contains("inconsistent shared context packet"))
+  }
+
+  @Test
+  fun `prepared row without a shared packet reports its known subtask`() {
+    val harness = sweepHarness { phase, _, _ -> validPhaseOutcome(phase) }
+    val state = harness.stateFor(manifest(subtaskCount = 1))
+    harness.sweep.prepare(state, harness.request())
+    val prepared = requireNotNull(harness.recordFor(1))
+    harness.fixtures.database.repository.markPrepared(prepared.withoutSharedPacket())
+
+    val outcome = harness.sweep.prepare(state, harness.request())
+
+    val stopped = assertIs<GoalPlanningSweepOutcome.Stopped>(outcome)
+    assertEquals(1, stopped.currentSubtaskId)
+    assertTrue(stopped.blockedReason.contains("does not contain a valid shared context packet"))
+  }
+
+  @Test
+  fun `missing local or pending Linear sub-spec invalidates prepared provenance`() {
+    listOf(
+      manifest(subtaskCount = 1),
+      manifest(subtaskCount = 1).copy(specSource = SpecSource.LINEAR),
+    ).forEach { manifest ->
+      val harness = sweepHarness { phase, _, _ -> validPhaseOutcome(phase) }
+      harness.sweep.prepare(harness.stateFor(manifest), harness.request())
+      harness.manifestFileStore.remove("spec_subtask_1.md")
+
+      val outcome = harness.sweep.prepare(harness.stateFor(manifest), harness.request())
+
+      val stopped = assertIs<GoalPlanningSweepOutcome.Stopped>(outcome)
+      assertEquals(1, stopped.currentSubtaskId)
+      assertTrue(stopped.blockedReason.contains("incompatible"))
+    }
+  }
 }
+
+private fun GoalPlanningPreparationRecord.withSharedPacket(
+  transform: (Map<String, Any?>) -> Map<String, Any?>,
+): GoalPlanningPreparationRecord {
+  val root = preplanRoot()
+  val produced = requireNotNull(JsonSupport.anyToStringAnyMap(root["produced_outputs"]))
+  val packet = requireNotNull(JsonSupport.anyToStringAnyMap(produced["_goal_planning_shared_context"]))
+  val transformed = transform(packet - "integrity_sha256")
+  val packetWithIntegrity = transformed + (
+    "integrity_sha256" to sha256HexUtf8(JsonSupport.mapToJsonString(transformed))
+    )
+  return copy(
+    preplanPayload = JsonSupport.mapToJsonString(
+      root + ("produced_outputs" to (produced + ("_goal_planning_shared_context" to packetWithIntegrity))),
+    ),
+  )
+}
+
+private fun GoalPlanningPreparationRecord.withoutSharedPacket(): GoalPlanningPreparationRecord {
+  val root = preplanRoot()
+  val produced = requireNotNull(JsonSupport.anyToStringAnyMap(root["produced_outputs"]))
+  val withoutPacket = root + ("produced_outputs" to (produced - "_goal_planning_shared_context"))
+  return copy(preplanPayload = JsonSupport.mapToJsonString(withoutPacket))
+}
+
+private fun GoalPlanningPreparationRecord.preplanRoot(): Map<String, Any?> =
+  requireNotNull(JsonSupport.parseObjectOrNull(preplanPayload))
+    .let(JsonSupport::jsonElementToValue)
+    .let { requireNotNull(JsonSupport.anyToStringAnyMap(it)) }
 
 private fun validPhaseOutcome(phase: String): AgentRunLaunchOutcome = launchFacts(stdout = phasePayload(phase))
 
@@ -609,7 +736,6 @@ private class InMemoryPreparationRepository(
     }
 
   fun count(): Int = records.size
-
 }
 
 private class InMemoryPreparationDatabase(markPreparedThrows: Boolean = false) : DatabaseSessionFactory {

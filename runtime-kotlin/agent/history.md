@@ -1,3 +1,13 @@
+## [2026-07-17] SKILL-128 durable goal planning sweep (subtask 2)
+Areas: runtime-kotlin/runtime-{application,cli,core,infra-fs,mcp,ports}, runtime-kotlin/ARCHITECTURE.md
+- Goal execution now prepares schema-valid preplan/plan pairs for every ordered non-skipped subtask before child mutation, checkpointing each complete pair atomically for N+1 resume. reusable
+- One discovered repository, platform-pack, boundary-memory, validation, decomposition, and parent-spec packet is integrity-bound and reused across the sweep; recovery rejects missing, malformed, inconsistent, or incompatible immutable context.
+- Uncheckpointed failures always resume from preplan while retaining phase-specific diagnostics and the current subtask; Linear scratch sub-spec deletion is tolerated only after that subtask is complete.
+- Pattern: validate all recovered shared packets against current immutable provenance, require byte-equivalent context across prepared rows, and gate implementation on all plans being durable. reusable
+- Tests cover multi-subtask reuse, crash recovery, blocked/malformed/persistence failures, provenance drift, packet integrity, and the all-plans mutation gate; no repository mutation is performed during planning.
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
 ## [2026-07-17] SKILL-128 goal-planning context reuse (subtask 1: persistence contract)
 Areas: runtime-kotlin/runtime-{application,contracts,core,domain,infra-fs,infra-sqlite,ports}, orchestration/contracts, runtime-kotlin/ARCHITECTURE.md
 - New goal-scoped preparation store records parent goal workflow, normalized issue key, repository identity, subtask ID, governed sub-spec, preparation status, immutable five-hash provenance, and embedded validated preplan/plan payloads.
