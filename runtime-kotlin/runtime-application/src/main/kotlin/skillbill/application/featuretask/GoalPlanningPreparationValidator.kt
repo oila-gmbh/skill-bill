@@ -1,5 +1,6 @@
 package skillbill.application.featuretask
 
+import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.contracts.workflow.FeatureTaskRuntimePhaseOutputSchemaPaths
 import skillbill.contracts.workflow.GOAL_PLANNING_PREPARATION_CONTRACT_VERSION
@@ -18,6 +19,23 @@ class GoalPlanningPreparationValidator(
     outputValidator.validatePhaseOutputText(record.planPayload, PLAN_PHASE_ID)
     val failure = envelopeFailure(record) ?: provenanceFailure(record)
     failure?.let { throw InvalidGoalPlanningPreparationSchemaError(sourceLabel = label, fieldPath = "", reason = it) }
+    requireCompleted(record.preplanPayload, PREPLAN_PHASE_ID, label)
+    requireCompleted(record.planPayload, PLAN_PHASE_ID, label)
+  }
+
+  private fun requireCompleted(payload: String, phaseId: String, label: String) {
+    val status = JsonSupport.parseObjectOrNull(payload)
+      ?.let(JsonSupport::jsonElementToValue)
+      ?.let(JsonSupport::anyToStringAnyMap)
+      ?.get("status")
+      ?.toString()
+    if (status != "completed") {
+      throw InvalidGoalPlanningPreparationSchemaError(
+        sourceLabel = label,
+        fieldPath = "${phaseId}_payload.status",
+        reason = "status must be 'completed' for a prepared pair",
+      )
+    }
   }
 
   private fun envelopeFailure(record: GoalPlanningPreparationRecord): String? = when {

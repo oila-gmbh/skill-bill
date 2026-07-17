@@ -72,14 +72,54 @@ class GoalPlanningSweepTest {
 
   @Test
   fun `shared repository and decomposition discovery happens exactly once across all sub_specs`() {
-    val harness = sweepHarness { phase, _, _ -> validPhaseOutcome(phase) }
+    val discovery = CountingContextDiscovery()
+    val harness = sweepHarness(contextDiscovery = discovery) { phase, _, _ -> validPhaseOutcome(phase) }
 
     harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 3)), harness.request())
 
     assertEquals(1, harness.manifestFileStore.countContaining("/spec.md"))
     assertEquals(1, harness.manifestFileStore.countContaining("decomposition-manifest.yaml"))
     assertEquals(3, harness.manifestFileStore.countContaining("spec_subtask_"))
+    assertEquals(1, discovery.calls)
     assertEquals(6, harness.launcher.requests.size)
+  }
+
+  @Test
+  fun `resume revalidates saved payload status before accepting a prepared row`() {
+    val harness = sweepHarness { phase, _, _ -> validPhaseOutcome(phase) }
+    val state = harness.stateFor(manifest(subtaskCount = 1))
+    harness.sweep.prepare(state, harness.request())
+    val saved = requireNotNull(harness.recordFor(1))
+    harness.fixtures.database.repository.markPrepared(
+      saved.copy(planPayload = saved.planPayload.replace("\"completed\"", "\"blocked\"")),
+    )
+    val launchCount = harness.launcher.requests.size
+
+    val outcome = harness.sweep.prepare(state, harness.request())
+
+    val stopped = assertIs<GoalPlanningSweepOutcome.Stopped>(outcome)
+    assertTrue(stopped.blockedReason.contains("invalid saved prepared pair"))
+    assertEquals(launchCount, harness.launcher.requests.size)
+  }
+
+  @Test
+  fun `mutable execution fields do not invalidate immutable decomposition provenance`() {
+    val harness = sweepHarness { phase, _, _ -> validPhaseOutcome(phase) }
+    val initial = manifest(subtaskCount = 1)
+    harness.sweep.prepare(harness.stateFor(initial), harness.request())
+    val launchCount = harness.launcher.requests.size
+    val advanced = initial.copy(
+      status = "in_progress",
+      currentSubtaskIntent = initial.currentSubtaskIntent.copy(action = "resume"),
+      subtasks = initial.subtasks.map {
+        it.copy(status = "complete", workflowId = "wfl-child", commitSha = "abc123", lastResumableStep = "pr")
+      },
+    )
+
+    val outcome = harness.sweep.prepare(harness.stateFor(advanced), harness.request())
+
+    assertIs<GoalPlanningSweepOutcome.PreparedAll>(outcome)
+    assertEquals(launchCount, harness.launcher.requests.size)
   }
 
   @Test
@@ -121,6 +161,7 @@ class GoalPlanningSweepTest {
   @Test
   fun `resume after a crash between pairs continues at the next subtask without replanning`() {
     val fixtures = sharedSweepFixtures()
+    val discovery = CountingContextDiscovery()
     val runOneLauncher = SweepPlanningLauncher { phase, subtaskId, _ ->
       if (subtaskId == 2 && phase == "preplan") launchFacts(stdout = "") else validPhaseOutcome(phase)
     }
@@ -131,7 +172,7 @@ class GoalPlanningSweepTest {
       runOneLauncher,
       fixtures.invariantsSource,
       fixtures.manifestFileStore,
-      fakeContextDiscovery,
+      discovery,
     )
 
     val stoppedRunOne = runOne.prepare(fixtures.stateFor(manifest(subtaskCount = 2)), fixtures.request())
@@ -148,7 +189,7 @@ class GoalPlanningSweepTest {
       runTwoLauncher,
       fixtures.invariantsSource,
       fixtures.manifestFileStore,
-      fakeContextDiscovery,
+      discovery,
     )
 
     val outcome = runTwo.prepare(fixtures.stateFor(manifest(subtaskCount = 2)), fixtures.request())
@@ -158,6 +199,7 @@ class GoalPlanningSweepTest {
     assertEquals(listOf("preplan", "plan"), runTwoLauncher.phases)
     assertEquals(listOf(2, 2), runTwoLauncher.subtaskIds)
     assertEquals(2, fixtures.preparedCount())
+    assertEquals(1, discovery.calls, "resume must recover the durable packet without repeating discovery")
   }
 
   @Test
@@ -521,8 +563,11 @@ private class InMemoryPreparationRepository(
   private val records = linkedMapOf<Int, GoalPlanningPreparationRecord>()
 
   override fun markPrepared(record: GoalPlanningPreparationRecord) {
-    if (markPreparedThrows) error("simulated goal planning persistence failure")
     records[record.subtaskId] = record
+    if (markPreparedThrows) {
+      records.remove(record.subtaskId)
+      error("simulated goal planning persistence failure after mutation")
+    }
   }
 
   override fun findByGoalAndSubtask(parentGoalWorkflowId: String, subtaskId: Int): GoalPlanningPreparationRecord? =
@@ -542,6 +587,7 @@ private class InMemoryPreparationRepository(
     }
 
   fun count(): Int = records.size
+
 }
 
 private class InMemoryPreparationDatabase(markPreparedThrows: Boolean = false) : DatabaseSessionFactory {
@@ -629,6 +675,7 @@ private class SweepHarness(
 private fun sweepHarness(
   markPreparedThrows: Boolean = false,
   outputValidator: FeatureTaskRuntimePhaseOutputValidator = FakePhaseOutputValidator(),
+  contextDiscovery: GoalPlanningContextDiscovery = fakeContextDiscovery,
   behavior: (phase: String, subtaskId: Int, request: GoalRunnerSubtaskLaunchRequest) -> AgentRunLaunchOutcome,
 ): SweepHarness {
   val fixtures = sharedSweepFixtures(markPreparedThrows = markPreparedThrows, outputValidator = outputValidator)
@@ -640,7 +687,7 @@ private fun sweepHarness(
     launcher,
     fixtures.invariantsSource,
     fixtures.manifestFileStore,
-    fakeContextDiscovery,
+    contextDiscovery,
   )
   return SweepHarness(fixtures, launcher, sweep)
 }
@@ -651,4 +698,14 @@ private val fakeContextDiscovery = GoalPlanningContextDiscovery {
     boundaryMemory = mapOf("platform-packs/kotlin/agent/history.md" to "history"),
     validationGuidance = "Run focused Gradle checks.",
   )
+}
+
+private class CountingContextDiscovery : GoalPlanningContextDiscovery {
+  var calls: Int = 0
+    private set
+
+  override fun discover(repoRoot: Path): GoalPlanningContext {
+    calls += 1
+    return fakeContextDiscovery.discover(repoRoot)
+  }
 }

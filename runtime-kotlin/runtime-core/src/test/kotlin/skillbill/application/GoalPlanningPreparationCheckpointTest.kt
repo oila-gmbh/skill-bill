@@ -70,6 +70,18 @@ class GoalPlanningPreparationCheckpointTest {
   }
 
   @Test
+  fun `a schema valid blocked payload is rejected and nothing is stored`() {
+    val harness = checkpointHarness()
+    val record = validRecord(parentGoalWorkflowId = "goal-1", subtaskId = 1)
+      .copy(planPayload = payloadJson(phaseId = "plan", status = "blocked"))
+
+    assertFailsWith<InvalidGoalPlanningPreparationSchemaError> {
+      harness.checkpoint.checkpoint(record, harness.dbOverride)
+    }
+    assertNull(harness.read("goal-1", 1))
+  }
+
+  @Test
   fun `a plan payload with empty produced outputs is rejected and nothing is stored`() {
     val harness = checkpointHarness()
     val record = validRecord(parentGoalWorkflowId = "goal-1", subtaskId = 1)

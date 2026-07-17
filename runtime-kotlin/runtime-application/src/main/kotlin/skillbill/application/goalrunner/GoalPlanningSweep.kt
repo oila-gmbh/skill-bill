@@ -79,6 +79,12 @@ class DefaultGoalPlanningSweep(
         unitOfWork.goalPlanningPreparations.listPreparedByGoalOrdered(state.parentWorkflowId)
       }
     }.getOrElse { error -> return preSweepStopped(request, preparationStateReadReason(error)) }
+    prepared.firstOrNull { record -> runCatching { checkpoint.validate(record) }.isFailure }?.let { record ->
+      return preSweepStopped(
+        request,
+        "Goal planning subtask '${record.subtaskId}' has an invalid saved prepared pair; resume is refused.",
+      )
+    }
     val recoveredPacket = prepared.firstOrNull()?.let(::planningPacketFrom)
     if (prepared.isNotEmpty() && recoveredPacket == null) {
       return preSweepStopped(request, "Goal planning prepared rows do not contain a valid shared context packet.")
@@ -233,7 +239,7 @@ class DefaultGoalPlanningSweep(
     val parentSpec = manifestFileStore.readText(resolvedGovernedPath(canonicalRepository, parentSpecGoverningPath))
     val decomposition = manifestFileStore.readText(resolvedGovernedPath(canonicalRepository, manifestGoverningPath))
     val parentSpecHash = sha256HexUtf8(parentSpec)
-    val decompositionManifestHash = sha256HexUtf8(decomposition)
+    val decompositionManifestHash = immutableDecompositionHash(state.manifest)
     val repositoryIdentity = "repo-root-realpath-v1:$canonicalRepository"
     val planningPacket = recoveredPacket ?: contextDiscovery.discover(canonicalRepository).let { discovered ->
       val packet = linkedMapOf<String, Any?>(
@@ -376,6 +382,38 @@ class DefaultGoalPlanningSweep(
       ?.let(JsonSupport::anyToStringAnyMap)
 
   private fun packetDigest(packet: Map<String, Any?>): String = sha256HexUtf8(JsonSupport.mapToJsonString(packet))
+
+  private fun immutableDecompositionHash(manifest: skillbill.workflow.model.DecompositionManifest): String {
+    val immutable = linkedMapOf<String, Any?>(
+      "contract_version" to manifest.contractVersion,
+      "issue_key" to manifest.issueKey,
+      "feature_name" to manifest.featureName,
+      "parent_spec_path" to manifest.parentSpecPath,
+      "spec_source" to manifest.specSource.wireValue,
+      "execution_model" to manifest.executionModel.wireValue,
+      "base_branch" to manifest.baseBranch,
+      "feature_branch" to manifest.featureBranch,
+      "stack_branches" to manifest.stackBranches.map {
+        linkedMapOf("subtask_id" to it.subtaskId, "branch" to it.branch, "base_branch" to it.baseBranch)
+      },
+      "subtasks" to manifest.subtasks.map { subtask ->
+        linkedMapOf(
+          "id" to subtask.id,
+          "name" to subtask.name,
+          "spec_path" to subtask.specPath,
+          "linear_issue_id" to subtask.linearIssueId,
+          "dependencies" to subtask.dependencies.map { dependency ->
+            linkedMapOf(
+              "subtask_id" to dependency.subtaskId,
+              "optional" to dependency.optional,
+              "skipped" to dependency.skipped,
+            )
+          },
+        )
+      },
+    )
+    return sha256HexUtf8(JsonSupport.mapToJsonString(immutable))
+  }
 
   private fun stopped(
     shared: GoalPlanningSharedContext,

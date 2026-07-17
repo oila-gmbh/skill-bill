@@ -16,9 +16,13 @@ class GoalPlanningPreparationCheckpoint(
   private val preparationValidator = GoalPlanningPreparationValidator(phaseOutputValidator)
 
   fun checkpoint(record: GoalPlanningPreparationRecord, dbOverride: String? = null) {
+    validate(record)
+    database.read(dbOverride) { unitOfWork -> unitOfWork.goalPlanningPreparations.markPrepared(record) }
+  }
+
+  fun validate(record: GoalPlanningPreparationRecord) {
     val sourceLabel = "${record.parentGoalWorkflowId}#${record.subtaskId}"
     envelopeValidator.validate(record.toEnvelopeMap(), sourceLabel)
     preparationValidator.validate(record)
-    database.read(dbOverride) { unitOfWork -> unitOfWork.goalPlanningPreparations.markPrepared(record) }
   }
 }
