@@ -6,6 +6,7 @@ import me.tatarka.inject.annotations.Inject
 import skillbill.application.decomposition.executionModel
 import skillbill.application.decomposition.parentSpecPath
 import skillbill.application.decomposition.resolvedParentSpecPath
+import skillbill.application.model.GoalPlanningSweepOutcome
 import skillbill.application.model.GoalRunPreparation
 import skillbill.application.model.GoalRunnerRunEvent
 import skillbill.application.model.GoalRunnerRunRequest
@@ -73,6 +74,7 @@ class GoalRunner(
   private val subtaskLauncher: GoalRunnerSubtaskLauncher,
   private val outcomeStore: GoalRunnerWorkflowOutcomeStore,
   private val pullRequestPort: GoalPullRequestPort,
+  private val goalPlanningSweep: GoalPlanningSweep = GoalPlanningSweep.NONE,
   private val specScratchStore: SpecScratchStore = UnavailableSpecScratchStore,
   private val gitOperations: WorkflowGitOperations = NoopWorkflowGitOperations,
   private val telemetry: GoalLifecycleTelemetryEmitter = GoalLifecycleTelemetryEmitter.NONE,
@@ -82,8 +84,10 @@ class GoalRunner(
 ) {
   private val workerRequestHandler = GoalRunnerWorkerRequestHandler(manifestStore, outcomeStore)
   private val reconciler = GoalRunnerLaunchReconciler(manifestStore, subtaskLauncher, outcomeStore, timing, diagnostics)
+  private val validationQualityRetries: MutableMap<Int, Int> = mutableMapOf()
 
   fun run(request: GoalRunnerRunRequest): GoalRunnerRunReport {
+    validationQualityRetries.clear()
     val state = manifestStore.loadByIssueKey(request.issueKey, request.dbPathOverride, request.repoRoot)
       ?: return unknownGoal(request.issueKey)
     return when (val preparation = prepareRun(state, request)) {
@@ -153,6 +157,29 @@ class GoalRunner(
     effectiveRequest.eventSink.emit(GoalRunnerRunEvent.Started(state.manifest.issueKey))
     val telemetryEmitter =
       GoalRunnerTelemetryEmitter(telemetry, clock, state, effectiveRequest.dbPathOverride).also { it.goalStarted() }
+    val sweepOutcome = goalPlanningSweep.prepare(state, effectiveRequest)
+    if (sweepOutcome is GoalPlanningSweepOutcome.Stopped) {
+      val planningStop = stopped(
+        issueKey = sweepOutcome.issueKey,
+        attempted = emptyList(),
+        subtaskId = sweepOutcome.currentSubtaskId,
+        reason = sweepOutcome.reason,
+        blockedReason = sweepOutcome.blockedReason,
+        workflowId = null,
+        lastResumableStep = sweepOutcome.lastResumableStep,
+      )
+      effectiveRequest.eventSink.emit(
+        GoalRunnerRunEvent.SubtaskStopped(
+          issueKey = sweepOutcome.issueKey,
+          subtaskId = sweepOutcome.currentSubtaskId,
+          reason = sweepOutcome.reason.name.lowercase(),
+          blockedReason = sweepOutcome.blockedReason,
+          currentStepId = sweepOutcome.lastResumableStep,
+        ),
+      )
+      closeGoalTelemetrySegment(telemetryEmitter, state, planningStop, attempted)
+      return planningStop
+    }
     val loopResult = driveGoalLoop(
       state,
       effectiveRequest,
@@ -707,6 +734,11 @@ class GoalRunner(
     if (!stoppedOutcome.isRecoverableValidationBlock()) {
       return null
     }
+    val priorRetries = validationQualityRetries[subtaskId] ?: 0
+    if (priorRetries >= MAX_VALIDATION_QUALITY_RETRIES) {
+      return null
+    }
+    validationQualityRetries[subtaskId] = priorRetries + 1
     return GoalRunnerIterationResult(
       state = manifestStore.save(
         state.copy(manifest = blocked.withValidationQualityRetrySubtask(subtaskId)),
@@ -1332,6 +1364,7 @@ internal class GoalRunnerLaunchReconciler(
 private const val GIT_PORCELAIN_MIN_LENGTH = 4
 private const val GIT_PORCELAIN_STATUS_PREFIX_LENGTH = 3
 private const val MAX_NO_TERMINAL_OUTCOME_RETRY_ATTEMPTS = 1
+private const val MAX_VALIDATION_QUALITY_RETRIES = 3
 private const val NO_TERMINAL_OUTCOME_RECHECK_ATTEMPTS = 2
 private const val NO_TERMINAL_OUTCOME_RECHECK_DELAY_MILLIS = 200L
 private val PROTECTED_GOAL_BRANCHES: Set<String> = setOf("main", "master", "trunk")

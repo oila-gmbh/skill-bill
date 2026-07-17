@@ -11,7 +11,9 @@ import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
 import skillbill.application.featuretask.FeatureTaskRuntimeRunner
 import skillbill.application.featuretask.FeatureTaskRuntimeStatusService
 import skillbill.application.featuretask.FeatureTaskRuntimeWorkerCoordinator
+import skillbill.application.goalrunner.DefaultGoalPlanningSweep
 import skillbill.application.goalrunner.GoalLifecycleTelemetryEmitter
+import skillbill.application.goalrunner.GoalPlanningSweep
 import skillbill.application.goalrunner.GoalRunner
 import skillbill.application.goalrunner.GoalRunnerStatusService
 import skillbill.application.goalrunner.WorkflowGoalRunnerManifestStore
@@ -313,6 +315,10 @@ abstract class RuntimeComponent(
   @JvmSynthetic
   internal fun goalRunnerSubtaskLauncher(adapter: AgentRunGoalRunnerSubtaskLauncher): GoalRunnerSubtaskLauncher =
     adapter
+
+  @Provides
+  @JvmSynthetic
+  internal fun goalPlanningSweep(sweep: DefaultGoalPlanningSweep): GoalPlanningSweep = sweep
 
   // SKILL-66 Subtask 3: GoalRunner reaches lifecycle-telemetry emission only
   // through the application-owned GoalLifecycleTelemetryEmitter seam (backed by

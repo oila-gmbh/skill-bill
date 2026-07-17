@@ -1126,22 +1126,6 @@ internal class FeatureTaskRuntimeRunLoop(
       )
     }
     val fileManifest = requireNotNull(launch.fileManifest)
-    val allowedIssues = setOfNotNull(run.request.issueKey, run.request.goalContinuation?.parentIssueKey)
-    val unauthorized = FeatureTaskRuntimePhaseSafetyPolicy.unauthorizedIssueSpecs(fileManifest, allowedIssues)
-    if (unauthorized.isNotEmpty()) {
-      val reason = "Phase '${run.phaseId}' introduced governed specification changes for another issue: " +
-        unauthorized.joinToString() + ". Cross-issue spec creation is not permitted in a feature-task phase."
-      return AttemptResult.settled(
-        blockAndPersistInPhase(
-          run,
-          iteration,
-          reason,
-          observability,
-          failureDisposition = FeatureTaskRuntimeFailureDisposition.NON_RETRYABLE_POLICY_CONFLICT,
-          fileManifest = fileManifest,
-        ),
-      )
-    }
     return gateOutput(
       run,
       iteration,

@@ -257,7 +257,7 @@ class FeatureTaskRuntimeRunnerTest {
   }
 
   @Test
-  fun `phase blocks and records manifests when it introduces another issue spec`() {
+  fun `phase completes and records manifest when it introduces another issue spec`() {
     val git = RecordingWorkflowGitOperations()
     git.worktreeStatusSequence.addAll(
       listOf("", "?? .feature-specs/SKILL-124-sqldelight-runtime-persistence/spec.md"),
@@ -270,20 +270,18 @@ class FeatureTaskRuntimeRunnerTest {
       runtimeConfig = RuntimeHarnessConfig(branchSetup = BranchSetupTestConfig(gitOperations = git)),
     )
 
-    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+    val completed = assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
 
-    assertEquals("preplan", blocked.lastIncompletePhase)
-    assertContains(blocked.blockedReason, "SKILL-124")
+    assertEquals(ALL_PHASES, completed.completedPhaseIds)
     val record = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["preplan"])
     assertEquals(
       listOf(".feature-specs/SKILL-124-sqldelight-runtime-persistence/spec.md"),
       record.fileManifestIntroduced,
     )
-    assertEquals("non_retryable_policy_conflict", record.failureDisposition?.wireValue)
   }
 
   @Test
-  fun `phase blocks when it commits another issue spec`() {
+  fun `phase completes when it commits another issue spec`() {
     val git = RecordingWorkflowGitOperations()
     git.runtimePhaseHeadCommitSequence.addAll(listOf("before", "after"))
     git.changedPathsBetweenCommitsValue =
@@ -296,10 +294,9 @@ class FeatureTaskRuntimeRunnerTest {
       runtimeConfig = RuntimeHarnessConfig(branchSetup = BranchSetupTestConfig(gitOperations = git)),
     )
 
-    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+    val completed = assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
 
-    assertEquals("preplan", blocked.lastIncompletePhase)
-    assertContains(blocked.blockedReason, "SKILL-124")
+    assertEquals(ALL_PHASES, completed.completedPhaseIds)
     val record = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["preplan"])
     assertEquals(
       listOf(".feature-specs/SKILL-124-sqldelight-runtime-persistence/spec.md"),

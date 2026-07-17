@@ -2692,3 +2692,46 @@ private object GoalTestEmptyWorkflowStateRepository : WorkflowStateRepository {
   override fun listFeatureTaskRuntimeWorkflows(limit: Int): List<WorkflowStateRecord> = emptyList()
   override fun latestFeatureTaskRuntimeWorkflow(): WorkflowStateRecord? = null
 }
+
+// Regression for the validate crashloop: a persistently-failing validate phase must stop after a bounded
+// number of goal-level retries instead of looping forever. Kept in its own class so the broad
+// [GoalRunnerTest] stays under the detekt LargeClass threshold.
+class GoalRunnerValidationQualityRetryTest {
+  private fun runRequest(): GoalRunnerRunRequest = GoalRunnerRunRequest(
+    issueKey = "SKILL-56",
+    repoRoot = Path.of("/tmp/skillbill-goal-runner"),
+    invokedAgentId = "claude",
+    dbPathOverride = "/tmp/skillbill-goal-runner/metrics.db",
+  )
+
+  @Test
+  fun `validation quality gate stops after bounded retries instead of looping forever`() {
+    val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 1))
+    val outcomes = RecordingOutcomeStore()
+    val launcher = RecordingSubtaskLauncher { request ->
+      val subtaskId = requireNotNull(request.skillRunRequest.subtaskId)
+      store.mutate { current -> current.withWorkflowId(subtaskId, "wfl-$subtaskId") }
+      outcomes["wfl-$subtaskId"] = GoalRunnerStoredOutcome(
+        status = GoalRunnerTerminalStatus.BLOCKED,
+        workflowId = "wfl-$subtaskId",
+        blockedReason = "./gradlew check keeps failing during validate.",
+        lastResumableStep = "validate",
+        suppressPr = true,
+      )
+      launchFacts()
+    }
+    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort())
+
+    val report = runner.run(runRequest())
+
+    val stopped = assertIs<GoalRunnerRunReport.Stopped>(report)
+    assertEquals(GoalRunnerStopReason.BLOCKED, stopped.stop.reason)
+    assertEquals("validate", stopped.stop.lastResumableStep)
+    assertEquals("blocked", store.manifest.subtasks.single().status)
+    val validateResumes = launcher.requests.count {
+      it.skillRunRequest.goalContinuation?.lastResumableStep == "validate"
+    }
+    assertEquals(4, launcher.requests.size, "validate must bound to 1 initial launch + 3 retries, not loop forever")
+    assertEquals(3, validateResumes, "only the bounded retry budget may re-resume at validate")
+  }
+}

@@ -16,8 +16,8 @@ import kotlin.test.assertTrue
  * it returns [FeatureTaskRuntimeFixLoopDecision.Block] (never a silent advance)
  * for a non-fix-loop phase immediately, and for bounded fix-loop phases only
  * after the [FeatureTaskRuntimeFixLoopPolicy.MAX_FIX_LOOP_ITERATIONS] cap.
- * Validation is the exception: validation failures are repair work and keep
- * retrying instead of blocking the task.
+ * Validation is also bounded: validation failures are repair work and earn
+ * retries up to the cap, then block loudly instead of looping forever.
  */
 class FeatureTaskRuntimeFixLoopPolicyTest {
   @Test
@@ -51,7 +51,7 @@ class FeatureTaskRuntimeFixLoopPolicyTest {
 
   @Test
   fun `a budget-exhausted implement resume re-blocks rather than relaunching`() {
-    // implement is bounded, so a resume past the cap re-blocks (unlike unbounded validate).
+    // implement is bounded, so a resume past the cap re-blocks.
     assertTrue(
       FeatureTaskRuntimeFixLoopPolicy.blockReasonIfBudgetExhausted(
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT,
@@ -93,23 +93,35 @@ class FeatureTaskRuntimeFixLoopPolicyTest {
   }
 
   @Test
-  fun `validation fix-loop keeps retrying after the bounded phase cap`() {
-    val retry = assertIs<FeatureTaskRuntimeFixLoopDecision.Retry>(
+  fun `validation fix-loop is bounded and blocks after the cap instead of looping`() {
+    (1 until FeatureTaskRuntimeFixLoopPolicy.MAX_FIX_LOOP_ITERATIONS).forEach { iteration ->
+      val retry = assertIs<FeatureTaskRuntimeFixLoopDecision.Retry>(
+        FeatureTaskRuntimeFixLoopPolicy.decideAfterFailure(
+          FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE,
+          currentIteration = iteration,
+        ),
+        "validation must Retry below the cap at iteration $iteration",
+      )
+      assertEquals(iteration + 1, retry.nextIteration)
+      assertEquals(iteration, retry.fixLoopIteration)
+    }
+    val blocked = assertIs<FeatureTaskRuntimeFixLoopDecision.Block>(
       FeatureTaskRuntimeFixLoopPolicy.decideAfterFailure(
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE,
         currentIteration = FeatureTaskRuntimeFixLoopPolicy.MAX_FIX_LOOP_ITERATIONS,
       ),
-      "validation must keep retrying instead of blocking at the bounded phase cap",
+      "validation must Block once the bounded cap is reached instead of looping forever",
     )
-
-    assertEquals(FeatureTaskRuntimeFixLoopPolicy.MAX_FIX_LOOP_ITERATIONS + 1, retry.nextIteration)
-    assertEquals(FeatureTaskRuntimeFixLoopPolicy.MAX_FIX_LOOP_ITERATIONS, retry.fixLoopIteration)
-    assertEquals(
-      null,
+    assertTrue(
+      blocked.blockedReason.contains("exhausted the bounded fix loop"),
+      "block reason for validation must name fix-loop exhaustion",
+    )
+    assertTrue(
       FeatureTaskRuntimeFixLoopPolicy.blockReasonIfBudgetExhausted(
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE,
         iteration = FeatureTaskRuntimeFixLoopPolicy.MAX_FIX_LOOP_ITERATIONS + 1,
-      ),
+      )?.contains("exhausted the bounded fix loop") == true,
+      "a resumed validation past the cap must re-block on the bounded budget",
     )
   }
 

@@ -10,8 +10,6 @@ internal data class FeatureTaskRuntimePhaseFileManifest(
 }
 
 internal object FeatureTaskRuntimePhaseSafetyPolicy {
-  private val issueDirectory = Regex("^([A-Za-z]+-[0-9]+(?:\\.[0-9]+)*)(?:[-/]|$)")
-
   fun lineSeparatedPaths(raw: String): List<String> = raw
     .lineSequence()
     .map(String::trim)
@@ -30,19 +28,6 @@ internal object FeatureTaskRuntimePhaseSafetyPolicy {
     .sorted()
     .toList()
 
-  fun unauthorizedIssueSpecs(
-    manifest: FeatureTaskRuntimePhaseFileManifest,
-    allowedIssueKeys: Set<String>,
-  ): List<String> {
-    val normalizedAllowed = allowedIssueKeys.map(String::uppercase).toSet()
-    return manifest.introduced.filter { path ->
-      if (!path.startsWith(FEATURE_SPEC_ROOT)) return@filter false
-      val relative = path.removePrefix(FEATURE_SPEC_ROOT)
-      val issueKey = issueDirectory.find(relative)?.groupValues?.get(1)?.uppercase() ?: return@filter false
-      issueKey !in normalizedAllowed
-    }
-  }
-
   fun dispositionForTerminalOutput(phaseId: String, output: Map<String, Any?>): FeatureTaskRuntimeFailureDisposition {
     val explicit = (output["failure_disposition"] as? String)
       ?.let(FeatureTaskRuntimeFailureDisposition::fromWireValue)
@@ -58,5 +43,4 @@ internal object FeatureTaskRuntimePhaseSafetyPolicy {
   }
 
   private const val PORCELAIN_PATH_OFFSET: Int = 3
-  private const val FEATURE_SPEC_ROOT: String = ".feature-specs/"
 }

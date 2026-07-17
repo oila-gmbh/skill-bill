@@ -183,13 +183,6 @@ class FeatureTaskRuntimePhasePromptComposerTest {
   }
 
   @Test
-  fun `forbids unrequested cross-issue governed specs`() {
-    val prompt = FeatureTaskRuntimePhasePromptComposer.compose(ISSUE_KEY, briefingFor("implement"))
-
-    assertContains(prompt, "Do not create or modify a governed spec for another issue key")
-  }
-
-  @Test
   fun `linear commit_push prompt carries the spec-exclusion directive`() {
     val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
       ISSUE_KEY,

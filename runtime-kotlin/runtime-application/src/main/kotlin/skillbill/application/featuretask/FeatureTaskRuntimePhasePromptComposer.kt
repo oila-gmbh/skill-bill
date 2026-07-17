@@ -135,8 +135,6 @@ object FeatureTaskRuntimePhasePromptComposer {
       loop (preplan -> plan -> implement -> review -> audit -> validate -> write_history -> commit_push -> pr)
       for issue $issueKey. The runtime owns the loop; do not run other phases, do not open
       or continue any other skill-bill workflow, and do not call `skill-bill workflow continue`.
-      Do not create or modify a governed spec for another issue key unless this issue's spec
-      explicitly requires that exact follow-up artifact.
 
       Phase: $phaseId ($label)
       Task: $directive
