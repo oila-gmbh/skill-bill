@@ -10,18 +10,18 @@ base_branch: "main"
 feature_branch: "feat/SKILL-128-goal-planning-context-reuse"
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 1
-  action: "resume"
+  subtask_id: 2
+  action: "start"
 subtasks:
 - id: 1
   name: "Goal planning persistence contract"
   spec_path: ".feature-specs/SKILL-128-goal-planning-context-reuse/spec_subtask_1_goal_planning_contract.md"
-  status: "pending"
+  status: "complete"
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260717-105630-hdgt"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []

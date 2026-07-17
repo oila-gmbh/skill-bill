@@ -53,6 +53,26 @@ class JvmAgentRunProcessRunner : AgentRunProcessRunner {
     }
   }
 
+  companion object {
+    private val liveProcesses = java.util.concurrent.ConcurrentHashMap.newKeySet<Process>()
+
+    init {
+      Runtime.getRuntime().addShutdownHook(object : Thread("skill-bill-agent-run-shutdown") {
+        override fun run() {
+          reapLiveProcesses(liveProcesses.toList())
+        }
+      })
+    }
+
+    internal fun reapLiveProcesses(processes: List<Process>) {
+      processes.forEach { process -> runCatching { process.destroy() } }
+      processes.forEach { process ->
+        runCatching { process.waitFor(DESTROY_WAIT_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS) }
+        if (process.isAlive) runCatching { process.destroyForcibly() }
+      }
+    }
+  }
+
   private fun runStartedProcess(
     process: Process,
     stdoutStream: InputStream,
@@ -60,6 +80,7 @@ class JvmAgentRunProcessRunner : AgentRunProcessRunner {
     request: AgentRunProcessRequest,
     ptyMasterCloseable: AutoCloseable?,
   ): AgentRunProcessResult {
+    liveProcesses.add(process)
     val outputTracker = OutputObservationTracker()
     val lifecycleEmitter = ProcessLifecycleEmitter(request)
     val stdout = CappedUtf8Drain(
@@ -105,6 +126,7 @@ class JvmAgentRunProcessRunner : AgentRunProcessRunner {
       runCatching { process.waitFor(DESTROY_WAIT_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS) }
         .onFailure { error -> if (error is InterruptedException) interrupted = true }
     }
+    liveProcesses.remove(process)
     stdout.join()
     stderr.join()
     runCatching { ptyMasterCloseable?.close() }

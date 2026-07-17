@@ -12,6 +12,8 @@ import skillbill.goalrunner.model.GoalRunnerRunReport
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
+import skillbill.ports.agentrun.model.AgentRunOutputSink
+import skillbill.ports.agentrun.model.AgentRunOutputStream
 import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
@@ -76,6 +78,29 @@ class GoalPlanningSweepTest {
     assertEquals(1, harness.manifestFileStore.countContaining("decomposition-manifest.yaml"))
     assertEquals(3, harness.manifestFileStore.countContaining("spec_subtask_"))
     assertEquals(6, harness.launcher.requests.size)
+  }
+
+  @Test
+  fun `planning emits a progress line per phase in caller order`() {
+    val harness = sweepHarness { phase, _, _ -> validPhaseOutcome(phase) }
+    val progress = mutableListOf<String>()
+    val request = harness.request().copy(
+      outputSink = AgentRunOutputSink { stream, text ->
+        if (stream == AgentRunOutputStream.STDERR) progress += text
+      },
+    )
+
+    harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 2)), request)
+
+    assertEquals(
+      listOf(
+        "skill-bill: goal planning - subtask 1 preplan\n",
+        "skill-bill: goal planning - subtask 1 plan\n",
+        "skill-bill: goal planning - subtask 2 preplan\n",
+        "skill-bill: goal planning - subtask 2 plan\n",
+      ),
+      progress,
+    )
   }
 
   @Test

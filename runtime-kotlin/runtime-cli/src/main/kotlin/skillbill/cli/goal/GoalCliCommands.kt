@@ -89,9 +89,10 @@ class GoalRunCommand(
   ).int()
   private val progressIdleTimeoutMinutes by option(
     "--progress-idle-timeout-minutes",
-    help = "Optional per-subtask durable workflow-progress idle timeout in minutes. " +
-      "Default is no idle timeout: a subtask is never killed for taking long.",
-  ).int()
+    help = "Per-subtask durable workflow-progress idle timeout in minutes (default " +
+      "$DEFAULT_GOAL_PROGRESS_IDLE_TIMEOUT_MINUTES). A subtask with no durable progress and no " +
+      "file activity for this long is killed; active work is spared. Pass 0 to disable.",
+  ).int().default(DEFAULT_GOAL_PROGRESS_IDLE_TIMEOUT_MINUTES)
   private val noLiveOutput by option(
     "--no-live-output",
     help = "Do not tee child stdout/stderr or structured observability lines to this terminal.",
@@ -158,7 +159,7 @@ class GoalRunCommand(
         configuredAgentOverrideId = agentOverride,
         dbPathOverride = state.dbOverride,
         timeout = maxWallClockMinutes?.minutes,
-        progressIdleTimeout = progressIdleTimeoutMinutes?.minutes,
+        progressIdleTimeout = progressIdleTimeoutMinutes.takeIf { it > 0 }?.minutes,
         outputSink = presenter.outputSink(includeRawChildOutput = debugChildOutput),
         eventSink = presenter.eventSink(),
         codeReviewMode = parseCodeReviewMode(codeReviewMode),
@@ -474,6 +475,7 @@ private class GoalRunPresenter(
       }
       when {
         line.startsWith("skill-bill: workflow progress:") -> handleWorkflowProgressLine(line)
+        line.startsWith("skill-bill: goal planning") -> state.liveStdout(line + "\n")
         line.startsWith("skill-bill: file activity observed;") -> lastLivenessClass = GOAL_LIVENESS_FILE_ACTIVITY
         line.startsWith("skill-bill: status heartbeat") -> {
           // The heartbeat line carries the current workflow label in "; workflow: <label>" —
@@ -848,6 +850,7 @@ private fun resolveInvokedAgentId(explicitAgent: String?, environment: Map<Strin
 // Documented last-resort default used only when no explicit flag, env, or
 // detected invoking-agent context is available.
 private const val DEFAULT_GOAL_AGENT = "codex"
+private const val DEFAULT_GOAL_PROGRESS_IDLE_TIMEOUT_MINUTES = 10
 private const val GOAL_LIVENESS_DURABLE_PROGRESS = "durable_progress"
 private const val GOAL_LIVENESS_FILE_ACTIVITY = "file_activity"
 private const val GOAL_LIVENESS_OUTPUT_ONLY = "output_only"

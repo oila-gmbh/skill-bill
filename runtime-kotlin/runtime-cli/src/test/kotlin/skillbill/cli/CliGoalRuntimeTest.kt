@@ -760,6 +760,55 @@ class CliGoalTransitionMonitoringTest {
 }
 
 /**
+ * SKILL-128: the goal per-launch idle-progress timeout default and override. Kept in its own class
+ * so it does not push [CliGoalRuntimeTest] over the detekt LargeClass threshold (the file's
+ * established convention).
+ */
+class CliGoalProgressIdleTimeoutTest {
+  @Test
+  fun `goal progress idle timeout flag passes value to child run`() {
+    val fixture = goalFixture(subtaskCount = 1)
+    val launcher = GoalFixtureAgentRunLauncher(fixture)
+
+    val result = CliRuntime.run(
+      fixture.goalCommand(extra = listOf("--progress-idle-timeout-minutes", "25")),
+      fixture.context(launcher = launcher),
+    )
+
+    assertEquals(0, result.exitCode, result.stdout)
+    assertEquals(25.minutes, launcher.childLaunches.single().skillRunRequest.progressIdleTimeout)
+  }
+
+  @Test
+  fun `goal progress idle timeout defaults to a bounded cap when flag absent`() {
+    val fixture = goalFixture(subtaskCount = 1)
+    val launcher = GoalFixtureAgentRunLauncher(fixture)
+
+    val result = CliRuntime.run(
+      fixture.goalCommand(extra = emptyList()),
+      fixture.context(launcher = launcher),
+    )
+
+    assertEquals(0, result.exitCode, result.stdout)
+    assertEquals(10.minutes, launcher.childLaunches.single().skillRunRequest.progressIdleTimeout)
+  }
+
+  @Test
+  fun `goal progress idle timeout zero disables the cap`() {
+    val fixture = goalFixture(subtaskCount = 1)
+    val launcher = GoalFixtureAgentRunLauncher(fixture)
+
+    val result = CliRuntime.run(
+      fixture.goalCommand(extra = listOf("--progress-idle-timeout-minutes", "0")),
+      fixture.context(launcher = launcher),
+    )
+
+    assertEquals(0, result.exitCode, result.stdout)
+    assertEquals(null, launcher.childLaunches.single().skillRunRequest.progressIdleTimeout)
+  }
+}
+
+/**
  * SKILL-95 (AC4, AC9): opencode is prose-only. Kept in its own class so it does not push the broad
  * [CliGoalRuntimeTest] over the detekt LargeClass threshold (the file's established convention).
  */

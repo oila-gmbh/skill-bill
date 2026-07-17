@@ -13,6 +13,7 @@ import skillbill.contracts.JsonSupport
 import skillbill.goalrunner.model.GoalRunnerStopReason
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
+import skillbill.ports.agentrun.model.AgentRunOutputStream
 import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
 import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
@@ -159,6 +160,10 @@ class DefaultGoalPlanningSweep(
       specSource = shared.specSource,
       specReference = runInvariants.specReference,
       agentAddonSelection = request.agentAddonSelection,
+    )
+    request.outputSink.write(
+      AgentRunOutputStream.STDERR,
+      "skill-bill: goal planning - subtask ${subtask.id} $phaseId\n",
     )
     val outcome = subtaskLauncher.launch(
       GoalRunnerSubtaskLaunchRequest(
