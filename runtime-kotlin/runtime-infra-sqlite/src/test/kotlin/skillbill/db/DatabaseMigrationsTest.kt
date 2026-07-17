@@ -62,12 +62,37 @@ class DatabaseMigrationsTest {
         5 to "recover-work-list-issue-keys",
         6 to "add-feature-task-execution-identities",
         7 to "add-feature-task-runtime-worker-leases",
+        8 to "add-goal-planning-preparations",
       ),
       migrationDefinitions,
     )
     assertEquals(migrationDefinitions.sortedBy { (version, _) -> version }, migrationDefinitions)
     assertEquals(migrationDefinitions.map { (version, _) -> version }.toSet().size, migrationDefinitions.size)
     assertEquals(migrationDefinitions.map { (_, name) -> name }.toSet().size, migrationDefinitions.size)
+  }
+
+  @Test
+  fun `migration v8 records and recreates goal planning preparations on an existing database`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-db-v8-goal-planning").resolve("metrics.db")
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      connection.createStatement().use { statement ->
+        statement.executeUpdate("DELETE FROM schema_migrations WHERE version = 8")
+        statement.executeUpdate("DROP INDEX IF EXISTS idx_goal_planning_preparations_lookup")
+        statement.executeUpdate("DROP TABLE IF EXISTS goal_planning_preparations")
+      }
+    }
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val columns = tableColumns(connection = connection, tableName = "goal_planning_preparations")
+      assertTrue("parent_goal_workflow_id" in columns)
+      assertTrue("subtask_id" in columns)
+      assertTrue("preparation_status" in columns)
+      val migration = migrationRows(connection).singleOrNull { row ->
+        row.version == 8 && row.name == "add-goal-planning-preparations"
+      }
+      assertNotNull(migration, "Migration version 8 add-goal-planning-preparations should be recorded.")
+    }
   }
 
   @Test

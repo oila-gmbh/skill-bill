@@ -1,3 +1,15 @@
+## [2026-07-17] SKILL-128 goal-planning context reuse (subtask 1: persistence contract)
+Areas: runtime-kotlin/runtime-{application,contracts,core,domain,infra-fs,infra-sqlite,ports}, orchestration/contracts, runtime-kotlin/ARCHITECTURE.md
+- New goal-scoped preparation store records parent goal workflow, normalized issue key, repository identity, subtask ID, governed sub-spec, preparation status, immutable five-hash provenance, and embedded validated preplan/plan payloads.
+- `markPrepared` is an atomic `ON CONFLICT DO NOTHING` upsert plus a post-select conflict check: a valid existing pair is an idempotent no-op; identity/provenance divergence loud-fails as `IncompatibleGoalPlanningPreparationRecoveryError` instead of overwriting or regenerating. reusable
+- Stored preplan/plan payloads reuse `FeatureTaskRuntimePhaseOutputValidator.validatePhaseOutputText`; duplicate, cross-goal, cross-repository, wrong-spec, malformed, and incompatible-version records fail loudly as typed errors, never silently treated as pending.
+- Store ops (`markPrepared`, `findByGoalAndSubtask`, ordered list, `preparedCount`, `firstMissingOrIncompleteSubtask`, `preparedStatus`) keep `java.sql.Connection`/`ResultSet` confined to runtime-infra-sqlite; `DatabaseMigrations` v8 `add-goal-planning-preparations` matches `DatabaseSchema` DDL byte-for-byte.
+- New runtime contract `goal-planning-preparation-schema.yaml` (`contract_version.const` `0.1`) follows the full recipe: Draft 2020-12 YAML, Kotlin `GOAL_PLANNING_PREPARATION_CONTRACT_VERSION` parity test, typed `ShellContentContractException`, loud-fail seams, and a Gradle `Copy` task (`inputs.file` + `doFirst` guard) bundling the YAML onto the classpath. reusable
+- Pattern: store opaque provenance hashes as the immutable recovery key and validate embedded payloads through the existing phase-output validator instead of re-implementing per-phase status logic; AC8 isolation is enforced by `ApplicationPersistencePortTest` (no standalone feature-task query reads this store). reusable
+- Known limitation: open audit remediation routes AC2 status-gate enforcement (a blocked/failed embedded payload must be rejected, not checkpointed as prepared) and AC7 named transaction-rollback plus pending/incomplete-recovery test coverage back to the audit→implement loop; subtasks 2-4 will consume this store and compute the provenance hashes.
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
 ## [2026-07-15] SKILL-122 agent add-on integration validation
 Areas: runtime-kotlin/runtime-{application,cli,core,domain,infra-fs,mcp}
 - Cross-boundary tests lock ordered agent add-on selection through runtime, goal continuation, retry/resume, staging invalidation, and compatible run-wide, phase, and delegated parallel-review overrides.

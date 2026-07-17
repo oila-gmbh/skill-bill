@@ -429,6 +429,7 @@ runtime-ports
     - `skillbill.application.decomposition.DecompositionManifestWriter.maybeWriteFromWorkflowUpdate`
     - `skillbill.application.workflow.WorkflowFamily.sessionSummary`
     - `skillbill.workflow.GoalObservabilityEventValidator.validate`
+    - `skillbill.workflow.GoalPlanningPreparationEnvelopeValidator.validate`
     - `skillbill.workflow.model.GoalObservabilityEvent.toArtifactMap`
     - `skillbill.workflow.model.GoalObservabilityEvent.toCompactSummaryMap`
     - `skillbill.workflow.model.GoalObservabilityHistory.toArtifactList`
@@ -868,6 +869,7 @@ Categories:
 
 ### open_extension (@OpenBoundaryMap)
 
+- `skillbill.workflow.GoalPlanningPreparationEnvelopeValidator.validate`
 - `skillbill.workflow.WorkflowEngine.snapshotMap`
 - `skillbill.workflow.WorkflowEngine.summaryMap`
 - `skillbill.workflow.WorkflowEngine.resumeMap`

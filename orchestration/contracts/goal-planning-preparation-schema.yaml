@@ -1,0 +1,93 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://skill-bill.dev/contracts/goal-planning-preparation-schema.yaml"
+title: "Goal planning preparation"
+description: >
+  Durable, goal-owned envelope for one prepared preplan/plan pair per
+  decomposed feature-task runtime subtask. It pins the parent goal workflow,
+  normalized issue key, repository identity, subtask id, governed sub-spec, and
+  immutable provenance for the parent spec, sub-spec, decomposition manifest, and
+  the reused feature-task-runtime phase-output contract. The embedded preplan and
+  plan payloads are stored as opaque strings and validated separately by the
+  reused phase-output validator; this envelope does not re-declare phase-output
+  fields.
+type: object
+additionalProperties: false
+required:
+  - contract_version
+  - parent_goal_workflow_id
+  - normalized_issue_key
+  - repository_identity
+  - subtask_id
+  - governed_sub_spec_path
+  - preparation_status
+  - provenance
+  - preplan_payload
+  - plan_payload
+properties:
+  contract_version:
+    type: string
+    const: "0.1"
+  parent_goal_workflow_id:
+    type: string
+    minLength: 1
+  normalized_issue_key:
+    type: string
+    minLength: 1
+  repository_identity:
+    type: string
+    minLength: 1
+  subtask_id:
+    type: integer
+    minimum: 1
+  governed_sub_spec_path:
+    type: string
+    minLength: 1
+  preparation_status:
+    type: string
+    enum: [pending, prepared]
+  provenance:
+    type: object
+    additionalProperties: false
+    required:
+      - parent_spec_hash
+      - sub_spec_hash
+      - decomposition_manifest_hash
+      - phase_output_contract_id
+      - phase_output_contract_version
+    properties:
+      parent_spec_hash:
+        type: string
+        minLength: 1
+      sub_spec_hash:
+        type: string
+        minLength: 1
+      decomposition_manifest_hash:
+        type: string
+        minLength: 1
+      phase_output_contract_id:
+        type: string
+        minLength: 1
+      phase_output_contract_version:
+        type: string
+        minLength: 1
+  preplan_payload:
+    description: >
+      Opaque phase-output JSON text for the preplan phase. Its internal
+      contract_version, phase_id, status, and produced_outputs are enforced by
+      the reused feature-task-runtime phase-output validator at the application
+      seam, not by this envelope.
+    type: string
+    minLength: 1
+  plan_payload:
+    description: >
+      Opaque phase-output JSON text for the plan phase. Its internal
+      contract_version, phase_id, status, and produced_outputs are enforced by
+      the reused feature-task-runtime phase-output validator at the application
+      seam, not by this envelope.
+    type: string
+    minLength: 1
+x-coherence-checks:
+  - preparation_status is prepared once a valid preplan/plan pair is checkpointed and cannot regress to pending.
+  - provenance hashes are SHA-256 of raw UTF-8 bytes and are stable across re-reads.
+  - preplan_payload phase_id is 'preplan' and plan_payload phase_id is 'plan', enforced by the reused phase-output validator.
+  - parent_goal_workflow_id plus subtask_id is the immutable recovery key; a differing provenance tuple OR a differing normalized_issue_key/repository_identity on the same recovery key fails loudly rather than overwriting.

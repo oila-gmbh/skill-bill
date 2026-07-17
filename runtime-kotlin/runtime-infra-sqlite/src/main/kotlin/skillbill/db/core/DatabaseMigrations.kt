@@ -90,6 +90,43 @@ internal object DatabaseMigrations {
           }
         },
       ),
+      DatabaseMigration(
+        version = 8,
+        name = "add-goal-planning-preparations",
+        operation = { connection ->
+          connection.createStatement().use { statement ->
+            statement.execute(
+              """
+              CREATE TABLE IF NOT EXISTS goal_planning_preparations (
+                parent_goal_workflow_id TEXT NOT NULL,
+                normalized_issue_key TEXT NOT NULL,
+                repository_identity TEXT NOT NULL,
+                subtask_id INTEGER NOT NULL CHECK (subtask_id > 0),
+                governed_sub_spec_path TEXT NOT NULL,
+                preparation_status TEXT NOT NULL CHECK (preparation_status IN ('pending', 'prepared')) DEFAULT 'prepared',
+                contract_version TEXT NOT NULL CHECK (contract_version = '0.1'),
+                parent_spec_hash TEXT NOT NULL,
+                sub_spec_hash TEXT NOT NULL,
+                decomposition_manifest_hash TEXT NOT NULL,
+                phase_output_contract_id TEXT NOT NULL,
+                phase_output_contract_version TEXT NOT NULL,
+                preplan_payload_json TEXT NOT NULL,
+                plan_payload_json TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (parent_goal_workflow_id, subtask_id)
+              )
+              """.trimIndent(),
+            )
+            statement.execute(
+              """
+              CREATE INDEX IF NOT EXISTS idx_goal_planning_preparations_lookup
+                ON goal_planning_preparations(normalized_issue_key, repository_identity)
+              """.trimIndent(),
+            )
+          }
+        },
+      ),
     ).also(::requireDeterministicMigrations)
 
   fun apply(connection: Connection) {

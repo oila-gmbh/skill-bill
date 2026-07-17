@@ -84,6 +84,7 @@ private class FakeTelemetryDatabaseSessionFactory(
     override val workflowStates: WorkflowStateRepository
       get() = error("Unexpected workflowStates")
     override val workList = EmptyWorkListRepository
+    override val goalPlanningPreparations = skillbill.ports.persistence.EmptyGoalPlanningPreparationRepository
   }
 }
 

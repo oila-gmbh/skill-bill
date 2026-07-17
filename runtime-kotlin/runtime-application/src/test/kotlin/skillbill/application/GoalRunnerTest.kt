@@ -2606,6 +2606,7 @@ private class GoalStatusSeedableDatabase(
     override val telemetryOutbox: TelemetryOutboxRepository get() = error("unused by goal status tests")
     override val workflowStates: WorkflowStateRepository = repository
     override val workList = skillbill.ports.persistence.EmptyWorkListRepository
+    override val goalPlanningPreparations = skillbill.ports.persistence.EmptyGoalPlanningPreparationRepository
   }
 }
 
@@ -2666,6 +2667,7 @@ private object GoalTestEmptyDatabase : DatabaseSessionFactory {
     override val telemetryOutbox: TelemetryOutboxRepository get() = error("unused by goal status tests")
     override val workflowStates: WorkflowStateRepository = GoalTestEmptyWorkflowStateRepository
     override val workList = skillbill.ports.persistence.EmptyWorkListRepository
+    override val goalPlanningPreparations = skillbill.ports.persistence.EmptyGoalPlanningPreparationRepository
   }
 }
 

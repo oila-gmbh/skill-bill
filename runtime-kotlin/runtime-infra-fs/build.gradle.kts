@@ -265,6 +265,24 @@ val copyFeatureTaskRuntimePhaseOutputSchema =
     }
   }
 
+val canonicalGoalPlanningPreparationSchemaPath: String =
+  rootProject.projectDir.parentFile
+    .resolve("orchestration/contracts/goal-planning-preparation-schema.yaml")
+    .absolutePath
+
+val copyGoalPlanningPreparationSchema =
+  tasks.register<Copy>("copyGoalPlanningPreparationSchema") {
+    val schemaPath = canonicalGoalPlanningPreparationSchemaPath
+    from(schemaPath)
+    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/contracts"))
+    inputs.file(schemaPath)
+    doFirst {
+      require(File(schemaPath).exists()) {
+        "SKILL-128: canonical goal planning preparation schema is missing at $schemaPath."
+      }
+    }
+  }
+
 sourceSets.named("main") {
   resources.srcDir(layout.buildDirectory.dir("generated/skillbill-contracts"))
 }
@@ -283,6 +301,7 @@ tasks.named("processResources") {
   dependsOn(copyFeatureTaskRuntimePhaseOutputSchema)
   dependsOn(copyFeatureTaskExecutionIdentitySchema)
   dependsOn(copyFeatureTaskRuntimeWorkerOwnershipSchema)
+  dependsOn(copyGoalPlanningPreparationSchema)
 }
 
 tasks.named("processTestResources") {
@@ -299,6 +318,7 @@ tasks.named("processTestResources") {
   dependsOn(copyFeatureTaskRuntimePhaseOutputSchema)
   dependsOn(copyFeatureTaskExecutionIdentitySchema)
   dependsOn(copyFeatureTaskRuntimeWorkerOwnershipSchema)
+  dependsOn(copyGoalPlanningPreparationSchema)
 }
 
 tasks.withType<Test>().configureEach {

@@ -23,6 +23,22 @@ class DatabaseSchemaTest {
     }
   }
 
+  @Test
+  fun `ensureDatabase creates the goal planning preparations table and lookup index`() {
+    val tempDir = Files.createTempDirectory("runtime-kotlin-db-schema-goal-planning")
+    val dbPath = tempDir.resolve("metrics.db")
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val tables = sqliteObjects(connection = connection, type = "table")
+      val indexes = sqliteObjects(connection = connection, type = "index")
+
+      assertTrue("goal_planning_preparations" in DatabaseSchema.tableNames)
+      assertTrue("goal_planning_preparations" in tables)
+      assertTrue("idx_goal_planning_preparations_lookup" in DatabaseSchema.indexNames)
+      assertTrue("idx_goal_planning_preparations_lookup" in indexes)
+    }
+  }
+
   private fun assertPragmas(connection: Connection) {
     assertEquals(1, pragmaInt(connection, "foreign_keys"))
     assertEquals(5000, pragmaInt(connection, "busy_timeout"))

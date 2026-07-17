@@ -23,6 +23,7 @@ internal object DatabaseSchema {
       "goal_run_sessions",
       "goal_subtask_events",
       "goal_issue_progress",
+      "goal_planning_preparations",
       "telemetry_reconciliation_state",
     )
 
@@ -40,6 +41,7 @@ internal object DatabaseSchema {
       "idx_feature_task_workflows_reconciliation_activity",
       "idx_feature_verify_workflows_reconciliation_activity",
       "idx_goal_issue_reconciliation_candidates",
+      "idx_goal_planning_preparations_lookup",
       "idx_telemetry_reconciliation_completed",
     )
 
@@ -385,6 +387,31 @@ internal object DatabaseSchema {
         finished_event_emitted_at TEXT,
         PRIMARY KEY (parent_workflow_id, issue_key)
       )
+      """.trimIndent(),
+      """
+      CREATE TABLE IF NOT EXISTS goal_planning_preparations (
+        parent_goal_workflow_id TEXT NOT NULL,
+        normalized_issue_key TEXT NOT NULL,
+        repository_identity TEXT NOT NULL,
+        subtask_id INTEGER NOT NULL CHECK (subtask_id > 0),
+        governed_sub_spec_path TEXT NOT NULL,
+        preparation_status TEXT NOT NULL CHECK (preparation_status IN ('pending', 'prepared')) DEFAULT 'prepared',
+        contract_version TEXT NOT NULL CHECK (contract_version = '0.1'),
+        parent_spec_hash TEXT NOT NULL,
+        sub_spec_hash TEXT NOT NULL,
+        decomposition_manifest_hash TEXT NOT NULL,
+        phase_output_contract_id TEXT NOT NULL,
+        phase_output_contract_version TEXT NOT NULL,
+        preplan_payload_json TEXT NOT NULL,
+        plan_payload_json TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (parent_goal_workflow_id, subtask_id)
+      )
+      """.trimIndent(),
+      """
+      CREATE INDEX IF NOT EXISTS idx_goal_planning_preparations_lookup
+        ON goal_planning_preparations(normalized_issue_key, repository_identity)
       """.trimIndent(),
       """
       CREATE TABLE IF NOT EXISTS telemetry_reconciliation_state (

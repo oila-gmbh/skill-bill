@@ -36,6 +36,7 @@ import skillbill.application.telemetry.LifecycleTelemetryService
 import skillbill.application.telemetry.TelemetryLevelMutationService
 import skillbill.application.telemetry.TelemetryService
 import skillbill.application.work.WorkListService
+import skillbill.application.workflow.GoalPlanningPreparationCheckpoint
 import skillbill.application.workflow.WorkflowService
 import skillbill.domain.skillremove.SkillRemoveFileSystem
 import skillbill.infrastructure.fs.DecompositionManifestValidatorAdapter
@@ -81,6 +82,7 @@ import skillbill.infrastructure.fs.FileTelemetryConfigStore
 import skillbill.infrastructure.fs.GhGoalPullRequestPort
 import skillbill.infrastructure.fs.GitWorkflowGitOperations
 import skillbill.infrastructure.fs.GoalObservabilityEventValidatorAdapter
+import skillbill.infrastructure.fs.GoalPlanningPreparationEnvelopeValidatorAdapter
 import skillbill.infrastructure.fs.GoalProgressEventValidatorAdapter
 import skillbill.infrastructure.fs.InstallPlanWireValidatorAdapter
 import skillbill.infrastructure.fs.JdkFeatureTaskRuntimeWorkerSupervisor
@@ -156,6 +158,7 @@ import skillbill.telemetry.settings.DefaultTelemetrySettingsProvider
 import skillbill.workflow.DecompositionManifestValidator
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.GoalObservabilityEventValidator
+import skillbill.workflow.GoalPlanningPreparationEnvelopeValidator
 import skillbill.workflow.GoalProgressEventValidator
 import skillbill.workflow.WorkflowSnapshotValidator
 import java.nio.file.Path
@@ -506,6 +509,12 @@ abstract class RuntimeComponent(
 
   @Provides
   @JvmSynthetic
+  internal fun goalPlanningPreparationEnvelopeValidator(
+    adapter: GoalPlanningPreparationEnvelopeValidatorAdapter,
+  ): GoalPlanningPreparationEnvelopeValidator = adapter
+
+  @Provides
+  @JvmSynthetic
   internal fun featureSpecPathResolverPort(adapter: FileSystemFeatureSpecPathResolver): FeatureSpecPathResolverPort =
     adapter
 
@@ -537,6 +546,7 @@ abstract class RuntimeComponent(
   abstract val featureTaskRuntimeRunner: FeatureTaskRuntimeRunner
   abstract val featureTaskRuntimeStatusService: FeatureTaskRuntimeStatusService
   abstract val featureTaskRuntimeWorkerCoordinator: FeatureTaskRuntimeWorkerCoordinator
+  abstract val goalPlanningPreparationCheckpoint: GoalPlanningPreparationCheckpoint
 
   // Exposed as a pre-built object so the CLI consumer need not resolve the infra-fs adapter type,
   // which is not on the CLI module's compile classpath.

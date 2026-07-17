@@ -249,6 +249,27 @@ class InvalidGoalSubtaskReviewStateSchemaError(
   cause,
 )
 
+class InvalidGoalPlanningPreparationSchemaError(
+  val sourceLabel: String,
+  val fieldPath: String,
+  val reason: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Goal planning preparation '${sourceLabel.ifBlank { "<unknown>" }}' fails schema validation at " +
+    "'${fieldPath.ifBlank { "<root>" }}': $reason",
+  cause,
+)
+
+class IncompatibleGoalPlanningPreparationRecoveryError(
+  val workflowId: String,
+  val subtaskId: Int,
+  val reason: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Goal planning preparation '$workflowId' subtask $subtaskId cannot be recovered: $reason",
+  cause,
+)
+
 class MissingInstallSelectionRecordError(
   val path: String,
   cause: Throwable? = null,
