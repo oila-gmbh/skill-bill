@@ -18,6 +18,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
@@ -28,6 +29,7 @@ import skillbill.desktop.core.designsystem.SkillBillTheme
 import skillbill.desktop.core.designsystem.YamlSyntaxColors
 import skillbill.desktop.core.domain.model.CommandPaletteResult
 import skillbill.desktop.core.domain.model.EditorPlaceholder
+import skillbill.desktop.core.domain.model.MachineToolAction
 import skillbill.desktop.core.domain.model.RepoLoadState
 import skillbill.desktop.core.domain.model.ScaffoldKind
 import skillbill.desktop.core.domain.model.SkillBillState
@@ -88,6 +90,7 @@ fun SkillBillFrame(
   onEditorDraftChanged: (String) -> Unit,
   onEditorSave: () -> Unit,
   onEditorRevert: () -> Unit,
+  onAdoptMachineSkill: () -> Unit = {},
   onDirtyPromptDiscard: () -> Unit,
   onDirtyPromptCancel: () -> Unit,
   onTreeItemSelected: (String) -> Unit,
@@ -104,8 +107,12 @@ fun SkillBillFrame(
   onCommandPaletteExecuteSelected: () -> Unit,
   onCommandPaletteExecuteResult: (CommandPaletteResult) -> Unit,
   onOpenScaffoldWizard: (ScaffoldKind) -> Unit,
+  onMachineToolAction: (MachineToolAction) -> Unit = {},
+  onMachineToolsDismiss: () -> Unit = {},
+  machineToolsCallbacks: MachineToolsCallbacks = MachineToolsCallbacks(),
   scaffoldWizardCallbacks: ScaffoldWizardCallbacks,
   firstRunSetupCallbacks: FirstRunSetupCallbacks,
+  onMachineSkillsRefreshed: () -> Unit = {},
   // SKILL-46: right-click → Delete… dialog. The route owns target resolution from the node id so
   // the frame stays free of repo/skill semantics.
   onShowDeleteContextMenu: (SkillBillTreeItem) -> Unit = {},
@@ -116,6 +123,7 @@ fun SkillBillFrame(
     mutableStateOf(SkillBillMetrics.treePaneWidth.coerceNavigationPaneWidth())
   }
   var openEditorTabs by remember { mutableStateOf<List<OpenEditorTab>>(emptyList()) }
+  val toolsFocusRequester = remember { FocusRequester() }
   val canActivateRepoScopedAction = state.busyOperation == null
   val frameAcceleratorPredicates = SkillBillAcceleratorPredicates(
     busyOperationActive = state.busyOperation != null,
@@ -203,6 +211,8 @@ fun SkillBillFrame(
           state.repoStatus.state == RepoLoadState.LOADED &&
           state.busyOperation == null &&
           state.scaffoldWizard == null,
+        onToolsOpen = { onMachineToolAction(MachineToolAction.OPEN_CATALOG) },
+        toolsFocusRequester = toolsFocusRequester,
       )
       Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
         NavigationPane(
@@ -222,6 +232,7 @@ fun SkillBillFrame(
           onNodeSelected = onTreeItemSelected,
           onNodeOpened = onTreeItemSelected,
           onNodeExpandedToggled = onTreeItemExpandedToggled,
+          onMachineSkillsRefreshed = onMachineSkillsRefreshed,
           onMoveSelection = onMoveTreeSelection,
           onShowContextMenu = onShowDeleteContextMenu,
           workList = state.workList,
@@ -241,6 +252,7 @@ fun SkillBillFrame(
           onEditorDraftChanged = onEditorDraftChanged,
           onEditorSave = onEditorSave,
           onEditorRevert = onEditorRevert,
+          onAdoptMachineSkill = onAdoptMachineSkill,
           onDirtyPromptDiscard = onDirtyPromptDiscard,
           onDirtyPromptCancel = onDirtyPromptCancel,
           openEditorTabs = openEditorTabs,
@@ -299,6 +311,17 @@ fun SkillBillFrame(
       ConfirmDeletionDialog(
         state = confirmation,
         callbacks = confirmDeletionCallbacks,
+      )
+    }
+    state.machineTools.surface?.let {
+      MachineToolsDialog(
+        state = state.machineTools,
+        onAction = onMachineToolAction,
+        callbacks = machineToolsCallbacks,
+        onDismiss = {
+          onMachineToolsDismiss()
+          toolsFocusRequester.requestFocus()
+        },
       )
     }
   }

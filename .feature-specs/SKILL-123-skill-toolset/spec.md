@@ -233,4 +233,8 @@ The mutation executor rechecks every preview precondition immediately before wri
 
 ## Next Path
 
-Run bill-feature on `.feature-specs/SKILL-123-skill-toolset/spec.md`.
+Run the decomposed goal workflow:
+
+```bash
+skill-bill goal SKILL-123
+```

@@ -32,7 +32,8 @@ class FeatureSpecSkillWiringContractTest {
     val runtime = Files.readString(repoRootFromTest().resolve("skills/bill-feature-task-runtime/content.md"))
     val prose = Files.readString(repoRootFromTest().resolve("skills/bill-feature-task-prose/content.md"))
 
-    assertContains(feature, "Before discovering or preparing governed artifacts, perform the read-only")
+    assertContains(feature, "Before preparing new governed artifacts, perform read-only artifact discovery")
+    assertContains(feature, "dispatch directly to the goal sidecar before running the standalone")
     assertContains(feature, "The workflow database and immutable execution identity are authoritative")
     assertContains(feature, "Handle `resumable`, `already_running`, `ambiguous`, and `terminal_only`")
     assertContains(feature, "Only `no_match` may continue below")

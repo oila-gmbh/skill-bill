@@ -20,4 +20,5 @@ dependencies {
   ksp(libs.kotlin.inject.compiler)
   testImplementation(libs.junit.jupiter)
   testImplementation(libs.kotlin.test)
+  testImplementation(libs.kotlinx.coroutines.core)
 }

@@ -114,6 +114,7 @@ class RuntimeModuleSmokeTest {
         "skillbill.telemetry",
         "skillbill.review",
         "skillbill.learnings",
+        "skillbill.managedskill",
         "skillbill.ports",
         "skillbill.infrastructure",
         "skillbill.domain.skillremove",

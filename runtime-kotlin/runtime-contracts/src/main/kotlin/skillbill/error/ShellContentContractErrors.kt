@@ -15,6 +15,12 @@ class InvalidManifestSchemaError(
   cause: Throwable? = null,
 ) : ShellContentContractException(message, cause)
 
+class InvalidMachineSkillTransactionSchemaError(message: String, cause: Throwable? = null) :
+  ShellContentContractException(message, cause)
+
+class InvalidMachineSkillPostMortemSchemaError(message: String, cause: Throwable? = null) :
+  ShellContentContractException(message, cause)
+
 class InvalidAgentAddonSchemaError(
   val sourceLabel: String,
   val reason: String,
@@ -152,6 +158,15 @@ class InvalidInstallPlanSchemaError(
   cause: Throwable? = null,
 ) : ShellContentContractException(
   "Install plan fails schema validation at '${fieldPath.ifBlank { "<root>" }}': $reason",
+  cause,
+)
+
+class InvalidManagedSkillRecordSchemaError(
+  val sourceLabel: String,
+  val reason: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Managed skill record '${sourceLabel.ifBlank { "<unknown>" }}' fails schema validation: $reason",
   cause,
 )
 

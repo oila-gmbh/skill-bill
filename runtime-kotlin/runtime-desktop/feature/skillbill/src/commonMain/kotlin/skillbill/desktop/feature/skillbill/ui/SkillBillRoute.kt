@@ -51,7 +51,9 @@ fun SkillBillRoute(
     state = viewModel.state()
     if (request != null) {
       coroutineScope.launch {
-        val result = withContext(dispatcherProvider.default) { viewModel.runSaveEditor(request) }
+        val result = withContext(dispatcherProvider.default) {
+          if (request.managedEdit == null) viewModel.runSaveEditor(request) else viewModel.runManagedSaveEditor(request)
+        }
         state = viewModel.finishSaveEditor(result)
       }
     }
@@ -127,8 +129,15 @@ fun SkillBillRoute(
       DirtyEditorPromptReason.SELECTION_CHANGE -> {
         val selected = state.selectedTreeItemId
         if (selected != null && selected != previousSelection) {
-          state = viewModel.state()
-          onSourceRouteSelected(selected)
+          if (selected.startsWith("${skillbill.desktop.feature.skillbill.state.MACHINE_SKILLS_ROOT_ID}:skill:")) {
+            coroutineScope.launch {
+              state = withContext(dispatcherProvider.default) { viewModel.openMachineSkillTreeItem(selected) }
+              state.selectedTreeItemId?.let(onSourceRouteSelected)
+            }
+          } else {
+            state = viewModel.state()
+            onSourceRouteSelected(selected)
+          }
         }
       }
       DirtyEditorPromptReason.REFRESH -> {
@@ -176,6 +185,13 @@ fun SkillBillRoute(
 
   fun runTreeItemSelection(itemId: String) {
     if (canStartRepoScopedAction()) {
+      if (itemId.startsWith("${skillbill.desktop.feature.skillbill.state.MACHINE_SKILLS_ROOT_ID}:skill:")) {
+        coroutineScope.launch {
+          state = withContext(dispatcherProvider.default) { viewModel.openMachineSkillTreeItem(itemId) }
+          state.selectedTreeItemId?.let(onSourceRouteSelected)
+        }
+        return
+      }
       val previousSelection = state.selectedTreeItemId
       state = viewModel.selectTreeItem(itemId)
       if (state.selectedTreeItemId != previousSelection) {
@@ -206,6 +222,7 @@ fun SkillBillRoute(
     state = viewModel.state()
     val result = withContext(dispatcherProvider.default) { viewModel.runStartup(request) }
     state = viewModel.finishStartup(result)
+    state = withContext(dispatcherProvider.default) { viewModel.refreshMachineSkillInventory() }
   }
 
   fun runRefresh() {
@@ -213,6 +230,9 @@ fun SkillBillRoute(
       state = viewModel.beginRefresh()
       if (state.dirtyEditorPrompt == null) {
         runRefreshLoad()
+        coroutineScope.launch {
+          state = withContext(dispatcherProvider.default) { viewModel.refreshMachineSkillInventory() }
+        }
       }
     }
   }
@@ -432,6 +452,7 @@ fun SkillBillRoute(
         },
         openInstallSetup = ::runInstallSetup,
         openScaffoldWizard = ::runOpenScaffoldWizard,
+        openMachineTool = { action -> state = viewModel.dispatchMachineTool(action) },
       ),
     )
     if (executed) {
@@ -485,6 +506,11 @@ fun SkillBillRoute(
         state = viewModel.revertEditorDraft()
       }
     },
+    onAdoptMachineSkill = {
+      if (canStartRepoScopedAction()) {
+        state = viewModel.beginSelectedMachineSkillAdoption()
+      }
+    },
     onDirtyPromptDiscard = {
       runDiscardedDirtyPrompt()
     },
@@ -494,12 +520,34 @@ fun SkillBillRoute(
     onTreeItemSelected = ::runTreeItemSelection,
     onTreeItemExpandedToggled = { itemId ->
       if (canStartRepoScopedAction()) {
+        val expandingMachineRoot = itemId == skillbill.desktop.feature.skillbill.state.MACHINE_SKILLS_ROOT_ID &&
+          itemId !in state.expandedNodeIds
         state = viewModel.toggleExpanded(itemId)
+        if (expandingMachineRoot) {
+          coroutineScope.launch {
+            state = withContext(dispatcherProvider.default) { viewModel.refreshMachineSkillInventory() }
+          }
+        }
+      }
+    },
+    onMachineSkillsRefreshed = {
+      if (canStartRepoScopedAction()) {
+        coroutineScope.launch {
+          state = withContext(dispatcherProvider.default) { viewModel.refreshMachineSkillInventory() }
+        }
       }
     },
     onMoveTreeSelection = { delta ->
       if (canStartRepoScopedAction()) {
         state = viewModel.moveSelection(delta)
+        state.selectedTreeItemId
+          ?.takeIf { it.startsWith("${skillbill.desktop.feature.skillbill.state.MACHINE_SKILLS_ROOT_ID}:skill:") }
+          ?.let { selected ->
+            coroutineScope.launch {
+              state = withContext(dispatcherProvider.default) { viewModel.openMachineSkillTreeItem(selected) }
+              state.selectedTreeItemId?.let(onSourceRouteSelected)
+            }
+          }
       }
     },
     onWorkToggled = ::runWorkToggle,
@@ -523,6 +571,55 @@ fun SkillBillRoute(
     onCommandPaletteExecuteSelected = ::runSelectedPaletteResult,
     onCommandPaletteExecuteResult = ::runPaletteResult,
     onOpenScaffoldWizard = ::runOpenScaffoldWizard,
+    onMachineToolAction = { action ->
+      state = viewModel.dispatchMachineTool(action)
+      if (action == skillbill.desktop.core.domain.model.MachineToolAction.MANAGE_SKILLS) {
+        coroutineScope.launch { state = viewModel.refreshMachineSkillInventory() }
+      }
+    },
+    onMachineToolsDismiss = { state = viewModel.dismissMachineTools() },
+    machineToolsCallbacks = MachineToolsCallbacks(
+      chooseSource = {
+        coroutineScope.launch { state = viewModel.chooseMachineSkillSource() }
+      },
+      toggleTarget = { id -> state = viewModel.toggleMachineSkillTarget(id) },
+      setInstallStep = { step -> state = viewModel.setMachineSkillInstallStep(step) },
+      preview = { coroutineScope.launch { state = viewModel.previewMachineSkillInstall() } },
+      apply = { coroutineScope.launch { state = viewModel.applyMachineSkillInstall() } },
+      retry = {
+        state = viewModel.setMachineSkillInstallStep(
+          skillbill.desktop.core.domain.model.MachineSkillInstallStep.TARGETS,
+        )
+      },
+      acknowledge = { coroutineScope.launch { state = viewModel.acknowledgeMachineSkillPostMortem() } },
+      updateQuery = { query -> state = viewModel.updateMachineSkillManagerQuery(query) },
+      updateOwnership = { filter -> state = viewModel.updateMachineSkillOwnershipFilter(filter) },
+      updateHealth = { filter -> state = viewModel.updateMachineSkillHealthFilter(filter) },
+      updateAgent = { agent -> state = viewModel.updateMachineSkillAgentFilter(agent) },
+      selectSkill = { name -> state = viewModel.selectMachineSkill(name) },
+      managerAction = { action ->
+        if (action == skillbill.desktop.feature.skillbill.ui.MachineSkillManagerAction.INSPECT) {
+          state = viewModel.inspectSelectedMachineSkillOccurrence()
+          state.selectedTreeItemId?.let(onSourceRouteSelected)
+        } else if (action == skillbill.desktop.feature.skillbill.ui.MachineSkillManagerAction.REVEAL) {
+          coroutineScope.launch { state = viewModel.revealMachineSkillSource() }
+        } else if (action == skillbill.desktop.feature.skillbill.ui.MachineSkillManagerAction.EDIT) {
+          coroutineScope.launch {
+            val name = state.machineTools.manager.selectedName
+            if (name != null) {
+              state = viewModel.openMachineSkillTreeItem("machine:third-party-skills:skill:$name")
+              state = viewModel.dismissMachineTools()
+            }
+          }
+        } else {
+          state = viewModel.beginMachineSkillManagerAction(action.name)
+        }
+      },
+      selectAuthority = { path -> state = viewModel.selectMachineSkillAuthoritativeSource(path) },
+      toggleManagerTarget = { id -> state = viewModel.toggleMachineSkillManagerTarget(id) },
+      previewManagerAction = { coroutineScope.launch { state = viewModel.previewMachineSkillManagerAction() } },
+      applyManagerAction = { coroutineScope.launch { state = viewModel.applyMachineSkillManagerAction() } },
+    ),
     scaffoldWizardCallbacks = ScaffoldWizardCallbacks(
       onSelectKind = { kind ->
         state = viewModel.selectScaffoldWizardKind(kind)

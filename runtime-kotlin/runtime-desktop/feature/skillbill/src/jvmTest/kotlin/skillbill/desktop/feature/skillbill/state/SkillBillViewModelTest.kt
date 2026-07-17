@@ -55,7 +55,7 @@ class SkillBillViewModelTest {
 
     assertEquals("/repo", state.selectedRepoPath)
     assertEquals("/repo", state.repoPathText)
-    assertEquals("skill-one", state.treeItems.single().children.single().id)
+    assertEquals("skill-one", state.treeItems.first { !it.external }.children.single().id)
     assertEquals(1, state.statusBar.targetCount)
     assertEquals("/repo", state.statusBar.repoPathLabel)
     assertEquals(SkillBillStatusBar.READ_ONLY_MODE_LABEL, state.statusBar.readOnlyModeLabel)
@@ -321,7 +321,7 @@ class SkillBillViewModelTest {
     assertEquals(RepoLoadState.INVALID, state.repoStatus.state)
     assertEquals("/not-skill-bill", state.selectedRepoPath)
     assertEquals(null, recentRepoRepository.path())
-    assertEquals(emptyList(), state.treeItems)
+    assertEquals(listOf(MACHINE_SKILLS_ROOT_ID), state.treeItems.map { it.id })
   }
 
   @Test
@@ -365,7 +365,7 @@ class SkillBillViewModelTest {
 
     val state = viewModel.refresh()
 
-    assertEquals(listOf("skill-one", "skill-two"), state.treeItems.single().children.map { it.id })
+    assertEquals(listOf("skill-one", "skill-two"), state.treeItems.first { !it.external }.children.map { it.id })
     assertEquals(listOf("/repo", "/repo"), repoSessionService.openedRepoPaths)
   }
 
@@ -406,7 +406,7 @@ class SkillBillViewModelTest {
     val state = viewModel.refresh()
 
     assertEquals(RepoLoadState.INVALID, state.repoStatus.state)
-    assertEquals(emptyList(), state.treeItems)
+    assertEquals(listOf(MACHINE_SKILLS_ROOT_ID), state.treeItems.map { it.id })
     assertNull(state.selectedTreeItemId)
     assertEquals("No source selected", state.editor.title)
   }
@@ -521,7 +521,7 @@ class SkillBillViewModelTest {
 
     assertEquals("/new", currentState.selectedRepoPath)
     assertEquals("/new", afterStaleResult.selectedRepoPath)
-    assertEquals(listOf("new-skill"), afterStaleResult.treeItems.single().children.map { it.id })
+    assertEquals(listOf("new-skill"), afterStaleResult.treeItems.first { !it.external }.children.map { it.id })
   }
 
   @Test
@@ -544,7 +544,7 @@ class SkillBillViewModelTest {
     val afterStaleResult = viewModel.finishRepoLoad(staleResult)
 
     assertEquals("/new", afterStaleResult.selectedRepoPath)
-    assertEquals(listOf("new-skill"), afterStaleResult.treeItems.single().children.map { it.id })
+    assertEquals(listOf("new-skill"), afterStaleResult.treeItems.first { !it.external }.children.map { it.id })
     assertNull(afterStaleResult.selectedTreeItemId)
   }
 
@@ -553,12 +553,12 @@ class SkillBillViewModelTest {
     val repoSessionService = CountingRepoSessionService()
     val viewModel = newViewModel(repoSessionService = repoSessionService)
     val loaded = viewModel.selectRepoPath("/repo")
-    viewModel.toggleExpanded(loaded.treeItems.single().id)
+    viewModel.toggleExpanded(loaded.treeItems.first { !it.external }.id)
     viewModel.selectTreeItem("skill-one")
 
-    val collapsed = viewModel.toggleExpanded(loaded.treeItems.single().id)
+    val collapsed = viewModel.toggleExpanded(loaded.treeItems.first { !it.external }.id)
 
-    assertFalse(loaded.treeItems.single().id in collapsed.expandedNodeIds)
+    assertFalse(loaded.treeItems.first { !it.external }.id in collapsed.expandedNodeIds)
     assertEquals("skill-one", collapsed.selectedTreeItemId)
     assertEquals(listOf("/repo"), repoSessionService.openedRepoPaths)
   }
@@ -726,7 +726,7 @@ class SkillBillViewModelTest {
     val visited = mutableListOf<String?>()
     repeat(5) { visited += viewModel.moveSelection(1).selectedTreeItemId }
 
-    assertEquals(listOf<String?>("group-a", "group-b", "b-one", "b-two", "b-two"), visited)
+    assertEquals(listOf<String?>("group-a", "group-b", "b-one", "b-two", MACHINE_SKILLS_ROOT_ID), visited)
   }
 
   @Test
@@ -764,8 +764,8 @@ class SkillBillViewModelTest {
 
     val state = viewModel.selectTreeItem("generated-skill")
 
-    assertFalse(state.treeItems.single().children.single().editable)
-    assertEquals("RO", state.treeItems.single().children.single().readOnlyLabel)
+    assertFalse(state.treeItems.first { !it.external }.children.single().editable)
+    assertEquals("RO", state.treeItems.first { !it.external }.children.single().readOnlyLabel)
     assertFalse(state.editor.editable)
     assertEquals("RO", state.editor.readOnlyLabel)
   }
@@ -854,13 +854,21 @@ class SkillBillViewModelTest {
   }
 
   @Test
-  fun `palette empty repo state only exposes repo session commands`() {
+  fun `palette empty repo state exposes repository and machine tool commands`() {
     val viewModel = newViewModel()
 
     val state = viewModel.openCommandPalette()
 
-    assertEquals(listOf("command.open-repository"), state.commandPalette.results.map { it.id })
-    assertTrue(state.commandPalette.results.single().enabled)
+    assertEquals(
+      setOf(
+        "command.open-repository",
+        "command.open-tools",
+        "command.install-skill-to-agents",
+        "command.manage-installed-skills",
+      ),
+      state.commandPalette.results.map { it.id }.toSet(),
+    )
+    assertTrue(state.commandPalette.results.all { it.enabled })
   }
 
   @Test

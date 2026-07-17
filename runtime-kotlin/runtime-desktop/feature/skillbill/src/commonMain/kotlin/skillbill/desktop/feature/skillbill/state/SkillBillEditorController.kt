@@ -32,7 +32,11 @@ internal class SkillBillEditorController(
       currentState = createState()
       return currentState
     }
-    loadEditorForSelection()
+    if (managedEditorBase != null && loadedEditorDocument != null) {
+      editorDraftText = loadedEditorDocument?.text.orEmpty()
+    } else {
+      loadEditorForSelection()
+    }
     editorSaveErrorMessage = null
     dirtyEditorPrompt = null
     currentState = createState()
@@ -60,6 +64,7 @@ internal class SkillBillEditorController(
       session = currentSession,
       treeItemId = selectedTreeItemId,
       body = editorDraftText,
+      managedEdit = managedEditorBase?.copy(markdown = editorDraftText),
     )
   }
 
@@ -84,6 +89,7 @@ internal class SkillBillEditorController(
       editorDraftText = savedDocument.text
       editorSaveErrorMessage = null
       dirtyEditorPrompt = null
+      managedEditorBase = result.renewedManagedEdit ?: managedEditorBase
       if (savedDocument.kind == "skill-bill config") {
         repoController.openRepo(currentSession?.repoPath ?: repoPathText, preserveSelection = true)
       }

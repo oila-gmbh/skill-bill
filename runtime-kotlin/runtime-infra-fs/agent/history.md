@@ -1,5 +1,16 @@
 # Boundary History — runtime-kotlin/runtime-infra-fs
 
+## [2026-07-16] SKILL-123.1 managed-skill foundation contracts and scanner
+Areas: runtime-contracts/managedskill, runtime-domain/managedskill, runtime-infra-fs/{contracts/managedskill,managedskill}
+- Managed-skill records use a strict, versioned Draft 2020-12 schema with typed validation at read and publication seams; safe directory-name binding confines managed sources and snapshots below the two designated `~/.skill-bill` roots.
+- `FileManagedSkillRecordStore` validates names before directory creation, rejects duplicate JSON keys, publishes only validated bytes through atomic replacement, and exposes expected-digest compare-and-swap for stale previews. reusable
+- `AgentTargetIdentity` canonicalizes provider and absolute path identity before mutation planning, preventing lexical aliases from creating duplicate logical targets. reusable
+- `OpaqueSkillBundleScanner` captures immutable regular-file bytes, enforces one root `SKILL.md` with strict textual frontmatter and protected ownership rules, and rejects symlinks, special files, and nested ownership keys. reusable
+- Bundle hashes fold sorted normalized relative paths plus captured bytes, making repeated scans stable and content changes observable. reusable
+- Known limit: discovery, inventory, link mutation, transaction journaling, and desktop management remain follow-up SKILL-123 subtasks.
+Feature flag: N/A
+Acceptance criteria: 7/7 implemented
+
 ## [2026-07-14] SKILL-122 agent add-on delivery and scaffolding
 Areas: runtime-infra-fs/{agentaddon,install,scaffold}, runtime-cli/scaffold, runtime-desktop/feature/skillbill, install.sh, uninstall.sh
 - Agent-addon delivery discovers validated declarations dynamically and generates deterministic consumer pointers for `bill-feature` and its internal sidecars only in staged output; targets must remain regular repository files and collisions, self-reference, malformed paths, or missing targets loud-fail before promotion.

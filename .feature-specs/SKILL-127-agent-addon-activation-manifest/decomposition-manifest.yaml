@@ -1,0 +1,75 @@
+contract_version: "0.4"
+issue_key: "SKILL-127"
+feature_name: "agent-addon-activation-manifest"
+parent_spec_path: ".feature-specs/SKILL-127-agent-addon-activation-manifest/spec.md"
+spec_source: local
+status: "pending"
+execution_model: "same_branch_commit_per_subtask"
+base_branch: "main"
+feature_branch: "feat/SKILL-127-agent-addon-activation-manifest"
+stack_branches: []
+current_subtask_intent:
+  subtask_id: 1
+  action: start
+subtasks:
+  - id: 1
+    name: "Activation schema and catalogue contracts"
+    spec_path: ".feature-specs/SKILL-127-agent-addon-activation-manifest/spec_subtask_1_schema_catalog_contracts.md"
+    status: pending
+    branch: null
+    commit_sha: null
+    workflow_id: null
+    blocked_reason: null
+    last_resumable_step: null
+    linear_issue_id: null
+    finalizing_agent_id: null
+    participating_agent_ids: []
+    dependencies: []
+  - id: 2
+    name: "Catalogue rendering and Codex startup delivery"
+    spec_path: ".feature-specs/SKILL-127-agent-addon-activation-manifest/spec_subtask_2_catalog_render_install.md"
+    status: pending
+    branch: null
+    commit_sha: null
+    workflow_id: null
+    blocked_reason: null
+    last_resumable_step: null
+    linear_issue_id: null
+    finalizing_agent_id: null
+    participating_agent_ids: []
+    dependencies:
+      - subtask_id: 1
+        optional: false
+        skipped: false
+  - id: 3
+    name: "Runtime activation and durable selection state"
+    spec_path: ".feature-specs/SKILL-127-agent-addon-activation-manifest/spec_subtask_3_runtime_activation.md"
+    status: pending
+    branch: null
+    commit_sha: null
+    workflow_id: null
+    blocked_reason: null
+    last_resumable_step: null
+    linear_issue_id: null
+    finalizing_agent_id: null
+    participating_agent_ids: []
+    dependencies:
+      - subtask_id: 2
+        optional: false
+        skipped: false
+  - id: 4
+    name: "CLI, docs, telemetry, and full validation"
+    spec_path: ".feature-specs/SKILL-127-agent-addon-activation-manifest/spec_subtask_4_cli_docs_validation.md"
+    status: pending
+    branch: null
+    commit_sha: null
+    workflow_id: null
+    blocked_reason: null
+    last_resumable_step: null
+    linear_issue_id: null
+    finalizing_agent_id: null
+    participating_agent_ids: []
+    dependencies:
+      - subtask_id: 3
+        optional: false
+        skipped: false

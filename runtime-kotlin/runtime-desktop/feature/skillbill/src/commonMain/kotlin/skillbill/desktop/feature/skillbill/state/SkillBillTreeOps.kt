@@ -26,9 +26,10 @@ internal fun reconcileExpandedNodeIds(
   preserveExpansion: Boolean,
 ): Set<String> {
   val expandableIds = treeItems.flatten().filter { it.children.isNotEmpty() }.map(SkillBillTreeItem::id).toSet()
+  val machineExpansion = previousExpandedNodeIds.intersect(setOf(MACHINE_SKILLS_ROOT_ID)).intersect(expandableIds)
   return if (preserveExpansion) {
     previousExpandedNodeIds.intersect(expandableIds)
   } else {
-    emptySet()
+    machineExpansion
   }
 }

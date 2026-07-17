@@ -1,0 +1,24 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: https://skill-bill.dev/contracts/machine-skill-transaction-journal-schema.yaml
+title: Machine skill transaction journal
+type: object
+additionalProperties: false
+required: [contract_version, plan_id, status, operations, recovery_status]
+properties:
+  contract_version: { const: "0.1" }
+  plan_id: { type: string, pattern: "^[a-f0-9]{64}$" }
+  status: { enum: [started, applying, rolling_back, recovered, committed, uncertain] }
+  recovery_status: { enum: [not_required, pending, complete, uncertain] }
+  operations:
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [sequence, resource, operation, path, state]
+      properties:
+        sequence: { type: integer, minimum: 0 }
+        resource: { enum: [managed_source, record, snapshot, agent_link] }
+        operation: { enum: [create, replace, retarget, remove, observe] }
+        path: { type: string, minLength: 1 }
+        before_state: { type: [object, "null"] }
+        state: { enum: [planned, attempted, completed, rolled_back, rollback_failed] }

@@ -43,6 +43,16 @@ data class FeatureTaskRuntimeStatusProjection(
    */
   val finalizingAgentId: String? = null,
   val decomposeTerminal: FeatureTaskRuntimeDecomposeTerminalStatus? = null,
+  val workerLease: FeatureTaskRuntimeWorkerLeaseStatus? = null,
+)
+
+data class FeatureTaskRuntimeWorkerLeaseStatus(
+  val liveness: String,
+  val phaseId: String,
+  val phaseAttempt: Int,
+  val leaseState: String,
+  val heartbeatAt: String,
+  val expiresAt: String,
 )
 
 data class FeatureTaskRuntimeDecomposeTerminalStatus(

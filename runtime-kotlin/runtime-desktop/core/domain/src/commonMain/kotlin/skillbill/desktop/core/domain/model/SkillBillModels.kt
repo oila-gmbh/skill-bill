@@ -47,6 +47,7 @@ data class SkillBillState(
    */
   val partialMutationPostMortem: PartialMutationPostMortem? = null,
   val workList: WorkListState = WorkListState(),
+  val machineTools: MachineToolsState = MachineToolsState(),
 )
 
 data class DesktopWorkItem(
@@ -210,6 +211,9 @@ enum class CommandPaletteAction {
   NEW_HORIZONTAL_SKILL,
   NEW_PLATFORM_PACK,
   NEW_ADD_ON,
+  OPEN_TOOLS,
+  INSTALL_SKILL_TO_AGENTS,
+  MANAGE_INSTALLED_SKILLS,
 }
 
 data class SkillBillStatusBar(
@@ -259,6 +263,7 @@ data class EditorPlaceholder(
   val consumers: List<String> = emptyList(),
   val manifestPath: String? = null,
   val diagnostics: List<String> = emptyList(),
+  val machineSkillDetail: MachineSkillManagerDetail? = null,
 ) {
   companion object {
     val empty: EditorPlaceholder =

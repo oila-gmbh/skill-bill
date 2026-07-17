@@ -3,10 +3,15 @@ package skillbill.desktop.feature.skillbill.state
 import me.tatarka.inject.annotations.Inject
 import skillbill.desktop.core.common.di.ScreenScope
 import skillbill.desktop.core.datastore.DesktopPreferenceStore
+import skillbill.desktop.core.domain.model.AuthoredContentDocument
 import skillbill.desktop.core.domain.model.DesktopSkillRemovalResult
 import skillbill.desktop.core.domain.model.DesktopSkillRemovalTarget
 import skillbill.desktop.core.domain.model.FirstRunSetupState
 import skillbill.desktop.core.domain.model.FirstRunTelemetryLevel
+import skillbill.desktop.core.domain.model.MachineSkillHealthFilter
+import skillbill.desktop.core.domain.model.MachineSkillInstallStep
+import skillbill.desktop.core.domain.model.MachineSkillOwnershipFilter
+import skillbill.desktop.core.domain.model.MachineToolAction
 import skillbill.desktop.core.domain.model.ScaffoldBaselineLayerForm
 import skillbill.desktop.core.domain.model.ScaffoldCatalogSnapshot
 import skillbill.desktop.core.domain.model.ScaffoldKind
@@ -20,11 +25,14 @@ import skillbill.desktop.core.domain.service.AuthoringGateway
 import skillbill.desktop.core.domain.service.DesktopFirstRunGateway
 import skillbill.desktop.core.domain.service.EmptyWorkListGateway
 import skillbill.desktop.core.domain.service.InstalledWorkspaceLocator
+import skillbill.desktop.core.domain.service.MachineSkillSourceChoice
 import skillbill.desktop.core.domain.service.RecentRepoRepository
 import skillbill.desktop.core.domain.service.RepoSessionService
+import skillbill.desktop.core.domain.service.RuntimeMachineSkillGateway
 import skillbill.desktop.core.domain.service.RuntimeScaffoldGateway
 import skillbill.desktop.core.domain.service.RuntimeSkillRemoveGateway
 import skillbill.desktop.core.domain.service.SkillTreeService
+import skillbill.desktop.core.domain.service.UnavailableRuntimeMachineSkillGateway
 import skillbill.desktop.core.domain.service.WorkListGateway
 import software.amazon.lastmile.kotlin.inject.anvil.SingleIn
 
@@ -40,6 +48,7 @@ class SkillBillViewModel(
   private val desktopPreferenceStore: DesktopPreferenceStore,
   private val skillRemoveGateway: RuntimeSkillRemoveGateway,
   private val installedWorkspaceLocator: InstalledWorkspaceLocator,
+  private val machineSkillGateway: RuntimeMachineSkillGateway = UnavailableRuntimeMachineSkillGateway,
   private val workListGateway: WorkListGateway = EmptyWorkListGateway,
 ) {
   private val viewState = SkillBillViewState(authoringGateway, computeInitialFirstRunSetup())
@@ -61,6 +70,7 @@ class SkillBillViewModel(
   )
   private val removalController = SkillBillRemovalController(viewState, skillRemoveGateway)
   private val workController = SkillBillWorkController(viewState, workListGateway)
+  private val machineToolsController = SkillBillMachineToolsController(viewState)
 
   private fun computeInitialFirstRunSetup(): FirstRunSetupState? {
     if (desktopPreferenceStore.firstRunPreferences.value.completed || firstRunGateway.hasExistingInstall()) {
@@ -92,6 +102,89 @@ class SkillBillViewModel(
   fun beginReturnToInstalledWorkspace(): SkillBillState = repoController.beginReturnToInstalledWorkspace()
 
   fun selectTreeItem(itemId: String): SkillBillState = repoController.selectTreeItem(itemId)
+
+  suspend fun openMachineSkillTreeItem(itemId: String): SkillBillState {
+    val selected = repoController.selectTreeItem(itemId)
+    if (selected.selectedTreeItemId != itemId || !itemId.startsWith("$MACHINE_SKILLS_ROOT_ID:skill:")) return selected
+    val logicalKey = itemId.substringAfterLast(":skill:")
+    val detail = machineToolsController.detailFor(logicalKey) ?: return selected
+    val recordIdentity = detail.recordIdentity
+    val contentIdentity = detail.contentIdentity
+    if (detail.ownership.equals("MANAGED", true) && recordIdentity != null && contentIdentity != null) {
+      runCatching { machineSkillGateway.openManagedEdit(logicalKey, recordIdentity, contentIdentity) }
+        .onSuccess { edit ->
+          if (!machineEditorOpenStillCurrent(itemId, logicalKey, recordIdentity, contentIdentity)) {
+            return@onSuccess
+          }
+          viewState.loadMachineEditorDocument(
+            AuthoredContentDocument(
+              itemId,
+              detail.name,
+              detail.name,
+              "Third-party runtime skill",
+              detail.canonicalManagedSourcePath,
+              edit.markdown,
+              detail.validationIssues.isEmpty(),
+              detail.validationIssues.takeIf { it.isNotEmpty() }?.joinToString("\n"),
+            ),
+            edit,
+            detail,
+          )
+        }
+        .onFailure { error ->
+          if (!machineEditorOpenStillCurrent(itemId, logicalKey, recordIdentity, contentIdentity)) {
+            return@onFailure
+          }
+          viewState.loadMachineEditorDocument(
+            AuthoredContentDocument(
+              itemId,
+              detail.name,
+              detail.name,
+              "Third-party runtime skill",
+              detail.canonicalManagedSourcePath,
+              "",
+              false,
+              "Managed runtime skill could not be opened: ${error.message}",
+            ),
+            detail = detail,
+          )
+        }
+    } else {
+      val occurrences = detail.targets.flatMap { it.occurrencePaths }
+      val guidance = if (detail.ownership.contains("DIVERG", true) || occurrences.size > 1) {
+        "Choose which agent copy to inspect or adopt in Manage installed skills."
+      } else {
+        "Adopt this unmanaged skill from Manage installed skills to edit it safely."
+      }
+      viewState.loadMachineEditorDocument(
+        AuthoredContentDocument(
+          itemId,
+          detail.name,
+          detail.name,
+          "Third-party runtime skill",
+          occurrences.singleOrNull(),
+          listOf(detail.description, occurrences.joinToString("\n"), guidance)
+            .filter { it.isNotBlank() }.joinToString("\n\n"),
+          false,
+          guidance,
+        ),
+        detail = detail,
+      )
+    }
+    return viewState.currentState
+  }
+
+  private fun machineEditorOpenStillCurrent(
+    itemId: String,
+    logicalKey: String,
+    recordIdentity: String,
+    contentIdentity: String,
+  ): Boolean {
+    val currentDetail = machineToolsController.detailFor(logicalKey)
+    return viewState.selectedTreeItemId == itemId &&
+      currentDetail?.recordIdentity == recordIdentity &&
+      currentDetail.contentIdentity == contentIdentity
+  }
 
   fun resolveGeneratedArtifactTreeItemId(artifactPath: String): String? =
     repoController.resolveGeneratedArtifactTreeItemId(artifactPath)
@@ -153,7 +246,51 @@ class SkillBillViewModel(
 
   fun runSaveEditor(request: EditorSaveRequest): EditorSaveResult = editorController.runSaveEditor(request)
 
-  fun finishSaveEditor(result: EditorSaveResult): SkillBillState = editorController.finishSaveEditor(result)
+  suspend fun runManagedSaveEditor(request: EditorSaveRequest): EditorSaveResult {
+    val managedEdit = requireNotNull(request.managedEdit)
+    return runCatching {
+      val preview = machineSkillGateway.previewManagedEdit(managedEdit)
+      val applied = machineSkillGateway.apply(preview.planId)
+      check(applied.successful) { applied.failureMessage ?: "Managed runtime skill edit was not applied." }
+      val inventory = requireNotNull(applied.inventory) {
+        applied.inventoryError ?: "Managed runtime skill was saved, but inventory refresh failed."
+      }
+      val detail = requireNotNull(inventory.details[managedEdit.name]) {
+        "Managed runtime skill disappeared after save."
+      }
+      val renewed = machineSkillGateway.openManagedEdit(
+        managedEdit.name,
+        requireNotNull(detail.recordIdentity) { "Managed edit precondition record is unavailable after save." },
+        requireNotNull(detail.contentIdentity) { "Managed edit precondition source is unavailable after save." },
+      )
+      EditorSaveResult(
+        request,
+        skillbill.desktop.core.domain.model.AuthoringSaveResult(
+          success = true,
+          document = viewState.loadedEditorDocument?.copy(text = request.body),
+        ),
+        inventory,
+        renewed,
+      )
+    }.getOrElse { error ->
+      EditorSaveResult(
+        request,
+        skillbill.desktop.core.domain.model.AuthoringSaveResult.failed(viewState.describe(error)),
+      )
+    }
+  }
+
+  fun finishSaveEditor(result: EditorSaveResult): SkillBillState {
+    val state = editorController.finishSaveEditor(result)
+    val inventory = result.inventory ?: return state
+    val token = machineToolsController.beginInventoryRefresh()
+    acceptMachineSkillInventory(token, inventory)
+    val managedName = result.request.managedEdit?.name
+    if (managedName != null) {
+      viewState.refreshMachineEditorDetail(inventory.details[managedName])
+    }
+    return viewState.currentState
+  }
 
   fun cancelDirtyEditorPrompt(): SkillBillState = editorController.cancelDirtyEditorPrompt()
 
@@ -170,6 +307,245 @@ class SkillBillViewModel(
     commandPaletteOpen = false
     currentState = createState()
     currentState
+  }
+
+  fun dispatchMachineTool(action: MachineToolAction): SkillBillState {
+    machineToolsController.dispatch(action)
+    return viewState.currentState
+  }
+
+  fun dismissMachineTools(): SkillBillState {
+    machineToolsController.dismiss()
+    return viewState.currentState
+  }
+
+  fun beginSelectedMachineSkillAdoption(): SkillBillState {
+    val itemId = viewState.selectedTreeItemId ?: return viewState.currentState
+    if (!itemId.startsWith("$MACHINE_SKILLS_ROOT_ID:skill:")) return viewState.currentState
+    val logicalKey = itemId.substringAfterLast(":skill:")
+    val detail = machineToolsController.detailFor(logicalKey) ?: return viewState.currentState
+    if (detail.ownership.equals("MANAGED", ignoreCase = true)) return viewState.currentState
+    machineToolsController.dispatch(MachineToolAction.MANAGE_SKILLS)
+    machineToolsController.selectManagerSkill(logicalKey)
+    machineToolsController.beginManagerAction("ADOPT")
+    return viewState.currentState
+  }
+
+  fun toggleMachineSkillTarget(id: String): SkillBillState = machineToolsController.run {
+    toggleTarget(id)
+    viewState.currentState
+  }
+
+  fun setMachineSkillInstallStep(step: MachineSkillInstallStep): SkillBillState = machineToolsController.run {
+    setInstallStep(step)
+    viewState.currentState
+  }
+
+  fun updateMachineSkillManagerQuery(query: String): SkillBillState = machineToolsController.run {
+    updateManagerQuery(query)
+    viewState.currentState
+  }
+
+  fun updateMachineSkillOwnershipFilter(filter: MachineSkillOwnershipFilter): SkillBillState =
+    machineToolsController.run {
+      updateOwnershipFilter(filter)
+      viewState.currentState
+    }
+
+  fun updateMachineSkillHealthFilter(filter: MachineSkillHealthFilter): SkillBillState = machineToolsController.run {
+    updateHealthFilter(filter)
+    viewState.currentState
+  }
+
+  fun updateMachineSkillAgentFilter(agent: String?): SkillBillState = machineToolsController.run {
+    updateAgentFilter(agent)
+    viewState.currentState
+  }
+
+  fun selectMachineSkill(name: String): SkillBillState = machineToolsController.run {
+    selectManagerSkill(name)
+    viewState.currentState
+  }
+
+  fun beginMachineSkillManagerAction(action: String): SkillBillState = machineToolsController.run {
+    beginManagerAction(action)
+    viewState.currentState
+  }
+
+  fun selectMachineSkillAuthoritativeSource(path: String): SkillBillState = machineToolsController.run {
+    selectAuthoritativeSource(path)
+    viewState.currentState
+  }
+
+  fun toggleMachineSkillManagerTarget(id: String): SkillBillState = machineToolsController.run {
+    toggleManagerTarget(id)
+    viewState.currentState
+  }
+
+  suspend fun previewMachineSkillManagerAction(): SkillBillState {
+    val manager = viewState.machineTools.manager
+    val name = manager.selectedName ?: return viewState.currentState
+    val action = manager.pendingAction ?: return viewState.currentState
+    runCatching {
+      machineSkillGateway.previewManagerAction(
+        action,
+        name,
+        manager.authoritativeSource,
+        manager.replacementTargetIds,
+      )
+    }.onSuccess { machineToolsController.managerPreviewReady(it.planId, it.operations) }
+      .onFailure { machineToolsController.managerActionFailed(it.message ?: "$action preview failed.") }
+    return viewState.currentState
+  }
+
+  suspend fun applyMachineSkillManagerAction(): SkillBillState {
+    val planId = viewState.machineTools.manager.actionPlanId ?: return viewState.currentState
+    if (!machineToolsController.beginMutation()) return viewState.currentState
+    val inventoryToken = machineToolsController.beginInventoryRefresh()
+    return try {
+      runCatching { machineSkillGateway.apply(planId) }
+        .onSuccess { result ->
+          if (result.successful) {
+            machineToolsController.managerActionFinished()
+          } else {
+            machineToolsController.managerActionFailed(result.failureMessage ?: "Manager action was not applied.")
+          }
+          result.inventory?.let { acceptMachineSkillInventory(inventoryToken, it) }
+          result.inventoryError?.let { machineToolsController.inventoryFailed(inventoryToken, it) }
+        }
+        .onFailure {
+          machineToolsController.inventoryFailed(inventoryToken, it.message ?: "Inventory refresh failed.")
+          machineToolsController.managerActionFailed(it.message ?: "Manager action failed.")
+        }
+      viewState.currentState
+    } finally {
+      machineToolsController.finishMutation()
+    }
+  }
+
+  suspend fun revealMachineSkillSource(): SkillBillState {
+    val name = viewState.machineTools.manager.selectedName ?: return viewState.currentState
+    machineSkillGateway.revealSource(name).onFailure {
+      machineToolsController.managerActionFailed(it.message ?: "Reveal source failed.")
+    }
+    return viewState.currentState
+  }
+
+  fun inspectSelectedMachineSkillOccurrence(): SkillBillState {
+    val manager = viewState.machineTools.manager
+    val detail = manager.detail ?: return viewState.currentState
+    val occurrence = machineToolsController.selectedAuthoritativeSource() ?: return viewState.currentState
+    val logicalKey = manager.selectedName ?: return viewState.currentState
+    val itemId = "$MACHINE_SKILLS_ROOT_ID:skill:$logicalKey"
+    repoController.selectTreeItem(itemId)
+    val guidance = "Read-only installed copy. Adopt this occurrence from Manage installed skills to edit it safely."
+    viewState.loadMachineEditorDocument(
+      AuthoredContentDocument(
+        itemId,
+        detail.name,
+        detail.name,
+        "Third-party runtime skill",
+        occurrence,
+        listOf(detail.description, "Selected occurrence: $occurrence", guidance)
+          .filter(String::isNotBlank)
+          .joinToString("\n\n"),
+        false,
+        guidance,
+      ),
+      detail = detail,
+    )
+    return viewState.currentState
+  }
+
+  suspend fun chooseMachineSkillSource(): SkillBillState {
+    val token = machineToolsController.beginSourceInspection()
+    runCatching {
+      when (val choice = machineSkillGateway.chooseSource()) {
+        MachineSkillSourceChoice.Cancelled -> Unit
+        is MachineSkillSourceChoice.Failed -> machineToolsController.sourceFailed(token, choice.message)
+        is MachineSkillSourceChoice.Selected -> {
+          val source = machineSkillGateway.inspectSource(choice.path)
+          val targets = if (source.validationIssues.isEmpty()) {
+            machineSkillGateway.assessInstallTargets(choice.path)
+          } else {
+            emptyList()
+          }
+          machineToolsController.sourceInspected(token, source, targets)
+        }
+      }
+    }.onFailure { machineToolsController.sourceFailed(token, it.message ?: "Source inspection failed.") }
+    return viewState.currentState
+  }
+
+  suspend fun refreshMachineSkillInventory(): SkillBillState {
+    val token = machineToolsController.beginInventoryRefresh()
+    runCatching { machineSkillGateway.refreshInventory() }
+      .onSuccess { inventory ->
+        val selected = viewState.machineTools.manager.selectedName
+        machineToolsController.inventoryRefreshed(
+          token,
+          inventory.rows,
+          selected?.let(inventory.details::get),
+          inventory.details,
+        )
+      }
+      .onFailure { machineToolsController.inventoryFailed(token, it.message ?: "Inventory refresh failed.") }
+    return viewState.currentState
+  }
+
+  suspend fun previewMachineSkillInstall(): SkillBillState {
+    val install = viewState.machineTools.install
+    val source = install.source ?: return viewState.currentState
+    val token = machineToolsController.beginPreview()
+    val selectedTargets = install.targets.filter { it.selected }.map { it.id }.toSet()
+    runCatching { machineSkillGateway.previewInstall(source.sourcePath, selectedTargets) }
+      .onSuccess { machineToolsController.previewReady(token, it.planId, it.operations, it.warnings) }
+      .onFailure { machineToolsController.previewFailed(token, it.message ?: "Install preview failed.") }
+    return viewState.currentState
+  }
+
+  suspend fun applyMachineSkillInstall(): SkillBillState {
+    val planId = viewState.machineTools.install.planId ?: return viewState.currentState
+    if (!machineToolsController.beginMutation()) return viewState.currentState
+    val inventoryToken = machineToolsController.beginInventoryRefresh()
+    return try {
+      runCatching { machineSkillGateway.apply(planId) }
+        .onSuccess { result ->
+          if (result.successful) {
+            machineToolsController.mutationFinished(result.results, result.postMortem)
+          } else {
+            machineToolsController.mutationFailed(result.failureMessage ?: "Machine-skill mutation was not applied.")
+          }
+          result.inventory?.let { acceptMachineSkillInventory(inventoryToken, it) }
+          result.inventoryError?.let { machineToolsController.inventoryFailed(inventoryToken, it) }
+        }
+        .onFailure {
+          machineToolsController.inventoryFailed(inventoryToken, it.message ?: "Inventory refresh failed.")
+          machineToolsController.mutationFailed(it.message ?: "Machine-skill mutation failed.")
+        }
+      viewState.currentState
+    } finally {
+      machineToolsController.finishMutation()
+    }
+  }
+
+  suspend fun acknowledgeMachineSkillPostMortem(): SkillBillState {
+    machineSkillGateway.acknowledgePostMortem().getOrThrow()
+    machineToolsController.acknowledgePostMortem()
+    return viewState.currentState
+  }
+
+  private fun acceptMachineSkillInventory(
+    token: Long,
+    inventory: skillbill.desktop.core.domain.service.MachineSkillInventoryPresentation,
+  ) {
+    val selected = viewState.machineTools.manager.selectedName
+    machineToolsController.inventoryRefreshed(
+      token,
+      inventory.rows,
+      selected?.let(inventory.details::get),
+      inventory.details,
+    )
   }
 
   fun updateCommandPaletteQuery(query: String): SkillBillState = with(viewState) {

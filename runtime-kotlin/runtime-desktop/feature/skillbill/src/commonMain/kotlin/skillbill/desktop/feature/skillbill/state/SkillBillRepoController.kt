@@ -338,12 +338,12 @@ internal class SkillBillRepoController(
     val loadedTreeItems = result.treeItems
     val preserveDirtyEditor = isEditorDirty()
     currentSession = session
-    treeItems = loadedTreeItems
+    repositoryTreeItems = loadedTreeItems
     repoPathText = session.repoPath.ifBlank { request.repoPath }
     selectedTreeItemId = request.previousSelection?.takeIf { containsTreeItem(it) }
     expandedNodeIds = reconcileExpandedNodeIds(
       request.previousExpandedNodeIds,
-      loadedTreeItems,
+      treeItems,
       preserveExpansion = true,
     )
     busyOperation = null
@@ -357,7 +357,7 @@ internal class SkillBillRepoController(
     val session = result.session
     val loadedTreeItems = result.treeItems
     currentSession = session
-    treeItems = loadedTreeItems
+    repositoryTreeItems = loadedTreeItems
     repoPathText = session.repoPath.ifBlank { request.repoPath }
     val sameRepo = session.isRecognizedSkillBillRepo && request.previousRepoPath == session.repoPath
     val preserveSameRepoUi = request.preserveSelection && sameRepo
@@ -367,7 +367,7 @@ internal class SkillBillRepoController(
         ?.takeIf { containsTreeItem(it) }
     resetEditorDocument()
     expandedNodeIds =
-      reconcileExpandedNodeIds(request.previousExpandedNodeIds, loadedTreeItems, preserveSameRepoUi)
+      reconcileExpandedNodeIds(request.previousExpandedNodeIds, treeItems, preserveSameRepoUi)
     busyOperation = null
     activeScaffoldToken += 1
     confirmDeletion = null

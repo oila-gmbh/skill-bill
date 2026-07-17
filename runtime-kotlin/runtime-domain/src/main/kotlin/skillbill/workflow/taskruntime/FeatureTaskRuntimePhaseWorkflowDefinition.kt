@@ -42,6 +42,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
   // The audit->implement remediation loop id, named once so durable accounting and telemetry
   // (the finished-event audit-gap iteration count) reference the same loop the backward edge mints.
   const val AUDIT_GAP_LOOP_ID: String = "audit_gap"
+  const val AUDIT_GAP_REMEDIATION_CAP: Int = 2
 
   // Mutating phases reconcile the working tree to an intended target state. They are the phases the
   // idempotency contract governs: re-entering or resuming one must converge to target, treating an
@@ -157,9 +158,10 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
    * `gaps_found` verdict reopens the
    * `[implement, audit]` span to reconcile implementation against the failing criteria using the
    * immutable initial planning context and re-pass through `review` (incl. its `review_fix`
-   * loop) before re-`audit`. Audit-gap reconciliation is unbounded because each new audit verdict is
-   * the authority on whether implementation is complete; the first `satisfied` verdict advances to
-   * `validate`.
+   * loop) before re-`audit`. Audit-gap reconciliation is bounded at two remediation edges; if audit
+   * still reports gaps after that budget, the run blocks because the remaining gap is likely a
+   * spec-sizing/decomposition problem rather than more implementation time. The first `satisfied`
+   * verdict advances to `validate`.
    */
   val transitions: FeatureTaskRuntimeTransitionDeclaration =
     FeatureTaskRuntimeTransitionDeclaration(
@@ -178,7 +180,8 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
           triggeringVerdict = FeatureTaskRuntimeVerdict.GAPS_FOUND,
           destinationPhaseId = PHASE_IMPLEMENT,
           loopId = AUDIT_GAP_LOOP_ID,
-          perEdgeCap = null,
+          perEdgeCap = AUDIT_GAP_REMEDIATION_CAP,
+          capExhaustionBehavior = FeatureTaskRuntimeCapExhaustionBehavior.BLOCK,
         ),
       ),
       loopOnlyPhaseIds = setOf(PHASE_IMPLEMENT_FIX),

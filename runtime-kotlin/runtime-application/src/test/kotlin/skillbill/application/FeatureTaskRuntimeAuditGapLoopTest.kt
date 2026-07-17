@@ -123,21 +123,24 @@ class FeatureTaskRuntimeAuditGapLoopTest {
   }
 
   @Test
-  fun `m2 audit gaps continue until a later audit satisfies the criteria`() {
+  fun `m2 live repeated audit gaps block after the remediation budget`() {
     val harness = runnerHarness(launcher = auditGapLauncher(convergeOnAudit = 99))
 
     val report = harness.runner.run(harness.request())
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
+    assertEquals("audit", blocked.lastIncompletePhase)
+    assertContains(blocked.blockedReason, "audit_gap_respec_suggested")
+    assertContains(blocked.blockedReason, "decompose the current subtask")
     val launched = harness.launchedPromptPhaseOrder()
     assertEquals(1, launched.count { it == "plan" })
-    assertEquals(99, launched.count { it == "audit" })
-    assertTrue(launched.any { it == "validate" })
+    assertEquals(3, launched.count { it == "audit" })
+    assertTrue(launched.none { it == "validate" })
     val auditRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["audit"])
-    assertEquals("completed", auditRecord.status)
+    assertEquals("blocked", auditRecord.status)
     val loopEdges = harness.recorder.loadPhaseLedger(WORKFLOW_ID).orEmpty()
       .filter { it.action == FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE && it.loopId == "audit_gap" }
-    assertEquals(98, loopEdges.maxOf { requireNotNull(it.edgeIteration) })
+    assertEquals(2, loopEdges.maxOf { requireNotNull(it.edgeIteration) })
   }
 
   // (f) AC5: M1 and M2 compose with independent counters. The re-run after an audit gap passes through
@@ -325,7 +328,7 @@ class FeatureTaskRuntimeAuditGapLoopTest {
   }
 
   @Test
-  fun `m2 high-iteration audit_gap loop keeps reconciling on resume`() {
+  fun `m2 repeated audit_gap fingerprint blocks instead of reconciling forever on resume`() {
     val harness = runnerHarness(launcher = auditGapLauncher(convergeOnAudit = 99))
     harness.seedPhase("preplan", "completed", 1, INVOKED_AGENT, validJsonOutput("preplan"))
     harness.seedPhase("plan", "completed", 1, INVOKED_AGENT, validJsonOutput("plan"))
@@ -335,11 +338,32 @@ class FeatureTaskRuntimeAuditGapLoopTest {
 
     val report = harness.runner.run(harness.request())
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
+    assertEquals("audit", blocked.lastIncompletePhase)
+    assertContains(blocked.blockedReason, "audit_gap_respec_suggested")
+    assertContains(blocked.blockedReason, "latest audit evidence")
     val launched = harness.launchedPromptPhaseOrder()
     assertTrue(launched.none { it == "plan" })
-    assertTrue(launched.any { it == "audit" })
-    assertTrue(launched.any { it == "validate" })
+    assertTrue(launched.none { it == "validate" })
+  }
+
+  @Test
+  fun `m2 audit spec decision conflict blocks instead of firing audit_gap`() {
+    val harness = runnerHarness(
+      launcher = RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        facts(if (phaseId == "audit") auditDecisionConflictOutput() else validJsonOutput(phaseId))
+      },
+    )
+
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+
+    assertEquals("audit", blocked.lastIncompletePhase)
+    assertContains(blocked.blockedReason, "policy_conflict")
+    assertTrue(
+      harness.recorder.loadPhaseLedger(WORKFLOW_ID).orEmpty()
+        .none { it.action == FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE && it.loopId == "audit_gap" },
+    )
   }
 
   @Test
@@ -360,12 +384,12 @@ class FeatureTaskRuntimeAuditGapLoopTest {
 
   @Test
   fun `m2 formerly blocked audit resumes reconciliation and preserves the branch`() {
-    val harness = runnerHarness(launcher = auditGapLauncher(convergeOnAudit = 99))
+    val harness = runnerHarness(launcher = auditGapLauncher(convergeOnAudit = 1))
     harness.seedPhase("preplan", "completed", 1, INVOKED_AGENT, validJsonOutput("preplan"))
     harness.seedPhase("plan", "completed", 1, INVOKED_AGENT, validJsonOutput("plan"))
     harness.seedPhase("implement", "completed", 3, INVOKED_AGENT, validJsonOutput("implement"))
     harness.seedPhase("review", "completed", 2, INVOKED_AGENT, validJsonOutput("review"))
-    harness.seedReentryPhase("audit", "blocked", 3, INVOKED_AGENT, auditGapsOutput(), "audit_gap", 2)
+    harness.seedReentryPhase("audit", "blocked", 2, INVOKED_AGENT, auditGapsOutput(), "audit_gap", 1)
     harness.recorder.recordResolvedBranch(WORKFLOW_ID, FeatureTaskRuntimeResolvedBranch("feat/persisted-branch"))
 
     val report = assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
@@ -572,6 +596,20 @@ internal fun auditSatisfiedOutput(): String = """
     "status": "completed",
     "summary": "Every acceptance criterion is met.",
     "produced_outputs": {"unmet_criteria": []}
+  }
+""".trimIndent()
+
+private fun auditDecisionConflictOutput(): String = """
+  {
+    "contract_version": "0.1",
+    "phase_id": "audit",
+    "status": "completed",
+    "verdict": "gaps_found",
+    "summary": "Audit found a spec decision conflict.",
+    "produced_outputs": {
+      "unmet_criteria": [{"message": "$AUDIT_GAP_MESSAGE"}],
+      "spec_decision_conflict": {"reason": "Spec requires portable provider support but planning accepted fail-closed behavior."}
+    }
   }
 """.trimIndent()
 

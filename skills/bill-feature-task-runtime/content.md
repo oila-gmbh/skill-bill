@@ -162,10 +162,16 @@ advance past an unmet acceptance criterion.
   then `review`, then `audit`. The implementation handoff contains the immutable
   original `preplan` and `plan` outputs plus only the latest failing criteria, so
   the loop addresses the gaps rather than redoing settled content. This
-  `audit` → `implement` → `review` → `audit` cycle has no fixed
-  iteration cap. Its durable counter records progress and recovery state but
-  never turns a valid `gaps_found` verdict into a permanent policy block. The
-  first `satisfied` verdict advances the run to `validate`.
+  `audit` → `implement` → `review` → `audit` cycle may run at most two
+  remediation loops. The first `satisfied` verdict advances the run to
+  `validate`.
+- If the second remediation loop still ends with `gaps_found`, block with
+  `audit_gap_respec_suggested` instead of re-entering implementation again. The
+  blocked reason must say that the audit gaps are too large to fix inline and
+  ask whether to decompose the current subtask and start a new execution loop.
+  If the user agrees, invoke `bill-feature-spec` on the current subtask spec and
+  pass the blocked workflow id, latest audit output, and unmet criteria as
+  evidence explaining why re-spec is needed.
 
 The re-entered `implement` is idempotent: it reconciles the working tree toward
 the original plan without double-applying, and a crash mid-loopback resumes at the

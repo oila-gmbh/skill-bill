@@ -13,6 +13,7 @@ import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.error.WorkflowIssueKeyConflictError
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.WorkflowStateRepository
+import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import skillbill.workflow.WorkflowEngine
 import skillbill.workflow.WorkflowSnapshotValidator
@@ -351,6 +352,11 @@ class FeatureTaskRuntimePhaseRecorder(
       val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
         ?: return@read null
       phaseRecordsFrom(decodeArtifacts(record.artifactsJson))
+    }
+
+  fun loadWorkerOwnership(workflowId: String, dbOverride: String? = null): FeatureTaskRuntimeWorkerOwnership? =
+    database.read(dbOverride) { unitOfWork ->
+      unitOfWork.workflowStates.getFeatureTaskRuntimeWorkerOwnership(workflowId)
     }
 
   /**

@@ -19,6 +19,8 @@ import skillbill.ports.persistence.TelemetryReconciliationRepository
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.persistence.WorkflowStateRepository
 import skillbill.ports.persistence.model.FeatureImplementSessionSummary
+import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerLeaseState
+import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.persistence.model.FeatureVerifySessionSummary
 import skillbill.ports.persistence.model.WorkflowStateRecord
 import skillbill.workflow.WorkflowSnapshotValidator
@@ -116,6 +118,38 @@ class FeatureTaskRuntimeStatusServiceTest {
   }
 
   @Test
+  fun `running phase reports expired worker lease liveness`() {
+    val harness = statusHarness()
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    harness.recordRunning("audit", attemptCount = 3)
+    harness.seedWorkerOwnership(
+      FeatureTaskRuntimeWorkerOwnership(
+        workflowId = WORKFLOW_ID,
+        generation = 1,
+        ownerToken = "expired-owner-token",
+        hostIdentity = "host",
+        bootIdentity = "boot",
+        pid = 123,
+        processBirthToken = "birth-123",
+        leaseState = FeatureTaskRuntimeWorkerLeaseState.ACTIVE,
+        heartbeatAt = "2026-07-14T10:00:00Z",
+        expiresAt = "2026-07-14T10:00:30Z",
+        phaseId = "audit",
+        phaseAttempt = 3,
+      ),
+    )
+
+    val projection = requireNotNull(
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+    )
+
+    val lease = requireNotNull(projection.workerLease)
+    assertEquals("expired", lease.liveness)
+    assertEquals("audit", lease.phaseId)
+    assertEquals(3, lease.phaseAttempt)
+  }
+
+  @Test
   fun `phase with a durable blocked record is reported blocked even when the ledger has no blocked entry`() {
     // F-002: blocked-ness derives primarily from the durable per-phase record, so it survives even
     // when the append-only ledger's BLOCKED entry has been pruned by the retention cap.
@@ -174,6 +208,27 @@ class FeatureTaskRuntimeStatusServiceTest {
     )
 
     assertEquals("implement_fix", projection.currentPhaseId)
+  }
+
+  @Test
+  fun `durable running phase wins over inferred loop reentry`() {
+    val harness = statusHarness()
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    listOf("preplan", "plan", "implement", "implement_fix", "review")
+      .forEach { harness.recordCompleted(it, attemptCount = 1) }
+    harness.recordLoopEdge(
+      phaseId = "implement_fix",
+      attemptCount = 1,
+      loopId = "review_fix",
+      edgeIteration = 1,
+    )
+    harness.recordRunning("audit", attemptCount = 2)
+
+    val projection = requireNotNull(
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+    )
+
+    assertEquals("audit", projection.currentPhaseId)
   }
 
   @Test
@@ -376,7 +431,8 @@ class FeatureTaskRuntimeStatusServiceTest {
       recorder,
       decomposeTerminalRecorder,
       runInvariantsStore,
-      FeatureTaskRuntimeStatusService(recorder, runInvariantsStore, decomposeTerminalRecorder),
+      FeatureTaskRuntimeStatusService(recorder, runInvariantsStore, decomposeTerminalRecorder, database),
+      repository,
     )
   }
 
@@ -385,7 +441,12 @@ class FeatureTaskRuntimeStatusServiceTest {
     val decomposeTerminalRecorder: FeatureTaskRuntimeDecomposeTerminalRecorder,
     val runInvariantsStore: FeatureTaskRuntimeRunInvariantsStore,
     val service: FeatureTaskRuntimeStatusService,
+    private val repository: StatusInMemoryWorkflowRepository,
   ) {
+    fun seedWorkerOwnership(ownership: FeatureTaskRuntimeWorkerOwnership) {
+      repository.seedWorkerOwnership(ownership)
+    }
+
     fun recordRunning(phaseId: String, attemptCount: Int, resolvedAgentId: String = "claude") =
       recorder.recordPhaseState(
         FeatureTaskRuntimePhaseStateRequest(
@@ -508,6 +569,15 @@ private class StatusFakeDatabaseSessionFactory(
 }
 
 private class StatusInMemoryWorkflowRepository : WorkflowStateRepository {
+  private var workerOwnership: FeatureTaskRuntimeWorkerOwnership? = null
+
+  fun seedWorkerOwnership(ownership: FeatureTaskRuntimeWorkerOwnership) {
+    workerOwnership = ownership
+  }
+
+  override fun getFeatureTaskRuntimeWorkerOwnership(workflowId: String): FeatureTaskRuntimeWorkerOwnership? =
+    workerOwnership?.takeIf { it.workflowId == workflowId }
+
   override fun saveFeatureTaskExecutionIdentity(
     identity: skillbill.ports.persistence.model.FeatureTaskExecutionIdentity,
   ) = Unit

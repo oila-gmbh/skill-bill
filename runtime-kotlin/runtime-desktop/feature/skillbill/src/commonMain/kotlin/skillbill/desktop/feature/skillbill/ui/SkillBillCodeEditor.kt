@@ -76,6 +76,7 @@ internal fun CodeEditor(
   onDraftChanged: (String) -> Unit,
   onSave: () -> Unit,
   onRevert: () -> Unit,
+  onAdoptMachineSkill: () -> Unit,
   onDirtyPromptDiscard: () -> Unit,
   onDirtyPromptCancel: () -> Unit,
   modifier: Modifier = Modifier,
@@ -136,7 +137,7 @@ internal fun CodeEditor(
     } else {
       val rawText = (editor.content ?: editor.detail).ifBlank { stringResource(Res.string.editor_no_source_selected) }
       val lines = rawText.lines()
-      ReadOnlyBanner(editor)
+      ReadOnlyBanner(editor, onAdoptMachineSkill)
       Column(
         modifier =
         Modifier
@@ -270,7 +271,7 @@ private fun EditorActionButton(
 }
 
 @Composable
-private fun ReadOnlyBanner(editor: EditorPlaceholder) {
+private fun ReadOnlyBanner(editor: EditorPlaceholder, onAdoptMachineSkill: () -> Unit) {
   Row(
     modifier = Modifier
       .fillMaxWidth()
@@ -291,11 +292,18 @@ private fun ReadOnlyBanner(editor: EditorPlaceholder) {
       },
       color = SkillBillTheme.frameTokens.muted,
       style = MaterialTheme.typography.labelSmall,
+      modifier = Modifier.weight(1f),
       maxLines = 1,
       overflow = TextOverflow.Ellipsis,
     )
+    if (editor.canAdoptMachineSkill()) {
+      TextButton(onClick = onAdoptMachineSkill) { Text("Adopt") }
+    }
   }
 }
+
+internal fun EditorPlaceholder.canAdoptMachineSkill(): Boolean =
+  !editable && machineSkillDetail?.ownership?.equals("MANAGED", ignoreCase = true) == false
 
 @Composable
 private fun SaveErrorBanner(message: String) {

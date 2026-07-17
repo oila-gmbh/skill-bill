@@ -3,6 +3,9 @@ package skillbill.desktop.core.data.di
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.install.ExternalAddonOverlayService
 import skillbill.application.install.InstallService
+import skillbill.application.managedskill.MachineSkillInventoryService
+import skillbill.application.managedskill.MachineSkillRefreshService
+import skillbill.application.managedskill.MachineSkillToolsFacade
 import skillbill.application.scaffold.InstallAgentService
 import skillbill.application.scaffold.RepoSourceDiscoveryService
 import skillbill.application.scaffold.RepoValidationService
@@ -58,6 +61,18 @@ class DesktopRuntimeApplicationServices {
   val workListService: WorkListService
     get() = services.workListService
 
+  val machineSkillInventoryService: MachineSkillInventoryService
+    get() = services.machineSkillInventoryService
+
+  val machineSkillRefreshService: MachineSkillRefreshService
+    get() = services.machineSkillRefreshService
+
+  val machineSkillToolsFacade: MachineSkillToolsFacade
+    get() = services.machineSkillToolsFacade
+
+  val installAgentService: InstallAgentService
+    get() = services.installAgentService
+
   fun resolveExternalAddonSources(): List<ExternalAddonSource> =
     services.externalAddonOverlayService.resolveSources(currentUserHome(), System.getenv())
 
@@ -104,6 +119,10 @@ private data class DesktopRuntimeApplicationServiceBundle(
   val externalAddonOverlayService: ExternalAddonOverlayService,
   val telemetryConfigStore: TelemetryConfigStore,
   val workListService: WorkListService,
+  val machineSkillInventoryService: MachineSkillInventoryService,
+  val machineSkillRefreshService: MachineSkillRefreshService,
+  val machineSkillToolsFacade: MachineSkillToolsFacade,
+  val installAgentService: InstallAgentService,
 )
 
 private fun buildDesktopRuntimeApplicationServices(home: Path): DesktopRuntimeApplicationServiceBundle {
@@ -118,6 +137,10 @@ private fun buildDesktopRuntimeApplicationServices(home: Path): DesktopRuntimeAp
     externalAddonOverlayService = component.externalAddonOverlayService,
     telemetryConfigStore = component.telemetryConfigStorePort,
     workListService = component.workListService,
+    machineSkillInventoryService = component.machineSkillInventoryService,
+    machineSkillRefreshService = component.machineSkillRefreshService,
+    machineSkillToolsFacade = component.machineSkillToolsFacade,
+    installAgentService = component.installAgentService,
   )
 }
 

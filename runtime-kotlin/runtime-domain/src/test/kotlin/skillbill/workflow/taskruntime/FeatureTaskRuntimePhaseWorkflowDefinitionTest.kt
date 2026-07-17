@@ -162,7 +162,7 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
   }
 
   @Test
-  fun `the audit_gap backward edge reopens implement-through-audit without planning and without a cap`() {
+  fun `the audit_gap backward edge reopens implement-through-audit without planning and blocks after two loops`() {
     val def = FeatureTaskRuntimePhaseWorkflowDefinition
     val transitions = def.transitions
     assertEquals(2, transitions.backwardEdges.size)
@@ -170,7 +170,8 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
     assertEquals(def.PHASE_AUDIT, edge.fromPhaseId)
     assertEquals(def.PHASE_IMPLEMENT, edge.destinationPhaseId)
     assertEquals("audit_gap", edge.loopId)
-    assertEquals(null, edge.perEdgeCap)
+    assertEquals(2, edge.perEdgeCap)
+    assertEquals(FeatureTaskRuntimeCapExhaustionBehavior.BLOCK, edge.capExhaustionBehavior)
     assertEquals(FeatureTaskRuntimeVerdict.GAPS_FOUND, edge.triggeringVerdict)
     // The reopened [implement, audit] span contains remediation but excludes immutable planning.
     val ids = transitions.forwardPhaseIds

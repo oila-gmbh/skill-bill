@@ -218,6 +218,7 @@ object FeatureTaskRuntimePhasePromptComposer {
     }
     val findings = FeatureTaskRuntimeVerificationSignalKeys.REVIEW_FINDINGS
     val unmetCriteria = FeatureTaskRuntimeVerificationSignalKeys.AUDIT_UNMET_CRITERIA
+    val specDecisionConflict = FeatureTaskRuntimeVerificationSignalKeys.AUDIT_SPEC_DECISION_CONFLICT
     val verdict = FeatureTaskRuntimeVerificationSignalKeys.VERDICT
     return when (phaseId) {
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW ->
@@ -229,7 +230,10 @@ object FeatureTaskRuntimePhasePromptComposer {
         "\n    - This is a VERIFYING phase: produced_outputs MUST carry an \"$unmetCriteria\" array (one\n" +
           "      message per unmet acceptance criterion; an explicit empty [] affirms every criterion is met)\n" +
           "      AND/OR a top-level \"$verdict\" of \"satisfied\" or \"gaps_found\". Output carrying NEITHER signal\n" +
-          "      fails the schema gate loudly — a prose verdict (e.g. a Markdown table) cannot advance the gate."
+          "      fails the schema gate loudly — a prose verdict (e.g. a Markdown table) cannot advance the gate.\n" +
+          "      If the remaining issue is that the spec conflicts with accepted planning decisions, set\n" +
+          "      produced_outputs.$specDecisionConflict to a non-empty reason; the runtime will block instead\n" +
+          "      of opening another audit_gap remediation loop."
       else -> ""
     }
   }

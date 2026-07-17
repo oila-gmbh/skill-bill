@@ -57,7 +57,8 @@ class GoalRunnerStatusService(
           activeAgent = resolveActiveAgent(currentSubtask, request.dbPathOverride),
           extras = GoalRunnerStatusProjectionExtras(
             currentStepOverride = progress?.currentStepId,
-            latestLivenessSignal = progress?.latestLivenessSignal,
+            latestLivenessSignal = workerLivenessSignal(phaseRecorder, currentSubtask, request.dbPathOverride)
+              ?: progress?.latestLivenessSignal,
             latestObservabilityEvent = progress?.latestGoalObservabilityEvent?.toStatusMap(),
             requestedDiffStat = request.requestedDiffStat(),
             selectedDiffHunks = request.requestedSelectedDiffHunks(),

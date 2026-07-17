@@ -50,6 +50,7 @@ import skillbill.desktop.core.designsystem.SkillBillMetrics
 import skillbill.desktop.core.designsystem.SkillBillTheme
 import skillbill.desktop.core.designsystem.SkillBillTypeStyles
 import skillbill.desktop.core.domain.model.SkillBillTreeItem
+import skillbill.desktop.core.domain.model.TreeItemKind
 
 private const val TREE_TEXT_ALPHA_DISABLED = 0.42f
 private const val TREE_TEXT_ALPHA_OPEN = 0.96f
@@ -66,6 +67,7 @@ internal fun NavGroup(
   onNodeSelected: (String) -> Unit,
   onNodeOpened: (String) -> Unit,
   onNodeExpandedToggled: (String) -> Unit,
+  onRefresh: (() -> Unit)? = null,
   onShowContextMenu: (SkillBillTreeItem) -> Unit = {},
 ) {
   val selected = selectedNodeId == group.id
@@ -100,6 +102,7 @@ internal fun NavGroup(
           this.selected = selected
           this.contentDescription = toggleGroupCd
           this.role = Role.Button
+          stateDescription = if (expanded) "expanded" else "collapsed"
         }
         .clickable(enabled = enabled, role = Role.Button) { onNodeExpandedToggled(group.id) }
         // SKILL-46: synthetic PLATFORM_PACK group nodes (id `platform:<slug>`) also support
@@ -126,7 +129,22 @@ internal fun NavGroup(
         letterSpacing = 0.sp,
         modifier = Modifier.weight(1f),
       )
-      Text(text = group.children.size.toString(), color = iconTint, style = MaterialTheme.typography.labelSmall)
+      Text(
+        text = group.status ?: group.children.size.toString(),
+        color = iconTint,
+        style = MaterialTheme.typography.labelSmall,
+      )
+      onRefresh?.let { refresh ->
+        Text(
+          text = "Refresh",
+          modifier = Modifier
+            .semantics { contentDescription = "Refresh Third-Party Skills" }
+            .clickable(enabled = enabled, role = Role.Button) { refresh() }
+            .padding(horizontal = SkillBillDimens.padSm),
+          color = iconTint,
+          style = MaterialTheme.typography.labelSmall,
+        )
+      }
       DropdownMenu(
         expanded = menuExpanded,
         onDismissRequest = { menuExpanded = false },
@@ -196,6 +214,7 @@ private fun NavTreeNode(
       else -> TREE_TEXT_ALPHA_DEFAULT
     }
   val rowStateDescription = stringResource(treeRowStateDescriptionRes(open))
+  val machineSkillState = node.status?.takeIf { node.id.startsWith("machine:third-party-skills:skill:") }
   Row(
     modifier =
     Modifier
@@ -206,10 +225,10 @@ private fun NavTreeNode(
       .background(rowBackground)
       .semantics {
         this.selected = selected
-        stateDescription = rowStateDescription
+        stateDescription = listOfNotNull(rowStateDescription, machineSkillState).joinToString(", ")
       }
       .combinedClickable(
-        enabled = enabled,
+        enabled = enabled && node.kind != TreeItemKind.PLACEHOLDER,
         role = Role.Button,
         onDoubleClick = {
           if (expandable) {
@@ -260,6 +279,14 @@ private fun NavTreeNode(
       Text(
         text = "EXT",
         color = SkillBillTheme.frameTokens.primary,
+        style = SkillBillTypeStyles.caption.copy(fontFamily = FontFamily.Monospace),
+        modifier = Modifier.padding(end = SkillBillDimens.padLg),
+      )
+    }
+    if (machineSkillState != null) {
+      Text(
+        text = machineSkillState,
+        color = SkillBillTheme.frameTokens.subtle,
         style = SkillBillTypeStyles.caption.copy(fontFamily = FontFamily.Monospace),
         modifier = Modifier.padding(end = SkillBillDimens.padLg),
       )

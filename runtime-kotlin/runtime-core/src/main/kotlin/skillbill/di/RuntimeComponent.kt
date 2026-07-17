@@ -19,6 +19,9 @@ import skillbill.application.goalrunner.WorkflowGoalRunnerOutcomeStore
 import skillbill.application.install.ExternalAddonOverlayService
 import skillbill.application.install.InstallService
 import skillbill.application.learning.LearningService
+import skillbill.application.managedskill.MachineSkillInventoryService
+import skillbill.application.managedskill.MachineSkillRefreshService
+import skillbill.application.managedskill.MachineSkillToolsFacade
 import skillbill.application.review.ParallelCodeReviewRunner
 import skillbill.application.review.ReviewService
 import skillbill.application.scaffold.InstallAgentService
@@ -93,6 +96,9 @@ import skillbill.infrastructure.http.JdkHttpRequester
 import skillbill.infrastructure.sqlite.SQLiteDatabaseSessionFactory
 import skillbill.install.model.InstallPlanWireValidator
 import skillbill.launcher.agentrun.FileSystemAgentRunLauncher
+import skillbill.managedskill.FileSystemMachineSkillInventory
+import skillbill.managedskill.FileSystemMachineSkillTransaction
+import skillbill.managedskill.FileSystemMachineSkillWorkspace
 import skillbill.model.EnvironmentContext
 import skillbill.model.OptionalCallbacks
 import skillbill.model.RuntimeContext
@@ -112,6 +118,7 @@ import skillbill.ports.goalrunner.GoalRunnerWorkflowOutcomeStore
 import skillbill.ports.install.addon.ExternalAddonOverlayPort
 import skillbill.ports.install.addon.ExternalAddonSourceConfigPort
 import skillbill.ports.install.agent.InstallAgentTargetPort
+import skillbill.ports.install.agent.model.DetectInstallAgentTargetsRequest
 import skillbill.ports.install.apply.InstallApplyExecutionPort
 import skillbill.ports.install.baseline.BaselineManifestPersistencePort
 import skillbill.ports.install.baseline.InstalledWorkspaceBaselineStatusPort
@@ -124,6 +131,9 @@ import skillbill.ports.install.plan.InstallStagingIntentPort
 import skillbill.ports.install.reconcile.InstallReconcileApplyPort
 import skillbill.ports.install.reconcile.InstallReconcilePort
 import skillbill.ports.install.selection.InstallSelectionPersistencePort
+import skillbill.ports.managedskill.MachineSkillInventoryPort
+import skillbill.ports.managedskill.MachineSkillTransactionPort
+import skillbill.ports.managedskill.MachineSkillWorkspacePort
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.review.ParallelReviewLaneRunner
 import skillbill.ports.review.ReviewAttributionPort
@@ -290,6 +300,32 @@ abstract class RuntimeComponent(
   @Provides
   @JvmSynthetic
   internal fun installAgentTargetPort(adapter: FileSystemInstallAgentTargets): InstallAgentTargetPort = adapter
+
+  @Provides
+  @JvmSynthetic
+  internal fun machineSkillInventoryPort(adapter: FileSystemMachineSkillInventory): MachineSkillInventoryPort = adapter
+
+  @Provides
+  @JvmSynthetic
+  internal fun machineSkillWorkspacePort(
+    adapter: FileSystemInstallAgentTargets,
+    environment: EnvironmentContext,
+  ): MachineSkillWorkspacePort {
+    val home = environment.userHome.toAbsolutePath().normalize()
+    val roots = adapter.detectAgentTargets(DetectInstallAgentTargetsRequest(home)).targets.map { it.path }
+    return FileSystemMachineSkillWorkspace(home, roots)
+  }
+
+  @Provides
+  @JvmSynthetic
+  internal fun machineSkillTransactionPort(
+    adapter: FileSystemInstallAgentTargets,
+    environment: EnvironmentContext,
+  ): MachineSkillTransactionPort {
+    val home = environment.userHome.toAbsolutePath().normalize()
+    val roots = adapter.detectAgentTargets(DetectInstallAgentTargetsRequest(home)).targets.map { it.path }
+    return FileSystemMachineSkillTransaction(home, roots)
+  }
 
   @Provides
   @JvmSynthetic
@@ -548,6 +584,9 @@ abstract class RuntimeComponent(
   abstract val installSelectionPersistencePort: InstallSelectionPersistencePort
   abstract val installedWorkspaceBaselineStatusPort: InstalledWorkspaceBaselineStatusPort
   abstract val learningService: LearningService
+  abstract val machineSkillInventoryService: MachineSkillInventoryService
+  abstract val machineSkillRefreshService: MachineSkillRefreshService
+  abstract val machineSkillToolsFacade: MachineSkillToolsFacade
   abstract val lifecycleTelemetryService: LifecycleTelemetryService
   abstract val mcpRegistrationService: McpRegistrationService
   abstract val nativeAgentInstallService: NativeAgentInstallService

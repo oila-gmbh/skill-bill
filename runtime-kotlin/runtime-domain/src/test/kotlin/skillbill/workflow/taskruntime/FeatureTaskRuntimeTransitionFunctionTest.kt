@@ -317,7 +317,8 @@ class FeatureTaskRuntimeTransitionFunctionTest {
     triggeringVerdict = FeatureTaskRuntimeVerdict.GAPS_FOUND,
     destinationPhaseId = "impl",
     loopId = "audit_gap",
-    perEdgeCap = null,
+    perEdgeCap = 2,
+    capExhaustionBehavior = FeatureTaskRuntimeCapExhaustionBehavior.BLOCK,
   )
   private val twoEdgeDeclaration = FeatureTaskRuntimeTransitionDeclaration(
     forwardPhaseIds = loopPipeline,
@@ -355,7 +356,7 @@ class FeatureTaskRuntimeTransitionFunctionTest {
   }
 
   @Test
-  fun `audit satisfied forwards while gaps_found remains eligible after many iterations`() {
+  fun `audit satisfied forwards while gaps_found blocks after the remediation cap`() {
     val satisfied = FeatureTaskRuntimeTransitionFunction.nextTransition(
       declaration = twoEdgeDeclaration,
       currentPhaseId = "audit",
@@ -364,15 +365,29 @@ class FeatureTaskRuntimeTransitionFunctionTest {
     )
     assertIs<FeatureTaskRuntimeNextPhase.TerminalAdvance>(satisfied)
 
-    val reentry = FeatureTaskRuntimeTransitionFunction.nextTransition(
-      declaration = twoEdgeDeclaration,
-      currentPhaseId = "audit",
-      verdict = FeatureTaskRuntimeVerdict.GAPS_FOUND,
-      edgeIterationCount = 100,
+    val cap = requireNotNull(auditGapEdge.perEdgeCap)
+    (0 until cap).forEach { alreadyFired ->
+      val reentry = FeatureTaskRuntimeTransitionFunction.nextTransition(
+        declaration = twoEdgeDeclaration,
+        currentPhaseId = "audit",
+        verdict = FeatureTaskRuntimeVerdict.GAPS_FOUND,
+        edgeIterationCount = alreadyFired,
+      )
+      val next = assertIs<FeatureTaskRuntimeNextPhase.Next>(reentry)
+      assertEquals("impl", next.phaseId)
+      assertEquals("audit_gap", next.loopId)
+      assertEquals(alreadyFired + 1, next.edgeIteration)
+    }
+    val blocked = assertIs<FeatureTaskRuntimeNextPhase.TerminalBlock>(
+      FeatureTaskRuntimeTransitionFunction.nextTransition(
+        declaration = twoEdgeDeclaration,
+        currentPhaseId = "audit",
+        verdict = FeatureTaskRuntimeVerdict.GAPS_FOUND,
+        edgeIterationCount = cap,
+      ),
     )
-    val next = assertIs<FeatureTaskRuntimeNextPhase.Next>(reentry)
-    assertEquals("impl", next.phaseId)
-    assertEquals("audit_gap", next.loopId)
-    assertEquals(101, next.edgeIteration)
+    assertEquals("audit_gap", blocked.loopId)
+    assertEquals(cap, blocked.edgeIteration)
+    assertEquals(FeatureTaskRuntimeVerdict.GAPS_FOUND, blocked.unresolvedVerdict)
   }
 }

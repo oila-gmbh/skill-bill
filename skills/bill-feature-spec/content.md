@@ -27,6 +27,20 @@ Classify into one of two modes:
 
 Use `single_spec` by default unless the work clearly needs dependency-ordered subtasks.
 
+When preparing decomposed work, keep each subtask small enough to complete within one normal
+implementation pass plus the bounded audit remediation loop. A subtask must own a coherent slice of
+implementation and validation; do not create a catch-all final subtask whose scope is "full
+validation", "remaining audit gaps", "navigator and full validation", or the parent feature's entire
+test matrix. Distribute acceptance criteria and validation obligations to the subtasks that implement
+the behavior. A final integration subtask is allowed only when it owns a narrow integration seam it
+changes; it must not re-own broad parent criteria already assigned to earlier subtasks. The label
+`MEDIUM` does not make a multi-boundary or full-matrix subtask acceptable.
+
+If invoked after an `audit_gap_respec_suggested` block, treat the blocked subtask spec as the new
+parent input. Use the blocked workflow id, latest audit output, and unmet criteria as evidence for
+why re-spec is needed, then decompose only the unresolved scope into smaller ordered subtasks. Preserve
+already-satisfied behavior as dependency context, not as new acceptance criteria to reimplement.
+
 ## Service / Spec Source Mode
 
 `bill-feature-spec` accepts an optional `service:default/linear` argument that selects where

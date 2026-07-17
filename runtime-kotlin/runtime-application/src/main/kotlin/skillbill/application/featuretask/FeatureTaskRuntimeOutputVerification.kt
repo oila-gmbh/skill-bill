@@ -29,6 +29,17 @@ internal object FeatureTaskRuntimeOutputVerification {
   fun unmetAuditCriteria(output: FeatureTaskRuntimePhaseOutput?): List<String> =
     output?.let(::outputObject)?.let(::auditVerdictFrom)?.unmetCriteria?.map { it.message }.orEmpty()
 
+  fun auditDecisionConflict(output: FeatureTaskRuntimePhaseOutput?): String? {
+    val producedOutputs = output?.let(::outputObject)
+      ?.get("produced_outputs")
+      ?.let(JsonSupport::anyToStringAnyMap)
+      ?: return null
+    val conflict = producedOutputs[FeatureTaskRuntimeVerificationSignalKeys.AUDIT_SPEC_DECISION_CONFLICT]
+      ?: producedOutputs["decision_conflict"]
+      ?: return null
+    return conflictReason(conflict)
+  }
+
   fun auditGapPayloadError(outputObject: Map<String, Any?>): String? {
     val wireVerdict = outputObject["verdict"] as? String
     val producedOutputs = JsonSupport.anyToStringAnyMap(outputObject["produced_outputs"])
@@ -94,13 +105,23 @@ internal object FeatureTaskRuntimeOutputVerification {
     return FeatureTaskRuntimeAuditVerdict(gaps)
   }
 
-  private fun auditGapMessage(entry: Any?): String? = (entry as? String)?.takeIf(String::isNotBlank)
-    ?: JsonSupport.anyToStringAnyMap(entry)?.let { map ->
-      ((map["message"] ?: map["criterion"]) as? String)?.takeIf(String::isNotBlank)
-    }
-
   private fun outputObject(output: FeatureTaskRuntimePhaseOutput): Map<String, Any?>? =
     JsonSupport.parseObjectOrNull(output.payload)
       ?.let(JsonSupport::jsonElementToValue)
       ?.let(JsonSupport::anyToStringAnyMap)
+}
+
+private fun auditGapMessage(entry: Any?): String? = (entry as? String)?.takeIf(String::isNotBlank)
+  ?: JsonSupport.anyToStringAnyMap(entry)?.let { map ->
+    ((map["message"] ?: map["criterion"]) as? String)?.takeIf(String::isNotBlank)
+  }
+
+private fun conflictReason(conflict: Any?): String? = when (conflict) {
+  is String -> conflict.takeIf(String::isNotBlank)
+  is Map<*, *> -> JsonSupport.anyToStringAnyMap(conflict)
+    ?.let { map ->
+      ((map["message"] ?: map["reason"] ?: map["summary"]) as? String)?.takeIf(String::isNotBlank)
+    }
+  is List<*> -> conflict.mapNotNull(::conflictReason).takeIf(List<String>::isNotEmpty)?.joinToString("; ")
+  else -> null
 }

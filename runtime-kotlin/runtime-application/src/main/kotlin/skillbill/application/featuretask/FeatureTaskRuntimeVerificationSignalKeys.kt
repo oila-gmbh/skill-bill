@@ -20,4 +20,10 @@ internal object FeatureTaskRuntimeVerificationSignalKeys {
 
   /** Back-compat alias the audit gate also accepts in place of [AUDIT_UNMET_CRITERIA]. */
   const val AUDIT_FAILING_CRITERIA_ALIAS = "failing_criteria"
+
+  /**
+   * produced_outputs key an audit can set when it finds the spec/accepted planning decisions conflict.
+   * The runtime blocks the loop instead of treating that as another remediable audit gap.
+   */
+  const val AUDIT_SPEC_DECISION_CONFLICT = "spec_decision_conflict"
 }

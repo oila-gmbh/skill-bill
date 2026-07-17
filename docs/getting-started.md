@@ -465,14 +465,19 @@ selected_diff_line: hunk_index=1 line_index=1 path=runtime-kotlin/runtime-cli/sr
 
 ### Resuming, inspecting state, and accounting
 
-Feature-task continuation is database-first. Before preparing a feature spec,
-`bill-feature` performs a read-only lookup using the normalized issue key and
-the canonical repository identity (`repo-root-realpath-v1:` plus the resolved
-Git top-level path). A unique resumable result keeps its persisted workflow ID,
-mode, governed spec path, and completed phase artifacts. Ambiguous, running,
-terminal-only, or corrupt results stop loudly; they never fall through to a new
-workflow. An explicit workflow ID may select among otherwise ambiguous eligible
-records, but it must match the same issue and repository.
+Feature-task continuation is database-first for single-spec work. Before
+preparing a feature spec, `bill-feature` first classifies existing governed
+artifacts. When a decomposed goal manifest already exists, it dispatches to
+`skill-bill goal`, whose parent and child workflow state is authoritative. When
+no decomposed goal manifest exists, `bill-feature` performs a read-only
+standalone feature-task lookup using the normalized issue key and the canonical
+repository identity (`repo-root-realpath-v1:` plus the resolved Git top-level
+path). A unique resumable result keeps its persisted workflow ID, mode,
+governed spec path, and completed phase artifacts. Ambiguous, running,
+terminal-only, or corrupt standalone results stop loudly; they never fall
+through to a new single-spec workflow. An explicit workflow ID may select among
+otherwise ambiguous eligible standalone records, but it must match the same
+issue and repository.
 
 The governed `spec.md` is the feature contract, not a workflow checkpoint.
 Pre-planning, planning, and later phase outputs remain in durable workflow

@@ -1,0 +1,16 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: https://skill-bill.dev/contracts/machine-skill-post-mortem-schema.yaml
+title: Machine skill recovery post-mortem
+type: object
+additionalProperties: false
+required: [contract_version, post_mortem_id, plan_id, created_at, acknowledgement_status, affected_paths, attempted_operations, rollback_evidence, recovery_actions]
+properties:
+  contract_version: { const: "0.1" }
+  post_mortem_id: { type: string, minLength: 1 }
+  plan_id: { type: string, pattern: "^[a-f0-9]{64}$" }
+  created_at: { type: string, format: date-time }
+  acknowledgement_status: { enum: [unacknowledged, acknowledged] }
+  affected_paths: { type: array, minItems: 1, uniqueItems: true, items: { type: string, minLength: 1 } }
+  attempted_operations: { type: array, minItems: 1, items: { type: string, minLength: 1 } }
+  rollback_evidence: { type: array, items: { type: string, minLength: 1 } }
+  recovery_actions: { type: array, minItems: 1, items: { type: string, minLength: 1 } }

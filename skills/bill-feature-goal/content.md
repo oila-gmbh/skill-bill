@@ -474,6 +474,15 @@ resume (by the runtime or a later prose continuation) can pick up exactly where
 it stopped. This mirrors the `mode:runtime` stop-loudly contract: blocked state
 is sticky and is never silently skipped.
 
+If `blocked_reason` starts with `audit_gap_respec_suggested`, the stop is a
+re-spec opportunity, not a generic manual block. Surface the message and ask the
+user whether to decompose the current subtask and start a new execution loop. If
+the user agrees, invoke `bill-feature-spec` for the current subtask spec, passing
+the blocked workflow id, latest audit output, unmet criteria, and a short
+explanation that the audit gaps exceeded the inline remediation budget. The
+resulting decomposition must target only the unresolved scope of that subtask;
+do not continue the old subtask loop or hand-edit the manifest to skip it.
+
 ### Clean completion: convergence, parent PR, agent-agnosticism
 
 On clean completion the durable store, the on-disk

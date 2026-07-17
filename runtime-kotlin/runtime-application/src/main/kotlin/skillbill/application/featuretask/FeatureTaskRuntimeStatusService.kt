@@ -7,10 +7,15 @@ import skillbill.application.model.FeatureTaskRuntimeDecomposeTerminalStatus
 import skillbill.application.model.FeatureTaskRuntimePhaseStatus
 import skillbill.application.model.FeatureTaskRuntimeStatusProjection
 import skillbill.application.model.FeatureTaskRuntimeStatusRequest
+import skillbill.application.model.FeatureTaskRuntimeWorkerLeaseStatus
+import skillbill.ports.persistence.DatabaseSessionFactory
+import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerLeaseState
+import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
+import java.time.Instant
 
 /**
  * Read-only status service that projects durable per-phase records and the ledger into a typed
@@ -22,6 +27,7 @@ class FeatureTaskRuntimeStatusService(
   private val recorder: FeatureTaskRuntimePhaseRecorder,
   private val runInvariantsStore: FeatureTaskRuntimeRunInvariantsStore,
   private val decomposeTerminalRecorder: FeatureTaskRuntimeDecomposeTerminalRecorder,
+  private val database: DatabaseSessionFactory,
 ) {
   /**
    * Projects the read-only status. Returns null only when the workflow row is absent,
@@ -42,6 +48,7 @@ class FeatureTaskRuntimeStatusService(
       records[phaseId].toPhaseStatus(phaseId, blocked = phaseId in blockedPhaseIds)
     }
     val terminalDecomposeRecorded = decomposeTerminal != null
+    val runningPhase = phases.firstOrNull { it.status == STATUS_RUNNING }
     return FeatureTaskRuntimeStatusProjection(
       workflowId = request.workflowId,
       featureSize = runInvariantsStore.resolve(request.workflowId, request.dbPathOverride)?.featureSize?.name,
@@ -53,12 +60,13 @@ class FeatureTaskRuntimeStatusService(
       if (terminalDecomposeRecorded) {
         null
       } else {
-        // Skip a loop-only phase (e.g. implement_fix) only while it is still pending: it is
-        // permanently pending on a clean forward run and is reached only as a backward-edge
-        // destination, so reporting a never-run one as current would mislead operators. A loop-only
-        // phase that is actually running or blocked mid-loop still surfaces. A run with no incomplete
-        // non-loop-only phase reports none (a completed run is terminal).
-        currentReentryPhaseId(records, ledger) ?: phases.firstOrNull {
+        phases.firstOrNull { it.status == STATUS_RUNNING || it.status == STATUS_BLOCKED }?.phaseId
+          ?: // Skip a loop-only phase (e.g. implement_fix) only while it is still pending: it is
+          // permanently pending on a clean forward run and is reached only as a backward-edge
+          // destination, so reporting a never-run one as current would mislead operators. A loop-only
+          // phase that is actually running or blocked mid-loop still surfaces. A run with no incomplete
+          // non-loop-only phase reports none (a completed run is terminal).
+          currentReentryPhaseId(records, ledger) ?: phases.firstOrNull {
           it.status != STATUS_COMPLETED &&
             !(it.phaseId in LOOP_ONLY_PHASE_IDS && it.status == STATUS_PENDING)
         }?.phaseId
@@ -77,8 +85,48 @@ class FeatureTaskRuntimeStatusService(
           subtaskSpecPaths = it.subtaskSpecPaths,
         )
       },
+      workerLease = workerLeaseStatus(request, runningPhase),
     )
   }
+
+  private fun workerLeaseStatus(
+    request: FeatureTaskRuntimeStatusRequest,
+    runningPhase: FeatureTaskRuntimePhaseStatus?,
+  ): FeatureTaskRuntimeWorkerLeaseStatus? {
+    val ownership = database.read(request.dbPathOverride) {
+      it.workflowStates.getFeatureTaskRuntimeWorkerOwnership(request.workflowId)
+    }
+    if (ownership == null) {
+      return if (runningPhase != null) {
+        FeatureTaskRuntimeWorkerLeaseStatus(
+          liveness = WORKER_LIVENESS_MISSING,
+          phaseId = runningPhase.phaseId,
+          phaseAttempt = runningPhase.attemptCount,
+          leaseState = "",
+          heartbeatAt = "",
+          expiresAt = "",
+        )
+      } else {
+        null
+      }
+    }
+    return ownership.toStatus(runningPhase)
+  }
+
+  private fun FeatureTaskRuntimeWorkerOwnership.toStatus(
+    runningPhase: FeatureTaskRuntimePhaseStatus?,
+  ): FeatureTaskRuntimeWorkerLeaseStatus = FeatureTaskRuntimeWorkerLeaseStatus(
+    liveness = when {
+      leaseState == FeatureTaskRuntimeWorkerLeaseState.TAKEOVER_RESERVED -> WORKER_LIVENESS_TAKEOVER_RESERVED
+      Instant.parse(expiresAt).isBefore(Instant.now()) -> WORKER_LIVENESS_EXPIRED
+      else -> WORKER_LIVENESS_ACTIVE
+    },
+    phaseId = runningPhase?.phaseId ?: phaseId,
+    phaseAttempt = runningPhase?.attemptCount ?: phaseAttempt,
+    leaseState = leaseState.wireValue,
+    heartbeatAt = heartbeatAt,
+    expiresAt = expiresAt,
+  )
 
   // Supplementary ledger-derived blocked-ness: a phase is blocked when its newest ledger entry is
   // BLOCKED and no durable blocked record already covers it; a later entry from a resumed run
@@ -158,8 +206,13 @@ class FeatureTaskRuntimeStatusService(
 
   private companion object {
     const val STATUS_PENDING = "pending"
+    const val STATUS_RUNNING = "running"
     const val STATUS_COMPLETED = "completed"
     const val STATUS_BLOCKED = "blocked"
+    const val WORKER_LIVENESS_ACTIVE = "active"
+    const val WORKER_LIVENESS_EXPIRED = "expired"
+    const val WORKER_LIVENESS_MISSING = "missing"
+    const val WORKER_LIVENESS_TAKEOVER_RESERVED = "takeover_reserved"
     val TERMINAL_PHASE_STATUSES = setOf(STATUS_COMPLETED, STATUS_BLOCKED)
 
     // Loop-only phases (backward-edge destinations the forward edge skips) are never the current
