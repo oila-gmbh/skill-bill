@@ -98,7 +98,22 @@ class GoalPlanningSweepTest {
     val outcome = harness.sweep.prepare(state, harness.request())
 
     val stopped = assertIs<GoalPlanningSweepOutcome.Stopped>(outcome)
+    assertEquals(1, stopped.currentSubtaskId)
     assertTrue(stopped.blockedReason.contains("invalid saved prepared pair"))
+    assertEquals(launchCount, harness.launcher.requests.size)
+  }
+
+  @Test
+  fun `resume accepts a completed prepared pair after its scratch spec is deleted`() {
+    val harness = sweepHarness { phase, _, _ -> validPhaseOutcome(phase) }
+    val initial = manifest(subtaskCount = 2)
+    harness.sweep.prepare(harness.stateFor(initial), harness.request())
+    harness.manifestFileStore.remove("spec_subtask_1.md")
+    val launchCount = harness.launcher.requests.size
+
+    val outcome = harness.sweep.prepare(harness.stateFor(initial), harness.request())
+
+    assertIs<GoalPlanningSweepOutcome.PreparedAll>(outcome)
     assertEquals(launchCount, harness.launcher.requests.size)
   }
 
@@ -180,6 +195,7 @@ class GoalPlanningSweepTest {
     assertEquals(2, stopped.currentSubtaskId)
     assertEquals(1, fixtures.preparedCount())
     assertEquals(3, runOneLauncher.requests.size)
+    fixtures.manifestFileStore.remove("spec_subtask_1.md")
 
     val runTwoLauncher = SweepPlanningLauncher { phase, _, _ -> validPhaseOutcome(phase) }
     val runTwo = DefaultGoalPlanningSweep(
@@ -434,13 +450,15 @@ private class SweepPlanningLauncher(
 
 private class CountingManifestFileStore : DecompositionManifestFileStore {
   private val readPaths = mutableListOf<String>()
+  private val removedFileNames = mutableSetOf<String>()
 
   override fun readText(path: Path): String {
+    check(path.fileName.toString() !in removedFileNames) { "missing scratch spec at ${path.fileName}" }
     readPaths += path.toString()
     return "content-${path.fileName}"
   }
 
-  override fun isRegularFile(path: Path): Boolean = true
+  override fun isRegularFile(path: Path): Boolean = path.fileName.toString() !in removedFileNames
 
   override fun findDecompositionManifestFiles(repoRoot: Path): List<Path> = emptyList()
 
@@ -451,6 +469,10 @@ private class CountingManifestFileStore : DecompositionManifestFileStore {
     error("CountingManifestFileStore is read-only in goal planning sweep tests.")
 
   fun countContaining(fragment: String): Int = readPaths.count { path -> fragment in path }
+
+  fun remove(fileName: String) {
+    removedFileNames += fileName
+  }
 }
 
 private class ThrowingManifestFileStore : DecompositionManifestFileStore {

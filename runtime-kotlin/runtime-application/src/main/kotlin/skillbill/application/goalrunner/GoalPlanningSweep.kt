@@ -83,6 +83,7 @@ class DefaultGoalPlanningSweep(
       return preSweepStopped(
         request,
         "Goal planning subtask '${record.subtaskId}' has an invalid saved prepared pair; resume is refused.",
+        record.subtaskId,
       )
     }
     val recoveredPacket = prepared.firstOrNull()?.let(::planningPacketFrom)
@@ -303,23 +304,33 @@ class DefaultGoalPlanningSweep(
       val subtask = record.governedSubSpecPath.takeIf(String::isNotBlank)?.let { path ->
         resolvedSubSpecPath(shared.repoRoot, path)
       }
-      val currentSubSpecHash = subtask?.let { path -> runCatching { sha256HexUtf8(manifestFileStore.readText(path)) }.getOrNull() }
+      val subSpecHashMismatch = subtask
+        ?.takeIf(manifestFileStore::isRegularFile)
+        ?.let { path ->
+          val currentHash = runCatching { sha256HexUtf8(manifestFileStore.readText(path)) }.getOrNull()
+          currentHash == null || record.provenance.subSpecHash != currentHash
+        }
+        ?: false
       record.normalizedIssueKey != shared.normalizedIssueKey ||
         record.repositoryIdentity != shared.repositoryIdentity ||
         record.governedSubSpecPath != expectedPath ||
         record.contractVersion != GOAL_PLANNING_PREPARATION_CONTRACT_VERSION ||
         record.provenance.parentSpecHash != shared.parentSpecHash ||
         record.provenance.decompositionManifestHash != shared.decompositionManifestHash ||
-        record.provenance.subSpecHash != currentSubSpecHash ||
+        subSpecHashMismatch ||
         record.provenance.phaseOutputContractId != FeatureTaskRuntimePhaseOutputSchemaPaths.EXPECTED_SCHEMA_ID ||
         record.provenance.phaseOutputContractVersion != FEATURE_TASK_RUNTIME_CONTRACT_VERSION
     }?.let { record -> stopped(shared, record.subtaskId, incompatibleProvenanceReason(record)) }
   }
 
-  private fun preSweepStopped(request: GoalRunnerRunRequest, reason: String): GoalPlanningSweepOutcome.Stopped =
+  private fun preSweepStopped(
+    request: GoalRunnerRunRequest,
+    reason: String,
+    currentSubtaskId: Int = 0,
+  ): GoalPlanningSweepOutcome.Stopped =
     GoalPlanningSweepOutcome.Stopped(
       issueKey = request.issueKey,
-      currentSubtaskId = 0,
+      currentSubtaskId = currentSubtaskId,
       reason = GoalRunnerStopReason.BLOCKED,
       blockedReason = reason,
       lastResumableStep = PHASE_PREPLAN,
