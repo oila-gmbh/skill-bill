@@ -275,7 +275,6 @@ class DefaultGoalPlanningSweep(
       normalizedIssueKey = state.manifest.issueKey.trim().uppercase(),
       parentSpecPath = parentSpecGoverningPath,
       parentSpec = parentSpec,
-      decomposition = decomposition,
       subtasks = state.manifest.subtasks,
     )
     return GoalPlanningSharedContext(
@@ -400,7 +399,6 @@ class DefaultGoalPlanningSweep(
     normalizedIssueKey: String,
     parentSpecPath: String,
     parentSpec: String,
-    decomposition: String,
     subtasks: List<DecompositionSubtask>,
   ) {
     require(packet.keys == SHARED_CONTEXT_PACKET_FIELDS) { "shared context packet fields are invalid" }
@@ -411,8 +409,8 @@ class DefaultGoalPlanningSweep(
     require(packet["parent_spec"] == parentSpec.take(MAX_GOVERNED_CONTEXT_CHARS)) {
       "shared context parent spec is invalid"
     }
-    require(packet["decomposition_manifest"] == decomposition.take(MAX_GOVERNED_CONTEXT_CHARS)) {
-      "shared context decomposition manifest is invalid"
+    require((packet["decomposition_manifest"] as? String)?.length?.let { it <= MAX_GOVERNED_CONTEXT_CHARS } == true) {
+      "shared context decomposition manifest is malformed"
     }
     require(isStringMap(packet["platform_packs"])) { "shared context platform packs are invalid" }
     require(isStringMap(packet["boundary_memory"])) { "shared context boundary memory is invalid" }

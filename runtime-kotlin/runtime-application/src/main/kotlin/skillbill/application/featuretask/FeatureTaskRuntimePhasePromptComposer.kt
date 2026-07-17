@@ -343,11 +343,11 @@ object FeatureTaskRuntimePhasePromptComposer {
       current spec; `produced_outputs.mode` must not be "decompose".
       Never include installer, uninstall, or install-sync commands in the plan: do not plan to run
       `./install.sh`, `./uninstall.sh`, `skill-bill install`, `skill-bill install apply`, or any
-      equivalent install refresh inside a goal-continuation child. If an acceptance criterion asks for
-      install refresh and the refresh has already happened outside the child, satisfy that criterion by
-      adding read-only installed-artifact inspection to the validation evidence instead of blocking or
-      retrying the forbidden command. If the refresh has not happened, return a blocked plan that says
-      it needs operator action outside goal-continuation rather than attempting the install here.
+      equivalent install refresh inside a goal-continuation child. The plan phase defines how future
+      acceptance work will be implemented and validated; it does not require that work to have already
+      happened. Never block planning merely because a later implementation or validation action is not
+      yet complete. A blocked plan requires a genuinely missing input or an irreconcilable constraint
+      that prevents an implementable plan from being produced.
     """.trimIndent()
   }
 

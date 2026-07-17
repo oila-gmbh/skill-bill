@@ -128,6 +128,7 @@ class GoalPlanningSweepTest {
     val initial = manifest(subtaskCount = 1)
     harness.sweep.prepare(harness.stateFor(initial), harness.request())
     val launchCount = harness.launcher.requests.size
+    harness.manifestFileStore.replaceDecompositionManifest("runtime projection changed")
     val advanced = initial.copy(
       status = "in_progress",
       currentSubtaskIntent = initial.currentSubtaskIntent.copy(action = "resume"),
@@ -578,11 +579,16 @@ private class SweepPlanningLauncher(
 private class CountingManifestFileStore : DecompositionManifestFileStore {
   private val readPaths = mutableListOf<String>()
   private val removedFileNames = mutableSetOf<String>()
+  private var decompositionManifest = "content-decomposition-manifest.yaml"
 
   override fun readText(path: Path): String {
     check(path.fileName.toString() !in removedFileNames) { "missing scratch spec at ${path.fileName}" }
     readPaths += path.toString()
-    return "content-${path.fileName}"
+    return if (path.fileName.toString() == "decomposition-manifest.yaml") {
+      decompositionManifest
+    } else {
+      "content-${path.fileName}"
+    }
   }
 
   override fun isRegularFile(path: Path): Boolean = path.fileName.toString() !in removedFileNames
@@ -599,6 +605,10 @@ private class CountingManifestFileStore : DecompositionManifestFileStore {
 
   fun remove(fileName: String) {
     removedFileNames += fileName
+  }
+
+  fun replaceDecompositionManifest(content: String) {
+    decompositionManifest = content
   }
 }
 
