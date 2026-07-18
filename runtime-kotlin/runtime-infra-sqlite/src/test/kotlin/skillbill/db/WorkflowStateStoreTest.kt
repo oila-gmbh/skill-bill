@@ -7,6 +7,8 @@ import skillbill.db.workflow.WorkflowStateRow
 import skillbill.db.workflow.WorkflowStateStore
 import skillbill.error.InvalidFeatureTaskRuntimeWorkerOwnershipSchemaError
 import skillbill.error.InvalidWorkflowStateSchemaError
+import skillbill.ports.persistence.model.FeatureTaskExecutionIdentity
+import skillbill.ports.persistence.model.FeatureTaskRouteScope
 import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerLeaseState
 import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
@@ -24,6 +26,28 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class WorkflowStateStoreTest {
+  @Test
+  fun `hard reset deletion removes only goal children owned by the parent workflow`() {
+    val dbPath = Files.createTempDirectory("goal-child-reset").resolve("metrics.db")
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val store = WorkflowStateStore(connection)
+      val target = goalChildWorkflow("wfl-target", "wfl-parent")
+      val siblingGoal = goalChildWorkflow("wfl-other-goal", "wfl-other-parent")
+      val standalone = goalChildWorkflow("wfl-standalone", "wfl-parent")
+      listOf(target, siblingGoal, standalone).forEach(store::saveFeatureTaskRuntimeWorkflow)
+      listOf(target, siblingGoal).forEach { row -> store.saveFeatureTaskExecutionIdentity(goalChildIdentity(row)) }
+      store.saveFeatureTaskExecutionIdentity(
+        goalChildIdentity(standalone).copy(routeScope = FeatureTaskRouteScope.STANDALONE),
+      )
+
+      assertEquals(1, store.deleteGoalChildWorkflowsByParent("wfl-parent"))
+
+      assertEquals(null, store.getFeatureTaskRuntimeWorkflow(target.workflowId))
+      assertNotNull(store.getFeatureTaskRuntimeWorkflow(siblingGoal.workflowId))
+      assertNotNull(store.getFeatureTaskRuntimeWorkflow(standalone.workflowId))
+    }
+  }
+
   @Test
   fun `runtime worker ownership is acquired fenced transferred heartbeated and released`() {
     val dbPath = Files.createTempDirectory("runtime-worker-lease").resolve("metrics.db")
@@ -704,4 +728,24 @@ private fun workflowRow(
   updatedAt = null,
   finishedAt = null,
   mode = mode,
+)
+
+private fun goalChildWorkflow(workflowId: String, parentWorkflowId: String): WorkflowStateRow = workflowRow(
+  workflowId = workflowId,
+  sessionId = "ftr-$workflowId",
+  workflowName = "bill-feature-task-runtime",
+  currentStepId = "preplan",
+  mode = FeatureTaskWorkflowMode.RUNTIME,
+).copy(
+  artifactsJson =
+  """{"goal_continuation":{"issue_key":"SKILL-128","subtask_id":1,"parent_workflow_id":"$parentWorkflowId"}}""",
+)
+
+private fun goalChildIdentity(row: WorkflowStateRow): FeatureTaskExecutionIdentity = FeatureTaskExecutionIdentity(
+  workflowId = row.workflowId,
+  normalizedIssueKey = "SKILL-128",
+  repositoryIdentity = "repo",
+  governedSpecPath = ".feature-specs/SKILL-128/spec.md",
+  mode = FeatureTaskWorkflowMode.RUNTIME,
+  routeScope = FeatureTaskRouteScope.GOAL_CHILD,
 )

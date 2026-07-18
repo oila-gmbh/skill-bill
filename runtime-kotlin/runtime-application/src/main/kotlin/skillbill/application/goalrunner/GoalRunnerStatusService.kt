@@ -154,6 +154,7 @@ class GoalRunnerStatusService(
     if (request.hard) {
       database.transaction(request.dbPathOverride) { unitOfWork ->
         unitOfWork.goalPlanningPreparations.deleteByGoal(latest.parentWorkflowId)
+        unitOfWork.workflowStates.deleteGoalChildWorkflowsByParent(latest.parentWorkflowId)
       }
     }
     val resetManifest = latest.manifest.resetManifest(request.hard)

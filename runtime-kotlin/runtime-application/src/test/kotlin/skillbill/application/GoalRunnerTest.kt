@@ -1552,6 +1552,7 @@ class GoalRunnerObservabilityTest {
 
     requireNotNull(reset)
     assertEquals(listOf("wfl-parent"), database.deletedParentGoalIds)
+    assertEquals(listOf("wfl-parent"), database.deletedChildWorkflowParentIds)
     assertEquals(listOf<String?>("/tmp/skillbill-goal-runner/metrics.db"), database.transactionDbOverrides)
     assertEquals(listOf("pending", "pending"), store.manifest.subtasks.map(DecompositionSubtask::status))
   }
@@ -2705,6 +2706,7 @@ private object GoalTestEmptyDatabase : DatabaseSessionFactory {
 private class GoalTestPlanningDatabase : DatabaseSessionFactory {
   private val dbPath = Path.of("/fake/goal-test-planning.db")
   val deletedParentGoalIds = mutableListOf<String>()
+  val deletedChildWorkflowParentIds = mutableListOf<String>()
   val transactionDbOverrides = mutableListOf<String?>()
   private val planningRepository = object : skillbill.ports.persistence.GoalPlanningPreparationRepository by
   skillbill.ports.persistence.EmptyGoalPlanningPreparationRepository {
@@ -2729,7 +2731,13 @@ private class GoalTestPlanningDatabase : DatabaseSessionFactory {
     override val lifecycleTelemetry: LifecycleTelemetryRepository get() = error("unused by hard reset test")
     override val telemetryReconciliation: TelemetryReconciliationRepository get() = error("unused by hard reset test")
     override val telemetryOutbox: TelemetryOutboxRepository get() = error("unused by hard reset test")
-    override val workflowStates: WorkflowStateRepository = GoalTestEmptyWorkflowStateRepository
+    override val workflowStates: WorkflowStateRepository = object : WorkflowStateRepository by
+    GoalTestEmptyWorkflowStateRepository {
+      override fun deleteGoalChildWorkflowsByParent(parentWorkflowId: String): Int {
+        deletedChildWorkflowParentIds += parentWorkflowId
+        return 1
+      }
+    }
     override val workList = skillbill.ports.persistence.EmptyWorkListRepository
     override val goalPlanningPreparations = planningRepository
   }

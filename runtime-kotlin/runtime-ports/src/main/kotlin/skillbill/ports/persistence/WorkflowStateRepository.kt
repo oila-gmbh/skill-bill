@@ -23,6 +23,9 @@ interface WorkflowStateRepository :
 interface FeatureTaskWorkflowStateRepository {
   fun saveFeatureTaskExecutionIdentity(identity: FeatureTaskExecutionIdentity)
 
+  fun deleteGoalChildWorkflowsByParent(parentWorkflowId: String): Int =
+    error("Goal-child workflow deletion is not implemented by this persistence adapter.")
+
   fun findStandaloneFeatureTaskCandidates(
     normalizedIssueKey: String,
     repositoryIdentity: String,
