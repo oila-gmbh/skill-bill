@@ -19,15 +19,38 @@ import kotlin.test.assertTrue
 
 class FeatureTaskRuntimeAuditRepairModelsTest {
   @Test
+  fun `plan rejects gap identifiers that are not stable criterion generations`() {
+    val error = assertFailsWith<IllegalArgumentException> {
+      plan(listOf(item("gap-1-item-1")), gapId = "gap-1")
+    }
+
+    assertTrue(error.message.orEmpty().contains("stable criterion-generation identifier"))
+  }
+
+  @Test
+  fun `plan rejects repair identifiers that are not ordered children of their gap`() {
+    val error = assertFailsWith<IllegalArgumentException> {
+      plan(listOf(item("ac-001-gap-1-item-9")))
+    }
+
+    assertTrue(error.message.orEmpty().contains("stable ordered child"))
+  }
+
+  @Test
   fun `dependency must precede its dependent in serialized execution order`() {
     assertFailsWith<IllegalArgumentException> {
-      plan(listOf(item("GAP-001-R02", listOf("GAP-001-R01")), item("GAP-001-R01")))
+      plan(
+        listOf(
+          item("ac-001-gap-1-item-2", listOf("ac-001-gap-1-item-1")),
+          item("ac-001-gap-1-item-1"),
+        ),
+      )
     }
   }
 
   @Test
   fun `complete plan accepts exact terminal results`() {
-    val plan = plan(listOf(item("GAP-001-R01"), item("GAP-001-R02", listOf("GAP-001-R01"))))
+    val plan = twoItemPlan()
     plan.requireExactCriterionCoverage(listOf("AC-001"))
     plan.requireTerminalResults(
       plan.gaps.flatMap { it.repairItems }.map { repair ->
@@ -45,24 +68,29 @@ class FeatureTaskRuntimeAuditRepairModelsTest {
   @Test
   fun `dependency cycles fail loudly`() {
     assertFailsWith<IllegalArgumentException> {
-      plan(listOf(item("GAP-001-R01", listOf("GAP-001-R02")), item("GAP-001-R02", listOf("GAP-001-R01"))))
+      plan(
+        listOf(
+          item("ac-001-gap-1-item-1", listOf("ac-001-gap-1-item-2")),
+          item("ac-001-gap-1-item-2", listOf("ac-001-gap-1-item-1")),
+        ),
+      )
     }
   }
 
   @Test
   fun `partial repair result set fails loudly`() {
-    val plan = plan(listOf(item("GAP-001-R01"), item("GAP-001-R02")))
+    val plan = plan(listOf(item("ac-001-gap-1-item-1"), item("ac-001-gap-1-item-2")))
     assertFailsWith<IllegalArgumentException> {
-      plan.requireTerminalResults(listOf(result("GAP-001-R01")))
+      plan.requireTerminalResults(listOf(result("ac-001-gap-1-item-1")))
     }
   }
 
   @Test
   fun `terminal results must preserve dependency execution order`() {
-    val plan = plan(listOf(item("GAP-001-R01"), item("GAP-001-R02", listOf("GAP-001-R01"))))
+    val plan = twoItemPlan()
 
     assertFailsWith<IllegalArgumentException> {
-      plan.requireTerminalResults(listOf(result("GAP-001-R02"), result("GAP-001-R01")))
+      plan.requireTerminalResults(listOf(result("ac-001-gap-1-item-2"), result("ac-001-gap-1-item-1")))
     }
   }
 
@@ -70,7 +98,7 @@ class FeatureTaskRuntimeAuditRepairModelsTest {
   fun `recurrence disposition must agree with durable unresolved ledger`() {
     assertFailsWith<IllegalArgumentException> {
       FeatureTaskRuntimeAuditRepairState(
-        acceptedPlans = listOf(plan(listOf(item("GAP-001-R01")))),
+        acceptedPlans = listOf(plan(listOf(item("ac-001-gap-1-item-1")))),
         repairItemResults = emptyList(),
         priorGapDispositions = listOf(
           FeatureTaskRuntimePriorGapDisposition(
@@ -114,10 +142,11 @@ class FeatureTaskRuntimeAuditRepairModelsTest {
     assertEquals(null, decision.reason)
   }
 
-  private fun plan(items: List<FeatureTaskRuntimeRepairItem>) = FeatureTaskRuntimeAuditRepairPlan(
-    "0.1",
-    listOf(FeatureTaskRuntimeAuditGap("GAP-001", "AC-001", "Criterion", "Evidence", "Cause", "runtime", items)),
-  )
+  private fun plan(items: List<FeatureTaskRuntimeRepairItem>, gapId: String = "ac-001-gap-1") =
+    FeatureTaskRuntimeAuditRepairPlan(
+      "0.1",
+      listOf(FeatureTaskRuntimeAuditGap(gapId, "AC-001", "Criterion", "Evidence", "Cause", "runtime", items)),
+    )
 
   private fun item(id: String, dependencies: List<String> = emptyList()) = FeatureTaskRuntimeRepairItem(
     id,
@@ -126,6 +155,13 @@ class FeatureTaskRuntimeAuditRepairModelsTest {
     listOf("symbol"),
     listOf("Run test"),
     dependencies,
+  )
+
+  private fun twoItemPlan() = plan(
+    listOf(
+      item("ac-001-gap-1-item-1"),
+      item("ac-001-gap-1-item-2", listOf("ac-001-gap-1-item-1")),
+    ),
   )
 
   private fun result(id: String) = FeatureTaskRuntimeRepairItemResult(

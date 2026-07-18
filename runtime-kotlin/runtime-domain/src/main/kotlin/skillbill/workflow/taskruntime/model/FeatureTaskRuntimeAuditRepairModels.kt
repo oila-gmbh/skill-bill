@@ -17,6 +17,21 @@ data class FeatureTaskRuntimeAuditRepairPlan(
       require(item.repairItemId !in item.dependsOn) { "Repair item '${item.repairItemId}' depends on itself." }
     }
     requireAcyclic(items)
+    gaps.forEach { gap ->
+      require(GAP_ID.matches(gap.gapId)) {
+        "gap_id '${gap.gapId}' must be the stable criterion-generation identifier " +
+          "'<criterion-ref>-gap-<generation>'."
+      }
+      require(gap.gapId.startsWith("${gap.acceptanceCriterionRef.lowercase()}-gap-")) {
+        "gap_id '${gap.gapId}' must belong to acceptance criterion '${gap.acceptanceCriterionRef}'."
+      }
+      gap.repairItems.forEachIndexed { index, item ->
+        val expectedId = "${gap.gapId}-item-${index + 1}"
+        require(item.repairItemId == expectedId) {
+          "repair_item_id '${item.repairItemId}' must be the stable ordered child '$expectedId'."
+        }
+      }
+    }
     val itemOrder = items.mapIndexed { index, item -> item.repairItemId to index }.toMap()
     items.forEach { item ->
       require(
@@ -244,6 +259,8 @@ data class FeatureTaskRuntimeAuditRepairProgress(
 
 const val AUDIT_REPAIR_CONTRACT_VERSION: String = "0.1"
 const val FEATURE_TASK_RUNTIME_AUDIT_REPAIR_STATE_ARTIFACT_KEY: String = "feature_task_runtime_audit_repair_state"
+
+private val GAP_ID = Regex("ac-[0-9]{3,}-gap-[1-9][0-9]*")
 
 private fun requireNonBlank(value: String, field: String) = require(value.isNotBlank()) { "$field must be nonblank." }
 private fun requireNonBlankList(values: List<String>, field: String) {
