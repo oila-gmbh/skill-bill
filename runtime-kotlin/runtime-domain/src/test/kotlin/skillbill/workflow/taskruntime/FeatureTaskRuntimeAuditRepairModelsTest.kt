@@ -19,6 +19,16 @@ import kotlin.test.assertTrue
 
 class FeatureTaskRuntimeAuditRepairModelsTest {
   @Test
+  fun `durable gap identity must match both criterion and generation`() {
+    assertFailsWith<IllegalArgumentException> {
+      FeatureTaskRuntimeUnresolvedGap("ac-999-gap-1", "AC-002", 1)
+    }
+    assertFailsWith<IllegalArgumentException> {
+      FeatureTaskRuntimeUnresolvedGap("ac-002-gap-2", "AC-002", 1)
+    }
+  }
+
+  @Test
   fun `plan rejects gap identifiers that are not stable criterion generations`() {
     val error = assertFailsWith<IllegalArgumentException> {
       plan(listOf(item("gap-1-item-1")), gapId = "gap-1")
@@ -102,13 +112,13 @@ class FeatureTaskRuntimeAuditRepairModelsTest {
         repairItemResults = emptyList(),
         priorGapDispositions = listOf(
           FeatureTaskRuntimePriorGapDisposition(
-            "GAP-001",
+            "ac-001-gap-1",
             FeatureTaskRuntimePriorGapDisposition.Status.RESOLVED,
             "Verified",
           ),
         ),
         unresolvedGapLedger = FeatureTaskRuntimeUnresolvedGapLedger(
-          listOf(FeatureTaskRuntimeUnresolvedGap("GAP-001", "AC-001", 1)),
+          listOf(FeatureTaskRuntimeUnresolvedGap("ac-001-gap-1", "AC-001", 1)),
         ),
         repositoryFingerprint = "digest",
         progress = FeatureTaskRuntimeAuditRepairProgress(false, 0, 0, 0, 0, 1),

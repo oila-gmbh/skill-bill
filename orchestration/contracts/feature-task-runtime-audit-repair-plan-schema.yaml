@@ -2,6 +2,12 @@ $schema: "https://json-schema.org/draft/2020-12/schema"
 $id: "https://skill-bill.dev/contracts/feature-task-runtime-audit-repair-plan-schema.yaml"
 title: "Feature-task-runtime audit repair plan"
 description: "Complete, dependency-ordered remediation plan emitted by an audit with gaps."
+x-coherence-checks:
+  exact-criterion-coverage: "Every reported unmet criterion maps exactly once to a gap."
+  stable-child-identities: "Each gap ID is criterion-generation derived and each repair item ID is its ordered child."
+  dependency-validity: "Dependencies reference declared repair items and cannot reference the item itself."
+  dependency-ordering: "Every dependency precedes its dependent repair item in plan order."
+  dependency-acyclicity: "The repair-item dependency graph is acyclic."
 type: object
 additionalProperties: false
 required: [contract_version, gaps]
@@ -49,7 +55,10 @@ $defs:
     required: [gap_id, acceptance_criterion_ref, acceptance_criterion_text, failure_evidence, diagnosis, affected_boundary, repair_items]
     properties:
       gap_id: { $ref: "#/$defs/nonBlank" }
-      acceptance_criterion_ref: { $ref: "#/$defs/nonBlank" }
+      acceptance_criterion_ref:
+        allOf:
+          - { $ref: "#/$defs/nonBlank" }
+          - { pattern: "^AC-[0-9]{3}$" }
       acceptance_criterion_text: { $ref: "#/$defs/nonBlank" }
       failure_evidence: { $ref: "#/$defs/nonBlank" }
       diagnosis: { $ref: "#/$defs/nonBlank" }

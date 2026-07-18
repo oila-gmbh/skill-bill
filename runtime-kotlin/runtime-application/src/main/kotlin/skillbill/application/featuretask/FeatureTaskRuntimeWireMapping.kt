@@ -2,6 +2,7 @@ package skillbill.application.featuretask
 
 import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidWorkflowStateSchemaError
+import java.math.BigDecimal
 
 internal inline fun <T> wireMapping(source: String, block: () -> T): T = try {
   block()
@@ -34,7 +35,26 @@ internal fun Map<String, Any?>.stringList(field: String, source: String, require
   }
 }
 
-internal fun Map<String, Any?>.int(field: String): Int? = (this[field] as? Number)?.toInt()
+internal fun Map<String, Any?>.requiredInt(field: String, source: String): Int {
+  val value = this[field] ?: invalidWire("$source.$field", "is required and must be an integer")
+  if (value !is Number) invalidWire("$source.$field", "must be an integer")
+  return try {
+    BigDecimal(value.toString()).toBigIntegerExact().intValueExact()
+  } catch (_: ArithmeticException) {
+    invalidWire("$source.$field", "must be an exact 32-bit integer")
+  } catch (_: NumberFormatException) {
+    invalidWire("$source.$field", "must be an exact 32-bit integer")
+  }
+}
+
+internal fun Map<String, Any?>.requiredBoolean(field: String, source: String): Boolean =
+  this[field] as? Boolean ?: invalidWire("$source.$field", "is required and must be a boolean")
+
+internal fun Map<String, Any?>.optionalString(field: String, source: String): String? = when (val value = this[field]) {
+  null -> null
+  is String -> value.takeIf(String::isNotBlank) ?: invalidWire("$source.$field", "must be nonblank when present")
+  else -> invalidWire("$source.$field", "must be a string when present")
+}
 
 internal fun invalidWire(source: String, reason: String): Nothing =
   throw InvalidWorkflowStateSchemaError("$source $reason")

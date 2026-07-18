@@ -78,6 +78,9 @@ data class FeatureTaskRuntimeAuditGap(
   init {
     requireNonBlank(gapId, "gap_id")
     requireNonBlank(acceptanceCriterionRef, "acceptance_criterion_ref")
+    require(ACCEPTANCE_CRITERION_REF.matches(acceptanceCriterionRef)) {
+      "acceptance_criterion_ref '$acceptanceCriterionRef' must use canonical format 'AC-NNN'."
+    }
     requireNonBlank(acceptanceCriterionText, "acceptance_criterion_text")
     requireNonBlank(failureEvidence, "failure_evidence")
     requireNonBlank(diagnosis, "diagnosis")
@@ -85,6 +88,8 @@ data class FeatureTaskRuntimeAuditGap(
     require(repairItems.isNotEmpty()) { "Gap '$gapId' must contain a repair item." }
   }
 }
+
+private val ACCEPTANCE_CRITERION_REF = Regex("AC-[0-9]{3}")
 
 data class FeatureTaskRuntimeRepairItem(
   val repairItemId: String,
@@ -132,7 +137,14 @@ data class FeatureTaskRuntimeUnresolvedGap(
   init {
     requireNonBlank(gapId, "gap_id")
     requireNonBlank(acceptanceCriterionRef, "acceptance_criterion_ref")
+    require(ACCEPTANCE_CRITERION_REF.matches(acceptanceCriterionRef)) {
+      "acceptance_criterion_ref '$acceptanceCriterionRef' must use canonical format 'AC-NNN'."
+    }
     require(generation > 0) { "gap generation must be positive." }
+    val expectedGapId = "${acceptanceCriterionRef.lowercase()}-gap-$generation"
+    require(gapId == expectedGapId) {
+      "gap_id '$gapId' must equal the stable criterion-generation identifier '$expectedGapId'."
+    }
   }
 }
 

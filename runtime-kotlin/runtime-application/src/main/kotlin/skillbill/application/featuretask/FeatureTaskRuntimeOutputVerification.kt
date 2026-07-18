@@ -34,15 +34,18 @@ internal object FeatureTaskRuntimeOutputVerification {
     val producedOutputs = JsonSupport.anyToStringAnyMap(outputObject["produced_outputs"])
     val raw = producedOutputs?.get(FeatureTaskRuntimeVerificationSignalKeys.AUDIT_UNMET_CRITERIA)
       ?: producedOutputs?.get(FeatureTaskRuntimeVerificationSignalKeys.AUDIT_FAILING_CRITERIA_ALIAS)
+    if (wireVerdict == FeatureTaskRuntimeVerdict.SATISFIED.wireValue) return auditSatisfiedPayloadError(raw)
     val criteriaDriveGapsFound = (raw as? List<*>)?.isNotEmpty() == true
-    if (wireVerdict != FeatureTaskRuntimeVerdict.GAPS_FOUND.wireValue && !criteriaDriveGapsFound) return null
-    val entries = raw as? List<*>
-      ?: return "Audit verdict 'gaps_found' requires a non-empty produced_outputs.unmet_criteria array."
-    if (entries.isEmpty() || entries.any { auditGapMessage(it) == null }) {
-      return "Audit verdict 'gaps_found' requires every produced_outputs.unmet_criteria entry " +
-        "to carry a non-blank message."
+    return when {
+      wireVerdict == FeatureTaskRuntimeVerdict.GAPS_FOUND.wireValue && raw is List<*> && raw.isEmpty() ->
+        "Audit verdict 'gaps_found' contradicts empty produced_outputs.unmet_criteria."
+      wireVerdict != FeatureTaskRuntimeVerdict.GAPS_FOUND.wireValue && !criteriaDriveGapsFound -> null
+      raw !is List<*> -> "Audit verdict 'gaps_found' requires a non-empty produced_outputs.unmet_criteria array."
+      raw.isEmpty() || raw.any { auditGapMessage(it) == null } ->
+        "Audit verdict 'gaps_found' requires every produced_outputs.unmet_criteria entry " +
+          "to carry a non-blank message."
+      else -> null
     }
-    return null
   }
 
   private fun reviewVerdict(
@@ -97,4 +100,10 @@ internal object FeatureTaskRuntimeOutputVerification {
 
   private fun outputObject(output: FeatureTaskRuntimePhaseOutput): Map<String, Any?>? =
     output.normalizedOutput?.envelope
+}
+
+private fun auditSatisfiedPayloadError(raw: Any?): String? = when {
+  raw !is List<*> -> "Audit verdict 'satisfied' requires an explicit empty produced_outputs.unmet_criteria array."
+  raw.isNotEmpty() -> "Audit verdict 'satisfied' contradicts non-empty produced_outputs.unmet_criteria."
+  else -> null
 }

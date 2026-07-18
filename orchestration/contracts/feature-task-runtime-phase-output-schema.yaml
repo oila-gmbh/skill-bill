@@ -135,6 +135,33 @@ allOf:
   - if:
       properties:
         phase_id: { const: audit }
+        verdict: { const: satisfied }
+      required: [phase_id, verdict]
+    then:
+      properties:
+        produced_outputs:
+          type: object
+          required: [unmet_criteria]
+          not:
+            required: [audit_repair_plan]
+          properties:
+            unmet_criteria: { type: array, maxItems: 0 }
+  - if:
+      properties:
+        phase_id: { const: audit }
+        verdict: { const: gaps_found }
+      required: [phase_id, verdict]
+    then:
+      properties:
+        produced_outputs:
+          type: object
+          required: [unmet_criteria, audit_repair_plan]
+          properties:
+            unmet_criteria: { type: array, minItems: 1 }
+            audit_repair_plan: { type: object }
+  - if:
+      properties:
+        phase_id: { const: audit }
       required: [phase_id]
     then:
       properties:

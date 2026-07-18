@@ -348,6 +348,26 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorTest {
   }
 
   @Test
+  fun `audit verdict requires explicit coherent unmet criteria array`() {
+    val invalidProducedOutputs = listOf(
+      """"verdict":"satisfied","produced_outputs":{"evidence":"complete"}""",
+      """"verdict":"satisfied","produced_outputs":{"unmet_criteria":"none"}""",
+      """"verdict":"satisfied","produced_outputs":{"unmet_criteria":[{"message":"gap"}]}""",
+      """"verdict":"gaps_found","produced_outputs":{"evidence":"incomplete"}""",
+      """"verdict":"gaps_found","produced_outputs":{"unmet_criteria":[]}""",
+      """"verdict":"gaps_found","produced_outputs":{"unmet_criteria":"gap"}""",
+    )
+
+    invalidProducedOutputs.forEach { suffix ->
+      val envelope =
+        """{"contract_version":"0.1","phase_id":"audit","status":"completed","summary":"audit",$suffix}"""
+      assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
+        FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(envelope, "audit")
+      }
+    }
+  }
+
+  @Test
   fun `object trailed by prose containing a stray brace still validates`() {
     // The naive first-`{`-to-last-`}` slice overshoots to the stray brace in the trailing prose and
     // parses as neither; the balanced-object scan isolates the genuine object.

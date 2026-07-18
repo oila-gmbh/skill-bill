@@ -1,6 +1,7 @@
 package skillbill.contracts.workflow
 
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
+import skillbill.workflow.taskruntime.model.AUDIT_REPAIR_CONTRACT_VERSION
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -16,5 +17,6 @@ class FeatureTaskRuntimeAuditRepairPlanSchemaContractVersionTest {
       .path("properties").path("contract_version").path("const").asText()
 
     assertEquals(FEATURE_TASK_RUNTIME_AUDIT_REPAIR_CONTRACT_VERSION, version)
+    assertEquals(AUDIT_REPAIR_CONTRACT_VERSION, version)
   }
 }
