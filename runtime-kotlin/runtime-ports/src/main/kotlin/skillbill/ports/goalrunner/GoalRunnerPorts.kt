@@ -27,6 +27,8 @@ interface GoalRunnerManifestStore {
   fun planningStatus(
     parentWorkflowId: String,
     orderedSubtaskIds: List<Int>,
+    blockedSubtaskId: Int? = null,
+    blockedReason: String? = null,
     dbPathOverride: String? = null,
   ): skillbill.goalrunner.model.GoalPlanningStatusSnapshot? = null
 

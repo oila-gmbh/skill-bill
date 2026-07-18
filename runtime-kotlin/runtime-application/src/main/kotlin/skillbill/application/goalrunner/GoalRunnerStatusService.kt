@@ -52,6 +52,9 @@ class GoalRunnerStatusService(
           ?.workflowId
           ?.takeIf(String::isNotBlank)
           ?.let { workflowId -> outcomeStore.progress(workflowId, request.dbPathOverride) }
+        val planningBlock = currentSubtask?.takeIf { subtask ->
+          subtask.status == "blocked" && subtask.lastResumableStep in setOf("preplan", "plan")
+        }
         GoalRunnerStatusProjector.project(
           manifest = state.manifest,
           activeAgent = resolveActiveAgent(currentSubtask, request.dbPathOverride),
@@ -59,6 +62,8 @@ class GoalRunnerStatusService(
             planning = manifestStore.planningStatus(
               state.parentWorkflowId,
               state.manifest.subtasks.filter { it.status != "skipped" }.map { it.id },
+              planningBlock?.id,
+              planningBlock?.blockedReason,
               request.dbPathOverride,
             ),
             currentStepOverride = progress?.currentStepId,

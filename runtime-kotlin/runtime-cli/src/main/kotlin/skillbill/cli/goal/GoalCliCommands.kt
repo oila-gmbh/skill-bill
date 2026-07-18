@@ -682,14 +682,17 @@ private fun GoalRunnerStatusProjection?.toGoalStatusCliMap(issueKey: String): Ma
     "latest_liveness_signal" to it.latestLivenessSignal,
   ).apply {
     it.planning?.let { planning ->
-      put("planning", linkedMapOf(
-        "state" to planning.state.wireValue,
-        "shared_preplan_prepared" to planning.sharedPreplanPrepared,
-        "planned_subtask_count" to planning.plannedSubtaskCount,
-        "total_subtask_count" to planning.totalSubtaskCount,
-        "current_planning_subtask" to planning.currentPlanningSubtaskId,
-        "reason" to planning.reason,
-      ))
+      put(
+        "planning",
+        linkedMapOf(
+          "state" to planning.state.wireValue,
+          "shared_preplan_prepared" to planning.sharedPreplanPrepared,
+          "planned_subtask_count" to planning.plannedSubtaskCount,
+          "total_subtask_count" to planning.totalSubtaskCount,
+          "current_planning_subtask" to planning.currentPlanningSubtaskId,
+          "reason" to planning.reason,
+        ),
+      )
     }
     it.latestObservabilityEvent?.let { event -> put("latest_observability_event", event) }
     it.requestedDiffStat?.let { stat -> put("diff_stat", stat.toGoalDiffStatCliMap()) }

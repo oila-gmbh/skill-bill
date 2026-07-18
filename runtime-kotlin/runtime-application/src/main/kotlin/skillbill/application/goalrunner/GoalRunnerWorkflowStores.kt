@@ -115,9 +115,16 @@ class WorkflowGoalRunnerManifestStore(
   override fun planningStatus(
     parentWorkflowId: String,
     orderedSubtaskIds: List<Int>,
+    blockedSubtaskId: Int?,
+    blockedReason: String?,
     dbPathOverride: String?,
   ) = database.read(dbPathOverride) {
-    it.goalPlanningPreparations.boundedStatus(parentWorkflowId, orderedSubtaskIds)
+    it.goalPlanningPreparations.boundedStatus(
+      parentWorkflowId,
+      orderedSubtaskIds,
+      blockedSubtaskId,
+      blockedReason,
+    )
   }
 
   private val engine: WorkflowEngine = WorkflowEngine(workflowSnapshotValidator)

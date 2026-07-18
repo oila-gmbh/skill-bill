@@ -213,7 +213,11 @@ sealed interface GoalRunnerRunReport {
 }
 
 enum class GoalPlanningStatusState(val wireValue: String) {
-  NOT_STARTED("not_started"), PREPLANNED("preplanned"), PARTIALLY_PLANNED("partially_planned"), PREPARED("prepared"),
+  NOT_STARTED("not_started"),
+  PREPLANNED("preplanned"),
+  PARTIALLY_PLANNED("partially_planned"),
+  BLOCKED("blocked"),
+  PREPARED("prepared"),
 }
 
 data class GoalPlanningStatusSnapshot(

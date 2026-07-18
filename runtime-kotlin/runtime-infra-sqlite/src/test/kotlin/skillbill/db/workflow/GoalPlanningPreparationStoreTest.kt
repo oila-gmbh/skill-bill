@@ -4,6 +4,7 @@ import skillbill.db.core.DatabaseRuntime
 import skillbill.db.core.inImmediateTransaction
 import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
 import skillbill.error.InvalidGoalPlanningPreparationSchemaError
+import skillbill.goalrunner.model.GoalPlanningStatusState
 import skillbill.ports.persistence.model.GoalPlanningContractProvenance
 import skillbill.ports.persistence.model.GoalPlanningIdentity
 import skillbill.ports.persistence.model.GoalPlanningPreparationProvenance
@@ -22,6 +23,52 @@ import kotlin.test.assertNull
 
 @Suppress("LargeClass")
 class GoalPlanningPreparationStoreTest {
+  @Test
+  fun `bounded status covers fresh partial blocked and prepared planning`() {
+    DatabaseRuntime.ensureDatabase(tempDb()).use { connection ->
+      val store = GoalPlanningPreparationStore(connection)
+
+      val fresh = store.boundedStatus("goal-1", listOf(1, 2))
+      assertEquals(GoalPlanningStatusState.NOT_STARTED, fresh.state)
+      assertEquals(1, fresh.currentPlanningSubtaskId)
+
+      store.checkpointSharedPreplan(sharedCheckpoint())
+      store.checkpointSubtaskPlan(planCheckpoint(1, 0))
+      val partial = store.boundedStatus("goal-1", listOf(1, 2))
+      assertEquals(GoalPlanningStatusState.PARTIALLY_PLANNED, partial.state)
+      assertEquals(1, partial.plannedSubtaskCount)
+      assertEquals(2, partial.currentPlanningSubtaskId)
+
+      val blocked = store.boundedStatus("goal-1", listOf(1, 2), 2, "plan agent exhausted")
+      assertEquals(GoalPlanningStatusState.BLOCKED, blocked.state)
+      assertEquals("plan agent exhausted", blocked.reason)
+      assertEquals(2, blocked.currentPlanningSubtaskId)
+
+      store.checkpointSubtaskPlan(planCheckpoint(2, 1))
+      val prepared = store.boundedStatus("goal-1", listOf(1, 2))
+      assertEquals(GoalPlanningStatusState.PREPARED, prepared.state)
+      assertNull(prepared.currentPlanningSubtaskId)
+      assertNull(prepared.reason)
+    }
+  }
+
+  @Test
+  fun `bounded status rejects malformed governed and blocked state`() {
+    DatabaseRuntime.ensureDatabase(tempDb()).use { connection ->
+      val store = GoalPlanningPreparationStore(connection)
+
+      assertFailsWith<InvalidGoalPlanningPreparationSchemaError> {
+        store.boundedStatus("goal-1", listOf(1, 1))
+      }
+      assertFailsWith<InvalidGoalPlanningPreparationSchemaError> {
+        store.boundedStatus("goal-1", listOf(1, 2), blockedSubtaskId = 2)
+      }
+      assertFailsWith<InvalidGoalPlanningPreparationSchemaError> {
+        store.boundedStatus("goal-1", listOf(1, 2), 3, "unknown subtask")
+      }
+    }
+  }
+
   @Test
   fun `normalized checkpoints list count and recover only against complete governed descriptors`() {
     DatabaseRuntime.ensureDatabase(tempDb()).use { connection ->
