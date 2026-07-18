@@ -62,7 +62,9 @@ The success artifact for this step is `input_context`: the normalized spec sourc
 
 ## Step 1b: Rehydrate a Missing Linear-Mode Spec (before any spec read)
 
-Determine the verify target's spec source from the artifact, not config: decomposed → the `decomposition-manifest.yaml` `spec_source` field; single_spec → the `spec_source:` line in `spec.md`; absent or unreadable → `local`.
+Determine the verify target's spec source from the prepared artifact, not config:
+read the `decomposition-manifest.yaml` `spec_source` field and default an omitted
+field to `local`. A bare `spec.md` is intake rather than prepared source authority.
 
 For `spec_source: local`, the spec is committed in the PR's tree — read it directly; no rehydrate, no Linear MCP call.
 

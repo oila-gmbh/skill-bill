@@ -13,7 +13,6 @@ import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 
 class SpecSourceResolverTest {
   private val resolver = SpecSourceResolver(TestDecompositionManifestFileStore, testDecompositionManifestValidator)
@@ -31,12 +30,12 @@ class SpecSourceResolverTest {
   }
 
   @Test
-  fun `reads spec_source from the single_spec spec when no manifest exists`() {
+  fun `bare spec metadata is intake and not prepared source authority`() {
     val repoRoot = Files.createTempDirectory("spec-source-single")
     seedSpec(repoRoot, "spec.md", "---\nspec_source: linear\n---\n# Spec\n")
 
     assertEquals(
-      SpecSource.LINEAR,
+      SpecSource.LOCAL,
       resolver.resolve(repoRoot, ".feature-specs/SKILL-71/spec.md", isGoalContinuation = false),
     )
   }
@@ -52,7 +51,7 @@ class SpecSourceResolverTest {
   }
 
   @Test
-  fun `defaults to local for a single_spec without a spec_source line`() {
+  fun `defaults to local for a bare spec without a spec_source line`() {
     val repoRoot = Files.createTempDirectory("spec-source-local")
     seedSpec(repoRoot, "spec.md", "---\nstatus: Pending\n---\n# Spec\n")
 
@@ -63,13 +62,14 @@ class SpecSourceResolverTest {
   }
 
   @Test
-  fun `loud-fails on an unrecognized single_spec spec_source value`() {
+  fun `ignores an unrecognized source stamp in bare spec intake`() {
     val repoRoot = Files.createTempDirectory("spec-source-bad")
     seedSpec(repoRoot, "spec.md", "spec_source: github\n")
 
-    assertFailsWith<IllegalArgumentException> {
-      resolver.resolve(repoRoot, ".feature-specs/SKILL-71/spec.md", isGoalContinuation = false)
-    }
+    assertEquals(
+      SpecSource.LOCAL,
+      resolver.resolve(repoRoot, ".feature-specs/SKILL-71/spec.md", isGoalContinuation = false),
+    )
   }
 
   @Test

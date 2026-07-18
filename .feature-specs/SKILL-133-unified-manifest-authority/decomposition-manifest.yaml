@@ -3,25 +3,23 @@ contract_version: "0.5"
 issue_key: "SKILL-133"
 feature_name: "unified-manifest-authority"
 parent_spec_path: ".feature-specs/SKILL-133-unified-manifest-authority/spec.md"
-status: "blocked"
+status: "in_progress"
 execution_model: "same_branch_commit_per_subtask"
 base_branch: "main"
 feature_branch: "feat/SKILL-133-unified-manifest-authority"
 stack_branches: []
 current_subtask_intent:
   subtask_id: 1
-  action: "blocked"
+  action: "resume"
 subtasks:
 - id: 1
   name: "Unify manifest authority"
   spec_path: ".feature-specs/SKILL-133-unified-manifest-authority/spec_subtask_1_unify_manifest_authority.md"
-  status: "blocked"
+  status: "in_progress"
   branch: null
   commit_sha: null
-  workflow_id: null
-  blocked_reason: "Could not capture the goal-subtask review baseline before implementation.\
-    \ Refusing to substitute a branch-wide scope. Goal-subtask review baseline capture\
-    \ requires a clean tracked worktree; unstaged tracked changes are present."
+  workflow_id: "wftr-20260718-192505-uqo6"
+  blocked_reason: null
   last_resumable_step: "create_branch"
   linear_issue_id: null
   finalizing_agent_id: null

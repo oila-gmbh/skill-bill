@@ -244,9 +244,10 @@ workflow during resume.
 
 ### Rehydrate a missing linear-mode spec before resume
 
-The spec source is an artifact stamp (decomposed → `decomposition-manifest.yaml`
-`spec_source`; single_spec → the `spec_source:` line in `spec.md`), defaulting to
-`local`. For `spec_source: local`, resume needs no extra step.
+The spec source is the sibling `decomposition-manifest.yaml` `spec_source`
+artifact stamp, defaulting to `local` when omitted. A bare `spec.md` is preparation
+intake, not prepared source authority. For `spec_source: local`, resume needs no
+extra step.
 
 For `spec_source: linear`, the local spec scratch is deleted on terminal success,
 so before calling `resume` check whether the file at `<spec_path>` (or a needed

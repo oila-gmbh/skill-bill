@@ -117,28 +117,14 @@ user: "implement feature …" / "goal status" / …
   │
   ▼
 bill-feature                                     [listed]
-  │  update check, then artifact detection:
-  │    .feature-specs/{KEY}-*/spec.md only          → task sidecar (direct dispatch)
+  │  continuation lookup, then artifact detection:
+  │    resumable durable workflow                    → task sidecar (direct resume)
+  │    .feature-specs/{KEY}-*/spec.md only          → prepare intake through feature-spec
   │    .feature-specs/{KEY}-*/decomposition-manifest → goal sidecar (direct dispatch)
   │    nothing                                      → prepare a spec first
   ▼
 bill-feature-spec                                [listed, Skill tool]
   │  produces governed artifacts + mode verdict
-  │
-  ├── bare spec ──► bill-feature-spec intake preparation
-  │                     │  mode router: mode:runtime (default) / mode:prose,
-  │                     │  parallel-review:<agent>, confirmation gate,
-  │                     │  opencode prose-only rule
-  │                     ├── mode:runtime ──► read bill-feature-task-runtime.md [internal]
-  │                     │                      └─► launches `skill-bill feature-task`
-  │                     │                          (foreground Kotlin runtime: durable
-  │                     │                           workflow state, per-phase agent
-  │                     │                           subprocesses, interrupt/resume)
-  │                     └── mode:prose ────► read bill-feature-task-prose.md   [internal]
-  │                                            └─► phase loop in-session; heavy phases
-  │                                                (preplan, plan, implement, audit,
-  │                                                quality check, PR description) run as
-  │                                                sequential native-agent subagents
   │
   └── manifest (one or more subtasks) ──► read sibling bill-feature-goal.md [internal]
                         │  one confirmation gate; status requests land here too

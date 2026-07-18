@@ -31,7 +31,7 @@ class FeatureSpecPreparationWriterTest {
       request = FeatureSpecWriteRequest(
         decision = singleSpecDecision(),
         featureName = "Feature Spec Horizontal Skill",
-        parentSpecOverview = "Prepare one spec only.",
+        parentSpecOverview = "Prepare one executable implementation unit.",
         validationStrategy = "bill-code-check",
         subtasks = listOf(singleSubtask()),
       ),
@@ -246,8 +246,8 @@ class FeatureSpecPreparationWriterTest {
     issueKey = "SKILL-59",
     intendedOutcome = "single_spec",
     acceptanceCriteria = listOf("Write parent spec."),
-    constraints = listOf("No decomposition manifest for single-spec mode."),
-    nonGoals = listOf("Do not create subtasks."),
+    constraints = listOf("Represent one implementation unit as exactly one manifest subtask."),
+    nonGoals = listOf("Do not fabricate additional subtasks."),
     mode = FeatureSpecPreparationMode.SINGLE_SPEC,
   )
 

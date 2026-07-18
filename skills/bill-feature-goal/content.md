@@ -8,7 +8,7 @@ description: Use when a manifest-backed feature goal with one or more subtasks i
 
 `bill-feature-goal` is the interactive front door for every prepared feature goal. It accepts one or more implementation subtasks, verifies manifest readiness, asks for exactly one confirmation before starting any automated loop, and runs the confirmed goal in the selected mode.
 
-`bill-feature-goal` is the trigger surface for decomposed-goal orchestration. In
+`bill-feature-goal` is the trigger surface for manifest-backed goal orchestration. In
 `mode:runtime` (the default) it hands off to the durable `skill-bill goal` runtime
 driver; in `mode:prose` it loops the subtasks in the current agent session.
 
@@ -66,7 +66,7 @@ must not overwrite the durable parent or child review policy.
 
 **opencode and zcode are prose-only.** When the agent currently executing this skill is opencode or zcode, prose is the implicit default and runtime mode is unsupported: opencode's foreground Bash tool is hard-killed at 120s before a phase can finish and per-phase output cannot be harvested back; zcode's foreground runtime exceeds the Bash execution ceiling and a detached zcode child emits no harvestable output before the supervisor kills it as unresponsive. On opencode or zcode: with no mode arg, resolve to `prose` (no need to pass `mode:prose`); with an explicit `mode:runtime`, stop and emit the actionable refusal and do NOT hand off to the `skill-bill goal` runtime:
 
-> Runtime mode is not supported on opencode or zcode in this harness. opencode's foreground Bash tool is hard-killed at 120s before a phase can finish and per-phase output cannot be harvested back; zcode's foreground runtime exceeds the Bash execution ceiling and a detached zcode child emits no harvestable output before the supervisor kills it as unresponsive. Use prose instead — run bill-feature-task-prose for a single feature task, or bill-feature-goal mode:prose for a decomposed goal.
+> Runtime mode is not supported on opencode or zcode in this harness. opencode's foreground Bash tool is hard-killed at 120s before a phase can finish and per-phase output cannot be harvested back; zcode's foreground runtime exceeds the Bash execution ceiling and a detached zcode child emits no harvestable output before the supervisor kills it as unresponsive. Use prose instead — run bill-feature-goal mode:prose for every prepared manifest, including one with exactly one subtask.
 
 The `skill-bill goal` CLI refuses the same way whenever the resolved runtime agent is opencode or zcode (invoked agent or `--agent-override`), so this skill gate and the CLI agree.
 
@@ -188,7 +188,7 @@ the child's durable review artifacts and telemetry.
 
 ## Confirmed Handoff
 
-After confirmation, ensure the decomposed parent workflow and runtime manifest
+After confirmation, ensure the manifest-backed parent workflow and runtime manifest
 now exist from the shared feature-spec preparation path. Then execute the
 foreground driver directly in the current agent session, always passing
 `--agent` set to the agent currently executing this skill:
@@ -286,7 +286,7 @@ missing.
 
 ## Status Checks
 
-Use the read-only status command whenever the user asks where a decomposed goal stands:
+Use the read-only status command whenever the user asks where a prepared goal stands:
 
 ```bash
 skill-bill goal status <issue_key>

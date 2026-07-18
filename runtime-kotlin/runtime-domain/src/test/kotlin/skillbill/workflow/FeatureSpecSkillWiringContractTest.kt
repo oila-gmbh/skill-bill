@@ -103,11 +103,23 @@ class FeatureSpecSkillWiringContractTest {
     val featureSpecContent = Files.readString(repoRootFromTest().resolve("skills/bill-feature-spec/content.md"))
 
     assertContains(content, "invoke `bill-feature-spec` in this session")
-    assertContains(content, "`bill-feature-goal` is the trigger surface for decomposed-goal orchestration")
+    assertContains(content, "`bill-feature-goal` is the trigger surface for manifest-backed goal orchestration")
     assertContains(content, "`skill-bill goal <issue_key>` remains consumer-only")
     assertContains(featureSpecContent, "`skill-bill goal <issue_key>` is consumer-only")
     assertContains(content, "Ask one confirmation question")
     assertEquals(1, countOccurrences(content, "Ask one confirmation question"))
+  }
+
+  @Test
+  fun `prepared feature guidance uses the manifest as sole source authority`() {
+    val runtime = Files.readString(repoRootFromTest().resolve("skills/bill-feature-task-runtime/content.md"))
+    val prose = Files.readString(repoRootFromTest().resolve("skills/bill-feature-task-prose/content.md"))
+    val verify = Files.readString(repoRootFromTest().resolve("skills/bill-feature-verify/content.md"))
+
+    assertContains(runtime, "bare `spec.md` is preparation\nintake, not prepared source authority")
+    assertContains(prose, "A bare `spec.md` is preparation intake, not prepared source\nauthority")
+    assertContains(prose, "exactly one manifest subtask")
+    assertContains(verify, "A bare `spec.md` is intake rather than prepared source authority")
   }
 
   @Test
