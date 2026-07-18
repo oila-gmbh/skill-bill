@@ -17,6 +17,12 @@ data class FeatureTaskRuntimeAuditRepairPlan(
       require(item.repairItemId !in item.dependsOn) { "Repair item '${item.repairItemId}' depends on itself." }
     }
     requireAcyclic(items)
+    val itemOrder = items.mapIndexed { index, item -> item.repairItemId to index }.toMap()
+    items.forEach { item ->
+      require(item.dependsOn.all { dependency -> itemOrder.getValue(dependency) < itemOrder.getValue(item.repairItemId) }) {
+        "Repair item '${item.repairItemId}' must appear after all of its dependencies."
+      }
+    }
   }
 
   fun requireExactCriterionCoverage(reportedCriterionRefs: List<String>) {
@@ -108,6 +114,7 @@ data class FeatureTaskRuntimeAuditRepairProgress(
 )
 
 const val AUDIT_REPAIR_CONTRACT_VERSION: String = "0.1"
+const val FEATURE_TASK_RUNTIME_AUDIT_REPAIR_STATE_ARTIFACT_KEY: String = "feature_task_runtime_audit_repair_state"
 
 private fun requireNonBlank(value: String, field: String) = require(value.isNotBlank()) { "$field must be nonblank." }
 private fun requireNonBlankList(values: List<String>, field: String) {

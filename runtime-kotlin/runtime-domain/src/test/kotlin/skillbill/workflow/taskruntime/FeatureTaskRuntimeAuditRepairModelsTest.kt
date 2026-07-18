@@ -10,6 +10,13 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairItemResult
 
 class FeatureTaskRuntimeAuditRepairModelsTest {
   @Test
+  fun `dependency must precede its dependent in serialized execution order`() {
+    assertFailsWith<IllegalArgumentException> {
+      plan(listOf(item("GAP-001-R02", listOf("GAP-001-R01")), item("GAP-001-R01")))
+    }
+  }
+
+  @Test
   fun `complete plan accepts exact terminal results`() {
     val plan = plan(listOf(item("GAP-001-R01"), item("GAP-001-R02", listOf("GAP-001-R01"))))
     plan.requireExactCriterionCoverage(listOf("AC-001"))

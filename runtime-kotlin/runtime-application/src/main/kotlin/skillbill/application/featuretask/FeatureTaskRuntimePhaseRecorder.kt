@@ -20,6 +20,7 @@ import skillbill.workflow.model.WorkflowStateSnapshot
 import skillbill.workflow.model.WorkflowUpdateInput
 import skillbill.workflow.model.appendBoundedHistoryBySequence
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_AUDIT_REPAIR_STATE_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_DECOMPOSE_TERMINAL_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_BRIEFINGS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY
@@ -115,6 +116,17 @@ class FeatureTaskRuntimePhaseRecorder(
         completion.toArtifactMap(),
         FEATURE_TASK_RUNTIME_PHASE_LEDGER_LIMIT,
       )
+      val auditRepairPatch = if (request.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT) {
+        request.outputArtifact
+          ?.let(JsonSupport::parseObjectOrNull)
+          ?.let(JsonSupport::jsonElementToValue)
+          ?.let(JsonSupport::anyToStringAnyMap)
+          ?.get("produced_outputs")
+          ?.let(JsonSupport::anyToStringAnyMap)
+          ?.get("audit_repair_plan")
+          ?.let { mapOf(FEATURE_TASK_RUNTIME_AUDIT_REPAIR_STATE_ARTIFACT_KEY to it) }
+          .orEmpty()
+      } else emptyMap()
       persistPatch(
         unitOfWork.workflowStates,
         record,
@@ -122,7 +134,7 @@ class FeatureTaskRuntimePhaseRecorder(
           FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY to
             updatedRecords.mapValues { (_, value) -> value.toArtifactMap() },
           FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY to updatedLedger,
-        ),
+        ) + auditRepairPatch,
         WorkflowRowAdvance(request.phaseId, workflowStatusFor(request), stepUpdatesFrom(updatedRecords)),
       )
       true

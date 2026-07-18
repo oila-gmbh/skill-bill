@@ -9,6 +9,7 @@ import skillbill.application.model.FeatureTaskRuntimeRunReport
 import skillbill.application.model.FeatureTaskRuntimeRunRequest
 import skillbill.application.workflow.repoRoot
 import skillbill.config.model.PhaseModelDirective
+import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
@@ -94,6 +95,9 @@ internal class FeatureTaskRuntimeRunLoop(
       } else {
         emptyList()
       },
+      auditRepairPlan = if (loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID) {
+        state.auditRepairPlan(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT)
+      } else null,
     )
   }
 
@@ -418,7 +422,14 @@ internal class FeatureTaskRuntimeRunLoop(
     } else {
       emptyList()
     }
-    pendingReentry = PendingReentry(destinationPhaseId, loopId, edgeIteration, verdict, reentryGapCriteria)
+    pendingReentry = PendingReentry(
+      destinationPhaseId,
+      loopId,
+      edgeIteration,
+      verdict,
+      reentryGapCriteria,
+      if (loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID) state.auditRepairPlan(edge.fromPhaseId) else null,
+    )
     activeReentry = pendingReentry
     observability.loopEdge(destinationPhaseId, loopId, edgeIteration, verdict)
   }
@@ -711,6 +722,7 @@ internal class FeatureTaskRuntimeRunLoop(
     val edgeIteration: Int,
     val drivingVerdict: FeatureTaskRuntimeVerdict,
     val reentryGapCriteria: List<String> = emptyList(),
+    val auditRepairPlan: Map<String, Any?>? = null,
   )
 
   @Suppress("LongParameterList")
@@ -1143,7 +1155,8 @@ internal class FeatureTaskRuntimeRunLoop(
     fileManifest: FeatureTaskRuntimePhaseFileManifest,
   ): AttemptResult = try {
     val outputMap = outputValidator.validateAndReadPhaseOutput(outputText, sourceLabel = run.phaseId)
-    settleValidatedOutput(run, iteration, outputText, outputMap, observability, fileManifest)
+    val canonicalOutput = JsonSupport.mapToJsonString(outputMap)
+    settleValidatedOutput(run, iteration, canonicalOutput, outputMap, observability, fileManifest)
   } catch (error: InvalidFeatureTaskRuntimePhaseOutputSchemaError) {
     schemaInvalidAttempt(run, iteration, error.reason, observability, fileManifest)
   }
@@ -1197,8 +1210,37 @@ internal class FeatureTaskRuntimeRunLoop(
 
   private fun outputVerificationGateReason(phaseId: String, outputMap: Map<String, Any?>): String? =
     mutatingReconciliationGateReason(phaseId, outputMap)
+      ?: auditRepairResultGateReason(phaseId, outputMap)
       ?: reviewVerificationSignalGateReason(phaseId, outputMap)
       ?: auditVerificationSignalGateReason(phaseId, outputMap)
+
+  private fun auditRepairResultGateReason(phaseId: String, outputMap: Map<String, Any?>): String? {
+    val reentry = activeReentry?.takeIf {
+      it.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID
+    } ?: return null
+    if (!FeatureTaskRuntimePhaseWorkflowDefinition.isMutatingPhase(phaseId)) return null
+    val expected = (reentry.auditRepairPlan?.get("gaps") as? List<*>).orEmpty()
+      .flatMap { gap ->
+        (JsonSupport.anyToStringAnyMap(gap)?.get("repair_items") as? List<*>).orEmpty()
+      }
+      .mapNotNull { JsonSupport.anyToStringAnyMap(it)?.get("repair_item_id") as? String }
+    if (expected.isEmpty()) return "Audit-gap remediation is missing its persisted audit_repair_plan."
+    val results = (JsonSupport.anyToStringAnyMap(outputMap["produced_outputs"])
+      ?.get("repair_item_results") as? List<*>).orEmpty()
+    val resultMaps = results.mapNotNull(JsonSupport::anyToStringAnyMap)
+    val actual = resultMaps.mapNotNull { it["repair_item_id"] as? String }
+    if (actual.size != resultMaps.size || actual.size != actual.toSet().size || actual.toSet() != expected.toSet()) {
+      return "Audit-gap remediation requires exact repair_item_result identifier equality; expected=$expected actual=$actual."
+    }
+    val invalid = resultMaps.any { result ->
+      result["outcome"] !in setOf("fixed", "already_satisfied") ||
+        (result["executed_verification"] as? List<*>)?.filterIsInstance<String>()?.none(String::isNotBlank) != false ||
+        (result["result_evidence"] as? String).isNullOrBlank()
+    }
+    return if (invalid) {
+      "Every audit repair item must have a terminal outcome and concrete verification/result evidence."
+    } else null
+  }
 
   private fun persistAcceptedOutput(
     run: PhaseRun,
@@ -1386,6 +1428,7 @@ internal class FeatureTaskRuntimeRunLoop(
       recordedOutputs = state.outputs(),
       drivingVerdict = run.reentry?.drivingVerdict,
       reentryGapCriteria = auditGapCriteriaFor(run, state),
+      auditRepairPlan = run.reentry?.auditRepairPlan,
     )
     val briefing = FeatureTaskRuntimePhaseBriefingAssembler.assemble(handoff)
     recorder.recordPhaseBriefing(run.request.workflowId, briefing, run.request.dbPathOverride)

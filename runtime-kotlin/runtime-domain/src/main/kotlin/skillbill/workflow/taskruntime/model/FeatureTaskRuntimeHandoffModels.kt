@@ -144,6 +144,7 @@ data class FeatureTaskRuntimePhaseHandoff(
    * or a non-audit-gap re-entry, preserving the existing forward-launch assembly.
    */
   val reentryGapCriteria: List<String> = emptyList(),
+  val auditRepairPlan: Map<String, Any?>? = null,
 )
 
 /**

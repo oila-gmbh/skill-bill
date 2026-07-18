@@ -1,6 +1,7 @@
 package skillbill.application.featuretask
 
 import skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing
+import skillbill.contracts.JsonSupport
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseHandoff
 import java.nio.ByteBuffer
@@ -88,6 +89,10 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
       if (handoff.reentryGapCriteria.isNotEmpty()) {
         appendLine("audit_gaps:")
         handoff.reentryGapCriteria.forEach { gap -> appendLine("  - $gap") }
+      }
+      handoff.auditRepairPlan?.let { plan ->
+        appendLine("audit_repair_plan:")
+        JsonSupport.mapToJsonString(plan).lineSequence().forEach { appendLine("  $it") }
       }
       appendLine()
       appendLine("## Run invariants (layer 1, unconditional)")

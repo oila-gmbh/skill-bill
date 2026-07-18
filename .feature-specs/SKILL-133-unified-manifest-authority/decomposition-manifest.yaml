@@ -1,0 +1,34 @@
+---
+contract_version: "0.4"
+issue_key: "SKILL-133"
+feature_name: "unified-manifest-authority"
+parent_spec_path: ".feature-specs/SKILL-133-unified-manifest-authority/spec.md"
+spec_source: "local"
+status: "blocked"
+execution_model: "same_branch_commit_per_subtask"
+base_branch: "main"
+feature_branch: "feat/SKILL-133-unified-manifest-authority"
+stack_branches: []
+current_subtask_intent:
+  subtask_id: 1
+  action: "blocked"
+subtasks:
+- id: 1
+  name: "Unify manifest authority"
+  spec_path: ".feature-specs/SKILL-133-unified-manifest-authority/spec_subtask_1_unify_manifest_authority.md"
+  status: "blocked"
+  branch: null
+  commit_sha: null
+  workflow_id: null
+  blocked_reason: "git checkout -b feat/SKILL-133-unified-manifest-authority main\
+    \ failed with exit code 1: error: Your local changes to the following files would\
+    \ be overwritten by checkout:\n\torchestration/contracts/feature-task-runtime-phase-output-schema.yaml\n\
+    \truntime-kotlin/runtime-domain/src/main/kotlin/skillbill/workflow/taskruntime/model/FeatureTaskRuntimeAuditRepairModels.kt\n\
+    \truntime-kotlin/runtime-domain/src/test/kotlin/skillbill/workflow/taskruntime/FeatureTaskRuntimeAuditRepairModelsTest.kt\n\
+    \truntime-kotlin/runtime-infra-fs/src/main/kotlin/skillbill/contracts/workflow/FeatureTaskRuntimePhaseOutputSchemaValidator.kt\n\
+    Please commit your changes or stash them before you switch branches.\nAborting"
+  last_resumable_step: "create_branch"
+  linear_issue_id: null
+  finalizing_agent_id: null
+  participating_agent_ids: []
+  dependencies: []

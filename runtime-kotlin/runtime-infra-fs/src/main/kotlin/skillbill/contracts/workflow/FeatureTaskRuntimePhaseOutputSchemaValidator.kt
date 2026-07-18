@@ -13,6 +13,10 @@ import com.networknt.schema.SpecVersion
 import com.networknt.schema.ValidationMessage
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.error.InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGap
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairPlan
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairItem
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairItemStatus
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.logging.Level
@@ -57,14 +61,54 @@ object FeatureTaskRuntimePhaseOutputSchemaValidator {
   private fun validateAuditRepairPlan(instance: JsonNode, sourceLabel: String) {
     if (sourceLabel != "audit" || instance.path("verdict").asText() != "gaps_found") return
     val plan = instance.path("produced_outputs").path("audit_repair_plan")
-    val errors = auditRepairSchema.validate(plan)
-    if (errors.isNotEmpty()) {
-      throw InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError(
+    try {
+      val errors = auditRepairSchema.validate(plan)
+      require(errors.isEmpty()) { formatValidationReason(errors.sortedWith(violationOrdering), plan) }
+      decodeAuditRepairPlan(plan).requireExactCriterionCoverage(
+        instance.path("produced_outputs").path("unmet_criteria").map {
+          it.path("acceptance_criterion_ref").asText()
+        },
+      )
+    } catch (error: InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError) {
+      throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
         sourceLabel = sourceLabel,
-        reason = formatValidationReason(errors.sortedWith(violationOrdering), plan),
+        reason = "produced_outputs.audit_repair_plan: ${error.reason}",
+        cause = error,
+      )
+    } catch (error: IllegalArgumentException) {
+      throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
+        sourceLabel = sourceLabel,
+        reason = "produced_outputs.audit_repair_plan: ${error.message.orEmpty()}",
+        cause = error,
       )
     }
   }
+
+  private fun decodeAuditRepairPlan(node: JsonNode): FeatureTaskRuntimeAuditRepairPlan =
+    FeatureTaskRuntimeAuditRepairPlan(
+      contractVersion = node.path("contract_version").asText(),
+      gaps = node.path("gaps").map { gap ->
+        FeatureTaskRuntimeAuditGap(
+          gapId = gap.path("gap_id").asText(),
+          acceptanceCriterionRef = gap.path("acceptance_criterion_ref").asText(),
+          acceptanceCriterionText = gap.path("acceptance_criterion_text").asText(),
+          failureEvidence = gap.path("failure_evidence").asText(),
+          diagnosis = gap.path("diagnosis").asText(),
+          affectedBoundary = gap.path("affected_boundary").asText(),
+          repairItems = gap.path("repair_items").map { item ->
+            FeatureTaskRuntimeRepairItem(
+              repairItemId = item.path("repair_item_id").asText(),
+              intendedOutcome = item.path("intended_outcome").asText(),
+              implementationActions = item.path("implementation_actions").map(JsonNode::asText),
+              affectedPathsOrSymbols = item.path("affected_paths_or_symbols").map(JsonNode::asText),
+              requiredVerification = item.path("required_verification").map(JsonNode::asText),
+              dependsOn = item.path("depends_on").map(JsonNode::asText),
+              status = FeatureTaskRuntimeRepairItemStatus.PENDING,
+            )
+          },
+        )
+      },
+    )
 
   fun validatePhaseOutputText(phaseOutputText: String, sourceLabel: String) {
     val node = readPhaseOutputObjectNode(phaseOutputText, sourceLabel)

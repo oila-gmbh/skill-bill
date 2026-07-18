@@ -1,5 +1,6 @@
 package skillbill.application.featuretask
 
+import skillbill.contracts.JsonSupport
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeBackwardEdge
@@ -268,6 +269,16 @@ internal class FeatureTaskRuntimeRunState(
 
   fun unmetAuditCriteria(phaseId: String): List<String> =
     FeatureTaskRuntimeOutputVerification.unmetAuditCriteria(outputFor(phaseId))
+
+  fun auditRepairPlan(phaseId: String): Map<String, Any?>? = outputFor(phaseId)
+    ?.payload
+    ?.let(JsonSupport::parseObjectOrNull)
+    ?.let(JsonSupport::jsonElementToValue)
+    ?.let(JsonSupport::anyToStringAnyMap)
+    ?.get("produced_outputs")
+    ?.let(JsonSupport::anyToStringAnyMap)
+    ?.get("audit_repair_plan")
+    ?.let(JsonSupport::anyToStringAnyMap)
 
   // The latest validated output for the phase (highest iteration), or null when none is present.
   fun outputFor(phaseId: String): FeatureTaskRuntimePhaseOutput? =
