@@ -4,14 +4,14 @@ issue_key: "SKILL-128"
 feature_name: "goal-planning-context-reuse"
 parent_spec_path: ".feature-specs/SKILL-128-goal-planning-context-reuse/spec.md"
 spec_source: "local"
-status: "in_progress"
+status: "complete"
 execution_model: "same_branch_commit_per_subtask"
 base_branch: "main"
 feature_branch: "feat/SKILL-128-goal-planning-context-reuse"
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 4
-  action: "resume"
+  subtask_id: 0
+  action: "complete"
 subtasks:
 - id: 1
   name: "Goal planning persistence contract"
@@ -64,12 +64,12 @@ subtasks:
 - id: 4
   name: "Goal planning observability and guidance"
   spec_path: ".feature-specs/SKILL-128-goal-planning-context-reuse/spec_subtask_4_goal_planning_observability.md"
-  status: "pending"
+  status: "complete"
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260718-132340-glrn"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
