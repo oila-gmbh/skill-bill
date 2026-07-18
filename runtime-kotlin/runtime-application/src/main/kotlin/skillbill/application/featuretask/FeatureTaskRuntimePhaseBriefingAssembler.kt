@@ -78,6 +78,7 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
   }
 
   // Called twice: once with empty bodies to measure fixed overhead, once with the bounded bodies.
+  @Suppress("LongMethod")
   private fun renderBriefing(handoff: FeatureTaskRuntimePhaseHandoff, upstreamBodies: Map<String, String>): String =
     buildString {
       val invariants = handoff.runInvariants
@@ -99,7 +100,14 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
         appendLine("  - Emit exactly one terminal repair_item_result for every carried repair_item_id.")
         appendLine("  - already_satisfied requires distinct concrete repository and verification evidence.")
         appendLine("  - Do not defer or assign carried work to review, audit, validation, or a later phase.")
-        appendLine("  - If an item is genuinely unresolvable, block with both gap_id and repair_item_id and preserve partial terminal evidence.")
+        appendLine(
+          "  - If an item is genuinely unresolvable, block with both gap_id and repair_item_id " +
+            "and preserve partial terminal evidence.",
+        )
+      }
+      handoff.auditRepairState?.let { repairState ->
+        appendLine("audit_repair_state:")
+        JsonSupport.mapToJsonString(repairState).lineSequence().forEach { appendLine("  $it") }
       }
       appendLine()
       appendLine("## Run invariants (layer 1, unconditional)")

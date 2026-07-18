@@ -100,6 +100,11 @@ internal class FeatureTaskRuntimeRunLoop(
       } else {
         null
       },
+      auditRepairState = if (loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID) {
+        recorder.loadAuditRepairState(request.workflowId, request.dbPathOverride)
+      } else {
+        null
+      },
     )
   }
 
@@ -295,6 +300,7 @@ internal class FeatureTaskRuntimeRunLoop(
     return PhaseSettlement.stop()
   }
 
+  @Suppress("CyclomaticComplexMethod")
   private fun nextPhaseAfter(phaseId: String, verdict: FeatureTaskRuntimeVerdict): String? {
     val effectiveVerdict = if (
       phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW &&
@@ -326,6 +332,15 @@ internal class FeatureTaskRuntimeRunLoop(
           ) {
             return null
           }
+          if (loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID &&
+            !authoritativeAuditRepairPlanMatches(phaseId)
+          ) {
+            blockAt(
+              phaseId,
+              "The accepted audit repair plan was not durably readable and identical before the audit_gap edge.",
+            )
+            return null
+          }
           recordBackwardEdge(
             edge = edge,
             destinationPhaseId = transition.phaseId,
@@ -337,6 +352,12 @@ internal class FeatureTaskRuntimeRunLoop(
         transition.phaseId
       }
     }
+  }
+
+  private fun authoritativeAuditRepairPlanMatches(auditPhaseId: String): Boolean {
+    val normalizedPlan = state.auditRepairPlan(auditPhaseId) ?: return false
+    val durableState = recorder.loadAuditRepairState(request.workflowId, request.dbPathOverride) ?: return false
+    return JsonSupport.anyToStringAnyMap(durableState["latest_plan"]) == normalizedPlan
   }
 
   private fun reentersMutatingPhase(edge: FeatureTaskRuntimeBackwardEdge, destinationPhaseId: String): Boolean =
@@ -432,6 +453,11 @@ internal class FeatureTaskRuntimeRunLoop(
       reentryGapCriteria,
       if (loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID) {
         state.auditRepairPlan(edge.fromPhaseId)
+      } else {
+        null
+      },
+      if (loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID) {
+        recorder.loadAuditRepairState(request.workflowId, request.dbPathOverride)
       } else {
         null
       },
@@ -729,6 +755,7 @@ internal class FeatureTaskRuntimeRunLoop(
     val drivingVerdict: FeatureTaskRuntimeVerdict,
     val reentryGapCriteria: List<String> = emptyList(),
     val auditRepairPlan: Map<String, Any?>? = null,
+    val auditRepairState: Map<String, Any?>? = null,
   )
 
   @Suppress("LongParameterList")
@@ -1166,6 +1193,7 @@ internal class FeatureTaskRuntimeRunLoop(
     schemaInvalidAttempt(run, iteration, error.reason, observability, fileManifest)
   }
 
+  @Suppress("ReturnCount")
   private fun settleValidatedOutput(
     run: PhaseRun,
     iteration: Int,
@@ -1174,6 +1202,21 @@ internal class FeatureTaskRuntimeRunLoop(
     observability: FeatureTaskRuntimeRunObservability,
     fileManifest: FeatureTaskRuntimePhaseFileManifest,
   ): AttemptResult {
+    mutatingReconciliationGateReason(run.phaseId, outputMap)?.let { reason ->
+      return schemaInvalidAttempt(run, iteration, reason, observability, fileManifest)
+    }
+    val terminalAuditRepairReason = terminalAuditRepairBlockGateReason(run.phaseId, outputMap)
+    terminalAuditRepairReason?.let { reason ->
+      return schemaInvalidAttempt(run, iteration, reason, observability, fileManifest)
+    }
+    auditRepairResultGateReason(run.phaseId, outputMap)
+      ?.takeUnless { outputMap["status"] == STATUS_BLOCKED }
+      ?.let { reason ->
+      return schemaInvalidAttempt(run, iteration, reason, observability, fileManifest)
+    }
+    auditDurableLedgerGateReason(run.phaseId, outputMap)?.let { reason ->
+      return schemaInvalidAttempt(run, iteration, reason, observability, fileManifest)
+    }
     terminalBlockedReasonFrom(run.phaseId, outputMap)?.let { reason ->
       return terminalOutputAttempt(run, iteration, reason, outputText, outputMap, observability, fileManifest)
     }
@@ -1214,12 +1257,10 @@ internal class FeatureTaskRuntimeRunLoop(
   }
 
   private fun outputVerificationGateReason(phaseId: String, outputMap: Map<String, Any?>): String? =
-    mutatingReconciliationGateReason(phaseId, outputMap)
-      ?: auditRepairResultGateReason(phaseId, outputMap)
-      ?: reviewVerificationSignalGateReason(phaseId, outputMap)
+    reviewVerificationSignalGateReason(phaseId, outputMap)
       ?: auditVerificationSignalGateReason(phaseId, outputMap)
 
-  @Suppress("ReturnCount")
+  @Suppress("ReturnCount", "CyclomaticComplexMethod")
   private fun auditRepairResultGateReason(phaseId: String, outputMap: Map<String, Any?>): String? {
     val reentry = activeReentry?.takeIf {
       it.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID
@@ -1294,6 +1335,66 @@ internal class FeatureTaskRuntimeRunLoop(
       repositoryEvidence.toSet() != verificationEvidence.toSet()
   }
 
+  @Suppress("ReturnCount")
+  private fun auditDurableLedgerGateReason(phaseId: String, outputMap: Map<String, Any?>): String? {
+    if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT) return null
+    val repairState = recorder.loadAuditRepairState(request.workflowId, request.dbPathOverride).orEmpty()
+    val priorGaps = JsonSupport.anyToStringAnyMap(repairState["unresolved_gap_ledger"])
+      ?.get("gaps") as? List<*> ?: emptyList<Any>()
+    val priorIds = priorGaps.mapNotNull(JsonSupport::anyToStringAnyMap)
+      .mapNotNullTo(linkedSetOf()) { it["gap_id"] as? String }
+    if (priorIds.isEmpty()) return null
+    val produced = JsonSupport.anyToStringAnyMap(outputMap["produced_outputs"]).orEmpty()
+    val dispositions = (produced["prior_gap_dispositions"] as? List<*>).orEmpty()
+      .mapNotNull(JsonSupport::anyToStringAnyMap)
+    val dispositionIds = dispositions.mapNotNull { it["gap_id"] as? String }
+    if (dispositionIds.size != dispositions.size || dispositionIds.toSet() != priorIds) {
+      return "The following audit must disposition every durable unresolved gap exactly once; " +
+        "expected=$priorIds actual=$dispositionIds."
+    }
+    if (dispositions.any { (it["evidence"] as? String).isNullOrBlank() }) {
+      return "Every prior gap disposition requires concrete verification evidence."
+    }
+    val recurring = dispositions.filter { it["status"] == "recurring" }
+    if (recurring.size + dispositions.count { it["status"] == "resolved" } != dispositions.size) {
+      return "Prior gap dispositions must be resolved or recurring."
+    }
+    if (outputMap["verdict"] == "satisfied" && recurring.isNotEmpty()) {
+      return "An audit cannot report satisfied while the durable unresolved-gap ledger remains non-empty."
+    }
+    return null
+  }
+
+  @Suppress("ReturnCount")
+  private fun terminalAuditRepairBlockGateReason(phaseId: String, outputMap: Map<String, Any?>): String? {
+    if (outputMap["status"] != STATUS_BLOCKED) return null
+    val reentry = activeReentry?.takeIf {
+      it.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID
+    } ?: return null
+    if (!FeatureTaskRuntimePhaseWorkflowDefinition.isMutatingPhase(phaseId)) return null
+    val produced = JsonSupport.anyToStringAnyMap(outputMap["produced_outputs"]).orEmpty()
+    val block = JsonSupport.anyToStringAnyMap(produced["unresolvable_repair"])
+      ?: return "Blocked audit remediation must persist unresolvable_repair with gap_id and repair_item_id."
+    val gapId = block["gap_id"] as? String
+    val itemId = block["repair_item_id"] as? String
+    val evidence = block["evidence"] as? String
+    if (gapId.isNullOrBlank() || itemId.isNullOrBlank() || evidence.isNullOrBlank()) {
+      return "Blocked audit remediation requires nonblank gap_id, repair_item_id, and evidence."
+    }
+    val carried = (reentry.auditRepairPlan?.get("gaps") as? List<*>).orEmpty()
+      .mapNotNull(JsonSupport::anyToStringAnyMap)
+    val owningGap = carried.firstOrNull { it["gap_id"] == gapId }
+      ?: return "Blocked audit remediation references unknown gap_id '$gapId'."
+    val carriedItems = (owningGap["repair_items"] as? List<*>).orEmpty()
+      .mapNotNull(JsonSupport::anyToStringAnyMap)
+      .mapNotNull { it["repair_item_id"] as? String }
+    return if (itemId !in carriedItems) {
+      "Blocked audit remediation references repair_item_id '$itemId' outside gap '$gapId'."
+    } else {
+      null
+    }
+  }
+
   private fun containsForbiddenAuditRepairDeferral(value: Any?): Boolean = when (value) {
     is String -> listOf(
       Regex(FORWARD_DEFERRAL_PATTERN, RegexOption.IGNORE_CASE),
@@ -1317,7 +1418,7 @@ internal class FeatureTaskRuntimeRunLoop(
         return AttemptResult.settled(outcome)
       }
     } else {
-      recorder.recordCompletedPhase(
+      val persisted = recorder.recordCompletedPhase(
         phaseStateRequest(
           run,
           iteration,
@@ -1325,9 +1426,22 @@ internal class FeatureTaskRuntimeRunLoop(
           finished = true,
           outputArtifact = outputText,
           fileManifest = fileManifest,
+          normalizedOutput = outputMap,
         ),
         run.request.dbPathOverride,
       )
+      if (!persisted) {
+        return AttemptResult.settled(
+          blockAndPersistInPhase(
+            run,
+            iteration,
+            "Validated phase output could not be persisted to the authoritative workflow record.",
+            observability,
+            failureDisposition = FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE,
+            fileManifest = fileManifest,
+          ),
+        )
+      }
     }
     observability.completedEvent(run.phaseId, run.resolvedAgent.resolvedAgentId, iteration)
     return AttemptResult.settled(
@@ -1434,6 +1548,7 @@ internal class FeatureTaskRuntimeRunLoop(
     finished: Boolean,
     outputArtifact: String?,
     fileManifest: FeatureTaskRuntimePhaseFileManifest? = null,
+    normalizedOutput: Map<String, Any?>? = null,
   ): FeatureTaskRuntimePhaseStateRequest = FeatureTaskRuntimePhaseStateRequest(
     workflowId = run.request.workflowId,
     phaseId = run.phaseId,
@@ -1442,6 +1557,7 @@ internal class FeatureTaskRuntimeRunLoop(
     resolvedAgentId = run.resolvedAgent.resolvedAgentId,
     finished = finished,
     outputArtifact = outputArtifact,
+    normalizedOutput = normalizedOutput,
     fileManifestBefore = fileManifest?.before.orEmpty(),
     fileManifestAfter = fileManifest?.after.orEmpty(),
     fileManifestIntroduced = fileManifest?.introduced.orEmpty(),
@@ -1491,6 +1607,7 @@ internal class FeatureTaskRuntimeRunLoop(
       drivingVerdict = run.reentry?.drivingVerdict,
       reentryGapCriteria = auditGapCriteriaFor(run, state),
       auditRepairPlan = run.reentry?.auditRepairPlan,
+      auditRepairState = run.reentry?.auditRepairState,
     )
     val briefing = FeatureTaskRuntimePhaseBriefingAssembler.assemble(handoff)
     recorder.recordPhaseBriefing(run.request.workflowId, briefing, run.request.dbPathOverride)

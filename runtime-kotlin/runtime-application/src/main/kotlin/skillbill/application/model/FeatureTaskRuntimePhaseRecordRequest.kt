@@ -15,6 +15,7 @@ data class FeatureTaskRuntimePhaseStateRequest(
   val resolvedAgentId: String,
   val finished: Boolean,
   val outputArtifact: String? = null,
+  val normalizedOutput: Map<String, Any?>? = null,
   /** Present only on a terminal blocked record so blocked-ness survives ledger pruning. */
   val blockedReason: String? = null,
   val failureDisposition: FeatureTaskRuntimeFailureDisposition? = null,

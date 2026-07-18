@@ -63,6 +63,7 @@ object FeatureTaskRuntimeHandoffContract {
     drivingVerdict: FeatureTaskRuntimeVerdict? = null,
     reentryGapCriteria: List<String> = emptyList(),
     auditRepairPlan: Map<String, Any?>? = null,
+    auditRepairState: Map<String, Any?>? = null,
   ): FeatureTaskRuntimePhaseHandoff = FeatureTaskRuntimePhaseHandoff(
     phaseId = declaration.phaseId,
     runInvariants = runInvariants,
@@ -71,5 +72,6 @@ object FeatureTaskRuntimeHandoffContract {
     drivingVerdict = drivingVerdict,
     reentryGapCriteria = reentryGapCriteria,
     auditRepairPlan = auditRepairPlan,
+    auditRepairState = auditRepairState,
   )
 }

@@ -149,6 +149,7 @@ data class FeatureTaskRuntimePhaseHandoff(
    */
   val reentryGapCriteria: List<String> = emptyList(),
   val auditRepairPlan: Map<String, Any?>? = null,
+  val auditRepairState: Map<String, Any?>? = null,
 )
 
 /**

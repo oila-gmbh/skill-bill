@@ -90,7 +90,7 @@ class FeatureTaskRuntimePhaseRecorder(
       true
     }
 
-  @Suppress("LongMethod")
+  @Suppress("LongMethod", "CyclomaticComplexMethod", "ComplexCondition")
   fun recordCompletedPhase(request: FeatureTaskRuntimePhaseStateRequest, dbOverride: String? = null): Boolean {
     require(request.status == "completed" && request.finished)
     return database.transaction(dbOverride) { unitOfWork ->
@@ -117,10 +117,7 @@ class FeatureTaskRuntimePhaseRecorder(
         completion.toArtifactMap(),
         FEATURE_TASK_RUNTIME_PHASE_LEDGER_LIMIT,
       )
-      val outputProduced = request.outputArtifact
-        ?.let(JsonSupport::parseObjectOrNull)
-        ?.let(JsonSupport::jsonElementToValue)
-        ?.let(JsonSupport::anyToStringAnyMap)
+      val outputProduced = request.normalizedOutput
         ?.get("produced_outputs")
         ?.let(JsonSupport::anyToStringAnyMap)
       val priorAuditState = artifacts[FEATURE_TASK_RUNTIME_AUDIT_REPAIR_STATE_ARTIFACT_KEY]
@@ -132,7 +129,11 @@ class FeatureTaskRuntimePhaseRecorder(
         ?.takeIf { request.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT }
       val currentDispositions = outputProduced?.get("prior_gap_dispositions")
         ?.takeIf { request.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT }
-      val auditRepairPatch = if (latestPlan != null || repairResults != null) {
+      val reconcilesAuditState = request.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT &&
+        priorAuditState.isNotEmpty()
+      val auditRepairPatch = if (latestPlan != null || repairResults != null || currentDispositions != null ||
+        reconcilesAuditState
+      ) {
         val acceptedPlans = (priorAuditState["accepted_plans"] as? List<*>).orEmpty().toMutableList()
         if (latestPlan != null && acceptedPlans.none { it == latestPlan }) acceptedPlans += latestPlan
         val executionHistory = (priorAuditState["execution_history"] as? List<*>).orEmpty().toMutableList()
@@ -327,6 +328,18 @@ class FeatureTaskRuntimePhaseRecorder(
     val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
       ?: return@read null
     phaseBriefingsFrom(decodeArtifacts(record.artifactsJson))
+  }
+
+  fun loadAuditRepairState(
+    workflowId: String,
+    dbOverride: String? = null,
+  ): Map<String, Any?>? = database.read(dbOverride) { unitOfWork ->
+    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
+      ?: return@read null
+    val artifact = decodeArtifacts(record.artifactsJson)[FEATURE_TASK_RUNTIME_AUDIT_REPAIR_STATE_ARTIFACT_KEY]
+      ?: return@read emptyMap()
+    JsonSupport.anyToStringAnyMap(artifact)
+      ?: schemaError("Feature-task-runtime audit-repair state must decode to a map.")
   }
 
   /**
