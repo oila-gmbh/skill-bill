@@ -18,6 +18,8 @@ workflow family.
 
 The workflow database is the continuation authority. Resume keeps the existing workflow id and validates the issue key, canonical repository identity, persisted governed spec path, and runtime mode before branch preparation or phase launch. Completed durable phases remain skipped. Initial implementation hydrates from the completed `plan`. Audit-gap implementation remediation reuses the original completed `preplan` and `plan` outputs; neither planning phase is relaunched or overwritten.
 
+For a goal child, hydrated preplan and plan records carry goal-planning provenance: no child agent is launched for them and their payloads, duration, tokens, and agent identity are not counted as child execution. A standalone feature task is unchanged and executes and attributes its own preplan and plan directly to the standalone workflow.
+
 `bill-feature-task-runtime` consumes the normalized, router-confirmed run and
 launches the runtime command. It does **not** re-implement phase orchestration
 in prose — the runtime owns the phase loop, the per-phase handoff, the schema

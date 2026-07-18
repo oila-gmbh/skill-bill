@@ -1110,6 +1110,7 @@ private fun FeatureTaskRuntimePhaseStatus.toRuntimePhaseStatusCliMap(): Map<Stri
   "status" to status,
   "attempt_count" to attemptCount,
   "resolved_agent_id" to resolvedAgentId,
+  "execution_origin" to executionOrigin,
   "finished" to finished,
 )
 
@@ -1137,7 +1138,8 @@ private fun runtimeStatusText(payload: Map<String, Any?>): String = buildString 
     val phase = rawPhase as? Map<*, *> ?: return@forEach
     appendLine(
       "phase: id=${phase["phase_id"]} status=${phase["status"]} attempt=${phase["attempt_count"]} " +
-        "agent=${phase["resolved_agent_id"] ?: "none"} finished=${phase["finished"]}",
+        "agent=${phase["resolved_agent_id"] ?: "none"} " +
+        "origin=${phase["execution_origin"] ?: "none"} finished=${phase["finished"]}",
     )
   }
 }

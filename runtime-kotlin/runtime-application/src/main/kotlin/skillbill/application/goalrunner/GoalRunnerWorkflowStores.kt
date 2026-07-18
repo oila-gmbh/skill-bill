@@ -19,6 +19,7 @@ import skillbill.application.workflow.repoRoot
 import skillbill.application.workflow.toRecord
 import skillbill.application.workflow.toSnapshot
 import skillbill.contracts.JsonSupport
+import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.error.InvalidGoalSubtaskReviewStateSchemaError
 import skillbill.error.InvalidWorkflowStateSchemaError
@@ -109,8 +110,25 @@ class WorkflowGoalRunnerManifestStore(
   private val workflowSnapshotValidator: WorkflowSnapshotValidator,
   private val decompositionManifestValidator: DecompositionManifestValidator,
   private val decompositionManifestFileStore: DecompositionManifestFileStore,
+  private val phaseOutputValidator: FeatureTaskRuntimePhaseOutputValidator,
 ) : GoalRunnerManifestStore {
+  override fun planningStatus(
+    parentWorkflowId: String,
+    orderedSubtaskIds: List<Int>,
+    blockedSubtaskId: Int?,
+    blockedReason: String?,
+    dbPathOverride: String?,
+  ) = database.read(dbPathOverride) {
+    it.goalPlanningPreparations.boundedStatus(
+      parentWorkflowId,
+      orderedSubtaskIds,
+      blockedSubtaskId,
+      blockedReason,
+    )
+  }
+
   private val engine: WorkflowEngine = WorkflowEngine(workflowSnapshotValidator)
+  private val planningHydrator = GoalChildPlanningHydrator(phaseOutputValidator)
 
   override fun loadByIssueKey(issueKey: String, dbPathOverride: String?, repoRoot: Path?): GoalRunnerManifestState? {
     val stored = loadFromWorkflowStore(issueKey, dbPathOverride)
@@ -145,6 +163,24 @@ class WorkflowGoalRunnerManifestStore(
     return saved.state
   }
 
+  override fun saveRuntimeState(state: GoalRunnerManifestState, dbPathOverride: String?): GoalRunnerManifestState =
+    saveWorkflowProjection(state, dbPathOverride).state
+
+  override fun saveHardReset(state: GoalRunnerManifestState, dbPathOverride: String?): GoalRunnerManifestState {
+    val saved = database.transaction(dbPathOverride) { unitOfWork ->
+      unitOfWork.goalPlanningPreparations.deleteByGoal(state.parentWorkflowId)
+      unitOfWork.workflowStates.deleteGoalChildWorkflowsByParent(state.parentWorkflowId)
+      saveWorkflowProjectionInTransaction(unitOfWork, state)
+    }
+    DecompositionManifestWriter.writeProjectionFromWorkflowState(
+      Path.of("").toAbsolutePath(),
+      saved.projectionArtifactsJson,
+      decompositionManifestValidator,
+      decompositionManifestFileStore,
+    )
+    return saved.state
+  }
+
   override fun saveNewChildWorkflow(
     state: GoalRunnerManifestState,
     setup: GoalRunnerChildWorkflowSetup,
@@ -167,22 +203,36 @@ class WorkflowGoalRunnerManifestStore(
     state: GoalRunnerManifestState,
     setup: GoalRunnerChildWorkflowSetup,
   ): SavedGoalChildWorkflow {
+    requireConsistentChildSetup(state, setup)
+    val expectedIdentity = expectedChildIdentity(setup)
     val parentUpdated = updateParentForChildWorkflow(unitOfWork, state)
-    val childUpdated = openGoalChildWorkflow(unitOfWork, state, setup, parentUpdated.workflowId)
-    WorkflowFamily.TASK_RUNTIME.saveRecord(
-      unitOfWork.workflowStates,
-      childUpdated.toRecord().copy(issueKey = normalizeRequiredIssueKey(state.manifest.issueKey)),
-    )
-    val identity = FeatureTaskExecutionIdentity(
-      workflowId = setup.workflowId,
-      normalizedIssueKey = setup.normalizedIssueKey,
-      repositoryIdentity = setup.repositoryIdentity,
-      governedSpecPath = setup.governedSpecPath,
-      mode = FeatureTaskWorkflowMode.RUNTIME,
-      routeScope = FeatureTaskRouteScope.GOAL_CHILD,
-    )
-    FeatureTaskExecutionIdentityPolicy.validate(identity)
-    unitOfWork.workflowStates.saveFeatureTaskExecutionIdentity(identity)
+    val existingChild = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, setup.workflowId)
+    if (existingChild != null) {
+      val persistedIdentity = unitOfWork.workflowStates.getFeatureTaskExecutionIdentity(setup.workflowId)
+      if (persistedIdentity != expectedIdentity) {
+        throw IncompatibleGoalPlanningPreparationRecoveryError(
+          state.parentWorkflowId,
+          setup.subtaskId,
+          "existing child execution identity conflicts with goal-child setup",
+        )
+      }
+      requireMatchingGoalContinuation(existingChild, state, setup)
+      planningHydrator.requireMatchingImport(unitOfWork, existingChild, setup)
+    }
+    val childUpdated = if (existingChild == null) {
+      openGoalChildWorkflow(unitOfWork, state, setup, parentUpdated.workflowId)
+    } else {
+      existingChild
+    }
+    if (existingChild == null) {
+      WorkflowFamily.TASK_RUNTIME.saveRecord(
+        unitOfWork.workflowStates,
+        childUpdated.toRecord().copy(issueKey = normalizeRequiredIssueKey(state.manifest.issueKey)),
+      )
+      val identity = expectedIdentity
+      FeatureTaskExecutionIdentityPolicy.validate(identity)
+      unitOfWork.workflowStates.saveFeatureTaskExecutionIdentity(identity)
+    }
     val refreshedParent =
       WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, parentUpdated.workflowId) ?: parentUpdated
     return SavedGoalChildWorkflow(
@@ -193,6 +243,69 @@ class WorkflowGoalRunnerManifestStore(
       ),
       projectionArtifactsJson = refreshedParent.artifactsJson,
     )
+  }
+
+  private fun expectedChildIdentity(setup: GoalRunnerChildWorkflowSetup) = FeatureTaskExecutionIdentity(
+    workflowId = setup.workflowId,
+    normalizedIssueKey = setup.normalizedIssueKey,
+    repositoryIdentity = setup.repositoryIdentity,
+    governedSpecPath = setup.governedSpecPath,
+    mode = FeatureTaskWorkflowMode.RUNTIME,
+    routeScope = FeatureTaskRouteScope.GOAL_CHILD,
+  )
+
+  private fun requireConsistentChildSetup(state: GoalRunnerManifestState, setup: GoalRunnerChildWorkflowSetup) {
+    val request = setup.planningHydration ?: return
+    val selected = state.manifest.subtasks.singleOrNull { it.id == setup.subtaskId }
+    val failures = listOfNotNull(
+      "parent workflow".takeIf { request.identity.parentGoalWorkflowId != state.parentWorkflowId },
+      "issue key".takeIf {
+        request.identity.normalizedIssueKey != setup.normalizedIssueKey ||
+          setup.normalizedIssueKey != normalizeRequiredIssueKey(state.manifest.issueKey)
+      },
+      "repository".takeIf { request.identity.repositoryIdentity != setup.repositoryIdentity },
+      "subtask".takeIf { request.descriptor.subtaskId != setup.subtaskId },
+      "governed spec".takeIf { request.descriptor.governedSubSpecPath != setup.governedSpecPath },
+      "manifest subtask".takeIf {
+        selected == null ||
+          canonicalGovernedSpecPath(selected.specPath, setup.repositoryIdentity) != setup.governedSpecPath
+      },
+    )
+    if (failures.isNotEmpty()) {
+      throw IncompatibleGoalPlanningPreparationRecoveryError(
+        state.parentWorkflowId,
+        setup.subtaskId,
+        "hydration ${failures.joinToString()} does not match child setup",
+      )
+    }
+  }
+
+  private fun canonicalGovernedSpecPath(specPath: String, repositoryIdentity: String): String {
+    val repository = Path.of(repositoryIdentity.removePrefix("repo-root-realpath-v1:"))
+    val lexical = Path.of(specPath).let { if (it.isAbsolute) it else repository.resolve(it) }
+      .toAbsolutePath().normalize()
+    val resolved = runCatching { lexical.toRealPath() }.getOrElse { lexical }
+    return runCatching { repository.relativize(resolved).joinToString("/") }.getOrElse { specPath }
+  }
+
+  private fun requireMatchingGoalContinuation(
+    existing: WorkflowStateSnapshot,
+    state: GoalRunnerManifestState,
+    setup: GoalRunnerChildWorkflowSetup,
+  ) {
+    val continuation = decodeArtifacts(existing.artifactsJson)[FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY]
+      as? Map<*, *>
+    val matches = continuation?.get("issue_key") == state.manifest.issueKey &&
+      (continuation["subtask_id"] as? Number)?.toInt() == setup.subtaskId &&
+      continuation["parent_workflow_id"] == state.parentWorkflowId &&
+      continuation["goal_branch"] == setup.goalBranch && continuation["suppress_pr"] == true
+    if (!matches) {
+      throw IncompatibleGoalPlanningPreparationRecoveryError(
+        state.parentWorkflowId,
+        setup.subtaskId,
+        "existing child goal continuation conflicts with child setup",
+      )
+    }
   }
 
   private fun updateParentForChildWorkflow(
@@ -232,23 +345,27 @@ class WorkflowGoalRunnerManifestStore(
     setup: GoalRunnerChildWorkflowSetup,
     parentWorkflowId: String,
   ): WorkflowStateSnapshot {
-    check(WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, setup.workflowId) == null) {
-      "Goal child workflow '${setup.workflowId}' already exists."
-    }
     val openedChild = engine.openRecord(
       WorkflowFamily.TASK_RUNTIME.definition,
       setup.workflowId,
       "${WorkflowFamily.TASK_RUNTIME.definition.defaultSessionPrefix}-${state.manifest.issueKey}",
       WorkflowFamily.TASK_RUNTIME.definition.defaultInitialStepId,
     )
+    val hydration = planningHydrator.hydrate(
+      unitOfWork,
+      setup,
+      requireNotNull(setup.planningHydration) {
+        "Prepared goal child '${setup.subtaskId}' requires planning hydration."
+      },
+    )
     return engine.updateRecord(
       WorkflowFamily.TASK_RUNTIME.definition,
       openedChild,
       WorkflowUpdateInput(
         workflowStatus = openedChild.workflowStatus,
-        currentStepId = openedChild.currentStepId,
-        stepUpdates = null,
-        artifactsPatch = childWorkflowArtifacts(state, setup, parentWorkflowId),
+        currentStepId = hydration.currentStepId,
+        stepUpdates = hydration.stepUpdates,
+        artifactsPatch = childWorkflowArtifacts(state, setup, parentWorkflowId) + hydration.artifacts,
         sessionId = openedChild.sessionId.orEmpty(),
       ),
     )
@@ -368,44 +485,46 @@ class WorkflowGoalRunnerManifestStore(
   }
 
   private fun saveWorkflowProjection(state: GoalRunnerManifestState, dbPathOverride: String?): SavedManifestProjection {
-    var projectionArtifactsJson: String? = null
-    val saved = database.transaction(dbPathOverride) { unitOfWork ->
-      val existing = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, state.parentWorkflowId)
-        ?: unitOfWork.workflowStates.findDecomposedParentWorkflow(
-          state.manifest.issueKey,
-          decompositionManifestValidator,
-        )?.toSnapshot()
-        ?: error("Unknown decomposed parent workflow '${state.parentWorkflowId}'.")
-      val existingSnapshot = existing
-      val updated = engine.updateRecord(
-        WorkflowFamily.IMPLEMENT.definition,
-        existingSnapshot,
-        WorkflowUpdateInput(
-          workflowStatus = existingSnapshot.workflowStatus,
-          currentStepId = existingSnapshot.currentStepId,
-          stepUpdates = null,
-          artifactsPatch = mapOf(
-            DECOMPOSITION_RUNTIME_ARTIFACT_KEY to encodeDecompositionManifestMap(
-              state.manifest,
-              decompositionManifestValidator,
-              DECOMPOSITION_RUNTIME_ARTIFACT_KEY,
-            ),
+    return database.transaction(dbPathOverride) { unitOfWork -> saveWorkflowProjectionInTransaction(unitOfWork, state) }
+  }
+
+  private fun saveWorkflowProjectionInTransaction(
+    unitOfWork: UnitOfWork,
+    state: GoalRunnerManifestState,
+  ): SavedManifestProjection {
+    val existing = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, state.parentWorkflowId)
+      ?: unitOfWork.workflowStates.findDecomposedParentWorkflow(
+        state.manifest.issueKey,
+        decompositionManifestValidator,
+      )?.toSnapshot()
+      ?: error("Unknown decomposed parent workflow '${state.parentWorkflowId}'.")
+    val existingSnapshot = existing
+    val updated = engine.updateRecord(
+      WorkflowFamily.IMPLEMENT.definition,
+      existingSnapshot,
+      WorkflowUpdateInput(
+        workflowStatus = existingSnapshot.workflowStatus,
+        currentStepId = existingSnapshot.currentStepId,
+        stepUpdates = null,
+        artifactsPatch = mapOf(
+          DECOMPOSITION_RUNTIME_ARTIFACT_KEY to encodeDecompositionManifestMap(
+            state.manifest,
+            decompositionManifestValidator,
+            DECOMPOSITION_RUNTIME_ARTIFACT_KEY,
           ),
-          sessionId = existingSnapshot.sessionId.orEmpty(),
         ),
-      )
-      WorkflowFamily.IMPLEMENT.save(unitOfWork.workflowStates, updated)
-      val refreshed = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, updated.workflowId) ?: updated
-      projectionArtifactsJson = refreshed.artifactsJson
-      GoalRunnerManifestState(
+        sessionId = existingSnapshot.sessionId.orEmpty(),
+      ),
+    )
+    WorkflowFamily.IMPLEMENT.save(unitOfWork.workflowStates, updated)
+    val refreshed = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, updated.workflowId) ?: updated
+    return SavedManifestProjection(
+      state = GoalRunnerManifestState(
         parentWorkflowId = refreshed.workflowId,
         dbPath = unitOfWork.dbPath.toString(),
         manifest = refreshed.decompositionRuntime(decompositionManifestValidator) ?: state.manifest,
-      )
-    }
-    return SavedManifestProjection(
-      state = saved,
-      projectionArtifactsJson = requireNotNull(projectionArtifactsJson),
+      ),
+      projectionArtifactsJson = refreshed.artifactsJson,
     )
   }
 
@@ -1676,7 +1795,7 @@ private fun WorkflowStateSnapshot.progressToken(): String = listOf(
   finishedAt.orEmpty(),
 ).joinToString("\n")
 
-private fun decodeWorkflowSteps(stepsJson: String): List<WorkflowStepState> {
+internal fun decodeWorkflowSteps(stepsJson: String): List<WorkflowStepState> {
   val element = runCatching { JsonSupport.json.parseToJsonElement(stepsJson) }.getOrNull() ?: return emptyList()
   return (JsonSupport.jsonElementToValue(element) as? List<*>).orEmpty().mapNotNull { raw ->
     val item = raw as? Map<*, *> ?: return@mapNotNull null

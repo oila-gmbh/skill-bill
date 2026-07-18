@@ -1,3 +1,45 @@
+## [2026-07-18] SKILL-128 goal planning observability (subtask 4)
+Areas: runtime-kotlin/runtime-{application,cli,domain,infra-sqlite,mcp}, skills/bill-feature-{goal,task-runtime}, runtime-kotlin/ARCHITECTURE.md
+- Goal status exposes bounded preparation state: shared-preplan status, planned/total counts, current planning subtask, and concise blocked or resumable context without returning raw planning payloads.
+- Goal lifecycle telemetry distinguishes one shared discovery/preplan, per-subtask plan checkpoints and reuse, hard-reset invalidation, and child hydration with stable attribution; standalone task attribution remains unchanged.
+- Durable phase records and ledger entries carry an execution origin that defaults legacy data to `agent-executed`, marks imported planning as `goal-planning-hydrated`, and loud-fails unknown explicit values.
+- Pattern: project durable planning progress into bounded operator status, and model hydration as a typed execution origin so imported artifacts never count as child-agent duration or token execution. reusable
+- CLI, MCP, status, persistence, resume, block, hydration, and malformed-state coverage locks fresh through all-prepared behavior and backward-compatible standalone semantics.
+- Known limitation: governed install synchronization remains deferred to parent-goal finalization because the active continuation guard correctly rejects `./install.sh` during the child workflow.
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
+## [2026-07-18] SKILL-128 child planning hydration (subtask 3)
+Areas: runtime-kotlin/runtime-{application,infra-sqlite,ports}, runtime-kotlin/ARCHITECTURE.md
+- Prepared goal children atomically import the parent goal's validated shared preplan and their own provenance-matched plan as completed phase records, steps, ledger entries, and immutable artifacts before becoming runnable at `implement`.
+- Resume revalidates stored preparation and imported artifacts byte-for-byte; identical hydration is idempotent across crashes and siblings, while missing, corrupt, cross-subtask, or conflicting inputs loud-fail before implementation.
+- Imported planning remains available through the existing DAG for implementation, audit-gap remediation, and inspection without launching or simulating child planning agents; standalone feature tasks retain their own preplan and plan execution path.
+- Pattern: isolate transactional goal-child planning hydration and import verification in a cohesive hydrator, with goal-child deletion exposed as a distinct persistence capability. reusable
+- Integration coverage locks normal hydration, duplicate/crash resume, sibling ownership, provenance and payload rejection, audit reuse, and standalone isolation at the production transaction boundary.
+Feature flag: N/A
+Acceptance criteria: 10/10 implemented
+
+## [2026-07-18] SKILL-128 singleton goal planning sweep (subtask 2)
+Areas: runtime-kotlin/runtime-{application,cli}
+- Goal execution launches one parent-goal preplan from shared repository, platform-pack, boundary-memory, validation, decomposition, and parent-spec context, then derives one distinct plan per ordered non-skipped subtask. reusable
+- The singleton preplan and each completed plan are persisted immediately; failures retain valid durable work and resume at the first missing plan without rediscovery or repeated preplanning.
+- Recovered preplans, plans, and planning dispositions are validated against immutable spec/decomposition/contract provenance; later execution commits do not invalidate planning.
+- Pattern: separate goal-wide discovery/preplanning from dependency-aware subtask planning, then require every plan to be valid and durable before any child mutation. reusable
+- Tests cover multi-subtask launch counts, crash recovery, blocked/malformed/persistence failures, deleted Linear scratch specs, and the all-plans mutation gate.
+Feature flag: N/A
+Acceptance criteria: 9/9 implemented
+
+## [2026-07-17] SKILL-128 goal-planning context reuse (subtask 1: persistence contract)
+Areas: runtime-kotlin/runtime-{application,contracts,core,domain,infra-fs,infra-sqlite,ports}, orchestration/contracts, runtime-kotlin/ARCHITECTURE.md
+- Goal-scoped planning preparation persists one shared preplan and ordered per-subtask plans with normalized issue/repository identity, governed spec descriptors, prepared status, and immutable parent-spec, sub-spec, decomposition, and output-contract provenance.
+- Stored preplan and plan envelopes reuse the feature-task phase-output validator and require the normalized 0.2 phase, version, completed status, and produced-output contracts; malformed, legacy, cross-goal, cross-repository, wrong-spec, and incompatible records loud-fail with typed errors.
+- Atomic checkpointing is immutable and idempotent: prepared payloads cannot be overwritten, ordered reads/count/recovery validate every governed descriptor, and the first missing plan is recovered without leaking SQLite types outside infrastructure. reusable
+- Hard reset transactionally deletes shared-preplan, subtask-plan, hydration, and continuation preparation state before manifest reset; soft reset preserves schema-valid checkpoints while provenance drift requires hard reset or operator migration.
+- Pattern: treat governed subtask descriptors plus stable provenance as the recovery key, validate opaque phase payloads at persistence seams, and reject unexpected rows or manifest-order drift instead of interpreting corruption as pending. reusable
+- Real-SQLite restart, migration, rollback, ordering, uniqueness, malformed-row, reset, and provenance tests cover durable acceptance and rejection behavior; standalone feature-task queries remain isolated from the goal-scoped store.
+Feature flag: N/A
+Acceptance criteria: 10/10 implemented
+
 ## [2026-07-15] SKILL-122 agent add-on integration validation
 Areas: runtime-kotlin/runtime-{application,cli,core,domain,infra-fs,mcp}
 - Cross-boundary tests lock ordered agent add-on selection through runtime, goal continuation, retry/resume, staging invalidation, and compatible run-wide, phase, and delegated parallel-review overrides.

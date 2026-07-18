@@ -1895,6 +1895,7 @@ class RuntimeArchitectureTest {
       // boundary and CLI/MCP/projector rendering consumes compact maps after
       // validation.
       "skillbill.workflow.GoalObservabilityEventValidator.validate",
+      "skillbill.workflow.GoalPlanningPreparationEnvelopeValidator.validate",
       "skillbill.workflow.model.GoalObservabilityEvent.toArtifactMap",
       "skillbill.workflow.model.GoalObservabilityEvent.toCompactSummaryMap",
       "skillbill.workflow.model.GoalObservabilityHistory.toArtifactList",
@@ -1930,6 +1931,7 @@ class RuntimeArchitectureTest {
       "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch.fromArtifactMap",
       "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact.toArtifactMap",
       "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact.fromArtifactMap",
+      "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalPlanningImport.toArtifactMap",
       "skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding.toArtifactMap",
       "skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding.fromArtifactMap",
       "skillbill.workflow.taskruntime.model.GoalSubtaskReviewPassResult.toArtifactMap",

@@ -55,6 +55,8 @@ class SQLiteUnitOfWork(
   override val telemetryOutbox: TelemetryOutboxRepository = TelemetryOutboxStore(connection)
   override val workflowStates: WorkflowStateRepository = WorkflowStateStore(connection)
   override val workList: WorkListRepository = SQLiteWorkListRepository(connection)
+  override val goalPlanningPreparations: skillbill.ports.persistence.GoalPlanningPreparationRepository =
+    skillbill.db.workflow.GoalPlanningPreparationStore(connection)
 }
 
 class SQLiteTelemetryReconciliationRepository(

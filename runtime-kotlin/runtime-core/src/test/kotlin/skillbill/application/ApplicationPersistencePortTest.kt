@@ -1620,6 +1620,54 @@ class ApplicationPersistencePortTest {
     assertEquals(1, singleRunStats.totalRuns)
     assertEquals("wf-single", requireNotNull(singleRunStats.mostRecentRun).workflowId)
   }
+
+  @Test
+  fun `goal planning preparation is a separate port unreachable from standalone feature-task persistence`() {
+    val goalPlanningPort = skillbill.ports.persistence.GoalPlanningPreparationRepository::class.java
+    val workflowStatePort = skillbill.ports.persistence.WorkflowStateRepository::class.java
+
+    assertTrue(
+      goalPlanningPort !in workflowStatePort.interfaces,
+      "GoalPlanningPreparationRepository must remain a separate port; WorkflowStateRepository must not compose it.",
+    )
+    assertTrue(
+      workflowStatePort !in goalPlanningPort.interfaces,
+      "GoalPlanningPreparationRepository must not inherit the standalone feature-task port.",
+    )
+    val standaloneMethods = workflowStatePort.declaredMethods.map { it.name }.toSet()
+    val goalPlanningMethodNames = listOf(
+      "markPrepared",
+      "findByGoalAndSubtask",
+      "listPreparedByGoalOrdered",
+      "preparedCount",
+      "firstMissingOrIncompleteSubtask",
+    )
+    goalPlanningMethodNames.forEach { methodName ->
+      assertTrue(
+        methodName !in standaloneMethods,
+        "Standalone WorkflowStateRepository must not expose goal-planning method '$methodName'.",
+      )
+    }
+    val sqlTypedMembers = goalPlanningPort.declaredMethods.filter { function ->
+      function.returnType.name.startsWith("java.sql") ||
+        function.parameterTypes.any { type -> type.name.startsWith("java.sql") }
+    }
+    assertTrue(
+      sqlTypedMembers.isEmpty(),
+      "GoalPlanningPreparationRepository must not expose java.sql types: ${sqlTypedMembers.map { it.name }}",
+    )
+    assertTrue(
+      goalPlanningPort.isAssignableFrom(skillbill.ports.persistence.EmptyGoalPlanningPreparationRepository::class.java),
+      "EmptyGoalPlanningPreparationRepository must satisfy the goal-planning port for test fakes.",
+    )
+    val unitOfWorkClass = skillbill.ports.persistence.UnitOfWork::class.java
+    val unitOfWorkGetter =
+      unitOfWorkClass.declaredMethods.single { method -> method.name == "getGoalPlanningPreparations" }
+    assertTrue(
+      unitOfWorkGetter.returnType == goalPlanningPort,
+      "UnitOfWork.goalPlanningPreparations must be typed as the dedicated GoalPlanningPreparationRepository port.",
+    )
+  }
 }
 
 private class FakeDatabaseSessionFactory(
@@ -1656,6 +1704,7 @@ private class FakeDatabaseSessionFactory(
     override val telemetryOutbox: TelemetryOutboxRepository = this@FakeDatabaseSessionFactory.telemetryOutbox
     override val workflowStates: WorkflowStateRepository = this@FakeDatabaseSessionFactory.workflows
     override val workList = skillbill.ports.persistence.EmptyWorkListRepository
+    override val goalPlanningPreparations = skillbill.ports.persistence.EmptyGoalPlanningPreparationRepository
   }
 }
 

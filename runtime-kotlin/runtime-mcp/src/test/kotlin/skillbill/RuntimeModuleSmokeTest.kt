@@ -125,6 +125,7 @@ class RuntimeModuleSmokeTest {
         "skillbill.nativeagent",
         "skillbill.error",
         "skillbill.featurespec",
+        "skillbill.goalplanning",
         "skillbill.goalrunner",
         "skillbill.skillremove",
         "skillbill.workflow",

@@ -96,6 +96,7 @@ class RuntimeArchitectureDocumentationTest {
         "skillbill.domain.skillremove",
         "skillbill.error",
         "skillbill.featurespec",
+        "skillbill.goalplanning",
         "skillbill.goalrunner",
         "skillbill.install",
         "skillbill.infrastructure",

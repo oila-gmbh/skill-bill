@@ -11,9 +11,10 @@ import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
  * inputs plus the current working tree and MUST reconcile the tree to target — treating an
  * already-applied change as a no-op rather than blindly re-applying it — so a re-entry never
  * double-applies a mutation. That contract is what makes bounding them safe; the schema gate verifies
- * the reconciliation is reported rather than assumed. Validation is intentionally unbounded because
- * validation failures are repair work, not a reason to stop the task. Other fix-loop phases are bounded by
- * [MAX_FIX_LOOP_ITERATIONS]. The first run is iteration 1; the fix-loop index is `iteration - 1`.
+ * the reconciliation is reported rather than assumed. Every fix-loop phase — including `validate` — is
+ * bounded by [MAX_FIX_LOOP_ITERATIONS]: validation failures are repair work and earn retries, but a
+ * persistently-failing phase (for example a validator subagent that crashes before producing repairable
+ * output) must stop rather than loop forever. The first run is iteration 1; the fix-loop index is `iteration - 1`.
  */
 object FeatureTaskRuntimeFixLoopPolicy {
   /** A phase runs at most this many times total (1 initial attempt + 2 re-runs) before blocking. */
@@ -70,6 +71,5 @@ object FeatureTaskRuntimeFixLoopPolicy {
       "the run blocks rather than advancing on invalid output."
   }
 
-  private fun hasBoundedFixLoop(phaseId: String): Boolean =
-    participatesInFixLoop(phaseId) && phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE
+  private fun hasBoundedFixLoop(phaseId: String): Boolean = participatesInFixLoop(phaseId)
 }

@@ -774,6 +774,74 @@ class GoalRunnerTest {
   )
 }
 
+class GoalRunnerHandoffTest {
+  @Test
+  fun `completed subtask does not dirty projection before next review baseline`() {
+    var projectionDirty = false
+    val store = InMemoryGoalManifestStore(
+      manifest = manifest(subtaskCount = 2),
+      projectionSaved = { projectionDirty = true },
+    )
+    val outcomes = RecordingOutcomeStore()
+    val launcher = RecordingSubtaskLauncher { request ->
+      val subtaskId = requireNotNull(request.skillRunRequest.subtaskId)
+      projectionDirty = false
+      store.mutate { current -> current.withWorkflowId(subtaskId, "wfl-$subtaskId") }
+      outcomes["wfl-$subtaskId"] = completeOutcome(subtaskId)
+      launchFacts()
+    }
+    val reviewOperations = object : GoalSubtaskReviewGitOperations {
+      override fun captureBaseline(repoRoot: Path, expectedBranch: String): GoalSubtaskReviewBaselineResult =
+        if (projectionDirty) {
+          GoalSubtaskReviewBaselineResult(status = "error", error = "unstaged tracked changes are present")
+        } else {
+          GoalSubtaskReviewBaselineResult(
+            status = "ok",
+            baseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
+          )
+        }
+
+      override fun buildInput(
+        repoRoot: Path,
+        baseline: GoalSubtaskReviewBaseline,
+        expectedBranch: String,
+      ): GoalSubtaskReviewInputResult = error("Review input is not used by this test.")
+
+      override fun recoverBaseline(
+        repoRoot: Path,
+        baseline: GoalSubtaskReviewBaseline,
+        expectedBranch: String,
+      ): GoalSubtaskReviewBaselineResult = error("Review baseline recovery is not used by this test.")
+    }
+    val runner = GoalRunner(
+      manifestStore = store,
+      subtaskLauncher = launcher,
+      outcomeStore = outcomes,
+      pullRequestPort = RecordingPullRequestPort(),
+      gitOperations = object :
+        WorkflowGitOperations by RecordingGitOperations(
+          currentBranch = "feat/SKILL-56-goal",
+        ),
+        GoalSubtaskReviewGitOperationsProvider {
+        override val goalSubtaskReviewOperations: GoalSubtaskReviewGitOperations = reviewOperations
+      },
+    )
+
+    val report = runner.run(
+      GoalRunnerRunRequest(
+        issueKey = "SKILL-56",
+        repoRoot = Path.of("/tmp/skillbill-goal-runner"),
+        invokedAgentId = "claude",
+        dbPathOverride = "/tmp/skillbill-goal-runner/metrics.db",
+      ),
+    )
+
+    assertIs<GoalRunnerRunReport.Completed>(report)
+    assertEquals(listOf(1, 2), launcher.requests.map { it.skillRunRequest.subtaskId })
+    assertEquals(2, store.runtimeStateSaveCount)
+  }
+}
+
 class GoalRunnerRepositoryPathTest {
   @Test
   fun `absolute spec path through a repository alias stays inside the canonical repository`() {
@@ -1497,11 +1565,21 @@ class GoalRunnerObservabilityTest {
   }
 
   @Test
-  fun `reset reconciles active worker state before clearing manifest projection`() {
+  fun `soft reset preserves child identity and resumable step`() {
     val store = InMemoryGoalManifestStore(
       manifest = manifest(subtaskCount = 1)
         .copy(status = "in_progress", currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 1, action = "resume"))
-        .withWorkflowId(1, "wfl-active"),
+        .withWorkflowId(1, "wfl-active")
+        .copy(
+          subtasks = listOf(
+            manifest(subtaskCount = 1).subtasks.single().copy(
+              status = "blocked",
+              workflowId = "wfl-active",
+              blockedReason = "repair required",
+              lastResumableStep = "implement",
+            ),
+          ),
+        ),
     )
     val outcomes = RecordingOutcomeStore()
     val service = GoalRunnerStatusService(store, outcomes, goalTestPhaseRecorder())
@@ -1525,9 +1603,69 @@ class GoalRunnerObservabilityTest {
       ),
       outcomes.lastReconcileRequest,
     )
+    assertEquals("in_progress", store.manifest.subtasks.single().status)
+    assertEquals("wfl-active", store.manifest.subtasks.single().workflowId)
+    assertEquals("implement", store.manifest.subtasks.single().lastResumableStep)
+    assertNull(store.manifest.subtasks.single().blockedReason)
+    assertEquals(CurrentSubtaskIntent(subtaskId = 1, action = "resume"), store.manifest.currentSubtaskIntent)
+  }
+
+  @Test
+  fun `soft reset restarts blocked subtask without child identity`() {
+    val store = InMemoryGoalManifestStore(
+      manifest = manifest(subtaskCount = 1).copy(
+        status = "blocked",
+        currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 1, action = "blocked"),
+        subtasks = listOf(
+          manifest(subtaskCount = 1).subtasks.single().copy(
+            status = "blocked",
+            blockedReason = "branch setup failed",
+            lastResumableStep = "create_branch",
+          ),
+        ),
+      ),
+    )
+    val service = GoalRunnerStatusService(store, RecordingOutcomeStore(), goalTestPhaseRecorder())
+
+    service.reset(GoalRunnerResetRequest(issueKey = "SKILL-56", hard = false))
+
     assertEquals("pending", store.manifest.subtasks.single().status)
-    assertEquals(null, store.manifest.subtasks.single().workflowId)
+    assertNull(store.manifest.subtasks.single().workflowId)
+    assertNull(store.manifest.subtasks.single().lastResumableStep)
     assertEquals(CurrentSubtaskIntent(subtaskId = 1, action = "start"), store.manifest.currentSubtaskIntent)
+  }
+
+  @Test
+  fun `hard reset deletes goal planning preparation before saving pending projection`() {
+    val database = GoalTestPlanningDatabase()
+    val store = InMemoryGoalManifestStore(
+      manifest = manifest(subtaskCount = 2),
+      hardReset = { state, dbPathOverride ->
+        database.transaction(dbPathOverride) { unitOfWork ->
+          unitOfWork.goalPlanningPreparations.deleteByGoal(state.parentWorkflowId)
+          unitOfWork.workflowStates.deleteGoalChildWorkflowsByParent(state.parentWorkflowId)
+        }
+      },
+    )
+    val service = GoalRunnerStatusService(
+      store,
+      RecordingOutcomeStore(),
+      goalTestPhaseRecorder(),
+    )
+
+    val reset = service.reset(
+      GoalRunnerResetRequest(
+        issueKey = "SKILL-56",
+        hard = true,
+        dbPathOverride = "/tmp/skillbill-goal-runner/metrics.db",
+      ),
+    )
+
+    requireNotNull(reset)
+    assertEquals(listOf("wfl-parent"), database.deletedParentGoalIds)
+    assertEquals(listOf("wfl-parent"), database.deletedChildWorkflowParentIds)
+    assertEquals(listOf<String?>("/tmp/skillbill-goal-runner/metrics.db"), database.transactionDbOverrides)
+    assertEquals(listOf("pending", "pending"), store.manifest.subtasks.map(DecompositionSubtask::status))
   }
 
   private fun runRequest(): GoalRunnerRunRequest = GoalRunnerRunRequest(
@@ -1540,10 +1678,14 @@ class GoalRunnerObservabilityTest {
 
 internal class InMemoryGoalManifestStore(
   manifest: DecompositionManifest,
+  private val hardReset: ((GoalRunnerManifestState, String?) -> Unit)? = null,
+  private val projectionSaved: (() -> Unit)? = null,
 ) : GoalRunnerManifestStore {
   var manifest: DecompositionManifest = manifest
     private set
   var saveCount: Int = 0
+    private set
+  var runtimeStateSaveCount: Int = 0
     private set
   val newChildWorkflowSetups: MutableList<GoalRunnerChildWorkflowSetup> = mutableListOf()
 
@@ -1556,8 +1698,20 @@ internal class InMemoryGoalManifestStore(
 
   override fun save(state: GoalRunnerManifestState, dbPathOverride: String?): GoalRunnerManifestState {
     saveCount += 1
+    projectionSaved?.invoke()
     manifest = state.manifest
     return state.copy(dbPath = dbPathOverride ?: state.dbPath, manifest = manifest)
+  }
+
+  override fun saveRuntimeState(state: GoalRunnerManifestState, dbPathOverride: String?): GoalRunnerManifestState {
+    runtimeStateSaveCount += 1
+    manifest = state.manifest
+    return state.copy(dbPath = dbPathOverride ?: state.dbPath, manifest = manifest)
+  }
+
+  override fun saveHardReset(state: GoalRunnerManifestState, dbPathOverride: String?): GoalRunnerManifestState {
+    hardReset?.invoke(state, dbPathOverride)
+    return save(state, dbPathOverride)
   }
 
   override fun saveNewChildWorkflow(
@@ -2507,7 +2661,11 @@ class GoalRunnerStatusAttributionTest {
     val store = InMemoryGoalManifestStore(
       manifest = manifest(subtaskCount = 1).withBlockedSubtask(1, workflowId = "wfl-1", reason = "needs review"),
     )
-    val service = GoalRunnerStatusService(store, RecordingOutcomeStore(), goalTestPhaseRecorder())
+    val service = GoalRunnerStatusService(
+      store,
+      RecordingOutcomeStore(),
+      goalTestPhaseRecorder(),
+    )
 
     val status = service.status(
       GoalRunnerStatusRequest(
@@ -2606,6 +2764,7 @@ private class GoalStatusSeedableDatabase(
     override val telemetryOutbox: TelemetryOutboxRepository get() = error("unused by goal status tests")
     override val workflowStates: WorkflowStateRepository = repository
     override val workList = skillbill.ports.persistence.EmptyWorkListRepository
+    override val goalPlanningPreparations = skillbill.ports.persistence.EmptyGoalPlanningPreparationRepository
   }
 }
 
@@ -2666,6 +2825,47 @@ private object GoalTestEmptyDatabase : DatabaseSessionFactory {
     override val telemetryOutbox: TelemetryOutboxRepository get() = error("unused by goal status tests")
     override val workflowStates: WorkflowStateRepository = GoalTestEmptyWorkflowStateRepository
     override val workList = skillbill.ports.persistence.EmptyWorkListRepository
+    override val goalPlanningPreparations = skillbill.ports.persistence.EmptyGoalPlanningPreparationRepository
+  }
+}
+
+private class GoalTestPlanningDatabase : DatabaseSessionFactory {
+  private val dbPath = Path.of("/fake/goal-test-planning.db")
+  val deletedParentGoalIds = mutableListOf<String>()
+  val deletedChildWorkflowParentIds = mutableListOf<String>()
+  val transactionDbOverrides = mutableListOf<String?>()
+  private val planningRepository = object : skillbill.ports.persistence.GoalPlanningPreparationRepository by
+  skillbill.ports.persistence.EmptyGoalPlanningPreparationRepository {
+    override fun deleteByGoal(parentGoalWorkflowId: String): Int {
+      deletedParentGoalIds += parentGoalWorkflowId
+      return 1
+    }
+  }
+
+  override fun resolveDbPath(dbOverride: String?): Path = dbPath
+  override fun databaseExists(dbOverride: String?): Boolean = true
+  override fun <T> read(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unitOfWork())
+  override fun <T> transaction(dbOverride: String?, block: (UnitOfWork) -> T): T {
+    transactionDbOverrides += dbOverride
+    return block(unitOfWork())
+  }
+
+  private fun unitOfWork(): UnitOfWork = object : UnitOfWork {
+    override val dbPath: Path = this@GoalTestPlanningDatabase.dbPath
+    override val reviews: ReviewRepository get() = error("unused by hard reset test")
+    override val learnings: LearningRepository get() = error("unused by hard reset test")
+    override val lifecycleTelemetry: LifecycleTelemetryRepository get() = error("unused by hard reset test")
+    override val telemetryReconciliation: TelemetryReconciliationRepository get() = error("unused by hard reset test")
+    override val telemetryOutbox: TelemetryOutboxRepository get() = error("unused by hard reset test")
+    override val workflowStates: WorkflowStateRepository = object : WorkflowStateRepository by
+    GoalTestEmptyWorkflowStateRepository {
+      override fun deleteGoalChildWorkflowsByParent(parentWorkflowId: String): Int {
+        deletedChildWorkflowParentIds += parentWorkflowId
+        return 1
+      }
+    }
+    override val workList = skillbill.ports.persistence.EmptyWorkListRepository
+    override val goalPlanningPreparations = planningRepository
   }
 }
 
@@ -2689,4 +2889,47 @@ private object GoalTestEmptyWorkflowStateRepository : WorkflowStateRepository {
   override fun getFeatureTaskRuntimeWorkflow(workflowId: String): WorkflowStateRecord? = null
   override fun listFeatureTaskRuntimeWorkflows(limit: Int): List<WorkflowStateRecord> = emptyList()
   override fun latestFeatureTaskRuntimeWorkflow(): WorkflowStateRecord? = null
+}
+
+// Regression for the validate crashloop: a persistently-failing validate phase must stop after a bounded
+// number of goal-level retries instead of looping forever. Kept in its own class so the broad
+// [GoalRunnerTest] stays under the detekt LargeClass threshold.
+class GoalRunnerValidationQualityRetryTest {
+  private fun runRequest(): GoalRunnerRunRequest = GoalRunnerRunRequest(
+    issueKey = "SKILL-56",
+    repoRoot = Path.of("/tmp/skillbill-goal-runner"),
+    invokedAgentId = "claude",
+    dbPathOverride = "/tmp/skillbill-goal-runner/metrics.db",
+  )
+
+  @Test
+  fun `validation quality gate stops after bounded retries instead of looping forever`() {
+    val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 1))
+    val outcomes = RecordingOutcomeStore()
+    val launcher = RecordingSubtaskLauncher { request ->
+      val subtaskId = requireNotNull(request.skillRunRequest.subtaskId)
+      store.mutate { current -> current.withWorkflowId(subtaskId, "wfl-$subtaskId") }
+      outcomes["wfl-$subtaskId"] = GoalRunnerStoredOutcome(
+        status = GoalRunnerTerminalStatus.BLOCKED,
+        workflowId = "wfl-$subtaskId",
+        blockedReason = "./gradlew check keeps failing during validate.",
+        lastResumableStep = "validate",
+        suppressPr = true,
+      )
+      launchFacts()
+    }
+    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort())
+
+    val report = runner.run(runRequest())
+
+    val stopped = assertIs<GoalRunnerRunReport.Stopped>(report)
+    assertEquals(GoalRunnerStopReason.BLOCKED, stopped.stop.reason)
+    assertEquals("validate", stopped.stop.lastResumableStep)
+    assertEquals("blocked", store.manifest.subtasks.single().status)
+    val validateResumes = launcher.requests.count {
+      it.skillRunRequest.goalContinuation?.lastResumableStep == "validate"
+    }
+    assertEquals(4, launcher.requests.size, "validate must bound to 1 initial launch + 3 retries, not loop forever")
+    assertEquals(3, validateResumes, "only the bounded retry budget may re-resume at validate")
+  }
 }

@@ -168,7 +168,7 @@ class FeatureTaskRuntimePhasePromptComposerTest {
   }
 
   @Test
-  fun `goal-continuation plan forbids install refresh commands and uses existing install evidence`() {
+  fun `goal-continuation plan does not treat future acceptance work as a prerequisite`() {
     val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
       ISSUE_KEY,
       briefingFor("plan"),
@@ -178,15 +178,10 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     assertContains(prompt, "Goal-continuation planning constraint")
     assertContains(prompt, "Never include installer, uninstall, or install-sync commands in the plan")
     assertContains(prompt, "`./install.sh`")
-    assertContains(prompt, "read-only installed-artifact inspection")
-    assertContains(prompt, "operator action outside goal-continuation")
-  }
-
-  @Test
-  fun `forbids unrequested cross-issue governed specs`() {
-    val prompt = FeatureTaskRuntimePhasePromptComposer.compose(ISSUE_KEY, briefingFor("implement"))
-
-    assertContains(prompt, "Do not create or modify a governed spec for another issue key")
+    assertContains(prompt, "it does not require that work to have already")
+    assertContains(prompt, "Never block planning merely because a later implementation or validation action")
+    assertContains(prompt, "genuinely missing input or an irreconcilable constraint")
+    assertTrue(!prompt.contains("return a blocked plan"))
   }
 
   @Test

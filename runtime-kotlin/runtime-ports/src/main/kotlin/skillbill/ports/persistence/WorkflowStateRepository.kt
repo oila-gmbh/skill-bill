@@ -15,6 +15,7 @@ import skillbill.ports.persistence.model.WorkflowStateRecord
  */
 interface WorkflowStateRepository :
   FeatureTaskWorkflowStateRepository,
+  GoalChildWorkflowStateRepository,
   FeatureTaskRuntimeWorkerRepository,
   FeatureImplementWorkflowStateRepository,
   FeatureVerifyWorkflowStateRepository,
@@ -22,6 +23,9 @@ interface WorkflowStateRepository :
 
 interface FeatureTaskWorkflowStateRepository {
   fun saveFeatureTaskExecutionIdentity(identity: FeatureTaskExecutionIdentity)
+
+  fun getFeatureTaskExecutionIdentity(workflowId: String): FeatureTaskExecutionIdentity? =
+    error("Feature-task execution identity lookup is not implemented by this persistence adapter.")
 
   fun findStandaloneFeatureTaskCandidates(
     normalizedIssueKey: String,
@@ -74,6 +78,11 @@ interface FeatureTaskWorkflowStateRepository {
     FeatureTaskWorkflowMode.RUNTIME ->
       (this as FeatureTaskRuntimeWorkflowStateRepository).latestFeatureTaskRuntimeWorkflow()
   }
+}
+
+interface GoalChildWorkflowStateRepository {
+  fun deleteGoalChildWorkflowsByParent(parentWorkflowId: String): Int =
+    error("Goal-child workflow deletion is not implemented by this persistence adapter.")
 }
 
 interface FeatureTaskRuntimeWorkerRepository {

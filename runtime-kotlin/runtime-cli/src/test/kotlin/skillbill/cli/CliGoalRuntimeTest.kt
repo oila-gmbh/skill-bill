@@ -5,6 +5,7 @@ import skillbill.cli.core.CliRuntime
 import skillbill.cli.model.CliExecutionResult
 import skillbill.cli.model.CliRuntimeContext
 import skillbill.contracts.JsonSupport
+import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.AgentRunLauncher
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
@@ -65,7 +66,7 @@ class CliGoalRuntimeTest {
   }
 
   @Test
-  fun `goal reset soft preserves completed subtasks and clears blocked runtime pointers`() {
+  fun `goal reset soft preserves completed subtasks and blocked child resume pointers`() {
     val fixture = goalFixture(subtaskCount = 2)
     val launcher = GoalFixtureAgentRunLauncher(fixture, failSubtask = 2)
     val run = CliRuntime.run(fixture.goalCommand(), fixture.context(launcher = launcher))
@@ -90,14 +91,15 @@ class CliGoalRuntimeTest {
     assertContains(reset.stdout, "before: status=blocked")
     assertContains(reset.stdout, "after: status=in_progress")
     assertContains(reset.stdout, "id=1; status=complete")
-    assertContains(reset.stdout, "id=2; status=pending")
+    assertContains(reset.stdout, "id=2; status=in_progress")
+    assertContains(reset.stdout, "last_resumable_step=review")
     val status = CliRuntime.run(
       listOf("--db", fixture.dbPath.toString(), "goal", "status", "SKILL-901", "--agent", "codex"),
       fixture.context(launcher = launcher),
     )
     assertContains(status.stdout, "complete: 1")
-    assertContains(status.stdout, "pending: 1")
-    assertContains(status.stdout, "blocked: 0")
+    assertContains(status.stdout, "pending: 0")
+    assertContains(status.stdout, "blocked: 1")
     assertContains(status.stdout, "current_subtask: 2")
   }
 
@@ -189,14 +191,14 @@ class CliGoalRuntimeTest {
     assertContains(result.stdout, "subtasks_blocked: 0")
     assertContains(result.stdout, "pull_request_status: opened")
     assertContains(result.stdout, "pull_request_url: https://github.com/example/skill-bill/pull/901")
-    assertEquals(listOf(1, 2), launcher.requests.map { it.skillRunRequest.subtaskId })
+    assertEquals(listOf(1, 2), launcher.childLaunches.map { it.skillRunRequest.subtaskId })
     assertContains(liveStdout.toString(), "goal SKILL-901: subtask 1 start")
     assertContains(liveStdout.toString(), "goal SKILL-901: runtime executable=")
     assertContains(liveStdout.toString(), "version=${SkillBillVersion.VALUE} build_id=${SkillBillVersion.VALUE}")
     assertContains(liveStdout.toString(), "child-1-stdout")
     assertContains(liveStdout.toString(), "goal SKILL-901: completion confirmed")
     assertContains(liveStderr.toString(), "child-1-stderr")
-    assertEquals(listOf(null, null), launcher.requests.map { it.skillRunRequest.timeout })
+    assertEquals(listOf(null, null), launcher.childLaunches.map { it.skillRunRequest.timeout })
     assertEquals(1, fixture.pullRequests.requests.size)
     DriverManager.getConnection("jdbc:sqlite:${fixture.dbPath}").use { connection ->
       connection.prepareStatement(
@@ -284,7 +286,7 @@ class CliGoalRuntimeTest {
     )
 
     assertEquals(0, result.exitCode, result.stdout)
-    assertEquals(listOf("claude"), launcher.requests.map { it.agentId }.distinct())
+    assertEquals(listOf("claude"), launcher.childLaunches.map { it.agentId }.distinct())
   }
 
   @Test
@@ -305,7 +307,7 @@ class CliGoalRuntimeTest {
 
     assertEquals(0, result.exitCode, result.stdout)
     // --agent codex (from goalCommand) wins over SKILL_BILL_AGENT and detection.
-    assertEquals(listOf("codex"), launcher.requests.map { it.agentId }.distinct())
+    assertEquals(listOf("codex"), launcher.childLaunches.map { it.agentId }.distinct())
   }
 
   @Test
@@ -479,7 +481,8 @@ class CliGoalRuntimeTest {
     assertContains(watch.stdout, "watch_observability: index=1 phase=implement role=phase_subagent")
     assertContains(watch.stdout, "sequence=12")
     assertEquals(1, resumed.exitCode, resumed.stdout)
-    assertTrue(launcher.requests.isEmpty())
+    assertEquals(2, launcher.requests.size)
+    assertTrue(launcher.childLaunches.isEmpty())
     assertContains(resumed.stdout, "Could not capture the goal-subtask review baseline")
   }
 
@@ -531,7 +534,7 @@ class CliGoalRuntimeTest {
     )
 
     assertEquals(0, result.exitCode, result.stdout)
-    assertEquals(180.minutes, launcher.requests.single().skillRunRequest.timeout)
+    assertEquals(180.minutes, launcher.childLaunches.single().skillRunRequest.timeout)
   }
 
   @Test
@@ -568,7 +571,7 @@ class CliGoalRuntimeTest {
     assertContains(result.stdout, "status: stopped")
     assertContains(result.stdout, "subtask_id: 2")
     assertContains(result.stdout, "reason: failed")
-    assertEquals(listOf(1, 2), launcher.requests.map { it.skillRunRequest.subtaskId })
+    assertEquals(listOf(1, 2), launcher.childLaunches.map { it.skillRunRequest.subtaskId })
     assertEquals(0, fixture.pullRequests.requests.size)
 
     val status = CliRuntime.run(
@@ -629,7 +632,7 @@ class CliGoalRuntimeTest {
 
     assertEquals(0, result.exitCode, result.stdout)
     assertContains(result.stdout, "status: complete")
-    assertEquals(recoveredDb.toString(), launcher.requests.single().skillRunRequest.dbPathOverride)
+    assertEquals(recoveredDb.toString(), launcher.childLaunches.single().skillRunRequest.dbPathOverride)
   }
 
   @Test
@@ -755,6 +758,55 @@ class CliGoalTransitionMonitoringTest {
       "goal_event count (${goalEventLines.size}) must be materially less than " +
         "heartbeat count ($heartbeatCount): $output",
     )
+  }
+}
+
+/**
+ * SKILL-128: the goal per-launch idle-progress timeout default and override. Kept in its own class
+ * so it does not push [CliGoalRuntimeTest] over the detekt LargeClass threshold (the file's
+ * established convention).
+ */
+class CliGoalProgressIdleTimeoutTest {
+  @Test
+  fun `goal progress idle timeout flag passes value to child run`() {
+    val fixture = goalFixture(subtaskCount = 1)
+    val launcher = GoalFixtureAgentRunLauncher(fixture)
+
+    val result = CliRuntime.run(
+      fixture.goalCommand(extra = listOf("--progress-idle-timeout-minutes", "25")),
+      fixture.context(launcher = launcher),
+    )
+
+    assertEquals(0, result.exitCode, result.stdout)
+    assertEquals(25.minutes, launcher.childLaunches.single().skillRunRequest.progressIdleTimeout)
+  }
+
+  @Test
+  fun `goal progress idle timeout defaults to a bounded cap when flag absent`() {
+    val fixture = goalFixture(subtaskCount = 1)
+    val launcher = GoalFixtureAgentRunLauncher(fixture)
+
+    val result = CliRuntime.run(
+      fixture.goalCommand(extra = emptyList()),
+      fixture.context(launcher = launcher),
+    )
+
+    assertEquals(0, result.exitCode, result.stdout)
+    assertEquals(10.minutes, launcher.childLaunches.single().skillRunRequest.progressIdleTimeout)
+  }
+
+  @Test
+  fun `goal progress idle timeout zero disables the cap`() {
+    val fixture = goalFixture(subtaskCount = 1)
+    val launcher = GoalFixtureAgentRunLauncher(fixture)
+
+    val result = CliRuntime.run(
+      fixture.goalCommand(extra = listOf("--progress-idle-timeout-minutes", "0")),
+      fixture.context(launcher = launcher),
+    )
+
+    assertEquals(0, result.exitCode, result.stdout)
+    assertEquals(null, launcher.childLaunches.single().skillRunRequest.progressIdleTimeout)
   }
 }
 
@@ -1074,25 +1126,31 @@ private class GoalFixtureAgentRunLauncher(
   private val heartbeatChatterCount: Int = 1,
 ) : AgentRunLauncher {
   val requests: MutableList<AgentRunLaunchRequest> = mutableListOf()
+  val childLaunches: MutableList<AgentRunLaunchRequest> = mutableListOf()
 
   override fun launch(request: AgentRunLaunchRequest): AgentRunLaunchOutcome {
     requests += request
-    val subtaskId = requireNotNull(request.skillRunRequest.subtaskId)
-    request.skillRunRequest.outputSink.write(AgentRunOutputStream.STDOUT, "child-$subtaskId-stdout\n")
-    request.skillRunRequest.outputSink.write(AgentRunOutputStream.STDERR, "child-$subtaskId-stderr\n")
-    request.skillRunRequest.outputSink.write(
+    val skillRequest = request.skillRunRequest
+    if (skillRequest.goalContinuation == null && skillRequest.promptOverride != null) {
+      return planningLaunchOutcome(skillRequest)
+    }
+    childLaunches += request
+    val subtaskId = requireNotNull(skillRequest.subtaskId)
+    skillRequest.outputSink.write(AgentRunOutputStream.STDOUT, "child-$subtaskId-stdout\n")
+    skillRequest.outputSink.write(AgentRunOutputStream.STDERR, "child-$subtaskId-stderr\n")
+    skillRequest.outputSink.write(
       AgentRunOutputStream.STDERR,
       "skill-bill: workflow progress: subtask $subtaskId " +
         "workflow wfl-$subtaskId step implement durable_progress step=implement\n",
     )
     repeat(heartbeatChatterCount) {
-      request.skillRunRequest.outputSink.write(
+      skillRequest.outputSink.write(
         AgentRunOutputStream.STDERR,
         "skill-bill: status heartbeat (90s): child run still active; workflow: " +
           "subtask $subtaskId workflow wfl-$subtaskId step implement durable_progress\n",
       )
     }
-    val dbPath = requireNotNull(request.skillRunRequest.dbPathOverride)
+    val dbPath = requireNotNull(skillRequest.dbPathOverride)
     val workflowId = startSubtaskWorkflow(subtaskId, dbPath)
     if (subtaskId == failSubtask) {
       failSubtaskWorkflow(workflowId, Path.of(dbPath))
@@ -1105,6 +1163,23 @@ private class GoalFixtureAgentRunLauncher(
       agent = InstallAgent.CODEX,
       exitStatus = 0,
       stdout = "captured child $subtaskId",
+      stderr = "",
+      timedOut = false,
+      spawnFailed = false,
+    )
+  }
+
+  private fun planningLaunchOutcome(
+    skillRequest: skillbill.ports.agentrun.model.SkillRunRequest,
+  ): AgentRunLaunchOutcome {
+    val phaseId = Regex("""Phase: (\w+) \(""")
+      .find(skillRequest.promptOverride.orEmpty())
+      ?.groupValues?.get(1)
+      ?: "preplan"
+    return AgentRunLaunchFacts(
+      agent = InstallAgent.CODEX,
+      exitStatus = 0,
+      stdout = phasePlanningPayload(phaseId),
       stderr = "",
       timedOut = false,
       spawnFailed = false,
@@ -1175,10 +1250,19 @@ private fun goalFixture(subtaskCount: Int): GoalCliFixture {
   val tempDir = Files.createTempDirectory("skillbill-cli-goal")
   val parentSpec = tempDir.resolve(".feature-specs/SKILL-901-goal/spec.md")
   Files.createDirectories(parentSpec.parent)
-  Files.writeString(parentSpec, "# Parent")
+  Files.writeString(
+    parentSpec,
+    """
+      # Parent
+
+      ## Acceptance Criteria
+
+      1. The decomposed goal completes every governed subtask.
+    """.trimIndent(),
+  )
   val subtaskSpecs = (1..subtaskCount).map { id ->
     parentSpec.parent.resolve("spec_subtask_${id}_part.md").also { path ->
-      Files.writeString(path, "---\nstatus: Pending\n---\n\n# Subtask $id")
+      Files.writeString(path, subtaskSpecText(id))
     }
   }
   val fixture = GoalCliFixture(
@@ -1268,6 +1352,13 @@ private fun jsonString(value: Any?): String = JsonSupport.json.encodeToString(
   kotlinx.serialization.json.JsonElement.serializer(),
   JsonSupport.valueToJsonElement(value),
 )
+
+private fun phasePlanningPayload(phaseId: String): String =
+  """{"contract_version":"$FEATURE_TASK_RUNTIME_CONTRACT_VERSION","phase_id":"$phaseId",""" +
+    """"status":"completed","summary":"$phaseId","produced_outputs":{"result":"$phaseId"}}"""
+
+private fun subtaskSpecText(id: Int): String =
+  "---\nstatus: Pending\n---\n\n# Subtask $id\n\n## Acceptance Criteria\n\n1. Subtask $id delivers its part.\n"
 
 private object NoopGoalTestAgentRunLauncher : AgentRunLauncher {
   override fun launch(request: AgentRunLaunchRequest): AgentRunLaunchOutcome = error("Unexpected launch")

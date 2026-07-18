@@ -904,10 +904,15 @@ class CliFeatureTaskRuntimeRuntimeTest {
     assertContains(status.stdout, "pending: 1")
     assertContains(status.stdout, "blocked: 0")
     assertContains(status.stdout, "phase: id=plan status=completed")
+    assertContains(status.stdout, "origin=agent-executed")
     assertContains(status.stdout, "phase: id=implement_fix status=pending")
     // SKILL-85 Subtask 4 (F-005): a fully forward-completed run reports no current phase — the
     // loop-only implement_fix (still pending) must NOT be projected as the current phase to operators.
     assertContains(status.stdout, "current_phase: none")
+    val planPhase = (requireNotNull(status.payload)["phases"] as List<*>)
+      .mapNotNull { it as? Map<*, *> }
+      .single { it["phase_id"] == "plan" }
+    assertEquals("agent-executed", planPhase["execution_origin"])
   }
 
   @Test

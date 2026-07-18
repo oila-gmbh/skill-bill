@@ -8,6 +8,10 @@ Feature-task continuation is repository-scoped and database-authoritative. At wo
 
 The feature `spec.md` remains the governed product contract; it is not a mutable workflow ledger. Pre-planning, planning, phase outputs, and the phase ledger remain durable database artifacts. Initial implementation continuation is hydrated from the completed `plan`. Audit-gap remediation reuses the immutable original completed `preplan` and `plan` outputs and never loops back to either planning phase.
 
+Decomposed goals execute discovery and preplan once at the parent, then persist a distinct immutable plan checkpoint for each ordered subtask. Normalized checkpoint tables are the continuation authority. Status reads only bounded fields: shared-preplan readiness, planned and total counts, first missing subtask, and a concise reason. Resume reuses compatible checkpoints; hard reset atomically invalidates planning and child continuation state.
+
+Child creation hydrates the shared preplan and child's plan as completed dependencies with goal-planning provenance. They add no child execution duration, tokens, or agent attribution. Standalone feature-task workflows retain directly executed and attributed preplan and plan phases.
+
 Runtime worker ownership is mutable state kept separately from immutable execution identity. A worker lease records a random owner token, monotonic fencing generation, host and boot identity, PID plus process-birth evidence, heartbeat/expiry, and the incomplete phase attempt. Every heartbeat, phase write, takeover reservation, transfer, and release must match both token and generation. Process liveness is exact only when host, boot, PID, and birth evidence agree; unverifiable or mismatched ownership must fail loudly instead of terminating a process or creating a replacement workflow. Confirmed takeover first reserves ownership with compare-and-set, then requests graceful shutdown and escalates only if the same process identity remains live.
 
 The runtime uses a hexagonal JVM graph with entry adapters at the outside,
@@ -195,6 +199,9 @@ runtime-ports
 - `skillbill.goalrunner` and `skillbill.goalrunner.model`: pure goal-runner
   liveness policy, worker-subtask parsing, status projection, accounting, and
   attempt-ledger models owned by `runtime-domain`.
+- `skillbill.goalplanning`: filesystem discovery of shared repository,
+  platform-pack, boundary-memory, and validation context owned by
+  `runtime-infra-fs`.
 - `skillbill.featurespec` and `skillbill.featurespec.model`: feature-spec
   preparation policy and typed preparation/write models owned by
   `runtime-domain`.
@@ -429,6 +436,7 @@ runtime-ports
     - `skillbill.application.decomposition.DecompositionManifestWriter.maybeWriteFromWorkflowUpdate`
     - `skillbill.application.workflow.WorkflowFamily.sessionSummary`
     - `skillbill.workflow.GoalObservabilityEventValidator.validate`
+    - `skillbill.workflow.GoalPlanningPreparationEnvelopeValidator.validate`
     - `skillbill.workflow.model.GoalObservabilityEvent.toArtifactMap`
     - `skillbill.workflow.model.GoalObservabilityEvent.toCompactSummaryMap`
     - `skillbill.workflow.model.GoalObservabilityHistory.toArtifactList`
@@ -454,6 +462,7 @@ runtime-ports
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch.fromArtifactMap`
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact.toArtifactMap`
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact.fromArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalPlanningImport.toArtifactMap`
     - `skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding.toArtifactMap`
     - `skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding.fromArtifactMap`
     - `skillbill.workflow.taskruntime.model.GoalSubtaskReviewPassResult.toArtifactMap`
@@ -560,6 +569,7 @@ skillbill.di
 skillbill.domain.skillremove
 skillbill.error
 skillbill.featurespec
+skillbill.goalplanning
 skillbill.goalrunner
 skillbill.install
 skillbill.infrastructure
@@ -868,6 +878,7 @@ Categories:
 
 ### open_extension (@OpenBoundaryMap)
 
+- `skillbill.workflow.GoalPlanningPreparationEnvelopeValidator.validate`
 - `skillbill.workflow.WorkflowEngine.snapshotMap`
 - `skillbill.workflow.WorkflowEngine.summaryMap`
 - `skillbill.workflow.WorkflowEngine.resumeMap`
@@ -907,6 +918,7 @@ Categories:
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch.fromArtifactMap`
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact.toArtifactMap`
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact.fromArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalPlanningImport.toArtifactMap`
 - `skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding.toArtifactMap`
 - `skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding.fromArtifactMap`
 - `skillbill.workflow.taskruntime.model.GoalSubtaskReviewPassResult.toArtifactMap`

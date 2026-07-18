@@ -16,6 +16,10 @@ driver; in `mode:prose` it loops the subtasks in the current agent session.
 missing, it must reuse the shared feature-spec preparation path exposed through
 `bill-feature-spec`.
 
+Goal preparation owns exactly one shared preplan at the parent workflow and one distinct plan for each ordered subtask. It checkpoints the shared preplan and every validated plan immediately in the workflow database. Resume reuses those immutable checkpoints and starts at the first missing plan; earlier branch changes do not regenerate settled planning. Status exposes only bounded preparation state, counts, the current planning subtask, and a concise reason, never raw planning payloads.
+
+At implement, each child is hydrated with the saved shared preplan and its own plan. These are completed dependencies, not new child-agent executions. Hard reset atomically invalidates parent planning and child continuation state; soft reset preserves compatible immutable planning.
+
 ## Modes
 
 `bill-feature-goal` accepts a `mode:` argument, mirroring `bill-feature-task`'s

@@ -20,6 +20,7 @@ data class FeatureTaskRuntimePhaseStatus(
   val attemptCount: Int,
   val resolvedAgentId: String?,
   val finished: Boolean,
+  val executionOrigin: String? = null,
 )
 
 /**

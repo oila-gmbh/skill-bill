@@ -21,4 +21,5 @@ interface UnitOfWork {
   val telemetryOutbox: TelemetryOutboxRepository
   val workflowStates: WorkflowStateRepository
   val workList: WorkListRepository
+  val goalPlanningPreparations: GoalPlanningPreparationRepository
 }

@@ -12,6 +12,7 @@ import skillbill.ports.persistence.FeatureTaskRuntimeWorkerRepository
 import skillbill.ports.persistence.FeatureTaskRuntimeWorkflowStateRepository
 import skillbill.ports.persistence.FeatureTaskWorkflowStateRepository
 import skillbill.ports.persistence.FeatureVerifyWorkflowStateRepository
+import skillbill.ports.persistence.GoalChildWorkflowStateRepository
 import skillbill.ports.persistence.WorkflowStateRepository
 import skillbill.ports.persistence.model.FeatureImplementSessionSummary
 import skillbill.ports.persistence.model.FeatureTaskExecutionIdentity
@@ -56,6 +57,7 @@ class WorkflowStateStore private constructor(
   featureTaskStore: FeatureTaskWorkflowStateStore,
 ) : WorkflowStateRepository,
   FeatureTaskWorkflowStateRepository by featureTaskStore,
+  GoalChildWorkflowStateRepository by featureTaskStore,
   FeatureTaskRuntimeWorkerRepository by featureTaskStore,
   FeatureImplementWorkflowStateRepository by FeatureImplementWorkflowStateStore(connection),
   FeatureVerifyWorkflowStateRepository by FeatureVerifyWorkflowStateStore(connection),
@@ -66,6 +68,7 @@ class WorkflowStateStore private constructor(
 private class FeatureTaskWorkflowStateStore(
   private val connection: Connection,
 ) : FeatureTaskWorkflowStateRepository,
+  GoalChildWorkflowStateRepository,
   FeatureTaskRuntimeWorkerRepository {
   override fun getFeatureTaskRuntimeWorkerOwnership(workflowId: String): FeatureTaskRuntimeWorkerOwnership? =
     connection.featureTaskRuntimeWorkerOwnership(workflowId)
@@ -209,6 +212,26 @@ private class FeatureTaskWorkflowStateStore(
         "immutable identity conflicts with the persisted record",
       )
     }
+  }
+
+  override fun getFeatureTaskExecutionIdentity(workflowId: String): FeatureTaskExecutionIdentity? =
+    connection.featureTaskIdentity(workflowId)
+
+  override fun deleteGoalChildWorkflowsByParent(parentWorkflowId: String): Int = connection.prepareStatement(
+    """
+      DELETE FROM feature_task_workflows
+      WHERE workflow_id IN (
+        SELECT workflows.workflow_id
+        FROM feature_task_workflows AS workflows
+        JOIN feature_task_execution_identities AS identities
+          ON identities.workflow_id = workflows.workflow_id
+        WHERE identities.route_scope = 'goal_child'
+          AND json_extract(workflows.artifacts_json, '$.goal_continuation.parent_workflow_id') = ?
+      )
+    """.trimIndent(),
+  ).use { statement ->
+    statement.setString(1, parentWorkflowId)
+    statement.executeUpdate()
   }
 
   override fun findStandaloneFeatureTaskCandidates(

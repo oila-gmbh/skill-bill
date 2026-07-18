@@ -159,6 +159,7 @@ class ImplementationOwnershipArchitectureTest {
       "skillbill.workflow.DecompositionManifestValidator",
       "skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator",
       "skillbill.workflow.GoalObservabilityEventValidator",
+      "skillbill.workflow.GoalPlanningPreparationEnvelopeValidator",
       "skillbill.workflow.GoalProgressEventValidator",
       "skillbill.workflow.WorkflowSnapshotValidator",
     )

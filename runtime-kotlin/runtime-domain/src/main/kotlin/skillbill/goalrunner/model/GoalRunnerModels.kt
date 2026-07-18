@@ -212,6 +212,23 @@ sealed interface GoalRunnerRunReport {
   ) : GoalRunnerRunReport
 }
 
+enum class GoalPlanningStatusState(val wireValue: String) {
+  NOT_STARTED("not_started"),
+  PREPLANNED("preplanned"),
+  PARTIALLY_PLANNED("partially_planned"),
+  BLOCKED("blocked"),
+  PREPARED("prepared"),
+}
+
+data class GoalPlanningStatusSnapshot(
+  val state: GoalPlanningStatusState,
+  val sharedPreplanPrepared: Boolean,
+  val plannedSubtaskCount: Int,
+  val totalSubtaskCount: Int,
+  val currentPlanningSubtaskId: Int?,
+  val reason: String?,
+)
+
 data class GoalRunnerStatusProjection(
   val issueKey: String,
   val completeCount: Int,
@@ -220,6 +237,7 @@ data class GoalRunnerStatusProjection(
   val currentSubtaskId: Int?,
   val currentStep: String?,
   val activeAgent: String?,
+  val planning: GoalPlanningStatusSnapshot? = null,
   val latestLivenessSignal: String? = null,
   @OpenBoundaryMap("Compact latest goal observability event passthrough for goal status rendering")
   val latestObservabilityEvent: Map<String, Any?>? = null,
@@ -228,6 +246,7 @@ data class GoalRunnerStatusProjection(
 )
 
 data class GoalRunnerStatusProjectionExtras(
+  val planning: GoalPlanningStatusSnapshot? = null,
   val currentStepOverride: String? = null,
   val latestLivenessSignal: String? = null,
   @OpenBoundaryMap("Compact latest goal observability event passthrough for goal status rendering")
@@ -254,6 +273,7 @@ object GoalRunnerStatusProjector {
         ?: currentSubtask?.lastResumableStep
         ?: currentSubtask?.let { s -> if (s.workflowId.isNullOrBlank()) "pending_launch" else "initializing" },
       activeAgent = activeAgent?.takeIf(String::isNotBlank),
+      planning = extras.planning,
       latestLivenessSignal = extras.latestLivenessSignal?.takeIf(String::isNotBlank),
       latestObservabilityEvent = extras.latestObservabilityEvent,
       requestedDiffStat = extras.requestedDiffStat,

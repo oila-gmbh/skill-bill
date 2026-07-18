@@ -24,6 +24,14 @@ import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
 import java.nio.file.Path
 
 interface GoalRunnerManifestStore {
+  fun planningStatus(
+    parentWorkflowId: String,
+    orderedSubtaskIds: List<Int>,
+    blockedSubtaskId: Int? = null,
+    blockedReason: String? = null,
+    dbPathOverride: String? = null,
+  ): skillbill.goalrunner.model.GoalPlanningStatusSnapshot? = null
+
   fun loadByIssueKey(
     issueKey: String,
     dbPathOverride: String? = null,
@@ -31,6 +39,12 @@ interface GoalRunnerManifestStore {
   ): GoalRunnerManifestState?
 
   fun save(state: GoalRunnerManifestState, dbPathOverride: String? = null): GoalRunnerManifestState
+
+  fun saveRuntimeState(state: GoalRunnerManifestState, dbPathOverride: String? = null): GoalRunnerManifestState =
+    save(state, dbPathOverride)
+
+  fun saveHardReset(state: GoalRunnerManifestState, dbPathOverride: String? = null): GoalRunnerManifestState =
+    error("Goal runner manifest store must atomically persist hard reset state.")
 
   fun saveNewChildWorkflow(
     state: GoalRunnerManifestState,

@@ -16,7 +16,46 @@ import java.math.BigInteger
 
 const val FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY: String = "feature_task_runtime_phase_records"
 const val FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY: String = "feature_task_runtime_phase_ledger"
+const val FEATURE_TASK_RUNTIME_GOAL_PLANNING_IMPORT_ARTIFACT_KEY: String = "goal_planning_import"
 const val FEATURE_TASK_RUNTIME_PHASE_LEDGER_LIMIT: Int = 200
+
+data class FeatureTaskRuntimeGoalPlanningImport(
+  val parentGoalWorkflowId: String,
+  val normalizedIssueKey: String,
+  val repositoryIdentity: String,
+  val parentSpecHash: String,
+  val decompositionManifestHash: String,
+  val planningContractId: String,
+  val planningContractVersion: String,
+  val phaseOutputContractId: String,
+  val phaseOutputContractVersion: String,
+  val subtaskId: Int,
+  val manifestOrder: Int,
+  val governedSubSpecPath: String,
+  val subSpecHash: String,
+  val preplanPayloadSha256: String,
+  val planPayloadSha256: String,
+) {
+  @OpenBoundaryMap("Validated goal-planning import provenance at the durable workflow-artifact seam")
+  fun toArtifactMap(): Map<String, Any?> = linkedMapOf(
+    "source_kind" to "imported_goal_planning",
+    "parent_goal_workflow_id" to parentGoalWorkflowId,
+    "normalized_issue_key" to normalizedIssueKey,
+    "repository_identity" to repositoryIdentity,
+    "parent_spec_hash" to parentSpecHash,
+    "decomposition_manifest_hash" to decompositionManifestHash,
+    "planning_contract_id" to planningContractId,
+    "planning_contract_version" to planningContractVersion,
+    "phase_output_contract_id" to phaseOutputContractId,
+    "phase_output_contract_version" to phaseOutputContractVersion,
+    "subtask_id" to subtaskId,
+    "manifest_order" to manifestOrder,
+    "governed_sub_spec_path" to governedSubSpecPath,
+    "sub_spec_hash" to subSpecHash,
+    "preplan_payload_sha256" to preplanPayloadSha256,
+    "plan_payload_sha256" to planPayloadSha256,
+  )
+}
 
 /**
  * Durable run-scoped resolved feature branch. The runtime resolves a non-default feature branch
@@ -142,6 +181,8 @@ data class FeatureTaskRuntimePhaseRecord(
   val finishedAt: String? = null,
   val durationMillis: Long? = null,
   val resolvedAgentId: String,
+  val executionOrigin: FeatureTaskRuntimePhaseExecutionOrigin =
+    FeatureTaskRuntimePhaseExecutionOrigin.AGENT_EXECUTED,
   val outputArtifact: String? = null,
   val blockedReason: String? = null,
   val failureDisposition: FeatureTaskRuntimeFailureDisposition? = null,
@@ -185,6 +226,7 @@ data class FeatureTaskRuntimePhaseRecord(
     "started_at" to startedAt,
     "first_started_at" to firstStartedAt,
     "resolved_agent_id" to resolvedAgentId,
+    "execution_origin" to executionOrigin.wireValue,
   ).apply {
     finishedAt?.let { put("finished_at", it) }
     durationMillis?.let { put("duration_millis", it) }
@@ -214,6 +256,9 @@ data class FeatureTaskRuntimePhaseRecord(
         finishedAt = raw.optionalStringField("finished_at"),
         durationMillis = raw.optionalLongField("duration_millis"),
         resolvedAgentId = raw.requireStringField("resolved_agent_id"),
+        executionOrigin = raw.optionalStringField("execution_origin")?.let(
+          FeatureTaskRuntimePhaseExecutionOrigin::fromWireValue,
+        ) ?: FeatureTaskRuntimePhaseExecutionOrigin.AGENT_EXECUTED,
         outputArtifact = raw.optionalStringField("output_artifact"),
         blockedReason = raw.optionalStringField("blocked_reason"),
         failureDisposition = raw.optionalStringField("failure_disposition")?.let { value ->
@@ -230,6 +275,20 @@ data class FeatureTaskRuntimePhaseRecord(
         reviewPassNumber = raw.optionalIntField("review_pass_number"),
       )
     }
+  }
+}
+
+enum class FeatureTaskRuntimePhaseExecutionOrigin(val wireValue: String) {
+  AGENT_EXECUTED("agent-executed"),
+  GOAL_PLANNING_HYDRATED("goal-planning-hydrated"),
+  ;
+
+  companion object {
+    fun fromWireValue(value: String): FeatureTaskRuntimePhaseExecutionOrigin =
+      entries.firstOrNull { it.wireValue == value }
+        ?: throw InvalidWorkflowStateSchemaError(
+          "Feature-task-runtime artifact field 'execution_origin' has unsupported value '$value'.",
+        )
   }
 }
 
@@ -278,6 +337,8 @@ data class FeatureTaskRuntimePhaseLedgerEntry(
   val phaseId: String,
   val attemptCount: Int,
   val resolvedAgentId: String? = null,
+  val executionOrigin: FeatureTaskRuntimePhaseExecutionOrigin =
+    FeatureTaskRuntimePhaseExecutionOrigin.AGENT_EXECUTED,
   val fixLoopIteration: Int? = null,
   val blockedReason: String? = null,
   /** Authoritative per-edge trail for a backward-edge re-entry, distinct from [attemptCount]. */
@@ -314,6 +375,7 @@ data class FeatureTaskRuntimePhaseLedgerEntry(
     "attempt_count" to attemptCount,
   ).apply {
     resolvedAgentId?.let { put("resolved_agent_id", it) }
+    put("execution_origin", executionOrigin.wireValue)
     fixLoopIteration?.let { put("fix_loop_iteration", it) }
     blockedReason?.let { put("blocked_reason", it) }
     loopId?.let { put("loop_id", it) }
@@ -331,6 +393,9 @@ data class FeatureTaskRuntimePhaseLedgerEntry(
         phaseId = raw.requireStringField("phase_id"),
         attemptCount = raw.requireIntField("attempt_count"),
         resolvedAgentId = raw.optionalStringField("resolved_agent_id"),
+        executionOrigin = raw.optionalStringField("execution_origin")?.let(
+          FeatureTaskRuntimePhaseExecutionOrigin::fromWireValue,
+        ) ?: FeatureTaskRuntimePhaseExecutionOrigin.AGENT_EXECUTED,
         fixLoopIteration = raw.optionalIntField("fix_loop_iteration"),
         blockedReason = raw.optionalStringField("blocked_reason"),
         loopId = raw.optionalStringField("loop_id"),
