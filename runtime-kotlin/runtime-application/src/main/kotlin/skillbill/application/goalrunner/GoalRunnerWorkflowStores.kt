@@ -120,6 +120,7 @@ class WorkflowGoalRunnerManifestStore(
   private val workflowSnapshotValidator: WorkflowSnapshotValidator,
   private val decompositionManifestValidator: DecompositionManifestValidator,
   private val decompositionManifestFileStore: DecompositionManifestFileStore,
+  private val phaseOutputValidator: FeatureTaskRuntimePhaseOutputValidator,
 ) : GoalRunnerManifestStore {
   private val engine: WorkflowEngine = WorkflowEngine(workflowSnapshotValidator)
 
@@ -193,9 +194,20 @@ class WorkflowGoalRunnerManifestStore(
     state: GoalRunnerManifestState,
     setup: GoalRunnerChildWorkflowSetup,
   ): SavedGoalChildWorkflow {
+    requireConsistentChildSetup(state, setup)
+    val expectedIdentity = expectedChildIdentity(setup)
     val parentUpdated = updateParentForChildWorkflow(unitOfWork, state)
     val existingChild = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, setup.workflowId)
     if (existingChild != null) {
+      val persistedIdentity = unitOfWork.workflowStates.getFeatureTaskExecutionIdentity(setup.workflowId)
+      if (persistedIdentity != expectedIdentity) {
+        throw IncompatibleGoalPlanningPreparationRecoveryError(
+          state.parentWorkflowId,
+          setup.subtaskId,
+          "existing child execution identity conflicts with goal-child setup",
+        )
+      }
+      requireMatchingGoalContinuation(existingChild, state, setup)
       requireMatchingPlanningImport(existingChild, setup)
     }
     val childUpdated = if (existingChild == null) {
@@ -208,14 +220,7 @@ class WorkflowGoalRunnerManifestStore(
         unitOfWork.workflowStates,
         childUpdated.toRecord().copy(issueKey = normalizeRequiredIssueKey(state.manifest.issueKey)),
       )
-      val identity = FeatureTaskExecutionIdentity(
-        workflowId = setup.workflowId,
-        normalizedIssueKey = setup.normalizedIssueKey,
-        repositoryIdentity = setup.repositoryIdentity,
-        governedSpecPath = setup.governedSpecPath,
-        mode = FeatureTaskWorkflowMode.RUNTIME,
-        routeScope = FeatureTaskRouteScope.GOAL_CHILD,
-      )
+      val identity = expectedIdentity
       FeatureTaskExecutionIdentityPolicy.validate(identity)
       unitOfWork.workflowStates.saveFeatureTaskExecutionIdentity(identity)
     }
@@ -229,6 +234,58 @@ class WorkflowGoalRunnerManifestStore(
       ),
       projectionArtifactsJson = refreshedParent.artifactsJson,
     )
+  }
+
+  private fun expectedChildIdentity(setup: GoalRunnerChildWorkflowSetup) = FeatureTaskExecutionIdentity(
+    workflowId = setup.workflowId,
+    normalizedIssueKey = setup.normalizedIssueKey,
+    repositoryIdentity = setup.repositoryIdentity,
+    governedSpecPath = setup.governedSpecPath,
+    mode = FeatureTaskWorkflowMode.RUNTIME,
+    routeScope = FeatureTaskRouteScope.GOAL_CHILD,
+  )
+
+  private fun requireConsistentChildSetup(state: GoalRunnerManifestState, setup: GoalRunnerChildWorkflowSetup) {
+    val request = setup.planningHydration ?: return
+    val selected = state.manifest.subtasks.singleOrNull { it.id == setup.subtaskId }
+    val failures = listOfNotNull(
+      "parent workflow".takeIf { request.identity.parentGoalWorkflowId != state.parentWorkflowId },
+      "issue key".takeIf {
+        request.identity.normalizedIssueKey != setup.normalizedIssueKey ||
+          setup.normalizedIssueKey != normalizeRequiredIssueKey(state.manifest.issueKey)
+      },
+      "repository".takeIf { request.identity.repositoryIdentity != setup.repositoryIdentity },
+      "subtask".takeIf { request.descriptor.subtaskId != setup.subtaskId },
+      "governed spec".takeIf { request.descriptor.governedSubSpecPath != setup.governedSpecPath },
+      "manifest subtask".takeIf { selected == null || selected.specPath != setup.governedSpecPath },
+    )
+    if (failures.isNotEmpty()) {
+      throw IncompatibleGoalPlanningPreparationRecoveryError(
+        state.parentWorkflowId,
+        setup.subtaskId,
+        "hydration ${failures.joinToString()} does not match child setup",
+      )
+    }
+  }
+
+  private fun requireMatchingGoalContinuation(
+    existing: WorkflowStateSnapshot,
+    state: GoalRunnerManifestState,
+    setup: GoalRunnerChildWorkflowSetup,
+  ) {
+    val continuation = decodeArtifacts(existing.artifactsJson)[FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY]
+      as? Map<*, *>
+    val matches = continuation?.get("issue_key") == state.manifest.issueKey &&
+      (continuation["subtask_id"] as? Number)?.toInt() == setup.subtaskId &&
+      continuation["parent_workflow_id"] == state.parentWorkflowId &&
+      continuation["goal_branch"] == setup.goalBranch && continuation["suppress_pr"] == true
+    if (!matches) {
+      throw IncompatibleGoalPlanningPreparationRecoveryError(
+        state.parentWorkflowId,
+        setup.subtaskId,
+        "existing child goal continuation conflicts with child setup",
+      )
+    }
   }
 
   private fun updateParentForChildWorkflow(
@@ -361,10 +418,8 @@ class WorkflowGoalRunnerManifestStore(
     if (sha256HexUtf8(payload) != expectedDigest) {
       throw InvalidGoalPlanningPreparationSchemaError(workflowId, "$phaseId.payload_sha256", "payload digest differs")
     }
-    val decoded = JsonSupport.parseObjectOrNull(payload)
-      ?.let(JsonSupport::jsonElementToValue)
-      ?.let(JsonSupport::anyToStringAnyMap)
-    if (decoded?.get("phase_id") != phaseId || decoded["status"] != "completed" ||
+    val decoded = phaseOutputValidator.validateAndReadPhaseOutput(payload, phaseId)
+    if (decoded["phase_id"] != phaseId || decoded["status"] != "completed" ||
       (decoded["produced_outputs"] as? Map<*, *>)?.isEmpty() != false
     ) {
       throw InvalidGoalPlanningPreparationSchemaError(
@@ -422,15 +477,8 @@ class WorkflowGoalRunnerManifestStore(
         (record["duration_millis"] as? Number)?.toLong() == 0L &&
         record["started_at"] == record["finished_at"]
     }
-    val ledger = artifacts[FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY] as? List<*>
-    val importedLedgerMatches = listOf("preplan", "plan").withIndex().all { (sequence, phaseId) ->
-      val entry = ledger?.getOrNull(sequence) as? Map<*, *>
-      entry?.get("action") == "complete" && entry["phase_id"] == phaseId &&
-        (entry["sequence_number"] as? Number)?.toInt() == sequence &&
-        (entry["attempt_count"] as? Number)?.toInt() == 1 && "resolved_agent_id" !in entry
-    }
     if (expected == null || required.any { (key, value) -> expected[key] != value } ||
-      !importedRecordsMatch || !importedLedgerMatches
+      !importedRecordsMatch
     ) {
       throw IncompatibleGoalPlanningPreparationRecoveryError(
         request.identity.parentGoalWorkflowId, setup.subtaskId, "existing child planning import conflicts with request",

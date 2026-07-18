@@ -52,6 +52,17 @@ import kotlin.test.assertTrue
 
 class GoalPlanningSweepTest {
   @Test
+  fun `prepared sweep reports absent hydration context for a sibling added after preparation`() {
+    val harness = sweepHarness { phase, _, _ -> validPhaseOutcome(phase) }
+    val prepared = assertIs<GoalPlanningSweepOutcome.PreparedAll>(
+      harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 1)), harness.request()),
+    )
+
+    assertNotNull(prepared.hydrationFor(1))
+    assertEquals(null, prepared.hydrationFor(2))
+  }
+
+  @Test
   fun `multi-subtask sweep prepares one shared preplan and every included subtask plan in manifest order`() {
     val harness = sweepHarness { phase, _, _ -> validPhaseOutcome(phase) }
 

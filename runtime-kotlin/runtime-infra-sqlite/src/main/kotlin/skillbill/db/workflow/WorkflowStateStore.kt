@@ -211,6 +211,9 @@ private class FeatureTaskWorkflowStateStore(
     }
   }
 
+  override fun getFeatureTaskExecutionIdentity(workflowId: String): FeatureTaskExecutionIdentity? =
+    connection.featureTaskIdentity(workflowId)
+
   override fun deleteGoalChildWorkflowsByParent(parentWorkflowId: String): Int = connection.prepareStatement(
     """
       DELETE FROM feature_task_workflows

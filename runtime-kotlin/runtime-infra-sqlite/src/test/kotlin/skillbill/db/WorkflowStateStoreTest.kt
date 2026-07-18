@@ -27,6 +27,22 @@ import kotlin.test.assertTrue
 
 class WorkflowStateStoreTest {
   @Test
+  fun `feature task execution identity can be read exactly at adoption boundary`() {
+    val dbPath = Files.createTempDirectory("goal-child-identity-read").resolve("metrics.db")
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val store = WorkflowStateStore(connection)
+      val workflow = goalChildWorkflow("wfl-child", "wfl-parent")
+      val identity = goalChildIdentity(workflow)
+
+      store.saveFeatureTaskRuntimeWorkflow(workflow)
+      store.saveFeatureTaskExecutionIdentity(identity)
+
+      assertEquals(identity, store.getFeatureTaskExecutionIdentity(identity.workflowId))
+      assertEquals(null, store.getFeatureTaskExecutionIdentity("wfl-missing"))
+    }
+  }
+
+  @Test
   fun `hard reset deletion removes only goal children owned by the parent workflow`() {
     val dbPath = Files.createTempDirectory("goal-child-reset").resolve("metrics.db")
     DatabaseRuntime.ensureDatabase(dbPath).use { connection ->

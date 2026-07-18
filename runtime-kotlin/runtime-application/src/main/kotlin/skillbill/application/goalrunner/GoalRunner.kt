@@ -206,6 +206,7 @@ class GoalRunner(
     planning: GoalPlanningSweepOutcome.PreparedAll,
   ): GoalRunnerIterationResult {
     var state = initialState
+    var currentPlanning = planning
     var terminalReport: GoalRunnerRunReport? = preflightPolicyBlockedReport(state, request, ledger)
     while (terminalReport == null) {
       val selection = GoalRunnerPlanner.selectNext(state.manifest)
@@ -218,6 +219,23 @@ class GoalRunner(
               terminalReport = result.report
             }
         is GoalRunnerSelection.Run -> {
+          if (currentPlanning.identity != null && currentPlanning.hydrationFor(selection.decision.subtask.id) == null) {
+            when (val refreshedPlanning = goalPlanningSweep.prepare(state, request)) {
+              is GoalPlanningSweepOutcome.PreparedAll -> currentPlanning = refreshedPlanning
+              is GoalPlanningSweepOutcome.Stopped -> {
+                terminalReport = stopped(
+                  refreshedPlanning.issueKey,
+                  attempted,
+                  refreshedPlanning.currentSubtaskId,
+                  refreshedPlanning.reason,
+                  refreshedPlanning.blockedReason,
+                  state.manifest.workflowIdFor(refreshedPlanning.currentSubtaskId),
+                  refreshedPlanning.lastResumableStep,
+                )
+                continue
+              }
+            }
+          }
           val result = runSelectedSubtask(
             state,
             selection,
@@ -226,7 +244,7 @@ class GoalRunner(
             observability,
             ledger,
             telemetryEmitter,
-            planning,
+            currentPlanning,
           )
           state = result.state
           terminalReport = result.report

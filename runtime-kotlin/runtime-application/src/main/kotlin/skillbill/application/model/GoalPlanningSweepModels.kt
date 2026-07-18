@@ -13,10 +13,11 @@ sealed interface GoalPlanningSweepOutcome {
   ) : GoalPlanningSweepOutcome {
     fun hydrationFor(subtaskId: Int) = identity?.let { expectedIdentity ->
       val expectedProvenance = requireNotNull(provenance)
+      val descriptor = descriptors.singleOrNull { it.subtaskId == subtaskId } ?: return@let null
       skillbill.ports.goalrunner.model.GoalChildPlanningHydrationRequest(
         expectedIdentity,
         expectedProvenance,
-        descriptors.single { it.subtaskId == subtaskId },
+        descriptor,
       )
     }
   }

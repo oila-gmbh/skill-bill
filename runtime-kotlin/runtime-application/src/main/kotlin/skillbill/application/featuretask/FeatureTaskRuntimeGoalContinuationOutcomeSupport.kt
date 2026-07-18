@@ -12,6 +12,10 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 
 internal const val BRANCH_SETUP_AGENT_SENTINEL = "branch-setup"
+internal const val GOAL_PLANNING_IMPORT_AGENT_SENTINEL = "goal-planning-import"
+
+private fun String.isRuntimeAgentId(): Boolean =
+  isNotBlank() && this != BRANCH_SETUP_AGENT_SENTINEL && this != GOAL_PLANNING_IMPORT_AGENT_SENTINEL
 
 // Capture-at-source for a completed goal-continuation run (SKILL-68). Under suppress_pr the
 // per-subtask commit invariant requires a SHA: take it from the phase payload, else measure git
@@ -95,11 +99,11 @@ internal fun agentAttributionFromPhaseState(
 
   val participating = LinkedHashSet<String>()
   ledger.forEach { entry ->
-    entry.resolvedAgentId?.takeIf { it.isNotBlank() && it != BRANCH_SETUP_AGENT_SENTINEL }
+    entry.resolvedAgentId?.takeIf(String::isRuntimeAgentId)
       ?.let(participating::add)
   }
   records.values.forEach { record ->
-    record.resolvedAgentId.takeIf { it.isNotBlank() && it != BRANCH_SETUP_AGENT_SENTINEL }
+    record.resolvedAgentId.takeIf(String::isRuntimeAgentId)
       ?.let(participating::add)
   }
 
@@ -108,7 +112,7 @@ internal fun agentAttributionFromPhaseState(
       entry.action == FeatureTaskRuntimePhaseLedgerAction.COMPLETE ||
         entry.action == FeatureTaskRuntimePhaseLedgerAction.BLOCKED
       ) &&
-      !entry.resolvedAgentId.isNullOrBlank()
+      entry.resolvedAgentId?.isRuntimeAgentId() == true
   }?.resolvedAgentId
   val finalizingAgentId = finalizingFromLedger ?: terminalRecordAgentId(records)
 
@@ -122,7 +126,7 @@ internal fun agentAttributionFromPhaseState(
 // greatest finishedAt (deterministic on multiple blocked), else the last-finished phase record by the same
 // ordering. Branch-setup-sentinel records are excluded: they carry no real agent id.
 private fun terminalRecordAgentId(records: Map<String, FeatureTaskRuntimePhaseRecord>): String? {
-  val realRecords = records.values.filter { it.resolvedAgentId != BRANCH_SETUP_AGENT_SENTINEL }
+  val realRecords = records.values.filter { it.resolvedAgentId.isRuntimeAgentId() }
   realRecords.filter { it.status == FEATURE_TASK_RUNTIME_PHASE_STATUS_BLOCKED }
     .maxByOrNull { it.finishedAt.orEmpty() }
     ?.let { return it.resolvedAgentId }

@@ -678,6 +678,7 @@ class WorkflowServiceTest {
       workflowSnapshotValidator = testWorkflowSnapshotValidator,
       decompositionManifestValidator = testDecompositionManifestValidator,
       decompositionManifestFileStore = TestDecompositionManifestFileStore,
+      phaseOutputValidator = AlwaysValidValidator,
     )
 
     val state = store.loadByIssueKey("SKILL-52.1", repoRoot = repoRoot)
@@ -718,6 +719,7 @@ class WorkflowServiceTest {
       workflowSnapshotValidator = testWorkflowSnapshotValidator,
       decompositionManifestValidator = testDecompositionManifestValidator,
       decompositionManifestFileStore = TestDecompositionManifestFileStore,
+      phaseOutputValidator = AlwaysValidValidator,
     )
 
     val refreshed = store.loadByIssueKey("SKILL-52.1", repoRoot = repoRoot)
@@ -754,6 +756,7 @@ class WorkflowServiceTest {
       workflowSnapshotValidator = testWorkflowSnapshotValidator,
       decompositionManifestValidator = testDecompositionManifestValidator,
       decompositionManifestFileStore = TestDecompositionManifestFileStore,
+      phaseOutputValidator = AlwaysValidValidator,
     )
 
     val error = assertFailsWith<IllegalStateException> {
@@ -916,6 +919,7 @@ class WorkflowGoalStatusProjectionTest {
         workflowSnapshotValidator = testWorkflowSnapshotValidator,
         decompositionManifestValidator = testDecompositionManifestValidator,
         decompositionManifestFileStore = TestDecompositionManifestFileStore,
+        phaseOutputValidator = AlwaysValidValidator,
       ),
       outcomeStore = WorkflowGoalRunnerOutcomeStore(
         database = database,
