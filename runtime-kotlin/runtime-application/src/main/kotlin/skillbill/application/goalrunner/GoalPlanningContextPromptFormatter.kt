@@ -11,6 +11,21 @@ internal object GoalPlanningContextPromptFormatter {
     append(JsonSupport.mapToJsonString(packet))
     append("\nCurrent governed sub-spec: ")
     append(subtask.specPath)
+    append("\nCurrent subtask dependency context: ")
+    append(
+      JsonSupport.mapToJsonString(
+        mapOf(
+          "subtask_id" to subtask.id,
+          "dependencies" to subtask.dependencies.map { dependency ->
+            mapOf(
+              "subtask_id" to dependency.subtaskId,
+              "optional" to dependency.optional,
+              "skipped" to dependency.skipped,
+            )
+          },
+        ),
+      ),
+    )
     append("\nDependency metadata is planning context only. Do not execute, simulate, edit, or mutate dependency work.")
   }
 }

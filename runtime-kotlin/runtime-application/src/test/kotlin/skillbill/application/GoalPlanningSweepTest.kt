@@ -32,6 +32,7 @@ import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.persistence.WorkflowStateRepository
 import skillbill.ports.persistence.model.GoalPlanningPreparationRecord
 import skillbill.ports.persistence.model.GoalPlanningPreparationStatus
+import skillbill.ports.persistence.model.GoalPlanningIdentity
 import skillbill.ports.taskruntime.FeatureTaskRuntimeRunInvariantsSource
 import skillbill.ports.workflow.DecompositionManifestFileStore
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
@@ -51,7 +52,7 @@ import kotlin.test.assertTrue
 
 class GoalPlanningSweepTest {
   @Test
-  fun `multi-subtask sweep prepares every non-skipped pair in dependency order with one shared context`() {
+  fun `multi-subtask sweep prepares one shared preplan and every included subtask plan in manifest order`() {
     val harness = sweepHarness { phase, _, _ -> validPhaseOutcome(phase) }
 
     val outcome = harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 2)), harness.request())
@@ -62,7 +63,7 @@ class GoalPlanningSweepTest {
     assertEquals(2, harness.preparedCount())
 
     val record = harness.recordFor(1)
-    assertNotNull(record, "each prepared pair must be durably persisted with its provenance")
+    assertNotNull(record, "each subtask plan must be durably persisted with its shared provenance")
     assertEquals("SKILL-56", record.normalizedIssueKey)
     assertTrue(record.repositoryIdentity.startsWith("repo-root-realpath-v1:"))
     assertEquals(".feature-specs/SKILL-56-goal/spec_subtask_1.md", record.governedSubSpecPath)
@@ -104,7 +105,7 @@ class GoalPlanningSweepTest {
   }
 
   @Test
-  fun `resume accepts a completed prepared pair after its scratch spec is deleted`() {
+  fun `resume rejects a completed plan when its governed scratch spec is deleted`() {
     val harness = sweepHarness { phase, _, _ -> validPhaseOutcome(phase) }
     val initial = manifest(subtaskCount = 2).copy(specSource = SpecSource.LINEAR)
     harness.sweep.prepare(harness.stateFor(initial), harness.request())
@@ -170,7 +171,7 @@ class GoalPlanningSweepTest {
 
     assertEquals(
       listOf(
-        "skill-bill: goal planning - subtask 1 preplan\n",
+        "skill-bill: goal planning - parent goal shared preplan\n",
         "skill-bill: goal planning - subtask 1 plan\n",
         "skill-bill: goal planning - subtask 2 plan\n",
       ),
@@ -179,7 +180,7 @@ class GoalPlanningSweepTest {
   }
 
   @Test
-  fun `resume after a crash between pairs continues at the next subtask without replanning`() {
+  fun `resume after a crash between plans continues at the next subtask without rediscovery`() {
     val fixtures = sharedSweepFixtures()
     val discovery = CountingContextDiscovery()
     val runOneLauncher = SweepPlanningLauncher { phase, subtaskId, _ ->
@@ -251,9 +252,11 @@ class GoalPlanningSweepTest {
   }
 
   @Test
-  fun `plan failure restarts the uncheckpointed pair from preplan`() {
-    val harness = sweepHarness { phase, _, _ ->
-      val payload = if (phase == "plan") {
+  fun `plan failure resumes at plan while retaining the durable shared preplan`() {
+    val discovery = CountingContextDiscovery()
+    var failPlan = true
+    val harness = sweepHarness(contextDiscovery = discovery) { phase, _, _ ->
+      val payload = if (phase == "plan" && failPlan) {
         phasePayload(phase).replace("\"completed\"", "\"failed\"")
       } else {
         phasePayload(phase)
@@ -265,9 +268,17 @@ class GoalPlanningSweepTest {
 
     val stopped = assertIs<GoalPlanningSweepOutcome.Stopped>(outcome)
     assertEquals(1, stopped.currentSubtaskId)
-    assertEquals("preplan", stopped.lastResumableStep)
+    assertEquals("plan", stopped.lastResumableStep)
     assertTrue(stopped.blockedReason.contains("'plan' stopped"))
     assertEquals(0, harness.preparedCount())
+    assertNotNull(harness.fixtures.database.repository.findSharedPreplan(harness.identity()))
+
+    failPlan = false
+    val resumed = harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 1)), harness.request())
+
+    assertIs<GoalPlanningSweepOutcome.PreparedAll>(resumed)
+    assertEquals(listOf("preplan", "plan", "plan"), harness.launcher.phases)
+    assertEquals(1, discovery.calls, "resume after shared-preplan persistence must not repeat discovery")
   }
 
   @Test
@@ -306,7 +317,7 @@ class GoalPlanningSweepTest {
   }
 
   @Test
-  fun `all plans gate blocks every child activation while a pair is missing`() {
+  fun `all plans gate blocks every child activation while a plan is missing`() {
     val fixtures = sharedSweepFixtures()
     val sharedLauncher = SweepPlanningLauncher { phase, subtaskId, _ ->
       if (subtaskId == 2) launchFacts(stdout = "") else validPhaseOutcome(phase)
@@ -334,11 +345,11 @@ class GoalPlanningSweepTest {
     assertTrue(sharedLauncher.requests.isNotEmpty(), "the sweep must have attempted planning before stopping")
     assertTrue(
       sharedLauncher.requests.all { it.skillRunRequest.promptOverride != null },
-      "every launch while a pair is missing must be a planning prompt, not a child activation",
+      "every launch while a plan is missing must be a planning prompt, not a child activation",
     )
     assertTrue(
       sharedLauncher.requests.all { it.skillRunRequest.goalContinuation == null },
-      "no child workflow may be activated until every non-skipped pair is prepared",
+      "no child workflow may be activated until every included plan is prepared",
     )
   }
 
@@ -352,7 +363,7 @@ class GoalPlanningSweepTest {
 
     assertIs<GoalPlanningSweepOutcome.PreparedAll>(outcome)
     val record = harness.recordFor(1)
-    assertNotNull(record, "the prepared pair must be persisted")
+    assertNotNull(record, "the shared preplan and subtask plan must be persisted")
     val preplanMap = JsonSupport.parseObjectOrNull(record.preplanPayload)
       ?.let(JsonSupport::jsonElementToValue)
       ?.let(JsonSupport::anyToStringAnyMap)
@@ -621,7 +632,7 @@ private class FakeInvariantsSource : FeatureTaskRuntimeRunInvariantsSource {
   override fun read(specPath: Path): FeatureTaskRuntimeRunInvariants = FeatureTaskRuntimeRunInvariants(
     specReference = specPath.toString(),
     featureSize = FeatureTaskRuntimeFeatureSize.MEDIUM,
-    acceptanceCriteria = listOf("The sweep produces a schema-valid planning pair for this sub-spec."),
+    acceptanceCriteria = listOf("The sweep produces a schema-valid plan for this sub-spec."),
     mandatesAndOverrides = emptyList(),
   )
 }
@@ -903,6 +914,11 @@ private class SweepHarness(
   fun stateFor(manifest: DecompositionManifest): GoalRunnerManifestState = fixtures.stateFor(manifest)
   fun request(): GoalRunnerRunRequest = fixtures.request()
   fun preparedCount(): Int = fixtures.preparedCount()
+  fun identity(): GoalPlanningIdentity = GoalPlanningIdentity(
+    "wfl-parent",
+    "SKILL-56",
+    "repo-root-realpath-v1:${fixtures.repoRoot.toRealPath()}",
+  )
   fun recordFor(subtaskId: Int): GoalPlanningPreparationRecord? =
     fixtures.database.repository.findByGoalAndSubtask("wfl-parent", subtaskId)
   val manifestFileStore: CountingManifestFileStore get() = fixtures.manifestFileStore

@@ -6,6 +6,7 @@ import skillbill.application.featuretask.sha256HexUtf8
 import skillbill.error.InvalidGoalPlanningPreparationSchemaError
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.model.GoalPlanningIdentity
+import skillbill.ports.persistence.model.GoalPlanningContractProvenance
 import skillbill.ports.persistence.model.GoalPlanningPreparationProgress
 import skillbill.ports.persistence.model.GoalPlanningPreparationRecord
 import skillbill.ports.persistence.model.GoalSubtaskPlanCheckpoint
@@ -68,10 +69,21 @@ class GoalPlanningPreparationCheckpoint(
   fun recoveryProgress(
     identity: GoalPlanningIdentity,
     orderedDescriptors: List<GovernedGoalSubtaskDescriptor>,
+    expectedProvenance: GoalPlanningContractProvenance,
     dbOverride: String? = null,
   ): GoalPlanningPreparationProgress {
     val sharedPrepared = findSharedPreplan(identity, dbOverride) != null
-    val prepared = orderedDescriptors.mapNotNull { findSubtaskPlan(identity, it, dbOverride) }
+    val prepared = orderedDescriptors.mapNotNull { descriptor ->
+      findSubtaskPlan(identity, descriptor, dbOverride)?.also { plan ->
+        if (plan.provenance != expectedProvenance) {
+          throw skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError(
+            identity.parentGoalWorkflowId,
+            descriptor.subtaskId,
+            "stored plan provenance differs from the governing shared preplan",
+          )
+        }
+      }
+    }
     val preparedIds = prepared.mapTo(mutableSetOf()) { it.subtaskId }
     return GoalPlanningPreparationProgress(
       sharedPreplanPrepared = sharedPrepared,

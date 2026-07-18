@@ -88,7 +88,7 @@ class DefaultGoalPlanningSweep(
     val shared = runCatching { gatherSharedContext(state, request, recoveredPacket) }.getOrElse { error ->
       return preSweepStopped(request, sharedContextReason(error))
     }
-    val activeSubtasks = state.manifest.subtasks.filter { it.status != "skipped" }
+    val activeSubtasks = state.manifest.subtasks.filterNot(::isExplicitlySkipped)
     if (activeSubtasks.isEmpty()) return GoalPlanningSweepOutcome.PreparedAll
     val descriptors = runCatching { activeSubtasks.mapIndexed { order, subtask -> descriptor(shared, subtask, order) } }
       .getOrElse { error ->
@@ -116,7 +116,7 @@ class DefaultGoalPlanningSweep(
     val subtasksById = activeSubtasks.associateBy(DecompositionSubtask::id)
     while (true) {
       val missingId = runCatching {
-        checkpoint.recoveryProgress(identity, descriptors, shared.dbPathOverride).firstMissingSubtaskId
+        checkpoint.recoveryProgress(identity, descriptors, provenance, shared.dbPathOverride).firstMissingSubtaskId
       }
         .getOrElse { error -> return stopped(shared, 0, preparationStateReadReason(error)) }
       if (missingId == null) return GoalPlanningSweepOutcome.PreparedAll
@@ -229,7 +229,11 @@ class DefaultGoalPlanningSweep(
     val prompt = GoalPlanningContextPromptFormatter.append(basePrompt, shared.planningPacket, subtask)
     request.outputSink.write(
       AgentRunOutputStream.STDERR,
-      "skill-bill: goal planning - subtask ${subtask.id} $phaseId\n",
+      if (phaseId == PHASE_PREPLAN) {
+        "skill-bill: goal planning - parent goal shared preplan\n"
+      } else {
+        "skill-bill: goal planning - subtask ${subtask.id} plan\n"
+      },
     )
     val outcome = subtaskLauncher.launch(
       GoalRunnerSubtaskLaunchRequest(
@@ -248,19 +252,19 @@ class DefaultGoalPlanningSweep(
       ),
     )
     val stdout = stdoutFor(outcome)
-      ?: return GoalPlanningPhaseProduction.Stopped(stopped(shared, subtask.id, exhaustedReason(outcome)))
+      ?: return GoalPlanningPhaseProduction.Stopped(stopped(shared, subtask.id, exhaustedReason(outcome), phaseId))
     return runCatching { outputValidator.validateAndReadPhaseOutput(stdout, phaseId) }.fold(
       onSuccess = { payload ->
         if (payload["status"] != "completed") {
           GoalPlanningPhaseProduction.Stopped(
-            stopped(shared, subtask.id, unsuccessfulStatusReason(phaseId, payload["status"])),
+            stopped(shared, subtask.id, unsuccessfulStatusReason(phaseId, payload["status"]), phaseId),
           )
         } else {
           GoalPlanningPhaseProduction.Captured(JsonSupport.mapToJsonString(payload))
         }
       },
       onFailure = { error ->
-        GoalPlanningPhaseProduction.Stopped(stopped(shared, subtask.id, malformedReason(phaseId, error)))
+        GoalPlanningPhaseProduction.Stopped(stopped(shared, subtask.id, malformedReason(phaseId, error), phaseId))
       },
     )
   }
@@ -364,7 +368,7 @@ class DefaultGoalPlanningSweep(
     "Goal planning '$phaseId' output failed the schema gate and could not be prepared: ${error.message.orEmpty()}"
 
   private fun unsuccessfulStatusReason(phaseId: String, status: Any?): String =
-    "Goal planning '$phaseId' stopped with status '${status ?: "missing"}'; the pair was not checkpointed."
+    "Goal planning '$phaseId' stopped with status '${status ?: "missing"}'; its output was not checkpointed."
 
   private fun enrichPreplan(payload: String, packet: Map<String, Any?>): String {
     val root = JsonSupport.parseObjectOrNull(payload)
@@ -422,8 +426,13 @@ class DefaultGoalPlanningSweep(
         "id" to subtask.id,
         "name" to subtask.name,
         "spec_path" to subtask.specPath,
+        "planning_disposition" to if (isExplicitlySkipped(subtask)) "skipped" else "included",
         "dependencies" to subtask.dependencies.map { dependency ->
-          linkedMapOf("subtask_id" to dependency.subtaskId, "optional" to dependency.optional)
+          linkedMapOf(
+            "subtask_id" to dependency.subtaskId,
+            "optional" to dependency.optional,
+            "skipped" to dependency.skipped,
+          )
         },
       )
     }
@@ -452,6 +461,7 @@ class DefaultGoalPlanningSweep(
           "name" to subtask.name,
           "spec_path" to subtask.specPath,
           "linear_issue_id" to subtask.linearIssueId,
+          "planning_disposition" to if (isExplicitlySkipped(subtask)) "skipped" else "included",
           "dependencies" to subtask.dependencies.map { dependency ->
             linkedMapOf(
               "subtask_id" to dependency.subtaskId,
@@ -489,7 +499,9 @@ class DefaultGoalPlanningSweep(
     "Goal planning subtask '${subtask.id}' run-invariants could not be read: ${error.message.orEmpty()}"
 
   private fun persistenceReason(subtask: DecompositionSubtask, error: Throwable): String =
-    "Goal planning subtask '${subtask.id}' prepared pair could not be checkpointed: ${error.message.orEmpty()}"
+    "Goal planning subtask '${subtask.id}' plan could not be checkpointed: ${error.message.orEmpty()}"
+
+  private fun isExplicitlySkipped(subtask: DecompositionSubtask): Boolean = subtask.status == "skipped"
 
   private fun resolvedGovernedPath(canonicalRepository: Path, governingPath: String): Path {
     val lexical = lexicalPath(canonicalRepository, governingPath)
