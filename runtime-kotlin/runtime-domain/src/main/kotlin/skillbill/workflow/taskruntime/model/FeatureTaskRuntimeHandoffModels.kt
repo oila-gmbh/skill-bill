@@ -107,9 +107,8 @@ data class FeatureTaskRuntimePhaseOutput(
   val iteration: Int,
   /** The validated phase output payload (JSON/YAML text), forwarded downstream. */
   val payload: String,
-  /** Canonical envelope produced by the single validation seam. */
-  @OpenBoundaryMap("Canonical validated phase-output envelope")
-  val normalizedEnvelope: Map<String, Any?>? = null,
+  /** Canonical output produced by the single validation seam. */
+  val normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput? = null,
 ) {
   init {
     require(phaseId.isNotBlank()) { "FeatureTaskRuntimePhaseOutput.phaseId must be non-blank." }
@@ -124,6 +123,12 @@ data class FeatureTaskRuntimePhaseOutput(
  */
 data class FeatureTaskRuntimeResolvedUpstreamOutputs(
   val outputsByPhaseId: Map<String, FeatureTaskRuntimePhaseOutput>,
+)
+
+data class NormalizedFeatureTaskRuntimePhaseOutput(
+  val canonicalJson: String,
+  @OpenBoundaryMap("Canonical validated phase-output envelope")
+  val envelope: Map<String, Any?>,
 )
 
 /**
@@ -148,8 +153,8 @@ data class FeatureTaskRuntimePhaseHandoff(
    * or a non-audit-gap re-entry, preserving the existing forward-launch assembly.
    */
   val reentryGapCriteria: List<String> = emptyList(),
-  val auditRepairPlan: Map<String, Any?>? = null,
-  val auditRepairState: Map<String, Any?>? = null,
+  val auditRepairPlan: FeatureTaskRuntimeAuditRepairPlan? = null,
+  val auditRepairState: FeatureTaskRuntimeAuditRepairState? = null,
 )
 
 /**

@@ -249,6 +249,11 @@ internal object DatabaseSchema {
         resolved_branch TEXT NOT NULL DEFAULT '',
         review_fix_iteration_count INTEGER NOT NULL DEFAULT 0,
         audit_gap_iteration_count INTEGER NOT NULL DEFAULT 0,
+        audit_first_pass_convergence INTEGER NOT NULL DEFAULT 0,
+        audit_recurring_gap_count INTEGER NOT NULL DEFAULT 0,
+        audit_new_gap_count INTEGER NOT NULL DEFAULT 0,
+        audit_attempted_repair_item_count INTEGER NOT NULL DEFAULT 0,
+        audit_resolved_repair_item_count INTEGER NOT NULL DEFAULT 0,
         duplicate_terminal_finished_events INTEGER NOT NULL DEFAULT 0,
         finished_at TEXT,
         finished_event_emitted_at TEXT

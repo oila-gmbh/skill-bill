@@ -3,11 +3,13 @@ package skillbill.application.featuretask
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.decomposition.decompositionManifestPath
 import skillbill.application.decomposition.parentSpecPath
+import skillbill.application.model.FeatureTaskRuntimeAuditRepairStatus
 import skillbill.application.model.FeatureTaskRuntimeDecomposeTerminalStatus
 import skillbill.application.model.FeatureTaskRuntimePhaseStatus
 import skillbill.application.model.FeatureTaskRuntimeStatusProjection
 import skillbill.application.model.FeatureTaskRuntimeStatusRequest
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairProgress
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
@@ -31,6 +33,7 @@ class FeatureTaskRuntimeStatusService(
   fun status(request: FeatureTaskRuntimeStatusRequest): FeatureTaskRuntimeStatusProjection? {
     val records = recorder.loadPhaseRecords(request.workflowId, request.dbPathOverride) ?: return null
     val decomposeTerminal = decomposeTerminalRecorder.loadDecomposeTerminal(request.workflowId, request.dbPathOverride)
+    val auditRepairProgress = recorder.loadAuditRepairState(request.workflowId, request.dbPathOverride)?.progress
     // Blocked-ness is derived primarily from the DURABLE per-phase records (a blocked phase
     // persists a terminal `blocked` record that survives ledger pruning); the append-only ledger
     // is supplementary detail only. A later non-blocked ledger entry from a resumed run can still
@@ -77,8 +80,25 @@ class FeatureTaskRuntimeStatusService(
           subtaskSpecPaths = it.subtaskSpecPaths,
         )
       },
+      auditRepair = auditRepairStatus(records, auditRepairProgress),
     )
   }
+
+  private fun auditRepairStatus(
+    records: Map<String, FeatureTaskRuntimePhaseRecord>,
+    progress: FeatureTaskRuntimeAuditRepairProgress?,
+  ): FeatureTaskRuntimeAuditRepairStatus? = progress?.let {
+    FeatureTaskRuntimeAuditRepairStatus(
+      firstPassConvergence = it.firstPassConvergence,
+      recurringGapCount = it.recurringGapCount,
+      newGapCount = it.newGapCount,
+      attemptedRepairItemCount = it.attemptedRepairItemCount,
+      resolvedRepairItemCount = it.resolvedRepairItemCount,
+      auditGapIterationCount = it.auditGapIterationCount,
+    )
+  } ?: records[FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT]
+    ?.takeIf { it.status == STATUS_COMPLETED }
+    ?.let { FeatureTaskRuntimeAuditRepairStatus(true, 0, 0, 0, 0, 0) }
 
   // Supplementary ledger-derived blocked-ness: a phase is blocked when its newest ledger entry is
   // BLOCKED and no durable blocked record already covers it; a later entry from a resumed run

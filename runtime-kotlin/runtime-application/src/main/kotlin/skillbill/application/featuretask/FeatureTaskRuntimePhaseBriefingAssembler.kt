@@ -93,7 +93,7 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
       }
       handoff.auditRepairPlan?.let { plan ->
         appendLine("audit_repair_plan:")
-        JsonSupport.mapToJsonString(plan).lineSequence().forEach { appendLine("  $it") }
+        JsonSupport.mapToJsonString(auditRepairPlanToWire(plan)).lineSequence().forEach { appendLine("  $it") }
         appendLine("audit_remediation_execution_rules:")
         appendLine("  - Use the immutable initial preplan and plan; do not regenerate general planning.")
         appendLine("  - Process every runnable carried repair item in dependency order in this invocation.")
@@ -107,7 +107,7 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
       }
       handoff.auditRepairState?.let { repairState ->
         appendLine("audit_repair_state:")
-        JsonSupport.mapToJsonString(repairState).lineSequence().forEach { appendLine("  $it") }
+        JsonSupport.mapToJsonString(auditRepairStateToWire(repairState)).lineSequence().forEach { appendLine("  $it") }
       }
       appendLine()
       appendLine("## Run invariants (layer 1, unconditional)")

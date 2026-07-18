@@ -137,14 +137,16 @@ allOf:
         phase_id: { const: audit }
       required: [phase_id]
     then:
-      required: [verdict]
       properties:
         verdict: { enum: [satisfied, gaps_found] }
   - if:
       properties:
         phase_id: { const: audit }
-        verdict: { const: gaps_found }
-      required: [phase_id, verdict]
+        produced_outputs:
+          properties:
+            unmet_criteria: { type: array, minItems: 1 }
+          required: [unmet_criteria]
+      required: [phase_id, produced_outputs]
     then:
       properties:
         produced_outputs:
@@ -167,8 +169,11 @@ allOf:
   - if:
       properties:
         phase_id: { const: audit }
-        verdict: { const: satisfied }
-      required: [phase_id, verdict]
+        produced_outputs:
+          properties:
+            unmet_criteria: { type: array, maxItems: 0 }
+          required: [unmet_criteria]
+      required: [phase_id, produced_outputs]
     then:
       properties:
         produced_outputs:

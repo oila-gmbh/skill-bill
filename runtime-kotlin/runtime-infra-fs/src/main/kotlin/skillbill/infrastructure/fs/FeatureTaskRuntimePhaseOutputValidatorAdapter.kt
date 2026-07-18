@@ -4,7 +4,7 @@ import me.tatarka.inject.annotations.Inject
 import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FeatureTaskRuntimePhaseOutputSchemaValidator
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
-import skillbill.workflow.NormalizedFeatureTaskRuntimePhaseOutput
+import skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutput
 
 /**
  * Bridges the domain-owned [FeatureTaskRuntimePhaseOutputValidator] port to the

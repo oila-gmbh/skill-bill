@@ -9,7 +9,6 @@ import skillbill.application.model.FeatureTaskRuntimeRunReport
 import skillbill.application.model.FeatureTaskRuntimeRunRequest
 import skillbill.application.model.FeatureTaskRuntimeSubtaskOutcome
 import skillbill.application.workflow.repoRoot
-import skillbill.contracts.JsonSupport
 import skillbill.goalrunner.model.GoalRunnerLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
@@ -18,11 +17,11 @@ import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairProgress
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationOutcome
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 
 private const val PHASE_OUTPUT_STATUS_BLOCKED = "blocked"
 private const val PHASE_OUTPUT_STATUS_FAILED = "failed"
@@ -119,6 +118,9 @@ class FeatureTaskRuntimeRunner(
     // `audit_gap` per-edge watermark from the LOOP_EDGE ledger (0 when the loop never fired), sourced
     // from the runtime's own ledger and resolved lazily inside the telemetry seam's failure isolation.
     val auditGapIterationCount = { loadAuditGapIterationCount(runRequest) }
+    val auditRepairProgress = {
+      loadAuditRepairProgress(runRequest)
+    }
     val transitions = transitionsFor(runRequest)
     val phaseTokenAccumulator: MutableMap<String, Pair<Int, Int>> = mutableMapOf()
     val report = runCatching {
@@ -156,6 +158,7 @@ class FeatureTaskRuntimeRunner(
         phaseOutcomes,
         reviewFixIterationCount,
         auditGapIterationCount,
+        auditRepairProgress,
         runRequest.dbPathOverride,
         phaseTokenData = { serializeTokenData(phaseTokenAccumulator) },
       )
@@ -169,6 +172,7 @@ class FeatureTaskRuntimeRunner(
       phaseOutcomes,
       reviewFixIterationCount,
       auditGapIterationCount,
+      auditRepairProgress,
       runRequest.dbPathOverride,
       phaseTokenData = { serializeTokenData(phaseTokenAccumulator) },
     )
@@ -190,6 +194,22 @@ class FeatureTaskRuntimeRunner(
       .mapNotNull { it.edgeIteration }
       .maxOrNull()
       ?: 0
+
+  private fun loadAuditRepairProgress(request: FeatureTaskRuntimeRunRequest): FeatureTaskRuntimeAuditRepairProgress? {
+    recorder.loadAuditRepairState(request.workflowId, request.dbPathOverride)?.progress?.let { return it }
+    val auditCompleted = recorder.loadPhaseRecords(request.workflowId, request.dbPathOverride)
+      .orEmpty()[FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT]
+      ?.status == "completed"
+    if (!auditCompleted || loadAuditGapIterationCount(request) != 0) return null
+    return FeatureTaskRuntimeAuditRepairProgress(
+      firstPassConvergence = true,
+      recurringGapCount = 0,
+      newGapCount = 0,
+      attemptedRepairItemCount = 0,
+      resolvedRepairItemCount = 0,
+      auditGapIterationCount = 0,
+    )
+  }
 
   // The highest durable `audit_gap` per-edge iteration recorded on the LOOP_EDGE ledger (0 when the
   // loop never fired): the runtime-owned audit->implement iteration count for finished telemetry (AC7).

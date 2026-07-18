@@ -407,6 +407,7 @@ class ReviewStatsRuntimeTest {
   }
 
   @Test
+  @Suppress("LongMethod")
   fun `feature task runtime telemetry persists started then finished and enqueues each event once`() {
     val (_, connection) = tempDbConnection("feature-task-runtime-telemetry")
     connection.use {
@@ -430,6 +431,12 @@ class ReviewStatsRuntimeTest {
           lastIncompletePhase = "completed",
           blockedReason = "",
           resolvedBranch = "feat/SKILL-65.1",
+          auditFirstPassConvergence = false,
+          auditRecurringGapCount = 1,
+          auditNewGapCount = 2,
+          auditAttemptedRepairItemCount = 4,
+          auditResolvedRepairItemCount = 3,
+          auditGapIterationCount = 2,
         ),
         level = "anonymous",
       )
@@ -458,6 +465,12 @@ class ReviewStatsRuntimeTest {
       assertEquals("completed", finishedPayload?.get("completion_status")?.let { it.toString().trim('"') })
       assertEquals("completed", finishedPayload?.get("last_incomplete_phase")?.let { it.toString().trim('"') })
       assertEquals("", finishedPayload?.get("blocked_reason")?.let { it.toString().trim('"') })
+      assertEquals("false", finishedPayload?.get("audit_first_pass_convergence")?.toString())
+      assertEquals("1", finishedPayload?.get("audit_recurring_gap_count")?.toString())
+      assertEquals("2", finishedPayload?.get("audit_new_gap_count")?.toString())
+      assertEquals("4", finishedPayload?.get("audit_attempted_repair_item_count")?.toString())
+      assertEquals("3", finishedPayload?.get("audit_resolved_repair_item_count")?.toString())
+      assertEquals("2", finishedPayload?.get("audit_gap_iteration_count")?.toString())
 
       val stats = ReviewStatsRuntime.featureTaskRuntimeStats(connection)
       assertEquals(1, stats.totalRuns)

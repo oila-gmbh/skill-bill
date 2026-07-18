@@ -99,5 +99,6 @@ internal object FeatureTaskRuntimeOutputVerification {
       ((map["message"] ?: map["criterion"]) as? String)?.takeIf(String::isNotBlank)
     }
 
-  private fun outputObject(output: FeatureTaskRuntimePhaseOutput): Map<String, Any?>? = output.normalizedEnvelope
+  private fun outputObject(output: FeatureTaskRuntimePhaseOutput): Map<String, Any?>? =
+    output.normalizedOutput?.envelope
 }

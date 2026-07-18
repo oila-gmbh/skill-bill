@@ -9,6 +9,7 @@ import skillbill.application.telemetry.LifecycleTelemetryService
 import skillbill.application.telemetry.normalizedBlockedReason
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.diagnostics.RuntimeDiagnostics
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairProgress
 
 /**
  * Runtime-owned lifecycle telemetry seam for the feature-task-runtime phase loop. The runtime mints
@@ -45,6 +46,7 @@ class FeatureTaskRuntimeLifecycleTelemetry(
     phaseOutcomes: () -> Map<String, String>,
     reviewFixIterationCount: () -> Int,
     auditGapIterationCount: () -> Int,
+    auditRepairProgress: () -> FeatureTaskRuntimeAuditRepairProgress? = { null },
     dbOverride: String?,
     phaseTokenData: () -> Pair<String?, Int?> = { null to null },
   ) {
@@ -54,6 +56,7 @@ class FeatureTaskRuntimeLifecycleTelemetry(
     isolate("finished", Unit) {
       val outcomes = phaseOutcomes()
       val (tokenBreakdownJson, totalTokens) = runCatching(phaseTokenData).getOrDefault(null to null)
+      val auditProgress = runCatching(auditRepairProgress).getOrNull()
       lifecycleTelemetryService.featureTaskRuntimeFinished(
         FeatureTaskRuntimeFinishedRequest(
           sessionId = telemetrySessionId,
@@ -65,6 +68,11 @@ class FeatureTaskRuntimeLifecycleTelemetry(
           resolvedBranch = report.resolvedBranch.orEmpty(),
           reviewFixIterationCount = runCatching(reviewFixIterationCount).getOrDefault(0),
           auditGapIterationCount = runCatching(auditGapIterationCount).getOrDefault(0),
+          auditFirstPassConvergence = auditProgress?.firstPassConvergence ?: false,
+          auditRecurringGapCount = auditProgress?.recurringGapCount ?: 0,
+          auditNewGapCount = auditProgress?.newGapCount ?: 0,
+          auditAttemptedRepairItemCount = auditProgress?.attemptedRepairItemCount ?: 0,
+          auditResolvedRepairItemCount = auditProgress?.resolvedRepairItemCount ?: 0,
           estimatedPhaseTokenBreakdownJson = tokenBreakdownJson,
           estimatedTotalTokens = totalTokens,
         ),
@@ -84,6 +92,7 @@ class FeatureTaskRuntimeLifecycleTelemetry(
     phaseOutcomes: () -> Map<String, String>,
     reviewFixIterationCount: () -> Int,
     auditGapIterationCount: () -> Int,
+    auditRepairProgress: () -> FeatureTaskRuntimeAuditRepairProgress? = { null },
     dbOverride: String?,
     phaseTokenData: () -> Pair<String?, Int?> = { null to null },
   ) {
@@ -101,6 +110,7 @@ class FeatureTaskRuntimeLifecycleTelemetry(
         }
         .getOrDefault(emptyMap())
       val (tokenBreakdownJson, totalTokens) = runCatching(phaseTokenData).getOrDefault(null to null)
+      val auditProgress = runCatching(auditRepairProgress).getOrNull()
       lifecycleTelemetryService.featureTaskRuntimeFinished(
         FeatureTaskRuntimeFinishedRequest(
           sessionId = telemetrySessionId,
@@ -116,6 +126,11 @@ class FeatureTaskRuntimeLifecycleTelemetry(
           resolvedBranch = "",
           reviewFixIterationCount = runCatching(reviewFixIterationCount).getOrDefault(0),
           auditGapIterationCount = runCatching(auditGapIterationCount).getOrDefault(0),
+          auditFirstPassConvergence = auditProgress?.firstPassConvergence ?: false,
+          auditRecurringGapCount = auditProgress?.recurringGapCount ?: 0,
+          auditNewGapCount = auditProgress?.newGapCount ?: 0,
+          auditAttemptedRepairItemCount = auditProgress?.attemptedRepairItemCount ?: 0,
+          auditResolvedRepairItemCount = auditProgress?.resolvedRepairItemCount ?: 0,
           estimatedPhaseTokenBreakdownJson = tokenBreakdownJson,
           estimatedTotalTokens = totalTokens,
         ),

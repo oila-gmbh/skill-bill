@@ -3,6 +3,8 @@ package skillbill.infrastructure.fs
 import me.tatarka.inject.annotations.Inject
 import skillbill.ports.workflow.GoalSubtaskReviewGitOperations
 import skillbill.ports.workflow.GoalSubtaskReviewGitOperationsProvider
+import skillbill.ports.workflow.RepositoryFingerprintGitOperations
+import skillbill.ports.workflow.RepositoryFingerprintGitOperationsProvider
 import skillbill.ports.workflow.RuntimePhaseFileManifestGitOperations
 import skillbill.ports.workflow.RuntimePhaseFileManifestGitOperationsProvider
 import skillbill.ports.workflow.WorkflowGitOperations
@@ -15,7 +17,9 @@ import skillbill.workflow.model.GoalObservabilityDiffStat
 import skillbill.workflow.model.GoalObservabilitySelectedDiffHunk
 import skillbill.workflow.model.GoalObservabilitySelectedDiffHunks
 import java.io.IOException
+import java.nio.file.Files
 import java.nio.file.Path
+import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 
@@ -23,10 +27,12 @@ import kotlin.concurrent.thread
 class GitWorkflowGitOperations :
   WorkflowGitOperations by GitStandardWorkflowGitOperations,
   GoalSubtaskReviewGitOperationsProvider,
+  RepositoryFingerprintGitOperationsProvider,
   RuntimePhaseFileManifestGitOperationsProvider {
   override val goalSubtaskReviewOperations: GoalSubtaskReviewGitOperations = GitGoalSubtaskReviewOperations
   override val runtimePhaseFileManifestOperations: RuntimePhaseFileManifestGitOperations =
     GitRuntimePhaseFileManifestOperations
+  override val repositoryFingerprintOperations: RepositoryFingerprintGitOperations = GitRepositoryFingerprintOperations
 }
 
 private object GitStandardWorkflowGitOperations : WorkflowGitOperations {
@@ -109,8 +115,41 @@ private object GitStandardWorkflowGitOperations : WorkflowGitOperations {
   override fun worktreeStatus(repoRoot: Path): WorkflowGitOperationResult =
     runGitCommand(repoRoot, "status", "--porcelain")
 
-  override fun worktreeActivity(repoRoot: Path): WorkflowWorktreeActivityResult {
-    val status = worktreeStatus(repoRoot)
+  override fun worktreeActivity(repoRoot: Path): WorkflowWorktreeActivityResult =
+    GitRepositoryFingerprintOperations.worktreeActivity(repoRoot)
+
+  override fun selectedDiffHunks(
+    repoRoot: Path,
+    request: WorkflowSelectedDiffHunksRequest,
+  ): WorkflowSelectedDiffHunksResult = GitRepositoryFingerprintOperations.selectedDiffHunks(repoRoot, request)
+}
+
+private object GitRepositoryFingerprintOperations : RepositoryFingerprintGitOperations {
+  override fun repositoryFingerprint(repoRoot: Path): WorkflowGitOperationResult {
+    val head = runGitCommand(repoRoot, "rev-parse", "HEAD")
+    val staged = runGitCommand(repoRoot, "diff", "--binary", "--cached")
+    val unstaged = runGitCommand(repoRoot, "diff", "--binary")
+    val untracked = runGitCommand(repoRoot, "ls-files", "--others", "--exclude-standard", "-z")
+    val failure = listOf(head, staged, unstaged, untracked).firstOrNull { !it.ok }
+    if (failure != null) return failure
+    return runCatching {
+      val digest = MessageDigest.getInstance("SHA-256")
+      digestPart(digest, "head", head.value.orEmpty().toByteArray())
+      digestPart(digest, "staged", staged.value.orEmpty().toByteArray())
+      digestPart(digest, "unstaged", unstaged.value.orEmpty().toByteArray())
+      untracked.value.orEmpty().split('\u0000').filter(String::isNotBlank).sorted().forEach { path ->
+        val resolved = repoRoot.resolve(path).normalize()
+        require(resolved.startsWith(repoRoot.normalize())) { "Untracked path escapes repository root: $path" }
+        digestPart(digest, "untracked:$path", Files.readAllBytes(resolved))
+      }
+      WorkflowGitOperationResult(status = "ok", value = digest.digest().joinToString("") { "%02x".format(it) })
+    }.getOrElse { error ->
+      WorkflowGitOperationResult(status = "error", error = "Could not fingerprint repository state: ${error.message}")
+    }
+  }
+
+  fun worktreeActivity(repoRoot: Path): WorkflowWorktreeActivityResult {
+    val status = runGitCommand(repoRoot, "status", "--porcelain")
     if (!status.ok) {
       return WorkflowWorktreeActivityResult(status = "error", error = status.error)
     }
@@ -122,10 +161,7 @@ private object GitStandardWorkflowGitOperations : WorkflowGitOperations {
     )
   }
 
-  override fun selectedDiffHunks(
-    repoRoot: Path,
-    request: WorkflowSelectedDiffHunksRequest,
-  ): WorkflowSelectedDiffHunksResult {
+  fun selectedDiffHunks(repoRoot: Path, request: WorkflowSelectedDiffHunksRequest): WorkflowSelectedDiffHunksResult {
     if (request.paths.isEmpty() || (!request.includeStaged && !request.includeUnstaged)) {
       return WorkflowSelectedDiffHunksResult(status = "ok")
     }
@@ -151,6 +187,14 @@ private object GitStandardWorkflowGitOperations : WorkflowGitOperations {
       ),
     )
   }
+}
+
+private fun digestPart(digest: MessageDigest, label: String, bytes: ByteArray) {
+  digest.update(label.toByteArray())
+  digest.update(0)
+  digest.update(bytes.size.toString().toByteArray())
+  digest.update(0)
+  digest.update(bytes)
 }
 
 private object GitRuntimePhaseFileManifestOperations : RuntimePhaseFileManifestGitOperations {

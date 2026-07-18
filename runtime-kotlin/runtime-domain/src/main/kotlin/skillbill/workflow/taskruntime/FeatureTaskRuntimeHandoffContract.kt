@@ -1,5 +1,7 @@
 package skillbill.workflow.taskruntime
 
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairPlan
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairState
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseHandoff
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
@@ -62,8 +64,8 @@ object FeatureTaskRuntimeHandoffContract {
     recordedOutputs: List<FeatureTaskRuntimePhaseOutput>,
     drivingVerdict: FeatureTaskRuntimeVerdict? = null,
     reentryGapCriteria: List<String> = emptyList(),
-    auditRepairPlan: Map<String, Any?>? = null,
-    auditRepairState: Map<String, Any?>? = null,
+    auditRepairPlan: FeatureTaskRuntimeAuditRepairPlan? = null,
+    auditRepairState: FeatureTaskRuntimeAuditRepairState? = null,
   ): FeatureTaskRuntimePhaseHandoff = FeatureTaskRuntimePhaseHandoff(
     phaseId = declaration.phaseId,
     runInvariants = runInvariants,

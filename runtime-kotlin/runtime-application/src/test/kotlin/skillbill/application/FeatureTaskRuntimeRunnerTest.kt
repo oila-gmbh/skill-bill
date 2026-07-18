@@ -58,6 +58,8 @@ import skillbill.ports.telemetry.TelemetrySettingsProvider
 import skillbill.ports.workflow.GoalSubtaskReviewGitOperations
 import skillbill.ports.workflow.GoalSubtaskReviewGitOperationsProvider
 import skillbill.ports.workflow.NoopWorkflowGitOperations
+import skillbill.ports.workflow.RepositoryFingerprintGitOperations
+import skillbill.ports.workflow.RepositoryFingerprintGitOperationsProvider
 import skillbill.ports.workflow.RuntimePhaseFileManifestGitOperations
 import skillbill.ports.workflow.RuntimePhaseFileManifestGitOperationsProvider
 import skillbill.ports.workflow.SpecScratchStore
@@ -4070,6 +4072,7 @@ internal class RecordingWorkflowGitOperations(
   var branchExistsResult: WorkflowGitOperationResult? = null,
 ) : WorkflowGitOperations,
   GoalSubtaskReviewGitOperationsProvider,
+  RepositoryFingerprintGitOperationsProvider,
   RuntimePhaseFileManifestGitOperationsProvider {
   // Seeded git HEAD for the SKILL-68 capture-at-source fallback: blank models an unmeasurable HEAD;
   // a concrete value models a measurable commit. headCommitShaResult overrides with a raw result.
@@ -4084,6 +4087,9 @@ internal class RecordingWorkflowGitOperations(
   var worktreeStatusValue: String = ""
   var worktreeStatusResult: WorkflowGitOperationResult? = null
   val worktreeStatusSequence = ArrayDeque<String>()
+  val repositoryFingerprintSequence = ArrayDeque<String>()
+  var repositoryFingerprintValue: String? = null
+  var repositoryFingerprintCalls: Int = 0
 
   // Records every remediation-checkpoint commit message; createCommitResult overrides the result to
   // model a failed checkpoint commit.
@@ -4171,6 +4177,19 @@ internal class RecordingWorkflowGitOperations(
       status = "ok",
       value = worktreeStatusSequence.removeFirstOrNull() ?: worktreeStatusValue,
     )
+
+  override val repositoryFingerprintOperations: RepositoryFingerprintGitOperations =
+    object : RepositoryFingerprintGitOperations {
+      override fun repositoryFingerprint(repoRoot: Path): WorkflowGitOperationResult {
+        repositoryFingerprintCalls += 1
+        return WorkflowGitOperationResult(
+          status = "ok",
+          value = repositoryFingerprintSequence.removeFirstOrNull()
+            ?: repositoryFingerprintValue
+            ?: "repository-fingerprint-$repositoryFingerprintCalls",
+        )
+      }
+    }
 
   override fun worktreeActivity(repoRoot: Path): WorkflowWorktreeActivityResult = WorkflowWorktreeActivityResult(
     status = "ok",

@@ -64,6 +64,11 @@ data class FeatureTaskRuntimeFinishedRecord(
   // The durable audit-gap loop iteration count, so finished telemetry reflects the audit->implement
   // iteration count (AC7). Zero when the loop never fired.
   val auditGapIterationCount: Int = 0,
+  val auditFirstPassConvergence: Boolean = false,
+  val auditRecurringGapCount: Int = 0,
+  val auditNewGapCount: Int = 0,
+  val auditAttemptedRepairItemCount: Int = 0,
+  val auditResolvedRepairItemCount: Int = 0,
   val estimatedPhaseTokenBreakdownJson: String? = null,
   val estimatedTotalTokens: Int? = null,
 )

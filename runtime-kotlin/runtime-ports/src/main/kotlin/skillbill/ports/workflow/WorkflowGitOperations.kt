@@ -38,6 +38,26 @@ interface WorkflowGitOperations {
   fun selectedDiffHunks(repoRoot: Path, request: WorkflowSelectedDiffHunksRequest): WorkflowSelectedDiffHunksResult
 }
 
+interface RepositoryFingerprintGitOperations {
+  fun repositoryFingerprint(repoRoot: Path): WorkflowGitOperationResult
+}
+
+interface RepositoryFingerprintGitOperationsProvider {
+  val repositoryFingerprintOperations: RepositoryFingerprintGitOperations
+}
+
+fun WorkflowGitOperations.repositoryFingerprint(repoRoot: Path): WorkflowGitOperationResult =
+  (this as? RepositoryFingerprintGitOperationsProvider)
+    ?.repositoryFingerprintOperations
+    ?.repositoryFingerprint(repoRoot)
+    ?: run {
+      val head = headCommitSha(repoRoot)
+      if (!head.ok) return head
+      val worktree = worktreeStatus(repoRoot)
+      if (!worktree.ok) return worktree
+      WorkflowGitOperationResult(status = "ok", value = "${head.value}\u0000${worktree.value}")
+    }
+
 interface RuntimePhaseFileManifestGitOperations {
   fun headCommit(repoRoot: Path): WorkflowGitOperationResult
 

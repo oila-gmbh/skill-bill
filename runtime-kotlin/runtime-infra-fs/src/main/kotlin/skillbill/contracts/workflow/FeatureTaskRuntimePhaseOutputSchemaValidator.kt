@@ -60,13 +60,16 @@ object FeatureTaskRuntimePhaseOutputSchemaValidator {
   }
 
   private fun validateAuditRepairPlan(instance: JsonNode, sourceLabel: String) {
-    if (sourceLabel != "audit" || instance.path("verdict").asText() != "gaps_found") return
-    val plan = instance.path("produced_outputs").path("audit_repair_plan")
+    if (sourceLabel != "audit") return
+    val producedOutputs = instance.path("produced_outputs")
+    val unmetCriteria = producedOutputs.path("unmet_criteria")
+    if (!unmetCriteria.isArray || unmetCriteria.isEmpty) return
+    val plan = producedOutputs.path("audit_repair_plan")
     try {
       val errors = auditRepairSchema.validate(plan)
       require(errors.isEmpty()) { formatValidationReason(errors.sortedWith(violationOrdering), plan) }
       decodeAuditRepairPlan(plan).requireExactCriterionCoverage(
-        instance.path("produced_outputs").path("unmet_criteria").map {
+        unmetCriteria.map {
           it.path("acceptance_criterion_ref").asText()
         },
       )

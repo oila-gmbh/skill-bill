@@ -3,6 +3,7 @@ package skillbill.application.featuretask
 import skillbill.contracts.JsonSupport
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairPlan
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeBackwardEdge
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry
@@ -43,7 +44,7 @@ internal class FeatureTaskRuntimeRunState(
         phaseId = record.phaseId,
         iteration = record.attemptCount,
         payload = normalized.canonicalJson,
-        normalizedEnvelope = normalized.envelope,
+        normalizedOutput = normalized,
       )
     }
   private val priorRecords: MutableSet<String> = initialRecords.keys.toMutableSet()
@@ -281,12 +282,13 @@ internal class FeatureTaskRuntimeRunState(
   fun unmetAuditCriteria(phaseId: String): List<String> =
     FeatureTaskRuntimeOutputVerification.unmetAuditCriteria(outputFor(phaseId))
 
-  fun auditRepairPlan(phaseId: String): Map<String, Any?>? = outputFor(phaseId)
-    ?.normalizedEnvelope
+  fun auditRepairPlan(phaseId: String): FeatureTaskRuntimeAuditRepairPlan? = outputFor(phaseId)
+    ?.normalizedOutput
+    ?.envelope
     ?.get("produced_outputs")
     ?.let(JsonSupport::anyToStringAnyMap)
     ?.get("audit_repair_plan")
-    ?.let(JsonSupport::anyToStringAnyMap)
+    ?.let { auditRepairPlanFromWire(it, "$phaseId.produced_outputs.audit_repair_plan") }
 
   // The latest validated output for the phase (highest iteration), or null when none is present.
   fun outputFor(phaseId: String): FeatureTaskRuntimePhaseOutput? =

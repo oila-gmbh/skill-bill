@@ -1,8 +1,17 @@
 package skillbill.contracts.workflow
 
+import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
+import skillbill.infrastructure.fs.FeatureTaskRuntimePhaseOutputValidatorAdapter
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.taskruntime.FeatureTaskRuntimeTransitionFunction
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeNextPhase
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import kotlin.test.Test
+import kotlin.test.assertContains
+import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertIs
 
 class FeatureTaskRuntimePhaseOutputSchemaValidatorTest {
   private val wellFormed =
@@ -228,6 +237,66 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorTest {
   }
 
   @Test
+  fun `markdown prefixed audit gaps normalize once and select the audit gap edge`() {
+    val wrapped =
+      """
+      Audit evidence follows.
+      ```json
+      {
+        "contract_version":"0.1",
+        "phase_id":"audit",
+        "status":"completed",
+        "summary":"One criterion remains unmet.",
+        "verdict":"gaps_found",
+        "produced_outputs":{
+          "unmet_criteria":[{"acceptance_criterion_ref":"AC-128","message":"Integration coverage is missing."}],
+          "audit_repair_plan":{
+            "contract_version":"0.1",
+            "gaps":[{
+              "gap_id":"ac-128-gap-1",
+              "acceptance_criterion_ref":"AC-128",
+              "acceptance_criterion_text":"Integration coverage exists.",
+              "failure_evidence":"The integration suite has no scenario for the feature.",
+              "diagnosis":"Add the missing integration scenario.",
+              "affected_boundary":"runtime integration tests",
+              "repair_items":[{
+                "repair_item_id":"ac-128-gap-1-item-1",
+                "intended_outcome":"The integration scenario verifies the feature.",
+                "implementation_actions":["Add and execute the integration scenario."],
+                "affected_paths_or_symbols":["runtime-core/src/test"],
+                "required_verification":["Run the integration test."],
+                "depends_on":[],
+                "status":"pending"
+              }]
+            }]
+          }
+        }
+      }
+      ```
+      The envelope above is authoritative.
+      """.trimIndent()
+
+    val normalized = FeatureTaskRuntimePhaseOutputValidatorAdapter().normalizePhaseOutput(wrapped, "audit")
+    val produced = JsonSupport.anyToStringAnyMap(normalized.envelope["produced_outputs"]).orEmpty()
+    val verdict = if ((produced["unmet_criteria"] as? List<*>).orEmpty().isNotEmpty()) {
+      FeatureTaskRuntimeVerdict.GAPS_FOUND
+    } else {
+      FeatureTaskRuntimeVerdict.SATISFIED
+    }
+    val transition = assertIs<FeatureTaskRuntimeNextPhase.Next>(
+      FeatureTaskRuntimeTransitionFunction.nextTransition(
+        FeatureTaskRuntimePhaseWorkflowDefinition.transitions,
+        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT,
+        verdict,
+        edgeIterationCount = 0,
+      ),
+    )
+
+    assertEquals(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT, transition.phaseId)
+    assertEquals(FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID, transition.loopId)
+  }
+
+  @Test
   fun `json with surrounding prose passes validation`() {
     val withProse =
       """
@@ -240,12 +309,13 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorTest {
   }
 
   @Test
-  fun `the last fenced object wins over an earlier example`() {
+  fun `multiple conflicting fenced envelopes fail loudly`() {
     val twoBlocks =
       """
       For reference the shape is:
       ```json
-      {"contract_version":"0.1","phase_id":"plan","status":"blocked","summary":"example"}
+      {"contract_version":"0.1","phase_id":"plan","status":"completed","summary":"example",
+       "produced_outputs":{"tasks":["example-task"]}}
       ```
       Here is the real output:
       ```json
@@ -253,21 +323,28 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorTest {
        "summary":"real","produced_outputs":{"tasks":["task-1"]}}
       ```
       """.trimIndent()
-    FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(twoBlocks, "plan")
+    val error = assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
+      FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(twoBlocks, "plan")
+    }
+    assertContains(error.reason, "multiple conflicting schema-valid envelopes")
   }
 
   @Test
-  fun `the real object wins over an earlier example object outside any fence`() {
+  fun `multiple conflicting prose wrapped envelopes fail loudly`() {
     val twoObjects =
       """
       For reference the shape is:
-      {"contract_version":"0.1","phase_id":"audit","status":"blocked","summary":"example"}
+      {"contract_version":"0.1","phase_id":"audit","status":"completed","summary":"example",
+       "verdict":"satisfied","produced_outputs":{"unmet_criteria":[]}}
       Here is the real output:
       {"contract_version":"0.1","phase_id":"audit","status":"completed",
        "summary":"every criterion met","verdict":"satisfied",
        "produced_outputs":{"unmet_criteria":[]}}
       """.trimIndent()
-    FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(twoObjects, "audit")
+    val error = assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
+      FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(twoObjects, "audit")
+    }
+    assertContains(error.reason, "multiple conflicting schema-valid envelopes")
   }
 
   @Test
