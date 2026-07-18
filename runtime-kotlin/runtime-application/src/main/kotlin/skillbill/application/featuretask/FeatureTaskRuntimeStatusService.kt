@@ -151,7 +151,7 @@ class FeatureTaskRuntimeStatusService(
       // completed record always wins over a stale block.
       status = if (blocked && status != STATUS_COMPLETED) STATUS_BLOCKED else status,
       attemptCount = attemptCount,
-      resolvedAgentId = resolvedAgentId,
+      resolvedAgentId = resolvedAgentId.takeUnless { it == GOAL_PLANNING_IMPORT_AGENT_SENTINEL },
       finished = finishedAt != null,
     )
   }
