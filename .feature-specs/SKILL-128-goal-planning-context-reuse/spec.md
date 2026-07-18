@@ -1,5 +1,5 @@
 ---
-status: Blocked
+status: Pending
 ---
 
 # SKILL-128 - Goal planning context reuse
