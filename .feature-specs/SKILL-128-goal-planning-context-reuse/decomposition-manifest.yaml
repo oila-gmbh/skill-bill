@@ -21,7 +21,7 @@ subtasks:
   commit_sha: null
   workflow_id: "wftr-20260718-075851-jlnn"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
