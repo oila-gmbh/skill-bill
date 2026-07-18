@@ -21,7 +21,7 @@ subtasks:
   commit_sha: null
   workflow_id: "wftr-20260718-075851-jlnn"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -34,7 +34,7 @@ subtasks:
   commit_sha: null
   workflow_id: "wftr-20260718-101315-5d6t"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -50,7 +50,7 @@ subtasks:
   commit_sha: null
   workflow_id: "wftr-20260718-112445-xsge"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -67,7 +67,7 @@ subtasks:
   status: "pending"
   branch: null
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wftr-20260718-125303-r7d4"
   blocked_reason: null
   last_resumable_step: null
   linear_issue_id: null

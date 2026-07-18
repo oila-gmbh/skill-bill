@@ -24,6 +24,12 @@ import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
 import java.nio.file.Path
 
 interface GoalRunnerManifestStore {
+  fun planningStatus(
+    parentWorkflowId: String,
+    orderedSubtaskIds: List<Int>,
+    dbPathOverride: String? = null,
+  ): skillbill.goalrunner.model.GoalPlanningStatusSnapshot? = null
+
   fun loadByIssueKey(
     issueKey: String,
     dbPathOverride: String? = null,

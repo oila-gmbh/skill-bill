@@ -112,6 +112,14 @@ class WorkflowGoalRunnerManifestStore(
   private val decompositionManifestFileStore: DecompositionManifestFileStore,
   private val phaseOutputValidator: FeatureTaskRuntimePhaseOutputValidator,
 ) : GoalRunnerManifestStore {
+  override fun planningStatus(
+    parentWorkflowId: String,
+    orderedSubtaskIds: List<Int>,
+    dbPathOverride: String?,
+  ) = database.read(dbPathOverride) {
+    it.goalPlanningPreparations.boundedStatus(parentWorkflowId, orderedSubtaskIds)
+  }
+
   private val engine: WorkflowEngine = WorkflowEngine(workflowSnapshotValidator)
   private val planningHydrator = GoalChildPlanningHydrator(phaseOutputValidator)
 

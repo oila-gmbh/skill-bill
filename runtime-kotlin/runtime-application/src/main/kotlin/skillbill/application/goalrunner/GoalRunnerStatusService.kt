@@ -56,6 +56,11 @@ class GoalRunnerStatusService(
           manifest = state.manifest,
           activeAgent = resolveActiveAgent(currentSubtask, request.dbPathOverride),
           extras = GoalRunnerStatusProjectionExtras(
+            planning = manifestStore.planningStatus(
+              state.parentWorkflowId,
+              state.manifest.subtasks.filter { it.status != "skipped" }.map { it.id },
+              request.dbPathOverride,
+            ),
             currentStepOverride = progress?.currentStepId,
             latestLivenessSignal = progress?.latestLivenessSignal,
             latestObservabilityEvent = progress?.latestGoalObservabilityEvent?.toStatusMap(),

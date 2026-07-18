@@ -16,6 +16,8 @@ import skillbill.ports.persistence.model.GoalPlanningPreparationProvenance
 import skillbill.ports.persistence.model.GoalPlanningPreparationRecord
 import skillbill.ports.persistence.model.GoalPlanningPreparationState
 import skillbill.ports.persistence.model.GoalPlanningPreparationStatus
+import skillbill.goalrunner.model.GoalPlanningStatusSnapshot
+import skillbill.goalrunner.model.GoalPlanningStatusState
 import skillbill.ports.persistence.model.GoalSubtaskPlanCheckpoint
 import skillbill.ports.persistence.model.GovernedGoalSubtaskDescriptor
 import skillbill.ports.persistence.model.SharedGoalPreplanCheckpoint
@@ -26,6 +28,45 @@ import java.sql.SQLException
 class GoalPlanningPreparationStore(
   private val connection: Connection,
 ) : GoalPlanningPreparationRepository {
+  override fun boundedStatus(parentGoalWorkflowId: String, orderedSubtaskIds: List<Int>): GoalPlanningStatusSnapshot {
+    require(orderedSubtaskIds.distinct().size == orderedSubtaskIds.size) { "Goal planning subtask ids must be unique." }
+    val shared = connection.prepareStatement(
+      "SELECT preparation_status FROM goal_shared_preplans WHERE parent_goal_workflow_id = ?",
+    ).use { statement ->
+      statement.setString(1, parentGoalWorkflowId)
+      statement.executeQuery().use { result -> result.next() && result.getString(1) == "prepared" }
+    }
+    val plannedIds = connection.prepareStatement(
+      "SELECT subtask_id, preparation_status FROM goal_subtask_plans WHERE parent_goal_workflow_id = ? ORDER BY manifest_order, subtask_id",
+    ).use { statement ->
+      statement.setString(1, parentGoalWorkflowId)
+      statement.executeQuery().use { result ->
+        buildList {
+          while (result.next()) {
+            require(result.getString("preparation_status") == "prepared") {
+              "Goal planning status contains a non-prepared plan checkpoint."
+            }
+            add(result.getInt("subtask_id"))
+          }
+        }
+      }
+    }
+    require(plannedIds.all { it in orderedSubtaskIds }) { "Goal planning status contains an unknown subtask checkpoint." }
+    val firstMissing = orderedSubtaskIds.firstOrNull { it !in plannedIds }
+    val state = when {
+      !shared -> GoalPlanningStatusState.NOT_STARTED
+      firstMissing == null -> GoalPlanningStatusState.PREPARED
+      plannedIds.isEmpty() -> GoalPlanningStatusState.PREPLANNED
+      else -> GoalPlanningStatusState.PARTIALLY_PLANNED
+    }
+    val reason = when (state) {
+      GoalPlanningStatusState.NOT_STARTED -> "Goal planning has not started."
+      GoalPlanningStatusState.PREPLANNED -> "Shared preplan is saved; planning can resume at subtask $firstMissing."
+      GoalPlanningStatusState.PARTIALLY_PLANNED -> "Saved plans will be reused; planning can resume at subtask $firstMissing."
+      GoalPlanningStatusState.PREPARED -> null
+    }
+    return GoalPlanningStatusSnapshot(state, shared, plannedIds.size, orderedSubtaskIds.size, firstMissing, reason)
+  }
   override fun checkpointSharedPreplan(checkpoint: SharedGoalPreplanCheckpoint) {
     requireNormalizedSharedPreplan(checkpoint)
     translateSqlFailure(checkpoint.identity.parentGoalWorkflowId, 0) {

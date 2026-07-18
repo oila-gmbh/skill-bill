@@ -3,11 +3,21 @@ package skillbill.ports.persistence
 import skillbill.ports.persistence.model.GoalPlanningIdentity
 import skillbill.ports.persistence.model.GoalPlanningPreparationRecord
 import skillbill.ports.persistence.model.GoalPlanningPreparationStatus
+import skillbill.goalrunner.model.GoalPlanningStatusSnapshot
 import skillbill.ports.persistence.model.GoalSubtaskPlanCheckpoint
 import skillbill.ports.persistence.model.GovernedGoalSubtaskDescriptor
 import skillbill.ports.persistence.model.SharedGoalPreplanCheckpoint
 
 interface NormalizedGoalPlanningPreparationRepository {
+  fun boundedStatus(parentGoalWorkflowId: String, orderedSubtaskIds: List<Int>): GoalPlanningStatusSnapshot =
+    GoalPlanningStatusSnapshot(
+      skillbill.goalrunner.model.GoalPlanningStatusState.NOT_STARTED,
+      false,
+      0,
+      orderedSubtaskIds.size,
+      orderedSubtaskIds.firstOrNull(),
+      "Goal planning has not started.",
+    )
   fun checkpointSharedPreplan(checkpoint: SharedGoalPreplanCheckpoint): Unit =
     error("Shared goal preplan checkpointing is not implemented by this repository.")
 

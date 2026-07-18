@@ -681,6 +681,16 @@ private fun GoalRunnerStatusProjection?.toGoalStatusCliMap(issueKey: String): Ma
     "active_agent" to it.activeAgent,
     "latest_liveness_signal" to it.latestLivenessSignal,
   ).apply {
+    it.planning?.let { planning ->
+      put("planning", linkedMapOf(
+        "state" to planning.state.wireValue,
+        "shared_preplan_prepared" to planning.sharedPreplanPrepared,
+        "planned_subtask_count" to planning.plannedSubtaskCount,
+        "total_subtask_count" to planning.totalSubtaskCount,
+        "current_planning_subtask" to planning.currentPlanningSubtaskId,
+        "reason" to planning.reason,
+      ))
+    }
     it.latestObservabilityEvent?.let { event -> put("latest_observability_event", event) }
     it.requestedDiffStat?.let { stat -> put("diff_stat", stat.toGoalDiffStatCliMap()) }
     it.selectedDiffHunks?.let { hunks -> put("selected_diff_hunks", hunks.toGoalSelectedDiffHunksCliMap()) }
@@ -707,6 +717,14 @@ private fun goalStatusText(payload: Map<String, Any?>): String = buildString {
   appendLine("current_step: ${payload["current_step"] ?: "none"}")
   appendLine("active_agent: ${payload["active_agent"] ?: "none"}")
   appendLine("latest_liveness_signal: ${payload["latest_liveness_signal"] ?: "none"}")
+  (payload["planning"] as? Map<*, *>)?.let { planning ->
+    appendLine(
+      "planning: state=${planning["state"]} shared_preplan=${planning["shared_preplan_prepared"]} " +
+        "planned=${planning["planned_subtask_count"]}/${planning["total_subtask_count"]} " +
+        "current=${planning["current_planning_subtask"] ?: "none"}",
+    )
+    planning["reason"]?.let { appendLine("planning_reason: $it") }
+  }
   (payload["latest_observability_event"] as? Map<*, *>)?.let { event ->
     appendLine(
       "latest_observability: phase=${event["workflow_phase"]} role=${event["worker_role"]} " +
