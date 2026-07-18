@@ -122,6 +122,19 @@ object DecompositionManifestWriter {
     runtimeUpdate: DecompositionManifestRuntimeUpdate? = null,
     fileStore: DecompositionManifestFileStore = UnavailableDecompositionManifestFileStore,
   ): DecompositionManifestWriteResult {
+    val prepared = prepare(request, validator, runtimeUpdate, fileStore)
+    writeDecompositionManifestText(prepared.manifestPath, prepared.yaml, fileStore)
+    val loaded = loadDecompositionManifest(prepared.manifestPath, fileStore, validator)
+    projectCurrentSubtaskStatus(request.repoRoot, loaded, fileStore)
+    return DecompositionManifestWriteResult(manifestPath = prepared.manifestPath, manifest = loaded)
+  }
+
+  internal fun prepare(
+    request: DecompositionManifestWriteRequest,
+    validator: DecompositionManifestValidator,
+    runtimeUpdate: DecompositionManifestRuntimeUpdate? = null,
+    fileStore: DecompositionManifestFileStore = UnavailableDecompositionManifestFileStore,
+  ): PreparedDecompositionManifestWrite {
     assertParentSpecIsNotDecomposedSubtask(request.repoRoot, request.parentSpecPath, validator, fileStore)
     val manifestPath = request.manifestPath()
     val existing = loadManifestOrNull(manifestPath, validator, fileStore)
@@ -133,10 +146,7 @@ object DecompositionManifestWriter {
       }
     val projectedManifest = manifest.gitTrackedProjection()
     val yaml = encodeDecompositionManifestYaml(projectedManifest, validator, fileStore)
-    writeDecompositionManifestText(manifestPath, yaml, fileStore)
-    val loaded = loadDecompositionManifest(manifestPath, fileStore, validator)
-    projectCurrentSubtaskStatus(request.repoRoot, loaded, fileStore)
-    return DecompositionManifestWriteResult(manifestPath = manifestPath, manifest = loaded)
+    return PreparedDecompositionManifestWrite(manifestPath, projectedManifest, yaml)
   }
 
   private fun manifestFromDecompositionPlan(
@@ -163,6 +173,7 @@ object DecompositionManifestWriter {
       },
       executionModel = executionModel,
       stackBranches = parseStackBranches(plan),
+      specSource = specSource(plan),
     )
     val manifestPath = request.manifestPath()
     val existing = runtimeManifestFromArtifacts(existingArtifacts, validator)
@@ -214,6 +225,7 @@ object DecompositionManifestWriter {
       issueKey = issueKey,
       featureName = featureName,
       parentSpecPath = repoRelativePath(repoRoot, parentSpecPath),
+      specSource = specSource,
       executionModel = executionModel,
       baseBranch = baseBranch,
       featureBranch = featureBranch,
@@ -223,6 +235,12 @@ object DecompositionManifestWriter {
     )
   }
 }
+
+internal data class PreparedDecompositionManifestWrite(
+  val manifestPath: Path,
+  val manifest: DecompositionManifest,
+  val yaml: String,
+)
 
 private fun assertParentSpecIsNotDecomposedSubtask(
   repoRoot: Path,

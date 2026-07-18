@@ -82,6 +82,7 @@ import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.model.GoalObservabilityChangedFileSummary
 import skillbill.workflow.model.GoalObservabilityDiffStat
 import skillbill.workflow.model.GoalObservabilitySelectedDiffHunks
+import skillbill.workflow.model.SpecSource
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_DECOMPOSE_TERMINAL_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY
@@ -1356,6 +1357,32 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
   }
 
   @Test
+  fun `decompose plan uses resolved artifact source instead of agent-authored source`() {
+    val repoRoot = Files.createTempDirectory("skillbill-runtime-linear-decompose")
+    val specPath = repoRoot.resolve(SPEC_REFERENCE)
+    Files.createDirectories(specPath.parent)
+    Files.writeString(specPath, "---\nstatus: Pending\nspec_source: linear\n---\n\n# Spec\n")
+    val linearPlanOutput = DECOMPOSE_PLAN_OUTPUT
+      .replace("\"subtasks\": [", "\"spec_source\": \"local\",\n      \"subtasks\": [")
+      .replace("\"depends_on\": []", "\"linear_issue_id\": \"linear-subtask-1\",\n          \"depends_on\": []")
+      .replace("\"depends_on\": [1]", "\"linear_issue_id\": \"linear-subtask-2\",\n          \"depends_on\": [1]")
+    val harness = runnerHarness(
+      launcher = RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        facts(if (phaseId == "plan") linearPlanOutput else validJsonOutput(phaseId))
+      },
+      agentAssignment = phasePerAgentAssignment(),
+      runtimeConfig = RuntimeHarnessConfig(repoRoot = repoRoot, useRealDecompositionPlanner = true),
+    )
+
+    val report = assertIs<FeatureTaskRuntimeRunReport.Decomposed>(harness.runner.run(harness.request()))
+    val manifest = loadDecompositionManifest(repoRoot.resolve(report.decompositionManifestPath))
+
+    assertEquals(SpecSource.LINEAR, manifest.specSource)
+    assertEquals(listOf("linear-subtask-1", "linear-subtask-2"), manifest.subtasks.map { it.linearIssueId })
+  }
+
+  @Test
   fun `goal-continuation run suppresses decompose and pr then completes at commit push`() {
     val repoRoot = Files.createTempDirectory("skillbill-runtime-goal-subtask")
     val harness = runnerHarness(
@@ -2054,6 +2081,24 @@ class FeatureTaskRuntimeReviewFixLoopTest {
     assertTrue(launched.none { it == "implement_fix" })
   }
 
+  @Test
+  fun `m1 Major review finding advances without launching implement_fix`() {
+    val majorFindingOutput = reviewFindingsOutput(changesRequested = true)
+      .replace("\"severity\": \"blocker\"", "\"severity\": \"major\"")
+    val harness = runnerHarness(
+      launcher = RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        facts(if (phaseId == "review") majorFindingOutput else validJsonOutput(phaseId))
+      },
+    )
+
+    val report = harness.runner.run(harness.request())
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertTrue(harness.launchedPromptPhaseOrder().none { it == "implement_fix" })
+    assertTrue(harness.launchedPromptPhaseOrder().any { it == "audit" })
+  }
+
   // (b)+(e) AC2/AC6/AC10: changes_requested spawns implement_fix carrying the findings, then re-reviews.
   @Test
   fun `m1 changes_requested spawns implement_fix with the findings then re-reviews`() {
@@ -2203,18 +2248,19 @@ class FeatureTaskRuntimeReviewFixLoopTest {
   }
 
   @Test
-  fun `m1 cap exhaustion advances to audit with review findings preserved`() {
+  fun `m1 unresolved Blocker at cap blocks before audit with review findings preserved`() {
     val harness = runnerHarness(launcher = reviewFixLauncher(convergeOnReview = 99))
 
     val report = harness.runner.run(harness.request())
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
+    assertEquals("review", blocked.lastIncompletePhase)
     val launched = harness.launchedPromptPhaseOrder()
-    assertTrue(launched.any { it == "audit" })
+    assertTrue(launched.none { it == "audit" })
     assertEquals(1, launched.count { it == "implement_fix" }, "the fix ran once")
     assertEquals(2, launched.count { it == "review" }, "the initial and inline review consumed the budget")
     val reviewRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["review"])
-    assertEquals("completed", reviewRecord.status)
+    assertEquals("blocked", reviewRecord.status)
     assertEquals(2, reviewRecord.reviewPassNumber)
     val loopEdges = harness.recorder.loadPhaseLedger(WORKFLOW_ID).orEmpty()
       .filter { it.action == FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE }
@@ -2303,7 +2349,7 @@ class FeatureTaskRuntimeReviewFixLoopTest {
   }
 
   @Test
-  fun `m1 cap-exhausted review_fix loop advances on resume without relaunching the fix`() {
+  fun `m1 cap-exhausted review_fix loop blocks on resume without relaunching the fix`() {
     val harness = runnerHarness(
       launcher = RuntimeRecordingLauncher { request ->
         val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
@@ -2317,9 +2363,10 @@ class FeatureTaskRuntimeReviewFixLoopTest {
 
     val report = harness.runner.run(harness.request())
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
+    assertEquals("review", blocked.lastIncompletePhase)
     val launched = harness.launchedPromptPhaseOrder()
-    assertTrue(launched.any { it == "audit" })
+    assertTrue(launched.none { it == "audit" })
     assertTrue(launched.none { it == "implement_fix" })
   }
 
@@ -3687,7 +3734,7 @@ internal fun verdictReviewOutput(verdict: String): String = """
     "status": "completed",
     "summary": "Review produced a validated output.",
     "verdict": "$verdict",
-    "produced_outputs": {"findings": []}
+    "produced_outputs": {}
   }
 """.trimIndent()
 

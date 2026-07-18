@@ -4,9 +4,14 @@ import skillbill.workflow.model.DecompositionDependency
 import skillbill.workflow.model.DecompositionExecutionModel
 import skillbill.workflow.model.DecompositionStackBranch
 import skillbill.workflow.model.DecompositionSubtask
+import skillbill.workflow.model.SpecSource
 import java.nio.file.Path
 
-internal fun parseSubtasks(planningResult: Map<String, Any?>, sourceLabel: String): List<DecompositionSubtask> {
+internal fun parseSubtasks(
+  planningResult: Map<String, Any?>,
+  sourceLabel: String,
+  specSource: SpecSource = specSource(planningResult, sourceLabel),
+): List<DecompositionSubtask> {
   val rawSubtasks = planningResult["subtasks"] as? List<*>
     ?: invalidManifest(sourceLabel, "decomposition planning result must contain subtasks.")
   return rawSubtasks.mapIndexed { index, raw ->
@@ -20,9 +25,35 @@ internal fun parseSubtasks(planningResult: Map<String, Any?>, sourceLabel: Strin
       specPath = item["spec_path"]?.toString()?.ifBlank { null }
         ?: invalidManifest(sourceLabel, "subtasks[$index].spec_path must be present."),
       status = "pending",
+      linearIssueId = linearIssueId(item, index, sourceLabel, specSource),
       dependencies = parseDependencies(item["dependencies"] ?: item["depends_on"], sourceLabel, index),
     )
   }
+}
+
+internal fun specSource(plan: Map<String, Any?>, sourceLabel: String = "<planning-result>"): SpecSource {
+  val raw = plan["spec_source"] ?: return SpecSource.LOCAL
+  val value = raw as? String
+    ?: invalidManifest(sourceLabel, "spec_source must be a string when present.")
+  if (value.isBlank()) {
+    invalidManifest(sourceLabel, "spec_source must be nonblank when present.")
+  }
+  return SpecSource.fromWireValue(value)
+    ?: invalidManifest(sourceLabel, "spec_source '$value' is not supported.")
+}
+
+private fun linearIssueId(item: Map<String, Any?>, index: Int, sourceLabel: String, specSource: SpecSource): String? {
+  val raw = item["linear_issue_id"]
+  val value = when (raw) {
+    null -> null
+    is String -> raw.takeIf(String::isNotBlank)
+      ?: invalidManifest(sourceLabel, "subtasks[$index].linear_issue_id must be nonblank when present.")
+    else -> invalidManifest(sourceLabel, "subtasks[$index].linear_issue_id must be a string when present.")
+  }
+  if (specSource == SpecSource.LINEAR && value == null) {
+    invalidManifest(sourceLabel, "subtasks[$index].linear_issue_id is required for linear spec_source.")
+  }
+  return value
 }
 
 internal fun parseDependencies(raw: Any?, sourceLabel: String, subtaskIndex: Int): List<DecompositionDependency> {

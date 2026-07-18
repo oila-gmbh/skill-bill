@@ -31,7 +31,7 @@ class SpecSourceResolverTest {
   }
 
   @Test
-  fun `reads spec_source from the single_spec spec when no manifest exists`() {
+  fun `manifest-absent legacy runtime reads its persisted spec_source stamp`() {
     val repoRoot = Files.createTempDirectory("spec-source-single")
     seedSpec(repoRoot, "spec.md", "---\nspec_source: linear\n---\n# Spec\n")
 
@@ -52,7 +52,7 @@ class SpecSourceResolverTest {
   }
 
   @Test
-  fun `defaults to local for a single_spec without a spec_source line`() {
+  fun `defaults to local for a bare spec without a spec_source line`() {
     val repoRoot = Files.createTempDirectory("spec-source-local")
     seedSpec(repoRoot, "spec.md", "---\nstatus: Pending\n---\n# Spec\n")
 
@@ -63,7 +63,7 @@ class SpecSourceResolverTest {
   }
 
   @Test
-  fun `loud-fails on an unrecognized single_spec spec_source value`() {
+  fun `manifest-absent legacy runtime loud-fails an invalid persisted source stamp`() {
     val repoRoot = Files.createTempDirectory("spec-source-bad")
     seedSpec(repoRoot, "spec.md", "spec_source: github\n")
 

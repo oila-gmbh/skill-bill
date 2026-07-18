@@ -7,34 +7,22 @@ import kotlin.test.assertFailsWith
 
 class SpecSourceSpecReaderTest {
   @Test
-  fun `parses an explicit linear spec_source line`() {
-    val specText = """
-      # Feature spec
-
-      spec_source: linear
-    """.trimIndent()
-
-    assertEquals(SpecSource.LINEAR, SpecSourceSpecReader.parseSpecSource(specText))
+  fun `absent source defaults to local`() {
+    assertEquals(SpecSource.LOCAL, SpecSourceSpecReader.parseSpecSource("# Spec\n"))
   }
 
   @Test
-  fun `defaults to local when the spec_source line is absent`() {
-    val specText = """
-      # Feature spec
-
-      feature_size: MEDIUM
-    """.trimIndent()
-
-    assertEquals(SpecSource.LOCAL, SpecSourceSpecReader.parseSpecSource(specText))
+  fun `linear source is parsed from front matter`() {
+    assertEquals(
+      SpecSource.LINEAR,
+      SpecSourceSpecReader.parseSpecSource("---\nspec_source: linear\n---\n# Spec\n"),
+    )
   }
 
   @Test
-  fun `loud-fails on an unrecognized spec_source value`() {
-    val specText = "spec_source: github"
-
-    val error = assertFailsWith<IllegalArgumentException> {
-      SpecSourceSpecReader.parseSpecSource(specText)
+  fun `unknown source fails loudly`() {
+    assertFailsWith<IllegalArgumentException> {
+      SpecSourceSpecReader.parseSpecSource("spec_source: github\n")
     }
-    assertEquals(true, error.message?.contains("github"))
   }
 }

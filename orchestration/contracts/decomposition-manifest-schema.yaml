@@ -1,7 +1,7 @@
 # Decomposition manifest schema (canonical source of truth).
 #
-# This file describes the parent manifest written beside a decomposed
-# feature's parent spec under `.feature-specs/<issue>-<feature>/`. It is
+# This file describes the authoritative prepared-feature manifest written beside
+# a feature's parent spec under `.feature-specs/<issue>-<feature>/`. It is
 # authored in YAML for human readability and consumed as a JSON Schema
 # (Draft 2020-12) by the Kotlin runtime
 # (`DecompositionManifestSchemaValidator` in `runtime-contracts`).
@@ -27,12 +27,11 @@
 #   constants in the same change.
 $schema: "https://json-schema.org/draft/2020-12/schema"
 $id: "https://skill-bill.dev/contracts/decomposition-manifest-schema.yaml"
-title: "Parent decomposition manifest"
+title: "Prepared feature manifest"
 description: >
-  Schema for the parent manifest written when bill-feature-task
-  decomposes an oversized feature into ordered subtask specs. The
-  manifest is optional for ordinary single-spec workflows, but required
-  at the decomposition write seam. Review, audit, validation, and
+  Schema for the authoritative parent manifest written whenever feature-spec
+  preparation produces one or more ordered executable subtask specs. A bare
+  parent spec is intake rather than prepared state. Review, audit, validation, and
   telemetry payloads stay in workflow artifacts and telemetry events;
   this manifest carries only decomposition, dependency, status, and
   implementation-routing state.
@@ -195,7 +194,7 @@ required:
 properties:
   contract_version:
     type: string
-    const: "0.4"
+    const: "0.5"
   issue_key:
     type: string
     minLength: 1

@@ -42,6 +42,7 @@ class FeatureTaskRuntimeDecompositionPlanner(
         subtasks = outcome.subtasks.map(FeatureTaskRuntimeDecomposeSubtask::toPreparation),
         baseBranch = outcome.baseBranch,
         featureBranch = outcome.featureBranch,
+        specSource = outcome.specSource,
       ),
     )
   }
@@ -58,4 +59,5 @@ private fun FeatureTaskRuntimeDecomposeSubtask.toPreparation(): FeatureSpecSubta
     validationStrategy = validationStrategy,
     nextPath = nextPath,
     dependsOn = dependsOn,
+    linearIssueId = linearIssueId,
   )

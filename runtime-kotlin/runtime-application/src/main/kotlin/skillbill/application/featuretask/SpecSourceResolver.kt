@@ -13,11 +13,11 @@ import java.nio.file.NoSuchFileException
 import java.nio.file.Path
 
 /**
- * Additive, artifact-only resolver of the persisted `spec_source` stamp. Decomposed runs read it
- * from the sibling decomposition manifest; single_spec runs read it from the `spec.md` line. Config
- * is never consulted (AC5). Any benign absence resolves to [SpecSource.LOCAL] so local-mode stays
- * the untouched fast path (AC6). This read is non-mutating and must not touch run-invariant freezing
- * or spec_path resolution — it only reports what the artifact already declared.
+ * Artifact-only resolver of the persisted `spec_source` stamp. Prepared runs read it from the
+ * sibling decomposition manifest, which is the sole prepared-feature authority marker. A
+ * manifest-absent runtime workflow may predate that invariant, so its already-persisted spec stamp
+ * remains the compatibility fallback. Config is never consulted and benign absence resolves to
+ * [SpecSource.LOCAL].
  */
 @Inject
 class SpecSourceResolver(
@@ -30,10 +30,10 @@ class SpecSourceResolver(
     if (manifestPath != null && (isGoalContinuation || fileStore.isRegularFile(manifestPath))) {
       loadManifestOrNull(manifestPath, validator, fileStore)?.let { return it.specSource }
     }
-    return singleSpecSource(specPath)
+    return legacySpecSource(specPath)
   }
 
-  private fun singleSpecSource(specPath: Path): SpecSource = try {
+  private fun legacySpecSource(specPath: Path): SpecSource = try {
     if (fileStore.isRegularFile(specPath)) {
       SpecSourceSpecReader.parseSpecSource(fileStore.readText(specPath))
     } else {

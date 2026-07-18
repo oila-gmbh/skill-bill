@@ -1,13 +1,13 @@
 package skillbill.workflow
 
 import skillbill.workflow.model.DecompositionManifest
+import skillbill.workflow.model.SpecSource
 
 fun DecompositionManifest.toWireMap(): Map<String, Any?> = linkedMapOf(
   "contract_version" to contractVersion,
   "issue_key" to issueKey,
   "feature_name" to featureName,
   "parent_spec_path" to parentSpecPath,
-  "spec_source" to specSource.wireValue,
   "status" to status,
   "execution_model" to executionModel.wireValue,
   "base_branch" to baseBranch,
@@ -46,4 +46,8 @@ fun DecompositionManifest.toWireMap(): Map<String, Any?> = linkedMapOf(
       },
     )
   },
-)
+).apply {
+  if (specSource != SpecSource.LOCAL) {
+    put("spec_source", specSource.wireValue)
+  }
+}

@@ -50,11 +50,7 @@ internal object FeatureTaskRuntimeOutputVerification {
     wireVerdict: FeatureTaskRuntimeVerdict?,
   ): FeatureTaskRuntimeVerdict {
     val reviewVerdict = reviewVerdictFrom(outputObject)
-    return if (reviewVerdict?.unresolvedFindings?.isNotEmpty() == true) {
-      FeatureTaskRuntimeVerdict.CHANGES_REQUESTED
-    } else {
-      wireVerdict ?: reviewVerdict?.verdict ?: FeatureTaskRuntimeVerdict.ADVANCE
-    }
+    return reviewVerdict?.verdict ?: wireVerdict ?: FeatureTaskRuntimeVerdict.ADVANCE
   }
 
   private fun auditVerdict(

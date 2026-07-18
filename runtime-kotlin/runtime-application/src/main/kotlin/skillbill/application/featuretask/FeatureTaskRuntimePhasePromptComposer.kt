@@ -220,7 +220,7 @@ object FeatureTaskRuntimePhasePromptComposer {
     return when (phaseId) {
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW ->
         "\n    - This is a VERIFYING phase: produced_outputs MUST carry a \"$findings\" array (each entry a\n" +
-          "      severity/message object; an explicit empty [] affirms no Blocker/Major findings) AND/OR a\n" +
+          "      severity/message object; an explicit empty [] affirms no Blocker findings) AND/OR a\n" +
           "      top-level \"$verdict\" of \"approved\" or \"changes_requested\". Output carrying NEITHER signal\n" +
           "      fails the schema gate loudly — a prose summary alone cannot advance the gate."
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT ->
@@ -368,7 +368,7 @@ object FeatureTaskRuntimePhasePromptComposer {
       "preplan and plan outputs and change only what the latest listed gaps require; do not regenerate " +
       "planning, expand scope, or disturb settled implementation.",
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX to
-      "Address the carried review Blocker/Major findings on the CURRENT working tree as incremental " +
+      "Address the carried review Blocker findings on the CURRENT working tree as incremental " +
       "reconciliation: fix exactly those findings using the review findings, the latest implement " +
       "output, and the intended state from the briefing. Do NOT re-apply the plan from scratch and do " +
       "not expand scope beyond the findings. Treat any fix already present as a no-op. See the " +

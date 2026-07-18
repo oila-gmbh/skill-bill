@@ -71,7 +71,7 @@ Skill Bill ships complete Go, iOS, Kotlin/KMP, PHP, Python, Rust, and TypeScript
 **Daily entry points:**
 
 - `/bill-feature` prepares the feature spec, then routes to implementation or the goal loop
-- `/bill-feature-spec` prepares governed single-spec or decomposed feature-spec artifacts before implementation
+- `/bill-feature-spec` prepares a parent spec, one or more executable subtask specs, and the authoritative manifest before implementation
 - `/bill-code-review` routes to the matching platform review stack; use `mode:inline` or `mode:delegated` to select review execution explicitly (the stack-specific review skills are internal sidecars, not separately invocable)
 - `/bill-code-check` routes to the matching stack-specific checker (the stack-specific checker skills are internal sidecars, not separately invocable)
 - `/bill-pr-description` generates PR text and QA steps
@@ -113,7 +113,7 @@ Omit `mode:` to use delegated review, or pass `mode:auto` explicitly for automat
 | `/bill-feature` | Primary feature entry point that prepares a spec, then routes to implementation or the goal loop (dispatches internally to the feature-execution family, which is not listed) |
 | `/bill-feature-guard` | Add feature-flag rollout safety to an implementation |
 | `/bill-feature-guard-cleanup` | Remove feature flags and legacy code after rollout |
-| `/bill-feature-spec` | Standalone feature-spec preparation (single-spec or decomposed) reused by feature and goal workflows |
+| `/bill-feature-spec` | Standalone manifest-backed feature-spec preparation reused by feature and goal workflows |
 | `/bill-feature-verify` | Verify a PR against a task spec or design doc |
 | `/bill-pr-description` | Generate a PR title, description, and QA steps |
 | `/bill-pr-review-fix` | Resolve PR review comments end-to-end with an approval gate and reply automation |

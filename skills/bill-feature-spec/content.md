@@ -1,11 +1,11 @@
 ---
 name: bill-feature-spec
-description: Prepare governed feature-spec artifacts from issue-keyed requirements, choosing single-spec or decomposed mode through the shared preparation path used by bill-feature-task and bill-feature-goal.
+description: Prepare manifest-backed governed feature-spec artifacts with one or more executable subtasks through the shared preparation path.
 ---
 
 # Feature Spec Preparation
 
-`bill-feature-spec` prepares governed feature-spec artifacts without starting implementation. It is the standalone preparation entry point used before `bill-feature-task` or `bill-feature-goal` execution.
+`bill-feature-spec` prepares governed feature-spec artifacts without starting implementation. Every successful preparation emits a parent spec, one or more distinct executable subtask specs, and a schema-valid manifest for `bill-feature-goal` execution.
 
 ## Intake Contract
 
@@ -25,7 +25,7 @@ Classify into one of two modes:
 - `single_spec`: one normal implementation pass is appropriate
 - `decomposed`: multiple independently resumable subtasks are required
 
-Use `single_spec` by default unless the work clearly needs dependency-ordered subtasks.
+Use `single_spec` by default unless the work clearly needs multiple dependency-ordered subtasks. Mode is sizing and planning metadata only; it never changes the artifact shape or executor.
 
 ## Service / Spec Source Mode
 
@@ -60,21 +60,19 @@ can proceed (no partial state):
 1. **Verify the Linear MCP is available and authenticated.** If it is unavailable or
    unauthenticated, loud-fail with a clear message **before** creating any Linear issue or
    writing any artifact. Create nothing and write nothing on this path.
-2. **Compose all spec content in memory first** — the parent spec, and for a decomposed
-   feature each subtask spec. The `.feature-specs/{KEY}-{name}/` directory name is not known
+2. **Compose all spec content in memory first** — the parent spec, every subtask spec, and
+   the manifest. The `.feature-specs/{KEY}-{name}/` directory name is not known
    until the parent issue key is returned, so do not write to disk yet.
 3. **Create the parent Linear issue**, tagged `task`, whose description is the parent spec
    content. Capture the returned issue key.
-4. **Decomposed only:** create one sub-issue per subtask, each tagged `task`, each description
+4. **Create one sub-issue per subtask**, each tagged `task`, each description
    carrying that subtask's spec content under a clear per-subtask header so the ticket is
    human-legible. Capture each sub-issue's `linear_issue_id`. Rehydration keys off
    `linear_issue_id`, not header text, so the header is for humans only.
 5. **Adopt the parent issue's returned key** as the issue key, the
    `.feature-specs/{KEY}-{name}/` directory name, and the manifest `issue_key`.
-6. **Write via the shared preparation path**, stamping `spec_source: linear` (the manifest
-   top-level field for `decomposed`; the `spec.md` `spec_source: linear` line for
-   `single_spec`) and recording each subtask's `linear_issue_id`. Do not fork `single_spec`
-   vs `decomposed` writing logic beyond adding these fields.
+6. **Write via the shared preparation path**, stamping manifest `spec_source: linear` and
+   recording every subtask's `linear_issue_id`. Do not fork writing logic by preparation mode.
 7. **Mid-sequence failure (orphan parent):** if a sub-issue create fails after the parent
    issue already exists, loud-fail surfacing the created parent key and any created sub-issue
    keys for manual cleanup, and write no artifacts.
@@ -86,13 +84,13 @@ Run when the resolved spec-source mode is `local` (no config, `spec_type: local`
 
 - Make no Linear calls.
 - `spec_source` resolves to `local`.
-- For `single_spec`, write **no** `spec_source` line — absence is read as `local`.
+- Omit the optional manifest `spec_source` field; absence is read as `local`.
 
 ## Shared Preparation Path
 
 Always route preparation through the shared feature-spec preparation path. Do not fork logic between `bill-feature-spec`, `bill-feature-task`, and `bill-feature-goal`.
 
-The agent writes all governed artifacts directly: parent `spec.md`, ordered `spec_subtask_*.md` files, and — for decomposed features — `decomposition-manifest.yaml` using the template in the decomposed Output Rules section above. No CLI call or MCP tool routes the manifest write; the agent fills the template from the planning subagent's decomposition RESULT and writes the file to disk. Schema validation happens when the runtime first reads the manifest, not at write time.
+The agent writes all governed artifacts through one validate-and-render path: parent `spec.md`, one or more ordered `spec_subtask_*.md` files, and `decomposition-manifest.yaml` using the template below. Construct and schema-validate the complete bundle before the first write, then atomically replace each file. A bare existing `spec.md` is intake: preserve its intended outcome, acceptance criteria, constraints, and non-goals while upgrading it to this artifact set.
 
 ## Spec Format Contract
 
@@ -118,27 +116,10 @@ Prefer the canonical numbered form the runtime writer emits:
 2. Second criterion.
 ```
 
-## single_spec Output Rules
-
-For `single_spec`:
-
-- write or update `.feature-specs/{ISSUE_KEY}-{feature-name}/spec.md`
-- set or preserve parent-spec status and acceptance criteria
-- do not create `decomposition-manifest.yaml`
-- loud-fail if a decomposition manifest already exists for the same issue directory
-
-Return the next command as:
-
-```bash
-Run bill-feature on .feature-specs/{ISSUE_KEY}-{feature-name}/spec.md
-```
-
-## decomposed Output Rules
-
-For `decomposed`:
+## Output Rules
 
 - write or update parent `spec.md`
-- write two or more ordered `spec_subtask_*.md` files
+- write one or more ordered `spec_subtask_*.md` files; a one-unit feature has exactly one distinct subtask
 - write or update `.feature-specs/{ISSUE_KEY}-{feature-name}/decomposition-manifest.yaml`
 
 Write the manifest file directly from the template below. Fill every placeholder with values from the planning subagent's decomposition RESULT; do not leave any placeholder literal in the written file.
@@ -168,23 +149,9 @@ subtasks:
     last_resumable_step: null    # string|null; null unless the subtask was interrupted
     linear_issue_id: null        # string|null; null for local spec_source
     dependencies: []             # array of {subtask_id, optional, skipped}
-  - id: 2
-    name: "Subtask name"
-    spec_path: ".feature-specs/ISSUE-KEY-feature-name/spec_subtask_2_slug.md"
-    status: pending
-    branch: null
-    commit_sha: null
-    workflow_id: null
-    blocked_reason: null
-    last_resumable_step: null
-    linear_issue_id: null
-    dependencies:
-      - subtask_id: 1            # must reference an earlier subtask id
-        optional: false
-        skipped: false
 ```
 
-The manifest is validated against the decomposition manifest schema contract when the runtime first reads it.
+The manifest is validated against the decomposition manifest schema contract before persistence and again when the runtime reads it.
 
 Each subtask spec must contain scope, acceptance criteria, non-goals, dependency notes, validation strategy, and next path. The acceptance-criteria section must follow the **Spec Format Contract** above so the runtime can extract it.
 

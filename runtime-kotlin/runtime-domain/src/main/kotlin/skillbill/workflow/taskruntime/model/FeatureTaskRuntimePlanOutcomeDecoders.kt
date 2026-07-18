@@ -21,6 +21,12 @@ internal fun Map<String, Any?>.requireSubtasks(): List<FeatureTaskRuntimeDecompo
       validationStrategy = subtask.requireString("validation_strategy", index),
       nextPath = subtask.requireString("next_path", index),
       dependsOn = subtask.optionalIntList("depends_on", index),
+      linearIssueId = subtask["linear_issue_id"]?.let { raw ->
+        (raw as? String)?.trim()?.takeIf(String::isNotBlank)
+          ?: planOutcomeSchemaError(
+            "Decompose plan subtask[$index].linear_issue_id must be a non-blank string when present.",
+          )
+      },
     )
   }
 }

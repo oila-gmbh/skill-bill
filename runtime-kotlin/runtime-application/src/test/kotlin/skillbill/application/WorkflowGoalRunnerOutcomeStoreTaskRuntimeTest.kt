@@ -131,7 +131,7 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
         workflowId = "wfl-goal-review",
         state = state,
         rawReviewResult = """
-          {"verdict":"changes_requested","produced_outputs":{"findings":[]}}
+          {"verdict":"changes_requested","produced_outputs":{}}
         """.trimIndent(),
       ),
     )

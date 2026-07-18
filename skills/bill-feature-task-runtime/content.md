@@ -123,9 +123,9 @@ continues. Treat the durable workflow state as authoritative over any prose.
 
 The runtime closes a bounded remediation loop around `review`. The `review`
 phase emits a structured verdict derived from its findings: `approved` when no
-unresolved Blocker or Major findings remain, or `changes_requested` when any are
-present. The runtime evaluates that verdict — prose alone cannot advance past a
-Blocker/Major finding.
+unresolved Blocker findings remain, or `changes_requested` when any are present.
+Major findings remain durable evidence but never prevent advancement. The runtime
+evaluates that verdict — prose alone cannot advance past a Blocker finding.
 
 - On `approved`, the run advances to `audit` (a clean run never launches a fix).
 - On `changes_requested`, the runtime takes a backward edge to a dedicated
@@ -252,9 +252,10 @@ workflow during resume.
 
 ### Rehydrate a missing linear-mode spec before resume
 
-The spec source is an artifact stamp (decomposed → `decomposition-manifest.yaml`
-`spec_source`; single_spec → the `spec_source:` line in `spec.md`), defaulting to
-`local`. For `spec_source: local`, resume needs no extra step.
+The spec source is the sibling `decomposition-manifest.yaml` `spec_source`
+artifact stamp, defaulting to `local` when omitted. A bare `spec.md` is preparation
+intake, not prepared source authority. For `spec_source: local`, resume needs no
+extra step.
 
 For `spec_source: linear`, the local spec scratch is deleted on terminal success,
 so before calling `resume` check whether the file at `<spec_path>` (or a needed
