@@ -1,6 +1,6 @@
 package skillbill.contracts.workflow
 
-const val GOAL_PLANNING_PREPARATION_CONTRACT_VERSION: String = "0.1"
+const val GOAL_PLANNING_PREPARATION_CONTRACT_VERSION: String = "0.2"
 
 object GoalPlanningPreparationSchemaPaths {
   const val REPO_RELATIVE_PATH: String =

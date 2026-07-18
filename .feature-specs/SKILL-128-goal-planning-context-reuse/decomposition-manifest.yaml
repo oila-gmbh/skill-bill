@@ -4,7 +4,7 @@ issue_key: "SKILL-128"
 feature_name: "goal-planning-context-reuse"
 parent_spec_path: ".feature-specs/SKILL-128-goal-planning-context-reuse/spec.md"
 spec_source: "local"
-status: "pending"
+status: "in_progress"
 execution_model: "same_branch_commit_per_subtask"
 base_branch: "main"
 feature_branch: "feat/SKILL-128-goal-planning-context-reuse"
@@ -19,7 +19,7 @@ subtasks:
   status: "pending"
   branch: null
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wftr-20260718-075851-jlnn"
   blocked_reason: null
   last_resumable_step: null
   linear_issue_id: null

@@ -1,5 +1,5 @@
 ---
-status: Pending
+status: In Progress
 ---
 
 # SKILL-128 - Goal planning context reuse

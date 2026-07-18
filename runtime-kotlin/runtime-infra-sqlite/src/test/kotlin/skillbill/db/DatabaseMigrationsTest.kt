@@ -63,6 +63,7 @@ class DatabaseMigrationsTest {
         6 to "add-feature-task-execution-identities",
         7 to "add-feature-task-runtime-worker-leases",
         8 to "add-goal-planning-preparations",
+        9 to "normalize-goal-planning-preparations",
       ),
       migrationDefinitions,
     )
