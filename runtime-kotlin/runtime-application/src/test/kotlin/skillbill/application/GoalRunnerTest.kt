@@ -1565,11 +1565,21 @@ class GoalRunnerObservabilityTest {
   }
 
   @Test
-  fun `reset reconciles active worker state before clearing manifest projection`() {
+  fun `soft reset preserves child identity and resumable step`() {
     val store = InMemoryGoalManifestStore(
       manifest = manifest(subtaskCount = 1)
         .copy(status = "in_progress", currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 1, action = "resume"))
-        .withWorkflowId(1, "wfl-active"),
+        .withWorkflowId(1, "wfl-active")
+        .copy(
+          subtasks = listOf(
+            manifest(subtaskCount = 1).subtasks.single().copy(
+              status = "blocked",
+              workflowId = "wfl-active",
+              blockedReason = "repair required",
+              lastResumableStep = "implement",
+            ),
+          ),
+        ),
     )
     val outcomes = RecordingOutcomeStore()
     val service = GoalRunnerStatusService(store, outcomes, goalTestPhaseRecorder())
@@ -1593,8 +1603,35 @@ class GoalRunnerObservabilityTest {
       ),
       outcomes.lastReconcileRequest,
     )
+    assertEquals("in_progress", store.manifest.subtasks.single().status)
+    assertEquals("wfl-active", store.manifest.subtasks.single().workflowId)
+    assertEquals("implement", store.manifest.subtasks.single().lastResumableStep)
+    assertNull(store.manifest.subtasks.single().blockedReason)
+    assertEquals(CurrentSubtaskIntent(subtaskId = 1, action = "resume"), store.manifest.currentSubtaskIntent)
+  }
+
+  @Test
+  fun `soft reset restarts blocked subtask without child identity`() {
+    val store = InMemoryGoalManifestStore(
+      manifest = manifest(subtaskCount = 1).copy(
+        status = "blocked",
+        currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 1, action = "blocked"),
+        subtasks = listOf(
+          manifest(subtaskCount = 1).subtasks.single().copy(
+            status = "blocked",
+            blockedReason = "branch setup failed",
+            lastResumableStep = "create_branch",
+          ),
+        ),
+      ),
+    )
+    val service = GoalRunnerStatusService(store, RecordingOutcomeStore(), goalTestPhaseRecorder())
+
+    service.reset(GoalRunnerResetRequest(issueKey = "SKILL-56", hard = false))
+
     assertEquals("pending", store.manifest.subtasks.single().status)
-    assertEquals(null, store.manifest.subtasks.single().workflowId)
+    assertNull(store.manifest.subtasks.single().workflowId)
+    assertNull(store.manifest.subtasks.single().lastResumableStep)
     assertEquals(CurrentSubtaskIntent(subtaskId = 1, action = "start"), store.manifest.currentSubtaskIntent)
   }
 

@@ -66,7 +66,7 @@ class CliGoalRuntimeTest {
   }
 
   @Test
-  fun `goal reset soft preserves completed subtasks and clears blocked runtime pointers`() {
+  fun `goal reset soft preserves completed subtasks and blocked child resume pointers`() {
     val fixture = goalFixture(subtaskCount = 2)
     val launcher = GoalFixtureAgentRunLauncher(fixture, failSubtask = 2)
     val run = CliRuntime.run(fixture.goalCommand(), fixture.context(launcher = launcher))
@@ -91,14 +91,15 @@ class CliGoalRuntimeTest {
     assertContains(reset.stdout, "before: status=blocked")
     assertContains(reset.stdout, "after: status=in_progress")
     assertContains(reset.stdout, "id=1; status=complete")
-    assertContains(reset.stdout, "id=2; status=pending")
+    assertContains(reset.stdout, "id=2; status=in_progress")
+    assertContains(reset.stdout, "last_resumable_step=review")
     val status = CliRuntime.run(
       listOf("--db", fixture.dbPath.toString(), "goal", "status", "SKILL-901", "--agent", "codex"),
       fixture.context(launcher = launcher),
     )
     assertContains(status.stdout, "complete: 1")
-    assertContains(status.stdout, "pending: 1")
-    assertContains(status.stdout, "blocked: 0")
+    assertContains(status.stdout, "pending: 0")
+    assertContains(status.stdout, "blocked: 1")
     assertContains(status.stdout, "current_subtask: 2")
   }
 

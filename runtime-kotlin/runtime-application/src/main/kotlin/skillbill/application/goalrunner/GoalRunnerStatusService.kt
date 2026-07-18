@@ -285,22 +285,28 @@ private fun DecompositionManifest.firstRunnablePendingSubtask(): DecompositionSu
 }
 
 private fun DecompositionManifest.resetManifest(hard: Boolean): DecompositionManifest {
+  val freshReset: (DecompositionSubtask) -> DecompositionSubtask = { subtask ->
+    subtask.copy(
+      status = "pending",
+      branch = null,
+      commitSha = null,
+      workflowId = null,
+      blockedReason = null,
+      lastResumableStep = null,
+    )
+  }
   val resetSubtasks = subtasks.map { subtask ->
-    val preserveOutcome = !hard && subtask.status in setOf("complete", "skipped")
-    if (preserveOutcome) {
-      subtask.copy(
+    when {
+      hard -> freshReset(subtask)
+      subtask.status in setOf("complete", "skipped") -> subtask.copy(
         blockedReason = null,
         lastResumableStep = null,
       )
-    } else {
-      subtask.copy(
-        status = "pending",
-        branch = null,
-        commitSha = null,
-        workflowId = null,
+      !subtask.workflowId.isNullOrBlank() -> subtask.copy(
+        status = "in_progress",
         blockedReason = null,
-        lastResumableStep = null,
       )
+      else -> freshReset(subtask)
     }
   }
   return copy(
@@ -312,6 +318,9 @@ private fun DecompositionManifest.resetManifest(hard: Boolean): DecompositionMan
 private fun restartIntent(subtasks: List<DecompositionSubtask>): CurrentSubtaskIntent {
   if (subtasks.all { it.status in setOf("complete", "skipped") }) {
     return CurrentSubtaskIntent(subtaskId = 0, action = "complete")
+  }
+  subtasks.firstOrNull { it.status == "in_progress" }?.let { resumable ->
+    return CurrentSubtaskIntent(subtaskId = resumable.id, action = "resume")
   }
   val subtasksById = subtasks.associateBy(DecompositionSubtask::id)
   val nextRunnable = subtasks.firstOrNull { subtask ->
