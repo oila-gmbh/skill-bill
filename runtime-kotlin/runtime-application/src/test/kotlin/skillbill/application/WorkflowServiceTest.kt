@@ -923,7 +923,6 @@ class WorkflowGoalStatusProjectionTest {
         goalObservabilityEventValidator = testGoalObservabilityEventValidator,
       ),
       phaseRecorder = FeatureTaskRuntimePhaseRecorder(database, testWorkflowSnapshotValidator),
-      database = database,
     )
   }
 }

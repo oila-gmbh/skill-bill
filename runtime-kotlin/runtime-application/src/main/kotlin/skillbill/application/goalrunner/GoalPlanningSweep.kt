@@ -10,9 +10,6 @@ import skillbill.application.model.GoalPlanningSweepOutcome
 import skillbill.application.model.GoalRunnerRunRequest
 import skillbill.application.workflow.GoalPlanningPreparationCheckpoint
 import skillbill.contracts.JsonSupport
-import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
-import skillbill.contracts.workflow.FeatureTaskRuntimePhaseOutputSchemaPaths
-import skillbill.contracts.workflow.GOAL_PLANNING_PREPARATION_CONTRACT_VERSION
 import skillbill.contracts.workflow.GoalPlanningPreparationSchemaPaths
 import skillbill.goalrunner.model.GoalRunnerStopReason
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
@@ -24,10 +21,6 @@ import skillbill.ports.goalrunner.GoalPlanningContextDiscovery
 import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
-import skillbill.ports.persistence.DatabaseSessionFactory
-import skillbill.ports.persistence.model.GoalPlanningPreparationProvenance
-import skillbill.ports.persistence.model.GoalPlanningPreparationRecord
-import skillbill.ports.persistence.model.GoalPlanningPreparationState
 import skillbill.ports.persistence.model.GoalPlanningContractProvenance
 import skillbill.ports.persistence.model.GoalPlanningIdentity
 import skillbill.ports.persistence.model.GoalSubtaskPlanCheckpoint
@@ -70,7 +63,6 @@ internal data class GoalPlanningSharedContext(
 @Suppress("LongParameterList", "TooManyFunctions")
 @Inject
 class DefaultGoalPlanningSweep(
-  private val database: DatabaseSessionFactory,
   private val checkpoint: GoalPlanningPreparationCheckpoint,
   private val outputValidator: FeatureTaskRuntimePhaseOutputValidator,
   private val subtaskLauncher: GoalRunnerSubtaskLauncher,
@@ -99,20 +91,33 @@ class DefaultGoalPlanningSweep(
     val activeSubtasks = state.manifest.subtasks.filter { it.status != "skipped" }
     if (activeSubtasks.isEmpty()) return GoalPlanningSweepOutcome.PreparedAll
     val descriptors = runCatching { activeSubtasks.mapIndexed { order, subtask -> descriptor(shared, subtask, order) } }
-      .getOrElse { error -> return stopped(shared, 0, "Goal planning governed subtask provenance could not be computed: ${error.message.orEmpty()}") }
+      .getOrElse { error ->
+        return stopped(
+          shared,
+          0,
+          "Goal planning governed subtask provenance could not be computed: ${error.message.orEmpty()}",
+        )
+      }
     val provenance = GoalPlanningContractProvenance(
       shared.parentSpecHash,
       shared.decompositionManifestHash,
       GoalPlanningPreparationSchemaPaths.EXPECTED_SCHEMA_ID,
     )
     if (existingShared != null && existingShared.provenance != provenance) {
-      return stopped(shared, 0, "Goal planning shared preplan provenance is incompatible; hard reset or explicit operator migration is required.")
+      return stopped(
+        shared,
+        0,
+        "Goal planning shared preplan provenance is incompatible; " +
+          "hard reset or explicit operator migration is required.",
+      )
     }
     val sharedCheckpoint = existingShared ?: produceSharedPreplan(shared, request, activeSubtasks.first(), provenance)
       .getOrElse { error -> return stopped(shared, activeSubtasks.first().id, error.message.orEmpty(), PHASE_PREPLAN) }
     val subtasksById = activeSubtasks.associateBy(DecompositionSubtask::id)
     while (true) {
-      val missingId = runCatching { checkpoint.recoveryProgress(identity, descriptors, shared.dbPathOverride).firstMissingSubtaskId }
+      val missingId = runCatching {
+        checkpoint.recoveryProgress(identity, descriptors, shared.dbPathOverride).firstMissingSubtaskId
+      }
         .getOrElse { error -> return stopped(shared, 0, preparationStateReadReason(error)) }
       if (missingId == null) return GoalPlanningSweepOutcome.PreparedAll
       val subtask = subtasksById[missingId]
@@ -178,13 +183,17 @@ class DefaultGoalPlanningSweep(
       payloadSha256 = sha256HexUtf8(planPayload),
       planPayload = planPayload,
     )
-    runCatching { checkpoint.checkpointSubtaskPlan(record, shared.dbPathOverride) }.getOrElse { error ->
-      return stopped(shared, subtask.id, persistenceReason(subtask, error))
-    }
-    return null
+    return runCatching { checkpoint.checkpointSubtaskPlan(record, shared.dbPathOverride) }.fold(
+      onSuccess = { null },
+      onFailure = { error -> stopped(shared, subtask.id, persistenceReason(subtask, error)) },
+    )
   }
 
-  private fun descriptor(shared: GoalPlanningSharedContext, subtask: DecompositionSubtask, order: Int): GovernedGoalSubtaskDescriptor {
+  private fun descriptor(
+    shared: GoalPlanningSharedContext,
+    subtask: DecompositionSubtask,
+    order: Int,
+  ): GovernedGoalSubtaskDescriptor {
     val path = resolvedSubSpecPath(shared.repoRoot, subtask.specPath) ?: error(unresolvedSpecReason(subtask))
     return GovernedGoalSubtaskDescriptor(
       subtask.id,
@@ -309,34 +318,6 @@ class DefaultGoalPlanningSweep(
     )
   }
 
-  private fun incompatibleProvenanceStop(
-    shared: GoalPlanningSharedContext,
-    state: GoalRunnerManifestState,
-  ): GoalPlanningSweepOutcome.Stopped? {
-    val prepared = runCatching {
-      database.read(shared.dbPathOverride) { unitOfWork ->
-        unitOfWork.goalPlanningPreparations.listPreparedByGoalOrdered(shared.parentWorkflowId)
-      }
-    }.getOrElse { error -> return stopped(shared, 0, preparationStateReadReason(error)) }
-    return prepared.firstOrNull { record ->
-      val expectedPath = state.manifest.subtasks.singleOrNull { it.id == record.subtaskId }
-        ?.specPath
-        ?.let { path -> resolvedSubSpecPath(shared.repoRoot, path) }
-        ?.let { path -> shared.repoRoot.relativize(path).joinToString("/") }
-      val manifestSubtask = state.manifest.subtasks.singleOrNull { it.id == record.subtaskId }
-      val subSpecHashMismatch = subSpecHashMismatch(shared, state, manifestSubtask, record)
-      record.normalizedIssueKey != shared.normalizedIssueKey ||
-        record.repositoryIdentity != shared.repositoryIdentity ||
-        record.governedSubSpecPath != expectedPath ||
-        record.contractVersion != GOAL_PLANNING_PREPARATION_CONTRACT_VERSION ||
-        record.provenance.parentSpecHash != shared.parentSpecHash ||
-        record.provenance.decompositionManifestHash != shared.decompositionManifestHash ||
-        subSpecHashMismatch ||
-        record.provenance.phaseOutputContractId != FeatureTaskRuntimePhaseOutputSchemaPaths.EXPECTED_SCHEMA_ID ||
-        record.provenance.phaseOutputContractVersion != FEATURE_TASK_RUNTIME_CONTRACT_VERSION
-    }?.let { record -> stopped(shared, record.subtaskId, incompatibleProvenanceReason(record)) }
-  }
-
   private fun preSweepStopped(
     request: GoalRunnerRunRequest,
     reason: String,
@@ -354,11 +335,6 @@ class DefaultGoalPlanningSweep(
 
   private fun preparationStateReadReason(error: Throwable): String =
     "Goal planning preparation state could not be read: ${error.message.orEmpty()}"
-
-  private fun incompatibleProvenanceReason(record: GoalPlanningPreparationRecord): String =
-    "Goal planning subtask '${record.subtaskId}' prepared provenance is incompatible with the current parent " +
-      "spec or decomposition manifest; the stale plan is rejected. Re-decompose or clear the stale " +
-      "preparation before resuming."
 
   private fun stdoutFor(outcome: AgentRunLaunchOutcome): String? = when (outcome) {
     is AgentRunLaunchFacts -> outcome.stdout.takeIf { stdout ->
@@ -399,15 +375,6 @@ class DefaultGoalPlanningSweep(
       ?: error("preplan produced_outputs is not an object")
     return JsonSupport.mapToJsonString(root + ("produced_outputs" to (produced + (SHARED_CONTEXT_FIELD to packet))))
   }
-
-  private fun planningPacketFrom(record: GoalPlanningPreparationRecord): Map<String, Any?>? =
-    JsonSupport.parseObjectOrNull(record.preplanPayload)
-      ?.let(JsonSupport::jsonElementToValue)
-      ?.let(JsonSupport::anyToStringAnyMap)
-      ?.get("produced_outputs")
-      ?.let(JsonSupport::anyToStringAnyMap)
-      ?.get(SHARED_CONTEXT_FIELD)
-      ?.let(JsonSupport::anyToStringAnyMap)
 
   private fun planningPacketFrom(record: SharedGoalPreplanCheckpoint): Map<String, Any?>? =
     JsonSupport.parseObjectOrNull(record.preplanPayload)
@@ -463,22 +430,6 @@ class DefaultGoalPlanningSweep(
 
   private fun isStringMap(value: Any?): Boolean =
     value is Map<*, *> && value.keys.all { it is String } && value.values.all { it is String }
-
-  private fun subSpecHashMismatch(
-    shared: GoalPlanningSharedContext,
-    state: GoalRunnerManifestState,
-    manifestSubtask: DecompositionSubtask?,
-    record: GoalPlanningPreparationRecord,
-  ): Boolean {
-    val path = record.governedSubSpecPath.takeIf(String::isNotBlank)
-      ?.let { resolvedSubSpecPath(shared.repoRoot, it) }
-      ?: return true
-    if (!manifestFileStore.isRegularFile(path)) {
-      return state.manifest.specSource != SpecSource.LINEAR || manifestSubtask?.status != "complete"
-    }
-    val currentHash = runCatching { sha256HexUtf8(manifestFileStore.readText(path)) }.getOrNull()
-    return currentHash == null || record.provenance.subSpecHash != currentHash
-  }
 
   private fun packetDigest(packet: Map<String, Any?>): String = sha256HexUtf8(JsonSupport.mapToJsonString(packet))
 
@@ -536,9 +487,6 @@ class DefaultGoalPlanningSweep(
 
   private fun invariantReadReason(subtask: DecompositionSubtask, error: Throwable): String =
     "Goal planning subtask '${subtask.id}' run-invariants could not be read: ${error.message.orEmpty()}"
-
-  private fun subSpecHashReason(subtask: DecompositionSubtask, error: Throwable): String =
-    "Goal planning subtask '${subtask.id}' provenance could not be computed: ${error.message.orEmpty()}"
 
   private fun persistenceReason(subtask: DecompositionSubtask, error: Throwable): String =
     "Goal planning subtask '${subtask.id}' prepared pair could not be checkpointed: ${error.message.orEmpty()}"

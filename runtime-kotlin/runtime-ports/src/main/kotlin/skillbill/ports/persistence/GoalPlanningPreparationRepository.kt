@@ -1,12 +1,13 @@
 package skillbill.ports.persistence
 
+import skillbill.ports.persistence.model.GoalPlanningIdentity
 import skillbill.ports.persistence.model.GoalPlanningPreparationRecord
 import skillbill.ports.persistence.model.GoalPlanningPreparationStatus
-import skillbill.ports.persistence.model.GoalPlanningIdentity
 import skillbill.ports.persistence.model.GoalSubtaskPlanCheckpoint
+import skillbill.ports.persistence.model.GovernedGoalSubtaskDescriptor
 import skillbill.ports.persistence.model.SharedGoalPreplanCheckpoint
 
-interface GoalPlanningPreparationRepository {
+interface NormalizedGoalPlanningPreparationRepository {
   fun checkpointSharedPreplan(checkpoint: SharedGoalPreplanCheckpoint): Unit =
     error("Shared goal preplan checkpointing is not implemented by this repository.")
 
@@ -21,15 +22,26 @@ interface GoalPlanningPreparationRepository {
     governedSubSpecPath: String,
   ): GoalSubtaskPlanCheckpoint?
 
-  fun listSubtaskPlansOrdered(expectedIdentity: GoalPlanningIdentity): List<GoalSubtaskPlanCheckpoint>
+  fun listSubtaskPlansOrdered(
+    expectedIdentity: GoalPlanningIdentity,
+    orderedDescriptors: List<GovernedGoalSubtaskDescriptor>,
+  ): List<GoalSubtaskPlanCheckpoint>
 
-  fun preparedPlanCount(expectedIdentity: GoalPlanningIdentity): Int = listSubtaskPlansOrdered(expectedIdentity).size
+  fun preparedPlanCount(
+    expectedIdentity: GoalPlanningIdentity,
+    orderedDescriptors: List<GovernedGoalSubtaskDescriptor>,
+  ): Int = listSubtaskPlansOrdered(expectedIdentity, orderedDescriptors).size
 
-  fun firstMissingPlan(expectedIdentity: GoalPlanningIdentity, orderedSubtaskIds: List<Int>): Int? {
-    val prepared = listSubtaskPlansOrdered(expectedIdentity).mapTo(mutableSetOf()) { it.subtaskId }
-    return orderedSubtaskIds.firstOrNull { it !in prepared }
+  fun firstMissingPlan(
+    expectedIdentity: GoalPlanningIdentity,
+    orderedDescriptors: List<GovernedGoalSubtaskDescriptor>,
+  ): Int? {
+    val prepared = listSubtaskPlansOrdered(expectedIdentity, orderedDescriptors).mapTo(mutableSetOf()) { it.subtaskId }
+    return orderedDescriptors.firstOrNull { it.subtaskId !in prepared }?.subtaskId
   }
+}
 
+interface LegacyGoalPlanningPreparationRepository {
   fun markPrepared(record: GoalPlanningPreparationRecord)
 
   fun findByGoalAndSubtask(parentGoalWorkflowId: String, subtaskId: Int): GoalPlanningPreparationRecord?
@@ -45,12 +57,26 @@ interface GoalPlanningPreparationRepository {
   fun deleteByGoal(parentGoalWorkflowId: String): Int
 }
 
-object EmptyGoalPlanningPreparationRepository : GoalPlanningPreparationRepository {
+interface GoalPlanningPreparationRepository :
+  NormalizedGoalPlanningPreparationRepository,
+  LegacyGoalPlanningPreparationRepository
+
+private object EmptyNormalizedGoalPlanningPreparationRepository : NormalizedGoalPlanningPreparationRepository {
   override fun checkpointSharedPreplan(checkpoint: SharedGoalPreplanCheckpoint) = Unit
   override fun findSharedPreplan(expectedIdentity: GoalPlanningIdentity): SharedGoalPreplanCheckpoint? = null
   override fun checkpointSubtaskPlan(checkpoint: GoalSubtaskPlanCheckpoint) = Unit
-  override fun findSubtaskPlan(expectedIdentity: GoalPlanningIdentity, subtaskId: Int, governedSubSpecPath: String): GoalSubtaskPlanCheckpoint? = null
-  override fun listSubtaskPlansOrdered(expectedIdentity: GoalPlanningIdentity): List<GoalSubtaskPlanCheckpoint> = emptyList()
+  override fun findSubtaskPlan(
+    expectedIdentity: GoalPlanningIdentity,
+    subtaskId: Int,
+    governedSubSpecPath: String,
+  ): GoalSubtaskPlanCheckpoint? = null
+  override fun listSubtaskPlansOrdered(
+    expectedIdentity: GoalPlanningIdentity,
+    orderedDescriptors: List<GovernedGoalSubtaskDescriptor>,
+  ): List<GoalSubtaskPlanCheckpoint> = emptyList()
+}
+
+private object EmptyLegacyGoalPlanningPreparationRepository : LegacyGoalPlanningPreparationRepository {
   override fun markPrepared(record: GoalPlanningPreparationRecord) = Unit
 
   override fun findByGoalAndSubtask(parentGoalWorkflowId: String, subtaskId: Int): GoalPlanningPreparationRecord? = null
@@ -67,3 +93,8 @@ object EmptyGoalPlanningPreparationRepository : GoalPlanningPreparationRepositor
 
   override fun deleteByGoal(parentGoalWorkflowId: String): Int = 0
 }
+
+object EmptyGoalPlanningPreparationRepository :
+  GoalPlanningPreparationRepository,
+  NormalizedGoalPlanningPreparationRepository by EmptyNormalizedGoalPlanningPreparationRepository,
+  LegacyGoalPlanningPreparationRepository by EmptyLegacyGoalPlanningPreparationRepository

@@ -97,6 +97,30 @@ class DatabaseMigrationsTest {
   }
 
   @Test
+  fun `migration v9 upgrades a v8 database with normalized planning tables`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-db-v9-goal-planning").resolve("metrics.db")
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      connection.createStatement().use { statement ->
+        statement.executeUpdate("DELETE FROM schema_migrations WHERE version = 9")
+        statement.executeUpdate("DROP TABLE goal_subtask_plans")
+        statement.executeUpdate("DROP TABLE goal_shared_preplans")
+      }
+      assertTrue("parent_goal_workflow_id" in tableColumns(connection, "goal_planning_preparations"))
+    }
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      assertTrue("payload_sha256" in tableColumns(connection, "goal_shared_preplans"))
+      assertTrue("manifest_order" in tableColumns(connection, "goal_subtask_plans"))
+      assertNotNull(
+        migrationRows(connection).singleOrNull { row ->
+          row.version == 9 && row.name == "normalize-goal-planning-preparations"
+        },
+      )
+    }
+  }
+
+  @Test
   fun `ensureDatabase records all migrations for new databases`() {
     val dbPath = Files.createTempDirectory("runtime-kotlin-db-migrations").resolve("new.db")
 

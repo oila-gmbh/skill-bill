@@ -9,9 +9,12 @@ import skillbill.infrastructure.fs.FeatureTaskRuntimePhaseOutputValidatorAdapter
 import skillbill.infrastructure.fs.GoalPlanningPreparationEnvelopeValidatorAdapter
 import skillbill.infrastructure.sqlite.SQLiteDatabaseSessionFactory
 import skillbill.model.EnvironmentContext
-import skillbill.ports.persistence.model.GoalPlanningPreparationProvenance
-import skillbill.ports.persistence.model.GoalPlanningPreparationRecord
+import skillbill.ports.persistence.model.GoalPlanningContractProvenance
+import skillbill.ports.persistence.model.GoalPlanningIdentity
 import skillbill.ports.persistence.model.GoalPlanningPreparationState
+import skillbill.ports.persistence.model.GoalSubtaskPlanCheckpoint
+import skillbill.ports.persistence.model.GovernedGoalSubtaskDescriptor
+import skillbill.ports.persistence.model.SharedGoalPreplanCheckpoint
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -20,99 +23,94 @@ import kotlin.test.assertNull
 
 class GoalPlanningPreparationCheckpointTest {
   @Test
-  fun `a valid prepared pair is checkpointed and recovered`() {
+  fun `valid shared preplan and subtask plan are checkpointed and recovered`() {
     val harness = checkpointHarness()
-    val record = validRecord(parentGoalWorkflowId = "goal-1", subtaskId = 1)
+    val shared = validShared()
+    val plan = validPlan()
 
-    harness.checkpoint.checkpoint(record, harness.dbOverride)
+    harness.checkpoint.checkpointSharedPreplan(shared, harness.dbOverride)
+    harness.checkpoint.checkpointSubtaskPlan(plan, harness.dbOverride)
 
-    val recovered = harness.read("goal-1", 1)
-    assertEquals(GoalPlanningPreparationState.PREPARED, recovered?.preparationStatus)
-    assertEquals(record.preplanPayload, recovered?.preplanPayload)
-    assertEquals(record.planPayload, recovered?.planPayload)
-    assertEquals(record.provenance, recovered?.provenance)
+    assertEquals(shared.preplanPayload, harness.readShared()?.preplanPayload)
+    assertEquals(plan.planPayload, harness.readPlan()?.planPayload)
+    assertEquals(GoalPlanningPreparationState.PREPARED, harness.readPlan()?.preparationStatus)
   }
 
   @Test
-  fun `a preplan payload with the wrong phase id is rejected and nothing is stored`() {
+  fun `preplan payload with the wrong phase id is rejected and nothing is stored`() {
     val harness = checkpointHarness()
-    val record = validRecord(parentGoalWorkflowId = "goal-1", subtaskId = 1)
-      .copy(preplanPayload = payloadJson(phaseId = "plan"))
+    val shared = validShared(payload = payloadJson(phaseId = "plan"))
 
     assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
-      harness.checkpoint.checkpoint(record, harness.dbOverride)
+      harness.checkpoint.checkpointSharedPreplan(shared, harness.dbOverride)
     }
-    assertNull(harness.read("goal-1", 1))
+    assertNull(harness.readShared())
   }
 
   @Test
-  fun `a preplan payload with an incompatible phase output contract version is rejected and nothing is stored`() {
+  fun `preplan payload with an incompatible phase output version is rejected and nothing is stored`() {
     val harness = checkpointHarness()
-    val record = validRecord(parentGoalWorkflowId = "goal-1", subtaskId = 1)
-      .copy(preplanPayload = payloadJson(phaseId = "preplan", contractVersion = "0.2"))
+    val shared = validShared(payload = payloadJson(phaseId = "preplan", contractVersion = "0.2"))
 
     assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
-      harness.checkpoint.checkpoint(record, harness.dbOverride)
+      harness.checkpoint.checkpointSharedPreplan(shared, harness.dbOverride)
     }
-    assertNull(harness.read("goal-1", 1))
+    assertNull(harness.readShared())
   }
 
   @Test
-  fun `a plan payload with an unsupported status is rejected and nothing is stored`() {
-    val harness = checkpointHarness()
-    val record = validRecord(parentGoalWorkflowId = "goal-1", subtaskId = 1)
-      .copy(planPayload = payloadJson(phaseId = "plan", status = "queued"))
+  fun `plan payload with an unsupported status is rejected and nothing is stored`() {
+    val harness = checkpointHarness().withShared()
+    val plan = validPlan(payload = payloadJson(phaseId = "plan", status = "queued"))
 
     assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
-      harness.checkpoint.checkpoint(record, harness.dbOverride)
+      harness.checkpoint.checkpointSubtaskPlan(plan, harness.dbOverride)
     }
-    assertNull(harness.read("goal-1", 1))
+    assertNull(harness.readPlan())
   }
 
   @Test
-  fun `a schema valid blocked payload is rejected and nothing is stored`() {
-    val harness = checkpointHarness()
-    val record = validRecord(parentGoalWorkflowId = "goal-1", subtaskId = 1)
-      .copy(planPayload = payloadJson(phaseId = "plan", status = "blocked"))
+  fun `schema valid blocked plan is rejected and nothing is stored`() {
+    val harness = checkpointHarness().withShared()
+    val plan = validPlan(payload = payloadJson(phaseId = "plan", status = "blocked"))
 
     assertFailsWith<InvalidGoalPlanningPreparationSchemaError> {
-      harness.checkpoint.checkpoint(record, harness.dbOverride)
+      harness.checkpoint.checkpointSubtaskPlan(plan, harness.dbOverride)
     }
-    assertNull(harness.read("goal-1", 1))
+    assertNull(harness.readPlan())
   }
 
   @Test
-  fun `a plan payload with empty produced outputs is rejected and nothing is stored`() {
-    val harness = checkpointHarness()
-    val record = validRecord(parentGoalWorkflowId = "goal-1", subtaskId = 1)
-      .copy(planPayload = payloadJson(phaseId = "plan", producedOutputs = emptyMap<String, Any?>()))
+  fun `plan payload with empty produced outputs is rejected and nothing is stored`() {
+    val harness = checkpointHarness().withShared()
+    val plan = validPlan(payload = payloadJson(phaseId = "plan", producedOutputs = emptyMap()))
 
     assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
-      harness.checkpoint.checkpoint(record, harness.dbOverride)
+      harness.checkpoint.checkpointSubtaskPlan(plan, harness.dbOverride)
     }
-    assertNull(harness.read("goal-1", 1))
+    assertNull(harness.readPlan())
   }
 
   @Test
-  fun `a malformed envelope with a non-positive subtask id is rejected at the seam and nothing is stored`() {
-    val harness = checkpointHarness()
-    val record = validRecord(parentGoalWorkflowId = "goal-1", subtaskId = 0)
+  fun `non-positive normalized subtask id is rejected and nothing is stored`() {
+    val harness = checkpointHarness().withShared()
+    val plan = validPlan(subtaskId = 0)
 
     assertFailsWith<InvalidGoalPlanningPreparationSchemaError> {
-      harness.checkpoint.checkpoint(record, harness.dbOverride)
+      harness.checkpoint.checkpointSubtaskPlan(plan, harness.dbOverride)
     }
-    assertNull(harness.read("goal-1", 0))
+    assertNull(harness.readPlan(subtaskId = 0))
   }
 
   @Test
-  fun `a malformed envelope with an incompatible contract version is rejected and nothing is stored`() {
-    val harness = checkpointHarness()
-    val record = validRecord(parentGoalWorkflowId = "goal-1", subtaskId = 1).copy(contractVersion = "0.2")
+  fun `incompatible normalized contract version is rejected and nothing is stored`() {
+    val harness = checkpointHarness().withShared()
+    val plan = validPlan().copy(contractVersion = "0.1")
 
     assertFailsWith<InvalidGoalPlanningPreparationSchemaError> {
-      harness.checkpoint.checkpoint(record, harness.dbOverride)
+      harness.checkpoint.checkpointSubtaskPlan(plan, harness.dbOverride)
     }
-    assertNull(harness.read("goal-1", 1))
+    assertNull(harness.readPlan())
   }
 
   private fun checkpointHarness(): CheckpointHarness {
@@ -132,38 +130,67 @@ class GoalPlanningPreparationCheckpointTest {
     private val database: SQLiteDatabaseSessionFactory,
     val dbOverride: String,
   ) {
-    fun read(parentGoalWorkflowId: String, subtaskId: Int): GoalPlanningPreparationRecord? =
-      database.read(dbOverride) { unitOfWork ->
-        unitOfWork.goalPlanningPreparations.findByGoalAndSubtask(parentGoalWorkflowId, subtaskId)
-      }
+    fun withShared(): CheckpointHarness = apply {
+      checkpoint.checkpointSharedPreplan(validShared(), dbOverride)
+    }
+
+    fun readShared(): SharedGoalPreplanCheckpoint? =
+      database.read(dbOverride) { it.goalPlanningPreparations.findSharedPreplan(identity()) }
+
+    fun readPlan(subtaskId: Int = 1): GoalSubtaskPlanCheckpoint? = database.read(dbOverride) {
+      it.goalPlanningPreparations.findSubtaskPlan(identity(), subtaskId, descriptor(subtaskId).governedSubSpecPath)
+    }
   }
 
-  private fun validRecord(parentGoalWorkflowId: String, subtaskId: Int): GoalPlanningPreparationRecord =
-    GoalPlanningPreparationRecord(
-      parentGoalWorkflowId = parentGoalWorkflowId,
-      normalizedIssueKey = "SKILL-128",
-      repositoryIdentity = "repo-root-realpath-v1:/repository",
-      subtaskId = subtaskId,
-      governedSubSpecPath = ".feature-specs/SKILL-128/spec_subtask_$subtaskId.md",
-      preparationStatus = GoalPlanningPreparationState.PREPARED,
-      provenance = GoalPlanningPreparationProvenance(
-        parentSpecHash = sha256HexUtf8("# parent"),
-        subSpecHash = sha256HexUtf8("# subtask $subtaskId"),
-        decompositionManifestHash = sha256HexUtf8("# manifest"),
-      ),
-      preplanPayload = payloadJson(phaseId = "preplan"),
-      planPayload = payloadJson(phaseId = "plan"),
+  private companion object {
+    fun identity(): GoalPlanningIdentity =
+      GoalPlanningIdentity("goal-1", "SKILL-128", "repo-root-realpath-v1:/repository")
+
+    fun provenance(): GoalPlanningContractProvenance = GoalPlanningContractProvenance(
+      parentSpecHash = sha256HexUtf8("# parent"),
+      decompositionManifestHash = sha256HexUtf8("# manifest"),
+      planningContractId = "https://skill-bill.dev/contracts/goal-planning-preparation-schema.yaml",
     )
 
-  private fun payloadJson(
-    phaseId: String,
-    contractVersion: String = FEATURE_TASK_RUNTIME_CONTRACT_VERSION,
-    status: String = "completed",
-    producedOutputs: Map<String, Any?> = mapOf("mode" to "implement"),
-  ): String {
-    val outputs = producedOutputs.entries.joinToString(",") { (key, value) -> "\"$key\":\"$value\"" }
-    return """
-    {"contract_version":"$contractVersion","phase_id":"$phaseId","status":"$status","summary":"s","produced_outputs":{$outputs}}
-    """.trimIndent()
+    fun descriptor(subtaskId: Int = 1): GovernedGoalSubtaskDescriptor = GovernedGoalSubtaskDescriptor(
+      subtaskId = subtaskId,
+      manifestOrder = 0,
+      governedSubSpecPath = ".feature-specs/SKILL-128/spec_subtask_$subtaskId.md",
+      subSpecHash = sha256HexUtf8("# subtask $subtaskId"),
+    )
+
+    fun validShared(payload: String = payloadJson("preplan")): SharedGoalPreplanCheckpoint =
+      SharedGoalPreplanCheckpoint(
+        identity = identity(),
+        provenance = provenance(),
+        payloadSha256 = sha256HexUtf8(payload),
+        preplanPayload = payload,
+      )
+
+    fun validPlan(subtaskId: Int = 1, payload: String = payloadJson("plan")): GoalSubtaskPlanCheckpoint {
+      val descriptor = descriptor(subtaskId)
+      return GoalSubtaskPlanCheckpoint(
+        identity = identity(),
+        subtaskId = subtaskId,
+        manifestOrder = descriptor.manifestOrder,
+        governedSubSpecPath = descriptor.governedSubSpecPath,
+        subSpecHash = descriptor.subSpecHash,
+        provenance = provenance(),
+        payloadSha256 = sha256HexUtf8(payload),
+        planPayload = payload,
+      )
+    }
+
+    fun payloadJson(
+      phaseId: String,
+      contractVersion: String = FEATURE_TASK_RUNTIME_CONTRACT_VERSION,
+      status: String = "completed",
+      producedOutputs: Map<String, Any?> = mapOf("mode" to "implement"),
+    ): String {
+      val outputs = producedOutputs.entries.joinToString(",") { (key, value) -> "\"$key\":\"$value\"" }
+      return """
+      {"contract_version":"$contractVersion","phase_id":"$phaseId","status":"$status","summary":"s","produced_outputs":{$outputs}}
+      """.trimIndent()
+    }
   }
 }

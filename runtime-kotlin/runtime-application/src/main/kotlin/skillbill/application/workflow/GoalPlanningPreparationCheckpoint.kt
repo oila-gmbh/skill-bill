@@ -2,18 +2,15 @@ package skillbill.application.workflow
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.featuretask.GoalPlanningPreparationValidator
-import skillbill.ports.persistence.DatabaseSessionFactory
-import skillbill.ports.persistence.model.GoalPlanningPreparationRecord
 import skillbill.application.featuretask.sha256HexUtf8
-import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
-import skillbill.contracts.workflow.FeatureTaskRuntimePhaseOutputSchemaPaths
-import skillbill.contracts.workflow.GoalPlanningPreparationSchemaPaths
 import skillbill.error.InvalidGoalPlanningPreparationSchemaError
-import skillbill.ports.persistence.model.GoalSubtaskPlanCheckpoint
-import skillbill.ports.persistence.model.SharedGoalPreplanCheckpoint
+import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.model.GoalPlanningIdentity
 import skillbill.ports.persistence.model.GoalPlanningPreparationProgress
+import skillbill.ports.persistence.model.GoalPlanningPreparationRecord
+import skillbill.ports.persistence.model.GoalSubtaskPlanCheckpoint
 import skillbill.ports.persistence.model.GovernedGoalSubtaskDescriptor
+import skillbill.ports.persistence.model.SharedGoalPreplanCheckpoint
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.GoalPlanningPreparationEnvelopeValidator
 
@@ -99,22 +96,34 @@ class GoalPlanningPreparationCheckpoint(
   }
 
   private fun requireHash(expected: String, payload: String, label: String) {
-    if (sha256HexUtf8(payload) != expected) throw InvalidGoalPlanningPreparationSchemaError(
-      label, "payload_sha256", "payload_sha256 does not match the exact UTF-8 payload bytes",
-    )
+    if (sha256HexUtf8(payload) != expected) {
+      throw InvalidGoalPlanningPreparationSchemaError(
+        label,
+        "payload_sha256",
+        "payload_sha256 does not match the exact UTF-8 payload bytes",
+      )
+    }
   }
 }
 
 private fun Map<String, Any?>.requirePrepared(label: String) {
   if (get("status") != "completed" || (get("produced_outputs") as? Map<*, *>)?.isEmpty() != false) {
-    throw InvalidGoalPlanningPreparationSchemaError(label, "payload", "phase output must be completed with non-empty produced_outputs")
+    throw InvalidGoalPlanningPreparationSchemaError(
+      label,
+      "payload",
+      "phase output must be completed with non-empty produced_outputs",
+    )
   }
 }
 
 private fun SharedGoalPreplanCheckpoint.toEnvelopeMap(): Map<String, Any?> = linkedMapOf(
-  "contract_version" to contractVersion, "record_type" to "shared_preplan", "identity" to identity.asMap(),
-  "preparation_status" to preparationStatus.wireValue, "provenance" to provenance.asMap(),
-  "payload_sha256" to payloadSha256, "preplan_payload" to preplanPayload,
+  "contract_version" to contractVersion,
+  "record_type" to "shared_preplan",
+  "identity" to identity.asMap(),
+  "preparation_status" to preparationStatus.wireValue,
+  "provenance" to provenance.asMap(),
+  "payload_sha256" to payloadSha256,
+  "preplan_payload" to preplanPayload,
 )
 
 private fun GoalSubtaskPlanCheckpoint.toEnvelopeMap(): Map<String, Any?> = linkedMapOf(
@@ -125,12 +134,16 @@ private fun GoalSubtaskPlanCheckpoint.toEnvelopeMap(): Map<String, Any?> = linke
 )
 
 private fun skillbill.ports.persistence.model.GoalPlanningIdentity.asMap() = linkedMapOf(
-  "parent_goal_workflow_id" to parentGoalWorkflowId, "normalized_issue_key" to normalizedIssueKey,
+  "parent_goal_workflow_id" to parentGoalWorkflowId,
+  "normalized_issue_key" to normalizedIssueKey,
   "repository_identity" to repositoryIdentity,
 )
 
 private fun skillbill.ports.persistence.model.GoalPlanningContractProvenance.asMap() = linkedMapOf(
-  "parent_spec_hash" to parentSpecHash, "decomposition_manifest_hash" to decompositionManifestHash,
-  "planning_contract_id" to planningContractId, "planning_contract_version" to planningContractVersion,
-  "phase_output_contract_id" to phaseOutputContractId, "phase_output_contract_version" to phaseOutputContractVersion,
+  "parent_spec_hash" to parentSpecHash,
+  "decomposition_manifest_hash" to decompositionManifestHash,
+  "planning_contract_id" to planningContractId,
+  "planning_contract_version" to planningContractVersion,
+  "phase_output_contract_id" to phaseOutputContractId,
+  "phase_output_contract_version" to phaseOutputContractVersion,
 )

@@ -2,7 +2,6 @@ package skillbill.application
 
 import skillbill.application.workflow.toEnvelopeMap
 import skillbill.application.workflow.toGoalPlanningPreparationRecord
-import skillbill.contracts.workflow.GOAL_PLANNING_PREPARATION_CONTRACT_VERSION
 import skillbill.ports.persistence.model.GoalPlanningPreparationProvenance
 import skillbill.ports.persistence.model.GoalPlanningPreparationRecord
 import skillbill.ports.persistence.model.GoalPlanningPreparationState
@@ -11,7 +10,7 @@ import kotlin.test.assertEquals
 
 class GoalPlanningPreparationRecordMappingTest {
   @Test
-  fun `record round-trips through the canonical envelope map`() {
+  fun `legacy pair round-trips through its quarantined 0_1 envelope map`() {
     val record = GoalPlanningPreparationRecord(
       parentGoalWorkflowId = "goal-1",
       normalizedIssueKey = "SKILL-128",
@@ -36,7 +35,7 @@ class GoalPlanningPreparationRecordMappingTest {
     assertEquals("goal-1", envelope["parent_goal_workflow_id"])
     assertEquals(2, envelope["subtask_id"])
     assertEquals("prepared", envelope["preparation_status"])
-    assertEquals(GOAL_PLANNING_PREPARATION_CONTRACT_VERSION, envelope["contract_version"])
+    assertEquals("0.1", envelope["contract_version"])
     val provenanceMap = envelope["provenance"] as Map<*, *>
     assertEquals(record.provenance.phaseOutputContractId, provenanceMap["phase_output_contract_id"])
     assertEquals(record.provenance.phaseOutputContractVersion, provenanceMap["phase_output_contract_version"])

@@ -186,7 +186,6 @@ class GoalPlanningSweepTest {
       if (subtaskId == 2 && phase == "plan") launchFacts(stdout = "") else validPhaseOutcome(phase)
     }
     val runOne = DefaultGoalPlanningSweep(
-      fixtures.database,
       fixtures.checkpoint,
       fixtures.outputValidator,
       runOneLauncher,
@@ -205,7 +204,6 @@ class GoalPlanningSweepTest {
 
     val runTwoLauncher = SweepPlanningLauncher { phase, _, _ -> validPhaseOutcome(phase) }
     val runTwo = DefaultGoalPlanningSweep(
-      fixtures.database,
       fixtures.checkpoint,
       fixtures.outputValidator,
       runTwoLauncher,
@@ -314,7 +312,6 @@ class GoalPlanningSweepTest {
       if (subtaskId == 2) launchFacts(stdout = "") else validPhaseOutcome(phase)
     }
     val sweep = DefaultGoalPlanningSweep(
-      fixtures.database,
       fixtures.checkpoint,
       fixtures.outputValidator,
       sharedLauncher,
@@ -381,7 +378,6 @@ class GoalPlanningSweepTest {
     )
     val launcher = SweepPlanningLauncher { phase, _, _ -> validPhaseOutcome(phase) }
     val sweep = DefaultGoalPlanningSweep(
-      database,
       checkpoint,
       outputValidator,
       launcher,
@@ -762,8 +758,10 @@ private class InMemoryPreparationRepository(
     governedSubSpecPath: String,
   ) = plans[subtaskId]?.takeIf { it.identity == expectedIdentity && it.governedSubSpecPath == governedSubSpecPath }
 
-  override fun listSubtaskPlansOrdered(expectedIdentity: skillbill.ports.persistence.model.GoalPlanningIdentity) =
-    plans.values.filter { it.identity == expectedIdentity }.sortedBy { it.manifestOrder }
+  override fun listSubtaskPlansOrdered(
+    expectedIdentity: skillbill.ports.persistence.model.GoalPlanningIdentity,
+    orderedDescriptors: List<skillbill.ports.persistence.model.GovernedGoalSubtaskDescriptor>,
+  ) = plans.values.filter { it.identity == expectedIdentity }.sortedBy { it.manifestOrder }
 
   override fun markPrepared(record: GoalPlanningPreparationRecord) {
     records[record.subtaskId] = record
@@ -919,7 +917,6 @@ private fun sweepHarness(
   val fixtures = sharedSweepFixtures(markPreparedThrows = markPreparedThrows, outputValidator = outputValidator)
   val launcher = SweepPlanningLauncher(behavior)
   val sweep = DefaultGoalPlanningSweep(
-    fixtures.database,
     fixtures.checkpoint,
     fixtures.outputValidator,
     launcher,

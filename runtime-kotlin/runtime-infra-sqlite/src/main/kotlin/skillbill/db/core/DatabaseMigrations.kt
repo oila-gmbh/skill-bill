@@ -182,7 +182,8 @@ internal object DatabaseMigrations {
               """.trimIndent(),
             )
             statement.execute(
-              "CREATE INDEX IF NOT EXISTS idx_goal_subtask_plans_ordered ON goal_subtask_plans(parent_goal_workflow_id, manifest_order)",
+              "CREATE INDEX IF NOT EXISTS idx_goal_subtask_plans_ordered " +
+                "ON goal_subtask_plans(parent_goal_workflow_id, manifest_order)",
             )
           }
         },

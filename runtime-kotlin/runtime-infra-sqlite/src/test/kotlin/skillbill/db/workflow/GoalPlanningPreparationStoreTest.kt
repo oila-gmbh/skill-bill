@@ -1,11 +1,17 @@
 package skillbill.db.workflow
 
 import skillbill.db.core.DatabaseRuntime
+import skillbill.db.core.inImmediateTransaction
 import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
 import skillbill.error.InvalidGoalPlanningPreparationSchemaError
+import skillbill.ports.persistence.model.GoalPlanningContractProvenance
+import skillbill.ports.persistence.model.GoalPlanningIdentity
 import skillbill.ports.persistence.model.GoalPlanningPreparationProvenance
 import skillbill.ports.persistence.model.GoalPlanningPreparationRecord
 import skillbill.ports.persistence.model.GoalPlanningPreparationState
+import skillbill.ports.persistence.model.GoalSubtaskPlanCheckpoint
+import skillbill.ports.persistence.model.GovernedGoalSubtaskDescriptor
+import skillbill.ports.persistence.model.SharedGoalPreplanCheckpoint
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -16,6 +22,135 @@ import kotlin.test.assertNull
 
 @Suppress("LargeClass")
 class GoalPlanningPreparationStoreTest {
+  @Test
+  fun `normalized checkpoints list count and recover only against complete governed descriptors`() {
+    DatabaseRuntime.ensureDatabase(tempDb()).use { connection ->
+      val store = GoalPlanningPreparationStore(connection)
+      store.checkpointSharedPreplan(sharedCheckpoint())
+      store.checkpointSubtaskPlan(planCheckpoint(2, 1))
+      store.checkpointSubtaskPlan(planCheckpoint(1, 0))
+      val descriptors = listOf(descriptor(1, 0), descriptor(2, 1), descriptor(3, 2))
+
+      assertEquals(listOf(1, 2), store.listSubtaskPlansOrdered(identity(), descriptors).map { it.subtaskId })
+      assertEquals(2, store.preparedPlanCount(identity(), descriptors))
+      assertEquals(3, store.firstMissingPlan(identity(), descriptors))
+
+      assertFailsWith<IncompatibleGoalPlanningPreparationRecoveryError> {
+        store.listSubtaskPlansOrdered(
+          identity(),
+          descriptors.map { if (it.subtaskId == 2) it.copy(governedSubSpecPath = "wrong.md") else it },
+        )
+      }
+    }
+  }
+
+  @Test
+  fun `normalized checkpoints survive restart and incompatible soft-reset provenance fails loudly`() {
+    val dbPath = tempDb()
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val store = GoalPlanningPreparationStore(connection)
+      store.checkpointSharedPreplan(sharedCheckpoint())
+      store.checkpointSubtaskPlan(planCheckpoint(1, 0))
+    }
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val store = GoalPlanningPreparationStore(connection)
+      assertNotNull(store.findSharedPreplan(identity()))
+      val descriptors = listOf(descriptor(1, 0), descriptor(2, 1))
+      assertEquals(1, store.preparedPlanCount(identity(), descriptors))
+      assertEquals(2, store.firstMissingPlan(identity(), listOf(descriptor(1, 0), descriptor(2, 1))))
+      assertFailsWith<IncompatibleGoalPlanningPreparationRecoveryError> {
+        store.checkpointSharedPreplan(
+          sharedCheckpoint().copy(provenance = provenance().copy(parentSpecHash = "f".repeat(64))),
+        )
+      }
+    }
+  }
+
+  @Test
+  fun `normalized hard-reset deletion rolls back atomically and remains deleted after restart`() {
+    val dbPath = tempDb()
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val store = GoalPlanningPreparationStore(connection)
+      store.checkpointSharedPreplan(sharedCheckpoint())
+      store.checkpointSubtaskPlan(planCheckpoint(1, 0))
+
+      assertFailsWith<IllegalStateException> {
+        connection.inImmediateTransaction {
+          store.deleteByGoal("goal-1")
+          error("injected reset manifest failure")
+        }
+      }
+      assertNotNull(store.findSharedPreplan(identity()))
+      assertNotNull(store.findSubtaskPlan(identity(), 1, descriptor(1, 0).governedSubSpecPath))
+
+      connection.inImmediateTransaction { store.deleteByGoal("goal-1") }
+    }
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val store = GoalPlanningPreparationStore(connection)
+      assertNull(store.findSharedPreplan(identity()))
+      assertEquals(0, store.preparedPlanCount(identity(), listOf(descriptor(1, 0))))
+    }
+  }
+
+  @Test
+  fun `normalized immutable replay conflict is rejected without changing the stored plan`() {
+    DatabaseRuntime.ensureDatabase(tempDb()).use { connection ->
+      val store = GoalPlanningPreparationStore(connection)
+      val original = planCheckpoint(1, 0)
+      store.checkpointSharedPreplan(sharedCheckpoint())
+      store.checkpointSubtaskPlan(original)
+
+      assertFailsWith<IncompatibleGoalPlanningPreparationRecoveryError> {
+        store.checkpointSubtaskPlan(
+          original.copy(payloadSha256 = "f".repeat(64), planPayload = "changed-plan"),
+        )
+      }
+      assertEquals(
+        original.planPayload,
+        store.findSubtaskPlan(identity(), 1, original.governedSubSpecPath)?.planPayload,
+      )
+    }
+  }
+
+  @Test
+  fun `normalized alternate uniqueness conflicts fail loudly and preserve the original plan`() {
+    DatabaseRuntime.ensureDatabase(tempDb()).use { connection ->
+      val store = GoalPlanningPreparationStore(connection)
+      val original = planCheckpoint(1, 0)
+      store.checkpointSharedPreplan(sharedCheckpoint())
+      store.checkpointSubtaskPlan(original)
+
+      assertFailsWith<IncompatibleGoalPlanningPreparationRecoveryError> {
+        store.checkpointSubtaskPlan(
+          planCheckpoint(2, 1).copy(governedSubSpecPath = original.governedSubSpecPath),
+        )
+      }
+      assertFailsWith<IncompatibleGoalPlanningPreparationRecoveryError> {
+        store.checkpointSubtaskPlan(planCheckpoint(2, 0))
+      }
+      assertEquals(1, store.preparedPlanCount(identity(), listOf(descriptor(1, 0))))
+    }
+  }
+
+  @Test
+  fun `malformed normalized row fails loudly after restart`() {
+    val dbPath = tempDb()
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val store = GoalPlanningPreparationStore(connection)
+      store.checkpointSharedPreplan(sharedCheckpoint())
+      connection.createStatement().use { statement ->
+        statement.executeUpdate("UPDATE goal_shared_preplans SET payload_sha256 = 'malformed'")
+      }
+    }
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      assertFailsWith<InvalidGoalPlanningPreparationSchemaError> {
+        GoalPlanningPreparationStore(connection).findSharedPreplan(identity())
+      }
+    }
+  }
+
   @Test
   fun `mark prepared stores and recovers a single subtask pair`() {
     DatabaseRuntime.ensureDatabase(tempDb()).use { connection ->
@@ -270,6 +405,42 @@ class GoalPlanningPreparationStoreTest {
 
   private fun tempDb(): Path =
     Files.createTempDirectory("runtime-kotlin-goal-planning-preparation").resolve("metrics.db")
+
+  private fun identity() = GoalPlanningIdentity("goal-1", "SKILL-128", "repo-root-realpath-v1:/repository")
+
+  private fun provenance() = GoalPlanningContractProvenance(
+    parentSpecHash = "a".repeat(64),
+    decompositionManifestHash = "b".repeat(64),
+    planningContractId = skillbill.contracts.workflow.GoalPlanningPreparationSchemaPaths.EXPECTED_SCHEMA_ID,
+  )
+
+  private fun sharedCheckpoint() = SharedGoalPreplanCheckpoint(
+    identity = identity(),
+    provenance = provenance(),
+    payloadSha256 = "c".repeat(64),
+    preplanPayload = "preplan-payload",
+  )
+
+  private fun descriptor(subtaskId: Int, order: Int) = GovernedGoalSubtaskDescriptor(
+    subtaskId,
+    order,
+    ".feature-specs/SKILL-128/spec_subtask_$subtaskId.md",
+    "d".repeat(64),
+  )
+
+  private fun planCheckpoint(subtaskId: Int, order: Int): GoalSubtaskPlanCheckpoint {
+    val descriptor = descriptor(subtaskId, order)
+    return GoalSubtaskPlanCheckpoint(
+      identity = identity(),
+      subtaskId = subtaskId,
+      manifestOrder = order,
+      governedSubSpecPath = descriptor.governedSubSpecPath,
+      subSpecHash = descriptor.subSpecHash,
+      provenance = provenance(),
+      payloadSha256 = "e".repeat(64),
+      planPayload = "plan-$subtaskId",
+    )
+  }
 
   private fun preparationRecord(
     parentGoalWorkflowId: String,

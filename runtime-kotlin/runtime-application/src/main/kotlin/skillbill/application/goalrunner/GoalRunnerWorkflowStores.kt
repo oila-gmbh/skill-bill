@@ -390,40 +390,40 @@ class WorkflowGoalRunnerManifestStore(
     unitOfWork: UnitOfWork,
     state: GoalRunnerManifestState,
   ): SavedManifestProjection {
-      val existing = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, state.parentWorkflowId)
-        ?: unitOfWork.workflowStates.findDecomposedParentWorkflow(
-          state.manifest.issueKey,
-          decompositionManifestValidator,
-        )?.toSnapshot()
-        ?: error("Unknown decomposed parent workflow '${state.parentWorkflowId}'.")
-      val existingSnapshot = existing
-      val updated = engine.updateRecord(
-        WorkflowFamily.IMPLEMENT.definition,
-        existingSnapshot,
-        WorkflowUpdateInput(
-          workflowStatus = existingSnapshot.workflowStatus,
-          currentStepId = existingSnapshot.currentStepId,
-          stepUpdates = null,
-          artifactsPatch = mapOf(
-            DECOMPOSITION_RUNTIME_ARTIFACT_KEY to encodeDecompositionManifestMap(
-              state.manifest,
-              decompositionManifestValidator,
-              DECOMPOSITION_RUNTIME_ARTIFACT_KEY,
-            ),
+    val existing = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, state.parentWorkflowId)
+      ?: unitOfWork.workflowStates.findDecomposedParentWorkflow(
+        state.manifest.issueKey,
+        decompositionManifestValidator,
+      )?.toSnapshot()
+      ?: error("Unknown decomposed parent workflow '${state.parentWorkflowId}'.")
+    val existingSnapshot = existing
+    val updated = engine.updateRecord(
+      WorkflowFamily.IMPLEMENT.definition,
+      existingSnapshot,
+      WorkflowUpdateInput(
+        workflowStatus = existingSnapshot.workflowStatus,
+        currentStepId = existingSnapshot.currentStepId,
+        stepUpdates = null,
+        artifactsPatch = mapOf(
+          DECOMPOSITION_RUNTIME_ARTIFACT_KEY to encodeDecompositionManifestMap(
+            state.manifest,
+            decompositionManifestValidator,
+            DECOMPOSITION_RUNTIME_ARTIFACT_KEY,
           ),
-          sessionId = existingSnapshot.sessionId.orEmpty(),
         ),
-      )
-      WorkflowFamily.IMPLEMENT.save(unitOfWork.workflowStates, updated)
-      val refreshed = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, updated.workflowId) ?: updated
-      return SavedManifestProjection(
-        state = GoalRunnerManifestState(
-          parentWorkflowId = refreshed.workflowId,
-          dbPath = unitOfWork.dbPath.toString(),
-          manifest = refreshed.decompositionRuntime(decompositionManifestValidator) ?: state.manifest,
-        ),
-        projectionArtifactsJson = refreshed.artifactsJson,
-      )
+        sessionId = existingSnapshot.sessionId.orEmpty(),
+      ),
+    )
+    WorkflowFamily.IMPLEMENT.save(unitOfWork.workflowStates, updated)
+    val refreshed = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, updated.workflowId) ?: updated
+    return SavedManifestProjection(
+      state = GoalRunnerManifestState(
+        parentWorkflowId = refreshed.workflowId,
+        dbPath = unitOfWork.dbPath.toString(),
+        manifest = refreshed.decompositionRuntime(decompositionManifestValidator) ?: state.manifest,
+      ),
+      projectionArtifactsJson = refreshed.artifactsJson,
+    )
   }
 
   private fun loadFromWorkflowStore(issueKey: String, dbPathOverride: String?): GoalRunnerManifestState? =

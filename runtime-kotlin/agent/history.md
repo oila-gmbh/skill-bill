@@ -10,15 +10,14 @@ Acceptance criteria: 8/8 implemented
 
 ## [2026-07-17] SKILL-128 goal-planning context reuse (subtask 1: persistence contract)
 Areas: runtime-kotlin/runtime-{application,contracts,core,domain,infra-fs,infra-sqlite,ports}, orchestration/contracts, runtime-kotlin/ARCHITECTURE.md
-- New goal-scoped preparation store records parent goal workflow, normalized issue key, repository identity, subtask ID, governed sub-spec, preparation status, immutable five-hash provenance, and embedded validated preplan/plan payloads.
-- `markPrepared` is an atomic `ON CONFLICT DO NOTHING` upsert plus a post-select conflict check: a valid existing pair is an idempotent no-op; identity/provenance divergence loud-fails as `IncompatibleGoalPlanningPreparationRecoveryError` instead of overwriting or regenerating. reusable
-- Stored preplan/plan payloads reuse `FeatureTaskRuntimePhaseOutputValidator.validatePhaseOutputText`; duplicate, cross-goal, cross-repository, wrong-spec, malformed, and incompatible-version records fail loudly as typed errors, never silently treated as pending.
-- Store ops (`markPrepared`, `findByGoalAndSubtask`, ordered list, `preparedCount`, `firstMissingOrIncompleteSubtask`, `preparedStatus`) keep `java.sql.Connection`/`ResultSet` confined to runtime-infra-sqlite; `DatabaseMigrations` v8 `add-goal-planning-preparations` matches `DatabaseSchema` DDL byte-for-byte.
-- New runtime contract `goal-planning-preparation-schema.yaml` (`contract_version.const` `0.1`) follows the full recipe: Draft 2020-12 YAML, Kotlin `GOAL_PLANNING_PREPARATION_CONTRACT_VERSION` parity test, typed `ShellContentContractException`, loud-fail seams, and a Gradle `Copy` task (`inputs.file` + `doFirst` guard) bundling the YAML onto the classpath. reusable
-- Pattern: store opaque provenance hashes as the immutable recovery key and validate embedded payloads through the existing phase-output validator instead of re-implementing per-phase status logic; AC8 isolation is enforced by `ApplicationPersistencePortTest` (no standalone feature-task query reads this store). reusable
-- Known limitation: open audit remediation routes AC2 status-gate enforcement (a blocked/failed embedded payload must be rejected, not checkpointed as prepared) and AC7 named transaction-rollback plus pending/incomplete-recovery test coverage back to the audit→implement loop; subtasks 2-4 will consume this store and compute the provenance hashes.
+- Goal-scoped planning preparation persists one shared preplan and ordered per-subtask plans with normalized issue/repository identity, governed spec descriptors, prepared status, and immutable parent-spec, sub-spec, decomposition, and output-contract provenance.
+- Stored preplan and plan envelopes reuse the feature-task phase-output validator and require the normalized 0.2 phase, version, completed status, and produced-output contracts; malformed, legacy, cross-goal, cross-repository, wrong-spec, and incompatible records loud-fail with typed errors.
+- Atomic checkpointing is immutable and idempotent: prepared payloads cannot be overwritten, ordered reads/count/recovery validate every governed descriptor, and the first missing plan is recovered without leaking SQLite types outside infrastructure. reusable
+- Hard reset transactionally deletes shared-preplan, subtask-plan, hydration, and continuation preparation state before manifest reset; soft reset preserves schema-valid checkpoints while provenance drift requires hard reset or operator migration.
+- Pattern: treat governed subtask descriptors plus stable provenance as the recovery key, validate opaque phase payloads at persistence seams, and reject unexpected rows or manifest-order drift instead of interpreting corruption as pending. reusable
+- Real-SQLite restart, migration, rollback, ordering, uniqueness, malformed-row, reset, and provenance tests cover durable acceptance and rejection behavior; standalone feature-task queries remain isolated from the goal-scoped store.
 Feature flag: N/A
-Acceptance criteria: 8/8 implemented
+Acceptance criteria: 10/10 implemented
 
 ## [2026-07-15] SKILL-122 agent add-on integration validation
 Areas: runtime-kotlin/runtime-{application,cli,core,domain,infra-fs,mcp}

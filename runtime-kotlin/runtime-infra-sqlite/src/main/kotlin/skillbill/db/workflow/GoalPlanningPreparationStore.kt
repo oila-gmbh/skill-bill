@@ -5,17 +5,19 @@ package skillbill.db.workflow
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.contracts.workflow.FeatureTaskRuntimePhaseOutputSchemaPaths
 import skillbill.contracts.workflow.GOAL_PLANNING_PREPARATION_CONTRACT_VERSION
+import skillbill.contracts.workflow.GoalPlanningPreparationSchemaPaths
 import skillbill.db.core.inImmediateTransaction
 import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
 import skillbill.error.InvalidGoalPlanningPreparationSchemaError
 import skillbill.ports.persistence.GoalPlanningPreparationRepository
+import skillbill.ports.persistence.model.GoalPlanningContractProvenance
+import skillbill.ports.persistence.model.GoalPlanningIdentity
 import skillbill.ports.persistence.model.GoalPlanningPreparationProvenance
 import skillbill.ports.persistence.model.GoalPlanningPreparationRecord
 import skillbill.ports.persistence.model.GoalPlanningPreparationState
 import skillbill.ports.persistence.model.GoalPlanningPreparationStatus
-import skillbill.ports.persistence.model.GoalPlanningIdentity
-import skillbill.ports.persistence.model.GoalPlanningContractProvenance
 import skillbill.ports.persistence.model.GoalSubtaskPlanCheckpoint
+import skillbill.ports.persistence.model.GovernedGoalSubtaskDescriptor
 import skillbill.ports.persistence.model.SharedGoalPreplanCheckpoint
 import java.sql.Connection
 import java.sql.ResultSet
@@ -25,96 +27,174 @@ class GoalPlanningPreparationStore(
   private val connection: Connection,
 ) : GoalPlanningPreparationRepository {
   override fun checkpointSharedPreplan(checkpoint: SharedGoalPreplanCheckpoint) {
-    translateSqlFailure(checkpoint.identity.parentGoalWorkflowId, 0) { connection.inImmediateTransaction {
-      val inserted = prepareStatement(
-        """INSERT INTO goal_shared_preplans (parent_goal_workflow_id, normalized_issue_key, repository_identity,
+    requireNormalizedSharedPreplan(checkpoint)
+    translateSqlFailure(checkpoint.identity.parentGoalWorkflowId, 0) {
+      connection.inImmediateTransaction {
+        val inserted = prepareStatement(
+          """INSERT INTO goal_shared_preplans (parent_goal_workflow_id, normalized_issue_key, repository_identity,
           preparation_status, contract_version, parent_spec_hash, decomposition_manifest_hash, planning_contract_id,
           planning_contract_version, phase_output_contract_id, phase_output_contract_version, payload_sha256,
           preplan_payload_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(parent_goal_workflow_id) DO NOTHING""",
-      ).use { s ->
-        val values = listOf(checkpoint.identity.parentGoalWorkflowId, checkpoint.identity.normalizedIssueKey,
-          checkpoint.identity.repositoryIdentity, checkpoint.preparationStatus.wireValue, checkpoint.contractVersion,
-          checkpoint.provenance.parentSpecHash, checkpoint.provenance.decompositionManifestHash,
-          checkpoint.provenance.planningContractId, checkpoint.provenance.planningContractVersion,
-          checkpoint.provenance.phaseOutputContractId, checkpoint.provenance.phaseOutputContractVersion,
-          checkpoint.payloadSha256, checkpoint.preplanPayload)
-        values.forEachIndexed { i, value -> s.setString(i + 1, value) }
-        s.executeUpdate() > 0
-      }
-      if (!inserted) {
-        val stored = findSharedPreplan(checkpoint.identity)
-        if (stored != checkpoint.copy(createdAt = stored?.createdAt.orEmpty())) {
-          throw IncompatibleGoalPlanningPreparationRecoveryError(checkpoint.identity.parentGoalWorkflowId, 0, "shared preplan checkpoint is immutable")
+        ).use { s ->
+          val values = listOf(
+            checkpoint.identity.parentGoalWorkflowId, checkpoint.identity.normalizedIssueKey,
+            checkpoint.identity.repositoryIdentity, checkpoint.preparationStatus.wireValue, checkpoint.contractVersion,
+            checkpoint.provenance.parentSpecHash, checkpoint.provenance.decompositionManifestHash,
+            checkpoint.provenance.planningContractId, checkpoint.provenance.planningContractVersion,
+            checkpoint.provenance.phaseOutputContractId, checkpoint.provenance.phaseOutputContractVersion,
+            checkpoint.payloadSha256, checkpoint.preplanPayload,
+          )
+          values.forEachIndexed { i, value -> s.setString(i + 1, value) }
+          s.executeUpdate() > 0
+        }
+        if (!inserted) {
+          val stored = findSharedPreplan(checkpoint.identity)
+          if (stored != checkpoint.copy(createdAt = stored?.createdAt.orEmpty())) {
+            throw IncompatibleGoalPlanningPreparationRecoveryError(
+              checkpoint.identity.parentGoalWorkflowId,
+              0,
+              "shared preplan checkpoint is immutable",
+            )
+          }
         }
       }
-    } }
+    }
   }
 
   override fun findSharedPreplan(expectedIdentity: GoalPlanningIdentity): SharedGoalPreplanCheckpoint? {
     return translateSqlFailure(expectedIdentity.parentGoalWorkflowId, 0) {
       rejectLegacy(expectedIdentity.parentGoalWorkflowId)
       connection.prepareStatement("SELECT * FROM goal_shared_preplans WHERE parent_goal_workflow_id = ?").use { s ->
-      s.setString(1, expectedIdentity.parentGoalWorkflowId)
-      s.executeQuery().use { r -> if (!r.next()) null else r.toShared(expectedIdentity) }
+        s.setString(1, expectedIdentity.parentGoalWorkflowId)
+        s.executeQuery().use { r -> if (!r.next()) null else r.toShared(expectedIdentity) }
       }
     }
   }
 
   override fun checkpointSubtaskPlan(checkpoint: GoalSubtaskPlanCheckpoint) {
-    translateSqlFailure(checkpoint.identity.parentGoalWorkflowId, checkpoint.subtaskId) { connection.inImmediateTransaction {
-      val shared = findSharedPreplan(checkpoint.identity) ?: throw InvalidGoalPlanningPreparationSchemaError(
-        "${checkpoint.identity.parentGoalWorkflowId}#${checkpoint.subtaskId}", "parent_goal_workflow_id", "shared preplan must be checkpointed first",
-      )
-      if (shared.provenance != checkpoint.provenance) {
-        throw IncompatibleGoalPlanningPreparationRecoveryError(
-          checkpoint.identity.parentGoalWorkflowId,
-          checkpoint.subtaskId,
-          "subtask plan provenance must exactly match the governing shared preplan",
+    requireNormalizedSubtaskPlan(checkpoint)
+    translateSqlFailure(checkpoint.identity.parentGoalWorkflowId, checkpoint.subtaskId) {
+      connection.inImmediateTransaction {
+        val shared = findSharedPreplan(checkpoint.identity) ?: throw InvalidGoalPlanningPreparationSchemaError(
+          "${checkpoint.identity.parentGoalWorkflowId}#${checkpoint.subtaskId}",
+          "parent_goal_workflow_id",
+          "shared preplan must be checkpointed first",
         )
-      }
-      val inserted = prepareStatement(
-        """INSERT INTO goal_subtask_plans (parent_goal_workflow_id, normalized_issue_key, repository_identity, subtask_id,
+        if (shared.provenance != checkpoint.provenance) {
+          throw IncompatibleGoalPlanningPreparationRecoveryError(
+            checkpoint.identity.parentGoalWorkflowId,
+            checkpoint.subtaskId,
+            "subtask plan provenance must exactly match the governing shared preplan",
+          )
+        }
+        val inserted = prepareStatement(
+          """INSERT INTO goal_subtask_plans
+          (parent_goal_workflow_id, normalized_issue_key, repository_identity, subtask_id,
           manifest_order, governed_sub_spec_path, sub_spec_hash, preparation_status, contract_version, parent_spec_hash,
           decomposition_manifest_hash, planning_contract_id, planning_contract_version, phase_output_contract_id,
-          phase_output_contract_version, payload_sha256, plan_payload_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          phase_output_contract_version, payload_sha256, plan_payload_json)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(parent_goal_workflow_id, subtask_id) DO NOTHING""",
-      ).use { s ->
-        val values = listOf(checkpoint.identity.parentGoalWorkflowId, checkpoint.identity.normalizedIssueKey,
-          checkpoint.identity.repositoryIdentity, checkpoint.subtaskId, checkpoint.manifestOrder,
-          checkpoint.governedSubSpecPath, checkpoint.subSpecHash, checkpoint.preparationStatus.wireValue,
-          checkpoint.contractVersion, checkpoint.provenance.parentSpecHash, checkpoint.provenance.decompositionManifestHash,
-          checkpoint.provenance.planningContractId, checkpoint.provenance.planningContractVersion,
-          checkpoint.provenance.phaseOutputContractId, checkpoint.provenance.phaseOutputContractVersion,
-          checkpoint.payloadSha256, checkpoint.planPayload)
-        values.forEachIndexed { i, value -> if (value is Int) s.setInt(i + 1, value) else s.setString(i + 1, value.toString()) }
-        s.executeUpdate() > 0
+        ).use { s ->
+          val values = listOf(
+            checkpoint.identity.parentGoalWorkflowId, checkpoint.identity.normalizedIssueKey,
+            checkpoint.identity.repositoryIdentity, checkpoint.subtaskId, checkpoint.manifestOrder,
+            checkpoint.governedSubSpecPath, checkpoint.subSpecHash, checkpoint.preparationStatus.wireValue,
+            checkpoint.contractVersion,
+            checkpoint.provenance.parentSpecHash,
+            checkpoint.provenance.decompositionManifestHash,
+            checkpoint.provenance.planningContractId, checkpoint.provenance.planningContractVersion,
+            checkpoint.provenance.phaseOutputContractId, checkpoint.provenance.phaseOutputContractVersion,
+            checkpoint.payloadSha256, checkpoint.planPayload,
+          )
+          values.forEachIndexed { i, value ->
+            if (value is Int) s.setInt(i + 1, value) else s.setString(i + 1, value.toString())
+          }
+          s.executeUpdate() > 0
+        }
+        val stored = findSubtaskPlan(checkpoint.identity, checkpoint.subtaskId, checkpoint.governedSubSpecPath)
+        if (!inserted && stored != checkpoint.copy(createdAt = stored?.createdAt.orEmpty())) {
+          throw IncompatibleGoalPlanningPreparationRecoveryError(
+            checkpoint.identity.parentGoalWorkflowId,
+            checkpoint.subtaskId,
+            "subtask plan checkpoint is immutable",
+          )
+        }
       }
-      val stored = findSubtaskPlan(checkpoint.identity, checkpoint.subtaskId, checkpoint.governedSubSpecPath)
-      if (!inserted && stored != checkpoint.copy(createdAt = stored?.createdAt.orEmpty())) {
-        throw IncompatibleGoalPlanningPreparationRecoveryError(checkpoint.identity.parentGoalWorkflowId, checkpoint.subtaskId, "subtask plan checkpoint is immutable")
-      }
-    } }
+    }
   }
 
-  override fun findSubtaskPlan(expectedIdentity: GoalPlanningIdentity, subtaskId: Int, governedSubSpecPath: String): GoalSubtaskPlanCheckpoint? =
-    translateSqlFailure(expectedIdentity.parentGoalWorkflowId, subtaskId) { connection.prepareStatement("SELECT * FROM goal_subtask_plans WHERE parent_goal_workflow_id = ? AND subtask_id = ?").use { s ->
-      rejectLegacy(expectedIdentity.parentGoalWorkflowId)
-      s.setString(1, expectedIdentity.parentGoalWorkflowId); s.setInt(2, subtaskId)
-      s.executeQuery().use { r -> if (!r.next()) null else r.toPlan(expectedIdentity, governedSubSpecPath) }
-    } }
-
-  override fun listSubtaskPlansOrdered(expectedIdentity: GoalPlanningIdentity): List<GoalSubtaskPlanCheckpoint> =
-    translateSqlFailure(expectedIdentity.parentGoalWorkflowId, 0) { connection.prepareStatement("SELECT * FROM goal_subtask_plans WHERE parent_goal_workflow_id = ? ORDER BY manifest_order, subtask_id").use { s ->
+  override fun findSubtaskPlan(
+    expectedIdentity: GoalPlanningIdentity,
+    subtaskId: Int,
+    governedSubSpecPath: String,
+  ): GoalSubtaskPlanCheckpoint? = translateSqlFailure(expectedIdentity.parentGoalWorkflowId, subtaskId) {
+    connection.prepareStatement(
+      "SELECT * FROM goal_subtask_plans WHERE parent_goal_workflow_id = ? AND subtask_id = ?",
+    ).use { s ->
       rejectLegacy(expectedIdentity.parentGoalWorkflowId)
       s.setString(1, expectedIdentity.parentGoalWorkflowId)
-      s.executeQuery().use { r -> buildList { while (r.next()) add(r.toPlan(expectedIdentity, r.getString("governed_sub_spec_path"))) } }
-    } }
+      s.setInt(2, subtaskId)
+      s.executeQuery().use { r -> if (!r.next()) null else r.toPlan(expectedIdentity, governedSubSpecPath) }
+    }
+  }
+
+  override fun listSubtaskPlansOrdered(
+    expectedIdentity: GoalPlanningIdentity,
+    orderedDescriptors: List<GovernedGoalSubtaskDescriptor>,
+  ): List<GoalSubtaskPlanCheckpoint> = translateSqlFailure(expectedIdentity.parentGoalWorkflowId, 0) {
+    connection.prepareStatement(
+      "SELECT * FROM goal_subtask_plans WHERE parent_goal_workflow_id = ? ORDER BY manifest_order, subtask_id",
+    ).use { s ->
+      rejectLegacy(expectedIdentity.parentGoalWorkflowId)
+      val descriptors = orderedDescriptors.associateBy { it.subtaskId }
+      if (descriptors.size != orderedDescriptors.size) {
+        throw InvalidGoalPlanningPreparationSchemaError(
+          expectedIdentity.parentGoalWorkflowId,
+          "ordered_descriptors",
+          "subtask ids must be unique",
+        )
+      }
+      s.setString(1, expectedIdentity.parentGoalWorkflowId)
+      s.executeQuery().use { r ->
+        buildList {
+          while (r.next()) {
+            val subtaskId = r.getInt("subtask_id")
+            val descriptor = descriptors[subtaskId] ?: throw IncompatibleGoalPlanningPreparationRecoveryError(
+              expectedIdentity.parentGoalWorkflowId,
+              subtaskId,
+              "stored plan is not present in the expected governed subtask descriptors",
+            )
+            val plan = r.toPlan(expectedIdentity, descriptor.governedSubSpecPath)
+            if (plan.manifestOrder != descriptor.manifestOrder || plan.subSpecHash != descriptor.subSpecHash) {
+              throw IncompatibleGoalPlanningPreparationRecoveryError(
+                expectedIdentity.parentGoalWorkflowId,
+                subtaskId,
+                "stored manifest order or governed sub-spec hash differs from the expected descriptor",
+              )
+            }
+            add(plan)
+          }
+        }
+      }
+    }
+  }
 
   private fun rejectLegacy(workflowId: String) {
-    connection.prepareStatement("SELECT 1 FROM goal_planning_preparations WHERE parent_goal_workflow_id = ? LIMIT 1").use { s ->
+    connection.prepareStatement(
+      "SELECT 1 FROM goal_planning_preparations WHERE parent_goal_workflow_id = ? LIMIT 1",
+    ).use { s ->
       s.setString(1, workflowId)
-      s.executeQuery().use { if (it.next()) throw IncompatibleGoalPlanningPreparationRecoveryError(workflowId, 0, "legacy 0.1 pair requires hard reset or operator migration") }
+      s.executeQuery().use {
+        if (it.next()) {
+          throw IncompatibleGoalPlanningPreparationRecoveryError(
+            workflowId,
+            0,
+            "legacy 0.1 pair requires hard reset or operator migration",
+          )
+        }
+      }
     }
   }
   override fun markPrepared(record: GoalPlanningPreparationRecord) {
@@ -151,10 +231,12 @@ class GoalPlanningPreparationStore(
 
   override fun deleteByGoal(parentGoalWorkflowId: String): Int {
     val plans = connection.prepareStatement("DELETE FROM goal_subtask_plans WHERE parent_goal_workflow_id = ?").use {
-      it.setString(1, parentGoalWorkflowId); it.executeUpdate()
+      it.setString(1, parentGoalWorkflowId)
+      it.executeUpdate()
     }
     val shared = connection.prepareStatement("DELETE FROM goal_shared_preplans WHERE parent_goal_workflow_id = ?").use {
-      it.setString(1, parentGoalWorkflowId); it.executeUpdate()
+      it.setString(1, parentGoalWorkflowId)
+      it.executeUpdate()
     }
     return plans + shared + connection.deletePreparedByGoal(parentGoalWorkflowId)
   }
@@ -169,7 +251,8 @@ class GoalPlanningPreparationStore(
 
   private fun envelopeFailure(record: GoalPlanningPreparationRecord): String? = when {
     record.contractVersion != LEGACY_GOAL_PLANNING_PREPARATION_CONTRACT_VERSION ->
-      "contract_version must be '$LEGACY_GOAL_PLANNING_PREPARATION_CONTRACT_VERSION' but was '${record.contractVersion}'"
+      "contract_version must be '$LEGACY_GOAL_PLANNING_PREPARATION_CONTRACT_VERSION' " +
+        "but was '${record.contractVersion}'"
     record.subtaskId < 1 -> "subtask_id must be a positive integer"
     record.parentGoalWorkflowId.isBlank() -> "parent_goal_workflow_id is required"
     record.normalizedIssueKey.isBlank() -> "normalized_issue_key is required"
@@ -232,8 +315,7 @@ class GoalPlanningPreparationStore(
   }
 }
 
-private fun incompatibleLoadedVersionReason(loaded: String): String =
-  "loaded contract_version '$loaded' is not '0.1'."
+private fun incompatibleLoadedVersionReason(loaded: String): String = "loaded contract_version '$loaded' is not '0.1'."
 
 private fun Connection.deletePreparedByGoal(parentGoalWorkflowId: String): Int = prepareStatement(
   "DELETE FROM goal_planning_preparations WHERE parent_goal_workflow_id = ?",
@@ -479,47 +561,110 @@ private fun ResultSet.toShared(expected: GoalPlanningIdentity): SharedGoalPrepla
     requireColumn(this, label, "normalized_issue_key"),
     requireColumn(this, label, "repository_identity"),
   )
-  if (identity != expected) throw IncompatibleGoalPlanningPreparationRecoveryError(identity.parentGoalWorkflowId, 0, "stored goal or repository identity differs from expected identity")
+  if (identity != expected) {
+    throw IncompatibleGoalPlanningPreparationRecoveryError(
+      identity.parentGoalWorkflowId,
+      0,
+      "stored goal or repository identity differs from expected identity",
+    )
+  }
   val status = decodeState(label, requireColumn(this, label, "preparation_status"))
-  if (status != GoalPlanningPreparationState.PREPARED) throw InvalidGoalPlanningPreparationSchemaError(label, "preparation_status", "normalized shared preplan must be prepared")
+  if (status != GoalPlanningPreparationState.PREPARED) {
+    throw InvalidGoalPlanningPreparationSchemaError(
+      label,
+      "preparation_status",
+      "normalized shared preplan must be prepared",
+    )
+  }
   return SharedGoalPreplanCheckpoint(
     identity = identity,
     preparationStatus = status,
-    provenance = GoalPlanningContractProvenance(requireColumn(this, label, "parent_spec_hash"), requireColumn(this, label, "decomposition_manifest_hash"), requireColumn(this, label, "planning_contract_id"), requireColumn(this, label, "planning_contract_version"), requireColumn(this, label, "phase_output_contract_id"), requireColumn(this, label, "phase_output_contract_version")),
-    payloadSha256 = requireColumn(this, label, "payload_sha256"), preplanPayload = requireColumn(this, label, "preplan_payload_json"),
-    createdAt = requireColumn(this, label, "created_at"), contractVersion = requireNormalizedVersion(this, label),
-  )
+    provenance = GoalPlanningContractProvenance(
+      requireColumn(this, label, "parent_spec_hash"),
+      requireColumn(this, label, "decomposition_manifest_hash"),
+      requireColumn(this, label, "planning_contract_id"),
+      requireColumn(this, label, "planning_contract_version"),
+      requireColumn(this, label, "phase_output_contract_id"),
+      requireColumn(this, label, "phase_output_contract_version"),
+    ),
+    payloadSha256 = requireColumn(this, label, "payload_sha256"),
+    preplanPayload = requireColumn(this, label, "preplan_payload_json"),
+    createdAt = requireColumn(this, label, "created_at"),
+    contractVersion = requireNormalizedVersion(this, label),
+  ).also(::requireNormalizedSharedPreplan)
 }
 
 private fun ResultSet.toPlan(expected: GoalPlanningIdentity, expectedPath: String): GoalSubtaskPlanCheckpoint {
   val subtaskId = requirePositiveInt(this, expected.parentGoalWorkflowId, "subtask_id")
   val label = "${expected.parentGoalWorkflowId}#$subtaskId"
-  val identity = GoalPlanningIdentity(requireColumn(this, label, "parent_goal_workflow_id"), requireColumn(this, label, "normalized_issue_key"), requireColumn(this, label, "repository_identity"))
+  val identity = GoalPlanningIdentity(
+    requireColumn(this, label, "parent_goal_workflow_id"),
+    requireColumn(this, label, "normalized_issue_key"),
+    requireColumn(this, label, "repository_identity"),
+  )
   val path = requireColumn(this, label, "governed_sub_spec_path")
-  if (identity != expected || path != expectedPath) throw IncompatibleGoalPlanningPreparationRecoveryError(identity.parentGoalWorkflowId, subtaskId, "stored identity or governed sub-spec differs from expected descriptor")
+  if (identity != expected || path != expectedPath) {
+    throw IncompatibleGoalPlanningPreparationRecoveryError(
+      identity.parentGoalWorkflowId,
+      subtaskId,
+      "stored identity or governed sub-spec differs from expected descriptor",
+    )
+  }
   val status = decodeState(label, requireColumn(this, label, "preparation_status"))
-  if (status != GoalPlanningPreparationState.PREPARED) throw InvalidGoalPlanningPreparationSchemaError(label, "preparation_status", "normalized subtask plan must be prepared")
+  if (status != GoalPlanningPreparationState.PREPARED) {
+    throw InvalidGoalPlanningPreparationSchemaError(
+      label,
+      "preparation_status",
+      "normalized subtask plan must be prepared",
+    )
+  }
   return GoalSubtaskPlanCheckpoint(
-    identity = identity, subtaskId = subtaskId, manifestOrder = requirePositiveInt(this, label, "manifest_order"),
+    identity = identity, subtaskId = subtaskId, manifestOrder = requireNonNegativeInt(this, label, "manifest_order"),
     governedSubSpecPath = path, subSpecHash = requireColumn(this, label, "sub_spec_hash"),
     preparationStatus = status,
-    provenance = GoalPlanningContractProvenance(requireColumn(this, label, "parent_spec_hash"), requireColumn(this, label, "decomposition_manifest_hash"), requireColumn(this, label, "planning_contract_id"), requireColumn(this, label, "planning_contract_version"), requireColumn(this, label, "phase_output_contract_id"), requireColumn(this, label, "phase_output_contract_version")),
-    payloadSha256 = requireColumn(this, label, "payload_sha256"), planPayload = requireColumn(this, label, "plan_payload_json"),
+    provenance = GoalPlanningContractProvenance(
+      requireColumn(this, label, "parent_spec_hash"),
+      requireColumn(this, label, "decomposition_manifest_hash"),
+      requireColumn(this, label, "planning_contract_id"),
+      requireColumn(this, label, "planning_contract_version"),
+      requireColumn(this, label, "phase_output_contract_id"),
+      requireColumn(this, label, "phase_output_contract_version"),
+    ),
+    payloadSha256 = requireColumn(this, label, "payload_sha256"),
+    planPayload = requireColumn(this, label, "plan_payload_json"),
     createdAt = requireColumn(this, label, "created_at"), contractVersion = requireNormalizedVersion(this, label),
-  )
+  ).also(::requireNormalizedSubtaskPlan)
 }
 
 private fun requireNormalizedVersion(rows: ResultSet, label: String): String =
   requireColumn(rows, label, "contract_version").also {
-    if (it != GOAL_PLANNING_PREPARATION_CONTRACT_VERSION) throw InvalidGoalPlanningPreparationSchemaError(
-      label, "contract_version", "loaded contract_version '$it' is not '$GOAL_PLANNING_PREPARATION_CONTRACT_VERSION'",
-    )
+    if (it != GOAL_PLANNING_PREPARATION_CONTRACT_VERSION) {
+      throw InvalidGoalPlanningPreparationSchemaError(
+        label,
+        "contract_version",
+        "loaded contract_version '$it' is not '$GOAL_PLANNING_PREPARATION_CONTRACT_VERSION'",
+      )
+    }
   }
 
 private fun requirePositiveInt(rows: ResultSet, label: String, column: String): Int = rows.getInt(column).also {
-  if (rows.wasNull() || it < 1) throw InvalidGoalPlanningPreparationSchemaError(
-    label, column, "$column must be a positive integer on hydrate",
-  )
+  if (rows.wasNull() || it < 1) {
+    throw InvalidGoalPlanningPreparationSchemaError(
+      label,
+      column,
+      "$column must be a positive integer on hydrate",
+    )
+  }
+}
+
+private fun requireNonNegativeInt(rows: ResultSet, label: String, column: String): Int = rows.getInt(column).also {
+  if (rows.wasNull() || it < 0) {
+    throw InvalidGoalPlanningPreparationSchemaError(
+      label,
+      column,
+      "$column must be a non-negative integer on hydrate",
+    )
+  }
 }
 
 private inline fun <T> translateSqlFailure(workflowId: String, subtaskId: Int, block: () -> T): T = try {
@@ -529,8 +674,89 @@ private inline fun <T> translateSqlFailure(workflowId: String, subtaskId: Int, b
     workflowId,
     subtaskId,
     "SQLite rejected the immutable planning checkpoint: ${failure.message.orEmpty()}",
+    failure,
   )
 }
 
+private fun requireNormalizedSharedPreplan(checkpoint: SharedGoalPreplanCheckpoint) {
+  val label = checkpoint.identity.parentGoalWorkflowId
+  val failure = normalizedIdentityFailure(checkpoint.identity)
+    ?: normalizedProvenanceFailure(checkpoint.provenance)
+    ?: normalizedEnvelopeFailure(
+      checkpoint.contractVersion,
+      checkpoint.preparationStatus,
+      checkpoint.payloadSha256,
+      checkpoint.preplanPayload,
+    )
+  if (failure != null) {
+    throw InvalidGoalPlanningPreparationSchemaError(label, failure.first, failure.second)
+  }
+}
+
+private fun requireNormalizedSubtaskPlan(checkpoint: GoalSubtaskPlanCheckpoint) {
+  val label = "${checkpoint.identity.parentGoalWorkflowId}#${checkpoint.subtaskId}"
+  val failure = normalizedIdentityFailure(checkpoint.identity)
+    ?: normalizedProvenanceFailure(checkpoint.provenance)
+    ?: normalizedEnvelopeFailure(
+      checkpoint.contractVersion,
+      checkpoint.preparationStatus,
+      checkpoint.payloadSha256,
+      checkpoint.planPayload,
+    )
+    ?: when {
+      checkpoint.subtaskId < 1 -> "subtask_id" to "subtask_id must be a positive integer"
+      checkpoint.manifestOrder < 0 -> "manifest_order" to "manifest_order must be non-negative"
+      checkpoint.governedSubSpecPath.isBlank() ->
+        "governed_sub_spec_path" to "governed_sub_spec_path is required"
+      !checkpoint.subSpecHash.isSha256() -> "sub_spec_hash" to "sub_spec_hash must be a lowercase SHA-256"
+      else -> null
+    }
+  if (failure != null) {
+    throw InvalidGoalPlanningPreparationSchemaError(label, failure.first, failure.second)
+  }
+}
+
+private fun normalizedIdentityFailure(identity: GoalPlanningIdentity): Pair<String, String>? = when {
+  identity.parentGoalWorkflowId.isBlank() ->
+    "identity.parent_goal_workflow_id" to "parent_goal_workflow_id is required"
+  identity.normalizedIssueKey.isBlank() -> "identity.normalized_issue_key" to "normalized_issue_key is required"
+  identity.repositoryIdentity.isBlank() -> "identity.repository_identity" to "repository_identity is required"
+  else -> null
+}
+
+private fun normalizedProvenanceFailure(provenance: GoalPlanningContractProvenance): Pair<String, String>? = when {
+  !provenance.parentSpecHash.isSha256() ->
+    "provenance.parent_spec_hash" to "parent_spec_hash must be a lowercase SHA-256"
+  !provenance.decompositionManifestHash.isSha256() ->
+    "provenance.decomposition_manifest_hash" to "decomposition_manifest_hash must be a lowercase SHA-256"
+  provenance.planningContractId != GoalPlanningPreparationSchemaPaths.EXPECTED_SCHEMA_ID ->
+    "provenance.planning_contract_id" to "planning_contract_id is incompatible"
+  provenance.planningContractVersion != GOAL_PLANNING_PREPARATION_CONTRACT_VERSION ->
+    "provenance.planning_contract_version" to "planning_contract_version is incompatible"
+  provenance.phaseOutputContractId != FeatureTaskRuntimePhaseOutputSchemaPaths.EXPECTED_SCHEMA_ID ->
+    "provenance.phase_output_contract_id" to "phase_output_contract_id is incompatible"
+  provenance.phaseOutputContractVersion != FEATURE_TASK_RUNTIME_CONTRACT_VERSION ->
+    "provenance.phase_output_contract_version" to "phase_output_contract_version is incompatible"
+  else -> null
+}
+
+private fun normalizedEnvelopeFailure(
+  contractVersion: String,
+  status: GoalPlanningPreparationState,
+  payloadSha256: String,
+  payload: String,
+): Pair<String, String>? = when {
+  contractVersion != GOAL_PLANNING_PREPARATION_CONTRACT_VERSION ->
+    "contract_version" to "contract_version is incompatible"
+  status != GoalPlanningPreparationState.PREPARED ->
+    "preparation_status" to "preparation_status must be prepared"
+  !payloadSha256.isSha256() -> "payload_sha256" to "payload_sha256 must be a lowercase SHA-256"
+  payload.isBlank() -> "payload" to "payload is required"
+  else -> null
+}
+
+private fun String.isSha256(): Boolean = length == SHA256_HEX_LENGTH && all { it in '0'..'9' || it in 'a'..'f' }
+
 private const val FIRST_COLUMN_INDEX: Int = 1
 private const val SECOND_COLUMN_INDEX: Int = 2
+private const val SHA256_HEX_LENGTH: Int = 64

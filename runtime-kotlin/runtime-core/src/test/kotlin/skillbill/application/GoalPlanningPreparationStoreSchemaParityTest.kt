@@ -4,9 +4,12 @@ import skillbill.contracts.workflow.GoalPlanningPreparationSchemaValidator
 import skillbill.db.core.DatabaseRuntime
 import skillbill.db.workflow.GoalPlanningPreparationStore
 import skillbill.error.InvalidGoalPlanningPreparationSchemaError
-import skillbill.ports.persistence.model.GoalPlanningPreparationProvenance
-import skillbill.ports.persistence.model.GoalPlanningPreparationRecord
+import skillbill.error.ShellContentContractException
+import skillbill.ports.persistence.model.GoalPlanningContractProvenance
+import skillbill.ports.persistence.model.GoalPlanningIdentity
 import skillbill.ports.persistence.model.GoalPlanningPreparationState
+import skillbill.ports.persistence.model.GoalSubtaskPlanCheckpoint
+import skillbill.ports.persistence.model.SharedGoalPreplanCheckpoint
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -16,127 +19,86 @@ import kotlin.test.assertNull
 
 class GoalPlanningPreparationStoreSchemaParityTest {
   @Test
-  fun `the canonical schema and the store both accept a valid envelope`() {
-    val record = defaultRecord()
+  fun `canonical schema and store accept normalized shared preplan and subtask plan`() {
+    val shared = sharedCheckpoint()
+    val plan = planCheckpoint()
 
-    GoalPlanningPreparationSchemaValidator.validate(canonicalEnvelope(record), label(record))
+    GoalPlanningPreparationSchemaValidator.validate(sharedEnvelope(shared), "goal-1")
+    GoalPlanningPreparationSchemaValidator.validate(planEnvelope(plan), "goal-1#1")
     withStore { store ->
-      store.markPrepared(record)
-      val recovered = store.findByGoalAndSubtask(record.parentGoalWorkflowId, record.subtaskId)
-      assertEquals(GoalPlanningPreparationState.PREPARED, recovered?.preparationStatus)
-      assertEquals(record.provenance, recovered?.provenance)
+      store.checkpointSharedPreplan(shared)
+      store.checkpointSubtaskPlan(plan)
+      assertEquals(shared.provenance, store.findSharedPreplan(identity())?.provenance)
+      assertEquals(plan.subSpecHash, store.findSubtaskPlan(identity(), 1, plan.governedSubSpecPath)?.subSpecHash)
     }
   }
 
   @Test
-  fun `contract_version const is enforced by the store and the canonical schema`() {
-    assertStoreAndCanonicalReject(defaultRecord().copy(contractVersion = "0.2"))
+  fun `normalized contract version const is enforced by schema and store`() {
+    assertSharedRejected(sharedCheckpoint().copy(contractVersion = "0.1"))
+    assertPlanRejected(planCheckpoint().copy(contractVersion = "0.1"))
   }
 
   @Test
-  fun `subtask_id minimum is enforced by the store and the canonical schema`() {
-    assertStoreAndCanonicalReject(baseRecord(parentGoalWorkflowId = "goal-1", subtaskId = 0))
+  fun `normalized subtask id minimum is enforced by schema and store`() {
+    assertPlanRejected(planCheckpoint().copy(subtaskId = 0))
   }
 
   @Test
-  fun `parent_goal_workflow_id minLength is enforced by the store and the canonical schema`() {
-    assertStoreAndCanonicalReject(defaultRecord().copy(parentGoalWorkflowId = ""))
+  fun `normalized identity fields are enforced by schema and store`() {
+    assertSharedRejected(sharedCheckpoint().copy(identity = identity().copy(parentGoalWorkflowId = "")))
+    assertSharedRejected(sharedCheckpoint().copy(identity = identity().copy(normalizedIssueKey = "")))
+    assertSharedRejected(sharedCheckpoint().copy(identity = identity().copy(repositoryIdentity = "")))
   }
 
   @Test
-  fun `normalized_issue_key minLength is enforced by the store and the canonical schema`() {
-    assertStoreAndCanonicalReject(defaultRecord().copy(normalizedIssueKey = ""))
+  fun `normalized governed path and sub spec hash are enforced by schema and store`() {
+    assertPlanRejected(planCheckpoint().copy(governedSubSpecPath = ""))
+    assertPlanRejected(planCheckpoint().copy(subSpecHash = "not-a-hash"))
   }
 
   @Test
-  fun `repository_identity minLength is enforced by the store and the canonical schema`() {
-    assertStoreAndCanonicalReject(defaultRecord().copy(repositoryIdentity = ""))
+  fun `normalized provenance hashes are enforced by schema and store`() {
+    assertSharedRejected(sharedCheckpoint().copy(provenance = provenance().copy(parentSpecHash = "")))
+    assertSharedRejected(sharedCheckpoint().copy(provenance = provenance().copy(decompositionManifestHash = "")))
   }
 
   @Test
-  fun `governed_sub_spec_path minLength is enforced by the store and the canonical schema`() {
-    assertStoreAndCanonicalReject(defaultRecord().copy(governedSubSpecPath = ""))
+  fun `normalized preparation status must be prepared in schema and store`() {
+    assertSharedRejected(sharedCheckpoint().copy(preparationStatus = GoalPlanningPreparationState.PENDING))
+    assertPlanRejected(planCheckpoint().copy(preparationStatus = GoalPlanningPreparationState.PENDING))
   }
 
   @Test
-  fun `preplan_payload minLength is enforced by the store and the canonical schema`() {
-    assertStoreAndCanonicalReject(defaultRecord().copy(preplanPayload = ""))
+  fun `normalized planning contract provenance is enforced by schema and store`() {
+    assertSharedRejected(sharedCheckpoint().copy(provenance = provenance().copy(planningContractId = "wrong")))
+    assertSharedRejected(sharedCheckpoint().copy(provenance = provenance().copy(planningContractVersion = "9.9")))
   }
 
   @Test
-  fun `plan_payload minLength is enforced by the store and the canonical schema`() {
-    assertStoreAndCanonicalReject(defaultRecord().copy(planPayload = ""))
+  fun `normalized phase output provenance is enforced by schema and store`() {
+    assertPlanRejected(planCheckpoint().copy(provenance = provenance().copy(phaseOutputContractId = "wrong")))
+    assertPlanRejected(planCheckpoint().copy(provenance = provenance().copy(phaseOutputContractVersion = "9.9")))
   }
 
-  @Test
-  fun `provenance parent_spec_hash minLength is enforced by the store and the canonical schema`() {
-    assertStoreAndCanonicalReject(
-      defaultRecord().copy(
-        provenance = baseProvenance().copy(parentSpecHash = ""),
-      ),
-    )
-  }
-
-  @Test
-  fun `provenance sub_spec_hash minLength is enforced by the store and the canonical schema`() {
-    assertStoreAndCanonicalReject(
-      defaultRecord().copy(
-        provenance = baseProvenance().copy(subSpecHash = ""),
-      ),
-    )
-  }
-
-  @Test
-  fun `provenance decomposition_manifest_hash minLength is enforced by the store and the canonical schema`() {
-    assertStoreAndCanonicalReject(
-      defaultRecord().copy(
-        provenance = baseProvenance().copy(decompositionManifestHash = ""),
-      ),
-    )
-  }
-
-  @Test
-  fun `preparation_status must be prepared is a store coherence invariant beyond the schema enum`() {
-    assertStoreRejectsOnly(
-      defaultRecord().copy(
-        preparationStatus = GoalPlanningPreparationState.PENDING,
-      ),
-    )
-  }
-
-  @Test
-  fun `provenance phase_output_contract_id binding is a store coherence invariant beyond the schema`() {
-    assertStoreRejectsOnly(
-      defaultRecord().copy(
-        provenance = baseProvenance().copy(phaseOutputContractId = "not-the-phase-output-schema-id"),
-      ),
-    )
-  }
-
-  @Test
-  fun `provenance phase_output_contract_version binding is a store coherence invariant beyond the schema`() {
-    assertStoreRejectsOnly(
-      defaultRecord().copy(
-        provenance = baseProvenance().copy(phaseOutputContractVersion = "9.9"),
-      ),
-    )
-  }
-
-  private fun assertStoreAndCanonicalReject(violating: GoalPlanningPreparationRecord) {
+  private fun assertSharedRejected(violating: SharedGoalPreplanCheckpoint) {
     assertFailsWith<InvalidGoalPlanningPreparationSchemaError> {
-      GoalPlanningPreparationSchemaValidator.validate(canonicalEnvelope(violating), label(violating))
+      GoalPlanningPreparationSchemaValidator.validate(sharedEnvelope(violating), "shared")
     }
     withStore { store ->
-      assertFailsWith<InvalidGoalPlanningPreparationSchemaError> { store.markPrepared(violating) }
-      assertNull(store.findByGoalAndSubtask(violating.parentGoalWorkflowId, violating.subtaskId))
+      assertFailsWith<ShellContentContractException> { store.checkpointSharedPreplan(violating) }
+      assertNull(store.findSharedPreplan(identity()))
     }
   }
 
-  private fun assertStoreRejectsOnly(violating: GoalPlanningPreparationRecord) {
-    GoalPlanningPreparationSchemaValidator.validate(canonicalEnvelope(violating), label(violating))
+  private fun assertPlanRejected(violating: GoalSubtaskPlanCheckpoint) {
+    assertFailsWith<InvalidGoalPlanningPreparationSchemaError> {
+      GoalPlanningPreparationSchemaValidator.validate(planEnvelope(violating), "plan")
+    }
     withStore { store ->
-      assertFailsWith<InvalidGoalPlanningPreparationSchemaError> { store.markPrepared(violating) }
-      assertNull(store.findByGoalAndSubtask(violating.parentGoalWorkflowId, violating.subtaskId))
+      store.checkpointSharedPreplan(sharedCheckpoint())
+      assertFailsWith<ShellContentContractException> { store.checkpointSubtaskPlan(violating) }
+      assertNull(store.findSubtaskPlan(identity(), violating.subtaskId, violating.governedSubSpecPath))
     }
   }
 
@@ -144,49 +106,71 @@ class GoalPlanningPreparationStoreSchemaParityTest {
     DatabaseRuntime.ensureDatabase(tempDb()).use { connection -> block(GoalPlanningPreparationStore(connection)) }
   }
 
-  private fun label(record: GoalPlanningPreparationRecord): String =
-    "${record.parentGoalWorkflowId}#${record.subtaskId}"
-
-  private fun canonicalEnvelope(record: GoalPlanningPreparationRecord): Map<String, Any?> = linkedMapOf(
-    "contract_version" to record.contractVersion,
-    "parent_goal_workflow_id" to record.parentGoalWorkflowId,
-    "normalized_issue_key" to record.normalizedIssueKey,
-    "repository_identity" to record.repositoryIdentity,
-    "subtask_id" to record.subtaskId,
-    "governed_sub_spec_path" to record.governedSubSpecPath,
-    "preparation_status" to record.preparationStatus.wireValue,
-    "provenance" to linkedMapOf(
-      "parent_spec_hash" to record.provenance.parentSpecHash,
-      "sub_spec_hash" to record.provenance.subSpecHash,
-      "decomposition_manifest_hash" to record.provenance.decompositionManifestHash,
-      "phase_output_contract_id" to record.provenance.phaseOutputContractId,
-      "phase_output_contract_version" to record.provenance.phaseOutputContractVersion,
-    ),
-    "preplan_payload" to record.preplanPayload,
-    "plan_payload" to record.planPayload,
+  private fun sharedEnvelope(checkpoint: SharedGoalPreplanCheckpoint): Map<String, Any?> = linkedMapOf(
+    "contract_version" to checkpoint.contractVersion,
+    "record_type" to "shared_preplan",
+    "identity" to identityEnvelope(checkpoint.identity),
+    "preparation_status" to checkpoint.preparationStatus.wireValue,
+    "provenance" to provenanceEnvelope(checkpoint.provenance),
+    "payload_sha256" to checkpoint.payloadSha256,
+    "preplan_payload" to checkpoint.preplanPayload,
   )
 
-  private fun baseProvenance(): GoalPlanningPreparationProvenance = GoalPlanningPreparationProvenance(
-    parentSpecHash = "parent-spec",
-    subSpecHash = "sub-spec",
-    decompositionManifestHash = "manifest",
+  private fun planEnvelope(checkpoint: GoalSubtaskPlanCheckpoint): Map<String, Any?> = linkedMapOf(
+    "contract_version" to checkpoint.contractVersion,
+    "record_type" to "subtask_plan",
+    "identity" to identityEnvelope(checkpoint.identity),
+    "subtask_id" to checkpoint.subtaskId,
+    "manifest_order" to checkpoint.manifestOrder,
+    "governed_sub_spec_path" to checkpoint.governedSubSpecPath,
+    "sub_spec_hash" to checkpoint.subSpecHash,
+    "preparation_status" to checkpoint.preparationStatus.wireValue,
+    "provenance" to provenanceEnvelope(checkpoint.provenance),
+    "payload_sha256" to checkpoint.payloadSha256,
+    "plan_payload" to checkpoint.planPayload,
   )
 
-  private fun defaultRecord(): GoalPlanningPreparationRecord =
-    baseRecord(parentGoalWorkflowId = "goal-1", subtaskId = 1)
+  private fun identityEnvelope(identity: GoalPlanningIdentity): Map<String, Any?> = linkedMapOf(
+    "parent_goal_workflow_id" to identity.parentGoalWorkflowId,
+    "normalized_issue_key" to identity.normalizedIssueKey,
+    "repository_identity" to identity.repositoryIdentity,
+  )
 
-  private fun baseRecord(parentGoalWorkflowId: String, subtaskId: Int): GoalPlanningPreparationRecord =
-    GoalPlanningPreparationRecord(
-      parentGoalWorkflowId = parentGoalWorkflowId,
-      normalizedIssueKey = "SKILL-128",
-      repositoryIdentity = "repo-root-realpath-v1:/repository",
-      subtaskId = subtaskId,
-      governedSubSpecPath = ".feature-specs/SKILL-128/spec_subtask_$subtaskId.md",
-      preparationStatus = GoalPlanningPreparationState.PREPARED,
-      provenance = baseProvenance(),
-      preplanPayload = """{"phase_id":"preplan"}""",
-      planPayload = """{"phase_id":"plan"}""",
-    )
+  private fun provenanceEnvelope(provenance: GoalPlanningContractProvenance): Map<String, Any?> = linkedMapOf(
+    "parent_spec_hash" to provenance.parentSpecHash,
+    "decomposition_manifest_hash" to provenance.decompositionManifestHash,
+    "planning_contract_id" to provenance.planningContractId,
+    "planning_contract_version" to provenance.planningContractVersion,
+    "phase_output_contract_id" to provenance.phaseOutputContractId,
+    "phase_output_contract_version" to provenance.phaseOutputContractVersion,
+  )
+
+  private fun identity(): GoalPlanningIdentity =
+    GoalPlanningIdentity("goal-1", "SKILL-128", "repo-root-realpath-v1:/repository")
+
+  private fun provenance(): GoalPlanningContractProvenance = GoalPlanningContractProvenance(
+    parentSpecHash = "a".repeat(64),
+    decompositionManifestHash = "b".repeat(64),
+    planningContractId = "https://skill-bill.dev/contracts/goal-planning-preparation-schema.yaml",
+  )
+
+  private fun sharedCheckpoint(): SharedGoalPreplanCheckpoint = SharedGoalPreplanCheckpoint(
+    identity = identity(),
+    provenance = provenance(),
+    payloadSha256 = "c".repeat(64),
+    preplanPayload = "preplan-payload",
+  )
+
+  private fun planCheckpoint(): GoalSubtaskPlanCheckpoint = GoalSubtaskPlanCheckpoint(
+    identity = identity(),
+    subtaskId = 1,
+    manifestOrder = 0,
+    governedSubSpecPath = ".feature-specs/SKILL-128/spec_subtask_1.md",
+    subSpecHash = "d".repeat(64),
+    provenance = provenance(),
+    payloadSha256 = "e".repeat(64),
+    planPayload = "plan-payload",
+  )
 
   private fun tempDb(): Path =
     Files.createTempDirectory("runtime-kotlin-goal-planning-preparation-parity").resolve("metrics.db")

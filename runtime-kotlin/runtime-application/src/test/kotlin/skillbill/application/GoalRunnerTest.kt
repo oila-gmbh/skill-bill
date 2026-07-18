@@ -948,7 +948,6 @@ class GoalRunnerStatusProjectionTest {
       manifestStore = store,
       outcomeStore = outcomes,
       phaseRecorder = goalTestPhaseRecorder(),
-      database = GoalTestEmptyDatabase,
       gitOperations = StatusDiffGitOperations,
     )
 
@@ -978,7 +977,7 @@ class GoalRunnerStatusProjectionTest {
     )
     val outcomes = RecordingOutcomeStore()
     outcomes["wfl-1"] = completeOutcome(1)
-    val service = GoalRunnerStatusService(store, outcomes, goalTestPhaseRecorder(), GoalTestEmptyDatabase)
+    val service = GoalRunnerStatusService(store, outcomes, goalTestPhaseRecorder())
 
     val status = service.status(
       GoalRunnerStatusRequest(
@@ -1027,7 +1026,7 @@ class GoalRunnerStatusProjectionTest {
     val outcomes = RecordingOutcomeStore().apply {
       authoritativeOutcomesBySubtask[1] = completeOutcome(1).copy(workflowId = "wfl-1")
     }
-    val service = GoalRunnerStatusService(store, outcomes, goalTestPhaseRecorder(), GoalTestEmptyDatabase)
+    val service = GoalRunnerStatusService(store, outcomes, goalTestPhaseRecorder())
 
     val status = service.status(
       GoalRunnerStatusRequest(
@@ -1056,7 +1055,7 @@ class GoalRunnerStatusProjectionTest {
     val outcomes = RecordingOutcomeStore().apply {
       authoritativeOutcomesBySubtask[1] = completeOutcome(1).copy(workflowId = "wfl-authoritative")
     }
-    val service = GoalRunnerStatusService(store, outcomes, goalTestPhaseRecorder(), GoalTestEmptyDatabase)
+    val service = GoalRunnerStatusService(store, outcomes, goalTestPhaseRecorder())
 
     val status = service.status(
       GoalRunnerStatusRequest(
@@ -1104,7 +1103,7 @@ class GoalRunnerStatusProjectionTest {
       lastResumableStep = "review",
       suppressPr = true,
     )
-    val service = GoalRunnerStatusService(store, outcomes, goalTestPhaseRecorder(), GoalTestEmptyDatabase)
+    val service = GoalRunnerStatusService(store, outcomes, goalTestPhaseRecorder())
 
     val status = service.status(
       GoalRunnerStatusRequest(
@@ -1163,7 +1162,7 @@ class GoalRunnerStatusProjectionTest {
         lastSnapshotUpdatedAt = "2026-05-30 00:00:00",
       )
     }
-    val service = GoalRunnerStatusService(store, outcomes, goalTestPhaseRecorder(), GoalTestEmptyDatabase)
+    val service = GoalRunnerStatusService(store, outcomes, goalTestPhaseRecorder())
 
     val status = service.status(
       GoalRunnerStatusRequest(
@@ -1194,7 +1193,7 @@ class GoalRunnerStatusProjectionTest {
         suppressPr = true,
       )
     }
-    val service = GoalRunnerStatusService(store, outcomes, goalTestPhaseRecorder(), GoalTestEmptyDatabase)
+    val service = GoalRunnerStatusService(store, outcomes, goalTestPhaseRecorder())
 
     val status = service.status(
       GoalRunnerStatusRequest(
@@ -1226,7 +1225,7 @@ class GoalRunnerStatusProjectionTest {
       lastResumableStep = "review",
       suppressPr = true,
     )
-    val service = GoalRunnerStatusService(store, outcomes, goalTestPhaseRecorder(), GoalTestEmptyDatabase)
+    val service = GoalRunnerStatusService(store, outcomes, goalTestPhaseRecorder())
 
     val status = service.status(
       GoalRunnerStatusRequest(
@@ -1264,7 +1263,7 @@ class GoalRunnerStatusProjectionTest {
       lastResumableStep = "preplan",
       suppressPr = true,
     )
-    val service = GoalRunnerStatusService(store, outcomes, goalTestPhaseRecorder(), GoalTestEmptyDatabase)
+    val service = GoalRunnerStatusService(store, outcomes, goalTestPhaseRecorder())
 
     val status = service.status(
       GoalRunnerStatusRequest(
@@ -1311,7 +1310,7 @@ class GoalRunnerStatusProjectionTest {
     )
     val outcomes = RecordingOutcomeStore()
     outcomes["wfl-1"] = completeOutcome(1)
-    val service = GoalRunnerStatusService(store, outcomes, goalTestPhaseRecorder(), GoalTestEmptyDatabase)
+    val service = GoalRunnerStatusService(store, outcomes, goalTestPhaseRecorder())
 
     val status = service.status(
       GoalRunnerStatusRequest(
@@ -1505,7 +1504,7 @@ class GoalRunnerObservabilityTest {
         .withWorkflowId(1, "wfl-active"),
     )
     val outcomes = RecordingOutcomeStore()
-    val service = GoalRunnerStatusService(store, outcomes, goalTestPhaseRecorder(), GoalTestEmptyDatabase)
+    val service = GoalRunnerStatusService(store, outcomes, goalTestPhaseRecorder())
 
     val reset = service.reset(
       GoalRunnerResetRequest(
@@ -1547,7 +1546,6 @@ class GoalRunnerObservabilityTest {
       store,
       RecordingOutcomeStore(),
       goalTestPhaseRecorder(),
-      database = database,
     )
 
     val reset = service.reset(
@@ -2521,7 +2519,7 @@ class GoalRunnerStatusAttributionTest {
       progressToken = "child-progress-token",
       latestLivenessSignal = "durable_progress step=implement attempt=1",
     )
-    val service = GoalRunnerStatusService(store, outcomes, goalTestPhaseRecorder(), GoalTestEmptyDatabase)
+    val service = GoalRunnerStatusService(store, outcomes, goalTestPhaseRecorder())
 
     val status = service.status(
       GoalRunnerStatusRequest(
@@ -2552,7 +2550,6 @@ class GoalRunnerStatusAttributionTest {
       store,
       RecordingOutcomeStore(),
       goalTestPhaseRecorder(),
-      GoalTestEmptyDatabase,
     )
 
     val status = service.status(
@@ -2579,7 +2576,7 @@ class GoalRunnerStatusAttributionTest {
     val store = InMemoryGoalManifestStore(
       manifest = manifest(subtaskCount = 1).withBlockedSubtask(1, workflowId = workflowId, reason = "needs review"),
     )
-    val service = GoalRunnerStatusService(store, RecordingOutcomeStore(), harness.recorder, GoalTestEmptyDatabase)
+    val service = GoalRunnerStatusService(store, RecordingOutcomeStore(), harness.recorder)
 
     val status = service.status(
       GoalRunnerStatusRequest(
