@@ -1,3 +1,14 @@
+## [2026-07-18] SKILL-133 unified manifest authority
+Areas: runtime-kotlin/runtime-{application,domain,infra-fs}, skills/bill-feature*
+- `decomposition-manifest.yaml` is now the sole prepared-feature authority marker; bare specs remain preparation intake, while continuation lookup stays authoritative before discovery or artifact writes.
+- Shared preparation always emits a parent spec, at least one executable subtask, and a schema-valid manifest; zero subtasks fail and singleton manifests retain the existing validation and atomic-write guarantees.
+- Every authoritative manifest routes through the goal lifecycle, so a singleton goal launches exactly one child while preserving confirmation, resume, cleanup, reporting, and telemetry behavior alongside existing multi-subtask flows.
+- Pattern: use one manifest-backed path for singleton and decomposed features, separating intake detection from prepared authority and retaining persisted source stamps only as a legacy manifest-absent compatibility fallback. reusable
+- Local and Linear source resolution, terminal Linear verification rehydration, governed skill guidance, and focused rejection/compatibility coverage were updated; generated wrappers remain outside source.
+- Known limitation: installed staging refresh is deferred to the outer goal lifecycle because continuation workers correctly reject `./install.sh`.
+Feature flag: N/A
+Acceptance criteria: 10/10 implemented
+
 ## [2026-07-18] SKILL-128 goal planning observability (subtask 4)
 Areas: runtime-kotlin/runtime-{application,cli,domain,infra-sqlite,mcp}, skills/bill-feature-{goal,task-runtime}, runtime-kotlin/ARCHITECTURE.md
 - Goal status exposes bounded preparation state: shared-preplan status, planned/total counts, current planning subtask, and concise blocked or resumable context without returning raw planning payloads.

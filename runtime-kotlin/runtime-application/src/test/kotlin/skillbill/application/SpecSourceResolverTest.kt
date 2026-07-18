@@ -13,6 +13,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 
 class SpecSourceResolverTest {
   private val resolver = SpecSourceResolver(TestDecompositionManifestFileStore, testDecompositionManifestValidator)
@@ -30,12 +31,12 @@ class SpecSourceResolverTest {
   }
 
   @Test
-  fun `bare spec metadata is intake and not prepared source authority`() {
+  fun `manifest-absent legacy runtime reads its persisted spec_source stamp`() {
     val repoRoot = Files.createTempDirectory("spec-source-single")
     seedSpec(repoRoot, "spec.md", "---\nspec_source: linear\n---\n# Spec\n")
 
     assertEquals(
-      SpecSource.LOCAL,
+      SpecSource.LINEAR,
       resolver.resolve(repoRoot, ".feature-specs/SKILL-71/spec.md", isGoalContinuation = false),
     )
   }
@@ -62,14 +63,13 @@ class SpecSourceResolverTest {
   }
 
   @Test
-  fun `ignores an unrecognized source stamp in bare spec intake`() {
+  fun `manifest-absent legacy runtime loud-fails an invalid persisted source stamp`() {
     val repoRoot = Files.createTempDirectory("spec-source-bad")
     seedSpec(repoRoot, "spec.md", "spec_source: github\n")
 
-    assertEquals(
-      SpecSource.LOCAL,
-      resolver.resolve(repoRoot, ".feature-specs/SKILL-71/spec.md", isGoalContinuation = false),
-    )
+    assertFailsWith<IllegalArgumentException> {
+      resolver.resolve(repoRoot, ".feature-specs/SKILL-71/spec.md", isGoalContinuation = false)
+    }
   }
 
   @Test
