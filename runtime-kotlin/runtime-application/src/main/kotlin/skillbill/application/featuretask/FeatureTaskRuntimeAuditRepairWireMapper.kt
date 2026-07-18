@@ -1,5 +1,7 @@
 package skillbill.application.featuretask
 
+import skillbill.error.InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError
+import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.workflow.taskruntime.model.AUDIT_REPAIR_CONTRACT_VERSION
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGap
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairPlan
@@ -13,7 +15,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeUnresolvedGap
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeUnresolvedGapLedger
 
 internal fun auditRepairPlanFromWire(value: Any?, source: String): FeatureTaskRuntimeAuditRepairPlan =
-  wireMapping(source) {
+  auditRepairPlanMapping(source) {
     val map = value.requiredMap(source)
     FeatureTaskRuntimeAuditRepairPlan(
       contractVersion = map.requiredString("contract_version", source),
@@ -47,8 +49,16 @@ internal fun auditRepairPlanFromWire(value: Any?, source: String): FeatureTaskRu
 internal fun auditRepairStateFromWire(value: Any?, source: String): FeatureTaskRuntimeAuditRepairState =
   wireMapping(source) {
     val map = value.requiredMap(source)
+    val contractVersion = map.requiredString("contract_version", source)
+    if (contractVersion != AUDIT_REPAIR_CONTRACT_VERSION) {
+      invalidWire("$source.contract_version", "must be $AUDIT_REPAIR_CONTRACT_VERSION")
+    }
     val acceptedPlans = map.requiredList("accepted_plans", source).mapIndexed { index, plan ->
       auditRepairPlanFromWire(plan, "$source.accepted_plans[$index]")
+    }
+    val latestPlan = auditRepairPlanFromWire(map["latest_plan"], "$source.latest_plan")
+    if (latestPlan != acceptedPlans.last()) {
+      invalidWire("$source.latest_plan", "must equal the last accepted plan")
     }
     val results = flattenWireEntries(map["execution_history"]).mapIndexed { index, result ->
       repairItemResultFromWire(result, "$source.execution_history[$index]")
@@ -57,16 +67,28 @@ internal fun auditRepairStateFromWire(value: Any?, source: String): FeatureTaskR
       priorGapDispositionFromWire(disposition, "$source.prior_gap_dispositions[$index]")
     }
     val ledgerMap = map["unresolved_gap_ledger"].requiredMap("$source.unresolved_gap_ledger")
+    val ledgerContractVersion = ledgerMap.requiredString("contract_version", "$source.unresolved_gap_ledger")
+    if (ledgerContractVersion != AUDIT_REPAIR_CONTRACT_VERSION) {
+      invalidWire(
+        "$source.unresolved_gap_ledger.contract_version",
+        "must be $AUDIT_REPAIR_CONTRACT_VERSION",
+      )
+    }
     val unresolved = ledgerMap.optionalList("gaps", "$source.unresolved_gap_ledger").mapIndexed { index, gap ->
       val gapSource = "$source.unresolved_gap_ledger.gaps[$index]"
       val gapMap = gap.requiredMap(gapSource)
       val gapId = gapMap.requiredString("gap_id", gapSource)
+      val generation = gapMap.int("generation")
+        ?: invalidWire("$gapSource.generation", "must be an integer")
       FeatureTaskRuntimeUnresolvedGap(
         gapId = gapId,
         acceptanceCriterionRef = gapMap.requiredString("acceptance_criterion_ref", gapSource),
-        generation = gapId.substringAfterLast('-').toIntOrNull()
-          ?: invalidWire(gapSource, "gap_id must end in a positive generation"),
-      )
+        generation = generation,
+      ).also {
+        if (gapId.substringAfterLast('-').toIntOrNull() != generation) {
+          invalidWire(gapSource, "gap_id generation must match generation")
+        }
+      }
     }
     val progressMap = map["progress"]?.requiredMap("$source.progress")
     val recurringCount = dispositions.count { it.status == FeatureTaskRuntimePriorGapDisposition.Status.RECURRING }
@@ -184,4 +206,14 @@ private fun repairItemResultToWire(result: FeatureTaskRuntimeRepairItemResult): 
 
 private fun flattenWireEntries(value: Any?): List<Any?> = (value as? List<*>).orEmpty().flatMap { entry ->
   if (entry is List<*>) entry else listOf(entry)
+}
+
+private inline fun <T> auditRepairPlanMapping(source: String, block: () -> T): T = try {
+  block()
+} catch (error: InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError) {
+  throw error
+} catch (error: InvalidWorkflowStateSchemaError) {
+  throw InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError(source, error.message.orEmpty(), error)
+} catch (error: IllegalArgumentException) {
+  throw InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError(source, error.message.orEmpty(), error)
 }
