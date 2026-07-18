@@ -1,12 +1,12 @@
-## [2026-07-17] SKILL-128 durable goal planning sweep (subtask 2)
-Areas: runtime-kotlin/runtime-{application,cli,core,infra-fs,mcp,ports}, runtime-kotlin/ARCHITECTURE.md
-- Goal execution now prepares schema-valid preplan/plan pairs for every ordered non-skipped subtask before child mutation, checkpointing each complete pair atomically for N+1 resume. reusable
-- One discovered repository, platform-pack, boundary-memory, validation, decomposition, and parent-spec packet is integrity-bound and reused across the sweep; recovery rejects missing, malformed, inconsistent, or incompatible immutable context.
-- Uncheckpointed failures always resume from preplan while retaining phase-specific diagnostics and the current subtask; Linear scratch sub-spec deletion is tolerated only after that subtask is complete.
-- Pattern: validate all recovered shared packets against current immutable provenance, require byte-equivalent context across prepared rows, and gate implementation on all plans being durable. reusable
-- Tests cover multi-subtask reuse, crash recovery, blocked/malformed/persistence failures, provenance drift, packet integrity, and the all-plans mutation gate; no repository mutation is performed during planning.
+## [2026-07-18] SKILL-128 singleton goal planning sweep (subtask 2)
+Areas: runtime-kotlin/runtime-{application,cli}
+- Goal execution launches one parent-goal preplan from shared repository, platform-pack, boundary-memory, validation, decomposition, and parent-spec context, then derives one distinct plan per ordered non-skipped subtask. reusable
+- The singleton preplan and each completed plan are persisted immediately; failures retain valid durable work and resume at the first missing plan without rediscovery or repeated preplanning.
+- Recovered preplans, plans, and planning dispositions are validated against immutable spec/decomposition/contract provenance; later execution commits do not invalidate planning.
+- Pattern: separate goal-wide discovery/preplanning from dependency-aware subtask planning, then require every plan to be valid and durable before any child mutation. reusable
+- Tests cover multi-subtask launch counts, crash recovery, blocked/malformed/persistence failures, deleted Linear scratch specs, and the all-plans mutation gate.
 Feature flag: N/A
-Acceptance criteria: 8/8 implemented
+Acceptance criteria: 9/9 implemented
 
 ## [2026-07-17] SKILL-128 goal-planning context reuse (subtask 1: persistence contract)
 Areas: runtime-kotlin/runtime-{application,contracts,core,domain,infra-fs,infra-sqlite,ports}, orchestration/contracts, runtime-kotlin/ARCHITECTURE.md

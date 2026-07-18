@@ -1249,7 +1249,16 @@ private fun goalFixture(subtaskCount: Int): GoalCliFixture {
   val tempDir = Files.createTempDirectory("skillbill-cli-goal")
   val parentSpec = tempDir.resolve(".feature-specs/SKILL-901-goal/spec.md")
   Files.createDirectories(parentSpec.parent)
-  Files.writeString(parentSpec, "# Parent")
+  Files.writeString(
+    parentSpec,
+    """
+      # Parent
+
+      ## Acceptance Criteria
+
+      1. The decomposed goal completes every governed subtask.
+    """.trimIndent(),
+  )
   val subtaskSpecs = (1..subtaskCount).map { id ->
     parentSpec.parent.resolve("spec_subtask_${id}_part.md").also { path ->
       Files.writeString(path, subtaskSpecText(id))

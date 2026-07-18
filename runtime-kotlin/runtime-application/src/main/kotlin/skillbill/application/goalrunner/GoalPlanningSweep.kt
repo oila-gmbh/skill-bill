@@ -11,6 +11,7 @@ import skillbill.application.model.GoalRunnerRunRequest
 import skillbill.application.workflow.GoalPlanningPreparationCheckpoint
 import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.GoalPlanningPreparationSchemaPaths
+import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
 import skillbill.goalrunner.model.GoalRunnerStopReason
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
@@ -57,6 +58,7 @@ internal data class GoalPlanningSharedContext(
   val invokedAgentId: String,
   val configuredAgentOverrideId: String?,
   val specSource: SpecSource,
+  val parentSpecPath: Path,
   val planningPacket: Map<String, Any?>,
 )
 
@@ -72,8 +74,7 @@ class DefaultGoalPlanningSweep(
 ) : GoalPlanningSweep {
   @Suppress("ReturnCount")
   override fun prepare(state: GoalRunnerManifestState, request: GoalRunnerRunRequest): GoalPlanningSweepOutcome {
-    val canonicalRepository = runCatching { request.repoRoot.toRealPath() }
-      .getOrElse { request.repoRoot.toAbsolutePath().normalize() }
+    val canonicalRepository = canonicalRepository(request.repoRoot)
     val identity = GoalPlanningIdentity(
       state.parentWorkflowId,
       state.manifest.issueKey.trim().uppercase(),
@@ -88,16 +89,7 @@ class DefaultGoalPlanningSweep(
     val shared = runCatching { gatherSharedContext(state, request, recoveredPacket) }.getOrElse { error ->
       return preSweepStopped(request, sharedContextReason(error))
     }
-    val activeSubtasks = state.manifest.subtasks.filterNot(::isExplicitlySkipped)
-    if (activeSubtasks.isEmpty()) return GoalPlanningSweepOutcome.PreparedAll
-    val descriptors = runCatching { activeSubtasks.mapIndexed { order, subtask -> descriptor(shared, subtask, order) } }
-      .getOrElse { error ->
-        return stopped(
-          shared,
-          0,
-          "Goal planning governed subtask provenance could not be computed: ${error.message.orEmpty()}",
-        )
-      }
+    val activeSubtasks = state.manifest.subtasks.filter { it.id in includedSubtaskIds(shared.planningPacket) }
     val provenance = GoalPlanningContractProvenance(
       shared.parentSpecHash,
       shared.decompositionManifestHash,
@@ -111,14 +103,28 @@ class DefaultGoalPlanningSweep(
           "hard reset or explicit operator migration is required.",
       )
     }
-    val sharedCheckpoint = existingShared ?: produceSharedPreplan(shared, request, activeSubtasks.first(), provenance)
-      .getOrElse { error -> return stopped(shared, activeSubtasks.first().id, error.message.orEmpty(), PHASE_PREPLAN) }
+    val sharedCheckpoint = existingShared ?: produceSharedPreplan(shared, request, provenance)
+      .getOrElse { error -> return stopped(shared, 0, error.message.orEmpty(), PHASE_PREPLAN) }
+    if (activeSubtasks.isEmpty()) return GoalPlanningSweepOutcome.PreparedAll
+    val descriptors = runCatching { activeSubtasks.mapIndexed { order, subtask -> descriptor(shared, subtask, order) } }
+      .getOrElse { error ->
+        return stopped(
+          shared,
+          0,
+          "Goal planning governed subtask provenance could not be computed: ${error.message.orEmpty()}",
+        )
+      }
     val subtasksById = activeSubtasks.associateBy(DecompositionSubtask::id)
     while (true) {
-      val missingId = runCatching {
+      val recovery = runCatching {
         checkpoint.recoveryProgress(identity, descriptors, provenance, shared.dbPathOverride).firstMissingSubtaskId
       }
-        .getOrElse { error -> return stopped(shared, 0, preparationStateReadReason(error)) }
+      recovery.exceptionOrNull()?.let { error ->
+        val subtaskId = (error as? IncompatibleGoalPlanningPreparationRecoveryError)?.subtaskId ?: 0
+        val phaseId = PHASE_PLAN.takeIf { subtaskId != 0 } ?: PHASE_PREPLAN
+        return stopped(shared, subtaskId, preparationStateReadReason(error), phaseId)
+      }
+      val missingId = recovery.getOrThrow()
       if (missingId == null) return GoalPlanningSweepOutcome.PreparedAll
       val subtask = subtasksById[missingId]
         ?: return stopped(shared, missingId, noSuchSubtaskReason(missingId))
@@ -131,13 +137,10 @@ class DefaultGoalPlanningSweep(
   private fun produceSharedPreplan(
     shared: GoalPlanningSharedContext,
     request: GoalRunnerRunRequest,
-    subtask: DecompositionSubtask,
     provenance: GoalPlanningContractProvenance,
   ): Result<SharedGoalPreplanCheckpoint> = runCatching {
-    val resolvedSpecPath = resolvedSubSpecPath(shared.repoRoot, subtask.specPath)
-      ?: error(unresolvedSpecReason(subtask))
-    val runInvariants = invariantsSource.read(resolvedSpecPath)
-    val preplanProduction = producePhase(shared, request, subtask, runInvariants, PHASE_PREPLAN, emptyList())
+    val runInvariants = invariantsSource.read(shared.parentSpecPath)
+    val preplanProduction = producePhase(shared, request, null, runInvariants, PHASE_PREPLAN, emptyList())
     if (preplanProduction is GoalPlanningPhaseProduction.Stopped) error(preplanProduction.outcome.blockedReason)
     val rawPreplanPayload = (preplanProduction as GoalPlanningPhaseProduction.Captured).payload
     val preplanPayload = enrichPreplan(rawPreplanPayload, shared.planningPacket)
@@ -159,9 +162,9 @@ class DefaultGoalPlanningSweep(
     preplanPayload: String,
   ): GoalPlanningSweepOutcome.Stopped? {
     val resolvedSpecPath = resolvedSubSpecPath(shared.repoRoot, subtask.specPath)
-      ?: return stopped(shared, subtask.id, unresolvedSpecReason(subtask))
+      ?: return stopped(shared, subtask.id, unresolvedSpecReason(subtask), PHASE_PLAN)
     val runInvariants = runCatching { invariantsSource.read(resolvedSpecPath) }.getOrElse { error ->
-      return stopped(shared, subtask.id, invariantReadReason(subtask, error))
+      return stopped(shared, subtask.id, invariantReadReason(subtask, error), PHASE_PLAN)
     }
     val planProduction = producePhase(
       shared,
@@ -185,7 +188,7 @@ class DefaultGoalPlanningSweep(
     )
     return runCatching { checkpoint.checkpointSubtaskPlan(record, shared.dbPathOverride) }.fold(
       onSuccess = { null },
-      onFailure = { error -> stopped(shared, subtask.id, persistenceReason(subtask, error)) },
+      onFailure = { error -> stopped(shared, subtask.id, persistenceReason(subtask, error), PHASE_PLAN) },
     )
   }
 
@@ -195,25 +198,40 @@ class DefaultGoalPlanningSweep(
     order: Int,
   ): GovernedGoalSubtaskDescriptor {
     val path = resolvedSubSpecPath(shared.repoRoot, subtask.specPath) ?: error(unresolvedSpecReason(subtask))
+    val governedPath = shared.repoRoot.relativize(path).joinToString("/")
+    val identity = GoalPlanningIdentity(shared.parentWorkflowId, shared.normalizedIssueKey, shared.repositoryIdentity)
+    val recovered = checkpoint.findSubtaskPlan(
+      identity,
+      subtask.id,
+      governedPath,
+      dbOverride = shared.dbPathOverride,
+    )
+    val subSpecHash = if (manifestFileStore.isRegularFile(path)) {
+      sha256HexUtf8(manifestFileStore.readText(path))
+    } else {
+      require(recovered != null && shared.specSource == SpecSource.LINEAR && subtask.status == "complete") {
+        unresolvedSpecReason(subtask)
+      }
+      recovered.subSpecHash
+    }
     return GovernedGoalSubtaskDescriptor(
       subtask.id,
       order,
-      shared.repoRoot.relativize(path).joinToString("/"),
-      sha256HexUtf8(manifestFileStore.readText(path)),
+      governedPath,
+      subSpecHash,
     )
   }
 
   private fun producePhase(
     shared: GoalPlanningSharedContext,
     request: GoalRunnerRunRequest,
-    subtask: DecompositionSubtask,
+    subtask: DecompositionSubtask?,
     runInvariants: FeatureTaskRuntimeRunInvariants,
     phaseId: String,
     recordedOutputs: List<FeatureTaskRuntimePhaseOutput>,
   ): GoalPlanningPhaseProduction {
-    val declaration = FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclaration(phaseId, runInvariants.featureSize)
     val handoff = FeatureTaskRuntimeHandoffContract.assembleHandoff(
-      declaration = declaration,
+      declaration = FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclaration(phaseId, runInvariants.featureSize),
       runInvariants = runInvariants,
       recordedOutputs = recordedOutputs,
     )
@@ -226,15 +244,8 @@ class DefaultGoalPlanningSweep(
       specReference = runInvariants.specReference,
       agentAddonSelection = request.agentAddonSelection,
     )
-    val prompt = GoalPlanningContextPromptFormatter.append(basePrompt, shared.planningPacket, subtask)
-    request.outputSink.write(
-      AgentRunOutputStream.STDERR,
-      if (phaseId == PHASE_PREPLAN) {
-        "skill-bill: goal planning - parent goal shared preplan\n"
-      } else {
-        "skill-bill: goal planning - subtask ${subtask.id} plan\n"
-      },
-    )
+    val prompt = GoalPlanningContextPromptFormatter.append(basePrompt, shared.planningPacket, subtask, phaseId)
+    request.outputSink.write(AgentRunOutputStream.STDERR, planningProgressMessage(phaseId, subtask))
     val outcome = subtaskLauncher.launch(
       GoalRunnerSubtaskLaunchRequest(
         invokedAgentId = shared.invokedAgentId,
@@ -242,7 +253,7 @@ class DefaultGoalPlanningSweep(
         skillRunRequest = SkillRunRequest(
           issueKey = request.issueKey,
           repoRoot = shared.repoRoot,
-          subtaskId = subtask.id,
+          subtaskId = subtask?.id,
           dbPathOverride = shared.dbPathOverride,
           timeout = request.timeout,
           progressIdleTimeout = request.progressIdleTimeout,
@@ -251,20 +262,23 @@ class DefaultGoalPlanningSweep(
         ),
       ),
     )
+    val currentSubtaskId = subtask?.id ?: 0
     val stdout = stdoutFor(outcome)
-      ?: return GoalPlanningPhaseProduction.Stopped(stopped(shared, subtask.id, exhaustedReason(outcome), phaseId))
+      ?: return GoalPlanningPhaseProduction.Stopped(
+        stopped(shared, currentSubtaskId, exhaustedReason(outcome), phaseId),
+      )
     return runCatching { outputValidator.validateAndReadPhaseOutput(stdout, phaseId) }.fold(
       onSuccess = { payload ->
         if (payload["status"] != "completed") {
           GoalPlanningPhaseProduction.Stopped(
-            stopped(shared, subtask.id, unsuccessfulStatusReason(phaseId, payload["status"]), phaseId),
+            stopped(shared, currentSubtaskId, unsuccessfulStatusReason(phaseId, payload["status"]), phaseId),
           )
         } else {
           GoalPlanningPhaseProduction.Captured(JsonSupport.mapToJsonString(payload))
         }
       },
       onFailure = { error ->
-        GoalPlanningPhaseProduction.Stopped(stopped(shared, subtask.id, malformedReason(phaseId, error), phaseId))
+        GoalPlanningPhaseProduction.Stopped(stopped(shared, currentSubtaskId, malformedReason(phaseId, error), phaseId))
       },
     )
   }
@@ -274,11 +288,11 @@ class DefaultGoalPlanningSweep(
     request: GoalRunnerRunRequest,
     recoveredPacket: Map<String, Any?>?,
   ): GoalPlanningSharedContext {
-    val canonicalRepository = runCatching { request.repoRoot.toRealPath() }
-      .getOrElse { request.repoRoot.toAbsolutePath().normalize() }
+    val canonicalRepository = canonicalRepository(request.repoRoot)
     val parentSpecGoverningPath = state.manifest.parentSpecPath
     val manifestGoverningPath = parentSpecGoverningPath.substringBeforeLast("/") + "/" + DECOMPOSITION_MANIFEST_FILENAME
-    val parentSpec = manifestFileStore.readText(resolvedGovernedPath(canonicalRepository, parentSpecGoverningPath))
+    val resolvedParentSpecPath = resolvedGovernedPath(canonicalRepository, parentSpecGoverningPath)
+    val parentSpec = manifestFileStore.readText(resolvedParentSpecPath)
     val decomposition = manifestFileStore.readText(resolvedGovernedPath(canonicalRepository, manifestGoverningPath))
     val parentSpecHash = sha256HexUtf8(parentSpec)
     val decompositionManifestHash = immutableDecompositionHash(state.manifest)
@@ -318,6 +332,7 @@ class DefaultGoalPlanningSweep(
       invokedAgentId = request.invokedAgentId,
       configuredAgentOverrideId = request.configuredAgentOverrideId,
       specSource = state.manifest.specSource,
+      parentSpecPath = resolvedParentSpecPath,
       planningPacket = planningPacket,
     )
   }
@@ -333,6 +348,16 @@ class DefaultGoalPlanningSweep(
     blockedReason = reason,
     lastResumableStep = PHASE_PREPLAN,
   )
+
+  private fun canonicalRepository(repoRoot: Path): Path = runCatching { repoRoot.toRealPath() }
+    .getOrElse { repoRoot.toAbsolutePath().normalize() }
+
+  private fun planningProgressMessage(phaseId: String, subtask: DecompositionSubtask?): String =
+    if (phaseId == PHASE_PREPLAN) {
+      "skill-bill: goal planning - parent goal shared preplan\n"
+    } else {
+      "skill-bill: goal planning - subtask ${requireNotNull(subtask).id} plan\n"
+    }
 
   private fun sharedContextReason(error: Throwable): String =
     "Goal planning shared context could not be gathered: ${error.message.orEmpty()}"
@@ -411,7 +436,13 @@ class DefaultGoalPlanningSweep(
     require(isStringMap(packet["platform_packs"])) { "shared context platform packs are invalid" }
     require(isStringMap(packet["boundary_memory"])) { "shared context boundary memory is invalid" }
     require(packet["validation_guidance"] is String) { "shared context validation guidance is invalid" }
-    require(packet["ordered_subtasks"] == planningSubtasks(subtasks)) { "shared context ordered subtasks are invalid" }
+    val packetSubtasks = normalizedPlanningSubtasks(packet["ordered_subtasks"])
+    val expectedSubtasks = normalizedPlanningSubtasks(planningSubtasks(subtasks))
+    val recoveredTopology = packetSubtasks.map { it - "planning_disposition" }
+    val expectedTopology = expectedSubtasks.map { it - "planning_disposition" }
+    require(recoveredTopology == expectedTopology) {
+      "shared context ordered subtasks are invalid"
+    }
     require(JsonSupport.mapToJsonString(packet).length <= MAX_SHARED_CONTEXT_PACKET_CHARS) {
       "shared context packet exceeds the size limit"
     }
@@ -437,6 +468,61 @@ class DefaultGoalPlanningSweep(
       )
     }
 
+  private fun includedSubtaskIds(packet: Map<String, Any?>): Set<Int> =
+    normalizedPlanningSubtasks(packet["ordered_subtasks"])
+      .mapNotNull { subtask -> (subtask["id"] as Int).takeIf { subtask["planning_disposition"] == "included" } }
+      .toSet()
+
+  private fun normalizedPlanningSubtasks(value: Any?): List<Map<String, Any?>> {
+    val entries = value as? List<*> ?: error("shared context ordered subtasks must be a list")
+    return entries.map { entry ->
+      val subtask = entry as? Map<*, *> ?: error("shared context ordered subtask must be an object")
+      require(subtask.keys == PLANNING_SUBTASK_FIELDS) { "shared context ordered subtask fields are invalid" }
+      val id = (subtask["id"] as? Number)?.toInt()
+        ?: error("shared context ordered subtask id is invalid")
+      val name = subtask["name"] as? String
+        ?: error("shared context ordered subtask name is invalid")
+      val specPath = subtask["spec_path"] as? String
+        ?: error("shared context ordered subtask spec path is invalid")
+      val disposition = subtask["planning_disposition"] as? String
+        ?: error("shared context ordered subtask planning disposition is invalid")
+      require(disposition in PLANNING_DISPOSITIONS) {
+        "shared context ordered subtask planning disposition is invalid"
+      }
+      linkedMapOf(
+        "id" to id,
+        "name" to name,
+        "spec_path" to specPath,
+        "planning_disposition" to disposition,
+        "dependencies" to normalizedDependencies(subtask["dependencies"]),
+      )
+    }
+  }
+
+  private fun normalizedDependencies(value: Any?): List<Map<String, Any?>> {
+    val dependencies = value as? List<*> ?: error("shared context subtask dependencies must be a list")
+    return dependencies.map { entry ->
+      val dependency = entry as? Map<*, *> ?: error("shared context subtask dependency must be an object")
+      require(dependency.keys == PLANNING_DEPENDENCY_FIELDS) {
+        "shared context subtask dependency fields are invalid"
+      }
+      linkedMapOf(
+        "subtask_id" to (
+          (dependency["subtask_id"] as? Number)?.toInt()
+            ?: error("shared context dependency subtask id is invalid")
+          ),
+        "optional" to (
+          dependency["optional"] as? Boolean
+            ?: error("shared context dependency optional flag is invalid")
+          ),
+        "skipped" to (
+          dependency["skipped"] as? Boolean
+            ?: error("shared context dependency skipped flag is invalid")
+          ),
+      )
+    }
+  }
+
   private fun isStringMap(value: Any?): Boolean =
     value is Map<*, *> && value.keys.all { it is String } && value.values.all { it is String }
 
@@ -461,7 +547,6 @@ class DefaultGoalPlanningSweep(
           "name" to subtask.name,
           "spec_path" to subtask.specPath,
           "linear_issue_id" to subtask.linearIssueId,
-          "planning_disposition" to if (isExplicitlySkipped(subtask)) "skipped" else "included",
           "dependencies" to subtask.dependencies.map { dependency ->
             linkedMapOf(
               "subtask_id" to dependency.subtaskId,
@@ -540,5 +625,8 @@ class DefaultGoalPlanningSweep(
       "ordered_subtasks",
       "integrity_sha256",
     )
+    val PLANNING_SUBTASK_FIELDS = setOf("id", "name", "spec_path", "planning_disposition", "dependencies")
+    val PLANNING_DEPENDENCY_FIELDS = setOf("subtask_id", "optional", "skipped")
+    val PLANNING_DISPOSITIONS = setOf("included", "skipped")
   }
 }

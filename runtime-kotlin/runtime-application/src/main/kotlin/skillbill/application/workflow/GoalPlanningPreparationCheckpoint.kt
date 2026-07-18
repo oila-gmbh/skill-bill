@@ -5,8 +5,8 @@ import skillbill.application.featuretask.GoalPlanningPreparationValidator
 import skillbill.application.featuretask.sha256HexUtf8
 import skillbill.error.InvalidGoalPlanningPreparationSchemaError
 import skillbill.ports.persistence.DatabaseSessionFactory
-import skillbill.ports.persistence.model.GoalPlanningIdentity
 import skillbill.ports.persistence.model.GoalPlanningContractProvenance
+import skillbill.ports.persistence.model.GoalPlanningIdentity
 import skillbill.ports.persistence.model.GoalPlanningPreparationProgress
 import skillbill.ports.persistence.model.GoalPlanningPreparationRecord
 import skillbill.ports.persistence.model.GoalSubtaskPlanCheckpoint
@@ -51,16 +51,21 @@ class GoalPlanningPreparationCheckpoint(
 
   fun findSubtaskPlan(
     identity: GoalPlanningIdentity,
-    descriptor: GovernedGoalSubtaskDescriptor,
+    subtaskId: Int,
+    governedSubSpecPath: String,
+    expectedDescriptor: GovernedGoalSubtaskDescriptor? = null,
     dbOverride: String? = null,
   ): GoalSubtaskPlanCheckpoint? = database.read(dbOverride) {
-    it.goalPlanningPreparations.findSubtaskPlan(identity, descriptor.subtaskId, descriptor.governedSubSpecPath)
+    it.goalPlanningPreparations.findSubtaskPlan(identity, subtaskId, governedSubSpecPath)
   }?.also { plan ->
     validateSubtaskPlan(plan)
-    if (plan.manifestOrder != descriptor.manifestOrder || plan.subSpecHash != descriptor.subSpecHash) {
+    if (
+      expectedDescriptor != null &&
+      (plan.manifestOrder != expectedDescriptor.manifestOrder || plan.subSpecHash != expectedDescriptor.subSpecHash)
+    ) {
       throw skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError(
         identity.parentGoalWorkflowId,
-        descriptor.subtaskId,
+        subtaskId,
         "stored manifest order or governed sub-spec hash differs from the expected descriptor",
       )
     }
@@ -74,7 +79,13 @@ class GoalPlanningPreparationCheckpoint(
   ): GoalPlanningPreparationProgress {
     val sharedPrepared = findSharedPreplan(identity, dbOverride) != null
     val prepared = orderedDescriptors.mapNotNull { descriptor ->
-      findSubtaskPlan(identity, descriptor, dbOverride)?.also { plan ->
+      findSubtaskPlan(
+        identity,
+        descriptor.subtaskId,
+        descriptor.governedSubSpecPath,
+        descriptor,
+        dbOverride,
+      )?.also { plan ->
         if (plan.provenance != expectedProvenance) {
           throw skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError(
             identity.parentGoalWorkflowId,
