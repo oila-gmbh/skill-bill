@@ -265,6 +265,24 @@ val copyFeatureTaskRuntimePhaseOutputSchema =
     }
   }
 
+val canonicalFeatureTaskRuntimeAuditRepairPlanSchemaPath: String =
+  rootProject.projectDir.parentFile
+    .resolve("orchestration/contracts/feature-task-runtime-audit-repair-plan-schema.yaml")
+    .absolutePath
+
+val copyFeatureTaskRuntimeAuditRepairPlanSchema =
+  tasks.register<Copy>("copyFeatureTaskRuntimeAuditRepairPlanSchema") {
+    val schemaPath = canonicalFeatureTaskRuntimeAuditRepairPlanSchemaPath
+    from(schemaPath)
+    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/contracts"))
+    inputs.file(schemaPath)
+    doFirst {
+      require(File(schemaPath).exists()) {
+        "SKILL-131: canonical audit-repair-plan schema is missing at $schemaPath."
+      }
+    }
+  }
+
 val canonicalGoalPlanningPreparationSchemaPath: String =
   rootProject.projectDir.parentFile
     .resolve("orchestration/contracts/goal-planning-preparation-schema.yaml")
@@ -299,6 +317,7 @@ tasks.named("processResources") {
   dependsOn(copyGoalProgressEventSchema)
   dependsOn(copyGoalSubtaskReviewStateSchema)
   dependsOn(copyFeatureTaskRuntimePhaseOutputSchema)
+  dependsOn(copyFeatureTaskRuntimeAuditRepairPlanSchema)
   dependsOn(copyFeatureTaskExecutionIdentitySchema)
   dependsOn(copyFeatureTaskRuntimeWorkerOwnershipSchema)
   dependsOn(copyGoalPlanningPreparationSchema)
@@ -316,6 +335,7 @@ tasks.named("processTestResources") {
   dependsOn(copyGoalProgressEventSchema)
   dependsOn(copyGoalSubtaskReviewStateSchema)
   dependsOn(copyFeatureTaskRuntimePhaseOutputSchema)
+  dependsOn(copyFeatureTaskRuntimeAuditRepairPlanSchema)
   dependsOn(copyFeatureTaskExecutionIdentitySchema)
   dependsOn(copyFeatureTaskRuntimeWorkerOwnershipSchema)
   dependsOn(copyGoalPlanningPreparationSchema)

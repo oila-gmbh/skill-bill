@@ -12,6 +12,7 @@ import com.networknt.schema.JsonSchemaFactory
 import com.networknt.schema.SpecVersion
 import com.networknt.schema.ValidationMessage
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
+import skillbill.error.InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.logging.Level
@@ -28,6 +29,7 @@ private val featureTaskRuntimePhaseOutputLog: Logger =
  */
 object FeatureTaskRuntimePhaseOutputSchemaValidator {
   private val schema: JsonSchema by lazy { loadFeatureTaskRuntimePhaseOutputSchema() }
+  private val auditRepairSchema: JsonSchema by lazy { loadAuditRepairPlanSchema() }
   private val mapper: ObjectMapper by lazy { ObjectMapper() }
   private val yamlMapper: YAMLMapper by lazy { YAMLMapper() }
   private val mapType = object : TypeReference<Map<String, Any?>>() {}
@@ -42,11 +44,24 @@ object FeatureTaskRuntimePhaseOutputSchemaValidator {
         reason = formatValidationReason(errors.sortedWith(violationOrdering), instance),
       )
     }
+    validateAuditRepairPlan(instance, sourceLabel)
     val phaseId = phaseOutput["phase_id"] as? String
     if (phaseId != sourceLabel) {
       throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
         sourceLabel = sourceLabel,
         reason = "phase_id must match the executing phase '$sourceLabel' but was '${phaseId.orEmpty()}'.",
+      )
+    }
+  }
+
+  private fun validateAuditRepairPlan(instance: JsonNode, sourceLabel: String) {
+    if (sourceLabel != "audit" || instance.path("verdict").asText() != "gaps_found") return
+    val plan = instance.path("produced_outputs").path("audit_repair_plan")
+    val errors = auditRepairSchema.validate(plan)
+    if (errors.isNotEmpty()) {
+      throw InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError(
+        sourceLabel = sourceLabel,
+        reason = formatValidationReason(errors.sortedWith(violationOrdering), plan),
       )
     }
   }
@@ -69,9 +84,18 @@ object FeatureTaskRuntimePhaseOutputSchemaValidator {
   // most-specific candidate first and fall back to the raw text so a genuinely payload-less or
   // malformed output still surfaces the precise existing error rather than a misleading one.
   private fun readPhaseOutputObjectNode(phaseOutputText: String, sourceLabel: String): JsonNode {
-    phaseOutputObjectCandidates(phaseOutputText).forEach { candidate ->
-      tryParseObjectNode(candidate)?.let { return it }
+    val parsedCandidates = phaseOutputObjectCandidates(phaseOutputText).mapNotNull(::tryParseObjectNode)
+    val validCandidates = parsedCandidates.filter { candidate ->
+      schema.validate(candidate).isEmpty() && candidate.path("phase_id").asText("") == sourceLabel
+    }.distinctBy { mapper.writeValueAsString(it) }
+    if (validCandidates.size > 1) {
+      throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
+        sourceLabel = sourceLabel,
+        reason = "Phase output contains multiple conflicting schema-valid envelopes.",
+      )
     }
+    validCandidates.singleOrNull()?.let { return it }
+    parsedCandidates.firstOrNull()?.let { return it }
     return parseObjectNodeStrict(phaseOutputText.trim(), sourceLabel)
   }
 
@@ -182,6 +206,41 @@ object FeatureTaskRuntimePhaseOutputSchemaValidator {
     { it.instanceLocation?.toString().orEmpty() },
     { it.message.orEmpty() },
   )
+}
+
+private fun loadAuditRepairPlanSchema(): JsonSchema {
+  val resource = FeatureTaskRuntimeAuditRepairPlanSchemaPaths.CLASSPATH_RESOURCE
+  val repoPath = FeatureTaskRuntimeAuditRepairPlanSchemaPaths.REPO_RELATIVE_PATH
+  val text = FeatureTaskRuntimePhaseOutputSchemaValidator::class.java.classLoader
+    .getResourceAsStream(resource)?.use { it.readBytes().toString(Charsets.UTF_8) }
+    ?: walkForSchemaFile(Path.of("").toAbsolutePath(), repoPath)?.let(Files::readString)
+    ?: throw InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError(
+      sourceLabel = resource,
+      reason = "Canonical audit repair plan schema is missing from '$resource' and '$repoPath'.",
+    )
+  val node = YAMLMapper().readTree(text)
+  val loadedId = node.path("\$id").asText("")
+  val loadedVersion = node.path("properties").path("contract_version").path("const").asText("")
+  if (loadedId != FeatureTaskRuntimeAuditRepairPlanSchemaPaths.EXPECTED_SCHEMA_ID ||
+    loadedVersion != FEATURE_TASK_RUNTIME_AUDIT_REPAIR_CONTRACT_VERSION
+  ) {
+    throw InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError(
+      sourceLabel = resource,
+      reason = "Canonical audit repair plan schema identity or contract version does not match the runtime.",
+    )
+  }
+  return JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V202012)
+    .getSchema(ObjectMapper().writeValueAsString(node))
+}
+
+private fun walkForSchemaFile(hint: Path, repoRelativePath: String): Path? {
+  var current: Path? = hint.toAbsolutePath().normalize()
+  while (current != null) {
+    val candidate = current.resolve(repoRelativePath)
+    if (Files.isRegularFile(candidate)) return candidate
+    current = current.parent
+  }
+  return null
 }
 
 internal const val FEATURE_TASK_RUNTIME_PHASE_OUTPUT_SCHEMA_CLASSPATH_RESOURCE: String =

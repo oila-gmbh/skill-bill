@@ -131,3 +131,40 @@ properties:
       contract_version is unchanged.
     type: string
     minLength: 1
+allOf:
+  - if:
+      properties:
+        phase_id: { const: audit }
+        verdict: { const: gaps_found }
+      required: [phase_id, verdict]
+    then:
+      properties:
+        produced_outputs:
+          type: object
+          required: [unmet_criteria, audit_repair_plan]
+          properties:
+            unmet_criteria:
+              type: array
+              minItems: 1
+              items:
+                type: object
+                additionalProperties: false
+                required: [acceptance_criterion_ref, message]
+                properties:
+                  acceptance_criterion_ref: { type: string, minLength: 1, pattern: ".*\\S.*" }
+                  message: { type: string, minLength: 1, pattern: ".*\\S.*" }
+            audit_repair_plan:
+              type: object
+              required: [contract_version, gaps]
+  - if:
+      properties:
+        phase_id: { const: audit }
+        verdict: { const: satisfied }
+      required: [phase_id, verdict]
+    then:
+      properties:
+        produced_outputs:
+          type: object
+          required: [unmet_criteria]
+          properties:
+            unmet_criteria: { type: array, maxItems: 0 }

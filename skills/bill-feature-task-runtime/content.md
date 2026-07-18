@@ -162,8 +162,12 @@ advance past an unmet acceptance criterion.
 - On `satisfied`, the run advances to `validate`.
 - On `gaps_found`, the runtime takes a backward edge re-entering `implement`,
   then `review`, then `audit`. The implementation handoff contains the immutable
-  original `preplan` and `plan` outputs plus only the latest failing criteria, so
-  the loop addresses the gaps rather than redoing settled content. This
+  original `preplan` and `plan` outputs plus the complete durably accepted audit
+  repair plan and cumulative unresolved-gap ledger. Every gap has a stable id,
+  criterion reference, evidence, diagnosis, boundary, and dependency-ordered
+  repair items. Remediation attempts every runnable item in the same invocation
+  and emits an exact terminal result set; review or validation cannot substitute
+  for executing carried work. This
   `audit` → `implement` → `review` → `audit` cycle has no fixed
   iteration cap. Its durable counter records progress and recovery state but
   never turns a valid `gaps_found` verdict into a permanent policy block. The
@@ -171,7 +175,11 @@ advance past an unmet acceptance criterion.
 
 The re-entered `implement` is idempotent: it reconciles the working tree toward
 the original plan without double-applying, and a crash mid-loopback resumes at the
-correct phase and iteration while preserving the `audit_gap` watermark.
+correct phase and iteration while preserving the accepted plan, stable ids, and
+`audit_gap` watermark. The following audit classifies every prior gap as resolved
+or recurring and assigns new ids only to genuinely new gaps. Equivalent recurring
+gap sets without repository change or newly resolved repair items block loudly as
+non-progress instead of looping indefinitely.
 
 The two loops compose under one durable two-pass review budget. The initial
 review and the first later review reached by either a review-fix or audit-gap
