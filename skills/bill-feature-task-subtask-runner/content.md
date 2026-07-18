@@ -52,13 +52,11 @@ the exact scope through repair and audit re-entry; the selected mode is initial-
 before launch; when `reserved_review_pass_number` has no completed durable
 output, resume that accounted pass instead of reserving another. Carry forward
 `completed_review_pass_count` and `review_cap_disposition`, and never run pass
-three. At a two-pass unresolved Blocker/Major cap, preserve complete
-location-bearing evidence in durable artifacts and telemetry, return only the
-non-approval `review_cap_reached` compact path-free status to the parent
-(subtask id, pass number, verdict or continuation state, severity,
-class/symbol-or-sanitized label, and concise text), then continue through
-audit, validation, history, dependency advancement,
-commit_push, and final reporting unless an independent later gate fails.
+three. Major findings remain durable evidence and do not prevent advancement.
+At a two-pass unresolved Blocker cap, preserve complete location-bearing evidence
+in durable artifacts and telemetry, return a blocked result with the compact
+path-free status to the parent (subtask id, pass number, verdict, severity,
+class/symbol-or-sanitized label, and concise text), and do not advance to audit.
 
 ## Return contract
 

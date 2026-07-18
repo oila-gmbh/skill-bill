@@ -679,7 +679,7 @@ class WorkflowServiceTest {
       unrelatedInvalidPath,
       """
       ---
-      contract_version: "0.4"
+      contract_version: "0.5"
       issue_key: "SKILL-55"
       current_subtask_intent:
         subtask_id: 1

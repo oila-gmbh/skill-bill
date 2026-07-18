@@ -1,22 +1,20 @@
 package skillbill.application
 
-import skillbill.application.decomposition.decompositionManifestPath
+import skillbill.application.decomposition.encodeDecompositionManifestYaml
 import skillbill.application.decomposition.loadDecompositionManifest
-import skillbill.application.decomposition.parentSpecPath
 import skillbill.application.featuretask.FeatureSpecPreparationWriter
-import skillbill.application.workflow.repoRoot
-import skillbill.error.FeatureSpecPreparationModeConflictError
 import skillbill.error.InvalidFeatureSpecPreparationRequestError
 import skillbill.featurespec.model.FeatureSpecPreparationDecision
 import skillbill.featurespec.model.FeatureSpecPreparationMode
 import skillbill.featurespec.model.FeatureSpecSubtaskPreparation
 import skillbill.featurespec.model.FeatureSpecWriteRequest
+import skillbill.workflow.model.CurrentSubtaskIntent
+import skillbill.workflow.model.SpecSource
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
-import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class FeatureSpecPreparationWriterTest {
@@ -26,7 +24,7 @@ class FeatureSpecPreparationWriterTest {
   )
 
   @Test
-  fun `single_spec writes parent spec and reports feature implement path without manifest`() {
+  fun `single_spec metadata writes parent distinct subtask and authoritative manifest`() {
     val repoRoot = Files.createTempDirectory("skillbill-feature-spec-single")
     val result = writer.write(
       repoRoot = repoRoot,
@@ -35,6 +33,7 @@ class FeatureSpecPreparationWriterTest {
         featureName = "Feature Spec Horizontal Skill",
         parentSpecOverview = "Prepare one spec only.",
         validationStrategy = "bill-code-check",
+        subtasks = listOf(singleSubtask()),
       ),
     )
 
@@ -42,36 +41,17 @@ class FeatureSpecPreparationWriterTest {
     val manifest = parentSpec.parent.resolve("decomposition-manifest.yaml")
     assertEquals(FeatureSpecPreparationMode.SINGLE_SPEC, result.mode)
     assertEquals(result.parentSpecPath, result.featureImplementPath)
-    assertEquals(null, result.decompositionManifestPath)
+    assertTrue(Files.isRegularFile(repoRoot.resolve(result.decompositionManifestPath)))
+    assertEquals(1, result.subtaskSpecPaths.size)
+    assertTrue(Files.isRegularFile(repoRoot.resolve(result.subtaskSpecPaths.single())))
     assertTrue(Files.isRegularFile(parentSpec))
-    assertFalse(Files.exists(manifest))
+    assertTrue(Files.exists(manifest))
     assertContains(Files.readString(parentSpec), "## Acceptance Criteria")
+    assertTrue("spec_source:" !in Files.readString(manifest))
   }
 
   @Test
-  fun `single_spec loud fails when decomposition manifest already exists`() {
-    val repoRoot = Files.createTempDirectory("skillbill-feature-spec-conflict")
-    val specDir = repoRoot.resolve(".feature-specs/SKILL-59-feature-spec-horizontal-skill")
-    Files.createDirectories(specDir)
-    Files.writeString(specDir.resolve("decomposition-manifest.yaml"), "contract_version: \"0.2\"\n")
-
-    val error = assertFailsWith<FeatureSpecPreparationModeConflictError> {
-      writer.write(
-        repoRoot = repoRoot,
-        request = FeatureSpecWriteRequest(
-          decision = singleSpecDecision(),
-          featureName = "feature-spec-horizontal-skill",
-          parentSpecOverview = "Should fail because manifest exists.",
-          validationStrategy = "bill-code-check",
-        ),
-      )
-    }
-
-    assertContains(error.reason, "single_spec cannot run beside an existing decomposition manifest")
-  }
-
-  @Test
-  fun `single_spec loud fails when decomposition subtasks are provided`() {
+  fun `preparation loud fails when no executable subtask is provided`() {
     val repoRoot = Files.createTempDirectory("skillbill-feature-spec-single-subtasks")
     val error = assertFailsWith<InvalidFeatureSpecPreparationRequestError> {
       writer.write(
@@ -79,20 +59,8 @@ class FeatureSpecPreparationWriterTest {
         request = FeatureSpecWriteRequest(
           decision = singleSpecDecision(),
           featureName = "feature-spec-horizontal-skill",
-          parentSpecOverview = "single_spec should reject decomposed-only payload fields.",
+          parentSpecOverview = "Every prepared feature needs an executable unit.",
           validationStrategy = "bill-code-check",
-          subtasks = listOf(
-            FeatureSpecSubtaskPreparation(
-              id = 1,
-              name = "decomposed-only",
-              scope = "Should not be accepted in single_spec mode.",
-              acceptanceCriteria = listOf("Rejected."),
-              nonGoals = emptyList(),
-              dependencyNotes = "",
-              validationStrategy = "bill-code-check",
-              nextPath = "Run bill-feature-task on spec_subtask_1_decomposed-only.md.",
-            ),
-          ),
         ),
       )
     }
@@ -138,7 +106,7 @@ class FeatureSpecPreparationWriterTest {
     )
 
     val parentSpec = repoRoot.resolve(result.parentSpecPath)
-    val manifest = repoRoot.resolve(result.decompositionManifestPath!!)
+    val manifest = repoRoot.resolve(result.decompositionManifestPath)
     assertEquals(FeatureSpecPreparationMode.DECOMPOSED, result.mode)
     assertTrue(Files.isRegularFile(parentSpec))
     assertTrue(Files.isRegularFile(manifest))
@@ -159,34 +127,120 @@ class FeatureSpecPreparationWriterTest {
   }
 
   @Test
-  fun `decomposed requires at least two ordered subtasks`() {
+  fun `decomposed metadata accepts exactly one ordered subtask`() {
     val repoRoot = Files.createTempDirectory("skillbill-feature-spec-decomposed-invalid")
-    val error = assertFailsWith<InvalidFeatureSpecPreparationRequestError> {
+    val result = writer.write(
+      repoRoot = repoRoot,
+      request = FeatureSpecWriteRequest(
+        decision = decomposedDecision(),
+        featureName = "feature-spec-horizontal-skill",
+        parentSpecOverview = "Invalid decomposition request.",
+        validationStrategy = "bill-code-check",
+        subtasks = listOf(singleSubtask()),
+      ),
+    )
+    assertEquals(1, result.subtaskSpecPaths.size)
+    assertEquals(1, loadDecompositionManifest(repoRoot.resolve(result.decompositionManifestPath)).subtasks.size)
+  }
+
+  @Test
+  fun `linear preparation stamps source and requires every subtask identity`() {
+    val repoRoot = Files.createTempDirectory("skillbill-feature-spec-linear")
+    val missingIdentity = assertFailsWith<InvalidFeatureSpecPreparationRequestError> {
       writer.write(
-        repoRoot = repoRoot,
-        request = FeatureSpecWriteRequest(
-          decision = decomposedDecision(),
-          featureName = "feature-spec-horizontal-skill",
-          parentSpecOverview = "Invalid decomposition request.",
+        repoRoot,
+        FeatureSpecWriteRequest(
+          decision = singleSpecDecision(),
+          featureName = "linear-feature",
+          parentSpecOverview = "Linear-backed preparation.",
           validationStrategy = "bill-code-check",
-          subtasks = listOf(
-            FeatureSpecSubtaskPreparation(
-              id = 1,
-              name = "only",
-              scope = "Only one subtask",
-              acceptanceCriteria = listOf("Too small"),
-              nonGoals = emptyList(),
-              dependencyNotes = "",
-              validationStrategy = "bill-code-check",
-              nextPath = "Run bill-feature-task on spec_subtask_1_only.md.",
-            ),
-          ),
+          subtasks = listOf(singleSubtask()),
+          specSource = SpecSource.LINEAR,
         ),
       )
     }
+    assertEquals("subtasks[0].linear_issue_id", missingIdentity.fieldPath)
 
-    assertEquals("subtasks", error.fieldPath)
+    val result = writer.write(
+      repoRoot,
+      FeatureSpecWriteRequest(
+        decision = singleSpecDecision(),
+        featureName = "linear-feature",
+        parentSpecOverview = "Linear-backed preparation.",
+        validationStrategy = "bill-code-check",
+        subtasks = listOf(singleSubtask().copy(linearIssueId = "linear-subtask-1")),
+        specSource = SpecSource.LINEAR,
+      ),
+    )
+    val manifest = loadDecompositionManifest(repoRoot.resolve(result.decompositionManifestPath))
+    assertEquals(SpecSource.LINEAR, manifest.specSource)
+    assertEquals("linear-subtask-1", manifest.subtasks.single().linearIssueId)
+    assertContains(Files.readString(repoRoot.resolve(result.decompositionManifestPath)), "spec_source: \"linear\"")
   }
+
+  @Test
+  fun `invalid dependency leaves no partial prepared feature files`() {
+    val repoRoot = Files.createTempDirectory("skillbill-feature-spec-prevalidate")
+    assertFailsWith<InvalidFeatureSpecPreparationRequestError> {
+      writer.write(
+        repoRoot,
+        FeatureSpecWriteRequest(
+          decision = decomposedDecision(),
+          featureName = "prevalidated-feature",
+          parentSpecOverview = "No partial files.",
+          validationStrategy = "bill-code-check",
+          subtasks = listOf(singleSubtask().copy(id = 2, dependsOn = listOf(1))),
+        ),
+      )
+    }
+    val directory = repoRoot.resolve(".feature-specs/SKILL-59-prevalidated-feature")
+    assertTrue(!Files.exists(directory) || Files.list(directory).use { it.findAny().isEmpty })
+  }
+
+  @Test
+  fun `rewriting prepared artifacts projects preserved manifest runtime status into specs`() {
+    val repoRoot = Files.createTempDirectory("skillbill-feature-spec-status")
+    val request = FeatureSpecWriteRequest(
+      decision = singleSpecDecision(),
+      featureName = "preserved-status",
+      parentSpecOverview = "Preserve runtime authority.",
+      validationStrategy = "bill-code-check",
+      subtasks = listOf(singleSubtask()),
+    )
+    val first = writer.write(repoRoot, request)
+    val manifestPath = repoRoot.resolve(first.decompositionManifestPath)
+    val blocked = loadDecompositionManifest(manifestPath).copy(
+      status = "blocked",
+      currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 1, action = "blocked"),
+      subtasks = loadDecompositionManifest(manifestPath).subtasks.map { subtask ->
+        subtask.copy(status = "blocked", blockedReason = "operator action required")
+      },
+    )
+    TestDecompositionManifestFileStore.writeTextAtomically(
+      manifestPath,
+      encodeDecompositionManifestYaml(
+        blocked,
+        testDecompositionManifestValidator,
+        TestDecompositionManifestFileStore,
+      ),
+    )
+
+    val rewritten = writer.write(repoRoot, request)
+
+    assertContains(Files.readString(repoRoot.resolve(rewritten.parentSpecPath)), "status: Blocked")
+    assertContains(Files.readString(repoRoot.resolve(rewritten.subtaskSpecPaths.single())), "status: Blocked")
+  }
+
+  private fun singleSubtask() = FeatureSpecSubtaskPreparation(
+    id = 1,
+    name = "implementation",
+    scope = "Implement the complete prepared feature.",
+    acceptanceCriteria = listOf("The prepared contract is satisfied."),
+    nonGoals = emptyList(),
+    dependencyNotes = "No dependencies.",
+    validationStrategy = "bill-code-check",
+    nextPath = "Run bill-feature-task on spec_subtask_1_implementation.md.",
+  )
 
   private fun singleSpecDecision(): FeatureSpecPreparationDecision = FeatureSpecPreparationDecision(
     issueKey = "SKILL-59",

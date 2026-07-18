@@ -109,7 +109,7 @@ path never encodes it.
 ## How routing works, end to end
 
 Everything funnels through `bill-feature`. Three decisions happen in order:
-*do governed artifacts already exist?* → *single spec or decomposed?* →
+*does an authoritative manifest already exist?* → *prepare bare-spec intake if needed* →
 *runtime or prose mode?*
 
 ```
@@ -125,7 +125,7 @@ bill-feature                                     [listed]
 bill-feature-spec                                [listed, Skill tool]
   │  produces governed artifacts + mode verdict
   │
-  ├── single_spec ──► read sibling bill-feature-task.md        [internal]
+  ├── bare spec ──► bill-feature-spec intake preparation
   │                     │  mode router: mode:runtime (default) / mode:prose,
   │                     │  parallel-review:<agent>, confirmation gate,
   │                     │  opencode prose-only rule
@@ -140,7 +140,7 @@ bill-feature-spec                                [listed, Skill tool]
   │                                                quality check, PR description) run as
   │                                                sequential native-agent subagents
   │
-  └── decomposed ──► read sibling bill-feature-goal.md          [internal]
+  └── manifest (one or more subtasks) ──► read sibling bill-feature-goal.md [internal]
                         │  one confirmation gate; status requests land here too
                         ├── mode:runtime ──► launches `skill-bill goal`
                         │                     (durable goal loop: scheduling, dependency

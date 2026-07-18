@@ -12,7 +12,7 @@ internal object FeatureTaskRuntimeVerificationSignalKeys {
   /** Top-level verdict string both verifying gates accept as an explicit advance/remediation signal. */
   const val VERDICT = "verdict"
 
-  /** produced_outputs key the review gate reads: the findings array (an empty [] affirms no Blocker/Major). */
+  /** produced_outputs key the review gate reads: the findings array (an empty [] affirms no Blocker). */
   const val REVIEW_FINDINGS = "findings"
 
   /** produced_outputs key the audit gate reads: unmet acceptance criteria (an empty [] affirms all met). */

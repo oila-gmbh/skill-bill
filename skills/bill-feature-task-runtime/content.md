@@ -123,9 +123,9 @@ continues. Treat the durable workflow state as authoritative over any prose.
 
 The runtime closes a bounded remediation loop around `review`. The `review`
 phase emits a structured verdict derived from its findings: `approved` when no
-unresolved Blocker or Major findings remain, or `changes_requested` when any are
-present. The runtime evaluates that verdict — prose alone cannot advance past a
-Blocker/Major finding.
+unresolved Blocker findings remain, or `changes_requested` when any are present.
+Major findings remain durable evidence but never prevent advancement. The runtime
+evaluates that verdict — prose alone cannot advance past a Blocker finding.
 
 - On `approved`, the run advances to `audit` (a clean run never launches a fix).
 - On `changes_requested`, the runtime takes a backward edge to a dedicated

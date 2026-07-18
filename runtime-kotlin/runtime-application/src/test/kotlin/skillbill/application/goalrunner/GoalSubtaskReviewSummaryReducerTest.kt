@@ -21,6 +21,37 @@ class GoalSubtaskReviewSummaryReducerTest {
   }
 
   @Test
+  fun `Major findings remain evidence but do not request changes`() {
+    val output = mapOf(
+      "verdict" to FeatureTaskRuntimeVerdict.CHANGES_REQUESTED.wireValue,
+      "produced_outputs" to mapOf(
+        "findings" to listOf(mapOf("severity" to "major", "message" to "Follow-up risk")),
+      ),
+    )
+
+    val outcome = GoalSubtaskReviewSummaryReducer.outcomeFor(output)
+
+    assertEquals(FeatureTaskRuntimeVerdict.APPROVED, outcome.verdict)
+    assertEquals(0, outcome.unresolvedFindingCount)
+    assertEquals(1, GoalSubtaskReviewSummaryReducer.fromOutput(output).size)
+  }
+
+  @Test
+  fun `Blocker findings request changes and remain unresolved`() {
+    val output = mapOf(
+      "verdict" to FeatureTaskRuntimeVerdict.APPROVED.wireValue,
+      "produced_outputs" to mapOf(
+        "findings" to listOf(mapOf("severity" to "blocker", "message" to "Data loss")),
+      ),
+    )
+
+    val outcome = GoalSubtaskReviewSummaryReducer.outcomeFor(output)
+
+    assertEquals(FeatureTaskRuntimeVerdict.CHANGES_REQUESTED, outcome.verdict)
+    assertEquals(1, outcome.unresolvedFindingCount)
+  }
+
+  @Test
   fun `compact summaries remove paths lines hunks and duplicate findings`() {
     val summary = GoalSubtaskReviewSummaryReducer.fromOutput(
       mapOf(

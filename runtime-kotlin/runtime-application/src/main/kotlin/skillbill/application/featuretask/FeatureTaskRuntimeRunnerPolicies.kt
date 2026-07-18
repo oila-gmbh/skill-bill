@@ -72,7 +72,7 @@ internal fun reviewVerificationSignalGateReason(phaseId: String, outputMap: Map<
   } else {
     "Review phase reported 'completed' without a verification signal: the output must carry either a " +
       "top-level 'verdict' or a 'produced_outputs.findings' array (an explicit empty array affirms no " +
-      "blocking findings). A review that emits neither cannot advance past a possible Blocker/Major; " +
+      "blocking findings). A review that emits neither cannot advance past a possible Blocker; " +
       "the schema gate fails rather than silently advancing to audit."
   }
 }

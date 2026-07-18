@@ -1,5 +1,7 @@
 package skillbill.featurespec.model
 
+import skillbill.workflow.model.SpecSource
+
 enum class FeatureSpecPreparationMode(val wireValue: String) {
   SINGLE_SPEC("single_spec"),
   DECOMPOSED("decomposed"),
@@ -38,6 +40,7 @@ data class FeatureSpecSubtaskPreparation(
   val validationStrategy: String,
   val nextPath: String,
   val dependsOn: List<Int> = emptyList(),
+  val linearIssueId: String? = null,
 )
 
 data class FeatureSpecWriteRequest(
@@ -48,12 +51,13 @@ data class FeatureSpecWriteRequest(
   val subtasks: List<FeatureSpecSubtaskPreparation> = emptyList(),
   val baseBranch: String = "main",
   val featureBranch: String = "",
+  val specSource: SpecSource = SpecSource.LOCAL,
 )
 
 data class FeatureSpecWriteResult(
   val mode: FeatureSpecPreparationMode,
   val parentSpecPath: String,
   val featureImplementPath: String,
-  val decompositionManifestPath: String?,
+  val decompositionManifestPath: String,
   val subtaskSpecPaths: List<String>,
 )

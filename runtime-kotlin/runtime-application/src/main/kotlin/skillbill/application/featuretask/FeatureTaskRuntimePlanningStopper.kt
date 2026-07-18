@@ -10,6 +10,7 @@ import skillbill.application.model.FeatureTaskRuntimeRunRequest
 import skillbill.application.workflow.repoRoot
 import skillbill.error.SkillBillRuntimeException
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
+import skillbill.workflow.model.SpecSource
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDecomposePlanOutcome
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDecomposeTerminal
@@ -41,6 +42,7 @@ class FeatureTaskRuntimePlanningStopper(
     completedOutput: FeatureTaskRuntimePhaseOutput,
     completedPhaseIds: List<String>,
     resolvedBranch: String?,
+    specSource: SpecSource,
   ): FeatureTaskRuntimePlanningStopDecision {
     if (isGoalContinuationRun(request)) {
       return FeatureTaskRuntimePlanningStopDecision.Proceed
@@ -54,7 +56,7 @@ class FeatureTaskRuntimePlanningStopper(
         recordedTerminal.toRunReport(request, completedPhaseIds, resolvedBranch),
       )
     } else {
-      resolveFreshPlanOutput(request, completedOutput, completedPhaseIds, resolvedBranch)
+      resolveFreshPlanOutput(request, completedOutput, completedPhaseIds, resolvedBranch, specSource)
     }
   }
 
@@ -63,9 +65,10 @@ class FeatureTaskRuntimePlanningStopper(
     completedOutput: FeatureTaskRuntimePhaseOutput,
     completedPhaseIds: List<String>,
     resolvedBranch: String?,
+    specSource: SpecSource,
   ): FeatureTaskRuntimePlanningStopDecision {
     return try {
-      resolveFromPlanOutput(request, completedOutput, completedPhaseIds, resolvedBranch)
+      resolveFromPlanOutput(request, completedOutput, completedPhaseIds, resolvedBranch, specSource)
     } catch (error: SkillBillRuntimeException) {
       // Covers decoder schema errors (InvalidFeatureTaskRuntimePhaseOutputSchemaError,
       // InvalidWorkflowStateSchemaError), decomposition-manifest schema errors
@@ -85,12 +88,13 @@ class FeatureTaskRuntimePlanningStopper(
     completedOutput: FeatureTaskRuntimePhaseOutput,
     completedPhaseIds: List<String>,
     resolvedBranch: String?,
+    specSource: SpecSource,
   ): FeatureTaskRuntimePlanningStopDecision {
     val parsed = outputValidator.validateAndReadPhaseOutput(
       completedOutput.payload,
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN,
     )
-    val outcome = featureTaskRuntimeDecomposePlanOutcomeOrNull(parsed)
+    val outcome = featureTaskRuntimeDecomposePlanOutcomeOrNull(parsed, specSource)
       ?: return FeatureTaskRuntimePlanningStopDecision.Proceed
     val terminal = writeDecompositionTerminal(request, outcome)
     decomposeTerminalRecorder.recordDecomposeTerminal(request.workflowId, terminal, request.dbPathOverride)

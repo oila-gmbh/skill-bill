@@ -529,6 +529,7 @@ internal class FeatureTaskRuntimeRunLoop(
       completedOutput = planOutput,
       completedPhaseIds = state.completedPhaseIds(),
       resolvedBranch = resolvedBranch,
+      specSource = specSource,
     )
 
   private fun persistPlanningStopBlock(phaseId: String, reason: String) {

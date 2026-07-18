@@ -146,7 +146,7 @@ class FeatureTaskRuntimeTransitionFunctionTest {
     destinationPhaseId = "fix",
     loopId = "review_fix",
     perEdgeCap = 3,
-    capExhaustionBehavior = FeatureTaskRuntimeCapExhaustionBehavior.ADVANCE,
+    capExhaustionBehavior = FeatureTaskRuntimeCapExhaustionBehavior.BLOCK,
   )
   private val loopDeclaration = FeatureTaskRuntimeTransitionDeclaration(
     forwardPhaseIds = loopPipeline,
@@ -252,7 +252,7 @@ class FeatureTaskRuntimeTransitionFunctionTest {
   }
 
   @Test
-  fun `review changes_requested at cap advances to audit`() {
+  fun `review changes_requested at cap blocks`() {
     val cap = requireNotNull(reviewFixEdge.perEdgeCap)
     val transition = FeatureTaskRuntimeTransitionFunction.nextTransition(
       declaration = loopDeclaration,
@@ -260,7 +260,7 @@ class FeatureTaskRuntimeTransitionFunctionTest {
       verdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
       edgeIterationCount = cap,
     )
-    assertEquals("audit", assertIs<FeatureTaskRuntimeNextPhase.Next>(transition).phaseId)
+    assertEquals("review_fix", assertIs<FeatureTaskRuntimeNextPhase.TerminalBlock>(transition).loopId)
   }
 
   // --- verdict constants + findings -> verdict helper -------------------------------------------
@@ -277,24 +277,23 @@ class FeatureTaskRuntimeTransitionFunctionTest {
   }
 
   @Test
-  fun `findings with a Blocker or Major derive changes_requested and expose the unresolved findings`() {
-    listOf(FeatureTaskRuntimeReviewSeverity.BLOCKER, FeatureTaskRuntimeReviewSeverity.MAJOR).forEach { severity ->
-      val verdict = FeatureTaskRuntimeReviewVerdict(
-        listOf(
-          FeatureTaskRuntimeReviewFinding(FeatureTaskRuntimeReviewSeverity.NIT, "tidy import"),
-          FeatureTaskRuntimeReviewFinding(severity, "blocking issue"),
-        ),
-      )
-      assertEquals(FeatureTaskRuntimeVerdict.CHANGES_REQUESTED, verdict.verdict)
-      assertEquals(listOf("blocking issue"), verdict.unresolvedFindings.map { it.message })
-    }
+  fun `Blocker findings derive changes_requested and expose the unresolved findings`() {
+    val verdict = FeatureTaskRuntimeReviewVerdict(
+      listOf(
+        FeatureTaskRuntimeReviewFinding(FeatureTaskRuntimeReviewSeverity.NIT, "tidy import"),
+        FeatureTaskRuntimeReviewFinding(FeatureTaskRuntimeReviewSeverity.BLOCKER, "blocking issue"),
+      ),
+    )
+    assertEquals(FeatureTaskRuntimeVerdict.CHANGES_REQUESTED, verdict.verdict)
+    assertEquals(listOf("blocking issue"), verdict.unresolvedFindings.map { it.message })
   }
 
   @Test
-  fun `findings with only Minor or Nit or no findings derive approved`() {
+  fun `findings with only Major Minor or Nit or no findings derive approved`() {
     assertEquals(FeatureTaskRuntimeVerdict.APPROVED, FeatureTaskRuntimeReviewVerdict(emptyList()).verdict)
     val minorOnly = FeatureTaskRuntimeReviewVerdict(
       listOf(
+        FeatureTaskRuntimeReviewFinding(FeatureTaskRuntimeReviewSeverity.MAJOR, "follow-up risk"),
         FeatureTaskRuntimeReviewFinding(FeatureTaskRuntimeReviewSeverity.MINOR, "consider renaming"),
         FeatureTaskRuntimeReviewFinding(FeatureTaskRuntimeReviewSeverity.NIT, "trailing space"),
       ),
