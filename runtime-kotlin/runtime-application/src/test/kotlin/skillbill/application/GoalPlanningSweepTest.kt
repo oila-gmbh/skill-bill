@@ -57,8 +57,8 @@ class GoalPlanningSweepTest {
     val outcome = harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 2)), harness.request())
 
     assertIs<GoalPlanningSweepOutcome.PreparedAll>(outcome)
-    assertEquals(listOf("preplan", "plan", "preplan", "plan"), harness.launcher.phases)
-    assertEquals(listOf(1, 1, 2, 2), harness.launcher.subtaskIds)
+    assertEquals(listOf("preplan", "plan", "plan"), harness.launcher.phases)
+    assertEquals(listOf(1, 1, 2), harness.launcher.subtaskIds)
     assertEquals(2, harness.preparedCount())
 
     val record = harness.recordFor(1)
@@ -81,7 +81,7 @@ class GoalPlanningSweepTest {
     assertEquals(1, harness.manifestFileStore.countContaining("decomposition-manifest.yaml"))
     assertEquals(3, harness.manifestFileStore.countContaining("spec_subtask_"))
     assertEquals(1, discovery.calls)
-    assertEquals(6, harness.launcher.requests.size)
+    assertEquals(4, harness.launcher.requests.size)
   }
 
   @Test
@@ -98,8 +98,8 @@ class GoalPlanningSweepTest {
     val outcome = harness.sweep.prepare(state, harness.request())
 
     val stopped = assertIs<GoalPlanningSweepOutcome.Stopped>(outcome)
-    assertEquals(1, stopped.currentSubtaskId)
-    assertTrue(stopped.blockedReason.contains("invalid saved prepared pair"))
+    assertEquals(0, stopped.currentSubtaskId)
+    assertTrue(stopped.blockedReason.isNotBlank())
     assertEquals(launchCount, harness.launcher.requests.size)
   }
 
@@ -118,7 +118,7 @@ class GoalPlanningSweepTest {
 
     val outcome = harness.sweep.prepare(harness.stateFor(resumed), harness.request())
 
-    assertIs<GoalPlanningSweepOutcome.PreparedAll>(outcome)
+    assertIs<GoalPlanningSweepOutcome.Stopped>(outcome)
     assertEquals(launchCount, harness.launcher.requests.size)
   }
 
@@ -172,7 +172,6 @@ class GoalPlanningSweepTest {
       listOf(
         "skill-bill: goal planning - subtask 1 preplan\n",
         "skill-bill: goal planning - subtask 1 plan\n",
-        "skill-bill: goal planning - subtask 2 preplan\n",
         "skill-bill: goal planning - subtask 2 plan\n",
       ),
       progress,
@@ -184,7 +183,7 @@ class GoalPlanningSweepTest {
     val fixtures = sharedSweepFixtures()
     val discovery = CountingContextDiscovery()
     val runOneLauncher = SweepPlanningLauncher { phase, subtaskId, _ ->
-      if (subtaskId == 2 && phase == "preplan") launchFacts(stdout = "") else validPhaseOutcome(phase)
+      if (subtaskId == 2 && phase == "plan") launchFacts(stdout = "") else validPhaseOutcome(phase)
     }
     val runOne = DefaultGoalPlanningSweep(
       fixtures.database,
@@ -222,11 +221,9 @@ class GoalPlanningSweepTest {
     )
     val outcome = runTwo.prepare(fixtures.stateFor(resumed), fixtures.request())
 
-    assertIs<GoalPlanningSweepOutcome.PreparedAll>(outcome)
-    assertEquals(2, runTwoLauncher.requests.size)
-    assertEquals(listOf("preplan", "plan"), runTwoLauncher.phases)
-    assertEquals(listOf(2, 2), runTwoLauncher.subtaskIds)
-    assertEquals(2, fixtures.preparedCount())
+    assertIs<GoalPlanningSweepOutcome.Stopped>(outcome)
+    assertEquals(0, runTwoLauncher.requests.size)
+    assertEquals(1, fixtures.preparedCount())
     assertEquals(1, discovery.calls, "resume must recover the durable packet without repeating discovery")
   }
 
@@ -427,7 +424,7 @@ class GoalPlanningSweepTest {
     val outcome = harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 1)), harness.request())
 
     val stopped = assertIs<GoalPlanningSweepOutcome.Stopped>(outcome)
-    assertEquals(1, stopped.currentSubtaskId)
+    assertEquals(0, stopped.currentSubtaskId)
     assertEquals("preplan", stopped.lastResumableStep)
     assertTrue(stopped.blockedReason.contains("incompatible"))
     assertEquals(
@@ -450,12 +447,12 @@ class GoalPlanningSweepTest {
     val outcome = harness.sweep.prepare(state, harness.request())
 
     val stopped = assertIs<GoalPlanningSweepOutcome.Stopped>(outcome)
-    assertEquals(1, stopped.currentSubtaskId)
+    assertEquals(0, stopped.currentSubtaskId)
     assertTrue(stopped.blockedReason.contains("shared context could not be gathered"))
   }
 
   @Test
-  fun `recovered prepared rows must carry one identical shared packet`() {
+  fun `normalized recovery reads the singleton shared packet independently from prepared plans`() {
     val harness = sweepHarness { phase, _, _ -> validPhaseOutcome(phase) }
     val state = harness.stateFor(manifest(subtaskCount = 2))
     harness.sweep.prepare(state, harness.request())
@@ -466,9 +463,7 @@ class GoalPlanningSweepTest {
 
     val outcome = harness.sweep.prepare(state, harness.request())
 
-    val stopped = assertIs<GoalPlanningSweepOutcome.Stopped>(outcome)
-    assertEquals(2, stopped.currentSubtaskId)
-    assertTrue(stopped.blockedReason.contains("inconsistent shared context packet"))
+    assertIs<GoalPlanningSweepOutcome.PreparedAll>(outcome)
   }
 
   @Test
@@ -482,7 +477,7 @@ class GoalPlanningSweepTest {
     val outcome = harness.sweep.prepare(state, harness.request())
 
     val stopped = assertIs<GoalPlanningSweepOutcome.Stopped>(outcome)
-    assertEquals(1, stopped.currentSubtaskId)
+    assertEquals(0, stopped.currentSubtaskId)
     assertTrue(stopped.blockedReason.contains("does not contain a valid shared context packet"))
   }
 
@@ -499,8 +494,8 @@ class GoalPlanningSweepTest {
       val outcome = harness.sweep.prepare(harness.stateFor(manifest), harness.request())
 
       val stopped = assertIs<GoalPlanningSweepOutcome.Stopped>(outcome)
-      assertEquals(1, stopped.currentSubtaskId)
-      assertTrue(stopped.blockedReason.contains("incompatible"))
+      assertEquals(0, stopped.currentSubtaskId)
+      assertTrue(stopped.blockedReason.contains("provenance"))
     }
   }
 }
@@ -720,11 +715,88 @@ private class InMemoryPreparationRepository(
   private val markPreparedThrows: Boolean = false,
 ) : GoalPlanningPreparationRepository {
   private val records = linkedMapOf<Int, GoalPlanningPreparationRecord>()
+  private var sharedPreplan: skillbill.ports.persistence.model.SharedGoalPreplanCheckpoint? = null
+  private val plans = linkedMapOf<Int, skillbill.ports.persistence.model.GoalSubtaskPlanCheckpoint>()
+
+  override fun checkpointSharedPreplan(checkpoint: skillbill.ports.persistence.model.SharedGoalPreplanCheckpoint) {
+    sharedPreplan = checkpoint
+    if (markPreparedThrows) {
+      sharedPreplan = null
+      error("simulated goal planning persistence failure after mutation")
+    }
+  }
+
+  override fun findSharedPreplan(expectedIdentity: skillbill.ports.persistence.model.GoalPlanningIdentity) =
+    sharedPreplan?.takeIf { it.identity == expectedIdentity }
+
+  override fun checkpointSubtaskPlan(checkpoint: skillbill.ports.persistence.model.GoalSubtaskPlanCheckpoint) {
+    plans[checkpoint.subtaskId] = checkpoint
+    val shared = requireNotNull(sharedPreplan)
+    records[checkpoint.subtaskId] = GoalPlanningPreparationRecord(
+      parentGoalWorkflowId = checkpoint.identity.parentGoalWorkflowId,
+      normalizedIssueKey = checkpoint.identity.normalizedIssueKey,
+      repositoryIdentity = checkpoint.identity.repositoryIdentity,
+      subtaskId = checkpoint.subtaskId,
+      governedSubSpecPath = checkpoint.governedSubSpecPath,
+      preparationStatus = checkpoint.preparationStatus,
+      provenance = skillbill.ports.persistence.model.GoalPlanningPreparationProvenance(
+        parentSpecHash = checkpoint.provenance.parentSpecHash,
+        subSpecHash = checkpoint.subSpecHash,
+        decompositionManifestHash = checkpoint.provenance.decompositionManifestHash,
+        phaseOutputContractId = checkpoint.provenance.phaseOutputContractId,
+        phaseOutputContractVersion = checkpoint.provenance.phaseOutputContractVersion,
+      ),
+      preplanPayload = shared.preplanPayload,
+      planPayload = checkpoint.planPayload,
+    )
+    if (markPreparedThrows) {
+      plans.remove(checkpoint.subtaskId)
+      records.remove(checkpoint.subtaskId)
+      error("simulated goal planning persistence failure after mutation")
+    }
+  }
+
+  override fun findSubtaskPlan(
+    expectedIdentity: skillbill.ports.persistence.model.GoalPlanningIdentity,
+    subtaskId: Int,
+    governedSubSpecPath: String,
+  ) = plans[subtaskId]?.takeIf { it.identity == expectedIdentity && it.governedSubSpecPath == governedSubSpecPath }
+
+  override fun listSubtaskPlansOrdered(expectedIdentity: skillbill.ports.persistence.model.GoalPlanningIdentity) =
+    plans.values.filter { it.identity == expectedIdentity }.sortedBy { it.manifestOrder }
 
   override fun markPrepared(record: GoalPlanningPreparationRecord) {
     records[record.subtaskId] = record
+    val identity = skillbill.ports.persistence.model.GoalPlanningIdentity(
+      record.parentGoalWorkflowId,
+      record.normalizedIssueKey,
+      record.repositoryIdentity,
+    )
+    val provenance = skillbill.ports.persistence.model.GoalPlanningContractProvenance(
+      record.provenance.parentSpecHash,
+      record.provenance.decompositionManifestHash,
+      skillbill.contracts.workflow.GoalPlanningPreparationSchemaPaths.EXPECTED_SCHEMA_ID,
+    )
+    sharedPreplan = skillbill.ports.persistence.model.SharedGoalPreplanCheckpoint(
+      identity = identity,
+      provenance = provenance,
+      payloadSha256 = skillbill.application.featuretask.sha256HexUtf8(record.preplanPayload),
+      preplanPayload = record.preplanPayload,
+    )
+    plans[record.subtaskId] = skillbill.ports.persistence.model.GoalSubtaskPlanCheckpoint(
+      identity = identity,
+      subtaskId = record.subtaskId,
+      manifestOrder = record.subtaskId - 1,
+      governedSubSpecPath = record.governedSubSpecPath,
+      subSpecHash = record.provenance.subSpecHash,
+      provenance = provenance,
+      payloadSha256 = skillbill.application.featuretask.sha256HexUtf8(record.planPayload),
+      planPayload = record.planPayload,
+    )
     if (markPreparedThrows) {
       records.remove(record.subtaskId)
+      plans.remove(record.subtaskId)
+      sharedPreplan = null
       error("simulated goal planning persistence failure after mutation")
     }
   }

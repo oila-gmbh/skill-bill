@@ -1533,8 +1533,16 @@ class GoalRunnerObservabilityTest {
 
   @Test
   fun `hard reset deletes goal planning preparation before saving pending projection`() {
-    val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 2))
     val database = GoalTestPlanningDatabase()
+    val store = InMemoryGoalManifestStore(
+      manifest = manifest(subtaskCount = 2),
+      hardReset = { state, dbPathOverride ->
+        database.transaction(dbPathOverride) { unitOfWork ->
+          unitOfWork.goalPlanningPreparations.deleteByGoal(state.parentWorkflowId)
+          unitOfWork.workflowStates.deleteGoalChildWorkflowsByParent(state.parentWorkflowId)
+        }
+      },
+    )
     val service = GoalRunnerStatusService(
       store,
       RecordingOutcomeStore(),
@@ -1567,6 +1575,7 @@ class GoalRunnerObservabilityTest {
 
 internal class InMemoryGoalManifestStore(
   manifest: DecompositionManifest,
+  private val hardReset: ((GoalRunnerManifestState, String?) -> Unit)? = null,
 ) : GoalRunnerManifestStore {
   var manifest: DecompositionManifest = manifest
     private set
@@ -1585,6 +1594,11 @@ internal class InMemoryGoalManifestStore(
     saveCount += 1
     manifest = state.manifest
     return state.copy(dbPath = dbPathOverride ?: state.dbPath, manifest = manifest)
+  }
+
+  override fun saveHardReset(state: GoalRunnerManifestState, dbPathOverride: String?): GoalRunnerManifestState {
+    hardReset?.invoke(state, dbPathOverride)
+    return save(state, dbPathOverride)
   }
 
   override fun saveNewChildWorkflow(

@@ -10,7 +10,7 @@ interface GoalPlanningPreparationRepository {
   fun checkpointSharedPreplan(checkpoint: SharedGoalPreplanCheckpoint): Unit =
     error("Shared goal preplan checkpointing is not implemented by this repository.")
 
-  fun findSharedPreplan(expectedIdentity: GoalPlanningIdentity): SharedGoalPreplanCheckpoint? = null
+  fun findSharedPreplan(expectedIdentity: GoalPlanningIdentity): SharedGoalPreplanCheckpoint?
 
   fun checkpointSubtaskPlan(checkpoint: GoalSubtaskPlanCheckpoint): Unit =
     error("Goal subtask plan checkpointing is not implemented by this repository.")
@@ -19,9 +19,9 @@ interface GoalPlanningPreparationRepository {
     expectedIdentity: GoalPlanningIdentity,
     subtaskId: Int,
     governedSubSpecPath: String,
-  ): GoalSubtaskPlanCheckpoint? = null
+  ): GoalSubtaskPlanCheckpoint?
 
-  fun listSubtaskPlansOrdered(expectedIdentity: GoalPlanningIdentity): List<GoalSubtaskPlanCheckpoint> = emptyList()
+  fun listSubtaskPlansOrdered(expectedIdentity: GoalPlanningIdentity): List<GoalSubtaskPlanCheckpoint>
 
   fun preparedPlanCount(expectedIdentity: GoalPlanningIdentity): Int = listSubtaskPlansOrdered(expectedIdentity).size
 
