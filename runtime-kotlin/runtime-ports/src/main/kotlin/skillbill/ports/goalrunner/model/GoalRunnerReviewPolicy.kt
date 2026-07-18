@@ -2,6 +2,9 @@ package skillbill.ports.goalrunner.model
 
 import skillbill.agentaddon.model.AgentAddonSelection
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
+import skillbill.ports.persistence.model.GoalPlanningContractProvenance
+import skillbill.ports.persistence.model.GoalPlanningIdentity
+import skillbill.ports.persistence.model.GovernedGoalSubtaskDescriptor
 import skillbill.workflow.model.CodeReviewExecutionMode
 
 data class GoalRunnerReviewPolicy(
@@ -23,6 +26,7 @@ data class GoalRunnerChildWorkflowSetup(
   val governedSpecPath: String,
   val reviewBaseline: GoalSubtaskReviewBaseline,
   val reviewPolicy: GoalRunnerReviewPolicy,
+  val planningHydration: GoalChildPlanningHydrationRequest? = null,
 ) {
   init {
     require(subtaskId > 0) { "subtaskId must be positive." }
@@ -33,3 +37,9 @@ data class GoalRunnerChildWorkflowSetup(
     require(governedSpecPath.isNotBlank()) { "governedSpecPath must not be blank." }
   }
 }
+
+data class GoalChildPlanningHydrationRequest(
+  val identity: GoalPlanningIdentity,
+  val provenance: GoalPlanningContractProvenance,
+  val descriptor: GovernedGoalSubtaskDescriptor,
+)

@@ -187,6 +187,7 @@ class GoalRunner(
       observability,
       ledger,
       telemetryEmitter,
+      sweepOutcome as GoalPlanningSweepOutcome.PreparedAll,
     )
     state = loopResult.state
     val finalReport = requireNotNull(loopResult.report)
@@ -202,6 +203,7 @@ class GoalRunner(
     observability: GoalRunnerObservabilityEmitter,
     ledger: GoalRunnerLedgerRecorder,
     telemetryEmitter: GoalRunnerTelemetryEmitter,
+    planning: GoalPlanningSweepOutcome.PreparedAll,
   ): GoalRunnerIterationResult {
     var state = initialState
     var terminalReport: GoalRunnerRunReport? = preflightPolicyBlockedReport(state, request, ledger)
@@ -224,6 +226,7 @@ class GoalRunner(
             observability,
             ledger,
             telemetryEmitter,
+            planning,
           )
           state = result.state
           terminalReport = result.report
@@ -328,6 +331,7 @@ class GoalRunner(
     observability: GoalRunnerObservabilityEmitter,
     ledger: GoalRunnerLedgerRecorder,
     telemetryEmitter: GoalRunnerTelemetryEmitter?,
+    planning: GoalPlanningSweepOutcome.PreparedAll,
   ): GoalRunnerIterationResult {
     val subtaskId = selection.decision.subtask.id
     goalBranchSetupFailure(state, selection, request)?.let { failure ->
@@ -344,7 +348,7 @@ class GoalRunner(
       )
     }
     val reviewBaseline = requireNotNull(baselineCapture.baseline)
-    val prepared = prepareAttemptedLaunch(state, subtaskId, request, reviewBaseline)
+    val prepared = prepareAttemptedLaunch(state, subtaskId, request, reviewBaseline, planning)
     val attemptedState = prepared.state
     attempted += subtaskId
     emitSubtaskStarted(attemptedState, subtaskId, selection, request, telemetryEmitter)
@@ -534,6 +538,7 @@ class GoalRunner(
     subtaskId: Int,
     request: GoalRunnerRunRequest,
     reviewBaseline: GoalSubtaskReviewBaseline,
+    planning: GoalPlanningSweepOutcome.PreparedAll,
   ): PreparedLaunch {
     val priorWorkflowId = state.manifest.workflowIdFor(subtaskId)
     val firstRun = priorWorkflowId == null
@@ -553,7 +558,7 @@ class GoalRunner(
     val governedSpecPath = canonicalRepository.relativize(resolvedSpecPath).joinToString("/")
     val attemptedManifest = state.manifest.withAttemptedSubtask(subtaskId)
       .let { manifest -> if (firstRun) manifest.withWorkflowId(subtaskId, assignedWorkflowId) else manifest }
-    val attemptedState = if (firstRun) {
+    val attemptedState = run {
       val branch = attemptedManifest.branchPlanFor(subtaskId).branch.takeIf(String::isNotBlank)
         ?: attemptedManifest.featureBranch?.takeIf(String::isNotBlank)
         ?: error("Goal subtask '$subtaskId' has no durable branch for review baseline persistence.")
@@ -571,11 +576,10 @@ class GoalRunner(
             codeReviewMode = request.codeReviewMode ?: CodeReviewExecutionMode.DEFAULT,
             parallelReviewAgent = request.parallelReviewAgent,
           ),
+          planningHydration = planning.hydrationFor(subtaskId),
         ),
         request.dbPathOverride,
       )
-    } else {
-      manifestStore.save(state.copy(manifest = attemptedManifest), request.dbPathOverride)
     }
     return PreparedLaunch(attemptedState, assignedWorkflowId.takeIf { firstRun })
   }

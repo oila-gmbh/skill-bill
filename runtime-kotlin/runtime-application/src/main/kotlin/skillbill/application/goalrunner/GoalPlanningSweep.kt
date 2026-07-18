@@ -42,7 +42,7 @@ fun interface GoalPlanningSweep {
   fun prepare(state: GoalRunnerManifestState, request: GoalRunnerRunRequest): GoalPlanningSweepOutcome
 
   companion object {
-    val NONE: GoalPlanningSweep = GoalPlanningSweep { _, _ -> GoalPlanningSweepOutcome.PreparedAll }
+    val NONE: GoalPlanningSweep = GoalPlanningSweep { _, _ -> GoalPlanningSweepOutcome.PreparedAll() }
   }
 }
 
@@ -105,7 +105,7 @@ class DefaultGoalPlanningSweep(
     }
     val sharedCheckpoint = existingShared ?: produceSharedPreplan(shared, request, provenance)
       .getOrElse { error -> return stopped(shared, 0, error.message.orEmpty(), PHASE_PREPLAN) }
-    if (activeSubtasks.isEmpty()) return GoalPlanningSweepOutcome.PreparedAll
+    if (activeSubtasks.isEmpty()) return GoalPlanningSweepOutcome.PreparedAll(identity, provenance)
     val descriptors = runCatching { activeSubtasks.mapIndexed { order, subtask -> descriptor(shared, subtask, order) } }
       .getOrElse { error ->
         return stopped(
@@ -125,7 +125,7 @@ class DefaultGoalPlanningSweep(
         return stopped(shared, subtaskId, preparationStateReadReason(error), phaseId)
       }
       val missingId = recovery.getOrThrow()
-      if (missingId == null) return GoalPlanningSweepOutcome.PreparedAll
+      if (missingId == null) return GoalPlanningSweepOutcome.PreparedAll(identity, provenance, descriptors)
       val subtask = subtasksById[missingId]
         ?: return stopped(shared, missingId, noSuchSubtaskReason(missingId))
       val descriptor = descriptors.single { it.subtaskId == missingId }

@@ -57,7 +57,10 @@ class GoalPlanningSweepTest {
 
     val outcome = harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 2)), harness.request())
 
-    assertIs<GoalPlanningSweepOutcome.PreparedAll>(outcome)
+    val prepared = assertIs<GoalPlanningSweepOutcome.PreparedAll>(outcome)
+    assertEquals(harness.stateFor(manifest(subtaskCount = 2)).parentWorkflowId, prepared.identity?.parentGoalWorkflowId)
+    assertEquals(listOf(1, 2), prepared.descriptors.map { it.subtaskId })
+    assertNotNull(prepared.provenance)
     assertEquals(listOf("preplan", "plan", "plan"), harness.launcher.phases)
     assertEquals(listOf(0, 1, 2), harness.launcher.subtaskIds)
     assertEquals(2, harness.preparedCount())
