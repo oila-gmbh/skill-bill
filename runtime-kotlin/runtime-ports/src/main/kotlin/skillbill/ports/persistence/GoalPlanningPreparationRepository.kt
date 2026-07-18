@@ -15,6 +15,8 @@ interface GoalPlanningPreparationRepository {
   fun firstMissingOrIncompleteSubtask(parentGoalWorkflowId: String, orderedSubtaskIds: List<Int>): Int?
 
   fun preparedStatus(parentGoalWorkflowId: String, subtaskId: Int): GoalPlanningPreparationStatus?
+
+  fun deleteByGoal(parentGoalWorkflowId: String): Int
 }
 
 object EmptyGoalPlanningPreparationRepository : GoalPlanningPreparationRepository {
@@ -31,4 +33,6 @@ object EmptyGoalPlanningPreparationRepository : GoalPlanningPreparationRepositor
     orderedSubtaskIds.firstOrNull()
 
   override fun preparedStatus(parentGoalWorkflowId: String, subtaskId: Int): GoalPlanningPreparationStatus? = null
+
+  override fun deleteByGoal(parentGoalWorkflowId: String): Int = 0
 }

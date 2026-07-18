@@ -51,6 +51,21 @@ class GoalPlanningPreparationStoreTest {
   }
 
   @Test
+  fun `delete by goal removes only the selected parent preparation`() {
+    DatabaseRuntime.ensureDatabase(tempDb()).use { connection ->
+      val store = GoalPlanningPreparationStore(connection)
+      store.markPrepared(preparationRecord(parentGoalWorkflowId = "goal-1", subtaskId = 1))
+      store.markPrepared(preparationRecord(parentGoalWorkflowId = "goal-1", subtaskId = 2))
+      store.markPrepared(preparationRecord(parentGoalWorkflowId = "goal-2", subtaskId = 1))
+
+      assertEquals(2, store.deleteByGoal("goal-1"))
+
+      assertEquals(0, store.preparedCount("goal-1"))
+      assertEquals(1, store.preparedCount("goal-2"))
+    }
+  }
+
+  @Test
   fun `marking a differing provenance pair fails loudly and leaves the stored pair unchanged`() {
     DatabaseRuntime.ensureDatabase(tempDb()).use { connection ->
       val store = GoalPlanningPreparationStore(connection)

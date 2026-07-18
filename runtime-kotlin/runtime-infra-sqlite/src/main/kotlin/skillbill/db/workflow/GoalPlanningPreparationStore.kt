@@ -51,6 +51,8 @@ class GoalPlanningPreparationStore(
   override fun preparedStatus(parentGoalWorkflowId: String, subtaskId: Int): GoalPlanningPreparationStatus? =
     connection.selectStatus(parentGoalWorkflowId, subtaskId)
 
+  override fun deleteByGoal(parentGoalWorkflowId: String): Int = connection.deletePreparedByGoal(parentGoalWorkflowId)
+
   private fun requirePreparedEnvelope(record: GoalPlanningPreparationRecord) {
     val label = "${record.parentGoalWorkflowId}#${record.subtaskId}"
     val failure = envelopeFailure(record) ?: provenanceFailure(record)
@@ -125,6 +127,13 @@ class GoalPlanningPreparationStore(
 
 private fun incompatibleLoadedVersionReason(loaded: String): String =
   "loaded contract_version '$loaded' is not '$GOAL_PLANNING_PREPARATION_CONTRACT_VERSION'."
+
+private fun Connection.deletePreparedByGoal(parentGoalWorkflowId: String): Int = prepareStatement(
+  "DELETE FROM goal_planning_preparations WHERE parent_goal_workflow_id = ?",
+).use { statement ->
+  statement.setString(1, parentGoalWorkflowId)
+  statement.executeUpdate()
+}
 
 private fun Connection.upsertPreparedRow(record: GoalPlanningPreparationRecord): Boolean = prepareStatement(
   """

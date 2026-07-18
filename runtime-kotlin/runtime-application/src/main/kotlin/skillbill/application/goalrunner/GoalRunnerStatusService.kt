@@ -19,6 +19,7 @@ import skillbill.ports.goalrunner.GoalRunnerManifestStore
 import skillbill.ports.goalrunner.GoalRunnerWorkflowOutcomeStore
 import skillbill.ports.goalrunner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.model.GoalRunnerReconcileGate
+import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import skillbill.ports.workflow.NoopWorkflowGitOperations
 import skillbill.ports.workflow.WorkflowGitOperations
@@ -32,6 +33,7 @@ class GoalRunnerStatusService(
   private val manifestStore: GoalRunnerManifestStore,
   private val outcomeStore: GoalRunnerWorkflowOutcomeStore,
   private val phaseRecorder: FeatureTaskRuntimePhaseRecorder,
+  private val database: DatabaseSessionFactory,
   private val gitOperations: WorkflowGitOperations = NoopWorkflowGitOperations,
 ) {
   fun status(request: GoalRunnerStatusRequest): GoalRunnerStatusProjection? {
@@ -149,6 +151,11 @@ class GoalRunnerStatusService(
     )
     val latest = manifestStore.loadByIssueKey(request.issueKey, request.dbPathOverride, request.repoRoot) ?: loaded
     val before = latest.manifest.toResetSnapshot()
+    if (request.hard) {
+      database.transaction(request.dbPathOverride) { unitOfWork ->
+        unitOfWork.goalPlanningPreparations.deleteByGoal(latest.parentWorkflowId)
+      }
+    }
     val resetManifest = latest.manifest.resetManifest(request.hard)
     val saved = manifestStore.save(latest.copy(manifest = resetManifest), request.dbPathOverride)
     return GoalRunnerResetResult(

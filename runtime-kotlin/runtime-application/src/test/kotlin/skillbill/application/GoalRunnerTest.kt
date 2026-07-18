@@ -948,6 +948,7 @@ class GoalRunnerStatusProjectionTest {
       manifestStore = store,
       outcomeStore = outcomes,
       phaseRecorder = goalTestPhaseRecorder(),
+      database = GoalTestEmptyDatabase,
       gitOperations = StatusDiffGitOperations,
     )
 
@@ -977,7 +978,7 @@ class GoalRunnerStatusProjectionTest {
     )
     val outcomes = RecordingOutcomeStore()
     outcomes["wfl-1"] = completeOutcome(1)
-    val service = GoalRunnerStatusService(store, outcomes, goalTestPhaseRecorder())
+    val service = GoalRunnerStatusService(store, outcomes, goalTestPhaseRecorder(), GoalTestEmptyDatabase)
 
     val status = service.status(
       GoalRunnerStatusRequest(
@@ -1026,7 +1027,7 @@ class GoalRunnerStatusProjectionTest {
     val outcomes = RecordingOutcomeStore().apply {
       authoritativeOutcomesBySubtask[1] = completeOutcome(1).copy(workflowId = "wfl-1")
     }
-    val service = GoalRunnerStatusService(store, outcomes, goalTestPhaseRecorder())
+    val service = GoalRunnerStatusService(store, outcomes, goalTestPhaseRecorder(), GoalTestEmptyDatabase)
 
     val status = service.status(
       GoalRunnerStatusRequest(
@@ -1055,7 +1056,7 @@ class GoalRunnerStatusProjectionTest {
     val outcomes = RecordingOutcomeStore().apply {
       authoritativeOutcomesBySubtask[1] = completeOutcome(1).copy(workflowId = "wfl-authoritative")
     }
-    val service = GoalRunnerStatusService(store, outcomes, goalTestPhaseRecorder())
+    val service = GoalRunnerStatusService(store, outcomes, goalTestPhaseRecorder(), GoalTestEmptyDatabase)
 
     val status = service.status(
       GoalRunnerStatusRequest(
@@ -1103,7 +1104,7 @@ class GoalRunnerStatusProjectionTest {
       lastResumableStep = "review",
       suppressPr = true,
     )
-    val service = GoalRunnerStatusService(store, outcomes, goalTestPhaseRecorder())
+    val service = GoalRunnerStatusService(store, outcomes, goalTestPhaseRecorder(), GoalTestEmptyDatabase)
 
     val status = service.status(
       GoalRunnerStatusRequest(
@@ -1162,7 +1163,7 @@ class GoalRunnerStatusProjectionTest {
         lastSnapshotUpdatedAt = "2026-05-30 00:00:00",
       )
     }
-    val service = GoalRunnerStatusService(store, outcomes, goalTestPhaseRecorder())
+    val service = GoalRunnerStatusService(store, outcomes, goalTestPhaseRecorder(), GoalTestEmptyDatabase)
 
     val status = service.status(
       GoalRunnerStatusRequest(
@@ -1193,7 +1194,7 @@ class GoalRunnerStatusProjectionTest {
         suppressPr = true,
       )
     }
-    val service = GoalRunnerStatusService(store, outcomes, goalTestPhaseRecorder())
+    val service = GoalRunnerStatusService(store, outcomes, goalTestPhaseRecorder(), GoalTestEmptyDatabase)
 
     val status = service.status(
       GoalRunnerStatusRequest(
@@ -1225,7 +1226,7 @@ class GoalRunnerStatusProjectionTest {
       lastResumableStep = "review",
       suppressPr = true,
     )
-    val service = GoalRunnerStatusService(store, outcomes, goalTestPhaseRecorder())
+    val service = GoalRunnerStatusService(store, outcomes, goalTestPhaseRecorder(), GoalTestEmptyDatabase)
 
     val status = service.status(
       GoalRunnerStatusRequest(
@@ -1263,7 +1264,7 @@ class GoalRunnerStatusProjectionTest {
       lastResumableStep = "preplan",
       suppressPr = true,
     )
-    val service = GoalRunnerStatusService(store, outcomes, goalTestPhaseRecorder())
+    val service = GoalRunnerStatusService(store, outcomes, goalTestPhaseRecorder(), GoalTestEmptyDatabase)
 
     val status = service.status(
       GoalRunnerStatusRequest(
@@ -1310,7 +1311,7 @@ class GoalRunnerStatusProjectionTest {
     )
     val outcomes = RecordingOutcomeStore()
     outcomes["wfl-1"] = completeOutcome(1)
-    val service = GoalRunnerStatusService(store, outcomes, goalTestPhaseRecorder())
+    val service = GoalRunnerStatusService(store, outcomes, goalTestPhaseRecorder(), GoalTestEmptyDatabase)
 
     val status = service.status(
       GoalRunnerStatusRequest(
@@ -1504,7 +1505,7 @@ class GoalRunnerObservabilityTest {
         .withWorkflowId(1, "wfl-active"),
     )
     val outcomes = RecordingOutcomeStore()
-    val service = GoalRunnerStatusService(store, outcomes, goalTestPhaseRecorder())
+    val service = GoalRunnerStatusService(store, outcomes, goalTestPhaseRecorder(), GoalTestEmptyDatabase)
 
     val reset = service.reset(
       GoalRunnerResetRequest(
@@ -1528,6 +1529,31 @@ class GoalRunnerObservabilityTest {
     assertEquals("pending", store.manifest.subtasks.single().status)
     assertEquals(null, store.manifest.subtasks.single().workflowId)
     assertEquals(CurrentSubtaskIntent(subtaskId = 1, action = "start"), store.manifest.currentSubtaskIntent)
+  }
+
+  @Test
+  fun `hard reset deletes goal planning preparation before saving pending projection`() {
+    val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 2))
+    val database = GoalTestPlanningDatabase()
+    val service = GoalRunnerStatusService(
+      store,
+      RecordingOutcomeStore(),
+      goalTestPhaseRecorder(),
+      database = database,
+    )
+
+    val reset = service.reset(
+      GoalRunnerResetRequest(
+        issueKey = "SKILL-56",
+        hard = true,
+        dbPathOverride = "/tmp/skillbill-goal-runner/metrics.db",
+      ),
+    )
+
+    requireNotNull(reset)
+    assertEquals(listOf("wfl-parent"), database.deletedParentGoalIds)
+    assertEquals(listOf<String?>("/tmp/skillbill-goal-runner/metrics.db"), database.transactionDbOverrides)
+    assertEquals(listOf("pending", "pending"), store.manifest.subtasks.map(DecompositionSubtask::status))
   }
 
   private fun runRequest(): GoalRunnerRunRequest = GoalRunnerRunRequest(
@@ -2480,7 +2506,7 @@ class GoalRunnerStatusAttributionTest {
       progressToken = "child-progress-token",
       latestLivenessSignal = "durable_progress step=implement attempt=1",
     )
-    val service = GoalRunnerStatusService(store, outcomes, goalTestPhaseRecorder())
+    val service = GoalRunnerStatusService(store, outcomes, goalTestPhaseRecorder(), GoalTestEmptyDatabase)
 
     val status = service.status(
       GoalRunnerStatusRequest(
@@ -2507,7 +2533,12 @@ class GoalRunnerStatusAttributionTest {
     val store = InMemoryGoalManifestStore(
       manifest = manifest(subtaskCount = 1).withBlockedSubtask(1, workflowId = "wfl-1", reason = "needs review"),
     )
-    val service = GoalRunnerStatusService(store, RecordingOutcomeStore(), goalTestPhaseRecorder())
+    val service = GoalRunnerStatusService(
+      store,
+      RecordingOutcomeStore(),
+      goalTestPhaseRecorder(),
+      GoalTestEmptyDatabase,
+    )
 
     val status = service.status(
       GoalRunnerStatusRequest(
@@ -2533,7 +2564,7 @@ class GoalRunnerStatusAttributionTest {
     val store = InMemoryGoalManifestStore(
       manifest = manifest(subtaskCount = 1).withBlockedSubtask(1, workflowId = workflowId, reason = "needs review"),
     )
-    val service = GoalRunnerStatusService(store, RecordingOutcomeStore(), harness.recorder)
+    val service = GoalRunnerStatusService(store, RecordingOutcomeStore(), harness.recorder, GoalTestEmptyDatabase)
 
     val status = service.status(
       GoalRunnerStatusRequest(
@@ -2668,6 +2699,39 @@ private object GoalTestEmptyDatabase : DatabaseSessionFactory {
     override val workflowStates: WorkflowStateRepository = GoalTestEmptyWorkflowStateRepository
     override val workList = skillbill.ports.persistence.EmptyWorkListRepository
     override val goalPlanningPreparations = skillbill.ports.persistence.EmptyGoalPlanningPreparationRepository
+  }
+}
+
+private class GoalTestPlanningDatabase : DatabaseSessionFactory {
+  private val dbPath = Path.of("/fake/goal-test-planning.db")
+  val deletedParentGoalIds = mutableListOf<String>()
+  val transactionDbOverrides = mutableListOf<String?>()
+  private val planningRepository = object : skillbill.ports.persistence.GoalPlanningPreparationRepository by
+  skillbill.ports.persistence.EmptyGoalPlanningPreparationRepository {
+    override fun deleteByGoal(parentGoalWorkflowId: String): Int {
+      deletedParentGoalIds += parentGoalWorkflowId
+      return 1
+    }
+  }
+
+  override fun resolveDbPath(dbOverride: String?): Path = dbPath
+  override fun databaseExists(dbOverride: String?): Boolean = true
+  override fun <T> read(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unitOfWork())
+  override fun <T> transaction(dbOverride: String?, block: (UnitOfWork) -> T): T {
+    transactionDbOverrides += dbOverride
+    return block(unitOfWork())
+  }
+
+  private fun unitOfWork(): UnitOfWork = object : UnitOfWork {
+    override val dbPath: Path = this@GoalTestPlanningDatabase.dbPath
+    override val reviews: ReviewRepository get() = error("unused by hard reset test")
+    override val learnings: LearningRepository get() = error("unused by hard reset test")
+    override val lifecycleTelemetry: LifecycleTelemetryRepository get() = error("unused by hard reset test")
+    override val telemetryReconciliation: TelemetryReconciliationRepository get() = error("unused by hard reset test")
+    override val telemetryOutbox: TelemetryOutboxRepository get() = error("unused by hard reset test")
+    override val workflowStates: WorkflowStateRepository = GoalTestEmptyWorkflowStateRepository
+    override val workList = skillbill.ports.persistence.EmptyWorkListRepository
+    override val goalPlanningPreparations = planningRepository
   }
 }
 

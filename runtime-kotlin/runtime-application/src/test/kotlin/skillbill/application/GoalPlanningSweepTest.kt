@@ -745,6 +745,14 @@ private class InMemoryPreparationRepository(
       GoalPlanningPreparationStatus(parentGoalWorkflowId, subtaskId, record.preparationStatus, record.provenance)
     }
 
+  override fun deleteByGoal(parentGoalWorkflowId: String): Int {
+    val matchingIds = records.values
+      .filter { record -> record.parentGoalWorkflowId == parentGoalWorkflowId }
+      .map(GoalPlanningPreparationRecord::subtaskId)
+    matchingIds.forEach(records::remove)
+    return matchingIds.size
+  }
+
   fun count(): Int = records.size
 }
 
