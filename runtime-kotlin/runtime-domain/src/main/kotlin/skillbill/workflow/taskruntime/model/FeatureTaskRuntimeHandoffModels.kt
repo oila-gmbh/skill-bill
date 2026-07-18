@@ -1,5 +1,6 @@
 package skillbill.workflow.taskruntime.model
 
+import skillbill.boundary.OpenBoundaryMap
 import skillbill.agentaddon.model.AgentAddonSelection
 import skillbill.workflow.model.CodeReviewExecutionMode
 
@@ -106,6 +107,9 @@ data class FeatureTaskRuntimePhaseOutput(
   val iteration: Int,
   /** The validated phase output payload (JSON/YAML text), forwarded downstream. */
   val payload: String,
+  /** Canonical envelope produced by the single validation seam. */
+  @OpenBoundaryMap("Canonical validated phase-output envelope")
+  val normalizedEnvelope: Map<String, Any?>? = null,
 ) {
   init {
     require(phaseId.isNotBlank()) { "FeatureTaskRuntimePhaseOutput.phaseId must be non-blank." }

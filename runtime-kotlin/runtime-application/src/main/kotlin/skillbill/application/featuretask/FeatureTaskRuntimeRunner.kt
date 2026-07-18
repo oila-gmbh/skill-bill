@@ -9,6 +9,7 @@ import skillbill.application.model.FeatureTaskRuntimeRunReport
 import skillbill.application.model.FeatureTaskRuntimeRunRequest
 import skillbill.application.model.FeatureTaskRuntimeSubtaskOutcome
 import skillbill.application.workflow.repoRoot
+import skillbill.contracts.JsonSupport
 import skillbill.goalrunner.model.GoalRunnerLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
@@ -325,10 +326,14 @@ internal fun invalidateLegacyPlanWithoutPreplan(completed: MutableSet<String>) {
 
 internal fun recordToOutput(record: FeatureTaskRuntimePhaseRecord): FeatureTaskRuntimePhaseOutput? =
   record.outputArtifact?.let { artifact ->
+    val normalizedEnvelope = JsonSupport.parseObjectOrNull(artifact)
+      ?.let(JsonSupport::jsonElementToValue)
+      ?.let(JsonSupport::anyToStringAnyMap)
     FeatureTaskRuntimePhaseOutput(
       phaseId = record.phaseId,
       iteration = record.attemptCount,
       payload = artifact,
+      normalizedEnvelope = normalizedEnvelope,
     )
   }
 

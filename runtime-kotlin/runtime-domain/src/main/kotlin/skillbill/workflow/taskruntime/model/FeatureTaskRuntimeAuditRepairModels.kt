@@ -93,10 +93,88 @@ data class FeatureTaskRuntimeRepairItemResult(
 ) {
   init {
     requireNonBlank(repairItemId, "repair_item_id")
-    require(changedPathsOrSymbols.all(String::isNotBlank)) { "changed_paths_or_symbols entries must be nonblank." }
+    requireNonBlankList(changedPathsOrSymbols, "changed_paths_or_symbols")
     requireNonBlankList(executedVerification, "executed_verification")
     requireNonBlank(resultEvidence, "result_evidence")
   }
+}
+
+data class FeatureTaskRuntimeUnresolvedGap(
+  val gapId: String,
+  val acceptanceCriterionRef: String,
+  val generation: Int,
+) {
+  init {
+    requireNonBlank(gapId, "gap_id")
+    requireNonBlank(acceptanceCriterionRef, "acceptance_criterion_ref")
+    require(generation > 0) { "gap generation must be positive." }
+  }
+}
+
+data class FeatureTaskRuntimeUnresolvedGapLedger(
+  val unresolvedGaps: List<FeatureTaskRuntimeUnresolvedGap>,
+) {
+  init { requireUnique(unresolvedGaps.map { it.gapId }, "unresolved gap_id") }
+
+  fun allocateGapId(criterionRef: String): String {
+    requireNonBlank(criterionRef, "acceptance_criterion_ref")
+    unresolvedGaps.firstOrNull { it.acceptanceCriterionRef == criterionRef }?.let { return it.gapId }
+    val generation = unresolvedGaps.filter { it.acceptanceCriterionRef == criterionRef }
+      .maxOfOrNull { it.generation }?.plus(1) ?: 1
+    return "${criterionRef.lowercase()}-gap-$generation"
+  }
+}
+
+data class FeatureTaskRuntimeUnresolvableRepairBlock(
+  val gapId: String,
+  val repairItemId: String,
+  val evidence: String,
+) {
+  init {
+    requireNonBlank(gapId, "gap_id")
+    requireNonBlank(repairItemId, "repair_item_id")
+    requireNonBlank(evidence, "evidence")
+  }
+}
+
+data class FeatureTaskRuntimeAuditRepairState(
+  val acceptedPlans: List<FeatureTaskRuntimeAuditRepairPlan>,
+  val repairItemResults: List<FeatureTaskRuntimeRepairItemResult>,
+  val priorGapDispositions: List<FeatureTaskRuntimePriorGapDisposition>,
+  val unresolvedGapLedger: FeatureTaskRuntimeUnresolvedGapLedger,
+  val repositoryFingerprint: String?,
+  val progress: FeatureTaskRuntimeAuditRepairProgress,
+) {
+  init {
+    require(acceptedPlans.isNotEmpty()) { "Audit repair state must retain at least one accepted plan." }
+    require(repositoryFingerprint == null || repositoryFingerprint.isNotBlank()) {
+      "repository fingerprint must be nonblank when present."
+    }
+  }
+}
+
+data class FeatureTaskRuntimeAuditRepairProgressDecision(
+  val blocked: Boolean,
+  val reason: String?,
+)
+
+fun detectAuditRepairNonProgress(
+  previousGapIds: Set<String>,
+  currentGapIds: Set<String>,
+  previousRepositoryFingerprint: String,
+  currentRepositoryFingerprint: String,
+  newlyResolvedRepairItemCount: Int,
+): FeatureTaskRuntimeAuditRepairProgressDecision {
+  val equivalentGaps = previousGapIds == currentGapIds
+  val repositoryUnchanged = previousRepositoryFingerprint == currentRepositoryFingerprint
+  val blocked = equivalentGaps && (repositoryUnchanged || newlyResolvedRepairItemCount == 0)
+  return FeatureTaskRuntimeAuditRepairProgressDecision(
+    blocked = blocked,
+    reason = if (blocked) {
+      "Audit repair made no progress: unresolved gap identities are unchanged and " +
+        if (repositoryUnchanged) "the repository fingerprint is unchanged." else "no repair item was newly resolved."
+    } else null,
+  )
 }
 
 data class FeatureTaskRuntimePriorGapDisposition(val gapId: String, val status: Status, val evidence: String) {

@@ -100,7 +100,7 @@ internal object FeatureTaskRuntimeOutputVerification {
     }
 
   private fun outputObject(output: FeatureTaskRuntimePhaseOutput): Map<String, Any?>? =
-    JsonSupport.parseObjectOrNull(output.payload)
+    output.normalizedEnvelope ?: JsonSupport.parseObjectOrNull(output.payload)
       ?.let(JsonSupport::jsonElementToValue)
       ?.let(JsonSupport::anyToStringAnyMap)
 }

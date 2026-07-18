@@ -3,6 +3,8 @@ package skillbill.infrastructure.fs
 import me.tatarka.inject.annotations.Inject
 import skillbill.contracts.workflow.FeatureTaskRuntimePhaseOutputSchemaValidator
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
+import skillbill.workflow.NormalizedFeatureTaskRuntimePhaseOutput
+import skillbill.contracts.JsonSupport
 
 /**
  * Bridges the domain-owned [FeatureTaskRuntimePhaseOutputValidator] port to the
@@ -16,4 +18,12 @@ class FeatureTaskRuntimePhaseOutputValidatorAdapter : FeatureTaskRuntimePhaseOut
 
   override fun validateAndReadPhaseOutput(phaseOutputText: String, sourceLabel: String): Map<String, Any?> =
     FeatureTaskRuntimePhaseOutputSchemaValidator.validateAndReadPhaseOutput(phaseOutputText, sourceLabel)
+
+  override fun normalizePhaseOutput(
+    phaseOutputText: String,
+    sourceLabel: String,
+  ): NormalizedFeatureTaskRuntimePhaseOutput {
+    val envelope = FeatureTaskRuntimePhaseOutputSchemaValidator.validateAndReadPhaseOutput(phaseOutputText, sourceLabel)
+    return NormalizedFeatureTaskRuntimePhaseOutput(JsonSupport.mapToJsonString(envelope), envelope)
+  }
 }

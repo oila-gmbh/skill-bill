@@ -7,6 +7,12 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairPlan
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairItem
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairItemOutcome
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairItemResult
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeUnresolvedGap
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeUnresolvedGapLedger
+import skillbill.workflow.taskruntime.model.detectAuditRepairNonProgress
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class FeatureTaskRuntimeAuditRepairModelsTest {
   @Test
@@ -44,6 +50,32 @@ class FeatureTaskRuntimeAuditRepairModelsTest {
     assertFailsWith<IllegalArgumentException> {
       plan.requireTerminalResults(listOf(result("GAP-001-R01")))
     }
+  }
+
+  @Test
+  fun `recurring criterion reuses its durable gap identity`() {
+    val ledger = FeatureTaskRuntimeUnresolvedGapLedger(
+      listOf(FeatureTaskRuntimeUnresolvedGap("ac-001-gap-2", "AC-001", 2)),
+    )
+
+    assertEquals("ac-001-gap-2", ledger.allocateGapId("AC-001"))
+    assertEquals("ac-002-gap-1", ledger.allocateGapId("AC-002"))
+  }
+
+  @Test
+  fun `equivalent gaps without repository change block as non progress`() {
+    val decision = detectAuditRepairNonProgress(setOf("gap-1"), setOf("gap-1"), "digest", "digest", 0)
+
+    assertTrue(decision.blocked)
+    assertTrue(requireNotNull(decision.reason).contains("repository fingerprint"))
+  }
+
+  @Test
+  fun `changed gaps with resolved work remain eligible to continue`() {
+    val decision = detectAuditRepairNonProgress(setOf("gap-1"), setOf("gap-2"), "before", "after", 1)
+
+    assertFalse(decision.blocked)
+    assertEquals(null, decision.reason)
   }
 
   private fun plan(items: List<FeatureTaskRuntimeRepairItem>) = FeatureTaskRuntimeAuditRepairPlan(

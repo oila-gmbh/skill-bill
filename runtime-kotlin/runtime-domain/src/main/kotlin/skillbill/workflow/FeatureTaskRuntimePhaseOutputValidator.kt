@@ -31,4 +31,18 @@ interface FeatureTaskRuntimePhaseOutputValidator {
       ?.let(skillbill.contracts.JsonSupport::anyToStringAnyMap)
       ?: emptyMap()
   }
+
+  fun normalizePhaseOutput(phaseOutputText: String, sourceLabel: String): NormalizedFeatureTaskRuntimePhaseOutput {
+    val envelope = validateAndReadPhaseOutput(phaseOutputText, sourceLabel)
+    return NormalizedFeatureTaskRuntimePhaseOutput(
+      canonicalJson = skillbill.contracts.JsonSupport.mapToJsonString(envelope),
+      envelope = envelope,
+    )
+  }
 }
+
+data class NormalizedFeatureTaskRuntimePhaseOutput(
+  val canonicalJson: String,
+  @OpenBoundaryMap("Canonical validated phase-output envelope")
+  val envelope: Map<String, Any?>,
+)

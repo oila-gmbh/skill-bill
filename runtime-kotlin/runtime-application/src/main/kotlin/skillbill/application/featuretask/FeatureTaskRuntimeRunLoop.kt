@@ -1154,9 +1154,8 @@ internal class FeatureTaskRuntimeRunLoop(
     observability: FeatureTaskRuntimeRunObservability,
     fileManifest: FeatureTaskRuntimePhaseFileManifest,
   ): AttemptResult = try {
-    val outputMap = outputValidator.validateAndReadPhaseOutput(outputText, sourceLabel = run.phaseId)
-    val canonicalOutput = JsonSupport.mapToJsonString(outputMap)
-    settleValidatedOutput(run, iteration, canonicalOutput, outputMap, observability, fileManifest)
+    val normalized = outputValidator.normalizePhaseOutput(outputText, sourceLabel = run.phaseId)
+    settleValidatedOutput(run, iteration, normalized.canonicalJson, normalized.envelope, observability, fileManifest)
   } catch (error: InvalidFeatureTaskRuntimePhaseOutputSchemaError) {
     schemaInvalidAttempt(run, iteration, error.reason, observability, fileManifest)
   }
@@ -1233,13 +1232,30 @@ internal class FeatureTaskRuntimeRunLoop(
       return "Audit-gap remediation requires exact repair_item_result identifier equality; expected=$expected actual=$actual."
     }
     val invalid = resultMaps.any { result ->
-      result["outcome"] !in setOf("fixed", "already_satisfied") ||
+      result.keys != setOf(
+        "repair_item_id",
+        "outcome",
+        "changed_paths_or_symbols",
+        "executed_verification",
+        "result_evidence",
+      ) ||
+        result["outcome"] !in setOf("fixed", "already_satisfied") ||
+        (result["changed_paths_or_symbols"] as? List<*>)?.filterIsInstance<String>()?.none(String::isNotBlank) != false ||
         (result["executed_verification"] as? List<*>)?.filterIsInstance<String>()?.none(String::isNotBlank) != false ||
-        (result["result_evidence"] as? String).isNullOrBlank()
+        (result["result_evidence"] as? String).isNullOrBlank() ||
+        result.values.any(::containsForbiddenAuditRepairDeferral)
     }
     return if (invalid) {
       "Every audit repair item must have a terminal outcome and concrete verification/result evidence."
     } else null
+  }
+
+  private fun containsForbiddenAuditRepairDeferral(value: Any?): Boolean = when (value) {
+    is String -> Regex("\\b(defer(?:red|ring)?|later)\\b.*\\b(review|audit|validation|test(?:ing)?)\\b", RegexOption.IGNORE_CASE)
+      .containsMatchIn(value)
+    is List<*> -> value.any(::containsForbiddenAuditRepairDeferral)
+    is Map<*, *> -> value.values.any(::containsForbiddenAuditRepairDeferral)
+    else -> false
   }
 
   private fun persistAcceptedOutput(
@@ -1269,7 +1285,7 @@ internal class FeatureTaskRuntimeRunLoop(
     }
     observability.completedEvent(run.phaseId, run.resolvedAgent.resolvedAgentId, iteration)
     return AttemptResult.settled(
-      PhaseOutcome.completed(FeatureTaskRuntimePhaseOutput(run.phaseId, iteration, outputText)),
+      PhaseOutcome.completed(FeatureTaskRuntimePhaseOutput(run.phaseId, iteration, outputText, outputMap)),
     )
   }
 

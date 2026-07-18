@@ -3771,7 +3771,7 @@ internal fun validProducedOutputs(phaseId: String): String = when (phaseId) {
   "commit_push" -> """{"commit_push_result": {"commit_sha": "commit-runtime-1"}}"""
   // Mutating phases must carry the reconciliation report or the runtime's reconciliation gate
   // rejects the output (SKILL-85 Subtask 3). implement_fix is mutating too (SKILL-85 Subtask 4).
-  "implement", "implement_fix" -> """{"changed_files": ["src/Foo.kt"], "reconciled_state": {"reconciled": true}}"""
+  "implement", "implement_fix" -> """{"changed_files": ["src/Foo.kt"], "reconciled_state": {"reconciled": true}, "repair_item_results":[{"repair_item_id":"ac-002-gap-1-item-1","outcome":"fixed","changed_paths_or_symbols":["src/Foo.kt"],"executed_verification":["Focused test passed."],"result_evidence":"Repository behavior now satisfies AC-002."}]}"""
   // A clean review must emit a verification signal or the review gate blocks (SKILL-85 Subtask 4):
   // an explicit empty findings array affirms "no blocking findings" and advances.
   "review" -> """{"findings": []}"""

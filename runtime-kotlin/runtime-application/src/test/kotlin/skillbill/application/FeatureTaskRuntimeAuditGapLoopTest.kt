@@ -561,7 +561,30 @@ internal fun auditGapsOutput(): String = """
     "phase_id": "audit",
     "status": "completed",
     "summary": "Audit found unmet acceptance criteria.",
-    "produced_outputs": {"unmet_criteria": [{"message": "$AUDIT_GAP_MESSAGE"}]}
+    "verdict": "gaps_found",
+    "produced_outputs": {
+      "unmet_criteria": [{"acceptance_criterion_ref":"AC-002","message": "$AUDIT_GAP_MESSAGE"}],
+      "audit_repair_plan": {
+        "contract_version":"0.1",
+        "gaps":[{
+          "gap_id":"ac-002-gap-1",
+          "acceptance_criterion_ref":"AC-002",
+          "acceptance_criterion_text":"The audit gap is repaired.",
+          "failure_evidence":"The audit observed the missing behavior.",
+          "diagnosis":"Implement and verify the missing behavior.",
+          "affected_boundary":"runtime application",
+          "repair_items":[{
+            "repair_item_id":"ac-002-gap-1-item-1",
+            "intended_outcome":"The missing behavior is implemented.",
+            "implementation_actions":["Reconcile the implementation."],
+            "affected_paths_or_symbols":["src/Foo.kt"],
+            "required_verification":["Run the focused test."],
+            "depends_on":[],
+            "status":"pending"
+          }]
+        }]
+      }
+    }
   }
 """.trimIndent()
 
@@ -571,6 +594,7 @@ internal fun auditSatisfiedOutput(): String = """
     "phase_id": "audit",
     "status": "completed",
     "summary": "Every acceptance criterion is met.",
+    "verdict": "satisfied",
     "produced_outputs": {"unmet_criteria": []}
   }
 """.trimIndent()

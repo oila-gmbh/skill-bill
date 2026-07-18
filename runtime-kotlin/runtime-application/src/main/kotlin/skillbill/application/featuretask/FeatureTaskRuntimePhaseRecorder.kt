@@ -116,16 +116,32 @@ class FeatureTaskRuntimePhaseRecorder(
         completion.toArtifactMap(),
         FEATURE_TASK_RUNTIME_PHASE_LEDGER_LIMIT,
       )
-      val auditRepairPatch = if (request.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT) {
-        request.outputArtifact
-          ?.let(JsonSupport::parseObjectOrNull)
-          ?.let(JsonSupport::jsonElementToValue)
-          ?.let(JsonSupport::anyToStringAnyMap)
-          ?.get("produced_outputs")
-          ?.let(JsonSupport::anyToStringAnyMap)
-          ?.get("audit_repair_plan")
-          ?.let { mapOf(FEATURE_TASK_RUNTIME_AUDIT_REPAIR_STATE_ARTIFACT_KEY to it) }
-          .orEmpty()
+      val outputProduced = request.outputArtifact
+        ?.let(JsonSupport::parseObjectOrNull)
+        ?.let(JsonSupport::jsonElementToValue)
+        ?.let(JsonSupport::anyToStringAnyMap)
+        ?.get("produced_outputs")
+        ?.let(JsonSupport::anyToStringAnyMap)
+      val priorAuditState = artifacts[FEATURE_TASK_RUNTIME_AUDIT_REPAIR_STATE_ARTIFACT_KEY]
+        ?.let(JsonSupport::anyToStringAnyMap)
+        .orEmpty()
+      val latestPlan = outputProduced?.get("audit_repair_plan")
+      val repairResults = outputProduced?.get("repair_item_results")
+      val auditRepairPatch = if (latestPlan != null || repairResults != null) {
+        val acceptedPlans = (priorAuditState["accepted_plans"] as? List<*>).orEmpty().toMutableList()
+        if (latestPlan != null && acceptedPlans.none { it == latestPlan }) acceptedPlans += latestPlan
+        val executionHistory = (priorAuditState["execution_history"] as? List<*>).orEmpty().toMutableList()
+        if (repairResults != null) executionHistory += repairResults
+        mapOf(
+          FEATURE_TASK_RUNTIME_AUDIT_REPAIR_STATE_ARTIFACT_KEY to mapOf(
+            "contract_version" to "0.1",
+            "accepted_plans" to acceptedPlans,
+            "latest_plan" to (latestPlan ?: priorAuditState["latest_plan"]),
+            "execution_history" to executionHistory,
+            "prior_gap_dispositions" to (priorAuditState["prior_gap_dispositions"] ?: emptyList<Any>()),
+            "unresolved_gap_ledger" to (latestPlan ?: priorAuditState["unresolved_gap_ledger"]),
+          ),
+        )
       } else emptyMap()
       persistPatch(
         unitOfWork.workflowStates,
