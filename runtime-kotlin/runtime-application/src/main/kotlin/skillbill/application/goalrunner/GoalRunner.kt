@@ -822,7 +822,7 @@ class GoalRunner(
     observability: GoalRunnerObservabilityEmitter,
     ledger: GoalRunnerLedgerRecorder,
   ): GoalRunnerIterationResult {
-    val completed = manifestStore.save(
+    val completed = manifestStore.saveRuntimeState(
       state.copy(manifest = state.manifest.withCompletedSubtask(subtaskId, reconciled)),
       request.dbPathOverride,
     )

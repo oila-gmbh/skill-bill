@@ -774,6 +774,74 @@ class GoalRunnerTest {
   )
 }
 
+class GoalRunnerHandoffTest {
+  @Test
+  fun `completed subtask does not dirty projection before next review baseline`() {
+    var projectionDirty = false
+    val store = InMemoryGoalManifestStore(
+      manifest = manifest(subtaskCount = 2),
+      projectionSaved = { projectionDirty = true },
+    )
+    val outcomes = RecordingOutcomeStore()
+    val launcher = RecordingSubtaskLauncher { request ->
+      val subtaskId = requireNotNull(request.skillRunRequest.subtaskId)
+      projectionDirty = false
+      store.mutate { current -> current.withWorkflowId(subtaskId, "wfl-$subtaskId") }
+      outcomes["wfl-$subtaskId"] = completeOutcome(subtaskId)
+      launchFacts()
+    }
+    val reviewOperations = object : GoalSubtaskReviewGitOperations {
+      override fun captureBaseline(repoRoot: Path, expectedBranch: String): GoalSubtaskReviewBaselineResult =
+        if (projectionDirty) {
+          GoalSubtaskReviewBaselineResult(status = "error", error = "unstaged tracked changes are present")
+        } else {
+          GoalSubtaskReviewBaselineResult(
+            status = "ok",
+            baseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
+          )
+        }
+
+      override fun buildInput(
+        repoRoot: Path,
+        baseline: GoalSubtaskReviewBaseline,
+        expectedBranch: String,
+      ): GoalSubtaskReviewInputResult = error("Review input is not used by this test.")
+
+      override fun recoverBaseline(
+        repoRoot: Path,
+        baseline: GoalSubtaskReviewBaseline,
+        expectedBranch: String,
+      ): GoalSubtaskReviewBaselineResult = error("Review baseline recovery is not used by this test.")
+    }
+    val runner = GoalRunner(
+      manifestStore = store,
+      subtaskLauncher = launcher,
+      outcomeStore = outcomes,
+      pullRequestPort = RecordingPullRequestPort(),
+      gitOperations = object :
+        WorkflowGitOperations by RecordingGitOperations(
+          currentBranch = "feat/SKILL-56-goal",
+        ),
+        GoalSubtaskReviewGitOperationsProvider {
+        override val goalSubtaskReviewOperations: GoalSubtaskReviewGitOperations = reviewOperations
+      },
+    )
+
+    val report = runner.run(
+      GoalRunnerRunRequest(
+        issueKey = "SKILL-56",
+        repoRoot = Path.of("/tmp/skillbill-goal-runner"),
+        invokedAgentId = "claude",
+        dbPathOverride = "/tmp/skillbill-goal-runner/metrics.db",
+      ),
+    )
+
+    assertIs<GoalRunnerRunReport.Completed>(report)
+    assertEquals(listOf(1, 2), launcher.requests.map { it.skillRunRequest.subtaskId })
+    assertEquals(2, store.runtimeStateSaveCount)
+  }
+}
+
 class GoalRunnerRepositoryPathTest {
   @Test
   fun `absolute spec path through a repository alias stays inside the canonical repository`() {
@@ -1574,10 +1642,13 @@ class GoalRunnerObservabilityTest {
 internal class InMemoryGoalManifestStore(
   manifest: DecompositionManifest,
   private val hardReset: ((GoalRunnerManifestState, String?) -> Unit)? = null,
+  private val projectionSaved: (() -> Unit)? = null,
 ) : GoalRunnerManifestStore {
   var manifest: DecompositionManifest = manifest
     private set
   var saveCount: Int = 0
+    private set
+  var runtimeStateSaveCount: Int = 0
     private set
   val newChildWorkflowSetups: MutableList<GoalRunnerChildWorkflowSetup> = mutableListOf()
 
@@ -1590,6 +1661,13 @@ internal class InMemoryGoalManifestStore(
 
   override fun save(state: GoalRunnerManifestState, dbPathOverride: String?): GoalRunnerManifestState {
     saveCount += 1
+    projectionSaved?.invoke()
+    manifest = state.manifest
+    return state.copy(dbPath = dbPathOverride ?: state.dbPath, manifest = manifest)
+  }
+
+  override fun saveRuntimeState(state: GoalRunnerManifestState, dbPathOverride: String?): GoalRunnerManifestState {
+    runtimeStateSaveCount += 1
     manifest = state.manifest
     return state.copy(dbPath = dbPathOverride ?: state.dbPath, manifest = manifest)
   }
