@@ -9,7 +9,6 @@ import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.decomposition.encodeDecompositionManifestMap
 import skillbill.application.decomposition.loadManifestOrNull
 import skillbill.application.featuretask.FeatureTaskExecutionIdentityPolicy
-import skillbill.application.featuretask.sha256HexUtf8
 import skillbill.application.normalizeRequiredIssueKey
 import skillbill.application.workflow.WorkflowFamily
 import skillbill.application.workflow.decompositionRuntime
@@ -20,11 +19,10 @@ import skillbill.application.workflow.repoRoot
 import skillbill.application.workflow.toRecord
 import skillbill.application.workflow.toSnapshot
 import skillbill.contracts.JsonSupport
+import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.error.InvalidGoalSubtaskReviewStateSchemaError
 import skillbill.error.InvalidWorkflowStateSchemaError
-import skillbill.error.InvalidGoalPlanningPreparationSchemaError
-import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
 import skillbill.goalrunner.model.GOAL_ATTEMPT_LEDGER_ARTIFACT_KEY
 import skillbill.goalrunner.model.GOAL_ATTEMPT_LEDGER_LIMIT
 import skillbill.goalrunner.model.GOAL_SESSION_ACCOUNTING_ARTIFACT_KEY
@@ -54,7 +52,6 @@ import skillbill.ports.persistence.WorkflowStateRepository
 import skillbill.ports.persistence.model.FeatureTaskExecutionIdentity
 import skillbill.ports.persistence.model.FeatureTaskRouteScope
 import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
-import skillbill.ports.persistence.model.GoalPlanningIdentity
 import skillbill.ports.workflow.DecompositionManifestFileStore
 import skillbill.ports.workflow.NoopWorkflowGitOperations
 import skillbill.ports.workflow.WorkflowGitOperations
@@ -81,14 +78,7 @@ import skillbill.workflow.model.appendBoundedHistoryBySequence
 import skillbill.workflow.model.goalObservabilityLatestEventFromArtifacts
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY
-import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_PLANNING_IMPORT_ARTIFACT_KEY
-import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY
-import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalPlanningImport
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewArtifactDecoder
@@ -123,6 +113,7 @@ class WorkflowGoalRunnerManifestStore(
   private val phaseOutputValidator: FeatureTaskRuntimePhaseOutputValidator,
 ) : GoalRunnerManifestStore {
   private val engine: WorkflowEngine = WorkflowEngine(workflowSnapshotValidator)
+  private val planningHydrator = GoalChildPlanningHydrator(phaseOutputValidator)
 
   override fun loadByIssueKey(issueKey: String, dbPathOverride: String?, repoRoot: Path?): GoalRunnerManifestState? {
     val stored = loadFromWorkflowStore(issueKey, dbPathOverride)
@@ -208,7 +199,7 @@ class WorkflowGoalRunnerManifestStore(
         )
       }
       requireMatchingGoalContinuation(existingChild, state, setup)
-      requireMatchingPlanningImport(unitOfWork, existingChild, setup)
+      planningHydrator.requireMatchingImport(unitOfWork, existingChild, setup)
     }
     val childUpdated = if (existingChild == null) {
       openGoalChildWorkflow(unitOfWork, state, setup, parentUpdated.workflowId)
@@ -258,7 +249,8 @@ class WorkflowGoalRunnerManifestStore(
       "subtask".takeIf { request.descriptor.subtaskId != setup.subtaskId },
       "governed spec".takeIf { request.descriptor.governedSubSpecPath != setup.governedSpecPath },
       "manifest subtask".takeIf {
-        selected == null || canonicalGovernedSpecPath(selected.specPath, setup.repositoryIdentity) != setup.governedSpecPath
+        selected == null ||
+          canonicalGovernedSpecPath(selected.specPath, setup.repositoryIdentity) != setup.governedSpecPath
       },
     )
     if (failures.isNotEmpty()) {
@@ -341,9 +333,13 @@ class WorkflowGoalRunnerManifestStore(
       "${WorkflowFamily.TASK_RUNTIME.definition.defaultSessionPrefix}-${state.manifest.issueKey}",
       WorkflowFamily.TASK_RUNTIME.definition.defaultInitialStepId,
     )
-    val hydration = hydrateGoalPlanning(unitOfWork, setup, requireNotNull(setup.planningHydration) {
-      "Prepared goal child '${setup.subtaskId}' requires planning hydration."
-    })
+    val hydration = planningHydrator.hydrate(
+      unitOfWork,
+      setup,
+      requireNotNull(setup.planningHydration) {
+        "Prepared goal child '${setup.subtaskId}' requires planning hydration."
+      },
+    )
     return engine.updateRecord(
       WorkflowFamily.TASK_RUNTIME.definition,
       openedChild,
@@ -355,181 +351,6 @@ class WorkflowGoalRunnerManifestStore(
         sessionId = openedChild.sessionId.orEmpty(),
       ),
     )
-  }
-
-  private data class PlanningHydration(
-    val currentStepId: String,
-    val stepUpdates: List<Map<String, Any?>>,
-    val artifacts: Map<String, Any?>,
-  )
-
-  private fun hydrateGoalPlanning(
-    unitOfWork: UnitOfWork,
-    setup: GoalRunnerChildWorkflowSetup,
-    request: skillbill.ports.goalrunner.model.GoalChildPlanningHydrationRequest,
-  ): PlanningHydration {
-    val shared = unitOfWork.goalPlanningPreparations.findSharedPreplan(request.identity)
-      ?: throw InvalidGoalPlanningPreparationSchemaError(setup.workflowId, "preplan", "shared preplan is missing")
-    val plan = unitOfWork.goalPlanningPreparations.findSubtaskPlan(
-      request.identity,
-      request.descriptor.subtaskId,
-      request.descriptor.governedSubSpecPath,
-    ) ?: throw InvalidGoalPlanningPreparationSchemaError(setup.workflowId, "plan", "subtask plan is missing")
-    requirePreparedPlanningPayload("preplan", shared.preplanPayload, shared.payloadSha256, setup.workflowId)
-    requirePreparedPlanningPayload("plan", plan.planPayload, plan.payloadSha256, setup.workflowId)
-    if (shared.provenance != request.provenance || plan.provenance != request.provenance ||
-      plan.manifestOrder != request.descriptor.manifestOrder || plan.subSpecHash != request.descriptor.subSpecHash
-    ) {
-      throw IncompatibleGoalPlanningPreparationRecoveryError(
-        request.identity.parentGoalWorkflowId,
-        setup.subtaskId,
-        "stored planning provenance or selected subtask descriptor differs from the hydration request",
-      )
-    }
-    val importedAt = Instant.now().toString()
-    val records = linkedMapOf(
-      "preplan" to importedRecord("preplan", shared.preplanPayload, importedAt).toArtifactMap(),
-      "plan" to importedRecord("plan", plan.planPayload, importedAt).toArtifactMap(),
-    )
-    val ledger = listOf("preplan", "plan").mapIndexed { sequence, phaseId ->
-      FeatureTaskRuntimePhaseLedgerEntry(
-        FeatureTaskRuntimePhaseLedgerAction.COMPLETE,
-        sequence,
-        importedAt,
-        phaseId,
-        1,
-      ).toArtifactMap()
-    }
-    val provenance = FeatureTaskRuntimeGoalPlanningImport(
-      request.identity.parentGoalWorkflowId, request.identity.normalizedIssueKey, request.identity.repositoryIdentity,
-      request.provenance.parentSpecHash, request.provenance.decompositionManifestHash,
-      request.provenance.planningContractId, request.provenance.planningContractVersion,
-      request.provenance.phaseOutputContractId, request.provenance.phaseOutputContractVersion,
-      request.descriptor.subtaskId, request.descriptor.manifestOrder, request.descriptor.governedSubSpecPath,
-      request.descriptor.subSpecHash, shared.payloadSha256, plan.payloadSha256,
-    ).toArtifactMap()
-    return PlanningHydration(
-      "implement",
-      records.keys.map { linkedMapOf("step_id" to it, "status" to "completed", "attempt_count" to 1) },
-      mapOf(
-        FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY to records,
-        FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY to ledger,
-        FEATURE_TASK_RUNTIME_GOAL_PLANNING_IMPORT_ARTIFACT_KEY to provenance,
-      ),
-    )
-  }
-
-  private fun requirePreparedPlanningPayload(
-    phaseId: String,
-    payload: String,
-    expectedDigest: String,
-    workflowId: String,
-  ) {
-    if (sha256HexUtf8(payload) != expectedDigest) {
-      throw InvalidGoalPlanningPreparationSchemaError(workflowId, "$phaseId.payload_sha256", "payload digest differs")
-    }
-    val decoded = phaseOutputValidator.validateAndReadPhaseOutput(payload, phaseId)
-    if (decoded["phase_id"] != phaseId || decoded["status"] != "completed" ||
-      (decoded["produced_outputs"] as? Map<*, *>)?.isEmpty() != false
-    ) {
-      throw InvalidGoalPlanningPreparationSchemaError(
-        workflowId,
-        "$phaseId.payload",
-        "imported phase output must match its phase and be completed with non-empty produced_outputs",
-      )
-    }
-  }
-
-  private fun importedRecord(phaseId: String, payload: String, importedAt: String) = FeatureTaskRuntimePhaseRecord(
-    phaseId = phaseId,
-    status = "completed",
-    attemptCount = 1,
-    startedAt = importedAt,
-    finishedAt = importedAt,
-    durationMillis = 0,
-    resolvedAgentId = "goal-planning-import",
-    outputArtifact = payload,
-  )
-
-  private fun requireMatchingPlanningImport(
-    unitOfWork: UnitOfWork,
-    existing: WorkflowStateSnapshot,
-    setup: GoalRunnerChildWorkflowSetup,
-  ) {
-    val request = requireNotNull(setup.planningHydration) {
-      "Prepared goal child '${setup.subtaskId}' requires planning hydration."
-    }
-    val artifacts = decodeArtifacts(existing.artifactsJson)
-    val stored = artifacts[FEATURE_TASK_RUNTIME_GOAL_PLANNING_IMPORT_ARTIFACT_KEY]
-      ?: throw IncompatibleGoalPlanningPreparationRecoveryError(
-        request.identity.parentGoalWorkflowId, setup.subtaskId, "existing child is missing imported planning provenance",
-      )
-    val records = artifacts[FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY] as? Map<*, *>
-    val expected = stored as? Map<*, *>
-    val required = mapOf(
-      "source_kind" to "imported_goal_planning",
-      "parent_goal_workflow_id" to request.identity.parentGoalWorkflowId,
-      "normalized_issue_key" to request.identity.normalizedIssueKey,
-      "repository_identity" to request.identity.repositoryIdentity,
-      "subtask_id" to request.descriptor.subtaskId,
-      "manifest_order" to request.descriptor.manifestOrder,
-      "governed_sub_spec_path" to request.descriptor.governedSubSpecPath,
-      "sub_spec_hash" to request.descriptor.subSpecHash,
-      "parent_spec_hash" to request.provenance.parentSpecHash,
-      "decomposition_manifest_hash" to request.provenance.decompositionManifestHash,
-      "planning_contract_id" to request.provenance.planningContractId,
-      "planning_contract_version" to request.provenance.planningContractVersion,
-      "phase_output_contract_id" to request.provenance.phaseOutputContractId,
-      "phase_output_contract_version" to request.provenance.phaseOutputContractVersion,
-    )
-    val shared = unitOfWork.goalPlanningPreparations.findSharedPreplan(request.identity)
-    val plan = unitOfWork.goalPlanningPreparations.findSubtaskPlan(
-      request.identity,
-      request.descriptor.subtaskId,
-      request.descriptor.governedSubSpecPath,
-    )
-    shared?.let {
-      requirePreparedPlanningPayload("preplan", it.preplanPayload, it.payloadSha256, setup.workflowId)
-    }
-    plan?.let {
-      requirePreparedPlanningPayload("plan", it.planPayload, it.payloadSha256, setup.workflowId)
-    }
-    val preparedPayloads = mapOf("preplan" to shared?.preplanPayload, "plan" to plan?.planPayload)
-    val importedRecordsMatch = listOf("preplan", "plan").all { phaseId ->
-      val record = records?.get(phaseId) as? Map<*, *>
-      val output = record?.get("output_artifact") as? String
-      val digestKey = "${phaseId}_payload_sha256"
-      record?.get("phase_id") == phaseId && record["status"] == "completed" &&
-        (record["attempt_count"] as? Number)?.toInt() == 1 &&
-        record["resolved_agent_id"] == "goal-planning-import" && output != null &&
-        output == preparedPayloads[phaseId] && sha256HexUtf8(output) == expected?.get(digestKey) &&
-        (record["duration_millis"] as? Number)?.toLong() == 0L &&
-        record["started_at"] == record["finished_at"]
-    }
-    val importedLedger = (artifacts[FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY] as? List<*>)
-      ?.take(2)?.mapNotNull { it as? Map<*, *> }
-    val ledgerMatches = importedLedger?.size == 2 && importedLedger.withIndex().all { (index, entry) ->
-      entry["action"] == "complete" && (entry["sequence_number"] as? Number)?.toInt() == index &&
-        entry["phase_id"] == listOf("preplan", "plan")[index] &&
-        (entry["attempt_count"] as? Number)?.toInt() == 1 && entry["resolved_agent_id"] == null
-    }
-    val planningSteps = decodeWorkflowSteps(existing.stepsJson).filter { it.stepId in setOf("preplan", "plan") }
-    val stepsMatch = planningSteps.size == 2 && planningSteps.all {
-      it.status == "completed" && it.attemptCount == 1
-    }
-    val expectedPreplanDigest = expected?.get("preplan_payload_sha256")
-    val expectedPlanDigest = expected?.get("plan_payload_sha256")
-    val preparedMatches = shared != null && plan != null && shared.provenance == request.provenance &&
-      plan.provenance == request.provenance && plan.manifestOrder == request.descriptor.manifestOrder &&
-      plan.subSpecHash == request.descriptor.subSpecHash && shared.payloadSha256 == expectedPreplanDigest &&
-      plan.payloadSha256 == expectedPlanDigest
-    if (expected == null || required.any { (key, value) -> expected[key] != value } ||
-      !preparedMatches || !importedRecordsMatch || !ledgerMatches || !stepsMatch
-    ) {
-      throw IncompatibleGoalPlanningPreparationRecoveryError(
-        request.identity.parentGoalWorkflowId, setup.subtaskId, "existing child planning import conflicts with request",
-      )
-    }
   }
 
   private fun childWorkflowArtifacts(
@@ -1956,7 +1777,7 @@ private fun WorkflowStateSnapshot.progressToken(): String = listOf(
   finishedAt.orEmpty(),
 ).joinToString("\n")
 
-private fun decodeWorkflowSteps(stepsJson: String): List<WorkflowStepState> {
+internal fun decodeWorkflowSteps(stepsJson: String): List<WorkflowStepState> {
   val element = runCatching { JsonSupport.json.parseToJsonElement(stepsJson) }.getOrNull() ?: return emptyList()
   return (JsonSupport.jsonElementToValue(element) as? List<*>).orEmpty().mapNotNull { raw ->
     val item = raw as? Map<*, *> ?: return@mapNotNull null

@@ -1,10 +1,10 @@
 package skillbill.ports.goalrunner.model
 
 import skillbill.agentaddon.model.AgentAddonSelection
-import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.ports.persistence.model.GoalPlanningContractProvenance
 import skillbill.ports.persistence.model.GoalPlanningIdentity
 import skillbill.ports.persistence.model.GovernedGoalSubtaskDescriptor
+import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.workflow.model.CodeReviewExecutionMode
 
 data class GoalRunnerReviewPolicy(

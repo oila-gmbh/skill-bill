@@ -458,6 +458,7 @@ runtime-ports
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch.fromArtifactMap`
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact.toArtifactMap`
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact.fromArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalPlanningImport.toArtifactMap`
     - `skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding.toArtifactMap`
     - `skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding.fromArtifactMap`
     - `skillbill.workflow.taskruntime.model.GoalSubtaskReviewPassResult.toArtifactMap`
@@ -913,6 +914,7 @@ Categories:
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch.fromArtifactMap`
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact.toArtifactMap`
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact.fromArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalPlanningImport.toArtifactMap`
 - `skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding.toArtifactMap`
 - `skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding.fromArtifactMap`
 - `skillbill.workflow.taskruntime.model.GoalSubtaskReviewPassResult.toArtifactMap`

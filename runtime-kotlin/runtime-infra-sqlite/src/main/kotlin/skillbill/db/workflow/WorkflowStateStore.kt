@@ -12,6 +12,7 @@ import skillbill.ports.persistence.FeatureTaskRuntimeWorkerRepository
 import skillbill.ports.persistence.FeatureTaskRuntimeWorkflowStateRepository
 import skillbill.ports.persistence.FeatureTaskWorkflowStateRepository
 import skillbill.ports.persistence.FeatureVerifyWorkflowStateRepository
+import skillbill.ports.persistence.GoalChildWorkflowStateRepository
 import skillbill.ports.persistence.WorkflowStateRepository
 import skillbill.ports.persistence.model.FeatureImplementSessionSummary
 import skillbill.ports.persistence.model.FeatureTaskExecutionIdentity
@@ -56,6 +57,7 @@ class WorkflowStateStore private constructor(
   featureTaskStore: FeatureTaskWorkflowStateStore,
 ) : WorkflowStateRepository,
   FeatureTaskWorkflowStateRepository by featureTaskStore,
+  GoalChildWorkflowStateRepository by featureTaskStore,
   FeatureTaskRuntimeWorkerRepository by featureTaskStore,
   FeatureImplementWorkflowStateRepository by FeatureImplementWorkflowStateStore(connection),
   FeatureVerifyWorkflowStateRepository by FeatureVerifyWorkflowStateStore(connection),
@@ -66,6 +68,7 @@ class WorkflowStateStore private constructor(
 private class FeatureTaskWorkflowStateStore(
   private val connection: Connection,
 ) : FeatureTaskWorkflowStateRepository,
+  GoalChildWorkflowStateRepository,
   FeatureTaskRuntimeWorkerRepository {
   override fun getFeatureTaskRuntimeWorkerOwnership(workflowId: String): FeatureTaskRuntimeWorkerOwnership? =
     connection.featureTaskRuntimeWorkerOwnership(workflowId)

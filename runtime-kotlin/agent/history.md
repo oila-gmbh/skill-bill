@@ -1,3 +1,13 @@
+## [2026-07-18] SKILL-128 child planning hydration (subtask 3)
+Areas: runtime-kotlin/runtime-{application,infra-sqlite,ports}, runtime-kotlin/ARCHITECTURE.md
+- Prepared goal children atomically import the parent goal's validated shared preplan and their own provenance-matched plan as completed phase records, steps, ledger entries, and immutable artifacts before becoming runnable at `implement`.
+- Resume revalidates stored preparation and imported artifacts byte-for-byte; identical hydration is idempotent across crashes and siblings, while missing, corrupt, cross-subtask, or conflicting inputs loud-fail before implementation.
+- Imported planning remains available through the existing DAG for implementation, audit-gap remediation, and inspection without launching or simulating child planning agents; standalone feature tasks retain their own preplan and plan execution path.
+- Pattern: isolate transactional goal-child planning hydration and import verification in a cohesive hydrator, with goal-child deletion exposed as a distinct persistence capability. reusable
+- Integration coverage locks normal hydration, duplicate/crash resume, sibling ownership, provenance and payload rejection, audit reuse, and standalone isolation at the production transaction boundary.
+Feature flag: N/A
+Acceptance criteria: 10/10 implemented
+
 ## [2026-07-18] SKILL-128 singleton goal planning sweep (subtask 2)
 Areas: runtime-kotlin/runtime-{application,cli}
 - Goal execution launches one parent-goal preplan from shared repository, platform-pack, boundary-memory, validation, decomposition, and parent-spec context, then derives one distinct plan per ordered non-skipped subtask. reusable

@@ -38,10 +38,15 @@ import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequest
 import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequestOutcome
 import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequestRejectionReason
 import skillbill.goalrunner.model.GoalSessionAccounting
+import skillbill.ports.goalrunner.model.GoalChildPlanningHydrationRequest
 import skillbill.ports.goalrunner.model.GoalRunnerAttemptLedgerRecordRequest
+import skillbill.ports.goalrunner.model.GoalRunnerChildWorkflowSetup
+import skillbill.ports.goalrunner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.model.GoalRunnerProgressEventRecordRequest
+import skillbill.ports.goalrunner.model.GoalRunnerReviewPolicy
 import skillbill.ports.goalrunner.model.GoalRunnerSessionAccountingRecordRequest
 import skillbill.ports.persistence.DatabaseSessionFactory
+import skillbill.ports.persistence.GoalPlanningPreparationRepository
 import skillbill.ports.persistence.LearningRepository
 import skillbill.ports.persistence.LifecycleTelemetryRepository
 import skillbill.ports.persistence.ReviewRepository
@@ -55,16 +60,25 @@ import skillbill.ports.persistence.model.FeatureTaskRouteScope
 import skillbill.ports.persistence.model.FeatureTaskWorkflowCandidate
 import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import skillbill.ports.persistence.model.FeatureVerifySessionSummary
+import skillbill.ports.persistence.model.GoalPlanningContractProvenance
+import skillbill.ports.persistence.model.GoalPlanningIdentity
+import skillbill.ports.persistence.model.GoalPlanningPreparationRecord
+import skillbill.ports.persistence.model.GoalPlanningPreparationStatus
+import skillbill.ports.persistence.model.GoalSubtaskPlanCheckpoint
+import skillbill.ports.persistence.model.GovernedGoalSubtaskDescriptor
+import skillbill.ports.persistence.model.SharedGoalPreplanCheckpoint
 import skillbill.ports.persistence.model.WorkflowStateRecord
 import skillbill.ports.workflow.NoopWorkflowGitOperations
 import skillbill.ports.workflow.UnavailableDecompositionManifestFileStore
 import skillbill.ports.workflow.WorkflowGitOperations
+import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.model.WorkflowGitOperationResult
 import skillbill.workflow.GoalObservabilityEventValidator
 import skillbill.workflow.GoalProgressEventValidator
 import skillbill.workflow.WorkflowEngine
 import skillbill.workflow.WorkflowSnapshotValidator
 import skillbill.workflow.implement.FeatureImplementWorkflowDefinition
+import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.model.CurrentSubtaskIntent
 import skillbill.workflow.model.DecompositionExecutionModel
 import skillbill.workflow.model.DecompositionManifest
@@ -2262,9 +2276,256 @@ private fun completeDecompositionRuntime(): DecompositionManifest = decompositio
   ),
 )
 
+class GoalChildPlanningHydrationTransactionIntegrationTest {
+  @Test
+  fun `atomic hydration is singular across duplicate resume and preserves imported outputs for audit reuse`() {
+    val harness = hydrationHarness()
+
+    harness.store.saveNewChildWorkflow(harness.state, harness.setup)
+    val first = requireNotNull(harness.workflows.getFeatureTaskRuntimeWorkflow(CHILD_ID))
+    harness.store.saveNewChildWorkflow(harness.state, harness.setup)
+    val resumed = requireNotNull(harness.workflows.getFeatureTaskRuntimeWorkflow(CHILD_ID))
+
+    assertEquals(first, resumed, "duplicate resume must be a byte-identical no-op")
+    assertEquals("implement", resumed.currentStepId)
+    assertContains(resumed.artifactsJson, "shared-preplan")
+    assertContains(resumed.artifactsJson, "owned-plan-one")
+    assertEquals(2, Regex("goal-planning-import").findAll(resumed.artifactsJson).count())
+    assertEquals(2, Regex("\\\"action\\\":\\\"complete\\\"").findAll(resumed.artifactsJson).count())
+  }
+
+  @Test
+  fun `hydration committed before implementation resumes directly at implement`() {
+    val harness = hydrationHarness()
+    harness.store.saveNewChildWorkflow(harness.state, harness.setup)
+
+    val recoveredStore = harness.newStore()
+    recoveredStore.saveNewChildWorkflow(harness.state, harness.setup)
+
+    val child = requireNotNull(harness.workflows.getFeatureTaskRuntimeWorkflow(CHILD_ID))
+    assertEquals("implement", child.currentStepId)
+    assertContains(child.stepsJson, "\"step_id\":\"preplan\",\"status\":\"completed\"")
+    assertContains(child.stepsJson, "\"step_id\":\"plan\",\"status\":\"completed\"")
+  }
+
+  @Test
+  fun `siblings share preplan but hydrate only their owned plans`() {
+    val harness = hydrationHarness(twoSubtasks = true)
+    harness.store.saveNewChildWorkflow(harness.state, harness.setup)
+    harness.store.saveNewChildWorkflow(harness.state, harness.setupFor(2))
+
+    val first = requireNotNull(harness.workflows.getFeatureTaskRuntimeWorkflow(CHILD_ID)).artifactsJson
+    val second = requireNotNull(harness.workflows.getFeatureTaskRuntimeWorkflow("wfl-child-2")).artifactsJson
+    assertContains(first, "shared-preplan")
+    assertContains(second, "shared-preplan")
+    assertContains(first, "owned-plan-one")
+    assertFalse(first.contains("owned-plan-two"))
+    assertContains(second, "owned-plan-two")
+    assertFalse(second.contains("owned-plan-one"))
+  }
+
+  @Test
+  fun `missing corrupt and conflicting preparation fail before a child is durable`() {
+    listOf("missing", "corrupt", "conflict").forEach { variant ->
+      val harness = hydrationHarness(variant = variant)
+      assertFailsWith<RuntimeException>(variant) {
+        harness.store.saveNewChildWorkflow(harness.state, harness.setup)
+      }
+      assertNull(harness.workflows.getFeatureTaskRuntimeWorkflow(CHILD_ID), variant)
+      assertNull(harness.workflows.executionIdentity(CHILD_ID), variant)
+    }
+  }
+
+  @Test
+  fun `standalone open never reads goal preparation at the hydration boundary`() {
+    val preparations = RecordingPlanningPreparations(errorOnRead = true)
+    val workflows = InMemoryWorkflowStates()
+    val service = WorkflowService(
+      database = FakeDatabaseSessionFactory(workflows, planningPreparations = preparations),
+      decompositionManifestFileStore = UnavailableDecompositionManifestFileStore,
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      decompositionManifestValidator = testDecompositionManifestValidator,
+    )
+
+    val opened = service.openFeatureTask(
+      kind = WorkflowFamilyKind.TASK_RUNTIME,
+      issueKey = "SKILL-128",
+      repositoryIdentity = REPOSITORY_IDENTITY,
+      governedSpecPath = ".feature-specs/SKILL-128/spec.md",
+    )
+
+    assertIs<WorkflowOpenResult.Ok>(opened)
+    assertEquals(0, preparations.readCount)
+    assertEquals("preplan", opened.snapshot.currentStepId)
+  }
+
+  private fun hydrationHarness(twoSubtasks: Boolean = false, variant: String = "valid"): HydrationHarness {
+    val workflows = InMemoryWorkflowStates()
+    val manifest = hydrationManifest(twoSubtasks)
+    workflows.saveFeatureImplementWorkflow(
+      workflowRecord(
+        "goal-parent",
+        mapOf(
+          DECOMPOSITION_RUNTIME_ARTIFACT_KEY to
+            encodeDecompositionManifestMap(manifest, testDecompositionManifestValidator),
+        ),
+      ),
+    )
+    val preparations = RecordingPlanningPreparations()
+    if (variant != "missing") preparations.shared = sharedCheckpoint()
+    preparations.plans[1] = planCheckpoint(1).let {
+      when (variant) {
+        "corrupt" -> it.copy(planPayload = it.planPayload + "corrupt")
+        "conflict" -> it.copy(provenance = it.provenance.copy(parentSpecHash = "f".repeat(64)))
+        else -> it
+      }
+    }
+    if (twoSubtasks) preparations.plans[2] = planCheckpoint(2)
+    return HydrationHarness(workflows, preparations, manifest)
+  }
+
+  private data class HydrationHarness(
+    val workflows: InMemoryWorkflowStates,
+    val preparations: RecordingPlanningPreparations,
+    val manifest: DecompositionManifest,
+  ) {
+    val state = GoalRunnerManifestState("goal-parent", "/fake/metrics.db", manifest)
+    val store = newStore()
+    val setup = setupFor(1)
+
+    fun newStore() = WorkflowGoalRunnerManifestStore(
+      database = FakeDatabaseSessionFactory(workflows, planningPreparations = preparations),
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      decompositionManifestValidator = testDecompositionManifestValidator,
+      decompositionManifestFileStore = NoWriteDecompositionManifestFileStore,
+      phaseOutputValidator = AlwaysValidValidator,
+    )
+
+    fun setupFor(id: Int): GoalRunnerChildWorkflowSetup {
+      val descriptor = descriptor(id)
+      return GoalRunnerChildWorkflowSetup(
+        subtaskId = id,
+        workflowId = if (id == 1) CHILD_ID else "wfl-child-$id",
+        goalBranch = "feat/SKILL-128",
+        normalizedIssueKey = "SKILL-128",
+        repositoryIdentity = REPOSITORY_IDENTITY,
+        governedSpecPath = descriptor.governedSubSpecPath,
+        reviewBaseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
+        reviewPolicy = GoalRunnerReviewPolicy(CodeReviewExecutionMode.INLINE),
+        planningHydration = GoalChildPlanningHydrationRequest(identity(), provenance(), descriptor),
+      )
+    }
+  }
+
+  private companion object {
+    val NoWriteDecompositionManifestFileStore = object :
+      skillbill.ports.workflow.DecompositionManifestFileStore by TestDecompositionManifestFileStore {
+      override fun writeTextAtomically(target: Path, content: String) = Unit
+    }
+
+    const val CHILD_ID = "wfl-child-1"
+    val REPOSITORY_IDENTITY = "repo-root-realpath-v1:${Path.of("").toAbsolutePath().normalize()}"
+    val PREPLAN_PAYLOAD = """
+      {
+        "contract_version":"0.1","phase_id":"preplan","status":"completed","summary":"shared",
+        "produced_outputs":{"digest":"shared-preplan"}
+      }
+    """.trimIndent()
+    val PLAN_ONE_PAYLOAD = """
+      {
+        "contract_version":"0.1","phase_id":"plan","status":"completed","summary":"one",
+        "produced_outputs":{"plan":"owned-plan-one"}
+      }
+    """.trimIndent()
+    val PLAN_TWO_PAYLOAD = """
+      {
+        "contract_version":"0.1","phase_id":"plan","status":"completed","summary":"two",
+        "produced_outputs":{"plan":"owned-plan-two"}
+      }
+    """.trimIndent()
+
+    fun identity() = GoalPlanningIdentity("goal-parent", "SKILL-128", REPOSITORY_IDENTITY)
+    fun provenance() = GoalPlanningContractProvenance(
+      parentSpecHash = "a".repeat(64),
+      decompositionManifestHash = "b".repeat(64),
+      planningContractId = "https://skill-bill.dev/contracts/goal-planning-preparation-schema.yaml",
+    )
+    fun descriptor(id: Int) = GovernedGoalSubtaskDescriptor(
+      id,
+      id - 1,
+      ".feature-specs/SKILL-128/spec_subtask_$id.md",
+      id.toString().repeat(64),
+    )
+    fun sharedCheckpoint() = SharedGoalPreplanCheckpoint(
+      identity = identity(),
+      provenance = provenance(),
+      payloadSha256 = skillbill.application.featuretask.sha256HexUtf8(PREPLAN_PAYLOAD),
+      preplanPayload = PREPLAN_PAYLOAD,
+    )
+    fun planCheckpoint(id: Int): GoalSubtaskPlanCheckpoint {
+      val payload = if (id == 1) PLAN_ONE_PAYLOAD else PLAN_TWO_PAYLOAD
+      val descriptor = descriptor(id)
+      return GoalSubtaskPlanCheckpoint(
+        identity = identity(),
+        subtaskId = id,
+        manifestOrder = descriptor.manifestOrder,
+        governedSubSpecPath = descriptor.governedSubSpecPath,
+        subSpecHash = descriptor.subSpecHash,
+        provenance = provenance(),
+        payloadSha256 = skillbill.application.featuretask.sha256HexUtf8(payload),
+        planPayload = payload,
+      )
+    }
+    fun hydrationManifest(twoSubtasks: Boolean) = DecompositionManifest(
+      issueKey = "SKILL-128", featureName = "hydration", parentSpecPath = ".feature-specs/SKILL-128/spec.md",
+      status = "pending", executionModel = DecompositionExecutionModel.SAME_BRANCH_COMMIT_PER_SUBTASK,
+      baseBranch = "main", featureBranch = "feat/SKILL-128",
+      currentSubtaskIntent = CurrentSubtaskIntent(1, "resume"),
+      subtasks = (1..if (twoSubtasks) 2 else 1).map { id ->
+        DecompositionSubtask(id, "subtask-$id", descriptor(id).governedSubSpecPath, "pending")
+      },
+    )
+  }
+}
+
+private class RecordingPlanningPreparations(
+  private val errorOnRead: Boolean = false,
+) : GoalPlanningPreparationRepository {
+  var shared: SharedGoalPreplanCheckpoint? = null
+  val plans = mutableMapOf<Int, GoalSubtaskPlanCheckpoint>()
+  var readCount = 0
+
+  override fun checkpointSharedPreplan(checkpoint: SharedGoalPreplanCheckpoint) {
+    shared = checkpoint
+  }
+  override fun findSharedPreplan(expectedIdentity: GoalPlanningIdentity): SharedGoalPreplanCheckpoint? {
+    readCount++
+    check(!errorOnRead) { "standalone path read goal preparation" }
+    return shared?.takeIf { it.identity == expectedIdentity }
+  }
+  override fun checkpointSubtaskPlan(checkpoint: GoalSubtaskPlanCheckpoint) {
+    plans[checkpoint.subtaskId] = checkpoint
+  }
+  override fun findSubtaskPlan(expectedIdentity: GoalPlanningIdentity, subtaskId: Int, governedSubSpecPath: String) =
+    plans[subtaskId]?.takeIf { it.identity == expectedIdentity && it.governedSubSpecPath == governedSubSpecPath }
+  override fun listSubtaskPlansOrdered(
+    expectedIdentity: GoalPlanningIdentity,
+    orderedDescriptors: List<GovernedGoalSubtaskDescriptor>,
+  ) = orderedDescriptors.mapNotNull { findSubtaskPlan(expectedIdentity, it.subtaskId, it.governedSubSpecPath) }
+  override fun markPrepared(record: GoalPlanningPreparationRecord) = Unit
+  override fun findByGoalAndSubtask(parentGoalWorkflowId: String, subtaskId: Int): GoalPlanningPreparationRecord? = null
+  override fun listPreparedByGoalOrdered(parentGoalWorkflowId: String) = emptyList<GoalPlanningPreparationRecord>()
+  override fun preparedCount(parentGoalWorkflowId: String) = 0
+  override fun firstMissingOrIncompleteSubtask(parentGoalWorkflowId: String, orderedSubtaskIds: List<Int>) = null
+  override fun preparedStatus(parentGoalWorkflowId: String, subtaskId: Int): GoalPlanningPreparationStatus? = null
+  override fun deleteByGoal(parentGoalWorkflowId: String) = 0
+}
+
 internal class FakeDatabaseSessionFactory(
   private val workflowStates: WorkflowStateRepository,
   private val fakeDbPath: Path = Path.of("/fake/metrics.db"),
+  private val planningPreparations: GoalPlanningPreparationRepository =
+    skillbill.ports.persistence.EmptyGoalPlanningPreparationRepository,
 ) : DatabaseSessionFactory {
   override fun resolveDbPath(dbOverride: String?): Path = fakeDbPath
   override fun databaseExists(dbOverride: String?): Boolean = true
@@ -2285,7 +2546,7 @@ internal class FakeDatabaseSessionFactory(
     override val telemetryOutbox: TelemetryOutboxRepository
       get() = error("TelemetryOutboxRepository is not exercised in WorkflowServiceTest.")
     override val workList = skillbill.ports.persistence.EmptyWorkListRepository
-    override val goalPlanningPreparations = skillbill.ports.persistence.EmptyGoalPlanningPreparationRepository
+    override val goalPlanningPreparations = planningPreparations
   }
 }
 
@@ -2299,6 +2560,9 @@ internal class InMemoryWorkflowStates : WorkflowStateRepository {
     val existing = identities.putIfAbsent(identity.workflowId, identity)
     require(existing == null || existing == identity) { "Conflicting immutable identity for '${identity.workflowId}'." }
   }
+
+  override fun getFeatureTaskExecutionIdentity(workflowId: String): FeatureTaskExecutionIdentity? =
+    identities[workflowId]
 
   fun executionIdentity(workflowId: String): FeatureTaskExecutionIdentity? = identities[workflowId]
 
