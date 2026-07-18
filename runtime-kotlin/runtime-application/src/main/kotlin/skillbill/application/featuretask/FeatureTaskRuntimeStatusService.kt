@@ -153,6 +153,7 @@ class FeatureTaskRuntimeStatusService(
       attemptCount = attemptCount,
       resolvedAgentId = resolvedAgentId.takeUnless { it == GOAL_PLANNING_IMPORT_AGENT_SENTINEL },
       finished = finishedAt != null,
+      executionOrigin = executionOrigin.wireValue,
     )
   }
 

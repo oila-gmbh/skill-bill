@@ -181,6 +181,8 @@ data class FeatureTaskRuntimePhaseRecord(
   val finishedAt: String? = null,
   val durationMillis: Long? = null,
   val resolvedAgentId: String,
+  val executionOrigin: FeatureTaskRuntimePhaseExecutionOrigin =
+    FeatureTaskRuntimePhaseExecutionOrigin.AGENT_EXECUTED,
   val outputArtifact: String? = null,
   val blockedReason: String? = null,
   val failureDisposition: FeatureTaskRuntimeFailureDisposition? = null,
@@ -224,6 +226,7 @@ data class FeatureTaskRuntimePhaseRecord(
     "started_at" to startedAt,
     "first_started_at" to firstStartedAt,
     "resolved_agent_id" to resolvedAgentId,
+    "execution_origin" to executionOrigin.wireValue,
   ).apply {
     finishedAt?.let { put("finished_at", it) }
     durationMillis?.let { put("duration_millis", it) }
@@ -253,6 +256,9 @@ data class FeatureTaskRuntimePhaseRecord(
         finishedAt = raw.optionalStringField("finished_at"),
         durationMillis = raw.optionalLongField("duration_millis"),
         resolvedAgentId = raw.requireStringField("resolved_agent_id"),
+        executionOrigin = raw.optionalStringField("execution_origin")?.let(
+          FeatureTaskRuntimePhaseExecutionOrigin::fromWireValue,
+        ) ?: FeatureTaskRuntimePhaseExecutionOrigin.AGENT_EXECUTED,
         outputArtifact = raw.optionalStringField("output_artifact"),
         blockedReason = raw.optionalStringField("blocked_reason"),
         failureDisposition = raw.optionalStringField("failure_disposition")?.let { value ->
@@ -269,6 +275,20 @@ data class FeatureTaskRuntimePhaseRecord(
         reviewPassNumber = raw.optionalIntField("review_pass_number"),
       )
     }
+  }
+}
+
+enum class FeatureTaskRuntimePhaseExecutionOrigin(val wireValue: String) {
+  AGENT_EXECUTED("agent-executed"),
+  GOAL_PLANNING_HYDRATED("goal-planning-hydrated"),
+  ;
+
+  companion object {
+    fun fromWireValue(value: String): FeatureTaskRuntimePhaseExecutionOrigin =
+      entries.firstOrNull { it.wireValue == value }
+        ?: throw InvalidWorkflowStateSchemaError(
+          "Feature-task-runtime artifact field 'execution_origin' has unsupported value '$value'.",
+        )
   }
 }
 
@@ -317,6 +337,8 @@ data class FeatureTaskRuntimePhaseLedgerEntry(
   val phaseId: String,
   val attemptCount: Int,
   val resolvedAgentId: String? = null,
+  val executionOrigin: FeatureTaskRuntimePhaseExecutionOrigin =
+    FeatureTaskRuntimePhaseExecutionOrigin.AGENT_EXECUTED,
   val fixLoopIteration: Int? = null,
   val blockedReason: String? = null,
   /** Authoritative per-edge trail for a backward-edge re-entry, distinct from [attemptCount]. */
@@ -353,6 +375,7 @@ data class FeatureTaskRuntimePhaseLedgerEntry(
     "attempt_count" to attemptCount,
   ).apply {
     resolvedAgentId?.let { put("resolved_agent_id", it) }
+    put("execution_origin", executionOrigin.wireValue)
     fixLoopIteration?.let { put("fix_loop_iteration", it) }
     blockedReason?.let { put("blocked_reason", it) }
     loopId?.let { put("loop_id", it) }
@@ -370,6 +393,9 @@ data class FeatureTaskRuntimePhaseLedgerEntry(
         phaseId = raw.requireStringField("phase_id"),
         attemptCount = raw.requireIntField("attempt_count"),
         resolvedAgentId = raw.optionalStringField("resolved_agent_id"),
+        executionOrigin = raw.optionalStringField("execution_origin")?.let(
+          FeatureTaskRuntimePhaseExecutionOrigin::fromWireValue,
+        ) ?: FeatureTaskRuntimePhaseExecutionOrigin.AGENT_EXECUTED,
         fixLoopIteration = raw.optionalIntField("fix_loop_iteration"),
         blockedReason = raw.optionalStringField("blocked_reason"),
         loopId = raw.optionalStringField("loop_id"),

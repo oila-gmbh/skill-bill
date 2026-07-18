@@ -15,6 +15,7 @@ import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_PLANNING_I
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalPlanningImport
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseExecutionOrigin
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
@@ -147,6 +148,7 @@ internal class GoalChildPlanningHydrator(
         timestamp = importedAt,
         phaseId = phaseId,
         attemptCount = 1,
+        executionOrigin = FeatureTaskRuntimePhaseExecutionOrigin.GOAL_PLANNING_HYDRATED,
       ).toArtifactMap()
     }
 
@@ -349,6 +351,7 @@ private fun importedRecord(phaseId: String, payload: String, importedAt: String)
     finishedAt = importedAt,
     durationMillis = 0,
     resolvedAgentId = "goal-planning-import",
+    executionOrigin = FeatureTaskRuntimePhaseExecutionOrigin.GOAL_PLANNING_HYDRATED,
     outputArtifact = payload,
   )
 

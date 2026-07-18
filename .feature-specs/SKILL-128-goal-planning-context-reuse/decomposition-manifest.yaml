@@ -11,7 +11,7 @@ feature_branch: "feat/SKILL-128-goal-planning-context-reuse"
 stack_branches: []
 current_subtask_intent:
   subtask_id: 4
-  action: "start"
+  action: "resume"
 subtasks:
 - id: 1
   name: "Goal planning persistence contract"
@@ -67,7 +67,7 @@ subtasks:
   status: "pending"
   branch: null
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wftr-20260718-132340-glrn"
   blocked_reason: null
   last_resumable_step: null
   linear_issue_id: null

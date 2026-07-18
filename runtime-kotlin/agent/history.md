@@ -1,3 +1,14 @@
+## [2026-07-18] SKILL-128 goal planning observability (subtask 4)
+Areas: runtime-kotlin/runtime-{application,cli,domain,infra-sqlite,mcp}, skills/bill-feature-{goal,task-runtime}, runtime-kotlin/ARCHITECTURE.md
+- Goal status exposes bounded preparation state: shared-preplan status, planned/total counts, current planning subtask, and concise blocked or resumable context without returning raw planning payloads.
+- Goal lifecycle telemetry distinguishes one shared discovery/preplan, per-subtask plan checkpoints and reuse, hard-reset invalidation, and child hydration with stable attribution; standalone task attribution remains unchanged.
+- Durable phase records and ledger entries carry an execution origin that defaults legacy data to `agent-executed`, marks imported planning as `goal-planning-hydrated`, and loud-fails unknown explicit values.
+- Pattern: project durable planning progress into bounded operator status, and model hydration as a typed execution origin so imported artifacts never count as child-agent duration or token execution. reusable
+- CLI, MCP, status, persistence, resume, block, hydration, and malformed-state coverage locks fresh through all-prepared behavior and backward-compatible standalone semantics.
+- Known limitation: governed install synchronization remains deferred to parent-goal finalization because the active continuation guard correctly rejects `./install.sh` during the child workflow.
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
 ## [2026-07-18] SKILL-128 child planning hydration (subtask 3)
 Areas: runtime-kotlin/runtime-{application,infra-sqlite,ports}, runtime-kotlin/ARCHITECTURE.md
 - Prepared goal children atomically import the parent goal's validated shared preplan and their own provenance-matched plan as completed phase records, steps, ledger entries, and immutable artifacts before becoming runnable at `implement`.

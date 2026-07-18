@@ -9,6 +9,7 @@ import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_LI
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationOutcome
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseExecutionOrigin
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
@@ -23,6 +24,36 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class FeatureTaskRuntimePersistenceModelsTest {
+  @Test
+  fun `phase execution origin is backward compatible and rejects unknown explicit values`() {
+    val legacy = mapOf(
+      "phase_id" to "plan",
+      "status" to "completed",
+      "attempt_count" to 1,
+      "started_at" to "2026-07-18T12:00:00Z",
+      "resolved_agent_id" to "planner",
+    )
+    assertEquals(
+      FeatureTaskRuntimePhaseExecutionOrigin.AGENT_EXECUTED,
+      FeatureTaskRuntimePhaseRecord.fromArtifactMap(legacy).executionOrigin,
+    )
+    assertFailsWith<InvalidWorkflowStateSchemaError> {
+      FeatureTaskRuntimePhaseRecord.fromArtifactMap(legacy + ("execution_origin" to "fabricated"))
+    }
+    assertFailsWith<InvalidWorkflowStateSchemaError> {
+      FeatureTaskRuntimePhaseLedgerEntry.fromArtifactMap(
+        mapOf(
+          "action" to "complete",
+          "sequence_number" to 0,
+          "timestamp" to "2026-07-18T12:00:00Z",
+          "phase_id" to "plan",
+          "attempt_count" to 1,
+          "execution_origin" to "fabricated",
+        ),
+      )
+    }
+  }
+
   @Test
   fun `phase record round trips typed failure disposition and file manifests`() {
     val record = FeatureTaskRuntimePhaseRecord(
