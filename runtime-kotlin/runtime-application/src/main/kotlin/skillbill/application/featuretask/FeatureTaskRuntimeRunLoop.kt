@@ -97,7 +97,9 @@ internal class FeatureTaskRuntimeRunLoop(
       },
       auditRepairPlan = if (loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID) {
         state.auditRepairPlan(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT)
-      } else null,
+      } else {
+        null
+      },
     )
   }
 
@@ -428,7 +430,11 @@ internal class FeatureTaskRuntimeRunLoop(
       edgeIteration,
       verdict,
       reentryGapCriteria,
-      if (loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID) state.auditRepairPlan(edge.fromPhaseId) else null,
+      if (loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID) {
+        state.auditRepairPlan(edge.fromPhaseId)
+      } else {
+        null
+      },
     )
     activeReentry = pendingReentry
     observability.loopEdge(destinationPhaseId, loopId, edgeIteration, verdict)
@@ -1213,6 +1219,7 @@ internal class FeatureTaskRuntimeRunLoop(
       ?: reviewVerificationSignalGateReason(phaseId, outputMap)
       ?: auditVerificationSignalGateReason(phaseId, outputMap)
 
+  @Suppress("ReturnCount")
   private fun auditRepairResultGateReason(phaseId: String, outputMap: Map<String, Any?>): String? {
     val reentry = activeReentry?.takeIf {
       it.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID
@@ -1224,12 +1231,15 @@ internal class FeatureTaskRuntimeRunLoop(
       }
       .mapNotNull { JsonSupport.anyToStringAnyMap(it)?.get("repair_item_id") as? String }
     if (expected.isEmpty()) return "Audit-gap remediation is missing its persisted audit_repair_plan."
-    val results = (JsonSupport.anyToStringAnyMap(outputMap["produced_outputs"])
-      ?.get("repair_item_results") as? List<*>).orEmpty()
+    val results = (
+      JsonSupport.anyToStringAnyMap(outputMap["produced_outputs"])
+        ?.get("repair_item_results") as? List<*>
+      ).orEmpty()
     val resultMaps = results.mapNotNull(JsonSupport::anyToStringAnyMap)
     val actual = resultMaps.mapNotNull { it["repair_item_id"] as? String }
     if (actual.size != resultMaps.size || actual.size != actual.toSet().size || actual.toSet() != expected.toSet()) {
-      return "Audit-gap remediation requires exact repair_item_result identifier equality; expected=$expected actual=$actual."
+      return "Audit-gap remediation requires exact repair_item_result identifier equality; " +
+        "expected=$expected actual=$actual."
     }
     val invalid = resultMaps.any { result ->
       result.keys != setOf(
@@ -1240,19 +1250,26 @@ internal class FeatureTaskRuntimeRunLoop(
         "result_evidence",
       ) ||
         result["outcome"] !in setOf("fixed", "already_satisfied") ||
-        (result["changed_paths_or_symbols"] as? List<*>)?.filterIsInstance<String>()?.none(String::isNotBlank) != false ||
-        (result["executed_verification"] as? List<*>)?.filterIsInstance<String>()?.none(String::isNotBlank) != false ||
+        hasNoNonBlankStrings(result["changed_paths_or_symbols"]) ||
+        hasNoNonBlankStrings(result["executed_verification"]) ||
         (result["result_evidence"] as? String).isNullOrBlank() ||
         result.values.any(::containsForbiddenAuditRepairDeferral)
     }
     return if (invalid) {
       "Every audit repair item must have a terminal outcome and concrete verification/result evidence."
-    } else null
+    } else {
+      null
+    }
   }
 
+  private fun hasNoNonBlankStrings(value: Any?): Boolean =
+    (value as? List<*>)?.filterIsInstance<String>()?.none(String::isNotBlank) != false
+
   private fun containsForbiddenAuditRepairDeferral(value: Any?): Boolean = when (value) {
-    is String -> Regex("\\b(defer(?:red|ring)?|later)\\b.*\\b(review|audit|validation|test(?:ing)?)\\b", RegexOption.IGNORE_CASE)
-      .containsMatchIn(value)
+    is String -> listOf(
+      Regex(FORWARD_DEFERRAL_PATTERN, RegexOption.IGNORE_CASE),
+      Regex(REVERSE_DEFERRAL_PATTERN, RegexOption.IGNORE_CASE),
+    ).any { it.containsMatchIn(value) }
     is List<*> -> value.any(::containsForbiddenAuditRepairDeferral)
     is Map<*, *> -> value.values.any(::containsForbiddenAuditRepairDeferral)
     else -> false
@@ -1626,3 +1643,10 @@ internal class FeatureTaskRuntimeRunLoop(
 
   private data class GoalReviewRunReady(val run: PhaseRun) : GoalReviewRunPreparation
 }
+
+private const val FORWARD_DEFERRAL_PATTERN =
+  "\\b(defer(?:red|ring)?|postpone(?:d|ment)?|leave|assign(?:ed|ing)?|hand(?:ed)?\\s+off|later)\\b" +
+    ".{0,120}\\b(review|audit|validation|test(?:ing)?|later phase)\\b"
+private const val REVERSE_DEFERRAL_PATTERN =
+  "\\b(review|audit|validation|test(?:ing)?|later phase)\\b.{0,120}" +
+    "\\b(will|should|must|can)\\s+(handle|fix|complete|cover|address|verify)\\b"

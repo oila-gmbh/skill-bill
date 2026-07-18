@@ -90,6 +90,7 @@ class FeatureTaskRuntimePhaseRecorder(
       true
     }
 
+  @Suppress("LongMethod")
   fun recordCompletedPhase(request: FeatureTaskRuntimePhaseStateRequest, dbOverride: String? = null): Boolean {
     require(request.status == "completed" && request.finished)
     return database.transaction(dbOverride) { unitOfWork ->
@@ -139,10 +140,16 @@ class FeatureTaskRuntimePhaseRecorder(
             "latest_plan" to (latestPlan ?: priorAuditState["latest_plan"]),
             "execution_history" to executionHistory,
             "prior_gap_dispositions" to (priorAuditState["prior_gap_dispositions"] ?: emptyList<Any>()),
-            "unresolved_gap_ledger" to (latestPlan ?: priorAuditState["unresolved_gap_ledger"]),
+            "unresolved_gap_ledger" to cumulativeUnresolvedGapLedger(
+              priorAuditState["unresolved_gap_ledger"],
+              latestPlan,
+              outputProduced.get("prior_gap_dispositions"),
+            ),
           ),
         )
-      } else emptyMap()
+      } else {
+        emptyMap()
+      }
       persistPatch(
         unitOfWork.workflowStates,
         record,
@@ -155,6 +162,25 @@ class FeatureTaskRuntimePhaseRecorder(
       )
       true
     }
+  }
+
+  private fun cumulativeUnresolvedGapLedger(
+    priorLedger: Any?,
+    latestPlan: Any?,
+    dispositions: Any?,
+  ): Map<String, Any?> {
+    val priorGaps = JsonSupport.anyToStringAnyMap(priorLedger)?.get("gaps") as? List<*> ?: emptyList<Any>()
+    val latestGaps = JsonSupport.anyToStringAnyMap(latestPlan)?.get("gaps") as? List<*> ?: emptyList<Any>()
+    val resolvedIds = (dispositions as? List<*>).orEmpty().mapNotNull(JsonSupport::anyToStringAnyMap)
+      .filter { it["status"] == "resolved" }
+      .mapNotNullTo(linkedSetOf()) { it["gap_id"] as? String }
+    val merged = linkedMapOf<String, Any?>()
+    (priorGaps + latestGaps).forEach { gap ->
+      val gapMap = JsonSupport.anyToStringAnyMap(gap) ?: return@forEach
+      val gapId = gapMap["gap_id"] as? String ?: return@forEach
+      if (gapId !in resolvedIds) merged[gapId] = gapMap
+    }
+    return mapOf("contract_version" to "0.1", "gaps" to merged.values.toList())
   }
 
   internal fun completeGoalReviewPhase(

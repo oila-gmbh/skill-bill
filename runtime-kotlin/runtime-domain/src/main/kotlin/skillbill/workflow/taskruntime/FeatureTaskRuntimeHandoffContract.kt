@@ -55,6 +55,7 @@ object FeatureTaskRuntimeHandoffContract {
    * byte-for-byte; [reentryGapCriteria] scopes an `audit_gap` re-entry and defaults to empty;
    * upstream resolution is unchanged so a re-entered agent never selects its own inputs.
    */
+  @Suppress("LongParameterList")
   fun assembleHandoff(
     declaration: FeatureTaskRuntimePhaseDeclaration,
     runInvariants: FeatureTaskRuntimeRunInvariants,

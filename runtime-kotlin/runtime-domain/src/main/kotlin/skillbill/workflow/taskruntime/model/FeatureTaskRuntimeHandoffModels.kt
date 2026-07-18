@@ -1,7 +1,7 @@
 package skillbill.workflow.taskruntime.model
 
-import skillbill.boundary.OpenBoundaryMap
 import skillbill.agentaddon.model.AgentAddonSelection
+import skillbill.boundary.OpenBoundaryMap
 import skillbill.workflow.model.CodeReviewExecutionMode
 
 /**

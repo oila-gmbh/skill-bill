@@ -11,8 +11,8 @@ import com.networknt.schema.JsonSchema
 import com.networknt.schema.JsonSchemaFactory
 import com.networknt.schema.SpecVersion
 import com.networknt.schema.ValidationMessage
-import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.error.InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError
+import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGap
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairPlan
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairItem
@@ -31,6 +31,7 @@ private val featureTaskRuntimePhaseOutputLog: Logger =
  * input, and any schema violation fail with
  * [InvalidFeatureTaskRuntimePhaseOutputSchemaError].
  */
+@Suppress("TooManyFunctions")
 object FeatureTaskRuntimePhaseOutputSchemaValidator {
   private val schema: JsonSchema by lazy { loadFeatureTaskRuntimePhaseOutputSchema() }
   private val auditRepairSchema: JsonSchema by lazy { loadAuditRepairPlanSchema() }

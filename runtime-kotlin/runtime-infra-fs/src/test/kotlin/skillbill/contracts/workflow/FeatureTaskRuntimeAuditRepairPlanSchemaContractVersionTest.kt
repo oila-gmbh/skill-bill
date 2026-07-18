@@ -7,9 +7,11 @@ import kotlin.test.assertEquals
 class FeatureTaskRuntimeAuditRepairPlanSchemaContractVersionTest {
   @Test
   fun `schema contract_version const matches audit repair runtime constant`() {
-    val stream = checkNotNull(javaClass.classLoader.getResourceAsStream(
-      FeatureTaskRuntimeAuditRepairPlanSchemaPaths.CLASSPATH_RESOURCE,
-    ))
+    val stream = checkNotNull(
+      javaClass.classLoader.getResourceAsStream(
+        FeatureTaskRuntimeAuditRepairPlanSchemaPaths.CLASSPATH_RESOURCE,
+      ),
+    )
     val version = stream.use { YAMLMapper().readTree(it) }
       .path("properties").path("contract_version").path("const").asText()
 

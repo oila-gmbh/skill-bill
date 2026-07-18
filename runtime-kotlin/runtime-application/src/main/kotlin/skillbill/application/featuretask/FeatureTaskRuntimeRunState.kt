@@ -271,10 +271,12 @@ internal class FeatureTaskRuntimeRunState(
     FeatureTaskRuntimeOutputVerification.unmetAuditCriteria(outputFor(phaseId))
 
   fun auditRepairPlan(phaseId: String): Map<String, Any?>? = outputFor(phaseId)
-    ?.let { output -> output.normalizedEnvelope ?: output.payload
-      .let(JsonSupport::parseObjectOrNull)
-      ?.let(JsonSupport::jsonElementToValue)
-      ?.let(JsonSupport::anyToStringAnyMap) }
+    ?.let { output ->
+      output.normalizedEnvelope ?: output.payload
+        .let(JsonSupport::parseObjectOrNull)
+        ?.let(JsonSupport::jsonElementToValue)
+        ?.let(JsonSupport::anyToStringAnyMap)
+    }
     ?.get("produced_outputs")
     ?.let(JsonSupport::anyToStringAnyMap)
     ?.get("audit_repair_plan")

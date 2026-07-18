@@ -1113,10 +1113,19 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
     assertEquals(VALID_OUTPUT, briefings.getValue("implement").upstreamOutputsByPhaseId["plan"])
     // implement carries its reconciliation report (mutating-phase gate), so review's implement
     // upstream is the full reconciliation output rather than the minimal VALID_OUTPUT.
-    assertEquals(validJsonOutput("implement"), briefings.getValue("review").upstreamOutputsByPhaseId["implement"])
+    assertEquals(
+      normalizedOutput(validJsonOutput("implement")),
+      normalizedOutput(briefings.getValue("review").upstreamOutputsByPhaseId.getValue("implement")),
+    )
     assertEquals(listOf("diff"), briefings.getValue("review").derivedContextKeys)
     assertContains(briefings.getValue("review").briefingText, "diff")
   }
+
+  private fun normalizedOutput(output: String): Map<String, Any?> =
+    skillbill.contracts.JsonSupport.parseObjectOrNull(output)
+      ?.let(skillbill.contracts.JsonSupport::jsonElementToValue)
+      ?.let(skillbill.contracts.JsonSupport::anyToStringAnyMap)
+      ?: error("Expected JSON object output.")
 
   @Test
   fun `launch spawn failure blocks distinctly without schema gate or fix loop retries`() {
@@ -3771,7 +3780,19 @@ internal fun validProducedOutputs(phaseId: String): String = when (phaseId) {
   "commit_push" -> """{"commit_push_result": {"commit_sha": "commit-runtime-1"}}"""
   // Mutating phases must carry the reconciliation report or the runtime's reconciliation gate
   // rejects the output (SKILL-85 Subtask 3). implement_fix is mutating too (SKILL-85 Subtask 4).
-  "implement", "implement_fix" -> """{"changed_files": ["src/Foo.kt"], "reconciled_state": {"reconciled": true}, "repair_item_results":[{"repair_item_id":"ac-002-gap-1-item-1","outcome":"fixed","changed_paths_or_symbols":["src/Foo.kt"],"executed_verification":["Focused test passed."],"result_evidence":"Repository behavior now satisfies AC-002."}]}"""
+  "implement", "implement_fix" ->
+    """{
+      "changed_files":["src/Foo.kt"],
+      "reconciled_state":{"reconciled":true},
+      "repair_item_results":[{
+        "repair_item_id":"ac-002-gap-1-item-1",
+        "outcome":"fixed",
+        "changed_paths_or_symbols":["src/Foo.kt"],
+        "executed_verification":["Focused test passed."],
+        "result_evidence":"Repository behavior now satisfies AC-002."
+      }]
+    }
+    """.trimIndent()
   // A clean review must emit a verification signal or the review gate blocks (SKILL-85 Subtask 4):
   // an explicit empty findings array affirms "no blocking findings" and advances.
   "review" -> """{"findings": []}"""

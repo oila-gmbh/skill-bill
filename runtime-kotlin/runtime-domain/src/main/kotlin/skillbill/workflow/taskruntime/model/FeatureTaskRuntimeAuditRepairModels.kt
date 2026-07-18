@@ -19,7 +19,9 @@ data class FeatureTaskRuntimeAuditRepairPlan(
     requireAcyclic(items)
     val itemOrder = items.mapIndexed { index, item -> item.repairItemId to index }.toMap()
     items.forEach { item ->
-      require(item.dependsOn.all { dependency -> itemOrder.getValue(dependency) < itemOrder.getValue(item.repairItemId) }) {
+      require(
+        item.dependsOn.all { dependency -> itemOrder.getValue(dependency) < itemOrder.getValue(item.repairItemId) },
+      ) {
         "Repair item '${item.repairItemId}' must appear after all of its dependencies."
       }
     }
@@ -37,6 +39,14 @@ data class FeatureTaskRuntimeAuditRepairPlan(
     val expected = gaps.flatMap { it.repairItems }.mapTo(linkedSetOf()) { it.repairItemId }
     require(results.mapTo(linkedSetOf()) { it.repairItemId } == expected) {
       "Repair item results must have exact identifier set equality with the accepted repair plan."
+    }
+    val resultOrder = results.mapIndexed { index, result -> result.repairItemId to index }.toMap()
+    gaps.flatMap { it.repairItems }.forEach { item ->
+      require(
+        item.dependsOn.all { dependency -> resultOrder.getValue(dependency) < resultOrder.getValue(item.repairItemId) },
+      ) {
+        "Repair item result '${item.repairItemId}' must appear after all dependency results."
+      }
     }
   }
 }
@@ -114,7 +124,9 @@ data class FeatureTaskRuntimeUnresolvedGap(
 data class FeatureTaskRuntimeUnresolvedGapLedger(
   val unresolvedGaps: List<FeatureTaskRuntimeUnresolvedGap>,
 ) {
-  init { requireUnique(unresolvedGaps.map { it.gapId }, "unresolved gap_id") }
+  init {
+    requireUnique(unresolvedGaps.map { it.gapId }, "unresolved gap_id")
+  }
 
   fun allocateGapId(criterionRef: String): String {
     requireNonBlank(criterionRef, "acceptance_criterion_ref")
@@ -150,6 +162,25 @@ data class FeatureTaskRuntimeAuditRepairState(
     require(repositoryFingerprint == null || repositoryFingerprint.isNotBlank()) {
       "repository fingerprint must be nonblank when present."
     }
+    val unresolvedIds = unresolvedGapLedger.unresolvedGaps.mapTo(linkedSetOf()) { it.gapId }
+    requireUnique(priorGapDispositions.map { it.gapId }, "prior gap disposition gap_id")
+    require(
+      priorGapDispositions.all { disposition ->
+        (disposition.status == FeatureTaskRuntimePriorGapDisposition.Status.RECURRING) ==
+          (disposition.gapId in unresolvedIds)
+      },
+    ) { "Recurring dispositions and the unresolved-gap ledger must agree." }
+    require(progress.attemptedRepairItemCount >= repairItemResults.size) {
+      "Attempted repair-item count cannot be smaller than durable terminal results."
+    }
+    require(progress.resolvedRepairItemCount <= progress.attemptedRepairItemCount) {
+      "Resolved repair-item count cannot exceed attempted repair-item count."
+    }
+    require(
+      progress.recurringGapCount == priorGapDispositions.count {
+        it.status == FeatureTaskRuntimePriorGapDisposition.Status.RECURRING
+      },
+    ) { "Recurring-gap count must match durable dispositions." }
   }
 }
 
@@ -173,13 +204,18 @@ fun detectAuditRepairNonProgress(
     reason = if (blocked) {
       "Audit repair made no progress: unresolved gap identities are unchanged and " +
         if (repositoryUnchanged) "the repository fingerprint is unchanged." else "no repair item was newly resolved."
-    } else null,
+    } else {
+      null
+    },
   )
 }
 
 data class FeatureTaskRuntimePriorGapDisposition(val gapId: String, val status: Status, val evidence: String) {
   enum class Status { RESOLVED, RECURRING }
-  init { requireNonBlank(gapId, "gap_id"); requireNonBlank(evidence, "evidence") }
+  init {
+    requireNonBlank(gapId, "gap_id")
+    requireNonBlank(evidence, "evidence")
+  }
 }
 
 data class FeatureTaskRuntimeAuditRepairProgress(
@@ -189,7 +225,22 @@ data class FeatureTaskRuntimeAuditRepairProgress(
   val attemptedRepairItemCount: Int,
   val resolvedRepairItemCount: Int,
   val auditGapIterationCount: Int,
-)
+) {
+  init {
+    require(
+      listOf(
+        recurringGapCount,
+        newGapCount,
+        attemptedRepairItemCount,
+        resolvedRepairItemCount,
+        auditGapIterationCount,
+      ).all { it >= 0 },
+    ) { "Audit-repair progress counters must be non-negative." }
+    require(!firstPassConvergence || auditGapIterationCount == 0) {
+      "First-pass convergence cannot include an audit-gap iteration."
+    }
+  }
+}
 
 const val AUDIT_REPAIR_CONTRACT_VERSION: String = "0.1"
 const val FEATURE_TASK_RUNTIME_AUDIT_REPAIR_STATE_ARTIFACT_KEY: String = "feature_task_runtime_audit_repair_state"
@@ -198,7 +249,8 @@ private fun requireNonBlank(value: String, field: String) = require(value.isNotB
 private fun requireNonBlankList(values: List<String>, field: String) {
   require(values.isNotEmpty() && values.all(String::isNotBlank)) { "$field must contain nonblank entries." }
 }
-private fun requireUnique(values: List<String>, field: String) = require(values.size == values.toSet().size) { "$field must be unique." }
+private fun requireUnique(values: List<String>, field: String) =
+  require(values.size == values.toSet().size) { "$field must be unique." }
 private fun requireAcyclic(items: List<FeatureTaskRuntimeRepairItem>) {
   val byId = items.associateBy { it.repairItemId }
   val visiting = mutableSetOf<String>()
