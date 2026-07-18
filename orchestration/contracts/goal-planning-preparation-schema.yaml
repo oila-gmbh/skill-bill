@@ -33,7 +33,7 @@ $defs:
       decomposition_manifest_hash: { type: string, pattern: "^[a-f0-9]{64}$" }
       planning_contract_id: { type: string, const: "https://skill-bill.dev/contracts/goal-planning-preparation-schema.yaml" }
       planning_contract_version: { type: string, const: "0.2" }
-      phase_output_contract_id: { type: string, minLength: 1 }
+      phase_output_contract_id: { type: string, const: "https://skill-bill.dev/contracts/feature-task-runtime-phase-output-schema.yaml" }
       phase_output_contract_version: { type: string, const: "0.1" }
   sharedPreplan:
     type: object

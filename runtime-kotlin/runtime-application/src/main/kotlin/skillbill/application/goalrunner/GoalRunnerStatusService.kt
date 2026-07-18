@@ -151,14 +151,13 @@ class GoalRunnerStatusService(
     )
     val latest = manifestStore.loadByIssueKey(request.issueKey, request.dbPathOverride, request.repoRoot) ?: loaded
     val before = latest.manifest.toResetSnapshot()
-    if (request.hard) {
-      database.transaction(request.dbPathOverride) { unitOfWork ->
-        unitOfWork.goalPlanningPreparations.deleteByGoal(latest.parentWorkflowId)
-        unitOfWork.workflowStates.deleteGoalChildWorkflowsByParent(latest.parentWorkflowId)
-      }
-    }
     val resetManifest = latest.manifest.resetManifest(request.hard)
-    val saved = manifestStore.save(latest.copy(manifest = resetManifest), request.dbPathOverride)
+    val resetState = latest.copy(manifest = resetManifest)
+    val saved = if (request.hard) {
+      manifestStore.saveHardReset(resetState, request.dbPathOverride)
+    } else {
+      manifestStore.save(resetState, request.dbPathOverride)
+    }
     return GoalRunnerResetResult(
       issueKey = saved.manifest.issueKey,
       mode = if (request.hard) "hard" else "soft",

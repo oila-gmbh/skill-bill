@@ -13,6 +13,7 @@ import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.contracts.workflow.FeatureTaskRuntimePhaseOutputSchemaPaths
 import skillbill.contracts.workflow.GOAL_PLANNING_PREPARATION_CONTRACT_VERSION
+import skillbill.contracts.workflow.GoalPlanningPreparationSchemaPaths
 import skillbill.goalrunner.model.GoalRunnerStopReason
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
@@ -27,6 +28,11 @@ import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.model.GoalPlanningPreparationProvenance
 import skillbill.ports.persistence.model.GoalPlanningPreparationRecord
 import skillbill.ports.persistence.model.GoalPlanningPreparationState
+import skillbill.ports.persistence.model.GoalPlanningContractProvenance
+import skillbill.ports.persistence.model.GoalPlanningIdentity
+import skillbill.ports.persistence.model.GoalSubtaskPlanCheckpoint
+import skillbill.ports.persistence.model.GovernedGoalSubtaskDescriptor
+import skillbill.ports.persistence.model.SharedGoalPreplanCheckpoint
 import skillbill.ports.taskruntime.FeatureTaskRuntimeRunInvariantsSource
 import skillbill.ports.workflow.DecompositionManifestFileStore
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
@@ -74,75 +80,83 @@ class DefaultGoalPlanningSweep(
 ) : GoalPlanningSweep {
   @Suppress("ReturnCount")
   override fun prepare(state: GoalRunnerManifestState, request: GoalRunnerRunRequest): GoalPlanningSweepOutcome {
-    val prepared = runCatching {
-      database.read(request.dbPathOverride) { unitOfWork ->
-        unitOfWork.goalPlanningPreparations.listPreparedByGoalOrdered(state.parentWorkflowId)
-      }
-    }.getOrElse { error -> return preSweepStopped(request, preparationStateReadReason(error)) }
-    prepared.firstOrNull { record -> runCatching { checkpoint.validate(record) }.isFailure }?.let { record ->
-      return preSweepStopped(
-        request,
-        "Goal planning subtask '${record.subtaskId}' has an invalid saved prepared pair; resume is refused.",
-        record.subtaskId,
-      )
-    }
-    val recoveredPackets = prepared.map { record ->
-      val packet = planningPacketFrom(record) ?: return preSweepStopped(
-        request,
-        "Goal planning subtask '${record.subtaskId}' prepared row does not contain a valid shared context packet.",
-        record.subtaskId,
-      )
-      record.subtaskId to packet
-    }
-    val recoveredPacket = recoveredPackets.firstOrNull()?.second
-    recoveredPackets.drop(1).firstOrNull { (_, packet) -> packet != recoveredPacket }?.let { (subtaskId, _) ->
-      return preSweepStopped(
-        request,
-        "Goal planning subtask '$subtaskId' prepared row contains an inconsistent shared context packet.",
-        subtaskId,
-      )
+    val canonicalRepository = runCatching { request.repoRoot.toRealPath() }
+      .getOrElse { request.repoRoot.toAbsolutePath().normalize() }
+    val identity = GoalPlanningIdentity(
+      state.parentWorkflowId,
+      state.manifest.issueKey.trim().uppercase(),
+      "repo-root-realpath-v1:$canonicalRepository",
+    )
+    val existingShared = runCatching { checkpoint.findSharedPreplan(identity, request.dbPathOverride) }
+      .getOrElse { error -> return preSweepStopped(request, preparationStateReadReason(error)) }
+    val recoveredPacket = existingShared?.let(::planningPacketFrom)
+    if (existingShared != null && recoveredPacket == null) {
+      return preSweepStopped(request, "Goal planning shared preplan does not contain a valid shared context packet.")
     }
     val shared = runCatching { gatherSharedContext(state, request, recoveredPacket) }.getOrElse { error ->
-      return preSweepStopped(request, sharedContextReason(error), prepared.firstOrNull()?.subtaskId ?: 0)
+      return preSweepStopped(request, sharedContextReason(error))
     }
-    val subtasksById = state.manifest.subtasks.associateBy(DecompositionSubtask::id)
-    val orderedNonSkippedIds = state.manifest.subtasks
-      .filter { it.status != "skipped" }
-      .map(DecompositionSubtask::id)
-    incompatibleProvenanceStop(shared, state)?.let { return it }
+    val activeSubtasks = state.manifest.subtasks.filter { it.status != "skipped" }
+    if (activeSubtasks.isEmpty()) return GoalPlanningSweepOutcome.PreparedAll
+    val descriptors = runCatching { activeSubtasks.mapIndexed { order, subtask -> descriptor(shared, subtask, order) } }
+      .getOrElse { error -> return stopped(shared, 0, "Goal planning governed subtask provenance could not be computed: ${error.message.orEmpty()}") }
+    val provenance = GoalPlanningContractProvenance(
+      shared.parentSpecHash,
+      shared.decompositionManifestHash,
+      GoalPlanningPreparationSchemaPaths.EXPECTED_SCHEMA_ID,
+    )
+    if (existingShared != null && existingShared.provenance != provenance) {
+      return stopped(shared, 0, "Goal planning shared preplan provenance is incompatible; hard reset or explicit operator migration is required.")
+    }
+    val sharedCheckpoint = existingShared ?: produceSharedPreplan(shared, request, activeSubtasks.first(), provenance)
+      .getOrElse { error -> return stopped(shared, activeSubtasks.first().id, error.message.orEmpty(), PHASE_PREPLAN) }
+    val subtasksById = activeSubtasks.associateBy(DecompositionSubtask::id)
     while (true) {
-      val missingId = runCatching {
-        database.read(shared.dbPathOverride) { unitOfWork ->
-          unitOfWork.goalPlanningPreparations
-            .firstMissingOrIncompleteSubtask(shared.parentWorkflowId, orderedNonSkippedIds)
-        }
-      }.getOrElse { error -> return stopped(shared, 0, preparationStateReadReason(error)) }
+      val missingId = runCatching { checkpoint.recoveryProgress(identity, descriptors, shared.dbPathOverride).firstMissingSubtaskId }
+        .getOrElse { error -> return stopped(shared, 0, preparationStateReadReason(error)) }
       if (missingId == null) return GoalPlanningSweepOutcome.PreparedAll
       val subtask = subtasksById[missingId]
         ?: return stopped(shared, missingId, noSuchSubtaskReason(missingId))
-      producePair(shared, request, subtask)?.let { return it }
+      val descriptor = descriptors.single { it.subtaskId == missingId }
+      producePlan(shared, request, subtask, descriptor, provenance, sharedCheckpoint.preplanPayload)?.let { return it }
     }
   }
 
   @Suppress("ReturnCount")
-  private fun producePair(
+  private fun produceSharedPreplan(
     shared: GoalPlanningSharedContext,
     request: GoalRunnerRunRequest,
     subtask: DecompositionSubtask,
+    provenance: GoalPlanningContractProvenance,
+  ): Result<SharedGoalPreplanCheckpoint> = runCatching {
+    val resolvedSpecPath = resolvedSubSpecPath(shared.repoRoot, subtask.specPath)
+      ?: error(unresolvedSpecReason(subtask))
+    val runInvariants = invariantsSource.read(resolvedSpecPath)
+    val preplanProduction = producePhase(shared, request, subtask, runInvariants, PHASE_PREPLAN, emptyList())
+    if (preplanProduction is GoalPlanningPhaseProduction.Stopped) error(preplanProduction.outcome.blockedReason)
+    val rawPreplanPayload = (preplanProduction as GoalPlanningPhaseProduction.Captured).payload
+    val preplanPayload = enrichPreplan(rawPreplanPayload, shared.planningPacket)
+    outputValidator.validatePhaseOutputText(preplanPayload, PHASE_PREPLAN)
+    SharedGoalPreplanCheckpoint(
+      identity = GoalPlanningIdentity(shared.parentWorkflowId, shared.normalizedIssueKey, shared.repositoryIdentity),
+      provenance = provenance,
+      payloadSha256 = sha256HexUtf8(preplanPayload),
+      preplanPayload = preplanPayload,
+    ).also { checkpoint.checkpointSharedPreplan(it, shared.dbPathOverride) }
+  }
+
+  private fun producePlan(
+    shared: GoalPlanningSharedContext,
+    request: GoalRunnerRunRequest,
+    subtask: DecompositionSubtask,
+    descriptor: GovernedGoalSubtaskDescriptor,
+    provenance: GoalPlanningContractProvenance,
+    preplanPayload: String,
   ): GoalPlanningSweepOutcome.Stopped? {
     val resolvedSpecPath = resolvedSubSpecPath(shared.repoRoot, subtask.specPath)
       ?: return stopped(shared, subtask.id, unresolvedSpecReason(subtask))
     val runInvariants = runCatching { invariantsSource.read(resolvedSpecPath) }.getOrElse { error ->
       return stopped(shared, subtask.id, invariantReadReason(subtask, error))
-    }
-    val preplanProduction = producePhase(shared, request, subtask, runInvariants, PHASE_PREPLAN, emptyList())
-    if (preplanProduction is GoalPlanningPhaseProduction.Stopped) return preplanProduction.outcome
-    val rawPreplanPayload = (preplanProduction as GoalPlanningPhaseProduction.Captured).payload
-    val preplanPayload = runCatching { enrichPreplan(rawPreplanPayload, shared.planningPacket) }.getOrElse { error ->
-      return stopped(shared, subtask.id, malformedReason(PHASE_PREPLAN, error), PHASE_PREPLAN)
-    }
-    runCatching { outputValidator.validatePhaseOutputText(preplanPayload, PHASE_PREPLAN) }.getOrElse { error ->
-      return stopped(shared, subtask.id, malformedReason(PHASE_PREPLAN, error), PHASE_PREPLAN)
     }
     val planProduction = producePhase(
       shared,
@@ -154,28 +168,30 @@ class DefaultGoalPlanningSweep(
     )
     if (planProduction is GoalPlanningPhaseProduction.Stopped) return planProduction.outcome
     val planPayload = (planProduction as GoalPlanningPhaseProduction.Captured).payload
-    val subSpecHash = runCatching { sha256HexUtf8(manifestFileStore.readText(resolvedSpecPath)) }.getOrElse { error ->
-      return stopped(shared, subtask.id, subSpecHashReason(subtask, error))
-    }
-    val record = GoalPlanningPreparationRecord(
-      parentGoalWorkflowId = shared.parentWorkflowId,
-      normalizedIssueKey = shared.normalizedIssueKey,
-      repositoryIdentity = shared.repositoryIdentity,
+    val record = GoalSubtaskPlanCheckpoint(
+      identity = GoalPlanningIdentity(shared.parentWorkflowId, shared.normalizedIssueKey, shared.repositoryIdentity),
       subtaskId = subtask.id,
-      governedSubSpecPath = shared.repoRoot.relativize(resolvedSpecPath).joinToString("/"),
-      preparationStatus = GoalPlanningPreparationState.PREPARED,
-      provenance = GoalPlanningPreparationProvenance(
-        parentSpecHash = shared.parentSpecHash,
-        subSpecHash = subSpecHash,
-        decompositionManifestHash = shared.decompositionManifestHash,
-      ),
-      preplanPayload = preplanPayload,
+      manifestOrder = descriptor.manifestOrder,
+      governedSubSpecPath = descriptor.governedSubSpecPath,
+      subSpecHash = descriptor.subSpecHash,
+      provenance = provenance,
+      payloadSha256 = sha256HexUtf8(planPayload),
       planPayload = planPayload,
     )
-    runCatching { checkpoint.checkpoint(record, shared.dbPathOverride) }.getOrElse { error ->
+    runCatching { checkpoint.checkpointSubtaskPlan(record, shared.dbPathOverride) }.getOrElse { error ->
       return stopped(shared, subtask.id, persistenceReason(subtask, error))
     }
     return null
+  }
+
+  private fun descriptor(shared: GoalPlanningSharedContext, subtask: DecompositionSubtask, order: Int): GovernedGoalSubtaskDescriptor {
+    val path = resolvedSubSpecPath(shared.repoRoot, subtask.specPath) ?: error(unresolvedSpecReason(subtask))
+    return GovernedGoalSubtaskDescriptor(
+      subtask.id,
+      order,
+      shared.repoRoot.relativize(path).joinToString("/"),
+      sha256HexUtf8(manifestFileStore.readText(path)),
+    )
   }
 
   private fun producePhase(
@@ -385,6 +401,15 @@ class DefaultGoalPlanningSweep(
   }
 
   private fun planningPacketFrom(record: GoalPlanningPreparationRecord): Map<String, Any?>? =
+    JsonSupport.parseObjectOrNull(record.preplanPayload)
+      ?.let(JsonSupport::jsonElementToValue)
+      ?.let(JsonSupport::anyToStringAnyMap)
+      ?.get("produced_outputs")
+      ?.let(JsonSupport::anyToStringAnyMap)
+      ?.get(SHARED_CONTEXT_FIELD)
+      ?.let(JsonSupport::anyToStringAnyMap)
+
+  private fun planningPacketFrom(record: SharedGoalPreplanCheckpoint): Map<String, Any?>? =
     JsonSupport.parseObjectOrNull(record.preplanPayload)
       ?.let(JsonSupport::jsonElementToValue)
       ?.let(JsonSupport::anyToStringAnyMap)

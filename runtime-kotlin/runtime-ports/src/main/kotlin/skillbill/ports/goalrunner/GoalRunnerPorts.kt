@@ -32,6 +32,9 @@ interface GoalRunnerManifestStore {
 
   fun save(state: GoalRunnerManifestState, dbPathOverride: String? = null): GoalRunnerManifestState
 
+  fun saveHardReset(state: GoalRunnerManifestState, dbPathOverride: String? = null): GoalRunnerManifestState =
+    error("Goal runner manifest store must atomically persist hard reset state.")
+
   fun saveNewChildWorkflow(
     state: GoalRunnerManifestState,
     setup: GoalRunnerChildWorkflowSetup,

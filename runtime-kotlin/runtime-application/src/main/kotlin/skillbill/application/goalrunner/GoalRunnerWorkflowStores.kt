@@ -145,6 +145,21 @@ class WorkflowGoalRunnerManifestStore(
     return saved.state
   }
 
+  override fun saveHardReset(state: GoalRunnerManifestState, dbPathOverride: String?): GoalRunnerManifestState {
+    val saved = database.transaction(dbPathOverride) { unitOfWork ->
+      unitOfWork.goalPlanningPreparations.deleteByGoal(state.parentWorkflowId)
+      unitOfWork.workflowStates.deleteGoalChildWorkflowsByParent(state.parentWorkflowId)
+      saveWorkflowProjectionInTransaction(unitOfWork, state)
+    }
+    DecompositionManifestWriter.writeProjectionFromWorkflowState(
+      Path.of("").toAbsolutePath(),
+      saved.projectionArtifactsJson,
+      decompositionManifestValidator,
+      decompositionManifestFileStore,
+    )
+    return saved.state
+  }
+
   override fun saveNewChildWorkflow(
     state: GoalRunnerManifestState,
     setup: GoalRunnerChildWorkflowSetup,
@@ -368,8 +383,13 @@ class WorkflowGoalRunnerManifestStore(
   }
 
   private fun saveWorkflowProjection(state: GoalRunnerManifestState, dbPathOverride: String?): SavedManifestProjection {
-    var projectionArtifactsJson: String? = null
-    val saved = database.transaction(dbPathOverride) { unitOfWork ->
+    return database.transaction(dbPathOverride) { unitOfWork -> saveWorkflowProjectionInTransaction(unitOfWork, state) }
+  }
+
+  private fun saveWorkflowProjectionInTransaction(
+    unitOfWork: UnitOfWork,
+    state: GoalRunnerManifestState,
+  ): SavedManifestProjection {
       val existing = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, state.parentWorkflowId)
         ?: unitOfWork.workflowStates.findDecomposedParentWorkflow(
           state.manifest.issueKey,
@@ -396,17 +416,14 @@ class WorkflowGoalRunnerManifestStore(
       )
       WorkflowFamily.IMPLEMENT.save(unitOfWork.workflowStates, updated)
       val refreshed = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, updated.workflowId) ?: updated
-      projectionArtifactsJson = refreshed.artifactsJson
-      GoalRunnerManifestState(
-        parentWorkflowId = refreshed.workflowId,
-        dbPath = unitOfWork.dbPath.toString(),
-        manifest = refreshed.decompositionRuntime(decompositionManifestValidator) ?: state.manifest,
+      return SavedManifestProjection(
+        state = GoalRunnerManifestState(
+          parentWorkflowId = refreshed.workflowId,
+          dbPath = unitOfWork.dbPath.toString(),
+          manifest = refreshed.decompositionRuntime(decompositionManifestValidator) ?: state.manifest,
+        ),
+        projectionArtifactsJson = refreshed.artifactsJson,
       )
-    }
-    return SavedManifestProjection(
-      state = saved,
-      projectionArtifactsJson = requireNotNull(projectionArtifactsJson),
-    )
   }
 
   private fun loadFromWorkflowStore(issueKey: String, dbPathOverride: String?): GoalRunnerManifestState? =

@@ -39,8 +39,8 @@ class GoalPlanningPreparationValidator(
   }
 
   private fun envelopeFailure(record: GoalPlanningPreparationRecord): String? = when {
-    record.contractVersion != GOAL_PLANNING_PREPARATION_CONTRACT_VERSION ->
-      "contract_version must be '$GOAL_PLANNING_PREPARATION_CONTRACT_VERSION'"
+    record.contractVersion != LEGACY_GOAL_PLANNING_PREPARATION_CONTRACT_VERSION ->
+      "contract_version must be '$LEGACY_GOAL_PLANNING_PREPARATION_CONTRACT_VERSION'"
     record.subtaskId < 1 -> "subtask_id must be a positive integer"
     record.parentGoalWorkflowId.isBlank() -> "parent_goal_workflow_id is required"
     record.normalizedIssueKey.isBlank() -> "normalized_issue_key is required"
@@ -65,6 +65,7 @@ class GoalPlanningPreparationValidator(
   }
 
   companion object {
+    private const val LEGACY_GOAL_PLANNING_PREPARATION_CONTRACT_VERSION = "0.1"
     const val PREPLAN_PHASE_ID: String = "preplan"
     const val PLAN_PHASE_ID: String = "plan"
   }
