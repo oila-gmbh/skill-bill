@@ -324,19 +324,6 @@ internal fun invalidateLegacyPlanWithoutPreplan(completed: MutableSet<String>) {
   }
 }
 
-internal fun recordToOutput(record: FeatureTaskRuntimePhaseRecord): FeatureTaskRuntimePhaseOutput? =
-  record.outputArtifact?.let { artifact ->
-    val normalizedEnvelope = JsonSupport.parseObjectOrNull(artifact)
-      ?.let(JsonSupport::jsonElementToValue)
-      ?.let(JsonSupport::anyToStringAnyMap)
-    FeatureTaskRuntimePhaseOutput(
-      phaseId = record.phaseId,
-      iteration = record.attemptCount,
-      payload = artifact,
-      normalizedEnvelope = normalizedEnvelope,
-    )
-  }
-
 internal fun phaseDeclaration(
   phaseId: String,
   featureSize: skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize,

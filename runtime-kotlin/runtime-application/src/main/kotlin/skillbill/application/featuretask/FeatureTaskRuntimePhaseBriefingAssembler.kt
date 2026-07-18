@@ -93,6 +93,13 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
       handoff.auditRepairPlan?.let { plan ->
         appendLine("audit_repair_plan:")
         JsonSupport.mapToJsonString(plan).lineSequence().forEach { appendLine("  $it") }
+        appendLine("audit_remediation_execution_rules:")
+        appendLine("  - Use the immutable initial preplan and plan; do not regenerate general planning.")
+        appendLine("  - Process every runnable carried repair item in dependency order in this invocation.")
+        appendLine("  - Emit exactly one terminal repair_item_result for every carried repair_item_id.")
+        appendLine("  - already_satisfied requires distinct concrete repository and verification evidence.")
+        appendLine("  - Do not defer or assign carried work to review, audit, validation, or a later phase.")
+        appendLine("  - If an item is genuinely unresolvable, block with both gap_id and repair_item_id and preserve partial terminal evidence.")
       }
       appendLine()
       appendLine("## Run invariants (layer 1, unconditional)")

@@ -32,9 +32,20 @@ internal class FeatureTaskRuntimeRunState(
       .also(::invalidateIncompleteReentrySpans)
   private val outputs: MutableList<FeatureTaskRuntimePhaseOutput> =
     initialRecords.values
-      .mapNotNull(::recordToOutput)
+      .mapNotNull(::validatedRecordToOutput)
       .filterNot { it.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN && it.phaseId !in completed }
       .toMutableList()
+
+  private fun validatedRecordToOutput(record: FeatureTaskRuntimePhaseRecord): FeatureTaskRuntimePhaseOutput? =
+    record.outputArtifact?.let { artifact ->
+      val normalized = outputValidator.normalizePhaseOutput(artifact, record.phaseId)
+      FeatureTaskRuntimePhaseOutput(
+        phaseId = record.phaseId,
+        iteration = record.attemptCount,
+        payload = normalized.canonicalJson,
+        normalizedEnvelope = normalized.envelope,
+      )
+    }
   private val priorRecords: MutableSet<String> = initialRecords.keys.toMutableSet()
   private val initialReviewRecord = initialRecords[FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW]
   private var currentReviewPassNumber: Int? = initialReviewRecord?.reviewPassNumber

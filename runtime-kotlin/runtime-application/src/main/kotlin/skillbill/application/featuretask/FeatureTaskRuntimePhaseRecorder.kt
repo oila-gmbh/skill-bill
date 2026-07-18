@@ -127,7 +127,11 @@ class FeatureTaskRuntimePhaseRecorder(
         ?.let(JsonSupport::anyToStringAnyMap)
         .orEmpty()
       val latestPlan = outputProduced?.get("audit_repair_plan")
+        ?.takeIf { request.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT }
       val repairResults = outputProduced?.get("repair_item_results")
+        ?.takeIf { request.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT }
+      val currentDispositions = outputProduced?.get("prior_gap_dispositions")
+        ?.takeIf { request.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT }
       val auditRepairPatch = if (latestPlan != null || repairResults != null) {
         val acceptedPlans = (priorAuditState["accepted_plans"] as? List<*>).orEmpty().toMutableList()
         if (latestPlan != null && acceptedPlans.none { it == latestPlan }) acceptedPlans += latestPlan
@@ -139,11 +143,12 @@ class FeatureTaskRuntimePhaseRecorder(
             "accepted_plans" to acceptedPlans,
             "latest_plan" to (latestPlan ?: priorAuditState["latest_plan"]),
             "execution_history" to executionHistory,
-            "prior_gap_dispositions" to (priorAuditState["prior_gap_dispositions"] ?: emptyList<Any>()),
+            "prior_gap_dispositions" to (currentDispositions ?: priorAuditState["prior_gap_dispositions"]
+              ?: emptyList<Any>()),
             "unresolved_gap_ledger" to cumulativeUnresolvedGapLedger(
               priorAuditState["unresolved_gap_ledger"],
               latestPlan,
-              outputProduced.get("prior_gap_dispositions"),
+              currentDispositions,
             ),
           ),
         )

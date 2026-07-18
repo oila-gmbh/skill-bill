@@ -1241,6 +1241,21 @@ internal class FeatureTaskRuntimeRunLoop(
       return "Audit-gap remediation requires exact repair_item_result identifier equality; " +
         "expected=$expected actual=$actual."
     }
+    val expectedOrder = expected.withIndex().associate { (index, id) -> id to index }
+    val actualOrder = actual.withIndex().associate { (index, id) -> id to index }
+    val planItems = (reentry.auditRepairPlan?.get("gaps") as? List<*>).orEmpty().flatMap { gap ->
+      (JsonSupport.anyToStringAnyMap(gap)?.get("repair_items") as? List<*>).orEmpty()
+    }.mapNotNull(JsonSupport::anyToStringAnyMap)
+    val outOfDependencyOrder = planItems.any { item ->
+      val itemId = item["repair_item_id"] as? String ?: return@any true
+      (item["depends_on"] as? List<*>).orEmpty().filterIsInstance<String>().any { dependency ->
+        actualOrder.getValue(dependency) >= actualOrder.getValue(itemId) ||
+          expectedOrder.getValue(dependency) >= expectedOrder.getValue(itemId)
+      }
+    }
+    if (outOfDependencyOrder) {
+      return "Audit-gap remediation results must follow the accepted dependency order."
+    }
     val invalid = resultMaps.any { result ->
       result.keys != setOf(
         "repair_item_id",
@@ -1253,7 +1268,12 @@ internal class FeatureTaskRuntimeRunLoop(
         hasNoNonBlankStrings(result["changed_paths_or_symbols"]) ||
         hasNoNonBlankStrings(result["executed_verification"]) ||
         (result["result_evidence"] as? String).isNullOrBlank() ||
+        (result["outcome"] == "already_satisfied" &&
+          !alreadySatisfiedEvidenceIsDistinct(result)) ||
         result.values.any(::containsForbiddenAuditRepairDeferral)
+    }
+    if (containsForbiddenAuditRepairDeferral(outputMap)) {
+      return "Audit-gap remediation cannot assign carried repair work to a later phase."
     }
     return if (invalid) {
       "Every audit repair item must have a terminal outcome and concrete verification/result evidence."
@@ -1264,6 +1284,15 @@ internal class FeatureTaskRuntimeRunLoop(
 
   private fun hasNoNonBlankStrings(value: Any?): Boolean =
     (value as? List<*>)?.filterIsInstance<String>()?.none(String::isNotBlank) != false
+
+  private fun alreadySatisfiedEvidenceIsDistinct(result: Map<String, Any?>): Boolean {
+    val repositoryEvidence = (result["changed_paths_or_symbols"] as? List<*>)
+      .orEmpty().filterIsInstance<String>().filter(String::isNotBlank)
+    val verificationEvidence = (result["executed_verification"] as? List<*>)
+      .orEmpty().filterIsInstance<String>().filter(String::isNotBlank)
+    return repositoryEvidence.isNotEmpty() && verificationEvidence.isNotEmpty() &&
+      repositoryEvidence.toSet() != verificationEvidence.toSet()
+  }
 
   private fun containsForbiddenAuditRepairDeferral(value: Any?): Boolean = when (value) {
     is String -> listOf(
