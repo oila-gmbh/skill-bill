@@ -202,11 +202,11 @@ class FeatureTaskRuntimePhaseRecorder(
     val latestItemIds = acceptedPlans.single().gaps
       .flatMap { it.repairItems }
       .mapTo(linkedSetOf()) { it.repairItemId }
-    val allResults = linkedMapOf<String, FeatureTaskRuntimeRepairItemResult>().apply {
-      input.prior?.repairItemResults.orEmpty().forEach { put(it.repairItemId, it) }
-      input.repairResults.forEach { put(it.repairItemId, it) }
-      keys.retainAll(latestItemIds)
-    }.values.toList()
+    val allResults = reconcileLatestRepairResults(
+      input.prior?.repairItemResults.orEmpty(),
+      input.repairResults,
+      latestItemIds,
+    )
     val newlyAttemptedCount = input.repairResults.size
     val priorPlanGapIds = input.prior?.unresolvedGapLedger?.unresolvedGaps.orEmpty().mapTo(linkedSetOf()) { it.gapId }
     val progress = FeatureTaskRuntimeAuditRepairProgress(
@@ -624,6 +624,16 @@ class FeatureTaskRuntimePhaseRecorder(
     const val STATUS_RUNNING = "running"
   }
 }
+
+internal fun reconcileLatestRepairResults(
+  priorResults: List<FeatureTaskRuntimeRepairItemResult>,
+  currentResults: List<FeatureTaskRuntimeRepairItemResult>,
+  latestPlanItemIds: Set<String>,
+): List<FeatureTaskRuntimeRepairItemResult> = linkedMapOf<String, FeatureTaskRuntimeRepairItemResult>().apply {
+  priorResults.forEach { put(it.repairItemId, it) }
+  currentResults.forEach { put(it.repairItemId, it) }
+  keys.retainAll(latestPlanItemIds)
+}.values.toList()
 
 internal data class GoalReviewPhaseCompletionRequest(
   val phaseState: FeatureTaskRuntimePhaseStateRequest,

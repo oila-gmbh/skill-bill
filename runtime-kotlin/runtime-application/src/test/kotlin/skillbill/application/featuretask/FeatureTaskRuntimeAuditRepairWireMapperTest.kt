@@ -8,6 +8,8 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairPlan
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairProgress
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairState
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairItem
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairItemOutcome
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairItemResult
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeUnresolvedGap
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeUnresolvedGapLedger
 import kotlin.test.Test
@@ -16,6 +18,21 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 
 class FeatureTaskRuntimeAuditRepairWireMapperTest {
+  @Test
+  fun `recurring repair identifiers retain the newest terminal result`() {
+    val prior = result("old evidence")
+    val current = result("new evidence")
+
+    assertEquals(
+      listOf(current),
+      reconcileLatestRepairResults(listOf(prior), listOf(current), setOf(current.repairItemId)),
+    )
+    assertEquals(
+      emptyList(),
+      reconcileLatestRepairResults(listOf(prior), listOf(current), setOf("ac-999-gap-1-item-1")),
+    )
+  }
+
   @Test
   fun `durable gap evidence rejects blank and payload representations`() {
     val invalidSummaries = listOf(
@@ -387,6 +404,14 @@ class FeatureTaskRuntimeAuditRepairWireMapperTest {
     ),
     repositoryFingerprint = "fingerprint",
     progress = FeatureTaskRuntimeAuditRepairProgress(false, 0, 1, 0, 0, 1),
+  )
+
+  private fun result(evidence: String) = FeatureTaskRuntimeRepairItemResult(
+    "ac-001-gap-1-item-1",
+    FeatureTaskRuntimeRepairItemOutcome.FIXED,
+    listOf("src/Foo.kt"),
+    listOf("Focused test passed"),
+    evidence,
   )
 
   private fun plan() = FeatureTaskRuntimeAuditRepairPlan(

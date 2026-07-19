@@ -32,11 +32,32 @@ class FeatureTaskRuntimeAuditRepairModelsTest {
 
   @Test
   fun `plan enforces aggregate durable repair item capacity`() {
-    val maximum = (1..100).map { item("ac-001-gap-1-item-$it") }
-    plan(maximum)
+    val first = (1..60).map { item("ac-001-gap-1-item-$it") }
+    val second = (1..40).map { item("ac-002-gap-1-item-$it") }
+    FeatureTaskRuntimeAuditRepairPlan(
+      "0.1",
+      listOf(
+        FeatureTaskRuntimeAuditGap("ac-001-gap-1", "AC-001", "Criterion one", "Evidence", "Cause", "runtime", first),
+        FeatureTaskRuntimeAuditGap("ac-002-gap-1", "AC-002", "Criterion two", "Evidence", "Cause", "runtime", second),
+      ),
+    )
 
     assertFailsWith<IllegalArgumentException> {
-      plan(maximum + item("ac-001-gap-1-item-101"))
+      FeatureTaskRuntimeAuditRepairPlan(
+        "0.1",
+        listOf(
+          FeatureTaskRuntimeAuditGap("ac-001-gap-1", "AC-001", "Criterion one", "Evidence", "Cause", "runtime", first),
+          FeatureTaskRuntimeAuditGap(
+            "ac-002-gap-1",
+            "AC-002",
+            "Criterion two",
+            "Evidence",
+            "Cause",
+            "runtime",
+            second + item("ac-002-gap-1-item-41"),
+          ),
+        ),
+      )
     }
   }
 
