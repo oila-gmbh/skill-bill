@@ -29,10 +29,18 @@ $defs:
     minLength: 1
     maxLength: 2048
     pattern: ".*\\S.*"
+  # Every field using this holds a short description of a code defect or the work to repair it, so it
+  # must be able to name symbols and commands: `=`, `[]`, and `<>` are ordinary content here. Rejecting
+  # them made the field unsatisfiable for its own purpose. Pasted payloads are excluded structurally
+  # instead — no line breaks or control characters, no code fences, and no JSON, unified-diff, or
+  # patch-header markers. requireDurableText in FeatureTaskRuntimeAuditRepairModels.kt enforces the same
+  # rule for the same fields; FeatureTaskRuntimeAuditRepairSchemaParityTest pins the two layers to the
+  # same accept/reject verdicts so they cannot drift again.
   compactSummary:
     allOf:
       - { $ref: "#/$defs/nonBlank" }
-      - pattern: "^[^\\n\\r\\t`{}\\[\\]<>\\\\=]+$"
+      - pattern: "^[^\\n\\r\\t`]+$"
+      - not: { pattern: "\\{\\s*\"|\"\\s*:\\s*[\\[{\"]|@@[^@]*@@|^(?:diff --git|\\+\\+\\+ |--- )" }
       - not: { pattern: "(?i)^\\s*(system|user|assistant|developer|tool)(?:\\s+(?:prompt|message|output))?\\s*:" }
   artifactRef:
     type: string

@@ -436,7 +436,7 @@ private fun String.preview(): String {
 
 private fun requireNonBlank(value: String, field: String) {
   require(value.isNotBlank()) { "$field must be nonblank." }
-  requireDurableText(value, field, prose = true)
+  requireDurableText(value, field)
 }
 private fun requireNonBlankList(values: List<String>, field: String) {
   require(values.isNotEmpty()) { "$field must contain at least one entry, was empty." }
@@ -450,11 +450,13 @@ private fun requireCompactList(values: List<String>, field: String, maximumItems
   }
   values.forEach { requireDurableText(it, "$field entry") }
 }
-// Prose fields additionally reject the punctuation that betrays pasted source, but evidence lists name
-// real commands and symbols, so for them `=`, `[]`, and `<>` are ordinary content (`--tests=`,
-// `results[0]`, `List<String>`) and that blacklist would make the field unsatisfiable. Both reject the
-// structural markers of a pasted payload.
-private fun requireDurableText(value: String, field: String, prose: Boolean = false) {
+// Every durable text field either describes a code defect or names the work that repairs it, so all of
+// them must be able to carry symbols and commands: `=`, `[]`, and `<>` are ordinary content
+// (`--tests=`, `results[0]`, `List<String>`). Rejecting that punctuation made the fields unsatisfiable
+// for their own purpose. Pasted payloads are excluded structurally instead. The identical rule lives in
+// `compactSummary` in feature-task-runtime-audit-repair-plan-schema.yaml, pinned by
+// FeatureTaskRuntimeAuditRepairSchemaParityTest.
+private fun requireDurableText(value: String, field: String) {
   require(value.length <= MAX_AUDIT_REPAIR_TEXT_LENGTH) {
     "$field allows at most $MAX_AUDIT_REPAIR_TEXT_LENGTH characters, had ${value.length}."
   }
@@ -470,11 +472,6 @@ private fun requireDurableText(value: String, field: String, prose: Boolean = fa
   }
   require(!SUMMARY_ROLE_PREFIX.containsMatchIn(value)) {
     "$field must not contain a prompt transcript; \"${value.preview()}\" starts with a role prefix."
-  }
-  val offending = if (prose) value.filter { it in "{}[]<>\\=" }.toSortedSet().joinToString(" ") else ""
-  require(offending.isEmpty()) {
-    "$field is prose and must not contain serialized, source, patch, prompt, or tool-output syntax; " +
-      "remove the character(s) $offending from \"${value.preview()}\"."
   }
 }
 private val SERIALIZED_PAYLOAD = Regex(
