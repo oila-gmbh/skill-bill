@@ -47,8 +47,7 @@ interface GoalRunnerManifestStore {
     state: GoalRunnerManifestState,
     dbPathOverride: String? = null,
     preservePlanning: Boolean = false,
-  ): GoalRunnerManifestState =
-    error("Goal runner manifest store must atomically persist hard reset state.")
+  ): GoalRunnerManifestState = error("Goal runner manifest store must atomically persist hard reset state.")
 
   fun saveNewChildWorkflow(
     state: GoalRunnerManifestState,

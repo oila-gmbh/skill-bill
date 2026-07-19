@@ -22,6 +22,8 @@ data class FeatureTaskRuntimePhaseLaunchBriefing(
   val drivingVerdict: String? = null,
   /** Ordered repair-item ids carried by an audit-gap implementation re-entry. */
   val auditRepairItemIds: List<String> = emptyList(),
+  /** Durable unresolved-gap ids that a following audit must disposition exactly once. */
+  val unresolvedAuditGapIds: List<String> = emptyList(),
 ) {
   init {
     require(phaseId.isNotBlank()) { "FeatureTaskRuntimePhaseLaunchBriefing.phaseId must be non-blank." }
@@ -52,6 +54,7 @@ data class FeatureTaskRuntimePhaseLaunchBriefing(
     LinkedHashMap(base).apply {
       drivingVerdict?.let { put("driving_verdict", it) }
       if (auditRepairItemIds.isNotEmpty()) put("audit_repair_item_ids", auditRepairItemIds)
+      if (unresolvedAuditGapIds.isNotEmpty()) put("unresolved_audit_gap_ids", unresolvedAuditGapIds)
     }
   }
 
@@ -70,6 +73,7 @@ data class FeatureTaskRuntimePhaseLaunchBriefing(
         briefingText = raw.requireStringField("briefing_text"),
         drivingVerdict = raw.optionalStringField("driving_verdict"),
         auditRepairItemIds = raw.optionalStringListField("audit_repair_item_ids"),
+        unresolvedAuditGapIds = raw.optionalStringListField("unresolved_audit_gap_ids"),
       )
 
     // Single throw seam so each strict decoder stays within the throw-count budget.

@@ -178,6 +178,23 @@ class FeatureTaskRuntimeAuditGapLoopTest {
   }
 
   @Test
+  fun `repository changes between audits allow recurring gaps to continue`() {
+    val git = RecordingWorkflowGitOperations().apply {
+      repositoryFingerprintSequence.addAll(listOf("before-repair", "after-repair", "after-repair"))
+    }
+    val harness = runnerHarness(
+      launcher = auditGapLauncher(convergeOnAudit = 3),
+      runtimeConfig = RuntimeHarnessConfig(branchSetup = BranchSetupTestConfig(gitOperations = git)),
+    )
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
+
+    assertEquals(3, git.repositoryFingerprintCalls)
+    assertEquals(3, harness.launchedPromptPhaseOrder().count { it == "audit" })
+    assertTrue(harness.launchedPromptPhaseOrder().any { it == "validate" })
+  }
+
+  @Test
   fun `cosmetic recurring repair plan mutation is non progress with an unchanged repository`() {
     var auditLaunches = 0
     val git = RecordingWorkflowGitOperations().apply { repositoryFingerprintValue = "unchanged" }
@@ -341,6 +358,36 @@ class FeatureTaskRuntimeAuditGapLoopTest {
 
     assertContains(blocked.blockedReason, "ac-002-gap-1-item-1")
     assertContains(blocked.blockedReason, "executed_verification")
+  }
+
+  @Test
+  fun `audit remediation preserves the decoder reason for malformed result evidence`() {
+    var implementLaunches = 0
+    val harness = runnerHarness(
+      launcher = RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        when (phaseId) {
+          "audit" -> facts(auditGapsOutput())
+          "implement" -> {
+            implementLaunches += 1
+            val output = validJsonOutput(phaseId)
+            facts(
+              if (implementLaunches == 1) output else output.replace(
+                "\"observation\":\"fix_verified\"",
+                "\"observation\":\"fixed\"",
+              ),
+            )
+          }
+          else -> facts(validJsonOutput(phaseId))
+        }
+      },
+    )
+
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+
+    assertContains(blocked.blockedReason, "ac-002-gap-1-item-1")
+    assertContains(blocked.blockedReason, "result_evidence.observation")
+    assertContains(blocked.blockedReason, "unauthorized evidence observation 'fixed'")
   }
 
   // (h) AC4: a crash mid-loopback (the audit-gap re-implement spawn-fails) resumes the unfinished

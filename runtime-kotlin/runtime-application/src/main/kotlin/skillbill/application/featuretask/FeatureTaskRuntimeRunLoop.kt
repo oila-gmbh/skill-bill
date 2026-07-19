@@ -1281,14 +1281,12 @@ internal class FeatureTaskRuntimeRunLoop(
     )
   }
 
-  private fun auditRepairRepositoryFingerprint(run: PhaseRun) = when {
-    run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT ->
+  private fun auditRepairRepositoryFingerprint(run: PhaseRun) =
+    if (run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT) {
       gitOperations.repositoryFingerprint(run.request.repoRoot)
-    run.reentry?.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID &&
-      FeatureTaskRuntimePhaseWorkflowDefinition.isMutatingPhase(run.phaseId) ->
-      gitOperations.repositoryFingerprint(run.request.repoRoot)
-    else -> null
-  }
+    } else {
+      null
+    }
 
   @Suppress("ReturnCount")
   private fun auditRepairNonProgressReason(
@@ -1387,15 +1385,16 @@ internal class FeatureTaskRuntimeRunLoop(
     val expectedOrder = expected.withIndex().associate { (index, id) -> id to index }
     val actualOrder = actual.withIndex().associate { (index, id) -> id to index }
     val planItems = reentry.auditRepairPlan?.gaps.orEmpty().flatMap { it.repairItems }
-    val outOfDependencyOrder = planItems.any { item ->
+    planItems.forEach { item ->
       val itemId = item.repairItemId
-      item.dependsOn.any { dependency ->
-        actualOrder.getValue(dependency) >= actualOrder.getValue(itemId) ||
+      item.dependsOn.forEach { dependency ->
+        if (actualOrder.getValue(dependency) >= actualOrder.getValue(itemId) ||
           expectedOrder.getValue(dependency) >= expectedOrder.getValue(itemId)
+        ) {
+          return "Audit-gap remediation results must follow the accepted dependency order; " +
+            "'$itemId' depends on '$dependency' so '$dependency' must be reported first. Required order: $expected."
+        }
       }
-    }
-    if (outOfDependencyOrder) {
-      return "Audit-gap remediation results must follow the accepted dependency order."
     }
     resultMaps.forEachIndexed { index, result ->
       auditRepairResultError(result, index)?.let { return it }
@@ -1427,19 +1426,25 @@ internal class FeatureTaskRuntimeRunLoop(
     )
     val missing = expectedKeys - result.keys
     val unknown = result.keys - expectedKeys
+    val decodeFailure = runCatching { repairItemResultFromWire(result, "repair_item_results[$index]") }
+      .exceptionOrNull()
     return when {
       missing.isNotEmpty() || unknown.isNotEmpty() ->
         "Audit repair item '$label' has invalid fields; missing=${missing.sorted()} unknown=${unknown.sorted()}."
       result["outcome"] !in setOf("fixed", "already_satisfied") ->
-        "Audit repair item '$label' outcome must be fixed or already_satisfied."
+        "Audit repair item '$label' outcome must be 'fixed' or 'already_satisfied', was '${result["outcome"]}'."
       hasNoNonBlankStrings(result["changed_paths_or_symbols"]) ->
-        "Audit repair item '$label' changed_paths_or_symbols must contain concrete repository evidence."
+        "Audit repair item '$label' changed_paths_or_symbols must contain at least one nonblank path or symbol, " +
+          "for example [\"src/main/Example.kt:Example\"]."
       hasNoNonBlankStrings(result["executed_verification"]) ->
-        "Audit repair item '$label' executed_verification must contain concrete verification evidence."
-      runCatching { repairItemResultFromWire(result, "repair_item_results[$index]") }.isFailure ->
-        "Audit repair item '$label' result_evidence must be structured and contract-safe."
+        "Audit repair item '$label' executed_verification must contain at least one nonblank command and result, " +
+          "for example [\"./gradlew :runtime-domain:test --tests *ExampleTest* passed\"]."
+      decodeFailure != null ->
+        "Audit repair item '$label' is not contract-safe: ${decodeFailure.diagnosticMessage()}"
       result["outcome"] == "already_satisfied" && !alreadySatisfiedEvidenceIsDistinct(result) ->
-        "Audit repair item '$label' already_satisfied requires distinct repository and verification evidence."
+        "Audit repair item '$label' reports 'already_satisfied', so changed_paths_or_symbols and " +
+          "executed_verification must each be nonempty and must not be the same list: name what already " +
+          "satisfies the item and, separately, the verification you ran to confirm it."
       result.values.any(::containsForbiddenAuditRepairDeferral) ->
         "Audit repair item '$label' cannot defer carried work to a later phase."
       else -> null
@@ -1473,8 +1478,14 @@ internal class FeatureTaskRuntimeRunLoop(
       return "The following audit must disposition every durable unresolved gap exactly once; " +
         "expected=$priorIds actual=$dispositionIds."
     }
-    if (dispositions.any { runCatching { priorGapDispositionFromWire(it, "prior_gap_disposition") }.isFailure }) {
-      return "Every prior gap disposition requires structured contract-safe verification evidence."
+    dispositions.forEachIndexed { index, disposition ->
+      val decodeFailure = runCatching {
+        priorGapDispositionFromWire(disposition, "prior_gap_dispositions[$index]")
+      }.exceptionOrNull()
+      if (decodeFailure != null) {
+        val gapId = disposition["gap_id"] as? String ?: "prior_gap_dispositions[$index]"
+        return "Prior gap disposition '$gapId' is not contract-safe: ${decodeFailure.diagnosticMessage()}"
+      }
     }
     val recurring = dispositions.filter { it["status"] == "recurring" }
     if (recurring.size + dispositions.count { it["status"] == "resolved" } != dispositions.size) {
@@ -1485,6 +1496,9 @@ internal class FeatureTaskRuntimeRunLoop(
     }
     return null
   }
+
+  private fun Throwable.diagnosticMessage(): String =
+    message?.takeIf(String::isNotBlank) ?: this::class.simpleName.orEmpty().ifBlank { "unknown decode failure" }
 
   @Suppress("ReturnCount")
   private fun terminalAuditRepairBlockGateReason(phaseId: String, outputMap: Map<String, Any?>): String? {

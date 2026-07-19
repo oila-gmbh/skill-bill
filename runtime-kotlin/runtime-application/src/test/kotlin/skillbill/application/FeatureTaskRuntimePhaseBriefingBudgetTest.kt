@@ -3,6 +3,7 @@ package skillbill.application
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseBriefingAssembler
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.taskruntime.model.AUDIT_REPAIR_CONTRACT_VERSION
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGap
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairPlan
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairProgress
@@ -36,7 +37,7 @@ class FeatureTaskRuntimePhaseBriefingBudgetTest {
       dependsOn = emptyList(),
     )
     val plan = FeatureTaskRuntimeAuditRepairPlan(
-      contractVersion = "0.1",
+      contractVersion = AUDIT_REPAIR_CONTRACT_VERSION,
       gaps = listOf(
         FeatureTaskRuntimeAuditGap(
           gapId = "ac-004-gap-2",

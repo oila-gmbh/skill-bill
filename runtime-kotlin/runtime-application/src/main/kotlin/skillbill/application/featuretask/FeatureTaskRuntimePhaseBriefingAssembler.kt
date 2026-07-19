@@ -49,6 +49,8 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
       drivingVerdict = handoff.drivingVerdict?.wireValue,
       auditRepairItemIds = handoff.auditRepairPlan?.gaps.orEmpty()
         .flatMap { gap -> gap.repairItems.map { it.repairItemId } },
+      unresolvedAuditGapIds = handoff.auditRepairState?.unresolvedGapLedger?.unresolvedGaps.orEmpty()
+        .map { it.gapId },
     )
   }
 

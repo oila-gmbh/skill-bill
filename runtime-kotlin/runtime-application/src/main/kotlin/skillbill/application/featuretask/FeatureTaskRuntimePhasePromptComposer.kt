@@ -81,7 +81,15 @@ object FeatureTaskRuntimePhasePromptComposer {
         briefing.auditRepairItemIds.joinToString() + ".\n" +
         auditRemediationOutputExample(briefing.auditRepairItemIds)
     }
-    return base + remediationCorrection + unparseableRootCorrection(briefing, priorSchemaFailure)
+    val dispositionCorrection = if (briefing.unresolvedAuditGapIds.isEmpty()) {
+      ""
+    } else {
+      "\nDisposition every durable unresolved gap exactly once in this order: " +
+        briefing.unresolvedAuditGapIds.joinToString() + ".\n" +
+        priorGapDispositionsExample(briefing.unresolvedAuditGapIds)
+    }
+    return base + remediationCorrection + dispositionCorrection +
+      unparseableRootCorrection(briefing, priorSchemaFailure)
   }
 
   // The `<root> must be an object` / malformed-output failures mean the runtime could not extract ANY
@@ -240,7 +248,9 @@ object FeatureTaskRuntimePhasePromptComposer {
           "with exactly these ids in order: ${briefing.auditRepairItemIds.joinToString()}. Every result must " +
           "contain only repair_item_id, outcome (fixed or already_satisfied), non-empty " +
           "changed_paths_or_symbols, non-empty executed_verification, and structured result_evidence " +
-          "with observation, artifact_ref, and check_ref.\n" +
+          "with observation, artifact_ref, and check_ref. check_ref MUST be AC-###, F-###, or a single " +
+          "name ending in Test or Check (optionally followed by :symbol); do not put a command, result, " +
+          "sentence, spaces, or shell punctuation in check_ref.\n" +
           auditRemediationOutputExample(briefing.auditRepairItemIds)
       }
       return "\n    - produced_outputs MUST include a reconciliation report: a \"reconciled_state\" object\n" +
@@ -263,7 +273,8 @@ object FeatureTaskRuntimePhasePromptComposer {
           "      AND/OR a top-level \"$verdict\" of \"satisfied\" or \"gaps_found\". Output carrying NEITHER signal\n" +
           "      fails the schema gate loudly — a prose verdict (e.g. a Markdown table) cannot advance the gate.\n" +
           "      A gaps_found result MUST include one schema-valid audit_repair_plan covering every entry in\n" +
-          "      unmet_criteria; use concrete references such as src/main/Example.kt:Example and ExampleTest."
+          "      unmet_criteria; use concrete references such as src/main/Example.kt:Example and ExampleTest." +
+          auditDispositionAddendum(briefing.unresolvedAuditGapIds)
       else -> ""
     }
   }
@@ -273,6 +284,26 @@ object FeatureTaskRuntimePhasePromptComposer {
       "  \"reconciled_state\": { \"reconciled\": true, \"evidence\": \"<verified end state>\" },\n" +
       "  \"repair_item_results\": ${repairItemResultsJson(repairItemIds)}\n" +
       "}\n```"
+
+  private fun auditDispositionAddendum(gapIds: List<String>): String = if (gapIds.isEmpty()) {
+    ""
+  } else {
+    "\n      This follow-up audit MUST include produced_outputs.prior_gap_dispositions with exactly these " +
+      "gap ids in order: ${gapIds.joinToString()}. Each entry contains only gap_id, status " +
+      "(resolved or recurring), and evidence with observation (resolution_verified or recurrence_verified), " +
+      "artifact_ref, and check_ref.\n" + priorGapDispositionsExample(gapIds)
+  }
+
+  private fun priorGapDispositionsExample(gapIds: List<String>): String =
+    "Required prior_gap_dispositions shape:\n```json\n" + gapIds.joinToString(
+      prefix = "[",
+      postfix = "]\n```",
+      separator = ", ",
+    ) { gapId ->
+      "{ \"gap_id\": \"$gapId\", \"status\": \"resolved\", \"evidence\": { " +
+        "\"observation\": \"resolution_verified\", \"artifact_ref\": \"src/main/Example.kt:Example\", " +
+        "\"check_ref\": \"ExampleTest\" } }"
+    }
 
   private fun repairItemResultsJson(repairItemIds: List<String>): String = repairItemIds.joinToString(
     prefix = "[",

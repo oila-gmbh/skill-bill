@@ -60,6 +60,88 @@ class FeatureTaskRuntimeAuditRepairWireMapperTest {
   }
 
   @Test
+  fun `evidence lists accept command and symbol syntax`() {
+    val evidenceEntries = listOf(
+      "./gradlew :runtime-domain:test --tests=*AuditRepairModelsTest*",
+      "results[0].codeReviewMode == inline",
+      "FeatureTaskRuntimeRunLoop.auditRepairResultError(List<String>) returns null",
+    )
+
+    val accepted = FeatureTaskRuntimeRepairItemResult(
+      "ac-001-gap-1-item-1",
+      FeatureTaskRuntimeRepairItemOutcome.FIXED,
+      listOf("src/Foo.kt"),
+      evidenceEntries,
+      evidence(),
+    )
+
+    assertEquals(evidenceEntries, accepted.executedVerification)
+  }
+
+  @Test
+  fun `evidence lists reject pasted payload representations`() {
+    val invalidEntries = listOf(
+      "{\"tool\":\"result\",\"output\":\"raw\"}",
+      "@@ -1,4 +1,6 @@ fun leaked()",
+      "diff --git a/src/Foo.kt b/src/Foo.kt",
+      "assistant: I ran the focused tests",
+      "`./gradlew check`",
+      "multi\nline evidence",
+    )
+
+    invalidEntries.forEach { invalid ->
+      assertFailsWith<IllegalArgumentException> {
+        FeatureTaskRuntimeRepairItemResult(
+          "ac-001-gap-1-item-1",
+          FeatureTaskRuntimeRepairItemOutcome.FIXED,
+          listOf("src/Foo.kt"),
+          listOf(invalid),
+          evidence(),
+        )
+      }
+    }
+  }
+
+  @Test
+  fun `rejection messages name the offending and expected values`() {
+    val incoherentOutcome = assertFailsWith<IllegalArgumentException> {
+      FeatureTaskRuntimeRepairItemResult(
+        "ac-001-gap-1-item-1",
+        FeatureTaskRuntimeRepairItemOutcome.ALREADY_SATISFIED,
+        listOf("src/Foo.kt"),
+        listOf("Focused test passed"),
+        evidence(),
+      )
+    }
+    assertContains(incoherentOutcome.message.orEmpty(), "must be 'already_satisfied_verified'")
+    assertContains(incoherentOutcome.message.orEmpty(), "was 'fix_verified'")
+
+    val rejectedCheckRef = assertFailsWith<IllegalArgumentException> {
+      evidence(checkRef = "not a check ref")
+    }
+    assertContains(rejectedCheckRef.message.orEmpty(), "'not a check ref'")
+
+    val staleContract = assertFailsWith<IllegalArgumentException> {
+      FeatureTaskRuntimeAuditRepairPlan(contractVersion = "0.1", gaps = plan().gaps)
+    }
+    assertContains(staleContract.message.orEmpty(), "must be '$AUDIT_REPAIR_CONTRACT_VERSION', was '0.1'")
+
+    val prosePayload = assertFailsWith<IllegalArgumentException> {
+      FeatureTaskRuntimeUnresolvedGap("ac-001-gap-1", "AC-001", 1)
+      FeatureTaskRuntimeAuditGap(
+        gapId = "ac-001-gap-1",
+        acceptanceCriterionRef = "AC-001",
+        acceptanceCriterionText = "Criterion with a {\"serialized\"} blob",
+        failureEvidence = evidence(),
+        diagnosis = "Diagnosis",
+        affectedBoundary = "runtime",
+        repairItems = plan().gaps.single().repairItems,
+      )
+    }
+    assertContains(prosePayload.message.orEmpty(), "Criterion with a")
+  }
+
+  @Test
   fun `standalone plan rejects missing arrays invalid status and unknown fields`() {
     val valid = auditRepairPlanToWire(plan())
     val malformedItems = listOf(
