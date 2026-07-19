@@ -90,26 +90,35 @@ internal class FeatureTaskRuntimeRunLoop(
   private fun resumedReentry(): PendingReentry? {
     val (loopId, reentry) = state.latestInFlightReentry() ?: return null
     state.recordEdgeIteration(loopId, reentry.edgeIteration)
+    val auditGapLoop = loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID
+    val auditRepairState = if (auditGapLoop) {
+      recorder.loadAuditRepairState(request.workflowId, request.dbPathOverride)
+    } else {
+      null
+    }
+    // A blocked audit attempt replaces the phase record, erasing its copy of the accepted plan and the
+    // unmet criteria. The durable repair state is the single authority and still holds both, and
+    // drive() requires the phase-record copy to equal the durable accepted plan anyway, so recover from
+    // the authority rather than blocking a resume that already has everything it needs.
+    val auditRepairPlan = if (auditGapLoop) {
+      state.auditRepairPlan(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT)
+        ?: auditRepairState?.acceptedPlans?.lastOrNull()
+    } else {
+      null
+    }
     return PendingReentry(
       phaseId = reentry.destinationPhaseId,
       loopId = loopId,
       edgeIteration = reentry.edgeIteration,
       drivingVerdict = reentry.drivingVerdict,
-      reentryGapCriteria = if (loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID) {
+      reentryGapCriteria = if (auditGapLoop) {
         state.unmetAuditCriteria(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT)
+          .ifEmpty { auditRepairPlan?.gaps.orEmpty().map { it.acceptanceCriterionRef } }
       } else {
         emptyList()
       },
-      auditRepairPlan = if (loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID) {
-        state.auditRepairPlan(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT)
-      } else {
-        null
-      },
-      auditRepairState = if (loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID) {
-        recorder.loadAuditRepairState(request.workflowId, request.dbPathOverride)
-      } else {
-        null
-      },
+      auditRepairPlan = auditRepairPlan,
+      auditRepairState = auditRepairState,
     )
   }
 

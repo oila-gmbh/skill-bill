@@ -485,6 +485,52 @@ class FeatureTaskRuntimeAuditGapLoopTest {
     assertEquals(launchesBeforeResume, harness.launchedPromptPhaseOrder().size)
   }
 
+  // A blocked audit attempt replaces the phase record with an empty one, so a resume that reads the
+  // plan only from that record finds nothing and blocks — permanently, because every further resume
+  // re-reads the same empty record. The durable repair state is the authority and still holds the
+  // accepted plan, so recovery uses it.
+  @Test
+  fun `audit gap resume recovers the accepted plan after a blocked audit erased the phase record`() {
+    var auditLaunches = 0
+    var implementLaunches = 0
+    var crashOnReImplement = true
+    val harness = runnerHarness(
+      launcher = RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        when (phaseId) {
+          "audit" -> {
+            auditLaunches += 1
+            facts(if (auditLaunches < 2) auditGapsOutput() else auditSatisfiedOutput())
+          }
+          "implement" -> {
+            implementLaunches += 1
+            if (implementLaunches == 2 && crashOnReImplement) spawnFailedFacts() else facts(validJsonOutput(phaseId))
+          }
+          else -> facts(validJsonOutput(phaseId))
+        }
+      },
+    )
+
+    // Run 1: the gaps_found audit persists the durable repair state and fires the edge; the
+    // remediation implement then crashes, leaving the audit-gap re-entry in flight.
+    assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+    val durablePlan = requireNotNull(harness.recorder.loadAuditRepairState(WORKFLOW_ID)).acceptedPlans.last()
+
+    // The audit attempts that blocked afterwards replaced the phase record with an empty one, so its
+    // copy of the accepted plan is gone while the durable state still holds it.
+    harness.seedPhase("audit", "blocked", 4, INVOKED_AGENT, null)
+    crashOnReImplement = false
+
+    val report = harness.runner.run(harness.request())
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertEquals(
+      durablePlan,
+      requireNotNull(harness.recorder.loadAuditRepairState(WORKFLOW_ID)).acceptedPlans.last(),
+      "recovery reuses the durable accepted plan rather than minting a new one",
+    )
+  }
+
   @Test
   fun `ledger-only audit gap without durable plan blocks before relaunch`() {
     val harness = runnerHarness(

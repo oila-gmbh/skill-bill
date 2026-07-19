@@ -450,6 +450,7 @@ private fun requireCompactList(values: List<String>, field: String, maximumItems
   }
   values.forEach { requireDurableText(it, "$field entry") }
 }
+
 // Every durable text field either describes a code defect or names the work that repairs it, so all of
 // them must be able to carry symbols and commands: `=`, `[]`, and `<>` are ordinary content
 // (`--tests=`, `results[0]`, `List<String>`). Rejecting that punctuation made the fields unsatisfiable
