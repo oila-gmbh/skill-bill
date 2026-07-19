@@ -1385,23 +1385,8 @@ internal class FeatureTaskRuntimeRunLoop(
     if (outOfDependencyOrder) {
       return "Audit-gap remediation results must follow the accepted dependency order."
     }
-    val invalid = resultMaps.any { result ->
-      result.keys != setOf(
-        "repair_item_id",
-        "outcome",
-        "changed_paths_or_symbols",
-        "executed_verification",
-        "result_evidence",
-      ) ||
-        result["outcome"] !in setOf("fixed", "already_satisfied") ||
-        hasNoNonBlankStrings(result["changed_paths_or_symbols"]) ||
-        hasNoNonBlankStrings(result["executed_verification"]) ||
-        (result["result_evidence"] as? String).isNullOrBlank() ||
-        (
-          result["outcome"] == "already_satisfied" &&
-            !alreadySatisfiedEvidenceIsDistinct(result)
-          ) ||
-        result.values.any(::containsForbiddenAuditRepairDeferral)
+    resultMaps.forEachIndexed { index, result ->
+      auditRepairResultError(result, index)?.let { return it }
     }
     if (containsForbiddenAuditRepairDeferral(outputMap)) {
       return "Audit-gap remediation cannot assign carried repair work to a later phase."
@@ -1415,10 +1400,37 @@ internal class FeatureTaskRuntimeRunLoop(
         return "An unresolvable repair item cannot also report a terminal fixed or already_satisfied result."
       }
     }
-    return if (invalid) {
-      "Every audit repair item must have a terminal outcome and concrete verification/result evidence."
-    } else {
-      null
+    return null
+  }
+
+  private fun auditRepairResultError(result: Map<String, Any?>, index: Int): String? {
+    val label = (result["repair_item_id"] as? String)?.takeIf(String::isNotBlank)
+      ?: "repair_item_results[$index]"
+    val expectedKeys = setOf(
+      "repair_item_id",
+      "outcome",
+      "changed_paths_or_symbols",
+      "executed_verification",
+      "result_evidence",
+    )
+    val missing = expectedKeys - result.keys
+    val unknown = result.keys - expectedKeys
+    return when {
+      missing.isNotEmpty() || unknown.isNotEmpty() ->
+        "Audit repair item '$label' has invalid fields; missing=${missing.sorted()} unknown=${unknown.sorted()}."
+      result["outcome"] !in setOf("fixed", "already_satisfied") ->
+        "Audit repair item '$label' outcome must be fixed or already_satisfied."
+      hasNoNonBlankStrings(result["changed_paths_or_symbols"]) ->
+        "Audit repair item '$label' changed_paths_or_symbols must contain concrete repository evidence."
+      hasNoNonBlankStrings(result["executed_verification"]) ->
+        "Audit repair item '$label' executed_verification must contain concrete verification evidence."
+      (result["result_evidence"] as? String).isNullOrBlank() ->
+        "Audit repair item '$label' result_evidence must be non-empty."
+      result["outcome"] == "already_satisfied" && !alreadySatisfiedEvidenceIsDistinct(result) ->
+        "Audit repair item '$label' already_satisfied requires distinct repository and verification evidence."
+      result.values.any(::containsForbiddenAuditRepairDeferral) ->
+        "Audit repair item '$label' cannot defer carried work to a later phase."
+      else -> null
     }
   }
 

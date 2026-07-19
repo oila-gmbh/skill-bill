@@ -57,6 +57,7 @@ internal fun auditRepairPlanFromWire(value: Any?, source: String): FeatureTaskRu
 internal fun auditRepairStateFromWire(value: Any?, source: String): FeatureTaskRuntimeAuditRepairState =
   wireMapping(source) {
     val map = value.requiredMap(source)
+    requireExactWireKeys(map, source, AUDIT_REPAIR_STATE_KEYS)
     val contractVersion = map.requiredString("contract_version", source)
     if (contractVersion != AUDIT_REPAIR_CONTRACT_VERSION) {
       invalidWire("$source.contract_version", "must be $AUDIT_REPAIR_CONTRACT_VERSION")
@@ -68,13 +69,14 @@ internal fun auditRepairStateFromWire(value: Any?, source: String): FeatureTaskR
     if (latestPlan != acceptedPlans.last()) {
       invalidWire("$source.latest_plan", "must equal the last accepted plan")
     }
-    val results = flattenWireEntries(map["execution_history"]).mapIndexed { index, result ->
+    val results = map.requiredArray("execution_history", source).mapIndexed { index, result ->
       repairItemResultFromWire(result, "$source.execution_history[$index]")
     }
-    val dispositions = map.optionalList("prior_gap_dispositions", source).mapIndexed { index, disposition ->
+    val dispositions = map.requiredArray("prior_gap_dispositions", source).mapIndexed { index, disposition ->
       priorGapDispositionFromWire(disposition, "$source.prior_gap_dispositions[$index]")
     }
     val ledgerMap = map["unresolved_gap_ledger"].requiredMap("$source.unresolved_gap_ledger")
+    requireExactWireKeys(ledgerMap, "$source.unresolved_gap_ledger", AUDIT_REPAIR_LEDGER_KEYS)
     val ledgerContractVersion = ledgerMap.requiredString("contract_version", "$source.unresolved_gap_ledger")
     if (ledgerContractVersion != AUDIT_REPAIR_CONTRACT_VERSION) {
       invalidWire(
@@ -82,9 +84,10 @@ internal fun auditRepairStateFromWire(value: Any?, source: String): FeatureTaskR
         "must be $AUDIT_REPAIR_CONTRACT_VERSION",
       )
     }
-    val unresolved = ledgerMap.optionalList("gaps", "$source.unresolved_gap_ledger").mapIndexed { index, gap ->
+    val unresolved = ledgerMap.requiredArray("gaps", "$source.unresolved_gap_ledger").mapIndexed { index, gap ->
       val gapSource = "$source.unresolved_gap_ledger.gaps[$index]"
       val gapMap = gap.requiredMap(gapSource)
+      requireExactWireKeys(gapMap, gapSource, AUDIT_REPAIR_UNRESOLVED_GAP_KEYS)
       val gapId = gapMap.requiredString("gap_id", gapSource)
       val generation = gapMap.requiredInt("generation", gapSource)
       FeatureTaskRuntimeUnresolvedGap(
@@ -94,6 +97,7 @@ internal fun auditRepairStateFromWire(value: Any?, source: String): FeatureTaskR
       )
     }
     val progressMap = map["progress"].requiredMap("$source.progress")
+    requireExactWireKeys(progressMap, "$source.progress", AUDIT_REPAIR_PROGRESS_KEYS)
     FeatureTaskRuntimeAuditRepairState(
       acceptedPlans = acceptedPlans,
       repairItemResults = results,
@@ -108,7 +112,7 @@ internal fun auditRepairStateFromWire(value: Any?, source: String): FeatureTaskR
         resolvedRepairItemCount = progressMap.requiredInt("resolved_repair_item_count", "$source.progress"),
         auditGapIterationCount = progressMap.requiredInt("audit_gap_iteration_count", "$source.progress"),
       ),
-    )
+    ).also { it.requireDurableCoherence() }
   }
 
 internal fun auditRepairPlanToWire(plan: FeatureTaskRuntimeAuditRepairPlan): Map<String, Any?> = mapOf(
@@ -172,6 +176,7 @@ internal fun auditRepairStateToWire(state: FeatureTaskRuntimeAuditRepairState): 
 internal fun repairItemResultFromWire(value: Any?, source: String): FeatureTaskRuntimeRepairItemResult =
   wireMapping(source) {
     val map = value.requiredMap(source)
+    requireExactWireKeys(map, source, AUDIT_REPAIR_RESULT_KEYS)
     FeatureTaskRuntimeRepairItemResult(
       repairItemId = map.requiredString("repair_item_id", source),
       outcome = when (map.requiredString("outcome", source)) {
@@ -187,6 +192,7 @@ internal fun repairItemResultFromWire(value: Any?, source: String): FeatureTaskR
 
 internal fun priorGapDispositionFromWire(value: Any?, source: String): FeatureTaskRuntimePriorGapDisposition {
   val map = value.requiredMap(source)
+  requireExactWireKeys(map, source, AUDIT_REPAIR_DISPOSITION_KEYS)
   return FeatureTaskRuntimePriorGapDisposition(
     gapId = map.requiredString("gap_id", source),
     status = when (map.requiredString("status", source)) {
@@ -206,10 +212,6 @@ private fun repairItemResultToWire(result: FeatureTaskRuntimeRepairItemResult): 
   "result_evidence" to result.resultEvidence,
 )
 
-private fun flattenWireEntries(value: Any?): List<Any?> = (value as? List<*>).orEmpty().flatMap { entry ->
-  if (entry is List<*>) entry else listOf(entry)
-}
-
 private inline fun <T> auditRepairPlanMapping(source: String, block: () -> T): T = try {
   block()
 } catch (error: InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError) {
@@ -224,4 +226,22 @@ private fun durableAuditRepairPlanFromWire(value: Any?, source: String): Feature
   auditRepairPlanFromWire(value, source)
 } catch (error: InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError) {
   throw InvalidWorkflowStateSchemaError("$source: ${error.message}", error)
+}
+
+private fun FeatureTaskRuntimeAuditRepairState.requireDurableCoherence() {
+  val acceptedRepairItemIds = acceptedPlans
+    .flatMap { plan -> plan.gaps.flatMap(FeatureTaskRuntimeAuditGap::repairItems) }
+    .mapTo(linkedSetOf(), FeatureTaskRuntimeRepairItem::repairItemId)
+  require(repairItemResults.all { it.repairItemId in acceptedRepairItemIds }) {
+    "Durable terminal results must belong to an accepted repair plan."
+  }
+  require(progress.attemptedRepairItemCount == repairItemResults.size) {
+    "Attempted repair-item count must equal durable terminal results."
+  }
+  require(progress.resolvedRepairItemCount == repairItemResults.size) {
+    "Resolved repair-item count must equal durable terminal results."
+  }
+  require(progress.recurringGapCount + progress.newGapCount <= unresolvedGapLedger.unresolvedGaps.size) {
+    "Recurring and new gap counts cannot exceed the unresolved-gap ledger."
+  }
 }

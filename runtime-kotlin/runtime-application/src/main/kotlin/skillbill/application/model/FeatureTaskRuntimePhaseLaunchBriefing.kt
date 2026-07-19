@@ -20,6 +20,8 @@ data class FeatureTaskRuntimePhaseLaunchBriefing(
   val briefingText: String,
   /** Wire value of the driving verdict for a backward-edge re-entry; null for a forward launch. */
   val drivingVerdict: String? = null,
+  /** Ordered repair-item ids carried by an audit-gap implementation re-entry. */
+  val auditRepairItemIds: List<String> = emptyList(),
 ) {
   init {
     require(phaseId.isNotBlank()) { "FeatureTaskRuntimePhaseLaunchBriefing.phaseId must be non-blank." }
@@ -47,7 +49,10 @@ data class FeatureTaskRuntimePhaseLaunchBriefing(
     "derived_context_keys" to derivedContextKeys,
     "briefing_text" to briefingText,
   ).let { base ->
-    if (drivingVerdict == null) base else LinkedHashMap(base).apply { put("driving_verdict", drivingVerdict) }
+    LinkedHashMap(base).apply {
+      drivingVerdict?.let { put("driving_verdict", it) }
+      if (auditRepairItemIds.isNotEmpty()) put("audit_repair_item_ids", auditRepairItemIds)
+    }
   }
 
   companion object {
@@ -64,6 +69,7 @@ data class FeatureTaskRuntimePhaseLaunchBriefing(
         derivedContextKeys = raw.requireStringListField("derived_context_keys"),
         briefingText = raw.requireStringField("briefing_text"),
         drivingVerdict = raw.optionalStringField("driving_verdict"),
+        auditRepairItemIds = raw.optionalStringListField("audit_repair_item_ids"),
       )
 
     // Single throw seam so each strict decoder stays within the throw-count budget.
@@ -92,6 +98,9 @@ data class FeatureTaskRuntimePhaseLaunchBriefing(
         element as? String ?: schemaError("Feature-task-runtime briefing artifact field '$key' must contain strings.")
       }
     }
+
+    private fun Map<String, Any?>.optionalStringListField(key: String): List<String> =
+      if (containsKey(key)) requireStringListField(key) else emptyList()
 
     private fun Map<String, Any?>.requireStringMapField(key: String): Map<String, String> {
       val rawValue = if (containsKey(key)) this[key] else schemaError(missingMessage(key, "map"))

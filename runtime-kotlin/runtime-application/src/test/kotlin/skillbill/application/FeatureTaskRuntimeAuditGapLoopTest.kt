@@ -244,6 +244,38 @@ class FeatureTaskRuntimeAuditGapLoopTest {
     assertContains(blocked.blockedReason, "reconcil")
   }
 
+  @Test
+  fun `audit remediation reports the exact item and missing evidence field`() {
+    var implementLaunches = 0
+    val harness = runnerHarness(
+      launcher = RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        when (phaseId) {
+          "audit" -> facts(auditGapsOutput())
+          "implement" -> {
+            implementLaunches += 1
+            if (implementLaunches == 1) {
+              facts(validJsonOutput(phaseId))
+            } else {
+              facts(
+                validJsonOutput(phaseId).replace(
+                  "\"executed_verification\":[\"Focused test passed.\"]",
+                  "\"executed_verification\":[]",
+                ),
+              )
+            }
+          }
+          else -> facts(validJsonOutput(phaseId))
+        }
+      },
+    )
+
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+
+    assertContains(blocked.blockedReason, "ac-002-gap-1-item-1")
+    assertContains(blocked.blockedReason, "executed_verification")
+  }
+
   // (h) AC4: a crash mid-loopback (the audit-gap re-implement spawn-fails) resumes the unfinished
   // reentry span without reusing the audit verdict that caused it, then converges.
   @Test

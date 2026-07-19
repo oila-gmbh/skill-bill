@@ -3,10 +3,17 @@ package skillbill.application
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseBriefingAssembler
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGap
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairPlan
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairProgress
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairState
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseHandoff
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairItem
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedUpstreamOutputs
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeUnresolvedGap
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeUnresolvedGapLedger
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -17,6 +24,63 @@ import kotlin.test.assertTrue
 private val CEILING = FeatureTaskRuntimePhaseBriefingAssembler.FEATURE_TASK_RUNTIME_PHASE_BRIEFING_PAYLOAD_BYTE_CEILING
 
 class FeatureTaskRuntimePhaseBriefingBudgetTest {
+  @Test
+  fun `audit remediation briefing exposes an ordered checklist without cumulative historical payloads`() {
+    val repairItem = FeatureTaskRuntimeRepairItem(
+      repairItemId = "ac-004-gap-2-item-1",
+      intendedOutcome = "Strict durable state",
+      implementationActions = listOf("Implement strict decoding"),
+      affectedPathsOrSymbols = listOf("FeatureTaskRuntimeAuditRepairWireMapper"),
+      requiredVerification = listOf("Run focused tests"),
+      dependsOn = emptyList(),
+    )
+    val plan = FeatureTaskRuntimeAuditRepairPlan(
+      contractVersion = "0.1",
+      gaps = listOf(
+        FeatureTaskRuntimeAuditGap(
+          gapId = "ac-004-gap-2",
+          acceptanceCriterionRef = "AC-004",
+          acceptanceCriterionText = "Durable state is strict.",
+          failureEvidence = "Missing fields were accepted.",
+          diagnosis = "Tighten the read seam.",
+          affectedBoundary = "runtime application",
+          repairItems = listOf(repairItem),
+        ),
+      ),
+    )
+    val state = FeatureTaskRuntimeAuditRepairState(
+      acceptedPlans = listOf(plan),
+      repairItemResults = emptyList(),
+      priorGapDispositions = emptyList(),
+      unresolvedGapLedger = FeatureTaskRuntimeUnresolvedGapLedger(
+        listOf(FeatureTaskRuntimeUnresolvedGap("ac-004-gap-2", "AC-004", 2)),
+      ),
+      repositoryFingerprint = "digest",
+      progress = FeatureTaskRuntimeAuditRepairProgress(false, 0, 1, 0, 0, 1),
+    )
+    val handoff = FeatureTaskRuntimePhaseHandoff(
+      phaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT,
+      runInvariants = FeatureTaskRuntimeRunInvariants(
+        specReference = ".feature-specs/SKILL-131/spec.md",
+        acceptanceCriteria = listOf("AC-004"),
+        mandatesAndOverrides = emptyList(),
+      ),
+      upstreamOutputs = FeatureTaskRuntimeResolvedUpstreamOutputs(emptyMap()),
+      derivedContextKeys = emptyList(),
+      auditRepairPlan = plan,
+      auditRepairState = state,
+    )
+
+    val briefing = FeatureTaskRuntimePhaseBriefingAssembler.assemble(handoff)
+
+    assertEquals(listOf("ac-004-gap-2-item-1"), briefing.auditRepairItemIds)
+    assertContains(briefing.briefingText, "exhaustive execution checklist")
+    assertContains(briefing.briefingText, "audit_remediation_context")
+    assertContains(briefing.briefingText, "prior_terminal_result_count")
+    assertFalse(briefing.briefingText.contains("execution_history"))
+    assertFalse(briefing.briefingText.contains("accepted_plans"))
+  }
+
   @Test
   fun `assembler bounds an unbounded upstream payload so the briefing stays within the documented budget`() {
     val invariants = FeatureTaskRuntimeRunInvariants(

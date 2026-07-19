@@ -49,8 +49,8 @@ object FeatureTaskRuntimePhasePromptComposer {
       specCommitInclusionDirective(briefing.phaseId, specReference, specSource),
       AgentAddonPromptFormatter.format(agentAddonSelection),
       briefing.briefingText,
-      retryCorrectionDirective(briefing.phaseId, priorSchemaFailure),
-      outputContract(briefing.phaseId),
+      retryCorrectionDirective(briefing, priorSchemaFailure),
+      outputContract(briefing),
     ).filter(String::isNotBlank).joinToString(separator = "\n\n")
   }
 
@@ -60,7 +60,10 @@ object FeatureTaskRuntimePhasePromptComposer {
   // audit emitting a prose verdict table instead of the required structured signal). Surfacing the
   // validator's reason turns each retry into a corrective attempt. Empty on the first attempt, so a
   // forward launch's prompt stays byte-for-byte unchanged.
-  private fun retryCorrectionDirective(phaseId: String, priorSchemaFailure: String?): String {
+  private fun retryCorrectionDirective(
+    briefing: FeatureTaskRuntimePhaseLaunchBriefing,
+    priorSchemaFailure: String?,
+  ): String {
     if (priorSchemaFailure.isNullOrBlank()) {
       return ""
     }
@@ -71,7 +74,14 @@ object FeatureTaskRuntimePhasePromptComposer {
       Re-read the required-final-output contract below and emit exactly one schema-valid JSON object that
       carries the missing signal. Do not repeat the same mistake; prose alone does not satisfy the gate.
     """.trimIndent()
-    return base + unparseableRootCorrection(phaseId, priorSchemaFailure)
+    val remediationCorrection = if (briefing.auditRepairItemIds.isEmpty()) {
+      ""
+    } else {
+      "\nCorrect every carried item exactly once and in this order: " +
+        briefing.auditRepairItemIds.joinToString() + ".\n" +
+        auditRemediationOutputExample(briefing.auditRepairItemIds)
+    }
+    return base + remediationCorrection + unparseableRootCorrection(briefing, priorSchemaFailure)
   }
 
   // The `<root> must be an object` / malformed-output failures mean the runtime could not extract ANY
@@ -81,7 +91,10 @@ object FeatureTaskRuntimePhasePromptComposer {
   // table was the object. This appends the concrete correction — name the likely mistake and hand back a
   // minimal fill-in skeleton for this phase. Empty for field-level violations, where the reason already
   // pinpoints the offending field, so those retries stay byte-for-byte unchanged.
-  private fun unparseableRootCorrection(phaseId: String, priorSchemaFailure: String): String {
+  private fun unparseableRootCorrection(
+    briefing: FeatureTaskRuntimePhaseLaunchBriefing,
+    priorSchemaFailure: String,
+  ): String {
     val rootNotParseable = priorSchemaFailure.contains("<root> must be an object") ||
       priorSchemaFailure.contains("Phase output is malformed")
     if (!rootNotParseable) {
@@ -90,14 +103,15 @@ object FeatureTaskRuntimePhasePromptComposer {
     return "\nThe runtime could NOT parse a single JSON object out of your previous output — you likely " +
       "answered\nwith prose, a Markdown table, or a JSON array. None of those can advance the gate. Emit " +
       "exactly ONE\nJSON object as the final thing in your response — no array wrapper and no leading " +
-      "table — matching\nthis skeleton with real values:\n" + retrySkeleton(phaseId)
+      "table — matching\nthis skeleton with real values:\n" + retrySkeleton(briefing)
   }
 
   // A minimal, phase-correct object the agent can fill in. Built line-by-line (the optional verdict line
   // is omitted for non-verifying phases) so the emitted skeleton is always syntactically valid JSON with
   // no dangling comma, and so verifying phases see the exact verdict and produced_outputs keys the gate
   // reads back.
-  private fun retrySkeleton(phaseId: String): String = buildList {
+  private fun retrySkeleton(briefing: FeatureTaskRuntimePhaseLaunchBriefing): String = buildList {
+    val phaseId = briefing.phaseId
     add("```json")
     add("{")
     add("  \"contract_version\": \"${FeatureTaskRuntimePhaseWorkflowDefinition.definition.contractVersion}\",")
@@ -105,7 +119,7 @@ object FeatureTaskRuntimePhasePromptComposer {
     add("  \"status\": \"completed\",")
     verdictSkeletonLine(phaseId)?.let(::add)
     add("  \"summary\": \"<one sentence describing what this phase did>\",")
-    add("  \"produced_outputs\": { ${producedOutputsSkeletonEntry(phaseId)} }")
+    add("  \"produced_outputs\": { ${producedOutputsSkeletonEntry(briefing)} }")
     add("}")
     add("```")
   }.joinToString(separator = "\n")
@@ -119,13 +133,19 @@ object FeatureTaskRuntimePhasePromptComposer {
     }
   }
 
-  private fun producedOutputsSkeletonEntry(phaseId: String): String = when (phaseId) {
-    FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT ->
-      "\"${FeatureTaskRuntimeVerificationSignalKeys.AUDIT_UNMET_CRITERIA}\": []"
-    FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW ->
-      "\"${FeatureTaskRuntimeVerificationSignalKeys.REVIEW_FINDINGS}\": []"
-    else -> "\"result\": \"<concrete output for downstream phases>\""
-  }
+  private fun producedOutputsSkeletonEntry(briefing: FeatureTaskRuntimePhaseLaunchBriefing): String =
+    when (briefing.phaseId) {
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT ->
+        "\"${FeatureTaskRuntimeVerificationSignalKeys.AUDIT_UNMET_CRITERIA}\": []"
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW ->
+        "\"${FeatureTaskRuntimeVerificationSignalKeys.REVIEW_FINDINGS}\": []"
+      else -> if (briefing.auditRepairItemIds.isEmpty()) {
+        "\"result\": \"<concrete output for downstream phases>\""
+      } else {
+        "\"reconciled_state\": { \"reconciled\": true, \"evidence\": \"<verified end state>\" }, " +
+          "\"repair_item_results\": ${repairItemResultsJson(briefing.auditRepairItemIds)}"
+      }
+    }
 
   private fun header(issueKey: String, phaseId: String): String {
     val label = FeatureTaskRuntimePhaseWorkflowDefinition.definition.stepLabels[phaseId] ?: phaseId
@@ -177,7 +197,9 @@ object FeatureTaskRuntimePhasePromptComposer {
     """.trimIndent()
   }
 
-  private fun outputContract(phaseId: String): String = """
+  private fun outputContract(briefing: FeatureTaskRuntimePhaseLaunchBriefing): String {
+    val phaseId = briefing.phaseId
+    return """
     ## Required final output (validated schema gate)
     End your response with exactly one JSON object as the last thing you emit. Prefer a raw
     object with nothing after it; a single ```json fenced block is also accepted. The runtime
@@ -192,13 +214,14 @@ object FeatureTaskRuntimePhasePromptComposer {
     - "summary": non-empty string describing what this phase did
     - "produced_outputs": object with at least one entry carrying this phase's concrete
       result for downstream phases (for example plan steps, changed files, findings, or
-      validation results)${producedOutputsAddendum(phaseId)}
+      validation results)${producedOutputsAddendum(briefing)}
     - "derived_notes": optional; when present, a non-empty string of notes for downstream
       phases
     - "verdict": optional top-level string; verifying phases (review, audit) set it to drive the
       advance-vs-remediation decision — see the verifying-phase signal above
     No top-level fields other than the ones listed above are allowed.
-  """.trimIndent()
+    """.trimIndent()
+  }
 
   // Phase-specific addendum to the produced_outputs bullet. Mutating phases (implement, implement_fix)
   // must prove they reconciled the tree to target rather than silently skipping work, so the runtime can
@@ -207,12 +230,22 @@ object FeatureTaskRuntimePhasePromptComposer {
   // thorough agent from delivering its verdict as a prose Markdown table the gate cannot read (and then
   // blocking after a blind retry loop). The two phase sets are disjoint, so at most one branch is ever
   // non-empty; every other phase returns "" so its output contract stays byte-for-byte unchanged.
-  private fun producedOutputsAddendum(phaseId: String): String {
+  private fun producedOutputsAddendum(briefing: FeatureTaskRuntimePhaseLaunchBriefing): String {
+    val phaseId = briefing.phaseId
     if (FeatureTaskRuntimePhaseWorkflowDefinition.isMutatingPhase(phaseId)) {
+      val remediation = if (briefing.auditRepairItemIds.isEmpty()) {
+        ""
+      } else {
+        "\n    - This is AUDIT-GAP REMEDIATION. produced_outputs MUST also include repair_item_results " +
+          "with exactly these ids in order: ${briefing.auditRepairItemIds.joinToString()}. Every result must " +
+          "contain only repair_item_id, outcome (fixed or already_satisfied), non-empty " +
+          "changed_paths_or_symbols, non-empty executed_verification, and non-empty result_evidence.\n" +
+          auditRemediationOutputExample(briefing.auditRepairItemIds)
+      }
       return "\n    - produced_outputs MUST include a reconciliation report: a \"reconciled_state\" object\n" +
         "      (or a \"reconciled_state\" entry) with \"reconciled\": true and concrete evidence that the\n" +
         "      changed files are at their intended target state. A status of \"completed\" with the\n" +
-        "      reconciliation report missing or \"reconciled\" not true fails the schema gate loudly."
+        "      reconciliation report missing or \"reconciled\" not true fails the schema gate loudly." + remediation
     }
     val findings = FeatureTaskRuntimeVerificationSignalKeys.REVIEW_FINDINGS
     val unmetCriteria = FeatureTaskRuntimeVerificationSignalKeys.AUDIT_UNMET_CRITERIA
@@ -230,6 +263,23 @@ object FeatureTaskRuntimePhasePromptComposer {
           "      fails the schema gate loudly — a prose verdict (e.g. a Markdown table) cannot advance the gate."
       else -> ""
     }
+  }
+
+  private fun auditRemediationOutputExample(repairItemIds: List<String>): String =
+    "Required produced_outputs shape:\n```json\n{\n" +
+      "  \"reconciled_state\": { \"reconciled\": true, \"evidence\": \"<verified end state>\" },\n" +
+      "  \"repair_item_results\": ${repairItemResultsJson(repairItemIds)}\n" +
+      "}\n```"
+
+  private fun repairItemResultsJson(repairItemIds: List<String>): String = repairItemIds.joinToString(
+    prefix = "[",
+    postfix = "]",
+    separator = ", ",
+  ) { repairItemId ->
+    "{ \"repair_item_id\": \"$repairItemId\", \"outcome\": \"fixed\", " +
+      "\"changed_paths_or_symbols\": [\"<path or symbol>\"], " +
+      "\"executed_verification\": [\"<command and result>\"], " +
+      "\"result_evidence\": \"<concrete evidence>\" }"
   }
 
   // Emitted only for mutating phases (see [FeatureTaskRuntimePhaseWorkflowDefinition.isMutatingPhase]):

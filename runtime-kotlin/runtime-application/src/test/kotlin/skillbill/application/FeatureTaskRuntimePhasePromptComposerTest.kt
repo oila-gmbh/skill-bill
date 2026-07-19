@@ -390,6 +390,43 @@ class FeatureTaskRuntimePhasePromptComposerTest {
   }
 
   @Test
+  fun `audit remediation output contract names every carried item and required evidence field`() {
+    val briefing = briefingFor("implement").copy(
+      auditRepairItemIds = listOf("ac-004-gap-2-item-1", "ac-005-gap-1-item-1"),
+    )
+
+    val prompt = FeatureTaskRuntimePhasePromptComposer.compose(ISSUE_KEY, briefing)
+
+    assertContains(prompt, "AUDIT-GAP REMEDIATION")
+    assertContains(prompt, "ac-004-gap-2-item-1")
+    assertContains(prompt, "ac-005-gap-1-item-1")
+    assertContains(prompt, "\"repair_item_results\"")
+    assertContains(prompt, "\"changed_paths_or_symbols\"")
+    assertContains(prompt, "\"executed_verification\"")
+    assertContains(prompt, "\"result_evidence\"")
+    assertContains(prompt, "\"reconciled_state\"")
+  }
+
+  @Test
+  fun `audit remediation retry repeats the exact item ids and complete output skeleton`() {
+    val briefing = briefingFor("implement").copy(
+      auditRepairItemIds = listOf("ac-004-gap-2-item-1", "ac-005-gap-1-item-1"),
+    )
+
+    val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefing,
+      priorSchemaFailure =
+      "Audit repair item 'ac-005-gap-1-item-1' executed_verification must contain concrete verification evidence.",
+    )
+
+    assertContains(prompt, "Correct every carried item exactly once and in this order")
+    assertContains(prompt, "ac-004-gap-2-item-1, ac-005-gap-1-item-1")
+    assertContains(prompt, "Required produced_outputs shape")
+    assertContains(prompt, "<command and result>")
+  }
+
+  @Test
   fun `a blank prior schema failure yields no correction directive`() {
     // F-002: retryCorrectionDirective treats null and blank identically (isNullOrBlank). A blank reason
     // must not emit a no-op "REJECTED" heading with nothing under it.

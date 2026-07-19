@@ -180,6 +180,113 @@ class FeatureTaskRuntimeAuditRepairWireMapperTest {
     assertEquals(expected, auditRepairStateFromWire(auditRepairStateToWire(expected), "audit_repair_state"))
   }
 
+  @Test
+  fun `durable state requires every collection and rejects forbidden payload fields`() {
+    listOf("execution_history", "prior_gap_dispositions").forEach { field ->
+      val malformed = auditRepairStateToWire(state()).toMutableMap().apply { remove(field) }
+      assertFailsWith<InvalidWorkflowStateSchemaError> {
+        auditRepairStateFromWire(malformed, "audit_repair_state")
+      }
+    }
+
+    val missingLedgerGaps = auditRepairStateToWire(state()).toMutableMap()
+    missingLedgerGaps["unresolved_gap_ledger"] =
+      (missingLedgerGaps.getValue("unresolved_gap_ledger") as Map<*, *>).toMutableMap().apply { remove("gaps") }
+    assertFailsWith<InvalidWorkflowStateSchemaError> {
+      auditRepairStateFromWire(missingLedgerGaps, "audit_repair_state")
+    }
+
+    listOf("prompt", "raw_tool_output").forEach { field ->
+      val malformed = auditRepairStateToWire(state()).toMutableMap().apply { put(field, "forbidden") }
+      assertFailsWith<InvalidWorkflowStateSchemaError> {
+        auditRepairStateFromWire(malformed, "audit_repair_state")
+      }
+    }
+  }
+
+  @Test
+  fun `durable state rejects unknown fields in every nested state object`() {
+    val mutations = listOf<(MutableMap<String, Any?>) -> Unit>(
+      { wire ->
+        wire["progress"] = (wire.getValue("progress") as Map<*, *>).toStringKeyMap().apply { put("extra", 1) }
+      },
+      { wire ->
+        val ledger = (wire.getValue("unresolved_gap_ledger") as Map<*, *>).toStringKeyMap()
+        ledger["extra"] = true
+        wire["unresolved_gap_ledger"] = ledger
+      },
+      { wire ->
+        wire["execution_history"] = listOf(
+          (repairItemResultWire() as Map<*, *>).toStringKeyMap().apply { put("raw_tool_output", "forbidden") },
+        )
+        wire["progress"] = progressWire(attempted = 1, resolved = 1)
+      },
+      { wire ->
+        wire["prior_gap_dispositions"] = listOf(
+          dispositionWire().toMutableMap().apply { put("prompt", "forbidden") },
+        )
+      },
+      { wire ->
+        val ledger = (wire.getValue("unresolved_gap_ledger") as Map<*, *>).toStringKeyMap()
+        ledger["gaps"] = listOf(
+          ((ledger.getValue("gaps") as List<*>).single() as Map<*, *>).toStringKeyMap().apply {
+            put("source_body", "forbidden")
+          },
+        )
+        wire["unresolved_gap_ledger"] = ledger
+      },
+    )
+    mutations.forEach { mutation ->
+      val malformed = auditRepairStateToWire(state()).toMutableMap().also(mutation)
+      assertFailsWith<InvalidWorkflowStateSchemaError> {
+        auditRepairStateFromWire(malformed, "audit_repair_state")
+      }
+    }
+  }
+
+  @Test
+  fun `durable state rejects omitted history ledger entries and contradictory counters`() {
+    val omittedLedgerGap = auditRepairStateToWire(state()).toMutableMap()
+    val ledger = (omittedLedgerGap.getValue("unresolved_gap_ledger") as Map<*, *>).toStringKeyMap()
+    ledger["gaps"] = emptyList<Any?>()
+    omittedLedgerGap["unresolved_gap_ledger"] = ledger
+
+    val contradictoryCounter = auditRepairStateToWire(state()).toMutableMap()
+    contradictoryCounter["progress"] =
+      (contradictoryCounter.getValue("progress") as Map<*, *>).toStringKeyMap().apply {
+        put("attempted_repair_item_count", 1)
+      }
+
+    val impossibleGapCounters = auditRepairStateToWire(state()).toMutableMap()
+    impossibleGapCounters["progress"] =
+      (impossibleGapCounters.getValue("progress") as Map<*, *>).toStringKeyMap().apply {
+        put("new_gap_count", 2)
+      }
+
+    val omittedTerminalHistory = auditRepairStateToWire(state()).toMutableMap().apply {
+      put("progress", progressWire(attempted = 1, resolved = 1))
+    }
+
+    val unknownTerminalHistory = auditRepairStateToWire(state()).toMutableMap().apply {
+      put("execution_history", listOf(repairItemResultWire("ac-999-gap-1-item-1")))
+      put("progress", progressWire(attempted = 1, resolved = 1))
+    }
+
+    val malformedStates =
+      listOf(
+        omittedLedgerGap,
+        contradictoryCounter,
+        impossibleGapCounters,
+        omittedTerminalHistory,
+        unknownTerminalHistory,
+      )
+    malformedStates.forEach { malformed ->
+      assertFailsWith<InvalidWorkflowStateSchemaError> {
+        auditRepairStateFromWire(malformed, "audit_repair_state")
+      }
+    }
+  }
+
   private fun state() = FeatureTaskRuntimeAuditRepairState(
     acceptedPlans = listOf(plan()),
     repairItemResults = emptyList(),
@@ -227,4 +334,30 @@ class FeatureTaskRuntimeAuditRepairWireMapperTest {
     copy["gaps"] = gaps
     return copy
   }
+
+  private fun Map<*, *>.toStringKeyMap(): MutableMap<String, Any?> =
+    entries.associate { (key, value) -> key.toString() to value }.toMutableMap()
+
+  private fun repairItemResultWire(repairItemId: String = "ac-001-gap-1-item-1"): Map<String, Any?> = mapOf(
+    "repair_item_id" to repairItemId,
+    "outcome" to "fixed",
+    "changed_paths_or_symbols" to listOf("Example.kt"),
+    "executed_verification" to listOf("focused test passed"),
+    "result_evidence" to "The intended behavior is present.",
+  )
+
+  private fun dispositionWire(): Map<String, Any?> = mapOf(
+    "gap_id" to "ac-001-gap-1",
+    "status" to "recurring",
+    "evidence" to "The gap remains unresolved.",
+  )
+
+  private fun progressWire(attempted: Int, resolved: Int): Map<String, Any?> = mapOf(
+    "first_pass_convergence" to false,
+    "recurring_gap_count" to 0,
+    "new_gap_count" to 1,
+    "attempted_repair_item_count" to attempted,
+    "resolved_repair_item_count" to resolved,
+    "audit_gap_iteration_count" to 1,
+  )
 }

@@ -21,8 +21,8 @@ subtasks:
   workflow_id: "wftr-20260718-205724-ecp9"
   blocked_reason: "Phase 'implement' exhausted the bounded fix loop after 3 attempts\
     \ (cap=3); the run blocks rather than advancing on invalid output. Last schema-gate\
-    \ failure: Audit-gap remediation cannot assign carried repair work to a later\
-    \ phase."
+    \ failure: Every audit repair item must have a terminal outcome and concrete verification/result\
+    \ evidence."
   last_resumable_step: "implement"
   linear_issue_id: null
   finalizing_agent_id: null
