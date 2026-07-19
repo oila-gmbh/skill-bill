@@ -3,27 +3,24 @@ contract_version: "0.5"
 issue_key: "SKILL-131"
 feature_name: "single-pass-audit-repair"
 parent_spec_path: ".feature-specs/SKILL-131-single-pass-audit-repair/spec.md"
-status: "blocked"
+status: "in_progress"
 execution_model: "same_branch_commit_per_subtask"
 base_branch: "main"
 feature_branch: "feat/SKILL-131-single-pass-audit-repair"
 stack_branches: []
 current_subtask_intent:
   subtask_id: 1
-  action: "blocked"
+  action: "start"
 subtasks:
 - id: 1
   name: "Audit repair plan contract"
   spec_path: ".feature-specs/SKILL-131-single-pass-audit-repair/spec_subtask_1_repair_plan_contract.md"
-  status: "blocked"
+  status: "pending"
   branch: null
   commit_sha: null
-  workflow_id: "wftr-20260718-205724-ecp9"
-  blocked_reason: "Phase 'implement' exhausted the bounded fix loop after 3 attempts\
-    \ (cap=3); the run blocks rather than advancing on invalid output. Last schema-gate\
-    \ failure: Every audit repair item must have a terminal outcome and concrete verification/result\
-    \ evidence."
-  last_resumable_step: "implement"
+  workflow_id: "wftr-20260719-073731-kbdz"
+  blocked_reason: null
+  last_resumable_step: null
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []

@@ -422,7 +422,7 @@ class GitWorkflowGitOperationsTest {
   }
 
   @Test
-  fun `goal review baseline capture rejects staged tracked changes`() {
+  fun `goal review baseline capture accepts staged tracked changes`() {
     val repoRoot = Files.createTempDirectory("skillbill-goal-review-baseline-staged")
     git(repoRoot, "init")
     git(repoRoot, "config", "user.email", "skill-bill@example.test")
@@ -438,12 +438,12 @@ class GitWorkflowGitOperationsTest {
       git(repoRoot, "branch", "--show-current"),
     )
 
-    assertFalse(result.ok)
-    assertContains(result.error, "staged tracked changes")
+    assertTrue(result.ok, result.error)
+    assertEquals(git(repoRoot, "rev-parse", "HEAD"), requireNotNull(result.baseline).reviewBaseSha)
   }
 
   @Test
-  fun `goal review baseline capture rejects unstaged tracked changes`() {
+  fun `goal review baseline capture accepts unstaged tracked changes`() {
     val repoRoot = Files.createTempDirectory("skillbill-goal-review-baseline-unstaged")
     git(repoRoot, "init")
     git(repoRoot, "config", "user.email", "skill-bill@example.test")
@@ -458,8 +458,8 @@ class GitWorkflowGitOperationsTest {
       git(repoRoot, "branch", "--show-current"),
     )
 
-    assertFalse(result.ok)
-    assertContains(result.error, "unstaged tracked changes")
+    assertTrue(result.ok, result.error)
+    assertEquals(git(repoRoot, "rev-parse", "HEAD"), requireNotNull(result.baseline).reviewBaseSha)
   }
 
   @Test
