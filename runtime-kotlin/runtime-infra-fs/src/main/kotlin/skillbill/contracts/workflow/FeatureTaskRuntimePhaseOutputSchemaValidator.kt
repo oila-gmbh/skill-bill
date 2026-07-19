@@ -15,6 +15,7 @@ import skillbill.error.InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGap
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairPlan
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeEvidence
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairItem
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairItemStatus
 import java.nio.file.Files
@@ -96,7 +97,15 @@ object FeatureTaskRuntimePhaseOutputSchemaValidator {
           gapId = gap.path("gap_id").asText(),
           acceptanceCriterionRef = gap.path("acceptance_criterion_ref").asText(),
           acceptanceCriterionText = gap.path("acceptance_criterion_text").asText(),
-          failureEvidence = gap.path("failure_evidence").asText(),
+          failureEvidence = gap.path("failure_evidence").let { evidence ->
+            FeatureTaskRuntimeEvidence(
+              observation = FeatureTaskRuntimeEvidence.Observation.valueOf(
+                evidence.path("observation").asText().uppercase(),
+              ),
+              artifactRef = evidence.path("artifact_ref").asText(),
+              checkRef = evidence.path("check_ref").asText(),
+            )
+          },
           diagnosis = gap.path("diagnosis").asText(),
           affectedBoundary = gap.path("affected_boundary").asText(),
           repairItems = gap.path("repair_items").map { item ->

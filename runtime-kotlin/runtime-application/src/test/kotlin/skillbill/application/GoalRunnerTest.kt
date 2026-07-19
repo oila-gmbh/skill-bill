@@ -1709,7 +1709,11 @@ internal class InMemoryGoalManifestStore(
     return state.copy(dbPath = dbPathOverride ?: state.dbPath, manifest = manifest)
   }
 
-  override fun saveHardReset(state: GoalRunnerManifestState, dbPathOverride: String?): GoalRunnerManifestState {
+  override fun saveHardReset(
+    state: GoalRunnerManifestState,
+    dbPathOverride: String?,
+    preservePlanning: Boolean,
+  ): GoalRunnerManifestState {
     hardReset?.invoke(state, dbPathOverride)
     return save(state, dbPathOverride)
   }

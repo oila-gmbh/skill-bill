@@ -7,6 +7,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGap
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairPlan
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairProgress
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairState
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeEvidence
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorGapDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairItem
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairItemOutcome
@@ -29,7 +30,7 @@ internal fun auditRepairPlanFromWire(value: Any?, source: String): FeatureTaskRu
           gapId = gapMap.requiredString("gap_id", gapSource),
           acceptanceCriterionRef = gapMap.requiredString("acceptance_criterion_ref", gapSource),
           acceptanceCriterionText = gapMap.requiredString("acceptance_criterion_text", gapSource),
-          failureEvidence = gapMap.requiredString("failure_evidence", gapSource),
+          failureEvidence = AuditEvidenceWire.fromWire(gapMap["failure_evidence"], "$gapSource.failure_evidence"),
           diagnosis = gapMap.requiredString("diagnosis", gapSource),
           affectedBoundary = gapMap.requiredString("affected_boundary", gapSource),
           repairItems = gapMap.requiredList("repair_items", gapSource).mapIndexed { itemIndex, item ->
@@ -122,7 +123,7 @@ internal fun auditRepairPlanToWire(plan: FeatureTaskRuntimeAuditRepairPlan): Map
       "gap_id" to gap.gapId,
       "acceptance_criterion_ref" to gap.acceptanceCriterionRef,
       "acceptance_criterion_text" to gap.acceptanceCriterionText,
-      "failure_evidence" to gap.failureEvidence,
+      "failure_evidence" to AuditEvidenceWire.toWire(gap.failureEvidence),
       "diagnosis" to gap.diagnosis,
       "affected_boundary" to gap.affectedBoundary,
       "repair_items" to gap.repairItems.map { item ->
@@ -149,7 +150,7 @@ internal fun auditRepairStateToWire(state: FeatureTaskRuntimeAuditRepairState): 
     mapOf(
       "gap_id" to disposition.gapId,
       "status" to disposition.status.name.lowercase(),
-      "evidence" to disposition.evidence,
+      "evidence" to AuditEvidenceWire.toWire(disposition.evidence),
     )
   },
   "unresolved_gap_ledger" to mapOf(
@@ -186,7 +187,7 @@ internal fun repairItemResultFromWire(value: Any?, source: String): FeatureTaskR
       },
       changedPathsOrSymbols = map.stringList("changed_paths_or_symbols", source, required = true),
       executedVerification = map.stringList("executed_verification", source, required = true),
-      resultEvidence = map.requiredString("result_evidence", source),
+      resultEvidence = AuditEvidenceWire.fromWire(map["result_evidence"], "$source.result_evidence"),
     )
   }
 
@@ -200,17 +201,51 @@ internal fun priorGapDispositionFromWire(value: Any?, source: String): FeatureTa
       "recurring" -> FeatureTaskRuntimePriorGapDisposition.Status.RECURRING
       else -> invalidWire(source, "status must be resolved or recurring")
     },
-    evidence = map.requiredString("evidence", source),
+    evidence = AuditEvidenceWire.fromWire(map["evidence"], "$source.evidence"),
   )
 }
+
+internal fun auditEvidenceFromWire(value: Any?, source: String): FeatureTaskRuntimeEvidence =
+  wireMapping(source) { AuditEvidenceWire.fromWire(value, source) }
 
 private fun repairItemResultToWire(result: FeatureTaskRuntimeRepairItemResult): Map<String, Any?> = mapOf(
   "repair_item_id" to result.repairItemId,
   "outcome" to result.outcome.name.lowercase(),
   "changed_paths_or_symbols" to result.changedPathsOrSymbols,
   "executed_verification" to result.executedVerification,
-  "result_evidence" to result.resultEvidence,
+  "result_evidence" to AuditEvidenceWire.toWire(result.resultEvidence),
 )
+
+private object AuditEvidenceWire {
+  private val keys = setOf("observation", "artifact_ref", "check_ref")
+
+  fun fromWire(value: Any?, source: String): FeatureTaskRuntimeEvidence {
+    val map = value.requiredMap(source)
+    requireExactWireKeys(map, source, keys)
+    val observation = when (val wireValue = map.requiredString("observation", source)) {
+      "required_behavior_absent" -> FeatureTaskRuntimeEvidence.Observation.REQUIRED_BEHAVIOR_ABSENT
+      "verification_failed" -> FeatureTaskRuntimeEvidence.Observation.VERIFICATION_FAILED
+      "contract_rejected" -> FeatureTaskRuntimeEvidence.Observation.CONTRACT_REJECTED
+      "state_mismatch" -> FeatureTaskRuntimeEvidence.Observation.STATE_MISMATCH
+      "fix_verified" -> FeatureTaskRuntimeEvidence.Observation.FIX_VERIFIED
+      "already_satisfied_verified" -> FeatureTaskRuntimeEvidence.Observation.ALREADY_SATISFIED_VERIFIED
+      "resolution_verified" -> FeatureTaskRuntimeEvidence.Observation.RESOLUTION_VERIFIED
+      "recurrence_verified" -> FeatureTaskRuntimeEvidence.Observation.RECURRENCE_VERIFIED
+      else -> invalidWire("$source.observation", "unauthorized evidence observation '$wireValue'")
+    }
+    return FeatureTaskRuntimeEvidence(
+      observation = observation,
+      artifactRef = map.requiredString("artifact_ref", source),
+      checkRef = map.requiredString("check_ref", source),
+    )
+  }
+
+  fun toWire(evidence: FeatureTaskRuntimeEvidence): Map<String, String> = mapOf(
+    "observation" to evidence.observation.name.lowercase(),
+    "artifact_ref" to evidence.artifactRef,
+    "check_ref" to evidence.checkRef,
+  )
+}
 
 private inline fun <T> auditRepairPlanMapping(source: String, block: () -> T): T = try {
   block()

@@ -178,6 +178,37 @@ class FeatureTaskRuntimeAuditGapLoopTest {
   }
 
   @Test
+  fun `cosmetic recurring repair plan mutation is non progress with an unchanged repository`() {
+    var auditLaunches = 0
+    val git = RecordingWorkflowGitOperations().apply { repositoryFingerprintValue = "unchanged" }
+    val harness = runnerHarness(
+      launcher = RuntimeRecordingLauncher { request ->
+        when (val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))) {
+          "audit" -> {
+            auditLaunches += 1
+            facts(
+              when (auditLaunches) {
+                1 -> auditGapsOutput()
+                2 -> auditGapsOutput(followUp = true).replace(
+                  "The missing behavior is implemented.",
+                  "The missing behavior and its durable boundary are implemented.",
+                )
+                else -> auditSatisfiedOutput()
+              },
+            )
+          }
+          else -> facts(validJsonOutput(phaseId))
+        }
+      },
+      runtimeConfig = RuntimeHarnessConfig(branchSetup = BranchSetupTestConfig(gitOperations = git)),
+    )
+
+    val report = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+    assertContains(report.blockedReason, "Audit repair made no progress")
+    assertEquals(2, auditLaunches)
+  }
+
+  @Test
   fun `recurring audit keeps the cumulative ledger identity and counters`() {
     var auditLaunches = 0
     var implementLaunches = 0
@@ -388,7 +419,9 @@ class FeatureTaskRuntimeAuditGapLoopTest {
     assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
     val durable = requireNotNull(harness.recorder.loadAuditRepairState(WORKFLOW_ID))
     val changedPlan = durable.acceptedPlans.last().let { plan ->
-      plan.copy(gaps = plan.gaps.map { gap -> gap.copy(failureEvidence = "Contradictory durable evidence") })
+      plan.copy(
+        gaps = plan.gaps.map { gap -> gap.copy(failureEvidence = gap.failureEvidence.copy(checkRef = "AC-999")) },
+      )
     }
     val contradictoryState = durable.copy(
       acceptedPlans = durable.acceptedPlans.dropLast(1) + changedPlan,
@@ -706,14 +739,14 @@ internal fun auditGapsOutput(followUp: Boolean = false): String = """
     "verdict": "gaps_found",
     "produced_outputs": {
       "unmet_criteria": [{"acceptance_criterion_ref":"AC-002","message": "$AUDIT_GAP_MESSAGE"}],
-      ${if (followUp) "\"prior_gap_dispositions\":[{\"gap_id\":\"ac-002-gap-1\",\"status\":\"recurring\",\"evidence\":\"Focused verification still reproduces the unmet criterion.\"}]," else ""}
+      ${if (followUp) "\"prior_gap_dispositions\":[{\"gap_id\":\"ac-002-gap-1\",\"status\":\"recurring\",\"evidence\":{\"observation\":\"recurrence_verified\",\"artifact_ref\":\"runtime-kotlin\",\"check_ref\":\"AC-002\"}}]," else ""}
       "audit_repair_plan": {
-        "contract_version":"0.1",
+        "contract_version":"0.2",
         "gaps":[{
           "gap_id":"ac-002-gap-1",
           "acceptance_criterion_ref":"AC-002",
           "acceptance_criterion_text":"The audit gap is repaired.",
-          "failure_evidence":"The audit observed the missing behavior.",
+          "failure_evidence":{"observation":"required_behavior_absent","artifact_ref":"runtime-kotlin","check_ref":"AC-001"},
           "diagnosis":"Implement and verify the missing behavior.",
           "affected_boundary":"runtime application",
           "repair_items":[{
@@ -739,7 +772,7 @@ internal fun auditSatisfiedOutput(followUp: Boolean = true): String = """
     "summary": "Every acceptance criterion is met.",
     "verdict": "satisfied",
     "produced_outputs": {
-      "unmet_criteria": []${if (followUp) ",\"prior_gap_dispositions\":[{\"gap_id\":\"ac-002-gap-1\",\"status\":\"resolved\",\"evidence\":\"Focused verification proves the carried criterion is satisfied.\"}]" else ""}
+      "unmet_criteria": []${if (followUp) ",\"prior_gap_dispositions\":[{\"gap_id\":\"ac-002-gap-1\",\"status\":\"resolved\",\"evidence\":{\"observation\":\"resolution_verified\",\"artifact_ref\":\"runtime-kotlin\",\"check_ref\":\"AC-002\"}}]" else ""}
     }
   }
 """.trimIndent()

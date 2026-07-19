@@ -131,11 +131,13 @@ data class GoalRunnerStatusRequest(
 data class GoalRunnerResetRequest(
   val issueKey: String,
   val hard: Boolean,
+  val preservePlanning: Boolean = false,
   val dbPathOverride: String? = null,
   val repoRoot: Path? = null,
 ) {
   init {
     require(issueKey.isNotBlank()) { "issueKey is required." }
+    require(!preservePlanning || hard) { "preservePlanning requires a hard reset." }
   }
 }
 

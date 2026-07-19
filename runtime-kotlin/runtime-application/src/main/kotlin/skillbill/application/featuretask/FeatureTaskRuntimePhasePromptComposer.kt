@@ -239,7 +239,8 @@ object FeatureTaskRuntimePhasePromptComposer {
         "\n    - This is AUDIT-GAP REMEDIATION. produced_outputs MUST also include repair_item_results " +
           "with exactly these ids in order: ${briefing.auditRepairItemIds.joinToString()}. Every result must " +
           "contain only repair_item_id, outcome (fixed or already_satisfied), non-empty " +
-          "changed_paths_or_symbols, non-empty executed_verification, and non-empty result_evidence.\n" +
+          "changed_paths_or_symbols, non-empty executed_verification, and structured result_evidence " +
+          "with observation, artifact_ref, and check_ref.\n" +
           auditRemediationOutputExample(briefing.auditRepairItemIds)
       }
       return "\n    - produced_outputs MUST include a reconciliation report: a \"reconciled_state\" object\n" +
@@ -260,7 +261,9 @@ object FeatureTaskRuntimePhasePromptComposer {
         "\n    - This is a VERIFYING phase: produced_outputs MUST carry an \"$unmetCriteria\" array (one\n" +
           "      message per unmet acceptance criterion; an explicit empty [] affirms every criterion is met)\n" +
           "      AND/OR a top-level \"$verdict\" of \"satisfied\" or \"gaps_found\". Output carrying NEITHER signal\n" +
-          "      fails the schema gate loudly — a prose verdict (e.g. a Markdown table) cannot advance the gate."
+          "      fails the schema gate loudly — a prose verdict (e.g. a Markdown table) cannot advance the gate.\n" +
+          "      A gaps_found result MUST include one schema-valid audit_repair_plan covering every entry in\n" +
+          "      unmet_criteria; use concrete references such as src/main/Example.kt:Example and ExampleTest."
       else -> ""
     }
   }
@@ -279,7 +282,8 @@ object FeatureTaskRuntimePhasePromptComposer {
     "{ \"repair_item_id\": \"$repairItemId\", \"outcome\": \"fixed\", " +
       "\"changed_paths_or_symbols\": [\"<path or symbol>\"], " +
       "\"executed_verification\": [\"<command and result>\"], " +
-      "\"result_evidence\": \"<concrete evidence>\" }"
+      "\"result_evidence\": { \"observation\": \"fix_verified\", " +
+      "\"artifact_ref\": \"src/main/Example.kt:Example\", \"check_ref\": \"ExampleTest\" } }"
   }
 
   // Emitted only for mutating phases (see [FeatureTaskRuntimePhaseWorkflowDefinition.isMutatingPhase]):

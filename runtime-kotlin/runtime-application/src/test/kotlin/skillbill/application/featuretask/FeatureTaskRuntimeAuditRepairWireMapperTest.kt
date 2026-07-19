@@ -7,6 +7,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGap
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairPlan
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairProgress
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairState
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeEvidence
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairItem
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairItemOutcome
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairItemResult
@@ -411,7 +412,7 @@ class FeatureTaskRuntimeAuditRepairWireMapperTest {
     FeatureTaskRuntimeRepairItemOutcome.FIXED,
     listOf("src/Foo.kt"),
     listOf("Focused test passed"),
-    evidence,
+    evidence(checkRef = "FeatureTaskRuntimeAuditRepairWireMapperTest:${evidence.replace(' ', '-')}")
   )
 
   private fun plan() = FeatureTaskRuntimeAuditRepairPlan(
@@ -421,7 +422,7 @@ class FeatureTaskRuntimeAuditRepairWireMapperTest {
         gapId = "ac-001-gap-1",
         acceptanceCriterionRef = "AC-001",
         acceptanceCriterionText = "Criterion",
-        failureEvidence = "Evidence",
+        failureEvidence = evidence(),
         diagnosis = "Diagnosis",
         affectedBoundary = "runtime",
         repairItems = listOf(
@@ -459,13 +460,25 @@ class FeatureTaskRuntimeAuditRepairWireMapperTest {
     "outcome" to "fixed",
     "changed_paths_or_symbols" to listOf("Example.kt"),
     "executed_verification" to listOf("focused test passed"),
-    "result_evidence" to "The intended behavior is present.",
+    "result_evidence" to evidenceWire("fix_verified"),
   )
 
   private fun dispositionWire(): Map<String, Any?> = mapOf(
     "gap_id" to "ac-001-gap-1",
     "status" to "recurring",
-    "evidence" to "The gap remains unresolved.",
+    "evidence" to evidenceWire("recurrence_verified"),
+  )
+
+  private fun evidence(artifactRef: String = "src/Foo.kt", checkRef: String = "AC-001") = FeatureTaskRuntimeEvidence(
+    FeatureTaskRuntimeEvidence.Observation.FIX_VERIFIED,
+    artifactRef,
+    checkRef,
+  )
+
+  private fun evidenceWire(observation: String = "required_behavior_absent"): Map<String, String> = mapOf(
+    "observation" to observation,
+    "artifact_ref" to "src/Foo.kt",
+    "check_ref" to "AC-001",
   )
 
   private fun progressWire(attempted: Int, resolved: Int): Map<String, Any?> = mapOf(

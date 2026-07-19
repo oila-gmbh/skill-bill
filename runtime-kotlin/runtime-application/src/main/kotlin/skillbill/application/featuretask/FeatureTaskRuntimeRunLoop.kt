@@ -1313,6 +1313,10 @@ internal class FeatureTaskRuntimeRunLoop(
     val latestPlanItemIds = prior.acceptedPlans.last().gaps
       .flatMap { it.repairItems }
       .mapTo(linkedSetOf()) { it.repairItemId }
+    val currentPlanItemIds = requireNotNull(currentPlan).gaps
+      .flatMap { it.repairItems }
+      .mapTo(linkedSetOf()) { it.repairItemId }
+    if ((currentPlanItemIds - latestPlanItemIds).isNotEmpty()) return null
     val resolvedCount = prior.repairItemResults.count { it.repairItemId in latestPlanItemIds }
     return detectAuditRepairNonProgress(
       previousGapIds = prior.unresolvedGapLedger.unresolvedGaps.mapTo(linkedSetOf()) { it.gapId },
@@ -1432,8 +1436,8 @@ internal class FeatureTaskRuntimeRunLoop(
         "Audit repair item '$label' changed_paths_or_symbols must contain concrete repository evidence."
       hasNoNonBlankStrings(result["executed_verification"]) ->
         "Audit repair item '$label' executed_verification must contain concrete verification evidence."
-      (result["result_evidence"] as? String).isNullOrBlank() ->
-        "Audit repair item '$label' result_evidence must be non-empty."
+      runCatching { repairItemResultFromWire(result, "repair_item_results[$index]") }.isFailure ->
+        "Audit repair item '$label' result_evidence must be structured and contract-safe."
       result["outcome"] == "already_satisfied" && !alreadySatisfiedEvidenceIsDistinct(result) ->
         "Audit repair item '$label' already_satisfied requires distinct repository and verification evidence."
       result.values.any(::containsForbiddenAuditRepairDeferral) ->
@@ -1469,8 +1473,8 @@ internal class FeatureTaskRuntimeRunLoop(
       return "The following audit must disposition every durable unresolved gap exactly once; " +
         "expected=$priorIds actual=$dispositionIds."
     }
-    if (dispositions.any { (it["evidence"] as? String).isNullOrBlank() }) {
-      return "Every prior gap disposition requires concrete verification evidence."
+    if (dispositions.any { runCatching { priorGapDispositionFromWire(it, "prior_gap_disposition") }.isFailure }) {
+      return "Every prior gap disposition requires structured contract-safe verification evidence."
     }
     val recurring = dispositions.filter { it["status"] == "recurring" }
     if (recurring.size + dispositions.count { it["status"] == "resolved" } != dispositions.size) {
@@ -1494,9 +1498,11 @@ internal class FeatureTaskRuntimeRunLoop(
       ?: return "Blocked audit remediation must persist unresolvable_repair with gap_id and repair_item_id."
     val gapId = block["gap_id"] as? String
     val itemId = block["repair_item_id"] as? String
-    val evidence = block["evidence"] as? String
-    if (gapId.isNullOrBlank() || itemId.isNullOrBlank() || evidence.isNullOrBlank()) {
-      return "Blocked audit remediation requires nonblank gap_id, repair_item_id, and evidence."
+    val evidence = runCatching {
+      auditEvidenceFromWire(block["evidence"], "unresolvable_repair.evidence")
+    }.getOrNull()
+    if (gapId.isNullOrBlank() || itemId.isNullOrBlank() || evidence == null) {
+      return "Blocked audit remediation requires nonblank gap_id, repair_item_id, and structured evidence."
     }
     val owningGap = reentry.auditRepairPlan?.gaps.orEmpty().firstOrNull { it.gapId == gapId }
       ?: return "Blocked audit remediation references unknown gap_id '$gapId'."

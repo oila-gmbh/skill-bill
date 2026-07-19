@@ -166,9 +166,13 @@ class WorkflowGoalRunnerManifestStore(
   override fun saveRuntimeState(state: GoalRunnerManifestState, dbPathOverride: String?): GoalRunnerManifestState =
     saveWorkflowProjection(state, dbPathOverride).state
 
-  override fun saveHardReset(state: GoalRunnerManifestState, dbPathOverride: String?): GoalRunnerManifestState {
+  override fun saveHardReset(
+    state: GoalRunnerManifestState,
+    dbPathOverride: String?,
+    preservePlanning: Boolean,
+  ): GoalRunnerManifestState {
     val saved = database.transaction(dbPathOverride) { unitOfWork ->
-      unitOfWork.goalPlanningPreparations.deleteByGoal(state.parentWorkflowId)
+      if (!preservePlanning) unitOfWork.goalPlanningPreparations.deleteByGoal(state.parentWorkflowId)
       unitOfWork.workflowStates.deleteGoalChildWorkflowsByParent(state.parentWorkflowId)
       saveWorkflowProjectionInTransaction(unitOfWork, state)
     }

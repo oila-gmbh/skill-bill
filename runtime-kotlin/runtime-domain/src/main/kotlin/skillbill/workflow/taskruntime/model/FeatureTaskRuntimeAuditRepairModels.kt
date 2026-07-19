@@ -74,7 +74,7 @@ data class FeatureTaskRuntimeAuditGap(
   val gapId: String,
   val acceptanceCriterionRef: String,
   val acceptanceCriterionText: String,
-  val failureEvidence: String,
+  val failureEvidence: FeatureTaskRuntimeEvidence,
   val diagnosis: String,
   val affectedBoundary: String,
   val repairItems: List<FeatureTaskRuntimeRepairItem>,
@@ -87,13 +87,37 @@ data class FeatureTaskRuntimeAuditGap(
     }
     requireNonBlank(acceptanceCriterionText, "acceptance_criterion_text")
     requireCompactText(acceptanceCriterionText, "acceptance_criterion_text")
-    requireCompactSummary(failureEvidence, "failure_evidence")
     requireCompactSummary(diagnosis, "diagnosis")
     requireNonBlank(affectedBoundary, "affected_boundary")
     require(repairItems.isNotEmpty()) { "Gap '$gapId' must contain a repair item." }
     require(repairItems.size <= MAX_AUDIT_REPAIR_ITEMS) { "Gap '$gapId' exceeds the durable repair-item limit." }
   }
 }
+
+data class FeatureTaskRuntimeEvidence(
+  val observation: Observation,
+  val artifactRef: String,
+  val checkRef: String,
+) {
+  enum class Observation {
+    REQUIRED_BEHAVIOR_ABSENT,
+    VERIFICATION_FAILED,
+    CONTRACT_REJECTED,
+    STATE_MISMATCH,
+    FIX_VERIFIED,
+    ALREADY_SATISFIED_VERIFIED,
+    RESOLUTION_VERIFIED,
+    RECURRENCE_VERIFIED,
+  }
+
+  init {
+    require(SAFE_ARTIFACT_REF.matches(artifactRef)) { "artifact_ref must be a bounded path or symbol reference." }
+    require(SAFE_CHECK_REF.matches(checkRef)) { "check_ref must be a bounded test, check, or criterion reference." }
+  }
+}
+
+private val SAFE_ARTIFACT_REF = Regex("(?:[A-Za-z0-9_.-]+/)*[A-Za-z0-9_.-]+(?::[A-Za-z0-9_.#-]+)?")
+private val SAFE_CHECK_REF = Regex("(?:AC-[0-9]{3}|F-[0-9]{3}|[A-Za-z][A-Za-z0-9_.-]*(?:Test|Check)(?::[A-Za-z0-9_.#-]+)?)")
 
 private val ACCEPTANCE_CRITERION_REF = Regex("AC-[0-9]{3}")
 
@@ -130,16 +154,22 @@ data class FeatureTaskRuntimeRepairItemResult(
   val outcome: FeatureTaskRuntimeRepairItemOutcome,
   val changedPathsOrSymbols: List<String>,
   val executedVerification: List<String>,
-  val resultEvidence: String,
+  val resultEvidence: FeatureTaskRuntimeEvidence,
 ) {
   init {
     requireNonBlank(repairItemId, "repair_item_id")
     requireNonBlankList(changedPathsOrSymbols, "changed_paths_or_symbols")
     requireNonBlankList(executedVerification, "executed_verification")
-    requireNonBlank(resultEvidence, "result_evidence")
     requireCompactList(changedPathsOrSymbols, "changed_paths_or_symbols", MAX_PATH_LIST_ITEMS)
     requireCompactList(executedVerification, "executed_verification", MAX_COMPACT_LIST_ITEMS)
-    requireCompactText(resultEvidence, "result_evidence")
+    val expectedObservation = when (outcome) {
+      FeatureTaskRuntimeRepairItemOutcome.FIXED -> FeatureTaskRuntimeEvidence.Observation.FIX_VERIFIED
+      FeatureTaskRuntimeRepairItemOutcome.ALREADY_SATISFIED ->
+        FeatureTaskRuntimeEvidence.Observation.ALREADY_SATISFIED_VERIFIED
+    }
+    require(resultEvidence.observation == expectedObservation) {
+      "result_evidence observation must be coherent with the terminal outcome."
+    }
   }
 }
 
@@ -182,13 +212,11 @@ data class FeatureTaskRuntimeUnresolvedGapLedger(
 data class FeatureTaskRuntimeUnresolvableRepairBlock(
   val gapId: String,
   val repairItemId: String,
-  val evidence: String,
+  val evidence: FeatureTaskRuntimeEvidence,
 ) {
   init {
     requireNonBlank(gapId, "gap_id")
     requireNonBlank(repairItemId, "repair_item_id")
-    requireNonBlank(evidence, "evidence")
-    requireCompactText(evidence, "evidence")
   }
 }
 
@@ -203,7 +231,8 @@ data class FeatureTaskRuntimeAuditRepairState(
   init {
     require(acceptedPlans.isNotEmpty()) { "Audit repair state must retain at least one accepted plan." }
     require(acceptedPlans.size == 1) {
-      "Durable audit repair state retains exactly the latest accepted plan; historical identity lives in the gap ledger."
+      "Durable audit repair state retains exactly the latest accepted plan; " +
+        "historical identity lives in the gap ledger."
     }
     require(repairItemResults.size <= MAX_AUDIT_REPAIR_ITEMS) {
       "Durable terminal-result history exceeds the latest-plan item limit."
@@ -282,12 +311,21 @@ fun detectAuditRepairNonProgress(
   )
 }
 
-data class FeatureTaskRuntimePriorGapDisposition(val gapId: String, val status: Status, val evidence: String) {
+data class FeatureTaskRuntimePriorGapDisposition(
+  val gapId: String,
+  val status: Status,
+  val evidence: FeatureTaskRuntimeEvidence,
+) {
   enum class Status { RESOLVED, RECURRING }
   init {
     requireNonBlank(gapId, "gap_id")
-    requireNonBlank(evidence, "evidence")
-    requireCompactText(evidence, "evidence")
+    val expectedObservation = when (status) {
+      Status.RESOLVED -> FeatureTaskRuntimeEvidence.Observation.RESOLUTION_VERIFIED
+      Status.RECURRING -> FeatureTaskRuntimeEvidence.Observation.RECURRENCE_VERIFIED
+    }
+    require(evidence.observation == expectedObservation) {
+      "disposition evidence observation must be coherent with its status."
+    }
   }
 }
 
@@ -315,7 +353,7 @@ data class FeatureTaskRuntimeAuditRepairProgress(
   }
 }
 
-const val AUDIT_REPAIR_CONTRACT_VERSION: String = "0.1"
+const val AUDIT_REPAIR_CONTRACT_VERSION: String = "0.2"
 const val FEATURE_TASK_RUNTIME_AUDIT_REPAIR_STATE_ARTIFACT_KEY: String = "feature_task_runtime_audit_repair_state"
 const val MAX_AUDIT_REPAIR_TEXT_LENGTH: Int = 2048
 const val MAX_AUDIT_REPAIR_GAPS: Int = 50
@@ -353,7 +391,9 @@ private fun requireCompactText(value: String, field: String) {
     "$field must not contain a prompt transcript."
   }
 }
-private val SUMMARY_ROLE_PREFIX = Regex("(?i)^\\s*(system|user|assistant|developer|tool)(?:\\s+(?:prompt|message|output))?\\s*:")
+private val SUMMARY_ROLE_PREFIX = Regex(
+  "(?i)^\\s*(system|user|assistant|developer|tool)(?:\\s+(?:prompt|message|output))?\\s*:",
+)
 private fun requireUnique(values: List<String>, field: String) =
   require(values.size == values.toSet().size) { "$field must be unique." }
 private fun requireAcyclic(items: List<FeatureTaskRuntimeRepairItem>) {

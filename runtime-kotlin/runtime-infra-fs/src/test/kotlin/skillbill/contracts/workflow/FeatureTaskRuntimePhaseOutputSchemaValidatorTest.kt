@@ -305,12 +305,12 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorTest {
         "produced_outputs":{
           "unmet_criteria":[{"acceptance_criterion_ref":"AC-128","message":"Integration coverage is missing."}],
           "audit_repair_plan":{
-            "contract_version":"0.1",
+            "contract_version":"0.2",
             "gaps":[{
               "gap_id":"ac-128-gap-1",
               "acceptance_criterion_ref":"AC-128",
               "acceptance_criterion_text":"Integration coverage exists.",
-              "failure_evidence":"The integration suite has no scenario for the feature.",
+              "failure_evidence":{"observation":"required_behavior_absent","artifact_ref":"runtime-kotlin/integration","check_ref":"AC-001"},
               "diagnosis":"Add the missing integration scenario.",
               "affected_boundary":"runtime integration tests",
               "repair_items":[{

@@ -9,14 +9,14 @@ x-coherence-checks:
   dependency-ordering: "Every dependency precedes its dependent repair item in plan order."
   dependency-acyclicity: "The repair-item dependency graph is acyclic."
   aggregate-repair-item-limit: "A plan contains at most 100 repair items across all gaps, matching durable terminal-result capacity."
-  compact-summary-safety: "Failure evidence and diagnosis are nonblank single-line summaries without serialized, source, patch, prompt-transcript, or tool-output syntax."
+  structured-evidence-safety: "Failure evidence uses only an enumerated observation and bounded artifact/check references; free-form payload text is not representable."
 type: object
 additionalProperties: false
 required: [contract_version, gaps]
 properties:
   contract_version:
     type: string
-    const: "0.1"
+    const: "0.2"
   gaps:
     type: array
     minItems: 1
@@ -34,6 +34,25 @@ $defs:
       - { $ref: "#/$defs/nonBlank" }
       - pattern: "^[^\\n\\r\\t`{}\\[\\]<>\\\\=]+$"
       - not: { pattern: "(?i)^\\s*(system|user|assistant|developer|tool)(?:\\s+(?:prompt|message|output))?\\s*:" }
+  artifactRef:
+    type: string
+    minLength: 1
+    maxLength: 256
+    pattern: "^(?:[A-Za-z0-9_.-]+/)*[A-Za-z0-9_.-]+(?::[A-Za-z0-9_.#-]+)?$"
+  checkRef:
+    type: string
+    minLength: 1
+    maxLength: 256
+    pattern: "^(?:AC-[0-9]{3}|F-[0-9]{3}|[A-Za-z][A-Za-z0-9_.-]*(?:Test|Check)(?::[A-Za-z0-9_.#-]+)?)$"
+  evidence:
+    type: object
+    additionalProperties: false
+    required: [observation, artifact_ref, check_ref]
+    properties:
+      observation:
+        enum: [required_behavior_absent, verification_failed, contract_rejected, state_mismatch, fix_verified, already_satisfied_verified, resolution_verified, recurrence_verified]
+      artifact_ref: { $ref: "#/$defs/artifactRef" }
+      check_ref: { $ref: "#/$defs/checkRef" }
   repairItem:
     type: object
     additionalProperties: false
@@ -73,7 +92,7 @@ $defs:
           - { $ref: "#/$defs/nonBlank" }
           - { pattern: "^AC-[0-9]{3}$" }
       acceptance_criterion_text: { $ref: "#/$defs/compactSummary" }
-      failure_evidence: { $ref: "#/$defs/compactSummary" }
+      failure_evidence: { $ref: "#/$defs/evidence" }
       diagnosis: { $ref: "#/$defs/compactSummary" }
       affected_boundary: { $ref: "#/$defs/compactSummary" }
       repair_items:

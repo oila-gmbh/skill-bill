@@ -3,24 +3,25 @@ contract_version: "0.5"
 issue_key: "SKILL-131"
 feature_name: "single-pass-audit-repair"
 parent_spec_path: ".feature-specs/SKILL-131-single-pass-audit-repair/spec.md"
-status: "in_progress"
+status: "blocked"
 execution_model: "same_branch_commit_per_subtask"
 base_branch: "main"
 feature_branch: "feat/SKILL-131-single-pass-audit-repair"
 stack_branches: []
 current_subtask_intent:
   subtask_id: 1
-  action: "start"
+  action: "blocked"
 subtasks:
 - id: 1
   name: "Audit repair plan contract"
   spec_path: ".feature-specs/SKILL-131-single-pass-audit-repair/spec_subtask_1_repair_plan_contract.md"
-  status: "pending"
+  status: "blocked"
   branch: null
   commit_sha: null
-  workflow_id: "wftr-20260719-095412-2r5o"
-  blocked_reason: null
-  last_resumable_step: null
+  workflow_id: "wftr-20260719-120816-qlqh"
+  blocked_reason: "Goal-subtask review output failed schema validation after its reserved\
+    \ pass; refusing an unaccounted relaunch. <root> must be an object."
+  last_resumable_step: "review"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []

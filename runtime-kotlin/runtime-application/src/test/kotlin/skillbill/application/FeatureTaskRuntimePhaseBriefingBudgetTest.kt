@@ -7,6 +7,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGap
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairPlan
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairProgress
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairState
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeEvidence
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseHandoff
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairItem
@@ -41,7 +42,11 @@ class FeatureTaskRuntimePhaseBriefingBudgetTest {
           gapId = "ac-004-gap-2",
           acceptanceCriterionRef = "AC-004",
           acceptanceCriterionText = "Durable state is strict.",
-          failureEvidence = "Missing fields were accepted.",
+          failureEvidence = FeatureTaskRuntimeEvidence(
+            FeatureTaskRuntimeEvidence.Observation.STATE_MISMATCH,
+            "FeatureTaskRuntimeAuditRepairWireMapper",
+            "AC-004",
+          ),
           diagnosis = "Tighten the read seam.",
           affectedBoundary = "runtime application",
           repairItems = listOf(repairItem),

@@ -3838,7 +3838,7 @@ internal fun validProducedOutputs(phaseId: String): String = when (phaseId) {
         "outcome":"fixed",
         "changed_paths_or_symbols":["src/Foo.kt"],
         "executed_verification":["Focused test passed."],
-        "result_evidence":"Repository behavior now satisfies AC-002."
+        "result_evidence":{"observation":"fix_verified","artifact_ref":"runtime-kotlin","check_ref":"AC-002"}
       }]
     }
     """.trimIndent()

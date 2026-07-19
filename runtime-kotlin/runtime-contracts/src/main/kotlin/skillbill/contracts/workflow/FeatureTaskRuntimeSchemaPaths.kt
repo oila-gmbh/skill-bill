@@ -30,7 +30,7 @@ object FeatureTaskRuntimePhaseOutputSchemaPaths {
     "https://skill-bill.dev/contracts/feature-task-runtime-phase-output-schema.yaml"
 }
 
-const val FEATURE_TASK_RUNTIME_AUDIT_REPAIR_CONTRACT_VERSION: String = "0.1"
+const val FEATURE_TASK_RUNTIME_AUDIT_REPAIR_CONTRACT_VERSION: String = "0.2"
 
 object FeatureTaskRuntimeAuditRepairPlanSchemaPaths {
   const val REPO_RELATIVE_PATH: String =
