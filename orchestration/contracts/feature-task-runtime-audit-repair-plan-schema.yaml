@@ -8,6 +8,8 @@ x-coherence-checks:
   dependency-validity: "Dependencies reference declared repair items and cannot reference the item itself."
   dependency-ordering: "Every dependency precedes its dependent repair item in plan order."
   dependency-acyclicity: "The repair-item dependency graph is acyclic."
+  aggregate-repair-item-limit: "A plan contains at most 100 repair items across all gaps, matching durable terminal-result capacity."
+  compact-summary-safety: "Failure evidence and diagnosis are nonblank single-line summaries without serialized, source, patch, prompt-transcript, or tool-output syntax."
 type: object
 additionalProperties: false
 required: [contract_version, gaps]
@@ -18,33 +20,44 @@ properties:
   gaps:
     type: array
     minItems: 1
+    maxItems: 50
     items:
       $ref: "#/$defs/gap"
 $defs:
   nonBlank:
     type: string
     minLength: 1
+    maxLength: 2048
     pattern: ".*\\S.*"
+  compactSummary:
+    allOf:
+      - { $ref: "#/$defs/nonBlank" }
+      - pattern: "^[^\\n\\r\\t`{}\\[\\]<>\\\\=]+$"
+      - not: { pattern: "(?i)^\\s*(system|user|assistant|developer|tool)(?:\\s+(?:prompt|message|output))?\\s*:" }
   repairItem:
     type: object
     additionalProperties: false
     required: [repair_item_id, intended_outcome, implementation_actions, affected_paths_or_symbols, required_verification, depends_on, status]
     properties:
       repair_item_id: { $ref: "#/$defs/nonBlank" }
-      intended_outcome: { $ref: "#/$defs/nonBlank" }
+      intended_outcome: { $ref: "#/$defs/compactSummary" }
       implementation_actions:
         type: array
         minItems: 1
-        items: { $ref: "#/$defs/nonBlank" }
+        maxItems: 50
+        items: { $ref: "#/$defs/compactSummary" }
       affected_paths_or_symbols:
         type: array
-        items: { $ref: "#/$defs/nonBlank" }
+        maxItems: 100
+        items: { $ref: "#/$defs/compactSummary" }
       required_verification:
         type: array
         minItems: 1
-        items: { $ref: "#/$defs/nonBlank" }
+        maxItems: 50
+        items: { $ref: "#/$defs/compactSummary" }
       depends_on:
         type: array
+        maxItems: 50
         uniqueItems: true
         items: { $ref: "#/$defs/nonBlank" }
       status:
@@ -59,11 +72,12 @@ $defs:
         allOf:
           - { $ref: "#/$defs/nonBlank" }
           - { pattern: "^AC-[0-9]{3}$" }
-      acceptance_criterion_text: { $ref: "#/$defs/nonBlank" }
-      failure_evidence: { $ref: "#/$defs/nonBlank" }
-      diagnosis: { $ref: "#/$defs/nonBlank" }
-      affected_boundary: { $ref: "#/$defs/nonBlank" }
+      acceptance_criterion_text: { $ref: "#/$defs/compactSummary" }
+      failure_evidence: { $ref: "#/$defs/compactSummary" }
+      diagnosis: { $ref: "#/$defs/compactSummary" }
+      affected_boundary: { $ref: "#/$defs/compactSummary" }
       repair_items:
         type: array
         minItems: 1
+        maxItems: 100
         items: { $ref: "#/$defs/repairItem" }

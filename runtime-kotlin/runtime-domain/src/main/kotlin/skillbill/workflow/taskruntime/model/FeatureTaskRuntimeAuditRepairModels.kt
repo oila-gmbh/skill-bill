@@ -7,9 +7,13 @@ data class FeatureTaskRuntimeAuditRepairPlan(
   init {
     require(contractVersion == AUDIT_REPAIR_CONTRACT_VERSION) { "Unsupported audit repair contract version." }
     require(gaps.isNotEmpty()) { "An audit repair plan must contain at least one gap." }
+    require(gaps.size <= MAX_AUDIT_REPAIR_GAPS) { "An audit repair plan exceeds the durable gap limit." }
     requireUnique(gaps.map { it.gapId }, "gap_id")
     requireUnique(gaps.map { it.acceptanceCriterionRef }, "acceptance_criterion_ref")
     val items = gaps.flatMap { it.repairItems }
+    require(items.size <= MAX_AUDIT_REPAIR_ITEMS) {
+      "An audit repair plan exceeds the aggregate durable repair-item limit."
+    }
     requireUnique(items.map { it.repairItemId }, "repair_item_id")
     val ids = items.mapTo(linkedSetOf()) { it.repairItemId }
     items.forEach { item ->
@@ -82,10 +86,12 @@ data class FeatureTaskRuntimeAuditGap(
       "acceptance_criterion_ref '$acceptanceCriterionRef' must use canonical format 'AC-NNN'."
     }
     requireNonBlank(acceptanceCriterionText, "acceptance_criterion_text")
-    requireNonBlank(failureEvidence, "failure_evidence")
-    requireNonBlank(diagnosis, "diagnosis")
+    requireCompactText(acceptanceCriterionText, "acceptance_criterion_text")
+    requireCompactSummary(failureEvidence, "failure_evidence")
+    requireCompactSummary(diagnosis, "diagnosis")
     requireNonBlank(affectedBoundary, "affected_boundary")
     require(repairItems.isNotEmpty()) { "Gap '$gapId' must contain a repair item." }
+    require(repairItems.size <= MAX_AUDIT_REPAIR_ITEMS) { "Gap '$gapId' exceeds the durable repair-item limit." }
   }
 }
 
@@ -103,9 +109,14 @@ data class FeatureTaskRuntimeRepairItem(
   init {
     requireNonBlank(repairItemId, "repair_item_id")
     requireNonBlank(intendedOutcome, "intended_outcome")
+    requireCompactText(intendedOutcome, "intended_outcome")
     requireNonBlankList(implementationActions, "implementation_actions")
+    requireCompactList(implementationActions, "implementation_actions", MAX_COMPACT_LIST_ITEMS)
     require(affectedPathsOrSymbols.all(String::isNotBlank)) { "affected_paths_or_symbols entries must be nonblank." }
+    requireCompactList(affectedPathsOrSymbols, "affected_paths_or_symbols", MAX_PATH_LIST_ITEMS)
     requireNonBlankList(requiredVerification, "required_verification")
+    requireCompactList(requiredVerification, "required_verification", MAX_COMPACT_LIST_ITEMS)
+    require(dependsOn.size <= MAX_COMPACT_LIST_ITEMS) { "depends_on exceeds the durable item limit." }
     require(dependsOn.all(String::isNotBlank)) { "depends_on entries must be nonblank." }
     require(status == FeatureTaskRuntimeRepairItemStatus.PENDING) { "Accepted repair items must initially be pending." }
   }
@@ -126,6 +137,9 @@ data class FeatureTaskRuntimeRepairItemResult(
     requireNonBlankList(changedPathsOrSymbols, "changed_paths_or_symbols")
     requireNonBlankList(executedVerification, "executed_verification")
     requireNonBlank(resultEvidence, "result_evidence")
+    requireCompactList(changedPathsOrSymbols, "changed_paths_or_symbols", MAX_PATH_LIST_ITEMS)
+    requireCompactList(executedVerification, "executed_verification", MAX_COMPACT_LIST_ITEMS)
+    requireCompactText(resultEvidence, "result_evidence")
   }
 }
 
@@ -152,6 +166,7 @@ data class FeatureTaskRuntimeUnresolvedGapLedger(
   val unresolvedGaps: List<FeatureTaskRuntimeUnresolvedGap>,
 ) {
   init {
+    require(unresolvedGaps.size <= MAX_AUDIT_REPAIR_GAPS) { "Unresolved-gap ledger exceeds the durable gap limit." }
     requireUnique(unresolvedGaps.map { it.gapId }, "unresolved gap_id")
   }
 
@@ -173,6 +188,7 @@ data class FeatureTaskRuntimeUnresolvableRepairBlock(
     requireNonBlank(gapId, "gap_id")
     requireNonBlank(repairItemId, "repair_item_id")
     requireNonBlank(evidence, "evidence")
+    requireCompactText(evidence, "evidence")
   }
 }
 
@@ -186,8 +202,20 @@ data class FeatureTaskRuntimeAuditRepairState(
 ) {
   init {
     require(acceptedPlans.isNotEmpty()) { "Audit repair state must retain at least one accepted plan." }
+    require(acceptedPlans.size == 1) {
+      "Durable audit repair state retains exactly the latest accepted plan; historical identity lives in the gap ledger."
+    }
+    require(repairItemResults.size <= MAX_AUDIT_REPAIR_ITEMS) {
+      "Durable terminal-result history exceeds the latest-plan item limit."
+    }
+    require(priorGapDispositions.size <= MAX_AUDIT_REPAIR_GAPS) {
+      "Durable gap dispositions exceed the gap limit."
+    }
     require(repositoryFingerprint == null || repositoryFingerprint.isNotBlank()) {
       "repository fingerprint must be nonblank when present."
+    }
+    require(repositoryFingerprint == null || repositoryFingerprint.length <= MAX_REPOSITORY_FINGERPRINT_LENGTH) {
+      "repository fingerprint exceeds the durable fingerprint limit."
     }
     val unresolvedIds = unresolvedGapLedger.unresolvedGaps.mapTo(linkedSetOf()) { it.gapId }
     val acceptedGapIdentities = acceptedPlans.flatMap { plan ->
@@ -216,6 +244,9 @@ data class FeatureTaskRuntimeAuditRepairState(
     }
     require(progress.resolvedRepairItemCount <= progress.attemptedRepairItemCount) {
       "Resolved repair-item count cannot exceed attempted repair-item count."
+    }
+    require(progress.resolvedRepairItemCount == progress.attemptedRepairItemCount) {
+      "Durable terminal repair counters must record every attempted item as resolved."
     }
     require(
       progress.recurringGapCount == priorGapDispositions.count {
@@ -256,6 +287,7 @@ data class FeatureTaskRuntimePriorGapDisposition(val gapId: String, val status: 
   init {
     requireNonBlank(gapId, "gap_id")
     requireNonBlank(evidence, "evidence")
+    requireCompactText(evidence, "evidence")
   }
 }
 
@@ -285,13 +317,43 @@ data class FeatureTaskRuntimeAuditRepairProgress(
 
 const val AUDIT_REPAIR_CONTRACT_VERSION: String = "0.1"
 const val FEATURE_TASK_RUNTIME_AUDIT_REPAIR_STATE_ARTIFACT_KEY: String = "feature_task_runtime_audit_repair_state"
+const val MAX_AUDIT_REPAIR_TEXT_LENGTH: Int = 2048
+const val MAX_AUDIT_REPAIR_GAPS: Int = 50
+const val MAX_AUDIT_REPAIR_ITEMS: Int = 100
+const val MAX_COMPACT_LIST_ITEMS: Int = 50
+const val MAX_PATH_LIST_ITEMS: Int = 100
+const val MAX_REPOSITORY_FINGERPRINT_LENGTH: Int = 256
 
 private val GAP_ID = Regex("ac-[0-9]{3,}-gap-[1-9][0-9]*")
 
-private fun requireNonBlank(value: String, field: String) = require(value.isNotBlank()) { "$field must be nonblank." }
+private fun requireNonBlank(value: String, field: String) {
+  require(value.isNotBlank()) { "$field must be nonblank." }
+  requireCompactText(value, field)
+}
+private fun requireCompactSummary(value: String, field: String) {
+  require(value.isNotBlank()) { "$field must be nonblank." }
+  requireCompactText(value, field)
+}
 private fun requireNonBlankList(values: List<String>, field: String) {
   require(values.isNotEmpty() && values.all(String::isNotBlank)) { "$field must contain nonblank entries." }
 }
+private fun requireCompactList(values: List<String>, field: String, maximumItems: Int) {
+  require(values.size <= maximumItems) { "$field exceeds the durable item limit." }
+  values.forEach { requireCompactText(it, "$field entry") }
+}
+private fun requireCompactText(value: String, field: String) {
+  require(value.length <= MAX_AUDIT_REPAIR_TEXT_LENGTH) { "$field exceeds the durable text limit." }
+  require(value.none { it == '\n' || it == '\r' || it == '\t' || it.isISOControl() }) {
+    "$field must be a single-line durable value."
+  }
+  require(value.none { it in "`{}[]<>\\=" }) {
+    "$field must not contain serialized, source, patch, prompt, or tool-output syntax."
+  }
+  require(!SUMMARY_ROLE_PREFIX.containsMatchIn(value)) {
+    "$field must not contain a prompt transcript."
+  }
+}
+private val SUMMARY_ROLE_PREFIX = Regex("(?i)^\\s*(system|user|assistant|developer|tool)(?:\\s+(?:prompt|message|output))?\\s*:")
 private fun requireUnique(values: List<String>, field: String) =
   require(values.size == values.toSet().size) { "$field must be unique." }
 private fun requireAcyclic(items: List<FeatureTaskRuntimeRepairItem>) {

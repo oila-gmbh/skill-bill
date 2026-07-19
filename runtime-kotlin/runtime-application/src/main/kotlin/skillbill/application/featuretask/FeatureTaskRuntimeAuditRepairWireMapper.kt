@@ -235,11 +235,11 @@ private fun FeatureTaskRuntimeAuditRepairState.requireDurableCoherence() {
   require(repairItemResults.all { it.repairItemId in acceptedRepairItemIds }) {
     "Durable terminal results must belong to an accepted repair plan."
   }
-  require(progress.attemptedRepairItemCount == repairItemResults.size) {
-    "Attempted repair-item count must equal durable terminal results."
+  require(progress.attemptedRepairItemCount >= repairItemResults.size) {
+    "Attempted repair-item count cannot be smaller than compact durable terminal results."
   }
-  require(progress.resolvedRepairItemCount == repairItemResults.size) {
-    "Resolved repair-item count must equal durable terminal results."
+  require(progress.resolvedRepairItemCount >= repairItemResults.size) {
+    "Resolved repair-item count cannot be smaller than compact durable terminal results."
   }
   require(progress.recurringGapCount + progress.newGapCount <= unresolvedGapLedger.unresolvedGaps.size) {
     "Recurring and new gap counts cannot exceed the unresolved-gap ledger."

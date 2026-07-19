@@ -196,18 +196,25 @@ class FeatureTaskRuntimePhaseRecorder(
   )
 
   private fun reconcileAuditRepairState(input: AuditRepairReconciliation): FeatureTaskRuntimeAuditRepairState {
-    val acceptedPlans = input.prior?.acceptedPlans.orEmpty().toMutableList()
-    if (input.latestPlan != null && input.latestPlan !in acceptedPlans) acceptedPlans += input.latestPlan
+    val acceptedPlans = listOfNotNull(input.latestPlan ?: input.prior?.acceptedPlans?.lastOrNull())
     if (acceptedPlans.isEmpty()) schemaError("Audit-repair state requires an accepted plan.")
     val gaps = reconcileUnresolvedGaps(input)
-    val allResults = input.prior?.repairItemResults.orEmpty() + input.repairResults
-    val priorPlanGapIds = input.prior?.acceptedPlans.orEmpty().flatMap { it.gaps }.mapTo(linkedSetOf()) { it.gapId }
+    val latestItemIds = acceptedPlans.single().gaps
+      .flatMap { it.repairItems }
+      .mapTo(linkedSetOf()) { it.repairItemId }
+    val allResults = linkedMapOf<String, FeatureTaskRuntimeRepairItemResult>().apply {
+      input.prior?.repairItemResults.orEmpty().forEach { put(it.repairItemId, it) }
+      input.repairResults.forEach { put(it.repairItemId, it) }
+      keys.retainAll(latestItemIds)
+    }.values.toList()
+    val newlyAttemptedCount = input.repairResults.size
+    val priorPlanGapIds = input.prior?.unresolvedGapLedger?.unresolvedGaps.orEmpty().mapTo(linkedSetOf()) { it.gapId }
     val progress = FeatureTaskRuntimeAuditRepairProgress(
       firstPassConvergence = false,
       recurringGapCount = gaps.recurringIds.size,
       newGapCount = gaps.latestIds.count { it !in priorPlanGapIds },
-      attemptedRepairItemCount = allResults.size,
-      resolvedRepairItemCount = allResults.size,
+      attemptedRepairItemCount = (input.prior?.progress?.attemptedRepairItemCount ?: 0) + newlyAttemptedCount,
+      resolvedRepairItemCount = (input.prior?.progress?.resolvedRepairItemCount ?: 0) + newlyAttemptedCount,
       auditGapIterationCount = maxOf(
         input.prior?.progress?.auditGapIterationCount ?: 0,
         input.edgeIteration ?: 0,

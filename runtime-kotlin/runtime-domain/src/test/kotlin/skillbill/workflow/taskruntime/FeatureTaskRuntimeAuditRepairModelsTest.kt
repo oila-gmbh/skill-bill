@@ -19,6 +19,28 @@ import kotlin.test.assertTrue
 
 class FeatureTaskRuntimeAuditRepairModelsTest {
   @Test
+  fun `required gap evidence summaries reject blank values`() {
+    listOf("", "   ").forEach { blank ->
+      assertFailsWith<IllegalArgumentException> {
+        FeatureTaskRuntimeAuditGap("ac-001-gap-1", "AC-001", "Criterion", blank, "Cause", "runtime", listOf(item("ac-001-gap-1-item-1")))
+      }
+      assertFailsWith<IllegalArgumentException> {
+        FeatureTaskRuntimeAuditGap("ac-001-gap-1", "AC-001", "Criterion", "Evidence", blank, "runtime", listOf(item("ac-001-gap-1-item-1")))
+      }
+    }
+  }
+
+  @Test
+  fun `plan enforces aggregate durable repair item capacity`() {
+    val maximum = (1..100).map { item("ac-001-gap-1-item-$it") }
+    plan(maximum)
+
+    assertFailsWith<IllegalArgumentException> {
+      plan(maximum + item("ac-001-gap-1-item-101"))
+    }
+  }
+
+  @Test
   fun `durable gap identity must match both criterion and generation`() {
     assertFailsWith<IllegalArgumentException> {
       FeatureTaskRuntimeUnresolvedGap("ac-999-gap-1", "AC-002", 1)
