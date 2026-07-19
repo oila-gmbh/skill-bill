@@ -15,6 +15,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairItemResult
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairItemStatus
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeUnresolvedGap
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeUnresolvedGapLedger
+import skillbill.workflow.taskruntime.model.canonicalAuditIdentifier
 
 internal fun auditRepairPlanFromWire(value: Any?, source: String): FeatureTaskRuntimeAuditRepairPlan =
   auditRepairPlanMapping(source) {
@@ -27,7 +28,7 @@ internal fun auditRepairPlanFromWire(value: Any?, source: String): FeatureTaskRu
         val gapMap = gap.requiredMap(gapSource)
         requireExactWireKeys(gapMap, gapSource, AUDIT_REPAIR_GAP_KEYS)
         FeatureTaskRuntimeAuditGap(
-          gapId = gapMap.requiredString("gap_id", gapSource),
+          gapId = canonicalAuditIdentifier(gapMap.requiredString("gap_id", gapSource)),
           acceptanceCriterionRef = gapMap.requiredString("acceptance_criterion_ref", gapSource),
           acceptanceCriterionText = gapMap.requiredString("acceptance_criterion_text", gapSource),
           failureEvidence = AuditEvidenceWire.fromWire(gapMap["failure_evidence"], "$gapSource.failure_evidence"),
@@ -38,12 +39,12 @@ internal fun auditRepairPlanFromWire(value: Any?, source: String): FeatureTaskRu
             val itemMap = item.requiredMap(itemSource)
             requireExactWireKeys(itemMap, itemSource, AUDIT_REPAIR_ITEM_KEYS)
             FeatureTaskRuntimeRepairItem(
-              repairItemId = itemMap.requiredString("repair_item_id", itemSource),
+              repairItemId = canonicalAuditIdentifier(itemMap.requiredString("repair_item_id", itemSource)),
               intendedOutcome = itemMap.requiredString("intended_outcome", itemSource),
               implementationActions = itemMap.stringList("implementation_actions", itemSource, required = true),
               affectedPathsOrSymbols = itemMap.stringList("affected_paths_or_symbols", itemSource),
               requiredVerification = itemMap.stringList("required_verification", itemSource, required = true),
-              dependsOn = itemMap.stringList("depends_on", itemSource),
+              dependsOn = itemMap.stringList("depends_on", itemSource).map(::canonicalAuditIdentifier),
               status = when (itemMap.requiredString("status", itemSource)) {
                 "pending" -> FeatureTaskRuntimeRepairItemStatus.PENDING
                 else -> invalidWire("$itemSource.status", "must be pending")
@@ -89,7 +90,7 @@ internal fun auditRepairStateFromWire(value: Any?, source: String): FeatureTaskR
       val gapSource = "$source.unresolved_gap_ledger.gaps[$index]"
       val gapMap = gap.requiredMap(gapSource)
       requireExactWireKeys(gapMap, gapSource, AUDIT_REPAIR_UNRESOLVED_GAP_KEYS)
-      val gapId = gapMap.requiredString("gap_id", gapSource)
+      val gapId = canonicalAuditIdentifier(gapMap.requiredString("gap_id", gapSource))
       val generation = gapMap.requiredInt("generation", gapSource)
       FeatureTaskRuntimeUnresolvedGap(
         gapId = gapId,
@@ -179,7 +180,7 @@ internal fun repairItemResultFromWire(value: Any?, source: String): FeatureTaskR
     val map = value.requiredMap(source)
     requireExactWireKeys(map, source, AUDIT_REPAIR_RESULT_KEYS)
     FeatureTaskRuntimeRepairItemResult(
-      repairItemId = map.requiredString("repair_item_id", source),
+      repairItemId = canonicalAuditIdentifier(map.requiredString("repair_item_id", source)),
       outcome = when (map.requiredString("outcome", source)) {
         "fixed" -> FeatureTaskRuntimeRepairItemOutcome.FIXED
         "already_satisfied" -> FeatureTaskRuntimeRepairItemOutcome.ALREADY_SATISFIED
@@ -195,7 +196,7 @@ internal fun priorGapDispositionFromWire(value: Any?, source: String): FeatureTa
   val map = value.requiredMap(source)
   requireExactWireKeys(map, source, AUDIT_REPAIR_DISPOSITION_KEYS)
   return FeatureTaskRuntimePriorGapDisposition(
-    gapId = map.requiredString("gap_id", source),
+    gapId = canonicalAuditIdentifier(map.requiredString("gap_id", source)),
     status = when (map.requiredString("status", source)) {
       "resolved" -> FeatureTaskRuntimePriorGapDisposition.Status.RESOLVED
       "recurring" -> FeatureTaskRuntimePriorGapDisposition.Status.RECURRING

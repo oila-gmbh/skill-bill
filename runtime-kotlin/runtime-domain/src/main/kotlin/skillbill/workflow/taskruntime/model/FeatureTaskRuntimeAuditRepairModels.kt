@@ -24,7 +24,8 @@ data class FeatureTaskRuntimeAuditRepairPlan(
     gaps.forEach { gap ->
       require(GAP_ID.matches(gap.gapId)) {
         "gap_id '${gap.gapId}' must be the stable criterion-generation identifier " +
-          "'<criterion-ref>-gap-<generation>'."
+          "'<criterion-ref>-gap-<generation>' in canonical lowercase, for example " +
+          "'${gap.acceptanceCriterionRef.lowercase()}-gap-1'."
       }
       require(gap.gapId.startsWith("${gap.acceptanceCriterionRef.lowercase()}-gap-")) {
         "gap_id '${gap.gapId}' must belong to acceptance criterion '${gap.acceptanceCriterionRef}'."
@@ -363,6 +364,11 @@ const val MAX_PATH_LIST_ITEMS: Int = 100
 const val MAX_REPOSITORY_FINGERPRINT_LENGTH: Int = 256
 
 private val GAP_ID = Regex("ac-[0-9]{3,}-gap-[1-9][0-9]*")
+
+// Criterion refs are canonically uppercase (`AC-005`) while the identifiers derived from them are
+// canonically lowercase, so an agent transcribing a ref into a gap_id emits a case the domain would
+// otherwise reject with no way to discover the rule. Ingest seams canonicalize instead.
+fun canonicalAuditIdentifier(rawIdentifier: String): String = rawIdentifier.trim().lowercase()
 
 private fun requireNonBlank(value: String, field: String) {
   require(value.isNotBlank()) { "$field must be nonblank." }

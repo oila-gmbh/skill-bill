@@ -18,6 +18,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairPlan
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeEvidence
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairItem
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairItemStatus
+import skillbill.workflow.taskruntime.model.canonicalAuditIdentifier
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.logging.Level
@@ -94,7 +95,7 @@ object FeatureTaskRuntimePhaseOutputSchemaValidator {
       contractVersion = node.path("contract_version").asText(),
       gaps = node.path("gaps").map { gap ->
         FeatureTaskRuntimeAuditGap(
-          gapId = gap.path("gap_id").asText(),
+          gapId = canonicalAuditIdentifier(gap.path("gap_id").asText()),
           acceptanceCriterionRef = gap.path("acceptance_criterion_ref").asText(),
           acceptanceCriterionText = gap.path("acceptance_criterion_text").asText(),
           failureEvidence = gap.path("failure_evidence").let { evidence ->
@@ -110,12 +111,12 @@ object FeatureTaskRuntimePhaseOutputSchemaValidator {
           affectedBoundary = gap.path("affected_boundary").asText(),
           repairItems = gap.path("repair_items").map { item ->
             FeatureTaskRuntimeRepairItem(
-              repairItemId = item.path("repair_item_id").asText(),
+              repairItemId = canonicalAuditIdentifier(item.path("repair_item_id").asText()),
               intendedOutcome = item.path("intended_outcome").asText(),
               implementationActions = item.path("implementation_actions").map(JsonNode::asText),
               affectedPathsOrSymbols = item.path("affected_paths_or_symbols").map(JsonNode::asText),
               requiredVerification = item.path("required_verification").map(JsonNode::asText),
-              dependsOn = item.path("depends_on").map(JsonNode::asText),
+              dependsOn = item.path("depends_on").map { canonicalAuditIdentifier(it.asText()) },
               status = FeatureTaskRuntimeRepairItemStatus.PENDING,
             )
           },

@@ -396,6 +396,34 @@ class FeatureTaskRuntimeAuditRepairWireMapperTest {
     }
   }
 
+  @Test
+  fun `an uppercase criterion-ref prefix is canonicalized on ingest`() {
+    val wire = auditRepairPlanToWire(plan()).toMutableMap()
+    val gap = ((wire.getValue("gaps") as List<*>).single() as Map<*, *>).toStringKeyMap().toMutableMap()
+    val item = ((gap.getValue("repair_items") as List<*>).single() as Map<*, *>).toStringKeyMap().toMutableMap()
+    gap["gap_id"] = "AC-001-gap-1"
+    item["repair_item_id"] = "AC-001-gap-1-item-1"
+    gap["repair_items"] = listOf(item)
+    wire["gaps"] = listOf(gap)
+
+    val decoded = auditRepairPlanFromWire(wire, "audit_repair_plan")
+
+    assertEquals("ac-001-gap-1", decoded.gaps.single().gapId)
+    assertEquals("ac-001-gap-1-item-1", decoded.gaps.single().repairItems.single().repairItemId)
+  }
+
+  @Test
+  fun `a gap_id that does not belong to its criterion still fails loudly`() {
+    val wire = auditRepairPlanToWire(plan()).toMutableMap()
+    val gap = ((wire.getValue("gaps") as List<*>).single() as Map<*, *>).toStringKeyMap().toMutableMap()
+    gap["gap_id"] = "ac-002-gap-1"
+    wire["gaps"] = listOf(gap)
+
+    assertFailsWith<InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError> {
+      auditRepairPlanFromWire(wire, "audit_repair_plan")
+    }
+  }
+
   private fun state() = FeatureTaskRuntimeAuditRepairState(
     acceptedPlans = listOf(plan()),
     repairItemResults = emptyList(),

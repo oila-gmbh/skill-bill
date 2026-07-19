@@ -58,7 +58,13 @@ $defs:
     additionalProperties: false
     required: [repair_item_id, intended_outcome, implementation_actions, affected_paths_or_symbols, required_verification, depends_on, status]
     properties:
-      repair_item_id: { $ref: "#/$defs/nonBlank" }
+      repair_item_id:
+        allOf:
+          - { $ref: "#/$defs/nonBlank" }
+          - { pattern: "^[Aa][Cc]-[0-9]{3,}-gap-[1-9][0-9]*-item-[1-9][0-9]*$" }
+        description: >
+          Stable ordered child of its gap_id, '<gap-id>-item-<ordinal>', for example
+          'ac-005-gap-1-item-1'. Same casing rule as gap_id.
       intended_outcome: { $ref: "#/$defs/compactSummary" }
       implementation_actions:
         type: array
@@ -86,7 +92,14 @@ $defs:
     additionalProperties: false
     required: [gap_id, acceptance_criterion_ref, acceptance_criterion_text, failure_evidence, diagnosis, affected_boundary, repair_items]
     properties:
-      gap_id: { $ref: "#/$defs/nonBlank" }
+      gap_id:
+        allOf:
+          - { $ref: "#/$defs/nonBlank" }
+          - { pattern: "^[Aa][Cc]-[0-9]{3,}-gap-[1-9][0-9]*$" }
+        description: >
+          Stable criterion-generation identifier '<criterion-ref>-gap-<generation>', for example
+          'ac-005-gap-1'. Canonically lowercase; an uppercase criterion-ref prefix is accepted and
+          normalized on ingest.
       acceptance_criterion_ref:
         allOf:
           - { $ref: "#/$defs/nonBlank" }
