@@ -49,7 +49,8 @@ every initial phase, retry, review-fix, audit re-entry, or continuation, invoke
 the identity-based verify/render boundary and copy its returned section
 verbatim into the phase prompt. Never rediscover the catalogue or reconstruct
 the selection from chat history. Omission on continuation inherits the durable
-selection; missing sources, digest drift, or a changed receiving agent fail
+selection. A later valid selection or digest becomes effective for future phases;
+missing sources or an incompatible receiving agent fail
 before phase work. An empty selection adds no artifact content and no prompt
 section, preserving legacy prose behaviour.
 

@@ -256,7 +256,7 @@ object FeatureTaskRuntimePhaseOutputSchemaValidator {
   )
 }
 
-private fun loadAuditRepairPlanSchema(): JsonSchema {
+private fun loadAuditRepairPlanSchema(): JsonSchema = try {
   val resource = FeatureTaskRuntimeAuditRepairPlanSchemaPaths.CLASSPATH_RESOURCE
   val repoPath = FeatureTaskRuntimeAuditRepairPlanSchemaPaths.REPO_RELATIVE_PATH
   val text = FeatureTaskRuntimePhaseOutputSchemaValidator::class.java.classLoader
@@ -266,19 +266,40 @@ private fun loadAuditRepairPlanSchema(): JsonSchema {
       sourceLabel = resource,
       reason = "Canonical audit repair plan schema is missing from '$resource' and '$repoPath'.",
     )
+  loadAuditRepairPlanSchemaText(text, resource)
+} catch (error: InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError) {
+  throw error
+} catch (error: Exception) {
+  throw InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError(
+    sourceLabel = FeatureTaskRuntimeAuditRepairPlanSchemaPaths.CLASSPATH_RESOURCE,
+    reason = error.message ?: error::class.simpleName.orEmpty(),
+    cause = error,
+  )
+}
+
+internal fun loadAuditRepairPlanSchemaText(text: String, sourceLabel: String): JsonSchema = try {
   val node = YAMLMapper().readTree(text)
+    ?: throw IllegalArgumentException("Canonical audit repair plan schema is empty.")
   val loadedId = node.path("\$id").asText("")
   val loadedVersion = node.path("properties").path("contract_version").path("const").asText("")
-  if (loadedId != FeatureTaskRuntimeAuditRepairPlanSchemaPaths.EXPECTED_SCHEMA_ID ||
-    loadedVersion != FEATURE_TASK_RUNTIME_AUDIT_REPAIR_CONTRACT_VERSION
-  ) {
-    throw InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError(
-      sourceLabel = resource,
-      reason = "Canonical audit repair plan schema identity or contract version does not match the runtime.",
-    )
+  require(loadedId == FeatureTaskRuntimeAuditRepairPlanSchemaPaths.EXPECTED_SCHEMA_ID) {
+    "Canonical audit repair plan schema identity mismatch: loaded '$loadedId' but expected " +
+      "'${FeatureTaskRuntimeAuditRepairPlanSchemaPaths.EXPECTED_SCHEMA_ID}'."
   }
-  return JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V202012)
+  require(loadedVersion == FEATURE_TASK_RUNTIME_AUDIT_REPAIR_CONTRACT_VERSION) {
+    "Canonical audit repair plan schema contract version mismatch: loaded '$loadedVersion' but expected " +
+      "'$FEATURE_TASK_RUNTIME_AUDIT_REPAIR_CONTRACT_VERSION'."
+  }
+  JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V202012)
     .getSchema(ObjectMapper().writeValueAsString(node))
+} catch (error: InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError) {
+  throw error
+} catch (error: Exception) {
+  throw InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError(
+    sourceLabel = sourceLabel,
+    reason = error.message ?: error::class.simpleName.orEmpty(),
+    cause = error,
+  )
 }
 
 private fun walkForSchemaFile(hint: Path, repoRelativePath: String): Path? {

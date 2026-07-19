@@ -9,6 +9,7 @@ dependencies {
   implementation(project(":runtime-contracts"))
   implementation(libs.kotlin.inject.runtime)
   implementation(libs.sqlite.jdbc)
+  testImplementation(project(":runtime-application"))
   testImplementation(libs.junit.jupiter)
   testImplementation(libs.kotlin.test)
 }

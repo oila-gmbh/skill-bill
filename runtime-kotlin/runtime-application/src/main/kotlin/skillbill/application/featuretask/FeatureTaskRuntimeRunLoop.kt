@@ -127,6 +127,14 @@ internal class FeatureTaskRuntimeRunLoop(
         )
         return
       }
+      if (resumedReentry.auditRepairPlan != resumedReentry.auditRepairState.acceptedPlans.lastOrNull()) {
+        blockInvalidAuditGapRecovery(
+          resumedReentry,
+          "Audit-gap recovery requires the phase-record repair plan to be identical to the latest durable " +
+            "accepted plan.",
+        )
+        return
+      }
     }
     var phaseId: String? = resumedReentry?.phaseId ?: transitions.forwardPhaseIds.first()
     while (phaseId != null) {

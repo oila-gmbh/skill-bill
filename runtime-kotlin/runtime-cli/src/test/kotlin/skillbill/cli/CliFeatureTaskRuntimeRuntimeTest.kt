@@ -86,7 +86,7 @@ class CliFeatureTaskRuntimeRuntimeTest {
   }
 
   @Test
-  fun `resume preserves exact ordered agent add-ons and rejects altered selection before launch`() {
+  fun `resume accepts changed ordered agent add-ons and applies them to future phases`() {
     val fixture = runtimeFixture().also {
       writeAgentAddon(it.tempDir, "first-helper", "First selected guidance.")
       writeAgentAddon(it.tempDir, "last-helper", "Last selected guidance.")
@@ -102,7 +102,7 @@ class CliFeatureTaskRuntimeRuntimeTest {
     )
     assertEquals(1, firstRun.exitCode, firstRun.stdout)
     val workflowId = firstRun.stdout.lines().single { it.startsWith("workflow_id:") }.substringAfter(":").trim()
-    assertAlteredAgentAddonSelectionsRejected(fixture, workflowId)
+    assertChangedAgentAddonSelectionApplied(fixture, workflowId)
 
     val resumeFixture = runtimeFixture().also {
       writeAgentAddon(it.tempDir, "first-helper", "First selected guidance.")
@@ -139,27 +139,19 @@ class CliFeatureTaskRuntimeRuntimeTest {
     }
   }
 
-  private fun assertAlteredAgentAddonSelectionsRejected(fixture: FeatureTaskRuntimeCliFixture, workflowId: String) {
-    val alteredSelections = listOf(
-      "reordered" to resolvedSelectionJson(fixture, "codex", "last-helper", "first-helper"),
-      "dropped" to resolvedSelectionJson(fixture, "codex", "first-helper"),
-      "empty" to """{"contract_version":"0.1","entries":[]}""",
-      "replaced identity" to resolvedSelectionJson(fixture, "codex", "replacement-helper", "last-helper"),
+  private fun assertChangedAgentAddonSelectionApplied(fixture: FeatureTaskRuntimeCliFixture, workflowId: String) {
+    val changedSelection = resolvedSelectionJson(fixture, "codex", "replacement-helper", "last-helper")
+    val launcher = RecordingPhaseLauncher()
+
+    val resumed = CliRuntime.run(
+      fixture.resumeCommand(workflowId, changedSelection),
+      fixture.context(launcher),
     )
-    alteredSelections.forEach { (case, alteredSelection) ->
-      val rejectedLauncher = RecordingPhaseLauncher()
-      val rejected = CliRuntime.run(
-        fixture.resumeCommand(workflowId, alteredSelection),
-        fixture.context(rejectedLauncher),
-      )
-      assertEquals(1, rejected.exitCode, "$case: ${rejected.stdout}")
-      assertContains(
-        rejected.stdout,
-        "Cannot drop or replace the workflow's durable agent add-on selection",
-        message = case,
-      )
-      assertEquals(emptyList(), rejectedLauncher.requests, case)
-    }
+
+    assertEquals(0, resumed.exitCode, resumed.stdout)
+    val prompts = launcher.requests.map { it.skillRunRequest.promptOverride.orEmpty() }
+    assertTrue(prompts.any { it.contains("Replacement guidance.") })
+    assertTrue(prompts.all { !it.contains("First selected guidance.") })
   }
 
   @Test

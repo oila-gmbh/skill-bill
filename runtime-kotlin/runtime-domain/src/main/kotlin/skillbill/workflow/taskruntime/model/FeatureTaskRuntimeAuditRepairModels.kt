@@ -190,6 +190,20 @@ data class FeatureTaskRuntimeAuditRepairState(
       "repository fingerprint must be nonblank when present."
     }
     val unresolvedIds = unresolvedGapLedger.unresolvedGaps.mapTo(linkedSetOf()) { it.gapId }
+    val acceptedGapIdentities = acceptedPlans.flatMap { plan ->
+      plan.gaps.map { gap ->
+        Triple(
+          gap.gapId,
+          gap.acceptanceCriterionRef,
+          gap.gapId.substringAfterLast("-gap-").toInt(),
+        )
+      }
+    }.toSet()
+    require(
+      unresolvedGapLedger.unresolvedGaps.all { gap ->
+        Triple(gap.gapId, gap.acceptanceCriterionRef, gap.generation) in acceptedGapIdentities
+      },
+    ) { "Every unresolved ledger gap must match an accepted plan gap identity, criterion, and generation." }
     requireUnique(priorGapDispositions.map { it.gapId }, "prior gap disposition gap_id")
     require(
       priorGapDispositions.all { disposition ->

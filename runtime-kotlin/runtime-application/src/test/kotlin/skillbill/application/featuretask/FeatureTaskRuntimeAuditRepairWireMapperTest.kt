@@ -11,6 +11,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairItem
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeUnresolvedGap
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeUnresolvedGapLedger
 import kotlin.test.Test
+import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 
@@ -95,6 +96,44 @@ class FeatureTaskRuntimeAuditRepairWireMapperTest {
     assertFailsWith<InvalidWorkflowStateSchemaError> {
       auditRepairStateFromWire(malformed, "audit_repair_state")
     }
+  }
+
+  @Test
+  fun `durable ledger rejects gaps absent from accepted plan history`() {
+    val malformed = auditRepairStateToWire(state()).toMutableMap()
+    malformed["unresolved_gap_ledger"] = mapOf(
+      "contract_version" to AUDIT_REPAIR_CONTRACT_VERSION,
+      "gaps" to listOf(
+        mapOf("gap_id" to "ac-002-gap-1", "acceptance_criterion_ref" to "AC-002", "generation" to 1),
+      ),
+    )
+
+    val error = assertFailsWith<InvalidWorkflowStateSchemaError> {
+      auditRepairStateFromWire(malformed, "audit_repair_state")
+    }
+    assertContains(error.message.orEmpty(), "accepted plan gap identity")
+  }
+
+  @Test
+  fun `durable ledger rejects criterion identity that differs from accepted plan history`() {
+    val malformed = auditRepairStateToWire(state()).toMutableMap()
+    malformed["unresolved_gap_ledger"] = mapOf(
+      "contract_version" to AUDIT_REPAIR_CONTRACT_VERSION,
+      "gaps" to listOf(
+        mapOf("gap_id" to "ac-002-gap-1", "acceptance_criterion_ref" to "AC-002", "generation" to 1),
+      ),
+    )
+    val accepted = ((malformed.getValue("accepted_plans") as List<*>).single() as Map<*, *>).toStringKeyMap()
+    val acceptedGap = ((accepted.getValue("gaps") as List<*>).single() as Map<*, *>).toMutableMap().apply {
+      put("gap_id", "ac-002-gap-1")
+    }
+    malformed["accepted_plans"] = listOf(accepted.toMutableMap().apply { put("gaps", listOf(acceptedGap)) })
+    malformed["latest_plan"] = accepted.toMutableMap().apply { put("gaps", listOf(acceptedGap)) }
+
+    val error = assertFailsWith<InvalidWorkflowStateSchemaError> {
+      auditRepairStateFromWire(malformed, "audit_repair_state")
+    }
+    assertContains(error.message.orEmpty(), "must belong to acceptance criterion")
   }
 
   @Test

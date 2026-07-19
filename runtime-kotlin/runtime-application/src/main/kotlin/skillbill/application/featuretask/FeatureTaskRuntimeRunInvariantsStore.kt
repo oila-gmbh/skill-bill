@@ -33,7 +33,7 @@ class FeatureTaskRuntimeRunInvariantsStore(
     dbOverride: String? = null,
     proposed: FeatureTaskRuntimeRunInvariants? = null,
   ): FeatureTaskRuntimeRunInvariants? {
-    proposed?.let { persistIfAbsent(workflowId, dbOverride, it) }
+    proposed?.let { persistOrUpdateAgentAddons(workflowId, dbOverride, it) }
     return database.read(dbOverride) { unitOfWork ->
       val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
         ?: return@read null
@@ -41,13 +41,23 @@ class FeatureTaskRuntimeRunInvariantsStore(
     }
   }
 
-  private fun persistIfAbsent(workflowId: String, dbOverride: String?, proposed: FeatureTaskRuntimeRunInvariants) {
+  private fun persistOrUpdateAgentAddons(
+    workflowId: String,
+    dbOverride: String?,
+    proposed: FeatureTaskRuntimeRunInvariants,
+  ) {
     database.transaction(dbOverride) { unitOfWork ->
       val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
         ?: return@transaction
       val artifacts = decodeArtifacts(record.artifactsJson)
-      if (runInvariantsFrom(artifacts) == null) {
-        persistPatch(unitOfWork.workflowStates, record, proposed)
+      val existing = runInvariantsFrom(artifacts)
+      when {
+        existing == null -> persistPatch(unitOfWork.workflowStates, record, proposed)
+        existing.agentAddonSelection != proposed.agentAddonSelection -> persistPatch(
+          unitOfWork.workflowStates,
+          record,
+          existing.copy(agentAddonSelection = proposed.agentAddonSelection),
+        )
       }
     }
   }

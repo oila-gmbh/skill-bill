@@ -445,10 +445,7 @@ class WorkflowGoalRunnerManifestStore(
     val record = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, parentWorkflowId)
       ?: error("Goal parent workflow '$parentWorkflowId' no longer exists.")
     val existing = reviewPolicyFromArtifacts(decodeArtifacts(record.artifactsJson))
-    if (existing != null) {
-      check(existing == policy) {
-        "Goal review policy is immutable for parent workflow '$parentWorkflowId'."
-      }
+    if (existing == policy) {
       existing
     } else {
       val updated = engine.updateRecord(

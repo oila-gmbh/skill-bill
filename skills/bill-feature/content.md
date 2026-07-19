@@ -39,8 +39,9 @@ and incompatible agents. Preserve caller order.
 After resolution, forward only the structured selection object containing slug,
 canonical manifest source identity, content digest, and confirmation description.
 No downstream router or worker may parse the original tokens or rediscover the
-catalogue. A continuation with no token inherits its durable selection; an
-explicit continuation selection must exactly match it.
+catalogue. Agent add-ons are launch guidance rather than workflow identity: the
+newly resolved selection becomes effective for future work and may differ from a
+prior launch without blocking continuation.
 
 Call `mcp__skill-bill__update_check` before any other action.
 

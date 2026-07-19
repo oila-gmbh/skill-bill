@@ -6,7 +6,7 @@ description: Level-1 subtask-agent for bill-feature-goal mode:prose. Runs exactl
 
 # Feature Task Subtask Runner
 
-Receive only the parent's immutable structured agent add-on selection. Verify
+Receive only the parent's current structured agent add-on selection. Verify
 its recorded source identities and digests before child execution, then forward
 the canonical rendered section unchanged to every phase and review lane. Never
 parse raw selection tokens, discover the add-on catalogue, reorder entries, or

@@ -1,6 +1,7 @@
 package skillbill.contracts.workflow
 
 import skillbill.contracts.JsonSupport
+import skillbill.error.InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.infrastructure.fs.FeatureTaskRuntimePhaseOutputValidatorAdapter
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
@@ -12,6 +13,7 @@ import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
+import kotlin.test.assertTrue
 
 class FeatureTaskRuntimePhaseOutputSchemaValidatorTest {
   private val wellFormed =
@@ -28,6 +30,58 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorTest {
   fun `well-formed phase output passes validation`() {
     FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(wellFormed, "plan")
   }
+
+  @Test
+  fun `audit repair schema loader translates malformed yaml`() {
+    val error = assertFailsWith<InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError> {
+      loadAuditRepairPlanSchemaText("properties: [", "malformed-yaml")
+    }
+    assertEquals("malformed-yaml", error.sourceLabel)
+    assertTrue(error.cause != null)
+  }
+
+  @Test
+  fun `audit repair schema loader rejects wrong identity independently`() {
+    val error = assertFailsWith<InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError> {
+      loadAuditRepairPlanSchemaText(
+        validAuditRepairSchemaHeader().replace("plan-schema.yaml", "wrong.yaml"),
+        "identity",
+      )
+    }
+    assertContains(error.reason, "schema identity mismatch")
+    assertContains(error.reason, "wrong.yaml")
+  }
+
+  @Test
+  fun `audit repair schema loader rejects wrong version independently`() {
+    val error = assertFailsWith<InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError> {
+      loadAuditRepairPlanSchemaText(
+        validAuditRepairSchemaHeader().replace("const: \"0.1\"", "const: \"9.9\""),
+        "version",
+      )
+    }
+    assertContains(error.reason, "schema contract version mismatch")
+    assertContains(error.reason, "9.9")
+  }
+
+  @Test
+  fun `audit repair schema loader translates compilation failure after identity checks`() {
+    val error = assertFailsWith<InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError> {
+      loadAuditRepairPlanSchemaText(validAuditRepairSchemaHeader() + "\npattern: '[unclosed'", "compilation")
+    }
+    assertEquals("compilation", error.sourceLabel)
+    assertTrue(error.cause != null)
+    assertTrue(error.reason.isNotBlank())
+  }
+
+  private fun validAuditRepairSchemaHeader(): String = """
+      ${'$'}schema: "https://json-schema.org/draft/2020-12/schema"
+      ${'$'}id: "https://skill-bill.dev/contracts/feature-task-runtime-audit-repair-plan-schema.yaml"
+      type: object
+      properties:
+        contract_version:
+          const: "0.1"
+  """.trimIndent()
 
   @Test
   fun `blocked output accepts a typed non-retryable disposition`() {

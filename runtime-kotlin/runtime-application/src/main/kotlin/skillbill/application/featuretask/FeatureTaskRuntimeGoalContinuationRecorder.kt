@@ -42,11 +42,7 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
       ?: return@transaction false
     val artifacts = decodeArtifacts(record.artifactsJson)
     val existingContinuation = continuationFromArtifacts(artifacts)
-    check(
-      existingContinuation == null ||
-        request.continuation == null ||
-        existingContinuation == request.continuation,
-    ) {
+    check(existingContinuation.compatibleWith(request.continuation)) {
       "Goal continuation is immutable for workflow '${request.workflowId}'; " +
         "parent, subtask, branch, and review mode cannot change on resume."
     }
@@ -322,17 +318,23 @@ private data class GoalReviewInputRecoveryExecution(
 private fun continuationPatch(
   continuation: FeatureTaskRuntimeGoalContinuationArtifact?,
   existing: FeatureTaskRuntimeGoalContinuationArtifact?,
-): Map<String, Any?> = if (continuation != null && existing == null) {
-  mapOf(
+): Map<String, Any?> = when {
+  continuation == null || continuation == existing -> emptyMap()
+  existing == null -> mapOf(
     FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY to continuation.toArtifactMap(),
     "install_sync_result" to mapOf(
       "status" to "skipped",
       "reason" to "goal-continuation forbids installer, uninstall, and install-sync flows",
     ),
   )
-} else {
-  emptyMap()
+  else -> mapOf(FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY to continuation.toArtifactMap())
 }
+
+private fun FeatureTaskRuntimeGoalContinuationArtifact?.compatibleWith(
+  supplied: FeatureTaskRuntimeGoalContinuationArtifact?,
+): Boolean = this == null || supplied == null ||
+  copy(agentAddonSelection = skillbill.agentaddon.model.AgentAddonSelection()) ==
+  supplied.copy(agentAddonSelection = skillbill.agentaddon.model.AgentAddonSelection())
 
 private fun reviewStatePatch(
   request: GoalContinuationStateRecordRequest,
