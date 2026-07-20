@@ -3372,6 +3372,7 @@ internal class RunnerHarness(
         branch = branch,
         baseBranch = baseBranch,
         created = created,
+        reviewBaseSha = "0".repeat(40),
       ),
     )
   }
@@ -4327,8 +4328,10 @@ internal class RecordingWorkflowGitOperations(
 
   override val goalSubtaskReviewOperations: GoalSubtaskReviewGitOperations =
     object : GoalSubtaskReviewGitOperations {
-      override fun captureBaseline(repoRoot: Path, expectedBranch: String) =
-        error("Goal review baseline capture is not used by this runtime runner fixture.")
+      override fun captureBaseline(repoRoot: Path, expectedBranch: String) = GoalSubtaskReviewBaselineResult(
+        status = "ok",
+        baseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
+      )
 
       override fun buildInput(
         repoRoot: Path,

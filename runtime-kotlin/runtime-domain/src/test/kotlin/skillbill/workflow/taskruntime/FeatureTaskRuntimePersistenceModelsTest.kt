@@ -140,11 +140,15 @@ class FeatureTaskRuntimePersistenceModelsTest {
       branch = "feat/SKILL-65.1-runtime-feature-task-parity",
       baseBranch = "main",
       created = true,
+      reviewBaseSha = "a".repeat(40),
+      baselineUntrackedPaths = listOf("owned-new.txt"),
     )
     val decoded = FeatureTaskRuntimeResolvedBranch.fromArtifactMap(resolved.toArtifactMap())
     assertEquals(resolved, decoded)
     assertTrue(decoded.created)
     assertEquals("main", decoded.baseBranch)
+    assertEquals("a".repeat(40), decoded.reviewBaseSha)
+    assertEquals(listOf("owned-new.txt"), decoded.baselineUntrackedPaths)
   }
 
   @Test

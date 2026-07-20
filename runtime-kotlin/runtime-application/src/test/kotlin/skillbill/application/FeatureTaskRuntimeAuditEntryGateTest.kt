@@ -441,7 +441,7 @@ class FeatureTaskRuntimeAuditEntryGateTest {
 }
 
 private const val PASS_TWO_REMEDIATION_SCOPE =
-  "Apply bill-code-review mode:inline context:feature-remediation to only the combined staged"
+  "Apply bill-code-review mode:inline context:feature-remediation to the subtask's complete delta"
 private const val FRESH_IMPLEMENT_FIX_MARKER = "fresh-migration-resume-fix"
 private const val FRESH_IMPLEMENT_FIX_OUTPUT =
   """{"contract_version":"0.1","phase_id":"implement_fix","status":"completed","summary":"fix",""" +

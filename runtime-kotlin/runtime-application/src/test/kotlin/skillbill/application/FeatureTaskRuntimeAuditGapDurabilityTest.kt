@@ -417,7 +417,13 @@ class FeatureTaskRuntimeAuditGapDurabilityTest {
     harness.seedPhase("implement", "completed", 3, INVOKED_AGENT, validJsonOutput("implement"))
     harness.seedPhase("review", "completed", 2, INVOKED_AGENT, validJsonOutput("review"))
     harness.seedReentryPhase("audit", "blocked", 3, INVOKED_AGENT, auditGapsOutput(), "audit_gap", 2)
-    harness.recorder.recordResolvedBranch(WORKFLOW_ID, FeatureTaskRuntimeResolvedBranch("feat/persisted-branch"))
+    harness.recorder.recordResolvedBranch(
+      WORKFLOW_ID,
+      FeatureTaskRuntimeResolvedBranch(
+        branch = "feat/persisted-branch",
+        reviewBaseSha = "0".repeat(40),
+      ),
+    )
 
     val report = assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
 

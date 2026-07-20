@@ -21,6 +21,8 @@ import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
 import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
+import skillbill.ports.workflow.buildGoalSubtaskReviewInput
+import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.model.GoalSubtaskReviewInput
 import skillbill.ports.workflow.repositoryFingerprint
 import skillbill.ports.workflow.runtimePhaseChangedPathsBetweenCommits
@@ -1050,10 +1052,32 @@ internal class FeatureTaskRuntimeRunLoop(
   private fun prepareGoalReviewRun(
     run: PhaseRun,
     observability: FeatureTaskRuntimeRunObservability,
-  ): GoalReviewRunPreparation = if (isGoalReviewRun(run)) {
-    reserveGoalReviewRun(run, observability)
-  } else {
-    GoalReviewRunReady(run)
+  ): GoalReviewRunPreparation = when {
+    run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW -> GoalReviewRunReady(run)
+    isGoalReviewRun(run) -> reserveGoalReviewRun(run, observability)
+    else -> prepareStandaloneReviewRun(run, observability)
+  }
+
+  private fun prepareStandaloneReviewRun(
+    run: PhaseRun,
+    observability: FeatureTaskRuntimeRunObservability,
+  ): GoalReviewRunPreparation {
+    val resolved = recorder.loadResolvedBranch(run.request.workflowId, run.request.dbPathOverride)
+      ?: return blockedGoalReviewRun(run, observability, "Standalone review is missing its durable resolved branch.")
+    val reviewBaseSha = resolved.reviewBaseSha
+      ?: return blockedGoalReviewRun(
+        run,
+        observability,
+        "Standalone review is missing the immutable review base captured before implementation.",
+      )
+    val result = phaseGates.gitOperations.buildGoalSubtaskReviewInput(
+      run.request.repoRoot,
+      GoalSubtaskReviewBaseline(reviewBaseSha, resolved.baselineUntrackedPaths),
+      resolved.branch,
+    )
+    val input = result.input
+      ?: return blockedGoalReviewRun(run, observability, result.error.ifBlank { "Standalone review input failed." })
+    return GoalReviewRunReady(run.copy(goalReviewInput = input))
   }
 
   private fun reserveGoalReviewRun(

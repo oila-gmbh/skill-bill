@@ -749,12 +749,10 @@ private fun standaloneAndGoalChildParity(
 
 private fun assertReviewCompositionParity(standalone: GoalChildObservation, goalChild: GoalChildObservation) {
   assertEquals(standalone.reviewComposition.size, goalChild.reviewComposition.size)
-  assertEquals(
-    standalone.reviewComposition.map { it.split('|').take(2) },
-    goalChild.reviewComposition.map { it.split('|').take(2) },
-  )
-  assertTrue(standalone.reviewComposition.none { it.contains("durable base") })
+  assertEquals(standalone.reviewComposition, goalChild.reviewComposition)
+  assertTrue(standalone.reviewComposition.all { it.contains("durable base `${"0".repeat(40)}`") })
   assertTrue(goalChild.reviewComposition.all { it.contains("durable base `${"0".repeat(40)}`") })
+  assertTrue(standalone.reviewComposition.all { it.contains("committed, staged, unstaged") })
   assertTrue(goalChild.reviewComposition.all { it.contains("committed, staged, unstaged") })
 }
 

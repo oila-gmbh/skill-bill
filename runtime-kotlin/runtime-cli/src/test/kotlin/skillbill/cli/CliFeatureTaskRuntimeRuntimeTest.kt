@@ -2125,8 +2125,10 @@ private class FakeRuntimeGitOperations(
 
   override val goalSubtaskReviewOperations: GoalSubtaskReviewGitOperations =
     object : GoalSubtaskReviewGitOperations {
-      override fun captureBaseline(repoRoot: Path, expectedBranch: String): Nothing =
-        error("Goal review baseline capture is not used by this runtime CLI fixture.")
+      override fun captureBaseline(repoRoot: Path, expectedBranch: String) = GoalSubtaskReviewBaselineResult(
+        status = "ok",
+        baseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
+      )
 
       override fun buildInput(
         repoRoot: Path,

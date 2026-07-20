@@ -1,3 +1,14 @@
+## [2026-07-20] SKILL-135 immutable complete-delta review scope (subtask 2)
+Areas: runtime-kotlin/runtime-{application,cli,domain}, orchestration/review-orchestrator
+- Standalone feature-task runs now capture the review base SHA and baseline untracked paths before implementation, persist them with the resolved branch, and reuse them for every review pass.
+- Standalone and goal-child reviews share the same review-input materialization and prompt path, covering committed, staged, unstaged, and run-owned untracked changes from the immutable subtask base. reusable
+- Pass two remains forced inline but reviews the same complete delta as pass one; remediation context no longer narrows scope to checkpoint-only changes.
+- Pattern: establish review scope once at the pre-implementation branch boundary, persist its immutable inputs, and reconstruct the complete delta on every pass and resume. reusable
+- Durable decoding validates review-base SHA shape and baseline untracked-path entries; older resolved-branch artifacts without the new optional fields still decode, but a standalone review cannot proceed without an established immutable base.
+- Sequence, resume, standalone/goal-child parity, prompt payload, and complete-delta behavior are covered across domain, application, filesystem, and CLI tests.
+Feature flag: N/A
+Acceptance criteria: 9/9 implemented
+
 ## [2026-07-20] SKILL-131 audit-repair integration and verification (subtask 3)
 Areas: runtime-kotlin/runtime-{application,cli,domain,infra-sqlite,mcp}, skills/bill-feature-task-runtime, docs
 - Status and lifecycle telemetry project compact convergence evidence: first-pass outcome, recurring/new gaps, attempted/resolved repair items, and audit-gap iterations.

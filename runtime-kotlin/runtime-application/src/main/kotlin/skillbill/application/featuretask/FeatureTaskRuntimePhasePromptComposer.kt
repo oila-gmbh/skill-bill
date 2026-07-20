@@ -42,7 +42,6 @@ object FeatureTaskRuntimePhasePromptComposer {
       reviewExecutionDirective(
         briefing.phaseId,
         codeReviewMode,
-        reviewPassNumber,
         parallelReviewAgent,
         goalSubtaskReviewInput,
       ),
@@ -365,7 +364,6 @@ object FeatureTaskRuntimePhasePromptComposer {
   private fun reviewExecutionDirective(
     phaseId: String,
     codeReviewMode: CodeReviewExecutionMode,
-    reviewPassNumber: Int?,
     parallelReviewAgent: String?,
     goalSubtaskReviewInput: GoalSubtaskReviewInput?,
   ): String {
@@ -376,11 +374,11 @@ object FeatureTaskRuntimePhasePromptComposer {
       " Combine it with `parallel:$agent`; both lanes must receive mode:${codeReviewMode.wireValue} " +
         "and the second lane must not launch parallel review recursively."
     }.orEmpty()
-    val goalScope = goalSubtaskReviewInput?.let { input ->
+    val materializedScope = goalSubtaskReviewInput?.let { input ->
       """
 
-      ## Goal subtask review scope
-      Review only this child-owned delta from durable base `${input.reviewBaseSha}` to current HEAD `${input.currentHeadSha}`.
+      ## Immutable-base review scope
+      Review only this run-owned delta from durable base `${input.reviewBaseSha}` to current HEAD `${input.currentHeadSha}`.
       It includes committed, staged, unstaged, and owned untracked changes below.
       Do not use `origin/main...HEAD`, a merge base, the full feature branch, or a replacement baseline.
       If parallel CLI delegation is required, give both lanes this exact diff through `--diff-file`;
@@ -389,19 +387,13 @@ object FeatureTaskRuntimePhasePromptComposer {
       ${input.reviewText}
       """.trimIndent()
     }.orEmpty()
-    val completeDeltaScope = if (goalSubtaskReviewInput == null) {
-      " Review the subtask's complete delta from its immutable run base on every pass, including committed, staged, " +
-        "unstaged, and owned untracked changes; never narrow a later pass to checkpoint remediation changes."
-    } else {
-      ""
-    }
     return """
       ## Review execution mode
       Run `bill-code-review mode:${codeReviewMode.wireValue}` for this review. The initial pass uses the run-selected
       mode; every later pass is explicitly INLINE under context:feature-remediation. Never launch a third review pass.
       AUTO keeps the shared policy's existing selection; remediation INLINE uses the governed exception and selects
       inline specialist coverage for high-risk signals; DELEGATED must use normal routed delegation and fail if workers
-      cannot start.$parallel$goalScope$completeDeltaScope
+      cannot start.$parallel$materializedScope
     """.trimIndent()
   }
 
