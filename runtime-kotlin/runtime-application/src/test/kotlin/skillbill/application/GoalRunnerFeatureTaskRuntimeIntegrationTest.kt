@@ -42,32 +42,34 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
 
   @Test
   fun `authoritative terminal fields are preserved for complete blocked and failed child reports`() {
-    val complete = authoritativeTerminalOutcome(
+    val completeRun = goalRunForChildReport(
       completedChildReport(status = "complete", commitSha = "sha-complete", reason = null, step = "commit_push"),
-      "ignored-workflow",
     )
+    assertIs<GoalRunnerRunReport.Completed>(completeRun.first)
+    val complete = completeRun.second
     assertEquals(GoalRunnerTerminalStatus.COMPLETE, complete.status)
     assertEquals("sha-complete", complete.commitSha)
     assertEquals(WORKFLOW_ID, complete.workflowId)
     assertEquals(null, complete.blockedReason)
     assertEquals("commit_push", complete.lastResumableStep)
 
-    val blocked = authoritativeTerminalOutcome(
+    val blockedRun = goalRunForChildReport(
       completedChildReport(
         status = "blocked",
         commitSha = "sha-blocked",
         reason = "durable reason",
         step = "implement",
       ),
-      "ignored-workflow",
     )
+    assertIs<GoalRunnerRunReport.Stopped>(blockedRun.first)
+    val blocked = blockedRun.second
     assertEquals(GoalRunnerTerminalStatus.BLOCKED, blocked.status)
     assertEquals("sha-blocked", blocked.commitSha)
     assertEquals(WORKFLOW_ID, blocked.workflowId)
     assertEquals("durable reason", blocked.blockedReason)
     assertEquals("implement", blocked.lastResumableStep)
 
-    val failed = authoritativeTerminalOutcome(
+    val failedRun = goalRunForChildReport(
       FeatureTaskRuntimeRunReport.Decomposed(
         issueKey = "SKILL-56",
         workflowId = WORKFLOW_ID,
@@ -79,13 +81,14 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
         subtaskSpecPaths = listOf("subtask.md"),
         resolvedBranch = "feat/SKILL-56-goal",
       ),
-      WORKFLOW_ID,
     )
+    assertIs<GoalRunnerRunReport.Stopped>(failedRun.first)
+    val failed = failedRun.second
     assertEquals(GoalRunnerTerminalStatus.FAILED, failed.status)
     assertEquals(WORKFLOW_ID, failed.workflowId)
     assertEquals(null, failed.commitSha)
-    assertEquals(null, failed.blockedReason)
-    assertEquals(null, failed.lastResumableStep)
+    assertEquals("terminal failure", failed.blockedReason)
+    assertEquals("plan", failed.lastResumableStep)
   }
 
   @Test
@@ -274,6 +277,35 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
   }
 
   @Test
+  fun `standalone and goal child classify recurring and newly discovered gaps identically`() {
+    fun launcher(): RuntimeRecordingLauncher {
+      var audits = 0
+      var implements = 0
+      return RuntimeRecordingLauncher { request ->
+        when (val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))) {
+          "audit" -> {
+            audits += 1
+            facts(if (audits == 1) auditGapsOutput() else auditTwoGapsOutput())
+          }
+          "implement" -> {
+            implements += 1
+            if (implements == 3) spawnFailedFacts() else facts(validJsonOutput(phaseId))
+          }
+          else -> facts(validJsonOutput(phaseId))
+        }
+      }
+    }
+
+    val parity = standaloneAndGoalChildParity(launcher = ::launcher)
+
+    assertIs<GoalRunnerRunReport.Stopped>(parity.report)
+    val state = requireNotNull(parity.runtime.recorder.loadAuditRepairState(WORKFLOW_ID))
+    assertEquals(1, state.progress.recurringGapCount)
+    assertEquals(1, state.progress.newGapCount)
+    assertEquals(listOf("ac-002-gap-1", "ac-003-gap-1"), state.unresolvedGapLedger.unresolvedGaps.map { it.gapId })
+  }
+
+  @Test
   fun `standalone and goal child resume the same durable scenario after a mid-item crash`() {
     fun launcher(): RuntimeRecordingLauncher {
       var implementLaunches = 0
@@ -296,12 +328,16 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
 
     val standalone = runnerHarness(launcher = launcher())
     assertIs<FeatureTaskRuntimeRunReport.Blocked>(standalone.runner.run(standalone.request()))
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(standalone.runner.run(standalone.request()))
+    val standaloneCompleted =
+      assertIs<FeatureTaskRuntimeRunReport.Completed>(standalone.runner.run(standalone.request()))
 
     val goalChild = goalChildParityRun(launcher = launcher())
     assertIs<GoalRunnerRunReport.Stopped>(goalChild.report)
     assertIs<GoalRunnerRunReport.Completed>(goalChild.resume())
-    assertEquals(standalone.goalChildObservation(), goalChild.runtime.goalChildObservation())
+    assertEquals(
+      standalone.goalChildObservation(standaloneCompleted),
+      goalChild.runtime.goalChildObservation(goalChild.childReports.last()),
+    )
   }
 
   @Test
@@ -311,14 +347,15 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
         launcher = wrappedAuditGapLauncher(convergeOnAudit = 2, wrap = wrap),
         validator = FeatureTaskRuntimePhaseOutputValidatorAdapter(),
       )
-      assertIs<FeatureTaskRuntimeRunReport.Completed>(standalone.runner.run(standalone.request()))
-      val standaloneObservation = standalone.goalChildObservation()
+      val standaloneReport =
+        assertIs<FeatureTaskRuntimeRunReport.Completed>(standalone.runner.run(standalone.request()))
+      val standaloneObservation = standalone.goalChildObservation(standaloneReport)
       val parity = goalChildParityRun(
         launcher = wrappedAuditGapLauncher(convergeOnAudit = 2, wrap = wrap),
         validator = FeatureTaskRuntimePhaseOutputValidatorAdapter(),
       )
       assertIs<GoalRunnerRunReport.Completed>(parity.report)
-      parity.runtime.goalChildObservation().also {
+      parity.runtime.goalChildObservation(parity.childReports.last()).also {
         assertEquals(standaloneObservation, it, "standalone and goal-child observations must match")
       }
     }
@@ -340,26 +377,67 @@ private data class GoalChildObservation(
   val unresolvedLedger: Any?,
   val dispositions: List<Any>,
   val remediationHandoffs: List<String>,
+  val terminalReport: TerminalObservation,
 )
 
-private fun RunnerHarness.goalChildObservation(): GoalChildObservation = GoalChildObservation(
-  phaseOrder = launchedPromptPhaseOrder().filterNot { it == "pr" },
-  persistedOutputs = recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()
-    .filterKeys { it != "pr" }
-    .mapNotNull { (phaseId, record) -> record.outputArtifact?.let { phaseId to it } }.toMap(),
-  auditGapEdgeIterations = recorder.loadPhaseLedger(WORKFLOW_ID).orEmpty()
-    .filter { it.action == FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE && it.loopId == "audit_gap" }
-    .mapNotNull { it.edgeIteration },
-  acceptedPlans = recorder.loadAuditRepairState(WORKFLOW_ID)?.acceptedPlans.orEmpty(),
-  repairResults = recorder.loadAuditRepairState(WORKFLOW_ID)?.repairItemResults.orEmpty(),
-  unresolvedLedger = recorder.loadAuditRepairState(WORKFLOW_ID)?.unresolvedGapLedger,
-  dispositions = recorder.loadAuditRepairState(WORKFLOW_ID)?.priorGapDispositions.orEmpty(),
-  remediationHandoffs = launcher.requests.mapNotNull { it.skillRunRequest.promptOverride }
-    .filter { it.contains("Phase: implement") && it.contains("audit_repair_plan") }
-    .map { prompt ->
-      prompt.substringAfter("audit_repair_plan:\n").substringBefore("audit_remediation_execution_rules:").trim()
-    },
+private data class TerminalObservation(
+  val status: String,
+  val reason: String?,
+  val commitSha: String?,
+  val workflowId: String,
+  val lastResumableStep: String,
 )
+
+private fun RunnerHarness.goalChildObservation(report: FeatureTaskRuntimeRunReport): GoalChildObservation =
+  GoalChildObservation(
+    phaseOrder = launchedPromptPhaseOrder().filterNot { it == "pr" },
+    persistedOutputs = recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()
+      .filterKeys { it != "pr" }
+      .mapNotNull { (phaseId, record) -> record.outputArtifact?.let { phaseId to it } }.toMap(),
+    auditGapEdgeIterations = recorder.loadPhaseLedger(WORKFLOW_ID).orEmpty()
+      .filter { it.action == FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE && it.loopId == "audit_gap" }
+      .mapNotNull { it.edgeIteration },
+    acceptedPlans = recorder.loadAuditRepairState(WORKFLOW_ID)?.acceptedPlans.orEmpty(),
+    repairResults = recorder.loadAuditRepairState(WORKFLOW_ID)?.repairItemResults.orEmpty(),
+    unresolvedLedger = recorder.loadAuditRepairState(WORKFLOW_ID)?.unresolvedGapLedger,
+    dispositions = recorder.loadAuditRepairState(WORKFLOW_ID)?.priorGapDispositions.orEmpty(),
+    remediationHandoffs = launcher.requests.mapNotNull { it.skillRunRequest.promptOverride }
+      .filter { it.contains("Phase: implement") && it.contains("audit_repair_plan") }
+      .map { prompt ->
+        prompt.substringAfter("audit_repair_plan:\n").substringBefore("audit_remediation_execution_rules:").trim()
+      },
+    terminalReport = report.terminalObservation(
+      recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["commit_push"]?.outputArtifact
+        ?.let { Regex("\\\"commit_sha\\\":\\\"([^\\\"]+)\\\"").find(it)?.groupValues?.get(1) }
+        ?: gitOperations.headCommitShaValue,
+    ),
+  )
+
+private fun FeatureTaskRuntimeRunReport.terminalObservation(fallbackCommitSha: String?): TerminalObservation {
+  val outcome = when (this) {
+    is FeatureTaskRuntimeRunReport.Completed -> subtaskOutcome
+    is FeatureTaskRuntimeRunReport.Blocked -> subtaskOutcome
+    is FeatureTaskRuntimeRunReport.Decomposed -> null
+  }
+  return if (outcome != null) {
+    TerminalObservation(
+      outcome.status,
+      outcome.blockedReason,
+      outcome.commitSha,
+      outcome.workflowId,
+      outcome.lastResumableStep,
+    )
+  } else {
+    when (this) {
+      is FeatureTaskRuntimeRunReport.Completed ->
+        TerminalObservation("complete", null, fallbackCommitSha, workflowId, "commit_push")
+      is FeatureTaskRuntimeRunReport.Blocked ->
+        TerminalObservation("blocked", blockedReason, null, workflowId, lastIncompletePhase)
+      is FeatureTaskRuntimeRunReport.Decomposed ->
+        TerminalObservation("failed", reason, null, workflowId, "plan")
+    }
+  }
+}
 
 private val GOAL_CHILD_WRAPPER_FORMS: Map<String, (String) -> String> = mapOf(
   "bare" to { text -> text },
@@ -413,8 +491,8 @@ private fun standaloneAndGoalChildParity(
   val standaloneReport = standalone.runner.run(standalone.request())
   val goalChild = goalChildParityRun(launcher = launcher(), gitOperations = gitOperations())
   assertEquals(
-    standalone.goalChildObservation(),
-    goalChild.runtime.goalChildObservation(),
+    standalone.goalChildObservation(standaloneReport),
+    goalChild.runtime.goalChildObservation(goalChild.childReports.last()),
     "standalone and goal-child durable scenario observations must match",
   )
   if (standaloneReport is FeatureTaskRuntimeRunReport.Blocked) {
@@ -449,6 +527,32 @@ private fun completedChildReport(
     lastResumableStep = step,
   ),
 )
+
+private fun goalRunForChildReport(
+  childReport: FeatureTaskRuntimeRunReport,
+): Pair<GoalRunnerRunReport, GoalRunnerStoredOutcome> {
+  val outcomes = RecordingOutcomeStore().apply { seedReviewState(WORKFLOW_ID) }
+  val launcher = object : GoalRunnerSubtaskLauncher {
+    override fun launch(request: GoalRunnerSubtaskLaunchRequest): AgentRunLaunchOutcome {
+      outcomes[WORKFLOW_ID] = authoritativeTerminalOutcome(childReport, WORKFLOW_ID)
+      return launchFacts()
+    }
+  }
+  val runner = GoalRunner(
+    manifestStore = InMemoryGoalManifestStore(manifest(subtaskCount = 1).withWorkflowId(1, WORKFLOW_ID)),
+    subtaskLauncher = launcher,
+    outcomeStore = outcomes,
+    pullRequestPort = RecordingPullRequestPort(),
+  )
+  val report = runner.run(
+    GoalRunnerRunRequest(
+      issueKey = "SKILL-56",
+      repoRoot = java.nio.file.Path.of("/tmp/repo"),
+      invokedAgentId = INVOKED_AGENT,
+    ),
+  )
+  return report to requireNotNull(outcomes.terminalOutcome(WORKFLOW_ID, "SKILL-56", 1, null))
+}
 
 private fun goalChildParityRun(
   launcher: RuntimeRecordingLauncher,
@@ -620,6 +724,8 @@ private fun authoritativeTerminalOutcome(
     else -> GoalRunnerStoredOutcome(
       status = GoalRunnerTerminalStatus.FAILED,
       workflowId = workflowId,
+      blockedReason = (report as FeatureTaskRuntimeRunReport.Decomposed).reason,
+      lastResumableStep = "plan",
       suppressPr = true,
     )
   }

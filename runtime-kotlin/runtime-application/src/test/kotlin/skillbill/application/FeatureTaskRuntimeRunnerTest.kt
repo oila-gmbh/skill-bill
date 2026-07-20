@@ -3521,8 +3521,8 @@ internal fun runnerHarness(
   agentAssignment: FeatureTaskRuntimeAgentAssignment = FeatureTaskRuntimeAgentAssignment(),
   runtimeConfig: RuntimeHarnessConfig = RuntimeHarnessConfig(),
   specScratchStore: RecordingSpecScratchStore = RecordingSpecScratchStore(),
+  repository: InMemoryRuntimeWorkflowRepository = InMemoryRuntimeWorkflowRepository(),
 ): RunnerHarness {
-  val repository = InMemoryRuntimeWorkflowRepository()
   val database = RuntimeFakeDatabaseSessionFactory(repository)
   val recorder = FeatureTaskRuntimePhaseRecorder(database, NoopWorkflowSnapshotValidator)
   val goalContinuationRecorder = FeatureTaskRuntimeGoalContinuationRecorder(database, NoopWorkflowSnapshotValidator)
