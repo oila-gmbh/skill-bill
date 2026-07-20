@@ -5,9 +5,13 @@ import skillbill.application.model.FeatureTaskRuntimeRunReport
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_AUDIT_REPAIR_STATE_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
+import java.nio.file.Files
+import kotlin.io.path.createTempDirectory
+import kotlin.io.path.readLines
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
@@ -173,12 +177,24 @@ class FeatureTaskRuntimeAuditGapDurabilityTest {
     var implementLaunches = 0
     var auditLaunches = 0
     var crashMidRepair = true
-    val appliedRepairItems = mutableSetOf<String>()
-    val applicationCounts = mutableMapOf<String, Int>()
+    val repositoryRoot = createTempDirectory("skill-bill-mid-item-repository-")
+    val repositoryEffects = repositoryRoot.resolve("repair-effects.txt")
     fun applyRepairItem(itemId: String) {
-      applicationCounts[itemId] = applicationCounts.getOrDefault(itemId, 0) + 1
-      appliedRepairItems += itemId
+      Files.writeString(
+        repositoryEffects,
+        "$itemId\n",
+        java.nio.file.StandardOpenOption.CREATE,
+        java.nio.file.StandardOpenOption.APPEND,
+      )
     }
+    fun landedRepairItems(): List<String> =
+      if (Files.exists(repositoryEffects)) repositoryEffects.readLines() else emptyList()
+    fun requireLandedItemOne() {
+      check("ac-002-gap-1-item-1" in landedRepairItems()) {
+        "already_satisfied is valid only when the restarted launcher observes item 1 in repository state"
+      }
+    }
+    assertFailsWith<IllegalStateException> { requireLandedItemOne() }
     val harness = runnerHarness(
       launcher = RuntimeRecordingLauncher { request ->
         val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
@@ -196,7 +212,7 @@ class FeatureTaskRuntimeAuditGapDurabilityTest {
                 spawnFailedFacts()
               }
               else -> {
-                check("ac-002-gap-1-item-1" in appliedRepairItems)
+                requireLandedItemOne()
                 applyRepairItem("ac-002-gap-1-item-2")
                 facts(twoItemRemediationOutput())
               }
@@ -215,7 +231,7 @@ class FeatureTaskRuntimeAuditGapDurabilityTest {
       planBeforeResume.acceptedPlans.last().gaps.flatMap { gap -> gap.repairItems.map { it.repairItemId } },
       "both carried identifiers are durable before the crash",
     )
-    assertEquals(mapOf("ac-002-gap-1-item-1" to 1), applicationCounts)
+    assertEquals(listOf("ac-002-gap-1-item-1"), landedRepairItems())
     assertEquals(listOf("ac-002-gap-1"), planBeforeResume.unresolvedGapLedger.unresolvedGaps.map { it.gapId })
     assertTrue(harness.launchedPromptPhaseOrder().none { it == "validate" })
 
@@ -230,9 +246,9 @@ class FeatureTaskRuntimeAuditGapDurabilityTest {
     )
     assertEquals(3, implementLaunches, "the initial implement, the crashed remediation, and one resume")
     assertEquals(
-      mapOf("ac-002-gap-1-item-1" to 1, "ac-002-gap-1-item-2" to 1),
-      applicationCounts,
-      "landed repair work is preserved and each item is applied exactly once",
+      listOf("ac-002-gap-1-item-1", "ac-002-gap-1-item-2"),
+      landedRepairItems(),
+      "the repository effect survives restart and each item is applied exactly once",
     )
     assertEquals(1, harness.launchedPromptPhaseOrder().count { it == "plan" }, "planning is never regenerated")
     val edgeIterations = harness.recorder.loadPhaseLedger(WORKFLOW_ID).orEmpty()
