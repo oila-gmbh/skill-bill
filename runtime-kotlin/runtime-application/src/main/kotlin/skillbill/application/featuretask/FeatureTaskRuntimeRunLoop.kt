@@ -425,6 +425,20 @@ internal class FeatureTaskRuntimeRunLoop(
     is FeatureTaskRuntimeNextPhase.Next -> {
       val loopId = transition.loopId
       when {
+        phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW &&
+          (state.completedReviewPassNumber() == 2 || state.outputCountFor(phaseId) >= 2) &&
+          state.unresolvedReviewFindings(phaseId).isNotEmpty() -> {
+          val reviewLoopId = FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID
+          blockOnCapExhaustion(
+            phaseId,
+            FeatureTaskRuntimeNextPhase.TerminalBlock(
+              loopId = reviewLoopId,
+              edgeIteration = state.edgeIterationCount(reviewLoopId).coerceAtLeast(1),
+              unresolvedVerdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
+            ),
+          )
+          null
+        }
         loopId == null -> transition.phaseId
         reentersMutatingPhase(requireNotNull(edge), transition.phaseId) &&
           !establishRemediationCheckpoint(phaseId) -> null

@@ -29,6 +29,19 @@ class GoalSubtaskReviewStateTest {
     assertEquals(CodeReviewExecutionMode.DELEGATED, completed.passResults.single().executedMode)
     val recordedPass = (completed.toArtifactMap()["pass_results"] as List<*>).single() as Map<*, *>
     assertEquals("delegated", recordedPass["executed_mode"])
+
+    val legacyCompletedArtifact = completed.toArtifactMap().toMutableMap().apply {
+      put(
+        "pass_results",
+        (getValue("pass_results") as List<*>).map { rawPass ->
+          (rawPass as Map<*, *>).filterKeys { it != "executed_mode" }
+        },
+      )
+    }
+    assertEquals(
+      legacyCompletedArtifact,
+      GoalSubtaskReviewState.fromArtifactMap(legacyCompletedArtifact).toArtifactMap(),
+    )
   }
 
   @Test

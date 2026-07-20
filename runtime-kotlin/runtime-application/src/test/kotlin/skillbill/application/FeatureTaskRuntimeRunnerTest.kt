@@ -1542,8 +1542,8 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
   }
 
   @Test
-  fun `goal review resumes a reserved pass after a crash without consuming another pass`() {
-    var crashReview = true
+  fun `goal review runs delegated then inline and resumes its reserved inline pass after a crash`() {
+    var reviewLaunches = 0
     val harness = runnerHarness(
       agentAssignment = phasePerAgentAssignment(),
       runtimeConfig = RuntimeHarnessConfig(
@@ -1558,21 +1558,44 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
       ),
       launcher = RuntimeRecordingLauncher { request ->
         val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        if (phaseId == "review" && crashReview) spawnFailedFacts() else facts(validJsonOutput(phaseId))
+        when (phaseId) {
+          "review" -> {
+            reviewLaunches += 1
+            when (reviewLaunches) {
+              1 -> facts(reviewFindingsOutput(changesRequested = true))
+              2 -> spawnFailedFacts()
+              else -> facts(reviewFindingsOutput(changesRequested = false))
+            }
+          }
+          else -> facts(validJsonOutput(phaseId))
+        }
       },
     )
 
-    val first = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+    val first = assertIs<FeatureTaskRuntimeRunReport.Blocked>(
+      harness.runner.run(
+        harness.request().copy(requestedCodeReviewMode = CodeReviewExecutionMode.DELEGATED),
+      ),
+    )
     assertEquals("review", first.lastIncompletePhase)
     val reserved = requireNotNull(harness.goalContinuationRecorder.reviewState(WORKFLOW_ID))
-    assertEquals(1, reserved.reservedPassNumber)
-    assertEquals(0, reserved.completedPassCount)
+    assertEquals(2, reserved.reservedPassNumber)
+    assertEquals(1, reserved.completedPassCount)
+    assertEquals(CodeReviewExecutionMode.DELEGATED, reserved.passResults.single().executedMode)
 
-    crashReview = false
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
     val resumed = requireNotNull(harness.goalContinuationRecorder.reviewState(WORKFLOW_ID))
-    assertEquals(1, resumed.completedPassCount)
+    assertEquals(2, resumed.completedPassCount)
     assertEquals(null, resumed.reservedPassNumber)
+    assertEquals(
+      listOf(CodeReviewExecutionMode.DELEGATED, CodeReviewExecutionMode.INLINE),
+      resumed.passResults.map { it.executedMode },
+    )
+    val reviewPrompts = harness.launcher.requests
+      .map { requireNotNull(it.skillRunRequest.promptOverride) }
+      .filter { it.contains("Phase: review") }
+    assertContains(reviewPrompts[0], "bill-code-review mode:delegated")
+    reviewPrompts.drop(1).forEach { prompt -> assertContains(prompt, "bill-code-review mode:inline") }
   }
 
   @Test
@@ -2256,17 +2279,15 @@ class FeatureTaskRuntimeReviewFixLoopTest {
     assertEquals(listOf(1), loopEdges.mapNotNull { it.edgeIteration })
   }
 
-  // Under the audit-first order review is terminal, so audit has already settled satisfied before the
-  // first review runs, and an exhausted review budget advances to validate rather than blocking.
-  // Severity-conditional disposition (blocking only on an unresolved Blocker) is subtask 2's work; until
-  // it lands, exhaustion advances regardless of severity and the findings stay durable evidence.
   @Test
-  fun `m1 unresolved Blocker at cap advances past review with review findings preserved`() {
+  fun `m1 unresolved Blocker at cap blocks with review findings preserved`() {
     val harness = runnerHarness(launcher = reviewFixLauncher(convergeOnReview = 99))
 
     val report = harness.runner.run(harness.request())
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
+    assertEquals("review", blocked.lastIncompletePhase)
+    assertContains(blocked.blockedReason, REVIEW_BLOCKER_MESSAGE)
     val launched = harness.launchedPromptPhaseOrder()
     assertTrue(
       launched.indexOf("audit") < launched.indexOf("review"),
@@ -2363,7 +2384,7 @@ class FeatureTaskRuntimeReviewFixLoopTest {
   }
 
   @Test
-  fun `m1 cap-exhausted review_fix loop advances on resume without relaunching the fix`() {
+  fun `m1 cap-exhausted review_fix loop blocks on resume without relaunching the fix`() {
     val harness = runnerHarness(
       launcher = RuntimeRecordingLauncher { request ->
         val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
@@ -2380,9 +2401,8 @@ class FeatureTaskRuntimeReviewFixLoopTest {
 
     val report = harness.runner.run(harness.request())
 
-    // The exhausted budget advances past review instead of relaunching the fix; it never mints a
-    // second review_fix iteration.
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
+    assertEquals("review", blocked.lastIncompletePhase)
     val launched = harness.launchedPromptPhaseOrder()
     assertTrue(launched.none { it == "audit" }, "the seeded satisfied audit is reused, not relaunched")
     assertTrue(launched.none { it == "implement_fix" })
