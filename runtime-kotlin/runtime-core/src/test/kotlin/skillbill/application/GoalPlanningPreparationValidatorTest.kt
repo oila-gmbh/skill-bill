@@ -35,7 +35,7 @@ class GoalPlanningPreparationValidatorTest {
   @Test
   fun `a payload with an incompatible phase output contract version is rejected`() {
     val record = validRecord(parentGoalWorkflowId = "goal-1", subtaskId = 1).copy(
-      preplanPayload = payloadJson(phaseId = "preplan", contractVersion = "0.2"),
+      preplanPayload = payloadJson(phaseId = "preplan", contractVersion = "9.9"),
     )
 
     assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> { validator.validate(record) }

@@ -1,0 +1,324 @@
+package skillbill.application
+
+import skillbill.application.model.FeatureTaskRuntimeRunReport
+import kotlin.test.Test
+import kotlin.test.assertContains
+import kotlin.test.assertEquals
+import kotlin.test.assertIs
+import kotlin.test.assertTrue
+
+// Regressions for the audit-repair gates: a blocked remediation reporting a strict subset of its
+// carried items, rejected-output diagnosability, repair-item identifier canonicalization, and the
+// non-progress and counter-durability behavior of the audit_gap loop.
+class FeatureTaskRuntimeAuditRepairRegressionTest {
+  // A blocked remediation is allowed to report fewer results than the carried plan, so the dependency
+  // check must tolerate an id it never saw. Reading the absent id out of the actual-order map threw an
+  // uncaught NoSuchElementException that killed the run with no durable blocked record.
+  @Test
+  fun `blocked remediation with no repair item results blocks durably instead of throwing`() {
+    var implementLaunches = 0
+    val harness = runnerHarness(
+      launcher = RuntimeRecordingLauncher { request ->
+        when (val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))) {
+          "audit" -> facts(auditRepairPlanOutput(criterionRef = "AC-002", itemCount = 2, dependsChain = true))
+          "implement" -> {
+            implementLaunches += 1
+            if (implementLaunches == 1) {
+              facts(validJsonOutput(phaseId))
+            } else {
+              facts(blockedRemediationOutput(gapId = "ac-002-gap-1", repairItemId = "ac-002-gap-1-item-1"))
+            }
+          }
+          else -> facts(validJsonOutput(phaseId))
+        }
+      },
+    )
+
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+
+    assertEquals("implement", blocked.lastIncompletePhase)
+    val implementRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["implement"])
+    assertEquals("blocked", implementRecord.status)
+    assertTrue(harness.launchedPromptPhaseOrder().none { it == "validate" })
+  }
+
+  // A contract rejection whose fix-loop budget runs out used to persist a null output artifact, leaving
+  // no evidence of what the agent actually emitted.
+  @Test
+  fun `rejected phase output is persisted bounded on the durable blocked record`() {
+    val marker = "REGRESSION-MARKER-REJECTED-PAYLOAD"
+    val padding = "p".repeat(30_000)
+    var implementLaunches = 0
+    val harness = runnerHarness(
+      launcher = RuntimeRecordingLauncher { request ->
+        when (val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))) {
+          "audit" -> facts(auditRepairPlanOutput(criterionRef = "AC-002", itemCount = 1))
+          "implement" -> {
+            implementLaunches += 1
+            if (implementLaunches == 1) {
+              facts(validJsonOutput(phaseId))
+            } else {
+              facts(
+                remediationResultsOutput(
+                  repairItemIds = listOf("ac-002-gap-1-item-9"),
+                  summary = "Remediation echoed an unknown identifier. $marker",
+                  extraProducedOutputs = ""","notes":"$padding"""",
+                ),
+              )
+            }
+          }
+          else -> facts(validJsonOutput(phaseId))
+        }
+      },
+    )
+
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+
+    assertEquals("implement", blocked.lastIncompletePhase)
+    val implementRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["implement"])
+    val persisted = requireNotNull(implementRecord.outputArtifact) {
+      "a rejected output must stay on the durable record so the failure is diagnosable"
+    }
+    assertContains(persisted, marker)
+    assertEquals(20_000, persisted.length, "the persisted rejected output stays bounded")
+  }
+
+  // The audit-repair-plan schema permits an uppercase AC- prefix and plan ingest lowercases it, so a
+  // remediation echoing the identifier as the criterion spells it must still satisfy set equality.
+  @Test
+  fun `remediation echoing an uppercase repair item identifier is accepted`() {
+    var auditLaunches = 0
+    var implementLaunches = 0
+    val harness = runnerHarness(
+      launcher = RuntimeRecordingLauncher { request ->
+        when (val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))) {
+          "audit" -> {
+            auditLaunches += 1
+            facts(if (auditLaunches < 2) auditGapsOutput() else auditSatisfiedOutput())
+          }
+          "implement" -> {
+            implementLaunches += 1
+            facts(
+              if (implementLaunches == 1) {
+                validJsonOutput(phaseId)
+              } else {
+                validJsonOutput(phaseId).replace("ac-002-gap-1-item-1", "AC-002-GAP-1-ITEM-1")
+              },
+            )
+          }
+          else -> facts(validJsonOutput(phaseId))
+        }
+      },
+    )
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
+
+    assertEquals(2, implementLaunches, "the uppercase remediation was accepted on its first attempt")
+  }
+
+  // Non-progress used to be waived whenever the following audit's plan introduced any repair item id
+  // the previous plan did not carry, so an audit could escape the gate by re-emitting the same gap with
+  // one more item.
+  @Test
+  fun `re-emitting the same gap with an extra repair item still blocks as non progress`() {
+    val git = RecordingWorkflowGitOperations().apply { repositoryFingerprintValue = "unchanged" }
+    var auditLaunches = 0
+    var implementLaunches = 0
+    val harness = runnerHarness(
+      launcher = RuntimeRecordingLauncher { request ->
+        when (val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))) {
+          "audit" -> {
+            auditLaunches += 1
+            facts(
+              when (auditLaunches) {
+                1 -> auditRepairPlanOutput(criterionRef = "AC-005", itemCount = 2)
+                2 -> auditRepairPlanOutput(
+                  criterionRef = "AC-005",
+                  itemCount = 3,
+                  dispositions = recurringDisposition("ac-005-gap-1"),
+                )
+                else -> auditSatisfiedOutput(followUp = false)
+              },
+            )
+          }
+          "implement" -> {
+            implementLaunches += 1
+            facts(
+              if (implementLaunches == 1) {
+                validJsonOutput(phaseId)
+              } else {
+                remediationResultsOutput(
+                  repairItemIds = (1..2).map { "ac-005-gap-1-item-$it" },
+                  summary = "Remediation reported every carried item.",
+                )
+              },
+            )
+          }
+          else -> facts(validJsonOutput(phaseId))
+        }
+      },
+      runtimeConfig = RuntimeHarnessConfig(branchSetup = BranchSetupTestConfig(gitOperations = git)),
+    )
+
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+
+    assertEquals("audit", blocked.lastIncompletePhase)
+    assertContains(blocked.blockedReason, "Audit repair made no progress")
+    assertEquals(2, auditLaunches, "the third audit never runs because the second one blocks")
+    assertTrue(harness.launchedPromptPhaseOrder().none { it == "validate" })
+  }
+
+  // Only an audit observes a fresh gap set. The remediation write recomputed the gap counters against
+  // the audit's own already-persisted ledger, which clobbered new_gap_count to zero.
+  @Test
+  fun `the remediation write preserves the gap counters the audit observed`() {
+    var auditLaunches = 0
+    var reviewLaunches = 0
+    val harness = runnerHarness(
+      launcher = RuntimeRecordingLauncher { request ->
+        when (val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))) {
+          "audit" -> {
+            auditLaunches += 1
+            facts(auditGapsOutput(followUp = auditLaunches > 1))
+          }
+          // The post-remediation review fails to spawn, so the run stops with the remediation write as
+          // the latest durable audit-repair write.
+          "review" -> {
+            reviewLaunches += 1
+            if (reviewLaunches == 2) spawnFailedFacts() else facts(validJsonOutput(phaseId))
+          }
+          else -> facts(validJsonOutput(phaseId))
+        }
+      },
+    )
+
+    assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+
+    val repairState = requireNotNull(harness.recorder.loadAuditRepairState(WORKFLOW_ID))
+    assertEquals(listOf("ac-002-gap-1"), repairState.unresolvedGapLedger.unresolvedGaps.map { it.gapId })
+    assertEquals(1, repairState.progress.newGapCount, "the audit observed one new gap and the remediation kept it")
+    assertEquals(0, repairState.progress.recurringGapCount)
+    assertTrue(
+      repairState.progress.recurringGapCount + repairState.progress.newGapCount <=
+        repairState.unresolvedGapLedger.unresolvedGaps.size,
+      "the gap counters must stay coherent with the durable unresolved-gap ledger",
+    )
+  }
+}
+
+private fun recurringDisposition(gapId: String): String =
+  """"prior_gap_dispositions":[{"gap_id":"$gapId","status":"recurring",""" +
+    """"evidence":{"observation":"recurrence_verified","artifact_ref":"runtime-kotlin","check_ref":"AC-005"}}],"""
+
+// A schema-valid gaps_found audit whose repair plan carries [itemCount] ordered items for one
+// criterion, optionally chained through depends_on so the dependency-order gate has work to do.
+private fun auditRepairPlanOutput(
+  criterionRef: String,
+  itemCount: Int,
+  dependsChain: Boolean = false,
+  dispositions: String = "",
+): String {
+  val gapId = "${criterionRef.lowercase()}-gap-1"
+  val items = (1..itemCount).joinToString(",") { ordinal ->
+    val dependsOn = if (dependsChain && ordinal > 1) "\"$gapId-item-${ordinal - 1}\"" else ""
+    """
+      {
+        "repair_item_id":"$gapId-item-$ordinal",
+        "intended_outcome":"Repair item $ordinal is implemented.",
+        "implementation_actions":["Reconcile repair item $ordinal."],
+        "affected_paths_or_symbols":["src/Foo.kt"],
+        "required_verification":["Run the focused check for item $ordinal."],
+        "depends_on":[$dependsOn],
+        "status":"pending"
+      }
+    """.trimIndent()
+  }
+  return """
+    {
+      "contract_version": "0.2",
+      "phase_id": "audit",
+      "status": "completed",
+      "summary": "Audit found unmet acceptance criteria.",
+      "verdict": "gaps_found",
+      "produced_outputs": {
+        "unmet_criteria": [
+          {"acceptance_criterion_ref":"$criterionRef","message":"$criterionRef is not yet implemented"}
+        ],
+        $dispositions
+        "audit_repair_plan": {
+          "contract_version":"0.2",
+          "gaps":[{
+            "gap_id":"$gapId",
+            "acceptance_criterion_ref":"$criterionRef",
+            "acceptance_criterion_text":"The audit gap is repaired.",
+            "failure_evidence":{
+              "observation":"required_behavior_absent",
+              "artifact_ref":"runtime-kotlin",
+              "check_ref":"$criterionRef"
+            },
+            "diagnosis":"Implement and verify the missing behavior.",
+            "affected_boundary":"runtime application",
+            "repair_items":[$items]
+          }]
+        }
+      }
+    }
+  """.trimIndent()
+}
+
+// A completed remediation output carrying one terminal result per named repair item.
+private fun remediationResultsOutput(
+  repairItemIds: List<String>,
+  summary: String,
+  extraProducedOutputs: String = "",
+): String {
+  val results = repairItemIds.joinToString(",") { repairItemId ->
+    """
+      {
+        "repair_item_id":"$repairItemId",
+        "outcome":"fixed",
+        "changed_paths_or_symbols":["src/Foo.kt"],
+        "executed_verification":["Focused check passed."],
+        "result_evidence":{"observation":"fix_verified","artifact_ref":"runtime-kotlin","check_ref":"AC-002"}
+      }
+    """.trimIndent()
+  }
+  return """
+    {
+      "contract_version": "0.2",
+      "phase_id": "implement",
+      "status": "completed",
+      "summary": "$summary",
+      "produced_outputs": {
+        "changed_files":["src/Foo.kt"],
+        "reconciled_state":{"reconciled":true},
+        "repair_item_results":[$results]$extraProducedOutputs
+      }
+    }
+  """.trimIndent()
+}
+
+// A blocked remediation naming one unresolvable carried item and reporting no terminal results, the
+// strict-subset shape the result gate must tolerate.
+private fun blockedRemediationOutput(gapId: String, repairItemId: String): String = """
+  {
+    "contract_version": "0.2",
+    "phase_id": "implement",
+    "status": "blocked",
+    "summary": "Remediation cannot make the first repair item work.",
+    "produced_outputs": {
+      "changed_files":[],
+      "reconciled_state":{"reconciled":true},
+      "repair_item_results":[],
+      "unresolvable_repair":{
+        "gap_id":"$gapId",
+        "repair_item_id":"$repairItemId",
+        "evidence":{
+          "observation":"verification_failed",
+          "artifact_ref":"src/Foo.kt",
+          "check_ref":"AC-002"
+        }
+      }
+    }
+  }
+""".trimIndent()

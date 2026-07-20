@@ -17,6 +17,8 @@ import skillbill.ports.goalrunner.model.GoalPullRequestRequest
 import skillbill.ports.goalrunner.model.GoalPullRequestResult
 import skillbill.ports.workflow.GoalSubtaskReviewGitOperations
 import skillbill.ports.workflow.GoalSubtaskReviewGitOperationsProvider
+import skillbill.ports.workflow.RepositoryFingerprintGitOperations
+import skillbill.ports.workflow.RepositoryFingerprintGitOperationsProvider
 import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaselineResult
@@ -1080,7 +1082,7 @@ private fun seedAuthoritativeCompleteChild(fixture: GoalCliFixture) {
   )
 }
 
-private data class GoalCliFixture(
+internal data class GoalCliFixture(
   val tempDir: Path,
   val dbPath: Path,
   val parentSpec: Path,
@@ -1115,7 +1117,7 @@ private data class GoalCliFixture(
     }
 }
 
-private class GoalFixtureAgentRunLauncher(
+internal class GoalFixtureAgentRunLauncher(
   private val fixture: GoalCliFixture,
   private val failSubtask: Int? = null,
   private val noTerminalSubtask: Int? = null,
@@ -1237,7 +1239,7 @@ private class GoalFixtureAgentRunLauncher(
   }
 }
 
-private class RecordingGoalPullRequestPort : GoalPullRequestPort {
+internal class RecordingGoalPullRequestPort : GoalPullRequestPort {
   val requests: MutableList<GoalPullRequestRequest> = mutableListOf()
 
   override fun open(request: GoalPullRequestRequest): GoalPullRequestResult {
@@ -1246,7 +1248,7 @@ private class RecordingGoalPullRequestPort : GoalPullRequestPort {
   }
 }
 
-private fun goalFixture(subtaskCount: Int): GoalCliFixture {
+internal fun goalFixture(subtaskCount: Int): GoalCliFixture {
   val tempDir = Files.createTempDirectory("skillbill-cli-goal")
   val parentSpec = tempDir.resolve(".feature-specs/SKILL-901-goal/spec.md")
   Files.createDirectories(parentSpec.parent)
@@ -1364,7 +1366,12 @@ private object NoopGoalTestAgentRunLauncher : AgentRunLauncher {
   override fun launch(request: AgentRunLaunchRequest): AgentRunLaunchOutcome = error("Unexpected launch")
 }
 
-private object GoalTestWorkflowGitOperations : WorkflowGitOperations, GoalSubtaskReviewGitOperationsProvider {
+private object GoalTestWorkflowGitOperations :
+  WorkflowGitOperations,
+  GoalSubtaskReviewGitOperationsProvider,
+  RepositoryFingerprintGitOperationsProvider {
+  override val repositoryFingerprintOperations: RepositoryFingerprintGitOperations = TestRepositoryFingerprintOperations
+
   override fun checkoutBranch(repoRoot: Path, branch: String, baseBranch: String?): WorkflowGitOperationResult =
     WorkflowGitOperationResult(status = "ok", value = branch)
 

@@ -3,6 +3,7 @@ package skillbill.application
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseBriefingAssembler
 import skillbill.application.featuretask.FeatureTaskRuntimePhasePromptComposer
 import skillbill.application.featuretask.FeatureTaskRuntimeVerificationSignalKeys
+import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.model.SpecSource
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
@@ -76,7 +77,7 @@ class FeatureTaskRuntimePhasePromptComposerTest {
       assertContains(
         prompt,
         "\"contract_version\": must be exactly " +
-          "\"${FeatureTaskRuntimePhaseWorkflowDefinition.definition.contractVersion}\"",
+          "\"$FEATURE_TASK_RUNTIME_CONTRACT_VERSION\"",
         false,
         "contract version for $phaseId",
       )

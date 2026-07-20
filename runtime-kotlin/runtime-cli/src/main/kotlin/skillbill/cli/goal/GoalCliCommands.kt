@@ -350,6 +350,12 @@ class GoalResetCommand(
   private val repoRoot by option("--repo-root", help = "Repository root for checked-in manifest recovery.")
 
   override fun run() {
+    if (preservePlanning && !hard) {
+      throw UsageError(
+        "--preserve-planning only applies to a hard reset; a soft reset never deletes child workflows. " +
+          "Pass --hard as well, or drop --preserve-planning.",
+      )
+    }
     if (hard && !force && confirmIssueKey != issueKey) {
       throw UsageError(
         "Hard reset requires explicit confirmation. Pass --confirm-issue-key $issueKey or --force.",

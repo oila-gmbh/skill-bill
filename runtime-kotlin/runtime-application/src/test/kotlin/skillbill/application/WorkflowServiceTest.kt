@@ -2427,19 +2427,19 @@ class GoalChildPlanningHydrationTransactionIntegrationTest {
     val REPOSITORY_IDENTITY = "repo-root-realpath-v1:${Path.of("").toAbsolutePath().normalize()}"
     val PREPLAN_PAYLOAD = """
       {
-        "contract_version":"0.1","phase_id":"preplan","status":"completed","summary":"shared",
+        "contract_version":"0.2","phase_id":"preplan","status":"completed","summary":"shared",
         "produced_outputs":{"digest":"shared-preplan"}
       }
     """.trimIndent()
     val PLAN_ONE_PAYLOAD = """
       {
-        "contract_version":"0.1","phase_id":"plan","status":"completed","summary":"one",
+        "contract_version":"0.2","phase_id":"plan","status":"completed","summary":"one",
         "produced_outputs":{"plan":"owned-plan-one"}
       }
     """.trimIndent()
     val PLAN_TWO_PAYLOAD = """
       {
-        "contract_version":"0.1","phase_id":"plan","status":"completed","summary":"two",
+        "contract_version":"0.2","phase_id":"plan","status":"completed","summary":"two",
         "produced_outputs":{"plan":"owned-plan-two"}
       }
     """.trimIndent()

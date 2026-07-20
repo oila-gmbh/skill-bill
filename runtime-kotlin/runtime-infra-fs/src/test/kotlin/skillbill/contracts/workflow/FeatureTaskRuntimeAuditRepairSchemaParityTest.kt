@@ -86,7 +86,7 @@ class FeatureTaskRuntimeAuditRepairSchemaParityTest {
   )
 
   private fun auditPhaseOutput(diagnosis: String): Map<String, Any?> = mapOf(
-    "contract_version" to "0.1",
+    "contract_version" to FEATURE_TASK_RUNTIME_CONTRACT_VERSION,
     "phase_id" to "audit",
     "status" to "completed",
     "summary" to "One criterion remains unmet.",

@@ -233,12 +233,16 @@ data class FeatureTaskRuntimeUnresolvedGapLedger(
     requireUnique(unresolvedGaps.map { it.gapId }, "unresolved gap_id")
   }
 
-  fun allocateGapId(criterionRef: String): String {
+  // The ledger carries only currently-unresolved gaps, so a criterion whose gap was closed leaves no
+  // trace of the generation it consumed. Reuse is decidable here; minting a later generation is not,
+  // and the durable per-criterion high-water mark has to come from the caller.
+  fun allocateGapId(criterionRef: String, closedGenerationHighWaterMark: Int = 0): String {
     requireNonBlank(criterionRef, "acceptance_criterion_ref")
+    require(closedGenerationHighWaterMark >= 0) {
+      "closed generation high-water mark must be non-negative, was $closedGenerationHighWaterMark."
+    }
     unresolvedGaps.firstOrNull { it.acceptanceCriterionRef == criterionRef }?.let { return it.gapId }
-    val generation = unresolvedGaps.filter { it.acceptanceCriterionRef == criterionRef }
-      .maxOfOrNull { it.generation }?.plus(1) ?: 1
-    return "${criterionRef.lowercase()}-gap-$generation"
+    return "${criterionRef.lowercase()}-gap-${closedGenerationHighWaterMark + 1}"
   }
 }
 

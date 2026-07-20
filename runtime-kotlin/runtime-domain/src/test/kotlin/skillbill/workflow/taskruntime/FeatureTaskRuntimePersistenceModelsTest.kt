@@ -127,7 +127,7 @@ class FeatureTaskRuntimePersistenceModelsTest {
       finishedAt = "2026-06-02T10:05:00Z",
       durationMillis = 300_000,
       resolvedAgentId = "agent-implement-1",
-      outputArtifact = """{"contract_version":"0.1"}""",
+      outputArtifact = """{"contract_version":"0.2"}""",
     )
     val decoded = FeatureTaskRuntimePhaseRecord.fromArtifactMap(record.toArtifactMap())
     assertEquals(record, decoded)

@@ -3,6 +3,7 @@ package skillbill.application.featuretask
 import skillbill.agentaddon.model.AgentAddonPromptFormatter
 import skillbill.agentaddon.model.HydratedAgentAddonSelection
 import skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing
+import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.ports.workflow.model.GoalSubtaskReviewInput
 import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.model.SpecSource
@@ -122,7 +123,7 @@ object FeatureTaskRuntimePhasePromptComposer {
     val phaseId = briefing.phaseId
     add("```json")
     add("{")
-    add("  \"contract_version\": \"${FeatureTaskRuntimePhaseWorkflowDefinition.definition.contractVersion}\",")
+    add("  \"contract_version\": \"$FEATURE_TASK_RUNTIME_CONTRACT_VERSION\",")
     add("  \"phase_id\": \"$phaseId\",")
     add("  \"status\": \"completed\",")
     verdictSkeletonLine(phaseId)?.let(::add)
@@ -213,7 +214,7 @@ object FeatureTaskRuntimePhasePromptComposer {
     object with nothing after it; a single ```json fenced block is also accepted. The runtime
     extracts that object and blocks the run if it does not validate against the phase-output
     contract:
-    - "contract_version": must be exactly "${FeatureTaskRuntimePhaseWorkflowDefinition.definition.contractVersion}"
+    - "contract_version": must be exactly "$FEATURE_TASK_RUNTIME_CONTRACT_VERSION"
     - "phase_id": must be "$phaseId"
     - "status": one of "completed", "blocked", "failed"
     - "failure_disposition": required by the runtime when status is "blocked" or "failed"; one of

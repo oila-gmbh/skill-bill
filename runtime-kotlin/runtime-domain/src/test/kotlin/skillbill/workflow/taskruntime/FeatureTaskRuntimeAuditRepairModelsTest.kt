@@ -188,6 +188,21 @@ class FeatureTaskRuntimeAuditRepairModelsTest {
   }
 
   @Test
+  fun `a criterion whose gap was closed and fails again receives an incremented generation`() {
+    val ledger = FeatureTaskRuntimeUnresolvedGapLedger(
+      listOf(FeatureTaskRuntimeUnresolvedGap("ac-001-gap-2", "AC-001", 2)),
+    )
+
+    assertEquals("ac-003-gap-3", ledger.allocateGapId("AC-003", closedGenerationHighWaterMark = 2))
+    assertEquals(
+      "ac-001-gap-2",
+      ledger.allocateGapId("AC-001", closedGenerationHighWaterMark = 7),
+      "a still-unresolved criterion keeps its durable identity regardless of the high-water mark",
+    )
+    assertFailsWith<IllegalArgumentException> { ledger.allocateGapId("AC-004", closedGenerationHighWaterMark = -1) }
+  }
+
+  @Test
   fun `equivalent gaps without repository change block as non progress`() {
     val decision = detectAuditRepairNonProgress(setOf("gap-1"), setOf("gap-1"), "digest", "digest", 0)
 

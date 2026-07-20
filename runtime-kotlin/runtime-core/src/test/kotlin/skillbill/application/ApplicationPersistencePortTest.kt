@@ -441,7 +441,7 @@ class ApplicationPersistencePortTest {
         workflowId,
         status = "completed",
         finished = true,
-        outputArtifact = """{"contract_version":"0.1"}""",
+        outputArtifact = """{"contract_version":"0.2"}""",
       ),
     )
     assertTrue(recorder.appendPlanLedger(workflowId, FeatureTaskRuntimePhaseLedgerAction.COMPLETE))
@@ -461,7 +461,7 @@ class ApplicationPersistencePortTest {
     assertTrue((planRecord["started_at"] as String).isNotBlank())
     assertTrue((planRecord["finished_at"] as String).isNotBlank())
     assertTrue((planRecord["duration_millis"] as Number).toLong() >= 0)
-    assertEquals("""{"contract_version":"0.1"}""", planRecord["output_artifact"])
+    assertEquals("""{"contract_version":"0.2"}""", planRecord["output_artifact"])
 
     @Suppress("UNCHECKED_CAST")
     val ledger = artifacts[FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY] as List<Map<String, Any?>>

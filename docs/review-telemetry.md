@@ -412,6 +412,26 @@ Both levels also include:
 
 Fields always excluded (both levels): repo name, branch name, raw spec content, raw plan content, file paths, acceptance criteria text.
 
+## Audit-repair counters
+
+Runtime-mode feature-task sessions report their own terminal event through the `feature_task_runtime_finished` MCP tool, emitted as `skillbill_feature_task_runtime_finished`. Alongside `review_fix_iteration_count` and `audit_gap_iteration_count`, that event carries five counters describing how the completeness-audit repair loop behaved. They are compact numbers and one boolean — no gap text, criterion text, diagnoses, evidence strings, paths, or agent output is sent at any telemetry level.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `audit_first_pass_convergence` | boolean | Whether the first audit was satisfied outright, with no audit-gap iteration at all. True only when `audit_gap_iteration_count` is 0. |
+| `audit_recurring_gap_count` | integer | Gaps still carried as recurring in the run's final durable audit state — reported unmet again under their original identity after a repair pass had already attempted them. |
+| `audit_new_gap_count` | integer | Gaps raised under a new identity by a later audit rather than as a recurrence of a gap it inherited. |
+| `audit_attempted_repair_item_count` | integer | Repair items remediation carried and returned a terminal result for; never smaller than the terminal results held in durable state. |
+| `audit_resolved_repair_item_count` | integer | Carried repair items that reached a terminal resolved outcome (`fixed` or `already_satisfied`) with the required evidence. |
+
+What an operator can read from them:
+
+- `audit_first_pass_convergence` is the headline quality signal for the implementation phase: a high rate means implementation is landing acceptance criteria the first time, and a falling rate means specs, planning, or review are letting unmet criteria through to the audit.
+- `audit_recurring_gap_count` above zero means a repair pass ran and did not fix what it was asked to fix. Sustained recurrence is the leading indicator of the non-progress block described in `docs/capabilities.md`, and usually points at a mis-diagnosed gap rather than a lazy repair.
+- `audit_new_gap_count` distinguishes discovery from failure. New gaps mean later audits are finding genuinely different problems — closer to an under-specified spec than to a broken repair loop.
+- `audit_attempted_repair_item_count` measures how much repair scope the audit created; comparing it against `audit_gap_iteration_count` shows whether one audit described the whole repair scope or the loop discovered it piecemeal.
+- `audit_resolved_repair_item_count` compared to the attempted count is the repair-pass yield. The runtime requires every carried item to reach a terminal result, so a durable gap between the two is a signal to inspect the run rather than a normal steady state.
+
 ## PostHog dashboard spec
 
 The local `skill-bill implement-stats` and `skill-bill verify-stats` commands are the source of truth for workflow-summary semantics. PostHog dashboards should mirror those summaries instead of inventing a separate analytics vocabulary.

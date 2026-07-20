@@ -64,6 +64,7 @@ class DatabaseMigrationsTest {
         7 to "add-feature-task-runtime-worker-leases",
         8 to "add-goal-planning-preparations",
         9 to "normalize-goal-planning-preparations",
+        10 to "rebuild-goal-planning-plans-for-phase-output-0-2",
       ),
       migrationDefinitions,
     )

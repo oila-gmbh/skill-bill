@@ -65,7 +65,7 @@ required:
 properties:
   contract_version:
     type: string
-    const: "0.1"
+    const: "0.2"
   phase_id:
     type: string
     minLength: 1
@@ -100,8 +100,7 @@ properties:
       reconciled the working tree to target rather than re-applying or
       silently skipping. The runtime enforces this per-phase reconciliation
       check at the gate; it is documented here for authors. This is a
-      description-only clarification and adds no JSON-Schema constraint, so
-      the contract_version is unchanged.
+      description-only clarification and adds no JSON-Schema constraint.
     minProperties: 1
     propertyNames:
       type: string
@@ -117,8 +116,9 @@ properties:
       Optional structured verdict emitted by a verifying phase (e.g. `review`)
       that the runtime reads to decide whether to advance or take a remediation
       backward edge. For `review` the values are `approved` (no unresolved
-      Blocker/Major findings) or `changes_requested` (Blocker/Major findings
-      present); the runtime classifies the verdict from the carried review
+      Blocker findings) or `changes_requested` (unresolved Blocker findings
+      present); Major, Minor, and Nit findings never block advancing. The
+      runtime classifies the verdict from the carried review
       findings, which travel inside `produced_outputs` (e.g. a `findings` array
       of severity/message entries) and are forwarded into the `implement_fix`
       handoff. For `audit` the values are `satisfied` (every acceptance criterion
@@ -126,9 +126,11 @@ properties:
       from the failing criteria, which travel inside `produced_outputs` (an
       `unmet_criteria` array of message entries) and scope the context-reuse implementation
       remediation handoff on the `audit_gap` backward edge. Either absent (not set) or a
-      non-empty string; `null` is not a valid value. This field is additive and
-      optional — existing phase outputs that omit it still validate — so the
-      contract_version is unchanged.
+      non-empty string; `null` is not a valid value. The field itself is
+      additive and optional — existing phase outputs that omit it still
+      validate — but the `audit` phase constraints in `allOf` make a
+      `gaps_found` verdict require a complete `audit_repair_plan`, which is why
+      contract_version is `0.2`.
     type: string
     minLength: 1
 allOf:

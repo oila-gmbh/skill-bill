@@ -4,7 +4,7 @@ package skillbill.contracts.workflow
  * Runtime-side mirror of the schema's `contract_version`; a parity test fails
  * the build if they diverge. Bump both sites together.
  */
-const val FEATURE_TASK_RUNTIME_CONTRACT_VERSION: String = "0.1"
+const val FEATURE_TASK_RUNTIME_CONTRACT_VERSION: String = "0.2"
 
 /**
  * Single source of truth for where the canonical feature-task-runtime

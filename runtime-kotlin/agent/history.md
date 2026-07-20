@@ -1,3 +1,15 @@
+## [2026-07-20] SKILL-131 single-pass audit repair (subtask 1)
+Areas: runtime-kotlin/runtime-{application,cli,domain,infra-fs,infra-sqlite,mcp}, orchestration/contracts, docs, skills/bill-feature-task-runtime
+- A `gaps_found` audit must carry a schema-valid `audit_repair_plan` (contract `0.2`, `feature-task-runtime-audit-repair-plan-schema.yaml`): one gap per unmet criterion with evidence, diagnosis, boundary, and dependency-ordered repair items; the durable plan must be readable and identical before the `audit_gap` edge is taken, and audit-gap resume recovers it from durable state when a blocked attempt erased the phase record.
+- Remediation reconciliation is set equality, not a flag: emitted `repair_item_result` ids must exactly equal the carried plan's repair items in dependency order with terminal `fixed`/`already_satisfied` outcomes and paired evidence observations; blocked remediation must name a carried `gap_id`/`repair_item_id`, and deferral phrasing anywhere in the output is rejected. reusable
+- Gap and repair-item identity is derived, not model-chosen: `<criterion-ref>-gap-<generation>` and `<gap-id>-item-<ordinal>`, canonicalized to lowercase at every ingest seam because agents transcribe the uppercase `AC-005` criterion ref into the identifier. reusable
+- Durable state keeps exactly the latest accepted plan plus a cumulative unresolved-gap ledger; a disposition is `recurring` exactly when its gap is in the ledger, an audit cannot report `satisfied` with a non-empty ledger, and counters must agree with the ledger and terminal results.
+- Non-progress replaces an iteration cap: an equivalent gap set with an unchanged repository fingerprint or zero newly resolved items blocks as needs-user-action instead of looping; cosmetic plan mutation does not count as progress.
+- Pattern: durable state is the authority on resume — the phase record is a cache, and its disagreement with the durable plan is a loud block, not a merge. reusable
+- Known limitation: subtask 2 (runtime repair and reconciliation) and subtask 3 (integration and verification, owning acceptance criteria 19-25) remain pending; goal-child parity and the SKILL-128-derived end-to-end regressions are not yet covered.
+Feature flag: N/A
+Acceptance criteria: subtask 1: 5/5 implemented
+
 ## [2026-07-18] SKILL-133 unified manifest authority
 Areas: runtime-kotlin/runtime-{application,domain,infra-fs}, skills/bill-feature*
 - `decomposition-manifest.yaml` is now the sole prepared-feature authority marker; bare specs remain preparation intake, while continuation lookup stays authoritative before discovery or artifact writes.

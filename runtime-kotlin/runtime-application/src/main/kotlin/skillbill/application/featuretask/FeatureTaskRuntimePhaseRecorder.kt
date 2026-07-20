@@ -207,14 +207,31 @@ class FeatureTaskRuntimePhaseRecorder(
       input.repairResults,
       latestItemIds,
     )
-    val newlyAttemptedCount = input.repairResults.size
+    // Attempted counts every item the remediation phase was handed; resolved counts the terminal
+    // results it actually returned. They diverge when a phase reports results for only part of its plan.
+    val newlyAttemptedCount = if (input.repairResults.isEmpty()) 0 else latestItemIds.size
+    val newlyResolvedCount = input.repairResults.size
     val priorPlanGapIds = input.prior?.unresolvedGapLedger?.unresolvedGaps.orEmpty().mapTo(linkedSetOf()) { it.gapId }
+    // Only an audit write observes a fresh gap set; recomputing on the remediation write would compare
+    // the audit's own already-persisted ledger against itself and clobber both counters to zero.
+    val auditWrite = input.latestPlan != null
+    val ledgerSize = gaps.unresolvedGaps.size
+    val recurringGapCount = if (auditWrite) {
+      gaps.recurringIds.size
+    } else {
+      (input.prior?.progress?.recurringGapCount ?: 0).coerceAtMost(ledgerSize)
+    }
+    val newGapCount = if (auditWrite) {
+      gaps.latestIds.count { it !in priorPlanGapIds }
+    } else {
+      (input.prior?.progress?.newGapCount ?: 0).coerceAtMost(ledgerSize - recurringGapCount)
+    }
     val progress = FeatureTaskRuntimeAuditRepairProgress(
       firstPassConvergence = false,
-      recurringGapCount = gaps.recurringIds.size,
-      newGapCount = gaps.latestIds.count { it !in priorPlanGapIds },
+      recurringGapCount = recurringGapCount,
+      newGapCount = newGapCount,
       attemptedRepairItemCount = (input.prior?.progress?.attemptedRepairItemCount ?: 0) + newlyAttemptedCount,
-      resolvedRepairItemCount = (input.prior?.progress?.resolvedRepairItemCount ?: 0) + newlyAttemptedCount,
+      resolvedRepairItemCount = (input.prior?.progress?.resolvedRepairItemCount ?: 0) + newlyResolvedCount,
       auditGapIterationCount = maxOf(
         input.prior?.progress?.auditGapIterationCount ?: 0,
         input.edgeIteration ?: 0,
@@ -729,70 +746,6 @@ private fun workflowStatusFor(request: FeatureTaskRuntimePhaseStateRequest): Str
   request.finished && request.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.definition.stepIds.last() ->
     "completed"
   else -> "running"
-}
-
-private fun schemaError(detail: String): Nothing = throw InvalidWorkflowStateSchemaError(detail)
-
-// Strict decode of a keyed artifact map. Corrupt state loud-fails rather than being coerced to
-// empty, which would otherwise turn it into a blind re-run / lost outputs on resume.
-private fun <T> decodeStrictKeyedArtifactMap(
-  artifacts: Map<String, Any?>,
-  artifactKey: String,
-  decodeEntry: (String, Map<String, Any?>) -> T,
-): Map<String, T> {
-  val raw = artifacts[artifactKey] ?: return emptyMap()
-  val rawMap = raw as? Map<*, *>
-    ?: schemaError("Feature-task-runtime artifact '$artifactKey' must decode to a map.")
-  return rawMap.entries.associate { (key, value) ->
-    val phaseId = key as? String
-      ?: schemaError("Feature-task-runtime artifact '$artifactKey' must have string keys; found '$key'.")
-    val entryMap = JsonSupport.anyToStringAnyMap(value)
-      ?: schemaError("Feature-task-runtime artifact '$artifactKey' entry for '$phaseId' must decode to a map.")
-    phaseId to decodeEntry(phaseId, entryMap)
-  }
-}
-
-private fun phaseRecordsFrom(artifacts: Map<String, Any?>): Map<String, FeatureTaskRuntimePhaseRecord> =
-  decodeStrictKeyedArtifactMap(artifacts, FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY) { _, recordMap ->
-    FeatureTaskRuntimePhaseRecord.fromArtifactMap(recordMap)
-  }
-
-private fun phaseBriefingsFrom(artifacts: Map<String, Any?>): Map<String, FeatureTaskRuntimePhaseLaunchBriefing> =
-  decodeStrictKeyedArtifactMap(artifacts, FEATURE_TASK_RUNTIME_PHASE_BRIEFINGS_ARTIFACT_KEY) { _, briefingMap ->
-    FeatureTaskRuntimePhaseLaunchBriefing.fromArtifactMap(briefingMap)
-  }
-
-private fun resolvedBranchFrom(artifacts: Map<String, Any?>): FeatureTaskRuntimeResolvedBranch? {
-  val raw = artifacts[FEATURE_TASK_RUNTIME_RESOLVED_BRANCH_ARTIFACT_KEY] ?: return null
-  val entryMap = JsonSupport.anyToStringAnyMap(raw)
-    ?: schemaError(
-      "Feature-task-runtime artifact '$FEATURE_TASK_RUNTIME_RESOLVED_BRANCH_ARTIFACT_KEY' must decode to a map.",
-    )
-  return FeatureTaskRuntimeResolvedBranch.fromArtifactMap(entryMap)
-}
-
-private fun decomposeTerminalFrom(artifacts: Map<String, Any?>): FeatureTaskRuntimeDecomposeTerminal? {
-  val raw = artifacts[FEATURE_TASK_RUNTIME_DECOMPOSE_TERMINAL_ARTIFACT_KEY] ?: return null
-  val entryMap = JsonSupport.anyToStringAnyMap(raw)
-    ?: schemaError(
-      "Feature-task-runtime artifact '$FEATURE_TASK_RUNTIME_DECOMPOSE_TERMINAL_ARTIFACT_KEY' must decode to a map.",
-    )
-  return FeatureTaskRuntimeDecomposeTerminal.fromArtifactMap(entryMap)
-}
-
-private fun phaseLedgerFrom(artifacts: Map<String, Any?>): List<FeatureTaskRuntimePhaseLedgerEntry> {
-  val raw = artifacts[FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY] ?: return emptyList()
-  val rawList = raw as? List<*>
-    ?: throw InvalidWorkflowStateSchemaError(
-      "Feature-task-runtime artifact '$FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY' must decode to a list.",
-    )
-  return rawList.map { item ->
-    val entryMap = JsonSupport.anyToStringAnyMap(item)
-      ?: throw InvalidWorkflowStateSchemaError(
-        "Feature-task-runtime phase ledger entry must decode to a string-keyed map.",
-      )
-    FeatureTaskRuntimePhaseLedgerEntry.fromArtifactMap(entryMap)
-  }
 }
 
 private fun durationMillis(startedAt: String, finishedAt: String): Long =

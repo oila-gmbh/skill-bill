@@ -18,7 +18,9 @@ import skillbill.workflow.model.GoalObservabilitySelectedDiffHunk
 import skillbill.workflow.model.GoalObservabilitySelectedDiffHunks
 import java.io.IOException
 import java.nio.file.Files
+import java.nio.file.LinkOption
 import java.nio.file.Path
+import java.nio.file.attribute.BasicFileAttributes
 import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
@@ -134,13 +136,14 @@ private object GitRepositoryFingerprintOperations : RepositoryFingerprintGitOper
     if (failure != null) return failure
     return runCatching {
       val digest = MessageDigest.getInstance("SHA-256")
-      digestPart(digest, "head", head.value.orEmpty().toByteArray())
-      digestPart(digest, "staged", staged.value.orEmpty().toByteArray())
-      digestPart(digest, "unstaged", unstaged.value.orEmpty().toByteArray())
+      UntrackedFingerprintDigest.digestPart(digest, "head", head.value.orEmpty().toByteArray())
+      UntrackedFingerprintDigest.digestPart(digest, "staged", staged.value.orEmpty().toByteArray())
+      UntrackedFingerprintDigest.digestPart(digest, "unstaged", unstaged.value.orEmpty().toByteArray())
+      val root = repoRoot.normalize()
       untracked.value.orEmpty().split('\u0000').filter(String::isNotBlank).sorted().forEach { path ->
-        val resolved = repoRoot.resolve(path).normalize()
-        require(resolved.startsWith(repoRoot.normalize())) { "Untracked path escapes repository root: $path" }
-        digestPart(digest, "untracked:$path", Files.readAllBytes(resolved))
+        val resolved = root.resolve(path).normalize()
+        require(resolved.startsWith(root)) { "Untracked path escapes repository root: $path" }
+        UntrackedFingerprintDigest.digestUntrackedEntry(digest, path, resolved)
       }
       WorkflowGitOperationResult(status = "ok", value = digest.digest().joinToString("") { "%02x".format(it) })
     }.getOrElse { error ->
@@ -189,12 +192,61 @@ private object GitRepositoryFingerprintOperations : RepositoryFingerprintGitOper
   }
 }
 
-private fun digestPart(digest: MessageDigest, label: String, bytes: ByteArray) {
-  digest.update(label.toByteArray())
-  digest.update(0)
-  digest.update(bytes.size.toString().toByteArray())
-  digest.update(0)
-  digest.update(bytes)
+private object UntrackedFingerprintDigest {
+  fun digestPart(digest: MessageDigest, label: String, bytes: ByteArray) {
+    digestPartHeader(digest, label, bytes.size.toString())
+    digest.update(bytes)
+  }
+
+  private fun digestPartHeader(digest: MessageDigest, label: String, length: String) {
+    digest.update(label.toByteArray())
+    digest.update(0)
+    digest.update(length.toByteArray())
+    digest.update(0)
+  }
+
+  // An untracked entry is fingerprinted, never trusted: symlinks and directories are recorded by
+  // marker instead of followed, oversized artifacts by size and mtime instead of being read into the
+  // heap, and an entry that disappeared between the `ls-files` listing and this read is a benign
+  // marker rather than a failure that would block an otherwise successful phase.
+  fun digestUntrackedEntry(digest: MessageDigest, path: String, resolved: Path) {
+    val label = "untracked:$path"
+    if (!Files.isRegularFile(resolved, LinkOption.NOFOLLOW_LINKS)) {
+      digestPart(digest, label, UNTRACKED_NON_REGULAR_MARKER.toByteArray())
+      return
+    }
+    val attributes = try {
+      Files.readAttributes(resolved, BasicFileAttributes::class.java, LinkOption.NOFOLLOW_LINKS)
+    } catch (error: IOException) {
+      digestPart(digest, label, "$UNTRACKED_UNREADABLE_MARKER:${error::class.simpleName}".toByteArray())
+      return
+    }
+    if (attributes.size() > UNTRACKED_FINGERPRINT_CONTENT_MAX_BYTES) {
+      digestPart(
+        digest,
+        label,
+        "size=${attributes.size()};mtime=${attributes.lastModifiedTime().toMillis()}".toByteArray(),
+      )
+      return
+    }
+    digestUntrackedContent(digest, label, resolved, attributes.size())
+  }
+
+  private fun digestUntrackedContent(digest: MessageDigest, label: String, resolved: Path, declaredSize: Long) {
+    try {
+      Files.newInputStream(resolved).use { input ->
+        digestPartHeader(digest, label, declaredSize.toString())
+        val buffer = ByteArray(UNTRACKED_FINGERPRINT_BUFFER_BYTES)
+        var read = input.read(buffer)
+        while (read >= 0) {
+          digest.update(buffer, 0, read)
+          read = input.read(buffer)
+        }
+      }
+    } catch (error: IOException) {
+      digestPart(digest, label, "$UNTRACKED_UNREADABLE_MARKER:${error::class.simpleName}".toByteArray())
+    }
+  }
 }
 
 private object GitRuntimePhaseFileManifestOperations : RuntimePhaseFileManifestGitOperations {
@@ -550,6 +602,10 @@ private class SelectedDiffHunkParser(
   }
 }
 
+private const val UNTRACKED_NON_REGULAR_MARKER = "non-regular"
+private const val UNTRACKED_UNREADABLE_MARKER = "unreadable"
+private const val UNTRACKED_FINGERPRINT_CONTENT_MAX_BYTES = 1_048_576L
+private const val UNTRACKED_FINGERPRINT_BUFFER_BYTES = 8_192
 private const val GIT_STATUS_MIN_LENGTH = 4
 private const val GIT_STATUS_CODE_LENGTH = 2
 private const val GIT_STATUS_PATH_OFFSET = 3

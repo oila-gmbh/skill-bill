@@ -522,7 +522,7 @@ class FeatureTaskRuntimeAuditRepairWireMapperTest {
     FeatureTaskRuntimeRepairItemOutcome.FIXED,
     listOf("src/Foo.kt"),
     listOf("Focused test passed"),
-    evidence(checkRef = "FeatureTaskRuntimeAuditRepairWireMapperTest:${evidence.replace(' ', '-')}")
+    evidence(checkRef = "FeatureTaskRuntimeAuditRepairWireMapperTest:${evidence.replace(' ', '-')}"),
   )
 
   private fun plan() = FeatureTaskRuntimeAuditRepairPlan(

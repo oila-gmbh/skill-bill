@@ -50,7 +50,7 @@ class GoalPlanningPreparationCheckpointTest {
   @Test
   fun `preplan payload with an incompatible phase output version is rejected and nothing is stored`() {
     val harness = checkpointHarness()
-    val shared = validShared(payload = payloadJson(phaseId = "preplan", contractVersion = "0.2"))
+    val shared = validShared(payload = payloadJson(phaseId = "preplan", contractVersion = "9.9"))
 
     assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
       harness.checkpoint.checkpointSharedPreplan(shared, harness.dbOverride)

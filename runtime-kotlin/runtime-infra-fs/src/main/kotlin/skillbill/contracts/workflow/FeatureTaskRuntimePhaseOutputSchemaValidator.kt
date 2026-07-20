@@ -138,23 +138,45 @@ object FeatureTaskRuntimePhaseOutputSchemaValidator {
   }
 
   // Agents launched via `claude --print` (and peers) emit a final message, not a bare payload:
-  // the JSON object is commonly wrapped in a ``` fence or trailed by a closing remark. Try the
-  // most-specific candidate first and fall back to the raw text so a genuinely payload-less or
-  // malformed output still surfaces the precise existing error rather than a misleading one.
+  // the JSON object is commonly wrapped in a ``` fence or trailed by a closing remark. Candidate
+  // order is most-specific-first, and that positional precedence decides which envelope is the
+  // agent's answer: schema validity never promotes an earlier restated envelope over the final one,
+  // otherwise a stale `satisfied` draft could win over the real `gaps_found` answer and advance the
+  // workflow past unmet criteria. Falling back to the raw text keeps genuinely payload-less or
+  // malformed output on its precise existing error.
   private fun readPhaseOutputObjectNode(phaseOutputText: String, sourceLabel: String): JsonNode {
     val parsedCandidates = phaseOutputObjectCandidates(phaseOutputText).mapNotNull(::tryParseObjectNode)
-    val validCandidates = parsedCandidates.filter { candidate ->
-      schema.validate(candidate).isEmpty() && candidate.path("phase_id").asText("") == sourceLabel
-    }.distinctBy { mapper.writeValueAsString(it) }
-    if (validCandidates.size > 1) {
+    val envelopeCandidates = parsedCandidates.filter { candidate ->
+      candidate.path("phase_id").asText("") == sourceLabel
+    }
+    val distinctValidEnvelopes = envelopeCandidates
+      .filter { candidate -> schema.validate(candidate).isEmpty() }
+      .distinctBy(::canonicalCandidateKey)
+    if (distinctValidEnvelopes.size > 1) {
       throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
         sourceLabel = sourceLabel,
         reason = "Phase output contains multiple conflicting schema-valid envelopes.",
       )
     }
-    validCandidates.singleOrNull()?.let { return it }
+    envelopeCandidates.firstOrNull()?.let { return it }
     parsedCandidates.firstOrNull()?.let { return it }
     return parseObjectNodeStrict(phaseOutputText.trim(), sourceLabel)
+  }
+
+  // Key order carries no meaning in the envelope, so one restated envelope must not read as two.
+  private fun canonicalCandidateKey(candidate: JsonNode): String =
+    mapper.writeValueAsString(canonicalizeCandidate(candidate))
+
+  private fun canonicalizeCandidate(node: JsonNode): JsonNode = when {
+    node.isObject -> mapper.createObjectNode().apply {
+      node.fieldNames().asSequence().sorted().forEach { field ->
+        set<JsonNode>(field, canonicalizeCandidate(node.path(field)))
+      }
+    }
+    node.isArray -> mapper.createArrayNode().apply {
+      node.forEach { element -> add(canonicalizeCandidate(element)) }
+    }
+    else -> node
   }
 
   private fun tryParseObjectNode(candidate: String): JsonNode? = try {

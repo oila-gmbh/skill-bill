@@ -46,17 +46,14 @@ interface RepositoryFingerprintGitOperationsProvider {
   val repositoryFingerprintOperations: RepositoryFingerprintGitOperations
 }
 
+// A porcelain-status fingerprint is both too coarse (a progressing repair run keeps emitting the same
+// ` M path` listing) and unbounded against the durable fingerprint length bound, so there is no safe
+// generic fallback: an adapter either contributes a real content fingerprint or this fails loudly.
 fun WorkflowGitOperations.repositoryFingerprint(repoRoot: Path): WorkflowGitOperationResult =
   (this as? RepositoryFingerprintGitOperationsProvider)
     ?.repositoryFingerprintOperations
     ?.repositoryFingerprint(repoRoot)
-    ?: run {
-      val head = headCommitSha(repoRoot)
-      if (!head.ok) return head
-      val worktree = worktreeStatus(repoRoot)
-      if (!worktree.ok) return worktree
-      WorkflowGitOperationResult(status = "ok", value = "${head.value}\u0000${worktree.value}")
-    }
+    ?: error("WorkflowGitOperations must provide a repository fingerprint implementation.")
 
 interface RuntimePhaseFileManifestGitOperations {
   fun headCommit(repoRoot: Path): WorkflowGitOperationResult
@@ -166,7 +163,10 @@ private fun WorkflowGitOperations.reviewOperations(): GoalSubtaskReviewGitOperat
   (this as? GoalSubtaskReviewGitOperationsProvider)?.goalSubtaskReviewOperations
     ?: UnavailableGoalSubtaskReviewGitOperations
 
-object NoopWorkflowGitOperations : WorkflowGitOperations, GoalSubtaskReviewGitOperationsProvider {
+object NoopWorkflowGitOperations :
+  WorkflowGitOperations,
+  GoalSubtaskReviewGitOperationsProvider,
+  RepositoryFingerprintGitOperationsProvider {
   override fun checkoutBranch(repoRoot: Path, branch: String, baseBranch: String?): WorkflowGitOperationResult =
     WorkflowGitOperationResult(status = "ok", value = branch)
 
@@ -215,7 +215,17 @@ object NoopWorkflowGitOperations : WorkflowGitOperations, GoalSubtaskReviewGitOp
   )
 
   override val goalSubtaskReviewOperations: GoalSubtaskReviewGitOperations = NoopGoalSubtaskReviewGitOperations
+
+  override val repositoryFingerprintOperations: RepositoryFingerprintGitOperations =
+    NoopRepositoryFingerprintGitOperations
 }
+
+private object NoopRepositoryFingerprintGitOperations : RepositoryFingerprintGitOperations {
+  override fun repositoryFingerprint(repoRoot: Path): WorkflowGitOperationResult =
+    WorkflowGitOperationResult(status = "ok", value = NOOP_REPOSITORY_FINGERPRINT)
+}
+
+private const val NOOP_REPOSITORY_FINGERPRINT: String = "noop-repository-fingerprint"
 
 private object NoopGoalSubtaskReviewGitOperations : GoalSubtaskReviewGitOperations {
   override fun captureBaseline(repoRoot: Path, expectedBranch: String): GoalSubtaskReviewBaselineResult =

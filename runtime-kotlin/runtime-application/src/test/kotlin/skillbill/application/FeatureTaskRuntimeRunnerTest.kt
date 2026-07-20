@@ -30,6 +30,7 @@ import skillbill.application.model.FeatureTaskRuntimeRunRequest
 import skillbill.application.model.FeatureTaskRuntimeStatusRequest
 import skillbill.application.telemetry.LifecycleTelemetryService
 import skillbill.application.workflow.repoRoot
+import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.error.WorkflowIssueKeyConflictError
@@ -206,7 +207,7 @@ class FeatureTaskRuntimeRunnerTest {
   fun `non-retryable review policy conflict re-blocks on resume without relaunch`() {
     val reviewBlocked = """
       {
-        "contract_version":"0.1",
+        "contract_version":"0.2",
         "phase_id":"review",
         "status":"blocked",
         "failure_disposition":"non_retryable_policy_conflict",
@@ -237,7 +238,7 @@ class FeatureTaskRuntimeRunnerTest {
     var reviewLaunches = 0
     val retryableFailure = """
       {
-        "contract_version":"0.1",
+        "contract_version":"0.2",
         "phase_id":"review",
         "status":"failed",
         "failure_disposition":"retryable",
@@ -1197,7 +1198,11 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
       assertContains(prompt, "mandate-X")
       assertContains(prompt, "Required final output")
       assertContains(prompt, "\"phase_id\": must be \"$phaseId\"")
-      assertContains(prompt, "\"contract_version\": must be exactly \"0.1\"")
+      assertContains(
+        prompt,
+        "\"contract_version\": must be exactly " +
+          "\"$FEATURE_TASK_RUNTIME_CONTRACT_VERSION\"",
+      )
       assertTrue(
         !prompt.contains("goal-continuation mode") && !prompt.contains("First execute this exact command"),
         "phase prompt for '$phaseId' must not instruct the goal-continuation flow",
@@ -1473,7 +1478,7 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
         val output = if (phaseId == "review" && reviewLaunches++ == 0) {
           """
           {
-            "contract_version": "0.1",
+            "contract_version": "0.2",
             "phase_id": "review",
             "status": "completed",
             "summary": "Delegated review requested changes.",
@@ -1624,7 +1629,7 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
       1,
       phaseAgent("review"),
       """
-        {"contract_version":"0.1","phase_id":"review","status":"completed","summary":"Review requests changes.","verdict":"changes_requested","produced_outputs":{"summary":"full evidence remains durable"}}
+        {"contract_version":"0.2","phase_id":"review","status":"completed","summary":"Review requests changes.","verdict":"changes_requested","produced_outputs":{"summary":"full evidence remains durable"}}
       """.trimIndent(),
     )
 
@@ -2282,7 +2287,7 @@ class FeatureTaskRuntimeReviewFixLoopTest {
           }
           // A fix output WITHOUT reconciled_state: the mutating-phase gate must reject it.
           "implement_fix" -> facts(
-            """{"contract_version":"0.1","phase_id":"implement_fix","status":"completed",""" +
+            """{"contract_version":"0.2","phase_id":"implement_fix","status":"completed",""" +
               """"summary":"fix","produced_outputs":{"changed_files":["src/Foo.kt"]}}""",
           )
           else -> facts(validJsonOutput(phaseId))
@@ -3194,16 +3199,16 @@ private const val CONVENTION_SPEC_REFERENCE =
   ".feature-specs/SKILL-65-runtime-feature-task-parity/spec_subtask_1.md"
 private const val EXPECTED_FEATURE_BRANCH = "feat/SKILL-65-runtime-feature-task-parity"
 internal const val INVOKED_AGENT = "claude-code"
-internal const val VALID_OUTPUT = """{"contract_version":"0.1"}"""
+internal const val VALID_OUTPUT = """{"contract_version":"0.2"}"""
 
 // A clean review output carrying an empty findings array (the affirmative "no blocking findings"
 // signal the review gate requires, SKILL-85 Subtask 4 F-003); used by the default phase-aware launcher.
-private const val VALID_REVIEW_OUTPUT = """{"contract_version":"0.1","produced_outputs":{"findings":[]}}"""
+private const val VALID_REVIEW_OUTPUT = """{"contract_version":"0.2","produced_outputs":{"findings":[]}}"""
 
 // A clean audit output carrying an empty unmet_criteria array (the affirmative "every acceptance
 // criterion is met" signal the audit gate requires, SKILL-85 Subtask 5 AC1); used by the default launcher.
 private const val VALID_AUDIT_OUTPUT =
-  """{"contract_version":"0.1","produced_outputs":{"unmet_criteria":[]}}"""
+  """{"contract_version":"0.2","produced_outputs":{"unmet_criteria":[]}}"""
 private const val PREPLAN_OUTPUT = """{"preplan_digest":"scope-boundaries-risks-rollout"}"""
 private const val PLAN_OUTPUT = """{"plan":"do-the-thing"}"""
 internal const val IMPLEMENT_OUTPUT = """{"implement":"done"}"""
@@ -3729,7 +3734,7 @@ private val IMPLEMENT_FIX_CYCLE = skillbill.workflow.taskruntime.model.FeatureTa
 // A schema-valid review output carrying a top-level `verdict` wire string the transition function reads.
 internal fun verdictReviewOutput(verdict: String): String = """
   {
-    "contract_version": "0.1",
+    "contract_version": "0.2",
     "phase_id": "review",
     "status": "completed",
     "summary": "Review produced a validated output.",
@@ -3742,7 +3747,7 @@ internal fun verdictReviewOutput(verdict: String): String = """
 // produced_outputs.findings array — prose only. The review gate must block on the missing signal.
 private val REVIEW_NO_SIGNAL_OUTPUT: String = """
   {
-    "contract_version": "0.1",
+    "contract_version": "0.2",
     "phase_id": "review",
     "status": "completed",
     "summary": "Looks good to me, shipping.",
@@ -3765,7 +3770,7 @@ internal fun reviewFindingsOutput(changesRequested: Boolean): String {
   }
   return """
     {
-      "contract_version": "0.1",
+      "contract_version": "0.2",
       "phase_id": "review",
       "status": "completed",
       "summary": "Review produced a validated output.",
@@ -3795,7 +3800,7 @@ private fun reviewFixLauncher(convergeOnReview: Int, onReviewLaunch: (Int) -> Un
 // mutating-phase reconciliation gate must reject it (silent skip fails the gate loudly).
 private val IMPLEMENT_NO_RECONCILE_OUTPUT: String = """
   {
-    "contract_version": "0.1",
+    "contract_version": "0.2",
     "phase_id": "implement",
     "status": "completed",
     "summary": "Phase produced a validated output.",
@@ -3806,7 +3811,7 @@ private val IMPLEMENT_NO_RECONCILE_OUTPUT: String = """
 // A schema-valid plan output carrying a top-level `verdict` wire string the transition function reads.
 private fun verdictPlanOutput(verdict: String): String = """
   {
-    "contract_version": "0.1",
+    "contract_version": "0.2",
     "phase_id": "plan",
     "status": "completed",
     "summary": "Plan produced a validated output.",
@@ -3817,7 +3822,7 @@ private fun verdictPlanOutput(verdict: String): String = """
 
 internal fun validJsonOutput(phaseId: String): String = """
   {
-    "contract_version": "0.1",
+    "contract_version": "0.2",
     "phase_id": "$phaseId",
     "status": "completed",
     "summary": "Phase produced a validated output.",
@@ -3855,7 +3860,7 @@ internal fun validProducedOutputs(phaseId: String): String = when (phaseId) {
 // goal-continuation SHA-drop the SKILL-68 capture-at-source path must recover from.
 private val COMMIT_PUSH_NO_SHA_OUTPUT: String = """
   {
-    "contract_version": "0.1",
+    "contract_version": "0.2",
     "phase_id": "commit_push",
     "status": "completed",
     "summary": "Phase produced a validated output.",
@@ -3865,7 +3870,7 @@ private val COMMIT_PUSH_NO_SHA_OUTPUT: String = """
 
 private val COMMIT_PUSH_BLOCKED_OUTPUT: String = """
   {
-    "contract_version": "0.1",
+    "contract_version": "0.2",
     "phase_id": "commit_push",
     "status": "blocked",
     "summary": "Validation failed before commit.",
@@ -3881,7 +3886,7 @@ private val COMMIT_PUSH_BLOCKED_OUTPUT: String = """
 
 private val VALIDATE_BLOCKED_OUTPUT: String = """
   {
-    "contract_version": "0.1",
+    "contract_version": "0.2",
     "phase_id": "validate",
     "status": "blocked",
     "summary": "Validation failed before finalization.",
@@ -3926,7 +3931,7 @@ private fun goalContinuationHarness(
 
 private val DECOMPOSE_PLAN_OUTPUT: String = """
   {
-    "contract_version": "0.1",
+    "contract_version": "0.2",
     "phase_id": "plan",
     "status": "completed",
     "summary": "Plan needs ordered subtasks.",
@@ -3971,7 +3976,7 @@ private val DECOMPOSE_PLAN_OUTPUT: String = """
 // turn this into a Blocked outcome rather than letting the exception escape run().
 private val MALFORMED_DECOMPOSE_PLAN_OUTPUT: String = """
   {
-    "contract_version": "0.1",
+    "contract_version": "0.2",
     "phase_id": "plan",
     "status": "completed",
     "summary": "Plan needs ordered subtasks.",
@@ -4017,7 +4022,7 @@ private val MALFORMED_DECOMPOSE_PLAN_OUTPUT: String = """
 // writer business-rule rejection into a Blocked outcome rather than letting it escape run().
 private val WRITER_INVALID_DECOMPOSE_PLAN_OUTPUT: String = """
   {
-    "contract_version": "0.1",
+    "contract_version": "0.2",
     "phase_id": "plan",
     "status": "completed",
     "summary": "Plan needs ordered subtasks.",

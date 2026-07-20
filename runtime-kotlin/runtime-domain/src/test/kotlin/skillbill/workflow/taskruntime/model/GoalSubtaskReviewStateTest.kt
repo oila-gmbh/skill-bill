@@ -5,6 +5,7 @@ import skillbill.workflow.model.CodeReviewExecutionMode
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class GoalSubtaskReviewStateTest {
@@ -30,6 +31,56 @@ class GoalSubtaskReviewStateTest {
     assertEquals(2, capped.completedPassCount)
     assertEquals(FeatureTaskRuntimeVerdict.REVIEW_CAP_REACHED, capped.passResults.last().verdict)
     assertEquals(capped, capped.reserveNextPass())
+  }
+
+  @Test
+  fun `a second pass with only major findings never reaches the cap disposition`() {
+    val firstPass = GoalSubtaskReviewState.initial(
+      reviewBaseSha = "e".repeat(40),
+      baselineUntrackedPaths = emptyList(),
+      codeReviewMode = CodeReviewExecutionMode.DELEGATED,
+    ).reserveNextPass().completeReservedPass(
+      verdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
+      unresolvedFindingCount = 1,
+      findings = listOf(GoalSubtaskReviewCompactFinding("blocker", "Repository", "Unsafe mutation")),
+    )
+
+    val secondPass = firstPass.reserveNextPass().completeReservedPass(
+      verdict = FeatureTaskRuntimeVerdict.APPROVED,
+      unresolvedFindingCount = 2,
+      findings = listOf(
+        GoalSubtaskReviewCompactFinding("major", "Service", "Missing behavior"),
+        GoalSubtaskReviewCompactFinding("nit", "Service", "Naming"),
+      ),
+    )
+
+    assertFalse(secondPass.reviewCapReached)
+    assertEquals(FeatureTaskRuntimeVerdict.APPROVED, secondPass.passResults.last().verdict)
+  }
+
+  @Test
+  fun `review_cap_reached is rejected when pass two carries no blocker finding`() {
+    val state = GoalSubtaskReviewState.initial(
+      reviewBaseSha = "f".repeat(40),
+      baselineUntrackedPaths = emptyList(),
+      codeReviewMode = CodeReviewExecutionMode.DELEGATED,
+    )
+
+    assertFailsWith<IllegalArgumentException> {
+      state.copy(
+        completedPassCount = GOAL_SUBTASK_REVIEW_MAX_PASSES,
+        disposition = GoalSubtaskReviewDisposition.REVIEW_CAP_REACHED,
+        passResults = (1..GOAL_SUBTASK_REVIEW_MAX_PASSES).map { passNumber ->
+          GoalSubtaskReviewPassResult(
+            passNumber = passNumber,
+            verdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
+            reviewResultArtifact = "$GOAL_SUBTASK_REVIEW_RESULT_ARTIFACT_PREFIX.$passNumber",
+            unresolvedFindingCount = 1,
+            findings = listOf(GoalSubtaskReviewCompactFinding("major", "Service", "Missing behavior")),
+          )
+        },
+      )
+    }
   }
 
   @Test

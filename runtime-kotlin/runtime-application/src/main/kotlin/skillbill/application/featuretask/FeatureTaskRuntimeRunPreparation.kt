@@ -81,7 +81,13 @@ internal class FeatureTaskRuntimeRunPreparation(
   ): Boolean = continuationRecorder.recordGoalContinuationState(
     request = GoalContinuationStateRecordRequest(
       workflowId = request.workflowId,
-      continuation = initial.continuation.copy(agentAddonSelection = request.agentAddonSelection.persisted),
+      // A resume that supplies no add-ons is silent about them, not a request to erase them: the
+      // add-on directory can simply be unavailable on the resuming host.
+      continuation = initial.continuation.copy(
+        agentAddonSelection = request.agentAddonSelection.persisted
+          .takeUnless { it.entries.isEmpty() }
+          ?: initial.continuation.agentAddonSelection,
+      ),
       reviewBaseline = initial.baseline,
     ),
     dbOverride = request.dbPathOverride,

@@ -1,6 +1,5 @@
 package skillbill.db
 
-import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
 import skillbill.contracts.workflow.WORKFLOW_STATE_CONTRACT_VERSION
 import skillbill.db.core.DatabaseRuntime
 import skillbill.db.core.DbConstants
@@ -8,14 +7,11 @@ import skillbill.db.workflow.WorkflowStateRow
 import skillbill.db.workflow.WorkflowStateStore
 import skillbill.error.InvalidFeatureTaskRuntimeWorkerOwnershipSchemaError
 import skillbill.error.InvalidWorkflowStateSchemaError
-import skillbill.infrastructure.sqlite.SQLiteDatabaseSessionFactory
-import skillbill.model.EnvironmentContext
 import skillbill.ports.persistence.model.FeatureTaskExecutionIdentity
 import skillbill.ports.persistence.model.FeatureTaskRouteScope
 import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerLeaseState
 import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
-import skillbill.workflow.WorkflowSnapshotValidator
 import java.nio.file.Files
 import java.sql.Connection
 import java.sql.DriverManager
@@ -24,7 +20,6 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import kotlin.test.Test
-import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
@@ -563,18 +558,6 @@ class WorkflowStateStoreTest {
         auditRepairArtifactsJson(),
         assertNotNull(store.getFeatureTaskRuntimeWorkflow(row.workflowId)).artifactsJson,
       )
-      val recorder = FeatureTaskRuntimePhaseRecorder(
-        SQLiteDatabaseSessionFactory(EnvironmentContext(dbPathOverride = dbPath.toString())),
-        object : WorkflowSnapshotValidator {
-          override fun validate(snapshot: Map<String, Any?>, slug: String) = Unit
-        },
-      )
-      val compatible = assertNotNull(recorder.loadAuditRepairState(row.workflowId, dbPath.toString()))
-      val unresolved = compatible.unresolvedGapLedger.unresolvedGaps.single()
-      assertEquals("ac-001-gap-1", unresolved.gapId)
-      assertEquals("AC-001", unresolved.acceptanceCriterionRef)
-      assertEquals(1, unresolved.generation)
-      assertEquals(compatible.acceptedPlans.last(), compatible.acceptedPlans.single())
 
       store.saveFeatureTaskRuntimeWorkflow(row.copy(artifactsJson = auditRepairArtifactsJson("9.9")))
       assertEquals(
@@ -582,10 +565,6 @@ class WorkflowStateStoreTest {
         assertNotNull(store.getFeatureTaskRuntimeWorkflow(row.workflowId)).artifactsJson,
         "SQLite must preserve incompatible identity for production mapping to reject at runtime use.",
       )
-      val error = assertFailsWith<InvalidWorkflowStateSchemaError> {
-        recorder.loadAuditRepairState(row.workflowId, dbPath.toString())
-      }
-      assertContains(error.message.orEmpty(), "contract_version")
     }
   }
 

@@ -11,6 +11,7 @@ const val GOAL_SUBTASK_REVIEW_INPUT_ARTIFACT_KEY: String = "goal_subtask_review_
 const val GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY: String = "goal_subtask_review_results"
 const val GOAL_SUBTASK_REVIEW_RESULT_ARTIFACT_PREFIX: String = "goal_subtask_review_results"
 const val GOAL_SUBTASK_REVIEW_MAX_PASSES: Int = 2
+const val GOAL_SUBTASK_REVIEW_BLOCKER_SEVERITY: String = "blocker"
 
 enum class GoalSubtaskReviewDisposition(val wireValue: String) {
   PENDING("pending"),
@@ -28,6 +29,8 @@ data class GoalSubtaskReviewCompactFinding(
   val label: String,
   val text: String,
 ) {
+  val isBlocker: Boolean get() = severity == GOAL_SUBTASK_REVIEW_BLOCKER_SEVERITY
+
   init {
     require(severity in setOf("blocker", "major", "minor", "nit")) { "Invalid review finding severity '$severity'." }
     require(label.isNotBlank()) { "GoalSubtaskReviewCompactFinding.label must be non-blank." }
@@ -76,6 +79,13 @@ data class GoalSubtaskReviewPassResult(
     }
     require(unresolvedFindingCount >= 0) { "Goal unresolved finding count must be non-negative." }
   }
+
+  /**
+   * Only Blocker severity blocks advancing. A compact summary may carry a positive unresolved count
+   * with no itemised findings, so an empty finding list stays blocking; an itemised list must name a
+   * Blocker.
+   */
+  val blocksAdvance: Boolean get() = blocksAdvance(unresolvedFindingCount, findings)
 
   @OpenBoundaryMap("Goal-review pass result at the durable workflow-artifact seam")
   fun toArtifactMap(): Map<String, Any?> = linkedMapOf(
@@ -247,9 +257,9 @@ data class GoalSubtaskReviewState(
       disposition != GoalSubtaskReviewDisposition.REVIEW_CAP_REACHED ||
         (
           completedPassCount == GOAL_SUBTASK_REVIEW_MAX_PASSES &&
-            (passResults.lastOrNull()?.unresolvedFindingCount ?: 0) > 0
+            passResults.lastOrNull()?.blocksAdvance == true
           ),
-    ) { "review_cap_reached requires unresolved findings on pass two." }
+    ) { "review_cap_reached requires unresolved Blocker findings on pass two." }
   }
 
   val reviewCapReached: Boolean get() = disposition == GoalSubtaskReviewDisposition.REVIEW_CAP_REACHED
@@ -272,13 +282,11 @@ data class GoalSubtaskReviewState(
   ): GoalSubtaskReviewState {
     val passNumber = reservedPassNumber
       ?: reviewStateError("reserved_pass_number", "must be present before completing a review pass.")
+    val capReached = passNumber == GOAL_SUBTASK_REVIEW_MAX_PASSES &&
+      blocksAdvance(unresolvedFindingCount, findings)
     val result = GoalSubtaskReviewPassResult(
       passNumber = passNumber,
-      verdict = if (passNumber == GOAL_SUBTASK_REVIEW_MAX_PASSES && unresolvedFindingCount > 0) {
-        FeatureTaskRuntimeVerdict.REVIEW_CAP_REACHED
-      } else {
-        verdict
-      },
+      verdict = if (capReached) FeatureTaskRuntimeVerdict.REVIEW_CAP_REACHED else verdict,
       reviewResultArtifact = "$GOAL_SUBTASK_REVIEW_RESULT_ARTIFACT_PREFIX.$passNumber",
       unresolvedFindingCount = unresolvedFindingCount,
       findings = findings,
@@ -286,11 +294,7 @@ data class GoalSubtaskReviewState(
     return copy(
       reservedPassNumber = null,
       completedPassCount = passNumber,
-      disposition = if (passNumber == GOAL_SUBTASK_REVIEW_MAX_PASSES && unresolvedFindingCount > 0) {
-        GoalSubtaskReviewDisposition.REVIEW_CAP_REACHED
-      } else {
-        disposition
-      },
+      disposition = if (capReached) GoalSubtaskReviewDisposition.REVIEW_CAP_REACHED else disposition,
       passResults = passResults + result,
     )
   }
@@ -409,6 +413,9 @@ private fun Any?.asGoalReviewArtifactMap(sourceLabel: String): Map<String, Any?>
     val stringKey = key as? String ?: reviewStateError(sourceLabel, "map keys must be strings.")
     stringKey to value
   } ?: reviewStateError(sourceLabel, "must be an object.")
+
+private fun blocksAdvance(unresolvedFindingCount: Int, findings: List<GoalSubtaskReviewCompactFinding>): Boolean =
+  unresolvedFindingCount > 0 && (findings.isEmpty() || findings.any(GoalSubtaskReviewCompactFinding::isBlocker))
 
 private val GIT_COMMIT_SHA = Regex("^[0-9a-f]{40}(?:[0-9a-f]{24})?$")
 

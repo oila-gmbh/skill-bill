@@ -127,7 +127,8 @@ private fun baselineSnapshot(
   expectedBranch: String,
 ): GoalReviewSnapshotResult<GoalReviewBaselineSnapshot> {
   val branch = currentGoalReviewBranch(repoRoot, expectedBranch)
-  val head = branch?.let {
+  val cleanError = branch?.let { trackedWorktreeClean(repoRoot) }
+  val head = branch?.takeIf { cleanError == null }?.let {
     goalReviewGitValue(repoRoot, "rev-parse", "HEAD")?.trim()
   }
   val indexTree = head?.takeIf(String::isNotBlank)?.let {
@@ -140,6 +141,7 @@ private fun baselineSnapshot(
   val error = when {
     branch == null ->
       "Goal-subtask review baseline must be captured on durable child branch '$expectedBranch'."
+    cleanError != null -> cleanError
     head.isNullOrBlank() -> "Could not resolve HEAD."
     indexTree.isNullOrBlank() ->
       "Could not resolve the git index while capturing the immutable review baseline."
@@ -355,4 +357,26 @@ private fun ownedUntrackedPatches(repoRoot: Path, paths: List<String>): GoalRevi
     }
   }
   return GoalReviewStringResult(value = patches.toString())
+}
+
+// The baseline is the subtask's review floor: capturing it while tracked changes are already present
+// folds unrelated pre-existing work into every diff the reviewer sees.
+private fun trackedWorktreeClean(repoRoot: Path): String? {
+  val unstaged = runGitProcess(repoRoot, listOf("diff", "--quiet"))
+  if (unstaged.timedOut || unstaged.readFailure != null || unstaged.exitCode !in setOf(0, 1)) {
+    return unstaged.readFailure?.message ?: "Could not inspect unstaged tracked changes before review baseline capture."
+  }
+  if (unstaged.exitCode == 1) {
+    return "Goal-subtask review baseline capture requires a clean tracked worktree; " +
+      "unstaged tracked changes are present."
+  }
+  val staged = runGitProcess(repoRoot, listOf("diff", "--cached", "--quiet"))
+  if (staged.timedOut || staged.readFailure != null || staged.exitCode !in setOf(0, 1)) {
+    return staged.readFailure?.message ?: "Could not inspect staged tracked changes before review baseline capture."
+  }
+  return if (staged.exitCode == 1) {
+    "Goal-subtask review baseline capture requires a clean tracked worktree; staged tracked changes are present."
+  } else {
+    null
+  }
 }
