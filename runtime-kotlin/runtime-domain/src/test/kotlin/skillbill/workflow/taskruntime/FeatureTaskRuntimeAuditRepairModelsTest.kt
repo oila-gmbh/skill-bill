@@ -2,6 +2,7 @@ package skillbill.workflow.taskruntime
 
 import skillbill.workflow.taskruntime.model.AUDIT_REPAIR_CONTRACT_VERSION
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGap
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairGapIdentities
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairPlan
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairProgress
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairState
@@ -10,10 +11,12 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorGapDispositio
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairItem
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairItemOutcome
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairItemResult
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeUnresolvableRepairBlock
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeUnresolvedGap
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeUnresolvedGapLedger
 import skillbill.workflow.taskruntime.model.detectAuditRepairNonProgress
 import kotlin.test.Test
+import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
@@ -287,28 +290,101 @@ class FeatureTaskRuntimeAuditRepairModelsTest {
   fun `a criterion whose gap was closed and fails again receives an incremented generation`() {
     val ledger = FeatureTaskRuntimeUnresolvedGapLedger(
       listOf(FeatureTaskRuntimeUnresolvedGap("ac-001-gap-2", "AC-001", 2)),
+      mapOf("AC-003" to 2, "AC-001" to 7),
     )
 
-    assertEquals("ac-003-gap-3", ledger.allocateGapId("AC-003", closedGenerationHighWaterMark = 2))
+    assertEquals("ac-003-gap-3", ledger.allocateGapId("AC-003"))
     assertEquals(
       "ac-001-gap-2",
-      ledger.allocateGapId("AC-001", closedGenerationHighWaterMark = 7),
+      ledger.allocateGapId("AC-001"),
       "a still-unresolved criterion keeps its durable identity regardless of the high-water mark",
     )
-    assertFailsWith<IllegalArgumentException> { ledger.allocateGapId("AC-004", closedGenerationHighWaterMark = -1) }
+    assertEquals("ac-004-gap-1", ledger.allocateGapId("AC-004"))
+  }
+
+  @Test
+  fun `closed generation high water marks reject non canonical criteria and non positive marks`() {
+    assertFailsWith<IllegalArgumentException> {
+      FeatureTaskRuntimeUnresolvedGapLedger(emptyList(), mapOf("ac-001" to 1))
+    }
+    assertFailsWith<IllegalArgumentException> {
+      FeatureTaskRuntimeUnresolvedGapLedger(emptyList(), mapOf("AC-001" to 0))
+    }
+  }
+
+  @Test
+  fun `disposition and unresolvable block identifiers follow the stable identifier patterns`() {
+    assertFailsWith<IllegalArgumentException> {
+      FeatureTaskRuntimePriorGapDisposition(
+        "gap-one",
+        FeatureTaskRuntimePriorGapDisposition.Status.RESOLVED,
+        FeatureTaskRuntimeEvidence(
+          FeatureTaskRuntimeEvidence.Observation.RESOLUTION_VERIFIED,
+          "runtime-kotlin/model",
+          "AC-001",
+        ),
+      )
+    }
+    assertFailsWith<IllegalArgumentException> {
+      FeatureTaskRuntimeUnresolvableRepairBlock("ac-001-gap-1", "item-one", evidence())
+    }
+    assertFailsWith<IllegalArgumentException> {
+      FeatureTaskRuntimeUnresolvableRepairBlock("AC-001-gap-1", "ac-001-gap-1-item-1", evidence())
+    }
+  }
+
+  @Test
+  fun `a repair item naming zero touched paths or symbols is rejected`() {
+    val error = assertFailsWith<IllegalArgumentException> {
+      FeatureTaskRuntimeRepairItem(
+        "ac-001-gap-1-item-1",
+        "Outcome",
+        listOf("Implement it"),
+        emptyList(),
+        listOf("Run test"),
+        emptyList(),
+      )
+    }
+    assertContains(error.message.orEmpty(), "affected_paths_or_symbols")
   }
 
   @Test
   fun `equivalent gaps without repository change block as non progress`() {
-    val decision = detectAuditRepairNonProgress(setOf("gap-1"), setOf("gap-1"), "digest", "digest", 0)
+    val decision = detectAuditRepairNonProgress(
+      previous = FeatureTaskRuntimeAuditRepairGapIdentities(setOf("ac-001-gap-1"), setOf("AC-001")),
+      current = FeatureTaskRuntimeAuditRepairGapIdentities(setOf("ac-001-gap-1"), setOf("AC-001")),
+      previousRepositoryFingerprint = "digest",
+      currentRepositoryFingerprint = "digest",
+      newlyResolvedRepairItemCount = 0,
+    )
 
     assertTrue(decision.blocked)
     assertTrue(requireNotNull(decision.reason).contains("repository fingerprint"))
   }
 
   @Test
+  fun `a criterion reopened under a new generation on an unchanged tree still blocks as non progress`() {
+    val decision = detectAuditRepairNonProgress(
+      previous = FeatureTaskRuntimeAuditRepairGapIdentities(setOf("ac-002-gap-1"), setOf("AC-002")),
+      current = FeatureTaskRuntimeAuditRepairGapIdentities(setOf("ac-002-gap-2"), setOf("AC-002")),
+      previousRepositoryFingerprint = "digest",
+      currentRepositoryFingerprint = "digest",
+      newlyResolvedRepairItemCount = 3,
+    )
+
+    assertTrue(decision.blocked, "identifier churn must not defeat the non-progress detector")
+    assertTrue(requireNotNull(decision.reason).contains("AC-002"))
+  }
+
+  @Test
   fun `changed gaps with resolved work remain eligible to continue`() {
-    val decision = detectAuditRepairNonProgress(setOf("gap-1"), setOf("gap-2"), "before", "after", 1)
+    val decision = detectAuditRepairNonProgress(
+      previous = FeatureTaskRuntimeAuditRepairGapIdentities(setOf("ac-001-gap-1"), setOf("AC-001")),
+      current = FeatureTaskRuntimeAuditRepairGapIdentities(setOf("ac-002-gap-1"), setOf("AC-002")),
+      previousRepositoryFingerprint = "before",
+      currentRepositoryFingerprint = "after",
+      newlyResolvedRepairItemCount = 1,
+    )
 
     assertFalse(decision.blocked)
     assertEquals(null, decision.reason)

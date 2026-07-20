@@ -56,7 +56,10 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorTest {
   fun `audit repair schema loader rejects wrong version independently`() {
     val error = assertFailsWith<InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError> {
       loadAuditRepairPlanSchemaText(
-        validAuditRepairSchemaHeader().replace("const: \"0.1\"", "const: \"9.9\""),
+        validAuditRepairSchemaHeader().replace(
+          "const: \"$FEATURE_TASK_RUNTIME_AUDIT_REPAIR_CONTRACT_VERSION\"",
+          "const: \"9.9\"",
+        ),
         "version",
       )
     }
@@ -64,14 +67,16 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorTest {
     assertContains(error.reason, "9.9")
   }
 
+  // The fixture header must pin the *current* contract version, otherwise the version guard throws
+  // before any schema is compiled and this case silently stops exercising the branch it names.
   @Test
   fun `audit repair schema loader translates compilation failure after identity checks`() {
     val error = assertFailsWith<InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError> {
-      loadAuditRepairPlanSchemaText(validAuditRepairSchemaHeader() + "\npattern: '[unclosed'", "compilation")
+      loadAuditRepairPlanSchemaText(validAuditRepairSchemaHeader() + "\npattern: \"[unclosed\"", "compilation")
     }
     assertEquals("compilation", error.sourceLabel)
     assertTrue(error.cause != null)
-    assertTrue(error.reason.isNotBlank())
+    assertContains(error.reason, "[unclosed")
   }
 
   private fun validAuditRepairSchemaHeader(): String = """
@@ -80,7 +85,7 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorTest {
       type: object
       properties:
         contract_version:
-          const: "0.1"
+          const: "$FEATURE_TASK_RUNTIME_AUDIT_REPAIR_CONTRACT_VERSION"
   """.trimIndent()
 
   @Test
@@ -101,6 +106,26 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorTest {
     assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
       FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(blocked, "plan")
     }
+  }
+
+  @Test
+  fun `audit output carrying the failing criteria alias fails validation at a pointer-anchored location`() {
+    val alias =
+      """
+      contract_version: "0.2"
+      phase_id: "audit"
+      status: "completed"
+      summary: "One criterion remains unmet."
+      produced_outputs:
+        failing_criteria:
+          - acceptance_criterion_ref: "AC-001"
+            message: "Integration coverage is missing."
+      """.trimIndent()
+
+    val error = assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
+      FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(alias, "audit")
+    }
+    assertContains(error.reason, "produced_outputs")
   }
 
   @Test

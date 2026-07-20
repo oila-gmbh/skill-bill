@@ -19,8 +19,14 @@ internal val AUDIT_REPAIR_ITEM_KEYS = setOf(
   "depends_on",
   "status",
 )
+
+// The durable audit-repair state is a Kotlin-governed workflow artifact, not a YAML runtime contract: its
+// shape is enforced by these exact-key sets plus the domain invariants, and drift fails loudly at the read
+// seam through InvalidWorkflowStateSchemaError. It deliberately carries no contract_version, because a
+// version field advertises a governing schema, coherence checks, and a parity test that do not exist for
+// it. Legacy rows that still carry one are rejected here as unknown fields; operators delete or migrate
+// the affected workflow rows out of band, which is the repository's documented recovery path.
 internal val AUDIT_REPAIR_STATE_KEYS = setOf(
-  "contract_version",
   "accepted_plans",
   "latest_plan",
   "execution_history",
@@ -37,7 +43,7 @@ internal val AUDIT_REPAIR_RESULT_KEYS = setOf(
   "result_evidence",
 )
 internal val AUDIT_REPAIR_DISPOSITION_KEYS = setOf("gap_id", "status", "evidence")
-internal val AUDIT_REPAIR_LEDGER_KEYS = setOf("contract_version", "gaps")
+internal val AUDIT_REPAIR_LEDGER_KEYS = setOf("gaps", "closed_generation_high_water_marks")
 internal val AUDIT_REPAIR_UNRESOLVED_GAP_KEYS = setOf("gap_id", "acceptance_criterion_ref", "generation")
 internal val AUDIT_REPAIR_PROGRESS_KEYS = setOf(
   "first_pass_convergence",

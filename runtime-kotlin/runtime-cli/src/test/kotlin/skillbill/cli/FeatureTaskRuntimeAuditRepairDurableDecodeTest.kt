@@ -18,7 +18,7 @@ import kotlin.test.assertNotNull
 
 class FeatureTaskRuntimeAuditRepairDurableDecodeTest {
   @Test
-  fun `durable audit repair state decodes its ledger identity and rejects an incompatible contract version`() {
+  fun `durable audit repair state decodes its ledger identity and rejects a legacy contract version field`() {
     val dbPath = Files.createTempDirectory("runtime-cli-audit-repair-decode").resolve("metrics.db")
 
     DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
@@ -51,7 +51,9 @@ class FeatureTaskRuntimeAuditRepairDurableDecodeTest {
       assertEquals(0, compatible.progress.resolvedRepairItemCount)
       assertEquals(1, compatible.progress.auditGapIterationCount)
 
-      store.saveFeatureTaskRuntimeWorkflow(row.copy(artifactsJson = auditRepairArtifactsJson("9.9")))
+      assertEquals(emptyMap(), compatible.unresolvedGapLedger.closedGenerationHighWaterMarks)
+
+      store.saveFeatureTaskRuntimeWorkflow(row.copy(artifactsJson = auditRepairArtifactsJson(legacyVersioned = true)))
       val error = assertFailsWith<InvalidWorkflowStateSchemaError> {
         recorder.loadAuditRepairState(row.workflowId, dbPath.toString())
       }
@@ -75,9 +77,9 @@ private fun auditRepairWorkflowRow(artifactsJson: String): WorkflowStateRow = Wo
   mode = FeatureTaskWorkflowMode.RUNTIME,
 )
 
-private fun auditRepairArtifactsJson(contractVersion: String = "0.2"): String = """
+private fun auditRepairArtifactsJson(legacyVersioned: Boolean = false): String = """
   {"feature_task_runtime_audit_repair_state":{
-    "contract_version":"$contractVersion",
+    ${if (legacyVersioned) "\"contract_version\":\"0.2\"," else ""}
     "accepted_plans":[{"contract_version":"0.2","gaps":[{
       "gap_id":"ac-001-gap-1","acceptance_criterion_ref":"AC-001",
       "acceptance_criterion_text":"Criterion","failure_evidence":{"observation":"required_behavior_absent","artifact_ref":"runtime-kotlin","check_ref":"AC-001"},
@@ -97,9 +99,9 @@ private fun auditRepairArtifactsJson(contractVersion: String = "0.2"): String = 
       }]
     }]},
     "execution_history":[],"prior_gap_dispositions":[],
-    "unresolved_gap_ledger":{"contract_version":"0.2","gaps":[{
+    "unresolved_gap_ledger":{"gaps":[{
       "gap_id":"ac-001-gap-1","acceptance_criterion_ref":"AC-001","generation":1
-    }]},
+    }],"closed_generation_high_water_marks":{}},
     "repository_fingerprint":"fingerprint",
     "progress":{"first_pass_convergence":false,"recurring_gap_count":0,"new_gap_count":1,
       "attempted_repair_item_count":0,"resolved_repair_item_count":0,"audit_gap_iteration_count":1}

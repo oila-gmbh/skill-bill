@@ -48,6 +48,55 @@ class FeatureTaskRuntimeAuditRepairSchemaParityTest {
     }
   }
 
+  // The evidence-reference bound drifted the same way `compactSummary` once did: the schema capped
+  // artifact_ref and check_ref at 256 characters while the domain had no length rule at all, so the cap
+  // vanished on every seam the schema never sees. Pinning both layers is what stops that recurring.
+  @Test
+  fun `schema and domain agree on every evidence reference bound`() {
+    val longestAcceptedArtifactRef = "a".repeat(256)
+    val longestAcceptedCheckRef = "a".repeat(252) + "Test"
+
+    listOf(
+      Triple(longestAcceptedArtifactRef, longestAcceptedCheckRef, true),
+      Triple("a".repeat(257), longestAcceptedCheckRef, false),
+      Triple(longestAcceptedArtifactRef, "a".repeat(253) + "Test", false),
+    ).forEach { (artifactRef, checkRef, expectedAccepted) ->
+      assertEquals(
+        expectedAccepted,
+        schemaAcceptsEvidence(artifactRef, checkRef),
+        "JSON Schema verdict for artifact_ref=${artifactRef.length} check_ref=${checkRef.length} chars",
+      )
+      assertEquals(
+        expectedAccepted,
+        domainAcceptsEvidence(artifactRef, checkRef),
+        "Kotlin domain verdict for artifact_ref=${artifactRef.length} check_ref=${checkRef.length} chars",
+      )
+    }
+  }
+
+  private fun schemaAcceptsEvidence(artifactRef: String, checkRef: String): Boolean = runCatching {
+    FeatureTaskRuntimePhaseOutputSchemaValidator.validate(
+      auditPhaseOutput("A bounded diagnosis.", artifactRef, checkRef),
+      "audit",
+    )
+  }.fold(
+    onSuccess = { true },
+    onFailure = { error ->
+      if (error is InvalidFeatureTaskRuntimePhaseOutputSchemaError) false else throw error
+    },
+  )
+
+  private fun domainAcceptsEvidence(artifactRef: String, checkRef: String): Boolean = runCatching {
+    FeatureTaskRuntimeEvidence(
+      FeatureTaskRuntimeEvidence.Observation.REQUIRED_BEHAVIOR_ABSENT,
+      artifactRef,
+      checkRef,
+    )
+  }.fold(
+    onSuccess = { true },
+    onFailure = { error -> if (error is IllegalArgumentException) false else throw error },
+  )
+
   private fun schemaAccepts(diagnosis: String): Boolean = runCatching {
     FeatureTaskRuntimePhaseOutputSchemaValidator.validate(auditPhaseOutput(diagnosis), "audit")
   }.fold(
@@ -85,7 +134,11 @@ class FeatureTaskRuntimeAuditRepairSchemaParityTest {
     ),
   )
 
-  private fun auditPhaseOutput(diagnosis: String): Map<String, Any?> = mapOf(
+  private fun auditPhaseOutput(
+    diagnosis: String,
+    artifactRef: String = "runtime-kotlin/integration",
+    checkRef: String = "AC-001",
+  ): Map<String, Any?> = mapOf(
     "contract_version" to FEATURE_TASK_RUNTIME_CONTRACT_VERSION,
     "phase_id" to "audit",
     "status" to "completed",
@@ -107,8 +160,8 @@ class FeatureTaskRuntimeAuditRepairSchemaParityTest {
             "acceptance_criterion_text" to "Integration coverage exists.",
             "failure_evidence" to mapOf(
               "observation" to "required_behavior_absent",
-              "artifact_ref" to "runtime-kotlin/integration",
-              "check_ref" to "AC-001",
+              "artifact_ref" to artifactRef,
+              "check_ref" to checkRef,
             ),
             "diagnosis" to diagnosis,
             "affected_boundary" to "runtime integration tests",

@@ -2,7 +2,6 @@ package skillbill.application.featuretask
 
 import skillbill.error.InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError
 import skillbill.error.InvalidWorkflowStateSchemaError
-import skillbill.workflow.taskruntime.model.AUDIT_REPAIR_CONTRACT_VERSION
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGap
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairPlan
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairProgress
@@ -60,10 +59,6 @@ internal fun auditRepairStateFromWire(value: Any?, source: String): FeatureTaskR
   wireMapping(source) {
     val map = value.requiredMap(source)
     requireExactWireKeys(map, source, AUDIT_REPAIR_STATE_KEYS)
-    val contractVersion = map.requiredString("contract_version", source)
-    if (contractVersion != AUDIT_REPAIR_CONTRACT_VERSION) {
-      invalidWire("$source.contract_version", "must be $AUDIT_REPAIR_CONTRACT_VERSION")
-    }
     val acceptedPlans = map.requiredList("accepted_plans", source).mapIndexed { index, plan ->
       durableAuditRepairPlanFromWire(plan, "$source.accepted_plans[$index]")
     }
@@ -79,12 +74,9 @@ internal fun auditRepairStateFromWire(value: Any?, source: String): FeatureTaskR
     }
     val ledgerMap = map["unresolved_gap_ledger"].requiredMap("$source.unresolved_gap_ledger")
     requireExactWireKeys(ledgerMap, "$source.unresolved_gap_ledger", AUDIT_REPAIR_LEDGER_KEYS)
-    val ledgerContractVersion = ledgerMap.requiredString("contract_version", "$source.unresolved_gap_ledger")
-    if (ledgerContractVersion != AUDIT_REPAIR_CONTRACT_VERSION) {
-      invalidWire(
-        "$source.unresolved_gap_ledger.contract_version",
-        "must be $AUDIT_REPAIR_CONTRACT_VERSION",
-      )
+    val marksSource = "$source.unresolved_gap_ledger.closed_generation_high_water_marks"
+    val marks = ledgerMap["closed_generation_high_water_marks"].requiredMap(marksSource).mapValues { (key, value) ->
+      (value as? Number)?.toInt() ?: invalidWire("$marksSource.$key", "must be an integer")
     }
     val unresolved = ledgerMap.requiredArray("gaps", "$source.unresolved_gap_ledger").mapIndexed { index, gap ->
       val gapSource = "$source.unresolved_gap_ledger.gaps[$index]"
@@ -104,7 +96,7 @@ internal fun auditRepairStateFromWire(value: Any?, source: String): FeatureTaskR
       acceptedPlans = acceptedPlans,
       repairItemResults = results,
       priorGapDispositions = dispositions,
-      unresolvedGapLedger = FeatureTaskRuntimeUnresolvedGapLedger(unresolved),
+      unresolvedGapLedger = FeatureTaskRuntimeUnresolvedGapLedger(unresolved, marks),
       repositoryFingerprint = map.optionalString("repository_fingerprint", source),
       progress = FeatureTaskRuntimeAuditRepairProgress(
         firstPassConvergence = progressMap.requiredBoolean("first_pass_convergence", "$source.progress"),
@@ -198,7 +190,7 @@ private fun durableAuditRepairPlanFromWire(value: Any?, source: String): Feature
   throw InvalidWorkflowStateSchemaError("$source: ${error.message}", error)
 }
 
-private fun FeatureTaskRuntimeAuditRepairState.requireDurableCoherence() {
+internal fun FeatureTaskRuntimeAuditRepairState.requireDurableCoherence() {
   val acceptedRepairItemIds = acceptedPlans
     .flatMap { plan -> plan.gaps.flatMap(FeatureTaskRuntimeAuditGap::repairItems) }
     .mapTo(linkedSetOf(), FeatureTaskRuntimeRepairItem::repairItemId)

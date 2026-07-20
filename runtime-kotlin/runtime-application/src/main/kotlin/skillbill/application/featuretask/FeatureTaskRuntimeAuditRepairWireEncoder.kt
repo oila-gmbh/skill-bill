@@ -1,6 +1,5 @@
 package skillbill.application.featuretask
 
-import skillbill.workflow.taskruntime.model.AUDIT_REPAIR_CONTRACT_VERSION
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairPlan
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairState
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairItemResult
@@ -31,7 +30,6 @@ internal fun auditRepairPlanToWire(plan: FeatureTaskRuntimeAuditRepairPlan): Map
 )
 
 internal fun auditRepairStateToWire(state: FeatureTaskRuntimeAuditRepairState): Map<String, Any?> = mapOf(
-  "contract_version" to AUDIT_REPAIR_CONTRACT_VERSION,
   "accepted_plans" to state.acceptedPlans.map(::auditRepairPlanToWire),
   "latest_plan" to auditRepairPlanToWire(state.acceptedPlans.last()),
   "execution_history" to state.repairItemResults.map(::repairItemResultToWire),
@@ -43,7 +41,6 @@ internal fun auditRepairStateToWire(state: FeatureTaskRuntimeAuditRepairState): 
     )
   },
   "unresolved_gap_ledger" to mapOf(
-    "contract_version" to AUDIT_REPAIR_CONTRACT_VERSION,
     "gaps" to state.unresolvedGapLedger.unresolvedGaps.map { gap ->
       mapOf(
         "gap_id" to gap.gapId,
@@ -51,6 +48,7 @@ internal fun auditRepairStateToWire(state: FeatureTaskRuntimeAuditRepairState): 
         "generation" to gap.generation,
       )
     },
+    "closed_generation_high_water_marks" to state.unresolvedGapLedger.closedGenerationHighWaterMarks,
   ),
   "repository_fingerprint" to state.repositoryFingerprint,
   "progress" to mapOf(

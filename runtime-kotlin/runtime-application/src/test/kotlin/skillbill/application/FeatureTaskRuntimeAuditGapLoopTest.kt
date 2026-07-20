@@ -313,6 +313,79 @@ class FeatureTaskRuntimeAuditGapLoopTest {
     )
   }
 
+  // Gap identity is derived by the runtime from durable state, never accepted from the agent, so a
+  // supplied generation that skips ahead is rejected rather than silently forking the criterion's identity.
+  @Test
+  fun `an agent supplied gap identifier that is not the derived one is rejected`() {
+    val harness = runnerHarness(
+      launcher = RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        if (phaseId == "audit") facts(auditNonDerivedGapIdOutput()) else facts(validJsonOutput(phaseId))
+      },
+    )
+
+    val error = assertFailsWith<InvalidWorkflowStateSchemaError> { harness.runner.run(harness.request()) }
+
+    assertContains(error.message.orEmpty(), "gap_id 'ac-002-gap-2' for 'AC-002'")
+    assertContains(error.message.orEmpty(), "expected 'ac-002-gap-1'")
+  }
+
+  @Test
+  fun `a criterion dispositioned resolved cannot be re-reported by the same handoff`() {
+    val harness = secondAuditHarness(auditResolvedThenReopenedGapOutput())
+
+    val error = assertFailsWith<InvalidWorkflowStateSchemaError> { harness.runner.run(harness.request()) }
+
+    assertContains(error.message.orEmpty(), "re-reported by the same handoff")
+    assertContains(error.message.orEmpty(), "AC-002")
+    assertEquals(
+      listOf("ac-002-gap-1"),
+      requireNotNull(harness.recorder.loadAuditRepairState(WORKFLOW_ID)).unresolvedGapLedger
+        .unresolvedGaps.map { it.gapId },
+      "the rejected write must leave the durable gap identity intact",
+    )
+  }
+
+  @Test
+  fun `a first iteration recurring disposition against an empty ledger is rejected and stays resumable`() {
+    val harness = runnerHarness(
+      launcher = RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        if (phaseId == "audit") {
+          facts(auditFirstIterationRecurringDispositionOutput())
+        } else {
+          facts(
+            validJsonOutput(phaseId),
+          )
+        }
+      },
+    )
+
+    val error = assertFailsWith<InvalidWorkflowStateSchemaError> { harness.runner.run(harness.request()) }
+
+    assertContains(error.message.orEmpty(), "never carried")
+    assertEquals(
+      null,
+      harness.recorder.loadAuditRepairState(WORKFLOW_ID),
+      "an incoherent first write must persist nothing, leaving the workflow readable and resumable",
+    )
+  }
+
+  private fun secondAuditHarness(secondAuditOutput: String): RunnerHarness {
+    var auditLaunches = 0
+    return runnerHarness(
+      launcher = RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        if (phaseId == "audit") {
+          auditLaunches += 1
+          facts(if (auditLaunches > 1) secondAuditOutput else auditGapsOutput())
+        } else {
+          facts(validJsonOutput(phaseId))
+        }
+      },
+    )
+  }
+
   // (f) AC5: M1 and M2 compose with independent counters. The re-run after an audit gap passes through
   // review, while the shared pass budget prevents another review after review_fix consumed pass two.
   @Test
@@ -558,6 +631,59 @@ internal fun auditDroppedRecurringGapOutput(): String = """
             "intended_outcome":"The newly observed behavior is implemented.",
             "implementation_actions":["Reconcile the newly observed behavior."],
             "affected_paths_or_symbols":["src/Bar.kt"],
+            "required_verification":["Run the focused test."],
+            "depends_on":[],
+            "status":"pending"
+          }]
+        }]
+      }
+    }
+  }
+""".trimIndent()
+
+// An audit supplying generation 2 for AC-002 when durable state derives generation 1 for it.
+internal fun auditNonDerivedGapIdOutput(): String = auditCriterionRegenerationOutput(disposition = "")
+
+// The resolve-then-reopen shape: the same handoff calls AC-002 resolved and immediately re-reports it
+// under the next generation, which churns the identifier the non-progress detector keys on.
+internal fun auditResolvedThenReopenedGapOutput(): String = auditCriterionRegenerationOutput(
+  disposition = "\"prior_gap_dispositions\":[{\"gap_id\":\"ac-002-gap-1\",\"status\":\"resolved\"," +
+    "\"evidence\":{\"observation\":\"resolution_verified\",\"artifact_ref\":\"runtime-kotlin\"," +
+    "\"check_ref\":\"AC-002\"}}],",
+)
+
+// A first audit claiming a gap recurs when no durable ledger exists to have carried it.
+internal fun auditFirstIterationRecurringDispositionOutput(): String = auditGapsOutput().replace(
+  "\"audit_repair_plan\"",
+  "\"prior_gap_dispositions\":[{\"gap_id\":\"ac-002-gap-1\",\"status\":\"recurring\"," +
+    "\"evidence\":{\"observation\":\"recurrence_verified\",\"artifact_ref\":\"runtime-kotlin\"," +
+    "\"check_ref\":\"AC-002\"}}],\"audit_repair_plan\"",
+)
+
+private fun auditCriterionRegenerationOutput(disposition: String): String = """
+  {
+    "contract_version": "0.2",
+    "phase_id": "audit",
+    "status": "completed",
+    "summary": "Audit found unmet acceptance criteria.",
+    "verdict": "gaps_found",
+    "produced_outputs": {
+      "unmet_criteria": [{"acceptance_criterion_ref":"AC-002","message": "$AUDIT_GAP_MESSAGE"}],
+      $disposition
+      "audit_repair_plan": {
+        "contract_version":"0.2",
+        "gaps":[{
+          "gap_id":"ac-002-gap-2",
+          "acceptance_criterion_ref":"AC-002",
+          "acceptance_criterion_text":"The audit gap is repaired.",
+          "failure_evidence":{"observation":"required_behavior_absent","artifact_ref":"runtime-kotlin","check_ref":"AC-001"},
+          "diagnosis":"Implement and verify the missing behavior.",
+          "affected_boundary":"runtime application",
+          "repair_items":[{
+            "repair_item_id":"ac-002-gap-2-item-1",
+            "intended_outcome":"The missing behavior is implemented.",
+            "implementation_actions":["Reconcile the implementation."],
+            "affected_paths_or_symbols":["src/Foo.kt"],
             "required_verification":["Run the focused test."],
             "depends_on":[],
             "status":"pending"

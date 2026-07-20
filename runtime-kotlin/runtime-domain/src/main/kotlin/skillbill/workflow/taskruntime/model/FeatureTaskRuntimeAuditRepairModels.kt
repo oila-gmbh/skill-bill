@@ -1,5 +1,7 @@
 package skillbill.workflow.taskruntime.model
 
+import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_AUDIT_REPAIR_CONTRACT_VERSION
+
 data class FeatureTaskRuntimeAuditRepairPlan(
   val contractVersion: String,
   val gaps: List<FeatureTaskRuntimeAuditGap>,
@@ -29,14 +31,6 @@ data class FeatureTaskRuntimeAuditRepairPlan(
     }
     requireAcyclic(items)
     gaps.forEach { gap ->
-      require(GAP_ID.matches(gap.gapId)) {
-        "gap_id '${gap.gapId}' must be the stable criterion-generation identifier " +
-          "'<criterion-ref>-gap-<generation>' in canonical lowercase, for example " +
-          "'${gap.acceptanceCriterionRef.lowercase()}-gap-1'."
-      }
-      require(gap.gapId.startsWith("${gap.acceptanceCriterionRef.lowercase()}-gap-")) {
-        "gap_id '${gap.gapId}' must belong to acceptance criterion '${gap.acceptanceCriterionRef}'."
-      }
       gap.repairItems.forEachIndexed { index, item ->
         val expectedId = "${gap.gapId}-item-${index + 1}"
         require(item.repairItemId == expectedId) {
@@ -102,9 +96,13 @@ data class FeatureTaskRuntimeAuditGap(
 ) {
   init {
     requireNonBlank(gapId, "gap_id")
+    requireGapIdPattern(gapId)
     requireNonBlank(acceptanceCriterionRef, "acceptance_criterion_ref")
     require(ACCEPTANCE_CRITERION_REF.matches(acceptanceCriterionRef)) {
       "acceptance_criterion_ref '$acceptanceCriterionRef' must use canonical format 'AC-NNN'."
+    }
+    require(gapId.startsWith("${acceptanceCriterionRef.lowercase()}-gap-")) {
+      "gap_id '$gapId' must belong to acceptance criterion '$acceptanceCriterionRef'."
     }
     requireNonBlank(acceptanceCriterionText, "acceptance_criterion_text")
     requireNonBlank(diagnosis, "diagnosis")
@@ -132,10 +130,21 @@ data class FeatureTaskRuntimeEvidence(
     RECURRENCE_VERIFIED,
   }
 
+  // The base64url alphabet is a strict subset of the artifact-ref character class, so an unbounded ref is a
+  // durable channel for exactly the encoded source bodies the payload-exclusion rule forbids. The cap lives
+  // here rather than only in the YAML because repair_item_results and prior_gap_dispositions reach durable
+  // state through seams no schema validates. Pinned against the schema maxLength by
+  // FeatureTaskRuntimeAuditRepairSchemaParityTest.
   init {
+    require(artifactRef.length <= MAX_AUDIT_REPAIR_REF_LENGTH) {
+      "artifact_ref allows at most $MAX_AUDIT_REPAIR_REF_LENGTH characters, had ${artifactRef.length}."
+    }
     require(SAFE_ARTIFACT_REF.matches(artifactRef)) {
       "artifact_ref '$artifactRef' must be a bounded path or symbol reference such as " +
         "src/main/Example.kt or src/main/Example.kt:Example."
+    }
+    require(checkRef.length <= MAX_AUDIT_REPAIR_REF_LENGTH) {
+      "check_ref allows at most $MAX_AUDIT_REPAIR_REF_LENGTH characters, had ${checkRef.length}."
     }
     require(SAFE_CHECK_REF.matches(checkRef)) {
       "check_ref '$checkRef' must match AC-###, F-###, or a name ending in Test or Check, optionally followed " +
@@ -165,7 +174,7 @@ data class FeatureTaskRuntimeRepairItem(
     requireNonBlank(intendedOutcome, "intended_outcome")
     requireNonBlankList(implementationActions, "implementation_actions")
     requireCompactList(implementationActions, "implementation_actions", MAX_COMPACT_LIST_ITEMS)
-    require(affectedPathsOrSymbols.all(String::isNotBlank)) { "affected_paths_or_symbols entries must be nonblank." }
+    requireNonBlankList(affectedPathsOrSymbols, "affected_paths_or_symbols")
     requireCompactList(affectedPathsOrSymbols, "affected_paths_or_symbols", MAX_PATH_LIST_ITEMS)
     requireNonBlankList(requiredVerification, "required_verification")
     requireCompactList(requiredVerification, "required_verification", MAX_COMPACT_LIST_ITEMS)
@@ -225,24 +234,37 @@ data class FeatureTaskRuntimeUnresolvedGap(
 
 data class FeatureTaskRuntimeUnresolvedGapLedger(
   val unresolvedGaps: List<FeatureTaskRuntimeUnresolvedGap>,
+  /**
+   * Highest generation already closed for each acceptance criterion. The ledger itself carries only
+   * currently-unresolved gaps, so without this a criterion whose gap was closed leaves no trace of the
+   * generation it consumed and the next identifier is not derivable — which is what let an agent supply
+   * one instead.
+   */
+  val closedGenerationHighWaterMarks: Map<String, Int> = emptyMap(),
 ) {
   init {
     require(unresolvedGaps.size <= MAX_AUDIT_REPAIR_GAPS) {
       "Unresolved-gap ledger allows at most $MAX_AUDIT_REPAIR_GAPS gaps, had ${unresolvedGaps.size}."
     }
     requireUnique(unresolvedGaps.map { it.gapId }, "unresolved gap_id")
+    require(closedGenerationHighWaterMarks.size <= MAX_AUDIT_REPAIR_GAPS) {
+      "Closed-generation high-water marks allow at most $MAX_AUDIT_REPAIR_GAPS criteria, " +
+        "had ${closedGenerationHighWaterMarks.size}."
+    }
+    closedGenerationHighWaterMarks.forEach { (criterionRef, mark) ->
+      require(ACCEPTANCE_CRITERION_REF.matches(criterionRef)) {
+        "closed_generation_high_water_marks key '$criterionRef' must use canonical format 'AC-NNN'."
+      }
+      require(mark > 0) {
+        "closed_generation_high_water_marks['$criterionRef'] must be positive, was $mark."
+      }
+    }
   }
 
-  // The ledger carries only currently-unresolved gaps, so a criterion whose gap was closed leaves no
-  // trace of the generation it consumed. Reuse is decidable here; minting a later generation is not,
-  // and the durable per-criterion high-water mark has to come from the caller.
-  fun allocateGapId(criterionRef: String, closedGenerationHighWaterMark: Int = 0): String {
+  fun allocateGapId(criterionRef: String): String {
     requireNonBlank(criterionRef, "acceptance_criterion_ref")
-    require(closedGenerationHighWaterMark >= 0) {
-      "closed generation high-water mark must be non-negative, was $closedGenerationHighWaterMark."
-    }
     unresolvedGaps.firstOrNull { it.acceptanceCriterionRef == criterionRef }?.let { return it.gapId }
-    return "${criterionRef.lowercase()}-gap-${closedGenerationHighWaterMark + 1}"
+    return "${criterionRef.lowercase()}-gap-${(closedGenerationHighWaterMarks[criterionRef] ?: 0) + 1}"
   }
 }
 
@@ -253,7 +275,12 @@ data class FeatureTaskRuntimeUnresolvableRepairBlock(
 ) {
   init {
     requireNonBlank(gapId, "gap_id")
+    requireGapIdPattern(gapId)
     requireNonBlank(repairItemId, "repair_item_id")
+    require(REPAIR_ITEM_ID.matches(repairItemId)) {
+      "repair_item_id '$repairItemId' must be the stable ordered child '<gap-id>-item-<ordinal>', " +
+        "for example 'ac-005-gap-1-item-1'."
+    }
   }
 }
 
@@ -334,32 +361,6 @@ data class FeatureTaskRuntimeAuditRepairState(
   }
 }
 
-data class FeatureTaskRuntimeAuditRepairProgressDecision(
-  val blocked: Boolean,
-  val reason: String?,
-)
-
-fun detectAuditRepairNonProgress(
-  previousGapIds: Set<String>,
-  currentGapIds: Set<String>,
-  previousRepositoryFingerprint: String,
-  currentRepositoryFingerprint: String,
-  newlyResolvedRepairItemCount: Int,
-): FeatureTaskRuntimeAuditRepairProgressDecision {
-  val equivalentGaps = previousGapIds == currentGapIds
-  val repositoryUnchanged = previousRepositoryFingerprint == currentRepositoryFingerprint
-  val blocked = equivalentGaps && (repositoryUnchanged || newlyResolvedRepairItemCount == 0)
-  return FeatureTaskRuntimeAuditRepairProgressDecision(
-    blocked = blocked,
-    reason = if (blocked) {
-      "Audit repair made no progress: unresolved gap identities are unchanged and " +
-        if (repositoryUnchanged) "the repository fingerprint is unchanged." else "no repair item was newly resolved."
-    } else {
-      null
-    },
-  )
-}
-
 data class FeatureTaskRuntimePriorGapDisposition(
   val gapId: String,
   val status: Status,
@@ -368,6 +369,7 @@ data class FeatureTaskRuntimePriorGapDisposition(
   enum class Status { RESOLVED, RECURRING }
   init {
     requireNonBlank(gapId, "gap_id")
+    requireGapIdPattern(gapId)
     val expectedObservation = when (status) {
       Status.RESOLVED -> FeatureTaskRuntimeEvidence.Observation.RESOLUTION_VERIFIED
       Status.RECURRING -> FeatureTaskRuntimeEvidence.Observation.RECURRENCE_VERIFIED
@@ -405,9 +407,11 @@ data class FeatureTaskRuntimeAuditRepairProgress(
   }
 }
 
-const val AUDIT_REPAIR_CONTRACT_VERSION: String = "0.2"
+/** Domain-facing alias of the single contract-version source in runtime-contracts, never a second value. */
+const val AUDIT_REPAIR_CONTRACT_VERSION: String = FEATURE_TASK_RUNTIME_AUDIT_REPAIR_CONTRACT_VERSION
 const val FEATURE_TASK_RUNTIME_AUDIT_REPAIR_STATE_ARTIFACT_KEY: String = "feature_task_runtime_audit_repair_state"
 const val MAX_AUDIT_REPAIR_TEXT_LENGTH: Int = 2048
+const val MAX_AUDIT_REPAIR_REF_LENGTH: Int = 256
 const val MAX_AUDIT_REPAIR_GAPS: Int = 50
 const val MAX_AUDIT_REPAIR_ITEMS: Int = 100
 const val MAX_COMPACT_LIST_ITEMS: Int = 50
@@ -415,6 +419,16 @@ const val MAX_PATH_LIST_ITEMS: Int = 100
 const val MAX_REPOSITORY_FINGERPRINT_LENGTH: Int = 256
 
 private val GAP_ID = Regex("ac-[0-9]{3,}-gap-[1-9][0-9]*")
+private val REPAIR_ITEM_ID = Regex("ac-[0-9]{3,}-gap-[1-9][0-9]*-item-[1-9][0-9]*")
+
+// Dispositions and unresolvable-repair blocks name gaps that must reconcile against the ledger by
+// identity. A free-form id there silently forks the identity the plan and the ledger agree on.
+private fun requireGapIdPattern(gapId: String) {
+  require(GAP_ID.matches(gapId)) {
+    "gap_id '$gapId' must be the stable criterion-generation identifier '<criterion-ref>-gap-<generation>' " +
+      "in canonical lowercase, for example 'ac-005-gap-1'."
+  }
+}
 
 // Criterion refs are canonically uppercase (`AC-005`) while the identifiers derived from them are
 // canonically lowercase, so an agent transcribing a ref into a gap_id emits a case the domain would

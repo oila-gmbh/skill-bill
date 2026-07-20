@@ -82,10 +82,8 @@ internal fun auditVerificationSignalGateReason(phaseId: String, outputMap: Map<S
   FeatureTaskRuntimeOutputVerification.auditGapPayloadError(outputMap)?.let { return it }
   val hasVerdict = (outputMap[FeatureTaskRuntimeVerificationSignalKeys.VERDICT] as? String)?.isNotBlank() == true
   val producedOutputs = outputMap["produced_outputs"] as? Map<*, *>
-  val hasCriteriaArray = listOf(
-    FeatureTaskRuntimeVerificationSignalKeys.AUDIT_UNMET_CRITERIA,
-    FeatureTaskRuntimeVerificationSignalKeys.AUDIT_FAILING_CRITERIA_ALIAS,
-  ).any { key -> producedOutputs?.containsKey(key) == true && producedOutputs[key] is List<*> }
+  val criteriaKey = FeatureTaskRuntimeVerificationSignalKeys.AUDIT_UNMET_CRITERIA
+  val hasCriteriaArray = producedOutputs?.containsKey(criteriaKey) == true && producedOutputs[criteriaKey] is List<*>
   return if (hasVerdict || hasCriteriaArray) {
     null
   } else {

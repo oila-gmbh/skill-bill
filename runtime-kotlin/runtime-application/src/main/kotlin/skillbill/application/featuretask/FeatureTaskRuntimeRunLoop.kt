@@ -28,6 +28,7 @@ import skillbill.workflow.model.SpecSource
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeTransitionFunction
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairGapIdentities
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairPlan
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairState
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeBackwardEdge
@@ -1333,8 +1334,14 @@ internal class FeatureTaskRuntimeRunLoop(
       .mapTo(linkedSetOf()) { it.repairItemId }
     val resolvedCount = prior.repairItemResults.count { it.repairItemId in latestPlanItemIds }
     return detectAuditRepairNonProgress(
-      previousGapIds = prior.unresolvedGapLedger.unresolvedGaps.mapTo(linkedSetOf()) { it.gapId },
-      currentGapIds = currentGapIds,
+      previous = FeatureTaskRuntimeAuditRepairGapIdentities(
+        gapIds = prior.unresolvedGapLedger.unresolvedGaps.mapTo(linkedSetOf()) { it.gapId },
+        criterionRefs = prior.unresolvedGapLedger.unresolvedGaps.mapTo(linkedSetOf()) { it.acceptanceCriterionRef },
+      ),
+      current = FeatureTaskRuntimeAuditRepairGapIdentities(
+        gapIds = currentGapIds,
+        criterionRefs = currentPlan?.gaps.orEmpty().mapTo(linkedSetOf()) { it.acceptanceCriterionRef },
+      ),
       previousRepositoryFingerprint = previousFingerprint,
       currentRepositoryFingerprint = currentFingerprint,
       newlyResolvedRepairItemCount = resolvedCount,

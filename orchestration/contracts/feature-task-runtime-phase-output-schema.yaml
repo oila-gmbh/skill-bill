@@ -168,6 +168,21 @@ allOf:
     then:
       properties:
         verdict: { enum: [satisfied, gaps_found] }
+  # `failing_criteria` was once an accepted alias of `unmet_criteria`. The verdict readers honored it
+  # while the repair-plan gate keyed only on the canonical name, so an audit spelling it that way was
+  # classified `gaps_found` and reached the audit_gap edge with no plan ever validated. The criteria
+  # signal has exactly one representation at both layers; the Kotlin seam rejects the alias with the
+  # same canonical-key message.
+  - if:
+      properties:
+        phase_id: { const: audit }
+      required: [phase_id]
+    then:
+      properties:
+        produced_outputs:
+          type: object
+          not:
+            required: [failing_criteria]
   - if:
       properties:
         phase_id: { const: audit }

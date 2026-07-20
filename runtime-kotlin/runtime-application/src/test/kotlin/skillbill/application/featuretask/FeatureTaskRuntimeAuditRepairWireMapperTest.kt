@@ -17,6 +17,7 @@ import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 
 class FeatureTaskRuntimeAuditRepairWireMapperTest {
   @Test
@@ -200,13 +201,19 @@ class FeatureTaskRuntimeAuditRepairWireMapperTest {
     }
   }
 
+  // The durable audit-repair state is Kotlin-governed: no YAML schema, no coherence checks, no parity
+  // test govern it, so it must not advertise a contract_version that implies otherwise.
   @Test
-  fun `durable state rejects an incompatible contract version`() {
-    val malformed = auditRepairStateToWire(state()).toMutableMap().apply { put("contract_version", "9.9") }
+  fun `durable state carries no contract version and rejects one`() {
+    val encoded = auditRepairStateToWire(state())
 
-    assertFailsWith<InvalidWorkflowStateSchemaError> {
-      auditRepairStateFromWire(malformed, "audit_repair_state")
+    assertFalse(encoded.containsKey("contract_version"))
+    assertFalse((encoded.getValue("unresolved_gap_ledger") as Map<*, *>).containsKey("contract_version"))
+    val versioned = encoded.toMutableMap().apply { put("contract_version", AUDIT_REPAIR_CONTRACT_VERSION) }
+    val error = assertFailsWith<InvalidWorkflowStateSchemaError> {
+      auditRepairStateFromWire(versioned, "audit_repair_state")
     }
+    assertContains(error.message.orEmpty(), "contract_version")
   }
 
   @Test
@@ -227,10 +234,10 @@ class FeatureTaskRuntimeAuditRepairWireMapperTest {
   fun `durable ledger rejects gaps absent from accepted plan history`() {
     val malformed = auditRepairStateToWire(state()).toMutableMap()
     malformed["unresolved_gap_ledger"] = mapOf(
-      "contract_version" to AUDIT_REPAIR_CONTRACT_VERSION,
       "gaps" to listOf(
         mapOf("gap_id" to "ac-002-gap-1", "acceptance_criterion_ref" to "AC-002", "generation" to 1),
       ),
+      "closed_generation_high_water_marks" to emptyMap<String, Int>(),
     )
 
     val error = assertFailsWith<InvalidWorkflowStateSchemaError> {
@@ -243,10 +250,10 @@ class FeatureTaskRuntimeAuditRepairWireMapperTest {
   fun `durable ledger rejects criterion identity that differs from accepted plan history`() {
     val malformed = auditRepairStateToWire(state()).toMutableMap()
     malformed["unresolved_gap_ledger"] = mapOf(
-      "contract_version" to AUDIT_REPAIR_CONTRACT_VERSION,
       "gaps" to listOf(
         mapOf("gap_id" to "ac-002-gap-1", "acceptance_criterion_ref" to "AC-002", "generation" to 1),
       ),
+      "closed_generation_high_water_marks" to emptyMap<String, Int>(),
     )
     val accepted = ((malformed.getValue("accepted_plans") as List<*>).single() as Map<*, *>).toStringKeyMap()
     val acceptedGap = ((accepted.getValue("gaps") as List<*>).single() as Map<*, *>).toMutableMap().apply {
@@ -335,6 +342,32 @@ class FeatureTaskRuntimeAuditRepairWireMapperTest {
     }
     assertFailsWith<InvalidWorkflowStateSchemaError> {
       auditRepairStateFromWire(malformedFingerprint, "audit_repair_state")
+    }
+  }
+
+  // No schema validates produced_outputs.repair_item_results, so the length bound has to hold in the
+  // domain: the base64url alphabet is a legal artifact_ref, making an unbounded ref a durable channel for
+  // an encoded source body.
+  @Test
+  fun `oversized evidence references are rejected through the unvalidated repair result seam`() {
+    val oversizedRef = "a".repeat(257)
+
+    listOf(
+      { evidence(artifactRef = oversizedRef) },
+      { evidence(checkRef = "${"a".repeat(253)}Test") },
+    ).forEach { construct ->
+      val error = assertFailsWith<IllegalArgumentException> { construct() }
+      assertContains(error.message.orEmpty(), "at most 256 characters")
+    }
+
+    val wire = repairItemResultWire().toStringKeyMap()
+    wire["result_evidence"] = mapOf(
+      "observation" to "fix_verified",
+      "artifact_ref" to oversizedRef,
+      "check_ref" to "ExampleTest",
+    )
+    assertFailsWith<InvalidWorkflowStateSchemaError> {
+      repairItemResultFromWire(wire, "implement.repair_item_results[0]")
     }
   }
 
