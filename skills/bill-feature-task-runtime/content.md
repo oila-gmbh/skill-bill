@@ -159,6 +159,14 @@ checked: `satisfied` when every criterion is met, or `gaps_found` when one or
 more remain unmet. The runtime evaluates that verdict — prose alone cannot
 advance past an unmet acceptance criterion.
 
+Audit gaps are restricted to concrete defects in production behavior or
+production implementation. Missing tests, weak tests, incomplete coverage,
+unrealistic fixtures, insufficient assertions, and every other test-only concern
+are never audit gaps. Audit does not assess test adequacy, cite test files as the
+affected boundary, or create repair items that add or change tests. Test execution
+and test failures belong to validation. When no production defect is evidenced,
+audit emits `satisfied` even if test coverage is absent or inadequate.
+
 - On `satisfied`, the run advances to `validate`.
 - On `gaps_found`, the runtime takes a backward edge re-entering `implement`,
   then `review`, then `audit`. The implementation handoff contains the immutable

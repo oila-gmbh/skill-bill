@@ -3,14 +3,14 @@ contract_version: "0.5"
 issue_key: "SKILL-131"
 feature_name: "single-pass-audit-repair"
 parent_spec_path: ".feature-specs/SKILL-131-single-pass-audit-repair/spec.md"
-status: "blocked"
+status: "in_progress"
 execution_model: "same_branch_commit_per_subtask"
 base_branch: "main"
 feature_branch: "feat/SKILL-131-single-pass-audit-repair"
 stack_branches: []
 current_subtask_intent:
   subtask_id: 2
-  action: "blocked"
+  action: "resume"
 subtasks:
 - id: 1
   name: "Audit repair plan contract"
@@ -28,12 +28,11 @@ subtasks:
 - id: 2
   name: "Runtime repair and reconciliation"
   spec_path: ".feature-specs/SKILL-131-single-pass-audit-repair/spec_subtask_2_runtime_reconciliation.md"
-  status: "blocked"
+  status: "in_progress"
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260720-084437-h1pr"
-  blocked_reason: "Feature-task-runtime phase 'review' agent exited with non-zero\
-    \ status 1.\nYou've hit your session limit · resets 12:40pm (Europe/Berlin)"
+  blocked_reason: null
   last_resumable_step: "review"
   linear_issue_id: null
   finalizing_agent_id: null

@@ -274,7 +274,13 @@ object FeatureTaskRuntimePhasePromptComposer {
           "      AND/OR a top-level \"$verdict\" of \"satisfied\" or \"gaps_found\". Output carrying NEITHER signal\n" +
           "      fails the schema gate loudly — a prose verdict (e.g. a Markdown table) cannot advance the gate.\n" +
           "      A gaps_found result MUST include one schema-valid audit_repair_plan covering every entry in\n" +
-          "      unmet_criteria; use concrete references such as src/main/Example.kt:Example and ExampleTest." +
+          "      unmet_criteria; use concrete production references such as src/main/Example.kt:Example.\n" +
+          "      TEST EXCLUSION: missing tests, weak tests, incomplete test coverage, unrealistic fixtures,\n" +
+          "      insufficient assertions, and any other test-only concern are NEVER audit gaps. Do not inspect\n" +
+          "      or assess test adequacy, cite test files as an affected boundary, or create repair items that\n" +
+          "      add or change tests. Validation owns test execution and failures. Audit may report only a\n" +
+          "      concrete defect in production behavior or production implementation; when no such defect is\n" +
+          "      evidenced, emit satisfied even if test coverage is absent or inadequate." +
           auditDispositionAddendum(briefing.unresolvedAuditGapIds)
       else -> ""
     }
@@ -463,7 +469,9 @@ object FeatureTaskRuntimePhasePromptComposer {
       "Review the implemented changes at the encoded review scope against the acceptance criteria " +
       "and report defects with concrete file references.",
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT to
-      "Run the encoded completeness audit ceremony and report any acceptance-criterion gaps.",
+      "Run the encoded completeness audit ceremony and report production-behavior or production-implementation " +
+      "acceptance-criterion gaps only. Never report test adequacy, coverage, fixtures, assertions, or other " +
+      "test-only concerns as audit gaps.",
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE to
       "Run the repository validation gate relevant to the change. Fix validation findings at " +
       "their root cause and rerun the gate until it passes; validation findings are repair work, " +

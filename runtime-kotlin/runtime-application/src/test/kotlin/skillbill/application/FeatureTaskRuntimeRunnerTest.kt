@@ -3520,9 +3520,9 @@ internal fun runnerHarness(
   validator: FeatureTaskRuntimePhaseOutputValidator = AlwaysValidValidator,
   agentAssignment: FeatureTaskRuntimeAgentAssignment = FeatureTaskRuntimeAgentAssignment(),
   runtimeConfig: RuntimeHarnessConfig = RuntimeHarnessConfig(),
-  specScratchStore: RecordingSpecScratchStore = RecordingSpecScratchStore(),
   repository: InMemoryRuntimeWorkflowRepository = InMemoryRuntimeWorkflowRepository(),
 ): RunnerHarness {
+  val specScratchStore = RecordingSpecScratchStore()
   val database = RuntimeFakeDatabaseSessionFactory(repository)
   val recorder = FeatureTaskRuntimePhaseRecorder(database, NoopWorkflowSnapshotValidator)
   val goalContinuationRecorder = FeatureTaskRuntimeGoalContinuationRecorder(database, NoopWorkflowSnapshotValidator)
@@ -4104,6 +4104,28 @@ private class ThrowingValidator(private val failPhases: Set<String>) : FeatureTa
 
 internal object AlwaysValidValidator : FeatureTaskRuntimePhaseOutputValidator {
   override fun validatePhaseOutputText(phaseOutputText: String, sourceLabel: String) = Unit
+}
+
+internal object CanonicalWrapperTestValidator : FeatureTaskRuntimePhaseOutputValidator {
+  private val fencedBlock = Regex("```[ \\t]*[A-Za-z0-9_-]*\\r?\\n(.*?)```", RegexOption.DOT_MATCHES_ALL)
+
+  override fun validatePhaseOutputText(phaseOutputText: String, sourceLabel: String) {
+    validateAndReadPhaseOutput(phaseOutputText, sourceLabel)
+  }
+
+  override fun validateAndReadPhaseOutput(phaseOutputText: String, sourceLabel: String): Map<String, Any?> {
+    val trimmed = phaseOutputText.trim()
+    val candidate = fencedBlock.findAll(trimmed).lastOrNull()?.groupValues?.get(1)?.trim()
+      ?: trimmed.substring(trimmed.indexOf('{'), trimmed.lastIndexOf('}') + 1)
+    val envelope = skillbill.contracts.JsonSupport.parseObjectOrNull(candidate)
+      ?.let(skillbill.contracts.JsonSupport::jsonElementToValue)
+      ?.let(skillbill.contracts.JsonSupport::anyToStringAnyMap)
+      ?: throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(sourceLabel, "test output is not an object")
+    if (envelope["phase_id"] != sourceLabel) {
+      throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(sourceLabel, "phase_id does not match")
+    }
+    return envelope
+  }
 }
 
 // Records every checkout, with configurable currentBranch/checkoutBranch results. The default

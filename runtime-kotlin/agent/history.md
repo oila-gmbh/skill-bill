@@ -1,3 +1,15 @@
+## [2026-07-20] SKILL-131 runtime repair and reconciliation (subtask 2)
+Areas: runtime-kotlin/runtime-application, skills/bill-feature-task-runtime, .feature-specs/SKILL-131-single-pass-audit-repair
+- Audit-gap implementation receives the immutable initial preplan and plan, current worktree, and complete durable repair plan, then attempts every runnable item in dependency order with exact terminal result/evidence coverage.
+- Missing, duplicate, deferred, unresolved, or mismatched repair results block advancement with durable carried identifiers; review and re-audit preserve the repair ledger instead of implicitly satisfying it.
+- Re-audit classifies carried gaps as resolved or recurring with stable identities, assigns fresh identities only to new production defects, and blocks equivalent non-progressing gap sets. reusable
+- Pattern: normalize phase output once and pass the same canonical object through validation, verdict selection, persistence, transition selection, and handoff across bare, fenced, prefixed, and trailing-prose JSON wrappers. reusable
+- Standalone and goal-child execution now share repair, resume, recurrence, review-composition, and canonical-output behavior; crash fixtures cover durable missing and duplicate repository effects through both entry paths.
+- Audit guidance excludes test-only adequacy concerns from repair plans; validation remains responsible for executing tests and repairing concrete failures.
+- Validation cleanup removed an application-test dependency on infra-fs and refactored the runtime test harness without suppressions; no breaking external contract or feature flag.
+Feature flag: N/A
+Acceptance criteria: subtask 2: 7/7 implemented
+
 ## [2026-07-20] SKILL-131 single-pass audit repair (subtask 1)
 Areas: runtime-kotlin/runtime-{application,cli,domain,infra-fs,infra-sqlite,mcp}, orchestration/contracts, docs, skills/bill-feature-task-runtime
 - A `gaps_found` audit must carry a schema-valid `audit_repair_plan` (contract `0.2`, `feature-task-runtime-audit-repair-plan-schema.yaml`): one gap per unmet criterion with evidence, diagnosis, boundary, and dependency-ordered repair items; the durable plan must be readable and identical before the `audit_gap` edge is taken, and audit-gap resume recovers it from durable state when a blocked attempt erased the phase record.

@@ -300,9 +300,33 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     assertContains(reviewPrompt, "\"findings\" array", false, "review names the findings signal")
     assertContains(reviewPrompt, "\"approved\" or \"changes_requested\"", false, "review names the verdict values")
     assertContains(auditPrompt, "VERIFYING phase", false, "audit names itself a verifying phase")
-    assertContains(auditPrompt, "\"unmet_criteria\" array", false, "audit names the unmet_criteria signal")
-    assertContains(auditPrompt, "\"satisfied\" or \"gaps_found\"", false, "audit names the verdict values")
+    assertContains(
+      auditPrompt,
+      "\"unmet_criteria\" array",
+      false,
+      "audit names the unmet_criteria signal",
+    )
+    assertContains(
+      auditPrompt,
+      "\"satisfied\" or \"gaps_found\"",
+      false,
+      "audit names the verdict values",
+    )
     assertContains(auditPrompt, "\"verdict\": optional top-level string", false, "top-level verdict is documented")
+    assertContains(auditPrompt, "TEST EXCLUSION", false, "audit makes the test-only exclusion explicit")
+    assertContains(auditPrompt, "NEVER audit gaps", false, "audit rejects test-only gaps")
+    assertContains(
+      auditPrompt,
+      "Validation owns test execution and failures",
+      false,
+      "audit routes tests to validation",
+    )
+    assertContains(
+      auditPrompt,
+      "production behavior or production implementation",
+      false,
+      "audit scopes gaps to production",
+    )
   }
 
   @Test

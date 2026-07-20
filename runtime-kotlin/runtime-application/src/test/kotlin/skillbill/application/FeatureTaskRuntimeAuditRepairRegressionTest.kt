@@ -1,7 +1,6 @@
 package skillbill.application
 
 import skillbill.application.model.FeatureTaskRuntimeRunReport
-import skillbill.infrastructure.fs.FeatureTaskRuntimePhaseOutputValidatorAdapter
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import kotlin.test.Test
 import kotlin.test.assertContains
@@ -279,7 +278,7 @@ private fun runAuditGapLoop(wrap: (String) -> String): NormalizedRunObservation 
         ),
       )
     },
-    validator = FeatureTaskRuntimePhaseOutputValidatorAdapter(),
+    validator = CanonicalWrapperTestValidator,
   )
 
   assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))

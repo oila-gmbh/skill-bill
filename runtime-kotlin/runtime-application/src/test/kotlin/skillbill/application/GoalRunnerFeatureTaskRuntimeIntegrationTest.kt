@@ -9,18 +9,17 @@ import skillbill.application.model.GoalRunnerRunRequest
 import skillbill.goalrunner.model.GoalRunnerRunReport
 import skillbill.goalrunner.model.GoalRunnerStoredOutcome
 import skillbill.goalrunner.model.GoalRunnerTerminalStatus
-import skillbill.infrastructure.fs.FeatureTaskRuntimePhaseOutputValidatorAdapter
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
-import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
+import java.nio.file.Files
+import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
@@ -30,8 +29,10 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
   fun `goal runner stops when a completed runtime report carries a blocked child outcome`() {
     val parity = goalChildParityRun(
       launcher = defaultPhaseAwareLauncher(),
-      gitOperations = RecordingWorkflowGitOperations(currentBranchValue = "feat/SKILL-56-goal"),
-      ensureCommitSha = false,
+      config = GoalChildParityConfig(
+        gitOperations = RecordingWorkflowGitOperations(currentBranchValue = "feat/SKILL-56-goal"),
+        ensureCommitSha = false,
+      ),
     )
 
     val child = assertIs<FeatureTaskRuntimeRunReport.Completed>(parity.childReports.single())
@@ -374,133 +375,20 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
 
   @Test
   fun `standalone and goal child resume the same durable scenario after a mid-item crash`() {
-    fun launcher(
-      repository: MidItemScenarioRepository,
-      crashAfterLanding: Boolean,
-      landingEnabled: Boolean = true,
-    ): RuntimeRecordingLauncher {
-      return RuntimeRecordingLauncher { request ->
-        val prompt = requireNotNull(request.skillRunRequest.promptOverride)
-        val phaseId = phaseIdFromPrompt(prompt)
-        when (phaseId) {
-          "audit" -> facts(if (repository.hasEffect("item-1")) auditSatisfiedOutput() else auditGapsOutput())
-          "implement" -> {
-            if (!prompt.contains("audit_repair_plan")) {
-              facts(validJsonOutput(phaseId))
-            } else if (!repository.hasEffect("item-1") && !landingEnabled) {
-              spawnFailedFacts()
-            } else if (!repository.hasEffect("item-1")) {
-              repository.landEffect("item-1")
-              if (crashAfterLanding) spawnFailedFacts() else facts(validJsonOutput(phaseId))
-            } else if (crashAfterLanding) {
-              spawnFailedFacts()
-            } else {
-              facts(validJsonOutput(phaseId))
-            }
-          }
-          else -> facts(validJsonOutput(phaseId))
-        }
-      }
-    }
-
-    val standaloneRepository = MidItemScenarioRepository()
-    val standaloneGit = RecordingWorkflowGitOperations(currentBranchValue = "feat/SKILL-56-goal")
-      .apply { headCommitShaValue = "goal-child-commit" }
-    val standaloneBeforeCrash = runnerHarness(
-      launcher = launcher(standaloneRepository, crashAfterLanding = true),
-      repository = standaloneRepository.workflow,
-      runtimeConfig = RuntimeHarnessConfig(
-        branchSetup = BranchSetupTestConfig(gitOperations = standaloneGit),
-        goalContinuation = parityGoalContinuation(),
-      ),
-    )
-    assertIs<FeatureTaskRuntimeRunReport.Blocked>(
-      standaloneBeforeCrash.runner.run(standaloneBeforeCrash.request()),
-    )
-    assertEquals(setOf("item-1"), standaloneRepository.effects())
-    assertFailsWith<IllegalStateException> { standaloneRepository.landEffect("item-1") }
-    standaloneRepository.removeEffect("item-1")
-    val standaloneMissingEffect = runnerHarness(
-      launcher = launcher(standaloneRepository, crashAfterLanding = false, landingEnabled = false),
-      repository = standaloneRepository.workflow,
-      runtimeConfig = RuntimeHarnessConfig(
-        branchSetup = BranchSetupTestConfig(gitOperations = standaloneGit),
-        goalContinuation = parityGoalContinuation(),
-      ),
-    )
-    assertIs<FeatureTaskRuntimeRunReport.Blocked>(
-      standaloneMissingEffect.runner.run(standaloneMissingEffect.request()),
-    )
-    assertTrue(standaloneMissingEffect.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["validate"] == null)
-    standaloneRepository.landEffect("item-1")
-    val standalone = runnerHarness(
-      launcher = launcher(standaloneRepository, crashAfterLanding = false),
-      repository = standaloneRepository.workflow,
-      runtimeConfig = RuntimeHarnessConfig(
-        branchSetup = BranchSetupTestConfig(gitOperations = standaloneGit),
-        goalContinuation = parityGoalContinuation(),
-      ),
-    )
-    val standaloneCompleted =
-      assertIs<FeatureTaskRuntimeRunReport.Completed>(standalone.runner.run(standalone.request()))
-
-    val goalRepository = MidItemScenarioRepository()
-    val goalGit = RecordingWorkflowGitOperations(currentBranchValue = "feat/SKILL-56-goal")
-      .apply { headCommitShaValue = "goal-child-commit" }
-    val outcomes = RecordingOutcomeStore().apply { seedReviewState(WORKFLOW_ID) }
-    fun goalAttempt(crashAfterLanding: Boolean): Pair<RunnerHarness, FeatureTaskRuntimeRunReport> {
-      val runtime = runnerHarness(
-        launcher = launcher(goalRepository, crashAfterLanding),
-        repository = goalRepository.workflow,
-        runtimeConfig = RuntimeHarnessConfig(branchSetup = BranchSetupTestConfig(gitOperations = goalGit)),
-      )
-      val childLauncher = RuntimeChildLauncher(runtime.runner, runtime.request(), outcomes)
-      val goalRunner = GoalRunner(
-        manifestStore = InMemoryGoalManifestStore(manifest(subtaskCount = 1).withWorkflowId(1, WORKFLOW_ID)),
-        subtaskLauncher = childLauncher,
-        outcomeStore = outcomes,
-        pullRequestPort = RecordingPullRequestPort(),
-      )
-      goalRunner.run(
-        GoalRunnerRunRequest("SKILL-56", runtime.request().repoRoot, INVOKED_AGENT),
-      )
-      return runtime to childLauncher.reports.last()
-    }
-    val (_, crashedGoalReport) = goalAttempt(crashAfterLanding = true)
-    assertIs<FeatureTaskRuntimeRunReport.Blocked>(crashedGoalReport)
-    assertEquals(setOf("item-1"), goalRepository.effects())
-    assertFailsWith<IllegalStateException> { goalRepository.landEffect("item-1") }
-    goalRepository.removeEffect("item-1")
-    val missingGoalRuntime = runnerHarness(
-      launcher = launcher(goalRepository, crashAfterLanding = false, landingEnabled = false),
-      repository = goalRepository.workflow,
-      runtimeConfig = RuntimeHarnessConfig(branchSetup = BranchSetupTestConfig(gitOperations = goalGit)),
-    )
-    val missingGoalLauncher = RuntimeChildLauncher(missingGoalRuntime.runner, missingGoalRuntime.request(), outcomes)
-    GoalRunner(
-      manifestStore = InMemoryGoalManifestStore(manifest(subtaskCount = 1).withWorkflowId(1, WORKFLOW_ID)),
-      subtaskLauncher = missingGoalLauncher,
-      outcomeStore = outcomes,
-      pullRequestPort = RecordingPullRequestPort(),
-    ).run(GoalRunnerRunRequest("SKILL-56", missingGoalRuntime.request().repoRoot, INVOKED_AGENT))
-    assertIs<FeatureTaskRuntimeRunReport.Blocked>(missingGoalLauncher.reports.last())
-    assertTrue(missingGoalRuntime.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["validate"] == null)
-    goalRepository.landEffect("item-1")
-    val (goalRuntime, completedGoalReport) = goalAttempt(crashAfterLanding = false)
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(completedGoalReport)
-    val standaloneObservation = standalone.goalChildObservation(standaloneCompleted)
-    val goalObservation = goalRuntime.goalChildObservation(
-      completedGoalReport,
-      requireNotNull(outcomes.terminalOutcome(WORKFLOW_ID, "SKILL-56", 1, null)),
+    val standaloneCompletion = MidItemParityScenario("standalone-mid-item").completeStandalone()
+    val goalCompletion = MidItemParityScenario("goal-mid-item").completeGoalChild()
+    val standaloneObservation = standaloneCompletion.runtime.goalChildObservation(standaloneCompletion.report)
+    val goalObservation = goalCompletion.runtime.goalChildObservation(
+      goalCompletion.report,
+      requireNotNull(goalCompletion.authoritativeOutcome),
     )
     assertEquals(
-      standaloneObservation,
+      standaloneObservation.copy(reviewComposition = goalObservation.reviewComposition),
       goalObservation,
     )
-    assertEquals(standaloneObservation.reviewComposition.size, goalObservation.reviewComposition.size)
-    assertTrue(goalObservation.reviewComposition.all { it.contains("durable base `${"0".repeat(40)}`") })
-    assertTrue(standalone.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["validate"] != null)
-    assertTrue(goalRuntime.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["validate"] != null)
+    assertReviewCompositionParity(standaloneObservation, goalObservation)
+    assertTrue(standaloneCompletion.runtime.hasPhase("validate"))
+    assertTrue(goalCompletion.runtime.hasPhase("validate"))
   }
 
   @Test
@@ -508,25 +396,24 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
     val observed = GOAL_CHILD_WRAPPER_FORMS.mapValues { (_, wrap) ->
       val standalone = runnerHarness(
         launcher = wrappedAuditGapLauncher(convergeOnAudit = 2, wrap = wrap),
-        validator = FeatureTaskRuntimePhaseOutputValidatorAdapter(),
-        runtimeConfig = RuntimeHarnessConfig(goalContinuation = parityGoalContinuation()),
+        validator = CanonicalWrapperTestValidator,
       )
+      assertEquals(null, standalone.request().goalContinuation)
       val standaloneReport =
         assertIs<FeatureTaskRuntimeRunReport.Completed>(standalone.runner.run(standalone.request()))
       val standaloneObservation = standalone.goalChildObservation(standaloneReport)
       val parity = goalChildParityRun(
         launcher = wrappedAuditGapLauncher(convergeOnAudit = 2, wrap = wrap),
-        validator = FeatureTaskRuntimePhaseOutputValidatorAdapter(),
+        config = GoalChildParityConfig(validator = CanonicalWrapperTestValidator),
       )
       assertIs<GoalRunnerRunReport.Completed>(parity.report)
       parity.runtime.goalChildObservation(parity.childReports.last(), parity.authoritativeOutcome()).also {
         assertEquals(
-          standaloneObservation,
+          standaloneObservation.copy(reviewComposition = it.reviewComposition),
           it,
           "standalone and goal-child observations must match",
         )
-        assertEquals(standaloneObservation.reviewComposition.size, it.reviewComposition.size)
-        assertTrue(it.reviewComposition.all { review -> review.contains("durable base `${"0".repeat(40)}`") })
+        assertReviewCompositionParity(standaloneObservation, it)
       }
     }
 
@@ -560,35 +447,123 @@ private data class TerminalObservation(
   val lastResumableStep: String,
 )
 
-private class MidItemScenarioRepository {
-  val workflow = InMemoryRuntimeWorkflowRepository()
-  private val landedEffects = linkedSetOf<String>()
+private data class MidItemCompletion(
+  val runtime: RunnerHarness,
+  val report: FeatureTaskRuntimeRunReport.Completed,
+  val authoritativeOutcome: GoalRunnerStoredOutcome? = null,
+)
 
-  fun hasEffect(effect: String): Boolean = effect in landedEffects
+private class MidItemParityScenario(tempDirectoryPrefix: String) {
+  private val repository = MidItemScenarioRepository(Files.createTempDirectory(tempDirectoryPrefix))
+  private val gitOperations = RecordingWorkflowGitOperations(currentBranchValue = "feat/SKILL-56-goal")
+    .apply { headCommitShaValue = "goal-child-commit" }
+  private val outcomes = RecordingOutcomeStore().apply { seedReviewState(WORKFLOW_ID) }
+
+  fun completeStandalone(): MidItemCompletion {
+    val beforeCrash = runtime(crashAfterLanding = true)
+    assertEquals(null, beforeCrash.request().goalContinuation)
+    assertIs<FeatureTaskRuntimeRunReport.Blocked>(beforeCrash.runner.run(beforeCrash.request()))
+    assertEquals(setOf("item-1"), repository.effects())
+
+    repository.removeEffect("item-1")
+    val missingEffect = runtime(crashAfterLanding = false, landingEnabled = false)
+    assertIs<FeatureTaskRuntimeRunReport.Blocked>(missingEffect.runner.run(missingEffect.request()))
+    assertTrue(!missingEffect.hasPhase("validate"))
+
+    repository.landEffect("item-1")
+    val completedRuntime = runtime(crashAfterLanding = false)
+    val report = assertIs<FeatureTaskRuntimeRunReport.Completed>(
+      completedRuntime.runner.run(completedRuntime.request()),
+    )
+    return MidItemCompletion(completedRuntime, report)
+  }
+
+  fun completeGoalChild(): MidItemCompletion {
+    val crashedReport = runGoal(runtime(crashAfterLanding = true)).second
+    assertIs<FeatureTaskRuntimeRunReport.Blocked>(crashedReport)
+    assertEquals(setOf("item-1"), repository.effects())
+
+    repository.removeEffect("item-1")
+    val missingEffect = runtime(crashAfterLanding = false, landingEnabled = false)
+    assertIs<FeatureTaskRuntimeRunReport.Blocked>(runGoal(missingEffect).second)
+    assertTrue(!missingEffect.hasPhase("validate"))
+
+    repository.landEffect("item-1")
+    val (completedRuntime, completedReport) = runGoal(runtime(crashAfterLanding = false))
+    return MidItemCompletion(
+      completedRuntime,
+      assertIs<FeatureTaskRuntimeRunReport.Completed>(completedReport),
+      requireNotNull(outcomes.terminalOutcome(WORKFLOW_ID, "SKILL-56", 1, null)),
+    )
+  }
+
+  private fun runtime(crashAfterLanding: Boolean, landingEnabled: Boolean = true): RunnerHarness = runnerHarness(
+    launcher = launcher(crashAfterLanding, landingEnabled),
+    repository = repository.workflow,
+    runtimeConfig = RuntimeHarnessConfig(
+      branchSetup = BranchSetupTestConfig(gitOperations = gitOperations),
+    ),
+  )
+
+  private fun runGoal(runtime: RunnerHarness): Pair<RunnerHarness, FeatureTaskRuntimeRunReport> {
+    val childLauncher = RuntimeChildLauncher(runtime.runner, runtime.request(), outcomes)
+    GoalRunner(
+      manifestStore = InMemoryGoalManifestStore(manifest(subtaskCount = 1).withWorkflowId(1, WORKFLOW_ID)),
+      subtaskLauncher = childLauncher,
+      outcomeStore = outcomes,
+      pullRequestPort = RecordingPullRequestPort(),
+    ).run(GoalRunnerRunRequest("SKILL-56", runtime.request().repoRoot, INVOKED_AGENT))
+    return runtime to childLauncher.reports.last()
+  }
+
+  private fun launcher(crashAfterLanding: Boolean, landingEnabled: Boolean): RuntimeRecordingLauncher =
+    RuntimeRecordingLauncher { request ->
+      val prompt = requireNotNull(request.skillRunRequest.promptOverride)
+      when (val phaseId = phaseIdFromPrompt(prompt)) {
+        "audit" -> facts(if (repository.hasEffect("item-1")) auditSatisfiedOutput() else auditGapsOutput())
+        "implement" -> implementFacts(prompt, phaseId, crashAfterLanding, landingEnabled)
+        else -> facts(validJsonOutput(phaseId))
+      }
+    }
+
+  private fun implementFacts(prompt: String, phaseId: String, crashAfterLanding: Boolean, landingEnabled: Boolean) =
+    when {
+      !prompt.contains("audit_repair_plan") -> facts(validJsonOutput(phaseId))
+      !repository.hasEffect("item-1") && !landingEnabled -> spawnFailedFacts()
+      !repository.hasEffect("item-1") -> {
+        repository.landEffect("item-1")
+        if (crashAfterLanding) spawnFailedFacts() else facts(validJsonOutput(phaseId))
+      }
+      crashAfterLanding -> {
+        assertTrue(runCatching { repository.landEffect("item-1") }.isFailure)
+        spawnFailedFacts()
+      }
+      else -> facts(validJsonOutput(phaseId))
+    }
+}
+
+private fun RunnerHarness.hasPhase(phaseId: String): Boolean =
+  recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()[phaseId] != null
+
+private class MidItemScenarioRepository(private val repositoryRoot: Path) {
+  val workflow = InMemoryRuntimeWorkflowRepository()
+
+  fun hasEffect(effect: String): Boolean = Files.exists(effectPath(effect))
 
   fun landEffect(effect: String) {
-    check(landedEffects.add(effect)) { "duplicate repository effect: $effect" }
+    Files.createFile(effectPath(effect))
   }
 
   fun removeEffect(effect: String) {
-    check(landedEffects.remove(effect)) { "missing repository effect: $effect" }
+    check(Files.deleteIfExists(effectPath(effect))) { "missing repository effect: $effect" }
   }
 
-  fun effects(): Set<String> = landedEffects.toSet()
-}
+  fun effects(): Set<String> = Files.list(repositoryRoot).use { paths ->
+    paths.map { it.fileName.toString() }.toList().toSet()
+  }
 
-private fun parityGoalContinuation(
-  codeReviewMode: CodeReviewExecutionMode = CodeReviewExecutionMode.DELEGATED,
-  parallelReviewAgent: String? = null,
-) = FeatureTaskRuntimeGoalContinuationContext(
-  parentIssueKey = "SKILL-56",
-  subtaskId = 1,
-  goalBranch = "feat/SKILL-56-goal",
-  suppressPr = true,
-  codeReviewMode = codeReviewMode,
-  parallelReviewAgent = parallelReviewAgent,
-  reviewBaseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
-)
+  private fun effectPath(effect: String): Path = repositoryRoot.resolve(effect)
+}
 
 private fun RunnerHarness.goalChildObservation(
   report: FeatureTaskRuntimeRunReport,
@@ -696,6 +671,7 @@ private class GoalChildParityRun(
   val report: GoalRunnerRunReport,
   val runtime: RunnerHarness,
   val childReports: List<FeatureTaskRuntimeRunReport>,
+  val continuationRequestCount: Int,
   private val outcomes: RecordingOutcomeStore,
   val resume: () -> GoalRunnerRunReport,
 ) {
@@ -721,27 +697,35 @@ private fun standaloneAndGoalChildParity(
     launcher = launcher(),
     runtimeConfig = RuntimeHarnessConfig(
       branchSetup = BranchSetupTestConfig(gitOperations = standaloneGit),
-      goalContinuation = parityGoalContinuation(codeReviewMode, parallelReviewAgent),
     ),
   )
-  val standaloneReport = standalone.runner.run(standalone.request())
-  val goalChild = goalChildParityRun(
-    launcher = launcher(),
-    gitOperations = gitOperations(),
-    codeReviewMode = codeReviewMode,
+  val standaloneRequest = standalone.request().copy(
+    requestedCodeReviewMode = codeReviewMode,
     parallelReviewAgent = parallelReviewAgent,
   )
+  assertEquals(null, standaloneRequest.goalContinuation)
+  val standaloneReport = standalone.runner.run(standaloneRequest)
+  val goalChild = goalChildParityRun(
+    launcher = launcher(),
+    config = GoalChildParityConfig(
+      gitOperations = gitOperations(),
+      codeReviewMode = codeReviewMode,
+      parallelReviewAgent = parallelReviewAgent,
+    ),
+  )
+  assertEquals(goalChild.childReports.size, goalChild.continuationRequestCount)
   assertEquals(
-    standalone.goalChildObservation(standaloneReport),
+    standalone.goalChildObservation(standaloneReport).copy(
+      reviewComposition = goalChild.runtime
+        .goalChildObservation(goalChild.childReports.last(), goalChild.authoritativeOutcome()).reviewComposition,
+    ),
     goalChild.runtime.goalChildObservation(goalChild.childReports.last(), goalChild.authoritativeOutcome()),
     "standalone and goal-child durable scenario observations must match",
   )
-  val standaloneReviews = standalone.goalChildObservation(standaloneReport).reviewComposition
-  val goalReviews = goalChild.runtime
-    .goalChildObservation(goalChild.childReports.last(), goalChild.authoritativeOutcome()).reviewComposition
-  assertEquals(standaloneReviews.size, goalReviews.size)
-  assertTrue(goalReviews.all { it.contains("durable base `${"0".repeat(40)}`") })
-  assertTrue(goalReviews.all { it.contains("committed, staged, unstaged") })
+  assertReviewCompositionParity(
+    standalone.goalChildObservation(standaloneReport),
+    goalChild.runtime.goalChildObservation(goalChild.childReports.last(), goalChild.authoritativeOutcome()),
+  )
   if (standaloneReport is FeatureTaskRuntimeRunReport.Blocked) {
     val goalReason = assertNotNull(goalChild.blockedChildReason())
     assertContains(goalReason, standaloneReport.blockedReason)
@@ -751,6 +735,17 @@ private fun standaloneAndGoalChildParity(
     )
   }
   return goalChild
+}
+
+private fun assertReviewCompositionParity(standalone: GoalChildObservation, goalChild: GoalChildObservation) {
+  assertEquals(standalone.reviewComposition.size, goalChild.reviewComposition.size)
+  assertEquals(
+    standalone.reviewComposition.map { it.split('|').take(2) },
+    goalChild.reviewComposition.map { it.split('|').take(2) },
+  )
+  assertTrue(standalone.reviewComposition.none { it.contains("durable base") })
+  assertTrue(goalChild.reviewComposition.all { it.contains("durable base `${"0".repeat(40)}`") })
+  assertTrue(goalChild.reviewComposition.all { it.contains("committed, staged, unstaged") })
 }
 
 private fun completedChildReport(
@@ -801,23 +796,29 @@ private fun goalRunForChildReport(
   return report to requireNotNull(outcomes.terminalOutcome(WORKFLOW_ID, "SKILL-56", 1, null))
 }
 
+private data class GoalChildParityConfig(
+  val gitOperations: RecordingWorkflowGitOperations =
+    RecordingWorkflowGitOperations(currentBranchValue = "feat/SKILL-56-goal"),
+  val validator: FeatureTaskRuntimePhaseOutputValidator = AlwaysValidValidator,
+  val ensureCommitSha: Boolean = true,
+  val codeReviewMode: CodeReviewExecutionMode? = null,
+  val parallelReviewAgent: String? = null,
+)
+
 private fun goalChildParityRun(
   launcher: RuntimeRecordingLauncher,
-  gitOperations: RecordingWorkflowGitOperations =
-    RecordingWorkflowGitOperations(currentBranchValue = "feat/SKILL-56-goal"),
-  validator: FeatureTaskRuntimePhaseOutputValidator = AlwaysValidValidator,
-  ensureCommitSha: Boolean = true,
-  codeReviewMode: CodeReviewExecutionMode? = null,
-  parallelReviewAgent: String? = null,
+  config: GoalChildParityConfig = GoalChildParityConfig(),
 ): GoalChildParityRun {
-  if (ensureCommitSha && gitOperations.headCommitShaValue.isBlank()) {
-    gitOperations.headCommitShaValue = "goal-child-commit"
+  if (config.ensureCommitSha && config.gitOperations.headCommitShaValue.isBlank()) {
+    config.gitOperations.headCommitShaValue = "goal-child-commit"
   }
   val outcomes = RecordingOutcomeStore().apply { seedReviewState(WORKFLOW_ID) }
   val runtime = runnerHarness(
     launcher = launcher,
-    validator = validator,
-    runtimeConfig = RuntimeHarnessConfig(branchSetup = BranchSetupTestConfig(gitOperations = gitOperations)),
+    validator = config.validator,
+    runtimeConfig = RuntimeHarnessConfig(
+      branchSetup = BranchSetupTestConfig(gitOperations = config.gitOperations),
+    ),
   )
   val childLauncher = RuntimeChildLauncher(runtime.runner, runtime.request(), outcomes)
   val goalRunner = GoalRunner(
@@ -830,11 +831,17 @@ private fun goalChildParityRun(
     issueKey = "SKILL-56",
     repoRoot = runtime.request().repoRoot,
     invokedAgentId = INVOKED_AGENT,
-    codeReviewMode = codeReviewMode,
-    parallelReviewAgent = parallelReviewAgent,
+    codeReviewMode = config.codeReviewMode,
+    parallelReviewAgent = config.parallelReviewAgent,
   )
   val report = goalRunner.run(runRequest)
-  return GoalChildParityRun(report, runtime, childLauncher.reports, outcomes) { goalRunner.run(runRequest) }
+  return GoalChildParityRun(
+    report,
+    runtime,
+    childLauncher.reports,
+    childLauncher.continuationRequestCount,
+    outcomes,
+  ) { goalRunner.run(runRequest) }
 }
 
 // A goal-child gaps_found audit whose single gap carries two repair items, so a partial remediation is
@@ -913,9 +920,12 @@ private class RuntimeChildLauncher(
   private val outcomes: RecordingOutcomeStore,
 ) : GoalRunnerSubtaskLauncher {
   val reports: MutableList<FeatureTaskRuntimeRunReport> = mutableListOf()
+  var continuationRequestCount: Int = 0
+    private set
 
   override fun launch(request: GoalRunnerSubtaskLaunchRequest): AgentRunLaunchOutcome {
     val continuation = assertNotNull(request.skillRunRequest.goalContinuation)
+    continuationRequestCount += 1
     val workflowId = assertNotNull(continuation.childWorkflowId)
     val report = runner.run(
       template.copy(
