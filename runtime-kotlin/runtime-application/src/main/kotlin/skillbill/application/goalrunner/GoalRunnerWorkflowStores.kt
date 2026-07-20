@@ -166,9 +166,13 @@ class WorkflowGoalRunnerManifestStore(
   override fun saveRuntimeState(state: GoalRunnerManifestState, dbPathOverride: String?): GoalRunnerManifestState =
     saveWorkflowProjection(state, dbPathOverride).state
 
-  override fun saveHardReset(state: GoalRunnerManifestState, dbPathOverride: String?): GoalRunnerManifestState {
+  override fun saveHardReset(
+    state: GoalRunnerManifestState,
+    dbPathOverride: String?,
+    preservePlanning: Boolean,
+  ): GoalRunnerManifestState {
     val saved = database.transaction(dbPathOverride) { unitOfWork ->
-      unitOfWork.goalPlanningPreparations.deleteByGoal(state.parentWorkflowId)
+      if (!preservePlanning) unitOfWork.goalPlanningPreparations.deleteByGoal(state.parentWorkflowId)
       unitOfWork.workflowStates.deleteGoalChildWorkflowsByParent(state.parentWorkflowId)
       saveWorkflowProjectionInTransaction(unitOfWork, state)
     }
@@ -445,10 +449,7 @@ class WorkflowGoalRunnerManifestStore(
     val record = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, parentWorkflowId)
       ?: error("Goal parent workflow '$parentWorkflowId' no longer exists.")
     val existing = reviewPolicyFromArtifacts(decodeArtifacts(record.artifactsJson))
-    if (existing != null) {
-      check(existing == policy) {
-        "Goal review policy is immutable for parent workflow '$parentWorkflowId'."
-      }
+    if (existing == policy) {
       existing
     } else {
       val updated = engine.updateRecord(

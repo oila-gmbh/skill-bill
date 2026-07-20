@@ -20,6 +20,7 @@ import skillbill.workflow.model.WorkflowStateSnapshot
 import skillbill.workflow.model.WorkflowUpdateInput
 import skillbill.workflow.model.appendBoundedHistoryBySequence
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_AUDIT_REPAIR_STATE_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_DECOMPOSE_TERMINAL_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_BRIEFINGS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY
@@ -27,10 +28,18 @@ import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_LI
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_STATUS_BLOCKED
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_RESOLVED_BRANCH_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGap
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairPlan
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairProgress
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairState
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDecomposeTerminal
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorGapDisposition
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairItemResult
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeUnresolvedGap
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeUnresolvedGapLedger
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
@@ -89,6 +98,7 @@ class FeatureTaskRuntimePhaseRecorder(
       true
     }
 
+  @Suppress("LongMethod", "CyclomaticComplexMethod", "ComplexCondition")
   fun recordCompletedPhase(request: FeatureTaskRuntimePhaseStateRequest, dbOverride: String? = null): Boolean {
     require(request.status == "completed" && request.finished)
     return database.transaction(dbOverride) { unitOfWork ->
@@ -115,6 +125,47 @@ class FeatureTaskRuntimePhaseRecorder(
         completion.toArtifactMap(),
         FEATURE_TASK_RUNTIME_PHASE_LEDGER_LIMIT,
       )
+      val outputProduced = request.normalizedOutput
+        ?.envelope
+        ?.get("produced_outputs")
+        ?.let(JsonSupport::anyToStringAnyMap)
+      val priorAuditState = artifacts[FEATURE_TASK_RUNTIME_AUDIT_REPAIR_STATE_ARTIFACT_KEY]?.let {
+        auditRepairStateFromWire(it, FEATURE_TASK_RUNTIME_AUDIT_REPAIR_STATE_ARTIFACT_KEY)
+      }
+      val latestPlan = outputProduced?.get("audit_repair_plan")
+        ?.takeIf { request.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT }
+        ?.let { auditRepairPlanFromWire(it, "audit.produced_outputs.audit_repair_plan") }
+      val repairResults = (outputProduced?.get("repair_item_results") as? List<*>)
+        ?.takeIf {
+          request.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT &&
+            request.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID
+        }
+        ?.mapIndexed { index, value -> repairItemResultFromWire(value, "implement.repair_item_results[$index]") }
+      val currentDispositions = (outputProduced?.get("prior_gap_dispositions") as? List<*>)
+        ?.takeIf { request.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT }
+        ?.mapIndexed { index, value -> priorGapDispositionFromWire(value, "audit.prior_gap_dispositions[$index]") }
+      val reconcilesAuditState = request.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT &&
+        priorAuditState != null
+      val auditRepairPatch = if (latestPlan != null || repairResults != null || currentDispositions != null ||
+        reconcilesAuditState
+      ) {
+        mapOf(
+          FEATURE_TASK_RUNTIME_AUDIT_REPAIR_STATE_ARTIFACT_KEY to auditRepairStateToWire(
+            reconcileAuditRepairState(
+              AuditRepairReconciliation(
+                prior = priorAuditState,
+                latestPlan = latestPlan,
+                repairResults = repairResults.orEmpty(),
+                dispositions = currentDispositions,
+                repositoryFingerprint = request.repositoryFingerprint,
+                edgeIteration = request.edgeIteration,
+              ),
+            ),
+          ),
+        )
+      } else {
+        emptyMap()
+      }
       persistPatch(
         unitOfWork.workflowStates,
         record,
@@ -122,11 +173,175 @@ class FeatureTaskRuntimePhaseRecorder(
           FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY to
             updatedRecords.mapValues { (_, value) -> value.toArtifactMap() },
           FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY to updatedLedger,
-        ),
+        ) + auditRepairPatch,
         WorkflowRowAdvance(request.phaseId, workflowStatusFor(request), stepUpdatesFrom(updatedRecords)),
       )
       true
     }
+  }
+
+  private data class AuditRepairReconciliation(
+    val prior: FeatureTaskRuntimeAuditRepairState?,
+    val latestPlan: FeatureTaskRuntimeAuditRepairPlan?,
+    val repairResults: List<FeatureTaskRuntimeRepairItemResult>,
+    val dispositions: List<FeatureTaskRuntimePriorGapDisposition>?,
+    val repositoryFingerprint: String?,
+    val edgeIteration: Int?,
+  )
+
+  private data class GapReconciliation(
+    val dispositions: List<FeatureTaskRuntimePriorGapDisposition>,
+    val recurringIds: Set<String>,
+    val latestIds: Set<String>,
+    val unresolvedGaps: List<FeatureTaskRuntimeUnresolvedGap>,
+    val closedGenerationHighWaterMarks: Map<String, Int>,
+  )
+
+  private fun reconcileAuditRepairState(input: AuditRepairReconciliation): FeatureTaskRuntimeAuditRepairState {
+    val acceptedPlans = listOfNotNull(input.latestPlan ?: input.prior?.acceptedPlans?.lastOrNull())
+    if (acceptedPlans.isEmpty()) schemaError("Audit-repair state requires an accepted plan.")
+    val gaps = reconcileUnresolvedGaps(input)
+    val latestItemIds = acceptedPlans.single().gaps
+      .flatMap { it.repairItems }
+      .mapTo(linkedSetOf()) { it.repairItemId }
+    val allResults = reconcileLatestRepairResults(
+      input.prior?.repairItemResults.orEmpty(),
+      input.repairResults,
+      latestItemIds,
+    )
+    val progress = reconcileProgress(input, gaps, latestItemIds.size)
+    // Every other reconciliation failure surfaces as a typed workflow-state error; a ledger-cap or
+    // counter-coherence violation reaching the caller as a bare argument exception would durably wedge the
+    // workflow with an untyped message, so the write seam validates here rather than only on the next read.
+    return runCatching {
+      FeatureTaskRuntimeAuditRepairState(
+        acceptedPlans = acceptedPlans,
+        repairItemResults = allResults,
+        priorGapDispositions = gaps.dispositions,
+        unresolvedGapLedger = FeatureTaskRuntimeUnresolvedGapLedger(
+          gaps.unresolvedGaps,
+          gaps.closedGenerationHighWaterMarks,
+        ),
+        repositoryFingerprint = input.repositoryFingerprint ?: input.prior?.repositoryFingerprint,
+        progress = progress,
+      ).also { it.requireDurableCoherence() }
+    }.getOrElse { error ->
+      if (error is IllegalArgumentException) {
+        schemaError("Audit-repair state is incoherent and was not persisted: ${error.message.orEmpty()}")
+      } else {
+        throw error
+      }
+    }
+  }
+
+  private fun reconcileProgress(
+    input: AuditRepairReconciliation,
+    gaps: GapReconciliation,
+    latestPlanItemCount: Int,
+  ): FeatureTaskRuntimeAuditRepairProgress {
+    // Attempted counts every item the remediation phase was handed; resolved counts the terminal
+    // results it actually returned. They diverge when a phase reports results for only part of its plan.
+    val newlyAttemptedCount = if (input.repairResults.isEmpty()) 0 else latestPlanItemCount
+    val priorPlanGapIds = input.prior?.unresolvedGapLedger?.unresolvedGaps.orEmpty().mapTo(linkedSetOf()) { it.gapId }
+    // Only an audit write observes a fresh gap set; recomputing on the remediation write would compare
+    // the audit's own already-persisted ledger against itself and clobber both counters to zero.
+    val auditWrite = input.latestPlan != null
+    val ledgerSize = gaps.unresolvedGaps.size
+    val recurringGapCount = if (auditWrite) {
+      gaps.recurringIds.size
+    } else {
+      (input.prior?.progress?.recurringGapCount ?: 0).coerceAtMost(ledgerSize)
+    }
+    val newGapCount = if (auditWrite) {
+      gaps.latestIds.count { it !in priorPlanGapIds }
+    } else {
+      (input.prior?.progress?.newGapCount ?: 0).coerceAtMost(ledgerSize - recurringGapCount)
+    }
+    return FeatureTaskRuntimeAuditRepairProgress(
+      firstPassConvergence = false,
+      recurringGapCount = recurringGapCount,
+      newGapCount = newGapCount,
+      attemptedRepairItemCount = (input.prior?.progress?.attemptedRepairItemCount ?: 0) + newlyAttemptedCount,
+      resolvedRepairItemCount = (input.prior?.progress?.resolvedRepairItemCount ?: 0) + input.repairResults.size,
+      auditGapIterationCount = maxOf(
+        input.prior?.progress?.auditGapIterationCount ?: 0,
+        input.edgeIteration ?: 0,
+      ),
+    )
+  }
+
+  private fun reconcileUnresolvedGaps(input: AuditRepairReconciliation): GapReconciliation {
+    val priorLedger = input.prior?.unresolvedGapLedger
+    val priorUnresolved = priorLedger?.unresolvedGaps.orEmpty()
+    val priorIds = priorUnresolved.mapTo(linkedSetOf()) { it.gapId }
+    val dispositions = input.dispositions ?: input.prior?.priorGapDispositions.orEmpty()
+    if (input.dispositions != null && dispositions.mapTo(linkedSetOf()) { it.gapId } != priorIds) {
+      schemaError(
+        "Audit reconciliation must disposition every prior unresolved gap exactly once and cannot " +
+          "disposition a gap the durable ledger never carried; ledger=${priorIds.sorted()} " +
+          "dispositioned=${dispositions.map { it.gapId }.sorted()}.",
+      )
+    }
+    val resolvedIds = dispositions
+      .filter { it.status == FeatureTaskRuntimePriorGapDisposition.Status.RESOLVED }
+      .mapTo(linkedSetOf()) { it.gapId }
+    val recurringIds = dispositions
+      .filter { it.status == FeatureTaskRuntimePriorGapDisposition.Status.RECURRING }
+      .mapTo(linkedSetOf()) { it.gapId }
+    val latestGaps = input.latestPlan?.gaps
+      ?: if (input.repairResults.isNotEmpty()) input.prior?.acceptedPlans?.lastOrNull()?.gaps.orEmpty() else emptyList()
+    val latestIds = latestGaps.mapTo(linkedSetOf()) { it.gapId }
+    val criterionByPriorGapId = priorUnresolved.associate { it.gapId to it.acceptanceCriterionRef }
+    val resolvedCriteria = resolvedIds.mapNotNullTo(linkedSetOf(), criterionByPriorGapId::get)
+    val reopenedCriteria = latestGaps.map { it.acceptanceCriterionRef }.filter { it in resolvedCriteria }.sorted()
+    if (!latestIds.containsAll(recurringIds) || latestIds.any(resolvedIds::contains) ||
+      reopenedCriteria.isNotEmpty()
+    ) {
+      schemaError(
+        "Recurring gaps must retain their identities and a criterion dispositioned resolved cannot be " +
+          "re-reported by the same handoff under any gap id; reopened criteria were $reopenedCriteria.",
+      )
+    }
+    // Closing a gap consumes its generation. Carrying that forward is what makes the next identifier for a
+    // criterion derivable from durable state instead of supplied by the agent.
+    val surviving = priorUnresolved.filterNot { it.gapId in resolvedIds }
+    val marks = LinkedHashMap(priorLedger?.closedGenerationHighWaterMarks.orEmpty())
+    priorUnresolved.filter { it.gapId in resolvedIds }.forEach { gap ->
+      marks[gap.acceptanceCriterionRef] = maxOf(marks[gap.acceptanceCriterionRef] ?: 0, gap.generation)
+    }
+    return GapReconciliation(
+      dispositions = dispositions,
+      recurringIds = recurringIds,
+      latestIds = latestIds,
+      unresolvedGaps = mergeUnresolvedGaps(surviving, marks, latestGaps),
+      closedGenerationHighWaterMarks = marks,
+    )
+  }
+
+  private fun mergeUnresolvedGaps(
+    surviving: List<FeatureTaskRuntimeUnresolvedGap>,
+    closedGenerationHighWaterMarks: Map<String, Int>,
+    latestGaps: List<FeatureTaskRuntimeAuditGap>,
+  ): List<FeatureTaskRuntimeUnresolvedGap> {
+    val survivingLedger = FeatureTaskRuntimeUnresolvedGapLedger(surviving, closedGenerationHighWaterMarks)
+    val merged = linkedMapOf<String, FeatureTaskRuntimeUnresolvedGap>()
+    surviving.forEach { merged[it.gapId] = it }
+    latestGaps.forEach { gap ->
+      val derivedGapId = survivingLedger.allocateGapId(gap.acceptanceCriterionRef)
+      if (gap.gapId != derivedGapId) {
+        schemaError(
+          "gap_id '${gap.gapId}' for '${gap.acceptanceCriterionRef}' is not the identifier the runtime " +
+            "derives from durable state; expected '$derivedGapId'.",
+        )
+      }
+      merged[gap.gapId] = FeatureTaskRuntimeUnresolvedGap(
+        gapId = gap.gapId,
+        acceptanceCriterionRef = gap.acceptanceCriterionRef,
+        generation = gap.gapId.substringAfterLast('-').toIntOrNull()
+          ?: schemaError("Gap '${gap.gapId}' has no numeric generation."),
+      )
+    }
+    return merged.values.toList()
   }
 
   internal fun completeGoalReviewPhase(
@@ -269,6 +484,15 @@ class FeatureTaskRuntimePhaseRecorder(
       ?: return@read null
     phaseBriefingsFrom(decodeArtifacts(record.artifactsJson))
   }
+
+  fun loadAuditRepairState(workflowId: String, dbOverride: String? = null): FeatureTaskRuntimeAuditRepairState? =
+    database.read(dbOverride) { unitOfWork ->
+      val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
+        ?: return@read null
+      val artifact = decodeArtifacts(record.artifactsJson)[FEATURE_TASK_RUNTIME_AUDIT_REPAIR_STATE_ARTIFACT_KEY]
+        ?: return@read null
+      auditRepairStateFromWire(artifact, FEATURE_TASK_RUNTIME_AUDIT_REPAIR_STATE_ARTIFACT_KEY)
+    }
 
   /**
    * Appends one phase ledger entry, minting the timestamp and assigning the next monotonic
@@ -474,6 +698,16 @@ class FeatureTaskRuntimePhaseRecorder(
   }
 }
 
+internal fun reconcileLatestRepairResults(
+  priorResults: List<FeatureTaskRuntimeRepairItemResult>,
+  currentResults: List<FeatureTaskRuntimeRepairItemResult>,
+  latestPlanItemIds: Set<String>,
+): List<FeatureTaskRuntimeRepairItemResult> = linkedMapOf<String, FeatureTaskRuntimeRepairItemResult>().apply {
+  priorResults.forEach { put(it.repairItemId, it) }
+  currentResults.forEach { put(it.repairItemId, it) }
+  keys.retainAll(latestPlanItemIds)
+}.values.toList()
+
 internal data class GoalReviewPhaseCompletionRequest(
   val phaseState: FeatureTaskRuntimePhaseStateRequest,
   val verdict: FeatureTaskRuntimeVerdict,
@@ -568,70 +802,6 @@ private fun workflowStatusFor(request: FeatureTaskRuntimePhaseStateRequest): Str
   request.finished && request.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.definition.stepIds.last() ->
     "completed"
   else -> "running"
-}
-
-private fun schemaError(detail: String): Nothing = throw InvalidWorkflowStateSchemaError(detail)
-
-// Strict decode of a keyed artifact map. Corrupt state loud-fails rather than being coerced to
-// empty, which would otherwise turn it into a blind re-run / lost outputs on resume.
-private fun <T> decodeStrictKeyedArtifactMap(
-  artifacts: Map<String, Any?>,
-  artifactKey: String,
-  decodeEntry: (String, Map<String, Any?>) -> T,
-): Map<String, T> {
-  val raw = artifacts[artifactKey] ?: return emptyMap()
-  val rawMap = raw as? Map<*, *>
-    ?: schemaError("Feature-task-runtime artifact '$artifactKey' must decode to a map.")
-  return rawMap.entries.associate { (key, value) ->
-    val phaseId = key as? String
-      ?: schemaError("Feature-task-runtime artifact '$artifactKey' must have string keys; found '$key'.")
-    val entryMap = JsonSupport.anyToStringAnyMap(value)
-      ?: schemaError("Feature-task-runtime artifact '$artifactKey' entry for '$phaseId' must decode to a map.")
-    phaseId to decodeEntry(phaseId, entryMap)
-  }
-}
-
-private fun phaseRecordsFrom(artifacts: Map<String, Any?>): Map<String, FeatureTaskRuntimePhaseRecord> =
-  decodeStrictKeyedArtifactMap(artifacts, FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY) { _, recordMap ->
-    FeatureTaskRuntimePhaseRecord.fromArtifactMap(recordMap)
-  }
-
-private fun phaseBriefingsFrom(artifacts: Map<String, Any?>): Map<String, FeatureTaskRuntimePhaseLaunchBriefing> =
-  decodeStrictKeyedArtifactMap(artifacts, FEATURE_TASK_RUNTIME_PHASE_BRIEFINGS_ARTIFACT_KEY) { _, briefingMap ->
-    FeatureTaskRuntimePhaseLaunchBriefing.fromArtifactMap(briefingMap)
-  }
-
-private fun resolvedBranchFrom(artifacts: Map<String, Any?>): FeatureTaskRuntimeResolvedBranch? {
-  val raw = artifacts[FEATURE_TASK_RUNTIME_RESOLVED_BRANCH_ARTIFACT_KEY] ?: return null
-  val entryMap = JsonSupport.anyToStringAnyMap(raw)
-    ?: schemaError(
-      "Feature-task-runtime artifact '$FEATURE_TASK_RUNTIME_RESOLVED_BRANCH_ARTIFACT_KEY' must decode to a map.",
-    )
-  return FeatureTaskRuntimeResolvedBranch.fromArtifactMap(entryMap)
-}
-
-private fun decomposeTerminalFrom(artifacts: Map<String, Any?>): FeatureTaskRuntimeDecomposeTerminal? {
-  val raw = artifacts[FEATURE_TASK_RUNTIME_DECOMPOSE_TERMINAL_ARTIFACT_KEY] ?: return null
-  val entryMap = JsonSupport.anyToStringAnyMap(raw)
-    ?: schemaError(
-      "Feature-task-runtime artifact '$FEATURE_TASK_RUNTIME_DECOMPOSE_TERMINAL_ARTIFACT_KEY' must decode to a map.",
-    )
-  return FeatureTaskRuntimeDecomposeTerminal.fromArtifactMap(entryMap)
-}
-
-private fun phaseLedgerFrom(artifacts: Map<String, Any?>): List<FeatureTaskRuntimePhaseLedgerEntry> {
-  val raw = artifacts[FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY] ?: return emptyList()
-  val rawList = raw as? List<*>
-    ?: throw InvalidWorkflowStateSchemaError(
-      "Feature-task-runtime artifact '$FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY' must decode to a list.",
-    )
-  return rawList.map { item ->
-    val entryMap = JsonSupport.anyToStringAnyMap(item)
-      ?: throw InvalidWorkflowStateSchemaError(
-        "Feature-task-runtime phase ledger entry must decode to a string-keyed map.",
-      )
-    FeatureTaskRuntimePhaseLedgerEntry.fromArtifactMap(entryMap)
-  }
 }
 
 private fun durationMillis(startedAt: String, finishedAt: String): Long =

@@ -52,7 +52,7 @@ class DecompositionManifestSchemaValidatorTest {
 
   private fun validManifestYaml(specSourceValue: String? = null, subtaskLinearIssueId: String? = null): String {
     val lines = mutableListOf(
-      "contract_version: \"0.4\"",
+      "contract_version: \"0.5\"",
       "issue_key: SKILL-71",
       "feature_name: local-config-and-linear-spec-mode",
       "parent_spec_path: .feature-specs/SKILL-71-local-config/spec.md",

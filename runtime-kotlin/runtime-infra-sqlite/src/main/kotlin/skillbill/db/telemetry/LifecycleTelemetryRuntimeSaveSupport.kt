@@ -82,6 +82,11 @@ private fun updateFeatureTaskRuntimeFinished(
       resolved_branch = ?,
       review_fix_iteration_count = ?,
       audit_gap_iteration_count = ?,
+      audit_first_pass_convergence = ?,
+      audit_recurring_gap_count = ?,
+      audit_new_gap_count = ?,
+      audit_attempted_repair_item_count = ?,
+      audit_resolved_repair_item_count = ?,
       estimated_phase_tokens_json = ?,
       estimated_total_tokens = ?,
       finished_at = CURRENT_TIMESTAMP
@@ -98,6 +103,11 @@ private fun updateFeatureTaskRuntimeFinished(
       record.resolvedBranch,
       record.reviewFixIterationCount,
       record.auditGapIterationCount,
+      record.auditFirstPassConvergence,
+      record.auditRecurringGapCount,
+      record.auditNewGapCount,
+      record.auditAttemptedRepairItemCount,
+      record.auditResolvedRepairItemCount,
       record.estimatedPhaseTokenBreakdownJson,
       record.estimatedTotalTokens,
       record.sessionId,
@@ -118,8 +128,10 @@ private fun insertFeatureTaskRuntimeFinished(
       session_id, completion_status, completed_phase_ids,
       phase_outcomes, last_incomplete_phase, blocked_reason,
       resolved_branch, review_fix_iteration_count, audit_gap_iteration_count,
+      audit_first_pass_convergence, audit_recurring_gap_count, audit_new_gap_count,
+      audit_attempted_repair_item_count, audit_resolved_repair_item_count,
       estimated_phase_tokens_json, estimated_total_tokens, finished_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
     """.trimIndent(),
   ).use { statement ->
     statement.bind(
@@ -132,6 +144,11 @@ private fun insertFeatureTaskRuntimeFinished(
       record.resolvedBranch,
       record.reviewFixIterationCount,
       record.auditGapIterationCount,
+      record.auditFirstPassConvergence,
+      record.auditRecurringGapCount,
+      record.auditNewGapCount,
+      record.auditAttemptedRepairItemCount,
+      record.auditResolvedRepairItemCount,
       record.estimatedPhaseTokenBreakdownJson,
       record.estimatedTotalTokens,
     )

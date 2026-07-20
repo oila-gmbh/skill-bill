@@ -1,17 +1,12 @@
 package skillbill.application.featuretask
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.application.decomposition.DECOMPOSITION_MANIFEST_FILENAME
 import skillbill.application.decomposition.DecompositionManifestWriter
-import skillbill.application.decomposition.decompositionManifestPath
 import skillbill.application.decomposition.defaultFeatureBranch
-import skillbill.application.decomposition.parentSpecPath
+import skillbill.application.decomposition.projectCurrentSubtaskStatus
 import skillbill.application.decomposition.repoRelativePath
 import skillbill.application.model.DecompositionManifestWriteRequest
-import skillbill.application.workflow.repoRoot
-import skillbill.error.FeatureSpecPreparationModeConflictError
 import skillbill.error.InvalidFeatureSpecPreparationRequestError
-import skillbill.featurespec.model.FeatureSpecPreparationDecision
 import skillbill.featurespec.model.FeatureSpecPreparationMode
 import skillbill.featurespec.model.FeatureSpecSubtaskPreparation
 import skillbill.featurespec.model.FeatureSpecWriteRequest
@@ -19,6 +14,7 @@ import skillbill.featurespec.model.FeatureSpecWriteResult
 import skillbill.ports.workflow.DecompositionManifestFileStore
 import skillbill.ports.workflow.UnavailableDecompositionManifestFileStore
 import skillbill.workflow.DecompositionManifestValidator
+import skillbill.workflow.model.SpecSource
 import java.nio.file.Path
 
 @Inject
@@ -35,64 +31,35 @@ class FeatureSpecPreparationWriter(
     val specDirectory = repoRoot.resolve(".feature-specs/$issueKey-$featureName")
     val parentSpecPath = specDirectory.resolve("spec.md")
     val parentSpecRelativePath = repoRelativePath(repoRoot, parentSpecPath)
-    val decompositionManifestPath = specDirectory.resolve(DECOMPOSITION_MANIFEST_FILENAME)
-    return when (request.decision.mode) {
-      FeatureSpecPreparationMode.SINGLE_SPEC -> {
-        validateSingleSpecRequest(request)
-        assertNoDecompositionManifest(issueKey, decompositionManifestPath)
-        writeParentSpec(
-          parentSpecPath = parentSpecPath,
-          decision = request.decision,
-          featureName = featureName,
-          parentSpecOverview = request.parentSpecOverview,
-          validationStrategy = request.validationStrategy,
-        )
-        FeatureSpecWriteResult(
-          mode = FeatureSpecPreparationMode.SINGLE_SPEC,
-          parentSpecPath = parentSpecRelativePath,
-          featureImplementPath = parentSpecRelativePath,
-          decompositionManifestPath = null,
-          subtaskSpecPaths = emptyList(),
-        )
-      }
-
-      FeatureSpecPreparationMode.DECOMPOSED -> writeDecomposed(
-        repoRoot = repoRoot,
-        request = request,
-        parentSpecPath = parentSpecPath,
-        parentSpecRelativePath = parentSpecRelativePath,
-      )
-    }
+    return writePreparedFeature(
+      repoRoot = repoRoot,
+      request = request,
+      parentSpecPath = parentSpecPath,
+      parentSpecRelativePath = parentSpecRelativePath,
+    )
   }
 
-  private fun writeDecomposed(
+  private fun writePreparedFeature(
     repoRoot: Path,
     request: FeatureSpecWriteRequest,
     parentSpecPath: Path,
     parentSpecRelativePath: String,
   ): FeatureSpecWriteResult {
-    validateDecomposedSubtasks(request.subtasks)
-    writeParentSpec(
-      parentSpecPath = parentSpecPath,
-      decision = request.decision,
-      featureName = normalizeFeatureName(request.featureName),
-      parentSpecOverview = request.parentSpecOverview,
-      validationStrategy = request.validationStrategy,
+    validateSubtasks(request.subtasks, request.specSource)
+    val parentSpecText = renderParentSpec(
+      ParentSpecRenderInput(
+        issueKey = request.decision.issueKey,
+        featureName = normalizeFeatureName(request.featureName),
+        mode = request.decision.mode,
+        intendedOutcome = request.decision.intendedOutcome,
+        acceptanceCriteria = request.decision.acceptanceCriteria,
+        constraints = request.decision.constraints,
+        nonGoals = request.decision.nonGoals,
+        overview = request.parentSpecOverview,
+        validationStrategy = request.validationStrategy,
+      ),
     )
-    val subtaskRecords = request.subtasks.map { subtask ->
-      val subtaskPath = parentSpecPath.parent.resolve(subtaskFileName(subtask))
-      val subtaskRelativePath = repoRelativePath(repoRoot, subtaskPath)
-      fileStore.writeTextAtomically(
-        subtaskPath,
-        renderSubtaskSpec(
-          issueKey = request.decision.issueKey,
-          subtask = subtask,
-          parentSpecPath = parentSpecRelativePath,
-          subtaskPath = subtaskRelativePath,
-        ),
-      )
-      PreparedSubtask(path = subtaskPath, relativePath = subtaskRelativePath, definition = subtask)
-    }
+    val subtaskRecords = prepareSubtasks(repoRoot, request, parentSpecPath, parentSpecRelativePath)
     val planningResult = linkedMapOf(
       "mode" to "decompose",
       "parent_spec_path" to parentSpecPath.toString(),
@@ -104,75 +71,59 @@ class FeatureSpecPreparationWriter(
           "spec_path" to subtask.path.toString(),
           "depends_on" to subtask.definition.dependsOn,
           "scope" to subtask.definition.scope,
+          "linear_issue_id" to subtask.definition.linearIssueId,
         )
       },
     )
-    val manifestWriteResult = DecompositionManifestWriter.write(
+    val preparedManifest = DecompositionManifestWriter.prepare(
       request = DecompositionManifestWriteRequest(
         repoRoot = repoRoot,
         parentSpecPath = parentSpecPath,
         planningResult = planningResult,
         baseBranch = request.baseBranch.ifBlank { "main" },
         featureBranch = request.featureBranch.takeIf(String::isNotBlank) ?: defaultFeatureBranch(parentSpecPath),
+        specSource = request.specSource,
       ),
       validator = decompositionManifestValidator,
       fileStore = fileStore,
     )
+    fileStore.writeTextAtomically(parentSpecPath, parentSpecText)
+    subtaskRecords.forEach { fileStore.writeTextAtomically(it.path, it.text) }
+    fileStore.writeTextAtomically(preparedManifest.manifestPath, preparedManifest.yaml)
+    projectCurrentSubtaskStatus(repoRoot, preparedManifest.manifest, fileStore)
     return FeatureSpecWriteResult(
-      mode = FeatureSpecPreparationMode.DECOMPOSED,
+      mode = request.decision.mode,
       parentSpecPath = parentSpecRelativePath,
       featureImplementPath = parentSpecRelativePath,
-      decompositionManifestPath = repoRelativePath(repoRoot, manifestWriteResult.manifestPath),
+      decompositionManifestPath = repoRelativePath(repoRoot, preparedManifest.manifestPath),
       subtaskSpecPaths = subtaskRecords.map(PreparedSubtask::relativePath),
     )
   }
 
-  private fun validateSingleSpecRequest(request: FeatureSpecWriteRequest) {
-    if (request.subtasks.isNotEmpty()) {
-      invalidRequest("subtasks", "single_spec mode cannot include decomposition subtasks.")
-    }
-  }
-
-  private fun assertNoDecompositionManifest(issueKey: String, manifestPath: Path) {
-    if (!fileStore.isRegularFile(manifestPath)) {
-      return
-    }
-    throw FeatureSpecPreparationModeConflictError(
-      issueKey = issueKey,
-      requestedMode = FeatureSpecPreparationMode.SINGLE_SPEC.wireValue,
-      conflictingPath = manifestPath.toString(),
-      reason = "single_spec cannot run beside an existing decomposition manifest.",
-    )
-  }
-
-  private fun writeParentSpec(
+  private fun prepareSubtasks(
+    repoRoot: Path,
+    request: FeatureSpecWriteRequest,
     parentSpecPath: Path,
-    decision: FeatureSpecPreparationDecision,
-    featureName: String,
-    parentSpecOverview: String,
-    validationStrategy: String,
-  ) {
-    fileStore.writeTextAtomically(
-      parentSpecPath,
-      renderParentSpec(
-        ParentSpecRenderInput(
-          issueKey = decision.issueKey,
-          featureName = featureName,
-          mode = decision.mode,
-          intendedOutcome = decision.intendedOutcome,
-          acceptanceCriteria = decision.acceptanceCriteria,
-          constraints = decision.constraints,
-          nonGoals = decision.nonGoals,
-          overview = parentSpecOverview,
-          validationStrategy = validationStrategy,
-        ),
+    parentSpecRelativePath: String,
+  ): List<PreparedSubtask> = request.subtasks.map { subtask ->
+    val subtaskPath = parentSpecPath.parent.resolve(subtaskFileName(subtask))
+    val subtaskRelativePath = repoRelativePath(repoRoot, subtaskPath)
+    PreparedSubtask(
+      path = subtaskPath,
+      relativePath = subtaskRelativePath,
+      definition = subtask,
+      text = renderSubtaskSpec(
+        issueKey = request.decision.issueKey,
+        subtask = subtask,
+        parentSpecPath = parentSpecRelativePath,
+        subtaskPath = subtaskRelativePath,
       ),
     )
   }
 
-  private fun validateDecomposedSubtasks(subtasks: List<FeatureSpecSubtaskPreparation>) {
-    if (subtasks.size < 2) {
-      invalidRequest("subtasks", "decomposed mode requires at least two ordered subtasks.")
+  private fun validateSubtasks(subtasks: List<FeatureSpecSubtaskPreparation>, specSource: SpecSource) {
+    if (subtasks.isEmpty()) {
+      invalidRequest("subtasks", "prepared features require at least one ordered subtask.")
     }
     val ids = mutableSetOf<Int>()
     var previousId = Int.MIN_VALUE
@@ -199,11 +150,14 @@ class FeatureSpecPreparationWriter(
       if (subtask.nextPath.isBlank()) {
         invalidRequest("subtasks[$index].next_path", "next path is required.")
       }
+      if (subtask.linearIssueId.isNullOrBlank() && specSource == SpecSource.LINEAR) {
+        invalidRequest("subtasks[$index].linear_issue_id", "linear source requires a Linear issue id.")
+      }
       subtask.dependsOn.forEachIndexed { dependencyIndex, dependencyId ->
-        if (dependencyId >= subtask.id) {
+        if (dependencyId >= subtask.id || dependencyId !in ids) {
           invalidRequest(
             "subtasks[$index].depends_on[$dependencyIndex]",
-            "depends_on must reference an earlier subtask id.",
+            "depends_on must reference an existing earlier subtask id.",
           )
         }
       }
@@ -215,6 +169,7 @@ private data class PreparedSubtask(
   val path: Path,
   val relativePath: String,
   val definition: FeatureSpecSubtaskPreparation,
+  val text: String,
 )
 
 private data class ParentSpecRenderInput(

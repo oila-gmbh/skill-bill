@@ -118,6 +118,15 @@ class InvalidFeatureTaskRuntimePhaseOutputSchemaError(
   cause,
 )
 
+class InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError(
+  val sourceLabel: String,
+  val reason: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Feature-task-runtime audit repair plan '${sourceLabel.ifBlank { "<unknown>" }}' fails schema validation: $reason",
+  cause,
+)
+
 class InvalidFeatureTaskExecutionIdentitySchemaError(
   val sourceLabel: String,
   val reason: String,

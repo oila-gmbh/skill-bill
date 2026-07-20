@@ -359,6 +359,8 @@ private fun ownedUntrackedPatches(repoRoot: Path, paths: List<String>): GoalRevi
   return GoalReviewStringResult(value = patches.toString())
 }
 
+// The baseline is the subtask's review floor: capturing it while tracked changes are already present
+// folds unrelated pre-existing work into every diff the reviewer sees.
 private fun trackedWorktreeClean(repoRoot: Path): String? {
   val unstaged = runGitProcess(repoRoot, listOf("diff", "--quiet"))
   if (unstaged.timedOut || unstaged.readFailure != null || unstaged.exitCode !in setOf(0, 1)) {

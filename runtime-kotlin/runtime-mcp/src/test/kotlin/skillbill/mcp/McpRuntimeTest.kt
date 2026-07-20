@@ -941,7 +941,7 @@ private fun taskRuntimePhaseArtifactsPatch(): Map<String, Any?> = mapOf(
       "duration_millis" to 60000,
       "resolved_agent_id" to "claude",
       "output_artifact" to
-        "{\"contract_version\":\"0.1\",\"phase_id\":\"preplan\",\"status\":\"completed\"," +
+        "{\"contract_version\":\"0.2\",\"phase_id\":\"preplan\",\"status\":\"completed\"," +
         "\"summary\":\"preplanned\",\"produced_outputs\":{\"digest\":\"ok\"}}",
     ),
     "plan" to linkedMapOf(
@@ -954,7 +954,7 @@ private fun taskRuntimePhaseArtifactsPatch(): Map<String, Any?> = mapOf(
       "duration_millis" to 60000,
       "resolved_agent_id" to "claude",
       "output_artifact" to
-        "{\"contract_version\":\"0.1\",\"phase_id\":\"plan\",\"status\":\"completed\"," +
+        "{\"contract_version\":\"0.2\",\"phase_id\":\"plan\",\"status\":\"completed\"," +
         "\"summary\":\"planned\",\"produced_outputs\":{\"tasks\":[\"task-1\"]}}",
     ),
     "implement" to linkedMapOf(

@@ -14,6 +14,8 @@ import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.agentrun.model.AgentRunLaunchRequest
 import skillbill.ports.workflow.GoalSubtaskReviewGitOperations
 import skillbill.ports.workflow.GoalSubtaskReviewGitOperationsProvider
+import skillbill.ports.workflow.RepositoryFingerprintGitOperations
+import skillbill.ports.workflow.RepositoryFingerprintGitOperationsProvider
 import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaselineResult
@@ -86,7 +88,7 @@ class CliFeatureTaskRuntimeRuntimeTest {
   }
 
   @Test
-  fun `resume preserves exact ordered agent add-ons and rejects altered selection before launch`() {
+  fun `resume accepts changed ordered agent add-ons and applies them to future phases`() {
     val fixture = runtimeFixture().also {
       writeAgentAddon(it.tempDir, "first-helper", "First selected guidance.")
       writeAgentAddon(it.tempDir, "last-helper", "Last selected guidance.")
@@ -102,7 +104,7 @@ class CliFeatureTaskRuntimeRuntimeTest {
     )
     assertEquals(1, firstRun.exitCode, firstRun.stdout)
     val workflowId = firstRun.stdout.lines().single { it.startsWith("workflow_id:") }.substringAfter(":").trim()
-    assertAlteredAgentAddonSelectionsRejected(fixture, workflowId)
+    assertChangedAgentAddonSelectionApplied(fixture, workflowId)
 
     val resumeFixture = runtimeFixture().also {
       writeAgentAddon(it.tempDir, "first-helper", "First selected guidance.")
@@ -139,27 +141,19 @@ class CliFeatureTaskRuntimeRuntimeTest {
     }
   }
 
-  private fun assertAlteredAgentAddonSelectionsRejected(fixture: FeatureTaskRuntimeCliFixture, workflowId: String) {
-    val alteredSelections = listOf(
-      "reordered" to resolvedSelectionJson(fixture, "codex", "last-helper", "first-helper"),
-      "dropped" to resolvedSelectionJson(fixture, "codex", "first-helper"),
-      "empty" to """{"contract_version":"0.1","entries":[]}""",
-      "replaced identity" to resolvedSelectionJson(fixture, "codex", "replacement-helper", "last-helper"),
+  private fun assertChangedAgentAddonSelectionApplied(fixture: FeatureTaskRuntimeCliFixture, workflowId: String) {
+    val changedSelection = resolvedSelectionJson(fixture, "codex", "replacement-helper", "last-helper")
+    val launcher = RecordingPhaseLauncher()
+
+    val resumed = CliRuntime.run(
+      fixture.resumeCommand(workflowId, changedSelection),
+      fixture.context(launcher),
     )
-    alteredSelections.forEach { (case, alteredSelection) ->
-      val rejectedLauncher = RecordingPhaseLauncher()
-      val rejected = CliRuntime.run(
-        fixture.resumeCommand(workflowId, alteredSelection),
-        fixture.context(rejectedLauncher),
-      )
-      assertEquals(1, rejected.exitCode, "$case: ${rejected.stdout}")
-      assertContains(
-        rejected.stdout,
-        "Cannot drop or replace the workflow's durable agent add-on selection",
-        message = case,
-      )
-      assertEquals(emptyList(), rejectedLauncher.requests, case)
-    }
+
+    assertEquals(0, resumed.exitCode, resumed.stdout)
+    val prompts = launcher.requests.map { it.skillRunRequest.promptOverride.orEmpty() }
+    assertTrue(prompts.any { it.contains("Replacement guidance.") })
+    assertTrue(prompts.all { !it.contains("First selected guidance.") })
   }
 
   @Test
@@ -1954,7 +1948,7 @@ private class RecordingPhaseLauncher(
     // output validator rejects it and the runner never marks the phase complete.
     val INVALID_PHASE_OUTPUT =
       """
-      contract_version: "0.1"
+      contract_version: "0.2"
       phase_id: "implement"
       """.trimIndent()
 
@@ -1969,7 +1963,7 @@ private class RecordingPhaseLauncher(
       }
       val base =
         """
-        contract_version: "0.1"
+        contract_version: "0.2"
         phase_id: "$phaseId"
         status: "completed"
         summary: "Phase produced a validated output."
@@ -1992,7 +1986,7 @@ private class RecordingPhaseLauncher(
 
     val DECOMPOSE_PLAN_OUTPUT: String = """
       {
-        "contract_version": "0.1",
+        "contract_version": "0.2",
         "phase_id": "plan",
         "status": "completed",
         "summary": "Plan needs ordered subtasks.",
@@ -2073,7 +2067,9 @@ private val ALL_PHASES =
 private class FakeRuntimeGitOperations(
   private var currentBranchValue: String = "feat/pre-created-runtime-branch",
   private val checkoutResult: WorkflowGitOperationResult? = null,
-) : WorkflowGitOperations, GoalSubtaskReviewGitOperationsProvider {
+) : WorkflowGitOperations, GoalSubtaskReviewGitOperationsProvider, RepositoryFingerprintGitOperationsProvider {
+  override val repositoryFingerprintOperations: RepositoryFingerprintGitOperations = TestRepositoryFingerprintOperations
+
   val checkoutBranches: MutableList<String> = mutableListOf()
 
   override fun checkoutBranch(repoRoot: Path, branch: String, baseBranch: String?): WorkflowGitOperationResult {

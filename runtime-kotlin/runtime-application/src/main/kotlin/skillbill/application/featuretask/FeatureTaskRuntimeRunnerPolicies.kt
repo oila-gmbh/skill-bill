@@ -72,7 +72,7 @@ internal fun reviewVerificationSignalGateReason(phaseId: String, outputMap: Map<
   } else {
     "Review phase reported 'completed' without a verification signal: the output must carry either a " +
       "top-level 'verdict' or a 'produced_outputs.findings' array (an explicit empty array affirms no " +
-      "blocking findings). A review that emits neither cannot advance past a possible Blocker/Major; " +
+      "blocking findings). A review that emits neither cannot advance past a possible Blocker; " +
       "the schema gate fails rather than silently advancing to audit."
   }
 }
@@ -82,10 +82,8 @@ internal fun auditVerificationSignalGateReason(phaseId: String, outputMap: Map<S
   FeatureTaskRuntimeOutputVerification.auditGapPayloadError(outputMap)?.let { return it }
   val hasVerdict = (outputMap[FeatureTaskRuntimeVerificationSignalKeys.VERDICT] as? String)?.isNotBlank() == true
   val producedOutputs = outputMap["produced_outputs"] as? Map<*, *>
-  val hasCriteriaArray = listOf(
-    FeatureTaskRuntimeVerificationSignalKeys.AUDIT_UNMET_CRITERIA,
-    FeatureTaskRuntimeVerificationSignalKeys.AUDIT_FAILING_CRITERIA_ALIAS,
-  ).any { key -> producedOutputs?.containsKey(key) == true && producedOutputs[key] is List<*> }
+  val criteriaKey = FeatureTaskRuntimeVerificationSignalKeys.AUDIT_UNMET_CRITERIA
+  val hasCriteriaArray = producedOutputs?.containsKey(criteriaKey) == true && producedOutputs[criteriaKey] is List<*>
   return if (hasVerdict || hasCriteriaArray) {
     null
   } else {

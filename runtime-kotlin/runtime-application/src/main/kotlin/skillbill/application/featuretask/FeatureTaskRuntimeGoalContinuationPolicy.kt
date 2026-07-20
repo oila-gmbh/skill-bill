@@ -51,9 +51,6 @@ private fun suppliedGoalContinuationConflict(
   supplied.parallelReviewAgent?.takeIf { it != durable.parallelReviewAgent }?.let {
     "The supplied goal-continuation parallel-review agent conflicts with its durable child policy."
   },
-  supplied.agentAddonSelection.takeUnless { it.entries.isEmpty() }
-    ?.takeIf { it != durable.agentAddonSelection }
-    ?.let { "The supplied goal-continuation agent add-on selection conflicts with its durable child policy." },
   requireNotNull(supplied.reviewBaseline).takeIf { it != baseline }?.let {
     "The supplied goal-continuation review baseline conflicts with its durable child policy."
   },

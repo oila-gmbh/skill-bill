@@ -539,6 +539,36 @@ class WorkflowStateStoreTest {
   }
 
   @Test
+  fun `audit repair artifact round trips through sqlite without rewriting its contract identity`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-db-audit-repair").resolve("metrics.db")
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val store = WorkflowStateStore(connection)
+      val row = workflowRow(
+        workflowId = "wftr-audit-repair",
+        sessionId = "ftr-audit-repair",
+        workflowName = "bill-feature-task-runtime",
+        currentStepId = "implement",
+        mode = FeatureTaskWorkflowMode.RUNTIME,
+      ).copy(artifactsJson = auditRepairArtifactsJson())
+
+      store.saveFeatureTaskRuntimeWorkflow(row)
+
+      assertEquals(
+        auditRepairArtifactsJson(),
+        assertNotNull(store.getFeatureTaskRuntimeWorkflow(row.workflowId)).artifactsJson,
+      )
+
+      store.saveFeatureTaskRuntimeWorkflow(row.copy(artifactsJson = auditRepairArtifactsJson("9.9")))
+      assertEquals(
+        auditRepairArtifactsJson("9.9"),
+        assertNotNull(store.getFeatureTaskRuntimeWorkflow(row.workflowId)).artifactsJson,
+        "SQLite must preserve incompatible identity for production mapping to reject at runtime use.",
+      )
+    }
+  }
+
+  @Test
   fun `feature task runtime upsert preserves the original started_at across a second save`() {
     val dbPath = Files.createTempDirectory("runtime-kotlin-db-task-runtime-started").resolve("metrics.db")
 
@@ -672,6 +702,37 @@ private val taskRuntimeArtifactsJson: String =
     ]
   }
   """.trimIndent()
+
+private fun auditRepairArtifactsJson(contractVersion: String = "0.2"): String = """
+  {"feature_task_runtime_audit_repair_state":{
+    "contract_version":"$contractVersion",
+    "accepted_plans":[{"contract_version":"0.2","gaps":[{
+      "gap_id":"ac-001-gap-1","acceptance_criterion_ref":"AC-001",
+      "acceptance_criterion_text":"Criterion","failure_evidence":{"observation":"required_behavior_absent","artifact_ref":"runtime-kotlin","check_ref":"AC-001"},
+      "diagnosis":"Diagnosis","affected_boundary":"runtime","repair_items":[{
+        "repair_item_id":"ac-001-gap-1-item-1","intended_outcome":"Outcome",
+        "implementation_actions":["Implement"],"affected_paths_or_symbols":["src/Foo.kt"],
+        "required_verification":["Test"],"depends_on":[],"status":"pending"
+      }]
+    }]}],
+    "latest_plan":{"contract_version":"0.2","gaps":[{
+      "gap_id":"ac-001-gap-1","acceptance_criterion_ref":"AC-001",
+      "acceptance_criterion_text":"Criterion","failure_evidence":{"observation":"required_behavior_absent","artifact_ref":"runtime-kotlin","check_ref":"AC-001"},
+      "diagnosis":"Diagnosis","affected_boundary":"runtime","repair_items":[{
+        "repair_item_id":"ac-001-gap-1-item-1","intended_outcome":"Outcome",
+        "implementation_actions":["Implement"],"affected_paths_or_symbols":["src/Foo.kt"],
+        "required_verification":["Test"],"depends_on":[],"status":"pending"
+      }]
+    }]},
+    "execution_history":[],"prior_gap_dispositions":[],
+    "unresolved_gap_ledger":{"contract_version":"0.2","gaps":[{
+      "gap_id":"ac-001-gap-1","acceptance_criterion_ref":"AC-001","generation":1
+    }]},
+    "repository_fingerprint":"fingerprint",
+    "progress":{"first_pass_convergence":false,"recurring_gap_count":0,"new_gap_count":1,
+      "attempted_repair_item_count":0,"resolved_repair_item_count":0,"audit_gap_iteration_count":1}
+  }}
+""".trimIndent()
 
 private fun insertFeatureImplementSession(connection: Connection) {
   connection.prepareStatement(

@@ -203,7 +203,7 @@ agents:
         "stopped_reason": "<empty if stopped_early is false>"
       }
   - name: bill-feature-task-implementation-fix
-    description: "Implementation fix-loop variant for bill-feature-task: respawned by the code-review step to address Blocker/Major findings."
+    description: "Implementation fix-loop variant for bill-feature-task: respawned by the code-review step to address Blocker findings."
     body: |-
       You are the implementation subagent, invoked to fix findings from the code-review step. Scope: fix only the findings listed below; do not add unrelated changes.
       
@@ -363,7 +363,7 @@ agents:
          - When `{parallel_review_agent}` is non-empty, run it as the second full review lane with the exact same mode and prepared delta. Invoke both lanes directly and do not pass a parallel argument into either lane, so neither lane recursively launches parallel review. Together the two lanes are exactly one review pass.
          - Reuse the durable completed/reserved pass state above. Reserve before launching a new pass; if a crash left `{reserved_review_pass_number}` without a completed output, resume that same accounted pass rather than blocking or reserving another. Carry `{completed_review_pass_count}` and `{review_cap_disposition}` through repair and audit re-entry. Never start pass three.
          - Persist full location-bearing review evidence in durable artifacts and telemetry. Emit to the goal only a compact summary containing subtask id, pass number, verdict or continuation state, severity, class-or-symbol label, and concise text; never include a path, line number, hunk, or raw review output in that summary.
-         - If the second pass has unresolved Blocker or Major findings, persist the complete findings and `review_cap_reached`, emit its non-approval compact summary, and continue through audit, validation, history, dependency, commit_push, and final reporting. Do not claim approval and do not block before those gates solely because the cap was reached.
+         - If the second pass has unresolved Blocker findings, persist the complete findings and `review_cap_reached`, emit its non-approval compact summary, and stop before audit. Do not claim approval and do not continue into audit, validation, history, dependency, or commit_push. Major, Minor, and Nit findings never produce this blocking disposition and never stop the workflow.
 
       Context discipline:
       - Do NOT ask for confirmation before starting. Start immediately by calling `feature_task_prose_workflow_continue`.

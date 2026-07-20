@@ -162,7 +162,7 @@ class GoalRunnerStatusService(
     val resetManifest = latest.manifest.resetManifest(request.hard)
     val resetState = latest.copy(manifest = resetManifest)
     val saved = if (request.hard) {
-      manifestStore.saveHardReset(resetState, request.dbPathOverride)
+      manifestStore.saveHardReset(resetState, request.dbPathOverride, request.preservePlanning)
     } else {
       manifestStore.save(resetState, request.dbPathOverride)
     }

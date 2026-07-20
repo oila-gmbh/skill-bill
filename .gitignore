@@ -57,3 +57,5 @@ platform-packs/*/quality-check/*/claude-agents/
 platform-packs/*/quality-check/*/codex-agents/
 platform-packs/*/quality-check/*/opencode-agents/
 platform-packs/*/quality-check/*/junie-agents/
+
+local.properties

@@ -44,6 +44,16 @@ data class FeatureTaskRuntimeStatusProjection(
    */
   val finalizingAgentId: String? = null,
   val decomposeTerminal: FeatureTaskRuntimeDecomposeTerminalStatus? = null,
+  val auditRepair: FeatureTaskRuntimeAuditRepairStatus? = null,
+)
+
+data class FeatureTaskRuntimeAuditRepairStatus(
+  val firstPassConvergence: Boolean,
+  val recurringGapCount: Int,
+  val newGapCount: Int,
+  val attemptedRepairItemCount: Int,
+  val resolvedRepairItemCount: Int,
+  val auditGapIterationCount: Int,
 )
 
 data class FeatureTaskRuntimeDecomposeTerminalStatus(

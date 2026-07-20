@@ -1923,6 +1923,7 @@ class RuntimeArchitectureTest {
       "skillbill.workflow.model.appendBoundedHistoryBySequence",
       // Durable artifact-map seams riding inside the family workflow row's artifacts_json.
       "skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator.validateAndReadPhaseOutput",
+      "skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutput.envelope",
       "skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord.toArtifactMap",
       "skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord.fromArtifactMap",
       "skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry.toArtifactMap",

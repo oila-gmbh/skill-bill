@@ -11,7 +11,14 @@ import com.networknt.schema.JsonSchema
 import com.networknt.schema.JsonSchemaFactory
 import com.networknt.schema.SpecVersion
 import com.networknt.schema.ValidationMessage
+import skillbill.error.InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGap
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairPlan
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeEvidence
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairItem
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairItemStatus
+import skillbill.workflow.taskruntime.model.canonicalAuditIdentifier
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.logging.Level
@@ -26,8 +33,10 @@ private val featureTaskRuntimePhaseOutputLog: Logger =
  * input, and any schema violation fail with
  * [InvalidFeatureTaskRuntimePhaseOutputSchemaError].
  */
+@Suppress("TooManyFunctions")
 object FeatureTaskRuntimePhaseOutputSchemaValidator {
   private val schema: JsonSchema by lazy { loadFeatureTaskRuntimePhaseOutputSchema() }
+  private val auditRepairSchema: JsonSchema by lazy { loadAuditRepairPlanSchema() }
   private val mapper: ObjectMapper by lazy { ObjectMapper() }
   private val yamlMapper: YAMLMapper by lazy { YAMLMapper() }
   private val mapType = object : TypeReference<Map<String, Any?>>() {}
@@ -42,6 +51,7 @@ object FeatureTaskRuntimePhaseOutputSchemaValidator {
         reason = formatValidationReason(errors.sortedWith(violationOrdering), instance),
       )
     }
+    validateAuditRepairPlan(instance, sourceLabel)
     val phaseId = phaseOutput["phase_id"] as? String
     if (phaseId != sourceLabel) {
       throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
@@ -50,6 +60,69 @@ object FeatureTaskRuntimePhaseOutputSchemaValidator {
       )
     }
   }
+
+  private fun validateAuditRepairPlan(instance: JsonNode, sourceLabel: String) {
+    if (sourceLabel != "audit") return
+    val producedOutputs = instance.path("produced_outputs")
+    val unmetCriteria = producedOutputs.path("unmet_criteria")
+    if (!unmetCriteria.isArray || unmetCriteria.isEmpty) return
+    val plan = producedOutputs.path("audit_repair_plan")
+    try {
+      val errors = auditRepairSchema.validate(plan)
+      require(errors.isEmpty()) { formatValidationReason(errors.sortedWith(violationOrdering), plan) }
+      decodeAuditRepairPlan(plan).requireExactCriterionCoverage(
+        unmetCriteria.map {
+          it.path("acceptance_criterion_ref").asText()
+        },
+      )
+    } catch (error: InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError) {
+      throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
+        sourceLabel = sourceLabel,
+        reason = "produced_outputs.audit_repair_plan: ${error.reason}",
+        cause = error,
+      )
+    } catch (error: IllegalArgumentException) {
+      throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
+        sourceLabel = sourceLabel,
+        reason = "produced_outputs.audit_repair_plan: ${error.message.orEmpty()}",
+        cause = error,
+      )
+    }
+  }
+
+  private fun decodeAuditRepairPlan(node: JsonNode): FeatureTaskRuntimeAuditRepairPlan =
+    FeatureTaskRuntimeAuditRepairPlan(
+      contractVersion = node.path("contract_version").asText(),
+      gaps = node.path("gaps").map { gap ->
+        FeatureTaskRuntimeAuditGap(
+          gapId = canonicalAuditIdentifier(gap.path("gap_id").asText()),
+          acceptanceCriterionRef = gap.path("acceptance_criterion_ref").asText(),
+          acceptanceCriterionText = gap.path("acceptance_criterion_text").asText(),
+          failureEvidence = gap.path("failure_evidence").let { evidence ->
+            FeatureTaskRuntimeEvidence(
+              observation = FeatureTaskRuntimeEvidence.Observation.valueOf(
+                evidence.path("observation").asText().uppercase(),
+              ),
+              artifactRef = evidence.path("artifact_ref").asText(),
+              checkRef = evidence.path("check_ref").asText(),
+            )
+          },
+          diagnosis = gap.path("diagnosis").asText(),
+          affectedBoundary = gap.path("affected_boundary").asText(),
+          repairItems = gap.path("repair_items").map { item ->
+            FeatureTaskRuntimeRepairItem(
+              repairItemId = canonicalAuditIdentifier(item.path("repair_item_id").asText()),
+              intendedOutcome = item.path("intended_outcome").asText(),
+              implementationActions = item.path("implementation_actions").map(JsonNode::asText),
+              affectedPathsOrSymbols = item.path("affected_paths_or_symbols").map(JsonNode::asText),
+              requiredVerification = item.path("required_verification").map(JsonNode::asText),
+              dependsOn = item.path("depends_on").map { canonicalAuditIdentifier(it.asText()) },
+              status = FeatureTaskRuntimeRepairItemStatus.PENDING,
+            )
+          },
+        )
+      },
+    )
 
   fun validatePhaseOutputText(phaseOutputText: String, sourceLabel: String) {
     val node = readPhaseOutputObjectNode(phaseOutputText, sourceLabel)
@@ -65,14 +138,45 @@ object FeatureTaskRuntimePhaseOutputSchemaValidator {
   }
 
   // Agents launched via `claude --print` (and peers) emit a final message, not a bare payload:
-  // the JSON object is commonly wrapped in a ``` fence or trailed by a closing remark. Try the
-  // most-specific candidate first and fall back to the raw text so a genuinely payload-less or
-  // malformed output still surfaces the precise existing error rather than a misleading one.
+  // the JSON object is commonly wrapped in a ``` fence or trailed by a closing remark. Candidate
+  // order is most-specific-first, and that positional precedence decides which envelope is the
+  // agent's answer: schema validity never promotes an earlier restated envelope over the final one,
+  // otherwise a stale `satisfied` draft could win over the real `gaps_found` answer and advance the
+  // workflow past unmet criteria. Falling back to the raw text keeps genuinely payload-less or
+  // malformed output on its precise existing error.
   private fun readPhaseOutputObjectNode(phaseOutputText: String, sourceLabel: String): JsonNode {
-    phaseOutputObjectCandidates(phaseOutputText).forEach { candidate ->
-      tryParseObjectNode(candidate)?.let { return it }
+    val parsedCandidates = phaseOutputObjectCandidates(phaseOutputText).mapNotNull(::tryParseObjectNode)
+    val envelopeCandidates = parsedCandidates.filter { candidate ->
+      candidate.path("phase_id").asText("") == sourceLabel
     }
+    val distinctValidEnvelopes = envelopeCandidates
+      .filter { candidate -> schema.validate(candidate).isEmpty() }
+      .distinctBy(::canonicalCandidateKey)
+    if (distinctValidEnvelopes.size > 1) {
+      throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
+        sourceLabel = sourceLabel,
+        reason = "Phase output contains multiple conflicting schema-valid envelopes.",
+      )
+    }
+    envelopeCandidates.firstOrNull()?.let { return it }
+    parsedCandidates.firstOrNull()?.let { return it }
     return parseObjectNodeStrict(phaseOutputText.trim(), sourceLabel)
+  }
+
+  // Key order carries no meaning in the envelope, so one restated envelope must not read as two.
+  private fun canonicalCandidateKey(candidate: JsonNode): String =
+    mapper.writeValueAsString(canonicalizeCandidate(candidate))
+
+  private fun canonicalizeCandidate(node: JsonNode): JsonNode = when {
+    node.isObject -> mapper.createObjectNode().apply {
+      node.fieldNames().asSequence().sorted().forEach { field ->
+        set<JsonNode>(field, canonicalizeCandidate(node.path(field)))
+      }
+    }
+    node.isArray -> mapper.createArrayNode().apply {
+      node.forEach { element -> add(canonicalizeCandidate(element)) }
+    }
+    else -> node
   }
 
   private fun tryParseObjectNode(candidate: String): JsonNode? = try {
@@ -182,6 +286,62 @@ object FeatureTaskRuntimePhaseOutputSchemaValidator {
     { it.instanceLocation?.toString().orEmpty() },
     { it.message.orEmpty() },
   )
+}
+
+private fun loadAuditRepairPlanSchema(): JsonSchema = try {
+  val resource = FeatureTaskRuntimeAuditRepairPlanSchemaPaths.CLASSPATH_RESOURCE
+  val repoPath = FeatureTaskRuntimeAuditRepairPlanSchemaPaths.REPO_RELATIVE_PATH
+  val text = FeatureTaskRuntimePhaseOutputSchemaValidator::class.java.classLoader
+    .getResourceAsStream(resource)?.use { it.readBytes().toString(Charsets.UTF_8) }
+    ?: walkForSchemaFile(Path.of("").toAbsolutePath(), repoPath)?.let(Files::readString)
+    ?: throw InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError(
+      sourceLabel = resource,
+      reason = "Canonical audit repair plan schema is missing from '$resource' and '$repoPath'.",
+    )
+  loadAuditRepairPlanSchemaText(text, resource)
+} catch (error: InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError) {
+  throw error
+} catch (error: Exception) {
+  throw InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError(
+    sourceLabel = FeatureTaskRuntimeAuditRepairPlanSchemaPaths.CLASSPATH_RESOURCE,
+    reason = error.message ?: error::class.simpleName.orEmpty(),
+    cause = error,
+  )
+}
+
+internal fun loadAuditRepairPlanSchemaText(text: String, sourceLabel: String): JsonSchema = try {
+  val node = YAMLMapper().readTree(text)
+    ?: throw IllegalArgumentException("Canonical audit repair plan schema is empty.")
+  val loadedId = node.path("\$id").asText("")
+  val loadedVersion = node.path("properties").path("contract_version").path("const").asText("")
+  require(loadedId == FeatureTaskRuntimeAuditRepairPlanSchemaPaths.EXPECTED_SCHEMA_ID) {
+    "Canonical audit repair plan schema identity mismatch: loaded '$loadedId' but expected " +
+      "'${FeatureTaskRuntimeAuditRepairPlanSchemaPaths.EXPECTED_SCHEMA_ID}'."
+  }
+  require(loadedVersion == FEATURE_TASK_RUNTIME_AUDIT_REPAIR_CONTRACT_VERSION) {
+    "Canonical audit repair plan schema contract version mismatch: loaded '$loadedVersion' but expected " +
+      "'$FEATURE_TASK_RUNTIME_AUDIT_REPAIR_CONTRACT_VERSION'."
+  }
+  JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V202012)
+    .getSchema(ObjectMapper().writeValueAsString(node))
+} catch (error: InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError) {
+  throw error
+} catch (error: Exception) {
+  throw InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError(
+    sourceLabel = sourceLabel,
+    reason = error.message ?: error::class.simpleName.orEmpty(),
+    cause = error,
+  )
+}
+
+private fun walkForSchemaFile(hint: Path, repoRelativePath: String): Path? {
+  var current: Path? = hint.toAbsolutePath().normalize()
+  while (current != null) {
+    val candidate = current.resolve(repoRelativePath)
+    if (Files.isRegularFile(candidate)) return candidate
+    current = current.parent
+  }
+  return null
 }
 
 internal const val FEATURE_TASK_RUNTIME_PHASE_OUTPUT_SCHEMA_CLASSPATH_RESOURCE: String =

@@ -300,6 +300,15 @@ internal object DatabaseColumnMigrations {
       columnName = "audit_gap_iteration_count",
       definition = "INTEGER NOT NULL DEFAULT 0",
     )
+    listOf(
+      "audit_first_pass_convergence",
+      "audit_recurring_gap_count",
+      "audit_new_gap_count",
+      "audit_attempted_repair_item_count",
+      "audit_resolved_repair_item_count",
+    ).forEach { column ->
+      ensureColumn(connection, "feature_task_runtime_sessions", column, "INTEGER NOT NULL DEFAULT 0")
+    }
     ensureColumn(connection, "feature_task_runtime_sessions", "estimated_phase_tokens_json", "TEXT")
     ensureColumn(connection, "feature_task_runtime_sessions", "estimated_total_tokens", "INTEGER")
     ensureColumn(

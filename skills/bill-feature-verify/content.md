@@ -62,11 +62,22 @@ The success artifact for this step is `input_context`: the normalized spec sourc
 
 ## Step 1b: Rehydrate a Missing Linear-Mode Spec (before any spec read)
 
-Determine the verify target's spec source from the artifact, not config: decomposed → the `decomposition-manifest.yaml` `spec_source` field; single_spec → the `spec_source:` line in `spec.md`; absent or unreadable → `local`.
+Determine the verify target's spec source from durable artifacts, never config.
+When `decomposition-manifest.yaml` exists, read its `spec_source` field and
+default an omitted field to `local`.
+A bare `spec.md` is intake rather than prepared source authority.
 
 For `spec_source: local`, the spec is committed in the PR's tree — read it directly; no rehydrate, no Linear MCP call.
 
-For `spec_source: linear`, the committed tree carries no spec or manifest (they are deleted on terminal success), so the normalized spec source may point to a missing file. Before Step 2 reads the spec, rehydrate it: derive the `issue_key` from the branch/PR, fetch the parent issue by `issue_key` from Linear, and enumerate its sub-issues from Linear as the source of truth for sub-issue enumeration (the manifest is gone, so Linear — not the deleted manifest — drives enumeration). Fetch each sub-issue by its `linear_issue_id`, rewrite the parent spec + subtask specs locally, then extract acceptance criteria as usual. Rehydrate is agent-side MCP only.
+For a terminal Linear target, the committed tree carries no spec or manifest
+because scratch cleanup deleted both. Treat the simultaneous absence of both
+artifacts as requiring durable source resolution: derive the normalized
+`issue_key` from the branch/PR and fetch that parent issue from Linear. A
+successful exact-key lookup is the durable Linear source signal; failure to
+resolve it loud-fails instead of defaulting the missing target to local. Enumerate
+the parent's sub-issues from Linear, fetch each sub-issue by its
+`linear_issue_id`, rewrite the parent spec + subtask specs locally, then extract
+acceptance criteria as usual. Rehydrate is agent-side MCP only.
 
 ## Step 2: Extract Acceptance Criteria
 

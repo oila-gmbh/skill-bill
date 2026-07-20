@@ -1,7 +1,9 @@
 package skillbill.application.featuretask
 
+import skillbill.contracts.JsonSupport
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairPlan
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeBackwardEdge
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry
@@ -31,9 +33,20 @@ internal class FeatureTaskRuntimeRunState(
       .also(::invalidateIncompleteReentrySpans)
   private val outputs: MutableList<FeatureTaskRuntimePhaseOutput> =
     initialRecords.values
-      .mapNotNull(::recordToOutput)
+      .mapNotNull(::validatedRecordToOutput)
       .filterNot { it.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN && it.phaseId !in completed }
       .toMutableList()
+
+  private fun validatedRecordToOutput(record: FeatureTaskRuntimePhaseRecord): FeatureTaskRuntimePhaseOutput? =
+    record.outputArtifact?.let { artifact ->
+      val normalized = outputValidator.normalizePhaseOutput(artifact, record.phaseId)
+      FeatureTaskRuntimePhaseOutput(
+        phaseId = record.phaseId,
+        iteration = record.attemptCount,
+        payload = normalized.canonicalJson,
+        normalizedOutput = normalized,
+      )
+    }
   private val priorRecords: MutableSet<String> = initialRecords.keys.toMutableSet()
   private val initialReviewRecord = initialRecords[FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW]
   private var currentReviewPassNumber: Int? = initialReviewRecord?.reviewPassNumber
@@ -119,30 +132,31 @@ internal class FeatureTaskRuntimeRunState(
   fun latestInFlightReentry(): Pair<String, InFlightReentry>? =
     inFlightReentries.maxByOrNull { (_, reentry) -> reentry.edgeSequenceNumber }?.toPair()
 
-  fun auditGapPlanningContextError(): String? {
-    val planningPhaseIds = listOf(
-      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN,
-      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN,
-    )
-    planningPhaseIds.forEach { phaseId ->
-      val record = initialRecords[phaseId]
-      val output = outputFor(phaseId)
-      if (output == null || record?.status?.let { it != STATUS_COMPLETED } == true) {
-        return "Audit-gap remediation requires a valid completed original '$phaseId' output."
-      }
-      val validatedOutput = runCatching {
-        outputValidator.validateAndReadPhaseOutput(output.payload, sourceLabel = phaseId)
-      }.getOrNull()
-      if (validatedOutput == null || validatedOutput["phase_id"] != phaseId) {
-        return "Audit-gap remediation requires a valid completed original '$phaseId' output."
-      }
-      if (record?.loopId != null || record?.edgeIteration != null) {
-        return "Audit-gap remediation cannot prove original planning-context identity because '$phaseId' " +
+  fun auditGapPlanningContextError(): String? = listOf(
+    FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN,
+    FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN,
+  ).firstNotNullOfOrNull(::planningContextError)
+
+  private fun planningContextError(phaseId: String): String? {
+    val record = initialRecords[phaseId]
+    val output = outputFor(phaseId)
+    if (output == null || record?.status?.let { it != STATUS_COMPLETED } == true) {
+      return "Audit-gap remediation requires a valid completed original '$phaseId' output."
+    }
+    val validatedOutput = output.normalizedOutput?.envelope
+    return when {
+      validatedOutput == null ->
+        "Audit-gap remediation requires a valid completed original '$phaseId' output; " +
+          "its durable record carries no normalized output."
+      validatedOutput["phase_id"] != phaseId ->
+        "Audit-gap remediation requires a valid completed original '$phaseId' output; " +
+          "the persisted record declares phase_id '${validatedOutput["phase_id"]}'."
+      record?.loopId != null || record?.edgeIteration != null ->
+        "Audit-gap remediation cannot prove original planning-context identity because '$phaseId' " +
           "carries legacy backward-edge metadata. Migrate or restart this experimental durable workflow; " +
           "the runtime will not regenerate or silently reuse overwritten planning context."
-      }
+      else -> null
     }
-    return null
   }
 
   // A backward edge re-enters the phase: drop its completed marker so the driver relaunches it.
@@ -268,6 +282,14 @@ internal class FeatureTaskRuntimeRunState(
 
   fun unmetAuditCriteria(phaseId: String): List<String> =
     FeatureTaskRuntimeOutputVerification.unmetAuditCriteria(outputFor(phaseId))
+
+  fun auditRepairPlan(phaseId: String): FeatureTaskRuntimeAuditRepairPlan? = outputFor(phaseId)
+    ?.normalizedOutput
+    ?.envelope
+    ?.get("produced_outputs")
+    ?.let(JsonSupport::anyToStringAnyMap)
+    ?.get("audit_repair_plan")
+    ?.let { auditRepairPlanFromWire(it, "$phaseId.produced_outputs.audit_repair_plan") }
 
   // The latest validated output for the phase (highest iteration), or null when none is present.
   fun outputFor(phaseId: String): FeatureTaskRuntimePhaseOutput? =

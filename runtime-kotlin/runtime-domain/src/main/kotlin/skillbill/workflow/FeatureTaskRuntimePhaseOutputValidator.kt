@@ -2,6 +2,7 @@ package skillbill.workflow
 
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
+import skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutput
 
 /**
  * Domain port for validating a phase's output payload; the concrete JSON-Schema
@@ -30,5 +31,13 @@ interface FeatureTaskRuntimePhaseOutputValidator {
       ?.let(skillbill.contracts.JsonSupport::jsonElementToValue)
       ?.let(skillbill.contracts.JsonSupport::anyToStringAnyMap)
       ?: emptyMap()
+  }
+
+  fun normalizePhaseOutput(phaseOutputText: String, sourceLabel: String): NormalizedFeatureTaskRuntimePhaseOutput {
+    val envelope = validateAndReadPhaseOutput(phaseOutputText, sourceLabel)
+    return NormalizedFeatureTaskRuntimePhaseOutput(
+      canonicalJson = skillbill.contracts.JsonSupport.mapToJsonString(envelope),
+      envelope = envelope,
+    )
   }
 }

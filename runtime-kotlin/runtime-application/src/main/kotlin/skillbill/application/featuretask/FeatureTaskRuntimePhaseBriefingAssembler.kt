@@ -1,6 +1,7 @@
 package skillbill.application.featuretask
 
 import skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing
+import skillbill.contracts.JsonSupport
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseHandoff
 import java.nio.ByteBuffer
@@ -46,6 +47,10 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
       derivedContextKeys = handoff.derivedContextKeys,
       briefingText = briefingText,
       drivingVerdict = handoff.drivingVerdict?.wireValue,
+      auditRepairItemIds = handoff.auditRepairPlan?.gaps.orEmpty()
+        .flatMap { gap -> gap.repairItems.map { it.repairItemId } },
+      unresolvedAuditGapIds = handoff.auditRepairState?.unresolvedGapLedger?.unresolvedGaps.orEmpty()
+        .map { it.gapId },
     )
   }
 
@@ -77,6 +82,7 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
   }
 
   // Called twice: once with empty bodies to measure fixed overhead, once with the bounded bodies.
+  @Suppress("LongMethod")
   private fun renderBriefing(handoff: FeatureTaskRuntimePhaseHandoff, upstreamBodies: Map<String, String>): String =
     buildString {
       val invariants = handoff.runInvariants
@@ -88,6 +94,39 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
       if (handoff.reentryGapCriteria.isNotEmpty()) {
         appendLine("audit_gaps:")
         handoff.reentryGapCriteria.forEach { gap -> appendLine("  - $gap") }
+      }
+      handoff.auditRepairPlan?.let { plan ->
+        appendLine("audit_repair_plan:")
+        JsonSupport.mapToJsonString(auditRepairPlanToWire(plan)).lineSequence().forEach { appendLine("  $it") }
+        appendLine("audit_remediation_execution_rules:")
+        appendLine("  - Use the immutable initial preplan and plan; do not regenerate general planning.")
+        appendLine("  - Treat the ordered repair items as an exhaustive execution checklist for this invocation.")
+        appendLine("  - Process each runnable item one by one in dependency order; do not skip or batch away an item.")
+        appendLine(
+          "  - After each item, verify its repository outcome and record its terminal result before continuing.",
+        )
+        appendLine("  - Do not finish until every carried repair_item_id has exactly one terminal result.")
+        appendLine("  - Emit exactly one terminal repair_item_result for every carried repair_item_id.")
+        appendLine("  - already_satisfied requires distinct concrete repository and verification evidence.")
+        appendLine("  - Do not defer or assign carried work to review, audit, validation, or a later phase.")
+        appendLine(
+          "  - If an item is genuinely unresolvable, block with both gap_id and repair_item_id " +
+            "and preserve partial terminal evidence.",
+        )
+      }
+      handoff.auditRepairState?.let { repairState ->
+        val currentItemIds = handoff.auditRepairPlan?.gaps.orEmpty()
+          .flatMap { gap -> gap.repairItems.map { it.repairItemId } }
+        appendLine("audit_remediation_context:")
+        JsonSupport.mapToJsonString(
+          mapOf(
+            "carried_repair_item_ids" to currentItemIds,
+            "unresolved_gap_ids" to repairState.unresolvedGapLedger.unresolvedGaps.map { it.gapId },
+            "prior_terminal_result_count" to repairState.repairItemResults.size,
+            "audit_gap_iteration_count" to repairState.progress.auditGapIterationCount,
+            "repository_fingerprint" to repairState.repositoryFingerprint,
+          ),
+        ).lineSequence().forEach { appendLine("  $it") }
       }
       appendLine()
       appendLine("## Run invariants (layer 1, unconditional)")

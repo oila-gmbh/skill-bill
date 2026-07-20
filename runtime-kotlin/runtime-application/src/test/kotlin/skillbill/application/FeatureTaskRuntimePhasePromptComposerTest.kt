@@ -3,6 +3,7 @@ package skillbill.application
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseBriefingAssembler
 import skillbill.application.featuretask.FeatureTaskRuntimePhasePromptComposer
 import skillbill.application.featuretask.FeatureTaskRuntimeVerificationSignalKeys
+import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.model.SpecSource
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
@@ -76,7 +77,7 @@ class FeatureTaskRuntimePhasePromptComposerTest {
       assertContains(
         prompt,
         "\"contract_version\": must be exactly " +
-          "\"${FeatureTaskRuntimePhaseWorkflowDefinition.definition.contractVersion}\"",
+          "\"$FEATURE_TASK_RUNTIME_CONTRACT_VERSION\"",
         false,
         "contract version for $phaseId",
       )
@@ -299,9 +300,33 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     assertContains(reviewPrompt, "\"findings\" array", false, "review names the findings signal")
     assertContains(reviewPrompt, "\"approved\" or \"changes_requested\"", false, "review names the verdict values")
     assertContains(auditPrompt, "VERIFYING phase", false, "audit names itself a verifying phase")
-    assertContains(auditPrompt, "\"unmet_criteria\" array", false, "audit names the unmet_criteria signal")
-    assertContains(auditPrompt, "\"satisfied\" or \"gaps_found\"", false, "audit names the verdict values")
+    assertContains(
+      auditPrompt,
+      "\"unmet_criteria\" array",
+      false,
+      "audit names the unmet_criteria signal",
+    )
+    assertContains(
+      auditPrompt,
+      "\"satisfied\" or \"gaps_found\"",
+      false,
+      "audit names the verdict values",
+    )
     assertContains(auditPrompt, "\"verdict\": optional top-level string", false, "top-level verdict is documented")
+    assertContains(auditPrompt, "TEST EXCLUSION", false, "audit makes the test-only exclusion explicit")
+    assertContains(auditPrompt, "NEVER audit gaps", false, "audit rejects test-only gaps")
+    assertContains(
+      auditPrompt,
+      "Validation owns test execution and failures",
+      false,
+      "audit routes tests to validation",
+    )
+    assertContains(
+      auditPrompt,
+      "production behavior or production implementation",
+      false,
+      "audit scopes gaps to production",
+    )
   }
 
   @Test
@@ -387,6 +412,43 @@ class FeatureTaskRuntimePhasePromptComposerTest {
       !retry.contains("<one sentence describing what this phase did>"),
       "no skeleton for field-level violations",
     )
+  }
+
+  @Test
+  fun `audit remediation output contract names every carried item and required evidence field`() {
+    val briefing = briefingFor("implement").copy(
+      auditRepairItemIds = listOf("ac-004-gap-2-item-1", "ac-005-gap-1-item-1"),
+    )
+
+    val prompt = FeatureTaskRuntimePhasePromptComposer.compose(ISSUE_KEY, briefing)
+
+    assertContains(prompt, "AUDIT-GAP REMEDIATION")
+    assertContains(prompt, "ac-004-gap-2-item-1")
+    assertContains(prompt, "ac-005-gap-1-item-1")
+    assertContains(prompt, "\"repair_item_results\"")
+    assertContains(prompt, "\"changed_paths_or_symbols\"")
+    assertContains(prompt, "\"executed_verification\"")
+    assertContains(prompt, "\"result_evidence\"")
+    assertContains(prompt, "\"reconciled_state\"")
+  }
+
+  @Test
+  fun `audit remediation retry repeats the exact item ids and complete output skeleton`() {
+    val briefing = briefingFor("implement").copy(
+      auditRepairItemIds = listOf("ac-004-gap-2-item-1", "ac-005-gap-1-item-1"),
+    )
+
+    val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefing,
+      priorSchemaFailure =
+      "Audit repair item 'ac-005-gap-1-item-1' executed_verification must contain concrete verification evidence.",
+    )
+
+    assertContains(prompt, "Correct every carried item exactly once and in this order")
+    assertContains(prompt, "ac-004-gap-2-item-1, ac-005-gap-1-item-1")
+    assertContains(prompt, "Required produced_outputs shape")
+    assertContains(prompt, "<command and result>")
   }
 
   @Test

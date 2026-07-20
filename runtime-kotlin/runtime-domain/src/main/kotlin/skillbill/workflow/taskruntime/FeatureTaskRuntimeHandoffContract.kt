@@ -1,5 +1,7 @@
 package skillbill.workflow.taskruntime
 
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairPlan
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairState
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseHandoff
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
@@ -55,12 +57,15 @@ object FeatureTaskRuntimeHandoffContract {
    * byte-for-byte; [reentryGapCriteria] scopes an `audit_gap` re-entry and defaults to empty;
    * upstream resolution is unchanged so a re-entered agent never selects its own inputs.
    */
+  @Suppress("LongParameterList")
   fun assembleHandoff(
     declaration: FeatureTaskRuntimePhaseDeclaration,
     runInvariants: FeatureTaskRuntimeRunInvariants,
     recordedOutputs: List<FeatureTaskRuntimePhaseOutput>,
     drivingVerdict: FeatureTaskRuntimeVerdict? = null,
     reentryGapCriteria: List<String> = emptyList(),
+    auditRepairPlan: FeatureTaskRuntimeAuditRepairPlan? = null,
+    auditRepairState: FeatureTaskRuntimeAuditRepairState? = null,
   ): FeatureTaskRuntimePhaseHandoff = FeatureTaskRuntimePhaseHandoff(
     phaseId = declaration.phaseId,
     runInvariants = runInvariants,
@@ -68,5 +73,7 @@ object FeatureTaskRuntimeHandoffContract {
     derivedContextKeys = declaration.derivedContextKeys,
     drivingVerdict = drivingVerdict,
     reentryGapCriteria = reentryGapCriteria,
+    auditRepairPlan = auditRepairPlan,
+    auditRepairState = auditRepairState,
   )
 }

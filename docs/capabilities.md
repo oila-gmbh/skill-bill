@@ -26,6 +26,23 @@ Cross-cutting properties:
 
 It is a tiny CI/CD for the feature itself, not just the code.
 
+**The completeness audit is repair planning plus verification, not a pass/fail check.**
+
+The audit step does not just tell you an acceptance criterion is unmet. When it reports gaps it has to hand back a structured repair plan, and the runtime then holds the rest of the run to that plan.
+
+- **Every gap comes with a plan.** A gaps-found audit must produce one gap per unmet acceptance criterion, and each gap carries a stable id, the criterion it belongs to, concrete failure evidence, a diagnosis, the affected boundary, and one or more dependency-ordered repair items. Each repair item states its intended outcome, the implementation actions, the paths or symbols it touches, and the verification that proves it. A prose gap list with no complete plan fails loudly: it cannot trigger remediation and cannot advance the run.
+- **Remediation is one pass, all of it.** The repair pass gets the original pre-planning digest and implementation plan plus the whole accepted repair plan, and it has to come back with one terminal result per carried repair item — either `fixed` or `already_satisfied` — each with changed paths or symbols and the verification actually executed. A missing item, an unattempted item, or wording that hands carried work to a later review, audit, or validation phase is rejected: the pass cannot report completed and cannot advance to review. Later phases may discover new defects, but they are never where the accepted plan gets finished. An item that genuinely cannot be fixed blocks with its gap and repair-item ids and leaves the run resumable.
+- **Recurring vs new gaps.** A gap id is derived from its acceptance criterion plus a generation number, so it survives across iterations. The audit that follows a repair pass has to account for every gap it inherited: resolved, or recurring. A recurring gap keeps the same id and carries evidence for why the attempted repair did not satisfy it; only a genuinely different problem gets a new identity. The unresolved-gap ledger is cumulative — an audit cannot drop, rename, or quietly close an inherited gap, and it cannot report everything satisfied while an inherited gap is still recurring.
+- **Non-progress blocks loudly instead of looping.** There is no arbitrary cap on audit/repair iterations, because capping a correctness gate just ships an unmet criterion. Instead the runtime watches for a repeat that went nowhere: the same unresolved gap identities as the previous iteration, and either no change in the repository or no repair item newly resolved. That combination stops the run — the audit phase is left blocked, needing a human, with a reason saying the gap identities are unchanged and nothing moved. When you see it, the loop is not one more attempt away from converging: read the blocked gap and its repair items, fix or re-scope the criterion by hand, or correct the plan's diagnosis, then resume. Repair that is genuinely making progress — repository changing, items closing, gap set shrinking — keeps running untouched.
+
+Progress is visible without digging into the database:
+
+```bash
+skill-bill feature-task status <workflow_id>
+```
+
+prints `audit_first_pass_convergence`, `audit_recurring_gap_count`, `audit_new_gap_count`, `audit_attempted_repair_item_count`, `audit_resolved_repair_item_count`, and `audit_gap_iteration_count` for the run. The same counters ride the finished telemetry event (see `docs/review-telemetry.md`).
+
 </details>
 
 <details>
@@ -47,7 +64,7 @@ The shipped `typescript` pack uses the same manifest-driven path: tsconfig and f
 When planning detects work is too big (rules of thumb: more than 15 atomic tasks, more than 6 boundaries, multiple independently resumable milestones, or sequencing with verify-able foundations), `bill-feature-task` switches into `mode: "decompose"` instead of implementing.
 
 - **Subtask specs are real artifacts**: planning writes `.feature-specs/{ISSUE_KEY}-{feature-name}/spec_subtask_1_foundation.md`, `_2_runtime-wiring.md`, etc. — each with its own acceptance criteria, non-goals, dependency notes, validation strategy, and the exact `bill-feature-task` prompt to run for it later.
-- **Schema-validated manifest**: a `decomposition-manifest.yaml` is generated and validated against `orchestration/contracts/decomposition-manifest-schema.yaml`, so the plan itself is a contract, not loose prose.
+- **Schema-validated prepared state**: every prepared feature has a `decomposition-manifest.yaml` with one or more executable subtasks. A bare `spec.md` is intake, so the manifest is the sole prepared-feature authority marker.
 - **You only need the issue key**: when you come back and say "continue SKILL-51", the runtime resolves the parent manifest, finds the in-progress subtask at its last durable workflow step, and picks up there. If none is in-progress, it starts the first pending subtask whose dependencies are complete. You never have to remember "was I on subtask 2 step 4 or subtask 3 step 1."
 - **Fresh context per subtask, no context rot**: every subtask starts in a fresh session briefed from curated durable artifacts (the subtask spec, boundary `history.md`, recorded decisions) instead of inheriting a long-lived transcript. Long goals do not degrade as hours accumulate, because no context lives long enough to rot — continuity travels through durable state, not through an ever-growing conversation.
 - **Blocked-aware**: if the current path is blocked it stops and tells you why, instead of silently skipping to a later dependent subtask.
@@ -88,7 +105,7 @@ All of the symlink installs, manifest validation, platform-pack routing, native-
 - **Why this matters for tokens**: each subagent gets a self-contained briefing scoped to its phase/area instead of inheriting the full orchestrator transcript. The orchestrator stays small; specialists go deep on their narrow slice. Better focus and lower cost — the opposite of the usual "more steps = more context bloat" trap.
 - **Transport-resilient telemetry**: a packaged Kotlin `runtime-mcp` stdio fallback ensures a dropped MCP transport does not leave a workflow stuck in `running`.
 
-For decomposed goals, the foreground `skill-bill goal` runtime owns a flat worker model: it selects one runnable subtask, opens or resumes that child workflow, launches one fresh child process, and advances only from durable workflow state. Nested/native subagents inside the child session are useful for focus and debugging, but the reliability contract is the runtime-owned workflow row plus the decomposition projection. Because continuity lives in runtime-owned state rather than in any agent's context, goal execution and resume are agent-independent — the agent that continues a goal does not have to be the agent that started it.
+For every prepared goal, including a one-subtask goal, the foreground `skill-bill goal` runtime owns a flat worker model: it selects one runnable subtask, opens or resumes that child workflow, launches one fresh child process, and advances only from durable workflow state. Nested/native subagents inside the child session are useful for focus and debugging, but the reliability contract is the runtime-owned workflow row plus the decomposition projection. Because continuity lives in runtime-owned state rather than in any agent's context, goal execution and resume are agent-independent — the agent that continues a goal does not have to be the agent that started it.
 
 </details>
 

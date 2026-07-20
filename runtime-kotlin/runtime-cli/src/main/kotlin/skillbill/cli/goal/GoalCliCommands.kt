@@ -339,6 +339,10 @@ class GoalResetCommand(
     .flag(default = false)
   private val force by option("--force", help = "Bypass hard-reset confirmation gate.")
     .flag(default = false)
+  private val preservePlanning by option(
+    "--preserve-planning",
+    help = "Delete incompatible child workflows while preserving immutable goal planning checkpoints.",
+  ).flag(default = false)
   private val confirmIssueKey by option(
     "--confirm-issue-key",
     help = "Confirmation gate for --hard. Must match the issue key.",
@@ -346,6 +350,12 @@ class GoalResetCommand(
   private val repoRoot by option("--repo-root", help = "Repository root for checked-in manifest recovery.")
 
   override fun run() {
+    if (preservePlanning && !hard) {
+      throw UsageError(
+        "--preserve-planning only applies to a hard reset; a soft reset never deletes child workflows. " +
+          "Pass --hard as well, or drop --preserve-planning.",
+      )
+    }
     if (hard && !force && confirmIssueKey != issueKey) {
       throw UsageError(
         "Hard reset requires explicit confirmation. Pass --confirm-issue-key $issueKey or --force.",
@@ -355,6 +365,7 @@ class GoalResetCommand(
       GoalRunnerResetRequest(
         issueKey = issueKey,
         hard = hard,
+        preservePlanning = preservePlanning,
         dbPathOverride = state.dbOverride,
         repoRoot = repoRoot?.let(Path::of) ?: Path.of("").toAbsolutePath().normalize(),
       ),

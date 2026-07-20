@@ -14,13 +14,10 @@ class FeatureSpecSkillWiringContractTest {
 
     assertContains(content, "name: bill-feature")
     assertContains(content, "For `no_match`, invoke `bill-feature-spec` first")
-    assertContains(content, "Treat its selected mode as authoritative for dispatch")
+    assertContains(content, "Preparation mode is sizing metadata and does not select the executor")
     assertContains(content, "## Direct Dispatch When Governed Artifacts Exist")
-    assertContains(content, "For `single_spec` output")
-    // SKILL-102: task and goal execution dispatch by reading the internal-skill sidecars, never
-    // via the Skill tool.
-    assertContains(content, "Read the file `bill-feature-task.md` located in this skill's own installed directory")
-    assertContains(content, "For `decomposed` output")
+    assertContains(content, "A bare governed `spec.md` without `decomposition-manifest.yaml` is intake")
+    assertContains(content, "For every authoritative manifest")
     assertContains(content, "Read the file `bill-feature-goal.md` located in this skill's own installed directory")
     assertContains(content, "Do not ask an extra confirmation before dispatching to the goal sidecar")
   }
@@ -73,8 +70,8 @@ class FeatureSpecSkillWiringContractTest {
 
     assertContains(content, "name: bill-feature-spec")
     assertContains(content, "If the issue key is missing, stop and ask for it.")
-    assertContains(content, "single_spec")
-    assertContains(content, "decomposed")
+    assertContains(content, "one or more distinct executable subtask specs")
+    assertContains(content, "Mode is sizing and planning metadata only")
     assertContains(
       content,
       "Do not fork logic between `bill-feature-spec`, `bill-feature-task`, and `bill-feature-goal`.",
@@ -106,11 +103,23 @@ class FeatureSpecSkillWiringContractTest {
     val featureSpecContent = Files.readString(repoRootFromTest().resolve("skills/bill-feature-spec/content.md"))
 
     assertContains(content, "invoke `bill-feature-spec` in this session")
-    assertContains(content, "`bill-feature-goal` is the trigger surface for decomposed-goal orchestration")
+    assertContains(content, "`bill-feature-goal` is the trigger surface for manifest-backed goal orchestration")
     assertContains(content, "`skill-bill goal <issue_key>` remains consumer-only")
     assertContains(featureSpecContent, "`skill-bill goal <issue_key>` is consumer-only")
     assertContains(content, "Ask one confirmation question")
     assertEquals(1, countOccurrences(content, "Ask one confirmation question"))
+  }
+
+  @Test
+  fun `prepared feature guidance uses the manifest as sole source authority`() {
+    val runtime = Files.readString(repoRootFromTest().resolve("skills/bill-feature-task-runtime/content.md"))
+    val prose = Files.readString(repoRootFromTest().resolve("skills/bill-feature-task-prose/content.md"))
+    val verify = Files.readString(repoRootFromTest().resolve("skills/bill-feature-verify/content.md"))
+
+    assertContains(runtime, "bare `spec.md` is preparation\nintake, not prepared source authority")
+    assertContains(prose, "A bare `spec.md` is preparation intake, not prepared source\nauthority")
+    assertContains(prose, "exactly one manifest subtask")
+    assertContains(verify, "A bare `spec.md` is intake rather than prepared source authority")
   }
 
   @Test
@@ -209,10 +218,9 @@ class FeatureSpecSkillWiringContractTest {
     assertContains(prose, "never start pass three")
     assertContains(
       prose,
-      "Continue\nthrough audit, validation, history, dependency advancement, commit_push, and\n" +
-        "final reporting",
+      "Continue past Major, Minor, and Nit findings while preserving them as review evidence",
     )
-    assertContains(runner, "complete\nlocation-bearing evidence in durable artifacts and telemetry")
+    assertContains(runner, "preserve complete location-bearing evidence\nin durable artifacts and telemetry")
     assertContains(runner, "class/symbol-or-sanitized label, and concise text")
     assertContains(
       goal,
@@ -224,8 +232,8 @@ class FeatureSpecSkillWiringContractTest {
     )
     assertContains(
       prose,
-      "standalone prose\nfeature tasks stop at the existing review gate when their single inline\n" +
-        "re-review still has unresolved Blocker or Major findings",
+      "and standalone prose feature tasks stop only when their inline re-review still\n" +
+        "has unresolved Blocker findings",
     )
   }
 }

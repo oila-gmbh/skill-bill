@@ -4,6 +4,7 @@ import skillbill.boundary.OpenBoundaryMap
 import skillbill.workflow.model.DecompositionExecutionModel
 import skillbill.workflow.model.DecompositionManifest
 import skillbill.workflow.model.DecompositionStackBranch
+import skillbill.workflow.model.SpecSource
 import java.nio.file.Path
 
 data class DecompositionManifestWriteRequest(
@@ -16,6 +17,7 @@ data class DecompositionManifestWriteRequest(
   val executionModel: DecompositionExecutionModel = DecompositionExecutionModel.SAME_BRANCH_COMMIT_PER_SUBTASK,
   val stackBranches: List<DecompositionStackBranch> = emptyList(),
   val currentSubtaskId: Int? = null,
+  val specSource: SpecSource = SpecSource.LOCAL,
 )
 
 data class DecompositionManifestRuntimeUpdate(

@@ -6,7 +6,7 @@ description: Level-1 subtask-agent for bill-feature-goal mode:prose. Runs exactl
 
 # Feature Task Subtask Runner
 
-Receive only the parent's immutable structured agent add-on selection. Verify
+Receive only the parent's current structured agent add-on selection. Verify
 its recorded source identities and digests before child execution, then forward
 the canonical rendered section unchanged to every phase and review lane. Never
 parse raw selection tokens, discover the add-on catalogue, reorder entries, or
@@ -52,13 +52,11 @@ the exact scope through repair and audit re-entry; the selected mode is initial-
 before launch; when `reserved_review_pass_number` has no completed durable
 output, resume that accounted pass instead of reserving another. Carry forward
 `completed_review_pass_count` and `review_cap_disposition`, and never run pass
-three. At a two-pass unresolved Blocker/Major cap, preserve complete
-location-bearing evidence in durable artifacts and telemetry, return only the
-non-approval `review_cap_reached` compact path-free status to the parent
-(subtask id, pass number, verdict or continuation state, severity,
-class/symbol-or-sanitized label, and concise text), then continue through
-audit, validation, history, dependency advancement,
-commit_push, and final reporting unless an independent later gate fails.
+three. Major findings remain durable evidence and do not prevent advancement.
+At a two-pass unresolved Blocker cap, preserve complete location-bearing evidence
+in durable artifacts and telemetry, return a blocked result with the compact
+path-free status to the parent (subtask id, pass number, verdict, severity,
+class/symbol-or-sanitized label, and concise text), and do not advance to audit.
 
 ## Return contract
 

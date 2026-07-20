@@ -1,3 +1,52 @@
+## [2026-07-20] SKILL-131 audit-repair integration and verification (subtask 3)
+Areas: runtime-kotlin/runtime-{application,cli,domain,infra-sqlite,mcp}, skills/bill-feature-task-runtime, docs
+- Status and lifecycle telemetry project compact convergence evidence: first-pass outcome, recurring/new gaps, attempted/resolved repair items, and audit-gap iterations.
+- Crash/resume coverage locks durable plan identity and exhaustive repair across pre-persistence, mid-repair, post-repair, and post-audit interruptions without duplicate fixes or invalid advancement.
+- SKILL-128-derived and Markdown-prefixed regressions prove broad gaps produce one complete plan, reject partial production-only repair, and preserve the canonical audit-gap backward edge. reusable
+- Pattern: keep recorded migrations immutable; tighten compatible durable planning provenance with a forward transactional migration that preserves 0.2 rows and rejects incompatible 0.1 rows before schema mutation. reusable
+- Governed guidance and operator docs describe structured exhaustive remediation, recurring/new gap handling, and non-progress failure; generated wrappers remain uncommitted and repository validation passes.
+- No feature flag; legacy incompatible goal-planning provenance requires operator deletion or migration rather than silent data loss.
+Feature flag: N/A
+Acceptance criteria: subtask 3: 6/6 implemented
+
+## [2026-07-20] SKILL-131 runtime repair and reconciliation (subtask 2)
+Areas: runtime-kotlin/runtime-application, skills/bill-feature-task-runtime, .feature-specs/SKILL-131-single-pass-audit-repair
+- Audit-gap implementation receives the immutable initial preplan and plan, current worktree, and complete durable repair plan, then attempts every runnable item in dependency order with exact terminal result/evidence coverage.
+- Missing, duplicate, deferred, unresolved, or mismatched repair results block advancement with durable carried identifiers; review and re-audit preserve the repair ledger instead of implicitly satisfying it.
+- Re-audit classifies carried gaps as resolved or recurring with stable identities, assigns fresh identities only to new production defects, and blocks equivalent non-progressing gap sets. reusable
+- Pattern: normalize phase output once and pass the same canonical object through validation, verdict selection, persistence, transition selection, and handoff across bare, fenced, prefixed, and trailing-prose JSON wrappers. reusable
+- Standalone and goal-child execution now share repair, resume, recurrence, review-composition, and canonical-output behavior; crash fixtures cover durable missing and duplicate repository effects through both entry paths.
+- Audit guidance excludes test-only adequacy concerns from repair plans; validation remains responsible for executing tests and repairing concrete failures.
+- Validation cleanup removed an application-test dependency on infra-fs and refactored the runtime test harness without suppressions; no breaking external contract or feature flag.
+Feature flag: N/A
+Acceptance criteria: subtask 2: 7/7 implemented
+
+## [2026-07-20] SKILL-131 single-pass audit repair (subtask 1)
+Areas: runtime-kotlin/runtime-{application,cli,domain,infra-fs,infra-sqlite,mcp}, orchestration/contracts, docs, skills/bill-feature-task-runtime
+- A `gaps_found` audit must carry a schema-valid `audit_repair_plan` (contract `0.2`, `feature-task-runtime-audit-repair-plan-schema.yaml`): one gap per unmet criterion with evidence, diagnosis, boundary, and dependency-ordered repair items; the durable plan must be readable and identical before the `audit_gap` edge is taken, and audit-gap resume recovers it from durable state when a blocked attempt erased the phase record.
+- Remediation reconciliation is set equality, not a flag: emitted `repair_item_result` ids must exactly equal the carried plan's repair items in dependency order with terminal `fixed`/`already_satisfied` outcomes and paired evidence observations; blocked remediation must name a carried `gap_id`/`repair_item_id`, and deferral phrasing anywhere in the output is rejected. reusable
+- Gap and repair-item identity is derived, not model-chosen: `<criterion-ref>-gap-<generation>` and `<gap-id>-item-<ordinal>`, canonicalized to lowercase at every ingest seam because agents transcribe the uppercase `AC-005` criterion ref into the identifier. The generation comes from a durable per-criterion closed-generation high-water mark, so a resolved gap cannot be reopened under a recycled id. reusable
+- Durable state keeps exactly the latest accepted plan plus a cumulative unresolved-gap ledger; a disposition is `recurring` exactly when its gap is in the ledger, an audit cannot report `satisfied` with a non-empty ledger, and counters must agree with the ledger and terminal results. Coherence is enforced at the durable write seam, not only at ingest.
+- Non-progress replaces an iteration cap: an equivalent gap set with an unchanged repository fingerprint or zero newly resolved items blocks as needs-user-action instead of looping; detection compares criterion-level content so renamed identifiers cannot fake progress.
+- Pattern: durable state is the authority on resume — the phase record is a cache, and its disagreement with the durable plan is a loud block, not a merge. reusable
+- Pattern: bound every free-string wire field (evidence refs via `MAX_AUDIT_REPAIR_REF_LENGTH`) in the domain constructor, not only in the schema, so schema-less seams such as durable decode stay covered. reusable
+- The audit failing-criteria signal is one canonical key at both the Kotlin and schema layers; the alias fallback was removed. Durable audit-repair state is Kotlin-governed and carries no `contract_version`.
+- Breaking change: the durable audit-repair state shape changed (no `contract_version`, new `closed_generation_high_water_marks`), so pre-existing workflow rows carrying audit-repair state loud-fail at the read seam and need out-of-band deletion or migration.
+- Known limitation: subtask 2 (runtime repair and reconciliation) and subtask 3 (integration and verification, owning acceptance criteria 19-25) remain pending; goal-child parity and the SKILL-128-derived end-to-end regressions are not yet covered. `spec.md` reconciliation is deferred until the goal reaches a terminal state because the goal preplan row pins the spec byte hash.
+Feature flag: N/A
+Acceptance criteria: subtask 1: 5/5 implemented
+
+## [2026-07-18] SKILL-133 unified manifest authority
+Areas: runtime-kotlin/runtime-{application,domain,infra-fs}, skills/bill-feature*
+- `decomposition-manifest.yaml` is now the sole prepared-feature authority marker; bare specs remain preparation intake, while continuation lookup stays authoritative before discovery or artifact writes.
+- Shared preparation always emits a parent spec, at least one executable subtask, and a schema-valid manifest; zero subtasks fail and singleton manifests retain the existing validation and atomic-write guarantees.
+- Every authoritative manifest routes through the goal lifecycle, so a singleton goal launches exactly one child while preserving confirmation, resume, cleanup, reporting, and telemetry behavior alongside existing multi-subtask flows.
+- Pattern: use one manifest-backed path for singleton and decomposed features, separating intake detection from prepared authority and retaining persisted source stamps only as a legacy manifest-absent compatibility fallback. reusable
+- Local and Linear source resolution, terminal Linear verification rehydration, governed skill guidance, and focused rejection/compatibility coverage were updated; generated wrappers remain outside source.
+- Known limitation: installed staging refresh is deferred to the outer goal lifecycle because continuation workers correctly reject `./install.sh`.
+Feature flag: N/A
+Acceptance criteria: 10/10 implemented
+
 ## [2026-07-18] SKILL-128 goal planning observability (subtask 4)
 Areas: runtime-kotlin/runtime-{application,cli,domain,infra-sqlite,mcp}, skills/bill-feature-{goal,task-runtime}, runtime-kotlin/ARCHITECTURE.md
 - Goal status exposes bounded preparation state: shared-preplan status, planned/total counts, current planning subtask, and concise blocked or resumable context without returning raw planning payloads.

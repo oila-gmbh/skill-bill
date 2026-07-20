@@ -45,6 +45,13 @@ internal class FeatureTaskRuntimeRunPreparation(
         "Goal-continuation child state could not be persisted before freezing run invariants.",
       )
     }
+    if (initial != null && !updateContinuationAgentAddons(request, initial)) {
+      return blocked(
+        request,
+        reportInvariants,
+        "Goal-continuation agent add-on guidance could not be updated before resume.",
+      )
+    }
     return when (
       val resolved = continuationRecorder.readContinuation(
         request,
@@ -67,15 +74,24 @@ internal class FeatureTaskRuntimeRunPreparation(
     request.goalContinuation != null -> newGoalContinuationConflict(request, selectedMode)
     else -> requestedResumeModeConflict(request, persistedInvariants)
   } ?: goalContinuationInvariantConflict(request, persistedInvariants, initial, selectedMode)
-    ?: persistedAgentAddonSelectionConflict(request, persistedInvariants)
 
-  private fun persistedAgentAddonSelectionConflict(
+  private fun updateContinuationAgentAddons(
     request: FeatureTaskRuntimeRunRequest,
-    persistedInvariants: FeatureTaskRuntimeRunInvariants?,
-  ): String? = persistedInvariants
-    ?.agentAddonSelection
-    ?.takeIf { it != request.agentAddonSelection.persisted }
-    ?.let { "Cannot drop or replace the workflow's durable agent add-on selection on resume." }
+    initial: ContinuationRead.Available,
+  ): Boolean = continuationRecorder.recordGoalContinuationState(
+    request = GoalContinuationStateRecordRequest(
+      workflowId = request.workflowId,
+      // A resume that supplies no add-ons is silent about them, not a request to erase them: the
+      // add-on directory can simply be unavailable on the resuming host.
+      continuation = initial.continuation.copy(
+        agentAddonSelection = request.agentAddonSelection.persisted
+          .takeUnless { it.entries.isEmpty() }
+          ?: initial.continuation.agentAddonSelection,
+      ),
+      reviewBaseline = initial.baseline,
+    ),
+    dbOverride = request.dbPathOverride,
+  )
 
   private fun persistedContinuationConflict(
     request: FeatureTaskRuntimeRunRequest,
@@ -137,8 +153,9 @@ internal class FeatureTaskRuntimeRunPreparation(
     selectedMode: CodeReviewExecutionMode,
     continuation: ContinuationRead.Available?,
   ): FeatureTaskRuntimePreparation {
-    val proposed = persistedInvariants ?: request.runInvariants.copy(
+    val proposed = (persistedInvariants ?: request.runInvariants).copy(
       codeReviewMode = continuation?.continuation?.codeReviewMode ?: selectedMode,
+      agentAddonSelection = request.agentAddonSelection.persisted,
     )
     val durable = runInvariantsStore.resolve(request.workflowId, request.dbPathOverride, proposed) ?: proposed
     val durableContinuation = continuation?.continuation

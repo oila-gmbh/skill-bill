@@ -49,7 +49,8 @@ every initial phase, retry, review-fix, audit re-entry, or continuation, invoke
 the identity-based verify/render boundary and copy its returned section
 verbatim into the phase prompt. Never rediscover the catalogue or reconstruct
 the selection from chat history. Omission on continuation inherits the durable
-selection; missing sources, digest drift, or a changed receiving agent fail
+selection. A later valid selection or digest becomes effective for future phases;
+missing sources or an incompatible receiving agent fail
 before phase work. An empty selection adds no artifact content and no prompt
 section, preserving legacy prose behaviour.
 
@@ -138,12 +139,10 @@ manifest validation.
 
 ## Spec Source Mode (local vs linear)
 
-The feature's spec source is an artifact stamp, never a config lookup. Read it
-from the artifact only and default to `local` when absent:
-
-- decomposed: `decomposition-manifest.yaml` field `spec_source`;
-- single_spec: the `spec_source:` line in `spec.md`;
-- absent or unreadable: `local`.
+The feature's spec source is an artifact stamp, never a config lookup. Read the
+`spec_source` field from the sibling `decomposition-manifest.yaml` and default to
+`local` when omitted. A bare `spec.md` is preparation intake, not prepared source
+authority.
 
 For `spec_source: local` (the default) everything below is skipped — specs are
 staged and committed exactly as before, nothing is deleted, and no Linear MCP
@@ -240,7 +239,7 @@ The subagent returns one of two planning return contracts:
 - `mode: "implement"` — an ordered task list, each task with description, files to create or modify, which acceptance criteria it satisfies, and test coverage (or `None` when deferred to the final test task). MEDIUM plans may use phases with checkpoints when helpful.
 - `mode: "decompose"` — a terminal decomposition package for work that is too large for one reliable feature-task run.
 
-Decomposition is mandatory when a plan would exceed 15 atomic implementation tasks, touch more than 6 boundaries, contain multiple independently resumable milestones, or require sequencing where later work depends on foundation that should be verified separately. In decomposition mode, the planning subagent returns a decomposition package only. The orchestrator must then invoke the shared feature-spec preparation path (the same path used by `bill-feature-spec` and `bill-feature-goal`) to write or update `spec.md`, ordered `spec_subtask_*.md` files, and `.feature-specs/{ISSUE_KEY}-{feature-name}/decomposition-manifest.yaml`; the runtime validates the manifest against the decomposition manifest schema contract; ordinary `mode: "implement"` and single-spec workflows do not read or require this manifest.
+Decomposition is mandatory when a plan would exceed 15 atomic implementation tasks, touch more than 6 boundaries, contain multiple independently resumable milestones, or require sequencing where later work depends on foundation that should be verified separately. In decomposition mode, the planning subagent returns a decomposition package only. The orchestrator must then invoke the shared feature-spec preparation path (the same path used by `bill-feature-spec` and `bill-feature-goal`) to write or update `spec.md`, ordered `spec_subtask_*.md` files, and `.feature-specs/{ISSUE_KEY}-{feature-name}/decomposition-manifest.yaml`; the runtime validates the manifest against the decomposition manifest schema contract. A one-unit plan uses the same prepared artifact shape with exactly one manifest subtask.
 
 If an implementation plan includes testable logic, the final task must be a dedicated test task. The subagent is responsible for enforcing this rule when it returns `mode: "implement"`.
 
@@ -276,10 +275,10 @@ Run `bill-code-review mode:<selected-mode>` inline in the orchestrator through t
 
 Review loop:
 
-- Auto-fix Blocker and Major findings by spawning the implementation subagent again with a fix briefing (acceptance criteria + list of findings + pointer to the current diff + instruction to fix only those findings).
+- Auto-fix Blocker findings by spawning the implementation subagent again with a fix briefing (acceptance criteria + list of findings + pointer to the current diff + instruction to fix only those findings).
 - Before respawning, capture the exact diff pointer the review was run against — the branch name, commit range (for example `main..HEAD`), or explicit file list — and pass it as `{branch_or_commit_range}` in the fix briefing so the subagent knows which diff the findings refer to.
 - Re-run review.
-- Continue past Minor-only findings.
+- Continue past Major, Minor, and Nit findings while preserving them as review evidence.
 - Reserve at most one inline re-review, for two total review passes. Never start pass three.
 - Do not pause to ask the user which finding to fix.
 
@@ -300,18 +299,16 @@ parallel review, and together they count as one pass. Reserve a pass before
 launching it. When durable state has an unfinished reserved pass, resume that
 same pass rather than reserving another; carry completed and capped state
 through repair and audit re-entry, and never start pass three. After a second
-pass with unresolved Blocker/Major findings, persist complete location-bearing
-evidence, record the non-approval `review_cap_reached` disposition, and emit
-only the compact path-free goal review status: subtask id, pass number, verdict
-or continuation state, severity, class/symbol-or-sanitized label, and concise
-text. It contains no path, line number, hunk, or raw review output. Continue
-through audit, validation, history, dependency advancement, commit_push, and
-final reporting unless an independent later gate fails.
+pass with unresolved Blocker findings, persist complete location-bearing
+evidence, record the blocking disposition, and emit only the compact path-free
+goal review status: subtask id, pass number, verdict, severity,
+class/symbol-or-sanitized label, and concise text. It contains no path, line
+number, hunk, or raw review output. Stop before audit. Major findings never
+produce this blocking disposition.
 
 The two-pass cap applies to every feature task. Decomposed prose-goal children
-use the `review_cap_reached` continuation described above; standalone prose
-feature tasks stop at the existing review gate when their single inline
-re-review still has unresolved Blocker or Major findings.
+and standalone prose feature tasks stop only when their inline re-review still
+has unresolved Blocker findings.
 
 Orchestrated child telemetry:
 
@@ -335,11 +332,11 @@ SMALL: the subagent returns a quick confirmation for each criterion. MEDIUM/LARG
 
 The subagent returns the audit return contract: `pass: bool`, `per_criterion: [...]`, `gaps: [...]`.
 
-If gaps are found: the orchestrator respawns the planning subagent with the gaps, then the implementation subagent, then re-runs code review, then re-spawns the audit subagent. Max 2 audit iterations. When complete, if a tracked `.feature-specs/{ISSUE_KEY}-{feature-name}/spec.md` exists, the orchestrator reconciles it to its final state for ALL sizes (not only MEDIUM/LARGE): set `Status: Complete`, resolve any Open Questions with the decisions taken, and correct anything the implementation changed (for example a corrected flag or argument name). SMALL runs do not create a spec on disk, but when one already exists it must still be reconciled here.
+If gaps are found: the orchestrator does not regenerate the implementation plan. It carries the audit's repair plan — one or more ordered repair items per unmet criterion, each with a stable identifier — into a fresh implementation subagent briefed with the immutable original preplan and plan plus that repair plan. That subagent attempts every carried repair item in the same pass and returns a terminal outcome for each (`fixed`, or `already_satisfied` with concrete repository and verification evidence); it may not defer a carried item to review, audit, or validation. The orchestrator then re-runs code review and re-spawns the audit subagent. There is no fixed iteration cap: audit and repair repeat while they make progress. When an audit returns the same unresolved gap set with no repository change and no newly resolved repair item, stop loudly with the unresolved gap and repair-item identifiers instead of advancing. When complete, if a tracked `.feature-specs/{ISSUE_KEY}-{feature-name}/spec.md` exists, the orchestrator reconciles it to its final state for ALL sizes (not only MEDIUM/LARGE): set `Status: Complete`, resolve any Open Questions with the decisions taken, and correct anything the implementation changed (for example a corrected flag or argument name). SMALL runs do not create a spec on disk, but when one already exists it must still be reconciled here.
 
 When reconciling that `## Status` block, also write an `Agent:` line recording the resolved invoking agent next to `Status: Complete` — for example `- Agent: claude`. Resolve the agent through the existing governed order, never a re-invented source: `--agent` argument, then the `SKILL_BILL_AGENT` environment variable, then the detected invoking-agent execution context, then the documented last-resort default (`codex`). This line is a completion-reconciliation outcome, never an authored input: write it only here, only when the spec exists on disk (a SMALL run with no spec writes nothing), and keep it idempotent — if an `Agent:` line is already present under `## Status`, update it in place rather than adding a second one. The line lives only under `## Status` and must not perturb the `## Acceptance Criteria` section.
 
-Persist `audit_report`, then advance to `validate`. Loop back to `plan` only when the audit contract requires it.
+Persist `audit_report`, then advance to `validate`. On gaps, loop back to `implement` with the carried repair plan; never loop back to `plan`.
 
 ## Finalization Sequence (Steps 6b through 9)
 
@@ -393,8 +390,7 @@ For `spec_source: local` this step is a no-op — nothing is deleted.
 
 For `spec_source: linear`, after the run terminally succeeds, delete the local spec scratch (it was never committed and is rehydrated from Linear on demand):
 
-- single_spec: after the PR is created, delete the `.feature-specs/{ISSUE_KEY}-{feature-name}/` directory.
-- goal-continuation (decomposed) subtask: after this subtask's `commit_push` is durable, delete that subtask's spec file; the parent spec + `decomposition-manifest.yaml` are deleted only after the final subtask completes (the manifest is live runtime state until then). The goal runner owns parent + manifest deletion.
+- goal-continuation subtask: after this subtask's `commit_push` is durable, delete that subtask's spec file; the parent spec + `decomposition-manifest.yaml` are deleted only after the final subtask completes (the manifest is live runtime state until then). The goal runner owns parent + manifest deletion, including for a manifest with exactly one subtask.
 
 Delete only on terminal success. If the run aborted, blocked, or stopped before its terminal success signal, leave the entire scratch intact so it stays resumable.
 
@@ -947,7 +943,7 @@ RESULT:
 
 ### Fix-loop briefing (used by Step 5 review loop)
 
-When the code-review step produces Blocker/Major findings, the orchestrator respawns the implementation subagent with a fix-focused briefing:
+When the code-review step produces Blocker findings, the orchestrator respawns the implementation subagent with a fix-focused briefing:
 
 ```
 You are the implementation subagent, invoked to fix findings from the code-review step. Scope: fix only the findings listed below; do not add unrelated changes.
@@ -1127,8 +1123,8 @@ For the parsing posture of subagent `RESULT:` blocks (best-effort recovery, sing
 - **Planning subagent returns an invalid plan** (missing fields, no dedicated test task when testable logic exists, etc.) — respawn it once with a corrective briefing that lists the violations. If it still fails, abandon at planning.
 - **Planning subagent returns `mode: "decompose"`** — treat this as a valid terminal planning result. Persist the `plan` artifact, validate and write the parent `decomposition-manifest.yaml`, present the subtask order and acceptance criteria, mark later workflow steps skipped, close workflow state as `abandoned` at `plan`, and call `feature_task_prose_finished` with `completion_status: "abandoned_at_planning"`.
 - **Implementation subagent stops early with `stopped_early: true`** — the orchestrator decides: if `plan_deviation_notes` imply a re-plan, respawn the planning subagent with the deviation notes and then a fresh implementation subagent; otherwise, hand to the user.
-- **The inline re-review exhausts the two-pass review budget** — stop, report remaining findings, hand to user. Call `feature_task_prose_finished` with `completion_status: "abandoned_at_review"`.
-- **Completeness audit loops exceed 2 iterations** — report remaining gaps, let user decide. Call `feature_task_prose_finished` accordingly.
+- **The inline re-review exhausts the two-pass review budget with unresolved Blocker findings** — stop, report the remaining Blocker findings, and hand to the user. Major, Minor, and Nit findings continue through the workflow. Call `feature_task_prose_finished` with `completion_status: "abandoned_at_review"`.
+- **Completeness audit repair stops making progress** — when an audit returns the same unresolved gap set with no repository change and no newly resolved repair item, stop, report the unresolved gap and repair-item identifiers, and let the user decide. Never advance past an unmet criterion on iteration count alone. Call `feature_task_prose_finished` accordingly.
 - **Quality-check subagent cannot run any validation command** — persist `validation_result: "skipped"` with the reason and continue finalization. Do not block the workflow for validation failures that can be fixed in the repository; keep fixing and rerunning validation until it passes.
 - **PR-description subagent fails to create the PR** — report the error, offer to retry. If abandoned, call `feature_task_prose_finished` with `completion_status: "error"`.
 - **Skill Bill MCP transport closes** — do not treat `Transport closed` as telemetry disabled. First run a lightweight health check such as `feature_task_prose_workflow_latest`; if the tool path is still closed, call the same Skill Bill tool through the packaged Kotlin `runtime-mcp` stdio binary with a JSON-RPC `tools/call` payload. Use that direct-stdio fallback for owned review telemetry, workflow-state updates, and `feature_task_prose_finished`. Record the fallback in the current step artifact. If the packaged runtime is unavailable too, report the telemetry failure explicitly and preserve the terminal artifact in the final user summary.

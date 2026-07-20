@@ -51,19 +51,22 @@ internal object GoalSubtaskReviewSummaryReducer {
   }
 
   fun unresolvedCount(output: Map<String, Any?>): Int = fromOutput(output)
-    .count { finding -> finding.severity == "blocker" || finding.severity == "major" }
+    .count { finding -> finding.severity == "blocker" }
 
   fun outcomeFor(
     output: Map<String, Any?>,
     findings: List<GoalSubtaskReviewCompactFinding> = fromOutput(output),
   ): GoalSubtaskReviewOutputOutcome {
-    val structuredUnresolved = findings.count { finding ->
-      finding.severity == "blocker" || finding.severity == "major"
-    }
+    val structuredUnresolved = findings.count { finding -> finding.severity == "blocker" }
+    val hasStructuredFindings = output["produced_outputs"]
+      ?.let(JsonSupport::anyToStringAnyMap)
+      ?.get("findings") is List<*>
     val declaredVerdict = (output["verdict"] as? String)?.trim()
     val changesRequested = declaredVerdict in setOf("needs_fix", FeatureTaskRuntimeVerdict.CHANGES_REQUESTED.wireValue)
     val verdict = when {
-      structuredUnresolved > 0 || changesRequested -> FeatureTaskRuntimeVerdict.CHANGES_REQUESTED
+      hasStructuredFindings && structuredUnresolved > 0 -> FeatureTaskRuntimeVerdict.CHANGES_REQUESTED
+      hasStructuredFindings -> FeatureTaskRuntimeVerdict.APPROVED
+      changesRequested -> FeatureTaskRuntimeVerdict.CHANGES_REQUESTED
       declaredVerdict?.isNotBlank() == true -> FeatureTaskRuntimeVerdict.fromWire(declaredVerdict)
       else -> FeatureTaskRuntimeVerdict.APPROVED
     }

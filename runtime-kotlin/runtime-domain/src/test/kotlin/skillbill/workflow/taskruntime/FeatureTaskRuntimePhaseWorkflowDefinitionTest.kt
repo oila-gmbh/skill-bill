@@ -1,6 +1,6 @@
 package skillbill.workflow.taskruntime
 
-import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
+import skillbill.contracts.workflow.WORKFLOW_STATE_CONTRACT_VERSION
 import skillbill.workflow.implement.FeatureImplementWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCapExhaustionBehavior
@@ -24,8 +24,8 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
   }
 
   @Test
-  fun `contract version is pinned to the runtime constant`() {
-    assertEquals(FEATURE_TASK_RUNTIME_CONTRACT_VERSION, definition.contractVersion)
+  fun `durable workflow-state contract version is independent of the phase-output contract`() {
+    assertEquals(WORKFLOW_STATE_CONTRACT_VERSION, definition.contractVersion)
   }
 
   @Test
@@ -149,7 +149,7 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
     assertEquals(def.PHASE_IMPLEMENT_FIX, edge.destinationPhaseId)
     assertEquals("review_fix", edge.loopId)
     assertEquals(1, edge.perEdgeCap)
-    assertEquals(FeatureTaskRuntimeCapExhaustionBehavior.ADVANCE, edge.capExhaustionBehavior)
+    assertEquals(FeatureTaskRuntimeCapExhaustionBehavior.BLOCK, edge.capExhaustionBehavior)
     assertEquals(FeatureTaskRuntimeVerdict.CHANGES_REQUESTED, edge.triggeringVerdict)
     // The backward destination precedes its source so the reopened span includes review (re-review leg).
     val ids = transitions.forwardPhaseIds

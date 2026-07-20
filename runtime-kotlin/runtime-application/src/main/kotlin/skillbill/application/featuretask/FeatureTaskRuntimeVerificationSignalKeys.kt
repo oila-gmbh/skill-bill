@@ -12,12 +12,18 @@ internal object FeatureTaskRuntimeVerificationSignalKeys {
   /** Top-level verdict string both verifying gates accept as an explicit advance/remediation signal. */
   const val VERDICT = "verdict"
 
-  /** produced_outputs key the review gate reads: the findings array (an empty [] affirms no Blocker/Major). */
+  /** produced_outputs key the review gate reads: the findings array (an empty [] affirms no Blocker). */
   const val REVIEW_FINDINGS = "findings"
 
   /** produced_outputs key the audit gate reads: unmet acceptance criteria (an empty [] affirms all met). */
   const val AUDIT_UNMET_CRITERIA = "unmet_criteria"
 
-  /** Back-compat alias the audit gate also accepts in place of [AUDIT_UNMET_CRITERIA]. */
-  const val AUDIT_FAILING_CRITERIA_ALIAS = "failing_criteria"
+  /**
+   * Spelling agents reach for in place of [AUDIT_UNMET_CRITERIA]. It is rejected, not accepted: while it
+   * was an accepted alias, an audit emitting only this key was classified `gaps_found` by the verdict
+   * readers but skipped the repair-plan gate, which keys on the canonical name, and the run blocked much
+   * later on a misleading durability message. One canonical representation is the only way the gate and
+   * the verdict cannot disagree.
+   */
+  const val AUDIT_FAILING_CRITERIA_REJECTED_ALIAS = "failing_criteria"
 }

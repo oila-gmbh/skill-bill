@@ -1,14 +1,14 @@
 ---
 internal-for: bill-feature
 name: bill-feature-goal
-description: Use when a decomposed feature goal is ready to run through one confirmation gate. Accepts `mode:runtime` (default), which drives the foreground `skill-bill goal` runtime, or `mode:prose`, which drives an in-session subtask loop, mirroring bill-feature-task's argument convention.
+description: Use when a manifest-backed feature goal with one or more subtasks is ready to run through one confirmation gate.
 ---
 
 # Feature Goal Content
 
-`bill-feature-goal` is the interactive front door for a feature goal that needs multiple decomposed implementation subtasks. It verifies decomposition readiness, asks for exactly one confirmation before starting any automated loop, and runs the confirmed decomposition in the selected mode: the foreground `skill-bill goal` driver by default (`mode:runtime`), or an in-session subtask loop (`mode:prose`).
+`bill-feature-goal` is the interactive front door for every prepared feature goal. It accepts one or more implementation subtasks, verifies manifest readiness, asks for exactly one confirmation before starting any automated loop, and runs the confirmed goal in the selected mode.
 
-`bill-feature-goal` is the trigger surface for decomposed-goal orchestration. In
+`bill-feature-goal` is the trigger surface for manifest-backed goal orchestration. In
 `mode:runtime` (the default) it hands off to the durable `skill-bill goal` runtime
 driver; in `mode:prose` it loops the subtasks in the current agent session.
 
@@ -50,11 +50,11 @@ Receive the already-resolved ordered agent add-on selection from `bill-feature`;
 do not parse raw `agent-addon:` tokens here. Show its slugs and descriptions in
 caller order in the existing single confirmation, persist the structured
 selection with the parent policy, and forward it unchanged to every runtime or
-prose child and child continuation artifact. Before parent persistence or child
-setup, validate the effective run agent, every explicit phase assignment, and
-the resolved parallel-review lane. A resumed omission inherits the durable
-selection exactly; any mismatch, missing source, digest drift, or incompatible
-new receiving agent fails before selecting or launching a child.
+prose child and child continuation artifact launched from that point. Before
+parent persistence or child setup, validate the effective run agent, every
+explicit phase assignment, and the resolved parallel-review lane. A changed
+selection or content digest updates future launch guidance and never blocks a
+continuation; already completed phase evidence remains unchanged.
 
 For a prose-goal resume, an omitted `code-review:` or `parallel-review:` token
 inherits the durable parent selection. An explicit resumed mode or lane must
@@ -66,7 +66,7 @@ must not overwrite the durable parent or child review policy.
 
 **opencode and zcode are prose-only.** When the agent currently executing this skill is opencode or zcode, prose is the implicit default and runtime mode is unsupported: opencode's foreground Bash tool is hard-killed at 120s before a phase can finish and per-phase output cannot be harvested back; zcode's foreground runtime exceeds the Bash execution ceiling and a detached zcode child emits no harvestable output before the supervisor kills it as unresponsive. On opencode or zcode: with no mode arg, resolve to `prose` (no need to pass `mode:prose`); with an explicit `mode:runtime`, stop and emit the actionable refusal and do NOT hand off to the `skill-bill goal` runtime:
 
-> Runtime mode is not supported on opencode or zcode in this harness. opencode's foreground Bash tool is hard-killed at 120s before a phase can finish and per-phase output cannot be harvested back; zcode's foreground runtime exceeds the Bash execution ceiling and a detached zcode child emits no harvestable output before the supervisor kills it as unresponsive. Use prose instead — run bill-feature-task-prose for a single feature task, or bill-feature-goal mode:prose for a decomposed goal.
+> Runtime mode is not supported on opencode or zcode in this harness. opencode's foreground Bash tool is hard-killed at 120s before a phase can finish and per-phase output cannot be harvested back; zcode's foreground runtime exceeds the Bash execution ceiling and a detached zcode child emits no harvestable output before the supervisor kills it as unresponsive. Use prose instead — run bill-feature-goal mode:prose for every prepared manifest, including one with exactly one subtask.
 
 The `skill-bill goal` CLI refuses the same way whenever the resolved runtime agent is opencode or zcode (invoked agent or `--agent-override`), so this skill gate and the CLI agree.
 
@@ -91,26 +91,23 @@ When the caller provides only an issue key, use existing governed artifacts unde
 `.feature-specs` when there is a single clear match for that key. Ask for a more
 specific path only when there is no match or the matches are ambiguous.
 
-Classify the goal before decomposing:
-
-- If the goal is small enough for one normal implementation pass, complete it directly in the current agent session. Do not create a decomposition manifest and do not invoke `skill-bill goal`.
-- If the goal needs multiple independently resumable implementation subtasks, prepare a decomposition proposal.
+Classify size only to decide whether preparation produces one subtask or multiple dependency-ordered subtasks. Never execute a prepared small goal directly outside the manifest workflow.
 
 ## Decomposition Proposal
 
-For decomposed goals, first ensure decomposition artifacts exist through the
+For all prepared goals, first ensure manifest-backed artifacts exist through the
 shared preparation path:
 
 - If `.feature-specs/{ISSUE_KEY}-{feature-name}/decomposition-manifest.yaml`
   is missing, invoke `bill-feature-spec` in this session to prepare a
-  decomposed parent spec and ordered subtask specs.
+  parent spec and one or more ordered subtask specs.
 - If decomposition artifacts already exist, reuse them as-is.
 
 Then present a concise proposal that includes:
 
 - the issue key and feature name
 - the parent acceptance criteria
-- two or more ordered subtasks with dependency notes
+- one or more ordered subtasks with dependency notes
 - the expected first runnable subtask
 - the agent that will be used for child runs, including any explicit override
 - the resolved mode: show `runtime (default)` when the mode was not specified, `runtime` when explicitly set, or `prose` when `mode:prose` was passed
@@ -173,16 +170,15 @@ replace this scope with a branch-wide diff, merge base, `origin/main`, or
 sibling-subtask substitute.
 
 Each child reserves its pass before review starts and permits at most two total
-passes across resume, repair, and audit re-entry. If pass two still has
-Blocker or Major findings, persist full evidence and the
-`review_cap_reached` disposition, emit a compact path-free summary, and
-continue to audit without claiming approval or launching a third pass. Audit,
-validation, dependency, history, commit/push, and PR gates remain active.
+passes across resume, repair, and audit re-entry. Major findings remain durable
+evidence and never prevent advancement. If pass two still has Blocker findings,
+persist full evidence, emit a compact path-free summary, and block before audit
+without launching a third pass.
 
 If a crash leaves a reserved pass without its completed durable output, resume
 that reserved pass rather than allocating another. Carry completed or capped
-state forward on every repair and audit re-entry; `review_cap_reached` is a
-non-approval disposition, not a reason to block any independent later gate.
+state forward on every repair and audit re-entry. A cap with unresolved Blocker
+evidence is blocking; Major-only evidence is not.
 
 Goal-facing review output and `goal_event` lines contain only subtask id, pass,
 verdict/disposition, finding count, severity, class/symbol-or-sanitized-stem
@@ -192,7 +188,7 @@ the child's durable review artifacts and telemetry.
 
 ## Confirmed Handoff
 
-After confirmation, ensure the decomposed parent workflow and runtime manifest
+After confirmation, ensure the manifest-backed parent workflow and runtime manifest
 now exist from the shared feature-spec preparation path. Then execute the
 foreground driver directly in the current agent session, always passing
 `--agent` set to the agent currently executing this skill:
@@ -290,7 +286,7 @@ missing.
 
 ## Status Checks
 
-Use the read-only status command whenever the user asks where a decomposed goal stands:
+Use the read-only status command whenever the user asks where a prepared goal stands:
 
 ```bash
 skill-bill goal status <issue_key>

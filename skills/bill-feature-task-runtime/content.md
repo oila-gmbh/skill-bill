@@ -123,9 +123,9 @@ continues. Treat the durable workflow state as authoritative over any prose.
 
 The runtime closes a bounded remediation loop around `review`. The `review`
 phase emits a structured verdict derived from its findings: `approved` when no
-unresolved Blocker or Major findings remain, or `changes_requested` when any are
-present. The runtime evaluates that verdict — prose alone cannot advance past a
-Blocker/Major finding.
+unresolved Blocker findings remain, or `changes_requested` when any are present.
+Major findings remain durable evidence but never prevent advancement. The runtime
+evaluates that verdict — prose alone cannot advance past a Blocker finding.
 
 - On `approved`, the run advances to `audit` (a clean run never launches a fix).
 - On `changes_requested`, the runtime takes a backward edge to a dedicated
@@ -159,11 +159,23 @@ checked: `satisfied` when every criterion is met, or `gaps_found` when one or
 more remain unmet. The runtime evaluates that verdict — prose alone cannot
 advance past an unmet acceptance criterion.
 
+Audit gaps are restricted to concrete defects in production behavior or
+production implementation. Missing tests, weak tests, incomplete coverage,
+unrealistic fixtures, insufficient assertions, and every other test-only concern
+are never audit gaps. Audit does not assess test adequacy, cite test files as the
+affected boundary, or create repair items that add or change tests. Test execution
+and test failures belong to validation. When no production defect is evidenced,
+audit emits `satisfied` even if test coverage is absent or inadequate.
+
 - On `satisfied`, the run advances to `validate`.
 - On `gaps_found`, the runtime takes a backward edge re-entering `implement`,
   then `review`, then `audit`. The implementation handoff contains the immutable
-  original `preplan` and `plan` outputs plus only the latest failing criteria, so
-  the loop addresses the gaps rather than redoing settled content. This
+  original `preplan` and `plan` outputs plus the complete durably accepted audit
+  repair plan and cumulative unresolved-gap ledger. Every gap has a stable id,
+  criterion reference, evidence, diagnosis, boundary, and dependency-ordered
+  repair items. Remediation attempts every runnable item in the same invocation
+  and emits an exact terminal result set; review or validation cannot substitute
+  for executing carried work. This
   `audit` → `implement` → `review` → `audit` cycle has no fixed
   iteration cap. Its durable counter records progress and recovery state but
   never turns a valid `gaps_found` verdict into a permanent policy block. The
@@ -171,7 +183,11 @@ advance past an unmet acceptance criterion.
 
 The re-entered `implement` is idempotent: it reconciles the working tree toward
 the original plan without double-applying, and a crash mid-loopback resumes at the
-correct phase and iteration while preserving the `audit_gap` watermark.
+correct phase and iteration while preserving the accepted plan, stable ids, and
+`audit_gap` watermark. The following audit classifies every prior gap as resolved
+or recurring and assigns new ids only to genuinely new gaps. Equivalent recurring
+gap sets without repository change or newly resolved repair items block loudly as
+non-progress instead of looping indefinitely.
 
 The two loops compose under one durable two-pass review budget. The initial
 review and the first later review reached by either a review-fix or audit-gap
@@ -244,9 +260,10 @@ workflow during resume.
 
 ### Rehydrate a missing linear-mode spec before resume
 
-The spec source is an artifact stamp (decomposed → `decomposition-manifest.yaml`
-`spec_source`; single_spec → the `spec_source:` line in `spec.md`), defaulting to
-`local`. For `spec_source: local`, resume needs no extra step.
+The spec source is the sibling `decomposition-manifest.yaml` `spec_source`
+artifact stamp, defaulting to `local` when omitted. A bare `spec.md` is preparation
+intake, not prepared source authority. For `spec_source: local`, resume needs no
+extra step.
 
 For `spec_source: linear`, the local spec scratch is deleted on terminal success,
 so before calling `resume` check whether the file at `<spec_path>` (or a needed

@@ -32,17 +32,20 @@ internal object FeatureTaskRuntimeOutputVerification {
   fun auditGapPayloadError(outputObject: Map<String, Any?>): String? {
     val wireVerdict = outputObject["verdict"] as? String
     val producedOutputs = JsonSupport.anyToStringAnyMap(outputObject["produced_outputs"])
+    rejectedCriteriaAliasError(producedOutputs)?.let { return it }
     val raw = producedOutputs?.get(FeatureTaskRuntimeVerificationSignalKeys.AUDIT_UNMET_CRITERIA)
-      ?: producedOutputs?.get(FeatureTaskRuntimeVerificationSignalKeys.AUDIT_FAILING_CRITERIA_ALIAS)
+    if (wireVerdict == FeatureTaskRuntimeVerdict.SATISFIED.wireValue) return auditSatisfiedPayloadError(raw)
     val criteriaDriveGapsFound = (raw as? List<*>)?.isNotEmpty() == true
-    if (wireVerdict != FeatureTaskRuntimeVerdict.GAPS_FOUND.wireValue && !criteriaDriveGapsFound) return null
-    val entries = raw as? List<*>
-      ?: return "Audit verdict 'gaps_found' requires a non-empty produced_outputs.unmet_criteria array."
-    if (entries.isEmpty() || entries.any { auditGapMessage(it) == null }) {
-      return "Audit verdict 'gaps_found' requires every produced_outputs.unmet_criteria entry " +
-        "to carry a non-blank message."
+    return when {
+      wireVerdict == FeatureTaskRuntimeVerdict.GAPS_FOUND.wireValue && raw is List<*> && raw.isEmpty() ->
+        "Audit verdict 'gaps_found' contradicts empty produced_outputs.unmet_criteria."
+      wireVerdict != FeatureTaskRuntimeVerdict.GAPS_FOUND.wireValue && !criteriaDriveGapsFound -> null
+      raw !is List<*> -> "Audit verdict 'gaps_found' requires a non-empty produced_outputs.unmet_criteria array."
+      raw.isEmpty() || raw.any { auditGapMessage(it) == null } ->
+        "Audit verdict 'gaps_found' requires every produced_outputs.unmet_criteria entry " +
+          "to carry a non-blank message."
+      else -> null
     }
-    return null
   }
 
   private fun reviewVerdict(
@@ -50,11 +53,7 @@ internal object FeatureTaskRuntimeOutputVerification {
     wireVerdict: FeatureTaskRuntimeVerdict?,
   ): FeatureTaskRuntimeVerdict {
     val reviewVerdict = reviewVerdictFrom(outputObject)
-    return if (reviewVerdict?.unresolvedFindings?.isNotEmpty() == true) {
-      FeatureTaskRuntimeVerdict.CHANGES_REQUESTED
-    } else {
-      wireVerdict ?: reviewVerdict?.verdict ?: FeatureTaskRuntimeVerdict.ADVANCE
-    }
+    return reviewVerdict?.verdict ?: wireVerdict ?: FeatureTaskRuntimeVerdict.ADVANCE
   }
 
   private fun auditVerdict(
@@ -85,10 +84,7 @@ internal object FeatureTaskRuntimeOutputVerification {
 
   private fun auditVerdictFrom(outputObject: Map<String, Any?>?): FeatureTaskRuntimeAuditVerdict? {
     val producedOutputs = outputObject?.get("produced_outputs")?.let(JsonSupport::anyToStringAnyMap)
-    val gapsRaw = (
-      producedOutputs?.get(FeatureTaskRuntimeVerificationSignalKeys.AUDIT_UNMET_CRITERIA)
-        ?: producedOutputs?.get(FeatureTaskRuntimeVerificationSignalKeys.AUDIT_FAILING_CRITERIA_ALIAS)
-      ) as? List<*>
+    val gapsRaw = producedOutputs?.get(FeatureTaskRuntimeVerificationSignalKeys.AUDIT_UNMET_CRITERIA) as? List<*>
       ?: return null
     val gaps = gapsRaw.mapNotNull { entry -> auditGapMessage(entry)?.let(::FeatureTaskRuntimeAuditCriterionGap) }
     return FeatureTaskRuntimeAuditVerdict(gaps)
@@ -100,7 +96,20 @@ internal object FeatureTaskRuntimeOutputVerification {
     }
 
   private fun outputObject(output: FeatureTaskRuntimePhaseOutput): Map<String, Any?>? =
-    JsonSupport.parseObjectOrNull(output.payload)
-      ?.let(JsonSupport::jsonElementToValue)
-      ?.let(JsonSupport::anyToStringAnyMap)
+    output.normalizedOutput?.envelope
+}
+
+private fun rejectedCriteriaAliasError(producedOutputs: Map<String, Any?>?): String? {
+  val alias = FeatureTaskRuntimeVerificationSignalKeys.AUDIT_FAILING_CRITERIA_REJECTED_ALIAS
+  if (producedOutputs?.containsKey(alias) != true) return null
+  return "Audit produced_outputs carries '$alias'; the canonical unmet-criteria key is " +
+    "'${FeatureTaskRuntimeVerificationSignalKeys.AUDIT_UNMET_CRITERIA}'. Rename the array and pair it with a " +
+    "complete produced_outputs.audit_repair_plan. The audit criteria signal has exactly one representation " +
+    "so no alias can reach the audit_gap edge without passing the repair-plan gate."
+}
+
+private fun auditSatisfiedPayloadError(raw: Any?): String? = when {
+  raw !is List<*> -> "Audit verdict 'satisfied' requires an explicit empty produced_outputs.unmet_criteria array."
+  raw.isNotEmpty() -> "Audit verdict 'satisfied' contradicts non-empty produced_outputs.unmet_criteria."
+  else -> null
 }

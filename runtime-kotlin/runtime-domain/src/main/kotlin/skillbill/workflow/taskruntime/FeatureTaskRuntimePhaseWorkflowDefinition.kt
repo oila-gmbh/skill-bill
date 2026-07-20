@@ -1,6 +1,6 @@
 package skillbill.workflow.taskruntime
 
-import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
+import skillbill.contracts.workflow.WORKFLOW_STATE_CONTRACT_VERSION
 import skillbill.workflow.model.WorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditCeremony
@@ -58,7 +58,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
     workflowName = "bill-feature-task",
     workflowIdPrefix = "wftr",
     defaultSessionPrefix = "ftr",
-    contractVersion = FEATURE_TASK_RUNTIME_CONTRACT_VERSION,
+    contractVersion = WORKFLOW_STATE_CONTRACT_VERSION,
     workflowStatuses = setOf("pending", "running", "completed", "failed", "abandoned", "blocked"),
     stepStatuses = setOf("pending", "running", "completed", "failed", "blocked", "skipped"),
     terminalStatuses = setOf("completed", "failed", "abandoned"),
@@ -153,7 +153,8 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
    * but is loop-only — the forward edge skips it, so a clean run advances `implement` -> `review` and
    * never launches a fix. A `review` `changes_requested` verdict reopens the `[implement_fix, review]`
    * span (the backward destination precedes the source), bounded at one review->fix iteration; an
-   * `approved` verdict or exhaustion of that remediation budget advances to `audit`. An audit
+   * `approved` verdict advances to `audit`, while exhausting that remediation budget with the review
+   * still unsatisfied blocks the run instead of advancing. An audit
    * `gaps_found` verdict reopens the
    * `[implement, audit]` span to reconcile implementation against the failing criteria using the
    * immutable initial planning context and re-pass through `review` (incl. its `review_fix`
@@ -171,7 +172,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
           destinationPhaseId = PHASE_IMPLEMENT_FIX,
           loopId = REVIEW_FIX_LOOP_ID,
           perEdgeCap = 1,
-          capExhaustionBehavior = FeatureTaskRuntimeCapExhaustionBehavior.ADVANCE,
+          capExhaustionBehavior = FeatureTaskRuntimeCapExhaustionBehavior.BLOCK,
         ),
         FeatureTaskRuntimeBackwardEdge(
           fromPhaseId = PHASE_AUDIT,

@@ -101,13 +101,16 @@ class GoalRunner(
     persistedReviewPolicy?.let { policy ->
       reviewPolicyMismatch(state, request, policy)?.let { return it }
     }
-    val effectiveReviewPolicy = persistedReviewPolicy ?: manifestStore.persistReviewPolicy(
+    val requestedReviewPolicy = GoalRunnerReviewPolicy(
+      codeReviewMode = request.codeReviewMode
+        ?: persistedReviewPolicy?.codeReviewMode
+        ?: CodeReviewExecutionMode.DEFAULT,
+      parallelReviewAgent = request.parallelReviewAgent ?: persistedReviewPolicy?.parallelReviewAgent,
+      agentAddonSelection = request.agentAddonSelection.persisted,
+    )
+    val effectiveReviewPolicy = manifestStore.persistReviewPolicy(
       parentWorkflowId = state.parentWorkflowId,
-      policy = GoalRunnerReviewPolicy(
-        codeReviewMode = request.codeReviewMode ?: CodeReviewExecutionMode.DEFAULT,
-        parallelReviewAgent = request.parallelReviewAgent,
-        agentAddonSelection = request.agentAddonSelection.persisted,
-      ),
+      policy = requestedReviewPolicy,
       dbPathOverride = request.dbPathOverride,
     )
     return GoalRunPreparation.Prepared(
@@ -131,8 +134,6 @@ class GoalRunner(
       request.parallelReviewAgent != null && policy.parallelReviewAgent != request.parallelReviewAgent ->
         "Cannot change parallel-review agent on goal resume: parent workflow '${state.parentWorkflowId}' " +
           "is pinned to '${policy.parallelReviewAgent ?: "none"}', not '${request.parallelReviewAgent}'."
-      policy.agentAddonSelection != request.agentAddonSelection.persisted ->
-        "Cannot drop or replace the durable agent add-on selection on goal resume."
       else -> return null
     }
     return GoalRunPreparation.PreparationBlocked(
@@ -593,6 +594,7 @@ class GoalRunner(
           reviewPolicy = GoalRunnerReviewPolicy(
             codeReviewMode = request.codeReviewMode ?: CodeReviewExecutionMode.DEFAULT,
             parallelReviewAgent = request.parallelReviewAgent,
+            agentAddonSelection = request.agentAddonSelection.persisted,
           ),
           planningHydration = planning.hydrationFor(subtaskId),
         ),
@@ -1204,6 +1206,7 @@ internal class GoalRunnerLaunchReconciler(
         assignedWorkflowId = assignedWorkflowId,
         codeReviewMode = request.codeReviewMode ?: CodeReviewExecutionMode.DEFAULT,
         parallelReviewAgent = request.parallelReviewAgent,
+        agentAddonSelection = request.agentAddonSelection.persisted,
         reviewBaseline = state.manifest.workflowIdFor(subtaskId)
           ?.let { workflowId -> outcomeStore.goalSubtaskReviewState(workflowId, request.dbPathOverride) }
           ?.let { reviewState ->

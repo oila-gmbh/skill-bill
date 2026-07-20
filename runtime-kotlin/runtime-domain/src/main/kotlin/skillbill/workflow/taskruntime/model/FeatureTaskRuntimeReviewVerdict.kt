@@ -3,13 +3,13 @@ package skillbill.workflow.taskruntime.model
 /**
  * Pure domain models for the structured review verdict that drives the `review_fix` backward edge. A
  * review emits a [FeatureTaskRuntimeReviewVerdict]: its findings classify the run as
- * [FeatureTaskRuntimeVerdict.CHANGES_REQUESTED] (any unresolved Blocker/Major) or
+ * [FeatureTaskRuntimeVerdict.CHANGES_REQUESTED] (any unresolved Blocker) or
  * [FeatureTaskRuntimeVerdict.APPROVED]. The classification is a pure function of the findings — prose
- * alone cannot advance past a Blocker/Major — and the findings are carried into the `implement_fix`
+ * alone cannot advance past a Blocker — and the findings are carried into the `implement_fix`
  * briefing. No raw maps live in the model: the runner decodes wire output into these types.
  */
 
-/** Severity of a single review finding. Blocker/Major are the advance-blocking severities. */
+/** Severity of a single review finding. Blocker is the only advance-blocking severity. */
 enum class FeatureTaskRuntimeReviewSeverity(val wireValue: String) {
   BLOCKER("blocker"),
   MAJOR("major"),
@@ -19,7 +19,7 @@ enum class FeatureTaskRuntimeReviewSeverity(val wireValue: String) {
 
   /** Whether a finding of this severity blocks advancing past review until resolved. */
   val blocksAdvance: Boolean
-    get() = this == BLOCKER || this == MAJOR
+    get() = this == BLOCKER
 
   companion object {
     fun fromWire(value: String): FeatureTaskRuntimeReviewSeverity =

@@ -93,6 +93,11 @@ internal fun featureTaskRuntimeFinished(arguments: Map<String, Any?>, context: M
       resolvedBranch = arguments.string("resolved_branch"),
       reviewFixIterationCount = arguments.int("review_fix_iteration_count", 0),
       auditGapIterationCount = arguments.int("audit_gap_iteration_count", 0),
+      auditFirstPassConvergence = arguments.boolean("audit_first_pass_convergence"),
+      auditRecurringGapCount = arguments.int("audit_recurring_gap_count", 0),
+      auditNewGapCount = arguments.int("audit_new_gap_count", 0),
+      auditAttemptedRepairItemCount = arguments.int("audit_attempted_repair_item_count", 0),
+      auditResolvedRepairItemCount = arguments.int("audit_resolved_repair_item_count", 0),
       estimatedPhaseTokenBreakdownJson = arguments.optionalMap("estimated_phase_tokens")
         ?.let { JsonSupport.mapToJsonString(it) },
       estimatedTotalTokens = arguments.optionalInt("estimated_total_tokens"),

@@ -1,0 +1,126 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://skill-bill.dev/contracts/feature-task-runtime-audit-repair-plan-schema.yaml"
+title: "Feature-task-runtime audit repair plan"
+description: "Complete, dependency-ordered remediation plan emitted by an audit with gaps."
+x-coherence-checks:
+  exact-criterion-coverage: "Every reported unmet criterion maps exactly once to a gap."
+  stable-child-identities: "Each gap ID is criterion-generation derived and each repair item ID is its ordered child."
+  dependency-validity: "Dependencies reference declared repair items and cannot reference the item itself."
+  dependency-ordering: "Every dependency precedes its dependent repair item in plan order."
+  dependency-acyclicity: "The repair-item dependency graph is acyclic."
+  aggregate-repair-item-limit: "A plan contains at most 100 repair items across all gaps, matching durable terminal-result capacity."
+  structured-evidence-safety: "Failure evidence uses only an enumerated observation and bounded artifact/check references; free-form payload text is not representable."
+  non-empty-affected-paths: "A repair item names at least one touched path or symbol; zero touched code is not a repair."
+  evidence-reference-bound: "Evidence references are capped at 256 characters at both layers so an encoded source body cannot ride into durable state as a reference."
+type: object
+additionalProperties: false
+required: [contract_version, gaps]
+properties:
+  contract_version:
+    type: string
+    const: "0.2"
+  gaps:
+    type: array
+    minItems: 1
+    maxItems: 50
+    items:
+      $ref: "#/$defs/gap"
+$defs:
+  nonBlank:
+    type: string
+    minLength: 1
+    maxLength: 2048
+    pattern: ".*\\S.*"
+  # Every field using this holds a short description of a code defect or the work to repair it, so it
+  # must be able to name symbols and commands: `=`, `[]`, and `<>` are ordinary content here. Rejecting
+  # them made the field unsatisfiable for its own purpose. Pasted payloads are excluded structurally
+  # instead — no line breaks or control characters, no code fences, and no JSON, unified-diff, or
+  # patch-header markers. requireDurableText in FeatureTaskRuntimeAuditRepairModels.kt enforces the same
+  # rule for the same fields; FeatureTaskRuntimeAuditRepairSchemaParityTest pins the two layers to the
+  # same accept/reject verdicts so they cannot drift again.
+  compactSummary:
+    allOf:
+      - { $ref: "#/$defs/nonBlank" }
+      - pattern: "^[^\\n\\r\\t`]+$"
+      - not: { pattern: "\\{\\s*\"|\"\\s*:\\s*[\\[{\"]|@@[^@]*@@|^(?:diff --git|\\+\\+\\+ |--- )" }
+      - not: { pattern: "(?i)^\\s*(system|user|assistant|developer|tool)(?:\\s+(?:prompt|message|output))?\\s*:" }
+  artifactRef:
+    type: string
+    minLength: 1
+    maxLength: 256
+    pattern: "^(?:[A-Za-z0-9_.-]+/)*[A-Za-z0-9_.-]+(?::[A-Za-z0-9_.#-]+)?$"
+  checkRef:
+    type: string
+    minLength: 1
+    maxLength: 256
+    pattern: "^(?:AC-[0-9]{3}|F-[0-9]{3}|[A-Za-z][A-Za-z0-9_.-]*(?:Test|Check)(?::[A-Za-z0-9_.#-]+)?)$"
+  evidence:
+    type: object
+    additionalProperties: false
+    required: [observation, artifact_ref, check_ref]
+    properties:
+      observation:
+        enum: [required_behavior_absent, verification_failed, contract_rejected, state_mismatch, fix_verified, already_satisfied_verified, resolution_verified, recurrence_verified]
+      artifact_ref: { $ref: "#/$defs/artifactRef" }
+      check_ref: { $ref: "#/$defs/checkRef" }
+  repairItem:
+    type: object
+    additionalProperties: false
+    required: [repair_item_id, intended_outcome, implementation_actions, affected_paths_or_symbols, required_verification, depends_on, status]
+    properties:
+      repair_item_id:
+        allOf:
+          - { $ref: "#/$defs/nonBlank" }
+          - { pattern: "^[Aa][Cc]-[0-9]{3,}-gap-[1-9][0-9]*-item-[1-9][0-9]*$" }
+        description: >
+          Stable ordered child of its gap_id, '<gap-id>-item-<ordinal>', for example
+          'ac-005-gap-1-item-1'. Same casing rule as gap_id.
+      intended_outcome: { $ref: "#/$defs/compactSummary" }
+      implementation_actions:
+        type: array
+        minItems: 1
+        maxItems: 50
+        items: { $ref: "#/$defs/compactSummary" }
+      affected_paths_or_symbols:
+        type: array
+        minItems: 1
+        maxItems: 100
+        items: { $ref: "#/$defs/compactSummary" }
+      required_verification:
+        type: array
+        minItems: 1
+        maxItems: 50
+        items: { $ref: "#/$defs/compactSummary" }
+      depends_on:
+        type: array
+        maxItems: 50
+        uniqueItems: true
+        items: { $ref: "#/$defs/nonBlank" }
+      status:
+        const: pending
+  gap:
+    type: object
+    additionalProperties: false
+    required: [gap_id, acceptance_criterion_ref, acceptance_criterion_text, failure_evidence, diagnosis, affected_boundary, repair_items]
+    properties:
+      gap_id:
+        allOf:
+          - { $ref: "#/$defs/nonBlank" }
+          - { pattern: "^[Aa][Cc]-[0-9]{3,}-gap-[1-9][0-9]*$" }
+        description: >
+          Stable criterion-generation identifier '<criterion-ref>-gap-<generation>', for example
+          'ac-005-gap-1'. Canonically lowercase; an uppercase criterion-ref prefix is accepted and
+          normalized on ingest.
+      acceptance_criterion_ref:
+        allOf:
+          - { $ref: "#/$defs/nonBlank" }
+          - { pattern: "^AC-[0-9]{3}$" }
+      acceptance_criterion_text: { $ref: "#/$defs/compactSummary" }
+      failure_evidence: { $ref: "#/$defs/evidence" }
+      diagnosis: { $ref: "#/$defs/compactSummary" }
+      affected_boundary: { $ref: "#/$defs/compactSummary" }
+      repair_items:
+        type: array
+        minItems: 1
+        maxItems: 100
+        items: { $ref: "#/$defs/repairItem" }
