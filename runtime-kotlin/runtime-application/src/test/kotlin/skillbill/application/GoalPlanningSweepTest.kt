@@ -81,7 +81,7 @@ class GoalPlanningSweepTest {
     assertFalse(preplanPrompt.contains("Current subtask dependency context:"))
     assertTrue(
       preplanPrompt.contains(
-        "spec_reference: ${harness.fixtures.repoRoot.resolve(".feature-specs/SKILL-56-goal/spec.md")}",
+        "spec_reference: ${harness.fixtures.repoRoot.toRealPath().resolve(".feature-specs/SKILL-56-goal/spec.md")}",
       ),
       "the singleton preplan must be governed by the parent goal spec",
     )
