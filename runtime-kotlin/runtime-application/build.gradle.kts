@@ -11,4 +11,7 @@ dependencies {
   testImplementation(libs.junit.jupiter)
   testImplementation(libs.kotlin.test)
   testImplementation(libs.jackson.dataformat.yaml)
+  // Canonical-output equivalence has to run through the production schema validator, not a double:
+  // the wrapper-form extraction under test lives there.
+  testImplementation(project(":runtime-infra-fs"))
 }

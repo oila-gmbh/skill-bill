@@ -1,6 +1,8 @@
 package skillbill.application
 
 import skillbill.application.model.FeatureTaskRuntimeRunReport
+import skillbill.infrastructure.fs.FeatureTaskRuntimePhaseOutputValidatorAdapter
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -204,6 +206,93 @@ class FeatureTaskRuntimeAuditRepairRegressionTest {
       "the gap counters must stay coherent with the durable unresolved-gap ledger",
     )
   }
+
+  // AC6 at the runner, not just the validator: a gaps_found audit wrapped as bare JSON, as a fenced
+  // block, and as Markdown commentary + fence + trailing prose must normalize to one object that
+  // drives validation, verdict selection, persistence, transition selection, and the downstream
+  // handoff identically. Anything reading the raw text instead of the normalized envelope diverges here.
+  @Test
+  fun `every canonical wrapper form drives the same audit gap edge and handoff`() {
+    val observed = CANONICAL_WRAPPER_FORMS.mapValues { (_, wrap) -> runAuditGapLoop(wrap) }
+    val bare = observed.getValue("bare")
+
+    observed.forEach { (form, actual) ->
+      assertEquals(bare, actual, "wrapper form '$form' must produce the identical normalized run")
+    }
+    assertEquals(2, bare.phaseOrder.count { it == "audit" }, "the gaps_found audit fired the backward edge")
+    assertEquals(2, bare.phaseOrder.count { it == "implement" })
+    assertEquals(1, bare.phaseOrder.count { it == "plan" }, "the backward edge never regenerates planning")
+    assertEquals(listOf(1), bare.auditGapEdgeIterations, "the audit_gap edge was selected, not the validate edge")
+    assertContains(bare.implementBriefing, AUDIT_GAP_MESSAGE)
+    bare.persistedOutputs.forEach { (phaseId, artifact) ->
+      assertTrue(
+        artifact.startsWith("{") && !artifact.contains("```"),
+        "the persisted output for '$phaseId' must be the normalized envelope, not the wrapped raw text",
+      )
+    }
+  }
+}
+
+// The four accepted agent-output wrapper forms. "markdown_prefixed" also carries trailing prose, so a
+// single case covers both the leading-commentary and trailing-prose edges of the contract.
+private val CANONICAL_WRAPPER_FORMS: Map<String, (String) -> String> = mapOf(
+  "bare" to { text -> text },
+  "bare_trailing_prose" to { text -> "$text\n" },
+  "fenced" to { text -> "```json\n$text\n```" },
+  "markdown_prefixed" to { text ->
+    "## Phase result\n\nEvidence and reasoning precede the envelope.\n\n```json\n$text\n```\n\n" +
+      "That envelope is the phase output; the rest of this message is commentary."
+  },
+)
+
+// Everything the run loop derives from a phase output: the transition it selected, what it persisted,
+// and what it handed downstream. Wrapper-form equality across this whole record is the AC6 assertion.
+private data class NormalizedRunObservation(
+  val phaseOrder: List<String>,
+  val auditGapEdgeIterations: List<Int>,
+  val persistedOutputs: Map<String, String>,
+  val implementBriefing: String,
+  val unresolvedGapIds: List<String>,
+  val priorGapDispositions: List<String>,
+)
+
+private fun runAuditGapLoop(wrap: (String) -> String): NormalizedRunObservation {
+  var auditLaunches = 0
+  val harness = runnerHarness(
+    launcher = RuntimeRecordingLauncher { request ->
+      val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+      facts(
+        wrap(
+          when {
+            phaseId != "audit" -> validJsonOutput(phaseId)
+            else -> {
+              auditLaunches += 1
+              if (auditLaunches < 2) auditGapsOutput() else auditSatisfiedOutput()
+            }
+          },
+        ),
+      )
+    },
+    validator = FeatureTaskRuntimePhaseOutputValidatorAdapter(),
+  )
+
+  assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
+
+  val records = harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()
+  val repairState = requireNotNull(harness.recorder.loadAuditRepairState(WORKFLOW_ID))
+  return NormalizedRunObservation(
+    phaseOrder = harness.launchedPromptPhaseOrder(),
+    auditGapEdgeIterations = harness.recorder.loadPhaseLedger(WORKFLOW_ID).orEmpty()
+      .filter { it.action == FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE && it.loopId == "audit_gap" }
+      .mapNotNull { it.edgeIteration },
+    persistedOutputs = records.mapNotNull { (phaseId, record) ->
+      record.outputArtifact?.let { phaseId to it }
+    }.toMap(),
+    implementBriefing = requireNotNull(harness.recorder.loadPhaseBriefings(WORKFLOW_ID).orEmpty()["implement"])
+      .briefingText,
+    unresolvedGapIds = repairState.unresolvedGapLedger.unresolvedGaps.map { it.gapId },
+    priorGapDispositions = repairState.priorGapDispositions.map { "${it.gapId}:${it.status.name}" },
+  )
 }
 
 private fun recurringDisposition(gapId: String): String =

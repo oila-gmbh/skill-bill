@@ -168,6 +168,66 @@ class FeatureTaskRuntimeAuditGapDurabilityTest {
     assertEquals(2, harness.launchedPromptPhaseOrder().count { it == "review" })
   }
 
+  // AC3: the other durability seams cover a crash before plan persistence, after every repair item
+  // settled, and after audit completion. This one is the seam between: a multi-item plan where the
+  // remediation already landed a terminal result for the first item while a later one was still in
+  // flight. Resume must reuse the persisted plan and identifiers exactly, re-report every carried item
+  // exactly once, and never mint, rename, drop, or double-apply anything.
+  @Test
+  fun `a crash with one repair item still in flight resumes on the exact persisted plan`() {
+    var implementLaunches = 0
+    var auditLaunches = 0
+    var crashMidRepair = true
+    val harness = runnerHarness(
+      launcher = RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        when (phaseId) {
+          "audit" -> {
+            auditLaunches += 1
+            facts(if (auditLaunches < 2) auditTwoItemGapOutput() else auditSatisfiedOutput())
+          }
+          "implement" -> {
+            implementLaunches += 1
+            when {
+              implementLaunches == 1 -> facts(validJsonOutput(phaseId))
+              // Item 1 is fixed on disk; item 2 never reported before the process died.
+              implementLaunches == 2 && crashMidRepair -> spawnFailedFacts()
+              // Resume re-attempts the whole carried set: item 1 is already satisfied, item 2 is fixed.
+              else -> facts(twoItemRemediationOutput())
+            }
+          }
+          else -> facts(validJsonOutput(phaseId))
+        }
+      },
+    )
+
+    val firstBlocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+    assertEquals("implement", firstBlocked.lastIncompletePhase)
+    val planBeforeResume = requireNotNull(harness.recorder.loadAuditRepairState(WORKFLOW_ID))
+    assertEquals(
+      listOf("ac-002-gap-1-item-1", "ac-002-gap-1-item-2"),
+      planBeforeResume.acceptedPlans.last().gaps.flatMap { gap -> gap.repairItems.map { it.repairItemId } },
+      "both carried identifiers are durable before the crash",
+    )
+
+    crashMidRepair = false
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
+
+    val planAfterResume = requireNotNull(harness.recorder.loadAuditRepairState(WORKFLOW_ID))
+    assertEquals(
+      planBeforeResume.acceptedPlans,
+      planAfterResume.acceptedPlans,
+      "resume reuses the persisted plan byte for byte instead of re-accepting a regenerated one",
+    )
+    assertEquals(3, implementLaunches, "the initial implement, the crashed remediation, and one resume")
+    assertEquals(1, harness.launchedPromptPhaseOrder().count { it == "plan" }, "planning is never regenerated")
+    val edgeIterations = harness.recorder.loadPhaseLedger(WORKFLOW_ID).orEmpty()
+      .filter { it.action == FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE && it.loopId == "audit_gap" }
+      .mapNotNull { it.edgeIteration }
+    assertEquals(listOf(1), edgeIterations, "the in-flight edge finishes instead of minting a second one")
+    assertEquals(emptyList(), planAfterResume.unresolvedGapLedger.unresolvedGaps)
+  }
+
   @Test
   fun `audit gap resume rejects a valid durable plan that differs from the phase record`() {
     var implementLaunches = 0
@@ -452,3 +512,74 @@ class FeatureTaskRuntimeAuditGapDurabilityTest {
     """{"contract_version":"0.2","phase_id":"audit","status":"completed","verdict":"gaps_found",""" +
       """"summary":"gap","produced_outputs":$producedOutputs}"""
 }
+
+// A gaps_found audit whose single gap carries two dependency-ordered repair items, so a remediation can
+// crash with the first one settled and the second still in flight.
+private fun auditTwoItemGapOutput(): String = """
+  {
+    "contract_version": "0.2",
+    "phase_id": "audit",
+    "status": "completed",
+    "summary": "Audit found unmet acceptance criteria.",
+    "verdict": "gaps_found",
+    "produced_outputs": {
+      "unmet_criteria": [{"acceptance_criterion_ref":"AC-002","message": "$AUDIT_GAP_MESSAGE"}],
+      "audit_repair_plan": {
+        "contract_version":"0.2",
+        "gaps":[{
+          "gap_id":"ac-002-gap-1",
+          "acceptance_criterion_ref":"AC-002",
+          "acceptance_criterion_text":"The audit gap is repaired.",
+          "failure_evidence":{"observation":"required_behavior_absent","artifact_ref":"runtime-kotlin","check_ref":"AC-002"},
+          "diagnosis":"Implement and verify the missing behavior in two ordered steps.",
+          "affected_boundary":"runtime application",
+          "repair_items":[{
+            "repair_item_id":"ac-002-gap-1-item-1",
+            "intended_outcome":"The behavior is implemented.",
+            "implementation_actions":["Reconcile the implementation."],
+            "affected_paths_or_symbols":["src/Foo.kt"],
+            "required_verification":["Run the focused test."],
+            "depends_on":[],
+            "status":"pending"
+          },{
+            "repair_item_id":"ac-002-gap-1-item-2",
+            "intended_outcome":"The behavior is covered by a durable test.",
+            "implementation_actions":["Add the focused regression."],
+            "affected_paths_or_symbols":["src/FooTest.kt"],
+            "required_verification":["Run the focused test."],
+            "depends_on":["ac-002-gap-1-item-1"],
+            "status":"pending"
+          }]
+        }]
+      }
+    }
+  }
+""".trimIndent()
+
+// The resumed remediation: the item that landed before the crash reports already_satisfied with distinct
+// repository and verification evidence, and the in-flight item reports its fix.
+private fun twoItemRemediationOutput(): String = """
+  {
+    "contract_version": "0.2",
+    "phase_id": "implement",
+    "status": "completed",
+    "summary": "Resumed remediation reconciled every carried repair item exactly once.",
+    "produced_outputs": {
+      "changed_files":["src/FooTest.kt"],
+      "reconciled_state":{"reconciled":true},
+      "repair_item_results":[{
+        "repair_item_id":"ac-002-gap-1-item-1",
+        "outcome":"already_satisfied",
+        "changed_paths_or_symbols":["src/Foo.kt"],
+        "executed_verification":["Focused test passed before this attempt."],
+        "result_evidence":{"observation":"already_satisfied_verified","artifact_ref":"src/Foo.kt","check_ref":"AC-002"}
+      },{
+        "repair_item_id":"ac-002-gap-1-item-2",
+        "outcome":"fixed",
+        "changed_paths_or_symbols":["src/FooTest.kt"],
+        "executed_verification":["Focused test passed."],
+        "result_evidence":{"observation":"fix_verified","artifact_ref":"src/FooTest.kt","check_ref":"AC-002"}
+      }]
+    }
+  }
+""".trimIndent()

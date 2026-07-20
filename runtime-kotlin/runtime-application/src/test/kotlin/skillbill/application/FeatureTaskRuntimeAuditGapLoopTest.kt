@@ -6,6 +6,7 @@ import skillbill.application.model.FeatureTaskRuntimeStatusRequest
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.model.CodeReviewExecutionMode
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeEvidence
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import kotlin.test.Test
 import kotlin.test.assertContains
@@ -224,6 +225,110 @@ class FeatureTaskRuntimeAuditGapLoopTest {
     assertEquals(2, auditLaunches)
   }
 
+  // AC4: a re-audit cannot close a carried gap by staying silent about it. Omitting the disposition and
+  // declaring satisfied is the exact shape that would implicitly erase accepted repair work.
+  @Test
+  fun `a re-audit cannot implicitly satisfy a carried gap by omitting its disposition`() {
+    var auditLaunches = 0
+    val harness = runnerHarness(
+      launcher = RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        when (phaseId) {
+          "audit" -> {
+            auditLaunches += 1
+            facts(if (auditLaunches < 2) auditGapsOutput() else auditSatisfiedOutput(followUp = false))
+          }
+          else -> facts(validJsonOutput(phaseId))
+        }
+      },
+    )
+
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+
+    assertContains(blocked.blockedReason, "must disposition every durable unresolved gap exactly once")
+    assertContains(blocked.blockedReason, "ac-002-gap-1")
+    val repairState = requireNotNull(harness.recorder.loadAuditRepairState(WORKFLOW_ID))
+    assertEquals(
+      listOf("ac-002-gap-1"),
+      repairState.unresolvedGapLedger.unresolvedGaps.map { it.gapId },
+      "the silent audit must not have closed the carried gap",
+    )
+    assertTrue(harness.launchedPromptPhaseOrder().none { it == "validate" })
+  }
+
+  // AC4: review is not a repair seam. Exhausting the review-fix budget while a repair item is still
+  // carried has to block on the unmet criterion rather than let review close the audit-repair work.
+  @Test
+  fun `an exhausted review budget blocks with the carried repair item still unresolved`() {
+    var auditLaunches = 0
+    val harness = runnerHarness(
+      launcher = RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        when (phaseId) {
+          "audit" -> {
+            auditLaunches += 1
+            facts(auditGapsOutput(followUp = auditLaunches > 1))
+          }
+          // The post-remediation review never approves, so the segment budget runs out with the
+          // carried repair item still open.
+          "review" -> facts(reviewFindingsOutput(changesRequested = auditLaunches >= 1))
+          else -> facts(validJsonOutput(phaseId))
+        }
+      },
+    )
+
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+
+    assertTrue(harness.launchedPromptPhaseOrder().none { it == "validate" })
+    val repairState = requireNotNull(harness.recorder.loadAuditRepairState(WORKFLOW_ID))
+    assertEquals(
+      listOf("ac-002-gap-1"),
+      repairState.unresolvedGapLedger.unresolvedGaps.map { it.gapId },
+      "an exhausted review budget must leave the carried gap unresolved, never close it",
+    )
+    assertTrue(
+      repairState.priorGapDispositions.none { it.status.name == "RESOLVED" },
+      "review cannot mark a carried repair item resolved",
+    )
+    assertTrue(blocked.blockedReason.isNotBlank())
+  }
+
+  // AC4: naming a later phase as the place the carried work will happen is a deferral, not a repair.
+  @Test
+  fun `a remediation deferring carried work to a later phase is rejected`() {
+    var implementLaunches = 0
+    val harness = runnerHarness(
+      launcher = RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        when (phaseId) {
+          "audit" -> facts(auditGapsOutput())
+          "implement" -> {
+            implementLaunches += 1
+            facts(
+              if (implementLaunches == 1) {
+                validJsonOutput(phaseId)
+              } else {
+                validJsonOutput(phaseId).replace(
+                  "\"summary\": \"Phase produced a validated output.\"",
+                  "\"summary\": \"Deferred the remaining repair to the validation phase.\"",
+                )
+              },
+            )
+          }
+          else -> facts(validJsonOutput(phaseId))
+        }
+      },
+    )
+
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+
+    assertEquals("implement", blocked.lastIncompletePhase)
+    assertContains(blocked.blockedReason, "later phase")
+    val repairState = requireNotNull(harness.recorder.loadAuditRepairState(WORKFLOW_ID))
+    assertEquals(listOf("ac-002-gap-1"), repairState.unresolvedGapLedger.unresolvedGaps.map { it.gapId })
+    assertTrue(harness.launchedPromptPhaseOrder().none { it == "validate" })
+  }
+
   @Test
   fun `recurring audit keeps the cumulative ledger identity and counters`() {
     var auditLaunches = 0
@@ -252,6 +357,12 @@ class FeatureTaskRuntimeAuditGapLoopTest {
     assertTrue(repairState.priorGapDispositions.all { it.status.name == "RECURRING" })
     assertEquals(1, repairState.progress.recurringGapCount)
     assertEquals(0, repairState.progress.newGapCount)
+    // AC5: a classification without its evidence is an unsupported claim, so the evidence the audit
+    // supplied has to survive on the durable disposition, not just the status.
+    val evidence = repairState.priorGapDispositions.single().evidence
+    assertEquals(FeatureTaskRuntimeEvidence.Observation.RECURRENCE_VERIFIED, evidence.observation)
+    assertEquals("runtime-kotlin", evidence.artifactRef)
+    assertEquals("AC-002", evidence.checkRef)
   }
 
   @Test
