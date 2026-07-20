@@ -9,19 +9,17 @@ base_branch: "main"
 feature_branch: "feat/SKILL-135-audit-first-review-gate"
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 1
+  subtask_id: 2
   action: "blocked"
 subtasks:
 - id: 1
   name: "Audit-first phase reordering"
   spec_path: ".feature-specs/SKILL-135-audit-first-review-gate/spec_subtask_1_phase_reordering.md"
-  status: "blocked"
+  status: "complete"
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260720-153328-g6un"
-  blocked_reason: "Phase output reported status 'blocked'. Committed the validated\
-    \ changes locally, but push was blocked by a divergent remote branch; safely aborted\
-    \ the conflicting merge without altering the commit."
+  blocked_reason: null
   last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
@@ -30,12 +28,14 @@ subtasks:
 - id: 2
   name: "Delegated-then-inline review pass sequence"
   spec_path: ".feature-specs/SKILL-135-audit-first-review-gate/spec_subtask_2_pass_sequence.md"
-  status: "pending"
+  status: "blocked"
   branch: null
   commit_sha: null
   workflow_id: null
-  blocked_reason: null
-  last_resumable_step: null
+  blocked_reason: "Could not capture the goal-subtask review baseline before implementation.\
+    \ Refusing to substitute a branch-wide scope. Goal-subtask review baseline capture\
+    \ requires a clean tracked worktree; unstaged tracked changes are present."
+  last_resumable_step: "create_branch"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
