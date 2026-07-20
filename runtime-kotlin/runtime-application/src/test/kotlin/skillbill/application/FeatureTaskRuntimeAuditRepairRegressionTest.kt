@@ -12,6 +12,67 @@ import kotlin.test.assertTrue
 // carried items, rejected-output diagnosability, repair-item identifier canonicalization, and the
 // non-progress and counter-durability behavior of the audit_gap loop.
 class FeatureTaskRuntimeAuditRepairRegressionTest {
+  @Test
+  fun `SKILL-128 broad gaps persist one complete plan and reject production-only repair`() {
+    var auditLaunches = 0
+    var implementLaunches = 0
+    var allowExhaustiveRepair = false
+    val harness = runnerHarness(
+      launcher = RuntimeRecordingLauncher { request ->
+        when (val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))) {
+          "audit" -> {
+            auditLaunches += 1
+            facts(if (auditLaunches == 1) skill128BroadGapsOutput() else skill128SatisfiedOutput())
+          }
+          "implement" -> {
+            implementLaunches += 1
+            facts(
+              when (implementLaunches) {
+                1 -> validJsonOutput(phaseId)
+                else -> if (!allowExhaustiveRepair) remediationResultsOutput(
+                  repairItemIds = listOf("ac-001-gap-1-item-1"),
+                  summary = "Only the production-code item is repaired.",
+                ) else remediationResultsOutput(
+                  repairItemIds = listOf(
+                    "ac-001-gap-1-item-1",
+                    "ac-002-gap-1-item-1",
+                    "ac-003-gap-1-item-1",
+                  ),
+                  summary = "Production, integration, and test repairs are all verified.",
+                )
+              },
+            )
+          }
+          else -> facts(validJsonOutput(phaseId))
+        }
+      },
+    )
+
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+    assertContains(blocked.blockedReason, "ac-002-gap-1-item-1")
+    assertContains(blocked.blockedReason, "ac-003-gap-1-item-1")
+    assertTrue(harness.launchedPromptPhaseOrder().none { it == "validate" })
+
+    allowExhaustiveRepair = true
+    val resumed = harness.runner.run(harness.request())
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(resumed, resumed.toString())
+
+    val repairState = requireNotNull(harness.recorder.loadAuditRepairState(WORKFLOW_ID))
+    assertEquals(1, repairState.acceptedPlans.size)
+    val plan = repairState.acceptedPlans.single()
+    assertEquals(listOf("AC-001", "AC-002", "AC-003"), plan.gaps.map { it.acceptanceCriterionRef })
+    assertEquals(
+      listOf("ac-001-gap-1-item-1", "ac-002-gap-1-item-1", "ac-003-gap-1-item-1"),
+      plan.gaps.flatMap { gap -> gap.repairItems.map { it.repairItemId } },
+    )
+    assertEquals(5, implementLaunches, "three bounded partial attempts precede one exhaustive resume")
+    assertEquals(2, auditLaunches, "completion requires a following audit after exhaustive remediation")
+    assertTrue(
+      harness.launchedPromptPhaseOrder().indexOf("validate") >
+        harness.launchedPromptPhaseOrder().lastIndexOf("audit"),
+    )
+  }
+
   // A blocked remediation is allowed to report fewer results than the carried plan, so the dependency
   // check must tolerate an id it never saw. Reading the absent id out of the actual-order map threw an
   // uncaught NoSuchElementException that killed the run with no durable blocked record.
@@ -234,6 +295,73 @@ class FeatureTaskRuntimeAuditRepairRegressionTest {
       )
     }
   }
+}
+
+private fun skill128BroadGapsOutput(): String = """
+  {
+    "contract_version":"0.2",
+    "phase_id":"audit",
+    "status":"completed",
+    "summary":"SKILL-128 regression found broad production, integration, and test gaps.",
+    "verdict":"gaps_found",
+    "produced_outputs":{
+      "unmet_criteria":[
+        {"acceptance_criterion_ref":"AC-001","message":"Production behavior is incomplete."},
+        {"acceptance_criterion_ref":"AC-002","message":"Integration behavior is incomplete."},
+        {"acceptance_criterion_ref":"AC-003","message":"Regression coverage is incomplete."}
+      ],
+      "audit_repair_plan":{
+        "contract_version":"0.2",
+        "gaps":[
+          ${skill128Gap("AC-001", "production", "src/Production.kt")},
+          ${skill128Gap("AC-002", "integration", "src/Integration.kt")},
+          ${skill128Gap("AC-003", "test", "test/RegressionTest.kt")}
+        ]
+      }
+    }
+  }
+""".trimIndent()
+
+private fun skill128SatisfiedOutput(): String = """
+  {
+    "contract_version":"0.2",
+    "phase_id":"audit",
+    "status":"completed",
+    "summary":"Every SKILL-128-derived gap is now verified.",
+    "verdict":"satisfied",
+    "produced_outputs":{
+      "acceptance_audit":"All broad criteria are satisfied.",
+      "unmet_criteria":[],
+      "prior_gap_dispositions":[
+        {"gap_id":"ac-001-gap-1","status":"resolved","evidence":{"observation":"resolution_verified","artifact_ref":"src/Production.kt","check_ref":"AC-001"}},
+        {"gap_id":"ac-002-gap-1","status":"resolved","evidence":{"observation":"resolution_verified","artifact_ref":"src/Integration.kt","check_ref":"AC-002"}},
+        {"gap_id":"ac-003-gap-1","status":"resolved","evidence":{"observation":"resolution_verified","artifact_ref":"test/RegressionTest.kt","check_ref":"AC-003"}}
+      ]
+    }
+  }
+""".trimIndent()
+
+private fun skill128Gap(criterionRef: String, boundary: String, path: String): String {
+  val gapId = "${criterionRef.lowercase()}-gap-1"
+  return """
+    {
+      "gap_id":"$gapId",
+      "acceptance_criterion_ref":"$criterionRef",
+      "acceptance_criterion_text":"The $boundary requirement is complete.",
+      "failure_evidence":{"observation":"required_behavior_absent","artifact_ref":"$path","check_ref":"$criterionRef"},
+      "diagnosis":"The $boundary work was omitted.",
+      "affected_boundary":"$boundary",
+      "repair_items":[{
+        "repair_item_id":"$gapId-item-1",
+        "intended_outcome":"Complete the $boundary work.",
+        "implementation_actions":["Implement the $boundary work."],
+        "affected_paths_or_symbols":["$path"],
+        "required_verification":["Verify $criterionRef."],
+        "depends_on":[],
+        "status":"pending"
+      }]
+    }
+  """.trimIndent()
 }
 
 private val CANONICAL_WRAPPER_FORMS: Map<String, (String) -> String> = mapOf(
