@@ -224,6 +224,10 @@ class FeatureTaskRuntimeAuditRepairRegressionTest {
     assertEquals(1, bare.phaseOrder.count { it == "plan" }, "the backward edge never regenerates planning")
     assertEquals(listOf(1), bare.auditGapEdgeIterations, "the audit_gap edge was selected, not the validate edge")
     assertContains(bare.implementBriefing, AUDIT_GAP_MESSAGE)
+    assertTrue(bare.firstAuditArtifact.startsWith("{"))
+    assertContains(bare.firstAuditArtifact, "\"verdict\":\"gaps_found\"")
+    assertTrue(!bare.firstAuditArtifact.contains("```"))
+    assertTrue(!bare.firstAuditArtifact.contains("structured result above"))
     bare.persistedOutputs.forEach { (phaseId, artifact) ->
       assertTrue(
         artifact.startsWith("{") && !artifact.contains("```"),
@@ -233,11 +237,9 @@ class FeatureTaskRuntimeAuditRepairRegressionTest {
   }
 }
 
-// The four accepted agent-output wrapper forms. "markdown_prefixed" also carries trailing prose, so a
-// single case covers both the leading-commentary and trailing-prose edges of the contract.
 private val CANONICAL_WRAPPER_FORMS: Map<String, (String) -> String> = mapOf(
   "bare" to { text -> text },
-  "bare_trailing_prose" to { text -> "$text\n" },
+  "bare_trailing_prose" to { text -> "$text\nThe structured result above is authoritative." },
   "fenced" to { text -> "```json\n$text\n```" },
   "markdown_prefixed" to { text ->
     "## Phase result\n\nEvidence and reasoning precede the envelope.\n\n```json\n$text\n```\n\n" +
@@ -245,12 +247,11 @@ private val CANONICAL_WRAPPER_FORMS: Map<String, (String) -> String> = mapOf(
   },
 )
 
-// Everything the run loop derives from a phase output: the transition it selected, what it persisted,
-// and what it handed downstream. Wrapper-form equality across this whole record is the AC6 assertion.
 private data class NormalizedRunObservation(
   val phaseOrder: List<String>,
   val auditGapEdgeIterations: List<Int>,
   val persistedOutputs: Map<String, String>,
+  val firstAuditArtifact: String,
   val implementBriefing: String,
   val unresolvedGapIds: List<String>,
   val priorGapDispositions: List<String>,
@@ -258,9 +259,14 @@ private data class NormalizedRunObservation(
 
 private fun runAuditGapLoop(wrap: (String) -> String): NormalizedRunObservation {
   var auditLaunches = 0
-  val harness = runnerHarness(
+  var firstAuditArtifact: String? = null
+  lateinit var harness: RunnerHarness
+  harness = runnerHarness(
     launcher = RuntimeRecordingLauncher { request ->
       val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+      if (phaseId == "implement" && auditLaunches == 1) {
+        firstAuditArtifact = harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["audit"]?.outputArtifact
+      }
       facts(
         wrap(
           when {
@@ -288,6 +294,7 @@ private fun runAuditGapLoop(wrap: (String) -> String): NormalizedRunObservation 
     persistedOutputs = records.mapNotNull { (phaseId, record) ->
       record.outputArtifact?.let { phaseId to it }
     }.toMap(),
+    firstAuditArtifact = requireNotNull(firstAuditArtifact),
     implementBriefing = requireNotNull(harness.recorder.loadPhaseBriefings(WORKFLOW_ID).orEmpty()["implement"])
       .briefingText,
     unresolvedGapIds = repairState.unresolvedGapLedger.unresolvedGaps.map { it.gapId },

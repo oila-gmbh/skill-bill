@@ -168,16 +168,17 @@ class FeatureTaskRuntimeAuditGapDurabilityTest {
     assertEquals(2, harness.launchedPromptPhaseOrder().count { it == "review" })
   }
 
-  // AC3: the other durability seams cover a crash before plan persistence, after every repair item
-  // settled, and after audit completion. This one is the seam between: a multi-item plan where the
-  // remediation already landed a terminal result for the first item while a later one was still in
-  // flight. Resume must reuse the persisted plan and identifiers exactly, re-report every carried item
-  // exactly once, and never mint, rename, drop, or double-apply anything.
   @Test
   fun `a crash with one repair item still in flight resumes on the exact persisted plan`() {
     var implementLaunches = 0
     var auditLaunches = 0
     var crashMidRepair = true
+    val appliedRepairItems = mutableSetOf<String>()
+    val applicationCounts = mutableMapOf<String, Int>()
+    fun applyRepairItem(itemId: String) {
+      applicationCounts[itemId] = applicationCounts.getOrDefault(itemId, 0) + 1
+      appliedRepairItems += itemId
+    }
     val harness = runnerHarness(
       launcher = RuntimeRecordingLauncher { request ->
         val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
@@ -190,10 +191,15 @@ class FeatureTaskRuntimeAuditGapDurabilityTest {
             implementLaunches += 1
             when {
               implementLaunches == 1 -> facts(validJsonOutput(phaseId))
-              // Item 1 is fixed on disk; item 2 never reported before the process died.
-              implementLaunches == 2 && crashMidRepair -> spawnFailedFacts()
-              // Resume re-attempts the whole carried set: item 1 is already satisfied, item 2 is fixed.
-              else -> facts(twoItemRemediationOutput())
+              implementLaunches == 2 && crashMidRepair -> {
+                applyRepairItem("ac-002-gap-1-item-1")
+                spawnFailedFacts()
+              }
+              else -> {
+                check("ac-002-gap-1-item-1" in appliedRepairItems)
+                applyRepairItem("ac-002-gap-1-item-2")
+                facts(twoItemRemediationOutput())
+              }
             }
           }
           else -> facts(validJsonOutput(phaseId))
@@ -209,6 +215,9 @@ class FeatureTaskRuntimeAuditGapDurabilityTest {
       planBeforeResume.acceptedPlans.last().gaps.flatMap { gap -> gap.repairItems.map { it.repairItemId } },
       "both carried identifiers are durable before the crash",
     )
+    assertEquals(mapOf("ac-002-gap-1-item-1" to 1), applicationCounts)
+    assertEquals(listOf("ac-002-gap-1"), planBeforeResume.unresolvedGapLedger.unresolvedGaps.map { it.gapId })
+    assertTrue(harness.launchedPromptPhaseOrder().none { it == "validate" })
 
     crashMidRepair = false
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
@@ -220,6 +229,11 @@ class FeatureTaskRuntimeAuditGapDurabilityTest {
       "resume reuses the persisted plan byte for byte instead of re-accepting a regenerated one",
     )
     assertEquals(3, implementLaunches, "the initial implement, the crashed remediation, and one resume")
+    assertEquals(
+      mapOf("ac-002-gap-1-item-1" to 1, "ac-002-gap-1-item-2" to 1),
+      applicationCounts,
+      "landed repair work is preserved and each item is applied exactly once",
+    )
     assertEquals(1, harness.launchedPromptPhaseOrder().count { it == "plan" }, "planning is never regenerated")
     val edgeIterations = harness.recorder.loadPhaseLedger(WORKFLOW_ID).orEmpty()
       .filter { it.action == FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE && it.loopId == "audit_gap" }

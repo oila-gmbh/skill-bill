@@ -256,8 +256,6 @@ class FeatureTaskRuntimeAuditGapLoopTest {
     assertTrue(harness.launchedPromptPhaseOrder().none { it == "validate" })
   }
 
-  // AC4: review is not a repair seam. Exhausting the review-fix budget while a repair item is still
-  // carried has to block on the unmet criterion rather than let review close the audit-repair work.
   @Test
   fun `an exhausted review budget blocks with the carried repair item still unresolved`() {
     var auditLaunches = 0
@@ -269,8 +267,6 @@ class FeatureTaskRuntimeAuditGapLoopTest {
             auditLaunches += 1
             facts(auditGapsOutput(followUp = auditLaunches > 1))
           }
-          // The post-remediation review never approves, so the segment budget runs out with the
-          // carried repair item still open.
           "review" -> facts(reviewFindingsOutput(changesRequested = auditLaunches >= 1))
           else -> facts(validJsonOutput(phaseId))
         }
@@ -279,6 +275,15 @@ class FeatureTaskRuntimeAuditGapLoopTest {
 
     val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
 
+    assertEquals("review", blocked.lastIncompletePhase)
+    assertContains(blocked.blockedReason, "Backward-edge loop 'review_fix'")
+    assertContains(blocked.blockedReason, "after 1 iteration(s)")
+    assertContains(blocked.blockedReason, "verdict 'changes_requested' still unresolved")
+    val loopEdges = harness.recorder.loadPhaseLedger(WORKFLOW_ID).orEmpty()
+      .filter { it.action == FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE }
+    assertEquals(1, loopEdges.count { it.loopId == "audit_gap" })
+    assertEquals(1, loopEdges.count { it.loopId == "review_fix" })
+    assertEquals(2, harness.launchedPromptPhaseOrder().count { it == "review" })
     assertTrue(harness.launchedPromptPhaseOrder().none { it == "validate" })
     val repairState = requireNotNull(harness.recorder.loadAuditRepairState(WORKFLOW_ID))
     assertEquals(
@@ -286,11 +291,14 @@ class FeatureTaskRuntimeAuditGapLoopTest {
       repairState.unresolvedGapLedger.unresolvedGaps.map { it.gapId },
       "an exhausted review budget must leave the carried gap unresolved, never close it",
     )
+    assertEquals(
+      listOf("ac-002-gap-1-item-1"),
+      repairState.acceptedPlans.last().gaps.flatMap { gap -> gap.repairItems.map { it.repairItemId } },
+    )
     assertTrue(
       repairState.priorGapDispositions.none { it.status.name == "RESOLVED" },
       "review cannot mark a carried repair item resolved",
     )
-    assertTrue(blocked.blockedReason.isNotBlank())
   }
 
   // AC4: naming a later phase as the place the carried work will happen is a deferral, not a repair.

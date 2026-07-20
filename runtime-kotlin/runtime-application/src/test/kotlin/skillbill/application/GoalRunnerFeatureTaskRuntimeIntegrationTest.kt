@@ -24,15 +24,33 @@ import kotlin.test.assertTrue
 
 class GoalRunnerFeatureTaskRuntimeIntegrationTest {
   @Test
+  fun `goal runner stops when a completed runtime report carries a blocked child outcome`() {
+    val parity = goalChildParityRun(
+      launcher = defaultPhaseAwareLauncher(),
+      gitOperations = RecordingWorkflowGitOperations(currentBranchValue = "feat/SKILL-56-goal"),
+      ensureCommitSha = false,
+    )
+
+    val child = assertIs<FeatureTaskRuntimeRunReport.Completed>(parity.childReports.single())
+    assertEquals("blocked", child.subtaskOutcome?.status)
+    val stopped = assertIs<GoalRunnerRunReport.Stopped>(parity.report)
+    assertContains(stopped.stop.blockedReason, "no commit SHA")
+    assertEquals(WORKFLOW_ID, stopped.stop.workflowId)
+    assertEquals("commit_push", stopped.stop.lastResumableStep)
+  }
+
+  @Test
   fun `goal review policy and exact baseline reach the runtime child review prompt`() {
     val workflowId = WORKFLOW_ID
     val outcomes = RecordingOutcomeStore().apply { seedReviewState(workflowId) }
     val phaseLauncher = defaultPhaseAwareLauncher()
+    val gitOperations = RecordingWorkflowGitOperations(currentBranchValue = "feat/SKILL-56-goal")
+      .apply { headCommitShaValue = "goal-child-commit" }
     val runtime = runnerHarness(
       launcher = phaseLauncher,
       runtimeConfig = RuntimeHarnessConfig(
         branchSetup = BranchSetupTestConfig(
-          gitOperations = RecordingWorkflowGitOperations(currentBranchValue = "feat/SKILL-56-goal"),
+          gitOperations = gitOperations,
         ),
       ),
     )
@@ -122,8 +140,6 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
     assertEquals(1, reviewCompletions.count { it.loopId == "audit_gap" && it.edgeIteration == 1 })
   }
 
-  // AC7: a goal child rejects a remediation that reports only a strict subset of its carried repair
-  // items, exactly as the standalone run does, and the child's own reason reaches the goal.
   @Test
   fun `goal child rejects a partial remediation with the same identifier-equality reason`() {
     var implementLaunches = 0
@@ -153,7 +169,6 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
     assertEquals(listOf("ac-002-gap-1"), repairState.unresolvedGapLedger.unresolvedGaps.map { it.gapId })
   }
 
-  // AC7 + AC4: deferring carried work to a later phase is rejected in the goal child too.
   @Test
   fun `goal child rejects a remediation deferring carried work to a later phase`() {
     var implementLaunches = 0
@@ -184,8 +199,6 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
     assertContains(assertNotNull(parity.blockedChildReason()), "later phase")
   }
 
-  // AC7 + AC5: recurring-versus-new classification keeps stable identity in a goal child, and an
-  // equivalent gap set over an unchanged repository blocks as non-progress instead of looping.
   @Test
   fun `goal child blocks on a non-progressing equivalent gap set`() {
     val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/SKILL-56-goal")
@@ -205,23 +218,23 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
     assertTrue(parity.runtime.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["validate"] == null)
   }
 
-  // AC7 + AC6: the four accepted wrapper forms drive the identical goal-child run.
   @Test
   fun `goal child parses every canonical wrapper form into the same run`() {
     val observed = GOAL_CHILD_WRAPPER_FORMS.mapValues { (_, wrap) ->
+      val standalone = runnerHarness(
+        launcher = wrappedAuditGapLauncher(convergeOnAudit = 2, wrap = wrap),
+        validator = FeatureTaskRuntimePhaseOutputValidatorAdapter(),
+      )
+      assertIs<FeatureTaskRuntimeRunReport.Completed>(standalone.runner.run(standalone.request()))
+      val standaloneObservation = standalone.goalChildObservation()
       val parity = goalChildParityRun(
         launcher = wrappedAuditGapLauncher(convergeOnAudit = 2, wrap = wrap),
         validator = FeatureTaskRuntimePhaseOutputValidatorAdapter(),
       )
       assertIs<GoalRunnerRunReport.Completed>(parity.report)
-      GoalChildObservation(
-        phaseOrder = parity.runtime.launchedPromptPhaseOrder(),
-        persistedOutputs = parity.runtime.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()
-          .mapNotNull { (phaseId, record) -> record.outputArtifact?.let { phaseId to it } }.toMap(),
-        auditGapEdgeIterations = parity.runtime.recorder.loadPhaseLedger(WORKFLOW_ID).orEmpty()
-          .filter { it.action == FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE && it.loopId == "audit_gap" }
-          .mapNotNull { it.edgeIteration },
-      )
+      parity.runtime.goalChildObservation().also {
+        assertEquals(standaloneObservation, it, "standalone and goal-child observations must match")
+      }
     }
 
     val bare = observed.getValue("bare")
@@ -238,17 +251,25 @@ private data class GoalChildObservation(
   val auditGapEdgeIterations: List<Int>,
 )
 
+private fun RunnerHarness.goalChildObservation(): GoalChildObservation = GoalChildObservation(
+  phaseOrder = launchedPromptPhaseOrder().filterNot { it == "pr" },
+  persistedOutputs = recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()
+    .filterKeys { it != "pr" }
+    .mapNotNull { (phaseId, record) -> record.outputArtifact?.let { phaseId to it } }.toMap(),
+  auditGapEdgeIterations = recorder.loadPhaseLedger(WORKFLOW_ID).orEmpty()
+    .filter { it.action == FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE && it.loopId == "audit_gap" }
+    .mapNotNull { it.edgeIteration },
+)
+
 private val GOAL_CHILD_WRAPPER_FORMS: Map<String, (String) -> String> = mapOf(
   "bare" to { text -> text },
-  "bare_trailing_prose" to { text -> "$text\n" },
+  "bare_trailing_prose" to { text -> "$text\nThe structured result above is authoritative." },
   "fenced" to { text -> "```json\n$text\n```" },
   "markdown_prefixed" to { text ->
     "## Phase result\n\nEvidence precedes the envelope.\n\n```json\n$text\n```\n\nCommentary follows."
   },
 )
 
-// Replays one audit-gap script with every scripted output re-emitted through [wrap], so the wrapper
-// forms are compared over an identical script rather than a duplicated one.
 private fun wrappedAuditGapLauncher(convergeOnAudit: Int, wrap: (String) -> String): RuntimeRecordingLauncher {
   var auditLaunches = 0
   return RuntimeRecordingLauncher { request ->
@@ -274,16 +295,18 @@ private class GoalChildParityRun(
 )
 
 private fun GoalChildParityRun.blockedChildReason(): String? =
-  childReports.filterIsInstance<FeatureTaskRuntimeRunReport.Blocked>().lastOrNull()?.blockedReason
+  (report as? GoalRunnerRunReport.Stopped)?.stop?.blockedReason
 
-// One goal with one subtask whose child is the real FeatureTaskRuntimeRunner, so a standalone audit-gap
-// scenario can be replayed verbatim through the goal-child path.
 private fun goalChildParityRun(
   launcher: RuntimeRecordingLauncher,
   gitOperations: RecordingWorkflowGitOperations =
     RecordingWorkflowGitOperations(currentBranchValue = "feat/SKILL-56-goal"),
   validator: FeatureTaskRuntimePhaseOutputValidator = AlwaysValidValidator,
+  ensureCommitSha: Boolean = true,
 ): GoalChildParityRun {
+  if (ensureCommitSha && gitOperations.headCommitShaValue.isBlank()) {
+    gitOperations.headCommitShaValue = "goal-child-commit"
+  }
   val outcomes = RecordingOutcomeStore().apply { seedReviewState(WORKFLOW_ID) }
   val runtime = runnerHarness(
     launcher = launcher,
@@ -409,32 +432,43 @@ private class RuntimeChildLauncher(
       ),
     )
     reports += report
-    outcomes[workflowId] = terminalOutcome(report, workflowId)
+    outcomes[workflowId] = authoritativeTerminalOutcome(report, workflowId)
     return launchFacts()
   }
+}
 
-  private fun terminalOutcome(report: FeatureTaskRuntimeRunReport, workflowId: String): GoalRunnerStoredOutcome =
-    when (report) {
-      is FeatureTaskRuntimeRunReport.Completed -> GoalRunnerStoredOutcome(
-        status = GoalRunnerTerminalStatus.COMPLETE,
-        workflowId = workflowId,
-        commitSha = "runtime-child-commit",
-        lastResumableStep = report.subtaskOutcome?.lastResumableStep ?: "commit_push",
-        suppressPr = true,
-      )
-      // A goal child that blocks must surface the child's own blocking reason to the goal, not be
-      // asserted away inside the harness: the parity tests below assert on exactly that reason.
-      is FeatureTaskRuntimeRunReport.Blocked -> GoalRunnerStoredOutcome(
-        status = GoalRunnerTerminalStatus.BLOCKED,
-        workflowId = workflowId,
-        blockedReason = report.blockedReason,
-        lastResumableStep = report.lastIncompletePhase,
-        suppressPr = true,
-      )
-      else -> GoalRunnerStoredOutcome(
-        status = GoalRunnerTerminalStatus.FAILED,
-        workflowId = workflowId,
-        suppressPr = true,
-      )
-    }
+private fun authoritativeTerminalOutcome(
+  report: FeatureTaskRuntimeRunReport,
+  workflowId: String,
+): GoalRunnerStoredOutcome {
+  val subtaskOutcome = when (report) {
+    is FeatureTaskRuntimeRunReport.Completed -> report.subtaskOutcome
+    is FeatureTaskRuntimeRunReport.Blocked -> report.subtaskOutcome
+    is FeatureTaskRuntimeRunReport.Decomposed -> null
+  }
+  if (subtaskOutcome != null) {
+    return GoalRunnerStoredOutcome(
+      status = GoalRunnerTerminalStatus.valueOf(subtaskOutcome.status.uppercase()),
+      workflowId = subtaskOutcome.workflowId,
+      commitSha = subtaskOutcome.commitSha,
+      blockedReason = subtaskOutcome.blockedReason,
+      lastResumableStep = subtaskOutcome.lastResumableStep,
+      suppressPr = true,
+    )
+  }
+  return when (report) {
+    is FeatureTaskRuntimeRunReport.Completed -> error("Goal-continuation completed report omitted subtaskOutcome")
+    is FeatureTaskRuntimeRunReport.Blocked -> GoalRunnerStoredOutcome(
+      status = GoalRunnerTerminalStatus.BLOCKED,
+      workflowId = workflowId,
+      blockedReason = report.blockedReason,
+      lastResumableStep = report.lastIncompletePhase,
+      suppressPr = true,
+    )
+    else -> GoalRunnerStoredOutcome(
+      status = GoalRunnerTerminalStatus.FAILED,
+      workflowId = workflowId,
+      suppressPr = true,
+    )
+  }
 }
