@@ -950,8 +950,66 @@ private object HeadShaGitOperations : WorkflowGitOperations by NoopWorkflowGitOp
     WorkflowGitOperationResult(status = "ok", value = "measured-head-sha")
 }
 
+private object PushedHeadGitOperations : WorkflowGitOperations by HeadShaGitOperations {
+  override fun validateBranchBase(
+    repoRoot: Path,
+    branch: String,
+    expectedBaseBranch: String,
+  ): WorkflowGitOperationResult = if (branch == "origin/feat/SKILL-52" && expectedBaseBranch == "HEAD") {
+    WorkflowGitOperationResult(status = "ok", value = expectedBaseBranch)
+  } else {
+    WorkflowGitOperationResult(status = "error", error = "unexpected branch check")
+  }
+}
+
+private object DivergedHeadGitOperations : WorkflowGitOperations by HeadShaGitOperations {
+  override fun validateBranchBase(
+    repoRoot: Path,
+    branch: String,
+    expectedBaseBranch: String,
+  ): WorkflowGitOperationResult = WorkflowGitOperationResult(status = "error", error = "remote does not contain HEAD")
+}
+
 /** Kept separate from [WorkflowGoalRunnerOutcomeStoreTest] to stay under the detekt LargeClass threshold. */
 class GoalRunnerCommitShaRecoveryTest {
+  @Test
+  fun `goal runner outcome store completes blocked commit push when remote contains head`() {
+    val workflows = InMemoryWorkflowStates()
+    workflows.saveFeatureImplementWorkflow(blockedCommitPush("wfl-child"))
+    val store = WorkflowGoalRunnerOutcomeStore(
+      database = FakeDatabaseSessionFactory(workflows),
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      gitOperations = PushedHeadGitOperations,
+    )
+
+    val outcome = store.recoverAndPersistTerminalOutcome("wfl-child", "SKILL-52.1", 1, repoRoot = Path.of("."))
+
+    requireNotNull(outcome)
+    assertEquals(GoalRunnerTerminalStatus.COMPLETE, outcome.status)
+    assertEquals("measured-head-sha", outcome.commitSha)
+    assertNull(outcome.blockedReason)
+    val durable = requireNotNull(store.terminalOutcome("wfl-child", "SKILL-52.1", 1))
+    assertEquals(GoalRunnerTerminalStatus.COMPLETE, durable.status)
+    assertEquals("measured-head-sha", durable.commitSha)
+  }
+
+  @Test
+  fun `goal runner outcome store preserves blocked commit push when remote does not contain head`() {
+    val workflows = InMemoryWorkflowStates()
+    workflows.saveFeatureImplementWorkflow(blockedCommitPush("wfl-child"))
+    val store = WorkflowGoalRunnerOutcomeStore(
+      database = FakeDatabaseSessionFactory(workflows),
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      gitOperations = DivergedHeadGitOperations,
+    )
+
+    val outcome = store.recoverAndPersistTerminalOutcome("wfl-child", "SKILL-52.1", 1, repoRoot = Path.of("."))
+
+    requireNotNull(outcome)
+    assertEquals(GoalRunnerTerminalStatus.BLOCKED, outcome.status)
+    assertEquals("remote branch diverged", outcome.blockedReason)
+  }
+
   @Test
   fun `goal runner outcome store backfills missing commit sha from measured git head`() {
     val workflows = InMemoryWorkflowStates()
@@ -1126,6 +1184,42 @@ class GoalRunnerCommitShaRecoveryTest {
       ),
     )
     return completed.toRecord()
+  }
+
+  private fun blockedCommitPush(workflowId: String): WorkflowStateRecord {
+    val opened = testWorkflowEngine.openRecord(
+      FeatureImplementWorkflowDefinition.definition,
+      workflowId,
+      "fis-blocked-push",
+      "preplan",
+    )
+    return testWorkflowEngine.updateRecord(
+      FeatureImplementWorkflowDefinition.definition,
+      opened,
+      skillbill.workflow.model.WorkflowUpdateInput(
+        workflowStatus = "blocked",
+        currentStepId = "commit_push",
+        stepUpdates = listOf(mapOf("step_id" to "commit_push", "status" to "blocked", "attempt_count" to 1)),
+        artifactsPatch = mapOf(
+          "goal_continuation" to mapOf(
+            "issue_key" to "SKILL-52.1",
+            "subtask_id" to 1,
+            "suppress_pr" to true,
+            "goal_branch" to "feat/SKILL-52",
+          ),
+          "goal_continuation_outcome" to mapOf(
+            "issue_key" to "SKILL-52.1",
+            "subtask_id" to 1,
+            "status" to "blocked",
+            "workflow_id" to workflowId,
+            "blocked_reason" to "remote branch diverged",
+            "last_resumable_step" to "commit_push",
+          ),
+          "blocked_reason" to "remote branch diverged",
+        ),
+        sessionId = "fis-blocked-push",
+      ),
+    ).toRecord()
   }
 
   // A child stranded in the legacy bug state: commit_push completed under suppress_pr and a durable

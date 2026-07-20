@@ -841,12 +841,50 @@ class WorkflowGoalRunnerOutcomeStore(
     repoRoot: Path,
     dbPathOverride: String?,
   ): GoalRunnerStoredOutcome? = database.transaction(dbPathOverride) { unitOfWork ->
-    resolveTerminalOutcome(unitOfWork.workflowStates, workflowId, issueKey, subtaskId) {
+    val resolved = resolveTerminalOutcome(unitOfWork.workflowStates, workflowId, issueKey, subtaskId) {
       gitOperations.headCommitSha(repoRoot).measuredCommitSha()
-    }?.also { outcome ->
+    }
+    val recovered = resolved?.let { outcome ->
+      recoverResolvedCommitPushBlock(
+        workflowStates = unitOfWork.workflowStates,
+        identity = GoalSubtaskIdentity(workflowId, issueKey, subtaskId),
+        repoRoot = repoRoot,
+        outcome = outcome,
+      ) ?: outcome
+    }
+    recovered?.also { outcome ->
       persistMeasuredCompletion(unitOfWork.workflowStates, workflowId, issueKey, subtaskId, outcome)
     }
   }
+
+  private fun recoverResolvedCommitPushBlock(
+    workflowStates: WorkflowStateRepository,
+    identity: GoalSubtaskIdentity,
+    repoRoot: Path,
+    outcome: GoalRunnerStoredOutcome,
+  ): GoalRunnerStoredOutcome? = outcome
+    .takeIf { it.status == GoalRunnerTerminalStatus.BLOCKED && it.lastResumableStep == "commit_push" }
+    ?.let {
+      workflowFamilyFor(workflowStates, identity.workflowId)?.get(workflowStates, identity.workflowId)
+    }
+    ?.let { record -> goalContinuation(decodeArtifacts(record.artifactsJson)) }
+    ?.takeIf { continuation ->
+      continuation.issueKey == identity.issueKey && continuation.subtaskId == identity.subtaskId
+    }
+    ?.goalBranch
+    ?.takeIf(String::isNotBlank)
+    ?.takeIf { branch -> gitOperations.validateBranchBase(repoRoot, "origin/$branch", "HEAD").ok }
+    ?.let { gitOperations.headCommitSha(repoRoot).measuredCommitSha() }
+    ?.let { commitSha ->
+      GoalRunnerStoredOutcome(
+        status = GoalRunnerTerminalStatus.COMPLETE,
+        workflowId = identity.workflowId,
+        commitSha = commitSha,
+        blockedReason = null,
+        lastResumableStep = "commit_push",
+        suppressPr = outcome.suppressPr,
+      )
+    }
 
   override fun recoverMissingResultPrefixOutput(
     workflowId: String,
@@ -1298,6 +1336,13 @@ private data class GoalContinuation(
   val issueKey: String,
   val subtaskId: Int,
   val suppressPr: Boolean,
+  val goalBranch: String?,
+)
+
+private data class GoalSubtaskIdentity(
+  val workflowId: String,
+  val issueKey: String,
+  val subtaskId: Int,
 )
 
 private data class HistoryArtifactAppend(
@@ -1359,6 +1404,7 @@ private fun goalContinuation(artifacts: Map<String, Any?>): GoalContinuation? =
         issueKey = issueKey,
         subtaskId = subtaskId,
         suppressPr = payload["suppress_pr"] == true,
+        goalBranch = payload["goal_branch"]?.toString()?.takeIf(String::isNotBlank),
       )
     }
   }
