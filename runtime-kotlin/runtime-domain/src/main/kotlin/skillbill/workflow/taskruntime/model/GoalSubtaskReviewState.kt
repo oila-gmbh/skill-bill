@@ -63,6 +63,7 @@ data class GoalSubtaskReviewPassResult(
   val reviewResultArtifact: String,
   val unresolvedFindingCount: Int,
   val findings: List<GoalSubtaskReviewCompactFinding>,
+  val executedMode: CodeReviewExecutionMode? = null,
 ) {
   init {
     require(passNumber in 1..GOAL_SUBTASK_REVIEW_MAX_PASSES) { "Goal review pass number must be 1 or 2." }
@@ -88,19 +89,26 @@ data class GoalSubtaskReviewPassResult(
   val blocksAdvance: Boolean get() = blocksAdvance(unresolvedFindingCount, findings)
 
   @OpenBoundaryMap("Goal-review pass result at the durable workflow-artifact seam")
-  fun toArtifactMap(): Map<String, Any?> = linkedMapOf(
+  fun toArtifactMap(): Map<String, Any?> = linkedMapOf<String, Any?>(
     "pass_number" to passNumber,
     "verdict" to verdict.wireValue,
     "review_result_artifact" to reviewResultArtifact,
     "unresolved_finding_count" to unresolvedFindingCount,
     "findings" to findings.map(GoalSubtaskReviewCompactFinding::toArtifactMap),
-  )
+  ).apply { executedMode?.let { put("executed_mode", it.wireValue) } }
 
   companion object {
     @OpenBoundaryMap("Goal-review pass result decode from the durable workflow-artifact map")
     fun fromArtifactMap(raw: Map<String, Any?>, path: String): GoalSubtaskReviewPassResult {
       raw.requireOnlyReviewStateKeys(
-        setOf("pass_number", "verdict", "review_result_artifact", "unresolved_finding_count", "findings"),
+        setOf(
+          "pass_number",
+          "verdict",
+          "review_result_artifact",
+          "unresolved_finding_count",
+          "findings",
+          "executed_mode",
+        ),
         path,
       )
       val findings = raw.requireReviewStateList("findings", path).mapIndexed { index, value ->
@@ -115,6 +123,7 @@ data class GoalSubtaskReviewPassResult(
         reviewResultArtifact = raw.requireReviewStateString("review_result_artifact", path),
         unresolvedFindingCount = raw.requireReviewStateInt("unresolved_finding_count", path),
         findings = findings,
+        executedMode = raw.optionalReviewStateString("executed_mode", path)?.let(CodeReviewExecutionMode::fromWire),
       )
     }
   }
@@ -247,6 +256,13 @@ data class GoalSubtaskReviewState(
     require(passResults.map(GoalSubtaskReviewPassResult::passNumber) == (1..completedPassCount).toList()) {
       "Pass results must be ordered and contiguous."
     }
+    passResults.forEach { result ->
+      result.executedMode?.let { executedMode ->
+        require(executedMode == FeatureTaskRuntimeReviewPassSequence.modeForPass(codeReviewMode, result.passNumber)) {
+          "Pass ${result.passNumber} executed mode must match the immutable review pass sequence."
+        }
+      }
+    }
     reservedPassNumber?.let { reserved ->
       require(reserved == completedPassCount + 1 && reserved <= GOAL_SUBTASK_REVIEW_MAX_PASSES) {
         "Reserved pass must be the next permitted review pass."
@@ -290,6 +306,7 @@ data class GoalSubtaskReviewState(
       reviewResultArtifact = "$GOAL_SUBTASK_REVIEW_RESULT_ARTIFACT_PREFIX.$passNumber",
       unresolvedFindingCount = unresolvedFindingCount,
       findings = findings,
+      executedMode = FeatureTaskRuntimeReviewPassSequence.modeForPass(codeReviewMode, passNumber),
     )
     return copy(
       reservedPassNumber = null,

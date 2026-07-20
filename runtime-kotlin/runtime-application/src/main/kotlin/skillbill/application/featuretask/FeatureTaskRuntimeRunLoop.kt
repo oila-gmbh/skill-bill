@@ -2005,11 +2005,12 @@ internal class FeatureTaskRuntimeRunLoop(
             suppressDecomposition = isGoalContinuationRun(run.request),
             parallelReviewAgent = run.request.parallelReviewAgent
               ?.takeIf { run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW },
-            codeReviewMode = if (reviewPassNumber(run, state) == 2) {
-              skillbill.workflow.model.CodeReviewExecutionMode.INLINE
-            } else {
-              run.request.runInvariants.codeReviewMode
-            },
+            codeReviewMode = reviewPassNumber(run, state)?.let { passNumber ->
+              skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewPassSequence.modeForPass(
+                run.request.runInvariants.codeReviewMode,
+                passNumber,
+              )
+            } ?: run.request.runInvariants.codeReviewMode,
             reviewPassNumber = reviewPassNumber(run, state),
             goalSubtaskReviewInput = run.goalReviewInput,
             specSource = run.specSource,

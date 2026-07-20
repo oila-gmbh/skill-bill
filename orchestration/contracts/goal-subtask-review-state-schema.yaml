@@ -68,6 +68,9 @@ properties:
         verdict:
           type: string
           enum: [approved, changes_requested, review_cap_reached]
+        executed_mode:
+          type: string
+          enum: [auto, inline, delegated]
         review_result_artifact:
           type: string
           minLength: 1
@@ -98,5 +101,6 @@ x-coherence-checks:
   - review_base_sha and baseline_untracked_paths are immutable after initial child creation.
   - reserved_pass_number is completed_pass_count + 1 and prevents a crash/resume from resetting accounting.
   - pass_results is ordered by pass_number and has exactly completed_pass_count entries.
+  - When present, pass one executed_mode equals code_review_mode and pass two executed_mode is inline.
   - review_cap_reached is valid only after pass two completes with unresolved Blocker findings; Major and lower severities never reach the cap disposition.
   - emitted_pass_count is an acknowledgement watermark for compact parent-goal summaries.
