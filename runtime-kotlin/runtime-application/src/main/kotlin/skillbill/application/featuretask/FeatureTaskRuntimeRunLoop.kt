@@ -1379,8 +1379,12 @@ internal class FeatureTaskRuntimeRunLoop(
       return null
     }
     val prior = recorder.loadAuditRepairState(request.workflowId, request.dbPathOverride) ?: return null
-    val previousFingerprint = prior.repositoryFingerprint ?: return null
-    val currentFingerprint = repositoryFingerprint ?: return null
+    // Review no longer sits inside the reopened [implement, audit] span, so non-progress detection is
+    // the only bound left on the uncapped audit-gap cycle. An absent fingerprint means repository
+    // change could not be proven, which is not evidence that anything moved: treat it as unchanged so
+    // an equivalent recurring gap set blocks, rather than disarming the bound and looping forever.
+    val previousFingerprint = prior.repositoryFingerprint ?: UNPROVEN_REPOSITORY_FINGERPRINT
+    val currentFingerprint = repositoryFingerprint ?: UNPROVEN_REPOSITORY_FINGERPRINT
     val produced = JsonSupport.anyToStringAnyMap(outputMap["produced_outputs"]).orEmpty()
     val currentPlan = produced["audit_repair_plan"]?.let {
       auditRepairPlanFromWire(it, "audit.produced_outputs.audit_repair_plan")
@@ -2024,6 +2028,10 @@ internal class FeatureTaskRuntimeRunLoop(
 
   private data class GoalReviewRunReady(val run: PhaseRun) : GoalReviewRunPreparation
 }
+
+// Stands in for a repository fingerprint that could not be computed. Comparing it against itself
+// yields "unchanged", so an audit that cannot prove the repository moved cannot claim progress.
+private const val UNPROVEN_REPOSITORY_FINGERPRINT = "<unproven>"
 
 private const val REJECTED_OUTPUT_MAX_CHARS = 20_000
 

@@ -209,8 +209,11 @@ class FeatureTaskRuntimeAuditRepairRegressionTest {
   // the audit's own already-persisted ledger, which clobbered new_gap_count to zero.
   @Test
   fun `the remediation write preserves the gap counters the audit observed`() {
+    // Audit-first puts review after audit, so a never-satisfied audit never reaches review. The run
+    // stops on the non-progress gate instead, which needs a stable fingerprint: the default fake git
+    // mints a fresh one per call, which reads as perpetual repository change and never converges.
+    val git = RecordingWorkflowGitOperations().apply { repositoryFingerprintValue = "unchanged" }
     var auditLaunches = 0
-    var reviewLaunches = 0
     val harness = runnerHarness(
       launcher = RuntimeRecordingLauncher { request ->
         when (val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))) {
@@ -218,15 +221,10 @@ class FeatureTaskRuntimeAuditRepairRegressionTest {
             auditLaunches += 1
             facts(auditGapsOutput(followUp = auditLaunches > 1))
           }
-          // The post-remediation review fails to spawn, so the run stops with the remediation write as
-          // the latest durable audit-repair write.
-          "review" -> {
-            reviewLaunches += 1
-            if (reviewLaunches == 2) spawnFailedFacts() else facts(validJsonOutput(phaseId))
-          }
           else -> facts(validJsonOutput(phaseId))
         }
       },
+      runtimeConfig = RuntimeHarnessConfig(branchSetup = BranchSetupTestConfig(gitOperations = git)),
     )
 
     assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
