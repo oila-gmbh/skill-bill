@@ -5,6 +5,7 @@ import skillbill.error.InvalidUnaddressedFindingsLedgerSchemaError
 import skillbill.error.UnaddressedFindingsLedgerAbsentError
 import skillbill.goalrunner.model.UNADDRESSED_FINDING_CATEGORIES
 import skillbill.goalrunner.model.UNADDRESSED_FINDING_SEVERITIES
+import skillbill.goalrunner.model.UnaddressedFinding
 import skillbill.goalrunner.model.UnaddressedFindingsLedger
 import skillbill.ports.persistence.DatabaseSessionFactory
 
@@ -17,12 +18,7 @@ class UnaddressedFindingsLedgerService(private val database: DatabaseSessionFact
       }
       val findings = unitOfWork.unaddressedFindings.fetchLedger(issueKey)
       findings.forEach { finding ->
-        if (
-          finding.issueKey != issueKey || finding.workflowId.isBlank() || finding.subtaskId <= 0 ||
-          finding.reviewPassNumber <= 0 || finding.findingOrdinal <= 0 || finding.location.isBlank() ||
-          finding.summary.isBlank() || finding.severity !in UNADDRESSED_FINDING_SEVERITIES ||
-          finding.issueCategory !in UNADDRESSED_FINDING_CATEGORIES
-        ) {
+        if (!isValidFinding(issueKey, finding)) {
           throw InvalidUnaddressedFindingsLedgerSchemaError(
             "Malformed unaddressed-findings ledger row for issue '$issueKey'.",
           )
@@ -30,4 +26,14 @@ class UnaddressedFindingsLedgerService(private val database: DatabaseSessionFact
       }
       UnaddressedFindingsLedger(issueKey, findings)
     }
+
+  private fun isValidFinding(issueKey: String, finding: UnaddressedFinding): Boolean = finding.issueKey == issueKey &&
+    finding.workflowId.isNotBlank() &&
+    finding.subtaskId > 0 &&
+    finding.reviewPassNumber > 0 &&
+    finding.findingOrdinal > 0 &&
+    finding.location.isNotBlank() &&
+    finding.summary.isNotBlank() &&
+    finding.severity in UNADDRESSED_FINDING_SEVERITIES &&
+    finding.issueCategory in UNADDRESSED_FINDING_CATEGORIES
 }

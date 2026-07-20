@@ -119,6 +119,13 @@ persist `validate` as blocked; they are fed back to the validation agent to fix
 and rerun, the same way code-review findings are fixed before the workflow
 continues. Treat the durable workflow state as authoritative over any prose.
 
+## Audit-first review gate
+
+The authoritative phase order is `implement -> audit -> review -> validate`.
+Audit-gap repair re-enters only `implement -> audit`; after audit is satisfied,
+review pass one uses the selected delegated mode and the sole remediation pass
+is inline. Review never reopens audit.
+
 ## Review-driven implement-fix loop
 
 The runtime closes a bounded remediation loop around `review`. The `review`
@@ -127,7 +134,7 @@ unresolved Blocker findings remain, or `changes_requested` when any are present.
 Major findings remain durable evidence but never prevent advancement. The runtime
 evaluates that verdict — prose alone cannot advance past a Blocker finding.
 
-- On `approved`, the run advances to `audit` (a clean run never launches a fix).
+- On `approved`, the run advances to `validate` (a clean run never launches a fix).
 - On `changes_requested`, the runtime takes a backward edge to a dedicated
   `implement_fix` phase, which addresses the carried review findings on the
   current working tree as incremental reconciliation (not a plan re-application),
@@ -138,11 +145,10 @@ evaluates that verdict — prose alone cannot advance past a Blocker finding.
   `bill-code-review mode:inline context:feature-remediation` against only
   the staged, unstaged, and untracked remediation delta since the checkpoint
   created before `implement_fix`, never the full feature-branch diff. The first
-  `approved` verdict advances the run to `audit`.
+  `approved` verdict advances the run to `validate`.
 - If the loop exhausts its cap without an `approved` verdict, no further
-  review-fix iteration is launched. The flow advances to `audit` with the latest
-  review result and findings preserved as durable evidence; reaching the review
-  remediation cap is not itself a blocking condition.
+  review-fix iteration is launched. Unresolved Blockers block loudly; all other
+  findings are written to the goal-wide ledger and the flow advances to `validate`.
 
 The loop is crash-safe: a death during `implement_fix` or a re-`review` resumes
 at the correct phase and iteration with no double-applied mutations, and a loop
@@ -167,19 +173,19 @@ affected boundary, or create repair items that add or change tests. Test executi
 and test failures belong to validation. When no production defect is evidenced,
 audit emits `satisfied` even if test coverage is absent or inadequate.
 
-- On `satisfied`, the run advances to `validate`.
+- On `satisfied`, the run advances to `review`.
 - On `gaps_found`, the runtime takes a backward edge re-entering `implement`,
-  then `review`, then `audit`. The implementation handoff contains the immutable
+  then `audit`. The implementation handoff contains the immutable
   original `preplan` and `plan` outputs plus the complete durably accepted audit
   repair plan and cumulative unresolved-gap ledger. Every gap has a stable id,
   criterion reference, evidence, diagnosis, boundary, and dependency-ordered
   repair items. Remediation attempts every runnable item in the same invocation
   and emits an exact terminal result set; review or validation cannot substitute
   for executing carried work. This
-  `audit` → `implement` → `review` → `audit` cycle has no fixed
+  `audit` → `implement` → `audit` cycle has no fixed
   iteration cap. Its durable counter records progress and recovery state but
   never turns a valid `gaps_found` verdict into a permanent policy block. The
-  first `satisfied` verdict advances the run to `validate`.
+  first `satisfied` verdict advances the run to `review`.
 
 The re-entered `implement` is idempotent: it reconciles the working tree toward
 the original plan without double-applying, and a crash mid-loopback resumes at the
@@ -189,13 +195,15 @@ or recurring and assigns new ids only to genuinely new gaps. Equivalent recurrin
 gap sets without repository change or newly resolved repair items block loudly as
 non-progress instead of looping indefinitely.
 
-The two loops compose under one durable two-pass review budget. The initial
-review and the first later review reached by either a review-fix or audit-gap
-path use the run-selected mode. That later review consumes pass two; later
-audit-gap iterations reuse its completed result rather than launching a third
-review. Each backward edge carries the `audit_gap` loop id and iteration in the
+Review begins only after the audit-gap loop is closed. Its first pass uses the
+selected delegated mode and its only remediation pass is inline. Each backward
+edge carries the `audit_gap` loop id and iteration in the
 ledger and status output, and finished telemetry reflects the audit-gap
 iteration count alongside the review-fix count.
+
+Location-bearing finding evidence is returned only by
+`skill-bill goal findings --issue-key <KEY>`. Goal, status, watch, telemetry,
+and PR output may expose compact counts or sanitized summaries only.
 
 ## Status and Resume
 

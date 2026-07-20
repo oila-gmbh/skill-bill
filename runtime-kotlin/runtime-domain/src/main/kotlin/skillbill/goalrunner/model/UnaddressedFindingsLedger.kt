@@ -1,10 +1,9 @@
 package skillbill.goalrunner.model
 
+import skillbill.review.model.ReviewIssueCategory
+
 val UNADDRESSED_FINDING_SEVERITIES: Set<String> = setOf("blocker", "major", "minor", "nit")
-val UNADDRESSED_FINDING_CATEGORIES: Set<String> = setOf(
-  "architecture", "performance", "platform-correctness", "security", "testing",
-  "api-contracts", "persistence", "reliability", "ui", "ux-accessibility", "other",
-)
+val UNADDRESSED_FINDING_CATEGORIES: Set<String> = ReviewIssueCategory.entries.mapTo(linkedSetOf()) { it.wireValue }
 
 data class UnaddressedFinding(
   val issueKey: String,

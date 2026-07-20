@@ -6,10 +6,13 @@ import java.sql.Connection
 internal class UnaddressedFindingsRuntime(private val connection: Connection) {
   fun replaceLedgerForPass(workflowId: String, reviewPassNumber: Int, findings: List<UnaddressedFinding>) {
     connection.prepareStatement(
-      "DELETE FROM unaddressed_findings WHERE workflow_id = ? AND review_pass_number = ?",
+      "DELETE FROM unaddressed_findings WHERE workflow_id = ? AND " +
+        "(review_pass_number = ? OR (? > 1 AND severity = 'blocker'))",
     ).use { statement ->
-      statement.setString(1, workflowId)
-      statement.setInt(2, reviewPassNumber)
+      var parameterIndex = 1
+      statement.setString(parameterIndex++, workflowId)
+      statement.setInt(parameterIndex++, reviewPassNumber)
+      statement.setInt(parameterIndex, reviewPassNumber)
       statement.executeUpdate()
     }
     connection.prepareStatement(
@@ -21,15 +24,16 @@ internal class UnaddressedFindingsRuntime(private val connection: Connection) {
       """.trimIndent(),
     ).use { statement ->
       findings.forEach { finding ->
-        statement.setString(1, finding.issueKey)
-        statement.setString(2, finding.workflowId)
-        statement.setInt(3, finding.subtaskId)
-        statement.setInt(4, finding.reviewPassNumber)
-        statement.setInt(5, finding.findingOrdinal)
-        statement.setString(6, finding.severity)
-        statement.setString(7, finding.issueCategory)
-        statement.setString(8, finding.location)
-        statement.setString(9, finding.summary)
+        var parameterIndex = 1
+        statement.setString(parameterIndex++, finding.issueKey)
+        statement.setString(parameterIndex++, finding.workflowId)
+        statement.setInt(parameterIndex++, finding.subtaskId)
+        statement.setInt(parameterIndex++, finding.reviewPassNumber)
+        statement.setInt(parameterIndex++, finding.findingOrdinal)
+        statement.setString(parameterIndex++, finding.severity)
+        statement.setString(parameterIndex++, finding.issueCategory)
+        statement.setString(parameterIndex++, finding.location)
+        statement.setString(parameterIndex, finding.summary)
         statement.addBatch()
       }
       statement.executeBatch()
@@ -68,7 +72,7 @@ internal class UnaddressedFindingsRuntime(private val connection: Connection) {
   }
 
   fun issueExists(issueKey: String): Boolean = connection.prepareStatement(
-    "SELECT 1 FROM goal_issue_progress WHERE issue_key = ? LIMIT 1",
+    "SELECT 1 FROM feature_task_workflows WHERE issue_key = ? LIMIT 1",
   ).use { statement ->
     statement.setString(1, issueKey)
     statement.executeQuery().use { it.next() }

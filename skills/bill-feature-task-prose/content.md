@@ -1,7 +1,7 @@
 ---
 internal-for: bill-feature
 name: bill-feature-task-prose
-description: First-class prose orchestrator for end-to-end feature implementation, running entirely within the invoking agent session. Handles the full phase loop (assess, branch, preplan, plan, implement, review, audit, validate, history, commit, PR) without delegating to an external runtime. Use when user mentions implement feature, build feature, or feature from design doc, and prose in-session orchestration is preferred over the runtime-backed mode.
+description: First-class prose orchestrator for end-to-end feature implementation, running entirely within the invoking agent session. Handles the full phase loop (assess, branch, preplan, plan, implement, audit, review, validate, history, commit, PR) without delegating to an external runtime. Use when user mentions implement feature, build feature, or feature from design doc, and prose in-session orchestration is preferred over the runtime-backed mode.
 ---
 
 # Feature Task Prose Content
@@ -41,7 +41,7 @@ Workflow-state rules:
 - `feature_task_prose_workflow_update` returns a compact acknowledgement by default: status, workflow id/status, current step id, updated step ids, updated artifact keys, db path, and read-only full-state guidance. It does not return the full durable artifact map; use `feature_task_prose_workflow_get` or `workflow show` for explicit read-only full-state inspection.
 - Follow the detailed per-phase briefing contracts in the inline reference sections below. Do not invent prose-only handoffs when a structured artifact exists.
 
-Stable step ids: `assess`, `create_branch`, `preplan`, `plan`, `implement`, `review`, `audit`, `validate`, `write_history`, `commit_push`, `pr_description`, `finish`. Stable artifact names: `assessment`, `branch`, `agent_addon_selection`, `preplan_digest`, `plan`, `implementation_summary`, `review_result`, `audit_report`, `validation_result`, `history_result`, `commit_push_result`, `pr_result`.
+Stable step ids: `assess`, `create_branch`, `preplan`, `plan`, `implement`, `audit`, `review`, `validate`, `write_history`, `commit_push`, `pr_description`, `finish`. Stable artifact names: `assessment`, `branch`, `agent_addon_selection`, `preplan_digest`, `plan`, `implementation_summary`, `audit_report`, `review_result`, `validation_result`, `history_result`, `commit_push_result`, `pr_result`.
 
 When the entry authority supplies an agent add-on selection, persist its ordered
 structured `agent_addon_selection` immediately after the workflow opens. Before
@@ -54,7 +54,7 @@ missing sources or an incompatible receiving agent fail
 before phase work. An empty selection adds no artifact content and no prompt
 section, preserving legacy prose behaviour.
 
-Phase-to-artifact mapping: Step 1 -> `assessment`; Step 1b -> `branch`; Step 2 -> `preplan_digest`; Step 3 -> `plan` (implementation plan or decomposition package); Step 4 -> `implementation_summary`; Step 5 -> `review_result`; Step 6 -> `audit_report`; Step 6b -> `validation_result`; Step 7 -> `history_result`; Step 8 -> `commit_push_result`; Step 9 -> `pr_result`.
+Phase-to-artifact mapping: Step 1 -> `assessment`; Step 1b -> `branch`; Step 2 -> `preplan_digest`; Step 3 -> `plan` (implementation plan or decomposition package); Step 4 -> `implementation_summary`; Step 5 -> `audit_report`; Step 6 -> `review_result`; Step 6b -> `validation_result`; Step 7 -> `history_result`; Step 8 -> `commit_push_result`; Step 9 -> `pr_result`.
 
 ## Continuation Mode
 
@@ -66,7 +66,7 @@ Continuation-mode rules:
 - Use `resume_step_id` / `continue_step_id` as the starting point.
 - Use `current_step_artifacts` as authoritative recovered context; inline values are complete, while summarized values carry explicit size, preview, truncation, and omission metadata. Do not reconstruct earlier phases from chat history unless the step explicitly requires user confirmation.
 - Read the `reference_sections` listed in the continuation payload before resuming work.
-- Skip already-completed earlier steps unless the normal workflow loop sends work backwards (for example review back to implement, or audit back to plan).
+- Skip already-completed earlier steps unless the normal workflow loop sends work backwards (review back to `implement_fix`, or audit back to implement).
 - After the resumed step completes, continue the normal sequence defined below.
 - If `continue_status` is `done`, do not rerun the workflow; summarize the terminal state instead.
 - If `continue_status` is `blocked`, stop and restore the missing artifacts named by the workflow payload before continuing.
@@ -82,8 +82,8 @@ resolves omission to `delegated` and rejects malformed, unknown, repeated, and
 conflicting tokens before its sole confirmation gate. For a non-interactive
 goal continuation, durable goal and child workflow state supply the immutable
 selection. This sidecar must not reparse the token, present another gate, or
-substitute a different mode for the initial pass. Persist the selected mode with the workflow as initial-pass policy. In Step 5 invoke
-`bill-code-review mode:<selected-mode>`; every review-fix or audit-driven re-review invokes `bill-code-review mode:inline context:feature-remediation` against only the remediation delta since the preceding implementation checkpoint. When a parallel lane is
+substitute a different mode for the initial pass. Persist the selected mode with the workflow as initial-pass policy. In Step 6 invoke
+`bill-code-review mode:<selected-mode>`; the sole review-fix pass invokes `bill-code-review mode:inline context:feature-remediation` against only the remediation delta since the preceding implementation checkpoint. Audit remediation completes before review begins. When a parallel lane is
 configured, pass the same execution mode to both lanes without allowing
 recursive parallel launch.
 
@@ -120,7 +120,7 @@ Goal-continuation rules:
 - Never run installer or uninstall flows during goal-continuation: do not call `./install.sh`, `./uninstall.sh`, `skill-bill install`, `skill-bill install apply`, or any equivalent install-sync command. This prohibition overrides repo instructions that normally ask maintainers to refresh local installs after changing governed skill source, because installer sync can reset local workflow state while the goal runner still needs it. When an install-refresh acceptance criterion already has outside-child evidence, verify it through read-only installed-artifact inspection and record that evidence. When the refresh has not happened, block for operator action outside goal-continuation instead of attempting the forbidden install. Record skipped install-sync work in the phase result or review notes.
 - Derive the subtask contract from the selected subtask spec and recovered workflow artifacts. Do not ask the user to reconfirm acceptance criteria for the subtask.
 - Start new subtask workflows at `preplan` with `assessment`, `branch`, and `goal_continuation` artifacts already persisted from the parent manifest.
-- Set `goal_continuation.suppress_pr=true`. Run the normal implementation, review, audit, validation, history, and commit steps, then suppress `pr_description` so the parent goal runner can open one PR for the whole goal.
+- Set `goal_continuation.suppress_pr=true`. Run the normal implementation, audit, review, validation, history, and commit steps, then suppress `pr_description` so the parent goal runner can open one PR for the whole goal.
 - Treat a completed `commit_push` step as the terminal success signal for this entry when PR suppression is active. Persist the subtask outcome in durable workflow state; stdout is diagnostic only.
 - The structured outcome fields are `issue_key`, `subtask_id`, `status`, `commit_sha`, `workflow_id`, `blocked_reason`, and `last_resumable_step`. Runtime state is authoritative; git-tracked `decomposition-manifest.yaml` projections may omit runtime-only commit SHAs.
 - To explain why a subtask retried, stopped, or blocked, read the append-only attempt ledger (`goal_attempt_ledger`) on the child workflow via read-only `workflow show`; its `action`, `blocked_reason`, `stop_reason`, and `final_reconciled_result` fields are sufficient without scraping any provider session log. Caveat (not a Skill Bill contract): provider-reported total token counts can be dominated by cached input replay, so treat them as a diagnostic signal — Skill Bill optimizes payload size and session behavior, not provider cache accounting. See the workflow-contract playbook (installed as a support pointer beside this skill) for detail.
@@ -165,7 +165,7 @@ For `spec_source: linear`:
 
 ## Orchestrator vs Subagent Split
 
-Step 1 (read the router-confirmed spec and assess) runs in the orchestrator so it can persist the established task contract. Step 1b (create feature branch) runs in the orchestrator because it is a trivial git op that should stay visible. Step 2 (pre-planning), Step 3 (planning), Step 4 (implementation), Step 6 (completeness audit), Step 6b (quality check), and Step 9 (PR description) run as subagents. Step 5 (code review via `bill-code-review`) runs in the orchestrator because it already spawns specialist subagents internally — do not nest further. Step 7 (boundary history via `bill-boundary-history`) and Step 8 (commit and push) run in the orchestrator.
+Step 1 (read the router-confirmed spec and assess) runs in the orchestrator so it can persist the established task contract. Step 1b (create feature branch) runs in the orchestrator because it is a trivial git op that should stay visible. Step 2 (pre-planning), Step 3 (planning), Step 4 (implementation), Step 5 (completeness audit), Step 6b (quality check), and Step 9 (PR description) run as subagents. Step 6 (code review via `bill-code-review`) runs in the orchestrator because it already spawns specialist subagents internally — do not nest further. Step 7 (boundary history via `bill-boundary-history`) and Step 8 (commit and push) run in the orchestrator.
 
 Subagents run sequentially, in the same worktree (no `isolation: "worktree"`). Do not launch any of these subagents in parallel. Each subagent receives a self-contained briefing. See the inline reference sections below for the per-phase briefing templates and structured return contracts.
 
@@ -263,9 +263,20 @@ The subagent returns the implementation return contract: `files_created`, `files
 
 For MEDIUM/LARGE, the subagent performs the post-implementation compact internally before returning: summarize files, feature flag info, criteria-to-file mapping, deviations; then re-read the saved spec to verify every criterion is mapped.
 
-Persist `implementation_summary` before advancing to `review`.
+Persist `implementation_summary` before advancing to `audit`.
 
-## Step 5: Code Review (orchestrator)
+## Step 5: Completeness Audit (subagent)
+
+Step id: `audit`
+
+Primary artifact: `audit_report`
+
+Run the completeness audit against the not-yet-satisfied acceptance criteria.
+On gaps, carry its stable repair plan into `implement`, then re-run `audit`
+without regenerating planning or entering review. When satisfied, persist
+`audit_report` and advance to `review`.
+
+## Step 6: Code Review (orchestrator)
 
 Step id: `review`
 
@@ -300,10 +311,10 @@ launching it. When durable state has an unfinished reserved pass, resume that
 same pass rather than reserving another; carry completed and capped state
 through repair and audit re-entry, and never start pass three. After a second
 pass with unresolved Blocker findings, persist complete location-bearing
-evidence, record the blocking disposition, and emit only the compact path-free
+evidence only in the goal-wide unaddressed-findings ledger, record the blocking disposition, and emit only the compact path-free
 goal review status: subtask id, pass number, verdict, severity,
 class/symbol-or-sanitized label, and concise text. It contains no path, line
-number, hunk, or raw review output. Stop before audit. Major findings never
+number, hunk, or raw review output. Stop before validate. Major findings never
 produce this blocking disposition.
 
 The two-pass cap applies to every feature task. Decomposed prose-goal children
@@ -318,9 +329,9 @@ Orchestrated child telemetry:
 - The review will not emit `skillbill_review_finished` on its own — its payload will be embedded in the `skillbill_feature_task_prose_finished` event instead.
 - Before the first review telemetry call, do a lightweight Skill Bill MCP health check such as `feature_task_prose_workflow_latest`. If the MCP tool path returns `Transport closed`, call the same Skill Bill MCP tool through the packaged Kotlin `runtime-mcp` stdio binary from the repo (`runtime-kotlin/runtime-mcp/build/install/runtime-mcp/bin/runtime-mcp`) with a JSON-RPC `tools/call` payload and parse the returned text content. Use this direct-stdio fallback for subsequent owned telemetry/workflow calls in the run, and record that fallback in `review_result`.
 
-Persist `review_result`, then advance to `audit`.
+Persist `review_result`, then advance to `validate`.
 
-## Step 6: Completeness Audit (subagent)
+## Audit remediation details
 
 Step id: `audit`
 
@@ -332,11 +343,15 @@ SMALL: the subagent returns a quick confirmation for each criterion. MEDIUM/LARG
 
 The subagent returns the audit return contract: `pass: bool`, `per_criterion: [...]`, `gaps: [...]`.
 
-If gaps are found: the orchestrator does not regenerate the implementation plan. It carries the audit's repair plan — one or more ordered repair items per unmet criterion, each with a stable identifier — into a fresh implementation subagent briefed with the immutable original preplan and plan plus that repair plan. That subagent attempts every carried repair item in the same pass and returns a terminal outcome for each (`fixed`, or `already_satisfied` with concrete repository and verification evidence); it may not defer a carried item to review, audit, or validation. The orchestrator then re-runs code review and re-spawns the audit subagent. There is no fixed iteration cap: audit and repair repeat while they make progress. When an audit returns the same unresolved gap set with no repository change and no newly resolved repair item, stop loudly with the unresolved gap and repair-item identifiers instead of advancing. When complete, if a tracked `.feature-specs/{ISSUE_KEY}-{feature-name}/spec.md` exists, the orchestrator reconciles it to its final state for ALL sizes (not only MEDIUM/LARGE): set `Status: Complete`, resolve any Open Questions with the decisions taken, and correct anything the implementation changed (for example a corrected flag or argument name). SMALL runs do not create a spec on disk, but when one already exists it must still be reconciled here.
+If gaps are found: the orchestrator does not regenerate the implementation plan. It carries the audit's repair plan — one or more ordered repair items per unmet criterion, each with a stable identifier — into a fresh implementation subagent briefed with the immutable original preplan and plan plus that repair plan. That subagent attempts every carried repair item in the same pass and returns a terminal outcome for each (`fixed`, or `already_satisfied` with concrete repository and verification evidence); it may not defer a carried item to review, audit, or validation. The orchestrator then re-spawns the audit subagent; review begins only after audit is satisfied. There is no fixed iteration cap: audit and repair repeat while they make progress. When an audit returns the same unresolved gap set with no repository change and no newly resolved repair item, stop loudly with the unresolved gap and repair-item identifiers instead of advancing. When complete, if a tracked `.feature-specs/{ISSUE_KEY}-{feature-name}/spec.md` exists, the orchestrator reconciles it to its final state for ALL sizes (not only MEDIUM/LARGE): set `Status: Complete`, resolve any Open Questions with the decisions taken, and correct anything the implementation changed (for example a corrected flag or argument name). SMALL runs do not create a spec on disk, but when one already exists it must still be reconciled here.
 
 When reconciling that `## Status` block, also write an `Agent:` line recording the resolved invoking agent next to `Status: Complete` — for example `- Agent: claude`. Resolve the agent through the existing governed order, never a re-invented source: `--agent` argument, then the `SKILL_BILL_AGENT` environment variable, then the detected invoking-agent execution context, then the documented last-resort default (`codex`). This line is a completion-reconciliation outcome, never an authored input: write it only here, only when the spec exists on disk (a SMALL run with no spec writes nothing), and keep it idempotent — if an `Agent:` line is already present under `## Status`, update it in place rather than adding a second one. The line lives only under `## Status` and must not perturb the `## Acceptance Criteria` section.
 
-Persist `audit_report`, then advance to `validate`. On gaps, loop back to `implement` with the carried repair plan; never loop back to `plan`.
+Persist `audit_report`, then advance to `review`. On gaps, loop back to `implement` with the carried repair plan; never loop back to `plan` or enter review before audit is satisfied.
+
+Location-bearing finding evidence is returned only by
+`skill-bill goal findings --issue-key <KEY>`. Goal, status, watch, telemetry,
+and PR output may expose compact counts or sanitized summaries only.
 
 ## Finalization Sequence (Steps 6b through 9)
 
@@ -486,8 +501,8 @@ Use these exact step ids when updating workflow state:
 3. `preplan`
 4. `plan`
 5. `implement`
-6. `review`
-7. `audit`
+6. `audit`
+7. `review`
 8. `validate`
 9. `write_history`
 10. `commit_push`
@@ -522,8 +537,8 @@ has in hand:
 - Step 2 → `preplan_digest`
 - Step 3 → `plan` (implementation plan or decomposition package)
 - Step 4 → `implementation_summary`
-- Step 5 → `review_result`
-- Step 6 → `audit_report`
+- Step 5 → `audit_report`
+- Step 6 → `review_result`
 - Step 6b → `validation_result`
 - Step 7 → `history_result`
 - Step 8 → `commit_push_result`
@@ -941,7 +956,7 @@ RESULT:
 }
 ```
 
-### Fix-loop briefing (used by Step 5 review loop)
+### Fix-loop briefing (used by Step 6 review loop)
 
 When the code-review step produces Blocker findings, the orchestrator respawns the implementation subagent with a fix-focused briefing:
 

@@ -2,6 +2,7 @@ package skillbill.application.featuretask
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.decomposition.decodeArtifacts
+import skillbill.application.goalrunner.GoalSubtaskReviewSummaryReducer
 import skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing
 import skillbill.application.model.FeatureTaskRuntimePhaseLedgerRequest
 import skillbill.application.model.FeatureTaskRuntimePhaseStateRequest
@@ -13,9 +14,9 @@ import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.error.WorkflowIssueKeyConflictError
 import skillbill.goalrunner.model.UnaddressedFinding
 import skillbill.ports.persistence.DatabaseSessionFactory
+import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.persistence.WorkflowStateRepository
 import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
-import skillbill.review.parseReviewFindings
 import skillbill.workflow.WorkflowEngine
 import skillbill.workflow.WorkflowSnapshotValidator
 import skillbill.workflow.model.WorkflowStateSnapshot
@@ -32,6 +33,7 @@ import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_STATUS_BL
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_RESOLVED_BRANCH_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairState
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDecomposeTerminal
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairItemResult
@@ -259,27 +261,8 @@ class FeatureTaskRuntimePhaseRecorder(
         completionEntry.toArtifactMap(),
         FEATURE_TASK_RUNTIME_PHASE_LEDGER_LIMIT,
       )
-      val parsedFindings = parseReviewFindings(completion.rawReviewResult)
       val continuation = reviewArtifacts.continuation
-      val ledgerFindings = completion.findings.mapIndexed { index, finding ->
-        val parsed = parsedFindings.getOrNull(index)
-        UnaddressedFinding(
-          issueKey = continuation.issueKey,
-          subtaskId = continuation.subtaskId,
-          workflowId = request.workflowId,
-          reviewPassNumber = passNumber.toInt(),
-          findingOrdinal = index + 1,
-          severity = finding.severity,
-          issueCategory = parsed?.issueCategory ?: "other",
-          location = parsed?.location?.takeIf(String::isNotBlank) ?: "<unknown>",
-          summary = finding.text,
-        )
-      }
-      unitOfWork.unaddressedFindings.replaceLedgerForPass(
-        request.workflowId,
-        passNumber.toInt(),
-        ledgerFindings,
-      )
+      persistUnaddressedFindings(unitOfWork, request, continuation, passNumber.toInt())
       persistPatch(
         unitOfWork.workflowStates,
         record,
@@ -299,6 +282,29 @@ class FeatureTaskRuntimePhaseRecorder(
       )
       true
     }
+  }
+
+  private fun persistUnaddressedFindings(
+    unitOfWork: UnitOfWork,
+    request: FeatureTaskRuntimePhaseStateRequest,
+    continuation: FeatureTaskRuntimeGoalContinuationArtifact,
+    passNumber: Int,
+  ) {
+    val output = request.normalizedOutput?.envelope ?: return
+    val findings = GoalSubtaskReviewSummaryReducer.structuredFindings(output).mapIndexed { index, finding ->
+      UnaddressedFinding(
+        issueKey = continuation.issueKey,
+        subtaskId = continuation.subtaskId,
+        workflowId = request.workflowId,
+        reviewPassNumber = passNumber,
+        findingOrdinal = index + 1,
+        severity = finding.severity,
+        issueCategory = finding.issueCategory,
+        location = finding.location,
+        summary = finding.message,
+      )
+    }
+    unitOfWork.unaddressedFindings.replaceLedgerForPass(request.workflowId, passNumber, findings)
   }
 
   private fun validatedGoalReviewPhaseState(

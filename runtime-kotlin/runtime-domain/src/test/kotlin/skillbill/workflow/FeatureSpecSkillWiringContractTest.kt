@@ -220,7 +220,10 @@ class FeatureSpecSkillWiringContractTest {
       prose,
       "Continue past Major, Minor, and Nit findings while preserving them as review evidence",
     )
-    assertContains(runner, "preserve complete location-bearing evidence\nin durable artifacts and telemetry")
+    assertContains(
+      runner,
+      "preserve complete location-bearing evidence\nonly in the goal-wide unaddressed-findings ledger",
+    )
     assertContains(runner, "class/symbol-or-sanitized label, and concise text")
     assertContains(
       goal,

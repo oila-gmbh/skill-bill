@@ -255,7 +255,9 @@ object FeatureTaskRuntimePhasePromptComposer {
           "with exactly these ids in order: ${briefing.auditRepairItemIds.joinToString()}. Every result must " +
           "contain only repair_item_id, outcome (fixed or already_satisfied), non-empty " +
           "changed_paths_or_symbols, non-empty executed_verification, and structured result_evidence " +
-          "with observation, artifact_ref, and check_ref. check_ref MUST be AC-###, F-###, or a single " +
+          "with observation, artifact_ref, and check_ref. artifact_ref MUST be a repository-relative path " +
+          "optionally followed by one :symbol; do not put a sentence, spaces, test description, command, " +
+          "result, or additional prose in artifact_ref. check_ref MUST be AC-###, F-###, or a single " +
           "name ending in Test or Check (optionally followed by :symbol); do not put a command, result, " +
           "sentence, spaces, or shell punctuation in check_ref.\n" +
           auditRemediationOutputExample(briefing.auditRepairItemIds)

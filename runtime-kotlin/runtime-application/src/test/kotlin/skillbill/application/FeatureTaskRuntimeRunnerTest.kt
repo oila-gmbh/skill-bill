@@ -4413,6 +4413,17 @@ internal class RuntimeFakeDatabaseSessionFactory(
     override val telemetryReconciliation: TelemetryReconciliationRepository get() = error("unused")
     override val telemetryOutbox: TelemetryOutboxRepository get() = error("unused")
     override val workflowStates: WorkflowStateRepository = repository
+    override val unaddressedFindings = object : skillbill.ports.persistence.UnaddressedFindingsRepository {
+      override fun replaceLedgerForPass(
+        workflowId: String,
+        reviewPassNumber: Int,
+        findings: List<skillbill.goalrunner.model.UnaddressedFinding>,
+      ) = Unit
+
+      override fun fetchLedger(issueKey: String): List<skillbill.goalrunner.model.UnaddressedFinding> = emptyList()
+
+      override fun issueExists(issueKey: String): Boolean = true
+    }
     override val workList = skillbill.ports.persistence.EmptyWorkListRepository
     override val goalPlanningPreparations = skillbill.ports.persistence.EmptyGoalPlanningPreparationRepository
   }

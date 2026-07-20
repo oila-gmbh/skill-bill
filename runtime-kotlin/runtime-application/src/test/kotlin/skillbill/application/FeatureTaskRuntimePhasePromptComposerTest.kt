@@ -465,6 +465,8 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     assertContains(prompt, "\"changed_paths_or_symbols\"")
     assertContains(prompt, "\"executed_verification\"")
     assertContains(prompt, "\"result_evidence\"")
+    assertContains(prompt, "artifact_ref MUST be a repository-relative path")
+    assertContains(prompt, "do not put a sentence, spaces, test description, command")
     assertContains(prompt, "\"reconciled_state\"")
   }
 

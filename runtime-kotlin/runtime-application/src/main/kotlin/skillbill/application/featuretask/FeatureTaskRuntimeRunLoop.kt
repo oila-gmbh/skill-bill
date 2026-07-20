@@ -288,6 +288,7 @@ internal class FeatureTaskRuntimeRunLoop(
           unresolvedFindingCount = outcome.unresolvedFindingCount,
           findings = findings,
           rawReviewResult = output,
+          normalizedOutput = outputMap,
         ),
         dbOverride = request.dbPathOverride,
       ) == null
