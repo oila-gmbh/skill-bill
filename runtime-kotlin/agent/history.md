@@ -1,3 +1,14 @@
+## [2026-07-20] SKILL-131 audit-repair integration and verification (subtask 3)
+Areas: runtime-kotlin/runtime-{application,cli,domain,infra-sqlite,mcp}, skills/bill-feature-task-runtime, docs
+- Status and lifecycle telemetry project compact convergence evidence: first-pass outcome, recurring/new gaps, attempted/resolved repair items, and audit-gap iterations.
+- Crash/resume coverage locks durable plan identity and exhaustive repair across pre-persistence, mid-repair, post-repair, and post-audit interruptions without duplicate fixes or invalid advancement.
+- SKILL-128-derived and Markdown-prefixed regressions prove broad gaps produce one complete plan, reject partial production-only repair, and preserve the canonical audit-gap backward edge. reusable
+- Pattern: keep recorded migrations immutable; tighten compatible durable planning provenance with a forward transactional migration that preserves 0.2 rows and rejects incompatible 0.1 rows before schema mutation. reusable
+- Governed guidance and operator docs describe structured exhaustive remediation, recurring/new gap handling, and non-progress failure; generated wrappers remain uncommitted and repository validation passes.
+- No feature flag; legacy incompatible goal-planning provenance requires operator deletion or migration rather than silent data loss.
+Feature flag: N/A
+Acceptance criteria: subtask 3: 6/6 implemented
+
 ## [2026-07-20] SKILL-131 runtime repair and reconciliation (subtask 2)
 Areas: runtime-kotlin/runtime-application, skills/bill-feature-task-runtime, .feature-specs/SKILL-131-single-pass-audit-repair
 - Audit-gap implementation receives the immutable initial preplan and plan, current worktree, and complete durable repair plan, then attempts every runnable item in dependency order with exact terminal result/evidence coverage.

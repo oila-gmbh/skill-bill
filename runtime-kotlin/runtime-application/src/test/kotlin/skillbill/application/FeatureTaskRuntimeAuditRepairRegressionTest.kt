@@ -17,35 +17,10 @@ class FeatureTaskRuntimeAuditRepairRegressionTest {
     var auditLaunches = 0
     var implementLaunches = 0
     var allowExhaustiveRepair = false
-    val harness = runnerHarness(
-      launcher = RuntimeRecordingLauncher { request ->
-        when (val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))) {
-          "audit" -> {
-            auditLaunches += 1
-            facts(if (auditLaunches == 1) skill128BroadGapsOutput() else skill128SatisfiedOutput())
-          }
-          "implement" -> {
-            implementLaunches += 1
-            facts(
-              when (implementLaunches) {
-                1 -> validJsonOutput(phaseId)
-                else -> if (!allowExhaustiveRepair) remediationResultsOutput(
-                  repairItemIds = listOf("ac-001-gap-1-item-1"),
-                  summary = "Only the production-code item is repaired.",
-                ) else remediationResultsOutput(
-                  repairItemIds = listOf(
-                    "ac-001-gap-1-item-1",
-                    "ac-002-gap-1-item-1",
-                    "ac-003-gap-1-item-1",
-                  ),
-                  summary = "Production, integration, and test repairs are all verified.",
-                )
-              },
-            )
-          }
-          else -> facts(validJsonOutput(phaseId))
-        }
-      },
+    val harness = skill128Harness(
+      nextAuditLaunch = { ++auditLaunches },
+      nextImplementLaunch = { ++implementLaunches },
+      allowExhaustiveRepair = { allowExhaustiveRepair },
     )
 
     val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
@@ -296,6 +271,42 @@ class FeatureTaskRuntimeAuditRepairRegressionTest {
     }
   }
 }
+
+private fun skill128Harness(
+  nextAuditLaunch: () -> Int,
+  nextImplementLaunch: () -> Int,
+  allowExhaustiveRepair: () -> Boolean,
+): RunnerHarness = runnerHarness(
+  launcher = RuntimeRecordingLauncher { request ->
+    when (val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))) {
+      "audit" -> {
+        val auditLaunch = nextAuditLaunch()
+        facts(if (auditLaunch == 1) skill128BroadGapsOutput() else skill128SatisfiedOutput())
+      }
+      "implement" -> facts(
+        when (nextImplementLaunch()) {
+          1 -> validJsonOutput(phaseId)
+          else -> if (!allowExhaustiveRepair()) {
+            remediationResultsOutput(
+              repairItemIds = listOf("ac-001-gap-1-item-1"),
+              summary = "Only the production-code item is repaired.",
+            )
+          } else {
+            remediationResultsOutput(
+              repairItemIds = listOf(
+                "ac-001-gap-1-item-1",
+                "ac-002-gap-1-item-1",
+                "ac-003-gap-1-item-1",
+              ),
+              summary = "Production, integration, and test repairs are all verified.",
+            )
+          }
+        },
+      )
+      else -> facts(validJsonOutput(phaseId))
+    }
+  },
+)
 
 private fun skill128BroadGapsOutput(): String = """
   {
