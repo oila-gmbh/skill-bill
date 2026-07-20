@@ -4,6 +4,7 @@ import skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing
 import skillbill.contracts.JsonSupport
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseHandoff
+import skillbill.workflow.taskruntime.model.canonicalAcceptanceCriterionRef
 import java.nio.ByteBuffer
 import java.nio.charset.CodingErrorAction
 import java.nio.charset.StandardCharsets
@@ -51,6 +52,7 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
         .flatMap { gap -> gap.repairItems.map { it.repairItemId } },
       unresolvedAuditGapIds = handoff.auditRepairState?.unresolvedGapLedger?.unresolvedGaps.orEmpty()
         .map { it.gapId },
+      durablyClosedCriterionRefs = handoff.durablyClosedCriterionRefs,
     )
   }
 
@@ -137,8 +139,19 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
         .toBriefingLines()
         .forEach { line -> appendLine("  $line") }
       appendLine("acceptance_criteria:")
+      // The runtime owns the AC-NNN ref so the audit cannot invent a competing ordinal convention and
+      // durable closure cannot be keyed on a ref no briefing ever emitted.
+      val closedCriterionRefs = handoff.durablyClosedCriterionRefs.toSet()
       invariants.acceptanceCriteria.forEachIndexed { index, criterion ->
-        appendLine("  ${index + 1}. $criterion")
+        val criterionRef = canonicalAcceptanceCriterionRef(index + 1)
+        if (criterionRef !in closedCriterionRefs) {
+          appendLine("  $criterionRef. $criterion")
+        }
+      }
+      if (closedCriterionRefs.isNotEmpty()) {
+        appendLine("durably_closed_criteria:")
+        appendLine("  (each reached a satisfied verdict and is closed; do not re-verify or report a gap against it)")
+        closedCriterionRefs.sorted().forEach { criterionRef -> appendLine("  - $criterionRef") }
       }
       appendLine("mandates_and_overrides:")
       if (invariants.mandatesAndOverrides.isEmpty()) {

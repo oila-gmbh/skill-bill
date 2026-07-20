@@ -10,6 +10,7 @@ import skillbill.application.model.FeatureTaskRuntimeRunRequest
 import skillbill.application.workflow.repoRoot
 import skillbill.config.model.PhaseModelDirective
 import skillbill.contracts.JsonSupport
+import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.error.FeatureTaskRuntimePhaseOrderViolationError
 import skillbill.error.InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
@@ -43,6 +44,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewFinding
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutput
+import skillbill.workflow.taskruntime.model.acceptanceCriterionRefsFor
 import skillbill.workflow.taskruntime.model.canonicalAuditIdentifier
 import skillbill.workflow.taskruntime.model.detectAuditRepairNonProgress
 
@@ -896,6 +898,7 @@ internal class FeatureTaskRuntimeRunLoop(
       specSource = specSource,
       reentry = reentry,
     )
+    settledFullyClosedAudit(run, state, observability)?.let { return it }
     completedReviewBudgetOutput?.let { output ->
       if (isGoalContinuationRun(request) && reentry != null) {
         val iteration = state.nextIteration(phaseId)
@@ -926,6 +929,85 @@ internal class FeatureTaskRuntimeRunLoop(
       )
     }
   }
+
+  private fun declaredCriterionRefs(): List<String> =
+    acceptanceCriterionRefsFor(request.runInvariants.acceptanceCriteria.size)
+
+  private fun durablyClosedCriterionRefs(): List<String> =
+    recorder.loadAuditRepairState(request.workflowId, request.dbPathOverride)?.satisfiedCriterionRefs.orEmpty()
+
+  private fun openAuditCriterionRefs(closedCriterionRefs: List<String> = durablyClosedCriterionRefs()): List<String> =
+    declaredCriterionRefs() - closedCriterionRefs.toSet()
+
+  /**
+   * Settles the audit as satisfied without launching a child when every acceptance criterion is
+   * already durably closed. The audit has nothing left to verify, so launching one could only produce
+   * a gap against a closed criterion, which the closure gate rejects anyway.
+   */
+  private fun settledFullyClosedAudit(
+    run: PhaseRun,
+    state: FeatureTaskRuntimeRunState,
+    observability: FeatureTaskRuntimeRunObservability,
+  ): PhaseOutcome? {
+    if (run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT) return null
+    val repairState = recorder.loadAuditRepairState(request.workflowId, request.dbPathOverride) ?: return null
+    // A live unresolved gap is unfinished work even when it names a criterion outside the declared set,
+    // so an empty open set alone must never settle the audit over the durable ledger.
+    if (repairState.unresolvedGapLedger.unresolvedGaps.isNotEmpty()) return null
+    val closedCriterionRefs = repairState.satisfiedCriterionRefs
+    if (closedCriterionRefs.isEmpty() || openAuditCriterionRefs(closedCriterionRefs).isNotEmpty()) return null
+    val iteration = state.nextIteration(run.phaseId)
+    val outputText = fullyClosedAuditOutput(closedCriterionRefs)
+    val normalizedOutput = runCatching {
+      outputValidator.normalizePhaseOutput(outputText, sourceLabel = run.phaseId)
+    }.getOrElse { error ->
+      return blockAndPersistInPhase(
+        run,
+        iteration,
+        "Audit settlement derived from durable criterion closure did not validate: ${error.message.orEmpty()}",
+        observability,
+      )
+    }
+    val persisted = recorder.recordCompletedPhase(
+      phaseStateRequest(
+        run,
+        iteration,
+        STATUS_COMPLETED,
+        finished = true,
+        outputArtifact = outputText,
+        normalizedOutput = normalizedOutput,
+      ),
+      run.request.dbPathOverride,
+    )
+    if (!persisted) {
+      return blockAndPersistInPhase(
+        run,
+        iteration,
+        "Audit settlement derived from durable criterion closure could not be persisted.",
+        observability,
+        failureDisposition = FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE,
+      )
+    }
+    observability.completed(run.phaseId, run.resolvedAgent.resolvedAgentId, iteration)
+    return PhaseOutcome.completed(
+      FeatureTaskRuntimePhaseOutput(run.phaseId, iteration, outputText, normalizedOutput),
+    )
+  }
+
+  private fun fullyClosedAuditOutput(closedCriterionRefs: List<String>): String = JsonSupport.mapToJsonString(
+    mapOf(
+      "contract_version" to FEATURE_TASK_RUNTIME_CONTRACT_VERSION,
+      "phase_id" to FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT,
+      "status" to STATUS_COMPLETED,
+      "verdict" to FeatureTaskRuntimeVerdict.SATISFIED.wireValue,
+      "summary" to "Every acceptance criterion reached a satisfied verdict in an earlier audit and is durably " +
+        "closed, so this audit settles satisfied from that closure without re-verifying a closed criterion.",
+      "produced_outputs" to mapOf(
+        "unmet_criteria" to emptyList<Any?>(),
+        "durably_closed_criteria" to closedCriterionRefs.sorted(),
+      ),
+    ),
+  )
 
   private fun prepareGoalReviewRun(
     run: PhaseRun,
@@ -1316,6 +1398,9 @@ internal class FeatureTaskRuntimeRunLoop(
     auditDurableLedgerGateReason(run.phaseId, outputMap)?.let { reason ->
       return schemaInvalidAttempt(run, iteration, reason, observability, fileManifest, outputText)
     }
+    auditClosedCriterionGateReason(run.phaseId, outputMap)?.let { reason ->
+      return schemaInvalidAttempt(run, iteration, reason, observability, fileManifest, outputText)
+    }
     val repositoryFingerprint = auditRepairRepositoryFingerprint(run)?.let { result ->
       if (!result.ok) {
         return AttemptResult.settled(
@@ -1584,6 +1669,28 @@ internal class FeatureTaskRuntimeRunLoop(
     return null
   }
 
+  // Closure is only durable if nothing can quietly reopen it: an audit naming a closed criterion under
+  // any gap id, or naming a criterion the run never declared, is rejected here rather than reconciled.
+  @Suppress("ReturnCount")
+  private fun auditClosedCriterionGateReason(phaseId: String, outputMap: Map<String, Any?>): String? {
+    if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT) return null
+    val produced = JsonSupport.anyToStringAnyMap(outputMap["produced_outputs"]).orEmpty()
+    val planRefs = (JsonSupport.anyToStringAnyMap(produced["audit_repair_plan"])?.get("gaps") as? List<*>)
+      .orEmpty()
+      .mapNotNull { gap -> JsonSupport.anyToStringAnyMap(gap)?.get("acceptance_criterion_ref") as? String }
+    val criteriaRefs = (produced["unmet_criteria"] as? List<*>).orEmpty()
+      .mapNotNull { entry -> JsonSupport.anyToStringAnyMap(entry)?.get("acceptance_criterion_ref") as? String }
+    val referenced = (planRefs + criteriaRefs).distinct()
+    if (referenced.isEmpty()) return null
+    val reopened = referenced.filter { it in durablyClosedCriterionRefs().toSet() }.sorted()
+    return if (reopened.isEmpty()) {
+      null
+    } else {
+      "Audit reported a gap against durably closed acceptance criteria $reopened; a criterion that reached a " +
+        "satisfied verdict is closed and is not re-verified by a later audit."
+    }
+  }
+
   private fun Throwable.diagnosticMessage(): String =
     message?.takeIf(String::isNotBlank) ?: this::class.simpleName.orEmpty().ifBlank { "unknown decode failure" }
 
@@ -1798,6 +1905,11 @@ internal class FeatureTaskRuntimeRunLoop(
     loopId = run.reentry?.loopId,
     edgeIteration = run.reentry?.edgeIteration,
     reviewPassNumber = reviewPassNumber(run, state),
+    auditScopeCriterionRefs = if (run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT) {
+      openAuditCriterionRefs()
+    } else {
+      emptyList()
+    },
   )
 
   private fun reviewPassNumber(run: PhaseRun, state: FeatureTaskRuntimeRunState): Int? {
@@ -1842,6 +1954,11 @@ internal class FeatureTaskRuntimeRunLoop(
       reentryGapCriteria = auditGapCriteriaFor(run, state),
       auditRepairPlan = run.reentry?.auditRepairPlan,
       auditRepairState = run.reentry?.auditRepairState,
+      durablyClosedCriterionRefs = if (run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT) {
+        durablyClosedCriterionRefs()
+      } else {
+        emptyList()
+      },
     )
     val briefing = FeatureTaskRuntimePhaseBriefingAssembler.assemble(handoff)
     recorder.recordPhaseBriefing(run.request.workflowId, briefing, run.request.dbPathOverride)

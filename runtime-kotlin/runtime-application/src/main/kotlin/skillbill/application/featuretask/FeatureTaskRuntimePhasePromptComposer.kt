@@ -289,10 +289,21 @@ object FeatureTaskRuntimePhasePromptComposer {
           "      add or change tests. Validation owns test execution and failures. Audit may report only a\n" +
           "      concrete defect in production behavior or production implementation; when no such defect is\n" +
           "      evidenced, emit satisfied even if test coverage is absent or inadequate." +
-          auditDispositionAddendum(briefing.unresolvedAuditGapIds)
+          auditDispositionAddendum(briefing.unresolvedAuditGapIds) +
+          auditClosedCriterionAddendum(briefing.durablyClosedCriterionRefs)
       else -> ""
     }
   }
+
+  private fun auditClosedCriterionAddendum(closedCriterionRefs: List<String>): String =
+    if (closedCriterionRefs.isEmpty()) {
+      ""
+    } else {
+      "\n      The acceptance criteria ${closedCriterionRefs.sorted().joinToString()} already reached a " +
+        "satisfied verdict and are durably closed: verify ONLY the criteria this briefing still lists, and " +
+        "never report an unmet_criteria entry or an audit_repair_plan gap against a closed criterion. Doing " +
+        "so fails the schema gate loudly."
+    }
 
   private fun auditRemediationOutputExample(repairItemIds: List<String>): String =
     "Required produced_outputs shape:\n```json\n{\n" +

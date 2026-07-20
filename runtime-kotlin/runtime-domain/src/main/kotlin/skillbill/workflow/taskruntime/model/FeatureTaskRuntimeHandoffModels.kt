@@ -155,6 +155,12 @@ data class FeatureTaskRuntimePhaseHandoff(
   val reentryGapCriteria: List<String> = emptyList(),
   val auditRepairPlan: FeatureTaskRuntimeAuditRepairPlan? = null,
   val auditRepairState: FeatureTaskRuntimeAuditRepairState? = null,
+  /**
+   * Canonical refs of the acceptance criteria already durably closed by a satisfied audit verdict.
+   * Carried only for the audit phase, which narrows its verified set to the remaining criteria; every
+   * other phase receives an empty list and its briefing is unchanged.
+   */
+  val durablyClosedCriterionRefs: List<String> = emptyList(),
 )
 
 /**

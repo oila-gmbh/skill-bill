@@ -378,6 +378,14 @@ class FeatureTaskRuntimeAuditRepairWireMapperTest {
   }
 
   @Test
+  fun `legacy durable state without satisfied criteria decodes with no closed criteria`() {
+    val legacy = auditRepairStateToWire(state()).toMutableMap()
+    legacy.remove("satisfied_criterion_refs")
+
+    assertEquals(emptyList(), auditRepairStateFromWire(legacy, "audit_repair_state").satisfiedCriterionRefs)
+  }
+
+  @Test
   fun `durable state rejects oversized allowed fields and embedded raw payloads`() {
     val oversized = auditRepairStateToWire(state()).toMutableMap()
     oversized["latest_plan"] = itemMutation(oversized.getValue("latest_plan") as Map<*, *>) {

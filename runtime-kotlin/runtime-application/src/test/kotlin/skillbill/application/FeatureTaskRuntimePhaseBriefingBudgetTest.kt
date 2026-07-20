@@ -126,7 +126,9 @@ class FeatureTaskRuntimePhaseBriefingBudgetTest {
 
     val byteSize = briefing.briefingText.toByteArray(Charsets.UTF_8).size
     assertTrue(
-      byteSize < CEILING,
+      // The documented guarantee is at-or-under, and an exactly-fitting split across three truncated
+      // upstreams lands on the ceiling itself; the other budget assertions here already use <=.
+      byteSize <= CEILING,
       "Assembled per-phase briefing was $byteSize bytes, exceeding the $CEILING ceiling; " +
         "the assembler stopped bounding an unbounded upstream payload inlined into a single phase briefing.",
     )

@@ -24,6 +24,8 @@ data class FeatureTaskRuntimePhaseLaunchBriefing(
   val auditRepairItemIds: List<String> = emptyList(),
   /** Durable unresolved-gap ids that a following audit must disposition exactly once. */
   val unresolvedAuditGapIds: List<String> = emptyList(),
+  /** Canonical refs of criteria already closed by a satisfied verdict; an audit must not re-verify them. */
+  val durablyClosedCriterionRefs: List<String> = emptyList(),
 ) {
   init {
     require(phaseId.isNotBlank()) { "FeatureTaskRuntimePhaseLaunchBriefing.phaseId must be non-blank." }
@@ -55,6 +57,9 @@ data class FeatureTaskRuntimePhaseLaunchBriefing(
       drivingVerdict?.let { put("driving_verdict", it) }
       if (auditRepairItemIds.isNotEmpty()) put("audit_repair_item_ids", auditRepairItemIds)
       if (unresolvedAuditGapIds.isNotEmpty()) put("unresolved_audit_gap_ids", unresolvedAuditGapIds)
+      if (durablyClosedCriterionRefs.isNotEmpty()) {
+        put("durably_closed_criterion_refs", durablyClosedCriterionRefs)
+      }
     }
   }
 
@@ -74,6 +79,7 @@ data class FeatureTaskRuntimePhaseLaunchBriefing(
         drivingVerdict = raw.optionalStringField("driving_verdict"),
         auditRepairItemIds = raw.optionalStringListField("audit_repair_item_ids"),
         unresolvedAuditGapIds = raw.optionalStringListField("unresolved_audit_gap_ids"),
+        durablyClosedCriterionRefs = raw.optionalStringListField("durably_closed_criterion_refs"),
       )
 
     // Single throw seam so each strict decoder stays within the throw-count budget.

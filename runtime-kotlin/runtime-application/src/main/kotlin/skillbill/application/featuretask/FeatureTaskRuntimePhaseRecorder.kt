@@ -160,6 +160,8 @@ class FeatureTaskRuntimePhaseRecorder(
                 dispositions = currentDispositions,
                 repositoryFingerprint = request.repositoryFingerprint,
                 edgeIteration = request.edgeIteration,
+                auditWrite = request.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT,
+                auditScopeCriterionRefs = request.auditScopeCriterionRefs,
               ),
             ),
           ),
@@ -188,6 +190,8 @@ class FeatureTaskRuntimePhaseRecorder(
     val dispositions: List<FeatureTaskRuntimePriorGapDisposition>?,
     val repositoryFingerprint: String?,
     val edgeIteration: Int?,
+    val auditWrite: Boolean = false,
+    val auditScopeCriterionRefs: List<String> = emptyList(),
   )
 
   private data class GapReconciliation(
@@ -225,6 +229,7 @@ class FeatureTaskRuntimePhaseRecorder(
         ),
         repositoryFingerprint = input.repositoryFingerprint ?: input.prior?.repositoryFingerprint,
         progress = progress,
+        satisfiedCriterionRefs = reconcileSatisfiedCriteria(input, gaps),
       ).also { it.requireDurableCoherence() }
     }.getOrElse { error ->
       if (error is IllegalArgumentException) {
@@ -233,6 +238,28 @@ class FeatureTaskRuntimePhaseRecorder(
         throw error
       }
     }
+  }
+
+  /**
+   * Durable closure of the criteria this audit verified and did not report a gap against. It is
+   * derived from absence-of-gap in a per-criterion audit intersected with the unresolved-gap ledger,
+   * so no schema bump is needed and closure stays verifiable from durable state. The union keeps it
+   * strictly monotone: a criterion once closed is never reopened, which is what bounds the otherwise
+   * uncapped audit_gap cycle by shrinking the unsatisfied set on every iteration.
+   */
+  private fun reconcileSatisfiedCriteria(
+    input: AuditRepairReconciliation,
+    gaps: GapReconciliation,
+  ): List<String> {
+    val prior = input.prior?.satisfiedCriterionRefs.orEmpty()
+    if (!input.auditWrite) return prior
+    val reportedCriteria = input.latestPlan?.gaps.orEmpty().mapTo(linkedSetOf()) { it.acceptanceCriterionRef }
+    // A criterion whose gap is still unresolved is never closed, so the durable-ledger gate that
+    // requires the next audit to disposition every unresolved gap stays satisfiable.
+    val stillUnresolved = gaps.unresolvedGaps.mapTo(linkedSetOf()) { it.acceptanceCriterionRef }
+    val newlyClosed = input.auditScopeCriterionRefs
+      .filterNot { it in reportedCriteria || it in stillUnresolved }
+    return (prior + newlyClosed).distinct()
   }
 
   private fun reconcileProgress(
@@ -295,6 +322,16 @@ class FeatureTaskRuntimePhaseRecorder(
     val criterionByPriorGapId = priorUnresolved.associate { it.gapId to it.acceptanceCriterionRef }
     val resolvedCriteria = resolvedIds.mapNotNullTo(linkedSetOf(), criterionByPriorGapId::get)
     val reopenedCriteria = latestGaps.map { it.acceptanceCriterionRef }.filter { it in resolvedCriteria }.sorted()
+    val durablyClosed = input.prior?.satisfiedCriterionRefs.orEmpty().toSet()
+    val reopenedClosedCriteria = latestGaps.map { it.acceptanceCriterionRef }
+      .filter { it in durablyClosed }
+      .sorted()
+    if (reopenedClosedCriteria.isNotEmpty()) {
+      schemaError(
+        "An audit cannot report a gap against an acceptance criterion that already reached a satisfied " +
+          "verdict and is durably closed; reopened criteria were $reopenedClosedCriteria.",
+      )
+    }
     if (!latestIds.containsAll(recurringIds) || latestIds.any(resolvedIds::contains) ||
       reopenedCriteria.isNotEmpty()
     ) {

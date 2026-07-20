@@ -58,7 +58,7 @@ internal fun auditRepairPlanFromWire(value: Any?, source: String): FeatureTaskRu
 internal fun auditRepairStateFromWire(value: Any?, source: String): FeatureTaskRuntimeAuditRepairState =
   wireMapping(source) {
     val map = value.requiredMap(source)
-    requireExactWireKeys(map, source, AUDIT_REPAIR_STATE_KEYS)
+    requireExactWireKeys(map, source, AUDIT_REPAIR_STATE_KEYS, AUDIT_REPAIR_STATE_OPTIONAL_KEYS)
     val acceptedPlans = map.requiredList("accepted_plans", source).mapIndexed { index, plan ->
       durableAuditRepairPlanFromWire(plan, "$source.accepted_plans[$index]")
     }
@@ -90,6 +90,12 @@ internal fun auditRepairStateFromWire(value: Any?, source: String): FeatureTaskR
         generation = generation,
       )
     }
+    val satisfiedSource = "$source.satisfied_criterion_refs"
+    val satisfiedCriterionRefs = map["satisfied_criterion_refs"]?.let { raw ->
+      (raw as? List<*>)?.map { entry ->
+        entry as? String ?: invalidWire(satisfiedSource, "entries must be strings")
+      } ?: invalidWire(satisfiedSource, "must be an array")
+    }.orEmpty()
     val progressMap = map["progress"].requiredMap("$source.progress")
     requireExactWireKeys(progressMap, "$source.progress", AUDIT_REPAIR_PROGRESS_KEYS)
     FeatureTaskRuntimeAuditRepairState(
@@ -106,6 +112,7 @@ internal fun auditRepairStateFromWire(value: Any?, source: String): FeatureTaskR
         resolvedRepairItemCount = progressMap.requiredInt("resolved_repair_item_count", "$source.progress"),
         auditGapIterationCount = progressMap.requiredInt("audit_gap_iteration_count", "$source.progress"),
       ),
+      satisfiedCriterionRefs = satisfiedCriterionRefs,
     ).also { it.requireDurableCoherence() }
   }
 

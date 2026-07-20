@@ -335,10 +335,11 @@ class FeatureTaskRuntimeAuditGapLoopTest {
   }
 
   @Test
-  fun `a newly reported gap does not evict a still unresolved earlier gap`() {
+  fun `a later audit cannot report a gap against a criterion the first audit durably closed`() {
     var auditLaunches = 0
     var implementLaunches = 0
     val harness = runnerHarness(
+      runtimeConfig = RuntimeHarnessConfig(acceptanceCriteria = listOf("AC-1", "AC-2", "AC-3")),
       launcher = RuntimeRecordingLauncher { request ->
         when (val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))) {
           "audit" -> {
@@ -357,20 +358,17 @@ class FeatureTaskRuntimeAuditGapLoopTest {
     assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
 
     val repairState = requireNotNull(harness.recorder.loadAuditRepairState(WORKFLOW_ID))
-    assertEquals(
-      listOf("ac-002-gap-1", "ac-003-gap-1"),
-      repairState.unresolvedGapLedger.unresolvedGaps.map { it.gapId },
-      "the carried gap must keep its durable ledger position ahead of the newly reported one, which the " +
-        "second plan deliberately lists first; rebuilding the ledger from the latest plan alone would invert it",
-    )
-    assertEquals(1, repairState.progress.recurringGapCount)
+    assertEquals(listOf("ac-002-gap-1"), repairState.unresolvedGapLedger.unresolvedGaps.map { it.gapId })
+    assertEquals(listOf("AC-001", "AC-003"), repairState.satisfiedCriterionRefs)
+    assertEquals(0, repairState.progress.recurringGapCount)
     assertEquals(1, repairState.progress.newGapCount)
   }
 
   @Test
-  fun `a recurring gap dropped from the latest plan fails loudly instead of closing silently`() {
+  fun `a recurring gap cannot be replaced by reopening a durably closed criterion`() {
     var auditLaunches = 0
     val harness = runnerHarness(
+      runtimeConfig = RuntimeHarnessConfig(acceptanceCriteria = listOf("AC-1", "AC-2", "AC-3")),
       launcher = RuntimeRecordingLauncher { request ->
         when (val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))) {
           "audit" -> {
@@ -382,9 +380,9 @@ class FeatureTaskRuntimeAuditGapLoopTest {
       },
     )
 
-    val error = assertFailsWith<InvalidWorkflowStateSchemaError> { harness.runner.run(harness.request()) }
+    val report = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
 
-    assertContains(error.message.orEmpty(), "Recurring gaps must retain their identities")
+    assertContains(report.blockedReason, "durably closed acceptance criteria [AC-003]")
     val repairState = requireNotNull(harness.recorder.loadAuditRepairState(WORKFLOW_ID))
     assertEquals(
       listOf("ac-002-gap-1"),

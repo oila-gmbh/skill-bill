@@ -3458,6 +3458,7 @@ internal data class RuntimeHarnessConfig(
   val useRealDecompositionPlanner: Boolean = false,
   val eventSink: FeatureTaskRuntimeRunEventSink? = null,
   val dbPathOverride: String? = null,
+  val acceptanceCriteria: List<String> = listOf("AC-1", "AC-2"),
 )
 
 private fun runtimeSpecSourceResolver(): SpecSourceResolver =
@@ -3519,7 +3520,7 @@ private fun runnerHarnessRequest(
   runInvariants = FeatureTaskRuntimeRunInvariants(
     specReference = runtimeConfig.branchSetup.specReference,
     featureSize = runtimeConfig.branchSetup.featureSize,
-    acceptanceCriteria = listOf("AC-1", "AC-2"),
+    acceptanceCriteria = runtimeConfig.acceptanceCriteria,
     mandatesAndOverrides = listOf("mandate-X"),
   ),
   invokedAgentId = INVOKED_AGENT,
