@@ -208,7 +208,7 @@ internal object DatabaseMigrations {
                 planning_contract_id TEXT NOT NULL,
                 planning_contract_version TEXT NOT NULL CHECK (planning_contract_version = '0.2'),
                 phase_output_contract_id TEXT NOT NULL,
-                phase_output_contract_version TEXT NOT NULL CHECK (phase_output_contract_version IN ('0.1', '0.2')),
+                phase_output_contract_version TEXT NOT NULL CHECK (phase_output_contract_version = '0.2'),
                 payload_sha256 TEXT NOT NULL,
                 preplan_payload_json TEXT NOT NULL,
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -233,7 +233,7 @@ internal object DatabaseMigrations {
                 planning_contract_id TEXT NOT NULL,
                 planning_contract_version TEXT NOT NULL CHECK (planning_contract_version = '0.2'),
                 phase_output_contract_id TEXT NOT NULL,
-                phase_output_contract_version TEXT NOT NULL CHECK (phase_output_contract_version IN ('0.1', '0.2')),
+                phase_output_contract_version TEXT NOT NULL CHECK (phase_output_contract_version = '0.2'),
                 payload_sha256 TEXT NOT NULL,
                 plan_payload_json TEXT NOT NULL,
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -244,15 +244,9 @@ internal object DatabaseMigrations {
               )
               """.trimIndent(),
             )
-            // Carry existing planning rows across the widened constraint. Their recorded
-            // phase-output provenance stays truthful; the read seam decides whether a legacy
-            // stamp is still usable, so discarding in-flight goal planning is never automatic.
-            statement.execute(
-              "INSERT INTO goal_shared_preplans SELECT * FROM goal_shared_preplans_pre_0_2",
-            )
-            statement.execute(
-              "INSERT INTO goal_subtask_plans SELECT * FROM goal_subtask_plans_pre_0_2",
-            )
+            // Legacy planning rows are discarded rather than carried: the governed schema pins
+            // phase-output provenance to 0.2, so a preserved 0.1 stamp is unreadable at every read
+            // seam. Affected goals re-plan from their governed specs on the next run.
             // Drop before recreating the index: SQLite carries an index across a table rename, so
             // the renamed table still owns the old index name until it is gone.
             statement.execute("DROP TABLE goal_subtask_plans_pre_0_2")

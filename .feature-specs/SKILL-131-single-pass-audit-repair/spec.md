@@ -1,6 +1,6 @@
 # SKILL-131 Single-Pass Audit Repair
 
-Status: In Progress — subtask 1 of 3 delivered on `feat/SKILL-131-single-pass-audit-repair`; subtasks 2 and 3 are still pending in `decomposition-manifest.yaml`.
+Status: ready
 
 ## Intended Outcome
 
@@ -67,29 +67,6 @@ The audit loop is a correctness gate, not an iterative task-discovery mechanism.
     scripts/validate_agent_configs
     ```
 
-## Delivery Status
-
-Subtask 1 (`spec_subtask_1_repair_plan_contract.md`) landed the audit-repair-plan contract and the runtime gates that depend on it. Subtask 2 ("Runtime repair and reconciliation") and subtask 3 ("Integration and verification", which owns acceptance criteria 19-25) are still `pending` in `decomposition-manifest.yaml`. Status per criterion, verified against the branch working tree:
-
-- **1-5 — implemented.** `orchestration/contracts/feature-task-runtime-audit-repair-plan-schema.yaml` (contract `0.2`) and `FeatureTaskRuntimeAuditRepairModels.kt` define the plan, gap, repair-item, evidence, ledger, and progress shapes with derived stable identifiers (`<criterion-ref>-gap-<generation>`, `<gap-id>-item-<ordinal>`), uniqueness, dependency validity/ordering/acyclicity, and nonblank compact-text rules. The phase-output schema validator enforces exact criterion coverage on ingest, and the `audit_gap` edge is refused unless the phase-record plan is byte-identical to the latest durably persisted plan. Resume reuses the persisted plan, including recovery from durable state after a blocked audit replaced the phase record. Schema-parity and contract-version tests are in place.
-- **6-8 — implemented.** Audit-gap remediation is briefed with the immutable `preplan` and `plan` outputs plus the complete accepted plan and unresolved-gap ledger, and the mutating-phase gate requires one terminal `fixed` / `already_satisfied` result per carried repair item in accepted dependency order, each with changed paths or symbols, executed verification, and an outcome-matched evidence observation.
-- **9-11 — implemented.** Missing, extra, duplicated, or out-of-order results are rejected; a blocked remediation must name a carried `gap_id` and `repair_item_id` with structured evidence and stays resumable; deferral phrasing anywhere in the output is rejected. Exact set equality is enforced directly in the run loop rather than by a generic reconciliation flag.
-- **12-13 — implemented.** The following audit must disposition every durable unresolved gap exactly once as `resolved` or `recurring` with the matching evidence observation, cannot report `satisfied` while the ledger still carries a recurring gap, and the ledger keeps criterion-plus-generation identity across iterations.
-- **14 — implemented, but it belongs to subtask 3.** Status output projects `audit_repair` progress and the CLI prints all six counters; `feature_task_runtime_finished` carries `audit_first_pass_convergence`, `audit_recurring_gap_count`, `audit_new_gap_count`, `audit_attempted_repair_item_count`, `audit_resolved_repair_item_count`, and `audit_gap_iteration_count`. Only counters and compact structured evidence are persisted.
-- **15 — implemented.** `detectAuditRepairNonProgress` blocks an equivalent gap set with an unchanged repository fingerprint or zero newly resolved items as needs-user-action, with no iteration cap on genuinely progressing repair.
-- **16-17 — implemented.** Phase output is normalized once per output text; gates, verdict derivation, persistence, transition selection, and downstream handoff all consume the same normalized envelope carried on the phase-output record. The validator selects among fenced, trailing-prose, and bare-JSON candidates, requires a matching `phase_id`, and rejects multiple conflicting schema-valid envelopes.
-- **18 — implemented.** Invalid, ambiguous, and contradictory envelopes fail through typed `InvalidFeatureTaskRuntimePhaseOutputSchemaError` and run-loop blocks, including `satisfied` with a non-empty unresolved-gap ledger and `gaps_found` without gaps.
-- **19 — not verified.** No goal-child test exercises the audit-repair path; standalone/goal-child parity is subtask 3 scope.
-- **20 — partially delivered.** Review-fix and audit-gap loops keep independent counters and budgets under existing coverage, but no test proves that review-pass exhaustion or a carried-forward goal review cannot satisfy audit repair items.
-- **21 — partially delivered.** `FeatureTaskRuntimeAuditGapDurabilityTest` covers crash during re-implement, resume without a durable plan, resume against a mismatched plan, recovery after a blocked audit, and audit completion without durable repair state. A dedicated interruption-in-the-middle-of-one-repair-item case is not covered.
-- **22-23 — not delivered.** No SKILL-128-derived partial-repair fixture and no Markdown-prefixed `gaps_found` backward-edge regression exist. The underlying candidate-extraction behavior is implemented, but the regression that pins it is subtask 3 scope.
-- **24 — delivered.** Governed guidance is in `skills/bill-feature-task-runtime/content.md` ("Audit-gap context-reuse implementation-remediation loop") and operator documentation is in `docs/capabilities.md` and `docs/review-telemetry.md`.
-- **25 — partially delivered.** Contract, domain, application, persistence, CLI, and telemetry tests exist; goal-child and end-to-end coverage does not. The full gate list has not been run to completion for the parent feature.
-
-Deviations from the Constraints section:
-
-- `./install.sh` has not been run for the `content.md` change: the active goal-continuation guard rejects it during a child workflow, so staging refresh is deferred to the outer goal lifecycle, as with SKILL-128 and SKILL-133.
-
 ## Constraints
 
 - The audit phase remains read-only with respect to repository implementation files; it creates and persists workflow repair-plan state only through runtime-owned boundaries.
@@ -125,6 +102,4 @@ Deviations from the Constraints section:
 
 ## Next Path
 
-Continue the SKILL-131 goal with subtask 2 (`spec_subtask_2_runtime_reconciliation.md`), then subtask 3 (`spec_subtask_3_integration_verification.md`) for the outstanding regressions, parity coverage, and full validation gates.
-
-Note: `spec_subtask_2_runtime_reconciliation.md` is currently truncated/corrupted and must be re-authored before subtask 2 runs.
+Run bill-feature on `.feature-specs/SKILL-131-single-pass-audit-repair/spec.md`.

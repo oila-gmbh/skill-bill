@@ -18,10 +18,11 @@ subtasks:
   status: "blocked"
   branch: null
   commit_sha: null
-  workflow_id: "wftr-20260719-120816-qlqh"
-  blocked_reason: "Goal-subtask review output failed schema validation after its reserved\
-    \ pass; refusing an unaccounted relaunch. <root> must be an object."
-  last_resumable_step: "review"
+  workflow_id: null
+  blocked_reason: "Could not capture the goal-subtask review baseline before implementation.\
+    \ Refusing to substitute a branch-wide scope. Goal-subtask review baseline capture\
+    \ requires a clean tracked worktree; unstaged tracked changes are present."
+  last_resumable_step: "create_branch"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
