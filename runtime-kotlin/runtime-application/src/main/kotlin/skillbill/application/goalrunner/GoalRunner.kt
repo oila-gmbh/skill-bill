@@ -81,6 +81,7 @@ class GoalRunner(
   private val clock: java.time.Clock = java.time.Clock.systemUTC(),
   private val timing: RuntimeTimingPort = NoopRuntimeTimingPort,
   private val diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
+  private val unaddressedFindingsLedgerService: UnaddressedFindingsLedgerService? = null,
 ) {
   private val workerRequestHandler = GoalRunnerWorkerRequestHandler(manifestStore, outcomeStore)
   private val reconciler = GoalRunnerLaunchReconciler(manifestStore, subtaskLauncher, outcomeStore, timing, diagnostics)
@@ -908,11 +909,23 @@ class GoalRunner(
     return when (result) {
       is GoalPullRequestResult.Opened -> {
         deleteGoalSpecScratchOnSuccess(finalState.manifest, request)
-        completed(finalState.manifest, attempted, pullRequestUrl = result.url, pullRequestStatus = "opened")
+        completed(
+          finalState.manifest,
+          attempted,
+          pullRequestUrl = result.url,
+          pullRequestStatus = "opened",
+          request.dbPathOverride,
+        )
       }
       is GoalPullRequestResult.Existing -> {
         deleteGoalSpecScratchOnSuccess(finalState.manifest, request)
-        completed(finalState.manifest, attempted, pullRequestUrl = result.url, pullRequestStatus = "existing")
+        completed(
+          finalState.manifest,
+          attempted,
+          pullRequestUrl = result.url,
+          pullRequestStatus = "existing",
+          request.dbPathOverride,
+        )
       }
       is GoalPullRequestResult.Failed -> stopped(
         issueKey = finalState.manifest.issueKey,
@@ -1080,15 +1093,21 @@ class GoalRunner(
     attempted: List<Int>,
     pullRequestUrl: String?,
     pullRequestStatus: String,
-  ): GoalRunnerRunReport.Completed = GoalRunnerRunReport.Completed(
-    issueKey = manifest.issueKey,
-    attemptedSubtasks = attempted,
-    pullRequestUrl = pullRequestUrl,
-    pullRequestStatus = pullRequestStatus,
-    subtasksCompleted = manifest.subtasks.count { it.status == "complete" },
-    subtasksPending = manifest.subtasks.count { it.status !in setOf("complete", "skipped", "blocked") },
-    subtasksBlocked = manifest.subtasks.count { it.status == "blocked" },
-  )
+    dbOverride: String?,
+  ): GoalRunnerRunReport.Completed {
+    val ledger = unaddressedFindingsLedgerService?.ledger(manifest.issueKey, dbOverride)
+    return GoalRunnerRunReport.Completed(
+      issueKey = manifest.issueKey,
+      attemptedSubtasks = attempted,
+      pullRequestUrl = pullRequestUrl,
+      pullRequestStatus = pullRequestStatus,
+      subtasksCompleted = manifest.subtasks.count { it.status == "complete" },
+      subtasksPending = manifest.subtasks.count { it.status !in setOf("complete", "skipped", "blocked") },
+      subtasksBlocked = manifest.subtasks.count { it.status == "blocked" },
+      unaddressedFindingCount = ledger?.findings?.size ?: 0,
+      unaddressedSeverityBreakdown = ledger?.severityBreakdown.orEmpty(),
+    )
+  }
 
   private fun unknownGoal(issueKey: String): GoalRunnerRunReport.Stopped = stopped(
     issueKey = issueKey,

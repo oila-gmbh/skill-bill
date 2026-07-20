@@ -16,6 +16,7 @@ import skillbill.application.goalrunner.GoalLifecycleTelemetryEmitter
 import skillbill.application.goalrunner.GoalPlanningSweep
 import skillbill.application.goalrunner.GoalRunner
 import skillbill.application.goalrunner.GoalRunnerStatusService
+import skillbill.application.goalrunner.UnaddressedFindingsLedgerService
 import skillbill.application.goalrunner.WorkflowGoalRunnerManifestStore
 import skillbill.application.goalrunner.WorkflowGoalRunnerOutcomeStore
 import skillbill.application.install.ExternalAddonOverlayService
@@ -173,6 +174,7 @@ abstract class RuntimeComponent(
   private val inputRuntimeContext: RuntimeContext,
 ) {
   abstract val featureTaskContinuationLookupService: FeatureTaskContinuationLookupService
+  abstract val unaddressedFindingsLedgerService: UnaddressedFindingsLedgerService
 
   /*
    * Composition-root exception: RuntimeComponent is the only runtime-core surface allowed to

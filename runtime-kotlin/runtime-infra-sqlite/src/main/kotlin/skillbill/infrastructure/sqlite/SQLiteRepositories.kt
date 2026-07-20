@@ -5,6 +5,8 @@ import skillbill.db.telemetry.LifecycleTelemetryStore
 import skillbill.db.telemetry.TelemetryOutboxStore
 import skillbill.db.workflow.WorkflowStateStore
 import skillbill.db.worklist.SQLiteWorkListRepository
+import skillbill.goalrunner.model.UnaddressedFinding
+import skillbill.infrastructure.sqlite.goal.UnaddressedFindingsRuntime
 import skillbill.infrastructure.sqlite.review.ReviewRuntime
 import skillbill.infrastructure.sqlite.review.ReviewStatsRuntime
 import skillbill.infrastructure.sqlite.review.TriageRuntime
@@ -23,6 +25,7 @@ import skillbill.ports.persistence.LifecycleTelemetryRepository
 import skillbill.ports.persistence.ReviewRepository
 import skillbill.ports.persistence.TelemetryOutboxRepository
 import skillbill.ports.persistence.TelemetryReconciliationRepository
+import skillbill.ports.persistence.UnaddressedFindingsRepository
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.persistence.WorkListRepository
 import skillbill.ports.persistence.WorkflowStateRepository
@@ -57,6 +60,18 @@ class SQLiteUnitOfWork(
   override val workList: WorkListRepository = SQLiteWorkListRepository(connection)
   override val goalPlanningPreparations: skillbill.ports.persistence.GoalPlanningPreparationRepository =
     skillbill.db.workflow.GoalPlanningPreparationStore(connection)
+  override val unaddressedFindings: UnaddressedFindingsRepository = SQLiteUnaddressedFindingsRepository(connection)
+}
+
+class SQLiteUnaddressedFindingsRepository(connection: Connection) : UnaddressedFindingsRepository {
+  private val runtime = UnaddressedFindingsRuntime(connection)
+
+  override fun replaceLedgerForPass(workflowId: String, reviewPassNumber: Int, findings: List<UnaddressedFinding>) =
+    runtime.replaceLedgerForPass(workflowId, reviewPassNumber, findings)
+
+  override fun fetchLedger(issueKey: String): List<UnaddressedFinding> = runtime.fetchLedger(issueKey)
+
+  override fun issueExists(issueKey: String): Boolean = runtime.issueExists(issueKey)
 }
 
 class SQLiteTelemetryReconciliationRepository(

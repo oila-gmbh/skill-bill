@@ -27,6 +27,7 @@ internal object DatabaseSchema {
       "goal_shared_preplans",
       "goal_subtask_plans",
       "telemetry_reconciliation_state",
+      "unaddressed_findings",
     )
 
   val indexNames: Set<String> =
@@ -46,6 +47,7 @@ internal object DatabaseSchema {
       "idx_goal_planning_preparations_lookup",
       "idx_goal_subtask_plans_ordered",
       "idx_telemetry_reconciliation_completed",
+      "idx_unaddressed_findings_issue",
     )
 
   fun createBaseSchema(connection: Connection) {
@@ -92,6 +94,21 @@ internal object DatabaseSchema {
         finding_text TEXT NOT NULL,
         PRIMARY KEY (review_run_id, finding_id),
         FOREIGN KEY (review_run_id) REFERENCES review_runs(review_run_id) ON DELETE CASCADE
+      )
+      """.trimIndent(),
+      """
+      CREATE TABLE IF NOT EXISTS unaddressed_findings (
+        issue_key TEXT NOT NULL,
+        workflow_id TEXT NOT NULL,
+        subtask_id INTEGER NOT NULL,
+        review_pass_number INTEGER NOT NULL,
+        finding_ordinal INTEGER NOT NULL,
+        severity TEXT NOT NULL,
+        issue_category TEXT NOT NULL DEFAULT 'other',
+        location TEXT NOT NULL,
+        summary TEXT NOT NULL,
+        recorded_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (workflow_id, review_pass_number, finding_ordinal)
       )
       """.trimIndent(),
       """

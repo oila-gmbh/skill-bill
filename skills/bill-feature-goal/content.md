@@ -487,3 +487,7 @@ This is governed skill content that installs for all supported agents. Only the
 entry and launch mechanics differ per agent; no agent-specific orchestration is
 hardcoded — the invoking agent drives the loop through the same continuation
 contract regardless of which agent runs it.
+
+## Audit-first review and findings ledger
+
+Goal children use the audit-first order `implement -> audit -> review -> validate`; review starts only after audit is satisfied. Review runs delegated first and inline second. Blocker findings stop advancement, while non-blocker findings advance and are durably recorded in the goal-wide unaddressed-findings ledger. Retrieve the location-bearing ledger, including after goal completion, with `skill-bill goal findings --issue-key <KEY>`.

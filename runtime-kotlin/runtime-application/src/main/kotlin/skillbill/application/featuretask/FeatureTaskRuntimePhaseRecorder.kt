@@ -11,9 +11,11 @@ import skillbill.application.workflow.toRecord
 import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.error.WorkflowIssueKeyConflictError
+import skillbill.goalrunner.model.UnaddressedFinding
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.WorkflowStateRepository
 import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
+import skillbill.review.parseReviewFindings
 import skillbill.workflow.WorkflowEngine
 import skillbill.workflow.WorkflowSnapshotValidator
 import skillbill.workflow.model.WorkflowStateSnapshot
@@ -256,6 +258,27 @@ class FeatureTaskRuntimePhaseRecorder(
         ledger.map { it.toArtifactMap() },
         completionEntry.toArtifactMap(),
         FEATURE_TASK_RUNTIME_PHASE_LEDGER_LIMIT,
+      )
+      val parsedFindings = parseReviewFindings(completion.rawReviewResult)
+      val continuation = reviewArtifacts.continuation
+      val ledgerFindings = completion.findings.mapIndexed { index, finding ->
+        val parsed = parsedFindings.getOrNull(index)
+        UnaddressedFinding(
+          issueKey = continuation.issueKey,
+          subtaskId = continuation.subtaskId,
+          workflowId = request.workflowId,
+          reviewPassNumber = passNumber.toInt(),
+          findingOrdinal = index + 1,
+          severity = finding.severity,
+          issueCategory = parsed?.issueCategory ?: "other",
+          location = parsed?.location?.takeIf(String::isNotBlank) ?: "<unknown>",
+          summary = finding.text,
+        )
+      }
+      unitOfWork.unaddressedFindings.replaceLedgerForPass(
+        request.workflowId,
+        passNumber.toInt(),
+        ledgerFindings,
       )
       persistPatch(
         unitOfWork.workflowStates,

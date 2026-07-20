@@ -70,3 +70,7 @@ narrative in the return payload.
 The agent body is registered in
 `skills/bill-feature-task-prose/native-agents/agents.yaml` under the name
 `bill-feature-task-subtask-runner`.
+
+## Audit-first review and findings ledger
+
+Subtasks follow `implement -> audit -> review -> validate`, with review gated on a satisfied audit. Review is delegated first, then inline. A Blocker stops advancement; non-blockers advance and are written to the goal-wide unaddressed-findings ledger. Retrieve its location-bearing detail during or after goal execution with `skill-bill goal findings --issue-key <KEY>`.

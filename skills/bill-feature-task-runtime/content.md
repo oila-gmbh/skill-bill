@@ -273,3 +273,7 @@ rewrite the local spec file(s), and only then call `resume`. The runtime read
 path is unchanged — it still reads `<spec_path>` once and freezes invariants;
 rehydrate only guarantees the file is present first. Rehydrate is agent-side MCP
 only; the runtime gains no Linear dependency.
+
+## Audit-first review and findings ledger
+
+The phase order is `implement -> audit -> review -> validate`, and review is gated on a satisfied audit. Review runs as a delegated pass followed by an inline pass. Blockers prevent advancement; non-blockers advance and are persisted in the goal-wide unaddressed-findings ledger. Location-bearing detail is available only through `skill-bill goal findings --issue-key <KEY>`, during or after the goal.

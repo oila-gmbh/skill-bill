@@ -1176,6 +1176,10 @@ When parsing escalates to the user:
 - The user may choose to: re-run the failing step, abandon the workflow (`workflow_status: "abandoned"`), or hand-edit the artifact and resume.
 - If the user abandons, call `feature_task_prose_finished` with an appropriate `completion_status` (typically `error`) and update workflow state to `failed` with the malformed payload preserved in the artifact patch.
 
+## Audit-first review and findings ledger
+
+Run `implement -> audit -> review -> validate`; do not begin review until audit is satisfied. Execute review delegated first and inline second. Blockers stop advancement, while non-blockers advance and are recorded in the goal-wide unaddressed-findings ledger. Retrieve location-bearing detail during or after the goal with `skill-bill goal findings --issue-key <KEY>`.
+
 ## Non-Goals
 
 - Replacing the JSON `RESULT:` contract with a different return shape.

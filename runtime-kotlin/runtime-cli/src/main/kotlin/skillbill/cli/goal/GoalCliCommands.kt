@@ -10,12 +10,14 @@ import com.github.ajalt.clikt.parameters.options.default
 import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.options.multiple
 import com.github.ajalt.clikt.parameters.options.option
+import com.github.ajalt.clikt.parameters.options.required
 import com.github.ajalt.clikt.parameters.types.int
 import me.tatarka.inject.annotations.Inject
 import skillbill.agentaddon.model.AgentAddonConsumer
 import skillbill.agentaddon.model.HydratedAgentAddonSelection
 import skillbill.application.goalrunner.GoalRunner
 import skillbill.application.goalrunner.GoalRunnerStatusService
+import skillbill.application.goalrunner.UnaddressedFindingsLedgerService
 import skillbill.application.model.DEFAULT_GOAL_EVENT_SEQUENCE_START
 import skillbill.application.model.GoalRunnerResetRequest
 import skillbill.application.model.GoalRunnerResetResult
@@ -47,6 +49,7 @@ class GoalRunSubcommands(
   val status: GoalStatusCommand,
   val watch: GoalWatchCommand,
   val reset: GoalResetCommand,
+  val findings: GoalFindingsCommand,
 )
 
 @Inject
@@ -105,7 +108,12 @@ class GoalRunCommand(
   override val invokeWithoutSubcommand: Boolean = true
 
   init {
-    subcommands(goalRunSubcommands.status, goalRunSubcommands.watch, goalRunSubcommands.reset)
+    subcommands(
+      goalRunSubcommands.status,
+      goalRunSubcommands.watch,
+      goalRunSubcommands.reset,
+      goalRunSubcommands.findings,
+    )
   }
 
   override fun run() {
@@ -177,6 +185,46 @@ private fun parseCodeReviewMode(raw: String?): CodeReviewExecutionMode? = raw?.l
     CodeReviewExecutionMode.fromWire(value)
   } catch (error: IllegalArgumentException) {
     throw UsageError(error.message.orEmpty()).apply { initCause(error) }
+  }
+}
+
+@Inject
+class GoalFindingsCommand(
+  private val ledgerService: UnaddressedFindingsLedgerService,
+  private val state: CliRunState,
+) : DocumentedCliCommand("findings", "Show the goal-wide unaddressed-findings ledger.") {
+  private val issueKey by option("--issue-key", help = "Parent issue key.").required()
+
+  override fun run() {
+    val ledger = ledgerService.ledger(issueKey, state.dbOverride)
+    val payload = linkedMapOf<String, Any?>(
+      "issue_key" to ledger.issueKey,
+      "unaddressed_findings" to ledger.findings.size,
+      "severity_breakdown" to ledger.severityBreakdown,
+      "findings" to ledger.findings.map { finding ->
+        linkedMapOf(
+          "subtask_id" to finding.subtaskId,
+          "workflow_id" to finding.workflowId,
+          "review_pass_number" to finding.reviewPassNumber,
+          "finding_ordinal" to finding.findingOrdinal,
+          "severity" to finding.severity,
+          "issue_category" to finding.issueCategory,
+          "location" to finding.location,
+          "summary" to finding.summary,
+        )
+      },
+    )
+    val text = buildString {
+      appendLine("issue_key=${ledger.issueKey} unaddressed_findings=${ledger.findings.size}")
+      ledger.findings.forEach { finding ->
+        appendLine(
+          "subtask=${finding.subtaskId} pass=${finding.reviewPassNumber} " +
+            "severity=${finding.severity} category=${finding.issueCategory} " +
+            "location=${finding.location} ${finding.summary}",
+        )
+      }
+    }
+    state.completeText(text, payload)
   }
 }
 
@@ -617,6 +665,8 @@ private fun GoalRunnerRunReport.toGoalRunCliMap(): Map<String, Any?> = when (thi
     "subtasks_completed" to subtasksCompleted,
     "subtasks_pending" to subtasksPending,
     "subtasks_blocked" to subtasksBlocked,
+    "unaddressed_findings" to unaddressedFindingCount,
+    "unaddressed_severity_breakdown" to unaddressedSeverityBreakdown,
     "pull_request_status" to pullRequestStatus,
     "pull_request_url" to pullRequestUrl,
   )
@@ -669,6 +719,13 @@ private fun goalRunText(payload: Map<String, Any?>): String = buildString {
   payload["subtasks_completed"]?.let { appendLine("subtasks_completed: $it") }
   payload["subtasks_pending"]?.let { appendLine("subtasks_pending: $it") }
   payload["subtasks_blocked"]?.let { appendLine("subtasks_blocked: $it") }
+  payload["unaddressed_findings"]?.let { count ->
+    val breakdown = payload["unaddressed_severity_breakdown"] as? Map<*, *> ?: emptyMap<String, Int>()
+    appendLine(
+      "unaddressed_findings=$count blocker=${breakdown["blocker"] ?: 0} major=${breakdown["major"] ?: 0} " +
+        "minor=${breakdown["minor"] ?: 0} nit=${breakdown["nit"] ?: 0}",
+    )
+  }
   payload["pull_request_status"]?.let { appendLine("pull_request_status: $it") }
   payload["pull_request_url"]?.let { appendLine("pull_request_url: $it") }
   payload["subtask_id"]?.let { appendLine("subtask_id: $it") }

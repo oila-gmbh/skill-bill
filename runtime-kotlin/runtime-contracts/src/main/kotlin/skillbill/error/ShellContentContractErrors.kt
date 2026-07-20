@@ -573,3 +573,7 @@ class ScaffoldRollbackError(
   message: String,
   cause: Throwable? = null,
 ) : ScaffoldError(message, cause)
+
+class UnaddressedFindingsLedgerAbsentError(message: String) : ShellContentContractException(message)
+
+class InvalidUnaddressedFindingsLedgerSchemaError(message: String) : ShellContentContractException(message)
