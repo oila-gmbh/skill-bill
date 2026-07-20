@@ -45,6 +45,7 @@ import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewArtifactDecoder
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
+import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
 import java.time.Duration
 import java.time.Instant
 
@@ -343,6 +344,50 @@ class FeatureTaskRuntimePhaseRecorder(
     }
     return merged.values.toList()
   }
+
+  internal fun persistAuditGateInvalidation(workflowId: String, dbOverride: String? = null): Boolean =
+    database.transaction(dbOverride) { unitOfWork ->
+      val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
+        ?: return@transaction false
+      val artifacts = decodeArtifacts(record.artifactsJson)
+      val existingRecords = phaseRecordsFrom(artifacts)
+      val previousReview = existingRecords[FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW]
+        ?: return@transaction true
+      val tombstone = FeatureTaskRuntimePhaseRecord(
+        phaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
+        status = STATUS_RUNNING,
+        attemptCount = previousReview.attemptCount,
+        startedAt = previousReview.startedAt,
+        firstStartedAt = previousReview.firstStartedAt,
+        resolvedAgentId = REVIEW_INVALIDATION_AGENT_ID,
+      )
+      val updatedRecords = LinkedHashMap(existingRecords).apply {
+        put(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW, tombstone)
+      }
+      val patch = linkedMapOf<String, Any?>(
+        FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY to
+          updatedRecords.mapValues { (_, value) -> value.toArtifactMap() },
+      )
+      GoalSubtaskReviewArtifactDecoder.decode(artifacts)?.state?.let { state ->
+        patch[GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY] = GoalSubtaskReviewState.initial(
+          reviewBaseSha = state.reviewBaseSha,
+          baselineUntrackedPaths = state.baselineUntrackedPaths,
+          codeReviewMode = state.codeReviewMode,
+        ).toArtifactMap()
+        patch[GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY] = emptyMap<String, String>()
+      }
+      persistPatch(
+        unitOfWork.workflowStates,
+        record,
+        patch,
+        WorkflowRowAdvance(
+          currentStepId = record.currentStepId,
+          workflowStatus = record.workflowStatus,
+          stepUpdates = stepUpdatesFrom(updatedRecords),
+        ),
+      )
+      true
+    }
 
   internal fun completeGoalReviewPhase(
     completion: GoalReviewPhaseCompletionRequest,

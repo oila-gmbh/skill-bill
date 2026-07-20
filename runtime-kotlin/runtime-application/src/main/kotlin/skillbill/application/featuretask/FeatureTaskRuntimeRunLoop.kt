@@ -10,6 +10,7 @@ import skillbill.application.model.FeatureTaskRuntimeRunRequest
 import skillbill.application.workflow.repoRoot
 import skillbill.config.model.PhaseModelDirective
 import skillbill.contracts.JsonSupport
+import skillbill.error.FeatureTaskRuntimePhaseOrderViolationError
 import skillbill.error.InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
@@ -92,6 +93,15 @@ internal class FeatureTaskRuntimeRunLoop(
 
   private fun resumedReentry(): PendingReentry? {
     val (loopId, reentry) = state.latestInFlightReentry() ?: return null
+    // A durable re-entry minted under an earlier phase ordering can name a span the live topology
+    // cannot legally complete — a review_fix re-entry whose review is now gated behind an audit that
+    // never ran. Entering at its destination would step over the gating phase for the rest of the
+    // run, so the stale re-entry is dropped and the run restarts from the pipeline head, walking the
+    // already-completed phases until it reaches the gating one.
+    if (state.spanBlockedByEntryGate(reentry.span)) {
+      state.discardStaleReentry(loopId)
+      return null
+    }
     state.recordEdgeIteration(loopId, reentry.edgeIteration)
     val auditGapLoop = loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID
     val auditRepairState = if (auditGapLoop) {
@@ -126,6 +136,16 @@ internal class FeatureTaskRuntimeRunLoop(
   }
 
   fun drive() {
+    if (FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW in state.phasesRequiringDurableGateInvalidation()) {
+      check(recorder.persistAuditGateInvalidation(request.workflowId, request.dbPathOverride)) {
+        "Could not durably invalidate legacy review evidence for workflow '${request.workflowId}'."
+      }
+      state.resetInvalidatedReviewGeneration()
+      if (pendingReentry?.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID) {
+        pendingReentry = null
+        activeReentry = null
+      }
+    }
     val resumedReentry = pendingReentry
     if (resumedReentry?.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID) {
       state.auditGapPlanningContextError()?.let { reason ->
@@ -161,11 +181,7 @@ internal class FeatureTaskRuntimeRunLoop(
   }
 
   private fun advance(phaseId: String): PhaseSettlement {
-    capExhaustedOnResume(phaseId)?.let { reason ->
-      blockAt(phaseId, reason)
-      return PhaseSettlement.stop()
-    }
-    reconcileCompletedGoalReviewPass(phaseId)?.let { reason ->
+    phaseEntryBlockReason(phaseId)?.let { reason ->
       blockAt(phaseId, reason)
       return PhaseSettlement.stop()
     }
@@ -192,6 +208,33 @@ internal class FeatureTaskRuntimeRunLoop(
         PhaseSettlement.stop()
       }
       else -> PhaseSettlement.completed(phaseId, state.verdictFor(phaseId))
+    }
+  }
+
+  // Every reason the phase cannot be entered, evaluated in order and short-circuiting: the declared
+  // ordering gate, then the resume cap guard, then the goal review-pass reconciliation.
+  private fun phaseEntryBlockReason(phaseId: String): String? = entryGateBlockReason(phaseId)
+    ?: capExhaustedOnResume(phaseId)
+    ?: reconcileCompletedGoalReviewPass(phaseId)
+
+  // The phase-entry seam of the declared ordering gate. drive() can enter a phase directly from a
+  // resumed pending re-entry without ever consulting the transition function, so guarding only the
+  // transition would leave a resume hole through which a stale durable record re-enters a gated
+  // phase. Both seams evaluate the same declaration-owned predicate.
+  //
+  // The violation degrades to a durable, resumable Blocked report rather than an escaping throw:
+  // an uncaught contract exception here would leave the workflow row running with no blocked reason
+  // and skip goal-continuation outcome persistence, so the parent goal could neither resume nor
+  // report. Every other governed gate in this runtime blocks the same way.
+  private fun entryGateBlockReason(phaseId: String): String? {
+    val settledVerdicts = state.settledVerdictsByPhaseId()
+    return transitions.entryGateViolation(phaseId, settledVerdicts)?.let { gate ->
+      FeatureTaskRuntimePhaseOrderViolationError(
+        phaseId = gate.phaseId,
+        requiredPhaseId = gate.requiredPhaseId,
+        requiredVerdict = gate.requiredVerdict.wireValue,
+        observedVerdict = settledVerdicts[gate.requiredPhaseId]?.wireValue,
+      ).message
     }
   }
 
@@ -349,34 +392,48 @@ internal class FeatureTaskRuntimeRunLoop(
     }
     val edge = matchingBackwardEdge(phaseId, effectiveVerdict)
     edge?.let(::resumeInFlightReviewFix)?.let { return it }
-    val transition = FeatureTaskRuntimeTransitionFunction.nextTransition(
-      declaration = transitions,
-      currentPhaseId = phaseId,
-      verdict = effectiveVerdict,
-      edgeIterationCount = edge?.let { state.edgeIterationCount(it.loopId) } ?: 0,
-    )
-    return when (transition) {
-      is FeatureTaskRuntimeNextPhase.TerminalAdvance -> null
-      is FeatureTaskRuntimeNextPhase.TerminalBlock -> {
-        blockOnCapExhaustion(phaseId, transition)
-        null
-      }
-      is FeatureTaskRuntimeNextPhase.Next -> {
-        transition.loopId?.let { loopId ->
-          if (reentersMutatingPhase(requireNotNull(edge), transition.phaseId) &&
-            !establishRemediationCheckpoint(phaseId)
-          ) {
-            return null
-          }
-          if (loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID &&
-            !authoritativeAuditRepairPlanMatches(phaseId)
-          ) {
-            blockAt(
-              phaseId,
-              "The accepted audit repair plan was not durably readable and identical before the audit_gap edge.",
-            )
-            return null
-          }
+    val transition = runCatching {
+      FeatureTaskRuntimeTransitionFunction.nextTransition(
+        declaration = transitions,
+        currentPhaseId = phaseId,
+        verdict = effectiveVerdict,
+        edgeIterationCount = edge?.let { state.edgeIterationCount(it.loopId) } ?: 0,
+        settledVerdictsByPhaseId = state.settledVerdictsByPhaseId(),
+      )
+    }.getOrElse { error ->
+      if (error !is FeatureTaskRuntimePhaseOrderViolationError) throw error
+      blockAt(error.phaseId, error.message.orEmpty())
+      return null
+    }
+    return transitionTarget(phaseId, edge, effectiveVerdict, transition)
+  }
+
+  private fun transitionTarget(
+    phaseId: String,
+    edge: FeatureTaskRuntimeBackwardEdge?,
+    effectiveVerdict: FeatureTaskRuntimeVerdict,
+    transition: FeatureTaskRuntimeNextPhase,
+  ): String? = when (transition) {
+    is FeatureTaskRuntimeNextPhase.TerminalAdvance -> null
+    is FeatureTaskRuntimeNextPhase.TerminalBlock -> {
+      blockOnCapExhaustion(phaseId, transition)
+      null
+    }
+    is FeatureTaskRuntimeNextPhase.Next -> {
+      val loopId = transition.loopId
+      when {
+        loopId == null -> transition.phaseId
+        reentersMutatingPhase(requireNotNull(edge), transition.phaseId) &&
+          !establishRemediationCheckpoint(phaseId) -> null
+        loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID &&
+          !authoritativeAuditRepairPlanMatches(phaseId) -> {
+          blockAt(
+            phaseId,
+            "The accepted audit repair plan was not durably readable and identical before the audit_gap edge.",
+          )
+          null
+        }
+        else -> {
           recordBackwardEdge(
             edge = edge,
             destinationPhaseId = transition.phaseId,
@@ -384,8 +441,8 @@ internal class FeatureTaskRuntimeRunLoop(
             edgeIteration = requireNotNull(transition.edgeIteration),
             verdict = effectiveVerdict,
           )
+          transition.phaseId
         }
-        transition.phaseId
       }
     }
   }
@@ -399,15 +456,8 @@ internal class FeatureTaskRuntimeRunLoop(
   private fun reentersMutatingPhase(edge: FeatureTaskRuntimeBackwardEdge, destinationPhaseId: String): Boolean =
     spanBetween(destinationPhaseId, edge.fromPhaseId).any(FeatureTaskRuntimePhaseWorkflowDefinition::isMutatingPhase)
 
-  private fun spanBetween(destinationPhaseId: String, sourcePhaseId: String): List<String> {
-    val destinationIndex = transitions.forwardPhaseIds.indexOf(destinationPhaseId)
-    val sourceIndex = transitions.forwardPhaseIds.indexOf(sourcePhaseId)
-    return if (destinationIndex in 0..sourceIndex) {
-      transitions.forwardPhaseIds.subList(destinationIndex, sourceIndex + 1)
-    } else {
-      listOf(destinationPhaseId)
-    }
-  }
+  private fun spanBetween(destinationPhaseId: String, sourcePhaseId: String): List<String> =
+    transitions.spanBetween(destinationPhaseId, sourcePhaseId)
 
   private fun establishRemediationCheckpoint(precedingPhaseId: String): Boolean {
     val branch = resolvedBranch ?: return true
@@ -820,6 +870,14 @@ internal class FeatureTaskRuntimeRunLoop(
             FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN,
             FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN,
           ),
+        )
+      } else if (
+        phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW &&
+        reentry?.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID
+      ) {
+        declaration.copy(
+          consumedUpstreamPhaseIds = declaration.consumedUpstreamPhaseIds +
+            FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX,
         )
       } else {
         declaration

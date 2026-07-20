@@ -47,6 +47,13 @@ data class FeatureTaskRuntimeVerdict(
      */
     val GAPS_FOUND: FeatureTaskRuntimeVerdict = FeatureTaskRuntimeVerdict("gaps_found")
 
+    /**
+     * The closed audit vocabulary. [fromWire] deliberately accepts any non-blank value so durable
+     * records round-trip, so a consumer that acts on an audit verdict — the `review` entry gate —
+     * matches against this set rather than trusting an arbitrary emitted string.
+     */
+    val AUDIT_VERDICTS: Set<FeatureTaskRuntimeVerdict> = setOf(SATISFIED, GAPS_FOUND)
+
     fun fromWire(value: String): FeatureTaskRuntimeVerdict =
       value.takeIf(String::isNotBlank)?.let(::FeatureTaskRuntimeVerdict)
         ?: throw InvalidWorkflowStateSchemaError(

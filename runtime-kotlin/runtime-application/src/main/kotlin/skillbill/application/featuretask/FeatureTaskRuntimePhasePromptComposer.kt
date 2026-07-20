@@ -156,12 +156,20 @@ object FeatureTaskRuntimePhasePromptComposer {
       }
     }
 
+  // The forward phase order as prose, derived from the single topology source so the briefing can
+  // never drift from the graph the runtime actually drives. Loop-only phases are excluded because a
+  // clean run never launches them.
+  private val forwardPhaseOrder: String =
+    FeatureTaskRuntimePhaseWorkflowDefinition.definition.stepIds
+      .filterNot { it in FeatureTaskRuntimePhaseWorkflowDefinition.transitions.loopOnlyPhaseIds }
+      .joinToString(" -> ")
+
   private fun header(issueKey: String, phaseId: String): String {
     val label = FeatureTaskRuntimePhaseWorkflowDefinition.definition.stepLabels[phaseId] ?: phaseId
     val directive = phaseDirectives[phaseId] ?: error("No phase directive for runtime phase '$phaseId'.")
     return """
       You are executing exactly one phase of the EXPERIMENTAL skill-bill feature-task-runtime
-      loop (preplan -> plan -> implement -> review -> audit -> validate -> write_history -> commit_push -> pr)
+      loop ($forwardPhaseOrder)
       for issue $issueKey. The runtime owns the loop; do not run other phases, do not open
       or continue any other skill-bill workflow, and do not call `skill-bill workflow continue`.
 

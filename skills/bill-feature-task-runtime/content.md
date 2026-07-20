@@ -8,7 +8,7 @@ description: Use when running a single governed feature spec through the runtime
 
 `bill-feature-task-runtime` is the runtime-backed mode for running a single
 governed spec through the runtime-driven feature-task phase loop
-(`plan -> implement -> review -> audit -> validate`) owned by the local
+(`plan -> implement -> audit -> review -> validate`) owned by the local
 `skill-bill feature-task` driver.
 
 Durable workflow rows use the public workflow identity `bill-feature-task` with

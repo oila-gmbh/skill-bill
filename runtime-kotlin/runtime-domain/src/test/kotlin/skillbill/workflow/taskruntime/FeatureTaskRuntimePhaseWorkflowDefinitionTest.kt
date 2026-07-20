@@ -4,9 +4,12 @@ import skillbill.contracts.workflow.WORKFLOW_STATE_CONTRACT_VERSION
 import skillbill.workflow.implement.FeatureImplementWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCapExhaustionBehavior
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseEntryGate
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
@@ -35,9 +38,9 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN,
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN,
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT,
+        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT,
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX,
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
-        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT,
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE,
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_WRITE_HISTORY,
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH,
@@ -50,9 +53,9 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN to "Phase 1: Pre-plan",
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN to "Phase 2: Plan",
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT to "Phase 3: Implement",
-        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX to "Phase 3b: Implement Fix",
-        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW to "Phase 4: Code Review",
-        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT to "Phase 5: Completeness Audit",
+        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT to "Phase 4: Completeness Audit",
+        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX to "Phase 4b: Implement Fix",
+        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW to "Phase 5: Code Review",
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE to "Phase 6: Quality Validation",
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_WRITE_HISTORY to "Phase 7: Boundary History",
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH to "Phase 8: Commit and Push",
@@ -79,16 +82,18 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
       dependenciesOf(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT),
     )
     assertEquals(
-      listOf(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT),
-      dependenciesOf(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW),
-    )
-    assertEquals(
       listOf(
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN,
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT,
-        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
       ),
       dependenciesOf(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT),
+    )
+    assertEquals(
+      listOf(
+        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT,
+        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT,
+      ),
+      dependenciesOf(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW),
     )
     assertEquals(
       listOf(
@@ -149,7 +154,7 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
     assertEquals(def.PHASE_IMPLEMENT_FIX, edge.destinationPhaseId)
     assertEquals("review_fix", edge.loopId)
     assertEquals(1, edge.perEdgeCap)
-    assertEquals(FeatureTaskRuntimeCapExhaustionBehavior.BLOCK, edge.capExhaustionBehavior)
+    assertEquals(FeatureTaskRuntimeCapExhaustionBehavior.ADVANCE, edge.capExhaustionBehavior)
     assertEquals(FeatureTaskRuntimeVerdict.CHANGES_REQUESTED, edge.triggeringVerdict)
     // The backward destination precedes its source so the reopened span includes review (re-review leg).
     val ids = transitions.forwardPhaseIds
@@ -207,6 +212,47 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
       emptyList(),
       declarations.getValue(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN).derivedContextKeys,
     )
+  }
+
+  @Test
+  fun `the pipeline is audit-first and review is gated on a satisfied audit`() {
+    val def = FeatureTaskRuntimePhaseWorkflowDefinition
+    val ids = def.transitions.forwardPhaseIds
+    assertTrue(ids.indexOf(def.PHASE_IMPLEMENT) < ids.indexOf(def.PHASE_AUDIT))
+    assertTrue(ids.indexOf(def.PHASE_AUDIT) < ids.indexOf(def.PHASE_REVIEW))
+    assertTrue(ids.indexOf(def.PHASE_REVIEW) < ids.indexOf(def.PHASE_VALIDATE))
+    val gate = def.transitions.entryGates.single()
+    assertEquals(def.PHASE_REVIEW, gate.phaseId)
+    assertEquals(def.PHASE_AUDIT, gate.requiredPhaseId)
+    assertEquals(FeatureTaskRuntimeVerdict.SATISFIED, gate.requiredVerdict)
+  }
+
+  @Test
+  fun `the review_fix span excludes audit and the audit_gap span excludes review`() {
+    val def = FeatureTaskRuntimePhaseWorkflowDefinition
+    val transitions = def.transitions
+    val reviewFix = transitions.backwardEdges.single { it.loopId == def.REVIEW_FIX_LOOP_ID }
+    val auditGap = transitions.backwardEdges.single { it.loopId == def.AUDIT_GAP_LOOP_ID }
+    val reviewFixSpan = transitions.spanBetween(reviewFix.destinationPhaseId, reviewFix.fromPhaseId)
+    val auditGapSpan = transitions.spanBetween(auditGap.destinationPhaseId, auditGap.fromPhaseId)
+    assertEquals(listOf(def.PHASE_IMPLEMENT_FIX, def.PHASE_REVIEW), reviewFixSpan)
+    assertEquals(listOf(def.PHASE_IMPLEMENT, def.PHASE_AUDIT), auditGapSpan)
+    // No review outcome can reopen the audit repair plan, and no audit gap loop re-runs review.
+    assertTrue(def.PHASE_AUDIT !in reviewFixSpan)
+    assertTrue(def.PHASE_REVIEW !in auditGapSpan)
+  }
+
+  @Test
+  fun `an entry gate whose required phase does not precede the gated phase fails at construction`() {
+    val error = assertFailsWith<IllegalArgumentException> {
+      FeatureTaskRuntimeTransitionDeclaration(
+        forwardPhaseIds = listOf("review", "audit"),
+        entryGates = listOf(
+          FeatureTaskRuntimePhaseEntryGate("review", "audit", FeatureTaskRuntimeVerdict.SATISFIED),
+        ),
+      )
+    }
+    assertTrue(error.message.orEmpty().contains("precede"))
   }
 
   @Test

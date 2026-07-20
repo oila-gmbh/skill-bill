@@ -127,6 +127,23 @@ class InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError(
   cause,
 )
 
+/**
+ * Surfaced when a feature-task-runtime path would enter a gated phase before its gating phase
+ * settled with the required verdict — for example entering `review` before `audit` reached
+ * `satisfied`. The message names the attempted phase, the gating phase, the required verdict, and
+ * the observed state so the loud failure is diagnosable without reading the topology.
+ */
+class FeatureTaskRuntimePhaseOrderViolationError(
+  val phaseId: String,
+  val requiredPhaseId: String,
+  val requiredVerdict: String,
+  val observedVerdict: String?,
+) : ShellContentContractException(
+  "Feature-task-runtime phase '$phaseId' is unreachable until '$requiredPhaseId' settles with the verdict " +
+    "'$requiredVerdict', but it settled with " +
+    "'${observedVerdict ?: "<no completed verdict>"}'; the run fails loudly rather than silently advancing.",
+)
+
 class InvalidFeatureTaskExecutionIdentitySchemaError(
   val sourceLabel: String,
   val reason: String,

@@ -1,9 +1,7 @@
 package skillbill.application.featuretask
 
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
-import skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutput
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -35,21 +33,14 @@ class FeatureTaskRuntimeAuditVerdictCoherenceTest {
         "failing_criteria" to listOf(mapOf("acceptance_criterion_ref" to "AC-001", "message" to "unmet")),
       ),
     )
-    val output = FeatureTaskRuntimePhaseOutput(
-      phaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT,
-      iteration = 1,
-      payload = "{}",
-      normalizedOutput = NormalizedFeatureTaskRuntimePhaseOutput(canonicalJson = "{}", envelope = envelope),
-    )
-
     assertEquals(
       FeatureTaskRuntimeVerdict.ADVANCE,
       FeatureTaskRuntimeOutputVerification.verdictFor(
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT,
-        output,
+        envelope,
       ),
     )
-    assertEquals(emptyList(), FeatureTaskRuntimeOutputVerification.unmetAuditCriteria(output))
+    assertEquals(emptyList(), FeatureTaskRuntimeOutputVerification.unmetAuditCriteria(envelope))
   }
 
   @Test

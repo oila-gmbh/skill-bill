@@ -55,9 +55,11 @@ class FeatureTaskRuntimeHandoffContractTest {
         FeatureTaskRuntimePhaseOutput("validate", iteration = 1, payload = "validate-v1"),
       )
     val resolved = FeatureTaskRuntimeHandoffContract.resolveUpstreamOutputs(auditDeclaration, recorded)
-    assertEquals(setOf("plan", "implement", "review"), resolved.outputsByPhaseId.keys)
+    assertEquals(setOf("plan", "implement"), resolved.outputsByPhaseId.keys)
     assertEquals("impl-v2", resolved.outputsByPhaseId.getValue("implement").payload)
     assertTrue("validate" !in resolved.outputsByPhaseId)
+    // Audit runs before review under the audit-first order and no longer consumes review output.
+    assertTrue("review" !in resolved.outputsByPhaseId)
   }
 
   @Test

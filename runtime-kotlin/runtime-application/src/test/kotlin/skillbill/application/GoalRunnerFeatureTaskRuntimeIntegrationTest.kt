@@ -210,8 +210,10 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
     val reviewCompletions = runtime.recorder.loadPhaseLedger(workflowId).orEmpty()
       .filter { it.action == skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction.COMPLETE }
       .filter { it.phaseId == "review" }
-    assertEquals(2, reviewCompletions.size)
-    assertEquals(1, reviewCompletions.count { it.loopId == "audit_gap" && it.edgeIteration == 1 })
+    // The goal child resolves the same audit-first graph as a standalone run: the audit_gap loop
+    // reopens only [implement, audit], so review completes exactly once, outside the loop.
+    assertEquals(1, reviewCompletions.size)
+    assertEquals(0, reviewCompletions.count { it.loopId == "audit_gap" })
   }
 
   @Test

@@ -36,6 +36,16 @@ Areas: runtime-kotlin/runtime-{application,cli,domain,infra-fs,infra-sqlite,mcp}
 Feature flag: N/A
 Acceptance criteria: subtask 1: 5/5 implemented
 
+## [2026-07-19] SKILL-135 audit-first runtime phase graph (subtask 1)
+Areas: runtime-kotlin/runtime-{application,cli,contracts,domain,infra-fs,mcp}, orchestration/contracts
+- Feature-task runtime now completes the audit and reaches `satisfied` before review is reachable; audit gaps retain the existing `[implement, audit]` repair cycle, while review fixes stay in `[implement_fix, review]` and never reopen audit.
+- A declarative phase-entry gate plus typed `FeatureTaskRuntimePhaseOrderViolationError` loud-fails every attempted review entry without a satisfied audit, including transition and durable phase-entry seams. reusable
+- Standalone and goal-child execution derive prompt order, transition spans, and durable resume targets from the same live workflow topology, preventing stale sequence reconstruction. reusable
+- Review approval, changes-requested remediation, and pass exhaustion now advance toward validation or block; the existing audit repair-plan identifiers, reconciliation, cumulative gap ledger, and non-progress detection remain unchanged.
+- Workflow contract versioning and transition, rejection, prompt, standalone, goal-child, and resume coverage lock the reordered graph; legacy durable workflow records require migration or removal by design.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
 ## [2026-07-18] SKILL-133 unified manifest authority
 Areas: runtime-kotlin/runtime-{application,domain,infra-fs}, skills/bill-feature*
 - `decomposition-manifest.yaml` is now the sole prepared-feature authority marker; bare specs remain preparation intake, while continuation lookup stays authoritative before discovery or artifact writes.

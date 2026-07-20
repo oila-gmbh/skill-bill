@@ -4,6 +4,7 @@ import skillbill.application.model.FeatureTaskRuntimeRunRequest
 import skillbill.contracts.JsonSupport
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 
 internal const val STATUS_RUNNING = "running"
 internal const val STATUS_COMPLETED = "completed"
@@ -34,6 +35,11 @@ internal fun transitionsFor(request: FeatureTaskRuntimeRunRequest): FeatureTaskR
       backwardEdges = FeatureTaskRuntimePhaseWorkflowDefinition.transitions.backwardEdges,
       loopOnlyPhaseIds = FeatureTaskRuntimePhaseWorkflowDefinition.transitions.loopOnlyPhaseIds
         .filter { it in phases }.toSet(),
+      // Gates whose endpoints both survive the goal-continuation truncation. A gate naming a phase
+      // the resolved pipeline dropped would fail the declaration's precedes-invariant here, outside
+      // the runner's failure handling, so a truncation point turns into a crash rather than a gate.
+      entryGates = FeatureTaskRuntimePhaseWorkflowDefinition.transitions.entryGates
+        .filter { it.phaseId in phases && it.requiredPhaseId in phases },
     )
   }
 
@@ -72,25 +78,37 @@ internal fun reviewVerificationSignalGateReason(phaseId: String, outputMap: Map<
   } else {
     "Review phase reported 'completed' without a verification signal: the output must carry either a " +
       "top-level 'verdict' or a 'produced_outputs.findings' array (an explicit empty array affirms no " +
-      "blocking findings). A review that emits neither cannot advance past a possible Blocker; " +
-      "the schema gate fails rather than silently advancing to audit."
+      "blocking findings). A review that emits neither cannot advance past a possible Blocker/Major; " +
+      "the schema gate fails rather than silently advancing to validation."
   }
 }
 
 internal fun auditVerificationSignalGateReason(phaseId: String, outputMap: Map<String, Any?>): String? {
   if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT) return null
   FeatureTaskRuntimeOutputVerification.auditGapPayloadError(outputMap)?.let { return it }
-  val hasVerdict = (outputMap[FeatureTaskRuntimeVerificationSignalKeys.VERDICT] as? String)?.isNotBlank() == true
+  val wireVerdict = (outputMap[FeatureTaskRuntimeVerificationSignalKeys.VERDICT] as? String)
+    ?.takeIf(String::isNotBlank)
   val producedOutputs = outputMap["produced_outputs"] as? Map<*, *>
   val criteriaKey = FeatureTaskRuntimeVerificationSignalKeys.AUDIT_UNMET_CRITERIA
   val hasCriteriaArray = producedOutputs?.containsKey(criteriaKey) == true && producedOutputs[criteriaKey] is List<*>
-  return if (hasVerdict || hasCriteriaArray) {
-    null
-  } else {
-    "Audit phase reported 'completed' without a verification signal: the output must carry either a " +
-      "top-level 'verdict' or a 'produced_outputs.unmet_criteria' array (an explicit empty array affirms " +
-      "every acceptance criterion is met). An audit that emits neither cannot advance past a possibly-unmet " +
-      "criterion; the schema gate fails rather than silently advancing to validate."
+  if (hasCriteriaArray) return null
+  val auditVocabulary = FeatureTaskRuntimeVerdict.AUDIT_VERDICTS.joinToString("', '") { it.wireValue }
+  // Without a criteria array the wire verdict is the only decidable signal, and the review entry gate
+  // matches the closed audit vocabulary. An off-vocabulary verdict would settle as a completed audit
+  // that can never satisfy the gate, and the gating phase is not itself invalidated, so the run would
+  // wedge unrecoverably. Failing the schema gate makes it a bounded, in-band retry instead.
+  return when {
+    wireVerdict == null ->
+      "Audit phase reported 'completed' without a verification signal: the output must carry either a " +
+        "top-level 'verdict' or a 'produced_outputs.unmet_criteria' array (an explicit empty array affirms " +
+        "every acceptance criterion is met). An audit that emits neither cannot advance past a possibly-unmet " +
+        "criterion; the schema gate fails rather than silently advancing past audit."
+    FeatureTaskRuntimeVerdict.fromWire(wireVerdict) !in FeatureTaskRuntimeVerdict.AUDIT_VERDICTS ->
+      "Audit phase reported 'completed' with the off-vocabulary verdict '$wireVerdict' and no " +
+        "'produced_outputs.unmet_criteria' array. With no criteria array the verdict is the only decidable " +
+        "signal and it gates entry into review, so it must be one of '$auditVocabulary' — or emit the " +
+        "criteria array (an explicit empty array affirms every acceptance criterion is met)."
+    else -> null
   }
 }
 

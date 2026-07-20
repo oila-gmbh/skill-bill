@@ -397,11 +397,11 @@ class FeatureTaskRuntimeRunnerTest {
     assertEquals("write_history", blocked.lastIncompletePhase)
     assertContains(blocked.blockedReason, "does not participate in a fix loop")
     assertEquals(
-      listOf("preplan", "plan", "implement", "review", "audit", "validate"),
+      listOf("preplan", "plan", "implement", "audit", "review", "validate"),
       blocked.completedPhaseIds,
     )
     assertEquals(
-      listOf("preplan", "plan", "implement", "review", "audit", "validate", "write_history"),
+      listOf("preplan", "plan", "implement", "audit", "review", "validate", "write_history"),
       harness.launchedPhaseOrder(),
     )
   }
@@ -555,18 +555,20 @@ class FeatureTaskRuntimeRunnerTest {
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
     assertEquals(
-      listOf("review", "audit", "validate", "write_history", "commit_push", "pr"),
+      listOf("audit", "review", "validate", "write_history", "commit_push", "pr"),
       harness.launchedPhaseOrder(),
     )
-    assertEquals(listOf("review", "audit", "validate", "write_history", "commit_push", "pr"), harness.launchOrder())
+    assertEquals(listOf("audit", "review", "validate", "write_history", "commit_push", "pr"), harness.launchOrder())
 
     val briefings = harness.recorder.loadPhaseBriefings(WORKFLOW_ID).orEmpty()
-    val reviewBriefing = requireNotNull(briefings["review"]) { "review briefing must be persisted" }
-    assertEquals(IMPLEMENT_OUTPUT, reviewBriefing.upstreamOutputsByPhaseId["implement"])
     val auditBriefing = requireNotNull(briefings["audit"]) { "audit briefing must be persisted" }
     assertEquals(PLAN_OUTPUT, auditBriefing.upstreamOutputsByPhaseId["plan"])
     assertEquals(IMPLEMENT_OUTPUT, auditBriefing.upstreamOutputsByPhaseId["implement"])
-    assertEquals(VALID_REVIEW_OUTPUT, auditBriefing.upstreamOutputsByPhaseId["review"])
+    // Audit runs before review, so it no longer carries any review output.
+    assertFalse(auditBriefing.upstreamOutputsByPhaseId.containsKey("review"))
+    val reviewBriefing = requireNotNull(briefings["review"]) { "review briefing must be persisted" }
+    assertEquals(IMPLEMENT_OUTPUT, reviewBriefing.upstreamOutputsByPhaseId["implement"])
+    assertEquals(VALID_AUDIT_OUTPUT, reviewBriefing.upstreamOutputsByPhaseId["audit"])
     val historyBriefing = requireNotNull(briefings["write_history"]) { "history briefing must be persisted" }
     assertEquals(IMPLEMENT_OUTPUT, historyBriefing.upstreamOutputsByPhaseId["implement"])
     val commitBriefing = requireNotNull(briefings["commit_push"]) { "commit briefing must be persisted" }
@@ -584,7 +586,7 @@ class FeatureTaskRuntimeRunnerTest {
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
     assertEquals(
-      listOf("plan", "implement", "review", "audit", "validate", "write_history", "commit_push", "pr"),
+      listOf("plan", "implement", "audit", "review", "validate", "write_history", "commit_push", "pr"),
       harness.launchedPhaseOrder(),
     )
     assertTrue(harness.launchedPhaseOrder().none { it == "preplan" })
@@ -658,7 +660,7 @@ class FeatureTaskRuntimeRunnerTest {
     harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), PLAN_OUTPUT)
     harness.seedPhase("implement", "completed", 1, phaseAgent("implement"), IMPLEMENT_OUTPUT)
     harness.seedPhase("review", "completed", 1, phaseAgent("review"), VALID_OUTPUT)
-    harness.seedPhase("audit", "completed", 1, phaseAgent("audit"), VALID_OUTPUT)
+    harness.seedPhase("audit", "completed", 1, phaseAgent("audit"), VALID_AUDIT_OUTPUT)
     harness.seedPhase("validate", "completed", 1, phaseAgent("validate"), VALID_OUTPUT)
     harness.seedBlockedPhase("write_history", attemptCount = 1, phaseAgent("write_history"), "history gate failed")
 
@@ -676,7 +678,7 @@ class FeatureTaskRuntimeRunnerTest {
     harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), PLAN_OUTPUT)
     harness.seedPhase("implement", "completed", 1, phaseAgent("implement"), IMPLEMENT_OUTPUT)
     harness.seedPhase("review", "completed", 1, phaseAgent("review"), VALID_OUTPUT)
-    harness.seedPhase("audit", "completed", 1, phaseAgent("audit"), VALID_OUTPUT)
+    harness.seedPhase("audit", "completed", 1, phaseAgent("audit"), VALID_AUDIT_OUTPUT)
     harness.seedBlockedPhase("validate", attemptCount = 1, phaseAgent("validate"), "validation gate failed")
 
     val report = harness.runner.run(harness.request())
@@ -905,17 +907,19 @@ class FeatureTaskRuntimeRunnerTest {
   @Test
   fun `missing required upstream output blocks loudly without launching the phase`() {
     val harness = runnerHarness()
-    // implement is recorded complete but its output artifact is absent (corrupt
-    // durable state), so review must loud-fail rather than launch on a missing upstream.
+    // implement is recorded complete but its output artifact is absent (corrupt durable state), so
+    // the first phase consuming it must loud-fail rather than launch on a missing upstream. Under
+    // the audit-first order that phase is audit, and review is never reached at all.
     harness.seedPhase("plan", "completed", 1, INVOKED_AGENT, PLAN_OUTPUT)
     harness.seedPhase("implement", "completed", 1, INVOKED_AGENT, outputArtifact = null)
 
     val report = harness.runner.run(harness.request())
 
     val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
-    assertEquals("review", blocked.lastIncompletePhase)
+    assertEquals("audit", blocked.lastIncompletePhase)
     assertContains(blocked.blockedReason, "implement")
     assertContains(blocked.blockedReason, "blind")
+    assertTrue(harness.launchOrder().none { it == "audit" })
     assertTrue(harness.launchOrder().none { it == "review" })
   }
 
@@ -1252,7 +1256,7 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
 
     assertEquals("SMALL", resumed.featureSize)
     assertEquals(
-      listOf("review", "audit", "validate", "write_history", "commit_push", "pr"),
+      listOf("audit", "review", "validate", "write_history", "commit_push", "pr"),
       harness.launchedPhaseOrder(),
     )
     val reviewPrompt = requireNotNull(harness.launcher.requests.first().skillRunRequest.promptOverride)
@@ -1636,7 +1640,7 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
     harness.runner.run(
       harness.request().copy(
         transitionsOverride = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration(
-          forwardPhaseIds = listOf("preplan", "plan", "implement", "review"),
+          forwardPhaseIds = listOf("preplan", "plan", "implement", "audit", "review"),
           backwardEdges = emptyList(),
         ),
       ),
@@ -2386,6 +2390,9 @@ class FeatureTaskRuntimeReviewFixLoopTest {
     harness.seedPhase("preplan", "completed", 1, INVOKED_AGENT, PREPLAN_OUTPUT)
     harness.seedPhase("plan", "completed", 1, INVOKED_AGENT, PLAN_OUTPUT)
     harness.seedPhase("implement", "completed", 1, INVOKED_AGENT, IMPLEMENT_OUTPUT)
+    // Review is reachable only behind a satisfied audit, so a durable record that already reached
+    // review necessarily carries one.
+    harness.seedPhase("audit", "completed", 1, INVOKED_AGENT, auditSatisfiedOutput())
     harness.seedReviewPhase("completed", 1, reviewFindingsOutput(changesRequested = true), 1)
     harness.seedLoopEdge("implement_fix", "review_fix", 1)
 
@@ -2440,7 +2447,7 @@ class FeatureTaskRuntimeReviewFixLoopTest {
 
   // (j) AC1/SKILL-85-F-003: a review output carrying NEITHER a structured verdict NOR a findings array
   // is missing every verification signal; it must fail loudly through the schema gate rather than
-  // silently advancing to audit (prose alone cannot advance past a possible Blocker/Major).
+  // silently advancing to validation (prose alone cannot advance past a possible Blocker/Major).
   @Test
   fun `m1 review with neither verdict nor findings blocks rather than silently advancing`() {
     val harness = runnerHarness(
@@ -2455,8 +2462,8 @@ class FeatureTaskRuntimeReviewFixLoopTest {
     val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
     assertEquals("review", blocked.lastIncompletePhase)
     assertContains(blocked.blockedReason, "verification signal")
-    // It never advanced to audit on the missing signal.
-    assertTrue(harness.launchedPromptPhaseOrder().none { it == "audit" })
+    // It never advanced past review on the missing signal. Audit already ran — it precedes review.
+    assertTrue(harness.launchedPromptPhaseOrder().none { it == "validate" })
   }
 }
 
@@ -3214,7 +3221,7 @@ private const val PLAN_OUTPUT = """{"plan":"do-the-thing"}"""
 internal const val IMPLEMENT_OUTPUT = """{"implement":"done"}"""
 
 internal val ALL_PHASES =
-  listOf("preplan", "plan", "implement", "review", "audit", "validate", "write_history", "commit_push", "pr")
+  listOf("preplan", "plan", "implement", "audit", "review", "validate", "write_history", "commit_push", "pr")
 private val NON_FILE_MUTATING_PHASES = setOf("preplan", "plan")
 
 // A distinct invoking agent per phase so a captured launch request is
@@ -3719,7 +3726,7 @@ private val PLAN_FIX_CYCLE = skillbill.workflow.taskruntime.model.FeatureTaskRun
 private const val IMPLEMENT_FIX_CAP = 2
 
 private val IMPLEMENT_FIX_CYCLE = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration(
-  forwardPhaseIds = listOf("preplan", "plan", "implement", "review"),
+  forwardPhaseIds = listOf("preplan", "plan", "implement", "audit", "review"),
   backwardEdges = listOf(
     skillbill.workflow.taskruntime.model.FeatureTaskRuntimeBackwardEdge(
       fromPhaseId = "review",
