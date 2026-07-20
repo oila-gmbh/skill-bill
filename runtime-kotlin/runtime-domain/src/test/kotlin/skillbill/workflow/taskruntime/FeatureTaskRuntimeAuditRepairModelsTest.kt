@@ -151,7 +151,7 @@ class FeatureTaskRuntimeAuditRepairModelsTest {
 
   @Test
   fun `multi node dependency cycles fail loudly`() {
-    assertFailsWith<IllegalArgumentException> {
+    val error = assertFailsWith<IllegalArgumentException> {
       plan(
         listOf(
           item("ac-001-gap-1-item-1", listOf("ac-001-gap-1-item-3")),
@@ -160,6 +160,12 @@ class FeatureTaskRuntimeAuditRepairModelsTest {
         ),
       )
     }
+
+    assertTrue(
+      error.message.orEmpty().contains("must be acyclic (cycle at"),
+      "a cycle must be rejected by cycle detection; every cycle also breaks serialized ordering, so " +
+        "asserting the message is what keeps the ordering rule from standing in for acyclicity",
+    )
   }
 
   @Test
@@ -216,7 +222,7 @@ class FeatureTaskRuntimeAuditRepairModelsTest {
 
   @Test
   fun `dependency cycles fail loudly`() {
-    assertFailsWith<IllegalArgumentException> {
+    val error = assertFailsWith<IllegalArgumentException> {
       plan(
         listOf(
           item("ac-001-gap-1-item-1", listOf("ac-001-gap-1-item-2")),
@@ -224,6 +230,8 @@ class FeatureTaskRuntimeAuditRepairModelsTest {
         ),
       )
     }
+
+    assertTrue(error.message.orEmpty().contains("must be acyclic (cycle at"))
   }
 
   @Test

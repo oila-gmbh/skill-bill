@@ -3,12 +3,14 @@ package skillbill.application
 import skillbill.application.featuretask.FeatureTaskRuntimeStatusService
 import skillbill.application.model.FeatureTaskRuntimeRunReport
 import skillbill.application.model.FeatureTaskRuntimeStatusRequest
+import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
@@ -277,11 +279,38 @@ class FeatureTaskRuntimeAuditGapLoopTest {
     val repairState = requireNotNull(harness.recorder.loadAuditRepairState(WORKFLOW_ID))
     assertEquals(
       listOf("ac-002-gap-1", "ac-003-gap-1"),
-      repairState.unresolvedGapLedger.unresolvedGaps.map { it.gapId }.sorted(),
-      "the earlier unresolved gap must survive alongside the newly reported one",
+      repairState.unresolvedGapLedger.unresolvedGaps.map { it.gapId },
+      "the carried gap must keep its durable ledger position ahead of the newly reported one, which the " +
+        "second plan deliberately lists first; rebuilding the ledger from the latest plan alone would invert it",
     )
     assertEquals(1, repairState.progress.recurringGapCount)
     assertEquals(1, repairState.progress.newGapCount)
+  }
+
+  @Test
+  fun `a recurring gap dropped from the latest plan fails loudly instead of closing silently`() {
+    var auditLaunches = 0
+    val harness = runnerHarness(
+      launcher = RuntimeRecordingLauncher { request ->
+        when (val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))) {
+          "audit" -> {
+            auditLaunches += 1
+            facts(if (auditLaunches > 1) auditDroppedRecurringGapOutput() else auditGapsOutput())
+          }
+          else -> facts(validJsonOutput(phaseId))
+        }
+      },
+    )
+
+    val error = assertFailsWith<InvalidWorkflowStateSchemaError> { harness.runner.run(harness.request()) }
+
+    assertContains(error.message.orEmpty(), "Recurring gaps must retain their identities")
+    val repairState = requireNotNull(harness.recorder.loadAuditRepairState(WORKFLOW_ID))
+    assertEquals(
+      listOf("ac-002-gap-1"),
+      repairState.unresolvedGapLedger.unresolvedGaps.map { it.gapId },
+      "the rejected audit must not have closed the still-unresolved gap in durable state",
+    )
   }
 
   // (f) AC5: M1 and M2 compose with independent counters. The re-run after an audit gap passes through
@@ -459,13 +488,29 @@ internal fun auditTwoGapsOutput(): String = """
     "verdict": "gaps_found",
     "produced_outputs": {
       "unmet_criteria": [
-        {"acceptance_criterion_ref":"AC-002","message": "$AUDIT_GAP_MESSAGE"},
-        {"acceptance_criterion_ref":"AC-003","message": "$AUDIT_GAP_MESSAGE"}
+        {"acceptance_criterion_ref":"AC-003","message": "$AUDIT_GAP_MESSAGE"},
+        {"acceptance_criterion_ref":"AC-002","message": "$AUDIT_GAP_MESSAGE"}
       ],
       "prior_gap_dispositions":[{"gap_id":"ac-002-gap-1","status":"recurring","evidence":{"observation":"recurrence_verified","artifact_ref":"runtime-kotlin","check_ref":"AC-002"}}],
       "audit_repair_plan": {
         "contract_version":"0.2",
         "gaps":[{
+          "gap_id":"ac-003-gap-1",
+          "acceptance_criterion_ref":"AC-003",
+          "acceptance_criterion_text":"The newly observed criterion is met.",
+          "failure_evidence":{"observation":"required_behavior_absent","artifact_ref":"runtime-kotlin","check_ref":"AC-003"},
+          "diagnosis":"Implement and verify the newly observed behavior.",
+          "affected_boundary":"runtime application",
+          "repair_items":[{
+            "repair_item_id":"ac-003-gap-1-item-1",
+            "intended_outcome":"The newly observed behavior is implemented.",
+            "implementation_actions":["Reconcile the newly observed behavior."],
+            "affected_paths_or_symbols":["src/Bar.kt"],
+            "required_verification":["Run the focused test."],
+            "depends_on":[],
+            "status":"pending"
+          }]
+        },{
           "gap_id":"ac-002-gap-1",
           "acceptance_criterion_ref":"AC-002",
           "acceptance_criterion_text":"The audit gap is repaired.",
@@ -481,7 +526,27 @@ internal fun auditTwoGapsOutput(): String = """
             "depends_on":[],
             "status":"pending"
           }]
-        },{
+        }]
+      }
+    }
+  }
+""".trimIndent()
+
+// A second audit that keeps ac-002-gap-1 recurring but drops it from the plan, replacing it with a new
+// gap: the shape that would silently close a still-unresolved criterion if the ledger tolerated it.
+internal fun auditDroppedRecurringGapOutput(): String = """
+  {
+    "contract_version": "0.2",
+    "phase_id": "audit",
+    "status": "completed",
+    "summary": "Audit found unmet acceptance criteria.",
+    "verdict": "gaps_found",
+    "produced_outputs": {
+      "unmet_criteria": [{"acceptance_criterion_ref":"AC-003","message": "$AUDIT_GAP_MESSAGE"}],
+      "prior_gap_dispositions":[{"gap_id":"ac-002-gap-1","status":"recurring","evidence":{"observation":"recurrence_verified","artifact_ref":"runtime-kotlin","check_ref":"AC-002"}}],
+      "audit_repair_plan": {
+        "contract_version":"0.2",
+        "gaps":[{
           "gap_id":"ac-003-gap-1",
           "acceptance_criterion_ref":"AC-003",
           "acceptance_criterion_text":"The newly observed criterion is met.",
