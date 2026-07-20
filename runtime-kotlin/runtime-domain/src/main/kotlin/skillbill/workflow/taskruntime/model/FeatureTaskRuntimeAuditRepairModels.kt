@@ -463,37 +463,6 @@ private fun requireGapIdPattern(gapId: String) {
 // otherwise reject with no way to discover the rule. Ingest seams canonicalize instead.
 fun canonicalAuditIdentifier(rawIdentifier: String): String = rawIdentifier.trim().lowercase()
 
-// The audit briefing renders a criterion, the repair plan keys its gaps on it, and durable closure is
-// stored under it, so all three must derive the same ref from the same 1-based ordinal. Deriving it in
-// the runtime instead of leaving it to the agent is what makes closure keyed on a ref that cannot drift.
-fun canonicalAcceptanceCriterionRef(ordinal: Int): String {
-  require(ordinal in 1..MAX_ACCEPTANCE_CRITERION_ORDINAL) {
-    "Acceptance criterion ordinal must be 1-based and at most $MAX_ACCEPTANCE_CRITERION_ORDINAL, was $ordinal."
-  }
-  return "AC-" + ordinal.toString().padStart(ACCEPTANCE_CRITERION_REF_DIGITS, '0')
-}
-
-fun acceptanceCriterionRefsFor(criterionCount: Int): List<String> {
-  require(criterionCount in 0..MAX_ACCEPTANCE_CRITERION_ORDINAL) {
-    "Acceptance criterion count must be between 0 and $MAX_ACCEPTANCE_CRITERION_ORDINAL, was $criterionCount."
-  }
-  return (1..criterionCount).map(::canonicalAcceptanceCriterionRef)
-}
-
-fun acceptanceCriterionOrdinal(criterionRef: String): Int {
-  require(ACCEPTANCE_CRITERION_REF.matches(criterionRef)) {
-    "acceptance_criterion_ref '$criterionRef' must use canonical format 'AC-NNN'."
-  }
-  return criterionRef.removePrefix("AC-").toInt()
-}
-
-/** True when [criterionRef] is canonical AND names one of the run's [criterionCount] declared criteria. */
-fun isDeclaredAcceptanceCriterionRef(criterionRef: String, criterionCount: Int): Boolean =
-  ACCEPTANCE_CRITERION_REF.matches(criterionRef) && acceptanceCriterionOrdinal(criterionRef) in 1..criterionCount
-
-private const val ACCEPTANCE_CRITERION_REF_DIGITS: Int = 3
-const val MAX_ACCEPTANCE_CRITERION_ORDINAL: Int = 999
-
 // Durable payloads are authored by an agent against the snake_case wire contract, so rejection
 // messages must name values the way that contract spells them.
 internal fun Enum<*>.wire(): String = name.lowercase()

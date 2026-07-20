@@ -14,9 +14,9 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairItemResult
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeUnresolvableRepairBlock
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeUnresolvedGap
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeUnresolvedGapLedger
-import skillbill.workflow.taskruntime.model.detectAuditRepairNonProgress
 import skillbill.workflow.taskruntime.model.acceptanceCriterionRefsFor
 import skillbill.workflow.taskruntime.model.canonicalAcceptanceCriterionRef
+import skillbill.workflow.taskruntime.model.detectAuditRepairNonProgress
 import skillbill.workflow.taskruntime.model.isDeclaredAcceptanceCriterionRef
 import kotlin.test.Test
 import kotlin.test.assertContains

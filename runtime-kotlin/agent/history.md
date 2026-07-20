@@ -43,6 +43,7 @@ Areas: runtime-kotlin/runtime-{application,cli,contracts,domain,infra-fs,mcp}, o
 - Standalone and goal-child execution derive prompt order, transition spans, and durable resume targets from the same live workflow topology, preventing stale sequence reconstruction. reusable
 - Review approval, changes-requested remediation, and pass exhaustion now advance toward validation or block; the existing audit repair-plan identifiers, reconciliation, cumulative gap ledger, and non-progress detection remain unchanged.
 - Workflow contract versioning and transition, rejection, prompt, standalone, goal-child, and resume coverage lock the reordered graph; legacy durable workflow records require migration or removal by design.
+- Pattern: translate constructor-level durable run-invariant violations at the decode boundary into `InvalidWorkflowStateSchemaError` while preserving strict field errors and the original cause. reusable
 Feature flag: N/A
 Acceptance criteria: 6/6 implemented
 

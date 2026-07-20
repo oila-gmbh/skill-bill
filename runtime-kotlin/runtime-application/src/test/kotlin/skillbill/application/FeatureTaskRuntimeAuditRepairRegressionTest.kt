@@ -194,7 +194,10 @@ class FeatureTaskRuntimeAuditRepairRegressionTest {
           else -> facts(validJsonOutput(phaseId))
         }
       },
-      runtimeConfig = RuntimeHarnessConfig(branchSetup = BranchSetupTestConfig(gitOperations = git)),
+      runtimeConfig = RuntimeHarnessConfig(
+        branchSetup = BranchSetupTestConfig(gitOperations = git),
+        acceptanceCriteria = (1..5).map { "AC-$it" },
+      ),
     )
 
     val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
@@ -304,6 +307,7 @@ private fun skill128Harness(
       else -> facts(validJsonOutput(phaseId))
     }
   },
+  runtimeConfig = RuntimeHarnessConfig(acceptanceCriteria = (1..3).map { "AC-$it" }),
 )
 
 private fun skill128BroadGapsOutput(): String = """
