@@ -422,6 +422,89 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorTest {
   }
 
   @Test
+  fun `gaps found without a repair plan is rejected`() {
+    val error = assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
+      FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(
+        auditEnvelope(planJson = null),
+        "audit",
+      )
+    }
+
+    assertContains(error.reason, "audit_repair_plan")
+    assertContains(error.reason, "not found")
+  }
+
+  @Test
+  fun `unmet criteria not covered by the declared gaps are rejected`() {
+    val uncovered =
+      """{"acceptance_criterion_ref":"AC-129","message":"Rollback coverage is missing."}"""
+    val error = assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
+      FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(
+        auditEnvelope(planJson = auditRepairPlanJson, extraUnmetCriteria = uncovered),
+        "audit",
+      )
+    }
+
+    assertContains(error.reason, "produced_outputs.audit_repair_plan")
+    assertContains(error.reason, "AC-129")
+  }
+
+  @Test
+  fun `a gap declaring no repair items is rejected`() {
+    val error = assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
+      FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(
+        auditEnvelope(planJson = gapWithoutRepairItemsJson),
+        "audit",
+      )
+    }
+
+    assertContains(error.reason, "produced_outputs.audit_repair_plan")
+    assertContains(error.reason, "repair_items")
+  }
+
+  @Test
+  fun `a repair plan stamped with a superseded contract version is rejected`() {
+    val error = assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
+      FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(
+        auditEnvelope(
+          planJson = auditRepairPlanJson.replace(
+            """"contract_version":"0.2"""",
+            """"contract_version":"0.1"""",
+          ),
+        ),
+        "audit",
+      )
+    }
+
+    assertContains(error.reason, "produced_outputs.audit_repair_plan")
+    assertContains(error.reason, "contract_version")
+  }
+
+  private val gapWithoutRepairItemsJson =
+    """
+    {"contract_version":"0.2","gaps":[{
+      "gap_id":"ac-128-gap-1",
+      "acceptance_criterion_ref":"AC-128",
+      "acceptance_criterion_text":"Integration coverage exists.",
+      "failure_evidence":{"observation":"required_behavior_absent",
+        "artifact_ref":"runtime-kotlin/integration","check_ref":"AC-001"},
+      "diagnosis":"Add the missing integration scenario.",
+      "affected_boundary":"runtime integration tests",
+      "repair_items":[]
+    }]}
+    """.trimIndent()
+
+  private fun auditEnvelope(planJson: String?, extraUnmetCriteria: String? = null): String {
+    val unmet = listOfNotNull(
+      """{"acceptance_criterion_ref":"AC-128","message":"Integration coverage is missing."}""",
+      extraUnmetCriteria,
+    ).joinToString(",")
+    val plan = planJson?.let { ""","audit_repair_plan":$it""" }.orEmpty()
+    return """{"contract_version":"0.2","phase_id":"audit","status":"completed","summary":"audit",""" +
+      """"verdict":"gaps_found","produced_outputs":{"unmet_criteria":[$unmet]$plan}}"""
+  }
+
+  @Test
   fun `object trailed by prose containing a stray brace still validates`() {
     // The naive first-`{`-to-last-`}` slice overshoots to the stray brace in the trailing prose and
     // parses as neither; the balanced-object scan isolates the genuine object.

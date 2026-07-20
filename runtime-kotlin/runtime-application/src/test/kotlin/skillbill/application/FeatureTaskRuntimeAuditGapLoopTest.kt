@@ -252,6 +252,38 @@ class FeatureTaskRuntimeAuditGapLoopTest {
     assertEquals(0, repairState.progress.newGapCount)
   }
 
+  @Test
+  fun `a newly reported gap does not evict a still unresolved earlier gap`() {
+    var auditLaunches = 0
+    var implementLaunches = 0
+    val harness = runnerHarness(
+      launcher = RuntimeRecordingLauncher { request ->
+        when (val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))) {
+          "audit" -> {
+            auditLaunches += 1
+            facts(if (auditLaunches > 1) auditTwoGapsOutput() else auditGapsOutput())
+          }
+          "implement" -> {
+            implementLaunches += 1
+            if (implementLaunches == 3) spawnFailedFacts() else facts(validJsonOutput(phaseId))
+          }
+          else -> facts(validJsonOutput(phaseId))
+        }
+      },
+    )
+
+    assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+
+    val repairState = requireNotNull(harness.recorder.loadAuditRepairState(WORKFLOW_ID))
+    assertEquals(
+      listOf("ac-002-gap-1", "ac-003-gap-1"),
+      repairState.unresolvedGapLedger.unresolvedGaps.map { it.gapId }.sorted(),
+      "the earlier unresolved gap must survive alongside the newly reported one",
+    )
+    assertEquals(1, repairState.progress.recurringGapCount)
+    assertEquals(1, repairState.progress.newGapCount)
+  }
+
   // (f) AC5: M1 and M2 compose with independent counters. The re-run after an audit gap passes through
   // review, while the shared pass budget prevents another review after review_fix consumed pass two.
   @Test
@@ -408,6 +440,59 @@ internal fun auditGapsOutput(followUp: Boolean = false): String = """
             "intended_outcome":"The missing behavior is implemented.",
             "implementation_actions":["Reconcile the implementation."],
             "affected_paths_or_symbols":["src/Foo.kt"],
+            "required_verification":["Run the focused test."],
+            "depends_on":[],
+            "status":"pending"
+          }]
+        }]
+      }
+    }
+  }
+""".trimIndent()
+
+internal fun auditTwoGapsOutput(): String = """
+  {
+    "contract_version": "0.2",
+    "phase_id": "audit",
+    "status": "completed",
+    "summary": "Audit found unmet acceptance criteria.",
+    "verdict": "gaps_found",
+    "produced_outputs": {
+      "unmet_criteria": [
+        {"acceptance_criterion_ref":"AC-002","message": "$AUDIT_GAP_MESSAGE"},
+        {"acceptance_criterion_ref":"AC-003","message": "$AUDIT_GAP_MESSAGE"}
+      ],
+      "prior_gap_dispositions":[{"gap_id":"ac-002-gap-1","status":"recurring","evidence":{"observation":"recurrence_verified","artifact_ref":"runtime-kotlin","check_ref":"AC-002"}}],
+      "audit_repair_plan": {
+        "contract_version":"0.2",
+        "gaps":[{
+          "gap_id":"ac-002-gap-1",
+          "acceptance_criterion_ref":"AC-002",
+          "acceptance_criterion_text":"The audit gap is repaired.",
+          "failure_evidence":{"observation":"required_behavior_absent","artifact_ref":"runtime-kotlin","check_ref":"AC-001"},
+          "diagnosis":"Implement and verify the missing behavior.",
+          "affected_boundary":"runtime application",
+          "repair_items":[{
+            "repair_item_id":"ac-002-gap-1-item-1",
+            "intended_outcome":"The missing behavior is implemented.",
+            "implementation_actions":["Reconcile the implementation."],
+            "affected_paths_or_symbols":["src/Foo.kt"],
+            "required_verification":["Run the focused test."],
+            "depends_on":[],
+            "status":"pending"
+          }]
+        },{
+          "gap_id":"ac-003-gap-1",
+          "acceptance_criterion_ref":"AC-003",
+          "acceptance_criterion_text":"The newly observed criterion is met.",
+          "failure_evidence":{"observation":"required_behavior_absent","artifact_ref":"runtime-kotlin","check_ref":"AC-003"},
+          "diagnosis":"Implement and verify the newly observed behavior.",
+          "affected_boundary":"runtime application",
+          "repair_items":[{
+            "repair_item_id":"ac-003-gap-1-item-1",
+            "intended_outcome":"The newly observed behavior is implemented.",
+            "implementation_actions":["Reconcile the newly observed behavior."],
+            "affected_paths_or_symbols":["src/Bar.kt"],
             "required_verification":["Run the focused test."],
             "depends_on":[],
             "status":"pending"

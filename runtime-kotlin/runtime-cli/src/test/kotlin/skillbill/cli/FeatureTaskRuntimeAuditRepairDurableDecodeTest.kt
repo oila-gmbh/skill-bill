@@ -39,6 +39,17 @@ class FeatureTaskRuntimeAuditRepairDurableDecodeTest {
       assertEquals("AC-001", unresolved.acceptanceCriterionRef)
       assertEquals(1, unresolved.generation)
       assertEquals(compatible.acceptedPlans.last(), compatible.acceptedPlans.single())
+      assertEquals(
+        listOf("ac-001-gap-1-item-1"),
+        compatible.acceptedPlans.single().gaps.single().repairItems.map { it.repairItemId },
+        "repair item identifiers must survive the durable round trip unchanged",
+      )
+      assertEquals(false, compatible.progress.firstPassConvergence)
+      assertEquals(0, compatible.progress.recurringGapCount)
+      assertEquals(1, compatible.progress.newGapCount)
+      assertEquals(0, compatible.progress.attemptedRepairItemCount)
+      assertEquals(0, compatible.progress.resolvedRepairItemCount)
+      assertEquals(1, compatible.progress.auditGapIterationCount)
 
       store.saveFeatureTaskRuntimeWorkflow(row.copy(artifactsJson = auditRepairArtifactsJson("9.9")))
       val error = assertFailsWith<InvalidWorkflowStateSchemaError> {

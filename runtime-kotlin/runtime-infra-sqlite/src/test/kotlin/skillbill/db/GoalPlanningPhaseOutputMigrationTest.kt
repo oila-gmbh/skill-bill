@@ -10,11 +10,10 @@ import kotlin.test.assertTrue
 
 class GoalPlanningPhaseOutputMigrationTest {
   @Test
-  fun `phase-output 0_2 migration discards goal planning rows recorded under 0_1`() {
+  fun `phase-output 0_2 migration preserves goal planning rows recorded under 0_1`() {
     val dbPath = Files.createTempDirectory("goal-planning-migration").resolve("metrics.db")
 
     DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
-      restoreLegacyPlanningTables(connection)
       seedLegacyPlanningRow(connection)
       // ensureDatabase already ran migration 10; forget it so the rebuild genuinely re-runs over
       // existing rows instead of being skipped as already-applied.
@@ -22,15 +21,12 @@ class GoalPlanningPhaseOutputMigrationTest {
 
       DatabaseMigrations.apply(connection)
 
+      assertEquals(1, scalar(connection, "SELECT COUNT(*) FROM goal_shared_preplans"))
+      assertEquals(1, scalar(connection, "SELECT COUNT(*) FROM goal_subtask_plans"))
       assertEquals(
-        0,
-        scalar(connection, "SELECT COUNT(*) FROM goal_shared_preplans"),
-        "legacy shared preplans must be discarded rather than carried across the 0.2 bump",
-      )
-      assertEquals(
-        0,
-        scalar(connection, "SELECT COUNT(*) FROM goal_subtask_plans"),
-        "legacy subtask plans must be discarded rather than carried across the 0.2 bump",
+        "0.1",
+        text(connection, "SELECT phase_output_contract_version FROM goal_shared_preplans"),
+        "legacy provenance must survive the migration rather than being rewritten or discarded",
       )
       assertTrue(
         scalar(
@@ -39,23 +35,13 @@ class GoalPlanningPhaseOutputMigrationTest {
         ) == 1,
         "the ordered index must exist on the rebuilt table",
       )
-      assertTrue(
-        rejectsLegacyPhaseOutputStamp(connection),
-        "the rebuilt table must refuse a 0.1 phase-output stamp outright",
-      )
     }
-  }
-
-  private fun restoreLegacyPlanningTables(connection: Connection) {
-    connection.createStatement().use { statement ->
-      statement.execute("DROP TABLE goal_subtask_plans")
-      statement.execute("DROP TABLE goal_shared_preplans")
-    }
-    DatabaseMigrations.migrations.single { it.version == LEGACY_PLANNING_MIGRATION_VERSION }.apply(connection)
   }
 
   private fun seedLegacyPlanningRow(connection: Connection) {
     connection.createStatement().use { statement ->
+      statement.execute("DELETE FROM goal_subtask_plans")
+      statement.execute("DELETE FROM goal_shared_preplans")
       statement.execute(
         """
         INSERT INTO goal_shared_preplans VALUES (
@@ -77,20 +63,6 @@ class GoalPlanningPhaseOutputMigrationTest {
     }
   }
 
-  private fun rejectsLegacyPhaseOutputStamp(connection: Connection): Boolean = runCatching {
-    connection.createStatement().use { statement ->
-      statement.execute(
-        """
-        INSERT INTO goal_shared_preplans VALUES (
-          'wfl-legacy-retry', 'SKILL-000', 'repo', 'prepared', '0.2', 'spec-hash', 'manifest-hash',
-          'goal-planning-preparation', '0.2', 'feature-task-runtime-phase-output', '0.1',
-          'payload-sha', '{}', CURRENT_TIMESTAMP
-        )
-        """.trimIndent(),
-      )
-    }
-  }.isFailure
-
   private fun scalar(connection: Connection, sql: String): Int = connection.createStatement().use { statement ->
     statement.executeQuery(sql).use { rows ->
       rows.next()
@@ -98,7 +70,10 @@ class GoalPlanningPhaseOutputMigrationTest {
     }
   }
 
-  private companion object {
-    const val LEGACY_PLANNING_MIGRATION_VERSION = 9
+  private fun text(connection: Connection, sql: String): String = connection.createStatement().use { statement ->
+    statement.executeQuery(sql).use { rows ->
+      rows.next()
+      rows.getString(1)
+    }
   }
 }

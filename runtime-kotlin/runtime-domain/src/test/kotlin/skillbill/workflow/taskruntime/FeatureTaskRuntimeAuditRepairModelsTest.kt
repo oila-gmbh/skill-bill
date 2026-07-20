@@ -95,12 +95,100 @@ class FeatureTaskRuntimeAuditRepairModelsTest {
 
   @Test
   fun `dependency must precede its dependent in serialized execution order`() {
+    val error = assertFailsWith<IllegalArgumentException> {
+      plan(
+        listOf(
+          item("ac-001-gap-1-item-1", listOf("ac-001-gap-1-item-2")),
+          item("ac-001-gap-1-item-2"),
+        ),
+      )
+    }
+
+    assertTrue(
+      error.message.orEmpty().contains("must appear after"),
+      "a forward reference must fail on execution ordering, not on the ordered-child naming rule",
+    )
+  }
+
+  @Test
+  fun `duplicate gap identifiers fail loudly`() {
+    val error = assertFailsWith<IllegalArgumentException> {
+      FeatureTaskRuntimeAuditRepairPlan(
+        AUDIT_REPAIR_CONTRACT_VERSION,
+        listOf(gap("ac-001-gap-1", "AC-001"), gap("ac-001-gap-1", "AC-001")),
+      )
+    }
+
+    assertTrue(error.message.orEmpty().contains("gap_id"))
+  }
+
+  @Test
+  fun `duplicate repair item identifiers fail loudly`() {
+    val error = assertFailsWith<IllegalArgumentException> {
+      plan(listOf(item("ac-001-gap-1-item-1"), item("ac-001-gap-1-item-1")))
+    }
+
+    assertTrue(error.message.orEmpty().contains("repair_item_id"))
+  }
+
+  @Test
+  fun `a repair item depending on itself fails loudly`() {
+    val error = assertFailsWith<IllegalArgumentException> {
+      plan(listOf(item("ac-001-gap-1-item-1", listOf("ac-001-gap-1-item-1"))))
+    }
+
+    assertTrue(error.message.orEmpty().contains("depends on itself"))
+  }
+
+  @Test
+  fun `a dependency naming an undeclared item fails loudly`() {
+    val error = assertFailsWith<IllegalArgumentException> {
+      plan(listOf(item("ac-001-gap-1-item-1", listOf("ac-001-gap-9-item-4"))))
+    }
+
+    assertTrue(error.message.orEmpty().contains("depends on unknown items"))
+  }
+
+  @Test
+  fun `multi node dependency cycles fail loudly`() {
     assertFailsWith<IllegalArgumentException> {
       plan(
         listOf(
+          item("ac-001-gap-1-item-1", listOf("ac-001-gap-1-item-3")),
           item("ac-001-gap-1-item-2", listOf("ac-001-gap-1-item-1")),
-          item("ac-001-gap-1-item-1"),
+          item("ac-001-gap-1-item-3", listOf("ac-001-gap-1-item-2")),
         ),
+      )
+    }
+  }
+
+  @Test
+  fun `blank required gap and repair item fields fail loudly`() {
+    val items = listOf(item("ac-001-gap-1-item-1"))
+    assertFailsWith<IllegalArgumentException> {
+      FeatureTaskRuntimeAuditGap("ac-001-gap-1", "AC-001", " ", evidence(), "Cause", "runtime", items)
+    }
+    assertFailsWith<IllegalArgumentException> {
+      FeatureTaskRuntimeAuditGap("ac-001-gap-1", "AC-001", "Criterion", evidence(), " ", "runtime", items)
+    }
+    assertFailsWith<IllegalArgumentException> {
+      FeatureTaskRuntimeRepairItem(
+        "ac-001-gap-1-item-1",
+        " ",
+        listOf("Implement it"),
+        listOf("symbol"),
+        listOf("Run test"),
+        emptyList(),
+      )
+    }
+    assertFailsWith<IllegalArgumentException> {
+      FeatureTaskRuntimeRepairItem(
+        "ac-001-gap-1-item-1",
+        "Outcome",
+        listOf("Implement it"),
+        listOf("symbol"),
+        listOf(" "),
+        emptyList(),
       )
     }
   }
@@ -223,6 +311,16 @@ class FeatureTaskRuntimeAuditRepairModelsTest {
       AUDIT_REPAIR_CONTRACT_VERSION,
       listOf(FeatureTaskRuntimeAuditGap(gapId, "AC-001", "Criterion", evidence(), "Cause", "runtime", items)),
     )
+
+  private fun gap(gapId: String, criterionRef: String) = FeatureTaskRuntimeAuditGap(
+    gapId,
+    criterionRef,
+    "Criterion",
+    evidence(),
+    "Cause",
+    "runtime",
+    listOf(item("$gapId-item-1")),
+  )
 
   private fun item(id: String, dependencies: List<String> = emptyList()) = FeatureTaskRuntimeRepairItem(
     id,

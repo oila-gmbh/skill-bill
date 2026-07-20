@@ -3,25 +3,23 @@ contract_version: "0.5"
 issue_key: "SKILL-131"
 feature_name: "single-pass-audit-repair"
 parent_spec_path: ".feature-specs/SKILL-131-single-pass-audit-repair/spec.md"
-status: "blocked"
+status: "in_progress"
 execution_model: "same_branch_commit_per_subtask"
 base_branch: "main"
 feature_branch: "feat/SKILL-131-single-pass-audit-repair"
 stack_branches: []
 current_subtask_intent:
   subtask_id: 1
-  action: "blocked"
+  action: "resume"
 subtasks:
 - id: 1
   name: "Audit repair plan contract"
   spec_path: ".feature-specs/SKILL-131-single-pass-audit-repair/spec_subtask_1_repair_plan_contract.md"
-  status: "blocked"
+  status: "in_progress"
   branch: null
   commit_sha: null
-  workflow_id: null
-  blocked_reason: "Could not capture the goal-subtask review baseline before implementation.\
-    \ Refusing to substitute a branch-wide scope. Goal-subtask review baseline capture\
-    \ requires a clean tracked worktree; unstaged tracked changes are present."
+  workflow_id: "wftr-20260720-074501-0qsj"
+  blocked_reason: null
   last_resumable_step: "create_branch"
   linear_issue_id: null
   finalizing_agent_id: null
