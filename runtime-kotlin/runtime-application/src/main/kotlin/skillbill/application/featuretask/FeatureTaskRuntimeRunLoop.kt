@@ -14,6 +14,7 @@ import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.error.FeatureTaskRuntimePhaseOrderViolationError
 import skillbill.error.InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
+import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.agentrun.model.SkillRunRequest
@@ -933,8 +934,18 @@ internal class FeatureTaskRuntimeRunLoop(
   private fun declaredCriterionRefs(): List<String> =
     acceptanceCriterionRefsFor(request.runInvariants.acceptanceCriteria.size)
 
-  private fun durablyClosedCriterionRefs(): List<String> =
-    recorder.loadAuditRepairState(request.workflowId, request.dbPathOverride)?.satisfiedCriterionRefs.orEmpty()
+  private fun durablyClosedCriterionRefs(): List<String> {
+    val closed = recorder.loadAuditRepairState(request.workflowId, request.dbPathOverride)
+      ?.satisfiedCriterionRefs
+      .orEmpty()
+    val undeclared = closed.filterNot { it in declaredCriterionRefs().toSet() }.sorted()
+    if (undeclared.isNotEmpty()) {
+      throw InvalidWorkflowStateSchemaError(
+        "audit_repair_state.satisfied_criterion_refs contains criteria not declared by this run: $undeclared.",
+      )
+    }
+    return closed
+  }
 
   private fun openAuditCriterionRefs(closedCriterionRefs: List<String> = durablyClosedCriterionRefs()): List<String> =
     declaredCriterionRefs() - closedCriterionRefs.toSet()
@@ -1682,6 +1693,10 @@ internal class FeatureTaskRuntimeRunLoop(
       .mapNotNull { entry -> JsonSupport.anyToStringAnyMap(entry)?.get("acceptance_criterion_ref") as? String }
     val referenced = (planRefs + criteriaRefs).distinct()
     if (referenced.isEmpty()) return null
+    val undeclared = referenced.filterNot { it in declaredCriterionRefs().toSet() }.sorted()
+    if (undeclared.isNotEmpty()) {
+      return "Audit reported acceptance criteria not declared by this run: $undeclared."
+    }
     val reopened = referenced.filter { it in durablyClosedCriterionRefs().toSet() }.sorted()
     return if (reopened.isEmpty()) {
       null

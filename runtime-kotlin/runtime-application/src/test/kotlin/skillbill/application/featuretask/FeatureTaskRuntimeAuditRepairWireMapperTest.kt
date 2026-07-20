@@ -386,6 +386,32 @@ class FeatureTaskRuntimeAuditRepairWireMapperTest {
   }
 
   @Test
+  fun `explicit null satisfied criteria fails through the typed wire path`() {
+    val malformed = auditRepairStateToWire(state()).toMutableMap()
+    malformed["satisfied_criterion_refs"] = null
+
+    val error = assertFailsWith<InvalidWorkflowStateSchemaError> {
+      auditRepairStateFromWire(malformed, "audit_repair_state")
+    }
+    assertContains(error.message.orEmpty(), "satisfied_criterion_refs")
+  }
+
+  @Test
+  fun `durable closure supports more than fifty canonical criteria`() {
+    val expected = (1..51).map { "AC-${it.toString().padStart(3, '0')}" }
+    val durable = state().copy(
+      unresolvedGapLedger = FeatureTaskRuntimeUnresolvedGapLedger(emptyList()),
+      progress = FeatureTaskRuntimeAuditRepairProgress(false, 0, 0, 0, 0, 1),
+      satisfiedCriterionRefs = expected,
+    )
+
+    assertEquals(
+      expected,
+      auditRepairStateFromWire(auditRepairStateToWire(durable), "audit_repair_state").satisfiedCriterionRefs,
+    )
+  }
+
+  @Test
   fun `durable state rejects oversized allowed fields and embedded raw payloads`() {
     val oversized = auditRepairStateToWire(state()).toMutableMap()
     oversized["latest_plan"] = itemMutation(oversized.getValue("latest_plan") as Map<*, *>) {

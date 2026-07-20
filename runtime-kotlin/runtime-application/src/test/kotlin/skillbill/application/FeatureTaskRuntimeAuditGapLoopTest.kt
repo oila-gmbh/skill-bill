@@ -365,6 +365,58 @@ class FeatureTaskRuntimeAuditGapLoopTest {
   }
 
   @Test
+  fun `an audit cannot close declared criteria by reporting an undeclared criterion`() {
+    val harness = runnerHarness(
+      runtimeConfig = RuntimeHarnessConfig(acceptanceCriteria = List(6) { "criterion ${it + 1}" }),
+      launcher = RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        val output = if (phaseId == "audit") {
+          auditGapsOutput().replace("AC-002", "AC-999").replace("ac-002", "ac-999")
+        } else {
+          validJsonOutput(phaseId)
+        }
+        facts(output)
+      },
+    )
+
+    val report = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+
+    assertContains(report.blockedReason, "not declared by this run: [AC-999]")
+    assertEquals(null, harness.recorder.loadAuditRepairState(WORKFLOW_ID))
+  }
+
+  @Test
+  fun `resume rejects durable closure outside the run declared criteria`() {
+    var implementLaunches = 0
+    val harness = runnerHarness(
+      runtimeConfig = RuntimeHarnessConfig(acceptanceCriteria = List(6) { "criterion ${it + 1}" }),
+      launcher = RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        when {
+          phaseId == "audit" -> facts(auditGapsOutput())
+          phaseId == "implement" && ++implementLaunches == 2 -> spawnFailedFacts()
+          else -> facts(validJsonOutput(phaseId))
+        }
+      },
+    )
+
+    assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+    val artifacts = harness.repository.taskRuntimeArtifacts(WORKFLOW_ID).toMutableMap()
+    val repairState = (artifacts["feature_task_runtime_audit_repair_state"] as Map<*, *>)
+      .mapKeys { (key, _) -> key as String }
+      .toMutableMap()
+      .apply { this["satisfied_criterion_refs"] = listOf("AC-999") }
+    artifacts["feature_task_runtime_audit_repair_state"] = repairState
+    harness.repository.replaceTaskRuntimeArtifacts(WORKFLOW_ID, artifacts)
+
+    val error = assertFailsWith<InvalidWorkflowStateSchemaError> {
+      harness.runner.run(harness.request())
+    }
+
+    assertContains(error.message.orEmpty(), "not declared by this run: [AC-999]")
+  }
+
+  @Test
   fun `a recurring gap cannot be replaced by reopening a durably closed criterion`() {
     var auditLaunches = 0
     val harness = runnerHarness(

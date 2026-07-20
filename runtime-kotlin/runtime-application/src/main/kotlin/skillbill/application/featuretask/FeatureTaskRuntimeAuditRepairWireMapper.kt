@@ -90,12 +90,7 @@ internal fun auditRepairStateFromWire(value: Any?, source: String): FeatureTaskR
         generation = generation,
       )
     }
-    val satisfiedSource = "$source.satisfied_criterion_refs"
-    val satisfiedCriterionRefs = map["satisfied_criterion_refs"]?.let { raw ->
-      (raw as? List<*>)?.map { entry ->
-        entry as? String ?: invalidWire(satisfiedSource, "entries must be strings")
-      } ?: invalidWire(satisfiedSource, "must be an array")
-    }.orEmpty()
+    val satisfiedCriterionRefs = map.satisfiedCriterionRefs(source)
     val progressMap = map["progress"].requiredMap("$source.progress")
     requireExactWireKeys(progressMap, "$source.progress", AUDIT_REPAIR_PROGRESS_KEYS)
     FeatureTaskRuntimeAuditRepairState(
@@ -115,6 +110,15 @@ internal fun auditRepairStateFromWire(value: Any?, source: String): FeatureTaskR
       satisfiedCriterionRefs = satisfiedCriterionRefs,
     ).also { it.requireDurableCoherence() }
   }
+
+private fun Map<String, Any?>.satisfiedCriterionRefs(source: String): List<String> {
+  if (!containsKey("satisfied_criterion_refs")) return emptyList()
+  val fieldSource = "$source.satisfied_criterion_refs"
+  val raw = get("satisfied_criterion_refs") ?: invalidWire(fieldSource, "must be an array when present")
+  return (raw as? List<*>)?.map { entry ->
+    entry as? String ?: invalidWire(fieldSource, "entries must be strings")
+  } ?: invalidWire(fieldSource, "must be an array")
+}
 
 internal fun repairItemResultFromWire(value: Any?, source: String): FeatureTaskRuntimeRepairItemResult =
   wireMapping(source) {

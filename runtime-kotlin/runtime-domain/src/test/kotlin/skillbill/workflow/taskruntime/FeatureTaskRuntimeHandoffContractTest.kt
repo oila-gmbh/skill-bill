@@ -117,4 +117,15 @@ class FeatureTaskRuntimeHandoffContractTest {
       )
     }
   }
+
+  @Test
+  fun `run invariants reject criterion counts outside the canonical identity range`() {
+    assertFailsWith<IllegalArgumentException> {
+      FeatureTaskRuntimeRunInvariants(
+        specReference = ".feature-specs/SKILL-135/spec.md",
+        acceptanceCriteria = List(1000) { "criterion ${it + 1}" },
+        mandatesAndOverrides = emptyList(),
+      )
+    }
+  }
 }

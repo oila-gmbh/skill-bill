@@ -368,8 +368,9 @@ data class FeatureTaskRuntimeAuditRepairState(
   }
 
   private fun requireSatisfiedCriterionCoherence() {
-    require(satisfiedCriterionRefs.size <= MAX_AUDIT_REPAIR_GAPS) {
-      "Durable satisfied criteria allow at most $MAX_AUDIT_REPAIR_GAPS entries, had ${satisfiedCriterionRefs.size}."
+    require(satisfiedCriterionRefs.size <= MAX_ACCEPTANCE_CRITERION_ORDINAL) {
+      "Durable satisfied criteria allow at most $MAX_ACCEPTANCE_CRITERION_ORDINAL entries, " +
+        "had ${satisfiedCriterionRefs.size}."
     }
     requireUnique(satisfiedCriterionRefs, "satisfied_criterion_ref")
     satisfiedCriterionRefs.forEach { ref ->

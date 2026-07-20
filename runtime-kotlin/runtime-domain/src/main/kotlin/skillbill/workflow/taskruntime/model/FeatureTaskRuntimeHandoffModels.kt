@@ -43,6 +43,10 @@ data class FeatureTaskRuntimeRunInvariants(
     require(acceptanceCriteria.none(String::isBlank)) {
       "FeatureTaskRuntimeRunInvariants.acceptanceCriteria must not contain blank entries."
     }
+    require(acceptanceCriteria.size <= MAX_ACCEPTANCE_CRITERION_ORDINAL) {
+      "FeatureTaskRuntimeRunInvariants.acceptanceCriteria supports at most " +
+        "$MAX_ACCEPTANCE_CRITERION_ORDINAL criteria, had ${acceptanceCriteria.size}."
+    }
   }
 }
 
