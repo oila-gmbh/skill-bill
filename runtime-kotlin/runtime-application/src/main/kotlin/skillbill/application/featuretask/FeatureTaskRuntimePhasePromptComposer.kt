@@ -183,15 +183,14 @@ object FeatureTaskRuntimePhasePromptComposer {
     val scaling = FeatureTaskRuntimePhaseWorkflowDefinition.ceremonyScaling(featureSize)
     val remediationReview = briefing.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW &&
       reviewPassNumber == 2
-    val reviewScope = if (remediationReview) "remediation_delta" else scaling.reviewScope.wireValue
+    val reviewScope = scaling.reviewScope.wireValue
     val phaseSpecific = when (briefing.phaseId) {
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN ->
         "Apply ${scaling.preplanCeremony.promptLabel}. Keep the gate real: identify concrete scope, " +
           "affected boundaries, risks, and unknowns at the requested depth."
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW -> if (remediationReview) {
-        "Apply bill-code-review mode:inline context:feature-remediation to only the combined staged, unstaged, " +
-          "and untracked remediation delta since checkpoint HEAD. Do not expand the re-review to the full " +
-          "feature branch."
+        "Apply bill-code-review mode:inline context:feature-remediation to the subtask's complete delta from " +
+          "its immutable base, including committed, staged, unstaged, and owned untracked changes."
       } else {
         "Apply ${scaling.reviewScope.promptLabel}. Keep the review gate real: inspect the implemented " +
           "change for defects and report concrete file references."
@@ -390,9 +389,9 @@ object FeatureTaskRuntimePhasePromptComposer {
       ${input.reviewText}
       """.trimIndent()
     }.orEmpty()
-    val remediationScope = if (reviewPassNumber == 2 && goalSubtaskReviewInput == null) {
-      " Review only the combined working-tree remediation delta since checkpoint HEAD; include staged, unstaged, " +
-        "and untracked changes, and do not use the full branch diff."
+    val completeDeltaScope = if (goalSubtaskReviewInput == null) {
+      " Review the subtask's complete delta from its immutable run base on every pass, including committed, staged, " +
+        "unstaged, and owned untracked changes; never narrow a later pass to checkpoint remediation changes."
     } else {
       ""
     }
@@ -402,7 +401,7 @@ object FeatureTaskRuntimePhasePromptComposer {
       mode; every later pass is explicitly INLINE under context:feature-remediation. Never launch a third review pass.
       AUTO keeps the shared policy's existing selection; remediation INLINE uses the governed exception and selects
       inline specialist coverage for high-risk signals; DELEGATED must use normal routed delegation and fail if workers
-      cannot start.$parallel$goalScope$remediationScope
+      cannot start.$parallel$goalScope$completeDeltaScope
     """.trimIndent()
   }
 

@@ -46,7 +46,7 @@ class FeatureTaskRuntimePhasePromptComposerTest {
   }
 
   @Test
-  fun `second review pass stays inline and scopes only the remediation delta`() {
+  fun `second standalone review pass stays inline and reviews the complete immutable-base delta`() {
     val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
       ISSUE_KEY,
       briefingFor("review"),
@@ -56,9 +56,10 @@ class FeatureTaskRuntimePhasePromptComposerTest {
 
     assertContains(prompt, "bill-code-review mode:inline")
     assertContains(prompt, "context:feature-remediation")
-    assertContains(prompt, "review_scope: remediation_delta")
-    assertContains(prompt, "combined working-tree remediation delta since checkpoint HEAD")
-    assertContains(prompt, "do not use the full branch diff")
+    assertContains(prompt, "review_scope: branch_diff")
+    assertContains(prompt, "complete delta from its immutable run base on every pass")
+    assertContains(prompt, "committed, staged, unstaged, and owned untracked changes")
+    assertContains(prompt, "never narrow a later pass to checkpoint remediation changes")
   }
 
   @Test

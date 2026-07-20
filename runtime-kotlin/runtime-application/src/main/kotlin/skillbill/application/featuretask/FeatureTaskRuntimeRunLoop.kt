@@ -804,6 +804,7 @@ internal class FeatureTaskRuntimeRunLoop(
       observability,
       loopId = transition.loopId,
       edgeIteration = transition.edgeIteration,
+      outputArtifact = state.outputFor(phaseId)?.payload,
     )
     blockAt(phaseId, reason)
   }

@@ -741,6 +741,7 @@ class FeatureTaskRuntimeRunnerTest {
     assertEquals("blocked", planRecord.status)
     assertEquals("plan-fix", planRecord.loopId)
     assertEquals(PLAN_FIX_CAP, planRecord.edgeIteration)
+    assertContains(requireNotNull(planRecord.outputArtifact), "\"verdict\":\"needs_fix\"")
   }
 
   @Test
@@ -2297,6 +2298,7 @@ class FeatureTaskRuntimeReviewFixLoopTest {
     assertEquals(2, launched.count { it == "review" }, "the initial and inline review consumed the budget")
     val reviewRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["review"])
     assertEquals(2, reviewRecord.reviewPassNumber)
+    assertContains(requireNotNull(reviewRecord.outputArtifact), REVIEW_BLOCKER_MESSAGE)
     val loopEdges = harness.recorder.loadPhaseLedger(WORKFLOW_ID).orEmpty()
       .filter { it.action == FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE }
     assertEquals(listOf(1), loopEdges.mapNotNull { it.edgeIteration })
