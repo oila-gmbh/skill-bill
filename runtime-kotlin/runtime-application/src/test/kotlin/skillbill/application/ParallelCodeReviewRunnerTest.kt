@@ -7,6 +7,7 @@ import skillbill.application.model.UsageValidationException
 import skillbill.application.review.DelegatedReviewExecutionBroker
 import skillbill.application.review.DelegatedReviewLaunchBroker
 import skillbill.application.review.DelegatedReviewWorkerLauncher
+import skillbill.application.review.GoalRunnerNativeReviewWorkerAdapter
 import skillbill.application.review.ParallelCodeReviewRunner
 import skillbill.application.scaffold.ScaffoldCatalogService
 import skillbill.application.workflow.repoRoot
@@ -568,7 +569,7 @@ class ParallelCodeReviewRunnerTest {
           ReviewLaunchIsolationStrategy.FRESH_PROCESS
         },
       ),
-      DelegatedReviewWorkerLauncher(launcher),
+      DelegatedReviewWorkerLauncher(GoalRunnerNativeReviewWorkerAdapter(launcher)),
     ),
     scaffoldCatalogService = ScaffoldCatalogService(catalogGateway),
     diffResolver = diffResolver,
@@ -750,7 +751,12 @@ private class TestReviewEvidenceBroker(
   override fun recordModelTurn(): ReviewBudgetOutcome? = terminal
 
   override fun validateLaneResult(result: String): ReviewBudgetOutcome? {
-    resultBytes = result.toByteArray().size.toLong()
+    resultBytes = maxOf(resultBytes, result.toByteArray().size.toLong())
+    return ReviewBudgetEvaluator.laneResultOutcome(identity, binding.budget, resultBytes).also { terminal = it }
+  }
+
+  override fun observeLaneResultChunk(chunk: String): ReviewBudgetOutcome? {
+    resultBytes += chunk.toByteArray().size
     return ReviewBudgetEvaluator.laneResultOutcome(identity, binding.budget, resultBytes).also { terminal = it }
   }
 
@@ -771,4 +777,6 @@ private class TestReviewEvidenceBroker(
     resultBytes = resultBytes,
     terminalOutcome = terminal,
   )
+
+  override fun terminalOutcome(): ReviewBudgetOutcome? = terminal
 }

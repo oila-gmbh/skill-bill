@@ -23,9 +23,14 @@ interface ReviewEvidenceBroker {
 
   fun validateLaneResult(result: String): ReviewBudgetOutcome?
 
+  /** Observes cumulative provider result bytes while the lane is still running. */
+  fun observeLaneResultChunk(chunk: String): ReviewBudgetOutcome?
+
   fun evaluateProviderUsage(usage: ProviderTokenUsage, enforceable: Boolean): ReviewBudgetOutcome?
 
   fun accounting(): ReviewLaneAccounting
+
+  fun terminalOutcome(): ReviewBudgetOutcome?
 }
 
 fun interface ReviewEvidenceBrokerFactory {

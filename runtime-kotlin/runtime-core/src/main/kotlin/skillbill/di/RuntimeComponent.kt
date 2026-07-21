@@ -23,6 +23,7 @@ import skillbill.application.install.ExternalAddonOverlayService
 import skillbill.application.install.InstallService
 import skillbill.application.learning.LearningService
 import skillbill.application.review.DelegatedReviewExecutionBroker
+import skillbill.application.review.GoalRunnerNativeReviewWorkerAdapter
 import skillbill.application.review.ParallelCodeReviewRunner
 import skillbill.application.review.ReviewService
 import skillbill.application.scaffold.InstallAgentService
@@ -138,6 +139,7 @@ import skillbill.ports.install.reconcile.InstallReconcilePort
 import skillbill.ports.install.selection.InstallSelectionPersistencePort
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.review.ParallelReviewLaneRunner
+import skillbill.ports.review.NativeReviewWorkerLauncher
 import skillbill.ports.review.ReviewAttributionPort
 import skillbill.ports.review.ReviewEvidenceBrokerFactory
 import skillbill.ports.review.ReviewInputSource
@@ -553,6 +555,12 @@ abstract class RuntimeComponent(
   internal fun reviewEvidenceBrokerFactory(
     adapter: FileSystemReviewEvidenceBrokerFactory,
   ): ReviewEvidenceBrokerFactory = adapter
+
+  @Provides
+  @JvmSynthetic
+  internal fun nativeReviewWorkerLauncher(
+    adapter: GoalRunnerNativeReviewWorkerAdapter,
+  ): NativeReviewWorkerLauncher = adapter
 
   @Provides
   @JvmSynthetic

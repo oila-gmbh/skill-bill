@@ -127,7 +127,13 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
 
   override fun validateLaneResult(result: String): ReviewBudgetOutcome? {
     terminalOutcome?.let { return it }
-    resultBytes = result.toByteArray(StandardCharsets.UTF_8).size.toLong()
+    resultBytes = maxOf(resultBytes, result.toByteArray(StandardCharsets.UTF_8).size.toLong())
+    return ReviewBudgetEvaluator.laneResultOutcome(identity, budget, resultBytes)?.also { terminalOutcome = it }
+  }
+
+  override fun observeLaneResultChunk(chunk: String): ReviewBudgetOutcome? {
+    terminalOutcome?.let { return it }
+    resultBytes += chunk.toByteArray(StandardCharsets.UTF_8).size.toLong()
     return ReviewBudgetEvaluator.laneResultOutcome(identity, budget, resultBytes)?.also { terminalOutcome = it }
   }
 
@@ -153,6 +159,8 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
     resultBytes = resultBytes,
     terminalOutcome = terminalOutcome,
   )
+
+  override fun terminalOutcome(): ReviewBudgetOutcome? = terminalOutcome
 
   private fun evidenceBudgetOutcome(bytes: Long): ReviewEvidenceResult? {
     if (bytes > budget.maxEvidenceResultBytes) {

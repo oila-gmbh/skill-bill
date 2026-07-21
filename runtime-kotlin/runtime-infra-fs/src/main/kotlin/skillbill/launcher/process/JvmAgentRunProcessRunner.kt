@@ -311,6 +311,15 @@ private class ProcessWaitLoop(
   }
 
   private fun nextWait(): ProcessWait? {
+    if (request.reviewEvidenceBroker?.terminalOutcome() != null) {
+      return ProcessWait(
+        finished = false,
+        progressIdleTimedOut = false,
+        fileActivityGraceExhausted = false,
+        wallClockTimedOut = false,
+        liveness = liveness("review_budget", "review_context_budget_exceeded", "killed"),
+      )
+    }
     val waitMillis = waitMillisBeforeNextPoll() ?: return ProcessWait(
       finished = false,
       progressIdleTimedOut = false,

@@ -148,6 +148,17 @@ class FileSystemReviewEvidenceBrokerTest {
     assertEquals("lane_result_bytes", followUp.terminalOutcome?.budgetKind)
   }
 
+  @Test fun `streamed lane result excess is typed before completion and stays terminal`() {
+    val root = repo("A.kt" to "ok")
+    val broker = broker(root, assignment(listOf("A.kt")))
+    assertNull(broker.observeLaneResultChunk("x".repeat(60)))
+    val exceeded = broker.observeLaneResultChunk("y".repeat(41))
+    assertEquals(REVIEW_CONTEXT_BUDGET_EXCEEDED, exceeded?.type)
+    assertEquals("lane_result_bytes", exceeded?.budgetKind)
+    assertEquals(101, broker.accounting().resultBytes)
+    assertEquals(exceeded, broker.terminalOutcome())
+  }
+
   @Test fun `non-enforceable provider excess reports a regression without terminating`() {
     val root = repo("A.kt" to "assigned")
     val broker = broker(root, assignment(listOf("A.kt")))

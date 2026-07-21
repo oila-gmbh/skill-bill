@@ -4,34 +4,29 @@ import me.tatarka.inject.annotations.Inject
 import skillbill.application.review.model.DelegatedReviewWorkerOutcome
 import skillbill.application.review.model.DelegatedReviewWorkerRequest
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
-import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
-import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
-import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
+import skillbill.ports.review.NativeReviewWorkerLauncher
+import skillbill.ports.review.NativeReviewWorkerRequest
 import skillbill.review.context.model.ProviderTokenUsage
 import skillbill.review.context.model.TokenOwnership
 
 /** Starts only broker-prepared launches and preserves typed budget outcomes through completion. */
 @Inject
 class DelegatedReviewWorkerLauncher(
-  private val launcher: GoalRunnerSubtaskLauncher,
+  private val launcher: NativeReviewWorkerLauncher,
 ) {
   fun launch(request: DelegatedReviewWorkerRequest): DelegatedReviewWorkerOutcome {
     val prepared = request.prepared.launch
-    val isolation = prepared.isolation.toConversationIsolation()
     val outcome = launcher.launch(
-      GoalRunnerSubtaskLaunchRequest(
-        invokedAgentId = request.agentId,
-        configuredAgentOverrideId = null,
-        skillRunRequest = SkillRunRequest(
-          issueKey = prepared.launch.assignment.reviewId,
-          repoRoot = request.repoRoot,
-          timeout = request.timeout,
-          promptOverride = prepared.prompt,
-          modelOverride = request.modelOverride,
-          conversationIsolation = isolation,
-          reviewEvidenceBroker = prepared.evidenceBroker,
-        ),
+      NativeReviewWorkerRequest(
+        agentId = request.agentId,
+        issueKey = prepared.launch.assignment.reviewId,
+        repoRoot = request.repoRoot,
+        timeout = request.timeout,
+        prompt = prepared.prompt,
+        modelOverride = request.modelOverride,
+        isolation = prepared.isolation,
+        broker = prepared.evidenceBroker,
       ),
     )
     return when (outcome) {
@@ -74,12 +69,4 @@ class DelegatedReviewWorkerLauncher(
       },
     )
   }
-}
-
-private fun skillbill.ports.agentrun.model.ReviewLaunchIsolationStrategy.toConversationIsolation() = when (this) {
-  skillbill.ports.agentrun.model.ReviewLaunchIsolationStrategy.CODEX_NATIVE_FORK_TURNS_NONE,
-  skillbill.ports.agentrun.model.ReviewLaunchIsolationStrategy.FRESH_PROCESS,
-  -> skillbill.ports.agentrun.model.ConversationIsolation.NONE
-  skillbill.ports.agentrun.model.ReviewLaunchIsolationStrategy.UNSUPPORTED ->
-    error("A governed review worker cannot start without a fresh-context isolation strategy.")
 }
