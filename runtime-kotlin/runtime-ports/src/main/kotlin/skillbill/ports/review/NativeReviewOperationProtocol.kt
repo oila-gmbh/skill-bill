@@ -4,6 +4,7 @@ import skillbill.ports.review.model.ReviewEvidenceBatchRequest
 import skillbill.ports.review.model.ReviewEvidenceBatchResult
 import skillbill.ports.review.model.ReviewToolCall
 import skillbill.ports.review.model.ReviewToolCallResult
+import skillbill.review.context.model.ProviderTokenUsage
 import skillbill.review.context.model.ReviewBudgetOutcome
 
 /**
@@ -14,7 +15,12 @@ import skillbill.review.context.model.ReviewBudgetOutcome
 interface NativeReviewOperationProtocol {
   fun read(request: ReviewEvidenceBatchRequest): ReviewEvidenceBatchResult
   fun tool(call: ReviewToolCall): ReviewToolCallResult
+
+  /** Called synchronously before each provider model turn. A non-null result forbids the turn. */
   fun modelTurn(): ReviewBudgetOutcome?
+
+  /** Called synchronously for an in-flight usage update. A non-null result forbids further work. */
+  fun providerUsage(usage: ProviderTokenUsage): ReviewBudgetOutcome?
 }
 
 class BrokerBackedNativeReviewOperationProtocol(
@@ -23,4 +29,6 @@ class BrokerBackedNativeReviewOperationProtocol(
   override fun read(request: ReviewEvidenceBatchRequest): ReviewEvidenceBatchResult = broker.readBatch(request)
   override fun tool(call: ReviewToolCall): ReviewToolCallResult = broker.recordToolCall(call)
   override fun modelTurn(): ReviewBudgetOutcome? = broker.recordModelTurn()
+  override fun providerUsage(usage: ProviderTokenUsage): ReviewBudgetOutcome? =
+    broker.evaluateProviderUsage(usage, enforceable = true)
 }

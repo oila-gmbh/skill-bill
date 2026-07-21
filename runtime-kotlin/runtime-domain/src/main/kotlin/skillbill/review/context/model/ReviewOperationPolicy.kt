@@ -66,8 +66,12 @@ class ReviewOperationPolicy(
   }
 
   private fun classifySearch(target: String): ForbiddenReviewOperation? {
-    val scoped = SEARCH_SCOPE_PATTERN.find(target)?.value?.trim('"', '\'')
-    return if (scoped != null && isReachable(scoped)) {
+    val scopes = SEARCH_TOKEN_PATTERN.findAll(target)
+      .map { it.value.trim('"', '\'', ',', ':') }
+      .filter { token -> token == "." || token.contains('/') || token.contains('\\') }
+      .map { it.replace('\\', '/') }
+      .toList()
+    return if (scopes.isNotEmpty() && scopes.all(::isReachable)) {
       null
     } else {
       forbidden(
@@ -117,9 +121,9 @@ class ReviewOperationPolicy(
       }
     }
     return when {
-      path in assignedPaths -> null
       guidanceViolation != null -> guidanceViolation
       routingViolation != null -> routingViolation
+      path in assignedPaths -> null
       isReachable(path) && !operation.reachabilityReason.isNullOrBlank() -> null
       else -> forbidden(
         "unassigned_file_access",
@@ -160,6 +164,6 @@ class ReviewOperationPolicy(
 
     val SEARCH_COMMANDS: List<String> = listOf("grep", "rg", "find", "fd", "ls", "glob", "ack")
 
-    val SEARCH_SCOPE_PATTERN = Regex("""[^\s"']*/[^\s"']*""")
+    val SEARCH_TOKEN_PATTERN = Regex("""[^\s"']+""")
   }
 }

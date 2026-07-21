@@ -91,7 +91,15 @@ class JvmAgentRunProcessRunner : AgentRunProcessRunner {
       limitBytes = if (request.reviewEvidenceBroker == null) AGENT_RUN_OUTPUT_LIMIT_BYTES else null,
       outputStream = AgentRunOutputStream.STDOUT,
       outputSink = request.outputSink,
-      onChunkRead = { outputTracker.markObserved() },
+      onChunkRead = { chunk ->
+        outputTracker.markObserved()
+        val resultOutcome = request.reviewEvidenceBroker?.observeLaneResultChunk(chunk)
+        val usageOutcome = request.nativeReviewLifecycleCallbacks?.observeProviderOutput(
+          requireNotNull(request.nativeReviewOperations),
+          chunk,
+        )
+        if (resultOutcome != null || usageOutcome != null) process.destroy()
+      },
     ).also { it.start() }
     val stderr = CappedUtf8Drain(
       input = stderrStream,
@@ -100,8 +108,11 @@ class JvmAgentRunProcessRunner : AgentRunProcessRunner {
       outputSink = request.outputSink,
       onChunkRead = { outputTracker.markObserved() },
     ).also { if (stderrStream !== InputStream.nullInputStream()) it.start() }
+    val turnOutcome = request.nativeReviewLifecycleCallbacks?.beforeModelTurn(
+      requireNotNull(request.nativeReviewOperations),
+    )
+    if (turnOutcome != null) process.destroy()
     writeAndCloseStdin(process, request.stdinText)
-    request.reviewEvidenceBroker?.recordModelTurn()
     lifecycleEmitter.emitStarted(process.isAlive)
     val wait = try {
       Result.success(waitForProcess(process, request, outputTracker, lifecycleEmitter))
@@ -751,7 +762,7 @@ private class CappedUtf8Drain(
   private val limitBytes: Int?,
   private val outputStream: AgentRunOutputStream,
   private val outputSink: AgentRunOutputSink,
-  private val onChunkRead: () -> Unit,
+  private val onChunkRead: (String) -> Unit,
 ) {
   private val output = ByteArrayOutputStream(
     limitBytes?.coerceAtMost(INITIAL_OUTPUT_BUFFER_BYTES) ?: INITIAL_OUTPUT_BUFFER_BYTES,
@@ -766,9 +777,10 @@ private class CappedUtf8Drain(
           if (read == -1) {
             break
           }
-          onChunkRead()
+          val chunk = String(buffer, 0, read, StandardCharsets.UTF_8)
+          onChunkRead(chunk)
           output.write(buffer, 0, read)
-          outputSink.write(outputStream, String(buffer, 0, read, StandardCharsets.UTF_8))
+          outputSink.write(outputStream, chunk)
           remaining = remaining?.minus(read)
         }
         while (stream.read(buffer) != -1) {

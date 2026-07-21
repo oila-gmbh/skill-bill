@@ -1,5 +1,6 @@
 package skillbill.launcher.process
 
+import skillbill.launcher.agentrun.NativeReviewLifecycleCallbacks
 import skillbill.ports.agentrun.model.AgentRunDeclaredProgressProbe
 import skillbill.ports.agentrun.model.AgentRunLivenessSnapshot
 import skillbill.ports.agentrun.model.AgentRunOutputSink
@@ -37,6 +38,7 @@ data class AgentRunProcessRequest(
   val conversationIsolation: ConversationIsolation? = null,
   val reviewEvidenceBroker: ReviewEvidenceBroker? = null,
   val nativeReviewOperations: NativeReviewOperationProtocol? = null,
+  val nativeReviewLifecycleCallbacks: NativeReviewLifecycleCallbacks? = null,
 ) {
   init {
     require(command.isNotEmpty()) { "Agent run command is required." }
@@ -57,6 +59,9 @@ data class AgentRunProcessRequest(
     }
     require((reviewEvidenceBroker == null) == (nativeReviewOperations == null)) {
       "A process review evidence transport and its pre-execution operation protocol must be supplied together."
+    }
+    require(nativeReviewLifecycleCallbacks == null || nativeReviewOperations != null) {
+      "Native review lifecycle callbacks require the operation protocol."
     }
   }
 }

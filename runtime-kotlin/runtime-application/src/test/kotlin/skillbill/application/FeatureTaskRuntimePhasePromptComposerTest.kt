@@ -364,6 +364,30 @@ class FeatureTaskRuntimePhasePromptComposerTest {
       false,
       "audit scopes gaps to production",
     )
+    assertContains(
+      auditPrompt,
+      "PROSPECTIVE REPAIR IMPACT ANALYSIS",
+      false,
+      "audit requires counterfactual repair analysis before accepting a plan",
+    )
+    assertContains(
+      auditPrompt,
+      "already-satisfied criteria as non-regression constraints",
+      false,
+      "audit protects previously satisfied behavior while planning repairs",
+    )
+    assertContains(
+      auditPrompt,
+      "cumulative repair delta and cross-repair interactions",
+      false,
+      "follow-up audit checks repair interactions instead of only prior symbols",
+    )
+    assertContains(
+      auditPrompt,
+      "closure-complete for that blast",
+      false,
+      "repair plans must cover the complete evidenced blast radius",
+    )
   }
 
   @Test

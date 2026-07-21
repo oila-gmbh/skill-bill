@@ -41,6 +41,41 @@ class ReviewOperationPolicyTest {
     assertEquals("broad_repository_search", category(ReviewOperationKind.SEARCH, "grep -r TODO ."))
     assertEquals("broad_repository_search", category(ReviewOperationKind.SEARCH, "rg secret src/Other.kt"))
     assertNull(policy.classify(ReviewRequestedOperation(ReviewOperationKind.SEARCH, "rg secret src/Assigned.kt")))
+    assertEquals("broad_repository_search", category(ReviewOperationKind.SEARCH, "rg secret"))
+    assertEquals(
+      "broad_repository_search",
+      category(ReviewOperationKind.SEARCH, "rg secret src/Assigned.kt src/Other.kt"),
+    )
+    assertNull(
+      policy.classify(
+        ReviewRequestedOperation(
+          ReviewOperationKind.SEARCH,
+          "rg secret src/Assigned.kt src/Dependency.kt",
+        ),
+      ),
+    )
+  }
+
+  @Test fun `absolute guidance and routing prohibitions override assignment ownership`() {
+    val assignedForbiddenPolicy = ReviewOperationPolicy(
+      assignment = assignment().copy(
+        assignedPaths = listOf("AGENTS.md", "platform-packs/kotlin/platform.yaml"),
+      ),
+      laneRubricId = "security",
+    )
+
+    assertEquals(
+      "project_guidance_traversal",
+      assignedForbiddenPolicy.classify(
+        ReviewRequestedOperation(ReviewOperationKind.FILE_READ, "AGENTS.md"),
+      )?.category,
+    )
+    assertEquals(
+      "platform_pack_and_addon_resolution",
+      assignedForbiddenPolicy.classify(
+        ReviewRequestedOperation(ReviewOperationKind.FILE_READ, "platform-packs/kotlin/platform.yaml"),
+      )?.category,
+    )
   }
 
   @Test fun `only the lane rubric may be read`() {

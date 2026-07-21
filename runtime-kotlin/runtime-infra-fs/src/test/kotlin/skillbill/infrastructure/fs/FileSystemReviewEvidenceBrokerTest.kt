@@ -11,6 +11,7 @@ import skillbill.review.context.model.REVIEW_CONTEXT_BUDGET_EXCEEDED
 import skillbill.review.context.model.ReviewAssignment
 import skillbill.review.context.model.ReviewContextBudgetPolicy
 import skillbill.review.context.model.ReviewDependencyAllowlist
+import skillbill.review.context.model.ReviewExpansionRecord
 import skillbill.review.context.model.ReviewLaneDecision
 import skillbill.review.context.model.ReviewOperationKind
 import skillbill.review.context.model.ReviewRevision
@@ -39,11 +40,12 @@ class FileSystemReviewEvidenceBrokerTest {
 
   @Test fun `native operation protocol admits measured reads and authorized expansions`() {
     val root = repo("A.kt" to "assigned", "B.kt" to "dependency")
-    val broker = broker(root, assignment(listOf("A.kt"), listOf("B.kt")))
+    val assignment = assignment(listOf("A.kt"), listOf("B.kt"))
+    val broker = broker(root, assignment)
     val protocol = BrokerBackedNativeReviewOperationProtocol(broker)
 
     val result = protocol.read(
-      ReviewEvidenceBatchRequest.of(ReviewEvidenceRequest("security", "B.kt", "called by assigned hunk")),
+      ReviewEvidenceBatchRequest.of(expansionRequest(assignment, "B.kt", "called by assigned hunk")),
     )
 
     assertEquals("dependency", result.results.single().content)
@@ -97,9 +99,10 @@ class FileSystemReviewEvidenceBrokerTest {
 
   @Test fun `authorized expansion is admitted and audited with its reachability reason`() {
     val root = repo("A.kt" to "assigned", "B.kt" to "dep")
-    val broker = broker(root, assignment(listOf("A.kt"), listOf("B.kt")))
+    val assignment = assignment(listOf("A.kt"), listOf("B.kt"))
+    val broker = broker(root, assignment)
     val result = broker.readBatch(
-      ReviewEvidenceBatchRequest.of(ReviewEvidenceRequest("security", "B.kt", "called by assigned symbol")),
+      ReviewEvidenceBatchRequest.of(expansionRequest(assignment, "B.kt", "called by assigned symbol")),
     )
     assertEquals("dep", result.results.single().content)
     val expansion = result.expansions.single()
@@ -107,7 +110,34 @@ class FileSystemReviewEvidenceBrokerTest {
     assertEquals("called by assigned symbol", expansion.reachabilityReason)
     assertTrue(expansion.authorized)
     assertEquals(0, expansion.sequence)
+    assertEquals("exp-1", expansion.expansionId)
+    assertEquals(assignment.digest, expansion.assignmentDigest)
     assertEquals(result.expansions, broker.accounting().expansions)
+  }
+
+  @Test fun `unauthorized expansion is rejected before filesystem resolution and is not recorded`() {
+    val root = repo("A.kt" to "assigned")
+    val assignment = assignment(listOf("A.kt"), listOf("missing.kt"))
+    val broker = broker(root, assignment)
+    val request = ReviewEvidenceRequest(
+      "security",
+      "missing.kt",
+      "called by assigned symbol",
+      ReviewExpansionRecord(
+        "exp-denied",
+        assignment.digest,
+        "missing.kt",
+        "called by assigned symbol",
+        false,
+        0,
+      ),
+    )
+
+    assertFailsWith<IllegalArgumentException> {
+      broker.readBatch(ReviewEvidenceBatchRequest.of(request))
+    }
+    assertTrue(broker.accounting().expansions.isEmpty())
+    assertEquals(0, broker.accounting().evidenceBytes)
   }
 
   @Test fun `unassigned read without a reason is a forbidden operation, not an expansion`() {
@@ -121,22 +151,24 @@ class FileSystemReviewEvidenceBrokerTest {
 
   @Test fun `expansion budget excess terminates the lane`() {
     val root = repo("A.kt" to "assigned", "B.kt" to "dep")
-    val broker = broker(root, assignment(listOf("A.kt"), listOf("B.kt")), policy(expansions = 0))
+    val assignment = assignment(listOf("A.kt"), listOf("B.kt"))
+    val broker = broker(root, assignment, policy(expansions = 0))
     val result = broker.readBatch(
-      ReviewEvidenceBatchRequest.of(ReviewEvidenceRequest("security", "B.kt", "reachable from assigned symbol")),
+      ReviewEvidenceBatchRequest.of(expansionRequest(assignment, "B.kt", "reachable from assigned symbol")),
     )
     assertEquals("assignment_expansions", result.terminalOutcome?.budgetKind)
   }
 
   @Test fun `named dependency is still measured as an authorized expansion`() {
     val root = repo("A.kt" to "assigned", "B.kt" to "dep")
+    val assignment = assignment(listOf("A.kt"), listOf("B.kt"))
     val broker = broker(
       root,
-      assignment(listOf("A.kt"), listOf("B.kt")),
+      assignment,
       namedDependencies = setOf("B.kt"),
     )
     val result = broker.readBatch(
-      ReviewEvidenceBatchRequest.of(ReviewEvidenceRequest("security", "B.kt", "called by assigned symbol")),
+      ReviewEvidenceBatchRequest.of(expansionRequest(assignment, "B.kt", "called by assigned symbol")),
     )
     assertEquals("dep", result.results.single().content)
     assertEquals(listOf("B.kt"), result.expansions.map { it.requestedPath })
@@ -199,9 +231,11 @@ class FileSystemReviewEvidenceBrokerTest {
   @Test fun `enforceable provider excess terminates the lane`() {
     val root = repo("A.kt" to "assigned")
     val broker = broker(root, assignment(listOf("A.kt")))
-    val outcome = broker.evaluateProviderUsage(ProviderTokenUsage(totalTokens = 500_000), enforceable = true)
+    val outcome = BrokerBackedNativeReviewOperationProtocol(broker)
+      .providerUsage(ProviderTokenUsage(totalTokens = 500_000))
     assertEquals(REVIEW_CONTEXT_BUDGET_EXCEEDED, outcome?.type)
     assertNotNull(broker.accounting().terminalOutcome)
+    assertEquals("total_tokens", outcome?.budgetKind)
   }
 
   @Test fun `paths escaping the repository are rejected`() {
@@ -226,6 +260,13 @@ class FileSystemReviewEvidenceBrokerTest {
   }
 
   private fun batch(path: String) = ReviewEvidenceBatchRequest.of(ReviewEvidenceRequest("security", path))
+
+  private fun expansionRequest(assignment: ReviewAssignment, path: String, reason: String) = ReviewEvidenceRequest(
+    "security",
+    path,
+    reason,
+    ReviewExpansionRecord("exp-1", assignment.digest, path, reason, true, 0),
+  )
 
   private fun repo(vararg files: Pair<String, String>): Path {
     val root = Files.createTempDirectory("review-evidence")

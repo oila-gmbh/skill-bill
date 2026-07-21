@@ -45,6 +45,9 @@ class ProcessAgentRunAdapter(
         conversationIsolation = command.conversationIsolation,
         reviewEvidenceBroker = request.reviewEvidenceBroker,
         nativeReviewOperations = request.nativeReviewOperations,
+        nativeReviewLifecycleCallbacks = request.nativeReviewOperations?.let {
+          commandBuilder.nativeReviewCapabilities.lifecycleCallbacks?.newSession()
+        },
       ),
     )
     val decoded = commandBuilder.outputDecoder.decode(result.stdout)
@@ -69,8 +72,9 @@ class ProcessAgentRunAdapter(
       outputTokens = decoded.outputTokens,
       reasoningTokens = decoded.reasoningTokens,
       totalTokens = decoded.totalTokens,
-      providerUsageEnforceable =
-      nativeReviewCapabilities.providerUsageExposure == ProviderUsageExposure.IN_FLIGHT_ENFORCEABLE,
+      // This decoder runs after process completion. Completion facts are never an enforceable
+      // provider seam, irrespective of what a future command builder can expose in flight.
+      providerUsageEnforceable = false,
     )
   }
 

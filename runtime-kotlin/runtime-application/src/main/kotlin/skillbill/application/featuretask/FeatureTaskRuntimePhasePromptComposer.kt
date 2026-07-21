@@ -302,24 +302,45 @@ object FeatureTaskRuntimePhasePromptComposer {
           "      \"issue_category\" MUST be exactly one of " +
           ReviewIssueCategory.entries.joinToString { it.wireValue } + "; any other category value is\n" +
           "      recorded as other."
-      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT ->
-        "\n    - This is a VERIFYING phase: produced_outputs MUST carry an \"$unmetCriteria\" array (one\n" +
-          "      message per unmet acceptance criterion; an explicit empty [] affirms every criterion is met)\n" +
-          "      AND/OR a top-level \"$verdict\" of \"satisfied\" or \"gaps_found\". Output carrying NEITHER signal\n" +
-          "      fails the schema gate loudly — a prose verdict (e.g. a Markdown table) cannot advance the gate.\n" +
-          "      A gaps_found result MUST include one schema-valid audit_repair_plan covering every entry in\n" +
-          "      unmet_criteria; use concrete production references such as src/main/Example.kt:Example.\n" +
-          "      TEST EXCLUSION: missing tests, weak tests, incomplete test coverage, unrealistic fixtures,\n" +
-          "      insufficient assertions, and any other test-only concern are NEVER audit gaps. Do not inspect\n" +
-          "      or assess test adequacy, cite test files as an affected boundary, or create repair items that\n" +
-          "      add or change tests. Validation owns test execution and failures. Audit may report only a\n" +
-          "      concrete defect in production behavior or production implementation; when no such defect is\n" +
-          "      evidenced, emit satisfied even if test coverage is absent or inadequate." +
-          auditDispositionAddendum(briefing.unresolvedAuditGapIds) +
-          auditClosedCriterionAddendum(briefing.durablyClosedCriterionRefs)
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT -> auditProducedOutputsAddendum(
+        unmetCriteria = unmetCriteria,
+        verdict = verdict,
+        briefing = briefing,
+      )
       else -> ""
     }
   }
+
+  private fun auditProducedOutputsAddendum(
+    unmetCriteria: String,
+    verdict: String,
+    briefing: FeatureTaskRuntimePhaseLaunchBriefing,
+  ): String = "\n    - This is a VERIFYING phase: produced_outputs MUST carry an \"$unmetCriteria\" array (one\n" +
+    "      message per unmet acceptance criterion; an explicit empty [] affirms every criterion is met)\n" +
+    "      AND/OR a top-level \"$verdict\" of \"satisfied\" or \"gaps_found\". Output carrying NEITHER signal\n" +
+    "      fails the schema gate loudly — a prose verdict (e.g. a Markdown table) cannot advance the gate.\n" +
+    "      A gaps_found result MUST include one schema-valid audit_repair_plan covering every entry in\n" +
+    "      unmet_criteria; use concrete production references such as src/main/Example.kt:Example.\n" +
+    "      TEST EXCLUSION: missing tests, weak tests, incomplete test coverage, unrealistic fixtures,\n" +
+    "      insufficient assertions, and any other test-only concern are NEVER audit gaps. Do not inspect\n" +
+    "      or assess test adequacy, cite test files as an affected boundary, or create repair items that\n" +
+    "      add or change tests. Validation owns test execution and failures. Audit may report only a\n" +
+    "      concrete defect in production behavior or production implementation; when no such defect is\n" +
+    "      evidenced, emit satisfied even if test coverage is absent or inadequate.\n" +
+    "      PROSPECTIVE REPAIR IMPACT ANALYSIS: before emitting gaps_found, analyze every proposed repair\n" +
+    "      as if it were already applied. Trace the affected production callers and callees, provider and\n" +
+    "      platform variants, lifecycle and state transitions, persistence/schema/serialization seams,\n" +
+    "      failure/timeout/cancellation/retry paths, permissions and isolation boundaries, and interactions\n" +
+    "      among all repairs in this plan. Treat already-satisfied criteria as non-regression constraints:\n" +
+    "      include preventative actions now for any boundary a repair could regress; do not wait for a\n" +
+    "      later audit to discover the consequence. Make each gap's diagnosis, affected_boundary,\n" +
+    "      implementation_actions, dependencies, and required_verification closure-complete for that blast\n" +
+    "      radius. If a proposed repair would expose or introduce another evidenced production defect,\n" +
+    "      include it in this same plan as an action or separate gap. On follow-up audits, inspect the full\n" +
+    "      cumulative repair delta and cross-repair interactions, not only the previously named symbols.\n" +
+    "      Do not invent speculative gaps: every added action or gap still needs concrete repository evidence." +
+    auditDispositionAddendum(briefing.unresolvedAuditGapIds) +
+    auditClosedCriterionAddendum(briefing.durablyClosedCriterionRefs)
 
   private fun auditClosedCriterionAddendum(closedCriterionRefs: List<String>): String =
     if (closedCriterionRefs.isEmpty()) {

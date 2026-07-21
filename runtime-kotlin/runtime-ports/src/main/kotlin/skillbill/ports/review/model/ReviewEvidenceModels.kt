@@ -9,6 +9,7 @@ data class ReviewEvidenceRequest(
   val lane: String,
   val path: String,
   val reachabilityReason: String? = null,
+  val authorizedExpansion: ReviewExpansionRecord? = null,
 )
 
 data class ReviewEvidenceBatchRequest(val lane: String, val requests: List<ReviewEvidenceRequest>) {

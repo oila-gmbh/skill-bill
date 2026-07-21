@@ -76,7 +76,18 @@ class DelegatedReviewWorkerLauncher(
   private fun evidenceRequests(assignment: ReviewAssignment): List<ReviewEvidenceRequest> = (
     assignment.assignedPaths.map { path -> ReviewEvidenceRequest(assignment.lane, path) } +
       assignment.expansions.map { expansion ->
-        ReviewEvidenceRequest(assignment.lane, expansion.requestedPath, expansion.reachabilityReason)
+        require(expansion.authorized) {
+          "Expansion '${expansion.expansionId}' is not authorized for delegated evidence admission."
+        }
+        require(expansion.assignmentDigest == assignment.digest) {
+          "Expansion '${expansion.expansionId}' does not belong to assignment '${assignment.digest}'."
+        }
+        ReviewEvidenceRequest(
+          assignment.lane,
+          expansion.requestedPath,
+          expansion.reachabilityReason,
+          expansion,
+        )
       }
     ).distinctBy { request -> request.path }
 

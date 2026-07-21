@@ -7,6 +7,9 @@ import skillbill.ports.agentrun.model.ConversationIsolation
 import skillbill.ports.agentrun.model.ReviewLaunchIsolationStrategy
 import skillbill.ports.agentrun.model.SkillRunGoalContinuationContext
 import skillbill.ports.agentrun.model.SkillRunRequest
+import skillbill.ports.review.NativeReviewOperationProtocol
+import skillbill.review.context.model.ProviderTokenUsage
+import skillbill.review.context.model.ReviewBudgetOutcome
 import java.nio.file.Path
 import kotlin.time.DurationUnit
 
@@ -38,28 +41,80 @@ interface AgentRunCommandBuilder {
  */
 data class NativeReviewProviderCapabilities(
   val operationBoundary: NativeReviewOperationBoundary,
-  val modelTurnObservation: Boolean,
   val providerUsageExposure: ProviderUsageExposure,
-  val inFlightProviderUsageObservation: Boolean = false,
+  val lifecycleCallbacks: NativeReviewLifecycleCallbacks? = null,
 ) {
   val supportsGovernedLaunch: Boolean
-    get() = operationBoundary != NativeReviewOperationBoundary.UNMEDIATED &&
-      modelTurnObservation &&
-      (providerUsageExposure != ProviderUsageExposure.IN_FLIGHT_ENFORCEABLE || inFlightProviderUsageObservation)
+    get() = operationBoundary == NativeReviewOperationBoundary.SYNCHRONOUS_BROKER &&
+      lifecycleCallbacks != null
 
   companion object {
     val UNMEDIATED = NativeReviewProviderCapabilities(
       operationBoundary = NativeReviewOperationBoundary.UNMEDIATED,
-      modelTurnObservation = false,
       providerUsageExposure = ProviderUsageExposure.COMPLETION_ONLY,
     )
     val PROMPT_ONLY = NativeReviewProviderCapabilities(
       operationBoundary = NativeReviewOperationBoundary.DISABLED,
-      modelTurnObservation = true,
       providerUsageExposure = ProviderUsageExposure.COMPLETION_ONLY,
     )
   }
 }
+
+/** Concrete synchronous callbacks a provider adapter must invoke as part of its own turn loop. */
+interface NativeReviewLifecycleCallbacks {
+  fun newSession(): NativeReviewLifecycleCallbacks = this
+  fun beforeModelTurn(operations: NativeReviewOperationProtocol): ReviewBudgetOutcome?
+  fun observeProviderOutput(operations: NativeReviewOperationProtocol, chunk: String): ReviewBudgetOutcome?
+  fun observeProviderUsage(operations: NativeReviewOperationProtocol, usage: ProviderTokenUsage): ReviewBudgetOutcome?
+
+  companion object {
+    val BROKERED = object : NativeReviewLifecycleCallbacks {
+      override fun newSession(): NativeReviewLifecycleCallbacks = BufferedCodexLifecycleCallbacks()
+      override fun beforeModelTurn(operations: NativeReviewOperationProtocol) = operations.modelTurn()
+      override fun observeProviderOutput(operations: NativeReviewOperationProtocol, chunk: String) =
+        decodeCodexUsageChunk(chunk)?.let(operations::providerUsage)
+      override fun observeProviderUsage(operations: NativeReviewOperationProtocol, usage: ProviderTokenUsage) =
+        operations.providerUsage(usage)
+    }
+  }
+}
+
+private class BufferedCodexLifecycleCallbacks : NativeReviewLifecycleCallbacks {
+  private val pending = StringBuilder()
+
+  override fun beforeModelTurn(operations: NativeReviewOperationProtocol) = operations.modelTurn()
+
+  override fun observeProviderOutput(operations: NativeReviewOperationProtocol, chunk: String): ReviewBudgetOutcome? {
+    pending.append(chunk)
+    var outcome: ReviewBudgetOutcome? = null
+    while (outcome == null) {
+      val newline = pending.indexOf("\n")
+      if (newline < 0) break
+      val line = pending.substring(0, newline)
+      pending.delete(0, newline + 1)
+      outcome = decodeCodexUsageChunk(line)?.let(operations::providerUsage)
+    }
+    return outcome
+  }
+
+  override fun observeProviderUsage(operations: NativeReviewOperationProtocol, usage: ProviderTokenUsage) =
+    operations.providerUsage(usage)
+}
+
+private fun decodeCodexUsageChunk(chunk: String): ProviderTokenUsage? = chunk.lineSequence()
+  .mapNotNull { line -> runCatching { ObjectMapper().readTree(line) }.getOrNull() }
+  .map { event -> event.path("usage") }
+  .filterNot { usage -> usage.isMissingNode || usage.isNull }
+  .map { usage ->
+    ProviderTokenUsage(
+      inputTokens = usage.path("input_tokens").takeIf { it.isIntegralNumber }?.longValue(),
+      cachedInputTokens = usage.path("cached_input_tokens").takeIf { it.isIntegralNumber }?.longValue(),
+      outputTokens = usage.path("output_tokens").takeIf { it.isIntegralNumber }?.longValue(),
+      reasoningTokens = usage.path("reasoning_tokens").takeIf { it.isIntegralNumber }?.longValue(),
+      totalTokens = usage.path("total_tokens").takeIf { it.isIntegralNumber }?.longValue(),
+    )
+  }
+  .lastOrNull()
 
 enum class NativeReviewOperationBoundary { SYNCHRONOUS_BROKER, DISABLED, UNMEDIATED }
 
@@ -128,8 +183,11 @@ class CodexAgentRunCommandBuilder : AgentRunCommandBuilder {
   override val outputDecoder: AgentRunOutputDecoder = AgentRunOutputDecoder.CODEX_JSONL
   override val reviewIsolation: ReviewLaunchIsolationStrategy =
     ReviewLaunchIsolationStrategy.CODEX_NATIVE_FORK_TURNS_NONE
-  override val nativeReviewCapabilities: NativeReviewProviderCapabilities =
-    NativeReviewProviderCapabilities.PROMPT_ONLY
+  override val nativeReviewCapabilities: NativeReviewProviderCapabilities = NativeReviewProviderCapabilities(
+    operationBoundary = NativeReviewOperationBoundary.SYNCHRONOUS_BROKER,
+    providerUsageExposure = ProviderUsageExposure.IN_FLIGHT_ENFORCEABLE,
+    lifecycleCallbacks = NativeReviewLifecycleCallbacks.BROKERED,
+  )
 
   override fun build(request: SkillRunRequest): AgentRunCommand {
     requireProcessLaunch(request, reviewIsolation)

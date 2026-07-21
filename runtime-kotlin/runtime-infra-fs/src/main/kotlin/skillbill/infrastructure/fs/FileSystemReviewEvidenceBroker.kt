@@ -80,12 +80,23 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
     policy.classify(operation)?.let { return forbiddenResult(it, cumulativeBytes, expansionLedger.size) }
 
     if (!policy.isAssigned(normalized)) {
-      expansionLedger += expansionRecord(
-        assignment,
-        normalized,
-        requireNotNull(request.reachabilityReason),
-        expansionLedger.size,
-      )
+      val expansion = requireNotNull(request.authorizedExpansion) {
+        "Unassigned evidence requires an authorized expansion record."
+      }
+      require(expansion.authorized) { "Expansion '${expansion.expansionId}' is not authorized." }
+      require(expansion.assignmentDigest == assignment.digest) {
+        "Expansion '${expansion.expansionId}' does not belong to this assignment."
+      }
+      require(expansion.requestedPath.replace('\\', '/') == normalized) {
+        "Expansion '${expansion.expansionId}' does not authorize '$normalized'."
+      }
+      require(expansion.reachabilityReason == request.reachabilityReason) {
+        "Expansion '${expansion.expansionId}' reason provenance changed before admission."
+      }
+      require(expansion.sequence == expansionLedger.size) {
+        "Expansion '${expansion.expansionId}' is out of sequence."
+      }
+      expansionLedger += expansion
       if (expansionLedger.size > budget.maxAssignmentExpansions) {
         return exceeded("assignment_expansions", budget.maxAssignmentExpansions.toLong(), expansionLedger.size.toLong())
       }
@@ -194,20 +205,6 @@ private fun resolveRepositoryFile(root: Path, normalized: String): Path {
   require(real.startsWith(root) && Files.isRegularFile(real)) { "Evidence path must be a repository file." }
   return real
 }
-
-private fun expansionRecord(
-  assignment: skillbill.review.context.model.ReviewAssignment,
-  path: String,
-  reason: String,
-  sequence: Int,
-) = ReviewExpansionRecord(
-  expansionId = "${assignment.lane}-expansion-${sequence + 1}",
-  assignmentDigest = assignment.digest,
-  requestedPath = path,
-  reachabilityReason = reason,
-  authorized = true,
-  sequence = sequence,
-)
 
 private fun forbiddenResult(forbidden: ForbiddenReviewOperation, cumulativeBytes: Long, expansionCount: Int) =
   ReviewEvidenceResult(

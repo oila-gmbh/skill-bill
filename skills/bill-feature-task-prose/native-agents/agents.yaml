@@ -244,6 +244,9 @@ agents:
       - MEDIUM/LARGE: produce a full per-criterion report with evidence paths. Verify against actual code, not the summary.
       - Do NOT implement fixes. Do NOT edit files.
       - If a criterion is partially satisfied, record it as a gap with `suggested_fix`.
+      - Before suggesting any fix, analyze it as if already applied. Trace affected production callers and callees, provider/platform variants, lifecycle and state transitions, persistence/schema/serialization seams, failure/timeout/cancellation/retry paths, permissions/isolation boundaries, and interactions with every other suggested fix.
+      - Treat satisfied criteria as non-regression constraints. Make each `suggested_fix` closure-complete for the evidenced blast radius, including preventative changes needed to avoid regressions. If the fix would expose or introduce another evidenced production defect, report that defect in this same audit instead of deferring it to a later pass.
+      - On follow-up audits, inspect the full cumulative repair delta and cross-repair interactions, not only files or symbols named by the previous gaps. Do not invent speculative gaps; every reported issue still requires concrete repository evidence.
       
       Return exactly one RESULT: block as your final message, containing valid JSON with this shape:
       

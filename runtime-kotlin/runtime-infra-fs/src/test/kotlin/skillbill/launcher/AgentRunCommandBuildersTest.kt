@@ -6,6 +6,7 @@ import skillbill.launcher.agentrun.AgentRunOutputDecoder
 import skillbill.launcher.agentrun.ClaudeAgentRunCommandBuilder
 import skillbill.launcher.agentrun.CodexAgentRunCommandBuilder
 import skillbill.launcher.agentrun.JunieAgentRunCommandBuilder
+import skillbill.launcher.agentrun.NativeReviewLifecycleCallbacks
 import skillbill.launcher.agentrun.NativeReviewOperationBoundary
 import skillbill.launcher.agentrun.NativeReviewProviderCapabilities
 import skillbill.launcher.agentrun.ProviderUsageExposure
@@ -201,24 +202,31 @@ class AgentRunCommandBuildersTest {
     )
     builders.forEach { (builder, expectedIsolation) ->
       assertEquals(expectedIsolation, builder.reviewIsolation)
-      assertEquals(
-        skillbill.launcher.agentrun.ProviderUsageExposure.COMPLETION_ONLY,
-        builder.nativeReviewCapabilities.providerUsageExposure,
-      )
       assertEquals(ConversationIsolation.NONE, builder.build(isolated).conversationIsolation)
     }
-    assertTrue(ClaudeAgentRunCommandBuilder().nativeReviewCapabilities.supportsGovernedLaunch)
+    assertFalse(ClaudeAgentRunCommandBuilder().nativeReviewCapabilities.supportsGovernedLaunch)
     assertTrue(CodexAgentRunCommandBuilder().nativeReviewCapabilities.supportsGovernedLaunch)
     assertFalse(JunieAgentRunCommandBuilder().nativeReviewCapabilities.supportsGovernedLaunch)
     assertEquals(
-      skillbill.launcher.agentrun.NativeReviewOperationBoundary.DISABLED,
+      skillbill.launcher.agentrun.NativeReviewOperationBoundary.SYNCHRONOUS_BROKER,
       CodexAgentRunCommandBuilder().nativeReviewCapabilities.operationBoundary,
+    )
+    assertEquals(
+      skillbill.launcher.agentrun.ProviderUsageExposure.IN_FLIGHT_ENFORCEABLE,
+      CodexAgentRunCommandBuilder().nativeReviewCapabilities.providerUsageExposure,
     )
     assertFalse(
       NativeReviewProviderCapabilities(
         operationBoundary = NativeReviewOperationBoundary.SYNCHRONOUS_BROKER,
-        modelTurnObservation = true,
         providerUsageExposure = ProviderUsageExposure.IN_FLIGHT_ENFORCEABLE,
+        lifecycleCallbacks = null,
+      ).supportsGovernedLaunch,
+    )
+    assertTrue(
+      NativeReviewProviderCapabilities(
+        operationBoundary = NativeReviewOperationBoundary.SYNCHRONOUS_BROKER,
+        providerUsageExposure = ProviderUsageExposure.IN_FLIGHT_ENFORCEABLE,
+        lifecycleCallbacks = NativeReviewLifecycleCallbacks.BROKERED,
       ).supportsGovernedLaunch,
     )
     val codexCommand = CodexAgentRunCommandBuilder().build(isolated).command
