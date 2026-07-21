@@ -1263,6 +1263,7 @@ internal class FeatureTaskRuntimeRunLoop(
           FeatureTaskRuntimePhaseFileManifest(it.fileManifestBefore, it.fileManifestAfter)
         },
         outputArtifact = durable?.outputArtifact,
+        rejectedOutput = durable?.rejectedOutput,
       )
     }
   }
@@ -1341,7 +1342,7 @@ internal class FeatureTaskRuntimeRunLoop(
             observability,
             failureDisposition = FeatureTaskRuntimeFailureDisposition.INVALID_OUTPUT,
             fileManifest = attempt.fileManifest,
-            outputArtifact = attempt.rejectedOutput,
+            rejectedOutput = attempt.rejectedOutput,
           )
         }
     }
@@ -1359,6 +1360,7 @@ internal class FeatureTaskRuntimeRunLoop(
     failureDisposition: FeatureTaskRuntimeFailureDisposition = FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
     fileManifest: FeatureTaskRuntimePhaseFileManifest? = null,
     outputArtifact: String? = null,
+    rejectedOutput: String? = null,
   ): PhaseOutcome {
     val phaseState = FeatureTaskRuntimePhaseStateRequest(
       workflowId = run.request.workflowId,
@@ -1368,6 +1370,7 @@ internal class FeatureTaskRuntimeRunLoop(
       resolvedAgentId = run.resolvedAgent.resolvedAgentId,
       finished = false,
       outputArtifact = outputArtifact,
+      rejectedOutput = rejectedOutput,
       blockedReason = reason,
       failureDisposition = failureDisposition,
       fileManifestBefore = fileManifest?.before.orEmpty(),
@@ -1394,6 +1397,7 @@ internal class FeatureTaskRuntimeRunLoop(
     failureDisposition: FeatureTaskRuntimeFailureDisposition = FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
     fileManifest: FeatureTaskRuntimePhaseFileManifest? = null,
     outputArtifact: String? = null,
+    rejectedOutput: String? = null,
   ): PhaseOutcome = blockAndPersist(
     run,
     attemptCount,
@@ -1404,6 +1408,7 @@ internal class FeatureTaskRuntimeRunLoop(
     failureDisposition = failureDisposition,
     fileManifest = fileManifest,
     outputArtifact = outputArtifact,
+    rejectedOutput = rejectedOutput,
   )
 
   @Suppress("LongParameterList")

@@ -200,6 +200,11 @@ data class FeatureTaskRuntimePhaseRecord(
   val executionOrigin: FeatureTaskRuntimePhaseExecutionOrigin =
     FeatureTaskRuntimePhaseExecutionOrigin.AGENT_EXECUTED,
   val outputArtifact: String? = null,
+  /**
+   * Schema-rejected agent output kept as diagnostic evidence. Held apart from [outputArtifact] because it
+   * is invalid by construction: storing it as an output makes resume hydration re-validate and reject it.
+   */
+  val rejectedOutput: String? = null,
   val blockedReason: String? = null,
   val failureDisposition: FeatureTaskRuntimeFailureDisposition? = null,
   val fileManifestBefore: List<String> = emptyList(),
@@ -247,6 +252,7 @@ data class FeatureTaskRuntimePhaseRecord(
     finishedAt?.let { put("finished_at", it) }
     durationMillis?.let { put("duration_millis", it) }
     outputArtifact?.let { put("output_artifact", it) }
+    rejectedOutput?.let { put("rejected_output", it) }
     blockedReason?.let { put("blocked_reason", it) }
     failureDisposition?.let { put("failure_disposition", it.wireValue) }
     if (fileManifestBefore.isNotEmpty()) put("file_manifest_before", fileManifestBefore)
@@ -276,6 +282,7 @@ data class FeatureTaskRuntimePhaseRecord(
           FeatureTaskRuntimePhaseExecutionOrigin::fromWireValue,
         ) ?: FeatureTaskRuntimePhaseExecutionOrigin.AGENT_EXECUTED,
         outputArtifact = raw.optionalStringField("output_artifact"),
+        rejectedOutput = raw.optionalStringField("rejected_output"),
         blockedReason = raw.optionalStringField("blocked_reason"),
         failureDisposition = raw.optionalStringField("failure_disposition")?.let { value ->
           FeatureTaskRuntimeFailureDisposition.fromWireValue(value)

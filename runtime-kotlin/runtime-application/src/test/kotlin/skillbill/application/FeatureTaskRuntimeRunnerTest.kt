@@ -105,6 +105,7 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -2188,8 +2189,40 @@ class FeatureTaskRuntimeRunnerSpecLifecycleTest {
 // topology, kept in a sibling class so the primary runner test class stays within its size
 // budget while sharing the same file-private run harness.
 class FeatureTaskRuntimeReviewFixLoopTest {
-  // The rejected output persisted as diagnostic evidence is not schema-valid by construction. Hydrating
-  // resume state must tolerate it, or the workflow can never be resumed again.
+  @Test
+  fun `schema-rejected evidence is persisted apart from the phase output artifact`() {
+    val harness = runnerHarness(
+      validator = ThrowingValidator(failPhases = setOf("review")),
+      agentAssignment = phasePerAgentAssignment(),
+    )
+
+    assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+
+    val reviewRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["review"])
+    assertEquals("blocked", reviewRecord.status)
+    assertNotNull(reviewRecord.rejectedOutput)
+    assertNull(
+      reviewRecord.outputArtifact,
+      "rejected evidence must never land in output_artifact, which resume hydration re-validates",
+    )
+  }
+
+  @Test
+  fun `a completed record with an unparseable output artifact still loud-fails on resume`() {
+    val harness = runnerHarness(
+      validator = ThrowingValidator(failPhases = setOf("plan")),
+      agentAssignment = phasePerAgentAssignment(),
+    )
+    harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), PREPLAN_OUTPUT)
+    harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), "not a json object")
+
+    assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
+      harness.runner.run(harness.request())
+    }
+  }
+
+  // Legacy records stored schema-rejected evidence in output_artifact. Hydrating resume state must tolerate
+  // it, or those workflows can never be resumed again.
   @Test
   fun `a blocked phase carrying schema-rejected output stays resumable`() {
     val harness = runnerHarness(agentAssignment = phasePerAgentAssignment())
