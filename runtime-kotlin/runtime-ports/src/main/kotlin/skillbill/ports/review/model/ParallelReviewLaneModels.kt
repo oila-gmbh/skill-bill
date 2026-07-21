@@ -21,4 +21,5 @@ data class ParallelReviewLaneOutcome(
   val failureReason: String? = null,
   val tokenUsage: ProviderTokenUsage? = null,
   val budgetOutcome: ReviewBudgetOutcome? = null,
+  val accounting: ReviewLaneAccounting? = null,
 )

@@ -10,6 +10,7 @@ import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.model.SpecSource
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeOperatorBlockRetry
 
 /**
  * Pure composer of the full prompt a feature-task-runtime phase agent receives. The persisted
@@ -31,6 +32,7 @@ object FeatureTaskRuntimePhasePromptComposer {
     goalSubtaskReviewInput: GoalSubtaskReviewInput? = null,
     specSource: SpecSource = SpecSource.LOCAL,
     priorSchemaFailure: String? = null,
+    operatorBlockRetry: FeatureTaskRuntimeOperatorBlockRetry? = null,
     specReference: String? = null,
     agentAddonSelection: HydratedAgentAddonSelection = HydratedAgentAddonSelection(),
   ): String {
@@ -50,9 +52,24 @@ object FeatureTaskRuntimePhasePromptComposer {
       specCommitInclusionDirective(briefing.phaseId, specReference, specSource),
       AgentAddonPromptFormatter.format(agentAddonSelection),
       briefing.briefingText,
+      operatorBlockRetryDirective(briefing.phaseId, operatorBlockRetry),
       retryCorrectionDirective(briefing, priorSchemaFailure),
       outputContract(briefing),
     ).filter(String::isNotBlank).joinToString(separator = "\n\n")
+  }
+
+  private fun operatorBlockRetryDirective(phaseId: String, retry: FeatureTaskRuntimeOperatorBlockRetry?): String {
+    if (retry == null) return ""
+    require(retry.phaseId == phaseId) {
+      "Operator blocked-phase retry guidance for '${retry.phaseId}' cannot be delivered to phase '$phaseId'."
+    }
+    return """
+      ## Operator-applied blocked-phase retry decision
+      An operator reviewed the prior block and explicitly reopened this phase. Apply this decision:
+      ${retry.reason}
+      Re-evaluate the current repository state using this decision. Do not repeat the superseded block solely
+      because of the prior interpretation. The governed acceptance criteria and output contract still apply.
+    """.trimIndent()
   }
 
   // Emitted only when the prior attempt at this phase failed the schema gate (its reason threaded in by

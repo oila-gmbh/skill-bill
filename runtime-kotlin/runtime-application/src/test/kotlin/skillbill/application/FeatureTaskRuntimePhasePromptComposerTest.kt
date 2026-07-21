@@ -10,6 +10,7 @@ import skillbill.workflow.model.SpecSource
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeOperatorBlockRetry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
 import kotlin.test.Test
@@ -390,6 +391,32 @@ class FeatureTaskRuntimePhasePromptComposerTest {
       assertTrue(!firstAttempt.contains("REJECTED by the schema gate"), "$phaseId first attempt: no correction")
       assertContains(retry, "Previous attempt was REJECTED by the schema gate", false, "$phaseId retry: rejection")
       assertContains(retry, reason, false, "$phaseId retry carries the validator's reason verbatim")
+    }
+  }
+
+  @Test
+  fun `an operator blocked-phase retry decision is delivered only to its matching phase`() {
+    val reason = "Use fresh-process isolation for Codex CLI workers."
+    val retry = FeatureTaskRuntimeOperatorBlockRetry(
+      phaseId = "implement",
+      reason = reason,
+      retriedAt = "2026-07-21T16:30:00Z",
+    )
+
+    val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor("implement"),
+      operatorBlockRetry = retry,
+    )
+
+    assertContains(prompt, "Operator-applied blocked-phase retry decision")
+    assertContains(prompt, reason)
+    assertFailsWith<IllegalArgumentException> {
+      FeatureTaskRuntimePhasePromptComposer.compose(
+        ISSUE_KEY,
+        briefingFor("audit"),
+        operatorBlockRetry = retry,
+      )
     }
   }
 

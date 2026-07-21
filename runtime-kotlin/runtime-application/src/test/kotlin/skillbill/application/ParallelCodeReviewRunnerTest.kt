@@ -25,9 +25,11 @@ import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.review.ParallelReviewLaneRunner
 import skillbill.ports.review.ReviewEvidenceBroker
 import skillbill.ports.review.ReviewEvidenceBrokerFactory
+import skillbill.ports.review.ReviewRubricResolver
 import skillbill.ports.review.model.ParallelReviewLaneOutcome
 import skillbill.ports.review.model.ParallelReviewLaneRunRequest
 import skillbill.ports.review.model.ParallelReviewLaneRunResult
+import skillbill.ports.review.model.ResolvedReviewRubric
 import skillbill.ports.review.model.ReviewEvidenceBatchRequest
 import skillbill.ports.review.model.ReviewEvidenceBatchResult
 import skillbill.ports.review.model.ReviewEvidenceBrokerBinding
@@ -278,6 +280,8 @@ class ParallelCodeReviewRunnerTest {
 
     assertEquals(70, result.lane1.tokenUsage?.freshTokenApproximation)
     assertEquals(110, result.lane2.tokenUsage?.totalTokens)
+    assertEquals("claude", result.lane1.accounting?.lane)
+    assertEquals(0, result.lane1.accounting?.resultBytes)
   }
 
   @Test
@@ -500,6 +504,28 @@ class ParallelCodeReviewRunnerTest {
   }
 
   @Test
+  fun `detected manifest selects the governed baseline rubric before lane launch`() {
+    val launcher = ParallelSubtaskLauncher()
+    var resolvedSlug: String? = null
+    val runner = runner(
+      launcher,
+      catalogGateway = stubCatalogGateway(listOf(platformManifest("kotlin", listOf("*.kt")))),
+      diffResolver = RecordingDiffResolver(default = diffFor("src/Main.kt")),
+      rubricResolver = ReviewRubricResolver { manifest ->
+        resolvedSlug = manifest?.slug
+        ResolvedReviewRubric("bill-kotlin-code-review", "manifest-owned kotlin rubric")
+      },
+    )
+
+    runner.run(baseRequest(scope = ParallelReviewScope.STAGED))
+
+    assertEquals("kotlin", resolvedSlug)
+    launcher.requests.forEach { request ->
+      assertContains(request.skillRunRequest.promptOverride.orEmpty(), "manifest-owned kotlin rubric")
+    }
+  }
+
+  @Test
   fun `stack detection excludes generated dependency and build paths`() {
     val launcher = ParallelSubtaskLauncher()
     val runner = runner(
@@ -531,16 +557,15 @@ class ParallelCodeReviewRunnerTest {
     catalogGateway: ScaffoldCatalogGateway = noManifestsCatalogGateway,
     diffResolver: DiffResolverPort = RealProcessDiffResolver(),
     parallelLaneRunner: ParallelReviewLaneRunner = TestParallelLaneRunner(),
+    rubricResolver: ReviewRubricResolver = ReviewRubricResolver {
+      ResolvedReviewRubric("parallel-code-review", "governed generic rubric")
+    },
   ): ParallelCodeReviewRunner = ParallelCodeReviewRunner(
     delegatedReviewExecutionBroker = DelegatedReviewExecutionBroker(
       DelegatedReviewLaunchBroker(
         evidenceBrokerFactory = ReviewEvidenceBrokerFactory(::TestReviewEvidenceBroker),
         isolationResolver = { agentId ->
-          if (agentId == "codex") {
-            ReviewLaunchIsolationStrategy.CODEX_FORK_TURNS_NONE
-          } else {
-            ReviewLaunchIsolationStrategy.FRESH_NATIVE_SUBAGENT
-          }
+          ReviewLaunchIsolationStrategy.FRESH_PROCESS
         },
       ),
       DelegatedReviewWorkerLauncher(launcher),
@@ -555,6 +580,7 @@ class ParallelCodeReviewRunnerTest {
     reviewContextEnvelopeValidator = object : skillbill.review.context.ReviewContextEnvelopeValidator {
       override fun validate(envelope: Map<String, Any?>, sourceLabel: String) = Unit
     },
+    reviewRubricResolver = rubricResolver,
   )
 
   private fun baseRequest(

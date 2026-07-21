@@ -40,6 +40,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeBackwardEdge
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCapExhaustionBehavior
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeNextPhase
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeOperatorBlockRetry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
@@ -91,6 +92,10 @@ internal class FeatureTaskRuntimeRunLoop(
   private var resolvedBranch: String? = null
   private var blocked: FeatureTaskRuntimeRunReport.Blocked? = null
   private var decomposed: FeatureTaskRuntimeRunReport.Decomposed? = null
+  private val operatorBlockRetry: FeatureTaskRuntimeOperatorBlockRetry? = recorder
+    .loadOperatorBlockRetry(request.workflowId, request.dbPathOverride)
+    ?.takeIf { state.recordFor(it.phaseId) == null }
+  private var operatorBlockRetryCompleted: Boolean = false
 
   private var pendingReentry: PendingReentry? = resumedReentry()
   private var activeReentry: PendingReentry? = pendingReentry
@@ -622,6 +627,7 @@ internal class FeatureTaskRuntimeRunLoop(
     return outcome.blockedReason ?: run {
       val completedOutput = requireNotNull(outcome.completedOutput)
       state.recordCompleted(completedOutput)
+      if (operatorBlockRetry?.phaseId == phaseId) operatorBlockRetryCompleted = true
       applyPlanningStop(phaseId, completedOutput)
     }
   }
@@ -2061,6 +2067,8 @@ internal class FeatureTaskRuntimeRunLoop(
             goalSubtaskReviewInput = run.goalReviewInput,
             specSource = run.specSource,
             priorSchemaFailure = priorSchemaFailure,
+            operatorBlockRetry = operatorBlockRetry
+              ?.takeIf { it.phaseId == run.phaseId && !operatorBlockRetryCompleted },
             specReference = run.request.runInvariants.specReference,
             agentAddonSelection = run.request.agentAddonSelection,
           ),

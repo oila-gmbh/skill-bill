@@ -42,7 +42,7 @@ class DelegatedReviewLaunchBroker(
       brokerId = request.brokerId,
       budget = request.budget,
     )
-    if (isolation == ReviewLaunchIsolationStrategy.CODEX_FORK_TURNS_NONE) {
+    if (isolation == ReviewLaunchIsolationStrategy.CODEX_NATIVE_FORK_TURNS_NONE) {
       launch.requireCodexForkTurns(isolation.forkTurns)
     }
 

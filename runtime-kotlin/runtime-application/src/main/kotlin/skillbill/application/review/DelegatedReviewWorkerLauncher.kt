@@ -41,7 +41,11 @@ class DelegatedReviewWorkerLauncher(
         val providerOutcome = providerUsage(outcome)?.let {
           prepared.evidenceBroker.evaluateProviderUsage(it, enforceable = false)
         }
-        DelegatedReviewWorkerOutcome(outcome, budgetOutcome = resultOutcome ?: providerOutcome)
+        DelegatedReviewWorkerOutcome(
+          facts = outcome,
+          budgetOutcome = resultOutcome ?: providerOutcome,
+          accounting = prepared.evidenceBroker.accounting(),
+        )
       }
     }
   }
@@ -73,8 +77,8 @@ class DelegatedReviewWorkerLauncher(
 }
 
 private fun skillbill.ports.agentrun.model.ReviewLaunchIsolationStrategy.toConversationIsolation() = when (this) {
-  skillbill.ports.agentrun.model.ReviewLaunchIsolationStrategy.CODEX_FORK_TURNS_NONE,
-  skillbill.ports.agentrun.model.ReviewLaunchIsolationStrategy.FRESH_NATIVE_SUBAGENT,
+  skillbill.ports.agentrun.model.ReviewLaunchIsolationStrategy.CODEX_NATIVE_FORK_TURNS_NONE,
+  skillbill.ports.agentrun.model.ReviewLaunchIsolationStrategy.FRESH_PROCESS,
   -> skillbill.ports.agentrun.model.ConversationIsolation.NONE
   skillbill.ports.agentrun.model.ReviewLaunchIsolationStrategy.UNSUPPORTED ->
     error("A governed review worker cannot start without a fresh-context isolation strategy.")

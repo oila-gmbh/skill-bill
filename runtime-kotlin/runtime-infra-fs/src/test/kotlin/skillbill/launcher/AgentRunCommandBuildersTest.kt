@@ -7,6 +7,7 @@ import skillbill.launcher.agentrun.ClaudeAgentRunCommandBuilder
 import skillbill.launcher.agentrun.CodexAgentRunCommandBuilder
 import skillbill.launcher.agentrun.JunieAgentRunCommandBuilder
 import skillbill.ports.agentrun.model.ConversationIsolation
+import skillbill.ports.agentrun.model.ReviewLaunchIsolationStrategy
 import skillbill.ports.agentrun.model.SkillRunRequest
 import java.nio.file.Path
 import kotlin.test.Test
@@ -172,6 +173,7 @@ class AgentRunCommandBuildersTest {
       CodexAgentRunCommandBuilder(),
       JunieAgentRunCommandBuilder(),
     ).forEach { builder ->
+      assertEquals(ReviewLaunchIsolationStrategy.FRESH_PROCESS, builder.reviewIsolation)
       assertEquals(ConversationIsolation.NONE, builder.build(isolated).conversationIsolation)
     }
   }

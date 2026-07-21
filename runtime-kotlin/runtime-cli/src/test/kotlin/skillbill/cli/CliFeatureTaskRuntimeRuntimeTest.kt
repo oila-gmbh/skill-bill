@@ -965,6 +965,7 @@ class CliFeatureTaskRuntimeRuntimeTest {
     assertEquals(1, blocked.exitCode, blocked.stdout)
     val workflowId = blocked.stdout.lines().single { it.startsWith("workflow_id:") }.substringAfter(":").trim()
 
+    val operatorReason = "Operator applied the external fix; retry the blocked phase."
     val retry = CliRuntime.run(
       listOf(
         "--db",
@@ -975,7 +976,7 @@ class CliFeatureTaskRuntimeRuntimeTest {
         "--phase",
         "implement",
         "--reason",
-        "Operator applied the external fix; retry the blocked phase.",
+        operatorReason,
       ),
       fixture.context(RecordingPhaseLauncher()),
     )
@@ -1002,6 +1003,9 @@ class CliFeatureTaskRuntimeRuntimeTest {
       listOf("implement", "audit", "review", "validate", "write_history", "commit_push", "pr"),
       resumedLauncher.phaseOrder(),
     )
+    val resumedPrompts = resumedLauncher.requests.map { it.skillRunRequest.promptOverride.orEmpty() }
+    assertContains(resumedPrompts.first(), operatorReason)
+    assertTrue(resumedPrompts.drop(1).none { it.contains(operatorReason) })
   }
 
   @Test

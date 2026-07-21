@@ -1,5 +1,6 @@
 package skillbill.application.model
 
+import skillbill.ports.review.model.ReviewLaneAccounting
 import skillbill.review.context.model.ProviderTokenUsage
 import skillbill.review.context.model.ReviewBudgetOutcome
 import skillbill.review.model.ParallelReviewMergeResult
@@ -40,6 +41,7 @@ data class ParallelReviewLaneStatus(
   val failureReason: String? = null,
   val tokenUsage: ProviderTokenUsage? = null,
   val budgetOutcome: ReviewBudgetOutcome? = null,
+  val accounting: ReviewLaneAccounting? = null,
 )
 
 data class ParallelCodeReviewMergeRequest(

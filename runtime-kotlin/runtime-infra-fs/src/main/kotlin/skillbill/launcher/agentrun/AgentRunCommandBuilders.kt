@@ -49,7 +49,7 @@ internal fun goalContinuationEnvironment(request: SkillRunRequest): Map<String, 
 class ClaudeAgentRunCommandBuilder : AgentRunCommandBuilder {
   override val agent: InstallAgent = InstallAgent.CLAUDE
   override val outputDecoder: AgentRunOutputDecoder = AgentRunOutputDecoder.CLAUDE_JSON
-  override val reviewIsolation: ReviewLaunchIsolationStrategy = ReviewLaunchIsolationStrategy.FRESH_NATIVE_SUBAGENT
+  override val reviewIsolation: ReviewLaunchIsolationStrategy = ReviewLaunchIsolationStrategy.FRESH_PROCESS
 
   override fun build(request: SkillRunRequest): AgentRunCommand {
     requireProcessLaunch(request, reviewIsolation)
@@ -83,7 +83,7 @@ class ClaudeAgentRunCommandBuilder : AgentRunCommandBuilder {
 class CodexAgentRunCommandBuilder : AgentRunCommandBuilder {
   override val agent: InstallAgent = InstallAgent.CODEX
   override val outputDecoder: AgentRunOutputDecoder = AgentRunOutputDecoder.CODEX_JSONL
-  override val reviewIsolation: ReviewLaunchIsolationStrategy = ReviewLaunchIsolationStrategy.CODEX_FORK_TURNS_NONE
+  override val reviewIsolation: ReviewLaunchIsolationStrategy = ReviewLaunchIsolationStrategy.FRESH_PROCESS
 
   override fun build(request: SkillRunRequest): AgentRunCommand {
     requireProcessLaunch(request, reviewIsolation)
@@ -117,7 +117,7 @@ class CodexAgentRunCommandBuilder : AgentRunCommandBuilder {
 
 class JunieAgentRunCommandBuilder : AgentRunCommandBuilder {
   override val agent: InstallAgent = InstallAgent.JUNIE
-  override val reviewIsolation: ReviewLaunchIsolationStrategy = ReviewLaunchIsolationStrategy.FRESH_NATIVE_SUBAGENT
+  override val reviewIsolation: ReviewLaunchIsolationStrategy = ReviewLaunchIsolationStrategy.FRESH_PROCESS
 
   override fun build(request: SkillRunRequest): AgentRunCommand {
     requireProcessLaunch(request, reviewIsolation)
@@ -155,7 +155,7 @@ private fun requireProcessLaunch(request: SkillRunRequest, strategy: ReviewLaunc
     require(strategy.supported && isolation == ConversationIsolation.NONE) {
       "Governed specialist launches require a supported fresh-context strategy."
     }
-    if (strategy == ReviewLaunchIsolationStrategy.CODEX_FORK_TURNS_NONE) {
+    if (strategy == ReviewLaunchIsolationStrategy.CODEX_NATIVE_FORK_TURNS_NONE) {
       require(strategy.forkTurns == isolation.forkTurns) {
         "Governed Codex review launches require fork_turns none."
       }

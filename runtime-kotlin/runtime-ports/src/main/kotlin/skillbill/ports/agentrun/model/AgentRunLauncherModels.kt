@@ -59,8 +59,8 @@ enum class ConversationIsolation(val forkTurns: String) {
  * command builder. The process runner never reads agent identity; it reads the strategy.
  */
 enum class ReviewLaunchIsolationStrategy(val forkTurns: String?, val supported: Boolean) {
-  CODEX_FORK_TURNS_NONE(ConversationIsolation.NONE.forkTurns, true),
-  FRESH_NATIVE_SUBAGENT(null, true),
+  CODEX_NATIVE_FORK_TURNS_NONE(ConversationIsolation.NONE.forkTurns, true),
+  FRESH_PROCESS(null, true),
   UNSUPPORTED(null, false),
 }
 

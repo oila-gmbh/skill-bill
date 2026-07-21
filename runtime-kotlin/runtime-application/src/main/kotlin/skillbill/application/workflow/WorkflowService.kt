@@ -40,6 +40,8 @@ import skillbill.workflow.model.WorkflowDefinition
 import skillbill.workflow.model.WorkflowStateSnapshot
 import skillbill.workflow.model.WorkflowUpdateInput
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_OPERATOR_BLOCK_RETRY_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_OPERATOR_BLOCK_RETRY_REASON_MAX_LENGTH
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_LIMIT
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
@@ -309,10 +311,14 @@ class WorkflowService(
     dbOverride: String? = null,
   ): WorkflowUpdateResult {
     val normalizedReason = reason.trim()
-    if (normalizedReason.isEmpty() || normalizedReason.length > MAX_ABANDONMENT_REASON_LENGTH) {
+    if (
+      normalizedReason.isEmpty() ||
+      normalizedReason.length > FEATURE_TASK_RUNTIME_OPERATOR_BLOCK_RETRY_REASON_MAX_LENGTH
+    ) {
       return WorkflowUpdateResult.Error(
         workflowId,
-        "Blocked-phase retry reason must contain 1..$MAX_ABANDONMENT_REASON_LENGTH characters.",
+        "Blocked-phase retry reason must contain " +
+          "1..$FEATURE_TASK_RUNTIME_OPERATOR_BLOCK_RETRY_REASON_MAX_LENGTH characters.",
       )
     }
     val normalizedPhaseId = phaseId.trim()
@@ -646,7 +652,6 @@ private const val DEFAULT_LIST_LIMIT: Int = 20
 private const val MAX_ABANDONMENT_REASON_LENGTH: Int = 1000
 private const val FEATURE_TASK_RUNTIME_OPERATOR_ABANDONMENT_ARTIFACT_KEY: String = "operator_abandonment"
 private const val FEATURE_TASK_RUNTIME_IDENTITY_REPAIR_ARTIFACT_KEY: String = "operator_identity_repair"
-private const val FEATURE_TASK_RUNTIME_OPERATOR_BLOCK_RETRY_ARTIFACT_KEY: String = "operator_block_retry"
 private const val WORKFLOW_ID_SUFFIX_LENGTH: Int = 4
 private val FEATURE_TASK_FAMILY_KINDS = setOf(WorkflowFamilyKind.TASK_PROSE, WorkflowFamilyKind.TASK_RUNTIME)
 private const val INCOMPLETE_FEATURE_TASK_IDENTITY_ERROR =

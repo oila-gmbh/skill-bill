@@ -3,14 +3,14 @@ contract_version: "0.5"
 issue_key: "SKILL-129"
 feature_name: "super-optimized-code-review"
 parent_spec_path: ".feature-specs/SKILL-129-super-optimized-code-review/spec.md"
-status: "blocked"
+status: "in_progress"
 execution_model: "same_branch_commit_per_subtask"
 base_branch: "main"
 feature_branch: "feat/SKILL-129-super-optimized-code-review"
 stack_branches: []
 current_subtask_intent:
   subtask_id: 2
-  action: "blocked"
+  action: "resume"
 subtasks:
 - id: 1
   name: "Compile one authoritative review packet"
@@ -28,15 +28,11 @@ subtasks:
 - id: 2
   name: "Enforce bounded launches and evidence"
   spec_path: ".feature-specs/SKILL-129-super-optimized-code-review/spec_subtask_2_runtime_budget_broker.md"
-  status: "blocked"
+  status: "in_progress"
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260721-123120-e9kh"
-  blocked_reason: "Phase output reported status 'blocked'. Reconciled and verified\
-    \ the authoritative parallel-review preparation repair. Further ordered remediation\
-    \ is blocked because production exposes only command-line subprocess launchers,\
-    \ not a provider-native specialist-start or broker protocol capable of materializing\
-    \ Codex fork_turns none and mediating worker operations."
+  blocked_reason: null
   last_resumable_step: "implement"
   linear_issue_id: null
   finalizing_agent_id: null

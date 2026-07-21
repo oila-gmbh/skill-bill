@@ -472,6 +472,41 @@ class ApplicationPersistencePortTest {
   }
 
   @Test
+  fun `operator blocked-phase retry is active only while retry is the latest phase transition`() {
+    val workflowRepository = InMemoryWorkflowStateRepository()
+    val database = FakeDatabaseSessionFactory(workflows = workflowRepository)
+    val service = testWorkflowService(database)
+    val recorder = FeatureTaskRuntimePhaseRecorder(database, WorkflowSnapshotValidatorInfraAdapter())
+    val workflowId = (
+      service.openTestFeatureTask(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-001", dbOverride = null)
+        as WorkflowOpenResult.Ok
+      ).workflowId
+    val reason = "Use the operator-approved fresh-process isolation boundary."
+    recorder.recordRuntimePhase(
+      workflowId,
+      phaseId = "implement",
+      status = "blocked",
+      finished = false,
+      blockedReason = "native adapter unavailable",
+    )
+
+    val retried = service.retryBlockedFeatureTaskRuntimePhase(workflowId, "implement", reason)
+
+    assertTrue(retried is WorkflowUpdateResult.Ok)
+    assertEquals(reason, recorder.loadOperatorBlockRetry(workflowId)?.reason)
+    recorder.appendLedgerEntry(
+      FeatureTaskRuntimePhaseLedgerRequest(
+        workflowId = workflowId,
+        action = FeatureTaskRuntimePhaseLedgerAction.START,
+        phaseId = "implement",
+        attemptCount = 1,
+        resolvedAgentId = "codex",
+      ),
+    )
+    assertEquals(null, recorder.loadOperatorBlockRetry(workflowId))
+  }
+
+  @Test
   fun `task runtime recorder advances shared steps in lockstep with per-phase records`() {
     val workflowRepository = InMemoryWorkflowStateRepository()
     val database = FakeDatabaseSessionFactory(workflows = workflowRepository)

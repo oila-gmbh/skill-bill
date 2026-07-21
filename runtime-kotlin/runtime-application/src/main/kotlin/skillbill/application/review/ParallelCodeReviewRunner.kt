@@ -10,6 +10,8 @@ import skillbill.application.model.StackDetectionException
 import skillbill.application.model.UsageValidationException
 import skillbill.application.review.model.DelegatedReviewExecutionOutcome
 import skillbill.application.review.model.DelegatedReviewExecutionRequest
+import skillbill.application.review.model.DelegatedReviewLaunchRequest
+import skillbill.application.review.model.ReviewRubricProjection
 import skillbill.application.scaffold.ScaffoldCatalogService
 import skillbill.application.workflow.repoRoot
 import skillbill.install.model.InstallAgent
@@ -19,20 +21,23 @@ import skillbill.ports.config.RepoLocalConfigPort
 import skillbill.ports.config.model.ReadRepoLocalConfigRequest
 import skillbill.ports.diff.DiffResolverPort
 import skillbill.ports.review.ParallelReviewLaneRunner
+import skillbill.ports.review.ReviewRubricResolver
 import skillbill.ports.review.model.ParallelReviewLaneOutcome
 import skillbill.ports.review.model.ParallelReviewLaneRunRequest
 import skillbill.review.ParallelReviewFindingParser
 import skillbill.review.ParallelReviewMerger
+import skillbill.review.context.ReviewContextEnvelopeValidator
 import skillbill.review.context.model.ProviderTokenUsage
 import skillbill.review.context.model.ReviewBudgetOutcome
 import skillbill.review.context.model.TokenOwnership
-import skillbill.review.context.ReviewContextEnvelopeValidator
 import skillbill.review.model.ParallelReviewLaneResult
+import skillbill.scaffold.model.PlatformManifest
 import java.nio.file.Path
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
 @Inject
+@Suppress("LongParameterList")
 class ParallelCodeReviewRunner(
   private val delegatedReviewExecutionBroker: DelegatedReviewExecutionBroker,
   private val scaffoldCatalogService: ScaffoldCatalogService,
@@ -40,6 +45,7 @@ class ParallelCodeReviewRunner(
   private val parallelLaneRunner: ParallelReviewLaneRunner,
   private val repoLocalConfig: RepoLocalConfigPort,
   private val reviewContextEnvelopeValidator: ReviewContextEnvelopeValidator,
+  private val reviewRubricResolver: ReviewRubricResolver,
 ) {
   fun run(request: ParallelCodeReviewRequest): ParallelCodeReviewResult {
     val agent1 = resolveAgent(request.agent1Id, "--agent1")
@@ -51,17 +57,8 @@ class ParallelCodeReviewRunner(
     }
 
     val diffText = resolveDiff(request)
-    val stack = detectStack(diffText, request.repoRoot)
-    val budget = repoLocalConfig.readRepoLocalConfig(ReadRepoLocalConfigRequest(request.repoRoot))
-      .config.reviewContextBudget
-    val prepared = ParallelReviewPreparationCompiler.compile(
-      diffText,
-      stack,
-      listOf(agent1.id, agent2.id),
-      request.repoRoot,
-      budget,
-      reviewContextEnvelopeValidator,
-    )
+    val manifest = detectStack(diffText, request.repoRoot)
+    val prepared = prepare(request, diffText, manifest, listOf(agent1.id, agent2.id))
 
     val timeoutSec = request.timeout?.inWholeSeconds ?: (DEFAULT_TIMEOUT_MINUTES * SECONDS_PER_MINUTE)
     val laneRunResult = parallelLaneRunner.runTwoLanes(
@@ -92,6 +89,7 @@ class ParallelCodeReviewRunner(
         outcome1.failureReason,
         outcome1.tokenUsage,
         outcome1.budgetOutcome,
+        outcome1.accounting,
       ),
       lane2 = ParallelReviewLaneStatus(
         agent2.id,
@@ -99,7 +97,30 @@ class ParallelCodeReviewRunner(
         outcome2.failureReason,
         outcome2.tokenUsage,
         outcome2.budgetOutcome,
+        outcome2.accounting,
       ),
+    )
+  }
+
+  private fun prepare(
+    request: ParallelCodeReviewRequest,
+    diffText: String,
+    manifest: PlatformManifest?,
+    agentIds: List<String>,
+  ): List<DelegatedReviewLaunchRequest> {
+    val resolvedRubric = reviewRubricResolver.resolve(manifest)
+    val budget = repoLocalConfig.readRepoLocalConfig(ReadRepoLocalConfigRequest(request.repoRoot))
+      .config.reviewContextBudget
+    return ParallelReviewPreparationCompiler.compile(
+      input = ParallelReviewPreparationInput(
+        diff = diffText,
+        stack = manifest?.slug,
+        agents = agentIds,
+        repoRoot = request.repoRoot,
+        rubric = ReviewRubricProjection(resolvedRubric.rubricId, resolvedRubric.body),
+      ),
+      budget = budget,
+      envelopeValidator = reviewContextEnvelopeValidator,
     )
   }
 
@@ -155,7 +176,7 @@ class ParallelCodeReviewRunner(
       "Command failed: ${args.joinToString(" ")}",
     )
 
-  private fun detectStack(diffText: String, repoRoot: Path): String? {
+  private fun detectStack(diffText: String, repoRoot: Path): PlatformManifest? {
     val packsRoot = repoRoot.resolve("platform-packs")
     // A missing platform-packs directory yields an empty list (no exception) and degrades to a
     // generic rubric. A directory that exists but is out of contract (corrupt platform.yaml,
@@ -186,11 +207,11 @@ class ParallelCodeReviewRunner(
     }
 
     val best = scores.maxByOrNull { it.value }
-    return if (best != null && best.value > 0) best.key.slug else null
+    return if (best != null && best.value > 0) best.key else null
   }
 
   private fun launchLane(
-    launchRequest: skillbill.application.review.model.DelegatedReviewLaunchRequest,
+    launchRequest: DelegatedReviewLaunchRequest,
     request: ParallelCodeReviewRequest,
     modelOverride: String? = null,
   ): ParallelReviewLaneOutcome {
@@ -229,6 +250,7 @@ class ParallelCodeReviewRunner(
           failureReason = reason,
           tokenUsage = usage,
           budgetOutcome = budgetOutcome,
+          accounting = worker.accounting,
         )
       }
     }

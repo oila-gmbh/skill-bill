@@ -33,6 +33,8 @@ import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_RESOLVED_BRANCH
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairState
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDecomposeTerminal
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeOperatorBlockRetry
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairItemResult
@@ -477,6 +479,16 @@ class FeatureTaskRuntimePhaseRecorder(
       val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
         ?: return@read null
       phaseRecordsFrom(decodeArtifacts(record.artifactsJson))
+    }
+
+  fun loadOperatorBlockRetry(workflowId: String, dbOverride: String? = null): FeatureTaskRuntimeOperatorBlockRetry? =
+    database.read(dbOverride) { unitOfWork ->
+      val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
+        ?: return@read null
+      val artifacts = decodeArtifacts(record.artifactsJson)
+      val retry = operatorBlockRetryFrom(artifacts) ?: return@read null
+      val latestPhaseEntry = phaseLedgerFrom(artifacts).lastOrNull { it.phaseId == retry.phaseId }
+      retry.takeIf { latestPhaseEntry?.action == FeatureTaskRuntimePhaseLedgerAction.RETRY }
     }
 
   /**
