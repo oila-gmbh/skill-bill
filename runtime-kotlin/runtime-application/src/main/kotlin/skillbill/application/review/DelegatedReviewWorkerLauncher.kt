@@ -13,6 +13,8 @@ import skillbill.ports.review.model.ReviewEvidenceRequest
 import skillbill.ports.review.model.ReviewEvidenceResult
 import skillbill.review.context.model.ProviderTokenUsage
 import skillbill.review.context.model.ReviewAssignment
+import skillbill.review.context.model.ReviewBudgetEvaluator
+import skillbill.review.context.model.ReviewLaneIdentity
 import skillbill.review.context.model.TokenOwnership
 
 /** Starts only broker-prepared launches and preserves typed budget outcomes through completion. */
@@ -44,6 +46,13 @@ class DelegatedReviewWorkerLauncher(
       )
     }
     val boundedPrompt = boundedPrompt(prepared.prompt, evidenceRequests, evidence.results)
+    finalLaunchOutcome(prepared.launch.assignment, prepared.launch.budget.maxLaneLaunchBytes, boundedPrompt)
+      ?.let { outcome ->
+        return DelegatedReviewWorkerOutcome(
+          budgetOutcome = outcome,
+          accounting = prepared.evidenceBroker.accounting(),
+        )
+      }
     val outcome = launcher.launch(
       NativeReviewWorkerRequest(
         agentId = request.agentId,
@@ -72,6 +81,14 @@ class DelegatedReviewWorkerLauncher(
       }
     }
   }
+
+  private fun finalLaunchOutcome(assignment: ReviewAssignment, limit: Long, prompt: String) =
+    ReviewBudgetEvaluator.exceededOrNull(
+      ReviewLaneIdentity.of(assignment),
+      "lane_launch_bytes",
+      limit,
+      prompt.toByteArray(Charsets.UTF_8).size.toLong(),
+    )
 
   private fun evidenceRequests(assignment: ReviewAssignment): List<ReviewEvidenceRequest> = (
     assignment.assignedPaths.map { path -> ReviewEvidenceRequest(assignment.lane, path) } +

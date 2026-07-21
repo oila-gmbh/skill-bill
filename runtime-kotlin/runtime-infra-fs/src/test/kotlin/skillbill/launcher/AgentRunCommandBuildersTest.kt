@@ -6,7 +6,6 @@ import skillbill.launcher.agentrun.AgentRunOutputDecoder
 import skillbill.launcher.agentrun.ClaudeAgentRunCommandBuilder
 import skillbill.launcher.agentrun.CodexAgentRunCommandBuilder
 import skillbill.launcher.agentrun.JunieAgentRunCommandBuilder
-import skillbill.launcher.agentrun.NativeReviewLifecycleCallbacks
 import skillbill.launcher.agentrun.NativeReviewOperationBoundary
 import skillbill.launcher.agentrun.NativeReviewProviderCapabilities
 import skillbill.launcher.agentrun.ProviderUsageExposure
@@ -14,21 +13,16 @@ import skillbill.ports.agentrun.model.ConversationIsolation
 import skillbill.ports.agentrun.model.ReviewLaunchIsolationStrategy
 import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.ports.review.BrokerBackedNativeReviewOperationProtocol
-import skillbill.ports.review.NativeReviewOperationProtocol
 import skillbill.ports.review.ReviewEvidenceBroker
 import skillbill.ports.review.model.ReviewEvidenceBatchRequest
-import skillbill.ports.review.model.ReviewEvidenceBatchResult
 import skillbill.ports.review.model.ReviewToolCall
-import skillbill.ports.review.model.ReviewToolCallResult
 import skillbill.review.context.model.ProviderTokenUsage
-import skillbill.review.context.model.ReviewContextBudgetExceeded
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
-import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -214,14 +208,14 @@ class AgentRunCommandBuildersTest {
       assertEquals(ConversationIsolation.NONE, builder.build(isolated).conversationIsolation)
     }
     assertFalse(ClaudeAgentRunCommandBuilder().nativeReviewCapabilities.supportsGovernedLaunch)
-    assertTrue(CodexAgentRunCommandBuilder().nativeReviewCapabilities.supportsGovernedLaunch)
+    assertFalse(CodexAgentRunCommandBuilder().nativeReviewCapabilities.supportsGovernedLaunch)
     assertFalse(JunieAgentRunCommandBuilder().nativeReviewCapabilities.supportsGovernedLaunch)
     assertEquals(
-      skillbill.launcher.agentrun.NativeReviewOperationBoundary.SYNCHRONOUS_BROKER,
+      skillbill.launcher.agentrun.NativeReviewOperationBoundary.UNMEDIATED,
       CodexAgentRunCommandBuilder().nativeReviewCapabilities.operationBoundary,
     )
     assertEquals(
-      skillbill.launcher.agentrun.ProviderUsageExposure.IN_FLIGHT_ENFORCEABLE,
+      skillbill.launcher.agentrun.ProviderUsageExposure.COMPLETION_ONLY,
       CodexAgentRunCommandBuilder().nativeReviewCapabilities.providerUsageExposure,
     )
     assertFalse(
@@ -229,13 +223,6 @@ class AgentRunCommandBuildersTest {
         operationBoundary = NativeReviewOperationBoundary.SYNCHRONOUS_BROKER,
         providerUsageExposure = ProviderUsageExposure.IN_FLIGHT_ENFORCEABLE,
         lifecycleCallbacks = null,
-      ).supportsGovernedLaunch,
-    )
-    assertTrue(
-      NativeReviewProviderCapabilities(
-        operationBoundary = NativeReviewOperationBoundary.SYNCHRONOUS_BROKER,
-        providerUsageExposure = ProviderUsageExposure.IN_FLIGHT_ENFORCEABLE,
-        lifecycleCallbacks = NativeReviewLifecycleCallbacks.BROKERED,
       ).supportsGovernedLaunch,
     )
     val codexCommand = CodexAgentRunCommandBuilder().build(isolated).command
@@ -246,15 +233,8 @@ class AgentRunCommandBuildersTest {
     assertTrue(codexCommand.contains("tools.shell=false"))
   }
 
-  @Test fun `codex lifecycle counts provider turn events and stops at a turn excess`() {
-    val operations = RecordingNativeReviewOperations(maxTurns = 1)
-    val callbacks = NativeReviewLifecycleCallbacks.BROKERED.newSession()
-
-    assertNull(callbacks.beforeModelTurn(operations))
-    assertNull(callbacks.observeProviderOutput(operations, "{\"type\":\"turn.started\"}\n"))
-    assertEquals(1, operations.turns)
-    assertNotNull(callbacks.observeProviderOutput(operations, "{\"type\":\"turn.started\"}\n"))
-    assertEquals(2, operations.turns)
+  @Test fun `codex does not claim stdout inferred governed lifecycle support`() {
+    assertNull(CodexAgentRunCommandBuilder().nativeReviewCapabilities.lifecycleCallbacks)
   }
 
   private fun request(model: String? = null, effort: String? = null): SkillRunRequest = SkillRunRequest(
@@ -277,25 +257,5 @@ class AgentRunCommandBuildersTest {
     ) = error("unused")
     override fun accounting() = error("unused")
     override fun terminalOutcome() = error("unused")
-  }
-
-  private class RecordingNativeReviewOperations(private val maxTurns: Int) : NativeReviewOperationProtocol {
-    var turns: Int = 0
-      private set
-
-    override fun read(request: ReviewEvidenceBatchRequest): ReviewEvidenceBatchResult = error("unused")
-    override fun tool(call: ReviewToolCall): ReviewToolCallResult = error("unused")
-    override fun modelTurn() = (++turns).takeIf { it > maxTurns }?.let {
-      ReviewContextBudgetExceeded(
-        "lane",
-        "specialist_model_turns",
-        maxTurns.toLong(),
-        it.toLong(),
-        "a".repeat(64),
-        "b".repeat(64),
-        true,
-      )
-    }
-    override fun providerUsage(usage: ProviderTokenUsage) = null
   }
 }

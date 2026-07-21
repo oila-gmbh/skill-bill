@@ -41,9 +41,17 @@ data class ReviewEvidenceBatchResult(
   val terminalOutcome: ReviewBudgetOutcome? = null,
 )
 
-data class ReviewToolCall(val lane: String, val kind: ReviewOperationKind, val target: String) {
+data class ReviewToolCall(
+  val lane: String,
+  val kind: ReviewOperationKind,
+  val target: String,
+  val searchScopes: List<String> = emptyList(),
+) {
   init {
     require(lane.isNotBlank() && target.isNotBlank()) { "Review tool call must carry a lane and target." }
+    require(kind != ReviewOperationKind.SEARCH || searchScopes.isNotEmpty()) {
+      "A review search tool call must carry explicit scopes."
+    }
   }
 }
 

@@ -66,62 +66,7 @@ interface NativeReviewLifecycleCallbacks {
   fun beforeModelTurn(operations: NativeReviewOperationProtocol): ReviewBudgetOutcome?
   fun observeProviderOutput(operations: NativeReviewOperationProtocol, chunk: String): ReviewBudgetOutcome?
   fun observeProviderUsage(operations: NativeReviewOperationProtocol, usage: ProviderTokenUsage): ReviewBudgetOutcome?
-
-  companion object {
-    val BROKERED = object : NativeReviewLifecycleCallbacks {
-      override fun newSession(): NativeReviewLifecycleCallbacks = BufferedCodexLifecycleCallbacks()
-      override fun beforeModelTurn(operations: NativeReviewOperationProtocol) = operations.modelTurn()
-      override fun observeProviderOutput(operations: NativeReviewOperationProtocol, chunk: String) =
-        decodeCodexUsageChunk(chunk)?.let(operations::providerUsage)
-      override fun observeProviderUsage(operations: NativeReviewOperationProtocol, usage: ProviderTokenUsage) =
-        operations.providerUsage(usage)
-    }
-  }
 }
-
-private class BufferedCodexLifecycleCallbacks : NativeReviewLifecycleCallbacks {
-  private val pending = StringBuilder()
-
-  // Codex reports the real turn boundary on stdout. Process startup is not a model turn: the
-  // process can fail before the provider accepts any work.
-  override fun beforeModelTurn(operations: NativeReviewOperationProtocol): ReviewBudgetOutcome? = null
-
-  override fun observeProviderOutput(operations: NativeReviewOperationProtocol, chunk: String): ReviewBudgetOutcome? {
-    pending.append(chunk)
-    var outcome: ReviewBudgetOutcome? = null
-    while (outcome == null) {
-      val newline = pending.indexOf("\n")
-      if (newline < 0) break
-      val line = pending.substring(0, newline)
-      pending.delete(0, newline + 1)
-      outcome = decodeCodexTurnStart(line)?.let { operations.modelTurn() }
-        ?: decodeCodexUsageChunk(line)?.let(operations::providerUsage)
-    }
-    return outcome
-  }
-
-  override fun observeProviderUsage(operations: NativeReviewOperationProtocol, usage: ProviderTokenUsage) =
-    operations.providerUsage(usage)
-}
-
-private fun decodeCodexTurnStart(line: String): Boolean? = runCatching {
-  ObjectMapper().readTree(line).path("type").asText() == "turn.started"
-}.getOrNull()?.takeIf { it }
-
-private fun decodeCodexUsageChunk(chunk: String): ProviderTokenUsage? = chunk.lineSequence()
-  .mapNotNull { line -> runCatching { ObjectMapper().readTree(line) }.getOrNull() }
-  .map { event -> event.path("usage") }
-  .filterNot { usage -> usage.isMissingNode || usage.isNull }
-  .map { usage ->
-    ProviderTokenUsage(
-      inputTokens = usage.path("input_tokens").takeIf { it.isIntegralNumber }?.longValue(),
-      cachedInputTokens = usage.path("cached_input_tokens").takeIf { it.isIntegralNumber }?.longValue(),
-      outputTokens = usage.path("output_tokens").takeIf { it.isIntegralNumber }?.longValue(),
-      reasoningTokens = usage.path("reasoning_tokens").takeIf { it.isIntegralNumber }?.longValue(),
-      totalTokens = usage.path("total_tokens").takeIf { it.isIntegralNumber }?.longValue(),
-    )
-  }
-  .lastOrNull()
 
 enum class NativeReviewOperationBoundary { SYNCHRONOUS_BROKER, DISABLED, UNMEDIATED }
 
@@ -191,9 +136,8 @@ class CodexAgentRunCommandBuilder : AgentRunCommandBuilder {
   override val reviewIsolation: ReviewLaunchIsolationStrategy =
     ReviewLaunchIsolationStrategy.CODEX_NATIVE_FORK_TURNS_NONE
   override val nativeReviewCapabilities: NativeReviewProviderCapabilities = NativeReviewProviderCapabilities(
-    operationBoundary = NativeReviewOperationBoundary.SYNCHRONOUS_BROKER,
-    providerUsageExposure = ProviderUsageExposure.IN_FLIGHT_ENFORCEABLE,
-    lifecycleCallbacks = NativeReviewLifecycleCallbacks.BROKERED,
+    operationBoundary = NativeReviewOperationBoundary.UNMEDIATED,
+    providerUsageExposure = ProviderUsageExposure.COMPLETION_ONLY,
   )
 
   override fun build(request: SkillRunRequest): AgentRunCommand {

@@ -93,12 +93,11 @@ class JvmAgentRunProcessRunner : AgentRunProcessRunner {
       outputSink = request.outputSink,
       onChunkRead = { chunk ->
         outputTracker.markObserved()
-        val resultOutcome = request.reviewEvidenceBroker?.observeLaneResultChunk(chunk)
         val usageOutcome = request.nativeReviewLifecycleCallbacks?.observeProviderOutput(
           requireNotNull(request.nativeReviewOperations),
           chunk,
         )
-        if (resultOutcome != null || usageOutcome != null) process.destroy()
+        if (usageOutcome != null) process.destroy()
       },
     ).also { it.start() }
     val stderr = CappedUtf8Drain(

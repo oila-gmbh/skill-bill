@@ -113,7 +113,7 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
   override fun recordToolCall(call: ReviewToolCall): ReviewToolCallResult {
     require(call.lane == assignment.lane) { "Tool call lane does not own this assignment." }
     terminalOutcome?.let { return ReviewToolCallResult(budgetExceeded = it) }
-    policy.classify(ReviewRequestedOperation(call.kind, call.target))?.let {
+    policy.classify(ReviewRequestedOperation(call.kind, call.target, searchScopes = call.searchScopes))?.let {
       return ReviewToolCallResult(forbidden = it)
     }
     toolCalls += 1

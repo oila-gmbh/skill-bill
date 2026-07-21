@@ -6,9 +6,16 @@ data class ReviewRequestedOperation(
   val kind: ReviewOperationKind,
   val target: String,
   val reachabilityReason: String? = null,
+  val searchScopes: List<String> = emptyList(),
 ) {
   init {
     require(target.isNotBlank()) { "Requested review operation target must not be blank." }
+  }
+
+  init {
+    require(kind != ReviewOperationKind.SEARCH || searchScopes.isNotEmpty()) {
+      "A review search requires at least one explicit scope; opaque search commands are forbidden."
+    }
   }
 }
 
@@ -38,7 +45,7 @@ class ReviewOperationPolicy(
 
   fun classify(operation: ReviewRequestedOperation): ForbiddenReviewOperation? = when (operation.kind) {
     ReviewOperationKind.SHELL_COMMAND -> classifyShell(operation.target)
-    ReviewOperationKind.SEARCH -> classifySearch(operation.target)
+    ReviewOperationKind.SEARCH -> classifySearch(operation)
     ReviewOperationKind.MCP_TOOL -> classifyMcpTool(operation.target)
     ReviewOperationKind.RUBRIC_READ -> classifyRubric(operation.target)
     ReviewOperationKind.FILE_READ -> classifyFileRead(operation)
@@ -56,7 +63,11 @@ class ReviewOperationPolicy(
       }
     }
     if (SEARCH_COMMANDS.any { normalized == it || normalized.startsWith("$it ") }) {
-      return classifySearch(command)
+      return forbidden(
+        "broad_repository_search",
+        command,
+        "Opaque shell searches are forbidden; use a structured search with explicit scopes.",
+      )
     }
     return forbidden(
       "unscoped_shell_command",
@@ -65,21 +76,19 @@ class ReviewOperationPolicy(
     )
   }
 
-  private fun classifySearch(target: String): ForbiddenReviewOperation? {
-    val scopes = SEARCH_TOKEN_PATTERN.findAll(target)
-      .map { it.value.trim('"', '\'', ',', ':') }
-      .filter { token -> token == "." || token.contains('/') || token.contains('\\') }
-      .map { it.replace('\\', '/') }
-      .toList()
-    return if (scopes.isNotEmpty() && scopes.all(::isReachable)) {
-      null
-    } else {
-      forbidden(
-        "broad_repository_search",
-        target,
-        "Searches are limited to the paths this assignment owns or names as a dependency.",
-      )
+  private fun classifySearch(operation: ReviewRequestedOperation): ForbiddenReviewOperation? {
+    val normalizedScopes = operation.searchScopes.map { it.replace('\\', '/') }
+    normalizedScopes.forEach { scope ->
+      classifyAbsoluteProhibitions(scope)?.let { return it }
+      if (!isReachable(scope)) {
+        return forbidden(
+          "broad_repository_search",
+          scope,
+          "Every explicit search scope must be assigned or a named dependency.",
+        )
+      }
     }
+    return null
   }
 
   private fun classifyMcpTool(tool: String): ForbiddenReviewOperation? {
@@ -108,28 +117,35 @@ class ReviewOperationPolicy(
 
   private fun classifyFileRead(operation: ReviewRequestedOperation): ForbiddenReviewOperation? {
     val path = operation.target.replace('\\', '/')
+    classifyAbsoluteProhibitions(path)?.let { return it }
+    return when {
+      path in assignedPaths -> null
+      isReachable(path) && !operation.reachabilityReason.isNullOrBlank() -> null
+      else -> forbidden(
+        "unassigned_file_access",
+        path,
+        "A reachability reason documents an assignment-authorized dependency; it cannot authorize a new path.",
+      )
+    }
+  }
+
+  private fun classifyAbsoluteProhibitions(path: String): ForbiddenReviewOperation? {
     val guidanceViolation = GUIDANCE_FILE_NAMES.firstOrNull { path == it || path.endsWith("/$it") }?.let {
       forbidden(
         "project_guidance_traversal",
-        operation.target,
+        path,
         "Project guidance reaches a specialist only as packet-attested matched rules.",
       )
     }
     val routingViolation = ROUTING_PATH_FRAGMENTS.firstNotNullOfOrNull { (fragments, category) ->
       category.takeIf { fragments.any { it in path } }?.let {
-        forbidden(it, operation.target, "The parent packet already resolved this routing decision.")
+        forbidden(it, path, "The parent packet already resolved this routing decision.")
       }
     }
     return when {
       guidanceViolation != null -> guidanceViolation
       routingViolation != null -> routingViolation
-      path in assignedPaths -> null
-      isReachable(path) && !operation.reachabilityReason.isNullOrBlank() -> null
-      else -> forbidden(
-        "unassigned_file_access",
-        operation.target,
-        "A reachability reason documents an assignment-authorized dependency; it cannot authorize a new path.",
-      )
+      else -> null
     }
   }
 
@@ -163,7 +179,5 @@ class ReviewOperationPolicy(
       listOf("AGENTS.md", "CLAUDE.md", "AGENT.md", "GEMINI.md", ".cursorrules", "CONVENTIONS.md")
 
     val SEARCH_COMMANDS: List<String> = listOf("grep", "rg", "find", "fd", "ls", "glob", "ack")
-
-    val SEARCH_TOKEN_PATTERN = Regex("""[^\s"']+""")
   }
 }

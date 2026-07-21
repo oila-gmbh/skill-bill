@@ -2,6 +2,7 @@ package skillbill.review.context.model
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 
 class ReviewOperationPolicyTest {
@@ -38,19 +39,27 @@ class ReviewOperationPolicyTest {
   }
 
   @Test fun `broad searches are forbidden and assigned-scope searches are allowed`() {
-    assertEquals("broad_repository_search", category(ReviewOperationKind.SEARCH, "grep -r TODO ."))
-    assertEquals("broad_repository_search", category(ReviewOperationKind.SEARCH, "rg secret src/Other.kt"))
-    assertNull(policy.classify(ReviewRequestedOperation(ReviewOperationKind.SEARCH, "rg secret src/Assigned.kt")))
-    assertEquals("broad_repository_search", category(ReviewOperationKind.SEARCH, "rg secret"))
+    assertEquals("broad_repository_search", searchCategory("TODO", "."))
+    assertEquals("broad_repository_search", searchCategory("secret", "src/Other.kt"))
+    assertNull(
+      policy.classify(
+        ReviewRequestedOperation(
+          ReviewOperationKind.SEARCH,
+          "secret",
+          searchScopes = listOf("src/Assigned.kt"),
+        ),
+      ),
+    )
     assertEquals(
       "broad_repository_search",
-      category(ReviewOperationKind.SEARCH, "rg secret src/Assigned.kt src/Other.kt"),
+      searchCategory("secret", "src/Assigned.kt", "src/Other.kt"),
     )
     assertNull(
       policy.classify(
         ReviewRequestedOperation(
           ReviewOperationKind.SEARCH,
-          "rg secret src/Assigned.kt src/Dependency.kt",
+          "secret",
+          searchScopes = listOf("src/Assigned.kt", "src/Dependency.kt"),
         ),
       ),
     )
@@ -76,6 +85,30 @@ class ReviewOperationPolicyTest {
         ReviewRequestedOperation(ReviewOperationKind.FILE_READ, "platform-packs/kotlin/platform.yaml"),
       )?.category,
     )
+  }
+
+  @Test fun `every structured search scope is checked including root paths and absolute prohibitions`() {
+    assertEquals(
+      "broad_repository_search",
+      searchCategory("secret", "src/Assigned.kt", "README.md"),
+    )
+    val assignedForbiddenPolicy = ReviewOperationPolicy(
+      assignment = assignment().copy(assignedPaths = listOf("src/Assigned.kt", "AGENTS.md")),
+      laneRubricId = "security",
+    )
+    assertEquals(
+      "project_guidance_traversal",
+      assignedForbiddenPolicy.classify(
+        ReviewRequestedOperation(
+          ReviewOperationKind.SEARCH,
+          "rule",
+          searchScopes = listOf("src/Assigned.kt", "AGENTS.md"),
+        ),
+      )?.category,
+    )
+    assertFailsWith<IllegalArgumentException> {
+      ReviewRequestedOperation(ReviewOperationKind.SEARCH, "rg secret src/Assigned.kt")
+    }
   }
 
   @Test fun `only the lane rubric may be read`() {
@@ -111,7 +144,7 @@ class ReviewOperationPolicyTest {
   @Test fun `every classifier category is declared by the packet consumer contract`() {
     val categories = listOf(
       category(ReviewOperationKind.SHELL_COMMAND, "git status"),
-      category(ReviewOperationKind.SEARCH, "grep -r TODO ."),
+      searchCategory("TODO", "."),
       category(ReviewOperationKind.RUBRIC_READ, "performance"),
       category(ReviewOperationKind.FILE_READ, "src/Elsewhere.kt"),
       category(ReviewOperationKind.MCP_TOOL, "notion_search"),
@@ -124,6 +157,10 @@ class ReviewOperationPolicyTest {
 
   private fun category(kind: ReviewOperationKind, target: String): String? =
     policy.classify(ReviewRequestedOperation(kind, target))?.category
+
+  private fun searchCategory(pattern: String, vararg scopes: String): String? = policy.classify(
+    ReviewRequestedOperation(ReviewOperationKind.SEARCH, pattern, searchScopes = scopes.toList()),
+  )?.category
 
   private fun assignment() = ReviewAssignment(
     reviewId = "review",
