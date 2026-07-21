@@ -41,8 +41,15 @@ Consumers must not rediscover any of the following:
 - `learnings_resolution` — do not resolve learnings, including through MCP
 - `build_test_fact_discovery` — build and test facts are supplied as packet facts
 - `telemetry_ownership_determination` — telemetry ownership is decided by the orchestrator
+- `broad_repository_search` — searches must stay within assigned paths or named dependencies
+- `unrelated_rubric_read` — the single governed rubric in the launch is authoritative
+- `unassigned_file_access` — reads outside the assignment require an authorized expansion
+- `unselected_mcp_tool_call` — only tools explicitly projected by the parent may be called
+- `unscoped_shell_command` — shell commands outside the measured evidence surface are forbidden
 
-Additional file reads are limited to the launch `dependency_allowlist` and the governed expansion path; anything else is out of contract.
+Evidence reads are batched and measured. Additional file reads are limited to the launch
+`dependency_allowlist` and the governed expansion path, and every expansion carries a nonblank
+reachability reason in the audit ledger; anything else is out of contract.
 
 ## Shared Report Structure
 

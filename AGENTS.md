@@ -155,6 +155,12 @@ Agent-specific runtime behavior is expressed through injectable strategies, not 
 
 Each `AgentRunCommandBuilder` sets the right combination for its agent. `ProcessWaitLoop` calls the strategies without branching on agent identity. When a new agent needs different behavior, add a named strategy constant and set it in its command builder — do not add if/else inside the runner.
 
+## Writing Policy
+
+Write clear, direct prose for the intended reader. Prefer short, familiar words and active voice when they preserve meaning. Remove filler, stale phrases, vague praise, and repeated claims. Keep technical terms when simpler wording would lose precision. State concrete facts, outcomes, failures, and next actions. Preserve all names, numbers, and material qualifications. Break any rule when following it would make the text less accurate or less natural.
+
+For commit messages, PR descriptions, documentation, and progress reports, state what changed and why in plain words. Avoid achievement language such as "successfully," "perfect," "comprehensive," and "robust" unless it conveys a specific, supported fact. Lead with the outcome and include detail only when it helps the reader decide or act.
+
 ## Comments Policy
 
 Comments, especially inline ones, are a code smell. Prefer clearer naming, smaller functions, or refactoring. Add a comment only when a non-obvious *why* cannot be encoded in the code, such as an external constraint, subtle invariant, or known-bug workaround. Never comment merely to explain *what* the code does.
