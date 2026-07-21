@@ -13,6 +13,7 @@ import skillbill.application.workflow.repoRoot
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunTokenOwnership
+import skillbill.ports.agentrun.model.ConversationIsolation
 import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
 import skillbill.ports.diff.DiffResolverPort
@@ -206,18 +207,22 @@ class ParallelCodeReviewRunner(
           timeout = request.timeout ?: DEFAULT_TIMEOUT_MINUTES.minutes,
           promptOverride = prompt,
           modelOverride = modelOverride,
+          conversationIsolation = ConversationIsolation.NONE,
         ),
       ),
     )
     return when (outcome) {
       is AgentRunLaunchFacts -> {
         val usage = providerTokenUsage(outcome)
-        val reason = laneFailureReason(outcome) ?: laneBudgetReason(agentId, prompt, outcome, usage)
+        val processFailure = laneFailureReason(outcome)
+        val budgetOutcome = if (processFailure == null) laneBudgetOutcome(agentId, prompt, outcome, usage) else null
+        val reason = processFailure ?: budgetOutcome?.let(::describeBudgetOutcome)
         ParallelReviewLaneOutcome(
           success = reason == null,
           rawOutput = outcome.stdout,
           failureReason = reason,
           tokenUsage = usage,
+          budgetOutcome = budgetOutcome,
         )
       }
       is UnsupportedAgentRunLaunch ->
@@ -233,12 +238,12 @@ class ParallelCodeReviewRunner(
    * A parallel lane is a headless process, so its token usage only becomes observable after the
    * agent exited: an excess there is a reported regression, never an enforceable termination.
    */
-  private fun laneBudgetReason(
+  private fun laneBudgetOutcome(
     agentId: String,
     prompt: String,
     outcome: AgentRunLaunchFacts,
     usage: ProviderTokenUsage?,
-  ): String? {
+  ): ReviewBudgetOutcome? {
     val budget = ReviewContextBudgetPolicy.DEFAULT
     val identity = ReviewLaneIdentity.ofParallelLane(agentId, prompt)
     val resultBytes = outcome.stdout.toByteArray(StandardCharsets.UTF_8).size.toLong()
@@ -246,33 +251,7 @@ class ParallelCodeReviewRunner(
     val regression = usage?.let {
       ReviewBudgetEvaluator.providerUsageOutcome(identity, budget.providerTokenThresholds, it, enforceable = false)
     }
-    return (exceeded ?: regression)?.let(::describeBudgetOutcome)
-  }
-
-  private fun describeBudgetOutcome(outcome: ReviewBudgetOutcome): String =
-    "${outcome.type}: ${outcome.budgetKind} ${outcome.observedValue} > ${outcome.configuredLimit}"
-
-  private fun providerTokenUsage(outcome: AgentRunLaunchFacts): ProviderTokenUsage? {
-    val values = listOf(
-      outcome.inputTokens,
-      outcome.cachedInputTokens,
-      outcome.outputTokens,
-      outcome.reasoningTokens,
-      outcome.totalTokens,
-    )
-    if (values.none { it != null }) return null
-    return ProviderTokenUsage(
-      inputTokens = outcome.inputTokens,
-      cachedInputTokens = outcome.cachedInputTokens,
-      outputTokens = outcome.outputTokens,
-      reasoningTokens = outcome.reasoningTokens,
-      totalTokens = outcome.totalTokens,
-      ownership = if (outcome.tokenOwnership == AgentRunTokenOwnership.INCLUSIVE) {
-        TokenOwnership.INCLUSIVE
-      } else {
-        TokenOwnership.DIRECT
-      },
-    )
+    return exceeded ?: regression
   }
 
   // Maps a completed launch to a human-readable failure reason, or null when the lane succeeded.
@@ -302,4 +281,30 @@ class ParallelCodeReviewRunner(
     const val MAX_SUPPLIED_DIFF_BYTES = 1_000_000L
     val DIFF_PATH_PATTERN = Regex("^\\+\\+\\+ b/(.+)$", RegexOption.MULTILINE)
   }
+}
+
+private fun describeBudgetOutcome(outcome: ReviewBudgetOutcome): String =
+  "${outcome.type}: ${outcome.budgetKind} ${outcome.observedValue} > ${outcome.configuredLimit}"
+
+private fun providerTokenUsage(outcome: AgentRunLaunchFacts): ProviderTokenUsage? {
+  val values = listOf(
+    outcome.inputTokens,
+    outcome.cachedInputTokens,
+    outcome.outputTokens,
+    outcome.reasoningTokens,
+    outcome.totalTokens,
+  )
+  if (values.none { it != null }) return null
+  return ProviderTokenUsage(
+    inputTokens = outcome.inputTokens,
+    cachedInputTokens = outcome.cachedInputTokens,
+    outputTokens = outcome.outputTokens,
+    reasoningTokens = outcome.reasoningTokens,
+    totalTokens = outcome.totalTokens,
+    ownership = if (outcome.tokenOwnership == AgentRunTokenOwnership.INCLUSIVE) {
+      TokenOwnership.INCLUSIVE
+    } else {
+      TokenOwnership.DIRECT
+    },
+  )
 }

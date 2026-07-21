@@ -10,6 +10,7 @@ import skillbill.application.workflow.repoRoot
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
+import skillbill.ports.agentrun.model.ConversationIsolation
 import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
 import skillbill.ports.diff.DiffResolverPort
 import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
@@ -227,7 +228,7 @@ class ParallelCodeReviewRunnerTest {
       assertContains(prompt, "Detected stack: kotlin")
       assertContains(prompt, "exact diff below as the authoritative review scope")
       assertContains(prompt, "Route all required baseline and signal-relevant rubrics")
-      assertEquals(null, request.skillRunRequest.conversationIsolation)
+      assertEquals(ConversationIsolation.NONE, request.skillRunRequest.conversationIsolation)
       assertFalse(prompt.contains("Prepare one shared review-context packet"))
       assertFalse(prompt.contains("assignment_digest:"))
       assertFalse(prompt.contains("fork_turns:"))

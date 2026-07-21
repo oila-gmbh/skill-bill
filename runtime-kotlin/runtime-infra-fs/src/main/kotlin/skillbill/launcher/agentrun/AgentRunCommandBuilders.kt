@@ -3,6 +3,7 @@ package skillbill.launcher.agentrun
 import com.fasterxml.jackson.databind.ObjectMapper
 import skillbill.install.model.InstallAgent
 import skillbill.launcher.process.AgentRunIdlePolicy
+import skillbill.ports.agentrun.model.ConversationIsolation
 import skillbill.ports.agentrun.model.ReviewLaunchIsolationStrategy
 import skillbill.ports.agentrun.model.SkillRunGoalContinuationContext
 import skillbill.ports.agentrun.model.SkillRunRequest
@@ -18,6 +19,7 @@ data class AgentRunCommand(
   val inheritEnvironment: Boolean = true,
   val usePtyStdio: Boolean = false,
   val idlePolicy: AgentRunIdlePolicy = AgentRunIdlePolicy.DB_PROGRESS_ONLY,
+  val conversationIsolation: ConversationIsolation? = null,
 )
 
 interface AgentRunCommandBuilder {
@@ -50,7 +52,7 @@ class ClaudeAgentRunCommandBuilder : AgentRunCommandBuilder {
   override val reviewIsolation: ReviewLaunchIsolationStrategy = ReviewLaunchIsolationStrategy.FRESH_NATIVE_SUBAGENT
 
   override fun build(request: SkillRunRequest): AgentRunCommand {
-    requireProcessLaunch(request)
+    requireProcessLaunch(request, reviewIsolation)
     return goalContinuationCommand(request, agent) ?: AgentRunCommand(
       command = buildList {
         add("claude")
@@ -73,6 +75,7 @@ class ClaudeAgentRunCommandBuilder : AgentRunCommandBuilder {
       timeout = request.timeout,
       stdinText = launchPrompt(request),
       environment = goalContinuationEnvironment(request),
+      conversationIsolation = request.conversationIsolation,
     )
   }
 }
@@ -83,7 +86,7 @@ class CodexAgentRunCommandBuilder : AgentRunCommandBuilder {
   override val reviewIsolation: ReviewLaunchIsolationStrategy = ReviewLaunchIsolationStrategy.CODEX_FORK_TURNS_NONE
 
   override fun build(request: SkillRunRequest): AgentRunCommand {
-    requireProcessLaunch(request)
+    requireProcessLaunch(request, reviewIsolation)
     return goalContinuationCommand(request, agent) ?: AgentRunCommand(
       command = buildList {
         add("codex")
@@ -107,6 +110,7 @@ class CodexAgentRunCommandBuilder : AgentRunCommandBuilder {
       timeout = request.timeout,
       stdinText = launchPrompt(request),
       environment = goalContinuationEnvironment(request),
+      conversationIsolation = request.conversationIsolation,
     )
   }
 }
@@ -115,7 +119,7 @@ class JunieAgentRunCommandBuilder : AgentRunCommandBuilder {
   override val agent: InstallAgent = InstallAgent.JUNIE
 
   override fun build(request: SkillRunRequest): AgentRunCommand {
-    requireProcessLaunch(request)
+    requireProcessLaunch(request, reviewIsolation)
     return goalContinuationCommand(request, agent) ?: AgentRunCommand(
       command = buildList {
         require(request.modelOverride == null && request.effortOverride == null) {
@@ -136,6 +140,7 @@ class JunieAgentRunCommandBuilder : AgentRunCommandBuilder {
       workingDirectory = request.repoRoot,
       timeout = request.timeout,
       environment = goalContinuationEnvironment(request),
+      conversationIsolation = request.conversationIsolation,
     )
   }
 }
@@ -144,10 +149,16 @@ internal fun launchPrompt(request: SkillRunRequest): String = requireNotNull(req
   "launchPrompt requires a promptOverride; goal-continuation runs spawn skill-bill directly."
 }
 
-private fun requireProcessLaunch(request: SkillRunRequest) {
-  require(request.conversationIsolation == null) {
-    "Governed specialist isolation cannot be projected by a headless process launch; " +
-      "use the native specialist-launch adapter."
+private fun requireProcessLaunch(request: SkillRunRequest, strategy: ReviewLaunchIsolationStrategy) {
+  request.conversationIsolation?.let { isolation ->
+    require(strategy.supported && isolation == ConversationIsolation.NONE) {
+      "Governed specialist launches require a supported fresh-context strategy."
+    }
+    if (strategy == ReviewLaunchIsolationStrategy.CODEX_FORK_TURNS_NONE) {
+      require(strategy.forkTurns == isolation.forkTurns) {
+        "Governed Codex review launches require fork_turns none."
+      }
+    }
   }
 }
 

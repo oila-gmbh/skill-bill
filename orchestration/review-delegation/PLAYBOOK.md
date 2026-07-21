@@ -17,7 +17,7 @@ Do not reference this repo-relative path directly from installable skills — us
 - Payload, evidence, result, and expansion excess terminates the affected lane as `review_context_budget_exceeded`. Never truncate required evidence, skip a required lane, widen repository access, replace a reviewer, or substitute execution mode.
 - Use this delegation contract only after the shared execution-mode contract selects `delegated` review.
 - Before launching any routed layer or specialist, the parent prepares one compact, in-memory review-context packet. The packet is authoritative for the whole review run and contains the resolved scope and diff source, routing decision, applicable project guidance, relevant build/test facts, changed-file and hunk map, selected add-ons, ordered selected lanes with inclusion or exclusion reasons, immutable session/run identifiers, and one assignment per worker.
-- Each worker assignment names the applicable routed skill, rubric, or sidecar; owns specific changed files and hunks; identifies only the direct dependencies that may be read; and states the evidence to verify. Give every worker the shared packet, its assignment, and only its applicable rubric.
+- Each worker assignment names its applicable embedded rubric, owns specific changed files and hunks, identifies only the direct dependencies that may be read, and states the evidence to verify. The validated assignment is the launch authority; do not give a worker the shared packet.
 - Workers must not repeat repository, scope, stack, routing, or guidance discovery. They may read their assigned changed code and direct dependencies only when needed to establish a reachable finding.
 - Keep the packet factual and compact. Do not copy repository dumps, full project documentation, unrelated diffs, or unrelated specialist rubrics into it.
 - Select specialist lanes using the routed pack's Diff-Signal Routing Table. Retain required baseline layers, add only signal-relevant specialists, and do not launch empty lanes or fan out to every declared area.
@@ -26,7 +26,7 @@ Do not reference this repo-relative path directly from installable skills — us
 - The parent review owns only the delegated workers it launched itself. If a delegated child review launches more workers internally, treat those nested workers as opaque implementation detail and consume only the child review's final merged result.
 - The parent review that owns the final merged review output also owns `import_review` and `triage_findings`. Delegated workers must not call those telemetry tools themselves.
 - When the runtime supports delegated-worker model inheritance, delegated workers should use the same model as the parent thread by default. Do not override the delegated-worker model unless the current runtime-specific section explicitly requires it.
-- Every delegated worker must receive the exact review scope, changed files or diff source, relevant project guidance, the delegated skill name and rendered runtime instructions, the current `review_session_id` and `review_run_id` when they already exist, any applicable active learnings when they are available, any already-selected governed add-ons, the shared specialist contract from `specialist-contract.md`, and the rule that delegated workers must return telemetry-relevant metadata to the parent instead of calling telemetry tools directly.
+- Every delegated worker receives only the broker projection from its validated assignment. Scope, raw diff, guidance bodies, learnings, add-ons, runtime ceremony, and telemetry ownership stay in the authoritative parent packet and are not projected.
 - Wait for all delegated workers to finish, then merge and deduplicate findings by root cause, severity, and confidence.
 - Track delegated workers by the ids returned when they are launched. Do not discover or poll delegated workers through broad global listing in the normal review path.
 - If delegated review is required for the current scope and a supported runtime refuses or cannot start delegated workers, stop and report that delegated review is required for this scope but unavailable on the current runtime.
@@ -49,7 +49,7 @@ Governed add-ons may narrow or enrich delegated review instructions only after t
 
 - Use the `Task` tool / subagent mechanism.
 - Launch one subagent per delegated review skill or specialist review pass.
-- Tell each subagent to read the sibling sidecar file `<delegated-skill-name>.md` co-located with `bill-code-review`'s `SKILL.md` as the primary rubric and return only meaningful findings. Do not use the Skill tool for the delegated review skill — it is an internal skill and is not listed.
+- The installed native agent's embedded governed rubric is authoritative. Do not tell the worker to read a sibling rubric sidecar.
 - Tell each delegated worker to return structured review output plus telemetry-relevant metadata to the parent and not to call `import_review` or `triage_findings`.
 - Run eligible delegated passes in parallel and merge the results in the parent review.
 - Do not inline delegated review logic on Claude when Task/subagents are available.
@@ -59,7 +59,7 @@ Governed add-ons may narrow or enrich delegated review instructions only after t
 - Explicitly request subagents.
 - Spawn one subagent per delegated review skill or specialist review pass.
 - Use the same model as the parent thread by default.
-- Tell each subagent to read the sibling sidecar file `<delegated-skill-name>.md` co-located with `bill-code-review`'s `SKILL.md` and return structured review findings only. Do not use the Skill tool for the delegated review skill — it is an internal skill and is not listed.
+- The installed native agent's embedded governed rubric is authoritative. Do not tell the worker to read a sibling rubric sidecar.
 - Tell each delegated worker to return structured review output plus telemetry-relevant metadata to the parent and not to call `import_review` or `triage_findings`.
 - Wait for all subagents and merge their results in the parent review.
 - Do not run delegated review passes inline.

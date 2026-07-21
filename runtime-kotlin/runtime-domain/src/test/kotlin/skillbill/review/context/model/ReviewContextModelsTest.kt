@@ -180,7 +180,14 @@ class ReviewContextModelsTest {
       dependencyAllowlist = ReviewDependencyAllowlist(listOf("Elsewhere.kt")),
     )
     assertFailsWith<IllegalArgumentException> {
-      GovernedReviewLaunch(escapingDependency, packet, "contract", "rubric", "broker", ReviewContextBudgetPolicy.DEFAULT)
+      GovernedReviewLaunch(
+        escapingDependency,
+        packet,
+        "contract",
+        "rubric",
+        "broker",
+        ReviewContextBudgetPolicy.DEFAULT,
+      )
     }
   }
 

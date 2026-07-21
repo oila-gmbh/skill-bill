@@ -48,7 +48,10 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
   override fun readBatch(request: ReviewEvidenceBatchRequest): ReviewEvidenceBatchResult {
     require(request.lane == assignment.lane) { "Evidence lane does not own this assignment." }
     terminalOutcome?.let { outcome ->
-      return batchResult(request.requests.map { terminalResult(outcome) }, outcome)
+      val terminated = request.requests.map {
+        terminalResult(outcome, cumulativeBytes, expansionLedger.size)
+      }
+      return batchResult(terminated, outcome)
     }
 
     val results = mutableListOf<ReviewEvidenceResult>()
@@ -60,7 +63,9 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
         // A terminated lane serves no further evidence; the remaining batch entries report the
         // same terminal outcome rather than being silently dropped.
         val served = results.size
-        request.requests.drop(served).forEach { results += terminalResult(exceeded) }
+        request.requests.drop(served).forEach {
+          results += terminalResult(exceeded, cumulativeBytes, expansionLedger.size)
+        }
         break
       }
     }
@@ -71,40 +76,26 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
     requireRepositoryRelativePath(request.path)
     val normalized = request.path.replace('\\', '/')
     val operation = ReviewRequestedOperation(ReviewOperationKind.FILE_READ, normalized, request.reachabilityReason)
-    policy.classify(operation)?.let { return forbiddenResult(it) }
+    policy.classify(operation)?.let { return forbiddenResult(it, cumulativeBytes, expansionLedger.size) }
 
-    if (!policy.isReachable(normalized)) {
-      recordExpansion(normalized, requireNotNull(request.reachabilityReason))
+    if (!policy.isAssigned(normalized)) {
+      expansionLedger += expansionRecord(
+        assignment,
+        normalized,
+        requireNotNull(request.reachabilityReason),
+        expansionLedger.size,
+      )
       if (expansionLedger.size > budget.maxAssignmentExpansions) {
         return exceeded("assignment_expansions", budget.maxAssignmentExpansions.toLong(), expansionLedger.size.toLong())
       }
     }
 
-    val real = resolveRepositoryFile(normalized)
+    val real = resolveRepositoryFile(root, normalized)
     val bytes = Files.size(real)
     evidenceBudgetOutcome(bytes)?.let { return it }
     val content = Files.readString(real, StandardCharsets.UTF_8)
     cumulativeBytes += bytes
     return ReviewEvidenceResult(content, bytes, cumulativeBytes, expansionLedger.size)
-  }
-
-  private fun resolveRepositoryFile(normalized: String): Path {
-    val candidate = root.resolve(normalized).normalize()
-    require(candidate.startsWith(root)) { "Evidence path escapes the repository." }
-    val real = candidate.toRealPath()
-    require(real.startsWith(root) && Files.isRegularFile(real)) { "Evidence path must be a repository file." }
-    return real
-  }
-
-  private fun recordExpansion(path: String, reason: String) {
-    expansionLedger += ReviewExpansionRecord(
-      expansionId = "${assignment.lane}-expansion-${expansionLedger.size + 1}",
-      assignmentDigest = assignment.digest,
-      requestedPath = path,
-      reachabilityReason = reason,
-      authorized = true,
-      sequence = expansionLedger.size,
-    )
   }
 
   override fun recordToolCall(call: ReviewToolCall): ReviewToolCallResult {
@@ -180,25 +171,49 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
       "Budget dimension '$kind' reported an excess of $observed against $limit that does not exceed it."
     }
     terminalOutcome = outcome
-    return terminalResult(outcome)
+    return terminalResult(outcome, cumulativeBytes, expansionLedger.size)
   }
-
-  private fun forbiddenResult(forbidden: ForbiddenReviewOperation) = ReviewEvidenceResult(
-    content = null,
-    bytes = 0,
-    cumulativeBytes = cumulativeBytes,
-    expansionCount = expansionLedger.size,
-    forbidden = forbidden,
-  )
-
-  private fun terminalResult(outcome: ReviewBudgetOutcome) = ReviewEvidenceResult(
-    content = null,
-    bytes = 0,
-    cumulativeBytes = cumulativeBytes,
-    expansionCount = expansionLedger.size,
-    budgetExceeded = outcome,
-  )
 
   private fun batchResult(results: List<ReviewEvidenceResult>, outcome: ReviewBudgetOutcome?) =
     ReviewEvidenceBatchResult(results, cumulativeBytes, expansionLedger.toList(), outcome)
 }
+
+private fun resolveRepositoryFile(root: Path, normalized: String): Path {
+  val candidate = root.resolve(normalized).normalize()
+  require(candidate.startsWith(root)) { "Evidence path escapes the repository." }
+  val real = candidate.toRealPath()
+  require(real.startsWith(root) && Files.isRegularFile(real)) { "Evidence path must be a repository file." }
+  return real
+}
+
+private fun expansionRecord(
+  assignment: skillbill.review.context.model.ReviewAssignment,
+  path: String,
+  reason: String,
+  sequence: Int,
+) = ReviewExpansionRecord(
+  expansionId = "${assignment.lane}-expansion-${sequence + 1}",
+  assignmentDigest = assignment.digest,
+  requestedPath = path,
+  reachabilityReason = reason,
+  authorized = true,
+  sequence = sequence,
+)
+
+private fun forbiddenResult(forbidden: ForbiddenReviewOperation, cumulativeBytes: Long, expansionCount: Int) =
+  ReviewEvidenceResult(
+    content = null,
+    bytes = 0,
+    cumulativeBytes = cumulativeBytes,
+    expansionCount = expansionCount,
+    forbidden = forbidden,
+  )
+
+private fun terminalResult(outcome: ReviewBudgetOutcome, cumulativeBytes: Long, expansionCount: Int) =
+  ReviewEvidenceResult(
+    content = null,
+    bytes = 0,
+    cumulativeBytes = cumulativeBytes,
+    expansionCount = expansionCount,
+    budgetExceeded = outcome,
+  )

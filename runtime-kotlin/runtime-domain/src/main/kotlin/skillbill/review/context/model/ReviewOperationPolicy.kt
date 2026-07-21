@@ -46,6 +46,8 @@ class ReviewOperationPolicy(
 
   fun isReachable(path: String): Boolean = path.replace('\\', '/') in reachablePaths
 
+  fun isAssigned(path: String): Boolean = path.replace('\\', '/') in assignedPaths
+
   private fun classifyShell(command: String): ForbiddenReviewOperation? {
     val normalized = command.trim().lowercase()
     SHELL_REDISCOVERY.forEach { (prefixes, category) ->
@@ -102,28 +104,28 @@ class ReviewOperationPolicy(
 
   private fun classifyFileRead(operation: ReviewRequestedOperation): ForbiddenReviewOperation? {
     val path = operation.target.replace('\\', '/')
-    if (path in assignedPaths) return null
-    GUIDANCE_FILE_NAMES.firstOrNull { path == it || path.endsWith("/$it") }?.let {
-      return forbidden(
+    val guidanceViolation = GUIDANCE_FILE_NAMES.firstOrNull { path == it || path.endsWith("/$it") }?.let {
+      forbidden(
         "project_guidance_traversal",
         operation.target,
         "Project guidance reaches a specialist only as packet-attested matched rules.",
       )
     }
-    ROUTING_PATH_FRAGMENTS.forEach { (fragments, category) ->
-      if (fragments.any { it in path }) {
-        return forbidden(category, operation.target, "The parent packet already resolved this routing decision.")
+    val routingViolation = ROUTING_PATH_FRAGMENTS.firstNotNullOfOrNull { (fragments, category) ->
+      category.takeIf { fragments.any { it in path } }?.let {
+        forbidden(it, operation.target, "The parent packet already resolved this routing decision.")
       }
     }
-    if (isReachable(path)) return null
-    return if (operation.reachabilityReason.isNullOrBlank()) {
-      forbidden(
+    return when {
+      path in assignedPaths -> null
+      guidanceViolation != null -> guidanceViolation
+      routingViolation != null -> routingViolation
+      isReachable(path) && !operation.reachabilityReason.isNullOrBlank() -> null
+      else -> forbidden(
         "unassigned_file_access",
         operation.target,
-        "Reading outside the assignment requires an authorized expansion carrying a reachability reason.",
+        "A reachability reason documents an assignment-authorized dependency; it cannot authorize a new path.",
       )
-    } else {
-      null
     }
   }
 

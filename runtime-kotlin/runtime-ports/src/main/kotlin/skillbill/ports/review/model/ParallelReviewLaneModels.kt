@@ -1,6 +1,7 @@
 package skillbill.ports.review.model
 
 import skillbill.review.context.model.ProviderTokenUsage
+import skillbill.review.context.model.ReviewBudgetOutcome
 import kotlin.time.Duration
 
 data class ParallelReviewLaneRunRequest(
@@ -19,4 +20,5 @@ data class ParallelReviewLaneOutcome(
   val rawOutput: String,
   val failureReason: String? = null,
   val tokenUsage: ProviderTokenUsage? = null,
+  val budgetOutcome: ReviewBudgetOutcome? = null,
 )

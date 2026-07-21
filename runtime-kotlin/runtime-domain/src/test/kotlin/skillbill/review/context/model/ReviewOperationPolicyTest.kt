@@ -53,17 +53,23 @@ class ReviewOperationPolicyTest {
     assertEquals("unscoped_shell_command", category(ReviewOperationKind.SHELL_COMMAND, "curl https://example.test"))
   }
 
-  @Test fun `assigned paths and named dependencies read without an expansion`() {
+  @Test fun `assigned paths are direct and dependencies require an attested reason`() {
     assertNull(policy.classify(ReviewRequestedOperation(ReviewOperationKind.FILE_READ, "src/Assigned.kt")))
-    assertNull(policy.classify(ReviewRequestedOperation(ReviewOperationKind.FILE_READ, "src/Dependency.kt")))
-  }
-
-  @Test fun `unassigned access is forbidden without a reachability reason and allowed with one`() {
-    assertEquals("unassigned_file_access", category(ReviewOperationKind.FILE_READ, "src/Elsewhere.kt"))
+    assertEquals("unassigned_file_access", category(ReviewOperationKind.FILE_READ, "src/Dependency.kt"))
     assertNull(
       policy.classify(
-        ReviewRequestedOperation(ReviewOperationKind.FILE_READ, "src/Elsewhere.kt", "called by assigned symbol"),
+        ReviewRequestedOperation(ReviewOperationKind.FILE_READ, "src/Dependency.kt", "called by assigned symbol"),
       ),
+    )
+  }
+
+  @Test fun `a reason cannot widen access beyond the assignment allowlist`() {
+    assertEquals("unassigned_file_access", category(ReviewOperationKind.FILE_READ, "src/Elsewhere.kt"))
+    assertEquals(
+      "unassigned_file_access",
+      policy.classify(
+        ReviewRequestedOperation(ReviewOperationKind.FILE_READ, "src/Elsewhere.kt", "called by assigned symbol"),
+      )?.category,
     )
   }
 
@@ -94,5 +100,6 @@ class ReviewOperationPolicyTest {
     assignedHunks = emptyList(),
     reviewRevision = ReviewRevision("rvs-1", 1),
     laneDecision = ReviewLaneDecision("security", true, "routed", ownedPaths = listOf("src/Assigned.kt")),
+    dependencyAllowlist = ReviewDependencyAllowlist(listOf("src/Dependency.kt")),
   )
 }

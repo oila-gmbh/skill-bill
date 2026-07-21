@@ -164,18 +164,16 @@ class AgentRunCommandBuildersTest {
   }
 
   @Test
-  fun `headless process builders reject governed specialist isolation`() {
+  fun `fresh process builders materialize governed specialist isolation without provider branching`() {
     val isolated = request().copy(conversationIsolation = ConversationIsolation.NONE)
 
-    val builders = listOf(
+    listOf(
       ClaudeAgentRunCommandBuilder(),
       CodexAgentRunCommandBuilder(),
-      JunieAgentRunCommandBuilder(),
-    )
-    builders.forEach { builder ->
-      val failure = assertFailsWith<IllegalArgumentException> { builder.build(isolated) }
-      assertTrue(failure.message.orEmpty().contains("native specialist-launch adapter"))
+    ).forEach { builder ->
+      assertEquals(ConversationIsolation.NONE, builder.build(isolated).conversationIsolation)
     }
+    assertFailsWith<IllegalArgumentException> { JunieAgentRunCommandBuilder().build(isolated) }
   }
 
   private fun request(model: String? = null, effort: String? = null): SkillRunRequest = SkillRunRequest(

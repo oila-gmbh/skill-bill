@@ -22,7 +22,7 @@ import skillbill.application.goalrunner.WorkflowGoalRunnerOutcomeStore
 import skillbill.application.install.ExternalAddonOverlayService
 import skillbill.application.install.InstallService
 import skillbill.application.learning.LearningService
-import skillbill.application.review.DelegatedReviewLaunchBroker
+import skillbill.application.review.DelegatedReviewExecutionBroker
 import skillbill.application.review.ParallelCodeReviewRunner
 import skillbill.application.review.ReviewService
 import skillbill.application.scaffold.InstallAgentService
@@ -44,6 +44,7 @@ import skillbill.application.workflow.GoalPlanningPreparationCheckpoint
 import skillbill.application.workflow.WorkflowService
 import skillbill.domain.skillremove.SkillRemoveFileSystem
 import skillbill.goalplanning.FileSystemGoalPlanningContextDiscovery
+import skillbill.infrastructure.fs.AgentRunReviewIsolationResolver
 import skillbill.infrastructure.fs.DecompositionManifestValidatorAdapter
 import skillbill.infrastructure.fs.FeatureTaskRuntimePhaseOutputValidatorAdapter
 import skillbill.infrastructure.fs.FileExternalAddonSourceConfigStore
@@ -136,11 +137,10 @@ import skillbill.ports.install.reconcile.InstallReconcilePort
 import skillbill.ports.install.selection.InstallSelectionPersistencePort
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.review.ParallelReviewLaneRunner
-import skillbill.launcher.agentrun.AgentRunReviewIsolationResolver
 import skillbill.ports.review.ReviewAttributionPort
 import skillbill.ports.review.ReviewEvidenceBrokerFactory
-import skillbill.ports.review.ReviewLaunchIsolationResolver
 import skillbill.ports.review.ReviewInputSource
+import skillbill.ports.review.ReviewLaunchIsolationResolver
 import skillbill.ports.scaffold.RepoSourceDiscoveryGateway
 import skillbill.ports.scaffold.ScaffoldCatalogGateway
 import skillbill.ports.scaffold.ScaffoldGateway
@@ -550,9 +550,8 @@ abstract class RuntimeComponent(
 
   @Provides
   @JvmSynthetic
-  internal fun reviewLaunchIsolationResolver(
-    adapter: AgentRunReviewIsolationResolver,
-  ): ReviewLaunchIsolationResolver = adapter
+  internal fun reviewLaunchIsolationResolver(adapter: AgentRunReviewIsolationResolver): ReviewLaunchIsolationResolver =
+    adapter
 
   @Provides
   @JvmSynthetic
@@ -575,7 +574,7 @@ abstract class RuntimeComponent(
     adapter
 
   abstract val parallelCodeReviewRunner: ParallelCodeReviewRunner
-  abstract val delegatedReviewLaunchBroker: DelegatedReviewLaunchBroker
+  abstract val delegatedReviewExecutionBroker: DelegatedReviewExecutionBroker
 
   // Exposed as a pre-built object so the CLI consumer need not resolve the infra-fs
   // RepoLocalConfigPort adapter type, which is not on the CLI module's compile classpath.

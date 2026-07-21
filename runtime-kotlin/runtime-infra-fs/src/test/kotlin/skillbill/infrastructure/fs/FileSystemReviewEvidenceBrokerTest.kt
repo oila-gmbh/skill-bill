@@ -9,6 +9,7 @@ import skillbill.review.context.model.REVIEW_BUDGET_REGRESSION
 import skillbill.review.context.model.REVIEW_CONTEXT_BUDGET_EXCEEDED
 import skillbill.review.context.model.ReviewAssignment
 import skillbill.review.context.model.ReviewContextBudgetPolicy
+import skillbill.review.context.model.ReviewDependencyAllowlist
 import skillbill.review.context.model.ReviewLaneDecision
 import skillbill.review.context.model.ReviewOperationKind
 import skillbill.review.context.model.ReviewRevision
@@ -69,7 +70,7 @@ class FileSystemReviewEvidenceBrokerTest {
 
   @Test fun `authorized expansion is admitted and audited with its reachability reason`() {
     val root = repo("A.kt" to "assigned", "B.kt" to "dep")
-    val broker = broker(root, assignment(listOf("A.kt")))
+    val broker = broker(root, assignment(listOf("A.kt"), listOf("B.kt")))
     val result = broker.readBatch(
       ReviewEvidenceBatchRequest.of(ReviewEvidenceRequest("security", "B.kt", "called by assigned symbol")),
     )
@@ -93,19 +94,25 @@ class FileSystemReviewEvidenceBrokerTest {
 
   @Test fun `expansion budget excess terminates the lane`() {
     val root = repo("A.kt" to "assigned", "B.kt" to "dep")
-    val broker = broker(root, assignment(listOf("A.kt")), policy(expansions = 0))
+    val broker = broker(root, assignment(listOf("A.kt"), listOf("B.kt")), policy(expansions = 0))
     val result = broker.readBatch(
       ReviewEvidenceBatchRequest.of(ReviewEvidenceRequest("security", "B.kt", "reachable from assigned symbol")),
     )
     assertEquals("assignment_expansions", result.terminalOutcome?.budgetKind)
   }
 
-  @Test fun `named direct dependency does not consume an expansion`() {
+  @Test fun `named dependency is still measured as an authorized expansion`() {
     val root = repo("A.kt" to "assigned", "B.kt" to "dep")
-    val broker = broker(root, assignment(listOf("A.kt")), namedDependencies = setOf("B.kt"))
-    val result = broker.readBatch(ReviewEvidenceBatchRequest.of(ReviewEvidenceRequest("security", "B.kt")))
+    val broker = broker(
+      root,
+      assignment(listOf("A.kt"), listOf("B.kt")),
+      namedDependencies = setOf("B.kt"),
+    )
+    val result = broker.readBatch(
+      ReviewEvidenceBatchRequest.of(ReviewEvidenceRequest("security", "B.kt", "called by assigned symbol")),
+    )
     assertEquals("dep", result.results.single().content)
-    assertTrue(result.expansions.isEmpty())
+    assertEquals(listOf("B.kt"), result.expansions.map { it.requestedPath })
   }
 
   @Test fun `forbidden tool calls are rejected and never counted`() {
@@ -197,7 +204,7 @@ class FileSystemReviewEvidenceBrokerTest {
     ReviewEvidenceBrokerBinding(root, assignment, "security", budget, namedDependencies),
   )
 
-  private fun assignment(paths: List<String>) = ReviewAssignment(
+  private fun assignment(paths: List<String>, dependencies: List<String> = emptyList()) = ReviewAssignment(
     "review",
     "a".repeat(64),
     "security",
@@ -212,6 +219,7 @@ class FileSystemReviewEvidenceBrokerTest {
       "routed",
       ownedPaths = paths.ifEmpty { listOf("A.kt") },
     ),
+    dependencyAllowlist = ReviewDependencyAllowlist(dependencies),
   )
 
   private fun policy(

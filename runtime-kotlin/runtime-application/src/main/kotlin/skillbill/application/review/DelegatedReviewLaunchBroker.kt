@@ -1,64 +1,21 @@
 package skillbill.application.review
 
 import me.tatarka.inject.annotations.Inject
+import skillbill.application.review.model.DelegatedReviewLaunch
+import skillbill.application.review.model.DelegatedReviewLaunchOutcome
+import skillbill.application.review.model.DelegatedReviewLaunchRequest
+import skillbill.application.review.model.ReviewRubricProjection
+import skillbill.application.review.model.ReviewWorkerKind
 import skillbill.error.InvalidReviewContextSchemaError
 import skillbill.ports.agentrun.model.ReviewLaunchIsolationStrategy
-import skillbill.ports.review.ReviewEvidenceBroker
 import skillbill.ports.review.ReviewEvidenceBrokerFactory
 import skillbill.ports.review.ReviewLaunchIsolationResolver
 import skillbill.ports.review.model.ReviewEvidenceBrokerBinding
 import skillbill.review.context.model.GovernedReviewLaunch
-import skillbill.review.context.model.ReviewAssignment
 import skillbill.review.context.model.ReviewBudgetEvaluator
-import skillbill.review.context.model.ReviewBudgetOutcome
 import skillbill.review.context.model.ReviewContextBudgetExceeded
-import skillbill.review.context.model.ReviewContextBudgetPolicy
-import skillbill.review.context.model.ReviewContextPacket
 import skillbill.review.context.model.ReviewLaneIdentity
 import java.nio.charset.StandardCharsets
-import java.nio.file.Path
-
-enum class ReviewWorkerKind {
-  /** Carries its governed rubric embedded in the installed native agent. */
-  PROVIDER_NATIVE,
-
-  /** Has no embedded rubric, so the parent projects exactly one into the launch. */
-  GENERIC,
-}
-
-data class ReviewRubricProjection(val rubricId: String, val body: String) {
-  init {
-    require(rubricId.isNotBlank()) { "A projected rubric must carry an id." }
-    require(body.isNotBlank()) { "A projected rubric must carry a body." }
-  }
-}
-
-data class DelegatedReviewLaunchRequest(
-  val packet: ReviewContextPacket,
-  val assignment: ReviewAssignment,
-  val specialistContract: String,
-  val rubrics: List<ReviewRubricProjection>,
-  val brokerId: String,
-  val budget: ReviewContextBudgetPolicy,
-  val agentId: String,
-  val workerKind: ReviewWorkerKind,
-  val repoRoot: Path,
-  val namedDependencies: Set<String> = emptySet(),
-)
-
-data class DelegatedReviewLaunch(
-  val launch: GovernedReviewLaunch,
-  val prompt: String,
-  val isolation: ReviewLaunchIsolationStrategy,
-  val evidenceBroker: ReviewEvidenceBroker,
-  val rubricIsAuthoritative: Boolean,
-)
-
-sealed interface DelegatedReviewLaunchOutcome {
-  data class Prepared(val launch: DelegatedReviewLaunch) : DelegatedReviewLaunchOutcome
-
-  data class Terminated(val outcome: ReviewBudgetOutcome) : DelegatedReviewLaunchOutcome
-}
 
 /**
  * The only production constructor of a delegated review launch. It validates the assignment against
@@ -71,6 +28,7 @@ class DelegatedReviewLaunchBroker(
   private val isolationResolver: ReviewLaunchIsolationResolver,
 ) {
   fun prepare(request: DelegatedReviewLaunchRequest): DelegatedReviewLaunchOutcome {
+    requireBoundedNamedDependencies(request)
     val rubric = requireSingleRubric(request)
     val isolation = requireSupportedIsolation(request)
 
@@ -114,6 +72,18 @@ class DelegatedReviewLaunchBroker(
         rubricIsAuthoritative = request.workerKind == ReviewWorkerKind.PROVIDER_NATIVE,
       ),
     )
+  }
+
+  private fun requireBoundedNamedDependencies(request: DelegatedReviewLaunchRequest) {
+    val allowed = request.assignment.dependencyAllowlist.normalized.toSet()
+    val requested = request.namedDependencies.map { it.replace('\\', '/') }.toSet()
+    val escaping = requested - allowed
+    if (escaping.isNotEmpty()) {
+      reject(
+        request,
+        "Named dependencies escape the validated assignment dependency allowlist: ${escaping.sorted()}.",
+      )
+    }
   }
 
   private fun requireSingleRubric(request: DelegatedReviewLaunchRequest): ReviewRubricProjection {
