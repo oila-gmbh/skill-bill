@@ -55,15 +55,17 @@ internal class FeatureTaskRuntimeRunState(
       .filterNot { it.phaseId in gateInvalidatedPhases }
       .toMutableList()
 
-  // A blocked phase deliberately persists its schema-rejected output as diagnostic evidence, so a durable
-  // artifact is not guaranteed to satisfy the phase schema. Re-validating it while hydrating resume state
-  // must not kill the process: an unparseable artifact carries no usable output, and the phase re-runs.
-  // Failing here instead would leave the workflow permanently unresumable.
+  // Records written before rejected_output existed stored schema-rejected evidence in output_artifact, so a
+  // non-completed record's artifact is not guaranteed to satisfy the phase schema. Hydrating resume state
+  // tolerates that: an unparseable artifact carries no usable output and the phase re-runs, whereas failing
+  // here leaves the workflow permanently unresumable. A completed record still loud-fails, because there an
+  // invalid artifact is genuine corruption rather than evidence.
   private fun validatedRecordToOutput(record: FeatureTaskRuntimePhaseRecord): FeatureTaskRuntimePhaseOutput? =
     record.outputArtifact?.let { artifact ->
       val normalized = try {
         outputValidator.normalizePhaseOutput(artifact, record.phaseId)
-      } catch (_: InvalidFeatureTaskRuntimePhaseOutputSchemaError) {
+      } catch (error: InvalidFeatureTaskRuntimePhaseOutputSchemaError) {
+        if (record.status == STATUS_COMPLETED) throw error
         return@let null
       }
       FeatureTaskRuntimePhaseOutput(

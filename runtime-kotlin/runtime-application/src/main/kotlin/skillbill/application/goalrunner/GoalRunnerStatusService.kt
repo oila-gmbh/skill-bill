@@ -67,6 +67,7 @@ class GoalRunnerStatusService(
               request.dbPathOverride,
             ),
             currentStepOverride = progress?.currentStepId,
+            currentWorkflowStatus = progress?.workflowStatus,
             latestLivenessSignal = progress?.latestLivenessSignal,
             latestObservabilityEvent = progress?.latestGoalObservabilityEvent?.toStatusMap(),
             requestedDiffStat = request.requestedDiffStat(),

@@ -113,7 +113,7 @@ class FeatureTaskRuntimeAuditRepairRegressionTest {
 
     assertEquals("implement", blocked.lastIncompletePhase)
     val implementRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["implement"])
-    val persisted = requireNotNull(implementRecord.outputArtifact) {
+    val persisted = requireNotNull(implementRecord.rejectedOutput) {
       "a rejected output must stay on the durable record so the failure is diagnosable"
     }
     assertContains(persisted, marker)

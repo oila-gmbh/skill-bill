@@ -2652,8 +2652,11 @@ class GoalRunnerStatusAttributionTest {
 
     requireNotNull(status)
     assertEquals(1, status.completeCount)
-    assertEquals(1, status.pendingCount)
-    assertEquals(1, status.blockedCount)
+    // Subtask 2 is durably blocked in the manifest but its child workflow is running, so it counts as
+    // in-progress: the manifest projection is only rewritten at reconciliation points and would otherwise
+    // report a relaunched subtask as blocked for the whole run.
+    assertEquals(2, status.pendingCount)
+    assertEquals(0, status.blockedCount)
     assertEquals(2, status.currentSubtaskId)
     assertEquals("implement", status.currentStep)
     assertEquals("zcode", status.activeAgent)
