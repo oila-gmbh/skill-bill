@@ -140,7 +140,7 @@ class FeatureTaskRuntimeStatusServiceTest {
   fun `ledger-only audit gap projects reopened implement as current`() {
     val harness = statusHarness()
     harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
-    listOf("preplan", "plan", "implement", "review", "audit")
+    listOf("preplan", "plan", "implement", "audit", "review")
       .forEach { harness.recordCompleted(it, attemptCount = 1) }
     harness.recordLoopEdge(
       phaseId = "implement",
@@ -278,7 +278,7 @@ class FeatureTaskRuntimeStatusServiceTest {
     // it rather than report a never-run loop-only phase; with no other incomplete phase it reports none.
     val harness = statusHarness()
     harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
-    listOf("preplan", "plan", "implement", "review", "audit", "validate", "write_history", "commit_push", "pr")
+    listOf("preplan", "plan", "implement", "audit", "review", "validate", "write_history", "commit_push", "pr")
       .forEach { harness.recordCompleted(it, attemptCount = 1) }
 
     val projection = requireNotNull(

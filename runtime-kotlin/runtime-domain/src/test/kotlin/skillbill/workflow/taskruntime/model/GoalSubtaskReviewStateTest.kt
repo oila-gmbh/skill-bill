@@ -6,9 +6,84 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class GoalSubtaskReviewStateTest {
+  @Test
+  fun `completed passes record immutable execution modes while legacy records remain byte stable`() {
+    val initial = GoalSubtaskReviewState.initial(
+      reviewBaseSha = "a".repeat(40),
+      baselineUntrackedPaths = emptyList(),
+      codeReviewMode = CodeReviewExecutionMode.DELEGATED,
+    )
+    assertEquals(
+      initial.toArtifactMap(),
+      GoalSubtaskReviewState.fromArtifactMap(initial.toArtifactMap()).toArtifactMap(),
+    )
+
+    val completed = initial.reserveNextPass().completeReservedPass(
+      verdict = FeatureTaskRuntimeVerdict.APPROVED,
+      unresolvedFindingCount = 0,
+      findings = emptyList(),
+    )
+    assertEquals(CodeReviewExecutionMode.DELEGATED, completed.passResults.single().executedMode)
+    val recordedPass = (completed.toArtifactMap()["pass_results"] as List<*>).single() as Map<*, *>
+    assertEquals("delegated", recordedPass["executed_mode"])
+
+    val legacyCompletedArtifact = completed.toArtifactMap().toMutableMap().apply {
+      put(
+        "pass_results",
+        (getValue("pass_results") as List<*>).map { rawPass ->
+          (rawPass as Map<*, *>).filterKeys { it != "executed_mode" }
+        },
+      )
+    }
+    assertEquals(
+      legacyCompletedArtifact,
+      GoalSubtaskReviewState.fromArtifactMap(legacyCompletedArtifact).toArtifactMap(),
+    )
+  }
+
+  @Test
+  fun `a recorded mode outside the immutable sequence fails loudly`() {
+    val initial = GoalSubtaskReviewState.initial(
+      reviewBaseSha = "b".repeat(40),
+      baselineUntrackedPaths = emptyList(),
+      codeReviewMode = CodeReviewExecutionMode.DELEGATED,
+    )
+    assertFailsWith<InvalidGoalSubtaskReviewStateSchemaError> {
+      GoalSubtaskReviewState.fromArtifactMap(
+        initial.toArtifactMap() + mapOf(
+          "completed_pass_count" to 1,
+          "pass_results" to listOf(
+            mapOf(
+              "pass_number" to 1,
+              "verdict" to "approved",
+              "review_result_artifact" to "goal_subtask_review_results.1",
+              "unresolved_finding_count" to 0,
+              "findings" to emptyList<Any>(),
+              "executed_mode" to "inline",
+            ),
+          ),
+        ),
+      )
+    }
+  }
+
+  @Test
+  fun `an existing reservation is reused after interruption`() {
+    val reserved = GoalSubtaskReviewState.initial(
+      reviewBaseSha = "c".repeat(40),
+      baselineUntrackedPaths = emptyList(),
+      codeReviewMode = CodeReviewExecutionMode.AUTO,
+    ).reserveNextPass()
+
+    assertEquals(reserved, reserved.reserveNextPass())
+    assertEquals(1, reserved.reservedPassNumber)
+    assertEquals(0, reserved.completedPassCount)
+  }
+
   @Test
   fun `two unresolved passes preserve the cap disposition without permitting a third pass`() {
     val firstPass = GoalSubtaskReviewState.initial(
@@ -158,9 +233,44 @@ class GoalSubtaskReviewStateTest {
         mapOf(
           FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY to continuation.toArtifactMap(),
           GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY to state.toArtifactMap(),
-          GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY to emptyMap<String, String>(),
+          GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY to mapOf("1" to "stale raw review result"),
         ),
       )
     }
+  }
+
+  @Test
+  fun `review invalidation clears raw results through an empty map that stays decodable`() {
+    val continuation = FeatureTaskRuntimeGoalContinuationArtifact(
+      issueKey = "SKILL-135",
+      subtaskId = 3,
+      suppressPr = true,
+      goalBranch = "feat/SKILL-135",
+      codeReviewMode = CodeReviewExecutionMode.DELEGATED,
+    )
+    val completed = GoalSubtaskReviewState.initial(
+      reviewBaseSha = "d".repeat(40),
+      baselineUntrackedPaths = emptyList(),
+      codeReviewMode = CodeReviewExecutionMode.DELEGATED,
+    ).reserveNextPass().completeReservedPass(
+      verdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
+      unresolvedFindingCount = 0,
+      findings = emptyList(),
+    )
+    val invalidated = GoalSubtaskReviewState.initial(
+      reviewBaseSha = completed.reviewBaseSha,
+      baselineUntrackedPaths = completed.baselineUntrackedPaths,
+      codeReviewMode = completed.codeReviewMode,
+    )
+
+    val artifacts = mapOf(
+      FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY to continuation.toArtifactMap(),
+      GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY to invalidated.toArtifactMap(),
+      GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY to emptyMap<String, String>(),
+    )
+
+    val decoded = assertNotNull(GoalSubtaskReviewArtifactDecoder.decode(artifacts))
+    assertEquals(0, decoded.state.completedPassCount)
+    assertEquals(emptyMap(), decoded.rawResults)
   }
 }

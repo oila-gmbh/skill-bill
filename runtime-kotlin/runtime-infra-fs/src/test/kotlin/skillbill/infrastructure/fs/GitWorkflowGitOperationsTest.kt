@@ -422,7 +422,7 @@ class GitWorkflowGitOperationsTest {
   }
 
   @Test
-  fun `goal review baseline capture rejects staged tracked changes`() {
+  fun `goal review baseline capture accepts staged tracked changes`() {
     val repoRoot = Files.createTempDirectory("skillbill-goal-review-baseline-staged")
     git(repoRoot, "init")
     git(repoRoot, "config", "user.email", "skill-bill@example.test")
@@ -438,12 +438,12 @@ class GitWorkflowGitOperationsTest {
       git(repoRoot, "branch", "--show-current"),
     )
 
-    assertFalse(result.ok)
-    assertContains(result.error, "staged tracked changes")
+    assertTrue(result.ok, result.error)
+    assertEquals(git(repoRoot, "rev-parse", "HEAD"), requireNotNull(result.baseline).reviewBaseSha)
   }
 
   @Test
-  fun `goal review baseline capture rejects unstaged tracked changes`() {
+  fun `goal review baseline capture accepts unstaged tracked changes`() {
     val repoRoot = Files.createTempDirectory("skillbill-goal-review-baseline-unstaged")
     git(repoRoot, "init")
     git(repoRoot, "config", "user.email", "skill-bill@example.test")
@@ -458,8 +458,31 @@ class GitWorkflowGitOperationsTest {
       git(repoRoot, "branch", "--show-current"),
     )
 
-    assertFalse(result.ok)
-    assertContains(result.error, "unstaged tracked changes")
+    assertTrue(result.ok, result.error)
+    assertEquals(git(repoRoot, "rev-parse", "HEAD"), requireNotNull(result.baseline).reviewBaseSha)
+  }
+
+  // Pre-existing tracked work is intentionally in scope: the review reads the whole worktree delta from
+  // the base commit, so a dirty tree starts a run and the reviewer sees everything in it.
+  @Test
+  fun `goal review input includes tracked changes that pre-date the baseline`() {
+    val repoRoot = Files.createTempDirectory("skillbill-goal-review-preexisting-tracked")
+    git(repoRoot, "init")
+    git(repoRoot, "config", "user.email", "skill-bill@example.test")
+    git(repoRoot, "config", "user.name", "Skill Bill")
+    Files.writeString(repoRoot.resolve("tracked.txt"), "base\n")
+    git(repoRoot, "add", ".")
+    git(repoRoot, "commit", "-m", "initial")
+    Files.writeString(repoRoot.resolve("tracked.txt"), "pre-existing edit\n")
+    val branch = git(repoRoot, "branch", "--show-current")
+
+    val baseline = requireNotNull(
+      GitWorkflowGitOperations().captureGoalSubtaskReviewBaseline(repoRoot, branch).baseline,
+    )
+    val input = GitWorkflowGitOperations().buildGoalSubtaskReviewInput(repoRoot, baseline, branch)
+
+    assertTrue(input.ok, input.error)
+    assertContains(requireNotNull(input.input).trackedDelta, "pre-existing edit")
   }
 
   @Test

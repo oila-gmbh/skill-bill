@@ -1,8 +1,19 @@
 package skillbill.application.goalrunner
 
 import skillbill.contracts.JsonSupport
+import skillbill.goalrunner.model.UnaddressedFinding
+import skillbill.goalrunner.model.normalizedUnaddressedFindingCategory
+import skillbill.goalrunner.model.normalizedUnaddressedFindingSeverity
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
+
+internal data class StructuredGoalReviewFinding(
+  val severity: String,
+  val message: String,
+  val issueCategory: String,
+  val location: String,
+  val compactLabel: String,
+)
 
 internal data class GoalSubtaskReviewOutputOutcome(
   val verdict: FeatureTaskRuntimeVerdict,
@@ -27,6 +38,21 @@ internal object GoalSubtaskReviewSummaryReducer {
   private val diffFragment = Regex("(?i)(?:\\bdiff\\s+--git\\b|\\bindex\\s+[0-9a-f]{7,}\\b|---|\\+\\+\\+)")
 
   fun fromOutput(output: Map<String, Any?>): List<GoalSubtaskReviewCompactFinding> {
+    return structuredFindings(output).map { finding ->
+      GoalSubtaskReviewCompactFinding(
+        severity = finding.severity,
+        label = finding.compactLabel,
+        text = sanitize(finding.message),
+      )
+    }.groupBy { finding -> finding.label.lowercase() }
+      .values
+      .map { sameLabelFindings ->
+        sameLabelFindings.minByOrNull(::severityRank)
+          ?: error("A grouped compact review summary must contain at least one finding.")
+      }
+  }
+
+  fun structuredFindings(output: Map<String, Any?>): List<StructuredGoalReviewFinding> {
     val findings = output["produced_outputs"]
       ?.let(JsonSupport::anyToStringAnyMap)
       ?.get("findings") as? List<*>
@@ -37,17 +63,36 @@ internal object GoalSubtaskReviewSummaryReducer {
         ?: return@mapNotNull null
       val message = (finding["message"] as? String)?.trim()?.takeIf(String::isNotBlank)
         ?: return@mapNotNull null
-      GoalSubtaskReviewCompactFinding(
+      StructuredGoalReviewFinding(
         severity = severity,
-        label = labelFor(finding, message),
-        text = sanitize(message),
+        message = message,
+        issueCategory = sequenceOf(finding["issue_category"], finding["category"])
+          .filterIsInstance<String>().firstOrNull()?.trim()?.lowercase() ?: "other",
+        location = sequenceOf(finding["location"], finding["artifact_ref"])
+          .filterIsInstance<String>().firstOrNull()?.trim()?.takeIf(String::isNotBlank) ?: "<unknown>",
+        compactLabel = labelFor(finding, message),
       )
-    }.groupBy { finding -> finding.label.lowercase() }
-      .values
-      .map { sameLabelFindings ->
-        sameLabelFindings.minByOrNull(::severityRank)
-          ?: error("A grouped compact review summary must contain at least one finding.")
-      }
+    }
+  }
+
+  fun unaddressedFindings(
+    output: Map<String, Any?>,
+    issueKey: String,
+    subtaskId: Int,
+    workflowId: String,
+    reviewPassNumber: Int,
+  ): List<UnaddressedFinding> = structuredFindings(output).mapIndexed { index, finding ->
+    UnaddressedFinding(
+      issueKey = issueKey,
+      subtaskId = subtaskId,
+      workflowId = workflowId,
+      reviewPassNumber = reviewPassNumber,
+      findingOrdinal = index + 1,
+      severity = normalizedUnaddressedFindingSeverity(finding.severity),
+      issueCategory = normalizedUnaddressedFindingCategory(finding.issueCategory),
+      location = finding.location,
+      summary = finding.message,
+    )
   }
 
   fun unresolvedCount(output: Map<String, Any?>): Int = fromOutput(output)

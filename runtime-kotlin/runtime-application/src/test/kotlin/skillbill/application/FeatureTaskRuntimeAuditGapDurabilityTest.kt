@@ -155,7 +155,8 @@ class FeatureTaskRuntimeAuditGapDurabilityTest {
     assertEquals(1, initialRepairState.progress.newGapCount)
     assertEquals(0, initialRepairState.progress.recurringGapCount)
 
-    // Run 2 (resume): the crash heals; review and audit from before edge 1 are stale and must rerun.
+    // Run 2 (resume): the crash heals; the audit from before edge 1 is stale and must rerun. Review
+    // sits outside the reopened [implement, audit] span, so it runs once after the audit satisfies.
     // The satisfied re-audit completes edge 1 without minting edge 2.
     crashOnReImplement = false
     val resumeReport = harness.runner.run(harness.request())
@@ -169,7 +170,11 @@ class FeatureTaskRuntimeAuditGapDurabilityTest {
       "resume finishes the in-flight edge instead of reusing its stale driving verdict",
     )
     assertEquals(2, auditLaunches, "the original audit and the resumed re-audit both ran")
-    assertEquals(2, harness.launchedPromptPhaseOrder().count { it == "review" })
+    assertEquals(
+      1,
+      harness.launchedPromptPhaseOrder().count { it == "review" },
+      "review sits outside the audit_gap span, so it runs once after the audit satisfies",
+    )
   }
 
   @Test
@@ -412,7 +417,13 @@ class FeatureTaskRuntimeAuditGapDurabilityTest {
     harness.seedPhase("implement", "completed", 3, INVOKED_AGENT, validJsonOutput("implement"))
     harness.seedPhase("review", "completed", 2, INVOKED_AGENT, validJsonOutput("review"))
     harness.seedReentryPhase("audit", "blocked", 3, INVOKED_AGENT, auditGapsOutput(), "audit_gap", 2)
-    harness.recorder.recordResolvedBranch(WORKFLOW_ID, FeatureTaskRuntimeResolvedBranch("feat/persisted-branch"))
+    harness.recorder.recordResolvedBranch(
+      WORKFLOW_ID,
+      FeatureTaskRuntimeResolvedBranch(
+        branch = "feat/persisted-branch",
+        reviewBaseSha = "0".repeat(40),
+      ),
+    )
 
     val report = assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
 

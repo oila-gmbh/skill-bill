@@ -14,6 +14,8 @@ import skillbill.application.workflow.WorkflowFamily
 import skillbill.application.workflow.generateWorkflowId
 import skillbill.application.workflow.repoRoot
 import skillbill.contracts.JsonSupport
+import skillbill.error.InvalidUnaddressedFindingsLedgerSchemaError
+import skillbill.error.UnaddressedFindingsLedgerAbsentError
 import skillbill.goalrunner.GoalRunnerOutcomeReconciler
 import skillbill.goalrunner.GoalRunnerPlanner
 import skillbill.goalrunner.model.GoalAttemptLedgerAction
@@ -27,6 +29,7 @@ import skillbill.goalrunner.model.GoalRunnerStopReport
 import skillbill.goalrunner.model.GoalRunnerStoredOutcome
 import skillbill.goalrunner.model.GoalRunnerSubtaskAction
 import skillbill.goalrunner.model.GoalRunnerSupervisionEvent
+import skillbill.goalrunner.model.UnaddressedFindingsLedger
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.agentrun.model.AgentRunProgressProbe
@@ -81,6 +84,7 @@ class GoalRunner(
   private val clock: java.time.Clock = java.time.Clock.systemUTC(),
   private val timing: RuntimeTimingPort = NoopRuntimeTimingPort,
   private val diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
+  private val unaddressedFindingsLedgerService: UnaddressedFindingsLedgerService? = null,
 ) {
   private val workerRequestHandler = GoalRunnerWorkerRequestHandler(manifestStore, outcomeStore)
   private val reconciler = GoalRunnerLaunchReconciler(manifestStore, subtaskLauncher, outcomeStore, timing, diagnostics)
@@ -861,12 +865,77 @@ class GoalRunner(
     return GoalRunnerIterationResult(state = completed)
   }
 
+  private fun resolveFindingsLedger(issueKey: String, dbPathOverride: String?): UnaddressedFindingsLedger? {
+    val service = unaddressedFindingsLedgerService ?: return null
+    return try {
+      service.ledger(issueKey, dbPathOverride)
+    } catch (_: UnaddressedFindingsLedgerAbsentError) {
+      UnaddressedFindingsLedger(issueKey, emptyList())
+    } catch (_: InvalidUnaddressedFindingsLedgerSchemaError) {
+      null
+    }
+  }
+
   private fun finalizeGoal(
     state: GoalRunnerManifestState,
     request: GoalRunnerRunRequest,
     attempted: List<Int>,
     ledger: GoalRunnerLedgerRecorder,
   ): GoalRunnerRunReport {
+    reconcileBeforeFinalization(state, request, ledger)
+    val finalState = manifestStore.save(state, request.dbPathOverride)
+    finalizationError(finalState.manifest, request.repoRoot)?.let { reason ->
+      return stopped(
+        issueKey = finalState.manifest.issueKey,
+        attempted = attempted,
+        subtaskId = finalState.manifest.subtasks.lastOrNull()?.id ?: 0,
+        reason = GoalRunnerStopReason.PULL_REQUEST_FAILED,
+        blockedReason = reason,
+        workflowId = null,
+        lastResumableStep = "commit_push",
+      )
+    }
+    val findingsLedger = resolveFindingsLedger(finalState.manifest.issueKey, request.dbPathOverride)
+    val result = pullRequestPort.open(finalState.manifest.toPullRequestRequest(request.repoRoot))
+    return when (result) {
+      is GoalPullRequestResult.Opened -> {
+        deleteGoalSpecScratchOnSuccess(finalState.manifest, request)
+        completed(
+          finalState.manifest,
+          attempted,
+          pullRequestUrl = result.url,
+          pullRequestStatus = "opened",
+          findingsLedger,
+        )
+      }
+      is GoalPullRequestResult.Existing -> {
+        deleteGoalSpecScratchOnSuccess(finalState.manifest, request)
+        completed(
+          finalState.manifest,
+          attempted,
+          pullRequestUrl = result.url,
+          pullRequestStatus = "existing",
+          findingsLedger,
+        )
+      }
+      is GoalPullRequestResult.Failed -> stopped(
+        issueKey = finalState.manifest.issueKey,
+        attempted = attempted,
+        subtaskId = finalState.manifest.currentSubtaskIntent.subtaskId.takeIf { it > 0 }
+          ?: finalState.manifest.subtasks.last().id,
+        reason = GoalRunnerStopReason.PULL_REQUEST_FAILED,
+        blockedReason = result.reason,
+        workflowId = null,
+        lastResumableStep = "pr_description",
+      )
+    }
+  }
+
+  private fun reconcileBeforeFinalization(
+    state: GoalRunnerManifestState,
+    request: GoalRunnerRunRequest,
+    ledger: GoalRunnerLedgerRecorder,
+  ) {
     outcomeStore.reconcileAuthoritativeOutcomes(
       issueKey = state.manifest.issueKey,
       activeWorkflowIds = emptySet(),
@@ -892,39 +961,6 @@ class GoalRunner(
           ),
         )
       }
-    val finalState = manifestStore.save(state, request.dbPathOverride)
-    finalizationError(finalState.manifest, request.repoRoot)?.let { reason ->
-      return stopped(
-        issueKey = finalState.manifest.issueKey,
-        attempted = attempted,
-        subtaskId = finalState.manifest.subtasks.lastOrNull()?.id ?: 0,
-        reason = GoalRunnerStopReason.PULL_REQUEST_FAILED,
-        blockedReason = reason,
-        workflowId = null,
-        lastResumableStep = "commit_push",
-      )
-    }
-    val result = pullRequestPort.open(finalState.manifest.toPullRequestRequest(request.repoRoot))
-    return when (result) {
-      is GoalPullRequestResult.Opened -> {
-        deleteGoalSpecScratchOnSuccess(finalState.manifest, request)
-        completed(finalState.manifest, attempted, pullRequestUrl = result.url, pullRequestStatus = "opened")
-      }
-      is GoalPullRequestResult.Existing -> {
-        deleteGoalSpecScratchOnSuccess(finalState.manifest, request)
-        completed(finalState.manifest, attempted, pullRequestUrl = result.url, pullRequestStatus = "existing")
-      }
-      is GoalPullRequestResult.Failed -> stopped(
-        issueKey = finalState.manifest.issueKey,
-        attempted = attempted,
-        subtaskId = finalState.manifest.currentSubtaskIntent.subtaskId.takeIf { it > 0 }
-          ?: finalState.manifest.subtasks.last().id,
-        reason = GoalRunnerStopReason.PULL_REQUEST_FAILED,
-        blockedReason = result.reason,
-        workflowId = null,
-        lastResumableStep = "pr_description",
-      )
-    }
   }
 
   private fun finalizationError(manifest: DecompositionManifest, repoRoot: java.nio.file.Path): String? {
@@ -1080,15 +1116,20 @@ class GoalRunner(
     attempted: List<Int>,
     pullRequestUrl: String?,
     pullRequestStatus: String,
-  ): GoalRunnerRunReport.Completed = GoalRunnerRunReport.Completed(
-    issueKey = manifest.issueKey,
-    attemptedSubtasks = attempted,
-    pullRequestUrl = pullRequestUrl,
-    pullRequestStatus = pullRequestStatus,
-    subtasksCompleted = manifest.subtasks.count { it.status == "complete" },
-    subtasksPending = manifest.subtasks.count { it.status !in setOf("complete", "skipped", "blocked") },
-    subtasksBlocked = manifest.subtasks.count { it.status == "blocked" },
-  )
+    ledger: UnaddressedFindingsLedger?,
+  ): GoalRunnerRunReport.Completed {
+    return GoalRunnerRunReport.Completed(
+      issueKey = manifest.issueKey,
+      attemptedSubtasks = attempted,
+      pullRequestUrl = pullRequestUrl,
+      pullRequestStatus = pullRequestStatus,
+      subtasksCompleted = manifest.subtasks.count { it.status == "complete" },
+      subtasksPending = manifest.subtasks.count { it.status !in setOf("complete", "skipped", "blocked") },
+      subtasksBlocked = manifest.subtasks.count { it.status == "blocked" },
+      unaddressedFindingCount = ledger?.findings?.size,
+      unaddressedSeverityBreakdown = ledger?.severityBreakdown.orEmpty(),
+    )
+  }
 
   private fun unknownGoal(issueKey: String): GoalRunnerRunReport.Stopped = stopped(
     issueKey = issueKey,

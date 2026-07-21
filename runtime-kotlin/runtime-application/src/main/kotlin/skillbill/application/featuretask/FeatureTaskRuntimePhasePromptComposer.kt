@@ -5,6 +5,7 @@ import skillbill.agentaddon.model.HydratedAgentAddonSelection
 import skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.ports.workflow.model.GoalSubtaskReviewInput
+import skillbill.review.model.ReviewIssueCategory
 import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.model.SpecSource
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
@@ -42,7 +43,6 @@ object FeatureTaskRuntimePhasePromptComposer {
       reviewExecutionDirective(
         briefing.phaseId,
         codeReviewMode,
-        reviewPassNumber,
         parallelReviewAgent,
         goalSubtaskReviewInput,
       ),
@@ -156,12 +156,20 @@ object FeatureTaskRuntimePhasePromptComposer {
       }
     }
 
+  // The forward phase order as prose, derived from the single topology source so the briefing can
+  // never drift from the graph the runtime actually drives. Loop-only phases are excluded because a
+  // clean run never launches them.
+  private val forwardPhaseOrder: String =
+    FeatureTaskRuntimePhaseWorkflowDefinition.definition.stepIds
+      .filterNot { it in FeatureTaskRuntimePhaseWorkflowDefinition.transitions.loopOnlyPhaseIds }
+      .joinToString(" -> ")
+
   private fun header(issueKey: String, phaseId: String): String {
     val label = FeatureTaskRuntimePhaseWorkflowDefinition.definition.stepLabels[phaseId] ?: phaseId
     val directive = phaseDirectives[phaseId] ?: error("No phase directive for runtime phase '$phaseId'.")
     return """
       You are executing exactly one phase of the EXPERIMENTAL skill-bill feature-task-runtime
-      loop (preplan -> plan -> implement -> review -> audit -> validate -> write_history -> commit_push -> pr)
+      loop ($forwardPhaseOrder)
       for issue $issueKey. The runtime owns the loop; do not run other phases, do not open
       or continue any other skill-bill workflow, and do not call `skill-bill workflow continue`.
 
@@ -175,15 +183,14 @@ object FeatureTaskRuntimePhasePromptComposer {
     val scaling = FeatureTaskRuntimePhaseWorkflowDefinition.ceremonyScaling(featureSize)
     val remediationReview = briefing.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW &&
       reviewPassNumber == 2
-    val reviewScope = if (remediationReview) "remediation_delta" else scaling.reviewScope.wireValue
+    val reviewScope = scaling.reviewScope.wireValue
     val phaseSpecific = when (briefing.phaseId) {
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN ->
         "Apply ${scaling.preplanCeremony.promptLabel}. Keep the gate real: identify concrete scope, " +
           "affected boundaries, risks, and unknowns at the requested depth."
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW -> if (remediationReview) {
-        "Apply bill-code-review mode:inline context:feature-remediation to only the combined staged, unstaged, " +
-          "and untracked remediation delta since checkpoint HEAD. Do not expand the re-review to the full " +
-          "feature branch."
+        "Apply bill-code-review mode:inline context:feature-remediation to the subtask's complete delta from " +
+          "its immutable base, including committed, staged, unstaged, and owned untracked changes."
       } else {
         "Apply ${scaling.reviewScope.promptLabel}. Keep the review gate real: inspect the implemented " +
           "change for defects and report concrete file references."
@@ -249,7 +256,13 @@ object FeatureTaskRuntimePhasePromptComposer {
           "with exactly these ids in order: ${briefing.auditRepairItemIds.joinToString()}. Every result must " +
           "contain only repair_item_id, outcome (fixed or already_satisfied), non-empty " +
           "changed_paths_or_symbols, non-empty executed_verification, and structured result_evidence " +
-          "with observation, artifact_ref, and check_ref. check_ref MUST be AC-###, F-###, or a single " +
+          "with observation, artifact_ref, and check_ref. observation MUST be exactly one of " +
+          "required_behavior_absent, verification_failed, contract_rejected, state_mismatch, fix_verified, " +
+          "already_satisfied_verified, resolution_verified, or recurrence_verified; use " +
+          "already_satisfied_verified when the behavior already existed and you verified it, and do not " +
+          "invent a synonym outside this list. artifact_ref MUST be a repository-relative path " +
+          "optionally followed by one :symbol; do not put a sentence, spaces, test description, command, " +
+          "result, or additional prose in artifact_ref. check_ref MUST be AC-###, F-###, or a single " +
           "name ending in Test or Check (optionally followed by :symbol); do not put a command, result, " +
           "sentence, spaces, or shell punctuation in check_ref.\n" +
           auditRemediationOutputExample(briefing.auditRepairItemIds)
@@ -267,7 +280,11 @@ object FeatureTaskRuntimePhasePromptComposer {
         "\n    - This is a VERIFYING phase: produced_outputs MUST carry a \"$findings\" array (each entry a\n" +
           "      severity/message object; an explicit empty [] affirms no Blocker findings) AND/OR a\n" +
           "      top-level \"$verdict\" of \"approved\" or \"changes_requested\". Output carrying NEITHER signal\n" +
-          "      fails the schema gate loudly — a prose summary alone cannot advance the gate."
+          "      fails the schema gate loudly — a prose summary alone cannot advance the gate.\n" +
+          "      Each finding's \"severity\" MUST be exactly one of blocker, major, minor, nit, and its\n" +
+          "      \"issue_category\" MUST be exactly one of " +
+          ReviewIssueCategory.entries.joinToString { it.wireValue } + "; any other category value is\n" +
+          "      recorded as other."
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT ->
         "\n    - This is a VERIFYING phase: produced_outputs MUST carry an \"$unmetCriteria\" array (one\n" +
           "      message per unmet acceptance criterion; an explicit empty [] affirms every criterion is met)\n" +
@@ -281,10 +298,21 @@ object FeatureTaskRuntimePhasePromptComposer {
           "      add or change tests. Validation owns test execution and failures. Audit may report only a\n" +
           "      concrete defect in production behavior or production implementation; when no such defect is\n" +
           "      evidenced, emit satisfied even if test coverage is absent or inadequate." +
-          auditDispositionAddendum(briefing.unresolvedAuditGapIds)
+          auditDispositionAddendum(briefing.unresolvedAuditGapIds) +
+          auditClosedCriterionAddendum(briefing.durablyClosedCriterionRefs)
       else -> ""
     }
   }
+
+  private fun auditClosedCriterionAddendum(closedCriterionRefs: List<String>): String =
+    if (closedCriterionRefs.isEmpty()) {
+      ""
+    } else {
+      "\n      The acceptance criteria ${closedCriterionRefs.sorted().joinToString()} already reached a " +
+        "satisfied verdict and are durably closed: verify ONLY the criteria this briefing still lists, and " +
+        "never report an unmet_criteria entry or an audit_repair_plan gap against a closed criterion. Doing " +
+        "so fails the schema gate loudly."
+    }
 
   private fun auditRemediationOutputExample(repairItemIds: List<String>): String =
     "Required produced_outputs shape:\n```json\n{\n" +
@@ -347,7 +375,6 @@ object FeatureTaskRuntimePhasePromptComposer {
   private fun reviewExecutionDirective(
     phaseId: String,
     codeReviewMode: CodeReviewExecutionMode,
-    reviewPassNumber: Int?,
     parallelReviewAgent: String?,
     goalSubtaskReviewInput: GoalSubtaskReviewInput?,
   ): String {
@@ -358,11 +385,11 @@ object FeatureTaskRuntimePhasePromptComposer {
       " Combine it with `parallel:$agent`; both lanes must receive mode:${codeReviewMode.wireValue} " +
         "and the second lane must not launch parallel review recursively."
     }.orEmpty()
-    val goalScope = goalSubtaskReviewInput?.let { input ->
+    val materializedScope = goalSubtaskReviewInput?.let { input ->
       """
 
-      ## Goal subtask review scope
-      Review only this child-owned delta from durable base `${input.reviewBaseSha}` to current HEAD `${input.currentHeadSha}`.
+      ## Immutable-base review scope
+      Review only this run-owned delta from durable base `${input.reviewBaseSha}` to current HEAD `${input.currentHeadSha}`.
       It includes committed, staged, unstaged, and owned untracked changes below.
       Do not use `origin/main...HEAD`, a merge base, the full feature branch, or a replacement baseline.
       If parallel CLI delegation is required, give both lanes this exact diff through `--diff-file`;
@@ -371,19 +398,13 @@ object FeatureTaskRuntimePhasePromptComposer {
       ${input.reviewText}
       """.trimIndent()
     }.orEmpty()
-    val remediationScope = if (reviewPassNumber == 2 && goalSubtaskReviewInput == null) {
-      " Review only the combined working-tree remediation delta since checkpoint HEAD; include staged, unstaged, " +
-        "and untracked changes, and do not use the full branch diff."
-    } else {
-      ""
-    }
     return """
       ## Review execution mode
       Run `bill-code-review mode:${codeReviewMode.wireValue}` for this review. The initial pass uses the run-selected
       mode; every later pass is explicitly INLINE under context:feature-remediation. Never launch a third review pass.
       AUTO keeps the shared policy's existing selection; remediation INLINE uses the governed exception and selects
       inline specialist coverage for high-risk signals; DELEGATED must use normal routed delegation and fail if workers
-      cannot start.$parallel$goalScope$remediationScope
+      cannot start.$parallel$materializedScope
     """.trimIndent()
   }
 

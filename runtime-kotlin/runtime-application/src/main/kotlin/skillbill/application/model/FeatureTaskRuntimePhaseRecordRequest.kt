@@ -28,6 +28,12 @@ data class FeatureTaskRuntimePhaseStateRequest(
   val loopId: String? = null,
   val edgeIteration: Int? = null,
   val reviewPassNumber: Int? = null,
+  /**
+   * Canonical refs of the acceptance criteria this audit was asked to verify: the declared set minus
+   * the criteria already durably closed. Runtime-derived, never agent-reported, and empty for every
+   * non-audit phase.
+   */
+  val auditScopeCriterionRefs: List<String> = emptyList(),
 )
 
 /**

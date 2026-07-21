@@ -75,9 +75,17 @@ data class FeatureTaskRuntimeResolvedBranch(
   val branch: String,
   val baseBranch: String? = null,
   val created: Boolean = false,
+  val reviewBaseSha: String? = null,
+  val baselineUntrackedPaths: List<String> = emptyList(),
 ) {
   init {
     require(branch.isNotBlank()) { "FeatureTaskRuntimeResolvedBranch.branch must be non-blank." }
+    require(reviewBaseSha == null || REVIEW_BASE_SHA.matches(reviewBaseSha)) {
+      "FeatureTaskRuntimeResolvedBranch.reviewBaseSha must be a 40- or 64-character lowercase commit SHA."
+    }
+    require(baselineUntrackedPaths.all(String::isNotBlank)) {
+      "FeatureTaskRuntimeResolvedBranch.baselineUntrackedPaths must not contain blanks."
+    }
   }
 
   @OpenBoundaryMap("Feature-task-runtime resolved-branch artifact map at the durable workflow-artifact seam")
@@ -86,6 +94,8 @@ data class FeatureTaskRuntimeResolvedBranch(
     "created" to created,
   ).apply {
     baseBranch?.let { put("base_branch", it) }
+    reviewBaseSha?.let { put("review_base_sha", it) }
+    if (baselineUntrackedPaths.isNotEmpty()) put("baseline_untracked_paths", baselineUntrackedPaths)
   }
 
   companion object {
@@ -95,9 +105,15 @@ data class FeatureTaskRuntimeResolvedBranch(
       branch = raw.requireStringField("branch"),
       baseBranch = raw.optionalStringField("base_branch"),
       created = raw.optionalBooleanField("created") ?: false,
+      reviewBaseSha = raw.optionalStringField("review_base_sha"),
+      baselineUntrackedPaths = (raw["baseline_untracked_paths"] as? List<*>)
+        ?.map { it as? String ?: error("baseline_untracked_paths must contain only strings.") }
+        .orEmpty(),
     )
   }
 }
+
+private val REVIEW_BASE_SHA = Regex("^[0-9a-f]{40}(?:[0-9a-f]{24})?$")
 
 data class FeatureTaskRuntimeGoalContinuationOutcome(
   val issueKey: String,

@@ -120,6 +120,32 @@ class WorkflowStateSchemaContractVersionTest {
     assertBranchStepsStepIdMatch(branch, definition.stepIds.toSet(), "featureTaskRuntimeBranch")
   }
 
+  /**
+   * SKILL-135 Subtask 1 AC6: the feature-task-runtime branch constrains the step-id MEMBERSHIP set
+   * and never its order, which is why reordering the phase pipeline to audit-first needed no
+   * `FEATURE_TASK_RUNTIME_CONTRACT_VERSION` bump. Pinned explicitly so a future change that makes the
+   * schema order-sensitive, or that adds a step id, cannot silently skip the bump decision.
+   */
+  @Test
+  fun `featureTaskRuntime branch pins the step-id set only, so reordering needs no contract bump`() {
+    val branch = loadSchemaNode().path("\$defs").path("featureTaskRuntimeBranch")
+    val definition = FeatureTaskRuntimePhaseWorkflowDefinition.definition
+    assertBranchStepsStepIdMatch(branch, definition.stepIds.toSet(), "featureTaskRuntimeBranch")
+    // Order-insensitivity is a property of the schema KEYWORDS, not of comparing an equal set twice:
+    // `steps` must constrain each item uniformly, never positionally.
+    val steps = branch.path("properties").path("steps")
+    assertTrue(
+      steps.path("prefixItems").isMissingNode && steps.path("items").path("prefixItems").isMissingNode,
+      "Schema featureTaskRuntimeBranch.steps must not declare positional item schemas: a positional " +
+        "constraint would make the durable step order part of the contract and a reorder a bump.",
+    )
+    assertEquals(
+      WORKFLOW_STATE_CONTRACT_VERSION,
+      definition.contractVersion,
+      "Reordering the feature-task-runtime phase pipeline must not move the contract version.",
+    )
+  }
+
   private fun loadSchemaNode(): JsonNode {
     val schemaFile = repoRootFromTest().resolve(WorkflowStateSchemaPaths.REPO_RELATIVE_PATH)
     assertTrue(Files.isRegularFile(schemaFile), "Canonical schema file is missing at $schemaFile.")

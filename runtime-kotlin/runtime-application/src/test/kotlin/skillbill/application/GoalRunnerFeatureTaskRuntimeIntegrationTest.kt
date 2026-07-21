@@ -210,8 +210,10 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
     val reviewCompletions = runtime.recorder.loadPhaseLedger(workflowId).orEmpty()
       .filter { it.action == skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction.COMPLETE }
       .filter { it.phaseId == "review" }
-    assertEquals(2, reviewCompletions.size)
-    assertEquals(1, reviewCompletions.count { it.loopId == "audit_gap" && it.edgeIteration == 1 })
+    // The goal child resolves the same audit-first graph as a standalone run: the audit_gap loop
+    // reopens only [implement, audit], so review completes exactly once, outside the loop.
+    assertEquals(1, reviewCompletions.size)
+    assertEquals(0, reviewCompletions.count { it.loopId == "audit_gap" })
   }
 
   @Test
@@ -345,7 +347,7 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
   }
 
   @Test
-  fun `standalone and goal child classify recurring and newly discovered gaps identically`() {
+  fun `standalone and goal child reject a new gap against a durably closed criterion`() {
     fun launcher(): RuntimeRecordingLauncher {
       var audits = 0
       var implements = 0
@@ -364,13 +366,18 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
       }
     }
 
-    val parity = standaloneAndGoalChildParity(launcher = ::launcher)
+    val parity = standaloneAndGoalChildParity(
+      launcher = ::launcher,
+      acceptanceCriteria = (1..3).map { "AC-$it" },
+    )
 
     assertIs<GoalRunnerRunReport.Stopped>(parity.report)
+    assertContains(requireNotNull(parity.blockedChildReason()), "durably closed acceptance criteria [AC-003]")
     val state = requireNotNull(parity.runtime.recorder.loadAuditRepairState(WORKFLOW_ID))
-    assertEquals(1, state.progress.recurringGapCount)
+    assertEquals(0, state.progress.recurringGapCount)
     assertEquals(1, state.progress.newGapCount)
-    assertEquals(listOf("ac-002-gap-1", "ac-003-gap-1"), state.unresolvedGapLedger.unresolvedGaps.map { it.gapId })
+    assertEquals(listOf("ac-002-gap-1"), state.unresolvedGapLedger.unresolvedGaps.map { it.gapId })
+    assertEquals(listOf("AC-001", "AC-003"), state.satisfiedCriterionRefs)
   }
 
   @Test
@@ -689,6 +696,7 @@ private fun standaloneAndGoalChildParity(
   },
   codeReviewMode: CodeReviewExecutionMode = CodeReviewExecutionMode.DELEGATED,
   parallelReviewAgent: String? = null,
+  acceptanceCriteria: List<String> = listOf("AC-1", "AC-2"),
 ): GoalChildParityRun {
   val standaloneGit = gitOperations().apply {
     if (headCommitShaValue.isBlank()) headCommitShaValue = "goal-child-commit"
@@ -697,6 +705,7 @@ private fun standaloneAndGoalChildParity(
     launcher = launcher(),
     runtimeConfig = RuntimeHarnessConfig(
       branchSetup = BranchSetupTestConfig(gitOperations = standaloneGit),
+      acceptanceCriteria = acceptanceCriteria,
     ),
   )
   val standaloneRequest = standalone.request().copy(
@@ -711,6 +720,7 @@ private fun standaloneAndGoalChildParity(
       gitOperations = gitOperations(),
       codeReviewMode = codeReviewMode,
       parallelReviewAgent = parallelReviewAgent,
+      acceptanceCriteria = acceptanceCriteria,
     ),
   )
   assertEquals(goalChild.childReports.size, goalChild.continuationRequestCount)
@@ -739,12 +749,10 @@ private fun standaloneAndGoalChildParity(
 
 private fun assertReviewCompositionParity(standalone: GoalChildObservation, goalChild: GoalChildObservation) {
   assertEquals(standalone.reviewComposition.size, goalChild.reviewComposition.size)
-  assertEquals(
-    standalone.reviewComposition.map { it.split('|').take(2) },
-    goalChild.reviewComposition.map { it.split('|').take(2) },
-  )
-  assertTrue(standalone.reviewComposition.none { it.contains("durable base") })
+  assertEquals(standalone.reviewComposition, goalChild.reviewComposition)
+  assertTrue(standalone.reviewComposition.all { it.contains("durable base `${"0".repeat(40)}`") })
   assertTrue(goalChild.reviewComposition.all { it.contains("durable base `${"0".repeat(40)}`") })
+  assertTrue(standalone.reviewComposition.all { it.contains("committed, staged, unstaged") })
   assertTrue(goalChild.reviewComposition.all { it.contains("committed, staged, unstaged") })
 }
 
@@ -803,6 +811,7 @@ private data class GoalChildParityConfig(
   val ensureCommitSha: Boolean = true,
   val codeReviewMode: CodeReviewExecutionMode? = null,
   val parallelReviewAgent: String? = null,
+  val acceptanceCriteria: List<String> = listOf("AC-1", "AC-2"),
 )
 
 private fun goalChildParityRun(
@@ -818,6 +827,7 @@ private fun goalChildParityRun(
     validator = config.validator,
     runtimeConfig = RuntimeHarnessConfig(
       branchSetup = BranchSetupTestConfig(gitOperations = config.gitOperations),
+      acceptanceCriteria = config.acceptanceCriteria,
     ),
   )
   val childLauncher = RuntimeChildLauncher(runtime.runner, runtime.request(), outcomes)

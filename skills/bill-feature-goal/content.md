@@ -169,10 +169,11 @@ new child-owned untracked files after implementation, repair, or resume. Never
 replace this scope with a branch-wide diff, merge base, `origin/main`, or
 sibling-subtask substitute.
 
-Each child reserves its pass before review starts and permits at most two total
-passes across resume, repair, and audit re-entry. Major findings remain durable
+Audit completes before review starts. Each child then reserves pass one in the
+selected delegated mode and permits one inline remediation pass across resume.
+Major, Minor, and Nit findings remain durable
 evidence and never prevent advancement. If pass two still has Blocker findings,
-persist full evidence, emit a compact path-free summary, and block before audit
+persist full evidence, emit a compact path-free summary, and block before validate
 without launching a third pass.
 
 If a crash leaves a reserved pass without its completed durable output, resume
@@ -184,7 +185,9 @@ Goal-facing review output and `goal_event` lines contain only subtask id, pass,
 verdict/disposition, finding count, severity, class/symbol-or-sanitized-stem
 label, and concise text. They must never contain a path, line number, diff
 hunk, or raw child-review output; full location-bearing evidence remains in
-the child's durable review artifacts and telemetry.
+the goal-wide unaddressed-findings ledger. Location-bearing detail is available
+only through `skill-bill goal findings --issue-key <KEY>`; goal, status, watch,
+telemetry, and PR surfaces may contain compact counts or sanitized summaries only.
 
 ## Confirmed Handoff
 
@@ -360,7 +363,7 @@ continuation selector result), `spec_path`, durable `code_review_mode`, optional
 `review_cap_disposition`, and the
 goal-continuation contract rules (`suppress_pr=true`, `commit_push` is the
 terminal signal, no install flows). The Level-1 agent runs the full phase loop
-(preplan → plan → implement → review → audit → validate → history → commit_push)
+(preplan → plan → implement → audit → review → validate → history → commit_push)
 in its own fresh context and returns a bounded RESULT block.
 
 For every fresh child, copy those durable fields without recomputing them. On a
@@ -487,3 +490,7 @@ This is governed skill content that installs for all supported agents. Only the
 entry and launch mechanics differ per agent; no agent-specific orchestration is
 hardcoded — the invoking agent drives the loop through the same continuation
 contract regardless of which agent runs it.
+
+## Audit-first review and findings ledger
+
+Goal children use the audit-first order `implement -> audit -> review -> validate`; review starts only after audit is satisfied. Review runs delegated first and inline second. Blocker findings stop advancement, while non-blocker findings advance and are durably recorded in the goal-wide unaddressed-findings ledger. Retrieve the location-bearing ledger, including after goal completion, with `skill-bill goal findings --issue-key <KEY>`.

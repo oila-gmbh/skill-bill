@@ -113,10 +113,12 @@ class FeatureTaskRuntimePhaseBriefingBudgetTest {
       ),
     )
 
-    val auditDeclaration = FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclarations
-      .getValue(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT)
+    // Use the implement_fix declaration: it consumes plan, implement, AND review, so the budget bound
+    // is still exercised across three upstream payloads now that audit runs before review.
+    val multiUpstreamDeclaration = FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclarations
+      .getValue(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX)
     val handoff = FeatureTaskRuntimeHandoffContract.assembleHandoff(
-      declaration = auditDeclaration,
+      declaration = multiUpstreamDeclaration,
       runInvariants = invariants,
       recordedOutputs = recordedOutputs,
     )
@@ -124,7 +126,9 @@ class FeatureTaskRuntimePhaseBriefingBudgetTest {
 
     val byteSize = briefing.briefingText.toByteArray(Charsets.UTF_8).size
     assertTrue(
-      byteSize < CEILING,
+      // The documented guarantee is at-or-under, and an exactly-fitting split across three truncated
+      // upstreams lands on the ceiling itself; the other budget assertions here already use <=.
+      byteSize <= CEILING,
       "Assembled per-phase briefing was $byteSize bytes, exceeding the $CEILING ceiling; " +
         "the assembler stopped bounding an unbounded upstream payload inlined into a single phase briefing.",
     )
@@ -173,10 +177,12 @@ class FeatureTaskRuntimePhaseBriefingBudgetTest {
       ),
     )
 
-    val auditDeclaration = FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclarations
-      .getValue(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT)
+    // Use the implement_fix declaration: it consumes plan, implement, AND review, so the budget bound
+    // is still exercised across three upstream payloads now that audit runs before review.
+    val multiUpstreamDeclaration = FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclarations
+      .getValue(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX)
     val handoff = FeatureTaskRuntimeHandoffContract.assembleHandoff(
-      declaration = auditDeclaration,
+      declaration = multiUpstreamDeclaration,
       runInvariants = invariants,
       recordedOutputs = recordedOutputs,
     )
@@ -218,10 +224,12 @@ class FeatureTaskRuntimePhaseBriefingBudgetTest {
         payload = """{"review":"${"r".repeat(20_000)}"}""",
       ),
     )
-    val auditDeclaration = FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclarations
-      .getValue(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT)
+    // Use the implement_fix declaration: it consumes plan, implement, AND review, so the budget bound
+    // is still exercised across three upstream payloads now that audit runs before review.
+    val multiUpstreamDeclaration = FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclarations
+      .getValue(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX)
     val handoff = FeatureTaskRuntimeHandoffContract.assembleHandoff(
-      declaration = auditDeclaration,
+      declaration = multiUpstreamDeclaration,
       runInvariants = invariants,
       recordedOutputs = recordedOutputs,
     )

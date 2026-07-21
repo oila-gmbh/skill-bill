@@ -4,6 +4,7 @@ import skillbill.application.featuretask.FeatureTaskRuntimePhaseBriefingAssemble
 import skillbill.application.featuretask.FeatureTaskRuntimePhasePromptComposer
 import skillbill.application.featuretask.FeatureTaskRuntimeVerificationSignalKeys
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
+import skillbill.ports.workflow.model.GoalSubtaskReviewInput
 import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.model.SpecSource
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
@@ -46,19 +47,54 @@ class FeatureTaskRuntimePhasePromptComposerTest {
   }
 
   @Test
-  fun `second review pass stays inline and scopes only the remediation delta`() {
+  fun `second standalone review pass stays inline and receives the materialized immutable-base delta`() {
     val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
       ISSUE_KEY,
       briefingFor("review"),
       codeReviewMode = CodeReviewExecutionMode.INLINE,
       reviewPassNumber = 2,
+      goalSubtaskReviewInput = GoalSubtaskReviewInput(
+        reviewBaseSha = "0".repeat(40),
+        currentHeadSha = "1".repeat(40),
+        trackedDelta = "tracked delta",
+        ownedUntrackedPatches = "owned untracked patch",
+      ),
     )
 
     assertContains(prompt, "bill-code-review mode:inline")
     assertContains(prompt, "context:feature-remediation")
-    assertContains(prompt, "review_scope: remediation_delta")
-    assertContains(prompt, "combined working-tree remediation delta since checkpoint HEAD")
-    assertContains(prompt, "do not use the full branch diff")
+    assertContains(prompt, "review_scope: branch_diff")
+    assertContains(prompt, "Immutable-base review scope")
+    assertContains(prompt, "${"0".repeat(40)}")
+    assertContains(prompt, "committed, staged, unstaged, and owned untracked changes")
+    assertContains(prompt, "tracked delta")
+    assertContains(prompt, "owned untracked patch")
+  }
+
+  @Test
+  fun `both review passes receive the same immutable-base complete-delta payload`() {
+    val input = GoalSubtaskReviewInput(
+      reviewBaseSha = "a".repeat(40),
+      currentHeadSha = "b".repeat(40),
+      trackedDelta = "committed staged and unstaged delta",
+      ownedUntrackedPatches = "run-owned untracked delta",
+    )
+
+    val prompts = listOf(1, 2).map { pass ->
+      FeatureTaskRuntimePhasePromptComposer.compose(
+        ISSUE_KEY,
+        briefingFor("review"),
+        codeReviewMode = if (pass == 1) CodeReviewExecutionMode.DELEGATED else CodeReviewExecutionMode.INLINE,
+        reviewPassNumber = pass,
+        goalSubtaskReviewInput = input,
+      )
+    }
+
+    prompts.forEach { prompt ->
+      assertContains(prompt, "durable base `${input.reviewBaseSha}` to current HEAD `${input.currentHeadSha}`")
+      assertContains(prompt, input.trackedDelta)
+      assertContains(prompt, input.ownedUntrackedPatches)
+    }
   }
 
   @Test
@@ -429,6 +465,8 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     assertContains(prompt, "\"changed_paths_or_symbols\"")
     assertContains(prompt, "\"executed_verification\"")
     assertContains(prompt, "\"result_evidence\"")
+    assertContains(prompt, "artifact_ref MUST be a repository-relative path")
+    assertContains(prompt, "do not put a sentence, spaces, test description, command")
     assertContains(prompt, "\"reconciled_state\"")
   }
 

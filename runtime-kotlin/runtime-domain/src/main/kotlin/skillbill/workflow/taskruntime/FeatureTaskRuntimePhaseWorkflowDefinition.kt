@@ -9,6 +9,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCapExhaustionBehav
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCeremonyScaling
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseDeclaration
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseEntryGate
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePreplanCeremony
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewScope
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
@@ -68,9 +69,9 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
       PHASE_PREPLAN,
       PHASE_PLAN,
       PHASE_IMPLEMENT,
+      PHASE_AUDIT,
       PHASE_IMPLEMENT_FIX,
       PHASE_REVIEW,
-      PHASE_AUDIT,
       PHASE_VALIDATE,
       PHASE_WRITE_HISTORY,
       PHASE_COMMIT_PUSH,
@@ -81,9 +82,9 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
       PHASE_PREPLAN to "Phase 1: Pre-plan",
       PHASE_PLAN to "Phase 2: Plan",
       PHASE_IMPLEMENT to "Phase 3: Implement",
-      PHASE_IMPLEMENT_FIX to "Phase 3b: Implement Fix",
-      PHASE_REVIEW to "Phase 4: Code Review",
-      PHASE_AUDIT to "Phase 5: Completeness Audit",
+      PHASE_AUDIT to "Phase 4: Completeness Audit",
+      PHASE_IMPLEMENT_FIX to "Phase 4b: Implement Fix",
+      PHASE_REVIEW to "Phase 5: Code Review",
       PHASE_VALIDATE to "Phase 6: Quality Validation",
       PHASE_WRITE_HISTORY to "Phase 7: Boundary History",
       PHASE_COMMIT_PUSH to "Phase 8: Commit and Push",
@@ -94,9 +95,9 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
       PHASE_PREPLAN to emptyList(),
       PHASE_PLAN to listOf(PHASE_PREPLAN),
       PHASE_IMPLEMENT to listOf(PHASE_PLAN),
+      PHASE_AUDIT to listOf(PHASE_PLAN, PHASE_IMPLEMENT),
       PHASE_IMPLEMENT_FIX to listOf(PHASE_PLAN, PHASE_IMPLEMENT, PHASE_REVIEW),
-      PHASE_REVIEW to listOf(PHASE_IMPLEMENT),
-      PHASE_AUDIT to listOf(PHASE_PLAN, PHASE_IMPLEMENT, PHASE_REVIEW),
+      PHASE_REVIEW to listOf(PHASE_IMPLEMENT, PHASE_AUDIT),
       PHASE_VALIDATE to listOf(PHASE_IMPLEMENT, PHASE_AUDIT),
       PHASE_WRITE_HISTORY to listOf(PHASE_IMPLEMENT, PHASE_VALIDATE),
       PHASE_COMMIT_PUSH to listOf(PHASE_IMPLEMENT, PHASE_VALIDATE, PHASE_WRITE_HISTORY),
@@ -112,8 +113,9 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
       PHASE_IMPLEMENT_FIX to
         "Resume the implement-fix phase from the latest review findings, reconciling the current tree, " +
         "then persist the validated output.",
-      PHASE_REVIEW to "Resume code review from the latest implement output and the derived diff context.",
-      PHASE_AUDIT to "Resume the completeness audit from the latest plan, implement, and review outputs.",
+      PHASE_AUDIT to "Resume the completeness audit from the latest plan and implement outputs.",
+      PHASE_REVIEW to
+        "Resume code review from the latest implement and audit outputs and the derived diff context.",
       PHASE_VALIDATE to "Resume quality validation from the latest implement and audit outputs.",
       PHASE_WRITE_HISTORY to
         "Resume boundary history writing from the latest implement and validate outputs.",
@@ -149,22 +151,35 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
 
   /**
    * Transition topology: the ordered [stepIds] forward pipeline plus the M1 `review_fix` and M2
-   * `audit_gap` backward edges. `implement_fix` sits between `implement` and `review` in the pipeline
-   * but is loop-only — the forward edge skips it, so a clean run advances `implement` -> `review` and
-   * never launches a fix. A `review` `changes_requested` verdict reopens the `[implement_fix, review]`
-   * span (the backward destination precedes the source), bounded at one review->fix iteration; an
-   * `approved` verdict advances to `audit`, while exhausting that remediation budget with the review
-   * still unsatisfied blocks the run instead of advancing. An audit
-   * `gaps_found` verdict reopens the
-   * `[implement, audit]` span to reconcile implementation against the failing criteria using the
-   * immutable initial planning context and re-pass through `review` (incl. its `review_fix`
-   * loop) before re-`audit`. Audit-gap reconciliation is unbounded because each new audit verdict is
-   * the authority on whether implementation is complete; the first `satisfied` verdict advances to
-   * `validate`.
+   * `audit_gap` backward edges. The pipeline is audit-first: a clean run advances
+   * `implement` -> `audit` -> `review`, so review only ever inspects a tree the audit already
+   * declared complete. `implement_fix` sits between `audit` and `review` but is loop-only — the
+   * forward edge skips it, so a clean run never launches a fix.
+   *
+   * An audit `gaps_found` verdict reopens the `[implement, audit]` span to reconcile implementation
+   * against the failing criteria using the immutable initial planning context, then re-`audit`. That
+   * span structurally excludes `review`, which now sits after `audit`. Audit-gap reconciliation is
+   * unbounded because each new audit verdict is the authority on whether implementation is complete.
+   *
+   * A `review` `changes_requested` verdict reopens the `[implement_fix, review]` span, bounded at one
+   * review->fix iteration; an `approved` verdict or exhaustion of that remediation budget advances to
+   * `validate`. That span structurally excludes `audit`, so no review outcome can reopen an audit
+   * repair plan.
+   *
+   * [FeatureTaskRuntimeTransitionDeclaration.entryGates] makes the ordering enforceable rather than
+   * merely implied: `review` is unreachable until `audit` has settled `satisfied`, and any path that
+   * would enter it earlier loud-fails.
    */
   val transitions: FeatureTaskRuntimeTransitionDeclaration =
     FeatureTaskRuntimeTransitionDeclaration(
       forwardPhaseIds = definition.stepIds,
+      entryGates = listOf(
+        FeatureTaskRuntimePhaseEntryGate(
+          phaseId = PHASE_REVIEW,
+          requiredPhaseId = PHASE_AUDIT,
+          requiredVerdict = FeatureTaskRuntimeVerdict.SATISFIED,
+        ),
+      ),
       backwardEdges = listOf(
         FeatureTaskRuntimeBackwardEdge(
           fromPhaseId = PHASE_REVIEW,
@@ -172,7 +187,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
           destinationPhaseId = PHASE_IMPLEMENT_FIX,
           loopId = REVIEW_FIX_LOOP_ID,
           perEdgeCap = 1,
-          capExhaustionBehavior = FeatureTaskRuntimeCapExhaustionBehavior.BLOCK,
+          capExhaustionBehavior = FeatureTaskRuntimeCapExhaustionBehavior.ADVANCE,
         ),
         FeatureTaskRuntimeBackwardEdge(
           fromPhaseId = PHASE_AUDIT,

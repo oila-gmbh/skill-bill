@@ -2,6 +2,7 @@ package skillbill.application.featuretask
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.decomposition.decodeArtifacts
+import skillbill.application.goalrunner.GoalSubtaskReviewSummaryReducer
 import skillbill.application.workflow.WorkflowFamily
 import skillbill.error.InvalidGoalSubtaskReviewStateSchemaError
 import skillbill.ports.persistence.DatabaseSessionFactory
@@ -116,7 +117,10 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
     check(state.reviewBaseSha == input.reviewBaseSha) {
       "Goal-subtask review input does not match the durable review baseline."
     }
-    val updated = state.copy(reviewInputArtifact = GOAL_SUBTASK_REVIEW_INPUT_ARTIFACT_KEY)
+    val updated = state.copy(
+      reviewInputArtifact = GOAL_SUBTASK_REVIEW_INPUT_ARTIFACT_KEY,
+      reviewedDeltaDigest = input.deltaDigest,
+    )
     savePatch(
       record,
       unitOfWork.workflowStates,
@@ -141,6 +145,16 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
     val previousResults = rawReviewResultsFromArtifacts(artifacts, state)
     val completed = state.completeReservedPass(request.verdict, request.unresolvedFindingCount, request.findings)
     val passNumber = completed.completedPassCount.toString()
+    val continuation = continuationFromArtifacts(artifacts)
+      ?: error("Goal-subtask review continuation is missing during reserved-pass recovery.")
+    val ledgerFindings = GoalSubtaskReviewSummaryReducer.unaddressedFindings(
+      output = request.normalizedOutput,
+      issueKey = continuation.issueKey,
+      subtaskId = continuation.subtaskId,
+      workflowId = request.workflowId,
+      reviewPassNumber = passNumber.toInt(),
+    )
+    unitOfWork.unaddressedFindings.replaceLedgerForPass(request.workflowId, passNumber.toInt(), ledgerFindings)
     savePatch(
       record,
       unitOfWork.workflowStates,
@@ -298,6 +312,7 @@ internal data class GoalReviewPassCompletionRequest(
   val unresolvedFindingCount: Int,
   val findings: List<GoalSubtaskReviewCompactFinding>,
   val rawReviewResult: String,
+  val normalizedOutput: Map<String, Any?>,
 )
 
 private data class GoalReviewInputRecoveryRequest(

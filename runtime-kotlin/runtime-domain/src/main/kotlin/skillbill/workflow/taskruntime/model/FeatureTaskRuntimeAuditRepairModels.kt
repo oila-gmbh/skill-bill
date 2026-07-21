@@ -291,6 +291,12 @@ data class FeatureTaskRuntimeAuditRepairState(
   val unresolvedGapLedger: FeatureTaskRuntimeUnresolvedGapLedger,
   val repositoryFingerprint: String?,
   val progress: FeatureTaskRuntimeAuditRepairProgress,
+  /**
+   * Acceptance criteria that reached a satisfied verdict and are durably closed. Closure is
+   * union-only within a workflow, so a later audit never re-verifies a criterion this set names.
+   * Absent in a legacy durable payload, which decodes to "nothing closed yet".
+   */
+  val satisfiedCriterionRefs: List<String> = emptyList(),
 ) {
   init {
     require(acceptedPlans.isNotEmpty()) { "Audit repair state must retain at least one accepted plan, had none." }
@@ -357,6 +363,28 @@ data class FeatureTaskRuntimeAuditRepairState(
     require(progress.recurringGapCount == recurringDispositionCount) {
       "progress.recurring_gap_count (${progress.recurringGapCount}) must match the $recurringDispositionCount " +
         "durable dispositions with status 'recurring'."
+    }
+    requireSatisfiedCriterionCoherence()
+  }
+
+  private fun requireSatisfiedCriterionCoherence() {
+    require(satisfiedCriterionRefs.size <= MAX_ACCEPTANCE_CRITERION_ORDINAL) {
+      "Durable satisfied criteria allow at most $MAX_ACCEPTANCE_CRITERION_ORDINAL entries, " +
+        "had ${satisfiedCriterionRefs.size}."
+    }
+    requireUnique(satisfiedCriterionRefs, "satisfied_criterion_ref")
+    satisfiedCriterionRefs.forEach { ref ->
+      require(ACCEPTANCE_CRITERION_REF.matches(ref) && acceptanceCriterionOrdinal(ref) >= 1) {
+        "satisfied_criterion_refs entry '$ref' must use canonical format 'AC-NNN'."
+      }
+    }
+    // A criterion carrying a live unresolved gap is by definition not satisfied. Without this the
+    // durable-ledger gate (which requires the next audit to disposition every unresolved gap) and
+    // closure (which forbids re-reporting a closed criterion) would contradict each other.
+    val liveCriteria = unresolvedGapLedger.unresolvedGaps.mapTo(linkedSetOf()) { it.acceptanceCriterionRef }
+    val contradicting = satisfiedCriterionRefs.filter { it in liveCriteria }.sorted()
+    require(contradicting.isEmpty()) {
+      "A durably satisfied criterion cannot also carry an unresolved ledger gap; contradicting=$contradicting."
     }
   }
 }

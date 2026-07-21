@@ -4,6 +4,7 @@ import me.tatarka.inject.annotations.Inject
 import skillbill.application.model.FeatureTaskRuntimeRunRequest
 import skillbill.application.workflow.repoRoot
 import skillbill.ports.workflow.WorkflowGitOperations
+import skillbill.ports.workflow.captureGoalSubtaskReviewBaseline
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
 
@@ -192,9 +193,22 @@ class FeatureTaskRuntimeBranchSetupRunner(
     baseBranch: String?,
     created: Boolean,
   ): FeatureTaskRuntimeBranchSetupOutcome {
+    val baseline = gitOperations.captureGoalSubtaskReviewBaseline(request.repoRoot, branch)
+    if (!baseline.ok) {
+      return FeatureTaskRuntimeBranchSetupOutcome.blocked(
+        "Feature-task-runtime could not capture its immutable review base before implementation: ${baseline.error}",
+      )
+    }
+    val immutableBase = requireNotNull(baseline.baseline)
     val recorded = recorder.recordResolvedBranch(
       request.workflowId,
-      FeatureTaskRuntimeResolvedBranch(branch = branch, baseBranch = baseBranch, created = created),
+      FeatureTaskRuntimeResolvedBranch(
+        branch = branch,
+        baseBranch = baseBranch,
+        created = created,
+        reviewBaseSha = immutableBase.reviewBaseSha,
+        baselineUntrackedPaths = immutableBase.baselineUntrackedPaths,
+      ),
       request.dbPathOverride,
     )
     if (!recorded) {

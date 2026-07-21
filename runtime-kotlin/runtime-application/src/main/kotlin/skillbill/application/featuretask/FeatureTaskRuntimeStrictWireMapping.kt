@@ -35,6 +35,10 @@ internal val AUDIT_REPAIR_STATE_KEYS = setOf(
   "repository_fingerprint",
   "progress",
 )
+
+// Durable closure was added after this artifact shipped, so an in-flight workflow row carries no such
+// key. It decodes to "nothing closed yet" rather than rejecting a row the runtime can still resume.
+internal val AUDIT_REPAIR_STATE_OPTIONAL_KEYS = setOf("satisfied_criterion_refs")
 internal val AUDIT_REPAIR_RESULT_KEYS = setOf(
   "repair_item_id",
   "outcome",
@@ -54,8 +58,13 @@ internal val AUDIT_REPAIR_PROGRESS_KEYS = setOf(
   "audit_gap_iteration_count",
 )
 
-internal fun requireExactWireKeys(map: Map<String, Any?>, source: String, expectedKeys: Set<String>) {
-  val unknown = map.keys - expectedKeys
+internal fun requireExactWireKeys(
+  map: Map<String, Any?>,
+  source: String,
+  expectedKeys: Set<String>,
+  optionalKeys: Set<String> = emptySet(),
+) {
+  val unknown = map.keys - expectedKeys - optionalKeys
   val missing = expectedKeys - map.keys
   if (unknown.isNotEmpty()) invalidWire(source, "contains unknown fields: ${unknown.sorted().joinToString()}")
   if (missing.isNotEmpty()) invalidWire(source, "is missing required fields: ${missing.sorted().joinToString()}")

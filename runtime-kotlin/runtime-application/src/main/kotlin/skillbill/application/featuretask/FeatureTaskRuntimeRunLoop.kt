@@ -10,14 +10,19 @@ import skillbill.application.model.FeatureTaskRuntimeRunRequest
 import skillbill.application.workflow.repoRoot
 import skillbill.config.model.PhaseModelDirective
 import skillbill.contracts.JsonSupport
+import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
+import skillbill.error.FeatureTaskRuntimePhaseOrderViolationError
 import skillbill.error.InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
+import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
 import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
+import skillbill.ports.workflow.buildGoalSubtaskReviewInput
+import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.model.GoalSubtaskReviewInput
 import skillbill.ports.workflow.repositoryFingerprint
 import skillbill.ports.workflow.runtimePhaseChangedPathsBetweenCommits
@@ -42,6 +47,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewFinding
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutput
+import skillbill.workflow.taskruntime.model.acceptanceCriterionRefsFor
 import skillbill.workflow.taskruntime.model.canonicalAuditIdentifier
 import skillbill.workflow.taskruntime.model.detectAuditRepairNonProgress
 
@@ -92,6 +98,15 @@ internal class FeatureTaskRuntimeRunLoop(
 
   private fun resumedReentry(): PendingReentry? {
     val (loopId, reentry) = state.latestInFlightReentry() ?: return null
+    // A durable re-entry minted under an earlier phase ordering can name a span the live topology
+    // cannot legally complete — a review_fix re-entry whose review is now gated behind an audit that
+    // never ran. Entering at its destination would step over the gating phase for the rest of the
+    // run, so the stale re-entry is dropped and the run restarts from the pipeline head, walking the
+    // already-completed phases until it reaches the gating one.
+    if (state.spanBlockedByEntryGate(reentry.span)) {
+      state.discardStaleReentry(loopId)
+      return null
+    }
     state.recordEdgeIteration(loopId, reentry.edgeIteration)
     val auditGapLoop = loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID
     val auditRepairState = if (auditGapLoop) {
@@ -126,6 +141,16 @@ internal class FeatureTaskRuntimeRunLoop(
   }
 
   fun drive() {
+    if (FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW in state.phasesRequiringDurableGateInvalidation()) {
+      check(recorder.persistReviewGenerationInvalidation(request.workflowId, request.dbPathOverride)) {
+        "Could not durably invalidate legacy review evidence for workflow '${request.workflowId}'."
+      }
+      state.resetInvalidatedReviewGeneration()
+      if (pendingReentry?.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID) {
+        pendingReentry = null
+        activeReentry = null
+      }
+    }
     val resumedReentry = pendingReentry
     if (resumedReentry?.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID) {
       state.auditGapPlanningContextError()?.let { reason ->
@@ -161,11 +186,7 @@ internal class FeatureTaskRuntimeRunLoop(
   }
 
   private fun advance(phaseId: String): PhaseSettlement {
-    capExhaustedOnResume(phaseId)?.let { reason ->
-      blockAt(phaseId, reason)
-      return PhaseSettlement.stop()
-    }
-    reconcileCompletedGoalReviewPass(phaseId)?.let { reason ->
+    phaseEntryBlockReason(phaseId)?.let { reason ->
       blockAt(phaseId, reason)
       return PhaseSettlement.stop()
     }
@@ -192,6 +213,33 @@ internal class FeatureTaskRuntimeRunLoop(
         PhaseSettlement.stop()
       }
       else -> PhaseSettlement.completed(phaseId, state.verdictFor(phaseId))
+    }
+  }
+
+  // Every reason the phase cannot be entered, evaluated in order and short-circuiting: the declared
+  // ordering gate, then the resume cap guard, then the goal review-pass reconciliation.
+  private fun phaseEntryBlockReason(phaseId: String): String? = entryGateBlockReason(phaseId)
+    ?: capExhaustedOnResume(phaseId)
+    ?: reconcileCompletedGoalReviewPass(phaseId)
+
+  // The phase-entry seam of the declared ordering gate. drive() can enter a phase directly from a
+  // resumed pending re-entry without ever consulting the transition function, so guarding only the
+  // transition would leave a resume hole through which a stale durable record re-enters a gated
+  // phase. Both seams evaluate the same declaration-owned predicate.
+  //
+  // The violation degrades to a durable, resumable Blocked report rather than an escaping throw:
+  // an uncaught contract exception here would leave the workflow row running with no blocked reason
+  // and skip goal-continuation outcome persistence, so the parent goal could neither resume nor
+  // report. Every other governed gate in this runtime blocks the same way.
+  private fun entryGateBlockReason(phaseId: String): String? {
+    val settledVerdicts = state.settledVerdictsByPhaseId()
+    return transitions.entryGateViolation(phaseId, settledVerdicts)?.let { gate ->
+      FeatureTaskRuntimePhaseOrderViolationError(
+        phaseId = gate.phaseId,
+        requiredPhaseId = gate.requiredPhaseId,
+        requiredVerdict = gate.requiredVerdict.wireValue,
+        observedVerdict = settledVerdicts[gate.requiredPhaseId]?.wireValue,
+      ).message
     }
   }
 
@@ -240,6 +288,7 @@ internal class FeatureTaskRuntimeRunLoop(
           unresolvedFindingCount = outcome.unresolvedFindingCount,
           findings = findings,
           rawReviewResult = output,
+          normalizedOutput = outputMap,
         ),
         dbOverride = request.dbPathOverride,
       ) == null
@@ -349,34 +398,62 @@ internal class FeatureTaskRuntimeRunLoop(
     }
     val edge = matchingBackwardEdge(phaseId, effectiveVerdict)
     edge?.let(::resumeInFlightReviewFix)?.let { return it }
-    val transition = FeatureTaskRuntimeTransitionFunction.nextTransition(
-      declaration = transitions,
-      currentPhaseId = phaseId,
-      verdict = effectiveVerdict,
-      edgeIterationCount = edge?.let { state.edgeIterationCount(it.loopId) } ?: 0,
-    )
-    return when (transition) {
-      is FeatureTaskRuntimeNextPhase.TerminalAdvance -> null
-      is FeatureTaskRuntimeNextPhase.TerminalBlock -> {
-        blockOnCapExhaustion(phaseId, transition)
-        null
-      }
-      is FeatureTaskRuntimeNextPhase.Next -> {
-        transition.loopId?.let { loopId ->
-          if (reentersMutatingPhase(requireNotNull(edge), transition.phaseId) &&
-            !establishRemediationCheckpoint(phaseId)
-          ) {
-            return null
-          }
-          if (loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID &&
-            !authoritativeAuditRepairPlanMatches(phaseId)
-          ) {
-            blockAt(
-              phaseId,
-              "The accepted audit repair plan was not durably readable and identical before the audit_gap edge.",
-            )
-            return null
-          }
+    val transition = runCatching {
+      FeatureTaskRuntimeTransitionFunction.nextTransition(
+        declaration = transitions,
+        currentPhaseId = phaseId,
+        verdict = effectiveVerdict,
+        edgeIterationCount = edge?.let { state.edgeIterationCount(it.loopId) } ?: 0,
+        settledVerdictsByPhaseId = state.settledVerdictsByPhaseId(),
+      )
+    }.getOrElse { error ->
+      if (error !is FeatureTaskRuntimePhaseOrderViolationError) throw error
+      blockAt(error.phaseId, error.message.orEmpty())
+      return null
+    }
+    return transitionTarget(phaseId, edge, effectiveVerdict, transition)
+  }
+
+  private fun transitionTarget(
+    phaseId: String,
+    edge: FeatureTaskRuntimeBackwardEdge?,
+    effectiveVerdict: FeatureTaskRuntimeVerdict,
+    transition: FeatureTaskRuntimeNextPhase,
+  ): String? = when (transition) {
+    is FeatureTaskRuntimeNextPhase.TerminalAdvance -> null
+    is FeatureTaskRuntimeNextPhase.TerminalBlock -> {
+      blockOnCapExhaustion(phaseId, transition)
+      null
+    }
+    is FeatureTaskRuntimeNextPhase.Next -> {
+      val loopId = transition.loopId
+      when {
+        phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW &&
+          (state.completedReviewPassNumber() == 2 || state.outputCountFor(phaseId) >= 2) &&
+          state.unresolvedReviewFindings(phaseId).isNotEmpty() -> {
+          val reviewLoopId = FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID
+          blockOnCapExhaustion(
+            phaseId,
+            FeatureTaskRuntimeNextPhase.TerminalBlock(
+              loopId = reviewLoopId,
+              edgeIteration = state.edgeIterationCount(reviewLoopId).coerceAtLeast(1),
+              unresolvedVerdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
+            ),
+          )
+          null
+        }
+        loopId == null -> transition.phaseId
+        reentersMutatingPhase(requireNotNull(edge), transition.phaseId) &&
+          !establishRemediationCheckpoint(phaseId) -> null
+        loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID &&
+          !authoritativeAuditRepairPlanMatches(phaseId) -> {
+          blockAt(
+            phaseId,
+            "The accepted audit repair plan was not durably readable and identical before the audit_gap edge.",
+          )
+          null
+        }
+        else -> {
           recordBackwardEdge(
             edge = edge,
             destinationPhaseId = transition.phaseId,
@@ -384,8 +461,8 @@ internal class FeatureTaskRuntimeRunLoop(
             edgeIteration = requireNotNull(transition.edgeIteration),
             verdict = effectiveVerdict,
           )
+          transition.phaseId
         }
-        transition.phaseId
       }
     }
   }
@@ -399,15 +476,8 @@ internal class FeatureTaskRuntimeRunLoop(
   private fun reentersMutatingPhase(edge: FeatureTaskRuntimeBackwardEdge, destinationPhaseId: String): Boolean =
     spanBetween(destinationPhaseId, edge.fromPhaseId).any(FeatureTaskRuntimePhaseWorkflowDefinition::isMutatingPhase)
 
-  private fun spanBetween(destinationPhaseId: String, sourcePhaseId: String): List<String> {
-    val destinationIndex = transitions.forwardPhaseIds.indexOf(destinationPhaseId)
-    val sourceIndex = transitions.forwardPhaseIds.indexOf(sourcePhaseId)
-    return if (destinationIndex in 0..sourceIndex) {
-      transitions.forwardPhaseIds.subList(destinationIndex, sourceIndex + 1)
-    } else {
-      listOf(destinationPhaseId)
-    }
-  }
+  private fun spanBetween(destinationPhaseId: String, sourcePhaseId: String): List<String> =
+    transitions.spanBetween(destinationPhaseId, sourcePhaseId)
 
   private fun establishRemediationCheckpoint(precedingPhaseId: String): Boolean {
     val branch = resolvedBranch ?: return true
@@ -737,6 +807,7 @@ internal class FeatureTaskRuntimeRunLoop(
       observability,
       loopId = transition.loopId,
       edgeIteration = transition.edgeIteration,
+      outputArtifact = state.outputFor(phaseId)?.payload,
     )
     blockAt(phaseId, reason)
   }
@@ -821,6 +892,14 @@ internal class FeatureTaskRuntimeRunLoop(
             FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN,
           ),
         )
+      } else if (
+        phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW &&
+        reentry?.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID
+      ) {
+        declaration.copy(
+          consumedUpstreamPhaseIds = declaration.consumedUpstreamPhaseIds +
+            FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX,
+        )
       } else {
         declaration
       }
@@ -838,23 +917,10 @@ internal class FeatureTaskRuntimeRunLoop(
       specSource = specSource,
       reentry = reentry,
     )
-    completedReviewBudgetOutput?.let { output ->
-      if (isGoalContinuationRun(request) && reentry != null) {
-        val iteration = state.nextIteration(phaseId)
-        val phaseState = phaseStateRequest(
-          run,
-          iteration,
-          STATUS_COMPLETED,
-          finished = true,
-          outputArtifact = output.payload,
-        )
-        state.reserveReviewPass(phaseState.reviewPassNumber)
-        recorder.recordCompletedPhase(phaseState, request.dbPathOverride)
-        observability.completed(phaseId, resolvedAgent.resolvedAgentId, iteration)
-        return PhaseOutcome.completed(output.copy(phaseId = phaseId, iteration = iteration))
-      }
-      return PhaseOutcome.completed(output)
-    }
+    settledFullyClosedAudit(run, state, observability)?.let { return it }
+    completedReviewBudgetOutput
+      ?.let { output -> settleCompletedReviewBudget(run, state, observability, output) }
+      ?.let { return it }
     preLaunchBlock(run, state, observability)?.let { return it }
     return when (val prepared = prepareGoalReviewRun(run, observability)) {
       is GoalReviewRunReady -> runPhaseAttempts(prepared.run, state, observability, phaseTokenAccumulator)
@@ -869,13 +935,150 @@ internal class FeatureTaskRuntimeRunLoop(
     }
   }
 
+  private fun settleCompletedReviewBudget(
+    run: PhaseRun,
+    state: FeatureTaskRuntimeRunState,
+    observability: FeatureTaskRuntimeRunObservability,
+    output: FeatureTaskRuntimePhaseOutput,
+  ): PhaseOutcome {
+    if (!isGoalContinuationRun(run.request) || run.reentry == null) return PhaseOutcome.completed(output)
+    val iteration = state.nextIteration(run.phaseId)
+    val phaseState = phaseStateRequest(
+      run,
+      iteration,
+      STATUS_COMPLETED,
+      finished = true,
+      outputArtifact = output.payload,
+    )
+    state.reserveReviewPass(phaseState.reviewPassNumber)
+    recorder.recordCompletedPhase(phaseState, run.request.dbPathOverride)
+    observability.completed(run.phaseId, run.resolvedAgent.resolvedAgentId, iteration)
+    return PhaseOutcome.completed(output.copy(phaseId = run.phaseId, iteration = iteration))
+  }
+
+  private fun declaredCriterionRefs(): List<String> =
+    acceptanceCriterionRefsFor(request.runInvariants.acceptanceCriteria.size)
+
+  private fun durablyClosedCriterionRefs(): List<String> {
+    val closed = recorder.loadAuditRepairState(request.workflowId, request.dbPathOverride)
+      ?.satisfiedCriterionRefs
+      .orEmpty()
+    val undeclared = closed.filterNot { it in declaredCriterionRefs().toSet() }.sorted()
+    if (undeclared.isNotEmpty()) {
+      throw InvalidWorkflowStateSchemaError(
+        "audit_repair_state.satisfied_criterion_refs contains criteria not declared by this run: $undeclared.",
+      )
+    }
+    return closed
+  }
+
+  private fun openAuditCriterionRefs(closedCriterionRefs: List<String> = durablyClosedCriterionRefs()): List<String> =
+    declaredCriterionRefs() - closedCriterionRefs.toSet()
+
+  /**
+   * Settles the audit as satisfied without launching a child when every acceptance criterion is
+   * already durably closed. The audit has nothing left to verify, so launching one could only produce
+   * a gap against a closed criterion, which the closure gate rejects anyway.
+   */
+  private fun settledFullyClosedAudit(
+    run: PhaseRun,
+    state: FeatureTaskRuntimeRunState,
+    observability: FeatureTaskRuntimeRunObservability,
+  ): PhaseOutcome? {
+    val closedCriterionRefs = fullyClosedAuditCriterionRefs(run) ?: return null
+    val iteration = state.nextIteration(run.phaseId)
+    val outputText = fullyClosedAuditOutput(closedCriterionRefs)
+    val normalizedOutput = runCatching {
+      outputValidator.normalizePhaseOutput(outputText, sourceLabel = run.phaseId)
+    }.getOrElse { error ->
+      return blockAndPersistInPhase(
+        run,
+        iteration,
+        "Audit settlement derived from durable criterion closure did not validate: ${error.message.orEmpty()}",
+        observability,
+      )
+    }
+    val persisted = recorder.recordCompletedPhase(
+      phaseStateRequest(
+        run,
+        iteration,
+        STATUS_COMPLETED,
+        finished = true,
+        outputArtifact = outputText,
+        normalizedOutput = normalizedOutput,
+      ),
+      run.request.dbPathOverride,
+    )
+    if (!persisted) {
+      return blockAndPersistInPhase(
+        run,
+        iteration,
+        "Audit settlement derived from durable criterion closure could not be persisted.",
+        observability,
+        failureDisposition = FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE,
+      )
+    }
+    observability.completed(run.phaseId, run.resolvedAgent.resolvedAgentId, iteration)
+    return PhaseOutcome.completed(
+      FeatureTaskRuntimePhaseOutput(run.phaseId, iteration, outputText, normalizedOutput),
+    )
+  }
+
+  private fun fullyClosedAuditCriterionRefs(run: PhaseRun): List<String>? {
+    if (run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT) return null
+    val repairState = recorder.loadAuditRepairState(request.workflowId, request.dbPathOverride) ?: return null
+    val closedCriterionRefs = repairState.satisfiedCriterionRefs
+    return closedCriterionRefs.takeIf {
+      repairState.unresolvedGapLedger.unresolvedGaps.isEmpty() &&
+        closedCriterionRefs.isNotEmpty() &&
+        openAuditCriterionRefs(closedCriterionRefs).isEmpty()
+    }
+  }
+
+  private fun fullyClosedAuditOutput(closedCriterionRefs: List<String>): String = JsonSupport.mapToJsonString(
+    mapOf(
+      "contract_version" to FEATURE_TASK_RUNTIME_CONTRACT_VERSION,
+      "phase_id" to FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT,
+      "status" to STATUS_COMPLETED,
+      "verdict" to FeatureTaskRuntimeVerdict.SATISFIED.wireValue,
+      "summary" to "Every acceptance criterion reached a satisfied verdict in an earlier audit and is durably " +
+        "closed, so this audit settles satisfied from that closure without re-verifying a closed criterion.",
+      "produced_outputs" to mapOf(
+        "unmet_criteria" to emptyList<Any?>(),
+        "durably_closed_criteria" to closedCriterionRefs.sorted(),
+      ),
+    ),
+  )
+
   private fun prepareGoalReviewRun(
     run: PhaseRun,
     observability: FeatureTaskRuntimeRunObservability,
-  ): GoalReviewRunPreparation = if (isGoalReviewRun(run)) {
-    reserveGoalReviewRun(run, observability)
-  } else {
-    GoalReviewRunReady(run)
+  ): GoalReviewRunPreparation = when {
+    run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW -> GoalReviewRunReady(run)
+    isGoalReviewRun(run) -> reserveGoalReviewRun(run, observability)
+    else -> prepareStandaloneReviewRun(run, observability)
+  }
+
+  private fun prepareStandaloneReviewRun(
+    run: PhaseRun,
+    observability: FeatureTaskRuntimeRunObservability,
+  ): GoalReviewRunPreparation {
+    val resolved = recorder.loadResolvedBranch(run.request.workflowId, run.request.dbPathOverride)
+      ?: return blockedGoalReviewRun(run, observability, "Standalone review is missing its durable resolved branch.")
+    val reviewBaseSha = resolved.reviewBaseSha
+      ?: return blockedGoalReviewRun(
+        run,
+        observability,
+        "Standalone review is missing the immutable review base captured before implementation.",
+      )
+    val result = phaseGates.gitOperations.buildGoalSubtaskReviewInput(
+      run.request.repoRoot,
+      GoalSubtaskReviewBaseline(reviewBaseSha, resolved.baselineUntrackedPaths),
+      resolved.branch,
+    )
+    val input = result.input
+      ?: return blockedGoalReviewRun(run, observability, result.error.ifBlank { "Standalone review input failed." })
+    return GoalReviewRunReady(run.copy(goalReviewInput = input))
   }
 
   private fun reserveGoalReviewRun(
@@ -1021,7 +1224,7 @@ internal class FeatureTaskRuntimeRunLoop(
       if (retryReviewPreparation) {
         state.restartAttemptBudget(run.phaseId)
       }
-      if (shouldRetryPersistedBlock(run.phaseId, durable, retryReviewPreparation)) {
+      if (shouldRetryPersistedBlock(run.phaseId, durable, retryReviewPreparation, persistedReason)) {
         return@let null
       }
       val reason = persistedReason.ifBlank {
@@ -1076,12 +1279,28 @@ internal class FeatureTaskRuntimeRunLoop(
         )
   }
 
+  // The gate that wrote this reason blocked a goal review on schema-invalid output instead of retrying it,
+  // and persisted a terminal needs_user_action disposition. That gate is gone, so such a record is stale
+  // rather than terminal: the reserved pass still has no completed output, which the bounded fix loop is
+  // now what decides. The remaining attempt budget is deliberately not restarted.
+  private fun isRemovedGoalReviewSchemaGateBlock(phaseId: String, reason: String): Boolean =
+    phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW &&
+      reason.startsWith("Goal-subtask review output failed schema validation after its reserved pass")
+
   private fun shouldRetryPersistedBlock(
     phaseId: String,
     durable: FeatureTaskRuntimePhaseRecord?,
     retryReviewPreparation: Boolean,
-  ): Boolean = retryReviewPreparation || durable?.failureDisposition?.retryOnResume
-    ?: FeatureTaskRuntimeFixLoopPolicy.participatesInFixLoop(phaseId)
+    persistedReason: String,
+  ): Boolean {
+    val disposition = durable?.failureDisposition
+    return when {
+      retryReviewPreparation -> true
+      isRemovedGoalReviewSchemaGateBlock(phaseId, persistedReason) -> true
+      disposition != null -> disposition.retryOnResume
+      else -> FeatureTaskRuntimeFixLoopPolicy.participatesInFixLoop(phaseId)
+    }
+  }
 
   private fun runPhaseAttempts(
     run: PhaseRun,
@@ -1230,9 +1449,9 @@ internal class FeatureTaskRuntimeRunLoop(
     val normalized = outputValidator.normalizePhaseOutput(outputText, sourceLabel = run.phaseId)
     settleValidatedOutput(run, iteration, normalized, observability, fileManifest)
   } catch (error: InvalidFeatureTaskRuntimePhaseOutputSchemaError) {
-    schemaInvalidAttempt(run, iteration, error.reason, observability, fileManifest, outputText)
+    schemaInvalidAttempt(error.reason, fileManifest, outputText)
   } catch (error: InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError) {
-    schemaInvalidAttempt(run, iteration, error.reason, observability, fileManifest, outputText)
+    schemaInvalidAttempt(error.reason, fileManifest, outputText)
   }
 
   @Suppress("ReturnCount")
@@ -1246,17 +1465,20 @@ internal class FeatureTaskRuntimeRunLoop(
     val outputText = normalizedOutput.canonicalJson
     val outputMap = normalizedOutput.envelope
     mutatingReconciliationGateReason(run.phaseId, outputMap)?.let { reason ->
-      return schemaInvalidAttempt(run, iteration, reason, observability, fileManifest, outputText)
+      return schemaInvalidAttempt(reason, fileManifest, outputText)
     }
     val terminalAuditRepairReason = terminalAuditRepairBlockGateReason(run.phaseId, outputMap)
     terminalAuditRepairReason?.let { reason ->
-      return schemaInvalidAttempt(run, iteration, reason, observability, fileManifest, outputText)
+      return schemaInvalidAttempt(reason, fileManifest, outputText)
     }
     auditRepairResultGateReason(run.phaseId, outputMap)?.let { reason ->
-      return schemaInvalidAttempt(run, iteration, reason, observability, fileManifest, outputText)
+      return schemaInvalidAttempt(reason, fileManifest, outputText)
     }
     auditDurableLedgerGateReason(run.phaseId, outputMap)?.let { reason ->
-      return schemaInvalidAttempt(run, iteration, reason, observability, fileManifest, outputText)
+      return schemaInvalidAttempt(reason, fileManifest, outputText)
+    }
+    auditClosedCriterionGateReason(run.phaseId, outputMap)?.let { reason ->
+      return schemaInvalidAttempt(reason, fileManifest, outputText)
     }
     val repositoryFingerprint = auditRepairRepositoryFingerprint(run)?.let { result ->
       if (!result.ok) {
@@ -1290,7 +1512,7 @@ internal class FeatureTaskRuntimeRunLoop(
       return terminalOutputAttempt(run, iteration, reason, outputText, outputMap, observability, fileManifest)
     }
     outputVerificationGateReason(run.phaseId, outputMap)?.let { reason ->
-      return schemaInvalidAttempt(run, iteration, reason, observability, fileManifest, outputText)
+      return schemaInvalidAttempt(reason, fileManifest, outputText)
     }
     return persistAcceptedOutput(
       run,
@@ -1321,8 +1543,12 @@ internal class FeatureTaskRuntimeRunLoop(
       return null
     }
     val prior = recorder.loadAuditRepairState(request.workflowId, request.dbPathOverride) ?: return null
-    val previousFingerprint = prior.repositoryFingerprint ?: return null
-    val currentFingerprint = repositoryFingerprint ?: return null
+    // Review no longer sits inside the reopened [implement, audit] span, so non-progress detection is
+    // the only bound left on the uncapped audit-gap cycle. An absent fingerprint means repository
+    // change could not be proven, which is not evidence that anything moved: treat it as unchanged so
+    // an equivalent recurring gap set blocks, rather than disarming the bound and looping forever.
+    val previousFingerprint = prior.repositoryFingerprint ?: UNPROVEN_REPOSITORY_FINGERPRINT
+    val currentFingerprint = repositoryFingerprint ?: UNPROVEN_REPOSITORY_FINGERPRINT
     val produced = JsonSupport.anyToStringAnyMap(outputMap["produced_outputs"]).orEmpty()
     val currentPlan = produced["audit_repair_plan"]?.let {
       auditRepairPlanFromWire(it, "audit.produced_outputs.audit_repair_plan")
@@ -1522,6 +1748,31 @@ internal class FeatureTaskRuntimeRunLoop(
     return null
   }
 
+  // Closure is only durable if nothing can quietly reopen it: an audit naming a closed criterion under
+  // any gap id, or naming a criterion the run never declared, is rejected here rather than reconciled.
+  private fun auditClosedCriterionGateReason(phaseId: String, outputMap: Map<String, Any?>): String? {
+    if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT) return null
+    val produced = JsonSupport.anyToStringAnyMap(outputMap["produced_outputs"]).orEmpty()
+    val planRefs = (JsonSupport.anyToStringAnyMap(produced["audit_repair_plan"])?.get("gaps") as? List<*>)
+      .orEmpty()
+      .mapNotNull { gap -> JsonSupport.anyToStringAnyMap(gap)?.get("acceptance_criterion_ref") as? String }
+    val criteriaRefs = (produced["unmet_criteria"] as? List<*>).orEmpty()
+      .mapNotNull { entry -> JsonSupport.anyToStringAnyMap(entry)?.get("acceptance_criterion_ref") as? String }
+    val referenced = (planRefs + criteriaRefs).distinct()
+    if (referenced.isEmpty()) return null
+    val undeclared = referenced.filterNot { it in declaredCriterionRefs().toSet() }.sorted()
+    if (undeclared.isNotEmpty()) {
+      return "Audit reported acceptance criteria not declared by this run: $undeclared."
+    }
+    val reopened = referenced.filter { it in durablyClosedCriterionRefs().toSet() }.sorted()
+    return if (reopened.isEmpty()) {
+      null
+    } else {
+      "Audit reported a gap against durably closed acceptance criteria $reopened; a criterion that reached a " +
+        "satisfied verdict is closed and is not re-verified by a later audit."
+    }
+  }
+
   private fun Throwable.diagnosticMessage(): String =
     message?.takeIf(String::isNotBlank) ?: this::class.simpleName.orEmpty().ifBlank { "unknown decode failure" }
 
@@ -1576,7 +1827,7 @@ internal class FeatureTaskRuntimeRunLoop(
     val outputText = normalizedOutput.canonicalJson
     val outputMap = normalizedOutput.envelope
     if (isGoalReviewRun(run)) {
-      persistGoalReviewCompletion(run, iteration, outputText, outputMap, observability, fileManifest)?.let { outcome ->
+      persistGoalReviewCompletion(run, iteration, normalizedOutput, observability, fileManifest)?.let { outcome ->
         return AttemptResult.settled(outcome)
       }
     } else {
@@ -1615,11 +1866,12 @@ internal class FeatureTaskRuntimeRunLoop(
   private fun persistGoalReviewCompletion(
     run: PhaseRun,
     iteration: Int,
-    outputText: String,
-    outputMap: Map<String, Any?>,
+    normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput,
     observability: FeatureTaskRuntimeRunObservability,
     fileManifest: FeatureTaskRuntimePhaseFileManifest,
   ): PhaseOutcome? {
+    val outputText = normalizedOutput.canonicalJson
+    val outputMap = normalizedOutput.envelope
     val findings = GoalSubtaskReviewSummaryReducer.fromOutput(outputMap)
     val outcome = GoalSubtaskReviewSummaryReducer.outcomeFor(outputMap, findings)
     val completed = runCatching {
@@ -1632,6 +1884,7 @@ internal class FeatureTaskRuntimeRunLoop(
             finished = true,
             outputArtifact = outputText,
             fileManifest = fileManifest,
+            normalizedOutput = normalizedOutput,
           ),
           verdict = outcome.verdict,
           unresolvedFindingCount = outcome.unresolvedFindingCount,
@@ -1670,30 +1923,15 @@ internal class FeatureTaskRuntimeRunLoop(
   private fun boundedRejectedOutput(rejectedOutput: String?): String? =
     rejectedOutput?.takeIf(String::isNotBlank)?.take(REJECTED_OUTPUT_MAX_CHARS)
 
+  // A goal-subtask review reserves its pass once in prepareGoalReviewRun, outside runPhaseAttempts, so a
+  // bounded in-loop re-attempt reuses that same reserved pass instead of allocating another. Schema-invalid
+  // output therefore earns the same fix-loop retries as every other phase: the reserved pass has no completed
+  // output, which is the state a resume is already contracted to re-enter rather than treat as terminal.
   private fun schemaInvalidAttempt(
-    run: PhaseRun,
-    iteration: Int,
     reason: String,
-    observability: FeatureTaskRuntimeRunObservability,
     fileManifest: FeatureTaskRuntimePhaseFileManifest,
     rejectedOutput: String? = null,
-  ): AttemptResult = if (
-    run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW && isGoalContinuationRun(run.request)
-  ) {
-    AttemptResult.settled(
-      blockAndPersistInPhase(
-        run,
-        iteration,
-        "Goal-subtask review output failed schema validation after its reserved pass; " +
-          "refusing an unaccounted relaunch. $reason",
-        observability,
-        fileManifest = fileManifest,
-        outputArtifact = boundedRejectedOutput(rejectedOutput),
-      ),
-    )
-  } else {
-    AttemptResult.schemaInvalid(reason, fileManifest, boundedRejectedOutput(rejectedOutput))
-  }
+  ): AttemptResult = AttemptResult.schemaInvalid(reason, fileManifest, boundedRejectedOutput(rejectedOutput))
 
   private fun persistPhase(
     run: PhaseRun,
@@ -1736,6 +1974,11 @@ internal class FeatureTaskRuntimeRunLoop(
     loopId = run.reentry?.loopId,
     edgeIteration = run.reentry?.edgeIteration,
     reviewPassNumber = reviewPassNumber(run, state),
+    auditScopeCriterionRefs = if (run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT) {
+      openAuditCriterionRefs()
+    } else {
+      emptyList()
+    },
   )
 
   private fun reviewPassNumber(run: PhaseRun, state: FeatureTaskRuntimeRunState): Int? {
@@ -1780,6 +2023,11 @@ internal class FeatureTaskRuntimeRunLoop(
       reentryGapCriteria = auditGapCriteriaFor(run, state),
       auditRepairPlan = run.reentry?.auditRepairPlan,
       auditRepairState = run.reentry?.auditRepairState,
+      durablyClosedCriterionRefs = if (run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT) {
+        durablyClosedCriterionRefs()
+      } else {
+        emptyList()
+      },
     )
     val briefing = FeatureTaskRuntimePhaseBriefingAssembler.assemble(handoff)
     recorder.recordPhaseBriefing(run.request.workflowId, briefing, run.request.dbPathOverride)
@@ -1800,11 +2048,12 @@ internal class FeatureTaskRuntimeRunLoop(
             suppressDecomposition = isGoalContinuationRun(run.request),
             parallelReviewAgent = run.request.parallelReviewAgent
               ?.takeIf { run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW },
-            codeReviewMode = if (reviewPassNumber(run, state) == 2) {
-              skillbill.workflow.model.CodeReviewExecutionMode.INLINE
-            } else {
-              run.request.runInvariants.codeReviewMode
-            },
+            codeReviewMode = reviewPassNumber(run, state)?.let { passNumber ->
+              skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewPassSequence.modeForPass(
+                run.request.runInvariants.codeReviewMode,
+                passNumber,
+              )
+            } ?: run.request.runInvariants.codeReviewMode,
             reviewPassNumber = reviewPassNumber(run, state),
             goalSubtaskReviewInput = run.goalReviewInput,
             specSource = run.specSource,
@@ -1966,6 +2215,10 @@ internal class FeatureTaskRuntimeRunLoop(
 
   private data class GoalReviewRunReady(val run: PhaseRun) : GoalReviewRunPreparation
 }
+
+// Stands in for a repository fingerprint that could not be computed. Comparing it against itself
+// yields "unchanged", so an audit that cannot prove the repository moved cannot claim progress.
+private const val UNPROVEN_REPOSITORY_FINGERPRINT = "<unproven>"
 
 private const val REJECTED_OUTPUT_MAX_CHARS = 20_000
 

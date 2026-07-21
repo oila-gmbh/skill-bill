@@ -14,6 +14,8 @@ import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
 import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import skillbill.ports.workflow.WorkflowGitOperations
+import skillbill.ports.workflow.buildGoalSubtaskReviewInput
+import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
@@ -124,6 +126,7 @@ class FeatureTaskRuntimeRunner(
     val transitions = transitionsFor(runRequest)
     val phaseTokenAccumulator: MutableMap<String, Pair<Int, Int>> = mutableMapOf()
     val report = runCatching {
+      reopenCappedReviewOnChangedDelta(runRequest)
       val state = FeatureTaskRuntimeRunState(
         recorder.loadPhaseRecords(runRequest.workflowId, runRequest.dbPathOverride).orEmpty(),
         transitions,
@@ -184,6 +187,39 @@ class FeatureTaskRuntimeRunner(
   // per audit_gap iteration (AC5), so each ledger segment runs 1..n monotonically before the next
   // iteration restarts at 1; the max edge_iteration across the ledger is therefore the largest
   // single-iteration fix count, NOT a cross-iteration sum — it never over-reports a converged run.
+  /**
+   * Runs before the run state loads: the reset that clears the legacy review attempt watermark is
+   * applied at construction from the durable tombstone, so invalidating later in the run would leave
+   * the reopened generation carrying the capped generation's attempts and re-block review before it
+   * is ever launched.
+   */
+  private fun reopenCappedReviewOnChangedDelta(request: FeatureTaskRuntimeRunRequest) {
+    if (!cappedReviewIsStale(request)) return
+    check(recorder.persistReviewGenerationInvalidation(request.workflowId, request.dbPathOverride)) {
+      "Could not durably reopen the stale capped review for workflow '${request.workflowId}'."
+    }
+  }
+
+  /**
+   * A review cap bounds an agent looping on unchanged code, so it must not outlive the code it
+   * judged. A cap is authoritative only while the delta it judged still matches the tree, so a record
+   * predating the digest cannot prove itself and reopens once, after which its fresh pass records a
+   * digest and an unchanged resume blocks again. An unbuildable delta answers false, keeping the cap.
+   */
+  private fun cappedReviewIsStale(request: FeatureTaskRuntimeRunRequest): Boolean {
+    val goalBranch = request.goalContinuation?.goalBranch ?: return false
+    val state = goalContinuationRecorder.reviewState(request.workflowId, request.dbPathOverride)
+      ?.takeIf { it.reviewCapReached }
+      ?: return false
+    val judgedDigest = state.reviewedDeltaDigest ?: return true
+    val current = phaseGates.gitOperations.buildGoalSubtaskReviewInput(
+      request.repoRoot,
+      GoalSubtaskReviewBaseline(state.reviewBaseSha, state.baselineUntrackedPaths),
+      goalBranch,
+    ).input
+    return current != null && current.deltaDigest != judgedDigest
+  }
+
   private fun loadReviewFixIterationCount(request: FeatureTaskRuntimeRunRequest): Int =
     recorder.loadPhaseLedger(request.workflowId, request.dbPathOverride)
       .orEmpty()

@@ -66,6 +66,7 @@ object FeatureTaskRuntimeHandoffContract {
     reentryGapCriteria: List<String> = emptyList(),
     auditRepairPlan: FeatureTaskRuntimeAuditRepairPlan? = null,
     auditRepairState: FeatureTaskRuntimeAuditRepairState? = null,
+    durablyClosedCriterionRefs: List<String> = emptyList(),
   ): FeatureTaskRuntimePhaseHandoff = FeatureTaskRuntimePhaseHandoff(
     phaseId = declaration.phaseId,
     runInvariants = runInvariants,
@@ -75,5 +76,6 @@ object FeatureTaskRuntimeHandoffContract {
     reentryGapCriteria = reentryGapCriteria,
     auditRepairPlan = auditRepairPlan,
     auditRepairState = auditRepairState,
+    durablyClosedCriterionRefs = durablyClosedCriterionRefs,
   )
 }

@@ -4,6 +4,7 @@ import skillbill.db.core.DatabaseRuntime
 import skillbill.db.core.DatabaseSchema
 import java.nio.file.Files
 import java.sql.Connection
+import java.sql.DriverManager
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -36,6 +37,43 @@ class DatabaseSchemaTest {
       assertTrue("goal_planning_preparations" in tables)
       assertTrue("idx_goal_planning_preparations_lookup" in DatabaseSchema.indexNames)
       assertTrue("idx_goal_planning_preparations_lookup" in indexes)
+    }
+  }
+
+  @Test
+  fun `ensureDatabase creates unaddressed findings ledger and issue index`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-ledger-schema").resolve("metrics.db")
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      assertTrue("unaddressed_findings" in sqliteObjects(connection, "table"))
+      assertTrue("idx_unaddressed_findings_issue" in sqliteObjects(connection, "index"))
+    }
+  }
+
+  @Test
+  fun `ensureDatabase heals a partially created unaddressed findings ledger`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-partial-ledger").resolve("metrics.db")
+    DriverManager.getConnection("jdbc:sqlite:$dbPath").use { connection ->
+      connection.createStatement().use { statement ->
+        statement.execute(
+          """
+          CREATE TABLE unaddressed_findings (
+            workflow_id TEXT NOT NULL, review_pass_number INTEGER NOT NULL,
+            finding_ordinal INTEGER NOT NULL, PRIMARY KEY (workflow_id, review_pass_number, finding_ordinal)
+          )
+          """.trimIndent(),
+        )
+      }
+    }
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val columnNames = tableInfo(connection, "unaddressed_findings").map { it.name }.toSet()
+      assertTrue(
+        columnNames.containsAll(
+          setOf("issue_key", "subtask_id", "severity", "issue_category", "location", "summary"),
+        ),
+      )
+      assertTrue("idx_unaddressed_findings_issue" in sqliteObjects(connection, "index"))
     }
   }
 

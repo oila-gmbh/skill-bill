@@ -30,15 +30,26 @@ fun FeatureTaskRuntimeRunInvariants.toArtifactMap(): Map<String, Any?> = linkedM
 
 /** Strict decode of the durable run-invariants artifact. */
 @OpenBoundaryMap("Feature-task-runtime run-invariants decode from the durable workflow-artifact map")
-fun featureTaskRuntimeRunInvariantsFromArtifactMap(raw: Map<String, Any?>): FeatureTaskRuntimeRunInvariants =
-  FeatureTaskRuntimeRunInvariants(
-    specReference = raw.requireInvariantStringField("spec_reference"),
-    featureSize = raw.requireFeatureSizeField("feature_size"),
-    acceptanceCriteria = raw.requireInvariantStringListField("acceptance_criteria"),
-    mandatesAndOverrides = raw.requireInvariantStringListField("mandates_and_overrides"),
-    codeReviewMode = raw.requireCodeReviewModeField("code_review_mode"),
-    agentAddonSelection = raw.optionalAgentAddonSelection(),
-  )
+fun featureTaskRuntimeRunInvariantsFromArtifactMap(raw: Map<String, Any?>): FeatureTaskRuntimeRunInvariants {
+  val specReference = raw.requireInvariantStringField("spec_reference")
+  val featureSize = raw.requireFeatureSizeField("feature_size")
+  val acceptanceCriteria = raw.requireInvariantStringListField("acceptance_criteria")
+  val mandatesAndOverrides = raw.requireInvariantStringListField("mandates_and_overrides")
+  val codeReviewMode = raw.requireCodeReviewModeField("code_review_mode")
+  val agentAddonSelection = raw.optionalAgentAddonSelection()
+  return try {
+    FeatureTaskRuntimeRunInvariants(
+      specReference = specReference,
+      featureSize = featureSize,
+      acceptanceCriteria = acceptanceCriteria,
+      mandatesAndOverrides = mandatesAndOverrides,
+      codeReviewMode = codeReviewMode,
+      agentAddonSelection = agentAddonSelection,
+    )
+  } catch (error: IllegalArgumentException) {
+    throw InvalidWorkflowStateSchemaError("Feature-task-runtime run invariants are invalid: ${error.message}", error)
+  }
+}
 
 private fun Map<String, Any?>.optionalAgentAddonSelection(): AgentAddonSelection {
   val value = this["agent_addon_selection"] ?: return AgentAddonSelection()

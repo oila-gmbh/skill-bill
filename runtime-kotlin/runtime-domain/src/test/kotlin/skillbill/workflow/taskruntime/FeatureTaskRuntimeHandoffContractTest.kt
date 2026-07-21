@@ -55,9 +55,11 @@ class FeatureTaskRuntimeHandoffContractTest {
         FeatureTaskRuntimePhaseOutput("validate", iteration = 1, payload = "validate-v1"),
       )
     val resolved = FeatureTaskRuntimeHandoffContract.resolveUpstreamOutputs(auditDeclaration, recorded)
-    assertEquals(setOf("plan", "implement", "review"), resolved.outputsByPhaseId.keys)
+    assertEquals(setOf("plan", "implement"), resolved.outputsByPhaseId.keys)
     assertEquals("impl-v2", resolved.outputsByPhaseId.getValue("implement").payload)
     assertTrue("validate" !in resolved.outputsByPhaseId)
+    // Audit runs before review under the audit-first order and no longer consumes review output.
+    assertTrue("review" !in resolved.outputsByPhaseId)
   }
 
   @Test
@@ -111,6 +113,17 @@ class FeatureTaskRuntimeHandoffContractTest {
       FeatureTaskRuntimeRunInvariants(
         specReference = ".feature-specs/SKILL-65/spec.md",
         acceptanceCriteria = listOf("AC1", " "),
+        mandatesAndOverrides = emptyList(),
+      )
+    }
+  }
+
+  @Test
+  fun `run invariants reject criterion counts outside the canonical identity range`() {
+    assertFailsWith<IllegalArgumentException> {
+      FeatureTaskRuntimeRunInvariants(
+        specReference = ".feature-specs/SKILL-135/spec.md",
+        acceptanceCriteria = List(1000) { "criterion ${it + 1}" },
         mandatesAndOverrides = emptyList(),
       )
     }

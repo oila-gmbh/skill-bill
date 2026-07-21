@@ -20,6 +20,7 @@ import skillbill.workflow.taskruntime.model.toArtifactMap
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -139,11 +140,15 @@ class FeatureTaskRuntimePersistenceModelsTest {
       branch = "feat/SKILL-65.1-runtime-feature-task-parity",
       baseBranch = "main",
       created = true,
+      reviewBaseSha = "a".repeat(40),
+      baselineUntrackedPaths = listOf("owned-new.txt"),
     )
     val decoded = FeatureTaskRuntimeResolvedBranch.fromArtifactMap(resolved.toArtifactMap())
     assertEquals(resolved, decoded)
     assertTrue(decoded.created)
     assertEquals("main", decoded.baseBranch)
+    assertEquals("a".repeat(40), decoded.reviewBaseSha)
+    assertEquals(listOf("owned-new.txt"), decoded.baselineUntrackedPaths)
   }
 
   @Test
@@ -394,6 +399,24 @@ class FeatureTaskRuntimePersistenceModelsTest {
     assertFailsWith<InvalidWorkflowStateSchemaError> {
       featureTaskRuntimeRunInvariantsFromArtifactMap(malformed)
     }
+  }
+
+  @Test
+  fun `run-invariants decode translates constructor invariant failures to typed schema errors`() {
+    val malformed = mapOf(
+      "spec_reference" to ".feature-specs/SKILL-135/spec.md",
+      "feature_size" to "MEDIUM",
+      "acceptance_criteria" to List(1_000) { index -> "Criterion ${index + 1}" },
+      "mandates_and_overrides" to emptyList<String>(),
+      "code_review_mode" to "auto",
+    )
+
+    val error = assertFailsWith<InvalidWorkflowStateSchemaError> {
+      featureTaskRuntimeRunInvariantsFromArtifactMap(malformed)
+    }
+
+    assertIs<IllegalArgumentException>(error.cause)
+    assertTrue(error.message.orEmpty().contains("supports at most 999 criteria"))
   }
 
   @Test

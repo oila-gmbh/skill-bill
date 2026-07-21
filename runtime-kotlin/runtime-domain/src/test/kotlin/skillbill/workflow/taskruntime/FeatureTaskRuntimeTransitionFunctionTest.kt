@@ -1,5 +1,6 @@
 package skillbill.workflow.taskruntime
 
+import skillbill.error.FeatureTaskRuntimePhaseOrderViolationError
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeBackwardEdge
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCapExhaustionBehavior
@@ -373,5 +374,118 @@ class FeatureTaskRuntimeTransitionFunctionTest {
     assertEquals("impl", next.phaseId)
     assertEquals("audit_gap", next.loopId)
     assertEquals(101, next.edgeIteration)
+  }
+
+  // --- audit-first entry gate on the real shipped topology ---------------------------------------
+
+  private val shipped = FeatureTaskRuntimePhaseWorkflowDefinition.transitions
+  private val satisfiedAudit = mapOf(
+    FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT to FeatureTaskRuntimeVerdict.SATISFIED,
+  )
+
+  private fun shippedTransition(
+    currentPhaseId: String,
+    verdict: FeatureTaskRuntimeVerdict,
+    edgeIterationCount: Int = 0,
+    settledVerdicts: Map<String, FeatureTaskRuntimeVerdict> = satisfiedAudit,
+  ): FeatureTaskRuntimeNextPhase = FeatureTaskRuntimeTransitionFunction.nextTransition(
+    declaration = shipped,
+    currentPhaseId = currentPhaseId,
+    verdict = verdict,
+    edgeIterationCount = edgeIterationCount,
+    settledVerdictsByPhaseId = settledVerdicts,
+  )
+
+  @Test
+  fun `a clean run advances implement to audit to review to validate`() {
+    val def = FeatureTaskRuntimePhaseWorkflowDefinition
+    assertEquals(
+      def.PHASE_AUDIT,
+      assertIs<FeatureTaskRuntimeNextPhase.Next>(
+        shippedTransition(def.PHASE_IMPLEMENT, FeatureTaskRuntimeVerdict.ADVANCE, settledVerdicts = emptyMap()),
+      ).phaseId,
+    )
+    assertEquals(
+      def.PHASE_REVIEW,
+      assertIs<FeatureTaskRuntimeNextPhase.Next>(
+        shippedTransition(def.PHASE_AUDIT, FeatureTaskRuntimeVerdict.SATISFIED),
+      ).phaseId,
+    )
+    assertEquals(
+      def.PHASE_VALIDATE,
+      assertIs<FeatureTaskRuntimeNextPhase.Next>(
+        shippedTransition(def.PHASE_REVIEW, FeatureTaskRuntimeVerdict.APPROVED),
+      ).phaseId,
+    )
+  }
+
+  @Test
+  fun `entering review with no audit verdict loud-fails with the typed phase-order error`() {
+    val def = FeatureTaskRuntimePhaseWorkflowDefinition
+    val error = assertFailsWith<FeatureTaskRuntimePhaseOrderViolationError> {
+      shippedTransition(def.PHASE_AUDIT, FeatureTaskRuntimeVerdict.SATISFIED, settledVerdicts = emptyMap())
+    }
+    assertEquals(def.PHASE_REVIEW, error.phaseId)
+    assertEquals(def.PHASE_AUDIT, error.requiredPhaseId)
+    assertEquals("satisfied", error.requiredVerdict)
+    assertTrue(error.message.orEmpty().contains(def.PHASE_REVIEW))
+    assertTrue(error.message.orEmpty().contains(def.PHASE_AUDIT))
+  }
+
+  @Test
+  fun `entering review with a gaps_found audit verdict loud-fails with the typed phase-order error`() {
+    val def = FeatureTaskRuntimePhaseWorkflowDefinition
+    val gapsFound = mapOf(def.PHASE_AUDIT to FeatureTaskRuntimeVerdict.GAPS_FOUND)
+    val error = assertFailsWith<FeatureTaskRuntimePhaseOrderViolationError> {
+      shippedTransition(def.PHASE_AUDIT, FeatureTaskRuntimeVerdict.SATISFIED, settledVerdicts = gapsFound)
+    }
+    assertEquals(def.PHASE_REVIEW, error.phaseId)
+    assertEquals("gaps_found", error.observedVerdict)
+  }
+
+  @Test
+  fun `review outcomes advance toward validation and never reopen audit`() {
+    val def = FeatureTaskRuntimePhaseWorkflowDefinition
+    val cap = requireNotNull(
+      shipped.backwardEdges.single { it.loopId == def.REVIEW_FIX_LOOP_ID }.perEdgeCap,
+    )
+    // A review fix pass re-enters implement_fix, not audit.
+    val fix = assertIs<FeatureTaskRuntimeNextPhase.Next>(
+      shippedTransition(def.PHASE_REVIEW, FeatureTaskRuntimeVerdict.CHANGES_REQUESTED),
+    )
+    assertEquals(def.PHASE_IMPLEMENT_FIX, fix.phaseId)
+    assertEquals(def.REVIEW_FIX_LOOP_ID, fix.loopId)
+    // Review pass exhaustion advances to validate rather than minting an audit_gap edge.
+    val exhausted = assertIs<FeatureTaskRuntimeNextPhase.Next>(
+      shippedTransition(def.PHASE_REVIEW, FeatureTaskRuntimeVerdict.CHANGES_REQUESTED, edgeIterationCount = cap),
+    )
+    assertEquals(def.PHASE_VALIDATE, exhausted.phaseId)
+    assertEquals(null, exhausted.loopId)
+    // The implement_fix leg returns to review, still never to audit.
+    assertEquals(
+      def.PHASE_REVIEW,
+      assertIs<FeatureTaskRuntimeNextPhase.Next>(
+        shippedTransition(def.PHASE_IMPLEMENT_FIX, FeatureTaskRuntimeVerdict.ADVANCE),
+      ).phaseId,
+    )
+  }
+
+  @Test
+  fun `the audit_gap edge still re-enters implement uncapped and never passes through review`() {
+    val def = FeatureTaskRuntimePhaseWorkflowDefinition
+    val edge = shipped.backwardEdges.single { it.loopId == def.AUDIT_GAP_LOOP_ID }
+    assertEquals(null, edge.perEdgeCap)
+    val reentry = assertIs<FeatureTaskRuntimeNextPhase.Next>(
+      shippedTransition(
+        def.PHASE_AUDIT,
+        FeatureTaskRuntimeVerdict.GAPS_FOUND,
+        edgeIterationCount = 42,
+        settledVerdicts = emptyMap(),
+      ),
+    )
+    assertEquals(def.PHASE_IMPLEMENT, reentry.phaseId)
+    assertEquals(def.AUDIT_GAP_LOOP_ID, reentry.loopId)
+    assertEquals(43, reentry.edgeIteration)
+    assertTrue(def.PHASE_REVIEW !in shipped.spanBetween(edge.destinationPhaseId, edge.fromPhaseId))
   }
 }

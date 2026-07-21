@@ -78,19 +78,76 @@ data class FeatureTaskRuntimeBackwardEdge(
 }
 
 /**
- * The full transition topology: the ordered forward pipeline (default forward edge = next index) and
- * the set of backward edges. An edge-free declaration is behaviorally identical to a strict forward
- * pipeline.
+ * One declared phase-entry gate: [phaseId] is unreachable until [requiredPhaseId] has settled with
+ * [requiredVerdict]. The gate is topology data rather than a bespoke branch in the transition
+ * function, so an ordering invariant stays inspectable and testable without phase-identity branching.
+ */
+data class FeatureTaskRuntimePhaseEntryGate(
+  val phaseId: String,
+  val requiredPhaseId: String,
+  val requiredVerdict: FeatureTaskRuntimeVerdict,
+) {
+  init {
+    require(phaseId.isNotBlank()) { "FeatureTaskRuntimePhaseEntryGate.phaseId must be non-blank." }
+    require(requiredPhaseId.isNotBlank()) {
+      "FeatureTaskRuntimePhaseEntryGate.requiredPhaseId must be non-blank."
+    }
+    require(phaseId != requiredPhaseId) {
+      "FeatureTaskRuntimePhaseEntryGate.requiredPhaseId must differ from phaseId, both were '$phaseId'."
+    }
+  }
+}
+
+/**
+ * The full transition topology: the ordered forward pipeline (default forward edge = next index), the
+ * set of backward edges, and the phase-entry gates. An edge-free, gate-free declaration is
+ * behaviorally identical to a strict forward pipeline.
  *
  * [loopOnlyPhaseIds] are phases the forward edge skips: they sit in the pipeline only as backward-edge
  * destinations (e.g. a remediation `implement_fix` phase) and are never reached by forward advance, so
  * a clean run never launches them. An empty set leaves the forward advance strictly index+1.
+ *
+ * [entryGates] declare ordering invariants the topology alone cannot enforce: a gated phase may only
+ * be entered once its gating phase settled with the required verdict. The init block requires each
+ * gate's required phase to strictly precede the gated phase in [forwardPhaseIds], so a future reorder
+ * that regresses the ordering fails at class-init rather than silently at runtime.
  */
 data class FeatureTaskRuntimeTransitionDeclaration(
   val forwardPhaseIds: List<String>,
   val backwardEdges: List<FeatureTaskRuntimeBackwardEdge> = emptyList(),
   val loopOnlyPhaseIds: Set<String> = emptySet(),
+  val entryGates: List<FeatureTaskRuntimePhaseEntryGate> = emptyList(),
 ) {
+  /**
+   * The gate blocking entry into [phaseId] given the settled verdict per completed phase, or `null`
+   * when the phase is ungated or every gate is satisfied. Single shared predicate for both
+   * enforcement seams (the transition function and the run loop's phase-entry seam) so the rule
+   * cannot drift between them.
+   */
+  fun entryGateViolation(
+    phaseId: String,
+    settledVerdictsByPhaseId: Map<String, FeatureTaskRuntimeVerdict>,
+  ): FeatureTaskRuntimePhaseEntryGate? = entryGates.firstOrNull { gate ->
+    gate.phaseId == phaseId && settledVerdictsByPhaseId[gate.requiredPhaseId] != gate.requiredVerdict
+  }
+
+  /**
+   * The forward span a backward edge reopens, [destinationPhaseId] through [sourcePhaseId] inclusive,
+   * derived from the LIVE [forwardPhaseIds] rather than from any durable record. Resume therefore
+   * always invalidates the phase set the current topology implies, so a run recorded under an older
+   * ordering cannot resume against a stale span. Falls back to the destination alone when the indices
+   * do not bracket. Single source for the run loop's live edge path and the run state's resume path.
+   */
+  fun spanBetween(destinationPhaseId: String, sourcePhaseId: String): List<String> {
+    val destinationIndex = forwardPhaseIds.indexOf(destinationPhaseId)
+    val sourceIndex = forwardPhaseIds.indexOf(sourcePhaseId)
+    return if (destinationIndex in 0..sourceIndex) {
+      forwardPhaseIds.subList(destinationIndex, sourceIndex + 1)
+    } else {
+      listOf(destinationPhaseId)
+    }
+  }
+
   init {
     require(forwardPhaseIds.isNotEmpty()) {
       "FeatureTaskRuntimeTransitionDeclaration.forwardPhaseIds must list at least one phase."
@@ -110,6 +167,20 @@ data class FeatureTaskRuntimeTransitionDeclaration(
       }
       require(edge.destinationPhaseId in forwardPhaseIds) {
         "FeatureTaskRuntimeBackwardEdge.destinationPhaseId '${edge.destinationPhaseId}' is not in the forward pipeline."
+      }
+    }
+    entryGates.forEach { gate ->
+      val gatedIndex = forwardPhaseIds.indexOf(gate.phaseId)
+      val requiredIndex = forwardPhaseIds.indexOf(gate.requiredPhaseId)
+      require(gatedIndex >= 0) {
+        "FeatureTaskRuntimePhaseEntryGate.phaseId '${gate.phaseId}' is not in the forward pipeline."
+      }
+      require(requiredIndex >= 0) {
+        "FeatureTaskRuntimePhaseEntryGate.requiredPhaseId '${gate.requiredPhaseId}' is not in the forward pipeline."
+      }
+      require(requiredIndex < gatedIndex) {
+        "FeatureTaskRuntimePhaseEntryGate requires '${gate.requiredPhaseId}' to precede '${gate.phaseId}' in the " +
+          "forward pipeline, but it is at index $requiredIndex against $gatedIndex."
       }
     }
   }

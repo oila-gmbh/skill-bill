@@ -58,7 +58,7 @@ internal fun auditRepairPlanFromWire(value: Any?, source: String): FeatureTaskRu
 internal fun auditRepairStateFromWire(value: Any?, source: String): FeatureTaskRuntimeAuditRepairState =
   wireMapping(source) {
     val map = value.requiredMap(source)
-    requireExactWireKeys(map, source, AUDIT_REPAIR_STATE_KEYS)
+    requireExactWireKeys(map, source, AUDIT_REPAIR_STATE_KEYS, AUDIT_REPAIR_STATE_OPTIONAL_KEYS)
     val acceptedPlans = map.requiredList("accepted_plans", source).mapIndexed { index, plan ->
       durableAuditRepairPlanFromWire(plan, "$source.accepted_plans[$index]")
     }
@@ -90,6 +90,7 @@ internal fun auditRepairStateFromWire(value: Any?, source: String): FeatureTaskR
         generation = generation,
       )
     }
+    val satisfiedCriterionRefs = map.satisfiedCriterionRefs(source)
     val progressMap = map["progress"].requiredMap("$source.progress")
     requireExactWireKeys(progressMap, "$source.progress", AUDIT_REPAIR_PROGRESS_KEYS)
     FeatureTaskRuntimeAuditRepairState(
@@ -106,8 +107,18 @@ internal fun auditRepairStateFromWire(value: Any?, source: String): FeatureTaskR
         resolvedRepairItemCount = progressMap.requiredInt("resolved_repair_item_count", "$source.progress"),
         auditGapIterationCount = progressMap.requiredInt("audit_gap_iteration_count", "$source.progress"),
       ),
+      satisfiedCriterionRefs = satisfiedCriterionRefs,
     ).also { it.requireDurableCoherence() }
   }
+
+private fun Map<String, Any?>.satisfiedCriterionRefs(source: String): List<String> {
+  if (!containsKey("satisfied_criterion_refs")) return emptyList()
+  val fieldSource = "$source.satisfied_criterion_refs"
+  val raw = get("satisfied_criterion_refs") ?: invalidWire(fieldSource, "must be an array when present")
+  return (raw as? List<*>)?.map { entry ->
+    entry as? String ?: invalidWire(fieldSource, "entries must be strings")
+  } ?: invalidWire(fieldSource, "must be an array")
+}
 
 internal fun repairItemResultFromWire(value: Any?, source: String): FeatureTaskRuntimeRepairItemResult =
   wireMapping(source) {
@@ -158,7 +169,12 @@ internal object AuditEvidenceWire {
       "already_satisfied_verified" -> FeatureTaskRuntimeEvidence.Observation.ALREADY_SATISFIED_VERIFIED
       "resolution_verified" -> FeatureTaskRuntimeEvidence.Observation.RESOLUTION_VERIFIED
       "recurrence_verified" -> FeatureTaskRuntimeEvidence.Observation.RECURRENCE_VERIFIED
-      else -> invalidWire("$source.observation", "unauthorized evidence observation '$wireValue'")
+      else -> invalidWire(
+        "$source.observation",
+        "unauthorized evidence observation '$wireValue'; must be one of required_behavior_absent, " +
+          "verification_failed, contract_rejected, state_mismatch, fix_verified, already_satisfied_verified, " +
+          "resolution_verified, recurrence_verified",
+      )
     }
     return FeatureTaskRuntimeEvidence(
       observation = observation,

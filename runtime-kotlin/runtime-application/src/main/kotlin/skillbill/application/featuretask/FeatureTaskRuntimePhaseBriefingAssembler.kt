@@ -4,6 +4,7 @@ import skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing
 import skillbill.contracts.JsonSupport
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseHandoff
+import skillbill.workflow.taskruntime.model.canonicalAcceptanceCriterionRef
 import java.nio.ByteBuffer
 import java.nio.charset.CodingErrorAction
 import java.nio.charset.StandardCharsets
@@ -51,6 +52,7 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
         .flatMap { gap -> gap.repairItems.map { it.repairItemId } },
       unresolvedAuditGapIds = handoff.auditRepairState?.unresolvedGapLedger?.unresolvedGaps.orEmpty()
         .map { it.gapId },
+      durablyClosedCriterionRefs = handoff.durablyClosedCriterionRefs,
     )
   }
 
@@ -136,10 +138,7 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
       FeatureTaskRuntimePhaseWorkflowDefinition.ceremonyScaling(invariants.featureSize)
         .toBriefingLines()
         .forEach { line -> appendLine("  $line") }
-      appendLine("acceptance_criteria:")
-      invariants.acceptanceCriteria.forEachIndexed { index, criterion ->
-        appendLine("  ${index + 1}. $criterion")
-      }
+      appendAcceptanceCriteria(handoff)
       appendLine("mandates_and_overrides:")
       if (invariants.mandatesAndOverrides.isEmpty()) {
         appendLine("  (none)")
@@ -164,6 +163,20 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
         append(handoff.derivedContextKeys.joinToString(separator = "\n") { key -> "- $key" })
       }
     }
+
+  private fun StringBuilder.appendAcceptanceCriteria(handoff: FeatureTaskRuntimePhaseHandoff) {
+    appendLine("acceptance_criteria:")
+    val closedCriterionRefs = handoff.durablyClosedCriterionRefs.toSet()
+    handoff.runInvariants.acceptanceCriteria.forEachIndexed { index, criterion ->
+      val criterionRef = canonicalAcceptanceCriterionRef(index + 1)
+      if (criterionRef !in closedCriterionRefs) appendLine("  $criterionRef. $criterion")
+    }
+    if (closedCriterionRefs.isNotEmpty()) {
+      appendLine("durably_closed_criteria:")
+      appendLine("  (each reached a satisfied verdict and is closed; do not re-verify or report a gap against it)")
+      closedCriterionRefs.sorted().forEach { criterionRef -> appendLine("  - $criterionRef") }
+    }
+  }
 
   /**
    * Bounds one inlined upstream body to [budgetBytes] UTF-8 bytes, returning it verbatim when it

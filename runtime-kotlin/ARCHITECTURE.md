@@ -596,7 +596,7 @@ skillbill.workflow.verify
   `mode=runtime` in the shared `feature_task_workflows` store. Feature-verify
   remains a distinct workflow family and store.
 - `bill-feature-task-runtime` is the runtime-backed trigger surface. The Kotlin
-  runtime owns its phase loop (`plan -> implement -> review -> audit ->
+  runtime owns its phase loop (`plan -> implement -> audit -> review ->
   validate`) and launches one agent per phase, reusing the goal-runner launcher
   and `WorkflowEngine` rather than a second prose orchestration loop. Its
   definition is `skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition`

@@ -1,3 +1,26 @@
+## [2026-07-21] SKILL-135 unaddressed-findings ledger (subtask 3)
+Areas: runtime-kotlin/runtime-{application,cli,domain,infra-sqlite,ports}, skills/bill-feature-{goal,task-runtime,task-prose,task-subtask-runner}
+- Findings recorded without being addressed are persisted per issue key, subtask, workflow, review pass, severity, category, and location; new columns are added by unconditional startup ensures so already-created databases self-heal.
+- `GoalSubtaskReviewSummaryReducer.unaddressedFindings` is the single structured projection shared by normal review completion and reserved-pass recovery; no phase recorder re-derives findings inline. reusable
+- Ledger writes are pass-aware: `replaceLedgerForPass` deletes only the current pass plus carried blockers, so earlier non-blocker rows survive later passes instead of being wiped workflow-wide. reusable
+- Goal existence and the accepted category vocabulary come from durable authorities (`feature_task_workflows`, `ReviewIssueCategory.entries`) rather than telemetry tables or a hand-copied constant list.
+- Pattern: absent, empty, and malformed ledger states are distinguished by typed errors at the retrieval surface; the goal terminal summary resolves the ledger before opening the PR and degrades an absent ledger to empty. reusable
+- Location-bearing detail is retrieval-only (`skill-bill goal findings`); goal, status, watch, telemetry, and PR surfaces carry compact counts or sanitized summaries only.
+- Governed guidance across the four feature surfaces now states one audit-first order (audit → review → validate) and the delegated-then-inline pass sequence with blocker/non-blocker disposition; generated wrappers stay uncommitted and no install flow was run.
+Feature flag: N/A
+Acceptance criteria: subtask 3: 8/8 implemented
+
+## [2026-07-20] SKILL-135 immutable complete-delta review scope (subtask 2)
+Areas: runtime-kotlin/runtime-{application,cli,domain}, orchestration/review-orchestrator
+- Standalone feature-task runs now capture the review base SHA and baseline untracked paths before implementation, persist them with the resolved branch, and reuse them for every review pass.
+- Standalone and goal-child reviews share the same review-input materialization and prompt path, covering committed, staged, unstaged, and run-owned untracked changes from the immutable subtask base. reusable
+- Pass two remains forced inline but reviews the same complete delta as pass one; remediation context no longer narrows scope to checkpoint-only changes.
+- Pattern: establish review scope once at the pre-implementation branch boundary, persist its immutable inputs, and reconstruct the complete delta on every pass and resume. reusable
+- Durable decoding validates review-base SHA shape and baseline untracked-path entries; older resolved-branch artifacts without the new optional fields still decode, but a standalone review cannot proceed without an established immutable base.
+- Sequence, resume, standalone/goal-child parity, prompt payload, and complete-delta behavior are covered across domain, application, filesystem, and CLI tests.
+Feature flag: N/A
+Acceptance criteria: 9/9 implemented
+
 ## [2026-07-20] SKILL-131 audit-repair integration and verification (subtask 3)
 Areas: runtime-kotlin/runtime-{application,cli,domain,infra-sqlite,mcp}, skills/bill-feature-task-runtime, docs
 - Status and lifecycle telemetry project compact convergence evidence: first-pass outcome, recurring/new gaps, attempted/resolved repair items, and audit-gap iterations.
@@ -35,6 +58,17 @@ Areas: runtime-kotlin/runtime-{application,cli,domain,infra-fs,infra-sqlite,mcp}
 - Known limitation: subtask 2 (runtime repair and reconciliation) and subtask 3 (integration and verification, owning acceptance criteria 19-25) remain pending; goal-child parity and the SKILL-128-derived end-to-end regressions are not yet covered. `spec.md` reconciliation is deferred until the goal reaches a terminal state because the goal preplan row pins the spec byte hash.
 Feature flag: N/A
 Acceptance criteria: subtask 1: 5/5 implemented
+
+## [2026-07-19] SKILL-135 audit-first runtime phase graph (subtask 1)
+Areas: runtime-kotlin/runtime-{application,cli,contracts,domain,infra-fs,mcp}, orchestration/contracts
+- Feature-task runtime now completes the audit and reaches `satisfied` before review is reachable; audit gaps retain the existing `[implement, audit]` repair cycle, while review fixes stay in `[implement_fix, review]` and never reopen audit.
+- A declarative phase-entry gate plus typed `FeatureTaskRuntimePhaseOrderViolationError` loud-fails every attempted review entry without a satisfied audit, including transition and durable phase-entry seams. reusable
+- Standalone and goal-child execution derive prompt order, transition spans, and durable resume targets from the same live workflow topology, preventing stale sequence reconstruction. reusable
+- Review approval, changes-requested remediation, and pass exhaustion now advance toward validation or block; the existing audit repair-plan identifiers, reconciliation, cumulative gap ledger, and non-progress detection remain unchanged.
+- Workflow contract versioning and transition, rejection, prompt, standalone, goal-child, and resume coverage lock the reordered graph; legacy durable workflow records require migration or removal by design.
+- Pattern: translate constructor-level durable run-invariant violations at the decode boundary into `InvalidWorkflowStateSchemaError` while preserving strict field errors and the original cause. reusable
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
 
 ## [2026-07-18] SKILL-133 unified manifest authority
 Areas: runtime-kotlin/runtime-{application,domain,infra-fs}, skills/bill-feature*

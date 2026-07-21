@@ -51,7 +51,7 @@ class CliFeatureTaskRuntimeRuntimeTest {
       writeAgentAddon(it.tempDir, "last-helper", "Last selected guidance.")
     }
     val resolvedSelection = resolvedSelectionJson(selectedFixture, "codex", "first-helper", "last-helper")
-    val selectedLauncher = RecordingPhaseLauncher(invalidReviewUntilLaunchIndex = 4)
+    val selectedLauncher = RecordingPhaseLauncher(invalidReviewUntilLaunchIndex = 5)
 
     val selected = CliRuntime.run(
       selectedFixture.runCommand(
@@ -307,7 +307,7 @@ class CliFeatureTaskRuntimeRuntimeTest {
     assertContains(run.stdout, "status: complete")
     assertContains(
       run.stdout,
-      "completed_phases: preplan, plan, implement, review, audit, validate, write_history, commit_push, pr",
+      "completed_phases: preplan, plan, implement, audit, review, validate, write_history, commit_push, pr",
     )
     assertEquals(ALL_PHASES.size, launcher.requests.size)
     assertContains(stderr.toString(), "feature-task-runtime is a deprecated alias for feature-task")
@@ -439,7 +439,7 @@ class CliFeatureTaskRuntimeRuntimeTest {
     assertContains(result.stdout, "feature_size: SMALL")
     assertContains(
       result.stdout,
-      "completed_phases: preplan, plan, implement, review, audit, validate, write_history, commit_push, pr",
+      "completed_phases: preplan, plan, implement, audit, review, validate, write_history, commit_push, pr",
     )
     assertEquals(listOf("codex"), launcher.requests.map { it.agentId }.distinct())
     assertEquals(ALL_PHASES.size, launcher.requests.size)
@@ -669,7 +669,7 @@ class CliFeatureTaskRuntimeRuntimeTest {
     // F-017: with --monitor, per-phase progress lines (started/completed and a fix-loop iteration
     // line on a retry) are streamed to live stdout. Drive a retry via invalid-then-valid review.
     val fixture = runtimeFixture()
-    val launcher = RecordingPhaseLauncher(invalidReviewUntilLaunchIndex = 4)
+    val launcher = RecordingPhaseLauncher(invalidReviewUntilLaunchIndex = 5)
     val live = StringBuilder()
 
     val result = CliRuntime.run(
@@ -794,7 +794,7 @@ class CliFeatureTaskRuntimeRuntimeTest {
     assertContains(resume.stdout, "workflow_id: $workflowId")
     assertContains(
       resume.stdout,
-      "completed_phases: preplan, plan, implement, review, audit, validate, write_history, commit_push",
+      "completed_phases: preplan, plan, implement, audit, review, validate, write_history, commit_push",
     )
     assertEquals(emptyList(), resumeLauncher.requests, resume.stdout)
   }
@@ -839,7 +839,7 @@ class CliFeatureTaskRuntimeRuntimeTest {
     assertContains(goalRun.stdout, "resolved_branch: feat/pre-created-runtime-branch")
     assertContains(
       goalRun.stdout,
-      "completed_phases: preplan, plan, implement, review, audit, validate, write_history, commit_push",
+      "completed_phases: preplan, plan, implement, audit, review, validate, write_history, commit_push",
     )
     assertContains(goalRun.stdout, "subtask_outcome:")
     assertContains(goalRun.stdout, "  last_resumable_step: commit_push")
@@ -866,7 +866,7 @@ class CliFeatureTaskRuntimeRuntimeTest {
     assertContains(directRun.stdout, "resolved_branch: feat/SKILL-650-runtime")
     assertContains(
       directRun.stdout,
-      "completed_phases: preplan, plan, implement, review, audit, validate, write_history, commit_push, pr",
+      "completed_phases: preplan, plan, implement, audit, review, validate, write_history, commit_push, pr",
     )
     assertEquals(listOf("feat/SKILL-650-runtime"), directGit.checkoutBranches, directRun.stdout)
     assertEquals(
@@ -999,7 +999,7 @@ class CliFeatureTaskRuntimeRuntimeTest {
     )
     assertEquals(0, resumed.exitCode, resumed.stdout)
     assertEquals(
-      listOf("implement", "review", "audit", "validate", "write_history", "commit_push", "pr"),
+      listOf("implement", "audit", "review", "validate", "write_history", "commit_push", "pr"),
       resumedLauncher.phaseOrder(),
     )
   }
@@ -1120,7 +1120,7 @@ class CliFeatureTaskRuntimeRuntimeTest {
     assertContains(result.stdout, "status: complete")
     assertContains(
       result.stdout,
-      "completed_phases: preplan, plan, implement, review, audit, validate, write_history, commit_push, pr",
+      "completed_phases: preplan, plan, implement, audit, review, validate, write_history, commit_push, pr",
     )
     assertEquals(ALL_PHASES.size, launcher.requests.size)
   }
@@ -1693,7 +1693,7 @@ class CliFeatureTaskRuntimeSpecLookupTest {
     assertEquals(0, resumed.exitCode, resumed.stdout)
     assertContains(resumed.stdout, "workflow_id: $workflowId")
     assertEquals(
-      listOf("implement", "review", "audit", "validate", "write_history", "commit_push", "pr"),
+      listOf("implement", "audit", "review", "validate", "write_history", "commit_push", "pr"),
       resumedLauncher.requests.map { phaseIdFromPrompt(it.skillRunRequest.promptOverride.orEmpty()) },
     )
     val implementPrompt = resumedLauncher.requests.first().skillRunRequest.promptOverride.orEmpty()
@@ -2060,7 +2060,7 @@ private class InterruptAtImplementLauncher : AgentRunLauncher {
 }
 
 private val ALL_PHASES =
-  listOf("preplan", "plan", "implement", "review", "audit", "validate", "write_history", "commit_push", "pr")
+  listOf("preplan", "plan", "implement", "audit", "review", "validate", "write_history", "commit_push", "pr")
 
 // Records checkouts and reports a configurable current branch so branch-setup is exercised through
 // the CLI without a real git repo. The default reports an existing feature branch (reuse path).
@@ -2125,8 +2125,10 @@ private class FakeRuntimeGitOperations(
 
   override val goalSubtaskReviewOperations: GoalSubtaskReviewGitOperations =
     object : GoalSubtaskReviewGitOperations {
-      override fun captureBaseline(repoRoot: Path, expectedBranch: String): Nothing =
-        error("Goal review baseline capture is not used by this runtime CLI fixture.")
+      override fun captureBaseline(repoRoot: Path, expectedBranch: String) = GoalSubtaskReviewBaselineResult(
+        status = "ok",
+        baseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
+      )
 
       override fun buildInput(
         repoRoot: Path,

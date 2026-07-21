@@ -438,9 +438,9 @@ $defs:
       - preplan
       - plan
       - implement
+      - audit
       - implement_fix
       - review
-      - audit
       - validate
       - write_history
       - commit_push

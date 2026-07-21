@@ -1,7 +1,7 @@
 ---
 internal-for: bill-feature
 name: bill-feature-task-subtask-runner
-description: Level-1 subtask-agent for bill-feature-goal mode:prose. Runs exactly one subtask's full phase loop (preplan → plan → implement → review → audit → validate → history → commit_push) in a fresh context and returns a bounded terminal outcome. Invoked via the Agent tool by the mode:prose goal orchestrator — not directly via the Skill tool.
+description: Level-1 subtask-agent for bill-feature-goal mode:prose. Runs exactly one subtask's full phase loop (preplan → plan → implement → audit → review → validate → history → commit_push) in a fresh context and returns a bounded terminal outcome. Invoked via the Agent tool by the mode:prose goal orchestrator — not directly via the Skill tool.
 ---
 
 # Feature Task Subtask Runner
@@ -54,9 +54,13 @@ output, resume that accounted pass instead of reserving another. Carry forward
 `completed_review_pass_count` and `review_cap_disposition`, and never run pass
 three. Major findings remain durable evidence and do not prevent advancement.
 At a two-pass unresolved Blocker cap, preserve complete location-bearing evidence
-in durable artifacts and telemetry, return a blocked result with the compact
+only in the goal-wide unaddressed-findings ledger, return a blocked result with the compact
 path-free status to the parent (subtask id, pass number, verdict, severity,
-class/symbol-or-sanitized label, and concise text), and do not advance to audit.
+class/symbol-or-sanitized label, and concise text), and do not advance to validate.
+Goal, status, watch, telemetry, and PR surfaces may carry compact counts or
+sanitized summaries only; retrieve locations only with
+`skill-bill goal findings --issue-key <KEY>`. Audit must already be satisfied
+before either review pass starts, so a Blocker prevents advancement to validate.
 
 ## Return contract
 
@@ -70,3 +74,7 @@ narrative in the return payload.
 The agent body is registered in
 `skills/bill-feature-task-prose/native-agents/agents.yaml` under the name
 `bill-feature-task-subtask-runner`.
+
+## Audit-first review and findings ledger
+
+Subtasks follow `implement -> audit -> review -> validate`, with review gated on a satisfied audit. Review is delegated first, then inline. A Blocker stops advancement; non-blockers advance and are written to the goal-wide unaddressed-findings ledger. Retrieve its location-bearing detail during or after goal execution with `skill-bill goal findings --issue-key <KEY>`.

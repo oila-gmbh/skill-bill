@@ -10,6 +10,7 @@ internal object DatabaseColumnMigrations {
     ensureFeatureVerifyWorkflowColumns(connection)
     ensureReviewRunColumns(connection)
     ensureFindingColumns(connection)
+    ensureUnaddressedFindingColumns(connection)
     backfillReviewSessionIds(connection)
     ensureFeatureImplementSessionColumns(connection)
     ensureFeatureVerifySessionColumns(connection)
@@ -67,6 +68,23 @@ internal object DatabaseColumnMigrations {
       ensureColumn(connection, "goal_issue_progress", "last_blocked_segment_workflow_id", "TEXT")
     }
     ensureReconciliationIndexes(connection)
+  }
+
+  private fun ensureUnaddressedFindingColumns(connection: Connection) {
+    if (!tableExists(connection, "unaddressed_findings")) return
+    ensureColumn(connection, "unaddressed_findings", "issue_key", "TEXT NOT NULL DEFAULT ''")
+    ensureColumn(connection, "unaddressed_findings", "subtask_id", "INTEGER NOT NULL DEFAULT 0")
+    ensureColumn(connection, "unaddressed_findings", "severity", "TEXT NOT NULL DEFAULT ''")
+    ensureColumn(connection, "unaddressed_findings", "issue_category", "TEXT NOT NULL DEFAULT 'other'")
+    ensureColumn(connection, "unaddressed_findings", "location", "TEXT NOT NULL DEFAULT '<unknown>'")
+    ensureColumn(connection, "unaddressed_findings", "summary", "TEXT NOT NULL DEFAULT ''")
+    ensureColumn(connection, "unaddressed_findings", "recorded_at", "TEXT NOT NULL DEFAULT ''")
+    connection.createStatement().use { statement ->
+      statement.execute(
+        "CREATE INDEX IF NOT EXISTS idx_unaddressed_findings_issue " +
+          "ON unaddressed_findings(issue_key, subtask_id, review_pass_number)",
+      )
+    }
   }
 
   fun applyWorkListMetadata(connection: Connection) {

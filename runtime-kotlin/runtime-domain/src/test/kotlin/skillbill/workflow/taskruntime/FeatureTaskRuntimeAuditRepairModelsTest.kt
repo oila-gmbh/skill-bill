@@ -14,7 +14,10 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairItemResult
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeUnresolvableRepairBlock
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeUnresolvedGap
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeUnresolvedGapLedger
+import skillbill.workflow.taskruntime.model.acceptanceCriterionRefsFor
+import skillbill.workflow.taskruntime.model.canonicalAcceptanceCriterionRef
 import skillbill.workflow.taskruntime.model.detectAuditRepairNonProgress
+import skillbill.workflow.taskruntime.model.isDeclaredAcceptanceCriterionRef
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -23,6 +26,17 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class FeatureTaskRuntimeAuditRepairModelsTest {
+  @Test
+  fun `runtime owns canonical acceptance criterion identity`() {
+    assertEquals("AC-001", canonicalAcceptanceCriterionRef(1))
+    assertEquals("AC-012", canonicalAcceptanceCriterionRef(12))
+    assertEquals(listOf("AC-001", "AC-002"), acceptanceCriterionRefsFor(2))
+    assertTrue(isDeclaredAcceptanceCriterionRef("AC-002", 2))
+    assertFalse(isDeclaredAcceptanceCriterionRef("AC-003", 2))
+    assertFailsWith<IllegalArgumentException> { canonicalAcceptanceCriterionRef(0) }
+    assertFailsWith<IllegalArgumentException> { canonicalAcceptanceCriterionRef(-1) }
+  }
+
   @Test
   fun `structured evidence rejects prompt source process and diff payloads`() {
     listOf(

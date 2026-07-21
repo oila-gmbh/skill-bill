@@ -1,6 +1,7 @@
 package skillbill.application.featuretask
 
 import skillbill.contracts.JsonSupport
+import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairPlan
@@ -20,7 +21,22 @@ internal class FeatureTaskRuntimeRunState(
   private val initialLedger: List<FeatureTaskRuntimePhaseLedgerEntry> = emptyList(),
   private val outputValidator: FeatureTaskRuntimePhaseOutputValidator,
 ) {
-  private val inFlightReentries: Map<String, InFlightReentry> = reconstructInFlightReentries()
+  private val hasDurableReviewInvalidationTombstone: Boolean = initialRecords[
+    FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
+  ]?.resolvedAgentId == REVIEW_INVALIDATION_AGENT_ID
+  private val inFlightReentries: MutableMap<String, InFlightReentry> = reconstructInFlightReentries()
+    .filterKeys { loopId ->
+      !hasDurableReviewInvalidationTombstone ||
+        loopId != FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID
+    }.toMutableMap()
+
+  // Phases whose durable completion was invalidated because they sit at or past a gated phase whose
+  // gate is unsatisfied. Recomputing a re-entry span from the live topology can only SHRINK the
+  // invalidation set, so a phase that left the span (a review completed before audit under the
+  // pre-reorder ordering) would otherwise stay marked complete and never relaunch.
+  private val gateInvalidatedPhases: MutableSet<String> = mutableSetOf()
+
+  private val parsedOutputsByPayload: MutableMap<String, Map<String, Any?>> = mutableMapOf()
 
   // A legacy PLAN completed without its now-required PREPLAN predecessor is invalidated up front so
   // the loop re-runs PLAN rather than honouring a pre-PREPLAN completion.
@@ -31,15 +47,25 @@ internal class FeatureTaskRuntimeRunState(
       .toMutableSet()
       .also(::invalidateLegacyPlanWithoutPreplan)
       .also(::invalidateIncompleteReentrySpans)
+      .also(::invalidateUnsatisfiedGateSuccessors)
   private val outputs: MutableList<FeatureTaskRuntimePhaseOutput> =
     initialRecords.values
       .mapNotNull(::validatedRecordToOutput)
       .filterNot { it.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN && it.phaseId !in completed }
+      .filterNot { it.phaseId in gateInvalidatedPhases }
       .toMutableList()
 
+  // A blocked phase deliberately persists its schema-rejected output as diagnostic evidence, so a durable
+  // artifact is not guaranteed to satisfy the phase schema. Re-validating it while hydrating resume state
+  // must not kill the process: an unparseable artifact carries no usable output, and the phase re-runs.
+  // Failing here instead would leave the workflow permanently unresumable.
   private fun validatedRecordToOutput(record: FeatureTaskRuntimePhaseRecord): FeatureTaskRuntimePhaseOutput? =
     record.outputArtifact?.let { artifact ->
-      val normalized = outputValidator.normalizePhaseOutput(artifact, record.phaseId)
+      val normalized = try {
+        outputValidator.normalizePhaseOutput(artifact, record.phaseId)
+      } catch (_: InvalidFeatureTaskRuntimePhaseOutputSchemaError) {
+        return@let null
+      }
       FeatureTaskRuntimePhaseOutput(
         phaseId = record.phaseId,
         iteration = record.attemptCount,
@@ -49,6 +75,7 @@ internal class FeatureTaskRuntimeRunState(
     }
   private val priorRecords: MutableSet<String> = initialRecords.keys.toMutableSet()
   private val initialReviewRecord = initialRecords[FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW]
+    ?.takeIf { FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW !in gateInvalidatedPhases }
   private var currentReviewPassNumber: Int? = initialReviewRecord?.reviewPassNumber
     ?: initialReviewRecord?.let { 1 }
   private var completedReviewPassNumber: Int? = currentReviewPassNumber
@@ -90,6 +117,9 @@ internal class FeatureTaskRuntimeRunState(
     .groupBy({ it.first }, { it.second })
     .mapValues { (_, iterations) -> iterations.max() }
     .toMutableMap()
+    .apply {
+      if (hasDurableReviewInvalidationTombstone) remove(FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID)
+    }
 
   // Loops the live run has already advanced this run, so the resume-entry cap guard does not
   // re-fire against a stale durable snapshot once the live machine owns the loop.
@@ -110,7 +140,35 @@ internal class FeatureTaskRuntimeRunState(
   // schema-retry budget still bounds at MAX_FIX_LOOP_ITERATIONS; attempt_count stays monotonic.
   private val fixLoopBudgetBaseByPhase: MutableMap<String, Int> = reconstructFixLoopBudgetBases()
 
+  // The generation reset is re-applied on every load that sees a durable tombstone, not just on the
+  // load that minted it. The tombstone is a non-completed record, so it never re-enters the
+  // gate-invalidation set that drives the mint-time reset, and that reset is in-memory only: without
+  // this, the legacy review attempt watermark survives into the fresh generation and re-blocks the
+  // first post-audit review as "fix loop exhausted" before it is ever launched.
+  init {
+    if (hasDurableReviewInvalidationTombstone) resetInvalidatedReviewGeneration()
+  }
+
   fun outputs(): List<FeatureTaskRuntimePhaseOutput> = outputs.toList()
+
+  fun phasesRequiringDurableGateInvalidation(): Set<String> = gateInvalidatedPhases.toSet()
+
+  fun resetInvalidatedReviewGeneration() {
+    val loopId = FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID
+    val reviewPhaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW
+    val fixPhaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX
+    inFlightReentries.remove(loopId)
+    edgeIterationByLoop.remove(loopId)
+    liveClaimedLoops.remove(loopId)
+    fixLoopBudgetBaseByPhase.remove(fixPhaseId)
+    fixLoopBudgetBaseByPhase.remove(reviewPhaseId)
+    persistedAttemptCounts.remove(fixPhaseId)
+    persistedAttemptCounts.remove(reviewPhaseId)
+    priorRecords.remove(reviewPhaseId)
+    blockedRecords.remove(reviewPhaseId)
+    currentReviewPassNumber = null
+    completedReviewPassNumber = null
+  }
 
   // The durable per-phase record as loaded at resume (null when none); carries the latest edge
   // context for the cap-on-resume guard.
@@ -126,6 +184,16 @@ internal class FeatureTaskRuntimeRunState(
   }
 
   fun isLoopLiveClaimed(loopId: String): Boolean = loopId in liveClaimedLoops
+
+  // A durable re-entry the live topology cannot legally complete is dropped, so its per-edge
+  // watermark goes with it. Left behind, the watermark charges the fresh generation of the gated
+  // phase for edge fires the dropped span never used, so the first verdict under the new ordering
+  // would hit the per-edge cap and take the cap-exhaustion advance with its findings unaddressed.
+  fun discardStaleReentry(loopId: String) {
+    inFlightReentries.remove(loopId)
+    edgeIterationByLoop.remove(loopId)
+    liveClaimedLoops.remove(loopId)
+  }
 
   fun inFlightReentry(loopId: String): InFlightReentry? = inFlightReentries[loopId]
 
@@ -213,20 +281,30 @@ internal class FeatureTaskRuntimeRunState(
         }
       }
     }
+    seedBudgetBasesOutsideLiveSpans(bases)
     return bases
   }
 
-  // The forward span an edge reopens, destination through source inclusive (mirrors the live
-  // recordBackwardEdge span); falls back to the destination alone when the indices do not bracket.
-  private fun reopenedSpan(edge: FeatureTaskRuntimeBackwardEdge): List<String> {
-    val destinationIndex = transitions.forwardPhaseIds.indexOf(edge.destinationPhaseId)
-    val sourceIndex = transitions.forwardPhaseIds.indexOf(edge.fromPhaseId)
-    return if (destinationIndex in 0..sourceIndex) {
-      transitions.forwardPhaseIds.subList(destinationIndex, sourceIndex + 1)
-    } else {
-      listOf(edge.destinationPhaseId)
+  // A phase can carry a durable attempt watermark accrued under a topology whose reopened span no
+  // longer covers it: an incomplete phase left mid-loop by an earlier ordering, or a phase this load
+  // invalidated behind an unsatisfied gate. Both re-enter runPhaseAttempts as a FRESH visit, so
+  // without a baseline the per-visit schema-retry budget would degrade to the absolute monotonic
+  // attempt count and re-block a phase that still has budget. Seeding mirrors reopenForReentry.
+  private fun seedBudgetBasesOutsideLiveSpans(bases: MutableMap<String, Int>) {
+    val staleLoopPhases = initialRecords.values
+      .filter { it.status != STATUS_COMPLETED && it.loopId != null }
+      .map { it.phaseId }
+    (staleLoopPhases + gateInvalidatedPhases).forEach { phaseId ->
+      if (phaseId !in completed && phaseId !in bases) {
+        bases[phaseId] = maxOf(nextIteration(phaseId) - 1, 0)
+      }
     }
   }
+
+  // The forward span an edge reopens, recomputed from the live topology on every load so a resume
+  // never invalidates the phase set some earlier ordering implied.
+  private fun reopenedSpan(edge: FeatureTaskRuntimeBackwardEdge): List<String> =
+    transitions.spanBetween(edge.destinationPhaseId, edge.fromPhaseId)
 
   private fun reconstructInFlightReentries(): Map<String, InFlightReentry> = buildMap {
     transitions.backwardEdges.forEach { edge ->
@@ -274,14 +352,76 @@ internal class FeatureTaskRuntimeRunState(
     }
   }
 
+  // Drop every durable completion at or past a gated phase whose gate the durable record does not
+  // satisfy. A record minted under an ordering that ran the gated phase first (review before audit)
+  // would otherwise resume, run the gating phase, and then skip the gated one because it is still
+  // marked complete — committing a tree the gated phase never saw in its settled form.
+  private fun invalidateUnsatisfiedGateSuccessors(completedPhases: MutableSet<String>) {
+    val durableVerdicts = completedPhases.associateWith(::durableVerdictFor)
+    transitions.entryGates.forEach { gate ->
+      if (transitions.entryGateViolation(gate.phaseId, durableVerdicts) == null) {
+        return@forEach
+      }
+      val gatedIndex = transitions.forwardPhaseIds.indexOf(gate.phaseId)
+      if (gatedIndex < 0) {
+        return@forEach
+      }
+      transitions.forwardPhaseIds
+        .drop(gatedIndex)
+        .filter(completedPhases::contains)
+        .forEach { phaseId ->
+          completedPhases.remove(phaseId)
+          gateInvalidatedPhases += phaseId
+        }
+    }
+  }
+
+  // The verdict a durable record settled with, read straight from the loaded record rather than from
+  // `outputs`, which is not initialised while `completed` is still being reduced.
+  private fun durableVerdictFor(phaseId: String): FeatureTaskRuntimeVerdict =
+    FeatureTaskRuntimeOutputVerification.verdictFor(
+      phaseId,
+      parsedOutput(initialRecords[phaseId]?.let(::validatedRecordToOutput)),
+    )
+
+  // The phase-output contract admits YAML and fenced or prose-trailed JSON, so a bare JSON parse of
+  // the payload reads NOTHING for those shapes and would report every audit as unverified. The JSON
+  // fast path covers the common case without a second validation pass; anything else falls back to
+  // the validator that admitted the payload in the first place. Memoised per payload because the
+  // verdict of a settled phase is re-read on every gate evaluation and every transition.
+  private fun parsedOutput(output: FeatureTaskRuntimePhaseOutput?): Map<String, Any?>? {
+    val payload = output?.payload ?: return null
+    return parsedOutputsByPayload.getOrPut(payload) {
+      JsonSupport.parseObjectOrNull(payload)
+        ?.let(JsonSupport::jsonElementToValue)
+        ?.let(JsonSupport::anyToStringAnyMap)
+        ?: runCatching {
+          outputValidator.validateAndReadPhaseOutput(payload, sourceLabel = output.phaseId)
+        }.getOrNull()
+        ?: emptyMap()
+    }
+  }
+
   fun verdictFor(phaseId: String): FeatureTaskRuntimeVerdict =
-    FeatureTaskRuntimeOutputVerification.verdictFor(phaseId, outputFor(phaseId))
+    FeatureTaskRuntimeOutputVerification.verdictFor(phaseId, parsedOutput(outputFor(phaseId)))
+
+  // The settled verdict per completed phase, the input the declared phase-entry gates evaluate. A
+  // phase that is not complete is absent rather than defaulted, so a gate can never read a stale or
+  // invented verdict for a phase the run has not settled.
+  fun settledVerdictsByPhaseId(): Map<String, FeatureTaskRuntimeVerdict> = completed.associateWith(::verdictFor)
+
+  // True when any phase in a durable re-entry span is unreachable under the live entry gates, so the
+  // span itself cannot be completed and the re-entry must not be honoured on resume.
+  fun spanBlockedByEntryGate(span: List<String>): Boolean {
+    val settledVerdicts = settledVerdictsByPhaseId()
+    return span.any { phaseId -> transitions.entryGateViolation(phaseId, settledVerdicts) != null }
+  }
 
   fun unresolvedReviewFindings(phaseId: String): List<FeatureTaskRuntimeReviewFinding> =
-    FeatureTaskRuntimeOutputVerification.unresolvedReviewFindings(outputFor(phaseId))
+    FeatureTaskRuntimeOutputVerification.unresolvedReviewFindings(parsedOutput(outputFor(phaseId)))
 
   fun unmetAuditCriteria(phaseId: String): List<String> =
-    FeatureTaskRuntimeOutputVerification.unmetAuditCriteria(outputFor(phaseId))
+    FeatureTaskRuntimeOutputVerification.unmetAuditCriteria(parsedOutput(outputFor(phaseId)))
 
   fun auditRepairPlan(phaseId: String): FeatureTaskRuntimeAuditRepairPlan? = outputFor(phaseId)
     ?.normalizedOutput
@@ -348,6 +488,8 @@ internal class FeatureTaskRuntimeRunState(
   fun completedPhaseIds(): List<String> =
     FeatureTaskRuntimePhaseWorkflowDefinition.definition.stepIds.filter { it in completed }
 }
+
+internal const val REVIEW_INVALIDATION_AGENT_ID: String = "audit-gate-migration"
 
 internal data class InFlightReentry(
   val destinationPhaseId: String,

@@ -4,15 +4,20 @@ import skillbill.contracts.JsonSupport
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditCriterionGap
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditVerdict
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewFinding
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewSeverity
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewVerdict
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 
+/**
+ * Reads the verification signals a settled phase's structured output carries. Every entry point
+ * takes the ALREADY-PARSED output object rather than the raw payload: the phase-output contract
+ * accepts YAML and fenced or prose-trailed JSON, so a raw-text JSON parse here would silently see
+ * nothing for those shapes and report [FeatureTaskRuntimeVerdict.ADVANCE] for an audit that in fact
+ * reported gaps. The caller owns parsing through the same validator that admitted the output.
+ */
 internal object FeatureTaskRuntimeOutputVerification {
-  fun verdictFor(phaseId: String, output: FeatureTaskRuntimePhaseOutput?): FeatureTaskRuntimeVerdict {
-    val outputObject = output?.let(::outputObject)
+  fun verdictFor(phaseId: String, outputObject: Map<String, Any?>?): FeatureTaskRuntimeVerdict {
     val wireVerdict = (outputObject?.get("verdict") as? String)
       ?.takeIf(String::isNotBlank)
       ?.let(FeatureTaskRuntimeVerdict::fromWire)
@@ -23,11 +28,11 @@ internal object FeatureTaskRuntimeOutputVerification {
     }
   }
 
-  fun unresolvedReviewFindings(output: FeatureTaskRuntimePhaseOutput?): List<FeatureTaskRuntimeReviewFinding> =
-    output?.let(::outputObject)?.let(::reviewVerdictFrom)?.unresolvedFindings.orEmpty()
+  fun unresolvedReviewFindings(outputObject: Map<String, Any?>?): List<FeatureTaskRuntimeReviewFinding> =
+    reviewVerdictFrom(outputObject)?.unresolvedFindings.orEmpty()
 
-  fun unmetAuditCriteria(output: FeatureTaskRuntimePhaseOutput?): List<String> =
-    output?.let(::outputObject)?.let(::auditVerdictFrom)?.unmetCriteria?.map { it.message }.orEmpty()
+  fun unmetAuditCriteria(outputObject: Map<String, Any?>?): List<String> =
+    auditVerdictFrom(outputObject)?.unmetCriteria?.map { it.message }.orEmpty()
 
   fun auditGapPayloadError(outputObject: Map<String, Any?>): String? {
     val wireVerdict = outputObject["verdict"] as? String
@@ -56,17 +61,18 @@ internal object FeatureTaskRuntimeOutputVerification {
     return reviewVerdict?.verdict ?: wireVerdict ?: FeatureTaskRuntimeVerdict.ADVANCE
   }
 
+  // The audit verdict gates entry into review, so it must be canonical rather than whatever string
+  // the phase happened to emit: FeatureTaskRuntimeVerdict.fromWire accepts any non-blank value, and
+  // an audit reporting no unmet criteria under a synonym ("pass", "Satisfied") would otherwise
+  // settle with an off-vocabulary verdict and block a run that has no gap at all. The derived
+  // verdict wins wherever a criteria array makes it decidable; a bare wire verdict is honoured only
+  // when it is a known audit verdict, so an undecidable audit blocks loudly instead of advancing.
   private fun auditVerdict(
     outputObject: Map<String, Any?>?,
     wireVerdict: FeatureTaskRuntimeVerdict?,
-  ): FeatureTaskRuntimeVerdict {
-    val auditVerdict = auditVerdictFrom(outputObject)
-    return if (auditVerdict?.unmetCriteria?.isNotEmpty() == true) {
-      FeatureTaskRuntimeVerdict.GAPS_FOUND
-    } else {
-      wireVerdict ?: auditVerdict?.verdict ?: FeatureTaskRuntimeVerdict.ADVANCE
-    }
-  }
+  ): FeatureTaskRuntimeVerdict = auditVerdictFrom(outputObject)?.verdict
+    ?: wireVerdict?.takeIf(FeatureTaskRuntimeVerdict.AUDIT_VERDICTS::contains)
+    ?: FeatureTaskRuntimeVerdict.ADVANCE
 
   private fun reviewVerdictFrom(outputObject: Map<String, Any?>?): FeatureTaskRuntimeReviewVerdict? {
     val findingsRaw = outputObject?.get("produced_outputs")
@@ -94,9 +100,6 @@ internal object FeatureTaskRuntimeOutputVerification {
     ?: JsonSupport.anyToStringAnyMap(entry)?.let { map ->
       ((map["message"] ?: map["criterion"]) as? String)?.takeIf(String::isNotBlank)
     }
-
-  private fun outputObject(output: FeatureTaskRuntimePhaseOutput): Map<String, Any?>? =
-    output.normalizedOutput?.envelope
 }
 
 private fun rejectedCriteriaAliasError(producedOutputs: Map<String, Any?>?): String? {
