@@ -1,3 +1,14 @@
+## [2026-07-21] SKILL-129 governed review budget broker (subtask 2)
+Areas: runtime-kotlin/runtime-{domain,application,ports,infra-fs,contracts}, orchestration/contracts
+- Delegated review launches now originate from validated assignments and carry one authoritative projected rubric, assigned hunks and paths, matched rules, bounded dependencies, evidence targets, stable IDs, and explicit budgets.
+- `FileSystemReviewEvidenceBroker` admits only structured, explicitly scoped evidence operations and rejects rediscovery, broad search, unrelated rubric access, and unassigned files while measuring batched reads and expansions. reusable
+- Parent packets, complete evidence-bearing launches, cumulative evidence, lane results, tool calls, model turns, and enforceable provider usage are checked at their production boundaries; raw transport envelopes are excluded from decoded lane-result accounting.
+- Pattern: budget excesses terminate with typed `review_context_budget_exceeded`; completion-only non-enforceable token excess reports `budget_regression` without truncation, scope widening, lane skipping, worker replacement, or mode substitution. reusable
+- Provider isolation is strategy-declared (`fork_turns: "none"` for Codex); adapters without synchronous governed request-response mediation remain explicitly unsupported instead of inferring enforcement from stdout.
+- Fake worker and evidence surfaces cover forbidden operations, excessive reads/turns/results, audited expansions, bounded completion, and sticky terminal budget failures.
+Feature flag: N/A
+Acceptance criteria: subtask 2: 6/6 implemented
+
 ## [2026-07-21] SKILL-129 review-context packet and preparation service (subtask 1)
 Areas: runtime-kotlin/runtime-{domain,application,ports,infra-fs,cli}, orchestration/contracts
 - One `ReviewPreparationService` resolves review facts once — immutable review id/revision, changed hunks, matched project rules, build/test facts, learnings refs, add-ons, direct-dependency allowlists, evidence targets, lane decisions with reasons, worker assignments, expansions — and rejects ownership violations and cross-revision drift with typed errors before launch. reusable

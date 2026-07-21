@@ -17,13 +17,31 @@ class FileSystemReviewRubricResolver : ReviewRubricResolver {
     require(baseline.startsWith(packRoot) && Files.isRegularFile(baseline) && !Files.isSymbolicLink(baseline)) {
       "Platform pack '${manifest.slug}' declares an unreadable code-review baseline."
     }
-    val size = Files.size(baseline)
-    require(size <= MAX_RUBRIC_BYTES) {
+    val specialists = manifest.declaredCodeReviewAreas.map { area ->
+      val file = requireNotNull(manifest.declaredFiles.areas[area]) {
+        "Platform pack '${manifest.slug}' does not declare its '$area' specialist file."
+      }.toRealPath()
+      require(file.startsWith(packRoot) && Files.isRegularFile(file) && !Files.isSymbolicLink(file)) {
+        "Platform pack '${manifest.slug}' declares an unreadable '$area' code-review rubric."
+      }
+      val body = Files.readString(file)
+      require(body.toByteArray().size <= MAX_RUBRIC_BYTES) {
+        "Platform pack '${manifest.slug}' declares a '$area' rubric larger than $MAX_RUBRIC_BYTES bytes."
+      }
+      ResolvedReviewRubric(
+        rubricId = "bill-${manifest.slug}-code-review-$area",
+        body = body,
+        area = area,
+      )
+    }
+    val baselineBody = Files.readString(baseline)
+    require(baselineBody.toByteArray().size <= MAX_RUBRIC_BYTES) {
       "Platform pack '${manifest.slug}' declares a code-review baseline larger than $MAX_RUBRIC_BYTES bytes."
     }
     return ResolvedReviewRubric(
       requireNotNull(manifest.routedSkillName),
-      Files.readString(baseline),
+      baselineBody,
+      specialists = specialists,
     )
   }
 

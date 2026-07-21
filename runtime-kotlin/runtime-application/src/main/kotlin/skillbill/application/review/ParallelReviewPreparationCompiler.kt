@@ -28,15 +28,69 @@ internal object ParallelReviewPreparationCompiler {
     budget: ReviewContextBudgetPolicy,
     envelopeValidator: ReviewContextEnvelopeValidator,
   ): List<DelegatedReviewLaunchRequest> {
-    val diff = input.diff
-    val agents = input.agents
-    val hunks = parseUnifiedDiff(diff).ifEmpty { headerOnlyChanges(diff) }
+    val parsedHunks = parseUnifiedDiff(input.diff)
+    val parsedPaths = parsedHunks.mapTo(mutableSetOf()) { it.path }
+    val hunks = parsedHunks + headerOnlyChanges(input.diff).filterNot { it.path in parsedPaths }
     require(hunks.isNotEmpty()) { "The authoritative review diff contains no parseable changed hunks." }
-    val paths = hunks.map { it.path }.distinct().sorted()
-    val decisions = agents.map {
-      ReviewLaneDecision(it, true, "selected parallel review lane", listOf("parallel-review"), paths)
+    val routes = specialistRoutes(input, hunks)
+    val decisions = routes.map { route ->
+      ReviewLaneDecision(
+        route.lane,
+        true,
+        "selected non-empty ${route.rubric.area ?: "generic"} specialist lane",
+        listOf("parallel-review", route.rubric.area ?: "generic"),
+        route.ownedPaths,
+      )
     }
-    val revisionId = digest(diff)
+    val revisionId = digest(input.diff)
+    val preparation = prepareReview(input, hunks, routes, decisions, revisionId, budget, envelopeValidator)
+    return launchRequests(input, preparation, routes, budget)
+  }
+
+  private fun specialistRoutes(
+    input: ParallelReviewPreparationInput,
+    hunks: List<ReviewChangedHunk>,
+  ): List<SpecialistRoute> {
+    val selectedRubrics = input.rubrics.mapNotNull { rubric ->
+      val ownedPaths = ownedPathsFor(rubric, hunks)
+      rubric.takeIf { ownedPaths.isNotEmpty() }?.let { SelectedRubric(it, ownedPaths) }
+    }
+    require(selectedRubrics.isNotEmpty()) { "Review routing selected no non-empty specialist lane." }
+    return input.agents.flatMap { agentId ->
+      selectedRubrics.map { selected ->
+        val specialistId = selected.rubric.area ?: selected.rubric.rubricId
+        SpecialistRoute("$agentId:$specialistId", agentId, selected.rubric, selected.ownedPaths)
+      }
+    }
+  }
+
+  @Suppress("LongParameterList")
+  private fun prepareReview(
+    input: ParallelReviewPreparationInput,
+    hunks: List<ReviewChangedHunk>,
+    routes: List<SpecialistRoute>,
+    decisions: List<ReviewLaneDecision>,
+    revisionId: String,
+    budget: ReviewContextBudgetPolicy,
+    envelopeValidator: ReviewContextEnvelopeValidator,
+  ) = ReviewPreparationService(
+    reviewFactPorts(input, hunks, decisions, revisionId),
+    envelopeValidator,
+    budget,
+  ).prepare(
+    ReviewPreparationRequest(
+      reviewId = "code-review-parallel-$revisionId",
+      reviewRevision = ReviewRevision(revisionId, 1),
+      criteriaReferences = routes.associate { it.lane to listOf("independent branch-diff specialist review") },
+    ),
+  )
+
+  private fun reviewFactPorts(
+    input: ParallelReviewPreparationInput,
+    hunks: List<ReviewChangedHunk>,
+    decisions: List<ReviewLaneDecision>,
+    revisionId: String,
+  ): ReviewFactPorts {
     val scope = ReviewScopeFacts(
       "repo-root-realpath-v1:${input.repoRoot.toRealPath()}",
       "parallel-scope-base-$revisionId",
@@ -45,52 +99,65 @@ internal object ParallelReviewPreparationCompiler {
       hunks,
     )
     val routing = ReviewStackRoutingFacts(input.stack, input.stack, emptyList(), emptyList())
-    val preparation = ReviewPreparationService(
-      ReviewFactPorts(
-        scope = object : ReviewScopeResolverPort {
-          override fun resolveScope(reviewId: String) = scope
-        },
-        stackRouting = object : ReviewStackRoutingPort {
-          override fun resolveStackRouting(scope: ReviewScopeFacts) = routing
-        },
-        guidance = object : ReviewGuidancePort {
-          override fun resolveMatchedRules(scope: ReviewScopeFacts, routing: ReviewStackRoutingFacts) =
-            emptyList<skillbill.review.context.model.ReviewRuleReference>()
-        },
-        learnings = object : ReviewLearningsPort {
-          override fun resolveLearnings(scope: ReviewScopeFacts, routing: ReviewStackRoutingFacts) =
-            emptyList<skillbill.review.context.model.ReviewLearningsReference>()
-        },
-        buildTestFacts = object : ReviewBuildTestFactsPort {
-          override fun resolveBuildTestFacts(scope: ReviewScopeFacts) =
-            emptyList<skillbill.review.context.model.ReviewBuildTestFact>()
-        },
-        laneSelection = object : ReviewLaneSelectionPort {
-          override fun decideLanes(scope: ReviewScopeFacts, routing: ReviewStackRoutingFacts) = decisions
-        },
-      ),
-      envelopeValidator,
-      budget,
-    ).prepare(
-      ReviewPreparationRequest(
-        reviewId = "code-review-parallel-$revisionId",
-        reviewRevision = ReviewRevision(revisionId, 1),
-        criteriaReferences = agents.associateWith { listOf("independent branch-diff review") },
-      ),
+    return ReviewFactPorts(
+      scope = object : ReviewScopeResolverPort {
+        override fun resolveScope(reviewId: String) = scope
+      },
+      stackRouting = object : ReviewStackRoutingPort {
+        override fun resolveStackRouting(scope: ReviewScopeFacts) = routing
+      },
+      guidance = object : ReviewGuidancePort {
+        override fun resolveMatchedRules(scope: ReviewScopeFacts, routing: ReviewStackRoutingFacts) =
+          emptyList<skillbill.review.context.model.ReviewRuleReference>()
+      },
+      learnings = object : ReviewLearningsPort {
+        override fun resolveLearnings(scope: ReviewScopeFacts, routing: ReviewStackRoutingFacts) =
+          emptyList<skillbill.review.context.model.ReviewLearningsReference>()
+      },
+      buildTestFacts = object : ReviewBuildTestFactsPort {
+        override fun resolveBuildTestFacts(scope: ReviewScopeFacts) =
+          emptyList<skillbill.review.context.model.ReviewBuildTestFact>()
+      },
+      laneSelection = object : ReviewLaneSelectionPort {
+        override fun decideLanes(scope: ReviewScopeFacts, routing: ReviewStackRoutingFacts) = decisions
+      },
     )
+  }
+
+  private fun launchRequests(
+    input: ParallelReviewPreparationInput,
+    preparation: skillbill.application.review.model.ReviewPreparationResult,
+    routes: List<SpecialistRoute>,
+    budget: ReviewContextBudgetPolicy,
+  ): List<DelegatedReviewLaunchRequest> {
+    val routesByLane = routes.associateBy(SpecialistRoute::lane)
     return preparation.assignments.map { assignment ->
+      val route = requireNotNull(routesByLane[assignment.lane]) {
+        "Prepared assignment '${assignment.lane}' has no selected specialist route."
+      }
       DelegatedReviewLaunchRequest(
         packet = preparation.packet,
         assignment = assignment,
         specialistContract = SPECIALIST_CONTRACT,
-        rubrics = listOf(input.rubric),
+        rubrics = listOf(route.rubric),
         brokerId = "review-evidence-${assignment.digest}",
         budget = budget,
-        agentId = assignment.lane,
+        agentId = route.agentId,
         workerKind = ReviewWorkerKind.GENERIC,
         repoRoot = input.repoRoot,
       )
     }
+  }
+
+  private fun ownedPathsFor(rubric: ReviewRubricProjection, hunks: List<ReviewChangedHunk>): List<String> {
+    val area = rubric.area ?: return hunks.map { it.path }.distinct().sorted()
+    if (area in REQUIRED_BASELINE_AREAS) return hunks.map { it.path }.distinct().sorted()
+    val signals = AREA_SIGNALS[area].orEmpty()
+    if (signals.isEmpty()) return emptyList()
+    return hunks.filter { hunk ->
+      val searchable = "${hunk.path}\n${hunk.content}".lowercase()
+      signals.any(searchable::contains)
+    }.map { it.path }.distinct().sorted()
   }
 
   private fun digest(value: String): String = MessageDigest.getInstance("SHA-256")
@@ -151,6 +218,19 @@ internal object ParallelReviewPreparationCompiler {
 
   private fun headerOnlyChanges(diff: String): List<ReviewChangedHunk> {
     val normalized = diff.replace("\r\n", "\n")
+    val records = normalized.split(Regex("(?m)(?=^diff --git )"))
+      .mapNotNull { record ->
+        if (!record.startsWith("diff --git ")) return@mapNotNull null
+        val lines = record.lines()
+        val path = lines.firstNotNullOfOrNull { line ->
+          line.takeIf { it.startsWith("+++ b/") }
+            ?.removePrefix("+++ b/")
+            ?.substringBefore('\t')
+        } ?: DIFF_GIT_PATH.find(lines.first())?.groupValues?.get(1)
+        path?.let { ReviewChangedHunk(it, 0, 0, 0, 0, record.trimEnd()) }
+      }
+      .distinctBy { it.path }
+    if (records.isNotEmpty()) return records
     val lines = normalized.lines()
     return lines.mapIndexedNotNull { index, line ->
       if (!line.startsWith("+++ b/")) return@mapIndexedNotNull null
@@ -162,12 +242,33 @@ internal object ParallelReviewPreparationCompiler {
 
   private const val SPECIALIST_CONTRACT =
     "Use only the assignment-owned evidence surface. Return only F-XXX risk-register lines."
+  private val DIFF_GIT_PATH = Regex("^diff --git (?:a/\\S+|\"a/.+\") (?:b/|\"b/)(.+?)\"?$")
+  private val REQUIRED_BASELINE_AREAS = setOf("architecture", "platform-correctness")
+  private val AREA_SIGNALS = mapOf(
+    "performance" to listOf("performance", "allocation", "memory", "buffer", "bytes", "token", "batch", "blocking"),
+    "security" to listOf("auth", "secret", "unsafe", "forbidden", "path", "process", "network", "input"),
+    "testing" to listOf("test", "fixture", "assert", "mock", "fake"),
+    "api-contracts" to listOf("schema", "contract", "request", "response", "serialization", "version"),
+    "persistence" to listOf("database", "repository", "transaction", "migration", "checkpoint", "persist"),
+    "reliability" to listOf("retry", "timeout", "shutdown", "runner", "launch", "failure", "telemetry"),
+    "ui" to listOf("ui", "view", "compose", "render", "form", "navigation"),
+    "ux-accessibility" to listOf("accessibility", "semantic", "focus", "keyboard", "localization", "label"),
+  )
 }
+
+private data class SelectedRubric(val rubric: ReviewRubricProjection, val ownedPaths: List<String>)
+
+private data class SpecialistRoute(
+  val lane: String,
+  val agentId: String,
+  val rubric: ReviewRubricProjection,
+  val ownedPaths: List<String>,
+)
 
 internal data class ParallelReviewPreparationInput(
   val diff: String,
   val stack: String?,
   val agents: List<String>,
   val repoRoot: Path,
-  val rubric: ReviewRubricProjection,
+  val rubrics: List<ReviewRubricProjection>,
 )

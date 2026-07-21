@@ -16,7 +16,6 @@ import skillbill.review.context.model.ReviewAssignment
 import skillbill.review.context.model.ReviewBudgetEvaluator
 import skillbill.review.context.model.ReviewLaneIdentity
 import skillbill.review.context.model.TokenOwnership
-import java.nio.file.Files
 
 /** Starts only broker-prepared launches and preserves typed budget outcomes through completion. */
 @Inject
@@ -27,7 +26,7 @@ class DelegatedReviewWorkerLauncher(
   fun launch(request: DelegatedReviewWorkerRequest): DelegatedReviewWorkerOutcome {
     val prepared = request.prepared.launch
     val operations = BrokerBackedNativeReviewOperationProtocol(prepared.evidenceBroker)
-    val evidenceRequests = evidenceRequests(prepared.launch.assignment, request.repoRoot)
+    val evidenceRequests = evidenceRequests(prepared.launch.assignment)
     val evidence = if (evidenceRequests.isEmpty()) {
       null
     } else {
@@ -93,12 +92,8 @@ class DelegatedReviewWorkerLauncher(
       prompt.toByteArray(Charsets.UTF_8).size.toLong(),
     )
 
-  private fun evidenceRequests(
-    assignment: ReviewAssignment,
-    repoRoot: java.nio.file.Path,
-  ): List<ReviewEvidenceRequest> = (
-    assignment.assignedPaths.filter { path -> Files.isRegularFile(repoRoot.resolve(path)) }
-      .map { path -> ReviewEvidenceRequest(assignment.lane, path) } +
+  private fun evidenceRequests(assignment: ReviewAssignment): List<ReviewEvidenceRequest> = (
+    assignment.assignedPaths.map { path -> ReviewEvidenceRequest(assignment.lane, path) } +
       assignment.expansions.map { expansion ->
         require(expansion.authorized) {
           "Expansion '${expansion.expansionId}' is not authorized for delegated evidence admission."
@@ -149,8 +144,10 @@ class DelegatedReviewWorkerLauncher(
     appendLine()
     appendLine("brokered_evidence:")
     requests.zip(evidence).forEach { (request, result) ->
-      appendLine("--- ${request.path}")
-      appendLine(requireNotNull(result.content))
+      result.content?.let { content ->
+        appendLine("--- ${request.path}")
+        appendLine(content)
+      }
     }
   }
 }

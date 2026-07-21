@@ -116,7 +116,7 @@ $defs:
     additionalProperties: false
     required: [contract_version, kind, review_id, packet_digest, review_revision, repository_identity, base_revision, head_revision, status, selected_lanes, lane_decisions, changed_hunks, matched_rules, learnings_references, build_test_facts, dependency_allowlist, evidence_targets, expansion_ledger]
     properties:
-      contract_version: { const: "0.2" }
+      contract_version: { const: "0.3" }
       kind: { const: parent_packet }
       review_id: { $ref: "#/$defs/identifier" }
       packet_digest: { $ref: "#/$defs/digest" }
@@ -149,7 +149,7 @@ $defs:
     additionalProperties: false
     required: [contract_version, kind, review_id, packet_digest, assignment_digest, review_revision, lane, lane_decision, base_revision, head_revision, assigned_paths, assigned_hunks, criteria_references, matched_rules, evidence_targets, dependency_allowlist, expansions]
     properties:
-      contract_version: { const: "0.2" }
+      contract_version: { const: "0.3" }
       kind: { const: assignment }
       review_id: { $ref: "#/$defs/identifier" }
       packet_digest: { $ref: "#/$defs/digest" }
@@ -171,7 +171,7 @@ $defs:
     additionalProperties: false
     required: [contract_version, kind, review_id, packet_digest, assignment_digest, review_revision, lane, base_revision, head_revision, specialist_contract, rubric, assigned_paths, assigned_hunks, criteria_references, matched_rules, evidence_targets, dependency_allowlist, forbidden_rediscovery, broker_id, isolation, budget]
     properties:
-      contract_version: { const: "0.2" }
+      contract_version: { const: "0.3" }
       kind: { const: launch }
       review_id: { $ref: "#/$defs/identifier" }
       packet_digest: { $ref: "#/$defs/digest" }
@@ -221,7 +221,7 @@ $defs:
     additionalProperties: false
     required: [contract_version, kind, review_id, packet_digest, assignment_digest, lane, terminal_outcome, budget_kind, configured_limit, observed_value, enforceable]
     properties:
-      contract_version: { const: "0.2" }
+      contract_version: { const: "0.3" }
       kind: { const: budget_outcome }
       review_id: { $ref: "#/$defs/identifier" }
       packet_digest: { $ref: "#/$defs/digest" }
@@ -248,7 +248,7 @@ $defs:
     additionalProperties: false
     required: [contract_version, kind, review_id, packet_digest, lanes, aggregate_usage, budget_regression]
     properties:
-      contract_version: { const: "0.2" }
+      contract_version: { const: "0.3" }
       kind: { const: accounting_summary }
       review_id: { $ref: "#/$defs/identifier" }
       packet_digest: { $ref: "#/$defs/digest" }

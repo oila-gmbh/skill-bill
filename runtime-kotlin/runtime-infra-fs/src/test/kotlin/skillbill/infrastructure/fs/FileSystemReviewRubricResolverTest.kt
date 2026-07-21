@@ -23,6 +23,26 @@ class FileSystemReviewRubricResolverTest {
   }
 
   @Test
+  fun `routed rubric keeps every declared specialist separate`() {
+    val root = Files.createTempDirectory("review-rubric")
+    val baseline = root.resolve("code-review/content.md")
+    val security = root.resolve("code-review/security/content.md")
+    Files.createDirectories(security.parent)
+    Files.writeString(baseline, "baseline rubric")
+    Files.writeString(security, "security specialist rubric")
+
+    val resolved = FileSystemReviewRubricResolver().resolve(
+      manifest(root, baseline, mapOf("security" to security)),
+    )
+
+    assertEquals("baseline rubric", resolved.body)
+    assertEquals(1, resolved.specialists.size)
+    assertEquals("security", resolved.specialists.single().area)
+    assertEquals("bill-kotlin-code-review-security", resolved.specialists.single().rubricId)
+    assertEquals("security specialist rubric", resolved.specialists.single().body)
+  }
+
+  @Test
   fun `manifest baseline cannot escape its pack`() {
     val root = Files.createTempDirectory("review-rubric")
     val outside = Files.createTempFile("outside-rubric", ".md")
@@ -32,13 +52,17 @@ class FileSystemReviewRubricResolverTest {
     }
   }
 
-  private fun manifest(root: java.nio.file.Path, baseline: java.nio.file.Path) = PlatformManifest(
+  private fun manifest(
+    root: java.nio.file.Path,
+    baseline: java.nio.file.Path,
+    areas: Map<String, java.nio.file.Path> = emptyMap(),
+  ) = PlatformManifest(
     slug = "kotlin",
     packRoot = root,
     contractVersion = "1.2",
     routingSignals = RoutingSignals(listOf(".kt"), emptyList()),
-    declaredCodeReviewAreas = emptyList(),
-    declaredFiles = DeclaredFiles(baseline, emptyMap()),
+    declaredCodeReviewAreas = areas.keys.toList(),
+    declaredFiles = DeclaredFiles(baseline, areas),
     areaMetadata = emptyMap(),
   )
 }

@@ -18,10 +18,11 @@ enum class ReviewWorkerKind {
   GENERIC,
 }
 
-data class ReviewRubricProjection(val rubricId: String, val body: String) {
+data class ReviewRubricProjection(val rubricId: String, val body: String, val area: String? = null) {
   init {
     require(rubricId.isNotBlank()) { "A projected rubric must carry an id." }
     require(body.isNotBlank()) { "A projected rubric must carry a body." }
+    require(area == null || area.isNotBlank()) { "A projected rubric area must be non-blank when present." }
   }
 }
 

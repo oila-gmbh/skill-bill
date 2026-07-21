@@ -69,6 +69,16 @@ class GoalPlanningPreparationCheckpoint(
         "stored manifest order differs from the authoritative decomposition manifest",
       )
     }
+    if (
+      expectedDescriptor != null &&
+      plan.subSpecHash != expectedDescriptor.subSpecHash
+    ) {
+      throw skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError(
+        identity.parentGoalWorkflowId,
+        subtaskId,
+        "stored governed sub-spec hash differs from the current governed sub-spec",
+      )
+    }
   }
 
   fun recoveryProgress(

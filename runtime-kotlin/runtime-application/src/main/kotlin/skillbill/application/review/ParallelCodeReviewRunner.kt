@@ -17,30 +17,38 @@ import skillbill.application.workflow.repoRoot
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunTokenOwnership
+import skillbill.ports.agentrun.model.SkillRunRequest
+import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
 import skillbill.ports.config.RepoLocalConfigPort
 import skillbill.ports.config.model.ReadRepoLocalConfigRequest
 import skillbill.ports.diff.DiffResolverPort
+import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
+import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.review.ParallelReviewLaneRunner
 import skillbill.ports.review.ReviewRubricResolver
 import skillbill.ports.review.model.ParallelReviewLaneOutcome
 import skillbill.ports.review.model.ParallelReviewLaneRunRequest
+import skillbill.ports.review.model.ReviewLaneAccounting
 import skillbill.review.ParallelReviewFindingParser
 import skillbill.review.ParallelReviewMerger
 import skillbill.review.context.ReviewContextEnvelopeValidator
+import skillbill.review.context.ReviewExecutionModePolicy
 import skillbill.review.context.model.ProviderTokenUsage
+import skillbill.review.context.model.ResolvedReviewExecutionMode
+import skillbill.review.context.model.ReviewAutoEligibility
 import skillbill.review.context.model.ReviewBudgetOutcome
 import skillbill.review.context.model.TokenOwnership
 import skillbill.review.model.ParallelReviewLaneResult
 import skillbill.scaffold.model.PlatformManifest
-import skillbill.workflow.model.CodeReviewExecutionMode
 import java.nio.file.Path
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
 @Inject
-@Suppress("LongParameterList")
+@Suppress("LongParameterList", "TooManyFunctions")
 class ParallelCodeReviewRunner(
   private val delegatedReviewExecutionBroker: DelegatedReviewExecutionBroker,
+  private val parentReviewLauncher: GoalRunnerSubtaskLauncher,
   private val scaffoldCatalogService: ScaffoldCatalogService,
   private val diffResolver: DiffResolverPort,
   private val parallelLaneRunner: ParallelReviewLaneRunner,
@@ -49,11 +57,6 @@ class ParallelCodeReviewRunner(
   private val reviewRubricResolver: ReviewRubricResolver,
 ) {
   fun run(request: ParallelCodeReviewRequest): ParallelCodeReviewResult {
-    if (request.codeReviewMode != CodeReviewExecutionMode.DELEGATED) {
-      throw UsageValidationException(
-        "Parallel code review requires mode:delegated; '${request.codeReviewMode.wireValue}' is not supported.",
-      )
-    }
     val agent1 = resolveAgent(request.agent1Id, "--agent1")
     val agent2 = resolveAgent(request.agent2Id, "--agent2")
     if (agent1.id == agent2.id) {
@@ -64,46 +67,67 @@ class ParallelCodeReviewRunner(
 
     val diffText = resolveDiff(request)
     val manifest = detectStack(diffText, request.repoRoot)
-    val prepared = prepare(request, diffText, manifest, listOf(agent1.id, agent2.id))
+    val budget = repoLocalConfig.readRepoLocalConfig(ReadRepoLocalConfigRequest(request.repoRoot))
+      .config.reviewContextBudget
+    val resolvedMode = resolvedMode(request, diffText, manifest, budget.maxLaneLaunchBytes)
+    val prepared = if (resolvedMode == ResolvedReviewExecutionMode.DELEGATED) {
+      prepare(request, diffText, manifest, listOf(agent1.id, agent2.id), budget)
+        .groupBy { it.agentId }
+    } else {
+      emptyMap()
+    }
+    val outcomes = runLanes(request, diffText, manifest, resolvedMode, prepared, agent1.id, agent2.id)
+    return parallelResult(agent1.id, agent2.id, outcomes)
+  }
 
-    val timeoutSec = request.timeout?.inWholeSeconds ?: (DEFAULT_TIMEOUT_MINUTES * SECONDS_PER_MINUTE)
-    val laneRunResult = parallelLaneRunner.runTwoLanes(
+  private fun resolvedMode(
+    request: ParallelCodeReviewRequest,
+    diffText: String,
+    manifest: PlatformManifest?,
+    maxLaneLaunchBytes: Long,
+  ) = ReviewExecutionModePolicy.resolve(
+    request.codeReviewMode,
+    ReviewAutoEligibility(
+      oversized = diffText.toByteArray().size > maxLaneLaunchBytes,
+      highRisk = HIGH_RISK_SIGNAL.containsMatchIn(diffText),
+      layeredStack = manifest?.codeReviewComposition != null,
+    ),
+  )
+
+  private fun runLanes(
+    request: ParallelCodeReviewRequest,
+    diffText: String,
+    manifest: PlatformManifest?,
+    resolvedMode: ResolvedReviewExecutionMode,
+    prepared: Map<String, List<DelegatedReviewLaunchRequest>>,
+    agent1Id: String,
+    agent2Id: String,
+  ): skillbill.ports.review.model.ParallelReviewLaneRunResult {
+    val timeoutSec = request.timeout?.inWholeSeconds ?: DEFAULT_TIMEOUT_MINUTES * SECONDS_PER_MINUTE
+    return parallelLaneRunner.runTwoLanes(
       ParallelReviewLaneRunRequest(
-        lane1 = { launchLane(prepared[0], request) },
-        lane2 = { launchLane(prepared[1], request, request.agent2Model) },
+        lane1 = {
+          launchResolvedLane(
+            resolvedMode,
+            prepared[agent1Id].orEmpty(),
+            agent1Id,
+            diffText,
+            manifest,
+            request,
+          )
+        },
+        lane2 = {
+          launchResolvedLane(
+            resolvedMode,
+            prepared[agent2Id].orEmpty(),
+            agent2Id,
+            diffText,
+            manifest,
+            request,
+            request.agent2Model,
+          )
+        },
         timeout = (timeoutSec + TIMEOUT_BUFFER_SECONDS).seconds,
-      ),
-    )
-    val outcome1 = laneRunResult.lane1
-    val outcome2 = laneRunResult.lane2
-
-    val lane1Result = ParallelReviewLaneResult(
-      agentId = agent1.id,
-      findings = if (outcome1.success) ParallelReviewFindingParser.parse(outcome1.rawOutput) else emptyList(),
-    )
-    val lane2Result = ParallelReviewLaneResult(
-      agentId = agent2.id,
-      findings = if (outcome2.success) ParallelReviewFindingParser.parse(outcome2.rawOutput) else emptyList(),
-    )
-
-    val mergeResult = ParallelReviewMerger.merge(lane1Result, lane2Result)
-    return ParallelCodeReviewResult(
-      mergeResult = mergeResult,
-      lane1 = ParallelReviewLaneStatus(
-        agent1.id,
-        outcome1.success,
-        outcome1.failureReason,
-        outcome1.tokenUsage,
-        outcome1.budgetOutcome,
-        outcome1.accounting,
-      ),
-      lane2 = ParallelReviewLaneStatus(
-        agent2.id,
-        outcome2.success,
-        outcome2.failureReason,
-        outcome2.tokenUsage,
-        outcome2.budgetOutcome,
-        outcome2.accounting,
       ),
     )
   }
@@ -113,17 +137,17 @@ class ParallelCodeReviewRunner(
     diffText: String,
     manifest: PlatformManifest?,
     agentIds: List<String>,
+    budget: skillbill.review.context.model.ReviewContextBudgetPolicy,
   ): List<DelegatedReviewLaunchRequest> {
     val resolvedRubric = reviewRubricResolver.resolve(manifest)
-    val budget = repoLocalConfig.readRepoLocalConfig(ReadRepoLocalConfigRequest(request.repoRoot))
-      .config.reviewContextBudget
+    val routedRubrics = resolvedRubric.specialists.ifEmpty { listOf(resolvedRubric) }
     return ParallelReviewPreparationCompiler.compile(
       input = ParallelReviewPreparationInput(
         diff = diffText,
         stack = manifest?.slug,
         agents = agentIds,
         repoRoot = request.repoRoot,
-        rubric = ReviewRubricProjection(resolvedRubric.rubricId, resolvedRubric.body),
+        rubrics = routedRubrics.map { ReviewRubricProjection(it.rubricId, it.body, it.area) },
       ),
       budget = budget,
       envelopeValidator = reviewContextEnvelopeValidator,
@@ -216,7 +240,39 @@ class ParallelCodeReviewRunner(
     return if (best != null && best.value > 0) best.key else null
   }
 
-  private fun launchLane(
+  private fun launchResolvedLane(
+    mode: ResolvedReviewExecutionMode,
+    launchRequests: List<DelegatedReviewLaunchRequest>,
+    agentId: String,
+    diffText: String,
+    manifest: PlatformManifest?,
+    request: ParallelCodeReviewRequest,
+    modelOverride: String? = null,
+  ): ParallelReviewLaneOutcome = when (mode) {
+    ResolvedReviewExecutionMode.INLINE -> launchInlineParentLane(agentId, diffText, manifest, request, modelOverride)
+    ResolvedReviewExecutionMode.DELEGATED -> launchDelegatedLane(agentId, launchRequests, request, modelOverride)
+  }
+
+  private fun launchDelegatedLane(
+    agentId: String,
+    launchRequests: List<DelegatedReviewLaunchRequest>,
+    request: ParallelCodeReviewRequest,
+    modelOverride: String? = null,
+  ): ParallelReviewLaneOutcome {
+    require(launchRequests.isNotEmpty()) { "Delegated review selected no specialist launches for '$agentId'." }
+    val outcomes = launchRequests.map { launchSpecialist(it, request, modelOverride) }
+    val failed = outcomes.firstOrNull { !it.success }
+    return ParallelReviewLaneOutcome(
+      success = failed == null,
+      rawOutput = outcomes.filter { it.success }.joinToString("\n") { it.rawOutput },
+      failureReason = failed?.failureReason,
+      tokenUsage = aggregateTokenUsage(outcomes.mapNotNull { it.tokenUsage }),
+      budgetOutcome = failed?.budgetOutcome,
+      accounting = aggregateAccounting(agentId, outcomes.mapNotNull { it.accounting }),
+    )
+  }
+
+  private fun launchSpecialist(
     launchRequest: DelegatedReviewLaunchRequest,
     request: ParallelCodeReviewRequest,
     modelOverride: String? = null,
@@ -266,7 +322,7 @@ class ParallelCodeReviewRunner(
         val usage = providerTokenUsage(outcome)
         val processFailure = laneFailureReason(outcome)
         val budgetOutcome = worker.budgetOutcome
-        val reason = budgetOutcome?.let(::describeBudgetOutcome) ?: processFailure
+        val reason = budgetOutcome?.takeIf { it.enforceable }?.let(::describeBudgetOutcome) ?: processFailure
         ParallelReviewLaneOutcome(
           success = reason == null,
           rawOutput = outcome.stdout,
@@ -274,6 +330,54 @@ class ParallelCodeReviewRunner(
           tokenUsage = usage,
           budgetOutcome = budgetOutcome,
           accounting = worker.accounting,
+        )
+      }
+    }
+  }
+
+  private fun launchInlineParentLane(
+    agentId: String,
+    diffText: String,
+    manifest: PlatformManifest?,
+    request: ParallelCodeReviewRequest,
+    modelOverride: String?,
+  ): ParallelReviewLaneOutcome {
+    val prompt = buildString {
+      appendLine("Run one complete bill-code-review mode:inline parent review.")
+      appendLine("Resolved execution mode: inline")
+      appendLine("Detected stack: ${manifest?.slug ?: "generic"}")
+      appendLine("Use the exact diff below as authoritative; do not rediscover or replace its scope.")
+      appendLine("Apply every signal-relevant routed rubric in this agent context and do not launch specialists.")
+      appendLine("Return only F-XXX risk-register lines.")
+      appendLine()
+      append(diffText.replace("\r\n", "\n"))
+    }
+    val outcome = parentReviewLauncher.launch(
+      GoalRunnerSubtaskLaunchRequest(
+        invokedAgentId = agentId,
+        configuredAgentOverrideId = null,
+        skillRunRequest = SkillRunRequest(
+          issueKey = "code-review-parallel",
+          repoRoot = request.repoRoot,
+          timeout = request.timeout ?: DEFAULT_TIMEOUT_MINUTES.minutes,
+          promptOverride = prompt,
+          modelOverride = modelOverride,
+        ),
+      ),
+    )
+    return when (outcome) {
+      is UnsupportedAgentRunLaunch -> ParallelReviewLaneOutcome(
+        success = false,
+        rawOutput = "",
+        failureReason = "unsupported agent: ${outcome.reason}",
+      )
+      is AgentRunLaunchFacts -> {
+        val reason = laneFailureReason(outcome)
+        ParallelReviewLaneOutcome(
+          success = reason == null,
+          rawOutput = outcome.stdout,
+          failureReason = reason,
+          tokenUsage = providerTokenUsage(outcome),
         )
       }
     }
@@ -305,7 +409,76 @@ class ParallelCodeReviewRunner(
     const val STDERR_EXCERPT_MAX_LENGTH = 120
     const val MAX_SUPPLIED_DIFF_BYTES = 1_000_000L
     val DIFF_PATH_PATTERN = Regex("^\\+\\+\\+ b/(.+)$", RegexOption.MULTILINE)
+    val HIGH_RISK_SIGNAL = Regex(
+      "(?i)(auth|authorization|secret|token|migration|transaction|process|subprocess|network|ssrf|unsafe)",
+    )
   }
+}
+
+private fun parallelResult(
+  agent1Id: String,
+  agent2Id: String,
+  outcomes: skillbill.ports.review.model.ParallelReviewLaneRunResult,
+): ParallelCodeReviewResult {
+  val lane1Result = ParallelReviewLaneResult(
+    agentId = agent1Id,
+    findings = if (outcomes.lane1.success) {
+      ParallelReviewFindingParser.parse(outcomes.lane1.rawOutput)
+    } else {
+      emptyList()
+    },
+  )
+  val lane2Result = ParallelReviewLaneResult(
+    agentId = agent2Id,
+    findings = if (outcomes.lane2.success) {
+      ParallelReviewFindingParser.parse(outcomes.lane2.rawOutput)
+    } else {
+      emptyList()
+    },
+  )
+  return ParallelCodeReviewResult(
+    mergeResult = ParallelReviewMerger.merge(lane1Result, lane2Result),
+    lane1 = outcomes.lane1.toStatus(agent1Id),
+    lane2 = outcomes.lane2.toStatus(agent2Id),
+  )
+}
+
+private fun ParallelReviewLaneOutcome.toStatus(agentId: String) = ParallelReviewLaneStatus(
+  agentId,
+  success,
+  failureReason,
+  tokenUsage,
+  budgetOutcome,
+  accounting,
+)
+
+private fun aggregateTokenUsage(usages: List<ProviderTokenUsage>): ProviderTokenUsage? {
+  if (usages.isEmpty()) return null
+  fun sum(selector: (ProviderTokenUsage) -> Long?): Long? {
+    val values = usages.mapNotNull(selector)
+    return values.takeIf { it.isNotEmpty() }?.sum()
+  }
+  return ProviderTokenUsage(
+    inputTokens = sum(ProviderTokenUsage::inputTokens),
+    cachedInputTokens = sum(ProviderTokenUsage::cachedInputTokens),
+    outputTokens = sum(ProviderTokenUsage::outputTokens),
+    reasoningTokens = sum(ProviderTokenUsage::reasoningTokens),
+    totalTokens = sum(ProviderTokenUsage::totalTokens),
+    ownership = TokenOwnership.DIRECT,
+  )
+}
+
+private fun aggregateAccounting(agentId: String, values: List<ReviewLaneAccounting>): ReviewLaneAccounting? {
+  if (values.isEmpty()) return null
+  return ReviewLaneAccounting(
+    lane = agentId,
+    evidenceBytes = values.sumOf { it.evidenceBytes },
+    expansions = values.flatMap { it.expansions },
+    toolCalls = values.sumOf { it.toolCalls },
+    modelTurns = values.sumOf { it.modelTurns },
+    resultBytes = values.sumOf { it.resultBytes },
+    terminalOutcome = values.firstNotNullOfOrNull { it.terminalOutcome },
+  )
 }
 
 private fun describeBudgetOutcome(outcome: ReviewBudgetOutcome): String =

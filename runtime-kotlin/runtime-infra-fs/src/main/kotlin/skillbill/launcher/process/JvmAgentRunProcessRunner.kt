@@ -91,10 +91,7 @@ class JvmAgentRunProcessRunner : AgentRunProcessRunner {
     val lifecycleEmitter = ProcessLifecycleEmitter(request)
     val stdout = CappedUtf8Drain(
       input = stdoutStream,
-      // Governed review output is checked against the repository budget by the lane broker.
-      // Retaining the complete stream is required so its typed outcome cannot be replaced by
-      // the generic process cap before lane-result evaluation.
-      limitBytes = if (request.reviewEvidenceBroker == null) AGENT_RUN_OUTPUT_LIMIT_BYTES else null,
+      limitBytes = AGENT_RUN_OUTPUT_LIMIT_BYTES,
       outputStream = AgentRunOutputStream.STDOUT,
       outputSink = request.outputSink,
       onChunkRead = { chunk ->

@@ -48,6 +48,7 @@ import skillbill.scaffold.model.BaselineReviewCatalog
 import skillbill.scaffold.model.DeclaredFiles
 import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.model.RoutingSignals
+import skillbill.workflow.model.CodeReviewExecutionMode
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -259,6 +260,60 @@ class ParallelCodeReviewRunnerTest {
       assertFalse(prompt.contains("fork_turns:"))
       assertFalse(prompt.contains("## Specialist:"), "flattened specialist rubric bodies must stay out of lane prompts")
       assertFalse(prompt.contains("Apply all of the following specialist review rubrics"))
+    }
+  }
+
+  @Test
+  fun `inline mode bypasses delegated specialist workers`() {
+    val launcher = ParallelSubtaskLauncher()
+    val runner = runner(launcher, diffResolver = RecordingDiffResolver(default = diffFor("A.kt")))
+
+    runner.run(
+      baseRequest(scope = ParallelReviewScope.STAGED).copy(codeReviewMode = CodeReviewExecutionMode.INLINE),
+    )
+
+    assertEquals(2, launcher.requests.size)
+    launcher.requests.forEach { request ->
+      assertEquals(null, request.skillRunRequest.reviewEvidenceBroker)
+      assertContains(request.skillRunRequest.promptOverride.orEmpty(), "bill-code-review mode:inline")
+      assertContains(request.skillRunRequest.promptOverride.orEmpty(), "do not launch specialists")
+    }
+  }
+
+  @Test
+  fun `delegated routing launches one rubric per non-empty selected specialist`() {
+    val launcher = ParallelSubtaskLauncher()
+    val architecture = ResolvedReviewRubric(
+      "bill-kotlin-code-review-architecture",
+      "architecture specialist rubric",
+      area = "architecture",
+    )
+    val testing = ResolvedReviewRubric(
+      "bill-kotlin-code-review-testing",
+      "testing specialist rubric",
+      area = "testing",
+    )
+    val runner = runner(
+      launcher,
+      catalogGateway = stubCatalogGateway(listOf(platformManifest("kotlin", listOf("*.kt")))),
+      diffResolver = RecordingDiffResolver(default = diffFor("src/Main.kt")),
+      rubricResolver = ReviewRubricResolver {
+        ResolvedReviewRubric(
+          "bill-kotlin-code-review",
+          "parent routing rubric",
+          specialists = listOf(architecture, testing),
+        )
+      },
+    )
+
+    runner.run(baseRequest(scope = ParallelReviewScope.STAGED))
+
+    assertEquals(2, launcher.requests.size, "empty testing lanes must be dropped for both review agents")
+    launcher.requests.forEach { request ->
+      val prompt = request.skillRunRequest.promptOverride.orEmpty()
+      assertContains(prompt, "architecture specialist rubric")
+      assertFalse(prompt.contains("testing specialist rubric"))
+      assertFalse(prompt.contains("parent routing rubric"))
     }
   }
 
@@ -604,6 +659,7 @@ class ParallelCodeReviewRunnerTest {
         },
       ),
     ),
+    parentReviewLauncher = launcher,
     scaffoldCatalogService = ScaffoldCatalogService(catalogGateway),
     diffResolver = diffResolver,
     parallelLaneRunner = parallelLaneRunner,

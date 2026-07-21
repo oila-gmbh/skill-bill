@@ -81,7 +81,8 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
     val operation = ReviewRequestedOperation(ReviewOperationKind.FILE_READ, normalized, request.reachabilityReason)
     policy.classify(operation)?.let { return forbiddenResult(it, cumulativeBytes, expansionLedger.size) }
 
-    if (!policy.isAssigned(normalized)) {
+    val assigned = policy.isAssigned(normalized)
+    if (!assigned) {
       val expansion = requireNotNull(request.authorizedExpansion) {
         "Unassigned evidence requires an authorized expansion record."
       }
@@ -95,10 +96,8 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
       require(expansion.reachabilityReason == request.reachabilityReason) {
         "Expansion '${expansion.expansionId}' reason provenance changed before admission."
       }
-      require(expansion.sequence == expansionLedger.size) {
-        "Expansion '${expansion.expansionId}' is out of sequence."
-      }
-      require(trustedExpansionLedger.getOrNull(expansion.sequence) == expansion) {
+      require(expansion !in expansionLedger) { "Expansion '${expansion.expansionId}' was already admitted." }
+      require(expansion in trustedExpansionLedger) {
         "Expansion '${expansion.expansionId}' does not exactly match the trusted parent-packet ledger."
       }
       expansionLedger += expansion
@@ -107,7 +106,15 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
       }
     }
 
+    return readAdmittedFile(normalized, assigned)
+  }
+
+  private fun readAdmittedFile(normalized: String, assigned: Boolean): ReviewEvidenceResult {
     val real = resolveRepositoryFile(root, normalized)
+    if (real == null) {
+      require(assigned) { "Expanded evidence path must be a repository file." }
+      return unavailableResult(cumulativeBytes, expansionLedger.size)
+    }
     val bytes = Files.size(real)
     evidenceBudgetOutcome(bytes)?.let { return it }
     val content = Files.readString(real, StandardCharsets.UTF_8)
@@ -210,13 +217,26 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
     ReviewEvidenceBatchResult(results, cumulativeBytes, expansionLedger.toList(), outcome)
 }
 
-private fun resolveRepositoryFile(root: Path, normalized: String): Path {
+private fun resolveRepositoryFile(root: Path, normalized: String): Path? {
   val candidate = root.resolve(normalized).normalize()
   require(candidate.startsWith(root)) { "Evidence path escapes the repository." }
+  var component = root
+  root.relativize(candidate).forEach { segment ->
+    component = component.resolve(segment)
+    if (!Files.exists(component, java.nio.file.LinkOption.NOFOLLOW_LINKS)) return null
+    require(!Files.isSymbolicLink(component)) { "Evidence paths must not contain symbolic links." }
+  }
   val real = candidate.toRealPath()
   require(real.startsWith(root) && Files.isRegularFile(real)) { "Evidence path must be a repository file." }
   return real
 }
+
+private fun unavailableResult(cumulativeBytes: Long, expansionCount: Int) = ReviewEvidenceResult(
+  content = null,
+  bytes = 0,
+  cumulativeBytes = cumulativeBytes,
+  expansionCount = expansionCount,
+)
 
 private fun forbiddenResult(forbidden: ForbiddenReviewOperation, cumulativeBytes: Long, expansionCount: Int) =
   ReviewEvidenceResult(

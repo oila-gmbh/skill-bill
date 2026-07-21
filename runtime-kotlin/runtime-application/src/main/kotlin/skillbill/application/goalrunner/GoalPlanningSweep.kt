@@ -90,11 +90,8 @@ class DefaultGoalPlanningSweep(
       return preSweepStopped(request, sharedContextReason(error))
     }
     val activeSubtasks = state.manifest.subtasks.filter { it.id in includedSubtaskIds(shared.planningPacket) }
-    val provenance = existingShared?.provenance ?: GoalPlanningContractProvenance(
-      shared.parentSpecHash,
-      shared.decompositionManifestHash,
-      GoalPlanningPreparationSchemaPaths.EXPECTED_SCHEMA_ID,
-    )
+    val provenance = currentProvenance(shared)
+    incompatibleProvenance(existingShared, provenance, shared)?.let { return it }
     val sharedCheckpoint = existingShared ?: produceSharedPreplan(shared, request, provenance)
       .getOrElse { error -> return stopped(shared, 0, error.message.orEmpty(), PHASE_PREPLAN) }
     if (activeSubtasks.isEmpty()) return GoalPlanningSweepOutcome.PreparedAll(identity, provenance)
@@ -123,6 +120,28 @@ class DefaultGoalPlanningSweep(
       val descriptor = descriptors.single { it.subtaskId == missingId }
       producePlan(shared, request, subtask, descriptor, provenance, sharedCheckpoint.preplanPayload)?.let { return it }
     }
+  }
+
+  private fun currentProvenance(shared: GoalPlanningSharedContext) = GoalPlanningContractProvenance(
+    shared.parentSpecHash,
+    shared.decompositionManifestHash,
+    GoalPlanningPreparationSchemaPaths.EXPECTED_SCHEMA_ID,
+  )
+
+  private fun incompatibleProvenance(
+    existing: SharedGoalPreplanCheckpoint?,
+    current: GoalPlanningContractProvenance,
+    shared: GoalPlanningSharedContext,
+  ): GoalPlanningSweepOutcome.Stopped? = if (existing != null && existing.provenance != current) {
+    stopped(
+      shared,
+      0,
+      "Goal planning preparation cannot be recovered because the current governed parent spec or immutable " +
+        "decomposition provenance differs from the saved shared preplan.",
+      PHASE_PREPLAN,
+    )
+  } else {
+    null
   }
 
   @Suppress("ReturnCount")

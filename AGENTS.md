@@ -17,7 +17,7 @@ Non-negotiable contracts:
 
 ## Product Intent
 
-`bill-feature-task` is the feature-task router: it accepts `mode:runtime` (default) or `mode:prose`, presents one confirmation gate, then delegates. `bill-feature-task-prose` runs the full phase loop in-session. `bill-feature-task-runtime` launches the foreground `skill-bill feature-task` driver with durable workflow state, telemetry, platform packs, add-ons, and native subagents.
+`bill-feature-task` accepts `mode:runtime` (default) or `mode:prose`, presents one confirmation gate, then delegates. Prose mode runs the phase loop in-session; runtime mode launches the foreground `skill-bill feature-task` driver with durable state, telemetry, packs, add-ons, and native subagents.
 
 Bundled skills and packs are defaults, not the framework boundary. Teams may replace them while retaining governed source shape, generated-output boundaries, manifests, install staging, validators, dynamic discovery, and loud-fail behavior.
 
@@ -157,13 +157,13 @@ Each `AgentRunCommandBuilder` sets the right combination for its agent. `Process
 
 ## Writing Policy
 
-Write clear, direct prose for the intended reader. Prefer short, familiar words and active voice when they preserve meaning. Remove filler, stale phrases, vague praise, and repeated claims. Keep technical terms when simpler wording would lose precision. State concrete facts, outcomes, failures, and next actions. Preserve all names, numbers, and material qualifications. Break any rule when following it would make the text less accurate or less natural.
+Write clear, direct, active prose. Prefer familiar words when precise; remove filler, stale phrases, vague praise, and repetition. State concrete facts, outcomes, failures, and next actions while preserving names, numbers, and qualifications. Break a rule if it harms accuracy or natural phrasing.
 
-For commit messages, PR descriptions, documentation, and progress reports, state what changed and why in plain words. Avoid achievement language such as "successfully," "perfect," "comprehensive," and "robust" unless it conveys a specific, supported fact. Lead with the outcome and include detail only when it helps the reader decide or act.
+In commits, PRs, docs, and progress reports, state what changed and why. Avoid unsupported achievement terms such as "successfully," "perfect," "comprehensive," and "robust." Lead with the outcome and include only useful detail.
 
 ## Comments Policy
 
-Comments, especially inline ones, are a code smell. Prefer clearer naming, smaller functions, or refactoring. Add a comment only when a non-obvious *why* cannot be encoded in the code, such as an external constraint, subtle invariant, or known-bug workaround. Never comment merely to explain *what* the code does.
+Prefer clear names, small functions, and refactoring over comments. Comment only on a non-obvious *why* that code cannot express, such as an external constraint, subtle invariant, or workaround. Never explain merely *what* code does.
 
 ## Quality Checks
 

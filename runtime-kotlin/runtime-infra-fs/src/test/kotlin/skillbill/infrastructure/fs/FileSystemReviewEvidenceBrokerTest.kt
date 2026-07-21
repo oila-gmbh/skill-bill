@@ -69,6 +69,22 @@ class FileSystemReviewEvidenceBrokerTest {
     assertEquals(14, broker.accounting().evidenceBytes)
   }
 
+  @Test fun `missing assigned files are omitted without bypassing evidence accounting`() {
+    val root = repo("A.kt" to "assigned")
+    val broker = broker(root, assignment(listOf("A.kt", "Deleted.kt")))
+    val result = broker.readBatch(
+      ReviewEvidenceBatchRequest(
+        "security",
+        listOf(ReviewEvidenceRequest("security", "A.kt"), ReviewEvidenceRequest("security", "Deleted.kt")),
+      ),
+    )
+
+    assertEquals(listOf("assigned", null), result.results.map { it.content })
+    assertEquals(listOf(8L, 0L), result.results.map { it.bytes })
+    assertEquals(8, result.cumulativeBytes)
+    assertEquals(8, broker.accounting().evidenceBytes)
+  }
+
   @Test fun `per-result excess terminates the lane and the rest of the batch`() {
     val root = repo("A.kt" to "assigned", "B.kt" to "second")
     val broker = broker(root, assignment(listOf("A.kt", "B.kt")), policy(result = 4, cumulative = 8))
@@ -115,6 +131,39 @@ class FileSystemReviewEvidenceBrokerTest {
     assertEquals("exp-1", expansion.expansionId)
     assertEquals(assignment.digest, expansion.assignmentDigest)
     assertEquals(result.expansions, broker.accounting().expansions)
+  }
+
+  @Test fun `lane accepts its expansion at a later global packet sequence`() {
+    val root = repo("A.kt" to "assigned", "B.kt" to "dep")
+    val assignment = assignment(listOf("A.kt"), listOf("B.kt"))
+    val expansion = ReviewExpansionRecord(
+      "exp-lane-2",
+      assignment.digest,
+      "B.kt",
+      "called by assigned symbol",
+      true,
+      4,
+    )
+    val broker = broker(root, assignment, trustedExpansionLedger = listOf(expansion))
+
+    val result = broker.readBatch(
+      ReviewEvidenceBatchRequest.of(
+        ReviewEvidenceRequest("security", "B.kt", expansion.reachabilityReason, expansion),
+      ),
+    )
+
+    assertEquals("dep", result.results.single().content)
+    assertEquals(4, result.expansions.single().sequence)
+  }
+
+  @Test fun `assigned symlink cannot expose another repository file`() {
+    val root = repo("secret.txt" to "secret")
+    Files.createSymbolicLink(root.resolve("assigned.txt"), root.resolve("secret.txt"))
+    val broker = broker(root, assignment(listOf("assigned.txt")))
+
+    assertFailsWith<IllegalArgumentException> {
+      broker.readBatch(ReviewEvidenceBatchRequest.of(ReviewEvidenceRequest("security", "assigned.txt")))
+    }
   }
 
   @Test fun `unauthorized expansion is rejected before filesystem resolution and is not recorded`() {
