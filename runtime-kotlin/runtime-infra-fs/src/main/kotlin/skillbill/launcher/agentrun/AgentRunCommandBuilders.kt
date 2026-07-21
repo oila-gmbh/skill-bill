@@ -40,9 +40,12 @@ data class NativeReviewProviderCapabilities(
   val operationBoundary: NativeReviewOperationBoundary,
   val modelTurnObservation: Boolean,
   val providerUsageExposure: ProviderUsageExposure,
+  val inFlightProviderUsageObservation: Boolean = false,
 ) {
   val supportsGovernedLaunch: Boolean
-    get() = operationBoundary != NativeReviewOperationBoundary.UNMEDIATED && modelTurnObservation
+    get() = operationBoundary != NativeReviewOperationBoundary.UNMEDIATED &&
+      modelTurnObservation &&
+      (providerUsageExposure != ProviderUsageExposure.IN_FLIGHT_ENFORCEABLE || inFlightProviderUsageObservation)
 
   companion object {
     val UNMEDIATED = NativeReviewProviderCapabilities(

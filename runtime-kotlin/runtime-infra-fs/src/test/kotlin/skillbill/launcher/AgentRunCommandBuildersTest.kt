@@ -6,6 +6,9 @@ import skillbill.launcher.agentrun.AgentRunOutputDecoder
 import skillbill.launcher.agentrun.ClaudeAgentRunCommandBuilder
 import skillbill.launcher.agentrun.CodexAgentRunCommandBuilder
 import skillbill.launcher.agentrun.JunieAgentRunCommandBuilder
+import skillbill.launcher.agentrun.NativeReviewOperationBoundary
+import skillbill.launcher.agentrun.NativeReviewProviderCapabilities
+import skillbill.launcher.agentrun.ProviderUsageExposure
 import skillbill.ports.agentrun.model.ConversationIsolation
 import skillbill.ports.agentrun.model.ReviewLaunchIsolationStrategy
 import skillbill.ports.agentrun.model.SkillRunRequest
@@ -39,6 +42,8 @@ class AgentRunCommandBuildersTest {
     assertEquals("finding", codex.text)
     assertEquals(5, codex.reasoningTokens)
     assertEquals(100, codex.totalTokens)
+    assertEquals("", AgentRunOutputDecoder.CLAUDE_JSON.decode("""{"usage":{"total_tokens":7}}""").text)
+    assertEquals("", AgentRunOutputDecoder.CODEX_JSONL.decode("""{"usage":{"total_tokens":7}}""").text)
   }
 
   @Test
@@ -208,6 +213,13 @@ class AgentRunCommandBuildersTest {
     assertEquals(
       skillbill.launcher.agentrun.NativeReviewOperationBoundary.DISABLED,
       CodexAgentRunCommandBuilder().nativeReviewCapabilities.operationBoundary,
+    )
+    assertFalse(
+      NativeReviewProviderCapabilities(
+        operationBoundary = NativeReviewOperationBoundary.SYNCHRONOUS_BROKER,
+        modelTurnObservation = true,
+        providerUsageExposure = ProviderUsageExposure.IN_FLIGHT_ENFORCEABLE,
+      ).supportsGovernedLaunch,
     )
     val codexCommand = CodexAgentRunCommandBuilder().build(isolated).command
     assertTrue(codexCommand.contains("--ignore-user-config"))

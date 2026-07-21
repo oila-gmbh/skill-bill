@@ -4,6 +4,7 @@ import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.ReviewLaunchIsolationStrategy
 import skillbill.ports.review.ReviewEvidenceBroker
 import skillbill.ports.review.model.ReviewLaneAccounting
+import skillbill.review.context.model.ForbiddenReviewOperation
 import skillbill.review.context.model.GovernedReviewLaunch
 import skillbill.review.context.model.ReviewAssignment
 import skillbill.review.context.model.ReviewBudgetOutcome
@@ -61,14 +62,21 @@ data class DelegatedReviewWorkerRequest(
 data class DelegatedReviewWorkerOutcome(
   val facts: AgentRunLaunchFacts? = null,
   val unsupportedReason: String? = null,
+  val forbiddenOperation: ForbiddenReviewOperation? = null,
   val budgetOutcome: ReviewBudgetOutcome? = null,
   val accounting: ReviewLaneAccounting? = null,
 ) {
   init {
     require(
-      listOf(facts != null, unsupportedReason != null, budgetOutcome != null && facts == null).count { it } == 1,
+      listOf(
+        facts != null,
+        unsupportedReason != null,
+        forbiddenOperation != null,
+        budgetOutcome != null && facts == null,
+      ).count { it } == 1,
     ) {
-      "A delegated worker outcome carries launch facts, an unsupported reason, or a pre-launch budget outcome."
+      "A delegated worker outcome carries launch facts, an unsupported reason, a forbidden operation, or a " +
+        "pre-launch budget outcome."
     }
   }
 }

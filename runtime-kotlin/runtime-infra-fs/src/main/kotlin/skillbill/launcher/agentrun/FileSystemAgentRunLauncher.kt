@@ -8,7 +8,6 @@ import skillbill.launcher.process.JvmAgentRunProcessRunner
 import skillbill.ports.agentrun.AgentRunLauncher
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.agentrun.model.AgentRunLaunchRequest
-import skillbill.ports.agentrun.model.AgentRunOutputStream
 import skillbill.ports.agentrun.model.ConversationIsolation
 import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
@@ -71,11 +70,6 @@ class FileSystemAgentRunLauncher(
           conversationIsolation = ConversationIsolation.NONE,
           reviewEvidenceBroker = request.broker,
           nativeReviewOperations = request.operations,
-          outputSink = { stream, text ->
-            if (stream == AgentRunOutputStream.STDOUT) {
-              request.broker.observeLaneResultChunk(text)
-            }
-          },
         ),
       )
     } finally {

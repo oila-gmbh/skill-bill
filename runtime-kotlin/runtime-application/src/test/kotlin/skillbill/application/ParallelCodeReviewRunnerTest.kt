@@ -575,6 +575,16 @@ class ParallelCodeReviewRunnerTest {
       ),
       DelegatedReviewWorkerLauncher(
         NativeReviewWorkerLauncher { request ->
+          request.operations.modelTurn()?.let {
+            return@NativeReviewWorkerLauncher AgentRunLaunchFacts(
+              agent = InstallAgent.fromNormalizedId(request.agentId),
+              exitStatus = null,
+              stdout = "",
+              stderr = "review budget terminated before provider execution",
+              timedOut = false,
+              spawnFailed = false,
+            )
+          }
           launcher.launch(
             GoalRunnerSubtaskLaunchRequest(
               invokedAgentId = request.agentId,

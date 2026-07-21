@@ -101,6 +101,7 @@ class JvmAgentRunProcessRunner : AgentRunProcessRunner {
       onChunkRead = { outputTracker.markObserved() },
     ).also { if (stderrStream !== InputStream.nullInputStream()) it.start() }
     writeAndCloseStdin(process, request.stdinText)
+    request.reviewEvidenceBroker?.recordModelTurn()
     lifecycleEmitter.emitStarted(process.isAlive)
     val wait = try {
       Result.success(waitForProcess(process, request, outputTracker, lifecycleEmitter))

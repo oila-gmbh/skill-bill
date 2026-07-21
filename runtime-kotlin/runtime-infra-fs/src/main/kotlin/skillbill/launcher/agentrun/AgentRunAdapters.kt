@@ -69,6 +69,8 @@ class ProcessAgentRunAdapter(
       outputTokens = decoded.outputTokens,
       reasoningTokens = decoded.reasoningTokens,
       totalTokens = decoded.totalTokens,
+      providerUsageEnforceable =
+      nativeReviewCapabilities.providerUsageExposure == ProviderUsageExposure.IN_FLIGHT_ENFORCEABLE,
     )
   }
 
@@ -111,7 +113,7 @@ private fun decodeClaudeJson(stdout: String): DecodedAgentRunOutput = runCatchin
   val root = structuredOutputMapper.readTree(stdout.trim())
   val usage = root.path("usage")
   DecodedAgentRunOutput(
-    text = root.path("result").takeIf { it.isTextual }?.asText() ?: stdout,
+    text = root.path("result").takeIf { it.isTextual }?.asText().orEmpty(),
     inputTokens = usage.longOrNull("input_tokens"),
     cachedInputTokens = usage.longOrNull("cache_read_input_tokens"),
     outputTokens = usage.longOrNull("output_tokens"),
@@ -123,14 +125,16 @@ private fun decodeClaudeJson(stdout: String): DecodedAgentRunOutput = runCatchin
 private fun decodeCodexJsonl(stdout: String): DecodedAgentRunOutput {
   var text: String? = null
   var usage: com.fasterxml.jackson.databind.JsonNode? = null
+  var decodedEnvelope = false
   stdout.lineSequence().filter(String::isNotBlank).forEach { line ->
     runCatching { structuredOutputMapper.readTree(line) }.getOrNull()?.let { event ->
+      decodedEnvelope = true
       event.path("item").path("text").takeIf { it.isTextual }?.asText()?.let { text = it }
       event.path("usage").takeUnless { it.isMissingNode || it.isNull }?.let { usage = it }
     }
   }
   return DecodedAgentRunOutput(
-    text = text ?: stdout,
+    text = text ?: if (decodedEnvelope) "" else stdout,
     inputTokens = usage?.longOrNull("input_tokens"),
     cachedInputTokens = usage?.longOrNull("cached_input_tokens"),
     outputTokens = usage?.longOrNull("output_tokens"),

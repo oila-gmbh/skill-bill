@@ -232,6 +232,23 @@ class ParallelCodeReviewRunner(
       )
       is DelegatedReviewExecutionOutcome.Completed -> {
         val worker = execution.worker
+        worker.budgetOutcome?.takeIf { worker.facts == null }?.let { budgetOutcome ->
+          return ParallelReviewLaneOutcome(
+            success = false,
+            rawOutput = "",
+            failureReason = describeBudgetOutcome(budgetOutcome),
+            budgetOutcome = budgetOutcome,
+            accounting = worker.accounting,
+          )
+        }
+        worker.forbiddenOperation?.let { forbidden ->
+          return ParallelReviewLaneOutcome(
+            success = false,
+            rawOutput = "",
+            failureReason = "forbidden review operation: ${forbidden.reason}",
+            accounting = worker.accounting,
+          )
+        }
         val outcome = worker.facts
         if (outcome == null) {
           return ParallelReviewLaneOutcome(

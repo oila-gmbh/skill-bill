@@ -199,6 +199,7 @@ data class AgentRunLaunchFacts(
   val reasoningTokens: Long? = null,
   val totalTokens: Long? = null,
   val tokenOwnership: AgentRunTokenOwnership = AgentRunTokenOwnership.DIRECT,
+  val providerUsageEnforceable: Boolean = false,
 ) : AgentRunLaunchOutcome {
   init {
     require(!timedOut || exitStatus == null) { "timedOut launch facts must not report an exitStatus." }
