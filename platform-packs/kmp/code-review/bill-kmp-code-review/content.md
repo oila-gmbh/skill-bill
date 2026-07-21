@@ -1,12 +1,12 @@
 ---
 name: bill-kmp-code-review
-description: Use when conducting a thorough Android/KMP PR code review. Preserve mobile review depth by running the manifest-declared baseline review layer first, then add Android/KMP-specific specialists such as UI and UX/accessibility. Produces a structured review with risk register and prioritized action items. Use when user mentions Android review, KMP review, mobile review, or asks to review Android/KMP changes.
+description: Use when conducting a thorough Android/KMP PR code review. Preserve mobile review depth by flattening the manifest-declared Kotlin baseline into direct specialist lanes alongside KMP-specific specialists. Produces a structured review with risk register and prioritized action items. Use when user mentions Android review, KMP review, mobile review, or asks to review Android/KMP changes.
 internal-for: bill-code-review
 ---
 
 # Android/KMP PR Review
 
-Apply the generated Review Composition baseline before these KMP-specific lanes.
+Treat the generated flattened Review Composition plan as authoritative. Launch its Kotlin and KMP specialists directly; never launch the Kotlin baseline orchestrator as a nested worker.
 
 ## Classification Rules
 
@@ -29,7 +29,7 @@ Apply the generated Review Composition baseline before these KMP-specific lanes.
 - Keep KMP routing for the whole review when strong multiplatform signals coexist with backend, Android, or generic Kotlin files.
 - Use lightweight file-level classification to scope each specialist to matching files without dropping a selected lane.
 - Exclude generated, vendored, and non-stack files from specialist scope unless a generated contract is itself the reviewed artifact.
-- Preserve the manifest-declared Kotlin baseline for the same whole-review scope, then merge and deduplicate attributed findings.
+- Preserve the manifest-declared Kotlin baseline as direct lanes for the same whole-review scope, then merge and deduplicate findings without losing the `kmp -> kotlin` attribution chain.
 
 ## Finding Discipline
 

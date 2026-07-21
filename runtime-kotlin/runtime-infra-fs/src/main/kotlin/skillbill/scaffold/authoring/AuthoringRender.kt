@@ -131,14 +131,14 @@ private fun renderReviewCompositionSection(target: AuthoringTarget): String {
       appendLine("## Review Composition")
       appendLine()
       appendLine(
-        "This platform pack declares code-review composition in `platform.yaml`. Runtime agents MUST run each " +
-          "required baseline layer before selecting or running pack-local specialists.",
+        "This platform pack declares code-review composition in `platform.yaml`. The runtime MUST recursively " +
+          "flatten required baseline layers into direct specialist lanes before any worker starts. It MUST NOT " +
+          "launch a baseline orchestrator worker.",
       )
       appendLine()
       appendLine(
-        "Scope propagation is mandatory: pass the same review IDs, applied learnings, AGENTS guidance, " +
-          "changed files, and stack signals into every baseline layer and then into any pack-local " +
-          "specialist review.",
+        "Scope propagation is mandatory: every flattened lane receives the same authoritative review packet, " +
+          "including review IDs, changed hunks, resolved guidance, stack signals, and add-ons.",
       )
       appendLine(
         "Keep baseline-layer findings attributed to that layer before merging and deduplicating them with pack-local " +

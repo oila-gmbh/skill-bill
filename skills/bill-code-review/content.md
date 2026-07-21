@@ -33,7 +33,7 @@ delegate. Finding severity, evidence, and approval rules remain unchanged.
 
 When the caller passes `parallel:<agent>` or `parallel:<agent>:<model>` in args — for example `parallel:codex`, `parallel:codex:o3`, or `parallel:claude:claude-opus-4-8` — run two review lanes on the same diff and merge their findings with provenance labels.
 
-Lane 1 is the normal routed stack-specific review, run in this session through its standard flow — which means it spawns the routed pack's specialist subagents (and any baseline review layer) exactly as a non-parallel `/bill-code-review` would. "In this session" only distinguishes it from lane 2; it does **not** mean a single in-thread read by the current agent. Lane 2 is the named agent, launched as a background subprocess via its CLI; it also runs `bill-code-review mode:<selected-mode>` in full — routing to the dominant stack, spawning its own specialist subagents, and producing its own risk register. Do not pass `parallel:` into lane 2. Both lanes run the same full review pipeline independently. Findings are merged deterministically by the `skill-bill code-review-merge` CLI so the output is machine-readable by downstream tooling.
+Lane 1 is the normal routed stack-specific review, run in this session through its standard flow: it recursively flattens required baseline composition into direct specialist assignments and launches the resulting non-empty lanes. It never launches a nested baseline orchestrator. "In this session" only distinguishes it from lane 2; it does **not** mean a single in-thread read by the current agent. Lane 2 is the named agent, launched as a background subprocess via its CLI; it also runs `bill-code-review mode:<selected-mode>` in full and independently applies the same flattened planning contract. Do not pass `parallel:` into lane 2. Findings are merged deterministically by the `skill-bill code-review-merge` CLI so the output is machine-readable by downstream tooling.
 
 When the argument is absent, consult the repo-local config fallback (next section) before falling through to normal shell behaviour.
 
@@ -136,7 +136,7 @@ Repo root: <repo-root>
 <verbatim Selected agent add-ons section when supplied by the governed feature caller>
 
 Rules:
-- Run the full routed review using the routed pack's Diff-Signal Routing Table: retain required baseline layers, add only signal-relevant specialists, and drop empty lanes.
+- Run the full routed review using the authoritative flattened launch plan: retain required baseline lanes as direct specialists, add only signal-relevant specialists, preserve add-ons and composition attribution, and drop empty or duplicate lanes.
 - Invoke `bill-code-review mode:<selected-mode>` for this lane. Preserve the caller's selected mode; do not replace it with `auto`.
 - Do NOT pass parallel:<agent> to bill-code-review — you are already lane 2; recursion is not allowed.
 - Spawn each specialist as an isolated-context subagent using your agent's native subagent mechanism (see Agent-specific instructions below). For Codex, every governed specialist launch MUST set `fork_turns: "none"`; omission or any inherited-turn value is a contract failure. Give the child only its compact specialist contract, applicable rubric, immutable review identifiers, assigned files/hunks, relevant criteria references, matched project rules, and named evidence targets. Never include the parent transcript, full feature-task briefing, unrelated criteria/rubrics, or unrelated diff.
@@ -152,7 +152,7 @@ Invoke `/bill-code-review` as a slash command — it handles all specialist rout
 **If you are `codex`:**
 Spawn one isolated-context subagent per specialist domain below using your native `SpawnAgent` mechanism with `fork_turns: "none"`. Omitted or inherited turns are forbidden. Do **not** shell out to `codex exec` subprocesses. Run selected subagents in deterministic waves. Specialists use the bounded evidence surface and must not run repository status, scope discovery, or broad branch-diff commands.
 
-Prepare the compact shared review-context packet from `review-delegation.md` once. Derive specialist domains from the routed platform pack's Diff-Signal Routing Table, including required baseline layers, and spawn only selected non-empty lanes. Give each worker the shared packet, its lane assignment, and only its applicable rubric. Packet facts are authoritative; workers must not repeat repository, scope, stack, routing, or guidance discovery.
+Prepare the compact shared review-context packet from `review-delegation.md` once. Use its ordered flattened lane assignments without rediscovery and spawn only selected non-empty specialists; never spawn a baseline orchestrator. Give each worker only its broker projection, lane assignment, and applicable rubric. Packet facts are authoritative; workers must not repeat repository, scope, stack, routing, guidance, learnings, or telemetry discovery.
 
 Give each specialist subagent this brief:
 
@@ -212,7 +212,7 @@ the prompt as a positional argument instead: `<agent> "<prompt>"`. If the agent 
 
 ## Lane 1: Routed Review
 
-While lane 2 runs in the background, run the normal routed stack-specific review in this session, following all standard shell-contract steps. This is the full routed review, **not** a single in-thread read of the diff: route to the dominant stack's pack and execute it exactly as a non-parallel `/bill-code-review` would, including spawning that pack's specialist subagents (and its baseline review layer) and applying its execution-mode selection. Collect every specialist's risk register into the routed review output, then capture that full output to the lane-1 review file (`<lane1-review-path>`).
+While lane 2 runs in the background, run the normal routed stack-specific review in this session. This is the full routed review, **not** a single in-thread read of the diff: route to the dominant stack, flatten required composition into direct specialist lanes, and apply the normal execution-mode selection without launching a nested baseline orchestrator. Collect every specialist's risk register into the routed review output, then capture that full output to the lane-1 review file (`<lane1-review-path>`).
 
 ## Merge
 

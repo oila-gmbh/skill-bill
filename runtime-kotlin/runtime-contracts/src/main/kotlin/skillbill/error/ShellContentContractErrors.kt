@@ -15,6 +15,14 @@ class InvalidManifestSchemaError(
   cause: Throwable? = null,
 ) : ShellContentContractException(message, cause)
 
+class ReviewCompositionCycleError(message: String) : ShellContentContractException(message)
+
+class AmbiguousLaneOwnershipError(message: String) : ShellContentContractException(message)
+
+class IncompatibleCompositionContractError(message: String) : ShellContentContractException(message)
+
+class MissingCompositionLayerError(message: String) : ShellContentContractException(message)
+
 class InvalidAgentAddonSchemaError(
   val sourceLabel: String,
   val reason: String,

@@ -39,6 +39,7 @@ import skillbill.review.context.model.ReviewAutoEligibility
 import skillbill.review.context.model.ReviewBudgetOutcome
 import skillbill.review.context.model.TokenOwnership
 import skillbill.review.model.ParallelReviewLaneResult
+import skillbill.review.plan.ReviewLaunchPlanPolicy
 import skillbill.scaffold.model.PlatformManifest
 import java.nio.file.Path
 import kotlin.time.Duration.Companion.minutes
@@ -66,12 +67,13 @@ class ParallelCodeReviewRunner(
     }
 
     val diffText = resolveDiff(request)
-    val manifest = detectStack(diffText, request.repoRoot)
+    val detection = detectStack(diffText, request.repoRoot)
+    val manifest = detection.routed
     val budget = repoLocalConfig.readRepoLocalConfig(ReadRepoLocalConfigRequest(request.repoRoot))
       .config.reviewContextBudget
     val resolvedMode = resolvedMode(request, diffText, manifest, budget.maxLaneLaunchBytes)
     val prepared = if (resolvedMode == ResolvedReviewExecutionMode.DELEGATED) {
-      prepare(request, diffText, manifest, listOf(agent1.id, agent2.id), budget)
+      prepare(request, diffText, manifest, detection.manifests, listOf(agent1.id, agent2.id), budget)
         .groupBy { it.agentId }
     } else {
       emptyMap()
@@ -136,11 +138,21 @@ class ParallelCodeReviewRunner(
     request: ParallelCodeReviewRequest,
     diffText: String,
     manifest: PlatformManifest?,
+    manifests: List<PlatformManifest>,
     agentIds: List<String>,
     budget: skillbill.review.context.model.ReviewContextBudgetPolicy,
   ): List<DelegatedReviewLaunchRequest> {
     val resolvedRubric = reviewRubricResolver.resolve(manifest)
-    val routedRubrics = resolvedRubric.specialists.ifEmpty { listOf(resolvedRubric) }
+    val routedRubrics = if (manifest == null) {
+      listOf(resolvedRubric)
+    } else {
+      val selectedAreas = manifests.flatMap { it.declaredCodeReviewAreas }.toSet()
+      val flattened = ReviewLaunchPlanPolicy.flatten(manifest.slug, manifests, selectedAreas).lanes.map { lane ->
+        val owner = manifests.single { it.slug == lane.packSlug }
+        reviewRubricResolver.resolve(owner).specialists.single { it.area == lane.area }
+      }
+      flattened.ifEmpty { resolvedRubric.specialists.ifEmpty { listOf(resolvedRubric) } }
+    }
     return ParallelReviewPreparationCompiler.compile(
       input = ParallelReviewPreparationInput(
         diff = diffText,
@@ -206,7 +218,7 @@ class ParallelCodeReviewRunner(
       "Command failed: ${args.joinToString(" ")}",
     )
 
-  private fun detectStack(diffText: String, repoRoot: Path): PlatformManifest? {
+  private fun detectStack(diffText: String, repoRoot: Path): StackDetection {
     val packsRoot = repoRoot.resolve("platform-packs")
     // A missing platform-packs directory yields an empty list (no exception) and degrades to a
     // generic rubric. A directory that exists but is out of contract (corrupt platform.yaml,
@@ -222,7 +234,7 @@ class ParallelCodeReviewRunner(
         e,
       )
     }
-    if (manifests.isEmpty()) return null
+    if (manifests.isEmpty()) return StackDetection(null, emptyList())
 
     val diffPaths = DIFF_PATH_PATTERN
       .findAll(diffText)
@@ -237,7 +249,7 @@ class ParallelCodeReviewRunner(
     }
 
     val best = scores.maxByOrNull { it.value }
-    return if (best != null && best.value > 0) best.key else null
+    return StackDetection(if (best != null && best.value > 0) best.key else null, manifests)
   }
 
   private fun launchResolvedLane(
@@ -413,6 +425,11 @@ class ParallelCodeReviewRunner(
       "(?i)(auth|authorization|secret|token|migration|transaction|process|subprocess|network|ssrf|unsafe)",
     )
   }
+
+  private data class StackDetection(
+    val routed: PlatformManifest?,
+    val manifests: List<PlatformManifest>,
+  )
 }
 
 private fun parallelResult(

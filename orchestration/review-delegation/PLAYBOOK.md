@@ -20,10 +20,10 @@ Do not reference this repo-relative path directly from installable skills — us
 - Each worker assignment names its applicable embedded rubric, owns specific changed files and hunks, identifies only the direct dependencies that may be read, and states the evidence to verify. The validated assignment is the launch authority; do not give a worker the shared packet.
 - Workers must not repeat repository, scope, stack, routing, or guidance discovery. They may read their assigned changed code and direct dependencies only when needed to establish a reachable finding.
 - Keep the packet factual and compact. Do not copy repository dumps, full project documentation, unrelated diffs, or unrelated specialist rubrics into it.
-- Select specialist lanes using the routed pack's Diff-Signal Routing Table. Retain required baseline layers, add only signal-relevant specialists, and do not launch empty lanes or fan out to every declared area.
-- Delegated review layers and specialist review passes must run as separate subagents on supported runtimes; do not collapse a delegated-required scope into a single inline review.
+- Build one deterministic launch plan before starting workers. Recursively flatten required baseline layers into direct specialist lanes, apply the nearest pack's area override, retain signal-relevant lanes and add-ons, and drop empty or duplicate assignments.
+- Launch only the specialists in that flattened plan. Never launch a routed baseline orchestrator as a nested worker.
 - Launch one delegated worker per routed stack-specific review skill or selected specialist review pass unless the current agent-specific section explicitly says otherwise.
-- The parent review owns only the delegated workers it launched itself. If a delegated child review launches more workers internally, treat those nested workers as opaque implementation detail and consume only the child review's final merged result.
+- The parent review owns every worker in the flattened launch plan and preserves each lane's composition-chain attribution through merge and deduplication.
 - The parent review that owns the final merged review output also owns `import_review` and `triage_findings`. Delegated workers must not call those telemetry tools themselves.
 - When the runtime supports delegated-worker model inheritance, delegated workers should use the same model as the parent thread by default. Do not override the delegated-worker model unless the current runtime-specific section explicitly requires it.
 - Every delegated worker receives only the broker projection from its validated assignment. Scope, raw diff, guidance bodies, learnings, add-ons, runtime ceremony, and telemetry ownership stay in the authoritative parent packet and are not projected.

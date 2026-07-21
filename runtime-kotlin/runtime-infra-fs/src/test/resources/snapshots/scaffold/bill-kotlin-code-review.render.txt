@@ -17,7 +17,7 @@ Review Kotlin libraries, CLIs, backend services, and the shared Kotlin baseline 
 
 ### Classification Rules
 
-- If generated Review Composition instructions invoke this skill in manifest-declared `kmp-baseline` mode, preserve that route even when backend markers coexist; backend markers add Kotlin backend lanes without replacing KMP composition.
+- If a flattened Review Composition plan selects Kotlin lanes in manifest-declared `kmp-baseline` mode, preserve those direct specialist assignments even when backend markers coexist. Do not launch this baseline orchestrator as a nested worker.
 - If Android/KMP markers such as `androidMain`, `iosMain`, `AndroidManifest.xml`, or `expect`/`actual` appear during standalone routing, require the KMP pack for full coverage and use this pack only as an explicitly requested baseline.
 - If Kotlin/JVM, Gradle, backend framework, or server configuration markers dominate without manifest-declared KMP composition, classify the diff as `kotlin`.
 - Otherwise classify generic `.kt` libraries, CLIs, and utilities as `kotlin`.

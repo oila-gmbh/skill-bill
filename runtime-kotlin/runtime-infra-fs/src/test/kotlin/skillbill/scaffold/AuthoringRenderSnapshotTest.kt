@@ -65,10 +65,10 @@ class AuthoringRenderSnapshotTest {
       "generated review composition must render before authored execution guidance",
     )
     assertTrue(
-      "Scope propagation is mandatory: pass the same review IDs, applied learnings, AGENTS guidance, changed files, " +
-        "and stack signals" in first,
+      "every flattened lane receives the same authoritative review packet" in first,
       "generated review composition must forward required review context",
     )
+    assertTrue("MUST NOT launch a baseline orchestrator worker" in first)
     assertTrue(
       first.indexOf("## Governed Add-Ons") < first.indexOf("## Execution"),
       "generated governed add-on usage must render before authored execution guidance",
@@ -104,6 +104,9 @@ class AuthoringRenderSnapshotTest {
       "snapshots/scaffold/bill-kmp-code-review-ui.render.txt",
       first,
     )
+    assertTrue("specialist-contract.md" in first)
+    assertTrue("shell-ceremony.md" !in first)
+    assertTrue("telemetry-contract.md" !in first)
 
     val nativeAgentPath = repoRoot.resolve(
       "platform-packs/kmp/code-review/bill-kmp-code-review/native-agents/agents.yaml",

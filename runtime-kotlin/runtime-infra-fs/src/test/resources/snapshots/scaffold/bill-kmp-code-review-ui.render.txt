@@ -70,20 +70,14 @@ Use this specialist for `@Composable` functions, UI state holders, Compose navig
 
 ## Ceremony
 
-Follow the shell ceremony in [shell-ceremony.md](shell-ceremony.md).
+Treat the routed review packet as authoritative and follow [specialist-contract.md](specialist-contract.md).
 
-When review reporting applies, follow [review-orchestrator.md](review-orchestrator.md).
+Do not rediscover scope, routing, learnings, add-ons, guidance, or telemetry ownership.
 
-When telemetry applies, follow [telemetry-contract.md](telemetry-contract.md).
+Reuse the review session and run IDs supplied by the parent.
 
-===== pointer: platform-packs/kmp/code-review/bill-kmp-code-review-ui/review-orchestrator.md =====
-../../../../orchestration/review-orchestrator/PLAYBOOK.md
-
-===== pointer: platform-packs/kmp/code-review/bill-kmp-code-review-ui/shell-ceremony.md =====
-../../../../orchestration/shell-content-contract/shell-ceremony.md
-
-===== pointer: platform-packs/kmp/code-review/bill-kmp-code-review-ui/telemetry-contract.md =====
-../../../../orchestration/telemetry-contract/PLAYBOOK.md
+===== pointer: platform-packs/kmp/code-review/bill-kmp-code-review-ui/specialist-contract.md =====
+../../../../orchestration/review-orchestrator/specialist-contract.md
 
 ===== pointer: platform-packs/kmp/code-review/bill-kmp-code-review-ui/android-compose-adaptive-layouts.md =====
 ../../addons/android-compose-adaptive-layouts.md

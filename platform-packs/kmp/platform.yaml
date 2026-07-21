@@ -155,12 +155,8 @@ pointers:
     - name: android-r8-review.md
       target: platform-packs/kmp/addons/android-r8-review.md
   code-review/bill-kmp-code-review-ui:
-    - name: review-orchestrator.md
-      target: orchestration/review-orchestrator/PLAYBOOK.md
-    - name: shell-ceremony.md
-      target: orchestration/shell-content-contract/shell-ceremony.md
-    - name: telemetry-contract.md
-      target: orchestration/telemetry-contract/PLAYBOOK.md
+    - name: specialist-contract.md
+      target: orchestration/review-orchestrator/specialist-contract.md
     - name: android-compose-adaptive-layouts.md
       target: platform-packs/kmp/addons/android-compose-adaptive-layouts.md
     - name: android-compose-edge-to-edge.md
@@ -174,19 +170,11 @@ pointers:
     - name: android-navigation-review.md
       target: platform-packs/kmp/addons/android-navigation-review.md
   code-review/bill-kmp-code-review-platform-correctness:
-    - name: review-orchestrator.md
-      target: orchestration/review-orchestrator/PLAYBOOK.md
-    - name: shell-ceremony.md
-      target: orchestration/shell-content-contract/shell-ceremony.md
-    - name: telemetry-contract.md
-      target: orchestration/telemetry-contract/PLAYBOOK.md
+    - name: specialist-contract.md
+      target: orchestration/review-orchestrator/specialist-contract.md
   code-review/bill-kmp-code-review-ux-accessibility:
-    - name: review-orchestrator.md
-      target: orchestration/review-orchestrator/PLAYBOOK.md
-    - name: shell-ceremony.md
-      target: orchestration/shell-content-contract/shell-ceremony.md
-    - name: telemetry-contract.md
-      target: orchestration/telemetry-contract/PLAYBOOK.md
+    - name: specialist-contract.md
+      target: orchestration/review-orchestrator/specialist-contract.md
   quality-check/bill-kmp-code-check:
     - name: shell-ceremony.md
       target: orchestration/shell-content-contract/shell-ceremony.md
