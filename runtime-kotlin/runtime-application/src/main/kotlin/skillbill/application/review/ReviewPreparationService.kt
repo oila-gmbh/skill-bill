@@ -59,6 +59,9 @@ class ReviewPreparationService(
     if (assignments.map { it.lane }.distinct().size != assignments.size) {
       reject(parentLabel(packet), "Assignments contain duplicate lanes.")
     }
+    if (assignments.map { it.lane }.toSet() != packet.selectedLanes.toSet()) {
+      reject(parentLabel(packet), "Assignments must cover exactly the packet's selected lanes.")
+    }
     val knownAssignmentDigests = assignments.map { it.digest }.toSet()
     assignments.forEach { assignment ->
       rejectRevisionDrift(packet, assignment)
@@ -190,6 +193,10 @@ class ReviewPreparationService(
     if (assignment.lane !in packet.selectedLanes) {
       reject(label, "Assignment lane '${assignment.lane}' is not a selected lane of the packet.")
     }
+    val packetDecision = packet.laneDecisions.single { it.lane == assignment.lane }
+    if (assignment.laneDecision != packetDecision) {
+      reject(label, "Assignment lane decision differs from the packet decision for '${assignment.lane}'.")
+    }
   }
 
   private fun rejectOwnershipViolations(packet: ReviewContextPacket, assignment: ReviewAssignment) {
@@ -200,9 +207,21 @@ class ReviewPreparationService(
     if (unownedPaths.isNotEmpty()) {
       reject(label, "Assignment claims paths not owned by the packet: ${unownedPaths.sorted()}.")
     }
+    val expectedPaths = assignment.laneDecision.normalizedOwnedPaths.toSet()
+    val actualPaths = assignment.assignedPaths.map { it.replace('\\', '/') }.toSet()
+    if (actualPaths != expectedPaths) {
+      reject(label, "Assignment paths differ from the packet decision for '${assignment.lane}'.")
+    }
     val unownedHunks = assignment.assignedHunks.filterNot { it in ownedHunkIds }
     if (unownedHunks.isNotEmpty()) {
       reject(label, "Assignment claims hunk ids not owned by the packet: ${unownedHunks.sorted()}.")
+    }
+    val expectedHunks = packet.changedHunks
+      .filter { it.path.replace('\\', '/') in expectedPaths }
+      .map { it.hunkId }
+      .toSet()
+    if (assignment.assignedHunks.toSet() != expectedHunks) {
+      reject(label, "Assignment hunks differ from the packet-owned hunks for '${assignment.lane}'.")
     }
     val allowlist = packet.dependencyAllowlist.normalized.toSet()
     val escaping = assignment.dependencyAllowlist.normalized.filterNot { it in allowlist }
@@ -213,12 +232,19 @@ class ReviewPreparationService(
     if (unknownRules.isNotEmpty()) {
       reject(label, "Assignment matched rules are not packet-owned: ${unknownRules.map { it.ruleId }.sorted()}.")
     }
+    if (assignment.matchedRules.toSet() != packet.matchedRules.toSet()) {
+      reject(label, "Assignment matched rules differ from the packet rules for '${assignment.lane}'.")
+    }
     val unknownTargets = assignment.evidenceTargets.filterNot { it in packet.evidenceTargets }
     if (unknownTargets.isNotEmpty()) {
       reject(
         label,
         "Assignment evidence targets are not packet-owned: ${unknownTargets.map { it.targetId }.sorted()}.",
       )
+    }
+    val expectedTargets = packet.evidenceTargets.filter { it.path.replace('\\', '/') in expectedPaths }.toSet()
+    if (assignment.evidenceTargets.toSet() != expectedTargets) {
+      reject(label, "Assignment evidence targets differ from the packet targets for '${assignment.lane}'.")
     }
   }
 

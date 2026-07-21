@@ -86,7 +86,6 @@ internal class FeatureTaskRuntimeRunLoop(
   private val subtaskLauncher get() = dependencies.subtaskLauncher
   private val branchSetupRunner get() = phaseGates.branchSetupRunner
   private val planningStopper get() = phaseGates.planningStopper
-  private val specStatusProjector get() = phaseGates.specStatusProjector
   private val gitOperations get() = phaseGates.gitOperations
 
   private var resolvedBranch: String? = null
@@ -202,7 +201,6 @@ internal class FeatureTaskRuntimeRunLoop(
         ?.let { applyPlanningStop(phaseId, it) }
     } else {
       establishBranchIfNeeded(phaseId) ?: run {
-        specStatusProjector.projectCompleteBeforeCommitPhase(phaseId, request, specSource)
         runPhaseFor(phaseId)
       }
     }

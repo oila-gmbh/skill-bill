@@ -171,6 +171,21 @@ class GoalPlanningSweepTest {
   }
 
   @Test
+  fun `resume uses saved planning when initial specs change`() {
+    val harness = sweepHarness { phase, _, _ -> validPhaseOutcome(phase) }
+    val state = harness.stateFor(manifest(subtaskCount = 1))
+    harness.sweep.prepare(state, harness.request())
+    val launchCount = harness.launcher.requests.size
+    harness.manifestFileStore.replaceSpec("spec.md", "# Initial feature contract edited after planning")
+    harness.manifestFileStore.replaceSpec("spec_subtask_1.md", "# Initial subtask contract edited after planning")
+
+    val outcome = harness.sweep.prepare(state, harness.request())
+
+    assertIs<GoalPlanningSweepOutcome.PreparedAll>(outcome)
+    assertEquals(launchCount, harness.launcher.requests.size)
+  }
+
+  @Test
   fun `non-skipped subtask with an allocated workflow remains planning eligible`() {
     val harness = sweepHarness { phase, _, _ -> validPhaseOutcome(phase) }
     val allocated = manifest(subtaskCount = 1).let { manifest ->
@@ -644,6 +659,7 @@ private class CountingManifestFileStore : DecompositionManifestFileStore {
   private val readPaths = mutableListOf<String>()
   private val removedFileNames = mutableSetOf<String>()
   private var decompositionManifest = "content-decomposition-manifest.yaml"
+  private val specContents = mutableMapOf<String, String>()
 
   override fun readText(path: Path): String {
     check(path.fileName.toString() !in removedFileNames) { "missing scratch spec at ${path.fileName}" }
@@ -651,7 +667,7 @@ private class CountingManifestFileStore : DecompositionManifestFileStore {
     return if (path.fileName.toString() == "decomposition-manifest.yaml") {
       decompositionManifest
     } else {
-      "content-${path.fileName}"
+      specContents[path.fileName.toString()] ?: "content-${path.fileName}"
     }
   }
 
@@ -673,6 +689,10 @@ private class CountingManifestFileStore : DecompositionManifestFileStore {
 
   fun replaceDecompositionManifest(content: String) {
     decompositionManifest = content
+  }
+
+  fun replaceSpec(fileName: String, content: String) {
+    specContents[fileName] = content
   }
 }
 

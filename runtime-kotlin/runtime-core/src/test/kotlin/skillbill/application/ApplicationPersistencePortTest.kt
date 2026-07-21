@@ -905,14 +905,14 @@ class ApplicationPersistencePortTest {
     assertEquals("blocked", blockedSubtask.status)
     assertEquals("runtime: Validation failed.", blockedSubtask.blockedReason)
     assertEquals("validate", blockedSubtask.lastResumableStep)
-    assertEquals("Blocked", statusLine(subtaskSpec))
+    assertEquals("Pending", statusLine(subtaskSpec))
 
     markDecompositionSubtaskSkipped(service, workflowId, subtaskSpec)
 
     val skippedManifest = loadTestDecompositionManifest(parentSpec.parent.resolve("decomposition-manifest.yaml"))
     assertEquals("skipped", skippedManifest.subtasks.single().status)
     assertEquals("complete", skippedManifest.currentSubtaskIntent.action)
-    assertEquals("Skipped", statusLine(subtaskSpec))
+    assertEquals("Pending", statusLine(subtaskSpec))
   }
 
   @Test
@@ -954,7 +954,7 @@ class ApplicationPersistencePortTest {
     assertEquals("in_progress", subtask.status)
     assertEquals(null, subtask.blockedReason)
     assertEquals("validate", subtask.lastResumableStep)
-    assertEquals("In Progress", statusLine(subtaskSpec))
+    assertEquals("Pending", statusLine(subtaskSpec))
   }
 
   @Test
@@ -1192,7 +1192,7 @@ class ApplicationPersistencePortTest {
   }
 
   @Test
-  fun `workflow service completes all subtasks and projects parent spec status`() {
+  fun `workflow service completes all subtasks without mutating specs`() {
     val tempDir = Files.createTempDirectory("skillbill-app-decomposition-complete")
     val parentSpec = tempDir.resolve(".feature-specs/SKILL-51-demo/spec.md")
     val subtaskOne = parentSpec.parent.resolve("spec_subtask_1_foundation.md")
@@ -1218,10 +1218,10 @@ class ApplicationPersistencePortTest {
     assertTrue(manifest.subtasks.all { it.status == "complete" })
     assertTrue(manifest.subtasks.all { it.commitSha == null })
     assertEquals(listOf("SKILL-51 subtask 1: foundation", "SKILL-51 subtask 2: runtime"), git.commits)
-    assertEquals("Complete", statusLine(parentSpec))
-    assertEquals("Complete", statusSection(parentSpec))
-    assertEquals("Complete", statusLine(subtaskOne))
-    assertEquals("Complete", statusLine(subtaskTwo))
+    assertEquals("Pending", statusLine(parentSpec))
+    assertEquals("Pending", statusSection(parentSpec))
+    assertEquals("Pending", statusLine(subtaskOne))
+    assertEquals("Pending", statusLine(subtaskTwo))
   }
 
   @Test

@@ -60,6 +60,8 @@ class FileSystemRepoLocalConfig : RepoLocalConfigPort {
         "max_evidence_result_bytes",
         "max_lane_result_bytes",
         "max_assignment_expansions",
+        "max_specialist_tool_calls",
+        "max_specialist_model_turns",
         "provider_token_thresholds",
       ),
     )
@@ -74,6 +76,8 @@ class FileSystemRepoLocalConfig : RepoLocalConfigPort {
         maxEvidenceResultBytes = budgetLong(path, raw, "max_evidence_result_bytes", defaults.maxEvidenceResultBytes),
         maxLaneResultBytes = budgetLong(path, raw, "max_lane_result_bytes", defaults.maxLaneResultBytes),
         maxAssignmentExpansions = assignmentExpansions(path, raw, defaults.maxAssignmentExpansions),
+        maxSpecialistToolCalls = budgetInt(path, raw, "max_specialist_tool_calls", defaults.maxSpecialistToolCalls),
+        maxSpecialistModelTurns = budgetInt(path, raw, "max_specialist_model_turns", defaults.maxSpecialistModelTurns),
         providerTokenThresholds = ProviderTokenThresholds(
           inputTokens = tokenLong(path, tokenRaw, "input_tokens", tokenDefaults.inputTokens),
           cachedInputTokens = tokenLong(path, tokenRaw, "cached_input_tokens", tokenDefaults.cachedInputTokens),
@@ -158,15 +162,13 @@ private fun providerTokenThresholds(path: Path, raw: Map<*, *>): Map<*, *> {
   return nested
 }
 
-private fun assignmentExpansions(path: Path, raw: Map<*, *>, fallback: Int): Int {
-  val parsed = budgetLong(path, raw, "max_assignment_expansions", fallback.toLong())
+private fun assignmentExpansions(path: Path, raw: Map<*, *>, fallback: Int): Int =
+  budgetInt(path, raw, "max_assignment_expansions", fallback)
+
+private fun budgetInt(path: Path, raw: Map<*, *>, key: String, fallback: Int): Int {
+  val parsed = budgetLong(path, raw, key, fallback.toLong())
   if (parsed !in Int.MIN_VALUE.toLong()..Int.MAX_VALUE.toLong()) {
-    malformedBudget(
-      path,
-      "review_context_budget.max_assignment_expansions",
-      parsed,
-      "is outside the signed 32-bit integer range.",
-    )
+    malformedBudget(path, "review_context_budget.$key", parsed, "is outside the signed 32-bit integer range.")
   }
   return parsed.toInt()
 }

@@ -121,6 +121,9 @@ class ReviewPacketProjectionTest {
       ReviewRuleReference("rule-1", "AGENTS.md", "x".repeat(REVIEW_RULE_EXCERPT_MAX_CHARS + 1), "b".repeat(64))
     }
     assertFailsWith<IllegalArgumentException> { ReviewRuleReference("rule-1", "AGENTS.md", "ok", "not-a-digest") }
+    assertFailsWith<IllegalArgumentException> {
+      ReviewRuleReference("rule-1", "AGENTS.md", "ok", "b".repeat(64))
+    }
   }
 
   @Test fun `dependency allowlists reject traversal and duplicates`() {
@@ -181,10 +184,13 @@ class ReviewPacketProjectionTest {
       lane = "security",
       baseRevision = base.baseRevision,
       headRevision = base.headRevision,
-      assignedPaths = listOf("src/A.kt"),
-      assignedHunks = listOf(hunkA.hunkId),
+      assignedPaths = listOf("src/A.kt", "src/B.kt"),
+      assignedHunks = listOf(hunkA.hunkId, hunkB.hunkId),
       reviewRevision = revision,
-      laneDecision = ReviewLaneDecision("security", true, "routed", ownedPaths = listOf("src/A.kt")),
+      laneDecision = base.laneDecisions.first { it.lane == "security" },
+      matchedRules = base.matchedRules,
+      evidenceTargets = base.evidenceTargets,
+      dependencyAllowlist = base.dependencyAllowlist,
     )
     val envelope =
       GovernedReviewLaunch(assignment, base, "contract", "rubric", "broker", ReviewContextBudgetPolicy.DEFAULT)

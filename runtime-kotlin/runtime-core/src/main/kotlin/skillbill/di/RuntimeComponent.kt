@@ -22,6 +22,7 @@ import skillbill.application.goalrunner.WorkflowGoalRunnerOutcomeStore
 import skillbill.application.install.ExternalAddonOverlayService
 import skillbill.application.install.InstallService
 import skillbill.application.learning.LearningService
+import skillbill.application.review.DelegatedReviewLaunchBroker
 import skillbill.application.review.ParallelCodeReviewRunner
 import skillbill.application.review.ReviewService
 import skillbill.application.scaffold.InstallAgentService
@@ -70,6 +71,7 @@ import skillbill.infrastructure.fs.FileSystemRepoLocalConfig
 import skillbill.infrastructure.fs.FileSystemRepoSourceDiscoveryGateway
 import skillbill.infrastructure.fs.FileSystemRepoValidationGateway
 import skillbill.infrastructure.fs.FileSystemReviewAttribution
+import skillbill.infrastructure.fs.FileSystemReviewEvidenceBrokerFactory
 import skillbill.infrastructure.fs.FileSystemReviewInputSource
 import skillbill.infrastructure.fs.FileSystemScaffoldCatalogGateway
 import skillbill.infrastructure.fs.FileSystemScaffoldGateway
@@ -134,7 +136,10 @@ import skillbill.ports.install.reconcile.InstallReconcilePort
 import skillbill.ports.install.selection.InstallSelectionPersistencePort
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.review.ParallelReviewLaneRunner
+import skillbill.launcher.agentrun.AgentRunReviewIsolationResolver
 import skillbill.ports.review.ReviewAttributionPort
+import skillbill.ports.review.ReviewEvidenceBrokerFactory
+import skillbill.ports.review.ReviewLaunchIsolationResolver
 import skillbill.ports.review.ReviewInputSource
 import skillbill.ports.scaffold.RepoSourceDiscoveryGateway
 import skillbill.ports.scaffold.ScaffoldCatalogGateway
@@ -539,6 +544,18 @@ abstract class RuntimeComponent(
 
   @Provides
   @JvmSynthetic
+  internal fun reviewEvidenceBrokerFactory(
+    adapter: FileSystemReviewEvidenceBrokerFactory,
+  ): ReviewEvidenceBrokerFactory = adapter
+
+  @Provides
+  @JvmSynthetic
+  internal fun reviewLaunchIsolationResolver(
+    adapter: AgentRunReviewIsolationResolver,
+  ): ReviewLaunchIsolationResolver = adapter
+
+  @Provides
+  @JvmSynthetic
   internal fun featureSpecPathResolverPort(adapter: FileSystemFeatureSpecPathResolver): FeatureSpecPathResolverPort =
     adapter
 
@@ -558,6 +575,7 @@ abstract class RuntimeComponent(
     adapter
 
   abstract val parallelCodeReviewRunner: ParallelCodeReviewRunner
+  abstract val delegatedReviewLaunchBroker: DelegatedReviewLaunchBroker
 
   // Exposed as a pre-built object so the CLI consumer need not resolve the infra-fs
   // RepoLocalConfigPort adapter type, which is not on the CLI module's compile classpath.

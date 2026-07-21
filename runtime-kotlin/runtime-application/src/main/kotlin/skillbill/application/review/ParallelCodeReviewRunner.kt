@@ -24,8 +24,10 @@ import skillbill.ports.review.model.ParallelReviewLaneRunRequest
 import skillbill.review.ParallelReviewFindingParser
 import skillbill.review.ParallelReviewMerger
 import skillbill.review.context.model.ProviderTokenUsage
-import skillbill.review.context.model.REVIEW_CONTEXT_BUDGET_EXCEEDED
+import skillbill.review.context.model.ReviewBudgetEvaluator
+import skillbill.review.context.model.ReviewBudgetOutcome
 import skillbill.review.context.model.ReviewContextBudgetPolicy
+import skillbill.review.context.model.ReviewLaneIdentity
 import skillbill.review.context.model.TokenOwnership
 import skillbill.review.model.ParallelReviewLaneResult
 import java.nio.charset.StandardCharsets
@@ -209,18 +211,13 @@ class ParallelCodeReviewRunner(
     )
     return when (outcome) {
       is AgentRunLaunchFacts -> {
-        val resultBytes = outcome.stdout.toByteArray(StandardCharsets.UTF_8).size.toLong()
-        val maxLaneResultBytes = ReviewContextBudgetPolicy.DEFAULT.maxLaneResultBytes
-        val reason = laneFailureReason(outcome) ?: if (resultBytes > maxLaneResultBytes) {
-          "$REVIEW_CONTEXT_BUDGET_EXCEEDED: lane_result_bytes $resultBytes > $maxLaneResultBytes"
-        } else {
-          null
-        }
+        val usage = providerTokenUsage(outcome)
+        val reason = laneFailureReason(outcome) ?: laneBudgetReason(agentId, prompt, outcome, usage)
         ParallelReviewLaneOutcome(
           success = reason == null,
           rawOutput = outcome.stdout,
           failureReason = reason,
-          tokenUsage = providerTokenUsage(outcome),
+          tokenUsage = usage,
         )
       }
       is UnsupportedAgentRunLaunch ->
@@ -231,6 +228,29 @@ class ParallelCodeReviewRunner(
         )
     }
   }
+
+  /**
+   * A parallel lane is a headless process, so its token usage only becomes observable after the
+   * agent exited: an excess there is a reported regression, never an enforceable termination.
+   */
+  private fun laneBudgetReason(
+    agentId: String,
+    prompt: String,
+    outcome: AgentRunLaunchFacts,
+    usage: ProviderTokenUsage?,
+  ): String? {
+    val budget = ReviewContextBudgetPolicy.DEFAULT
+    val identity = ReviewLaneIdentity.ofParallelLane(agentId, prompt)
+    val resultBytes = outcome.stdout.toByteArray(StandardCharsets.UTF_8).size.toLong()
+    val exceeded = ReviewBudgetEvaluator.laneResultOutcome(identity, budget, resultBytes)
+    val regression = usage?.let {
+      ReviewBudgetEvaluator.providerUsageOutcome(identity, budget.providerTokenThresholds, it, enforceable = false)
+    }
+    return (exceeded ?: regression)?.let(::describeBudgetOutcome)
+  }
+
+  private fun describeBudgetOutcome(outcome: ReviewBudgetOutcome): String =
+    "${outcome.type}: ${outcome.budgetKind} ${outcome.observedValue} > ${outcome.configuredLimit}"
 
   private fun providerTokenUsage(outcome: AgentRunLaunchFacts): ProviderTokenUsage? {
     val values = listOf(

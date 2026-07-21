@@ -17,12 +17,11 @@ class ReviewContextSchemaContractVersionTest {
 
   @Test fun `every envelope branch pins the runtime contract version`() {
     val node = YAMLMapper().readTree(Files.readString(repoSchema))
-    val consts = node.path("\$defs").fields().asSequence()
-      .map { (name, branch) -> name to branch.path("properties").path("contract_version").path("const").asText("") }
-      .filter { (_, const) -> const.isNotBlank() }
-      .toList()
-    assertTrue(consts.size >= 5, "Expected every governed envelope branch to pin contract_version: $consts")
-    consts.forEach { (name, const) ->
+    val envelopeNames = node.path("oneOf").map { branch -> branch.path("\$ref").asText().substringAfterLast('/') }
+    assertTrue(envelopeNames.isNotEmpty(), "Expected governed envelope branches in schema oneOf")
+    envelopeNames.forEach { name ->
+      val const = node.path("\$defs").path(name).path("properties").path("contract_version").path("const").asText("")
+      assertTrue(const.isNotBlank(), "Branch '$name' does not pin contract_version")
       assertEquals(REVIEW_CONTEXT_CONTRACT_VERSION, const, "Branch '$name' pins a stale contract_version")
     }
   }

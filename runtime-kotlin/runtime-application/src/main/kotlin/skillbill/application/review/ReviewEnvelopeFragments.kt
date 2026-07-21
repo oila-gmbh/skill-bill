@@ -74,6 +74,8 @@ internal fun ReviewContextBudgetPolicy.toEnvelope(): Map<String, Any?> = linkedM
   "max_evidence_result_bytes" to maxEvidenceResultBytes,
   "max_lane_result_bytes" to maxLaneResultBytes,
   "max_assignment_expansions" to maxAssignmentExpansions,
+  "max_specialist_tool_calls" to maxSpecialistToolCalls,
+  "max_specialist_model_turns" to maxSpecialistModelTurns,
   "provider_token_thresholds" to linkedMapOf(
     "input_tokens" to providerTokenThresholds.inputTokens,
     "cached_input_tokens" to providerTokenThresholds.cachedInputTokens,

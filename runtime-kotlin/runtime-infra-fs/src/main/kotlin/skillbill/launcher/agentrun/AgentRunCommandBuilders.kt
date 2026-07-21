@@ -3,6 +3,7 @@ package skillbill.launcher.agentrun
 import com.fasterxml.jackson.databind.ObjectMapper
 import skillbill.install.model.InstallAgent
 import skillbill.launcher.process.AgentRunIdlePolicy
+import skillbill.ports.agentrun.model.ReviewLaunchIsolationStrategy
 import skillbill.ports.agentrun.model.SkillRunGoalContinuationContext
 import skillbill.ports.agentrun.model.SkillRunRequest
 import java.nio.file.Path
@@ -22,6 +23,7 @@ data class AgentRunCommand(
 interface AgentRunCommandBuilder {
   val agent: InstallAgent
   val outputDecoder: AgentRunOutputDecoder get() = AgentRunOutputDecoder.PLAIN
+  val reviewIsolation: ReviewLaunchIsolationStrategy get() = ReviewLaunchIsolationStrategy.UNSUPPORTED
   fun build(request: SkillRunRequest): AgentRunCommand
 }
 
@@ -45,6 +47,7 @@ internal fun goalContinuationEnvironment(request: SkillRunRequest): Map<String, 
 class ClaudeAgentRunCommandBuilder : AgentRunCommandBuilder {
   override val agent: InstallAgent = InstallAgent.CLAUDE
   override val outputDecoder: AgentRunOutputDecoder = AgentRunOutputDecoder.CLAUDE_JSON
+  override val reviewIsolation: ReviewLaunchIsolationStrategy = ReviewLaunchIsolationStrategy.FRESH_NATIVE_SUBAGENT
 
   override fun build(request: SkillRunRequest): AgentRunCommand {
     requireProcessLaunch(request)
@@ -77,6 +80,7 @@ class ClaudeAgentRunCommandBuilder : AgentRunCommandBuilder {
 class CodexAgentRunCommandBuilder : AgentRunCommandBuilder {
   override val agent: InstallAgent = InstallAgent.CODEX
   override val outputDecoder: AgentRunOutputDecoder = AgentRunOutputDecoder.CODEX_JSONL
+  override val reviewIsolation: ReviewLaunchIsolationStrategy = ReviewLaunchIsolationStrategy.CODEX_FORK_TURNS_NONE
 
   override fun build(request: SkillRunRequest): AgentRunCommand {
     requireProcessLaunch(request)

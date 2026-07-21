@@ -198,7 +198,7 @@ class FeatureSpecPreparationWriterTest {
   }
 
   @Test
-  fun `rewriting prepared artifacts projects preserved manifest runtime status into specs`() {
+  fun `rewriting prepared artifacts keeps runtime status only in the manifest`() {
     val repoRoot = Files.createTempDirectory("skillbill-feature-spec-status")
     val request = FeatureSpecWriteRequest(
       decision = singleSpecDecision(),
@@ -227,8 +227,9 @@ class FeatureSpecPreparationWriterTest {
 
     val rewritten = writer.write(repoRoot, request)
 
-    assertContains(Files.readString(repoRoot.resolve(rewritten.parentSpecPath)), "status: Blocked")
-    assertContains(Files.readString(repoRoot.resolve(rewritten.subtaskSpecPaths.single())), "status: Blocked")
+    assertTrue("status:" !in Files.readString(repoRoot.resolve(rewritten.parentSpecPath)))
+    assertTrue("status:" !in Files.readString(repoRoot.resolve(rewritten.subtaskSpecPaths.single())))
+    assertEquals("blocked", loadDecompositionManifest(manifestPath).status)
   }
 
   private fun singleSubtask() = FeatureSpecSubtaskPreparation(

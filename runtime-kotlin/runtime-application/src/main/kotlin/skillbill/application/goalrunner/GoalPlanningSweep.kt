@@ -90,19 +90,11 @@ class DefaultGoalPlanningSweep(
       return preSweepStopped(request, sharedContextReason(error))
     }
     val activeSubtasks = state.manifest.subtasks.filter { it.id in includedSubtaskIds(shared.planningPacket) }
-    val provenance = GoalPlanningContractProvenance(
+    val provenance = existingShared?.provenance ?: GoalPlanningContractProvenance(
       shared.parentSpecHash,
       shared.decompositionManifestHash,
       GoalPlanningPreparationSchemaPaths.EXPECTED_SCHEMA_ID,
     )
-    if (existingShared != null && existingShared.provenance != provenance) {
-      return stopped(
-        shared,
-        0,
-        "Goal planning shared preplan provenance is incompatible; " +
-          "hard reset or explicit operator migration is required.",
-      )
-    }
     val sharedCheckpoint = existingShared ?: produceSharedPreplan(shared, request, provenance)
       .getOrElse { error -> return stopped(shared, 0, error.message.orEmpty(), PHASE_PREPLAN) }
     if (activeSubtasks.isEmpty()) return GoalPlanningSweepOutcome.PreparedAll(identity, provenance)
@@ -317,7 +309,6 @@ class DefaultGoalPlanningSweep(
       repositoryIdentity = repositoryIdentity,
       normalizedIssueKey = state.manifest.issueKey.trim().uppercase(),
       parentSpecPath = parentSpecGoverningPath,
-      parentSpec = parentSpec,
       subtasks = state.manifest.subtasks,
     )
     return GoalPlanningSharedContext(
@@ -419,7 +410,6 @@ class DefaultGoalPlanningSweep(
     repositoryIdentity: String,
     normalizedIssueKey: String,
     parentSpecPath: String,
-    parentSpec: String,
     subtasks: List<DecompositionSubtask>,
   ) {
     require(packet.keys == SHARED_CONTEXT_PACKET_FIELDS) { "shared context packet fields are invalid" }
@@ -427,9 +417,7 @@ class DefaultGoalPlanningSweep(
     require(packet["repository_identity"] == repositoryIdentity) { "shared context repository identity is invalid" }
     require(packet["normalized_issue_key"] == normalizedIssueKey) { "shared context issue key is invalid" }
     require(packet["parent_spec_path"] == parentSpecPath) { "shared context parent spec path is invalid" }
-    require(packet["parent_spec"] == parentSpec.take(MAX_GOVERNED_CONTEXT_CHARS)) {
-      "shared context parent spec is invalid"
-    }
+    require(packet["parent_spec"] is String) { "shared context parent spec is invalid" }
     require((packet["decomposition_manifest"] as? String)?.length?.let { it <= MAX_GOVERNED_CONTEXT_CHARS } == true) {
       "shared context decomposition manifest is malformed"
     }

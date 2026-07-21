@@ -47,7 +47,6 @@ class FeatureTaskRuntimeRunner(
   private val branchSetupRunner get() = phaseGates.branchSetupRunner
   private val planningStopper get() = phaseGates.planningStopper
   private val lifecycleTelemetry get() = phaseGates.lifecycleTelemetry
-  private val specStatusProjector get() = phaseGates.specStatusProjector
   private val specSourceResolver get() = phaseGates.specGate.specSourceResolver
 
   // Refuses a foreign-mode workflow with a durable Blocked report instead of letting the mode guard

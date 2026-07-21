@@ -172,6 +172,18 @@ class ReviewContextSchemaValidatorTest {
     assertFailsWith<InvalidReviewContextSchemaError> { ReviewContextSchemaValidator.validate(envelope, "assignment") }
   }
 
+  @Test fun `backslash paths are rejected by the schema`() {
+    val envelope = assignment.toAssignmentEnvelope().asWireMap().toMutableMap()
+    envelope["dependency_allowlist"] = listOf("src\\..\\secret")
+    assertFailsWith<InvalidReviewContextSchemaError> { ReviewContextSchemaValidator.validate(envelope, "assignment") }
+  }
+
+  @Test fun `whitespace only identifiers are rejected by the schema`() {
+    val envelope = packet.toParentPacketEnvelope().asWireMap().toMutableMap()
+    envelope["review_id"] = "   "
+    assertFailsWith<InvalidReviewContextSchemaError> { ReviewContextSchemaValidator.validate(envelope, "packet") }
+  }
+
   @Test fun `positional hunk identifiers are rejected`() {
     val envelope = assignment.toAssignmentEnvelope().asWireMap().toMutableMap()
     envelope["assigned_hunks"] = listOf("@@ -1 +1 @@")

@@ -32,7 +32,7 @@ class ReviewContextModelsTest {
 
   @Test fun `default budget is governed`() {
     assertEquals(524_288, ReviewContextBudgetPolicy.DEFAULT.maxParentPacketBytes)
-    assertEquals(96_000, ReviewContextBudgetPolicy.DEFAULT.providerTokenThresholds.totalTokens)
+    assertEquals(56_000, ReviewContextBudgetPolicy.DEFAULT.providerTokenThresholds.totalTokens)
   }
 
   @Test fun `cached input cannot exceed or exist without input`() {
@@ -121,6 +121,17 @@ class ReviewContextModelsTest {
     assertEquals(packet("src\\A.kt", "clean\r\n").digest, packet("src/A.kt", "clean\n").digest)
   }
 
+  @Test fun `packet digest is deterministic for hunks tied on path and new start`() {
+    val first = ReviewChangedHunk("A.kt", 1, 1, 5, 1, "+first")
+    val second = ReviewChangedHunk("A.kt", 3, 1, 5, 2, "+second")
+    fun packet(hunks: List<ReviewChangedHunk>) = ReviewContextPacket(
+      "review", "repo", "base", "head", "clean", "kotlin", "kotlin", emptyList(), listOf("security"), hunks,
+      reviewRevision = revision(),
+      laneDecisions = listOf(lane("security", listOf("A.kt"))),
+    )
+    assertEquals(packet(listOf(first, second)).digest, packet(listOf(second, first)).digest)
+  }
+
   @Test fun `governed Codex launches reject inherited and omitted turns`() {
     val packet = launchPacket()
     val launch = GovernedReviewLaunch(
@@ -157,11 +168,25 @@ class ReviewContextModelsTest {
     assertFailsWith<IllegalArgumentException> {
       GovernedReviewLaunch(widened, packet, "contract", "rubric", "broker", ReviewContextBudgetPolicy.DEFAULT)
     }
+    val stale = launchAssignment(packet).copy(reviewRevision = ReviewRevision("review", 2))
+    assertFailsWith<IllegalArgumentException> {
+      GovernedReviewLaunch(stale, packet, "contract", "rubric", "broker", ReviewContextBudgetPolicy.DEFAULT)
+    }
+    val changedDecision = launchAssignment(packet).copy(laneDecision = lane("security", listOf("A.kt"), "forged"))
+    assertFailsWith<IllegalArgumentException> {
+      GovernedReviewLaunch(changedDecision, packet, "contract", "rubric", "broker", ReviewContextBudgetPolicy.DEFAULT)
+    }
+    val escapingDependency = launchAssignment(packet).copy(
+      dependencyAllowlist = ReviewDependencyAllowlist(listOf("Elsewhere.kt")),
+    )
+    assertFailsWith<IllegalArgumentException> {
+      GovernedReviewLaunch(escapingDependency, packet, "contract", "rubric", "broker", ReviewContextBudgetPolicy.DEFAULT)
+    }
   }
 
   @Test fun `oversized compact launch returns typed budget evidence`() {
     val packet = launchPacket()
-    val assignment = launchAssignment(packet, hunks = emptyList())
+    val assignment = launchAssignment(packet)
     val policy =
       ReviewContextBudgetPolicy(
         maxParentPacketBytes = 10_000,

@@ -5,6 +5,8 @@ import java.security.MessageDigest
 
 const val REVIEW_CONTEXT_BUDGET_EXCEEDED: String = "review_context_budget_exceeded"
 
+const val REVIEW_BUDGET_REGRESSION: String = "budget_regression"
+
 const val REVIEW_RULE_EXCERPT_MAX_CHARS: Int = 2_000
 
 enum class ResolvedReviewExecutionMode { INLINE, DELEGATED }
@@ -157,11 +159,11 @@ data class ReviewExpansionRecord(
 data class ReviewAutoEligibility(val oversized: Boolean, val highRisk: Boolean, val layeredStack: Boolean)
 
 data class ProviderTokenThresholds(
-  val inputTokens: Long = 64_000,
-  val cachedInputTokens: Long = 48_000,
-  val outputTokens: Long = 12_000,
-  val reasoningTokens: Long = 16_000,
-  val totalTokens: Long = 96_000,
+  val inputTokens: Long = 40_000,
+  val cachedInputTokens: Long = 30_000,
+  val outputTokens: Long = 8_000,
+  val reasoningTokens: Long = 10_000,
+  val totalTokens: Long = 56_000,
 ) {
   init {
     val dimensions = listOf(inputTokens, cachedInputTokens, outputTokens, reasoningTokens, totalTokens)
@@ -179,6 +181,8 @@ data class ReviewContextBudgetPolicy(
   val maxEvidenceResultBytes: Long = 65_536,
   val maxLaneResultBytes: Long = 65_536,
   val maxAssignmentExpansions: Int = 3,
+  val maxSpecialistToolCalls: Int = 40,
+  val maxSpecialistModelTurns: Int = 24,
   val providerTokenThresholds: ProviderTokenThresholds = ProviderTokenThresholds(),
 ) {
   init {
@@ -191,6 +195,8 @@ data class ReviewContextBudgetPolicy(
     )
     require(byteLimits.all { it > 0 }) { "Review-context byte limits must be positive." }
     require(maxAssignmentExpansions >= 0) { "Assignment expansions cannot be negative." }
+    require(maxSpecialistToolCalls > 0) { "Specialist tool-call budget must be positive." }
+    require(maxSpecialistModelTurns > 0) { "Specialist model-turn budget must be positive." }
     require(maxEvidenceResultBytes <= maxLaneEvidenceBytes) {
       "Evidence-result bytes cannot exceed cumulative lane-evidence bytes."
     }
@@ -285,6 +291,9 @@ data class ReviewAssignment(
     }
     require(expansions.map { it.sequence }.distinct().size == expansions.size) {
       "Assignment expansion sequences must be unique."
+    }
+    require(expansions.all { it.assignmentDigest == digest }) {
+      "Assignment '$lane' expansions must reference their enclosing assignment digest."
     }
     val reachable = assigned + dependencyAllowlist.normalized
     val escaping = expansions.map { it.requestedPath.replace('\\', '/') }.filterNot { it in reachable }
@@ -432,7 +441,7 @@ data class ReviewContextPacket(
     addOns.sorted().joinToString("\u001f"),
     selectedLanes.sorted().joinToString("\u001f"),
     laneDecisions.map { it.canonical }.sorted().joinToString("\u001f"),
-    changedHunks.sortedWith(compareBy(ReviewChangedHunk::path, ReviewChangedHunk::newStart))
+    changedHunks.sortedBy { it.canonicalValue() }
       .joinToString("\u001e") { it.canonicalValue() },
     matchedRules.map { it.canonical }.sorted().joinToString("\u001f"),
     learningsReferences.map { it.canonical }.sorted().joinToString("\u001f"),
@@ -463,10 +472,39 @@ data class GovernedReviewLaunch(
     require(assignment.lane in packet.selectedLanes) {
       "Launch lane '${assignment.lane}' is not a selected lane of the packet."
     }
-    val unowned = assignment.assignedPaths.map { it.replace('\\', '/') }.filterNot { it in packet.ownedPaths }
+    require(assignment.reviewRevision == packet.reviewRevision) { "Launch review revision differs from the packet." }
+    require(assignment.baseRevision == packet.baseRevision && assignment.headRevision == packet.headRevision) {
+      "Launch base/head revisions differ from the packet."
+    }
+    val packetDecision = packet.laneDecisions.single { it.lane == assignment.lane }
+    require(assignment.laneDecision == packetDecision) { "Launch lane decision differs from the packet." }
+    val normalizedAssignedPaths = assignment.assignedPaths.map { it.replace('\\', '/') }.toSet()
+    val unowned = normalizedAssignedPaths.filterNot { it in packet.ownedPaths }
     require(unowned.isEmpty()) { "Launch claims paths the packet does not own: ${unowned.sorted()}." }
+    require(normalizedAssignedPaths == packetDecision.normalizedOwnedPaths.toSet()) {
+      "Launch paths differ from the packet lane decision."
+    }
     val unownedHunks = assignment.assignedHunks.filterNot { it in packet.ownedHunkIds }
     require(unownedHunks.isEmpty()) { "Launch claims hunk ids the packet does not own." }
+    val expectedHunks = packet.changedHunks
+      .filter { it.path.replace('\\', '/') in packetDecision.normalizedOwnedPaths }
+      .map { it.hunkId }
+      .toSet()
+    require(assignment.assignedHunks.toSet() == expectedHunks) {
+      "Launch hunks differ from the packet-owned hunks for the lane."
+    }
+    require(assignment.dependencyAllowlist.normalized.all { it in packet.dependencyAllowlist.normalized }) {
+      "Launch dependency allowlist escapes the packet allowlist."
+    }
+    require(assignment.matchedRules.toSet() == packet.matchedRules.toSet()) {
+      "Launch matched rules differ from the packet rules."
+    }
+    val expectedTargets = packet.evidenceTargets
+      .filter { it.path.replace('\\', '/') in packetDecision.normalizedOwnedPaths }
+      .toSet()
+    require(assignment.evidenceTargets.toSet() == expectedTargets) {
+      "Launch evidence targets differ from the packet targets for the lane."
+    }
   }
 
   fun requireCodexForkTurns(forkTurns: String?) {
@@ -502,7 +540,8 @@ data class GovernedReviewLaunch(
     ReviewPacketConsumerContract.FORBIDDEN_REDISCOVERY.forEach { appendLine("  - $it") }
     appendLine(
       "budgets: launch=${budget.maxLaneLaunchBytes}, evidence=${budget.maxLaneEvidenceBytes}, " +
-        "result=${budget.maxLaneResultBytes}, expansions=${budget.maxAssignmentExpansions}",
+        "result=${budget.maxLaneResultBytes}, expansions=${budget.maxAssignmentExpansions}, " +
+        "tool_calls=${budget.maxSpecialistToolCalls}, model_turns=${budget.maxSpecialistModelTurns}",
     )
   }.trimEnd()
 
@@ -524,19 +563,132 @@ data class GovernedReviewLaunch(
   }
 }
 
+sealed interface ReviewBudgetOutcome {
+  val lane: String
+  val budgetKind: String
+  val configuredLimit: Long
+  val observedValue: Long
+  val packetDigest: String
+  val assignmentDigest: String
+  val enforceable: Boolean
+  val type: String
+}
+
 data class ReviewContextBudgetExceeded(
-  val lane: String,
-  val budgetKind: String,
-  val configuredLimit: Long,
-  val observedValue: Long,
-  val packetDigest: String,
-  val assignmentDigest: String,
-  val enforceable: Boolean,
-) {
-  val type: String = REVIEW_CONTEXT_BUDGET_EXCEEDED
+  override val lane: String,
+  override val budgetKind: String,
+  override val configuredLimit: Long,
+  override val observedValue: Long,
+  override val packetDigest: String,
+  override val assignmentDigest: String,
+  override val enforceable: Boolean,
+) : ReviewBudgetOutcome {
+  override val type: String = REVIEW_CONTEXT_BUDGET_EXCEEDED
   init {
     require(lane.isNotBlank() && budgetKind.isNotBlank())
     require(configuredLimit >= 0 && observedValue > configuredLimit)
+  }
+}
+
+/**
+ * A provider dimension that only becomes observable after the worker has finished, so no seam
+ * could have stopped it. It is reported, never used to truncate or retry a lane.
+ */
+data class ReviewBudgetRegression(
+  override val lane: String,
+  override val budgetKind: String,
+  override val configuredLimit: Long,
+  override val observedValue: Long,
+  override val packetDigest: String,
+  override val assignmentDigest: String,
+) : ReviewBudgetOutcome {
+  override val enforceable: Boolean = false
+  override val type: String = REVIEW_BUDGET_REGRESSION
+  init {
+    require(lane.isNotBlank() && budgetKind.isNotBlank())
+    require(configuredLimit >= 0 && observedValue > configuredLimit)
+  }
+}
+
+data class ReviewLaneIdentity(val lane: String, val packetDigest: String, val assignmentDigest: String) {
+  init {
+    require(lane.isNotBlank()) { "Review lane identity lane must not be blank." }
+    require(packetDigest.matches(SHA256_HEX) && assignmentDigest.matches(SHA256_HEX)) {
+      "Review lane identity digests must be lowercase SHA-256."
+    }
+  }
+
+  companion object {
+    fun of(assignment: ReviewAssignment): ReviewLaneIdentity =
+      ReviewLaneIdentity(assignment.lane, assignment.packetDigest, assignment.digest)
+
+    /**
+     * The dual-agent parallel runner has no packet; its lane identity is content-addressed over the
+     * authoritative parent prompt it hands each agent, which is the only scope artifact that exists there.
+     */
+    fun ofParallelLane(agentId: String, parentPrompt: String): ReviewLaneIdentity = ReviewLaneIdentity(
+      lane = agentId,
+      packetDigest = sha256(parentPrompt.replace("\r\n", "\n")),
+      assignmentDigest = sha256(agentId + "\u001f" + parentPrompt.replace("\r\n", "\n")),
+    )
+  }
+}
+
+object ReviewBudgetEvaluator {
+  fun laneResultOutcome(
+    identity: ReviewLaneIdentity,
+    budget: ReviewContextBudgetPolicy,
+    observedBytes: Long,
+  ): ReviewContextBudgetExceeded? = exceededOrNull(
+    identity,
+    "lane_result_bytes",
+    budget.maxLaneResultBytes,
+    observedBytes,
+  )
+
+  /**
+   * Enforceable seams (a provider that reports usage mid-run) terminate the lane; a provider that
+   * only reports totals once the worker exited yields a regression the caller records but cannot prevent.
+   */
+  fun providerUsageOutcome(
+    identity: ReviewLaneIdentity,
+    thresholds: ProviderTokenThresholds,
+    usage: ProviderTokenUsage,
+    enforceable: Boolean,
+  ): ReviewBudgetOutcome? {
+    val breach = listOf(
+      "input_tokens" to (usage.inputTokens to thresholds.inputTokens),
+      "cached_input_tokens" to (usage.cachedInputTokens to thresholds.cachedInputTokens),
+      "output_tokens" to (usage.outputTokens to thresholds.outputTokens),
+      "reasoning_tokens" to (usage.reasoningTokens to thresholds.reasoningTokens),
+      "total_tokens" to (usage.totalTokens to thresholds.totalTokens),
+    ).firstOrNull { (_, pair) -> pair.first != null && pair.first!! > pair.second } ?: return null
+    val (kind, pair) = breach
+    val (observed, limit) = pair
+    return if (enforceable) {
+      exceededOrNull(identity, kind, limit, observed!!)
+    } else {
+      ReviewBudgetRegression(identity.lane, kind, limit, observed!!, identity.packetDigest, identity.assignmentDigest)
+    }
+  }
+
+  fun exceededOrNull(
+    identity: ReviewLaneIdentity,
+    budgetKind: String,
+    configuredLimit: Long,
+    observedValue: Long,
+  ): ReviewContextBudgetExceeded? = if (observedValue > configuredLimit) {
+    ReviewContextBudgetExceeded(
+      lane = identity.lane,
+      budgetKind = budgetKind,
+      configuredLimit = configuredLimit,
+      observedValue = observedValue,
+      packetDigest = identity.packetDigest,
+      assignmentDigest = identity.assignmentDigest,
+      enforceable = true,
+    )
+  } else {
+    null
   }
 }
 

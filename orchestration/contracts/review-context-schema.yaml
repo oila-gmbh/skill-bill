@@ -10,12 +10,12 @@ oneOf:
   - $ref: "#/$defs/accounting_summary"
 $defs:
   digest: { type: string, pattern: "^[a-f0-9]{64}$" }
-  identifier: { type: string, minLength: 1 }
-  path: { type: string, minLength: 1, pattern: '^(?!/)(?!.*(?:^|/)\.\.(?:/|$)).+$' }
+  identifier: { type: string, minLength: 1, pattern: '.*\S.*' }
+  path: { type: string, minLength: 1, pattern: '^(?!/)(?!.*\\)(?!.*(?:^|/)\.\.(?:/|$)).+$' }
   strings:
     type: array
     uniqueItems: true
-    items: { type: string, minLength: 1 }
+    items: { type: string, minLength: 1, pattern: '.*\S.*' }
   hunk_id: { type: string, pattern: "^[a-f0-9]{64}$" }
   hunk_ids:
     type: array
@@ -35,7 +35,7 @@ $defs:
     properties:
       rule_id: { $ref: "#/$defs/identifier" }
       source_path: { $ref: "#/$defs/path" }
-      excerpt: { type: string, minLength: 1, maxLength: 2000 }
+      excerpt: { type: string, minLength: 1, maxLength: 2000, pattern: '.*\S.*' }
       digest: { $ref: "#/$defs/digest" }
   rule_references:
     type: array
@@ -78,7 +78,7 @@ $defs:
     properties:
       lane: { $ref: "#/$defs/identifier" }
       included: { type: boolean }
-      reason: { type: string, minLength: 1 }
+      reason: { type: string, minLength: 1, pattern: '.*\S.*' }
       signals: { $ref: "#/$defs/strings" }
       owned_paths:
         type: array
@@ -92,7 +92,7 @@ $defs:
       expansion_id: { $ref: "#/$defs/identifier" }
       assignment_digest: { $ref: "#/$defs/digest" }
       requested_path: { $ref: "#/$defs/path" }
-      reachability_reason: { type: string, minLength: 1 }
+      reachability_reason: { type: string, minLength: 1, pattern: '.*\S.*' }
       authorized: { type: boolean }
       sequence: { type: integer, minimum: 0 }
   expansion_records:
@@ -118,12 +118,12 @@ $defs:
     properties:
       contract_version: { const: "0.2" }
       kind: { const: parent_packet }
-      review_id: { type: string, minLength: 1 }
+      review_id: { $ref: "#/$defs/identifier" }
       packet_digest: { $ref: "#/$defs/digest" }
       review_revision: { $ref: "#/$defs/review_revision" }
-      repository_identity: { type: string, minLength: 1 }
-      base_revision: { type: string, minLength: 1 }
-      head_revision: { type: string, minLength: 1 }
+      repository_identity: { $ref: "#/$defs/identifier" }
+      base_revision: { $ref: "#/$defs/identifier" }
+      head_revision: { $ref: "#/$defs/identifier" }
       status: { type: string }
       stack: { type: [string, "null"] }
       pack: { type: [string, "null"] }
@@ -151,14 +151,14 @@ $defs:
     properties:
       contract_version: { const: "0.2" }
       kind: { const: assignment }
-      review_id: { type: string, minLength: 1 }
+      review_id: { $ref: "#/$defs/identifier" }
       packet_digest: { $ref: "#/$defs/digest" }
       assignment_digest: { $ref: "#/$defs/digest" }
       review_revision: { $ref: "#/$defs/review_revision" }
-      lane: { type: string, minLength: 1 }
+      lane: { $ref: "#/$defs/identifier" }
       lane_decision: { $ref: "#/$defs/lane_decision" }
-      base_revision: { type: string, minLength: 1 }
-      head_revision: { type: string, minLength: 1 }
+      base_revision: { $ref: "#/$defs/identifier" }
+      head_revision: { $ref: "#/$defs/identifier" }
       assigned_paths: { type: array, uniqueItems: true, items: { $ref: "#/$defs/path" } }
       assigned_hunks: { $ref: "#/$defs/hunk_ids" }
       criteria_references: { $ref: "#/$defs/strings" }
@@ -173,15 +173,15 @@ $defs:
     properties:
       contract_version: { const: "0.2" }
       kind: { const: launch }
-      review_id: { type: string, minLength: 1 }
+      review_id: { $ref: "#/$defs/identifier" }
       packet_digest: { $ref: "#/$defs/digest" }
       assignment_digest: { $ref: "#/$defs/digest" }
       review_revision: { $ref: "#/$defs/review_revision" }
-      lane: { type: string, minLength: 1 }
-      base_revision: { type: string, minLength: 1 }
-      head_revision: { type: string, minLength: 1 }
-      specialist_contract: { type: string, minLength: 1 }
-      rubric: { type: string, minLength: 1 }
+      lane: { $ref: "#/$defs/identifier" }
+      base_revision: { $ref: "#/$defs/identifier" }
+      head_revision: { $ref: "#/$defs/identifier" }
+      specialist_contract: { type: string, minLength: 1, pattern: '.*\S.*' }
+      rubric: { type: string, minLength: 1, pattern: '.*\S.*' }
       assigned_paths: { type: array, uniqueItems: true, items: { $ref: "#/$defs/path" } }
       assigned_hunks: { $ref: "#/$defs/hunk_ids" }
       criteria_references: { $ref: "#/$defs/strings" }
@@ -189,13 +189,13 @@ $defs:
       evidence_targets: { $ref: "#/$defs/evidence_targets" }
       dependency_allowlist: { $ref: "#/$defs/dependency_allowlist" }
       forbidden_rediscovery: { $ref: "#/$defs/strings", minItems: 1 }
-      broker_id: { type: string, minLength: 1 }
+      broker_id: { $ref: "#/$defs/identifier" }
       isolation: { const: fresh }
       budget: { $ref: "#/$defs/budget" }
   budget:
     type: object
     additionalProperties: false
-    required: [max_parent_packet_bytes, max_lane_launch_bytes, max_lane_evidence_bytes, max_evidence_result_bytes, max_lane_result_bytes, max_assignment_expansions, provider_token_thresholds]
+    required: [max_parent_packet_bytes, max_lane_launch_bytes, max_lane_evidence_bytes, max_evidence_result_bytes, max_lane_result_bytes, max_assignment_expansions, max_specialist_tool_calls, max_specialist_model_turns, provider_token_thresholds]
     properties:
       max_parent_packet_bytes: { type: integer, minimum: 1 }
       max_lane_launch_bytes: { type: integer, minimum: 1 }
@@ -203,6 +203,8 @@ $defs:
       max_evidence_result_bytes: { type: integer, minimum: 1 }
       max_lane_result_bytes: { type: integer, minimum: 1 }
       max_assignment_expansions: { type: integer, minimum: 0 }
+      max_specialist_tool_calls: { type: integer, minimum: 1 }
+      max_specialist_model_turns: { type: integer, minimum: 1 }
       provider_token_thresholds: { $ref: "#/$defs/provider_token_thresholds" }
   provider_token_thresholds:
     type: object
@@ -221,12 +223,12 @@ $defs:
     properties:
       contract_version: { const: "0.2" }
       kind: { const: budget_outcome }
-      review_id: { type: string, minLength: 1 }
+      review_id: { $ref: "#/$defs/identifier" }
       packet_digest: { $ref: "#/$defs/digest" }
       assignment_digest: { $ref: "#/$defs/digest" }
-      lane: { type: string, minLength: 1 }
+      lane: { $ref: "#/$defs/identifier" }
       terminal_outcome: { enum: [review_context_budget_exceeded, budget_regression] }
-      budget_kind: { type: string, minLength: 1 }
+      budget_kind: { $ref: "#/$defs/identifier" }
       configured_limit: { type: integer, minimum: 0 }
       observed_value: { type: integer, minimum: 0 }
       enforceable: { type: boolean }
@@ -248,7 +250,7 @@ $defs:
     properties:
       contract_version: { const: "0.2" }
       kind: { const: accounting_summary }
-      review_id: { type: string, minLength: 1 }
+      review_id: { $ref: "#/$defs/identifier" }
       packet_digest: { $ref: "#/$defs/digest" }
       lanes:
         type: array
@@ -257,7 +259,7 @@ $defs:
           additionalProperties: false
           required: [lane, assignment_digest, launch_bytes, evidence_bytes, result_bytes, expansions, terminal_outcome, usage]
           properties:
-            lane: { type: string, minLength: 1 }
+            lane: { $ref: "#/$defs/identifier" }
             assignment_digest: { $ref: "#/$defs/digest" }
             launch_bytes: { type: integer, minimum: 0 }
             evidence_bytes: { type: integer, minimum: 0 }
@@ -282,4 +284,6 @@ x-coherence-checks:
   - Expansion records reference an assignment_digest that exists in the current review.
   - Expansion records are excluded from the digest inputs of the assignment and packet they reference, so recording an expansion leaves assignment_digest and packet_digest unchanged.
   - An assignment records no more expansions than max_assignment_expansions allows.
+  - A budget_regression terminal_outcome is reported only for a non-enforceable provider dimension observed after the worker exited, and is never enforceable.
+  - Specialist tool calls and model turns are measured at the broker seam and terminate the lane with review_context_budget_exceeded once their budget is passed.
   - Hunk ids are content-addressed over path, spans, and normalized content, not positional.

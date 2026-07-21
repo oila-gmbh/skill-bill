@@ -18,7 +18,6 @@ import skillbill.application.featuretask.FeatureTaskRuntimePlanningStopper
 import skillbill.application.featuretask.FeatureTaskRuntimeRunInvariantsStore
 import skillbill.application.featuretask.FeatureTaskRuntimeRunner
 import skillbill.application.featuretask.FeatureTaskRuntimeSpecGate
-import skillbill.application.featuretask.FeatureTaskRuntimeSpecStatusProjector
 import skillbill.application.featuretask.FeatureTaskRuntimeStatusService
 import skillbill.application.featuretask.SpecSourceResolver
 import skillbill.application.model.FeatureTaskRuntimeAgentAssignment
@@ -1864,7 +1863,7 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
 
 class FeatureTaskRuntimeRunnerSpecLifecycleTest {
   @Test
-  fun `standalone run flips its spec status to complete before commit_push so the commit includes it`() {
+  fun `standalone run does not mutate spec status before commit_push`() {
     val repoRoot = Files.createTempDirectory("skillbill-runtime-spec-status")
     val specPath = repoRoot.resolve(SPEC_REFERENCE)
     Files.createDirectories(specPath.parent)
@@ -1884,12 +1883,12 @@ class FeatureTaskRuntimeRunnerSpecLifecycleTest {
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
 
-    assertContains(requireNotNull(specAtCommitLaunch), "status: Complete")
-    assertContains(Files.readString(specPath), "status: Complete")
+    assertContains(requireNotNull(specAtCommitLaunch), "status: Pending")
+    assertContains(Files.readString(specPath), "status: Pending")
   }
 
   @Test
-  fun `goal-continuation run leaves its spec status for the goal runner manifest projection to own`() {
+  fun `goal-continuation run does not mutate its spec status`() {
     val repoRoot = Files.createTempDirectory("skillbill-runtime-spec-status-goal")
     val specPath = repoRoot.resolve(SPEC_REFERENCE)
     Files.createDirectories(specPath.parent)
@@ -3797,7 +3796,6 @@ private fun runtimePhaseGates(
   planningStopper,
   lifecycleTelemetry,
   gitOperations,
-  FeatureTaskRuntimeSpecStatusProjector(TestDecompositionManifestFileStore),
   specGate,
 )
 

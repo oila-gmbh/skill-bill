@@ -49,6 +49,16 @@ enum class ConversationIsolation(val forkTurns: String) {
   NONE("none"),
 }
 
+/**
+ * Named per-agent isolation strategy for governed review launches, resolved from the agent's own
+ * command builder. The process runner never reads agent identity; it reads the strategy.
+ */
+enum class ReviewLaunchIsolationStrategy(val forkTurns: String?, val supported: Boolean) {
+  CODEX_FORK_TURNS_NONE(ConversationIsolation.NONE.forkTurns, true),
+  FRESH_NATIVE_SUBAGENT(null, true),
+  UNSUPPORTED(null, false),
+}
+
 data class SkillRunGoalContinuationContext(
   val parentIssueKey: String,
   val subtaskId: Int,

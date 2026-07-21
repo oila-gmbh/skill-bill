@@ -1,0 +1,98 @@
+package skillbill.review.context.model
+
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertNull
+
+class ReviewOperationPolicyTest {
+  private val policy = ReviewOperationPolicy(
+    assignment = assignment(),
+    laneRubricId = "security",
+    namedDependencies = setOf("src/Dependency.kt"),
+  )
+
+  @Test fun `scope status and diff rediscovery are forbidden`() {
+    assertEquals("review_status", category(ReviewOperationKind.SHELL_COMMAND, "git status --porcelain"))
+    assertEquals("review_scope", category(ReviewOperationKind.SHELL_COMMAND, "gh pr diff 42"))
+    assertEquals("diff_recomputation", category(ReviewOperationKind.SHELL_COMMAND, "git diff main...HEAD"))
+    assertEquals(
+      "base_head_revision_discovery",
+      category(ReviewOperationKind.SHELL_COMMAND, "git merge-base HEAD main"),
+    )
+  }
+
+  @Test fun `routing learnings telemetry and build fact rediscovery are forbidden`() {
+    assertEquals(
+      "platform_pack_and_addon_resolution",
+      category(ReviewOperationKind.FILE_READ, "platform-packs/kotlin/platform.yaml"),
+    )
+    assertEquals("dominant_stack_routing", category(ReviewOperationKind.MCP_TOOL, "detect_stack"))
+    assertEquals("learnings_resolution", category(ReviewOperationKind.MCP_TOOL, "resolve_learnings"))
+    assertEquals("telemetry_ownership_determination", category(ReviewOperationKind.MCP_TOOL, "review_stats"))
+    assertEquals("build_test_fact_discovery", category(ReviewOperationKind.SHELL_COMMAND, "./gradlew check"))
+  }
+
+  @Test fun `guidance traversal is forbidden`() {
+    assertEquals("project_guidance_traversal", category(ReviewOperationKind.FILE_READ, "AGENTS.md"))
+    assertEquals("project_guidance_traversal", category(ReviewOperationKind.FILE_READ, "src/nested/CLAUDE.md"))
+  }
+
+  @Test fun `broad searches are forbidden and assigned-scope searches are allowed`() {
+    assertEquals("broad_repository_search", category(ReviewOperationKind.SEARCH, "grep -r TODO ."))
+    assertEquals("broad_repository_search", category(ReviewOperationKind.SEARCH, "rg secret src/Other.kt"))
+    assertNull(policy.classify(ReviewRequestedOperation(ReviewOperationKind.SEARCH, "rg secret src/Assigned.kt")))
+  }
+
+  @Test fun `only the lane rubric may be read`() {
+    assertNull(policy.classify(ReviewRequestedOperation(ReviewOperationKind.RUBRIC_READ, "security")))
+    assertEquals("unrelated_rubric_read", category(ReviewOperationKind.RUBRIC_READ, "performance"))
+  }
+
+  @Test fun `unselected mcp tools and unscoped shell are forbidden`() {
+    assertEquals("unselected_mcp_tool_call", category(ReviewOperationKind.MCP_TOOL, "notion_search"))
+    assertEquals("unscoped_shell_command", category(ReviewOperationKind.SHELL_COMMAND, "curl https://example.test"))
+  }
+
+  @Test fun `assigned paths and named dependencies read without an expansion`() {
+    assertNull(policy.classify(ReviewRequestedOperation(ReviewOperationKind.FILE_READ, "src/Assigned.kt")))
+    assertNull(policy.classify(ReviewRequestedOperation(ReviewOperationKind.FILE_READ, "src/Dependency.kt")))
+  }
+
+  @Test fun `unassigned access is forbidden without a reachability reason and allowed with one`() {
+    assertEquals("unassigned_file_access", category(ReviewOperationKind.FILE_READ, "src/Elsewhere.kt"))
+    assertNull(
+      policy.classify(
+        ReviewRequestedOperation(ReviewOperationKind.FILE_READ, "src/Elsewhere.kt", "called by assigned symbol"),
+      ),
+    )
+  }
+
+  @Test fun `every classifier category is declared by the packet consumer contract`() {
+    val categories = listOf(
+      category(ReviewOperationKind.SHELL_COMMAND, "git status"),
+      category(ReviewOperationKind.SEARCH, "grep -r TODO ."),
+      category(ReviewOperationKind.RUBRIC_READ, "performance"),
+      category(ReviewOperationKind.FILE_READ, "src/Elsewhere.kt"),
+      category(ReviewOperationKind.MCP_TOOL, "notion_search"),
+      category(ReviewOperationKind.SHELL_COMMAND, "curl https://example.test"),
+    )
+    categories.forEach { category ->
+      assertEquals(true, category in ReviewPacketConsumerContract.FORBIDDEN_REDISCOVERY, "undeclared: $category")
+    }
+  }
+
+  private fun category(kind: ReviewOperationKind, target: String): String? =
+    policy.classify(ReviewRequestedOperation(kind, target))?.category
+
+  private fun assignment() = ReviewAssignment(
+    reviewId = "review",
+    packetDigest = "a".repeat(64),
+    lane = "security",
+    baseRevision = "base",
+    headRevision = "head",
+    assignedPaths = listOf("src/Assigned.kt"),
+    assignedHunks = emptyList(),
+    reviewRevision = ReviewRevision("rvs-1", 1),
+    laneDecision = ReviewLaneDecision("security", true, "routed", ownedPaths = listOf("src/Assigned.kt")),
+  )
+}

@@ -216,7 +216,7 @@ class ReviewPreparationServiceTest {
     val prepared = service(ports()).prepare(request())
     val foreign = prepared.assignments.first().copy(assignedPaths = listOf("src/Elsewhere.kt"))
     val failure = assertFailsWith<InvalidReviewContextSchemaError> {
-      service(ports()).validateAgainstPacket(prepared.packet, listOf(foreign))
+      service(ports()).validateAgainstPacket(prepared.packet, listOf(foreign) + prepared.assignments.drop(1))
     }
     assertTrue("paths not owned by the packet" in failure.message.orEmpty())
   }
@@ -225,7 +225,7 @@ class ReviewPreparationServiceTest {
     val prepared = service(ports()).prepare(request())
     val foreign = prepared.assignments.first().copy(assignedHunks = listOf("f".repeat(64)))
     val failure = assertFailsWith<InvalidReviewContextSchemaError> {
-      service(ports()).validateAgainstPacket(prepared.packet, listOf(foreign))
+      service(ports()).validateAgainstPacket(prepared.packet, listOf(foreign) + prepared.assignments.drop(1))
     }
     assertTrue("hunk ids not owned by the packet" in failure.message.orEmpty())
   }
@@ -235,13 +235,13 @@ class ReviewPreparationServiceTest {
     val staleDigest = prepared.assignments.first().copy(packetDigest = "a".repeat(64))
     assertTrue(
       "different review revision" in assertFailsWith<InvalidReviewContextSchemaError> {
-        service(ports()).validateAgainstPacket(prepared.packet, listOf(staleDigest))
+        service(ports()).validateAgainstPacket(prepared.packet, listOf(staleDigest) + prepared.assignments.drop(1))
       }.message.orEmpty(),
     )
     val staleRevision = prepared.assignments.first().copy(reviewRevision = ReviewRevision("rvs-1", 9))
     assertTrue(
       "does not match packet revision" in assertFailsWith<InvalidReviewContextSchemaError> {
-        service(ports()).validateAgainstPacket(prepared.packet, listOf(staleRevision))
+        service(ports()).validateAgainstPacket(prepared.packet, listOf(staleRevision) + prepared.assignments.drop(1))
       }.message.orEmpty(),
     )
   }
@@ -255,12 +255,44 @@ class ReviewPreparationServiceTest {
     assertTrue("duplicate lanes" in failure.message.orEmpty())
   }
 
+  @Test fun `missing selected lane assignment is rejected`() {
+    val prepared = service(ports()).prepare(request())
+    val failure = assertFailsWith<InvalidReviewContextSchemaError> {
+      service(ports()).validateAgainstPacket(prepared.packet, prepared.assignments.dropLast(1))
+    }
+    assertTrue("cover exactly" in failure.message.orEmpty())
+  }
+
+  @Test fun `assignment must match its packet lane decision paths and hunks`() {
+    val prepared = service(ports()).prepare(request())
+    val first = prepared.assignments.first()
+    val other = prepared.assignments.last()
+    val changedDecision = first.copy(laneDecision = first.laneDecision.copy(reason = "forged"))
+    assertTrue(
+      "lane decision differs" in assertFailsWith<InvalidReviewContextSchemaError> {
+        service(ports()).validateAgainstPacket(prepared.packet, listOf(changedDecision, other))
+      }.message.orEmpty(),
+    )
+    val crossLaneHunk = first.copy(assignedHunks = other.assignedHunks)
+    assertTrue(
+      "packet-owned hunks" in assertFailsWith<InvalidReviewContextSchemaError> {
+        service(ports()).validateAgainstPacket(prepared.packet, listOf(crossLaneHunk, other))
+      }.message.orEmpty(),
+    )
+    val missingRules = first.copy(matchedRules = emptyList())
+    assertTrue(
+      "matched rules differ" in assertFailsWith<InvalidReviewContextSchemaError> {
+        service(ports()).validateAgainstPacket(prepared.packet, listOf(missingRules, other))
+      }.message.orEmpty(),
+    )
+  }
+
   @Test fun `assignment dependency entries outside the packet allowlist are rejected`() {
     val prepared = service(ports()).prepare(request())
     val escaping = prepared.assignments.first()
       .copy(dependencyAllowlist = ReviewDependencyAllowlist(listOf("src/Other.kt")))
     val failure = assertFailsWith<InvalidReviewContextSchemaError> {
-      service(ports()).validateAgainstPacket(prepared.packet, listOf(escaping))
+      service(ports()).validateAgainstPacket(prepared.packet, listOf(escaping) + prepared.assignments.drop(1))
     }
     assertTrue("escapes the packet allowlist" in failure.message.orEmpty())
   }
@@ -293,14 +325,19 @@ class ReviewPreparationServiceTest {
   @Test fun `an expansion referencing an unrelated assignment digest is rejected`() {
     val prepared = service(ports()).prepare(request())
     val stray = expansion("f".repeat(64))
-    val failure = assertFailsWith<InvalidReviewContextSchemaError> {
-      service(ports()).validateAgainstPacket(
-        prepared.packet,
-        listOf(prepared.assignments.first().copy(expansions = listOf(stray))) + prepared.assignments.drop(1),
-      )
+    val failure = assertFailsWith<IllegalArgumentException> {
+      prepared.assignments.first().copy(expansions = listOf(stray))
     }
-    assertTrue("belong to no assignment in this review" in failure.message.orEmpty())
-    assertTrue("f".repeat(64) in failure.message.orEmpty())
+    assertTrue("enclosing assignment digest" in failure.message.orEmpty())
+  }
+
+  @Test fun `an expansion cannot reference another assignment in the same review`() {
+    val prepared = service(ports()).prepare(request())
+    val first = prepared.assignments.first()
+    val second = prepared.assignments.last()
+    assertFailsWith<IllegalArgumentException> {
+      first.copy(expansions = listOf(expansion(second.digest)))
+    }
   }
 
   @Test fun `a packet ledger entry referencing an unknown assignment digest is rejected`() {

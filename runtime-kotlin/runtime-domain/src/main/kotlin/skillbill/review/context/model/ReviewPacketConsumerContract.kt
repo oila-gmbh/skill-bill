@@ -15,5 +15,10 @@ object ReviewPacketConsumerContract {
     "learnings_resolution",
     "build_test_fact_discovery",
     "telemetry_ownership_determination",
+    "broad_repository_search",
+    "unrelated_rubric_read",
+    "unassigned_file_access",
+    "unselected_mcp_tool_call",
+    "unscoped_shell_command",
   )
 }

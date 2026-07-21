@@ -52,7 +52,7 @@ class DecompositionManifestCommitProjectionTest {
     val projectedBeforeCommit = preCommit.manifest.subtasks.single { it.id == 1 }
     assertEquals("complete", projectedBeforeCommit.status)
     assertEquals(null, projectedBeforeCommit.commitSha)
-    assertContains(Files.readString(subtaskSpec), "status: Complete")
+    assertContains(Files.readString(subtaskSpec), "status: In Progress")
     val manifestTextBeforeSha = Files.readString(preCommit.manifestPath)
 
     val final = writeFromWorkflowUpdate(
