@@ -5,6 +5,8 @@ import skillbill.ports.agentrun.model.AgentRunLivenessSnapshot
 import skillbill.ports.agentrun.model.AgentRunOutputSink
 import skillbill.ports.agentrun.model.AgentRunProgressEmitter
 import skillbill.ports.agentrun.model.AgentRunProgressProbe
+import skillbill.ports.agentrun.model.ConversationIsolation
+import skillbill.ports.review.ReviewEvidenceBroker
 import java.nio.file.Path
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
@@ -31,6 +33,8 @@ data class AgentRunProcessRequest(
   val outputSink: AgentRunOutputSink = AgentRunOutputSink.NONE,
   val usePtyStdio: Boolean = false,
   val idlePolicy: AgentRunIdlePolicy = AgentRunIdlePolicy.DB_PROGRESS_ONLY,
+  val conversationIsolation: ConversationIsolation? = null,
+  val reviewEvidenceBroker: ReviewEvidenceBroker? = null,
 ) {
   init {
     require(command.isNotEmpty()) { "Agent run command is required." }
@@ -45,6 +49,9 @@ data class AgentRunProcessRequest(
     require(statusHeartbeatInterval.isPositive()) { "Agent run status heartbeat interval must be positive." }
     operationDeadline?.let { deadline ->
       require(deadline.isPositive()) { "Agent run operation deadline must be positive when provided." }
+    }
+    require(reviewEvidenceBroker == null || conversationIsolation == ConversationIsolation.NONE) {
+      "A process review evidence transport requires fresh-context isolation."
     }
   }
 }

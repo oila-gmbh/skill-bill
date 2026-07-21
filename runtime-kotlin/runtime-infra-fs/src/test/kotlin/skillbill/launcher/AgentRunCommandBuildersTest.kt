@@ -170,10 +170,10 @@ class AgentRunCommandBuildersTest {
     listOf(
       ClaudeAgentRunCommandBuilder(),
       CodexAgentRunCommandBuilder(),
+      JunieAgentRunCommandBuilder(),
     ).forEach { builder ->
       assertEquals(ConversationIsolation.NONE, builder.build(isolated).conversationIsolation)
     }
-    assertFailsWith<IllegalArgumentException> { JunieAgentRunCommandBuilder().build(isolated) }
   }
 
   private fun request(model: String? = null, effort: String? = null): SkillRunRequest = SkillRunRequest(

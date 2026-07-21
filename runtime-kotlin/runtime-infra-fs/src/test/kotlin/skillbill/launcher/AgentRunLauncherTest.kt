@@ -5,6 +5,7 @@ import skillbill.install.model.InstallAgent
 import skillbill.install.model.RUNTIME_REFUSED_AGENTS
 import skillbill.launcher.agentrun.AgentRunCommand
 import skillbill.launcher.agentrun.AgentRunCommandBuilder
+import skillbill.launcher.agentrun.CodexAgentRunCommandBuilder
 import skillbill.launcher.agentrun.FileSystemAgentRunLauncher
 import skillbill.launcher.agentrun.ProcessAgentRunAdapter
 import skillbill.launcher.agentrun.WorktreeActivityProbe
@@ -21,6 +22,7 @@ import skillbill.ports.agentrun.model.AgentRunOutputStream
 import skillbill.ports.agentrun.model.AgentRunProgressEmission
 import skillbill.ports.agentrun.model.AgentRunProgressEmitter
 import skillbill.ports.agentrun.model.AgentRunProgressProbe
+import skillbill.ports.agentrun.model.ConversationIsolation
 import skillbill.ports.agentrun.model.SkillRunGoalContinuationContext
 import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
@@ -892,6 +894,18 @@ class HeadlessAgentRunAdapterTest {
 
     assertEquals(1, runner.requests.size)
     assertTrue(runner.requests.single().usePtyStdio, "adapter must thread usePtyStdio=true from the builder")
+  }
+
+  @Test
+  fun `process adapter carries codex fork turns none to the worker start request`() {
+    val runner = RecordingAgentRunProcessRunner()
+    val request = phaseRunRequest().copy(conversationIsolation = ConversationIsolation.NONE)
+    val builder = CodexAgentRunCommandBuilder()
+
+    ProcessAgentRunAdapter(InstallAgent.CODEX, builder, runner).launch(request)
+
+    assertEquals(ConversationIsolation.NONE, runner.requests.single().conversationIsolation)
+    assertEquals("none", runner.requests.single().conversationIsolation?.forkTurns)
   }
 
   @Test

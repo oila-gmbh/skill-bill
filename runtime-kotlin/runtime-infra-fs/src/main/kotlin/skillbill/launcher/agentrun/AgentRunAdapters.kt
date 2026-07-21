@@ -37,6 +37,8 @@ class ProcessAgentRunAdapter(
         outputSink = request.outputSink,
         usePtyStdio = command.usePtyStdio,
         idlePolicy = command.idlePolicy,
+        conversationIsolation = command.conversationIsolation,
+        reviewEvidenceBroker = request.reviewEvidenceBroker,
       ),
     )
     val decoded = commandBuilder.outputDecoder.decode(result.stdout)

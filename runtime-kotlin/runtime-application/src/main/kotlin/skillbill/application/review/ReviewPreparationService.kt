@@ -10,6 +10,8 @@ import skillbill.review.context.ReviewContextEnvelopeValidator
 import skillbill.review.context.model.ReviewAssignment
 import skillbill.review.context.model.ReviewBuildTestFact
 import skillbill.review.context.model.ReviewChangedHunk
+import skillbill.review.context.model.ReviewContextBudgetExceeded
+import skillbill.review.context.model.ReviewContextBudgetExceededException
 import skillbill.review.context.model.ReviewContextBudgetPolicy
 import skillbill.review.context.model.ReviewContextPacket
 import skillbill.review.context.model.ReviewEvidenceTarget
@@ -67,10 +69,16 @@ class ReviewPreparationService(
       rejectRevisionDrift(packet, assignment)
       rejectOwnershipViolations(packet, assignment)
       if (assignment.expansions.size > budget.maxAssignmentExpansions) {
-        reject(
-          assignmentLabel(assignment),
-          "Assignment records ${assignment.expansions.size} expansions and exceeds the configured maximum of " +
-            "${budget.maxAssignmentExpansions}.",
+        throw ReviewContextBudgetExceededException(
+          ReviewContextBudgetExceeded(
+            lane = assignment.lane,
+            budgetKind = "assignment_expansions",
+            configuredLimit = budget.maxAssignmentExpansions.toLong(),
+            observedValue = assignment.expansions.size.toLong(),
+            packetDigest = packet.digest,
+            assignmentDigest = assignment.digest,
+            enforceable = true,
+          ),
         )
       }
       rejectUnknownAssignmentDigests(
@@ -126,10 +134,16 @@ class ReviewPreparationService(
       )
     }
     if (packet.canonicalBytes > budget.maxParentPacketBytes) {
-      reject(
-        request.reviewId,
-        "Canonical parent packet measures ${packet.canonicalBytes} bytes and exceeds the configured " +
-          "maximum of ${budget.maxParentPacketBytes}.",
+      throw ReviewContextBudgetExceededException(
+        ReviewContextBudgetExceeded(
+          lane = includedLanes.first(),
+          budgetKind = "parent_packet_bytes",
+          configuredLimit = budget.maxParentPacketBytes,
+          observedValue = packet.canonicalBytes,
+          packetDigest = packet.digest,
+          assignmentDigest = packet.digest,
+          enforceable = true,
+        ),
       )
     }
     return packet

@@ -85,7 +85,10 @@ class JvmAgentRunProcessRunner : AgentRunProcessRunner {
     val lifecycleEmitter = ProcessLifecycleEmitter(request)
     val stdout = CappedUtf8Drain(
       input = stdoutStream,
-      limitBytes = AGENT_RUN_OUTPUT_LIMIT_BYTES,
+      // Governed review output is checked against the repository budget by the lane broker.
+      // Retaining the complete stream is required so its typed outcome cannot be replaced by
+      // the generic process cap before lane-result evaluation.
+      limitBytes = if (request.reviewEvidenceBroker == null) AGENT_RUN_OUTPUT_LIMIT_BYTES else null,
       outputStream = AgentRunOutputStream.STDOUT,
       outputSink = request.outputSink,
       onChunkRead = { outputTracker.markObserved() },
@@ -735,26 +738,28 @@ private sealed interface ProcessStart {
 
 private class CappedUtf8Drain(
   private val input: InputStream,
-  private val limitBytes: Int,
+  private val limitBytes: Int?,
   private val outputStream: AgentRunOutputStream,
   private val outputSink: AgentRunOutputSink,
   private val onChunkRead: () -> Unit,
 ) {
-  private val output = ByteArrayOutputStream(limitBytes.coerceAtMost(INITIAL_OUTPUT_BUFFER_BYTES))
+  private val output = ByteArrayOutputStream(
+    limitBytes?.coerceAtMost(INITIAL_OUTPUT_BUFFER_BYTES) ?: INITIAL_OUTPUT_BUFFER_BYTES,
+  )
   private val worker = thread(start = false, isDaemon = true, name = "skillbill-agent-run-output-drain") {
     try {
       input.use { stream ->
         val buffer = ByteArray(DEFAULT_DRAIN_BUFFER_BYTES)
         var remaining = limitBytes
-        while (remaining > 0) {
-          val read = stream.read(buffer, 0, remaining.coerceAtMost(buffer.size))
+        while (remaining == null || remaining > 0) {
+          val read = stream.read(buffer, 0, remaining?.coerceAtMost(buffer.size) ?: buffer.size)
           if (read == -1) {
             break
           }
           onChunkRead()
           output.write(buffer, 0, read)
           outputSink.write(outputStream, String(buffer, 0, read, StandardCharsets.UTF_8))
-          remaining -= read
+          remaining = remaining?.minus(read)
         }
         while (stream.read(buffer) != -1) {
           // Keep draining so the child cannot block on a full pipe after the cap is reached.

@@ -5,6 +5,7 @@ package skillbill.ports.agentrun.model
 import skillbill.agentaddon.model.AgentAddonSelection
 import skillbill.goalrunner.model.GoalRunnerLivenessState
 import skillbill.install.model.InstallAgent
+import skillbill.ports.review.ReviewEvidenceBroker
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.model.GoalProgressEvent
@@ -29,6 +30,7 @@ data class SkillRunRequest(
   val effortOverride: String? = null,
   val goalContinuation: SkillRunGoalContinuationContext? = null,
   val conversationIsolation: ConversationIsolation? = null,
+  val reviewEvidenceBroker: ReviewEvidenceBroker? = null,
 ) {
   init {
     require(issueKey.isNotBlank()) { "issueKey is required." }
@@ -41,6 +43,9 @@ data class SkillRunRequest(
     }
     progressIdleTimeout?.let { idleTimeout ->
       require(idleTimeout.isPositive()) { "progressIdleTimeout must be positive." }
+    }
+    require(reviewEvidenceBroker == null || conversationIsolation == ConversationIsolation.NONE) {
+      "A review evidence transport is valid only for a fresh-context governed specialist launch."
     }
   }
 }

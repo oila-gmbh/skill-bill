@@ -366,9 +366,10 @@ class ReviewPreparationServiceTest {
         expansion(assignment.digest, id = "exp-2", sequence = 1),
       ),
     )
-    val failure = assertFailsWith<InvalidReviewContextSchemaError> {
+    val failure = assertFailsWith<skillbill.review.context.model.ReviewContextBudgetExceededException> {
       bounded.validateAgainstPacket(prepared.packet, listOf(overBound) + prepared.assignments.drop(1))
     }
-    assertTrue("exceeds the configured maximum of 1" in failure.message.orEmpty())
+    assertEquals("assignment_expansions", failure.outcome.budgetKind)
+    assertEquals("review_context_budget_exceeded", failure.outcome.type)
   }
 }

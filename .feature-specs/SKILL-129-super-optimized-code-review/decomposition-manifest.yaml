@@ -32,8 +32,11 @@ subtasks:
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260721-123120-e9kh"
-  blocked_reason: "Feature-task-runtime phase 'implement' agent exited with non-zero\
-    \ status 1.\nYou've hit your session limit · resets 5:20pm (Europe/Berlin)"
+  blocked_reason: "Phase output reported status 'blocked'. Reconciled and verified\
+    \ the authoritative parallel-review preparation repair. Further ordered remediation\
+    \ is blocked because production exposes only command-line subprocess launchers,\
+    \ not a provider-native specialist-start or broker protocol capable of materializing\
+    \ Codex fork_turns none and mediating worker operations."
   last_resumable_step: "implement"
   linear_issue_id: null
   finalizing_agent_id: null

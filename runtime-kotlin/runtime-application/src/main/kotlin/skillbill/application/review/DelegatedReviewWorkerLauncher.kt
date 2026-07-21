@@ -30,6 +30,7 @@ class DelegatedReviewWorkerLauncher(
           promptOverride = prepared.prompt,
           modelOverride = request.modelOverride,
           conversationIsolation = isolation,
+          reviewEvidenceBroker = prepared.evidenceBroker,
         ),
       ),
     )

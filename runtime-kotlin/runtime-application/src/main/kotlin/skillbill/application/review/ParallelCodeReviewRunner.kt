@@ -8,40 +8,38 @@ import skillbill.application.model.ParallelReviewLaneStatus
 import skillbill.application.model.ParallelReviewScope
 import skillbill.application.model.StackDetectionException
 import skillbill.application.model.UsageValidationException
+import skillbill.application.review.model.DelegatedReviewExecutionOutcome
+import skillbill.application.review.model.DelegatedReviewExecutionRequest
 import skillbill.application.scaffold.ScaffoldCatalogService
 import skillbill.application.workflow.repoRoot
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunTokenOwnership
-import skillbill.ports.agentrun.model.ConversationIsolation
-import skillbill.ports.agentrun.model.SkillRunRequest
-import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
+import skillbill.ports.config.RepoLocalConfigPort
+import skillbill.ports.config.model.ReadRepoLocalConfigRequest
 import skillbill.ports.diff.DiffResolverPort
-import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
-import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.review.ParallelReviewLaneRunner
 import skillbill.ports.review.model.ParallelReviewLaneOutcome
 import skillbill.ports.review.model.ParallelReviewLaneRunRequest
 import skillbill.review.ParallelReviewFindingParser
 import skillbill.review.ParallelReviewMerger
 import skillbill.review.context.model.ProviderTokenUsage
-import skillbill.review.context.model.ReviewBudgetEvaluator
 import skillbill.review.context.model.ReviewBudgetOutcome
-import skillbill.review.context.model.ReviewContextBudgetPolicy
-import skillbill.review.context.model.ReviewLaneIdentity
 import skillbill.review.context.model.TokenOwnership
+import skillbill.review.context.ReviewContextEnvelopeValidator
 import skillbill.review.model.ParallelReviewLaneResult
-import java.nio.charset.StandardCharsets
 import java.nio.file.Path
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
 @Inject
 class ParallelCodeReviewRunner(
-  private val subtaskLauncher: GoalRunnerSubtaskLauncher,
+  private val delegatedReviewExecutionBroker: DelegatedReviewExecutionBroker,
   private val scaffoldCatalogService: ScaffoldCatalogService,
   private val diffResolver: DiffResolverPort,
   private val parallelLaneRunner: ParallelReviewLaneRunner,
+  private val repoLocalConfig: RepoLocalConfigPort,
+  private val reviewContextEnvelopeValidator: ReviewContextEnvelopeValidator,
 ) {
   fun run(request: ParallelCodeReviewRequest): ParallelCodeReviewResult {
     val agent1 = resolveAgent(request.agent1Id, "--agent1")
@@ -54,13 +52,22 @@ class ParallelCodeReviewRunner(
 
     val diffText = resolveDiff(request)
     val stack = detectStack(diffText, request.repoRoot)
-    val prompt = buildParentReviewPrompt(diffText, stack, request.codeReviewMode)
+    val budget = repoLocalConfig.readRepoLocalConfig(ReadRepoLocalConfigRequest(request.repoRoot))
+      .config.reviewContextBudget
+    val prepared = ParallelReviewPreparationCompiler.compile(
+      diffText,
+      stack,
+      listOf(agent1.id, agent2.id),
+      request.repoRoot,
+      budget,
+      reviewContextEnvelopeValidator,
+    )
 
     val timeoutSec = request.timeout?.inWholeSeconds ?: (DEFAULT_TIMEOUT_MINUTES * SECONDS_PER_MINUTE)
     val laneRunResult = parallelLaneRunner.runTwoLanes(
       ParallelReviewLaneRunRequest(
-        lane1 = { launchLane(agent1.id, prompt, request) },
-        lane2 = { launchLane(agent2.id, prompt, request, request.agent2Model) },
+        lane1 = { launchLane(prepared[0], request) },
+        lane2 = { launchLane(prepared[1], request, request.agent2Model) },
         timeout = (timeoutSec + TIMEOUT_BUFFER_SECONDS).seconds,
       ),
     )
@@ -79,8 +86,20 @@ class ParallelCodeReviewRunner(
     val mergeResult = ParallelReviewMerger.merge(lane1Result, lane2Result)
     return ParallelCodeReviewResult(
       mergeResult = mergeResult,
-      lane1 = ParallelReviewLaneStatus(agent1.id, outcome1.success, outcome1.failureReason, outcome1.tokenUsage),
-      lane2 = ParallelReviewLaneStatus(agent2.id, outcome2.success, outcome2.failureReason, outcome2.tokenUsage),
+      lane1 = ParallelReviewLaneStatus(
+        agent1.id,
+        outcome1.success,
+        outcome1.failureReason,
+        outcome1.tokenUsage,
+        outcome1.budgetOutcome,
+      ),
+      lane2 = ParallelReviewLaneStatus(
+        agent2.id,
+        outcome2.success,
+        outcome2.failureReason,
+        outcome2.tokenUsage,
+        outcome2.budgetOutcome,
+      ),
     )
   }
 
@@ -170,53 +189,40 @@ class ParallelCodeReviewRunner(
     return if (best != null && best.value > 0) best.key.slug else null
   }
 
-  private fun buildParentReviewPrompt(
-    diffText: String,
-    stack: String?,
-    codeReviewMode: skillbill.workflow.model.CodeReviewExecutionMode,
-  ): String = buildString {
-    appendLine("Run one complete bill-code-review parent review.")
-    appendLine("Execution mode: ${codeReviewMode.wireValue}")
-    appendLine("Detected stack: ${stack ?: "generic"}")
-    appendLine("Use the exact diff below as the authoritative review scope; do not rediscover or replace it.")
-    appendLine(
-      "Route all required baseline and signal-relevant rubrics. Governed specialists, if selected, " +
-        "must be launched through the native bounded-context boundary.",
-    )
-    appendLine(
-      "Return only a risk register in F-XXX bullet format, one finding per line: " +
-        "- [F-NNN] Blocker|Major|Minor|Nit | High|Medium|Low | file:line | description",
-    )
-    appendLine()
-    append(diffText.replace("\r\n", "\n"))
-  }
-
   private fun launchLane(
-    agentId: String,
-    prompt: String,
+    launchRequest: skillbill.application.review.model.DelegatedReviewLaunchRequest,
     request: ParallelCodeReviewRequest,
     modelOverride: String? = null,
   ): ParallelReviewLaneOutcome {
-    val outcome = subtaskLauncher.launch(
-      GoalRunnerSubtaskLaunchRequest(
-        invokedAgentId = agentId,
-        configuredAgentOverrideId = null,
-        skillRunRequest = SkillRunRequest(
-          issueKey = "code-review-parallel",
-          repoRoot = request.repoRoot,
-          timeout = request.timeout ?: DEFAULT_TIMEOUT_MINUTES.minutes,
-          promptOverride = prompt,
-          modelOverride = modelOverride,
-          conversationIsolation = ConversationIsolation.NONE,
-        ),
+    val execution = delegatedReviewExecutionBroker.execute(
+      DelegatedReviewExecutionRequest(
+        launchRequest = launchRequest,
+        repoRoot = request.repoRoot,
+        timeout = request.timeout ?: DEFAULT_TIMEOUT_MINUTES.minutes,
+        modelOverride = modelOverride,
       ),
     )
-    return when (outcome) {
-      is AgentRunLaunchFacts -> {
+    return when (execution) {
+      is DelegatedReviewExecutionOutcome.Terminated -> ParallelReviewLaneOutcome(
+        success = false,
+        rawOutput = "",
+        failureReason = describeBudgetOutcome(execution.budgetOutcome),
+        budgetOutcome = execution.budgetOutcome,
+      )
+      is DelegatedReviewExecutionOutcome.Completed -> {
+        val worker = execution.worker
+        val outcome = worker.facts
+        if (outcome == null) {
+          return ParallelReviewLaneOutcome(
+            success = false,
+            rawOutput = "",
+            failureReason = "unsupported agent: ${worker.unsupportedReason}",
+          )
+        }
         val usage = providerTokenUsage(outcome)
         val processFailure = laneFailureReason(outcome)
-        val budgetOutcome = if (processFailure == null) laneBudgetOutcome(agentId, prompt, outcome, usage) else null
-        val reason = processFailure ?: budgetOutcome?.let(::describeBudgetOutcome)
+        val budgetOutcome = worker.budgetOutcome
+        val reason = budgetOutcome?.let(::describeBudgetOutcome) ?: processFailure
         ParallelReviewLaneOutcome(
           success = reason == null,
           rawOutput = outcome.stdout,
@@ -225,33 +231,7 @@ class ParallelCodeReviewRunner(
           budgetOutcome = budgetOutcome,
         )
       }
-      is UnsupportedAgentRunLaunch ->
-        ParallelReviewLaneOutcome(
-          success = false,
-          rawOutput = "",
-          failureReason = "unsupported agent: ${outcome.reason}",
-        )
     }
-  }
-
-  /**
-   * A parallel lane is a headless process, so its token usage only becomes observable after the
-   * agent exited: an excess there is a reported regression, never an enforceable termination.
-   */
-  private fun laneBudgetOutcome(
-    agentId: String,
-    prompt: String,
-    outcome: AgentRunLaunchFacts,
-    usage: ProviderTokenUsage?,
-  ): ReviewBudgetOutcome? {
-    val budget = ReviewContextBudgetPolicy.DEFAULT
-    val identity = ReviewLaneIdentity.ofParallelLane(agentId, prompt)
-    val resultBytes = outcome.stdout.toByteArray(StandardCharsets.UTF_8).size.toLong()
-    val exceeded = ReviewBudgetEvaluator.laneResultOutcome(identity, budget, resultBytes)
-    val regression = usage?.let {
-      ReviewBudgetEvaluator.providerUsageOutcome(identity, budget.providerTokenThresholds, it, enforceable = false)
-    }
-    return exceeded ?: regression
   }
 
   // Maps a completed launch to a human-readable failure reason, or null when the lane succeeded.

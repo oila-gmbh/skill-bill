@@ -39,7 +39,7 @@ Governed add-ons may narrow or enrich delegated review instructions only after t
 - Use the `task` tool.
 - Launch one `code-review` agent per delegated review skill or specialist review pass.
 - Use prompts that tell each subagent to follow the delegated skill's rendered runtime instructions as the primary rubric and apply `review-orchestrator.md` for shared output structure.
-- Tell each delegated worker to return structured review output plus telemetry-relevant metadata to the parent and not to call `import_review` or `triage_findings`.
+- Tell each delegated worker to return only its structured findings. Parent-owned telemetry and metadata are not part of the worker projection.
 - Use background mode for parallel delegated passes, capture every returned `agent_id`, then wait on and read only those tracked ids before merging results in the parent review.
 - Do not use `list_agents` to discover delegated workers during normal review execution. Reserve it for explicit recovery/debugging only.
 - Do not call `read_agent` on nested workers launched by a delegated child review. Read only the child review agent you launched and let that child return its own merged result.
@@ -50,7 +50,7 @@ Governed add-ons may narrow or enrich delegated review instructions only after t
 - Use the `Task` tool / subagent mechanism.
 - Launch one subagent per delegated review skill or specialist review pass.
 - The installed native agent's embedded governed rubric is authoritative. Do not tell the worker to read a sibling rubric sidecar.
-- Tell each delegated worker to return structured review output plus telemetry-relevant metadata to the parent and not to call `import_review` or `triage_findings`.
+- Tell each delegated worker to return only its structured findings. Parent-owned telemetry and metadata are not part of the worker projection.
 - Run eligible delegated passes in parallel and merge the results in the parent review.
 - Do not inline delegated review logic on Claude when Task/subagents are available.
 
@@ -60,7 +60,7 @@ Governed add-ons may narrow or enrich delegated review instructions only after t
 - Spawn one subagent per delegated review skill or specialist review pass.
 - Use the same model as the parent thread by default.
 - The installed native agent's embedded governed rubric is authoritative. Do not tell the worker to read a sibling rubric sidecar.
-- Tell each delegated worker to return structured review output plus telemetry-relevant metadata to the parent and not to call `import_review` or `triage_findings`.
+- Tell each delegated worker to return only its structured findings. Parent-owned telemetry and metadata are not part of the worker projection.
 - Wait for all subagents and merge their results in the parent review.
 - Do not run delegated review passes inline.
 

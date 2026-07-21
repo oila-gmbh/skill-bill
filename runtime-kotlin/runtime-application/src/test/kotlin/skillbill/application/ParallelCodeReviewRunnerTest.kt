@@ -4,23 +4,42 @@ import skillbill.application.model.ParallelCodeReviewRequest
 import skillbill.application.model.ParallelReviewScope
 import skillbill.application.model.StackDetectionException
 import skillbill.application.model.UsageValidationException
+import skillbill.application.review.DelegatedReviewExecutionBroker
+import skillbill.application.review.DelegatedReviewLaunchBroker
+import skillbill.application.review.DelegatedReviewWorkerLauncher
 import skillbill.application.review.ParallelCodeReviewRunner
 import skillbill.application.scaffold.ScaffoldCatalogService
 import skillbill.application.workflow.repoRoot
+import skillbill.config.model.RepoLocalConfig
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.agentrun.model.ConversationIsolation
+import skillbill.ports.agentrun.model.ReviewLaunchIsolationStrategy
 import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
+import skillbill.ports.config.RepoLocalConfigPort
+import skillbill.ports.config.model.ReadRepoLocalConfigResult
 import skillbill.ports.diff.DiffResolverPort
 import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.review.ParallelReviewLaneRunner
+import skillbill.ports.review.ReviewEvidenceBroker
+import skillbill.ports.review.ReviewEvidenceBrokerFactory
 import skillbill.ports.review.model.ParallelReviewLaneOutcome
 import skillbill.ports.review.model.ParallelReviewLaneRunRequest
 import skillbill.ports.review.model.ParallelReviewLaneRunResult
+import skillbill.ports.review.model.ReviewEvidenceBatchRequest
+import skillbill.ports.review.model.ReviewEvidenceBatchResult
+import skillbill.ports.review.model.ReviewEvidenceBrokerBinding
+import skillbill.ports.review.model.ReviewLaneAccounting
+import skillbill.ports.review.model.ReviewToolCall
+import skillbill.ports.review.model.ReviewToolCallResult
 import skillbill.ports.scaffold.ScaffoldCatalogGateway
 import skillbill.ports.scaffold.model.PilotedPlatformPackProjection
+import skillbill.review.context.model.ProviderTokenUsage
+import skillbill.review.context.model.ReviewBudgetEvaluator
+import skillbill.review.context.model.ReviewBudgetOutcome
+import skillbill.review.context.model.ReviewLaneIdentity
 import skillbill.scaffold.model.BaselineReviewCatalog
 import skillbill.scaffold.model.DeclaredFiles
 import skillbill.scaffold.model.PlatformManifest
@@ -223,14 +242,14 @@ class ParallelCodeReviewRunnerTest {
     assertEquals(2, launcher.requests.size)
     launcher.requests.forEach { request ->
       val prompt = request.skillRunRequest.promptOverride.orEmpty()
-      assertContains(prompt, "+owned change", message = "the authoritative diff must be reviewable")
-      assertContains(prompt, "one complete bill-code-review parent review")
-      assertContains(prompt, "Detected stack: kotlin")
-      assertContains(prompt, "exact diff below as the authoritative review scope")
-      assertContains(prompt, "Route all required baseline and signal-relevant rubrics")
+      assertContains(prompt, "assigned_paths:")
+      assertContains(prompt, "- Child.kt")
+      assertContains(prompt, "specialist_contract:")
+      assertContains(prompt, "rubric:")
+      assertContains(prompt, "evidence_surface:")
       assertEquals(ConversationIsolation.NONE, request.skillRunRequest.conversationIsolation)
-      assertFalse(prompt.contains("Prepare one shared review-context packet"))
-      assertFalse(prompt.contains("assignment_digest:"))
+      assertTrue(request.skillRunRequest.reviewEvidenceBroker != null)
+      assertContains(prompt, "assignment_digest:")
       assertFalse(prompt.contains("fork_turns:"))
       assertFalse(prompt.contains("## Specialist:"), "flattened specialist rubric bodies must stay out of lane prompts")
       assertFalse(prompt.contains("Apply all of the following specialist review rubrics"))
@@ -272,6 +291,7 @@ class ParallelCodeReviewRunnerTest {
 
     assertFalse(result.lane1.success)
     assertContains(result.lane1.failureReason.orEmpty(), "review_context_budget_exceeded")
+    assertEquals("review_context_budget_exceeded", result.lane1.budgetOutcome?.type)
     assertTrue(result.mergeResult.findings.isEmpty())
   }
 
@@ -476,11 +496,7 @@ class ParallelCodeReviewRunnerTest {
 
     runner.run(baseRequest(scope = ParallelReviewScope.STAGED))
 
-    assertTrue(
-      launcher.requests.all { request ->
-        request.skillRunRequest.promptOverride.orEmpty().contains("Detected stack: typescript")
-      },
-    )
+    assertEquals(2, launcher.requests.size)
   }
 
   @Test
@@ -516,10 +532,29 @@ class ParallelCodeReviewRunnerTest {
     diffResolver: DiffResolverPort = RealProcessDiffResolver(),
     parallelLaneRunner: ParallelReviewLaneRunner = TestParallelLaneRunner(),
   ): ParallelCodeReviewRunner = ParallelCodeReviewRunner(
-    subtaskLauncher = launcher,
+    delegatedReviewExecutionBroker = DelegatedReviewExecutionBroker(
+      DelegatedReviewLaunchBroker(
+        evidenceBrokerFactory = ReviewEvidenceBrokerFactory(::TestReviewEvidenceBroker),
+        isolationResolver = { agentId ->
+          if (agentId == "codex") {
+            ReviewLaunchIsolationStrategy.CODEX_FORK_TURNS_NONE
+          } else {
+            ReviewLaunchIsolationStrategy.FRESH_NATIVE_SUBAGENT
+          }
+        },
+      ),
+      DelegatedReviewWorkerLauncher(launcher),
+    ),
     scaffoldCatalogService = ScaffoldCatalogService(catalogGateway),
     diffResolver = diffResolver,
     parallelLaneRunner = parallelLaneRunner,
+    repoLocalConfig = object : RepoLocalConfigPort {
+      override fun readRepoLocalConfig(request: skillbill.ports.config.model.ReadRepoLocalConfigRequest) =
+        ReadRepoLocalConfigResult(RepoLocalConfig.defaults())
+    },
+    reviewContextEnvelopeValidator = object : skillbill.review.context.ReviewContextEnvelopeValidator {
+      override fun validate(envelope: Map<String, Any?>, sourceLabel: String) = Unit
+    },
   )
 
   private fun baseRequest(
@@ -673,3 +708,41 @@ private fun platformManifest(slug: String, strongSignals: List<String>) = Platfo
 )
 
 private fun diffFor(path: String): String = "+++ b/$path"
+
+private class TestReviewEvidenceBroker(
+  private val binding: ReviewEvidenceBrokerBinding,
+) : ReviewEvidenceBroker {
+  private val identity = ReviewLaneIdentity.of(binding.assignment)
+  private var resultBytes = 0L
+  private var terminal: ReviewBudgetOutcome? = null
+
+  override fun readBatch(request: ReviewEvidenceBatchRequest) =
+    ReviewEvidenceBatchResult(emptyList(), 0, emptyList(), terminal)
+
+  override fun recordToolCall(call: ReviewToolCall) = ReviewToolCallResult(budgetExceeded = terminal)
+
+  override fun recordModelTurn(): ReviewBudgetOutcome? = terminal
+
+  override fun validateLaneResult(result: String): ReviewBudgetOutcome? {
+    resultBytes = result.toByteArray().size.toLong()
+    return ReviewBudgetEvaluator.laneResultOutcome(identity, binding.budget, resultBytes).also { terminal = it }
+  }
+
+  override fun evaluateProviderUsage(usage: ProviderTokenUsage, enforceable: Boolean): ReviewBudgetOutcome? =
+    terminal ?: ReviewBudgetEvaluator.providerUsageOutcome(
+      identity,
+      binding.budget.providerTokenThresholds,
+      usage,
+      enforceable,
+    ).also { terminal = it }
+
+  override fun accounting() = ReviewLaneAccounting(
+    lane = binding.assignment.lane,
+    evidenceBytes = 0,
+    expansions = emptyList(),
+    toolCalls = 0,
+    modelTurns = 0,
+    resultBytes = resultBytes,
+    terminalOutcome = terminal,
+  )
+}

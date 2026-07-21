@@ -117,6 +117,7 @@ class CodexAgentRunCommandBuilder : AgentRunCommandBuilder {
 
 class JunieAgentRunCommandBuilder : AgentRunCommandBuilder {
   override val agent: InstallAgent = InstallAgent.JUNIE
+  override val reviewIsolation: ReviewLaunchIsolationStrategy = ReviewLaunchIsolationStrategy.FRESH_NATIVE_SUBAGENT
 
   override fun build(request: SkillRunRequest): AgentRunCommand {
     requireProcessLaunch(request, reviewIsolation)

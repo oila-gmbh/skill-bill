@@ -574,6 +574,13 @@ sealed interface ReviewBudgetOutcome {
   val type: String
 }
 
+/** Loud failure used when preparation reaches an enforceable budget boundary before a worker starts. */
+class ReviewContextBudgetExceededException(
+  val outcome: ReviewContextBudgetExceeded,
+) : RuntimeException(
+  "${outcome.type}: ${outcome.budgetKind} ${outcome.observedValue} > ${outcome.configuredLimit}",
+)
+
 data class ReviewContextBudgetExceeded(
   override val lane: String,
   override val budgetKind: String,
