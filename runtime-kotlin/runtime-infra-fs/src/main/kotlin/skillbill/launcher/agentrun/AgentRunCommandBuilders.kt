@@ -82,7 +82,9 @@ interface NativeReviewLifecycleCallbacks {
 private class BufferedCodexLifecycleCallbacks : NativeReviewLifecycleCallbacks {
   private val pending = StringBuilder()
 
-  override fun beforeModelTurn(operations: NativeReviewOperationProtocol) = operations.modelTurn()
+  // Codex reports the real turn boundary on stdout. Process startup is not a model turn: the
+  // process can fail before the provider accepts any work.
+  override fun beforeModelTurn(operations: NativeReviewOperationProtocol): ReviewBudgetOutcome? = null
 
   override fun observeProviderOutput(operations: NativeReviewOperationProtocol, chunk: String): ReviewBudgetOutcome? {
     pending.append(chunk)
@@ -92,7 +94,8 @@ private class BufferedCodexLifecycleCallbacks : NativeReviewLifecycleCallbacks {
       if (newline < 0) break
       val line = pending.substring(0, newline)
       pending.delete(0, newline + 1)
-      outcome = decodeCodexUsageChunk(line)?.let(operations::providerUsage)
+      outcome = decodeCodexTurnStart(line)?.let { operations.modelTurn() }
+        ?: decodeCodexUsageChunk(line)?.let(operations::providerUsage)
     }
     return outcome
   }
@@ -100,6 +103,10 @@ private class BufferedCodexLifecycleCallbacks : NativeReviewLifecycleCallbacks {
   override fun observeProviderUsage(operations: NativeReviewOperationProtocol, usage: ProviderTokenUsage) =
     operations.providerUsage(usage)
 }
+
+private fun decodeCodexTurnStart(line: String): Boolean? = runCatching {
+  ObjectMapper().readTree(line).path("type").asText() == "turn.started"
+}.getOrNull()?.takeIf { it }
 
 private fun decodeCodexUsageChunk(chunk: String): ProviderTokenUsage? = chunk.lineSequence()
   .mapNotNull { line -> runCatching { ObjectMapper().readTree(line) }.getOrNull() }

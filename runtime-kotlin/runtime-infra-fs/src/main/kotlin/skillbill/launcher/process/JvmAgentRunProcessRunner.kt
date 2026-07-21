@@ -108,10 +108,6 @@ class JvmAgentRunProcessRunner : AgentRunProcessRunner {
       outputSink = request.outputSink,
       onChunkRead = { outputTracker.markObserved() },
     ).also { if (stderrStream !== InputStream.nullInputStream()) it.start() }
-    val turnOutcome = request.nativeReviewLifecycleCallbacks?.beforeModelTurn(
-      requireNotNull(request.nativeReviewOperations),
-    )
-    if (turnOutcome != null) process.destroy()
     writeAndCloseStdin(process, request.stdinText)
     lifecycleEmitter.emitStarted(process.isAlive)
     val wait = try {

@@ -14,13 +14,22 @@ import skillbill.ports.agentrun.model.ConversationIsolation
 import skillbill.ports.agentrun.model.ReviewLaunchIsolationStrategy
 import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.ports.review.BrokerBackedNativeReviewOperationProtocol
+import skillbill.ports.review.NativeReviewOperationProtocol
 import skillbill.ports.review.ReviewEvidenceBroker
+import skillbill.ports.review.model.ReviewEvidenceBatchRequest
+import skillbill.ports.review.model.ReviewEvidenceBatchResult
+import skillbill.ports.review.model.ReviewToolCall
+import skillbill.ports.review.model.ReviewToolCallResult
+import skillbill.review.context.model.ProviderTokenUsage
+import skillbill.review.context.model.ReviewContextBudgetExceeded
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class AgentRunCommandBuildersTest {
@@ -237,6 +246,17 @@ class AgentRunCommandBuildersTest {
     assertTrue(codexCommand.contains("tools.shell=false"))
   }
 
+  @Test fun `codex lifecycle counts provider turn events and stops at a turn excess`() {
+    val operations = RecordingNativeReviewOperations(maxTurns = 1)
+    val callbacks = NativeReviewLifecycleCallbacks.BROKERED.newSession()
+
+    assertNull(callbacks.beforeModelTurn(operations))
+    assertNull(callbacks.observeProviderOutput(operations, "{\"type\":\"turn.started\"}\n"))
+    assertEquals(1, operations.turns)
+    assertNotNull(callbacks.observeProviderOutput(operations, "{\"type\":\"turn.started\"}\n"))
+    assertEquals(2, operations.turns)
+  }
+
   private fun request(model: String? = null, effort: String? = null): SkillRunRequest = SkillRunRequest(
     issueKey = "SKILL-113",
     repoRoot = Path.of("/tmp/skillbill-agent-run"),
@@ -257,5 +277,25 @@ class AgentRunCommandBuildersTest {
     ) = error("unused")
     override fun accounting() = error("unused")
     override fun terminalOutcome() = error("unused")
+  }
+
+  private class RecordingNativeReviewOperations(private val maxTurns: Int) : NativeReviewOperationProtocol {
+    var turns: Int = 0
+      private set
+
+    override fun read(request: ReviewEvidenceBatchRequest): ReviewEvidenceBatchResult = error("unused")
+    override fun tool(call: ReviewToolCall): ReviewToolCallResult = error("unused")
+    override fun modelTurn() = (++turns).takeIf { it > maxTurns }?.let {
+      ReviewContextBudgetExceeded(
+        "lane",
+        "specialist_model_turns",
+        maxTurns.toLong(),
+        it.toLong(),
+        "a".repeat(64),
+        "b".repeat(64),
+        true,
+      )
+    }
+    override fun providerUsage(usage: ProviderTokenUsage) = null
   }
 }
