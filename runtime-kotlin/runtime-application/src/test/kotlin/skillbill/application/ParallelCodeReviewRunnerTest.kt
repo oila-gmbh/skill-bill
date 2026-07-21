@@ -7,7 +7,6 @@ import skillbill.application.model.UsageValidationException
 import skillbill.application.review.DelegatedReviewExecutionBroker
 import skillbill.application.review.DelegatedReviewLaunchBroker
 import skillbill.application.review.DelegatedReviewWorkerLauncher
-import skillbill.application.review.GoalRunnerNativeReviewWorkerAdapter
 import skillbill.application.review.ParallelCodeReviewRunner
 import skillbill.application.scaffold.ScaffoldCatalogService
 import skillbill.application.workflow.repoRoot
@@ -23,6 +22,7 @@ import skillbill.ports.config.model.ReadRepoLocalConfigResult
 import skillbill.ports.diff.DiffResolverPort
 import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
+import skillbill.ports.review.NativeReviewWorkerLauncher
 import skillbill.ports.review.ParallelReviewLaneRunner
 import skillbill.ports.review.ReviewEvidenceBroker
 import skillbill.ports.review.ReviewEvidenceBrokerFactory
@@ -34,6 +34,7 @@ import skillbill.ports.review.model.ResolvedReviewRubric
 import skillbill.ports.review.model.ReviewEvidenceBatchRequest
 import skillbill.ports.review.model.ReviewEvidenceBatchResult
 import skillbill.ports.review.model.ReviewEvidenceBrokerBinding
+import skillbill.ports.review.model.ReviewEvidenceResult
 import skillbill.ports.review.model.ReviewLaneAccounting
 import skillbill.ports.review.model.ReviewToolCall
 import skillbill.ports.review.model.ReviewToolCallResult
@@ -250,6 +251,8 @@ class ParallelCodeReviewRunnerTest {
       assertContains(prompt, "specialist_contract:")
       assertContains(prompt, "rubric:")
       assertContains(prompt, "evidence_surface:")
+      assertContains(prompt, "brokered_evidence:")
+      assertContains(prompt, "brokered:Child.kt")
       assertEquals(ConversationIsolation.NONE, request.skillRunRequest.conversationIsolation)
       assertTrue(request.skillRunRequest.reviewEvidenceBroker != null)
       assertContains(prompt, "assignment_digest:")
@@ -569,7 +572,25 @@ class ParallelCodeReviewRunnerTest {
           ReviewLaunchIsolationStrategy.FRESH_PROCESS
         },
       ),
-      DelegatedReviewWorkerLauncher(GoalRunnerNativeReviewWorkerAdapter(launcher)),
+      DelegatedReviewWorkerLauncher(
+        NativeReviewWorkerLauncher { request ->
+          launcher.launch(
+            GoalRunnerSubtaskLaunchRequest(
+              invokedAgentId = request.agentId,
+              configuredAgentOverrideId = null,
+              skillRunRequest = skillbill.ports.agentrun.model.SkillRunRequest(
+                issueKey = request.issueKey,
+                repoRoot = request.repoRoot,
+                timeout = request.timeout,
+                promptOverride = request.prompt,
+                modelOverride = request.modelOverride,
+                conversationIsolation = ConversationIsolation.NONE,
+                reviewEvidenceBroker = request.broker,
+              ),
+            ),
+          )
+        },
+      ),
     ),
     scaffoldCatalogService = ScaffoldCatalogService(catalogGateway),
     diffResolver = diffResolver,
@@ -743,8 +764,12 @@ private class TestReviewEvidenceBroker(
   private var resultBytes = 0L
   private var terminal: ReviewBudgetOutcome? = null
 
-  override fun readBatch(request: ReviewEvidenceBatchRequest) =
-    ReviewEvidenceBatchResult(emptyList(), 0, emptyList(), terminal)
+  override fun readBatch(request: ReviewEvidenceBatchRequest) = ReviewEvidenceBatchResult(
+    request.requests.map { ReviewEvidenceResult("brokered:${it.path}", 0, 0, 0) },
+    0,
+    emptyList(),
+    terminal,
+  )
 
   override fun recordToolCall(call: ReviewToolCall) = ReviewToolCallResult(budgetExceeded = terminal)
 

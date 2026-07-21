@@ -65,8 +65,10 @@ data class DelegatedReviewWorkerOutcome(
   val accounting: ReviewLaneAccounting? = null,
 ) {
   init {
-    require((facts == null) != (unsupportedReason == null)) {
-      "A delegated worker outcome carries launch facts or an unsupported reason."
+    require(
+      listOf(facts != null, unsupportedReason != null, budgetOutcome != null && facts == null).count { it } == 1,
+    ) {
+      "A delegated worker outcome carries launch facts, an unsupported reason, or a pre-launch budget outcome."
     }
   }
 }

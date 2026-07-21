@@ -31,6 +31,7 @@ class FileSystemReviewEvidenceBrokerFactory : ReviewEvidenceBrokerFactory {
     FileSystemReviewEvidenceBroker(binding)
 }
 
+@Suppress("TooManyFunctions")
 class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : ReviewEvidenceBroker {
   private val root: Path = binding.repoRoot.toRealPath()
   private val assignment = binding.assignment

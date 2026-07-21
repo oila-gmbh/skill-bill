@@ -7,6 +7,8 @@ import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
 import skillbill.ports.review.NativeReviewWorkerLauncher
 import skillbill.ports.review.NativeReviewWorkerRequest
+import skillbill.ports.review.model.ReviewEvidenceBatchRequest
+import skillbill.ports.review.model.ReviewEvidenceRequest
 import skillbill.review.context.model.ProviderTokenUsage
 import skillbill.review.context.model.TokenOwnership
 
@@ -17,13 +19,36 @@ class DelegatedReviewWorkerLauncher(
 ) {
   fun launch(request: DelegatedReviewWorkerRequest): DelegatedReviewWorkerOutcome {
     val prepared = request.prepared.launch
+    val evidence = prepared.evidenceBroker.readBatch(
+      ReviewEvidenceBatchRequest(
+        prepared.launch.assignment.lane,
+        prepared.launch.assignment.assignedPaths.map { path ->
+          ReviewEvidenceRequest(prepared.launch.assignment.lane, path)
+        },
+      ),
+    )
+    evidence.terminalOutcome?.let { outcome ->
+      return DelegatedReviewWorkerOutcome(
+        budgetOutcome = outcome,
+        accounting = prepared.evidenceBroker.accounting(),
+      )
+    }
+    val boundedPrompt = buildString {
+      append(prepared.prompt)
+      appendLine()
+      appendLine("brokered_evidence:")
+      prepared.launch.assignment.assignedPaths.zip(evidence.results).forEach { (path, result) ->
+        appendLine("--- $path")
+        appendLine(requireNotNull(result.content))
+      }
+    }
     val outcome = launcher.launch(
       NativeReviewWorkerRequest(
         agentId = request.agentId,
         issueKey = prepared.launch.assignment.reviewId,
         repoRoot = request.repoRoot,
         timeout = request.timeout,
-        prompt = prepared.prompt,
+        prompt = boundedPrompt,
         modelOverride = request.modelOverride,
         isolation = prepared.isolation,
         broker = prepared.evidenceBroker,

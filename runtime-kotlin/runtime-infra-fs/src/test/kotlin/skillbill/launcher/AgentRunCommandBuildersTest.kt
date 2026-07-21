@@ -182,6 +182,9 @@ class AgentRunCommandBuildersTest {
       assertEquals(expectedIsolation, builder.reviewIsolation)
       assertEquals(ConversationIsolation.NONE, builder.build(isolated).conversationIsolation)
     }
+    val codexCommand = CodexAgentRunCommandBuilder().build(isolated).command
+    assertTrue(codexCommand.contains("fork_turns=none"))
+    assertTrue(codexCommand.contains("tools.web_search=false"))
   }
 
   private fun request(model: String? = null, effort: String? = null): SkillRunRequest = SkillRunRequest(

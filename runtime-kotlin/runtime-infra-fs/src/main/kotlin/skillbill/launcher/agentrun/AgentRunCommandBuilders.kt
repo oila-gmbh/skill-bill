@@ -67,6 +67,10 @@ class ClaudeAgentRunCommandBuilder : AgentRunCommandBuilder {
           add("--effort")
           add(it)
         }
+        if (request.reviewEvidenceBroker != null) {
+          add("--tools")
+          add("")
+        }
         add("--dangerously-skip-permissions")
         add("--add-dir")
         add(request.repoRoot.toString())
@@ -75,6 +79,7 @@ class ClaudeAgentRunCommandBuilder : AgentRunCommandBuilder {
       timeout = request.timeout,
       stdinText = launchPrompt(request),
       environment = goalContinuationEnvironment(request),
+      inheritEnvironment = request.reviewEvidenceBroker == null,
       conversationIsolation = request.conversationIsolation,
     )
   }
@@ -99,6 +104,12 @@ class CodexAgentRunCommandBuilder : AgentRunCommandBuilder {
         add("read-only")
         add("--config")
         add("shell_environment_policy.inherit=none")
+        if (request.conversationIsolation == ConversationIsolation.NONE) {
+          add("--config")
+          add("fork_turns=none")
+          add("--config")
+          add("tools.web_search=false")
+        }
         request.modelOverride?.let {
           add("--model")
           add(it)
@@ -144,6 +155,7 @@ class JunieAgentRunCommandBuilder : AgentRunCommandBuilder {
       workingDirectory = request.repoRoot,
       timeout = request.timeout,
       environment = goalContinuationEnvironment(request),
+      inheritEnvironment = request.reviewEvidenceBroker == null,
       conversationIsolation = request.conversationIsolation,
     )
   }
