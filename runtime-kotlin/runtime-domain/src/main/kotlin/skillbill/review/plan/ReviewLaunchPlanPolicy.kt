@@ -51,11 +51,11 @@ object ReviewLaunchPlanPolicy {
             "Platform pack '${pack.slug}' references unavailable baseline skill '${layer.platform}/${layer.skill}'.",
           )
         }
-        visit(target, depth + 1, chain + pack.slug, path + pack.slug, required && layer.required)
+        visit(target, depth + 1, chain + pack.slug, path + pack.slug, required || layer.required)
       }
     }
 
-    visit(root, 0, emptyList(), emptyList(), true)
+    visit(root, 0, emptyList(), emptyList(), false)
     val winners = selectedAreas.sorted().mapNotNull { area ->
       val areaCandidates = candidates.filter { it.area == area }
       val nearestDepth = areaCandidates.minOfOrNull { it.depth } ?: return@mapNotNull null

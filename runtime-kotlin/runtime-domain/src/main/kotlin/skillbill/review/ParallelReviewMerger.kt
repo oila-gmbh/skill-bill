@@ -58,7 +58,14 @@ object ParallelReviewMerger {
 
     val formattedOutput = mergedFindings.joinToString("\n") { f ->
       val agentLabel = f.agentIds.joinToString(", ")
-      "- [${f.fNumber}] [$agentLabel] ${f.severity.displayName} | ${f.confidence} | ${f.location} | ${f.description}"
+      val provenance = buildList {
+        if (f.specialistSkillNames.isNotEmpty()) add("specialists=${f.specialistSkillNames.joinToString(",")}")
+        if (f.originLayerChains.isNotEmpty()) {
+          add("origins=${f.originLayerChains.joinToString(",") { it.joinToString("->") }}")
+        }
+      }.joinToString("; ").let { if (it.isBlank()) "" else " | $it" }
+      "- [${f.fNumber}] [$agentLabel] ${f.severity.displayName} | ${f.confidence} | ${f.location} | " +
+        "${f.description}$provenance"
     }
 
     return ParallelReviewMergeResult(

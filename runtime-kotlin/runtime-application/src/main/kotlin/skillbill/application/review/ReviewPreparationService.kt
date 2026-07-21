@@ -117,6 +117,7 @@ class ReviewPreparationService(
       stack = resolved.routing.stack,
       pack = resolved.routing.pack,
       addOns = resolved.routing.addOns,
+      composedLayers = resolved.routing.composedLayers,
       selectedLanes = includedLanes,
       changedHunks = resolved.scope.changedHunks,
       reviewRevision = request.reviewRevision,

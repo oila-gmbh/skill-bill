@@ -69,6 +69,9 @@ addon_usage:
       entrypoint: android-design-system-review.md
     - slug: android-r8
       entrypoint: android-r8-review.md
+      activation:
+        any: ["proguard-rules.pro", "consumer-rules.pro", "-keep", "minifyenabled", "shrinkresources"]
+        exclude: ["/commonmain/"]
   code-review/bill-kmp-code-review-ui:
     - slug: android-compose
       entrypoint: android-compose-review.md

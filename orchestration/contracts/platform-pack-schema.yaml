@@ -307,6 +307,21 @@ properties:
             description: >
               Optional generated pointer filenames that may be opened only after the entrypoint
               selects them through its section index or activation guidance.
+          activation:
+            type: object
+            additionalProperties: false
+            properties:
+              any: { type: array, minItems: 1, uniqueItems: true, items: { type: string, minLength: 1 } }
+              all: { type: array, minItems: 1, uniqueItems: true, items: { type: string, minLength: 1 } }
+              any_of_all:
+                type: array
+                minItems: 1
+                items: { type: array, minItems: 1, uniqueItems: true, items: { type: string, minLength: 1 } }
+              exclude: { type: array, uniqueItems: true, items: { type: string, minLength: 1 } }
+            anyOf:
+              - required: [any]
+              - required: [all]
+              - required: [any_of_all]
     description: >
       Optional mapping of skill-relative directory to governed add-on selections. Each entry
       references generated pointer filenames declared under `pointers` for the same skill

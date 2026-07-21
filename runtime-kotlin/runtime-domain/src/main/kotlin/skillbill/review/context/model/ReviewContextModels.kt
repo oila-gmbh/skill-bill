@@ -128,6 +128,10 @@ data class ReviewLaneDecision(
       "Lane decision origin chains must be unique."
     }
     require(addOns.distinct().size == addOns.size) { "Lane decision add-ons must be unique." }
+    if (included && originLayerChains.isNotEmpty()) {
+      require(!owningPack.isNullOrBlank()) { "Included lane '$lane' must declare its owning pack." }
+      require(!specialistSkillName.isNullOrBlank()) { "Included lane '$lane' must declare its specialist skill." }
+    }
   }
 
   val normalizedOwnedPaths: List<String> get() = ownedPaths.map { it.replace('\\', '/') }
@@ -390,12 +394,14 @@ data class ReviewContextPacket(
   val dependencyAllowlist: ReviewDependencyAllowlist = ReviewDependencyAllowlist.EMPTY,
   val evidenceTargets: List<ReviewEvidenceTarget> = emptyList(),
   val expansionLedger: List<ReviewExpansionRecord> = emptyList(),
+  val composedLayers: List<String> = emptyList(),
 ) {
   init {
     require(reviewId.isNotBlank() && repositoryIdentity.isNotBlank())
     require(baseRevision.isNotBlank() && headRevision.isNotBlank())
     require(selectedLanes.isNotEmpty() && selectedLanes.distinct().size == selectedLanes.size)
     require(addOns.distinct().size == addOns.size)
+    require(composedLayers.all(String::isNotBlank) && composedLayers.distinct().size == composedLayers.size)
     require(changedHunks.map { it.path to listOf(it.oldStart, it.newStart) }.distinct().size == changedHunks.size)
     require(changedHunks.map { it.hunkId }.distinct().size == changedHunks.size) { "Changed hunk ids must be unique." }
     require(laneDecisions.map { it.lane }.distinct().size == laneDecisions.size) {
@@ -459,6 +465,7 @@ data class ReviewContextPacket(
     stack.orEmpty(),
     pack.orEmpty(),
     addOns.sorted().joinToString("\u001f"),
+    composedLayers.joinToString("\u001f"),
     selectedLanes.joinToString("\u001f"),
     laneDecisions.sortedWith(compareBy(ReviewLaneDecision::orderIndex, ReviewLaneDecision::lane))
       .joinToString("\u001f") { it.canonical },

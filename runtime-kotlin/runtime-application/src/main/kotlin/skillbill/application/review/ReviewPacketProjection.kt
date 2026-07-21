@@ -23,6 +23,7 @@ fun ReviewContextPacket.toParentPacketEnvelope(): ReviewContextEnvelope = Review
     "stack" to stack,
     "pack" to pack,
     "add_ons" to addOns.sorted(),
+    "composed_layers" to composedLayers,
     "selected_lanes" to selectedLanes,
     "lane_decisions" to laneDecisions
       .sortedWith(compareBy(ReviewLaneDecision::orderIndex, ReviewLaneDecision::lane))

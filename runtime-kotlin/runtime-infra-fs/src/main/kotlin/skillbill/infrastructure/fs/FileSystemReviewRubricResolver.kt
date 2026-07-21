@@ -50,14 +50,24 @@ class FileSystemReviewRubricResolver : ReviewRubricResolver {
     if (manifest == null) return resolved
     val specialist = resolved.specialists.singleOrNull { it.rubricId == specialistSkillName } ?: resolved
     val consumer = "code-review/$specialistSkillName"
-    val selections = manifest.addonUsage.firstOrNull { it.skillRelativeDir == consumer }?.addons.orEmpty()
+    val exact = manifest.addonUsage.firstOrNull { it.skillRelativeDir == consumer }?.addons.orEmpty()
+    val baseline = manifest.routedSkillName?.let { baselineName ->
+      manifest.addonUsage.firstOrNull { it.skillRelativeDir == "code-review/$baselineName" }?.addons.orEmpty()
+    }.orEmpty().filter { applicableToArea(it.slug, specialist.area) }
+    val selections = (exact + baseline).distinctBy { it.slug }
     val normalizedDiff = diff.lowercase()
     val commonMainOnly = normalizedDiff.contains("/commonmain/") &&
       !normalizedDiff.contains("/androidmain/") && !normalizedDiff.contains("androidmanifest.xml")
     val selected = selections.filter { selection ->
       val entrypoint = resolveAddonFile(manifest, selection.entrypoint)
       val entryBody = readBounded(entrypoint)
-      !commonMainOnly && activationTerms(entryBody, selection.slug).any(normalizedDiff::contains)
+      !commonMainOnly && selection.activation?.let { condition ->
+        condition.exclude.none(normalizedDiff::contains) &&
+          condition.all.all(normalizedDiff::contains) &&
+          (condition.any.any(normalizedDiff::contains) ||
+            condition.anyOfAll.any { group -> group.all(normalizedDiff::contains) } ||
+            (condition.any.isEmpty() && condition.anyOfAll.isEmpty()))
+      } ?: activationTerms(entryBody, selection.slug).any(normalizedDiff::contains)
     }
     if (selected.isEmpty()) return specialist
     val guidance = selected.joinToString("\n\n") { selection ->
@@ -100,6 +110,13 @@ class FileSystemReviewRubricResolver : ReviewRubricResolver {
     return (TOKEN.findAll(activation).map { it.value } + slug.split('-').asSequence())
       .filter { it.length >= MIN_ACTIVATION_TERM_LENGTH && it !in STOP_WORDS }
       .toSet()
+  }
+
+  private fun applicableToArea(slug: String, area: String?): Boolean = when {
+    slug == "android-r8" -> area == "platform-correctness"
+    slug.startsWith("android-") -> area == "ui"
+    slug == "offline-first" -> area in setOf("persistence", "reliability", "platform-correctness")
+    else -> false
   }
 
   private companion object {

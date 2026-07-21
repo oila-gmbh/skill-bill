@@ -17,6 +17,7 @@ import skillbill.scaffold.model.DeclaredFiles
 import skillbill.scaffold.model.FeatureAddonUsage
 import skillbill.scaffold.model.GovernedAddonFile
 import skillbill.scaffold.model.GovernedAddonSelection
+import skillbill.scaffold.model.GovernedAddonActivation
 import skillbill.scaffold.model.GovernedAddonUsage
 import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.model.PointerSpec
@@ -813,6 +814,26 @@ private fun parseAddonUsageEntry(context: AddonUsageParseContext, index: Int, ra
     "$fieldPrefix.companion_pointers",
     required = false,
   )
+  val activation = (entry["activation"] as? Map<*, *>)?.let { rawActivation ->
+    GovernedAddonActivation(
+      any = parseStringList(context.slug, rawActivation["any"], "$fieldPrefix.activation.any", required = false),
+      all = parseStringList(context.slug, rawActivation["all"], "$fieldPrefix.activation.all", required = false),
+      anyOfAll = (rawActivation["any_of_all"] as? List<*>)?.mapIndexed { groupIndex, group ->
+        parseStringList(
+          context.slug,
+          group,
+          "$fieldPrefix.activation.any_of_all[$groupIndex]",
+          required = true,
+        )
+      }.orEmpty(),
+      exclude = parseStringList(
+        context.slug,
+        rawActivation["exclude"],
+        "$fieldPrefix.activation.exclude",
+        required = false,
+      ),
+    )
+  }
   requirePackOwnedAddonPointer(context, addonSlug, "entrypoint", entrypoint)
   companionPointers.forEach { pointerName ->
     requirePackOwnedAddonPointer(context, addonSlug, "companion_pointers", pointerName)
@@ -821,6 +842,7 @@ private fun parseAddonUsageEntry(context: AddonUsageParseContext, index: Int, ra
     slug = addonSlug,
     entrypoint = entrypoint,
     companionPointers = companionPointers,
+    activation = activation,
   )
 }
 

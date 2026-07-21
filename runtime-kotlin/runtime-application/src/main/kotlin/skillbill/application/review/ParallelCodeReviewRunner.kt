@@ -45,6 +45,7 @@ import skillbill.scaffold.model.PlatformManifest
 import java.nio.file.Path
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TimeSource
 
 @Inject
 @Suppress("LongParameterList", "TooManyFunctions")
@@ -186,7 +187,7 @@ class ParallelCodeReviewRunner(
               specialist.area ?: "generic",
               0,
               listOf(root.slug),
-              true,
+              false,
               emptyList(),
               index,
               "routed pack specialist",
@@ -314,13 +315,33 @@ class ParallelCodeReviewRunner(
       .filterNot(RoutingSignalPathMatcher::isIgnored)
       .toList()
 
-    val scores = manifests.associateWith { manifest ->
-      manifest.routingSignals.strong.sumOf { signal ->
-        diffPaths.count { path -> RoutingSignalPathMatcher.matches(path, signal) }
+    val signalOwners = manifests.flatMap { manifest ->
+      manifest.routingSignals.strong.distinct().map { it to manifest.slug }
+    }.groupBy({ it.first }, { it.second })
+    val routedSlugs = linkedSetOf<String>()
+    diffPaths.forEach { path ->
+      val pathScores = manifests.associateWith { manifest ->
+        manifest.routingSignals.strong.distinct().sumOf { signal ->
+          if (!RoutingSignalPathMatcher.matches(path, signal)) 0
+          else if (signalOwners.getValue(signal).size == 1) 10 else 1
+        }
+      }.filterValues { it > 0 }
+      val best = pathScores.values.maxOrNull() ?: return@forEach
+      val winners = pathScores.filterValues { it == best }.keys.toMutableList()
+      if (winners.size > 1) {
+        // With only shared signals, prefer a baseline pack over a composed root. A root wins
+        // naturally as soon as one of its manifest-owned KMP/Android/etc. signals matches.
+        val composedRoots = winners.filter { it.codeReviewComposition != null }.toSet()
+        val baselineSlugs = composedRoots.flatMap { root ->
+          root.codeReviewComposition!!.baselineLayers.map { it.platform }
+        }.toSet()
+        if (baselineSlugs.any { slug -> winners.any { it.slug == slug } }) {
+          winners.removeAll(composedRoots)
+        }
       }
+      winners.forEach { routedSlugs += it.slug }
     }
-
-    val routed = manifests.filter { scores.getValue(it) > 0 }
+    val routed = manifests.filter { it.slug in routedSlugs }
     return StackDetection(routed, manifests)
   }
 
@@ -346,7 +367,22 @@ class ParallelCodeReviewRunner(
     modelOverride: String? = null,
   ): ParallelReviewLaneOutcome {
     require(launchRequests.isNotEmpty()) { "Delegated review selected no specialist launches for '$agentId'." }
-    val outcomes = launchRequests.map { launchSpecialist(it, request, modelOverride) }
+    val timeout = request.timeout ?: DEFAULT_TIMEOUT_MINUTES.minutes
+    val started = TimeSource.Monotonic.markNow()
+    val outcomes = mutableListOf<ParallelReviewLaneOutcome>()
+    for (launchRequest in launchRequests) {
+      val remaining = timeout - started.elapsedNow()
+      if (remaining <= 0.seconds) {
+        outcomes += ParallelReviewLaneOutcome(
+          success = false,
+          rawOutput = "",
+          failureReason = "shared specialist deadline exhausted before '${launchRequest.assignment.lane}'",
+        )
+        break
+      }
+      outcomes += launchSpecialist(launchRequest, request, modelOverride, remaining)
+      if (!outcomes.last().success) break
+    }
     val failed = outcomes.firstOrNull { !it.success }
     return ParallelReviewLaneOutcome(
       success = failed == null,
@@ -364,12 +400,13 @@ class ParallelCodeReviewRunner(
     launchRequest: DelegatedReviewLaunchRequest,
     request: ParallelCodeReviewRequest,
     modelOverride: String? = null,
+    timeout: kotlin.time.Duration = request.timeout ?: DEFAULT_TIMEOUT_MINUTES.minutes,
   ): ParallelReviewLaneOutcome {
     val execution = delegatedReviewExecutionBroker.execute(
       DelegatedReviewExecutionRequest(
         launchRequest = launchRequest,
         repoRoot = request.repoRoot,
-        timeout = request.timeout ?: DEFAULT_TIMEOUT_MINUTES.minutes,
+        timeout = timeout,
         modelOverride = modelOverride,
       ),
     )

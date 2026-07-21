@@ -60,14 +60,18 @@ internal object ParallelReviewPreparationCompiler {
   ): List<SpecialistRoute> {
     val selectedRubrics = input.lanes.mapNotNull { planned ->
       val ownedPaths = ownedPathsFor(planned.rubric, hunks)
-      planned.takeIf { ownedPaths.isNotEmpty() }?.let { SelectedRubric(it, ownedPaths) }
+      val authoritativePaths = if (planned.descriptor.required) {
+        hunks.map { it.path }.distinct().sorted()
+      } else {
+        ownedPaths
+      }
+      planned.takeIf { authoritativePaths.isNotEmpty() }?.let { SelectedRubric(it, authoritativePaths) }
     }
     require(selectedRubrics.isNotEmpty()) { "Review routing selected no non-empty specialist lane." }
     return input.agents.flatMap { agentId ->
       selectedRubrics.map { selected ->
-        val specialistId = selected.planned.rubric.area ?: selected.planned.rubric.rubricId
         SpecialistRoute(
-          "$agentId:$specialistId",
+          "$agentId:${selected.planned.descriptor.skillName}",
           agentId,
           selected.planned.rubric,
           selected.planned.descriptor,
@@ -115,8 +119,8 @@ internal object ParallelReviewPreparationCompiler {
     val routing = ReviewStackRoutingFacts(
       input.stack,
       input.routedPacks.joinToString("+"),
-      input.lanes.flatMap { it.descriptor.addOns }.distinct(),
-      input.lanes.flatMap { it.originLayerChains }.flatten().distinct(),
+      decisions.flatMap { it.addOns }.distinct(),
+      decisions.flatMap { it.originLayerChains }.flatten().distinct(),
     )
     return ReviewFactPorts(
       scope = object : ReviewScopeResolverPort {

@@ -71,7 +71,24 @@ data class GovernedAddonSelection(
   val slug: String,
   val entrypoint: String,
   val companionPointers: List<String> = emptyList(),
+  val activation: GovernedAddonActivation? = null,
 )
+
+data class GovernedAddonActivation(
+  val any: List<String> = emptyList(),
+  val all: List<String> = emptyList(),
+  val anyOfAll: List<List<String>> = emptyList(),
+  val exclude: List<String> = emptyList(),
+) {
+  init {
+    require(any.isNotEmpty() || all.isNotEmpty() || anyOfAll.isNotEmpty()) {
+      "Add-on activation must declare any, all, or any_of_all signals."
+    }
+    require((any + all + anyOfAll.flatten() + exclude).all(String::isNotBlank)) {
+      "Add-on activation signals must not be blank."
+    }
+  }
+}
 
 data class PlatformManifest(
   val slug: String,

@@ -2,6 +2,7 @@ package skillbill.infrastructure.fs
 
 import skillbill.scaffold.model.DeclaredFiles
 import skillbill.scaffold.model.GovernedAddonSelection
+import skillbill.scaffold.model.GovernedAddonActivation
 import skillbill.scaffold.model.GovernedAddonUsage
 import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.model.RoutingSignals
@@ -114,6 +115,79 @@ class FileSystemReviewRubricResolverTest {
 
     assertEquals(emptyList(), resolved.selectedAddOns)
     assertEquals("ui specialist rubric", resolved.body)
+  }
+
+  @Test
+  fun `baseline R8 add-on reaches the direct platform correctness specialist`() {
+    val root = Files.createTempDirectory("review-rubric-r8")
+    val baseline = root.resolve("code-review/content.md")
+    val correctness = root.resolve("code-review/platform-correctness/content.md")
+    val addon = root.resolve("addons/android-r8-review.md")
+    Files.createDirectories(correctness.parent)
+    Files.createDirectories(addon.parent)
+    Files.writeString(baseline, "baseline rubric")
+    Files.writeString(correctness, "correctness specialist rubric")
+    Files.writeString(addon, "R8 bounded guidance")
+    val configured = manifest(root, baseline, mapOf("platform-correctness" to correctness)).copy(
+      addonUsage = listOf(
+        GovernedAddonUsage(
+          "code-review/bill-kotlin-code-review",
+          listOf(
+            GovernedAddonSelection(
+              "android-r8",
+              "android-r8-review.md",
+              activation = GovernedAddonActivation(any = listOf("proguard-rules.pro")),
+            ),
+          ),
+        ),
+      ),
+    )
+
+    val resolved = FileSystemReviewRubricResolver().resolve(
+      configured,
+      "+++ b/android/proguard-rules.pro\n+ -keep class example.Model",
+      "bill-kotlin-code-review-platform-correctness",
+    )
+
+    assertEquals(listOf("android-r8"), resolved.selectedAddOns)
+    assertEquals(true, resolved.body.contains("R8 bounded guidance"))
+  }
+
+  @Test
+  fun `conjunctive activation rejects local store without sync`() {
+    val root = Files.createTempDirectory("review-rubric-offline")
+    val baseline = root.resolve("code-review/content.md")
+    val persistence = root.resolve("code-review/persistence/content.md")
+    val addon = root.resolve("addons/offline-first-review.md")
+    Files.createDirectories(persistence.parent)
+    Files.createDirectories(addon.parent)
+    Files.writeString(baseline, "baseline rubric")
+    Files.writeString(persistence, "persistence specialist rubric")
+    Files.writeString(addon, "offline bounded guidance")
+    val configured = manifest(root, baseline, mapOf("persistence" to persistence)).copy(
+      addonUsage = listOf(
+        GovernedAddonUsage(
+          "code-review/bill-kotlin-code-review-persistence",
+          listOf(
+            GovernedAddonSelection(
+              "offline-first",
+              "offline-first-review.md",
+              activation = GovernedAddonActivation(anyOfAll = listOf(listOf("sqlite", "sync"))),
+            ),
+          ),
+        ),
+      ),
+    )
+    val resolver = FileSystemReviewRubricResolver()
+
+    assertEquals(
+      emptyList(),
+      resolver.resolve(configured, "+ SQLite migration", "bill-kotlin-code-review-persistence").selectedAddOns,
+    )
+    assertEquals(
+      listOf("offline-first"),
+      resolver.resolve(configured, "+ SQLite sync queue", "bill-kotlin-code-review-persistence").selectedAddOns,
+    )
   }
 
   private fun manifest(

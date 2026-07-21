@@ -79,6 +79,14 @@ addon_usage:
   code-review/bill-ios-code-review:
     - slug: offline-first
       entrypoint: offline-first-review.md
+      activation: &offline-first-activation
+        any_of_all:
+          - ["grdb", "sync"]
+          - ["sqlite", "sync"]
+          - ["core data", "sync"]
+          - ["realm", "sync"]
+        any: ["background sync", "sync queue", "conflict handling", "download for offline"]
+        exclude: ["pure in-memory"]
       companion_pointers:
         - offline-sync-consistency.md
         - offline-conflict-resolution.md
@@ -86,18 +94,21 @@ addon_usage:
   code-review/bill-ios-code-review-persistence:
     - slug: offline-first
       entrypoint: offline-first-review.md
+      activation: *offline-first-activation
       companion_pointers:
         - offline-sync-consistency.md
         - offline-conflict-resolution.md
   code-review/bill-ios-code-review-reliability:
     - slug: offline-first
       entrypoint: offline-first-review.md
+      activation: *offline-first-activation
       companion_pointers:
         - offline-background-reliability.md
         - offline-sync-consistency.md
   code-review/bill-ios-code-review-platform-correctness:
     - slug: offline-first
       entrypoint: offline-first-review.md
+      activation: *offline-first-activation
       companion_pointers:
         - offline-conflict-resolution.md
 
