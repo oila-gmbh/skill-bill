@@ -203,7 +203,7 @@ sealed interface GoalRunnerRunReport {
     val subtasksCompleted: Int,
     val subtasksPending: Int,
     val subtasksBlocked: Int,
-    val unaddressedFindingCount: Int = 0,
+    val unaddressedFindingCount: Int? = 0,
     val unaddressedSeverityBreakdown: Map<String, Int> = emptyMap(),
   ) : GoalRunnerRunReport
 

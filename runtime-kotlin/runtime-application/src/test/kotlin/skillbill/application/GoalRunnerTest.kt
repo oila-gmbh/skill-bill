@@ -9,6 +9,7 @@ import skillbill.application.goalrunner.GoalRunnerLedgerContext
 import skillbill.application.goalrunner.GoalRunnerLedgerRecorder
 import skillbill.application.goalrunner.GoalRunnerProgressEventEmitter
 import skillbill.application.goalrunner.GoalRunnerStatusService
+import skillbill.application.goalrunner.UnaddressedFindingsLedgerService
 import skillbill.application.model.GoalRunnerEventSink
 import skillbill.application.model.GoalRunnerResetRequest
 import skillbill.application.model.GoalRunnerRunEvent
@@ -23,6 +24,7 @@ import skillbill.goalrunner.model.GoalRunnerStoredOutcome
 import skillbill.goalrunner.model.GoalRunnerSupervisionEvent
 import skillbill.goalrunner.model.GoalRunnerTerminalStatus
 import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequestOutcome
+import skillbill.goalrunner.model.UnaddressedFinding
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
@@ -2935,5 +2937,83 @@ class GoalRunnerValidationQualityRetryTest {
     }
     assertEquals(4, launcher.requests.size, "validate must bound to 1 initial launch + 3 retries, not loop forever")
     assertEquals(3, validateResumes, "only the bounded retry budget may re-resume at validate")
+  }
+}
+
+class GoalRunnerUnaddressedFindingsSummaryTest {
+  @Test
+  fun `a goal whose ledger reports absent still completes with the compact severity breakdown`() {
+    val store = InMemoryGoalManifestStore(
+      manifest = manifest(subtaskCount = 1)
+        .withCompletedSubtask(1, workflowId = "wfl-1", commitSha = "sha-1"),
+    )
+    val runner = GoalRunner(
+      manifestStore = store,
+      subtaskLauncher = RecordingSubtaskLauncher { launchFacts() },
+      outcomeStore = RecordingOutcomeStore(),
+      pullRequestPort = RecordingPullRequestPort(),
+      unaddressedFindingsLedgerService = UnaddressedFindingsLedgerService(
+        RuntimeFakeDatabaseSessionFactory(InMemoryRuntimeWorkflowRepository(), knownIssue = false),
+      ),
+    )
+
+    val request = GoalRunnerRunRequest(
+      issueKey = "SKILL-56",
+      repoRoot = Path.of("/tmp/skillbill-goal-runner"),
+      invokedAgentId = "claude",
+      dbPathOverride = "/tmp/skillbill-goal-runner/metrics.db",
+    )
+    val completed = assertIs<GoalRunnerRunReport.Completed>(runner.run(request))
+
+    assertEquals("opened", completed.pullRequestStatus)
+    assertEquals(0, completed.unaddressedFindingCount)
+    assertEquals(
+      mapOf("blocker" to 0, "major" to 0, "minor" to 0, "nit" to 0),
+      completed.unaddressedSeverityBreakdown,
+    )
+  }
+
+  @Test
+  fun `a malformed ledger row does not abort finalization before the pull request is opened`() {
+    val store = InMemoryGoalManifestStore(
+      manifest = manifest(subtaskCount = 1)
+        .withCompletedSubtask(1, workflowId = "wfl-1", commitSha = "sha-1"),
+    )
+    val sessionFactory = RuntimeFakeDatabaseSessionFactory(InMemoryRuntimeWorkflowRepository())
+    sessionFactory.ledgerRows += UnaddressedFinding(
+      issueKey = "SKILL-56",
+      subtaskId = 1,
+      workflowId = "wfl-1",
+      reviewPassNumber = 1,
+      findingOrdinal = 1,
+      severity = "major",
+      issueCategory = "not_a_governed_category",
+      location = "src/Feature.kt:42",
+      summary = "Poison row persisted by an older writer",
+    )
+    val pullRequestPort = RecordingPullRequestPort()
+    val runner = GoalRunner(
+      manifestStore = store,
+      subtaskLauncher = RecordingSubtaskLauncher { launchFacts() },
+      outcomeStore = RecordingOutcomeStore(),
+      pullRequestPort = pullRequestPort,
+      unaddressedFindingsLedgerService = UnaddressedFindingsLedgerService(sessionFactory),
+    )
+
+    val request = GoalRunnerRunRequest(
+      issueKey = "SKILL-56",
+      repoRoot = Path.of("/tmp/skillbill-goal-runner"),
+      invokedAgentId = "claude",
+      dbPathOverride = "/tmp/skillbill-goal-runner/metrics.db",
+    )
+    val completed = assertIs<GoalRunnerRunReport.Completed>(runner.run(request))
+
+    assertEquals("opened", completed.pullRequestStatus)
+    assertEquals(
+      null,
+      completed.unaddressedFindingCount,
+      "an unreadable ledger must not report an affirmative zero",
+    )
+    assertEquals(emptyMap(), completed.unaddressedSeverityBreakdown)
   }
 }

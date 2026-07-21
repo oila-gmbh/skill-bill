@@ -12,7 +12,6 @@ import skillbill.application.workflow.toRecord
 import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.error.WorkflowIssueKeyConflictError
-import skillbill.goalrunner.model.UnaddressedFinding
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.persistence.WorkflowStateRepository
@@ -291,19 +290,13 @@ class FeatureTaskRuntimePhaseRecorder(
     passNumber: Int,
   ) {
     val output = request.normalizedOutput?.envelope ?: return
-    val findings = GoalSubtaskReviewSummaryReducer.structuredFindings(output).mapIndexed { index, finding ->
-      UnaddressedFinding(
-        issueKey = continuation.issueKey,
-        subtaskId = continuation.subtaskId,
-        workflowId = request.workflowId,
-        reviewPassNumber = passNumber,
-        findingOrdinal = index + 1,
-        severity = finding.severity,
-        issueCategory = finding.issueCategory,
-        location = finding.location,
-        summary = finding.message,
-      )
-    }
+    val findings = GoalSubtaskReviewSummaryReducer.unaddressedFindings(
+      output = output,
+      issueKey = continuation.issueKey,
+      subtaskId = continuation.subtaskId,
+      workflowId = request.workflowId,
+      reviewPassNumber = passNumber,
+    )
     unitOfWork.unaddressedFindings.replaceLedgerForPass(request.workflowId, passNumber, findings)
   }
 

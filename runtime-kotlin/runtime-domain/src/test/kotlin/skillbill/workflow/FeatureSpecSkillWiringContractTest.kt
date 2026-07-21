@@ -239,6 +239,30 @@ class FeatureSpecSkillWiringContractTest {
         "has unresolved Blocker findings",
     )
   }
+
+  @Test
+  fun `the four governed feature surfaces state one audit-first order and reserve locations for the ledger`() {
+    val surfaces = mapOf(
+      "skills/bill-feature-goal/content.md" to "Review runs delegated first and inline second.",
+      "skills/bill-feature-task-runtime/content.md" to
+        "Review runs as a delegated pass followed by an inline pass.",
+      "skills/bill-feature-task-prose/content.md" to "Execute review delegated first and inline second.",
+      "skills/bill-feature-task-subtask-runner/content.md" to "Review is delegated first, then inline.",
+    )
+
+    surfaces.forEach { (path, passSequence) ->
+      val content = Files.readString(repoRootFromTest().resolve(path))
+      assertContains(content, "implement -> audit -> review -> validate", message = "$path phase order")
+      assertContains(content, passSequence, message = "$path pass sequence")
+      assertContains(content, "goal-wide unaddressed-findings ledger", message = "$path ledger")
+      assertContains(content, "skill-bill goal findings --issue-key <KEY>", message = "$path retrieval surface")
+      assertFalse(content.contains("review -> audit"), "$path must not restate a review-before-audit order")
+      assertFalse(
+        content.contains("durable artifacts and telemetry"),
+        "$path must not route location-bearing evidence into telemetry",
+      )
+    }
+  }
 }
 
 private fun countOccurrences(haystack: String, needle: String): Int =

@@ -5,16 +5,7 @@ import java.sql.Connection
 
 internal class UnaddressedFindingsRuntime(private val connection: Connection) {
   fun replaceLedgerForPass(workflowId: String, reviewPassNumber: Int, findings: List<UnaddressedFinding>) {
-    connection.prepareStatement(
-      "DELETE FROM unaddressed_findings WHERE workflow_id = ? AND " +
-        "(review_pass_number = ? OR (? > 1 AND severity = 'blocker'))",
-    ).use { statement ->
-      var parameterIndex = 1
-      statement.setString(parameterIndex++, workflowId)
-      statement.setInt(parameterIndex++, reviewPassNumber)
-      statement.setInt(parameterIndex, reviewPassNumber)
-      statement.executeUpdate()
-    }
+    deletePassesUpTo(workflowId, reviewPassNumber)
     connection.prepareStatement(
       """
       INSERT INTO unaddressed_findings (
@@ -37,6 +28,23 @@ internal class UnaddressedFindingsRuntime(private val connection: Connection) {
         statement.addBatch()
       }
       statement.executeBatch()
+    }
+  }
+
+  /**
+   * Every pass of one workflow reviews the same immutable base-to-current delta, so the newest pass
+   * is a complete re-observation of that scope and supersedes its predecessors. Retaining an earlier
+   * pass would keep reporting findings the fix loop has since addressed — and because an unresolved
+   * Blocker stops advancement, every Blocker surviving into a completed subtask would be one that
+   * was addressed.
+   */
+  private fun deletePassesUpTo(workflowId: String, reviewPassNumber: Int) {
+    connection.prepareStatement(
+      "DELETE FROM unaddressed_findings WHERE workflow_id = ? AND review_pass_number <= ?",
+    ).use { statement ->
+      statement.setString(1, workflowId)
+      statement.setInt(2, reviewPassNumber)
+      statement.executeUpdate()
     }
   }
 

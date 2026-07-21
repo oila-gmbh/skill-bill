@@ -197,10 +197,15 @@ object GoalSubtaskReviewArtifactDecoder {
 
   private fun rawResults(artifacts: Map<String, Any?>, state: GoalSubtaskReviewState): Map<String, String> {
     if (state.completedPassCount == 0) {
-      if (GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY in artifacts) {
+      // Review invalidation clears results through an empty map because the durable artifact patch
+      // merges keys and cannot express removal.
+      val cleared = artifacts[GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY]
+        ?.asGoalReviewArtifactMap(GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY)
+        .orEmpty()
+      if (cleared.isNotEmpty()) {
         reviewStateError(
           GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY,
-          "must be absent before the first completed review pass.",
+          "must hold no durable raw review result before the first completed review pass.",
         )
       }
       return emptyMap()

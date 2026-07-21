@@ -169,7 +169,12 @@ internal object AuditEvidenceWire {
       "already_satisfied_verified" -> FeatureTaskRuntimeEvidence.Observation.ALREADY_SATISFIED_VERIFIED
       "resolution_verified" -> FeatureTaskRuntimeEvidence.Observation.RESOLUTION_VERIFIED
       "recurrence_verified" -> FeatureTaskRuntimeEvidence.Observation.RECURRENCE_VERIFIED
-      else -> invalidWire("$source.observation", "unauthorized evidence observation '$wireValue'")
+      else -> invalidWire(
+        "$source.observation",
+        "unauthorized evidence observation '$wireValue'; must be one of required_behavior_absent, " +
+          "verification_failed, contract_rejected, state_mismatch, fix_verified, already_satisfied_verified, " +
+          "resolution_verified, recurrence_verified",
+      )
     }
     return FeatureTaskRuntimeEvidence(
       observation = observation,

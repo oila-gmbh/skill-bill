@@ -1597,6 +1597,10 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
       .filter { it.contains("Phase: review") }
     assertContains(reviewPrompts[0], "bill-code-review mode:delegated")
     reviewPrompts.drop(1).forEach { prompt -> assertContains(prompt, "bill-code-review mode:inline") }
+    assertTrue(
+      harness.ledgerRows.isEmpty(),
+      "the approving inline pass retracts the findings its fix loop addressed",
+    )
   }
 
   @Test
@@ -3269,6 +3273,7 @@ internal class RunnerHarnessIo(
   val repository: InMemoryRuntimeWorkflowRepository,
   val gitOperations: RecordingWorkflowGitOperations,
   val specStatusWriter: RecordingSpecStatusWriter,
+  val database: RuntimeFakeDatabaseSessionFactory,
 )
 
 internal class RunnerHarnessWorkflow(
@@ -3295,6 +3300,7 @@ internal class RunnerHarness(
   val runInvariantsStore: FeatureTaskRuntimeRunInvariantsStore get() = io.workflow.runInvariantsStore
   val repository: InMemoryRuntimeWorkflowRepository get() = io.repository
   val gitOperations: RecordingWorkflowGitOperations get() = io.gitOperations
+  val ledgerRows: List<skillbill.goalrunner.model.UnaddressedFinding> get() = io.database.ledgerRows
 
   // Launch order recovered from the event stream: each launch is preceded by a
   // PhaseStarted or a PhaseFixLoopIteration carrying the phase id.
@@ -3605,6 +3611,7 @@ internal fun runnerHarness(
     repository = repository,
     gitOperations = runtimeConfig.branchSetup.gitOperations,
     specStatusWriter = specStatusWriter,
+    database = database,
   )
   return RunnerHarness(launcher, io, runner, captured, runRequest, specScratchStore)
 }
@@ -4389,9 +4396,11 @@ private fun FeatureTaskRuntimePhaseRecorder.recordPhaseStateForTest(
 internal class RuntimeFakeDatabaseSessionFactory(
   private val repository: InMemoryRuntimeWorkflowRepository,
   private val lifecycle: LifecycleTelemetryRepository? = null,
+  private val knownIssue: Boolean = true,
 ) : DatabaseSessionFactory {
   private val dbPath = Path.of("/fake/metrics.db")
   val transactionDbOverrides = mutableListOf<String?>()
+  val ledgerRows = mutableListOf<skillbill.goalrunner.model.UnaddressedFinding>()
 
   override fun resolveDbPath(dbOverride: String?): Path = dbPath
 
@@ -4418,11 +4427,15 @@ internal class RuntimeFakeDatabaseSessionFactory(
         workflowId: String,
         reviewPassNumber: Int,
         findings: List<skillbill.goalrunner.model.UnaddressedFinding>,
-      ) = Unit
+      ) {
+        ledgerRows.removeAll { it.workflowId == workflowId && it.reviewPassNumber <= reviewPassNumber }
+        ledgerRows.addAll(findings)
+      }
 
-      override fun fetchLedger(issueKey: String): List<skillbill.goalrunner.model.UnaddressedFinding> = emptyList()
+      override fun fetchLedger(issueKey: String): List<skillbill.goalrunner.model.UnaddressedFinding> =
+        ledgerRows.filter { it.issueKey == issueKey }
 
-      override fun issueExists(issueKey: String): Boolean = true
+      override fun issueExists(issueKey: String): Boolean = knownIssue
     }
     override val workList = skillbill.ports.persistence.EmptyWorkListRepository
     override val goalPlanningPreparations = skillbill.ports.persistence.EmptyGoalPlanningPreparationRepository
@@ -4709,5 +4722,73 @@ class InfraFailureReasonStderrSurfacingTest {
       blocked.blockedReason.contains("\n"),
       "reason must not contain a newline when no output is available: '${blocked.blockedReason}'",
     )
+  }
+}
+
+class FeatureTaskRuntimeReservedPassLedgerRecoveryTest {
+  @Test
+  fun `recovering a reserved pass settles review state and its ledger rows together`() {
+    var reviewLaunches = 0
+    val harness = runnerHarness(
+      agentAssignment = phasePerAgentAssignment(),
+      runtimeConfig = RuntimeHarnessConfig(
+        goalContinuation = FeatureTaskRuntimeGoalContinuationContext(
+          parentIssueKey = ISSUE_KEY,
+          subtaskId = 5,
+          goalBranch = "feat/existing-runtime-branch",
+          suppressPr = true,
+          parentWorkflowId = "wfl-parent",
+          reviewBaseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
+        ),
+      ),
+      launcher = RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        when (phaseId) {
+          "review" -> {
+            reviewLaunches += 1
+            if (reviewLaunches == 1) facts(reviewFindingsOutput(changesRequested = true)) else spawnFailedFacts()
+          }
+          else -> facts(validJsonOutput(phaseId))
+        }
+      },
+    )
+    harness.runner.run(harness.request().copy(requestedCodeReviewMode = CodeReviewExecutionMode.DELEGATED))
+    val reserved = requireNotNull(harness.goalContinuationRecorder.reviewState(WORKFLOW_ID))
+    assertEquals(2, reserved.reservedPassNumber)
+
+    val recoveredOutput = reviewFindingsOutput(changesRequested = true)
+    val recoveredMap = requireNotNull(
+      skillbill.contracts.JsonSupport.parseObjectOrNull(recoveredOutput)
+        ?.let { skillbill.contracts.JsonSupport.jsonElementToValue(it) }
+        ?.let(skillbill.contracts.JsonSupport::anyToStringAnyMap),
+    )
+    val recovered = harness.goalContinuationRecorder.completeGoalReviewPass(
+      skillbill.application.featuretask.GoalReviewPassCompletionRequest(
+        workflowId = WORKFLOW_ID,
+        verdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
+        unresolvedFindingCount = 1,
+        findings = skillbill.application.goalrunner.GoalSubtaskReviewSummaryReducer.fromOutput(recoveredMap),
+        rawReviewResult = recoveredOutput,
+        normalizedOutput = recoveredMap,
+      ),
+    )
+
+    assertEquals(2, requireNotNull(recovered).completedPassCount)
+    assertEquals(null, recovered.reservedPassNumber)
+    assertFullyAssociatedLedgerRows(harness, passNumber = 2, subtaskId = 5)
+  }
+}
+
+private fun assertFullyAssociatedLedgerRows(harness: RunnerHarness, passNumber: Int, subtaskId: Int) {
+  val rows = harness.ledgerRows.filter { it.reviewPassNumber == passNumber }
+  assertTrue(rows.isNotEmpty(), "pass $passNumber must settle its ledger rows")
+  rows.forEach { row ->
+    assertEquals(ISSUE_KEY, row.issueKey)
+    assertEquals(subtaskId, row.subtaskId)
+    assertEquals(WORKFLOW_ID, row.workflowId)
+    assertTrue(row.severity.isNotBlank())
+    assertTrue(row.issueCategory.isNotBlank())
+    assertTrue(row.location.isNotBlank())
+    assertTrue(row.summary.isNotBlank())
   }
 }

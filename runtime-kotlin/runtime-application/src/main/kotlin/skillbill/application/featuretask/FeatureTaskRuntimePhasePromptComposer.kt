@@ -5,6 +5,7 @@ import skillbill.agentaddon.model.HydratedAgentAddonSelection
 import skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.ports.workflow.model.GoalSubtaskReviewInput
+import skillbill.review.model.ReviewIssueCategory
 import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.model.SpecSource
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
@@ -255,7 +256,11 @@ object FeatureTaskRuntimePhasePromptComposer {
           "with exactly these ids in order: ${briefing.auditRepairItemIds.joinToString()}. Every result must " +
           "contain only repair_item_id, outcome (fixed or already_satisfied), non-empty " +
           "changed_paths_or_symbols, non-empty executed_verification, and structured result_evidence " +
-          "with observation, artifact_ref, and check_ref. artifact_ref MUST be a repository-relative path " +
+          "with observation, artifact_ref, and check_ref. observation MUST be exactly one of " +
+          "required_behavior_absent, verification_failed, contract_rejected, state_mismatch, fix_verified, " +
+          "already_satisfied_verified, resolution_verified, or recurrence_verified; use " +
+          "already_satisfied_verified when the behavior already existed and you verified it, and do not " +
+          "invent a synonym outside this list. artifact_ref MUST be a repository-relative path " +
           "optionally followed by one :symbol; do not put a sentence, spaces, test description, command, " +
           "result, or additional prose in artifact_ref. check_ref MUST be AC-###, F-###, or a single " +
           "name ending in Test or Check (optionally followed by :symbol); do not put a command, result, " +
@@ -275,7 +280,11 @@ object FeatureTaskRuntimePhasePromptComposer {
         "\n    - This is a VERIFYING phase: produced_outputs MUST carry a \"$findings\" array (each entry a\n" +
           "      severity/message object; an explicit empty [] affirms no Blocker findings) AND/OR a\n" +
           "      top-level \"$verdict\" of \"approved\" or \"changes_requested\". Output carrying NEITHER signal\n" +
-          "      fails the schema gate loudly — a prose summary alone cannot advance the gate."
+          "      fails the schema gate loudly — a prose summary alone cannot advance the gate.\n" +
+          "      Each finding's \"severity\" MUST be exactly one of blocker, major, minor, nit, and its\n" +
+          "      \"issue_category\" MUST be exactly one of " +
+          ReviewIssueCategory.entries.joinToString { it.wireValue } + "; any other category value is\n" +
+          "      recorded as other."
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT ->
         "\n    - This is a VERIFYING phase: produced_outputs MUST carry an \"$unmetCriteria\" array (one\n" +
           "      message per unmet acceptance criterion; an explicit empty [] affirms every criterion is met)\n" +

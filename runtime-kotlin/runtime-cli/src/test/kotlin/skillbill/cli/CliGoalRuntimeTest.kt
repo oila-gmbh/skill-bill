@@ -6,6 +6,7 @@ import skillbill.cli.model.CliExecutionResult
 import skillbill.cli.model.CliRuntimeContext
 import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
+import skillbill.db.core.DatabaseRuntime
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.AgentRunLauncher
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
@@ -35,6 +36,7 @@ import java.sql.DriverManager
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.minutes
 
@@ -191,6 +193,7 @@ class CliGoalRuntimeTest {
     assertContains(result.stdout, "attempted_subtasks: 1, 2")
     assertContains(result.stdout, "subtasks_pending: 0")
     assertContains(result.stdout, "subtasks_blocked: 0")
+    assertContains(result.stdout, "unaddressed_findings=0 blocker=0 major=0 minor=0 nit=0")
     assertContains(result.stdout, "pull_request_status: opened")
     assertContains(result.stdout, "pull_request_url: https://github.com/example/skill-bill/pull/901")
     assertEquals(listOf(1, 2), launcher.childLaunches.map { it.skillRunRequest.subtaskId })
@@ -689,6 +692,42 @@ class CliGoalRuntimeTest {
     assertEquals(false, status.stdout.contains("latest_observability:"), status.stdout)
     assertEquals("blocked", staleWorkflow["workflow_status"])
     assertContains(staleWorkflow["artifacts"]?.toString().orEmpty(), "stale running child")
+  }
+}
+
+/**
+ * Kept in its own class so it does not push the broad [CliGoalRuntimeTest] over the detekt
+ * LargeClass threshold.
+ */
+class CliGoalUnaddressedFindingsTest {
+  @Test
+  fun `an unreadable ledger reports itself instead of an affirmative zero`() {
+    val fixture = goalFixture(subtaskCount = 1)
+    DatabaseRuntime.ensureDatabase(fixture.dbPath).use { connection ->
+      connection.prepareStatement(
+        "INSERT INTO unaddressed_findings (issue_key, workflow_id, subtask_id, review_pass_number, " +
+          "finding_ordinal, severity, issue_category, location, summary) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      ).use { statement ->
+        statement.setString(1, "SKILL-901")
+        statement.setString(2, "wfl-poison-1")
+        statement.setInt(3, 1)
+        statement.setInt(4, 1)
+        statement.setInt(5, 1)
+        statement.setString(6, "critical")
+        statement.setString(7, "behavior_correctness")
+        statement.setString(8, "src/Feature.kt:42")
+        statement.setString(9, "Poison row persisted by an older writer")
+        statement.executeUpdate()
+      }
+    }
+
+    val result = CliRuntime.run(
+      fixture.goalCommand(),
+      fixture.context(launcher = GoalFixtureAgentRunLauncher(fixture)),
+    )
+
+    assertContains(result.stdout, "unaddressed_findings=unreadable")
+    assertFalse(result.stdout.contains("unaddressed_findings=0"))
   }
 }
 

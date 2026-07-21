@@ -14,6 +14,8 @@ import skillbill.application.workflow.WorkflowFamily
 import skillbill.application.workflow.generateWorkflowId
 import skillbill.application.workflow.repoRoot
 import skillbill.contracts.JsonSupport
+import skillbill.error.InvalidUnaddressedFindingsLedgerSchemaError
+import skillbill.error.UnaddressedFindingsLedgerAbsentError
 import skillbill.goalrunner.GoalRunnerOutcomeReconciler
 import skillbill.goalrunner.GoalRunnerPlanner
 import skillbill.goalrunner.model.GoalAttemptLedgerAction
@@ -863,6 +865,17 @@ class GoalRunner(
     return GoalRunnerIterationResult(state = completed)
   }
 
+  private fun resolveFindingsLedger(issueKey: String, dbPathOverride: String?): UnaddressedFindingsLedger? {
+    val service = unaddressedFindingsLedgerService ?: return null
+    return try {
+      service.ledger(issueKey, dbPathOverride)
+    } catch (_: UnaddressedFindingsLedgerAbsentError) {
+      UnaddressedFindingsLedger(issueKey, emptyList())
+    } catch (_: InvalidUnaddressedFindingsLedgerSchemaError) {
+      null
+    }
+  }
+
   private fun finalizeGoal(
     state: GoalRunnerManifestState,
     request: GoalRunnerRunRequest,
@@ -882,7 +895,7 @@ class GoalRunner(
         lastResumableStep = "commit_push",
       )
     }
-    val findingsLedger = unaddressedFindingsLedgerService?.ledger(finalState.manifest.issueKey, request.dbPathOverride)
+    val findingsLedger = resolveFindingsLedger(finalState.manifest.issueKey, request.dbPathOverride)
     val result = pullRequestPort.open(finalState.manifest.toPullRequestRequest(request.repoRoot))
     return when (result) {
       is GoalPullRequestResult.Opened -> {
@@ -1113,7 +1126,7 @@ class GoalRunner(
       subtasksCompleted = manifest.subtasks.count { it.status == "complete" },
       subtasksPending = manifest.subtasks.count { it.status !in setOf("complete", "skipped", "blocked") },
       subtasksBlocked = manifest.subtasks.count { it.status == "blocked" },
-      unaddressedFindingCount = ledger?.findings?.size ?: 0,
+      unaddressedFindingCount = ledger?.findings?.size,
       unaddressedSeverityBreakdown = ledger?.severityBreakdown.orEmpty(),
     )
   }

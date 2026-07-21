@@ -47,17 +47,50 @@ class UnaddressedFindingsRuntimeTest {
   }
 
   @Test
-  fun `recording a later review pass removes remediated findings from earlier passes`() {
+  fun `a later review pass supersedes findings an earlier pass reported`() {
     val dbPath = Files.createTempDirectory("unaddressed-findings-later-pass").resolve("runtime.db")
     DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
       val repository = SQLiteUnaddressedFindingsRepository(connection)
+      val addressedBlocker = finding(1, "blocker", "src/First.kt:7")
       val deferred = finding(2, "minor", "src/Deferred.kt:8")
-      repository.replaceLedgerForPass("workflow-1", 1, listOf(finding(1, "blocker", "src/First.kt:7"), deferred))
-      val remaining = finding(1, "minor", "src/Second.kt:9").copy(reviewPassNumber = 2)
+      repository.replaceLedgerForPass("workflow-1", 1, listOf(addressedBlocker, deferred))
+      val stillOpen = finding(1, "minor", "src/Deferred.kt:8").copy(reviewPassNumber = 2)
 
-      repository.replaceLedgerForPass("workflow-1", 2, listOf(remaining))
+      repository.replaceLedgerForPass("workflow-1", 2, listOf(stillOpen))
 
-      assertEquals(listOf(deferred, remaining), repository.fetchLedger("SKILL-135"))
+      assertEquals(listOf(stillOpen), repository.fetchLedger("SKILL-135"))
+    }
+  }
+
+  @Test
+  fun `an approving later pass retracts every finding the fix loop addressed`() {
+    val dbPath = Files.createTempDirectory("unaddressed-findings-approving-pass").resolve("runtime.db")
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val repository = SQLiteUnaddressedFindingsRepository(connection)
+      repository.replaceLedgerForPass(
+        "workflow-1",
+        1,
+        listOf(finding(1, "blocker", "src/First.kt:7"), finding(2, "minor", "src/Deferred.kt:8")),
+      )
+
+      repository.replaceLedgerForPass("workflow-1", 2, emptyList())
+
+      assertEquals(emptyList(), repository.fetchLedger("SKILL-135"))
+    }
+  }
+
+  @Test
+  fun `superseding one workflow leaves a sibling subtask's findings intact`() {
+    val dbPath = Files.createTempDirectory("unaddressed-findings-sibling").resolve("runtime.db")
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val repository = SQLiteUnaddressedFindingsRepository(connection)
+      val sibling = finding(1, "major", "src/Sibling.kt:3").copy(workflowId = "workflow-2", subtaskId = 2)
+      repository.replaceLedgerForPass("workflow-1", 1, listOf(finding(1, "blocker", "src/First.kt:7")))
+      repository.replaceLedgerForPass("workflow-2", 1, listOf(sibling))
+
+      repository.replaceLedgerForPass("workflow-1", 2, emptyList())
+
+      assertEquals(listOf(sibling), repository.fetchLedger("SKILL-135"))
     }
   }
 

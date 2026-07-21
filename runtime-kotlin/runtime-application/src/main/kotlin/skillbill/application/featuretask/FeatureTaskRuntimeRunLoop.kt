@@ -1811,7 +1811,7 @@ internal class FeatureTaskRuntimeRunLoop(
     val outputText = normalizedOutput.canonicalJson
     val outputMap = normalizedOutput.envelope
     if (isGoalReviewRun(run)) {
-      persistGoalReviewCompletion(run, iteration, outputText, outputMap, observability, fileManifest)?.let { outcome ->
+      persistGoalReviewCompletion(run, iteration, normalizedOutput, observability, fileManifest)?.let { outcome ->
         return AttemptResult.settled(outcome)
       }
     } else {
@@ -1850,11 +1850,12 @@ internal class FeatureTaskRuntimeRunLoop(
   private fun persistGoalReviewCompletion(
     run: PhaseRun,
     iteration: Int,
-    outputText: String,
-    outputMap: Map<String, Any?>,
+    normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput,
     observability: FeatureTaskRuntimeRunObservability,
     fileManifest: FeatureTaskRuntimePhaseFileManifest,
   ): PhaseOutcome? {
+    val outputText = normalizedOutput.canonicalJson
+    val outputMap = normalizedOutput.envelope
     val findings = GoalSubtaskReviewSummaryReducer.fromOutput(outputMap)
     val outcome = GoalSubtaskReviewSummaryReducer.outcomeFor(outputMap, findings)
     val completed = runCatching {
@@ -1867,6 +1868,7 @@ internal class FeatureTaskRuntimeRunLoop(
             finished = true,
             outputArtifact = outputText,
             fileManifest = fileManifest,
+            normalizedOutput = normalizedOutput,
           ),
           verdict = outcome.verdict,
           unresolvedFindingCount = outcome.unresolvedFindingCount,

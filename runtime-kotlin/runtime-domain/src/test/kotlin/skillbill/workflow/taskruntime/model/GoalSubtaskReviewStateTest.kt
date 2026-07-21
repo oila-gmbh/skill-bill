@@ -6,6 +6,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class GoalSubtaskReviewStateTest {
@@ -232,9 +233,44 @@ class GoalSubtaskReviewStateTest {
         mapOf(
           FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY to continuation.toArtifactMap(),
           GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY to state.toArtifactMap(),
-          GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY to emptyMap<String, String>(),
+          GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY to mapOf("1" to "stale raw review result"),
         ),
       )
     }
+  }
+
+  @Test
+  fun `review invalidation clears raw results through an empty map that stays decodable`() {
+    val continuation = FeatureTaskRuntimeGoalContinuationArtifact(
+      issueKey = "SKILL-135",
+      subtaskId = 3,
+      suppressPr = true,
+      goalBranch = "feat/SKILL-135",
+      codeReviewMode = CodeReviewExecutionMode.DELEGATED,
+    )
+    val completed = GoalSubtaskReviewState.initial(
+      reviewBaseSha = "d".repeat(40),
+      baselineUntrackedPaths = emptyList(),
+      codeReviewMode = CodeReviewExecutionMode.DELEGATED,
+    ).reserveNextPass().completeReservedPass(
+      verdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
+      unresolvedFindingCount = 0,
+      findings = emptyList(),
+    )
+    val invalidated = GoalSubtaskReviewState.initial(
+      reviewBaseSha = completed.reviewBaseSha,
+      baselineUntrackedPaths = completed.baselineUntrackedPaths,
+      codeReviewMode = completed.codeReviewMode,
+    )
+
+    val artifacts = mapOf(
+      FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY to continuation.toArtifactMap(),
+      GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY to invalidated.toArtifactMap(),
+      GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY to emptyMap<String, String>(),
+    )
+
+    val decoded = assertNotNull(GoalSubtaskReviewArtifactDecoder.decode(artifacts))
+    assertEquals(0, decoded.state.completedPassCount)
+    assertEquals(emptyMap(), decoded.rawResults)
   }
 }

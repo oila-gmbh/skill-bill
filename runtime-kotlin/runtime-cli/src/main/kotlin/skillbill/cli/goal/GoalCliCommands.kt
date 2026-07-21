@@ -719,13 +719,7 @@ private fun goalRunText(payload: Map<String, Any?>): String = buildString {
   payload["subtasks_completed"]?.let { appendLine("subtasks_completed: $it") }
   payload["subtasks_pending"]?.let { appendLine("subtasks_pending: $it") }
   payload["subtasks_blocked"]?.let { appendLine("subtasks_blocked: $it") }
-  payload["unaddressed_findings"]?.let { count ->
-    val breakdown = payload["unaddressed_severity_breakdown"] as? Map<*, *> ?: emptyMap<String, Int>()
-    appendLine(
-      "unaddressed_findings=$count blocker=${breakdown["blocker"] ?: 0} major=${breakdown["major"] ?: 0} " +
-        "minor=${breakdown["minor"] ?: 0} nit=${breakdown["nit"] ?: 0}",
-    )
-  }
+  unaddressedFindingsLine(payload)?.let(::appendLine)
   payload["pull_request_status"]?.let { appendLine("pull_request_status: $it") }
   payload["pull_request_url"]?.let { appendLine("pull_request_url: $it") }
   payload["subtask_id"]?.let { appendLine("subtask_id: $it") }
@@ -733,6 +727,15 @@ private fun goalRunText(payload: Map<String, Any?>): String = buildString {
   payload["blocked_reason"]?.let { appendLine("blocked_reason: $it") }
   payload["workflow_id"]?.let { appendLine("workflow_id: $it") }
   payload["last_resumable_step"]?.let { appendLine("last_resumable_step: $it") }
+}
+
+private fun unaddressedFindingsLine(payload: Map<String, Any?>): String? {
+  if (!payload.containsKey("unaddressed_findings")) return null
+  val count = payload["unaddressed_findings"]
+    ?: return "unaddressed_findings=unreadable (run `skill-bill goal findings --issue-key ${payload["issue_key"]}`)"
+  val breakdown = payload["unaddressed_severity_breakdown"] as? Map<*, *> ?: emptyMap<String, Int>()
+  return "unaddressed_findings=$count blocker=${breakdown["blocker"] ?: 0} major=${breakdown["major"] ?: 0} " +
+    "minor=${breakdown["minor"] ?: 0} nit=${breakdown["nit"] ?: 0}"
 }
 
 private fun Map<String, Any?>.goalExitCode(): Int = if (this["status"] == "complete") 0 else 1

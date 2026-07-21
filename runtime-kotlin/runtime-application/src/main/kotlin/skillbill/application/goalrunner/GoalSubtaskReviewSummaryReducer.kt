@@ -1,6 +1,9 @@
 package skillbill.application.goalrunner
 
 import skillbill.contracts.JsonSupport
+import skillbill.goalrunner.model.UnaddressedFinding
+import skillbill.goalrunner.model.normalizedUnaddressedFindingCategory
+import skillbill.goalrunner.model.normalizedUnaddressedFindingSeverity
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
 
@@ -70,6 +73,26 @@ internal object GoalSubtaskReviewSummaryReducer {
         compactLabel = labelFor(finding, message),
       )
     }
+  }
+
+  fun unaddressedFindings(
+    output: Map<String, Any?>,
+    issueKey: String,
+    subtaskId: Int,
+    workflowId: String,
+    reviewPassNumber: Int,
+  ): List<UnaddressedFinding> = structuredFindings(output).mapIndexed { index, finding ->
+    UnaddressedFinding(
+      issueKey = issueKey,
+      subtaskId = subtaskId,
+      workflowId = workflowId,
+      reviewPassNumber = reviewPassNumber,
+      findingOrdinal = index + 1,
+      severity = normalizedUnaddressedFindingSeverity(finding.severity),
+      issueCategory = normalizedUnaddressedFindingCategory(finding.issueCategory),
+      location = finding.location,
+      summary = finding.message,
+    )
   }
 
   fun unresolvedCount(output: Map<String, Any?>): Int = fromOutput(output)
