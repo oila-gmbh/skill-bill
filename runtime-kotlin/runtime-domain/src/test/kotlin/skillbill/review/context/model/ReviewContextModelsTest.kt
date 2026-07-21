@@ -35,6 +35,46 @@ class ReviewContextModelsTest {
     )
   }
 
+  @Test fun `assignment digest tracks revision lane decision and dependency allowlist`() {
+    val base =
+      ReviewAssignment("review", "a".repeat(64), "security", "base", "head", listOf("A.kt"), listOf("b".repeat(64)))
+    assertEquals(base.digest, base.copy(assignedPaths = listOf("A.kt")).digest)
+    assertTrue(base.digest != base.copy(reviewRevision = ReviewRevision("review", 2)).digest)
+    assertTrue(
+      base.digest != base.copy(dependencyAllowlist = ReviewDependencyAllowlist(listOf("Dep.kt"))).digest,
+    )
+    assertTrue(
+      base.digest != base.copy(laneDecision = ReviewLaneDecision("security", true, "different reason")).digest,
+    )
+  }
+
+  @Test fun `assignments reject lane decisions that do not describe the lane`() {
+    assertFailsWith<IllegalArgumentException> {
+      ReviewAssignment(
+        "review",
+        "a".repeat(64),
+        "security",
+        "base",
+        "head",
+        listOf("A.kt"),
+        emptyList(),
+        laneDecision = ReviewLaneDecision("testing", true, "routed"),
+      )
+    }
+    assertFailsWith<IllegalArgumentException> {
+      ReviewAssignment(
+        "review",
+        "a".repeat(64),
+        "security",
+        "base",
+        "head",
+        listOf("A.kt"),
+        emptyList(),
+        laneDecision = ReviewLaneDecision("security", false, "excluded"),
+      )
+    }
+  }
+
   @Test fun `paths reject traversal`() {
     assertFailsWith<IllegalArgumentException> {
       ReviewAssignment("review", "a".repeat(64), "security", "base", "head", listOf("../secret"), emptyList())

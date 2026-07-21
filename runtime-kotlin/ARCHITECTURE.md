@@ -437,6 +437,8 @@ runtime-ports
     - `skillbill.application.workflow.WorkflowFamily.sessionSummary`
     - `skillbill.workflow.GoalObservabilityEventValidator.validate`
     - `skillbill.workflow.GoalPlanningPreparationEnvelopeValidator.validate`
+    - `skillbill.review.context.ReviewContextEnvelopeValidator.validate`
+    - `skillbill.application.review.model.ReviewContextEnvelope.asWireMap`
     - `skillbill.workflow.model.GoalObservabilityEvent.toArtifactMap`
     - `skillbill.workflow.model.GoalObservabilityEvent.toCompactSummaryMap`
     - `skillbill.workflow.model.GoalObservabilityHistory.toArtifactList`
@@ -880,6 +882,8 @@ Categories:
 ### open_extension (@OpenBoundaryMap)
 
 - `skillbill.workflow.GoalPlanningPreparationEnvelopeValidator.validate`
+- `skillbill.review.context.ReviewContextEnvelopeValidator.validate`
+- `skillbill.application.review.model.ReviewContextEnvelope.asWireMap`
 - `skillbill.workflow.WorkflowEngine.snapshotMap`
 - `skillbill.workflow.WorkflowEngine.summaryMap`
 - `skillbill.workflow.WorkflowEngine.resumeMap`

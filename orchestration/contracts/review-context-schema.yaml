@@ -10,24 +10,104 @@ oneOf:
   - $ref: "#/$defs/accounting_summary"
 $defs:
   digest: { type: string, pattern: "^[a-f0-9]{64}$" }
-  path: { type: string, minLength: 1, pattern: "^(?!/)(?!.*(?:^|/)\.\.(?:/|$)).+$" }
+  identifier: { type: string, minLength: 1 }
+  path: { type: string, minLength: 1, pattern: '^(?!/)(?!.*(?:^|/)\.\.(?:/|$)).+$' }
   strings:
     type: array
     uniqueItems: true
     items: { type: string, minLength: 1 }
+  hunk_id: { type: string, pattern: "^[a-f0-9]{64}$" }
+  hunk_ids:
+    type: array
+    uniqueItems: true
+    items: { $ref: "#/$defs/hunk_id" }
+  review_revision:
+    type: object
+    additionalProperties: false
+    required: [session_id, run_revision]
+    properties:
+      session_id: { $ref: "#/$defs/identifier" }
+      run_revision: { type: integer, minimum: 1 }
+  rule_reference:
+    type: object
+    additionalProperties: false
+    required: [rule_id, source_path, excerpt, digest]
+    properties:
+      rule_id: { $ref: "#/$defs/identifier" }
+      source_path: { $ref: "#/$defs/path" }
+      excerpt: { type: string, minLength: 1, maxLength: 2000 }
+      digest: { $ref: "#/$defs/digest" }
+  rule_references:
+    type: array
+    items: { $ref: "#/$defs/rule_reference" }
+  learnings_reference:
+    type: object
+    additionalProperties: false
+    required: [learning_id, source, digest]
+    properties:
+      learning_id: { $ref: "#/$defs/identifier" }
+      source: { $ref: "#/$defs/identifier" }
+      digest: { $ref: "#/$defs/digest" }
+  build_test_fact:
+    type: object
+    additionalProperties: false
+    required: [kind, command, outcome]
+    properties:
+      kind: { $ref: "#/$defs/identifier" }
+      command: { $ref: "#/$defs/identifier" }
+      outcome: { $ref: "#/$defs/identifier" }
+  dependency_allowlist:
+    type: array
+    uniqueItems: true
+    items: { $ref: "#/$defs/path" }
+  evidence_target:
+    type: object
+    additionalProperties: false
+    required: [target_id, path, hunk_ids]
+    properties:
+      target_id: { $ref: "#/$defs/identifier" }
+      path: { $ref: "#/$defs/path" }
+      hunk_ids: { $ref: "#/$defs/hunk_ids" }
+  evidence_targets:
+    type: array
+    items: { $ref: "#/$defs/evidence_target" }
+  lane_decision:
+    type: object
+    additionalProperties: false
+    required: [lane, included, reason]
+    properties:
+      lane: { $ref: "#/$defs/identifier" }
+      included: { type: boolean }
+      reason: { type: string, minLength: 1 }
+      signals: { $ref: "#/$defs/strings" }
+  expansion_record:
+    type: object
+    additionalProperties: false
+    required: [expansion_id, assignment_digest, requested_path, reachability_reason, authorized, sequence]
+    properties:
+      expansion_id: { $ref: "#/$defs/identifier" }
+      assignment_digest: { $ref: "#/$defs/digest" }
+      requested_path: { $ref: "#/$defs/path" }
+      reachability_reason: { type: string, minLength: 1 }
+      authorized: { type: boolean }
+      sequence: { type: integer, minimum: 0 }
+  expansion_records:
+    type: array
+    items: { $ref: "#/$defs/expansion_record" }
   header:
     type: object
     required: [contract_version, kind, review_id, packet_digest]
     properties:
-      contract_version: { const: "0.1" }
+      contract_version: { const: "0.2" }
       kind: { type: string }
       review_id: { type: string, minLength: 1 }
       packet_digest: { $ref: "#/$defs/digest" }
   hunk:
     type: object
     additionalProperties: false
-    required: [path, old_start, old_count, new_start, new_count, content]
+    required: [hunk_id, path, old_start, old_count, new_start, new_count, content]
     properties:
+      hunk_id: { $ref: "#/$defs/hunk_id" }
       path: { $ref: "#/$defs/path" }
       old_start: { type: integer, minimum: 0 }
       old_count: { type: integer, minimum: 0 }
@@ -37,12 +117,13 @@ $defs:
   parent_packet:
     type: object
     additionalProperties: false
-    required: [contract_version, kind, review_id, packet_digest, repository_identity, base_revision, head_revision, status, selected_lanes, changed_hunks]
+    required: [contract_version, kind, review_id, packet_digest, review_revision, repository_identity, base_revision, head_revision, status, selected_lanes, lane_decisions, changed_hunks, matched_rules, learnings_references, build_test_facts, dependency_allowlist, evidence_targets, expansion_ledger]
     properties:
-      contract_version: { const: "0.1" }
+      contract_version: { const: "0.2" }
       kind: { const: parent_packet }
       review_id: { type: string, minLength: 1 }
       packet_digest: { $ref: "#/$defs/digest" }
+      review_revision: { $ref: "#/$defs/review_revision" }
       repository_identity: { type: string, minLength: 1 }
       base_revision: { type: string, minLength: 1 }
       head_revision: { type: string, minLength: 1 }
@@ -51,45 +132,66 @@ $defs:
       pack: { type: [string, "null"] }
       add_ons: { $ref: "#/$defs/strings" }
       selected_lanes: { $ref: "#/$defs/strings", minItems: 1 }
+      lane_decisions:
+        type: array
+        minItems: 1
+        items: { $ref: "#/$defs/lane_decision" }
       changed_hunks: { type: array, items: { $ref: "#/$defs/hunk" } }
+      matched_rules: { $ref: "#/$defs/rule_references" }
+      learnings_references:
+        type: array
+        items: { $ref: "#/$defs/learnings_reference" }
+      build_test_facts:
+        type: array
+        items: { $ref: "#/$defs/build_test_fact" }
+      dependency_allowlist: { $ref: "#/$defs/dependency_allowlist" }
+      evidence_targets: { $ref: "#/$defs/evidence_targets" }
+      expansion_ledger: { $ref: "#/$defs/expansion_records" }
   assignment:
     type: object
     additionalProperties: false
-    required: [contract_version, kind, review_id, packet_digest, assignment_digest, lane, base_revision, head_revision, assigned_paths, assigned_hunks, criteria_references, matched_rules, evidence_targets]
+    required: [contract_version, kind, review_id, packet_digest, assignment_digest, review_revision, lane, lane_decision, base_revision, head_revision, assigned_paths, assigned_hunks, criteria_references, matched_rules, evidence_targets, dependency_allowlist, expansions]
     properties:
-      contract_version: { const: "0.1" }
+      contract_version: { const: "0.2" }
       kind: { const: assignment }
       review_id: { type: string, minLength: 1 }
       packet_digest: { $ref: "#/$defs/digest" }
       assignment_digest: { $ref: "#/$defs/digest" }
+      review_revision: { $ref: "#/$defs/review_revision" }
       lane: { type: string, minLength: 1 }
+      lane_decision: { $ref: "#/$defs/lane_decision" }
       base_revision: { type: string, minLength: 1 }
       head_revision: { type: string, minLength: 1 }
       assigned_paths: { type: array, uniqueItems: true, items: { $ref: "#/$defs/path" } }
-      assigned_hunks: { $ref: "#/$defs/strings" }
+      assigned_hunks: { $ref: "#/$defs/hunk_ids" }
       criteria_references: { $ref: "#/$defs/strings" }
-      matched_rules: { $ref: "#/$defs/strings" }
-      evidence_targets: { $ref: "#/$defs/strings" }
+      matched_rules: { $ref: "#/$defs/rule_references" }
+      evidence_targets: { $ref: "#/$defs/evidence_targets" }
+      dependency_allowlist: { $ref: "#/$defs/dependency_allowlist" }
+      expansions: { $ref: "#/$defs/expansion_records" }
   launch:
     type: object
     additionalProperties: false
-    required: [contract_version, kind, review_id, packet_digest, assignment_digest, lane, base_revision, head_revision, specialist_contract, rubric, assigned_paths, assigned_hunks, criteria_references, matched_rules, evidence_targets, broker_id, isolation, budget]
+    required: [contract_version, kind, review_id, packet_digest, assignment_digest, review_revision, lane, base_revision, head_revision, specialist_contract, rubric, assigned_paths, assigned_hunks, criteria_references, matched_rules, evidence_targets, dependency_allowlist, forbidden_rediscovery, broker_id, isolation, budget]
     properties:
-      contract_version: { const: "0.1" }
+      contract_version: { const: "0.2" }
       kind: { const: launch }
       review_id: { type: string, minLength: 1 }
       packet_digest: { $ref: "#/$defs/digest" }
       assignment_digest: { $ref: "#/$defs/digest" }
+      review_revision: { $ref: "#/$defs/review_revision" }
       lane: { type: string, minLength: 1 }
       base_revision: { type: string, minLength: 1 }
       head_revision: { type: string, minLength: 1 }
       specialist_contract: { type: string, minLength: 1 }
       rubric: { type: string, minLength: 1 }
       assigned_paths: { type: array, uniqueItems: true, items: { $ref: "#/$defs/path" } }
-      assigned_hunks: { $ref: "#/$defs/strings" }
+      assigned_hunks: { $ref: "#/$defs/hunk_ids" }
       criteria_references: { $ref: "#/$defs/strings" }
-      matched_rules: { $ref: "#/$defs/strings" }
-      evidence_targets: { $ref: "#/$defs/strings" }
+      matched_rules: { $ref: "#/$defs/rule_references" }
+      evidence_targets: { $ref: "#/$defs/evidence_targets" }
+      dependency_allowlist: { $ref: "#/$defs/dependency_allowlist" }
+      forbidden_rediscovery: { $ref: "#/$defs/strings", minItems: 1 }
       broker_id: { type: string, minLength: 1 }
       isolation: { const: fresh }
       budget: { $ref: "#/$defs/budget" }
@@ -120,7 +222,7 @@ $defs:
     additionalProperties: false
     required: [contract_version, kind, review_id, packet_digest, assignment_digest, lane, terminal_outcome, budget_kind, configured_limit, observed_value, enforceable]
     properties:
-      contract_version: { const: "0.1" }
+      contract_version: { const: "0.2" }
       kind: { const: budget_outcome }
       review_id: { type: string, minLength: 1 }
       packet_digest: { $ref: "#/$defs/digest" }
@@ -147,7 +249,7 @@ $defs:
     additionalProperties: false
     required: [contract_version, kind, review_id, packet_digest, lanes, aggregate_usage, budget_regression]
     properties:
-      contract_version: { const: "0.1" }
+      contract_version: { const: "0.2" }
       kind: { const: accounting_summary }
       review_id: { type: string, minLength: 1 }
       packet_digest: { $ref: "#/$defs/digest" }
@@ -174,3 +276,11 @@ x-coherence-checks:
   - Assignment paths and hunks are owned by the parent packet and remain unique.
   - Observed budget values exceed their configured limit for exceeded outcomes.
   - Durable projections omit prompts, diffs, source, project guidance, and tool-output bodies.
+  - Parent-packet lane_decisions cover exactly the selected_lanes set, one decision per lane.
+  - Every included lane decision carries a non-blank reason, and excluded lanes produce no assignment.
+  - Every assigned hunk_id and assigned path is owned by the parent packet.
+  - Dependency-allowlist entries are parent-packet-owned and disjoint from assigned_paths.
+  - Assignment and launch review_revision equal the parent-packet review_revision.
+  - Matched-rule excerpts stay within their bound and carry a digest over the referenced rule body.
+  - Expansion records reference an assignment_digest that exists in the current review.
+  - Hunk ids are content-addressed over path, spans, and normalized content, not positional.

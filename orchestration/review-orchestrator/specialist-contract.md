@@ -25,6 +25,25 @@ Do not reference this repo-relative path directly from installable skills — us
 - Keep each specialist review pass to at most 7 findings
 - Include a minimal concrete fix for each finding
 
+## Packet Consumer Contract
+
+Every downstream routed layer and delegated specialist consumes the authoritative review packet exactly as launched. The packet is the single source of scope, routing, guidance, and measurement facts; a consumer that re-derives any of them produces a divergent review and breaks digest-backed attribution.
+
+Consumers must not rediscover any of the following:
+
+- `review_status` — the packet already carries the resolved review status
+- `review_scope` — the packet already carries the resolved review scope
+- `base_head_revision_discovery` — base and head revisions are fixed by the packet
+- `diff_recomputation` — never run a broad `git diff`; use the assigned hunks
+- `dominant_stack_routing` — the dominant stack is already resolved
+- `platform_pack_and_addon_resolution` — pack and add-on composition is already resolved
+- `project_guidance_traversal` — do not walk AGENTS/project-guidance files; use the matched rules
+- `learnings_resolution` — do not resolve learnings, including through MCP
+- `build_test_fact_discovery` — build and test facts are supplied as packet facts
+- `telemetry_ownership_determination` — telemetry ownership is decided by the orchestrator
+
+Additional file reads are limited to the launch `dependency_allowlist` and the governed expansion path; anything else is out of contract.
+
 ## Shared Report Structure
 
 Section 1 summary must include `Review session ID: <review-session-id>`.
