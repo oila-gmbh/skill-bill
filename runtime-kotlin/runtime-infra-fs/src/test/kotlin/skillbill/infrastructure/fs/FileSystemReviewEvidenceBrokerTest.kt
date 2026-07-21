@@ -41,11 +41,12 @@ class FileSystemReviewEvidenceBrokerTest {
   @Test fun `native operation protocol admits measured reads and authorized expansions`() {
     val root = repo("A.kt" to "assigned", "B.kt" to "dependency")
     val assignment = assignment(listOf("A.kt"), listOf("B.kt"))
-    val broker = broker(root, assignment)
+    val request = expansionRequest(assignment, "B.kt", "called by assigned hunk")
+    val broker = broker(root, assignment, trustedExpansionLedger = listOf(requireNotNull(request.authorizedExpansion)))
     val protocol = BrokerBackedNativeReviewOperationProtocol(broker)
 
     val result = protocol.read(
-      ReviewEvidenceBatchRequest.of(expansionRequest(assignment, "B.kt", "called by assigned hunk")),
+      ReviewEvidenceBatchRequest.of(request),
     )
 
     assertEquals("dependency", result.results.single().content)
@@ -100,9 +101,10 @@ class FileSystemReviewEvidenceBrokerTest {
   @Test fun `authorized expansion is admitted and audited with its reachability reason`() {
     val root = repo("A.kt" to "assigned", "B.kt" to "dep")
     val assignment = assignment(listOf("A.kt"), listOf("B.kt"))
-    val broker = broker(root, assignment)
+    val request = expansionRequest(assignment, "B.kt", "called by assigned symbol")
+    val broker = broker(root, assignment, trustedExpansionLedger = listOf(requireNotNull(request.authorizedExpansion)))
     val result = broker.readBatch(
-      ReviewEvidenceBatchRequest.of(expansionRequest(assignment, "B.kt", "called by assigned symbol")),
+      ReviewEvidenceBatchRequest.of(request),
     )
     assertEquals("dep", result.results.single().content)
     val expansion = result.expansions.single()
@@ -152,9 +154,15 @@ class FileSystemReviewEvidenceBrokerTest {
   @Test fun `expansion budget excess terminates the lane`() {
     val root = repo("A.kt" to "assigned", "B.kt" to "dep")
     val assignment = assignment(listOf("A.kt"), listOf("B.kt"))
-    val broker = broker(root, assignment, policy(expansions = 0))
+    val request = expansionRequest(assignment, "B.kt", "reachable from assigned symbol")
+    val broker = broker(
+      root,
+      assignment,
+      policy(expansions = 0),
+      trustedExpansionLedger = listOf(requireNotNull(request.authorizedExpansion)),
+    )
     val result = broker.readBatch(
-      ReviewEvidenceBatchRequest.of(expansionRequest(assignment, "B.kt", "reachable from assigned symbol")),
+      ReviewEvidenceBatchRequest.of(request),
     )
     assertEquals("assignment_expansions", result.terminalOutcome?.budgetKind)
   }
@@ -162,13 +170,15 @@ class FileSystemReviewEvidenceBrokerTest {
   @Test fun `named dependency is still measured as an authorized expansion`() {
     val root = repo("A.kt" to "assigned", "B.kt" to "dep")
     val assignment = assignment(listOf("A.kt"), listOf("B.kt"))
+    val request = expansionRequest(assignment, "B.kt", "called by assigned symbol")
     val broker = broker(
       root,
       assignment,
       namedDependencies = setOf("B.kt"),
+      trustedExpansionLedger = listOf(requireNotNull(request.authorizedExpansion)),
     )
     val result = broker.readBatch(
-      ReviewEvidenceBatchRequest.of(expansionRequest(assignment, "B.kt", "called by assigned symbol")),
+      ReviewEvidenceBatchRequest.of(request),
     )
     assertEquals("dep", result.results.single().content)
     assertEquals(listOf("B.kt"), result.expansions.map { it.requestedPath })
@@ -279,8 +289,9 @@ class FileSystemReviewEvidenceBrokerTest {
     assignment: ReviewAssignment,
     budget: ReviewContextBudgetPolicy = policy(),
     namedDependencies: Set<String> = emptySet(),
+    trustedExpansionLedger: List<ReviewExpansionRecord> = emptyList(),
   ) = FileSystemReviewEvidenceBroker(
-    ReviewEvidenceBrokerBinding(root, assignment, "security", budget, namedDependencies),
+    ReviewEvidenceBrokerBinding(root, assignment, "security", budget, namedDependencies, trustedExpansionLedger),
   )
 
   private fun assignment(paths: List<String>, dependencies: List<String> = emptyList()) = ReviewAssignment(

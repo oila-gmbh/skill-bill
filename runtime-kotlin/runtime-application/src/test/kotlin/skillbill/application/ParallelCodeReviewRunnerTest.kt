@@ -205,7 +205,7 @@ class ParallelCodeReviewRunnerTest {
 
   @Test
   fun `STAGED scope maps diff command to git diff --cached`() {
-    val resolver = RecordingDiffResolver(default = "diff body")
+    val resolver = RecordingDiffResolver(default = diffFor("A.kt"))
     val launcher = ParallelSubtaskLauncher()
     val runner = runner(launcher, diffResolver = resolver)
 
@@ -218,7 +218,7 @@ class ParallelCodeReviewRunnerTest {
   fun `BRANCH scope resolves merge-base then diffs base against HEAD`() {
     val resolver = RecordingDiffResolver(
       responses = mapOf(listOf("git", "merge-base", "HEAD", "main") to "base-sha\n"),
-      default = "diff body",
+      default = diffFor("A.kt"),
     )
     val launcher = ParallelSubtaskLauncher()
     val runner = runner(launcher, diffResolver = resolver)
@@ -252,7 +252,7 @@ class ParallelCodeReviewRunnerTest {
       assertContains(prompt, "rubric:")
       assertContains(prompt, "evidence_surface:")
       assertContains(prompt, "brokered_evidence:")
-      assertContains(prompt, "brokered:Child.kt")
+      assertContains(prompt, "+owned change")
       assertEquals(ConversationIsolation.NONE, request.skillRunRequest.conversationIsolation)
       assertTrue(request.skillRunRequest.reviewEvidenceBroker != null)
       assertContains(prompt, "assignment_digest:")
@@ -329,7 +329,7 @@ class ParallelCodeReviewRunnerTest {
         )
       }
     }
-    val runner = runner(launcher, diffResolver = RecordingDiffResolver(default = "diff body"))
+    val runner = runner(launcher, diffResolver = RecordingDiffResolver(default = diffFor("A.kt")))
 
     val result = runner.run(baseRequest(agent1Id = "claude", agent2Id = "codex", scope = ParallelReviewScope.STAGED))
 
@@ -362,7 +362,7 @@ class ParallelCodeReviewRunnerTest {
         )
       }
     }
-    val runner = runner(launcher, diffResolver = RecordingDiffResolver(default = "diff body"))
+    val runner = runner(launcher, diffResolver = RecordingDiffResolver(default = diffFor("A.kt")))
 
     val result = runner.run(baseRequest(agent1Id = "claude", agent2Id = "codex", scope = ParallelReviewScope.STAGED))
 
@@ -387,7 +387,7 @@ class ParallelCodeReviewRunnerTest {
         spawnFailed = false,
       )
     }
-    val runner = runner(launcher, diffResolver = RecordingDiffResolver(default = "diff body"))
+    val runner = runner(launcher, diffResolver = RecordingDiffResolver(default = diffFor("A.kt")))
 
     val result = runner.run(baseRequest(agent1Id = "claude", agent2Id = "codex", scope = ParallelReviewScope.STAGED))
 
@@ -415,7 +415,7 @@ class ParallelCodeReviewRunnerTest {
     }
     val runner = runner(
       launcher,
-      diffResolver = RecordingDiffResolver(default = "diff body"),
+      diffResolver = RecordingDiffResolver(default = diffFor("A.kt")),
       parallelLaneRunner = StaticParallelLaneRunner(
         ParallelReviewLaneRunResult(
           lane1 = ParallelReviewLaneOutcome(false, "", "lane timed out (cancelled by shared budget)"),
@@ -449,7 +449,7 @@ class ParallelCodeReviewRunnerTest {
         )
       }
     }
-    val runner = runner(launcher, diffResolver = RecordingDiffResolver(default = "diff body"))
+    val runner = runner(launcher, diffResolver = RecordingDiffResolver(default = diffFor("A.kt")))
 
     val result = runner.run(baseRequest(agent1Id = "claude", agent2Id = "codex", scope = ParallelReviewScope.STAGED))
 
@@ -469,7 +469,7 @@ class ParallelCodeReviewRunnerTest {
         spawnFailed = false,
       )
     }
-    val runner = runner(launcher, diffResolver = RecordingDiffResolver(default = "diff body"))
+    val runner = runner(launcher, diffResolver = RecordingDiffResolver(default = diffFor("A.kt")))
 
     val result = runner.run(baseRequest(agent1Id = "claude", agent2Id = "codex", scope = ParallelReviewScope.STAGED))
 
@@ -484,7 +484,7 @@ class ParallelCodeReviewRunnerTest {
     val runner = runner(
       launcher,
       catalogGateway = throwingCatalogGateway(),
-      diffResolver = RecordingDiffResolver(default = "diff body"),
+      diffResolver = RecordingDiffResolver(default = diffFor("A.kt")),
     )
 
     val error = assertFailsWith<StackDetectionException> {

@@ -38,6 +38,7 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
   private val budget = binding.budget
   private val identity = ReviewLaneIdentity.of(assignment)
   private val policy = ReviewOperationPolicy(assignment, binding.laneRubricId, binding.namedDependencies)
+  private val trustedExpansionLedger = binding.trustedExpansionLedger
 
   private var cumulativeBytes = 0L
   private var resultBytes = 0L
@@ -46,6 +47,7 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
   private val expansionLedger = mutableListOf<ReviewExpansionRecord>()
   private var terminalOutcome: ReviewBudgetOutcome? = null
 
+  @Synchronized
   override fun readBatch(request: ReviewEvidenceBatchRequest): ReviewEvidenceBatchResult {
     require(request.lane == assignment.lane) { "Evidence lane does not own this assignment." }
     terminalOutcome?.let { outcome ->
@@ -96,6 +98,9 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
       require(expansion.sequence == expansionLedger.size) {
         "Expansion '${expansion.expansionId}' is out of sequence."
       }
+      require(trustedExpansionLedger.getOrNull(expansion.sequence) == expansion) {
+        "Expansion '${expansion.expansionId}' does not exactly match the trusted parent-packet ledger."
+      }
       expansionLedger += expansion
       if (expansionLedger.size > budget.maxAssignmentExpansions) {
         return exceeded("assignment_expansions", budget.maxAssignmentExpansions.toLong(), expansionLedger.size.toLong())
@@ -110,6 +115,7 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
     return ReviewEvidenceResult(content, bytes, cumulativeBytes, expansionLedger.size)
   }
 
+  @Synchronized
   override fun recordToolCall(call: ReviewToolCall): ReviewToolCallResult {
     require(call.lane == assignment.lane) { "Tool call lane does not own this assignment." }
     terminalOutcome?.let { return ReviewToolCallResult(budgetExceeded = it) }
@@ -126,6 +132,7 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
     return ReviewToolCallResult(budgetExceeded = outcome?.also { terminalOutcome = it })
   }
 
+  @Synchronized
   override fun recordModelTurn(): ReviewBudgetOutcome? {
     terminalOutcome?.let { return it }
     modelTurns += 1
@@ -137,18 +144,21 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
     )?.also { terminalOutcome = it }
   }
 
+  @Synchronized
   override fun validateLaneResult(result: String): ReviewBudgetOutcome? {
     terminalOutcome?.let { return it }
     resultBytes = maxOf(resultBytes, result.toByteArray(StandardCharsets.UTF_8).size.toLong())
     return ReviewBudgetEvaluator.laneResultOutcome(identity, budget, resultBytes)?.also { terminalOutcome = it }
   }
 
+  @Synchronized
   override fun observeLaneResultChunk(chunk: String): ReviewBudgetOutcome? {
     terminalOutcome?.let { return it }
     resultBytes += chunk.toByteArray(StandardCharsets.UTF_8).size.toLong()
     return ReviewBudgetEvaluator.laneResultOutcome(identity, budget, resultBytes)?.also { terminalOutcome = it }
   }
 
+  @Synchronized
   override fun evaluateProviderUsage(usage: ProviderTokenUsage, enforceable: Boolean): ReviewBudgetOutcome? {
     val outcome = ReviewBudgetEvaluator.providerUsageOutcome(
       identity,
@@ -162,6 +172,7 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
     return outcome
   }
 
+  @Synchronized
   override fun accounting(): ReviewLaneAccounting = ReviewLaneAccounting(
     lane = assignment.lane,
     evidenceBytes = cumulativeBytes,
@@ -172,6 +183,7 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
     terminalOutcome = terminalOutcome,
   )
 
+  @Synchronized
   override fun terminalOutcome(): ReviewBudgetOutcome? = terminalOutcome
 
   private fun evidenceBudgetOutcome(bytes: Long): ReviewEvidenceResult? {

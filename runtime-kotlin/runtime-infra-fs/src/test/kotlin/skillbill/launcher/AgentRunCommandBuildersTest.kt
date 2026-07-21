@@ -23,7 +23,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
-import kotlin.test.assertNull
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class AgentRunCommandBuildersTest {
@@ -207,11 +207,11 @@ class AgentRunCommandBuildersTest {
       assertEquals(expectedIsolation, builder.reviewIsolation)
       assertEquals(ConversationIsolation.NONE, builder.build(isolated).conversationIsolation)
     }
-    assertFalse(ClaudeAgentRunCommandBuilder().nativeReviewCapabilities.supportsGovernedLaunch)
-    assertFalse(CodexAgentRunCommandBuilder().nativeReviewCapabilities.supportsGovernedLaunch)
+    assertTrue(ClaudeAgentRunCommandBuilder().nativeReviewCapabilities.supportsGovernedLaunch)
+    assertTrue(CodexAgentRunCommandBuilder().nativeReviewCapabilities.supportsGovernedLaunch)
     assertFalse(JunieAgentRunCommandBuilder().nativeReviewCapabilities.supportsGovernedLaunch)
     assertEquals(
-      skillbill.launcher.agentrun.NativeReviewOperationBoundary.UNMEDIATED,
+      skillbill.launcher.agentrun.NativeReviewOperationBoundary.DISABLED,
       CodexAgentRunCommandBuilder().nativeReviewCapabilities.operationBoundary,
     )
     assertEquals(
@@ -226,15 +226,19 @@ class AgentRunCommandBuildersTest {
       ).supportsGovernedLaunch,
     )
     val codexCommand = CodexAgentRunCommandBuilder().build(isolated).command
+    assertTrue(codexCommand.contains("--skip-git-repo-check"))
     assertTrue(codexCommand.contains("--ignore-user-config"))
     assertTrue(codexCommand.contains("read-only"))
     assertTrue(codexCommand.contains("fork_turns=none"))
     assertTrue(codexCommand.contains("tools.web_search=false"))
     assertTrue(codexCommand.contains("tools.shell=false"))
+    assertFalse(
+      CodexAgentRunCommandBuilder().build(request()).command.contains("--skip-git-repo-check"),
+    )
   }
 
-  @Test fun `codex does not claim stdout inferred governed lifecycle support`() {
-    assertNull(CodexAgentRunCommandBuilder().nativeReviewCapabilities.lifecycleCallbacks)
+  @Test fun `codex exposes one-shot governed lifecycle support`() {
+    assertNotNull(CodexAgentRunCommandBuilder().nativeReviewCapabilities.lifecycleCallbacks)
   }
 
   private fun request(model: String? = null, effort: String? = null): SkillRunRequest = SkillRunRequest(

@@ -30,10 +30,9 @@ internal object ParallelReviewPreparationCompiler {
   ): List<DelegatedReviewLaunchRequest> {
     val diff = input.diff
     val agents = input.agents
-    val discoveredPaths = Regex("^\\+\\+\\+ b/(.+)$", RegexOption.MULTILINE)
-      .findAll(diff).map { it.groupValues[1] }.distinct().sorted().toList()
-    val paths = discoveredPaths.ifEmpty { listOf(".skill-bill/authoritative-review.diff") }
-    val hunks = paths.map { ReviewChangedHunk(it, 0, 0, 0, 0, diff) }
+    val hunks = parseUnifiedDiff(diff).ifEmpty { headerOnlyChanges(diff) }
+    require(hunks.isNotEmpty()) { "The authoritative review diff contains no parseable changed hunks." }
+    val paths = hunks.map { it.path }.distinct().sorted()
     val decisions = agents.map {
       ReviewLaneDecision(it, true, "selected parallel review lane", listOf("parallel-review"), paths)
     }
@@ -97,6 +96,69 @@ internal object ParallelReviewPreparationCompiler {
   private fun digest(value: String): String = MessageDigest.getInstance("SHA-256")
     .digest(value.replace("\r\n", "\n").toByteArray())
     .joinToString("") { "%02x".format(it) }
+
+  private fun parseUnifiedDiff(diff: String): List<ReviewChangedHunk> {
+    val lines = diff.replace("\r\n", "\n").lines()
+    val result = mutableListOf<ReviewChangedHunk>()
+    var oldPath: String? = null
+    var newPath: String? = null
+    var index = 0
+    val header = Regex(
+      "^@@ -(?<oldStart>\\d+)(?:,(?<oldCount>\\d+))? " +
+        "\\+(?<newStart>\\d+)(?:,(?<newCount>\\d+))? @@",
+    )
+    while (index < lines.size) {
+      val line = lines[index]
+      when {
+        line.startsWith("--- ") -> oldPath = diffPath(line.removePrefix("--- "))
+        line.startsWith("+++ ") -> newPath = diffPath(line.removePrefix("+++ "))
+        line.startsWith("@@ ") -> {
+          val match = requireNotNull(header.find(line)) { "Malformed unified-diff hunk header: $line" }
+          val content = buildString {
+            appendLine(line)
+            index += 1
+            while (index < lines.size && !lines[index].startsWith("@@ ") && !lines[index].startsWith("diff --git ")) {
+              appendLine(lines[index])
+              index += 1
+            }
+          }.removeSuffix("\n")
+          val path = requireNotNull(newPath ?: oldPath) { "Unified-diff hunk has no file path." }
+          val oldStart = requireNotNull(match.groups["oldStart"]).value
+          val oldCount = match.groups["oldCount"]?.value.orEmpty()
+          val newStart = requireNotNull(match.groups["newStart"]).value
+          val newCount = match.groups["newCount"]?.value.orEmpty()
+          result += ReviewChangedHunk(
+            path,
+            oldStart.toInt(),
+            oldCount.ifBlank { "1" }.toInt(),
+            newStart.toInt(),
+            newCount.ifBlank { "1" }.toInt(),
+            content,
+          )
+          continue
+        }
+      }
+      index += 1
+    }
+    return result
+  }
+
+  private fun diffPath(raw: String): String? {
+    val value = raw.substringBefore('\t')
+    if (value == "/dev/null") return null
+    return value.removePrefix("a/").removePrefix("b/")
+  }
+
+  private fun headerOnlyChanges(diff: String): List<ReviewChangedHunk> {
+    val normalized = diff.replace("\r\n", "\n")
+    val lines = normalized.lines()
+    return lines.mapIndexedNotNull { index, line ->
+      if (!line.startsWith("+++ b/")) return@mapIndexedNotNull null
+      val path = line.removePrefix("+++ b/").substringBefore('\t')
+      val content = lines.drop(index + 1).takeWhile { !it.startsWith("diff --git ") }.joinToString("\n")
+      ReviewChangedHunk(path, 0, 0, 0, 0, content)
+    }.distinctBy { it.path }
+  }
 
   private const val SPECIALIST_CONTRACT =
     "Use only the assignment-owned evidence surface. Return only F-XXX risk-register lines."

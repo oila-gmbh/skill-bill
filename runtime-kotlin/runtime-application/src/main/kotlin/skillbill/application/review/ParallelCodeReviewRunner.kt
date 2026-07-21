@@ -32,6 +32,7 @@ import skillbill.review.context.model.ReviewBudgetOutcome
 import skillbill.review.context.model.TokenOwnership
 import skillbill.review.model.ParallelReviewLaneResult
 import skillbill.scaffold.model.PlatformManifest
+import skillbill.workflow.model.CodeReviewExecutionMode
 import java.nio.file.Path
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
@@ -48,6 +49,11 @@ class ParallelCodeReviewRunner(
   private val reviewRubricResolver: ReviewRubricResolver,
 ) {
   fun run(request: ParallelCodeReviewRequest): ParallelCodeReviewResult {
+    if (request.codeReviewMode != CodeReviewExecutionMode.DELEGATED) {
+      throw UsageValidationException(
+        "Parallel code review requires mode:delegated; '${request.codeReviewMode.wireValue}' is not supported.",
+      )
+    }
     val agent1 = resolveAgent(request.agent1Id, "--agent1")
     val agent2 = resolveAgent(request.agent2Id, "--agent2")
     if (agent1.id == agent2.id) {

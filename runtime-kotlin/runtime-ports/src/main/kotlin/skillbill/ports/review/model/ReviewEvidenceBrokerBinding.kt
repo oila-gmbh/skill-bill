@@ -2,6 +2,7 @@ package skillbill.ports.review.model
 
 import skillbill.review.context.model.ReviewAssignment
 import skillbill.review.context.model.ReviewContextBudgetPolicy
+import skillbill.review.context.model.ReviewExpansionRecord
 import java.nio.file.Path
 
 data class ReviewEvidenceBrokerBinding(
@@ -10,6 +11,7 @@ data class ReviewEvidenceBrokerBinding(
   val laneRubricId: String,
   val budget: ReviewContextBudgetPolicy,
   val namedDependencies: Set<String> = emptySet(),
+  val trustedExpansionLedger: List<ReviewExpansionRecord> = emptyList(),
 ) {
   init {
     require(laneRubricId.isNotBlank()) { "A bound lane must name the single rubric it owns." }

@@ -16,36 +16,39 @@ import skillbill.review.context.model.ReviewAssignment
 import skillbill.review.context.model.ReviewBudgetEvaluator
 import skillbill.review.context.model.ReviewLaneIdentity
 import skillbill.review.context.model.TokenOwnership
+import java.nio.file.Files
 
 /** Starts only broker-prepared launches and preserves typed budget outcomes through completion. */
 @Inject
 class DelegatedReviewWorkerLauncher(
   private val launcher: NativeReviewWorkerLauncher,
 ) {
+  @Suppress("LongMethod")
   fun launch(request: DelegatedReviewWorkerRequest): DelegatedReviewWorkerOutcome {
     val prepared = request.prepared.launch
     val operations = BrokerBackedNativeReviewOperationProtocol(prepared.evidenceBroker)
-    val evidenceRequests = evidenceRequests(prepared.launch.assignment)
-    val evidence = operations.read(
-      ReviewEvidenceBatchRequest(
-        prepared.launch.assignment.lane,
-        evidenceRequests,
-      ),
-    )
-    evidence.terminalOutcome?.let { outcome ->
+    val evidenceRequests = evidenceRequests(prepared.launch.assignment, request.repoRoot)
+    val evidence = if (evidenceRequests.isEmpty()) {
+      null
+    } else {
+      operations.read(
+        ReviewEvidenceBatchRequest(prepared.launch.assignment.lane, evidenceRequests),
+      )
+    }
+    evidence?.terminalOutcome?.let { outcome ->
       return DelegatedReviewWorkerOutcome(
         budgetOutcome = outcome,
         accounting = prepared.evidenceBroker.accounting(),
       )
     }
-    val forbidden = evidence.results.firstNotNullOfOrNull { result -> result.forbidden }
+    val forbidden = evidence?.results?.firstNotNullOfOrNull { result -> result.forbidden }
     if (forbidden != null) {
       return DelegatedReviewWorkerOutcome(
         forbiddenOperation = forbidden,
         accounting = prepared.evidenceBroker.accounting(),
       )
     }
-    val boundedPrompt = boundedPrompt(prepared.prompt, evidenceRequests, evidence.results)
+    val boundedPrompt = boundedPrompt(prepared.prompt, evidenceRequests, evidence?.results.orEmpty())
     finalLaunchOutcome(prepared.launch.assignment, prepared.launch.budget.maxLaneLaunchBytes, boundedPrompt)
       ?.let { outcome ->
         return DelegatedReviewWorkerOutcome(
@@ -90,8 +93,12 @@ class DelegatedReviewWorkerLauncher(
       prompt.toByteArray(Charsets.UTF_8).size.toLong(),
     )
 
-  private fun evidenceRequests(assignment: ReviewAssignment): List<ReviewEvidenceRequest> = (
-    assignment.assignedPaths.map { path -> ReviewEvidenceRequest(assignment.lane, path) } +
+  private fun evidenceRequests(
+    assignment: ReviewAssignment,
+    repoRoot: java.nio.file.Path,
+  ): List<ReviewEvidenceRequest> = (
+    assignment.assignedPaths.filter { path -> Files.isRegularFile(repoRoot.resolve(path)) }
+      .map { path -> ReviewEvidenceRequest(assignment.lane, path) } +
       assignment.expansions.map { expansion ->
         require(expansion.authorized) {
           "Expansion '${expansion.expansionId}' is not authorized for delegated evidence admission."

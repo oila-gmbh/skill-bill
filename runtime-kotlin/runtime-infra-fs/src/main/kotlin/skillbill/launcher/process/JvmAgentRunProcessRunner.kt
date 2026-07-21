@@ -81,6 +81,12 @@ class JvmAgentRunProcessRunner : AgentRunProcessRunner {
     ptyMasterCloseable: AutoCloseable?,
   ): AgentRunProcessResult {
     liveProcesses.add(process)
+    val turnOutcome = request.nativeReviewLifecycleCallbacks?.beforeModelTurn(
+      requireNotNull(request.nativeReviewOperations),
+    )
+    if (turnOutcome != null) {
+      process.destroy()
+    }
     val outputTracker = OutputObservationTracker()
     val lifecycleEmitter = ProcessLifecycleEmitter(request)
     val stdout = CappedUtf8Drain(

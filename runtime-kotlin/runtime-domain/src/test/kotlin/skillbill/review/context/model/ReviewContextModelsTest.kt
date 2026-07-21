@@ -149,6 +149,7 @@ class ReviewContextModelsTest {
       listOf(
         "review_id", "review_revision", "packet_digest", "assignment_digest", "lane", "base_revision",
         "head_revision", "broker_id", "specialist_contract", "rubric", "assigned_paths", "assigned_hunks",
+        "immutable_diff_hunks",
         "criteria_references", "matched_rules", "evidence_targets", "dependency_allowlist",
         "forbidden_rediscovery", "budgets",
       ),

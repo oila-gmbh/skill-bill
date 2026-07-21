@@ -45,7 +45,7 @@ data class NativeReviewProviderCapabilities(
   val lifecycleCallbacks: NativeReviewLifecycleCallbacks? = null,
 ) {
   val supportsGovernedLaunch: Boolean
-    get() = operationBoundary == NativeReviewOperationBoundary.SYNCHRONOUS_BROKER &&
+    get() = operationBoundary != NativeReviewOperationBoundary.UNMEDIATED &&
       lifecycleCallbacks != null
 
   companion object {
@@ -56,6 +56,7 @@ data class NativeReviewProviderCapabilities(
     val PROMPT_ONLY = NativeReviewProviderCapabilities(
       operationBoundary = NativeReviewOperationBoundary.DISABLED,
       providerUsageExposure = ProviderUsageExposure.COMPLETION_ONLY,
+      lifecycleCallbacks = OneShotNativeReviewLifecycleCallbacks,
     )
   }
 }
@@ -66,6 +67,17 @@ interface NativeReviewLifecycleCallbacks {
   fun beforeModelTurn(operations: NativeReviewOperationProtocol): ReviewBudgetOutcome?
   fun observeProviderOutput(operations: NativeReviewOperationProtocol, chunk: String): ReviewBudgetOutcome?
   fun observeProviderUsage(operations: NativeReviewOperationProtocol, usage: ProviderTokenUsage): ReviewBudgetOutcome?
+}
+
+private object OneShotNativeReviewLifecycleCallbacks : NativeReviewLifecycleCallbacks {
+  override fun newSession(): NativeReviewLifecycleCallbacks = OneShotNativeReviewLifecycleCallbacks
+  override fun beforeModelTurn(operations: NativeReviewOperationProtocol): ReviewBudgetOutcome? = operations.modelTurn()
+  override fun observeProviderOutput(operations: NativeReviewOperationProtocol, chunk: String): ReviewBudgetOutcome? =
+    null
+  override fun observeProviderUsage(
+    operations: NativeReviewOperationProtocol,
+    usage: ProviderTokenUsage,
+  ): ReviewBudgetOutcome? = operations.providerUsage(usage)
 }
 
 enum class NativeReviewOperationBoundary { SYNCHRONOUS_BROKER, DISABLED, UNMEDIATED }
@@ -136,8 +148,9 @@ class CodexAgentRunCommandBuilder : AgentRunCommandBuilder {
   override val reviewIsolation: ReviewLaunchIsolationStrategy =
     ReviewLaunchIsolationStrategy.CODEX_NATIVE_FORK_TURNS_NONE
   override val nativeReviewCapabilities: NativeReviewProviderCapabilities = NativeReviewProviderCapabilities(
-    operationBoundary = NativeReviewOperationBoundary.UNMEDIATED,
+    operationBoundary = NativeReviewOperationBoundary.DISABLED,
     providerUsageExposure = ProviderUsageExposure.COMPLETION_ONLY,
+    lifecycleCallbacks = OneShotNativeReviewLifecycleCallbacks,
   )
 
   override fun build(request: SkillRunRequest): AgentRunCommand {
@@ -154,6 +167,7 @@ class CodexAgentRunCommandBuilder : AgentRunCommandBuilder {
           add("--config")
           add("shell_environment_policy.inherit=all")
         } else {
+          add("--skip-git-repo-check")
           add("--ignore-user-config")
           add("--sandbox")
           add("read-only")

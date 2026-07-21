@@ -528,6 +528,15 @@ data class GovernedReviewLaunch(
     assignment.assignedPaths.sorted().forEach { appendLine("  - ${it.replace('\\', '/')}") }
     appendLine("assigned_hunks:")
     assignment.assignedHunks.sorted().forEach { appendLine("  - $it") }
+    appendLine("immutable_diff_hunks:")
+    packet.changedHunks.filter { it.hunkId in assignment.assignedHunks }
+      .sortedWith(compareBy(ReviewChangedHunk::path, ReviewChangedHunk::newStart))
+      .forEach { hunk ->
+        appendLine("  - path: ${hunk.path.replace('\\', '/')}")
+        appendLine("    hunk_id: ${hunk.hunkId}")
+        appendLine("    content: |")
+        hunk.content.replace("\r\n", "\n").lineSequence().forEach { appendLine("      $it") }
+      }
     appendLine("criteria_references:")
     assignment.criteriaReferences.sorted().forEach { appendLine("  - $it") }
     appendLine("matched_rules:")

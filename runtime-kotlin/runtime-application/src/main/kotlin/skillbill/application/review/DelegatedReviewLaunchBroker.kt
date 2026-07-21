@@ -61,6 +61,7 @@ class DelegatedReviewLaunchBroker(
         laneRubricId = rubric.rubricId,
         budget = request.budget,
         namedDependencies = request.namedDependencies,
+        trustedExpansionLedger = request.packet.expansionLedger,
       ),
     )
     return DelegatedReviewLaunchOutcome.Prepared(
