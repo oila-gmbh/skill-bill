@@ -83,7 +83,8 @@ class ClaudeAgentRunCommandBuilder : AgentRunCommandBuilder {
 class CodexAgentRunCommandBuilder : AgentRunCommandBuilder {
   override val agent: InstallAgent = InstallAgent.CODEX
   override val outputDecoder: AgentRunOutputDecoder = AgentRunOutputDecoder.CODEX_JSONL
-  override val reviewIsolation: ReviewLaunchIsolationStrategy = ReviewLaunchIsolationStrategy.FRESH_PROCESS
+  override val reviewIsolation: ReviewLaunchIsolationStrategy =
+    ReviewLaunchIsolationStrategy.CODEX_NATIVE_FORK_TURNS_NONE
 
   override fun build(request: SkillRunRequest): AgentRunCommand {
     requireProcessLaunch(request, reviewIsolation)
@@ -94,9 +95,10 @@ class CodexAgentRunCommandBuilder : AgentRunCommandBuilder {
         add("--json")
         add("--cd")
         add(request.repoRoot.toString())
-        add("--dangerously-bypass-approvals-and-sandbox")
+        add("--sandbox")
+        add("read-only")
         add("--config")
-        add("shell_environment_policy.inherit=all")
+        add("shell_environment_policy.inherit=none")
         request.modelOverride?.let {
           add("--model")
           add(it)
@@ -110,6 +112,7 @@ class CodexAgentRunCommandBuilder : AgentRunCommandBuilder {
       timeout = request.timeout,
       stdinText = launchPrompt(request),
       environment = goalContinuationEnvironment(request),
+      inheritEnvironment = false,
       conversationIsolation = request.conversationIsolation,
     )
   }

@@ -13,6 +13,7 @@ import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class AgentRunCommandBuildersTest {
@@ -88,6 +89,7 @@ class AgentRunCommandBuildersTest {
   @Test
   fun `codex renders exact commands for each directive shape`() {
     val builder = CodexAgentRunCommandBuilder()
+    assertFalse(builder.build(request()).inheritEnvironment)
 
     assertEquals(
       listOf(
@@ -96,9 +98,10 @@ class AgentRunCommandBuildersTest {
         "--json",
         "--cd",
         "/tmp/skillbill-agent-run",
-        "--dangerously-bypass-approvals-and-sandbox",
+        "--sandbox",
+        "read-only",
         "--config",
-        "shell_environment_policy.inherit=all",
+        "shell_environment_policy.inherit=none",
         "--model",
         "gpt-sol",
         "--config",
@@ -113,9 +116,10 @@ class AgentRunCommandBuildersTest {
         "--json",
         "--cd",
         "/tmp/skillbill-agent-run",
-        "--dangerously-bypass-approvals-and-sandbox",
+        "--sandbox",
+        "read-only",
         "--config",
-        "shell_environment_policy.inherit=all",
+        "shell_environment_policy.inherit=none",
         "--model",
         "gpt-sol",
       ),
@@ -128,9 +132,10 @@ class AgentRunCommandBuildersTest {
         "--json",
         "--cd",
         "/tmp/skillbill-agent-run",
-        "--dangerously-bypass-approvals-and-sandbox",
+        "--sandbox",
+        "read-only",
         "--config",
-        "shell_environment_policy.inherit=all",
+        "shell_environment_policy.inherit=none",
       ),
       builder.build(request()).command,
     )
@@ -165,15 +170,16 @@ class AgentRunCommandBuildersTest {
   }
 
   @Test
-  fun `fresh process builders materialize governed specialist isolation without provider branching`() {
+  fun `builders materialize governed specialist isolation without provider branching`() {
     val isolated = request().copy(conversationIsolation = ConversationIsolation.NONE)
 
-    listOf(
-      ClaudeAgentRunCommandBuilder(),
-      CodexAgentRunCommandBuilder(),
-      JunieAgentRunCommandBuilder(),
-    ).forEach { builder ->
-      assertEquals(ReviewLaunchIsolationStrategy.FRESH_PROCESS, builder.reviewIsolation)
+    val builders = listOf(
+      ClaudeAgentRunCommandBuilder() to ReviewLaunchIsolationStrategy.FRESH_PROCESS,
+      CodexAgentRunCommandBuilder() to ReviewLaunchIsolationStrategy.CODEX_NATIVE_FORK_TURNS_NONE,
+      JunieAgentRunCommandBuilder() to ReviewLaunchIsolationStrategy.FRESH_PROCESS,
+    )
+    builders.forEach { (builder, expectedIsolation) ->
+      assertEquals(expectedIsolation, builder.reviewIsolation)
       assertEquals(ConversationIsolation.NONE, builder.build(isolated).conversationIsolation)
     }
   }
