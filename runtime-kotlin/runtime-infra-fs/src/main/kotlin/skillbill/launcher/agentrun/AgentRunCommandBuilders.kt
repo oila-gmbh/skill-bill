@@ -26,8 +26,41 @@ interface AgentRunCommandBuilder {
   val agent: InstallAgent
   val outputDecoder: AgentRunOutputDecoder get() = AgentRunOutputDecoder.PLAIN
   val reviewIsolation: ReviewLaunchIsolationStrategy get() = ReviewLaunchIsolationStrategy.UNSUPPORTED
+  val nativeReviewCapabilities: NativeReviewProviderCapabilities
+    get() = NativeReviewProviderCapabilities.UNMEDIATED
   fun build(request: SkillRunRequest): AgentRunCommand
 }
+
+/**
+ * Capabilities required to enforce a governed native review at the boundary where work occurs.
+ * A provider is launchable only when its adapter synchronously mediates operations and turns;
+ * token usage may be streamed (enforceable) or completion-only (regression reporting).
+ */
+data class NativeReviewProviderCapabilities(
+  val operationBoundary: NativeReviewOperationBoundary,
+  val modelTurnObservation: Boolean,
+  val providerUsageExposure: ProviderUsageExposure,
+) {
+  val supportsGovernedLaunch: Boolean
+    get() = operationBoundary != NativeReviewOperationBoundary.UNMEDIATED && modelTurnObservation
+
+  companion object {
+    val UNMEDIATED = NativeReviewProviderCapabilities(
+      operationBoundary = NativeReviewOperationBoundary.UNMEDIATED,
+      modelTurnObservation = false,
+      providerUsageExposure = ProviderUsageExposure.COMPLETION_ONLY,
+    )
+    val PROMPT_ONLY = NativeReviewProviderCapabilities(
+      operationBoundary = NativeReviewOperationBoundary.DISABLED,
+      modelTurnObservation = true,
+      providerUsageExposure = ProviderUsageExposure.COMPLETION_ONLY,
+    )
+  }
+}
+
+enum class NativeReviewOperationBoundary { SYNCHRONOUS_BROKER, DISABLED, UNMEDIATED }
+
+enum class ProviderUsageExposure { IN_FLIGHT_ENFORCEABLE, COMPLETION_ONLY }
 
 internal val GoalContinuationEnvironment: Map<String, String> = mapOf(
   "SKILL_BILL_GOAL_CONTINUATION" to "1",
@@ -50,6 +83,8 @@ class ClaudeAgentRunCommandBuilder : AgentRunCommandBuilder {
   override val agent: InstallAgent = InstallAgent.CLAUDE
   override val outputDecoder: AgentRunOutputDecoder = AgentRunOutputDecoder.CLAUDE_JSON
   override val reviewIsolation: ReviewLaunchIsolationStrategy = ReviewLaunchIsolationStrategy.FRESH_PROCESS
+  override val nativeReviewCapabilities: NativeReviewProviderCapabilities =
+    NativeReviewProviderCapabilities.PROMPT_ONLY
 
   override fun build(request: SkillRunRequest): AgentRunCommand {
     requireProcessLaunch(request, reviewIsolation)
@@ -90,6 +125,8 @@ class CodexAgentRunCommandBuilder : AgentRunCommandBuilder {
   override val outputDecoder: AgentRunOutputDecoder = AgentRunOutputDecoder.CODEX_JSONL
   override val reviewIsolation: ReviewLaunchIsolationStrategy =
     ReviewLaunchIsolationStrategy.CODEX_NATIVE_FORK_TURNS_NONE
+  override val nativeReviewCapabilities: NativeReviewProviderCapabilities =
+    NativeReviewProviderCapabilities.PROMPT_ONLY
 
   override fun build(request: SkillRunRequest): AgentRunCommand {
     requireProcessLaunch(request, reviewIsolation)
@@ -100,15 +137,22 @@ class CodexAgentRunCommandBuilder : AgentRunCommandBuilder {
         add("--json")
         add("--cd")
         add(request.repoRoot.toString())
-        add("--sandbox")
-        add("read-only")
-        add("--config")
-        add("shell_environment_policy.inherit=none")
-        if (request.conversationIsolation == ConversationIsolation.NONE) {
+        if (request.reviewEvidenceBroker == null) {
+          add("--dangerously-bypass-approvals-and-sandbox")
+          add("--config")
+          add("shell_environment_policy.inherit=all")
+        } else {
+          add("--ignore-user-config")
+          add("--sandbox")
+          add("read-only")
+          add("--config")
+          add("shell_environment_policy.inherit=none")
           add("--config")
           add("fork_turns=none")
           add("--config")
           add("tools.web_search=false")
+          add("--config")
+          add("tools.shell=false")
         }
         request.modelOverride?.let {
           add("--model")
@@ -123,7 +167,7 @@ class CodexAgentRunCommandBuilder : AgentRunCommandBuilder {
       timeout = request.timeout,
       stdinText = launchPrompt(request),
       environment = goalContinuationEnvironment(request),
-      inheritEnvironment = false,
+      inheritEnvironment = request.reviewEvidenceBroker == null,
       conversationIsolation = request.conversationIsolation,
     )
   }

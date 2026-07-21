@@ -144,6 +144,23 @@ class WorkflowGoalRunnerManifestStore(
     }
   }
 
+  override fun readByIssueKey(issueKey: String, dbPathOverride: String?, repoRoot: Path?): GoalRunnerManifestState? {
+    val projected = repoRoot?.let { root -> findProjectedManifest(root, issueKey) }
+    val stored = loadFromWorkflowStore(issueKey, dbPathOverride)
+    return when {
+      shouldRefreshFromCompleteProjection(stored, projected) -> requireNotNull(stored).copy(
+        manifest = requireNotNull(projected),
+      )
+      stored != null -> stored
+      projected != null -> GoalRunnerManifestState(
+        parentWorkflowId = "",
+        dbPath = dbPathOverride.orEmpty(),
+        manifest = projected,
+      )
+      else -> null
+    }
+  }
+
   private fun shouldRefreshFromCompleteProjection(
     stored: GoalRunnerManifestState?,
     projected: DecompositionManifest?,
@@ -820,6 +837,12 @@ class WorkflowGoalRunnerOutcomeStore(
     loadContinuationCandidates(unitOfWork.workflowStates, normalizedIssueKey, repoRoot)
       .authoritativeOutcomesBySubtask()
   }
+
+  override fun authoritativeOutcomes(issueKey: String, dbPathOverride: String?): Map<Int, GoalRunnerStoredOutcome> =
+    database.read(dbPathOverride) { unitOfWork ->
+      loadContinuationCandidates(unitOfWork.workflowStates, issueKey.trim(), repoRoot = null)
+        .authoritativeOutcomesBySubtask()
+    }
 
   // Strictly read-only: resolve from durable artifacts only, never measuring git or
   // mutating state, so status / reconciliation reads keep their no-write contract.

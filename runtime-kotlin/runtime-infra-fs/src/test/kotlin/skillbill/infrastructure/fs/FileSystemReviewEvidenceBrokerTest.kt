@@ -1,5 +1,6 @@
 package skillbill.infrastructure.fs
 
+import skillbill.ports.review.BrokerBackedNativeReviewOperationProtocol
 import skillbill.ports.review.model.ReviewEvidenceBatchRequest
 import skillbill.ports.review.model.ReviewEvidenceBrokerBinding
 import skillbill.ports.review.model.ReviewEvidenceRequest
@@ -18,12 +19,38 @@ import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class FileSystemReviewEvidenceBrokerTest {
+  @Test fun `native operation protocol rejects forbidden tools before execution`() {
+    val root = repo("A.kt" to "assigned")
+    val broker = broker(root, assignment(listOf("A.kt")))
+    val protocol = BrokerBackedNativeReviewOperationProtocol(broker)
+
+    val rejected = protocol.tool(ReviewToolCall("security", ReviewOperationKind.SHELL_COMMAND, "git status"))
+
+    assertFalse(rejected.admitted)
+    assertEquals(0, broker.accounting().toolCalls)
+  }
+
+  @Test fun `native operation protocol admits measured reads and authorized expansions`() {
+    val root = repo("A.kt" to "assigned", "B.kt" to "dependency")
+    val broker = broker(root, assignment(listOf("A.kt"), listOf("B.kt")))
+    val protocol = BrokerBackedNativeReviewOperationProtocol(broker)
+
+    val result = protocol.read(
+      ReviewEvidenceBatchRequest.of(ReviewEvidenceRequest("security", "B.kt", "called by assigned hunk")),
+    )
+
+    assertEquals("dependency", result.results.single().content)
+    assertEquals(1, result.expansions.size)
+    assertEquals(10, broker.accounting().evidenceBytes)
+  }
+
   @Test fun `batched assigned reads are measured in one pass`() {
     val root = repo("A.kt" to "assigned", "B.kt" to "second")
     val broker = broker(root, assignment(listOf("A.kt", "B.kt")))

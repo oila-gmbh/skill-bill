@@ -138,8 +138,8 @@ import skillbill.ports.install.reconcile.InstallReconcileApplyPort
 import skillbill.ports.install.reconcile.InstallReconcilePort
 import skillbill.ports.install.selection.InstallSelectionPersistencePort
 import skillbill.ports.persistence.DatabaseSessionFactory
-import skillbill.ports.review.ParallelReviewLaneRunner
 import skillbill.ports.review.NativeReviewWorkerLauncher
+import skillbill.ports.review.ParallelReviewLaneRunner
 import skillbill.ports.review.ReviewAttributionPort
 import skillbill.ports.review.ReviewEvidenceBrokerFactory
 import skillbill.ports.review.ReviewInputSource
@@ -558,9 +558,8 @@ abstract class RuntimeComponent(
 
   @Provides
   @JvmSynthetic
-  internal fun nativeReviewWorkerLauncher(
-    adapter: GoalRunnerNativeReviewWorkerAdapter,
-  ): NativeReviewWorkerLauncher = adapter
+  internal fun nativeReviewWorkerLauncher(adapter: GoalRunnerNativeReviewWorkerAdapter): NativeReviewWorkerLauncher =
+    adapter
 
   @Provides
   @JvmSynthetic

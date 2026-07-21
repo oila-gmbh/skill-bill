@@ -285,6 +285,7 @@ class ParallelCodeReviewRunnerTest {
     assertEquals(70, result.lane1.tokenUsage?.freshTokenApproximation)
     assertEquals(110, result.lane2.tokenUsage?.totalTokens)
     assertEquals("claude", result.lane1.accounting?.lane)
+    assertEquals(1, result.lane1.accounting?.modelTurns)
     assertEquals(0, result.lane1.accounting?.resultBytes)
   }
 
@@ -586,6 +587,7 @@ class ParallelCodeReviewRunnerTest {
                 modelOverride = request.modelOverride,
                 conversationIsolation = ConversationIsolation.NONE,
                 reviewEvidenceBroker = request.broker,
+                nativeReviewOperations = request.operations,
               ),
             ),
           )
@@ -762,6 +764,7 @@ private class TestReviewEvidenceBroker(
 ) : ReviewEvidenceBroker {
   private val identity = ReviewLaneIdentity.of(binding.assignment)
   private var resultBytes = 0L
+  private var modelTurns = 0
   private var terminal: ReviewBudgetOutcome? = null
 
   override fun readBatch(request: ReviewEvidenceBatchRequest) = ReviewEvidenceBatchResult(
@@ -773,7 +776,15 @@ private class TestReviewEvidenceBroker(
 
   override fun recordToolCall(call: ReviewToolCall) = ReviewToolCallResult(budgetExceeded = terminal)
 
-  override fun recordModelTurn(): ReviewBudgetOutcome? = terminal
+  override fun recordModelTurn(): ReviewBudgetOutcome? {
+    modelTurns += 1
+    return terminal ?: ReviewBudgetEvaluator.exceededOrNull(
+      identity,
+      "model_turns",
+      binding.budget.maxSpecialistModelTurns.toLong(),
+      modelTurns.toLong(),
+    ).also { terminal = it }
+  }
 
   override fun validateLaneResult(result: String): ReviewBudgetOutcome? {
     resultBytes = maxOf(resultBytes, result.toByteArray().size.toLong())
@@ -798,7 +809,7 @@ private class TestReviewEvidenceBroker(
     evidenceBytes = 0,
     expansions = emptyList(),
     toolCalls = 0,
-    modelTurns = 0,
+    modelTurns = modelTurns,
     resultBytes = resultBytes,
     terminalOutcome = terminal,
   )

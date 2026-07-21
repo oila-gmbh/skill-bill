@@ -11,6 +11,8 @@ import java.nio.file.Path
 
 interface AgentRunAdapter {
   val agent: InstallAgent
+  val nativeReviewCapabilities: NativeReviewProviderCapabilities
+    get() = NativeReviewProviderCapabilities.UNMEDIATED
   fun launch(request: SkillRunRequest): AgentRunLaunchFacts
 }
 
@@ -19,6 +21,9 @@ class ProcessAgentRunAdapter(
   private val commandBuilder: AgentRunCommandBuilder,
   private val processRunner: AgentRunProcessRunner,
 ) : AgentRunAdapter {
+  override val nativeReviewCapabilities: NativeReviewProviderCapabilities
+    get() = commandBuilder.nativeReviewCapabilities
+
   override fun launch(request: SkillRunRequest): AgentRunLaunchFacts {
     val command = commandBuilder.build(request)
     val result = processRunner.run(
@@ -39,6 +44,7 @@ class ProcessAgentRunAdapter(
         idlePolicy = command.idlePolicy,
         conversationIsolation = command.conversationIsolation,
         reviewEvidenceBroker = request.reviewEvidenceBroker,
+        nativeReviewOperations = request.nativeReviewOperations,
       ),
     )
     val decoded = commandBuilder.outputDecoder.decode(result.stdout)

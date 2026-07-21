@@ -9,6 +9,9 @@ import skillbill.launcher.agentrun.JunieAgentRunCommandBuilder
 import skillbill.ports.agentrun.model.ConversationIsolation
 import skillbill.ports.agentrun.model.ReviewLaunchIsolationStrategy
 import skillbill.ports.agentrun.model.SkillRunRequest
+import skillbill.ports.review.BrokerBackedNativeReviewOperationProtocol
+import skillbill.ports.review.ReviewEvidenceBroker
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -89,7 +92,7 @@ class AgentRunCommandBuildersTest {
   @Test
   fun `codex renders exact commands for each directive shape`() {
     val builder = CodexAgentRunCommandBuilder()
-    assertFalse(builder.build(request()).inheritEnvironment)
+    assertTrue(builder.build(request()).inheritEnvironment)
 
     assertEquals(
       listOf(
@@ -98,10 +101,9 @@ class AgentRunCommandBuildersTest {
         "--json",
         "--cd",
         "/tmp/skillbill-agent-run",
-        "--sandbox",
-        "read-only",
+        "--dangerously-bypass-approvals-and-sandbox",
         "--config",
-        "shell_environment_policy.inherit=none",
+        "shell_environment_policy.inherit=all",
         "--model",
         "gpt-sol",
         "--config",
@@ -116,10 +118,9 @@ class AgentRunCommandBuildersTest {
         "--json",
         "--cd",
         "/tmp/skillbill-agent-run",
-        "--sandbox",
-        "read-only",
+        "--dangerously-bypass-approvals-and-sandbox",
         "--config",
-        "shell_environment_policy.inherit=none",
+        "shell_environment_policy.inherit=all",
         "--model",
         "gpt-sol",
       ),
@@ -132,13 +133,24 @@ class AgentRunCommandBuildersTest {
         "--json",
         "--cd",
         "/tmp/skillbill-agent-run",
-        "--sandbox",
-        "read-only",
+        "--dangerously-bypass-approvals-and-sandbox",
         "--config",
-        "shell_environment_policy.inherit=none",
+        "shell_environment_policy.inherit=all",
       ),
       builder.build(request()).command,
     )
+  }
+
+  @Test
+  fun `all feature task codex phases remain writable`() {
+    FeatureTaskRuntimePhaseWorkflowDefinition.definition.stepIds.forEach { phase ->
+      val command = CodexAgentRunCommandBuilder().build(
+        request().copy(promptOverride = "Phase: $phase"),
+      ).command
+
+      assertTrue(command.contains("--dangerously-bypass-approvals-and-sandbox"))
+      assertFalse(command.contains("read-only"))
+    }
   }
 
   @Test
@@ -171,7 +183,11 @@ class AgentRunCommandBuildersTest {
 
   @Test
   fun `builders materialize governed specialist isolation without provider branching`() {
-    val isolated = request().copy(conversationIsolation = ConversationIsolation.NONE)
+    val isolated = request().copy(
+      conversationIsolation = ConversationIsolation.NONE,
+      reviewEvidenceBroker = NoOpReviewEvidenceBroker,
+      nativeReviewOperations = BrokerBackedNativeReviewOperationProtocol(NoOpReviewEvidenceBroker),
+    )
 
     val builders = listOf(
       ClaudeAgentRunCommandBuilder() to ReviewLaunchIsolationStrategy.FRESH_PROCESS,
@@ -180,11 +196,25 @@ class AgentRunCommandBuildersTest {
     )
     builders.forEach { (builder, expectedIsolation) ->
       assertEquals(expectedIsolation, builder.reviewIsolation)
+      assertEquals(
+        skillbill.launcher.agentrun.ProviderUsageExposure.COMPLETION_ONLY,
+        builder.nativeReviewCapabilities.providerUsageExposure,
+      )
       assertEquals(ConversationIsolation.NONE, builder.build(isolated).conversationIsolation)
     }
+    assertTrue(ClaudeAgentRunCommandBuilder().nativeReviewCapabilities.supportsGovernedLaunch)
+    assertTrue(CodexAgentRunCommandBuilder().nativeReviewCapabilities.supportsGovernedLaunch)
+    assertFalse(JunieAgentRunCommandBuilder().nativeReviewCapabilities.supportsGovernedLaunch)
+    assertEquals(
+      skillbill.launcher.agentrun.NativeReviewOperationBoundary.DISABLED,
+      CodexAgentRunCommandBuilder().nativeReviewCapabilities.operationBoundary,
+    )
     val codexCommand = CodexAgentRunCommandBuilder().build(isolated).command
+    assertTrue(codexCommand.contains("--ignore-user-config"))
+    assertTrue(codexCommand.contains("read-only"))
     assertTrue(codexCommand.contains("fork_turns=none"))
     assertTrue(codexCommand.contains("tools.web_search=false"))
+    assertTrue(codexCommand.contains("tools.shell=false"))
   }
 
   private fun request(model: String? = null, effort: String? = null): SkillRunRequest = SkillRunRequest(
@@ -194,4 +224,18 @@ class AgentRunCommandBuildersTest {
     modelOverride = model,
     effortOverride = effort,
   )
+
+  private object NoOpReviewEvidenceBroker : ReviewEvidenceBroker {
+    override fun readBatch(request: skillbill.ports.review.model.ReviewEvidenceBatchRequest) = error("unused")
+    override fun recordToolCall(call: skillbill.ports.review.model.ReviewToolCall) = error("unused")
+    override fun recordModelTurn() = error("unused")
+    override fun validateLaneResult(result: String) = error("unused")
+    override fun observeLaneResultChunk(chunk: String) = error("unused")
+    override fun evaluateProviderUsage(
+      usage: skillbill.review.context.model.ProviderTokenUsage,
+      enforceable: Boolean,
+    ) = error("unused")
+    override fun accounting() = error("unused")
+    override fun terminalOutcome() = error("unused")
+  }
 }

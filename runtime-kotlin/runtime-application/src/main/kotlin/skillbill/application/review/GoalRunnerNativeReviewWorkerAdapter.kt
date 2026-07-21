@@ -3,7 +3,7 @@ package skillbill.application.review
 import me.tatarka.inject.annotations.Inject
 import skillbill.ports.agentrun.AgentRunLauncher
 import skillbill.ports.review.NativeReviewWorkerLauncher
-import skillbill.ports.review.NativeReviewWorkerRequest
+import skillbill.ports.review.model.NativeReviewWorkerRequest
 
 /** Preserves the provider-native request instead of degrading it into a general process launch. */
 @Inject

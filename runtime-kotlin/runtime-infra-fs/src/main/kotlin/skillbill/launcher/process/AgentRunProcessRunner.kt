@@ -6,6 +6,7 @@ import skillbill.ports.agentrun.model.AgentRunOutputSink
 import skillbill.ports.agentrun.model.AgentRunProgressEmitter
 import skillbill.ports.agentrun.model.AgentRunProgressProbe
 import skillbill.ports.agentrun.model.ConversationIsolation
+import skillbill.ports.review.NativeReviewOperationProtocol
 import skillbill.ports.review.ReviewEvidenceBroker
 import java.nio.file.Path
 import kotlin.time.Duration
@@ -35,6 +36,7 @@ data class AgentRunProcessRequest(
   val idlePolicy: AgentRunIdlePolicy = AgentRunIdlePolicy.DB_PROGRESS_ONLY,
   val conversationIsolation: ConversationIsolation? = null,
   val reviewEvidenceBroker: ReviewEvidenceBroker? = null,
+  val nativeReviewOperations: NativeReviewOperationProtocol? = null,
 ) {
   init {
     require(command.isNotEmpty()) { "Agent run command is required." }
@@ -52,6 +54,9 @@ data class AgentRunProcessRequest(
     }
     require(reviewEvidenceBroker == null || conversationIsolation == ConversationIsolation.NONE) {
       "A process review evidence transport requires fresh-context isolation."
+    }
+    require((reviewEvidenceBroker == null) == (nativeReviewOperations == null)) {
+      "A process review evidence transport and its pre-execution operation protocol must be supplied together."
     }
   }
 }

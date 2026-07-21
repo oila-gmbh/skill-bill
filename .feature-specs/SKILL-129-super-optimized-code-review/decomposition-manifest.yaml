@@ -32,11 +32,10 @@ subtasks:
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260721-123120-e9kh"
-  blocked_reason: "Phase output reported status 'blocked'. Reconciled and verified\
-    \ authoritative preparation for AC-001, then stopped at AC-002 because the production\
-    \ runtime exposes only command-line process launch and has no native specialist-start\
-    \ adapter capable of materializing Codex fork_turns none. Dependent broker and\
-    \ budget repairs cannot truthfully proceed across the missing worker boundary."
+  blocked_reason: "Phase output reported status 'blocked'. Implementation is blocked\
+    \ because the workspace and Gradle cache are read-only. The first ordered repair\
+    \ remains unresolved: provider operations are still observed after execution rather\
+    \ than broker-authorized before execution."
   last_resumable_step: "implement"
   linear_issue_id: null
   finalizing_agent_id: null

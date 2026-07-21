@@ -5,10 +5,12 @@ import skillbill.application.review.model.DelegatedReviewWorkerOutcome
 import skillbill.application.review.model.DelegatedReviewWorkerRequest
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
+import skillbill.ports.review.BrokerBackedNativeReviewOperationProtocol
 import skillbill.ports.review.NativeReviewWorkerLauncher
-import skillbill.ports.review.NativeReviewWorkerRequest
+import skillbill.ports.review.model.NativeReviewWorkerRequest
 import skillbill.ports.review.model.ReviewEvidenceBatchRequest
 import skillbill.ports.review.model.ReviewEvidenceRequest
+import skillbill.ports.review.model.ReviewEvidenceResult
 import skillbill.review.context.model.ProviderTokenUsage
 import skillbill.review.context.model.TokenOwnership
 
@@ -19,10 +21,15 @@ class DelegatedReviewWorkerLauncher(
 ) {
   fun launch(request: DelegatedReviewWorkerRequest): DelegatedReviewWorkerOutcome {
     val prepared = request.prepared.launch
-    val evidence = prepared.evidenceBroker.readBatch(
+    val operations = BrokerBackedNativeReviewOperationProtocol(prepared.evidenceBroker)
+    val evidencePaths = (
+      prepared.launch.assignment.assignedPaths +
+        prepared.launch.assignment.expansions.map { expansion -> expansion.requestedPath }
+      ).distinct()
+    val evidence = operations.read(
       ReviewEvidenceBatchRequest(
         prepared.launch.assignment.lane,
-        prepared.launch.assignment.assignedPaths.map { path ->
+        evidencePaths.map { path ->
           ReviewEvidenceRequest(prepared.launch.assignment.lane, path)
         },
       ),
@@ -33,14 +40,12 @@ class DelegatedReviewWorkerLauncher(
         accounting = prepared.evidenceBroker.accounting(),
       )
     }
-    val boundedPrompt = buildString {
-      append(prepared.prompt)
-      appendLine()
-      appendLine("brokered_evidence:")
-      prepared.launch.assignment.assignedPaths.zip(evidence.results).forEach { (path, result) ->
-        appendLine("--- $path")
-        appendLine(requireNotNull(result.content))
-      }
+    val boundedPrompt = boundedPrompt(prepared.prompt, evidencePaths, evidence.results)
+    operations.modelTurn()?.let { outcome ->
+      return DelegatedReviewWorkerOutcome(
+        budgetOutcome = outcome,
+        accounting = prepared.evidenceBroker.accounting(),
+      )
     }
     val outcome = launcher.launch(
       NativeReviewWorkerRequest(
@@ -52,6 +57,7 @@ class DelegatedReviewWorkerLauncher(
         modelOverride = request.modelOverride,
         isolation = prepared.isolation,
         broker = prepared.evidenceBroker,
+        operations = operations,
       ),
     )
     return when (outcome) {
@@ -94,4 +100,15 @@ class DelegatedReviewWorkerLauncher(
       },
     )
   }
+
+  private fun boundedPrompt(prompt: String, paths: List<String>, evidence: List<ReviewEvidenceResult>): String =
+    buildString {
+      append(prompt)
+      appendLine()
+      appendLine("brokered_evidence:")
+      paths.zip(evidence).forEach { (path, result) ->
+        appendLine("--- $path")
+        appendLine(requireNotNull(result.content))
+      }
+    }
 }

@@ -1,6 +1,5 @@
 package skillbill.launcher.agentrun
 
-import com.fasterxml.jackson.databind.ObjectMapper
 import me.tatarka.inject.annotations.Inject
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.RUNTIME_REFUSED_AGENT_MESSAGE
@@ -13,11 +12,7 @@ import skillbill.ports.agentrun.model.AgentRunOutputStream
 import skillbill.ports.agentrun.model.ConversationIsolation
 import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
-import skillbill.ports.review.NativeReviewWorkerRequest
-import skillbill.ports.review.model.ReviewToolCall
-import skillbill.review.context.model.ProviderTokenUsage
-import skillbill.review.context.model.ReviewOperationKind
-import skillbill.review.context.model.TokenOwnership
+import skillbill.ports.review.model.NativeReviewWorkerRequest
 import java.nio.file.Files
 import java.util.Comparator
 
@@ -53,8 +48,18 @@ class FileSystemAgentRunLauncher(
     require(request.isolation == adapterReviewIsolation(agent)) {
       "Native review isolation does not match the provider strategy."
     }
+    val capabilities = adapter.nativeReviewCapabilities
+    if (!capabilities.supportsGovernedLaunch) {
+      return UnsupportedAgentRunLaunch(
+        agent,
+        "Agent '${agent.id}' cannot start a governed native review because its provider adapter " +
+          "neither disables nor mediates every requested operation, or does not observe every " +
+          "model turn through the review " +
+          "budget broker before execution (provider usage exposure: " +
+          "${capabilities.providerUsageExposure.name.lowercase()}).",
+      )
+    }
     val isolatedRoot = Files.createTempDirectory("skill-bill-native-review-")
-    val observer = NativeReviewEventObserver(request)
     return try {
       adapter.launch(
         SkillRunRequest(
@@ -65,10 +70,10 @@ class FileSystemAgentRunLauncher(
           modelOverride = request.modelOverride,
           conversationIsolation = ConversationIsolation.NONE,
           reviewEvidenceBroker = request.broker,
+          nativeReviewOperations = request.operations,
           outputSink = { stream, text ->
             if (stream == AgentRunOutputStream.STDOUT) {
               request.broker.observeLaneResultChunk(text)
-              observer.observe(text)
             }
           },
         ),
@@ -86,57 +91,4 @@ class FileSystemAgentRunLauncher(
       skillbill.ports.agentrun.model.ReviewLaunchIsolationStrategy.FRESH_PROCESS
     else -> skillbill.ports.agentrun.model.ReviewLaunchIsolationStrategy.UNSUPPORTED
   }
-}
-
-private class NativeReviewEventObserver(private val request: NativeReviewWorkerRequest) {
-  private val mapper = ObjectMapper()
-  private val pending = StringBuilder()
-
-  @Synchronized
-  fun observe(chunk: String) {
-    pending.append(chunk)
-    while (true) {
-      val newline = pending.indexOf("\n")
-      if (newline < 0) return
-      val line = pending.substring(0, newline).trim()
-      pending.delete(0, newline + 1)
-      if (line.isNotEmpty()) observeLine(line)
-    }
-  }
-
-  private fun observeLine(line: String) {
-    val event = runCatching { mapper.readTree(line) }.getOrNull() ?: return
-    val type = event.path("type").asText()
-    if (type == "turn.completed" || type == "message.completed") request.broker.recordModelTurn()
-    val item = event.path("item")
-    val itemType = item.path("type").asText()
-    if (itemType == "command_execution" || itemType == "mcp_tool_call" || itemType == "web_search") {
-      val kind = when (itemType) {
-        "mcp_tool_call" -> ReviewOperationKind.MCP_TOOL
-        "web_search" -> ReviewOperationKind.SEARCH
-        else -> ReviewOperationKind.SHELL_COMMAND
-      }
-      val target = item.path("command").asText()
-        .ifBlank { item.path("tool").asText() }
-        .ifBlank { itemType }
-      request.broker.recordToolCall(ReviewToolCall(request.broker.accounting().lane, kind, target))
-    }
-    val usage = event.path("usage")
-    if (usage.isObject) {
-      request.broker.evaluateProviderUsage(
-        ProviderTokenUsage(
-          usage.longOrNull("input_tokens"),
-          usage.longOrNull("cached_input_tokens"),
-          usage.longOrNull("output_tokens"),
-          usage.longOrNull("reasoning_tokens"),
-          usage.longOrNull("total_tokens"),
-          TokenOwnership.DIRECT,
-        ),
-        enforceable = true,
-      )
-    }
-  }
-
-  private fun com.fasterxml.jackson.databind.JsonNode.longOrNull(name: String): Long? =
-    path(name).takeIf { it.isIntegralNumber && it.canConvertToLong() }?.longValue()
 }

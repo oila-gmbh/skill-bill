@@ -4,7 +4,7 @@ import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.agentrun.model.AgentRunLaunchRequest
 import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
-import skillbill.ports.review.NativeReviewWorkerRequest
+import skillbill.ports.review.model.NativeReviewWorkerRequest
 
 interface AgentRunLauncher {
   fun launch(request: AgentRunLaunchRequest): AgentRunLaunchOutcome

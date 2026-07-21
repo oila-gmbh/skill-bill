@@ -139,8 +139,8 @@ The inherited SKILL-56/SKILL-58 behavior remains part of the contract:
 - parent and child workflow rows are authoritative over prose output
 - each subtask attempt starts from a fresh child process selected by the runtime
 - `goal status` and `goal watch` are read-only and must not launch child runs
-- status reconciliation closes stale running child workflows when a terminal
-  outcome is authoritative
+- status projection prefers an authoritative terminal outcome without mutating
+  a stale running child workflow
 - raw child stdout/stderr stays hidden by default; use debug output only for
   diagnostics
 - completion requires an explicit durable terminal outcome before the goal

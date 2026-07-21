@@ -5,6 +5,7 @@ package skillbill.ports.agentrun.model
 import skillbill.agentaddon.model.AgentAddonSelection
 import skillbill.goalrunner.model.GoalRunnerLivenessState
 import skillbill.install.model.InstallAgent
+import skillbill.ports.review.NativeReviewOperationProtocol
 import skillbill.ports.review.ReviewEvidenceBroker
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.workflow.model.CodeReviewExecutionMode
@@ -31,6 +32,7 @@ data class SkillRunRequest(
   val goalContinuation: SkillRunGoalContinuationContext? = null,
   val conversationIsolation: ConversationIsolation? = null,
   val reviewEvidenceBroker: ReviewEvidenceBroker? = null,
+  val nativeReviewOperations: NativeReviewOperationProtocol? = null,
 ) {
   init {
     require(issueKey.isNotBlank()) { "issueKey is required." }
@@ -46,6 +48,9 @@ data class SkillRunRequest(
     }
     require(reviewEvidenceBroker == null || conversationIsolation == ConversationIsolation.NONE) {
       "A review evidence transport is valid only for a fresh-context governed specialist launch."
+    }
+    require((reviewEvidenceBroker == null) == (nativeReviewOperations == null)) {
+      "A governed review evidence transport and its pre-execution operation protocol must be supplied together."
     }
   }
 }

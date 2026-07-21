@@ -641,7 +641,7 @@ class CliGoalRuntimeTest {
   }
 
   @Test
-  fun `goal status imports checked-in decomposition manifest when workflow store is missing`() {
+  fun `goal status reads checked-in decomposition manifest without importing workflow state`() {
     val fixture = goalFixture(subtaskCount = 1)
     val recoveredDb = fixture.tempDir.resolve("status-recovered.db")
 
@@ -663,13 +663,22 @@ class CliGoalRuntimeTest {
     assertEquals(0, status.exitCode, status.stdout)
     assertContains(status.stdout, "status: ok")
     assertContains(status.stdout, "current_subtask: 1")
+    DriverManager.getConnection("jdbc:sqlite:$recoveredDb").use { connection ->
+      connection.prepareStatement("SELECT COUNT(*) FROM feature_task_workflows WHERE issue_key = ?").use { statement ->
+        statement.setString(1, "SKILL-901")
+        statement.executeQuery().use { rows ->
+          assertTrue(rows.next())
+          assertEquals(0, rows.getInt(1))
+        }
+      }
+    }
     // SKILL-103 AC1: no child run persisted => active_agent is omitted (rendered as none), never
     // sourced from the status caller's --agent resolution chain.
     assertContains(status.stdout, "active_agent: none")
   }
 
   @Test
-  fun `goal status prefers authoritative complete child and closes stale running child workflow`() {
+  fun `goal status prefers authoritative complete child without mutating stale running child workflow`() {
     val fixture = goalFixture(subtaskCount = 1)
     val staleChild = startRunningGoalChild(fixture)
     recordRunningGoalChildProgress(fixture, staleChild, sequence = 9, message = "stale active event")
@@ -690,8 +699,8 @@ class CliGoalRuntimeTest {
     assertContains(status.stdout, "blocked: 0")
     assertContains(status.stdout, "current_subtask: none")
     assertEquals(false, status.stdout.contains("latest_observability:"), status.stdout)
-    assertEquals("blocked", staleWorkflow["workflow_status"])
-    assertContains(staleWorkflow["artifacts"]?.toString().orEmpty(), "stale running child")
+    assertEquals("running", staleWorkflow["workflow_status"])
+    assertEquals(false, staleWorkflow["artifacts"]?.toString().orEmpty().contains("stale running child"))
   }
 }
 

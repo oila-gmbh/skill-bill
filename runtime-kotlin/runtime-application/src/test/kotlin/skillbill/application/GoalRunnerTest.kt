@@ -1062,37 +1062,20 @@ class GoalRunnerStatusProjectionTest {
     assertEquals(0, status.blockedCount)
     assertEquals(null, status.currentSubtaskId)
     assertEquals(null, status.currentStep)
-    assertEquals("complete", store.manifest.status)
-    assertEquals("complete", store.manifest.currentSubtaskIntent.action)
-    assertEquals("complete", store.manifest.subtasks.single().status)
-    assertEquals(
-      ReconcileRequest(
-        "SKILL-56",
-        setOf("wfl-1"),
-        GoalRunnerReconcileGate(allowInactiveReconciliation = false, requireStalenessEvidence = false),
-        null,
-        null,
-      ),
-      outcomes.lastReconcileRequest,
-    )
+    assertEquals("in_progress", store.manifest.status)
+    assertEquals("resume", store.manifest.currentSubtaskIntent.action)
+    assertEquals("pending", store.manifest.subtasks.single().status)
+    assertEquals(0, store.saveCount)
+    assertEquals("SKILL-56" to null, outcomes.lastAuthoritativeOutcomeRequest)
+    assertEquals(null, outcomes.lastReconcileRequest)
   }
 
   @Test
-  fun `status reconciliation saves from refreshed manifest snapshot to avoid clobbering concurrent updates`() {
-    val stale = manifest(subtaskCount = 2)
+  fun `status projection does not persist terminal child reconciliation`() {
+    val stored = manifest(subtaskCount = 2)
       .copy(status = "in_progress", currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 1, action = "resume"))
       .withWorkflowId(1, "wfl-1")
-    val concurrentlyUpdated = stale.copy(
-      currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 2, action = "resume"),
-      subtasks = stale.subtasks.map { subtask ->
-        if (subtask.id == 2) {
-          subtask.copy(status = "in_progress", workflowId = "wfl-2", branch = "feat/SKILL-56-goal")
-        } else {
-          subtask
-        }
-      },
-    )
-    val store = SequencedLoadGoalManifestStore(listOf(stale, concurrentlyUpdated))
+    val store = InMemoryGoalManifestStore(stored)
     val outcomes = RecordingOutcomeStore().apply {
       authoritativeOutcomesBySubtask[1] = completeOutcome(1).copy(workflowId = "wfl-1")
     }
@@ -1106,14 +1089,10 @@ class GoalRunnerStatusProjectionTest {
     )
 
     requireNotNull(status)
-    val subtask1 = store.manifest.subtasks.single { it.id == 1 }
-    assertEquals("complete", subtask1.status)
-    assertEquals("wfl-1", subtask1.workflowId)
-    val subtask2 = store.manifest.subtasks.single { it.id == 2 }
-    assertEquals("in_progress", subtask2.status)
-    assertEquals("wfl-2", subtask2.workflowId)
-    assertEquals("feat/SKILL-56-goal", subtask2.branch)
-    assertEquals(CurrentSubtaskIntent(subtaskId = 2, action = "resume"), store.manifest.currentSubtaskIntent)
+    assertEquals(1, status.completeCount)
+    assertEquals(1, status.pendingCount)
+    assertEquals(stored, store.manifest)
+    assertEquals(0, store.saveCount)
   }
 
   @Test
@@ -1139,11 +1118,12 @@ class GoalRunnerStatusProjectionTest {
     assertEquals(0, status.pendingCount)
     assertEquals(0, status.blockedCount)
     assertEquals(null, status.currentSubtaskId)
-    assertEquals("complete", store.manifest.status)
-    assertEquals("complete", store.manifest.currentSubtaskIntent.action)
+    assertEquals("blocked", store.manifest.status)
+    assertEquals("blocked", store.manifest.currentSubtaskIntent.action)
     val subtask = store.manifest.subtasks.single()
-    assertEquals("complete", subtask.status)
-    assertEquals("wfl-authoritative", subtask.workflowId)
+    assertEquals("blocked", subtask.status)
+    assertEquals("wfl-stale", subtask.workflowId)
+    assertEquals(0, store.saveCount)
   }
 
   @Test
@@ -1252,6 +1232,41 @@ class GoalRunnerStatusProjectionTest {
   }
 
   @Test
+  fun `status projection ignores retained blocked outcome when the same child is running after retry`() {
+    val staleManifest = manifest(subtaskCount = 1)
+      .withBlockedSubtask(1, workflowId = "wfl-active", reason = "pre-retry block")
+    val outcomes = RecordingOutcomeStore().apply {
+      this["wfl-active"] = GoalRunnerStoredOutcome(
+        status = GoalRunnerTerminalStatus.BLOCKED,
+        workflowId = "wfl-active",
+        blockedReason = "pre-retry block",
+        lastResumableStep = "implement",
+        suppressPr = true,
+      )
+      progresses["wfl-active"] = GoalRunnerWorkflowProgress(
+        workflowId = "wfl-active",
+        workflowStatus = "running",
+        currentStepId = "implement",
+        progressToken = "retry-token",
+        latestDurableProgressEvent = null,
+        latestLivenessSignal = "running",
+        lastSnapshotUpdatedAt = "2026-07-21 18:02:05",
+      )
+    }
+    val store = InMemoryGoalManifestStore(staleManifest)
+    val service = GoalRunnerStatusService(store, outcomes, goalTestPhaseRecorder())
+
+    val status = service.status(GoalRunnerStatusRequest(issueKey = "SKILL-56", invokedAgentId = "codex"))
+
+    requireNotNull(status)
+    assertEquals(0, status.blockedCount)
+    assertEquals(1, status.currentSubtaskId)
+    assertEquals("implement", status.currentStep)
+    assertEquals(staleManifest, store.manifest)
+    assertEquals(0, store.saveCount)
+  }
+
+  @Test
   fun `status reconciliation preserves reset pending subtask when blocked sibling outcome exists`() {
     val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 1))
     val outcomes = RecordingOutcomeStore().apply {
@@ -1281,7 +1296,7 @@ class GoalRunnerStatusProjectionTest {
   }
 
   @Test
-  fun `status reconciliation persists blocked terminal outcome to manifest state`() {
+  fun `status projects blocked terminal outcome without persisting it`() {
     val store = InMemoryGoalManifestStore(
       manifest = manifest(subtaskCount = 1)
         .copy(status = "in_progress", currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 1, action = "resume"))
@@ -1310,12 +1325,13 @@ class GoalRunnerStatusProjectionTest {
     assertEquals(1, status.blockedCount)
     assertEquals(1, status.currentSubtaskId)
     assertEquals("review", status.currentStep)
-    assertEquals("blocked", store.manifest.status)
-    assertEquals("blocked", store.manifest.currentSubtaskIntent.action)
+    assertEquals("in_progress", store.manifest.status)
+    assertEquals("resume", store.manifest.currentSubtaskIntent.action)
     val subtask = store.manifest.subtasks.single()
-    assertEquals("blocked", subtask.status)
-    assertEquals("review failed", subtask.blockedReason)
-    assertEquals("review", subtask.lastResumableStep)
+    assertEquals("pending", subtask.status)
+    assertEquals(null, subtask.blockedReason)
+    assertEquals(null, subtask.lastResumableStep)
+    assertEquals(0, store.saveCount)
   }
 
   @Test
@@ -1734,39 +1750,6 @@ internal class InMemoryGoalManifestStore(
   }
 }
 
-private class SequencedLoadGoalManifestStore(
-  manifestsByLoadOrder: List<DecompositionManifest>,
-) : GoalRunnerManifestStore {
-  private val snapshots: List<DecompositionManifest> = manifestsByLoadOrder
-  private var loadIndex: Int = 0
-  var manifest: DecompositionManifest = manifestsByLoadOrder.last()
-    private set
-
-  override fun loadByIssueKey(issueKey: String, dbPathOverride: String?, repoRoot: Path?): GoalRunnerManifestState? {
-    val selected = snapshots.getOrNull(loadIndex).also { loadIndex += 1 } ?: manifest
-    if (selected.issueKey != issueKey) {
-      return null
-    }
-    manifest = selected
-    return GoalRunnerManifestState(
-      parentWorkflowId = "wfl-parent",
-      dbPath = dbPathOverride.orEmpty().ifBlank { "/tmp/skillbill-goal-runner/metrics.db" },
-      manifest = selected,
-    )
-  }
-
-  override fun save(state: GoalRunnerManifestState, dbPathOverride: String?): GoalRunnerManifestState {
-    manifest = state.manifest
-    return state.copy(dbPath = dbPathOverride ?: state.dbPath, manifest = manifest)
-  }
-
-  override fun saveNewChildWorkflow(
-    state: GoalRunnerManifestState,
-    setup: GoalRunnerChildWorkflowSetup,
-    dbPathOverride: String?,
-  ): GoalRunnerManifestState = save(state, dbPathOverride)
-}
-
 // SKILL-64 Subtask 3 (F-D01): the append-only attempt ledger and best-effort
 // session accounting must not restart sequence numbers at 0 on resume. The
 // recorder seeds its monotonic counters from the persisted watermarks.
@@ -2120,6 +2103,7 @@ internal class RecordingOutcomeStore : GoalRunnerWorkflowOutcomeStore {
   var workerSubtaskRequestOutcomeRecordResult: Boolean = true
   var throwOnWorkerSubtaskRequestOutcomeRecord: Boolean = false
   var lastReconcileRequest: ReconcileRequest? = null
+  var lastAuthoritativeOutcomeRequest: Pair<String, String?>? = null
 
   operator fun set(workflowId: String, outcome: GoalRunnerStoredOutcome) {
     outcomes[workflowId] = outcome
@@ -2161,6 +2145,11 @@ internal class RecordingOutcomeStore : GoalRunnerWorkflowOutcomeStore {
     dbPathOverride: String?,
   ): Map<Int, GoalRunnerStoredOutcome> {
     lastReconcileRequest = ReconcileRequest(issueKey, activeWorkflowIds, gate, repoRoot, dbPathOverride)
+    return authoritativeOutcomesBySubtask.toMap()
+  }
+
+  override fun authoritativeOutcomes(issueKey: String, dbPathOverride: String?): Map<Int, GoalRunnerStoredOutcome> {
+    lastAuthoritativeOutcomeRequest = issueKey to dbPathOverride
     return authoritativeOutcomesBySubtask.toMap()
   }
 
