@@ -1224,7 +1224,7 @@ internal class FeatureTaskRuntimeRunLoop(
       if (retryReviewPreparation) {
         state.restartAttemptBudget(run.phaseId)
       }
-      if (shouldRetryPersistedBlock(run.phaseId, durable, retryReviewPreparation)) {
+      if (shouldRetryPersistedBlock(run.phaseId, durable, retryReviewPreparation, persistedReason)) {
         return@let null
       }
       val reason = persistedReason.ifBlank {
@@ -1279,12 +1279,28 @@ internal class FeatureTaskRuntimeRunLoop(
         )
   }
 
+  // The gate that wrote this reason blocked a goal review on schema-invalid output instead of retrying it,
+  // and persisted a terminal needs_user_action disposition. That gate is gone, so such a record is stale
+  // rather than terminal: the reserved pass still has no completed output, which the bounded fix loop is
+  // now what decides. The remaining attempt budget is deliberately not restarted.
+  private fun isRemovedGoalReviewSchemaGateBlock(phaseId: String, reason: String): Boolean =
+    phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW &&
+      reason.startsWith("Goal-subtask review output failed schema validation after its reserved pass")
+
   private fun shouldRetryPersistedBlock(
     phaseId: String,
     durable: FeatureTaskRuntimePhaseRecord?,
     retryReviewPreparation: Boolean,
-  ): Boolean = retryReviewPreparation || durable?.failureDisposition?.retryOnResume
-    ?: FeatureTaskRuntimeFixLoopPolicy.participatesInFixLoop(phaseId)
+    persistedReason: String,
+  ): Boolean {
+    val disposition = durable?.failureDisposition
+    return when {
+      retryReviewPreparation -> true
+      isRemovedGoalReviewSchemaGateBlock(phaseId, persistedReason) -> true
+      disposition != null -> disposition.retryOnResume
+      else -> FeatureTaskRuntimeFixLoopPolicy.participatesInFixLoop(phaseId)
+    }
+  }
 
   private fun runPhaseAttempts(
     run: PhaseRun,
@@ -1433,9 +1449,9 @@ internal class FeatureTaskRuntimeRunLoop(
     val normalized = outputValidator.normalizePhaseOutput(outputText, sourceLabel = run.phaseId)
     settleValidatedOutput(run, iteration, normalized, observability, fileManifest)
   } catch (error: InvalidFeatureTaskRuntimePhaseOutputSchemaError) {
-    schemaInvalidAttempt(run, iteration, error.reason, observability, fileManifest, outputText)
+    schemaInvalidAttempt(error.reason, fileManifest, outputText)
   } catch (error: InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError) {
-    schemaInvalidAttempt(run, iteration, error.reason, observability, fileManifest, outputText)
+    schemaInvalidAttempt(error.reason, fileManifest, outputText)
   }
 
   @Suppress("ReturnCount")
@@ -1449,20 +1465,20 @@ internal class FeatureTaskRuntimeRunLoop(
     val outputText = normalizedOutput.canonicalJson
     val outputMap = normalizedOutput.envelope
     mutatingReconciliationGateReason(run.phaseId, outputMap)?.let { reason ->
-      return schemaInvalidAttempt(run, iteration, reason, observability, fileManifest, outputText)
+      return schemaInvalidAttempt(reason, fileManifest, outputText)
     }
     val terminalAuditRepairReason = terminalAuditRepairBlockGateReason(run.phaseId, outputMap)
     terminalAuditRepairReason?.let { reason ->
-      return schemaInvalidAttempt(run, iteration, reason, observability, fileManifest, outputText)
+      return schemaInvalidAttempt(reason, fileManifest, outputText)
     }
     auditRepairResultGateReason(run.phaseId, outputMap)?.let { reason ->
-      return schemaInvalidAttempt(run, iteration, reason, observability, fileManifest, outputText)
+      return schemaInvalidAttempt(reason, fileManifest, outputText)
     }
     auditDurableLedgerGateReason(run.phaseId, outputMap)?.let { reason ->
-      return schemaInvalidAttempt(run, iteration, reason, observability, fileManifest, outputText)
+      return schemaInvalidAttempt(reason, fileManifest, outputText)
     }
     auditClosedCriterionGateReason(run.phaseId, outputMap)?.let { reason ->
-      return schemaInvalidAttempt(run, iteration, reason, observability, fileManifest, outputText)
+      return schemaInvalidAttempt(reason, fileManifest, outputText)
     }
     val repositoryFingerprint = auditRepairRepositoryFingerprint(run)?.let { result ->
       if (!result.ok) {
@@ -1496,7 +1512,7 @@ internal class FeatureTaskRuntimeRunLoop(
       return terminalOutputAttempt(run, iteration, reason, outputText, outputMap, observability, fileManifest)
     }
     outputVerificationGateReason(run.phaseId, outputMap)?.let { reason ->
-      return schemaInvalidAttempt(run, iteration, reason, observability, fileManifest, outputText)
+      return schemaInvalidAttempt(reason, fileManifest, outputText)
     }
     return persistAcceptedOutput(
       run,
@@ -1907,30 +1923,15 @@ internal class FeatureTaskRuntimeRunLoop(
   private fun boundedRejectedOutput(rejectedOutput: String?): String? =
     rejectedOutput?.takeIf(String::isNotBlank)?.take(REJECTED_OUTPUT_MAX_CHARS)
 
+  // A goal-subtask review reserves its pass once in prepareGoalReviewRun, outside runPhaseAttempts, so a
+  // bounded in-loop re-attempt reuses that same reserved pass instead of allocating another. Schema-invalid
+  // output therefore earns the same fix-loop retries as every other phase: the reserved pass has no completed
+  // output, which is the state a resume is already contracted to re-enter rather than treat as terminal.
   private fun schemaInvalidAttempt(
-    run: PhaseRun,
-    iteration: Int,
     reason: String,
-    observability: FeatureTaskRuntimeRunObservability,
     fileManifest: FeatureTaskRuntimePhaseFileManifest,
     rejectedOutput: String? = null,
-  ): AttemptResult = if (
-    run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW && isGoalContinuationRun(run.request)
-  ) {
-    AttemptResult.settled(
-      blockAndPersistInPhase(
-        run,
-        iteration,
-        "Goal-subtask review output failed schema validation after its reserved pass; " +
-          "refusing an unaccounted relaunch. $reason",
-        observability,
-        fileManifest = fileManifest,
-        outputArtifact = boundedRejectedOutput(rejectedOutput),
-      ),
-    )
-  } else {
-    AttemptResult.schemaInvalid(reason, fileManifest, boundedRejectedOutput(rejectedOutput))
-  }
+  ): AttemptResult = AttemptResult.schemaInvalid(reason, fileManifest, boundedRejectedOutput(rejectedOutput))
 
   private fun persistPhase(
     run: PhaseRun,

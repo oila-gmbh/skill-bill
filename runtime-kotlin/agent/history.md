@@ -1,3 +1,15 @@
+## [2026-07-21] SKILL-135 unaddressed-findings ledger (subtask 3)
+Areas: runtime-kotlin/runtime-{application,cli,domain,infra-sqlite,ports}, skills/bill-feature-{goal,task-runtime,task-prose,task-subtask-runner}
+- Findings recorded without being addressed are persisted per issue key, subtask, workflow, review pass, severity, category, and location; new columns are added by unconditional startup ensures so already-created databases self-heal.
+- `GoalSubtaskReviewSummaryReducer.unaddressedFindings` is the single structured projection shared by normal review completion and reserved-pass recovery; no phase recorder re-derives findings inline. reusable
+- Ledger writes are pass-aware: `replaceLedgerForPass` deletes only the current pass plus carried blockers, so earlier non-blocker rows survive later passes instead of being wiped workflow-wide. reusable
+- Goal existence and the accepted category vocabulary come from durable authorities (`feature_task_workflows`, `ReviewIssueCategory.entries`) rather than telemetry tables or a hand-copied constant list.
+- Pattern: absent, empty, and malformed ledger states are distinguished by typed errors at the retrieval surface; the goal terminal summary resolves the ledger before opening the PR and degrades an absent ledger to empty. reusable
+- Location-bearing detail is retrieval-only (`skill-bill goal findings`); goal, status, watch, telemetry, and PR surfaces carry compact counts or sanitized summaries only.
+- Governed guidance across the four feature surfaces now states one audit-first order (audit → review → validate) and the delegated-then-inline pass sequence with blocker/non-blocker disposition; generated wrappers stay uncommitted and no install flow was run.
+Feature flag: N/A
+Acceptance criteria: subtask 3: 8/8 implemented
+
 ## [2026-07-20] SKILL-135 immutable complete-delta review scope (subtask 2)
 Areas: runtime-kotlin/runtime-{application,cli,domain}, orchestration/review-orchestrator
 - Standalone feature-task runs now capture the review base SHA and baseline untracked paths before implementation, persist them with the resolved branch, and reuse them for every review pass.

@@ -97,6 +97,8 @@ private class InMemoryUnaddressedFindings(
   override fun replaceLedgerForPass(workflowId: String, reviewPassNumber: Int, findings: List<UnaddressedFinding>) =
     error("The retrieval surface does not write.")
 
+  override fun clearWorkflowLedger(workflowId: String) = error("The retrieval surface does not write.")
+
   override fun fetchLedger(issueKey: String): List<UnaddressedFinding> = rows.filter { it.issueKey == issueKey }
 
   override fun issueExists(issueKey: String): Boolean = issueKey in durableIssueKeys

@@ -1,6 +1,7 @@
 package skillbill.application.featuretask
 
 import skillbill.contracts.JsonSupport
+import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairPlan
@@ -54,9 +55,17 @@ internal class FeatureTaskRuntimeRunState(
       .filterNot { it.phaseId in gateInvalidatedPhases }
       .toMutableList()
 
+  // A blocked phase deliberately persists its schema-rejected output as diagnostic evidence, so a durable
+  // artifact is not guaranteed to satisfy the phase schema. Re-validating it while hydrating resume state
+  // must not kill the process: an unparseable artifact carries no usable output, and the phase re-runs.
+  // Failing here instead would leave the workflow permanently unresumable.
   private fun validatedRecordToOutput(record: FeatureTaskRuntimePhaseRecord): FeatureTaskRuntimePhaseOutput? =
     record.outputArtifact?.let { artifact ->
-      val normalized = outputValidator.normalizePhaseOutput(artifact, record.phaseId)
+      val normalized = try {
+        outputValidator.normalizePhaseOutput(artifact, record.phaseId)
+      } catch (_: InvalidFeatureTaskRuntimePhaseOutputSchemaError) {
+        return@let null
+      }
       FeatureTaskRuntimePhaseOutput(
         phaseId = record.phaseId,
         iteration = record.attemptCount,

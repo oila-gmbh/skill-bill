@@ -94,6 +94,26 @@ class UnaddressedFindingsRuntimeTest {
     }
   }
 
+  @Test
+  fun `clearing a workflow ledger drops every pass of that workflow and spares its siblings`() {
+    val dbPath = Files.createTempDirectory("unaddressed-findings-clear-workflow").resolve("runtime.db")
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val repository = SQLiteUnaddressedFindingsRepository(connection)
+      val sibling = finding(1, "major", "src/Sibling.kt:3").copy(workflowId = "workflow-2", subtaskId = 2)
+      repository.replaceLedgerForPass("workflow-1", 1, listOf(finding(1, "blocker", "src/First.kt:7")))
+      repository.replaceLedgerForPass(
+        "workflow-1",
+        2,
+        listOf(finding(1, "blocker", "src/Second.kt:9").copy(reviewPassNumber = 2)),
+      )
+      repository.replaceLedgerForPass("workflow-2", 1, listOf(sibling))
+
+      repository.clearWorkflowLedger("workflow-1")
+
+      assertEquals(listOf(sibling), repository.fetchLedger("SKILL-135"))
+    }
+  }
+
   private fun finding(ordinal: Int, severity: String, location: String) = UnaddressedFinding(
     issueKey = "SKILL-135",
     subtaskId = 3,

@@ -38,6 +38,13 @@ internal class UnaddressedFindingsRuntime(private val connection: Connection) {
    * Blocker stops advancement, every Blocker surviving into a completed subtask would be one that
    * was addressed.
    */
+  fun clearWorkflowLedger(workflowId: String) {
+    connection.prepareStatement("DELETE FROM unaddressed_findings WHERE workflow_id = ?").use { statement ->
+      statement.setString(1, workflowId)
+      statement.executeUpdate()
+    }
+  }
+
   private fun deletePassesUpTo(workflowId: String, reviewPassNumber: Int) {
     connection.prepareStatement(
       "DELETE FROM unaddressed_findings WHERE workflow_id = ? AND review_pass_number <= ?",

@@ -210,6 +210,7 @@ class FeatureTaskRuntimePhaseRecorder(
           codeReviewMode = state.codeReviewMode,
         ).toArtifactMap()
         patch[GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY] = emptyMap<String, String>()
+        unitOfWork.unaddressedFindings.clearWorkflowLedger(workflowId)
       }
       persistPatch(
         unitOfWork.workflowStates,
@@ -289,7 +290,9 @@ class FeatureTaskRuntimePhaseRecorder(
     continuation: FeatureTaskRuntimeGoalContinuationArtifact,
     passNumber: Int,
   ) {
-    val output = request.normalizedOutput?.envelope ?: return
+    val output = requireNotNull(request.normalizedOutput) {
+      "Goal review completion requires normalized output to persist the unaddressed-findings ledger."
+    }.envelope
     val findings = GoalSubtaskReviewSummaryReducer.unaddressedFindings(
       output = output,
       issueKey = continuation.issueKey,

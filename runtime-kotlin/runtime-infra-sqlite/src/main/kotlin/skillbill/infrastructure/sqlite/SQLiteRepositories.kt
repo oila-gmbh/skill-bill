@@ -69,6 +69,8 @@ class SQLiteUnaddressedFindingsRepository(connection: Connection) : UnaddressedF
   override fun replaceLedgerForPass(workflowId: String, reviewPassNumber: Int, findings: List<UnaddressedFinding>) =
     runtime.replaceLedgerForPass(workflowId, reviewPassNumber, findings)
 
+  override fun clearWorkflowLedger(workflowId: String) = runtime.clearWorkflowLedger(workflowId)
+
   override fun fetchLedger(issueKey: String): List<UnaddressedFinding> = runtime.fetchLedger(issueKey)
 
   override fun issueExists(issueKey: String): Boolean = runtime.issueExists(issueKey)

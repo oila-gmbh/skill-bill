@@ -89,6 +89,7 @@ import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_DECOMPOSE_TERMINAL_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
@@ -1146,6 +1147,10 @@ class FeatureTaskRuntimeCappedReviewRecoveryTest {
       ),
     )
     repeat(2) { git.goalReviewBuildResults += repaired }
+    assertTrue(
+      harness.ledgerRows.any { it.severity == "blocker" },
+      "the capped generation leaves blocker rows the reopened generation must retract",
+    )
 
     val reopened = harness.runner.run(harness.request())
     assertTrue(
@@ -1153,6 +1158,11 @@ class FeatureTaskRuntimeCappedReviewRecoveryTest {
       "a changed delta reopens the capped review instead of replaying its stale verdict: $reopened",
     )
     assertIs<FeatureTaskRuntimeRunReport.Completed>(reopened)
+    assertTrue(
+      harness.ledgerRows.isEmpty(),
+      "invalidating the capped generation retracts its rows, which restarted pass numbering can no " +
+        "longer supersede: ${harness.ledgerRows}",
+    )
   }
 
   @Test
@@ -2178,6 +2188,125 @@ class FeatureTaskRuntimeRunnerSpecLifecycleTest {
 // topology, kept in a sibling class so the primary runner test class stays within its size
 // budget while sharing the same file-private run harness.
 class FeatureTaskRuntimeReviewFixLoopTest {
+  // The rejected output persisted as diagnostic evidence is not schema-valid by construction. Hydrating
+  // resume state must tolerate it, or the workflow can never be resumed again.
+  @Test
+  fun `a blocked phase carrying schema-rejected output stays resumable`() {
+    val harness = runnerHarness(agentAssignment = phasePerAgentAssignment())
+    harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), PREPLAN_OUTPUT)
+    harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), PLAN_OUTPUT)
+    harness.seedPhase("implement", "completed", 1, phaseAgent("implement"), IMPLEMENT_OUTPUT)
+    harness.seedPhase("audit", "completed", 1, phaseAgent("audit"), VALID_AUDIT_OUTPUT)
+    harness.seedPhase("review", "blocked", 2, phaseAgent("review"), "Cleaned up the last pending wait timer.")
+
+    val report = harness.runner.run(harness.request())
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    val reviewRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["review"])
+    assertEquals("completed", reviewRecord.status)
+  }
+
+  @Test
+  fun `a legacy schema-gate review block relaunches on resume instead of re-blocking`() {
+    val harness = runnerHarness(agentAssignment = phasePerAgentAssignment())
+    harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), PREPLAN_OUTPUT)
+    harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), PLAN_OUTPUT)
+    harness.seedPhase("implement", "completed", 1, phaseAgent("implement"), IMPLEMENT_OUTPUT)
+    harness.seedPhase("audit", "completed", 1, phaseAgent("audit"), VALID_AUDIT_OUTPUT)
+    harness.seedBlockedPhase(
+      "review",
+      attemptCount = 2,
+      phaseAgent("review"),
+      "Goal-subtask review output failed schema validation after its reserved pass; " +
+        "refusing an unaccounted relaunch. <root> must be an object.",
+      failureDisposition = FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
+    )
+
+    val report = harness.runner.run(harness.request())
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertTrue(harness.launchedPhaseOrder().contains("review"))
+    val reviewRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["review"])
+    assertEquals("completed", reviewRecord.status)
+    assertEquals(3, reviewRecord.attemptCount)
+  }
+
+  @Test
+  fun `goal review retries schema-invalid output inside its already-reserved pass`() {
+    var reviewAttempts = 0
+    val harness = runnerHarness(
+      validator = object : FeatureTaskRuntimePhaseOutputValidator {
+        override fun validatePhaseOutputText(phaseOutputText: String, sourceLabel: String) {
+          if (sourceLabel == "review") {
+            reviewAttempts += 1
+            if (reviewAttempts < 2) {
+              throw InvalidFeatureTaskRuntimePhaseOutputSchemaError("review", "<root> must be an object")
+            }
+          }
+        }
+      },
+      runtimeConfig = RuntimeHarnessConfig(
+        goalContinuation = FeatureTaskRuntimeGoalContinuationContext(
+          parentIssueKey = ISSUE_KEY,
+          subtaskId = 5,
+          goalBranch = "feat/existing-runtime-branch",
+          suppressPr = true,
+          parentWorkflowId = "wfl-parent",
+          reviewBaseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
+        ),
+      ),
+      launcher = RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        if (phaseId == "review") {
+          facts(reviewFindingsOutput(changesRequested = false))
+        } else {
+          facts(validJsonOutput(phaseId))
+        }
+      },
+    )
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
+
+    assertEquals(2, reviewAttempts)
+    val state = requireNotNull(harness.goalContinuationRecorder.reviewState(WORKFLOW_ID))
+    assertEquals(
+      1,
+      state.completedPassCount,
+      "a retried schema-invalid attempt must reuse the reserved pass, never allocate a second one",
+    )
+    assertEquals(null, state.reservedPassNumber)
+  }
+
+  @Test
+  fun `goal review blocks with pass accounting intact once the schema fix loop is exhausted`() {
+    val harness = runnerHarness(
+      validator = ThrowingValidator(failPhases = setOf("review")),
+      agentAssignment = phasePerAgentAssignment(),
+      runtimeConfig = RuntimeHarnessConfig(
+        goalContinuation = FeatureTaskRuntimeGoalContinuationContext(
+          parentIssueKey = ISSUE_KEY,
+          subtaskId = 5,
+          goalBranch = "feat/existing-runtime-branch",
+          suppressPr = true,
+          parentWorkflowId = "wfl-parent",
+          reviewBaseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
+        ),
+      ),
+    )
+
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+
+    assertEquals("review", blocked.lastIncompletePhase)
+    assertContains(blocked.blockedReason, "exhausted the bounded fix loop")
+    assertEquals(
+      FeatureTaskRuntimeFixLoopPolicy.MAX_FIX_LOOP_ITERATIONS,
+      harness.launchedPhaseOrder().count { it == "review" },
+    )
+    val state = requireNotNull(harness.goalContinuationRecorder.reviewState(WORKFLOW_ID))
+    assertEquals(1, state.reservedPassNumber)
+    assertEquals(0, state.completedPassCount)
+  }
+
   // --- SKILL-85 Subtask 4: M1 review-driven implement_fix loop over the real phase topology ------
 
   @Test
@@ -3508,7 +3637,13 @@ internal class RunnerHarness(
   }
 
   // Seeds a durable terminal blocked per-phase record (the marker that survives ledger pruning).
-  fun seedBlockedPhase(phaseId: String, attemptCount: Int, agentId: String, blockedReason: String) {
+  fun seedBlockedPhase(
+    phaseId: String,
+    attemptCount: Int,
+    agentId: String,
+    blockedReason: String,
+    failureDisposition: FeatureTaskRuntimeFailureDisposition? = null,
+  ) {
     recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
     recorder.recordPhaseState(
       skillbill.application.model.FeatureTaskRuntimePhaseStateRequest(
@@ -3520,6 +3655,7 @@ internal class RunnerHarness(
         finished = false,
         outputArtifact = null,
         blockedReason = blockedReason,
+        failureDisposition = failureDisposition,
       ),
     )
   }
@@ -4554,6 +4690,10 @@ internal class RuntimeFakeDatabaseSessionFactory(
       ) {
         ledgerRows.removeAll { it.workflowId == workflowId && it.reviewPassNumber <= reviewPassNumber }
         ledgerRows.addAll(findings)
+      }
+
+      override fun clearWorkflowLedger(workflowId: String) {
+        ledgerRows.removeAll { it.workflowId == workflowId }
       }
 
       override fun fetchLedger(issueKey: String): List<skillbill.goalrunner.model.UnaddressedFinding> =
