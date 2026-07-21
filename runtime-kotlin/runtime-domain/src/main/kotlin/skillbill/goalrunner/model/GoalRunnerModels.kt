@@ -250,6 +250,12 @@ data class GoalRunnerStatusProjection(
 data class GoalRunnerStatusProjectionExtras(
   val planning: GoalPlanningStatusSnapshot? = null,
   val currentStepOverride: String? = null,
+  /**
+   * Live workflow status of the current subtask's child. The manifest projection is only rewritten at
+   * reconciliation points, so a subtask relaunched from a durable block still reads `blocked` there for
+   * the whole run; this reports what the child is actually doing.
+   */
+  val currentWorkflowStatus: String? = null,
   val latestLivenessSignal: String? = null,
   @OpenBoundaryMap("Compact latest goal observability event passthrough for goal status rendering")
   val latestObservabilityEvent: Map<String, Any?>? = null,
@@ -265,21 +271,35 @@ object GoalRunnerStatusProjector {
     extras: GoalRunnerStatusProjectionExtras = GoalRunnerStatusProjectionExtras(),
   ): GoalRunnerStatusProjection {
     val currentSubtask = manifest.subtasks.firstOrNull { it.id == manifest.currentSubtaskIntent.subtaskId }
+    val statusOf: (DecompositionSubtask) -> String = { subtask ->
+      if (subtask.id == currentSubtask?.id && extras.currentWorkflowStatus in LIVE_WORKFLOW_STATUSES) {
+        "in_progress"
+      } else {
+        subtask.status
+      }
+    }
+    // Only goal_runner_supervisor events are persisted; the per-tick foreground heartbeats are console-only.
+    // So a block recorded when a prior run stopped stays the newest stored event while a relaunched child
+    // runs, and rendering it would contradict the live workflow status.
+    val staleBlockSignal = extras.currentWorkflowStatus in LIVE_WORKFLOW_STATUSES &&
+      extras.latestObservabilityEvent?.get("liveness_class") == "block"
     return GoalRunnerStatusProjection(
       issueKey = manifest.issueKey,
-      completeCount = manifest.subtasks.count { it.status == "complete" || it.status == "skipped" },
-      pendingCount = manifest.subtasks.count { it.status !in setOf("complete", "skipped", "blocked") },
-      blockedCount = manifest.subtasks.count { it.status == "blocked" },
+      completeCount = manifest.subtasks.count { statusOf(it) == "complete" || statusOf(it) == "skipped" },
+      pendingCount = manifest.subtasks.count { statusOf(it) !in setOf("complete", "skipped", "blocked") },
+      blockedCount = manifest.subtasks.count { statusOf(it) == "blocked" },
       currentSubtaskId = currentSubtask?.id,
       currentStep = extras.currentStepOverride?.takeIf(String::isNotBlank)
         ?: currentSubtask?.lastResumableStep
         ?: currentSubtask?.let { s -> if (s.workflowId.isNullOrBlank()) "pending_launch" else "initializing" },
       activeAgent = activeAgent?.takeIf(String::isNotBlank),
       planning = extras.planning,
-      latestLivenessSignal = extras.latestLivenessSignal?.takeIf(String::isNotBlank),
-      latestObservabilityEvent = extras.latestObservabilityEvent,
+      latestLivenessSignal = extras.latestLivenessSignal?.takeIf { it.isNotBlank() && !staleBlockSignal },
+      latestObservabilityEvent = extras.latestObservabilityEvent?.takeUnless { staleBlockSignal },
       requestedDiffStat = extras.requestedDiffStat,
       selectedDiffHunks = extras.selectedDiffHunks,
     )
   }
+
+  private val LIVE_WORKFLOW_STATUSES = setOf("running", "pending")
 }
