@@ -93,6 +93,7 @@ import skillbill.infrastructure.fs.JdkFeatureTaskRuntimeWorkerSupervisor
 import skillbill.infrastructure.fs.JdkParallelReviewLaneRunner
 import skillbill.infrastructure.fs.JdkRuntimeDiagnostics
 import skillbill.infrastructure.fs.JdkRuntimeTimingPort
+import skillbill.infrastructure.fs.ReviewContextEnvelopeValidatorAdapter
 import skillbill.infrastructure.fs.WorkflowSnapshotValidatorInfraAdapter
 import skillbill.infrastructure.http.HttpTelemetryClient
 import skillbill.infrastructure.http.JdkHttpRequester
@@ -159,6 +160,7 @@ import skillbill.ports.workflow.DecompositionManifestFileStore
 import skillbill.ports.workflow.NoopWorkflowGitOperations
 import skillbill.ports.workflow.SpecScratchStore
 import skillbill.ports.workflow.WorkflowGitOperations
+import skillbill.review.context.ReviewContextEnvelopeValidator
 import skillbill.telemetry.settings.DefaultTelemetrySettingsProvider
 import skillbill.workflow.DecompositionManifestValidator
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
@@ -528,6 +530,12 @@ abstract class RuntimeComponent(
   internal fun goalPlanningPreparationEnvelopeValidator(
     adapter: GoalPlanningPreparationEnvelopeValidatorAdapter,
   ): GoalPlanningPreparationEnvelopeValidator = adapter
+
+  @Provides
+  @JvmSynthetic
+  internal fun reviewContextEnvelopeValidator(
+    adapter: ReviewContextEnvelopeValidatorAdapter,
+  ): ReviewContextEnvelopeValidator = adapter
 
   @Provides
   @JvmSynthetic

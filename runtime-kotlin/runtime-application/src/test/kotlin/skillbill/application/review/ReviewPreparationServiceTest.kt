@@ -72,14 +72,21 @@ class ReviewPreparationServiceTest {
   private fun ports(
     hunks: List<ReviewChangedHunk> = listOf(hunkB, hunkA),
     decisions: List<ReviewLaneDecision> = listOf(
-      ReviewLaneDecision("testing", true, "test sources changed"),
-      ReviewLaneDecision("security", true, "auth surface changed"),
+      ReviewLaneDecision("testing", true, "test sources changed", ownedPaths = listOf("src/A.kt")),
+      ReviewLaneDecision("security", true, "auth surface changed", ownedPaths = listOf("src/B.kt")),
       ReviewLaneDecision("ui", false, "no UI files changed"),
     ),
   ) = CountingPorts(
     scope = ReviewScopeFacts("acme/repo", "base", "head", "clean", hunks),
     routing = ReviewStackRoutingFacts("kotlin", "kotlin", listOf("addon-b", "addon-a"), listOf("kotlin")),
-    rules = listOf(ReviewRuleReference("rule-1", "AGENTS.md", "Prefer named strategies.", "b".repeat(64))),
+    rules = listOf(
+      ReviewRuleReference(
+        "rule-1",
+        "AGENTS.md",
+        "Prefer named strategies.",
+        ReviewRuleReference.digestOf("Prefer named strategies."),
+      ),
+    ),
     learnings = listOf(ReviewLearningsReference("learn-1", "telemetry", "c".repeat(64))),
     facts = listOf(ReviewBuildTestFact("test", "gradle test", "passed")),
     decisions = decisions,
@@ -123,6 +130,34 @@ class ReviewPreparationServiceTest {
     assertEquals(first.assignmentEnvelopes, second.assignmentEnvelopes)
   }
 
+  @Test fun `projection emits sorted values regardless of the order ports return them`() {
+    val unsorted = service(
+      ports(
+        hunks = listOf(hunkB, hunkA),
+        decisions = listOf(
+          ReviewLaneDecision("testing", true, "test sources changed", ownedPaths = listOf("src/A.kt")),
+          ReviewLaneDecision("security", true, "auth surface changed", ownedPaths = listOf("src/B.kt")),
+          ReviewLaneDecision("ui", false, "no UI files changed"),
+        ),
+      ),
+    ).prepare(request()).packetEnvelope.asWireMap()
+
+    assertEquals(listOf("security", "testing"), unsorted["selected_lanes"])
+    assertEquals(listOf("addon-a", "addon-b"), unsorted["add_ons"])
+    assertEquals(
+      listOf("security", "testing", "ui"),
+      (unsorted["lane_decisions"] as List<*>).map { (it as Map<*, *>)["lane"] },
+    )
+    assertEquals(
+      listOf("src/A.kt", "src/B.kt"),
+      (unsorted["changed_hunks"] as List<*>).map { (it as Map<*, *>)["path"] },
+    )
+    assertEquals(
+      listOf("src/A.kt", "src/B.kt"),
+      (unsorted["evidence_targets"] as List<*>).map { (it as Map<*, *>)["path"] },
+    )
+  }
+
   @Test fun `every projected envelope is schema validated before launch`() {
     val validator = RecordingValidator()
     service(ports(), validator).prepare(request())
@@ -140,6 +175,28 @@ class ReviewPreparationServiceTest {
       assertEquals(listOf("src/Dep.kt"), assignment.dependencyAllowlist.normalized)
     }
     assertEquals(listOf("AC-002"), result.assignments.first { it.lane == "security" }.criteriaReferences)
+  }
+
+  @Test fun `each lane receives only the hunks its decision owns`() {
+    val result = service(ports()).prepare(request())
+    val testing = result.assignments.first { it.lane == "testing" }
+    val security = result.assignments.first { it.lane == "security" }
+    assertEquals(listOf("src/A.kt"), testing.assignedPaths)
+    assertEquals(listOf("src/B.kt"), security.assignedPaths)
+    assertEquals(listOf(hunkA.hunkId), testing.assignedHunks)
+    assertEquals(listOf(hunkB.hunkId), security.assignedHunks)
+    assertTrue(testing.assignedHunks.none { it in security.assignedHunks })
+    assertEquals(listOf("src/A.kt"), testing.evidenceTargets.map { it.path })
+  }
+
+  @Test fun `a lane claiming a path the packet does not own is rejected`() {
+    val counting = ports(
+      decisions = listOf(
+        ReviewLaneDecision("testing", true, "test sources changed", ownedPaths = listOf("src/Absent.kt")),
+      ),
+    )
+    val failure = assertFailsWith<InvalidReviewContextSchemaError> { service(counting).prepare(request()) }
+    assertTrue("claims paths the packet does not own" in failure.message.orEmpty())
   }
 
   @Test fun `no included lane is rejected before launch`() {

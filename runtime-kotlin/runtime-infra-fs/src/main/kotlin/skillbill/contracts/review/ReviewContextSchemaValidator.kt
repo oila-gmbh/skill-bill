@@ -124,17 +124,24 @@ private val violationOrdering: Comparator<ValidationMessage> = compareBy(
   { it.message.orEmpty() },
 )
 
+private const val MAX_OFFENDING_VALUE_CHARS: Int = 120
+
+private val REDACTED_FIELD_SEGMENTS: Set<String> =
+  setOf("excerpt", "content", "reason", "reachability_reason", "rubric", "specialist_contract", "status")
+
 private fun offendingValue(instance: JsonNode, instanceLocation: String): String {
   val dotted = dottedFieldPath(instanceLocation)
   if (dotted.isBlank()) return ""
+  val segments = dotted.split('.')
+  if (segments.any { it in REDACTED_FIELD_SEGMENTS }) return "<redacted>"
   var node: JsonNode = instance
-  dotted.split('.').forEach { segment ->
+  segments.forEach { segment ->
     if (segment.isBlank()) return@forEach
     node = if (segment.toIntOrNull() != null) node.path(segment.toInt()) else node.path(segment)
   }
   return when {
     node.isMissingNode -> ""
-    node.isValueNode -> node.asText()
+    node.isValueNode -> node.asText().take(MAX_OFFENDING_VALUE_CHARS)
     else -> ""
   }
 }
@@ -165,8 +172,9 @@ private fun loadReviewContextSchema(): ReviewContextSchemas {
     val factory = JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V202012)
     val envelopeSchema = factory.getSchema(mapper.writeValueAsString(yamlNode))
     val defs = yamlNode.path("\$defs")
-    val branches = defs.fieldNames().asSequence()
-      .filter { defs.path(it).path("properties").path("contract_version").path("const").asText("").isNotBlank() }
+    val branches = yamlNode.path("oneOf").asSequence()
+      .map { branch -> branch.path("\$ref").asText("").substringAfterLast('/') }
+      .filter { name -> name.isNotBlank() && !defs.path(name).isMissingNode }
       .associateWith { name ->
         val wrapper = mapper.createObjectNode()
         wrapper.put("\$schema", yamlNode.path("\$schema").asText())

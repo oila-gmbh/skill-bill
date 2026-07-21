@@ -34,6 +34,13 @@ data class ReviewRuleReference(
       "Matched rule excerpt exceeds the bounded projection limit of $REVIEW_RULE_EXCERPT_MAX_CHARS characters."
     }
     require(digest.matches(SHA256_HEX)) { "Matched rule digest must be lowercase SHA-256." }
+    require(digest == digestOf(excerpt)) {
+      "Matched rule '$ruleId' digest does not cover its excerpt; the excerpt is not attested."
+    }
+  }
+
+  companion object {
+    fun digestOf(excerpt: String): String = sha256(excerpt.replace("\r\n", "\n"))
   }
 
   val canonical: String
@@ -91,15 +98,32 @@ data class ReviewLaneDecision(
   val included: Boolean,
   val reason: String,
   val signals: List<String> = emptyList(),
+  val ownedPaths: List<String> = emptyList(),
 ) {
   init {
     require(lane.isNotBlank()) { "Lane decision lane must not be blank." }
     require(reason.isNotBlank()) { "Lane decision '$lane' must carry a non-blank reason." }
     require(signals.distinct().size == signals.size) { "Lane decision signals must be unique." }
+    ownedPaths.forEach(::requireRepositoryRelativePath)
+    require(normalizedOwnedPaths.distinct().size == ownedPaths.size) {
+      "Lane decision '$lane' owned paths must be unique."
+    }
+    require(!included || ownedPaths.isNotEmpty()) {
+      "Included lane '$lane' must declare the paths it owns so assignments partition the packet."
+    }
+    require(included || ownedPaths.isEmpty()) { "Excluded lane '$lane' cannot own paths." }
   }
 
+  val normalizedOwnedPaths: List<String> get() = ownedPaths.map { it.replace('\\', '/') }
+
   val canonical: String
-    get() = listOf(lane, included.toString(), reason, signals.sorted().joinToString(","))
+    get() = listOf(
+      lane,
+      included.toString(),
+      reason,
+      signals.sorted().joinToString(","),
+      normalizedOwnedPaths.sorted().joinToString(","),
+    )
       .joinToString("\u001f")
 }
 
@@ -235,8 +259,8 @@ data class ReviewAssignment(
   val criteriaReferences: List<String> = emptyList(),
   val matchedRules: List<ReviewRuleReference> = emptyList(),
   val evidenceTargets: List<ReviewEvidenceTarget> = emptyList(),
-  val reviewRevision: ReviewRevision = ReviewRevision(reviewId, 1),
-  val laneDecision: ReviewLaneDecision = ReviewLaneDecision(lane, true, "Lane selected for delegated review."),
+  val reviewRevision: ReviewRevision,
+  val laneDecision: ReviewLaneDecision,
   val dependencyAllowlist: ReviewDependencyAllowlist = ReviewDependencyAllowlist.EMPTY,
   val expansions: List<ReviewExpansionRecord> = emptyList(),
 ) {
@@ -256,7 +280,23 @@ data class ReviewAssignment(
     require(dependencyAllowlist.normalized.none { it in assigned }) {
       "Dependency-allowlist entries must be disjoint from assigned paths."
     }
+    require(expansions.map { it.expansionId }.distinct().size == expansions.size) {
+      "Assignment expansion ids must be unique."
+    }
+    require(expansions.map { it.sequence }.distinct().size == expansions.size) {
+      "Assignment expansion sequences must be unique."
+    }
+    val reachable = assigned + dependencyAllowlist.normalized
+    val escaping = expansions.map { it.requestedPath.replace('\\', '/') }.filterNot { it in reachable }
+    require(escaping.isEmpty()) {
+      "Assignment '$lane' expansions authorize paths outside its allowlist and assigned paths: ${escaping.sorted()}."
+    }
   }
+
+  val expansionsDigest: String
+    get() = sha256(
+      expansions.sortedWith(compareBy({ it.sequence }, { it.expansionId })).joinToString("\n") { it.canonical },
+    )
   val digest: String
     get() = sha256(
       listOf(
@@ -290,7 +330,7 @@ data class ReviewChangedHunk(
     require(oldStart >= 0 && oldCount >= 0 && newStart >= 0 && newCount >= 0)
   }
 
-  val hunkId: String get() = sha256(canonicalValue())
+  val hunkId: String by lazy(LazyThreadSafetyMode.PUBLICATION) { sha256(canonicalValue()) }
 
   internal fun canonicalValue(): String = listOf(
     path.replace('\\', '/'),
@@ -313,9 +353,8 @@ data class ReviewContextPacket(
   val addOns: List<String>,
   val selectedLanes: List<String>,
   val changedHunks: List<ReviewChangedHunk>,
-  val reviewRevision: ReviewRevision = ReviewRevision(reviewId, 1),
-  val laneDecisions: List<ReviewLaneDecision> =
-    selectedLanes.map { ReviewLaneDecision(it, true, "Lane selected for delegated review.") },
+  val reviewRevision: ReviewRevision,
+  val laneDecisions: List<ReviewLaneDecision>,
   val matchedRules: List<ReviewRuleReference> = emptyList(),
   val learningsReferences: List<ReviewLearningsReference> = emptyList(),
   val buildTestFacts: List<ReviewBuildTestFact> = emptyList(),
@@ -346,13 +385,40 @@ data class ReviewContextPacket(
     require(expansionLedger.map { it.expansionId }.distinct().size == expansionLedger.size) {
       "Expansion ledger ids must be unique."
     }
+    require(expansionLedger.map { it.sequence }.distinct().size == expansionLedger.size) {
+      "Expansion ledger sequences must be unique."
+    }
+    val owned = changedHunks.map { it.path.replace('\\', '/') }.toSet()
+    val ownedHunks = changedHunks.map { it.hunkId }.toSet()
+    val reachable = owned + dependencyAllowlist.normalized
+    val escaping = expansionLedger.map { it.requestedPath.replace('\\', '/') }.filterNot { it in reachable }
+    require(escaping.isEmpty()) {
+      "Expansion ledger authorizes paths outside the packet allowlist and owned paths: ${escaping.sorted()}."
+    }
+    val targetPaths = evidenceTargets.map { it.path.replace('\\', '/') }.filterNot { it in owned }
+    require(targetPaths.isEmpty()) { "Evidence targets name paths the packet does not own: ${targetPaths.sorted()}." }
+    val targetHunks = evidenceTargets.flatMap { it.hunkIds }.filterNot { it in ownedHunks }
+    require(targetHunks.isEmpty()) { "Evidence targets name hunk ids the packet does not own." }
   }
 
-  val ownedPaths: Set<String> get() = changedHunks.map { it.path.replace('\\', '/') }.toSet()
-  val ownedHunkIds: Set<String> get() = changedHunks.map { it.hunkId }.toSet()
+  val ownedPaths: Set<String> by lazy(LazyThreadSafetyMode.PUBLICATION) {
+    changedHunks.map { it.path.replace('\\', '/') }.toSet()
+  }
+  val ownedHunkIds: Set<String> by lazy(LazyThreadSafetyMode.PUBLICATION) {
+    changedHunks.map { it.hunkId }.toSet()
+  }
 
   val digest: String get() = sha256(canonicalValue())
-  val canonicalBytes: Long get() = canonicalValue().toByteArray(StandardCharsets.UTF_8).size.toLong()
+
+  val expansionLedgerDigest: String
+    get() = sha256(
+      expansionLedger.sortedWith(compareBy({ it.sequence }, { it.expansionId }))
+        .joinToString("\n") { it.canonical },
+    )
+
+  val canonicalBytes: Long
+    get() = (canonicalValue() + expansionLedgerDigest + expansionLedger.joinToString("\n") { it.canonical })
+      .toByteArray(StandardCharsets.UTF_8).size.toLong()
 
   private fun canonicalValue(): String = listOf(
     reviewId,
@@ -380,6 +446,7 @@ enum class ReviewConversationIsolation { FRESH }
 
 data class GovernedReviewLaunch(
   val assignment: ReviewAssignment,
+  val packet: ReviewContextPacket,
   val specialistContract: String,
   val rubric: String,
   val brokerId: String,
@@ -388,6 +455,18 @@ data class GovernedReviewLaunch(
 ) {
   init {
     require(specialistContract.isNotBlank() && rubric.isNotBlank() && brokerId.isNotBlank())
+    require(assignment.reviewId == packet.reviewId) { "Launch assignment belongs to a different review." }
+    require(assignment.packetDigest == packet.digest) {
+      "Launch assignment carries packet digest '${assignment.packetDigest}' but the packet recomputes to " +
+        "'${packet.digest}'; a launch cannot be projected from an unattested assignment."
+    }
+    require(assignment.lane in packet.selectedLanes) {
+      "Launch lane '${assignment.lane}' is not a selected lane of the packet."
+    }
+    val unowned = assignment.assignedPaths.map { it.replace('\\', '/') }.filterNot { it in packet.ownedPaths }
+    require(unowned.isEmpty()) { "Launch claims paths the packet does not own: ${unowned.sorted()}." }
+    val unownedHunks = assignment.assignedHunks.filterNot { it in packet.ownedHunkIds }
+    require(unownedHunks.isEmpty()) { "Launch claims hunk ids the packet does not own." }
   }
 
   fun requireCodexForkTurns(forkTurns: String?) {

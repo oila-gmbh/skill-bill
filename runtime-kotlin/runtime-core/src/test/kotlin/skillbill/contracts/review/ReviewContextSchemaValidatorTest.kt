@@ -1,9 +1,21 @@
 package skillbill.contracts.review
 
+import skillbill.application.review.ReviewPreparationService
+import skillbill.application.review.model.ReviewPreparationRequest
 import skillbill.application.review.toAssignmentEnvelope
 import skillbill.application.review.toLaunchEnvelope
 import skillbill.application.review.toParentPacketEnvelope
 import skillbill.error.InvalidReviewContextSchemaError
+import skillbill.infrastructure.fs.ReviewContextEnvelopeValidatorAdapter
+import skillbill.ports.review.ReviewBuildTestFactsPort
+import skillbill.ports.review.ReviewGuidancePort
+import skillbill.ports.review.ReviewLaneSelectionPort
+import skillbill.ports.review.ReviewLearningsPort
+import skillbill.ports.review.ReviewScopeResolverPort
+import skillbill.ports.review.ReviewStackRoutingPort
+import skillbill.ports.review.model.ReviewFactPorts
+import skillbill.ports.review.model.ReviewScopeFacts
+import skillbill.ports.review.model.ReviewStackRoutingFacts
 import skillbill.review.context.model.GovernedReviewLaunch
 import skillbill.review.context.model.ReviewAssignment
 import skillbill.review.context.model.ReviewBuildTestFact
@@ -26,7 +38,12 @@ class ReviewContextSchemaValidatorTest {
   private val hunkA = ReviewChangedHunk("src/A.kt", 1, 1, 1, 2, "+alpha")
   private val hunkB = ReviewChangedHunk("src/B.kt", 4, 1, 4, 1, "+beta")
   private val revision = ReviewRevision("rvs-1", 2)
-  private val rule = ReviewRuleReference("rule-1", "AGENTS.md", "Prefer named strategies.", "b".repeat(64))
+  private val rule = ReviewRuleReference(
+    "rule-1",
+    "AGENTS.md",
+    "Prefer named strategies.",
+    ReviewRuleReference.digestOf("Prefer named strategies."),
+  )
 
   private val packet = ReviewContextPacket(
     reviewId = "review",
@@ -41,7 +58,13 @@ class ReviewContextSchemaValidatorTest {
     changedHunks = listOf(hunkA, hunkB),
     reviewRevision = revision,
     laneDecisions = listOf(
-      ReviewLaneDecision("security", true, "auth surface changed", listOf("src/A.kt")),
+      ReviewLaneDecision(
+        "security",
+        true,
+        "auth surface changed",
+        signals = listOf("auth"),
+        ownedPaths = listOf("src/A.kt", "src/B.kt"),
+      ),
       ReviewLaneDecision("ui", false, "no UI files changed"),
     ),
     matchedRules = listOf(rule),
@@ -70,12 +93,14 @@ class ReviewContextSchemaValidatorTest {
   @Test fun `projected envelopes satisfy the canonical schema`() {
     ReviewContextSchemaValidator.validateParentPacket(packet.toParentPacketEnvelope().asWireMap(), "packet")
     ReviewContextSchemaValidator.validateAssignment(assignment.toAssignmentEnvelope().asWireMap(), "assignment")
-    val launch = GovernedReviewLaunch(assignment, "contract", "rubric", "broker", ReviewContextBudgetPolicy.DEFAULT)
+    val launch =
+      GovernedReviewLaunch(assignment, packet, "contract", "rubric", "broker", ReviewContextBudgetPolicy.DEFAULT)
     ReviewContextSchemaValidator.validateLaunch(launch.toLaunchEnvelope().asWireMap(), "launch")
   }
 
   @Test fun `launch envelope carries the governed forbidden rediscovery list`() {
-    val launch = GovernedReviewLaunch(assignment, "contract", "rubric", "broker", ReviewContextBudgetPolicy.DEFAULT)
+    val launch =
+      GovernedReviewLaunch(assignment, packet, "contract", "rubric", "broker", ReviewContextBudgetPolicy.DEFAULT)
     assertEquals(
       ReviewPacketConsumerContract.FORBIDDEN_REDISCOVERY,
       launch.toLaunchEnvelope().asWireMap()["forbidden_rediscovery"],
@@ -157,5 +182,64 @@ class ReviewContextSchemaValidatorTest {
     val envelope = packet.toParentPacketEnvelope().asWireMap().toMutableMap()
     envelope["contract_version"] = "0.1"
     assertFailsWith<InvalidReviewContextSchemaError> { ReviewContextSchemaValidator.validate(envelope, "packet") }
+  }
+
+  @Test fun `an envelope declaring a non branch kind is rejected instead of validating permissively`() {
+    val envelope = packet.toParentPacketEnvelope().asWireMap().toMutableMap()
+    envelope["kind"] = "header"
+    assertFailsWith<InvalidReviewContextSchemaError> { ReviewContextSchemaValidator.validate(envelope, "packet") }
+  }
+
+  @Test fun `schema violations never echo guidance excerpts or diff bodies`() {
+    val envelope = packet.toParentPacketEnvelope().asWireMap().toMutableMap()
+    val secret = "SENSITIVE-GUIDANCE-BODY"
+    envelope["matched_rules"] = listOf(
+      mapOf("rule_id" to "rule-1", "source_path" to "AGENTS.md", "excerpt" to secret, "digest" to 7),
+    )
+    val failure =
+      assertFailsWith<InvalidReviewContextSchemaError> { ReviewContextSchemaValidator.validate(envelope, "packet") }
+    assertTrue(secret !in failure.message.orEmpty())
+  }
+
+  @Test fun `the real service validates its own projections against the canonical schema`() {
+    val prepared = ReviewPreparationService(
+      ReviewFactPorts(facts, facts, facts, facts, facts, facts),
+      ReviewContextEnvelopeValidatorAdapter(),
+    ).prepare(
+      ReviewPreparationRequest(
+        reviewId = "review",
+        reviewRevision = revision,
+        criteriaReferences = mapOf("security" to listOf("AC-002")),
+        dependencyAllowlist = ReviewDependencyAllowlist(listOf("src/Dep.kt")),
+      ),
+    )
+    assertEquals("parent_packet", prepared.packetEnvelope.asWireMap()["kind"])
+    assertEquals(listOf("src/A.kt"), prepared.assignments.single().assignedPaths)
+  }
+
+  private val facts = object :
+    ReviewScopeResolverPort,
+    ReviewStackRoutingPort,
+    ReviewGuidancePort,
+    ReviewLearningsPort,
+    ReviewBuildTestFactsPort,
+    ReviewLaneSelectionPort {
+    override fun resolveScope(reviewId: String) =
+      ReviewScopeFacts("acme/repo", "base", "head", "clean", listOf(hunkA, hunkB))
+
+    override fun resolveStackRouting(scope: ReviewScopeFacts) =
+      ReviewStackRoutingFacts("kotlin", "kotlin", listOf("addon-a"), listOf("kotlin"))
+
+    override fun resolveMatchedRules(scope: ReviewScopeFacts, routing: ReviewStackRoutingFacts) = listOf(rule)
+    override fun resolveLearnings(scope: ReviewScopeFacts, routing: ReviewStackRoutingFacts) =
+      listOf(ReviewLearningsReference("learn-1", "telemetry", "c".repeat(64)))
+
+    override fun resolveBuildTestFacts(scope: ReviewScopeFacts) =
+      listOf(ReviewBuildTestFact("test", "gradle test", "passed"))
+
+    override fun decideLanes(scope: ReviewScopeFacts, routing: ReviewStackRoutingFacts) = listOf(
+      ReviewLaneDecision("security", true, "auth surface changed", ownedPaths = listOf("src/A.kt")),
+      ReviewLaneDecision("ui", false, "no UI files changed"),
+    )
   }
 }

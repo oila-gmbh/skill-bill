@@ -30,6 +30,7 @@ internal fun ReviewLaneDecision.toEnvelope(): Map<String, Any?> = linkedMapOf(
   "included" to included,
   "reason" to reason,
   "signals" to signals.sorted(),
+  "owned_paths" to normalizedOwnedPaths.sorted(),
 )
 
 internal fun ReviewRuleReference.toEnvelope(): Map<String, Any?> = linkedMapOf(

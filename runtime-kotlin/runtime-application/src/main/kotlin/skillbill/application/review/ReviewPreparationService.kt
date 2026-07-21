@@ -138,20 +138,28 @@ class ReviewPreparationService(
     laneDecisions: List<ReviewLaneDecision>,
   ): List<ReviewAssignment> {
     val packetDigest = packet.digest
+    val hunksByPath = packet.changedHunks.groupBy { it.path.replace('\\', '/') }
     return packet.selectedLanes.map { lane ->
+      val decision = laneDecisions.first { it.lane == lane }
+      val lanePaths = decision.normalizedOwnedPaths.sorted()
+      val unowned = lanePaths.filterNot { it in packet.ownedPaths }
+      if (unowned.isNotEmpty()) {
+        reject(request.reviewId, "Lane '$lane' claims paths the packet does not own: ${unowned.sorted()}.")
+      }
+      val laneHunkIds = lanePaths.flatMap { path -> hunksByPath[path].orEmpty().map { it.hunkId } }.sorted()
       ReviewAssignment(
         reviewId = packet.reviewId,
         packetDigest = packetDigest,
         lane = lane,
         baseRevision = packet.baseRevision,
         headRevision = packet.headRevision,
-        assignedPaths = packet.ownedPaths.sorted(),
-        assignedHunks = packet.ownedHunkIds.sorted(),
+        assignedPaths = lanePaths,
+        assignedHunks = laneHunkIds,
         criteriaReferences = request.criteriaReferences[lane].orEmpty(),
         matchedRules = packet.matchedRules,
-        evidenceTargets = packet.evidenceTargets,
+        evidenceTargets = packet.evidenceTargets.filter { it.path.replace('\\', '/') in lanePaths },
         reviewRevision = packet.reviewRevision,
-        laneDecision = laneDecisions.first { it.lane == lane },
+        laneDecision = decision,
         dependencyAllowlist = packet.dependencyAllowlist,
       )
     }
@@ -186,11 +194,13 @@ class ReviewPreparationService(
 
   private fun rejectOwnershipViolations(packet: ReviewContextPacket, assignment: ReviewAssignment) {
     val label = assignmentLabel(assignment)
-    val unownedPaths = assignment.assignedPaths.map { it.replace('\\', '/') }.filterNot { it in packet.ownedPaths }
+    val ownedPaths = packet.ownedPaths
+    val ownedHunkIds = packet.ownedHunkIds
+    val unownedPaths = assignment.assignedPaths.map { it.replace('\\', '/') }.filterNot { it in ownedPaths }
     if (unownedPaths.isNotEmpty()) {
       reject(label, "Assignment claims paths not owned by the packet: ${unownedPaths.sorted()}.")
     }
-    val unownedHunks = assignment.assignedHunks.filterNot { it in packet.ownedHunkIds }
+    val unownedHunks = assignment.assignedHunks.filterNot { it in ownedHunkIds }
     if (unownedHunks.isNotEmpty()) {
       reject(label, "Assignment claims hunk ids not owned by the packet: ${unownedHunks.sorted()}.")
     }

@@ -74,12 +74,16 @@ $defs:
   lane_decision:
     type: object
     additionalProperties: false
-    required: [lane, included, reason]
+    required: [lane, included, reason, owned_paths]
     properties:
       lane: { $ref: "#/$defs/identifier" }
       included: { type: boolean }
       reason: { type: string, minLength: 1 }
       signals: { $ref: "#/$defs/strings" }
+      owned_paths:
+        type: array
+        uniqueItems: true
+        items: { $ref: "#/$defs/path" }
   expansion_record:
     type: object
     additionalProperties: false
@@ -93,15 +97,8 @@ $defs:
       sequence: { type: integer, minimum: 0 }
   expansion_records:
     type: array
+    uniqueItems: true
     items: { $ref: "#/$defs/expansion_record" }
-  header:
-    type: object
-    required: [contract_version, kind, review_id, packet_digest]
-    properties:
-      contract_version: { const: "0.2" }
-      kind: { type: string }
-      review_id: { type: string, minLength: 1 }
-      packet_digest: { $ref: "#/$defs/digest" }
   hunk:
     type: object
     additionalProperties: false

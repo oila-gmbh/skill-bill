@@ -4,6 +4,8 @@ import skillbill.ports.review.model.ReviewEvidenceRequest
 import skillbill.review.context.model.REVIEW_CONTEXT_BUDGET_EXCEEDED
 import skillbill.review.context.model.ReviewAssignment
 import skillbill.review.context.model.ReviewContextBudgetPolicy
+import skillbill.review.context.model.ReviewLaneDecision
+import skillbill.review.context.model.ReviewRevision
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -59,6 +61,13 @@ class FileSystemReviewEvidenceBrokerTest {
     "head",
     paths,
     emptyList(),
+    reviewRevision = ReviewRevision("rvs-1", 1),
+    laneDecision = ReviewLaneDecision(
+      "security",
+      true,
+      "routed",
+      ownedPaths = paths.ifEmpty { listOf("A.kt") },
+    ),
   )
   private fun policy(result: Long = 100, cumulative: Long = 200, expansions: Int = 1) = ReviewContextBudgetPolicy(
     maxParentPacketBytes = 1_000,

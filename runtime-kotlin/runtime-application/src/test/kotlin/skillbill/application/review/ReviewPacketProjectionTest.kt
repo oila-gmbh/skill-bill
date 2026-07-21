@@ -25,14 +25,21 @@ import kotlin.test.assertTrue
 class ReviewPacketProjectionTest {
   private val hunkA = ReviewChangedHunk("src/A.kt", 1, 1, 1, 2, "+alpha")
   private val hunkB = ReviewChangedHunk("src/B.kt", 4, 1, 4, 1, "+beta")
-  private val rule = ReviewRuleReference("rule-1", "AGENTS.md", "Prefer named strategies.", "b".repeat(64))
+  private val rule = ReviewRuleReference(
+    "rule-1",
+    "AGENTS.md",
+    "Prefer named strategies.",
+    ReviewRuleReference.digestOf("Prefer named strategies."),
+  )
   private val learning = ReviewLearningsReference("learn-1", "telemetry", "c".repeat(64))
   private val revision = ReviewRevision("rvs-1", 3)
 
   private fun packet(
     hunks: List<ReviewChangedHunk> = listOf(hunkA, hunkB),
     lanes: List<String> = listOf("security", "testing"),
-    decisions: List<ReviewLaneDecision> = lanes.map { ReviewLaneDecision(it, true, "routed") },
+    decisions: List<ReviewLaneDecision> = lanes.map { lane ->
+      ReviewLaneDecision(lane, true, "routed", ownedPaths = hunks.map { it.path }.distinct())
+    },
     allowlist: ReviewDependencyAllowlist = ReviewDependencyAllowlist(listOf("src/Dep.kt")),
   ) = ReviewContextPacket(
     reviewId = "review",
@@ -87,12 +94,12 @@ class ReviewPacketProjectionTest {
 
   @Test fun `lane decisions must cover exactly the selected lanes`() {
     assertFailsWith<IllegalArgumentException> {
-      packet(decisions = listOf(ReviewLaneDecision("security", true, "routed")))
+      packet(decisions = listOf(ReviewLaneDecision("security", true, "routed", ownedPaths = listOf("src/A.kt"))))
     }
     val withExclusion = packet(
       lanes = listOf("security"),
       decisions = listOf(
-        ReviewLaneDecision("security", true, "routed"),
+        ReviewLaneDecision("security", true, "routed", ownedPaths = listOf("src/A.kt")),
         ReviewLaneDecision("testing", false, "no test files changed"),
       ),
     )
@@ -131,6 +138,8 @@ class ReviewPacketProjectionTest {
         headRevision = "head",
         assignedPaths = listOf("src/A.kt"),
         assignedHunks = listOf(hunkA.hunkId),
+        reviewRevision = revision,
+        laneDecision = ReviewLaneDecision("security", true, "routed", ownedPaths = listOf("src/A.kt")),
         dependencyAllowlist = ReviewDependencyAllowlist(listOf("src/A.kt")),
       )
     }
@@ -149,7 +158,12 @@ class ReviewPacketProjectionTest {
       matchedRules = listOf(rule),
       evidenceTargets = base.evidenceTargets,
       reviewRevision = revision,
-      laneDecision = ReviewLaneDecision("security", true, "routed"),
+      laneDecision = ReviewLaneDecision(
+        "security",
+        true,
+        "routed",
+        ownedPaths = listOf("src/A.kt", "src/B.kt"),
+      ),
       dependencyAllowlist = base.dependencyAllowlist,
     )
     val envelope = assignment.toAssignmentEnvelope().asWireMap()
@@ -170,9 +184,11 @@ class ReviewPacketProjectionTest {
       assignedPaths = listOf("src/A.kt"),
       assignedHunks = listOf(hunkA.hunkId),
       reviewRevision = revision,
+      laneDecision = ReviewLaneDecision("security", true, "routed", ownedPaths = listOf("src/A.kt")),
     )
-    val envelope = GovernedReviewLaunch(assignment, "contract", "rubric", "broker", ReviewContextBudgetPolicy.DEFAULT)
-      .toLaunchEnvelope().asWireMap()
+    val envelope =
+      GovernedReviewLaunch(assignment, base, "contract", "rubric", "broker", ReviewContextBudgetPolicy.DEFAULT)
+        .toLaunchEnvelope().asWireMap()
     assertEquals(ReviewPacketConsumerContract.FORBIDDEN_REDISCOVERY, envelope["forbidden_rediscovery"])
     assertEquals("fresh", envelope["isolation"])
     assertEquals(mapOf("session_id" to "rvs-1", "run_revision" to 3), envelope["review_revision"])
