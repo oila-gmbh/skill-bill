@@ -330,44 +330,65 @@ class WorkflowService(
       )
     }
     val request = BlockedPhaseRetryRequest(workflowId, normalizedPhaseId, normalizedReason)
-    return database.transaction(dbOverride) { unitOfWork ->
+    val persistence = database.transaction(dbOverride) { unitOfWork ->
       retryBlockedFeatureTaskRuntimePhaseInTransaction(unitOfWork, request)
     }
+    persistence.projectionArtifactsJson?.let { artifactsJson ->
+      checkNotNull(
+        DecompositionManifestWriter.writeProjectionFromWorkflowState(
+          Path.of("").toAbsolutePath(),
+          artifactsJson,
+          decompositionManifestValidator,
+          decompositionManifestFileStore,
+        ),
+      ) {
+        "Blocked-phase retry reopened the durable goal child but could not write its decomposition manifest projection."
+      }
+    }
+    return persistence.result
   }
 
   private fun retryBlockedFeatureTaskRuntimePhaseInTransaction(
     unitOfWork: UnitOfWork,
     request: BlockedPhaseRetryRequest,
-  ): WorkflowUpdateResult {
+  ): BlockedPhaseRetryPersistence {
     val family = WorkflowFamily.TASK_RUNTIME
     val existing = family.get(unitOfWork.workflowStates, request.workflowId)
-      ?: return WorkflowUpdateResult.Error(
-        request.workflowId,
-        "Unknown runtime workflow_id '${request.workflowId}'.",
-        unitOfWork.dbPath.toString(),
+      ?: return BlockedPhaseRetryPersistence.error(
+        WorkflowUpdateResult.Error(
+          request.workflowId,
+          "Unknown runtime workflow_id '${request.workflowId}'.",
+          unitOfWork.dbPath.toString(),
+        ),
       )
     if (existing.workflowStatus in family.definition.terminalStatuses) {
-      return WorkflowUpdateResult.Error(
-        request.workflowId,
-        "Runtime workflow '${request.workflowId}' is already terminal with status '${existing.workflowStatus}'.",
-        unitOfWork.dbPath.toString(),
+      return BlockedPhaseRetryPersistence.error(
+        WorkflowUpdateResult.Error(
+          request.workflowId,
+          "Runtime workflow '${request.workflowId}' is already terminal with status '${existing.workflowStatus}'.",
+          unitOfWork.dbPath.toString(),
+        ),
       )
     }
     val artifacts = decodeWorkflowArtifacts(existing.artifactsJson)
     val phaseRecords = decodeFeatureTaskRuntimePhaseRecords(artifacts)
     val ledger = FeatureTaskRuntimePhaseLedgerDecoder.decode(artifacts)
     val blockedRecord = phaseRecords[request.phaseId]
-      ?: return WorkflowUpdateResult.Error(
-        request.workflowId,
-        "Runtime workflow '${request.workflowId}' has no durable phase record for '${request.phaseId}'.",
-        unitOfWork.dbPath.toString(),
+      ?: return BlockedPhaseRetryPersistence.error(
+        WorkflowUpdateResult.Error(
+          request.workflowId,
+          "Runtime workflow '${request.workflowId}' has no durable phase record for '${request.phaseId}'.",
+          unitOfWork.dbPath.toString(),
+        ),
       )
     return if (blockedRecord.status != "blocked") {
-      WorkflowUpdateResult.Error(
-        request.workflowId,
-        "Runtime workflow '${request.workflowId}' phase '${request.phaseId}' is " +
-          "'${blockedRecord.status}', not blocked.",
-        unitOfWork.dbPath.toString(),
+      BlockedPhaseRetryPersistence.error(
+        WorkflowUpdateResult.Error(
+          request.workflowId,
+          "Runtime workflow '${request.workflowId}' phase '${request.phaseId}' is " +
+            "'${blockedRecord.status}', not blocked.",
+          unitOfWork.dbPath.toString(),
+        ),
       )
     } else {
       persistBlockedPhaseRetry(
@@ -384,7 +405,7 @@ class WorkflowService(
     existing: WorkflowStateSnapshot,
     request: BlockedPhaseRetryRequest,
     state: BlockedPhaseRetryState,
-  ): WorkflowUpdateResult {
+  ): BlockedPhaseRetryPersistence {
     val updatedRecords = LinkedHashMap(state.phaseRecords).apply { remove(request.phaseId) }
     val retryEntry = FeatureTaskRuntimePhaseLedgerEntry(
       action = FeatureTaskRuntimePhaseLedgerAction.RETRY,
@@ -424,7 +445,17 @@ class WorkflowService(
     val family = WorkflowFamily.TASK_RUNTIME
     val updated = engine.updateRecord(family.definition, existing, input)
     family.save(unitOfWork.workflowStates, updated)
-    return updateOk(family.definition, updated, input, unitOfWork.dbPath.toString())
+    val projectionArtifactsJson = engine.updateGoalParentForBlockedPhaseRetry(
+      unitOfWork = unitOfWork,
+      childWorkflowId = request.workflowId,
+      childArtifacts = decodeWorkflowArtifacts(updated.artifactsJson),
+      phaseId = request.phaseId,
+      validator = decompositionManifestValidator,
+    )
+    return BlockedPhaseRetryPersistence(
+      result = updateOk(family.definition, updated, input, unitOfWork.dbPath.toString()),
+      projectionArtifactsJson = projectionArtifactsJson,
+    )
   }
 
   @Suppress("LongMethod", "LongParameterList")
@@ -647,6 +678,16 @@ private data class BlockedPhaseRetryState(
   val ledger: List<FeatureTaskRuntimePhaseLedgerEntry>,
   val blockedRecord: FeatureTaskRuntimePhaseRecord,
 )
+
+private data class BlockedPhaseRetryPersistence(
+  val result: WorkflowUpdateResult,
+  val projectionArtifactsJson: String?,
+) {
+  companion object {
+    fun error(result: WorkflowUpdateResult.Error): BlockedPhaseRetryPersistence =
+      BlockedPhaseRetryPersistence(result, projectionArtifactsJson = null)
+  }
+}
 
 private const val DEFAULT_LIST_LIMIT: Int = 20
 private const val MAX_ABANDONMENT_REASON_LENGTH: Int = 1000

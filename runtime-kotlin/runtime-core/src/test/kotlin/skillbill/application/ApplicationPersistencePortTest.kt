@@ -93,8 +93,11 @@ import skillbill.telemetry.model.TelemetryConfigDocument
 import skillbill.telemetry.model.TelemetryProxyCapabilities
 import skillbill.telemetry.model.TelemetryRemoteStatsResult
 import skillbill.telemetry.model.TelemetrySettings
+import skillbill.workflow.model.CodeReviewExecutionMode
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import java.nio.file.Files
@@ -504,6 +507,33 @@ class ApplicationPersistencePortTest {
       ),
     )
     assertEquals(null, recorder.loadOperatorBlockRetry(workflowId))
+  }
+
+  @Test
+  fun `operator blocked-phase retry reopens the authoritative goal manifest`() {
+    val fixture = blockedGoalChildRetryFixture()
+
+    val retried = fixture.service.retryBlockedFeatureTaskRuntimePhase(
+      fixture.childWorkflowId,
+      "implement",
+      "Use the operator-approved fresh-process isolation boundary.",
+    )
+
+    assertTrue(retried is WorkflowUpdateResult.Ok)
+    val manifest = loadTestDecompositionManifest(fixture.manifestPath)
+    assertEquals("in_progress", manifest.status)
+    assertEquals("resume", manifest.currentSubtaskIntent.action)
+    assertEquals(1, manifest.currentSubtaskIntent.subtaskId)
+    assertEquals("in_progress", manifest.subtasks.single().status)
+    assertEquals(fixture.childWorkflowId, manifest.subtasks.single().workflowId)
+    assertEquals(null, manifest.subtasks.single().blockedReason)
+    assertEquals("implement", manifest.subtasks.single().lastResumableStep)
+    val parent = fixture.service.get(
+      WorkflowFamilyKind.TASK_PROSE,
+      fixture.parentWorkflowId,
+    ) as WorkflowGetResult.Ok
+    val parentRuntime = parent.snapshot.artifacts["decomposition_runtime"] as Map<*, *>
+    assertEquals("in_progress", parentRuntime["status"])
   }
 
   @Test
@@ -2177,6 +2207,66 @@ private object NoopWorkflowStateRepository : WorkflowStateRepository {
 
 private fun createDecompositionWorkflow(service: WorkflowService, parentSpec: Path, subtaskSpec: Path): String =
   createDecompositionWorkflow(service, parentSpec, subtaskSpec, null)
+
+private fun blockedGoalChildRetryFixture(): BlockedGoalChildRetryFixture {
+  val tempDir = Files.createTempDirectory("skillbill-goal-child-retry")
+  val parentSpec = tempDir.resolve(".feature-specs/SKILL-51-demo/spec.md")
+  val subtaskSpec = parentSpec.parent.resolve("spec_subtask_1_foundation.md")
+  writeSpecs(parentSpec, subtaskSpec)
+  val database = FakeDatabaseSessionFactory(workflows = InMemoryWorkflowStateRepository())
+  val service = testWorkflowService(database)
+  val parentWorkflowId = createDecompositionWorkflow(service, parentSpec, subtaskSpec)
+  markDecompositionSubtaskBlocked(service, parentWorkflowId, subtaskSpec)
+  val childWorkflowId = (
+    service.openTestFeatureTask(
+      WorkflowFamilyKind.TASK_RUNTIME,
+      sessionId = "ftr-goal-child",
+      dbOverride = null,
+      issueKey = "SKILL-51",
+    ) as WorkflowOpenResult.Ok
+    ).workflowId
+  service.update(
+    WorkflowFamilyKind.TASK_RUNTIME,
+    WorkflowUpdateRequest(
+      workflowId = childWorkflowId,
+      workflowStatus = "running",
+      currentStepId = "preplan",
+      stepUpdates = null,
+      artifactsPatch = mapOf(
+        FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY to
+          FeatureTaskRuntimeGoalContinuationArtifact(
+            issueKey = "SKILL-51",
+            subtaskId = 1,
+            suppressPr = true,
+            goalBranch = "feat/SKILL-51-demo",
+            parentWorkflowId = parentWorkflowId,
+            codeReviewMode = CodeReviewExecutionMode.DELEGATED,
+          ).toArtifactMap(),
+      ),
+    ),
+    dbOverride = null,
+  )
+  FeatureTaskRuntimePhaseRecorder(database, WorkflowSnapshotValidatorInfraAdapter()).recordRuntimePhase(
+    childWorkflowId,
+    phaseId = "implement",
+    status = "blocked",
+    finished = false,
+    blockedReason = "native adapter unavailable",
+  )
+  return BlockedGoalChildRetryFixture(
+    service = service,
+    parentWorkflowId = parentWorkflowId,
+    childWorkflowId = childWorkflowId,
+    manifestPath = parentSpec.parent.resolve("decomposition-manifest.yaml"),
+  )
+}
+
+private data class BlockedGoalChildRetryFixture(
+  val service: WorkflowService,
+  val parentWorkflowId: String,
+  val childWorkflowId: String,
+  val manifestPath: Path,
+)
 
 private fun createDecompositionWorkflow(
   service: WorkflowService,
