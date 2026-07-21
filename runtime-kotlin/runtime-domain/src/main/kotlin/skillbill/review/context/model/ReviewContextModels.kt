@@ -273,7 +273,6 @@ data class ReviewAssignment(
         matchedRules.map { it.canonical }.sorted().joinToString("\u001f"),
         evidenceTargets.map { it.canonical }.sorted().joinToString("\u001f"),
         dependencyAllowlist.canonical,
-        expansions.map { it.canonical }.sorted().joinToString("\u001f"),
       ).joinToString("\n").replace("\r\n", "\n"),
     )
 }
@@ -374,7 +373,6 @@ data class ReviewContextPacket(
     buildTestFacts.map { it.canonical }.sorted().joinToString("\u001f"),
     dependencyAllowlist.canonical,
     evidenceTargets.map { it.canonical }.sorted().joinToString("\u001f"),
-    expansionLedger.map { it.canonical }.sorted().joinToString("\u001f"),
   ).joinToString("\n")
 }
 

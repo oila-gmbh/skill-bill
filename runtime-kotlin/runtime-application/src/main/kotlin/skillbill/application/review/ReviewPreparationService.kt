@@ -13,6 +13,7 @@ import skillbill.review.context.model.ReviewChangedHunk
 import skillbill.review.context.model.ReviewContextBudgetPolicy
 import skillbill.review.context.model.ReviewContextPacket
 import skillbill.review.context.model.ReviewEvidenceTarget
+import skillbill.review.context.model.ReviewExpansionRecord
 import skillbill.review.context.model.ReviewLaneDecision
 import skillbill.review.context.model.ReviewLearningsReference
 import skillbill.review.context.model.ReviewRuleReference
@@ -62,22 +63,26 @@ class ReviewPreparationService(
     assignments.forEach { assignment ->
       rejectRevisionDrift(packet, assignment)
       rejectOwnershipViolations(packet, assignment)
-      val dangling = assignment.expansions.filterNot { it.assignmentDigest in knownAssignmentDigests }
-      if (dangling.isNotEmpty()) {
+      if (assignment.expansions.size > budget.maxAssignmentExpansions) {
         reject(
           assignmentLabel(assignment),
-          "Expansion records reference unknown assignment digests: ${dangling.map { it.expansionId }.sorted()}.",
+          "Assignment records ${assignment.expansions.size} expansions and exceeds the configured maximum of " +
+            "${budget.maxAssignmentExpansions}.",
         )
       }
-    }
-    val orphanLedger = packet.expansionLedger.filterNot { it.assignmentDigest in knownAssignmentDigests }
-    if (orphanLedger.isNotEmpty()) {
-      reject(
-        parentLabel(packet),
-        "Packet expansion ledger references unknown assignment digests: " +
-          "${orphanLedger.map { it.expansionId }.sorted()}.",
+      rejectUnknownAssignmentDigests(
+        assignmentLabel(assignment),
+        assignment.expansions,
+        knownAssignmentDigests,
+        "Assignment expansion records",
       )
     }
+    rejectUnknownAssignmentDigests(
+      parentLabel(packet),
+      packet.expansionLedger,
+      knownAssignmentDigests,
+      "Packet expansion ledger records",
+    )
   }
 
   private fun composePacket(request: ReviewPreparationRequest, resolved: ResolvedReviewFacts): ReviewContextPacket {
@@ -216,7 +221,20 @@ class ReviewPreparationService(
 
   private fun assignmentLabel(assignment: ReviewAssignment) =
     "review-assignment:${assignment.reviewId}:${assignment.lane}"
-
-  private fun reject(sourceLabel: String, reason: String): Nothing =
-    throw InvalidReviewContextSchemaError(sourceLabel = sourceLabel, reason = reason)
 }
+
+private fun rejectUnknownAssignmentDigests(
+  label: String,
+  expansions: List<ReviewExpansionRecord>,
+  knownAssignmentDigests: Set<String>,
+  subject: String,
+) {
+  val unknown = expansions.filterNot { it.assignmentDigest in knownAssignmentDigests }
+  if (unknown.isEmpty()) return
+  val described = unknown.sortedBy { it.expansionId }
+    .joinToString(", ") { "${it.expansionId} -> ${it.assignmentDigest}" }
+  reject(label, "$subject name assignment digests that belong to no assignment in this review: $described.")
+}
+
+private fun reject(sourceLabel: String, reason: String): Nothing =
+  throw InvalidReviewContextSchemaError(sourceLabel = sourceLabel, reason = reason)

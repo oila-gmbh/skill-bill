@@ -283,4 +283,6 @@ x-coherence-checks:
   - Assignment and launch review_revision equal the parent-packet review_revision.
   - Matched-rule excerpts stay within their bound and carry a digest over the referenced rule body.
   - Expansion records reference an assignment_digest that exists in the current review.
+  - Expansion records are excluded from the digest inputs of the assignment and packet they reference, so recording an expansion leaves assignment_digest and packet_digest unchanged.
+  - An assignment records no more expansions than max_assignment_expansions allows.
   - Hunk ids are content-addressed over path, spans, and normalized content, not positional.

@@ -1,3 +1,14 @@
+## [2026-07-21] SKILL-129 review-context packet and preparation service (subtask 1)
+Areas: runtime-kotlin/runtime-{domain,application,ports,infra-fs,cli}, orchestration/contracts
+- One `ReviewPreparationService` resolves review facts once — immutable review id/revision, changed hunks, matched project rules, build/test facts, learnings refs, add-ons, direct-dependency allowlists, evidence targets, lane decisions with reasons, worker assignments, expansions — and rejects ownership violations and cross-revision drift with typed errors before launch. reusable
+- `review-context-schema.yaml` follows the governed contract recipe (`contract_version` const + parity test + `Invalid…SchemaError` + classpath bundling); cross-field rules live in `x-coherence-checks` and in Kotlin.
+- Canonical digests are computed from explicit ordered input lists on the model itself, so serialization order cannot silently change a digest. reusable
+- Pattern: expansion records are deliberately excluded from assignment and packet digest inputs — including them creates a digest fixed point where any recorded expansion invalidates the digest it references. Bound growth with `maxAssignmentExpansions` instead. reusable
+- `ReviewPacketConsumerContract` states downstream consumers must not rediscover scope, diff, stack, guidance, learnings, build/test, or telemetry ownership; a parity test keeps it aligned with the packet.
+- Known limitation: `canonicalBytes` no longer measures `expansionLedger`, so future evidence-byte accounting for expansions must measure them separately.
+Feature flag: N/A
+Acceptance criteria: subtask 1: 4/4 implemented
+
 ## [2026-07-21] SKILL-135 unaddressed-findings ledger (subtask 3)
 Areas: runtime-kotlin/runtime-{application,cli,domain,infra-sqlite,ports}, skills/bill-feature-{goal,task-runtime,task-prose,task-subtask-runner}
 - Findings recorded without being addressed are persisted per issue key, subtask, workflow, review pass, severity, category, and location; new columns are added by unconditional startup ensures so already-created databases self-heal.

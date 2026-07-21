@@ -15,7 +15,9 @@ import skillbill.review.context.ReviewContextEnvelopeValidator
 import skillbill.review.context.model.ReviewAssignment
 import skillbill.review.context.model.ReviewBuildTestFact
 import skillbill.review.context.model.ReviewChangedHunk
+import skillbill.review.context.model.ReviewContextBudgetPolicy
 import skillbill.review.context.model.ReviewDependencyAllowlist
+import skillbill.review.context.model.ReviewExpansionRecord
 import skillbill.review.context.model.ReviewLaneDecision
 import skillbill.review.context.model.ReviewLearningsReference
 import skillbill.review.context.model.ReviewRevision
@@ -204,5 +206,75 @@ class ReviewPreparationServiceTest {
       service(ports()).validateAgainstPacket(prepared.packet, listOf(escaping))
     }
     assertTrue("escapes the packet allowlist" in failure.message.orEmpty())
+  }
+
+  private fun expansion(assignmentDigest: String, id: String = "exp-1", sequence: Int = 0) = ReviewExpansionRecord(
+    expansionId = id,
+    assignmentDigest = assignmentDigest,
+    requestedPath = "src/Dep.kt",
+    reachabilityReason = "Assigned hunk calls into this helper.",
+    authorized = true,
+    sequence = sequence,
+  )
+
+  @Test fun `an expansion referencing its own assignment is accepted`() {
+    val prepared = service(ports()).prepare(request())
+    val assignment = prepared.assignments.first()
+    val expanded = assignment.copy(expansions = listOf(expansion(assignment.digest)))
+    val packet = prepared.packet.copy(expansionLedger = listOf(expansion(assignment.digest)))
+    service(ports()).validateAgainstPacket(packet, listOf(expanded) + prepared.assignments.drop(1))
+  }
+
+  @Test fun `recording an expansion leaves the assignment and packet digests unchanged`() {
+    val prepared = service(ports()).prepare(request())
+    val assignment = prepared.assignments.first()
+    val record = expansion(assignment.digest)
+    assertEquals(assignment.digest, assignment.copy(expansions = listOf(record)).digest)
+    assertEquals(prepared.packet.digest, prepared.packet.copy(expansionLedger = listOf(record)).digest)
+  }
+
+  @Test fun `an expansion referencing an unrelated assignment digest is rejected`() {
+    val prepared = service(ports()).prepare(request())
+    val stray = expansion("f".repeat(64))
+    val failure = assertFailsWith<InvalidReviewContextSchemaError> {
+      service(ports()).validateAgainstPacket(
+        prepared.packet,
+        listOf(prepared.assignments.first().copy(expansions = listOf(stray))) + prepared.assignments.drop(1),
+      )
+    }
+    assertTrue("belong to no assignment in this review" in failure.message.orEmpty())
+    assertTrue("f".repeat(64) in failure.message.orEmpty())
+  }
+
+  @Test fun `a packet ledger entry referencing an unknown assignment digest is rejected`() {
+    val prepared = service(ports()).prepare(request())
+    val failure = assertFailsWith<InvalidReviewContextSchemaError> {
+      service(ports()).validateAgainstPacket(
+        prepared.packet.copy(expansionLedger = listOf(expansion("e".repeat(64)))),
+        prepared.assignments,
+      )
+    }
+    assertTrue("Packet expansion ledger records" in failure.message.orEmpty())
+  }
+
+  @Test fun `an assignment exceeding the configured expansion bound is rejected`() {
+    val counting = ports()
+    val bounded = ReviewPreparationService(
+      ReviewFactPorts(counting, counting, counting, counting, counting, counting),
+      RecordingValidator(),
+      ReviewContextBudgetPolicy(maxAssignmentExpansions = 1),
+    )
+    val prepared = bounded.prepare(request())
+    val assignment = prepared.assignments.first()
+    val overBound = assignment.copy(
+      expansions = listOf(
+        expansion(assignment.digest, id = "exp-1", sequence = 0),
+        expansion(assignment.digest, id = "exp-2", sequence = 1),
+      ),
+    )
+    val failure = assertFailsWith<InvalidReviewContextSchemaError> {
+      bounded.validateAgainstPacket(prepared.packet, listOf(overBound) + prepared.assignments.drop(1))
+    }
+    assertTrue("exceeds the configured maximum of 1" in failure.message.orEmpty())
   }
 }
