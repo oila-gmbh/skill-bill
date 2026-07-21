@@ -117,7 +117,10 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
     check(state.reviewBaseSha == input.reviewBaseSha) {
       "Goal-subtask review input does not match the durable review baseline."
     }
-    val updated = state.copy(reviewInputArtifact = GOAL_SUBTASK_REVIEW_INPUT_ARTIFACT_KEY)
+    val updated = state.copy(
+      reviewInputArtifact = GOAL_SUBTASK_REVIEW_INPUT_ARTIFACT_KEY,
+      reviewedDeltaDigest = input.deltaDigest,
+    )
     savePatch(
       record,
       unitOfWork.workflowStates,

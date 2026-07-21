@@ -142,7 +142,7 @@ internal class FeatureTaskRuntimeRunLoop(
 
   fun drive() {
     if (FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW in state.phasesRequiringDurableGateInvalidation()) {
-      check(recorder.persistAuditGateInvalidation(request.workflowId, request.dbPathOverride)) {
+      check(recorder.persistReviewGenerationInvalidation(request.workflowId, request.dbPathOverride)) {
         "Could not durably invalidate legacy review evidence for workflow '${request.workflowId}'."
       }
       state.resetInvalidatedReviewGeneration()

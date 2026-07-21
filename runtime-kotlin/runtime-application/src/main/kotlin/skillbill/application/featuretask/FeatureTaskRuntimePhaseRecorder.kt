@@ -180,7 +180,7 @@ class FeatureTaskRuntimePhaseRecorder(
     }
   }
 
-  internal fun persistAuditGateInvalidation(workflowId: String, dbOverride: String? = null): Boolean =
+  internal fun persistReviewGenerationInvalidation(workflowId: String, dbOverride: String? = null): Boolean =
     database.transaction(dbOverride) { unitOfWork ->
       val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
         ?: return@transaction false

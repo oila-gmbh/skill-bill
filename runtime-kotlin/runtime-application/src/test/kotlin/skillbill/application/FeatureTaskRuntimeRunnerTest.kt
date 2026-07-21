@@ -65,6 +65,7 @@ import skillbill.ports.workflow.RuntimePhaseFileManifestGitOperations
 import skillbill.ports.workflow.RuntimePhaseFileManifestGitOperationsProvider
 import skillbill.ports.workflow.SpecScratchStore
 import skillbill.ports.workflow.WorkflowGitOperations
+import skillbill.ports.workflow.buildGoalSubtaskReviewInput
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaselineResult
 import skillbill.ports.workflow.model.GoalSubtaskReviewInput
@@ -93,6 +94,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
+import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -1093,6 +1095,101 @@ class FeatureTaskRuntimeLifecycleTelemetryRunnerTest {
     assertEquals(emptyList(), finished.completedPhaseIds)
     assertEquals("unknown", finished.lastIncompletePhase)
     assertTrue(finished.blockedReason.startsWith("runtime:"))
+  }
+}
+
+// Recovery from a capped review whose verdict no longer describes the working tree, split from
+// FeatureTaskRuntimeRunnerPersistenceTest so each class stays within its size budget while sharing
+// the same file-private run harness.
+class FeatureTaskRuntimeCappedReviewRecoveryTest {
+  @Test
+  fun `a capped review holds on an unchanged delta and reopens once the reviewed delta changes`() {
+    val repoRoot = Files.createTempDirectory("skillbill-runtime-capped-review-reopen")
+    val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
+    var reviewLaunches = 0
+    val harness = goalContinuationHarness(
+      repoRoot,
+      git,
+      RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        when (phaseId) {
+          "review" -> {
+            reviewLaunches += 1
+            facts(reviewFindingsOutput(changesRequested = reviewLaunches <= 2))
+          }
+          else -> facts(validJsonOutput(phaseId))
+        }
+      },
+    )
+
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(
+      harness.runner.run(harness.request().copy(requestedCodeReviewMode = CodeReviewExecutionMode.DELEGATED)),
+    )
+    assertContains(blocked.blockedReason, "exhausted its per-edge cap")
+    val cappedLaunches = reviewLaunches
+
+    val stillBlocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+    assertContains(stillBlocked.blockedReason, "exhausted its per-edge cap")
+    assertEquals(
+      cappedLaunches,
+      reviewLaunches,
+      "an unchanged delta leaves the capped verdict authoritative and launches no review",
+    )
+
+    val repaired = GoalSubtaskReviewInputResult(
+      status = "ok",
+      input = GoalSubtaskReviewInput(
+        reviewBaseSha = "0".repeat(40),
+        currentHeadSha = "0".repeat(40),
+        trackedDelta = "diff --git a/Repaired.kt b/Repaired.kt",
+        ownedUntrackedPatches = "",
+      ),
+    )
+    repeat(2) { git.goalReviewBuildResults += repaired }
+
+    val reopened = harness.runner.run(harness.request())
+    assertTrue(
+      reviewLaunches > cappedLaunches,
+      "a changed delta reopens the capped review instead of replaying its stale verdict: $reopened",
+    )
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(reopened)
+  }
+
+  @Test
+  fun `a capped review recorded before the digest existed reopens once instead of wedging`() {
+    val repoRoot = Files.createTempDirectory("skillbill-runtime-capped-review-legacy")
+    val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
+    var reviewLaunches = 0
+    val harness = goalContinuationHarness(
+      repoRoot,
+      git,
+      RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        when (phaseId) {
+          "review" -> {
+            reviewLaunches += 1
+            facts(reviewFindingsOutput(changesRequested = reviewLaunches <= 2))
+          }
+          else -> facts(validJsonOutput(phaseId))
+        }
+      },
+    )
+    assertIs<FeatureTaskRuntimeRunReport.Blocked>(
+      harness.runner.run(harness.request().copy(requestedCodeReviewMode = CodeReviewExecutionMode.DELEGATED)),
+    )
+    val cappedLaunches = reviewLaunches
+    harness.stripReviewedDeltaDigest()
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
+    assertTrue(
+      reviewLaunches > cappedLaunches,
+      "a cap that cannot prove what it judged is not authoritative and reopens",
+    )
+    assertEquals(
+      harness.reviewedDeltaDigest(),
+      harness.currentReviewDeltaDigest(git, repoRoot),
+      "the reopened pass records the digest that makes the next unchanged resume block",
+    )
   }
 }
 
@@ -3301,6 +3398,33 @@ internal class RunnerHarness(
   val repository: InMemoryRuntimeWorkflowRepository get() = io.repository
   val gitOperations: RecordingWorkflowGitOperations get() = io.gitOperations
   val ledgerRows: List<skillbill.goalrunner.model.UnaddressedFinding> get() = io.database.ledgerRows
+
+  fun reviewedDeltaDigest(): String? =
+    requireNotNull(goalContinuationRecorder.reviewState(WORKFLOW_ID)).reviewedDeltaDigest
+
+  fun currentReviewDeltaDigest(git: RecordingWorkflowGitOperations, repoRoot: Path): String {
+    val state = requireNotNull(goalContinuationRecorder.reviewState(WORKFLOW_ID))
+    return requireNotNull(
+      git.buildGoalSubtaskReviewInput(
+        repoRoot,
+        GoalSubtaskReviewBaseline(state.reviewBaseSha, state.baselineUntrackedPaths),
+        "feat/existing-runtime-branch",
+      ).input,
+    ).deltaDigest
+  }
+
+  // Rewrites the durable review state as a pre-digest writer left it, so the legacy-cap path is
+  // exercised against a real record rather than a hand-built one.
+  fun stripReviewedDeltaDigest() {
+    val artifacts = repository.taskRuntimeArtifacts(WORKFLOW_ID).toMutableMap()
+    val state = skillbill.contracts.JsonSupport
+      .anyToStringAnyMap(artifacts[GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY])
+      .orEmpty()
+      .toMutableMap()
+    state.remove("reviewed_delta_digest")
+    artifacts[GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY] = state
+    repository.replaceTaskRuntimeArtifacts(WORKFLOW_ID, artifacts)
+  }
 
   // Launch order recovered from the event stream: each launch is preceded by a
   // PhaseStarted or a PhaseFixLoopIteration carrying the phase id.

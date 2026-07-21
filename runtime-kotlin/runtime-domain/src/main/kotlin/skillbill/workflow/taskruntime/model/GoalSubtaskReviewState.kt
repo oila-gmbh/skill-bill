@@ -241,6 +241,7 @@ data class GoalSubtaskReviewState(
   val completedPassCount: Int = 0,
   val disposition: GoalSubtaskReviewDisposition = GoalSubtaskReviewDisposition.PENDING,
   val reviewInputArtifact: String? = null,
+  val reviewedDeltaDigest: String? = null,
   val passResults: List<GoalSubtaskReviewPassResult> = emptyList(),
   val emittedPassCount: Int = 0,
   val contractVersion: String = GOAL_SUBTASK_REVIEW_STATE_CONTRACT_VERSION,
@@ -337,6 +338,7 @@ data class GoalSubtaskReviewState(
   ).apply {
     reservedPassNumber?.let { put("reserved_pass_number", it) }
     reviewInputArtifact?.let { put("review_input_artifact", it) }
+    reviewedDeltaDigest?.let { put("reviewed_delta_digest", it) }
   }
 
   companion object {
@@ -358,7 +360,8 @@ data class GoalSubtaskReviewState(
       raw.requireOnlyReviewStateKeys(
         setOf(
           "contract_version", "review_base_sha", "baseline_untracked_paths", "code_review_mode", "reserved_pass_number",
-          "completed_pass_count", "disposition", "review_input_artifact", "pass_results", "emitted_pass_count",
+          "completed_pass_count", "disposition", "review_input_artifact", "reviewed_delta_digest", "pass_results",
+          "emitted_pass_count",
         ),
         sourceLabel,
       )
@@ -386,6 +389,7 @@ data class GoalSubtaskReviewState(
           completedPassCount = raw.requireReviewStateInt("completed_pass_count", sourceLabel),
           disposition = GoalSubtaskReviewDisposition.fromWire(raw.requireReviewStateString("disposition", sourceLabel)),
           reviewInputArtifact = raw.optionalReviewStateString("review_input_artifact", sourceLabel),
+          reviewedDeltaDigest = raw.optionalReviewStateString("reviewed_delta_digest", sourceLabel),
           passResults = passResults,
           emittedPassCount = raw.requireReviewStateInt("emitted_pass_count", sourceLabel),
         )
