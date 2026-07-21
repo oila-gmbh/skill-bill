@@ -1,6 +1,8 @@
 package skillbill.infrastructure.fs
 
 import skillbill.scaffold.model.DeclaredFiles
+import skillbill.scaffold.model.GovernedAddonSelection
+import skillbill.scaffold.model.GovernedAddonUsage
 import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.model.RoutingSignals
 import java.nio.file.Files
@@ -50,6 +52,68 @@ class FileSystemReviewRubricResolverTest {
     assertFailsWith<IllegalArgumentException> {
       FileSystemReviewRubricResolver().resolve(manifest(root, outside))
     }
+  }
+
+  @Test
+  fun `selected add-on guidance is composed into one specialist rubric`() {
+    val root = Files.createTempDirectory("review-rubric-addon")
+    val baseline = root.resolve("code-review/content.md")
+    val ui = root.resolve("code-review/ui/content.md")
+    val addon = root.resolve("addons/android-compose-review.md")
+    Files.createDirectories(ui.parent)
+    Files.createDirectories(addon.parent)
+    Files.writeString(baseline, "baseline rubric")
+    Files.writeString(ui, "ui specialist rubric")
+    Files.writeString(addon, "## Activation signals\n\n- `@Composable` functions and `LaunchedEffect`")
+    val base = manifest(root, baseline, mapOf("ui" to ui))
+    val configured = base.copy(
+      addonUsage = listOf(
+        GovernedAddonUsage(
+          "code-review/bill-kotlin-code-review-ui",
+          listOf(GovernedAddonSelection("android-compose", "android-compose-review.md")),
+        ),
+      ),
+    )
+
+    val resolved = FileSystemReviewRubricResolver().resolve(
+      configured,
+      "+ @Composable fun Screen() = Unit",
+      "bill-kotlin-code-review-ui",
+    )
+
+    assertEquals(listOf("android-compose"), resolved.selectedAddOns)
+    assertEquals(true, resolved.body.contains("Selected governed add-on guidance"))
+    assertEquals(true, resolved.body.contains("@Composable"))
+  }
+
+  @Test
+  fun `commonMain only scope excludes Android add-ons`() {
+    val root = Files.createTempDirectory("review-rubric-common")
+    val baseline = root.resolve("code-review/content.md")
+    val ui = root.resolve("code-review/ui/content.md")
+    val addon = root.resolve("addons/android-compose-review.md")
+    Files.createDirectories(ui.parent)
+    Files.createDirectories(addon.parent)
+    Files.writeString(baseline, "baseline rubric")
+    Files.writeString(ui, "ui specialist rubric")
+    Files.writeString(addon, "## Activation signals\n\n- `@Composable` functions")
+    val configured = manifest(root, baseline, mapOf("ui" to ui)).copy(
+      addonUsage = listOf(
+        GovernedAddonUsage(
+          "code-review/bill-kotlin-code-review-ui",
+          listOf(GovernedAddonSelection("android-compose", "android-compose-review.md")),
+        ),
+      ),
+    )
+
+    val resolved = FileSystemReviewRubricResolver().resolve(
+      configured,
+      "+++ b/src/commonMain/kotlin/Screen.kt\n+ @Composable fun Screen() = Unit",
+      "bill-kotlin-code-review-ui",
+    )
+
+    assertEquals(emptyList(), resolved.selectedAddOns)
+    assertEquals("ui specialist rubric", resolved.body)
   }
 
   private fun manifest(

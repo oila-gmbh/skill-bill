@@ -2,6 +2,7 @@ package skillbill.ports.review.model
 
 import skillbill.review.context.model.ProviderTokenUsage
 import skillbill.review.context.model.ReviewBudgetOutcome
+import skillbill.review.model.ParallelReviewRawFinding
 import kotlin.time.Duration
 
 data class ParallelReviewLaneRunRequest(
@@ -22,4 +23,5 @@ data class ParallelReviewLaneOutcome(
   val tokenUsage: ProviderTokenUsage? = null,
   val budgetOutcome: ReviewBudgetOutcome? = null,
   val accounting: ReviewLaneAccounting? = null,
+  val findings: List<ParallelReviewRawFinding> = emptyList(),
 )

@@ -101,7 +101,9 @@ class ReviewPreparationService(
     if (laneDecisions.map { it.lane }.distinct().size != laneDecisions.size) {
       reject(request.reviewId, "Lane selection returned duplicate lane decisions.")
     }
-    val includedLanes = laneDecisions.filter { it.included }.map { it.lane }.sorted()
+    val includedLanes = laneDecisions.filter { it.included }
+      .sortedWith(compareBy(ReviewLaneDecision::orderIndex, ReviewLaneDecision::lane))
+      .map { it.lane }
     if (includedLanes.isEmpty()) {
       reject(request.reviewId, "Lane selection produced no included lane; a review packet needs at least one lane.")
     }

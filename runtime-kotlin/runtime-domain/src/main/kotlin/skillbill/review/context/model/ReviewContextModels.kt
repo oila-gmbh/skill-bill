@@ -101,6 +101,12 @@ data class ReviewLaneDecision(
   val reason: String,
   val signals: List<String> = emptyList(),
   val ownedPaths: List<String> = emptyList(),
+  val orderIndex: Int = 0,
+  val required: Boolean = false,
+  val originLayerChains: List<List<String>> = emptyList(),
+  val owningPack: String? = null,
+  val specialistSkillName: String? = null,
+  val addOns: List<String> = emptyList(),
 ) {
   init {
     require(lane.isNotBlank()) { "Lane decision lane must not be blank." }
@@ -114,6 +120,14 @@ data class ReviewLaneDecision(
       "Included lane '$lane' must declare the paths it owns so assignments partition the packet."
     }
     require(included || ownedPaths.isEmpty()) { "Excluded lane '$lane' cannot own paths." }
+    require(orderIndex >= 0) { "Lane decision order index cannot be negative." }
+    require(originLayerChains.all { it.isNotEmpty() && it.all(String::isNotBlank) }) {
+      "Lane decision origin chains must contain non-blank pack slugs."
+    }
+    require(originLayerChains.distinct().size == originLayerChains.size) {
+      "Lane decision origin chains must be unique."
+    }
+    require(addOns.distinct().size == addOns.size) { "Lane decision add-ons must be unique." }
   }
 
   val normalizedOwnedPaths: List<String> get() = ownedPaths.map { it.replace('\\', '/') }
@@ -125,6 +139,12 @@ data class ReviewLaneDecision(
       reason,
       signals.sorted().joinToString(","),
       normalizedOwnedPaths.sorted().joinToString(","),
+      orderIndex.toString(),
+      required.toString(),
+      originLayerChains.joinToString(";") { it.joinToString("->") },
+      owningPack.orEmpty(),
+      specialistSkillName.orEmpty(),
+      addOns.joinToString(","),
     )
       .joinToString("\u001f")
 }
@@ -439,8 +459,9 @@ data class ReviewContextPacket(
     stack.orEmpty(),
     pack.orEmpty(),
     addOns.sorted().joinToString("\u001f"),
-    selectedLanes.sorted().joinToString("\u001f"),
-    laneDecisions.map { it.canonical }.sorted().joinToString("\u001f"),
+    selectedLanes.joinToString("\u001f"),
+    laneDecisions.sortedWith(compareBy(ReviewLaneDecision::orderIndex, ReviewLaneDecision::lane))
+      .joinToString("\u001f") { it.canonical },
     changedHunks.sortedBy { it.canonicalValue() }
       .joinToString("\u001e") { it.canonicalValue() },
     matchedRules.map { it.canonical }.sorted().joinToString("\u001f"),

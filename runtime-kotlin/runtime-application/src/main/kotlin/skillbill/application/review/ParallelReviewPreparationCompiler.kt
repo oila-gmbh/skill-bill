@@ -18,6 +18,7 @@ import skillbill.review.context.model.ReviewChangedHunk
 import skillbill.review.context.model.ReviewContextBudgetPolicy
 import skillbill.review.context.model.ReviewLaneDecision
 import skillbill.review.context.model.ReviewRevision
+import skillbill.review.plan.model.ReviewLaunchLane
 import java.nio.file.Path
 import java.security.MessageDigest
 
@@ -40,6 +41,12 @@ internal object ParallelReviewPreparationCompiler {
         "selected non-empty ${route.rubric.area ?: "generic"} specialist lane",
         listOf("parallel-review", route.rubric.area ?: "generic"),
         route.ownedPaths,
+        orderIndex = route.descriptor.orderIndex,
+        required = route.descriptor.required,
+        originLayerChains = route.originLayerChains,
+        owningPack = route.descriptor.packSlug,
+        specialistSkillName = route.descriptor.skillName,
+        addOns = route.descriptor.addOns,
       )
     }
     val revisionId = digest(input.diff)
@@ -51,15 +58,22 @@ internal object ParallelReviewPreparationCompiler {
     input: ParallelReviewPreparationInput,
     hunks: List<ReviewChangedHunk>,
   ): List<SpecialistRoute> {
-    val selectedRubrics = input.rubrics.mapNotNull { rubric ->
-      val ownedPaths = ownedPathsFor(rubric, hunks)
-      rubric.takeIf { ownedPaths.isNotEmpty() }?.let { SelectedRubric(it, ownedPaths) }
+    val selectedRubrics = input.lanes.mapNotNull { planned ->
+      val ownedPaths = ownedPathsFor(planned.rubric, hunks)
+      planned.takeIf { ownedPaths.isNotEmpty() }?.let { SelectedRubric(it, ownedPaths) }
     }
     require(selectedRubrics.isNotEmpty()) { "Review routing selected no non-empty specialist lane." }
     return input.agents.flatMap { agentId ->
       selectedRubrics.map { selected ->
-        val specialistId = selected.rubric.area ?: selected.rubric.rubricId
-        SpecialistRoute("$agentId:$specialistId", agentId, selected.rubric, selected.ownedPaths)
+        val specialistId = selected.planned.rubric.area ?: selected.planned.rubric.rubricId
+        SpecialistRoute(
+          "$agentId:$specialistId",
+          agentId,
+          selected.planned.rubric,
+          selected.planned.descriptor,
+          selected.planned.originLayerChains,
+          selected.ownedPaths,
+        )
       }
     }
   }
@@ -98,7 +112,12 @@ internal object ParallelReviewPreparationCompiler {
       "authoritative supplied parallel-review diff",
       hunks,
     )
-    val routing = ReviewStackRoutingFacts(input.stack, input.stack, emptyList(), emptyList())
+    val routing = ReviewStackRoutingFacts(
+      input.stack,
+      input.routedPacks.joinToString("+"),
+      input.lanes.flatMap { it.descriptor.addOns }.distinct(),
+      input.lanes.flatMap { it.originLayerChains }.flatten().distinct(),
+    )
     return ReviewFactPorts(
       scope = object : ReviewScopeResolverPort {
         override fun resolveScope(reviewId: String) = scope
@@ -256,13 +275,21 @@ internal object ParallelReviewPreparationCompiler {
   )
 }
 
-private data class SelectedRubric(val rubric: ReviewRubricProjection, val ownedPaths: List<String>)
+private data class SelectedRubric(val planned: PlannedReviewRubric, val ownedPaths: List<String>)
 
 private data class SpecialistRoute(
   val lane: String,
   val agentId: String,
   val rubric: ReviewRubricProjection,
+  val descriptor: ReviewLaunchLane,
+  val originLayerChains: List<List<String>>,
   val ownedPaths: List<String>,
+)
+
+internal data class PlannedReviewRubric(
+  val descriptor: ReviewLaunchLane,
+  val rubric: ReviewRubricProjection,
+  val originLayerChains: List<List<String>> = listOf(descriptor.originLayerChain),
 )
 
 internal data class ParallelReviewPreparationInput(
@@ -270,5 +297,6 @@ internal data class ParallelReviewPreparationInput(
   val stack: String?,
   val agents: List<String>,
   val repoRoot: Path,
-  val rubrics: List<ReviewRubricProjection>,
+  val routedPacks: List<String>,
+  val lanes: List<PlannedReviewRubric>,
 )

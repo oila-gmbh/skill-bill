@@ -40,6 +40,7 @@ import skillbill.review.context.model.ReviewBudgetOutcome
 import skillbill.review.context.model.TokenOwnership
 import skillbill.review.model.ParallelReviewLaneResult
 import skillbill.review.plan.ReviewLaunchPlanPolicy
+import skillbill.review.plan.model.ReviewLaunchLane
 import skillbill.scaffold.model.PlatformManifest
 import java.nio.file.Path
 import kotlin.time.Duration.Companion.minutes
@@ -68,43 +69,53 @@ class ParallelCodeReviewRunner(
 
     val diffText = resolveDiff(request)
     val detection = detectStack(diffText, request.repoRoot)
-    val manifest = detection.routed
     val budget = repoLocalConfig.readRepoLocalConfig(ReadRepoLocalConfigRequest(request.repoRoot))
       .config.reviewContextBudget
-    val resolvedMode = resolvedMode(request, diffText, manifest, budget.maxLaneLaunchBytes)
+    val resolvedMode = resolvedMode(request, diffText, detection.routed, budget.maxLaneLaunchBytes)
     val prepared = if (resolvedMode == ResolvedReviewExecutionMode.DELEGATED) {
-      prepare(request, diffText, manifest, detection.manifests, listOf(agent1.id, agent2.id), budget)
+      prepare(request, diffText, detection.routed, detection.manifests, listOf(agent1.id, agent2.id), budget)
         .groupBy { it.agentId }
     } else {
       emptyMap()
     }
-    val outcomes = runLanes(request, diffText, manifest, resolvedMode, prepared, agent1.id, agent2.id)
+    val outcomes = runLanes(
+      request,
+      diffText,
+      detection.routed,
+      detection.manifests,
+      resolvedMode,
+      prepared,
+      agent1.id,
+      agent2.id,
+    )
     return parallelResult(agent1.id, agent2.id, outcomes)
   }
 
   private fun resolvedMode(
     request: ParallelCodeReviewRequest,
     diffText: String,
-    manifest: PlatformManifest?,
+    manifests: List<PlatformManifest>,
     maxLaneLaunchBytes: Long,
   ) = ReviewExecutionModePolicy.resolve(
     request.codeReviewMode,
     ReviewAutoEligibility(
       oversized = diffText.toByteArray().size > maxLaneLaunchBytes,
       highRisk = HIGH_RISK_SIGNAL.containsMatchIn(diffText),
-      layeredStack = manifest?.codeReviewComposition != null,
+      layeredStack = manifests.any { it.codeReviewComposition != null },
     ),
   )
 
   private fun runLanes(
     request: ParallelCodeReviewRequest,
     diffText: String,
-    manifest: PlatformManifest?,
+    routedManifests: List<PlatformManifest>,
+    allManifests: List<PlatformManifest>,
     resolvedMode: ResolvedReviewExecutionMode,
     prepared: Map<String, List<DelegatedReviewLaunchRequest>>,
     agent1Id: String,
     agent2Id: String,
   ): skillbill.ports.review.model.ParallelReviewLaneRunResult {
+    val manifest = routedManifests.firstOrNull()
     val timeoutSec = request.timeout?.inWholeSeconds ?: DEFAULT_TIMEOUT_MINUTES * SECONDS_PER_MINUTE
     return parallelLaneRunner.runTwoLanes(
       ParallelReviewLaneRunRequest(
@@ -114,7 +125,8 @@ class ParallelCodeReviewRunner(
             prepared[agent1Id].orEmpty(),
             agent1Id,
             diffText,
-            manifest,
+            routedManifests,
+            allManifests,
             request,
           )
         },
@@ -124,7 +136,8 @@ class ParallelCodeReviewRunner(
             prepared[agent2Id].orEmpty(),
             agent2Id,
             diffText,
-            manifest,
+            routedManifests,
+            allManifests,
             request,
             request.agent2Model,
           )
@@ -134,32 +147,91 @@ class ParallelCodeReviewRunner(
     )
   }
 
+  @Suppress("LongMethod")
   private fun prepare(
     request: ParallelCodeReviewRequest,
     diffText: String,
-    manifest: PlatformManifest?,
+    routedManifests: List<PlatformManifest>,
     manifests: List<PlatformManifest>,
     agentIds: List<String>,
     budget: skillbill.review.context.model.ReviewContextBudgetPolicy,
   ): List<DelegatedReviewLaunchRequest> {
-    val resolvedRubric = reviewRubricResolver.resolve(manifest)
-    val routedRubrics = if (manifest == null) {
-      listOf(resolvedRubric)
+    val plannedRubrics = if (routedManifests.isEmpty()) {
+      val rubric = reviewRubricResolver.resolve(null)
+      listOf(
+        PlannedReviewRubric(
+          ReviewLaunchLane(
+            rubric.rubricId,
+            "generic",
+            rubric.area ?: "generic",
+            0,
+            listOf("generic"),
+            true,
+            emptyList(),
+            0,
+            "generic fallback",
+          ),
+          ReviewRubricProjection(rubric.rubricId, rubric.body, rubric.area),
+        ),
+      )
     } else {
       val selectedAreas = manifests.flatMap { it.declaredCodeReviewAreas }.toSet()
-      val flattened = ReviewLaunchPlanPolicy.flatten(manifest.slug, manifests, selectedAreas).lanes.map { lane ->
-        val owner = manifests.single { it.slug == lane.packSlug }
-        reviewRubricResolver.resolve(owner).specialists.single { it.area == lane.area }
+      val flattened = routedManifests.flatMap { root ->
+        ReviewLaunchPlanPolicy.flatten(root.slug, manifests, selectedAreas).lanes.ifEmpty {
+          val rubric = reviewRubricResolver.resolve(root)
+          rubric.specialists.mapIndexed { index, specialist ->
+            ReviewLaunchLane(
+              specialist.rubricId,
+              root.slug,
+              specialist.area ?: "generic",
+              0,
+              listOf(root.slug),
+              true,
+              emptyList(),
+              index,
+              "routed pack specialist",
+            )
+          }.ifEmpty {
+            listOf(
+              ReviewLaunchLane(
+                rubric.rubricId,
+                root.slug,
+                rubric.area ?: "generic",
+                0,
+                listOf(root.slug),
+                true,
+                emptyList(),
+                0,
+                "routed pack baseline",
+              ),
+            )
+          }
+        }
       }
-      flattened.ifEmpty { resolvedRubric.specialists.ifEmpty { listOf(resolvedRubric) } }
+      flattened.groupBy { it.skillName }.values.mapIndexed { index, matches ->
+        val lane = matches.first().copy(orderIndex = index)
+        require(matches.all { it.packSlug == lane.packSlug && it.area == lane.area }) {
+          "Conflicting ownership for specialist '${lane.skillName}'."
+        }
+        val owner = manifests.single { it.slug == lane.packSlug }
+        val resolved = reviewRubricResolver.resolve(owner, diffText, lane.skillName)
+          .specialists.singleOrNull { it.area == lane.area }
+          ?: reviewRubricResolver.resolve(owner, diffText, lane.skillName)
+        PlannedReviewRubric(
+          descriptor = lane.copy(addOns = resolved.selectedAddOns),
+          rubric = ReviewRubricProjection(resolved.rubricId, resolved.body, resolved.area),
+          originLayerChains = matches.map { it.originLayerChain }.distinct(),
+        )
+      }
     }
     return ParallelReviewPreparationCompiler.compile(
       input = ParallelReviewPreparationInput(
         diff = diffText,
-        stack = manifest?.slug,
+        stack = routedManifests.joinToString("+") { it.slug }.ifBlank { null },
         agents = agentIds,
         repoRoot = request.repoRoot,
-        rubrics = routedRubrics.map { ReviewRubricProjection(it.rubricId, it.body, it.area) },
+        routedPacks = routedManifests.map { it.slug },
+        lanes = plannedRubrics,
       ),
       budget = budget,
       envelopeValidator = reviewContextEnvelopeValidator,
@@ -234,7 +306,7 @@ class ParallelCodeReviewRunner(
         e,
       )
     }
-    if (manifests.isEmpty()) return StackDetection(null, emptyList())
+    if (manifests.isEmpty()) return StackDetection(emptyList(), emptyList())
 
     val diffPaths = DIFF_PATH_PATTERN
       .findAll(diffText)
@@ -248,8 +320,8 @@ class ParallelCodeReviewRunner(
       }
     }
 
-    val best = scores.maxByOrNull { it.value }
-    return StackDetection(if (best != null && best.value > 0) best.key else null, manifests)
+    val routed = manifests.filter { scores.getValue(it) > 0 }
+    return StackDetection(routed, manifests)
   }
 
   private fun launchResolvedLane(
@@ -257,11 +329,13 @@ class ParallelCodeReviewRunner(
     launchRequests: List<DelegatedReviewLaunchRequest>,
     agentId: String,
     diffText: String,
-    manifest: PlatformManifest?,
+    routedManifests: List<PlatformManifest>,
+    allManifests: List<PlatformManifest>,
     request: ParallelCodeReviewRequest,
     modelOverride: String? = null,
   ): ParallelReviewLaneOutcome = when (mode) {
-    ResolvedReviewExecutionMode.INLINE -> launchInlineParentLane(agentId, diffText, manifest, request, modelOverride)
+    ResolvedReviewExecutionMode.INLINE ->
+      launchInlineParentLane(agentId, diffText, routedManifests, allManifests, request, modelOverride)
     ResolvedReviewExecutionMode.DELEGATED -> launchDelegatedLane(agentId, launchRequests, request, modelOverride)
   }
 
@@ -277,6 +351,7 @@ class ParallelCodeReviewRunner(
     return ParallelReviewLaneOutcome(
       success = failed == null,
       rawOutput = outcomes.filter { it.success }.joinToString("\n") { it.rawOutput },
+      findings = outcomes.filter { it.success }.flatMap { it.findings },
       failureReason = failed?.failureReason,
       tokenUsage = aggregateTokenUsage(outcomes.mapNotNull { it.tokenUsage }),
       budgetOutcome = failed?.budgetOutcome,
@@ -284,6 +359,7 @@ class ParallelCodeReviewRunner(
     )
   }
 
+  @Suppress("LongMethod")
   private fun launchSpecialist(
     launchRequest: DelegatedReviewLaunchRequest,
     request: ParallelCodeReviewRequest,
@@ -342,6 +418,16 @@ class ParallelCodeReviewRunner(
           tokenUsage = usage,
           budgetOutcome = budgetOutcome,
           accounting = worker.accounting,
+          findings = if (reason == null) {
+            ParallelReviewFindingParser.parse(outcome.stdout).map { finding ->
+              finding.copy(
+                specialistSkillName = launchRequest.assignment.laneDecision.specialistSkillName,
+                originLayerChains = launchRequest.assignment.laneDecision.originLayerChains,
+              )
+            }
+          } else {
+            emptyList()
+          },
         )
       }
     }
@@ -350,14 +436,24 @@ class ParallelCodeReviewRunner(
   private fun launchInlineParentLane(
     agentId: String,
     diffText: String,
-    manifest: PlatformManifest?,
+    routedManifests: List<PlatformManifest>,
+    allManifests: List<PlatformManifest>,
     request: ParallelCodeReviewRequest,
     modelOverride: String?,
   ): ParallelReviewLaneOutcome {
     val prompt = buildString {
       appendLine("Run one complete bill-code-review mode:inline parent review.")
       appendLine("Resolved execution mode: inline")
-      appendLine("Detected stack: ${manifest?.slug ?: "generic"}")
+      appendLine("Detected stack: ${routedManifests.joinToString("+") { it.slug }.ifBlank { "generic" }}")
+      val rubricIds = routedManifests.flatMap { root ->
+        ReviewLaunchPlanPolicy.flatten(
+          root.slug,
+          allManifests,
+          allManifests.flatMap { it.declaredCodeReviewAreas }.toSet(),
+        ).lanes.map { it.skillName }
+      }.distinct()
+      val rubricLabel = rubricIds.joinToString().ifBlank { "parallel-code-review" }
+      appendLine("Authoritative routed rubric identities: $rubricLabel")
       appendLine("Use the exact diff below as authoritative; do not rediscover or replace its scope.")
       appendLine("Apply every signal-relevant routed rubric in this agent context and do not launch specialists.")
       appendLine("Return only F-XXX risk-register lines.")
@@ -427,7 +523,7 @@ class ParallelCodeReviewRunner(
   }
 
   private data class StackDetection(
-    val routed: PlatformManifest?,
+    val routed: List<PlatformManifest>,
     val manifests: List<PlatformManifest>,
   )
 }
@@ -440,7 +536,7 @@ private fun parallelResult(
   val lane1Result = ParallelReviewLaneResult(
     agentId = agent1Id,
     findings = if (outcomes.lane1.success) {
-      ParallelReviewFindingParser.parse(outcomes.lane1.rawOutput)
+      outcomes.lane1.findings.ifEmpty { ParallelReviewFindingParser.parse(outcomes.lane1.rawOutput) }
     } else {
       emptyList()
     },
@@ -448,7 +544,7 @@ private fun parallelResult(
   val lane2Result = ParallelReviewLaneResult(
     agentId = agent2Id,
     findings = if (outcomes.lane2.success) {
-      ParallelReviewFindingParser.parse(outcomes.lane2.rawOutput)
+      outcomes.lane2.findings.ifEmpty { ParallelReviewFindingParser.parse(outcomes.lane2.rawOutput) }
     } else {
       emptyList()
     },

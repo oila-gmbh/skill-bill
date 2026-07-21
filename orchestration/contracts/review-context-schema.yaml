@@ -74,7 +74,7 @@ $defs:
   lane_decision:
     type: object
     additionalProperties: false
-    required: [lane, included, reason, owned_paths]
+    required: [lane, included, reason, owned_paths, order_index, required_lane, origin_layer_chains, add_ons]
     properties:
       lane: { $ref: "#/$defs/identifier" }
       included: { type: boolean }
@@ -84,6 +84,15 @@ $defs:
         type: array
         uniqueItems: true
         items: { $ref: "#/$defs/path" }
+      order_index: { type: integer, minimum: 0 }
+      required_lane: { type: boolean }
+      origin_layer_chains:
+        type: array
+        uniqueItems: true
+        items: { type: array, minItems: 1, items: { $ref: "#/$defs/identifier" } }
+      owning_pack: { type: [string, "null"] }
+      specialist_skill_name: { type: [string, "null"] }
+      add_ons: { $ref: "#/$defs/strings" }
   expansion_record:
     type: object
     additionalProperties: false

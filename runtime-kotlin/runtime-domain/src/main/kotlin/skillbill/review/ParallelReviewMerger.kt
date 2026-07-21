@@ -51,6 +51,8 @@ object ParallelReviewMerger {
         confidence = candidate.confidence,
         location = candidate.location,
         description = candidate.description,
+        specialistSkillNames = candidate.specialistSkillNames,
+        originLayerChains = candidate.originLayerChains,
       )
     }
 
@@ -83,6 +85,8 @@ object ParallelReviewMerger {
       description = firstEntry.finding.description,
       isCoalesced = coalesced,
       firstAppearance = firstEntry.appearanceOrder,
+      specialistSkillNames = entries.mapNotNull { it.finding.specialistSkillName }.distinct(),
+      originLayerChains = entries.flatMap { it.finding.originLayerChains }.distinct(),
     )
   }
 
@@ -133,5 +137,7 @@ object ParallelReviewMerger {
     val description: String,
     val isCoalesced: Boolean,
     val firstAppearance: Int,
+    val specialistSkillNames: List<String>,
+    val originLayerChains: List<List<String>>,
   )
 }

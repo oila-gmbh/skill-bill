@@ -1,6 +1,7 @@
 package skillbill.review
 
 import skillbill.review.model.ParallelReviewLaneResult
+import skillbill.review.model.ParallelReviewRawFinding
 import skillbill.review.model.ParallelReviewSeverity
 import kotlin.test.Test
 import kotlin.test.assertContains
@@ -8,6 +9,36 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class ParallelReviewMergerTest {
+  @Test
+  fun `dedup retains specialist and composition provenance`() {
+    val baseline = ParallelReviewRawFinding(
+      ParallelReviewSeverity.MINOR,
+      "Medium",
+      "Shared.kt:42",
+      "Common state mutation can race target lifecycle cancellation",
+      "bill-kotlin-code-review-platform-correctness",
+      listOf(listOf("kmp", "kotlin")),
+    )
+    val override = baseline.copy(
+      severity = ParallelReviewSeverity.MAJOR,
+      confidence = "High",
+      specialistSkillName = "bill-kmp-code-review-platform-correctness",
+      originLayerChains = listOf(listOf("kmp")),
+    )
+
+    val merged = ParallelReviewMerger.merge(
+      ParallelReviewLaneResult("codex", listOf(baseline)),
+      ParallelReviewLaneResult("claude", listOf(override)),
+    ).findings.single()
+
+    assertEquals(
+      listOf("bill-kotlin-code-review-platform-correctness", "bill-kmp-code-review-platform-correctness"),
+      merged.specialistSkillNames,
+    )
+    assertEquals(listOf(listOf("kmp", "kotlin"), listOf("kmp")), merged.originLayerChains)
+    assertEquals(ParallelReviewSeverity.MAJOR, merged.severity)
+    assertEquals("High", merged.confidence)
+  }
   private fun laneResult(agentId: String, rawOutput: String) =
     ParallelReviewLaneResult(agentId = agentId, findings = ParallelReviewFindingParser.parse(rawOutput))
 

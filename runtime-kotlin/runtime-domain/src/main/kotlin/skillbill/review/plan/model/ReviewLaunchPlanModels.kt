@@ -1,4 +1,4 @@
-package skillbill.review.plan
+package skillbill.review.plan.model
 
 data class ReviewLaunchLane(
   val skillName: String,

@@ -6,6 +6,7 @@ import skillbill.review.context.model.GovernedReviewLaunch
 import skillbill.review.context.model.ReviewAssignment
 import skillbill.review.context.model.ReviewChangedHunk
 import skillbill.review.context.model.ReviewContextPacket
+import skillbill.review.context.model.ReviewLaneDecision
 import skillbill.review.context.model.ReviewPacketConsumerContract
 
 fun ReviewContextPacket.toParentPacketEnvelope(): ReviewContextEnvelope = ReviewContextEnvelope(
@@ -22,8 +23,10 @@ fun ReviewContextPacket.toParentPacketEnvelope(): ReviewContextEnvelope = Review
     "stack" to stack,
     "pack" to pack,
     "add_ons" to addOns.sorted(),
-    "selected_lanes" to selectedLanes.sorted(),
-    "lane_decisions" to laneDecisions.sortedBy { it.lane }.map { it.toEnvelope() },
+    "selected_lanes" to selectedLanes,
+    "lane_decisions" to laneDecisions
+      .sortedWith(compareBy(ReviewLaneDecision::orderIndex, ReviewLaneDecision::lane))
+      .map { it.toEnvelope() },
     "changed_hunks" to changedHunks
       .sortedWith(compareBy(ReviewChangedHunk::path, ReviewChangedHunk::newStart))
       .map { it.toEnvelope() },

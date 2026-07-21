@@ -45,8 +45,70 @@ class FileSystemReviewRubricResolver : ReviewRubricResolver {
     )
   }
 
+  override fun resolve(manifest: PlatformManifest?, diff: String, specialistSkillName: String): ResolvedReviewRubric {
+    val resolved = resolve(manifest)
+    if (manifest == null) return resolved
+    val specialist = resolved.specialists.singleOrNull { it.rubricId == specialistSkillName } ?: resolved
+    val consumer = "code-review/$specialistSkillName"
+    val selections = manifest.addonUsage.firstOrNull { it.skillRelativeDir == consumer }?.addons.orEmpty()
+    val normalizedDiff = diff.lowercase()
+    val commonMainOnly = normalizedDiff.contains("/commonmain/") &&
+      !normalizedDiff.contains("/androidmain/") && !normalizedDiff.contains("androidmanifest.xml")
+    val selected = selections.filter { selection ->
+      val entrypoint = resolveAddonFile(manifest, selection.entrypoint)
+      val entryBody = readBounded(entrypoint)
+      !commonMainOnly && activationTerms(entryBody, selection.slug).any(normalizedDiff::contains)
+    }
+    if (selected.isEmpty()) return specialist
+    val guidance = selected.joinToString("\n\n") { selection ->
+      (listOf(selection.entrypoint) + selection.companionPointers).joinToString("\n\n") { pointer ->
+        readBounded(resolveAddonFile(manifest, pointer))
+      }
+    }
+    require(guidance.toByteArray().size <= MAX_ADDON_BYTES) {
+      "Selected add-on guidance for '$specialistSkillName' is larger than $MAX_ADDON_BYTES bytes."
+    }
+    return specialist.copy(
+      body = specialist.body + "\n\n## Selected governed add-on guidance\n\n" + guidance,
+      selectedAddOns = selected.map { it.slug },
+    )
+  }
+
+  private fun resolveAddonFile(manifest: PlatformManifest, pointer: String): java.nio.file.Path {
+    val candidate = manifest.packRoot.resolve("addons").resolve(pointer).normalize()
+    require(!Files.isSymbolicLink(candidate)) {
+      "Platform pack '${manifest.slug}' declares a symbolic add-on '$pointer'."
+    }
+    return candidate.toRealPath().also { path ->
+      val addonsRoot = manifest.packRoot.resolve("addons").toRealPath()
+      require(path.startsWith(addonsRoot) && Files.isRegularFile(path)) {
+        "Platform pack '${manifest.slug}' declares an unreadable or escaping add-on '$pointer'."
+      }
+    }
+  }
+
+  private fun readBounded(path: java.nio.file.Path): String = Files.readString(path).also { body ->
+    require(body.toByteArray().size <= MAX_ADDON_FILE_BYTES) {
+      "Selected add-on '${path.fileName}' is larger than $MAX_ADDON_FILE_BYTES bytes."
+    }
+  }
+
+  private fun activationTerms(body: String, slug: String): Set<String> {
+    val activation = body.substringAfter("## Activation signals", "")
+      .substringBefore("\n## ")
+      .lowercase()
+    return (TOKEN.findAll(activation).map { it.value } + slug.split('-').asSequence())
+      .filter { it.length >= MIN_ACTIVATION_TERM_LENGTH && it !in STOP_WORDS }
+      .toSet()
+  }
+
   private companion object {
     const val MAX_RUBRIC_BYTES = 256 * 1024L
+    const val MAX_ADDON_FILE_BYTES = 128 * 1024L
+    const val MAX_ADDON_BYTES = 256 * 1024L
+    const val MIN_ACTIVATION_TERM_LENGTH = 5
+    val TOKEN = Regex("[a-z][a-z0-9_-]{4,}")
+    val STOP_WORDS = setOf("select", "scoped", "includes", "contains", "changes", "review", "android")
     const val GENERIC_RUBRIC_ID = "parallel-code-review"
     const val GENERIC_RUBRIC =
       "Find concrete correctness, security, reliability, performance, and test gaps in the assigned change."

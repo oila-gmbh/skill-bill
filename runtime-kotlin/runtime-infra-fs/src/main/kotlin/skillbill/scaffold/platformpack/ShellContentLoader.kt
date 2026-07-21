@@ -8,6 +8,7 @@ import skillbill.error.InvalidManifestSchemaError
 import skillbill.error.MissingContentFileError
 import skillbill.error.MissingManifestError
 import skillbill.error.MissingRequiredSectionError
+import skillbill.review.plan.ReviewLaunchPlanPolicy
 import skillbill.scaffold.model.CodeReviewBaselineLayer
 import skillbill.scaffold.model.CodeReviewComposition
 import skillbill.scaffold.model.CodeReviewCompositionMode
@@ -127,6 +128,15 @@ internal fun validatePlatformPackCompositions(packs: List<PlatformManifest>) {
   packs
     .filter { it.codeReviewComposition != null }
     .forEach(::validateCompositionModeSupport)
+  packs
+    .filter { it.codeReviewComposition != null }
+    .forEach { root ->
+      ReviewLaunchPlanPolicy.flatten(
+        routedSlug = root.slug,
+        manifests = packs,
+        selectedAreas = packs.flatMapTo(linkedSetOf()) { it.declaredCodeReviewAreas },
+      )
+    }
 }
 
 private fun loadCompositionClosure(rootPack: PlatformManifest): List<PlatformManifest> {
@@ -204,10 +214,10 @@ private fun validateCompositionModeSupport(sourceSlug: String, index: Int, layer
 
 internal fun unsupportedCompositionModeReason(layer: CodeReviewBaselineLayer): String? = when (layer.mode) {
   CodeReviewCompositionMode.KmpBaseline ->
-    if (layer.platform == "kotlin" && layer.skill == "bill-kotlin-code-review") {
+    if (layer.skill == "bill-${layer.platform}-code-review") {
       null
     } else {
-      "Mode '${layer.mode.wireValue}' is supported only for 'kotlin/bill-kotlin-code-review'."
+      "Mode '${layer.mode.wireValue}' requires the referenced pack's baseline code-review skill."
     }
 }
 
