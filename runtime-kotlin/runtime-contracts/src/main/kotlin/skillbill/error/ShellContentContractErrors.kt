@@ -495,6 +495,24 @@ class InvalidSkillMdShapeError(
   cause: Throwable? = null,
 ) : ShellContentContractException(message, cause)
 
+class InvalidNativeAgentLinkInventorySchemaError(
+  message: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(message, cause)
+
+class MissingInstalledNativeAgentError(
+  val logicalName: String,
+  val provider: String,
+  val expectedPath: String,
+  val reason: String,
+  val repairCommand: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Native agent '$logicalName' for provider '$provider' failed preflight at '$expectedPath': $reason. " +
+    "Repair with: $repairCommand",
+  cause,
+)
+
 /**
  * SKILL-102 subtask 1: surfaced when an internal-skill classification is invalid. The composed
  * message names the offending skill, the declared parent, and the rule violated so authors can

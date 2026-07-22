@@ -92,6 +92,24 @@ val copyNativeAgentCompositionSchema =
     }
   }
 
+val canonicalNativeAgentLinkInventorySchemaPath: String =
+  rootProject.projectDir.parentFile
+    .resolve("orchestration/contracts/native-agent-link-inventory-schema.yaml")
+    .absolutePath
+
+val copyNativeAgentLinkInventorySchema =
+  tasks.register<Copy>("copyNativeAgentLinkInventorySchema") {
+    val schemaPath = canonicalNativeAgentLinkInventorySchemaPath
+    from(schemaPath)
+    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/contracts"))
+    inputs.file(schemaPath)
+    doFirst {
+      require(File(schemaPath).exists()) {
+        "SKILL-129: canonical native-agent link inventory schema is missing at $schemaPath."
+      }
+    }
+  }
+
 // SKILL-52.3 Subtask 1: the three schema validators moved here from
 // runtime-contracts, so the schema resources they read at runtime must
 // ship on this module's classpath alongside the platform-pack and
@@ -310,6 +328,7 @@ tasks.named("processResources") {
   dependsOn(copyReviewContextSchema)
   dependsOn(copyPlatformPackSchema)
   dependsOn(copyNativeAgentCompositionSchema)
+  dependsOn(copyNativeAgentLinkInventorySchema)
   dependsOn(copyWorkflowStateSchema)
   dependsOn(copyInstallPlanSchema)
   dependsOn(copyDecompositionManifestSchema)
@@ -328,6 +347,7 @@ tasks.named("processTestResources") {
   dependsOn(copyReviewContextSchema)
   dependsOn(copyPlatformPackSchema)
   dependsOn(copyNativeAgentCompositionSchema)
+  dependsOn(copyNativeAgentLinkInventorySchema)
   dependsOn(copyWorkflowStateSchema)
   dependsOn(copyInstallPlanSchema)
   dependsOn(copyDecompositionManifestSchema)

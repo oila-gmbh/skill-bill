@@ -25,6 +25,46 @@ import kotlin.test.assertTrue
 
 class InstallNativeAgentLinkApplyTest : InstallApplyTestSupport() {
   @Test
+  fun `apply removes inventory-recorded dangling baseline orchestrator links`() {
+    val fixture = setupApplyFixture()
+    Files.createDirectories(fixture.home.resolve(".codex"))
+    val agentDir = fixture.home.resolve(".codex/agents")
+    Files.createDirectories(agentDir)
+    val managedRoot = fixture.home.resolve(".skill-bill/installed-skills/obsolete-native-agents/codex-agents")
+    Files.createDirectories(managedRoot)
+    val kotlinTarget = managedRoot.resolve("bill-kotlin-code-review.toml")
+    val kmpTarget = managedRoot.resolve("bill-kmp-code-review.toml")
+    val kotlinLink = agentDir.resolve(kotlinTarget.fileName)
+    val kmpLink = agentDir.resolve(kmpTarget.fileName)
+    createSymlinkOrSkip(kotlinLink, kotlinTarget)
+    createSymlinkOrSkip(kmpLink, kmpTarget)
+    val inventory = fixture.home.resolve(".skill-bill/native-agent-link-inventory.json")
+    Files.createDirectories(inventory.parent)
+    Files.writeString(
+      inventory,
+      """
+      {"contract_version":"0.1","entries":[
+        {"logical_name":"bill-kotlin-code-review","provider":"codex","installed_path":"$kotlinLink","cache_target_path":"$kotlinTarget","content_digest":"${"0".repeat(
+        64,
+      )}","source_root":"${fixture.repoRoot}"},
+        {"logical_name":"bill-kmp-code-review","provider":"codex","installed_path":"$kmpLink","cache_target_path":"$kmpTarget","content_digest":"${"0".repeat(
+        64,
+      )}","source_root":"${fixture.repoRoot}"}
+      ]}
+      """.trimIndent(),
+    )
+    val plan = InstallOperations.planInstall(
+      fixture.request(selectedPlatforms = setOf("kotlin"), agents = setOf(InstallAgent.CODEX)),
+    )
+
+    val result = InstallOperations.applyInstall(plan)
+
+    assertEquals(InstallApplyStatus.SUCCESS, result.status)
+    assertFalse(Files.exists(kotlinLink, LinkOption.NOFOLLOW_LINKS))
+    assertFalse(Files.exists(kmpLink, LinkOption.NOFOLLOW_LINKS))
+  }
+
+  @Test
   fun `selected all-agent apply distinguishes Copilot skill and MCP handling from native providers`() {
     val fixture = setupApplyFixture()
     Files.createDirectories(fixture.home.resolve(".claude"))

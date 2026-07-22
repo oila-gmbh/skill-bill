@@ -1,4 +1,4 @@
-@file:Suppress("MatchingDeclarationName")
+@file:Suppress("MatchingDeclarationName", "TooManyFunctions")
 
 package skillbill.nativeagent.validation
 
@@ -12,6 +12,8 @@ import skillbill.nativeagent.discovery.discoverNativeAgentSourceFiles
 import skillbill.nativeagent.discovery.discoverNativeAgentSourceFilesInRoots
 import skillbill.nativeagent.rendering.NativeAgentProvider
 import skillbill.nativeagent.rendering.discoverRepoNativeAgentSourceFiles
+import skillbill.review.plan.ReviewLaunchPlanPolicy
+import skillbill.scaffold.platformpack.discoverPlatformPackManifests
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -27,6 +29,7 @@ fun validateRepoNativeAgents(repoRoot: Path): NativeAgentValidationReport {
   val sourceFiles = discoverRepoNativeAgentSourceFiles(root)
   val sources = parseNativeAgentSourcesForValidation(root, sourceFiles, issues)
   validateNativeAgentSources(root, sources, issues)
+  validatePlannedWorkerDeclarations(root, sources, issues)
   validateNoCheckedInGeneratedArtifacts(root, issues)
   return NativeAgentValidationReport(issues.sorted())
 }
@@ -99,6 +102,32 @@ private fun validateNativeAgentSources(root: Path, sources: List<NativeAgentSour
         issues += "${nativeAgentSourceDisplay(root, source)}: cannot render ${provider.directoryName}: " +
           error.message.orEmpty()
       }
+    }
+  }
+}
+
+private fun validatePlannedWorkerDeclarations(
+  root: Path,
+  sources: List<NativeAgentSource>,
+  issues: MutableList<String>,
+) {
+  val packsRoot = root.resolve("platform-packs")
+  if (!Files.isDirectory(packsRoot) || !Files.isDirectory(root.resolve("orchestration/contracts"))) return
+  val manifests = runCatching { discoverPlatformPackManifests(packsRoot) }
+    .getOrElse { error ->
+      issues += "platform-packs: cannot derive native-agent worker set: ${error.message.orEmpty()}"
+      return
+    }
+  val selectedAreas = manifests.flatMapTo(linkedSetOf()) { it.declaredCodeReviewAreas }
+  val plannedNames = manifests.flatMap { manifest ->
+    ReviewLaunchPlanPolicy.flatten(manifest.slug, manifests, selectedAreas).lanes.map { it.skillName }
+  }.toSortedSet()
+  val declarations = sources.groupBy { it.name }
+  plannedNames.forEach { worker ->
+    when (declarations[worker].orEmpty().size) {
+      0 -> issues += "platform-packs: planned review worker '$worker' has no native-agent source declaration"
+      1 -> Unit
+      else -> issues += "platform-packs: planned review worker '$worker' has ambiguous native-agent declarations"
     }
   }
 }

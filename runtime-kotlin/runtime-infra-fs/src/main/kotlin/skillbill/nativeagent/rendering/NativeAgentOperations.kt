@@ -26,7 +26,14 @@ data class NativeAgentRegenerationResult(
 
 data class NativeAgentInstallRenderResult(
   val generatedFiles: List<Path>,
+  val artifacts: List<NativeAgentRenderedArtifact>,
   val cacheRoot: Path,
+)
+
+data class NativeAgentRenderedArtifact(
+  val logicalName: String,
+  val path: Path,
+  val contentDigest: String,
 )
 
 data class NativeAgentInstallRenderOverrides(
@@ -132,12 +139,23 @@ object NativeAgentOperations {
       val generated = promoteStagedRenders(providerRoot, staging, rendered)
       NativeAgentInstallRenderResult(
         generatedFiles = generated.sortedBy { it.toString() },
+        artifacts = generated.map { path ->
+          NativeAgentRenderedArtifact(
+            logicalName = path.fileName.toString().removeSuffix(".${provider.extension}"),
+            path = path,
+            contentDigest = sha256(Files.readAllBytes(path)),
+          )
+        }.sortedBy { it.path.toString() },
         cacheRoot = cacheRoot,
       )
     } finally {
       deleteDirectoryRecursively(staging)
     }
   }
+
+  private fun sha256(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256")
+    .digest(bytes)
+    .joinToString("") { byte -> "%02x".format(byte) }
 
   private data class RenderedAgent(val targetName: String, val contents: ByteArray) {
     override fun equals(other: Any?): Boolean = this === other

@@ -25,10 +25,12 @@ import skillbill.ports.diff.DiffResolverPort
 import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.review.ParallelReviewLaneRunner
+import skillbill.ports.review.ReviewNativeAgentPreflightPort
 import skillbill.ports.review.ReviewRubricResolver
 import skillbill.ports.review.model.ParallelReviewLaneOutcome
 import skillbill.ports.review.model.ParallelReviewLaneRunRequest
 import skillbill.ports.review.model.ReviewLaneAccounting
+import skillbill.ports.review.model.ReviewNativeAgentPreflightRequest
 import skillbill.ports.review.model.ReviewOwnedFileEvidence
 import skillbill.review.ParallelReviewFindingParser
 import skillbill.review.ParallelReviewMerger
@@ -61,6 +63,7 @@ class ParallelCodeReviewRunner(
   private val repoLocalConfig: RepoLocalConfigPort,
   private val reviewContextEnvelopeValidator: ReviewContextEnvelopeValidator,
   private val reviewRubricResolver: ReviewRubricResolver,
+  private val nativeAgentPreflight: ReviewNativeAgentPreflightPort,
 ) {
   fun run(request: ParallelCodeReviewRequest): ParallelCodeReviewResult {
     val agent1 = resolveAgent(request.agent1Id, "--agent1")
@@ -85,6 +88,17 @@ class ParallelCodeReviewRunner(
       detection.manifests,
       listOf(agent1.id, agent2.id),
       budget,
+    )
+    nativeAgentPreflight.verify(
+      ReviewNativeAgentPreflightRequest(
+        repoRoot = request.repoRoot,
+        agentIds = listOf(agent1.id, agent2.id),
+        logicalNames = launchRequests
+          .filter { it.workerKind == skillbill.application.review.model.ReviewWorkerKind.PROVIDER_NATIVE }
+          .flatMap { it.rubrics }
+          .map { it.rubricId }
+          .distinct(),
+      ),
     )
     delegatedReviewExecutionBroker.preflight(launchRequests)
     val prepared = launchRequests.groupBy { it.agentId }

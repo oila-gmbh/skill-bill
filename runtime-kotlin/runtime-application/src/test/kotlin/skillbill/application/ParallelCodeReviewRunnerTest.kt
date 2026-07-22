@@ -643,6 +643,8 @@ private data class RunnerFixtureConfig(
     ResolvedReviewRubric("parallel-code-review", "governed generic rubric")
   },
   val evidenceBrokerFactory: ReviewEvidenceBrokerFactory = ReviewEvidenceBrokerFactory(::TestReviewEvidenceBroker),
+  val nativeAgentPreflight: skillbill.ports.review.ReviewNativeAgentPreflightPort =
+    skillbill.ports.review.ReviewNativeAgentPreflightPort { },
 )
 
 private fun runner(
@@ -730,6 +732,7 @@ private fun createRunner(launcher: GoalRunnerSubtaskLauncher, config: RunnerFixt
       override fun validate(envelope: Map<String, Any?>, sourceLabel: String) = Unit
     },
     reviewRubricResolver = config.rubricResolver,
+    nativeAgentPreflight = config.nativeAgentPreflight,
   )
 
 private fun baseRequest(

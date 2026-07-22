@@ -154,6 +154,11 @@ Spawn one isolated-context subagent per specialist domain below using your nativ
 
 Prepare the compact shared review-context packet from `review-delegation.md` once. Use its ordered flattened lane assignments without rediscovery and spawn only selected non-empty specialists; never spawn a baseline orchestrator. Give each worker only its broker projection, lane assignment, and applicable rubric. Packet facts are authoritative; workers must not repeat repository, scope, stack, routing, guidance, learnings, or telemetry discovery.
 
+Before launching any specialist, require every planned logical worker to resolve through the current
+installed native-agent cache with its recorded content digest. A missing, dangling, stale, unreadable,
+or undeclared worker is a hard preflight failure. Surface the governed repair command; never substitute
+`general-purpose`, relabel the worker as a baseline, or continue with a partial worker set.
+
 Give each specialist subagent this brief:
 
   You are the <domain> specialist reviewing <scope> in <repo-root>.

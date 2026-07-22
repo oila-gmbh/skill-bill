@@ -1,5 +1,6 @@
 package skillbill.install.nativeagent
 
+import skillbill.error.MissingInstalledNativeAgentError
 import skillbill.install.model.AgentTarget
 import skillbill.install.plan.CLAUDE_AGENTS_KIND
 import skillbill.install.plan.JUNIE_AGENTS_KIND
@@ -14,6 +15,7 @@ import skillbill.nativeagent.rendering.NativeAgentProvider
 import skillbill.nativeagent.validation.validateNativeAgentArtifactsForInstall
 import java.nio.file.Files
 import java.nio.file.Path
+import java.security.MessageDigest
 
 data class NativeAgentLinkOutcome(
   val linked: List<Path>,
@@ -175,7 +177,53 @@ object InstallNativeAgentOperations {
         is InstallNativeAgentResult.Skipped -> skipped.add(NativeAgentSkippedLink(result.link, result.reason))
       }
     }
+    val linkedPaths = linked.toSet()
+    val desired = generated.artifacts.flatMap { artifact ->
+      provider.homeAgentDirs(resolvedHome).mapNotNull { agentDir ->
+        val installedPath = agentDir.resolve(artifact.path.fileName)
+        if (installedPath !in linkedPaths && !Files.isSymbolicLink(installedPath)) return@mapNotNull null
+        NativeAgentLinkInventoryEntry(
+          logicalName = artifact.logicalName,
+          provider = provider.name.lowercase(),
+          installedPath = installedPath,
+          cacheTargetPath = artifact.path,
+          contentDigest = artifact.contentDigest,
+          sourceRoot = validationRoot,
+        )
+      }
+    }
+    desired.forEach(::verifyInstalledNativeAgent)
+    NativeAgentLinkInventory.reconcile(
+      home = resolvedHome,
+      provider = provider.name.lowercase(),
+      desired = desired,
+      managedRoots = managedRoots,
+    )
     return NativeAgentLinkOutcome(linked, skipped)
+  }
+
+  private fun verifyInstalledNativeAgent(entry: NativeAgentLinkInventoryEntry) {
+    val installed = entry.installedPath
+    val repair = "skill-bill install apply"
+    fun fail(reason: String, cause: Throwable? = null): Nothing = throw MissingInstalledNativeAgentError(
+      logicalName = entry.logicalName,
+      provider = entry.provider,
+      expectedPath = installed.toString(),
+      reason = reason,
+      repairCommand = repair,
+      cause = cause,
+    )
+    if (!Files.isSymbolicLink(installed)) fail("managed link is missing")
+    val resolved = runCatching { installed.toRealPath() }
+      .getOrElse { fail("managed link is dangling or unreadable", it) }
+    if (resolved != entry.cacheTargetPath.toRealPath()) fail("managed link resolves outside the current cache target")
+    if (!Files.isReadable(resolved)) fail("rendered artifact is unreadable")
+    if (resolved.fileName.toString().substringBeforeLast('.') != entry.logicalName) {
+      fail("rendered artifact logical name does not match the launch worker")
+    }
+    val digest = MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(resolved))
+      .joinToString("") { byte -> "%02x".format(byte) }
+    if (digest != entry.contentDigest) fail("rendered artifact content digest is stale")
   }
 
   private fun unlinkProviderAgents(provider: NativeAgentProvider, request: NativeAgentLinkRequest): List<Path> {

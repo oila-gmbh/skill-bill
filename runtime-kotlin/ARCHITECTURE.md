@@ -1020,3 +1020,11 @@ category without reshaping the marker block._
   [subtask 4] — decomposition manifest writer entrypoint; postponed with
   the workflow family.
 <!-- skill-52-2-inventory:end -->
+# Native-agent installation integrity
+
+Native-agent rendering promotes artifacts atomically into the installed cache and records each
+Skill Bill-managed link in the user-home `.skill-bill/native-agent-link-inventory.json`. The inventory stores
+the logical worker name, provider, installed path, cache target, and content digest. Reconciliation
+uses the complete prior inventory to remove obsolete or dangling managed links; it never deletes a
+regular file or a symlink that no longer resolves to its recorded managed target. Install verifies
+the linked artifact's logical name, digest, target, and readability before committing the inventory.

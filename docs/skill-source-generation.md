@@ -604,6 +604,14 @@ Do:
 - keep add-ons under `platform-packs/<slug>/addons/`
 - use generated support pointers for installed runtime files
 - use `native-agents/agents.yaml` for bundled orchestrator native agents
+
+Installed provider-native agents are tracked in
+the user-home `.skill-bill/native-agent-link-inventory.json`. Each entry records the provider, logical worker,
+installed link, cache target, source root, and rendered-content digest. Install reconciliation uses
+the prior complete inventory to remove obsolete or dangling Skill Bill-managed links and preserves
+regular files and links outside managed cache roots. Delegated review preflight verifies the selected
+workers against this inventory before launch; its typed failure carries `skill-bill install apply` as
+the repair command.
 - validate after every source-shape or generation change
 
 Do not:
