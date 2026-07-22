@@ -2,13 +2,15 @@
 
 package skillbill.infrastructure.fs
 
-import com.fasterxml.jackson.databind.ObjectMapper
 import me.tatarka.inject.annotations.Inject
-import skillbill.error.InvalidNativeAgentLinkInventorySchemaError
 import skillbill.error.MissingInstalledNativeAgentError
+import skillbill.install.apply.currentNativeAgentApplyCacheRoot
+import skillbill.install.nativeagent.NativeAgentLinkInventory
+import skillbill.install.nativeagent.NativeAgentLinkInventoryEntry
+import skillbill.install.plan.detectCodexAgentsTarget
+import skillbill.install.plan.detectOpencodeAgentsTarget
 import skillbill.model.EnvironmentContext
 import skillbill.nativeagent.rendering.NativeAgentProvider
-import skillbill.nativeagent.rendering.NativeAgentOperations
 import skillbill.ports.review.ReviewNativeAgentPreflightPort
 import skillbill.ports.review.model.ReviewNativeAgentPreflightRequest
 import java.nio.file.Files
@@ -21,8 +23,17 @@ class FileSystemReviewNativeAgentPreflight(
 ) : ReviewNativeAgentPreflightPort {
   override fun verify(request: ReviewNativeAgentPreflightRequest) {
     val home = environment.userHome
-    val inventoryPath = home.resolve(".skill-bill/native-agent-link-inventory.json")
-    val inventory = readInventory(inventoryPath)
+    val currentCache = currentNativeAgentApplyCacheRoot(
+      home,
+      request.repoRoot.resolve("platform-packs"),
+      request.repoRoot.resolve("skills"),
+    )
+    val legacyCache = skillbill.nativeagent.rendering.NativeAgentOperations.installCacheRoot(
+      home,
+      request.repoRoot.resolve("platform-packs"),
+      request.repoRoot.resolve("skills"),
+    )
+    val inventory = NativeAgentLinkInventory.read(home, listOf(currentCache, legacyCache))
     request.agentIds.distinct().forEach { agentId ->
       val provider = provider(agentId) ?: throw MissingInstalledNativeAgentError(
         request.logicalNames.firstOrNull() ?: "unknown",
@@ -41,30 +52,28 @@ class FileSystemReviewNativeAgentPreflight(
             "managed inventory entry is missing",
           )
         }
-        val activePaths = provider.homeAgentDirs(home).map { it.resolve(provider.fileName(logicalName)).normalize() }.toSet()
+        val activePaths = activeProviderDirs(provider, home)
+          .map { it.resolve(provider.fileName(logicalName)).toAbsolutePath().normalize() }.toSet()
         val applicable = entries.filter { it.installedPath.normalize() in activePaths }
-        if (applicable.isEmpty() || applicable.map { it.installedPath.normalize() }.distinct().size != applicable.size) {
-          fail(logicalName, provider, provider.homeAgentDirs(home).first().resolve(provider.fileName(logicalName)),
-            "managed inventory must contain one entry per applicable provider path")
+        if (applicable.map { it.installedPath.normalize() }.toSet() != activePaths) {
+          fail(
+            logicalName,
+            provider,
+            provider.homeAgentDirs(home).first().resolve(provider.fileName(logicalName)),
+            "managed inventory must contain one entry per applicable provider path",
+          )
         }
-        applicable.forEach { verifyEntry(it, provider, home, request.repoRoot) }
+        applicable.forEach { verifyEntry(it, provider, currentCache) }
       }
     }
   }
 
-  private fun verifyEntry(entry: InventoryEntry, provider: NativeAgentProvider, home: Path, repoRoot: Path) {
+  private fun verifyEntry(entry: NativeAgentLinkInventoryEntry, provider: NativeAgentProvider, currentCache: Path) {
     val installed = entry.installedPath
-    val allowedDirs = provider.homeAgentDirs(home).map { it.toAbsolutePath().normalize() }
-    if (allowedDirs.none { installed.toAbsolutePath().normalize().parent == it }) {
-      fail(entry.logicalName, provider, installed, "installed path is outside the active provider directories")
-    }
-    val currentCache = NativeAgentOperations.installCacheRoot(
-      home,
-      repoRoot.resolve("platform-packs"),
-      repoRoot.resolve("skills"),
-    ).toAbsolutePath().normalize()
-    if (!entry.cacheTargetPath.toAbsolutePath().normalize().startsWith(currentCache)) {
-      fail(entry.logicalName, provider, installed, "recorded target is outside the current managed cache")
+    val expectedTarget = currentCache.resolve(provider.directoryName).resolve(provider.fileName(entry.logicalName))
+      .toAbsolutePath().normalize()
+    if (entry.cacheTargetPath != expectedTarget) {
+      fail(entry.logicalName, provider, installed, "recorded target is not the current installed generation")
     }
     if (!Files.isSymbolicLink(installed)) fail(entry.logicalName, provider, installed, "managed link is missing")
     val resolved = runCatching { installed.toRealPath() }
@@ -96,32 +105,6 @@ class FileSystemReviewNativeAgentPreflight(
     }
   }
 
-  private fun readInventory(path: Path): List<InventoryEntry> {
-    if (!Files.isRegularFile(path)) return emptyList()
-    return try {
-      require(Files.size(path) <= MAX_INVENTORY_BYTES) { "inventory exceeds $MAX_INVENTORY_BYTES bytes" }
-      val root = ObjectMapper().readTree(path.toFile())
-      require(root["contract_version"]?.asText() == "0.1") { "unsupported contract_version" }
-      root["entries"]?.map { node ->
-        InventoryEntry(
-          node["logical_name"].requiredText("logical_name"),
-          node["provider"].requiredText("provider"),
-          Path.of(node["installed_path"].requiredText("installed_path")),
-          Path.of(node["cache_target_path"].requiredText("cache_target_path")),
-          node["content_digest"].requiredText("content_digest"),
-        )
-      } ?: error("entries is required")
-    } catch (error: Exception) {
-      throw InvalidNativeAgentLinkInventorySchemaError(
-        "Invalid native-agent link inventory '$path': ${error.message}. Delete it and reinstall.",
-        error,
-      )
-    }
-  }
-
-  private fun com.fasterxml.jackson.databind.JsonNode?.requiredText(field: String): String =
-    this?.asText()?.takeIf(String::isNotBlank) ?: error("$field is required")
-
   private fun provider(agentId: String): NativeAgentProvider? = when (agentId) {
     "claude" -> NativeAgentProvider.Claude
     "codex" -> NativeAgentProvider.Codex
@@ -129,6 +112,14 @@ class FileSystemReviewNativeAgentPreflight(
     "junie" -> NativeAgentProvider.Junie
     "zcode" -> NativeAgentProvider.Zcode
     else -> null
+  }
+
+  private fun activeProviderDirs(provider: NativeAgentProvider, home: Path): List<Path> = when (provider) {
+    NativeAgentProvider.Claude -> provider.homeAgentDirs(home)
+    NativeAgentProvider.Codex -> listOfNotNull(detectCodexAgentsTarget(home)?.path)
+    NativeAgentProvider.Opencode -> listOfNotNull(detectOpencodeAgentsTarget(home)?.path)
+    NativeAgentProvider.Junie -> listOf(provider.homeAgentDirs(home).single())
+    NativeAgentProvider.Zcode -> listOf(provider.homeAgentDirs(home).single())
   }
 
   private fun NativeAgentProvider.fileName(logicalName: String) = "$logicalName.$extension"
@@ -162,16 +153,7 @@ class FileSystemReviewNativeAgentPreflight(
     cause,
   )
 
-  private data class InventoryEntry(
-    val logicalName: String,
-    val provider: String,
-    val installedPath: Path,
-    val cacheTargetPath: Path,
-    val contentDigest: String,
-  )
-
   private companion object {
-    const val MAX_INVENTORY_BYTES = 1024 * 1024L
     const val REPAIR_COMMAND = "skill-bill install apply"
   }
 }

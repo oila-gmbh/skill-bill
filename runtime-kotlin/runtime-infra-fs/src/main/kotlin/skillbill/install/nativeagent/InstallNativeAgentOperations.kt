@@ -14,8 +14,8 @@ import skillbill.nativeagent.rendering.NativeAgentOperations
 import skillbill.nativeagent.rendering.NativeAgentProvider
 import skillbill.nativeagent.validation.validateNativeAgentArtifactsForInstall
 import java.nio.file.Files
-import java.nio.file.Path
 import java.nio.file.LinkOption
+import java.nio.file.Path
 import java.security.MessageDigest
 
 data class NativeAgentLinkOutcome(
@@ -43,19 +43,13 @@ data class NativeAgentLinkRequest(
 object InstallNativeAgentOperations {
   fun linkClaudeAgents(request: NativeAgentLinkRequest): NativeAgentLinkOutcome {
     val resolvedHome = request.home ?: Path.of(System.getProperty("user.home"))
-    val agentDirs = NativeAgentProvider.Claude.homeAgentDirs(resolvedHome)
-    val linked = mutableListOf<Path>()
-    val skipped = mutableListOf<NativeAgentSkippedLink>()
-    agentDirs.forEach { agentDir ->
-      val outcome = linkProviderAgents(
-        provider = NativeAgentProvider.Claude,
-        request = request,
-        detectTarget = { AgentTarget(CLAUDE_AGENTS_KIND, agentDir) },
-      )
-      linked.addAll(outcome.linked)
-      skipped.addAll(outcome.skipped)
-    }
-    return NativeAgentLinkOutcome(linked, skipped)
+    return linkProviderAgents(
+      provider = NativeAgentProvider.Claude,
+      request = request,
+      detectTargets = {
+        NativeAgentProvider.Claude.homeAgentDirs(resolvedHome).map { AgentTarget(CLAUDE_AGENTS_KIND, it) }
+      },
+    )
   }
 
   fun unlinkClaudeAgents(request: NativeAgentLinkRequest): List<Path> = unlinkProviderAgents(
@@ -66,7 +60,7 @@ object InstallNativeAgentOperations {
   fun linkCodexAgents(request: NativeAgentLinkRequest): NativeAgentLinkOutcome = linkProviderAgents(
     provider = NativeAgentProvider.Codex,
     request = request,
-    detectTarget = { detectCodexAgentsTarget(it) },
+    detectTargets = { listOfNotNull(detectCodexAgentsTarget(it)) },
   )
 
   fun unlinkCodexAgents(request: NativeAgentLinkRequest): List<Path> {
@@ -83,7 +77,7 @@ object InstallNativeAgentOperations {
   fun linkOpencodeAgents(request: NativeAgentLinkRequest): NativeAgentLinkOutcome = linkProviderAgents(
     provider = NativeAgentProvider.Opencode,
     request = request,
-    detectTarget = { detectOpencodeAgentsTarget(it) },
+    detectTargets = { listOfNotNull(detectOpencodeAgentsTarget(it)) },
   )
 
   fun unlinkOpencodeAgents(request: NativeAgentLinkRequest): List<Path> {
@@ -101,12 +95,12 @@ object InstallNativeAgentOperations {
   fun linkJunieAgents(request: NativeAgentLinkRequest): NativeAgentLinkOutcome = linkProviderAgents(
     provider = NativeAgentProvider.Junie,
     request = request,
-    detectTarget = { resolvedHome ->
+    detectTargets = { resolvedHome ->
       val targetPath = NativeAgentProvider.Junie.homeAgentDirs(resolvedHome).first()
       if (Files.exists(targetPath) || Files.exists(resolvedHome.resolve(".junie"))) {
-        AgentTarget(JUNIE_AGENTS_KIND, targetPath)
+        listOf(AgentTarget(JUNIE_AGENTS_KIND, targetPath))
       } else {
-        null
+        emptyList()
       }
     },
   )
@@ -126,12 +120,12 @@ object InstallNativeAgentOperations {
   fun linkZcodeAgents(request: NativeAgentLinkRequest): NativeAgentLinkOutcome = linkProviderAgents(
     provider = NativeAgentProvider.Zcode,
     request = request,
-    detectTarget = { resolvedHome ->
+    detectTargets = { resolvedHome ->
       val targetPath = NativeAgentProvider.Zcode.homeAgentDirs(resolvedHome).first()
       if (Files.exists(targetPath) || Files.exists(resolvedHome.resolve(".zcode"))) {
-        AgentTarget(ZCODE_AGENTS_KIND, targetPath)
+        listOf(AgentTarget(ZCODE_AGENTS_KIND, targetPath))
       } else {
-        null
+        emptyList()
       }
     },
   )
@@ -144,7 +138,7 @@ object InstallNativeAgentOperations {
   private fun linkProviderAgents(
     provider: NativeAgentProvider,
     request: NativeAgentLinkRequest,
-    detectTarget: (Path) -> AgentTarget?,
+    detectTargets: (Path) -> List<AgentTarget>,
   ): NativeAgentLinkOutcome {
     val validationRoot = nativeAgentCompositionRepoRoot(request.platformPacksRoot, request.skillsRoot)
     request.overrides.sourceRoots
@@ -155,56 +149,65 @@ object InstallNativeAgentOperations {
         request.selectedPlatforms,
       )
     val resolvedHome = request.home ?: Path.of(System.getProperty("user.home"))
-    val target = detectTarget(resolvedHome) ?: return NativeAgentLinkOutcome(emptyList(), emptyList())
+    val targets = detectTargets(resolvedHome)
+    if (targets.isEmpty()) return NativeAgentLinkOutcome(emptyList(), emptyList())
     val cacheRoot = request.overrides.installCacheRoot?.toAbsolutePath()?.normalize()
       ?: NativeAgentOperations.installCacheRoot(resolvedHome, request.platformPacksRoot, request.skillsRoot)
-    val rollback = ProviderReconciliationSnapshot.capture(resolvedHome, provider, cacheRoot)
+    val rollback = ProviderReconciliationSnapshot.capture(
+      resolvedHome,
+      provider,
+      cacheRoot,
+      listOfNotNull(cacheRoot, request.overrides.legacyManagedRoot),
+    )
     return try {
-    val generated = NativeAgentOperations.renderInstallArtifacts(
-      NativeAgentInstallRenderRequest(
-        platformPacksRoot = request.platformPacksRoot,
-        skillsRoot = request.skillsRoot,
-        selectedPlatforms = request.selectedPlatforms,
-        provider = provider,
-        home = resolvedHome,
-        overrides = NativeAgentInstallRenderOverrides(
-          cacheRoot = request.overrides.installCacheRoot,
-          sourceRoots = request.overrides.sourceRoots,
+      val generated = NativeAgentOperations.renderInstallArtifacts(
+        NativeAgentInstallRenderRequest(
+          platformPacksRoot = request.platformPacksRoot,
+          skillsRoot = request.skillsRoot,
+          selectedPlatforms = request.selectedPlatforms,
+          provider = provider,
+          home = resolvedHome,
+          overrides = NativeAgentInstallRenderOverrides(
+            cacheRoot = request.overrides.installCacheRoot,
+            sourceRoots = request.overrides.sourceRoots,
+          ),
         ),
-      ),
-    )
-    val managedRoots = listOfNotNull(generated.cacheRoot, request.overrides.legacyManagedRoot)
-    val linked = mutableListOf<Path>()
-    val skipped = mutableListOf<NativeAgentSkippedLink>()
-    generated.generatedFiles.forEach { file ->
-      when (val result = installNativeAgentFile(file, target, managedSourceRoots = managedRoots)) {
-        is InstallNativeAgentResult.Linked -> linked.add(result.link)
-        is InstallNativeAgentResult.Skipped -> skipped.add(NativeAgentSkippedLink(result.link, result.reason))
+      )
+      val managedRoots = listOfNotNull(generated.cacheRoot, request.overrides.legacyManagedRoot)
+      val linked = mutableListOf<Path>()
+      val skipped = mutableListOf<NativeAgentSkippedLink>()
+      targets.forEach { target ->
+        generated.generatedFiles.forEach { file ->
+          when (val result = installNativeAgentFile(file, target, managedSourceRoots = managedRoots)) {
+            is InstallNativeAgentResult.Linked -> linked.add(result.link)
+            is InstallNativeAgentResult.Skipped -> skipped.add(NativeAgentSkippedLink(result.link, result.reason))
+          }
+        }
       }
-    }
-    val linkedPaths = linked.toSet()
-    val desired = generated.artifacts.flatMap { artifact ->
-      provider.homeAgentDirs(resolvedHome).mapNotNull { agentDir ->
-        val installedPath = agentDir.resolve(artifact.path.fileName)
-        if (installedPath !in linkedPaths && !Files.isSymbolicLink(installedPath)) return@mapNotNull null
-        NativeAgentLinkInventoryEntry(
-          logicalName = artifact.logicalName,
-          provider = provider.name.lowercase(),
-          installedPath = installedPath,
-          cacheTargetPath = artifact.path,
-          contentDigest = artifact.contentDigest,
-          sourceRoot = validationRoot,
-        )
+      val linkedPaths = linked.toSet()
+      val desired = generated.artifacts.flatMap { artifact ->
+        targets.mapNotNull { target ->
+          val agentDir = target.path
+          val installedPath = agentDir.resolve(artifact.path.fileName)
+          if (installedPath !in linkedPaths && !Files.isSymbolicLink(installedPath)) return@mapNotNull null
+          NativeAgentLinkInventoryEntry(
+            logicalName = artifact.logicalName,
+            provider = provider.name.lowercase(),
+            installedPath = installedPath,
+            cacheTargetPath = artifact.path,
+            contentDigest = artifact.contentDigest,
+            sourceRoot = validationRoot,
+          )
+        }
       }
-    }
-    desired.forEach(::verifyInstalledNativeAgent)
-    NativeAgentLinkInventory.reconcile(
-      home = resolvedHome,
-      provider = provider.name.lowercase(),
-      desired = desired,
-      managedRoots = managedRoots,
-    )
-    NativeAgentLinkOutcome(linked, skipped)
+      desired.forEach(::verifyInstalledNativeAgent)
+      NativeAgentLinkInventory.reconcile(
+        home = resolvedHome,
+        provider = provider.name.lowercase(),
+        desired = desired,
+        managedRoots = managedRoots,
+      )
+      NativeAgentLinkOutcome(linked, skipped)
     } catch (error: Throwable) {
       rollback.restore()
       throw error
@@ -251,47 +254,79 @@ object InstallNativeAgentOperations {
     val cacheRoot: Path,
     val inventoryPath: Path,
     val inventoryBytes: ByteArray?,
+    val managedRoots: List<Path>,
   ) {
     fun restore() {
       links.keys.map { it.parent }.distinct().forEach { directory ->
-        if (Files.isDirectory(directory)) Files.list(directory).use { paths ->
-          paths.iterator().asSequence().filter(Files::isSymbolicLink).forEach(Files::deleteIfExists)
+        if (Files.isDirectory(directory)) {
+          Files.list(directory).use { paths ->
+            paths.iterator().asSequence().filter(Files::isSymbolicLink).filter { link ->
+              val raw = runCatching { Files.readSymbolicLink(link) }.getOrNull() ?: return@filter false
+              val resolved = link.parent.resolve(raw).toAbsolutePath().normalize()
+              managedRoots.any { resolved.startsWith(it.toAbsolutePath().normalize()) }
+            }.forEach(Files::deleteIfExists)
+          }
         }
       }
       links.forEach { (link, rawTarget) ->
         Files.createDirectories(link.parent)
-        Files.createSymbolicLink(link, rawTarget)
+        val currentTarget = runCatching { Files.readSymbolicLink(link) }.getOrNull()
+        if (currentTarget != rawTarget) {
+          Files.deleteIfExists(link)
+          Files.createSymbolicLink(link, rawTarget)
+        }
       }
-      if (Files.isDirectory(cacheRoot)) Files.walk(cacheRoot).use { paths ->
-        paths.iterator().asSequence().sortedByDescending { it.nameCount }
-          .filter { it != cacheRoot }.forEach(Files::deleteIfExists)
+      if (Files.isDirectory(cacheRoot)) {
+        Files.walk(cacheRoot).use { paths ->
+          paths.iterator().asSequence().sortedByDescending { it.nameCount }
+            .filter { it != cacheRoot }.forEach(Files::deleteIfExists)
+        }
       }
       cacheFiles.forEach { (path, bytes) ->
         Files.createDirectories(path.parent)
         Files.write(path, bytes)
       }
-      if (inventoryBytes == null) Files.deleteIfExists(inventoryPath) else {
+      if (inventoryBytes == null) {
+        Files.deleteIfExists(inventoryPath)
+      } else {
         Files.createDirectories(inventoryPath.parent)
         Files.write(inventoryPath, inventoryBytes)
       }
     }
 
     companion object {
-      fun capture(home: Path, provider: NativeAgentProvider, cacheRoot: Path): ProviderReconciliationSnapshot {
+      fun capture(
+        home: Path,
+        provider: NativeAgentProvider,
+        cacheRoot: Path,
+        managedRoots: List<Path>,
+      ): ProviderReconciliationSnapshot {
         val links = provider.homeAgentDirs(home).flatMap { directory ->
-          if (!Files.isDirectory(directory)) emptyList() else Files.list(directory).use { paths ->
-            paths.iterator().asSequence().filter(Files::isSymbolicLink)
-              .associateWith(Files::readSymbolicLink).entries.toList()
+          if (!Files.isDirectory(directory)) {
+            emptyList()
+          } else {
+            Files.list(directory).use { paths ->
+              paths.iterator().asSequence().filter(Files::isSymbolicLink)
+                .associateWith(Files::readSymbolicLink).entries.toList()
+            }
           }
         }.associate { it.key to it.value }
-        val cacheFiles = if (!Files.isDirectory(cacheRoot)) emptyMap() else Files.walk(cacheRoot).use { paths ->
-          paths.iterator().asSequence().filter { Files.isRegularFile(it, LinkOption.NOFOLLOW_LINKS) }
-            .associateWith(Files::readAllBytes)
+        val cacheFiles = if (!Files.isDirectory(cacheRoot)) {
+          emptyMap()
+        } else {
+          Files.walk(cacheRoot).use { paths ->
+            paths.iterator().asSequence().filter { Files.isRegularFile(it, LinkOption.NOFOLLOW_LINKS) }
+              .associateWith(Files::readAllBytes)
+          }
         }
         val inventory = home.resolve(".skill-bill/native-agent-link-inventory.json")
         return ProviderReconciliationSnapshot(
-          links, cacheFiles, cacheRoot, inventory,
+          links,
+          cacheFiles,
+          cacheRoot,
+          inventory,
           inventory.takeIf { Files.isRegularFile(it) }?.let(Files::readAllBytes),
+          managedRoots.map { it.toAbsolutePath().normalize() },
         )
       }
     }

@@ -3,7 +3,11 @@
 package skillbill.install.nativeagent
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
+import com.networknt.schema.JsonSchemaFactory
+import com.networknt.schema.SpecVersion
 import skillbill.contracts.nativeagent.NATIVE_AGENT_LINK_INVENTORY_CONTRACT_VERSION
+import skillbill.contracts.nativeagent.NativeAgentLinkInventorySchemaPaths
 import skillbill.error.InvalidNativeAgentLinkInventorySchemaError
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
@@ -22,17 +26,36 @@ internal data class NativeAgentLinkInventoryEntry(
 
 internal object NativeAgentLinkInventory {
   private val mapper = ObjectMapper()
+  private val schema by lazy {
+    val resource = requireNotNull(javaClass.getResourceAsStream(NativeAgentLinkInventorySchemaPaths.CLASSPATH_RESOURCE))
+    JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V202012).getSchema(YAMLMapper().readTree(resource))
+  }
 
   fun reconcile(home: Path, provider: String, desired: List<NativeAgentLinkInventoryEntry>, managedRoots: List<Path>) {
     val path = inventoryPath(home)
     val trustedRoots = managedRoots + listOf(home.resolve(".skill-bill/installed-skills"))
-    val previous = read(path, home, trustedRoots)
+    val previous = read(home, trustedRoots)
     val desiredPaths = desired.map { it.installedPath.normalize() }.toSet()
     previous.filter { it.provider == provider && it.installedPath.normalize() !in desiredPaths }.forEach { stale ->
       removeIfStillManaged(stale, trustedRoots)
     }
     val retained = previous.filter { it.provider != provider }
-    write(path, (retained + desired).sortedWith(compareBy({ it.provider }, { it.installedPath.toString() })))
+    try {
+      write(path, (retained + desired).sortedWith(compareBy({ it.provider }, { it.installedPath.toString() })))
+    } catch (error: InvalidNativeAgentLinkInventorySchemaError) {
+      throw error
+    } catch (error: Exception) {
+      throw InvalidNativeAgentLinkInventorySchemaError(
+        "Invalid native-agent link inventory publication '$path': ${error.message}",
+        error,
+      )
+    }
+  }
+
+  fun read(home: Path, managedRoots: List<Path>): List<NativeAgentLinkInventoryEntry> {
+    val path = inventoryPath(home)
+    if (!Files.exists(path, LinkOption.NOFOLLOW_LINKS)) return bootstrap(home, managedRoots)
+    return decode(path, home, managedRoots)
   }
 
   private fun removeIfStillManaged(entry: NativeAgentLinkInventoryEntry, managedRoots: List<Path>) {
@@ -43,14 +66,12 @@ internal object NativeAgentLinkInventory {
     if (managedRoots.any { resolved.startsWith(it.toAbsolutePath().normalize()) }) Files.deleteIfExists(link)
   }
 
-  private fun read(path: Path, home: Path, managedRoots: List<Path>): List<NativeAgentLinkInventoryEntry> {
-    if (!Files.exists(path, LinkOption.NOFOLLOW_LINKS)) return bootstrap(home, managedRoots)
+  private fun decode(path: Path, home: Path, managedRoots: List<Path>): List<NativeAgentLinkInventoryEntry> {
     return try {
       require(Files.size(path) <= MAX_BYTES) { "inventory exceeds $MAX_BYTES bytes" }
       val root = mapper.readTree(path.toFile())
-      require(root["contract_version"]?.asText() == NATIVE_AGENT_LINK_INVENTORY_CONTRACT_VERSION) {
-        "unsupported contract_version"
-      }
+      val schemaErrors = schema.validate(root)
+      require(schemaErrors.isEmpty()) { schemaErrors.joinToString("; ") { it.message } }
       val entries = root["entries"]?.elements()?.asSequence()?.map { node ->
         NativeAgentLinkInventoryEntry(
           logicalName = node.requiredText("logical_name"),
@@ -64,13 +85,27 @@ internal object NativeAgentLinkInventory {
       require(entries.map { it.provider to it.installedPath.normalize() }.distinct().size == entries.size) {
         "duplicate provider/installed_path entry"
       }
+      require(
+        entries.groupBy { Triple(it.provider, it.installedPath.parent.normalize(), it.logicalName) }
+          .values.none { it.size > 1 },
+      ) { "duplicate provider/directory/logical_name entry" }
       entries.forEach { entry ->
         require(entry.provider in PROVIDERS) { "unsupported provider '${entry.provider}'" }
         require(entry.contentDigest.matches(Regex("[0-9a-f]{$DIGEST_HEX_LENGTH}"))) { "invalid content_digest" }
         require(entry.installedPath.isAbsolute) { "installed_path must be absolute" }
         require(entry.cacheTargetPath.isAbsolute) { "cache_target_path must be absolute" }
-        require(entry.cacheTargetPath.normalize().startsWith(home.resolve(".skill-bill").normalize())) {
-          "cache_target_path is outside the managed cache"
+        require(entry.sourceRoot.isAbsolute && entry.sourceRoot.toString().length <= MAX_SOURCE_ROOT_LENGTH) {
+          "source_root must be an absolute bounded path"
+        }
+        require(entry.sourceRoot == entry.sourceRoot.normalize()) { "source_root must be normalized" }
+        require(entry.installedPath == entry.installedPath.normalize()) { "installed_path must be normalized" }
+        require(entry.cacheTargetPath == entry.cacheTargetPath.normalize()) { "cache_target_path must be normalized" }
+        val provider = skillbill.nativeagent.rendering.NativeAgentProvider.entries
+          .single { it.name.lowercase() == entry.provider }
+        val allowedDirs = provider.homeAgentDirs(home).map { it.toAbsolutePath().normalize() }
+        require(entry.installedPath.parent in allowedDirs) { "installed_path is outside provider directory" }
+        require(managedRoots.any { entry.cacheTargetPath.startsWith(it.toAbsolutePath().normalize()) }) {
+          "cache_target_path is outside a trusted managed cache root"
         }
       }
       entries
@@ -93,8 +128,11 @@ internal object NativeAgentLinkInventory {
             if (managedRoots.none { resolved.startsWith(it.toAbsolutePath().normalize()) }) return@mapNotNull null
             NativeAgentLinkInventoryEntry(
               link.fileName.toString().removeSuffix(".${provider.extension}"),
-              provider.name.lowercase(), link.toAbsolutePath().normalize(), resolved,
-              "0".repeat(DIGEST_HEX_LENGTH), home.resolve(".skill-bill/native-agents"),
+              provider.name.lowercase(),
+              link.toAbsolutePath().normalize(),
+              resolved,
+              "0".repeat(DIGEST_HEX_LENGTH),
+              home.resolve(".skill-bill/native-agents"),
             )
           }.toList()
         }
@@ -116,6 +154,8 @@ internal object NativeAgentLinkInventory {
     }
     val bytes = mapper.writerWithDefaultPrettyPrinter().writeValueAsBytes(root)
     require(bytes.size <= MAX_BYTES) { "native-agent link inventory exceeds $MAX_BYTES bytes" }
+    val schemaErrors = schema.validate(mapper.readTree(bytes))
+    require(schemaErrors.isEmpty()) { schemaErrors.joinToString("; ") { it.message } }
     val temporary = Files.createTempFile(path.parent, "${path.fileName}.", ".tmp")
     try {
       Files.write(temporary, bytes)
@@ -137,5 +177,6 @@ internal object NativeAgentLinkInventory {
 
   private const val MAX_BYTES = 1024 * 1024L
   private const val DIGEST_HEX_LENGTH = 64
+  private const val MAX_SOURCE_ROOT_LENGTH = 4096
   private val PROVIDERS = setOf("claude", "codex", "opencode", "junie", "zcode")
 }

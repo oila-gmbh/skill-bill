@@ -1,6 +1,7 @@
 package skillbill.install
 
 import org.junit.jupiter.api.Assumptions
+import skillbill.infrastructure.fs.FileSystemReviewNativeAgentPreflight
 import skillbill.install.model.AgentTarget
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.InstallAgentLinkStatus
@@ -12,8 +13,10 @@ import skillbill.install.nativeagent.InstallNativeAgentResult
 import skillbill.install.nativeagent.installNativeAgentFile
 import skillbill.install.runtime.InstallOperations
 import skillbill.install.support.createNewSymlinkWithGuidance
+import skillbill.model.EnvironmentContext
 import skillbill.nativeagent.rendering.NativeAgentOperations
 import skillbill.nativeagent.rendering.NativeAgentProvider
+import skillbill.ports.review.model.ReviewNativeAgentPreflightRequest
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.attribute.PosixFilePermission
@@ -24,6 +27,25 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class InstallNativeAgentLinkApplyTest : InstallApplyTestSupport() {
+  @Test
+  fun `preflight accepts the current installed-skills native-agent generation`() {
+    val fixture = setupApplyFixture()
+    Files.createDirectories(fixture.home.resolve(".codex"))
+    val plan = InstallOperations.planInstall(
+      fixture.request(selectedPlatforms = setOf("kotlin"), agents = setOf(InstallAgent.CODEX)),
+    )
+    val result = InstallOperations.applyInstall(plan)
+    assertEquals(InstallApplyStatus.SUCCESS, result.status)
+
+    FileSystemReviewNativeAgentPreflight(EnvironmentContext(userHome = fixture.home)).verify(
+      ReviewNativeAgentPreflightRequest(
+        repoRoot = fixture.repoRoot,
+        agentIds = listOf("codex"),
+        logicalNames = listOf("bill-code-review-worker"),
+      ),
+    )
+  }
+
   @Test
   fun `apply removes inventory-recorded dangling baseline orchestrator links`() {
     val fixture = setupApplyFixture()
