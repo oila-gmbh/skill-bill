@@ -22,13 +22,19 @@ object ReviewLaunchPlanPolicy {
     val candidates = mutableListOf<AreaCandidate>()
 
     @Suppress("ThrowsCount")
-    fun visit(pack: PlatformManifest, depth: Int, chain: List<String>, path: List<String>) {
+    fun visit(
+      pack: PlatformManifest,
+      depth: Int,
+      chain: List<String>,
+      path: List<String>,
+      requiredByComposition: Boolean,
+    ) {
       if (pack.slug in path) {
         val cycle = (path.dropWhile { it != pack.slug } + pack.slug).joinToString(" -> ")
         throw ReviewCompositionCycleError("Review composition contains a cycle: $cycle.")
       }
       pack.declaredCodeReviewAreas.filter { it in selectedAreas }.forEach { area ->
-        candidates += AreaCandidate(pack, area, depth, chain + pack.slug)
+        candidates += AreaCandidate(pack, area, depth, chain + pack.slug, requiredByComposition)
       }
       pack.codeReviewComposition?.baselineLayers.orEmpty().forEach { layer ->
         val target = bySlug[layer.platform]
@@ -46,11 +52,11 @@ object ReviewLaunchPlanPolicy {
             "Platform pack '${pack.slug}' references unavailable baseline skill '${layer.platform}/${layer.skill}'.",
           )
         }
-        visit(target, depth + 1, chain + pack.slug, path + pack.slug)
+        visit(target, depth + 1, chain + pack.slug, path + pack.slug, layer.required)
       }
     }
 
-    visit(root, 0, emptyList(), emptyList())
+    visit(root, 0, emptyList(), emptyList(), requiredByComposition = false)
     val winners = selectedAreas.sorted().mapNotNull { area ->
       val areaCandidates = candidates.filter { it.area == area }
       val nearestDepth = areaCandidates.minOfOrNull { it.depth } ?: return@mapNotNull null
@@ -67,6 +73,7 @@ object ReviewLaunchPlanPolicy {
       val ownerCandidates = areaCandidates.filter { it.pack.slug == ownerSlug }
       winner.copy(
         chains = ownerCandidates.flatMap { it.chains }.distinct(),
+        requiredByComposition = ownerCandidates.any { it.requiredByComposition },
       )
     }.sortedWith(compareBy<AreaCandidate>({ it.depth }, { it.pack.slug }, { it.area }))
 
@@ -83,7 +90,7 @@ object ReviewLaunchPlanPolicy {
           depth = winner.depth,
           originLayerChain = winner.chain,
           originLayerChains = winner.chains,
-          required = condition?.required == true,
+          required = winner.requiredByComposition || condition?.required == true,
           addOns = winner.pack.addonUsage.firstOrNull { it.skillRelativeDir == consumer }
             ?.addons.orEmpty().map { it.slug },
           orderIndex = index,
@@ -100,6 +107,7 @@ object ReviewLaunchPlanPolicy {
     val area: String,
     val depth: Int,
     val chain: List<String>,
+    val requiredByComposition: Boolean,
     val chains: List<List<String>> = listOf(chain),
   )
 }

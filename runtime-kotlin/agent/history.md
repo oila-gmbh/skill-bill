@@ -1,7 +1,7 @@
 ## [2026-07-22] SKILL-129 flattened layered review composition (subtask 3)
 Areas: runtime-kotlin/runtime-{application,cli,core,domain,infra-fs,ports}, platform-packs/{kotlin,kmp}, orchestration/review-orchestrator
 - Review launch planning recursively expands manifest-declared baseline layers into one ordered, duplicate-free specialist plan before worker preflight; KMP retains required Kotlin coverage without launching a nested Kotlin orchestrator.
-- Flattened ownership preserves every same-owner origin chain, required status across depths, selected add-ons, matched signals, deterministic ordering, and specialist attribution through merge/dedup output.
+- Flattened ownership preserves every same-owner origin chain, selected add-ons, matched signals, deterministic ordering, and specialist attribution; requiredness comes from the owning lane condition or its immediate composition edge and is not inherited by every descendant.
 - Pattern: resolve layered composition and ambiguous ownership once at the parent boundary, then give each worker only its bounded routed packet and projected rubric; downstream consumers do not rediscover scope, routing, learnings, or telemetry. reusable
 - Missing layers, cycles, incompatible contracts, ownership conflicts, empty assignments, and malformed finding locations fail at typed validation or parsing seams before unsafe launch/merge effects.
 - Kotlin/KMP, mixed-stack, cycle, renderer/snapshot, inline-rubric, isolation, interruption, timeout, failed-lane, provenance, and parser regressions lock the flattened behavior.
