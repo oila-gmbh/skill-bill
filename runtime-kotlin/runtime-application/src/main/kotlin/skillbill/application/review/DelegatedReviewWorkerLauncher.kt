@@ -86,7 +86,12 @@ class DelegatedReviewWorkerLauncher(
         ),
       )
       is AgentRunLaunchFacts -> {
-        val resultOutcome = prepared.evidenceBroker.validateLaneResult(outcome.stdout)
+        val streamedResultBytes = prepared.evidenceBroker.accounting().resultBytes
+        val resultOutcome = if (streamedResultBytes == 0L) {
+          prepared.evidenceBroker.validateLaneResult(outcome.stdout)
+        } else {
+          prepared.evidenceBroker.accounting().terminalOutcome
+        }
         val providerOutcome = providerUsage(outcome)?.let {
           prepared.evidenceBroker.evaluateProviderUsage(it, enforceable = outcome.providerUsageEnforceable)
         }

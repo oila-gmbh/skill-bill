@@ -20,6 +20,9 @@ import skillbill.workflow.model.GoalProgressOutcome
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.io.InputStream
+import java.nio.ByteBuffer
+import java.nio.CharBuffer
+import java.nio.charset.CodingErrorAction
 import java.nio.charset.StandardCharsets
 import java.time.Instant
 import java.time.ZoneOffset
@@ -770,23 +773,47 @@ private class CappedUtf8Drain(
       input.use { stream ->
         val buffer = ByteArray(DEFAULT_DRAIN_BUFFER_BYTES)
         var remaining = limitBytes
-        while (remaining == null || remaining > 0) {
-          val read = stream.read(buffer, 0, remaining?.coerceAtMost(buffer.size) ?: buffer.size)
+        val decoder = StandardCharsets.UTF_8.newDecoder()
+          .onMalformedInput(CodingErrorAction.REPLACE)
+          .onUnmappableCharacter(CodingErrorAction.REPLACE)
+        val carry = ByteBuffer.allocate(DEFAULT_DRAIN_BUFFER_BYTES + UTF8_MAX_BYTES_PER_CODE_POINT)
+        val decoded = CharBuffer.allocate(DEFAULT_DRAIN_BUFFER_BYTES)
+        while (true) {
+          val read = stream.read(buffer)
           if (read == -1) {
             break
           }
-          val chunk = String(buffer, 0, read, StandardCharsets.UTF_8)
-          onChunkRead(chunk)
-          output.write(buffer, 0, read)
-          outputSink.write(outputStream, chunk)
-          remaining = remaining?.minus(read)
+          carry.put(buffer, 0, read)
+          carry.flip()
+          decodeAvailable(decoded) { decoder.decode(carry, decoded, false) }
+          carry.compact()
+
+          val retained = remaining?.coerceAtMost(read) ?: read
+          if (retained > 0) {
+            output.write(buffer, 0, retained)
+            remaining = remaining?.minus(retained)
+          }
         }
-        while (stream.read(buffer) != -1) {
-          // Keep draining so the child cannot block on a full pipe after the cap is reached.
-        }
+        carry.flip()
+        decodeAvailable(decoded) { decoder.decode(carry, decoded, true) }
+        decodeAvailable(decoded) { decoder.flush(decoded) }
       }
     } catch (_: IOException) {
       // Forced process teardown can close pipes while drain threads are blocked in read().
+    }
+  }
+
+  private fun decodeAvailable(decoded: CharBuffer, decode: () -> java.nio.charset.CoderResult) {
+    while (true) {
+      val result = decode()
+      decoded.flip()
+      if (decoded.hasRemaining()) {
+        val chunk = decoded.toString()
+        onChunkRead(chunk)
+        outputSink.write(outputStream, chunk)
+      }
+      decoded.clear()
+      if (!result.isOverflow) return
     }
   }
 
@@ -824,6 +851,7 @@ private fun Instant.toIsoUtc(): String = DateTimeFormatter.ISO_OFFSET_DATE_TIME
   .format(atOffset(ZoneOffset.UTC))
 
 private const val DEFAULT_DRAIN_BUFFER_BYTES = 8192
+private const val UTF8_MAX_BYTES_PER_CODE_POINT = 4
 private const val INITIAL_OUTPUT_BUFFER_BYTES = DEFAULT_DRAIN_BUFFER_BYTES
 private const val DRAIN_JOIN_TIMEOUT_MILLIS = 1_000L
 private const val MIN_TIMEOUT_MILLIS = 1L
