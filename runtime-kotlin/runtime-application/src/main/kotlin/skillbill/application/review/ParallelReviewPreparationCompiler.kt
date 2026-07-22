@@ -59,7 +59,7 @@ internal object ParallelReviewPreparationCompiler {
     hunks: List<ReviewChangedHunk>,
   ): List<SpecialistRoute> {
     val selectedRubrics = input.lanes.mapNotNull { planned ->
-      val ownedPaths = ownedPathsFor(planned.rubric, hunks)
+      val ownedPaths = ownedPathsFor(planned.descriptor, hunks)
       val authoritativePaths = if (planned.descriptor.required) {
         hunks.map { it.path }.distinct().sorted()
       } else {
@@ -172,15 +172,17 @@ internal object ParallelReviewPreparationCompiler {
     }
   }
 
-  private fun ownedPathsFor(rubric: ReviewRubricProjection, hunks: List<ReviewChangedHunk>): List<String> {
-    val area = rubric.area ?: return hunks.map { it.path }.distinct().sorted()
-    if (area in REQUIRED_BASELINE_AREAS) return hunks.map { it.path }.distinct().sorted()
-    val signals = AREA_SIGNALS[area].orEmpty()
-    if (signals.isEmpty()) return emptyList()
+  private fun ownedPathsFor(descriptor: ReviewLaunchLane, hunks: List<ReviewChangedHunk>): List<String> {
     return hunks.filter { hunk ->
-      val searchable = "${hunk.path}\n${hunk.content}".lowercase()
-      signals.any(searchable::contains)
+      descriptor.pathSignals.any { pathSignal -> pathMatches(hunk.path, pathSignal) } ||
+        descriptor.contentSignals.any { hunk.content.contains(it, ignoreCase = true) }
     }.map { it.path }.distinct().sorted()
+  }
+
+  private fun pathMatches(path: String, signal: String): Boolean {
+    val normalized = signal.lowercase().removePrefix("*")
+    val candidate = path.lowercase()
+    return candidate.endsWith(normalized) || candidate.contains(normalized.trim('/'))
   }
 
   private fun digest(value: String): String = MessageDigest.getInstance("SHA-256")
@@ -266,17 +268,6 @@ internal object ParallelReviewPreparationCompiler {
   private const val SPECIALIST_CONTRACT =
     "Use only the assignment-owned evidence surface. Return only F-XXX risk-register lines."
   private val DIFF_GIT_PATH = Regex("^diff --git (?:a/\\S+|\"a/.+\") (?:b/|\"b/)(.+?)\"?$")
-  private val REQUIRED_BASELINE_AREAS = setOf("architecture", "platform-correctness")
-  private val AREA_SIGNALS = mapOf(
-    "performance" to listOf("performance", "allocation", "memory", "buffer", "bytes", "token", "batch", "blocking"),
-    "security" to listOf("auth", "secret", "unsafe", "forbidden", "path", "process", "network", "input"),
-    "testing" to listOf("test", "fixture", "assert", "mock", "fake"),
-    "api-contracts" to listOf("schema", "contract", "request", "response", "serialization", "version"),
-    "persistence" to listOf("database", "repository", "transaction", "migration", "checkpoint", "persist"),
-    "reliability" to listOf("retry", "timeout", "shutdown", "runner", "launch", "failure", "telemetry"),
-    "ui" to listOf("ui", "view", "compose", "render", "form", "navigation"),
-    "ux-accessibility" to listOf("accessibility", "semantic", "focus", "keyboard", "localization", "label"),
-  )
 }
 
 private data class SelectedRubric(val planned: PlannedReviewRubric, val ownedPaths: List<String>)

@@ -126,6 +126,30 @@ properties:
         description: >
           Optional prose tie-breakers consulted when multiple packs report a
           strong signal.
+      path:
+        type: array
+        minItems: 1
+        uniqueItems: true
+        items: { type: string, minLength: 1 }
+      content:
+        type: array
+        uniqueItems: true
+        items: { type: string, minLength: 1 }
+  lane_conditions:
+    type: object
+    x-runtime-anchored: true
+    additionalProperties:
+      type: object
+      additionalProperties: false
+      properties:
+        required: { type: boolean }
+        path: { type: array, minItems: 1, uniqueItems: true, items: { type: string, minLength: 1 } }
+        content: { type: array, minItems: 1, uniqueItems: true, items: { type: string, minLength: 1 } }
+      anyOf:
+        - properties: { required: { const: true } }
+          required: [required]
+        - required: [path]
+        - required: [content]
   declared_code_review_areas:
     type: array
     uniqueItems: true
@@ -311,17 +335,25 @@ properties:
             type: object
             additionalProperties: false
             properties:
-              any: { type: array, minItems: 1, uniqueItems: true, items: { type: string, minLength: 1 } }
-              all: { type: array, minItems: 1, uniqueItems: true, items: { type: string, minLength: 1 } }
-              any_of_all:
+              any_path: { type: array, minItems: 1, uniqueItems: true, items: { type: string, minLength: 1 } }
+              any_content: { type: array, minItems: 1, uniqueItems: true, items: { type: string, minLength: 1 } }
+              all_content: { type: array, minItems: 1, uniqueItems: true, items: { type: string, minLength: 1 } }
+              any_of_all_content:
                 type: array
                 minItems: 1
                 items: { type: array, minItems: 1, uniqueItems: true, items: { type: string, minLength: 1 } }
-              exclude: { type: array, uniqueItems: true, items: { type: string, minLength: 1 } }
+              exclude_path: { type: array, uniqueItems: true, items: { type: string, minLength: 1 } }
+              exclude_content: { type: array, uniqueItems: true, items: { type: string, minLength: 1 } }
             anyOf:
-              - required: [any]
-              - required: [all]
-              - required: [any_of_all]
+              - required: [any_path]
+              - required: [any_content]
+              - required: [all_content]
+              - required: [any_of_all_content]
+          specialist_areas:
+            type: array
+            minItems: 1
+            uniqueItems: true
+            items: { $ref: "#/$defs/codeReviewArea" }
     description: >
       Optional mapping of skill-relative directory to governed add-on selections. Each entry
       references generated pointer filenames declared under `pointers` for the same skill

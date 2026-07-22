@@ -62,6 +62,25 @@ class FeatureTaskRuntimeWorkerCoordinatorTest {
   }
 
   @Test
+  fun `expired ownership mismatch is reclaimed without terminating an unrelated process`() {
+    val repository = InMemoryRuntimeWorkflowRepository()
+    repository.seedWorkerOwnership(ownership(expiresAt = "2000-01-01T00:00:30Z"))
+    val supervisor = FakeWorkerSupervisor(
+      FeatureTaskRuntimeProcessInspection.OwnershipMismatch("Worker ownership belongs to a different host."),
+    )
+    val coordinator = FeatureTaskRuntimeWorkerCoordinator(RuntimeFakeDatabaseSessionFactory(repository), supervisor)
+
+    coordinator.runOwned(WORKFLOW_ID, null) {
+      val replacement = requireNotNull(repository.getFeatureTaskRuntimeWorkerOwnership(WORKFLOW_ID))
+      assertEquals(2, replacement.generation)
+      assertNotEquals("old-owner-token-0001", replacement.ownerToken)
+    }
+
+    assertEquals(false, supervisor.gracefulTerminationRequested)
+    assertEquals(false, supervisor.forceTerminationRequested)
+  }
+
+  @Test
   fun `concurrent recovery contention permits only one lease transfer`() {
     val repository = InMemoryRuntimeWorkflowRepository()
     val stale = ownership()
@@ -106,7 +125,7 @@ private class FakeWorkerSupervisor(
   override fun pause(durationMillis: Long) = Unit
 }
 
-private fun ownership() = FeatureTaskRuntimeWorkerOwnership(
+private fun ownership(expiresAt: String = "2999-01-01T00:00:30Z") = FeatureTaskRuntimeWorkerOwnership(
   workflowId = WORKFLOW_ID,
   generation = 1,
   ownerToken = "old-owner-token-0001",
@@ -116,7 +135,7 @@ private fun ownership() = FeatureTaskRuntimeWorkerOwnership(
   processBirthToken = "birth-100",
   leaseState = FeatureTaskRuntimeWorkerLeaseState.ACTIVE,
   heartbeatAt = "2026-07-14T10:00:00Z",
-  expiresAt = "2026-07-14T10:00:30Z",
+  expiresAt = expiresAt,
   phaseId = "implement",
   phaseAttempt = 1,
 )

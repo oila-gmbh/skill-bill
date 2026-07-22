@@ -19,6 +19,8 @@ routing_signals:
     - "Prefer Go when module/workspace metadata, Go source files, or Go test files dominate the changed product surface."
     - "Do not prefer Go for adjacent mixed repositories where Go appears only as generated clients, tooling, one-off scripts, or vendored dependencies around another dominant stack."
     - "Exclude vendor directories, generated protobuf/OpenAPI clients, build outputs, and generated mocks from dominance scoring unless the generator or generated contract is intentionally changed."
+  path: ["go.mod", "go.work", ".go", "*.go"]
+  content: ["package ", "func ", "go routine", "context.Context"]
 
 declared_code_review_areas:
   - api-contracts
@@ -66,6 +68,18 @@ area_metadata:
     focus: "Go-owned HTML templates and components, forms, htmx fragment ownership, repository-defined view states, interactive CLI and TUI output"
   ux-accessibility:
     focus: "Accessible names, error association, conditional focus restoration, keyboard flow, semantics, live feedback, localization, and terminal interaction"
+
+lane_conditions:
+  architecture: { required: true }
+  platform-correctness: { required: true }
+  performance: { content: ["benchmark", "pprof", "allocation", "mutex"] }
+  security: { content: ["oauth", "authorization", "secret", "tls"] }
+  testing: { path: ["_test.go"] }
+  api-contracts: { content: ["http.Handler", "json", "protobuf", "grpc"] }
+  persistence: { content: ["database/sql", "transaction", "query"] }
+  reliability: { content: ["retry", "deadline", "shutdown", "queue"] }
+  ui: { content: ["template", "htmx", "tui", "form"] }
+  ux-accessibility: { content: ["aria-", "focus", "keyboard", "localization"] }
 
 declared_quality_check_file: quality-check/bill-go-code-check/content.md
 

@@ -64,6 +64,9 @@ class ReviewContextSchemaValidatorTest {
         "auth surface changed",
         signals = listOf("auth"),
         ownedPaths = listOf("src/A.kt", "src/B.kt"),
+        originLayerChains = listOf(listOf("kotlin")),
+        owningPack = "kotlin",
+        specialistSkillName = "bill-kotlin-code-review-security",
       ),
       ReviewLaneDecision("ui", false, "no UI files changed"),
     ),
@@ -136,6 +139,26 @@ class ReviewContextSchemaValidatorTest {
       mapOf("lane" to "security", "included" to true, "reason" to "", "signals" to emptyList<String>()),
     )
     assertFailsWith<InvalidReviewContextSchemaError> { ReviewContextSchemaValidator.validate(envelope, "packet") }
+  }
+
+  @Test fun `included lane decisions require composition attribution and specialist ownership`() {
+    val valid = packet.toParentPacketEnvelope().asWireMap()
+    val baseDecision = ((valid.getValue("lane_decisions") as List<*>)
+      .map { it as Map<*, *> }
+      .single { it["included"] == true })
+      .entries.associate { (key, value) -> key as String to value }
+    listOf("origin_layer_chains", "owning_pack", "specialist_skill_name").forEach { omitted ->
+      val envelope = valid.toMutableMap()
+      envelope["lane_decisions"] = listOf(baseDecision - omitted)
+      assertFailsWith<InvalidReviewContextSchemaError> {
+        ReviewContextSchemaValidator.validate(envelope, "packet")
+      }
+    }
+    val envelope = valid.toMutableMap()
+    envelope["lane_decisions"] = listOf(baseDecision + ("origin_layer_chains" to emptyList<List<String>>()))
+    assertFailsWith<InvalidReviewContextSchemaError> {
+      ReviewContextSchemaValidator.validate(envelope, "packet")
+    }
   }
 
   @Test fun `blank expansion reachability reasons are rejected`() {
@@ -250,7 +273,15 @@ class ReviewContextSchemaValidatorTest {
       listOf(ReviewBuildTestFact("test", "gradle test", "passed"))
 
     override fun decideLanes(scope: ReviewScopeFacts, routing: ReviewStackRoutingFacts) = listOf(
-      ReviewLaneDecision("security", true, "auth surface changed", ownedPaths = listOf("src/A.kt")),
+      ReviewLaneDecision(
+        "security",
+        true,
+        "auth surface changed",
+        ownedPaths = listOf("src/A.kt"),
+        originLayerChains = listOf(listOf("kotlin")),
+        owningPack = "kotlin",
+        specialistSkillName = "bill-kotlin-code-review-security",
+      ),
       ReviewLaneDecision("ui", false, "no UI files changed"),
     )
   }

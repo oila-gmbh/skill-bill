@@ -18,6 +18,8 @@ routing_signals:
     - "Prefer Rust when Cargo workspace or package metadata and first-party Rust source files dominate the changed product surface."
     - "Do not prefer Rust where it appears only as FFI bindings, wasm build tooling or artifacts, generated code, or vendored crates around another dominant stack."
     - "Exclude target/ build output and vendored dependency trees from dominance scoring."
+  path: ["Cargo.toml", ".rs", "*.rs", "build.rs"]
+  content: ["fn ", "impl ", "trait ", "use "]
 
 declared_code_review_areas:
   - api-contracts
@@ -65,6 +67,18 @@ area_metadata:
     focus: "Rust wasm, server-rendered, desktop GUI, terminal UI, and interactive output"
   ux-accessibility:
     focus: "Rust UI semantics, keyboard and focus behavior, feedback, localization, and assistive access"
+
+lane_conditions:
+  architecture: { required: true }
+  platform-correctness: { required: true }
+  performance: { content: ["alloc", "clone", "mutex", "stream"] }
+  security: { content: ["unsafe", "secret", "authorize", "deserialize"] }
+  testing: { content: ["#[test]", "proptest", "criterion"] }
+  api-contracts: { content: ["serde", "ffi", "request", "response"] }
+  persistence: { content: ["transaction", "sqlx", "diesel", "migration"] }
+  reliability: { content: ["retry", "timeout", "shutdown", "backpressure"] }
+  ui: { content: ["wasm", "egui", "tui", "render"] }
+  ux-accessibility: { content: ["aria-", "focus", "keyboard", "localization"] }
 
 declared_quality_check_file: quality-check/bill-rust-code-check/content.md
 

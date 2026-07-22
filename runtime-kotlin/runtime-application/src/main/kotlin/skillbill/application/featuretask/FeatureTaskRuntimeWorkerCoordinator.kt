@@ -52,8 +52,10 @@ class FeatureTaskRuntimeWorkerCoordinator(
     when (val inspection = supervisor.inspect(existing)) {
       FeatureTaskRuntimeProcessInspection.ExactLive -> stopExactWorker(existing)
       FeatureTaskRuntimeProcessInspection.NotRunning -> Unit
-      is FeatureTaskRuntimeProcessInspection.OwnershipMismatch -> error(inspection.reason)
-      is FeatureTaskRuntimeProcessInspection.Unsupported -> error(inspection.reason)
+      is FeatureTaskRuntimeProcessInspection.OwnershipMismatch ->
+        if (leaseIsActive(existing)) error(inspection.reason)
+      is FeatureTaskRuntimeProcessInspection.Unsupported ->
+        if (leaseIsActive(existing)) error(inspection.reason)
     }
     val reserved = database.transaction(dbOverride) {
       it.workflowStates.reserveFeatureTaskRuntimeWorkerTakeover(
@@ -75,6 +77,9 @@ class FeatureTaskRuntimeWorkerCoordinator(
     if (!transferred) error("Worker takeover fencing changed for workflow '${existing.workflowId}'.")
     return replacement
   }
+
+  private fun leaseIsActive(ownership: FeatureTaskRuntimeWorkerOwnership): Boolean =
+    Instant.parse(ownership.expiresAt).isAfter(Instant.now())
 
   private fun stopExactWorker(existing: FeatureTaskRuntimeWorkerOwnership) {
     supervisor.terminateGracefully(existing)

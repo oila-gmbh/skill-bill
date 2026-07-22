@@ -32,7 +32,7 @@ private const val MANIFEST_TEMP_SUFFIX = ".platform.yaml.tmp"
 private val POINTER_NAME_PATTERN = Regex("^[^/\\\\]+\\.md$")
 private val ADDON_SLUG_PATTERN = Regex("^[a-z][a-z0-9]*(?:-[a-z0-9]+)*\$")
 private val POINTER_ENTRY_KEYS = setOf("name", "target")
-private val ADDON_ENTRY_KEYS = setOf("slug", "entrypoint", "companion_pointers")
+private val ADDON_ENTRY_KEYS = setOf("slug", "entrypoint", "companion_pointers", "activation", "specialist_areas")
 
 @Inject
 class FileSystemExternalAddonOverlay : ExternalAddonOverlayPort {
@@ -98,6 +98,8 @@ class FileSystemExternalAddonOverlay : ExternalAddonOverlayPort {
         packRoot = installed.packRoot,
         pointers = fragmentPointers,
         declaredSkillDirs = installed.declaredSkillRelativeDirs(),
+        declaredAreas = installed.declaredCodeReviewAreas.toSet(),
+        strictReviewRouting = installed.laneConditions.isNotEmpty(),
       )
     }
 
@@ -320,7 +322,7 @@ class FileSystemExternalAddonOverlay : ExternalAddonOverlayPort {
           slug,
           "addon_usage[$dir][$index]",
           extra,
-          "slug, entrypoint, and companion_pointers",
+          "slug, entrypoint, companion_pointers, activation, and specialist_areas",
         ),
       )
     }

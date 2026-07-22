@@ -6,7 +6,21 @@ import java.nio.file.Path
 data class RoutingSignals(
   val strong: List<String>,
   val tieBreakers: List<String>,
+  val path: List<String> = strong,
+  val content: List<String> = emptyList(),
 )
+
+data class ReviewLaneCondition(
+  val required: Boolean = false,
+  val path: List<String> = emptyList(),
+  val content: List<String> = emptyList(),
+) {
+  init {
+    require(required || path.isNotEmpty() || content.isNotEmpty()) {
+      "An optional review lane condition must declare path or content signals."
+    }
+  }
+}
 
 data class DeclaredFiles(
   /**
@@ -72,19 +86,23 @@ data class GovernedAddonSelection(
   val entrypoint: String,
   val companionPointers: List<String> = emptyList(),
   val activation: GovernedAddonActivation? = null,
+  val specialistAreas: List<String> = emptyList(),
 )
 
 data class GovernedAddonActivation(
-  val any: List<String> = emptyList(),
-  val all: List<String> = emptyList(),
-  val anyOfAll: List<List<String>> = emptyList(),
-  val exclude: List<String> = emptyList(),
+  val anyPath: List<String> = emptyList(),
+  val anyContent: List<String> = emptyList(),
+  val allContent: List<String> = emptyList(),
+  val anyOfAllContent: List<List<String>> = emptyList(),
+  val excludePath: List<String> = emptyList(),
+  val excludeContent: List<String> = emptyList(),
 ) {
   init {
-    require(any.isNotEmpty() || all.isNotEmpty() || anyOfAll.isNotEmpty()) {
+    require(anyPath.isNotEmpty() || anyContent.isNotEmpty() || allContent.isNotEmpty() || anyOfAllContent.isNotEmpty()) {
       "Add-on activation must declare any, all, or any_of_all signals."
     }
-    require((any + all + anyOfAll.flatten() + exclude).all(String::isNotBlank)) {
+    require((anyPath + anyContent + allContent + anyOfAllContent.flatten() + excludePath + excludeContent)
+      .all(String::isNotBlank)) {
       "Add-on activation signals must not be blank."
     }
   }
@@ -98,6 +116,7 @@ data class PlatformManifest(
   val declaredCodeReviewAreas: List<String>,
   val declaredFiles: DeclaredFiles,
   val areaMetadata: Map<String, String>,
+  val laneConditions: Map<String, ReviewLaneCondition> = emptyMap(),
   val displayName: String? = null,
   val notes: String? = null,
   val declaredQualityCheckFile: Path? = null,

@@ -10,6 +10,8 @@ data class ReviewLaunchLane(
   val addOns: List<String>,
   val orderIndex: Int,
   val inclusionReason: String,
+  val pathSignals: List<String> = emptyList(),
+  val contentSignals: List<String> = emptyList(),
 ) {
   init {
     require(originLayerChain.isNotEmpty()) { "A review launch lane must retain its composition attribution." }

@@ -171,7 +171,15 @@ class ReviewOperationPolicyTest {
     assignedPaths = listOf("src/Assigned.kt"),
     assignedHunks = emptyList(),
     reviewRevision = ReviewRevision("rvs-1", 1),
-    laneDecision = ReviewLaneDecision("security", true, "routed", ownedPaths = listOf("src/Assigned.kt")),
+    laneDecision = ReviewLaneDecision(
+      "security",
+      true,
+      "routed",
+      ownedPaths = listOf("src/Assigned.kt"),
+      originLayerChains = listOf(listOf("kotlin")),
+      owningPack = "kotlin",
+      specialistSkillName = "bill-kotlin-code-review-security",
+    ),
     dependencyAllowlist = ReviewDependencyAllowlist(listOf("src/Dependency.kt")),
   )
 }

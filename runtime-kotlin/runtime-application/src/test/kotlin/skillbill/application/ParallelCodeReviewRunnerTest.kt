@@ -48,6 +48,7 @@ import skillbill.scaffold.model.BaselineReviewCatalog
 import skillbill.scaffold.model.DeclaredFiles
 import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.model.RoutingSignals
+import skillbill.scaffold.model.ReviewLaneCondition
 import skillbill.workflow.model.CodeReviewExecutionMode
 import java.nio.file.Files
 import java.nio.file.Path
@@ -818,9 +819,16 @@ private fun platformManifest(slug: String, strongSignals: List<String>) = Platfo
   packRoot = Path.of("platform-packs/$slug"),
   contractVersion = "1.2",
   routingSignals = RoutingSignals(strong = strongSignals, tieBreakers = emptyList()),
-  declaredCodeReviewAreas = emptyList(),
-  declaredFiles = DeclaredFiles(baseline = Path.of("content.md"), areas = emptyMap()),
+  declaredCodeReviewAreas = listOf("architecture", "testing"),
+  declaredFiles = DeclaredFiles(
+    baseline = Path.of("content.md"),
+    areas = mapOf("architecture" to Path.of("architecture.md"), "testing" to Path.of("testing.md")),
+  ),
   areaMetadata = emptyMap(),
+  laneConditions = mapOf(
+    "architecture" to ReviewLaneCondition(required = true),
+    "testing" to ReviewLaneCondition(path = listOf("Test.kt")),
+  ),
 )
 
 private fun diffFor(path: String): String = "+++ b/$path"

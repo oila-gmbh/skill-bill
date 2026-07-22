@@ -44,12 +44,12 @@ subtasks:
 - id: 3
   name: "Flatten layered review composition"
   spec_path: ".feature-specs/SKILL-129-super-optimized-code-review/spec_subtask_3_flatten_review_layers.md"
-  status: "pending"
+  status: "in_progress"
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260721-214842-pymc"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "implement"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []

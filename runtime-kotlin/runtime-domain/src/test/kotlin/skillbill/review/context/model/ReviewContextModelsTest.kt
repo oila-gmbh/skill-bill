@@ -11,7 +11,15 @@ import kotlin.test.assertTrue
 
 class ReviewContextModelsTest {
   private fun lane(name: String, paths: List<String>, reason: String = "routed") =
-    ReviewLaneDecision(name, true, reason, ownedPaths = paths)
+    ReviewLaneDecision(
+      name,
+      true,
+      reason,
+      ownedPaths = paths,
+      originLayerChains = listOf(listOf("kotlin")),
+      owningPack = "kotlin",
+      specialistSkillName = "bill-kotlin-code-review-$name",
+    )
 
   private fun revision(session: String = "review", run: Int = 1) = ReviewRevision(session, run)
 

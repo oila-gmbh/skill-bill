@@ -74,17 +74,20 @@ object ReviewLaunchPlanPolicy {
       lanes = winners.mapIndexed { index, winner ->
         val skillName = "bill-${winner.pack.slug}-code-review-${winner.area}"
         val consumer = "code-review/$skillName"
+        val condition = winner.pack.laneConditions[winner.area]
         ReviewLaunchLane(
           skillName = skillName,
           packSlug = winner.pack.slug,
           area = winner.area,
           depth = winner.depth,
           originLayerChain = winner.chain,
-          required = winner.required,
+          required = winner.required || condition?.required == true,
           addOns = winner.pack.addonUsage.firstOrNull { it.skillRelativeDir == consumer }
             ?.addons.orEmpty().map { it.slug },
           orderIndex = index,
           inclusionReason = if (winner.depth == 0) "routed-pack override" else "required baseline layer",
+          pathSignals = condition?.path.orEmpty(),
+          contentSignals = condition?.content.orEmpty(),
         )
       },
     )

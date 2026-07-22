@@ -23,6 +23,15 @@ import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
 class ReviewPacketProjectionTest {
+  private fun includedDecision(lane: String, paths: List<String>) = ReviewLaneDecision(
+    lane,
+    true,
+    "routed",
+    ownedPaths = paths,
+    originLayerChains = listOf(listOf("kotlin")),
+    owningPack = "kotlin",
+    specialistSkillName = "bill-kotlin-code-review-$lane",
+  )
   private val hunkA = ReviewChangedHunk("src/A.kt", 1, 1, 1, 2, "+alpha")
   private val hunkB = ReviewChangedHunk("src/B.kt", 4, 1, 4, 1, "+beta")
   private val rule = ReviewRuleReference(
@@ -38,7 +47,7 @@ class ReviewPacketProjectionTest {
     hunks: List<ReviewChangedHunk> = listOf(hunkA, hunkB),
     lanes: List<String> = listOf("security", "testing"),
     decisions: List<ReviewLaneDecision> = lanes.map { lane ->
-      ReviewLaneDecision(lane, true, "routed", ownedPaths = hunks.map { it.path }.distinct())
+      includedDecision(lane, hunks.map { it.path }.distinct())
     },
     allowlist: ReviewDependencyAllowlist = ReviewDependencyAllowlist(listOf("src/Dep.kt")),
   ) = ReviewContextPacket(
@@ -94,12 +103,12 @@ class ReviewPacketProjectionTest {
 
   @Test fun `lane decisions must cover exactly the selected lanes`() {
     assertFailsWith<IllegalArgumentException> {
-      packet(decisions = listOf(ReviewLaneDecision("security", true, "routed", ownedPaths = listOf("src/A.kt"))))
+      packet(decisions = listOf(includedDecision("security", listOf("src/A.kt"))))
     }
     val withExclusion = packet(
       lanes = listOf("security"),
       decisions = listOf(
-        ReviewLaneDecision("security", true, "routed", ownedPaths = listOf("src/A.kt")),
+        includedDecision("security", listOf("src/A.kt")),
         ReviewLaneDecision("testing", false, "no test files changed"),
       ),
     )
@@ -142,7 +151,7 @@ class ReviewPacketProjectionTest {
         assignedPaths = listOf("src/A.kt"),
         assignedHunks = listOf(hunkA.hunkId),
         reviewRevision = revision,
-        laneDecision = ReviewLaneDecision("security", true, "routed", ownedPaths = listOf("src/A.kt")),
+        laneDecision = includedDecision("security", listOf("src/A.kt")),
         dependencyAllowlist = ReviewDependencyAllowlist(listOf("src/A.kt")),
       )
     }
@@ -161,12 +170,7 @@ class ReviewPacketProjectionTest {
       matchedRules = listOf(rule),
       evidenceTargets = base.evidenceTargets,
       reviewRevision = revision,
-      laneDecision = ReviewLaneDecision(
-        "security",
-        true,
-        "routed",
-        ownedPaths = listOf("src/A.kt", "src/B.kt"),
-      ),
+      laneDecision = includedDecision("security", listOf("src/A.kt", "src/B.kt")),
       dependencyAllowlist = base.dependencyAllowlist,
     )
     val envelope = assignment.toAssignmentEnvelope().asWireMap()

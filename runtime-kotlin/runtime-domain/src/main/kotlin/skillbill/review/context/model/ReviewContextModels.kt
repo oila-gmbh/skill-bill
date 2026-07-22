@@ -128,7 +128,8 @@ data class ReviewLaneDecision(
       "Lane decision origin chains must be unique."
     }
     require(addOns.distinct().size == addOns.size) { "Lane decision add-ons must be unique." }
-    if (included && originLayerChains.isNotEmpty()) {
+    if (included) {
+      require(originLayerChains.isNotEmpty()) { "Included lane '$lane' must declare an origin chain." }
       require(!owningPack.isNullOrBlank()) { "Included lane '$lane' must declare its owning pack." }
       require(!specialistSkillName.isNullOrBlank()) { "Included lane '$lane' must declare its specialist skill." }
     }

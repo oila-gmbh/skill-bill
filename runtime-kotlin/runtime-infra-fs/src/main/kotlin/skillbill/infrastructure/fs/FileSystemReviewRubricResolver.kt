@@ -53,21 +53,20 @@ class FileSystemReviewRubricResolver : ReviewRubricResolver {
     val exact = manifest.addonUsage.firstOrNull { it.skillRelativeDir == consumer }?.addons.orEmpty()
     val baseline = manifest.routedSkillName?.let { baselineName ->
       manifest.addonUsage.firstOrNull { it.skillRelativeDir == "code-review/$baselineName" }?.addons.orEmpty()
-    }.orEmpty().filter { applicableToArea(it.slug, specialist.area) }
+    }.orEmpty().filter { specialist.area in it.specialistAreas }
     val selections = (exact + baseline).distinctBy { it.slug }
-    val normalizedDiff = diff.lowercase()
-    val commonMainOnly = normalizedDiff.contains("/commonmain/") &&
-      !normalizedDiff.contains("/androidmain/") && !normalizedDiff.contains("androidmanifest.xml")
+    val evidence = activationEvidence(diff)
     val selected = selections.filter { selection ->
-      val entrypoint = resolveAddonFile(manifest, selection.entrypoint)
-      val entryBody = readBounded(entrypoint)
-      !commonMainOnly && selection.activation?.let { condition ->
-        condition.exclude.none(normalizedDiff::contains) &&
-          condition.all.all(normalizedDiff::contains) &&
-          (condition.any.any(normalizedDiff::contains) ||
-            condition.anyOfAll.any { group -> group.all(normalizedDiff::contains) } ||
-            (condition.any.isEmpty() && condition.anyOfAll.isEmpty()))
-      } ?: activationTerms(entryBody, selection.slug).any(normalizedDiff::contains)
+      val condition = requireNotNull(selection.activation) {
+        "Governed review add-on '${selection.slug}' has no structured activation."
+      }
+      condition.excludePath.none { signal -> evidence.paths.any { matchesPath(it, signal) } } &&
+        condition.excludeContent.none(evidence.content::contains) &&
+        condition.allContent.all(evidence.content::contains) &&
+        (condition.anyPath.any { signal -> evidence.paths.any { matchesPath(it, signal) } } ||
+          condition.anyContent.any(evidence.content::contains) ||
+          condition.anyOfAllContent.any { group -> group.all(evidence.content::contains) } ||
+          (condition.anyPath.isEmpty() && condition.anyContent.isEmpty() && condition.anyOfAllContent.isEmpty()))
     }
     if (selected.isEmpty()) return specialist
     val guidance = selected.joinToString("\n\n") { selection ->
@@ -103,29 +102,25 @@ class FileSystemReviewRubricResolver : ReviewRubricResolver {
     }
   }
 
-  private fun activationTerms(body: String, slug: String): Set<String> {
-    val activation = body.substringAfter("## Activation signals", "")
-      .substringBefore("\n## ")
-      .lowercase()
-    return (TOKEN.findAll(activation).map { it.value } + slug.split('-').asSequence())
-      .filter { it.length >= MIN_ACTIVATION_TERM_LENGTH && it !in STOP_WORDS }
-      .toSet()
+  private fun activationEvidence(diff: String): ActivationEvidence {
+    val paths = Regex("""(?m)^\+\+\+ b/(.+)$""").findAll(diff).map { it.groupValues[1].lowercase() }.toList()
+    val content = diff.lineSequence()
+      .filter { (it.startsWith("+") || it.startsWith("-")) && !it.startsWith("+++") && !it.startsWith("---") }
+      .joinToString("\n").lowercase()
+    return ActivationEvidence(paths, content)
   }
 
-  private fun applicableToArea(slug: String, area: String?): Boolean = when {
-    slug == "android-r8" -> area == "platform-correctness"
-    slug.startsWith("android-") -> area == "ui"
-    slug == "offline-first" -> area in setOf("persistence", "reliability", "platform-correctness")
-    else -> false
+  private fun matchesPath(path: String, signal: String): Boolean {
+    val normalized = signal.lowercase().removePrefix("*")
+    return if ('/' in normalized) path.contains(normalized.trim('/')) else path.endsWith(normalized) || path.contains(normalized)
   }
+
+  private data class ActivationEvidence(val paths: List<String>, val content: String)
 
   private companion object {
     const val MAX_RUBRIC_BYTES = 256 * 1024L
     const val MAX_ADDON_FILE_BYTES = 128 * 1024L
     const val MAX_ADDON_BYTES = 256 * 1024L
-    const val MIN_ACTIVATION_TERM_LENGTH = 5
-    val TOKEN = Regex("[a-z][a-z0-9_-]{4,}")
-    val STOP_WORDS = setOf("select", "scoped", "includes", "contains", "changes", "review", "android")
     const val GENERIC_RUBRIC_ID = "parallel-code-review"
     const val GENERIC_RUBRIC =
       "Find concrete correctness, security, reliability, performance, and test gaps in the assigned change."

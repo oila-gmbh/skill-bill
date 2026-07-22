@@ -357,6 +357,9 @@ class FileSystemReviewEvidenceBrokerTest {
       true,
       "routed",
       ownedPaths = paths.ifEmpty { listOf("A.kt") },
+      originLayerChains = listOf(listOf("kotlin")),
+      owningPack = "kotlin",
+      specialistSkillName = "bill-kotlin-code-review-security",
     ),
     dependencyAllowlist = ReviewDependencyAllowlist(dependencies),
   )

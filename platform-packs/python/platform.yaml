@@ -19,6 +19,8 @@ routing_signals:
     - "Prefer Python when pyproject metadata, dependency lockfiles, or first-party .py source files dominate the changed product surface."
     - "Do not prefer Python for mixed repositories where Python appears only as tooling, one-off scripts, generated clients, or CI glue around another dominant stack."
     - "Exclude virtual environments, site-packages, build and dist outputs, generated protobuf or OpenAPI clients, and vendored dependency trees from dominance scoring."
+  path: ["pyproject.toml", ".py", "*.py"]
+  content: ["def ", "class ", "async def", "import "]
 
 declared_code_review_areas:
   - api-contracts
@@ -66,6 +68,18 @@ area_metadata:
     focus: "Python-owned admin, templates, notebooks, reports, dashboards, forms, state, and desktop rendering"
   ux-accessibility:
     focus: "Python-owned semantics, forms, focus and keyboard flow, feedback, localization, notebooks, and reports"
+
+lane_conditions:
+  architecture: { required: true }
+  platform-correctness: { required: true }
+  performance: { content: ["asyncio", "executor", "memory", "queryset"] }
+  security: { content: ["authorize", "subprocess", "yaml.load", "secret"] }
+  testing: { path: ["test_", "_test.py"] }
+  api-contracts: { content: ["pydantic", "request", "response", "schema"] }
+  persistence: { content: ["transaction", "session", "migration", "database"] }
+  reliability: { content: ["retry", "timeout", "queue", "shutdown"] }
+  ui: { content: ["template", "dashboard", "widget", "form"] }
+  ux-accessibility: { content: ["aria-", "focus", "keyboard", "localization"] }
 
 declared_quality_check_file: quality-check/bill-python-code-check/content.md
 

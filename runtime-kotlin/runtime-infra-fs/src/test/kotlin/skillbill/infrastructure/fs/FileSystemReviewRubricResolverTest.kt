@@ -71,7 +71,13 @@ class FileSystemReviewRubricResolverTest {
       addonUsage = listOf(
         GovernedAddonUsage(
           "code-review/bill-kotlin-code-review-ui",
-          listOf(GovernedAddonSelection("android-compose", "android-compose-review.md")),
+          listOf(
+            GovernedAddonSelection(
+              "android-compose",
+              "android-compose-review.md",
+              activation = GovernedAddonActivation(anyContent = listOf("@composable")),
+            ),
+          ),
         ),
       ),
     )
@@ -102,7 +108,16 @@ class FileSystemReviewRubricResolverTest {
       addonUsage = listOf(
         GovernedAddonUsage(
           "code-review/bill-kotlin-code-review-ui",
-          listOf(GovernedAddonSelection("android-compose", "android-compose-review.md")),
+          listOf(
+            GovernedAddonSelection(
+              "android-compose",
+              "android-compose-review.md",
+              activation = GovernedAddonActivation(
+                anyContent = listOf("@composable"),
+                excludePath = listOf("/commonMain/"),
+              ),
+            ),
+          ),
         ),
       ),
     )
@@ -136,7 +151,8 @@ class FileSystemReviewRubricResolverTest {
             GovernedAddonSelection(
               "android-r8",
               "android-r8-review.md",
-              activation = GovernedAddonActivation(any = listOf("proguard-rules.pro")),
+              activation = GovernedAddonActivation(anyPath = listOf("proguard-rules.pro")),
+              specialistAreas = listOf("platform-correctness"),
             ),
           ),
         ),
@@ -172,7 +188,7 @@ class FileSystemReviewRubricResolverTest {
             GovernedAddonSelection(
               "offline-first",
               "offline-first-review.md",
-              activation = GovernedAddonActivation(anyOfAll = listOf(listOf("sqlite", "sync"))),
+              activation = GovernedAddonActivation(anyOfAllContent = listOf(listOf("sqlite", "sync"))),
             ),
           ),
         ),

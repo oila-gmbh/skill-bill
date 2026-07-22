@@ -20,6 +20,8 @@ routing_signals:
     - "If KMP or Android markers dominate, prefer this pack over generic Kotlin."
     - "Do not prefer this pack when adjacent Kotlin or Android signals dominate without multiplatform source sets."
     - "Exclude generated and vendored files when deciding routing dominance."
+  path: [".kt", "*.kt", ".kts", "*.kts", "AndroidManifest.xml", "androidMain", "iosMain", "commonMain"]
+  content: ['kotlin("multiplatform")', "org.jetbrains.kotlin.multiplatform", "expect", "actual"]
 
 declared_code_review_areas:
   - platform-correctness
@@ -43,6 +45,15 @@ area_metadata:
   ux-accessibility:
     focus: "KMP user experience, Compose semantics, and accessibility"
 
+lane_conditions:
+  platform-correctness:
+    required: true
+  ui:
+    path: ["androidMain", "iosMain"]
+    content: ["compose", "@Composable", "navigation"]
+  ux-accessibility:
+    content: ["semantics", "contentDescription", "accessibility", "focusRequester"]
+
 code_review_composition:
   baseline_layers:
     - platform: kotlin
@@ -61,17 +72,35 @@ addon_usage:
         - android-navigation-review.md
         - android-design-system-review.md
         - android-interop-review.md
+      specialist_areas: [ui]
+      activation:
+        any_content: ["compose", "@composable"]
+        exclude_path: ["/commonMain/"]
     - slug: android-navigation
       entrypoint: android-navigation-review.md
+      specialist_areas: [ui]
+      activation:
+        any_content: ["navcontroller", "navhost", "navigation"]
+        exclude_path: ["/commonMain/"]
     - slug: android-interop
       entrypoint: android-interop-review.md
+      specialist_areas: [ui]
+      activation:
+        any_content: ["androidview", "composeview", "interop"]
+        exclude_path: ["/commonMain/"]
     - slug: android-design-system
       entrypoint: android-design-system-review.md
+      specialist_areas: [ui]
+      activation:
+        any_content: ["materialtheme", "design system", "colorscheme"]
+        exclude_path: ["/commonMain/"]
     - slug: android-r8
       entrypoint: android-r8-review.md
       activation:
-        any: ["proguard-rules.pro", "consumer-rules.pro", "-keep", "minifyenabled", "shrinkresources"]
-        exclude: ["/commonmain/"]
+        any_path: ["proguard-rules.pro", "consumer-rules.pro"]
+        any_content: ["-keep", "minifyenabled", "shrinkresources"]
+        exclude_path: ["/commonMain/"]
+      specialist_areas: [platform-correctness]
   code-review/bill-kmp-code-review-ui:
     - slug: android-compose
       entrypoint: android-compose-review.md
@@ -81,12 +110,24 @@ addon_usage:
         - android-navigation-review.md
         - android-design-system-review.md
         - android-interop-review.md
+      activation:
+        any_content: ["compose", "@composable"]
+        exclude_path: ["/commonMain/"]
     - slug: android-navigation
       entrypoint: android-navigation-review.md
+      activation:
+        any_content: ["navcontroller", "navhost", "navigation"]
+        exclude_path: ["/commonMain/"]
     - slug: android-interop
       entrypoint: android-interop-review.md
+      activation:
+        any_content: ["androidview", "composeview", "interop"]
+        exclude_path: ["/commonMain/"]
     - slug: android-design-system
       entrypoint: android-design-system-review.md
+      activation:
+        any_content: ["materialtheme", "design system", "colorscheme"]
+        exclude_path: ["/commonMain/"]
   quality-check/bill-kmp-code-check:
     - slug: android-r8
       entrypoint: android-r8-review.md

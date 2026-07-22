@@ -31,6 +31,16 @@ class ReviewPreparationServiceTest {
   private val hunkA = ReviewChangedHunk("src/A.kt", 1, 1, 1, 2, "+alpha")
   private val hunkB = ReviewChangedHunk("src/B.kt", 4, 1, 4, 1, "+beta")
 
+  private fun includedDecision(lane: String, reason: String, path: String) = ReviewLaneDecision(
+    lane = lane,
+    included = true,
+    reason = reason,
+    ownedPaths = listOf(path),
+    originLayerChains = listOf(listOf("kotlin")),
+    owningPack = "kotlin",
+    specialistSkillName = "bill-kotlin-code-review-$lane",
+  )
+
   private class CountingPorts(
     val scope: ReviewScopeFacts,
     val routing: ReviewStackRoutingFacts,
@@ -72,8 +82,8 @@ class ReviewPreparationServiceTest {
   private fun ports(
     hunks: List<ReviewChangedHunk> = listOf(hunkB, hunkA),
     decisions: List<ReviewLaneDecision> = listOf(
-      ReviewLaneDecision("testing", true, "test sources changed", ownedPaths = listOf("src/A.kt")),
-      ReviewLaneDecision("security", true, "auth surface changed", ownedPaths = listOf("src/B.kt")),
+      includedDecision("testing", "test sources changed", "src/A.kt"),
+      includedDecision("security", "auth surface changed", "src/B.kt"),
       ReviewLaneDecision("ui", false, "no UI files changed"),
     ),
   ) = CountingPorts(
@@ -135,8 +145,8 @@ class ReviewPreparationServiceTest {
       ports(
         hunks = listOf(hunkB, hunkA),
         decisions = listOf(
-          ReviewLaneDecision("testing", true, "test sources changed", ownedPaths = listOf("src/A.kt")),
-          ReviewLaneDecision("security", true, "auth surface changed", ownedPaths = listOf("src/B.kt")),
+          includedDecision("testing", "test sources changed", "src/A.kt"),
+          includedDecision("security", "auth surface changed", "src/B.kt"),
           ReviewLaneDecision("ui", false, "no UI files changed"),
         ),
       ),
@@ -192,7 +202,7 @@ class ReviewPreparationServiceTest {
   @Test fun `a lane claiming a path the packet does not own is rejected`() {
     val counting = ports(
       decisions = listOf(
-        ReviewLaneDecision("testing", true, "test sources changed", ownedPaths = listOf("src/Absent.kt")),
+        includedDecision("testing", "test sources changed", "src/Absent.kt"),
       ),
     )
     val failure = assertFailsWith<InvalidReviewContextSchemaError> { service(counting).prepare(request()) }

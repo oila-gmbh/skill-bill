@@ -18,6 +18,8 @@ routing_signals:
     - "Prefer this Kotlin pack when Kotlin/JVM source and Gradle Kotlin markers dominate the owned diff."
     - "Do not prefer this pack over the adjacent KMP pack when Android/KMP markers (androidMain, iosMain, AndroidManifest.xml, expect/actual) establish KMP ownership."
     - "Exclude generated and vendored files from dominance scoring."
+  path: [".kt", "*.kt", ".kts", "*.kts", "build.gradle", "build.gradle.kts", "settings.gradle.kts"]
+  content: ["kotlin", "coroutine", "flow"]
 
 declared_code_review_areas:
   - architecture
@@ -66,6 +68,18 @@ area_metadata:
     focus: "Kotlin Compose Desktop state and lifecycle, Swing or JavaFX thread interop, server rendering, and CLI or TUI behavior"
   ux-accessibility:
     focus: "Kotlin desktop semantics and focus, semantic server output, terminal accessibility, keyboard use, and localization"
+
+lane_conditions:
+  architecture: { required: true }
+  platform-correctness: { required: true }
+  performance: { content: ["runBlocking", "buffer", "allocation", "memory"] }
+  security: { content: ["authorization", "jwt", "secret", "unsafe"] }
+  testing: { path: ["Test.kt", "Spec.kt"] }
+  api-contracts: { content: ["encodeDefaults", "explicitNulls", "serialization", "schema"] }
+  persistence: { content: ["transaction", "hibernate", "exposed", "database"] }
+  reliability: { content: ["retry", "timeout", "shutdown", "supervisor"] }
+  ui: { content: ["compose", "swing", "javafx", "render"] }
+  ux-accessibility: { content: ["semantics", "focus", "keyboard", "localization"] }
 
 declared_quality_check_file: quality-check/bill-kotlin-code-check/content.md
 

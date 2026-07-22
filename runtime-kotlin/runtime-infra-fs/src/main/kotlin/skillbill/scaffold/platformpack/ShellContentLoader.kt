@@ -22,6 +22,7 @@ import skillbill.scaffold.model.GovernedAddonUsage
 import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.model.PointerSpec
 import skillbill.scaffold.model.RoutingSignals
+import skillbill.scaffold.model.ReviewLaneCondition
 import skillbill.scaffold.rendering.defaultAreaFocus
 import skillbill.scaffold.runtime.APPROVED_CODE_REVIEW_AREAS
 import skillbill.scaffold.runtime.CONTENT_BODY_FILENAME
@@ -312,6 +313,7 @@ private fun buildPack(slug: String, packRoot: Path, manifestPath: Path, raw: Any
   val declaredAreas = parseDeclaredAreas(manifest, slug)
   val declaredFiles = parseDeclaredFiles(manifest, slug, packRoot, declaredAreas)
   val areaMetadata = parseAreaMetadata(manifest, slug, declaredAreas)
+  val laneConditions = parseLaneConditions(manifest, slug, declaredAreas)
   val displayName = parseOptionalString(manifest, slug, "display_name")
   val notes = parseOptionalString(manifest, slug, "notes")
   val declaredQualityCheckFile = parseOptionalPath(manifest, slug, "declared_quality_check_file", packRoot)
@@ -323,6 +325,7 @@ private fun buildPack(slug: String, packRoot: Path, manifestPath: Path, raw: Any
     packRoot = packRoot,
     pointers = pointers,
     declaredSkillDirs = declaredSkillRelativeDirs(packRoot, declaredFiles, declaredQualityCheckFile),
+    declaredAreas = declaredAreas.toSet(),
   )
   val featureAddonUsage = parseFeatureAddonUsage(
     manifest = manifest,
@@ -357,6 +360,7 @@ private fun buildPack(slug: String, packRoot: Path, manifestPath: Path, raw: Any
     declaredCodeReviewAreas = declaredAreas,
     declaredFiles = declaredFiles,
     areaMetadata = areaMetadata,
+    laneConditions = laneConditions,
     displayName = displayName,
     notes = notes,
     declaredQualityCheckFile = declaredQualityCheckFile,
@@ -467,7 +471,33 @@ private fun parseRoutingSignals(manifest: Map<*, *>, slug: String): RoutingSigna
   return RoutingSignals(
     strong = parseStringList(slug, strongRaw, "routing_signals.strong", required = true),
     tieBreakers = parseStringList(slug, routing["tie_breakers"], "routing_signals.tie_breakers", required = false),
+    path = parseStringList(slug, routing["path"] ?: strongRaw, "routing_signals.path", required = true),
+    content = parseStringList(slug, routing["content"], "routing_signals.content", required = false),
   )
+}
+
+private fun parseLaneConditions(
+  manifest: Map<*, *>,
+  slug: String,
+  declaredAreas: List<String>,
+): Map<String, ReviewLaneCondition> {
+  val raw = manifest["lane_conditions"] ?: return emptyMap()
+  val mapping = raw as? Map<*, *>
+    ?: throw InvalidManifestSchemaError("Platform pack '$slug': 'lane_conditions' must be a mapping.")
+  return mapping.map { (areaRaw, conditionRaw) ->
+    val area = areaRaw as? String
+      ?: throw InvalidManifestSchemaError("Platform pack '$slug': lane condition areas must be strings.")
+    if (area !in declaredAreas) {
+      throw InvalidManifestSchemaError("Platform pack '$slug': lane condition '$area' is not a declared area.")
+    }
+    val condition = conditionRaw as? Map<*, *>
+      ?: throw InvalidManifestSchemaError("Platform pack '$slug': lane condition '$area' must be a mapping.")
+    area to ReviewLaneCondition(
+      required = condition["required"] as? Boolean ?: false,
+      path = parseStringList(slug, condition["path"], "lane_conditions.$area.path", required = false),
+      content = parseStringList(slug, condition["content"], "lane_conditions.$area.content", required = false),
+    )
+  }.toMap()
 }
 
 private fun parseDeclaredAreas(manifest: Map<*, *>, slug: String): List<String> {
@@ -691,6 +721,8 @@ internal fun parseAddonUsage(
   packRoot: Path,
   pointers: List<PointerSpec>,
   declaredSkillDirs: Set<String>,
+  declaredAreas: Set<String>,
+  strictReviewRouting: Boolean = manifest["lane_conditions"] != null,
 ): List<GovernedAddonUsage> {
   val raw = manifest["addon_usage"] ?: return emptyList()
   val usageMap = raw as? Map<*, *>
@@ -731,6 +763,8 @@ internal fun parseAddonUsage(
       fieldName = "addon_usage",
       seenSlugs = mutableSetOf(),
       pointersForDir = pointersByDir[skillRelativeDir].orEmpty(),
+      declaredAreas = declaredAreas,
+      strictReviewRouting = strictReviewRouting,
     )
     val addons = entriesList.mapIndexed { index, entry ->
       parseAddonUsageEntry(context, index, entry)
@@ -777,6 +811,8 @@ internal fun parseFeatureAddonUsage(
       fieldName = "feature_addon_usage",
       seenSlugs = mutableSetOf(),
       pointersForDir = pointersByConsumer[consumer].orEmpty(),
+      declaredAreas = emptySet(),
+      strictReviewRouting = false,
     )
     val addons = entriesList.mapIndexed { index, entry ->
       parseAddonUsageEntry(context, index, entry)
@@ -792,6 +828,8 @@ private data class AddonUsageParseContext(
   val fieldName: String,
   val seenSlugs: MutableSet<String>,
   val pointersForDir: List<PointerSpec>,
+  val declaredAreas: Set<String>,
+  val strictReviewRouting: Boolean,
 )
 
 private fun parseAddonUsageEntry(context: AddonUsageParseContext, index: Int, raw: Any?): GovernedAddonSelection {
@@ -816,22 +854,56 @@ private fun parseAddonUsageEntry(context: AddonUsageParseContext, index: Int, ra
   )
   val activation = (entry["activation"] as? Map<*, *>)?.let { rawActivation ->
     GovernedAddonActivation(
-      any = parseStringList(context.slug, rawActivation["any"], "$fieldPrefix.activation.any", required = false),
-      all = parseStringList(context.slug, rawActivation["all"], "$fieldPrefix.activation.all", required = false),
-      anyOfAll = (rawActivation["any_of_all"] as? List<*>)?.mapIndexed { groupIndex, group ->
+      anyPath = parseStringList(context.slug, rawActivation["any_path"], "$fieldPrefix.activation.any_path", required = false),
+      anyContent = parseStringList(context.slug, rawActivation["any_content"], "$fieldPrefix.activation.any_content", required = false),
+      allContent = parseStringList(context.slug, rawActivation["all_content"], "$fieldPrefix.activation.all_content", required = false),
+      anyOfAllContent = (rawActivation["any_of_all_content"] as? List<*>)?.mapIndexed { groupIndex, group ->
         parseStringList(
           context.slug,
           group,
-          "$fieldPrefix.activation.any_of_all[$groupIndex]",
+          "$fieldPrefix.activation.any_of_all_content[$groupIndex]",
           required = true,
         )
       }.orEmpty(),
-      exclude = parseStringList(
+      excludePath = parseStringList(
         context.slug,
-        rawActivation["exclude"],
-        "$fieldPrefix.activation.exclude",
+        rawActivation["exclude_path"],
+        "$fieldPrefix.activation.exclude_path",
         required = false,
       ),
+      excludeContent = parseStringList(
+        context.slug,
+        rawActivation["exclude_content"],
+        "$fieldPrefix.activation.exclude_content",
+        required = false,
+      ),
+    )
+  }
+  val reviewAddon = context.fieldName == "addon_usage" && context.skillRelativeDir.startsWith("code-review/")
+  if (reviewAddon && context.strictReviewRouting && activation == null) {
+    throw InvalidManifestSchemaError(
+      "Platform pack '${context.slug}': '$fieldPrefix.activation' is required for governed review add-ons.",
+    )
+  }
+  val specialistAreas = parseStringList(
+    context.slug,
+    entry["specialist_areas"],
+    "$fieldPrefix.specialist_areas",
+    required = false,
+  )
+  val unknownSpecialistAreas = specialistAreas.toSet() - context.declaredAreas
+  if (reviewAddon && unknownSpecialistAreas.isNotEmpty()) {
+    throw InvalidManifestSchemaError(
+      "Platform pack '${context.slug}': '$fieldPrefix.specialist_areas' names undeclared areas " +
+        "${unknownSpecialistAreas.sorted()}.",
+    )
+  }
+  if (
+    reviewAddon && context.strictReviewRouting &&
+    context.skillRelativeDir.endsWith("-code-review") && specialistAreas.isEmpty()
+  ) {
+    throw InvalidManifestSchemaError(
+      "Platform pack '${context.slug}': '$fieldPrefix.specialist_areas' is required for baseline add-on propagation.",
     )
   }
   requirePackOwnedAddonPointer(context, addonSlug, "entrypoint", entrypoint)
@@ -843,6 +915,7 @@ private fun parseAddonUsageEntry(context: AddonUsageParseContext, index: Int, ra
     entrypoint = entrypoint,
     companionPointers = companionPointers,
     activation = activation,
+    specialistAreas = specialistAreas,
   )
 }
 
