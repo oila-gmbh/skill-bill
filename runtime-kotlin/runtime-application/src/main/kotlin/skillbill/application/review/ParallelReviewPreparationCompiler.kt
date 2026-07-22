@@ -87,7 +87,7 @@ internal object ParallelReviewPreparationCompiler {
     budget,
   ).prepare(
     ReviewPreparationRequest(
-      reviewId = "code-review-parallel-$revisionId",
+      reviewId = input.reviewRunId ?: "code-review-parallel-$revisionId",
       reviewRevision = ReviewRevision(revisionId, 1),
       criteriaReferences = routes.associate { it.lane to listOf("independent branch-diff specialist review") },
     ),
@@ -206,4 +206,7 @@ internal data class ParallelReviewPreparationInput(
   val repoRoot: Path,
   val routedPacks: List<String>,
   val lanes: List<PlannedReviewRubric>,
+  // review_finished telemetry resolves accounting by the caller's run id, but the row is keyed by the
+  // packet review id, so the packet must adopt that run id whenever the caller supplies one.
+  val reviewRunId: String? = null,
 )

@@ -43,16 +43,23 @@ Do not launch the CLI while the run is unconfirmed. If the user declines, stop.
 
 ## Confirmed Handoff
 
-After confirmation, run the CLI command directly in the current agent session:
+After confirmation, generate the review run id for this review using the governed
+`rvw-YYYYMMDD-HHMMSS-XXXX` format (or reuse the id a parent reviewer passed in), then run
+the CLI command directly in the current agent session:
 
 ```bash
 skill-bill code-review-parallel \
   --agent1 <invoking-agent-id> \
   --agent2 <selected-agent-id> \
-  --scope <scope>
+  --scope <scope> \
+  --review-run-id <rvw-run-id>
 ```
 
 Append `--repo-root <path>` and `--timeout-minutes <n>` when the user supplies them.
+
+Report that same run id as the `Review run ID:` of this review's output and use it for any
+import or follow-up feedback. The runtime keys durable review accounting by it, so a
+different id leaves `review_finished` telemetry without accounting.
 
 Always pass `--agent1` set to the agent currently executing this skill so the invoking
 agent drives lane 1. Only omit `--agent1` if the user explicitly selected a different

@@ -373,12 +373,14 @@ fun harnessRequest(
   agent1Id: String = "codex",
   agent2Id: String = "claude",
   timeout: Duration? = null,
+  reviewRunId: String? = null,
 ) = ParallelCodeReviewRequest(
   agent1Id = agent1Id,
   agent2Id = agent2Id,
   scope = ParallelReviewScope.BRANCH,
   repoRoot = repoRoot,
   timeout = timeout,
+  reviewRunId = reviewRunId,
 )
 
 fun reviewPack(

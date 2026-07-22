@@ -66,6 +66,11 @@ class CodeReviewParallelCommand(
     "--execution-mode",
     help = "Shared execution mode for both lanes: delegated (default), auto, or inline.",
   ).default(CodeReviewExecutionMode.DEFAULT.wireValue)
+  private val reviewRunId by option(
+    "--review-run-id",
+    help = "Review run id (rvw-YYYYMMDD-HHMMSS-XXXX) this review will report. Pass the same id used " +
+      "in the review output and import so review accounting is reachable from review_finished telemetry.",
+  )
 
   override fun run() {
     val resolvedAgent1 = resolveAgent1()
@@ -98,6 +103,7 @@ class CodeReviewParallelCommand(
           timeout = timeoutMinutes?.minutes,
           codeReviewMode = parseExecutionMode(codeReviewMode),
           suppliedDiffPath = suppliedDiffPath(),
+          reviewRunId = reviewRunId?.takeIf(String::isNotBlank),
         ),
       )
     } catch (@Suppress("SwallowedException") e: UsageValidationException) {

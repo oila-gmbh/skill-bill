@@ -21,8 +21,10 @@ data class ParallelCodeReviewRequest(
   val codeReviewMode: CodeReviewExecutionMode = CodeReviewExecutionMode.DEFAULT,
   val suppliedDiff: String? = null,
   val suppliedDiffPath: Path? = null,
+  val reviewRunId: String? = null,
 ) {
   init {
+    reviewRunId?.let { require(it.isNotBlank()) { "reviewRunId must be non-blank when provided." } }
     suppliedDiff?.let { require(it.isNotBlank()) { "suppliedDiff must be non-blank when provided." } }
     require(suppliedDiff == null || suppliedDiffPath == null) {
       "suppliedDiff and suppliedDiffPath cannot both be provided."

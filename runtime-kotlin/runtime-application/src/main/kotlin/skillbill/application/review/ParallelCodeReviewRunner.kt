@@ -202,6 +202,7 @@ class ParallelCodeReviewRunner(
         repoRoot = request.repoRoot,
         routedPacks = routedManifests.map { it.slug },
         lanes = plannedRubrics,
+        reviewRunId = request.reviewRunId,
       ),
       budget = budget,
       envelopeValidator = reviewContextEnvelopeValidator,

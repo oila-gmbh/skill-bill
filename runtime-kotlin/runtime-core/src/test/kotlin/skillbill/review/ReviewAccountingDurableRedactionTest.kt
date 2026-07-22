@@ -23,6 +23,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -80,6 +81,22 @@ class ReviewAccountingDurableRedactionTest {
       )
       assertNoSentinels(payload.toString())
       assertTrue(accounting.keys.none { it.contains("prompt") })
+    }
+  }
+
+  @Test fun `accounting keyed by anything other than the review run id is unreachable from telemetry`() {
+    withConnection { connection ->
+      upsertReviewAccounting(
+        connection,
+        ReviewAccountingRecord("code-review-parallel-abc123", "packet-digest", summary().toBoundedPayload()),
+      )
+
+      val telemetry = reviewFinishedPayload(connection, reviewSummary(), findingRows = emptyList(), level = "full")
+
+      assertNull(
+        telemetry.toReviewFinishedTelemetryPayload().toPayload()["review_context_accounting"],
+        "Review accounting must be written under the same review run id review_finished resolves.",
+      )
     }
   }
 

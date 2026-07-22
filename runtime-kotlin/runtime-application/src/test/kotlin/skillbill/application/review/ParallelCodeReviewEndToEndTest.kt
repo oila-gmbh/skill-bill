@@ -216,6 +216,27 @@ class ParallelCodeReviewEndToEndTest {
     assertTrue(record.reviewId.isNotBlank() && record.packetDigest.isNotBlank())
   }
 
+  @Test fun `durable accounting is keyed by the caller review run id telemetry resolves`() {
+    val recorder = ReviewRecorder()
+    val reviewRunId = "rvw-20260722-101500-ab12"
+
+    reviewHarness(kotlinConfig { RecordedWorkerResponse(usage = ProviderTokenUsage(10, 2, 3)) }, recorder)
+      .run(harnessRequest(reviewRunId = reviewRunId))
+
+    val record = recorder.savedAccounting.single()
+    assertEquals(reviewRunId, record.reviewId)
+    assertEquals(reviewRunId, record.boundedPayload["review_id"])
+  }
+
+  @Test fun `accounting falls back to the packet review id when no run id is supplied`() {
+    val recorder = ReviewRecorder()
+
+    reviewHarness(kotlinConfig { RecordedWorkerResponse(usage = ProviderTokenUsage(10, 2, 3)) }, recorder)
+      .run(harnessRequest())
+
+    assertTrue(recorder.savedAccounting.single().reviewId.startsWith("code-review-parallel-"))
+  }
+
   private fun kotlinConfig(
     preflight: (skillbill.ports.review.model.ReviewNativeAgentPreflightRequest) -> Unit = {},
     response: (skillbill.ports.review.model.NativeReviewWorkerRequest) -> RecordedWorkerResponse = {
