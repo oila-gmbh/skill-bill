@@ -1034,3 +1034,41 @@ the logical worker name, provider, installed path, cache target, and content dig
 uses the complete prior inventory to remove obsolete or dangling managed links; it never deletes a
 regular file or a symlink that no longer resolves to its recorded managed target. Install verifies
 the linked artifact's logical name, digest, target, and readability before committing the inventory.
+
+# Delegated code-review architecture
+
+**One authoritative preparation.** `ParallelCodeReviewRunner` resolves scope, diff, dominant stack,
+rubrics, and project rules once for the whole review, then hands every top-level lane the same
+immutable parent packet. A lane never re-resolves a fact the parent already established, and the
+review runs one scope-discovery command regardless of how many specialists it launches.
+
+**Flattened manifest layering.** `ReviewLaunchPlanPolicy.flatten` walks a routed pack's declared
+composition and emits one direct specialist lane per selected area, with the nearest owning layer
+winning and the full origin-layer chain retained for attribution. A composed root such as `kmp`
+therefore expands straight to its own specialists plus the required baseline specialists; the
+baseline review skill is never launched as a nested orchestrator.
+
+**Forbidden child rediscovery.** `ReviewOperationPolicy` classifies every operation a specialist
+requests without consulting platform, pack, or provider identity. Repository status, scope and
+base/head discovery, diff recomputation, build and test invocation, pack and add-on resolution,
+routing, learnings resolution, telemetry ownership, project-guidance traversal, and opaque searches
+are refused because the parent packet already carries those facts. Project guidance reaches a
+specialist only as packet-attested matched rule references, never as a file body.
+
+**Bounded evidence and expansion ledger.** `ReviewEvidenceBroker` is the single measured surface a
+specialist may act through. Assigned paths are served in bounded batches; anything outside the
+assignment needs an authorized expansion whose record belongs to the parent packet's expansion
+ledger and whose assignment digest must match the requesting lane. Once a lane produces a terminal
+outcome the broker keeps returning that outcome instead of serving more context.
+
+**Native-agent preflight.** When delegated execution selects provider-native specialists, every
+`(agent, logical worker)` assignment is verified against the managed native-agent link inventory
+before any worker starts. A missing, stale, or dangling link fails the whole review with
+`MissingInstalledNativeAgentError` and its governed repair command; there is no generic-worker
+fallback.
+
+**Independent parallel lanes.** The two top-level lanes share the parent packet and nothing else.
+Each holds its own assignments, evidence brokers, budgets, and accounting nodes, so one lane's
+budget termination, timeout, or process failure never disturbs its sibling. Accounting folds each
+session exactly once: direct usage sums owned sessions, an inclusive provider report already
+containing its descendants is never added to them again, and counters aggregate the same way.

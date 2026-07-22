@@ -46,6 +46,7 @@ import skillbill.review.context.model.ResolvedReviewExecutionMode
 import skillbill.review.context.model.ReviewAccountingCounters
 import skillbill.review.context.model.ReviewAccountingInput
 import skillbill.review.context.model.ReviewAccountingSummary
+import skillbill.review.context.model.ReviewAssignment
 import skillbill.review.context.model.ReviewAutoEligibility
 import skillbill.review.context.model.ReviewBudgetOutcome
 import skillbill.review.context.model.TokenOwnership
@@ -592,11 +593,13 @@ class ParallelCodeReviewRunner(
         ),
       ),
     )
+    val inlineAssignment = selected.first().assignment
     return when (outcome) {
       is UnsupportedAgentRunLaunch -> ParallelReviewLaneOutcome(
         success = false,
         rawOutput = "",
         failureReason = "unsupported agent: ${outcome.reason}",
+        accounting = inlineParentAccounting(agentId, inlineAssignment, prompt, "unsupported_provider", null),
       )
       is AgentRunLaunchFacts -> {
         val reason = laneFailureReason(outcome)
@@ -636,6 +639,13 @@ class ParallelCodeReviewRunner(
           rawOutput = outcome.stdout,
           failureReason = reason,
           tokenUsage = providerTokenUsage(outcome),
+          accounting = inlineParentAccounting(
+            agentId,
+            inlineAssignment,
+            prompt,
+            inlineTerminalStatus(outcome),
+            outcome,
+          ),
           findings = findings,
         )
       }
@@ -776,6 +786,39 @@ private fun parallelAccountingSummary(
     packetDigest = specialists.first().packetDigest,
     root = ReviewAccountingInput("parallel-review", sha256HexUtf8("parallel-review"), children = roots),
   )
+}
+
+/**
+ * An inline lane runs the whole review in one parent session, so its accounting node owns the
+ * parent's own launch and result bytes and exactly one model turn. It has no specialist children.
+ */
+private fun inlineParentAccounting(
+  agentId: String,
+  assignment: ReviewAssignment,
+  prompt: String,
+  terminalStatus: String,
+  outcome: AgentRunLaunchFacts?,
+) = ReviewLaneAccounting(
+  lane = agentId,
+  reviewId = assignment.reviewId,
+  packetDigest = assignment.packetDigest,
+  assignmentDigest = assignment.digest,
+  launchBytes = prompt.toByteArray(Charsets.UTF_8).size.toLong(),
+  evidenceBytes = 0,
+  expansions = emptyList(),
+  toolCalls = 0,
+  modelTurns = 1,
+  resultBytes = outcome?.stdout?.toByteArray(Charsets.UTF_8)?.size?.toLong() ?: 0,
+  providerUsage = outcome?.let(::providerTokenUsage),
+  terminalStatus = terminalStatus,
+)
+
+private fun inlineTerminalStatus(facts: AgentRunLaunchFacts): String = when {
+  facts.timedOut -> "timeout"
+  facts.interrupted -> "interrupted"
+  facts.spawnFailed -> "spawn_failure"
+  facts.exitStatus != 0 -> "process_failure"
+  else -> "completed"
 }
 
 private fun describeBudgetOutcome(outcome: ReviewBudgetOutcome): String =

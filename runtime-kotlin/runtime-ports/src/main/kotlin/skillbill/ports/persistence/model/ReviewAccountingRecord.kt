@@ -1,6 +1,7 @@
 package skillbill.ports.persistence.model
 
 import skillbill.boundary.OpenBoundaryMap
+import skillbill.contracts.review.REVIEW_CONTEXT_CONTRACT_VERSION
 
 data class ReviewAccountingRecord(
   val reviewId: String,
@@ -16,14 +17,15 @@ data class ReviewAccountingRecord(
 
 private fun requireBoundedAccountingPayload(payload: Map<String, Any?>) {
   val topKeys = setOf(
-    "contract_version", "kind", "review_id", "packet_digest", "parent", "lanes",
+    "contract_version", "kind", "review_id", "packet_digest", "parent", "lanes", "aggregate_counters",
     "aggregate_direct_usage", "aggregate_inclusive_usage", "budget_regression",
   )
   require(payload.keys == topKeys) { "Review accounting must match the bounded projection contract." }
-  require(payload["contract_version"] == "0.5" && payload["kind"] == "accounting_summary")
+  require(payload["contract_version"] == REVIEW_CONTEXT_CONTRACT_VERSION && payload["kind"] == "accounting_summary")
   require(payload["review_id"] is String && payload["packet_digest"] is String)
   requireAccountingNode(payload["parent"])
   require((payload["lanes"] as? List<*>)?.all { runCatching { requireAccountingNode(it) }.isSuccess } == true)
+  requireCounters(payload["aggregate_counters"])
   requireUsage(payload["aggregate_direct_usage"], ownershipRequired = false)
   requireUsage(payload["aggregate_inclusive_usage"], ownershipRequired = false)
   require(payload["budget_regression"] is Boolean)
@@ -33,16 +35,32 @@ private fun requireAccountingNode(value: Any?) {
   val node = value as? Map<*, *> ?: error("Review accounting node must be an object.")
   val keys = setOf(
     "lane", "assignment_digest", "launch_bytes", "evidence_bytes", "result_bytes", "expansions",
-    "tool_calls", "model_turns", "provider_usage", "direct_usage", "inclusive_usage", "terminal_outcome",
+    "tool_calls", "model_turns", "inclusive_counters", "provider_usage", "direct_usage", "inclusive_usage",
+    "terminal_outcome",
   )
   require(node.keys == keys)
   require(node["lane"] is String && node["assignment_digest"] is String && node["terminal_outcome"] is String)
-  listOf("launch_bytes", "evidence_bytes", "result_bytes", "expansions", "tool_calls", "model_turns")
-    .forEach { key -> require((node[key] as? Number)?.toLong()?.let { it >= 0 } == true) }
+  COUNTER_KEYS.forEach { key -> require((node[key] as? Number)?.toLong()?.let { it >= 0 } == true) }
+  requireCounters(node["inclusive_counters"])
   requireUsage(node["provider_usage"], ownershipRequired = true)
   requireUsage(node["direct_usage"], ownershipRequired = false)
   requireUsage(node["inclusive_usage"], ownershipRequired = false)
 }
+
+private fun requireCounters(value: Any?) {
+  val counters = value as? Map<*, *> ?: error("Review accounting counters must be an object.")
+  require(counters.keys == COUNTER_KEYS)
+  require(counters.values.all { (it as? Number)?.toLong()?.let { count -> count >= 0 } == true })
+}
+
+private val COUNTER_KEYS = setOf(
+  "launch_bytes",
+  "evidence_bytes",
+  "result_bytes",
+  "expansions",
+  "tool_calls",
+  "model_turns",
+)
 
 private fun requireUsage(value: Any?, ownershipRequired: Boolean) {
   val usage = value as? Map<*, *> ?: error("Review accounting usage must be an object.")

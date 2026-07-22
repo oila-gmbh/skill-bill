@@ -136,7 +136,7 @@ $defs:
     additionalProperties: false
     required: [contract_version, kind, review_id, packet_digest, review_revision, repository_identity, base_revision, head_revision, status, composed_layers, selected_lanes, lane_decisions, changed_hunks, matched_rules, learnings_references, build_test_facts, dependency_allowlist, evidence_targets, expansion_ledger]
     properties:
-      contract_version: { const: "0.5" }
+      contract_version: { const: "0.6" }
       kind: { const: parent_packet }
       review_id: { $ref: "#/$defs/identifier" }
       packet_digest: { $ref: "#/$defs/digest" }
@@ -170,7 +170,7 @@ $defs:
     additionalProperties: false
     required: [contract_version, kind, review_id, packet_digest, assignment_digest, review_revision, lane, lane_decision, base_revision, head_revision, assigned_paths, assigned_hunks, criteria_references, matched_rules, evidence_targets, dependency_allowlist, expansions]
     properties:
-      contract_version: { const: "0.5" }
+      contract_version: { const: "0.6" }
       kind: { const: assignment }
       review_id: { $ref: "#/$defs/identifier" }
       packet_digest: { $ref: "#/$defs/digest" }
@@ -192,7 +192,7 @@ $defs:
     additionalProperties: false
     required: [contract_version, kind, review_id, packet_digest, assignment_digest, review_revision, lane, base_revision, head_revision, specialist_contract, rubric, assigned_paths, assigned_hunks, criteria_references, matched_rules, evidence_targets, dependency_allowlist, forbidden_rediscovery, broker_id, isolation, budget]
     properties:
-      contract_version: { const: "0.5" }
+      contract_version: { const: "0.6" }
       kind: { const: launch }
       review_id: { $ref: "#/$defs/identifier" }
       packet_digest: { $ref: "#/$defs/digest" }
@@ -242,7 +242,7 @@ $defs:
     additionalProperties: false
     required: [contract_version, kind, review_id, packet_digest, assignment_digest, lane, terminal_outcome, budget_kind, configured_limit, observed_value, enforceable]
     properties:
-      contract_version: { const: "0.5" }
+      contract_version: { const: "0.6" }
       kind: { const: budget_outcome }
       review_id: { $ref: "#/$defs/identifier" }
       packet_digest: { $ref: "#/$defs/digest" }
@@ -268,9 +268,9 @@ $defs:
   accounting_summary:
     type: object
     additionalProperties: false
-    required: [contract_version, kind, review_id, packet_digest, parent, lanes, aggregate_direct_usage, aggregate_inclusive_usage, budget_regression]
+    required: [contract_version, kind, review_id, packet_digest, parent, lanes, aggregate_counters, aggregate_direct_usage, aggregate_inclusive_usage, budget_regression]
     properties:
-      contract_version: { const: "0.5" }
+      contract_version: { const: "0.6" }
       kind: { const: accounting_summary }
       review_id: { $ref: "#/$defs/identifier" }
       packet_digest: { $ref: "#/$defs/digest" }
@@ -280,13 +280,25 @@ $defs:
         type: array
         items:
           $ref: "#/$defs/accounting_node"
+      aggregate_counters: { $ref: "#/$defs/accounting_counters" }
       aggregate_direct_usage: { $ref: "#/$defs/usage" }
       aggregate_inclusive_usage: { $ref: "#/$defs/usage" }
       budget_regression: { type: boolean }
+  accounting_counters:
+    type: object
+    additionalProperties: false
+    required: [launch_bytes, evidence_bytes, result_bytes, expansions, tool_calls, model_turns]
+    properties:
+      launch_bytes: { type: integer, minimum: 0 }
+      evidence_bytes: { type: integer, minimum: 0 }
+      result_bytes: { type: integer, minimum: 0 }
+      expansions: { type: integer, minimum: 0 }
+      tool_calls: { type: integer, minimum: 0 }
+      model_turns: { type: integer, minimum: 0 }
   accounting_node:
     type: object
     additionalProperties: false
-    required: [lane, assignment_digest, launch_bytes, evidence_bytes, result_bytes, expansions, tool_calls, model_turns, provider_usage, direct_usage, inclusive_usage, terminal_outcome]
+    required: [lane, assignment_digest, launch_bytes, evidence_bytes, result_bytes, expansions, tool_calls, model_turns, inclusive_counters, provider_usage, direct_usage, inclusive_usage, terminal_outcome]
     properties:
       lane: { $ref: "#/$defs/identifier" }
       assignment_digest: { $ref: "#/$defs/digest" }
@@ -296,6 +308,7 @@ $defs:
       expansions: { type: integer, minimum: 0 }
       tool_calls: { type: integer, minimum: 0 }
       model_turns: { type: integer, minimum: 0 }
+      inclusive_counters: { $ref: "#/$defs/accounting_counters" }
       provider_usage:
         allOf:
           - { $ref: "#/$defs/usage" }

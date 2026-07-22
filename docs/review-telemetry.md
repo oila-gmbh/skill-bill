@@ -4,9 +4,19 @@
 
 Delegated reviews enforce byte, evidence-read, result-size, and assignment-expansion limits before or during a lane. The named `ReviewContextBudgetPolicy.DEFAULT` policy uses 524288 parent-packet bytes, 65536 lane-launch bytes, 262144 cumulative lane-evidence bytes, 65536 bytes per evidence result and lane result, and three assignment expansions. Repositories may override individual values through the strict `review_context_budget` object in `.skill-bill/config.yaml`; malformed, negative, unknown, or inconsistent nested values fail before launch.
 
-Provider usage reports input, cached-input, output, reasoning, and total tokens independently when available. Fresh-token approximation is `max(input - cached_input, 0) + output`. Direct usage owns only one session; inclusive usage already contains descendants and is not added to child totals again. Providers without reliable live cancellation classify threshold excess after completion as `budget_regression`, distinct from enforceable `review_context_budget_exceeded` outcomes.
+Two further per-specialist limits bound a lane's own work: 40 tool calls and 24 model turns. Overrides are strict — every supplied value must be a positive integer, evidence-result bytes cannot exceed cumulative lane-evidence bytes, and lane-launch bytes cannot exceed parent-packet bytes. An incoherent combination fails before launch rather than being clamped.
 
-Durable output and telemetry retain only numeric accounting, lane identifiers, packet and assignment digests, enforcement classification, and terminal outcomes. Prompts, diffs, source, project guidance, and tool output remain transient.
+Provider usage reports input, cached-input, output, reasoning, and total tokens independently when available. Provider input is cumulative for a session, so it already includes the tokens re-sent on every turn; cached input is the part of that the provider served from its own cache and is reported on its own axis rather than subtracted from input. Fresh-token approximation is `max(input - cached_input, 0) + output`. It is a regression signal for how much new context a lane pulled in, not a billing reconciliation: providers differ in what they meter, and a lane with no reported dimensions reports none rather than zero.
+
+Direct usage owns only one session; inclusive usage already contains descendants and is not added to child totals again. Counters — launch, evidence, and result bytes, expansions, tool calls, and model turns — aggregate the same way, so `aggregate_counters` and `aggregate_direct_usage` count each session exactly once no matter how deep the tree is.
+
+Thresholds that a provider can enforce live terminate the affected lane with `review_context_budget_exceeded`; its sibling lanes keep running. Providers without reliable live cancellation classify threshold excess after completion as `budget_regression`: the overrun is recorded, the lane's result is kept as produced, and nothing is retroactively truncated or relaunched.
+
+Delegated specialists never rediscover what the parent already resolved. Repository status, scope, base/head revisions, diff recomputation, build and test invocation, platform-pack and add-on resolution, routing, learnings resolution, and project-guidance files are refused at the broker with a typed forbidden-operation category. Evidence outside a lane's assignment requires an authorized expansion recorded in the parent packet's ledger; the default budget admits three per assignment.
+
+Provider-native specialists are verified before any worker starts. A missing, stale, or dangling managed native-agent link fails the review with the logical worker name, provider, expected path, reason, and the repair command `skill-bill install apply`. There is no generic-worker fallback — repair the install and rerun.
+
+Durable output and telemetry retain only numeric accounting, lane identifiers, packet and assignment digests, enforcement classification, and terminal outcomes. Prompts, diffs, source, project guidance, rubric bodies, and tool output remain transient.
 
 Skill Bill can record a measurement loop for code-review usefulness. Telemetry uses a three-level model selected during install: `off`, `anonymous` (default), or `full`.
 

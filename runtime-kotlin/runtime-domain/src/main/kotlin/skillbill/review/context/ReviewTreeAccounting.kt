@@ -1,6 +1,7 @@
 package skillbill.review.context
 
 import skillbill.review.context.model.ProviderTokenUsage
+import skillbill.review.context.model.REVIEW_BUDGET_REGRESSION
 import skillbill.review.context.model.ReviewAccountingInput
 import skillbill.review.context.model.ReviewAccountingNode
 import skillbill.review.context.model.ReviewAccountingSummary
@@ -11,14 +12,16 @@ object ReviewTreeAccounting {
     require(reviewId.isNotBlank() && packetDigest.isNotBlank())
     val parent = fold(root)
     val lanes = flatten(parent.children)
+    val everyNode = flatten(listOf(parent))
     return ReviewAccountingSummary(
       reviewId,
       packetDigest,
       parent,
       lanes,
-      flatten(listOf(parent)).map { it.directUsage }.sum(TokenOwnership.DIRECT),
+      parent.inclusiveCounters,
+      everyNode.map { it.directUsage }.sum(TokenOwnership.DIRECT),
       parent.inclusiveUsage,
-      flatten(listOf(parent)).any { it.terminalOutcome == "budget_regression" },
+      everyNode.any { it.terminalOutcome == REVIEW_BUDGET_REGRESSION },
     )
   }
 
@@ -38,6 +41,7 @@ object ReviewTreeAccounting {
       input.lane,
       input.assignmentDigest,
       input.counters,
+      children.fold(input.counters) { total, child -> total + child.inclusiveCounters },
       input.usage,
       direct,
       inclusive,

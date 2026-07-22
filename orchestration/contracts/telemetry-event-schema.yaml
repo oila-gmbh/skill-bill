@@ -1964,6 +1964,24 @@ $defs:
       fresh_token_approximation: { type: integer, minimum: 0 }
       ownership: { type: string, enum: [direct, inclusive] }
 
+  reviewAccountingCounters:
+    type: object
+    additionalProperties: false
+    required:
+      - launch_bytes
+      - evidence_bytes
+      - result_bytes
+      - expansions
+      - tool_calls
+      - model_turns
+    properties:
+      launch_bytes: { type: integer, minimum: 0 }
+      evidence_bytes: { type: integer, minimum: 0 }
+      result_bytes: { type: integer, minimum: 0 }
+      expansions: { type: integer, minimum: 0 }
+      tool_calls: { type: integer, minimum: 0 }
+      model_turns: { type: integer, minimum: 0 }
+
   reviewAccountingNode:
     type: object
     additionalProperties: false
@@ -1976,6 +1994,7 @@ $defs:
       - expansions
       - tool_calls
       - model_turns
+      - inclusive_counters
       - provider_usage
       - direct_usage
       - inclusive_usage
@@ -1989,6 +2008,7 @@ $defs:
       expansions: { type: integer, minimum: 0 }
       tool_calls: { type: integer, minimum: 0 }
       model_turns: { type: integer, minimum: 0 }
+      inclusive_counters: { $ref: "#/$defs/reviewAccountingCounters" }
       provider_usage: { $ref: "#/$defs/reviewAccountingUsage" }
       direct_usage: { $ref: "#/$defs/reviewAccountingUsage" }
       inclusive_usage: { $ref: "#/$defs/reviewAccountingUsage" }
@@ -2004,11 +2024,12 @@ $defs:
       - packet_digest
       - parent
       - lanes
+      - aggregate_counters
       - aggregate_direct_usage
       - aggregate_inclusive_usage
       - budget_regression
     properties:
-      contract_version: { const: "0.5" }
+      contract_version: { const: "0.6" }
       kind: { const: accounting_summary }
       review_id: { type: string, minLength: 1 }
       packet_digest: { type: string, minLength: 1 }
@@ -2016,6 +2037,7 @@ $defs:
       lanes:
         type: array
         items: { $ref: "#/$defs/reviewAccountingNode" }
+      aggregate_counters: { $ref: "#/$defs/reviewAccountingCounters" }
       aggregate_direct_usage: { $ref: "#/$defs/reviewAccountingUsage" }
       aggregate_inclusive_usage: { $ref: "#/$defs/reviewAccountingUsage" }
       budget_regression: { type: boolean }

@@ -36,12 +36,18 @@ fun loadReviewAccounting(connection: Connection, reviewId: String): ReviewAccoun
       ReviewAccountingRecord(
         reviewId,
         rows.getString("packet_digest"),
-        requireNotNull(JsonSupport.parseObjectOrNull(rows.getString("bounded_payload_json"))) {
+        requireNotNull(decodeBoundedAccounting(rows.getString("bounded_payload_json"))) {
           "Malformed bounded review accounting for '$reviewId'."
         },
       )
     }
   }
+
+// The bounded-payload contract is expressed in plain Kotlin values, so a stored row is decoded all
+// the way down before it reaches the record's validator.
+private fun decodeBoundedAccounting(rawJson: String): Map<String, Any?>? = JsonSupport.parseObjectOrNull(rawJson)?.let {
+  JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(it))
+}
 
 fun existingReviewSummary(connection: Connection, reviewRunId: String): ReviewSummary? =
   connection.prepareStatement(reviewSummarySql).use { statement ->

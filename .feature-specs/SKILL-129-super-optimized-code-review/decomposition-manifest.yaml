@@ -9,8 +9,8 @@ base_branch: "main"
 feature_branch: "feat/SKILL-129-super-optimized-code-review"
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 0
-  action: "none"
+  subtask_id: 5
+  action: "resume"
 subtasks:
 - id: 1
   name: "Compile one authoritative review packet"
@@ -20,7 +20,7 @@ subtasks:
   commit_sha: null
   workflow_id: "wftr-20260722-142006-ixqy"
   blocked_reason: null
-  last_resumable_step: "commit_push"
+  last_resumable_step: null
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -33,7 +33,7 @@ subtasks:
   commit_sha: null
   workflow_id: "wftr-20260722-144150-4c8g"
   blocked_reason: null
-  last_resumable_step: "commit_push"
+  last_resumable_step: null
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -49,7 +49,7 @@ subtasks:
   commit_sha: null
   workflow_id: "wftr-20260722-160742-sfy3"
   blocked_reason: null
-  last_resumable_step: "commit_push"
+  last_resumable_step: null
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -68,7 +68,7 @@ subtasks:
   commit_sha: null
   workflow_id: "wftr-20260722-162643-o8j3"
   blocked_reason: null
-  last_resumable_step: "commit_push"
+  last_resumable_step: null
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -82,7 +82,7 @@ subtasks:
   status: "pending"
   branch: null
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wftr-20260722-170636-pk78"
   blocked_reason: null
   last_resumable_step: null
   linear_issue_id: null
