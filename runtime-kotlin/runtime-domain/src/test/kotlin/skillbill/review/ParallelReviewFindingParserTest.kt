@@ -4,6 +4,7 @@ package skillbill.review
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 class ParallelReviewFindingParserTest {
   @Test
@@ -33,5 +34,20 @@ class ParallelReviewFindingParserTest {
       "[F-001] Minor | High | path=\"A|b\\\\c\\t.kt\" | line=7 | exact owner",
     ).single()
     assertEquals("A|b\\c\t.kt", finding.repositoryPath)
+  }
+
+  @Test
+  fun `parser accepts only positive representable line numbers`() {
+    val inputs = listOf("0", "-1", "1", "2147483648")
+    val parsed = inputs.map { line ->
+      ParallelReviewFindingParser.parse(
+        "[F-001] Major | High | path=\"src/Auth.kt\" | line=$line | bounded line",
+      )
+    }
+
+    assertTrue(parsed[0].isEmpty())
+    assertTrue(parsed[1].isEmpty())
+    assertEquals(1, parsed[2].single().line)
+    assertTrue(parsed[3].isEmpty())
   }
 }

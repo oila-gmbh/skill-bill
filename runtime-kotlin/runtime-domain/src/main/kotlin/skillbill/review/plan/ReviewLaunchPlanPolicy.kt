@@ -62,10 +62,12 @@ object ReviewLaunchPlanPolicy {
             owners.keys.sorted().joinToString() + ".",
         )
       }
-      val variants = owners.values.single()
-      variants.first().copy(
-        chains = variants.flatMap { it.chains }.distinct(),
-        required = variants.any { it.required },
+      val ownerSlug = owners.keys.single()
+      val winner = owners.values.single().first()
+      val ownerCandidates = areaCandidates.filter { it.pack.slug == ownerSlug }
+      winner.copy(
+        chains = ownerCandidates.flatMap { it.chains }.distinct(),
+        required = ownerCandidates.any { it.required },
       )
     }.sortedWith(compareBy<AreaCandidate>({ it.depth }, { it.pack.slug }, { it.area }))
 

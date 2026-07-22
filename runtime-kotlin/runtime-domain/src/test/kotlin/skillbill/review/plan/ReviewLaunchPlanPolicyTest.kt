@@ -72,6 +72,29 @@ class ReviewLaunchPlanPolicyTest {
   }
 
   @Test
+  fun `nearest owner retains deeper required reachability for the same owner`() {
+    val owner = pack("owner", listOf("security"))
+    val bridge = pack("bridge", emptyList(), layers = listOf(layer("owner")))
+    val root = pack(
+      "root",
+      emptyList(),
+      layers = listOf(layer("owner", required = false), layer("bridge", required = false)),
+    )
+
+    val lane = ReviewLaunchPlanPolicy.flatten("root", listOf(root, owner, bridge), setOf("security")).lanes.single()
+
+    assertEquals("owner", lane.packSlug)
+    assertEquals(1, lane.depth)
+    assertEquals(listOf("root", "owner"), lane.originLayerChain)
+    assertEquals(
+      listOf(listOf("root", "owner"), listOf("root", "bridge", "owner")),
+      lane.originLayerChains,
+    )
+    assertTrue(lane.required)
+    assertEquals(0, lane.orderIndex)
+  }
+
+  @Test
   fun `cycle missing layer and contract drift fail loudly`() {
     val a = pack("a", listOf("security"), layers = listOf(layer("b")))
     val b = pack("b", listOf("testing"), layers = listOf(layer("a")))

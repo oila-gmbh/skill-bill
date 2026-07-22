@@ -22,7 +22,7 @@ object ParallelReviewFindingParser {
     val severity = mapSeverity(severityStr) ?: return@mapNotNull null
     val path = decodeStructuredString(match.groups["path"]?.value.orEmpty())
     requireRepositoryRelativePath(path)
-    val line = match.groups["line"]?.value?.toIntOrNull() ?: return@mapNotNull null
+    val line = match.groups["line"]?.value?.toIntOrNull()?.takeIf { it > 0 } ?: return@mapNotNull null
     ParallelReviewRawFinding(
       severity = severity,
       confidence = match.groups["confidenceLevel"]?.value.orEmpty(),
