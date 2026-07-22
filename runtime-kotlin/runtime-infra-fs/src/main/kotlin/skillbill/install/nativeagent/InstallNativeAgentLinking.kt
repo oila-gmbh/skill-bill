@@ -107,7 +107,7 @@ private fun decideInstallAction(
   }
 }
 
-private fun resolveSymlinkTarget(linkPath: Path): Path? = runCatching {
+internal fun resolveSymlinkTarget(linkPath: Path): Path? = runCatching {
   val rawTarget = Files.readSymbolicLink(linkPath)
   val resolvedTarget = if (rawTarget.isAbsolute) rawTarget else linkPath.parent.resolve(rawTarget)
   resolvedTarget.toAbsolutePath().normalize()

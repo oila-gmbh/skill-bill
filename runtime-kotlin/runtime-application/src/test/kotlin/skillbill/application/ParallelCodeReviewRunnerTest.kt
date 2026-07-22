@@ -61,6 +61,7 @@ import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
@@ -306,6 +307,57 @@ class ParallelCodeReviewRunnerTest {
   }
 
   @Test
+  fun `inline mode accounting carries the parent prompt and stdout as one specialist-free turn`() {
+    val launcher = GoalRunnerSubtaskLauncher { request ->
+      AgentRunLaunchFacts(
+        agent = InstallAgent.fromNormalizedId(request.invokedAgentId, label = "agentId"),
+        exitStatus = 0,
+        stdout = "- [F-001] Major | High | path=\"A.kt\" | line=1 | Inline finding",
+        stderr = "",
+        timedOut = false,
+        spawnFailed = false,
+      )
+    }
+    val runner = runner(launcher, diffResolver = RecordingDiffResolver(default = diffFor("A.kt")))
+
+    val result = runner.run(
+      baseRequest(scope = ParallelReviewScope.STAGED).copy(codeReviewMode = CodeReviewExecutionMode.INLINE),
+    )
+
+    assertTrue(result.lane1.success)
+    val accounting = assertNotNull(result.lane1.accounting)
+    assertEquals("completed", accounting.terminalStatus)
+    assertEquals(1, accounting.modelTurns, "An inline lane is exactly one parent turn, never a specialist child.")
+    assertEquals(0L, accounting.evidenceBytes, "Inline mode never brokers evidence through a child worker.")
+    assertTrue(accounting.launchBytes > 0, "The rendered parent prompt must be measured as launch bytes.")
+    assertEquals(
+      "- [F-001] Major | High | path=\"A.kt\" | line=1 | Inline finding".toByteArray().size.toLong(),
+      accounting.resultBytes,
+    )
+  }
+
+  @Test
+  fun `inline mode accounting reports unsupported_provider without a session turn`() {
+    val launcher = GoalRunnerSubtaskLauncher { request ->
+      UnsupportedAgentRunLaunch(
+        agent = InstallAgent.fromNormalizedId(request.invokedAgentId, label = "agentId"),
+        reason = "not configured for this repo",
+      )
+    }
+    val runner = runner(launcher, diffResolver = RecordingDiffResolver(default = diffFor("A.kt")))
+
+    val result = runner.run(
+      baseRequest(scope = ParallelReviewScope.STAGED).copy(codeReviewMode = CodeReviewExecutionMode.INLINE),
+    )
+
+    assertFalse(result.lane1.success)
+    assertContains(result.lane1.failureReason.orEmpty(), "unsupported agent")
+    val accounting = assertNotNull(result.lane1.accounting)
+    assertEquals("unsupported_provider", accounting.terminalStatus)
+    assertEquals(0L, accounting.resultBytes, "No session ran, so there is no result to measure.")
+  }
+
+  @Test
   fun `delegated routing launches one rubric per non-empty selected specialist`() {
     val launcher = ParallelSubtaskLauncher()
     val architecture = ResolvedReviewRubric(
@@ -340,6 +392,59 @@ class ParallelCodeReviewRunnerTest {
       assertFalse(prompt.contains("testing specialist rubric"))
       assertFalse(prompt.contains("parent routing rubric"))
     }
+  }
+
+  @Test
+  fun `a failed specialist does not discard a successful sibling specialist's findings`() {
+    val architectureRubric = "architecture specialist rubric"
+    val testingRubric = "testing specialist rubric"
+    val launcher = GoalRunnerSubtaskLauncher { request ->
+      val agent = InstallAgent.fromNormalizedId(request.invokedAgentId, label = "agentId")
+      val prompt = request.skillRunRequest.promptOverride.orEmpty()
+      if (prompt.contains(architectureRubric)) {
+        AgentRunLaunchFacts(
+          agent = agent,
+          exitStatus = 1,
+          stdout = "",
+          stderr = "boom",
+          timedOut = false,
+          spawnFailed = false,
+        )
+      } else {
+        AgentRunLaunchFacts(
+          agent = agent,
+          exitStatus = 0,
+          stdout = "- [F-001] Major | High | path=\"src/FooTest.kt\" | line=1 | Testing issue",
+          stderr = "",
+          timedOut = false,
+          spawnFailed = false,
+        )
+      }
+    }
+    val runner = runner(
+      launcher,
+      catalogGateway = stubCatalogGateway(listOf(platformManifest("kotlin", listOf("*.kt")))),
+      diffResolver = RecordingDiffResolver(default = diffFor("src/Main.kt") + "\n" + diffFor("src/FooTest.kt")),
+      rubricResolver = ReviewRubricResolver {
+        ResolvedReviewRubric(
+          "bill-kotlin-code-review",
+          "parent routing rubric",
+          specialists = listOf(
+            ResolvedReviewRubric("bill-kotlin-code-review-architecture", architectureRubric, area = "architecture"),
+            ResolvedReviewRubric("bill-kotlin-code-review-testing", testingRubric, area = "testing"),
+          ),
+        )
+      },
+    )
+
+    val result = runner.run(baseRequest(scope = ParallelReviewScope.STAGED))
+
+    assertFalse(result.lane1.success, "The lane as a whole failed because its architecture specialist failed.")
+    assertEquals(
+      1,
+      result.mergeResult.findings.size,
+      "The testing specialist's finding must survive its failed sibling instead of being discarded.",
+    )
   }
 
   @Test

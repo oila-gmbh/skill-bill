@@ -165,6 +165,7 @@ class JvmAgentRunProcessRunner : AgentRunProcessRunner {
       interrupted = false,
       spawnFailed = false,
       liveness = wait.liveness,
+      stdoutTruncated = stdout.wasTruncated(),
     )
   }
 
@@ -768,6 +769,8 @@ private class CappedUtf8Drain(
   private val output = ByteArrayOutputStream(
     limitBytes?.coerceAtMost(INITIAL_OUTPUT_BUFFER_BYTES) ?: INITIAL_OUTPUT_BUFFER_BYTES,
   )
+
+  @Volatile private var truncated = false
   private val worker = thread(start = false, isDaemon = true, name = "skillbill-agent-run-output-drain") {
     try {
       input.use { stream ->
@@ -783,9 +786,13 @@ private class CappedUtf8Drain(
           if (read == -1) {
             break
           }
+          // Whether the retention cap still has room at the START of this read: sink forwarding
+          // stops once the cap is exhausted, independent of onChunkRead's lifecycle decoding, which
+          // must keep observing output regardless of the cap to enforce provider budgets correctly.
+          val withinCap = remaining == null || remaining > 0
           carry.put(buffer, 0, read)
           carry.flip()
-          decodeAvailable(decoded) { decoder.decode(carry, decoded, false) }
+          decodeAvailable(decoded, withinCap) { decoder.decode(carry, decoded, false) }
           carry.compact()
 
           val retained = remaining?.coerceAtMost(read) ?: read
@@ -793,24 +800,26 @@ private class CappedUtf8Drain(
             output.write(buffer, 0, retained)
             remaining = remaining?.minus(retained)
           }
+          if (retained < read) truncated = true
         }
+        val withinCap = remaining == null || remaining > 0
         carry.flip()
-        decodeAvailable(decoded) { decoder.decode(carry, decoded, true) }
-        decodeAvailable(decoded) { decoder.flush(decoded) }
+        decodeAvailable(decoded, withinCap) { decoder.decode(carry, decoded, true) }
+        decodeAvailable(decoded, withinCap) { decoder.flush(decoded) }
       }
     } catch (_: IOException) {
       // Forced process teardown can close pipes while drain threads are blocked in read().
     }
   }
 
-  private fun decodeAvailable(decoded: CharBuffer, decode: () -> java.nio.charset.CoderResult) {
+  private fun decodeAvailable(decoded: CharBuffer, forwardToSink: Boolean, decode: () -> java.nio.charset.CoderResult) {
     while (true) {
       val result = decode()
       decoded.flip()
       if (decoded.hasRemaining()) {
         val chunk = decoded.toString()
         onChunkRead(chunk)
-        outputSink.write(outputStream, chunk)
+        if (forwardToSink) outputSink.write(outputStream, chunk)
       }
       decoded.clear()
       if (!result.isOverflow) return
@@ -826,6 +835,9 @@ private class CappedUtf8Drain(
   }
 
   fun text(): String = String(output.toByteArray(), StandardCharsets.UTF_8)
+
+  /** True once more bytes arrived than the retention cap could keep, so [text] is incomplete. */
+  fun wasTruncated(): Boolean = truncated
 }
 
 private class OutputObservationTracker {

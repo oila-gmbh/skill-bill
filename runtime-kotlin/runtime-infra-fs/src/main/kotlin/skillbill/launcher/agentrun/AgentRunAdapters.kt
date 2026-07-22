@@ -60,6 +60,7 @@ class ProcessAgentRunAdapter(
       interrupted = result.interrupted,
       spawnFailed = result.spawnFailed,
       liveness = result.liveness,
+      stdoutTruncated = result.stdoutTruncated,
       // SKILL-64 Subtask 3 (AC6, AC11): provider-neutral child-session
       // descriptors derived from launch context the launcher controls — the
       // child working directory (session path) and a deterministic, non-secret

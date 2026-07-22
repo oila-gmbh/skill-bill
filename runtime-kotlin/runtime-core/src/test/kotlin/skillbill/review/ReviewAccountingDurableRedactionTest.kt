@@ -147,7 +147,9 @@ class ReviewAccountingDurableRedactionTest {
     val recorder = ReviewRecorder()
     val runner = reviewHarness(
       ReviewHarnessConfig(
-        manifests = listOf(reviewPack("kotlin", listOf("architecture", "security"), routingSignals = listOf("*.kt"))),
+        manifests = listOf(
+          reviewPack("kotlin", listOf("architecture", "security"), routingSignals = listOf("*.kt", "*.md")),
+        ),
         diff = diffForChanges(
           "src/Repo.kt" to "val diffBody = \"$diffBody\"",
           "docs/GUIDANCE.md" to guidanceBody,

@@ -31,7 +31,11 @@ class FileSystemReviewNativeAgentPreflight(
       request.repoRoot.resolve("platform-packs"),
       request.repoRoot.resolve("skills"),
     )
-    val inventory = NativeAgentLinkInventory.read(home, listOf(currentCache, legacyCache), request.repoRoot)
+    // sourceRoot is intentionally omitted: passing it would let read() bootstrap trust from
+    // whatever links currently exist on disk when the durable inventory is missing, so a
+    // tampered artifact could validate against a digest computed from itself. Preflight must
+    // reject a missing inventory outright; only install/reconcile may legitimately bootstrap it.
+    val inventory = NativeAgentLinkInventory.read(home, listOf(currentCache, legacyCache))
     request.assignments.distinct().forEach { assignment ->
       val agentId = assignment.agentId
       val logicalName = assignment.logicalName

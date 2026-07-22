@@ -90,7 +90,12 @@ object ReviewLaunchPlanPolicy {
           depth = winner.depth,
           originLayerChain = winner.chain,
           originLayerChains = winner.chains,
-          required = winner.requiredByComposition || condition?.required == true,
+          // A pack that declares its own lane condition for this area (required, or signal-gated)
+          // has made an explicit choice that a composing layer's blanket "this baseline layer is
+          // required" flag must not override — otherwise composing a required baseline layer would
+          // force every one of its areas to launch regardless of signals. Composition-required is
+          // only a fallback default for areas the owning pack leaves unconditioned.
+          required = condition?.required ?: winner.requiredByComposition,
           addOns = winner.pack.addonUsage.firstOrNull { it.skillRelativeDir == consumer }
             ?.addons.orEmpty().map { it.slug },
           orderIndex = index,

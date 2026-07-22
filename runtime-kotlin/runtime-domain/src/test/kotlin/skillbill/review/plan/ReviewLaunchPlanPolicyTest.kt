@@ -11,10 +11,12 @@ import skillbill.scaffold.model.CodeReviewCompositionMode
 import skillbill.scaffold.model.CodeReviewCompositionScope
 import skillbill.scaffold.model.DeclaredFiles
 import skillbill.scaffold.model.PlatformManifest
+import skillbill.scaffold.model.ReviewLaneCondition
 import skillbill.scaffold.model.RoutingSignals
 import java.nio.file.Path
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class ReviewLaunchPlanPolicyTest {
@@ -30,6 +32,28 @@ class ReviewLaunchPlanPolicyTest {
     assertEquals(KOTLIN_AREAS.filterNot { it in KMP_AREAS }.sorted(), plan.lanes.drop(3).map { it.area })
     assertTrue(plan.lanes.none { it.skillName == "bill-kotlin-code-review" })
     assertTrue(plan.lanes.filter { it.packSlug == "kotlin" }.all { it.originLayerChain == listOf("kmp", "kotlin") })
+  }
+
+  @Test
+  fun `a required baseline layer does not force a signal-gated composed area to be required`() {
+    val kotlin = pack(
+      "kotlin",
+      listOf("architecture", "security"),
+      laneConditions = mapOf(
+        "architecture" to ReviewLaneCondition(required = true),
+        "security" to ReviewLaneCondition(content = listOf("secret")),
+      ),
+    )
+    val kmp = pack("kmp", emptyList(), layers = listOf(layer("kotlin", required = true)))
+
+    val plan = ReviewLaunchPlanPolicy.flatten("kmp", listOf(kmp, kotlin), setOf("architecture", "security"))
+
+    assertTrue(plan.lanes.single { it.area == "architecture" }.required)
+    assertFalse(
+      plan.lanes.single { it.area == "security" }.required,
+      "Kotlin's own signal-gated 'security' condition must not be overridden by the composing " +
+        "layer's blanket required flag.",
+    )
   }
 
   @Test
@@ -119,22 +143,27 @@ class ReviewLaunchPlanPolicyTest {
     }
   }
 
-  private fun pack(slug: String, areas: List<String>, layers: List<CodeReviewBaselineLayer> = emptyList()) =
-    PlatformManifest(
-      slug = slug,
-      packRoot = Path.of("platform-packs", slug),
-      contractVersion = "1.2",
-      routingSignals = RoutingSignals(emptyList(), emptyList()),
-      declaredCodeReviewAreas = areas,
-      declaredFiles = DeclaredFiles(
-        baseline = Path.of("platform-packs", slug, "code-review", "bill-$slug-code-review", "content.md"),
-        areas = areas.associateWith {
-          Path.of("platform-packs", slug, "code-review", "bill-$slug-code-review-$it", "content.md")
-        },
-      ),
-      areaMetadata = emptyMap(),
-      codeReviewComposition = layers.takeIf { it.isNotEmpty() }?.let(::CodeReviewComposition),
-    )
+  private fun pack(
+    slug: String,
+    areas: List<String>,
+    layers: List<CodeReviewBaselineLayer> = emptyList(),
+    laneConditions: Map<String, ReviewLaneCondition> = emptyMap(),
+  ) = PlatformManifest(
+    slug = slug,
+    packRoot = Path.of("platform-packs", slug),
+    contractVersion = "1.2",
+    routingSignals = RoutingSignals(emptyList(), emptyList()),
+    declaredCodeReviewAreas = areas,
+    declaredFiles = DeclaredFiles(
+      baseline = Path.of("platform-packs", slug, "code-review", "bill-$slug-code-review", "content.md"),
+      areas = areas.associateWith {
+        Path.of("platform-packs", slug, "code-review", "bill-$slug-code-review-$it", "content.md")
+      },
+    ),
+    areaMetadata = emptyMap(),
+    laneConditions = laneConditions,
+    codeReviewComposition = layers.takeIf { it.isNotEmpty() }?.let(::CodeReviewComposition),
+  )
 
   private fun layer(slug: String, required: Boolean = true) = CodeReviewBaselineLayer(
     platform = slug,

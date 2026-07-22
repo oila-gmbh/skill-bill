@@ -2,6 +2,7 @@
 
 package skillbill.install.nativeagent
 
+import com.fasterxml.jackson.core.JsonParser
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
 import com.networknt.schema.JsonSchemaFactory
@@ -9,11 +10,13 @@ import com.networknt.schema.SpecVersion
 import skillbill.contracts.nativeagent.NATIVE_AGENT_LINK_INVENTORY_CONTRACT_VERSION
 import skillbill.contracts.nativeagent.NativeAgentLinkInventorySchemaPaths
 import skillbill.error.InvalidNativeAgentLinkInventorySchemaError
+import java.nio.channels.FileChannel
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
+import java.nio.file.StandardOpenOption
 import java.security.MessageDigest
 
 internal data class NativeAgentLinkInventoryEntry(
@@ -26,7 +29,7 @@ internal data class NativeAgentLinkInventoryEntry(
 )
 
 internal object NativeAgentLinkInventory {
-  private val mapper = ObjectMapper()
+  private val mapper = ObjectMapper().enable(JsonParser.Feature.STRICT_DUPLICATE_DETECTION)
   private val schema by lazy {
     val resource = requireNotNull(javaClass.getResourceAsStream(NativeAgentLinkInventorySchemaPaths.CLASSPATH_RESOURCE))
     JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V202012).getSchema(YAMLMapper().readTree(resource))
@@ -42,44 +45,57 @@ internal object NativeAgentLinkInventory {
     afterTemporaryCreation: (Path) -> Unit = {},
   ) {
     val path = inventoryPath(home)
-    val trustedRoots = canonicalManagedCacheRoots(home, managedRoots)
-    val previous = if (Files.exists(path, LinkOption.NOFOLLOW_LINKS)) {
-      read(home, trustedRoots, sourceRoot)
-    } else {
-      val bootstrap = bootstrap(home, trustedRoots, sourceRoot)
-      bootstrap.remove.forEach { removeIfStillManaged(it, home, trustedRoots, beforeMutation) }
-      bootstrap.retain
-    }
-    val desiredPaths = desired.map { it.installedPath.normalize() }.toSet()
-    previous.filter { it.provider == provider && it.installedPath.normalize() !in desiredPaths }.forEach { stale ->
-      removeIfStillManaged(stale, home, trustedRoots, beforeMutation)
-    }
-    val retained = previous.filter { it.provider != provider }.filter { entry ->
-      if (isSemanticallyValid(entry, home, trustedRoots)) {
-        true
-      } else {
-        removeIfStillManaged(entry, home, trustedRoots, beforeMutation)
-        false
+    Files.createDirectories(requireNotNull(path.parent))
+    // Holds an exclusive lock across the whole read-render-verify-write span so a concurrent
+    // install/reconcile cannot read the same "previous" snapshot, both compute conflicting
+    // desired/retained sets, and publish a write that silently discards the other's entries.
+    FileChannel.open(
+      lockPath(path),
+      StandardOpenOption.CREATE,
+      StandardOpenOption.WRITE,
+    ).use { channel ->
+      channel.lock().use {
+        val trustedRoots = canonicalManagedCacheRoots(home, managedRoots)
+        val previous = if (Files.exists(path, LinkOption.NOFOLLOW_LINKS)) {
+          read(home, trustedRoots, sourceRoot)
+        } else {
+          val bootstrap = bootstrap(home, trustedRoots, sourceRoot)
+          bootstrap.remove.forEach { removeIfStillManaged(it, home, trustedRoots, beforeMutation) }
+          bootstrap.retain
+        }
+        val desiredPaths = desired.map { it.installedPath.normalize() }.toSet()
+        previous.filter { it.provider == provider && it.installedPath.normalize() !in desiredPaths }
+          .forEach { stale -> removeIfStillManaged(stale, home, trustedRoots, beforeMutation) }
+        val retained = previous.filter { it.provider != provider }.filter { entry ->
+          if (isSemanticallyValid(entry, home, trustedRoots)) {
+            true
+          } else {
+            removeIfStillManaged(entry, home, trustedRoots, beforeMutation)
+            false
+          }
+        }
+        try {
+          write(
+            path,
+            (retained + desired).sortedWith(compareBy({ it.provider }, { it.installedPath.toString() })),
+            home,
+            trustedRoots,
+            beforeMutation,
+            afterTemporaryCreation,
+          )
+        } catch (error: InvalidNativeAgentLinkInventorySchemaError) {
+          throw error
+        } catch (error: Exception) {
+          throw InvalidNativeAgentLinkInventorySchemaError(
+            "Invalid native-agent link inventory publication '$path': ${error.message}",
+            error,
+          )
+        }
       }
     }
-    try {
-      write(
-        path,
-        (retained + desired).sortedWith(compareBy({ it.provider }, { it.installedPath.toString() })),
-        home,
-        trustedRoots,
-        beforeMutation,
-        afterTemporaryCreation,
-      )
-    } catch (error: InvalidNativeAgentLinkInventorySchemaError) {
-      throw error
-    } catch (error: Exception) {
-      throw InvalidNativeAgentLinkInventorySchemaError(
-        "Invalid native-agent link inventory publication '$path': ${error.message}",
-        error,
-      )
-    }
   }
+
+  private fun lockPath(inventoryPath: Path): Path = inventoryPath.resolveSibling("${inventoryPath.fileName}.lock")
 
   fun read(home: Path, managedRoots: List<Path>, sourceRoot: Path? = null): List<NativeAgentLinkInventoryEntry> {
     val path = inventoryPath(home)

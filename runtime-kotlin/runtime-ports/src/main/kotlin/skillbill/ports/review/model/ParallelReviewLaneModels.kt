@@ -25,4 +25,5 @@ data class ParallelReviewLaneOutcome(
   val accounting: ReviewLaneAccounting? = null,
   val specialistAccounting: List<ReviewLaneAccounting> = accounting?.let(::listOf) ?: emptyList(),
   val findings: List<ParallelReviewRawFinding> = emptyList(),
+  val interrupted: Boolean = false,
 )

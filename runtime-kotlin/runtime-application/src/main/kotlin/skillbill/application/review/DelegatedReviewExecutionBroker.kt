@@ -6,6 +6,8 @@ import skillbill.application.review.model.DelegatedReviewExecutionRequest
 import skillbill.application.review.model.DelegatedReviewLaunchOutcome
 import skillbill.application.review.model.DelegatedReviewWorkerRequest
 import skillbill.ports.review.model.ReviewLaneAccounting
+import skillbill.review.context.model.ReviewContextBudgetExceeded
+import skillbill.review.context.model.ReviewContextBudgetExceededException
 
 /**
  * Production entry point for a delegated specialist. A caller cannot start a worker without first
@@ -18,7 +20,17 @@ class DelegatedReviewExecutionBroker(
 ) {
   /** Validates every launch boundary before any inline or delegated worker is allowed to start. */
   fun preflight(requests: List<skillbill.application.review.model.DelegatedReviewLaunchRequest>) {
-    requests.forEach(launchBroker::prepare)
+    requests.forEach { request ->
+      val outcome = launchBroker.prepare(request)
+      if (outcome is DelegatedReviewLaunchOutcome.Terminated) {
+        val budgetExceeded = outcome.outcome as? ReviewContextBudgetExceeded
+          ?: error(
+            "Preflight terminated lane '${request.assignment.lane}' with an unenforceable outcome: " +
+              "${outcome.outcome}.",
+          )
+        throw ReviewContextBudgetExceededException(budgetExceeded)
+      }
+    }
   }
 
   fun execute(request: DelegatedReviewExecutionRequest): DelegatedReviewExecutionOutcome =

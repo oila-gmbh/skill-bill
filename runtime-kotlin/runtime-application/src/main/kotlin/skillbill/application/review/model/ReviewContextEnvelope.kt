@@ -2,7 +2,9 @@ package skillbill.application.review.model
 
 import skillbill.boundary.OpenBoundaryMap
 
-class ReviewContextEnvelope(private val fields: Map<String, Any?>) {
+class ReviewContextEnvelope(fields: Map<String, Any?>) {
+  private val fields: Map<String, Any?> = fields.toMap()
+
   val kind: String get() = fields["kind"] as? String ?: ""
 
   @OpenBoundaryMap("Review-context wire map at the schema-validation seam")

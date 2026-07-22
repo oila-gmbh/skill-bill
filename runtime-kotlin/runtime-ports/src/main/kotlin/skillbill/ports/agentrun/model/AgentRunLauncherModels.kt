@@ -204,6 +204,8 @@ data class AgentRunLaunchFacts(
   val totalTokens: Long? = null,
   val tokenOwnership: AgentRunTokenOwnership = AgentRunTokenOwnership.DIRECT,
   val providerUsageEnforceable: Boolean = false,
+  /** True when raw output exceeded the retention cap, so [stdout] is missing trailing content. */
+  val stdoutTruncated: Boolean = false,
 ) : AgentRunLaunchOutcome {
   init {
     require(!timedOut || exitStatus == null) { "timedOut launch facts must not report an exitStatus." }

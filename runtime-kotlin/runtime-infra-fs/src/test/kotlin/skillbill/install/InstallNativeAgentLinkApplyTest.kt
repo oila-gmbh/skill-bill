@@ -60,6 +60,34 @@ class InstallNativeAgentLinkApplyTest : InstallApplyTestSupport() {
   }
 
   @Test
+  fun `inventory rejects an entry object with a duplicated field key`() {
+    val fixture = setupApplyFixture()
+    val cacheRoot = currentNativeAgentApplyCacheRoot(
+      fixture.home,
+      fixture.repoRoot.resolve("platform-packs"),
+      fixture.repoRoot.resolve("skills"),
+    )
+    val inventory = fixture.home.resolve(".skill-bill/native-agent-link-inventory.json")
+    Files.createDirectories(inventory.parent)
+    val installedPath = fixture.home.resolve(".codex/agents/bill-code-review-worker.toml")
+    val cacheTargetPath = cacheRoot.resolve("codex-agents/bill-code-review-worker.toml")
+    Files.writeString(
+      inventory,
+      """
+      {"contract_version":"0.1","entries":[
+        {"logical_name":"bill-code-review-worker","provider":"codex","installed_path":"$installedPath",
+         "cache_target_path":"$cacheTargetPath","content_digest":"${"0".repeat(64)}",
+         "content_digest":"${"1".repeat(64)}","source_root":"${fixture.repoRoot}"}
+      ]}
+      """.trimIndent(),
+    )
+
+    assertFailsWith<InvalidNativeAgentLinkInventorySchemaError> {
+      NativeAgentLinkInventory.read(fixture.home, listOf(cacheRoot))
+    }
+  }
+
+  @Test
   fun `preflight rejects stale Codex inventory when provider root disappeared`() {
     val fixture = setupApplyFixture()
     val cacheRoot = currentNativeAgentApplyCacheRoot(

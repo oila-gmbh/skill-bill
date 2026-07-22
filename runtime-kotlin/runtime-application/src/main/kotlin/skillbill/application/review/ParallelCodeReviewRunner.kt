@@ -62,7 +62,7 @@ import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
 
 @Inject
-@Suppress("LongParameterList", "TooManyFunctions")
+@Suppress("LongParameterList", "TooManyFunctions", "LargeClass")
 class ParallelCodeReviewRunner(
   private val delegatedReviewExecutionBroker: DelegatedReviewExecutionBroker,
   private val parentReviewLauncher: GoalRunnerSubtaskLauncher,
@@ -96,6 +96,7 @@ class ParallelCodeReviewRunner(
       evidence,
       detection.routed,
       detection.manifests,
+      detection.ownedPathsBySlug,
       listOf(agent1.id, agent2.id),
       budget,
     )
@@ -111,7 +112,12 @@ class ParallelCodeReviewRunner(
         ),
       )
     }
-    delegatedReviewExecutionBroker.preflight(launchRequests)
+    // Isolation and launch-boundary preflight only applies to workers this run will actually
+    // start in isolated conversations; inline mode runs everything in the parent's own session
+    // and must not be rejected for an agent that simply has no specialist isolation strategy.
+    if (resolvedMode == ResolvedReviewExecutionMode.DELEGATED) {
+      delegatedReviewExecutionBroker.preflight(launchRequests)
+    }
     val prepared = launchRequests.groupBy { it.agentId }
     val outcomes = runLanes(
       request,
@@ -189,10 +195,11 @@ class ParallelCodeReviewRunner(
     evidence: ReviewDiffEvidence,
     routedManifests: List<PlatformManifest>,
     manifests: List<PlatformManifest>,
+    ownedPathsBySlug: Map<String, Set<String>>,
     agentIds: List<String>,
     budget: skillbill.review.context.model.ReviewContextBudgetPolicy,
   ): List<DelegatedReviewLaunchRequest> {
-    val plannedRubrics = resolvePlannedRubrics(evidence, routedManifests, manifests)
+    val plannedRubrics = resolvePlannedRubrics(evidence, routedManifests, manifests, ownedPathsBySlug)
     return ParallelReviewPreparationCompiler.compile(
       input = ParallelReviewPreparationInput(
         diff = diffText,
@@ -214,6 +221,7 @@ class ParallelCodeReviewRunner(
     evidence: ReviewDiffEvidence,
     routedManifests: List<PlatformManifest>,
     manifests: List<PlatformManifest>,
+    ownedPathsBySlug: Map<String, Set<String>>,
   ): List<PlannedReviewRubric> = if (routedManifests.isEmpty()) {
     val rubric = reviewRubricResolver.resolve(null)
     listOf(
@@ -237,21 +245,25 @@ class ParallelCodeReviewRunner(
     )
   } else {
     val selectedAreas = manifests.flatMap { it.declaredCodeReviewAreas }.toSet()
+    // Each root pack only owns the files that actually routed to it; a required baseline lane
+    // must claim exactly that root's routed files, never every changed file across the whole
+    // (possibly cross-stack) diff, or a Kotlin required specialist would also claim Python files.
     val flattened = routedManifests.flatMap { root ->
+      val rootOwnedPaths = ownedPathsBySlug[root.slug].orEmpty()
+      val rootFiles = evidence.files.filter { it.path in rootOwnedPaths }
       ReviewLaunchPlanPolicy.flatten(root.slug, manifests, selectedAreas).lanes.also { lanes ->
         require(lanes.isNotEmpty()) {
           "Routed pack '${root.slug}' resolved no declared flattened specialist worker."
         }
-      }
-    }
-    flattened
-      .map { lane ->
-        val ownedPaths = if (lane.required) evidence.hunks.map { it.path } else laneOwnedPaths(lane, evidence)
+      }.map { lane ->
+        val ownedPaths = if (lane.required) rootOwnedPaths.toList() else laneOwnedPaths(lane, rootFiles)
         lane.copy(
           ownedPaths = ownedPaths.distinct().sorted(),
           changedHunkIds = evidence.hunks.filter { it.path in ownedPaths }.map { it.hunkId },
         )
       }
+    }
+    flattened
       .filter { lane -> lane.ownedPaths.isNotEmpty() }
       .groupBy { it.skillName }
       .values
@@ -355,7 +367,7 @@ class ParallelCodeReviewRunner(
         e,
       )
     }
-    if (manifests.isEmpty()) return StackDetection(emptyList(), emptyList())
+    if (manifests.isEmpty()) return StackDetection(emptyList(), emptyList(), emptyMap())
 
     val changedFiles = evidence.files.filterNot { RoutingSignalPathMatcher.isIgnored(it.path) }
 
@@ -363,8 +375,13 @@ class ParallelCodeReviewRunner(
       manifest.routingSignals.path.distinct().map { it to manifest.slug }
     }.groupBy({ it.first }, { it.second })
     val routedSlugs = linkedSetOf<String>()
+    val ownedPathsBySlug = mutableMapOf<String, MutableSet<String>>()
     changedFiles.forEach { changed ->
-      val pathScores = manifests.associateWith { manifest ->
+      // Path evidence is near-authoritative (a .kt file is a Kotlin file); content signals are
+      // broad, language-agnostic tokens ("class ", "import ") that legitimately appear in most
+      // stacks' source, so they may only break ties among equally-path-scored manifests and must
+      // never let a manifest with no path match at all outrank one with a real path match.
+      val scores = manifests.associateWith { manifest ->
         val pathScore = manifest.routingSignals.path.distinct().sumOf { signal ->
           if (!RoutingSignalPathMatcher.matches(changed.path, signal)) {
             0
@@ -377,10 +394,10 @@ class ParallelCodeReviewRunner(
         val contentScore = manifest.routingSignals.content.distinct().count { signal ->
           changed.changedContent.contains(signal, ignoreCase = true)
         } * CONTENT_SIGNAL_SCORE
-        pathScore + contentScore
-      }.filterValues { it > 0 }
-      val best = pathScores.values.maxOrNull() ?: return@forEach
-      val winners = pathScores.filterValues { it == best }.keys.toMutableList()
+        pathScore to contentScore
+      }.filterValues { (pathScore, contentScore) -> pathScore > 0 || contentScore > 0 }
+      val best = scores.values.maxWithOrNull(compareBy({ it.first }, { it.second })) ?: return@forEach
+      val winners = scores.filterValues { it == best }.keys.toMutableList()
       if (winners.size > 1) {
         // With only shared signals, prefer a baseline pack over a composed root. A root wins
         // naturally as soon as one of its manifest-owned KMP/Android/etc. signals matches.
@@ -392,10 +409,13 @@ class ParallelCodeReviewRunner(
           winners.removeAll(composedRoots)
         }
       }
-      winners.forEach { routedSlugs += it.slug }
+      winners.forEach { winner ->
+        routedSlugs += winner.slug
+        ownedPathsBySlug.getOrPut(winner.slug) { mutableSetOf() } += changed.path
+      }
     }
     val routed = manifests.filter { it.slug in routedSlugs }
-    return StackDetection(routed, manifests)
+    return StackDetection(routed, manifests, ownedPathsBySlug)
   }
 
   private fun launchResolvedLane(
@@ -444,7 +464,12 @@ class ParallelCodeReviewRunner(
         )
         continue
       }
-      outcomes += launchSpecialist(launchRequest, request, modelOverride, remaining)
+      val outcome = launchSpecialist(launchRequest, request, modelOverride, remaining)
+      outcomes += outcome
+      // An interrupted launch signals a parent shutdown/cancellation; continuing to launch the
+      // remaining specialists at that point only starts workers that will themselves be
+      // immediately torn down.
+      if (outcome.interrupted) break
     }
     val failed = outcomes.firstOrNull { !it.success }
     return ParallelReviewLaneOutcome(
@@ -521,6 +546,7 @@ class ParallelCodeReviewRunner(
           tokenUsage = usage,
           budgetOutcome = budgetOutcome,
           accounting = worker.accounting,
+          interrupted = outcome.interrupted,
           findings = if (reason == null) {
             ParallelReviewFindingParser.parse(outcome.stdout).map { finding ->
               require(finding.repositoryPath in launchRequest.assignment.assignedPaths) {
@@ -579,7 +605,16 @@ class ParallelCodeReviewRunner(
           "path=<JSON string> | line=<positive integer> | description' lines.",
       )
       appendLine()
-      append(launchRequests.first().packet.changedHunks.joinToString("\n") { it.content })
+      // Hunks carry only line-number headers, never their file path, so grouping by path here is
+      // the only place that attribution survives; a flat concatenation across files leaves the
+      // agent unable to tell which hunk belongs to which changed file.
+      launchRequests.first().packet.changedHunks
+        .groupBy { it.path }
+        .toSortedMap()
+        .forEach { (path, hunks) ->
+          appendLine("## Changed file: ${structuredString(path)}")
+          hunks.forEach { hunk -> appendLine(hunk.content) }
+        }
     }
     val outcome = parentReviewLauncher.launch(
       GoalRunnerSubtaskLaunchRequest(
@@ -653,8 +688,8 @@ class ParallelCodeReviewRunner(
     }
   }
 
-  private fun laneOwnedPaths(lane: ReviewLaunchLane, evidence: ReviewDiffEvidence): List<String> {
-    return evidence.files.filter { file ->
+  private fun laneOwnedPaths(lane: ReviewLaunchLane, files: List<ReviewChangedFileEvidence>): List<String> {
+    return files.filter { file ->
       lane.pathSignals.any { RoutingSignalPathMatcher.matches(file.path, it) } ||
         lane.contentSignals.any { ReviewContentMatcher.contains(file.changedContent, it) }
     }.map { it.path }
@@ -676,6 +711,10 @@ class ParallelCodeReviewRunner(
         append(" — ${line.take(STDERR_EXCERPT_MAX_LENGTH)}")
       }
     }
+    // A truncated stdout means the retained bytes may not contain the agent's actual result at
+    // all; parsing it as if complete risks reporting a false empty success instead of surfacing
+    // the truncation.
+    facts.stdoutTruncated -> "agent output exceeded the retention cap before completion"
     else -> null
   }
 
@@ -695,6 +734,7 @@ class ParallelCodeReviewRunner(
   private data class StackDetection(
     val routed: List<PlatformManifest>,
     val manifests: List<PlatformManifest>,
+    val ownedPathsBySlug: Map<String, Set<String>>,
   )
 }
 
@@ -703,20 +743,21 @@ private fun parallelResult(
   agent2Id: String,
   outcomes: skillbill.ports.review.model.ParallelReviewLaneRunResult,
 ): ParallelCodeReviewResult {
+  // A lane's own `findings` already carries the right value in both modes: delegated lanes keep
+  // every successful specialist's findings even when a sibling specialist in the same lane failed,
+  // and inline lanes carry an empty list on failure. Gating the whole lane's findings on `success`
+  // discarded those already-correct successful-sibling findings whenever any specialist failed; the
+  // success check is needed only to avoid re-parsing a failed run's raw output as a fallback.
   val lane1Result = ParallelReviewLaneResult(
     agentId = agent1Id,
-    findings = if (outcomes.lane1.success) {
-      outcomes.lane1.findings.ifEmpty { ParallelReviewFindingParser.parse(outcomes.lane1.rawOutput) }
-    } else {
-      emptyList()
+    findings = outcomes.lane1.findings.ifEmpty {
+      if (outcomes.lane1.success) ParallelReviewFindingParser.parse(outcomes.lane1.rawOutput) else emptyList()
     },
   )
   val lane2Result = ParallelReviewLaneResult(
     agentId = agent2Id,
-    findings = if (outcomes.lane2.success) {
-      outcomes.lane2.findings.ifEmpty { ParallelReviewFindingParser.parse(outcomes.lane2.rawOutput) }
-    } else {
-      emptyList()
+    findings = outcomes.lane2.findings.ifEmpty {
+      if (outcomes.lane2.success) ParallelReviewFindingParser.parse(outcomes.lane2.rawOutput) else emptyList()
     },
   )
   return ParallelCodeReviewResult(

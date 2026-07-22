@@ -98,6 +98,8 @@ data class AgentRunProcessResult(
   val interrupted: Boolean,
   val spawnFailed: Boolean,
   val liveness: AgentRunLivenessSnapshot? = null,
+  /** True when raw output exceeded the retention cap, so [stdout] is missing trailing content. */
+  val stdoutTruncated: Boolean = false,
 )
 
 interface AgentRunProcessRunner {

@@ -205,7 +205,13 @@ object InstallNativeAgentOperations {
         targets.mapNotNull { target ->
           val agentDir = target.path
           val installedPath = agentDir.resolve(artifact.path.fileName)
-          if (installedPath !in linkedPaths && !Files.isSymbolicLink(installedPath)) return@mapNotNull null
+          // A path is ours to verify only when we just linked it, or it's an already-symlinked
+          // path that already resolves to this exact artifact's target. A foreign symlink that
+          // installNativeAgentFile deliberately preserved (Skip) resolves elsewhere and must not
+          // be swept into verification, or it fails for a link we intentionally left alone.
+          val isOurs = installedPath in linkedPaths ||
+            (Files.isSymbolicLink(installedPath) && resolveSymlinkTarget(installedPath) == artifact.path)
+          if (!isOurs) return@mapNotNull null
           NativeAgentLinkInventoryEntry(
             logicalName = artifact.logicalName,
             provider = provider.name.lowercase(),
