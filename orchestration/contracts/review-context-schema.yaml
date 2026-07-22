@@ -256,7 +256,7 @@ $defs:
   usage:
     type: object
     additionalProperties: false
-    minProperties: 1
+    minProperties: 0
     properties:
       input_tokens: { type: integer, minimum: 0 }
       cached_input_tokens: { type: integer, minimum: 0 }
@@ -264,6 +264,7 @@ $defs:
       reasoning_tokens: { type: integer, minimum: 0 }
       total_tokens: { type: integer, minimum: 0 }
       fresh_token_approximation: { type: integer, minimum: 0 }
+      ownership: { enum: [direct, inclusive] }
   accounting_summary:
     type: object
     additionalProperties: false
@@ -285,7 +286,7 @@ $defs:
   accounting_node:
     type: object
     additionalProperties: false
-    required: [lane, assignment_digest, launch_bytes, evidence_bytes, result_bytes, expansions, tool_calls, model_turns, direct_usage, inclusive_usage, terminal_outcome]
+    required: [lane, assignment_digest, launch_bytes, evidence_bytes, result_bytes, expansions, tool_calls, model_turns, provider_usage, direct_usage, inclusive_usage, terminal_outcome]
     properties:
       lane: { $ref: "#/$defs/identifier" }
       assignment_digest: { $ref: "#/$defs/digest" }
@@ -295,9 +296,16 @@ $defs:
       expansions: { type: integer, minimum: 0 }
       tool_calls: { type: integer, minimum: 0 }
       model_turns: { type: integer, minimum: 0 }
+      provider_usage:
+        allOf:
+          - { $ref: "#/$defs/usage" }
+          - type: object
+            properties:
+              ownership: { enum: [direct, inclusive] }
       direct_usage: { $ref: "#/$defs/usage" }
       inclusive_usage: { $ref: "#/$defs/usage" }
-      terminal_outcome: { enum: [completed, review_context_budget_exceeded, budget_regression, failed] }
+      terminal_outcome:
+        enum: [completed, review_context_budget_exceeded, budget_regression, failed, timeout, interrupted, spawn_failure, process_failure, unsupported_provider, forbidden_operation, partial_failure]
 x-coherence-checks:
   - Digests are SHA-256 over canonical UTF-8 serialization with digest fields omitted.
   - Assignment revisions and lane identity equal their parent packet values.

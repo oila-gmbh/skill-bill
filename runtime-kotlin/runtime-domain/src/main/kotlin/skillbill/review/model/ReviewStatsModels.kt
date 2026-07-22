@@ -96,6 +96,7 @@ data class ReviewFinishedTelemetry(
   val executionMode: String?,
   val reviewFinishedAt: String?,
   val learnings: ReviewLearningsSummary,
+  val reviewContextAccounting: Map<String, Any?>? = null,
 )
 
 data class ReviewStatsSnapshot(

@@ -71,9 +71,9 @@ properties:
       `McpToolRegistry.toolNames`.
   contract_version:
     type: string
-    const: "1.5.0"
+    const: "1.6.0"
     description: >
-      Pinned to `TELEMETRY_EVENT_CONTRACT_VERSION` (currently "1.5.0").
+      Pinned to `TELEMETRY_EVENT_CONTRACT_VERSION` (currently "1.6.0").
       The parity test `TelemetryEventSchemaContractVersionTest` keeps
       the two in lockstep.
 
@@ -486,7 +486,7 @@ $defs:
       event_name:
         const: doctor
       contract_version:
-        const: "1.5.0"
+        const: "1.6.0"
 
   updateCheckEvent:
     type: object
@@ -498,7 +498,7 @@ $defs:
       event_name:
         const: update_check
       contract_version:
-        const: "1.5.0"
+        const: "1.6.0"
 
   featureTaskProseStatsEvent:
     type: object
@@ -510,7 +510,7 @@ $defs:
       event_name:
         const: feature_task_prose_stats
       contract_version:
-        const: "1.5.0"
+        const: "1.6.0"
 
   featureVerifyStatsEvent:
     type: object
@@ -522,7 +522,7 @@ $defs:
       event_name:
         const: feature_verify_stats
       contract_version:
-        const: "1.5.0"
+        const: "1.6.0"
 
   featureTaskRuntimeStatsEvent:
     type: object
@@ -534,7 +534,7 @@ $defs:
       event_name:
         const: feature_task_runtime_stats
       contract_version:
-        const: "1.5.0"
+        const: "1.6.0"
 
   readianAuthStatusEvent:
     type: object
@@ -546,7 +546,7 @@ $defs:
       event_name:
         const: readian_auth_status
       contract_version:
-        const: "1.5.0"
+        const: "1.6.0"
 
   reviewStatsEvent:
     type: object
@@ -558,7 +558,7 @@ $defs:
       event_name:
         const: review_stats
       contract_version:
-        const: "1.5.0"
+        const: "1.6.0"
 
   telemetryProxyCapabilitiesEvent:
     type: object
@@ -570,7 +570,7 @@ $defs:
       event_name:
         const: telemetry_proxy_capabilities
       contract_version:
-        const: "1.5.0"
+        const: "1.6.0"
 
   telemetryRemoteStatsEvent:
     type: object
@@ -583,7 +583,7 @@ $defs:
       event_name:
         const: telemetry_remote_stats
       contract_version:
-        const: "1.5.0"
+        const: "1.6.0"
       workflow:
         type: string
         enum:
@@ -629,7 +629,7 @@ $defs:
       event_name:
         const: feature_task_prose_started
       contract_version:
-        const: "1.5.0"
+        const: "1.6.0"
       feature_size:
         type: string
         enum:
@@ -696,7 +696,7 @@ $defs:
       event_name:
         const: feature_task_prose_finished
       contract_version:
-        const: "1.5.0"
+        const: "1.6.0"
       session_id:
         type: string
       source:
@@ -800,7 +800,7 @@ $defs:
       event_name:
         const: feature_task_continuation_lookup
       contract_version:
-        const: "1.5.0"
+        const: "1.6.0"
       issue_key:
         type: string
       repository_identity:
@@ -818,7 +818,7 @@ $defs:
       event_name:
         const: feature_task_prose_workflow_continue
       contract_version:
-        const: "1.5.0"
+        const: "1.6.0"
       workflow_id:
         type: string
       issue_key:
@@ -837,7 +837,7 @@ $defs:
       event_name:
         const: feature_task_prose_workflow_get
       contract_version:
-        const: "1.5.0"
+        const: "1.6.0"
       workflow_id:
         type: string
 
@@ -851,7 +851,7 @@ $defs:
       event_name:
         const: feature_task_prose_workflow_latest
       contract_version:
-        const: "1.5.0"
+        const: "1.6.0"
 
   featureTaskProseWorkflowListEvent:
     type: object
@@ -863,7 +863,7 @@ $defs:
       event_name:
         const: feature_task_prose_workflow_list
       contract_version:
-        const: "1.5.0"
+        const: "1.6.0"
       limit:
         type: integer
 
@@ -880,7 +880,7 @@ $defs:
       event_name:
         const: feature_task_prose_workflow_open
       contract_version:
-        const: "1.5.0"
+        const: "1.6.0"
       session_id:
         type: string
       current_step_id:
@@ -903,7 +903,7 @@ $defs:
       event_name:
         const: feature_task_prose_workflow_resume
       contract_version:
-        const: "1.5.0"
+        const: "1.6.0"
       workflow_id:
         type: string
 
@@ -920,7 +920,7 @@ $defs:
       event_name:
         const: feature_task_prose_workflow_update
       contract_version:
-        const: "1.5.0"
+        const: "1.6.0"
       workflow_id:
         type: string
       workflow_status:
@@ -949,7 +949,7 @@ $defs:
       event_name:
         const: feature_verify_started
       contract_version:
-        const: "1.5.0"
+        const: "1.6.0"
       acceptance_criteria_count:
         type: integer
       rollout_relevant:
@@ -980,7 +980,7 @@ $defs:
       event_name:
         const: feature_verify_finished
       contract_version:
-        const: "1.5.0"
+        const: "1.6.0"
       feature_flag_audit_performed:
         type: boolean
       review_iterations:
@@ -1033,7 +1033,7 @@ $defs:
       event_name:
         const: feature_task_runtime_started
       contract_version:
-        const: "1.5.0"
+        const: "1.6.0"
       feature_size:
         type: string
         enum:
@@ -1060,7 +1060,7 @@ $defs:
       event_name:
         const: feature_task_runtime_finished
       contract_version:
-        const: "1.5.0"
+        const: "1.6.0"
       session_id:
         type: string
       completion_status:
@@ -1131,7 +1131,7 @@ $defs:
       event_name:
         const: feature_verify_workflow_continue
       contract_version:
-        const: "1.5.0"
+        const: "1.6.0"
       workflow_id:
         type: string
 
@@ -1146,7 +1146,7 @@ $defs:
       event_name:
         const: feature_verify_workflow_get
       contract_version:
-        const: "1.5.0"
+        const: "1.6.0"
       workflow_id:
         type: string
 
@@ -1160,7 +1160,7 @@ $defs:
       event_name:
         const: feature_verify_workflow_latest
       contract_version:
-        const: "1.5.0"
+        const: "1.6.0"
 
   featureVerifyWorkflowListEvent:
     type: object
@@ -1172,7 +1172,7 @@ $defs:
       event_name:
         const: feature_verify_workflow_list
       contract_version:
-        const: "1.5.0"
+        const: "1.6.0"
       limit:
         type: integer
 
@@ -1186,7 +1186,7 @@ $defs:
       event_name:
         const: feature_verify_workflow_open
       contract_version:
-        const: "1.5.0"
+        const: "1.6.0"
       session_id:
         type: string
       current_step_id:
@@ -1209,7 +1209,7 @@ $defs:
       event_name:
         const: feature_verify_workflow_resume
       contract_version:
-        const: "1.5.0"
+        const: "1.6.0"
       workflow_id:
         type: string
 
@@ -1226,7 +1226,7 @@ $defs:
       event_name:
         const: feature_verify_workflow_update
       contract_version:
-        const: "1.5.0"
+        const: "1.6.0"
       workflow_id:
         type: string
       workflow_status:
@@ -1255,7 +1255,7 @@ $defs:
       event_name:
         const: feature_task_runtime_workflow_continue
       contract_version:
-        const: "1.5.0"
+        const: "1.6.0"
       workflow_id:
         type: string
 
@@ -1270,7 +1270,7 @@ $defs:
       event_name:
         const: feature_task_runtime_workflow_get
       contract_version:
-        const: "1.5.0"
+        const: "1.6.0"
       workflow_id:
         type: string
 
@@ -1284,7 +1284,7 @@ $defs:
       event_name:
         const: feature_task_runtime_workflow_latest
       contract_version:
-        const: "1.5.0"
+        const: "1.6.0"
 
   featureTaskRuntimeWorkflowListEvent:
     type: object
@@ -1296,7 +1296,7 @@ $defs:
       event_name:
         const: feature_task_runtime_workflow_list
       contract_version:
-        const: "1.5.0"
+        const: "1.6.0"
       limit:
         type: integer
 
@@ -1313,7 +1313,7 @@ $defs:
       event_name:
         const: feature_task_runtime_workflow_open
       contract_version:
-        const: "1.5.0"
+        const: "1.6.0"
       session_id:
         type: string
       current_step_id:
@@ -1336,7 +1336,7 @@ $defs:
       event_name:
         const: feature_task_runtime_workflow_resume
       contract_version:
-        const: "1.5.0"
+        const: "1.6.0"
       workflow_id:
         type: string
 
@@ -1353,7 +1353,7 @@ $defs:
       event_name:
         const: feature_task_runtime_workflow_update
       contract_version:
-        const: "1.5.0"
+        const: "1.6.0"
       workflow_id:
         type: string
       workflow_status:
@@ -1387,7 +1387,7 @@ $defs:
       event_name:
         const: goal_started
       contract_version:
-        const: "1.5.0"
+        const: "1.6.0"
       issue_key:
         type: string
       feature_name:
@@ -1435,7 +1435,7 @@ $defs:
       event_name:
         const: goal_subtask_finished
       contract_version:
-        const: "1.5.0"
+        const: "1.6.0"
       issue_key:
         type: string
       workflow_id:
@@ -1521,7 +1521,7 @@ $defs:
       event_name:
         const: goal_finished
       contract_version:
-        const: "1.5.0"
+        const: "1.6.0"
       issue_key:
         type: string
       workflow_id:
@@ -1585,7 +1585,7 @@ $defs:
       event_name:
         const: goal_issue_finished
       contract_version:
-        const: "1.5.0"
+        const: "1.6.0"
       issue_key:
         type: string
       parent_workflow_id:
@@ -1648,7 +1648,7 @@ $defs:
       event_name:
         const: goal_prose_started
       contract_version:
-        const: "1.5.0"
+        const: "1.6.0"
       issue_key:
         type: string
       feature_name:
@@ -1683,7 +1683,7 @@ $defs:
       event_name:
         const: goal_prose_subtask_finished
       contract_version:
-        const: "1.5.0"
+        const: "1.6.0"
       issue_key:
         type: string
       workflow_id:
@@ -1735,7 +1735,7 @@ $defs:
       event_name:
         const: goal_prose_finished
       contract_version:
-        const: "1.5.0"
+        const: "1.6.0"
       issue_key:
         type: string
       workflow_id:
@@ -1773,7 +1773,7 @@ $defs:
       event_name:
         const: goal_stats
       contract_version:
-        const: "1.5.0"
+        const: "1.6.0"
       since:
         type: string
       date_from:
@@ -1798,7 +1798,7 @@ $defs:
       event_name:
         const: import_review
       contract_version:
-        const: "1.5.0"
+        const: "1.6.0"
       review_text:
         type: string
       orchestrated:
@@ -1815,7 +1815,7 @@ $defs:
       event_name:
         const: new_skill_scaffold
       contract_version:
-        const: "1.5.0"
+        const: "1.6.0"
       payload:
         $ref: "#/$defs/freeObjectShape"
       dry_run:
@@ -1839,7 +1839,7 @@ $defs:
       event_name:
         const: pr_description_generated
       contract_version:
-        const: "1.5.0"
+        const: "1.6.0"
       commit_count:
         type: integer
       files_changed_count:
@@ -1880,7 +1880,7 @@ $defs:
       event_name:
         const: quality_check_finished
       contract_version:
-        const: "1.5.0"
+        const: "1.6.0"
       final_failure_count:
         type: integer
       iterations:
@@ -1936,7 +1936,7 @@ $defs:
       event_name:
         const: quality_check_started
       contract_version:
-        const: "1.5.0"
+        const: "1.6.0"
       routed_skill:
         type: string
       detected_stack:
@@ -1951,6 +1951,74 @@ $defs:
         type: integer
       orchestrated:
         type: boolean
+
+  reviewAccountingUsage:
+    type: object
+    additionalProperties: false
+    properties:
+      input_tokens: { type: integer, minimum: 0 }
+      cached_input_tokens: { type: integer, minimum: 0 }
+      output_tokens: { type: integer, minimum: 0 }
+      reasoning_tokens: { type: integer, minimum: 0 }
+      total_tokens: { type: integer, minimum: 0 }
+      fresh_token_approximation: { type: integer, minimum: 0 }
+      ownership: { type: string, enum: [direct, inclusive] }
+
+  reviewAccountingNode:
+    type: object
+    additionalProperties: false
+    required:
+      - lane
+      - assignment_digest
+      - launch_bytes
+      - evidence_bytes
+      - result_bytes
+      - expansions
+      - tool_calls
+      - model_turns
+      - provider_usage
+      - direct_usage
+      - inclusive_usage
+      - terminal_outcome
+    properties:
+      lane: { type: string, minLength: 1 }
+      assignment_digest: { type: string, minLength: 1 }
+      launch_bytes: { type: integer, minimum: 0 }
+      evidence_bytes: { type: integer, minimum: 0 }
+      result_bytes: { type: integer, minimum: 0 }
+      expansions: { type: integer, minimum: 0 }
+      tool_calls: { type: integer, minimum: 0 }
+      model_turns: { type: integer, minimum: 0 }
+      provider_usage: { $ref: "#/$defs/reviewAccountingUsage" }
+      direct_usage: { $ref: "#/$defs/reviewAccountingUsage" }
+      inclusive_usage: { $ref: "#/$defs/reviewAccountingUsage" }
+      terminal_outcome: { type: string, minLength: 1 }
+
+  boundedReviewAccounting:
+    type: object
+    additionalProperties: false
+    required:
+      - contract_version
+      - kind
+      - review_id
+      - packet_digest
+      - parent
+      - lanes
+      - aggregate_direct_usage
+      - aggregate_inclusive_usage
+      - budget_regression
+    properties:
+      contract_version: { const: "0.5" }
+      kind: { const: accounting_summary }
+      review_id: { type: string, minLength: 1 }
+      packet_digest: { type: string, minLength: 1 }
+      parent: { $ref: "#/$defs/reviewAccountingNode" }
+      lanes:
+        type: array
+        items: { $ref: "#/$defs/reviewAccountingNode" }
+      aggregate_direct_usage: { $ref: "#/$defs/reviewAccountingUsage" }
+      aggregate_inclusive_usage: { $ref: "#/$defs/reviewAccountingUsage" }
+      budget_regression: { type: boolean }
 
   skillbillReviewFinishedEvent:
     type: object
@@ -1983,7 +2051,7 @@ $defs:
       event_name:
         const: skillbill_review_finished
       contract_version:
-        const: "1.5.0"
+        const: "1.6.0"
       total_findings:
         type: integer
       accepted_findings:
@@ -2047,6 +2115,8 @@ $defs:
       learnings:
         type: object
         additionalProperties: true
+      review_context_accounting:
+        $ref: "#/$defs/boundedReviewAccounting"
 
   resolveLearningsEvent:
     type: object
@@ -2058,7 +2128,7 @@ $defs:
       event_name:
         const: resolve_learnings
       contract_version:
-        const: "1.5.0"
+        const: "1.6.0"
       repo:
         type: string
       skill:
@@ -2078,7 +2148,7 @@ $defs:
       event_name:
         const: triage_findings
       contract_version:
-        const: "1.5.0"
+        const: "1.6.0"
       review_run_id:
         type: string
       decisions:
@@ -2102,7 +2172,7 @@ $defs:
       event_name:
         const: readian_get_article
       contract_version:
-        const: "1.5.0"
+        const: "1.6.0"
       article_id:
         type: string
 
@@ -2117,7 +2187,7 @@ $defs:
       event_name:
         const: readian_get_articles_for_topic_query
       contract_version:
-        const: "1.5.0"
+        const: "1.6.0"
       topic_query:
         type: string
       date:
@@ -2141,7 +2211,7 @@ $defs:
       event_name:
         const: readian_get_spotlight
       contract_version:
-        const: "1.5.0"
+        const: "1.6.0"
       date:
         type: string
       limit:
@@ -2158,7 +2228,7 @@ $defs:
       event_name:
         const: readian_save_candidate
       contract_version:
-        const: "1.5.0"
+        const: "1.6.0"
       candidate_id:
         type: string
       notes:
@@ -2176,7 +2246,7 @@ $defs:
       event_name:
         const: readian_mark_story_status
       contract_version:
-        const: "1.5.0"
+        const: "1.6.0"
       story_id:
         type: string
       status:

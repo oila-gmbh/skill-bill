@@ -11,6 +11,7 @@ import skillbill.ports.review.model.NativeReviewWorkerRequest
 import skillbill.ports.review.model.ReviewEvidenceBatchRequest
 import skillbill.ports.review.model.ReviewEvidenceRequest
 import skillbill.ports.review.model.ReviewEvidenceResult
+import skillbill.ports.review.model.ReviewLaneAccounting
 import skillbill.review.context.model.ProviderTokenUsage
 import skillbill.review.context.model.ReviewAssignment
 import skillbill.review.context.model.ReviewBudgetEvaluator
@@ -37,14 +38,14 @@ class DelegatedReviewWorkerLauncher(
     evidence?.terminalOutcome?.let { outcome ->
       return DelegatedReviewWorkerOutcome(
         budgetOutcome = outcome,
-        accounting = prepared.evidenceBroker.accounting(),
+        accounting = completeAccounting(request, prepared.evidenceBroker.accounting(), prepared.prompt, outcome.type),
       )
     }
     val forbidden = evidence?.results?.firstNotNullOfOrNull { result -> result.forbidden }
     if (forbidden != null) {
       return DelegatedReviewWorkerOutcome(
         forbiddenOperation = forbidden,
-        accounting = prepared.evidenceBroker.accounting(),
+        accounting = completeAccounting(request, prepared.evidenceBroker.accounting(), prepared.prompt, "forbidden_operation"),
       )
     }
     val boundedPrompt = boundedPrompt(prepared.prompt, evidenceRequests, evidence?.results.orEmpty())
@@ -52,7 +53,7 @@ class DelegatedReviewWorkerLauncher(
       ?.let { outcome ->
         return DelegatedReviewWorkerOutcome(
           budgetOutcome = outcome,
-          accounting = prepared.evidenceBroker.accounting(),
+          accounting = completeAccounting(request, prepared.evidenceBroker.accounting(), boundedPrompt, outcome.type),
         )
       }
     val outcome = launcher.launch(
@@ -70,7 +71,10 @@ class DelegatedReviewWorkerLauncher(
       ),
     )
     return when (outcome) {
-      is UnsupportedAgentRunLaunch -> DelegatedReviewWorkerOutcome(unsupportedReason = outcome.reason)
+      is UnsupportedAgentRunLaunch -> DelegatedReviewWorkerOutcome(
+        unsupportedReason = outcome.reason,
+        accounting = completeAccounting(request, prepared.evidenceBroker.accounting(), boundedPrompt, "unsupported_provider"),
+      )
       is AgentRunLaunchFacts -> {
         val resultOutcome = prepared.evidenceBroker.validateLaneResult(outcome.stdout)
         val providerOutcome = providerUsage(outcome)?.let {
@@ -79,10 +83,39 @@ class DelegatedReviewWorkerLauncher(
         DelegatedReviewWorkerOutcome(
           facts = outcome,
           budgetOutcome = resultOutcome ?: providerOutcome,
-          accounting = prepared.evidenceBroker.accounting(),
+          accounting = completeAccounting(
+            request,
+            prepared.evidenceBroker.accounting(),
+            boundedPrompt,
+            resultOutcome?.type ?: providerOutcome?.type ?: terminalStatus(outcome),
+            providerUsage(outcome),
+          ),
         )
       }
     }
+  }
+
+  private fun completeAccounting(
+    request: DelegatedReviewWorkerRequest,
+    accounting: ReviewLaneAccounting,
+    finalPrompt: String,
+    terminalStatus: String,
+    usage: ProviderTokenUsage? = null,
+  ) = accounting.copy(
+    reviewId = request.prepared.launch.launch.assignment.reviewId,
+    packetDigest = request.prepared.launch.launch.assignment.packetDigest,
+    assignmentDigest = request.prepared.launch.launch.assignment.digest,
+    launchBytes = finalPrompt.toByteArray(Charsets.UTF_8).size.toLong(),
+    providerUsage = usage,
+    terminalStatus = terminalStatus,
+  )
+
+  private fun terminalStatus(facts: AgentRunLaunchFacts): String = when {
+    facts.timedOut -> "timeout"
+    facts.interrupted -> "interrupted"
+    facts.spawnFailed -> "spawn_failure"
+    facts.exitStatus != 0 -> "process_failure"
+    else -> "completed"
   }
 
   private fun finalLaunchOutcome(assignment: ReviewAssignment, limit: Long, prompt: String) =

@@ -14,6 +14,7 @@ import skillbill.application.review.model.DelegatedReviewLaunchRequest
 import skillbill.application.review.model.ReviewRubricProjection
 import skillbill.application.scaffold.ScaffoldCatalogService
 import skillbill.application.workflow.repoRoot
+import skillbill.application.featuretask.sha256HexUtf8
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunTokenOwnership
@@ -24,6 +25,8 @@ import skillbill.ports.config.model.ReadRepoLocalConfigRequest
 import skillbill.ports.diff.DiffResolverPort
 import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
+import skillbill.ports.persistence.DatabaseSessionFactory
+import skillbill.ports.persistence.ReviewAccountingRecord
 import skillbill.ports.review.ParallelReviewLaneRunner
 import skillbill.ports.review.ReviewNativeAgentPreflightPort
 import skillbill.ports.review.ReviewRubricResolver
@@ -36,6 +39,9 @@ import skillbill.review.ParallelReviewFindingParser
 import skillbill.review.ParallelReviewMerger
 import skillbill.review.context.ReviewContextEnvelopeValidator
 import skillbill.review.context.ReviewExecutionModePolicy
+import skillbill.review.context.ReviewAccountingCounters
+import skillbill.review.context.ReviewAccountingInput
+import skillbill.review.context.ReviewTreeAccounting
 import skillbill.review.context.model.ProviderTokenUsage
 import skillbill.review.context.model.ResolvedReviewExecutionMode
 import skillbill.review.context.model.ReviewAutoEligibility
@@ -64,6 +70,7 @@ class ParallelCodeReviewRunner(
   private val reviewContextEnvelopeValidator: ReviewContextEnvelopeValidator,
   private val reviewRubricResolver: ReviewRubricResolver,
   private val nativeAgentPreflight: ReviewNativeAgentPreflightPort,
+  private val database: DatabaseSessionFactory,
 ) {
   fun run(request: ParallelCodeReviewRequest): ParallelCodeReviewResult {
     val agent1 = resolveAgent(request.agent1Id, "--agent1")
@@ -112,7 +119,15 @@ class ParallelCodeReviewRunner(
       agent1.id,
       agent2.id,
     )
-    return parallelResult(agent1.id, agent2.id, outcomes)
+    return parallelResult(agent1.id, agent2.id, outcomes).also { result ->
+      result.accountingSummary?.let { summary ->
+        database.transaction { unitOfWork ->
+          unitOfWork.reviews.saveAccounting(
+            ReviewAccountingRecord(summary.reviewId, summary.packetDigest, summary.toBoundedPayload()),
+          )
+        }
+      }
+    }
   }
 
   private fun resolvedMode(
@@ -411,6 +426,18 @@ class ParallelCodeReviewRunner(
           success = false,
           rawOutput = "",
           failureReason = "shared specialist deadline exhausted before '${launchRequest.assignment.lane}'",
+          accounting = ReviewLaneAccounting(
+            lane = launchRequest.assignment.lane,
+            reviewId = launchRequest.assignment.reviewId,
+            packetDigest = launchRequest.assignment.packetDigest,
+            assignmentDigest = launchRequest.assignment.digest,
+            evidenceBytes = 0,
+            expansions = emptyList(),
+            toolCalls = 0,
+            modelTurns = 0,
+            resultBytes = 0,
+            terminalStatus = "timeout",
+          ),
         )
         break
       }
@@ -423,9 +450,10 @@ class ParallelCodeReviewRunner(
       rawOutput = outcomes.filter { it.success }.joinToString("\n") { it.rawOutput },
       findings = outcomes.filter { it.success }.flatMap { it.findings },
       failureReason = failed?.failureReason,
-      tokenUsage = aggregateTokenUsage(outcomes.mapNotNull { it.tokenUsage }),
+      tokenUsage = outcomes.singleOrNull()?.tokenUsage,
       budgetOutcome = failed?.budgetOutcome,
       accounting = aggregateAccounting(agentId, outcomes.mapNotNull { it.accounting }),
+      specialistAccounting = outcomes.flatMap { it.specialistAccounting },
     )
   }
 
@@ -450,6 +478,7 @@ class ParallelCodeReviewRunner(
         rawOutput = "",
         failureReason = describeBudgetOutcome(execution.budgetOutcome),
         budgetOutcome = execution.budgetOutcome,
+        accounting = execution.accounting,
       )
       is DelegatedReviewExecutionOutcome.Completed -> {
         val worker = execution.worker
@@ -476,6 +505,7 @@ class ParallelCodeReviewRunner(
             success = false,
             rawOutput = "",
             failureReason = "unsupported agent: ${worker.unsupportedReason}",
+            accounting = worker.accounting,
           )
         }
         val usage = providerTokenUsage(outcome)
@@ -682,6 +712,7 @@ private fun parallelResult(
     mergeResult = ParallelReviewMerger.merge(lane1Result, lane2Result),
     lane1 = outcomes.lane1.toStatus(agent1Id),
     lane2 = outcomes.lane2.toStatus(agent2Id),
+    accountingSummary = parallelAccountingSummary(outcomes),
   )
 }
 
@@ -692,34 +723,51 @@ private fun ParallelReviewLaneOutcome.toStatus(agentId: String) = ParallelReview
   tokenUsage,
   budgetOutcome,
   accounting,
+  specialistAccounting,
 )
-
-private fun aggregateTokenUsage(usages: List<ProviderTokenUsage>): ProviderTokenUsage? {
-  if (usages.isEmpty()) return null
-  fun sum(selector: (ProviderTokenUsage) -> Long?): Long? {
-    val values = usages.mapNotNull(selector)
-    return values.takeIf { it.isNotEmpty() }?.sum()
-  }
-  return ProviderTokenUsage(
-    inputTokens = sum(ProviderTokenUsage::inputTokens),
-    cachedInputTokens = sum(ProviderTokenUsage::cachedInputTokens),
-    outputTokens = sum(ProviderTokenUsage::outputTokens),
-    reasoningTokens = sum(ProviderTokenUsage::reasoningTokens),
-    totalTokens = sum(ProviderTokenUsage::totalTokens),
-    ownership = TokenOwnership.DIRECT,
-  )
-}
 
 private fun aggregateAccounting(agentId: String, values: List<ReviewLaneAccounting>): ReviewLaneAccounting? {
   if (values.isEmpty()) return null
   return ReviewLaneAccounting(
     lane = agentId,
+    reviewId = values.first().reviewId,
+    packetDigest = values.first().packetDigest,
+    assignmentDigest = sha256HexUtf8(values.joinToString("+") { it.assignmentDigest }),
+    launchBytes = values.sumOf { it.launchBytes },
     evidenceBytes = values.sumOf { it.evidenceBytes },
     expansions = values.flatMap { it.expansions },
     toolCalls = values.sumOf { it.toolCalls },
     modelTurns = values.sumOf { it.modelTurns },
     resultBytes = values.sumOf { it.resultBytes },
+    terminalStatus = values.firstOrNull { it.terminalStatus != "completed" }?.terminalStatus ?: "completed",
     terminalOutcome = values.firstNotNullOfOrNull { it.terminalOutcome },
+  )
+}
+
+private fun parallelAccountingSummary(
+  outcomes: skillbill.ports.review.model.ParallelReviewLaneRunResult,
+): skillbill.review.context.ReviewAccountingSummary? {
+  val specialists = listOf(outcomes.lane1, outcomes.lane2).flatMap { it.specialistAccounting }
+  if (specialists.isEmpty()) return null
+  fun ReviewLaneAccounting.toInput() = ReviewAccountingInput(
+    lane = lane,
+    assignmentDigest = assignmentDigest,
+    counters = ReviewAccountingCounters(launchBytes, evidenceBytes, resultBytes, expansions.size, toolCalls, modelTurns),
+    usage = providerUsage ?: ProviderTokenUsage(),
+    terminalOutcome = terminalStatus,
+  )
+  val roots = listOf(outcomes.lane1, outcomes.lane2).mapIndexed { index, outcome ->
+    ReviewAccountingInput(
+      lane = "parallel-agent-${index + 1}",
+      assignmentDigest = sha256HexUtf8("parallel-agent-${index + 1}"),
+      children = outcome.specialistAccounting.map(ReviewLaneAccounting::toInput),
+      terminalOutcome = if (outcome.success) "completed" else "partial_failure",
+    )
+  }
+  return ReviewTreeAccounting.summarize(
+    reviewId = specialists.first().reviewId,
+    packetDigest = specialists.first().packetDigest,
+    root = ReviewAccountingInput("parallel-review", sha256HexUtf8("parallel-review"), children = roots),
   )
 }
 

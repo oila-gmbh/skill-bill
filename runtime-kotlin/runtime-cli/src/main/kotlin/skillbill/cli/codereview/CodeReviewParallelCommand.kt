@@ -13,6 +13,8 @@ import skillbill.application.model.ParallelReviewScope
 import skillbill.application.model.StackDetectionException
 import skillbill.application.model.UsageValidationException
 import skillbill.application.review.ParallelCodeReviewRunner
+import skillbill.application.review.toBoundedPayload
+import skillbill.contracts.JsonSupport
 import skillbill.cli.core.CliRunState
 import skillbill.cli.core.DocumentedCliCommand
 import skillbill.cli.core.refuseRuntimeRefusedAgents
@@ -108,7 +110,14 @@ class CodeReviewParallelCommand(
 
     val lanes = listOf(result.lane1, result.lane2)
     val exitCode = if (lanes.all(ParallelReviewLaneStatus::success)) 0 else 1
-    val output = laneStatusOutput(lanes, result.mergeResult.formattedOutput)
+    val output = buildString {
+      append(laneStatusOutput(lanes, result.mergeResult.formattedOutput))
+      result.accountingSummary?.let { summary ->
+        appendLine()
+        append("# Review accounting — ")
+        append(JsonSupport.mapToJsonString(summary.toBoundedPayload()))
+      }
+    }
     state.result = CliExecutionResult(exitCode = exitCode, stdout = output)
   }
 

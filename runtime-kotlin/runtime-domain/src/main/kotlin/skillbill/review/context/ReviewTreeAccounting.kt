@@ -34,6 +34,8 @@ data class ReviewAccountingNode(
   val lane: String,
   val assignmentDigest: String,
   val counters: ReviewAccountingCounters,
+  /** The provider report exactly as observed, including its ownership declaration. */
+  val providerUsage: ProviderTokenUsage,
   val directUsage: ProviderTokenUsage,
   val inclusiveUsage: ProviderTokenUsage,
   val terminalOutcome: String,
@@ -82,6 +84,7 @@ object ReviewTreeAccounting {
       input.lane,
       input.assignmentDigest,
       input.counters,
+      input.usage,
       direct,
       inclusive,
       input.terminalOutcome,

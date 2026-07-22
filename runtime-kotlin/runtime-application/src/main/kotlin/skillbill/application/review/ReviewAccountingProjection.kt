@@ -26,6 +26,7 @@ private fun ReviewAccountingNode.toPayload(): Map<String, Any?> = linkedMapOf(
   "expansions" to counters.expansions,
   "tool_calls" to counters.toolCalls,
   "model_turns" to counters.modelTurns,
+  "provider_usage" to providerUsage.toPayload() + ("ownership" to providerUsage.ownership.name.lowercase()),
   "direct_usage" to directUsage.toPayload(),
   "inclusive_usage" to inclusiveUsage.toPayload(),
   "terminal_outcome" to terminalOutcome,

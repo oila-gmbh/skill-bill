@@ -3,6 +3,7 @@ package skillbill.application.model
 import skillbill.ports.review.model.ReviewLaneAccounting
 import skillbill.review.context.model.ProviderTokenUsage
 import skillbill.review.context.model.ReviewBudgetOutcome
+import skillbill.review.context.ReviewAccountingSummary
 import skillbill.review.model.ParallelReviewMergeResult
 import skillbill.workflow.model.CodeReviewExecutionMode
 import java.nio.file.Path
@@ -33,6 +34,7 @@ data class ParallelCodeReviewResult(
   val mergeResult: ParallelReviewMergeResult,
   val lane1: ParallelReviewLaneStatus,
   val lane2: ParallelReviewLaneStatus,
+  val accountingSummary: ReviewAccountingSummary? = null,
 )
 
 data class ParallelReviewLaneStatus(
@@ -42,6 +44,7 @@ data class ParallelReviewLaneStatus(
   val tokenUsage: ProviderTokenUsage? = null,
   val budgetOutcome: ReviewBudgetOutcome? = null,
   val accounting: ReviewLaneAccounting? = null,
+  val specialistAccounting: List<ReviewLaneAccounting> = accounting?.let(::listOf) ?: emptyList(),
 )
 
 data class ParallelCodeReviewMergeRequest(

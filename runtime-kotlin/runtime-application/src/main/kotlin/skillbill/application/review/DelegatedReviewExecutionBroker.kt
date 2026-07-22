@@ -5,6 +5,7 @@ import skillbill.application.review.model.DelegatedReviewExecutionOutcome
 import skillbill.application.review.model.DelegatedReviewExecutionRequest
 import skillbill.application.review.model.DelegatedReviewLaunchOutcome
 import skillbill.application.review.model.DelegatedReviewWorkerRequest
+import skillbill.ports.review.model.ReviewLaneAccounting
 
 /**
  * Production entry point for a delegated specialist. A caller cannot start a worker without first
@@ -23,7 +24,23 @@ class DelegatedReviewExecutionBroker(
   fun execute(request: DelegatedReviewExecutionRequest): DelegatedReviewExecutionOutcome =
     when (val prepared = launchBroker.prepare(request.launchRequest)) {
       is DelegatedReviewLaunchOutcome.Terminated ->
-        DelegatedReviewExecutionOutcome.Terminated(prepared.outcome)
+        DelegatedReviewExecutionOutcome.Terminated(
+          prepared.outcome,
+          ReviewLaneAccounting(
+            lane = request.launchRequest.assignment.lane,
+            reviewId = request.launchRequest.assignment.reviewId,
+            packetDigest = request.launchRequest.assignment.packetDigest,
+            assignmentDigest = request.launchRequest.assignment.digest,
+            launchBytes = 0,
+            evidenceBytes = 0,
+            expansions = emptyList(),
+            toolCalls = 0,
+            modelTurns = 0,
+            resultBytes = 0,
+            terminalStatus = prepared.outcome.type,
+            terminalOutcome = prepared.outcome,
+          ),
+        )
       is DelegatedReviewLaunchOutcome.Prepared -> DelegatedReviewExecutionOutcome.Completed(
         workerLauncher.launch(
           DelegatedReviewWorkerRequest(

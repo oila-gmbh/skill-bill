@@ -22,6 +22,9 @@ import skillbill.ports.config.model.ReadRepoLocalConfigResult
 import skillbill.ports.diff.DiffResolverPort
 import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
+import skillbill.ports.persistence.DatabaseSessionFactory
+import skillbill.ports.persistence.ReviewRepository
+import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.review.NativeReviewWorkerLauncher
 import skillbill.ports.review.ParallelReviewLaneRunner
 import skillbill.ports.review.ReviewEvidenceBroker
@@ -52,6 +55,7 @@ import skillbill.scaffold.model.RoutingSignals
 import skillbill.workflow.model.CodeReviewExecutionMode
 import java.nio.file.Files
 import java.nio.file.Path
+import java.lang.reflect.Proxy
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -733,7 +737,36 @@ private fun createRunner(launcher: GoalRunnerSubtaskLauncher, config: RunnerFixt
     },
     reviewRubricResolver = config.rubricResolver,
     nativeAgentPreflight = config.nativeAgentPreflight,
+    database = NoopReviewDatabase,
   )
+
+private object NoopReviewDatabase : DatabaseSessionFactory {
+  private val reviews = Proxy.newProxyInstance(
+    ReviewRepository::class.java.classLoader,
+    arrayOf(ReviewRepository::class.java),
+  ) { _, method, _ ->
+    when (method.name) {
+      "saveAccounting" -> Unit
+      "loadAccounting" -> null
+      else -> error("Unexpected review repository call: ${method.name}")
+    }
+  } as ReviewRepository
+  private val unitOfWork = Proxy.newProxyInstance(
+    UnitOfWork::class.java.classLoader,
+    arrayOf(UnitOfWork::class.java),
+  ) { _, method, _ ->
+    when (method.name) {
+      "getReviews" -> reviews
+      "getDbPath" -> Path.of("/tmp/noop-review.db")
+      else -> error("Unexpected unit-of-work call: ${method.name}")
+    }
+  } as UnitOfWork
+
+  override fun resolveDbPath(dbOverride: String?) = unitOfWork.dbPath
+  override fun databaseExists(dbOverride: String?) = true
+  override fun <T> read(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unitOfWork)
+  override fun <T> transaction(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unitOfWork)
+}
 
 private fun baseRequest(
   agent1Id: String = "claude",

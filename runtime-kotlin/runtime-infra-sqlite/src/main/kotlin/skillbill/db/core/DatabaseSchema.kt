@@ -83,6 +83,14 @@ internal object DatabaseSchema {
       )
       """.trimIndent(),
       """
+      CREATE TABLE IF NOT EXISTS review_accounting (
+        review_id TEXT PRIMARY KEY,
+        packet_digest TEXT NOT NULL,
+        bounded_payload_json TEXT NOT NULL,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+      """.trimIndent(),
+      """
       CREATE TABLE IF NOT EXISTS findings (
         review_run_id TEXT NOT NULL,
         finding_id TEXT NOT NULL,

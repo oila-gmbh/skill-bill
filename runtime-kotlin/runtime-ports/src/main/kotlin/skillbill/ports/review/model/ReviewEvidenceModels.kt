@@ -4,6 +4,7 @@ import skillbill.review.context.model.ForbiddenReviewOperation
 import skillbill.review.context.model.ReviewBudgetOutcome
 import skillbill.review.context.model.ReviewExpansionRecord
 import skillbill.review.context.model.ReviewOperationKind
+import skillbill.review.context.model.ProviderTokenUsage
 
 data class ReviewEvidenceRequest(
   val lane: String,
@@ -64,10 +65,22 @@ data class ReviewToolCallResult(
 
 data class ReviewLaneAccounting(
   val lane: String,
+  val reviewId: String = "unknown",
+  val packetDigest: String = "unknown",
+  val assignmentDigest: String = lane,
+  val launchBytes: Long = 0,
   val evidenceBytes: Long,
   val expansions: List<ReviewExpansionRecord>,
   val toolCalls: Int,
   val modelTurns: Int,
   val resultBytes: Long,
+  val providerUsage: ProviderTokenUsage? = null,
+  val terminalStatus: String = "completed",
   val terminalOutcome: ReviewBudgetOutcome? = null,
-)
+) {
+  init {
+    require(lane.isNotBlank() && reviewId.isNotBlank() && packetDigest.isNotBlank() && assignmentDigest.isNotBlank())
+    require(launchBytes >= 0 && evidenceBytes >= 0 && resultBytes >= 0)
+    require(toolCalls >= 0 && modelTurns >= 0)
+  }
+}

@@ -93,5 +93,8 @@ data class DelegatedReviewExecutionRequest(
 
 sealed interface DelegatedReviewExecutionOutcome {
   data class Completed(val worker: DelegatedReviewWorkerOutcome) : DelegatedReviewExecutionOutcome
-  data class Terminated(val budgetOutcome: ReviewBudgetOutcome) : DelegatedReviewExecutionOutcome
+  data class Terminated(
+    val budgetOutcome: ReviewBudgetOutcome,
+    val accounting: ReviewLaneAccounting,
+  ) : DelegatedReviewExecutionOutcome
 }
